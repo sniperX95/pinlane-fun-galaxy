@@ -385,14 +385,10 @@ async function appeler(handler, { methode = 'POST', url, corps, ip = ipNeuve(), 
 }
 
 // Un jour ouvert, a une semaine au moins : jamais aujourd hui (un gate qui
-// reserve aujourd hui rougit le soir).
-function jourDeTest() {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
-  const c = new Date(Date.UTC(y, m - 1, d + 7));
-  while (c.getUTCDay() !== 6) c.setUTCDate(c.getUTCDate() + 1);
-  return c.toISOString().slice(0, 10);
-}
-const JOUR = jourDeTest();
+// reserve aujourd hui rougit le soir). Un samedi hors vacances et feries
+// (scripts/jour-de-test.js) : la formule 3 que bowling-emergency-stock y
+// reserve ne s y vend pas.
+const JOUR = require('./jour-de-test').jourDeTest({ jour: 6, depuis: 7 });
 
 // Le corps que le formulaire envoie (payload() de fungalaxy-booking.js), sans
 // coordonnees pour un blocage.

@@ -23,8 +23,10 @@ async function choose(page, players, duration = 1) {
   await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
   // Le samedi du serveur de dev, pas aujourd hui : le stock synthetique est
   // pose sur mock.DATE, et le jour choisi d office (aujourd hui) n a plus de
-  // creneau le soir. Le gate rougissait des 19:45 (suite du 2026-10-08).
+  // creneau le soir. Le gate rougissait des 19:45 (suite du 2026-10-08). Hors
+  // vacances, ce samedi peut tomber le mois suivant : le calendrier y avance.
   await page.click('#dayBtn');
+  for (let k = 0; k < 4 && !(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).count()); k += 1) { await page.click('#calNext'); await page.waitForTimeout(300); }
   await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).click();
   await page.click('#dayBtn');
   check(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).getAttribute('aria-selected') === 'true', 'emergency fixture selects its future Saturday');

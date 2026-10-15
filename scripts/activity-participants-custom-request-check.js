@@ -9,14 +9,17 @@ const custom = require('../lib/custom-request');
 const bureau = require('../lib/demande-bureau');
 const { normalizeProgram } = require('../lib/visit-program');
 const { listCenterActivities } = require('../lib/activity-catalog');
+const { jourDeTest, plusJours } = require('./jour-de-test');
 
 async function main() {
   const group = 40;
-  const date = '2026-10-10';
+  // Un samedi a venir, hors vacances et feries : le moteur refuse une date
+  // passee. Le contexte injecte le suit : une semaine avant, un samedi.
+  const date = jourDeTest({ jour: 6 });
   const activities = listCenterActivities('libramont');
   const source = { groupType: 'amis', participants: group, moment: 'apres-midi', date,
     activities: [{ id: 'bowling', participants: 6 }, { id: 'laser_game', participants: 7 }, { id: 'minigolf_blacklight', participants: 3 }], formulas: [] };
-  const context = { today: '2026-10-03', nowHour: 12, horizonDays: 180, activites: activities, formules: [],
+  const context = { today: plusJours(date, -7), nowHour: 12, horizonDays: 180, activites: activities, formules: [],
     jourDe: () => ({ open: true, schedule: { open: 10, close: 23 }, weekday: 6 }) };
   const result = custom.normaliserDemande(source, context);
   assert.equal(result.ok, true);

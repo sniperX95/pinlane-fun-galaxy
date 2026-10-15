@@ -67,7 +67,9 @@ function charger() {
   };
 }
 
-const JOUR = '2026-10-17';
+// Un samedi a venir, hors vacances et feries (scripts/jour-de-test.js) : le
+// moteur refuse une date passee.
+const JOUR = require('./jour-de-test').jourDeTest({ jour: 6 });
 const BASE = { centerId: 'libramont', date: JOUR, name: 'Arene', phone: '0470', email: '', startTime: '15:00' };
 const MARTIN = { id: 902, centerId: 'libramont', date: JOUR, name: 'Martin', status: 'confirmed', type: 'laser', startTime: '15:00', duration: 0.5, pax: 6, lanes: [],
   opsPlan: { resourceBlocks: [{ activityId: 'laser_game', resourceType: 'laser_arena', countIndex: 1, start: 900, end: 925, startTime: '15:00', endTime: '15:25', players: 6 }] } };

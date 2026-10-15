@@ -63,7 +63,9 @@ function charger() {
   };
 }
 
-const JOUR = '2026-10-17';
+// Un samedi a venir, hors vacances et feries (scripts/jour-de-test.js) : le
+// moteur refuse une date passee, et [5] a ete releve un samedi hors vacances.
+const JOUR = require('./jour-de-test').jourDeTest({ jour: 6 });
 const VIDE = async () => ({ reservations: [], laneStatuses: {} });
 const BASE = { centerId: 'libramont', date: JOUR, name: 'Plafonds', phone: '0470', email: 'a@b.be', startTime: '15:00', pax: 4 };
 

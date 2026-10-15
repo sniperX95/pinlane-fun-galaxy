@@ -137,17 +137,12 @@ function ok(cond, label, detail = '') {
 // ---------------------------------------------------------------------------
 // LA DONNEE DU JOUR. Un samedi STRICTEMENT futur (le tunnel masque les creneaux
 // deja passes de la journee en cours) et un vendredi pour le temoin negatif :
-// ffm ne se vend que ce jour-la.
+// ffm ne se vend que ce jour-la. L un et l autre hors vacances et feries
+// (scripts/jour-de-test.js) : f5 et ffm ne s y vendent pas.
 // ---------------------------------------------------------------------------
-function prochainJour(dow) {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
-    .format(new Date()).split('-').map(Number);
-  const c = new Date(Date.UTC(y, m - 1, d));
-  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== dow);
-  return c.toISOString().slice(0, 10);
-}
-const DATE = prochainJour(6);
-const VENDREDI = prochainJour(5);
+const { jourDeTest } = require('./jour-de-test');
+const DATE = jourDeTest({ jour: 6 });
+const VENDREDI = jourDeTest({ jour: 5 });
 const CENTRE = 'libramont';
 const PAX = 8;
 // La formule COURANTE du parcours et la montee qu on attend. Elles ne portent

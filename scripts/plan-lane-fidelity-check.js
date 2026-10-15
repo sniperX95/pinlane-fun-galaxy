@@ -43,13 +43,9 @@ let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
 // Le prochain samedi : Libramont ouvre 10:00-24:00 ce jour-la, donc aucune
-// assertion ne depend de l'heure a laquelle le gate tourne.
-function nextSaturday() {
-  const day = new Date();
-  day.setDate(day.getDate() + ((6 - day.getDay() + 7) % 7 || 7));
-  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-}
-const DATE = nextSaturday();
+// assertion ne depend de l'heure a laquelle le gate tourne. Hors vacances et
+// feries (scripts/jour-de-test.js) : la formule 4 ne s y reserve pas.
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 const ALL_LANES_FREE = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [index + 1, 'active']));
 
 function stateOf(reservations = []) {

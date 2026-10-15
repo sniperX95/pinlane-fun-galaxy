@@ -46,15 +46,9 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
-function nextSaturday() {
-  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date()).split('-').map(Number);
-  const cursor = new Date(Date.UTC(year, month - 1, day));
-  do { cursor.setUTCDate(cursor.getUTCDate() + 1); } while (cursor.getUTCDay() !== 6);
-  return cursor.toISOString().slice(0, 10);
-}
-const DATE = nextSaturday();
+// Un samedi a venir, hors vacances et feries (scripts/jour-de-test.js) : le
+// moteur y refuse la formule 1.
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 const CENTER = 'libramont';
 const FORMULE = 'f1';
 

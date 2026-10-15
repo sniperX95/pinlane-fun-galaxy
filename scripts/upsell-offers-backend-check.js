@@ -7,6 +7,9 @@ const { normalizeReservationPayload } = require('../lib/database');
 const { signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { evaluateAnchoredCombination } = require('../lib/ops-engine');
+const { jourDeTest, plusJours } = require('./jour-de-test');
+// Un samedi a venir, hors vacances et feries : le moteur refuse une date passee.
+const SAMEDI = jourDeTest({ jour: 6 });
 let checks = 0;
 function equal(a, b) { assert.deepEqual(a, b); checks++; }
 function rejects(fn) { assert.throws(fn, e => e.statusCode === 422); checks++; }
@@ -40,10 +43,10 @@ async function main() { try {
   equal(laser.extraLaser.referencePrice, 14); equal(laser.extraLaser.discountAmount, 2); equal(upgraded.price - full.price, 12);
   const formula = buildProgramFormula(upgraded);
   equal(formula.steps[1].participantsPerGame, [4, 4, 2]);
-  const scenario = evaluateAnchoredCombination({ center: getCenter('libramont'), formula, date: '2026-10-10', pax: 4, anchorTimes: { bowling: 840, laser_game: 900 }, reservations: [], laneStatuses: {}, blocks: [], laserGameTimes: [900, null, 960] });
+  const scenario = evaluateAnchoredCombination({ center: getCenter('libramont'), formula, date: SAMEDI, pax: 4, anchorTimes: { bowling: 840, laser_game: 900 }, reservations: [], laneStatuses: {}, blocks: [], laserGameTimes: [900, null, 960] });
   equal(scenario.ok, true);
   equal(scenario.scenario.laserPassPlan.pendingPasses.map(p => [p.countIndex, p.pax]), [[2, 4], [3, 2]]);
-  const persisted = normalizeReservationPayload({ name: 'QA', phone: '0400000000', date: '2026-10-10', startTime: '14:00', duration: 1, centerId: 'libramont', type: 'bowling', pax: 4, program: upgraded, price: upgraded.price });
+  const persisted = normalizeReservationPayload({ name: 'QA', phone: '0400000000', date: SAMEDI, startTime: '14:00', duration: 1, centerId: 'libramont', type: 'bowling', pax: 4, program: upgraded, price: upgraded.price });
   equal(persisted.program.items[1].extraLaser, laser.extraLaser);
   assert.match(require('../lib/visit-program').describeProgram(upgraded), /\+ 1 pour 2 pers/); checks++;
   const mail = require('../lib/ops-communications').buildMessage({ reservation: { ...persisted, email: 'qa@example.test' }, templateId: 'confirmation', channel: 'email' });
@@ -66,18 +69,18 @@ async function main() { try {
   }
   rejects(() => normalizeProgram([{ activityId: 'fun_run', participants: 2, minutes: 15, upsell: { offerId: 'run', participants: 2 } }], { centerId: 'libramont', pax: 4 }));
   applyCenterOverrides(new Map([['libramont', { upsellOffers: { enabled: true, offers: [{ ...nonlinearOffer, discount: { mode: 'percent', value: 100 } }] } }]]));
-  const freeCards = require('../lib/booking-complements').buildVisitComplements({ centerId: 'libramont', date: '2026-10-10', pax: 4, program: full, retainedSlot: { time: '14:00', lanes: [1], opsPlan: { anchorPlan: { times: { bowling: '14:00', laser_game: '15:00' } } } }, reservations: [], laneStatuses: {}, blocks: [] });
+  const freeCards = require('../lib/booking-complements').buildVisitComplements({ centerId: 'libramont', date: SAMEDI, pax: 4, program: full, retainedSlot: { time: '14:00', lanes: [1], opsPlan: { anchorPlan: { times: { bowling: '14:00', laser_game: '15:00' } } } }, reservations: [], laneStatuses: {}, blocks: [] });
   equal(freeCards.length, 1);
   equal([freeCards[0].deltaTotal, freeCards[0].discount.price, freeCards[0].discount.referencePrice], [0, 0, 55]);
   applyCenterOverrides(new Map([['libramont', { upsellOffers: config }]]));
-  const body = { centerId: 'libramont', type: 'bowling', date: '2026-10-10', startTime: '14:00', pax: 4, name: 'QA', phone: '0400000000', email: 'qa@example.test', program: [base[0], { ...base[1], extraLaser: { offerId: 'laser', participants: 2, games: 3 } }] };
+  const body = { centerId: 'libramont', type: 'bowling', date: SAMEDI, startTime: '14:00', pax: 4, name: 'QA', phone: '0400000000', email: 'qa@example.test', program: [base[0], { ...base[1], extraLaser: { offerId: 'laser', participants: 2, games: 3 } }] };
   const booked = normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
   const held = { ...booked, signatureDemande: signatureDemande(booked) };
   applyCenterOverrides(new Map([['libramont', { upsellOffers: { enabled: false, offers: config.offers } }]]));
   rejects(() => normalizeProgram([{ ...base[1], extraLaser: { offerId: 'laser', participants: 2, games: 3 } }], { centerId: 'libramont', pax: 4 }));
   const frozen = requestFromHeldUpsell({ ...body, quotedPrice: 0, price: 0 }, held, { requireEmail: true });
   equal([frozen.price, frozen.program.items[1].extraLaser], [booked.price, booked.program.items[1].extraLaser]);
-  for (const patch of [{ centerId: 'other' }, { date: '2026-10-11' }, { pax: 5 }, { startTime: '15:00' }]) {
+  for (const patch of [{ centerId: 'other' }, { date: plusJours(SAMEDI, 1) }, { pax: 5 }, { startTime: '15:00' }]) {
     // Unknown tenant throws during the ordinary booking normalizer; both reject the frozen contract.
     try { equal(requestFromHeldUpsell({ ...body, ...patch }, held), null); } catch (e) { checks++; }
   }

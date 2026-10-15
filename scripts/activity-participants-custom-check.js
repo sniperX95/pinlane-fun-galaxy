@@ -187,7 +187,9 @@ async function main() {
     await page.click('#smGoDate'); await page.click('#smGoEnvies');
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
     const future = mock.metaPayload('', 90).center.calendar.find(day => day.open && day.date > mock.DATE).date;
-    await page.click('#dayBtn'); await page.locator(`.fg-cal__day[data-date="${future}"]`).click(); await page.click('#goActivities');
+    await page.click('#dayBtn');
+    for (let k = 0; k < 4 && !(await page.locator(`.fg-cal__day[data-date="${future}"]`).count()); k += 1) { await page.click('#calNext'); await page.waitForTimeout(300); }
+    await page.locator(`.fg-cal__day[data-date="${future}"]`).click(); await page.click('#goActivities');
     await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('#smGoDate');
     check(!(await page.isChecked('#smFlexible')) && (await page.locator('#smDateLabel').textContent().then(sansInsecable)).trim() !== 'Choisir un jour', 'base date change replaces prior custom flexible-date override');
     await page.click('#smGoEnvies');

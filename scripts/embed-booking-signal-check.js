@@ -64,14 +64,9 @@ function ok(cond, label, detail = '') {
   return cond;
 }
 
-function prochainSamedi() {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
-    .format(new Date()).split('-').map(Number);
-  const c = new Date(Date.UTC(y, m - 1, d));
-  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== 6);
-  return c.toISOString().slice(0, 10);
-}
-const DATE = prochainSamedi();
+// Le samedi de reference, hors vacances et feries (scripts/jour-de-test.js) :
+// la formule 5 ne s y vend pas.
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 const CENTRE = 'libramont';
 const PAX = 8;
 const FORMULE = 'f5';

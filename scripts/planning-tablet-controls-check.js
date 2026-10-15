@@ -6,7 +6,9 @@ const {serveStatic,installMock}=require('./planning-capacity-ui-check'),{chromiu
 const out=path.resolve(__dirname,'../tests/artifacts/planning-tablet-controls');fs.mkdirSync(out,{recursive:true});
 let checks=0;const failures=[],errors=[],requests=[],records=[];const check=(v,m)=>{checks++;if(!v)failures.push(m);console.log((v?'OK ':'FAIL ')+m);};
 let stored,mode='ok',release;const clone=v=>JSON.parse(JSON.stringify(v));
-const fixture=()=>({id:99001,name:'QA Groupe',phone:'+32470000000',email:'qa@example.test',centerId:'libramont',date:'2026-10-10',startTime:'15:00',duration:1,totalDuration:2,type:'bowling',status:'confirmed',pax:4,lanes:[1],price:39,basePrice:39,updatedAt:'2026-10-04T08:00:00Z',opsPlan:null,program:null});
+// Un samedi a venir (scripts/jour-de-test.js) : un jour passe, ou le jour meme apres la fin du groupe, retire « Arrivé » de la carte (getStaffTerrainPhase).
+const JOUR=require('./jour-de-test').jourDeTest({jour:6});
+const fixture=()=>({id:99001,name:'QA Groupe',phone:'+32470000000',email:'qa@example.test',centerId:'libramont',date:JOUR,startTime:'15:00',duration:1,totalDuration:2,type:'bowling',status:'confirmed',pax:4,lanes:[1],price:39,basePrice:39,updatedAt:'2026-10-04T08:00:00Z',opsPlan:null,program:null});
 async function setup(page,theme){await page.evaluate(async theme=>{await ensureStaffConsolesLoaded();const r=await window.__qaRead();setView('staff');while(staffCenterConfigCache.loading)await new Promise(r=>setTimeout(r,25));await loadStaffCenterConfig(true);state.currentDate=r.date;state.reservations=[r];state.adminCenterId=r.centerId;state.staffMenuPage='planning';state.staffResourceView='all';state.staffTheme=theme;state.searchTerm='';state.staffStatusFilter='all';renderStaff();renderTable();},theme);}
 (async()=>{const server=await serveStatic(),browser=await chromium.launch({executablePath:process.env.E2E_BROWSER_PATH||'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',headless:true});try{
 for(const width of[768,834,1024,1440,390])for(const theme of['light','dark']){

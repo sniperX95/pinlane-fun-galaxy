@@ -37,13 +37,10 @@ const MIME = {
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
 };
 
-function nextSaturday() {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
-  const c = new Date(Date.UTC(y, m - 1, d));
-  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== 6);
-  return c.toISOString().slice(0, 10);
-}
-const DATE = nextSaturday();
+// Le samedi des gates : le premier a venir hors vacances scolaires et feries
+// (scripts/jour-de-test.js). Le premier samedi venu tombait dans le conge
+// d automne, et les formules « hors vacances » s y refusaient.
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 // LES HORAIRES RETENUS, EN MEMOIRE (en prod : table slot_holds, migration

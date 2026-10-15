@@ -72,6 +72,7 @@ async function mounted(page, pax = 18) {
   // Availability must use the same future business day as the synthetic engine.
   // Today's auto-selected date can have no remaining slots when this gate runs late.
   await page.click('#dayBtn');
+  for (let k = 0; k < 4 && !(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).count()); k += 1) { await page.click('#calNext'); await page.waitForTimeout(300); }
   await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).click();
   await page.click('#dayBtn');
   check(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).getAttribute('aria-selected') === 'true', 'participant fixture selects its future Saturday');

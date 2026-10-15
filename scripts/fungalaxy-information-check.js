@@ -226,10 +226,13 @@ async function run() {
    check(!!availableKids,label+' fixture includes a children formula for price synchronization');
    // Demain au plus tot : le jour meme, la formule se refuse des que son heure
    // de fin est passee (Kids Fun Day finit a 17h ; le gate tournait rouge le soir).
-   const kidsDate=new Date(metadata.today+'T12:00:00Z');kidsDate.setUTCDate(kidsDate.getUTCDate()+1);
-   while(Array.isArray(availableKids.validDays)&&!availableKids.validDays.includes(kidsDate.getUTCDay()))kidsDate.setUTCDate(kidsDate.getUTCDate()+1);
-   const kidsDay=kidsDate.toISOString().slice(0,10);
-   await frame.click('.fg-scene[data-scene="activites"] [data-back]');await frame.click('#dayBtn');await frame.click('.fg-cal__day[data-date="'+kidsDay+'"]');await frame.click('#goActivities');await frame.click('#tabFor');
+   // Hors vacances et feries (scripts/jour-de-test.js) : elle ne s y vend pas
+   // (le mercredi 21/10, conge d automne, rougissait le gate des le 14/10). Ce
+   // jour peut tomber le mois suivant : le calendrier y avance.
+   const kidsDay=require('./jour-de-test').jourDeTest({jour:availableKids.validDays[0]});
+   await frame.click('.fg-scene[data-scene="activites"] [data-back]');await frame.click('#dayBtn');
+   for(let k=0;k<4&&!(await frame.locator('.fg-cal__day[data-date="'+kidsDay+'"]').count());k++){await frame.click('#calNext');await frame.waitForTimeout(300);}
+   await frame.click('.fg-cal__day[data-date="'+kidsDay+'"]');await frame.click('#goActivities');await frame.click('#tabFor');
    const kidsCard=frame.locator('#gridFor [data-formule="'+availableKids.id+'"]');
    check(!await kidsCard.evaluate(card=>card.classList.contains('is-refus')),label+' children formula is available on fixture date');
    await kidsCard.click();

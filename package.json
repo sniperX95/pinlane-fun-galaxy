@@ -188,6 +188,7 @@
     "test:journee-en-vol": "node scripts/journee-en-vol-check.js",
     "test:fungalaxy-host": "node scripts/fungalaxy-host-page-check.js",
     "test:wallonia-calendar": "node scripts/wallonia-calendar-check.js",
+    "test:jour-de-test": "node scripts/jour-de-test-check.js",
     "sync:calendar": "node scripts/sync-wallonia-holidays.js",
     "test:tenant-write-scope": "node scripts/tenant-write-scope-check.js",
     "test:center-tenant-isolation": "node scripts/center-tenant-isolation-check.js",

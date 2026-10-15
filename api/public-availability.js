@@ -29,6 +29,7 @@ const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const {
   attenteDuSousGroupe,
+  avisSansLeLibre,
   mesurerLaVisite,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
@@ -785,6 +786,16 @@ module.exports = async (req, res) => {
             .map((piece) => ({ activityId: piece.activityId, minutes: piece.minutes })),
         })).filter((trou) => trou.items.length);
       };
+      // L AVIS D ATTENTE SANS CE QUI S Y JOUE (2026-10-15) : « 1 h 05
+      // d'attente entre Laser Game et Bowling » au-dessus d un agenda qui
+      // range le minigolf dans ce trou et n y laisse que 20 min. Le meme
+      // rangement que la fin et que « Entre les deux » (avisSansLeLibre).
+      const sansLeLibre = (slot) => {
+        const mesure = mesureDeVisite(slot);
+        const avis = (slot.opsPlan && slot.opsPlan.comfortNotices) || [];
+        if (!mesure || !avis.length) return slot.opsPlan;
+        return { ...slot.opsPlan, comfortNotices: avisSansLeLibre(avis, { trous: mesure.trous, pieces: mesure.pieces, rangement: mesure.rangement }) };
+      };
       // UNE INSTALLATION COMPTEE SE JUGE A L ECRAN DES HEURES (audit du
       // 2026-09-28 : le duckpin complet ne se decouvrait qu au clic final, en
       // 409, le formulaire rempli). La garde de dotation de la validation
@@ -846,9 +857,10 @@ module.exports = async (req, res) => {
               visitShortfallMinutes: fin - fermeture,
               visitShortfallItems: ceQuiNeTiendraPas(slot, fermeture),
               visitFreeGaps: lesTrousDuLibre(slot),
+              opsPlan: sansLeLibre(slot),
             };
           }
-          return { ...slot, visitEndTime: numToTime(fin / 60), visitFreeGaps: lesTrousDuLibre(slot) };
+          return { ...slot, visitEndTime: numToTime(fin / 60), visitFreeGaps: lesTrousDuLibre(slot), opsPlan: sansLeLibre(slot) };
         });
         sendJson(res, 200, {
           ok: true,

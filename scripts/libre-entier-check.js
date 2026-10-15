@@ -82,8 +82,8 @@ const MUTATIONS = [
   {
     nom: 'la reserve du moteur (la fermeture) additionne les attentes',
     fichier: 'lib/ops-engine.js',
-    de: '  const piecesDuReste = piecesDuLibre({ libres: reserveItems, libre: reserveMinutes, couvert });',
-    vers: '  const piecesDuReste = piecesDuLibre({ libres: null, libre: reserveMinutes, couvert });',
+    de: 'pieces: piecesDuLibre({ libres: reserveItems, libre: reserveMinutes, couvert }) }).apres;',
+    vers: 'pieces: piecesDuLibre({ libres: null, libre: reserveMinutes, couvert }) }).apres;',
   },
   {
     nom: 'une formule additionne ses etapes',
@@ -141,9 +141,9 @@ const MUTATIONS = [
   },
   {
     nom: 'l avis d attente compte encore ce qui s y joue',
-    fichier: 'lib/ops-engine.js',
-    de: '  decorated.comfortNotices = Array.isArray(reserveItems)',
-    vers: '  decorated.comfortNotices = false',
+    fichier: 'api/public-availability.js',
+    de: '        return { ...slot.opsPlan, comfortNotices: avisSansLeLibre(avis, { trous: mesure.trous, pieces: mesure.pieces, rangement: mesure.rangement }) };',
+    vers: '        return slot.opsPlan;',
   },
   {
     nom: 'les arcades d une visite se redisent « Dans la foulée »',

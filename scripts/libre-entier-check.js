@@ -27,14 +27,16 @@
 //   [G] la fiche de l equipe aussi ;
 //   [H] l ecran (390 et 1280 px) : le minigolf « Dans la foulée » et « Fin de
 //       la visite 17:45 » ; « Entre les deux » quand il tient dans l attente,
-//       l attente qui reste dessous, plus rien de lui « Dans la foulée ».
+//       l attente qui reste dessous, plus rien de lui « Dans la foulée » ;
+//   [I] le mail de confirmation dit « Fin estimée vers 17:45 » (il disait la
+//       fin du bowling, sans le minigolf), lu sur le dossier enregistre.
 // La fin attendue est refaite ici, sans le moteur (finDuRangement) : toutes
 // les places s essaient, la plus tot gagne.
 //
 // L horloge est figee au lundi 5 octobre 2026, 9:00 a Bruxelles (serveur et
 // page) ; la journee est le mercredi 7, ouvert de 12:00 a 22:00.
 //
-// Contre-epreuve : node scripts/libre-entier-check.js --mutate (10 mutations,
+// Contre-epreuve : node scripts/libre-entier-check.js --mutate (12 mutations,
 // servies en memoire, aucun fichier touche).
 'use strict';
 process.env.TZ = 'Europe/Brussels';
@@ -119,6 +121,18 @@ const MUTATIONS = [
     fichier: 'assets/fungalaxy-booking.js',
     de: '      if (libresRanges.indexOf(it) >= 0) return;\n',
     vers: '',
+  },
+  {
+    nom: 'le mail d une visite dit la fin du bowling',
+    fichier: 'lib/ops-communications.js',
+    de: "  if (fin && reservation.type !== 'formule' && items.length) fin = require('./reserver-fenetre').finDeLaVisite(plan, reservation) || fin;",
+    vers: '  void 0;',
+  },
+  {
+    nom: 'un dossier enregistre perd la fin de sa visite',
+    fichier: 'lib/reserver-fenetre.js',
+    de: '  const aHeure = programme && Array.isArray(programme.plannedItems) ? programme.plannedItems : lignesDuDossier.filter((ligne) => ligne && ligne.planned === true);',
+    vers: '  const aHeure = programme && Array.isArray(programme.plannedItems) ? programme.plannedItems : [];',
   },
   {
     nom: 'l attente garde les minutes du libre qui s y joue',
@@ -334,6 +348,17 @@ async function main() {
   const fiche = chargerFiche();
   ok(Boolean(fa && fa.dossier) && fiche(fa.dossier) === '17:45', '[G] la fiche de la capture dit 17:45', fa && fa.dossier && fiche(fa.dossier));
   ok(Boolean(fb && fb.dossier) && fiche(fb.dossier) === '16:30', '[G] la fiche du minigolf dans l attente dit 16:30', fb && fb.dossier && fiche(fb.dossier));
+
+  section('I. LE MAIL DE CONFIRMATION');
+  // Le dossier tel qu il s enregistre : son programme ne garde que ses lignes
+  // (lib/reservation-request.js, applyProgram).
+  const comms = require(path.join(ROOT, 'lib/ops-communications.js'));
+  const enregistre = (d) => ({ id: 7101, ...d, program: { items: ((d && d.program && d.program.items) || []) }, price: 300, validationStatus: 'confirmed' });
+  const corps = (d) => String((comms.buildMessage({ reservation: enregistre(d), templateId: 'confirmation', channel: 'email' }) || {}).body || '');
+  const mailA = fa && fa.dossier ? corps(fa.dossier) : '';
+  const mailB = fb && fb.dossier ? corps(fb.dossier) : '';
+  ok(/- Minigolf Blacklight, à votre rythme/.test(mailA) && mailA.includes('Fin estimée vers 17:45, à titre indicatif'), '[I] la capture : le mail dit « Fin estimée vers 17:45 », le minigolf à son rythme', mailA.split('\n').filter((l) => /Fin estimée|Minigolf/.test(l)).join(' / '));
+  ok(mailB.includes('Fin estimée vers 16:30, à titre indicatif'), '[I] le minigolf dans l attente : « Fin estimée vers 16:30 »', mailB.split('\n').filter((l) => /Fin estimée/.test(l)).join(' / '));
 
   section('H. L ECRAN, TELEPHONE ET BUREAU');
   await ecran();

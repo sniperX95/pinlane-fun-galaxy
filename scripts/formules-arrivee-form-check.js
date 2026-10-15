@@ -36,7 +36,11 @@
 //       teinte de leur ligne ([J]) ;
 //   [F] le temps libre ou les arcades tiennent devient un cadre en pointille
 //       qui les propose et les pose ; rien quand elles ont deja leur heure, ni
-//       quand le minigolf de la formule couvre ce temps ;
+//       quand le minigolf de la formule couvre ce temps. Il ne le couvre que
+//       s il y tient tout entier (2026-10-15) : 35 min entre deux parties ne
+//       portent pas ses 45, il se joue « Dans la foulée » et les arcades s y
+//       proposent ; dans 1 h 05, il se joue « Entre les deux », et les 20 min
+//       qui restent ne portent pas les 30 des arcades ;
 //   [G] au telephone (360 px) : rien ne deborde, des cibles de 44 px, les memes
 //       boutons que les heures du bowling, le focus se voit ;
 //   [H] une heure par partie de laser (Formule 2, Movsar le 14/10 : « l heure
@@ -153,7 +157,9 @@ const MUTATIONS = [
   { nom: 'le temps libre propose des arcades qui ont deja leur heure', fichier: JS, scenarios: ['F'],
     de: '      if (!dureeArc || arc.startTime || m < dureeArc) return liste;', vers: '      if (!dureeArc || m < dureeArc) return liste;' },
   { nom: 'le minigolf ne couvre plus le temps libre', fichier: JS, scenarios: ['F'],
-    de: '      if (couvert >= m) return liste;', vers: '' },
+    de: '        var reste = Math.max(0, ecart - pris);', vers: '        var reste = ecart;' },
+  { nom: 'le minigolf couvre un temps ou il ne tient pas (la somme des minutes)', fichier: JS, scenarios: ['F'],
+    de: '      if (!trousServeur) {', vers: '      if (true) {' },
   { nom: 'le cadre du temps libre ne se deplie plus', fichier: JS, scenarios: ['F'],
     de: '        if (choix) choix.hidden = !ici;', vers: '        void 0;' },
   { nom: 'l idee des arcades ne les pose plus', fichier: JS, scenarios: ['F'],
@@ -398,6 +404,16 @@ async function lireVisite(page) {
       attentes: zone ? [...zone.querySelectorAll('.fg-visit__gap')].map((li) => ({ texte: t(li), libre: li.classList.contains('fg-visit__gap--libre') })) : [],
     };
   }));
+}
+// Les groupes sans heure de la visite, dans l ordre : « Entre les deux » (un
+// trou ou le serveur range une activite libre tout entiere) et « Dans la
+// foulée » (apres la derniere activite a heure), chacun avec ses lignes.
+async function lireSuites(page) {
+  return lisible(await page.evaluate(() => [...document.querySelectorAll('#planZone .fg-visit__suite')].map((li) => ({
+    trou: li.classList.contains('fg-visit__suite--trou'),
+    groupe: ((li.querySelector('.fg-visit__group') || {}).textContent || ''),
+    lignes: [...li.querySelectorAll('.fg-visit__step')].map((s) => s.textContent || ''),
+  }))));
 }
 async function lirePuces(page, piste) {
   return lisible(await page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-chip`)].map((c) => ({
@@ -796,25 +812,46 @@ async function scenarioF(browser, mock) {
     ok(deux.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript (arcades deja posees)', deux.suivi.erreurs.slice(0, 3).join(' | '));
     await deux.ctx.close();
   }
-  // Le minigolf de la Formule 2 couvre le temps libre entre ses deux parties.
-  const trois = await ouvrir(browser);
-  try {
-    const arrive = await versHeures(trois.page, mock, 'f2');
-    const p0 = await lireProgramme(trois.page);
-    const parties = p0.lignes.filter((l) => /^laser_game#/.test(l.cle)).map((l) => l.cle);
-    await ouvrirLigne(trois.page, parties[0] || 'laser_game#1');
-    await poser(trois.page, 'laser_game', '10:30');
-    await ouvrirLigne(trois.page, parties[1] || 'laser_game#2');
-    await poser(trois.page, 'laser_game', '11:30');
-    const demande = dernierPlan(trois.suivi);
-    const parts = JSON.parse(params(demande).get('laserGameTimes') || '[]');
-    const libres = await lireLibres(trois.page);
-    const v = await lireVisite(trois.page);
-    ok(arrive && JSON.stringify(parts) === JSON.stringify(['10:30', '11:30']), 'MONTAGE Formule 2 : les deux parties de laser posees a 10:30 et 11:30', demande);
-    ok(libres.length === 0 && v.attentes.some((a) => /35 min d’attente/.test(a.texte)), 'le minigolf couvre les 35 min entre les deux parties : aucun cadre, rien a proposer', JSON.stringify({ libres, attentes: v.attentes }));
-  } finally {
-    ok(trois.suivi.erreurs.length === 0, '[F] Formule 2 : aucune erreur JavaScript', trois.suivi.erreurs.slice(0, 3).join(' | '));
-    await trois.ctx.close();
+  // LE MINIGOLF DE LA FORMULE 2 NE COUVRE QUE LE TEMPS OU IL TIENT TOUT
+  // ENTIER (2026-10-15 ; Movsar, la veille : « FIN estimé a 17h et le mini
+  // golf se joue quand du coup ? »). Ses 45 min ne tiennent pas dans les 35
+  // entre deux parties : il se joue apres, et ces 35 min portent les 30 des
+  // arcades. Dans 1 h 05, il se joue « Entre les deux » ; les 20 min qui
+  // restent ne portent pas les arcades. Une partie dure 25 min, regles et
+  // preparation comprises.
+  for (const cas of [{ p1: '10:30', p2: '11:30', tient: false }, { p1: '10:00', p2: '11:30', tient: true }]) {
+    const trois = await ouvrir(browser);
+    try {
+      const arrive = await versHeures(trois.page, mock, 'f2');
+      const p0 = await lireProgramme(trois.page);
+      const parties = p0.lignes.filter((l) => /^laser_game#/.test(l.cle)).map((l) => l.cle);
+      await ouvrirLigne(trois.page, parties[0] || 'laser_game#1');
+      await poser(trois.page, 'laser_game', cas.p1);
+      await ouvrirLigne(trois.page, parties[1] || 'laser_game#2');
+      await poser(trois.page, 'laser_game', cas.p2);
+      const demande = dernierPlan(trois.suivi);
+      const parts = JSON.parse(params(demande).get('laserGameTimes') || '[]');
+      const libres = await lireLibres(trois.page);
+      const v = await lireVisite(trois.page);
+      const suites = await lireSuites(trois.page);
+      const entre = suites.filter((s) => s.trou);
+      const foulee = suites.find((s) => !s.trou && /^Dans la foulée/.test(s.groupe)) || { lignes: [] };
+      const aLeMinigolf = (s) => s.lignes.some((l) => /Minigolf/.test(l));
+      const finP1 = heureDe(minutesDe(cas.p1) + 25);
+      const ecart = minutesDe(cas.p2) - minutesDe(finP1);
+      ok(arrive && JSON.stringify(parts) === JSON.stringify([cas.p1, cas.p2]), `MONTAGE Formule 2 : les deux parties de laser posees a ${cas.p1} et ${cas.p2}, ${ecart} min entre les deux`, demande);
+      if (!cas.tient) {
+        ok(!entre.length && aLeMinigolf(foulee), `les 45 min du minigolf ne tiennent pas dans les ${ecart} min entre les deux parties : il se joue « Dans la foulée », jamais « Entre les deux »`, JSON.stringify(suites));
+        const action = libres.length === 1 && libres[0].actions.length === 1 ? libres[0].actions[0] : {};
+        ok(action.arcades === finP1 && action.detail === `de ${finP1} à ${heureDe(minutesDe(finP1) + 30)}`, `ces ${ecart} min restent libres : le cadre y propose les 30 min d arcades, des ${finP1}`, JSON.stringify({ libres, attentes: v.attentes }));
+      } else {
+        ok(entre.length === 1 && aLeMinigolf(entre[0]) && !aLeMinigolf(foulee), `le minigolf tient dans les ${ecart} min entre les deux parties : « Entre les deux », plus « Dans la foulée »`, JSON.stringify(suites));
+        ok(libres.length === 0 && v.attentes.some((a) => a.texte === `${ecart - 45} min d’attente`), `les ${ecart - 45} min qui restent ne portent pas les 30 min d arcades : une attente, aucun cadre`, JSON.stringify({ libres, attentes: v.attentes }));
+      }
+    } finally {
+      ok(trois.suivi.erreurs.length === 0, `[F] Formule 2, parties a ${cas.p1} et ${cas.p2} : aucune erreur JavaScript`, trois.suivi.erreurs.slice(0, 3).join(' | '));
+      await trois.ctx.close();
+    }
   }
 }
 

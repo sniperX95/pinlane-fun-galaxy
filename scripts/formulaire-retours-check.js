@@ -219,15 +219,22 @@ async function main() {
     'deux parties jouees en vagues : l attente est celle d une partie (30 min), jamais l ecart entre les parties', JSON.stringify(attenteDuSousGroupe(deuxPartiesEnVagues)));
 
   section('B. « SERRE » DIT CE QUI DEBORDE VRAIMENT');
+  // LA REGLE, PAS UN CHIFFRE RECOPIE (2026-10-15 : la fin est la derniere
+  // activite posee, la premiere heure serree de la FORMULE 2 a bouge) : la
+  // premiere heure serree dit ce qui manque a la formule ENTIERE, son arrivee
+  // plus sa duree moins la fermeture, et le recapitulatif dit le meme manque.
   const f2 = await heures({ type: 'formule', formuleId: 'f2', pax: '6' });
   const f2laser = piste(f2, 'laser_game');
-  const h1930 = heure(f2laser, '19:30');
-  ok(h1930.ok !== false && h1930.warning && h1930.warning.reason === 'Tout ne tiendra pas avant 22:00 : il manque 10 min',
-    'FORMULE 2 a 19:30 : « Tout ne tiendra pas avant 22:00 : il manque 10 min » (la formule entiere, pas le laser)', JSON.stringify(h1930.warning || h1930));
-  const choisi = await heures({ type: 'formule', formuleId: 'f2', pax: '6', preferredTimes: JSON.stringify({ laser_game: '19:30' }), laserGameTimes: JSON.stringify(['19:30']) });
+  const dureeF2 = (((await heures({ type: 'durees', pax: '6' })).durees || {}).f2 || {}).min;
+  const serree = (f2laser.times || []).find((t) => t.ok !== false && t.warning && t.warning.code === 'schedule_free') || {};
+  const manque = /^Tout ne tiendra pas avant 22:00 : il manque (\d+) min$/.exec(String((serree.warning || {}).reason || ''));
+  const enMinB = (t) => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); return x ? Number(x[1]) * 60 + Number(x[2]) : NaN; };
+  ok(Boolean(manque) && Number(manque[1]) === enMinB(serree.time) - 10 + dureeF2 - 22 * 60,
+    `FORMULE 2, premiere heure serree (${serree.time}) : « Tout ne tiendra pas avant 22:00 : il manque N min », N = arrivee + duree de la formule entiere - fermeture (pas le laser)`, JSON.stringify({ heure: serree.time, avis: serree.warning, duree: dureeF2 }));
+  const choisi = await heures({ type: 'formule', formuleId: 'f2', pax: '6', preferredTimes: JSON.stringify({ laser_game: serree.time }), laserGameTimes: JSON.stringify([serree.time]) });
   const retenu = (choisi.slots || [])[0] || {};
-  ok(retenu.visitEndsAtClose === true && retenu.visitShortfallMinutes === 10,
-    'le recapitulatif de 19:30 annonce le meme manque (10 min)', `${retenu.visitEndTime} manque ${retenu.visitShortfallMinutes}`);
+  ok(Boolean(manque) && retenu.visitEndsAtClose === true && retenu.visitShortfallMinutes === Number(manque[1]),
+    `le recapitulatif de ${serree.time} annonce le meme manque`, `${retenu.visitEndTime} manque ${retenu.visitShortfallMinutes}`);
   const f4 = await heures({ type: 'formule', formuleId: 'f4', pax: '6' });
   const f4bowling = piste(f4, 'bowling');
   const serreesF4 = (f4bowling.times || []).filter((t) => t.ok !== false && t.warning).map((t) => t.time);
@@ -287,14 +294,14 @@ async function main() {
   section('F. LA DUREE DES FORMULES EST CELLE DU RECAPITULATIF');
   const durees = await heures({ type: 'durees', pax: '6' });
   const d2 = (durees.durees || {}).f2 || {};
-  ok(d2.min === 170 && d2.max === 170, 'FORMULE 2 : 170 min, 2 h 50 sur place', JSON.stringify(d2));
+  ok(d2.min > 0 && d2.min === d2.max, `FORMULE 2 : une seule duree, ${d2.min} min sur place`, JSON.stringify(d2));
   const f2choix = await heures({ type: 'formule', formuleId: 'f2', pax: '6', preferredTimes: JSON.stringify({ laser_game: '14:00' }), laserGameTimes: JSON.stringify(['14:00']) });
   const s14 = (f2choix.slots || [])[0] || {};
   const enMin = (t) => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(t || '')); return x ? Number(x[1]) * 60 + Number(x[2]) : NaN; };
   const surPlace = enMin(s14.visitEndTime) - enMin(s14.opsPlan && s14.opsPlan.arrivalTime);
   ok(surPlace === d2.min, 'la carte et le recapitulatif de 14:00 disent la meme duree', `recap ${s14.opsPlan && s14.opsPlan.arrivalTime} a ${s14.visitEndTime} = ${surPlace} min`);
   const vingt = await heures({ type: 'durees', pax: '20' });
-  ok(((vingt.durees || {}).f2 || {}).min === 170, 'un groupe de 20 (marge de l equipe plus grande) : la duree ne bouge pas', JSON.stringify((vingt.durees || {}).f2));
+  ok(d2.min > 0 && ((vingt.durees || {}).f2 || {}).min === d2.min, 'un groupe de 20 (marge de l equipe plus grande) : la duree ne bouge pas', JSON.stringify((vingt.durees || {}).f2));
   ok(!('kfd' in (durees.durees || {})) && !('mm' in (durees.durees || {})), 'les formules a fenetre ouverte n ont pas de duree (leur plage est sur la carte)', Object.keys(durees.durees || {}).join(','));
 
   section('G. LES OFFRES PAR E-MAIL (RGPD)');
@@ -407,7 +414,10 @@ async function navigateur() {
     await page.click('#tabFor');
     const duree = await attendre(page, () => { const x = document.querySelector('[data-duree-for="f2"]'); return x && !x.classList.contains('is-wait'); }, 10000);
     const f2 = await page.evaluate(() => { const x = document.querySelector('[data-duree-for="f2"]'); return x ? x.textContent.replace(/\s+/g, ' ').trim() : ''; });
-    ok(duree && f2 === 'Environ 2 h 50 sur place', 'la carte de la FORMULE 2 dit sa duree, celle du recapitulatif', f2);
+    // La duree que le serveur sert pour ce jour et ce groupe, pas un chiffre recopie.
+    const serveur = (((await appel(dispo, { chemin: '/api/public-availability', q: { centerId: 'libramont', date: mock.DATE, type: 'durees', pax: '4' } })).durees || {}).f2 || {}).min;
+    const lue = /^Environ (\d+) h(?: (\d{2}))? sur place$/.exec(f2);
+    ok(duree && Boolean(lue) && Number(lue[1]) * 60 + Number(lue[2] || 0) === serveur, 'la carte de la FORMULE 2 dit sa duree, celle du recapitulatif', `${f2} (serveur ${serveur} min)`);
     const ouvertes = await page.evaluate(() => ['mm', 'kfd'].filter((id) => document.querySelector('[data-duree-for="' + id + '"]')));
     ok(ouvertes.length === 0, 'MATIN MALIN et KIDS FUN DAY n ont pas de ligne de duree (leur plage est sur la carte)', ouvertes.join(','));
     await page.click('#tabAct');

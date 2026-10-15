@@ -62,7 +62,9 @@ function extraire(source, nom) {
 
 function chargerRegleDuFormulaire(jours, state) {
   const source = fs.readFileSync(FORMULAIRE, 'utf8').replace(/\r\n/g, '\n');
-  const noms = ['verdictFormule', 'cleDisponibilitesFormules', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde', 'entreeJour', 'absorberCalendrier', 'jourInfo'];
+  // Les variantes d une formule (lib/formula-choice) : verdictFormule ne
+  // grise une formule a variantes que si aucune ne se joue ce jour-la.
+  const noms = ['verdictFormule', 'variantesDe', 'manqueAuCentre', 'variantesDuCentre', 'variantesOffertes', 'cleDisponibilitesFormules', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde', 'entreeJour', 'absorberCalendrier', 'jourInfo'];
   const morceaux = noms.map((nom) => ({ nom, code: extraire(source, nom) }));
   const manquantes = morceaux.filter((m) => !m.code).map((m) => m.nom);
   const ligneJours = (source.match(/^ {2}var JOURS_SEM = .*$/m) || [''])[0];

@@ -15,7 +15,9 @@
 // rangerLeLibre et rangerLesLibres), lue partout ou une fin se dit :
 //   [A] la capture : fin 17:45, le minigolf apres le bowling ;
 //   [B] une attente qui le contient (laser 14:00, bowling 15:30) : il s y joue,
-//       la fin reste 16:30, le serveur dit ou (visitFreeGaps) ;
+//       la fin reste 16:30, le serveur dit ou (visitFreeGaps), et l avis
+//       « 1 h 05 d'attente » se tait (il n en reste que 20) ; dans 2 h 05,
+//       l avis dit les 1 h 20 qui restent vides ;
 //   [C] deux libres : les arcades (30 min) dans une attente de 35, le minigolf
 //       apres ;
 //   [D] les formules : la Formule 4 a la meme journee finit a 17:45 (17:10
@@ -27,7 +29,10 @@
 //   [G] la fiche de l equipe aussi ;
 //   [H] l ecran (390 et 1280 px) : le minigolf « Dans la foulée » et « Fin de
 //       la visite 17:45 » ; « Entre les deux » quand il tient dans l attente,
-//       l attente qui reste dessous, plus rien de lui « Dans la foulée » ;
+//       l attente qui reste dessous, plus rien de lui « Dans la foulée », ni
+//       d avis « 1 h 05 d attente » ; les arcades d une visite « Entre les
+//       deux », dans une attente de 35 min, le minigolf seul « Dans la
+//       foulée » ;
 //   [I] le mail de confirmation dit « Fin estimée vers 17:45 » (il disait la
 //       fin du bowling, sans le minigolf), lu sur le dossier enregistre.
 // La fin attendue est refaite ici, sans le moteur (finDuRangement) : toutes
@@ -36,7 +41,7 @@
 // L horloge est figee au lundi 5 octobre 2026, 9:00 a Bruxelles (serveur et
 // page) ; la journee est le mercredi 7, ouvert de 12:00 a 22:00.
 //
-// Contre-epreuve : node scripts/libre-entier-check.js --mutate (12 mutations,
+// Contre-epreuve : node scripts/libre-entier-check.js --mutate (14 mutations,
 // servies en memoire, aucun fichier touche).
 'use strict';
 process.env.TZ = 'Europe/Brussels';
@@ -77,8 +82,8 @@ const MUTATIONS = [
   {
     nom: 'la reserve du moteur (la fermeture) additionne les attentes',
     fichier: 'lib/ops-engine.js',
-    de: 'pieces: piecesDuLibre({ libres: reserveItems, libre: reserveMinutes, couvert }) }).apres;',
-    vers: 'pieces: piecesDuLibre({ libres: null, libre: reserveMinutes, couvert }) }).apres;',
+    de: '  const piecesDuReste = piecesDuLibre({ libres: reserveItems, libre: reserveMinutes, couvert });',
+    vers: '  const piecesDuReste = piecesDuLibre({ libres: null, libre: reserveMinutes, couvert });',
   },
   {
     nom: 'une formule additionne ses etapes',
@@ -133,6 +138,18 @@ const MUTATIONS = [
     fichier: 'lib/reserver-fenetre.js',
     de: '  const aHeure = programme && Array.isArray(programme.plannedItems) ? programme.plannedItems : lignesDuDossier.filter((ligne) => ligne && ligne.planned === true);',
     vers: '  const aHeure = programme && Array.isArray(programme.plannedItems) ? programme.plannedItems : [];',
+  },
+  {
+    nom: 'l avis d attente compte encore ce qui s y joue',
+    fichier: 'lib/ops-engine.js',
+    de: '  decorated.comfortNotices = Array.isArray(reserveItems)',
+    vers: '  decorated.comfortNotices = false',
+  },
+  {
+    nom: 'les arcades d une visite se redisent « Dans la foulée »',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: "(formule && id === 'arcade_time')) return;",
+    vers: "id === 'arcade_time') return;",
   },
   {
     nom: 'l attente garde les minutes du libre qui s y joue',
@@ -201,6 +218,7 @@ const UNE_PARTIE = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser
 const CAS = {
   capture: { program: CAPTURE, preferredTimes: { laser_game: '14:00', bowling: '16:00' }, laserGameTimes: ['14:00', '15:00'] },
   trou: { program: UNE_PARTIE, preferredTimes: { laser_game: '14:00', bowling: '15:30' }, laserGameTimes: ['14:00'] },
+  arcades: { program: [...CAPTURE, { activityId: 'arcade_time' }], preferredTimes: { laser_game: '14:00', bowling: '16:00' }, laserGameTimes: ['14:00', '15:00'] },
 };
 const visite = (cas, extra = {}) => ({ type: 'visite', softReserve: '1', ...cas, ...extra });
 
@@ -296,6 +314,12 @@ async function main() {
   ok(Boolean(sb) && sb.visitEndTime === '16:30' && min(sb.visitEndTime) === finDuRangement(sb.opsPlan, libresB), '[B] la fin reste 16:30 : le minigolf se joue dans l attente', sb && `fin ${sb.visitEndTime}, attendue ${hhmm(finDuRangement(sb.opsPlan, libresB))}`);
   ok(Boolean(sb) && JSON.stringify(sb.visitFreeGaps) === JSON.stringify([{ startTime: '14:25', endTime: '15:30', items: [{ activityId: 'minigolf_blacklight', minutes: 45 }] }]),
     '[B] le serveur dit ou : l attente de 14:25 a 15:30 recoit le minigolf, 45 min', sb && JSON.stringify(sb.visitFreeGaps));
+  const avisDe = (slot) => (((slot || {}).opsPlan || {}).comfortNotices || []).filter((n) => n && n.code === 'anchor_gap');
+  ok(Boolean(sb) && avisDe(sb).length === 0, '[B] plus d avis « 1 h 05 d attente » : le minigolf s y joue, il en reste 20 min, sous la marge d une heure', sb && JSON.stringify((sb.opsPlan || {}).comfortNotices));
+  const b2 = creneau(await dispo(visite({ ...CAS.trou, preferredTimes: { laser_game: '14:00', bowling: '16:30' } })));
+  ok(Boolean(b2) && blocs(b2) === 'bowling#1 16:30-17:30 | laser_game#1 14:00-14:25', 'MONTAGE 2 h 05 entre le laser et le bowling', b2 ? blocs(b2) : '');
+  ok(avisDe(b2).length === 1 && avisDe(b2)[0].gapMinutes === 80 && avisDe(b2)[0].message === "1 h 20 d'attente entre Laser Game et Bowling.",
+    '[B] 2 h 05 entre les deux, le minigolf dedans : l avis dit les 1 h 20 qui restent vides', JSON.stringify(avisDe(b2)));
 
   section('C. DEUX LIBRES : LES ARCADES DANS UNE ATTENTE, LE MINIGOLF APRES');
   const c = await dispo(visite({ ...CAS.capture, program: [...CAPTURE, { activityId: 'arcade_time' }] }));
@@ -423,6 +447,7 @@ async function ecran() {
               groupe: txt(li.querySelector('.fg-visit__group b')),
             })),
             span: txt(document.querySelector('#planZone .fg-visit__span')),
+            avis: Array.from(document.querySelectorAll('#planZone .fg-visit__warn')).map(txt).join(' | '),
             barre: txt(document.querySelector('#hourSum')),
           };
         });
@@ -440,7 +465,7 @@ async function ecran() {
             `[H] ${largeur} la capture : « Fin de la visite 17:45 », l en-tete (3 h 55 sur place depuis l arrivee) et la barre du bas aussi`, JSON.stringify({ fin: fin.heure, span: v.span, barre: v.barre }));
           const attentes = v.lignes.filter((l) => /fg-visit__gap/.test(l.classe)).map((l) => l.texte);
           ok(attentes.length === 2 && attentes.every((t) => t === '35 min d’attente'), `[H] ${largeur} la capture : les deux attentes de 35 min restent entieres`, JSON.stringify(attentes));
-        } else {
+        } else if (nom === 'trou') {
           const iLaser = indexDe((l) => l.heure === '14:00' && /Laser/.test(l.texte));
           const iEntre = v.lignes.indexOf(entre);
           const iBowling = indexDe((l) => l.heure === '15:30' && /Bowling/.test(l.texte));
@@ -450,6 +475,15 @@ async function ecran() {
           ok(attente.length === 1 && attente[0] === '20 min d’attente', `[H] ${largeur} dessous, l attente qui reste : 20 min (1 h 05 moins les 45 du minigolf)`, JSON.stringify(attente));
           ok(!foulee && minigolfs === 1, `[H] ${largeur} le minigolf ne se redit pas « Dans la foulée »`, JSON.stringify(v.lignes.map((l) => l.texte)));
           ok(fin.heure === '16:30' && /16:30/.test(v.span), `[H] ${largeur} « Fin de la visite 16:30 »`, JSON.stringify({ fin: fin.heure, span: v.span }));
+          ok(!/d.attente entre/.test(v.avis), `[H] ${largeur} plus d avis « 1 h 05 d attente » au-dessus de l agenda`, JSON.stringify(v.avis));
+        } else {
+          const entres = v.lignes.filter((l) => l.groupe === 'Entre les deux');
+          const attentes = v.lignes.filter((l) => /fg-visit__gap/.test(l.classe)).map((l) => l.texte);
+          ok(entres.length === 1 && /Arcade/i.test(entres[0].texte) && !/Minigolf/.test(entres[0].texte),
+            `[H] ${largeur} une visite avec des arcades : elles se disent « Entre les deux », dans une attente de 35 min`, JSON.stringify(v.lignes.map((l) => l.texte)));
+          ok(attentes.length === 1 && attentes[0] === '35 min d’attente', `[H] ${largeur} l autre attente reste entiere, celle des arcades n en garde que 5 min (rien a dire)`, JSON.stringify(attentes));
+          ok(Boolean(foulee) && /Minigolf Blacklight/.test(foulee.texte) && !/Arcade/i.test(foulee.texte) && fin.heure === '17:45',
+            `[H] ${largeur} le minigolf seul « Dans la foulée », et « Fin de la visite 17:45 »`, JSON.stringify({ foulee: foulee && foulee.texte, fin: fin.heure }));
         }
         ok(erreurs.length === 0, `[H] ${largeur} ${nom} : aucune erreur de page`, erreurs.join(' | '));
         await page.close();

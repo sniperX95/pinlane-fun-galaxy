@@ -4679,12 +4679,15 @@
     }
     // Ce que le serveur range entre `debutT` et `finT` : les lignes de la
     // visite, ou les mots de la carte d une formule, chacune une seule fois.
+    // Les arcades d une formule gardent leur cadre (actionsDuTemps) ; celles
+    // d une visite se disent la, comme le minigolf (2026-10-15 : elles
+    // restaient « Dans la foulée », la fin ne les comptant plus apres).
     function libresDuTrou(debutT, finT) {
       var g = (trousServeur || []).filter(function (x) { return x && x.startTime === debutT && x.endTime === finT; })[0];
       var ici = [];
       ((g && g.items) || []).forEach(function (x) {
         var id = x && x.activityId;
-        if (!id || id === 'arcade_time' || id === 'service_drinks' || estBoisson(id)) return;
+        if (!id || id === 'service_drinks' || estBoisson(id) || (formule && id === 'arcade_time')) return;
         if (formule) {
           var genre = genreCompris(id);
           var c = genre && !vus[genre] ? carte.filter(function (y) { return y.genre === genre; })[0] : null;

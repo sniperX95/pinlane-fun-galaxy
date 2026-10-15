@@ -1395,8 +1395,21 @@ async function scenarioJ(browser, mock) {
     const pris = await poser(page, 'bowling', '14:00');
     const demande = dernierPlan(suivi);
     const v2 = await lireVisite(page);
-    ok(pris && posees(demande).bowling === '14:00' && params(demande).get('formulaChoice') === 'arcade60' && v2.etapes.some((e) => /bowling/i.test(e.titre)) && !/laser/i.test(JSON.stringify(v2)),
-      'le bowling pose a 14:00 : la demande garde la variante, la visite dit le bowling et toujours aucun laser', `${demande} || ${JSON.stringify(v2.etapes.map((e) => `${e.b} ${e.titre}`))}`);
+    ok(pris && posees(demande).bowling === '14:00' && params(demande).get('formulaChoice') === 'arcade60' && v2.etapes.some((e) => e.b === '14:00' && /bowling/i.test(e.titre)) && !/laser/i.test(JSON.stringify(v2)),
+      'le bowling pose a 14:00 : la demande garde la variante, la visite dit le bowling a 14:00 et toujours aucun laser', `${demande} || ${JSON.stringify(v2.etapes.map((e) => `${e.b} ${e.titre}`))}`);
+    // Le plan que le serveur rend pour CETTE heure : il revalide l heure posee
+    // par le moteur, qui lit la variante sur la demande (api/public-availability,
+    // une ancre choisie). La visite ne le prouve pas seule : ses lignes sans
+    // heure viennent de la carte choisie, et un moteur qui ignore la variante
+    // ne pose pas non plus de partie de laser sans heure.
+    const repondu = [...suivi.reponses].reverse().find((r) => r.url === demande) || {};
+    const planPose = (((repondu.json && repondu.json.slots) || [])[0] || {}).opsPlan || {};
+    const variantePosee = planPose.formulaChoice || {};
+    const arcadesPosees = (planPose.timeline || []).find((e) => e.activityId === 'arcade_time') || {};
+    const arcadesVoulues = ((variantePosee.steps || []).find((s) => s.activityId === 'arcade_time') || {}).durationMinutes;
+    const laserPose = (planPose.resourceBlocks || []).filter((b) => b.resourceType === 'laser_arena').length;
+    ok(variantePosee.id === 'arcade60' && Number(arcadesVoulues) > 0 && Number(arcadesPosees.durationMinutes) === Number(arcadesVoulues) && laserPose === 0,
+      'le plan que le serveur rend pour ce bowling garde la variante : ses arcades, de la duree qu elle declare, aucune partie de laser', JSON.stringify({ variante: variantePosee.id || null, arcades: arcadesPosees.durationMinutes || null, voulues: arcadesVoulues || null, laser: laserPose }));
 
     const nB = suivi.blocages.length;
     await page.click('#goContact');

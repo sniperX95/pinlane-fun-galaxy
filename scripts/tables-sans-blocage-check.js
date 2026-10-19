@@ -1404,10 +1404,16 @@ function lancerDifferentiel(commit) {
 }
 
 if (process.argv.includes('--mutate')) {
+  // Les mutations se jouaient une par une (spawnSync) ; un pool de fils
+  // (PINLANE_ECLATS, defaut 6), chacun sur son port, rend les MEMES verdicts,
+  // imprimes dans l ordre des mutations (2026-10-19).
+  const eclats = require('./gates-eclats');
+  const PORT = Number(process.env.PINLANE_TABLES_PORT || 4519);
+  eclats.enPool(MUTATIONS, eclats.nombreDeFils(MUTATIONS.length), async (m, fil, i) => { const debut = Date.now(); const run = await eclats.lancer(__filename, [], { env: { ...process.env, PINLANE_TABLES_PORT: String(PORT + 1 + fil), PINLANE_TABLES_MUTATION: String(i + 1) } }); return { ...run, debut, fin: Date.now() }; }).then((runs) => {
   let tuees = 0;
   MUTATIONS.forEach((m, i) => {
-    const debut = Date.now();
-    const run = spawnSync(process.execPath, [__filename], { env: { ...process.env, PINLANE_TABLES_MUTATION: String(i + 1) }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const run = runs[i];
+    const debut = Date.now() - (run.fin - run.debut);
     const sortie = `${run.stdout || ''}${run.stderr || ''}`;
     const servie = sortie.indexOf(MUTATION_PREUVE) >= 0;
     const tuee = servie && run.status === 1;
@@ -1417,6 +1423,7 @@ if (process.argv.includes('--mutate')) {
   });
   console.log(tuees === MUTATIONS.length ? `\ntables-sans-blocage-check --mutate: ${tuees}/${MUTATIONS.length} mutations tuees` : `\ntables-sans-blocage-check --mutate: ${MUTATIONS.length - tuees} mutation(s) survivante(s)`);
   process.exit(tuees === MUTATIONS.length ? 0 : 1);
+  });
 } else if (process.argv.includes('--base')) {
   if (!argApres('--base')) {
     console.error('usage : node scripts/tables-sans-blocage-check.js --base <commit qui precede les tables>');

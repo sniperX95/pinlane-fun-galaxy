@@ -6,6 +6,7 @@ const path = require('node:path');
 const http = require('node:http');
 const {chromium} = require('playwright-core');
 const mock = require('./dev-tunnel-server');
+const eclats = require('./gates-eclats');
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PINLANE_INFORMATION_PORT || 4598);
 const origin = 'http://127.0.0.1:' + port;
@@ -142,7 +143,30 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
   check(await frame.locator('.fg-info-dialog').count()===1,label+' one reusable dialog only');
   return text;
 }
+// LES HUIT CONTEXTES EN PARALLELE (2026-10-19) : chacun est independant (son
+// contexte de navigateur, ses routes) ; ils se jouaient l un apres l autre
+// (10 min). Le pere relance ce gate en 8 fils (scripts/gates-eclats.js), un
+// par contexte et par port, imprime leurs controles dans l ordre, puis rend
+// les deux controles globaux sur l union de leurs releves, comme avant.
+const CONTEXTES=[];for(const width of [1440,390,320,844])for(const embedded of [false,true])CONTEXTES.push(width+'/'+(embedded?'embed':'standalone'));
+const estFils=eclats.estFils();let resultatDuFils=null;
+async function enFils() {
+ const {resultats,sorties}=await eclats.eclater({fichier:__filename,rangs:CONTEXTES.map((_,rang)=>rang),nombre:CONTEXTES.length,ports:{PINLANE_INFORMATION_PORT:port}});
+ const errors=[];let blockedWrites=0,manque=0;
+ CONTEXTES.forEach((label,rang)=>{
+  const sortie=sorties.find(x=>x&&x.part.includes(rang));
+  const texte=sortie?sortie.texte.split(/\r?\n/).filter(l=>l&&!l.startsWith('ECLAT-RESULTAT ')).join('\n'):'';
+  if(texte)console.log(texte);
+  const r=resultats.get(rang);
+  if(!r){manque++;console.error('FAIL '+label+' : le fils ne rend pas son contexte ('+eclats.pourquoiManque(sorties,rang)+')');return;}
+  checks+=r.checks;blockedWrites+=r.blockedWrites;errors.push(...r.errors);measurements.push(...r.measurements);closeMeasurements.push(...r.closeMeasurements);
+ });
+ if(manque){process.exitCode=1;return;}
+ check(errors.length===0,'no JavaScript errors: '+errors.join('; '));check(blockedWrites===0,'information flows attempt no API writes');
+ fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'measurements.json'),JSON.stringify({checks,blockedWrites,errors,measurements,closeMeasurements},null,2));console.log('PASS '+checks+' information assertions');
+}
 async function run() {
+ if(!estFils&&!process.env.PINLANE_INFORMATION_CONTEXT)return enFils();
  fs.mkdirSync(out,{recursive:true});await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
  const browser=await chromium.launch({headless:true,executablePath:process.env.E2E_BROWSER_PATH||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
  const errors=[];let blockedWrites=0;
@@ -270,8 +294,9 @@ async function run() {
    await page.screenshot({path:path.join(out,'information-'+width+'-'+(embedded?'embed':'standalone')+'.png'),fullPage:false});
    await context.close();
   }
+  if(estFils){resultatDuFils={checks,blockedWrites,errors,measurements,closeMeasurements};return;}
   check(errors.length===0,'no JavaScript errors: '+errors.join('; '));check(blockedWrites===0,'information flows attempt no API writes');
   fs.writeFileSync(path.join(out,'measurements.json'),JSON.stringify({checks,blockedWrites,errors,measurements,closeMeasurements},null,2));console.log('PASS '+checks+' information assertions');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
-run().catch(error=>{fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'failure-'+Date.now()+'.json'),JSON.stringify({checks,error:error.stack,measurements,closeMeasurements},null,2));console.error(error);process.exitCode=1;});
+(estFils?eclats.servir(async rang=>{process.env.PINLANE_INFORMATION_CONTEXT=CONTEXTES[rang];await run();return resultatDuFils;}):run()).catch(error=>{fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,'failure-'+Date.now()+'.json'),JSON.stringify({checks,error:error.stack,measurements,closeMeasurements},null,2));console.error(error);process.exitCode=1;});

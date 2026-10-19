@@ -318,10 +318,14 @@ async function main() {
 
 if (process.argv.includes('--mutate')) {
   const empreintes = new Map(MUTATIONS.map((m) => [m.fichier, fs.readFileSync(path.join(ROOT, m.fichier), 'utf8')]));
-  const { spawnSync } = require('child_process');
+  // Les mutations se jouaient une par une (spawnSync) ; un pool de fils
+  // (PINLANE_ECLATS, defaut 6), chacun sur son port, rend les MEMES verdicts,
+  // imprimes dans l ordre des mutations (2026-10-19).
+  const eclats = require('./gates-eclats');
+  eclats.enPool(MUTATIONS, eclats.nombreDeFils(MUTATIONS.length), (m, fil, i) => eclats.lancer(__filename, [], { env: { ...process.env, PINLANE_PROPRE_PORT: String(PORT + 1 + fil), PINLANE_PROPRE_MUTATION: String(i + 1) } })).then((runs) => {
   let ratees = 0;
   MUTATIONS.forEach((mutation, index) => {
-    const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8', env: { ...process.env, PINLANE_PROPRE_MUTATION: String(index + 1) } });
+    const run = runs[index];
     const sortie = `${run.stdout || ''}${run.stderr || ''}`;
     const mordu = sortie.includes(`${MUTATION_PREUVE} ${mutation.nom}`);
     if (run.status === 1 && mordu) console.log(`contre-epreuve OK : le gate rougit quand ${mutation.nom}.`);
@@ -331,6 +335,7 @@ if (process.argv.includes('--mutate')) {
   if (touches.length) { console.log(`LE DISQUE A ETE ECRIT : ${touches.join(', ')}`); ratees += 1; }
   if (ratees) process.exit(1);
   console.log(`contre-epreuve OK : ${MUTATIONS.length} mutations, et aucun fichier n a ete ecrit.`);
+  });
 } else {
   main().catch((error) => { console.error(error); process.exit(1); });
 }

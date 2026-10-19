@@ -42,6 +42,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 const { serveStatic, installMock, boot, BROWSER_PATH } = require('./reserver-v5-check');
+const eclats = require('./gates-eclats');
 
 const ROOT = path.resolve(__dirname, '..');
 const JOUR = '2026-10-10';
@@ -779,29 +780,49 @@ const MUTATIONS = [
     vers: '' },
 ];
 
+// Les lettres qui rougissent quand la mutation m est servie (les scenarios
+// entiers, en silence).
+async function rougesDe(browser, m) {
+  const avant = echecs;
+  const garde = lignes.length;
+  process.env.LP_SILENCE = '1';
+  try { await scenarios(browser, m); } catch (e) { lignes.push({ cond: false, label: `crash ${e.message}` }); }
+  delete process.env.LP_SILENCE;
+  const rouges = lignes.slice(garde).filter(l => !l.cond).map(l => l.label);
+  lignes.length = garde;
+  echecs = avant;
+  return rouges;
+}
+
+// [K] se joue dans des fils (scripts/gates-eclats.js, 2026-10-19 : 34 min en
+// serie) pendant que le pere joue les scenarios ; le verdict de chaque
+// mutation se rend ici, dans l ordre, avec la meme regle qu avant.
 async function main() {
+  const fils = eclats.estFils();
   const serveur = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
+    if (fils) {
+      await eclats.servir((rang) => rougesDe(browser, MUTATIONS[rang]));
+      return;
+    }
+    const enFils = process.argv.includes('--contre-preuves')
+      ? eclats.eclater({ fichier: __filename, rangs: MUTATIONS.map((_, i) => i), ports: { PINLANE_RESERVER_PORT: Number(process.env.PINLANE_RESERVER_PORT || 4261) } })
+      : null;
     await scenarios(browser);
-    if (process.argv.includes('--contre-preuves')) {
+    if (enFils) {
       console.log('\n[K] contre-preuves : chaque regle cassee fait rougir sa lettre');
-      for (const m of MUTATIONS) {
-        const avant = echecs;
-        const garde = lignes.length;
-        process.env.LP_SILENCE = '1';
-        try { await scenarios(browser, m); } catch (e) { lignes.push({ cond: false, label: `crash ${e.message}` }); }
-        delete process.env.LP_SILENCE;
-        const rouges = lignes.slice(garde).filter(l => !l.cond).map(l => l.label);
-        lignes.length = garde;
-        echecs = avant;
+      const { resultats, sorties } = await enFils;
+      MUTATIONS.forEach((m, rang) => {
+        const rouges = resultats.has(rang) ? resultats.get(rang) : [`crash du fils : ${eclats.pourquoiManque(sorties, rang)}`];
         ok(rouges.some(l => l.startsWith(m.lettre)), `[K] mutation ${m.nom} : « ${m.lettre} » rougit`, rouges.slice(0, 3).join(' ; '));
-      }
+      });
     }
   } finally {
     await browser.close();
     serveur.close();
   }
+  if (fils) process.exit(0);
   console.log(echecs ? `\nplanning-laser-check : ${echecs} echec(s)` : '\nplanning-laser-check: ALL OK, le planning de la maquette E tient ses regles.');
   process.exit(echecs ? 1 : 0);
 }

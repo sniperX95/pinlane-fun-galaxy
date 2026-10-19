@@ -90,6 +90,7 @@ const crypto = require('crypto');
 const Module = require('module');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
+const eclats = require('./gates-eclats');
 
 for (const cle of Object.keys(process.env)) {
   if (/(^PG|DATABASE|POSTGRES|RESEND|SECRET|TOKEN|API_KEY|PASSWORD|PASSPHRASE)/i.test(cle)) delete process.env[cle];
@@ -2355,26 +2356,38 @@ function empreinteDisque() {
   return hash.digest('hex');
 }
 
-async function contreEpreuves() {
-  const avant = empreinteDisque();
+// Une contre-epreuve jouee : le code recharge avec SA mutation, ses
+// scenarios, et ce qu ils en disent (le pere en rend le verdict).
+async function jouerContreEpreuve(mutation) {
+  Object.assign(mutation, { trouvee: -1, appliquee: 0 });
+  ACTIVES = [mutation];
+  let verdicts = [];
+  try {
+    const H = charger();
+    for (const cle of mutation.scenarios) verdicts = verdicts.concat(await jouer(H, cle));
+  } finally {
+    ACTIVES = [];
+  }
+  return { trouvee: mutation.trouvee, appliquee: mutation.appliquee, rouges: verdicts.filter((item) => !item.ok).map((item) => ({ label: item.label, detail: item.detail, exception: Boolean(item.exception) })) };
+}
+
+// Les 127 mutations se jouaient une par une dans ce processus (8 min) ; elles
+// se jouent dans des fils (scripts/gates-eclats.js, 2026-10-19) pendant que
+// ce processus joue les scenarios, et chaque verdict se rend ici, dans
+// l ordre, avec la meme regle qu avant.
+async function contreEpreuves(fils, avant) {
   let rougies = 0;
-  for (const mutation of MUTATIONS) {
-    Object.assign(mutation, { trouvee: -1, appliquee: 0 });
-    ACTIVES = [mutation];
-    let verdicts = [];
-    try {
-      const H = charger();
-      for (const cle of mutation.scenarios) verdicts = verdicts.concat(await jouer(H, cle));
-    } finally {
-      ACTIVES = [];
-    }
-    const montable = mutation.trouvee === 1 && mutation.appliquee >= 1;
-    if (!ok(montable, `contre-epreuve montable : ${mutation.nom} (${mutation.fichier})`, `ancre trouvee ${mutation.trouvee} fois, appliquee ${mutation.appliquee}`)) continue;
-    const rouges = verdicts.filter((item) => !item.ok);
+  const { resultats, sorties } = await fils;
+  MUTATIONS.forEach((mutation, rang) => {
+    const r = resultats.get(rang);
+    if (!r) { ok(false, `contre-epreuve montable : ${mutation.nom} (${mutation.fichier})`, `fils : ${eclats.pourquoiManque(sorties, rang)}`); return; }
+    const montable = r.trouvee === 1 && r.appliquee >= 1;
+    if (!ok(montable, `contre-epreuve montable : ${mutation.nom} (${mutation.fichier})`, `ancre trouvee ${r.trouvee} fois, appliquee ${r.appliquee}`)) return;
+    const rouges = r.rouges;
     const vraiRouge = rouges.some((item) => !item.exception);
     if (ok(vraiRouge, `${mutation.nom} : ce gate ROUGIT`, rouges.length ? `seulement des exceptions : ${rouges[0].detail}` : 'aucun verdict rouge')) rougies += 1;
     if (vraiRouge) console.log(`      (${rouges.filter((item) => !item.exception)[0].label})`);
-  }
+  });
   const H = charger();
   const retour = [...await jouer(H, 'B'), ...await jouer(H, 'C')];
   ok(retour.every((item) => item.ok), 'le code d origine recharge : B et C sont verts de nouveau', retour.filter((item) => !item.ok).map((item) => item.label).join(' | '));
@@ -2389,18 +2402,31 @@ async function main() {
     process.exit(1);
   }
   retenirDurees(H);
-  console.log(`[date] samedi ${DATE}, Fun Galaxy Libramont, groupe de ${PAX}`);
-  for (const cle of Object.keys(SCENARIOS)) {
-    section(SCENARIOS[cle].titre);
-    rapporter(await jouer(H, cle));
+  // Les fils (scripts/gates-eclats.js) : un par scenario de base
+  // (--eclats-base), six pour les contre-epreuves ; chacun recharge le code a
+  // neuf, comme chaque contre-epreuve le faisait deja.
+  const cles = Object.keys(SCENARIOS);
+  if (eclats.estFils()) {
+    const base = ARGS.includes('--eclats-base');
+    await eclats.servir((rang) => (base ? jouer(H, cles[rang]) : jouerContreEpreuve(MUTATIONS[rang])));
+    process.exit(0);
   }
+  const avant = MUTATE ? empreinteDisque() : '';
+  const filsBase = eclats.eclater({ fichier: __filename, args: ['--eclats-base'], rangs: cles.map((_, rang) => rang), nombre: cles.length });
+  const fils = MUTATE ? eclats.eclater({ fichier: __filename, rangs: MUTATIONS.map((_, rang) => rang) }) : null;
+  console.log(`[date] samedi ${DATE}, Fun Galaxy Libramont, groupe de ${PAX}`);
+  const { resultats: verdictsBase, sorties: sortiesBase } = await filsBase;
+  cles.forEach((cle, rang) => {
+    section(SCENARIOS[cle].titre);
+    rapporter(verdictsBase.has(rang) ? verdictsBase.get(rang) : [{ ok: false, label: `scenario ${cle} : le fils ne l a pas rendu`, detail: eclats.pourquoiManque(sortiesBase, rang) }]);
+  });
   if (BASE) {
     section(`A+. LE DIFFERENTIEL CONTRE ${BASE}`);
     await differentiel(BASE);
   }
   if (MUTATE) {
     section('J. CONTRE-EPREUVES (mutations en memoire)');
-    await contreEpreuves();
+    await contreEpreuves(fils, avant);
   }
   console.log(`\n${echecs === 0 ? 'formules-arrivee-check: ALL OK' : `formules-arrivee-check: ${echecs} echec(s)`}`);
   process.exit(echecs === 0 ? 0 : 1);

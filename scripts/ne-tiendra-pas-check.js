@@ -327,10 +327,15 @@ async function ecran() {
 }
 
 if (process.argv.includes('--mutate')) {
-  const { spawnSync } = require('child_process');
+  // Les mutations se jouaient une par une (spawnSync) ; un pool de fils
+  // (PINLANE_ECLATS, defaut 6), chacun sur son port, rend les MEMES verdicts,
+  // imprimes dans l ordre des mutations (2026-10-19).
+  const eclats = require('./gates-eclats');
+  const PORT = Number(process.env.PINLANE_HORS_PORT || 4491);
+  eclats.enPool(MUTATIONS, eclats.nombreDeFils(MUTATIONS.length), (m, fil, i) => eclats.lancer(__filename, [], { env: { ...process.env, PINLANE_HORS_PORT: String(PORT + 1 + fil), PINLANE_HORS_MUTATION: String(i + 1) } })).then((runs) => {
   let tuees = 0;
   MUTATIONS.forEach((m, i) => {
-    const run = spawnSync(process.execPath, [__filename], { env: { ...process.env, PINLANE_HORS_MUTATION: String(i + 1) }, encoding: 'utf8' });
+    const run = runs[i];
     const sortie = `${run.stdout || ''}${run.stderr || ''}`;
     const servie = sortie.indexOf(MUTATION_PREUVE) >= 0;
     const tuee = servie && run.status === 1;
@@ -339,6 +344,7 @@ if (process.argv.includes('--mutate')) {
   });
   console.log(tuees === MUTATIONS.length ? `\nne-tiendra-pas-check --mutate: ${tuees}/${MUTATIONS.length} mutations tuees` : `\nne-tiendra-pas-check --mutate: ${MUTATIONS.length - tuees} mutation(s) survivante(s)`);
   process.exit(tuees === MUTATIONS.length ? 0 : 1);
+  });
 } else {
   main().catch((error) => { console.error(error); process.exit(1); });
 }

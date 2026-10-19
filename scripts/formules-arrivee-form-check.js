@@ -97,7 +97,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const Module = require('module');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { Readable } = require('stream');
 
 // Aucune base, aucun envoi : seuls les NOMS des variables sont lus.
@@ -1685,16 +1685,48 @@ async function main() {
   process.exit(0);
 }
 
-function contreEpreuves() {
+// Une mutation : le gate relance, sur SON port (chaque fils du pool a le sien).
+function jouerMutation(index, port) {
+  const mutation = MUTATIONS[index];
+  return new Promise((resolve) => {
+    const enfant = spawn(process.execPath, [__filename], {
+      env: { ...process.env, PINLANE_ARRIVEE_FORM_PORT: String(port), PINLANE_ARRIVEE_FORM_MUTATION: String(index + 1), PINLANE_ARRIVEE_FORM_SCENARIOS: mutation.scenarios.join(',') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    enfant.stdout.on('data', (d) => { stdout += d; });
+    enfant.stderr.on('data', (d) => { stderr += d; });
+    let delai = false;
+    const minuteur = setTimeout(() => {
+      delai = true;
+      if (process.platform === 'win32') spawnSync('taskkill', ['/T', '/F', '/PID', String(enfant.pid)], { stdio: 'ignore', windowsHide: true });
+      else enfant.kill('SIGKILL');
+    }, 300000);
+    enfant.on('close', (status) => { clearTimeout(minuteur); resolve({ status: delai ? null : status, stdout, stderr }); });
+  });
+}
+
+// Les 70 mutations se jouaient une par une (spawnSync, 30 min) ; un pool de
+// fils (PINLANE_ECLATS, defaut 6), chacun sur son port, rend les MEMES
+// verdicts, imprimes dans l ordre des mutations (2026-10-19).
+async function contreEpreuves() {
   const fichiers = [...new Set([JS, CSS, 'fungalaxy.html', ...MUTATIONS.map((m) => m.fichier)])];
   const empreintes = new Map(fichiers.map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]));
   let defauts = 0;
+  const parallele = Math.max(1, Math.min(MUTATIONS.length, Number(process.env.PINLANE_ECLATS || 6) || 6));
+  const runs = new Array(MUTATIONS.length);
+  let suivante = 0;
+  await Promise.all(Array.from({ length: parallele }, async (_, fil) => {
+    while (suivante < MUTATIONS.length) {
+      const index = suivante;
+      suivante += 1;
+      runs[index] = await jouerMutation(index, PORT + 1 + fil);
+    }
+  }));
   MUTATIONS.forEach((mutation, index) => {
-    const r = spawnSync(process.execPath, [__filename], {
-      env: { ...process.env, PINLANE_ARRIVEE_FORM_MUTATION: String(index + 1), PINLANE_ARRIVEE_FORM_SCENARIOS: mutation.scenarios.join(',') },
-      encoding: 'utf8',
-      timeout: 300000,
-    });
+    const r = runs[index];
     const sortie = `${r.stdout || ''}${r.stderr || ''}`;
     const servie = sortie.includes(`${MUTATION_PREUVE} ${mutation.nom}`);
     const rouges = sortie.split('\n').filter((l) => l.startsWith('FAIL')).length;
@@ -1724,7 +1756,7 @@ function contreEpreuves() {
 }
 
 if (process.argv.includes('--mutate')) {
-  contreEpreuves();
+  contreEpreuves().catch((error) => { console.error(error); process.exit(1); });
 } else {
   main().catch((error) => { console.error(error); process.exit(1); });
 }

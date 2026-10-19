@@ -77,9 +77,14 @@ function historique() {
   // visite laser + bowling d il y a une semaine a 17:00 ; plus recentes mais
   // hors jeu : une annulee, une dans un autre centre, une a venir.
   const client = (date, heure, champs) => { id += 1; return B.ligne(id, { start_time: heure, date, lanes: [], pax: 6, name: 'Famille Lambert', phone: '+32 470 12 34 56', ...champs }); };
-  lignes.push(client(decaler(AUJOURDHUI, -30), '15:00', { ...LASER_3, pax: 5 }));
-  lignes.push(client(decaler(AUJOURDHUI, -7), '15:00', { ...FORMULE_4, pax: 8 }));
-  lignes.push(client(decaler(AUJOURDHUI, -7), '17:00', { type: 'bowling', duration: 1, label: 'Bowling 1h · Laser 2 parties',
+  // Ses visites passees ne tombent jamais un samedi : elles serviraient [1]
+  // (un lundi, il y a 30 jours etait un samedi et le laser 3 parties
+  // comptait 3 ; un samedi, il y a 7 jours aussi, et la formule 4) : le gate
+  // rougissait selon le jour de la semaine (2026-10-19).
+  const horsSamedi = (jours) => { let d = decaler(AUJOURDHUI, -jours); while (jourIso(d) === 6) d = decaler(d, -1); return d; };
+  lignes.push(client(horsSamedi(30), '15:00', { ...LASER_3, pax: 5 }));
+  lignes.push(client(horsSamedi(7), '15:00', { ...FORMULE_4, pax: 8 }));
+  lignes.push(client(horsSamedi(7), '17:00', { type: 'bowling', duration: 1, label: 'Bowling 1h · Laser 2 parties',
     program: { items: [{ activityId: 'laser_game', games: 2, duration: 1, participants: 6, name: 'Laser Game', priceKnown: true, price: 108 }, { activityId: 'bowling', duration: 1, minutes: 60, participants: 6, laneCount: 1, priceKnown: true, price: 39 }], price: 147, priceComplete: true } }));
   lignes.push(client(decaler(AUJOURDHUI, -3), '15:00', { ...LASER_3, status: 'cancelled' }));
   lignes.push(client(decaler(AUJOURDHUI, -2), '15:00', { ...LASER_3, center_id: 'gembloux' }));

@@ -2391,10 +2391,14 @@ const anthropicOk = (object) => ({
     'LE POINT : a 10 h 05, les heures dites sont celles que le tunnel propose encore',
     ligneDuJourDe(aDix.cerveau).slice(0, 200));
 
-  const vingtDeuxHeures = `${SAMEDI}T20:00:00Z`;
+  // 23 h (2026-10-19) : depuis que la fin d une formule ne compte plus la
+  // marge de l equipe (journal 414), la FORMULE 5 tient encore a 22 h 30 et
+  // le tunnel propose encore une heure a 22 h ; la propriete (le tunnel ne
+  // propose plus rien, la ligne du jour le dit) se prouve une heure plus tard.
+  const vingtDeuxHeures = `${SAMEDI}T21:00:00Z`;
   const aVingtDeux = await aLInstant(vingtDeuxHeures);
   ok(aVingtDeux.attendu.every((a) => !a.heures.length) && /plus aucune formule ne se reserve aujourd hui/.test(ligneDuJourDe(aVingtDeux.cerveau)),
-    'LE POINT : a 22 h, le tunnel ne propose plus rien, et la ligne du jour le dit au lieu de se taire',
+    'LE POINT : a 23 h, le tunnel ne propose plus rien, et la ligne du jour le dit au lieu de se taire',
     ligneDuJourDe(aVingtDeux.cerveau).slice(0, 120));
 
   const lundiMatin = '2026-09-14T09:00:00Z';

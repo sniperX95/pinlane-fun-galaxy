@@ -130,7 +130,9 @@ function plusJours(dateStr, n) {
   const calendrier = meta.__test.buildCalendar([], 90, libramont, 'libramont');
   ok(calendrier.length === 90 && calendrier[0].date === today, '[G] 90 jours a partir d aujourd hui', `${calendrier.length}, premier ${calendrier[0] && calendrier[0].date}`);
   const lundis = calendrier.filter((j) => j.weekday === 1);
-  ok(lundis.length >= 12 && lundis.every((j) => (j.holiday ? j.open && j.schedule && j.schedule.open === 10 : !j.open && j.closedLabel === 'Fermé ce jour')), '[G] chaque lundi : ferme, sauf en periode speciale ou il ouvre a 10h', `${lundis.length} lundis`);
+  // Aujourd hui, passe la fermeture, se dit « Fermé pour aujourd’hui » (over) :
+  // un lundi de conge joue le soir rougissait le gate (2026-10-19, 23:30).
+  ok(lundis.length >= 12 && lundis.every((j) => (j.over ? j.date === today && !j.open : j.holiday ? j.open && j.schedule && j.schedule.open === 10 : !j.open && j.closedLabel === 'Fermé ce jour')), '[G] chaque lundi : ferme, sauf en periode speciale ou il ouvre a 10h (le jour meme, fini le soir)', `${lundis.length} lundis`);
   const automne = calendrier.filter((j) => j.date >= '2026-10-19' && j.date <= '2026-11-01');
   ok(automne.length === 0 || automne.every((j) => j.holiday && /automne|Toussaint/.test(j.holiday.label)), '[G] les jours du conge d automne portent leur periode', automne.length ? `${automne.length} jours, ${automne[0].holiday && automne[0].holiday.label}` : 'hors fenetre');
   ok(calendrier.every((j) => typeof j.open === 'boolean' && (j.schedule === null || (typeof j.schedule.open === 'number' && typeof j.schedule.label === 'string'))), '[G] chaque jour porte ouverture et horaires');

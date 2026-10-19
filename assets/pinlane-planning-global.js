@@ -20,8 +20,18 @@
 // pointilles quand elle n a pas d heure fixe (a son heure probable, la regle
 // du moteur). Deux groupes au meme moment sur la meme activite se partagent
 // la colonne. La largeur des colonnes se calcule sur les noms a ecrire, la
-// hauteur des heures sur l ecran : la journee tient sans defiler, le matin
-// deja joue se replie dans le coin. Toucher une carte ouvre sa fiche.
+// hauteur des heures sur l ecran.
+//
+// LA JOURNEE ENTIERE, TOUJOURS (2026-10-19, Movsar : « toutes les heures et
+// le planning complet et visibles même quand il n'y a rien ») : la grille va
+// de l ouverture a la fermeture du centre, chaque activite du centre a sa
+// colonne meme vide, un jour ferme ou sans reservation garde sa grille. Rien
+// ne se replie : quand la journee ne tient pas, la grille defile en elle-meme
+// (heures collees a gauche, tetes collees en haut) et s ouvre sur l heure
+// qu il est. La minute qui passe deplace la barre de l heure sans redessiner.
+// A la souris, la bulle au survol ; au doigt, toucher montre le programme,
+// toucher encore ouvre la fiche. Une case vide du bowling ou du laser ouvre
+// la reservation rapide a son heure (les chemins de ces deux plannings).
 //
 // La console l appelle depuis renderGlobalPlanningSurface (app-main.js),
 // sous l onglet « Planning global ». Le module n ecrit rien : seul « Arrivé »,
@@ -29,11 +39,9 @@
 (function () {
   'use strict';
 
-  // Les groupes se rangent a la demi-heure de leur arrivee.
-  var GP_PAS = 0.5;
   // LES COLONNES, DANS L ORDRE DU PAPIER (lib/feuille-secours.js, COLONNES) :
-  // l equipe retrouve sa feuille. Une colonne ne s affiche que si une
-  // reservation du jour l utilise. La table d anniversaire n en a pas
+  // l equipe retrouve sa feuille. Chaque activite que le centre propose a la
+  // sienne, meme sans reservation (gpColonneDuCentre). La table d anniversaire n en a pas
   // (Movsar : « pas besoin de goûter »).
   var GP_COLONNES = [
     { cle: 'bowling', titre: 'Bowling', activites: ['bowling'] },
@@ -170,19 +178,68 @@
     return { places: places, servis: servis };
   }
 
+  // APRES MINUIT, LA SOIREE CONTINUE : la console reste sur la veille jusqu a
+  // 5 h (suivreLeJour, app-main.js) ; pour elle il est 24 h + l heure. Les
+  // memes regles que la console (getStaffTerrainPhase, splitStaffTerrainOnsite,
+  // le paye range par ses coches), lues a cette heure-la : sinon tout le soir
+  // passait « fini » a minuit pile.
+  function gpVeille(jour) {
+    var d = new Date(String(jour) + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function gpNuit(jour, auj) {
+    var bascule = typeof STAFF_JOUR_BASCULE_HEURE === 'number' ? STAFF_JOUR_BASCULE_HEURE : 5;
+    return jour === gpVeille(auj) && currentTimeDecimal() < bascule;
+  }
+  function gpMomentsNuit(tout, maintenant) {
+    if (typeof getStaffTerrainPhase !== 'function' || typeof splitStaffTerrainOnsite !== 'function') return getStaffReservationMoments(tout);
+    var moments = new Map();
+    var board = { now: maintenant, onsite: [] };
+    tout.forEach(function (r) {
+      var span = getStaffTerrainSpan(r);
+      var phase = getStaffTerrainPhase(r, span, { when: 'today', now: maintenant });
+      if (phase === 'onsite') board.onsite.push(Object.assign({ reservation: r }, span));
+      else moments.set(String(r.id), { etat: phase, late: false });
+    });
+    var partage = splitStaffTerrainOnsite(board);
+    partage.late.forEach(function (i) { moments.set(String(i.reservation.id), { etat: 'upcoming', late: true }); });
+    partage.due.forEach(function (i) { moments.set(String(i.reservation.id), { etat: 'upcoming', late: false }); });
+    partage.present.forEach(function (i) { moments.set(String(i.reservation.id), { etat: 'onsite', late: false }); });
+    tout.forEach(function (r) {
+      var mo = moments.get(String(r.id));
+      if (r.status === 'paid' && mo && mo.etat !== 'absent') { mo.etat = typeof groupeToutFait === 'function' && groupeToutFait(r) ? 'done' : 'onsite'; mo.late = false; }
+    });
+    return moments;
+  }
+
+  // LES ACTIVITES DU CENTRE : les colonnes du papier qu il propose (son
+  // catalogue, et ce qu il a coche quand il l a dit), vides comprises. Sans
+  // catalogue charge, tout le papier.
+  function gpColonneDuCentre(c) {
+    var catalogue = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
+    if (!catalogue.length) return true;
+    var config = typeof getCenterScheduleConfig === 'function' ? getCenterScheduleConfig() : null;
+    var carte = config && config.activityAvailability && typeof config.activityAvailability === 'object' ? config.activityAvailability : null;
+    var coches = carte ? Object.keys(carte).filter(function (id) { return carte[id]; }) : [];
+    return c.activites.some(function (id) { return Boolean(gpCatalogue(id)) && (!coches.length || coches.indexOf(id) >= 0); });
+  }
+
   // ---- LA JOURNEE EN LIGNES ---------------------------------------------------
   function gpModele() {
     var jour = state.currentDate;
     var tout = todaysReservations();
-    var moments = getStaffReservationMoments(tout);
+    var auj = todayStr();
+    var nuit = gpNuit(jour, auj);
+    var moments = nuit ? gpMomentsNuit(tout, 24 + currentTimeDecimal()) : getStaffReservationMoments(tout);
     // Le filtre d etat de la barre des plannings vaut ici comme au bowling ;
     // la recherche, elle, eteint les autres groupes sans les retirer (la
     // grille ne saute pas pendant qu on tape).
     if (typeof releaseDeadNoteFilter === 'function') releaseDeadNoteFilter();
     var res = typeof filterReservationsForStaff === 'function' ? filterReservationsForStaff(tout, state.staffStatusFilter || 'all') : tout;
-    var auj = todayStr();
-    var aujourdHui = jour === auj;
-    var maintenant = aujourdHui ? currentTimeDecimal() : null;
+    var aujourdHui = jour === auj || nuit;
+    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? 24 + currentTimeDecimal() : null;
     var colonnes = GP_COLONNES.map(function (c) { return Object.assign({}, c, { groupes: 0 }); });
     var inconnues = [];
     function colonneDe(id) {
@@ -205,7 +262,6 @@
     // L ORDRE DU PAPIER : l heure d arrivee, puis le nom.
     groupes.sort(function (a, b) { return a.debut - b.debut || String(a.r.name || '').localeCompare(String(b.r.name || ''), 'fr'); });
     groupes.forEach(function (g) {
-      g.bande = Math.floor(g.debut / GP_PAS + 1e-6) * GP_PAS;
       var r = g.r;
       var poser = function (id, e) {
         if (GP_SANS_COLONNE[id]) return;
@@ -258,18 +314,18 @@
       });
       g.cases.forEach(function (liste) { liste.sort(function (a, b) { return (a.start == null ? 99 : a.start) - (b.start == null ? 99 : b.start); }); });
       g.parti = g.etat === 'done' || g.etat === 'absent';
-      // TERMINE : sa visite est passee et rien n attend l equipe (ni a
-      // encaisser, ni en retard). Sa ligne se resserre.
-      g.termine = maintenant != null && g.span.end <= maintenant && g.etat !== 'closing' && !g.retard;
     });
-    var utilisees = colonnes.filter(function (c) { return c.groupes > 0; }).concat(inconnues);
-    return { jour: jour, aujourdHui: aujourdHui, passe: jour < auj, maintenant: maintenant, groupes: groupes, colonnes: utilisees };
+    var utilisees = colonnes.filter(function (c) { return c.groupes > 0 || gpColonneDuCentre(c); }).concat(inconnues);
+    return { jour: jour, aujourdHui: aujourdHui, passe: jour < auj && !nuit, maintenant: maintenant, groupes: groupes, colonnes: utilisees, fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false } };
   }
 
   // ---- LE RENDU : LA GRILLE DES HEURES ---------------------------------------------
   // La tete des colonnes (celle du planning bowling), la bande du matin replie,
   // la colonne des heures, et les bornes de la hauteur d une heure.
-  var GH = { tete: 42, colHeures: 56, colHeuresGrand: 72, heureMin: 40, heureConfort: 64, heureMax: 112, ligne: 13, cadre: 4, bas: 14, colMin: 64 };
+  // (le nom des cartes a 13 px sur 15 : une demi-heure a 48 px l heure garde
+  // sa ligne entiere ; quand la journee ne tient pas, 72 px, la grille defile
+  // et une partie de laser y dit encore ses armes)
+  var GH = { tete: 44, colHeures: 60, colHeuresGrand: 72, heureMin: 48, heureConfort: 72, heureMax: 112, ligne: 15, cadre: 4, bas: 14, colMin: 72 };
   // Les icones qui manquent a la console (duckpin, billard, Fun Run) : une
   // quille, une bille, un eclair ; les autres sont celles de la console.
   var GH_ICONES = {
@@ -363,9 +419,11 @@
     g.cases.forEach(function (liste) { liste.forEach(function (e) { if (e.credit) morceaux.push(gpCredits(e.nom)); }); });
     return morceaux.concat(g.infos);
   }
+  function ghMinutesDeRetard(debut, maintenant) { return Math.max(1, Math.round((maintenant - debut) * 60)); }
   function ghTags(g, m) {
     var tags = '';
-    if (g.retard && m.maintenant != null) tags += '<span class="gp-tag is-retard" title="En retard"><span class="gp-tag__long">retard </span>' + Math.max(1, Math.round((m.maintenant - g.span.start) * 60)) + ' min</span>';
+    // (les minutes de retard suivent l heure sans redessiner : ghHorloge)
+    if (g.retard && m.maintenant != null) tags += '<span class="gp-tag is-retard" title="En retard" data-gh-depuis="' + g.span.start + '"><span class="gp-tag__long">retard </span><span class="gh-min">' + ghMinutesDeRetard(g.span.start, m.maintenant) + '</span> min</span>';
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(g.r)) tags += '<span class="gp-tag is-valider">à valider</span>';
     if (g.etat === 'closing') tags += '<span class="gp-tag is-cloturer">à clôturer</span>';
     if (g.etat === 'absent') tags += '<span class="gp-tag is-absent">pas venu</span>';
@@ -408,7 +466,8 @@
     var titre = r.name + ' · ' + r.pax + ' pers. · ' + gpNomActivite(e.activityId) + ' · ' + (e.libre ? 'sans heure fixe, vers ' : '') + gpHeure(s.start) + ' à ' + gpHeure(s.end)
       + (detail ? ' · ' + detail : '') + ' · ' + GH_ETATS[etat] + (infos.length ? ' · ' + infos.join(' · ') : '') + (notes.length ? ' · ' + notes.join(' · ') : '');
     var classes = 'gh-c t-' + g.teinte + ' is-' + etat + (e.libre ? ' is-libre' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (s.premiere ? ' is-premiere' : '');
-    return '<div class="' + classes + '" role="button" tabindex="0" data-gp-res="' + gpEsc(g.id) + '" data-gp-ouvre="' + Number(r.id) + '" data-gh-s="' + s.n + '"'
+    // (data-gh-k : la meme carte d un dessin a l autre, pour lui rendre le focus)
+    return '<div class="' + classes + '" role="button" tabindex="0" data-gp-res="' + gpEsc(g.id) + '" data-gp-ouvre="' + Number(r.id) + '" data-gh-s="' + s.n + '" data-gh-k="' + gpEsc(g.id + '|' + s.cle + '|' + Math.round(s.start * 60)) + '"'
       + ' style="top:calc(var(--gh-h) * ' + haut + ' + 1px);height:calc(var(--gh-h) * ' + duree + ' - 2px);left:calc(100% * ' + s.voie + ' / ' + s.k + ' + var(--gh-jeu));width:calc(100% / ' + s.k + ' - var(--gh-jeu) * 2)"'
       + ' data-gh-duree="' + duree + '" data-gh-det="' + (det ? 1 : 0) + '">'
       + '<div class="gh-c__l1"><b class="gh-c__h">' + gpEsc(heure) + '</b> <span class="gh-c__nom">' + gpEsc(r.name) + '</span>' + (pictos ? ' <span class="gh-pictos">' + pictos + '</span>' : '') + (tags ? ' <span class="gp-tags">' + tags + '</span>' : '') + '</div>'
@@ -418,35 +477,34 @@
       + '</div>';
   }
 
-  // LA PLAGE DE LA JOURNEE : de la premiere activite a la derniere (l heure
-  // qu il est comprise), a la demi-heure. LE MATIN DEJA JOUE SE REPLIE : ce
-  // qui a fini une demi-heure avant maintenant tient dans une ligne, et la
-  // place va a ce qui se joue et a ce qui vient. Un clic le rouvre.
-  function ghPlage(m, seances, ouvrirMatin) {
-    var fenetre = typeof getPlanningWindow === 'function' ? getPlanningWindow(m.jour) : { open: 10, close: 22 };
+  // LA PLAGE DE LA JOURNEE : de l ouverture a la fermeture du centre, toujours
+  // (2026-10-19, Movsar : « toutes les heures ... visibles même quand il n'y a
+  // rien »), comme les plannings bowling et laser. Un jour ferme garde la grille
+  // de getPlanningWindow (10 h - 22 h). Une seance hors des heures (un dossier
+  // garde sur un jour ferme, une fin apres la fermeture) et l heure qu il est
+  // l elargissent. Rien ne se replie : la grille defile en elle-meme et
+  // s ouvre sur l heure qu il est.
+  function ghPlage(m, seances) {
+    var fenetre = m.fenetre || { open: 10, close: 22 };
     var ouvre = Number(fenetre.open), ferme = Number(fenetre.close);
     if (!Number.isFinite(ouvre)) ouvre = 10;
     if (!Number.isFinite(ferme) || ferme <= ouvre) ferme = ouvre + 12;
-    var de = seances.length ? Math.min.apply(null, seances.map(function (s) { return s.start; })) : ouvre;
-    var a = seances.length ? Math.max.apply(null, seances.map(function (s) { return s.finDessinee; })) : ferme;
-    if (m.maintenant != null && m.maintenant >= ouvre && m.maintenant <= ferme) { de = Math.min(de, m.maintenant); a = Math.max(a, m.maintenant); }
+    var de = ouvre, a = ferme;
+    seances.forEach(function (s) { de = Math.min(de, s.start); a = Math.max(a, s.finDessinee); });
+    if (m.maintenant != null && m.maintenant >= de - 1 && m.maintenant <= a + 1) { de = Math.min(de, m.maintenant); a = Math.max(a, m.maintenant); }
     var debut = Math.floor(de * 2 + 1e-6) / 2;
     var fin = Math.max(debut + 0.5, Math.ceil(a * 2 - 1e-6) / 2);
-    var plage = { debut: debut, fin: fin, vDebut: debut, repli: null };
-    if (m.maintenant != null && m.aujourdHui) {
-      var coupe = Math.floor((m.maintenant - 0.5) * 2 + 1e-6) / 2;
-      if (coupe - debut >= 1 - 1e-6 && coupe < fin) {
-        var avant = seances.filter(function (s) { return s.finDessinee <= coupe + 1e-6; });
-        var groupes = [];
-        m.groupes.forEach(function (g) {
-          var siennes = seances.filter(function (s) { return s.g === g; });
-          if (siennes.length && siennes.every(function (s) { return s.finDessinee <= coupe + 1e-6; })) groupes.push(g);
-        });
-        plage.repli = { de: debut, a: coupe, seances: avant.length, groupes: groupes, ouvert: Boolean(ouvrirMatin) };
-        if (!ouvrirMatin) plage.vDebut = coupe;
-      }
-    }
-    return plage;
+    return { debut: debut, fin: fin, vDebut: debut, ferme: Boolean(fenetre.closed) };
+  }
+
+  // LES CASES VIDES QUI RESERVENT : le bowling et le laser, par les chemins de
+  // leurs plannings (quickFromCell, lpReserver). Les autres activites n ont pas
+  // de reservation rapide a leur nom. Un jour ferme, rien ne se reserve.
+  var GH_RESERVE = { bowling: 'bowling', laser: 'laser' };
+  function ghPeutReserver(m, cle) {
+    if (!GH_RESERVE[cle] || (m.fenetre && m.fenetre.closed)) return false;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.quick')) return false;
+    return cle === 'bowling' ? typeof quickFromCell === 'function' : typeof lpReserver === 'function';
   }
 
   function renderGlobalPlanning(wrap) {
@@ -455,25 +513,14 @@
     var m = gpModele();
     var seances = ghSeances(m);
     // Le dessin : au moins une demi-heure par carte (une ligne lisible).
-    seances.forEach(function (s, i) { s.finDessinee = Math.max(s.end, s.start + 0.5 - 1 / 120); s.n = i; });
-    // La premiere carte d un groupe porte ses etiquettes et ses infos.
-    var vus = new Set();
-    seances.slice().sort(function (a, b) { return a.start - b.start; }).forEach(function (s) {
-      if (!vus.has(s.g)) { vus.add(s.g); s.premiere = true; }
-    });
-    var plage = ghPlage(m, seances, wrap._ghMatin);
-    // Les cartes du matin replie ne se dessinent pas ; une carte qui deborde
-    // sur l apres-midi se dessine depuis le haut, « depuis 14:00 ».
-    var visibles = seances.filter(function (s) {
-      if (s.finDessinee <= plage.vDebut + 1e-6) return false;
-      return !(s.start < plage.vDebut - 1e-6 && m.maintenant != null && s.end <= m.maintenant + 1e-6);
-    });
-    // La premiere carte VISIBLE d un groupe porte ses etiquettes.
-    seances.forEach(function (s) { s.premiere = false; });
-    // LES COLONNES : les activites du jour, dans l ordre du papier.
+    seances.forEach(function (s, i) { s.finDessinee = Math.max(s.end, s.start + 0.5 - 1 / 120); s.n = i; s.premiere = false; });
+    var plage = ghPlage(m, seances);
+    // LES COLONNES : toutes les activites du centre, dans l ordre du papier,
+    // vides comprises.
     var colonnes = m.colonnes.map(function (c) {
-      return { c: c, seances: visibles.filter(function (s) { return s.cle === c.cle; }), toutes: seances.filter(function (s) { return s.cle === c.cle; }) };
-    }).filter(function (x) { return x.seances.length; });
+      var siennes = seances.filter(function (s) { return s.cle === c.cle; });
+      return { c: c, seances: siennes, toutes: siennes };
+    });
     colonnes.forEach(function (x) { ghVoies(x.seances, function (s) { return s.finDessinee; }); });
     // La carte qui porte les etiquettes et les infos d un groupe : une carte
     // qui vit encore (une carte finie ne les porte que si le groupe n a plus
@@ -494,75 +541,86 @@
     var heures = plage.fin - plage.vDebut;
     var grand = Boolean(wrap.closest && wrap.closest('.planning-box.expanded'));
     var colH = grand ? GH.colHeuresGrand : GH.colHeures;
-    var maintenantVu = m.maintenant != null && m.maintenant >= plage.vDebut && m.maintenant <= plage.fin;
     // LA COLONNE DES HEURES : chaque demi-heure son etiquette, centree dans sa
-    // case comme au bowling ; celle que recouvre l heure exacte s efface.
+    // case comme au bowling ; l heure pleine en clair, la demi-heure discrete.
     var etiquettes = '';
     for (var t = plage.vDebut; t < plage.fin - 1e-6; t += 0.5) {
       var pleine = Math.abs(t - Math.round(t)) < 1e-6;
-      var sous = maintenantVu && Math.abs(t + 0.25 - m.maintenant) < 0.2;
-      etiquettes += '<div class="gh-h' + (pleine ? ' is-pleine' : '') + (sous ? ' is-sous' : '') + '" style="top:calc(var(--gh-h) * ' + (t - plage.vDebut) + ')">' + gpHeure(t) + '</div>';
+      etiquettes += '<div class="gh-h' + (pleine ? ' is-pleine' : '') + '" data-gh-t="' + t + '" style="top:calc(var(--gh-h) * ' + (t - plage.vDebut) + ')">' + gpHeure(t) + '</div>';
     }
-    var coin = 'Heure';
-    if (plage.repli) {
-      var r0 = plage.repli;
-      var resume = 'De ' + gpHeure(r0.de) + ' à ' + gpHeure(r0.a) + ' : ' + r0.seances + ' activité' + (r0.seances > 1 ? 's' : '') + ' finie' + (r0.seances > 1 ? 's' : '') + (r0.groupes.length ? ' · partis : ' + r0.groupes.map(function (g) { return g.r.name; }).join(', ') : '');
-      coin = '<button type="button" class="gh-matin' + (r0.ouvert ? ' is-ouvert' : '') + '" data-gh-matin="1" title="' + gpEsc(resume) + '" aria-label="' + gpEsc((r0.ouvert ? 'Replier le matin. ' : 'Afficher le matin. ') + resume) + '"><b>' + (r0.ouvert ? 'Matin' : gpHeure(r0.de)) + '</b><span>' + (r0.ouvert ? 'replier' : 'matin') + '</span></button>';
-    }
-    var tetes = '<div class="gh-entete gh-entete--h" role="columnheader">' + coin + '</div>' + colonnes.map(function (x) {
+    var tetes = '<div class="gh-entete gh-entete--h" role="columnheader">Heure</div>' + colonnes.map(function (x) {
       var groupes = new Set(x.toutes.map(function (s) { return s.g; })).size;
-      return '<div class="gh-entete" role="columnheader" title="' + gpEsc(x.c.titre + ' : ' + groupes + ' groupe' + (groupes > 1 ? 's' : '') + ' aujourd’hui') + '">' + ghIcone(x.c.activites[0]) + '<span class="gh-entete__t">' + gpEsc(x.c.titre) + '</span><span class="gh-entete__n">' + groupes + '</span></div>';
+      return '<div class="gh-entete' + (groupes ? '' : ' is-vide') + '" role="columnheader" data-gh-cle="' + gpEsc(x.c.cle) + '" title="' + gpEsc(x.c.titre + ' : ' + (groupes ? groupes + ' groupe' + (groupes > 1 ? 's' : '') : 'aucun groupe') + ' ce jour-là') + '">' + ghIcone(x.c.activites[0]) + '<span class="gh-entete__t">' + gpEsc(x.c.titre) + '</span><span class="gh-entete__n">' + groupes + '</span></div>';
     }).join('');
-    var piles = '<div class="gh-pile gh-pile--h" aria-hidden="true">' + etiquettes
-      + (maintenantVu ? '<span class="gh-maintenant-h" style="top:calc(var(--gh-h) * ' + (m.maintenant - plage.vDebut) + ')">' + gpHeure(m.maintenant) + '</span>' : '') + '</div>'
+    // L HEURE QU IL EST n est pas dans le dessin : ghHorloge la pose (et la
+    // deplace chaque minute) sur la colonne des heures et la grille.
+    var piles = '<div class="gh-pile gh-pile--h" aria-hidden="true">' + etiquettes + '<span class="gh-maintenant-h" hidden></span></div>'
       + colonnes.map(function (x) {
-        return '<div class="gh-pile" role="cell" aria-label="' + gpEsc(x.c.titre) + '">' + x.seances.map(function (s) { return ghCarte(s, m, plage); }).join('') + '</div>';
+        var reserve = ghPeutReserver(m, x.c.cle);
+        return '<div class="gh-pile' + (x.seances.length ? '' : ' is-vide') + (reserve ? ' is-reserve' : '') + '" role="cell" aria-label="' + gpEsc(x.c.titre + (x.seances.length ? '' : ', aucun groupe')) + '" data-gh-cle="' + gpEsc(x.c.cle) + '">' + x.seances.map(function (s) { return ghCarte(s, m, plage); }).join('') + '</div>';
       }).join('');
-    var vide = !colonnes.length ? '<div class="gp-vide">Aucune activité ce jour-là.</div>' : '';
-    var html = '<div class="gp gh" style="--gh-h:48px;--gh-n:' + heures + ';--gh-col-h:' + colH + 'px;--gh-decal:' + (plage.vDebut % 1 ? 0.5 : 0) + '">'
-      + vide
-      + (colonnes.length ? '<div class="gh-grille" role="table" aria-label="Planning de toutes les activités du ' + gpEsc(m.jour) + '" style="grid-template-columns:' + colH + 'px repeat(' + colonnes.length + ', minmax(0, 1fr))">'
-        + tetes + piles
-        + (maintenantVu ? '<i class="gh-maintenant" aria-hidden="true" style="top:calc(' + GH.tete + 'px + var(--gh-h) * ' + (m.maintenant - plage.vDebut) + ')"></i>' : '')
-        + '</div>' : '')
-      + '</div>';
+    // UN JOUR FERME OU SANS RESERVATION GARDE SA GRILLE : un bandeau le dit au-dessus.
+    var bandeau = m.fenetre && m.fenetre.closed
+      ? '<div class="gh-bandeau is-ferme" role="status">Centre fermé ce jour-là' + (seances.length ? ' · réservations existantes à contrôler' : '') + '</div>'
+      : !seances.length ? '<div class="gh-bandeau" role="status">Aucune réservation ce jour-là</div>' : '';
+    var html = '<div class="gp gh' + (plage.ferme ? ' is-ferme' : '') + '" style="--gh-h:48px;--gh-n:' + heures + ';--gh-col-h:' + colH + 'px;--gh-decal:' + (plage.vDebut % 1 ? 0.5 : 0) + ';--gh-now:0">'
+      + bandeau
+      + '<div class="gh-grille" role="table" aria-label="Planning de toutes les activités du ' + gpEsc(m.jour) + '" style="grid-template-columns:' + colH + 'px repeat(' + colonnes.length + ', minmax(0, 1fr))">'
+      + tetes + piles
+      + '<i class="gh-maintenant" aria-hidden="true" hidden></i>'
+      + '</div></div>';
     wrap._ghPlage = plage;
     wrap._ghColonnes = colonnes;
     wrap._ghModele = m;
     wrap._ghSeances = seances;
     // UN DESSIN IDENTIQUE NE SE REFAIT PAS : la console redessine a chaque
-    // sondage ; la grille ne se reconstruit que si elle change (la barre de
-    // l heure bouge chaque minute) ou si sa largeur change. Le survol, la
-    // bulle et la recherche en cours restent.
+    // sondage et a chaque minute ; la grille ne se reconstruit que si elle
+    // change (une carte qui finit, un groupe qui arrive) ou si sa largeur
+    // change. L heure qu il est et les minutes de retard ne sont pas dans le
+    // dessin (ghHorloge les pose) : le survol, la bulle, la recherche, le
+    // focus et le defilement restent.
+    var cle = html.replace(/<span class="gh-min">(\d+)<\/span>/g, function (x, n) { return '<span class="gh-min">' + n.replace(/\d/g, '#') + '</span>'; });
     var largeur = wrap.clientWidth || 0;
-    if (html === wrap._ghHtml && wrap.querySelector('.gh') && Math.abs(largeur - (wrap._gpLargeur || 0)) <= 2) {
+    if (cle === wrap._ghHtml && wrap.querySelector('.gh') && Math.abs(largeur - (wrap._gpLargeur || 0)) <= 2) {
+      ghHorloge(wrap);
       gpChercher(wrap, String(state.searchTerm || '').toLowerCase().trim());
       return;
     }
-    // Une grille qui defile en elle-meme (matin rouvert sur un petit ecran)
-    // garde sa position d un dessin a l autre : la minute qui passe ne la
-    // ramene pas en haut.
+    // Ce qu on regardait se garde d un dessin a l autre : la position de la
+    // grille (le meme jour) et la carte qui avait le focus.
     var ancienne = wrap.querySelector('.gh-grille');
-    var defilement = ancienne && wrap._ghMatinDessine === Boolean(wrap._ghMatin) ? { y: ancienne.scrollTop, x: ancienne.scrollLeft } : null;
-    wrap._ghHtml = html;
+    var memeJour = wrap._ghJourDessine === m.jour;
+    var defilement = ancienne && memeJour ? { y: ancienne.scrollTop, x: ancienne.scrollLeft } : null;
+    var actif = document.activeElement;
+    var focus = actif && wrap.contains(actif) && actif.getAttribute ? actif.getAttribute('data-gh-k') : null;
+    wrap._ghHtml = cle;
     wrap.innerHTML = html;
     wrap._gpLargeur = largeur;
     wrap._ghColH = colH;
-    wrap._ghMatinDessine = Boolean(wrap._ghMatin);
+    wrap._ghJourDessine = m.jour;
     var racine = wrap.querySelector('.gh');
     ghHauteur(wrap);
     ghLargeurs(wrap);
     ghAjusterCartes(racine);
     ghCorriger(wrap);
+    ghHorloge(wrap);
     var nouvelle = racine.querySelector('.gh-grille');
     if (defilement && nouvelle && (defilement.y || defilement.x)) {
       wrap._ghRestaure = true;
       nouvelle.scrollTop = defilement.y;
       nouvelle.scrollLeft = defilement.x;
       setTimeout(function () { wrap._ghRestaure = false; }, 120);
+    } else if (!defilement && nouvelle) {
+      // (apres coup : la console rend ensuite a chaque boite qui defile la
+      // position qu elle avait avant le dessin, celle de l autre jour)
+      setTimeout(function () { if (nouvelle.isConnected) ghOuvrirSurMaintenant(wrap); }, 0);
+    }
+    if (focus) {
+      var revient = Array.from(wrap.querySelectorAll('[data-gh-k]')).find(function (c) { return c.getAttribute('data-gh-k') === focus; });
+      if (revient) revient.focus({ preventScroll: true });
     }
     if (document.fonts && document.fonts.status !== 'loaded') {
-      document.fonts.ready.then(function () { if (racine.isConnected) { ghLargeurs(wrap); ghAjusterCartes(racine); ghCorriger(wrap); } });
+      document.fonts.ready.then(function () { if (racine.isConnected) { ghLargeurs(wrap); ghAjusterCartes(racine); ghCorriger(wrap); ghHorloge(wrap); } });
     }
     var q = String(state.searchTerm || '').toLowerCase().trim();
     if (q) gpChercher(wrap, q);
@@ -576,16 +634,65 @@
     }
   }
 
-  // LA HAUTEUR D UNE HEURE se calcule sur l ecran : la journee (son
-  // apres-midi, matin replie) tient de la tete des colonnes au bas de la page.
-  // Trop court meme au plancher : la grille defile en elle-meme, « Agrandir »
-  // se met en avant.
+  // L HEURE QU IL EST, SANS REDESSINER : la barre et son etiquette se posent
+  // par une variable (--gh-now), l etiquette d heure qu elle recouvre
+  // s efface, les minutes de retard se recomptent. Rien d autre ne bouge.
+  function ghHorloge(wrap) {
+    var racine = wrap.querySelector('.gh');
+    var m = wrap._ghModele, plage = wrap._ghPlage;
+    if (!racine || !m || !plage) return;
+    var maintenant = null;
+    if (m.maintenant != null) {
+      var jourNuit = m.jour !== todayStr();
+      maintenant = jourNuit ? 24 + currentTimeDecimal() : currentTimeDecimal();
+    }
+    var vu = maintenant != null && maintenant >= plage.vDebut && maintenant <= plage.fin;
+    var barre = racine.querySelector('.gh-maintenant');
+    var etiquette = racine.querySelector('.gh-maintenant-h');
+    if (barre) barre.hidden = !vu;
+    if (etiquette) { etiquette.hidden = !vu; if (vu) etiquette.textContent = gpHeure(maintenant); }
+    if (vu) racine.style.setProperty('--gh-now', String(maintenant - plage.vDebut));
+    racine.querySelectorAll('.gh-h').forEach(function (h) {
+      var t = Number(h.getAttribute('data-gh-t'));
+      h.classList.toggle('is-sous', vu && Math.abs(t + 0.25 - maintenant) < 0.2);
+    });
+    if (maintenant != null) {
+      racine.querySelectorAll('[data-gh-depuis] .gh-min').forEach(function (n) {
+        var texte = String(ghMinutesDeRetard(Number(n.parentNode.getAttribute('data-gh-depuis')), maintenant));
+        if (n.textContent !== texte) n.textContent = texte;
+      });
+    }
+    wrap._ghMaintenant = maintenant;
+  }
+
+  // UN NOUVEAU JOUR S OUVRE SUR CE QUI COMPTE : l heure qu il est (une heure
+  // de deja joue au-dessus), sinon la premiere activite, sinon l ouverture.
+  function ghOuvrirSurMaintenant(wrap) {
+    var racine = wrap.querySelector('.gh');
+    var grille = racine && racine.querySelector('.gh-grille');
+    var plage = wrap._ghPlage;
+    if (!grille || !plage || grille.scrollHeight <= grille.clientHeight + 1) return;
+    var hh = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-h')) || 48;
+    var seances = wrap._ghSeances || [];
+    var cible = wrap._ghMaintenant != null ? wrap._ghMaintenant - 1
+      : seances.length ? Math.min.apply(null, seances.map(function (s) { return s.start; })) - 0.5 : plage.vDebut;
+    wrap._ghRestaure = true;
+    grille.scrollTop = Math.max(0, Math.round((cible - plage.vDebut) * hh));
+    setTimeout(function () { wrap._ghRestaure = false; }, 120);
+  }
+
+  // LA HAUTEUR D UNE HEURE se calcule sur l ecran : la journee entiere tient
+  // de la tete des colonnes au bas de la page quand elle le peut. La grille
+  // est toujours sa propre fenetre (les heures et les tetes y restent
+  // collees) : trop courte meme au plancher, elle defile en elle-meme a une
+  // hauteur confortable et « Agrandir » se met en avant.
   function ghHauteur(wrap) {
     var racine = wrap.querySelector('.gh');
     var grille = racine && racine.querySelector('.gh-grille');
     if (!grille) return;
     racine.classList.remove('is-defile');
-    grille.style.maxHeight = '';
+    // (la fenetre de la grille n est pas retiree pendant la mesure : sans
+    // elle, la grille revenait en haut a chaque changement de taille)
     var boite = wrap.closest('.planning-box') || wrap;
     var fixe = getComputedStyle(boite).position === 'fixed';
     var heures = Math.max(0.5, Number(getComputedStyle(racine).getPropertyValue('--gh-n')) || 1);
@@ -593,10 +700,10 @@
     var dispo = Math.floor(window.innerHeight - haut - (fixe ? 10 : GH.bas) - GH.tete - 2);
     var hh = Math.floor(dispo / heures);
     wrap._ghDispoH = dispo;
+    grille.style.maxHeight = Math.max(GH.tete + GH.heureMin * 3, dispo + GH.tete) + 'px';
     if (hh < GH.heureMin) {
       hh = GH.heureConfort;
       racine.classList.add('is-defile');
-      grille.style.maxHeight = Math.max(GH.tete + GH.heureMin * 3, dispo + GH.tete) + 'px';
     }
     racine.style.setProperty('--gh-h', Math.min(GH.heureMax, hh) + 'px');
   }
@@ -679,6 +786,8 @@
     // Le gabarit se lit sur une carte qui n est pas finie : une carte finie
     // ecrit son nom plus maigre, donc plus etroit que les autres.
     var vive = grille.querySelector('.gh-c:not(.is-fini)') || grille.querySelector('.gh-c');
+    // Une journee sans carte : chaque colonne prend la largeur de sa tete.
+    if (!vive) return colonnes.map(function (x, i) { var l = ghLargeurTete(grille, i); return { essentiel: l, confort: l }; });
     var gab = ghGabarit(vive);
     var vDebut = wrap._ghPlage.vDebut;
     var etiquette = function (s) { return (s.start < vDebut ? 'depuis ' : s.e.libre ? '≈ ' : '') + gpHeure(s.start); };
@@ -722,19 +831,24 @@
         essentiel = Math.max(essentiel, (e + gab.marge) * s.k);
         confort = Math.max(confort, (b + gab.marge) * s.k);
       });
-      var tete = grille.querySelectorAll('.gh-entete')[i + 1];
-      var visibles = tete ? Array.from(tete.children).filter(function (el) { return getComputedStyle(el).display !== 'none'; }) : [];
-      var teteMin = tete ? visibles.reduce(function (s, el) { return s + Math.max(el.scrollWidth || 0, el.getBoundingClientRect().width); }, 0) + parseFloat(getComputedStyle(tete).columnGap || 6) * Math.max(0, visibles.length - 1) + parseFloat(getComputedStyle(tete).paddingLeft) * 2 + 2 : 0;
-      essentiel = Math.ceil(Math.max(GH.colMin, essentiel, teteMin));
+      essentiel = Math.ceil(Math.max(essentiel, ghLargeurTete(grille, i)));
       return { essentiel: essentiel, confort: Math.max(essentiel, Math.ceil(confort)) };
     });
+  }
+
+  // La largeur ou la tete d une colonne s ecrit entiere (picto, nom, compte).
+  function ghLargeurTete(grille, i) {
+    var tete = grille.querySelectorAll('.gh-entete')[i + 1];
+    var visibles = tete ? Array.from(tete.children).filter(function (el) { return getComputedStyle(el).display !== 'none'; }) : [];
+    var teteMin = tete ? visibles.reduce(function (s, el) { return s + Math.max(el.scrollWidth || 0, el.getBoundingClientRect().width); }, 0) + parseFloat(getComputedStyle(tete).columnGap || 6) * Math.max(0, visibles.length - 1) + parseFloat(getComputedStyle(tete).paddingLeft) * 2 + 2 : 0;
+    return Math.ceil(Math.max(GH.colMin, teteMin));
   }
 
   function ghLargeurs(wrap) {
     var racine = wrap.querySelector('.gh');
     var grille = racine && racine.querySelector('.gh-grille');
     var colonnes = wrap._ghColonnes || [];
-    if (!grille || !colonnes.length || !grille.querySelector('.gh-c')) return;
+    if (!grille || !colonnes.length) return;
     var hh = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-h')) || 48;
     var colH = wrap._ghColH || GH.colHeures;
     racine.style.setProperty('--gh-col-h', colH + 'px');
@@ -944,6 +1058,8 @@
     // Entrer dans la bulle la garde (et annule un changement de carte en route).
     b.addEventListener('pointerenter', function () { var e = b._ghWrap && b._ghWrap._ghB; if (e) { clearTimeout(e.minuteur); e.attendue = null; } });
     b.addEventListener('pointerleave', function (e) {
+      // (au doigt, lever le doigt « sort » de la bulle : elle reste)
+      if (e.pointerType !== 'mouse') return;
       var vers = e.relatedTarget;
       if (b._ghWrap && !(vers && vers.closest && vers.closest('.gh-c'))) ghCacherBulle(b._ghWrap);
     });
@@ -1020,6 +1136,32 @@
     if (tout) fermer(); else etat.minuteur = setTimeout(fermer, 200);
   }
 
+  // La demi-heure sous le pointeur dans une colonne, si elle est libre (aucune
+  // carte n y est posee).
+  function ghHeureSous(wrap, pile, y) {
+    var racine = wrap.querySelector('.gh');
+    var plage = wrap._ghPlage;
+    if (!racine || !plage) return null;
+    var hh = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-h')) || 48;
+    var t = plage.vDebut + Math.floor((y - pile.getBoundingClientRect().top) / hh * 2) / 2;
+    if (t < plage.vDebut || t >= plage.fin - 1e-6) return null;
+    var cle = pile.getAttribute('data-gh-cle');
+    var prise = (wrap._ghSeances || []).some(function (s) { return s.cle === cle && s.start < t + 0.5 - 1e-6 && s.finDessinee > t + 1e-6; });
+    return prise ? null : t;
+  }
+  // Toucher une case vide du bowling ou du laser : la reservation rapide a
+  // cette heure, par le chemin de son planning (une piste a choisir au
+  // bowling, le depart au laser). Rien ne s ecrit ici.
+  function ghReserverIci(wrap, e) {
+    var pile = e.target.closest('.gh-pile.is-reserve');
+    if (!pile) return;
+    var t = ghHeureSous(wrap, pile, e.clientY);
+    if (t == null) return;
+    ghCacherBulle(wrap, true);
+    if (pile.getAttribute('data-gh-cle') === 'laser') lpReserver(t);
+    else quickFromCell(0, t);
+  }
+
   function ghBrancher(wrap) {
     if (wrap._gpBranche) return;
     wrap._gpBranche = true;
@@ -1058,15 +1200,49 @@
     }, true);
     window.addEventListener('scroll', function () { if (wrap._ghB && wrap._ghB.vue) ghCacherBulle(wrap, true); }, { passive: true });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && wrap._ghB && wrap._ghB.vue) ghCacherBulle(wrap, true); });
+    // AU DOIGT, DEUX TEMPS (2026-10-19) : toucher une carte montre le
+    // programme du groupe (la bulle, ses cartes allumees) ; toucher encore la
+    // meme carte, ou « Ouvrir la fiche », ouvre la fiche. A la souris et au
+    // clavier, la carte ouvre la fiche tout de suite (la bulle vient au survol).
+    var pointeur = 'mouse';
+    wrap.addEventListener('pointerdown', function (e) { pointeur = e.pointerType || 'mouse'; }, true);
+    document.addEventListener('pointerdown', function (e) {
+      var b = wrap._ghB;
+      if (!b || !b.vue || !e.target.closest || e.target.closest('#ghBulle') || e.target.closest('.gh-c')) return;
+      if (wrap.contains(e.target) || e.pointerType !== 'mouse') ghCacherBulle(wrap, true);
+    }, true);
     wrap.addEventListener('click', function (e) {
       if (!e.target.closest) return;
-      if (e.target.closest('[data-gh-matin]')) { wrap._ghMatin = !wrap._ghMatin; wrap._ghHtml = null; renderGlobalPlanning(wrap); return; }
       if (e.target.closest('a, button')) return;
       var c = e.target.closest('[data-gp-ouvre]');
-      if (!c) return;
+      if (!c) { ghReserverIci(wrap, e); return; }
+      if (pointeur !== 'mouse' && e.detail !== 0) {
+        var b = wrap._ghB;
+        if (!(b && b.vue && b.carte === c)) { ghMontrerBulle(wrap, c, true); return; }
+      }
       ghCacherBulle(wrap, true);
       if (typeof openPos === 'function') openPos(Number(c.getAttribute('data-gp-ouvre')));
     });
+    // UNE CASE VIDE DU BOWLING OU DU LASER : « + 16:30 » la suit a la souris.
+    wrap.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var pile = e.target.closest && e.target.closest('.gh-pile.is-reserve');
+      var fantome = wrap.querySelector('.gh-ajout');
+      if (!pile || e.target.closest('.gh-c')) { if (fantome) fantome.hidden = true; return; }
+      var t = ghHeureSous(wrap, pile, e.clientY);
+      if (t == null) { if (fantome) fantome.hidden = true; return; }
+      if (!fantome || fantome.parentNode !== pile) {
+        if (fantome) fantome.remove();
+        fantome = document.createElement('div');
+        fantome.className = 'gh-ajout';
+        fantome.setAttribute('aria-hidden', 'true');
+        pile.appendChild(fantome);
+      }
+      fantome.hidden = false;
+      fantome.style.top = 'calc(var(--gh-h) * ' + (t - wrap._ghPlage.vDebut) + ' + 1px)';
+      fantome.textContent = '+ ' + gpHeure(t);
+    });
+    wrap.addEventListener('pointerleave', function () { var f = wrap.querySelector('.gh-ajout'); if (f) f.hidden = true; });
     wrap.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       var c = e.target.closest && e.target.closest('[data-gp-ouvre]');
@@ -1081,10 +1257,14 @@
         if (!wrap.isConnected || !wrap.querySelector('.gh')) return;
         if (Math.abs((wrap.clientWidth || 0) - (wrap._gpLargeur || 0)) > 2) { wrap._ghHtml = null; renderGlobalPlanning(wrap); return; }
         var racine = wrap.querySelector('.gh');
+        var grille = racine.querySelector('.gh-grille');
+        var y = grille ? grille.scrollTop : 0, x = grille ? grille.scrollLeft : 0;
         ghHauteur(wrap);
         ghLargeurs(wrap);
         ghAjusterCartes(racine);
         ghCorriger(wrap);
+        ghHorloge(wrap);
+        if (grille && (grille.scrollTop !== y || grille.scrollLeft !== x)) { wrap._ghRestaure = true; grille.scrollTop = y; grille.scrollLeft = x; setTimeout(function () { wrap._ghRestaure = false; }, 120); }
       }, 120);
     };
     window.addEventListener('resize', recalculer);

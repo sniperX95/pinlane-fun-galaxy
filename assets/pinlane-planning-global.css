@@ -2,7 +2,7 @@
    bowling, une colonne par activite : les heures a gauche, les cartes a la
    couleur de l etat du groupe. La hauteur d une heure (--gh-h), le nombre
    d heures (--gh-n) et les largeurs sont posees par le script. */
-.gh { --gh-h: 48px; --gh-n: 10; --gh-col-h: 56px; --gh-decal: 0; --gh-jeu: 2px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+.gh { --gh-h: 48px; --gh-n: 10; --gh-col-h: 60px; --gh-decal: 0; --gh-now: 0; --gh-jeu: 2px; display: flex; flex-direction: column; gap: 8px; position: relative; }
 
 /* LES TEINTES D ETAT : celles des cartes du planning bowling et du planning
    laser (bleu confirmé, ambre arrivé, vert payé, gris pas venu). */
@@ -16,29 +16,26 @@
 [data-theme='dark'] :is(.gh-c.t-paid, .gh-legende .t-paid, .gh-b__statut.t-paid) { --bk-haut: #12301f; --bk-cadre: #2a5e43; --bk-barre: #3dd68c; --bk-encre: #e3f9ee; --bk-encre-2: #8ae6b8; --bk-plein: #04220f; }
 [data-theme='dark'] :is(.gh-c.t-absent, .gh-b__statut.t-absent) { --bk-haut: #222327; --bk-cadre: #3a3c42; --bk-barre: #8b909a; --bk-encre: #d7d9de; --bk-encre-2: #a8acb4; --bk-plein: #111214; }
 
-/* LE MATIN DEJA JOUE, REPLIE DANS LE COIN DE LA GRILLE : un bouton. */
-.gh-matin { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 100%; height: 100%; padding: 0; border: 0; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); color: color-mix(in srgb, var(--accent) 72%, var(--text)); font: inherit; cursor: pointer; line-height: 1.05; }
-.gh-matin b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 11.5px; font-weight: 700; }
-.gh-matin span { font-size: 9.5px; font-weight: 600; text-align: center; }
-.gh-matin:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
-.gh-matin:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.gh-matin.is-ouvert { background: var(--subtle); color: var(--text); }
-.gh-entete--h:has(.gh-matin) { padding: 0; }
-
-/* LA GRILLE : la colonne des heures, puis une colonne par activite. */
-.gh-grille { position: relative; display: grid; grid-template-rows: 42px auto; background: var(--surface); border-top: 1px solid var(--line); }
-.gh.is-defile .gh-grille { overflow-y: auto; overscroll-behavior: contain; }
-.gh.is-trop-serre .gh-grille { overflow-x: auto; overscroll-behavior: contain; }
+/* LA GRILLE : la colonne des heures, puis une colonne par activite. Elle est
+   sa propre fenetre : quand la journee ne tient pas, elle defile en elle-meme,
+   les tetes collees en haut et les heures collees a gauche. */
+.gh-grille { position: relative; display: grid; grid-template-rows: 44px auto; background: var(--surface); border-top: 1px solid var(--line); overflow: auto; overscroll-behavior: contain; }
 .gh-entete {
   position: sticky; top: 0; z-index: 7; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 0 8px;
   background: var(--surface); border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); overflow: hidden; white-space: nowrap;
-  font-size: 13px; font-weight: 650; color: var(--text);
+  font-size: 13.5px; font-weight: 650; color: var(--text);
 }
+/* Une activite sans groupe ce jour-la : sa colonne est la, plus discrete. */
+.gh-entete.is-vide { color: var(--muted); }
+.gh-entete.is-vide svg { color: var(--faint); }
+.gh-entete.is-vide .gh-entete__n { display: none; }
 .gh-entete:last-of-type { border-right: 0; }
 .gh-entete svg { flex: 0 0 auto; width: 17px; height: 17px; color: var(--muted); }
 .gh-entete__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gh-entete__n { flex: 0 0 auto; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-size: 11px; font-weight: 650; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
-.gh-entete--h { font-size: 11px; font-weight: 500; color: var(--faint); }
+/* Le coin et la colonne des heures restent colles a gauche quand la grille
+   defile de cote, le coin aussi en haut. */
+.gh-entete--h { position: sticky; left: 0; z-index: 9; font-size: 11px; font-weight: 500; color: var(--faint); }
 
 /* UNE COLONNE : les demi-heures en filets (l heure pleine en trait, la
    demi-heure en plus clair), comme les cases du planning bowling. */
@@ -50,50 +47,59 @@
   background-position: 0 calc(var(--gh-h) * var(--gh-decal)), 0 0;
 }
 .gh-pile:last-child { border-right: 0; }
-.gh-pile--h { background-image: none; }
+.gh-pile--h { position: sticky; left: 0; z-index: 6; background: var(--surface); background-image: none; }
+.gh-pile.is-vide { background-color: color-mix(in srgb, var(--text) 1.5%, transparent); }
+.gh-pile.is-reserve { cursor: pointer; }
+/* La case libre sous la souris, au bowling et au laser : « + 16:30 ». */
+.gh-ajout { position: absolute; left: var(--gh-jeu); right: var(--gh-jeu); z-index: 1; height: calc(var(--gh-h) / 2 - 2px); box-sizing: border-box; display: flex; align-items: center; padding: 0 8px; border: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--accent-strong, var(--accent)); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 650; pointer-events: none; }
+.gh-ajout[hidden] { display: none; }
 .gh-h {
   position: absolute; left: 0; right: 0; height: calc(var(--gh-h) / 2); display: flex; align-items: center; justify-content: center;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent); box-sizing: border-box;
-  font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--faint); white-space: nowrap;
+  font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--faint); white-space: nowrap;
 }
-.gh-h.is-pleine { color: var(--text); font-size: 12px; font-weight: 600; }
+.gh-h.is-pleine { color: var(--text); font-size: 13px; font-weight: 650; }
 .gh-h.is-sous { color: transparent; }
 
 /* L HEURE QU IL EST : la barre traverse toutes les activites, l etiquette vit
    dans la colonne des heures (le planning bowling). */
 /* Le trait passe SOUS les cartes : une carte en cours reste lisible (au-dessus,
    il barrait son nom comme une annulation). Elle est pleine, elle se voit. */
-.gh-maintenant { position: absolute; left: var(--gh-col-h); right: 0; height: 2px; margin-top: -1px; z-index: 1; background: var(--accent); pointer-events: none; }
-.gh-maintenant-h { position: absolute; left: 50%; z-index: 21; transform: translate(-50%, -50%); padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-contrast, #fff); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; pointer-events: none; }
+/* La barre est posee sur la zone des colonnes (grid-column) : elle traverse
+   toute la largeur, meme quand la grille defile de cote. ghHorloge la deplace
+   par --gh-now, sans redessiner. */
+.gh-maintenant { position: absolute; grid-column: 2 / -1; grid-row: 2; left: 0; right: 0; top: calc(var(--gh-h) * var(--gh-now)); height: 2px; margin-top: -1px; z-index: 1; background: var(--accent); pointer-events: none; }
+.gh-maintenant-h { position: absolute; left: 50%; top: calc(var(--gh-h) * var(--gh-now)); z-index: 21; transform: translate(-50%, -50%); padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-contrast, #fff); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 650; line-height: 1.5; white-space: nowrap; pointer-events: none; }
+.gh-maintenant[hidden], .gh-maintenant-h[hidden] { display: none; }
 
 /* UNE CARTE : la carte du planning bowling. Le nom d abord, l heure devant
    s il reste la place, les pistes ou les armes en dessous. */
 .gh-c {
   position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 0; padding: 1px 5px; box-sizing: border-box; overflow: hidden;
   border: 1px solid var(--bk-cadre); border-left: 3px solid var(--bk-barre); border-radius: 7px;
-  background: linear-gradient(180deg, var(--bk-haut), color-mix(in srgb, var(--bk-haut) 74%, var(--surface)));
+  background: var(--bk-haut);
   color: var(--bk-encre); cursor: pointer;
 }
 .gh-c:hover { z-index: 10; border-color: var(--bk-barre); }
 .gh-c:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 11; }
 .gh-c__l1 {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--gh-nl, 1); overflow: hidden;
-  font-size: 11.5px; line-height: 13px; overflow-wrap: normal;
+  font-size: 13px; line-height: 15px; overflow-wrap: normal;
 }
 /* Une espace (pas une marge) separe l heure du nom : le nom peut passer a la ligne. */
-.gh-c__h { margin-right: 1px; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 10.5px; font-weight: 650; color: var(--bk-encre-2); }
+.gh-c__h { margin-right: 1px; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 650; color: var(--bk-encre-2); }
 .gh-c__nom { font-weight: 650; }
 .gh-c.sans-heure .gh-c__h { display: none; }
 .gh-c .gp-tags { display: inline; }
 .gh-c .gp-tag + .gp-tag { margin-left: 3px; }
 /* Une etiquette ne deborde jamais de sa carte : trop longue, elle se coupe (le nom, lui, est entier). */
-.gh-c .gp-tag { display: inline-block; max-width: 100%; box-sizing: border-box; margin-left: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 14px; vertical-align: top; white-space: nowrap; }
+.gh-c .gp-tag { display: inline-block; max-width: 100%; box-sizing: border-box; margin-left: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 15px; vertical-align: top; white-space: nowrap; }
 /* Le rouge du retard un peu assombri : le blanc y tient 4,6:1 en sombre (7:1 en clair). */
 .gh-c .gp-tag.is-retard { background: color-mix(in srgb, var(--danger) 82%, #000); color: #fff; }
 .gh-c .gp-tag.is-valider { box-shadow: inset 0 0 0 1.2px var(--warning); color: var(--warning); }
 .gh-c .gp-tag.is-cloturer { box-shadow: inset 0 0 0 1.2px var(--line-strong); color: var(--text); }
 .gh-c .gp-tag.is-absent { background: var(--subtle); color: var(--muted); }
-.gh-c__det { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 11px; line-height: 13px; color: var(--bk-encre-2); white-space: nowrap; overflow: hidden; }
+.gh-c__det { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; line-height: 15px; color: var(--bk-encre-2); white-space: nowrap; overflow: hidden; }
 .gh-c__det-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; font-weight: 550; }
 .gh-c.sans-det .gh-c__det { display: none; }
 /* LES PICTOS DU BOWLING APRES LE NOM (la note a lire, l anniversaire), a la
@@ -101,7 +107,7 @@
    son encre : l ambre et le bleu ne tiennent pas sur son fond. */
 .gh-c .gh-pictos { display: inline-flex; align-items: center; vertical-align: -2px; }
 .gh-c .gh-pictos .bk-flags { gap: 3px; }
-.gh-c .gh-pictos .bk-flag { width: 12px; height: 12px; }
+.gh-c .gh-pictos .bk-flag { width: 13px; height: 13px; }
 .gh-c.is-encours .gh-pictos { --warning: currentColor; --accent-strong: currentColor; }
 .gh-c.is-fini .gh-pictos .bk-flag { color: var(--faint); }
 /* Ce que la carte tait, pour un lecteur d ecran seulement. */
@@ -124,7 +130,11 @@
 .gh.a-groupe .gh-c:not(.is-groupe) { opacity: 0.32; }
 .gh.a-groupe .gh-c.is-groupe { z-index: 9; box-shadow: 0 0 0 2px var(--text); }
 .gh.is-recherche .gh-c.is-terne { opacity: 0.22; }
-.gh .gp-vide { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+/* UN JOUR FERME OU SANS RESERVATION : un bandeau au-dessus de la grille, la
+   grille reste. */
+.gh-bandeau { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--subtle); color: var(--muted); font-size: 13px; font-weight: 600; }
+.gh-bandeau.is-ferme { background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: color-mix(in srgb, var(--warning) 45%, var(--text)); }
+.gh.is-ferme .gh-pile:not(.gh-pile--h) { background-color: color-mix(in srgb, var(--text) 3%, transparent); }
 
 /* LA LEGENDE (tete de la boite). */
 .gh-legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--muted); }
@@ -144,19 +154,19 @@
    (chaque nom entier) ne tient pas a l ecriture normale. */
 .gh.is-compact { --gh-jeu: 1px; }
 .gh.is-compact .gh-c { padding: 1px 3px; border-left-width: 2px; }
-.gh.is-compact .gh-c__l1 { font-size: 11px; line-height: 12.5px; }
-.gh.is-compact .gh-c__h { font-size: 10px; }
-.gh.is-compact .gh-c__det { font-size: 10.5px; line-height: 12.5px; }
+.gh.is-compact .gh-c__l1 { font-size: 12.5px; line-height: 14.5px; }
+.gh.is-compact .gh-c__h { font-size: 11.5px; }
+.gh.is-compact .gh-c__det { font-size: 11.5px; line-height: 14.5px; }
 .gh.is-compact .gh-entete { gap: 4px; padding: 0 4px; font-size: 12px; }
 .gh.is-compact .gh-entete svg { width: 15px; height: 15px; }
 .gh.is-compact .gh-entete__n { display: none; }
 .gh.is-compact .gp-tag__long { display: none; }
 /* Le second cran : 10,5 px, la colonne des heures plus etroite. */
-.gh.is-compact-2 .gh-c__l1 { font-size: 10.5px; line-height: 12px; }
-.gh.is-compact-2 .gh-c__det { font-size: 10px; line-height: 12px; }
-.gh.is-compact-2 .gh-entete { font-size: 11.5px; }
-.gh.is-compact-2 .gh-h { font-size: 10px; }
-.gh.is-compact-2 .gh-h.is-pleine { font-size: 11px; }
+.gh.is-compact-2 .gh-c__l1 { font-size: 12px; line-height: 14px; }
+.gh.is-compact-2 .gh-c__det { font-size: 11px; line-height: 14px; }
+.gh.is-compact-2 .gh-entete { font-size: 12px; }
+.gh.is-compact-2 .gh-h { font-size: 10.5px; }
+.gh.is-compact-2 .gh-h.is-pleine { font-size: 12px; }
 
 /* LA BULLE D UN GROUPE, au survol a la souris : son programme entier, ses
    notes, la fiche et « Arrivé ». Elle vit dans le document, au-dessus du
@@ -199,6 +209,8 @@
 .gh-b__gestes button.is-premier { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }
 .gh-b__gestes button.is-premier:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
 .gh-b__gestes button:active { transform: scale(0.97); }
+/* Au doigt, des gestes a la taille d un doigt. */
+@media (pointer: coarse) { .gh-b__gestes button { min-height: 44px; font-size: 13.5px; } }
 
 @media (prefers-reduced-motion: reduce) {
   .gh-c { transition: none; }
@@ -211,8 +223,15 @@
    ajoute au bowling : la carte pleine, grise, en pointilles. */
 .global-planning-box .gh { gap: 0; }
 .planning-box.expanded #globalPlanningGridWrap { flex: 1 1 auto; min-height: 0; }
-.gh-sous { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
-.gh-sous > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.gh-sous .gh-leg-c { width: 16px; height: 10px; border-radius: 3px; }
+/* Une seule legende : le statut (la couleur de la carte), puis l heure (pleine, grise, en pointilles). */
+.global-planning-box .planning-title-stack > h2 { white-space: nowrap; }
+.gh-sous { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11.5px; }
+.gh-sous > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.gh-sous .gh-leg-c { width: 14px; height: 10px; border-radius: 3px; }
+.gh-sous .gh-leg-sep { height: 12px; }
+/* En plein ecran, la tete tient sur une ligne et le sous-titre dans 300 px :
+   la legende y garde le statut (Confirmé, Arrivé, Payé, la regle de Movsar
+   du 2026-08-27) ; l etat d une carte se lit dans sa bulle. */
+.planning-box.expanded .gh-sous > :nth-child(n+4) { display: none; }
 /* Trop serre pour tout montrer sans defiler : « Agrandir » se met en avant. */
 .global-planning-box.gp-a-agrandir:not(.expanded) #globalPlanningToggle { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }

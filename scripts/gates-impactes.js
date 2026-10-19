@@ -309,11 +309,28 @@ function gatesImpactes({ base, fichiers } = {}) {
   const proprietaires = new Map();
   for (const [nom, deps] of Object.entries(index)) for (const f of deps) { if (!proprietaires.has(f)) proprietaires.set(f, []); proprietaires.get(f).push(nom); }
   const sansProprietaire = [];
+  // Un fichier SUPPRIME (ou renomme) n est plus dans l index : ceux qui le
+  // chargeaient encore casseraient sans etre choisis. Ses proprietaires sont
+  // ceux des fichiers qui citent encore son nom (require, chemin, balise).
+  const citeurs = (f) => {
+    const nom = path.posix.basename(f);
+    const tige = nom.replace(/\.\w+$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(`[\\\\/'"\`]${tige}(?:\\.\\w{1,6})?['"\`?#]`);
+    return ctx.fichiers.filter((g) => /\.(?:c?js|ts|html|json)$/.test(g) && rx.test(ctx.lire(g)));
+  };
   for (const f of modifies.fichiers) {
     const siens = (proprietaires.get(f) || []).filter((nom) => config.suite.includes(nom) || (config.toujours || []).includes(nom));
     siens.forEach((nom) => ajouter(nom, f));
+    let cites = 0;
+    if (!ctx.ensemble.has(f) && PRODUIT.test(f)) {
+      for (const g of citeurs(f)) {
+        const leurs = (proprietaires.get(g) || []).filter((nom) => config.suite.includes(nom));
+        leurs.forEach((nom) => ajouter(nom, `${f} (supprime, encore cite par ${g})`));
+        cites += leurs.length;
+      }
+    }
     if (SANS_PROPRIETAIRE.test(f)) { purs.filter((nom) => config.suite.includes(nom)).forEach((nom) => ajouter(nom, `${f} (sans proprietaire : tous les gates purs)`)); }
-    if (!siens.length && !INFRA.test(f)) sansProprietaire.push(f);
+    if (!siens.length && !cites && !INFRA.test(f)) sansProprietaire.push(f);
   }
   (config.toujours || []).forEach((nom) => ajouter(nom, 'toujours'));
   const ordre = [...config.suite, ...(config.toujours || [])];

@@ -33,7 +33,7 @@ const commun = require('./gates-commun');
 
 const ROOT = commun.ROOT;
 const INDEX = path.join(ROOT, 'tmp', 'gates-index.json');
-const VERSION_INDEX = 1;
+const VERSION_INDEX = 5;
 const PRODUIT = /^(?:lib|api|assets|database|ops-knowledge|workers|tools|menu|demo|scripts)\/[\w./-]+\.\w{1,6}$|^[\w.-]+\.(?:html|js|ts|json|txt|xml)$/;
 const SANS_PROPRIETAIRE = /\.sql$|^package(?:-lock)?\.json$|^vercel\.json$|^middleware\.ts$|^\.github\//;
 const INFRA = /^scripts\/(?:gates-commun|gates-lancer|gates-impactes)\.js$|^scripts\/gates-(?:suite|durees)\.json$/;
@@ -75,6 +75,104 @@ function argumentsDeRequire(source) {
   return sortie;
 }
 
+// Les arguments de premier niveau d un appel dont `debut` suit la parenthese.
+function argumentsDe(source, debut) {
+  const args = [];
+  let profondeur = 0;
+  let courant = '';
+  let i = debut;
+  let chaine = '';
+  for (; i < source.length; i += 1) {
+    const c = source[i];
+    if (chaine) { courant += c; if (c === '\\') { courant += source[i + 1] || ''; i += 1; } else if (c === chaine) chaine = ''; continue; }
+    if (c === '\'' || c === '"' || c === '`') { chaine = c; courant += c; continue; }
+    if (c === '(' || c === '[' || c === '{') profondeur += 1;
+    if (c === ')' || c === ']' || c === '}') { if (profondeur === 0) break; profondeur -= 1; }
+    if (c === ',' && profondeur === 0) { args.push(courant.trim()); courant = ''; continue; }
+    courant += c;
+  }
+  if (courant.trim()) args.push(courant.trim());
+  return { args, fin: i };
+}
+
+const RACINES = /^(?:ROOT|root|RACINE|racine|DEPOT|depot|REPO|repoRoot|ROOT_DIR|PROJECT_ROOT)$/;
+// Un chemin calcule : path.join(ROOT, 'lib', 'x.js'), path.resolve(__dirname,
+// '..', 'assets'), une constante qui en tient un, ROOT seul. Rend
+// { chemin, dynamique } (dynamique : un morceau calcule a la fin), ou null.
+function resoudreChemin(expr, rel, constantes) {
+  const e = String(expr || '').trim();
+  const lit = /^(['"`])([^'"`$]*)\1$/.exec(e);
+  if (lit) return { chemin: lit[2], dynamique: false, litteral: true };
+  if (RACINES.test(e) || e === 'process.cwd()') return { chemin: '', dynamique: false };
+  if (e === '__dirname') return { chemin: path.posix.dirname(rel), dynamique: false };
+  if (/^[A-Za-z_$][\w$]*$/.test(e) && constantes.has(e)) return constantes.get(e);
+  const appel = /^[A-Za-z_$][\w$]*\s*\.\s*(?:join|resolve)\s*\(/.exec(e);
+  if (!appel) return null;
+  const { args } = argumentsDe(e, appel[0].length);
+  if (!args.length) return null;
+  const tete = resoudreChemin(args[0], rel, constantes);
+  if (!tete || tete.litteral) return null; // path.join('a', 'b') sans racine : un chemin relatif quelconque
+  let chemin = tete.chemin;
+  for (const a of args.slice(1)) {
+    const r = resoudreChemin(a, rel, constantes);
+    if (!r || r.dynamique) return { chemin: path.posix.normalize(chemin || '.').replace(/^\.$/, ''), dynamique: true };
+    chemin = path.posix.join(chemin || '.', r.chemin);
+  }
+  chemin = path.posix.normalize(chemin || '.').replace(/^\.\/?/, '');
+  if (chemin.startsWith('..')) return null;
+  return { chemin: chemin === '.' ? '' : chemin, dynamique: tete.dynamique };
+}
+
+const estDossier = (ctx, chemin) => chemin === '' || ctx.fichiers.some((f) => f.startsWith(`${chemin}/`));
+
+// Les fichiers qu une source atteint par des chemins calcules, et les dossiers
+// qu elle liste (readdir) ou dont elle lit un nom calcule : tout leur contenu.
+function cheminsCalcules(brut, rel, ctx, deps, dossiers) {
+  // require('path').join(...) se lit comme path.join(...).
+  const source = brut.replace(/\brequire\s*\(\s*['"](?:node:)?path['"]\s*\)\s*\./g, 'path.');
+  const constantes = new Map();
+  for (const m of source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*/g)) {
+    const debut = m.index + m[0].length;
+    const fin = (() => { let p = 0; for (let i = debut; i < source.length; i += 1) { const c = source[i]; if ('([{'.includes(c)) p += 1; else if (')]}'.includes(c)) { if (p === 0) return i; p -= 1; } else if ((c === ';' || c === '\n' || c === ',') && p === 0) return i; } return source.length; })();
+    const r = resoudreChemin(source.slice(debut, fin), rel, constantes);
+    if (r && !r.litteral) constantes.set(m[1], r);
+  }
+  const vus = [];
+  for (const m of source.matchAll(/\b[A-Za-z_$][\w$]*\s*\.\s*(?:join|resolve)\s*\(/g)) {
+    const { fin } = argumentsDe(source, m.index + m[0].length);
+    const r = resoudreChemin(source.slice(m.index, fin + 1), rel, constantes);
+    if (!r) continue;
+    vus.push(r);
+    if (!r.dynamique) { const c = candidats(r.chemin, ctx); if (c) deps.add(c); }
+    // Un nom calcule sous un dossier du depot (pas la racine) : tout le dossier.
+    else if (r.chemin && estDossier(ctx, r.chemin)) dossiers.add(r.chemin);
+  }
+  // Les dossiers listes.
+  for (const m of source.matchAll(/\breaddir(?:Sync)?\s*\(|\bopendir(?:Sync)?\s*\(/g)) {
+    const { args } = argumentsDe(source, m.index + m[0].length);
+    const r = resoudreChemin(args[0], rel, constantes);
+    if (r && estDossier(ctx, r.chemin)) { dossiers.add(r.chemin); continue; }
+    // Une liste au chemin calcule, dans une fonction (walk(dir)) : les
+    // dossiers que ses appels lui donnent ; a defaut, chaque dossier (hors la
+    // racine) que la source nomme.
+    const avant = source.slice(Math.max(0, m.index - 4000), m.index);
+    const noms = [...avant.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(|\b([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g)].map((x) => x[1] || x[2]);
+    const nom = noms[noms.length - 1];
+    let trouve = false;
+    if (nom) {
+      for (const appel of source.matchAll(new RegExp(`\\b${nom.replace(/\$/g, '\\$')}\\s*\\(`, 'g'))) {
+        const a = argumentsDe(source, appel.index + appel[0].length).args[0];
+        const ra = resoudreChemin(a, rel, constantes);
+        if (ra && !ra.dynamique && estDossier(ctx, ra.chemin)) { dossiers.add(ra.chemin); trouve = true; }
+      }
+    }
+    if (!trouve) {
+      for (const x of vus) if (!x.dynamique && x.chemin && estDossier(ctx, x.chemin)) dossiers.add(x.chemin);
+      for (const [, x] of constantes) if (!x.dynamique && x.chemin && estDossier(ctx, x.chemin)) dossiers.add(x.chemin);
+    }
+  }
+}
+
 function dependancesDirectes(rel, ctx) {
   const brut = ctx.lire(rel);
   const source = /\.(?:c?js|ts|mjs)$/.test(rel) ? commun.sansCommentaires(brut) : /\.html$/.test(rel) ? brut.replace(/<!--[\s\S]*?-->/g, ' ') : brut;
@@ -101,13 +199,16 @@ function dependancesDirectes(rel, ctx) {
       }
       if (morceaux.length === 1 && (PAQUETS_NODE.test(morceaux[0]) || /^[a-z@]/.test(morceaux[0]))) continue;
     }
+    cheminsCalcules(source, rel, ctx, deps, dossiers);
   }
   // Les chemins litteraux du produit et les noms de fichier de scripts/.
   for (const m of source.matchAll(/(?:['"`]|['"`}]\/|=\/|\.\/)((?:\.{1,2}\/)*(?:lib|api|assets|database|ops-knowledge|workers|tools|menu|demo|scripts)\/[\w./-]+?\.(?:c?js|css|html|json|sql|svg|png|webp|jpg|woff2|txt))\b/g)) {
     const c = candidats(m[1].replace(/^(?:\.{1,2}\/)+/, ''), ctx);
     if (c) deps.add(c);
   }
-  for (const m of source.matchAll(/['"`/]([\w-]+\.(?:html|ts)|embed\.js|robots\.txt|sitemap\.xml)['"`?#]/g)) {
+  // Une page de la racine : 'index.html', '/fungalaxy.html', `${BASE}/pro.html`
+  // (jamais la fin d une adresse d un autre site, .../guide/index.html).
+  for (const m of source.matchAll(/(?:['"`]\/?|\}\/)([\w-]+\.(?:html|ts)|embed\.js|robots\.txt|sitemap\.xml)['"`?#]/g)) {
     if (ctx.ensemble.has(m[1])) deps.add(m[1]);
   }
   if (rel.startsWith('scripts/')) {
@@ -133,10 +234,14 @@ function fermeture(depart, ctx, memo) {
     vus.add(rel);
     if (!memo.has(rel)) memo.set(rel, dependancesDirectes(rel, ctx));
     const d = memo.get(rel);
-    d.dossiers.forEach((x) => dossiers.add(x));
     for (const x of d.deps) if (!vus.has(x)) pile.push(x);
+    // Un dossier liste : chacun de ses fichiers, et ce que chacun charge.
+    for (const dossier of d.dossiers) {
+      if (dossiers.has(dossier)) continue;
+      dossiers.add(dossier);
+      ctx.fichiers.filter((x) => dossier === '' || x.startsWith(`${dossier}/`)).forEach((x) => { if (!vus.has(x)) pile.push(x); });
+    }
   }
-  for (const dossier of dossiers) ctx.fichiers.filter((f) => f.startsWith(`${dossier}/`)).forEach((f) => vus.add(f));
   return vus;
 }
 
@@ -223,12 +328,15 @@ function verifierTraces(dossierRun) {
   const ctx = contexte();
   const { index } = lireIndex(ctx);
   const dossier = path.join(dossierRun, 'traces');
+  const toujours = new Set(commun.configSuite().toujours || []);
   const trous = [];
   let lectures = 0;
   for (const nom of fs.readdirSync(dossier)) {
     const m = /^(.+)__(\d+)\.txt$/.exec(nom);
     if (!m) continue;
     const script = m[1].replace(/~/g, ':');
+    // Un gate joue a chaque diff (no-em-dash relit tout le depot) n a pas de trou.
+    if (toujours.has(script)) continue;
     const prevus = new Set(index[script] || []);
     for (const rel of fs.readFileSync(path.join(dossier, nom), 'utf8').split(/\r?\n/).filter(Boolean)) {
       lectures += 1;
@@ -240,9 +348,37 @@ function verifierTraces(dossierRun) {
   return { lectures, trous };
 }
 
+// Pourquoi un script depend d un fichier : le chemin de dependances, du gate
+// au fichier (--pourquoi test:x lib/y.js).
+function pourquoi(nom, cible) {
+  const ctx = contexte();
+  const memo = new Map();
+  const depart = commun.unites(nom).map((u) => u.fichier);
+  const parent = new Map(depart.map((f) => [f, null]));
+  const file = [...depart];
+  while (file.length) {
+    const rel = file.shift();
+    if (rel === cible) break;
+    if (!memo.has(rel)) memo.set(rel, dependancesDirectes(rel, ctx));
+    const d = memo.get(rel);
+    const suivants = [...d.deps, ...[...d.dossiers].flatMap((dossier) => ctx.fichiers.filter((x) => dossier === '' || x.startsWith(`${dossier}/`)))];
+    for (const x of suivants) if (!parent.has(x)) { parent.set(x, `${rel}${d.dossiers.size && !d.deps.has(x) ? ' (dossier liste)' : ''}`); file.push(x); }
+  }
+  if (!parent.has(cible)) return null;
+  const chemin = [cible];
+  for (let x = parent.get(cible); x; x = parent.get(x.replace(/ \(dossier liste\)$/, ''))) chemin.unshift(x);
+  return chemin;
+}
+
 if (require.main === module) {
   const args = process.argv.slice(2);
   const valeur = (nom) => { const i = args.indexOf(nom); return i >= 0 ? args[i + 1] : undefined; };
+  if (valeur('--pourquoi')) {
+    const i = args.indexOf('--pourquoi');
+    const chemin = pourquoi(args[i + 1], args[i + 2]);
+    console.log(chemin ? chemin.join('\n  -> ') : `${args[i + 1]} ne depend pas de ${args[i + 2]}`);
+    process.exit(0);
+  }
   if (valeur('--verifier-traces')) {
     const { lectures, trous } = verifierTraces(valeur('--verifier-traces'));
     const parFichier = {};

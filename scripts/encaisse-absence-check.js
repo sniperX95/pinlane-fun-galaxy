@@ -47,7 +47,7 @@ ok(d.totals.reservations === 2 && d.totals.collected === 140, '[B] encaisse de l
 
 (async () => {
   console.log('[C] base reelle');
-  if (!url) console.log('[C] PINLANE_TEST_DATABASE_URL absente, saute');
+  if (!url) console.log('[C] PINLANE_TEST_DATABASE_URL absente, saute\nGATE-SAUTE-PARTIE [C] base reelle (PINLANE_TEST_DATABASE_URL absente)');
   else if (!locale) ok(false, '[C] base refusee : pas locale');
   else {
     const db = require(path.join(ROOT, 'lib/database.js'));

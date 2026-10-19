@@ -23,6 +23,7 @@ const { execFileSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 if (!process.env.PINLANE_TEST_DATABASE_URL) {
   console.log('sauvegarde-check: SAUTE (PINLANE_TEST_DATABASE_URL absent : ce gate a besoin d une base Postgres locale)');
+  console.log('GATE-SAUTE PINLANE_TEST_DATABASE_URL absent');
   process.exit(0);
 }
 const source = new URL(process.env.PINLANE_TEST_DATABASE_URL);

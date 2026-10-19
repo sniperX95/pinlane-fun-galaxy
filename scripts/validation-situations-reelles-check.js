@@ -34,6 +34,7 @@ const { Readable } = require('stream');
 const ROOT = path.resolve(__dirname, '..');
 if (!process.env.PINLANE_TEST_DATABASE_URL) {
   console.log('validation-situations-reelles-check: SAUTE (PINLANE_TEST_DATABASE_URL absent : ce gate a besoin d une base Postgres locale)');
+  console.log('GATE-SAUTE PINLANE_TEST_DATABASE_URL absent');
   process.exit(0);
 }
 process.env.DATABASE_URL = process.env.PINLANE_TEST_DATABASE_URL;
@@ -207,7 +208,7 @@ const laser = (pax, name, date = J.plein) => ({ date, time: '15:00', pax, progra
     if (source.split(ancre).length !== 2) ok(false, '[contre-épreuve] ancre absente');
     else {
       const f = path.join(os.tmpdir(), `public-reservations-mute-${process.pid}.js`);
-      fs.writeFileSync(f, source.replace(ancre, "validationStatus: 'confirmed',").split("require('../").join(`require('${ROOT}/`));
+      fs.writeFileSync(f, source.replace(ancre, "validationStatus: 'confirmed',").split("require('../").join(`require('${ROOT.split(path.sep).join('/')}/`));
       const mute = require(f);
       fs.unlinkSync(f);
       await nettoyer();

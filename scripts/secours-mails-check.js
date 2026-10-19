@@ -100,7 +100,10 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'secours-mails.
 function muter(de, vers) {
   if (source.split(de).length !== 2) throw new Error('ancre absente ou multiple : ' + de.slice(0, 60));
   const fichier = path.join(os.tmpdir(), `secours-mails-mute-${process.pid}-${Math.random().toString(36).slice(2)}.js`);
-  fs.writeFileSync(fichier, source.replace(de, vers).split("require('./").join(`require('${path.join(__dirname, '..', 'lib')}/`));
+  // Le chemin en barres obliques : sous Windows, ses antislashs dans une
+  // chaine JS faisaient des echappements (« \3 » de places\3\ : SyntaxError,
+  // octal interdit en mode strict) (2026-10-19).
+  fs.writeFileSync(fichier, source.replace(de, vers).split("require('./").join(`require('${path.join(__dirname, '..', 'lib').split(path.sep).join('/')}/`));
   try { return require(fichier); } finally { fs.unlinkSync(fichier); }
 }
 const sansTel = muter("['Téléphone', r.phone], ['E-mail', r.email], ['Occasion', majuscule(r.occasion)], ['Accompagnants'", "['E-mail', r.email], ['Occasion', majuscule(r.occasion)], ['Accompagnants'");

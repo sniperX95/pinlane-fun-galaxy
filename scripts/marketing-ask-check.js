@@ -363,6 +363,7 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
 
   if (!llmProvider('sensitive')) {
     console.log('\n[MODELE REEL] SKIP (aucune cle LLM dans l\'environnement)');
+    console.log('GATE-SAUTE-PARTIE [MODELE REEL] aucune cle LLM');
   } else {
     console.log('\n[MODELE REEL] Kimi, nourri du vrai catalogue, passe le controle');
     const realDeps = {

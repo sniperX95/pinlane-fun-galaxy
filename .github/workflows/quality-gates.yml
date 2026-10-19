@@ -30,9 +30,13 @@ jobs:
         # semaines. Le Chrome stable preinstalle des runners GitHub suffit.
         env:
           E2E_BROWSER_PATH: /usr/bin/google-chrome
-        # Deux chances : les micro-budgets de perf/motion calibres machine
-        # locale (5 ms, frames d animation) varient sur un runner partage.
-        # Un vrai rouge deterministe echoue DEUX fois ; un timing de runner
-        # passe au second tour.
-        run: npm run test:ops:all || npm run test:ops:all
+        # Le lanceur (scripts/gates-lancer.js) joue TOUTE la suite, meme apres
+        # un rouge, en parallele (une copie du depot et une plage de ports par
+        # place), les gates sensibles au temps seuls a la fin. Deux chances :
+        # les micro-budgets de perf/motion calibres machine locale varient sur
+        # un runner partage ; un rouge se rejoue UNE fois, seul (vert au
+        # second tour = INSTABLE, dit dans le bilan) ; un vrai rouge
+        # deterministe echoue deux fois. Avant, `|| npm run test:ops:all`
+        # rejouait toute la suite.
+        run: npm run test:ops:all -- --deux-chances
         timeout-minutes: 90

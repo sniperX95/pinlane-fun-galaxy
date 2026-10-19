@@ -40,6 +40,7 @@ const ROOT = path.resolve(__dirname, '..');
 // de le voir refuser, et test:ops:all reste vert sans base locale.
 if (!process.env.PINLANE_TEST_DATABASE_URL) {
   console.log('validation-parametrable-check: SAUTE (PINLANE_TEST_DATABASE_URL absent : ce gate a besoin d une base Postgres locale)');
+  console.log('GATE-SAUTE PINLANE_TEST_DATABASE_URL absent');
   process.exit(0);
 }
 process.env.DATABASE_URL = process.env.PINLANE_TEST_DATABASE_URL;

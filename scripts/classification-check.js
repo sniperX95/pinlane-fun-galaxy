@@ -7,7 +7,7 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 4200;
+const PORT = Number(process.env.PINLANE_CLASSIFICATION_PORT || 4200);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png' };

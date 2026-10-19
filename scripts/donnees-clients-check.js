@@ -117,7 +117,7 @@ ok(chaines.includes('Laser Game ×2 → Bowling') && chaines.includes('Julie M.'
   ok(!buildAskDossier({}).donneesClients, '[G] sans donnees, pas de cle vide');
 
   const url = process.env.PINLANE_TEST_DATABASE_URL;
-  if (!url) console.log('[F] base reelle : PINLANE_TEST_DATABASE_URL absente, saute');
+  if (!url) console.log('[F] base reelle : PINLANE_TEST_DATABASE_URL absente, saute\nGATE-SAUTE-PARTIE [F] base reelle (PINLANE_TEST_DATABASE_URL absente)');
   else if (!/localhost|127\.0\.0\.1|host=\//.test(url)) ok(false, '[F] base reelle refusee : pas locale');
   else {
     const { Pool } = require(path.join(ROOT, 'node_modules/pg'));

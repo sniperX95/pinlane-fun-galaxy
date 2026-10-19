@@ -96,6 +96,8 @@ npm run test:ops:all
 npm run test:e2e
 ```
 
+`npm run test:ops:all` (ou `npm run test:tout`) passe par le lanceur `scripts/gates-lancer.js` : toute la suite (`scripts/gates-suite.json`) en parallele, chaque place du pool dans sa copie du depot avec ses ports, les gates sensibles au temps seuls a la fin, tout joue meme apres un rouge, un bilan vert / rouge / saute avec les durees. Pendant le travail, `npm run test:impact` ne joue que les gates que le diff touche (`scripts/gates-impactes.js`, contre le depart de la branche sur origin/main). `node scripts/gates-lancer.js test:x test:y` joue des gates choisis ; `--sur <commit>` rejoue la suite d un commit avec ce lanceur.
+
 `npm run test:e2e` ouvre le site dans Edge en headless, verifie la page publique et le verrou staff. Pour tester aussi une connexion reelle, definir `PINLANE_E2E_STAFF_CODE` avant la commande.
 
 Cette suite couvre:

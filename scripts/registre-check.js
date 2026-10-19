@@ -52,6 +52,7 @@ const ROOT = path.resolve(__dirname, '..');
 // lieu de le voir refuser, et test:ops:all reste vert sans base locale.
 if (!process.env.PINLANE_TEST_DATABASE_URL) {
   console.log('registre-check: PINLANE_TEST_DATABASE_URL absent, gate saute. Il demande un Postgres LOCAL (ex. postgres://postgres@localhost:55432/pin_registre).');
+  console.log('GATE-SAUTE PINLANE_TEST_DATABASE_URL absent');
   process.exit(0);
 }
 process.env.DATABASE_URL = process.env.PINLANE_TEST_DATABASE_URL;

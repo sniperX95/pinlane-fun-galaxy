@@ -91,8 +91,10 @@ const MUTATIONS = [
   {
     nom: 'la ligne sous les heures perd ses chiffres courts (elle retombe sur la phrase longue)',
     fichier: 'assets/fungalaxy-booking.js',
-    de: "    var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? chiffresComplet(v) : null;",
-    vers: '    var chiffres = null;',
+    // Re-ancree le 2026-10-19 : depuis 07b0aae la meme ligne porte aussi les
+    // chiffres de l attente (avis) ; la mutation ne retire que ceux du Complet.
+    de: "    var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? chiffresComplet(v)\n",
+    vers: "    var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? null\n",
   },
   {
     nom: 'la piste du laser ne dit plus que la partie se partage',

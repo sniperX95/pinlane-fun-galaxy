@@ -170,13 +170,16 @@ if (process.argv.includes('--mutate')) {
 
   // Mutation 2 : l enum brute revient dans l export.
   const sourceAdmin = fs.readFileSync(ADMIN, 'utf8');
-  const marqueurAdmin = '      getAdminRiskLabel(reservation),\n      getAdminValidationLabel(reservation.validationStatus),';
+  // Les fins de ligne du fichier (CRLF dans une copie Windows) : l ancre en
+  // LF seul ne s y trouvait jamais (2026-10-19).
+  const eolAdmin = sourceAdmin.includes('\r\n') ? '\r\n' : '\n';
+  const marqueurAdmin = `      getAdminRiskLabel(reservation),${eolAdmin}      getAdminValidationLabel(reservation.validationStatus),`;
   if (!sourceAdmin.includes(marqueurAdmin)) {
     console.error('mutation 2 impossible : les cellules traduites sont introuvables dans assets/admin-console.js');
     process.exit(1);
   }
   fs.writeFileSync(ADMIN, sourceAdmin.replace(marqueurAdmin,
-    "      reservation.riskLevel || 'normal',\n      reservation.validationStatus || '',"));
+    `      reservation.riskLevel || 'normal',${eolAdmin}      reservation.validationStatus || '',`));
   const run2 = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
   fs.writeFileSync(ADMIN, sourceAdmin);
   if (run2.status === 0) { console.error('CONTRE-EPREUVE 2 RATEE : le gate reste vert avec l enum brute remise.'); rate += 1; }

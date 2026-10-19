@@ -325,7 +325,14 @@
     "test:planning-global",
     "test:reservation-edit-clarity",
     "test:rush-status",
-    "test:notes-scope"
+    "test:notes-scope",
+    "test:crm-notes-concurrency",
+    "test:customer-notes-contract",
+    "test:legacy-laser-move",
+    "test:planning-move-context",
+    "test:prix-palier",
+    "test:staff-notes-middleware",
+    "test:staff-notes-race"
   ],
   "seuls": [
     "test:crm-clients",

@@ -50,10 +50,13 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const CENTRE = 'libramont';
-// Un samedi hors vacances scolaires et hors ferie : 10:00 - minuit.
-const JOUR = '2026-11-21';
-// Hors reseau : la table statique des conges scolaires fait foi.
+// Un samedi hors vacances scolaires et hors ferie : 10:00 - minuit. Le
+// samedi des gates (scripts/jour-de-test.js) : le 21 novembre ecrit en dur
+// faisait rougir le gate des qu il serait passe (2026-10-19).
+// Hors reseau : la table statique des conges scolaires fait foi (avant de
+// lire le calendrier pour choisir le jour).
 process.env.PINLANE_CALENDAR_SYNC = 'off';
+const JOUR = require('./jour-de-test').jourDeTest({ jour: 6 });
 
 let echecs = 0;
 function ok(cond, label, detail) {

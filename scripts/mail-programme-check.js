@@ -46,7 +46,10 @@ for (const cle of Object.keys(process.env)) {
 process.env.PINLANE_CALENDAR_SYNC = 'off';
 
 const ROOT = path.resolve(__dirname, '..');
-const DATE = '2026-11-07';
+// Le samedi des gates (scripts/jour-de-test.js), plus le 7 novembre ecrit en
+// dur : passe la date, la reservation se refusait (« Cette date est déjà
+// passée. ») et le gate rougissait pour une raison de calendrier (2026-10-19).
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 const COMMS = 'lib/ops-communications.js';
 const SECOURS = 'lib/secours-mails.js';
 

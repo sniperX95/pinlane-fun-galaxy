@@ -48,7 +48,14 @@ function ok(cond, label) {
 function section(titre) { console.log(`\n[${titre}]`); }
 function outil(nom) {
   const r = spawnSync('which', [nom], { encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : '';
+  const chemin = r.status === 0 ? r.stdout.trim() : '';
+  // Sous Windows, le `which` de Git Bash rend un chemin MSYS (/mingw64/bin/x)
+  // que node ne sait pas lancer (ENOENT) : il se traduit (2026-10-19).
+  if (chemin && process.platform === 'win32' && chemin.startsWith('/')) {
+    const w = spawnSync('cygpath', ['-w', chemin], { encoding: 'utf8' });
+    return w.status === 0 ? w.stdout.trim() : '';
+  }
+  return chemin;
 }
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'documents-secours-'));
 process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* rien */ } });

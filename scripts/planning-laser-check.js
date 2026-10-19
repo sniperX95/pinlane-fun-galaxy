@@ -753,10 +753,13 @@ const MUTATIONS = [
   { nom: 'creneau', lettre: '[N] 17:00 : la vague de 16:55', fichier: 'assets/app-main.js',
     de: '  const creneau = (debut) => config.open + Math.round((Number(debut) - config.open) * 2 - 0.001) / 2;',
     vers: '  const creneau = (debut) => config.open + Math.floor((Number(debut) - config.open) * 2 + 0.001) / 2;' },
-  // La rangee d un depart ne porte plus les pictos du groupe.
+  // La rangee d un depart ne porte plus les pictos du groupe. (Re-ancree le
+  // 2026-10-19 : depuis 212370b la rangee enchaine le nom, les pictos et la
+  // puce de statut ; l ancre d avant ne se trouvait plus, la contre-preuve
+  // plantait.)
   { nom: 'pictos', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
-    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)} <span>${lpGroupe(w)}',
-    vers: '<b>${escapeHtml(r.name || \'Groupe\')}</b> <span>${lpGroupe(w)}' },
+    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)}<span class="lp-card-status">',
+    vers: '<b>${escapeHtml(r.name || \'Groupe\')}</b><span class="lp-card-status">' },
   // Le marqueur laser revient : il le dirait de chaque groupe du planning.
   { nom: 'laser', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
     de: 'renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(',

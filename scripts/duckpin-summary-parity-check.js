@@ -211,14 +211,16 @@ async function main() {
 
 if (process.argv.includes('--mutate')) {
   const source = fs.readFileSync(APP, 'utf8');
-  const marqueur = "const lanes = planDuckpin ? planDuckpin.units : getRequiredLaneCount('bowling', pax, '');";
+  // Re-ancree le 2026-10-19 : depuis 0fd9545 le bowling compte ses pistes par
+  // service (splitGroupIntoBowlingServices) ; la ligne du duckpin est la meme.
+  const marqueur = "const lanes = planDuckpin ? planDuckpin.units : splitGroupIntoBowlingServices(pax).reduce((sum, players) => sum + getRequiredLaneCount('bowling', players, ''), 0);";
   if (source.split(marqueur).length !== 2) {
     console.error('mutation impossible : le compte des pistes du duckpin est introuvable (ou double) dans assets/app-main.js');
     process.exit(1);
   }
   // Le resume compte les pistes jouees en meme temps : 13 joueurs redeviennent
   // 2 pistes / 78 EUR a l ecran, quand le serveur en facture 3 / 117.
-  const mute = source.replace(marqueur, "const lanes = planDuckpin ? planDuckpin.atOnce : getRequiredLaneCount('bowling', pax, '');");
+  const mute = source.replace(marqueur, "const lanes = planDuckpin ? planDuckpin.atOnce : splitGroupIntoBowlingServices(pax).reduce((sum, players) => sum + getRequiredLaneCount('bowling', players, ''), 0);");
   fs.writeFileSync(APP, mute);
   const { spawnSync } = require('child_process');
   const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });

@@ -98,8 +98,10 @@ const MUTATIONS = [
   {
     nom: 'le plafond lit le canal du corps de la demande (forgeable)',
     fichier: 'lib/reservation-request.js',
-    de: '    applyProgram(request, { publicBooking: isPublicChannel(options) });',
-    vers: "    applyProgram(request, { publicBooking: request.channel === 'public' });",
+    // Re-ancree le 2026-10-19 : depuis 4ffd266 l appel porte aussi le canal
+    // du comptoir (staff) ; l ancre d avant ne se trouvait plus.
+    de: '    applyProgram(request, { publicBooking: isPublicChannel(options), staff: isStaffChannel(options) });',
+    vers: "    applyProgram(request, { publicBooking: request.channel === 'public', staff: isStaffChannel(options) });",
   },
   {
     nom: 'la plaine se paie de nouveau pour tout le groupe',
@@ -112,8 +114,10 @@ const MUTATIONS = [
   {
     nom: 'la duree des cartes compte la marge de l equipe',
     fichier: 'lib/availability-slots.js',
-    de: '    .map((a) => enMinutes(a.endTime) - Math.max(0, Number(a.bufferMinutes) || 0) - enMinutes(a.arrivalTime))',
-    vers: '    .map((a) => enMinutes(a.endTime) - enMinutes(a.arrivalTime))',
+    // Re-ancree le 2026-10-19 : depuis 5de2e61 la duree part de l accueil
+    // standard (accueilStandard), plus de l heure d arrivee brute.
+    de: '    .map((a) => enMinutes(a.endTime) - Math.max(0, Number(a.bufferMinutes) || 0) - accueilStandard(a))',
+    vers: '    .map((a) => enMinutes(a.endTime) - accueilStandard(a))',
   },
   {
     nom: 'une reservation sans la case leve aussi un retrait par lien',

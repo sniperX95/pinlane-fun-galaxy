@@ -38,6 +38,9 @@ const ROOT = path.resolve(__dirname, '..');
 const RR = path.join(ROOT, 'lib', 'reservation-request.js');
 const PUB = path.join(ROOT, 'api', 'public-reservations.js');
 const META = path.join(ROOT, 'api', 'public-booking-meta.js');
+// Le 422 du POST public vit dans lib/demande-publique.js depuis 4b79bbf
+// (l ancre de m2 visait encore api/public-reservations.js : re-ancree le 2026-10-19).
+const DEMANDE = path.join(ROOT, 'lib', 'demande-publique.js');
 
 let failures = 0;
 function ok(condition, message) {
@@ -119,7 +122,7 @@ async function main() {
 
 if (process.argv.includes('--mutate')) {
   const { spawnSync } = require('child_process');
-  const sources = new Map([[RR, fs.readFileSync(RR, 'utf8')], [PUB, fs.readFileSync(PUB, 'utf8')], [META, fs.readFileSync(META, 'utf8')]]);
+  const sources = new Map([[RR, fs.readFileSync(RR, 'utf8')], [PUB, fs.readFileSync(PUB, 'utf8')], [DEMANDE, fs.readFileSync(DEMANDE, 'utf8')], [META, fs.readFileSync(META, 'utf8')]]);
   const restaure = () => { for (const [file, source] of sources) fs.writeFileSync(file, source); };
   const applique = (file, marqueur, remplacement, nom) => {
     const source = sources.get(file);
@@ -139,7 +142,7 @@ if (process.argv.includes('--mutate')) {
 
   // m2 : 422 retire du handler public + repli lib remis -> C rougit.
   applique(RR, REPLI, REPLI_MUTE, 'repli lib (m2)');
-  applique(PUB, "if (!String((body && (body.centerId || body.center_id)) || '').trim()) {", 'if (false) {', '422 public');
+  applique(DEMANDE, "if (!String((body && (body.centerId || body.center_id)) || '').trim()) {", 'if (false) {', '422 public');
   if (run().status === 0) { console.error('CONTRE-EPREUVE 2 RATEE : 422 public retire, gate vert.'); rate += 1; } else console.log('contre-epreuve 2 OK : retirer le 422 public fait rougir le gate.');
   restaure();
 

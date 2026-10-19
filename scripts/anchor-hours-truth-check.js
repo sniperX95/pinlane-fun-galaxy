@@ -337,10 +337,16 @@ if (process.argv.includes('--mutate')) {
   // ajoute l avertissement et le conflit. L ancienne ligne unique n existait
   // plus : la contre-epreuve s arretait sur « mutation impossible » sans que
   // personne ne la relance.
+  // Re-ancree le 2026-10-19 : depuis 69f14ee le refus porte aussi le
+  // deplacement de la partie chevauchee (move), sur plusieurs lignes.
   const marqueur = [
     '        entry = verdict.ok',
     '          ? { time, ok: true, ...meta, ...(verdict.warning ? { warning: verdict.warning } : {}) }',
-    '          : ko(verdict.code, verdict.reason, verdict.conflict ? { conflict: verdict.conflict } : null);',
+    '          : ko(verdict.code, verdict.reason, {',
+    '            ...(verdict.conflict ? { conflict: verdict.conflict } : {}),',
+    '            // Le deplacement de la partie chevauchee (voir visitFeasibilityAt).',
+    '            ...(verdict.move ? { move: verdict.move } : {}),',
+    '          });',
   ].join(eol);
   if (source.split(marqueur).length !== 2) {
     console.error('mutation impossible : la ligne de verdict attendue est introuvable dans lib/ops-engine.js');

@@ -332,7 +332,8 @@
     "test:planning-move-context",
     "test:prix-palier",
     "test:staff-notes-middleware",
-    "test:staff-notes-race"
+    "test:staff-notes-race",
+    "test:jour-de-test"
   ],
   "seuls": [
     "test:crm-clients",

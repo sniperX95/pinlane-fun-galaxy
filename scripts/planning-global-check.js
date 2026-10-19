@@ -22,8 +22,22 @@
 //   [G] la recherche eteint les autres groupes sans retirer de carte ; « ⋯ »
 //       ouvre ses gestes ;
 //   [H] au doigt, toucher une carte ouvre la fiche ;
-//   [I] le matin rouvert tient (la grille defile en elle-meme s il le faut) ;
-//       « Agrandir » ouvre le plein ecran et tout y tient sans defiler.
+//   [H] au doigt, toucher une carte montre le programme du groupe, toucher
+//       encore ouvre la fiche (2026-10-19) ;
+//   [I] « Agrandir » ouvre le plein ecran et tout y tient ;
+//   LA JOURNEE COMPLETE (2026-10-19, Movsar : « toutes les heures et le
+//   planning complet et visibles même quand il n'y a rien ») :
+//   [L] la journee chargee : chaque demi-heure de 10:00 a 23:30 (l ouverture a
+//       la fermeture, rien de replie), les neuf activites du centre en
+//       colonnes, celles sans groupe comprises ;
+//   [M] les heures restent collees a gauche et les tetes en haut quand la
+//       grille defile en elle-meme ;
+//   [N] un jour sans reservation et un jour ferme gardent toute la grille
+//       (heures d ouverture, toutes les colonnes) et un bandeau le dit ;
+//   [P] la minute qui passe deplace la barre de l heure et les minutes de
+//       retard sans reconstruire la grille ; un redessin rend le focus et le
+//       defilement ;
+//   [Q] une case vide du bowling ouvre la reservation rapide a son heure ;
 //   [K] --contre-preuves : chaque regle retiree (en memoire, le disque n est
 //       jamais touche) fait rougir sa lettre.
 'use strict';
@@ -160,7 +174,8 @@ function installerMock(page, reservations) {
   return page.addInitScript(({ expiresAt, JOUR, RESERVATIONS, ACTIVITES }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick', 'payments.markPaid', 'clients.view', 'settings.manage', 'direction.view'];
     const session = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Accueil', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const semaine = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [String(d), { open: '10:00', close: '24:00' }]));
+    // (le lundi est ferme : le 26 octobre sert de jour ferme a [N])
+    const semaine = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [String(d), d === 1 ? { closed: true } : { open: '10:00', close: '24:00' }]));
     const centre = { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', resources: { bowling: { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, preferAdjacentLanes: true }, laser: { weaponCount: 30, parallelLaunches: 1, canSplitGroupsCleanly: false, requiresCompleteGroupBeforeLaunch: true, riskLevel: 'critical', maxPlayers: 30 }, partyTables: { softCapacity: 6, hardCapacity: 8 } }, defaultSchedule: { regular: semaine, holiday: {} }, activityAvailability: {}, holidaySettings: { enabled: false, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {}, classification: {}, customActivities: [] };
     const jours = { [JOUR]: RESERVATIONS };
     window.__JOURS__ = jours;
@@ -268,6 +283,8 @@ function mesurer() {
     listeDessous: rl ? rl.top >= rb.bottom - 1 : false,
     coupes, chevauchements,
     noahPictos: noah.map((c) => (c.className.match(/is-(fini|encours|avenir|retard)/) || [])[1]),
+    // La barre de l heure dans la fenetre de la grille (sous les tetes collees).
+    maintenantVu: (() => { const b = gh.querySelector('.gh-maintenant'); if (!b || b.hidden) return false; const r = b.getBoundingClientRect(), g = grille.getBoundingClientRect(); return r.top >= g.top + 40 && r.bottom <= g.bottom + 0.5; })(),
   };
 }
 const tient = (m) => !m.manque && m.boiteBas <= m.innerH && (m.defile || m.grilleH) && (m.tropSerre || m.grilleL) && m.pageLarge;
@@ -294,6 +311,46 @@ async function lireBulle(page, carte) {
   }, boite);
 }
 const bulleBien = (b) => b.vue && b.dedans && !b.couvre && b.dessus;
+
+// LA GRILLE D UN JOUR : ses etiquettes d heure, ses colonnes, son bandeau.
+const COLONNES_DU_CENTRE = ['Bowling', 'Duckpin', 'Laser', 'Fun Run', 'Arcades', 'Minigolf', 'O’Clock', 'Plaine', 'Billard'];
+function lireGrille() {
+  const gh = document.querySelector('#globalPlanningBox .gh');
+  const grille = gh && gh.querySelector('.gh-grille');
+  if (!grille) return { manque: true, vide: Boolean(document.querySelector('#globalPlanningBox .gp-vide')) };
+  return {
+    heures: Array.from(grille.querySelectorAll('.gh-pile--h .gh-h')).map((h) => h.textContent.trim()),
+    colonnes: Array.from(grille.querySelectorAll('.gh-entete:not(.gh-entete--h) .gh-entete__t')).map((t) => t.textContent.trim()),
+    piles: grille.querySelectorAll('.gh-pile:not(.gh-pile--h)').length,
+    cartes: grille.querySelectorAll('.gh-c').length,
+    bandeau: ((gh.querySelector('.gh-bandeau') || {}).textContent || '').trim(),
+    reserve: grille.querySelectorAll('.gh-pile.is-reserve').length,
+    repli: Boolean(gh.querySelector('[data-gh-matin]')),
+  };
+}
+const demiHeures = (de, a) => { const l = []; for (let m = min(de); m < min(a); m += 30) l.push(hh(m)); return l; };
+const toutesLesHeures = (g, de, a) => !g.manque && JSON.stringify(g.heures) === JSON.stringify(demiHeures(de, a));
+const toutesLesColonnes = (g) => !g.manque && JSON.stringify(g.colonnes) === JSON.stringify(COLONNES_DU_CENTRE) && g.piles === COLONNES_DU_CENTRE.length;
+
+// LES HEURES ET LES TETES COLLEES : la grille, reduite a une petite fenetre,
+// defile vers le bas et de cote ; la tete d une colonne reste en haut de la
+// fenetre, la colonne des heures a sa gauche.
+function lireCollees() {
+  const grille = document.querySelector('#globalPlanningBox .gh-grille');
+  if (!grille) return { manque: true };
+  grille.style.maxHeight = '260px';
+  grille.style.maxWidth = '520px';
+  grille.scrollTop = 300;
+  grille.scrollLeft = 260;
+  const g = grille.getBoundingClientRect();
+  const tete = grille.querySelector('.gh-entete:not(.gh-entete--h)').getBoundingClientRect();
+  const coin = grille.querySelector('.gh-entete--h').getBoundingClientRect();
+  const heures = grille.querySelector('.gh-pile--h').getBoundingClientRect();
+  const r = { defileY: grille.scrollTop > 0, defileX: grille.scrollLeft > 0, teteHaut: Math.abs(tete.top - g.top - grille.clientTop), coinGauche: Math.abs(coin.left - g.left - grille.clientLeft), heuresGauche: Math.abs(heures.left - g.left - grille.clientLeft) };
+  grille.style.maxWidth = '';
+  return r;
+}
+const collees = (c) => !c.manque && c.defileY && c.defileX && c.teteHaut <= 1.5 && c.coinGauche <= 1.5 && c.heuresGauche <= 1.5;
 
 // ---------------------------------------------------------------------------
 // LES SCENARIOS
@@ -365,29 +422,115 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
           const menu = await page.evaluate(() => Array.from(document.querySelectorAll('.staff-action-popover button')).map((x) => x.textContent.trim()));
           ok(menu.includes('Voir la liste des réservations') && menu.includes('Feuille de secours (PDF)') && menu.includes('Agrandir le planning'), `[G] ${ici} : « ⋯ » ouvre ses gestes`, menu);
           await page.evaluate(() => closeStaffFloatingMenus());
+          // [Q] Une case vide du bowling (12:30, entre les Scouts et l EVG) :
+          // la reservation rapide a cette heure, au bowling.
+          const caseVide = await page.evaluate(() => {
+            const pile = document.querySelector('#globalPlanningBox .gh-pile.is-reserve[data-gh-cle="bowling"]');
+            const racine = document.querySelector('#globalPlanningBox .gh');
+            const grille = racine && racine.querySelector('.gh-grille');
+            if (!pile || !grille) return null;
+            const h = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-h'));
+            grille.scrollTop = Math.max(0, h * 2.5 - 40);
+            const r = pile.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + h * 2.75 };
+          });
+          await page.waitForTimeout(150);
+          if (caseVide) { await page.mouse.move(caseVide.x, caseVide.y, { steps: 2 }); await page.waitForTimeout(120); }
+          const fantome = await page.evaluate(() => { const f = document.querySelector('#globalPlanningBox .gh-ajout'); return f && !f.hidden ? f.textContent : ''; });
+          if (caseVide) await page.mouse.click(caseVide.x, caseVide.y);
+          await page.waitForTimeout(400);
+          const rapide = await page.evaluate(() => ({ ouverte: typeof quickBookState !== 'undefined' && Boolean(quickBookState), heure: typeof quickBookState !== 'undefined' && quickBookState ? quickBookState.startTime : null, type: typeof quickBookState !== 'undefined' && quickBookState ? quickBookState.type : null }));
+          ok(rapide.ouverte && rapide.heure === '12:30' && rapide.type === 'bowling' && fantome === '+ 12:30', `[Q] ${ici} : une case vide du bowling ouvre la reservation rapide a son heure`, { ...rapide, fantome });
+          await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+          await page.mouse.move(2, 2);
+          await repos(page, 200);
         } else {
-          await page.locator('#globalPlanningBox .gh-c', { hasText: 'Famille Petit' }).first().tap();
+          // [H] AU DOIGT, DEUX TEMPS : le premier toucher montre le programme
+          // (la bulle, ses cartes allumees), le second ouvre la fiche.
+          const petit = page.locator('#globalPlanningBox .gh-c', { hasText: 'Famille Petit' }).first();
+          await petit.scrollIntoViewIfNeeded();
+          await petit.tap();
+          await page.waitForTimeout(500);
+          const premier = await page.evaluate(() => ({ nom: state.selectedRes && state.selectedRes.name, bulle: ((document.querySelector('#ghBulle.is-vue .gh-b__nom') || {}).textContent || ''), lignes: document.querySelectorAll('#ghBulle.is-vue .gh-b__prog li').length, groupe: document.querySelectorAll('#globalPlanningBox .gh-c.is-groupe').length }));
+          ok(!premier.nom && /Famille Petit/.test(premier.bulle) && premier.lignes >= 2 && premier.groupe >= 2, `[H] ${ici} : toucher une carte montre le programme du groupe`, premier);
+          await petit.tap();
           await page.waitForTimeout(500);
           const fiche = await page.evaluate(() => ({ nom: state.selectedRes && state.selectedRes.name, bulle: Boolean(document.querySelector('#ghBulle.is-vue')) }));
-          ok(fiche.nom === 'Famille Petit' && !fiche.bulle, `[H] ${ici} : toucher une carte ouvre sa fiche`, fiche);
+          ok(fiche.nom === 'Famille Petit' && !fiche.bulle, `[H] ${ici} : toucher encore ouvre sa fiche`, fiche);
           await page.evaluate(() => closePos());
           await page.waitForTimeout(300);
         }
 
-        if (await page.locator('#globalPlanningBox [data-gh-matin]').count()) {
-          await page.click('#globalPlanningBox [data-gh-matin]');
-          await repos(page, 250);
-          const matin = await page.evaluate(mesurer);
-          ok(tient(matin) && remplit(matin) && propre(matin), `[I] ${ici} : le matin rouvert tient et remplit l ecran`, { boiteBas: matin.boiteBas, innerH: matin.innerH, defile: matin.defile, coupes: (matin.coupes || []).slice(0, 3) });
-          await page.click('#globalPlanningBox [data-gh-matin]');
-          await repos(page, 200);
-        }
+        // [L] LA JOURNEE CHARGEE, COMPLETE : chaque demi-heure de l ouverture a
+        // la fermeture, rien de replie, les neuf activites du centre.
+        const charge = await page.evaluate(lireGrille);
+        ok(toutesLesHeures(charge, '10:00', '24:00') && !charge.repli, `[L] ${ici} : la journee chargee montre chaque demi-heure de 10:00 a 23:30`, { heures: charge.heures && [charge.heures[0], charge.heures[charge.heures.length - 1], charge.heures.length], repli: charge.repli });
+        ok(toutesLesColonnes(charge), `[L] ${ici} : les neuf activites du centre ont leur colonne, vides comprises`, charge.colonnes);
+
+        // [M] Les heures collees a gauche, les tetes en haut.
+        const col = await page.evaluate(lireCollees);
+        ok(collees(col), `[M] ${ici} : les heures restent a gauche et les tetes en haut quand la grille defile`, col);
+        await page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._ghHtml = null; w._ghJourDessine = null; renderGlobalPlanningSurface(); });
+        await repos(page, 200);
+
+        // [P] LA MINUTE QUI PASSE : la meme grille, la barre deplacee, le
+        // retard recompte ; puis un redessin rend le focus et le defilement.
+        const avantTic = await page.evaluate(() => {
+          const g = document.querySelector('#globalPlanningBox .gh-grille');
+          window.__grilleTic = g;
+          window.__carteTic = g.querySelector('.gh-c');
+          const gh = document.querySelector('#globalPlanningBox .gh');
+          const retard = Array.from(gh.querySelectorAll('.gh-c .gp-tag.is-retard .gh-min')).map((n) => n.textContent);
+          return { now: Number(getComputedStyle(gh).getPropertyValue('--gh-now')), etiquette: (gh.querySelector('.gh-maintenant-h') || {}).textContent, retard };
+        });
+        await page.clock.setFixedTime(new Date(`${JOUR}T15:11:00+02:00`));
+        await page.evaluate(() => tickHorlogeStaff());
+        await repos(page, 200);
+        const apresTic = await page.evaluate(() => {
+          const g = document.querySelector('#globalPlanningBox .gh-grille');
+          const gh = document.querySelector('#globalPlanningBox .gh');
+          const retard = Array.from(gh.querySelectorAll('.gh-c .gp-tag.is-retard .gh-min')).map((n) => n.textContent);
+          return { meme: g === window.__grilleTic && window.__carteTic.isConnected, now: Number(getComputedStyle(gh).getPropertyValue('--gh-now')), etiquette: (gh.querySelector('.gh-maintenant-h') || {}).textContent, retard };
+        });
+        ok(apresTic.meme && Math.abs(apresTic.now - avantTic.now - 1 / 60) < 1e-3 && avantTic.etiquette === '15:10' && apresTic.etiquette === '15:11' && (avantTic.retard.length > 0 || nom === 'ordinateur') && apresTic.retard.length === avantTic.retard.length && apresTic.retard.every((n, i) => Number(n) === Number(avantTic.retard[i]) + 1), `[P] ${ici} : la minute deplace la barre et le retard sans reconstruire la grille`, { avantTic, apresTic });
+        await page.clock.setFixedTime(new Date(`${JOUR}T${HEURE}:00+02:00`));
+        const garde = await page.evaluate(async () => {
+          const wrap = document.getElementById('globalPlanningGridWrap');
+          const g = wrap.querySelector('.gh-grille');
+          const carte = Array.from(wrap.querySelectorAll('.gh-c')).find((c) => /Ardennes/.test(c.textContent));
+          carte.focus();
+          const k = carte.getAttribute('data-gh-k');
+          g.scrollTop = Math.min(g.scrollHeight - g.clientHeight, 37);
+          const y = g.scrollTop;
+          wrap._ghHtml = null;
+          renderGlobalPlanningSurface();
+          await new Promise((r) => requestAnimationFrame(() => r()));
+          const g2 = wrap.querySelector('.gh-grille');
+          return { refait: g2 !== g, focus: document.activeElement && document.activeElement.getAttribute('data-gh-k') === k, y, y2: g2.scrollTop };
+        });
+        ok(garde.refait && garde.focus && Math.abs(garde.y2 - garde.y) <= 1, `[P] ${ici} : un redessin rend le focus et le defilement`, garde);
+        await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); renderGlobalPlanningSurface(); });
+
+        // [N] UN JOUR SANS RESERVATION, UN JOUR FERME : toute la grille, un bandeau.
+        const jourDe = (d) => page.evaluate(async ({ d, JOUR }) => { state.currentDate = d; if (d === JOUR) state.reservations = window.__JOURS__[JOUR].map((x) => ({ ...x })); renderStaff(); await new Promise((r) => setTimeout(r, 60)); }, { d, JOUR });
+        await jourDe('2026-10-25');
+        await repos(page, 200);
+        const vide = await page.evaluate(lireGrille);
+        ok(toutesLesHeures(vide, '10:00', '24:00') && toutesLesColonnes(vide) && vide.cartes === 0 && /Aucune réservation/.test(vide.bandeau) && !vide.vide, `[N] ${ici} : un jour sans reservation garde toute sa grille et le dit`, vide);
+        await jourDe('2026-10-26');
+        await repos(page, 200);
+        const ferme = await page.evaluate(lireGrille);
+        ok(toutesLesHeures(ferme, '10:00', '22:00') && toutesLesColonnes(ferme) && /Centre fermé ce jour-là/.test(ferme.bandeau) && ferme.reserve === 0, `[N] ${ici} : un jour ferme garde sa grille, le bandeau « Centre fermé ce jour-là », aucune case a reserver`, ferme);
+        await jourDe(JOUR);
+        await repos(page, 250);
         await page.click('#globalPlanningToggle');
         if (!appareil.hasTouch) await page.mouse.move(2, 2);
         await repos(page, 300);
         const ag = await page.evaluate(mesurer);
         const plein = await page.evaluate(() => ({ ouvert: document.getElementById('globalPlanningBox').classList.contains('expanded'), bouton: document.getElementById('globalPlanningToggle').textContent }));
-        ok(plein.ouvert && plein.bouton === 'Réduire' && tient(ag) && !ag.defile && propre(ag), `[I] ${ici} : « Agrandir » ouvre le plein ecran, tout y tient sans defiler`, { plein, defile: ag.defile, coupes: (ag.coupes || []).slice(0, 3) });
+        // (la journee entiere a 13 px ne tient pas toujours sans defiler, 14 h
+        // sur 800 px : la grille defile alors en elle-meme, ouverte sur l heure)
+        ok(plein.ouvert && plein.bouton === 'Réduire' && tient(ag) && (!ag.defile || ag.maintenantVu) && propre(ag), `[I] ${ici} : « Agrandir » ouvre le plein ecran, tout y tient sans defiler ou s ouvre sur l heure qu il est`, { plein, defile: ag.defile, maintenantVu: ag.maintenantVu, coupes: (ag.coupes || []).slice(0, 3) });
         await page.click('#globalPlanningToggle');
         await repos(page, 200);
         ok(erreurs.length === 0, `[A] ${ici} : zero erreur JS`, erreurs.slice(0, 3));
@@ -403,13 +546,14 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
 // ---------------------------------------------------------------------------
 const MODULE = 'assets/pinlane-planning-global.js';
 const MUTATIONS = [
-  // Les etiquettes hors de l essentiel : « à valider » tombe sous la derniere
-  // ligne de FC Libramont U12 a la tablette.
-  { nom: 'etiquettes', lettre: '[C] tablette light', appareils: ['tablette'], themes: ['light'],
-    editions: [{ fichier: MODULE, de: '        if (tagsL) mots.push(tagsL);\n', vers: '' }] },
+  // (2026-10-19 : la mutation « etiquettes », les etiquettes hors de
+  // l essentiel, ne rougit plus : a 13 px sur des heures de 66 a 72 px, la
+  // journee type laisse a chaque carte la place de ses etiquettes, sur les
+  // quatre ecrans et les deux themes. La regle reste dans le module ; il lui
+  // faut une journee plus serree pour etre reprouvee.)
   // La boite mesuree a la page : la liste dessous ecrase la grille
-  // (au portable, matin rouvert, la grille qui defile s ecrase a 162 px)
-  { nom: 'hauteur', lettre: '[I] portable light : le matin rouvert', appareils: ['portable'], themes: ['light'],
+  // (au portable, la grille qui defile s ecrase et ne remplit plus l ecran)
+  { nom: 'hauteur', lettre: '[B] portable light', appareils: ['portable'], themes: ['light'],
     editions: [{ fichier: MODULE, de: '      : Math.ceil(boite.getBoundingClientRect().bottom + window.scrollY + GH.bas - window.innerHeight);', vers: '      : document.documentElement.scrollHeight - window.innerHeight;' }] },
   // Les infos d un groupe a la premiere carte a egalite, finie ou pas.
   { nom: 'carte-vive', lettre: '[D] ordinateur light', appareils: ['ordinateur'], themes: ['light'],
@@ -421,6 +565,22 @@ const MUTATIONS = [
   // ne passe pas a l ambre apres « Arrivé ».
   { nom: 'rendu-donnees', lettre: '[F] ordinateur light', appareils: ['ordinateur'], themes: ['light'],
     editions: [{ fichier: 'assets/app-main.js', de: '  renderLaserPlanning();\n  renderGlobalPlanningSurface();\n  renderTable();\n}\n\nfunction applyOptimisticReservation(', vers: '  renderLaserPlanning();\n  renderTable();\n}\n\nfunction applyOptimisticReservation(' }] },
+  // LA JOURNEE COMPLETE (2026-10-19). Les heures lues ailleurs que dans les
+  // horaires du centre : le jour vide perd son matin et son soir, le jour
+  // ferme son bandeau.
+  { nom: 'heures-du-centre', lettre: '[N] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: "fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false } };", vers: "fenetre: { open: 14, close: 20, closed: false } };" }] },
+  // Une colonne seulement pour une activite reservee : Fun Run et O’Clock disparaissent.
+  { nom: 'colonnes-du-centre', lettre: '[L] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: 'return c.groupes > 0 || gpColonneDuCentre(c); })', vers: 'return c.groupes > 0; })' }] },
+  // Les heures qui defilent avec la grille, puis les tetes.
+  { nom: 'heures-collees', lettre: '[M] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gh-pile--h { position: sticky; left: 0;', vers: '.gh-pile--h { position: relative; left: 0;' }] },
+  { nom: 'tetes-collees', lettre: '[M] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '  position: sticky; top: 0; z-index: 7;', vers: '  position: relative; top: 0; z-index: 7;' }] },
+  // L heure qu il est remise dans le dessin : chaque minute reconstruit la grille.
+  { nom: 'tic-sans-dessin', lettre: '[P] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: `'<i class="gh-maintenant" aria-hidden="true" hidden></i>'`, vers: `'<i class="gh-maintenant" aria-hidden="true" hidden data-t="' + m.maintenant + '"></i>'` }] },
 ];
 
 async function main() {
@@ -428,10 +588,11 @@ async function main() {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await scenarios(browser);
+      // (PG_APPAREILS=tablette PG_THEMES=dark : un sous-ensemble, pour iterer)
+      await scenarios(browser, { appareils: process.env.PG_APPAREILS ? process.env.PG_APPAREILS.split(',') : undefined, themes: process.env.PG_THEMES ? process.env.PG_THEMES.split(',') : undefined });
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
-      for (const m of MUTATIONS) {
+      for (const m of MUTATIONS.filter((x) => !process.env.PG_MUTATIONS || process.env.PG_MUTATIONS.split(',').includes(x.nom))) {
         const garde = lignes.length;
         const avant = echecs;
         mutationActive = m;
@@ -453,4 +614,6 @@ async function main() {
   if (echecs) { console.error(`\nplanning-global-check: FAIL ${echecs}`); process.exitCode = 1; return; }
   console.log(`\nplanning-global-check: ALL OK${process.argv.includes('--contre-preuves') ? ' (contre-preuves)' : ''}`);
 }
-main().catch((e) => { console.error(e); process.exitCode = 1; });
+// (la journee et l API simulee servent aussi aux captures avant/apres)
+if (require.main === module) main().catch((e) => { console.error(e); process.exitCode = 1; });
+else module.exports = { journee, installerMock, repos, JOUR, HEURE };

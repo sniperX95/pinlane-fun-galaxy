@@ -242,8 +242,14 @@ async function main() {
     'FORMULE 4 : aucune heure de bowling serree quand une place du laser tient sans avertissement (19:30 comme 20:00)', serreesF4.join(' ') || 'aucune');
   const f4plan = await heures({ type: 'formule', formuleId: 'f4', pax: '6', preferredTimes: JSON.stringify({ bowling: '19:30' }) });
   const plan430 = ((f4plan.slots || [])[0] || {}).opsPlan || {};
-  ok(!((f4plan.slots || [])[0] || {}).visitEndsAtClose && (plan430.resourceBlocks || []).some((b) => b.activityId === 'laser_game' && b.startTime === '18:30'),
-    'la reservation du bowling de 19:30 pose le laser a 18:30 et tient avant 22:00 : la grille dit la meme chose', (plan430.resourceBlocks || []).map((b) => `${b.activityId} ${b.startTime}`).join(', '));
+  // LA REGLE, PAS L HEURE (2026-10-15 : sans les minutes de transition, le
+  // laser tient a 19:00 et non plus a 18:30) : la reservation pose son laser
+  // hors du bowling et la visite tient avant 22:00, sans avertissement.
+  const bowling430 = (plan430.resourceBlocks || []).find((b) => b.activityId === 'bowling' && b.startTime === '19:30');
+  const laser430 = (plan430.resourceBlocks || []).find((b) => b.activityId === 'laser_game');
+  const horsDuBowling = Boolean(bowling430 && laser430) && (enMinB(laser430.endTime) <= enMinB(bowling430.startTime) || enMinB(laser430.startTime) >= enMinB(bowling430.endTime));
+  ok(!((f4plan.slots || [])[0] || {}).visitEndsAtClose && horsDuBowling,
+    `la reservation du bowling de 19:30 pose le laser (${laser430 ? laser430.startTime : 'aucun'}) hors du bowling et tient avant 22:00 : la grille dit la meme chose`, (plan430.resourceBlocks || []).map((b) => `${b.activityId} ${b.startTime}`).join(', '));
   const visiteB = await heures({ type: 'visite', pax: '6', softReserve: '1', program: JSON.stringify([{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 3 }]) });
   const w2100 = heure(piste(visiteB, 'laser_game'), '21:00').warning || {};
   ok(w2100.reason === 'Plus le temps pour les parties 2 et 3 de laser avant 22:00',

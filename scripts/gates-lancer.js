@@ -214,7 +214,9 @@ function jouerUnite(place, u, contexte) {
       fs.closeSync(sortie);
       const ms = Date.now() - debut;
       const texte = fs.readFileSync(journal, 'utf8');
-      const saute = code === 0 && /^GATE-SAUTE\b(.*)$/m.exec(texte);
+      // GATE-SAUTE seul (suivi d un espace ou de la fin de ligne) : le gate
+      // entier ; GATE-SAUTE-PARTIE : une partie, le gate reste vert.
+      const saute = code === 0 && /^GATE-SAUTE(?:[ \t]+(.*))?\r?$/m.exec(texte);
       const partie = [...texte.matchAll(/^GATE-SAUTE-PARTIE\b\s*(.*)$/gm)].map((m) => m[1].trim());
       const etat = delaiDepasse ? 'ROUGE' : code === 0 ? (saute ? 'SAUTE' : 'VERT') : 'ROUGE';
       const fails = etat === 'ROUGE' ? texte.split(/\r?\n/).filter((l) => /^\s*(FAIL|KO\b|ECHEC|not ok|AssertionError|Error:)/.test(l)).slice(0, 8) : [];

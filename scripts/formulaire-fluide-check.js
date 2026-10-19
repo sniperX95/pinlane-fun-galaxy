@@ -555,14 +555,26 @@ async function gate() {
 
     // --- Passage 2 (6x) : les images perdues de la course, en alternance avec la reference ---
     if (!m || m.passe2) {
-      const course = { ref: [], flip: [] };
+      const course = { ref: [], flip: [] }, repos = [];
+      // Une seconde au repos, avant et apres les gestes : une machine prise
+      // par autre chose (un rendu, une autre suite) fait perdre des images a
+      // une page immobile ; la course ne mesure alors plus le formulaire
+      // (releve 2026-10-19, un rendu Blender a cote : 6 a 50 images perdues
+      // par seconde au repos, le ratio passait de 0,30 a 0,57 puis 2,49 ;
+      // machine calme : 0 partout). Un trouble qui ne tombe que pendant les
+      // gestes peut lui echapper : un [G5] rouge se rejoue machine libre.
+      const auRepos = (page) => page.evaluate(() => new Promise((r) => { const t = performance.now(); setTimeout(() => r(window.__flFenetre(t, performance.now()).perdues), 1000); }));
       for (let tour = 0; tour < 2; tour += 1) {
         for (const reference of tour % 2 ? [false, true] : [true, false]) {
           const ctx = await ouvrirActivites(browser, { reference, cpu: 6 });
+          repos.push(await auRepos(ctx.page));
           for (const [id, ouvre] of GESTES_TIROIR) course[reference ? 'ref' : 'flip'].push((await gesteTiroir(ctx, id, ouvre, false)).course);
+          await calme(ctx.page, 6000);
+          repos.push(await auRepos(ctx.page));
           await ctx.context.close();
         }
       }
+      ok(total(repos) <= 8, 'MONTAGE la machine est au calme pendant la mesure a 6x (au repos, au plus 8 images perdues en huit secondes)', repos.join(' '));
       ok(total(course.ref) >= 15, 'MONTAGE la reference perd des images pendant ses tiroirs a 6x (au moins 15 sur dix gestes)', `${total(course.ref)} : ${course.ref.join(' ')}`);
       ok(total(course.flip) <= 0.6 * total(course.ref), '[G5] a 6x, les images perdues pendant la course : au plus 60 % de la reference', `${total(course.flip)} contre ${total(course.ref)} (${(total(course.flip) / Math.max(1, total(course.ref))).toFixed(2)}) ; formulaire ${course.flip.join(' ')}`);
     }

@@ -125,6 +125,10 @@
   // Le formulaire ne bouge pas d un pixel ; seule la page hote, SOUS le
   // cadre, se pose en une fois au lieu de glisser.
   var tiroirsEnCours = new Map(), hauteurTenue = 0, tenueAFaire = false;
+  // Un tiroir d activite qui glisse sur le compositeur (tiroirSurCompositeur)
+  // pose sa mise en page d arrivee d emblee : le cadre la suit dans le meme
+  // geste quand il grandit, et ne redescend qu une fois le repli fini.
+  var tenueGlisseJusqua = 0;
   function posterHauteur() {
     if (!EMBED || !parentOrigin) return;
     // body.scrollHeight, jamais documentElement : le second vaut au moins la
@@ -145,6 +149,7 @@
       }
       h = Math.max(h, hauteurTenue);
     }
+    if (tenueGlisseJusqua && performance.now() < tenueGlisseJusqua) h = Math.max(h, derniereHauteur);
     if (!h || h === derniereHauteur || (h < derniereHauteur && derniereHauteur - h < 8)) return;
     derniereHauteur = h;
     poster({ type: 'pinlane:height', height: h });
@@ -2055,19 +2060,168 @@
       // tiroir ouvert, 48 ainsi). Une valeur inchangee ne se reecrit pas :
       // rien n est invalide pour rien.
       var mesures = tuiles.map(function (tile) { return Math.ceil(tile.getBoundingClientRect().height); });
+      var debuts = [];
       tuiles.forEach(function (tile, i) {
         var col = i % colonnes, h = mesures[i];
         var colonne = String(col + 1), rangee = String(hauteurs[col] + 1) + ' / span ' + h;
         if (tile.style.gridColumn !== colonne) tile.style.gridColumn = colonne;
         if (tile.style.gridRow !== rangee) tile.style.gridRow = rangee;
+        debuts.push(hauteurs[col]);
         hauteurs[col] += h + espace;
       });
+      // Ce qui est pose, pour le prochain tiroir qui s ouvre (tiroirSurCompositeur).
+      grille._fgPlace = { tuiles: tuiles, debuts: debuts, mesures: mesures, colonnes: colonnes, espace: espace, haut: Math.max.apply(null, hauteurs), on: tuiles.map(function (t) { return t.classList.contains('is-on'); }) };
       posterHauteur();
     }
     function attendreMesure() { if (!grille._fgMesure) grille._fgMesure = requestAnimationFrame(mesurer); }
     if (grille._fgMasonryObserver) grille._fgMasonryObserver.disconnect();
     if (window.ResizeObserver) { grille._fgMasonryObserver = new ResizeObserver(attendreMesure); grille._fgMasonryObserver.observe(grille); tuiles.forEach(function (tile) { grille._fgMasonryObserver.observe(tile); }); }
+    // Une carte qui vient d etre cochee ou decochee : son tiroir se deplie sur
+    // le compositeur, la colonne est posee tout de suite a sa place d arrivee.
+    var avant = grille._fgPlace;
+    var changees = avant && avant.tuiles.length === tuiles.length && avant.tuiles.every(function (t, i) { return t === tuiles[i]; })
+      ? tuiles.filter(function (t, i) { return t.classList.contains('is-on') !== avant.on[i]; }) : [];
+    if (changees.length && tiroirSurCompositeur(grille, avant, changees, mesurer)) return;
     attendreMesure();
+  }
+  /* --- LE TIROIR D UNE CARTE SE DEPLIE SUR LE COMPOSITEUR (Movsar, 2026-10-19 :
+     « les animations d ouverture, fermeture etc. sont super lentes ; l idee
+     c est pas de les supprimer mais d optimiser »). Deplie en
+     grid-template-rows (0,4 s), le tiroir changeait de hauteur a chaque
+     image : la colonne entiere se remettait en page (maconnerie rappelee a
+     chaque image), et le document se repeignait (banc 2026-10-19, 6x : une
+     image sur deux perdue a chaque tiroir). Ici la mise en page saute tout
+     de suite a son etat d arrivee, une fois, et le mouvement se joue en
+     `translate`, que le compositeur anime sans le fil principal (FLIP) :
+       - le tiroir se devoile du haut vers le bas : sa boite (overflow
+         hidden) part de -H et son contenu de +H, les deux reviennent a 0
+         ensemble, si bien que le contenu reste immobile et que le bord du
+         bas descend, au meme rythme que le contenu de la rangee qui
+         grandissait (voir auCarre) ;
+       - les cartes du dessous et le bas de l ecran partent de leur place
+         d avant et glissent jusqu a la nouvelle ;
+       - a la fermeture, le tiroir sort du flux le temps de se replier
+         (is-fermant) : la colonne remonte d emblee a sa place, il se
+         referme par-dessus, puis reprend sa place (hauteur nulle).
+     Meme duree, meme courbe (0,4 s, --fg-ease), meme fondu et meme glisse
+     du contenu (ses transitions d opacite et de transform sont gardees). Un
+     geste pendant une course repart d ou chaque element se trouve a l ecran.
+     Sous mouvement reduit, ou sans Web Animations, la feuille garde l ancienne
+     transition (html sans .fg-flip). --- */
+  var FLIP_TIROIR = !reduced && typeof Element.prototype.animate === 'function' && Boolean(window.CSS && CSS.supports && CSS.supports('translate', '0px 1px'));
+  if (FLIP_TIROIR) root.classList.add('fg-flip');
+  var DUREE_TIROIR = 400, courbeTiroir = '';
+  function decalageY(el) {
+    var v = getComputedStyle(el).translate;
+    if (!v || v === 'none') return 0;
+    return parseFloat(v.split(' ')[1]) || 0;
+  }
+  // La courbe des tiroirs (--fg-ease, un cubic-bezier) en fonction : x -> y.
+  var easeTiroir = null;
+  function courbeDe(css) {
+    var m = /cubic-bezier\(([^)]+)\)/.exec(css || ''), c = m ? m[1].split(',').map(Number) : [0.25, 0.1, 0.25, 1];
+    var bx = function (u) { return 3 * c[0] * u * (1 - u) * (1 - u) + 3 * c[2] * u * u * (1 - u) + u * u * u; };
+    var by = function (u) { return 3 * c[1] * u * (1 - u) * (1 - u) + 3 * c[3] * u * u * (1 - u) + u * u * u; };
+    return function (x) {
+      var a = 0, b = 1, u = x;
+      for (var i = 0; i < 30; i += 1) { u = (a + b) / 2; if (bx(u) < x) a = u; else b = u; }
+      return by(u);
+    };
+  }
+  // Un seul glissement par element : le nouveau remplace l ancien, depuis la
+  // place ou l ancien l avait mis (lue par l appelant). `forme` : la part du
+  // trajet faite a chaque instant, en fonction de la courbe (par defaut la
+  // courbe elle-meme) ; la courbe passe alors en points (images cles).
+  function glisser(el, depuis, vers, fini, forme) {
+    if (el._fgGlisse) { el._fgGlisse.onfinish = null; el._fgGlisse.cancel(); el._fgGlisse = null; }
+    if (!depuis && !vers) { if (fini) fini(); return; }
+    if (!courbeTiroir) { courbeTiroir = getComputedStyle(root).getPropertyValue('--fg-ease').trim() || 'ease'; easeTiroir = courbeDe(courbeTiroir); }
+    var images = [{ translate: '0 ' + depuis + 'px' }, { translate: '0 ' + vers + 'px' }], options = { duration: DUREE_TIROIR, easing: courbeTiroir, fill: 'forwards' };
+    if (forme) {
+      images = [];
+      for (var k = 0; k <= 20; k += 1) images.push({ offset: k / 20, translate: '0 ' + (depuis + (vers - depuis) * forme(easeTiroir(k / 20))).toFixed(2) + 'px' });
+      options.easing = 'linear';
+    }
+    var a = el.animate(images, options);
+    el._fgGlisse = a;
+    a.onfinish = function () { if (el._fgGlisse !== a) return; el._fgGlisse = null; if (fini) fini(); a.cancel(); };
+  }
+  // Le contenu d un tiroir en grid-template-rows se devoile au carre de la
+  // rangee : la boite grandit de p, la piste de p sur la boite, donc p x p.
+  // Le glissement le reproduit : la rangee (les cartes du dessous) suit la
+  // courbe, le bord du contenu suit son carre.
+  function auCarre(p) { return p * p; }
+  function auCarreInverse(p) { return 1 - (1 - p) * (1 - p); }
+  function suiveursDe(el) {
+    // Ce qui vient apres la grille dans le flux, jusqu a la scene : ses freres
+    // suivants, puis ceux de chaque parent. Un element hors flux ou cache ne suit pas.
+    var l = [], fin = el.closest('.fg-scene') || body;
+    for (var n = el; n && n !== fin && n !== body; n = n.parentElement) {
+      for (var s = n.nextElementSibling; s; s = s.nextElementSibling) {
+        if (!s.getClientRects().length) continue;
+        var cs = getComputedStyle(s);
+        if (cs.position === 'absolute' || cs.position === 'fixed' || cs.cssFloat !== 'none') continue;
+        l.push(s);
+      }
+    }
+    return l;
+  }
+  // La maconnerie, sans rien ecrire : ou commence chaque tuile pour ces hauteurs.
+  function placerSur(mesures, colonnes, espace) {
+    var hauteurs = Array(colonnes).fill(0), debuts = mesures.map(function (h, i) { var col = i % colonnes, d = hauteurs[col]; hauteurs[col] += h + espace; return d; });
+    return { debuts: debuts, haut: Math.max.apply(null, hauteurs) };
+  }
+  function dedansDe(t) { var corps = $('.fg-card__opt', t); return corps && corps.firstElementChild && corps.firstElementChild.firstElementChild ? corps.firstElementChild : null; }
+  function tiroirSurCompositeur(grille, avant, changees, poser) {
+    if (!FLIP_TIROIR || !grille.getClientRects().length) return false;
+    if (!changees.some(dedansDe)) return false;
+    // 1. Ce que chaque tiroir montre a l ecran (lectures de style seulement) :
+    //    un tiroir en course montre la hauteur que son glissement devoile.
+    var suiveurs = suiveursDe(grille);
+    var courses = avant.tuiles.map(function (t) { var d = dedansDe(t); return d && d._fgGlisse ? decalageY(d) : null; });
+    changees.forEach(function (t) { t.classList.toggle('is-fermant', !t.classList.contains('is-on')); });
+    // 2. La mise en page d arrivee, en une fois.
+    poser();
+    var apres = grille._fgPlace;
+    // 3. La mise en page de l instant : tout ce qui change d un coup (la bande
+    //    d informations sous la carte entre ou sort du flux, comme avant), les
+    //    tiroirs a ce qu ils montrent. Les cartes et le bas de l ecran en
+    //    partent et glissent jusqu a la mise en page d arrivee.
+    var instant = apres.mesures.slice(), tiroirs = [];
+    apres.tuiles.forEach(function (t, i) {
+      var d = dedansDe(t);
+      if (!d) return;
+      var change = changees.indexOf(t) >= 0;
+      if (!change && courses[i] === null) return;
+      var H = d.offsetHeight, place = d.parentElement.offsetHeight, ouvre = t.classList.contains('is-on');
+      var vu = courses[i] !== null ? Math.max(0, Math.min(H, H + courses[i])) : (ouvre ? 0 : H);
+      instant[i] += vu - place;
+      if (change) tiroirs.push({ t: t, dedans: d, boite: d.firstElementChild, H: H, vu: vu, ouvre: ouvre });
+    });
+    var depart = placerSur(instant, apres.colonnes, apres.espace);
+    // Embarque : la hauteur d arrivee part vers la page hote avant la premiere
+    // image (la mise en page est a jour, les glissements pas encore poses).
+    if (EMBED) {
+      tenueGlisseJusqua = performance.now() + DUREE_TIROIR + 100;
+      posterHauteur();
+      setTimeout(posterHauteur, DUREE_TIROIR + 120);
+    }
+    // 4. Le tiroir se devoile ou se referme, depuis ce qu il montrait.
+    tiroirs.forEach(function (x) {
+      if (x.ouvre) { glisser(x.dedans, x.vu - x.H, 0, null, auCarre); glisser(x.boite, x.H - x.vu, 0, null, auCarre); return; }
+      glisser(x.boite, x.H - x.vu, x.H, null, auCarreInverse);
+      // Replie : il reprend sa place (hauteur nulle) a la derniere image, son
+      // contenu deja hors de la fenetre ; le cadre embarque suit.
+      glisser(x.dedans, x.vu - x.H, -x.H, function () { x.t.classList.remove('is-fermant'); posterHauteur(); }, auCarreInverse);
+    });
+    // 5. Les cartes du dessous et le bas de l ecran.
+    apres.tuiles.forEach(function (t, i) {
+      var d = depart.debuts[i] - apres.debuts[i];
+      if (d || t._fgGlisse) glisser(t, d, 0);
+    });
+    var dg = depart.haut - apres.haut;
+    suiveurs.forEach(function (sv) { if (dg || sv._fgGlisse) glisser(sv, dg, 0); });
+    return true;
   }
   function choisirPastille(pill) {
     var item = pill.closest('.fg-grid__item');

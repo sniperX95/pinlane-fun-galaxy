@@ -1260,6 +1260,17 @@ html.fg-pilote .fg { overflow: visible; }
    avant 17.4) jette cette ligne entiere et garde la precedente. */
 .fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s, content-visibility 0.4s allow-discrete; }
 .fg-grid__item.is-on .fg-card__optin { opacity: 1; transform: none; visibility: visible; content-visibility: visible; transition-delay: 0s; }
+/* Dans les grilles d activites, le tiroir se deplie sur le compositeur
+   (html.fg-flip, voir tiroirSurCompositeur) : la rangee prend tout de suite
+   sa hauteur d arrivee, le mouvement est un translate. A la fermeture, le
+   tiroir sort du flux le temps de se replier (is-fermant) : la colonne
+   remonte d emblee, il se referme par-dessus. */
+.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt { transition: none; }
+/* Ouvert, le contenu est la des le geste (sa hauteur d arrivee se mesure
+   dans le geste) ; replie, il reste visible les 0,4 s du repli, comme avant. */
+.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item.is-on > .fg-card__opt > .fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out); }
+:is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt { position: relative; }
+:is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt > .fg-card__optin { position: absolute; top: 0; left: 0; right: 0; }
 .fg-card__optbox {
   padding: 10px 12px 12px;
   border: 1.5px solid var(--fg-purple-2);

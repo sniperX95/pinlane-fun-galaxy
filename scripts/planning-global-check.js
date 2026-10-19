@@ -51,11 +51,14 @@ const PORT = Number(process.env.PINLANE_PLANNING_GLOBAL_PORT || 5191);
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const JOUR = '2026-10-24';
 const HEURE = '15:10';
+// (2026-10-20 : les six ecrans de Movsar, du grand ecran au telephone)
 const APPAREILS = {
+  grand: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, locale: 'fr-BE' },
   ordinateur: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, locale: 'fr-BE' },
   portable: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, locale: 'fr-BE' },
-  tablette: { viewport: { width: 800, height: 1280 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-BE' },
-  grand: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, locale: 'fr-BE' },
+  tablette: { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'fr-BE' },
+  'tablette-portrait': { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'fr-BE' },
+  telephone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-BE' },
 };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.webp': 'image/webp' };
 
@@ -278,7 +281,7 @@ function mesurer() {
   return {
     onglet: ((document.querySelector('#staffTabAll .main') || {}).textContent || '').trim(),
     defile: gh.classList.contains('is-defile'), tropSerre: gh.classList.contains('is-trop-serre'), hh: getComputedStyle(gh).getPropertyValue('--gh-h').trim(),
-    boiteBas: Math.round(rb.bottom + (fixe ? 0 : scrollY)), innerH: innerHeight, pageLarge: document.documentElement.scrollWidth <= innerWidth + 1,
+    boiteBas: Math.round(rb.bottom + (fixe ? 0 : scrollY)), boiteH: Math.round(rb.height), tel: innerWidth < 768, innerH: innerHeight, pageLarge: document.documentElement.scrollWidth <= innerWidth + 1,
     grilleH: grille.scrollHeight <= grille.clientHeight + 1, grilleL: grille.scrollWidth <= grille.clientWidth + 1,
     listeDessous: rl ? rl.top >= rb.bottom - 1 : false,
     coupes, chevauchements,
@@ -287,30 +290,84 @@ function mesurer() {
     maintenantVu: (() => { const b = gh.querySelector('.gh-maintenant'); if (!b || b.hidden) return false; const r = b.getBoundingClientRect(), g = grille.getBoundingClientRect(); return r.top >= g.top + 40 && r.bottom <= g.bottom + 0.5; })(),
   };
 }
-const tient = (m) => !m.manque && m.boiteBas <= m.innerH && (m.defile || m.grilleH) && (m.tropSerre || m.grilleL) && m.pageLarge;
-// Remplir l ecran : sa boite finit a moins de 60 px du bas, qu elle defile en
-// elle-meme ou non (une grille ecrasee tiendrait, sans servir).
-const remplit = (m) => !m.manque && m.boiteBas >= m.innerH - 60;
+// TENIR (2026-10-20) : la grille ne defile jamais en hauteur ; de cote, au
+// telephone seulement. Au telephone, la boite tient dans un ecran (on y
+// descend une fois) ; ailleurs, dans le premier ecran.
+const tient = (m) => !m.manque && (m.tel ? m.boiteH <= m.innerH + 1 : m.boiteBas <= m.innerH) && m.grilleH && (m.tel || m.grilleL) && m.pageLarge;
+// Remplir l ecran : sa boite finit a moins de 60 px du bas (une grille
+// ecrasee tiendrait, sans servir).
+const remplit = (m) => !m.manque && (m.tel ? m.boiteH >= m.innerH - 80 : m.boiteBas >= m.innerH - 60);
 const propre = (m) => !m.manque && !m.coupes.length && !m.chevauchements.length;
 
-async function lireBulle(page, carte) {
-  const boite = await carte.boundingBox();
-  return page.evaluate((c) => {
-    const b = document.querySelector('#ghBulle.is-vue');
-    if (!b || getComputedStyle(b).visibility !== 'visible') return { vue: false };
-    const r = b.getBoundingClientRect();
-    const dedans = r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5;
-    const couvre = Boolean(c) && r.left < c.x + c.width - 1 && c.x < r.right - 1 && r.top < c.y + c.height - 1 && c.y < r.bottom - 1;
-    const h = document.elementFromPoint(r.left + r.width / 2, r.top + 12);
-    return {
-      vue: true, dedans, couvre, dessus: Boolean(h) && b.contains(h),
-      nom: ((b.querySelector('.gh-b__nom') || {}).textContent || ''), lignes: b.querySelectorAll('.gh-b__prog li').length, ici: Boolean(b.querySelector('.gh-b__prog li.is-ici')),
-      notes: b.querySelectorAll('.gh-b__note').length, appeler: Boolean(b.querySelector('.gh-b__tel')), arrive: Boolean(b.querySelector('[data-gh-arrive]')),
-      groupe: document.querySelectorAll('#globalPlanningBox .gh-c.is-groupe').length,
-    };
-  }, boite);
+// LA GRILLE ENTIERE (2026-10-20, Movsar : « on doit voir l'ensemble des
+// heures d'une traite ») : aucun defilement vertical, chaque libelle d heure
+// dans la grille et dans l ecran (au telephone, une fois la boite en haut).
+function lireEntiere() {
+  const grille = document.querySelector('#globalPlanningBox .gh-grille');
+  if (!grille) return { manque: true };
+  if (innerWidth < 768) document.getElementById('globalPlanningBox').scrollIntoView({ block: 'start' });
+  const rg = grille.getBoundingClientRect();
+  const hs = Array.from(grille.querySelectorAll('.gh-pile--h .gh-h')).filter((h) => getComputedStyle(h).display !== 'none');
+  const a = hs[0].getBoundingClientRect(), b = hs[hs.length - 1].getBoundingClientRect();
+  const r = { defile: grille.scrollHeight - grille.clientHeight, premier: Math.round(a.top - rg.top), dernier: Math.round(rg.bottom - b.bottom), ecran: Math.round(innerHeight - b.bottom), libelles: hs.length };
+  if (innerWidth < 768) window.scrollTo(0, 0);
+  return r;
 }
-const bulleBien = (b) => b.vue && b.dedans && !b.couvre && b.dessus;
+const entiere = (e) => !e.manque && e.defile <= 1 && e.premier >= 40 && e.dernier >= -1 && e.ecran >= -1;
+
+// LE SURVOL : le groupe s allume, et rien ne se pose sur la grille (aucun
+// element flottant, hors de la grille, ne la recouvre).
+function lireSurvol() {
+  const gh = document.querySelector('#globalPlanningBox .gh');
+  const grille = gh.querySelector('.gh-grille');
+  const rg = grille.getBoundingClientRect();
+  const couvrants = Array.from(document.body.querySelectorAll('*')).filter((el) => {
+    if (grille.contains(el) || el.contains(grille)) return false;
+    const cs = getComputedStyle(el);
+    if ((cs.position !== 'fixed' && cs.position !== 'absolute') || cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    return r.left < rg.right - 1 && rg.left < r.right - 1 && r.top < rg.bottom - 1 && rg.top < r.bottom - 1;
+  }).slice(0, 4).map((el) => el.tagName.toLowerCase() + '.' + String(el.className).split(' ')[0]);
+  return { groupe: gh.querySelectorAll('.gh-c.is-groupe').length, attenuees: gh.classList.contains('a-groupe') ? gh.querySelectorAll('.gh-c:not(.is-groupe)').length : 0, couvrants };
+}
+
+// LE PANNEAU : ouvert a cote de la grille (jamais dessus), la grille entiere.
+function lirePanneau() {
+  const gh = document.querySelector('#globalPlanningBox .gh');
+  const pan = gh && gh.querySelector('.gh-panneau');
+  const grille = gh && gh.querySelector('.gh-grille');
+  if (!pan || !grille) return { manque: true };
+  if (innerWidth < 768) document.getElementById('globalPlanningBox').scrollIntoView({ block: 'start' });
+  const ouvert = !pan.hidden && pan.getBoundingClientRect().width > 0;
+  const rp = pan.getBoundingClientRect(), rg = grille.getBoundingClientRect();
+  const hs = Array.from(grille.querySelectorAll('.gh-pile--h .gh-h')).filter((h) => getComputedStyle(h).display !== 'none');
+  const a = hs[0].getBoundingClientRect(), b = hs[hs.length - 1].getBoundingClientRect();
+  const r = {
+    ouvert,
+    couvre: ouvert && rp.left < rg.right - 1 && rg.left < rp.right - 1 && rp.top < rg.bottom - 1 && rg.top < rp.bottom - 1,
+    entiere: grille.scrollHeight <= grille.clientHeight + 1 && a.top - rg.top >= 40 && b.bottom <= rg.bottom + 1 && b.bottom <= innerHeight + 1 && (!ouvert || b.bottom <= rp.top + 1 || rp.left >= rg.right - 1),
+    nom: ((pan.querySelector('.gh-p__nom') || {}).textContent || ''), lignes: pan.querySelectorAll('.gh-p__prog li').length, ici: Boolean(pan.querySelector('.gh-p__prog li.is-ici')),
+    notes: pan.querySelectorAll('.gh-p__note').length, bouts: pan.querySelectorAll('.gh-p__bout').length, appeler: Boolean(pan.querySelector('.gh-p__tel')), arrive: Boolean(pan.querySelector('[data-gh-arrive]')),
+    choisies: gh.querySelectorAll('.gh-c.is-choisi').length, fiche: Boolean(state.selectedRes),
+  };
+  if (innerWidth < 768) window.scrollTo(0, 0);
+  return r;
+}
+
+// LA PLAINE, UNE ACTIVITE A LA JOURNEE : chaque groupe une presence (un
+// segment, son nombre d enfants), pas une carte qui ecrit ; la tete compte.
+function lirePlaine() {
+  const pile = document.querySelector('#globalPlanningBox .gh-pile[data-gh-cle="plaine"]');
+  const tete = document.querySelector('#globalPlanningBox .gh-entete[data-gh-cle="plaine"]');
+  const cartes = pile ? Array.from(pile.querySelectorAll('.gh-c')) : [];
+  return {
+    cartes: cartes.length, traces: cartes.filter((c) => c.classList.contains('is-trace')).length,
+    nomsVus: cartes.filter((c) => { const n = c.querySelector('.gh-c__nom'); return n && n.getClientRects().length > 0; }).length,
+    pax: cartes.map((c) => (c.querySelector('.gh-c__pax') || {}).textContent).sort(), compteur: ((tete && tete.querySelector('.gh-entete__sous')) || {}).textContent || '',
+  };
+}
+
 
 // LA GRILLE D UN JOUR : ses etiquettes d heure, ses colonnes, son bandeau.
 const COLONNES_DU_CENTRE = ['Bowling', 'Duckpin', 'Laser', 'Fun Run', 'Arcades', 'Minigolf', 'O’Clock', 'Plaine', 'Billard'];
@@ -328,7 +385,8 @@ function lireGrille() {
     repli: Boolean(gh.querySelector('[data-gh-matin]')),
   };
 }
-const demiHeures = (de, a) => { const l = []; for (let m = min(de); m < min(a); m += 30) l.push(hh(m)); return l; };
+// (de l ouverture a la fermeture comprise : minuit se lit 00:00)
+const demiHeures = (de, a) => { const l = []; for (let m = min(de); m <= min(a); m += 30) l.push(hh(m % 1440)); return l; };
 const toutesLesHeures = (g, de, a) => !g.manque && JSON.stringify(g.heures) === JSON.stringify(demiHeures(de, a));
 const toutesLesColonnes = (g) => !g.manque && JSON.stringify(g.colonnes) === JSON.stringify(COLONNES_DU_CENTRE) && g.piles === COLONNES_DU_CENTRE.length;
 
@@ -366,37 +424,39 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
         ok(!lu.manque && lu.onglet === 'Planning global' && lu.listeDessous, `[A] ${ici} : l onglet « Planning global », sa boite, la liste dessous`, lu.manque ? 'pas de planning' : { onglet: lu.onglet, listeDessous: lu.listeDessous });
         if (lu.manque) continue;
         ok(tient(lu) && remplit(lu), `[B] ${ici} : le planning tient dans le premier ecran et le remplit`, { boiteBas: lu.boiteBas, innerH: lu.innerH, hh: lu.hh, defile: lu.defile });
+        const e0 = await page.evaluate(lireEntiere);
+        ok(entiere(e0), `[R] ${ici} : la journee chargee entiere, sans defilement vertical`, e0);
         ok(propre(lu), `[C] ${ici} : rien de coupe, aucune carte sur une autre`, { coupes: lu.coupes.slice(0, 4), chevauchements: lu.chevauchements.slice(0, 3) });
         ok(lu.noahPictos.length > 0 && lu.noahPictos.every((e) => e !== 'fini'), `[D] ${ici} : les pictos de Noah sont sur une carte qui vit encore`, lu.noahPictos);
 
         if (!appareil.hasTouch) {
+          // [E] LE SURVOL ALLUME LE GROUPE ; RIEN NE SE POSE SUR LA GRILLE.
           const noah = page.locator('#globalPlanningBox .gh-c.is-encours', { hasText: 'Noah' }).first();
           await noah.hover();
-          await page.waitForTimeout(650);
-          const b1 = await lireBulle(page, noah);
-          ok(bulleBien(b1) && b1.lignes >= 4 && b1.ici && b1.notes >= 1 && b1.groupe >= 2 && /Noah/.test(b1.nom), `[E] ${ici} : la bulle de Noah dit tout son programme et sa note`, b1);
-          // Chaque bulle s ouvre a neuf : la souris sort, la bulle d avant part
-          // (une bulle ouverte peut couvrir la carte voisine, comme a l ecran).
-          const aNeuf = async (carte) => {
-            await page.mouse.move(2, 2, { steps: 2 });
-            await page.waitForTimeout(450);
-            await carte.hover();
-            await page.waitForTimeout(650);
-            return lireBulle(page, carte);
-          };
+          await page.waitForTimeout(500);
+          const s1 = await page.evaluate(lireSurvol);
+          ok(s1.groupe >= 2 && s1.attenuees > 0 && s1.couvrants.length === 0, `[E] ${ici} : le survol allume le groupe et rien ne recouvre la grille`, s1);
+          // [E] Le clic ouvre le panneau du groupe, a cote de la grille.
+          await noah.click();
+          await page.waitForTimeout(400);
+          const p1 = await page.evaluate(lirePanneau);
+          ok(p1.ouvert && /Noah/.test(p1.nom) && p1.lignes >= 4 && p1.ici && p1.notes >= 1 && p1.bouts >= 4 && p1.choisies >= 2 && !p1.couvre && p1.entiere && !p1.fiche, `[E] ${ici} : le clic ouvre le panneau de Noah a cote de la grille, aucune heure cachee`, p1);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(300);
+          const p0 = await page.evaluate(lirePanneau);
+          ok(!p0.ouvert && p0.entiere, `[E] ${ici} : Echap ferme le panneau`, p0);
           const ardennes = page.locator('#globalPlanningBox .gh-c', { hasText: 'Ardennes Logistique' }).first();
-          const b0 = await aNeuf(ardennes);
-          ok(b0.vue && /Ardennes/.test(b0.nom) && !b0.arrive, `[E] ${ici} : un groupe deja arrive n a pas « Arrivé »`, b0);
+          await ardennes.click();
+          await page.waitForTimeout(300);
+          const pa = await page.evaluate(lirePanneau);
+          ok(pa.ouvert && /Ardennes/.test(pa.nom) && !pa.arrive, `[E] ${ici} : un groupe deja arrive n a pas « Arrivé »`, pa);
           const simon = page.locator('#globalPlanningBox .gh-c', { hasText: 'Famille Simon' }).first();
-          const b2 = await aNeuf(simon);
-          ok(bulleBien(b2) && /Simon/.test(b2.nom) && b2.appeler && b2.arrive, `[E] ${ici} : la bulle du groupe en retard montre son numero et « Arrivé »`, b2);
-          const bb = await page.locator('#ghBulle').boundingBox();
-          await page.mouse.move(bb.x + bb.width / 2, bb.y + 12, { steps: 3 });
-          await page.waitForTimeout(350);
-          const gardee = await page.evaluate(() => { const b = document.querySelector('#ghBulle.is-vue'); return b ? (b.querySelector('.gh-b__nom') || {}).textContent : ''; });
-          ok(/Simon/.test(gardee || ''), `[E] ${ici} : la bulle reste quand la souris y entre`, gardee);
-          if (nom === 'ordinateur' && /Simon/.test(gardee || '')) {
-            await page.locator('#ghBulle [data-gh-arrive]').click();
+          await simon.click();
+          await page.waitForTimeout(300);
+          const ps = await page.evaluate(lirePanneau);
+          ok(ps.ouvert && /Simon/.test(ps.nom) && ps.appeler && ps.arrive && !ps.couvre, `[E] ${ici} : le panneau du groupe en retard montre son numero et « Arrivé »`, ps);
+          if (nom === 'ordinateur' && ps.arrive) {
+            await page.locator('#globalPlanningBox .gh-panneau [data-gh-arrive]').click();
             await page.waitForTimeout(800);
             const apres = await page.evaluate(() => ({
               patch: (window.__PATCHS__ || []).filter((p) => p.status === 'arrived').map((p) => p.id),
@@ -404,12 +464,13 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
             }));
             ok(apres.patch.length === 1 && apres.patch[0] === 90108 && apres.teintes.length > 0 && apres.teintes.every((t) => t === 't-arr'), `[F] ${ici} : « Arrivé » ecrit le pointage et le groupe passe a l ambre`, apres);
           } else if (nom === 'ordinateur') {
-            ok(false, `[F] ${ici} : « Arrivé » ecrit le pointage et le groupe passe a l ambre`, 'la bulle de Famille Simon n est pas ouverte');
+            ok(false, `[F] ${ici} : « Arrivé » ecrit le pointage et le groupe passe a l ambre`, 'le panneau de Famille Simon n a pas « Arrivé »');
           }
+          await page.locator('#globalPlanningBox [data-gh-fermer]').click();
           await page.mouse.move(2, 2, { steps: 2 });
-          await page.waitForTimeout(450);
-          const partie = await page.evaluate(() => !document.querySelector('#ghBulle.is-vue') && !document.querySelector('#globalPlanningBox .gh.a-groupe'));
-          ok(partie, `[E] ${ici} : la bulle part quand la souris sort`);
+          await page.waitForTimeout(350);
+          const ferme0 = await page.evaluate(() => ({ panneau: !document.querySelector('#globalPlanningBox .gh-panneau:not([hidden])'), groupe: !document.querySelector('#globalPlanningBox .gh.a-groupe') }));
+          ok(ferme0.panneau && ferme0.groupe, `[E] ${ici} : la croix ferme le panneau, le groupe s eteint quand la souris sort`, ferme0);
           const avant = await page.evaluate(() => document.querySelectorAll('#globalPlanningBox .gh-c').length);
           await page.fill('#globalPlanningSearchInput', 'noah');
           await page.waitForTimeout(400);
@@ -430,9 +491,9 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
             const grille = racine && racine.querySelector('.gh-grille');
             if (!pile || !grille) return null;
             const h = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-h'));
-            grille.scrollTop = Math.max(0, h * 2.5 - 40);
             const r = pile.getBoundingClientRect();
-            return { x: r.left + r.width / 2, y: r.top + h * 2.75 };
+            const o = parseFloat(getComputedStyle(racine).getPropertyValue('--gh-o'));
+            return { x: r.left + r.width / 2, y: r.top + o + h * 2.75 };
           });
           await page.waitForTimeout(150);
           if (caseVide) { await page.mouse.move(caseVide.x, caseVide.y, { steps: 2 }); await page.waitForTimeout(120); }
@@ -445,26 +506,32 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
           await page.mouse.move(2, 2);
           await repos(page, 200);
         } else {
-          // [H] AU DOIGT, DEUX TEMPS : le premier toucher montre le programme
-          // (la bulle, ses cartes allumees), le second ouvre la fiche.
+          // [H] AU DOIGT : toucher une carte ouvre son panneau (sous la grille
+          // au telephone, a cote ailleurs), toucher encore ouvre la fiche.
           const petit = page.locator('#globalPlanningBox .gh-c', { hasText: 'Famille Petit' }).first();
           await petit.scrollIntoViewIfNeeded();
           await petit.tap();
           await page.waitForTimeout(500);
-          const premier = await page.evaluate(() => ({ nom: state.selectedRes && state.selectedRes.name, bulle: ((document.querySelector('#ghBulle.is-vue .gh-b__nom') || {}).textContent || ''), lignes: document.querySelectorAll('#ghBulle.is-vue .gh-b__prog li').length, groupe: document.querySelectorAll('#globalPlanningBox .gh-c.is-groupe').length }));
-          ok(!premier.nom && /Famille Petit/.test(premier.bulle) && premier.lignes >= 2 && premier.groupe >= 2, `[H] ${ici} : toucher une carte montre le programme du groupe`, premier);
+          const premier = await page.evaluate(lirePanneau);
+          ok(premier.ouvert && /Famille Petit/.test(premier.nom) && !premier.fiche && premier.lignes >= 2 && !premier.couvre && premier.entiere, `[H] ${ici} : toucher une carte ouvre son panneau sans cacher une heure`, premier);
+          await petit.scrollIntoViewIfNeeded();
           await petit.tap();
           await page.waitForTimeout(500);
-          const fiche = await page.evaluate(() => ({ nom: state.selectedRes && state.selectedRes.name, bulle: Boolean(document.querySelector('#ghBulle.is-vue')) }));
-          ok(fiche.nom === 'Famille Petit' && !fiche.bulle, `[H] ${ici} : toucher encore ouvre sa fiche`, fiche);
+          const fiche = await page.evaluate(() => ({ nom: state.selectedRes && state.selectedRes.name, panneau: Boolean(document.querySelector('#globalPlanningBox .gh-panneau:not([hidden])')) }));
+          ok(fiche.nom === 'Famille Petit' && !fiche.panneau, `[H] ${ici} : toucher encore ouvre sa fiche`, fiche);
           await page.evaluate(() => closePos());
           await page.waitForTimeout(300);
+          await page.evaluate(() => window.scrollTo(0, 0));
         }
+
+        // [S] LA PLAINE, A LA JOURNEE : des presences, et la tete qui compte.
+        const pl = await page.evaluate(lirePlaine);
+        ok(pl.cartes === 2 && pl.traces === 2 && pl.nomsVus === 0 && JSON.stringify(pl.pax) === JSON.stringify(['10', '12']) && /\d+ enf\./.test(pl.compteur), `[S] ${ici} : la plaine montre des presences et compte les enfants`, pl);
 
         // [L] LA JOURNEE CHARGEE, COMPLETE : chaque demi-heure de l ouverture a
         // la fermeture, rien de replie, les neuf activites du centre.
         const charge = await page.evaluate(lireGrille);
-        ok(toutesLesHeures(charge, '10:00', '24:00') && !charge.repli, `[L] ${ici} : la journee chargee montre chaque demi-heure de 10:00 a 23:30`, { heures: charge.heures && [charge.heures[0], charge.heures[charge.heures.length - 1], charge.heures.length], repli: charge.repli });
+        ok(toutesLesHeures(charge, '10:00', '24:00') && !charge.repli, `[L] ${ici} : la journee chargee montre chaque demi-heure de 10:00 a 00:00`, { heures: charge.heures && [charge.heures[0], charge.heures[charge.heures.length - 1], charge.heures.length], repli: charge.repli });
         ok(toutesLesColonnes(charge), `[L] ${ici} : les neuf activites du centre ont leur colonne, vides comprises`, charge.colonnes);
 
         // [M] Les heures collees a gauche, les tetes en haut.
@@ -516,10 +583,26 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
         await jourDe('2026-10-25');
         await repos(page, 200);
         const vide = await page.evaluate(lireGrille);
+        const ev = await page.evaluate(lireEntiere);
+        ok(entiere(ev), `[R] ${ici} : le jour vide entier, sans defilement vertical`, ev);
+        await page.click('#globalPlanningToggle');
+        await repos(page, 250);
+        const evA = await page.evaluate(lireEntiere);
+        ok(entiere(evA), `[R] ${ici} : le jour vide agrandi entier, sans defilement vertical`, evA);
+        await page.click('#globalPlanningToggle');
+        await repos(page, 200);
         ok(toutesLesHeures(vide, '10:00', '24:00') && toutesLesColonnes(vide) && vide.cartes === 0 && /Aucune réservation/.test(vide.bandeau) && !vide.vide, `[N] ${ici} : un jour sans reservation garde toute sa grille et le dit`, vide);
         await jourDe('2026-10-26');
         await repos(page, 200);
         const ferme = await page.evaluate(lireGrille);
+        const ef = await page.evaluate(lireEntiere);
+        ok(entiere(ef), `[R] ${ici} : le jour ferme entier, sans defilement vertical`, ef);
+        await page.click('#globalPlanningToggle');
+        await repos(page, 250);
+        const efA = await page.evaluate(lireEntiere);
+        ok(entiere(efA), `[R] ${ici} : le jour ferme agrandi entier, sans defilement vertical`, efA);
+        await page.click('#globalPlanningToggle');
+        await repos(page, 200);
         ok(toutesLesHeures(ferme, '10:00', '22:00') && toutesLesColonnes(ferme) && /Centre fermé ce jour-là/.test(ferme.bandeau) && ferme.reserve === 0, `[N] ${ici} : un jour ferme garde sa grille, le bandeau « Centre fermé ce jour-là », aucune case a reserver`, ferme);
         await jourDe(JOUR);
         await repos(page, 250);
@@ -528,9 +611,9 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
         await repos(page, 300);
         const ag = await page.evaluate(mesurer);
         const plein = await page.evaluate(() => ({ ouvert: document.getElementById('globalPlanningBox').classList.contains('expanded'), bouton: document.getElementById('globalPlanningToggle').textContent }));
-        // (la journee entiere a 13 px ne tient pas toujours sans defiler, 14 h
-        // sur 800 px : la grille defile alors en elle-meme, ouverte sur l heure)
-        ok(plein.ouvert && plein.bouton === 'Réduire' && tient(ag) && (!ag.defile || ag.maintenantVu) && propre(ag), `[I] ${ici} : « Agrandir » ouvre le plein ecran, tout y tient sans defiler ou s ouvre sur l heure qu il est`, { plein, defile: ag.defile, maintenantVu: ag.maintenantVu, coupes: (ag.coupes || []).slice(0, 3) });
+        const eA = await page.evaluate(lireEntiere);
+        ok(plein.ouvert && plein.bouton === 'Réduire' && tient(ag) && propre(ag), `[I] ${ici} : « Agrandir » ouvre le plein ecran, tout y tient`, { plein, coupes: (ag.coupes || []).slice(0, 3) });
+        ok(entiere(eA), `[R] ${ici} : la journee chargee agrandie entiere, sans defilement vertical`, eA);
         await page.click('#globalPlanningToggle');
         await repos(page, 200);
         ok(erreurs.length === 0, `[A] ${ici} : zero erreur JS`, erreurs.slice(0, 3));
@@ -546,11 +629,14 @@ async function scenarios(browser, { appareils = Object.keys(APPAREILS), themes =
 // ---------------------------------------------------------------------------
 const MODULE = 'assets/pinlane-planning-global.js';
 const MUTATIONS = [
-  // (2026-10-19 : la mutation « etiquettes », les etiquettes hors de
-  // l essentiel, ne rougit plus : a 13 px sur des heures de 66 a 72 px, la
-  // journee type laisse a chaque carte la place de ses etiquettes, sur les
-  // quatre ecrans et les deux themes. La regle reste dans le module ; il lui
-  // faut une journee plus serree pour etre reprouvee.)
+  // Les etiquettes hors de l essentiel, sans forme courte ni mesure : une
+  // etiquette deborde de sa carte en plein ecran, a la tablette debout.
+  // (2026-10-20 : depuis que la journee tient sans defiler, une carte trop
+  // etroite prend la forme courte de ses etiquettes ; les deux regles
+  // ensemble les gardent entieres, la mutation retire les trois.)
+  { nom: 'etiquettes', lettre: '[I] tablette-portrait light', appareils: ['tablette-portrait'], themes: ['light'],
+    editions: [{ fichier: MODULE, de: '        if (tagsL) mots.push(tagsL);\n', vers: '' }, { fichier: MODULE, de: "      if (deborde(c) && c.querySelector('.gp-tag')) c.classList.add('tags-courts');\n", vers: '' },
+      { fichier: MODULE, de: "c.querySelectorAll('.gh-c__l1 .gp-tag, .gh-c__l1 .bk-flag')", vers: "c.querySelectorAll('.gh-c__l1 .bk-flag')" }] },
   // La boite mesuree a la page : la liste dessous ecrase la grille
   // (au portable, la grille qui defile s ecrase et ne remplit plus l ecran)
   { nom: 'hauteur', lettre: '[B] portable light', appareils: ['portable'], themes: ['light'],
@@ -578,9 +664,25 @@ const MUTATIONS = [
     editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gh-pile--h { position: sticky; left: 0;', vers: '.gh-pile--h { position: relative; left: 0;' }] },
   { nom: 'tetes-collees', lettre: '[M] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
     editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '  position: sticky; top: 0; z-index: 7;', vers: '  position: relative; top: 0; z-index: 7;' }] },
+  // (2026-10-20) Une heure a hauteur fixe : la journee deborde de la boite.
+  { nom: 'heure-fixe', lettre: '[R] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: '    hh = Math.max(6, Math.min(GH.heureMax, hh));\n', vers: '    hh = 60;\n' }] },
+  // Le survol qui ouvre un panneau flottant sur la grille.
+  { nom: 'survol-couvre', lettre: '[E] ordinateur dark : le survol', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: '      survol = id;\n      ghGroupe(wrap, id);\n', vers: '      survol = id;\n      ghGroupe(wrap, id);\n      if (c) ghOuvrirPanneau(wrap, c);\n' },
+      { fichier: 'assets/pinlane-planning-global.css', de: '.gh-panneau { position: relative; flex: 0 0 320px;', vers: '.gh-panneau { position: fixed; top: 0; right: 0; bottom: 0; z-index: 500; flex: 0 0 320px;' }] },
+  // Le panneau pose sur la grille au lieu de se ranger a cote.
+  { nom: 'panneau-couvre', lettre: '[E] ordinateur dark : le clic', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gh-panneau { position: relative; flex: 0 0 320px;', vers: '.gh-panneau { position: absolute; top: 0; right: 0; bottom: 0; z-index: 30; flex: 0 0 320px;' }] },
+  // Echap ne ferme plus le panneau.
+  { nom: 'echap', lettre: '[E] ordinateur dark : Echap', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: "if (e.key === 'Escape' && wrap._ghP) ghFermerPanneau(wrap);", vers: 'if (false) ghFermerPanneau(wrap);' }] },
+  // La plaine redevient une pile de cartes.
+  { nom: 'plaine-cartes', lettre: '[S] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
+    editions: [{ fichier: MODULE, de: ", forme: 'journee' },", vers: ' },' }] },
   // L heure qu il est remise dans le dessin : chaque minute reconstruit la grille.
   { nom: 'tic-sans-dessin', lettre: '[P] ordinateur dark', appareils: ['ordinateur'], themes: ['dark'],
-    editions: [{ fichier: MODULE, de: `'<i class="gh-maintenant" aria-hidden="true" hidden></i>'`, vers: `'<i class="gh-maintenant" aria-hidden="true" hidden data-t="' + m.maintenant + '"></i>'` }] },
+    editions: [{ fichier: MODULE, de: `<i class="gh-maintenant" aria-hidden="true" hidden></i>'`, vers: `<i class="gh-maintenant" aria-hidden="true" hidden data-t="' + m.maintenant + '"></i>'` }] },
 ];
 
 async function main() {

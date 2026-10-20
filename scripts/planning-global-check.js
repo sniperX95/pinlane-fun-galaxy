@@ -25,8 +25,11 @@
 //   [K][A] l onglet « Planning global », sa boite, la liste dessous ;
 //   [K][I] en plein ecran, la boite est agrandie et tout y tient.
 // LES INVARIANTS CIBLES (sur la journee et l ecran qu ils nomment) : N4 W3
-// W4 B2 B3 B4 L1 L2 P1 S1 R1 A1 H1 D1 D2 D3 J1 Z1 I1 V1 X1 X3 et les
+// W4 B2 B3 B4 L1 L2 P1 S1 U1 R1 A1 H1 D1 D2 D3 J1 Z1 I1 V1 X1 X3 et les
 // comportements gardes [K][F] [G] [H] [M] [N] [Q].
+// [U1] (Movsar, 2026-10-20 : « simplifier a mort ») : une rangee de tete,
+// sans compteur ; ni picto ni glyphe court sur les cartes ; la part libre
+// d une partie laser n ecrit rien ; rien de la tete n est redit en carte.
 // --contre-preuves : chaque regle retiree (en memoire, au texte servi ; le
 // disque n est jamais touche) fait rougir sa lettre ; chaque ancre existe une
 // fois et une seule.
@@ -250,7 +253,8 @@ function lireStructure() {
     if (el.k === 'carte') {
       const etats = wrap._ghEtats || plan.etats;
       const tags = (el.porteuse ? (etats.tags[el.gid] || []) : []).concat(el.tagsFixes || []);
-      tags.forEach((t) => { const def = Mo.TAGS[t.code]; const v = t.code === 'retard' ? '9'.repeat(Math.max(2, String(t.v).length)) : t.v; besoin += M.m(typo.nom, ' ') + M.tab(typo.tag, def.court(v)) + 8 + 1; });
+      // (une etiquette sans forme courte tombe avant le nom : elle ne compte pas)
+      tags.forEach((t) => { const def = Mo.TAGS[t.code]; if (!def.court) return; const v = t.code === 'retard' ? '9'.repeat(Math.max(2, String(t.v).length)) : t.v; besoin += M.m(typo.nom, ' ') + M.tab(typo.tag, def.court(v)) + 8 + 1; });
       if (el.arrivee) besoin += M.m(typo.nom, ' ') + M.tab(typo.petit, formatClockDisplay(el.debut)) + 1;
     }
     const forme = el.compo ? el.compo.forme : -1;
@@ -594,11 +598,15 @@ cible('P1', 'les presences', (s) => estS('pic', 'ordinateur')(s) || estS('normal
     presences.forEach((c) => {
       const el = plan.elements.find((x) => x.cle === c.getAttribute('data-gh-k'));
       const nom = c.querySelector('.gh-c__nom'), n = c.querySelector('.gh-pr__n');
-      // (des 40 px le nom ; le compte aussi, des qu il a sa ligne ou qu ils tiennent ensemble)
+      // (des 40 px le nom ; le compte aussi, des qu ils tiennent ensemble sur une ligne,
+      // et alors sur la premiere ligne du nom : seul au-dessus, il se lisait comme le
+      // bas de la carte d au-dessus)
       const M = window.PinlanePlanningMoteur.mesureur(window.__ghMesure);
       const ensemble = el.formes.some((t) => M.m(plan.typo.nom, t) + 1 + 6 + M.tab(plan.typo.tag, String(el.enfants)) + 1 <= el.tw);
       if (el.bw >= 40 && el.L >= 1 && !nom) fautes.push(`${el.cle} (${el.bw} px) sans nom`);
-      if (el.bw >= 40 && (el.L >= 2 || ensemble) && !n) fautes.push(`${el.cle} (${el.bw} px, ${el.L} lignes) sans compte`);
+      if (el.bw >= 40 && ensemble && !n) fautes.push(`${el.cle} (${el.bw} px, ${el.L} lignes) sans compte`);
+      const t0 = c.querySelector('.gh-c__t');
+      if (n && t0 && !n.classList.contains('is-seul') && Math.abs(n.getBoundingClientRect().top - t0.getBoundingClientRect().top) > 1) fautes.push(`${el.cle} : le compte n est pas sur la ligne du nom`);
       if (n) rects.push({ r: n.getBoundingClientRect(), k: el.cle });
       if (c.classList.contains('peut-suivre') && c.classList.contains('is-encours')) {
         const bloc = c.querySelector('.gh-c__t');
@@ -615,12 +623,37 @@ cible('P1', 'les presences', (s) => estS('pic', 'ordinateur')(s) || estS('normal
       if (dy > 0 && Math.max(b.left - a.right, a.left - b.right) < 4) fautes.push(`comptes de ${rects[i].k} et ${rects[j].k} a moins de 4 px`);
     }
     const la = entree.seances.filter((x) => x.colonne === 'plaine' && x.debut <= now + 1e-6 && x.fin > now + 1e-6).reduce((a, x) => a + (Number(x.enfants) || 0), 0);
-    const sous = (document.querySelector('#globalPlanningBox .gh-entete[data-gh-cle="plaine"] .gh-entete__sous') || {}).textContent || '';
+    const sous = (document.querySelector('#globalPlanningBox .gh-entete[data-gh-cle="plaine"]') || { getAttribute: () => '' }).getAttribute('aria-label') || '';
     return { fautes, la, sous, presences: presences.length, suivent: presences.filter((c) => c.classList.contains('peut-suivre') && c.classList.contains('is-encours')).length };
   });
   if (s.fixture === 'normal') ok(r.suivent > 0, `[prerequis] ${label} : une presence haute en cours (le Club des enfants du mercredi)`, r);
   ok(r.fautes.length === 0 && r.presences > 0, `[P1] ${label} : chaque presence de 40 px ecrit son nom, et ses enfants des qu ils ont leur place, les comptes ne se touchent pas, le nom suit maintenant (${r.suivent} en cours hautes)`, r.fautes.slice(0, 4));
-  ok(new RegExp('^' + r.la + ' (enf\\. là|là)$|^' + r.la + '$').test(r.sous), `[P1] ${label} : la tete dit « ${r.la} enf. là »`, r.sous);
+  ok(new RegExp(', ' + r.la + ' enfants en ce moment, ').test(r.sous), `[P1] ${label} : la tete dit, dans son aria-label, « ${r.la} enfants en ce moment »`, r.sous);
+});
+
+// [U1] SIMPLE A LIRE (Movsar, 2026-10-20) : une rangee de tete sans compteur,
+// ni picto ni glyphe court sur les cartes, la part libre d une partie muette.
+cible('U1', 'simple a lire', (s) => !s.variante && !s.heure && s.theme === 'dark' && (s.fixture === 'pic' || s.fixture === 'pire') && ['ordinateur', 'tablette', 'grand'].includes(s.appareil), async (page, s, label) => {
+  const r = await page.evaluate(() => {
+    const box = document.querySelector('#globalPlanningBox');
+    const fautes = [];
+    box.querySelectorAll('.gh-entete[data-gh-cle]').forEach((t) => {
+      const cle = t.getAttribute('data-gh-cle');
+      if (t.getBoundingClientRect().height > 32.5) fautes.push(`tete ${cle} : ${t.getBoundingClientRect().height} px`);
+      if (t.querySelector('.gh-entete__n, .gh-entete__sous')) fautes.push(`tete ${cle} : pastille ou sous-ligne`);
+      const nums = Array.from(t.querySelectorAll('.gh-num')).map((x) => x.textContent).join('');
+      const texte = t.textContent.replace(/\s+/g, '');
+      if (cle === 'bowling' ? texte !== nums || t.querySelector('.gh-entete__t') : /\d/.test(texte)) fautes.push(`tete ${cle} : « ${t.textContent.trim()} »`);
+    });
+    if (box.querySelector('.gh-grille .bk-flag, .gh-grille .gh-pictos')) fautes.push('un picto sur une carte');
+    box.querySelectorAll('.gh-grille .gp-tag.is-court').forEach((x) => { if (!/is-retard|is-conflit|is-piste/.test(x.className)) fautes.push(`glyphe court « ${x.textContent} »`); });
+    box.querySelectorAll('.gh-grille .gh-seg-libre').forEach((x) => { if (x.textContent.trim()) fautes.push(`part libre « ${x.textContent} »`); });
+    const libres = box.querySelectorAll('.gh-grille .gh-seg-libre').length;
+    box.querySelectorAll('.gh-pile[data-gh-cle="bowling"] .gh-c .gh-c__d').forEach((d) => { if (/^P\d/.test(d.textContent)) fautes.push(`« ${d.textContent} » sur ${d.closest('.gh-c').getAttribute('data-gh-k')}`); });
+    return { fautes, libres, tetes: box.querySelectorAll('.gh-entete[data-gh-cle]').length };
+  });
+  ok(r.tetes > 0 && r.libres > 0, `[prerequis] ${label} : des tetes et des parts libres de laser a lire`, r);
+  ok(r.fautes.length === 0, `[U1] ${label} : une rangee de tete sans compteur, ni picto ni glyphe court, la part libre muette, pas de « P1-2 » au bowling`, r.fautes.slice(0, 6));
 });
 
 // [S1] COULEUR = STATUT
@@ -1296,7 +1329,7 @@ cible('Z1', 'la nuit', (s) => s.heure === '24:20', async (page, s, label) => {
     const rb = barre && barre.getBoundingClientRect();
     const Mo = window.PinlanePlanningMoteur;
     const finies = plan.elements.filter((el) => (el.k === 'carte' || el.k === 'seg' || el.k === 'presence') && el.fin <= 24 + 20 / 60 + 1e-6 && etats.elements[el.cle] === 'encours').map((el) => el.cle);
-    const laser = (document.querySelector('#globalPlanningBox .gh-entete[data-gh-cle="laser"] .gh-entete__sous') || {}).textContent || '';
+    const laser = (document.querySelector('#globalPlanningBox .gh-entete[data-gh-cle="laser"]') || { getAttribute: () => '' }).getAttribute('aria-label') || '';
     const p0 = plan.elements.find((el) => el.k === 'partie' && Math.abs(el.debut - 24) < 1e-6);
     const segs0 = p0 ? plan.elements.filter((el) => el.k === 'seg' && el.partie === p0.cle).map((el) => etats.elements[el.cle]) : [];
     const libelles = Array.from(pileH.querySelectorAll('.gh-h')).filter((h) => getComputedStyle(h).display !== 'none').map((h) => h.textContent);
@@ -1306,7 +1339,7 @@ cible('Z1', 'la nuit', (s) => s.heure === '24:20', async (page, s, label) => {
   ok(r.fin === 25 && r.barre != null && Math.abs(r.barre - r.attendu) <= 1 && r.pastille === '00:20', `[Z1] ${label} : la grille va jusqu a 01:00, la barre a 00:20`, r);
   ok(r.finies.length === 0, `[Z1] ${label} : aucune carte finie avant 00:20 n est en cours`, r.finies.slice(0, 4));
   // (le groupe de minuit n est pas arrive : son segment est en retard, la partie, elle, se joue)
-  ok(r.segs0.length > 0 && r.segs0.every((e) => e === 'encours' || e === 'retard') && r.laser === '00:00 · 30/30', `[Z1] ${label} : la partie de 00:00 est en cours, la tete laser dit « 00:00 · 30/30 »`, { segs: r.segs0, laser: r.laser });
+  ok(r.segs0.length > 0 && r.segs0.every((e) => e === 'encours' || e === 'retard') && /, partie de 00:00 · 30\/30 armes$/.test(r.laser), `[Z1] ${label} : la partie de 00:00 est en cours, la tete laser dit « partie de 00:00 · 30/30 armes »`, { segs: r.segs0, laser: r.laser });
   ok(r.libelles.includes('00:00') && r.libelles.includes('01:00') && (r.hh < 32 || r.libelles.includes('00:30')) && r.minuit === 2, `[T3] ${label} : 00:00, 01:00 (et 00:30), un filet de minuit de 2 px`, r);
 });
 
@@ -1403,6 +1436,9 @@ const MUTATIONS = [
   { nom: 'partie-meme-fin', lettre: 'L1', scenarios: [{ fixture: 'normal', appareil: 'ordinateur', mode: 'normal', theme: 'dark', variante: ['vagues'] }], editions: [{ fichier: MOTEUR, de: '      if (p && e.debut <= p.debut + ECART_PARTIE + 1e-6) p.entrees.push(e);', vers: '      if (p && Math.abs(e.debut - p.debut) < 1e-9 && Math.abs(e.fin - p.entrees[0].fin) < 1e-9) p.entrees.push(e);' }] },
   { nom: 'barre-proportionnelle', lettre: 'L2', scenarios: [{ fixture: 'pic', appareil: 'grand', mode: 'normal', theme: 'dark' }], editions: [{ fichier: MOTEUR, de: '    var w = segs.map(function (s) { return connu ? Math.max(s.ess, s.joueurs / C * Bu) : s.ess; });', vers: '    var w = segs.map(function (s) { return connu ? s.joueurs / C * Bu : s.ess; });' }] },
   { nom: 'nom-fige', lettre: 'P1', scenarios: [{ fixture: 'normal', appareil: 'ordinateur', mode: 'normal', theme: 'dark' }], editions: [{ fichier: PGC, de: '.gh-c.peut-suivre.is-encours > .gh-c__t, .gh-c.peut-suivre.is-encours > .gh-pr__n { transform: translateY(clamp(0px, calc(var(--gh-now-px) - var(--gh-top) + 2px), calc(var(--gh-ht) - var(--gh-bloc)))); }', vers: '' }] },
+  { nom: 'pastille-revenue', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: PG, de: "'<span class=\"gh-entete__t\">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '</div>';", vers: "'<span class=\"gh-entete__t\">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '<span class=\"gh-entete__n\">' + tete.groupes + '</span></div>';" }] },
+  { nom: 'libres-revenus', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "    if (b.seg >= 0 || el.Ls < 1 || b.libre) return '';", vers: "    if (b.libre && el.Ls >= 1) return String(Math.max(0, el.C - el.p.armes));\n    if (b.seg >= 0 || el.Ls < 1) return '';" }] },
+  { nom: 'glyphe-euro', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: null },", vers: "    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: function () { return '€'; } }," }] },
   { nom: 'couleur-par-activite', lettre: 'S1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gh-c.is-libre { border-style: dashed;', vers: '.gh-pile[data-gh-cle="minigolf"] .gh-c { --bk-barre: #8a2be2; }\n.gh-c.is-libre { border-style: dashed;' }] },
   { nom: 'porteuse-la-plus-large', lettre: 'R1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "      if (g.retard && maintenant != null) choix = c.filter(function (el) { return etats[el.cle] === 'retard'; }).sort(tot)[0] || null;\n      if (!choix && attendu(g)) choix = c.slice().sort(tot)[0];", vers: '      choix = c.slice().sort(large)[0];' }] },
   // (la carte d arrivee lache son heure au niveau 3, comme les autres)
@@ -1426,7 +1462,7 @@ const MUTATIONS = [
   { nom: 'recherche-sans-effet', lettre: 'K][G', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "    if (t.recherche && el.cherche.indexOf(t.recherche) < 0) c += ' is-terne';", vers: '' }] },
   { nom: 'toucher-ouvre-la-fiche', lettre: 'K][H', scenarios: [{ fixture: 'pic', appareil: 'tablette', mode: 'normal', theme: 'dark' }], editions: [{ fichier: PG, de: '      if (p && p.k === c.getAttribute(\'data-gh-k\')) {', vers: '      if (true) {' }] },
   { nom: 'plein-ecran-deborde', lettre: 'K][I', scenarios: [{ ...PIC, mode: 'plein' }], editions: [{ fichier: PG, de: '    var bas = lu.plein ? GH.basPlein : GH.bas + 1;', vers: '    var bas = lu.plein ? -60 : GH.bas + 1;' }] },
-  { nom: 'heures-pas-collees', lettre: 'K][M', scenarios: [{ fixture: 'pic', appareil: 'telephone', mode: 'normal', theme: 'dark' }], editions: [{ fichier: PGC, de: '.gh-pile--h { position: sticky; left: 0; z-index: 6;', vers: '.gh-pile--h { position: relative; left: 0; z-index: 6;' }, { fichier: PGC, de: '  position: sticky; top: 0; z-index: 7; box-sizing: border-box; height: 44px;', vers: '  position: relative; top: 0; z-index: 7; box-sizing: border-box; height: 44px;' }] },
+  { nom: 'heures-pas-collees', lettre: 'K][M', scenarios: [{ fixture: 'pic', appareil: 'telephone', mode: 'normal', theme: 'dark' }], editions: [{ fichier: PGC, de: '.gh-pile--h { position: sticky; left: 0; z-index: 6;', vers: '.gh-pile--h { position: relative; left: 0; z-index: 6;' }, { fichier: PGC, de: '  position: sticky; top: 0; z-index: 7; box-sizing: border-box; height: 32px;', vers: '  position: relative; top: 0; z-index: 7; box-sizing: border-box; height: 32px;' }] },
   { nom: 'heures-hors-du-centre', lettre: 'K][N', scenarios: [{ fixture: 'vide', appareil: 'ordinateur', mode: 'normal', theme: 'dark' }], editions: [{ fichier: PG, de: "      fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false },", vers: '      fenetre: { open: 14, close: 20, closed: false },' }] },
   { nom: 'reserve-une-demi-heure-trop-tard', lettre: 'K][Q', scenarios: [PIC], editions: [{ fichier: PG, de: '    else quickFromCell(c.piste, c.t);', vers: '    else quickFromCell(c.piste, c.t + 0.5);' }] },
 ];

@@ -91,13 +91,11 @@ const euros = (n) => `${(Math.round(Number(n) * 100) / 100).toLocaleString('fr-B
 // ---------------------------------------------------------------------------
 // [A] LE SERVEUR
 // ---------------------------------------------------------------------------
-function samediProchain() {
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
-  const c = new Date(Date.UTC(y, m - 1, d));
-  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== 6);
-  return c.toISOString().slice(0, 10);
-}
-const DATE = samediProchain();
+// Le samedi des gates (scripts/jour-de-test.js), celui que sert aussi le faux
+// serveur du formulaire (mock.DATE) : le « prochain samedi » sans filtre
+// tombait dans le conge d automne (24/10 et 31/10) pendant que le formulaire
+// jouait le 7/11, et le serveur se lisait sur un autre jour que l ecran.
+const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
 function purger() {
   Object.keys(require.cache)
     .filter((cle) => cle.startsWith(ROOT) && !cle.includes(`${path.sep}node_modules${path.sep}`))

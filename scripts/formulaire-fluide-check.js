@@ -567,10 +567,13 @@ async function gate() {
       for (let tour = 0; tour < 2; tour += 1) {
         for (const reference of tour % 2 ? [false, true] : [true, false]) {
           const ctx = await ouvrirActivites(browser, { reference, cpu: 6 });
-          repos.push(await auRepos(ctx.page));
+          // Le repos se lit sur la reference seule : le chemin d avant, que
+          // les contre-epreuves ne mutent pas, sonde la machine ; le
+          // formulaire au repos, lui, est le code mesure.
+          if (reference) repos.push(await auRepos(ctx.page));
           for (const [id, ouvre] of GESTES_TIROIR) course[reference ? 'ref' : 'flip'].push((await gesteTiroir(ctx, id, ouvre, false)).course);
           await calme(ctx.page, 6000);
-          repos.push(await auRepos(ctx.page));
+          if (reference) repos.push(await auRepos(ctx.page));
           await ctx.context.close();
         }
       }
@@ -578,7 +581,7 @@ async function gate() {
       // machine occupee est tenu (releve 2026-10-20, une autre suite a cote :
       // 10 a 23 images perdues au repos, [G5] vert quand meme).
       const g5 = total(course.flip) <= 0.6 * total(course.ref);
-      ok(g5 || total(repos) <= 8, 'MONTAGE la machine est au calme pendant la mesure a 6x (au repos, au plus 8 images perdues en huit secondes ; jugee quand [G5] rougit)', repos.join(' '));
+      ok(g5 || total(repos) <= 4, 'MONTAGE la machine est au calme pendant la mesure a 6x (la reference au repos, au plus 4 images perdues en quatre secondes ; jugee quand [G5] rougit)', repos.join(' '));
       ok(total(course.ref) >= 15, 'MONTAGE la reference perd des images pendant ses tiroirs a 6x (au moins 15 sur dix gestes)', `${total(course.ref)} : ${course.ref.join(' ')}`);
       ok(total(course.flip) <= 0.6 * total(course.ref), '[G5] a 6x, les images perdues pendant la course : au plus 60 % de la reference', `${total(course.flip)} contre ${total(course.ref)} (${(total(course.flip) / Math.max(1, total(course.ref))).toFixed(2)}) ; formulaire ${course.flip.join(' ')}`);
     }

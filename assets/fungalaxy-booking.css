@@ -1738,6 +1738,9 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__warn { margin: 16px 0 0; padding: 11px 14px; border: 1px solid rgba(227, 179, 65, 0.55); border-radius: var(--v-r); font-size: 13px; line-height: 1.5; color: var(--fg-text); }
 .fg-visit__hors b { color: var(--fg-amber-ink); }
 .fg-visit__warn + .fg-visit__warn { margin-top: 8px; }
+/* Pour tout faire avant la fermeture : la phrase sur sa ligne, puis le bouton. */
+.fg-fit { display: block; margin-top: 8px; font-weight: 600; }
+.fg-visit__warn .fg-suggest { margin-top: 10px; }
 /* L AGENDA. Chaque ligne se pose dans la colonne des blocs ; son heure sort a
    gauche, dans la colonne des heures, a la hauteur de son titre. */
 .fg-visit__list { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 4px; }

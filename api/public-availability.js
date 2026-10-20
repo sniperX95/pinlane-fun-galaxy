@@ -31,6 +31,7 @@ const {
   attenteDuSousGroupe,
   avisSansLeLibre,
   mesurerLaVisite,
+  arriveeLaPlusTardive,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
@@ -845,7 +846,9 @@ module.exports = async (req, res) => {
         if (pleine) installationsPleines.add(pleine);
         return pleine;
       };
-      const respondVisit = (slots, message, extra = {}) => {
+      // `proposer(creneau)` : la proposition « pour tout faire avant la
+      // fermeture » (fitAll), jugee sur le creneau retenu, ou null.
+      const respondVisit = (slots, message, extra = {}, proposer = null) => {
         const liste = Array.isArray(slots) ? slots : [];
         const completes = [];
         const creneaux = liste.filter((slot) => {
@@ -874,6 +877,7 @@ module.exports = async (req, res) => {
           }
           return { ...slot, visitEndTime: numToTime(fin / 60), visitFreeGaps: lesTrousDuLibre(slot), opsPlan: sansLeLibre(slot) };
         });
+        const fitAll = typeof proposer === 'function' ? proposer(creneaux[0] || null) : null;
         sendJson(res, 200, {
           ok: true,
           date,
@@ -906,6 +910,7 @@ module.exports = async (req, res) => {
               : `${completes[0]} : complet pendant votre visite. Choisissez une autre heure.`,
             complements: [],
           } : {}),
+          ...(fitAll ? { fitAll } : {}),
         });
       };
 
@@ -1065,6 +1070,67 @@ module.exports = async (req, res) => {
         };
         const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game
           || laserGameTimes.some((time) => time));
+        // Le plan de ces heures-la, par la porte de la reservation (le moteur,
+        // puis la garde finale) : celui que la demande suivante recevra.
+        const planDesHeures = (heures, parties) => {
+          const plan = planningAgent(
+            {
+              centerId,
+              date,
+              type: 'formule',
+              formula: visitFormula,
+              pax,
+              duration: program.plannedItems[0]?.duration || 0,
+              preference: { preferredTimes: heures, laserGameTimes: parties, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
+              pauseMinutes,
+            },
+            engineContext,
+          );
+          const recommended = plan?.plan?.recommended;
+          const guarded = recommended && recommended.ok
+            ? filterSlotsByFinalGuards(
+              [toFormulaSlot(recommended, snapshot, program.plannedItems[0]?.duration || 0)],
+              { ...guardContext, laneCount: plannedLaneCount(recommended, program.laneCount) },
+            )
+            : [];
+          return { plan, guarded };
+        };
+        // POUR TOUT FAIRE AVANT LA FERMETURE (Movsar, 2026-10-20). Quand des
+        // activites ne tiennent plus, l arrivee la plus tardive du jour ou tout
+        // tient, avec ses heures : la meme porte que la demande qui suivra le
+        // toucher, puis la fin et les installations comptees que le client lira.
+        // Aucune heure du jour ne tient : `none`, et l ecran le dit.
+        const fermetureDuJour = Math.round(Number(schedule.close) * 60);
+        const heureDe = (minutes) => numToTime(minutes / 60);
+        const pourToutFaire = () => {
+          if (!anchorMeta || !Number.isFinite(fermetureDuJour) || fermetureDuJour <= 0) return null;
+          // Toute heure ou l installation est libre : la grille de la demande
+          // juge les autres avec les heures posees, que la proposition remplace.
+          const candidatesByActivity = Object.fromEntries((anchorMeta.activities || []).map((activity) => [
+            activity.activityId,
+            (activity.times || []).filter((item) => item.code !== 'capacity' && item.code !== 'blocked').map((item) => Math.round(timeToNum(item.time) * 60)),
+          ]));
+          const trouvee = arriveeLaPlusTardive({
+            center: getCenter(centerId),
+            model: getFormulaAnchorModel(visitFormula),
+            pax,
+            laneStatuses: snapshot.laneStatuses,
+            candidatesByActivity,
+            fermeture: fermetureDuJour,
+            minimum: Math.max(0, (Number(program.freeMinutes) || 0) - (Number(program.waitMinutes) || 0)),
+            essayer: (minutes) => {
+              const heures = Object.fromEntries(Object.entries(minutes).map(([id, m]) => [id, heureDe(m)]));
+              const [slot] = planDesHeures(heures, heures.laser_game ? [heures.laser_game] : []).guarded;
+              const fin = slot ? finDeVisiteMinutes(slot) : null;
+              if (!slot || !(Number.isFinite(fin) && fin <= fermetureDuJour) || dotationDuCreneau(slot, fin)) return null;
+              const posees = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
+              if (Object.keys(heures).some((id) => posees[id] !== heures[id])) return null;
+              return { arrival: slot.opsPlan.arrivalTime || slot.time, times: heures, endTime: heureDe(fin) };
+            },
+          });
+          return { closeTime: heureDe(fermetureDuJour), ...(trouvee || { none: true }) };
+        };
+        const neTientPas = (creneau) => Boolean(creneau && creneau.visitEndsAtClose && Number(creneau.visitShortfallMinutes) > 0);
         if (!hasAnchorChoice) {
           // ZERO FRICTION, comme pour une formule : on ne rend pas une liste
           // vide. Une liste vide faisait afficher au client, DES SON ARRIVEE
@@ -1130,6 +1196,7 @@ module.exports = async (req, res) => {
               ? `${[...installationsPleines][0]} : complet ce jour-là. Essayez une autre date.`
               : 'Aucune combinaison disponible ce jour-là. Essayez une autre date ou un autre groupe.'),
             { anchors: anchorMeta, complements: complementsDeVisite(defaultSlots[0] || null) },
+            (creneau) => (neTientPas(creneau) ? pourToutFaire() : null),
           );
           return;
         }
@@ -1150,30 +1217,15 @@ module.exports = async (req, res) => {
         const partiesCompletes = laserGameTimes.some((time) => time)
           ? laserGameTimes
           : (heuresCompletes.laser_game ? [heuresCompletes.laser_game] : laserGameTimes);
-        const plan = planningAgent(
-          {
-            centerId,
-            date,
-            type: 'formule',
-            formula: visitFormula,
-            pax,
-            duration: program.plannedItems[0]?.duration || 0,
-            preference: { preferredTimes: heuresCompletes, laserGameTimes: partiesCompletes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
-            pauseMinutes,
-          },
-          engineContext,
-        );
-        const recommended = plan?.plan?.recommended;
-        const guarded = recommended && recommended.ok
-          ? filterSlotsByFinalGuards(
-            [toFormulaSlot(recommended, snapshot, program.plannedItems[0]?.duration || 0)],
-            { ...guardContext, laneCount: plannedLaneCount(recommended, program.laneCount) },
-          )
-          : [];
+        const { plan, guarded } = planDesHeures(heuresCompletes, partiesCompletes);
+        // Des heures que la fermeture refuse (le bowling pose a 21:30) : la meme
+        // proposition que pour une visite qui deborde.
+        const refusDeFermeture = !guarded.length && plan?.plan?.refusalCode === 'schedule';
         respondVisit(
           guarded,
           guarded.length ? '' : (plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.'),
           { anchors: anchorMeta, suggestions: plan?.plan?.anchorSuggestions || [], complements: complementsDeVisite(guarded[0] || null) },
+          (creneau) => (neTientPas(creneau) || (!creneau && refusDeFermeture) ? pourToutFaire() : null),
         );
         return;
       }
@@ -1757,41 +1809,79 @@ module.exports = async (req, res) => {
             : (heuresCompletes.laser_game ? [heuresCompletes.laser_game] : laserGameTimes);
           // Revalidation serveur de la combinaison choisie (source de vérité) :
           // soit LE créneau composé, soit un refus clair + suggestions proches.
-          const plan = planningAgent(
-            {
-              centerId,
-              date,
-              type,
-              formuleId,
-              pax,
-              duration,
-              preference: {
-                preferredTimes: heuresCompletes,
-                laserGameTimes: partiesCompletes,
-                laserPlacement,
-                arrivalConfidence: 'normal',
-                ...(heureArcade ? { arcadeTime: heureArcade } : {}),
-                ...(variante ? { formulaChoice: variante.id } : {}),
+          const planDesHeures = (heures, parties, arcade) => {
+            const plan = planningAgent(
+              {
+                centerId,
+                date,
+                type,
+                formuleId,
+                pax,
+                duration,
+                preference: {
+                  preferredTimes: heures,
+                  laserGameTimes: parties,
+                  laserPlacement,
+                  arrivalConfidence: 'normal',
+                  ...(arcade ? { arcadeTime: arcade } : {}),
+                  ...(variante ? { formulaChoice: variante.id } : {}),
+                },
+                pauseMinutes,
               },
-              pauseMinutes,
-            },
-            engineContext,
-          );
-          const recommended = plan?.plan?.recommended;
-          const guarded = recommended && recommended.ok
-            ? filterSlotsByFinalGuards(
-              [toFormulaSlot(recommended, snapshot, duration)],
-              { ...guardContext, laneCount: plannedLaneCount(recommended, laneCount) },
-            )
-            : [];
+              engineContext,
+            );
+            const recommended = plan?.plan?.recommended;
+            const guarded = recommended && recommended.ok
+              ? filterSlotsByFinalGuards(
+                [toFormulaSlot(recommended, snapshot, duration)],
+                { ...guardContext, laneCount: plannedLaneCount(recommended, laneCount) },
+              )
+              : [];
+            return { plan, guarded };
+          };
+          const { plan, guarded } = planDesHeures(heuresCompletes, partiesCompletes, heureArcade);
+          // POUR TOUT FAIRE AVANT LA FERMETURE, EN FORMULE AUSSI (2026-10-20) :
+          // la meme recherche que la visite, jugee par la meme porte que la
+          // demande qui suivra le toucher. Les arcades y restent sans heure.
+          const fermetureDuJour = Math.round(Number(schedule && schedule.close) * 60);
+          const heureDe = (minutes) => numToTime(minutes / 60);
+          const pourToutFaire = () => {
+            if (!anchorMeta || laserPlacement !== 'scheduled' || !Number.isFinite(fermetureDuJour) || fermetureDuJour <= 0) return null;
+            const candidatesByActivity = Object.fromEntries((anchorMeta.activities || []).map((activity) => [
+              activity.activityId,
+              (activity.times || []).filter((item) => item.code !== 'capacity' && item.code !== 'blocked').map((item) => Math.round(timeToNum(item.time) * 60)),
+            ]));
+            const trouvee = arriveeLaPlusTardive({
+              center: getCenter(centerId),
+              model: anchorModel,
+              pax,
+              laneStatuses: snapshot.laneStatuses,
+              candidatesByActivity,
+              fermeture: fermetureDuJour,
+              essayer: (minutes) => {
+                const heures = Object.fromEntries(Object.entries(minutes).map(([id, m]) => [id, heureDe(m)]));
+                const [brut] = planDesHeures(heures, heures.laser_game ? [heures.laser_game] : [], '').guarded;
+                const slot = brut ? finDeFormule(brut) : null;
+                if (!slot || slot.visitEndsAtClose) return null;
+                const posees = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
+                if (Object.keys(heures).some((id) => posees[id] !== heures[id])) return null;
+                return { arrival: slot.opsPlan.arrivalTime || slot.time, times: heures, endTime: slot.visitEndTime };
+              },
+            });
+            return { closeTime: heureDe(fermetureDuJour), ...(trouvee || { none: true }) };
+          };
           if (guarded.length) {
-            respondFormula(guarded, '', [], guarded[0]);
+            const fitAll = finDeFormule(guarded[0]).visitEndsAtClose ? pourToutFaire() : null;
+            respondFormula(guarded, '', [], guarded[0], fitAll ? { fitAll } : {});
             return;
           }
+          const fitAll = plan?.plan?.refusalCode === 'schedule' ? pourToutFaire() : null;
           respondFormula(
             [],
             plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.',
             plan?.plan?.anchorSuggestions || [],
+            null,
+            fitAll ? { fitAll } : {},
           );
           return;
         }

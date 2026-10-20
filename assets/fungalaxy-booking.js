@@ -4505,6 +4505,33 @@
     var ar = reglageArcade(activite(h.activityId));
     return h.name + (avecDuree && !h.durationEstimated && !(ar && ar.mode === 'credit') && !h.dayAccess && Number(h.minutes) > 0 ? ' (' + dureeExacte(h.minutes) + ')' : '');
   }
+  // POUR TOUT FAIRE AVANT LA FERMETURE (Movsar, 2026-10-20 : « à moins qu ils
+  // puissent choisir une heure d arrivée pour pouvoir faire toutes les
+  // activités qu ils ont »). Le serveur cherche l arrivee la plus tardive du
+  // jour ou tout tient (fitAll), par la porte de la reservation : l ecran la
+  // dit avec ses heures, le bouton pose ce plan. Sans lui, les heures du
+  // client restent (le moteur conseille et previent, il ne force pas).
+  function toutTenir(d) {
+    var f = d && d.fitAll;
+    if (!f || !f.closeTime) return null;
+    var fermeture = heureAffichee(f.closeTime), formule = state.onglet === 'formules';
+    if (f.none || !f.arrival || !f.times) {
+      return {
+        texte: 'Aucune heure de ce jour ne fait tout tenir avant ' + fermeture + '. ' + (formule ? 'Choisissez une autre formule ou un autre jour.' : 'Retirez une activité ou choisissez un autre jour.'),
+        boutons: '<button type="button" class="fg-suggest__btn" data-goto="activites">' + (formule ? 'Changer de formule' : 'Changer d’activités') + '</button><button type="button" class="fg-suggest__btn" data-goto="date">Changer de jour</button>',
+      };
+    }
+    var heures = Object.keys(f.times).filter(function (id) { return f.times[id]; })
+      .sort(function (a, b) { return String(f.times[a]).localeCompare(String(f.times[b])); })
+      .map(function (id) { return nomActivite(id) + ' à ' + f.times[id]; });
+    return {
+      texte: 'Pour tout faire avant ' + fermeture + ', arrivez à ' + f.arrival + (heures.length ? ' : ' + heures[0] + (heures.length > 1 ? ', puis ' + joindreListe(heures.slice(1), ' et ') : '') : '') + '.',
+      boutons: '<button type="button" class="fg-suggest__btn" data-fit="' + esc(JSON.stringify(f.times)) + '">Arriver à ' + esc(f.arrival) + '</button>',
+    };
+  }
+  function htmlToutTenir(fit, avecBoutons) {
+    return '<span class="fg-fit">' + esc(typo(fit.texte)) + '</span>' + (avecBoutons !== false ? '<span class="fg-suggest">' + fit.boutons + '</span>' : '');
+  }
   function phraseHorsDelai(liste, fin, avecDuree) {
     return {
       tete: (liste.length > 1 ? 'Ne tiendront pas' : 'Ne tiendra pas') + ' avant la fermeture (' + heureAffichee(fin) + ')',
@@ -4920,6 +4947,10 @@
       var aPose = Object.keys(state.pins).length > 0 || state.laserParts.length > 0 || Boolean(state.arcade);
       var msgNotice = d.message || (aPose ? 'Avec les heures choisies, la visite ne tient pas.' : 'Aucun horaire possible ce jour-là pour votre visite.');
       var html = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgNotice) + '</b>';
+      // Des heures que la fermeture refuse : l arrivee ou tout tient vient avant
+      // les combinaisons proches.
+      var fitNotice = toutTenir(d);
+      if (fitNotice) { html += htmlToutTenir(fitNotice, !(d.fitAll.none && !aPose)); msgNotice += ' ' + fitNotice.texte; }
       var sugg = Array.isArray(d.suggestions) ? d.suggestions.slice(0, 4) : [];
       var propos = [];
       if (sugg.length) {
@@ -5284,7 +5315,7 @@
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     var secoursBowling = avertissementBowling(state.creneau);
     if (secoursBowling && avis.indexOf(secoursBowling) < 0) avis.push(secoursBowling);
-    var horsHtml = '';
+    var horsHtml = '', fit = toutTenir(rep);
     if (horsDelai.length) {
       // Les heures posees ne bougent pas : elles se redisent telles quelles.
       var heuresPosees = {}, nomsPoses = [];
@@ -5301,10 +5332,12 @@
       var compte = comptees.length ? 'Le total indicatif compte encore ' + joindreListe(comptees.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + euros(it.price) + ')'; }), ' et ') + '.' : '';
       var phrase = phraseHorsDelai(horsDelai, fin, true);
       horsHtml = '<p class="fg-visit__warn fg-visit__hors"><b>' + esc(typoVisite(phrase.tete)) + '\u00a0:</b> ' + esc(typoVisite(phrase.noms)) + '.'
-        + (gardees || compte ? '<br>' + esc(typoVisite([gardees, compte].filter(Boolean).join(' '))) : '') + '</p>';
-      avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte].filter(Boolean).join(' '));
+        + (gardees || compte ? '<br>' + esc(typoVisite([gardees, compte].filter(Boolean).join(' '))) : '') + (fit ? htmlToutTenir(fit) : '') + '</p>';
+      avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte, fit ? fit.texte : ''].filter(Boolean).join(' '));
     } else if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) {
-      avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
+      var manque = 'À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.';
+      if (fit) horsHtml = '<p class="fg-visit__warn">' + esc(typoVisite(manque)) + htmlToutTenir(fit) + '</p>';
+      avis.unshift(manque + (fit ? ' ' + fit.texte : ''));
     }
     var avisSimples = horsHtml ? avis.slice(1) : avis;
     // Ce qui ne tiendra pas reste visible sous l en-tete, juste avant l agenda
@@ -5351,6 +5384,21 @@
     }
     var versArcades = e.target.closest('[data-libre-arcades]');
     if (versArcades) { libreOuvert = ''; adaptation = null; state.arcade = versArcades.dataset.libreArcades; chargerPlan(); return; }
+    // « Arriver à 17:50 » : le plan ou tout tient se pose, chaque heure reste
+    // modifiable (le dernier choix gagne). Les arcades n y ont pas d heure.
+    var fitBtn = e.target.closest('[data-fit]');
+    if (fitBtn) {
+      try {
+        var heuresFit = JSON.parse(fitBtn.dataset.fit);
+        state.pins = {}; state.laserParts = []; state.arcade = ''; adaptation = null; etapeOuverte = null; etapeTouchee = false;
+        Object.keys(heuresFit).forEach(function (k) { if (heuresFit[k]) state.pins[k] = String(heuresFit[k]).slice(0, 5); });
+        var laserFit = $('.fg-track[data-activity="laser_game"]', hourZone);
+        if (state.pins.laser_game && laserFit && Number(laserFit.dataset.count) > 1) state.laserParts = [state.pins.laser_game];
+        $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; });
+        chargerPlan();
+      } catch (err) { /* proposition illisible : rien */ }
+      return;
+    }
     var s = e.target.closest('[data-suggest]');
     if (!s) return;
     try {

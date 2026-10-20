@@ -333,7 +333,14 @@
     "test:prix-palier",
     "test:staff-notes-middleware",
     "test:staff-notes-race",
-    "test:jour-de-test"
+    "test:jour-de-test",
+    "test:libre-entier",
+    "test:tables-sans-blocage",
+    "test:formules-fete",
+    "test:fungalaxy-host",
+    "test:data-hub",
+    "test:mail-studio",
+    "test:planning-persistent-move"
   ],
   "seuls": [
     "test:crm-clients",

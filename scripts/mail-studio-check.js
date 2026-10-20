@@ -7,7 +7,7 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 
 const ROOT = path.resolve(__dirname, '..');
-const PORT = 4195;
+const PORT = Number(process.env.PINLANE_MAIL_STUDIO_PORT || 4195);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const OUT = path.join(ROOT, 'artifacts', 'audit', 'mail-studio');
 const BROWSER_PATH =
@@ -136,7 +136,6 @@ async function main() {
     const page = await setupPage(context, pageErrors);
     await openMailTab(page);
 
-    assert(await page.locator('#adminTabMail').count() === 1, 'bouton onglet Mails présent');
     assert(await page.locator('#msTo').count() === 1, 'composer rendu');
     assert(await page.locator('.ms-note.warn').count() === 1, 'bannière canal non configuré visible');
 

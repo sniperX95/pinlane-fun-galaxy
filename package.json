@@ -363,7 +363,10 @@
     "test:planning-move-context": "node scripts/planning-move-context-check.js",
     "test:prix-palier": "node scripts/prix-palier-check.js",
     "test:staff-notes-middleware": "node scripts/staff-notes-middleware-check.js",
-    "test:staff-notes-race": "node scripts/staff-notes-race-check.js"
+    "test:staff-notes-race": "node scripts/staff-notes-race-check.js",
+    "test:data-hub": "node scripts/data-hub-check.js",
+    "test:mail-studio": "node scripts/mail-studio-check.js",
+    "test:planning-persistent-move": "node scripts/planning-persistent-move-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

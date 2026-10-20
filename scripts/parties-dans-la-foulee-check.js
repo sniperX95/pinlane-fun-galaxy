@@ -515,8 +515,8 @@ async function main() {
     {
       nom: 'une formule qui exige les deux heures',
       fichier: API,
-      ancre: '                preferredTimes: heuresCompletes,',
-      remplace: '                preferredTimes,',
+      ancre: 'planDesHeures(heuresCompletes, partiesCompletes, heureArcade)',
+      remplace: 'planDesHeures(preferredTimes, partiesCompletes, heureArcade)',
       rougit: (m) => !creneau(m.d1) || !creneau(m.d2),
     },
   ];

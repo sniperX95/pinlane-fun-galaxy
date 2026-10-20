@@ -10,6 +10,13 @@
 // onglets, la disparition des grilles sur l'onglet liste, la section en tete de
 // liste sans doublon, et surtout la contre-preuve : la resa hors planning est
 // bien ABSENTE des deux grilles (donc c'est cet onglet ou nulle part).
+//
+// DEPUIS LE 2026-10-20 (Movsar : « plus besoin de montrer des résas hors
+// planning, on s'en fout ») : le planning global dessine la table et la
+// plaine ; l onglet ne dit plus « N hors planning » et la liste ne marque plus
+// « Hors planning ». La regle (isOffPlanningReservation) reste, et ce gate
+// verifie qu elle classe toujours, que plus rien ne l affiche, et que les
+// deux grilles restent sans ces groupes.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -163,7 +170,7 @@ async function main() {
     ok(rule.total === 1, `1 seule resa hors planning sur les 4 du jour (obtenu ${rule.total})`);
 
     // =====================================================================
-    console.log('\n[2] L alerte se voit DEPUIS LES AUTRES ONGLETS');
+    console.log('\n[2] Plus d alerte hors planning, depuis aucun onglet');
     // =====================================================================
     // C est tout l interet : si le signal n existait que sur l onglet concerne,
     // il faudrait deja savoir qu il y a quelque chose a voir pour le voir.
@@ -174,8 +181,8 @@ async function main() {
         alert: !!document.getElementById('staffTabAll')?.classList.contains('has-alert'),
         count: document.getElementById('staffAllCount')?.textContent || '',
       }));
-      ok(tab.sub === '1 hors planning', `onglet ${view} : le sous-titre annonce « 1 hors planning » (obtenu « ${tab.sub} »)`);
-      ok(tab.alert === true, `onglet ${view} : l onglet porte la classe d alerte`);
+      ok(tab.sub === 'Le jour au complet', `onglet ${view} : le sous-titre ne parle plus de hors planning (obtenu « ${tab.sub} »)`);
+      ok(tab.alert === false, `onglet ${view} : l onglet ne porte plus d alerte`);
       ok(tab.count === '4', `onglet ${view} : le compteur reste le total du jour (obtenu ${tab.count})`);
     }
 
@@ -198,19 +205,19 @@ async function main() {
     // Depuis le 2026-10-01 (cartes de groupe a la caisse), la section a part
     // est devenue une marque sur la carte : le groupe vit dans son moment
     // (À venir...), et sa carte dit « Hors planning ».
-    console.log('\n[4] La carte « Hors planning » se voit dans la liste, sans doublon');
+    console.log('\n[4] Le groupe hors planning est liste une fois, sans marque « Hors planning »');
     // =====================================================================
     await switchTab(page, 'all');
     const list = await page.evaluate(() => {
       const marquees = [...document.querySelectorAll('#resList .res-row')].filter(r => r.querySelector('.gc-tag') && /Hors planning/.test(r.querySelector('.gc-tag').textContent));
       return {
         offRows: marquees.map(r => r.textContent),
-        offSection: marquees.length ? [...marquees[0].closest('.res-section').classList].join(' ') : '',
+        offSection: (() => { const lea = [...document.querySelectorAll('#resList .res-row')].find(r => r.textContent.includes('Anniversaire Lea')); return lea && lea.closest('.res-section') ? [...lea.closest('.res-section').classList].join(' ') : ''; })(),
         leaOccurrences: [...document.querySelectorAll('#resList .res-row')].filter(r => r.textContent.includes('Anniversaire Lea')).length,
         totalRows: document.querySelectorAll('#resList .res-row').length,
       };
     });
-    ok(list.offRows.length === 1 && list.offRows[0].includes('Anniversaire Lea'), 'une seule carte porte « Hors planning » : l anniversaire FORMULE 6');
+    ok(list.offRows.length === 0, `aucune carte ne porte plus « Hors planning » (obtenu ${list.offRows.length})`);
     // Depuis le 2026-10-10 (f52cb20), « Tout » range les visites vivantes dans
     // une seule section par heure (« Visites à suivre », cle active) : le
     // groupe hors planning y vit avec les autres, jamais dans une section a part.
@@ -229,7 +236,7 @@ async function main() {
       rows: document.querySelectorAll('#resList [data-res-row-id]').length,
       ids:[...document.querySelectorAll('#resList [data-res-row-id]')].map(el=>el.getAttribute('data-res-row-id')),
     }));
-    ok(filtered.off === true, 'filtre « A venir » : la carte hors planning reste presente');
+    ok(filtered.off === false, 'filtre « A venir » : aucune marque hors planning');
     ok(filtered.rows === 3 && filtered.ids.join(',') === '9101,9102,9103', `filtre « A venir » : 3 resas, Karim arrive exclu (obtenu ${filtered.rows}; ids ${filtered.ids})`);
     await page.evaluate(() => { setStaffStatusFilter('all'); });
     await page.waitForTimeout(200);
@@ -277,7 +284,7 @@ async function main() {
         sub: document.getElementById('staffAllSub')?.textContent || '',
         off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
       }));
-      ok(restored.off === true && restored.sub === '1 hors planning', 'restauration inverse : la zone et l alerte reviennent');
+      ok(restored.off === false && restored.sub === 'Le jour au complet', 'regle retablie : toujours ni marque ni alerte, l affichage ne depend plus de la regle');
     }
 
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' : ' + errs.slice(0, 3).join(' | ') : ''}`);

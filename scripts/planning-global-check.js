@@ -30,6 +30,12 @@
 // [U1] (Movsar, 2026-10-20 : « simplifier a mort ») : une rangee de tete,
 // sans compteur ; ni picto ni glyphe court sur les cartes ; la part libre
 // d une partie laser n ecrit rien ; rien de la tete n est redit en carte.
+// Puis (2e tour) : plus jamais une boite vide (un nom, un debut de nom ou
+// l initiale, sinon une bande sans cadre) ; chaque tete ecrit son titre ;
+// chaque activite isolee par un filet plus fort que celui des pistes ; une
+// bande une heure sur deux, la pleine plus grosse que la demie ; la formule
+// sur la carte quand elle a sa place ; plus de « hors planning » ; au pic a
+// 1440, chaque groupe d une partie de laser ecrit un nom de son echelle.
 // --contre-preuves : chaque regle retiree (en memoire, au texte servi ; le
 // disque n est jamais touche) fait rougir sa lettre ; chaque ancre existe une
 // fois et une seule.
@@ -550,7 +556,10 @@ cible('T2', 'au telephone, les heures restent a gauche', (s) => s.appareil === '
 // [N4] LES GROUPES NOMMES
 cible('N4', 'groupes nommes', (s) => (estS('pic', 'ordinateur')(s) || estS('pic', 'grand')(s) || estS('pire', 'grand')(s)), async (page, s, label) => {
   const n = await page.evaluate(lireNoms);
-  const seuil = s.fixture === 'pic' ? (s.appareil === 'grand' ? 46 : 44) : 56;
+  // (pire a 1920 : 55, et plus 56, depuis le 2e tour du 2026-10-20 : le laser
+  // plus large et chaque tete titree, « Realite virtuelle multijoueur » prend
+  // 63 px ; le groupe de moins ecrit son debut de nom, jamais une boite vide)
+  const seuil = s.fixture === 'pic' ? (s.appareil === 'grand' ? 46 : 44) : 55;
   ok(n.nommes >= seuil, `[N4] ${label} : ${seuil} groupes nommes sur ${n.groupes} au moins`, { nommes: n.nommes, muettes: n.muettes.slice(0, 6) });
 });
 // (calme et normal : chaque carte d une ligne ecrit un nom, la ou la place
@@ -649,11 +658,56 @@ cible('U1', 'simple a lire', (s) => !s.variante && !s.heure && s.theme === 'dark
     box.querySelectorAll('.gh-grille .gp-tag.is-court').forEach((x) => { if (!/is-retard|is-conflit|is-piste/.test(x.className)) fautes.push(`glyphe court « ${x.textContent} »`); });
     box.querySelectorAll('.gh-grille .gh-seg-libre').forEach((x) => { if (x.textContent.trim()) fautes.push(`part libre « ${x.textContent} »`); });
     const libres = box.querySelectorAll('.gh-grille .gh-seg-libre').length;
+    // (plus jamais une boite vide : une carte sans texte est une bande sans
+    // cadre, et seulement quand meme l initiale n y tient pas)
+    const wrap = document.getElementById('globalPlanningGridWrap');
+    const plan = wrap._ghPlan, entree = wrap._ghEntree;
+    const M = window.PinlanePlanningMoteur.mesureur(window.__ghMesure);
+    const parCle = new Map(plan.elements.map((el) => [el.cle, el]));
+    box.querySelectorAll('.gh-grille .gh-c[data-gh-k]').forEach((c) => {
+      const el = parCle.get(c.getAttribute('data-gh-k'));
+      if (!el || el.masque || c.textContent.trim()) return;
+      if (!c.classList.contains('is-muette') || getComputedStyle(c).borderTopColor !== 'rgba(0, 0, 0, 0)') fautes.push(`${el.cle} : boite vide`);
+      const f = el.formes && el.formes.length ? String(el.formes[el.formes.length - 1].t) : '';
+      const ini = Array.from(f)[0] + '.';
+      if (el.L >= 1 && f.length > 1 && M.m(plan.typo.nom, ini) + 1 <= el.tw) fautes.push(`${el.cle} : « ${ini} » tient en ${el.tw} px et rien n est ecrit`);
+    });
+    // (chaque tete hors bowling ecrit son titre)
+    box.querySelectorAll('.gh-entete[data-gh-cle]:not([data-gh-cle="bowling"])').forEach((x) => { if (!x.querySelector('.gh-entete__t')) fautes.push(`tete ${x.getAttribute('data-gh-cle')} sans titre`); });
+    // (une activite se separe de la suivante par 2 px forts ; deux pistes par 1 px pale)
+    const piles = Array.from(box.querySelectorAll('.gh-pile[data-gh-col]'));
+    piles.slice(1).forEach((p) => { const st = getComputedStyle(p), prec = getComputedStyle(p.previousElementSibling); if (!/inset/.test(st.boxShadow) || parseFloat(prec.borderRightWidth) < 1) fautes.push(`${p.getAttribute('data-gh-cle')} : pas de filet d activite`); });
+    const fp = box.querySelector('.gh-fp'), pile0 = piles[0];
+    if (fp && pile0 && (fp.getBoundingClientRect().width > 1.01 || getComputedStyle(fp).backgroundColor === getComputedStyle(pile0).borderRightColor)) fautes.push('le filet des pistes vaut celui des activites');
+    // (les heures : une bande une heure sur deux, la pleine plus grosse que la demie, son filet plus fort)
+    const pleines = plan.libelles.filter((h) => h.pleine);
+    const bandes = box.querySelectorAll('.gh-lignes > .gh-bh').length;
+    if (bandes !== Math.floor(pleines.length / 2)) fautes.push(`${bandes} bandes d heure pour ${pleines.length} heures pleines`);
+    const hP = box.querySelector('.gh-h.is-pleine'), hD = box.querySelector('.gh-h:not(.is-pleine)');
+    if (hP && hD && !(parseFloat(getComputedStyle(hP).fontSize) > parseFloat(getComputedStyle(hD).fontSize))) fautes.push('l heure pleine pas plus grosse que la demie');
+    const lH = box.querySelector('.gh-l.is-h'), lD = box.querySelector('.gh-l.is-d');
+    if (lH && lD && getComputedStyle(lH).backgroundColor === getComputedStyle(lD).backgroundColor) fautes.push('le filet de l heure vaut celui de la demie');
+    // (la formule, sur la carte qui garde son detail)
+    const formules = new Map(entree.groupes.filter((g) => g.formule).map((g) => [g.id, g.formule]));
+    let avecFormule = 0;
+    plan.elements.forEach((el) => {
+      if (plan.typo.sansDetail || el.k !== 'carte' || el.masque || el.secondaire || !el.compo || el.compo.forme < 0 || !formules.has(el.gid) || el.compo.niveau >= 5) return;
+      const c = box.querySelector(`.gh-c[data-gh-k="${el.cle}"]`);
+      if (c && c.textContent.indexOf(formules.get(el.gid)) >= 0) avecFormule += 1; else fautes.push(`${el.cle} : la formule ${formules.get(el.gid)} manque`);
+    });
+    // (plus de « hors planning »)
+    const sous = (document.getElementById('staffAllSub') || {}).textContent || '';
+    if (/hors planning/i.test(sous) || Array.from(document.querySelectorAll('#resList .gc-tag')).some((x) => /Hors planning/.test(x.textContent))) fautes.push(`hors planning : « ${sous} »`);
+    // (au pic a 1440, le laser assez large pour nommer chaque groupe de ses parties)
+    const lasers = plan.elements.filter((el) => el.k === 'seg' && el.L >= 1 && !el.masque);
+    const lasersSansNom = lasers.filter((el) => !el.compo || el.compo.forme < 0).map((el) => el.cle);
     box.querySelectorAll('.gh-pile[data-gh-cle="bowling"] .gh-c .gh-c__d').forEach((d) => { if (/^P\d/.test(d.textContent)) fautes.push(`« ${d.textContent} » sur ${d.closest('.gh-c').getAttribute('data-gh-k')}`); });
-    return { fautes, libres, tetes: box.querySelectorAll('.gh-entete[data-gh-cle]').length };
+    return { fautes, libres, tetes: box.querySelectorAll('.gh-entete[data-gh-cle]').length, avecFormule, lasers: lasers.length, lasersSansNom };
   });
   ok(r.tetes > 0 && r.libres > 0, `[prerequis] ${label} : des tetes et des parts libres de laser a lire`, r);
-  ok(r.fautes.length === 0, `[U1] ${label} : une rangee de tete sans compteur, ni picto ni glyphe court, la part libre muette, pas de « P1-2 » au bowling`, r.fautes.slice(0, 6));
+  if (s.fixture === 'pic' && s.appareil === 'ordinateur' && s.mode === 'normal') ok(r.avecFormule > 0, `[prerequis] ${label} : des cartes de formule qui ont la place de la dire (${r.avecFormule})`);
+  ok(r.fautes.length === 0, `[U1] ${label} : une rangee de tete titree sans compteur, ni picto ni glyphe court, jamais une boite vide, les activites isolees, les heures lisibles, la formule ecrite, plus de hors planning`, r.fautes.slice(0, 6));
+  if (s.fixture === 'pic' && s.appareil === 'ordinateur' && s.mode === 'normal') ok(r.lasers > 0 && r.lasersSansNom.length === 0, `[U1] ${label} : chaque groupe d une partie de laser ecrit un nom de son echelle (${r.lasers} segments)`, r.lasersSansNom.slice(0, 6));
 });
 
 // [S1] COULEUR = STATUT
@@ -1174,9 +1228,9 @@ cible('I1', 'activites inconnues', estS('pire', 'ordinateur'), async (page, s, l
       propre.split(' ').filter(Boolean).forEach((m) => { if (!mots.includes(m)) fautes.push(`${x.cle} : mot coupe « ${m} »`); });
     });
     if (x.lignes.length > 2) fautes.push(`${x.cle} : ${x.lignes.length} lignes`);
-    if (!x.icone) fautes.push(`${x.cle} : sans icone`);
+    if (!x.lignes.length) fautes.push(`${x.cle} : sans titre`);
   });
-  ok(inconnues.length === 2 && cles.indexOf('a-escape_room') > iB && cles.indexOf('a-realite_virtuelle_multijoueur') > iB && fautes.length === 0, `[I1] ${label} : Escape room et Realite virtuelle multijoueur apres le Billard, titres complets en title, jamais coupes au milieu d un mot`, { cles, fautes });
+  ok(inconnues.length === 2 && cles.indexOf('a-escape_room') > iB && cles.indexOf('a-realite_virtuelle_multijoueur') > iB && fautes.length === 0, `[I1] ${label} : Escape room et Realite virtuelle multijoueur apres le Billard, titres complets en title et ecrits en tete, jamais coupes au milieu d un mot`, { cles, fautes });
 });
 
 // [X1] LE TOUCHER ; [K][H] le premier toucher montre le programme, le second ouvre la fiche.
@@ -1439,6 +1493,14 @@ const MUTATIONS = [
   { nom: 'pastille-revenue', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: PG, de: "'<span class=\"gh-entete__t\">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '</div>';", vers: "'<span class=\"gh-entete__t\">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '<span class=\"gh-entete__n\">' + tete.groupes + '</span></div>';" }] },
   { nom: 'libres-revenus', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "    if (b.seg >= 0 || el.Ls < 1 || b.libre) return '';", vers: "    if (b.libre && el.Ls >= 1) return String(Math.max(0, el.C - el.p.armes));\n    if (b.seg >= 0 || el.Ls < 1) return '';" }] },
   { nom: 'glyphe-euro', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: null },", vers: "    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: function () { return '€'; } }," }] },
+  { nom: 'boite-vide', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: '        var rc = !el.compo && el.L >= 1 && !niveauMin ? ghRepli(el.formes, el.tw, typo, M) : null;', vers: '        var rc = null;' }] },
+  { nom: 'tete-icone-seule', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: '      if (b.bowling) return b;\n      var lt = largeurTitre(colonnes[i], M);', vers: '      return b;\n      var lt = largeurTitre(colonnes[i], M);' }] },
+  { nom: 'activites-fondues', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gh-pile:not(.gh-pile--h) { box-shadow: inset 1px 0 0 var(--line-strong); }', vers: '' }] },
+  { nom: 'heures-sans-bande', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: PG, de: '    var lignes = ghHtmlBandesHeure(plan);', vers: "    var lignes = '';" }] },
+  { nom: 'heure-pleine-petite', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gh-h.is-pleine { color: var(--text); font-size: 13.5px;', vers: '.gh-h.is-pleine { color: var(--text); font-size: 10.5px;' }] },
+  { nom: 'formule-absente', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: '    if (el.g && el.g.formule) el.detail.push(el.g.formule);', vers: '' }] },
+  { nom: 'hors-planning-revenu', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: AM, de: "  const allTab = document.getElementById('staffTabAll');\n  allTab?.classList.toggle('active', view === 'all');", vers: "  const allTab = document.getElementById('staffTabAll');\n  allTab?.classList.toggle('active', view === 'all');\n  const sousX = document.getElementById('staffAllSub'); if (sousX) sousX.textContent = '9 hors planning';" }] },
+  { nom: 'laser-etroit', lettre: 'U1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: '  var POIDS = { bowling: 1.25, laser: 2.5,', vers: '  var POIDS = { bowling: 1.5, laser: 1.25,' }] },
   { nom: 'couleur-par-activite', lettre: 'S1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gh-c.is-libre { border-style: dashed;', vers: '.gh-pile[data-gh-cle="minigolf"] .gh-c { --bk-barre: #8a2be2; }\n.gh-c.is-libre { border-style: dashed;' }] },
   { nom: 'porteuse-la-plus-large', lettre: 'R1', scenarios: [PIC], editions: [{ fichier: MOTEUR, de: "      if (g.retard && maintenant != null) choix = c.filter(function (el) { return etats[el.cle] === 'retard'; }).sort(tot)[0] || null;\n      if (!choix && attendu(g)) choix = c.slice().sort(tot)[0];", vers: '      choix = c.slice().sort(large)[0];' }] },
   // (la carte d arrivee lache son heure au niveau 3, comme les autres)

@@ -1267,10 +1267,16 @@ html.fg-pilote .fg { overflow: visible; }
    remonte d emblee, il se referme par-dessus. */
 .fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt { transition: none; }
 /* Ouvert, le contenu est la des le geste (sa hauteur d arrivee se mesure
-   dans le geste) ; replie, il reste visible les 0,4 s du repli, comme avant. */
-.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item.is-on > .fg-card__opt > .fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out); }
+   dans le geste) ; replie, il reste visible les 0,4 s du repli (is-fermant),
+   comme avant, et sort du parcours clavier quand le script retire
+   is-fermant, ses glissements deja annules. Pas de bascule de visibility
+   minutee en CSS ici : tombee dans la meme image que la fin des
+   glissements, elle laissait les pastilles d un tiroir ferme visibles (le
+   contenu, fige par content-visibility, gardait la visibilite d avant ;
+   fungalaxy-form [B], 2026-10-20). */
+.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt > .fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out); }
 :is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt { position: relative; }
-:is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt > .fg-card__optin { position: absolute; top: 0; left: 0; right: 0; }
+:is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt > .fg-card__optin { position: absolute; top: 0; left: 0; right: 0; visibility: visible; content-visibility: visible; }
 .fg-card__optbox {
   padding: 10px 12px 12px;
   border: 1.5px solid var(--fg-purple-2);

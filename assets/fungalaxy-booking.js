@@ -2144,7 +2144,7 @@
     }
     var a = el.animate(images, options);
     el._fgGlisse = a;
-    a.onfinish = function () { if (el._fgGlisse !== a) return; el._fgGlisse = null; if (fini) fini(); a.cancel(); };
+    a.onfinish = function () { if (el._fgGlisse !== a) return; el._fgGlisse = null; a.cancel(); if (fini) fini(); };
   }
   // Le contenu d un tiroir en grid-template-rows se devoile au carre de la
   // rangee : la boite grandit de p, la piste de p sur la boite, donc p x p.
@@ -2212,7 +2212,14 @@
       glisser(x.boite, x.H - x.vu, x.H, null, auCarreInverse);
       // Replie : il reprend sa place (hauteur nulle) a la derniere image, son
       // contenu deja hors de la fenetre ; le cadre embarque suit.
-      glisser(x.dedans, x.vu - x.H, -x.H, function () { x.t.classList.remove('is-fermant'); posterHauteur(); }, auCarreInverse);
+      // Les deux glissements annules AVANT de retirer is-fermant : le tiroir
+      // se fige (content-visibility) sans animation en cours dedans, et ses
+      // pastilles prennent la visibilite cachee (fungalaxy-form [B]).
+      glisser(x.dedans, x.vu - x.H, -x.H, function () {
+        if (x.boite._fgGlisse) { x.boite._fgGlisse.onfinish = null; x.boite._fgGlisse.cancel(); x.boite._fgGlisse = null; }
+        x.t.classList.remove('is-fermant');
+        posterHauteur();
+      }, auCarreInverse);
     });
     // 5. Les cartes du dessous et le bas de l ecran.
     apres.tuiles.forEach(function (t, i) {

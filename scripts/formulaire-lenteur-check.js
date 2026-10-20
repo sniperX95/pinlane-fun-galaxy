@@ -43,7 +43,9 @@
 //
 // Lancement : node scripts/formulaire-lenteur-check.js [--mutate]
 //   PINLANE_LENTEUR_PORT (4631), PINLANE_LENTEUR_SCENARIOS (A,B,...),
-//   PINLANE_LENTEUR_PARALLELE (fils simultanes de --mutate, 2).
+//   PINLANE_LENTEUR_PARALLELE (fils simultanes, un par scenario pour la
+//   base, un par mutation pour --mutate ; 2, et 1 rejoue la base dans un
+//   seul processus comme avant).
 'use strict';
 const fs = require('fs');
 const http = require('http');
@@ -676,10 +678,39 @@ async function main() {
   console.log('\nformulaire-lenteur-check: ALL OK (sous lenteur, aucun toucher avale, aucun sablier sans fin, aucun calcul perime qui continue, une panne dite a temps)');
 }
 
+// LA BASE EN FILS (2026-10-20) : chaque scenario a son contexte et repart
+// d un serveur vide (reinitialiser) ; ils se jouaient l un apres l autre,
+// presque tout le temps a attendre des delais reels (12 s, 15 s, 19 s). Le
+// gate entier joue un fils par scenario, PINLANE_LENTEUR_PARALLELE a la
+// fois, chacun sur son port, et rend leurs lignes dans l ordre des scenarios.
+// Un fils qui sort autrement que vert rougit le gate, et dit son code.
+function baseEnFils(parallele) {
+  const { lancer, enPool } = require('./gates-eclats');
+  const t0 = Date.now();
+  const fin = /^(\(\d+ s, scenarios |formulaire-lenteur-check: (ALL OK|\d+ defaut))/;
+  enPool(SCENARIOS, parallele, (s, fil) => lancer(__filename, [], {
+    env: { ...process.env, PINLANE_LENTEUR_SCENARIOS: s, PINLANE_LENTEUR_PORT: String(PORT + 1 + fil) },
+    timeout: 15 * 60 * 1000,
+  })).then((sorties) => {
+    let rouges = 0;
+    sorties.forEach((r, i) => {
+      `${r.stdout}${r.stderr}`.split(/\r?\n/).filter((l) => l.trim() && !fin.test(l.trim())).forEach((l) => console.log(l));
+      if (r.status !== 0) { rouges += 1; console.log(`FAIL  [${SCENARIOS[i]}] le fils du scenario sort en code ${r.status}${r.signal ? ` (${r.signal})` : ''}`); }
+    });
+    console.log(`\n(${Math.round((Date.now() - t0) / 1000)} s, scenarios ${SCENARIOS.join(',')}, ${Math.min(parallele, SCENARIOS.length)} a la fois)`);
+    if (rouges) {
+      console.error(`\nformulaire-lenteur-check: ${rouges} scenario(s) en defaut.`);
+      process.exit(1);
+    }
+    console.log('\nformulaire-lenteur-check: ALL OK (sous lenteur, aucun toucher avale, aucun sablier sans fin, aucun calcul perime qui continue, une panne dite a temps)');
+  });
+}
+
+const PARALLELE = Math.max(1, Number(process.env.PINLANE_LENTEUR_PARALLELE || 2));
 if (process.argv.includes('--mutate')) {
   const avant = fs.readFileSync(path.join(ROOT, FICHIER), 'utf8');
   const { spawn } = require('child_process');
-  const parallele = Math.max(1, Number(process.env.PINLANE_LENTEUR_PARALLELE || 2));
+  const parallele = PARALLELE;
   let ratees = 0, suivant = 0;
   const lancer = (index) => new Promise((resolve) => {
     const mutation = MUTATIONS[index];
@@ -712,6 +743,8 @@ if (process.argv.includes('--mutate')) {
     if (ratees) { console.log(`\nformulaire-lenteur-check --mutate: ${ratees} contre-epreuve(s) ratee(s).`); process.exit(1); }
     console.log(`\nformulaire-lenteur-check --mutate: contre-epreuve OK : ${MUTATIONS.length} mutations, chacune rougit sur son assertion, et aucun fichier n a ete ecrit.`);
   });
+} else if (!MUTATION && !process.env.PINLANE_LENTEUR_SCENARIOS && PARALLELE > 1 && SCENARIOS.length > 1) {
+  baseEnFils(PARALLELE);
 } else {
   main().catch((error) => { console.error(error); process.exit(1); });
 }

@@ -43,7 +43,7 @@
     "test:laser-stock-third": "node scripts/laser-stock-third-check.cjs",
     "test:laser-fit-day": "node scripts/laser-fit-day-check.cjs",
     "test:planning-frame": "node scripts/planning-frame-check.cjs",
-    "test:planning-global": "node scripts/planning-global-check.js && node scripts/planning-global-check.js --contre-preuves",
+    "test:planning-global": "node scripts/planning-moteur-check.js && node scripts/planning-moteur-check.js --contre-preuves && node scripts/planning-global-check.js && node scripts/planning-global-check.js --contre-preuves",
     "test:notes-scope": "node scripts/staff-notes-scope-check.js",
     "test:rush-status": "node scripts/rush-status-ui-check.cjs",
     "test:reservation-edit-clarity": "node scripts/reservation-edit-clarity-check.cjs",

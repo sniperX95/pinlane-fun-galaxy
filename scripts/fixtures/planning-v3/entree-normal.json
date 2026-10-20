@@ -116,9 +116,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "infos": [
-        "Kids Fun Day"
-      ],
+      "formule": "Kids Fun Day",
+      "infos": [],
       "heure": "13:00",
       "debut": 13
     },
@@ -134,8 +133,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F2",
       "infos": [
-        "F2",
         "2 cruches"
       ],
       "heure": "14:00",
@@ -153,6 +152,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "14:00",
       "debut": 14
@@ -169,8 +169,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F6",
       "infos": [
-        "F6",
         "8 cr.",
         "2 cruches"
       ],
@@ -189,8 +189,8 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "F1",
       "infos": [
-        "F1",
         "2 cruches"
       ],
       "heure": "15:00",
@@ -208,6 +208,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:00",
       "debut": 16
@@ -224,6 +225,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:30",
       "debut": 16.5
@@ -240,6 +242,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "17:30",
       "debut": 17.5
@@ -256,9 +259,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "infos": [
-        "Back To School/Work"
-      ],
+      "formule": "Back To School/Work",
+      "infos": [],
       "heure": "18:30",
       "debut": 18.5
     },
@@ -274,6 +276,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "19:00",
       "debut": 19
@@ -290,6 +293,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "19:30",
       "debut": 19.5
@@ -306,6 +310,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "20:00",
       "debut": 20
@@ -687,5 +692,5 @@
     }
   },
   "visibles": null,
-  "signature": "i4rc92.7gq"
+  "signature": "yinguu.7hd"
 }

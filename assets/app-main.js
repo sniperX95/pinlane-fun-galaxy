@@ -21766,7 +21766,7 @@ function scopedStaffReservations(view = getStaffResourceView()) {
 }
 
 // UN SEUL endroit qui synchronise la bande d'onglets (onglet actif, compteurs,
-// alerte hors planning, visibilite des grilles). renderStaffShell et
+// visibilite des grilles). renderStaffShell et
 // renderStaffData en tenaient chacun une copie : deux verites qui pouvaient
 // diverger en silence au premier changement de regle.
 // Regle de visibilite : une grille ne s'affiche que sur SON onglet. « Toutes les
@@ -21792,19 +21792,13 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   const hiddenByPage = !isStaffPlanningPageActive();
   const bowlingCount = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0).length;
   const laserCount = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0).length;
-  const offPlanningCount = dayReservations.filter(isOffPlanningReservation).length;
   const allTab = document.getElementById('staffTabAll');
   allTab?.classList.toggle('active', view === 'all');
-  allTab?.classList.toggle('has-alert', offPlanningCount > 0);
   document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
   document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
-  const allSub = document.getElementById('staffAllSub');
-  if (allSub) {
-    allSub.textContent = offPlanningCount
-      ? `${offPlanningCount} hors planning`
-      : 'Le jour au complet';
-    allSub.classList.toggle('is-alert', offPlanningCount > 0);
-  }
+  // (plus de « N hors planning » sur l onglet : Movsar, 2026-10-20, « plus
+  // besoin de montrer des résas hors planning, on s'en fout » ; le planning
+  // global dessine la table et la plaine, la regle isOffPlanningReservation reste)
   const allCountEl = document.getElementById('staffAllCount');
   const bowlingCountEl = document.getElementById('staffBowlingCount');
   const laserCountEl = document.getElementById('staffLaserCount');
@@ -25249,10 +25243,8 @@ function renderReservationRow(r, moment = null, options = {}) {
   // LE LISERE DIT L ETAT, la regle du planning Laser (lpTeinte) : bleu
   // confirme, ambre arrive, vert paye, gris pas venu (2026-10-09, « B »).
   const etat = lpTeinte(r).slice(3);
-  // UN GROUPE SUR AUCUNE GRILLE (table et plaine d un anniversaire, Kids Fun
-  // Day) se dit sur sa carte : c est ici ou nulle part qu on le voit (decision
-  // du 2026-07, off-planning-check). L onglet porte aussi « N hors planning ».
-  const horsPlanning = getStaffResourceView() === 'all' && isOffPlanningReservation(r);
+  // (un groupe sur aucune grille ne se marque plus « Hors planning » : le
+  // planning global dessine la table et la plaine ; Movsar, 2026-10-20)
   const suivi = moment?.late ? 'En retard' : ({ upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer' }[moment?.etat] || '');
   // Une carte terminee et payee tient sur sa tete : il n y a plus rien a faire.
   if (termine) {
@@ -25267,7 +25259,7 @@ function renderReservationRow(r, moment = null, options = {}) {
   return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'&&event.target===this){openPos(${r.id})}">
     <div class="gc-head">
       <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
-      <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}${horsPlanning ? ' · <b class="gc-tag">Hors planning</b>' : ''}</span>${suivi ? `<small class="gc-visit-state">${escapeHtml(suivi)}</small>` : ''}</div>
+      <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}</span>${suivi ? `<small class="gc-visit-state">${escapeHtml(suivi)}</small>` : ''}</div>
       ${renderGroupePrix(r, moment)}
     </div>
     ${renderGroupeAlerte(r, moment)}

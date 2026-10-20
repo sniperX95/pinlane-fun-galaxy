@@ -116,6 +116,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:30",
       "debut": 16.5
@@ -132,6 +133,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "17:30",
       "debut": 17.5
@@ -148,9 +150,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "infos": [
-        "Back To School/Work"
-      ],
+      "formule": "Back To School/Work",
+      "infos": [],
       "heure": "18:30",
       "debut": 18.5
     },
@@ -166,8 +167,8 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "Crazy Student Strike",
       "infos": [
-        "Crazy Student Strike",
         "1 mètre de bière"
       ],
       "heure": "20:00",
@@ -298,5 +299,5 @@
     }
   },
   "visibles": null,
-  "signature": "16nstat.4fh"
+  "signature": "o3j32f.4fo"
 }

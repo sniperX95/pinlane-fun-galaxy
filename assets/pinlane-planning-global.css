@@ -36,7 +36,7 @@
 .gh-entete {
   position: sticky; top: 0; z-index: 7; box-sizing: border-box; height: 32px; min-width: 0; padding: 0 8px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--surface); border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+  background: var(--surface); border-bottom: 1px solid var(--line); border-right: 1px solid var(--line-strong); box-shadow: inset 1px 0 0 var(--line-strong);
   overflow: hidden; white-space: nowrap; font-size: 13px; font-weight: 650; color: var(--text);
 }
 .gh-entete.is-dernier, .gh-pile.is-dernier { border-right: 0; }
@@ -59,7 +59,11 @@
 
 /* UNE COLONNE : une pile ou les cartes se posent en pixels. Les filets d heure
    vivent dans un calque a part (.gh-lignes), des elements de 1 px. */
-.gh-pile { position: relative; box-sizing: border-box; min-width: 0; border-right: 1px solid var(--line); }
+/* (Movsar, 2026-10-20 : « bien isoler chaque activité ») : entre deux
+   activites, 2 px de --line-strong (son bord droit, plus l ombre interne de
+   la suivante, sous les cartes) ; entre deux pistes, 1 px pale. */
+.gh-pile { position: relative; box-sizing: border-box; min-width: 0; border-right: 1px solid var(--line-strong); }
+.gh-pile:not(.gh-pile--h) { box-shadow: inset 1px 0 0 var(--line-strong); }
 .gh-pile--h { position: sticky; left: 0; z-index: 6; background: var(--surface); }
 .gh-pile.is-vide { background: color-mix(in srgb, var(--text) 1.5%, var(--surface)); }
 .gh-pile.is-reserve { cursor: pointer; }
@@ -71,8 +75,11 @@
 /* (pose en absolu sur la zone des colonnes : il ne prend aucune case de la grille) */
 .gh-lignes { position: absolute; grid-column: 2 / -1; grid-row: 2; left: 0; right: 0; top: 0; z-index: 0; pointer-events: none; }
 .gh-lignes > i { position: absolute; left: 0; right: 0; }
-.gh-l { height: 1px; background: var(--line); }
-.gh-l.is-d { background: color-mix(in srgb, var(--line) 48%, transparent); }
+.gh-l { height: 1px; background: var(--line-strong); }
+.gh-l.is-d { background: color-mix(in srgb, var(--line) 40%, transparent); }
+/* La bande d une heure sur deux, sous les cartes (aussi dans la colonne des heures). */
+.gh-bh { background: color-mix(in srgb, var(--text) 3.5%, transparent); }
+.gh-pile--h > .gh-bh { position: absolute; left: 0; right: 0; }
 .gh-l.is-minuit { height: 2px; background: var(--line-strong); }
 /* Hors des heures d ouverture (seances qui debordent, jour ferme). */
 .gh-hors { background: color-mix(in srgb, var(--text) 3%, transparent); }
@@ -82,8 +89,9 @@
 .gh-ajout[hidden] { display: none; }
 
 /* LES LIBELLES D HEURE, centres sur leur ligne. */
-.gh-h { position: absolute; left: 0; right: 0; height: 14px; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--faint); white-space: nowrap; }
-.gh-h.is-pleine { color: var(--text); font-size: 12.5px; font-weight: 650; }
+/* (overflow hidden : en 13,5 px dans une ligne de 14, la boite de la police deborde d un pixel et ferait defiler la grille) */
+.gh-h { position: absolute; left: 0; right: 0; height: 14px; line-height: 14px; overflow: hidden; padding-right: 5px; text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+.gh-h.is-pleine { color: var(--text); font-size: 13.5px; font-weight: 700; }
 .gh-h.is-pleine.is-passe { color: var(--muted); font-weight: 600; }
 .gh-h.is-minuit { font-weight: 700; }
 .gh-h.is-hors, .gh-h.is-pleine.is-hors { color: var(--faint); }
@@ -167,10 +175,15 @@
 .gh-seg-libre, .gh-seg-autres { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; line-height: var(--gh-lh); font-size: var(--gh-fs2); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 .gh-seg-libre { background: var(--subtle); }
 .gh-seg-autres { background: var(--line); color: var(--text); }
+/* (une carte ou meme l initiale ne tient pas : une bande de la couleur de son
+   statut, sans cadre ; jamais une boite vide, Movsar le 2026-10-20) */
+.gh-pile .gh-c.is-muette { border-color: transparent; background: color-mix(in srgb, var(--bk-barre) 45%, var(--surface)); }
+.gh-pile .gh-c.is-muette.is-fini { background: color-mix(in srgb, var(--text) 16%, var(--surface)); }
 
 /* UNE RESERVATION EN LIGNE EN COURS (le langage du planning bowling) : un
    bloc neutre, sans barre de statut, qui ne reserve rien. */
 .gh-enligne { position: absolute; z-index: 2; box-sizing: border-box; display: flex; align-items: flex-start; padding: 0 3px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--subtle); color: var(--muted); font-size: var(--gh-fs2); font-weight: 600; line-height: var(--gh-lh); white-space: nowrap; overflow: hidden; }
+.gh-enligne > .is-deux { white-space: normal; }
 
 /* LE SURVOL ALLUME UN GROUPE : ses cartes prennent le contour de leur
    statut, les autres s attenuent a peine. Le groupe du panneau garde son

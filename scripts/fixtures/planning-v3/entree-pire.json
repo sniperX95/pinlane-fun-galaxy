@@ -136,9 +136,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "infos": [
-        "Matin Malin"
-      ],
+      "formule": "Matin Malin",
+      "infos": [],
       "heure": "10:00",
       "debut": 10
     },
@@ -154,6 +153,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "10:00",
       "debut": 10
@@ -170,6 +170,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "10:30",
       "debut": 10.5
@@ -186,6 +187,7 @@
       "parti": true,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "11:00",
       "debut": 11
@@ -202,6 +204,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "11:00",
       "debut": 11
@@ -218,6 +221,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "11:00",
       "debut": 11
@@ -234,6 +238,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "11:30",
       "debut": 11.5
@@ -250,6 +255,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -266,6 +272,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -282,6 +289,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -298,6 +306,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -314,6 +323,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -330,6 +340,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -346,6 +357,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -362,6 +374,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:00",
       "debut": 12
@@ -378,6 +391,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "12:30",
       "debut": 12.5
@@ -394,8 +408,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F7",
       "infos": [
-        "F7",
         "8 cr.",
         "2 cruches"
       ],
@@ -414,8 +428,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F1",
       "infos": [
-        "F1",
         "2 cruches"
       ],
       "heure": "13:00",
@@ -433,6 +447,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "13:00",
       "debut": 13
@@ -449,6 +464,7 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "13:00",
       "debut": 13
@@ -465,8 +481,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F3",
       "infos": [
-        "F3",
         "2 cruches"
       ],
       "heure": "13:30",
@@ -484,8 +500,8 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "F2",
       "infos": [
-        "F2",
         "2 cruches"
       ],
       "heure": "14:00",
@@ -503,8 +519,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F8",
       "infos": [
-        "F8",
         "2 cruches"
       ],
       "heure": "14:00",
@@ -522,8 +538,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F4",
       "infos": [
-        "F4",
         "2 cruches"
       ],
       "heure": "14:00",
@@ -541,6 +557,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "14:00",
       "debut": 14
@@ -557,6 +574,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "14:30",
       "debut": 14.5
@@ -573,8 +591,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F6",
       "infos": [
-        "F6",
         "8 cr.",
         "2 cruches"
       ],
@@ -593,6 +611,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "15:00",
       "debut": 15
@@ -609,8 +628,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F5",
       "infos": [
-        "F5",
         "2 cruches"
       ],
       "heure": "15:00",
@@ -628,8 +647,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F8",
       "infos": [
-        "F8",
         "2 cruches"
       ],
       "heure": "15:00",
@@ -647,6 +666,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "15:30",
       "debut": 15.5
@@ -663,8 +683,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F7",
       "infos": [
-        "F7",
         "8 cr.",
         "2 cruches"
       ],
@@ -683,8 +703,8 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "F1",
       "infos": [
-        "F1",
         "2 cruches"
       ],
       "heure": "15:30",
@@ -702,8 +722,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F3",
       "infos": [
-        "F3",
         "2 cruches"
       ],
       "heure": "16:00",
@@ -721,6 +741,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:00",
       "debut": 16
@@ -737,6 +758,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:00",
       "debut": 16
@@ -753,8 +775,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F6",
       "infos": [
-        "F6",
         "8 cr.",
         "2 cruches"
       ],
@@ -773,6 +795,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "16:30",
       "debut": 16.5
@@ -789,8 +812,8 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "F4",
       "infos": [
-        "F4",
         "2 cruches"
       ],
       "heure": "17:00",
@@ -808,6 +831,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "17:00",
       "debut": 17
@@ -824,6 +848,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "17:30",
       "debut": 17.5
@@ -840,6 +865,7 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "",
       "infos": [
         "2 × Cruche Bière",
         "Tapas"
@@ -859,6 +885,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "18:00",
       "debut": 18
@@ -875,6 +902,7 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "18:30",
       "debut": 18.5
@@ -891,6 +919,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "18:30",
       "debut": 18.5
@@ -907,6 +936,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "19:00",
       "debut": 19
@@ -923,6 +953,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "19:00",
       "debut": 19
@@ -939,6 +970,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "19:30",
       "debut": 19.5
@@ -955,6 +987,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "20:00",
       "debut": 20
@@ -971,6 +1004,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "21:00",
       "debut": 21
@@ -987,6 +1021,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "21:00",
       "debut": 21
@@ -1003,6 +1038,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "21:00",
       "debut": 21
@@ -1019,6 +1055,7 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "21:30",
       "debut": 21.5
@@ -1035,6 +1072,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "22:00",
       "debut": 22
@@ -1051,6 +1089,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "22:00",
       "debut": 22
@@ -1067,6 +1106,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "23:00",
       "debut": 23
@@ -1083,6 +1123,7 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
+      "formule": "",
       "infos": [
         "Pack Jetons"
       ],
@@ -1101,6 +1142,7 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
+      "formule": "",
       "infos": [],
       "heure": "23:30",
       "debut": 23.5
@@ -2778,5 +2820,5 @@
     }
   },
   "visibles": null,
-  "signature": "1i545e8.nvq"
+  "signature": "dlrq9i.nzc"
 }

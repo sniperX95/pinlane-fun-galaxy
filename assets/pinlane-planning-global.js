@@ -465,13 +465,12 @@
       var r = g.r;
       var premiere = seances.filter(function (s) { return s.g === g; }).reduce(function (a, s) { return Math.min(a, s.start); }, Infinity);
       var infos = [];
-      if (g.formule) infos.push(g.formule.court);
       g.credits.forEach(function (cr) { if (cr.n) infos.push(cr.n + ' cr.'); });
       return {
         id: g.id, nom: String(r.name || 'Client'), statut: g.teinte, personnes: Number(r.pax) || 0, etat: g.etat, retard: g.retard, depuis: g.span.start,
         absent: g.teinte === 'absent', parti: g.parti, valider: typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r),
         aPlacer: (g.cases.get('laser') || []).some(function (e) { return e.aPlacer; }),
-        infos: infos.concat(g.infos).filter(Boolean),
+        formule: g.formule ? g.formule.court : '', infos: infos.concat(g.infos).filter(Boolean),
         heure: Number.isFinite(premiere) ? gpHeure(premiere) : '', debut: g.debut,
       };
     });
@@ -505,7 +504,7 @@
   // LA SIGNATURE DES DONNEES : ce qui fait la geometrie (jamais l heure ni le
   // moment des groupes, qui ne changent que l etat des cartes).
   function ghSignature(e) {
-    var groupes = e.groupes.map(function (g) { return [g.id, g.nom, g.statut, g.personnes, g.absent || g.etat === 'absent', g.valider, g.aPlacer, g.infos, g.heure, g.debut]; });
+    var groupes = e.groupes.map(function (g) { return [g.id, g.nom, g.statut, g.personnes, g.absent || g.etat === 'absent', g.valider, g.aPlacer, g.formule, g.infos, g.heure, g.debut]; });
     return ghHacher(JSON.stringify([e.jour, e.aujourdhui, e.passe, e.plage, e.fenetre, e.colonnes, groupes, e.seances, e.ressources]));
   }
   function ghHacher(s) {
@@ -714,7 +713,7 @@
       });
       html += '<div class="gh-pile' + (col.vide ? ' is-vide' : '') + (col.reserve ? ' is-reserve' : '') + (i === plan.colonnes.length - 1 ? ' is-dernier' : '') + '" role="cell" aria-label="' + gpEsc(col.titre + (col.vide ? ', aucun groupe' : '')) + '" data-gh-cle="' + gpEsc(col.cle) + '" data-gh-col="' + i + '" style="height:' + plan.axe.corps + 'px">' + corps + '</div>';
     });
-    var lignes = '';
+    var lignes = ghHtmlBandesHeure(plan);
     plan.bandes.forEach(function (b) { lignes += '<i class="gh-hors is-' + b.type + '" style="top:' + b.y + 'px;height:' + b.h + 'px"></i>'; });
     plan.filets.forEach(function (f) { lignes += '<i class="gh-l is-' + f.type + '" style="top:' + f.y + 'px"></i>'; });
     if (plan.fermeture != null) lignes += '<i class="gh-fermeture" style="top:' + plan.fermeture + 'px"></i>';
@@ -723,9 +722,17 @@
     html += '<i class="' + ghClasseMaintenant('gh-passe', now) + '" aria-hidden="true"></i><i class="' + ghClasseMaintenant('gh-maintenant', now) + '" aria-hidden="true"></i>';
     return html;
   }
+  // (Movsar, 2026-10-20 : « on ne voit pas très bien quelle heure est quelle
+  // heure » : une heure sur deux porte une bande legere, des heures aux cartes)
+  function ghHtmlBandesHeure(plan) {
+    var pleines = plan.libelles.filter(function (h) { return h.pleine; });
+    var html = '';
+    for (var i = 1; i < pleines.length; i += 2) html += '<i class="gh-bh" style="top:' + pleines[i - 1].y + 'px;height:' + (pleines[i].y - pleines[i - 1].y) + 'px"></i>';
+    return html;
+  }
   function ghClasseMaintenant(base, now) { return base + (base === 'gh-passe' ? (now.passe && now.vu ? ' is-vu' : '') : (now.vu ? ' is-vu' : '')); }
   function ghHtmlHeures(plan, maintenant) {
-    var html = '<div class="gh-pile gh-pile--h" aria-hidden="true" style="height:' + plan.axe.corps + 'px">';
+    var html = '<div class="gh-pile gh-pile--h" aria-hidden="true" style="height:' + plan.axe.corps + 'px">' + ghHtmlBandesHeure(plan);
     plan.libelles.forEach(function (h) {
       html += '<div class="' + MOTEUR.ghClassesHeure(h, maintenant, plan.axe) + '" data-gh-t="' + h.t + '" style="top:' + (h.y - 7) + 'px"' + (h.titre ? ' title="' + gpEsc(h.titre) + '"' : '') + '>' + gpEsc(h.texte) + '</div>';
     });
@@ -842,7 +849,7 @@
     return html + '</div>';
   }
   function ghHtmlEnLigne(el) {
-    return '<div class="gh-enligne" role="note" data-gh-enligne="' + el.piste + '" aria-label="' + gpEsc('Piste ' + el.piste + ', ' + gpHeure(el.debut) + ' - ' + gpHeure(el.fin) + ' : ' + el.texte) + '" style="left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px">' + (el.vu ? '<span>' + gpEsc(el.vu) + '</span>' : '') + '</div>';
+    return '<div class="gh-enligne" role="note" data-gh-enligne="' + el.piste + '" aria-label="' + gpEsc('Piste ' + el.piste + ', ' + gpHeure(el.debut) + ' - ' + gpHeure(el.fin) + ' : ' + el.texte) + '" style="left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px">' + (el.vu ? '<span' + (el.deux ? ' class="is-deux"' : '') + '>' + gpEsc(el.vu) + '</span>' : '') + '</div>';
   }
 
   // ---- LA MINUTE QUI PASSE : l etat, jamais le texte ni la geometrie -----------

@@ -428,9 +428,13 @@ async function bench() {
 //        s ouvre quand meme.
 // Contre-epreuves (--mutate) : chaque correctif est retire EN MEMOIRE (servi
 // mute), un a la fois ; les assertions qui le portent doivent rougir, la
-// mutation servie, sans qu aucun MONTAGE ne rougisse.
+// mutation servie, sans qu aucun MONTAGE ne rougisse. La hauteur animee de
+// nouveau se prouve au compte des layouts ([G1], deterministe) : son [G5]
+// rougit aussi (35 contre 18, 138 contre 121, releves 2026-10-20), mais la
+// page mutee laisse le navigateur occupe et la sonde de repos de la
+// reference rougissait avec lui, quatre fois sur quatre.
 const MUTATIONS_GATE = [
-  { nom: 'la rangee du tiroir s anime de nouveau en hauteur (grid-template-rows)', fichier: 'assets/fungalaxy-booking.css', de: '.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt { transition: none; }', vers: '', attendu: ['[G1]', '[G5]'], passe2: true },
+  { nom: 'la rangee du tiroir s anime de nouveau en hauteur (grid-template-rows)', fichier: 'assets/fungalaxy-booking.css', de: '.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt { transition: none; }', vers: '', attendu: ['[G1]'] },
   { nom: 'les cartes du dessous sautent a leur place au lieu de glisser', fichier: 'assets/fungalaxy-booking.js', de: '      if (d || t._fgGlisse) glisser(t, d, 0);', vers: '      void d;', attendu: ['[G2]'] },
   { nom: 'le contenu du tiroir n est plus devoile par translate', fichier: 'assets/fungalaxy-booking.js', de: '      if (x.ouvre) { glisser(x.dedans, x.vu - x.H, 0, null, auCarre); glisser(x.boite, x.H - x.vu, 0, null, auCarre); return; }', vers: '      if (x.ouvre) return;', attendu: ['[G3]'] },
 ];

@@ -1,0 +1,310 @@
+{
+  "jour": "2027-01-12",
+  "aujourdhui": true,
+  "passe": false,
+  "maintenant": 15.166666666666666,
+  "plage": {
+    "debut": 14,
+    "fin": 22
+  },
+  "fenetre": {
+    "open": 14,
+    "close": 22,
+    "closed": false
+  },
+  "colonnes": [
+    {
+      "cle": "bowling",
+      "titre": "Bowling",
+      "nature": "bowling",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"9.4\" cy=\"9\" r=\".55\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12.6\" cy=\"8.2\" r=\".55\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"9.9\" cy=\"12\" r=\".55\" fill=\"currentColor\" stroke=\"none\"/></svg>",
+      "inconnue": false,
+      "unites": null,
+      "credits": 0,
+      "reserve": true
+    },
+    {
+      "cle": "duckpin",
+      "titre": "Duckpin",
+      "nature": "agenda",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 2.8c1.5 0 2.3 1.3 2.3 2.8 0 1.2-.6 1.9-.8 2.8.6 1.5 2.1 3.5 2.1 6.1 0 3.4-1.6 6.7-3.6 6.7s-3.6-3.3-3.6-6.7c0-2.6 1.5-4.6 2.1-6.1-.2-.9-.8-1.6-.8-2.8 0-1.5.8-2.8 2.3-2.8z\"/><path d=\"M9.9 9.6h4.2\"/></svg>",
+      "inconnue": false,
+      "unites": {
+        "total": 2,
+        "mot": "piste"
+      },
+      "credits": 0,
+      "reserve": false
+    },
+    {
+      "cle": "laser",
+      "titre": "Laser",
+      "nature": "laser",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"6.4\"/><path d=\"M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3\"/><circle cx=\"12\" cy=\"12\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"/></svg>",
+      "inconnue": false,
+      "unites": null,
+      "credits": 0,
+      "reserve": true
+    },
+    {
+      "cle": "funrun",
+      "titre": "Fun Run",
+      "nature": "agenda",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M13.5 2.8L5.5 13.2h6l-1.3 8 8.3-10.6h-6.1l1.1-7.8z\"/></svg>",
+      "inconnue": false,
+      "unites": {
+        "total": 1,
+        "mot": "session"
+      },
+      "credits": 0,
+      "reserve": false
+    },
+    {
+      "cle": "arcades",
+      "titre": "Arcades",
+      "nature": "arcades",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"2.5\" y=\"8\" width=\"19\" height=\"10\" rx=\"3.6\"/><path d=\"M7.4 12v3M5.9 13.5h3\"/><circle cx=\"16\" cy=\"12.6\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"18\" cy=\"14.8\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/></svg>",
+      "inconnue": false,
+      "unites": null,
+      "credits": 0,
+      "reserve": false
+    },
+    {
+      "cle": "minigolf",
+      "titre": "Minigolf",
+      "nature": "agenda",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 21V4l9.2 2.6L7 9.2\"/></svg>",
+      "inconnue": false,
+      "unites": null,
+      "credits": 0,
+      "reserve": false
+    },
+    {
+      "cle": "plaine",
+      "titre": "Plaine",
+      "nature": "plaine",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8.4 14.8a4.2 4.2 0 0 0 7.2 0\"/><path d=\"M9 9.8h.01M15 9.8h.01\"/></svg>",
+      "inconnue": false,
+      "unites": null,
+      "credits": 0,
+      "reserve": false
+    },
+    {
+      "cle": "billard",
+      "titre": "Billard",
+      "nature": "agenda",
+      "icone": "<svg class=\"activity-check-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"10.2\" r=\"3.4\"/></svg>",
+      "inconnue": false,
+      "unites": {
+        "total": 6,
+        "mot": "table"
+      },
+      "credits": 0,
+      "reserve": false
+    }
+  ],
+  "groupes": [
+    {
+      "id": "1579",
+      "nom": "DÉMO · Famille Thiry",
+      "statut": "conf",
+      "personnes": 5,
+      "etat": "upcoming",
+      "retard": false,
+      "depuis": 16.5,
+      "absent": false,
+      "parti": false,
+      "valider": false,
+      "aPlacer": false,
+      "pictos": 1,
+      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
+      "infos": [],
+      "heure": "16:30",
+      "debut": 16.5
+    },
+    {
+      "id": "1580",
+      "nom": "DÉMO · Amis de Bastien",
+      "statut": "conf",
+      "personnes": 8,
+      "etat": "upcoming",
+      "retard": false,
+      "depuis": 17.5,
+      "absent": false,
+      "parti": false,
+      "valider": false,
+      "aPlacer": false,
+      "pictos": 1,
+      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
+      "infos": [],
+      "heure": "17:30",
+      "debut": 17.5
+    },
+    {
+      "id": "1581",
+      "nom": "DÉMO · Collègues de la commune",
+      "statut": "conf",
+      "personnes": 4,
+      "etat": "upcoming",
+      "retard": false,
+      "depuis": 18.5,
+      "absent": false,
+      "parti": false,
+      "valider": false,
+      "aPlacer": false,
+      "pictos": 1,
+      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
+      "infos": [
+        "Back To School/Work"
+      ],
+      "heure": "18:30",
+      "debut": 18.5
+    },
+    {
+      "id": "1582",
+      "nom": "DÉMO · Kot étudiant",
+      "statut": "conf",
+      "personnes": 6,
+      "etat": "upcoming",
+      "retard": false,
+      "depuis": 20,
+      "absent": false,
+      "parti": false,
+      "valider": true,
+      "aPlacer": false,
+      "pictos": 1,
+      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
+      "infos": [
+        "Crazy Student Strike",
+        "1 mètre de bière"
+      ],
+      "heure": "20:00",
+      "debut": 20
+    }
+  ],
+  "seances": [
+    {
+      "id": "1579|bowling|0",
+      "groupe": "1579",
+      "colonne": "bowling",
+      "debut": 16.5,
+      "fin": 17.5,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "bowling",
+      "n": 0,
+      "pistes": [
+        1
+      ],
+      "joueurs": 5
+    },
+    {
+      "id": "1580|laser|0",
+      "groupe": "1580",
+      "colonne": "laser",
+      "debut": 17.5,
+      "fin": 17.916666666666668,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "laser_game",
+      "n": 0,
+      "joueurs": 8,
+      "arene": 8,
+      "partie": 1,
+      "parties": 2
+    },
+    {
+      "id": "1580|laser|1",
+      "groupe": "1580",
+      "colonne": "laser",
+      "debut": 18,
+      "fin": 18.416666666666668,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "laser_game",
+      "n": 0,
+      "joueurs": 8,
+      "arene": 8,
+      "partie": 2,
+      "parties": 2
+    },
+    {
+      "id": "1581|bowling|0",
+      "groupe": "1581",
+      "colonne": "bowling",
+      "debut": 18.5,
+      "fin": 19.5,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "bowling",
+      "n": 0,
+      "pistes": [
+        1
+      ],
+      "joueurs": 4
+    },
+    {
+      "id": "1581|arcades|0",
+      "groupe": "1581",
+      "colonne": "arcades",
+      "debut": 19.583333333333332,
+      "fin": 20.583333333333332,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "arcade_time",
+      "n": 0
+    },
+    {
+      "id": "1582|bowling|0",
+      "groupe": "1582",
+      "colonne": "bowling",
+      "debut": 20,
+      "fin": 21,
+      "libre": false,
+      "journee": false,
+      "fait": false,
+      "activite": "bowling",
+      "n": 0,
+      "pistes": [
+        1
+      ],
+      "joueurs": 6
+    }
+  ],
+  "ressources": {
+    "pistes": {
+      "N": 8,
+      "maintenance": [],
+      "paires": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          7,
+          8
+        ]
+      ],
+      "blocages": []
+    },
+    "laser": {
+      "capacite": 30,
+      "enLigne": []
+    }
+  },
+  "visibles": null,
+  "signature": "1j5qsrx.5r1"
+}

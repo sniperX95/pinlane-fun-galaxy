@@ -31,6 +31,10 @@
 //     [--fixtures pic,pire] [--appareils grand,ordinateur,tablette,telephone]
 //     [--modes normal,plein] [--themes dark] [--heure 15:10] [--extras | --extras-seuls]
 //   node scripts/planning-v3-fixtures.js deriver   (reecrit vide, ferme, pire)
+//   node scripts/planning-v3-fixtures.js instantanes  (reecrit entree-*.json :
+//     l entree du moteur que la console construit a 15:10, pour
+//     scripts/planning-moteur-check.js ; le gate du navigateur verifie qu elle
+//     n a pas vieilli)
 // Dans un gate : const { servir, monter } = require('./planning-v3-fixtures');
 'use strict';
 const fs = require('fs');
@@ -115,7 +119,7 @@ function mockNavigateur(cfg) {
   var etatDu = function (d) {
     var base = fixture.staffState;
     var res = jours[d] || [];
-    return Object.assign({}, base, { date: d, reservations: res, holds: [], revision: 'fixture:' + fixture.fixture + ':' + d + ':' + window.__FIXTURE__.patchs.length });
+    return Object.assign({}, base, { date: d, reservations: res, holds: d === JOUR ? (cfg.holds || []) : [], revision: 'fixture:' + fixture.fixture + ':' + d + ':' + window.__FIXTURE__.patchs.length });
   };
   var natif = window.fetch.bind(window);
   window.fetch = async function (input, init) {
@@ -171,6 +175,11 @@ function mockNavigateur(cfg) {
       state.currentDate = JOUR; state.adminCenterId = 'libramont'; state.staffMenuPage = 'planning'; state.staffResourceView = 'all'; state.staffTheme = theme;
       state.searchTerm = ''; state.staffStatusFilter = 'all'; state.staffPlanningExpanded = false; state.staffLaserPlanningExpanded = false; state.staffTableExpanded = false; state.staffGlobalExpanded = false;
       state.reservations = jours[JOUR].map(function (x) { return Object.assign({}, x); });
+      // (l etat des pistes et les reservations en ligne en cours : ceux que
+      // staff-state servirait)
+      if (fixture.staffState.laneStatuses) state.laneStatuses = Object.assign({}, fixture.staffState.laneStatuses);
+      /* global memoriserBlocagesEnLigne */
+      if (typeof memoriserBlocagesEnLigne === 'function') memoriserBlocagesEnLigne('libramont', JOUR, cfg.holds || []);
       document.documentElement.setAttribute('data-theme', theme);
       setView('staff');
       while (staffCenterConfigCache.loading) await new Promise(function (r) { setTimeout(r, 25); });
@@ -185,10 +194,11 @@ function mockNavigateur(cfg) {
   });
 }
 
-function scriptInjecte(nom) {
-  const fx = lireFixture(nom);
-  const centre = lireCentre();
-  const cfg = { fixture: fx, centre: centre.center, meta: centre.publicBookingMeta };
+function scriptInjecte(nom, variantes = []) {
+  const v = varier(lireFixture(nom), lireCentre(), variantes);
+  const fx = v.fixture;
+  const centre = v.centre;
+  const cfg = { fixture: fx, centre: centre.center, meta: centre.publicBookingMeta, holds: v.holds };
   // (</script> ne peut pas sortir du JSON : les < sont echappes)
   return `<script>(${mockNavigateur.toString()})(${JSON.stringify(cfg).replace(/</g, '\\u003c')});</script>`;
 }
@@ -197,7 +207,9 @@ function scriptInjecte(nom) {
 // LE SERVEUR : les fichiers du depot ; index.html recoit l API simulee de la
 // fixture de son URL (?fixture=pic par defaut).
 // ---------------------------------------------------------------------------
-function servir({ port = PORT } = {}) {
+// (transformer(chemin, texte) : un gate peut servir un module modifie en
+// memoire, ses contre-preuves ; le disque n est jamais touche)
+function servir({ port = PORT, transformer = null } = {}) {
   const server = http.createServer((req, res) => {
     try {
       const url = new URL(req.url, `http://127.0.0.1:${port}`);
@@ -206,9 +218,12 @@ function servir({ port = PORT } = {}) {
       if (accueil) f = path.join(ROOT, 'index.html');
       if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
       let corps = fs.readFileSync(f);
+      const rel = path.relative(ROOT, f).split(path.sep).join('/');
+      if (transformer && /\.(js|css|html)$/i.test(f)) corps = Buffer.from(transformer(rel, corps.toString('utf8')), 'utf8');
       if (accueil) {
         const nom = url.searchParams.get('fixture') || 'pic';
-        corps = Buffer.from(corps.toString('utf8').replace(/<head>/i, () => '<head>\n' + scriptInjecte(nom)), 'utf8');
+        const variantes = (url.searchParams.get('variante') || '').split(',').filter(Boolean);
+        corps = Buffer.from(corps.toString('utf8').replace(/<head>/i, () => '<head>\n' + scriptInjecte(nom, variantes)), 'utf8');
       }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       res.end(corps);
@@ -240,7 +255,7 @@ async function repos(page, ms = 350) {
 }
 
 // LA CONSOLE MONTEE SUR UNE FIXTURE, l heure figee par Playwright.
-async function monter(browser, { fixture = 'pic', appareil = 'ordinateur', theme = 'dark', plein = false, heure = '', mouvementReduit = false, port = PORT } = {}) {
+async function monter(browser, { fixture = 'pic', appareil = 'ordinateur', theme = 'dark', plein = false, heure = '', mouvementReduit = false, port = PORT, variante = [], avantChargement = null } = {}) {
   const fx = lireFixture(fixture);
   const ctx = await browser.newContext({ ...APPAREILS[appareil], serviceWorkers: 'block', timezoneId: 'Europe/Brussels', colorScheme: theme === 'light' ? 'light' : 'dark', reducedMotion: mouvementReduit ? 'reduce' : 'no-preference' });
   const page = await ctx.newPage();
@@ -248,7 +263,10 @@ async function monter(browser, { fixture = 'pic', appareil = 'ordinateur', theme
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(e.message));
   await page.clock.setFixedTime(instant(fx.staffState.date, heure || fx.heure || '15:10'));
-  await page.goto(`http://127.0.0.1:${port}/?fixture=${fixture}&theme=${theme}&horloge=externe${plein ? '&plein=1' : ''}`, { waitUntil: 'load', timeout: 90000 });
+  // (un gate pose ses sondes avant tout script de la page)
+  if (avantChargement) await avantChargement(page);
+  const v = [].concat(variante || []).filter(Boolean);
+  await page.goto(`http://127.0.0.1:${port}/?fixture=${fixture}&theme=${theme}&horloge=externe${plein ? '&plein=1' : ''}${v.length ? '&variante=' + v.join(',') : ''}`, { waitUntil: 'load', timeout: 90000 });
   await page.waitForFunction(() => window.__fixturePrete !== false, null, { timeout: 60000 });
   const pret = await page.evaluate(() => window.__fixturePrete);
   if (pret !== true) throw new Error(`${fixture} ${appareil} : ${pret}`);
@@ -295,7 +313,8 @@ async function capturer({ sortie, fixtures = FIXTURES, appareils = ['grand', 'or
       const panneau = async (fixture, nom, cle) => {
         const { ctx, page } = await monter(browser, { fixture, appareil: 'ordinateur', port });
         try {
-          const carte = page.locator('#globalPlanningBox .gh-c', { hasText: nom }).first();
+          // (par l aria-label, qui garde le nom complet : la carte ecrit la forme qui tient)
+          const carte = page.locator(`#globalPlanningBox .gh-c[aria-label*="${nom}"]`).first();
           const t = Date.now();
           await carte.click({ timeout: 90000 });
           await page.waitForSelector('#globalPlanningBox .gh-panneau:not([hidden])', { timeout: 90000 });
@@ -304,6 +323,15 @@ async function capturer({ sortie, fixtures = FIXTURES, appareils = ['grand', 'or
           await photo(page, `${fixture}-ordinateur-panneau-${cle}`);
         } finally { await ctx.close(); }
       };
+      // Le survol au pic : le groupe s allume dans toutes ses colonnes.
+      {
+        const { ctx, page } = await monter(browser, { fixture: 'pic', appareil: 'ordinateur', port });
+        try {
+          await page.locator('#globalPlanningBox .gh-c[aria-label*="Anniversaire Noah"]').first().hover();
+          await repos(page, 300);
+          await photo(page, 'pic-ordinateur-survol-noah');
+        } finally { await ctx.close(); }
+      }
       await panneau('pic', 'Anniversaire Noah', 'noah');
       await panneau('pic', 'Famille Renard', 'renard-plaine');
       await panneau('pire', 'Collègues de bureau', 'neuf-activites');
@@ -394,6 +422,12 @@ function deriver() {
   par(1627).name = 'DÉMO · Séminaire annuel Ardennes Logistique & Transports Internationaux SA';
   par(1617).name = 'Bo';
   par(1621).name = 'Wu';
+  // L UNICITE (spec v3, 9.4) : Maxime et Maximilien (la, depuis le samedi),
+  // Julien et Jules, Collard et des Collegues, deux Famille Martin de 8 et
+  // de 12 personnes. (Renommes : le pire cas garde ses 58 groupes.)
+  par(1613).name = 'DÉMO · Amis de Julien';
+  par(1623).name = 'DÉMO · Famille Martin';
+  par(1640).name = 'DÉMO · Famille Martin';
   // DEUX ACTIVITES INCONNUES DU CATALOGUE (une colonne chacune, apres le billard).
   const li = par(1614);
   li.name = 'Li';
@@ -455,6 +489,116 @@ function deriver() {
   ecrire('jour-pire.json', { fixture: 'pire', libelle: 'samedi 16/01/2027 pousse a bout (derive du pic)', heure: '15:10', source: 'derive de jour-pic.json par scripts/planning-v3-fixtures.js deriver', staffState: etat });
   return { pire: tous.length, armesMax: Math.max(...armes.values()) };
 }
+// ---------------------------------------------------------------------------
+// LES ENTREES DU MOTEUR, telles que la console les construit (15:10, ordinateur,
+// sans la mesure, l ecran ni les corrections qui dependent du navigateur).
+// ---------------------------------------------------------------------------
+function lireEntreeDePage() {
+  const w = document.getElementById('globalPlanningGridWrap');
+  const e = Object.assign({}, w._ghEntree);
+  delete e.mesure; delete e.ecran; delete e.corrections;
+  return JSON.parse(JSON.stringify(e));
+}
+function lireEntree(nom) { return lireJson(`entree-${nom}.json`); }
+async function instantanes({ port = PORT } = {}) {
+  const { chromium } = require('playwright-core');
+  const serveur = await servir({ port });
+  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
+  const faites = {};
+  try {
+    for (const fixture of FIXTURES) {
+      const { ctx, page } = await monter(browser, { fixture, appareil: 'ordinateur', port });
+      try {
+        const e = await page.evaluate(lireEntreeDePage);
+        ecrire(`entree-${fixture}.json`, e);
+        faites[fixture] = e.groupes.length;
+      } finally { await ctx.close(); }
+    }
+  } finally {
+    await browser.close();
+    serveur.close();
+  }
+  return faites;
+}
+
+// ---------------------------------------------------------------------------
+// LES VARIANTES (spec v3, 15.1) : posees en memoire sur la fixture servie
+// (?variante=a,b), jamais ecrites sur le disque.
+//   maintenance5  la piste 5 en maintenance ;
+//   enligne6      une reservation en ligne en cours sur la piste 6, 16:00-17:00 ;
+//   laser34       la partie de 19:00 du samedi a 34 armes (Amis de Yanis a 14) ;
+//   gembloux      un centre a 20 armes, trois lancements qui se chevauchent ;
+//   pistes6       un centre a 6 pistes ;
+//   eparses       Amis de Julie (journee normale) sur les pistes 1, 2, 6, 7 et 8 ;
+//   vagues        un groupe dont les deux vagues de 16:00, fusionnees, finissent
+//                 20 min apres l autre groupe de la meme partie (une partie
+//                 laser ne dure jamais plus de 25 min : l autre en dure 5).
+// ---------------------------------------------------------------------------
+const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues'];
+function varier(fx, centre, variantes = []) {
+  const f = JSON.parse(JSON.stringify(fx));
+  const c = JSON.parse(JSON.stringify(centre));
+  const jour = f.staffState.date;
+  const res = f.staffState.reservations;
+  const pic = lireFixture('pic').staffState.reservations;
+  const modele = (id) => pic.find((r) => r.id === id);
+  const neuf = (id, opts) => { const r = dossier(modele(opts.type === 'laser' ? 1612 : 1610), { id, ...opts }); r.date = jour; return r; };
+  let holds = [];
+  for (const v of variantes) {
+    if (!VARIANTES.includes(v)) throw new Error(`variante inconnue : ${v} (${VARIANTES.join(', ')})`);
+    if (v === 'maintenance5') f.staffState.laneStatuses = { ...(f.staffState.laneStatuses || {}), 5: 'maintenance' };
+    if (v === 'enligne6') {
+      const h = neuf(-1, { name: 'Réservation en ligne', pax: 4, type: 'bowling', blocs: [blocBowling('16:00', 60, [6], 4)], price: 39 });
+      h.blocage = { expiresAt: instant(jour, '15:22').toISOString() };
+      holds = holds.concat([h]);
+    }
+    if (v === 'laser34') {
+      const r = res.find((x) => /Amis de Yanis/.test(x.name));
+      const b = r && (r.opsPlan.resourceBlocks || []).find((x) => x.resourceType === 'laser_arena' && x.start === enMin('19:00'));
+      if (!b) throw new Error('laser34 : pas de partie de 19:00 pour Amis de Yanis');
+      Object.assign(b, { players: 14, weaponNeed: 14, groupPlayers: 14 });
+    }
+    if (v === 'gembloux') {
+      Object.assign(c.center.resources.laser, { weaponCount: 20, parallelLaunches: 3 });
+      c.center.name = 'Fun Galaxy Gembloux';
+      [['DÉMO · Amis de Lucas', '15:30', 6], ['DÉMO · Famille Delvaux', '15:40', 5], ['DÉMO · Anniversaire Eva (9 ans)', '15:50', 4]].forEach(([name, h, j], i) => {
+        res.push(neuf(9101 + i, { name, pax: j, type: 'laser', blocs: [blocLaser(h, j, 1)], price: 10 * j }));
+      });
+    }
+    if (v === 'pistes6') {
+      c.center.resources.bowling.laneCount = 6;
+      const st = f.staffState.laneStatuses || {};
+      f.staffState.laneStatuses = Object.fromEntries(Object.entries(st).filter(([k]) => Number(k) <= 6));
+    }
+    if (v === 'eparses') {
+      const julie = res.find((x) => /Amis de Julie/.test(x.name));
+      const b = julie && julie.opsPlan.resourceBlocks.find((x) => x.resourceType === 'bowling_lane');
+      if (!b) throw new Error('eparses : pas de bowling pour Amis de Julie');
+      const pistes = [1, 2, 6, 7, 8];
+      Object.assign(b, { lanes: pistes, requiredLanes: pistes.length });
+      julie.lanes = pistes.slice();
+      julie.opsPlan.assignedLanes = pistes.slice();
+      (julie.opsPlan.timeline || []).forEach((x) => { if (x.resourceType === 'bowling_lane') x.lanes = pistes.slice(); });
+    }
+    if (v === 'vagues') {
+      const ethan = res.find((x) => /Amis d.Ethan/.test(x.name));
+      const i = ethan ? ethan.opsPlan.resourceBlocks.findIndex((x) => x.resourceType === 'laser_arena' && x.start === enMin('16:00')) : -1;
+      if (!(i >= 0)) throw new Error('vagues : pas de partie de 16:00 pour Amis d Ethan');
+      const b = ethan.opsPlan.resourceBlocks[i];
+      const moitie = Math.floor(Number(b.players) / 2);
+      const reste = Number(b.players) - moitie;
+      ethan.opsPlan.resourceBlocks.splice(i, 1,
+        { ...b, players: moitie, weaponNeed: moitie, groupPlayers: moitie, groupWaveCount: 2, groupWaveIndex: 1 },
+        { ...b, players: reste, weaponNeed: reste, groupPlayers: reste, groupWaveCount: 2, groupWaveIndex: 2 });
+      const court = blocLaser('16:00', 4, 1);
+      Object.assign(court, { end: court.start + 5, endTime: enHeure(court.start + 5), durationMinutes: 5 });
+      res.push(neuf(9111, { name: 'DÉMO · Amis de Lou', pax: 4, type: 'laser', blocs: [court], price: 40 }));
+    }
+  }
+  res.sort((a, b) => enMin(a.startTime) - enMin(b.startTime) || a.id - b.id);
+  return { fixture: f, centre: c, holds };
+}
+
 function ecrire(nom, objet) {
   // (en CRLF, comme le reste du depot)
   fs.writeFileSync(path.join(DOSSIER, nom), JSON.stringify(objet, null, 2).replace(/\n/g, '\r\n') + '\r\n');
@@ -473,6 +617,7 @@ const liste = (v, defaut) => (typeof v === 'string' ? v.split(',').map((x) => x.
 async function main() {
   const commande = process.argv[2];
   if (commande === 'deriver') { console.log(deriver()); return; }
+  if (commande === 'instantanes') { console.log(await instantanes({ port: Number(option('port', PORT)) })); return; }
   if (commande === 'servir') {
     const port = Number(option('port', PORT));
     await servir({ port });
@@ -499,4 +644,4 @@ async function main() {
   console.log('usage : node scripts/planning-v3-fixtures.js servir|capturer|deriver (voir l en-tete du fichier)');
 }
 if (require.main === module) main().catch((e) => { console.error(e); process.exitCode = 1; });
-else module.exports = { FIXTURES, APPAREILS, PORT, lireFixture, lireCentre, servir, monter, repos, instant, capturer, deriver };
+else module.exports = { FIXTURES, APPAREILS, VARIANTES, PORT, lireFixture, lireCentre, lireEntree, lireEntreeDePage, varier, servir, monter, repos, instant, capturer, deriver, instantanes };

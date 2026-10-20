@@ -31,35 +31,28 @@
 .gh.is-defile .gh-grille { scroll-snap-type: x proximity; scroll-padding-left: 44px; }
 .gh.is-defile .gh-entete:not(.gh-entete--h) { scroll-snap-align: start; }
 
-/* LES TETES (44 px, deux rangees) : icone, titre et pastille ; dessous, ce qui
-   se compte maintenant (les numeros de pistes, les armes, les enfants). */
+/* LES TETES (32 px, une rangee) : l icone et le titre ; au bowling, les
+   numeros de pistes. Ni pastille ni compteur : les comptes sont dans le title. */
 .gh-entete {
-  position: sticky; top: 0; z-index: 7; box-sizing: border-box; height: 44px; min-width: 0; padding: 0 8px;
+  position: sticky; top: 0; z-index: 7; box-sizing: border-box; height: 32px; min-width: 0; padding: 0 8px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: var(--surface); border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
   overflow: hidden; white-space: nowrap; font-size: 13px; font-weight: 650; color: var(--text);
 }
 .gh-entete.is-dernier, .gh-pile.is-dernier { border-right: 0; }
-.gh-entete__r1 { display: flex; align-items: center; justify-content: center; gap: 6px; height: 26px; max-width: 100%; min-width: 0; }
+.gh-entete__r1 { display: flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; min-width: 0; }
 .gh-entete__r1 svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
 .gh-entete__t { line-height: 15px; text-align: center; }
-.gh-entete.is-petit .gh-entete__r1 { height: auto; }
 .gh-entete.is-petit .gh-entete__t { font-size: 11px; font-weight: 600; line-height: 12px; }
-.gh-entete__n { flex: none; min-width: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-size: 11px; font-weight: 650; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
-.gh-entete__sous { height: 14px; line-height: 14px; font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
-.gh-entete__sous[hidden] { display: none; }
-/* Les numeros de pistes, chacun centre sur sa piste. */
-.gh-entete:has(.gh-entete__pistes) { justify-content: flex-start; padding-top: 2px; }
-.gh-entete__pistes { position: absolute; left: 0; right: 0; bottom: 2px; height: 14px; }
-.gh-num { position: absolute; top: 0; text-align: center; line-height: 14px; font-size: 11px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Les numeros de pistes, chacun centre sur sa piste, a la taille d un titre. */
+.gh-entete__pistes { position: absolute; inset: 0; }
+.gh-num { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 .gh-num.is-occupee { color: var(--text); font-weight: 700; }
 .gh-num.is-maint { color: var(--faint); text-decoration: line-through; }
 .gh-num.is-inconnue { color: var(--warning); font-weight: 700; }
 /* Une activite sans groupe ce jour-la : sa colonne, repliee a son titre. */
 .gh-entete.is-vide { color: var(--muted); font-weight: 600; }
 .gh-entete.is-vide svg { color: var(--faint); }
-.gh-entete.is-replie .gh-entete__r1 { flex-direction: column; gap: 2px; }
-.gh-entete.is-replie .gh-entete__r1 svg { width: 14px; height: 14px; }
 /* Le coin et la colonne des heures restent colles a gauche quand la grille
    defile de cote (telephone). */
 .gh-entete--h { position: sticky; left: 0; z-index: 9; padding: 0 4px; font-size: 11px; font-weight: 500; color: var(--faint); }
@@ -134,11 +127,6 @@
 .gh-c .gp-tag.is-cloturer { box-shadow: inset 0 0 0 1.2px var(--line-strong); color: var(--text); }
 .gh-c .gp-tag.is-absent { background: var(--subtle); color: var(--muted); }
 /* Les pictos du bowling apres le nom (la note a lire, l anniversaire). */
-.gh-c .gh-pictos { display: inline-flex; align-items: center; height: var(--gh-lh); }
-.gh-c .gh-pictos .bk-flags { gap: 3px; }
-.gh-c .gh-pictos .bk-flag { width: min(13px, var(--gh-lh)); height: min(13px, var(--gh-lh)); }
-.gh-c.is-encours .gh-pictos { --warning: currentColor; --accent-strong: currentColor; }
-.gh-c.is-fini .gh-pictos .bk-flag { color: var(--faint); }
 
 /* EN COURS : la carte pleine. FINIE : grise. SANS HEURE FIXE : en pointilles,
    a son heure probable. EN RETARD : le lisere rouge. PAS VENU : le nom barre. */
@@ -163,7 +151,6 @@
 .gh-pr__n { position: absolute; top: calc(var(--gh-marge) + var(--gh-bord)); right: 2px; line-height: var(--gh-lh); font-size: var(--gh-fs2); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gh-pr__n.is-seul { left: 0; right: 0; text-align: center; }
 /* (sur deux lignes ou plus, le nom commence sous le compte quand ils ne tiennent pas cote a cote) */
-.gh-c.is-presence > .gh-c__t.is-sous-compte { padding-top: var(--gh-lh); }
 .gh-c.peut-suivre.is-encours > .gh-c__t, .gh-c.peut-suivre.is-encours > .gh-pr__n { transform: translateY(clamp(0px, calc(var(--gh-now-px) - var(--gh-top) + 2px), calc(var(--gh-ht) - var(--gh-bloc)))); }
 
 /* UNE PARTIE LASER : un bloc neutre, sa tete (l heure, les armes), sa barre :
@@ -256,14 +243,10 @@
 /* LA LEGENDE (tete de la boite). */
 .gh-legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--muted); }
 .gh-legende > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.gh-leg-sep { width: 1px; height: 14px; background: var(--line-strong); }
 .gh-leg-c { display: inline-block; width: 22px; height: 14px; box-sizing: border-box; border: 1px solid var(--bk-cadre); border-left: 3px solid var(--bk-barre); border-radius: 4px; background: var(--bk-haut); }
-.gh-leg-c.is-encours { background: var(--bk-barre); border-color: var(--bk-barre); }
-/* (chaque pastille se lit a 3:1 au moins sur le fond de la tete : la pleine
-   en bleu, la grise en gris franc, « sans heure fixe » par son contour en
-   pointilles dans le bleu de la barre) */
-.gh-leg-c.is-fini { background: #8e8e95; border-color: #8e8e95; }
-[data-theme='dark'] .gh-leg-c.is-fini { background: #6f6f77; border-color: #6f6f77; }
+/* (« sans heure fixe » se lit a 3:1 par son contour en pointilles dans le
+   bleu de la barre ; « en cours » et « fini » ne sont plus legendes : la
+   barre de maintenant les dit) */
 .gh-leg-c.is-libre { background: transparent; border: 1.5px dashed var(--bk-barre); }
 
 /* MOUVEMENT REDUIT : le survol perd ses 120 ms. Aucune transition sur les

@@ -68,7 +68,6 @@
   }
   var POLICE_TETE = '650 13px';
   var POLICE_TETE_PETITE = '600 11px';
-  var POLICE_PASTILLE = '650 11px';
   // (le compte d une partie basse, dans ses 34 px a gauche de la barre)
   var POLICE_COMPTE_BAS = '650 10.5px';
 
@@ -419,21 +418,24 @@
   }
 
   // ---- LES ETIQUETTES (spec 9.5) ------------------------------------------------------
-  // Longues puis courtes : « retard 12 min » puis « +12 », « à valider » puis
-  // « ? », « à clôturer » puis « € », « pas venu » puis « × », « laser à
-  // placer » puis « laser ? », « conflit P3 » puis « ! », « piste ? ».
+  // Longues puis courtes : « retard 12 min » puis « +12 », « conflit P3 » puis
+  // « ! », « piste ? ». « à valider », « à clôturer », « pas venu » et « laser
+  // à placer » n ont pas de forme courte : sans leur place, ils tombent (le
+  // panneau les dit ; un glyphe « ? », « € » ou « × » ne se lit pas en deux
+  // secondes au comptoir, Movsar le 2026-10-20).
   var TAGS = {
     retard: { cls: 'is-retard', long: function (x) { return 'retard ' + x + ' min'; }, court: function (x) { return '+' + x; } },
-    valider: { cls: 'is-valider', long: function () { return 'à valider'; }, court: function () { return '?'; } },
-    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: function () { return '€'; } },
-    absent: { cls: 'is-absent', long: function () { return 'pas venu'; }, court: function () { return '×'; } },
-    aplacer: { cls: 'is-valider', long: function () { return 'laser à placer'; }, court: function () { return 'laser ?'; } },
+    valider: { cls: 'is-valider', long: function () { return 'à valider'; }, court: null },
+    cloturer: { cls: 'is-cloturer', long: function () { return 'à clôturer'; }, court: null },
+    absent: { cls: 'is-absent', long: function () { return 'pas venu'; }, court: null },
+    aplacer: { cls: 'is-valider', long: function () { return 'laser à placer'; }, court: null },
     conflit: { cls: 'is-conflit', long: function (x) { return 'conflit ' + x; }, court: function () { return '!'; } },
     piste: { cls: 'is-piste', long: function () { return 'piste ?'; }, court: function () { return 'piste ?'; } },
   };
   var ORDRE_TAGS = ['retard', 'valider', 'cloturer', 'absent', 'aplacer', 'conflit', 'piste'];
   function uniteTag(tag, forme, M, typo, esp) {
     var def = TAGS[tag.code];
+    if (forme === 'court' && !def.court) return null;
     // (un retard se mesure au gabarit de ses chiffres : 12 et 99 ont la meme largeur)
     var mesure = tag.code === 'retard' ? '9'.repeat(Math.max(2, String(tag.v).length)) : tag.v;
     var t = forme === 'court' ? def.court(tag.v) : def.long(tag.v);
@@ -443,9 +445,10 @@
 
   // ---- LA COMPOSITION D UNE CARTE (spec 9.5) --------------------------------------
   // carte : { heure: {t, aligne} | null, arrivee, formes: [{t}], tags: [{code, v}],
-  // pictos: n, detail: [t], detailBowling, infos: [t] }. Les niveaux, dans
-  // l ordre : 1 tout ; 2 sans les infos ; 3 sans l heure alignee (la grille la
-  // dit) ; 4 sans les pictos ; 5 sans le detail, element par element ; 6 sans
+  // detail: [t], detailBowling, infos: [t] } (ni picto ni pastille : le
+  // panneau les montre). Les niveaux, dans l ordre : 1 tout ; 2 sans les
+  // infos ; 3 sans l heure alignee (la grille la dit) ; 5 sans le detail,
+  // element par element ; 6 sans
   // l heure restante ; 7 etiquettes courtes ; 8 le nom descend l echelle ;
   // 9 sans etiquettes, le nom reprend la plus longue forme qui tient ; 10 une
   // carte d arrivee laisse enfin son heure (et refait 8 et 9) ; 11 rien.
@@ -457,11 +460,10 @@
     var arr = Boolean(c.arrivee);
     var detailMax = typo.sansDetail ? 0 : c.detail.length;
     var det = function (niveau) { return c.detailBowling && (niveau > 2 || L < 2) ? 0 : detailMax; };
-    var cfg = { niveau: 1, heure: aHeure, nom: 0, tags: 'long', pictos: c.pictos > 0, det: det(1), infos: !typo.sansDetail && c.infos.length > 0 };
+    var cfg = { niveau: 1, heure: aHeure, nom: 0, tags: 'long', det: det(1), infos: !typo.sansDetail && c.infos.length > 0 };
     configs.push(cfg);
     configs.push(cfg = Object.assign({}, cfg, { niveau: 2, infos: false }));
     configs.push(cfg = Object.assign({}, cfg, { niveau: 3, heure: aHeure && (!aligne || arr), det: det(3) }));
-    configs.push(cfg = Object.assign({}, cfg, { niveau: 4, pictos: false }));
     for (var d = cfg.det - 1; d >= 0; d -= 1) configs.push(Object.assign({}, cfg, { niveau: 5, det: d }));
     cfg = Object.assign({}, cfg, { det: 0 });
     configs.push(cfg = Object.assign({}, cfg, { niveau: 6, heure: aHeure && arr }));
@@ -478,8 +480,7 @@
     var tete = [];
     if (cfg.heure) tete.push({ k: 'h', t: c.heure.t, w: M.tab(typo.petit, c.heure.t) + 1, sep: esp });
     c.unitesFormes[cfg.nom].forEach(function (u) { tete.push(u); });
-    if (cfg.tags !== 'aucun') c.tags.forEach(function (t) { tete.push(uniteTag(t, cfg.tags, M, typo, esp)); });
-    if (cfg.pictos) tete.push({ k: 'pictos', n: c.pictos, w: c.pictos * 13 + (c.pictos - 1) * 3 + 1, sep: esp });
+    if (cfg.tags !== 'aucun') c.tags.forEach(function (t) { var u = uniteTag(t, cfg.tags, M, typo, esp); if (u) tete.push(u); });
     var basT = c.detail.slice(0, cfg.det).concat(cfg.infos ? c.infos : []).join(' · ');
     var bas = basT ? { k: 'bas', t: basT, w: M.tab(typo.petit, basT) + 1, sep: esp } : null;
     if (L >= 2 && bas) {
@@ -532,9 +533,6 @@
         var lignes = casser(p.unitesFormes[i], tw, L, tw - c.w - 6);
         if (lignes) return { niveau: 1 + k + 2 * i, forme: i, lignes: lignes, compte: c.t, tw: tw, L: L };
       }
-      // (L >= 2 : le compte seul en haut a droite, le nom des la ligne 2)
-      var dessous = L >= 2 && comptes[1].w <= tw + 1e-9 ? casser(p.unitesFormes[i], tw, L - 1) : null;
-      if (dessous) return { niveau: 2 + 2 * i, forme: i, lignes: dessous, compte: comptes[1].t, sousCompte: true, tw: tw, L: L };
     }
     for (var q = 0; q < p.unitesFormes.length; q += 1) {
       var l = casser(p.unitesFormes[q], tw, L);
@@ -736,7 +734,7 @@
     if (!moments.length) return [ordonner(fixes)];
     return moments.map(function (m) { return ordonner(fixes.concat([m])); });
   }
-  // LA CARTE PORTEUSE (spec 9.6) des etiquettes, des pictos et des infos d un
+  // LA CARTE PORTEUSE (spec 9.6) des etiquettes et des infos d un
   // groupe : sa premiere carte en retard s il est en retard ; sinon, attendu,
   // sa premiere carte ; sinon sa carte en cours (la plus large) ; sinon celle
   // qui vit encore et a le plus de place ; sinon la plus large. LA CARTE
@@ -998,10 +996,12 @@
   }
 
   // ---- LES TETES (spec 4.9) ------------------------------------------------------
-  // De la plus riche a la plus pauvre, la premiere qui tient : icone, titre et
-  // pastille ; titre et pastille ; titre seul ; titre en 11 px, un mot par
-  // ligne, deux lignes au plus ; icone seule. Un mot de titre n est jamais
-  // abrege ni coupe (l activite inconnue : une ellipse en fin de deuxieme ligne).
+  // Une seule rangee (Movsar, 2026-10-20 : ni pastille, ni sous-ligne, ni
+  // deuxieme ligne au bowling). De la plus riche a la plus pauvre, la premiere
+  // qui tient : icone et titre ; titre seul ; titre en 11 px, un mot par
+  // ligne, deux lignes au plus ; icone seule. Le bowling n ecrit que ses
+  // numeros de pistes. Un mot de titre n est jamais abrege ni coupe
+  // (l activite inconnue : une ellipse en fin de deuxieme ligne).
   function lignesTitre(titre, w, M, police, max) {
     var mots = espaces(titre).split(' ');
     var lignes = [];
@@ -1024,53 +1024,29 @@
     return lignes;
   }
   function ghTete(col, w, groupes, M) {
+    if (col.nature === 'bowling' && col.pistes) return { forme: 0, lignes: [], icone: false, petit: false, vide: !groupes, replie: false };
     var dispo = Math.max(0, w - 1 - 16);
     var dispoPetit = Math.max(0, w - 1 - 8);
     var titreW = M.m(POLICE_TETE, col.titre) + 1;
-    var pastW = Math.max(18, M.tab(POLICE_PASTILLE, String(groupes)) + 10);
     var mots = espaces(col.titre).split(' ');
     var motsTiennent = mots.length <= 2 && mots.every(function (m) { return M.m(POLICE_TETE_PETITE, m) + 1 <= dispoPetit; });
     if (!groupes) {
-      if (dispo >= 16 + 6 + titreW) return { forme: 1, lignes: [col.titre], icone: true, pastille: null, petit: false, vide: true, replie: false };
-      return { forme: 4, lignes: col.inconnue || !motsTiennent ? lignesTitre(col.titre, dispoPetit, M, POLICE_TETE_PETITE, 2) : mots, icone: true, pastille: null, petit: true, vide: true, replie: true };
+      if (dispo >= 16 + 6 + titreW) return { forme: 1, lignes: [col.titre], icone: true, petit: false, vide: true, replie: false };
+      // (repliee, dans une rangee de 32 px : le titre en 11 px s il tient,
+      // sinon l icone ; l activite inconnue garde toujours son icone)
+      if (motsTiennent && !col.inconnue) return { forme: 4, lignes: mots, icone: false, petit: true, vide: true, replie: true };
+      return { forme: 5, lignes: [], icone: true, petit: false, vide: true, replie: true };
     }
-    if (dispo >= 16 + 6 + titreW + 6 + pastW) return { forme: 1, lignes: [col.titre], icone: true, pastille: groupes, petit: false };
-    if (dispo >= titreW + 6 + pastW) return { forme: 2, lignes: [col.titre], icone: false, pastille: groupes, petit: false };
-    if (dispo >= titreW) return { forme: 3, lignes: [col.titre], icone: false, pastille: null, petit: false };
-    if (motsTiennent) return { forme: 4, lignes: mots, icone: false, pastille: null, petit: true };
+    if (dispo >= 16 + 6 + titreW) return { forme: 1, lignes: [col.titre], icone: true, petit: false };
+    if (dispo >= titreW) return { forme: 3, lignes: [col.titre], icone: false, petit: false };
+    if (motsTiennent) return { forme: 4, lignes: mots, icone: false, petit: true };
     if (col.inconnue) {
       // (deux lignes, une ellipse en fin de la deuxieme ; un mot qui ne tient
       // pas seul laisse l icone seule, jamais un mot coupe)
       var lignes = lignesTitre(col.titre, dispoPetit, M, POLICE_TETE_PETITE, 2);
-      if (lignes.every(function (l) { return M.m(POLICE_TETE_PETITE, l) + 1 <= dispoPetit; })) return { forme: 4, lignes: lignes, icone: false, pastille: null, petit: true };
+      if (lignes.every(function (l) { return M.m(POLICE_TETE_PETITE, l) + 1 <= dispoPetit; })) return { forme: 4, lignes: lignes, icone: false, petit: true };
     }
-    return { forme: 5, lignes: [], icone: true, pastille: null, petit: false };
-  }
-  // La sous-ligne d une tete, a l heure qu il est : la premiere forme qui tient.
-  function ghSousLigne(col, comp, w, mesure) {
-    var M = mesure && mesure.m ? mesure : mesureur(mesure);
-    var dispo = Math.max(0, w - 1 - 8);
-    var choisir = function (formes) { for (var i = 0; i < formes.length; i += 1) if (formes[i] && M.tab(POLICE_TETE_PETITE, formes[i]) + 1 <= dispo) return formes[i]; return ''; };
-    if (col.nature === 'arcades' && col.credits > 0) return choisir([col.credits + ' cr.', String(col.credits)]);
-    if (!comp) return '';
-    if (col.nature === 'laser') {
-      if (!comp.parties) return '';
-      if (!comp.aujourdhui) return choisir([pluriel(comp.parties, 'partie'), String(comp.parties)]);
-      if (comp.finies) return choisir(['parties finies', 'finies']);
-      if (!comp.partie) return '';
-      var c = comp.C > 0 ? comp.partie.armes + '/' + comp.C : pluriel(comp.partie.armes, 'arme');
-      return choisir([heureTexte(comp.partie.debut) + ' · ' + c, c]);
-    }
-    if (col.nature === 'plaine') {
-      if (!comp.tous) return '';
-      if (comp.la == null) return choisir([comp.tous + ' enf.', String(comp.tous)]);
-      return choisir([comp.la + ' enf. là', comp.la + ' là', String(comp.la)]);
-    }
-    if (comp.total > 0 && comp.unites != null) {
-      if (col.cle === 'funrun') return comp.unites > 0 ? choisir([comp.unites + '/' + comp.total]) : '';
-      return choisir([comp.unites + '/' + comp.total + ' ' + comp.mot + (comp.total > 1 ? 's' : ''), comp.unites + '/' + comp.total]);
-    }
-    return '';
+    return { forme: 5, lignes: [], icone: true, petit: false };
   }
   // Ce que la tete dit en entier (son title et son aria-label).
   function ghTeteTexte(col, comp, groupes, maintenant) {
@@ -1245,9 +1221,10 @@
     el.gid = s.groupe;
     if (el.k === 'presence') { el.enfants = Number(s.enfants) || Number(el.g && el.g.personnes) || 0; return; }
     el.heure = { t: (s.libre ? '≈ ' : '') + heureTexte(s.debut), aligne: aligneDemi(s.debut) && !s.libre };
+    // (au bowling, pas de « P1-2 » : la carte est sous ses numeros de pistes,
+    // la tete le dit deja ; Movsar le 2026-10-20, rien en double)
     el.detail = [];
-    if (el.nature === 'bowling' && el.pistesRun && el.pistesRun.length) el.detail.push('P' + texteRuns(el.pistesRun));
-    else if (s.unites > 1) el.detail.push('×' + s.unites + (s.activite === 'billards' ? ' tables' : s.activite === 'duckpin_bowling' ? ' pistes' : ''));
+    if (el.nature !== 'bowling' && s.unites > 1) el.detail.push('×' + s.unites + (s.activite === 'billards' ? ' tables' : s.activite === 'duckpin_bowling' ? ' pistes' : ''));
     el.detailBowling = el.nature === 'bowling';
     el.tagsFixes = [];
     if (el.sansPiste) el.tagsFixes.push({ code: 'piste' });
@@ -1257,7 +1234,7 @@
     var g = el.g || {};
     return {
       heure: el.heure, arrivee: false, formes: el.formes, distinctive: el.distinctive, unitesFormes: el.unitesFormes, unitesTypo: el.unitesTypo,
-      tags: [], pictos: porteuse ? Number(g.pictos) || 0 : 0, detail: el.secondaire ? [] : el.detail, detailBowling: el.detailBowling,
+      tags: [], detail: el.secondaire ? [] : el.detail, detailBowling: el.detailBowling,
       infos: porteuse ? (g.infos || []) : [],
     };
   }
@@ -1638,24 +1615,20 @@
         var o = { k: u.k, t: u.t };
         if (u.k === 'nom') o.mot = Boolean(u.mot);
         if (u.k === 'tag') { o.code = u.code; o.forme = u.forme; if (u.code === 'retard') o.v = u.v; }
-        if (u.k === 'pictos') o.n = u.n;
         return o;
       });
     });
     var out = { niveau: c.niveau, forme: c.forme, lignes: lignes };
-    if (k === 'presence') { out.compte = c.compte || null; out.seul = Boolean(c.seul); out.sousCompte = Boolean(c.sousCompte); } else out.bas = c.bas ? c.bas.t : null;
+    if (k === 'presence') { out.compte = c.compte || null; out.seul = Boolean(c.seul); } else out.bas = c.bas ? c.bas.t : null;
     return out;
   }
-  // Le texte d un segment neutre (spec 6.3) : « 8 libres » des 52 px, « 8 »
-  // des 20 px ; « 6 autres » ou « 6 en ligne » des 56 px ; toujours ce qui
-  // tient (2 px de chaque cote), et seulement sur une ligne de barre.
+  // Le texte d un segment neutre (spec 6.3) : la part libre n ecrit rien (la
+  // tete de la partie dit deja « 10/30 », Movsar le 2026-10-20 : « 20 libres »
+  // sur chaque partie chargeait la colonne) ; « 6 autres » ou « 6 en ligne »
+  // des 56 px, ce qui tient (2 px de chaque cote), sur une ligne de barre.
   function texteNeutre(el, b, typo, M) {
-    if (b.seg >= 0 || el.Ls < 1) return '';
+    if (b.seg >= 0 || el.Ls < 1 || b.libre) return '';
     var tient = function (t) { return M.tab(typo.petit, t) + 1 + 4 <= b.w; };
-    if (b.libre) {
-      var n = Math.max(0, el.C - el.p.armes);
-      return [b.w >= 52 ? n + ' libres' : '', b.w >= 20 ? String(n) : ''].find(function (t) { return t && tient(t); }) || '';
-    }
     var a = el.autres + (el.autresEnLigne ? ' en ligne' : ' autres');
     return b.w >= 56 && tient(a) ? a : '';
   }
@@ -1723,7 +1696,7 @@
     ghVoies: ghVoies, ghParties: ghParties, ghBarre: ghBarre, ghEtats: ghEtats, ghCompteurs: ghCompteurs,
     ghComposer: ghComposer, ghComposerPresence: ghComposerPresence, ghComposerSegment: ghComposerSegment,
     ghRepartir: ghRepartir, ghPlan: ghPlan, ghClasses: ghClasses, ghAria: ghAria, ghClassesHeure: ghClassesHeure, ghMaintenant: ghMaintenant,
-    ghTete: ghTete, ghSousLigne: ghSousLigne, ghTeteTexte: ghTeteTexte, ghCarteProche: ghCarteProche, ghCaseLibre: ghCaseLibre,
+    ghTete: ghTete, ghTeteTexte: ghTeteTexte, ghCarteProche: ghCarteProche, ghCaseLibre: ghCaseLibre,
     casser: casser, largeurLigne: largeurLigne, unitesNom: unitesNom, heureTexte: heureTexte, cleTexte: cleTexte,
   };
 });

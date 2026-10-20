@@ -116,8 +116,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [
         "Kids Fun Day"
       ],
@@ -136,8 +134,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 2,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span><span class=\"bk-flag flag-birthday\" role=\"img\" aria-label=\"Anniversaire\" title=\"Anniversaire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 21h14M6 21v-6h12v6M12 9V6\"/><path d=\"M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0\"/><circle cx=\"12\" cy=\"4.4\" r=\"1.1\"/></svg></span></span>",
       "infos": [
         "F2",
         "2 cruches"
@@ -157,8 +153,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "14:00",
       "debut": 14
@@ -175,8 +169,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 2,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span><span class=\"bk-flag flag-birthday\" role=\"img\" aria-label=\"Anniversaire\" title=\"Anniversaire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 21h14M6 21v-6h12v6M12 9V6\"/><path d=\"M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0\"/><circle cx=\"12\" cy=\"4.4\" r=\"1.1\"/></svg></span></span>",
       "infos": [
         "F6",
         "8 cr.",
@@ -197,8 +189,6 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
-      "pictos": 2,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span><span class=\"bk-flag flag-birthday\" role=\"img\" aria-label=\"Anniversaire\" title=\"Anniversaire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 21h14M6 21v-6h12v6M12 9V6\"/><path d=\"M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0\"/><circle cx=\"12\" cy=\"4.4\" r=\"1.1\"/></svg></span></span>",
       "infos": [
         "F1",
         "2 cruches"
@@ -218,8 +208,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "16:00",
       "debut": 16
@@ -236,8 +224,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "16:30",
       "debut": 16.5
@@ -254,8 +240,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "17:30",
       "debut": 17.5
@@ -272,8 +256,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [
         "Back To School/Work"
       ],
@@ -292,8 +274,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "19:00",
       "debut": 19
@@ -310,8 +290,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "19:30",
       "debut": 19.5
@@ -328,8 +306,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "20:00",
       "debut": 20
@@ -711,5 +687,5 @@
     }
   },
   "visibles": null,
-  "signature": "1d9ot0m.cge"
+  "signature": "i4rc92.7gq"
 }

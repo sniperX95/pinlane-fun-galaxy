@@ -116,8 +116,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "16:30",
       "debut": 16.5
@@ -134,8 +132,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [],
       "heure": "17:30",
       "debut": 17.5
@@ -152,8 +148,6 @@
       "parti": false,
       "valider": false,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [
         "Back To School/Work"
       ],
@@ -172,8 +166,6 @@
       "parti": false,
       "valider": true,
       "aPlacer": false,
-      "pictos": 1,
-      "pictosHtml": "<span class=\"bk-flags\"><span class=\"bk-flag flag-note\" role=\"img\" aria-label=\"Note à lire\" title=\"Note à lire\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z\"/><path d=\"M8.4 8.6h7.6M8.4 11.8h4.8\"/></svg></span></span>",
       "infos": [
         "Crazy Student Strike",
         "1 mètre de bière"
@@ -306,5 +298,5 @@
     }
   },
   "visibles": null,
-  "signature": "1j5qsrx.5r1"
+  "signature": "16nstat.4fh"
 }

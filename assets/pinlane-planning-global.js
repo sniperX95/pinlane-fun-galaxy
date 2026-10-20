@@ -463,7 +463,6 @@
     });
     var groupes = m.groupes.map(function (g) {
       var r = g.r;
-      var pictos = typeof renderCardFlags === 'function' ? renderCardFlags(r, { partiesEcrites: true }) : '';
       var premiere = seances.filter(function (s) { return s.g === g; }).reduce(function (a, s) { return Math.min(a, s.start); }, Infinity);
       var infos = [];
       if (g.formule) infos.push(g.formule.court);
@@ -472,7 +471,7 @@
         id: g.id, nom: String(r.name || 'Client'), statut: g.teinte, personnes: Number(r.pax) || 0, etat: g.etat, retard: g.retard, depuis: g.span.start,
         absent: g.teinte === 'absent', parti: g.parti, valider: typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r),
         aPlacer: (g.cases.get('laser') || []).some(function (e) { return e.aPlacer; }),
-        pictos: (pictos.match(/class="bk-flag /g) || []).length, pictosHtml: pictos, infos: infos.concat(g.infos).filter(Boolean),
+        infos: infos.concat(g.infos).filter(Boolean),
         heure: Number.isFinite(premiere) ? gpHeure(premiere) : '', debut: g.debut,
       };
     });
@@ -506,7 +505,7 @@
   // LA SIGNATURE DES DONNEES : ce qui fait la geometrie (jamais l heure ni le
   // moment des groupes, qui ne changent que l etat des cartes).
   function ghSignature(e) {
-    var groupes = e.groupes.map(function (g) { return [g.id, g.nom, g.statut, g.personnes, g.absent || g.etat === 'absent', g.valider, g.aPlacer, g.pictos, g.pictosHtml, g.infos, g.heure, g.debut]; });
+    var groupes = e.groupes.map(function (g) { return [g.id, g.nom, g.statut, g.personnes, g.absent || g.etat === 'absent', g.valider, g.aPlacer, g.infos, g.heure, g.debut]; });
     return ghHacher(JSON.stringify([e.jour, e.aujourdhui, e.passe, e.plage, e.fenetre, e.colonnes, groupes, e.seances, e.ressources]));
   }
   function ghHacher(s) {
@@ -533,7 +532,7 @@
   // ---- LA LECTURE DE LA PAGE : la place, une fois par rendu (au plus 8
   // lectures de geometrie). La boite se mesure, la liste vit dessous et la
   // page, elle, defile.
-  var GH = { tete: 44, bas: 14, basPlein: 10, bandeau: 32, heureEcran: 20 };
+  var GH = { tete: 32, bas: 14, basPlein: 10, bandeau: 32, heureEcran: 20 };
   var ghBarreLargeur = null;
   function ghLire(wrap) {
     var boite = wrap.closest('.planning-box') || wrap;
@@ -734,19 +733,18 @@
     html += '<span class="' + ghClasseMaintenant('gh-maintenant-h', now) + '">' + gpEsc(now.texte) + '</span></div>';
     return html;
   }
-  // LA TETE D UNE COLONNE (44 px, deux rangees) : icone, titre et pastille,
-  // puis la sous-ligne de ce qui se compte maintenant.
+  // LA TETE D UNE COLONNE (32 px, une rangee) : l icone et le titre ; le
+  // bowling, ses numeros de pistes. Les comptes (groupes, pistes libres,
+  // armes, enfants) sont dans le title et l aria-label, pas a l ecran : ils
+  // doublaient l onglet et « Libres maintenant » (Movsar, 2026-10-20).
   function ghHtmlTete(plan, col, i, etats) {
     var tete = col.tete;
     var comp = etats.compteurs[col.cle];
     var texte = MOTEUR.ghTeteTexte(col, comp, tete.groupes, etats.maintenant);
-    var sous = col.nature === 'bowling' ? '' : MOTEUR.ghSousLigne(col, comp, col.w, ghMesureur());
-    var titre = tete.lignes.length ? '<span class="gh-entete__t">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '';
-    var r1 = (tete.icone ? col.icone : '') + titre + (tete.pastille ? '<span class="gh-entete__n">' + tete.pastille + '</span>' : '');
-    var r2 = '';
-    if (col.nature === 'bowling' && col.pistes) r2 = '<div class="gh-entete__pistes">' + ghHtmlNumeros(col, comp) + '</div>';
-    else r2 = '<div class="gh-entete__sous"' + (sous ? '' : ' hidden') + '>' + gpEsc(sous) + '</div>';
-    return '<div class="gh-entete f-' + tete.forme + (tete.vide ? ' is-vide' : '') + (tete.replie ? ' is-replie' : '') + (tete.petit ? ' is-petit' : '') + (col.inconnue ? ' is-inconnue' : '') + (i === plan.colonnes.length - 1 ? ' is-dernier' : '') + '" role="columnheader" data-gh-cle="' + gpEsc(col.cle) + '" title="' + gpEsc(texte) + '" aria-label="' + gpEsc(texte) + '"><div class="gh-entete__r1">' + r1 + '</div>' + r2 + '</div>';
+    var corps;
+    if (col.nature === 'bowling' && col.pistes) corps = '<div class="gh-entete__pistes">' + ghHtmlNumeros(col, comp) + '</div>';
+    else corps = '<div class="gh-entete__r1">' + (tete.icone ? col.icone : '') + (tete.lignes.length ? '<span class="gh-entete__t">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '</div>';
+    return '<div class="gh-entete f-' + tete.forme + (tete.vide ? ' is-vide' : '') + (tete.replie ? ' is-replie' : '') + (tete.petit ? ' is-petit' : '') + (col.inconnue ? ' is-inconnue' : '') + (i === plan.colonnes.length - 1 ? ' is-dernier' : '') + '" role="columnheader" data-gh-cle="' + gpEsc(col.cle) + '" title="' + gpEsc(texte) + '" aria-label="' + gpEsc(texte) + '">' + corps + '</div>';
   }
   function ghClassesNumero(p, comp) {
     var occ = comp && comp.maintenant != null && comp.occupees.indexOf(p.n) >= 0;
@@ -794,7 +792,6 @@
   function ghHtmlPiece(u, el, etats, entree) {
     if (u.k === 'nom') return gpEsc(u.t);
     if (u.k === 'h') return '<b class="gh-c__h">' + gpEsc(u.t) + '</b>';
-    if (u.k === 'pictos') return '<span class="gh-pictos">' + ghPictos(entree, el.gid) + '</span>';
     if (u.k === 'bas') return '<span class="gh-c__d">' + gpEsc(u.t) + '</span>';
     if (u.k === 'tag') {
       var def = MOTEUR.TAGS[u.code];
@@ -807,17 +804,13 @@
     }
     return '';
   }
-  function ghPictos(entree, gid) {
-    var g = entree && entree.groupes.find(function (x) { return x.id === gid; });
-    return g ? g.pictosHtml : '';
-  }
   // UNE PRESENCE DE PLAINE : le nom a gauche, le nombre d enfants a droite.
   function ghHtmlPresence(el, etats, t, ty) {
     var style = 'left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px';
-    if (el.suit && el.compo) style += ';--gh-top:' + (el.y + ty.bord + ty.marge) + 'px;--gh-ht:' + (el.h - 2 * (ty.bord + ty.marge)) + 'px;--gh-bloc:' + ((Math.max(1, el.compo.lignes.length) + (el.compo.sousCompte ? 1 : 0)) * ty.ligne) + 'px';
+    if (el.suit && el.compo) style += ';--gh-top:' + (el.y + ty.bord + ty.marge) + 'px;--gh-ht:' + (el.h - 2 * (ty.bord + ty.marge)) + 'px;--gh-bloc:' + (Math.max(1, el.compo.lignes.length) * ty.ligne) + 'px';
     var html = '<div' + ghAttrsCarte(el, etats, t) + (el.compo ? ' data-gh-forme="' + el.compo.forme + '"' : '') + ' data-gh-l="' + el.L + '" data-gh-tw="' + el.tw + '" style="' + style + '">';
     if (el.compo) {
-      if (el.compo.lignes.length) html += '<div class="gh-c__t' + (el.compo.sousCompte ? ' is-sous-compte' : '') + '">' + ghHtmlLignes(el, etats, null) + '</div>';
+      if (el.compo.lignes.length) html += '<div class="gh-c__t">' + ghHtmlLignes(el, etats, null) + '</div>';
       if (el.compo.compte) html += '<span class="gh-pr__n' + (el.compo.seul ? ' is-seul' : '') + '">' + gpEsc(el.compo.compte) + '</span>';
     }
     return html + '</div>';
@@ -884,16 +877,7 @@
       var texte = MOTEUR.ghTeteTexte(col, comp, col.tete.groupes, etats.maintenant);
       poser(n, 'title', texte);
       poser(n, 'aria-label', texte);
-      if (col.nature === 'bowling') {
-        n.querySelectorAll('.gh-num').forEach(function (x, k) { poser(x, 'class', ghClassesNumero(col.pistes[k], comp)); });
-      } else {
-        var sous = n.querySelector('.gh-entete__sous');
-        if (sous) {
-          var v = MOTEUR.ghSousLigne(col, comp, col.w, ghMesureur());
-          if (sous.textContent !== v) sous.textContent = v;
-          if (sous.hidden !== !v) sous.hidden = !v;
-        }
-      }
+      if (col.nature === 'bowling') n.querySelectorAll('.gh-num').forEach(function (x, k) { poser(x, 'class', ghClassesNumero(col.pistes[k], comp)); });
     });
     racine.querySelectorAll('.gh-pile--h .gh-h').forEach(function (n, k) { poser(n, 'class', MOTEUR.ghClassesHeure(plan.libelles[k], etats.maintenant, plan.axe)); });
     var now = MOTEUR.ghMaintenant(plan.axe, etats.maintenant);

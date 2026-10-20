@@ -22,7 +22,7 @@
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261008comptoir">
 <link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261013lot2">
-<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261020planningpanneau">
+<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261020planningv3">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260930a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
@@ -59,10 +59,12 @@
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
 <script defer src="/assets/pinlane-upsell-settings.js?v=20261004a"></script>
 <script defer src="/assets/pinlane-staff-notes.js?v=20261010dossierrefonte1"></script>
-<!-- Le planning global : il ne fait que poser renderGlobalPlanning, que la
-     console appelle a chaque rendu de l onglet. Charge avant app-main, le
-     premier rendu le trouve deja la. -->
-<script defer src="/assets/pinlane-planning-global.js?v=20261020planningpanneau"></script>
+<!-- Le planning global : son moteur pur (le plan de la grille), puis le
+     module qui pose renderGlobalPlanning, que la console appelle a chaque
+     rendu de l onglet. Charges avant app-main, le premier rendu les trouve
+     deja la. -->
+<script defer src="/assets/pinlane-planning-moteur.js?v=20261020planningv3"></script>
+<script defer src="/assets/pinlane-planning-global.js?v=20261020planningv3"></script>
 <script defer src="/assets/app-main.js?v=20261019tables"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->

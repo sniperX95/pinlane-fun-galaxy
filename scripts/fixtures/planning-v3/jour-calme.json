@@ -1,0 +1,1100 @@
+{
+  "fixture": "calme",
+  "libelle": "mardi 12/01/2027, calme",
+  "heure": "15:10",
+  "source": "GET /api/staff-state?date=2027-01-12&centerId=libramont, dossiers DEMO 1579..1640, coordonnees remplacees",
+  "staffState": {
+    "ok": true,
+    "date": "2027-01-12",
+    "centerId": "libramont",
+    "reservations": [
+      {
+        "id": 1579,
+        "name": "DÉMO · Famille Thiry",
+        "phone": "",
+        "email": "",
+        "date": "2027-01-12",
+        "startTime": "16:30",
+        "duration": 1,
+        "totalDuration": 1,
+        "lanes": [
+          1
+        ],
+        "pax": 5,
+        "status": "pending",
+        "basePrice": 39,
+        "price": 39,
+        "type": "bowling",
+        "formuleId": "",
+        "label": "Bowling Classique",
+        "occasion": "famille",
+        "companions": 0,
+        "extras": [],
+        "paymentMethod": "",
+        "notes": "[DEMO-JOURS-2027-01] Dossier fictif de démonstration : aucun contact, aucun message.",
+        "activityProgress": {},
+        "program": null,
+        "channel": "staff",
+        "centerId": "libramont",
+        "opsPlan": {
+          "ok": true,
+          "risk": {
+            "level": "low",
+            "score": 5,
+            "reasons": [],
+            "bufferMinutes": 5
+          },
+          "score": 11,
+          "endTime": "17:35",
+          "timeline": [
+            {
+              "end": 1050,
+              "type": "activity",
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 990,
+              "endTime": "17:30",
+              "players": 5,
+              "startTime": "16:30",
+              "activityId": "bowling",
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  5
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 50,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "durationMinutes": 60,
+              "emergencyWarning": ""
+            }
+          ],
+          "conflicts": [],
+          "startTime": "16:30",
+          "validation": {
+            "niveau": "minimal",
+            "raison": "",
+            "requise": false,
+            "aSurveiller": [],
+            "declencheurs": []
+          },
+          "staffSummary": "Bowling - 5 personnes | 1 piste(s) | Risque low",
+          "totalMinutes": 60,
+          "assignedLanes": [
+            1
+          ],
+          "bufferMinutes": 5,
+          "resourceBlocks": [
+            {
+              "end": 1050,
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 990,
+              "endTime": "17:30",
+              "players": 5,
+              "startTime": "16:30",
+              "activityId": "bowling",
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  5
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 50,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "emergencyWarning": ""
+            }
+          ],
+          "emergencyWarning": ""
+        },
+        "riskLevel": "low",
+        "riskScore": 5,
+        "validationStatus": "confirmed",
+        "createdAt": "2026-10-20T13:59:55.436Z",
+        "updatedAt": "2026-10-20T13:59:55.436Z",
+        "acquisition": null,
+        "clientKey": "demo:1579",
+        "paidAt": null,
+        "amountPaid": null,
+        "discountReason": "",
+        "absentAt": null
+      },
+      {
+        "id": 1580,
+        "name": "DÉMO · Amis de Bastien",
+        "phone": "",
+        "email": "",
+        "date": "2027-01-12",
+        "startTime": "17:30",
+        "duration": 1,
+        "totalDuration": 1,
+        "lanes": [],
+        "pax": 8,
+        "status": "pending",
+        "basePrice": 144,
+        "price": 144,
+        "type": "laser",
+        "formuleId": "",
+        "label": "Laser Game",
+        "occasion": "amis",
+        "companions": 0,
+        "extras": [],
+        "paymentMethod": "",
+        "notes": "[DEMO-JOURS-2027-01] Dossier fictif de démonstration : aucun contact, aucun message.",
+        "activityProgress": {},
+        "program": null,
+        "channel": "staff",
+        "centerId": "libramont",
+        "opsPlan": {
+          "ok": true,
+          "risk": {
+            "level": "medium",
+            "score": 48,
+            "reasons": [
+              "Laser Libramont sensible: un seul lancement propre et groupe complet attendu.",
+              "Plusieurs parties laser augmentent le risque de decalage."
+            ],
+            "bufferMinutes": 10
+          },
+          "games": 2,
+          "score": 53.5,
+          "endTime": "18:35",
+          "timeline": [
+            {
+              "end": 1050,
+              "type": "service",
+              "label": "Arrivée & accueil",
+              "start": 1040,
+              "endTime": "17:30",
+              "startTime": "17:20",
+              "resourceType": "bar_service"
+            },
+            {
+              "end": 1075,
+              "type": "activity",
+              "label": "Laser Game",
+              "start": 1050,
+              "endTime": "17:55",
+              "players": 8,
+              "critical": true,
+              "startTime": "17:30",
+              "activityId": "laser_game",
+              "countIndex": 1,
+              "weaponNeed": 8,
+              "groupPlayers": 8,
+              "playersTotal": 8,
+              "resourceType": "laser_arena",
+              "playersBefore": 0,
+              "sharedSession": false,
+              "groupWaveCount": 1,
+              "groupWaveIndex": 1,
+              "durationMinutes": 25,
+              "mayShareSession": true,
+              "remainingWeapons": 22
+            },
+            {
+              "end": 1080,
+              "type": "service",
+              "label": "Transition",
+              "start": 1075,
+              "endTime": "18:00",
+              "startTime": "17:55",
+              "resourceType": "transition"
+            },
+            {
+              "end": 1105,
+              "type": "activity",
+              "label": "Laser Game",
+              "start": 1080,
+              "endTime": "18:25",
+              "players": 8,
+              "critical": true,
+              "startTime": "18:00",
+              "activityId": "laser_game",
+              "countIndex": 2,
+              "weaponNeed": 8,
+              "groupPlayers": 8,
+              "playersTotal": 8,
+              "resourceType": "laser_arena",
+              "playersBefore": 0,
+              "sharedSession": false,
+              "groupWaveCount": 1,
+              "groupWaveIndex": 1,
+              "durationMinutes": 25,
+              "manualLaserPass": true,
+              "mayShareSession": true,
+              "remainingWeapons": 22
+            }
+          ],
+          "conflicts": [],
+          "startTime": "17:30",
+          "laserGames": 2,
+          "validation": {
+            "niveau": "minimal",
+            "raison": "",
+            "requise": false,
+            "aSurveiller": [],
+            "declencheurs": []
+          },
+          "arrivalTime": "17:20",
+          "entitlements": {
+            "customerReadable": [
+              "Laser Game 17:30-17:55",
+              "Laser Game 18:00-18:25",
+              "Arrivée & accueil libre sur place"
+            ],
+            "fixedCommitments": [
+              {
+                "type": "laser_game",
+                "label": "Laser Game",
+                "endTime": "17:55",
+                "players": 8,
+                "startTime": "17:30",
+                "waveCount": 1,
+                "waveIndex": 1,
+                "countIndex": 1,
+                "playersTotal": 8,
+                "sharedSession": false,
+                "mayShareSession": true,
+                "remainingPlaces": 22
+              },
+              {
+                "type": "laser_game",
+                "label": "Laser Game",
+                "endTime": "18:25",
+                "players": 8,
+                "startTime": "18:00",
+                "waveCount": 1,
+                "waveIndex": 1,
+                "countIndex": 2,
+                "playersTotal": 8,
+                "sharedSession": false,
+                "mayShareSession": true,
+                "remainingPlaces": 22
+              }
+            ],
+            "flexibleEntitlements": [
+              {
+                "mode": "service_on_site",
+                "type": "bar_service",
+                "label": "Arrivée & accueil",
+                "endTime": "17:30",
+                "startTime": "17:20",
+                "durationMinutes": 10
+              }
+            ]
+          },
+          "laserSharing": {
+            "mayShare": true,
+            "sharedNow": false,
+            "waveCount": 1,
+            "splitGroup": false,
+            "launchCount": 2,
+            "weaponCount": 30,
+            "playersTotal": 8,
+            "remainingPlaces": 22,
+            "requestedPlayers": 8
+          },
+          "staffSummary": "Laser Game - 8 personnes | Lancement 17:30 | Peut être complétée avec d'autres joueurs | Premiere ressource critique: Laser Game a 17:30 | Risque medium (48/100) | Point marche: Ressources critiques separees des avantages libres.",
+          "totalMinutes": 55,
+          "assignedLanes": [],
+          "bufferMinutes": 10,
+          "laserPassPlan": {
+            "mode": "manual_after_first",
+            "totalGames": 2,
+            "pendingPasses": [],
+            "remainingGames": 0,
+            "scheduledGames": 2,
+            "scheduledPasses": [
+              {
+                "status": "scheduled",
+                "startTime": "17:30",
+                "countIndex": 1
+              },
+              {
+                "status": "scheduled",
+                "startTime": "18:00",
+                "countIndex": 2
+              }
+            ]
+          },
+          "arrivalMinutes": 10,
+          "resourceBlocks": [
+            {
+              "end": 1075,
+              "type": "activity",
+              "label": "Laser Game",
+              "lanes": [],
+              "start": 1050,
+              "endTime": "17:55",
+              "players": 8,
+              "critical": true,
+              "startTime": "17:30",
+              "activityId": "laser_game",
+              "countIndex": 1,
+              "weaponNeed": 8,
+              "groupPlayers": 8,
+              "playersTotal": 8,
+              "resourceType": "laser_arena",
+              "playersBefore": 0,
+              "sharedSession": false,
+              "groupWaveCount": 1,
+              "groupWaveIndex": 1,
+              "durationMinutes": 25,
+              "mayShareSession": true,
+              "remainingWeapons": 22
+            },
+            {
+              "end": 1105,
+              "type": "activity",
+              "label": "Laser Game",
+              "lanes": [],
+              "start": 1080,
+              "endTime": "18:25",
+              "players": 8,
+              "critical": true,
+              "startTime": "18:00",
+              "activityId": "laser_game",
+              "countIndex": 2,
+              "weaponNeed": 8,
+              "groupPlayers": 8,
+              "playersTotal": 8,
+              "resourceType": "laser_arena",
+              "playersBefore": 0,
+              "sharedSession": false,
+              "groupWaveCount": 1,
+              "groupWaveIndex": 1,
+              "durationMinutes": 25,
+              "manualLaserPass": true,
+              "mayShareSession": true,
+              "remainingWeapons": 22
+            }
+          ],
+          "customerCommitment": [
+            "Votre première activité démarre à 17:30 : présentez-vous 10 minutes avant pour l'accueil (17:20).",
+            "Les activites libres restent utilisables sur place selon le rythme du groupe.",
+            "Le Laser Game peut être complété avec d'autres joueurs selon l'affluence."
+          ],
+          "marketIntelligence": {
+            "patterns": [
+              {
+                "id": "integrated_capacity_ledger",
+                "label": "Inventaire unique de capacite"
+              },
+              {
+                "id": "entitlement_based_booking",
+                "label": "Packages en engagements fixes + avantages libres"
+              },
+              {
+                "id": "shock_absorber_routing",
+                "label": "Activites libres comme amortisseur de retard"
+              },
+              {
+                "id": "shared_session_capacity",
+                "label": "Laser partage lisible"
+              },
+              {
+                "id": "guest_commitment_ladder",
+                "label": "Engagement client progressif"
+              }
+            ],
+            "warnings": [],
+            "benchmark": "FEC SaaS pattern: inventaire unique, package multi-activites, capacite lisible, engagement client progressif.",
+            "entitlements": {
+              "customerReadable": [
+                "Laser Game 17:30-17:55",
+                "Laser Game 18:00-18:25",
+                "Arrivée & accueil libre sur place"
+              ],
+              "fixedCommitments": [
+                {
+                  "type": "laser_game",
+                  "label": "Laser Game",
+                  "endTime": "17:55",
+                  "players": 8,
+                  "startTime": "17:30",
+                  "waveCount": 1,
+                  "waveIndex": 1,
+                  "countIndex": 1,
+                  "playersTotal": 8,
+                  "sharedSession": false,
+                  "mayShareSession": true,
+                  "remainingPlaces": 22
+                },
+                {
+                  "type": "laser_game",
+                  "label": "Laser Game",
+                  "endTime": "18:25",
+                  "players": 8,
+                  "startTime": "18:00",
+                  "waveCount": 1,
+                  "waveIndex": 1,
+                  "countIndex": 2,
+                  "playersTotal": 8,
+                  "sharedSession": false,
+                  "mayShareSession": true,
+                  "remainingPlaces": 22
+                }
+              ],
+              "flexibleEntitlements": [
+                {
+                  "mode": "service_on_site",
+                  "type": "bar_service",
+                  "label": "Arrivée & accueil",
+                  "endTime": "17:30",
+                  "startTime": "17:20",
+                  "durationMinutes": 10
+                }
+              ]
+            },
+            "qualityScore": 58,
+            "qualitySignals": [
+              "Ressources critiques separees des avantages libres.",
+              "Activites flexibles disponibles pour absorber attente ou retard."
+            ],
+            "staffChecklist": [
+              "Verifier les engagements fixes: heures, pistes, laser et capacite."
+            ],
+            "scoreAdjustment": 0,
+            "sourcePatternIds": [
+              "integrated_capacity_ledger",
+              "entitlement_based_booking",
+              "shock_absorber_routing",
+              "shared_session_capacity",
+              "guest_commitment_ladder"
+            ],
+            "customerCommitment": [
+              "Votre première activité démarre à 17:30 : présentez-vous 10 minutes avant pour l'accueil (17:20).",
+              "Les activites libres restent utilisables sur place selon le rythme du groupe.",
+              "Le Laser Game peut être complété avec d'autres joueurs selon l'affluence."
+            ]
+          },
+          "operationsChecklist": [
+            "Verifier les engagements fixes: heures, pistes, laser et capacite."
+          ]
+        },
+        "riskLevel": "medium",
+        "riskScore": 48,
+        "validationStatus": "confirmed",
+        "createdAt": "2026-10-20T13:59:55.436Z",
+        "updatedAt": "2026-10-20T13:59:55.436Z",
+        "acquisition": null,
+        "clientKey": "demo:1580",
+        "paidAt": null,
+        "amountPaid": null,
+        "discountReason": "",
+        "absentAt": null
+      },
+      {
+        "id": 1581,
+        "name": "DÉMO · Collègues de la commune",
+        "phone": "",
+        "email": "",
+        "date": "2027-01-12",
+        "startTime": "18:30",
+        "duration": 1,
+        "totalDuration": 2.5,
+        "lanes": [
+          1
+        ],
+        "pax": 4,
+        "status": "pending",
+        "basePrice": 80,
+        "price": 80,
+        "type": "formule",
+        "formuleId": "bts",
+        "label": "BACK TO SCHOOL/WORK",
+        "occasion": "entreprise",
+        "companions": 0,
+        "extras": [],
+        "paymentMethod": "",
+        "notes": "[DEMO-JOURS-2027-01] Dossier fictif de démonstration : aucun contact, aucun message.",
+        "activityProgress": {},
+        "program": null,
+        "channel": "staff",
+        "centerId": "libramont",
+        "opsPlan": {
+          "ok": true,
+          "risk": {
+            "level": "low",
+            "score": 10,
+            "reasons": [],
+            "bufferMinutes": 5
+          },
+          "score": 22.5,
+          "endTime": "20:40",
+          "timeline": [
+            {
+              "end": 1110,
+              "type": "service",
+              "label": "Arrivée & accueil",
+              "start": 1100,
+              "endTime": "18:30",
+              "startTime": "18:20",
+              "resourceType": "bar_service"
+            },
+            {
+              "end": 1170,
+              "type": "activity",
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 1110,
+              "endTime": "19:30",
+              "players": 4,
+              "critical": true,
+              "startTime": "18:30",
+              "activityId": "bowling",
+              "countIndex": 1,
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  4
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 40,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "durationMinutes": 60,
+              "emergencyWarning": ""
+            },
+            {
+              "end": 1175,
+              "type": "service",
+              "label": "Transition",
+              "start": 1170,
+              "endTime": "19:35",
+              "startTime": "19:30",
+              "resourceType": "transition"
+            },
+            {
+              "end": 1235,
+              "type": "activity",
+              "label": "Arcades",
+              "start": 1175,
+              "endTime": "20:35",
+              "critical": false,
+              "startTime": "19:35",
+              "activityId": "arcade_time",
+              "countIndex": 1,
+              "resourceType": "bar_service_then_autonomous",
+              "durationMinutes": 60
+            }
+          ],
+          "conflicts": [],
+          "startTime": "18:30",
+          "validation": {
+            "niveau": "minimal",
+            "raison": "",
+            "requise": false,
+            "aSurveiller": [],
+            "declencheurs": []
+          },
+          "arrivalTime": "18:20",
+          "entitlements": {
+            "customerReadable": [
+              "Bowling 18:30-19:30",
+              "Arrivée & accueil libre sur place",
+              "Arcades libre sur place"
+            ],
+            "fixedCommitments": [
+              {
+                "type": "bowling",
+                "label": "Bowling",
+                "lanes": [
+                  1
+                ],
+                "endTime": "19:30",
+                "players": 4,
+                "startTime": "18:30",
+                "requiredLanes": 1
+              }
+            ],
+            "flexibleEntitlements": [
+              {
+                "mode": "service_on_site",
+                "type": "bar_service",
+                "label": "Arrivée & accueil",
+                "endTime": "18:30",
+                "startTime": "18:20",
+                "durationMinutes": 10
+              },
+              {
+                "mode": "flexible_on_site",
+                "type": "arcade_time",
+                "label": "Arcades",
+                "endTime": "20:35",
+                "startTime": "19:35",
+                "durationMinutes": 60
+              }
+            ]
+          },
+          "laserSharing": null,
+          "staffSummary": "BACK TO SCHOOL/WORK - 4 personnes | Premiere ressource critique: Bowling a 18:30 | Risque low (10/100) | Point marche: Ressources critiques separees des avantages libres.",
+          "totalMinutes": 125,
+          "assignedLanes": [
+            1
+          ],
+          "bufferMinutes": 5,
+          "arrivalMinutes": 10,
+          "resourceBlocks": [
+            {
+              "end": 1170,
+              "type": "activity",
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 1110,
+              "endTime": "19:30",
+              "players": 4,
+              "critical": true,
+              "startTime": "18:30",
+              "activityId": "bowling",
+              "countIndex": 1,
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  4
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 40,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "durationMinutes": 60,
+              "emergencyWarning": ""
+            }
+          ],
+          "customerCommitment": [
+            "Votre première activité démarre à 18:30 : présentez-vous 10 minutes avant pour l'accueil (18:20).",
+            "Les activites libres restent utilisables sur place selon le rythme du groupe."
+          ],
+          "marketIntelligence": {
+            "patterns": [
+              {
+                "id": "integrated_capacity_ledger",
+                "label": "Inventaire unique de capacite"
+              },
+              {
+                "id": "entitlement_based_booking",
+                "label": "Packages en engagements fixes + avantages libres"
+              },
+              {
+                "id": "shock_absorber_routing",
+                "label": "Activites libres comme amortisseur de retard"
+              }
+            ],
+            "warnings": [],
+            "benchmark": "FEC SaaS pattern: inventaire unique, package multi-activites, capacite lisible, engagement client progressif.",
+            "entitlements": {
+              "customerReadable": [
+                "Bowling 18:30-19:30",
+                "Arrivée & accueil libre sur place",
+                "Arcades libre sur place"
+              ],
+              "fixedCommitments": [
+                {
+                  "type": "bowling",
+                  "label": "Bowling",
+                  "lanes": [
+                    1
+                  ],
+                  "endTime": "19:30",
+                  "players": 4,
+                  "startTime": "18:30",
+                  "requiredLanes": 1
+                }
+              ],
+              "flexibleEntitlements": [
+                {
+                  "mode": "service_on_site",
+                  "type": "bar_service",
+                  "label": "Arrivée & accueil",
+                  "endTime": "18:30",
+                  "startTime": "18:20",
+                  "durationMinutes": 10
+                },
+                {
+                  "mode": "flexible_on_site",
+                  "type": "arcade_time",
+                  "label": "Arcades",
+                  "endTime": "20:35",
+                  "startTime": "19:35",
+                  "durationMinutes": 60
+                }
+              ]
+            },
+            "qualityScore": 96,
+            "qualitySignals": [
+              "Ressources critiques separees des avantages libres.",
+              "Activites flexibles disponibles pour absorber attente ou retard."
+            ],
+            "staffChecklist": [
+              "Verifier les engagements fixes: heures, pistes, laser et capacite."
+            ],
+            "scoreAdjustment": 0,
+            "sourcePatternIds": [
+              "integrated_capacity_ledger",
+              "entitlement_based_booking",
+              "shock_absorber_routing"
+            ],
+            "customerCommitment": [
+              "Votre première activité démarre à 18:30 : présentez-vous 10 minutes avant pour l'accueil (18:20).",
+              "Les activites libres restent utilisables sur place selon le rythme du groupe."
+            ]
+          },
+          "operationsChecklist": [
+            "Verifier les engagements fixes: heures, pistes, laser et capacite."
+          ]
+        },
+        "riskLevel": "low",
+        "riskScore": 10,
+        "validationStatus": "confirmed",
+        "createdAt": "2026-10-20T13:59:55.436Z",
+        "updatedAt": "2026-10-20T13:59:55.436Z",
+        "acquisition": null,
+        "clientKey": "demo:1581",
+        "paidAt": null,
+        "amountPaid": null,
+        "discountReason": "",
+        "absentAt": null
+      },
+      {
+        "id": 1582,
+        "name": "DÉMO · Kot étudiant",
+        "phone": "",
+        "email": "",
+        "date": "2027-01-12",
+        "startTime": "20:00",
+        "duration": 1,
+        "totalDuration": 1.5,
+        "lanes": [
+          1
+        ],
+        "pax": 6,
+        "status": "pending",
+        "basePrice": 55,
+        "price": 55,
+        "type": "formule",
+        "formuleId": "css",
+        "label": "CRAZY STUDENT STRIKE",
+        "occasion": "amis",
+        "companions": 0,
+        "extras": [],
+        "paymentMethod": "",
+        "notes": "[DEMO-JOURS-2027-01] Dossier fictif de démonstration : aucun contact, aucun message.",
+        "activityProgress": {},
+        "program": null,
+        "channel": "staff",
+        "centerId": "libramont",
+        "opsPlan": {
+          "ok": true,
+          "risk": {
+            "level": "low",
+            "score": 10,
+            "reasons": [],
+            "bufferMinutes": 5
+          },
+          "score": 16.5,
+          "endTime": "21:10",
+          "timeline": [
+            {
+              "end": 1200,
+              "type": "service",
+              "label": "Arrivée & accueil",
+              "start": 1190,
+              "endTime": "20:00",
+              "startTime": "19:50",
+              "resourceType": "bar_service"
+            },
+            {
+              "end": 1260,
+              "type": "activity",
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 1200,
+              "endTime": "21:00",
+              "players": 6,
+              "critical": true,
+              "startTime": "20:00",
+              "activityId": "bowling",
+              "countIndex": 1,
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  6
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 60,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "durationMinutes": 60,
+              "emergencyWarning": ""
+            },
+            {
+              "end": 1265,
+              "type": "activity",
+              "label": "Boissons",
+              "start": 1260,
+              "endTime": "21:05",
+              "critical": false,
+              "startTime": "21:00",
+              "activityId": "service_drinks",
+              "countIndex": 1,
+              "resourceType": "bar_service",
+              "durationMinutes": 5
+            }
+          ],
+          "conflicts": [],
+          "startTime": "20:00",
+          "validation": {
+            "niveau": "minimal",
+            "raison": "",
+            "requise": false,
+            "aSurveiller": [],
+            "declencheurs": []
+          },
+          "arrivalTime": "19:50",
+          "entitlements": {
+            "customerReadable": [
+              "Bowling 20:00-21:00",
+              "Arrivée & accueil libre sur place",
+              "Boissons libre sur place"
+            ],
+            "fixedCommitments": [
+              {
+                "type": "bowling",
+                "label": "Bowling",
+                "lanes": [
+                  1
+                ],
+                "endTime": "21:00",
+                "players": 6,
+                "startTime": "20:00",
+                "requiredLanes": 1
+              }
+            ],
+            "flexibleEntitlements": [
+              {
+                "mode": "service_on_site",
+                "type": "bar_service",
+                "label": "Arrivée & accueil",
+                "endTime": "20:00",
+                "startTime": "19:50",
+                "durationMinutes": 10
+              },
+              {
+                "mode": "service_on_site",
+                "type": "service_drinks",
+                "label": "Boissons",
+                "endTime": "21:05",
+                "startTime": "21:00",
+                "durationMinutes": 5
+              }
+            ]
+          },
+          "laserSharing": null,
+          "staffSummary": "CRAZY STUDENT STRIKE - 6 personnes | Premiere ressource critique: Bowling a 20:00 | Risque low (10/100) | Point marche: Ressources critiques separees des avantages libres.",
+          "totalMinutes": 65,
+          "assignedLanes": [
+            1
+          ],
+          "bufferMinutes": 5,
+          "arrivalMinutes": 10,
+          "resourceBlocks": [
+            {
+              "end": 1260,
+              "type": "activity",
+              "label": "Bowling",
+              "lanes": [
+                1
+              ],
+              "start": 1200,
+              "endTime": "21:00",
+              "players": 6,
+              "critical": true,
+              "startTime": "20:00",
+              "activityId": "bowling",
+              "countIndex": 1,
+              "resourceType": "bowling_lane",
+              "requiredLanes": 1,
+              "bowlingCapacity": {
+                "emergency": false,
+                "lanePlayers": [
+                  6
+                ],
+                "speedWarning": false,
+                "estimatedMinutes": 60,
+                "normalLanesNeeded": 1,
+                "normalCapacityPerLane": 6,
+                "emergencyCapacityPerLane": 7
+              },
+              "durationMinutes": 60,
+              "emergencyWarning": ""
+            }
+          ],
+          "customerCommitment": [
+            "Votre première activité démarre à 20:00 : présentez-vous 10 minutes avant pour l'accueil (19:50).",
+            "Les activites libres restent utilisables sur place selon le rythme du groupe."
+          ],
+          "marketIntelligence": {
+            "patterns": [
+              {
+                "id": "integrated_capacity_ledger",
+                "label": "Inventaire unique de capacite"
+              },
+              {
+                "id": "entitlement_based_booking",
+                "label": "Packages en engagements fixes + avantages libres"
+              },
+              {
+                "id": "shock_absorber_routing",
+                "label": "Activites libres comme amortisseur de retard"
+              }
+            ],
+            "warnings": [],
+            "benchmark": "FEC SaaS pattern: inventaire unique, package multi-activites, capacite lisible, engagement client progressif.",
+            "entitlements": {
+              "customerReadable": [
+                "Bowling 20:00-21:00",
+                "Arrivée & accueil libre sur place",
+                "Boissons libre sur place"
+              ],
+              "fixedCommitments": [
+                {
+                  "type": "bowling",
+                  "label": "Bowling",
+                  "lanes": [
+                    1
+                  ],
+                  "endTime": "21:00",
+                  "players": 6,
+                  "startTime": "20:00",
+                  "requiredLanes": 1
+                }
+              ],
+              "flexibleEntitlements": [
+                {
+                  "mode": "service_on_site",
+                  "type": "bar_service",
+                  "label": "Arrivée & accueil",
+                  "endTime": "20:00",
+                  "startTime": "19:50",
+                  "durationMinutes": 10
+                },
+                {
+                  "mode": "service_on_site",
+                  "type": "service_drinks",
+                  "label": "Boissons",
+                  "endTime": "21:05",
+                  "startTime": "21:00",
+                  "durationMinutes": 5
+                }
+              ]
+            },
+            "qualityScore": 96,
+            "qualitySignals": [
+              "Ressources critiques separees des avantages libres.",
+              "Activites flexibles disponibles pour absorber attente ou retard."
+            ],
+            "staffChecklist": [
+              "Verifier les engagements fixes: heures, pistes, laser et capacite."
+            ],
+            "scoreAdjustment": 0,
+            "sourcePatternIds": [
+              "integrated_capacity_ledger",
+              "entitlement_based_booking",
+              "shock_absorber_routing"
+            ],
+            "customerCommitment": [
+              "Votre première activité démarre à 20:00 : présentez-vous 10 minutes avant pour l'accueil (19:50).",
+              "Les activites libres restent utilisables sur place selon le rythme du groupe."
+            ]
+          },
+          "operationsChecklist": [
+            "Verifier les engagements fixes: heures, pistes, laser et capacite."
+          ]
+        },
+        "riskLevel": "low",
+        "riskScore": 10,
+        "validationStatus": "staff_review",
+        "createdAt": "2026-10-20T13:59:55.436Z",
+        "updatedAt": "2026-10-20T13:59:55.436Z",
+        "acquisition": null,
+        "clientKey": "demo:1582",
+        "paidAt": null,
+        "amountPaid": null,
+        "discountReason": "",
+        "absentAt": null
+      }
+    ],
+    "holds": [],
+    "laneStatuses": {
+      "1": "active",
+      "2": "active",
+      "3": "active",
+      "4": "active",
+      "5": "active",
+      "6": "active",
+      "7": "active",
+      "8": "active"
+    },
+    "laneMaintenance": {},
+    "revision": "fixture:planning-v3:calme:2027-01-12",
+    "syncedAt": "2027-01-12T08:00:00.000Z",
+    "classification": {
+      "groupMinPax": 10,
+      "groupMinCumulative": 18,
+      "countFormulaAsGroup": true,
+      "sizeTiers": {
+        "medium": 12,
+        "large": 30,
+        "xl": 60
+      },
+      "birthdayFromFormula": true,
+      "birthdayFormulaIds": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8"
+      ],
+      "keyClientMinSpend": 0
+    },
+    "accueil": {
+      "lateThresholdMinutes": 5
+    }
+  }
+}

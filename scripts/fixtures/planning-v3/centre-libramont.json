@@ -1,0 +1,1152 @@
+{
+  "source": "GET /api/ops?action=centerConfig et GET /api/public-booking-meta?centerId=libramont, lus le 2026-10-20",
+  "center": {
+    "id": "libramont",
+    "name": "Fun Galaxy Libramont",
+    "status": "active",
+    "timezone": "Europe/Brussels",
+    "resources": {
+      "bowling": {
+        "laneCount": 8,
+        "normalCapacityPerLane": 6,
+        "emergencyCapacityPerLane": 7,
+        "preferAdjacentLanes": true,
+        "pricing": null
+      },
+      "laser": {
+        "weaponCount": 30,
+        "parallelLaunches": 1,
+        "canSplitGroupsCleanly": false,
+        "requiresCompleteGroupBeforeLaunch": true,
+        "riskLevel": "critical"
+      },
+      "partyTables": {
+        "softCapacity": 6,
+        "hardCapacity": 8,
+        "limitEnabled": false
+      },
+      "barDesk": {
+        "handlesBooking": true,
+        "handlesBriefing": true,
+        "handlesFoodAndDrink": true,
+        "activityEscort": false
+      },
+      "declared": []
+    },
+    "defaultSchedule": {
+      "regular": {
+        "0": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "1": null,
+        "2": {
+          "open": "14:00",
+          "close": "22:00"
+        },
+        "3": {
+          "open": "12:00",
+          "close": "22:00"
+        },
+        "4": {
+          "open": "14:00",
+          "close": "22:00"
+        },
+        "5": {
+          "open": "14:00",
+          "close": "24:00"
+        },
+        "6": {
+          "open": "10:00",
+          "close": "24:00"
+        }
+      },
+      "holiday": {
+        "0": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "1": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "2": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "3": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "4": {
+          "open": "10:00",
+          "close": "22:00"
+        },
+        "5": {
+          "open": "10:00",
+          "close": "24:00"
+        },
+        "6": {
+          "open": "10:00",
+          "close": "24:00"
+        }
+      }
+    },
+    "activityAvailability": {
+      "bowling": true,
+      "laser_game": true,
+      "minigolf_blacklight": true,
+      "golf_oclock": false,
+      "arcade_time": true,
+      "playground": true,
+      "duckpin_bowling": true,
+      "axe_throwing": false,
+      "darts": true,
+      "free_roaming_vr": false,
+      "karting_vr": false,
+      "billards": true,
+      "fun_run": true,
+      "party_table": true,
+      "arcade_credit": false,
+      "service_drinks": false
+    },
+    "activityCapacity": {
+      "fun_run": {
+        "units": 1,
+        "capacityPerUnit": 5
+      },
+      "billards": {
+        "units": 6
+      },
+      "duckpin_bowling": {
+        "units": 2,
+        "capacityPerUnit": 6
+      }
+    },
+    "activityOffers": {
+      "arcade_time": {
+        "enabled": true,
+        "timeOffers": [
+          {
+            "id": "time-30",
+            "price": 15,
+            "enabled": true,
+            "minutes": 30
+          },
+          {
+            "id": "time-60",
+            "price": 30,
+            "enabled": true,
+            "minutes": 60
+          }
+        ],
+        "creditOffers": [
+          {
+            "id": "credit-10",
+            "price": 10,
+            "enabled": true,
+            "credits": 10,
+            "bonusCredits": 0
+          },
+          {
+            "id": "credit-25",
+            "price": 25,
+            "enabled": true,
+            "credits": 25,
+            "bonusCredits": 10
+          },
+          {
+            "id": "credit-35",
+            "price": 35,
+            "enabled": true,
+            "credits": 35,
+            "bonusCredits": 15
+          },
+          {
+            "id": "credit-50",
+            "price": 50,
+            "enabled": true,
+            "credits": 50,
+            "bonusCredits": 25
+          }
+        ],
+        "creditGameCostMin": 1.2,
+        "creditGameCostMax": 2.4,
+        "timedDescription": "Une carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie ; jeux permettant de gagner des cadeaux exclus.",
+        "creditDescription": "Crédits utilisables sur tous les jeux, y compris les jeux permettant de gagner des cadeaux. Le temps de jeu dépend des machines utilisées."
+      }
+    },
+    "upsellOffers": null,
+    "customRequest": {
+      "fromPax": 31
+    },
+    "formulaVisit": {
+      "arrivalFirst": true,
+      "maxWaitMinutes": 30,
+      "maxVisitMinutes": 0,
+      "freeDurationPolicy": "default"
+    },
+    "holidaySettings": {
+      "enabled": true,
+      "overrides": [],
+      "formulaBlockedPeriods": [
+        "manual",
+        "school_short"
+      ]
+    },
+    "offerAvailability": {
+      "f1": true,
+      "f2": true,
+      "f3": true,
+      "f4": true,
+      "f5": true,
+      "f6": true,
+      "f7": true,
+      "f8": true,
+      "mm": true,
+      "bts": true,
+      "css": true,
+      "ffm": true,
+      "hlg": true,
+      "kfd": true,
+      "n4-jeudi-fou": true,
+      "n4-vendredi-malin": true,
+      "n4-ecoles-institutions": true,
+      "n4-anniversaire-enfants": true
+    },
+    "classification": {
+      "groupMinPax": 10,
+      "groupMinCumulative": 18,
+      "countFormulaAsGroup": true,
+      "sizeTiers": {
+        "medium": 12,
+        "large": 30,
+        "xl": 60
+      },
+      "birthdayFromFormula": true,
+      "birthdayFormulaIds": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8"
+      ],
+      "keyClientMinSpend": 0
+    },
+    "accueil": {
+      "lateThresholdMinutes": 5
+    },
+    "validationEquipe": {
+      "niveau": "minimal",
+      "situations": {}
+    },
+    "customActivities": [],
+    "branding": {
+      "accent": "#944292",
+      "accentStrong": "#944292",
+      "accentSoft": "#f6f0f6",
+      "accentContrast": "#ffffff",
+      "glow": "#67baac",
+      "cards": "neon",
+      "buttons": "neon",
+      "activityImages": {
+        "bowling": "/assets/img/heroes/hero-bowling.jpg",
+        "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
+        "duckpin_bowling": "/assets/img/heroes/hero-duckpin.jpg",
+        "fun_run": "/assets/img/heroes/hero-fun-run.jpg"
+      },
+      "dark": {
+        "accent": "#944292",
+        "accentStrong": "#a664a4",
+        "accentSoft": "#1d121d",
+        "accentContrast": "#ededed",
+        "glow": "#67baac"
+      }
+    },
+    "clientId": null,
+    "clientName": null
+  },
+  "publicBookingMeta": {
+    "ok": true,
+    "bookingHorizonDays": 365,
+    "durationOptions": [
+      {
+        "value": 0.5,
+        "label": "30 min",
+        "price": 20
+      },
+      {
+        "value": 1,
+        "label": "1 heure",
+        "price": 39
+      },
+      {
+        "value": 1.5,
+        "label": "1h30",
+        "price": 59
+      },
+      {
+        "value": 2,
+        "label": "2 heures",
+        "price": 78
+      }
+    ],
+    "formules": [
+      {
+        "id": "f1",
+        "name": "FORMULE 1",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1h de Bowling",
+          "1 partie Laser Game",
+          "30 min arcades",
+          "2 cruches boissons"
+        ],
+        "price": 26,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 34,
+        "noHolidays": true,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f2",
+        "name": "FORMULE 2",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 partie Minigolf",
+          "2 parties Laser Game",
+          "30 min arcades",
+          "2 cruches boissons"
+        ],
+        "price": 30,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 45,
+        "noHolidays": true,
+        "hasBowling": false,
+        "best": true,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f3",
+        "name": "FORMULE 3",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 partie Minigolf",
+          "1h de Bowling",
+          "30 min d'Arcades",
+          "2 cruches boissons"
+        ],
+        "price": 28,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 34,
+        "noHolidays": true,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f4",
+        "name": "FORMULE 4",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 partie de Minigolf",
+          "1h de Bowling",
+          "2 parties Laser Game",
+          "2 cruches boissons"
+        ],
+        "price": 39,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 48,
+        "noHolidays": true,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ],
+        "choices": [
+          {
+            "id": "laser2",
+            "label": "2 parties de Laser Game"
+          },
+          {
+            "id": "arcade60",
+            "label": "60 min d'arcades",
+            "replaces": [
+              "laser_game"
+            ],
+            "steps": [
+              {
+                "activityId": "arcade_time",
+                "count": 1,
+                "durationMinutes": 60
+              }
+            ],
+            "descReplaces": [
+              "Laser Game"
+            ],
+            "descWith": [
+              "60 min d'arcades"
+            ],
+            "desc": [
+              "1 partie de Minigolf",
+              "1h de Bowling",
+              "60 min d'arcades",
+              "2 cruches boissons"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "f5",
+        "name": "FORMULE 5",
+        "family": "Formules anniversaires",
+        "desc": [
+          "2 parties de Laser Game",
+          "1 partie de Minigolf",
+          "2 cruches boissons"
+        ],
+        "price": 26,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 32,
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f6",
+        "name": "FORMULE 6",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 table privée pendant 2 heures",
+          "1 entrée à la plaine de jeu",
+          "8 crédits d'arcade (8€) par enfant",
+          "2 cruches boissons"
+        ],
+        "price": 18,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 20,
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f7",
+        "name": "FORMULE 7",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 table privée pendant 2 heures",
+          "1 entrée à la plaine de jeu",
+          "1 entrée Mini Golf Blacklight",
+          "8 crédits d'arcade (8€) par enfant",
+          "2 cruches boissons"
+        ],
+        "price": 24,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 30,
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "f8",
+        "name": "FORMULE 8",
+        "family": "Formules anniversaires",
+        "desc": [
+          "1 table privée pendant 2 heures",
+          "1 entrée à la plaine de jeu",
+          "1 entrée Mini Golf Blacklight",
+          "30 minutes d'arcade à volonté par enfant",
+          "2 cruches boissons"
+        ],
+        "price": 28,
+        "type": "per_pax",
+        "minPax": 6,
+        "oldPrice": 37,
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Minimum 6 personnes",
+          "Non valable durant les vacances scolaires et jours fériés",
+          "Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"
+        ]
+      },
+      {
+        "id": "bts",
+        "name": "BACK TO SCHOOL/WORK",
+        "family": "Formules speciales",
+        "desc": [
+          "1h de Bowling",
+          "1h d'Arcades"
+        ],
+        "price": 20,
+        "type": "per_pax",
+        "minPax": 4,
+        "oldPrice": 50,
+        "validDays": [
+          0,
+          2,
+          3,
+          4
+        ],
+        "timeLimit": {
+          "min": 18,
+          "max": 22
+        },
+        "noHolidays": true,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Mardi, mercredi, jeudi et dimanche",
+          "De 18h a 22h",
+          "4 personnes minimum",
+          "Non valable durant les vacances scolaires et jours fériés"
+        ]
+      },
+      {
+        "id": "mm",
+        "name": "MATIN MALIN",
+        "family": "Formules speciales",
+        "desc": [
+          "Arcades illimitées, hors jeux à cadeaux",
+          "Laser Game illimité"
+        ],
+        "price": 25,
+        "type": "per_pax",
+        "minPax": 1,
+        "oldPrice": 90,
+        "timeLimit": {
+          "max": 12
+        },
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Toutes les activités de la formule doivent être terminées à 12h",
+          "Les jeux d’arcade à cadeaux ne sont pas inclus",
+          "Non valable durant les vacances scolaires et jours fériés"
+        ],
+        "estimatedTotalDuration": 2,
+        "orderPolicy": "open_window"
+      },
+      {
+        "id": "css",
+        "name": "CRAZY STUDENT STRIKE",
+        "family": "Formules speciales",
+        "desc": [
+          "1h de Bowling",
+          "1 mètre de bière"
+        ],
+        "price": 55,
+        "type": "per_lane",
+        "minPax": 1,
+        "validDays": [
+          2
+        ],
+        "noHolidays": false,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Disponible uniquement le mardi"
+        ]
+      },
+      {
+        "id": "kfd",
+        "name": "KIDS FUN DAY",
+        "family": "Formules speciales",
+        "desc": [
+          "Toutes les activités illimitées",
+          "De 12h à 17h pour les enfants de 5 à 12 ans"
+        ],
+        "price": 30,
+        "type": "per_pax",
+        "minPax": 1,
+        "validDays": [
+          3
+        ],
+        "timeLimit": {
+          "min": 12,
+          "max": 17
+        },
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Disponible uniquement le mercredi",
+          "Non valable durant les vacances scolaires et jours fériés"
+        ],
+        "orderPolicy": "open_window",
+        "kidsOnly": {
+          "ageMin": 5,
+          "ageMax": 12
+        }
+      },
+      {
+        "id": "hlg",
+        "name": "HAPPY LASER AND GAME",
+        "family": "Formules speciales",
+        "desc": [
+          "30 minutes d'arcade",
+          "1 partie de Laser Game",
+          "1 boisson"
+        ],
+        "price": 20,
+        "type": "per_pax",
+        "minPax": 2,
+        "validDays": [
+          4
+        ],
+        "noHolidays": true,
+        "hasBowling": false,
+        "notes": [
+          "Disponible uniquement le jeudi"
+        ],
+        "minPaxLaser": true
+      },
+      {
+        "id": "ffm",
+        "name": "FUN FRIDAY MADNESS",
+        "family": "Formules speciales",
+        "desc": [
+          "1 heure de Bowling",
+          "1 partie de Laser Game",
+          "30 minutes d'arcade",
+          "1 boisson"
+        ],
+        "price": 30,
+        "type": "per_pax",
+        "minPax": 2,
+        "validDays": [
+          5
+        ],
+        "noHolidays": true,
+        "hasBowling": true,
+        "bowlingDur": 1,
+        "notes": [
+          "Disponible uniquement le vendredi"
+        ],
+        "minPaxLaser": true
+      }
+    ],
+    "laserOptions": [
+      {
+        "games": 1,
+        "value": 0.5,
+        "label": "1 partie",
+        "price": 10,
+        "durationMinutes": 30
+      },
+      {
+        "games": 2,
+        "value": 1,
+        "label": "2 parties",
+        "price": 18,
+        "durationMinutes": 60
+      },
+      {
+        "games": 3,
+        "value": 1.5,
+        "label": "3 parties",
+        "price": 25,
+        "durationMinutes": 90
+      }
+    ],
+    "bowlingPrices": {
+      "1": 39,
+      "2": 78,
+      "0.5": 20,
+      "1.5": 59
+    },
+    "funRunOptions": [
+      {
+        "minutes": 15,
+        "label": "15 min",
+        "price": 30
+      },
+      {
+        "minutes": 30,
+        "label": "30 min",
+        "price": 55
+      }
+    ],
+    "activities": [
+      {
+        "id": "bowling",
+        "name": "Bowling",
+        "planned": true,
+        "resourceType": "bowling_lane",
+        "priceType": "grid_bowling",
+        "priceValue": null,
+        "pricing": null,
+        "unitLabel": "par piste",
+        "order": 1,
+        "defaultMinutes": 60,
+        "minMinutes": 60,
+        "maxMinutes": 60,
+        "stepMinutes": 30,
+        "note": "",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": null,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": null,
+        "unitIds": null
+      },
+      {
+        "id": "laser_game",
+        "name": "Laser Game",
+        "planned": true,
+        "resourceType": "laser_arena",
+        "priceType": "grid_laser",
+        "priceValue": null,
+        "pricing": null,
+        "unitLabel": "par personne",
+        "order": 2,
+        "defaultMinutes": 22,
+        "minMinutes": 22,
+        "maxMinutes": 22,
+        "stepMinutes": 30,
+        "note": "",
+        "dayAccess": false,
+        "maxPax": null,
+        "minPax": 2,
+        "units": null,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": null,
+        "unitIds": null,
+        "minAge": 7,
+        "minHeightCm": 130,
+        "gameMinutes": 20,
+        "sessionMinutes": 25,
+        "cycleMinutes": 30
+      },
+      {
+        "id": "minigolf_blacklight",
+        "name": "Minigolf Blacklight",
+        "planned": false,
+        "resourceType": "soft_capacity",
+        "priceType": "per_pax",
+        "priceValue": 10,
+        "pricing": null,
+        "unitLabel": "par personne",
+        "order": 3,
+        "defaultMinutes": 45,
+        "minMinutes": 30,
+        "maxMinutes": 75,
+        "stepMinutes": 30,
+        "note": "12 trous",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": null,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": null,
+        "unitIds": null,
+        "minAge": 3
+      },
+      {
+        "id": "billards",
+        "name": "Billard",
+        "planned": false,
+        "resourceType": "soft_capacity",
+        "priceType": "per_unit_hour",
+        "priceValue": 10,
+        "pricing": null,
+        "unitLabel": "par table et par heure",
+        "order": 5,
+        "defaultMinutes": 60,
+        "minMinutes": 60,
+        "maxMinutes": 180,
+        "stepMinutes": 60,
+        "note": "",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": 6,
+        "maxUnitsPerBooking": 5,
+        "capacityPerUnit": null,
+        "unitIds": null,
+        "minAge": 10
+      },
+      {
+        "id": "arcade_time",
+        "arcadeOffers": {
+          "enabled": true,
+          "timeOffers": [
+            {
+              "id": "time-30",
+              "price": 15,
+              "enabled": true,
+              "minutes": 30
+            },
+            {
+              "id": "time-60",
+              "price": 30,
+              "enabled": true,
+              "minutes": 60
+            }
+          ],
+          "creditOffers": [
+            {
+              "id": "credit-10",
+              "price": 10,
+              "enabled": true,
+              "credits": 10,
+              "bonusCredits": 0
+            },
+            {
+              "id": "credit-25",
+              "price": 25,
+              "enabled": true,
+              "credits": 25,
+              "bonusCredits": 10
+            },
+            {
+              "id": "credit-35",
+              "price": 35,
+              "enabled": true,
+              "credits": 35,
+              "bonusCredits": 15
+            },
+            {
+              "id": "credit-50",
+              "price": 50,
+              "enabled": true,
+              "credits": 50,
+              "bonusCredits": 25
+            }
+          ],
+          "creditGameCostMin": 1.2,
+          "creditGameCostMax": 2.4,
+          "timedDescription": "Une carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie ; jeux permettant de gagner des cadeaux exclus.",
+          "creditDescription": "Crédits utilisables sur tous les jeux, y compris les jeux permettant de gagner des cadeaux. Le temps de jeu dépend des machines utilisées."
+        },
+        "name": "Arcades",
+        "planned": false,
+        "resourceType": "bar_service_then_autonomous",
+        "priceType": "per_pax",
+        "priceValue": null,
+        "pricing": null,
+        "unitLabel": "par personne",
+        "order": 6,
+        "defaultMinutes": 30,
+        "minMinutes": 30,
+        "maxMinutes": 30,
+        "stepMinutes": 30,
+        "note": "",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": null,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": null,
+        "unitIds": null
+      },
+      {
+        "id": "playground",
+        "name": "Playground",
+        "planned": false,
+        "resourceType": "soft_capacity",
+        "priceType": "per_pax",
+        "priceValue": 12,
+        "pricing": null,
+        "unitLabel": "par enfant",
+        "order": 7,
+        "defaultMinutes": 60,
+        "minMinutes": 60,
+        "maxMinutes": 60,
+        "stepMinutes": 30,
+        "note": "accès à la journée",
+        "dayAccess": true,
+        "maxPax": null,
+        "units": null,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": null,
+        "unitIds": null,
+        "ageRange": "4 à 12 ans"
+      },
+      {
+        "id": "duckpin_bowling",
+        "name": "Duckpin Bowling",
+        "planned": false,
+        "resourceType": "duckpin_lane",
+        "priceType": "grid_bowling",
+        "priceValue": null,
+        "pricing": null,
+        "unitLabel": "par piste",
+        "order": 8,
+        "defaultMinutes": 60,
+        "minMinutes": 60,
+        "maxMinutes": 60,
+        "stepMinutes": 30,
+        "note": "",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": 2,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": 6,
+        "unitIds": [
+          "9",
+          "10"
+        ]
+      },
+      {
+        "id": "fun_run",
+        "name": "Fun Run by PIXEL",
+        "planned": false,
+        "resourceType": "soft_capacity",
+        "priceType": "grid_fun_run",
+        "priceValue": null,
+        "pricing": null,
+        "unitLabel": "la session",
+        "order": 9,
+        "defaultMinutes": 30,
+        "minMinutes": 15,
+        "maxMinutes": 30,
+        "stepMinutes": 30,
+        "note": "5 joueurs par session",
+        "dayAccess": false,
+        "maxPax": null,
+        "units": 1,
+        "maxUnitsPerBooking": null,
+        "capacityPerUnit": 5,
+        "unitIds": null
+      }
+    ],
+    "center": {
+      "id": "libramont",
+      "name": "Fun Galaxy Libramont",
+      "city": "Libramont",
+      "identity": {
+        "logoUrl": "./assets/brand/logo-fun-galaxy.svg",
+        "logoOnDark": true,
+        "siteUrl": "https://fungalaxy.be",
+        "siteLinks": [
+          {
+            "label": "Activités",
+            "url": "https://fungalaxy.be/activites/"
+          },
+          {
+            "label": "Événements",
+            "url": "https://fungalaxy.be/evenements/"
+          },
+          {
+            "label": "Formules",
+            "url": "https://fungalaxy.be/formules/"
+          },
+          {
+            "label": "Contact",
+            "url": "https://fungalaxy.be/contact/"
+          }
+        ]
+      },
+      "status": "active",
+      "demonstration": false,
+      "contact": null,
+      "customRequest": {
+        "fromPax": 31
+      },
+      "formulaVisit": {
+        "arrivalFirst": true,
+        "maxWaitMinutes": 30,
+        "maxVisitMinutes": 0,
+        "freeDurationPolicy": "default"
+      },
+      "branding": {
+        "accent": "#944292",
+        "accentStrong": "#944292",
+        "accentSoft": "#f6f0f6",
+        "accentContrast": "#ffffff",
+        "glow": "#67baac",
+        "cards": "neon",
+        "buttons": "neon",
+        "activityImages": {
+          "bowling": "/assets/img/heroes/hero-bowling.jpg",
+          "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
+          "duckpin_bowling": "/assets/img/heroes/hero-duckpin.jpg",
+          "fun_run": "/assets/img/heroes/hero-fun-run.jpg"
+        },
+        "dark": {
+          "accent": "#944292",
+          "accentStrong": "#a664a4",
+          "accentSoft": "#1d121d",
+          "accentContrast": "#ededed",
+          "glow": "#67baac"
+        }
+      },
+      "defaultSchedule": {
+        "regular": {
+          "0": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "1": null,
+          "2": {
+            "open": "14:00",
+            "close": "22:00"
+          },
+          "3": {
+            "open": "12:00",
+            "close": "22:00"
+          },
+          "4": {
+            "open": "14:00",
+            "close": "22:00"
+          },
+          "5": {
+            "open": "14:00",
+            "close": "24:00"
+          },
+          "6": {
+            "open": "10:00",
+            "close": "24:00"
+          }
+        },
+        "holiday": {
+          "0": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "1": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "2": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "3": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "4": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "5": {
+            "open": "10:00",
+            "close": "24:00"
+          },
+          "6": {
+            "open": "10:00",
+            "close": "24:00"
+          }
+        }
+      },
+      "holidaySettings": {
+        "enabled": true,
+        "overrides": [],
+        "formulaBlockedPeriods": [
+          "manual",
+          "school_short"
+        ]
+      },
+      "offerAvailability": {
+        "f1": true,
+        "f2": true,
+        "f3": true,
+        "f4": true,
+        "f5": true,
+        "f6": true,
+        "f7": true,
+        "f8": true,
+        "mm": true,
+        "bts": true,
+        "css": true,
+        "ffm": true,
+        "hlg": true,
+        "kfd": true,
+        "n4-jeudi-fou": true,
+        "n4-vendredi-malin": true,
+        "n4-ecoles-institutions": true,
+        "n4-anniversaire-enfants": true
+      },
+      "activityAvailability": {
+        "bowling": true,
+        "laser_game": true,
+        "minigolf_blacklight": true,
+        "golf_oclock": false,
+        "arcade_time": true,
+        "playground": true,
+        "duckpin_bowling": true,
+        "axe_throwing": false,
+        "darts": true,
+        "free_roaming_vr": false,
+        "karting_vr": false,
+        "billards": true,
+        "fun_run": true,
+        "party_table": true,
+        "arcade_credit": false,
+        "service_drinks": false
+      },
+      "booking": {
+        "laneCount": 8,
+        "normalCapacityPerLane": 6,
+        "emergencyCapacityPerLane": 7,
+        "bowlingPrices": {
+          "1": 39,
+          "2": 78,
+          "0.5": 20,
+          "1.5": 59
+        },
+        "laserOptions": [
+          {
+            "games": 1,
+            "value": 0.5,
+            "label": "1 partie",
+            "price": 10,
+            "durationMinutes": 30
+          },
+          {
+            "games": 2,
+            "value": 1,
+            "label": "2 parties",
+            "price": 18,
+            "durationMinutes": 60
+          },
+          {
+            "games": 3,
+            "value": 1.5,
+            "label": "3 parties",
+            "price": 25,
+            "durationMinutes": 90
+          }
+        ],
+        "laserArenaCapacity": 30,
+        "laserParallelLaunches": 1
+      }
+    }
+  }
+}

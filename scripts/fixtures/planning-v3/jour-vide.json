@@ -1,0 +1,51 @@
+{
+  "fixture": "vide",
+  "libelle": "dimanche 17/01/2027, ouvert de 10:00 a 22:00, aucune reservation",
+  "heure": "15:10",
+  "source": "derive de jour-pic.json (meme centre, aucun dossier) par scripts/planning-v3-fixtures.js deriver",
+  "staffState": {
+    "ok": true,
+    "date": "2027-01-17",
+    "centerId": "libramont",
+    "reservations": [],
+    "holds": [],
+    "laneStatuses": {
+      "1": "active",
+      "2": "active",
+      "3": "active",
+      "4": "active",
+      "5": "active",
+      "6": "active",
+      "7": "active",
+      "8": "active"
+    },
+    "laneMaintenance": {},
+    "revision": "fixture:planning-v3:vide:2027-01-17",
+    "syncedAt": "2027-01-17T08:00:00.000Z",
+    "classification": {
+      "groupMinPax": 10,
+      "groupMinCumulative": 18,
+      "countFormulaAsGroup": true,
+      "sizeTiers": {
+        "medium": 12,
+        "large": 30,
+        "xl": 60
+      },
+      "birthdayFromFormula": true,
+      "birthdayFormulaIds": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8"
+      ],
+      "keyClientMinSpend": 0
+    },
+    "accueil": {
+      "lateThresholdMinutes": 5
+    }
+  }
+}

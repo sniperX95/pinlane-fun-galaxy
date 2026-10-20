@@ -33,7 +33,7 @@ const commun = require('./gates-commun');
 
 const ROOT = commun.ROOT;
 const INDEX = path.join(ROOT, 'tmp', 'gates-index.json');
-const VERSION_INDEX = 5;
+const VERSION_INDEX = 8;
 const PRODUIT = /^(?:lib|api|assets|database|ops-knowledge|workers|tools|menu|demo|scripts)\/[\w./-]+\.\w{1,6}$|^[\w.-]+\.(?:html|js|ts|json|txt|xml)$/;
 const SANS_PROPRIETAIRE = /\.sql$|^package(?:-lock)?\.json$|^vercel\.json$|^middleware\.ts$|^\.github\//;
 const INFRA = /^scripts\/(?:gates-commun|gates-lancer|gates-impactes)\.js$|^scripts\/gates-(?:suite|durees)\.json$/;
@@ -216,9 +216,28 @@ function dependancesDirectes(rel, ctx) {
   }
   // Une page : ses balises.
   if (/\.html$/.test(rel)) {
+    // Le navigateur demande /favicon.ico a toute page, sans balise.
+    if (ctx.ensemble.has('favicon.ico')) deps.add('favicon.ico');
     for (const m of source.matchAll(/(?:src|href)\s*=\s*["']([^"'?#]+)/g)) {
       const c = candidats(m[1].replace(/^\.?\//, ''), ctx);
       if (c) deps.add(c);
+    }
+  }
+  // Les references relatives d un asset, que le navigateur suit : url(...)
+  // d une feuille (les polices), import(...) et `from '...'` d un module (le
+  // moteur charge a la demande), resolues depuis le dossier du fichier.
+  if (/\.(?:css|c?js|mjs|html)$/.test(rel)) {
+    const ici = path.posix.dirname(rel);
+    for (const m of source.matchAll(/\burl\(\s*['"]?([^'")?#\s]+)|\bimport\s*\(\s*['"`]([^'"`$]+)['"`]|\bfrom\s+['"]([^'"]+)['"]/g)) {
+      const ref = m[1] || m[2] || m[3];
+      if (!ref || /^(?:data:|https?:|\/\/|#)/.test(ref)) continue;
+      const c = candidats(ref.startsWith('/') ? ref.slice(1) : path.posix.join(ici, ref), ctx);
+      if (c) deps.add(c);
+    }
+    // Un nom calcule dans un dossier du produit ('/assets/fungalaxy/' + id +
+    // '-carte.webp', `/assets/fungalaxy/${id}.webp`) : tout le dossier.
+    for (const m of source.matchAll(/['"`]\/?((?:assets|demo|menu)\/[\w-]+(?:\/[\w-]+)*\/)(?:['"`]\s*\+|\$\{)/g)) {
+      for (const f of ctx.fichiers) if (f.startsWith(m[1])) deps.add(f);
     }
   }
   return { deps, dossiers };
@@ -266,8 +285,11 @@ function construireIndex(ctx) {
   for (const nom of noms) {
     const unites = commun.unites(nom, scripts);
     const deps = fermeture(unites.map((u) => u.fichier), ctx, memo);
+    const pur = unites.every((u) => !commun.piloteUnNavigateur(u.fichier));
+    // Un navigateur demande /favicon.ico a toute page, meme posee par setContent.
+    if (!pur && ctx.ensemble.has('favicon.ico')) deps.add('favicon.ico');
     index[nom] = [...deps].sort();
-    if (unites.every((u) => !commun.piloteUnNavigateur(u.fichier))) purs.push(nom);
+    if (pur) purs.push(nom);
   }
   return { index, purs };
 }
@@ -343,7 +365,7 @@ function gatesImpactes({ base, fichiers } = {}) {
 // Rend les lectures que l index ne prevoyait pas (les trous de la selection).
 function verifierTraces(dossierRun) {
   const ctx = contexte();
-  const { index } = lireIndex(ctx);
+  const { index, purs } = lireIndex(ctx);
   const dossier = path.join(dossierRun, 'traces');
   const toujours = new Set(commun.configSuite().toujours || []);
   const trous = [];
@@ -359,6 +381,8 @@ function verifierTraces(dossierRun) {
       lectures += 1;
       // Un fichier que le gate a cree lui-meme dans sa copie n est pas une dependance.
       if (!ctx.ensemble.has(rel)) continue;
+      // vercel.json, package.json, *.sql : sans proprietaire, ils choisissent deja tous les gates purs.
+      if (SANS_PROPRIETAIRE.test(rel) && purs.includes(script)) continue;
       if (!prevus.has(rel)) trous.push({ script, unite: Number(m[2]), fichier: rel });
     }
   }

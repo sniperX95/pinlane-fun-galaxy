@@ -182,6 +182,11 @@ function environnement(place, u, gitDir, contexte = {}) {
   // Chaque variable de port de l unite recoit sa plage de 20 ports (le gate
   // peut donner PORT+1.. a ses fils).
   u.ports.forEach((nom, i) => { env[nom] = String(place.base + 10 + i * 20); });
+  // Dans le pool, la machine est deja partagee : un gate qui s eclate en fils
+  // (scripts/gates-eclats.js) en prend 2, pas 6, sinon 16 places x 6 fils
+  // navigateurs epuisent la memoire et les gates de rendu rougissent de
+  // lenteur (mesure du 2026-10-20 : 0,7 Go libres, des unites a 15 min).
+  if (!u.seul && !process.env.PINLANE_ECLATS) env.PINLANE_ECLATS = '2';
   return env;
 }
 
@@ -337,7 +342,10 @@ async function main() {
   const config = configDeLaSource();
   const noms = choisirNoms(config);
   const unitesDuPlan = plan(noms, config);
-  const jobs = Math.max(1, Number(option('--jobs') || process.env.PINLANE_GATES_JOBS || Math.max(2, Math.floor(os.cpus().length * 0.75))));
+  // Par defaut : 3/4 des coeurs, mais jamais plus de places que la memoire
+  // libre n en porte (environ 700 Mo par gate navigateur et son serveur).
+  const parMemoire = Math.floor(os.freemem() / (700 * 1024 * 1024));
+  const jobs = Math.max(1, Number(option('--jobs') || process.env.PINLANE_GATES_JOBS || Math.max(2, Math.min(Math.floor(os.cpus().length * 0.75), parMemoire))));
   const enPool = unitesDuPlan.filter((u) => !u.seul);
   const seuls = unitesDuPlan.filter((u) => u.seul);
   if (drapeau('--liste')) {

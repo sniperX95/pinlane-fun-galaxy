@@ -508,7 +508,7 @@ function runCapacityChecks() {
   // appele tel quel ou avec ses options (2026-09-30 : il y ajoute les horaires
   // retenus en ligne, sans filtre de simulation).
   const opsContent = loadSource('lib/reservation-ops.js');
-  ok(/readState\s*=\s*options\.readState\s*\|\|\s*(?:readStaffState|\(\(\s*[\w\s,]*\)\s*=>\s*readStaffState\()/.test(opsContent),
+  ok(/readState\s*=\s*options\.readState\s*\|\|\s*(?:readStaffState\b|\(\(\s*[\w\s,]*\)\s*=>\s*readStaffState\()/.test(opsContent),
     'lib/reservation-ops.js : le planificateur lit toujours readStaffState par defaut');
 }
 

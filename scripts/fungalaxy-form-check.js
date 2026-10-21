@@ -3101,7 +3101,7 @@ async function main() {
     })(), '[F] apres le changement d ecran, le cadre a la hauteur du nouvel ecran', JSON.stringify(a));
     await f.click('#gridAct .fg-card[data-activity="bowling"]');
     await f.click('#goHours');
-    ok(await attendre(f, () => document.querySelectorAll('#hourZone .fg-track').length === 1 && document.querySelectorAll('#hourZone .fg-chip:not(.is-off)').length > 0, 25000), '[F] une seule piste (bowling seul) se charge dans le cadre');
+    ok(await attendre(f, () => document.querySelectorAll('#hourZone .fg-track:not([data-activity="arrivee"])').length ===1 && document.querySelectorAll('#hourZone .fg-chip:not(.is-off)').length > 0, 25000), '[F] une seule piste (bowling seul) se charge dans le cadre');
     ok(await attendre(f, () => !document.querySelector('#goContact').disabled, 25000), '[F] le plan par defaut du serveur active « Garder » sans rien poser');
     await f.click('#goContact');
     await f.fill('#cPrenom', 'Test'); await f.fill('#cNom', 'Cadre'); await f.fill('#cEmail', 'cadre@example.com'); await f.fill('#cTel', '0491301667');
@@ -3157,7 +3157,7 @@ async function main() {
     m = await mesure();
     ok(m.deborde <= 1 && m.btnDedans && m.cases.length === 0, '[G] ecran 2 : aucun defilement horizontal, chaque pastille tient dans sa case', JSON.stringify({ deborde: m.deborde, cases: m.cases.slice(0, 3) }));
     await pageTel.click('#goHours');
-    ok(await attendre(pageTel, () => document.querySelectorAll('#hourZone .fg-track').length === 2 && document.querySelector('#planZone .fg-visit') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[G] ecran 3 : les deux pistes et le plan se chargent, transition finie');
+    ok(await attendre(pageTel, () => document.querySelectorAll('#hourZone .fg-track:not([data-activity="arrivee"])').length ===2 && document.querySelector('#planZone .fg-visit') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[G] ecran 3 : les deux pistes et le plan se chargent, transition finie');
     await attendre(pageTel, () => Array.from(document.querySelectorAll('#hourZone .fg-chip')).every((c) => c.getAnimations().length === 0), 4000);
     // LE SOUS-TITRE DES HEURES SE COUPE AUX BONS ENDROITS (390 et 360 px) :
     // chaque « · » et « + » reste avec le mot d avant, le dernier mot d un

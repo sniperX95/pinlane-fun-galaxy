@@ -163,6 +163,7 @@
     "test:bowling-pistes-visibles": "node scripts/bowling-pistes-visibles-check.js",
     "test:ne-tiendra-pas": "node scripts/ne-tiendra-pas-check.js && node scripts/ne-tiendra-pas-check.js --mutate",
     "test:arrivee-pour-tout-faire": "node scripts/arrivee-pour-tout-faire-check.js && node scripts/arrivee-pour-tout-faire-check.js --mutate",
+    "test:choisir-arrivee": "node scripts/choisir-arrivee-check.js && node scripts/choisir-arrivee-check.js --mutate",
     "test:notes-equipe": "node scripts/notes-equipe-check.js && node scripts/notes-equipe-check.js --mutate",
     "test:caisse-cartes": "node scripts/caisse-cartes-check.js && node scripts/caisse-cartes-check.js --mutate",
     "test:liste-statuts": "node scripts/liste-statuts-check.js && node scripts/liste-statuts-check.js --contre-preuves",

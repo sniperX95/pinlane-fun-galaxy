@@ -276,6 +276,7 @@
     "test:bowling-pistes-visibles",
     "test:ne-tiendra-pas",
     "test:arrivee-pour-tout-faire",
+    "test:choisir-arrivee",
     "test:notes-equipe",
     "test:formules-visite",
     "test:parties-dans-la-foulee",

@@ -231,7 +231,7 @@ async function navigateur() {
     if (!ok(pret, 'MONTAGE l ecran des heures se charge (bowling + laser, 6 personnes)')) return;
     // Pose une heure de bowling (une case libre, pas celle proposee).
     const pose = await page.evaluate(() => {
-      const c = [...document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)/.test(x.className));
+      const c = [...document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className));
       if (!c) return '';
       c.click();
       return c.dataset.time;
@@ -253,7 +253,7 @@ async function navigateur() {
     });
     const avantLaser = demandes.length;
     const laser = await page.evaluate(() => {
-      const c = [...document.querySelectorAll('.fg-track[data-activity="laser_game"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)/.test(x.className));
+      const c = [...document.querySelectorAll('.fg-track[data-activity="laser_game"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className));
       if (!c) return '';
       c.click();
       return c.dataset.time;
@@ -273,7 +273,7 @@ async function navigateur() {
     ok(Boolean(suivante) && posees(suivante).bowling === undefined, 'la demande suivante ne porte plus le bowling passe', JSON.stringify(posees(suivante)));
     // Une nouvelle heure de bowling efface la phrase.
     const nouvelle = await page.evaluate((ancienne) => {
-      const c = [...document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)/.test(x.className) && x.dataset.time !== ancienne);
+      const c = [...document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className) && x.dataset.time !== ancienne);
       if (!c) return '';
       c.click();
       return c.dataset.time;

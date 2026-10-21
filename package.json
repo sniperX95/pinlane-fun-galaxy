@@ -132,6 +132,7 @@
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",
     "test:no-em-dash": "node scripts/no-em-dash-check.js",
+    "test:caracteres-de-controle": "node scripts/caracteres-de-controle-check.js && node scripts/caracteres-de-controle-check.js --mutate",
     "test:fungalaxy-form": "node scripts/fungalaxy-form-check.js",
     "test:formulaire-lenteur": "node scripts/formulaire-lenteur-check.js && node scripts/formulaire-lenteur-check.js --mutate",
     "test:formulaire-fluide": "node scripts/formulaire-fluide-check.js && node scripts/formulaire-fluide-check.js --mutate",

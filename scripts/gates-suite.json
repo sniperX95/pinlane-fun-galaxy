@@ -5,6 +5,7 @@
     "test:gates-parties",
     "test:gates-horloge",
     "test:no-em-dash",
+    "test:caracteres-de-controle",
     "test:no-header-tag",
     "test:public-leak",
     "test:occupancy",
@@ -361,6 +362,7 @@
   ],
   "toujours": [
     "test:no-em-dash",
+    "test:caracteres-de-controle",
     "test:public-leak",
     "test:constants-drift",
     "test:ancres"

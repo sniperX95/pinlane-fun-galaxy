@@ -32,6 +32,7 @@ const {
   avisSansLeLibre,
   mesurerLaVisite,
   arriveeLaPlusTardive,
+  arriveesDuJour,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
@@ -229,6 +230,33 @@ function toLaserSlot(scenario, pax) {
       laserSharing: scenario.laserSharing || null,
     },
   };
+}
+
+// LA LIGNE « HEURE D ARRIVEE » d une visite ou d une formule (2026-10-21) : la
+// grille de la demande, sans heure posee, donne les heures de chaque activite
+// et celles ou elle est libre (ni complete ni fermee) ; chaque arrivee se juge
+// par `essayer`, la porte de la reservation de ce chemin.
+function ligneDesArriveesDuJour({ centerId, model, pax, snapshot, anchorMeta, schedule, date, essayer }) {
+  if (!anchorMeta || !Array.isArray(anchorMeta.activities) || !schedule) return [];
+  const heuresParActivite = {};
+  const candidatesByActivity = {};
+  anchorMeta.activities.forEach((activity) => {
+    const heures = (activity.times || []).map((item) => ({ minutes: Math.round(timeToNum(item.time) * 60), libre: item.code !== 'capacity' && item.code !== 'blocked' }));
+    heuresParActivite[activity.activityId] = heures.map((item) => item.minutes);
+    candidatesByActivity[activity.activityId] = heures.filter((item) => item.libre).map((item) => item.minutes);
+  });
+  return arriveesDuJour({
+    center: getCenter(centerId),
+    model,
+    pax,
+    laneStatuses: snapshot.laneStatuses,
+    heuresParActivite,
+    candidatesByActivity,
+    ouverture: Math.round(Number(schedule.open) * 60),
+    fermeture: Math.round(Number(schedule.close) * 60),
+    depuis: date === todayStr() ? Math.round(currentTimeDecimal() * 60) : 0,
+    essayer,
+  });
 }
 
 module.exports = async (req, res) => {
@@ -451,6 +479,10 @@ module.exports = async (req, res) => {
     // d'arcades ») : seulement quand elle est envoyee ; la demande sans elle
     // reste celle d avant.
     const choixFormule = String(url.searchParams.get('formulaChoice') || '').trim().slice(0, 40);
+    // `arrivees=1` (2026-10-21) : la ligne « Heure d'arrivée », chaque arrivee
+    // du jour avec la visite qu elle pose (lib/ops-engine.js arriveesDuJour).
+    // La liste seule : ni plan ni grille. Sans ce parametre, rien ne change.
+    const ligneDesArrivees = url.searchParams.get('arrivees') === '1';
     const pauseMinutes = 0;
 
     if (!date) {
@@ -1131,6 +1163,37 @@ module.exports = async (req, res) => {
           return { closeTime: heureDe(fermetureDuJour), ...(trouvee || { none: true }) };
         };
         const neTientPas = (creneau) => Boolean(creneau && creneau.visitEndsAtClose && Number(creneau.visitShortfallMinutes) > 0);
+        // LA LIGNE « HEURE D ARRIVEE » (Movsar, 2026-10-21). Chaque arrivee pose
+        // ses heures et se juge comme la demande qui suivra le toucher : la
+        // porte de la reservation, la fin de la visite, les installations
+        // comptees, ce qui ne tiendra pas avant la fermeture.
+        if (ligneDesArrivees) {
+          const arrivalTimes = ligneDesArriveesDuJour({
+            centerId,
+            model: getFormulaAnchorModel(visitFormula),
+            pax,
+            snapshot,
+            anchorMeta,
+            schedule,
+            date,
+            essayer: (minutes) => {
+              const heures = Object.fromEntries(Object.entries(minutes).map(([id, m]) => [id, heureDe(m)]));
+              const { plan, guarded } = planDesHeures(heures, heures.laser_game ? [heures.laser_game] : []);
+              const [slot] = guarded;
+              if (!slot) return { ok: false, code: plan?.plan?.refusalCode || 'arrival_start', reason: plan?.plan?.reason || '' };
+              const posees = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
+              if (Object.keys(heures).some((id) => posees[id] !== heures[id])) return null;
+              const fin = finDeVisiteMinutes(slot);
+              const pleine = dotationDuCreneau(slot, fin);
+              if (pleine) return { ok: false, code: 'capacity', reason: `${pleine} : complet pendant cette visite.` };
+              const manque = Number.isFinite(fin) && fin > fermetureDuJour ? fin - fermetureDuJour : 0;
+              const hors = manque ? [...new Set(ceQuiNeTiendraPas(slot, fermetureDuJour).map((item) => item.name))] : [];
+              return { ok: true, arrival: (slot.opsPlan && slot.opsPlan.arrivalTime) || slot.time, fin, manque, hors };
+            },
+          });
+          sendJson(res, 200, { ok: true, date, ...scheduleMeta, arrivalTimes });
+          return;
+        }
         if (!hasAnchorChoice) {
           // ZERO FRICTION, comme pour une formule : on ne rend pas une liste
           // vide. Une liste vide faisait afficher au client, DES SON ARRIVEE
@@ -1786,7 +1849,9 @@ module.exports = async (req, res) => {
           // Des arcades choisies sont un choix : le plan se pose autour d elles.
           || Boolean(heureArcade);
 
-        if (hasAnchorChoice) {
+        // La ligne des arrivees (`arrivees=1`) passe par la meme porte que les
+        // heures posees : elle se juge plus bas, avant tout plan.
+        if (hasAnchorChoice || ligneDesArrivees) {
           // UNE HEURE CHOISIE N EN EXIGE PAS DEUX, EN FORMULE AUSSI (2026-09-29,
           // meme regle que la visite composee depuis l entretien Seb du
           // 2026-09-17, plus haut). Toucher une heure de laser dans la FORMULE 4
@@ -1839,6 +1904,33 @@ module.exports = async (req, res) => {
               : [];
             return { plan, guarded };
           };
+          // LA LIGNE « HEURE D ARRIVEE » EN FORMULE (Movsar, 2026-10-21) : chaque
+          // arrivee jugee comme la demande qui suivra le toucher, la fin de la
+          // formule comprise. Les arcades y restent sans heure, rangees par le
+          // moteur.
+          if (ligneDesArrivees) {
+            const arrivalTimes = laserPlacement !== 'scheduled' ? [] : ligneDesArriveesDuJour({
+              centerId,
+              model: anchorModel,
+              pax,
+              snapshot,
+              anchorMeta,
+              schedule,
+              date,
+              essayer: (minutes) => {
+                const heures = Object.fromEntries(Object.entries(minutes).map(([id, m]) => [id, numToTime(m / 60)]));
+                const { plan: refus, guarded: retenus } = planDesHeures(heures, heures.laser_game ? [heures.laser_game] : [], '');
+                if (!retenus.length) return { ok: false, code: refus?.plan?.refusalCode || 'arrival_start', reason: refus?.plan?.reason || '' };
+                const slot = finDeFormule(retenus[0]);
+                const posees = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
+                if (Object.keys(heures).some((id) => posees[id] !== heures[id])) return null;
+                const manque = slot.visitEndsAtClose ? Math.max(0, Number(slot.visitShortfallMinutes) || 0) : 0;
+                return { ok: true, arrival: (slot.opsPlan && slot.opsPlan.arrivalTime) || slot.time, fin: Math.round(timeToNum(slot.visitEndTime) * 60) + manque, manque, hors: [] };
+              },
+            });
+            sendJson(res, 200, { ok: true, date, ...scheduleMeta, arrivalTimes });
+            return;
+          }
           const { plan, guarded } = planDesHeures(heuresCompletes, partiesCompletes, heureArcade);
           // POUR TOUT FAIRE AVANT LA FERMETURE, EN FORMULE AUSSI (2026-10-20) :
           // la meme recherche que la visite, jugee par la meme porte que la

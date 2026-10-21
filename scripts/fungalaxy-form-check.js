@@ -1395,9 +1395,12 @@ function ecartsPlan(ecran, o) {
 async function lireProgramme(page) {
   return page.evaluate(() => ({
     legende: Boolean(document.querySelector('.fg-legend')),
-    lignes: Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]')).map((li) => ({ cle: li.dataset.cle, heure: li.querySelector('.fg-etape__heure').dataset.mot || '', etat: ['choisi', 'propose', 'vide', 'surplace'].find((k) => li.classList.contains('is-' + k)) || '' })),
+    // Les lignes des activites ; l arrivee a la sienne en tete depuis le
+    // 2026-10-21 (facultative, scripts/choisir-arrivee-check.js), qui dit
+    // l arrivee du plan.
+    lignes: Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]:not([data-cle="arrivee"])')).map((li) => ({ cle: li.dataset.cle, heure: li.querySelector('.fg-etape__heure').dataset.mot || '', etat: ['choisi', 'propose', 'vide', 'surplace'].find((k) => li.classList.contains('is-' + k)) || '' })),
     ouvertes: Array.from(document.querySelectorAll('#hourZone .fg-etape.is-open')).map((li) => li.dataset.cle),
-    arrivee: ((document.querySelector('#hourZone .fg-etape--arrivee .fg-etape__heure') || {}).textContent || '').trim(),
+    arrivee: (() => { const mot = (document.querySelector('#hourZone .fg-etape[data-cle="arrivee"] .fg-etape__heure') || { dataset: {} }).dataset.mot || ''; return /^\d\d:\d\d$/.test(mot) ? mot : ''; })(),
     fin: ((document.querySelector('#hourZone .fg-etape--fin .fg-etape__heure') || {}).textContent || '').trim(),
   }));
 }
@@ -1406,8 +1409,9 @@ function ordreJournee(lignes) {
   const h = lignes.map((x) => (/^\d\d:\d\d$/.test(x.heure) ? x.heure : '99:99'));
   return h.every((x, i) => i === 0 || h[i - 1] <= x);
 }
+// Les pistes des activites (la ligne d arrivee a la sienne, choisir-arrivee-check).
 async function lirePistes(page) {
-  return page.evaluate(() => Array.from(document.querySelectorAll('#hourZone .fg-track')).map((t) => ({
+  return page.evaluate(() => Array.from(document.querySelectorAll('#hourZone .fg-track:not([data-activity="arrivee"])')).map((t) => ({
     id: t.dataset.activity,
     count: Number(t.dataset.count) || 1,
     touchee: Boolean(t.dataset.touched),

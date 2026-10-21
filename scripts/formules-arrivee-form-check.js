@@ -13,10 +13,11 @@
 // vrai gestionnaire des disponibilites sur un instantane en memoire : aucune
 // base, rien d ecrit, rien d envoye) :
 //   [A] sans heure d arcade choisie, rien ne part de plus : aucune demande ne
-//       porte arrival, arrivals, arcade ni arcades, le blocage part sans
-//       arrivalTime ni arcadeTime, et le reglage d arrivee de la meta n y
-//       change rien ; l arrivee est une borne, aucune ligne d arrivee a
-//       toucher ;
+//       porte arrival, arrivals, arrivees, arcade ni arcades, le blocage part
+//       sans arrivalTime ni arcadeTime, et le reglage d arrivee de la meta n y
+//       change rien ; depuis le 2026-10-21, l arrivee est la premiere ligne,
+//       facultative et fermee, qui dit l heure du plan (son choix :
+//       scripts/choisir-arrivee-check.js) ;
 //   [B] la borne a l ouverture : la Formule 1 proposee a l ouverture fait
 //       arriver a l heure du bowling, la visite dit « à l’ouverture » ; le
 //       bowling pose a 10:30, la borne dit 10:20, « 10 min avant votre
@@ -319,7 +320,8 @@ function lisible(v) {
 }
 const params = (u) => new URL(u, BASE_URL).searchParams;
 const estListeArcades = (u) => params(u).get('arcades') === '1';
-const estPlan = (u) => !params(u).has('arrivals') && !estListeArcades(u);
+// La liste de la ligne « Heure d'arrivée » (arrivees=1, 2026-10-21) n est pas un plan.
+const estPlan = (u) => !params(u).has('arrivals') && !params(u).has('arrivees') && !estListeArcades(u);
 const sansDoublons = (liste) => liste.filter((x, i) => liste.indexOf(x) === i);
 const minutesDe = (h) => { const [a, b] = String(h || '').split(':').map(Number); return a * 60 + b; };
 const heureDe = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -522,7 +524,11 @@ async function lireProgramme(page) {
   }));
 }
 const ligneDe = (programme, cle) => ((programme && programme.lignes) || []).find((l) => l.cle === cle) || null;
-const borneArrivee = (programme) => ((programme && programme.lignes) || []).find((l) => /fg-etape--borne/.test(l.classe) && /fg-etape--arrivee/.test(l.classe)) || null;
+// L ARRIVEE EN TETE DU PROGRAMME (2026-10-21) : une ligne qui se choisit,
+// facultative, qui dit toujours l arrivee du plan (choisie ou proposee).
+const borneArrivee = (programme) => ((programme && programme.lignes) || []).find((l) => l.cle === 'arrivee' && /fg-etape--arrivee/.test(l.classe)) || null;
+// La premiere ligne d activite, sous celle de l arrivee.
+const premiereActivite = (programme) => ((programme && programme.lignes) || []).find((l) => l.cle && l.cle !== 'arrivee') || {};
 const resumeLignes = (programme) => ((programme && programme.lignes) || []).map((l) => `${l.cle || l.classe.replace(/\bfg-etape\b\s*/g, '').trim()}:${l.heure}`).join(' | ');
 async function lireVisite(page) {
   return lisible(await page.evaluate(() => {
@@ -691,15 +697,22 @@ async function scenarioA(browser, mock) {
     'MONTAGE trois passages (meta sans reglage, arrivee proposee, arrivee coupee) : Formule 1, 10 personnes, bowling 14:00 puis laser 16:00, puis les coordonnees, sans erreur',
     passages.map((r) => `${r.arrive}/${r.poses.join(',')}/${r.contact}/${r.suivi.erreurs.slice(0, 1).join('')}`).join(' ; '));
   const demandes = passages.map((r) => sansDoublons(r.suivi.demandes.map((u) => { const p = params(u); p.delete('_'); return p.toString(); })));
-  const parasites = passages.flatMap((r) => r.suivi.demandes).filter((u) => ['arrival', 'arrivals', 'arcade', 'arcades'].some((k) => params(u).has(k)));
-  ok(parasites.length === 0, 'aucune demande ne porte arrival, arrivals, arcade ni arcades', parasites.slice(0, 2).join(' | '));
+  const parasites = passages.flatMap((r) => r.suivi.demandes).filter((u) => ['arrival', 'arrivals', 'arrivees', 'arcade', 'arcades'].some((k) => params(u).has(k)));
+  ok(parasites.length === 0, 'aucune demande ne porte arrival, arrivals, arrivees, arcade ni arcades (la ligne d arrivee restee fermee ne demande rien)', parasites.slice(0, 2).join(' | '));
   ok(!ecartListes(demandes[0], demandes[1]) && !ecartListes(demandes[0], demandes[2]), 'les demandes sont les memes au caractere pres, que la meta propose l arrivee ou non', ecartListes(demandes[0], demandes[1]) || ecartListes(demandes[0], demandes[2]));
   const blocages = passages.map((r) => r.suivi.blocages[r.suivi.blocages.length - 1] || null);
   ok(blocages.every((b) => b && b.preference && !('arrivalTime' in b.preference) && !('arcadeTime' in b.preference)) && new Set(blocages.map(corpsComparable)).size === 1,
     'le blocage part sans arrivalTime ni arcadeTime, le meme dans les trois passages', JSON.stringify(blocages[0] && blocages[0].preference));
   const p = avec.programme;
+  // LA REGLE DU 2026-10-21 (Movsar : « ils ont le choix de choisir l heure
+  // qu ils veulent ») : l arrivee se choisit dans sa ligne, en tete, facultative.
+  // Fermee, elle dit l arrivee du plan, proposee ; aucune autre ligne ne
+  // l attend (la premiere activite s ouvre) ; plus aucune borne d arrivee.
   const borne = borneArrivee(p);
-  ok(Boolean(borne) && borne.cache && !borne.tete && !ligneDe(p, 'arrivee'), 'l arrivee est une borne (cachee aux lecteurs d ecran, sans en-tete a toucher) : aucune ligne d arrivee a choisir', resumeLignes(p));
+  const ouvertes = (p.lignes || []).filter((l) => l.ouverte).map((l) => l.cle);
+  ok(Boolean(borne) && p.lignes[0] === borne && !borne.cache && borne.tete && !borne.ouverte && /\bis-propose\b/.test(borne.classe) && borne.detail === 'Facultatif' && /^\d\d:\d\d$/.test(borne.heure)
+    && ouvertes.length === 1 && ouvertes[0] === premiereActivite(p).cle && !(p.lignes || []).some((l) => /fg-etape--borne/.test(l.classe) && /fg-etape--arrivee/.test(l.classe)),
+  'l arrivee est la premiere ligne, a toucher, fermee et « Facultatif », avec l heure du plan proposee ; la premiere activite s ouvre, aucune borne d arrivee ne reste', resumeLignes(p));
 }
 
 // ---------------------------------------------------------------------------
@@ -795,7 +808,7 @@ async function scenarioD(browser, mock) {
     const demande = dernierPlan(suivi);
     ok(arrive && pris && params(demande).get('arcade') === '13:00' && !params(demande).has('arrival'), 'la demande du plan porte arcade=13:00, sans arrivee', demande);
     const p = await lireProgramme(page);
-    const premiere = p.lignes.find((l) => l.cle) || {};
+    const premiere = premiereActivite(p);
     ok((borneArrivee(p) || {}).heure === '12:50' && premiere.cle === 'arcade_time' && premiere.heure === '13:00' && /\bis-choisi\b/.test(premiere.classe) && (ligneDe(p, 'bowling') || {}).heure === '13:30',
       'la borne dit 12:50, la ligne des arcades passe en tete (13:00, choisie), le bowling se propose a 13:30', resumeLignes(p));
     const v = await lireVisite(page);
@@ -1199,7 +1212,7 @@ async function scenarioI(browser, mock) {
     await un.page.click('#hourZone .fg-quand [data-quand-meme]');
     await calme(un.page);
     const p1 = await lireProgramme(un.page);
-    const premiere = p1.lignes.find((l) => l.cle) || {};
+    const premiere = premiereActivite(p1);
     const lb = ligneDe(p1, 'bowling') || {};
     const ll = ligneDe(p1, 'laser_game') || {};
     const reste = await lireQuand(un.page);

@@ -103,7 +103,9 @@ const MUTATIONS = [
   {
     nom: 'le bouton ne pose pas le plan',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [['if (heuresFit[k]) state.pins[k] = String(heuresFit[k]).slice(0, 5);', 'void k;']],
+    // Le bouton choisit son heure dans la ligne d arrivee (2026-10-21) : la pose
+    // vit dans poserArrivee.
+    remplacer: [['if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5);', 'void k;']],
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';

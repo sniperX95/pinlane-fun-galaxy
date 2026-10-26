@@ -376,12 +376,16 @@ async function main() {
       try {
         // DEPUIS LA FICHE SOBRE (2026-10-12) le pli ne s ouvre plus tout
         // seul : son titre dit le retard. Ouvert par la personne, il le reste
-        // au rendu suivant, sans redemander de defilement.
+        // au rendu suivant, sans redemander de defilement. DEPUIS LA FICHE D UN
+        // COUP D OEIL (2026-10-26), les minutes se lisent une fois, sur la
+        // ligne d etat (« il y a 15 min ») : le titre dit « ce retard » sans
+        // les redire.
         window.getLateArrivalMinutes = () => 15;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 100));
         const pliRetard = document.querySelector('#posOverlay .delay-control-block');
-        const fermeEnRetard = !!pliRetard && !pliRetard.open && /\+15 min/.test(pliRetard.querySelector('summary').textContent) && demandesDefilement === 0;
+        const titrePli = pliRetard ? pliRetard.querySelector('summary').textContent : '';
+        const fermeEnRetard = !!pliRetard && !pliRetard.open && /Replanifier ce retard/.test(titrePli) && !/\d+\s*min/.test(titrePli) && demandesDefilement === 0;
         pliRetard.querySelector('summary').click();
         await new Promise(resolve => setTimeout(resolve, 100));
         const defilementOuverture = demandesDefilement;

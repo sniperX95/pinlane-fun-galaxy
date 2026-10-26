@@ -276,10 +276,13 @@ async function main() {
     const f1 = await page.evaluate(() => {
       const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
       const b = document.querySelector('.pos-act-row .res-status-btn');
-      // Depuis la fiche sobre (2026-10-12), l attente se dit dans le bandeau
-      // du haut, « Appeler » a cote. La regle ne change pas : la fiche dit
-      // qu il faut verifier et que le client n a pas encore de confirmation.
-      return { note: txt(document.querySelector('#posOverlay .fx-bandeau.is-verifier p')), premier: txt(b) };
+      // Depuis la fiche d un coup d oeil (2026-10-26), la pastille de l en-tete
+      // dit « À vérifier » et la ligne d etat dit pourquoi, « Appeler » a cote :
+      // plus de bandeau qui redisait la pastille. La regle ne change pas : la
+      // fiche dit qu il faut verifier et que le client n a pas encore de
+      // confirmation.
+      const ligne = document.querySelector('#posOverlay .fx-moment.is-verifier');
+      return { note: ligne ? `${txt(document.querySelector('#posOverlay .dossier-status'))} ${txt(ligne)}` : '', premier: txt(b) };
     });
     ok(/vérifier/i.test(f1.note) && /pas encore confirmée/i.test(f1.note) && f1.premier === 'Valider',
       'la fiche dit que la demande attend une validation, qu elle n est pas confirmee, et son premier bouton valide', JSON.stringify(f1));
@@ -288,7 +291,8 @@ async function main() {
     const f2 = await page.evaluate(() => {
       const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
       const b = document.querySelector('.pos-act-row .res-status-btn');
-      return { note: txt(document.querySelector('#posOverlay .fx-bandeau.is-verifier p')), premier: txt(b), allume: Boolean(b && b.classList.contains('active')) };
+      const ligne = document.querySelector('#posOverlay .fx-moment.is-verifier');
+      return { note: ligne ? `${txt(document.querySelector('#posOverlay .dossier-status'))} ${txt(ligne)}` : '', premier: txt(b), allume: Boolean(b && b.classList.contains('active')) };
     });
     ok(!f2.note && f2.premier === 'Confirmé' && f2.allume, 'apres le clic, la fiche dit « Confirmé » et la note disparait', JSON.stringify(f2));
     await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });

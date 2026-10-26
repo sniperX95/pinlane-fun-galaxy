@@ -25286,19 +25286,18 @@ function renderGroupeEncaisseAbsence(r) {
   const peutStatut = canUseStaffPermission(['reservations.status', 'reservations.edit']);
   if (r.status === 'paid' && prixDossierConnu(r)) {
     const montant = r.amountPaid != null ? Number(r.amountPaid) : Number(r.price) || 0;
-    // La regle du serveur (noterEncaisseOuAbsence) : un encaisse egal au prix,
-    // au centime, n est pas une remise et ne dit pas « sur ».
-    const remise = r.amountPaid != null && Math.round(Number(r.amountPaid) * 100) !== Math.round((Number(r.price) || 0) * 100);
+    // Le montant encaisse se lit dans la ligne d etat de la fiche (ficheEtat),
+    // avec ce qu il a de moins que le prix : ici, de quoi le corriger.
+    if (!peutEncaisser || !Object.prototype.hasOwnProperty.call(r, 'amountPaid')) return '';
     return `<div class="pos-encaisse">
-      <span class="pos-encaisse-ligne">Encaissé <strong>${escapeHtml(formatMoneyCentimes(montant))}</strong>${remise ? ` sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}</span>
-      ${peutEncaisser && Object.prototype.hasOwnProperty.call(r, 'amountPaid') ? `<details class="pos-encaisse-corriger">
+      <details class="pos-encaisse-corriger">
         <summary>Corriger le montant</summary>
         <div class="pos-encaisse-form">
           <label>Montant encaissé<input type="number" id="encaisse-montant-${r.id}" min="0" step="0.01" inputmode="decimal" value="${montant}"></label>
           <label>Pourquoi il diffère<input type="text" id="encaisse-raison-${r.id}" maxlength="200" placeholder="Remise, geste, joueur en moins…" value="${escapeHtml(r.discountReason || '')}"></label>
           <button type="button" class="gc-btn is-primary" onclick="noterEncaisse(${r.id}, event)">Enregistrer</button>
         </div>
-      </details>` : ''}
+      </details>
     </div>`;
   }
   if (!peutStatut || !Object.prototype.hasOwnProperty.call(r, 'absentAt')) return '';
@@ -26329,30 +26328,37 @@ function ficheGesteSuivant(r, moment) {
   return '';
 }
 
-// LE MOMENT EN UNE PHRASE. Le retard et la demande a verifier ont leur
-// bandeau ; la phrase dit le reste, l argent en face.
-function fichePhraseMoment(r, moment) {
+// LE MOMENT EN UNE PHRASE, SANS REDIRE LA PASTILLE (2026-10-26). L en-tete dit
+// deja « Sur place », « En retard » ou « À vérifier » : la phrase dit ce que la
+// pastille ne dit pas, l heure, le retard en minutes, la raison. Un autre jour,
+// la date est dans l en-tete : la phrase dit l ecart.
+function fichePhraseMoment(r, moment, droits = ficheDroits()) {
   const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
   const aujourdhui = r.date === todayStr();
-  if (r.status === 'cancelled') return 'Réservation annulée';
-  if (r.absentAt) return 'Noté pas venu';
+  if (r.status === 'cancelled' || r.absentAt) return '';
   // « Demande à … » se lit comme un tutoiement (voix-pro-check).
-  if (isReservationAwaitingReview(r)) return 'En attente de validation';
-  if (moment && moment.late) return 'Pas encore arrivé';
+  if (isReservationAwaitingReview(r)) {
+    const texte = getReservationValidationTexte(r);
+    return `${texte.raison ? `${texte.raison} ` : ''}Pas encore confirmée au client.${droits.valider ? '' : ' Un responsable doit la valider.'}`;
+  }
+  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;
   if (r.status === 'paid') {
-    if (moment && moment.etat === 'done') return 'Visite terminée';
+    if (moment && moment.etat === 'done') return `Visite terminée à ${formatClockDisplay(span.end)}`;
     return aujourdhui && span.end <= currentTimeDecimal()
       ? `Visite finie à ${formatClockDisplay(span.end)}, activités à cocher`
-      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;
+      : `Fin prévue à ${formatClockDisplay(span.end)}`;
   }
-  if (moment && moment.etat === 'onsite') return `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;
+  if (moment && moment.etat === 'onsite') return `Fin prévue à ${formatClockDisplay(span.end)}`;
   if (moment && moment.etat === 'closing') return `Visite finie à ${formatClockDisplay(span.end)}`;
   if (aujourdhui) {
     const dans = span.start - currentTimeDecimal();
     return dans <= 5 / 60 ? `Attendu maintenant, à ${formatClockDisplay(span.start)}` : `Arrive dans ${formatStaffTerrainDelay(dans)}, à ${formatClockDisplay(span.start)}`;
   }
-  const jour = r.date ? parseLocalDate(r.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
-  return `${r.date > todayStr() ? 'Prévue' : 'Était prévue'} le ${jour} à ${formatClockDisplay(span.start)}`;
+  if (!r.date) return '';
+  const ecart = Math.round((parseLocalDate(r.date) - parseLocalDate(todayStr())) / 86400000);
+  if (!ecart) return '';
+  if (Math.abs(ecart) === 1) return ecart > 0 ? 'Demain' : 'Hier';
+  return ecart > 0 ? `Dans ${ecart} jours` : `Il y a ${-ecart} jours`;
 }
 
 function ficheAppeler(r) {
@@ -26360,25 +26366,30 @@ function ficheAppeler(r) {
   return `<a class="fx-appel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
 }
 
-// L ETAT DU DOSSIER : le bandeau de ce qui ne va pas, le moment et l argent,
-// les boutons d etat que le role peut toucher.
+// L ETAT DU DOSSIER EN UNE LIGNE (2026-10-26, Movsar : « tout est reparti
+// partout avec des repetitions »). A gauche le moment, a droite l argent,
+// chacun une seule fois ; dessous, les boutons d etat que le role peut toucher.
+// La pastille de l en-tete dit deja « En retard » ou « À vérifier » : le retard
+// et la demande a verifier colorent la phrase et posent « Appeler » a cote, au
+// lieu d un bandeau qui redisait la pastille.
 function ficheEtat(r, moment, droits) {
   const paid = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
-  const montant = prixDossierConnu(r) ? formatMoneyCentimes(paid && r.amountPaid != null ? r.amountPaid : r.price) : '';
-  const argent = paid
-    ? `Payé${montant ? ` ${escapeHtml(montant)}` : ''}${moyen ? `, ${escapeHtml(moyen.toLowerCase())}` : ''}`
-    : (montant ? `À encaisser : <b>${escapeHtml(montant)}</b>` : 'Prix au comptoir');
+  const connu = prixDossierConnu(r);
+  // Paye, le bouton enfonce dit deja le moyen (« Payé · Carte ») : un role sans
+  // ces boutons le lit ici. Un encaisse different du prix au centime (la regle
+  // du serveur, noterEncaisseOuAbsence) dit sur quoi.
+  const moyenEcrit = moyen && !droits.encaisser ? `, ${escapeHtml(moyen.toLowerCase())}` : '';
+  const remise = paid && r.amountPaid != null && Math.round(Number(r.amountPaid) * 100) !== Math.round((Number(r.price) || 0) * 100);
+  const argent = r.status === 'cancelled' ? '' : paid
+    ? (connu
+      ? `Encaissé <b>${escapeHtml(formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price))}</b>${remise ? ` sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}${moyenEcrit}`
+      : `Payé${moyenEcrit}`)
+    : (connu ? `À encaisser <b>${escapeHtml(formatMoneyCentimes(r.price))}</b>` : 'Prix au comptoir');
   const suivant = ficheGesteSuivant(r, moment);
-  let bandeau = '';
-  if (isReservationAwaitingReview(r)) {
-    const texte = getReservationValidationTexte(r);
-    bandeau = `<div class="fx-bandeau is-verifier" role="status"><p><b>À vérifier.</b> ${texte.raison ? `${escapeHtml(texte.raison)} ` : ''}Pas encore confirmée au client : ${droits.valider ? 'validez-la ou appelez-le' : 'un responsable doit la valider'}.</p>${ficheAppeler(r)}</div>`;
-  } else if (moment && moment.late) {
-    bandeau = `<div class="fx-bandeau is-retard" role="status"><p><b>En retard de ${escapeHtml(formatStaffTerrainDelay(moment.now - moment.item.start))}.</b> Attendu à ${formatClockDisplay(moment.item.start)}.</p>${ficheAppeler(r)}</div>`;
-  } else if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {
-    bandeau = '<div class="fx-bandeau is-neutre" role="status"><p><b>Jamais pointé arrivé.</b> La visite est finie : le groupe n’est peut-être pas venu.</p></div>';
-  }
+  const ton = isReservationAwaitingReview(r) ? 'is-verifier' : moment && moment.late ? 'is-retard' : '';
+  const phrase = fichePhraseMoment(r, moment, droits);
+  const jamaisPointe = !ton && moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r);
   const boutons = [];
   if (isReservationAwaitingReview(r) ? droits.valider : droits.statut) {
     boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
@@ -26392,30 +26403,34 @@ function ficheEtat(r, moment, droits) {
       boutons.push(`<button type="button" class="res-status-btn paid${suivant === 'payer' ? ' is-suivant' : ''} ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`);
     });
   }
-  return `${bandeau}
-    <section class="pos-act fx-act" aria-label="État du dossier">
-      <div class="pos-act-head">
-        <span class="pos-eyebrow">${escapeHtml(fichePhraseMoment(r, moment))}</span>
-        <span class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</span>
-      </div>
+  return `<section class="pos-act fx-act" aria-label="État du dossier">
+      ${phrase || ton || argent ? `<div class="pos-act-head">
+        <p class="fx-moment${ton ? ` ${ton}` : ''}"${ton ? ' role="status"' : ''}>${phrase ? `<span>${escapeHtml(phrase)}</span>` : ''}${ton ? ficheAppeler(r) : ''}</p>
+        ${argent ? `<span class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</span>` : ''}
+      </div>` : ''}
+      ${jamaisPointe ? '<p class="fx-moment-suite">Jamais pointé arrivé : le groupe n’est peut-être pas venu.</p>' : ''}
       ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
       ${renderGroupeEncaisseAbsence(r)}
     </section>`;
 }
 
-// LE CLIENT : le telephone et l e-mail se touchent, puis d ou vient le dossier.
+// LE CLIENT : ce qui se touche, sans libelle (un numero appelle, une adresse
+// ecrit), ce qui manque en une ligne, puis d ou vient le dossier.
 function ficheClient(r, droits) {
   const quand = r.createdAt ? new Date(r.createdAt) : null;
   const valide = quand && !Number.isNaN(quand.getTime());
   const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
   const origine = { staff: 'Saisie par l’équipe', public: 'Réservée en ligne' }[String(r.channel || '').toLowerCase()] || 'Créée';
   const tel = String(r.phone || '').replace(/[^0-9+]/g, '');
+  const contacts = [
+    r.phone ? `<li>${STAFF_TERRAIN_PHONE_ICON}<a href="tel:${escapeHtml(tel)}">${escapeHtml(r.phone)}</a></li>` : '',
+    r.email ? `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a></li>` : '',
+  ].join('');
+  const manque = !r.phone && !r.email ? 'Ni téléphone ni e-mail' : !r.phone ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
   return `<section class="fx-bloc fx-client" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
-      <dl class="fx-lignes">
-        <div><dt>Téléphone</dt><dd>${r.phone ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(r.phone)}</a>` : '<span class="fx-vide">Non renseigné</span>'}</dd></div>
-        <div><dt>E-mail</dt><dd>${r.email ? `<a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a>` : '<span class="fx-vide">Non renseigné</span>'}</dd></div>
-      </dl>
+      ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
+      ${manque ? `<p class="fx-vide">${manque}</p>` : ''}
       ${droits.ecrire ? `<button type="button" class="comm-open-btn fx-message" onclick="openCommCenter(${r.id}, event)">Envoyer un message</button>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
@@ -26436,7 +26451,7 @@ function fichePliRetard(r, droits) {
   const ouvert = plisRetardOuverts.has(Number(r.id));
   return `<details class="info-block pos-fold delay-control-block fx-pli"${ouvert ? ' open data-vu="1"' : ''} ontoggle="if(this.open){plisRetardOuverts.add(${Number(r.id)});}else{plisRetardOuverts.delete(${Number(r.id)});}if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
       <summary class="pos-group-head">
-        <span class="fx-titre">${late > 0 ? `Replanifier le retard (+${late} min)` : 'Replanifier un retard'}</span>
+        <span class="fx-titre">${late > 0 ? 'Replanifier ce retard' : 'Replanifier un retard'}</span>
         <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </summary>
       <p class="pos-note">Choisissez le retard : le meilleur plan s’affiche avant validation.</p>
@@ -26462,6 +26477,11 @@ function renderPosDetails(r) {
   const droits = ficheDroits();
   const enRetard = Boolean(moment && moment.late);
   const pli = fichePliRetard(r, droits);
+  // LA FICHE RANGEE (2026-10-26) : le programme seul a gauche, ce qu on lit
+  // a cote a droite, dans l ordre ou on en a besoin : les notes (un gateau,
+  // une allergie), le prix, le client. Les notes vivaient sous le programme et
+  // tombaient sous la ligne de flottaison des que la journee avait cinq
+  // activites.
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheEtat(r, moment, droits)}
     ${enRetard ? pli : ''}
@@ -26471,9 +26491,9 @@ function renderPosDetails(r) {
           <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${renderGroupeTerminer(r)}</div>
           ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
         </section>
-        ${renderGroupeNotes(r)}
       </div>
       <aside class="fx-cote">
+        ${renderGroupeNotes(r)}
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
         ${enRetard ? '' : pli}
@@ -26695,20 +26715,24 @@ function renderGroupeAddition(r) {
   }
   extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: '', montant: formatMoneyCentimes(Number(e.price) || 0) }));
   const total = Number(r.price) || 0;
+  const connu = prixDossierConnu(r);
   // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
   const parJoueur = total > 0 && joueurs > 0 ? formatMoneyCentimes(total / joueurs) : '';
   const incomplet = r.program && r.program.priceComplete === false;
-  const paid = r.status === 'paid';
-  const moyen = getMoyenPaiementLabel(r.paymentMethod);
+  // L ADDITION SANS REDITE (2026-10-26). Paye ou a encaisser se lit une fois,
+  // dans la ligne d etat en haut de la fiche. Une addition d une seule ligne
+  // n ecrit pas son total une deuxieme fois, et le prix par joueur se tait
+  // quand le calcul de la ligne le dit deja (« 39 € × 10 joueurs »).
+  const seule = lignes.length === 1 && !etat.ajuste && (!connu || lignes[0].montant === formatMoneyCentimes(total));
+  if (seule && !lignes[0].montant) lignes[0].montant = 'au comptoir';
+  const unite = parJoueur && !(seule && lignes[0].detail.includes(parJoueur))
+    ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : '';
   return `<section class="info-block gc-bill">
     <div class="info-label">Prix</div>
     <dl class="gc-bill-lines">${lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
       ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(etat.ecart)))}</dd></div>` : ''}
     </dl>
-    <div class="gc-bill-total">
-      <div><b>${prixDossierConnu(r) ? escapeHtml(formatMoneyCentimes(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : ''}</div>
-      <span class="${paid ? 'is-paid' : 'is-due'}">${paid ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}` : 'À encaisser'}</span>
-    </div>
+    ${seule ? (unite ? `<p class="gc-bill-unit">${unite}</p>` : '') : `<div class="gc-bill-total"><span>Total</span><b>${connu ? escapeHtml(formatMoneyCentimes(total)) : 'Prix au comptoir'}</b>${unite}</div>`}
     ${incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
   </section>`;
 }
@@ -34241,11 +34265,17 @@ function renderPosInner() {
   // l'endroit où on la lit quand on a un client au téléphone. C'est
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
   // l'export, pas un code reconstruit à l'affichage.
+  // LES FAITS SUR UNE LIGNE, COMME SUR LA FEUILLE (2026-10-26, Movsar : « on
+  // regarde on sait direct »). Une date, des heures, « 10 joueurs », des pistes
+  // et un numero se reconnaissent seuls : leur libelle n est plus ecrit au-dessus
+  // (la grille de libelles faisait formulaire), il reste pour les lecteurs
+  // d ecran. Ordre du comptoir : quand, combien, ou.
   const identity = getPosIdentityParts(r);
   const dossierStatus = getStaffDashboardStatusMeta(r);
-  const identityLabels = r.date ? ['Date', 'Horaires', 'Ressources', 'Groupe'] : ['Horaires', 'Ressources', 'Groupe'];
-  const facts = identity.map((value, index) => `<div class="dossier-fact"><span>${identityLabels[index]}</span><strong>${value}</strong></div>`).join('')
-    + `<div class="dossier-fact fx-numero"><span>Réservation</span><strong>n° ${escapeHtml(String(r.id))}</strong></div>`;
+  const [jour, horaires, lieu, joueurs] = r.date ? identity : ['', ...identity];
+  const facts = [['Date', jour], ['Horaires', horaires], ['Groupe', joueurs], ['Ressources', lieu], ['Réservation', `n° ${escapeHtml(String(r.id))}`]]
+    .filter(([, valeur]) => valeur)
+    .map(([libelle, valeur]) => `<span class="dossier-fact${libelle === 'Réservation' ? ' fx-numero' : ''}"><span class="visually-hidden">${libelle} </span><strong>${valeur}</strong></span>`).join('');
   // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
   // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
   const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
@@ -34272,8 +34302,10 @@ function renderPosInner() {
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
-          <div class="dossier-facts">${facts}</div>
-          ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => `<span class="fx-etiquette${e.ton === 'suivi' ? ' is-suivi' : ''}">${escapeHtml(e.titre)}${e.texte ? `<small>${escapeHtml(e.texte)}</small>` : ''}</span>`).join('')}</p>` : ''}
+          <p class="dossier-facts">${facts}</p>
+          ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
+            ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
+            : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}
         </div>
         <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="fermerFiche()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

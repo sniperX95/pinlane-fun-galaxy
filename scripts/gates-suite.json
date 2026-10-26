@@ -208,6 +208,7 @@
     "test:planning-matrix",
     "test:reservation-sheet",
     "test:fiche-gestes",
+    "test:fiche-simple",
     "test:one-screen",
     "test:funnel-clarity",
     "test:visit-free-time",

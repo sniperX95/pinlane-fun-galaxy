@@ -364,6 +364,8 @@ async function scenarioBlocs(browser, jour) {
         corps: txt(m.querySelector('.edit-modal-body')),
         lignes: [...m.querySelectorAll('.gc-bill-lines > div')].map((d) => `${txt(d.querySelector('dt'))} ${txt(d.querySelector('dd'))}`),
         total: txt(m.querySelector('.gc-bill-total')),
+        addition: txt(m.querySelector('.gc-bill')),
+        argent: txt(m.querySelector('.fx-act .pos-act-money')),
         etats: [...m.querySelectorAll('.gc-sheet-states button')].map((b) => txt(b)),
         etapes: m.querySelectorAll('.gc-steps .gc-step').length,
       };
@@ -372,7 +374,10 @@ async function scenarioBlocs(browser, jour) {
     ok(fiche.etapes === 3, '[F] le programme : trois lignes', String(fiche.etapes));
     ok(/^Bowling 10 joueurs · 1h · 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 10 joueurs · 2 parties · 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec leurs10 joueurs et le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
     ok(fiche.facts && fiche.facts.Ressources === 'Pistes 1, 2 + arène laser', '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', JSON.stringify(fiche.facts));
-    ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser/.test(fiche.total), '[F] le total, le prix par joueur au centime, à encaisser', fiche.total);
+    // DEPUIS LA FICHE D UN COUP D OEIL (2026-10-26), « À encaisser » se lit une
+    // fois, sur la ligne d etat en haut de la fiche ; l addition garde le total
+    // et le prix par joueur.
+    ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser\s*258\s*€/.test(fiche.argent) && !/À encaisser|Payé/.test(fiche.addition), '[F] le total et le prix par joueur au centime dans l addition, « À encaisser 258 € » une fois, sur la ligne d etat', JSON.stringify({ total: fiche.total, argent: fiche.argent }));
     ok(fiche.etats.join('|') === 'Confirmé|Arrivé|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Arrivé, Payé · Carte, Payé · Espèces', fiche.etats.join('|'));
     ok(!/Plan automatique|Risque|Consigne:|Point marche/.test(fiche.corps), '[F] plus de « Plan automatique » ni de texte interne du moteur', (fiche.corps.match(/Plan automatique|Risque[^|]*|Consigne:[^|]*/) || [''])[0]);
     ok(!/Arrivé maintenant/.test(fiche.corps), '[F] un groupe déjà arrivé n a pas « Arrivé maintenant »', '');

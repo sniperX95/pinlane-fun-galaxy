@@ -290,6 +290,7 @@
     "test:planning-matrix": "node scripts/planning-matrix-check.js",
     "test:reservation-sheet": "node scripts/reservation-sheet-check.js",
     "test:fiche-gestes": "node scripts/fiche-gestes-check.js",
+    "test:fiche-simple": "node scripts/fiche-simple-check.js && node scripts/fiche-simple-check.js --contre-preuves",
     "test:planning-matrix:fast": "node scripts/planning-matrix-check.js --fast",
     "test:simulation-access": "node scripts/simulation-access-check.js",
     "test:reservations-ghost": "node scripts/reservations-ghost-cache-check.js",

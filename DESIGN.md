@@ -333,16 +333,16 @@ Geist demeure la police UI ; Geist Mono reste la police de données de la base. 
 - Titre de dossier : rôle console-title desktop, console-title-mobile sous 760px.
 - Sections d'édition : console-section ; libellés 12px/500.
 - Champs et boutons : texte dense 13px ; action à 600, champ sans renforcement artificiel.
-- Faits du header : valeur 14px/600, interligne 1.4 ; libellé et complément 12px.
+- Faits du header : une ligne de valeurs à 15px/500, séparées par un point médian ; leurs libellés ne se lisent qu’à la synthèse vocale (2026-10-26). Occasion et formule dessous, en texte 14px, pas en pastille.
 - Statut : 12px/600, casse naturelle, sans chasse décorative.
 
 **The Functional Label Rule.** Le label nomme une donnée ou une action. Le titre de section livré remplace l'ancien kicker décoratif ; ce dernier n'est pas un rôle à transmettre.
 
 ## Layout
 
-Le dossier a un maximum de 960px et un retrait viewport de 32px, padding horizontal 28px et vertical 24px. Le header expose identité et statut, puis Date, Horaires, Ressources et Groupe quand ces faits existent, avant les onglets. L'édition et les activités utilisent deux colonnes lorsque la place le permet. Les sections internes partagent la surface du dossier ; des filets séparent les groupes.
+Le dossier a un maximum de 960px et un retrait viewport de 32px, padding horizontal 28px et vertical 24px. Le header expose identité et statut, puis la ligne des faits (date, horaires, groupe, ressources, numéro) et l’occasion, avant les onglets. L'édition et les activités utilisent deux colonnes lorsque la place le permet. Les sections internes partagent la surface du dossier ; des filets séparent les groupes.
 
-Sous 760px, retrait viewport 16px, padding horizontal 16px et vertical 20px, titre mobile et sections/activités à une colonne. Les faits gardent deux colonnes et les options se replient sans tronquer le label. Le calendrier mobile garde des cellules de 68px minimum : nombre et unité sur deux lignes, métadonnées secondaires masquées.
+Sous 760px, retrait viewport 16px, padding horizontal 16px et vertical 20px, titre mobile et sections/activités à une colonne. La ligne des faits passe à la ligne et les options se replient sans tronquer le label. Le calendrier mobile garde des cellules de 68px minimum : nombre et unité sur deux lignes, métadonnées secondaires masquées.
 
 Le rythme partagé de 4px est conservé. Les valeurs locales 6/10/14/28px décrivent la composition livrée ; elles n'inventent pas une nouvelle échelle globale. Les règles publiques de layout et de motion restent celles du document incumbent.
 
@@ -383,6 +383,10 @@ Moins, valeur et plus dans un seul groupe de 46px, angle md. Colonnes 44px / min
 ### Navigation et dossier
 
 Navigation active sur subtle, texte et marqueur monochromes. Infos/Modifier ont des cibles de 44px ; l'actif est renforcé avec un filet 2px, sans capsule. Identité et statut précèdent les faits. La fermeture utilise un SVG explicite et une cible 44px.
+
+### Fiche réservation (2026-10-26)
+
+Une information, une place. L’en-tête porte l’identité : le nom et sa pastille de statut, la ligne des faits, l’occasion. La ligne d’état porte le moment, c’est-à-dire ce que la pastille ne dit pas (heure de fin, arrivée, minutes de retard, raison d’une demande à vérifier), et l’argent une seule fois (« À encaisser », « Encaissé ») ; le retard et la demande à vérifier colorent la phrase, « Appeler » à côté, sans bandeau. Le programme seul à gauche ; à droite les notes, le prix (une ligne sans total redit, plusieurs lignes avec leur total et le prix par joueur), le client (numéro et adresse sans libellé, une ligne pour ce qui manque). L’état d’une activité se lit en mot coloré, pas en pastille. Gate : `test:fiche-simple`.
 
 ## Do's and Don'ts
 

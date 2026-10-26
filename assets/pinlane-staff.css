@@ -21421,6 +21421,64 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-pli summary .fx-titre { margin: 
    l aurait decentre (13 px dessus, 25 px dessous). */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx > .fx-pli:not([open]) > summary { margin-bottom: 0; }
 
+/* LA FICHE D UN COUP D OEIL (2026-10-26, Movsar : « un truc bcp plus simple,
+   complet, super bien positionne », « tout est reparti partout avec des
+   repetitions »). Chaque information a UNE place : l identite en tete (le nom,
+   sa pastille, une ligne de faits, l occasion), le moment et l argent sur la
+   ligne d etat, le programme a gauche, les notes, le prix et le client a
+   droite. */
+
+/* Les faits sur une ligne, separes par un point median ; leur libelle ne se
+   lit plus qu a la synthese vocale. */
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-fact { display: inline; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-fact + .dossier-fact::before { content: "\0000a0\0000b7\000020"; color: var(--faint); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-numero strong { font-weight: 400; color: var(--muted); }
+/* L occasion et la formule, puis « À surveiller » : du texte, pas des pastilles. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquettes { gap: 2px 16px; margin: 2px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.5; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi { background: none; color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi b { font-weight: 650; }
+
+/* La ligne d etat : le moment a gauche, l argent a droite, puis les boutons. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-act .pos-act-head { align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-moment { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-moment.is-retard > span { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-moment.is-verifier > span { color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-act .pos-act-money { font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.4; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-act .pos-act-money b { font-weight: 650; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-moment-suite { margin: -4px 0 12px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+/* L addition : des lignes, un total quand il y en a plusieurs, le prix par
+   joueur dessous. Le paye ou l a encaisser vit sur la ligne d etat. */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 8px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-total > span { padding: 0; border-radius: 0; background: none; font-size: 14px; font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-total > b { font-size: 15px; font-weight: 650; line-height: 1.4; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-total > small { grid-column: 1 / -1; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-unit { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-bill-unit small { font-size: 13px; }
+
+/* Le client : le numero et l adresse se touchent ; ce qui manque, une ligne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact svg { flex: none; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact a { display: inline-flex; align-items: center; min-height: 36px; min-width: 0; overflow-wrap: anywhere; color: var(--accent-strong); font-weight: 600; text-decoration: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact a:hover { text-decoration: underline; text-underline-offset: 3px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client .fx-vide { margin: 0; font-size: 14px; }
+
+/* L etat d une activite se lit en mot colore, pas en pastille : la rangee du
+   moment porte deja le fond. « À leur rythme » redisait « Libre », ecrit dans
+   la colonne de l heure. */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none; font-size: 13px; font-weight: 600; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-lancer, .is-bientot) .gc-step-state { color: var(--accent-strong); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-encours, .is-fait) .gc-step-state { color: var(--success); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-attente, .is-aplacer, .is-noncoche) .gc-step-state { color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step.is-libre .gc-step-state { display: none; }
+/* L heure de fin d une activite a 12 px, comme tout texte de la console (elle
+   etait a 11). */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step-time small { font-size: 12px; }
+
 /* LE JOUR DU DOSSIER dans « Modifier » (2026-10-12) : le premier champ de la
    rangee de l heure ; ce que change un autre jour se dit sous la carte, sur
    toute sa largeur. */

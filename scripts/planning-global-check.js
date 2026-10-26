@@ -499,7 +499,13 @@ async function gestes(browser) {
 
     // [G2] la recherche, sans accents ; le filtre de statut
     const chercher = (q) => page.evaluate((q) => { applyStaffSearch(q, { immediate: true }); return Array.from(document.querySelectorAll('#globalPlanningGridWrap tr.gf-r .gf-nom__t')).map((n) => n.textContent).concat(Array.from(document.querySelectorAll('#globalPlanningGridWrap tr.gf-rien')).map((n) => '#rien ' + n.textContent.trim())); }, q);
+    // [L2] chercher ne change pas la hauteur de la feuille : la liste du
+    // dessous ne bouge pas (rush-status, 2026-10-26)
+    const hauteur = () => page.evaluate(() => ({ feuille: Math.round(document.querySelector('#globalPlanningGridWrap .gf-defile').getBoundingClientRect().height), liste: Math.round(document.getElementById('staffTableBox').getBoundingClientRect().top + window.scrollY) }));
+    const h0 = await hauteur();
     const noah = await chercher('noah');
+    const h1 = await hauteur();
+    ok(h1.feuille === h0.feuille && h1.liste === h0.liste, `[L2] ${label} : chercher ne change pas la hauteur de la feuille, la liste du dessous ne bouge pas`, { avant: h0, apres: h1 });
     const gerard = await chercher('gerard');
     const rien = await chercher('zzzz');
     await chercher('');
@@ -562,6 +568,7 @@ const MUTATIONS = [
   { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; min-width: 150px;', vers: '.gf-nom__t { display: block; min-width: 420px;' }] },
   { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette')], editions: [{ fichier: PGC, de: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: sticky;', vers: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: relative;' }] },
   { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 16;', vers: '  var GF_BAS = -400;' }] },
+  { nom: 'hauteur-des-lignes', lettre: 'L2', gestes: true, editions: [{ fichier: PG, de: '    if (defile.style.height !== valeur) defile.style.height = valeur;', vers: '    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;' }] },
   { nom: 'tableau-au-telephone', lettre: 'L3', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-r { display: grid;', vers: '  .gf-r { display: table-row;' }] },
   { nom: 'bandeau-cache', lettre: 'J1', scenarios: [S('ferme', 'ordinateur', { sansGroupe: true })], editions: [{ fichier: PG, de: '    bandeau.hidden = !texte;', vers: '    bandeau.hidden = true;' }] },
   { nom: 'detail-10px', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__d { font-size: 12px;', vers: '.gf-x__d { font-size: 10px;' }] },

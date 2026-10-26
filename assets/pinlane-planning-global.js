@@ -696,8 +696,10 @@
 
   // LA HAUTEUR : la feuille va jusqu au bas de l ecran et defile en elle-meme
   // (un panneau de liste se borne, il ne pousse pas la page : README Pinlane,
-  // 2026-08-13). Agrandie, elle prend l ecran. Au telephone, chaque ligne est
-  // une carte et la page defile.
+  // 2026-08-13). Une hauteur FIXE, pas un plafond : filtrer ou chercher ne la
+  // change pas, et la liste du dessous ne saute pas sous le doigt (rush-status,
+  // « Arrivé » sous un filtre qui revient a « Tout »). Agrandie, elle prend
+  // l ecran. Au telephone, chaque ligne est une carte et la page defile.
   var GF_BAS = 16;
   var GF_MIN = 320;
   function gfHauteur(wrap) {
@@ -714,7 +716,7 @@
       // (la boite commence sous la moitie de l ecran : elle prend un ecran)
       valeur = Math.max(GF_MIN, dispo < GF_MIN ? window.innerHeight - 24 : dispo) + 'px';
     }
-    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;
+    if (defile.style.height !== valeur) defile.style.height = valeur;
   }
 
   // L HEURE QU IL EST : la ligne de maintenant se pose sous la tete, avec deux

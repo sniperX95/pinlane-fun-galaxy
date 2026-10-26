@@ -127,7 +127,12 @@ function synchroniser(place) {
     }
   };
   parcourir('');
-  for (const nom of fs.readdirSync(place.tmp)) fs.rmSync(path.join(place.tmp, nom), { recursive: true, force: true, maxRetries: 2 });
+  // (un profil de navigateur encore tenu par un processus qui s eteint reste
+  // la : l unite suivante en cree un autre. Le 2026-10-26, un EPERM ici a tue
+  // la suite entiere a 4 unites sur 400.)
+  for (const nom of fs.readdirSync(place.tmp)) {
+    try { fs.rmSync(path.join(place.tmp, nom), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch (error) { /* tenu */ }
+  }
   fs.writeFileSync(place.manifesteFichier, JSON.stringify(place.manifeste));
   return copies;
 }

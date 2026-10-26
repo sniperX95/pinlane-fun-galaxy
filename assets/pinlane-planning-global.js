@@ -1,35 +1,56 @@
-// LE PLANNING GLOBAL (2026-10-12, v3 le 2026-10-20) : toutes les activites du
-// jour dans la grille d heures du planning bowling, une colonne par activite.
+// LE PLANNING GLOBAL : LA FEUILLE DU JOUR (2026-10-26, v4). La grille des
+// heures v3 (2026-10-20, une colonne par activite, les heures a gauche) est
+// partie avec son moteur.
 //
-// Ce que Movsar a demande et tranche, dans l ordre :
-//   - « comme le planning bowling mais adapte pour toute activite », « tout
-//     visible par heure, quelle activite, quel groupe », « tout voir d un
-//     coup », « les noms complets », « qui est qui » ;
-//   - les heures A GAUCHE, de haut en bas ;
-//   - la couleur d une carte est celle de l ETAT du groupe (bleu confirme,
-//     ambre arrive, vert paye), jamais une couleur par activite ;
-//   - toute la journee d ouverture d un coup, sans monter ni descendre, a
-//     toute taille d ecran (2026-10-20), sans bulle qui cache la grille ;
-//   - (le samedi charge, 46 groupes, 2026-10-20) « regle-moi tout ca » : le
-//     bowling en pistes lisibles, la place a qui en a besoin, la plaine
-//     nommee, des noms jamais coupes, le panneau sans debordement.
+// Movsar, 26/10, apres une semaine de v3 : « c'est pas tres lisible one shot.
+// Il faut que, des qu'on regarde, on sache qui c'est et quelle activite il a
+// direct » ; « on est plus lent avec la version qu'on a faite electroniquement
+// que leur version papier » ; « t'as tout dans le truc de secours, c'est
+// exactement celui-la qu'ils ont au centre, un truc comme ca, mais beaucoup
+// plus ameliore, avec tous les details ». Puis : « savoir directement, sur une
+// ligne quasi, le nom de la reza, a quelle heure ils doivent venir, combien de
+// joueurs ils sont, a quelle heure ils jouent leurs activites [...] toutes les
+// formules et tout ce qu'ils ont ».
 //
-// Le dessin est un plan pur (assets/pinlane-planning-moteur.js) : ce module
-// lit la journee dans la console (gpModele), mesure les textes sur un canvas,
-// lit la place disponible, demande le plan au moteur et l ecrit d un coup.
-// La minute qui passe n ecrit que l etat des cartes (ghTic), avec les memes
-// fonctions que le rendu. Survoler une carte allume son groupe ; la toucher
-// ouvre son panneau, a cote de la grille ; la toucher encore ouvre la fiche.
-// Une case vide du bowling ou du laser ouvre la reservation rapide a son heure
-// (et sur sa piste au bowling).
+// LE PAPIER, EN MIEUX. La feuille du centre (lib/feuille-secours.js) met UNE
+// LIGNE PAR GROUPE, rangee dans la demi-heure de sa reservation, et une
+// colonne par activite : le nom et tout le programme se lisent d un coup.
+// C est ce qui la rendait plus rapide que la grille des heures, ou un groupe
+// etait eparpille dans neuf colonnes a neuf hauteurs et ne se lisait qu en
+// ouvrant son panneau. La feuille garde ce cadre, les colonnes du papier dans
+// son ordre, et ecrit la ou le papier met une croix L HEURE de l activite et
+// ce qu il faut pour la servir :
+//   Heure | Groupe | Formule | Pers. | Bowling | Duckpin | Laser | Fun Run |
+//   Arcades | Minigolf | O'Clock | Plaine | Billard | État
+//   14:00 | Anniversaire Noah (10 ans) | F4 | 10 | 14:00 P1-2 | | 16:00 16:30 |...
+// L heure de la ligne est CELLE DE LA RESERVATION, comme sur le papier. Les
+// 10 min d avance demandees au client ne sont qu un conseil (Movsar, 26/10 :
+// « c un conseil on doit pas en faire un truc obligé ») : la feuille ne les
+// affiche pas.
+// Ce que le papier ne sait pas faire :
+//   - l heure exacte de la reservation dans sa demi-heure (14:10 dans le bloc
+//     de 14:00) ;
+//   - l heure de chaque activite, les pistes, les parties, les enfants de la
+//     plaine ; « ≈ » quand l activite n a pas d heure fixe (son heure probable,
+//     la regle du moteur, getVisiteLibreApres) ;
+//   - la journee rangee par demi-heure (Movsar : « met tout par 30 minute ») :
+//     un filet franc a chaque bloc, une bande un bloc sur deux ;
+//   - la couleur du STATUT (bleu confirme, ambre arrive, vert paye), la regle
+//     des trois plannings, jamais une couleur par activite ; l activite en
+//     cours pleine, finie grise, a lancer cerclee : on voit ou en est chaque
+//     groupe ;
+//   - la barre de l heure qu il est, et la feuille qui s ouvre dessus ;
+//   - retard, a valider, a cloturer, pas venu, ecrits sur la ligne ;
+//   - « Arrivé » d un geste sur la ligne (le toast « Annuler » suit) ; un clic
+//     ailleurs sur la ligne ouvre la fiche.
+// Au telephone, chaque ligne devient une carte : les memes faits, l activite
+// nommee devant ses heures.
 //
-// La console l appelle depuis renderGlobalPlanningSurface (app-main.js),
-// sous l onglet « Planning global ». Le module n ecrit rien : seul « Arrivé »,
-// dans le panneau, passe par setReservationStatusDirect, comme la vue Terrain.
+// La console l appelle depuis renderGlobalPlanningSurface (app-main.js), a
+// chaque rendu et a chaque minute : le HTML se compare a celui du dernier rendu
+// et ne s ecrit que s il a change (le defilement et le focus restent).
 (function () {
   'use strict';
-
-  var MOTEUR = window.PinlanePlanningMoteur;
 
   // LES COLONNES, DANS L ORDRE DU PAPIER (lib/feuille-secours.js, COLONNES) :
   // l equipe retrouve sa feuille. Chaque activite que le centre propose a la
@@ -37,19 +58,19 @@
   // n en a pas (Movsar : « pas besoin de goûter »), les boissons non plus.
   var GP_COLONNES = [
     { cle: 'bowling', titre: 'Bowling', activites: ['bowling'], nature: 'bowling' },
-    { cle: 'duckpin', titre: 'Duckpin', activites: ['duckpin_bowling'], nature: 'agenda', unite: 'duckpin_bowling' },
+    { cle: 'duckpin', titre: 'Duckpin', activites: ['duckpin_bowling'], nature: 'agenda' },
     { cle: 'laser', titre: 'Laser', activites: ['laser_game'], nature: 'laser' },
-    { cle: 'funrun', titre: 'Fun Run', activites: ['fun_run'], nature: 'agenda', unite: 'fun_run' },
+    { cle: 'funrun', titre: 'Fun Run', activites: ['fun_run'], nature: 'agenda' },
     { cle: 'arcades', titre: 'Arcades', activites: ['arcade_time', 'arcade_credit'], nature: 'arcades' },
     { cle: 'minigolf', titre: 'Minigolf', activites: ['minigolf_blacklight'], nature: 'agenda' },
     { cle: 'oclock', titre: 'O’Clock', activites: ['golf_oclock'], nature: 'agenda' },
-    // (la plaine se vit a la journee : chaque groupe y est une presence nommee)
+    // (la plaine se vit a la journee : le nombre d enfants compte)
     { cle: 'plaine', titre: 'Plaine', activites: ['playground'], nature: 'plaine' },
-    { cle: 'billard', titre: 'Billard', activites: ['billards'], nature: 'agenda', unite: 'billards' },
+    { cle: 'billard', titre: 'Billard', activites: ['billards'], nature: 'agenda' },
   ];
   var GP_SANS_COLONNE = { party_table: true };
   // Ce qui se sert au comptoir ne prend pas de temps de visite : les boissons
-  // vont aux infos, les credits d arcade au compteur de la colonne Arcades.
+  // vont aux infos, les credits d arcade a la colonne Arcades.
   var GP_SERVI = { service_drinks: true };
   var GP_SANS_DUREE = { service_drinks: true, arcade_credit: true };
   function gpTeinte(r) {
@@ -98,7 +119,7 @@
     return m ? Number(m[1]) + Number(m[2]) / 60 : null;
   }
   // « FORMULE 4 » se lit « F4 » (le mot du comptoir), « KIDS FUN DAY » « Kids
-  // Fun Day ». Le nom entier reste dans le panneau.
+  // Fun Day ». Le nom entier reste dans la bulle de la case.
   function gpFormule(r) {
     if (!r.formuleId && r.type !== 'formule') return null;
     var f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
@@ -114,7 +135,7 @@
     var parEnfant = /par\s+enfant/i.test(String(label || ''));
     return { n: n, parEnfant: parEnfant, total: parEnfant ? n * Math.max(1, Number(enfants) || 1) : n };
   }
-  // « 2 cruches boissons » se lit « 2 cruches » : la colonne dit deja ce que c est.
+  // « 2 cruches boissons » se lit « 2 cruches » : on sait ce que c est.
   function gpServi(label) { return String(label || '').replace(/^(\d+\s+cruches?)\s+boissons?$/i, '$1'); }
   // Les extras achetes, comptes : deux « Cruche Bière » font « 2 × Cruche Bière ».
   function gpExtras(r) {
@@ -230,11 +251,17 @@
     return c.activites.some(function (id) { return Boolean(gpCatalogue(id)) && (!coches.length || coches.indexOf(id) >= 0); });
   }
 
+  // L HEURE DE LA LIGNE : celle de la reservation (startTime, l heure que le
+  // client a reservee, celle du papier), jamais l accueil conseille 10 min
+  // avant (opsPlan.arrivalTime). Sans heure, le debut de sa premiere activite.
+  function gpHeureReservee(r, span) {
+    var d = gpMinutesDe(r.startTime);
+    return d == null ? span.start : d;
+  }
+
   // ---- LA JOURNEE EN LIGNES ---------------------------------------------------
-  // Toute la journee, filtre ou pas : les colonnes, les voies et les largeurs
-  // se calculent sur la journee entiere (la grille ne bouge pas quand on
-  // filtre) ; le filtre d etat de la barre des plannings retire des cartes du
-  // dessin, la recherche en eteint.
+  // Une ligne par groupe, dans l ordre des heures de reservation ; ses
+  // activites rangees par colonne, chacune avec son heure.
   function gpModele() {
     var jour = state.currentDate;
     var tout = todaysReservations();
@@ -261,12 +288,11 @@
     }
     var groupes = tout.map(function (r) {
       var mo = moments.get(String(r.id)) || {};
-      var debut = gpMinutesDe(r.startTime);
       var span = getStaffTerrainSpan(r);
-      return { r: r, id: String(r.id), etat: mo.etat || 'upcoming', retard: Boolean(mo.late), teinte: gpTeinte(r), span: span, debut: debut == null ? span.start : debut, prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [] };
+      return { r: r, id: String(r.id), etat: mo.etat || 'upcoming', retard: Boolean(mo.late), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [] };
     });
-    // L ORDRE DU PAPIER : l heure d arrivee, puis le nom.
-    groupes.sort(function (a, b) { return a.debut - b.debut || String(a.r.name || '').localeCompare(String(b.r.name || ''), 'fr'); });
+    // L ORDRE DU PAPIER : l heure de la reservation, puis le nom.
+    groupes.sort(function (a, b) { return a.heure - b.heure || String(a.r.name || '').localeCompare(String(b.r.name || ''), 'fr'); });
     groupes.forEach(function (g) {
       var r = g.r;
       var poser = function (id, e) {
@@ -294,7 +320,7 @@
       g.prog.filter(function (e) { return e.aPlacer; }).forEach(function () { poser('laser_game', { aPlacer: true }); });
       // Les activites a heure d une formule (hors bowling, laser, table). Ses
       // credits d arcade restent un compteur, meme quand la formule leur donne
-      // une heure : jamais un bloc horaire (spec v3, 8).
+      // une heure.
       getStaffFormulaTimedItems(r).forEach(function (it) {
         if (it.activityId === 'bowling' || it.activityId === 'laser_game') return;
         if (GP_SERVI[it.activityId]) { g.infos.push(gpServi(it.label || gpNomActivite(it.activityId))); return; }
@@ -311,7 +337,6 @@
       });
       g.infos = g.infos.concat(gpExtras(r));
       g.formule = gpFormule(r);
-      g.note = String(r.notes || '').replace(/^\s*\[[eé]quipe\]\s*/gim, '').replace(/\s+/g, ' ').trim();
       // Une activite cochee « faite » (le suivi des formules) le dit dans sa case.
       g.prog.filter(function (e) { return e.fait; }).forEach(function (e) {
         if (GP_SANS_COLONNE[e.activityId]) return;
@@ -338,901 +363,424 @@
     };
   }
 
-  // LES SEANCES : chaque activite d un groupe qui a une heure (vraie, ou
-  // probable quand elle n a pas d heure fixe), dans la colonne de son
-  // activite. Les credits d arcade et le laser encore a placer n en ont pas.
-  function ghSeances(m) {
-    var seances = [];
-    m.groupes.forEach(function (g) {
-      g.cases.forEach(function (liste, cle) {
-        liste.forEach(function (e, i) {
-          if (e.credit || e.aPlacer) return;
-          var debut = e.journee ? g.span.start : e.start;
-          var fin = e.journee ? g.span.end : e.end;
-          if (debut == null || !(fin > debut)) return;
-          seances.push({ g: g, e: e, cle: cle, start: debut, end: fin, id: g.id + '|' + cle + '|' + i });
-        });
-      });
-    });
-    return seances;
+  // ---- L ETAT D UNE ACTIVITE, A L HEURE QU IL EST ----------------------------
+  // Le groupe est la : pointe arrive, paye, ou une activite deja cochee.
+  function gfPresent(g) {
+    var r = g.r;
+    return r.status === 'arrived' || r.status === 'paid' || (typeof groupeAJoue === 'function' && groupeAJoue(r));
   }
-
-  // L ETAT D UNE SEANCE A L HEURE QU IL EST (le panneau ; la grille lit le
-  // meme etat au moteur).
-  function ghEtat(s, m) {
-    var g = s.g, e = s.e;
+  // fini (l heure est passee, l activite est cochee, le groupe est parti),
+  // en cours, a lancer (le groupe est la, son heure arrive dans les 5 min),
+  // en retard (l heure est la, le groupe n est pas pointe), a venir. Une
+  // activite sans heure fixe n est jamais « en cours » : le groupe la joue a
+  // son rythme ; une partie de laser sans heure est « à placer ».
+  var GF_LANCER = 5 / 60;
+  function gfEtat(g, e, m) {
+    if (e.aPlacer) return 'aplacer';
     if (m.passe || g.parti || g.etat === 'closing' || e.fait) return 'fini';
-    if (m.maintenant == null) return 'avenir';
-    if (s.end <= m.maintenant + 1e-6) return 'fini';
-    if (g.retard && s.start <= m.maintenant + 1e-6) return 'retard';
-    if (e.libre) return 'avenir';
-    if (s.start <= m.maintenant + 1e-6) return 'encours';
+    if (e.credit) return 'avenir';
+    var debut = e.journee ? g.span.start : e.start;
+    var fin = e.journee ? g.span.end : e.end;
+    if (m.maintenant == null || debut == null) return 'avenir';
+    if (fin <= m.maintenant + 1e-6) return 'fini';
+    var present = gfPresent(g);
+    if (debut <= m.maintenant + 1e-6) {
+      if (!present) return g.retard ? 'retard' : 'avenir';
+      return e.libre && !e.journee ? 'avenir' : 'encours';
+    }
+    if (present && !e.libre && debut - m.maintenant <= GF_LANCER + 1e-6) return 'lancer';
     return 'avenir';
   }
-  var GH_ETATS_COURTS = { fini: 'fini', encours: 'en cours', avenir: 'à venir', retard: 'en retard' };
-  var GH_STATUTS = { conf: 'Confirmé', arr: 'Arrivé', paid: 'Payé', absent: 'Pas venu' };
-  function ghMinutesDeRetard(debut, maintenant) { return Math.max(1, Math.round((maintenant - debut) * 60)); }
+  var GF_ETATS = { fini: 'fini', encours: 'en cours', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer', aplacer: 'à placer' };
+  function gfMinutesDeRetard(g, m) { return Math.max(1, Math.round((m.maintenant - g.span.start) * 60)); }
+  // « +40 min », puis « +2h10 » : le retard tient sous l heure.
+  function gfRetardCourt(n) { return n < 60 ? '+' + n + ' min' : '+' + Math.floor(n / 60) + 'h' + String(n % 60).padStart(2, '0'); }
 
-  // LA PLAGE DE LA JOURNEE : de l ouverture a la fermeture du centre, toujours
-  // (2026-10-19, Movsar : « toutes les heures ... visibles même quand il n'y a
-  // rien »). Un jour ferme garde la grille de getPlanningWindow (10 h - 22 h).
-  // Une seance hors des heures et l heure qu il est l elargissent.
-  function ghPlage(m, seances) {
-    var fenetre = m.fenetre || { open: 10, close: 22 };
-    var ouvre = Number(fenetre.open), ferme = Number(fenetre.close);
-    if (!Number.isFinite(ouvre)) ouvre = 10;
-    if (!Number.isFinite(ferme) || ferme <= ouvre) ferme = ouvre + 12;
-    var de = ouvre, a = ferme;
-    seances.forEach(function (s) { de = Math.min(de, s.start); a = Math.max(a, Math.max(s.end, s.start + 0.5)); });
-    if (m.maintenant != null && m.maintenant >= de - 1 && m.maintenant <= a + 1) { de = Math.min(de, m.maintenant); a = Math.max(a, m.maintenant); }
-    var debut = Math.floor(de * 2 + 1e-6) / 2;
-    var fin = Math.max(debut + 0.5, Math.ceil(a * 2 - 1e-6) / 2);
-    return { debut: debut, fin: fin, ouvre: ouvre, ferme: ferme };
+  // ---- LES CASES ---------------------------------------------------------------
+  // « 30 min », « 1h », « 1h30 » : l ecriture du papier.
+  function gfDuree(minutes) {
+    var m = Math.round(Number(minutes) || 0);
+    if (m <= 0) return '';
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), reste = m % 60;
+    return reste ? h + 'h' + String(reste).padStart(2, '0') : h + 'h';
   }
-
-  // LES CASES VIDES QUI RESERVENT : le bowling et le laser, par les chemins de
-  // leurs plannings (quickFromCell, lpReserver). Un jour ferme, rien.
-  var GH_RESERVE = { bowling: 'bowling', laser: 'laser' };
-  function ghPeutReserver(m, cle) {
-    if (!GH_RESERVE[cle] || (m.fenetre && m.fenetre.closed)) return false;
-    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.quick')) return false;
-    return cle === 'bowling' ? typeof quickFromCell === 'function' : typeof lpReserver === 'function';
-  }
-
+  var GF_UNITES = { billards: ['table', 'tables'], duckpin_bowling: ['piste', 'pistes'] };
+  function gfPluriel(n, mots) { return n + ' ' + (n > 1 ? mots[1] : mots[0]); }
   // Les icones qui manquent a la console (duckpin, billard, Fun Run) : une
   // quille, une bille, un eclair ; les autres sont celles de la console.
-  var GH_ICONES = {
+  var GF_ICONES = {
     duckpin_bowling: '<path d="M12 2.8c1.5 0 2.3 1.3 2.3 2.8 0 1.2-.6 1.9-.8 2.8.6 1.5 2.1 3.5 2.1 6.1 0 3.4-1.6 6.7-3.6 6.7s-3.6-3.3-3.6-6.7c0-2.6 1.5-4.6 2.1-6.1-.2-.9-.8-1.6-.8-2.8 0-1.5.8-2.8 2.3-2.8z"/><path d="M9.9 9.6h4.2"/>',
     billards: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10.2" r="3.4"/>',
     fun_run: '<path d="M13.5 2.8L5.5 13.2h6l-1.3 8 8.3-10.6h-6.1l1.1-7.8z"/>',
   };
-  function ghIcone(id) {
-    var chemins = GH_ICONES[id];
-    if (!chemins) return renderActivityIcon(id);
+  function gfIcone(id) {
+    var chemins = GF_ICONES[id];
+    if (!chemins) return typeof renderActivityIcon === 'function' ? renderActivityIcon(id) : '';
     return '<svg class="activity-check-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + chemins + '</svg>';
   }
+  var GF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var GF_FAIT = '<svg class="gf-x__ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var GF_ICONE_ARRIVE = GF_SVG + '<path d="M3 12h10"/><path d="M9 8l4 4-4 4"/><path d="M17 4v16"/></svg>';
+  var GF_ICONE_NOTE = '<svg class="gf-nom__picto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/></svg>';
 
-  // ---- L ENTREE DU MOTEUR -------------------------------------------------------
-  // Des donnees simples : la journee, ses colonnes, ses groupes, ses seances,
-  // les ressources du centre AFFICHE (les sources du planning bowling :
-  // getAvailabilityLaneCount, getAvailabilityLaserCapacity, laneStatuses,
-  // installationsActivite), l ecran. Les armes d une partie : ce que le serveur
-  // compte (getLaserSessionArenaPlayers), reservations en ligne en cours comprises.
-  function ghCentre() {
-    return (typeof getAvailabilitySessionCenter === 'function' && getAvailabilitySessionCenter()) || (typeof getCenterScheduleConfig === 'function' && getCenterScheduleConfig()) || null;
+  // UNE ACTIVITE DANS SA CASE : son heure d abord (la croix du papier), puis
+  // ce qu il faut pour la servir. Bowling : les pistes, et la duree si elle
+  // n est pas d une heure (« XX (1h30) » sur le papier). Laser : une heure par
+  // partie. Plaine : les enfants. Billard et duckpin : les tables ou pistes
+  // quand il y en a plusieurs. Arcades d une formule : les credits.
+  function gfActivite(g, e, col, m) {
+    var r = g.r;
+    var etat = gfEtat(g, e, m);
+    var t = '', d = '', bulle = '';
+    if (e.aPlacer) {
+      t = 'à placer';
+      bulle = 'Laser : une partie encore sans heure, à placer au planning laser';
+    } else if (e.credit) {
+      var cr = e.credits || { n: 0, total: 0, parEnfant: false };
+      t = cr.parEnfant ? cr.n + ' cr./enf.' : cr.total + ' cr.';
+      bulle = 'Arcades : ' + (cr.parEnfant ? cr.n + ' crédits par enfant, ' + cr.total + ' en tout' : cr.total + ' crédits');
+    } else {
+      var debut = e.journee ? g.span.start : e.start;
+      var fin = e.journee ? g.span.end : e.end;
+      var minutes = Math.round((fin - debut) * 60);
+      // (la plaine qui commence a l heure de la ligne ne la redit pas : la
+      // case dit les enfants)
+      var desLeDebut = col.nature === 'plaine' && (e.journee || Math.abs(debut - g.heure) <= 0.25 + 1e-6);
+      t = desLeDebut ? '' : (e.libre ? '≈ ' : '') + gpHeure(debut);
+      if (col.nature === 'bowling') {
+        var n = e.pistes ? e.pistes.length : 0;
+        d = n ? 'P' + gpPistes(e.pistes) : 'pistes ?';
+        if (minutes !== 60) d += ' ' + gfDuree(minutes);
+        bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
+      } else if (col.nature === 'laser') {
+        var armes = Number(e.joueurs) || 0;
+        if (armes && armes !== Number(r.pax)) d = armes + ' armes';
+        bulle = 'Laser à ' + gpHeure(debut) + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
+      } else if (col.nature === 'plaine') {
+        var enfants = Number(e.enfants) || Number(r.pax) || 0;
+        if (desLeDebut) t = enfants + ' enf.'; else d = enfants + ' enf.';
+        bulle = 'Plaine ' + (e.journee ? 'dès ' + gpHeure(debut) + ', toute la visite' : 'de ' + gpHeure(debut) + ' à ' + gpHeure(fin)) + ' · ' + enfants + (enfants > 1 ? ' enfants' : ' enfant');
+      } else {
+        var mots = GF_UNITES[e.activityId];
+        if (e.unites > 1) d = mots ? gfPluriel(e.unites, mots) : '×' + e.unites;
+        bulle = gpTitreActivite(e.activityId) + (e.libre ? ' vers ' + gpHeure(debut) + ', sans heure fixe' : ' à ' + gpHeure(debut)) + (minutes > 0 ? ' · ' + gfDuree(minutes) : '') + (d ? ' · ' + d : '');
+      }
+    }
+    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '');
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"><span class="gf-x__t">' + (etat === 'fini' ? GF_FAIT : '') + '<b>' + gpEsc(t) + '</b></span>' + (d ? '<span class="gf-x__d">' + gpEsc(d) + '</span>' : '') + '</span>';
   }
-  function ghUnites(id) {
-    if (!id || typeof installationsActivite !== 'function') return null;
-    var inst = installationsActivite(gpCatalogue(id), ghCentre());
-    return inst && inst.units > 0 ? { total: inst.units, mot: inst.mot === 'session' ? 'session' : inst.mot } : null;
-  }
-  function ghLaserFenetres(liste, enLigne) {
-    var out = [];
-    liste.forEach(function (r) {
-      getLaserWindowsFromReservation(r).forEach(function (w) { out.push({ start: Number(w.start), end: Number(w.end), players: Math.max(0, Number(w.players || r.pax || 0)), enLigne: enLigne }); });
-    });
-    return out;
-  }
-  function ghEntree(m, seances, lu) {
-    var plage = ghPlage(m, seances);
-    var tout = m.groupes.map(function (g) { return g.r; });
-    var blocages = typeof getBlocagesEnLigne === 'function' ? getBlocagesEnLigne(m.jour) : [];
-    var fenetresLaser = ghLaserFenetres(tout, false).concat(ghLaserFenetres(blocages, true));
-    var arene = function (debut, fin) {
-      var session = { start: debut, end: fin, players: 0 };
-      return typeof getLaserSessionArenaPlayers === 'function' ? getLaserSessionArenaPlayers(session, fenetresLaser) : fenetresLaser.filter(function (o) { return o.start < fin && o.end > debut; }).reduce(function (a, o) { return a + o.players; }, 0);
-    };
-    var colonnes = m.colonnes.map(function (c) {
-      var credits = 0;
-      if (c.cle === 'arcades') m.groupes.forEach(function (g) { g.credits.forEach(function (cr) { credits += cr.total; }); });
-      return { cle: c.cle, titre: c.titre, nature: c.nature || 'agenda', icone: ghIcone(c.activites[0]), inconnue: Boolean(c.inconnue), unites: ghUnites(c.unite), credits: credits, reserve: ghPeutReserver(m, c.cle) };
-    });
-    var compteMinute = new Map();
-    var sortie = seances.map(function (s) {
-      var e = s.e;
-      var minute = s.g.id + '|' + s.cle + '|' + Math.round(s.start * 60);
-      var n = compteMinute.get(minute) || 0;
-      compteMinute.set(minute, n + 1);
-      var x = { id: s.id, groupe: s.g.id, colonne: s.cle, debut: s.start, fin: s.end, libre: Boolean(e.libre), journee: Boolean(e.journee), fait: Boolean(e.fait), activite: e.activityId, n: n };
-      if (e.pistes) x.pistes = e.pistes.slice();
-      if (s.cle === 'bowling' || s.cle === 'laser') x.joueurs = Number(e.joueurs) || Number(s.g.r.pax) || 0;
-      if (s.cle === 'laser') { x.arene = arene(s.start, s.end); x.partie = e.partie || 1; x.parties = e.parties || 1; }
-      if (s.cle === 'plaine') x.enfants = Number(e.enfants) || Number(s.g.r.pax) || 0;
-      if (e.unites > 1) x.unites = e.unites;
-      return x;
-    });
-    var groupes = m.groupes.map(function (g) {
-      var r = g.r;
-      var premiere = seances.filter(function (s) { return s.g === g; }).reduce(function (a, s) { return Math.min(a, s.start); }, Infinity);
-      var infos = [];
-      g.credits.forEach(function (cr) { if (cr.n) infos.push(cr.n + ' cr.'); });
-      return {
-        id: g.id, nom: String(r.name || 'Client'), statut: g.teinte, personnes: Number(r.pax) || 0, etat: g.etat, retard: g.retard, depuis: g.span.start,
-        absent: g.teinte === 'absent', parti: g.parti, valider: typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r),
-        aPlacer: (g.cases.get('laser') || []).some(function (e) { return e.aPlacer; }),
-        formule: g.formule ? g.formule.court : '', infos: infos.concat(g.infos).filter(Boolean),
-        heure: Number.isFinite(premiere) ? gpHeure(premiere) : '', debut: g.debut,
-      };
-    });
-    var R = {
-      pistes: {
-        N: typeof getAvailabilityLaneCount === 'function' ? getAvailabilityLaneCount() : 8,
-        maintenance: Object.keys(state.laneStatuses || {}).filter(function (k) { return state.laneStatuses[k] === 'maintenance'; }).map(Number),
-        paires: typeof getAvailabilityLanePairs === 'function' ? getAvailabilityLanePairs() : [],
-        blocages: [],
-      },
-      laser: { capacite: typeof getAvailabilityLaserCapacity === 'function' ? getAvailabilityLaserCapacity() : 30, enLigne: [] },
-    };
-    blocages.forEach(function (b) {
-      var texte = typeof texteBlocageEnLigne === 'function' ? texteBlocageEnLigne(b) : 'Réservation en ligne en cours.';
-      var libre = typeof heureLiberationBlocage === 'function' ? heureLiberationBlocage(b) : '';
-      getBowlingWindowsFromReservation(b).forEach(function (w) { (w.lanes || []).forEach(function (p) { R.pistes.blocages.push({ piste: Number(p), debut: Number(w.start), fin: Number(w.end), texte: texte, libre: libre }); }); });
-      getLaserWindowsFromReservation(b).forEach(function (w) { R.laser.enLigne.push({ debut: Number(w.start), fin: Number(w.end), joueurs: Math.max(0, Number(w.players || b.pax || 0)), arene: arene(Number(w.start), Number(w.end)) }); });
-    });
-    var entree = {
-      jour: m.jour, aujourdhui: m.aujourdHui, passe: m.passe, maintenant: m.maintenant,
-      plage: { debut: plage.debut, fin: plage.fin },
-      fenetre: { open: plage.ouvre, close: plage.ferme, closed: Boolean(m.fenetre && m.fenetre.closed) },
-      colonnes: colonnes, groupes: groupes, seances: sortie, ressources: R,
-      visibles: m.visibles ? Array.from(m.visibles) : null,
-    };
-    entree.signature = ghSignature(entree);
-    entree.ecran = lu ? ghEcran(lu, entree) : null;
-    entree.mesure = ghMesure;
-    return entree;
-  }
-  // LA SIGNATURE DES DONNEES : ce qui fait la geometrie (jamais l heure ni le
-  // moment des groupes, qui ne changent que l etat des cartes).
-  function ghSignature(e) {
-    var groupes = e.groupes.map(function (g) { return [g.id, g.nom, g.statut, g.personnes, g.absent || g.etat === 'absent', g.valider, g.aPlacer, g.formule, g.infos, g.heure, g.debut]; });
-    return ghHacher(JSON.stringify([e.jour, e.aujourdhui, e.passe, e.plage, e.fenetre, e.colonnes, groupes, e.seances, e.ressources]));
-  }
-  function ghHacher(s) {
-    var h = 2166136261;
-    for (var i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36) + '.' + s.length.toString(36);
+  function gfCase(g, col, m) {
+    var liste = g.cases.get(col.cle) || [];
+    if (!liste.length) return '<td class="gf-a is-vide"></td>';
+    // (deux parties de laser tiennent cote a cote ; la troisieme passe dessous)
+    return '<td class="gf-a" data-gf-titre="' + gpEsc(col.titre) + '"><span class="gf-a__in' + (liste.length === 2 ? ' is-deux' : '') + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</span></td>';
   }
 
-  // ---- LA MESURE DES TEXTES : un canvas, la police calculee de la grille ------
-  var ghCache = { mesures: new Map() };
-  var ghCtx = null;
-  var ghPoliceCourante = '';
-  var ghFamille = '';
-  function ghMesure(police, texte) {
-    if (!ghCtx) ghCtx = document.createElement('canvas').getContext('2d');
-    var f = police + ' ' + (ghFamille || 'Geist, system-ui, sans-serif');
-    if (f !== ghPoliceCourante) { ghCtx.font = f; ghPoliceCourante = f; }
-    return ghCtx.measureText(String(texte)).width;
+  // LE GROUPE : son nom entier (jamais coupe), puis ce qui change la facon de
+  // le servir : ce qu il a pris en plus (cruches, extras) et ses notes.
+  function gfNotes(r) {
+    var parts = [];
+    var mot = typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '';
+    if (mot) parts.push(mot);
+    if (typeof getReservationNotesEquipe === 'function') getReservationNotesEquipe(r).forEach(function (n) { if (n && n.t) parts.push(n.t); });
+    var client = window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '';
+    if (client) parts.push(client);
+    return parts.join(' · ').replace(/\s+/g, ' ').trim();
   }
-  var ghM = null;
-  function ghMesureur() { if (!ghM) ghM = MOTEUR.mesureur(ghMesure, ghCache.mesures); return ghM; }
-  function ghViderMesures() { ghCache.mesures.clear(); ghCache.besoins = null; ghCache.cleBesoins = null; ghM = null; }
-
-  // ---- LA LECTURE DE LA PAGE : la place, une fois par rendu (au plus 8
-  // lectures de geometrie). La boite se mesure, la liste vit dessous et la
-  // page, elle, defile.
-  var GH = { tete: 32, bas: 14, basPlein: 10, bandeau: 32, heureEcran: 20 };
-  var ghBarreLargeur = null;
-  function ghLire(wrap) {
-    var boite = wrap.closest('.planning-box') || wrap;
-    var plein = boite.classList.contains('expanded');
-    var r = wrap.getBoundingClientRect();
-    var haut = plein ? 0 : boite.getBoundingClientRect().top;
-    if (!ghFamille) ghFamille = getComputedStyle(wrap).fontFamily || 'Geist, system-ui, sans-serif';
-    var fenetre = window.innerWidth;
-    var toucher = Boolean(window.matchMedia && window.matchMedia('(hover: none)').matches);
-    if (ghBarreLargeur == null) ghBarreLargeur = toucher ? 0 : Math.max(0, window.innerWidth - document.documentElement.clientWidth);
-    return { W: Math.floor(r.width), top: r.top, boiteTop: haut, plein: plein, fenetre: fenetre, hauteur: window.innerHeight, scrollY: plein ? 0 : window.scrollY, toucher: toucher, boite: boite };
+  // En retard, son numero passe devant : c est le moment de l appeler.
+  function gfGroupe(g, m) {
+    var r = g.r;
+    var infos = g.infos.filter(Boolean);
+    var note = gfNotes(r);
+    var sous = '';
+    var tel = String(r.phone || '').trim();
+    if (g.retard && m.maintenant != null && tel) sous += '<a class="gf-nom__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
+    if (infos.length) sous += '<span class="gf-nom__info">' + gpEsc(infos.join(' · ')) + '</span>';
+    if (note) sous += '<span class="gf-nom__note">' + GF_ICONE_NOTE + gpEsc(note) + '</span>';
+    // (au telephone, les colonnes Formule et Pers. passent sous le nom)
+    var pax = Number(r.pax) || 0;
+    var meta = [pax + ' pers.'].concat(g.formule ? [g.formule.long] : r.type === 'custom' || r.surMesure === true ? ['Sur mesure'] : []).join(' · ');
+    return '<td class="gf-nom"><span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>'
+      + (sous ? '<span class="gf-nom__sous" title="' + gpEsc(infos.concat(note ? [note] : []).join(' · ')) + '">' + sous + '</span>' : '')
+      + '<span class="gf-nom__meta" aria-hidden="true">' + gpEsc(meta) + '</span></td>';
   }
-  // Le panneau : 320 px des 1 600 px de fenetre, 300 de 1 200 a 1 599, 280 de
-  // 768 a 1 199 ; sous 768 px, sous la grille, 40 % de la hauteur de l ecran.
-  function ghLargeurPanneau(fenetre) { return fenetre >= 1600 ? 320 : fenetre >= 1200 ? 300 : 280; }
-  function ghHauteurPanneau(hauteur) { return Math.floor(hauteur * 0.4); }
-  // LA HAUTEUR D UNE HEURE = LA PLACE DE LA BOITE / LES HEURES (2026-10-20,
-  // Movsar : « on doit voir l'ensemble des heures d'une traite, on ne doit pas
-  // descendre ou monter, peu importe la taille des écrans »).
-  function ghEcran(lu, entree) {
-    var heures = Math.max(0.5, entree.plage.fin - entree.plage.debut);
-    var bandeau = (entree.fenetre.closed || !entree.seances.length) ? GH.bandeau : 0;
-    var panneau = Boolean(lu.panneau);
-    var dessous = panneau && lu.fenetre < 768 ? ghHauteurPanneau(lu.hauteur) + 1 : 0;
-    var cote = panneau && lu.fenetre >= 768 ? ghLargeurPanneau(lu.fenetre) + 1 : 0;
-    var barre = lu.fenetre < 768 ? ghBarreLargeur || 0 : 0;
-    var haut = lu.top + lu.scrollY + bandeau;
-    var bas = lu.plein ? GH.basPlein : GH.bas + 1;
-    var dispo = Math.floor(lu.hauteur - haut - bas - GH.tete - 16 - barre - dessous - 2);
-    // LE PREMIER ECRAN NE LA PORTE PAS (au telephone, sous la tete de la
-    // console) : la boite prend la hauteur d un ecran depuis son propre haut.
-    var ecran = !lu.plein && dispo / heures < GH.heureEcran;
-    if (ecran) dispo = Math.floor(lu.hauteur - (lu.top - lu.boiteTop) - bandeau - GH.bas - GH.tete - 16 - barre - dessous - 2);
-    return { W: Math.max(0, lu.W - cote), H: dispo, largeurFenetre: lu.fenetre, toucher: lu.toucher, plein: lu.plein, panneau: panneau, ecran: ecran };
+  function gfFormuleCase(g) {
+    var r = g.r;
+    // (« Back To School/Work » peut passer a la ligne apres sa barre)
+    if (g.formule) return '<td class="gf-f"><span class="gf-formule" title="' + gpEsc(g.formule.long) + '">' + gpEsc(g.formule.court).replace(/\//g, '/<wbr>') + '</span></td>';
+    if (r.type === 'custom' || r.surMesure === true) return '<td class="gf-f"><span class="gf-formule is-mesure">Sur mesure</span></td>';
+    return '<td class="gf-f"></td>';
+  }
+  function gfPersonnes(g) {
+    var r = g.r;
+    var pax = Number(r.pax) || 0;
+    var avec = Math.max(0, Math.trunc(Number(r.companions) || 0));
+    var bulle = pax + (pax > 1 ? ' personnes' : ' personne') + (avec ? ' + ' + avec + (avec > 1 ? ' accompagnants' : ' accompagnant') : '');
+    return '<td class="gf-n" title="' + gpEsc(bulle) + '"><b>' + pax + '</b>' + (avec ? '<span class="gf-n__plus">+' + avec + '</span>' : '') + '</td>';
   }
 
-  // ---- LE RENDU ------------------------------------------------------------------
-  // Un rendu = une lecture, un calcul pur, une ecriture. Un nouveau plan ne se
-  // calcule que si les donnees, la place, le panneau ou les polices changent,
-  // ou si la minute qui passe change une carte porteuse ; sinon la minute
-  // n ecrit que l etat des cartes.
-  var ghStats = window.__ghPlanStats = { plans: 0, ecritures: 0, tics: 0, corrections: 0, nommes: 0, cartes: 0, sansTexte: 0, essentielAtteint: true, provisoire: false };
+  // L ETAT, au bout de la ligne : le statut (sa couleur est celle de la
+  // ligne), ce qui attend l equipe, et « Arrivé » tant que le groupe est
+  // attendu aujourd hui.
+  function gfPeutArriver(g, m) {
+    var r = g.r;
+    if (!m.aujourdHui || g.etat !== 'upcoming' || r.status === 'paid' || r.status === 'arrived' || r.absentAt) return false;
+    if (typeof setReservationStatusDirect !== 'function') return false;
+    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.status');
+  }
+  function gfEtatCase(g, m) {
+    var r = g.r;
+    var h = '';
+    if (g.etat === 'absent' || g.teinte === 'absent') h += '<span class="gf-b t-absent">Pas venu</span>';
+    else if (g.teinte === 'paid') h += '<span class="gf-b t-paid">Payé</span>';
+    else if (g.teinte === 'arr') h += '<span class="gf-b t-arr">Arrivé</span>';
+    if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) h += '<span class="gf-b is-valider">À valider</span>';
+    if (g.etat === 'closing') h += '<span class="gf-b is-cloturer"' + (r.status === 'arrived' ? '' : ' title="Fini sans avoir été pointé arrivé"') + '>À clôturer</span>';
+    if (gfPeutArriver(g, m)) h += '<button type="button" class="gf-arrive" data-gf-arrive="' + gpEsc(g.id) + '" aria-label="' + gpEsc('Pointer ' + (r.name || 'le groupe') + ' arrivé') + '">' + GF_ICONE_ARRIVE + 'Arrivé</button>';
+    return '<td class="gf-etat"><span class="gf-etat__in">' + h + '</span></td>';
+  }
+
+  // Ce qu une ligne dit a un lecteur d ecran, d une traite.
+  function gfAria(g, m) {
+    var r = g.r;
+    var parts = [gpHeure(g.heure), r.name || 'Client', (Number(r.pax) || 0) + ' personnes'];
+    if (g.formule) parts.push(g.formule.long);
+    m.colonnes.forEach(function (c) {
+      var liste = g.cases.get(c.cle) || [];
+      if (!liste.length) return;
+      parts.push(c.titre + ' ' + liste.map(function (e) {
+        if (e.aPlacer) return 'à placer';
+        if (e.credit) return (e.credits ? e.credits.total : 0) + ' crédits';
+        return (e.libre && !e.journee ? 'vers ' : '') + gpHeure(e.journee ? g.span.start : e.start) + ' ' + GF_ETATS[gfEtat(g, e, m)];
+      }).join(', '));
+    });
+    parts.push(g.etat === 'absent' ? 'pas venu' : ({ conf: 'confirmé', arr: 'arrivé', paid: 'payé', absent: 'pas venu' })[g.teinte]);
+    // (les minutes de retard changent a chaque minute : elles sont dans la
+    // bulle du retard, la ligne ne se reecrit pas pour elles)
+    if (g.retard && m.maintenant != null) parts.push('en retard');
+    return parts.join(', ');
+  }
+
+  // LA RECHERCHE : le nom, le telephone, l email, le libelle, sans accents.
+  function gfCle(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+  function gfTrouve(g, q) {
+    if (!q) return true;
+    var r = g.r;
+    return gfCle([r.name, r.phone, r.email, r.label, g.formule && g.formule.long].join(' ')).indexOf(q) >= 0;
+  }
+
+  // ---- LA FEUILLE EN HTML ------------------------------------------------------
+  // L heure de la reservation a gauche, et la journee rangee par demi-heure,
+  // comme les blocs du papier : un filet franc a chaque bloc, une bande un bloc
+  // sur deux. Une heure repetee (deux groupes a 14:00) s ecrit plus
+  // discretement. La barre de l heure qu il est passe entre les heures passees
+  // et les heures a venir.
+  function gfTete(m) {
+    var html = '<th class="gf-th gf-th--h" scope="col" title="L’heure de la réservation">Heure</th><th class="gf-th gf-th--nom" scope="col">Groupe</th><th class="gf-th gf-th--f" scope="col">Formule</th><th class="gf-th gf-th--n" scope="col" title="Personnes">Pers.</th>';
+    m.colonnes.forEach(function (c) {
+      html += '<th class="gf-th gf-th--a' + (c.groupes ? '' : ' is-vide') + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + (c.groupes ? ' : ' + c.groupes + (c.groupes > 1 ? ' groupes' : ' groupe') : ' : aucun groupe ce jour-là')) + '"><span class="gf-th__in">' + gfIcone(c.activites[0]) + '<span>' + gpEsc(c.titre) + '</span></span></th>';
+    });
+    return html + '<th class="gf-th gf-th--etat" scope="col">État</th>';
+  }
+  function gfMaintenant(m, nbCol) {
+    return '<tr class="gf-now" aria-hidden="true"><td class="gf-h"><span class="gf-now__h" data-gf-maintenant></span></td><td colspan="' + (nbCol - 1) + '"></td></tr>';
+  }
+  function gfHtml(m, q) {
+    var nbCol = 5 + m.colonnes.length;
+    var lignes = m.groupes.filter(function (g) { return (!m.visibles || m.visibles.has(g.id)) && gfTrouve(g, q); });
+    var corps = '';
+    var avant = null, bande = false, bloc = null;
+    var nowPose = m.maintenant == null;
+    lignes.forEach(function (g) {
+      if (!nowPose && g.heure > m.maintenant + 1e-6) { corps += gfMaintenant(m, nbCol); nowPose = true; }
+      // (la demi-heure du papier, blocDe : 14:10 va dans le bloc de 14:00,
+      // 14:40 dans celui de 14:30)
+      var b = Math.floor(g.heure * 2 + 1e-6) / 2;
+      var nouveauBloc = b !== bloc;
+      if (nouveauBloc && bloc !== null) bande = !bande;
+      bloc = b;
+      var repete = avant !== null && Math.abs(avant - g.heure) < 1 / 120;
+      avant = g.heure;
+      var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (bande ? ' is-bande' : '') + (nouveauBloc ? ' is-bloc' : '');
+      // (le retard s ecrit sous l heure : c est elle qui est depassee ; ses
+      // minutes, par gfRemplir)
+      var retard = g.retard && m.maintenant != null ? '<span class="gf-h__retard" data-gf-retard="' + gpEsc(g.id) + '"></span>' : '';
+      corps += '<tr class="' + classes + '" tabindex="0" data-gf-id="' + gpEsc(g.id) + '" aria-label="' + gpEsc(gfAria(g, m)) + '">'
+        + '<td class="gf-h' + (repete && !retard ? ' is-repete' : '') + '"><b>' + gpEsc(gpHeure(g.heure)) + '</b>' + retard + '</td>'
+        + gfGroupe(g, m) + gfFormuleCase(g) + gfPersonnes(g)
+        + m.colonnes.map(function (c) { return gfCase(g, c, m); }).join('')
+        + gfEtatCase(g, m) + '</tr>';
+    });
+    if (!nowPose && lignes.length) corps += gfMaintenant(m, nbCol);
+    if (!lignes.length && m.groupes.length) {
+      corps += '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? 'Aucun groupe ne correspond à cette recherche.' : 'Aucun groupe dans ce filtre.') + '</td></tr>';
+    }
+    return '<table class="gf-t" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '"><thead><tr>' + gfTete(m) + '</tr></thead><tbody>' + corps + '</tbody></table>';
+  }
+
+  // ---- LE RENDU --------------------------------------------------------------
+  var gfStats = window.__gfStats = { rendus: 0, ecritures: 0 };
   function renderGlobalPlanning(wrap) {
     if (!wrap) return;
-    if (!MOTEUR) { wrap.textContent = 'Planning indisponible.'; return; }
     var m = gpModele();
-    var seances = ghSeances(m);
-    var lu = ghLire(wrap);
-    lu.panneau = Boolean(wrap._ghP);
-    var entree = ghEntree(m, seances, lu);
-    wrap._ghModele = m;
-    wrap._ghSeances = seances;
-    var cleRendu = entree.signature + '|' + JSON.stringify(entree.ecran) + '|' + (entree.visibles || []).join(',') + '|' + (ghPolicesPretes() ? 1 : 0);
-    var racine = wrap._ghRacine && wrap._ghRacine.isConnected ? wrap._ghRacine : null;
-    var plan = wrap._ghPlan;
-    if (racine && plan && cleRendu === wrap._ghCleRendu) {
-      var etats = MOTEUR.ghEtats(entree, entree.maintenant, plan);
-      if (etats.cle === plan.etatsCle) {
-        wrap._ghEntree = entree;
-        ghTic(wrap, plan, etats);
-        if (wrap._ghP) ghPanneauRemplir(wrap);
-        return;
-      }
+    var q = gfCle(state.searchTerm || '');
+    var racine = wrap._gfRacine && wrap._gfRacine.isConnected ? wrap._gfRacine : null;
+    if (!racine) {
+      wrap.innerHTML = '<div class="gf"><div class="gf-bandeau" role="status" hidden></div><div class="gf-defile" data-scroll-key="feuille-du-jour"></div><button type="button" class="gf-retour" hidden></button></div>';
+      racine = wrap.firstChild;
+      wrap._gfRacine = racine;
+      gfBrancher(wrap);
     }
-    entree.corrections = wrap._ghCorrections && wrap._ghCorrections.cle === cleRendu ? wrap._ghCorrections.niveaux : null;
-    plan = ghPlanifier(entree);
-    wrap._ghEntree = entree;
-    wrap._ghCleRendu = cleRendu;
-    if (racine && wrap._ghPlan && plan.cle === wrap._ghPlan.cle) {
-      wrap._ghPlan = plan;
-      ghTic(wrap, plan, plan.etats);
-      if (wrap._ghP) ghPanneauRemplir(wrap);
+    gfStats.rendus += 1;
+    var bandeau = racine.querySelector('.gf-bandeau');
+    var ferme = Boolean(m.fenetre && m.fenetre.closed);
+    var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : !m.groupes.length ? 'Aucune réservation ce jour-là' : '';
+    bandeau.hidden = !texte;
+    bandeau.className = 'gf-bandeau' + (ferme ? ' is-ferme' : '');
+    if (bandeau.textContent !== texte) bandeau.textContent = texte;
+    var defile = racine.querySelector('.gf-defile');
+    var html = m.groupes.length ? gfHtml(m, q) : '';
+    wrap._gfModele = m;
+    if (html !== wrap._gfHtml) {
+      var actif = document.activeElement;
+      var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;
+      defile.innerHTML = html;
+      wrap._gfHtml = html;
+      gfStats.ecritures += 1;
+      if (focus) gfRendreFocus(defile, focus);
+    }
+    gfRemplir(defile, m);
+    racine.classList.toggle('is-vide', !m.groupes.length);
+    gfHauteur(wrap);
+    // LA FEUILLE S OUVRE SUR L HEURE QU IL EST, une fois par jour affiche :
+    // ensuite, le defilement de l equipe ne bouge plus.
+    if (wrap._gfJourOuvert !== m.jour) {
+      wrap._gfJourOuvert = m.jour;
+      gfAllerAMaintenant(wrap, false);
+    }
+    gfSuivreMaintenant(wrap);
+  }
+  // CE QUI CHANGE A CHAQUE MINUTE s ecrit en place, ici seulement : la
+  // pastille de l heure et les minutes de retard. Le HTML compare n en porte
+  // rien : a la minute, la feuille ne se reecrit que si un etat a change, et un
+  // clic qui tombe sur la minute n est jamais perdu.
+  function gfRemplir(defile, m) {
+    var poser = function (n, texte) { if (n.textContent !== texte) n.textContent = texte; };
+    var pastille = defile.querySelector('[data-gf-maintenant]');
+    if (pastille) poser(pastille, gpHeure(m.maintenant));
+    var retards = defile.querySelectorAll('[data-gf-retard]');
+    if (!retards.length) return;
+    var parId = new Map(m.groupes.map(function (g) { return [g.id, g]; }));
+    retards.forEach(function (n) {
+      var g = parId.get(n.getAttribute('data-gf-retard'));
+      if (!g || m.maintenant == null) return;
+      var min = gfMinutesDeRetard(g, m);
+      poser(n, gfRetardCourt(min));
+      var bulle = 'En retard de ' + min + ' min';
+      if (n.getAttribute('title') !== bulle) n.setAttribute('title', bulle);
+    });
+  }
+  // Le focus survit a la reecriture : la meme ligne, ou le meme bouton.
+  function gfCleFocus(el) {
+    var ligne = el.closest && el.closest('[data-gf-id]');
+    if (!ligne) return null;
+    return { id: ligne.getAttribute('data-gf-id'), arrive: Boolean(el.closest('[data-gf-arrive]')) };
+  }
+  function gfRendreFocus(defile, f) {
+    var ligne = defile.querySelector('[data-gf-id="' + CSS.escape(f.id) + '"]');
+    if (!ligne) return;
+    var cible = f.arrive ? ligne.querySelector('[data-gf-arrive]') || ligne : ligne;
+    cible.focus({ preventScroll: true });
+  }
+
+  // LA HAUTEUR : la feuille va jusqu au bas de l ecran et defile en elle-meme
+  // (un panneau de liste se borne, il ne pousse pas la page : README Pinlane,
+  // 2026-08-13). Agrandie, elle prend l ecran. Au telephone, chaque ligne est
+  // une carte et la page defile.
+  var GF_BAS = 16;
+  var GF_MIN = 320;
+  function gfHauteur(wrap) {
+    var racine = wrap._gfRacine;
+    var defile = racine && racine.querySelector('.gf-defile');
+    if (!defile) return;
+    var boite = wrap.closest('.planning-box');
+    var plein = Boolean(boite && boite.classList.contains('expanded'));
+    var cartes = racine.getBoundingClientRect().width < 640;
+    var valeur = '';
+    if (!plein && !cartes) {
+      var haut = defile.getBoundingClientRect().top + window.scrollY;
+      var dispo = Math.floor(window.innerHeight - haut - GF_BAS);
+      // (la boite commence sous la moitie de l ecran : elle prend un ecran)
+      valeur = Math.max(GF_MIN, dispo < GF_MIN ? window.innerHeight - 24 : dispo) + 'px';
+    }
+    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;
+  }
+
+  // L HEURE QU IL EST : la ligne de maintenant se pose sous la tete, avec deux
+  // lignes d avant (les groupes qui viennent d arriver, les retards). Si elle
+  // sort de la vue, un bouton y ramene.
+  function gfAllerAMaintenant(wrap, doux) {
+    var racine = wrap._gfRacine;
+    var defile = racine && racine.querySelector('.gf-defile');
+    var now = defile && defile.querySelector('.gf-now');
+    if (!now) { if (defile && !doux) defile.scrollTop = 0; return; }
+    var tete = defile.querySelector('thead');
+    var avant = 0, n = 0, l = now.previousElementSibling;
+    while (l && n < 2) { avant += l.getBoundingClientRect().height; n += 1; l = l.previousElementSibling; }
+    var y = Math.max(0, now.offsetTop - (tete ? tete.getBoundingClientRect().height : 0) - avant);
+    if (racine.getBoundingClientRect().width < 640) {
+      var cible = (l ? l.nextElementSibling : defile.querySelector('tbody tr')) || now;
+      if (doux) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
-    ghEcrire(wrap, plan, m);
+    if (doux && typeof defile.scrollTo === 'function') defile.scrollTo({ top: y, behavior: 'smooth' });
+    else defile.scrollTop = y;
   }
-  function ghPlanifier(entree) {
-    var plan = MOTEUR.ghPlan(entree, ghCache);
-    ghStats.plans += 1;
-    ghStats.nommes = plan.stats.nommes;
-    ghStats.cartes = plan.stats.cartes;
-    ghStats.sansTexte = plan.stats.sansTexte;
-    ghStats.essentielAtteint = plan.stats.essentielAtteint;
-    ghStats.provisoire = !ghPolicesPretes();
-    return plan;
-  }
-  function ghPolicesPretes() { return !document.fonts || document.fonts.status === 'loaded'; }
-
-  // ---- L ECRITURE : un seul innerHTML de la grille ---------------------------
-  function ghTransitoire(wrap) {
-    var q = String(state.searchTerm || '').trim();
-    return { groupe: wrap._ghSurvol || null, choisi: wrap._ghP ? wrap._ghP.id : null, recherche: q ? MOTEUR.cleTexte(q) : '' };
-  }
-  function ghClassesRacine(wrap, plan, entree) {
-    var t = ghTransitoire(wrap);
-    return 'gp gh is-' + plan.typo.palier + (plan.typo.bord ? '' : ' is-bas') + (plan.axe.hh < 32 ? ' sans-demi' : '') + (entree.ecran && entree.ecran.ecran ? ' is-ecran' : '')
-      + (entree.fenetre.closed ? ' is-ferme' : '') + (plan.defile ? ' is-defile' : '') + (wrap._ghP ? ' a-panneau' : '') + (t.groupe ? ' a-groupe' : '') + (t.recherche ? ' is-recherche' : '');
-  }
-  function ghStyleRacine(plan) {
-    var ty = plan.typo;
-    return '--gh-o:' + plan.axe.origine + 'px;--gh-lh:' + ty.ligne + 'px;--gh-fs:' + ty.tailleNom + 'px;--gh-fs2:' + ty.taillePetit + 'px;--gh-bord:' + ty.bord + 'px;--gh-marge:' + ty.marge + 'px;--gh-panneau:' + ghLargeurPanneau(window.innerWidth) + 'px;--gh-panneau-h:' + ghHauteurPanneau(window.innerHeight) + 'px';
-  }
-  function ghStyleGrille(plan, maintenant) {
-    var now = MOTEUR.ghMaintenant(plan.axe, maintenant);
-    return 'grid-template-columns:' + plan.colH + 'px ' + plan.colonnes.map(function (c) { return c.w + 'px'; }).join(' ') + ';grid-template-rows:' + GH.tete + 'px ' + plan.axe.corps + 'px;--gh-now-px:' + now.y + 'px';
-  }
-  function ghEcrire(wrap, plan, m) {
-    var entree = wrap._ghEntree;
-    var etats = plan.etats;
-    var t = ghTransitoire(wrap);
-    var actif = document.activeElement;
-    var focus = actif && wrap.contains(actif) && actif.getAttribute ? actif.getAttribute('data-gh-k') : null;
-    var racine = wrap._ghRacine && wrap._ghRacine.isConnected ? wrap._ghRacine : null;
-    if (!racine) {
-      wrap.innerHTML = '<div class="gp gh"><div class="gh-bandeau" role="status" hidden></div><div class="gh-corps"><div class="gh-grille" role="table"></div><aside class="gh-panneau" hidden aria-label="Le groupe choisi"><div class="gh-panneau__in"></div></aside></div></div>';
-      racine = wrap.firstChild;
-      wrap._ghRacine = racine;
-    }
-    racine.setAttribute('class', ghClassesRacine(wrap, plan, entree));
-    racine.setAttribute('style', ghStyleRacine(plan));
-    var bandeau = racine.querySelector('.gh-bandeau');
-    var texteBandeau = entree.fenetre.closed ? 'Centre fermé ce jour-là' + (entree.seances.length ? ' · réservations existantes à contrôler' : '') : !entree.seances.length ? 'Aucune réservation ce jour-là' : '';
-    bandeau.hidden = !texteBandeau;
-    bandeau.className = 'gh-bandeau' + (entree.fenetre.closed ? ' is-ferme' : '');
-    if (bandeau.textContent !== texteBandeau) bandeau.textContent = texteBandeau;
-    var grille = racine.querySelector('.gh-grille');
-    grille.setAttribute('aria-label', 'Planning de toutes les activités du ' + m.jour);
-    grille.setAttribute('style', ghStyleGrille(plan, etats.maintenant));
-    grille.innerHTML = ghHtmlGrille(plan, etats, t, entree);
-    ghStats.ecritures += 1;
-    wrap._ghPlan = plan;
-    wrap._ghEtats = etats;
-    wrap._ghJourDessine = m.jour;
-    ghIndexer(wrap);
-    if (wrap._ghP) ghPanneauRemplir(wrap); else ghPanneauVider(wrap);
-    if (focus && wrap._ghNoeuds.has(focus)) wrap._ghNoeuds.get(focus).focus({ preventScroll: true });
-    // (au telephone, la grille s ouvre sur sa premiere colonne)
-    if (plan.defile && wrap._ghDefileJour !== m.jour) { grille.scrollLeft = 0; wrap._ghDefileJour = m.jour; }
-    var boite = wrap.closest('.planning-box') || wrap;
-    boite.classList.toggle('gp-a-agrandir', Boolean(plan.agrandir));
-    ghBrancher(wrap);
-    ghControler(wrap, plan);
-    if (!ghPolicesPretes() && document.fonts && !wrap._ghAttentePolices) {
-      wrap._ghAttentePolices = true;
-      document.fonts.ready.then(function () { wrap._ghAttentePolices = false; ghViderMesures(); if (wrap.isConnected) renderGlobalPlanning(wrap); });
-    }
-  }
-  function ghIndexer(wrap) {
-    var noeuds = new Map();
-    wrap._ghRacine.querySelectorAll('[data-gh-k]').forEach(function (n) { noeuds.set(n.getAttribute('data-gh-k'), n); });
-    wrap._ghNoeuds = noeuds;
-  }
-
-  // LA GRILLE EN HTML : la tete des colonnes, la colonne des heures, une pile
-  // par colonne, le calque des filets, l heure qu il est. Toutes les valeurs
-  // en px.
-  function ghHtmlGrille(plan, etats, t, entree) {
-    var html = '<div class="gh-entete gh-entete--h" role="columnheader">Heure</div>';
-    plan.colonnes.forEach(function (col, i) { html += ghHtmlTete(plan, col, i, etats); });
-    html += ghHtmlHeures(plan, etats.maintenant);
-    var parCol = plan.colonnes.map(function () { return []; });
-    plan.elements.forEach(function (el) { if (el.k !== 'seg') parCol[el.colonne].push(el); });
-    var segsDe = new Map();
-    plan.elements.forEach(function (el) { if (el.k === 'seg') { if (!segsDe.has(el.partie)) segsDe.set(el.partie, []); segsDe.get(el.partie).push(el); } });
-    plan.colonnes.forEach(function (col, i) {
-      var corps = '';
-      if (col.nature === 'bowling' && col.pistes) {
-        col.pistes.forEach(function (p, n) {
-          if (p.maintenance) corps += '<i class="gh-maint" style="left:' + p.x + 'px;width:' + p.w + 'px"></i>';
-          if (n > 0) corps += '<i class="gh-fp' + (n % 2 === 0 ? ' is-paire' : '') + '" style="left:' + (p.x - 1) + 'px"></i>';
-        });
-      }
-      parCol[i].forEach(function (el) {
-        if (el.masque) return;
-        if (el.k === 'carte') corps += ghHtmlCarte(el, etats, t, plan.typo, entree);
-        else if (el.k === 'presence') corps += ghHtmlPresence(el, etats, t, plan.typo);
-        else if (el.k === 'partie') corps += ghHtmlPartie(el, segsDe.get(el.cle) || [], etats, t);
-        else if (el.k === 'enligne') corps += ghHtmlEnLigne(el);
-      });
-      html += '<div class="gh-pile' + (col.vide ? ' is-vide' : '') + (col.reserve ? ' is-reserve' : '') + (i === plan.colonnes.length - 1 ? ' is-dernier' : '') + '" role="cell" aria-label="' + gpEsc(col.titre + (col.vide ? ', aucun groupe' : '')) + '" data-gh-cle="' + gpEsc(col.cle) + '" data-gh-col="' + i + '" style="height:' + plan.axe.corps + 'px">' + corps + '</div>';
-    });
-    var lignes = ghHtmlBandesHeure(plan);
-    plan.bandes.forEach(function (b) { lignes += '<i class="gh-hors is-' + b.type + '" style="top:' + b.y + 'px;height:' + b.h + 'px"></i>'; });
-    plan.filets.forEach(function (f) { lignes += '<i class="gh-l is-' + f.type + '" style="top:' + f.y + 'px"></i>'; });
-    if (plan.fermeture != null) lignes += '<i class="gh-fermeture" style="top:' + plan.fermeture + 'px"></i>';
-    html += '<div class="gh-lignes" aria-hidden="true" style="height:' + plan.axe.corps + 'px">' + lignes + '</div>';
-    var now = MOTEUR.ghMaintenant(plan.axe, etats.maintenant);
-    html += '<i class="' + ghClasseMaintenant('gh-passe', now) + '" aria-hidden="true"></i><i class="' + ghClasseMaintenant('gh-maintenant', now) + '" aria-hidden="true"></i>';
-    return html;
-  }
-  // (Movsar, 2026-10-20 : « on ne voit pas très bien quelle heure est quelle
-  // heure » : une heure sur deux porte une bande legere, des heures aux cartes)
-  function ghHtmlBandesHeure(plan) {
-    var pleines = plan.libelles.filter(function (h) { return h.pleine; });
-    var html = '';
-    for (var i = 1; i < pleines.length; i += 2) html += '<i class="gh-bh" style="top:' + pleines[i - 1].y + 'px;height:' + (pleines[i].y - pleines[i - 1].y) + 'px"></i>';
-    return html;
-  }
-  function ghClasseMaintenant(base, now) { return base + (base === 'gh-passe' ? (now.passe && now.vu ? ' is-vu' : '') : (now.vu ? ' is-vu' : '')); }
-  function ghHtmlHeures(plan, maintenant) {
-    var html = '<div class="gh-pile gh-pile--h" aria-hidden="true" style="height:' + plan.axe.corps + 'px">' + ghHtmlBandesHeure(plan);
-    plan.libelles.forEach(function (h) {
-      html += '<div class="' + MOTEUR.ghClassesHeure(h, maintenant, plan.axe) + '" data-gh-t="' + h.t + '" style="top:' + (h.y - 7) + 'px"' + (h.titre ? ' title="' + gpEsc(h.titre) + '"' : '') + '>' + gpEsc(h.texte) + '</div>';
-    });
-    var now = MOTEUR.ghMaintenant(plan.axe, maintenant);
-    html += '<span class="' + ghClasseMaintenant('gh-maintenant-h', now) + '">' + gpEsc(now.texte) + '</span></div>';
-    return html;
-  }
-  // LA TETE D UNE COLONNE (32 px, une rangee) : l icone et le titre ; le
-  // bowling, ses numeros de pistes. Les comptes (groupes, pistes libres,
-  // armes, enfants) sont dans le title et l aria-label, pas a l ecran : ils
-  // doublaient l onglet et « Libres maintenant » (Movsar, 2026-10-20).
-  function ghHtmlTete(plan, col, i, etats) {
-    var tete = col.tete;
-    var comp = etats.compteurs[col.cle];
-    var texte = MOTEUR.ghTeteTexte(col, comp, tete.groupes, etats.maintenant);
-    var corps;
-    if (col.nature === 'bowling' && col.pistes) corps = '<div class="gh-entete__pistes">' + ghHtmlNumeros(col, comp) + '</div>';
-    else corps = '<div class="gh-entete__r1">' + (tete.icone ? col.icone : '') + (tete.lignes.length ? '<span class="gh-entete__t">' + tete.lignes.map(gpEsc).join('<br>') + '</span>' : '') + '</div>';
-    return '<div class="gh-entete f-' + tete.forme + (tete.vide ? ' is-vide' : '') + (tete.replie ? ' is-replie' : '') + (tete.petit ? ' is-petit' : '') + (col.inconnue ? ' is-inconnue' : '') + (i === plan.colonnes.length - 1 ? ' is-dernier' : '') + '" role="columnheader" data-gh-cle="' + gpEsc(col.cle) + '" title="' + gpEsc(texte) + '" aria-label="' + gpEsc(texte) + '">' + corps + '</div>';
-  }
-  function ghClassesNumero(p, comp) {
-    var occ = comp && comp.maintenant != null && comp.occupees.indexOf(p.n) >= 0;
-    return 'gh-num' + (p.n === '?' ? ' is-inconnue' : '') + (p.maintenance ? ' is-maint' : occ ? ' is-occupee' : '');
-  }
-  function ghHtmlNumeros(col, comp) {
-    return col.pistes.map(function (p) { return '<span class="' + ghClassesNumero(p, comp) + '" style="left:' + p.x + 'px;width:' + p.w + 'px">' + p.n + '</span>'; }).join('');
-  }
-  function ghAttrsCarte(el, etats, t) {
-    var etat = etats.elements[el.cle];
-    return ' class="' + MOTEUR.ghClasses(el, etat, t) + '" role="button" tabindex="0" data-gp-res="' + gpEsc(el.gid) + '" data-gp-ouvre="' + gpEsc(el.gid) + '" data-gh-k="' + gpEsc(el.cle) + '"' + (el.porteuse ? ' data-gh-porteuse="1"' : '') + (el.arrivee ? ' data-gh-arrivee="1"' : '') + ' aria-label="' + gpEsc(MOTEUR.ghAria(el, etat, etats)) + '"';
-  }
-  function ghHtmlCarte(el, etats, t, ty, entree) {
-    var style = 'left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px';
-    if (el.suit && el.compo) {
-      var cadre = ty.bord + ty.marge;
-      style += ';--gh-top:' + (el.y + cadre) + 'px;--gh-ht:' + (el.h - 2 * cadre - (el.compo.bas ? ty.ligne : 0)) + 'px;--gh-bloc:' + (el.lignesTexte * ty.ligne) + 'px';
-    }
-    var html = '<div' + ghAttrsCarte(el, etats, t) + (el.compo ? ' data-gh-forme="' + el.compo.forme + '"' : '') + ' data-gh-l="' + el.L + '" data-gh-tw="' + el.tw + '" style="' + style + '">';
-    if (el.compo) {
-      html += '<div class="gh-c__t">' + ghHtmlLignes(el, etats, entree) + '</div>';
-      if (el.compo.bas) html += '<div class="gh-c__b">' + gpEsc(el.compo.bas) + '</div>';
-    }
-    return html + '</div>';
-  }
-  // Les lignes d une carte, coupees par le moteur : un <br> a chaque coupure,
-  // jamais une coupure du navigateur (le bloc ne passe pas a la ligne).
-  function ghHtmlLignes(el, etats, entree) {
-    var seq = [];
-    el.compo.lignes.forEach(function (l, li) { l.forEach(function (u, ui) { seq.push({ u: u, br: li > 0 && ui === 0 }); }); });
-    var out = '';
-    var ouvert = false;
-    seq.forEach(function (x, i) {
-      var u = x.u;
-      var nom = u.k === 'nom';
-      var sep = i === 0 ? '' : nom && !u.mot ? '' : ' ';
-      if (ouvert && !nom) { out += '</span>'; ouvert = false; }
-      out += sep + (x.br ? '<br>' : '');
-      if (nom && !ouvert) { out += '<span class="gh-c__nom">'; ouvert = true; }
-      out += ghHtmlPiece(u, el, etats, entree);
-    });
-    if (ouvert) out += '</span>';
-    return out;
-  }
-  function ghHtmlPiece(u, el, etats, entree) {
-    if (u.k === 'nom') return gpEsc(u.t);
-    if (u.k === 'h') return '<b class="gh-c__h">' + gpEsc(u.t) + '</b>';
-    if (u.k === 'bas') return '<span class="gh-c__d">' + gpEsc(u.t) + '</span>';
-    if (u.k === 'tag') {
-      var def = MOTEUR.TAGS[u.code];
-      var corps;
-      if (u.code === 'retard') {
-        var n = etats.retard[el.gid] != null ? etats.retard[el.gid] : u.v;
-        corps = u.forme === 'court' ? '+<span class="gh-min">' + n + '</span>' : 'retard <span class="gh-min">' + n + '</span> min';
-      } else corps = gpEsc(u.t);
-      return '<span class="gp-tag ' + def.cls + (u.forme === 'court' ? ' is-court' : '') + '">' + corps + '</span>';
-    }
-    return '';
-  }
-  // UNE PRESENCE DE PLAINE : le nom a gauche, le nombre d enfants a droite.
-  function ghHtmlPresence(el, etats, t, ty) {
-    var style = 'left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px';
-    if (el.suit && el.compo) style += ';--gh-top:' + (el.y + ty.bord + ty.marge) + 'px;--gh-ht:' + (el.h - 2 * (ty.bord + ty.marge)) + 'px;--gh-bloc:' + (Math.max(1, el.compo.lignes.length) * ty.ligne) + 'px';
-    var html = '<div' + ghAttrsCarte(el, etats, t) + (el.compo ? ' data-gh-forme="' + el.compo.forme + '"' : '') + ' data-gh-l="' + el.L + '" data-gh-tw="' + el.tw + '" style="' + style + '">';
-    if (el.compo) {
-      if (el.compo.lignes.length) html += '<div class="gh-c__t">' + ghHtmlLignes(el, etats, null) + '</div>';
-      if (el.compo.compte) html += '<span class="gh-pr__n' + (el.compo.seul ? ' is-seul' : '') + '">' + gpEsc(el.compo.compte) + '</span>';
-    }
-    return html + '</div>';
-  }
-  // UNE PARTIE LASER : sa tete (l heure, les armes), sa barre de segments.
-  function ghHtmlPartie(el, segs, etats, t) {
-    var tete = el.tete;
-    var html = '<div class="gh-partie' + (tete.danger ? ' is-danger' : '') + '" role="group" aria-label="' + gpEsc(tete.aria) + '" data-gh-partie="' + gpEsc(el.cle) + '" data-gh-l="' + el.L + '" style="left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px">';
-    if (tete.t) html += '<div class="' + (tete.ligne ? 'gh-partie__t' : 'gh-partie__n') + '">' + gpEsc(tete.t) + '</div>';
-    html += '<div class="gh-barre" style="left:' + (el.barre.x + 1) + 'px;top:' + (el.barre.y + 1) + 'px;width:' + el.barre.w + 'px;height:' + el.barre.h + 'px">';
-    el.bouts.forEach(function (b) {
-      if (b.seg >= 0) {
-        var s = segs.find(function (x) { return x.cle === b.cle; });
-        if (s && !s.masque) html += ghHtmlSegment(s, etats, t);
-        return;
-      }
-      html += '<div class="' + (b.libre ? 'gh-seg-libre' : 'gh-seg-autres') + '" style="left:' + b.x + 'px;width:' + b.w + 'px">' + gpEsc(b.texte) + '</div>';
-    });
-    return html + '</div></div>';
-  }
-  function ghHtmlSegment(el, etats, t) {
-    var c = el.compo;
-    var html = '<div' + ghAttrsCarte(el, etats, t) + (c ? ' data-gh-forme="' + c.forme + '"' : '') + ' data-gh-l="' + el.L + '" data-gh-tw="' + el.tw + '" style="left:' + el.relX + 'px;width:' + el.w + 'px' + (el.w < 8 ? ';padding:0;border-left-width:' + Math.min(3, el.w) + 'px' : '') + '">';
-    if (c) {
-      html += '<div class="gh-c__t"><span class="gh-c__nom">' + gpEsc(c.nom) + '</span>';
-      if (c.armes) html += (c.deuxLignes ? '<br>' : ' ') + '<span class="gh-seg__n">' + gpEsc(c.armes) + '</span>';
-      html += '</div>';
-    }
-    return html + '</div>';
-  }
-  function ghHtmlEnLigne(el) {
-    return '<div class="gh-enligne" role="note" data-gh-enligne="' + el.piste + '" aria-label="' + gpEsc('Piste ' + el.piste + ', ' + gpHeure(el.debut) + ' - ' + gpHeure(el.fin) + ' : ' + el.texte) + '" style="left:' + el.x + 'px;top:' + el.y + 'px;width:' + el.w + 'px;height:' + el.h + 'px">' + (el.vu ? '<span' + (el.deux ? ' class="is-deux"' : '') + '>' + gpEsc(el.vu) + '</span>' : '') + '</div>';
-  }
-
-  // ---- LA MINUTE QUI PASSE : l etat, jamais le texte ni la geometrie -----------
-  // Les classes d etat des cartes et des segments, leurs aria-label, les
-  // minutes de retard, la barre, la pastille et le voile, --gh-now-px, les
-  // compteurs des tetes. Les memes fonctions que le rendu : apres le tic, la
-  // grille est celle d un rendu frais a la meme heure.
-  function ghTic(wrap, plan, etats) {
-    var racine = wrap._ghRacine;
-    if (!racine) return;
-    var t = ghTransitoire(wrap);
-    var noeuds = wrap._ghNoeuds || new Map();
-    var poser = function (n, nom, v) { if (n.getAttribute(nom) !== v) n.setAttribute(nom, v); };
-    plan.elements.forEach(function (el) {
-      if (el.k !== 'carte' && el.k !== 'presence' && el.k !== 'seg') return;
-      var n = noeuds.get(el.cle);
-      if (!n) return;
-      var etat = etats.elements[el.cle];
-      poser(n, 'class', MOTEUR.ghClasses(el, etat, t));
-      poser(n, 'aria-label', MOTEUR.ghAria(el, etat, etats));
-      if (el.porteuse && etats.retard[el.gid] != null) {
-        n.querySelectorAll('.gh-min').forEach(function (x) { var v = String(etats.retard[el.gid]); if (x.textContent !== v) x.textContent = v; });
-      }
-    });
-    var grille = racine.querySelector('.gh-grille');
-    poser(grille, 'style', ghStyleGrille(plan, etats.maintenant));
-    racine.querySelectorAll('.gh-entete[data-gh-cle]').forEach(function (n) {
-      var i = plan.colonnes.findIndex(function (c) { return c.cle === n.getAttribute('data-gh-cle'); });
-      var col = plan.colonnes[i];
-      if (!col) return;
-      var comp = etats.compteurs[col.cle];
-      var texte = MOTEUR.ghTeteTexte(col, comp, col.tete.groupes, etats.maintenant);
-      poser(n, 'title', texte);
-      poser(n, 'aria-label', texte);
-      if (col.nature === 'bowling') n.querySelectorAll('.gh-num').forEach(function (x, k) { poser(x, 'class', ghClassesNumero(col.pistes[k], comp)); });
-    });
-    racine.querySelectorAll('.gh-pile--h .gh-h').forEach(function (n, k) { poser(n, 'class', MOTEUR.ghClassesHeure(plan.libelles[k], etats.maintenant, plan.axe)); });
-    var now = MOTEUR.ghMaintenant(plan.axe, etats.maintenant);
-    var pastille = racine.querySelector('.gh-maintenant-h');
-    if (pastille) { poser(pastille, 'class', ghClasseMaintenant('gh-maintenant-h', now)); if (pastille.textContent !== now.texte) pastille.textContent = now.texte; }
-    var barre = racine.querySelector('.gh-maintenant');
-    if (barre) poser(barre, 'class', ghClasseMaintenant('gh-maintenant', now));
-    var voile = racine.querySelector('.gh-passe');
-    if (voile) poser(voile, 'class', ghClasseMaintenant('gh-passe', now));
-    poser(racine, 'class', ghClassesRacine(wrap, plan, wrap._ghEntree));
-    wrap._ghEtats = etats;
-    ghStats.tics += 1;
-  }
-
-  // ---- LE CONTROLE, SANS LECTURE : chaque bloc de texte est observe (sa
-  // taille arrive apres la mise en page, sans la forcer) ; un bloc plus large
-  // que ce que le plan lui donne fait descendre sa carte d un niveau, au plus
-  // deux fois, par un nouveau plan.
-  function ghControler(wrap, plan) {
-    if (typeof ResizeObserver !== 'function') return;
-    if (wrap._ghObservateur) wrap._ghObservateur.disconnect();
-    var ligne = plan.typo.ligne;
-    var fautifs = new Map();
-    var observateur = new ResizeObserver(function (entrees) {
-      entrees.forEach(function (e) {
-        var bloc = e.target;
-        var carte = bloc.closest('[data-gh-k]');
-        if (!carte) return;
-        var tw = Number(carte.getAttribute('data-gh-tw'));
-        var L = Number(carte.getAttribute('data-gh-l'));
-        var r = e.contentRect;
-        if (r.width > tw + 0.5 || r.height > L * ligne + 0.5) fautifs.set(carte.getAttribute('data-gh-k'), true);
-      });
-      observateur.disconnect();
-      if (!fautifs.size || !ghPolicesPretes()) return;
-      var corr = wrap._ghCorrections && wrap._ghCorrections.cle === wrap._ghCleRendu ? wrap._ghCorrections : { cle: wrap._ghCleRendu, niveaux: {}, tours: 0 };
-      if (corr.tours >= 2) return;
-      corr.tours += 1;
-      fautifs.forEach(function (x, cle) {
-        var el = plan.elements.find(function (y) { return y.cle === cle; });
-        corr.niveaux[cle] = Math.max(corr.niveaux[cle] || 1, ((el && el.compo && el.compo.niveau) || 1) + 1);
-      });
-      wrap._ghCorrections = corr;
-      ghStats.corrections += fautifs.size;
-      wrap._ghCleRendu = null;
-      renderGlobalPlanning(wrap);
-    });
-    wrap._ghRacine.querySelectorAll('.gh-c__t, .gh-c__b').forEach(function (b) { observateur.observe(b); });
-    wrap._ghObservateur = observateur;
+  function gfSuivreMaintenant(wrap) {
+    var racine = wrap._gfRacine;
+    var bouton = racine.querySelector('.gf-retour');
+    var defile = racine.querySelector('.gf-defile');
+    var now = defile.querySelector('.gf-now');
+    if (wrap._gfObservateur) { wrap._gfObservateur.disconnect(); wrap._gfObservateur = null; }
+    if (!now || typeof IntersectionObserver !== 'function' || racine.getBoundingClientRect().width < 640) { bouton.hidden = true; return; }
+    var texte = gpHeure(wrap._gfModele.maintenant);
+    var observateur = new IntersectionObserver(function (entrees) {
+      var e = entrees[entrees.length - 1];
+      var dessous = e.boundingClientRect.top > (e.rootBounds ? e.rootBounds.bottom : 0);
+      bouton.hidden = e.isIntersecting;
+      var libelle = (dessous ? '↓ ' : '↑ ') + 'Maintenant · ' + texte;
+      if (bouton.textContent !== libelle) bouton.textContent = libelle;
+      bouton.classList.toggle('is-haut', !dessous);
+    }, { root: defile, threshold: 0, rootMargin: '-36px 0px 0px 0px' });
+    observateur.observe(now);
+    wrap._gfObservateur = observateur;
   }
 
   // ---- LES GESTES ------------------------------------------------------------
-  // SURVOLER UNE CARTE ALLUME LE GROUPE (2026-10-20, Movsar : la bulle au
-  // survol « peut déranger de fou ») : ses cartes dans toutes les colonnes
-  // prennent un contour de la couleur de leur statut, les autres s attenuent.
-  function ghReposerClasses(wrap) {
-    var plan = wrap._ghPlan, etats = wrap._ghEtats;
-    if (!plan || !etats || !wrap._ghRacine) return;
-    var t = ghTransitoire(wrap);
-    var noeuds = wrap._ghNoeuds || new Map();
-    plan.elements.forEach(function (el) {
-      if (el.k !== 'carte' && el.k !== 'presence' && el.k !== 'seg') return;
-      var n = noeuds.get(el.cle);
-      if (!n) return;
-      var v = MOTEUR.ghClasses(el, etats.elements[el.cle], t);
-      if (n.getAttribute('class') !== v) n.setAttribute('class', v);
-    });
-    var r = ghClassesRacine(wrap, plan, wrap._ghEntree);
-    if (wrap._ghRacine.getAttribute('class') !== r) wrap._ghRacine.setAttribute('class', r);
-  }
-  function ghGroupe(wrap, id) {
-    if ((wrap._ghSurvol || null) === (id || null)) return;
-    wrap._ghSurvol = id || null;
-    ghReposerClasses(wrap);
-  }
-  function gpChercher(wrap) { ghReposerClasses(wrap); }
-
-  // LE PANNEAU D UN GROUPE (2026-10-20) : au clic ou au toucher d une carte,
-  // ancre a droite de la grille (sous elle au telephone), il ne cache aucune
-  // heure : la grille se resserre a cote de lui. Son statut, ses personnes, sa
-  // formule ; son programme en mini frise, puis en lignes (l heure, la duree,
-  // les pistes ou les armes, ou il en est) ; ce qu il a pris en plus, ses
-  // notes, son numero. Et les gestes du comptoir : « Arrivé » (la regle de la
-  // vue Terrain) et la fiche. Echap, la croix ou un clic hors du panneau le
-  // ferment.
-  function ghDuree(h) {
-    var min = Math.round(h * 60);
-    if (min < 60) return min + ' min';
-    return Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + String(min % 60).padStart(2, '0') : '');
-  }
-  function ghNotes(r) {
-    var notes = [];
-    var mot = typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '';
-    if (mot) notes.push({ qui: typeof getReservationNoteTitre === 'function' ? getReservationNoteTitre(r) : 'Note', texte: mot });
-    if (typeof getReservationNotesEquipe === 'function') getReservationNotesEquipe(r).forEach(function (n) { if (n && n.t) notes.push({ qui: 'Équipe', texte: n.t }); });
-    var client = window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '';
-    if (client) notes.push({ qui: 'Client', texte: client });
-    return notes;
-  }
-  // Ce que la ligne du programme dit de l activite (spec 11.2).
-  function ghDetailPanneau(s, wrap) {
-    var e = s.e;
-    if (e.activityId === 'bowling') return (e.pistes && e.pistes.length ? 'Pistes ' + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + ghDuree(s.end - s.start);
-    if (e.activityId === 'laser_game') {
-      var plan = wrap._ghPlan;
-      var partie = plan && plan.laser ? plan.laser.parties.find(function (p) { return Math.abs(p.debut - s.start) <= 2 / 60 + 1e-6 || (p.debut <= s.start + 1e-6 && p.fin >= s.end - 1e-6); }) : null;
-      var C = plan && plan.laser ? plan.laser.capacite : 0;
-      return 'Partie de ' + gpHeure(partie ? partie.debut : s.start) + ' · ' + (e.joueurs || s.g.r.pax) + ' armes' + (partie ? ' sur ' + partie.armes + (C ? '/' + C : '') : '') + (e.parties > 1 ? ' · ' + (e.partie === 1 ? '1re' : e.partie + 'e') + ' partie' : '');
-    }
-    if (e.journee) return 'toute la visite · jusqu’à ' + gpHeure(s.end) + ' · ' + (Number(e.enfants) || Number(s.g.r.pax) || 0) + ' enf.';
-    return [e.libre ? 'sans heure fixe' : ghDuree(s.end - s.start), e.unites > 1 ? '×' + e.unites + (e.activityId === 'billards' ? ' tables' : e.activityId === 'duckpin_bowling' ? ' pistes' : '') : ''].filter(Boolean).join(' · ');
-  }
-  function ghPanneauHtml(wrap, id, ici) {
-    var m = wrap._ghModele;
-    var g = m && m.groupes.find(function (x) { return x.id === id; });
-    if (!g) return '';
-    var r = g.r;
-    var sous = [(Number(r.pax) || 0) + ' pers.', g.formule ? g.formule.long : '', typeof getReservationOccasionLabel === 'function' ? getReservationOccasionLabel(r) : ''].filter(Boolean);
-    var alertes = '';
-    var tel = String(r.phone || '').trim();
-    if (g.retard && m.maintenant != null) alertes += '<div class="gh-p__alerte is-retard">En retard de ' + ghMinutesDeRetard(g.span.start, m.maintenant) + ' min</div>';
-    if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) alertes += '<div class="gh-p__alerte is-valider">À valider par l’équipe</div>';
-    if (g.etat === 'closing') alertes += '<div class="gh-p__alerte is-cloturer">À clôturer</div>';
-    if (g.etat === 'absent') alertes += '<div class="gh-p__alerte is-absent">Pas venu</div>';
-    var siennes = (wrap._ghSeances || []).filter(function (s) { return s.g === g; }).sort(function (a, b) { return a.start - b.start; });
-    // LA MINI FRISE : de la premiere activite a la derniere, a l heure pleine.
-    var frise = '';
-    if (siennes.length) {
-      var de = Math.floor(Math.min.apply(null, siennes.map(function (s) { return s.start; })));
-      var a = Math.ceil(Math.max.apply(null, siennes.map(function (s) { return s.end; })));
-      if (a <= de) a = de + 1;
-      var pct = function (h) { return ((h - de) / (a - de) * 100).toFixed(3) + '%'; };
-      var reperes = '';
-      for (var h = de; h <= a + 1e-6; h += 1) reperes += '<span class="gh-p__repere" style="left:' + pct(h) + '">' + gpHeure(h).slice(0, 2) + '</span>';
-      var bouts = siennes.map(function (s) {
-        var etat = ghEtat(s, m);
-        return '<i class="gh-p__bout gh-p__tok t-' + g.teinte + ' is-' + etat + (s.e.libre ? ' is-libre' : '') + (s === ici ? ' is-ici' : '') + '" style="left:' + pct(s.start) + ';width:calc(' + pct(s.end) + ' - ' + pct(s.start) + ')" title="' + gpEsc(gpTitreActivite(s.e.activityId) + ' ' + gpHeure(s.start)) + '"></i>';
-      }).join('');
-      var maintenant = m.maintenant != null && m.maintenant > de && m.maintenant < a ? '<i class="gh-p__now" style="left:' + pct(m.maintenant) + '"></i>' : '';
-      frise = '<div class="gh-p__frise" aria-hidden="true"><div class="gh-p__piste">' + bouts + maintenant + '</div><div class="gh-p__reperes">' + reperes + '</div></div>';
-    }
-    // LE PROGRAMME EN LIGNES (defaut 5 regle) : la cellule d heure n ecrit
-    // qu une heure, « 15:30 » ou « ≈ 15:30 » ; une activite a la journee y
-    // ecrit son heure d arrivee, et « toute la visite » va dans son detail.
-    var lignes = siennes.map(function (s) {
-      var etat = ghEtat(s, m);
-      var dans = etat === 'avenir' && m.maintenant != null && !s.e.libre ? Math.round((s.start - m.maintenant) * 60) : null;
-      var mot = dans != null && dans > 0 && dans <= 60 ? 'dans ' + dans + ' min' : GH_ETATS_COURTS[etat];
-      var quand = (s.e.libre && !s.e.journee ? '≈ ' : '') + gpHeure(s.start);
-      return '<li class="is-' + etat + (s === ici ? ' is-ici' : '') + '"><span class="gh-p__h' + (s.e.journee ? ' is-arrivee' : '') + '">' + gpEsc(quand) + '</span>' + ghIcone(s.e.activityId)
-        + '<span class="gh-p__act">' + gpEsc(gpTitreActivite(s.e.activityId)) + '<span class="gh-p__det">' + gpEsc(ghDetailPanneau(s, wrap)) + '</span></span><span class="gh-p__etat is-' + etat + '">' + gpEsc(mot) + '</span></li>';
-    });
-    // Ce qui n a pas d heure : les credits d arcade, la partie de laser a placer.
-    g.cases.forEach(function (liste) {
-      liste.forEach(function (e) {
-        if (e.credit) lignes.push('<li class="is-avenir"><span class="gh-p__h">·</span>' + ghIcone('arcade_time') + '<span class="gh-p__act">Arcades<span class="gh-p__det">' + gpEsc(e.credits && e.credits.parEnfant ? e.credits.n + ' crédits par enfant · ' + e.credits.total + ' crédits' : (e.credits ? e.credits.total : 0) + ' crédits') + '</span></span><span class="gh-p__etat"></span></li>');
-        if (e.aPlacer) lignes.push('<li class="is-avenir"><span class="gh-p__h">·</span>' + ghIcone('laser_game') + '<span class="gh-p__act">Laser<span class="gh-p__det">à placer</span></span><span class="gh-p__etat is-retard">à placer</span></li>');
-      });
-    });
-    var infos = g.infos.filter(Boolean);
-    var notes = ghNotes(r);
-    var peutArriver = m.aujourdHui && g.etat === 'upcoming' && r.status !== 'paid' && r.status !== 'arrived' && typeof setReservationStatusDirect === 'function';
-    return '<div class="gh-p__tete"><div class="gh-p__titre"><b class="gh-p__nom">' + gpEsc(r.name) + '</b><span class="gh-p__statut gh-p__tok t-' + g.teinte + '">' + gpEsc(GH_STATUTS[g.teinte] || GH_STATUTS.conf) + '</span></div>'
-      + '<button type="button" class="gh-p__fermer" data-gh-fermer="1" aria-label="Fermer le panneau"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
-      + (sous.length ? '<div class="gh-p__sous">' + gpEsc(sous.join(' · ')) + '</div>' : '')
-      + alertes
-      + frise
-      + (lignes.length ? '<ol class="gh-p__prog">' + lignes.join('') + '</ol>' : '')
-      + (infos.length ? '<div class="gh-p__bloc"><span class="gh-p__lib">En plus</span>' + gpEsc(infos.join(' · ')) + '</div>' : '')
-      + notes.map(function (n) { return '<div class="gh-p__note"><span class="gh-p__lib">' + gpEsc(n.qui) + '</span>' + gpEsc(n.texte) + '</div>'; }).join('')
-      + (tel ? '<a class="gh-p__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">Appeler ' + gpEsc(tel) + '</a>' : '')
-      + '<div class="gh-p__gestes">' + (peutArriver ? '<button type="button" class="is-premier" data-gh-arrive="' + gpEsc(String(r.id)) + '">Arrivé</button>' : '')
-      + '<button type="button" data-gh-fiche="' + Number(r.id) + '">Ouvrir la fiche</button></div>';
-  }
-  // Le panneau suit le dessin : ouvert, il se remplit a chaque rendu (meme
-  // groupe, meme activite si elle existe encore).
-  function ghPanneauRemplir(wrap) {
-    var p = wrap._ghP;
-    var racine = wrap._ghRacine;
-    var pan = racine && racine.querySelector('.gh-panneau');
-    if (!pan) return false;
-    var ici = p ? (wrap._ghSeances || []).find(function (s) { return s.g.id === p.id && ghCleSeance(wrap, s) === p.k; }) : null;
-    var html = p ? ghPanneauHtml(wrap, p.id, ici) : '';
-    if (!html) { if (p) wrap._ghP = null; ghPanneauVider(wrap); return false; }
-    if (pan.firstChild.innerHTML !== html) pan.firstChild.innerHTML = html;
-    pan.hidden = false;
-    return true;
-  }
-  function ghPanneauVider(wrap) {
-    var pan = wrap._ghRacine && wrap._ghRacine.querySelector('.gh-panneau');
-    if (!pan) return;
-    pan.hidden = true;
-    if (pan.firstChild.innerHTML) pan.firstChild.innerHTML = '';
-  }
-  // La carte d une seance : sa cle dans le plan (le meme groupe, la meme
-  // colonne, la meme minute).
-  function ghCleSeance(wrap, s) {
-    var plan = wrap._ghPlan;
-    var el = plan && plan.elements.find(function (x) { return x.sid === s.id; });
-    return el ? el.cle : '';
-  }
-  function ghOuvrirPanneau(wrap, carte) {
-    var id = carte.getAttribute('data-gp-res');
-    var k = carte.getAttribute('data-gh-k');
-    var memeGroupe = wrap._ghP && wrap._ghP.id === id;
-    wrap._ghP = { id: id, k: k };
-    // (un clic sur une autre carte du meme groupe ne recalcule rien : seule
-    // la ligne « ici » du programme change)
-    if (memeGroupe) { ghPanneauRemplir(wrap); return; }
-    wrap._ghCleRendu = null;
-    renderGlobalPlanning(wrap);
-  }
-  function ghFermerPanneau(wrap) {
-    if (!wrap._ghP) return;
-    wrap._ghP = null;
-    wrap._ghCleRendu = null;
-    renderGlobalPlanning(wrap);
-  }
-
-  // La colonne et le point (en coordonnees de sa pile) sous un evenement.
-  function ghPointDansPile(e) {
-    var pile = e.target && e.target.closest ? e.target.closest('.gh-pile[data-gh-col]') : null;
-    if (!pile || e.target !== pile) return null;
-    return { pile: pile, colonne: Number(pile.getAttribute('data-gh-col')), x: e.offsetX, y: e.offsetY };
-  }
-  // Toucher une case vide du bowling ou du laser : la reservation rapide a
-  // cette heure, par le chemin de son planning (sur sa piste au bowling, le
-  // depart au laser). Rien ne s ecrit ici.
-  function ghReserverIci(wrap, point) {
-    var plan = wrap._ghPlan;
-    if (!plan || !point) return false;
-    var c = MOTEUR.ghCaseLibre(plan, point.colonne, point.x, point.y);
-    if (!c) return false;
-    var col = plan.colonnes[point.colonne];
-    if (wrap._ghP) { wrap._ghP = null; wrap._ghCleRendu = null; renderGlobalPlanning(wrap); }
-    if (col.nature === 'laser') lpReserver(c.t, c.libres != null ? c.libres : undefined);
-    else quickFromCell(c.piste, c.t);
-    return true;
-  }
-  function ghFantome(wrap, point) {
-    var plan = wrap._ghPlan;
-    var f = wrap._ghFantome;
-    var c = plan && point ? MOTEUR.ghCaseLibre(plan, point.colonne, point.x, point.y) : null;
-    if (!c) { if (f) f.hidden = true; return; }
-    if (!f || f.parentNode !== point.pile) {
-      if (f) f.remove();
-      f = document.createElement('div');
-      f.className = 'gh-ajout';
-      f.setAttribute('aria-hidden', 'true');
-      point.pile.appendChild(f);
-      wrap._ghFantome = f;
-    }
-    var col = plan.colonnes[point.colonne];
-    var y = MOTEUR.ghY(plan.axe, c.t);
-    f.hidden = false;
-    f.style.left = (c.x + 1) + 'px';
-    f.style.width = Math.max(1, c.w - 2) + 'px';
-    f.style.top = (y + 1) + 'px';
-    f.style.height = Math.max(1, MOTEUR.ghY(plan.axe, c.t + 0.5) - y - 2) + 'px';
-    var texte = '+ ' + gpHeure(c.t);
-    if (col.nature === 'laser' && c.libres != null) {
-      var formes = [texte + ' · ' + c.libres + ' armes libres', texte + ' · ' + c.libres, texte];
-      texte = formes.find(function (t) { return ghMesure('650 12px', t) + 18 <= c.w; }) || texte;
-    }
-    f.textContent = texte;
-  }
-
-  function ghBrancher(wrap) {
-    if (wrap._gpBranche) return;
-    wrap._gpBranche = true;
-    var dernierPointeur = 'mouse';
-    // Le survol, a la souris : le groupe s allume, rien ne s ouvre.
-    wrap.addEventListener('pointerover', function (e) {
-      if (e.pointerType !== 'mouse') return;
-      var c = e.target.closest && e.target.closest('.gh-c');
-      ghGroupe(wrap, c ? c.getAttribute('data-gp-res') : null);
-    });
-    wrap.addEventListener('pointerleave', function () {
-      ghGroupe(wrap, null);
-      if (wrap._ghFantome) wrap._ghFantome.hidden = true;
-    });
-    wrap.addEventListener('pointerdown', function (e) { dernierPointeur = e.pointerType || 'mouse'; }, true);
-    // Echap ferme le panneau ; un clic hors du panneau et hors des cartes aussi.
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && wrap._ghP) ghFermerPanneau(wrap); });
-    document.addEventListener('pointerdown', function (e) {
-      if (!wrap._ghP || !e.target.closest || e.target.closest('.gh-panneau') || e.target.closest('.gh-c')) return;
-      if (e.target.closest('.staff-action-popover, #quickBookOverlay, .modal, [role="dialog"]')) return;
-      if (wrap.contains(e.target) && e.target.closest('.gh-pile')) return;
-      ghFermerPanneau(wrap);
-    }, true);
-    // UNE CARTE : le premier clic (ou toucher, ou Entree) ouvre son panneau ;
-    // le suivant sur la meme carte ouvre la fiche.
-    var toucher = function (c) {
-      var p = wrap._ghP;
-      if (p && p.k === c.getAttribute('data-gh-k')) {
-        var id = c.getAttribute('data-gp-ouvre');
-        ghFermerPanneau(wrap);
-        if (typeof openPos === 'function') openPos(Number(id));
-        return;
-      }
-      ghOuvrirPanneau(wrap, c);
-    };
+  // « Arrivé » pointe le groupe (le chemin de la vue Terrain, avec son toast
+  // « Annuler ») ; un clic ou Entree ailleurs sur la ligne ouvre la fiche.
+  function gfBrancher(wrap) {
     wrap.addEventListener('click', function (e) {
       if (!e.target.closest) return;
-      if (e.target.closest('[data-gh-fermer]')) { ghFermerPanneau(wrap); return; }
-      var fiche = e.target.closest('[data-gh-fiche]');
-      if (fiche) { ghFermerPanneau(wrap); if (typeof openPos === 'function') openPos(Number(fiche.getAttribute('data-gh-fiche'))); return; }
-      var arrive = e.target.closest('[data-gh-arrive]');
-      if (arrive) { if (typeof setReservationStatusDirect === 'function') setReservationStatusDirect(arrive.getAttribute('data-gh-arrive'), 'arrived', e); return; }
-      if (e.target.closest('a, button, .gh-panneau')) return;
-      var c = e.target.closest('[data-gp-ouvre]');
-      if (c) { toucher(c); return; }
-      var point = ghPointDansPile(e);
-      if (!point) return;
-      // AU DOIGT, UNE TOLERANCE DE 8 PX : un toucher a cote d une carte basse
-      // la choisit ; une case vide ne reserve que loin de toute carte.
-      if (dernierPointeur === 'touch' && wrap._ghPlan) {
-        var proche = MOTEUR.ghCarteProche(wrap._ghPlan, point.colonne, point.x, point.y);
-        if (proche.el) { var n = wrap._ghNoeuds && wrap._ghNoeuds.get(proche.el.cle); if (n) { toucher(n); return; } }
-        if (proche.d <= MOTEUR.TOLERANCE_TOUCHER) return;
-      }
-      if (!ghReserverIci(wrap, point) && wrap._ghP) ghFermerPanneau(wrap);
+      var arrive = e.target.closest('[data-gf-arrive]');
+      if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }
+      if (e.target.closest('.gf-retour')) { gfAllerAMaintenant(wrap, true); return; }
+      if (e.target.closest('a, button, input')) return;
+      var ligne = e.target.closest('[data-gf-id]');
+      if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));
     });
     wrap.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
-      var c = e.target.closest && e.target.closest('[data-gp-ouvre]');
-      if (!c) return;
+      var ligne = e.target.closest && e.target.closest('[data-gf-id]');
+      if (!ligne || e.target !== ligne) return;
       e.preventDefault();
-      toucher(c);
+      if (typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));
     });
-    // UNE CASE VIDE DU BOWLING OU DU LASER : « + 16:30 » la suit a la souris.
-    wrap.addEventListener('pointermove', function (e) {
-      if (e.pointerType !== 'mouse') return;
-      ghFantome(wrap, ghPointDansPile(e));
-    });
-    // La place change : un nouveau plan, une fois par image au plus.
     var attente = 0;
     var recalculer = function () {
       if (attente) return;
-      attente = requestAnimationFrame(function () {
-        attente = 0;
-        if (!wrap.isConnected || !wrap._ghRacine) return;
-        var x = wrap._ghRacine.querySelector('.gh-grille');
-        var gauche = x ? x.scrollLeft : 0;
-        renderGlobalPlanning(wrap);
-        var y = wrap._ghRacine.querySelector('.gh-grille');
-        if (y && gauche && y.scrollLeft !== gauche) y.scrollLeft = gauche;
-      });
+      attente = requestAnimationFrame(function () { attente = 0; if (wrap.isConnected && wrap._gfRacine) { gfHauteur(wrap); gfSuivreMaintenant(wrap); } });
     };
     window.addEventListener('resize', recalculer);
     if (typeof ResizeObserver === 'function') {
@@ -1244,12 +792,7 @@
         recalculer();
       }).observe(wrap);
     }
-    if (document.fonts && document.fonts.addEventListener) {
-      document.fonts.addEventListener('loadingdone', function () { ghViderMesures(); wrap._ghCleRendu = null; if (wrap.isConnected) renderGlobalPlanning(wrap); });
-    }
   }
 
   window.renderGlobalPlanning = renderGlobalPlanning;
-  window.__ghReinitialiser = function (wrap) { ghViderMesures(); if (wrap) { wrap._ghCleRendu = null; wrap._ghPlan = null; wrap._ghCorrections = null; } };
-  window.__ghMesure = ghMesure;
 })();

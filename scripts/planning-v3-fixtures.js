@@ -1,4 +1,5 @@
-// LA CONSOLE SUR UNE JOURNEE FIXE (2026-10-20, planning global v3).
+// LA CONSOLE SUR UNE JOURNEE FIXE (2026-10-20, planning global v3 ; sert la
+// feuille du jour v4 depuis le 2026-10-26).
 //
 // Six journees de Fun Galaxy Libramont, au format exact de GET /api/staff-state
 // (scripts/fixtures/planning-v3/) :
@@ -31,10 +32,6 @@
 //     [--fixtures pic,pire] [--appareils grand,ordinateur,tablette,telephone]
 //     [--modes normal,plein] [--themes dark] [--heure 15:10] [--extras | --extras-seuls]
 //   node scripts/planning-v3-fixtures.js deriver   (reecrit vide, ferme, pire)
-//   node scripts/planning-v3-fixtures.js instantanes  (reecrit entree-*.json :
-//     l entree du moteur que la console construit a 15:10, pour
-//     scripts/planning-moteur-check.js ; le gate du navigateur verifie qu elle
-//     n a pas vieilli)
 // Dans un gate : const { servir, monter } = require('./planning-v3-fixtures');
 'use strict';
 const fs = require('fs');
@@ -305,36 +302,8 @@ async function capturer({ sortie, fixtures = FIXTURES, appareils = ['grand', 'or
       }
     }
     if (extras) {
-      // Le panneau d un groupe ouvert (le defaut « toute la visite » qui
-      // deborde), le pic en clair, la nuit apres minuit, le mouvement reduit.
-      // (2026-10-20, code de 3981945 : le clic qui ouvre le panneau tient la
-      // page 9 s au pic et 16 s au pire cas, machine chargee ; le temps est
-      // ecrit a chaque capture)
-      const panneau = async (fixture, nom, cle) => {
-        const { ctx, page } = await monter(browser, { fixture, appareil: 'ordinateur', port });
-        try {
-          // (par l aria-label, qui garde le nom complet : la carte ecrit la forme qui tient)
-          const carte = page.locator(`#globalPlanningBox .gh-c[aria-label*="${nom}"]`).first();
-          const t = Date.now();
-          await carte.click({ timeout: 90000 });
-          await page.waitForSelector('#globalPlanningBox .gh-panneau:not([hidden])', { timeout: 90000 });
-          console.log(`  ${fixture} : le panneau de « ${nom} » a mis ${Date.now() - t} ms`);
-          await repos(page, 400);
-          await photo(page, `${fixture}-ordinateur-panneau-${cle}`);
-        } finally { await ctx.close(); }
-      };
-      // Le survol au pic : le groupe s allume dans toutes ses colonnes.
-      {
-        const { ctx, page } = await monter(browser, { fixture: 'pic', appareil: 'ordinateur', port });
-        try {
-          await page.locator('#globalPlanningBox .gh-c[aria-label*="Anniversaire Noah"]').first().hover();
-          await repos(page, 300);
-          await photo(page, 'pic-ordinateur-survol-noah');
-        } finally { await ctx.close(); }
-      }
-      await panneau('pic', 'Anniversaire Noah', 'noah');
-      await panneau('pic', 'Famille Renard', 'renard-plaine');
-      await panneau('pire', 'Collègues de bureau', 'neuf-activites');
+      // Le pic en clair, la nuit apres minuit, le mouvement reduit, la tablette
+      // en portrait et le portable au pire cas.
       for (const [fixture, appareil, theme, h, mr, nom] of [
         ['pic', 'ordinateur', 'light', '', false, 'pic-ordinateur-normal-clair'],
         ['pire', 'ordinateur', 'dark', '24:20', false, 'pire-ordinateur-normal-0020'],
@@ -490,38 +459,6 @@ function deriver() {
   return { pire: tous.length, armesMax: Math.max(...armes.values()) };
 }
 // ---------------------------------------------------------------------------
-// LES ENTREES DU MOTEUR, telles que la console les construit (15:10, ordinateur,
-// sans la mesure, l ecran ni les corrections qui dependent du navigateur).
-// ---------------------------------------------------------------------------
-function lireEntreeDePage() {
-  const w = document.getElementById('globalPlanningGridWrap');
-  const e = Object.assign({}, w._ghEntree);
-  delete e.mesure; delete e.ecran; delete e.corrections;
-  return JSON.parse(JSON.stringify(e));
-}
-function lireEntree(nom) { return lireJson(`entree-${nom}.json`); }
-async function instantanes({ port = PORT } = {}) {
-  const { chromium } = require('playwright-core');
-  const serveur = await servir({ port });
-  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-  const faites = {};
-  try {
-    for (const fixture of FIXTURES) {
-      const { ctx, page } = await monter(browser, { fixture, appareil: 'ordinateur', port });
-      try {
-        const e = await page.evaluate(lireEntreeDePage);
-        ecrire(`entree-${fixture}.json`, e);
-        faites[fixture] = e.groupes.length;
-      } finally { await ctx.close(); }
-    }
-  } finally {
-    await browser.close();
-    serveur.close();
-  }
-  return faites;
-}
-
-// ---------------------------------------------------------------------------
 // LES VARIANTES (spec v3, 15.1) : posees en memoire sur la fixture servie
 // (?variante=a,b), jamais ecrites sur le disque.
 //   maintenance5  la piste 5 en maintenance ;
@@ -617,7 +554,6 @@ const liste = (v, defaut) => (typeof v === 'string' ? v.split(',').map((x) => x.
 async function main() {
   const commande = process.argv[2];
   if (commande === 'deriver') { console.log(deriver()); return; }
-  if (commande === 'instantanes') { console.log(await instantanes({ port: Number(option('port', PORT)) })); return; }
   if (commande === 'servir') {
     const port = Number(option('port', PORT));
     await servir({ port });
@@ -644,4 +580,4 @@ async function main() {
   console.log('usage : node scripts/planning-v3-fixtures.js servir|capturer|deriver (voir l en-tete du fichier)');
 }
 if (require.main === module) main().catch((e) => { console.error(e); process.exitCode = 1; });
-else module.exports = { FIXTURES, APPAREILS, VARIANTES, PORT, lireFixture, lireCentre, lireEntree, lireEntreeDePage, varier, servir, monter, repos, instant, capturer, deriver, instantanes };
+else module.exports = { FIXTURES, APPAREILS, VARIANTES, PORT, lireFixture, lireCentre, varier, servir, monter, repos, instant, capturer, deriver };

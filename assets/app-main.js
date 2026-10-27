@@ -1518,6 +1518,7 @@ function refreshEditPreview() {
   // re-rendre : c est la meme regle que le conseil de pistes juste en
   // dessous (Movsar : « le prix ne change pas quand on augmente de joueur »).
   majEditPrixEstime();
+  peindreExtrasEdition();
   if (metaEl) metaEl.textContent = meta;
   // LE CONSEIL SUIT LA FRAPPE. Le formulaire n'est pas re-rendu pendant la
   // saisie (ça volerait le focus), donc tout texte DERIVE de l'etat doit etre
@@ -1611,6 +1612,7 @@ function setEditField(field, value, syncLanes = false) {
   if (!state.editState) return;
   if (state.editError) setEditError('');
   state.editState[field] = value;
+  if (field === 'pax') suivreLeGroupeExtras(value, state.editState.groupeSuivi ?? departsEdition().get(state.editState)?.origine?.pax);
   if (field === 'pax' && state.editState.programmeEdite) {
     const programme = state.editState.programmeEdite;
     if (programme.laser_game?.extraLaser && Number(value) < programme.laser_game.extraLaser.participants) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : son effectif dépassait le nouveau groupe.'); }
@@ -1916,7 +1918,7 @@ function buildReservationApiPayload(reservation, overrides = {}) {
 // joueurs) a un champ que l autre a change autrement. On n ecrase pas : l ecran
 // montre la version actuelle et la personne decide. Une action qui COMPOSE
 // (ajouter un supplement, recalculer un prix) se rejoue simplement.
-const CHAMPS_RESERVATION_ECRITS = ['name', 'phone', 'email', 'date', 'startTime', 'duration', 'totalDuration', 'lanes', 'pax', 'status', 'basePrice', 'price', 'type', 'formuleId', 'label', 'occasion', 'extras', 'paymentMethod', 'notes', 'opsPlan', 'validationStatus', 'activityProgress', 'program', 'centerId'];
+const CHAMPS_RESERVATION_ECRITS = ['name', 'phone', 'email', 'date', 'startTime', 'duration', 'totalDuration', 'lanes', 'pax', 'companions', 'status', 'basePrice', 'price', 'type', 'formuleId', 'label', 'occasion', 'extras', 'paymentMethod', 'notes', 'opsPlan', 'validationStatus', 'activityProgress', 'program', 'centerId'];
 const LIBELLES_CHAMPS_RESERVATION = {
   name: 'le nom',
   phone: 'le téléphone',
@@ -1927,6 +1929,7 @@ const LIBELLES_CHAMPS_RESERVATION = {
   totalDuration: 'la durée',
   lanes: 'les pistes',
   pax: 'le nombre de joueurs',
+  companions: 'les accompagnants',
   status: 'le statut',
   price: 'le prix',
   type: 'l’activité',
@@ -27879,7 +27882,8 @@ function estimerFormuleEdition(r, e) {
   return { total, complet: true, utilisable: true, lignes: [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: total }], parPersonne: Math.round(total / pax) };
 }
 
-function getEditPrixEstime() {
+// Les activites seules : la base du dossier, sans ses extras.
+function getEditPrixActivites() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return null;
@@ -27888,6 +27892,19 @@ function getEditPrixEstime() {
   const items = getEditProgramItems();
   if (!items.length) return null;
   return estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime);
+}
+
+// LES EXTRAS FONT PARTIE DU TOTAL (2026-10-27). L estimation ne comptait que
+// les activites : un groupe qui passait de 8 a 9 joueurs perdait ses cruches
+// et ses tapas du prix, alors que la fiche les listait encore.
+function getEditPrixEstime() {
+  const estime = getEditPrixActivites();
+  if (!estime) return null;
+  const extras = extrasCourantsEdition();
+  if (!extras.length) return estime;
+  const total = Math.round((estime.total + sumExtras(extras)) * 100) / 100;
+  const joueurs = Math.max(1, Number(state.editState.pax) || 1);
+  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0 }))], parPersonne: Math.round(total / joueurs) };
 }
 
 function ensureEditProgram(r) {
@@ -28035,37 +28052,39 @@ function majEditPrixEstime() {
   const e = state.editState;
   if (!e) return;
   const estime = getEditPrixEstime();
-  const ligne = document.getElementById('editPrixEstime');
   const champ = document.getElementById('editPriceInput');
-  if (!estime) { peindreEtatPrix(null); majModifsEdition(); return; }
-  // Tant que personne n a fige un montant, le champ SUIT ce qu on change,
-  // MAIS SEULEMENT SI L ESTIMATION EST FERME. Un centre qui n a pas saisi le
-  // tarif d une activite libre produit une estimation partielle : ecraser un
-  // prix reel de 252 EUR par un « 0 EUR » incomplet ferait facturer zero au
-  // client. Estimation partielle : le montant du dossier reste, et la ligne
-  // en dessous dit « a partir de ».
-  // Et seulement si on a change ce qui fait le prix : sinon le champ garde le
-  // montant du dossier (editionChangeLePrix).
-  const suit = estime.utilisable && editionChangeLePrix();
+  // Tant que personne n a fige un montant, le champ SUIT ce qu on change
+  // (prixSuiviEdition).
   if (!e.prixFige && champ) {
-    const valeur = suit ? estime.total : Math.round((Number(state.selectedRes && state.selectedRes.price) || 0) * 100) / 100;
+    const valeur = prixSuiviEdition(estime);
     champ.value = String(valeur);
     e.price = String(valeur);
   }
-  if (ligne) {
-    const facture = (e.prixFige || !suit)
-      ? (getEditPriceValue() ?? estime.total)
-      : estime.total;
-    const joueurs = Math.max(1, Number(e.pax) || 1);
-    const parPersonne = Math.round((facture / joueurs) * 100) / 100;
-    // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
-    // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
-    // en « 17 » et rend le champ inutilisable.
-    const champPersonne = document.getElementById('editPricePerPerson');
-    if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(parPersonne);
-  }
+  const facture = getEditPriceValue() ?? (estime ? estime.total : 0);
+  const joueurs = Math.max(1, Number(e.pax) || 1);
+  // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
+  // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
+  // en « 17 » et rend le champ inutilisable.
+  const champPersonne = document.getElementById('editPricePerPerson');
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((facture / joueurs) * 100) / 100);
+  const detail = document.querySelector('#posOverlay .dossier-price-detail .edit-prix-detail');
+  if (detail && estime) detail.innerHTML = lignesDetailPrixHtml(estime);
   peindreEtatPrix(estime);
   majModifsEdition();
+}
+
+// CE QUE PORTE LE CHAMP TOTAL quand personne ne l a fige. On a change ce qui
+// fait le tarif (activites, joueurs) : le nouveau tarif, extras compris, MAIS
+// SEULEMENT SI L ESTIMATION CHIFFRE AU MOINS UNE LIGNE (un « 0 EUR » partiel
+// ferait facturer zero). Sinon le prix du dossier, plus ou moins ce que les
+// extras ont bouge : un prix d ami survit a ses extras (avecSupplements).
+function prixSuiviEdition(estime) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return 0;
+  if (estime && estime.utilisable && editionChangeLePrix()) return estime.total;
+  const ecartExtras = editExtrasAChange() ? sumExtras(extrasCourantsEdition()) - sumExtras(r.extras || []) : 0;
+  return Math.round(((Number(r.price) || 0) + ecartExtras) * 100) / 100;
 }
 
 // La phrase sous le prix (textePrixEdition) et « Recalculer » suivent la
@@ -28221,8 +28240,13 @@ function textePrixEdition(r, estime = getEditPrixEstime()) {
   if (estime && estime.utilisable && editionChangeLePrix()) {
     return Math.round(estime.total * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
   }
-  const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
-  if (reference > 0 && Math.round(reference * 100) !== Math.round((Number(r.price) || 0) * 100)) return phrase(`Prix ajusté, tarif ${formatMoneyCentimes(reference)}.`);
+  if (editExtrasAChange()) {
+    return Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau total, avant ${formatMoneyCentimes(r.price)}.`);
+  }
+  // Le meme verdict que la fiche : la reference ECRITE sur le dossier, extras
+  // compris. Sans reference ecrite, aucun ajustement n est clame.
+  const etat = getReservationPriceState(r);
+  if (etat.ajuste) return phrase(`Prix ajusté, tarif ${formatMoneyCentimes(etat.reference)}.`);
   return surPlace;
 }
 
@@ -28232,23 +28256,16 @@ function renderEditPrix(r) {
   // par personne. C est le chiffre que le comptoir annonce au telephone.
   const estime = getEditPrixEstime();
   const joueursActuels = Math.max(1, Number(state.editState.pax) || 1);
-  // L estimation ne remplace le prix du dossier que si on a change ce qui le
-  // fait (editionChangeLePrix) : ouvrir ce bloc ne change aucun montant.
-  const suitEstimation = Boolean(estime && estime.utilisable && editionChangeLePrix());
-  // Ce que porte le CHAMP : le montant fige s il y en a un, sinon l estimation
-  // quand on a change le contenu ou les joueurs, sinon le prix actuel du
-  // dossier. Sans cette regle, cocher une activite laissait le champ sur la
-  // valeur d avant pendant que la ligne en dessous annoncait deja le nouveau
-  // total.
+  // Ce que porte le CHAMP : le montant fige s il y en a un, sinon ce que la
+  // fiche suit (prixSuiviEdition) : ouvrir ce bloc ne change aucun montant.
+  // Sans cette regle, cocher une activite laissait le champ sur la valeur
+  // d avant pendant que la ligne en dessous annoncait deja le nouveau total.
   const valeurChamp = state.editState.prixFige
     ? (state.editState.price ?? Math.round((Number(r.price) || 0) * 100) / 100)
-    : (suitEstimation ? estime.total : Math.round((Number(r.price) || 0) * 100) / 100);
+    : prixSuiviEdition(estime);
   if (!state.editState.prixFige) state.editState.price = String(valeurChamp);
-  // LE DETAIL, ligne par ligne : c est ce qui rend le total comprehensible.
-  // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
-  // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
   const detailHtml = estime && estime.lignes.length
-    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('')}</ul>`
+    ? `<ul class="edit-prix-detail">${lignesDetailPrixHtml(estime)}</ul>`
     : '';
   const etat = textePrixEdition(r, estime);
   return `<section class="fm-prix dossier-price-section" aria-labelledby="dossierPriceHeading">
@@ -28267,6 +28284,220 @@ function renderEditPrix(r) {
     <button type="button" class="edit-adapter-btn fm-recalculer" id="editRecalculer" onclick="recalculerEditPrix()"${state.editState.prixFige ? '' : ' hidden'}>Recalculer avec les tarifs</button>
     ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}</details>` : ''}
   </section>`;
+}
+
+// LE DETAIL, ligne par ligne : c est ce qui rend le total comprehensible.
+// « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
+// joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
+function lignesDetailPrixHtml(estime) {
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('');
+}
+
+// NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut
+// que tu rendes plus complet tout modifiable ajoute le genre nourriture autre
+// etc »). Les extras du dossier se relisent en lignes, comme a la creation
+// (Sur mesure) : nourriture, boissons, le reste, et des arcades par joueur.
+// Une ligne vendue deux fois (deux cruches) se lit « × 2 ». Tant qu on n y
+// touche pas, les extras du dossier repartent tels quels.
+const EXTRAS_GROUPES = [['nourriture', 'Nourriture', 'Choix'], ['boissons', 'Boissons', 'Choix'], ['autres', 'Autre', 'Libellé']];
+
+// Un extra d avant les lignes (« Cruche Bière », « Tapas ») se range par son nom.
+function groupeExtraDossier(extra, nom) {
+  const prefixe = String((extra && extra.id) || '').replace(/-\d+$/, '');
+  if (['nourriture', 'boissons', 'autres'].includes(prefixe)) return prefixe;
+  const mot = String(nom || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (/\b(cruches?|bieres?|sodas?|jus|eau|cafes?|boissons?|vins?|cava|limonades?|colas?)\b/.test(mot)) return 'boissons';
+  if (/\b(pizzas?|frites?|hot-?dogs?|nuggets?|croques?|gateaux?|bonbons?|tapas|snacks?|menus?|repas|sandwichs?|chips|glaces?|assiettes?)\b/.test(mot)) return 'nourriture';
+  return 'autres';
+}
+
+function extrasEditionDepuis(extras, pax) {
+  const modele = { arcades: null, nourriture: [], boissons: [], autres: [] };
+  const centimes = (v) => Math.round(v * 100) / 100;
+  (Array.isArray(extras) ? extras : []).forEach((extra) => {
+    if (!extra || typeof extra !== 'object') return;
+    const nom = String(extra.name || '').trim();
+    const montant = Math.max(0, Number(extra.price) || 0);
+    const arcades = String(extra.id || '').match(/^arcades-(temps|argent)$/);
+    if (arcades && !modele.arcades) {
+      const joueurs = Math.trunc(Number((nom.match(/×\s*(\d+)\s*joueurs?$/) || [])[1])) || Math.max(1, Math.trunc(Number(pax)) || 1);
+      const minutes = /à volonté/.test(nom) ? 999 : (Math.trunc(Number((nom.match(/(\d+)\s*min\b/) || [])[1])) || 30);
+      modele.arcades = { mode: arcades[1], minutes, prix: String(centimes(montant / joueurs)), joueurs };
+      return;
+    }
+    const multiple = nom.match(/^(.*\S)\s*×\s*(\d+)$/);
+    const choix = multiple ? multiple[1] : (nom || 'Extra');
+    const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : 1;
+    const prix = String(centimes(montant / qte));
+    const groupe = groupeExtraDossier(extra, choix);
+    const meme = modele[groupe].find((l) => l.choix === choix && l.prix === prix);
+    if (meme) meme.qte += qte;
+    else modele[groupe].push({ choix, qte, prix });
+  });
+  return modele;
+}
+
+function ensureEditExtras(r) {
+  const e = state.editState;
+  if (!e || !r) return null;
+  if (!e.extrasEdites) {
+    e.extrasEdites = extrasEditionDepuis(r.extras, r.pax);
+    e.extrasEditesInitial = JSON.stringify(e.extrasEdites);
+  }
+  return e.extrasEdites;
+}
+
+// Ce que les lignes ecrivent, compare a ce qu elles ecrivaient a l ouverture :
+// une ligne encore vide, un « 2 » retape a la place d un 2, ce n est rien.
+function editExtrasAChange() {
+  const e = state.editState;
+  if (!e || !e.extrasEdites || !e.extrasEditesInitial) return false;
+  return valeurReservationComparable(extrasDepuisLignes(e.extrasEdites, e.pax)) !== valeurReservationComparable(extrasDepuisLignes(JSON.parse(e.extrasEditesInitial), e.pax));
+}
+
+// Les extras qui partiront : les lignes si on y a touche, sinon ceux du dossier.
+function extrasCourantsEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return [];
+  return editExtrasAChange() ? extrasDepuisLignes(e.extrasEdites, e.pax) : (Array.isArray(r.extras) ? r.extras : []);
+}
+
+const prixLigneExtra = (v) => Math.max(0, Number(String(v ?? '').replace(',', '.')) || 0);
+function sommeLigneExtra(ligne) {
+  return formatMoneyCentimes(Math.round(prixLigneExtra(ligne.prix) * Math.max(1, Math.trunc(Number(ligne.qte) || 1)) * 100) / 100);
+}
+function sommeArcadesExtra(arcades) {
+  return formatMoneyCentimes(Math.round(prixLigneExtra(arcades.prix) * Math.max(1, Math.trunc(Number(arcades.joueurs) || 1)) * 100) / 100);
+}
+
+function renderEditExtras(r) {
+  const modele = ensureEditExtras(r);
+  const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+  const champ = (groupe, i, cle, valeur, attrs) => `<input class="input fm-x-${cle}" ${attrs} value="${escapeHtml(String(valeur ?? ''))}" oninput="setEditExtra('${groupe}',${i},'${cle}',this.value)">`;
+  const a = modele.arcades;
+  const arcades = a ? `<div class="fm-x-groupe" role="group" aria-label="Arcades">
+      <span class="fm-x-titre">Arcades</span>
+      <div class="fm-x-arcades">
+        <div class="dossier-options" role="group" aria-label="Arcades au temps ou en argent">${[['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${a.mode === v ? ' active' : ''}" aria-pressed="${a.mode === v}" onclick="setEditArcadesExtra('mode','${v}')">${mot}</button>`).join('')}</div>
+        ${a.mode === 'temps' ? `<div class="dossier-options" role="group" aria-label="Temps d’arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn dossier-option${Number(a.minutes) === m ? ' active' : ''}" aria-pressed="${Number(a.minutes) === m}" onclick="setEditArcadesExtra('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
+        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en euros" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">€</span></span>
+        <span class="fm-x-par" id="fmxPar-arcades">par joueur × ${Math.max(1, Math.trunc(Number(a.joueurs) || 1))}</span>
+        <b class="fm-x-somme" id="fmxSomme-arcades">${escapeHtml(sommeArcadesExtra(a))}</b>
+        <button type="button" class="fm-x-retirer" aria-label="Retirer les arcades" onclick="retirerEditArcadesExtra()">×</button>
+      </div>
+    </div>` : '';
+  const groupes = EXTRAS_GROUPES.filter(([groupe]) => modele[groupe].length).map(([groupe, titre, invite]) => `<div class="fm-x-groupe" role="group" aria-label="${titre}">
+      <span class="fm-x-titre">${titre}</span>
+      ${modele[groupe].map((l, i) => `<div class="fm-x-ligne">
+        ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
+        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" inputmode="numeric" aria-label="Quantité"')}
+        <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en euros"')}<span aria-hidden="true">€</span></span>
+        <b class="fm-x-somme" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
+        <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
+      </div>`).join('')}
+    </div>`).join('');
+  const total = sumExtras(extrasDepuisLignes(modele, state.editState.pax));
+  const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="fmx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
+  return `<section class="fm-extras" aria-labelledby="fmExtrasTitre">
+    <div class="fm-x-tete"><h4 class="fm-titre" id="fmExtrasTitre">Nourriture et extras</h4><span class="fm-x-total" id="fmExtrasTotal"${total > 0 ? '' : ' hidden'}>${escapeHtml(formatMoneyCentimes(total))}</span></div>
+    ${arcades}${groupes}
+    <div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([groupe, titre]) => `<button type="button" class="fm-ajout" onclick="ajouterEditExtra('${groupe}')">${plus}${titre}</button>`).join('')}</div>
+    ${listes}
+  </section>`;
+}
+
+// La frappe ne re-rend pas la fiche (le curseur resterait perdu) : la somme
+// de la ligne, le total des extras, le prix et la barre du bas suivent en place.
+function setEditExtra(groupe, i, cle, valeur) {
+  const modele = state.editState && state.editState.extrasEdites;
+  const ligne = modele && modele[groupe] && modele[groupe][i];
+  if (!ligne) return;
+  ligne[cle] = valeur;
+  majEditExtras();
+}
+
+function ajouterEditExtra(groupe) {
+  const modele = ensureEditExtras(state.selectedRes);
+  if (!modele || !modele[groupe]) return;
+  modele[groupe].push({ choix: '', qte: groupe === 'boissons' ? 2 : 1, prix: '' });
+  renderPos();
+  const champs = document.querySelectorAll(`#posOverlay .fm-extras input[list="fmx-${groupe}"]`);
+  const dernier = champs[champs.length - 1];
+  if (dernier) dernier.focus();
+}
+
+function retirerEditExtra(groupe, i) {
+  const modele = state.editState && state.editState.extrasEdites;
+  if (!modele || !modele[groupe]) return;
+  modele[groupe].splice(i, 1);
+  renderPos();
+}
+
+function setEditArcadesExtra(cle, valeur, sansRendu) {
+  const modele = state.editState && state.editState.extrasEdites;
+  if (!modele || !modele.arcades) return;
+  modele.arcades[cle] = valeur;
+  if (sansRendu) { majEditExtras(); return; }
+  renderPos();
+}
+
+function retirerEditArcadesExtra() {
+  const modele = state.editState && state.editState.extrasEdites;
+  if (!modele) return;
+  modele.arcades = null;
+  renderPos();
+}
+
+function majEditExtras() {
+  peindreExtrasEdition();
+  majEditPrixEstime();
+}
+
+// Les sommes des lignes, les arcades (elles suivent le groupe) et le total.
+function peindreExtrasEdition() {
+  const e = state.editState;
+  if (!e || !e.extrasEdites) return;
+  EXTRAS_GROUPES.forEach(([groupe]) => e.extrasEdites[groupe].forEach((ligne, i) => {
+    const somme = document.getElementById(`fmxSomme-${groupe}-${i}`);
+    if (somme) somme.textContent = sommeLigneExtra(ligne);
+  }));
+  const arcades = e.extrasEdites.arcades;
+  const sommeArcades = document.getElementById('fmxSomme-arcades');
+  if (sommeArcades && arcades) sommeArcades.textContent = sommeArcadesExtra(arcades);
+  const parJoueur = document.getElementById('fmxPar-arcades');
+  if (parJoueur && arcades) parJoueur.textContent = `par joueur × ${Math.max(1, Math.trunc(Number(arcades.joueurs) || 1))}`;
+  const total = document.getElementById('fmExtrasTotal');
+  if (total) {
+    const montant = sumExtras(extrasDepuisLignes(e.extrasEdites, e.pax));
+    total.textContent = formatMoneyCentimes(montant);
+    total.hidden = !(montant > 0);
+  }
+}
+
+// Des arcades vendues a tout le groupe suivent le groupe, comme une activite
+// (suivreLeGroupe) ; vendues a une partie, elles gardent leur nombre.
+function suivreLeGroupeExtras(valeur, reference) {
+  const e = state.editState;
+  const groupe = Math.trunc(Number(valeur));
+  if (!e || !(groupe > 0)) return;
+  const arcades = e.extrasEdites && e.extrasEdites.arcades;
+  if (arcades && Math.trunc(Number(reference)) > 0 && Math.trunc(Number(arcades.joueurs)) === Math.trunc(Number(reference))) arcades.joueurs = groupe;
+  // Sans programme, suivreLeGroupe ne tient pas la reference : on la tient ici.
+  if (!e.programmeEdite) e.groupeSuivi = groupe;
+}
+
+// L occasion du dossier : un choix, ou aucun (un second clic le retire).
+function setEditOccasion(valeur) {
+  const e = state.editState;
+  if (!e) return;
+  e.occasion = e.occasion === valeur ? '' : valeur;
+  document.querySelectorAll('#posOverlay .fm-occasion [data-occasion]').forEach((bouton) => {
+    const actif = bouton.dataset.occasion === e.occasion;
+    bouton.classList.toggle('active', actif);
+    bouton.setAttribute('aria-pressed', actif ? 'true' : 'false');
+  });
+  majModifsEdition();
 }
 
 // CE QUI PARTIRA A L ENREGISTREMENT, EN UNE LIGNE (2026-10-27). La barre du
@@ -28314,17 +28545,55 @@ function resumeModifsEdition() {
   if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
   if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
+  const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
+  if (accompagnants(e) !== accompagnants(origine)) modifs.push(`Accompagnants ${accompagnants(origine)} → ${accompagnants(e)}`);
   if (e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
   const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
   modifs.push(...modifsProgrammeEdition());
+  modifs.push(...modifsExtrasEdition());
   const prix = getEditPriceValue();
   if (prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
   if (change('name')) modifs.push('Nom modifié');
   if (change('phone')) modifs.push(String(origine.phone || '').trim() ? 'Téléphone modifié' : 'Téléphone ajouté');
   if (change('email')) modifs.push(String(origine.email || '').trim() ? 'E-mail modifié' : 'E-mail ajouté');
+  if (change('occasion')) {
+    const mot = (v) => (RV_OCCASIONS.find(([cle]) => cle === v) || [])[1] || (STAFF_OCCASION_LABELS[v] || '').split(' / ')[0];
+    modifs.push(String(origine.occasion || '').trim() ? `Occasion ${mot(origine.occasion)} → ${mot(e.occasion) || 'aucune'}` : `Occasion : ${mot(e.occasion)}`);
+  }
   return modifs;
+}
+
+// Les extras ajoutes, retires, changes : « Ajout : Pizza × 3 », « Retrait :
+// Tapas », « Cruche Bière × 2 → × 3 ». Les lignes se comparent par leur nom.
+function modifsExtrasEdition() {
+  const e = state.editState;
+  if (!editExtrasAChange()) return [];
+  const lignes = (modele) => {
+    const carte = new Map();
+    EXTRAS_GROUPES.forEach(([groupe]) => (modele[groupe] || []).forEach((l) => {
+      const nom = String(l.choix || '').trim();
+      if (!nom) return;
+      const cle = `${groupe}:${nom.toLowerCase()}`;
+      const qte = Math.max(1, Math.trunc(Number(l.qte) || 1)) + ((carte.get(cle) || {}).qte || 0);
+      carte.set(cle, { nom, qte, prix: prixLigneExtra(l.prix) });
+    }));
+    const a = modele.arcades;
+    if (a && a.mode && prixLigneExtra(a.prix) > 0) carte.set('arcades', { nom: 'Arcades', qte: Math.trunc(Number(a.joueurs) || 0), prix: prixLigneExtra(a.prix), reglage: `${a.mode}:${a.minutes}` });
+    return carte;
+  };
+  const avant = lignes(JSON.parse(e.extrasEditesInitial));
+  const apres = lignes(e.extrasEdites);
+  const ajouts = [...apres].filter(([cle]) => !avant.has(cle)).map(([, l]) => (l.qte > 1 ? `${l.nom} × ${l.qte}` : l.nom));
+  const retraits = [...avant].filter(([cle]) => !apres.has(cle)).map(([, l]) => l.nom);
+  const changes = [...apres].filter(([cle]) => avant.has(cle)).map(([cle, l]) => {
+    const a = avant.get(cle);
+    if (a.qte !== l.qte) return `${l.nom} × ${a.qte} → × ${l.qte}`;
+    if (a.prix !== l.prix) return `${l.nom} ${formatMoneyCentimes(a.prix)} → ${formatMoneyCentimes(l.prix)}`;
+    return a.reglage !== l.reglage ? `${l.nom} modifiées` : '';
+  }).filter(Boolean);
+  return [ajouts.length ? `Ajout : ${ajouts.join(', ')}` : '', retraits.length ? `Retrait : ${retraits.join(', ')}` : '', ...changes].filter(Boolean);
 }
 
 function resumeModifsEditionHtml() {
@@ -28352,7 +28621,7 @@ function dossierHasUnsavedChanges() {
   const e = state.editState;
   const original = e && departsEdition().get(e)?.origine;
   if (!original) return true;
-  return editProgramAChange() || e.prixFige || ['name', 'phone', 'email', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
+  return editProgramAChange() || editExtrasAChange() || e.prixFige || ['name', 'phone', 'email', 'occasion', 'companions', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
     || JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput(e.laserScheduleInitialLanes ?? (original.lanes || []).join(',')));
 }
 
@@ -28517,6 +28786,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
             ${contenuBloc}${!adapte ? pistesBloc : ''}
             ${!adapte && !autreJour ? renderDossierLaserEditor(r) : ''}
           </section>
+          ${adapte ? renderEditExtras(r) : ''}
         </div>
         <aside class="fm-cote">
           ${adapte ? renderEditPrix(r) : ''}
@@ -28534,6 +28804,18 @@ ${!adapte || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
               <label class="lbl" for="editEmailInput">E-mail</label>
               <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" autocomplete="off" placeholder="Facultatif" oninput="setEditField('email', this.value)">
             </div>
+            <div class="fm-champ fm-occasion">
+              <span class="lbl" id="editOccasionLabel">Occasion</span>
+              <div class="dossier-options" role="group" aria-labelledby="editOccasionLabel">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${e.occasion === v ? ' active' : ''}" data-occasion="${v}" aria-pressed="${e.occasion === v}" onclick="setEditOccasion('${v}')">${mot}</button>`).join('')}</div>
+            </div>
+            ${Number(r.companions) > 0 || Number(e.companions) > 0 ? `<div class="fm-champ fm-accompagnants">
+              <label class="lbl" for="editCompanionsInput">Accompagnants</label>
+              <div class="es-stepper staff-stepper fm-stepper">
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un accompagnant de moins" onclick="editAccompagnantsPas(-1)">${signe(false)}</button>
+                <input id="editCompanionsInput" class="input" type="number" min="0" max="500" inputmode="numeric" value="${Math.max(0, Math.trunc(Number(e.companions) || 0))}" oninput="setEditField('companions', this.value)">
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un accompagnant de plus" onclick="editAccompagnantsPas(1)">${signe(true)}</button>
+              </div>
+            </div>` : ''}
           </section>
           ${droits.annuler ? `<details class="dossier-other-actions fm-autres"><summary>Annuler ou supprimer</summary>
             <div class="edit-actions-destructive">
@@ -28576,6 +28858,16 @@ function editPaxPas(delta) {
   const champ = document.getElementById('editPaxInput');
   if (champ) champ.value = n;
   setEditField('pax', n, true);
+}
+
+// LES ACCOMPAGNANTS d un Kids Fun Day (les adultes presents, qui ne jouent pas
+// et ne paient pas l offre) : la fiche les affiche, ils se changent ici.
+function editAccompagnantsPas(delta) {
+  if (!state.editState) return;
+  const n = Math.max(0, Math.min(500, (Math.trunc(Number(state.editState.companions)) || 0) + delta));
+  const champ = document.getElementById('editCompanionsInput');
+  if (champ) champ.value = n;
+  setEditField('companions', n);
 }
 
 // UN ECHEC D'ENREGISTREMENT DOIT RESTER SOUS LES YEUX (2026-08-20).
@@ -28651,7 +28943,10 @@ async function saveEdit(e) {
   // seuls ceux-la sont poses sur le dossier. Un statut qu elle n a pas touche
   // reste celui qui est en base, meme si un collegue l a change pendant
   // qu elle tapait.
-  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), pax, duration, startTime: es.startTime, status: es.status, date: es.date || origine.date };
+  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), occasion: String(es.occasion || ''), pax, duration, startTime: es.startTime, status: es.status, date: es.date || origine.date };
+  // Les accompagnants ne partent que si on y a touche.
+  const accompagnants = Math.max(0, Math.min(500, Math.trunc(Number(es.companions) || 0)));
+  if (accompagnants !== Math.trunc(Number(origine.companions) || 0)) champsSaisis.companions = accompagnants;
   const touches = Object.keys(champsSaisis)
     .filter((champ) => valeurReservationComparable(champsSaisis[champ]) !== valeurReservationComparable(origine[champ]));
   const lanesFinales = requiresLanes ? lanes : [];
@@ -28683,6 +28978,8 @@ async function saveEdit(e) {
   // autorite : il envoie exactement le montant qu il a sous les yeux, qu il
   // l ait fige a la main ou laisse se calculer.
   const prixEcran = peutAdapterFormule() ? getEditPriceValue() : null;
+  // Les extras partent s ils ont change (nourriture, boissons, le reste).
+  const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
 
   // L ACTION, rejouable sur une version plus recente du dossier : elle pose ce
   // que la personne a change et recalcule le prix sur ce qui est en base.
@@ -28690,15 +28987,23 @@ async function saveEdit(e) {
     const updated = { ...dossier, allowPastStart: true };
     touches.forEach((champ) => { updated[champ] = champsSaisis[champ]; });
     if (pistesTouchees) updated.lanes = lanesFinales;
+    if (extrasNouveaux) updated.extras = extrasNouveaux;
     // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
     // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
     const changementOperationnel=Boolean(programme) || touches.some(champ=>['pax','duration','startTime','date'].includes(champ)) || pistesTouchees;
-    if (programmeArcades && !changementOperationnel) { updated.basePrice=dossier.basePrice; updated.price=dossier.price; }
-    else {
-      const quote=programmeArcades ? getEditPrixEstime() : null;
+    // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, un telephone, une
+    // occasion, des extras) : la reference reste celle du dossier, et le prix
+    // ne bouge que de ses extras. La recalculer ici reecrivait celle d une
+    // visite a plusieurs activites avec le seul bowling (getBasePrice), et le
+    // dossier se lisait ensuite « Prix ajusté » partout.
+    if (!changementOperationnel) {
+      updated.basePrice = dossier.basePrice;
+      updated.price = Math.round(((Number(dossier.price) || 0) + sumExtras(updated.extras || []) - sumExtras(dossier.extras || [])) * 100) / 100;
+    } else {
+      const quote=programmeArcades ? getEditPrixActivites() : null;
       updated.basePrice=quote?.complet ? quote.total : getBasePrice(updated.type, updated.duration, (updated.lanes || []).length, updated.pax, updated.formuleId, updated.date);
       updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
     }
@@ -29695,28 +30000,34 @@ function quickHasPaidArcades() {
   const o=getQuickVisitOptions('arcade_time');
   return Boolean(o.arcadeMode && o.arcadeOfferId);
 }
-function quickExtrasLignes() {
-  if (!quickBookState || !quickBookState.surMesure) return [];
-  const e = quickExtrasEtat();
-  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+// Les extras d un dossier depuis leurs lignes. La creation et l onglet
+// Modifier ecrivent le meme dossier, par ce seul calcul. Les arcades se
+// comptent par joueur : le groupe, ou le nombre que la ligne porte.
+function extrasDepuisLignes(e, pax, arcadesComprises = false) {
+  const groupe = Math.max(1, Number(pax) || 1);
   const lignes = [];
   const prix = (v) => Math.max(0, Number(String(v).replace(',', '.')) || 0);
-  if (!quickHasPaidArcades() && e.arcades.mode && prix(e.arcades.prix) > 0) {
+  if (!arcadesComprises && e.arcades && e.arcades.mode && prix(e.arcades.prix) > 0) {
+    const joueurs = Number(e.arcades.joueurs) > 0 ? Math.trunc(Number(e.arcades.joueurs)) : groupe;
     const unitaire = prix(e.arcades.prix);
     const quoi = e.arcades.mode === 'temps'
       ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`)
       : `${unitaire.toLocaleString('fr-BE')} € de crédit`;
-    lignes.push({ id: `arcades-${e.arcades.mode}`, name: `Arcades ${quoi} × ${pax} joueur${pax > 1 ? 's' : ''}`, price: Math.round(unitaire * pax * 100) / 100 });
+    lignes.push({ id: `arcades-${e.arcades.mode}`, name: `Arcades ${quoi} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}`, price: Math.round(unitaire * joueurs * 100) / 100 });
   }
-  ['nourriture', 'boissons', 'autres'].forEach((groupe) => {
-    e[groupe].forEach((ligne, i) => {
+  ['nourriture', 'boissons', 'autres'].forEach((nomGroupe) => {
+    (e[nomGroupe] || []).forEach((ligne, i) => {
       const nom = String(ligne.choix || '').trim();
       const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));
       if (!nom) return;
-      lignes.push({ id: `${groupe}-${i + 1}`, name: `${nom} × ${qte}`, price: Math.round(prix(ligne.prix) * qte * 100) / 100 });
+      lignes.push({ id: `${nomGroupe}-${i + 1}`, name: `${nom} × ${qte}`, price: Math.round(prix(ligne.prix) * qte * 100) / 100 });
     });
   });
   return lignes;
+}
+function quickExtrasLignes() {
+  if (!quickBookState || !quickBookState.surMesure) return [];
+  return extrasDepuisLignes(quickExtrasEtat(), quickBookState.pax, quickHasPaidArcades());
 }
 function quickExtrasTotal() { return quickExtrasLignes().reduce((t, l) => t + (Number(l.price) || 0), 0); }
 

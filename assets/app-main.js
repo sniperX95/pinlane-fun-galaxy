@@ -23589,7 +23589,7 @@ function getPlanningBookingDisplayName(reservation) {
 // activityMove (scheduleLaserPass / unscheduleLaserPass), meme verdict du
 // serveur. L ecran explique d avance ce que le serveur dirait.
 
-const lpEtat = { choisi: null, raison: '', geste: null, glisse: null, enCours: null, joues: true, journeeScope: null, differe: false, ignorerClicJusqua: 0, defile: null };
+const lpEtat = { choisi: null, raison: '', geste: null, glisse: null, enCours: null, joues: true, journeeScope: null, retardsOuverts: false, retardsScope: null, differe: false, ignorerClicJusqua: 0, defile: null };
 
 function lpMinutes() {
   const activite = (typeof getCenterActivities === 'function' ? getCenterActivities() : []).find(a => a && a.id === 'laser_game') || {};
@@ -23889,7 +23889,7 @@ function lpLegende(modele, d, choisi) {
     }
     if (d.hors) return '<span class="lp-libre" title="Hors des horaires">Hors des horaires</span>';
     if (d.joue) return `<span class="lp-libre" title="${escapeHtml(encore || 'Personne')}">${encore || 'Personne'}</span>`;
-    return `<span class="lp-libre" title="${escapeHtml(`${encore || 'Libre'} · toucher pour réserver`)}">${encore || 'Libre'} · toucher pour réserver</span>`;
+    return `<span class="lp-libre" title="${escapeHtml(`${encore || 'Libre'} · toucher pour réserver`)}">${encore || 'Libre'}</span>`;
   }
   const teintes = lpTeintesDuDepart(d);
   const groupes = d.ici.map(w => {
@@ -23909,7 +23909,7 @@ function lpLegende(modele, d, choisi) {
     const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
     const vagues = Number(w.waveCount || w.groupWaveCount || 1);
     const infos = `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}`)}"><i aria-hidden="true"></i><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}<span class="lp-card-status">${statut}</span><span class="lp-card-info">${escapeHtml(infos)}</span></button>`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -23921,11 +23921,14 @@ function lpLegende(modele, d, choisi) {
   return groupes.join('');
 }
 
+// Le compte : les places libres d abord (la question du comptoir), puis les
+// armes prises sur le total, en plus petit (2026-10-27).
 function lpCompte(modele, d, verdict) {
-  if (verdict && verdict.ok) return `<b class="is-plus">${verdict.apres}</b> <small>après</small>`;
-  if (d.places < 0) return `<b class="is-trop">${d.occupe}</b> <small class="is-trop">${-d.places} de trop</small>`;
-  if (!d.occupe) return `<b>0</b> <small>${lpPluriel(modele.capacite, 'place')}</small>`;
-  return `<b>${d.occupe}</b> <small${d.places === 0 ? ' class="is-plein"' : ''}>${d.places === 0 ? 'complet' : lpPluriel(d.places, 'place')}</small>`;
+  const sur = `<span class="lp-dep__sur">/${modele.capacite}</span>`;
+  if (verdict && verdict.ok) return `<b class="is-plus">${verdict.apres}</b>${sur} <small>après</small>`;
+  if (d.places < 0) return `<b class="is-trop">${d.occupe}</b>${sur} <small class="is-trop">${-d.places} de trop</small>`;
+  if (!d.occupe) return `<b>0</b>${sur} <small>${lpPluriel(modele.capacite, 'place')}</small>`;
+  return `<b>${d.occupe}</b>${sur} <small${d.places === 0 ? ' class="is-plein"' : ''}>${d.places === 0 ? 'complet' : lpPluriel(d.places, 'place')}</small>`;
 }
 
 function lpRangDepart(modele, d, choisi) {
@@ -24000,7 +24003,9 @@ function lpProchainHtml(modele) {
   </section>`;
 }
 
-function lpBandeHtml(modele) {
+// La partie en jeu, dans la tete de la journee (2026-10-27) : la bande du
+// haut garde sa ligne pour le prochain depart.
+function lpJeuHtml(modele) {
   if (!modele.aujourdHui) return '';
   const e = modele.enJeu;
   const jeu = e
@@ -24010,16 +24015,34 @@ function lpBandeHtml(modele) {
       return `<div class="lp-jeu"><span class="lp-lbl">En jeu</span> <b>${lpHeure(e.t)}</b> <span class="lp-prog" role="progressbar" aria-label="Partie de ${lpHeure(e.t)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(fait * 100)}"><i style="width:${Math.round(fait * 100)}%"></i></span> <span class="lp-fin">fin dans ${lpDuree(reste)}</span></div>`;
     })()
     : `<div class="lp-jeu is-libre"><span class="lp-lbl">Arène</span> <b>Libre</b>${modele.prochain ? `<span class="lp-fin">jusqu’à ${lpHeure(modele.prochain.t)}</span>` : ''}</div>`;
-  const alertes = modele.retards.slice(0, 3).map(a => {
+  return jeu;
+}
+
+function lpRetardsHtml(modele) {
+  if (!modele.aujourdHui) return { bouton: '', liste: '' };
+  // LES GROUPES PAS VENUS SE REPLIENT (2026-10-27, Movsar : « le haut prend
+  // toute la place »). Trois bandeaux rouges poussaient la journee de 146 px ;
+  // un bouton dans la tete de la journee dit combien, la liste s ouvre dessous
+  // au toucher, une ligne par groupe.
+  const scope = `${state.currentDate}|${getCurrentStaffCenterId()}`;
+  if (lpEtat.retardsScope !== scope) {
+    lpEtat.retardsScope = scope;
+    lpEtat.retardsOuverts = false;
+  }
+  const n = modele.retards.length;
+  const bouton = n
+    ? `<button type="button" class="lp-retards" aria-expanded="${lpEtat.retardsOuverts ? 'true' : 'false'}" onclick="lpBasculerRetards(event)"><span class="lp-retards__point" aria-hidden="true"></span>${n} groupe${n > 1 ? 's' : ''} pas venu${n > 1 ? 's' : ''}<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg></button>`
+    : '';
+  const alertes = n && lpEtat.retardsOuverts ? modele.retards.map(a => {
     const r = a.reservation;
     const id = Number(r.id);
     const ecart = a.cible == null ? null : Math.round((a.cible - a.fenetre.start) * 60);
     const decaler = a.cible == null
       ? '<span class="lp-alerte__rien">Aucun départ libre pour eux aujourd’hui</span>'
       : `<button type="button" class="lp-btn lp-btn--rouge" onclick="lpDecaler(${id}, ${ecart}, event)">Décaler à ${lpHeure(a.cible)}</button>`;
-    return `<div class="lp-alerte" role="status"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v4M8 11.2v.2"/></svg><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> pas venus à ${lpHeure(a.fenetre.start)}</span>${decaler}<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button></div>`;
-  }).join('');
-  return `<div class="lp-bande${alertes ? '' : ' is-seule'}">${jeu}${alertes ? `<div class="lp-alertes">${alertes}</div>` : ''}</div>`;
+    return `<div class="lp-alerte" role="status"><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> <span class="lp-alerte__quand">pas venus à ${lpHeure(a.fenetre.start)}</span></span>${decaler}<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button></div>`;
+  }).join('') : '';
+  return { bouton, liste: alertes ? `<div class="lp-alertes">${alertes}</div>` : '' };
 }
 
 // La journee affiche toute la grille d ouverture, meme les departs vides et
@@ -24044,8 +24067,10 @@ function lpJourneeHtml(modele, choisi) {
     ? `<button type="button" class="lp-passe" onclick="lpBasculerJoues(event)" aria-expanded="${lpEtat.joues ? 'true' : 'false'}">${lpPluriel(jouesAvecGroupes, 'départ')} joué${jouesAvecGroupes > 1 ? 's' : ''} · ${lpEtat.joues ? 'Masquer' : 'Afficher'}</button>`
     : '';
   const rangs = montres.map(d => lpRangDepart(modele, d, choisi)).join('');
+  const retards = lpRetardsHtml(modele);
   return `<section class="lp-journee" aria-label="La journée">
-    <div class="lp-journee__h"><span class="lp-lbl">La journée</span>${tete}</div>
+    <div class="lp-journee__h"><span class="lp-lbl">La journée</span>${lpJeuHtml(modele)}${retards.bouton}${tete}</div>
+    ${retards.liste}
     ${rangs || `<div class="lp-vide">${modele.aujourdHui && !lpEtat.joues && modele.departs.some(parti) ? 'Les départs passés sont masqués.' : 'Aucun départ ce jour.'}</div>`}
   </section>`;
 }
@@ -24087,7 +24112,7 @@ function lpHtml(modele) {
   const choisi = lpChoisiValide(modele);
   return `<div class="lp lp-compact${choisi ? ' is-choix' : ''}" style="--lp-cases:${Math.max(1, modele.capacite)};--lp-departs:${Math.max(1, modele.departs.length)}">
     ${planningClosedNotice(modele.config)}
-    ${modele.aujourdHui ? `<div class="lp-synthese">${lpProchainHtml(modele)}${lpBandeHtml(modele)}</div>` : ''}
+    ${modele.aujourdHui ? `<div class="lp-synthese">${lpProchainHtml(modele)}</div>` : ''}
     ${lpJourneeHtml(modele, choisi)}
     ${lpFileHtml(modele, choisi)}
   </div>`;
@@ -24160,11 +24185,14 @@ function lpAjusterJournee(wrap) {
   const file = lp.querySelector('.lp-file');
   const head = journee.querySelector('.lp-journee__h');
   // Le stock garde une seule ligne ; le bandeau de placement utilise cette
-  // reserve constante. Une file vide ne reserve pas la hauteur de jetons.
-  const fileReserve = file && file.querySelector('.lp-jeton') ? 108 : 80;
+  // reserve constante. Une file vide ne reserve pas la hauteur de jetons, et
+  // repliee (rien a placer, rien en main), elle ne reserve rien.
+  const fileReserve = !file || file.getBoundingClientRect().height < 1 ? 0 : file.querySelector('.lp-jeton') ? 108 : 80;
   const dayTop = journee.getBoundingClientRect().top;
+  const alertes = journee.querySelector('.lp-alertes');
   const available = window.innerHeight - dayTop
-    - (head ? head.getBoundingClientRect().height : 0) - fileReserve - 24;
+    - (head ? head.getBoundingClientRect().height : 0)
+    - (alertes ? alertes.getBoundingClientRect().height : 0) - fileReserve - 24;
   const columns = window.innerWidth >= 1100 ? 2 : 1;
   journee.classList.toggle('is-two-columns', columns > 1);
   const columnRows = Math.ceil(rows / columns);
@@ -24178,11 +24206,9 @@ function lpAjusterJournee(wrap) {
   // (« places » et « complet » ne passent jamais sous 12 px, DESIGN.md : sur
   // un ecran court, la colonne du compte s elargit au lieu de les reduire)
   poserVariableSiChange(lp, '--lp-unit-font', '12px');
-  poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 ? '92px' : '84px');
+  poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 ? '116px' : '108px');
   poserVariableSiChange(lp, '--lp-column-rows', String(columnRows));
   poserVariableSiChange(lp, '--lp-columns', String(columns));
-  const heading = journee.querySelector('.lp-journee__h .lp-lbl');
-  if (heading) heading.textContent = columns > 1 ? 'La journée · lecture de gauche à droite' : 'La journée';
 }
 
 let lpResizeFrame = 0;
@@ -24256,6 +24282,12 @@ function lpFiche(ev) {
 function lpBasculerJoues(ev) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   lpEtat.joues = !lpEtat.joues;
+  renderLaserPlanning();
+}
+
+function lpBasculerRetards(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  lpEtat.retardsOuverts = !lpEtat.retardsOuverts;
   renderLaserPlanning();
 }
 

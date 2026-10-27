@@ -52,6 +52,10 @@ const dayContext = vm.createContext({
   getCurrentStaffCenterId: () => dayCenter,
   lpPluriel: (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`,
   lpRangDepart: (_modele, d) => `<div class="row" data-time="${d.t}"></div>`,
+  // (2026-10-27) la tete de la journee porte la partie en jeu et le bouton des
+  // pas venus : ce faux modele ne teste que le pli des departs joues.
+  lpJeuHtml: () => '',
+  lpRetardsHtml: () => ({ bouton: '', liste: '' }),
 });
 vm.runInContext(source.match(/^const lpEtat = .*;$/m)[0] + extract('lpJourneeHtml', 'lpFileHtml'), dayContext);
 assert.equal(vm.runInContext('lpEtat.joues', dayContext), true, 'past hours start expanded');

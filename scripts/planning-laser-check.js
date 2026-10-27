@@ -286,9 +286,17 @@ async function scenarios(browser, mutation = null) {
       const arrivee = (await requetes(page)).find(q => q.corps && q.corps.status === 'arrived');
       ok(arrivee && Number(arrivee.corps.id) === idDe(dossiers, 'Anniv. Noah'), '[B] « Ils sont là » pose l arrivee du bon groupe', JSON.stringify(arrivee && arrivee.corps));
 
-      const bande = await page.textContent('#laserPlanningGridWrap .lp-bande');
-      ok(/En jeu/i.test(bande) && /15:00/.test(bande) && /fin dans 10 min/.test(bande), '[C] la partie en jeu : 15:00, fin dans 10 min', bande.replace(/\s+/g, ' ').slice(0, 120));
-      ok(/Dubois\s*pas venus à 15:00/.test(bande) && /Décaler à 16:00/.test(bande), '[C] « Dubois pas venus à 15:00 », « Décaler à 16:00 »', '');
+      // (2026-10-27) la partie en jeu et le bouton des pas venus vivent dans la
+      // tete de la journee ; la liste des pas venus s ouvre au toucher.
+      const jeu = await page.textContent('#laserPlanningGridWrap .lp-journee__h .lp-jeu');
+      ok(/En jeu/i.test(jeu) && /15:00/.test(jeu) && /fin dans 10 min/.test(jeu), '[C] la partie en jeu : 15:00, fin dans 10 min', jeu.replace(/\s+/g, ' ').slice(0, 120));
+      const pasVenusOuverts = await page.$$eval('#laserPlanningGridWrap .lp-alerte', (a) => a.length);
+      const bouton = await page.textContent('#laserPlanningGridWrap .lp-journee__h .lp-retards');
+      ok(pasVenusOuverts === 0 && /^1 groupe pas venu$/.test(bouton.replace(/\s+/g, ' ').trim()), '[C] le pas venu se replie sous « 1 groupe pas venu »', `${pasVenusOuverts} ouvert(s), « ${bouton.trim()} »`);
+      await page.click('#laserPlanningGridWrap .lp-journee__h .lp-retards');
+      await page.waitForTimeout(300);
+      const bande = await page.textContent('#laserPlanningGridWrap .lp-alertes');
+      ok(/Dubois\s*pas venus à 15:00/.test(bande) && /Décaler à 16:00/.test(bande), '[C] « Dubois pas venus à 15:00 », « Décaler à 16:00 »', bande.replace(/\s+/g, ' ').slice(0, 120));
       await page.click('#laserPlanningGridWrap .lp-alerte .lp-btn--rouge');
       await page.waitForTimeout(500);
       const decaler = (await requetes(page)).find(q => q.corps && q.corps.action === 'delayImpact');
@@ -406,7 +414,8 @@ async function scenarios(browser, mutation = null) {
         const g = [...document.querySelectorAll('#laserPlanningGridWrap .lp-g')].find(x => /Kevin/.test(x.textContent));
         return g ? g.textContent.replace(/\s+/g, ' ').trim() : '';
       });
-      ok(/^KevinConfirmé3 j\b/.test(kevin), '[H] le repeint differe s est fait au lacher (Kevin a 3 a l ecran)', kevin);
+      // (2026-10-27 : la carte dit le nom, puis le detail, puis l etat)
+      ok(/^Kevin3 j\b/.test(kevin), '[H] le repeint differe s est fait au lacher (Kevin a 3 a l ecran)', kevin);
       ok(erreurs.length === 0, '[F-H] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }
   }
@@ -762,10 +771,10 @@ const MUTATIONS = [
   // La rangee d un depart ne porte plus les pictos du groupe. (Re-ancree le
   // 2026-10-19 : depuis 212370b la rangee enchaine le nom, les pictos et la
   // puce de statut ; l ancre d avant ne se trouvait plus, la contre-preuve
-  // plantait.)
+  // plantait. Re-ancree le 2026-10-27 : le nom et ses pictos ont leur ligne.)
   { nom: 'pictos', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
-    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)}<span class="lp-card-status">',
-    vers: '<b>${escapeHtml(r.name || \'Groupe\')}</b><span class="lp-card-status">' },
+    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)}</span><span class="lp-g__sous">',
+    vers: '<b>${escapeHtml(r.name || \'Groupe\')}</b></span><span class="lp-g__sous">' },
   // Le marqueur laser revient : il le dirait de chaque groupe du planning.
   { nom: 'laser', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
     de: 'renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(',
@@ -773,8 +782,8 @@ const MUTATIONS = [
   // Les pictos repassent en blanc, comme sur l ancienne carte bleue : sur la
   // surface neutre, ils disparaissent en theme clair.
   { nom: 'blanc', lettre: '[P] tablette light : la carte du prochain depart', fichier: 'assets/pinlane-staff.css',
-    de: '.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }',
-    vers: '.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }\n.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }' },
+    de: '.lp-prochain__g small { font-size: 13px; color: var(--lp-muted); }',
+    vers: '.lp-prochain__g small { font-size: 13px; color: var(--lp-muted); }\n.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }' },
   // Le nom et ses pictos ne partagent plus une boite : au telephone, la carte
   // du prochain depart empile le nom, puis les pictos, puis le detail.
   { nom: 'ligne', lettre: '[P] telephone dark : la carte du prochain depart', fichier: 'assets/app-main.js',

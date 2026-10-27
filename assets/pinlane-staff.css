@@ -20993,8 +20993,8 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
    gauche, chronologie a droite). Le tableau des departs est UNE colonne qui
    defile dans le cadre, la file collee en bas de ce cadre. */
 .laser-planning-box.expanded #laserPlanningGridWrap:has(> .lp) { display: block; flex: 1; min-height: 0; height: auto; overflow-x: hidden; overflow-y: auto; }
-.lp-reserver { height: 40px; padding: 0 16px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--console-selected); background: var(--console-selected); color: var(--console-selected-text, #fff); font: 600 13px/1 var(--font-ui); white-space: nowrap; cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / .18), inset 0 1px 0 rgb(255 255 255 / .12); transition: background-color .12s ease; }
-.lp-reserver:hover { background: color-mix(in srgb, var(--console-selected) 86%, #000); border-color: color-mix(in srgb, var(--console-selected) 86%, #000); }
+.lp-reserver { height: 40px; padding: 0 16px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--line-strong); background: transparent; color: var(--text); font: 600 13px/1 var(--font-ui); white-space: nowrap; cursor: pointer; transition: background-color .12s ease; }
+.lp-reserver:hover { background: var(--subtle); }
 .lp-reserver:active { transform: scale(.97); }
 .lp {
   /* Les jetons de la console (assets/pinlane.css, puis la couche staff) : le
@@ -21049,7 +21049,7 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 [data-theme='dark'] :is(.lp .st-paid, .lp-fantome.st-paid) { --lp-c: #3dd68c; --lp-sur: #04210f; }
 [data-theme='dark'] .lp .st-paid.is-alt { --lp-c: #8be6b9; }
 [data-theme='dark'] :is(.lp .st-absent, .lp-fantome.st-absent) { --lp-c: #6b7280; --lp-sur: #fff; }
-.lp-lbl { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.lp-lbl { font-size: 13px; font-weight: 600; color: var(--lp-muted); }
 .lp-btn { height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--lp-line-strong); background: var(--lp-surface); font-size: 13.5px; font-weight: 650; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; transition: background-color .12s ease, border-color .12s ease; }
 .lp-btn:hover { border-color: var(--lp-faint); }
 .lp-btn:active { transform: scale(.97); }
@@ -21060,74 +21060,85 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 .lp .lp-groupe__sel.is-called { outline-color: var(--lp-bleu); }
 @media (prefers-reduced-motion: reduce) { .lp .is-called { animation: none; } }
 
-/* LE PROCHAIN DEPART : ce que l operateur prepare. (2026-10-27 : la carte
-   bleue pleine et son halo bleu faisaient « IA » ; une surface de la console,
-   la barre bleue de 3 px et l heure en grand la font lire en premier.) */
-/* Deux resumes compacts cote a cote ; les groupes restent sous leur depart. */
-.lp-synthese { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; align-items: start; min-width: 0; }
-.lp-prochain { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes"; align-items: center; column-gap: 12px; row-gap: 8px; min-width: 0; min-height: 48px; background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); border-radius: 12px; padding: 8px 12px 8px 15px; box-shadow: inset 3px 0 0 var(--lp-bleu); }
-.lp-prochain:has(.lp-groupes) { grid-template-areas: "quand armes" "groupes groupes"; }
-.lp-prochain__quand { grid-area: quand; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.lp-prochain__quand .lp-lbl { font-size: 12px; color: var(--lp-bleu-texte); }
-.lp-prochain__t { font-size: 24px; line-height: 1; font-weight: 750; letter-spacing: -.02em; }
+/* LE HAUT TIENT SUR UNE BANDE (2026-10-27, Movsar : « le haut prend toute la
+   place », « super moche »). Il empilait la carte du prochain depart, celle
+   de la partie en jeu et trois bandeaux rouges : 250 px avant la journee, des
+   cartes dans la carte, des libelles en capitales espacees. Tout se lit
+   maintenant sur une bande a plat, separee de la journee par un filet : le
+   prochain depart, ses armes et ses groupes avec leur « Ils sont là », la
+   partie en jeu, et un bouton qui compte les groupes pas venus et ouvre leur
+   liste. La couleur ne sert qu aux etats : la pastille d un groupe, le point
+   des pas venus. */
+.lp-synthese { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-width: 0; padding: 2px 0 10px; border-bottom: 1px solid var(--lp-line); }
+.lp-prochain { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; flex: 1 1 auto; min-width: 0; min-height: 44px; color: var(--lp-text); }
+.lp-prochain__quand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.lp-prochain__t { font-size: 22px; line-height: 1; font-weight: 700; letter-spacing: -.02em; }
 .lp-prochain__d { font-size: 13px; color: var(--lp-muted); }
-.lp-prochain__g { grid-area: armes; display: flex; align-items: baseline; gap: 6px; justify-self: end; white-space: nowrap; line-height: 1; padding-right: 6px; }
-.lp-prochain__g b { font-size: 20px; font-weight: 750; letter-spacing: -.02em; }
-.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }
-.lp-prochain.is-calme { background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); box-shadow: none; }
-.lp-prochain.is-calme .lp-lbl { color: var(--lp-bleu-texte); opacity: 1; }
-.lp-prochain.is-calme .lp-prochain__d { color: var(--lp-muted); opacity: 1; }
-.lp-groupes { grid-area: groupes; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.lp-groupe { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; padding: 4px 4px 4px 12px; border-radius: 10px; background: var(--lp-vide); min-height: 44px; }
-.lp-groupe__sel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; touch-action: manipulation; border-radius: 10px; }
-.lp-groupe__sel:focus-visible { outline-color: var(--lp-bleu); outline-offset: 4px; }
+/* Les armes a preparer suivent l heure, les groupes viennent apres : sur un
+   ecran etroit, l heure et les armes gardent leur ligne, les groupes passent
+   dessous. */
+.lp-prochain__g { order: 1; display: flex; align-items: baseline; gap: 5px; white-space: nowrap; line-height: 1; padding-left: 16px; border-left: 1px solid var(--lp-line); }
+.lp-prochain__g b { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.lp-prochain__g small { font-size: 13px; color: var(--lp-muted); }
+.lp-groupes { order: 2; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; flex: 1 1 auto; }
+.lp-groupe { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; min-height: 40px; padding: 2px 3px 2px 10px; border-radius: 8px; background: var(--lp-vide); }
+.lp-groupe__sel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; touch-action: manipulation; border-radius: 6px; }
+.lp-groupe__sel:focus-visible { outline-color: var(--lp-bleu); outline-offset: 3px; }
 .lp-groupe__sel.is-choisi .lp-groupe__t b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
-.lp-pastille { width: 12px; height: 12px; border-radius: 4px; flex: none; background: var(--lp-c); }
-.lp-groupe__t { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.lp-groupe__t b { font-size: 15.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lp-groupe__t .lp-n { opacity: .9; white-space: nowrap; }
-.lp-etat { margin-left: auto; height: 36px; padding: 0 14px; border-radius: 9px; border: 0; display: inline-flex; align-items: center; gap: 7px; font-weight: 650; white-space: nowrap; flex: none; }
-.lp-etat--la { background: var(--lp-ok-clair); color: var(--lp-ok); }
+.lp-pastille { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--lp-c); }
+.lp-groupe__t { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lp-groupe__t b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-groupe__t .lp-n { font-size: 13px; color: var(--lp-muted); white-space: nowrap; }
+.lp-etat { margin-left: auto; height: 34px; padding: 0 12px; border-radius: 7px; border: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; flex: none; }
+/* Arrivés : le texte de la console, la coche dans la couleur de l etat du
+   groupe (ambre arrive, vert paye). Le fond vert disait « payé » pour un
+   groupe seulement arrive. */
+.lp-etat--la { background: transparent; color: var(--lp-text); }
+.lp-etat--la svg { color: var(--lp-c); }
 .lp-etat--marquer { background: var(--lp-surface); color: var(--lp-text); box-shadow: inset 0 0 0 1px var(--lp-line-strong); transition: background-color .12s ease; }
-.lp-etat--marquer:hover { background: var(--lp-vide); }
+.lp-etat--marquer:hover { background: var(--lp-page); }
 .lp-etat--marquer:active { transform: scale(.97); }
 .lp-etat--marquer:focus-visible { outline-color: var(--lp-bleu); }
-.lp-etat--absent { background: var(--lp-vide); color: var(--lp-muted); }
+.lp-etat--absent { background: transparent; color: var(--lp-muted); }
 
-/* EN JEU, et les groupes en retard a cote. */
-/* La partie en jeu et les retards sur une ligne quand ils tiennent, sinon les
-   retards passent dessous : « fin dans 10 min » ne se coupe jamais. */
-.lp-bande { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; min-width: 0; }
-.lp-bande > .lp-jeu { flex: 1 1 100%; min-width: 0; }
-.lp-alertes { flex: 1 1 auto; min-width: 0; }
-.lp-jeu { display: flex; align-items: center; gap: 10px; min-height: 48px; background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 12px; padding: 6px 12px; flex-wrap: wrap; }
-.lp-jeu .lp-lbl { font-size: 12px; color: var(--lp-bleu-texte); }
-.lp-jeu b { font-size: 18px; font-weight: 700; }
-.lp-prog { flex: 1; min-width: 60px; height: 8px; border-radius: 4px; background: var(--lp-vide); overflow: hidden; }
-.lp-prog i { display: block; height: 100%; background: var(--lp-bleu); border-radius: 4px; }
+/* La partie en jeu et le bouton des pas venus vivent dans la tete de la
+   journee ; la liste des pas venus s ouvre dessous, sur toute la largeur. */
+.lp-jeu { display: flex; align-items: center; gap: 8px; margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--lp-line); white-space: nowrap; font-size: 13px; color: var(--lp-muted); }
+.lp-jeu .lp-lbl { color: var(--lp-text); }
+.lp-jeu b { font-size: 13px; font-weight: 600; color: var(--lp-text); }
+.lp-prog { flex: none; width: 56px; height: 4px; border-radius: 2px; background: var(--lp-vide); overflow: hidden; }
+.lp-prog i { display: block; height: 100%; background: var(--lp-muted); border-radius: 2px; }
 .lp-fin { color: var(--lp-muted); white-space: nowrap; }
-.lp-jeu.is-libre .lp-fin { margin-left: auto; }
-.lp-alertes { display: grid; gap: 8px; }
-.lp-alerte { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 48px; padding: 4px 6px 4px 14px; border-radius: 14px; background: var(--lp-rouge-clair); color: var(--lp-rouge-texte); font-weight: 600; }
-.lp-alerte svg { flex: none; }
-.lp-alerte__t b { color: var(--lp-text); }
-.lp-btn--rouge { margin-left: 4px; height: 38px; border-color: var(--lp-rouge); color: var(--lp-rouge-texte); background: var(--lp-surface); }
-[data-theme='dark'] .lp-btn--rouge { background: transparent; }
-.lp-lien { height: 40px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-rouge-texte); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.lp-retards { margin-left: 4px; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 12px; border: 1px solid var(--lp-line-strong); border-radius: 8px; background: transparent; color: var(--lp-text); font-size: 13px; font-weight: 600; white-space: nowrap; transition: background-color .12s ease; }
+.lp-retards:hover { background: var(--lp-vide); }
+.lp-retards__point { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--lp-rouge); }
+.lp-retards svg { color: var(--lp-muted); transition: transform .15s ease; }
+.lp-retards[aria-expanded='true'] svg { transform: rotate(180deg); }
+.lp-alertes { display: grid; min-width: 0; background: var(--lp-page); border-bottom: 1px solid var(--lp-line); }
+.lp-alerte { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 3px 0 3px 14px; border-bottom: 1px solid var(--lp-line); box-shadow: inset 3px 0 0 var(--lp-rouge); color: var(--lp-text); }
+.lp-alerte:last-child { border-bottom: 0; }
+.lp-alerte__t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-alerte__t b { font-weight: 600; }
+.lp-alerte__quand { color: var(--lp-rouge-texte); }
+.lp-btn--rouge { height: 34px; }
+.lp-lien { height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--lp-muted); font-weight: 600; transition: background-color .12s ease, color .12s ease; }
+.lp-lien:hover { background: var(--lp-vide); color: var(--lp-text); }
 .lp-alerte__rien { color: var(--lp-muted); font-weight: 500; }
 
 /* LA JOURNEE : chaque depart, ses armes en cases. */
-.lp-journee { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 20px; overflow: hidden; }
-.lp-journee__h { display: flex; align-items: center; min-height: 36px; padding: 0 12px 0 14px; border-bottom: 1px solid var(--lp-line); gap: 8px; }
-.lp-journee__h .lp-lbl { font-size: 15px; letter-spacing: 0; text-transform: none; }
-.lp-passe { margin-left: auto; height: 36px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-faint); border-radius: 8px; }
+/* La journee n est plus une carte dans la carte : des filets, sans cadre. */
+.lp-journee { background: transparent; border: 0; border-radius: 0; overflow: hidden; }
+.lp-journee__h { display: flex; flex-wrap: wrap; align-items: center; min-height: 36px; padding: 0 2px; border-bottom: 1px solid var(--lp-line); gap: 4px 8px; }
+.lp-journee__h .lp-lbl { font-size: 13px; color: var(--lp-muted); }
+.lp-passe { margin-left: auto; height: 32px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-muted); border-radius: 8px; font-size: 13px; }
 .lp-passe:hover { color: var(--lp-text); }
 .lp-dep { position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr) 72px; grid-template-rows: auto auto; column-gap: 16px; row-gap: 4px; align-items: center; padding: 11px 18px 12px; border-top: 1px solid var(--lp-line); cursor: pointer; transition: background-color .15s ease, opacity .15s ease; }
 .lp-journee__h + .lp-dep { border-top: 0; }
 .lp-dep__h { grid-row: 1 / span 2; align-self: start; padding-top: 1px; font-size: 17px; font-weight: 700; }
 .lp-dep__jauge { grid-column: 2; grid-row: 1; display: flex; align-items: center; width: 100%; min-height: 16px; padding: 0; border: 0; background: transparent; border-radius: 6px; text-align: left; }
-.lp-dep__n { grid-column: 3; grid-row: 1 / span 2; align-self: start; text-align: right; line-height: 1.15; }
-.lp-dep__n b { display: block; font-size: 16px; font-weight: 700; }
+.lp-dep__n { grid-column: 3; grid-row: 1 / span 2; align-self: start; text-align: right; line-height: 1.15; white-space: nowrap; }
+.lp-dep__n b { font-size: 16px; font-weight: 700; }
+.lp-dep__sur { font-size: 12px; font-weight: 500; color: var(--lp-muted); }
 .lp-dep__n small { display: block; font-size: 12px; font-weight: 500; color: var(--lp-faint); }
 .lp-dep__n .is-plein, .lp-dep__n .is-trop { color: var(--lp-rouge-texte); font-weight: 650; }
 .lp-dep__n .is-plus { color: var(--lp-bleu-texte); }
@@ -21149,6 +21160,15 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 .lp-g { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; margin: -2px -6px; padding: 2px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--lp-muted); white-space: nowrap; max-width: 100%; transition: background-color .12s ease; touch-action: manipulation; }
 .lp-g i { width: 10px; height: 10px; border-radius: 3px; flex: none; background: var(--lp-c); }
 .lp-g b { color: var(--lp-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+/* Le nom et ses pictos d un cote, le detail et l etat de l autre : sur
+   tablette ils se suivent, au bureau et au telephone le detail passe dessous.
+   Chacun cede par la fin. */
+.lp-g__nom, .lp-g__sous { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.lp-card-info { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* « Confirmé » est l etat par defaut : il ne s ecrit pas (comme le repere
+   d etat des cartes bowling), la couleur le dit ; arrive, paye et pas venu
+   s ecrivent. */
+.lp-g.st-conf .lp-card-status { display: none; }
 .lp-g:hover { background: var(--lp-bleu-voile); }
 .lp-g.is-choisi { background: var(--lp-bleu-clair); box-shadow: inset 0 0 0 1.5px var(--lp-bleu); }
 .lp-g.is-la b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--lp-ok); vertical-align: 2px; }
@@ -21179,7 +21199,12 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
    contour. Un groupe pose la avant le blocage garde sa couleur, le conflit
    reste visible. */
 .lp-dep.is-ferme .lp-cases i:not([class]) { box-shadow: none; background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 1.5px, transparent 1.5px 5px); }
-.lp-dep.is-enjeu .lp-dep__h::after { content: 'en jeu'; display: block; margin-top: 3px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--lp-bleu-texte); }
+/* La partie en jeu et le prochain depart se reperent dans la journee : un
+   fond a peine leve et leur mot sous l heure, en 12 px, sans couleur. */
+.lp-dep.is-enjeu, .lp-dep.is-prochain { background: var(--lp-vide); }
+.lp-dep.is-enjeu .lp-dep__h::after, .lp-dep.is-prochain .lp-dep__h::after { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; line-height: 1; color: var(--lp-muted); }
+.lp-dep.is-enjeu .lp-dep__h::after { content: 'en jeu'; }
+.lp-dep.is-prochain .lp-dep__h::after { content: 'prochain'; }
 .lp-dep.is-trop .lp-cases { box-shadow: 0 0 0 2px var(--lp-surface), 0 0 0 3.5px var(--lp-rouge); border-radius: 5px; }
 .lp.is-choix .lp-dep { cursor: default; }
 .lp-dep.is-cible { cursor: pointer; background: var(--lp-bleu-voile); box-shadow: inset 4px 0 0 var(--lp-bleu); }
@@ -21195,14 +21220,19 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 /* LA FILE SUR UNE LIGNE (2026-10-08, « haut compact ») : « À placer », son
    compte, les parties qui defilent de cote, l aide au bout. La journee garde
    la hauteur (62 px au lieu de 120). */
-.lp-file { position: sticky; bottom: 0; z-index: 5; margin: 0 -20px; padding: 8px 20px 10px; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-auto-flow: row dense; align-items: center; column-gap: 10px; row-gap: 8px; background: var(--lp-surface); border-top: 1px solid var(--lp-line); box-shadow: 0 -10px 30px rgb(0 0 0 / .08); transition: background-color .15s ease; }
+.lp-file { position: sticky; bottom: 0; z-index: 5; margin: 0 -20px; padding: 8px 20px 10px; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-auto-flow: row dense; align-items: center; column-gap: 10px; row-gap: 8px; background: var(--lp-surface); border-top: 1px solid var(--lp-line); transition: background-color .15s ease; }
+/* Rien a placer et rien en main : la file se replie a une hauteur nulle (sa
+   ligne « À placer 0 » prenait 44 px a la journee), mais reste a sa place,
+   le bord bas de ce qu on voit. Elle revient des qu un groupe est pris, cible
+   du « retirer du planning ». */
+.lp-file.is-vide:not(.is-choix) { height: 0; min-height: 0; padding-top: 0; padding-bottom: 0; border-top: 0; overflow: hidden; visibility: hidden; }
+body.lp-glisse .lp-file.is-vide { height: auto; padding-top: 8px; padding-bottom: 8px; border-top: 1px solid var(--lp-line); overflow: visible; visibility: visible; }
 .lp-file > .lp-placer { grid-column: 1 / -1; }
 .lp-file__h { display: contents; }
 .lp-file__h .lp-lbl { grid-column: 1; }
 .lp-file__h .lp-file__n { grid-column: 2; }
 .lp-file .lp-jetons { grid-column: 3; }
 .lp-file .lp-aide { grid-column: 4; }
-[data-theme='dark'] .lp-file { box-shadow: 0 -10px 30px rgb(0 0 0 / .45); }
 .lp-file.is-survol { background: var(--lp-bleu-voile); }
 /* La carte du prochain depart recoit le groupe qu on glisse sur elle. */
 .lp-prochain.is-survol { box-shadow: 0 0 0 3px var(--lp-surface), 0 0 0 6px var(--lp-bleu); }
@@ -21242,61 +21272,71 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
 /* La vue B : heure, groupes, capacite sur UNE ligne. Les gestes et les
    elements de la jauge restent identiques ; les groupes nombreux defilent
    horizontalement dans leur depart, jamais au-dessus d une autre heure. */
+/* LA JOURNEE SUR ORDINATEUR (2026-10-27) : l heure, les groupes, puis le
+   compte. Le compte dit d abord les places libres (la question du comptoir),
+   puis les armes prises sur le total, en petit ; la jauge, une barre fine
+   sous lui, garde les cases qu on attrape pour deplacer un groupe. Une carte
+   de groupe a plat, sa barre d etat de 3 px a gauche : son nom a toute la
+   premiere ligne (avec la note), le detail et l etat la seconde. Sur une
+   rangee trop basse pour deux lignes, la carte garde le nom et ses pictos. */
 @media (min-width: 901px) {
-  .lp-compact { --lp-row-height: 28px; gap: 6px; padding: 6px 16px 0; }
-  .lp-compact .lp-journee { border-radius: 12px; }
+  .lp-compact { --lp-row-height: 28px; gap: 0; padding: 8px 16px 0; }
   .lp-compact .lp-journee.is-two-columns { display: grid; grid-template-columns: repeat(var(--lp-columns, 2), minmax(0, 1fr)); grid-template-rows: 36px repeat(var(--lp-column-rows), var(--lp-row-height)); grid-auto-flow: column; }
   .lp-compact .lp-journee.is-two-columns .lp-journee__h { grid-column: 1 / -1; grid-row: 1; }
-  .lp-compact .lp-journee.is-two-columns .lp-dep { grid-template-columns: var(--lp-hour-column, 60px) minmax(0, 1fr) 50px var(--lp-count-width, 92px); gap: 8px; border-right: 1px solid var(--lp-line); }
-  .lp-compact .lp-dep { grid-template-columns: 56px minmax(0, 1fr) 100px 92px; grid-template-rows: minmax(0, 1fr); column-gap: 12px; row-gap: 0; min-height: var(--lp-row-height); height: var(--lp-row-height); padding: 0 14px; }
-  .lp-compact .lp-dep__h { grid-column: 1; grid-row: 1; align-self: center; padding: 0; font-size: var(--lp-hour-font, 16px); white-space: nowrap; }
-  .lp-compact .lp-dep__jauge { grid-column: 3; grid-row: 1; min-width: 0; min-height: 16px; align-self: center; }
-  .lp-compact .lp-dep__n { grid-column: 4; grid-row: 1; align-self: center; display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; font-size: 10px; }
-  .lp-compact .lp-dep__n b { display: inline; font-size: var(--lp-count-font, 14px); }
-  .lp-compact .lp-dep__n small { display: inline; font-size: var(--lp-unit-font, 12px); }
-  .lp-compact .lp-qui { grid-column: 2; grid-row: 1; flex-wrap: nowrap; min-width: 0; min-height: 22px; height: 100%; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
-  .lp-compact .lp-g { flex: 1 0 auto; max-width: none; min-height: 22px; height: calc(100% - 4px); margin: 0; padding: 2px 7px; font-size: var(--lp-group-font, 14px); line-height: 16px; border: 1px solid transparent; border-left: 3px solid var(--lc-bar); border-radius: 6px; background: var(--lc-top); color: var(--lc-text); display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); grid-template-rows: 16px 16px; column-gap: 6px; row-gap: 1px; align-content: center; }
-  .lp-compact .lp-g b { overflow: visible; text-overflow: clip; }
+  .lp-compact .lp-journee.is-two-columns:has(> .lp-alertes) { grid-template-rows: 36px auto repeat(var(--lp-column-rows), var(--lp-row-height)); }
+  .lp-compact .lp-journee.is-two-columns > .lp-alertes { grid-column: 1 / -1; grid-row: 2; }
+  /* Le filet entre les deux colonnes, sous la tete seulement. */
+  .lp-compact .lp-journee.is-two-columns { background: linear-gradient(var(--lp-line), var(--lp-line)) 50% 36px / 1px calc(100% - 36px) no-repeat; }
+  .lp-compact .lp-dep { grid-template-columns: var(--lp-hour-column, 60px) minmax(0, 1fr) var(--lp-count-width, 112px); grid-template-rows: minmax(0, 1fr) 4px; column-gap: 12px; row-gap: 2px; min-height: var(--lp-row-height); height: var(--lp-row-height); padding: 3px 12px 3px 10px; border-top: 0; border-bottom: 1px solid var(--lp-line); }
+  .lp-compact .lp-dep__h { grid-column: 1; grid-row: 1 / -1; align-self: center; padding: 0; font-size: var(--lp-hour-font, 16px); font-weight: 650; white-space: nowrap; }
+  .lp-compact .lp-qui { grid-column: 2; grid-row: 1 / -1; flex-wrap: nowrap; min-width: 0; min-height: 22px; height: 100%; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+  .lp-compact .lp-dep__n { grid-column: 3; grid-row: 1; align-self: center; position: relative; z-index: 1; pointer-events: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 0; white-space: nowrap; line-height: 1; }
+  .lp-compact .lp-dep__n small { order: -1; margin-right: 8px; font-size: var(--lp-count-font, 14px); font-weight: 650; color: var(--lp-text); }
+  .lp-compact .lp-dep__n b, .lp-compact .lp-dep__sur { font-size: var(--lp-unit-font, 12px); font-weight: 500; color: var(--lp-muted); }
+  .lp-compact .lp-dep__n .is-plein, .lp-compact .lp-dep__n .is-trop { color: var(--lp-rouge-texte); }
+  .lp-compact .lp-dep__n .is-plus { color: var(--lp-bleu-texte); }
+  .lp-compact .lp-dep.is-vide .lp-dep__n small { font-weight: 500; color: var(--lp-muted); }
+  /* La jauge reste la cible du depart (toucher, deposer, le clavier) : elle
+     couvre toute la case du compte, sa barre en bas ; le compte se lit
+     par-dessus, sans prendre le toucher. */
+  .lp-compact .lp-dep__jauge { grid-column: 3; grid-row: 1 / -1; min-width: 0; min-height: 0; height: auto; align-self: stretch; display: flex; align-items: flex-end; border-radius: 4px; }
+  .lp-compact .lp-dep__jauge .lp-cases { flex: 1 1 auto; }
+  .lp-compact .lp-cases { height: 4px; border-radius: 2px; box-shadow: none; background: var(--lp-line); }
+  .lp-compact .lp-cases i { height: 4px; }
+  .lp-compact .lp-g { flex: 1 1 0; min-width: min(100px, 100%); max-width: 340px; text-align: left; min-height: 0; height: calc(100% - 4px); margin: 0; padding: 2px 9px 2px 11px; font-size: var(--lp-group-font, 14px); line-height: 16px; border: 0; border-radius: 3px; background: var(--lp-vide); color: var(--lp-text); box-shadow: inset 3px 0 0 var(--lp-c); display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 1px; }
+  /* Deux lignes independantes : le mot d etat ne prend plus sa largeur au nom. */
+  .lp-compact .lp-g :is(.lp-g__nom, .lp-g__sous) { display: flex; align-items: center; gap: 6px; min-width: 0; height: 16px; }
+  .lp-compact .lp-g:hover { background: var(--lp-bleu-voile); }
   .lp-compact .lp-g i { display: none; }
-  .lp-compact .lp-g b { color: var(--lc-text); grid-row: 1; }
-  .lp-compact .lp-g .lp-pictos { grid-row: 1; }
-  .lp-compact .lp-card-status { grid-column: 4; grid-row: 1; justify-self: end; color: var(--lc-detail); font-size: 13px; }
-  .lp-compact .lp-card-info { grid-column: 1 / -1; grid-row: 2; color: var(--lc-detail); font-size: 13px; white-space: nowrap; text-align: left; }
-  .lp-compact.lp-cards-tight .lp-g { display: inline-flex; gap: 6px; padding: 0 5px; height: calc(100% - 2px); line-height: 16px; }
-  .lp-compact.lp-cards-tight .lp-card-status { order: 5; }
+  .lp-compact .lp-g b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lp-text); font-weight: 600; }
+  .lp-compact .lp-g .lp-pictos { flex: none; }
+  /* Un depart a plusieurs groupes : chaque carte ne garde que la consigne (la
+     note), comme au telephone ; le nom prend la place des autres pictos, que
+     la carte du prochain depart, la file et la fiche gardent. */
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) .lp-pictos .bk-flags .bk-flag:nth-child(n+2), .lp-compact .lp-qui:has(> .lp-g + .lp-g) .lp-pictos .bk-flags ~ .flag-prix { display: none; }
+  .lp-compact .lp-card-info { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lp-muted); font-size: 13px; }
+  .lp-compact .lp-card-status { flex: none; margin-left: auto; color: var(--lp-c); font-size: 13px; font-weight: 600; }
+  .lp-compact.lp-cards-tight .lp-g { height: calc(100% - 2px); padding: 0 8px 0 10px; }
+  .lp-compact.lp-cards-tight .lp-g__sous { display: none; }
   .lp-compact .lp-qui .lp-g:focus-visible { outline-offset: -2px; }
   .lp-compact .lp-libre { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--lp-group-font, 14px); }
-  .lp-compact .lp-dep.is-enjeu .lp-dep__h::after { display: inline; content: ' ·'; font-size: 11px; margin: 0; }
-  .lp-compact .lp-g.is-la b::after { width: 5px; height: 5px; margin-left: 4px; vertical-align: 1px; }
+  .lp-compact.lp-cards-tight .lp-dep__h::after { display: none; }
+  .lp-compact .lp-g.is-la b::after { width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; background: var(--lp-c); }
+  .lp-compact .lp-g.is-enligne { --lp-c: var(--lp-line-strong); }
+  .lp-compact .lp-dep.is-joue .lp-g b { color: var(--lp-muted); }
   .lp-compact .lp-file { padding-top: 6px; padding-bottom: 6px; }
   .lp-compact .lp-file > .lp-placer { padding: 2px 4px 2px 8px; gap: 6px; }
   .lp-compact .lp-placer .lp-btn { height: 30px; }
   .lp-compact .lp-file__h { min-height: 24px; }
   .lp-compact .lp-jeton { padding-top: 3px; padding-bottom: 3px; }
   .lp-compact .lp-synthese .lp-groupes { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
-  .lp-compact .lp-synthese .lp-groupe { flex-shrink: 0; }
-  .lp-compact .lp-g.st-conf { --lc-top: #d9eafd; --lc-bottom: #ebf4fe; --lc-border: #aecbed; --lc-bar: #0070f3; --lc-text: #004597; --lc-detail: #005ac2; }
-  .lp-compact .lp-g.st-arr { --lc-top: #fef2de; --lc-bottom: #fef8ed; --lc-border: #eed9b7; --lc-bar: #f5a623; --lc-text: #6e4b10; --lc-detail: #875b13; }
-  .lp-compact .lp-g.st-paid { --lc-top: #def6e7; --lc-bottom: #edfaf2; --lc-border: #b7e1c6; --lc-bar: #22c55e; --lc-text: #0b5c2d; --lc-detail: #0e6f36; }
-  [data-theme='dark'] .lp-compact .lp-g.st-conf { --lc-top: #142a45; --lc-bottom: #0f1c2a; --lc-border: #2a4a70; --lc-bar: #3291ff; --lc-text: #deedff; --lc-detail: #84bdff; }
-  [data-theme='dark'] .lp-compact .lp-g.st-arr { --lc-top: #422f10; --lc-bottom: #291e0d; --lc-border: #6c5225; --lc-bar: #f5a623; --lc-text: #fdefd7; --lc-detail: #f8bf61; }
-  [data-theme='dark'] .lp-compact .lp-g.st-paid { --lc-top: #163b29; --lc-bottom: #11251b; --lc-border: #2e6249; --lc-bar: #3dd68c; --lc-text: #e0f8ed; --lc-detail: #7fe4b3; }
-  .lp-compact .lp-g:is(.st-absent,.is-enligne) { --lc-top: var(--lp-surface); --lc-bottom: var(--lp-surface); --lc-border: var(--lp-line-strong); --lc-bar: var(--lp-muted); --lc-text: var(--lp-text); --lc-detail: var(--lp-muted); }
-  .lp-compact .lp-dep.is-joue .lp-g { --lc-top: var(--lp-surface); --lc-bottom: var(--lp-surface); --lc-border: var(--lp-line); --lc-bar: var(--lp-line-strong); --lc-text: var(--lp-muted); --lc-detail: var(--lp-muted); }
+  .lp-compact .lp-synthese .lp-groupe { flex: 0 1 auto; min-width: min(200px, 100%); }
 }
 @media (min-width: 1100px) and (max-height: 820px) {
-  .lp-compact .lp-prochain { min-height: 44px; padding: 4px 8px; }
-  .lp-compact .lp-groupe { min-height: 36px; padding-top: 0; padding-bottom: 0; }
-  .lp-compact .lp-bande { flex-wrap: nowrap; gap: 6px; }
-  .lp-compact .lp-bande > .lp-jeu { flex: 1 1 auto; min-height: 44px; }
-  .lp-compact .lp-jeu { padding: 4px 8px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
-  .lp-compact .lp-jeu > :not(.lp-prog) { flex-shrink: 0; white-space: nowrap; }
-  .lp-compact .lp-jeu .lp-prog { min-width: 20px; }
-  .lp-compact .lp-alertes { max-width: 58%; display: flex; overflow-x: auto; scrollbar-width: thin; }
-  /* (ici chaque alerte reste sur une ligne : elle defile avec ses voisines,
-     et deux lignes doublaient la bande, deux departs sortaient de l ecran a
-     1366 x 768 pendant un placement, laser-fit-day) */
-  .lp-compact .lp-alertes .lp-alerte { flex: none; flex-wrap: nowrap; min-height: 44px; overflow: visible; }
+  .lp-compact .lp-synthese { padding-bottom: 6px; }
+  .lp-compact .lp-prochain { min-height: 38px; }
+  .lp-compact .lp-groupe { min-height: 34px; padding-top: 0; padding-bottom: 0; }
+  .lp-compact .lp-alerte { min-height: 36px; }
 }
 @media (min-width: 1101px) {
   #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head { margin-bottom: 8px; }
@@ -21317,64 +21357,25 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tabs { margin-bottom: 8px; }
   #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
-  .lp-compact .lp-prochain { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'quand groupes armes'; }
-  .lp-compact .lp-prochain__quand { max-width: 190px; }
-  .lp-compact .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
-  /* (jamais sous 12 px, DESIGN.md : ces trois textes etaient a 10 et 11) */
-  .lp-compact .lp-prochain__d { font-size: 12px; }
-  .lp-compact .lp-groupes { min-width: 0; }
+  /* La bande sur une ligne : le prochain depart et ses groupes prennent ce
+     que la partie en jeu et le bouton des pas venus laissent ; ses groupes se
+     partagent la place (le nom s abrege, la bulle le donne entier) et, au-dela,
+     la rangee defile. */
+  .lp-compact .lp-prochain { flex-wrap: nowrap; }
+  .lp-compact .lp-prochain__quand, .lp-compact .lp-prochain__g { flex: none; }
+  .lp-compact .lp-prochain__quand { flex-wrap: nowrap; white-space: nowrap; }
+  .lp-compact .lp-prochain__quand .lp-lbl { white-space: nowrap; }
   .lp-compact .lp-groupe__t { flex-direction: column; align-items: flex-start; gap: 0; }
-  .lp-compact .lp-groupe__t b { font-size: 12px; }
+  .lp-compact .lp-groupe__t b { font-size: 14px; max-width: 100%; }
   .lp-compact .lp-groupe__t .lp-n { font-size: 12px; }
-  .lp-compact .lp-etat { padding: 0 8px; font-size: 12px; }
-  /* (2026-10-27) Une alerte passe a la ligne plutot que de defiler de cote :
-     sur une ligne, « Décaler à 16:00 » sortait coupe du cadre. */
-  .lp-compact .lp-alerte { flex-wrap: wrap; row-gap: 4px; }
-  .lp-compact .lp-alerte__t { flex: 1 1 200px; min-width: 0; }
-  /* Les groupes d un meme depart se partagent la ligne au lieu de pousser le
-     second hors de la vue, ou il ne restait que « DÉMO · ». Le detail cede la
-     place en premier, puis le nom s abrege (la bulle et la fiche le donnent
-     entier) ; sous 150 px par carte, la ligne defile comme avant. */
-  .lp-compact .lp-qui > .lp-g { flex: 1 1 auto; min-width: min(150px, 100%); }
-  .lp-compact .lp-qui > .lp-g b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .lp-compact .lp-qui > .lp-g .lp-card-info { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .lp-compact .lp-qui > .lp-g :is(.lp-pictos, .lp-card-status) { flex: none; }
-}
-/* (2026-10-27) LES RETARDS SUR TOUTE LA LARGEUR, un par ligne, sous le
-   prochain depart et la partie en jeu. Empiles sous « En jeu », ils
-   laissaient un trou sous le prochain depart ; sur une ligne, « Décaler à »
-   tombe a la meme place pour chacun. Un ecran court garde la bande sur une
-   ligne (le bloc max-height plus haut) : la journee y compte chaque pixel. */
-@media (min-width: 1101px) and (min-height: 821px) {
-  .lp-compact .lp-synthese { align-items: stretch; }
-  .lp-compact .lp-synthese:has(.lp-alertes) { grid-template-areas: 'prochain jeu' 'alertes alertes'; row-gap: 8px; }
-  .lp-compact .lp-synthese > .lp-prochain { grid-area: prochain; }
-  .lp-compact .lp-bande { display: contents; }
-  .lp-compact .lp-bande > .lp-jeu { grid-area: jeu; }
-  .lp-compact .lp-alertes { grid-area: alertes; gap: 6px; }
-  .lp-compact .lp-alerte { flex-wrap: nowrap; min-height: 44px; padding: 3px 6px 3px 14px; border-radius: 10px; }
   .lp-compact .lp-alerte__t { flex: 1 1 auto; min-width: 0; }
-  /* Le prochain depart montre TOUS ses groupes : « armes à préparer » passe
-     sous l heure, les groupes se partagent la place (le nom s abrege, la bulle
-     le donne entier). Un second groupe defilait hors de la vue a 1 440 px,
-     avec son « Ils sont là ». Au-dela de deux, la rangee defile. */
-  .lp-compact .lp-prochain:has(.lp-groupes) { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'quand groupes' 'armes groupes'; row-gap: 2px; }
-  .lp-compact .lp-prochain:has(.lp-groupes) .lp-prochain__g { justify-self: start; align-self: start; padding-right: 0; }
-  .lp-compact .lp-synthese .lp-groupes { align-self: center; }
-  .lp-compact .lp-synthese .lp-groupe { flex: 0 1 auto; min-width: min(220px, 100%); }
-}
-
-@media (max-width: 1100px) {
-  .lp-synthese { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
 @media (max-width: 560px) {
   .lp { padding: 12px 12px 0; gap: 10px; }
-  .lp-prochain { padding: 8px 10px 8px 12px; }
   .lp-prochain__quand { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
   .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
   .lp-prochain__t { font-size: 24px; }
-  .lp-prochain__g { flex-direction: column; align-items: flex-end; gap: 2px; }
-  .lp-prochain__g b { font-size: 20px; }
+  .lp-prochain__g { padding-left: 0; border-left: 0; }
   .lp-groupe { flex: 1 1 100%; }
   .lp-groupe__t { flex-direction: column; gap: 0; }
   .lp-etat { padding: 0 12px; font-size: 14px; }
@@ -21383,6 +21384,8 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-dep__n b { font-size: 15px; }
   .lp-dep__jauge { min-height: 13px; }
   .lp-qui { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .lp-qui .lp-g { display: grid; grid-template-columns: 10px minmax(0, 1fr); column-gap: 6px; row-gap: 0; }
+  .lp-qui .lp-g__sous { grid-column: 2; font-size: 13px; }
   /* Une ligne de 196 px pour le nom, ses pictos et son compte : les pictos
      cedent du dernier au premier, comme sur une carte bowling serree, et le
      survivant est la consigne (la note d abord). Avec les trois, « Anniv.

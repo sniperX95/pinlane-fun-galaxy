@@ -37,8 +37,9 @@
 //   [G1] « Arrivé » ecrit le pointage, un clic ou Entree ouvre la fiche ;
 //   [G2] la recherche (sans accents) et le filtre de statut ; [G3] au
 //        planning bowling, chercher grise les autres groupes sans les retirer
-//        (une piste prise reste prise) ; [G4] au planning laser, les groupes
-//        pas venus sur toute la largeur, un par ligne, sans trou ;
+//        (une piste prise reste prise) ; [G4] au planning laser, le haut sur
+//        une ligne, les groupes pas venus replies sous un bouton qui les
+//        compte, la journee entiere a l ecran ;
 //   [L1] aucune page plus large que l ecran ; de 1440 a 1920, la feuille du
 //        pic sans defilement de cote ; plus etroite, l identite collee a
 //        gauche et l etat a droite ; [L2] la feuille se borne a l ecran ;
@@ -643,20 +644,33 @@ async function gestes(browser) {
     };
     ok(g3.memesPistes && g3.gris > 0 && g3.trouves.length > 0 && g3.trouves.every((n) => /noah/i.test(n)) && g3.bonGris && g3.lisibles, `[G3] ${label} : chercher dans le planning bowling grise les autres groupes sans les retirer, chaque piste prise reste prise`, g3);
 
-    // [G4] le planning laser : les groupes pas venus sur toute la largeur, un
-    // par ligne, sous le prochain depart et la partie en jeu ; pas de trou sous
-    // le prochain depart, aucune action coupee (2026-10-27)
+    // [G4] le planning laser refait (2026-10-27, Movsar : « le haut prend
+    // toute la place ») : le haut tient sur une ligne et montre chaque groupe
+    // du prochain depart entier ; les groupes pas venus se replient sous un
+    // bouton qui les compte, s ouvrent un par ligne sans action coupee, et la
+    // journee tient toujours a l ecran.
     await page.evaluate(() => { location.hash = '#/staff/planning/laser'; });
     await FX.repos(page, 900);
     const g4 = await page.evaluate(() => {
       const R = (el) => el.getBoundingClientRect();
       const lp = document.getElementById('laserPlanningGridWrap');
+      const synthese = lp.querySelector('.lp-synthese');
       const prochain = lp.querySelector('.lp-prochain');
-      const jeu = lp.querySelector('.lp-jeu');
-      const alertes = lp.querySelector('.lp-alertes');
-      if (!prochain || !jeu || !alertes) return { manque: { prochain: Boolean(prochain), jeu: Boolean(jeu), alertes: Boolean(alertes) } };
-      const p = R(prochain); const j = R(jeu); const a = R(alertes);
-      const coupees = Array.from(alertes.querySelectorAll('button')).filter((b) => {
+      const bouton = lp.querySelector('.lp-journee__h .lp-retards');
+      if (!synthese || !prochain || !bouton) return { manque: { synthese: Boolean(synthese), prochain: Boolean(prochain), bouton: Boolean(bouton) } };
+      const zone = prochain.querySelector('.lp-groupes');
+      const z = zone ? R(zone) : null;
+      const groupes = zone ? Array.from(zone.querySelectorAll('.lp-groupe')).map((g) => { const r = R(g); return r.left >= z.left - 1 && r.right <= z.right + 1; }) : [];
+      return { haut: Math.round(R(synthese).height), groupes, bouton: bouton.textContent.replace(/\s+/g, ' ').trim(), ferme: bouton.getAttribute('aria-expanded') === 'false', alertes: lp.querySelectorAll('.lp-alerte').length };
+    });
+    ok(!g4.manque && g4.haut <= 60 && g4.groupes.length >= 2 && g4.groupes.every(Boolean), `[G4] ${label} : au planning laser, le haut tient sur une ligne, chaque groupe du prochain depart entier, son « Ils sont là » compris`, g4);
+    if (!g4.manque) await page.click('#laserPlanningGridWrap .lp-journee__h .lp-retards');
+    await FX.repos(page, 600);
+    const g4b = await page.evaluate(() => {
+      const R = (el) => el.getBoundingClientRect();
+      const lp = document.getElementById('laserPlanningGridWrap');
+      const alertes = Array.from(lp.querySelectorAll('.lp-alertes .lp-alerte'));
+      const coupees = Array.from(lp.querySelectorAll('.lp-alertes button')).filter((b) => {
         const r = R(b);
         if (r.left < 0 || r.right > innerWidth) return true;
         for (let e = b.parentElement; e; e = e.parentElement) {
@@ -664,15 +678,13 @@ async function gestes(browser) {
         }
         return false;
       }).map((b) => b.textContent.trim());
-      // (chaque groupe du prochain depart se voit entier dans sa rangee, son
-      // « Ils sont là » compris)
-      const zone = prochain.querySelector('.lp-groupes');
-      const z = zone ? R(zone) : null;
-      const groupes = zone ? Array.from(zone.querySelectorAll('.lp-groupe')).map((g) => { const r = R(g); return r.left >= z.left - 1 && r.right <= z.right + 1; }) : [];
-      return { gauche: Math.round(a.left - p.left), droite: Math.round(j.right - a.right), dessous: Math.round(a.top - Math.max(p.bottom, j.bottom)), hauteurs: [Math.round(p.height), Math.round(j.height)], lignes: Array.from(alertes.querySelectorAll('.lp-alerte')).map((x) => Math.round(R(x).height)), coupees, groupes };
+      const decaler = Array.from(lp.querySelectorAll('.lp-alerte .lp-btn--rouge')).map((b) => Math.round(R(b).right));
+      const rangs = Array.from(lp.querySelectorAll('.lp-dep'));
+      const dernier = rangs.length ? R(rangs[rangs.length - 1]).bottom : Infinity;
+      return { lignes: alertes.map((a) => Math.round(R(a).height)), coupees, decaler, defile: lp.scrollHeight > lp.clientHeight + 1, tient: dernier <= innerHeight + 1 };
     });
-    ok(!g4.manque && Math.abs(g4.gauche) <= 1 && Math.abs(g4.droite) <= 1 && g4.dessous >= 0 && Math.abs(g4.hauteurs[0] - g4.hauteurs[1]) <= 1 && g4.lignes.length >= 2 && g4.lignes.every((h) => h <= 52) && g4.coupees.length === 0, `[G4] ${label} : au planning laser, les groupes pas venus sur toute la largeur, un par ligne, sous le prochain depart et la partie en jeu, sans trou ni action coupee`, g4);
-    ok(!g4.manque && g4.groupes.length >= 2 && g4.groupes.every(Boolean), `[G4] ${label} : au planning laser, chaque groupe du prochain depart se voit entier, son « Ils sont là » compris`, g4.groupes);
+    const compte = Number((/^(\d+) groupes? pas venus?$/.exec(g4.bouton || '') || [])[1]);
+    ok(!g4.manque && g4.ferme && g4.alertes === 0 && compte >= 2 && g4b.lignes.length === compte && g4b.lignes.every((h) => h <= 46) && g4b.coupees.length === 0 && new Set(g4b.decaler).size === 1 && !g4b.defile && g4b.tient, `[G4] ${label} : les groupes pas venus se replient sous un bouton qui les compte ; ouverts, un par ligne, aucune action coupee, la journee tient a l ecran`, { ...g4, ...g4b });
     await sansErreur(erreurs, label + ' gestes');
   } finally { await ctx.close(); }
 }
@@ -729,8 +741,11 @@ const MUTATIONS = [
   { nom: 'recherche-ignoree', lettre: 'G2', gestes: true, editions: [{ fichier: PG, de: '    if (!q) return true;', vers: '    return true;' }] },
   { nom: 'recherche-bowling-cache', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);", vers: "  const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);" }] },
   { nom: 'grise-pleine', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '.booking.is-grise { opacity: .35; }', vers: '.booking.is-grise { opacity: 1; }' }] },
-  { nom: 'retards-dans-la-colonne', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-bande { display: contents; }', vers: '' }] },
-  { nom: 'second-groupe-cache', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-synthese .lp-groupe { flex: 0 1 auto; min-width: min(220px, 100%); }', vers: '' }] },
+  // Les pas venus s ouvrent d entree : la liste repousse la journee.
+  { nom: 'retards-ouverts', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: '    lpEtat.retardsOuverts = false;', vers: '    lpEtat.retardsOuverts = true;' }] },
+  // La bande du haut peut passer a la ligne : les groupes du prochain depart
+  // tombent sous l heure.
+  { nom: 'haut-sur-deux-lignes', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-prochain { flex-wrap: nowrap; }', vers: '' }] },
   { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; min-width: 150px;', vers: '.gf-nom__t { display: block; min-width: 420px;' }] },
   { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette')], editions: [{ fichier: PGC, de: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: sticky;', vers: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: relative;' }] },
   { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 16;', vers: '  var GF_BAS = -400;' }] },

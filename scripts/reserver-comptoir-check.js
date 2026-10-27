@@ -986,7 +986,7 @@ const MUTATIONS = [
   { nom: 'champ-sans-nom', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    const error = new Error(`Champ requis manquant : ${champ}.`);', "    const error = new Error('Champ requis manquant.');")] },
   { nom: 'refus-masque-en-ligne', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    error.statusCode = 422;\n    error.expose = true;\n    throw error;\n  }\n  return normalized;', '    error.expose = true;\n    throw error;\n  }\n  return normalized;')] },
   { nom: 'anonyme-client', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/donnees-clients.js', "  return String(nom || '').trim().toLowerCase() === NOM_ANONYME;", '  return false;')] },
-  { nom: 'fiche-telephone-requis', cote: 'front', vise: ['D1'], edits: [e(APP, 'oninput="setEditField(\'phone\', this.value)" placeholder="facultatif">', 'oninput="setEditField(\'phone\', this.value)" required>')] },
+  { nom: 'fiche-telephone-requis', cote: 'front', vise: ['D1'], edits: [e(APP, 'oninput="setEditField(\'phone\', this.value)" placeholder="Facultatif">', 'oninput="setEditField(\'phone\', this.value)" required>')] },
   { nom: 'crm-console-anonyme', cote: 'front', vise: ['D1'], edits: [e(APP, "  return nom && nom !== 'client' ? `name:${nom}` : '';", "  return `name:${nom || 'client'}`;")] },
   // D2
   { nom: 'plancher-du-jour', cote: 'front', vise: ['D2'], edits: [

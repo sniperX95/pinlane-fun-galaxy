@@ -333,14 +333,15 @@ Geist demeure la police UI ; Geist Mono reste la police de données de la base. 
 - Titre de dossier : rôle console-title desktop, console-title-mobile sous 760px.
 - Sections d'édition : console-section ; libellés 12px/500.
 - Champs et boutons : texte dense 13px ; action à 600, champ sans renforcement artificiel.
-- Faits du header : une ligne de valeurs à 15px/500, séparées par un point médian ; leurs libellés ne se lisent qu’à la synthèse vocale (2026-10-26). Occasion et formule dessous, en texte 14px, pas en pastille.
+- Faits du header : d’abord l’heure et le groupe en grand, 26px/650 (22px au téléphone), le nombre de joueurs en grand et son unité à 17px ; puis le jour, le lieu et le numéro en une ligne de texte 14px, séparés par un point médian. Leurs libellés ne se lisent qu’à la synthèse vocale (2026-10-27). Occasion et formule dessous, en texte 14px, pas en pastille.
+- Programme de la fiche : l’heure de début à 17px/650, la fin à 13px ; le nom de l’activité à 16px/600 ; son effectif (« 10 joueurs ») en tête du détail, au poids du texte, le reste du détail en retrait.
 - Statut : 12px/600, casse naturelle, sans chasse décorative.
 
 **The Functional Label Rule.** Le label nomme une donnée ou une action. Le titre de section livré remplace l'ancien kicker décoratif ; ce dernier n'est pas un rôle à transmettre.
 
 ## Layout
 
-Le dossier a un maximum de 960px et un retrait viewport de 32px, padding horizontal 28px et vertical 24px. Le header expose identité et statut, puis la ligne des faits (date, horaires, groupe, ressources, numéro) et l’occasion, avant les onglets. L'édition et les activités utilisent deux colonnes lorsque la place le permet. Les sections internes partagent la surface du dossier ; des filets séparent les groupes.
+Le dossier a un maximum de 960px et un retrait viewport de 32px, padding horizontal 28px et vertical 24px. Le header expose identité et statut, puis l’heure et le groupe en grand, la ligne des faits (date, ressources, numéro) et l’occasion, avant les onglets. L'édition et les activités utilisent deux colonnes lorsque la place le permet. Les sections internes partagent la surface du dossier ; des filets séparent les groupes.
 
 Sous 760px, retrait viewport 16px, padding horizontal 16px et vertical 20px, titre mobile et sections/activités à une colonne. La ligne des faits passe à la ligne et les options se replient sans tronquer le label. Le calendrier mobile garde des cellules de 68px minimum : nombre et unité sur deux lignes, métadonnées secondaires masquées.
 
@@ -386,7 +387,11 @@ Navigation active sur subtle, texte et marqueur monochromes. Infos/Modifier ont 
 
 ### Fiche réservation (2026-10-26)
 
-Une information, une place. L’en-tête porte l’identité : le nom et sa pastille de statut, la ligne des faits, l’occasion. La ligne d’état porte le moment, c’est-à-dire ce que la pastille ne dit pas (heure de fin, arrivée, minutes de retard, raison d’une demande à vérifier), et l’argent une seule fois (« À encaisser », « Encaissé ») ; le retard et la demande à vérifier colorent la phrase, « Appeler » à côté, sans bandeau. Le programme seul à gauche ; à droite les notes, le prix (une ligne sans total redit, plusieurs lignes avec leur total et le prix par joueur), le client (numéro et adresse sans libellé, une ligne pour ce qui manque). L’état d’une activité se lit en mot coloré, pas en pastille. Gate : `test:fiche-simple`.
+Une information, une place. L’en-tête porte l’identité : le nom et sa pastille de statut, l’heure et le groupe en grand, la ligne des faits, l’occasion. La ligne d’état porte le moment, c’est-à-dire ce que la pastille ne dit pas (heure de fin, arrivée, minutes de retard, raison d’une demande à vérifier), et l’argent une seule fois (« À encaisser », « Encaissé ») ; le retard et la demande à vérifier colorent la phrase, « Appeler » à côté, sans bandeau. Le programme seul à gauche ; à droite les notes, le prix (une ligne sans total redit, plusieurs lignes avec leur total et le prix par joueur), le client (numéro et adresse sans libellé, une ligne pour ce qui manque). L’état d’une activité se lit en mot coloré, pas en pastille. Gate : `test:fiche-simple`.
+
+### Onglet Modifier (2026-10-27)
+
+Les champs aux places de l’onglet Infos. En haut le jour, l’arrivée et les joueurs, en valeurs de 16-17px ; à gauche le programme, une rangée par activité avec son heure à gauche comme dans Infos, son nom, puis ses réglages (joueurs, durée, parties, offre) et ses pistes ou l’heure de ses parties ; les activités à ajouter en boutons sous la liste. À droite le prix (total et prix par joueur, l’euro dans le champ, une phrase dessous seulement quand il y a quelque chose à savoir : prix fixé à la main, nouveau tarif et le montant d’avant, prix ajusté, activité réglée sur place), puis le client, puis « Annuler ou supprimer » replié. Pas de second interrupteur de statut : le statut se change dans Infos, avec le moyen de paiement. Quand le jour, l’arrivée, les joueurs ou le programme changent, les heures d’avant sont barrées et la fiche dit qu’elles seront recalculées à l’enregistrement ; elle n’invente pas les nouvelles. Une activité qui avait tout le groupe suit le nouveau nombre de joueurs, une activité qui n’en avait qu’une partie garde la sienne ; une formule dont on n’a pas adapté le contenu garde le prix de la formule (39 € × 11), et un changement de groupe ne la rend pas « adaptée ». La barre du bas, collée au bas de la fiche, dit ce qui partira (« Joueurs 10 → 11 · Prix 258 € → 276 € ») ou « Aucune modification ». Les pistes se cherchent à l’heure du bowling, pas à l’heure d’arrivée. Gate : `test:fiche-modifier`.
 
 ## Do's and Don'ts
 

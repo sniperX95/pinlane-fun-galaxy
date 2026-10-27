@@ -21475,9 +21475,180 @@ body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-lancer, .is-bientot)
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-encours, .is-fait) .gc-step-state { color: var(--success); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-attente, .is-aplacer, .is-noncoche) .gc-step-state { color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step.is-libre .gc-step-state { display: none; }
-/* L heure de fin d une activite a 12 px, comme tout texte de la console (elle
-   etait a 11). */
-body:is(.staff-mode, .admin-mode) .fx-modal .gc-step-time small { font-size: 12px; }
+/* L HEURE, L ACTIVITE ET LES JOUEURS EN GRAND (2026-10-27, Movsar : « heure
+   activité joueur plus visible »). L en-tete donne d abord les deux chiffres
+   qu on cherche, l heure et le groupe ; le programme met l heure de chaque
+   activite et son effectif en avant. Le texte ne change pas, seule la taille
+   dit ce qui compte. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 24px; margin: 10px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong { font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact + .dossier-fact::before { content: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche { display: inline-flex; font-size: 1em; color: var(--faint); vertical-align: 0.12em; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 0.72em; height: auto; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-size: 17px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres + .dossier-facts { margin-top: 4px; font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres + .dossier-facts .dossier-fact strong { font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { padding-top: 10px; padding-bottom: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-size: 17px; font-weight: 650; line-height: 1.2; }
+/* L heure de fin d une activite a 13 px (elle etait a 11, puis 12). */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time.is-free { font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what b { font-size: 16px; line-height: 1.35; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what small { margin-top: 1px; font-size: 14px; line-height: 1.4; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step-joueurs { font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-fini, .is-fait) .gc-step-joueurs { color: inherit; }
+
+/* L ONGLET MODIFIER, RANGE COMME LA FICHE (2026-10-27, Movsar : « surtout
+   ameliorer tout le frontend de l endroit modifier »). En tete le jour,
+   l arrivee et les joueurs ; a gauche le programme, une rangee par activite
+   avec son heure, comme dans Infos ; a droite le prix et le client ; en bas,
+   ce qui partira a l enregistrement. Sections ouvertes separees par des
+   filets, pas de cartes. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-edit-lock { min-width: 0; margin: 0; padding: 0; border: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-colonnes { display: grid; gap: 22px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) { display: grid; gap: 22px; align-content: start; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) > * + * { padding-top: 22px; border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 0; align-items: start; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-principal { padding-right: 28px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-cote { padding-left: 28px; border-left: 1px solid var(--line); }
+}
+@media (max-width: 899.98px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-cote { padding-top: 22px; border-top: 1px solid var(--line); }
+}
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-titre { margin: 0 0 12px; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text); }
+
+/* Les champs : libelle 12 px au-dessus, valeur 44 px. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-champ { display: grid; align-content: start; gap: 6px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lbl { margin: 0; font-size: 12px; font-weight: 500; line-height: 1.3; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; margin: 0; font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm input[type='number']::-webkit-inner-spin-button,
+body:is(.staff-mode, .admin-mode) .fx-modal .fm input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .field-hint { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+
+/* Jour, arrivee, joueurs : les valeurs du haut, en grand, sur une ligne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand { display: grid; grid-auto-flow: column; grid-template-columns: minmax(160px, 1.15fr); grid-auto-columns: minmax(0, 1fr); gap: 12px 14px; align-items: start; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .input { min-height: 48px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .fm-indice { grid-column: 1 / -1; grid-row: 2; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper { display: grid; width: 100%; height: 50px; grid-template-columns: 46px minmax(48px, 1fr) 46px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .es-step { width: 46px; height: 48px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .input { min-height: 48px; padding: 0 4px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; text-align: center; font-size: 17px; font-weight: 650; box-shadow: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .input:focus { outline: none; }
+
+/* Le programme : une rangee par activite, son heure a gauche. */
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin { margin: -4px 0 12px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin strong { font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-replan { display: none; margin: -4px 0 12px; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-replan { display: block; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure:not(.is-vide) { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acts { display: grid; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 14px; margin: 0; padding: 16px 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity:first-child { padding-top: 2px; border-top: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure { display: grid; align-content: start; gap: 2px; padding-top: 1px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure { font-size: 17px; font-weight: 650; line-height: 1.25; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-suite { font-size: 13px; font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-vide { font-size: 14px; font-weight: 500; color: var(--faint); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-corps { display: grid; gap: 12px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 22px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete h5 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-detail { font-size: 13px; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer { align-self: center; margin-left: auto; min-height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer:hover { background: var(--danger-soft); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-reglages { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-reglages > .staff-arcade-options { flex: 1 1 100%; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-activity-count { display: grid; justify-content: start; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-activity-count .qb-opt-legend { font-size: 12px; font-weight: 500; line-height: 1.3; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-activity-count .staff-stepper { width: 140px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-participants-explanation { font-size: 12px; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-activity-setting, .fm-duree) { display: grid; align-content: start; gap: 6px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-reglages .fm-duree { width: 170px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-options { display: flex; flex-wrap: wrap; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-note { display: block; flex: 1 1 100%; font-size: 12px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pistes { display: grid; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 40px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary .muted { font-size: 12px; font-weight: 400; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 3px; border-radius: 4px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-units { display: grid; gap: 10px; margin-top: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-vide { margin: 0; font-size: 14px; color: var(--muted); }
+
+/* Ajouter une activite : un bouton par activite, sous la liste. */
+/* Les plis de l onglet (heure des parties, detail du calcul, annuler) : un
+   chevron a droite du titre, qui se retourne a l ouverture. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .dossier-price-detail, .fm-autres) > summary { gap: 4px 10px; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .dossier-price-detail, .fm-autres) > summary::-webkit-details-marker { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .dossier-price-detail, .fm-autres) > summary::after { content: ""; flex: none; width: 7px; height: 7px; margin: -3px 0 0 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); opacity: .7; transition: transform 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .dossier-price-detail, .fm-autres)[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary .muted { order: 2; }
+
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajouts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--line); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajouts-titre { margin-right: 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px 0 11px; border: 1px solid var(--line-strong); border-radius: 999px; background: none; color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout svg { flex: none; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:hover { background: var(--subtle); border-color: var(--control-border); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+
+/* Le prix : le total et le prix par joueur, l euro dans le champ ; une
+   phrase dessous quand il y a quelque chose a savoir. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro { position: relative; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro .input { padding-right: 30px; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro > span { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 14px; color: var(--muted); pointer-events: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-etat { margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.fm-prix-etat, .fm-recalculer)[hidden] { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-recalculer { display: inline-flex; align-items: center; min-height: 36px; margin: 8px 0 0; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-recalculer:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-price-detail { margin-top: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-price-detail > summary { display: flex; align-items: center; min-height: 36px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail em { font-style: normal; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Le client : trois champs l un sous l autre. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-client { display: grid; gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-client .fm-titre { margin: 0; }
+
+/* Annuler ou supprimer : replie, en bas de la colonne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres > summary { display: flex; align-items: center; min-height: 40px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres > summary:hover { color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .edit-actions-destructive { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .es-lien { min-height: 40px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: none; font-size: 13px; font-weight: 600; text-decoration: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .es-lien.warn { color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .es-lien.danger { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .es-lien:hover { background: var(--subtle); }
+
+/* La barre du bas : ce qui partira, puis Fermer et Enregistrer. Elle reste
+   visible pendant qu on fait defiler la fiche. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { position: sticky; bottom: -24px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin: 22px 0 0; padding: 14px 0 20px; border-top: 1px solid var(--line); background: var(--surface); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs { flex: 1 1 280px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs.is-vide { color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs b { margin-right: 6px; font-weight: 650; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-modif { font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-modif + .fm-modif::before { content: "\0000a0\0000b7\000020"; color: var(--faint); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-actions-main { display: flex; gap: 10px; margin-left: auto; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-actions-main > button { min-height: 44px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .es-save { min-width: 150px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-error { margin: 16px 0 0; }
+
+@media (max-width: 760px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { gap: 0 18px; margin-top: 8px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong, body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 22px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-size: 15px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand :is(.fm-jour, .fm-arrivee) .input { padding-inline: 10px; font-size: 15px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .fm-joueurs { grid-column: 1 / -1; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .fm-indice { grid-row: auto; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity { grid-template-columns: 50px minmax(0, 1fr); gap: 10px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure { font-size: 16px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-ajout, .fm-retirer) { min-height: 44px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { bottom: -20px; padding-bottom: 16px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-actions-main { width: 100%; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-actions-main > button { flex: 1 1 0; min-width: 0; }
+}
 
 /* LE JOUR DU DOSSIER dans « Modifier » (2026-10-12) : le premier champ de la
    rangee de l heure ; ce que change un autre jour se dit sous la carte, sur

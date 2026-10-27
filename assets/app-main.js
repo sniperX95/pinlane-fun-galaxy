@@ -1532,6 +1532,23 @@ function refreshEditPreview() {
   if (durationEl) durationEl.textContent = formatDurationLabel(e.duration || 0);
   if (assignEl) assignEl.textContent = e.lanesStr || 'Hors piste';
   if (laneInput && document.activeElement !== laneInput) laneInput.value = e.lanesStr || '';
+  majModifsEdition();
+}
+
+// LE BOWLING D UNE VISITE NE COMMENCE PAS FORCEMENT A L ARRIVEE (2026-10-27).
+// Un club arrive a 13:00, fait son laser, puis joue au bowling a 14:00 : ses
+// pistes se cherchent a 14:00. Les calculs de l onglet Modifier (pistes
+// proposees a l ouverture, completees et controlees a l enregistrement,
+// minimum conseille) prenaient l heure d arrivee : sur ce club, la piste 5,
+// libre a 14:00 mais prise a 13:00, etait remplacee par la 7, prise a 14:00,
+// sans que personne n ait rien touche. L heure du bowling est celle du dossier
+// enregistre, decalee d autant que l arrivee quand on la change (le serveur
+// replanifie a l enregistrement).
+function debutBowlingEdition(r, e) {
+  const arrivee = timeToNum((e && e.startTime) || r.startTime);
+  const fenetres = getBowlingWindowsFromReservation(r);
+  if (!fenetres.length) return arrivee;
+  return Math.min(...fenetres.map(fenetre => Number(fenetre.start))) + (arrivee - timeToNum(r.startTime));
 }
 
 function syncEditLaneAssignment() {
@@ -1550,10 +1567,44 @@ function syncEditLaneAssignment() {
   }
   const requiredCount = getEditBowlingCapacityNeed(state.selectedRes, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
-  const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, state.editState.startTime, duration, state.selectedRes.id, state.editState.lanesStr);
+  const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(state.selectedRes, state.editState), duration, state.selectedRes.id, state.editState.lanesStr);
   if (suggested) state.editState.lanesStr = formatLaneInput(suggested);
   refreshEditPreview();
   return suggested;
+}
+
+// TOUT LE GROUPE RESTE TOUT LE GROUPE (2026-10-27). Une activite enregistree
+// porte son nombre de joueurs : passer le groupe de 10 a 11 laissait chaque
+// activite a 10, et le prix ne bougeait pas (le piege que Movsar decrivait
+// deja : « le prix ne change pas quand on augmente de joueur »). Une activite
+// qui avait tout le groupe suit le nouveau nombre ; une activite qui n en
+// avait qu une partie (6 joueurs au laser sur 10) garde la sienne. La
+// reference est le dernier nombre valide : un champ vide pendant la frappe ne
+// coupe pas le lien. Une activite sans nombre ecrit (une formule prise au
+// catalogue) suit deja le groupe : on ne lui en ecrit pas, sinon la formule
+// partirait « adaptée » pour un simple changement de groupe.
+function suivreLeGroupe(valeur) {
+  const e = state.editState;
+  const programme = e && e.programmeEdite;
+  const groupe = Math.trunc(Number(valeur));
+  if (!programme || !(groupe > 0)) return;
+  const reference = Math.trunc(Number(e.groupeSuivi ?? departsEdition().get(e)?.origine?.pax ?? groupe));
+  if (!(reference > 0) || reference === groupe) { e.groupeSuivi = groupe; return; }
+  const actives = [
+    ['bowling', programme.bowling && programme.bowling.on ? programme.bowling : null],
+    ['laser_game', programme.laser_game && programme.laser_game.on ? programme.laser_game : null],
+    ...Object.keys(programme.others || {}).filter(id => programme.others[id]).map(id => [id, (programme.othersOptions || {})[id] || null]),
+  ].filter(([, options]) => options);
+  let offreRetiree = false;
+  actives.forEach(([id, options]) => {
+    if (!(Number(options.participants) > 0) || participantsLigneProgramme(options, reference) !== reference) return;
+    const bornes = activityParticipantsBounds(id, groupe);
+    options.participants = Math.min(bornes.max, Math.max(bornes.min, groupe));
+    if (options.upsell) { delete options.upsell; offreRetiree = true; }
+    if (id === 'arcade_time') { delete options.arcadeOffer; if (options.arcadeMode === 'time') options.cards = options.participants; }
+  });
+  if (offreRetiree) toast('Offre retirée du devis : le nouvel effectif est tarifé au catalogue.');
+  e.groupeSuivi = groupe;
 }
 
 function setEditField(field, value, syncLanes = false) {
@@ -1564,6 +1615,7 @@ function setEditField(field, value, syncLanes = false) {
     const programme = state.editState.programmeEdite;
     if (programme.laser_game?.extraLaser && Number(value) < programme.laser_game.extraLaser.participants) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : son effectif dépassait le nouveau groupe.'); }
     Object.values(programme.othersOptions || {}).forEach(options => { if (options.upsell && Number(value) < options.upsell.participants) { delete options.upsell; toast('Offre retirée du devis : le nouvel effectif est tarifé au catalogue.'); } });
+    suivreLeGroupe(value);
   }
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
@@ -1571,7 +1623,7 @@ function setEditField(field, value, syncLanes = false) {
     // Refresh derived activity limits without replacing the input being typed.
     document.querySelectorAll('.dossier-activity[data-edit-activity]').forEach(row => {
       const counter = row.querySelector('.dossier-activity-count');
-      if (counter) counter.outerHTML = renderActivityParticipantsControl(row.dataset.editActivity, 'edit', true);
+      if (counter) counter.outerHTML = renderActivityParticipantsControl(row.dataset.editActivity, 'edit', 'ecart');
     });
   }
 }
@@ -24990,6 +25042,13 @@ function renderGroupeTerminer(r) {
   return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
 }
 
+// LES JOUEURS D UNE ACTIVITE SE LISENT D ABORD (2026-10-27, Movsar : « heure
+// activité joueur plus visible »). Le detail commence par l effectif ; il
+// prend son propre poids, le reste (duree, pistes, partie) reste en retrait.
+function joueursEnTete(detailHtml) {
+  return detailHtml.replace(/^(\d+ (?:joueurs?|enfants?))/, '<span class="gc-step-joueurs">$1</span>');
+}
+
 function renderGroupeEtapes(r, moment, options = {}) {
   const etapes = getGroupeProgramme(r);
   if (!etapes.length) return '';
@@ -25056,7 +25115,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}"${cochable ? ` onclick="${appel}"` : ''}>
       ${quand}
       ${repere}
-      <span class="gc-step-what">${lienPlanning(etape)}${details ? `<small>${escapeHtml(details)}</small>` : ''}</span>
+      <span class="gc-step-what">${lienPlanning(etape)}${details ? `<small>${joueursEnTete(escapeHtml(details))}</small>` : ''}</span>
       ${phase.mot ? `<span class="gc-step-state">${escapeHtml(phase.mot)}</span>` : ''}
       ${montant}
     </li>`;
@@ -27800,10 +27859,32 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
 }
 
 // L estimation du dossier en cours d edition, telle qu elle s ecrit a l ecran.
+// UNE FORMULE SE PAIE AU PRIX DE LA FORMULE (2026-10-27). Tant qu on n a pas
+// adapte son contenu, une formule changee de groupe se chiffrait comme des
+// activites a la carte : FORMULE 4 a 10 joueurs (390 EUR) passait a 386 EUR
+// pour 11, MATIN MALIN de 200 a 90 EUR pour 9 joueurs, et c est ce montant que
+// l enregistrement ecrivait. Le prix d une formule est celui du catalogue,
+// par joueur ou par piste (getBasePrice, le meme calcul que l enregistrement
+// et le tunnel) ; une formule adaptee repasse au chiffrage par activite.
+function estimerFormuleEdition(r, e) {
+  if (!r.formuleId || editProgramAChange()) return null;
+  const formule = resolveDisplayFormule(r.formuleId);
+  if (!formule || !(Number(formule.price) > 0)) return null;
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const pistes = reservationNeedsLanes(r.type, r.formuleId) ? (parseLaneInput(e.lanesStr).length || (r.lanes || []).length) : 0;
+  const total = Math.round((Number(getBasePrice(r.type, Number(e.duration ?? r.duration), pistes, pax, r.formuleId, e.date || r.date)) || 0) * 100) / 100;
+  if (!(total > 0)) return null;
+  // « 39 € × 11 », comme l addition de la fiche.
+  const detail = `${formatMoneyCentimes(formule.price)} × ${formule.type === 'per_lane' ? `${pistes} piste${pistes > 1 ? 's' : ''}` : pax}`;
+  return { total, complet: true, utilisable: true, lignes: [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: total }], parPersonne: Math.round(total / pax) };
+}
+
 function getEditPrixEstime() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return null;
+  const formule = estimerFormuleEdition(r, e);
+  if (formule) return formule;
   const items = getEditProgramItems();
   if (!items.length) return null;
   return estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime);
@@ -27956,7 +28037,7 @@ function majEditPrixEstime() {
   const estime = getEditPrixEstime();
   const ligne = document.getElementById('editPrixEstime');
   const champ = document.getElementById('editPriceInput');
-  if (!estime) { if (ligne) ligne.textContent = ""; return; }
+  if (!estime) { peindreEtatPrix(null); majModifsEdition(); return; }
   // Tant que personne n a fige un montant, le champ SUIT ce qu on change,
   // MAIS SEULEMENT SI L ESTIMATION EST FERME. Un centre qui n a pas saisi le
   // tarif d une activite libre produit une estimation partielle : ecraser un
@@ -27982,9 +28063,20 @@ function majEditPrixEstime() {
     // en « 17 » et rend le champ inutilisable.
     const champPersonne = document.getElementById('editPricePerPerson');
     if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(parPersonne);
-    ligne.textContent = `${estime.complet ? '' : 'À partir de '}${facture} € · ${parPersonne} €/personne (${joueurs} joueur${joueurs > 1 ? 's' : ''})`
-      + (estime.complet ? '' : ' · certaines activités se règlent sur place');
   }
+  peindreEtatPrix(estime);
+  majModifsEdition();
+}
+
+// La phrase sous le prix (textePrixEdition) et « Recalculer » suivent la
+// frappe : taper un montant le fige, la phrase et le bouton le disent tout de
+// suite, sans re-rendre le champ.
+function peindreEtatPrix(estime) {
+  const ligne = document.getElementById('editPrixEstime');
+  const texte = textePrixEdition(state.selectedRes, estime);
+  if (ligne) { ligne.textContent = texte; ligne.hidden = !texte; }
+  const recalculer = document.getElementById('editRecalculer');
+  if (recalculer) recalculer.hidden = !(state.editState && state.editState.prixFige);
 }
 
 function getEditPriceValue() {
@@ -28015,13 +28107,43 @@ function formuleAcheteeDuDossier(r) {
   return String((r && r.type) || '') === 'formule' ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;
 }
 
-// Les activités sélectionnées sont directement éditables, les ajouts restent
-// à part. Les permissions et les setters métier restent les mêmes.
+// L HEURE DE CHAQUE ACTIVITE, telle que le dossier l a aujourd hui : la meme
+// source que le programme de l onglet Infos (getGroupeProgramme).
+function heuresDuProgrammeEnregistre(r) {
+  const heures = new Map();
+  getGroupeProgramme(r).forEach(etape => {
+    if (!etape.activityId) return;
+    heures.set(etape.activityId, [...(heures.get(etape.activityId) || []), etape]);
+  });
+  return heures;
+}
+
+// CE QUI FAIT REPLANIFIER LE DOSSIER : le serveur recalcule les heures des
+// activites quand le jour, l arrivee, les joueurs, la duree ou le programme
+// changent. Les heures affichees sont alors celles d avant : la fiche le dit
+// au lieu d inventer les nouvelles (regle produit : le moteur fait foi).
+function editionReplanifie() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!e || !origine) return false;
+  return editProgramAChange()
+    || String(e.startTime || '') !== String(origine.startTime || '')
+    || String(e.date || '') !== String(origine.date || '')
+    || Number(e.pax) !== Number(origine.pax)
+    || (e.duration != null && Number(e.duration) !== Number(origine.duration));
+}
+
+// L ONGLET MODIFIER RANGE COMME LA FICHE (2026-10-27). Une activite = une
+// rangee, comme dans le programme de l onglet Infos : son heure a gauche, son
+// nom, puis ce qui se regle (joueurs, duree, parties, offre), puis ses pistes
+// ou l heure de ses parties. Les activites qu on peut ajouter sont des
+// boutons sous la liste, plus un pli a ouvrir. Les permissions et les setters
+// metier restent les memes.
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   if (!peutAdapterFormule()) {
     const items = Array.isArray(r.program?.items) ? r.program.items : [];
-    return `<div class="pos-field dossier-program">
-      <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'la formule')}</span>
+    return `<div class="fm-lecture dossier-program">
+      ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
       ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
     </div>`;
   }
@@ -28033,24 +28155,26 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const supplement = Object.keys(programme.others || {})
     .filter((id) => !connus.has(id))
     .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
+  const heures = heuresDuProgrammeEnregistre(r);
+  const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
   const rangees = [...choix, ...supplement].map((choice) => {
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
-      ajouts.push(`<button type="button" class="btn-secondary dossier-add-activity" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">+ ${escapeHtml(choice.label)}</button>`);
+      ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
     let options = '';
-    if (actif && estBowling) {
-      options = controls.bowlingDuration || `<div class="dossier-activity-setting"><span class="lbl">Durée bowling</span><div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div></div>`;
+    if (estBowling) {
+      options = controls.bowlingDuration || `<div class="dossier-activity-setting"><span class="lbl">Durée bowling</span><div class="dossier-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div></div>`;
     }
-    if (actif && choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id),programme.othersOptions[choice.id] || {},participantsLigneProgramme(programme.othersOptions[choice.id] || {},state.editState.pax),'edit');
-    if (actif && estLaser) {
+    if (choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id), programme.othersOptions[choice.id] || {}, participantsLigneProgramme(programme.othersOptions[choice.id] || {}, state.editState.pax), 'edit');
+    if (estLaser) {
       options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div></div>`;
       const extra = programme.laser_game.extraLaser;
-      if (extra) options += `<small class="muted">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
+      if (extra) options += `<small class="fm-act-note">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
     }
     const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
     // Readonly presentation retains stored units/day metadata that is not edited here.
@@ -28059,15 +28183,51 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     // The draft stores Fun Run minutes per session; identify that unit for the display helper.
     if (detailItem && choice.id === 'fun_run' && Number(item.minutes) > 0) detailItem.sessionMinutes = Number(item.minutes);
     const detail = detailItem ? detailLigneProgrammeSansEffectif(detailItem, r) : '';
-    return `<section class="qb-visit-row dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
-      <div class="dossier-activity-heading"><h5>${escapeHtml(choice.label)}</h5><button type="button" class="dossier-remove-activity" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">Retirer</button></div>
-      ${detail ? `<p class="dossier-edit-help">${escapeHtml(detail)}</p>` : ''}
-      <div class="dossier-activity-body">${renderActivityParticipantsControl(choice.id, 'edit', true)}${options}</div>
-      ${estBowling ? controls.lanes || '' : ''}
-      ${estLaser ? renderDossierLaserEditor(r) : ''}
+    // L heure a gauche, comme dans Infos : la premiere en grand, les parties
+    // suivantes dessous. Une activite libre le dit ; une activite ajoutee ici
+    // n a pas encore d heure (le serveur la place a l enregistrement).
+    const etapes = heures.get(choice.id) || [];
+    const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
+    const heureHtml = placees.length
+      ? placees.slice(0, 3).map((etape, index) => `<span class="fm-heure${index ? ' is-suite' : ''}">${index === 2 && placees.length > 3 ? `+${placees.length - 2}` : escapeHtml(formatClockDisplay(etape.start))}</span>`).join('')
+      : `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
+    return `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
+      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span>${heureHtml}</div>
+      <div class="fm-act-corps">
+        <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">Retirer</button></div>
+        <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
+        ${estBowling ? controls.lanes || '' : ''}
+        ${estLaser ? renderDossierLaserEditor(r) : ''}
+      </div>
     </section>`;
   }).join('');
-  const prixValeur = getEditPriceValue();
+  return `${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : ''}
+    <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
+    <div class="fm-acts">${rangees || '<p class="fm-vide">Aucune activité au programme.</p>'}</div>
+    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
+}
+
+// D OU VIENT LE MONTANT, EN UNE PHRASE (2026-10-27). Les deux champs disent
+// deja le total et le prix par joueur : la ligne dessous ne les redit pas.
+// Elle parle quand il y a quelque chose a savoir : un prix fixe a la main, un
+// nouveau calcul (et le montant d avant), un prix ajuste par rapport au
+// tarif, une activite qui se regle sur place. Sinon elle se tait.
+function textePrixEdition(r, estime = getEditPrixEstime()) {
+  const e = state.editState;
+  if (!e || !r) return '';
+  const surPlace = estime && !estime.complet ? 'Certaines activités se règlent sur place.' : '';
+  const phrase = (texte) => [texte, surPlace].filter(Boolean).join(' ');
+  if (e.prixFige) return phrase(`Prix fixé à la main${estime && estime.utilisable ? `, tarif ${formatMoneyCentimes(estime.total)}` : ''}.`);
+  if (estime && estime.utilisable && editionChangeLePrix()) {
+    return Math.round(estime.total * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
+  }
+  const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
+  if (reference > 0 && Math.round(reference * 100) !== Math.round((Number(r.price) || 0) * 100)) return phrase(`Prix ajusté, tarif ${formatMoneyCentimes(reference)}.`);
+  return surPlace;
+}
+
+// LE PRIX DE LA VISITE, A DROITE COMME DANS LA FICHE (2026-10-27).
+function renderEditPrix(r) {
   // Le montant ecrit sous le champ : ce qui sera facture, et ce que ca fait
   // par personne. C est le chiffre que le comptoir annonce au telephone.
   const estime = getEditPrixEstime();
@@ -28075,9 +28235,6 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // L estimation ne remplace le prix du dossier que si on a change ce qui le
   // fait (editionChangeLePrix) : ouvrir ce bloc ne change aucun montant.
   const suitEstimation = Boolean(estime && estime.utilisable && editionChangeLePrix());
-  const factureAffichee = state.editState.prixFige || !suitEstimation
-    ? (state.editState.prixFige ? (prixValeur ?? Math.round((Number(r.price) || 0) * 100) / 100) : Math.round((Number(r.price) || 0) * 100) / 100)
-    : estime.total;
   // Ce que porte le CHAMP : le montant fige s il y en a un, sinon l estimation
   // quand on a change le contenu ou les joueurs, sinon le prix actuel du
   // dossier. Sans cette regle, cocher une activite laissait le champ sur la
@@ -28091,40 +28248,102 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
   // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
   const detailHtml = estime && estime.lignes.length
-    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('')}</ul>`
+    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('')}</ul>`
     : '';
-  const prixLigne = estime
-    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round((factureAffichee / joueursActuels) * 100) / 100} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
-    : '';
-  // LE MOT « REFERENCE » NE DESIGNE PLUS DEUX CHIFFRES. Cette ligne annonce la
-  // base des ACTIVITES sans les extras, pendant que la pastille du meme dossier
-  // annonce « reference » extras compris : sur un dossier a 60 EUR de base et
-  // 6 EUR de cafe, la fiche disait 60 et la pastille 66, au moment precis ou le
-  // comptoir doit expliquer l ecart au client. La difference est PORTEE - le
-  // detail juste au-dessus ne liste que les activites - donc c est le libelle
-  // qui change, pas le calcul.
-  const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
-  const modifie = editProgramAChange();
-  return `<div class="pos-field dossier-program">
-    ${formule?.name ? `<p class="dossier-formula-origin">Formule : <strong>${escapeHtml(formule.name)}</strong> · les changements concernent uniquement cette visite.</p>` : ''}
-    <p class="dossier-edit-help">Réglez les joueurs et les options de chaque activité, puis cliquez sur Enregistrer.</p>
-    <div class="qb-visit-grid dossier-activities">${rangees}</div>
-    ${ajouts.length ? `<details class="dossier-add-activities"><summary>Ajouter une activité</summary><div>${ajouts.join('')}</div></details>` : ''}
-    <section class="dossier-price-section" aria-labelledby="dossierPriceHeading"><h4 id="dossierPriceHeading">Prix de la visite</h4>
-    <div class="edit-price-row">
-      <label for="editPriceInput">Prix facturé</label>
-      <input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
-      <span>€</span>
-      <label for="editPricePerPerson">ou par personne</label>
-      <input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)">
-      <span>€ / pers.</span>
-      ${state.editState.prixFige ? `<button type="button" class="edit-adapter-btn" onclick="recalculerEditPrix()">Recalculer</button>` : '<small class="edit-prix-auto">calculé automatiquement</small>'}
+  const etat = textePrixEdition(r, estime);
+  return `<section class="fm-prix dossier-price-section" aria-labelledby="dossierPriceHeading">
+    <h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>
+    <div class="fm-prix-champs">
+      <div class="fm-champ">
+        <label class="lbl" for="editPriceInput">Total</label>
+        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">€</span></div>
+      </div>
+      <div class="fm-champ">
+        <label class="lbl" for="editPricePerPerson">Par joueur</label>
+        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">€</span></div>
+      </div>
     </div>
-    <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
-    ${detailHtml ? `<details class="dossier-price-detail"><summary>Voir le détail du calcul</summary>${detailHtml}</details>` : ''}
-    ${reference > 0 ? `<div class="qb-field-note">Tarif catalogue des activités : ${Math.round((reference) * 100) / 100} €</div>` : ''}
-    <div class="qb-field-note">${modifie ? 'Le programme a changé : les activités seront replanifiées à l\'enregistrement.' : 'Le montant actuel est conservé tant que les activités ou les effectifs ne changent pas.'}</div></section>
-  </div>`;
+    <p class="fm-prix-etat" id="editPrixEstime"${etat ? '' : ' hidden'}>${escapeHtml(etat)}</p>
+    <button type="button" class="edit-adapter-btn fm-recalculer" id="editRecalculer" onclick="recalculerEditPrix()"${state.editState.prixFige ? '' : ' hidden'}>Recalculer avec les tarifs</button>
+    ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}</details>` : ''}
+  </section>`;
+}
+
+// CE QUI PARTIRA A L ENREGISTREMENT, EN UNE LIGNE (2026-10-27). La barre du
+// bas dit ce qui change avant le clic (« Joueurs 10 → 12 · Prix 390 € →
+// 468 € ») ; rien a enregistrer, elle le dit aussi. L avant est le dossier a
+// l ouverture du formulaire (departsEdition), comme pour l envoi.
+function modifsProgrammeEdition() {
+  const e = state.editState;
+  if (!e || !e.programmeEdite || !e.programmeEditeInitial || !editProgramAChange()) return [];
+  const avant = JSON.parse(e.programmeEditeInitial);
+  const apres = e.programmeEdite;
+  const nom = (id) => (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || id;
+  const dedie = (id) => id === 'bowling' || id === 'laser_game';
+  const actif = (p, id) => dedie(id) ? Boolean(p[id] && p[id].on) : Boolean((p.others || {})[id]);
+  // Une activite qui avait tout le groupe et le garde (suivreLeGroupe) n a
+  // pas change de reglage : seul le groupe a change, et la barre le dit deja.
+  const origine = departsEdition().get(e)?.origine;
+  const reglages = (p, id, groupe) => {
+    const brut = dedie(id) ? { ...(p[id] || {}), on: undefined } : { ...((p.othersOptions || {})[id] || {}) };
+    const joueurs = participantsLigneProgramme(brut, groupe);
+    if (joueurs === groupe) brut.participants = 'groupe';
+    if (brut.arcadeMode === 'time' && Number(brut.cards) === joueurs) brut.cards = 'groupe';
+    return JSON.stringify(brut);
+  };
+  const ids = [...new Set(['bowling', 'laser_game', ...Object.keys(avant.others || {}), ...Object.keys(apres.others || {})])];
+  const ajouts = ids.filter(id => !actif(avant, id) && actif(apres, id)).map(nom);
+  const retraits = ids.filter(id => actif(avant, id) && !actif(apres, id)).map(nom);
+  const regles = ids.filter(id => actif(avant, id) && actif(apres, id) && reglages(avant, id, Number(origine && origine.pax) || 0) !== reglages(apres, id, Number(e.pax) || 0)).map(nom);
+  const modifs = [
+    ajouts.length ? `Ajout : ${ajouts.join(', ')}` : '',
+    retraits.length ? `Retrait : ${retraits.join(', ')}` : '',
+    regles.length ? `Réglages : ${regles.join(', ')}` : '',
+  ].filter(Boolean);
+  return modifs;
+}
+
+function resumeModifsEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!e || !r || !origine) return [];
+  const change = (cle) => String(e[cle] ?? '').trim() !== String(origine[cle] ?? '').trim();
+  const jourCourt = (iso) => iso ? parseLocalDate(iso).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+  const modifs = [];
+  if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
+  if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
+  if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
+  if (e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
+  const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
+  const pistesApres = parseLaneInput(e.lanesStr);
+  if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
+  modifs.push(...modifsProgrammeEdition());
+  const prix = getEditPriceValue();
+  if (prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
+  if (change('name')) modifs.push('Nom modifié');
+  if (change('phone')) modifs.push(String(origine.phone || '').trim() ? 'Téléphone modifié' : 'Téléphone ajouté');
+  if (change('email')) modifs.push(String(origine.email || '').trim() ? 'E-mail modifié' : 'E-mail ajouté');
+  return modifs;
+}
+
+function resumeModifsEditionHtml() {
+  const modifs = resumeModifsEdition();
+  return modifs.length
+    ? `<b>À enregistrer</b> ${modifs.map(m => `<span class="fm-modif">${escapeHtml(m)}</span>`).join('')}`
+    : 'Aucune modification';
+}
+
+// La barre du bas et la colonne des heures suivent la frappe, sans re-rendre
+// le formulaire (un re-rendu volerait le champ qu on tape).
+function majModifsEdition() {
+  const zone = document.getElementById('editModifs');
+  if (zone) {
+    zone.innerHTML = resumeModifsEditionHtml();
+    zone.classList.toggle('is-vide', !resumeModifsEdition().length);
+  }
+  const programme = document.querySelector('#posOverlay .fm-programme');
+  if (programme) programme.classList.toggle('is-replan', editionReplanifie());
 }
 
 let dossierLaserSaving = false;
@@ -28140,14 +28359,14 @@ function dossierHasUnsavedChanges() {
 function renderDossierLaserEditor(r) {
   if (!getLaserGameCountForReservation(r)) return '';
   if (state.editState.laserScheduleInitialLanes == null) state.editState.laserScheduleInitialLanes = state.editState.lanesStr || '';
-  const programme = ensureEditProgram(r);
-  const laser = programme?.laser_game;
-  const canAdapt = peutAdapterFormule();
+  ensureEditProgram(r);
   const windows = getLaserWindowsFromReservation(r);
   const units = getLaserUnitsForReservation(r);
   const unitName = units.some(unit => unit.waveCount > 1) ? 'vague' : 'partie';
   const placedCount = units.filter(unit => windows.some(window => laserBlockUnitKey(window) === unit.unitKey)).length;
-  const estimate = editProgramAChange() ? getEditPrixEstime() : null;
+  // L HEURE DES PARTIES SE LIT DANS LA RANGEE (2026-10-27) : la colonne de
+  // gauche les donne, le pli ne sert qu a les changer. Le total apres
+  // modification vit dans le bloc Prix, il n est plus redit ici.
   const rows = units.map(unit => {
     const placed = windows.find(window => laserBlockUnitKey(window) === unit.unitKey);
     const players = placed?.players || unit.players;
@@ -28160,8 +28379,7 @@ function renderDossierLaserEditor(r) {
     </div>`;
   }).join('');
   return `<div class="dossier-laser-editor">
-    ${estimate?.utilisable ? `<p class="field-hint">Activités après modification : ${escapeHtml(String(estimate.total))} €${state.editState.prixFige ? ' · prix facturé fixé manuellement' : ''}. ${estimate.complet ? '' : 'Certaines activités se règlent sur place.'}</p>` : ''}
-    <details class="dossier-laser-schedule"><summary>Horaires des parties <span class="muted">${placedCount} ${unitName}${placedCount > 1 ? 's' : ''} placée${placedCount > 1 ? 's' : ''} sur ${units.length}</span></summary><p class="field-hint">Placer, déplacer ou retirer une partie s’enregistre immédiatement. Enregistrez d’abord les changements de joueurs ou de programme.</p><div class="dossier-laser-units">${rows}</div></details>
+    <details class="dossier-laser-schedule"><summary>Changer l’heure des parties <span class="muted">${placedCount} ${unitName}${placedCount > 1 ? 's' : ''} placée${placedCount > 1 ? 's' : ''} sur ${units.length}</span></summary><p class="field-hint">Placer, déplacer ou retirer une partie s’enregistre tout de suite. Enregistrez d’abord les autres changements.</p><div class="dossier-laser-units">${rows}</div></details>
   </div>`;
 }
 
@@ -28209,31 +28427,21 @@ function renderPosEdit(r) {
   const editNeedsLanes = reservationNeedsLanes(r.type, r.formuleId);
   // CE QUE LA FORMULE CONTIENT VRAIMENT (corrige 2026-08-20, Movsar : « quand
   // on va dans laser game pour modifier alors que c est une formule bah ça me
-  // met tjr celle du bowling »). Une formule anniversaire laser affichait le
-  // meme bloc qu'un bowling, puis un texte qui ne parlait que de bowling
-  // (« ne prend aucune piste de bowling ») : le staff lisait l'absence de ce
-  // qu'il n'a pas commande au lieu de la presence de ce qu'il a commande.
-  // La description vient du catalogue, seule source de verite : la fiche
-  // n'invente pas le contenu d'une formule, elle le RECOPIE.
+  // met tjr celle du bowling »). La description vient du catalogue, seule
+  // source de verite : la fiche n'invente pas le contenu d'une formule, elle
+  // le RECOPIE.
   const editFormule = formuleAcheteeDuDossier(r);
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
-  // L ONGLET « MODIFIER », REFAIT (2026-10-02, Movsar : « cette page modifier
-  // est moche a mort »). Memes fonctions, plus l e-mail du client (il sert aux
-  // messages et n etait modifiable nulle part) : deux cartes cote a cote (le
-  // client ; quand et combien, avec le statut en trois boutons et les joueurs
-  // en + / −), puis le contenu et les pistes sur toute la largeur. Les gestes
-  // qui detruisent passent en liens discrets a gauche, l enregistrement est le
-  // seul bouton plein.
-  const ico = {
-    client: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>',
-    quand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-    contenu: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
-  };
-  // « Payé » suit le droit d encaisser (il reste affiche sur un dossier deja
-  // paye, pour que l etat se lise).
-  const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']]
-    .filter(([v]) => v !== 'paid' || e.status === 'paid' || typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.markPaid'));
+  // L ONGLET « MODIFIER », RANGE COMME LA FICHE (2026-10-27, Movsar :
+  // « ameliore encore plus beau [...] surtout ameliorer tout le frontend de
+  // l endroit modifier »). Memes champs, memes fonctions, mais aux places de
+  // l onglet Infos : en tete le jour, l arrivee et les joueurs ; a gauche le
+  // programme, une rangee par activite avec son heure ; a droite le prix et le
+  // client. La barre du bas dit ce qui partira a l enregistrement. Le statut
+  // n a plus de second interrupteur ici : il se change dans Infos, avec le
+  // moyen de paiement (un « Payé » pose d ici n en avait pas).
   const droits = ficheDroits();
+  const adapte = peutAdapterFormule();
   // UN AUTRE JOUR (2026-10-12) : la console n a que les dossiers du jour
   // affiche. Les pistes et le laser du nouveau jour sont attribues par le
   // serveur a l enregistrement : la fiche le dit au lieu de montrer les pistes
@@ -28241,19 +28449,19 @@ function renderPosEdit(r) {
   const autreJour = Boolean(e.date) && e.date !== r.date;
   const jourLong = e.date ? parseLocalDate(e.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
   const pistesBloc = autreJour ? (editNeedsLanes ? `
-          <div class="pos-field dossier-field">
-            <span class="lbl">Pistes de bowling</span>
+          <div class="fm-pistes">
+            <span class="lbl">Pistes</span>
             <p class="field-hint">Attribuées à l’enregistrement parmi les pistes libres du ${escapeHtml(jourLong)}.</p>
           </div>` : '') : !editNeedsLanes ? (editFormuleLignes.length ? '' : `
-          <div class="pos-field dossier-field">
+          <div class="fm-pistes">
             <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
             <p class="field-hint">${isLaserRes
               ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
               : 'Cette réservation ne prend aucune piste de bowling.'}</p>
           </div>`) : `
-          <div class="pos-field dossier-field">
-            <span class="lbl">Pistes de bowling</span>
-            <div class="lane-picker dossier-lanes" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
+          <div class="fm-pistes">
+            <span class="lbl" id="editLanesLabel">Pistes</span>
+            <div class="lane-picker dossier-lanes" role="group" aria-labelledby="editLanesLabel" aria-describedby="editLanesHint">
               ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
                 const choisie = getEditLaneNumbers().includes(lane);
                 const maintenance = state.laneStatuses[lane] === 'maintenance';
@@ -28265,7 +28473,7 @@ function renderPosEdit(r) {
             </div>
             <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
           </div>`;
-  const durationControl = `<div class="pos-field dossier-field">
+  const durationControl = `<div class="fm-champ fm-duree">
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
               <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
                 ${isLaserRes
@@ -28278,70 +28486,66 @@ function renderPosEdit(r) {
     bowlingDuration: editNeedsLanes ? durationControl.replace("setEditField('duration', this.value, true)", "setEditField('duration', this.value, true);setEditBowlingDuration(this.value)") : '',
     lanes: editNeedsLanes ? pistesBloc : ''
   });
-  return `<div class="edit-shell es2 ${posSheetClass()}">
+  const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
+  return `<div class="edit-shell fm ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <fieldset class="dossier-edit-lock" ${dossierLaserSaving ? 'disabled' : ''}>
-      <div class="es-grid dossier-edit-grid">
-        <section class="es-card dossier-section dossier-contact-section">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.client}</span><h4>Coordonnées du client</h4></div>
-          <div class="pos-field dossier-field">
-            <label class="lbl" for="editNameInput">Nom</label>
-            <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
-          </div>
-          <div class="es-pair dossier-fields">
-            <div class="pos-field dossier-field">
-              <label class="lbl" for="editPhoneInput">Téléphone</label>
-              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" placeholder="facultatif">
-            </div>
-            <div class="pos-field dossier-field">
-              <label class="lbl" for="editEmailInput">E-mail</label>
-              <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" placeholder="facultatif" oninput="setEditField('email', this.value)">
-            </div>
-          </div>
-        </section>
-        <section class="es-card dossier-section dossier-visit-section">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.quand}</span><h4>Organisation de la visite</h4></div>
-          <div class="es-trio dossier-visit-fields">
-            <div class="pos-field dossier-field es-jour">
+      <div class="fm-colonnes">
+        <div class="fm-principal">
+          <section class="fm-quand" aria-label="Jour, arrivée et joueurs">
+            <div class="fm-champ fm-jour">
               <label class="lbl" for="editDateInput">Jour</label>
               <input id="editDateInput" class="input" type="date" value="${escapeHtml(e.date || r.date || '')}"${r.date && r.date >= todayStr() ? ` min="${todayStr()}"` : ''} data-pl-focus="fiche.edit.jour" onchange="changerJourEdition(this.value)" required>
             </div>
-            <div class="pos-field dossier-field">
-              <label class="lbl" for="editStartInput">Début de visite</label>
+            <div class="fm-champ fm-arrivee">
+              <label class="lbl" for="editStartInput">Arrivée</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
             </div>
-${!peutAdapterFormule() || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
-            <div class="pos-field dossier-field">
-              <label class="lbl" for="editPaxInput">Groupe total</label>
-              <div class="es-stepper staff-stepper">
-                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+${!adapte || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
+            <div class="fm-champ fm-joueurs">
+              <label class="lbl" for="editPaxInput">Joueurs</label>
+              <div class="es-stepper staff-stepper fm-stepper">
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">${signe(false)}</button>
                 <input id="editPaxInput" class="input" type="number" min="1" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
-                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)">${signe(true)}</button>
               </div>
             </div>
-          </div>
-          <div class="pos-field dossier-field">
-            <span class="lbl" id="editStatusLabel">Statut</span>
-            <div class="es-seg" role="radiogroup" aria-labelledby="editStatusLabel">
-              ${statuts.map(([v, mot]) => `<button type="button" role="radio" class="es-seg-btn is-${v}${e.status === v ? ' is-on' : ''}" aria-checked="${e.status === v}" data-statut="${v}" onclick="setEditStatut('${v}')">${mot}</button>`).join('')}
+            ${autreJour ? `<p class="field-hint fm-indice" id="editJourHint">Nouveau jour : ${escapeHtml(jourLong)}. Les pistes et le laser y sont replacés à l’enregistrement.</p>` : ''}
+          </section>
+          <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}" aria-labelledby="fmProgrammeTitre">
+            <h4 class="fm-titre" id="fmProgrammeTitre">Programme</h4>
+            ${contenuBloc}${!adapte ? pistesBloc : ''}
+            ${!adapte && !autreJour ? renderDossierLaserEditor(r) : ''}
+          </section>
+        </div>
+        <aside class="fm-cote">
+          ${adapte ? renderEditPrix(r) : ''}
+          <section class="fm-client" aria-labelledby="fmClientTitre">
+            <h4 class="fm-titre" id="fmClientTitre">Client</h4>
+            <div class="fm-champ">
+              <label class="lbl" for="editNameInput">Nom</label>
+              <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
             </div>
-          </div>
-          ${autreJour ? `<p class="field-hint es-jour-indice" id="editJourHint">Nouveau jour : ${escapeHtml(jourLong)}. Les pistes et le laser y sont replacés à l’enregistrement.</p>` : ''}
-        </section>
-        ${contenuBloc || pistesBloc ? `<section class="es-card es-wide dossier-section dossier-section-wide">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Activités et placement</h4></div>
-          <div class="es-contenu">${contenuBloc}${!peutAdapterFormule() ? pistesBloc : ''}</div>
-        </section>` : ''}
-        ${!peutAdapterFormule() && !autreJour ? renderDossierLaserEditor(r) : ''}
+            <div class="fm-champ">
+              <label class="lbl" for="editPhoneInput">Téléphone</label>
+              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" oninput="setEditField('phone', this.value)" placeholder="Facultatif">
+            </div>
+            <div class="fm-champ">
+              <label class="lbl" for="editEmailInput">E-mail</label>
+              <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" autocomplete="off" placeholder="Facultatif" oninput="setEditField('email', this.value)">
+            </div>
+          </section>
+          ${droits.annuler ? `<details class="dossier-other-actions fm-autres"><summary>Annuler ou supprimer</summary>
+            <div class="edit-actions-destructive">
+              <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
+              <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
+            </div>
+          </details>` : ''}
+        </aside>
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
-      ${droits.annuler ? `<details class="dossier-other-actions"><summary>Autres actions</summary>
-        <div class="edit-actions-destructive">
-          <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
-          <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
-        </div>
-      </details>` : ''}
-      <div class="edit-actions es-actions dossier-actions">
+      <div class="edit-actions es-actions dossier-actions fm-pied">
+        <p class="fm-modifs${resumeModifsEdition().length ? '' : ' is-vide'}" id="editModifs">${resumeModifsEditionHtml()}</p>
         <div class="edit-actions-main">
           <button type="button" class="btn-secondary" onclick="fermerFiche()">Fermer</button>
           <button type="submit" class="btn-primary es-save">Enregistrer</button>
@@ -28372,16 +28576,6 @@ function editPaxPas(delta) {
   const champ = document.getElementById('editPaxInput');
   if (champ) champ.value = n;
   setEditField('pax', n, true);
-}
-
-// Le statut en trois boutons : un seul allume, sans re-rendre le formulaire.
-function setEditStatut(valeur) {
-  setEditField('status', valeur);
-  document.querySelectorAll('.es-seg-btn[data-statut]').forEach(bouton => {
-    const on = bouton.getAttribute('data-statut') === valeur;
-    bouton.classList.toggle('is-on', on);
-    bouton.setAttribute('aria-checked', on ? 'true' : 'false');
-  });
 }
 
 // UN ECHEC D'ENREGISTREMENT DOIT RESTER SOUS LES YEUX (2026-08-20).
@@ -28437,7 +28631,7 @@ async function saveEdit(e) {
   // reference honnete pour lui dire, apres coup, si on a du changer.
   const lanesVoulues = lanes.slice();
   if (requiresLanes && !jourChange) {
-    const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, es.startTime, duration, state.selectedRes.id, es.lanesStr);
+    const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(state.selectedRes, es), duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
       failEdit('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.');
       return;
@@ -28446,7 +28640,7 @@ async function saveEdit(e) {
     state.editState.lanesStr = formatLaneInput(lanes);
   }
   if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
-  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, es.startTime, duration, lanes, state.selectedRes.id);
+  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(state.selectedRes, es), duration, lanes, state.selectedRes.id);
   if (conflicts.length) { failEdit('Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').'); return; }
   if (state.selectedRes.type === 'laser' && !jourChange) {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
@@ -28510,7 +28704,9 @@ async function saveEdit(e) {
     }
     if (programme) {
       updated.program = programme;
-      updated.label = libelleAdapte;
+      // Un groupe qui grandit fait suivre ses activites (suivreLeGroupe) : le
+      // programme part, mais le dossier ne devient pas « adapté » pour autant.
+      if (modifsProgrammeEdition().length) updated.label = libelleAdapte;
     }
     if (prixEcran !== null) updated.price = prixEcran;
     return updated;
@@ -29090,12 +29286,16 @@ function renderActivityParticipantsControl(id, mode = 'quick', explicit = false)
   const options = programme ? (id === 'bowling' || id === 'laser_game' ? programme[id] : (programme.othersOptions || {})[id]) : null;
   const courant = mode === 'edit' ? participantsLigneProgramme(options, pax) : getQuickVisitParticipants(id);
   const setter = mode === 'edit' ? 'setEditActivityParticipants' : 'setQuickVisitParticipants';
+  // « ecart » (onglet Modifier, 2026-10-27) : la phrase « 6 joueurs au Laser
+  // sur 10 participants » ne s ecrit que si l activite n a pas tout le groupe ;
+  // a effectif egal, elle redisait le compteur juste a cote.
+  const explique = explicit === 'ecart' ? Number(courant) !== Number(pax) : Boolean(explicit);
   const nom = (activite && activite.name) || id;
   return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
     + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
     + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
     + `<span class="qb-step-valeur staff-stepper-value">${explicit ? courant : `${courant} / ${plafond}`}</span>`
-    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explicit ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
 }
 
 function setEditActivityParticipants(id, nombre) {
@@ -29814,7 +30014,7 @@ function getEditBowlingCapacityNeed(reservation, edition) {
   const bowling = edition.programmeEdite?.bowling;
   const duration = Number(bowling?.on ? bowling.duration : edition.duration || reservation.duration) || 1;
   const players = bowling?.on ? participantsLigneProgramme(bowling, edition.pax) : Number(edition.pax) || 1;
-  return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(players)), getFreeCount(reservation.date, edition.startTime || reservation.startTime, duration, reservation.id), duration * 60);
+  return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(players)), getFreeCount(reservation.date, debutBowlingEdition(reservation, edition), duration, reservation.id), duration * 60);
 }
 
 function getQuickBookAvailableSlots() {
@@ -34269,13 +34469,22 @@ function renderPosInner() {
   // regarde on sait direct »). Une date, des heures, « 10 joueurs », des pistes
   // et un numero se reconnaissent seuls : leur libelle n est plus ecrit au-dessus
   // (la grille de libelles faisait formulaire), il reste pour les lecteurs
-  // d ecran. Ordre du comptoir : quand, combien, ou.
+  // d ecran.
+  // L HEURE ET LES JOUEURS EN GRAND (2026-10-27, Movsar : « heure activité
+  // joueur plus visible »). Les deux chiffres qu on cherche en ouvrant une
+  // fiche passent devant, en grand ; le jour, le lieu et le numero suivent en
+  // texte courant. Le texte des faits ne change pas (« 14:00 → 17:00 »,
+  // « 10 joueurs ») : seule la taille dit ce qui compte.
   const identity = getPosIdentityParts(r);
   const dossierStatus = getStaffDashboardStatusMeta(r);
   const [jour, horaires, lieu, joueurs] = r.date ? identity : ['', ...identity];
-  const facts = [['Date', jour], ['Horaires', horaires], ['Groupe', joueurs], ['Ressources', lieu], ['Réservation', `n° ${escapeHtml(String(r.id))}`]]
-    .filter(([, valeur]) => valeur)
-    .map(([libelle, valeur]) => `<span class="dossier-fact${libelle === 'Réservation' ? ' fx-numero' : ''}"><span class="visually-hidden">${libelle} </span><strong>${valeur}</strong></span>`).join('');
+  const fait = (libelle, valeur, classe = '') => valeur ? `<span class="dossier-fact${classe ? ` ${classe}` : ''}"><span class="visually-hidden">${libelle} </span><strong>${valeur}</strong></span>` : '';
+  // La fleche se dessine : le glyphe « → » de Geist est minuscule en grand ; il
+  // reste dans le texte (lecteurs d ecran, copie) sans se voir.
+  const fleche = '<span class="fx-fleche"><span class="visually-hidden">→</span><svg viewBox="0 0 22 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 7h19M14 1l6 6-6 6"/></svg></span>';
+  const chiffres = fait('Horaires', horaires.replace(' → ', ` ${fleche} `), 'fx-heures')
+    + fait('Groupe', joueurs.replace(/^(\d+)\s/, '<span class="fx-nombre">$1</span> '), 'fx-joueurs');
+  const facts = fait('Date', jour) + fait('Ressources', lieu) + fait('Réservation', `n° ${escapeHtml(String(r.id))}`, 'fx-numero');
   // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
   // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
   const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
@@ -34302,6 +34511,7 @@ function renderPosInner() {
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
+          <p class="fx-chiffres">${chiffres}</p>
           <p class="dossier-facts">${facts}</p>
           ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
             ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`

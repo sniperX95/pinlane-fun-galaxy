@@ -209,6 +209,7 @@
     "test:reservation-sheet",
     "test:fiche-gestes",
     "test:fiche-simple",
+    "test:fiche-modifier",
     "test:one-screen",
     "test:funnel-clarity",
     "test:visit-free-time",

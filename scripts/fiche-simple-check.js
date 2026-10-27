@@ -4,9 +4,10 @@
 // infos mais super bien positionner [...] on regarde on sait direct prcq celui
 // actuel tout est reparti partout avec des repetitions ». La regle : chaque
 // information a UNE place.
-//   [T1] l en-tete dit l identite sur une ligne de faits (date, heures,
-//        joueurs, ou, numero), sans libelle ecrit au-dessus ; les libelles
-//        restent pour la synthese vocale ;
+//   [T1] l en-tete dit d abord, en grand, l heure et les joueurs (Movsar,
+//        27/10 : « heure activité joueur plus visible »), puis le jour, le
+//        lieu et le numero en texte courant ; aucun libelle ecrit, les
+//        libelles restent pour la synthese vocale ;
 //   [T2] l occasion et la formule s ecrivent en texte, pas en pastille ;
 //   [E1] la ligne d etat ne redit pas la pastille de l en-tete, et aucun
 //        bandeau ne la redit au-dessus ;
@@ -92,10 +93,14 @@ function lireFiche({ nom, contact }) {
   const R = (el) => el.getBoundingClientRect();
   const cs = (el) => getComputedStyle(el);
   const transparent = (v) => !v || v === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(v);
-  const faits = Array.from(m.querySelectorAll('.dossier-facts .dossier-fact')).map((f) => {
+  // Un fait : son libelle (lu par la synthese vocale), sa valeur, sa ligne
+  // (les chiffres en grand ou les faits courants) et sa taille, celle de son
+  // nombre quand il en a un (« 10 » joueurs).
+  const faits = Array.from(m.querySelectorAll('.fx-chiffres .dossier-fact, .dossier-facts .dossier-fact')).map((f) => {
     const lib = f.querySelector('span');
     const val = f.querySelector('strong');
-    return { libelle: txt(lib), valeur: txt(val), libVu: Boolean(lib) && R(lib).width > 1 && R(lib).height > 1 && cs(lib).clip !== 'rect(0px, 0px, 0px, 0px)', haut: Math.round(R(val).top) };
+    const chiffre = f.querySelector('.fx-nombre') || val;
+    return { libelle: txt(lib), valeur: txt(val), libVu: Boolean(lib) && R(lib).width > 1 && R(lib).height > 1 && cs(lib).clip !== 'rect(0px, 0px, 0px, 0px)', haut: Math.round(R(val).top), bas: Math.round(R(val).bottom), ligne: f.closest('.fx-chiffres') ? 'chiffres' : 'faits', px: parseFloat(cs(chiffre).fontSize) };
   });
   const moment = m.querySelector('.fx-act .fx-moment');
   const span = moment && moment.querySelector(':scope > span');
@@ -168,10 +173,16 @@ const RX_ARGENT = (f) => new RegExp(`^${f.paye ? 'Encaissé' : 'À encaisser'}\\
 function juger(f, label, appareil) {
   const ordi = !['telephone', 'tablette-portrait'].includes(appareil);
   // [T1]
-  const libelles = f.faits.map((x) => x.libelle);
-  ok(['Date', 'Horaires', 'Groupe', 'Ressources', 'Réservation'].every((l) => libelles.includes(l)) && f.faits.every((x) => x.valeur && !x.libVu),
-    `[T1] ${label} : les faits sans libelle ecrit, libelles gardes pour la synthese vocale`, f.faits);
-  if (ordi) ok(new Set(f.faits.map((x) => x.haut)).size === 1, `[T1] ${label} : les faits tiennent sur une ligne`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
+  const chiffres = f.faits.filter((x) => x.ligne === 'chiffres');
+  const courants = f.faits.filter((x) => x.ligne === 'faits');
+  ok(chiffres.map((x) => x.libelle).join() === 'Horaires,Groupe' && courants.map((x) => x.libelle).join() === 'Date,Ressources,Réservation' && f.faits.every((x) => x.valeur && !x.libVu),
+    `[T1] ${label} : l heure et les joueurs d abord, puis le jour, le lieu et le numero, sans libelle ecrit`, f.faits);
+  const plusPetitChiffre = Math.min(...chiffres.map((x) => x.px));
+  ok(plusPetitChiffre >= 22 && courants.every((x) => x.px <= 15 && x.px < plusPetitChiffre), `[T1] ${label} : l heure et les joueurs en grand (${plusPetitChiffre} px), le reste en texte courant`, f.faits.map((x) => `${x.valeur}:${x.px}`));
+  // Une ligne : les deux boites se recouvrent en hauteur (le nombre de joueurs
+  // et l heure n ont pas la meme taille, leurs hauts different).
+  ok(chiffres.length === 2 && chiffres[1].haut < chiffres[0].bas && chiffres[1].bas > chiffres[0].haut && courants.every((x) => x.haut >= Math.max(...chiffres.map((c) => c.bas)) - 2), `[T1] ${label} : les deux chiffres sur une ligne, les faits courants dessous`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
+  if (ordi) ok(new Set(courants.map((x) => x.haut)).size === 1, `[T1] ${label} : les faits courants tiennent sur une ligne`, courants.map((x) => `${x.valeur}@${x.haut}`));
   // [T2]
   ok(f.etiquettes.length > 0 && f.etiquettes.every((e) => (/rgba\([^)]*,\s*0\)$|transparent/.test(e.fond)) && e.pad === '0px'), `[T2] ${label} : l occasion s ecrit en texte, pas en pastille`, f.etiquettes);
   // [E1]
@@ -256,6 +267,7 @@ const SCENARIOS = [
 const ORDI = [{ appareil: 'ordinateur' }];
 const MUTATIONS = [
   { nom: 'libelles-ecrits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: JS, de: '<span class="visually-hidden">${libelle} </span>', vers: '<span>${libelle} </span>' }] },
+  { nom: 'chiffres-petits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong { font-size: 26px;', vers: '.fx-modal .fx-chiffres .dossier-fact strong { font-size: 15px;' }] },
   { nom: 'faits-empiles', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact { display: inline; }', vers: '.fx-modal .dossier-fact { display: grid; }' }] },
   { nom: 'occasion-en-pastille', lettre: 'T2', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .fx-etiquette { display: inline; border-radius: 0;' }] },
   { nom: 'pastille-redite', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "      : `Fin prévue à ${formatClockDisplay(span.end)}`;", vers: "      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;" }] },
@@ -271,7 +283,7 @@ const MUTATIONS = [
   { nom: 'etat-en-pastille', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .gc-step .gc-step-state { border-radius: 0;' }] },
   { nom: 'libre-redit', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step.is-libre .gc-step-state { display: none; }', vers: '.fx-modal .gc-step.is-libre .gc-step-state { }' }] },
   { nom: 'deborde-au-telephone', lettre: 'L1', scenarios: [{ appareil: 'telephone' }], editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap;', vers: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap; display: inline-block; min-width: 520px;' }] },
-  { nom: 'fin-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step-time small { font-size: 12px; }', vers: '.fx-modal .gc-step-time small { }' }] },
+  { nom: 'fin-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 13px; }', vers: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 11px; }' }] },
   { nom: 'detail-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-moment-suite { margin: -4px 0 12px; font-size: 13px;', vers: '.fx-modal .fx-moment-suite { margin: -4px 0 12px; font-size: 11px;' }] },
 ];
 

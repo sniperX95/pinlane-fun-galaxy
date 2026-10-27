@@ -25,11 +25,19 @@
 //   [E1] l etat de chaque activite a 15:10 (finie, en cours, a lancer, en
 //        retard, a venir) ; [E2] le retard sur la ligne et ses minutes ;
 //   [E3] l etat au bout de la ligne et « Arrivé » tant que le groupe est
-//        attendu ;
+//        attendu ; la visite finie d un groupe venu, « À encaisser » et son
+//        montant (2026-10-27) ;
+//   [E4] l etat du centre en tete des colonnes (2026-10-27) : les pistes
+//        libres a cette minute, le prochain depart laser du planning laser,
+//        les groupes pointes sur une activite ; au telephone, sur une ligne ;
+//   [F6] le filet de chaque demi-heure (2026-10-27) : ses groupes et ses
+//        personnes, et sous sa colonne le bowling ou le laser plein ;
 //   [N1] la barre de l heure entre les heures passees et a venir, la feuille
 //        ouverte dessus ; [N2] apres minuit, la soiree de la veille continue ;
 //   [G1] « Arrivé » ecrit le pointage, un clic ou Entree ouvre la fiche ;
-//   [G2] la recherche (sans accents) et le filtre de statut ;
+//   [G2] la recherche (sans accents) et le filtre de statut ; [G3] au
+//        planning bowling, chercher grise les autres groupes sans les retirer
+//        (une piste prise reste prise) ;
 //   [L1] aucune page plus large que l ecran ; de 1440 a 1920, la feuille du
 //        pic sans defilement de cote ; plus etroite, l identite collee a
 //        gauche et l etat a droite ; [L2] la feuille se borne a l ecran ;
@@ -91,11 +99,18 @@ function lireFeuille() {
   const table = defile && defile.querySelector('.gf-t');
   const R = (el) => el.getBoundingClientRect();
   const vu = (el) => Boolean(el) && getComputedStyle(el).display !== 'none' && R(el).width > 0 && R(el).height > 0;
-  const tetes = table ? Array.from(table.querySelectorAll('thead th')).map((th) => ({ cle: th.getAttribute('data-gf-cle'), texte: th.textContent.trim(), scope: th.getAttribute('scope'), vide: th.classList.contains('is-vide') })) : [];
+  const tetes = table ? Array.from(table.querySelectorAll('thead th')).map((th) => ({ cle: th.getAttribute('data-gf-cle'), texte: th.textContent.trim(), scope: th.getAttribute('scope'), vide: th.classList.contains('is-vide'), etat: (th.querySelector('.gf-th__etat') || {}).textContent || '', etatVu: vu(th.querySelector('.gf-th__etat')) })) : [];
   const cles = tetes.map((t) => t.cle);
   const lignes = defile ? Array.from(defile.querySelectorAll('tbody > tr')).map((tr) => {
     if (tr.classList.contains('gf-now')) return { now: true, h: (tr.querySelector('.gf-now__h') || {}).textContent || '' };
     if (tr.classList.contains('gf-rien')) return { rien: true, texte: tr.textContent.trim() };
+    if (tr.classList.contains('gf-demi')) {
+      // (ses cases d activite sont dans l ordre des colonnes de la tete)
+      const actives = cles.filter(Boolean);
+      const pleins = {};
+      tr.querySelectorAll('td.gf-demi__a').forEach((td, i) => { const p = td.querySelector('.gf-demi__plein'); if (p) pleins[actives[i]] = p.textContent; });
+      return { demi: true, h: tr.getAttribute('data-gf-demi') || '', texte: ((tr.querySelector('.gf-demi__t') || {}).textContent || '').trim(), pleins, vu: vu(tr) };
+    }
     const tds = Array.from(tr.children);
     const nom = tr.querySelector('.gf-nom__t');
     const cases = {};
@@ -119,6 +134,7 @@ function lireFeuille() {
       pax: (tr.querySelector('td.gf-n b') || {}).textContent || '',
       cases,
       badges: Array.from(etat.querySelectorAll('.gf-b')).map((b) => b.textContent.trim()),
+      du: (etat.querySelector('.gf-du') || {}).textContent || '',
       arrive: Boolean(etat.querySelector('[data-gf-arrive]')),
       arriveAria: (etat.querySelector('[data-gf-arrive]') || { getAttribute: () => '' }).getAttribute('aria-label'),
     };
@@ -134,6 +150,7 @@ function lireFeuille() {
     bandeau: bandeau ? { vu: !bandeau.hidden && vu(bandeau), texte: bandeau.textContent } : null,
     defile: defile ? { vu: vu(defile), sw: defile.scrollWidth, cw: defile.clientWidth, sh: defile.scrollHeight, ch: defile.clientHeight, top: rd.top, bas: rd.bottom, gauche: rd.left, droite: rd.right, st: defile.scrollTop } : null,
     nowY: now ? { haut: R(now).top, bas: R(now).bottom, tete: thead ? R(thead).bottom : rd.top } : null,
+    maintenant: defile && defile.querySelector('.gf-maintenant') ? { vu: vu(defile.querySelector('.gf-maintenant')), texte: defile.querySelector('.gf-maintenant').textContent } : null,
     page: { sw: document.scrollingElement.scrollWidth, iw: innerWidth, ih: innerHeight },
     plein: box.classList.contains('expanded'),
     stats: Object.assign({}, window.__gfStats || {}),
@@ -141,12 +158,38 @@ function lireFeuille() {
 }
 
 function lireOracle() {
-  /* global todaysReservations, getStaffReservationMoments, getStaffTerrainSpan, getBowlingWindowsFromReservation, getLaserWindowsFromReservation, getStaffFormulaTimedItems, getGroupeProgramme, groupeAJoue, isReservationAwaitingReview, resolveDisplayFormule, currentTimeDecimal, state */
+  /* global todaysReservations, getStaffReservationMoments, getStaffTerrainSpan, getBowlingWindowsFromReservation, getLaserWindowsFromReservation, getStaffFormulaTimedItems, getGroupeProgramme, groupeAJoue, isReservationAwaitingReview, resolveDisplayFormule, currentTimeDecimal, state, todayStr, availabilityBlocksCache, getPlanningWindow, getAvailabilityLaneCount, getBlocagesEnLigne, getBowlingBlockWindows, lpModele, prixDossierConnu, formatMoneyCentimes */
   const res = todaysReservations();
   const moments = getStaffReservationMoments(res);
+  // LES PISTES, refaites ici depuis ce qui les prend (reservations, horaires
+  // retenus en ligne, blocages), sans passer par les fonctions que la feuille
+  // appelle : une piste en maintenance n est pas ouverte, une piste est libre
+  // sur [a, b) si rien ne la prend dans cet intervalle.
+  const cfg = getPlanningWindow(state.currentDate);
+  const pistes = availabilityBlocksCache.loaded && !cfg.closed && getAvailabilityLaneCount() ? (() => {
+    const fenetres = [];
+    const poser = (src) => src.forEach((it) => getBowlingWindowsFromReservation(it).forEach((w) => (w.lanes || []).forEach((l) => fenetres.push({ l: Number(l), s: Number(w.start), e: Number(w.end) }))));
+    poser(res);
+    poser(getBlocagesEnLigne(state.currentDate));
+    Object.entries(getBowlingBlockWindows(state.currentDate, cfg.open, cfg.close)).forEach(([l, fs]) => fs.forEach((f) => fenetres.push({ l: Number(l), s: Number(f.startH), e: Number(f.endH) })));
+    const ouvertes = [];
+    for (let l = 1; l <= getAvailabilityLaneCount(); l += 1) if (state.laneStatuses[l] !== 'maintenance') ouvertes.push(l);
+    const libresSur = (a, b) => ouvertes.filter((l) => !fenetres.some((f) => f.l === l && f.s < b && f.e > a)).length;
+    const now = currentTimeDecimal();
+    return {
+      ouvertes: ouvertes.length,
+      libresMaintenant: state.currentDate === todayStr() && now >= cfg.open && now < cfg.close ? ouvertes.filter((l) => !fenetres.some((f) => f.l === l && f.s <= now && f.e > now)).length : null,
+      // (chaque demi-heure de la journee, indexee par b * 2)
+      libresParDemi: Array.from({ length: 56 }, (_, i) => libresSur(i / 2, i / 2 + 0.5)),
+    };
+  })() : null;
+  const lp = typeof lpModele === 'function' ? lpModele() : null;
   return {
     jour: state.currentDate,
+    aujourdHui: state.currentDate === todayStr(),
     maintenant: currentTimeDecimal(),
+    pistes,
+    laser: lp ? { capacite: lp.capacite, prochain: lp.prochain ? { t: lp.prochain.t, places: Number(lp.prochain.places) || 0 } : null, departs: lp.departs.map((d) => ({ t: d.t, occupe: d.occupe, places: d.places })) } : null,
     groupes: res.map((r) => {
       const mo = moments.get(String(r.id)) || {};
       const f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
@@ -163,6 +206,8 @@ function lireOracle() {
         late: Boolean(mo.late),
         span: getStaffTerrainSpan(r),
         present: r.status === 'arrived' || r.status === 'paid' || (typeof groupeAJoue === 'function' && groupeAJoue(r)),
+        // (l argent du dossier, quand la visite d un groupe venu est finie)
+        du: r.status !== 'paid' && r.status !== 'cancelled' && (r.status === 'arrived' || (typeof groupeAJoue === 'function' && groupeAJoue(r))) && prixDossierConnu(r) ? formatMoneyCentimes(r.price) : '',
         formule: r.formuleId || r.type === 'formule' ? String((f && f.name) || r.label || 'Formule').trim() : '',
         surMesure: r.type === 'custom' || r.surMesure === true,
         bowling: getBowlingWindowsFromReservation(r).map((w) => ({ start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite) })),
@@ -243,6 +288,33 @@ async function structure(page, s, label) {
   });
   ok(fautesBloc.length === 0, `[F2] ${label} : un filet a chaque demi-heure, une bande un bloc sur deux, l heure repetee discrete`, fautesBloc.slice(0, 3));
 
+  // [F6] le filet de chaque demi-heure : juste avant la premiere ligne du
+  // bloc, ses groupes et ses personnes ; sous Bowling « complet » quand
+  // aucune piste ouverte n est libre de toute la demi-heure ; sous Laser le
+  // pire depart de la demi-heure, plein ou en trop.
+  const blocs = new Map();
+  groupes.forEach((l) => { const g = parId.get(l.id); const b = Math.floor(heureDe(g) * 2 + 1e-6) / 2; const c = blocs.get(b) || { n: 0, pers: 0 }; c.n += 1; c.pers += g.pax; blocs.set(b, c); });
+  const demis = f.lignes.filter((x) => x.demi);
+  const fautesDemi = demis.length === blocs.size ? [] : [{ demis: demis.length, blocs: blocs.size }];
+  let blocVu = null;
+  f.lignes.forEach((x, i) => {
+    if (!x.id) return;
+    const b = Math.floor(heureDe(parId.get(x.id)) * 2 + 1e-6) / 2;
+    if (b === blocVu) return;
+    blocVu = b;
+    const d = f.lignes[i - 1];
+    const c = blocs.get(b);
+    const texte = `${c.n} ${c.n > 1 ? 'groupes' : 'groupe'} · ${c.pers} pers.`;
+    const pleins = {};
+    if (o.pistes && o.pistes.ouvertes && f.cles.includes('bowling') && o.pistes.libresParDemi[b * 2] === 0) pleins.bowling = 'complet';
+    if (o.laser && f.cles.includes('laser')) {
+      const pire = o.laser.departs.filter((dp) => dp.t >= b - 1e-6 && dp.t < b + 0.5 - 1e-6 && dp.occupe > 0).sort((a, z) => a.places - z.places)[0];
+      if (pire && pire.places <= 0) pleins.laser = pire.places < 0 ? `${-pire.places} de trop` : 'complet';
+    }
+    if (!d || !d.demi || d.h !== hhmm(b) || d.texte !== texte || JSON.stringify(d.pleins) !== JSON.stringify(pleins) || !d.vu) fautesDemi.push({ h: hhmm(b), ecrit: d && d.demi ? { h: d.h, texte: d.texte, pleins: d.pleins, vu: d.vu } : null, attendu: { texte, pleins } });
+  });
+  ok(fautesDemi.length === 0 && (s.fixture !== 'pic' || demis.some((d) => Object.keys(d.pleins).length)), `[F6] ${label} : un filet en tete de chaque demi-heure, ses groupes et ses personnes, le bowling ou le laser plein sous sa colonne`, fautesDemi.slice(0, 3));
+
   // [F3] les colonnes du papier, chaque activite a son heure
   const actives = f.cles.filter(Boolean);
   const papier = actives.filter((c) => !c.startsWith('a-'));
@@ -308,11 +380,38 @@ async function structure(page, s, label) {
       const peut = g.etat === 'upcoming' && !['paid', 'arrived'].includes(g.status) && !g.absent;
       return (statut ? l.badges[0] !== statut : l.badges.some((b) => /^(Pas venu|Payé|Arrivé)$/.test(b)))
         || l.badges.includes('À valider') !== g.aValider
-        || l.badges.includes('À clôturer') !== (g.etat === 'closing')
+        || l.badges.includes('À clôturer') !== (g.etat === 'closing' && !g.du)
+        || l.badges.includes('À encaisser') !== (g.etat === 'closing' && Boolean(g.du))
+        || l.du !== (g.etat === 'closing' ? g.du : '')
+        || (g.etat === 'closing' && g.du && !l.aria.includes(`à encaisser ${g.du}`))
         || l.arrive !== peut
         || (peut && l.arriveAria !== `Pointer ${g.nom} arrivé`);
     });
-    ok(fautesEtatLigne.length === 0 && (s.fixture !== 'pic' || groupes.some((l) => l.arrive)), `[E3] ${label} : le statut, « À valider », « À clôturer » et « Arrivé » tant que le groupe est attendu`, fautesEtatLigne.slice(0, 3).map((l) => ({ nom: l.nom, badges: l.badges, arrive: l.arrive })));
+    ok(fautesEtatLigne.length === 0 && (s.fixture !== 'pic' || (groupes.some((l) => l.arrive) && groupes.some((l) => l.du))), `[E3] ${label} : le statut, « À valider », « À clôturer » ou « À encaisser » et son montant, « Arrivé » tant que le groupe est attendu`, fautesEtatLigne.slice(0, 3).map((l) => ({ nom: l.nom, badges: l.badges, du: l.du, attendu: parId.get(l.id).du, arrive: l.arrive })));
+
+    // [E4] l etat du centre en tete des colonnes, a cette minute
+    const attenduEtat = {};
+    if (o.pistes && o.pistes.libresMaintenant != null) { const n = o.pistes.libresMaintenant; attenduEtat.bowling = n ? `${n} ${n > 1 ? 'libres' : 'libre'}` : 'complet'; }
+    if (o.laser && o.laser.prochain) { const p = o.laser.prochain; attenduEtat.laser = `${hhmm(p.t)}${p.places > 0 ? ` · ${p.places} ${p.places > 1 ? 'places' : 'place'}` : ' complet'}`; }
+    const surPlace = new Map();
+    o.groupes.forEach((g) => {
+      if (!g.present || g.etat === 'done' || g.etat === 'absent') return;
+      g.timed.filter((it) => !['bowling', 'laser_game', 'service_drinks', 'arcade_credit', 'party_table', 'playground'].includes(it.id)).forEach((it) => {
+        if (it.start > o.maintenant + 1e-6 || it.end <= o.maintenant + 1e-6) return;
+        const col = colonneDe(it.id);
+        if (!surPlace.has(col)) surPlace.set(col, new Set());
+        surPlace.get(col).add(g.id);
+      });
+    });
+    surPlace.forEach((ids, col) => { if (!attenduEtat[col]) attenduEtat[col] = `${ids.size} ${ids.size > 1 ? 'groupes' : 'groupe'}`; });
+    const fautesTete = f.tetes.filter((t) => t.cle && t.cle !== 'plaine' && t.etat !== (attenduEtat[t.cle] || '')).map((t) => ({ cle: t.cle, ecrit: t.etat, attendu: attenduEtat[t.cle] || '' }));
+    const plaine = f.tetes.find((t) => t.cle === 'plaine');
+    if (plaine && plaine.etat && !/^\d+ enf\.$/.test(plaine.etat)) fautesTete.push({ cle: 'plaine', ecrit: plaine.etat });
+    const tetesVues = telephone || f.tetes.filter((t) => t.etat).every((t) => t.etatVu);
+    const ligne = telephone
+      ? Boolean(f.maintenant && f.maintenant.vu) && ['bowling', 'laser'].every((c) => !attenduEtat[c] || f.maintenant.texte.includes(`${c === 'bowling' ? 'Bowling' : 'Laser'} ${attenduEtat[c]}`))
+      : !f.maintenant || !f.maintenant.vu;
+    ok(fautesTete.length === 0 && tetesVues && ligne && (s.fixture !== 'pic' || Boolean(attenduEtat.bowling && attenduEtat.laser)), `[E4] ${label} : l etat du centre en tete des colonnes (pistes libres, prochain depart laser, groupes sur l activite)${telephone ? ', sur une ligne au-dessus des cartes' : ''}`, { fautesTete: fautesTete.slice(0, 4), tetesVues, ligne, maintenant: f.maintenant, attendu: attenduEtat });
 
     // [N1] la barre de l heure, la feuille ouverte dessus
     const idx = f.lignes.findIndex((l) => l.now);
@@ -518,6 +617,30 @@ async function gestes(browser) {
       return { lignes, attendus };
     });
     ok(filtre.lignes.length > 0 && filtre.lignes.slice().sort().join() === filtre.attendus.slice().sort().join(), `[G2] ${label} : le filtre « En retard » ne garde que les groupes en retard`, filtre);
+
+    // [G3] le planning bowling : chercher grise les autres groupes, sans les
+    // retirer de la grille ; la piste d un groupe qui ne correspond pas reste
+    // prise, sa case ne se propose pas a la reservation (2026-10-27)
+    await page.evaluate(() => { location.hash = '#/staff/planning/bowling'; });
+    await FX.repos(page, 900);
+    const cartes = () => page.evaluate(() => Array.from(document.querySelectorAll('.booking[data-booking-res-id]')).map((b) => ({ id: b.getAttribute('data-booking-res-id'), piste: b.getAttribute('data-booking-lane'), debut: b.getAttribute('data-booking-start'), grise: b.classList.contains('is-grise'), opacite: Number(getComputedStyle(b).opacity) })));
+    const sans = await cartes();
+    const retenus = await page.evaluate(() => { applyStaffSearch('noah', { immediate: true }); return getPlanningVisibleReservations('bowling').map((r) => String(r.id)); });
+    await FX.repos(page, 200);
+    const avec = await cartes();
+    const noms = await page.evaluate(() => Object.fromEntries(todaysReservations().map((r) => [String(r.id), r.name || ''])));
+    await page.evaluate(() => applyStaffSearch('', { immediate: true }));
+    const place = (c) => `${c.id}@${c.piste}@${c.debut}`;
+    const g3 = {
+      sans: sans.length,
+      avec: avec.length,
+      memesPistes: sans.length > 0 && sans.map(place).sort().join() === avec.map(place).sort().join(),
+      trouves: avec.filter((c) => !c.grise).map((c) => noms[c.id]),
+      gris: avec.filter((c) => c.grise).length,
+      bonGris: avec.every((c) => c.grise === !retenus.includes(c.id)),
+      lisibles: avec.filter((c) => c.grise).every((c) => c.opacite > 0.2 && c.opacite < 0.6),
+    };
+    ok(g3.memesPistes && g3.gris > 0 && g3.trouves.length > 0 && g3.trouves.every((n) => /noah/i.test(n)) && g3.bonGris && g3.lisibles, `[G3] ${label} : chercher dans le planning bowling grise les autres groupes sans les retirer, chaque piste prise reste prise`, g3);
     await sansErreur(erreurs, label + ' gestes');
   } finally { await ctx.close(); }
 }
@@ -551,7 +674,7 @@ const PIC = S('pic', 'ordinateur');
 const MUTATIONS = [
   { nom: 'heure-de-l-accueil', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    var d = gpMinutesDe(r.startTime);\n    return d == null ? span.start : d;', vers: '    var d = gpMinutesDe((r.opsPlan || {}).arrivalTime || r.startTime);\n    return d == null ? span.start : d;' }] },
   { nom: 'ordre-par-nom', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: '    groupes.sort(function (a, b) { return 0 ||' }] },
-  { nom: 'blocs-d-une-heure', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '      var b = Math.floor(g.heure * 2 + 1e-6) / 2;', vers: '      var b = Math.floor(g.heure + 1e-6);' }] },
+  { nom: 'blocs-d-une-heure', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '    var b = Math.floor(heure * 2 + 1e-6) / 2;', vers: '    var b = Math.floor(heure + 1e-6);' }] },
   { nom: 'laser-chez-le-bowling', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "        poser('laser_game', e);", vers: "        poser('bowling', e);" }] },
   { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : (e.libre ? '≈ ' : '') + gpHeure(debut);", vers: "      t = desLeDebut ? '' : (e.libre ? '≈ ' : '') + gpHeure(debut + 0.5);" }] },
   { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; min-width: 150px; max-width: 260px;', vers: '.gf-nom__t { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 150px; max-width: 160px;' }] },
@@ -559,12 +682,21 @@ const MUTATIONS = [
   { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return 'fini';", vers: "    if (fin <= m.maintenant - 1) return 'fini';" }] },
   { nom: 'retard-muet', lettre: 'E2', scenarios: [PIC], editions: [{ fichier: PG, de: "(g.retard ? ' is-retard' : '')", vers: "''" }] },
   { nom: 'jamais-arrive', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (!m.aujourdHui || g.etat !== 'upcoming'", vers: "    if (true || g.etat !== 'upcoming'" }] },
+  { nom: 'argent-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (r.status === 'paid' || r.status === 'cancelled') return '';", vers: "    return '';" }] },
+  { nom: 'etat-centre-muet', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: "        + (et ? '<span class=\"gf-th__etat'", vers: "        + (false ? '<span class=\"gf-th__etat'" }] },
+  { nom: 'pistes-libres-fausses', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: '      var n = libres.libres.length;', vers: '      var n = libres.libres.length + 1;' }] },
+  { nom: 'etat-cache-au-telephone', lettre: 'E4', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-maintenant { display: flex;', vers: '  .gf-maintenant { display: none;' }] },
+  { nom: 'demi-absente', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (nouveauBloc) corps += gfDemi(m, b, parBloc.get(b), bande);', vers: '' }] },
+  { nom: 'demi-compte-faux', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: '      c.groupes += 1;', vers: '      c.groupes += 2;' }] },
+  { nom: 'charge-muette', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (col.nature === 'bowling' && occupation) {", vers: '      if (false) {' }] },
   { nom: 'barre-en-bas', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (!nowPose && g.heure > m.maintenant + 1e-6) {', vers: '      if (false) {' }] },
   { nom: 'ouverte-en-haut', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      gfAllerAMaintenant(wrap, false);\n    }', vers: '    }' }] },
   { nom: 'nuit-sans-24h', lettre: 'N2', scenarios: [S('pire', 'ordinateur', { heure: '24:20', nuit: true })], editions: [{ fichier: PG, de: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? 24 + currentTimeDecimal() : null;', vers: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? currentTimeDecimal() : null;' }] },
   { nom: 'arrive-sans-effet', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }", vers: '      if (arrive) return;' }] },
   { nom: 'ligne-muette', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));\n    });", vers: '    });' }] },
   { nom: 'recherche-ignoree', lettre: 'G2', gestes: true, editions: [{ fichier: PG, de: '    if (!q) return true;', vers: '    return true;' }] },
+  { nom: 'recherche-bowling-cache', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);", vers: "  const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);" }] },
+  { nom: 'grise-pleine', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '.booking.is-grise { opacity: .35; }', vers: '.booking.is-grise { opacity: 1; }' }] },
   { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; min-width: 150px;', vers: '.gf-nom__t { display: block; min-width: 420px;' }] },
   { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette')], editions: [{ fichier: PGC, de: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: sticky;', vers: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: relative;' }] },
   { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 16;', vers: '  var GF_BAS = -400;' }] },

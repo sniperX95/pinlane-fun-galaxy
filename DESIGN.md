@@ -397,6 +397,20 @@ Sous le programme, « Nourriture et extras » : les extras du dossier en lignes,
 
 En tête du programme d’un dossier en formule, le menu « Formule » : toutes les formules du centre, comme à la création, avec leur prix ; une formule hors règles ce jour-là (jour, minimum de joueurs, horaire) le dit dans le menu et sous lui, « possible au comptoir », et reste choisissable. Choisir une autre formule remplace le programme par celui de sa carte (activités, durée, pistes : aucune sans bowling, celles qu’il faut avec), sans les heures ni la variante de l’ancienne : les heures se recalculent à l’enregistrement. Le prix suit le tarif de la nouvelle formule, la barre du bas le dit (« Formule 4 → Formule 5 · Prix 390 € → 260 € »). Revenir à la formule du dossier rend ce qu’il avait à l’ouverture. Un dossier en formule n’a plus de champ Durée en tête : la formule l’impose, comme à la création.
 
+### Plannings : la finition des pros (2026-10-27)
+
+Les trois plannings se lisent comme les feuilles de service des logiciels de loisirs (ROLLER, TripWorks, Eat App) : à plat, la couleur seulement là où il y a un geste à faire.
+
+- Cartes au repos sans dégradé, contour ni lueur ; la barre de statut de 3 px, à gauche, porte la couleur. Une carte bowling passée et un départ laser joué passent au gris, le statut reste écrit. La ligne de l’heure passe sous les cartes.
+- Feuille du jour : l’heure d’une activité s’écrit en texte. Seules « à lancer » (la teinte du statut) et « en cours » (pleine) sont remplies ; finie, elle est grise avec sa coche dans la marge, sans largeur prise ; sans heure fixe, en pointillés ; en retard, en rouge. La formule n’a pas de cadre, la note est grise (l’ambre reste à « À valider »). « Arrivé » est discret sur chaque ligne, se montre au survol et passe devant quand le groupe est en retard.
+- En tête de chaque colonne, l’état du centre à cette minute : les pistes libres (celles du planning bowling), le prochain départ laser et ses places (celles du planning laser), les groupes pointés sur l’activité, les enfants à la plaine ; en rouge seulement quand c’est plein. Au téléphone, la même chose sur une ligne au-dessus des cartes.
+- Un filet en tête de chaque demi-heure : ses groupes et ses personnes, et « complet » sous Bowling ou Laser quand la demi-heure est pleine. Rien d’autre en couleur.
+- L’argent au bon moment : la visite finie d’un groupe venu affiche « À encaisser » et son montant au bout de la ligne ; un groupe jamais pointé garde « À clôturer ».
+- Chercher ou filtrer grise, ne cache pas : au planning bowling, la piste d’un groupe qui ne correspond pas reste prise.
+- Laser : un bandeau de départ neutre (une barre d’accent de 3 px, pas de bloc bleu), des alertes qui passent à la ligne au lieu de défiler, les groupes d’un même départ qui se partagent la ligne (le détail cède avant le nom), rien sous 12 px.
+
+Gate : `test:planning-global` (E3, E4, F6, G3).
+
 ## Do's and Don'ts
 
 ### Do:

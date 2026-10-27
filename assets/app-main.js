@@ -23057,7 +23057,9 @@ function renderKpis() {
       hint: `${pax} joueur${pax > 1 ? 's' : ''}`
     }
   ];
-  const libres = view === 'laser' ? null : getStaffBowlingLanesFreeNow();
+  // (la feuille du jour ecrit les pistes libres dans la tete de sa colonne
+  // Bowling : sur son onglet, le bandeau ne les redit pas)
+  const libres = view === 'laser' || view === 'all' ? null : getStaffBowlingLanesFreeNow();
   if (libres) tiles.push({ key: 'libres', label: 'Libres maintenant', id: 'kpiFree', ...describeStaffLanesFreeNow(libres) });
   // Mise a jour EN PLACE quand les cases sont les memes : le bandeau porte
   // l animation d entree (.stagger), et le reconstruire a chaque sondage la
@@ -23086,24 +23088,11 @@ function renderKpis() {
 // fois les blocages charges : avant, une piste fermee se dirait libre.
 function getStaffBowlingLanesFreeNow() {
   if (state.currentDate !== todayStr()) return null;
-  if (!availabilityBlocksCache.loaded) return null;
-  const config = getPlanningWindow(state.currentDate);
+  const occupation = getStaffBowlingLaneOccupation();
+  if (!occupation) return null;
+  const { config, laneCount, prises } = occupation;
   const now = currentTimeDecimal();
-  if (config.closed || now < config.open || now >= config.close) return null;
-  const laneCount = getAvailabilityLaneCount();
-  if (!laneCount) return null;
-  const prises = new Map();
-  const prendre = (lane, start, end) => {
-    const cle = Number(lane);
-    if (!prises.has(cle)) prises.set(cle, []);
-    prises.get(cle).push({ start: Number(start), end: Number(end) });
-  };
-  const poser = source => source.forEach(item => getBowlingWindowsFromReservation(item)
-    .forEach(window => (window.lanes || []).forEach(lane => prendre(lane, window.start, window.end))));
-  poser(todaysReservations());
-  poser(getBlocagesEnLigne(state.currentDate));
-  Object.entries(getBowlingBlockWindows(state.currentDate, config.open, config.close))
-    .forEach(([lane, fenetres]) => fenetres.forEach(fenetre => prendre(lane, fenetre.startH, fenetre.endH)));
+  if (now < config.open || now >= config.close) return null;
   const libres = [];
   const occupees = [];
   for (let lane = 1; lane <= laneCount; lane += 1) {
@@ -23118,6 +23107,46 @@ function getStaffBowlingLanesFreeNow() {
     libres.push({ lane, until: suivantes.length ? Math.min(...suivantes) : config.close });
   }
   return { libres, occupees, close: config.close };
+}
+
+// LES PISTES LIBRES SUR UNE DEMI-HEURE (2026-10-27) : la meme lecture, pour la
+// charge que la feuille du jour ecrit sur le filet de chaque demi-heure. Une
+// piste compte libre si rien ne la prend entre debut et fin. L occupation se
+// passe une fois pour toutes les demi-heures d un rendu.
+function getStaffBowlingLanesFreeBetween(debut, fin, occupation = getStaffBowlingLaneOccupation()) {
+  if (!occupation) return null;
+  let ouvertes = 0;
+  let libres = 0;
+  for (let lane = 1; lane <= occupation.laneCount; lane += 1) {
+    if (state.laneStatuses[lane] === 'maintenance') continue;
+    ouvertes += 1;
+    if (!(occupation.prises.get(lane) || []).some(fenetre => fenetre.start < fin && fenetre.end > debut)) libres += 1;
+  }
+  return { ouvertes, libres };
+}
+
+// CE QUI PREND CHAQUE PISTE DU JOUR AFFICHE, piste par piste : les
+// reservations, les horaires retenus en ligne, les blocages. Rien tant que les
+// blocages ne sont pas charges, ni un jour ferme.
+function getStaffBowlingLaneOccupation() {
+  if (!availabilityBlocksCache.loaded) return null;
+  const config = getPlanningWindow(state.currentDate);
+  if (config.closed) return null;
+  const laneCount = getAvailabilityLaneCount();
+  if (!laneCount) return null;
+  const prises = new Map();
+  const prendre = (lane, start, end) => {
+    const cle = Number(lane);
+    if (!prises.has(cle)) prises.set(cle, []);
+    prises.get(cle).push({ start: Number(start), end: Number(end) });
+  };
+  const poser = source => source.forEach(item => getBowlingWindowsFromReservation(item)
+    .forEach(window => (window.lanes || []).forEach(lane => prendre(lane, window.start, window.end))));
+  poser(todaysReservations());
+  poser(getBlocagesEnLigne(state.currentDate));
+  Object.entries(getBowlingBlockWindows(state.currentDate, config.open, config.close))
+    .forEach(([lane, fenetres]) => fenetres.forEach(fenetre => prendre(lane, fenetre.startH, fenetre.endH)));
+  return { config, laneCount, prises };
 }
 
 function describeStaffLanesFreeNow({ libres, occupees, close }) {
@@ -23303,7 +23332,13 @@ function renderPlanning() {
     poserVariableSiChange(planningBox, '--planning-hour-h', `${HH}px`);
     poserVariableSiChange(planningBox, '--planning-hour-col', state.staffPlanningExpanded ? '76px' : '54px');
   }
-  const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);
+  // LA RECHERCHE ET LE FILTRE GRISENT, ILS NE CACHENT PAS (2026-10-27). La
+  // grille ne dessinait que les reservations retenues : la piste d un groupe
+  // cache paraissait libre, et sa case vide proposait de la reserver. Comme
+  // au planning laser, chaque groupe reste a sa place ; celui qui ne
+  // correspond pas passe en gris.
+  const retenues = new Set(getPlanningVisibleReservations('bowling').map(r => String(r.id)));
+  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);
   const isToday = state.currentDate === todayStr();
   const curH = currentTimeDecimal();
   const curPos = isToday && curH >= startHour && curH <= closeHour ? (curH - startHour) * HH + HEADER_H : -1;
@@ -23413,7 +23448,7 @@ function renderPlanning() {
       const progressionHtml = renderActivityProgressPill(r);
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>

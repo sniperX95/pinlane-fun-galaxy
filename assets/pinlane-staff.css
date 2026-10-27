@@ -2946,13 +2946,16 @@ button.staff-date-label:focus-visible,
 /* Ligne temps réel : la barre traverse les pistes, l'étiquette vit dans la
    colonne d'heures (`.current-badge`), qui est collante à gauche. L'étiquette
    reste donc à l'écran quand on fait glisser un planning large, et la barre
-   passe SOUS la colonne d'heures au lieu de la barrer (z-index 20 < 25). */
+   passe SOUS la colonne d'heures au lieu de la barrer (z-index 20 < 25).
+   (2026-10-27) Elle passe aussi SOUS les cartes (z-index 1 < 2) : posée
+   dessus, elle barrait leur texte (« 10 joueurs » d'une partie en cours).
+   Elle se lit dans les pistes libres, et l'heure dans la colonne d'heures. */
 .current-line {
   position: absolute;
   left: var(--planning-hour-col);
   right: 0;
   height: 2px;
-  z-index: 20;
+  z-index: 1;
   background: var(--accent);
   pointer-events: none;
 }
@@ -20841,25 +20844,34 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 }
 /* Le retard applique garde sa barre ambre, quel que soit l etat. */
 .booking.is-delayed { --bk-barre: #f5a623; }
+/* (2026-10-27, Movsar : « les petites ombres, les petits détails [...] il
+   fait super IA ». La carte est PLATE, comme une tuile de la vue capacite de
+   ROLLER : sa teinte d etat d un seul ton, la barre de 3 px, ni degrade, ni
+   reflet, ni contour autour. Les bordures restent posees, transparentes :
+   aucune dimension ne bouge.) */
 .booking.conf, .booking.arr, .booking.paid {
   background-color: var(--bk-haut);
-  background-image: linear-gradient(180deg, var(--bk-haut), var(--bk-bas));
-  border-color: var(--bk-cadre);
+  background-image: none;
+  border-color: transparent;
   border-left-color: var(--bk-barre);
   color: var(--bk-encre);
   box-shadow: inset 1px 0 0 var(--bk-barre);
-}
-[data-theme='dark'] :is(.booking.conf, .booking.arr, .booking.paid) {
-  box-shadow: inset 1px 0 0 var(--bk-barre), inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 /* Le survol allume la carte par-dessus SON fond : la regle de survol posait un
    voile en `background-image` que le fond d etat ecrasait aussitot (meme
    poids, ecrite plus bas), il ne s est donc jamais vu. */
 .booking:is(.conf, .arr, .paid):hover {
-  background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)), linear-gradient(180deg, var(--bk-haut), var(--bk-bas));
-  border-color: var(--bk-barre);
+  background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover));
+  border-color: transparent;
   border-left-color: var(--bk-barre);
 }
+/* CE QUI EST PASSE SE GRISE (2026-10-27) : la partie finie ne se lit plus
+   comme une partie a venir (la vue capacite de ROLLER grise ses creneaux
+   passes). Le statut se relit dans la liste et la feuille du jour. */
+html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(--line-strong); --bk-encre: var(--muted); --bk-encre-2: var(--muted); --bk-pastille: var(--line); }
+/* LA RECHERCHE ET LE FILTRE GRISENT (2026-10-27), comme au planning laser :
+   le groupe reste a sa place, sa piste ne se dit jamais libre. */
+.booking.is-grise { opacity: .35; }
 /* La nouvelle venue garde son halo : l ombre de la barre l aurait remplace,
    au repos comme sans mouvement (prefers-reduced-motion). */
 .booking.is-neuve-calme { box-shadow: inset 1px 0 0 var(--bk-barre), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -20998,7 +21010,6 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   --lp-bleu: var(--console-selected); --lp-bleu-texte: var(--accent-strong); --lp-bleu-clair: var(--accent-soft); --lp-bleu-voile: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
   --lp-ok: var(--success); --lp-ok-clair: var(--success-soft);
   --lp-rouge: var(--danger); --lp-rouge-texte: var(--danger); --lp-rouge-clair: var(--danger-soft);
-  --lp-ombre-bleue: 0 10px 30px color-mix(in srgb, var(--console-selected) 25%, transparent);
   --lp-cases: 30;
   display: grid;
   /* Une colonne qui peut retrecir : sans elle, la carte du prochain depart
@@ -21012,7 +21023,7 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-[data-theme='dark'] .lp { --lp-ombre-bleue: 0 10px 34px color-mix(in srgb, var(--console-selected) 30%, transparent); --lp-case: #6c6c72; }
+[data-theme='dark'] .lp { --lp-case: #6c6c72; }
 .lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
 /* La remise a zero des boutons ne pese rien (:where) : en .lp button, elle
    battait chaque classe (.lp-btn, .lp-passe, .lp-etat, .lp-g) sur la police, la
@@ -21046,40 +21057,42 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 /* Le groupe amene depuis sa fiche (« voir au planning ») : le meme appel que
    le planning bowling, un contour qui pulse deux fois puis s eteint. */
 .lp .is-called { outline: 3px solid var(--lp-bleu); outline-offset: 2px; animation: plAppel .9s cubic-bezier(.23, 1, .32, 1) 2; }
-.lp .lp-groupe__sel.is-called { outline-color: #fff; }
+.lp .lp-groupe__sel.is-called { outline-color: var(--lp-bleu); }
 @media (prefers-reduced-motion: reduce) { .lp .is-called { animation: none; } }
 
-/* LE PROCHAIN DEPART : la carte bleue, ce que l operateur prepare. */
+/* LE PROCHAIN DEPART : ce que l operateur prepare. (2026-10-27 : la carte
+   bleue pleine et son halo bleu faisaient « IA » ; une surface de la console,
+   la barre bleue de 3 px et l heure en grand la font lire en premier.) */
 /* Deux resumes compacts cote a cote ; les groupes restent sous leur depart. */
 .lp-synthese { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; align-items: start; min-width: 0; }
-.lp-prochain { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes"; align-items: center; column-gap: 12px; row-gap: 8px; min-width: 0; min-height: 48px; background: var(--lp-bleu); color: #fff; border-radius: 12px; padding: 8px 12px; box-shadow: var(--lp-ombre-bleue); }
+.lp-prochain { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes"; align-items: center; column-gap: 12px; row-gap: 8px; min-width: 0; min-height: 48px; background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); border-radius: 12px; padding: 8px 12px 8px 15px; box-shadow: inset 3px 0 0 var(--lp-bleu); }
 .lp-prochain:has(.lp-groupes) { grid-template-areas: "quand armes" "groupes groupes"; }
 .lp-prochain__quand { grid-area: quand; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.lp-prochain__quand .lp-lbl { font-size: 11px; opacity: .85; }
+.lp-prochain__quand .lp-lbl { font-size: 12px; color: var(--lp-bleu-texte); }
 .lp-prochain__t { font-size: 24px; line-height: 1; font-weight: 750; letter-spacing: -.02em; }
-.lp-prochain__d { font-size: 13px; opacity: .92; }
+.lp-prochain__d { font-size: 13px; color: var(--lp-muted); }
 .lp-prochain__g { grid-area: armes; display: flex; align-items: baseline; gap: 6px; justify-self: end; white-space: nowrap; line-height: 1; padding-right: 6px; }
 .lp-prochain__g b { font-size: 20px; font-weight: 750; letter-spacing: -.02em; }
-.lp-prochain__g small { font-size: 12px; opacity: .9; }
+.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }
 .lp-prochain.is-calme { background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); box-shadow: none; }
 .lp-prochain.is-calme .lp-lbl { color: var(--lp-bleu-texte); opacity: 1; }
 .lp-prochain.is-calme .lp-prochain__d { color: var(--lp-muted); opacity: 1; }
 .lp-groupes { grid-area: groupes; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.lp-groupe { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; padding: 4px 4px 4px 12px; border-radius: 12px; background: rgb(255 255 255 / .14); min-height: 44px; }
+.lp-groupe { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; padding: 4px 4px 4px 12px; border-radius: 10px; background: var(--lp-vide); min-height: 44px; }
 .lp-groupe__sel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; touch-action: manipulation; border-radius: 10px; }
-.lp-groupe__sel:focus-visible { outline-color: #fff; outline-offset: 4px; }
+.lp-groupe__sel:focus-visible { outline-color: var(--lp-bleu); outline-offset: 4px; }
 .lp-groupe__sel.is-choisi .lp-groupe__t b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
-.lp-pastille { width: 14px; height: 14px; border-radius: 5px; flex: none; background: var(--lp-c); box-shadow: 0 0 0 2px rgb(255 255 255 / .9); }
+.lp-pastille { width: 12px; height: 12px; border-radius: 4px; flex: none; background: var(--lp-c); }
 .lp-groupe__t { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .lp-groupe__t b { font-size: 15.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lp-groupe__t .lp-n { opacity: .9; white-space: nowrap; }
 .lp-etat { margin-left: auto; height: 36px; padding: 0 14px; border-radius: 9px; border: 0; display: inline-flex; align-items: center; gap: 7px; font-weight: 650; white-space: nowrap; flex: none; }
-.lp-etat--la { background: #fff; color: #0f9d58; }
-.lp-etat--marquer { background: transparent; color: #fff; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .75); transition: background-color .12s ease; }
-.lp-etat--marquer:hover { background: rgb(255 255 255 / .12); }
+.lp-etat--la { background: var(--lp-ok-clair); color: var(--lp-ok); }
+.lp-etat--marquer { background: var(--lp-surface); color: var(--lp-text); box-shadow: inset 0 0 0 1px var(--lp-line-strong); transition: background-color .12s ease; }
+.lp-etat--marquer:hover { background: var(--lp-vide); }
 .lp-etat--marquer:active { transform: scale(.97); }
-.lp-etat--marquer:focus-visible { outline-color: #fff; }
-.lp-etat--absent { background: rgb(255 255 255 / .16); color: #fff; opacity: .85; }
+.lp-etat--marquer:focus-visible { outline-color: var(--lp-bleu); }
+.lp-etat--absent { background: var(--lp-vide); color: var(--lp-muted); }
 
 /* EN JEU, et les groupes en retard a cote. */
 /* La partie en jeu et les retards sur une ligne quand ils tiennent, sinon les
@@ -21154,14 +21167,14 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 .lp-pictos .bk-flag { width: 13px; height: 13px; }
 .lp-pictos .flag-prix svg { stroke-width: 2; }
 .lp-nom { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-/* Sur la carte bleue du prochain depart, ou tout est blanc, les pictos passent
-   au blanc : l ambre et le bleu n y tiennent pas 3:1, la forme les distingue. */
-.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }
 .lp-libre { color: var(--lp-faint); }
 .lp-dep:hover { background: var(--lp-bleu-voile); }
 .lp-dep.is-joue, .lp-dep.is-ferme { cursor: default; }
 .lp-dep.is-joue .lp-dep__h { color: var(--lp-muted); }
 .lp-dep.is-joue:hover, .lp-dep.is-ferme:hover { background: transparent; }
+/* (2026-10-27) Un depart joue passe au gris, comme une carte bowling passee
+   (la vue capacite de ROLLER) : l oeil va au present. Le statut reste ecrit. */
+.lp .lp-dep.is-joue :is(.lp-g, .lp-cases i) { --lp-c: var(--lp-line-strong); }
 /* Un depart ferme n a pas de case libre : ses cases vides se hachurent sans
    contour. Un groupe pose la avant le blocage garde sa couleur, le conflit
    reste visible. */
@@ -21242,7 +21255,7 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-dep__n b { display: inline; font-size: var(--lp-count-font, 14px); }
   .lp-compact .lp-dep__n small { display: inline; font-size: var(--lp-unit-font, 12px); }
   .lp-compact .lp-qui { grid-column: 2; grid-row: 1; flex-wrap: nowrap; min-width: 0; min-height: 22px; height: 100%; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
-  .lp-compact .lp-g { flex: 1 0 auto; max-width: none; min-height: 22px; height: calc(100% - 4px); margin: 0; padding: 2px 7px; font-size: var(--lp-group-font, 14px); line-height: 16px; border: 1px solid var(--lc-border); border-left: 3px solid var(--lc-bar); border-radius: 6px; background: linear-gradient(180deg, var(--lc-top), var(--lc-bottom)); color: var(--lc-text); display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); grid-template-rows: 16px 16px; column-gap: 6px; row-gap: 1px; align-content: center; }
+  .lp-compact .lp-g { flex: 1 0 auto; max-width: none; min-height: 22px; height: calc(100% - 4px); margin: 0; padding: 2px 7px; font-size: var(--lp-group-font, 14px); line-height: 16px; border: 1px solid transparent; border-left: 3px solid var(--lc-bar); border-radius: 6px; background: var(--lc-top); color: var(--lc-text); display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); grid-template-rows: 16px 16px; column-gap: 6px; row-gap: 1px; align-content: center; }
   .lp-compact .lp-g b { overflow: visible; text-overflow: clip; }
   .lp-compact .lp-g i { display: none; }
   .lp-compact .lp-g b { color: var(--lc-text); grid-row: 1; }
@@ -21269,6 +21282,7 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   [data-theme='dark'] .lp-compact .lp-g.st-arr { --lc-top: #422f10; --lc-bottom: #291e0d; --lc-border: #6c5225; --lc-bar: #f5a623; --lc-text: #fdefd7; --lc-detail: #f8bf61; }
   [data-theme='dark'] .lp-compact .lp-g.st-paid { --lc-top: #163b29; --lc-bottom: #11251b; --lc-border: #2e6249; --lc-bar: #3dd68c; --lc-text: #e0f8ed; --lc-detail: #7fe4b3; }
   .lp-compact .lp-g:is(.st-absent,.is-enligne) { --lc-top: var(--lp-surface); --lc-bottom: var(--lp-surface); --lc-border: var(--lp-line-strong); --lc-bar: var(--lp-muted); --lc-text: var(--lp-text); --lc-detail: var(--lp-muted); }
+  .lp-compact .lp-dep.is-joue .lp-g { --lc-top: var(--lp-surface); --lc-bottom: var(--lp-surface); --lc-border: var(--lp-line); --lc-bar: var(--lp-line-strong); --lc-text: var(--lp-muted); --lc-detail: var(--lp-muted); }
 }
 @media (min-width: 1100px) and (max-height: 820px) {
   .lp-compact .lp-prochain { min-height: 44px; padding: 4px 8px; }
@@ -21303,14 +21317,25 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-prochain { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'quand groupes armes'; }
   .lp-compact .lp-prochain__quand { max-width: 190px; }
   .lp-compact .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
-  .lp-compact .lp-prochain__d { font-size: 11px; }
+  /* (jamais sous 12 px, DESIGN.md : ces trois textes etaient a 10 et 11) */
+  .lp-compact .lp-prochain__d { font-size: 12px; }
   .lp-compact .lp-groupes { min-width: 0; }
   .lp-compact .lp-groupe__t { flex-direction: column; align-items: flex-start; gap: 0; }
   .lp-compact .lp-groupe__t b { font-size: 12px; }
-  .lp-compact .lp-groupe__t .lp-n { font-size: 10px; }
-  .lp-compact .lp-etat { padding: 0 8px; font-size: 11px; }
-  .lp-compact .lp-alerte { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
-  .lp-compact .lp-alerte > * { flex-shrink: 0; }
+  .lp-compact .lp-groupe__t .lp-n { font-size: 12px; }
+  .lp-compact .lp-etat { padding: 0 8px; font-size: 12px; }
+  /* (2026-10-27) Une alerte passe a la ligne plutot que de defiler de cote :
+     sur une ligne, « Décaler à 16:00 » sortait coupe du cadre. */
+  .lp-compact .lp-alerte { flex-wrap: wrap; row-gap: 4px; }
+  .lp-compact .lp-alerte__t { flex: 1 1 200px; min-width: 0; }
+  /* Les groupes d un meme depart se partagent la ligne au lieu de pousser le
+     second hors de la vue, ou il ne restait que « DÉMO · ». Le detail cede la
+     place en premier, puis le nom s abrege (la bulle et la fiche le donnent
+     entier) ; sous 150 px par carte, la ligne defile comme avant. */
+  .lp-compact .lp-qui > .lp-g { flex: 1 1 auto; min-width: min(150px, 100%); }
+  .lp-compact .lp-qui > .lp-g b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .lp-compact .lp-qui > .lp-g .lp-card-info { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .lp-compact .lp-qui > .lp-g :is(.lp-pictos, .lp-card-status) { flex: none; }
 }
 
 @media (max-width: 1100px) {

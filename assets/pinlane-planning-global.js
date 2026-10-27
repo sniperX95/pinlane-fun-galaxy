@@ -42,7 +42,13 @@
 //   - la barre de l heure qu il est, et la feuille qui s ouvre dessus ;
 //   - retard, a valider, a cloturer, pas venu, ecrits sur la ligne ;
 //   - « Arrivé » d un geste sur la ligne (le toast « Annuler » suit) ; un clic
-//     ailleurs sur la ligne ouvre la fiche.
+//     ailleurs sur la ligne ouvre la fiche ;
+//   - (2026-10-27, Movsar : « regarde comment les pro font ») l etat du centre
+//     a cette minute dans la tete de chaque colonne (pistes libres, prochain
+//     depart laser, enfants a la plaine, groupes sur l activite), comme la vue
+//     capacite de ROLLER ; sur le filet de chaque demi-heure, ce qui arrive et
+//     la ressource pleine, rouge seulement la (le quart d heure plein de Resy) ;
+//     « À encaisser » et le montant quand la visite d un groupe venu est finie.
 // Au telephone, chaque ligne devient une carte : les memes faits, l activite
 // nommee devant ses heures.
 //
@@ -259,6 +265,71 @@
     return d == null ? span.start : d;
   }
 
+  // L ETAT DU CENTRE, MAINTENANT (2026-10-27), dans la tete de chaque colonne :
+  // ce que le comptoir repond a « vous avez une piste ? » sans changer
+  // d onglet. Les pistes libres sont celles du planning bowling
+  // (getStaffBowlingLanesFreeNow), le prochain depart celui du planning laser
+  // (lpModele) : une seule source par fait. Ailleurs, ce qui se joue a cette
+  // minute : les enfants a la plaine, les groupes pointes sur l activite.
+  function gpEtatCentre(groupes, laser, maintenant) {
+    var etat = {};
+    var libres = typeof getStaffBowlingLanesFreeNow === 'function' ? getStaffBowlingLanesFreeNow() : null;
+    if (libres) {
+      var dit = describeStaffLanesFreeNow(libres);
+      var n = libres.libres.length;
+      etat.bowling = { texte: n ? n + (n > 1 ? ' libres' : ' libre') : 'complet', plein: !n, bulle: (n ? 'Libres maintenant : ' : 'Aucune piste libre, ') + dit.hint };
+    }
+    var p = laser && laser.prochain;
+    if (p) {
+      var places = Number(p.places) || 0;
+      etat.laser = { texte: gpHeure(p.t) + (places > 0 ? ' · ' + places + (places > 1 ? ' places' : ' place') : ' complet'), plein: places <= 0, bulle: 'Prochain départ laser à ' + gpHeure(p.t) + ' : ' + (places > 0 ? places + ' armes libres sur ' + laser.capacite : 'complet') };
+    }
+    var ici = {};
+    groupes.forEach(function (g) {
+      if (g.parti || !gfPresent(g)) return;
+      g.cases.forEach(function (liste, cle) {
+        liste.forEach(function (e) {
+          if (e.aPlacer || e.credit) return;
+          var debut = e.journee ? g.span.start : e.start;
+          var fin = e.journee ? g.span.end : e.end;
+          if (debut == null || debut > maintenant + 1e-6 || fin <= maintenant + 1e-6) return;
+          var c = ici[cle] || (ici[cle] = { groupes: new Set(), enfants: 0 });
+          if (!c.groupes.has(g.id)) c.enfants += Number(e.enfants) || Number(g.r.pax) || 0;
+          c.groupes.add(g.id);
+        });
+      });
+    });
+    Object.keys(ici).forEach(function (cle) {
+      if (etat[cle]) return;
+      var c = ici[cle];
+      etat[cle] = cle === 'plaine'
+        ? { texte: c.enfants + ' enf.', bulle: c.enfants + (c.enfants > 1 ? ' enfants' : ' enfant') + ' à la plaine maintenant' }
+        : { texte: gfPluriel(c.groupes.size, ['groupe', 'groupes']), bulle: gfPluriel(c.groupes.size, ['groupe pointé', 'groupes pointés']) + ' sur l’activité maintenant' };
+    });
+    return etat;
+  }
+
+  // LA CHARGE D UNE DEMI-HEURE (2026-10-27), sur son filet : le bowling dont
+  // toutes les pistes sont prises, le depart laser plein. Le reste du temps,
+  // rien : la couleur ne sert qu a l exception (Resy rougit son quart d heure
+  // plein, rien d autre). Les memes sources que l etat du centre.
+  function gpCharge(laser) {
+    var occupation = typeof getStaffBowlingLaneOccupation === 'function' ? getStaffBowlingLaneOccupation() : null;
+    var departs = laser && Array.isArray(laser.departs) ? laser.departs : [];
+    return function (b, col) {
+      if (col.nature === 'bowling' && occupation) {
+        var l = getStaffBowlingLanesFreeBetween(b, b + 0.5, occupation);
+        if (l && l.ouvertes && !l.libres) return { texte: 'complet', bulle: 'Les ' + l.ouvertes + ' pistes sont prises entre ' + gpHeure(b) + ' et ' + gpHeure(b + 0.5) };
+      }
+      if (col.nature === 'laser') {
+        var pire = null;
+        departs.forEach(function (d) { if (d.t >= b - 1e-6 && d.t < b + 0.5 - 1e-6 && d.occupe > 0 && (!pire || d.places < pire.places)) pire = d; });
+        if (pire && pire.places <= 0) return { texte: pire.places < 0 ? -pire.places + ' de trop' : 'complet', bulle: 'Départ laser de ' + gpHeure(pire.t) + ' : ' + pire.occupe + ' armes sur ' + laser.capacite };
+      }
+      return null;
+    };
+  }
+
   // ---- LA JOURNEE EN LIGNES ---------------------------------------------------
   // Une ligne par groupe, dans l ordre des heures de reservation ; ses
   // activites rangees par colonne, chacune avec son heure.
@@ -356,10 +427,13 @@
       return premiere(a) - premiere(b) || String(a.titre).localeCompare(String(b.titre), 'fr');
     });
     var utilisees = colonnes.filter(function (c) { return c.groupes > 0 || gpColonneDuCentre(c); }).concat(inconnues);
+    var laser = typeof lpModele === 'function' ? lpModele() : null;
     return {
       jour: jour, aujourdHui: aujourdHui, passe: jour < auj && !nuit, maintenant: maintenant, groupes: groupes, colonnes: utilisees,
       visibles: filtrees ? new Set(filtrees.map(function (r) { return String(r.id); })) : null,
       fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false },
+      etat: jour === auj ? gpEtatCentre(groupes, laser, maintenant) : null,
+      charge: gpCharge(laser),
     };
   }
 
@@ -523,6 +597,13 @@
   // L ETAT, au bout de la ligne : le statut (sa couleur est celle de la
   // ligne), ce qui attend l equipe, et « Arrivé » tant que le groupe est
   // attendu aujourd hui.
+  // Le montant d un groupe venu (pointe arrive, ou une activite cochee) et pas
+  // encore paye, quand son prix est connu (la regle de la fiche, prixDossierConnu).
+  function gfMontantDu(r) {
+    if (r.status === 'paid' || r.status === 'cancelled') return '';
+    var venu = r.status === 'arrived' || (typeof groupeAJoue === 'function' && groupeAJoue(r));
+    return venu && typeof prixDossierConnu === 'function' && prixDossierConnu(r) ? formatMoneyCentimes(r.price) : '';
+  }
   function gfPeutArriver(g, m) {
     var r = g.r;
     if (!m.aujourdHui || g.etat !== 'upcoming' || r.status === 'paid' || r.status === 'arrived' || r.absentAt) return false;
@@ -536,7 +617,17 @@
     else if (g.teinte === 'paid') h += '<span class="gf-b t-paid">Payé</span>';
     else if (g.teinte === 'arr') h += '<span class="gf-b t-arr">Arrivé</span>';
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) h += '<span class="gf-b is-valider">À valider</span>';
-    if (g.etat === 'closing') h += '<span class="gf-b is-cloturer"' + (r.status === 'arrived' ? '' : ' title="Fini sans avoir été pointé arrivé"') + '>À clôturer</span>';
+    // L ARGENT AU BON MOMENT (2026-10-27) : la visite finie d un groupe venu,
+    // son montant a encaisser ; personne ne part sans payer. Un groupe jamais
+    // pointe ni joue reste « À clôturer » : venu ou pas, le comptoir tranche.
+    if (g.etat === 'closing') {
+      var du = gfMontantDu(r);
+      // (le montant suit le badge sans y entrer : a l etroit, il passe dessous
+      // au lieu d elargir la colonne)
+      h += du
+        ? '<span class="gf-b is-encaisser" title="' + gpEsc('Visite finie : ' + du + ' à encaisser') + '">À encaisser</span><b class="gf-du">' + gpEsc(du) + '</b>'
+        : '<span class="gf-b is-cloturer"' + (r.status === 'arrived' ? '' : ' title="Fini sans avoir été pointé arrivé"') + '>À clôturer</span>';
+    }
     if (gfPeutArriver(g, m)) h += '<button type="button" class="gf-arrive" data-gf-arrive="' + gpEsc(g.id) + '" aria-label="' + gpEsc('Pointer ' + (r.name || 'le groupe') + ' arrivé') + '">' + GF_ICONE_ARRIVE + 'Arrivé</button>';
     return '<td class="gf-etat"><span class="gf-etat__in">' + h + '</span></td>';
   }
@@ -556,6 +647,8 @@
       }).join(', '));
     });
     parts.push(g.etat === 'absent' ? 'pas venu' : ({ conf: 'confirmé', arr: 'arrivé', paid: 'payé', absent: 'pas venu' })[g.teinte]);
+    var du = g.etat === 'closing' ? gfMontantDu(r) : '';
+    if (du) parts.push('à encaisser ' + du);
     // (les minutes de retard changent a chaque minute : elles sont dans la
     // bulle du retard, la ligne ne se reecrit pas pour elles)
     if (g.retard && m.maintenant != null) parts.push('en retard');
@@ -579,16 +672,47 @@
   function gfTete(m) {
     var html = '<th class="gf-th gf-th--h" scope="col" title="L’heure de la réservation">Heure</th><th class="gf-th gf-th--nom" scope="col">Groupe</th><th class="gf-th gf-th--f" scope="col">Formule</th><th class="gf-th gf-th--n" scope="col" title="Personnes">Pers.</th>';
     m.colonnes.forEach(function (c) {
-      html += '<th class="gf-th gf-th--a' + (c.groupes ? '' : ' is-vide') + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + (c.groupes ? ' : ' + c.groupes + (c.groupes > 1 ? ' groupes' : ' groupe') : ' : aucun groupe ce jour-là')) + '"><span class="gf-th__in">' + gfIcone(c.activites[0]) + '<span>' + gpEsc(c.titre) + '</span></span></th>';
+      // (sous le nom, l etat du centre a cette minute ; le jour meme seulement)
+      var et = m.etat && m.etat[c.cle];
+      html += '<th class="gf-th gf-th--a' + (c.groupes ? '' : ' is-vide') + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + (c.groupes ? ' : ' + c.groupes + (c.groupes > 1 ? ' groupes' : ' groupe') : ' : aucun groupe ce jour-là') + (et ? ' · ' + et.bulle : '')) + '"><span class="gf-th__in">' + gfIcone(c.activites[0]) + '<span>' + gpEsc(c.titre) + '</span></span>'
+        + (et ? '<span class="gf-th__etat' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + gpEsc(c.cle) + '">' + gpEsc(et.texte) + '</span>' : '') + '</th>';
     });
     return html + '<th class="gf-th gf-th--etat" scope="col">État</th>';
   }
   function gfMaintenant(m, nbCol) {
     return '<tr class="gf-now" aria-hidden="true"><td class="gf-h"><span class="gf-now__h" data-gf-maintenant></span></td><td colspan="' + (nbCol - 1) + '"></td></tr>';
   }
+  // LE FILET D UNE DEMI-HEURE (2026-10-27) : une ligne fine en tete du bloc,
+  // ce qui arrive (les groupes et les personnes de ses lignes) et, sous la
+  // colonne concernee, la ressource pleine. Le filtre et la recherche comptent
+  // ce qu ils montrent ; la charge, elle, compte tout le centre.
+  function gfDemi(m, b, compte, bande) {
+    var cases = m.colonnes.map(function (col) {
+      var plein = m.charge(b, col);
+      return plein
+        ? '<td class="gf-demi__a" data-gf-titre="' + gpEsc(col.titre) + '"><span class="gf-demi__plein" title="' + gpEsc(plein.bulle) + '">' + gpEsc(plein.texte) + '</span></td>'
+        : '<td class="gf-demi__a is-vide"></td>';
+    }).join('');
+    return '<tr class="gf-demi' + (bande ? ' is-bande' : '') + '" data-gf-demi="' + gpEsc(gpHeure(b)) + '">'
+      + '<td class="gf-h"></td>'
+      + '<td class="gf-demi__t" colspan="3"><b>' + gpEsc(gfPluriel(compte.groupes, ['groupe', 'groupes'])) + '</b> · ' + compte.pers + ' pers.</td>'
+      + cases + '<td class="gf-etat"></td></tr>';
+  }
+  function gfBloc(heure) {
+    var b = Math.floor(heure * 2 + 1e-6) / 2;
+    return b;
+  }
   function gfHtml(m, q) {
     var nbCol = 5 + m.colonnes.length;
     var lignes = m.groupes.filter(function (g) { return (!m.visibles || m.visibles.has(g.id)) && gfTrouve(g, q); });
+    var parBloc = new Map();
+    lignes.forEach(function (g) {
+      var b = gfBloc(g.heure);
+      var c = parBloc.get(b) || { groupes: 0, pers: 0 };
+      c.groupes += 1;
+      c.pers += Number(g.r.pax) || 0;
+      parBloc.set(b, c);
+    });
     var corps = '';
     var avant = null, bande = false, bloc = null;
     var nowPose = m.maintenant == null;
@@ -596,10 +720,11 @@
       if (!nowPose && g.heure > m.maintenant + 1e-6) { corps += gfMaintenant(m, nbCol); nowPose = true; }
       // (la demi-heure du papier, blocDe : 14:10 va dans le bloc de 14:00,
       // 14:40 dans celui de 14:30)
-      var b = Math.floor(g.heure * 2 + 1e-6) / 2;
+      var b = gfBloc(g.heure);
       var nouveauBloc = b !== bloc;
       if (nouveauBloc && bloc !== null) bande = !bande;
       bloc = b;
+      if (nouveauBloc) corps += gfDemi(m, b, parBloc.get(b), bande);
       var repete = avant !== null && Math.abs(avant - g.heure) < 1 / 120;
       avant = g.heure;
       var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (bande ? ' is-bande' : '') + (nouveauBloc ? ' is-bloc' : '');
@@ -616,7 +741,14 @@
     if (!lignes.length && m.groupes.length) {
       corps += '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? 'Aucun groupe ne correspond à cette recherche.' : 'Aucun groupe dans ce filtre.') + '</td></tr>';
     }
-    return '<table class="gf-t" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '"><thead><tr>' + gfTete(m) + '</tr></thead><tbody>' + corps + '</tbody></table>';
+    // (au telephone, la tete des colonnes disparait : l etat du centre passe
+    // en une ligne au-dessus des cartes)
+    var etats = m.etat ? m.colonnes.filter(function (c) { return m.etat[c.cle]; }).map(function (c) {
+      var et = m.etat[c.cle];
+      return '<span' + (et.plein ? ' class="is-plein"' : '') + '><b>' + gpEsc(c.titre) + '</b> ' + gpEsc(et.texte) + '</span>';
+    }) : [];
+    return (etats.length ? '<p class="gf-maintenant">' + etats.join('') + '</p>' : '')
+      + '<table class="gf-t" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '"><thead><tr>' + gfTete(m) + '</tr></thead><tbody>' + corps + '</tbody></table>';
   }
 
   // ---- LE RENDU --------------------------------------------------------------
@@ -652,6 +784,8 @@
     }
     gfRemplir(defile, m);
     racine.classList.toggle('is-vide', !m.groupes.length);
+    // (la tete prend une seconde ligne quand elle dit l etat du centre)
+    racine.classList.toggle('has-etat', Boolean(m.etat && Object.keys(m.etat).length));
     gfHauteur(wrap);
     // LA FEUILLE S OUVRE SUR L HEURE QU IL EST, une fois par jour affiche :
     // ensuite, le defilement de l equipe ne bouge plus.
@@ -747,6 +881,9 @@
     if (wrap._gfObservateur) { wrap._gfObservateur.disconnect(); wrap._gfObservateur = null; }
     if (!now || typeof IntersectionObserver !== 'function' || racine.getBoundingClientRect().width < 640) { bouton.hidden = true; return; }
     var texte = gpHeure(wrap._gfModele.maintenant);
+    // (la barre passe sous la tete collee : sa hauteur, une ligne ou deux)
+    var tete = defile.querySelector('thead');
+    var hTete = tete ? Math.round(tete.getBoundingClientRect().height) : 36;
     var observateur = new IntersectionObserver(function (entrees) {
       var e = entrees[entrees.length - 1];
       var dessous = e.boundingClientRect.top > (e.rootBounds ? e.rootBounds.bottom : 0);
@@ -754,7 +891,7 @@
       var libelle = (dessous ? '↓ ' : '↑ ') + 'Maintenant · ' + texte;
       if (bouton.textContent !== libelle) bouton.textContent = libelle;
       bouton.classList.toggle('is-haut', !dessous);
-    }, { root: defile, threshold: 0, rootMargin: '-36px 0px 0px 0px' });
+    }, { root: defile, threshold: 0, rootMargin: '-' + hTete + 'px 0px 0px 0px' });
     observateur.observe(now);
     wrap._gfObservateur = observateur;
   }

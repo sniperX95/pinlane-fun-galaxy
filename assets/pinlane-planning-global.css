@@ -48,6 +48,15 @@
 .gf-th--a.is-long .gf-th__in > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 112px; white-space: normal; line-height: 14px; }
 .gf-th--n { text-align: right; }
 .gf-th--etat { text-align: right; padding-right: 14px; }
+/* L ETAT DU CENTRE (2026-10-27) : sous le nom de la colonne, ce qui est libre
+   ou pris a cette minute, a l aplomb du nom ; rouge seulement quand c est
+   plein. La tete prend alors une seconde ligne. */
+.gf.has-etat .gf-th { height: 50px; }
+.gf-th__etat { display: block; margin-top: 3px; padding-left: 21px; font-size: 12px; font-weight: 650; line-height: 15px; color: var(--text); white-space: nowrap; }
+.gf-th__etat.is-plein { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
+.gf-th.is-vide .gf-th__etat { padding-left: 0; }
+/* (au telephone seulement, la meme chose en une ligne au-dessus des cartes) */
+.gf-maintenant { display: none; }
 
 /* LES LIGNES : 40 px, un filet entre deux groupes, un filet franc a chaque
    demi-heure et une bande un bloc sur deux : la journee se lit par
@@ -80,7 +89,8 @@
 .gf-nom__sous { display: flex; gap: 10px; contain: inline-size; overflow: hidden; white-space: nowrap; font-size: 12px; line-height: 15px; color: var(--muted); }
 .gf-nom__info { flex: none; }
 .gf-nom__tel { flex: none; font-weight: 650; color: color-mix(in srgb, var(--danger) 70%, var(--text)); text-decoration: underline; text-underline-offset: 2px; }
-.gf-nom__note { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--warning) 60%, var(--text)); }
+/* (une note se lit, elle n alerte pas : l ambre reste a « À valider ») */
+.gf-nom__note { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .gf-nom__picto { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; }
 .gf-nom__meta { display: none; }
 .gf-r.is-parti :is(.gf-nom__t, .gf-h b, .gf-n b) { color: var(--muted); }
@@ -88,8 +98,10 @@
 
 /* LA FORMULE ET LES PERSONNES. */
 /* (« Matin Malin » passe sur deux lignes plutot que d elargir la colonne) */
-.gf-formule { display: inline-block; box-sizing: border-box; min-height: 22px; max-width: 92px; padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12.5px; font-weight: 650; line-height: 18px; color: var(--text); }
-.gf-formule.is-mesure { border-style: dashed; color: var(--muted); }
+/* (le mot du comptoir, sans cadre : une boite autour de chaque « F4 » ne
+   disait rien de plus) */
+.gf-formule { display: inline-block; box-sizing: border-box; max-width: 92px; font-size: 13px; font-weight: 650; line-height: 18px; color: var(--text); }
+.gf-formule.is-mesure { font-weight: 600; color: var(--muted); }
 .gf-n { text-align: right; white-space: nowrap; }
 .gf-n b { font-size: 15px; font-weight: 700; }
 .gf-n__plus { margin-left: 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
@@ -102,28 +114,36 @@
    troisieme passe dessous) */
 .gf-a__in.is-deux { flex-wrap: nowrap; }
 
-/* UNE ACTIVITE DANS SA CASE : la croix du papier devient son heure. La teinte
-   est celle du statut du groupe ; EN COURS, pleine ; A LANCER (le groupe est
-   la, son heure arrive), cerclee ; FINIE, grise et cochee ; SANS HEURE FIXE,
-   en pointilles ; groupe pas encore pointe a l heure, le lisere rouge. */
+/* UNE ACTIVITE DANS SA CASE : la croix du papier devient son heure.
+   (2026-10-27, Movsar : « dans les petits détails [...] il fait super IA ».
+   Une boite teintee et bordee autour de chaque heure couvrait la feuille de
+   bleu ; les feuilles de service des pros, la run sheet de ROLLER, le
+   manifeste de TripWorks, ecrivent l heure en texte et ne marquent que ce qui
+   demande un geste.) A VENIR, l heure en texte ; A LANCER (le groupe est la,
+   son heure arrive), la teinte du statut du groupe ; EN COURS, pleine ; FINIE,
+   grise et cochee ; SANS HEURE FIXE, en pointilles ; groupe pas encore pointe
+   a l heure, en rouge. Le statut lui-meme se lit a la barre de la ligne et a
+   l etat, au bout. */
 /* (une case tient sur une ligne : quand la place manque, c est le nom qui
    passe a la ligne ; sous 1 100 px seulement, le detail passe sous l heure) */
-.gf-x { display: inline-flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; box-sizing: border-box; min-height: 24px; padding: 2px 6px; border: 1px solid var(--bk-cadre); border-radius: 6px; background: var(--bk-haut); color: var(--bk-encre); font-size: 13px; line-height: 18px; white-space: nowrap; }
+.gf-x { display: inline-flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; box-sizing: border-box; min-height: 24px; padding: 2px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); font-size: 13px; line-height: 18px; white-space: nowrap; }
 .gf-x__t { display: inline-flex; align-items: center; gap: 4px; }
 .gf-x b { font-weight: 700; }
-.gf-x__d { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--bk-encre-2); }
+.gf-x__d { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--muted); }
+.gf-x.is-lancer { background: var(--bk-haut); color: var(--bk-encre); }
+.gf-x.is-lancer .gf-x__d { color: var(--bk-encre-2); }
 .gf-x.is-encours { background: var(--bk-barre); border-color: var(--bk-barre); color: var(--bk-plein); }
 .gf-x.is-encours .gf-x__d { color: var(--bk-plein); }
-.gf-x.is-lancer { border-color: var(--bk-barre); box-shadow: inset 0 0 0 1px var(--bk-barre); }
-.gf-x.is-libre { border-style: dashed; background: color-mix(in srgb, var(--bk-haut) 45%, var(--surface)); }
-.gf-x.is-retard { border-color: color-mix(in srgb, var(--danger) 75%, var(--bk-cadre)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 75%, var(--bk-cadre)); }
-.gf-x.is-aplacer { border: 1px dashed var(--warning); background: transparent; color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
-.gf-x.is-fini { border-color: var(--line); background: transparent; color: var(--muted); }
+.gf-x.is-libre { border: 1px dashed var(--line-strong); color: var(--muted); }
+.gf-x.is-retard { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
+.gf-x.is-retard .gf-x__d { color: inherit; }
+.gf-x.is-aplacer { border: 1px dashed var(--warning); color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
+.gf-x.is-fini { color: var(--muted); }
 .gf-x.is-fini .gf-x__d { color: var(--faint); }
-.gf-x.is-fini.is-libre { border-style: dashed; }
-/* (la coche se pose sur le coin de la case : elle ne lui prend aucune largeur) */
+/* (la coche pend dans la marge de la case, devant l heure : elle ne prend
+   aucune largeur a la colonne, la feuille tenait tout juste a 1 440 px) */
 .gf-x.is-fini { position: relative; }
-.gf-x__ok { position: absolute; top: -6px; right: -6px; box-sizing: border-box; width: 14px; height: 14px; padding: 2px; border-radius: 50%; background: var(--line-strong); color: var(--text); }
+.gf-x__ok { position: absolute; left: -6px; top: 7px; width: 10px; height: 10px; color: var(--muted); }
 
 /* L ETAT, au bout de la ligne : le statut, ce qui attend l equipe, et
    « Arrivé » tant que le groupe est attendu. */
@@ -138,14 +158,23 @@
 /* Le rouge du retard un peu assombri : le blanc y tient 4,6:1 en sombre (7:1 en clair). */
 .gf-b.is-retard { background: color-mix(in srgb, var(--danger) 82%, #000); color: #fff; }
 .gf-b.is-retard::before { background: #fff; }
-.gf-b.is-valider { background: transparent; box-shadow: inset 0 0 0 1.2px var(--warning); color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
+/* (les badges de la console : un fond pale, jamais de contour, DESIGN.md) */
+.gf-b.is-valider { background: var(--warning-soft); color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
 .gf-b.is-valider::before { background: var(--warning); }
-.gf-b.is-cloturer { background: transparent; box-shadow: inset 0 0 0 1.2px var(--line-strong); color: var(--text); }
+.gf-b.is-cloturer { background: var(--subtle); color: var(--text); }
 .gf-b.is-cloturer::before { background: var(--muted); }
+/* L argent a encaisser, une fois la visite finie (2026-10-27). */
+.gf-b.is-encaisser { background: var(--subtle); color: var(--text); }
+.gf-b.is-encaisser::before { background: var(--warning); }
+.gf-du { font-size: 13px; font-weight: 750; line-height: 18px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gf-b small { font-size: inherit; font-weight: 500; color: var(--muted); }
-.gf-arrive { display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; height: 28px; padding: 0 11px 0 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+/* « Arrivé » : discret sur chaque ligne (une colonne de boutons encadres
+   pesait autant que la feuille), il se montre sur la ligne survolee et passe
+   devant quand le groupe est en retard. */
+.gf-arrive { display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; height: 28px; padding: 0 11px 0 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
 .gf-arrive svg { flex: none; width: 14px; height: 14px; }
-.gf-arrive:hover { background: var(--subtle); border-color: var(--text); }
+.gf-r:is(:hover, :focus-within) .gf-arrive { border-color: var(--line-strong); color: var(--text); }
+.gf-arrive:hover { background: var(--subtle); border-color: var(--text); color: var(--text); }
 .gf-arrive:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* En retard, le geste attendu passe devant. */
 .gf-r.is-retard .gf-arrive { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }
@@ -163,10 +192,21 @@
 /* (au milieu : a droite, il couvrait les « Arrivé » des dernieres lignes) */
 .gf-retour { position: absolute; left: 50%; bottom: 16px; z-index: 6; translate: -50% 0; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-contrast, #fff); font: inherit; font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-overlay); cursor: pointer; }
 .gf-retour.is-haut { top: 48px; bottom: auto; }
+.gf.has-etat .gf-retour.is-haut { top: 62px; }
 .gf-retour[hidden] { display: none; }
 .gf-retour:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 .gf-rien > td { height: auto; padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* LE FILET DE LA DEMI-HEURE (2026-10-27) : une ligne fine en tete du bloc, ce
+   qui arrive a gauche, la ressource pleine sous sa colonne ; elle porte le
+   filet franc du bloc, sa premiere ligne garde un filet simple. */
+.gf-t tr.gf-demi > td { height: 24px; padding: 2px 7px; border-top-color: var(--line-strong); font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+.gf-t tr.gf-demi.is-bande > td { background: var(--gf-bande); }
+.gf-t tr.gf-demi + tr.gf-r > td { border-top-color: var(--line); }
+.gf-t td.gf-demi__t { position: sticky; left: var(--gf-col-h); z-index: 2; }
+.gf-demi__t b { font-weight: 650; color: var(--text); }
+.gf-demi__plein { font-weight: 700; color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
 
 /* LA LEGENDE (tete de la boite) : le statut, par le point de couleur de la
    barre de ligne et des badges ; puis l etat d une activite, par sa case. */
@@ -175,9 +215,10 @@
 .gf-legende { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: 12px; color: var(--muted); }
 .gf-legende > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .gf-leg { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bk-barre); }
-.gf-leg:is(.is-encours, .is-fini, .is-libre) { width: 16px; height: 11px; box-sizing: border-box; border-radius: 3px; }
-.gf-leg.is-libre { border: 1.5px dashed var(--bk-barre); background: transparent; }
-.gf-leg.is-fini { border: 1px solid var(--line-strong); background: transparent; }
+.gf-leg:is(.is-encours, .is-libre) { width: 16px; height: 11px; box-sizing: border-box; border-radius: 3px; }
+.gf-leg.is-libre { border: 1.5px dashed var(--line-strong); background: transparent; }
+/* (fini : la coche des cases, dessinee en deux traits) */
+.gf-leg.is-fini { width: 5px; height: 9px; margin: 0 4px 2px; border: solid var(--muted); border-width: 0 2px 2px 0; border-radius: 0; background: transparent; transform: rotate(45deg); }
 
 /* LA BOITE DANS LA CONSOLE : la tete est celle du planning bowling (titre,
    legende, recherche, « ⋯ », Agrandir) ; agrandie, la feuille prend l ecran. */
@@ -195,6 +236,7 @@
    defile de cote, l identite collee a gauche, l etat a droite. */
 @container feuille (max-width: 1299px) {
   .gf-th__in svg { display: none; }
+  .gf-th__etat { padding-left: 0; }
   .gf-th.is-vide .gf-th__in > span { display: inline; }
   .gf-th { padding: 0 6px; }
   .gf-t td { padding: 3px 5px; }
@@ -238,6 +280,18 @@
   .gf-t .gf-r > td.gf-a::before { content: attr(data-gf-titre); font-size: 12px; font-weight: 600; color: var(--muted); }
   .gf-t .gf-r > td.gf-a.is-vide { display: none; }
   .gf-nom__t, .gf-nom__sous { max-width: none; min-width: 0; }
+  /* (l etat du centre, en une ligne au-dessus des cartes) */
+  .gf-maintenant { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--line-strong); font-size: 13px; line-height: 18px; color: var(--text); font-weight: 600; }
+  .gf-maintenant b { font-weight: 600; color: var(--muted); }
+  .gf-maintenant .is-plein { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
+  /* (le filet de la demi-heure : ce qui arrive, puis chaque ressource pleine
+     nommee) */
+  .gf-t tr.gf-demi { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 6px 12px 6px 14px; border-top: 1px solid var(--line-strong); background: var(--surface); }
+  .gf-t tr.gf-demi.is-bande { background: var(--gf-bande); }
+  .gf-t tr.gf-demi > td { display: none; position: static; height: auto; padding: 0; border: 0; background: transparent; }
+  .gf-t tr.gf-demi > td:is(.gf-demi__t, .gf-demi__a:not(.is-vide)) { display: block; }
+  .gf-t tr.gf-demi > td.gf-demi__a::before { content: attr(data-gf-titre) ' '; font-weight: 600; color: var(--muted); }
+  .gf-t tr.gf-demi + tr.gf-r { border-top-color: var(--line); }
   .gf-t tr.gf-now { display: block; position: relative; height: 2px; background: var(--accent); }
   .gf-t tr.gf-now > td { display: block; height: 0; border: 0; }
   .gf-t tr.gf-now > td:not(.gf-h) { display: none; }

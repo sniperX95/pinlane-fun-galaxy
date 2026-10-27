@@ -54,7 +54,10 @@ const MUTATIONS = {
   // la piste 5, prise, se dit libre.
   libresfaux: ['app-main.js', '  poser(todaysReservations());\n', '', '[A] les pistes libres maintenant sont les vraies'],
   perimetre: ['app-main.js', "      label: ressource ? `Réservations ${ressource}` : 'Réservations',", "      label: 'Réservations',", '[A] le bandeau dit son perimetre'],
-  demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  if (!availabilityBlocksCache.loaded) return null;', '  if (!availabilityBlocksCache.loaded) return null;', '[A] « Libres maintenant » seulement le jour meme'],
+  // (2026-10-27 : l occupation des pistes est lue par
+  // getStaffBowlingLaneOccupation, qui porte la garde des blocages ; la garde
+  // du jour meme reste ici)
+  demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  const occupation = getStaffBowlingLaneOccupation();', '  const occupation = getStaffBowlingLaneOccupation();', '[A] « Libres maintenant » seulement le jour meme'],
   argent: ['app-main.js', "      hint: `${pax} joueur${pax > 1 ? 's' : ''}`\n", "      hint: `${pax} joueur${pax > 1 ? 's' : ''} · ${formatMoney(99)}`\n", '[A] aucun montant ni « aujourd hui » dans le bandeau'],
   soustitre: ['app-main.js', "planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;", "planningSub.textContent = `${todaysReservations().length} réservations • ${planningWindow.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
   titrepistes: ['app-main.js', "    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;\n", '', '[B] le titre compte les pistes de la grille'],

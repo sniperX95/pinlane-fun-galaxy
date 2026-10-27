@@ -77,10 +77,10 @@ function fixture() {
       check(await page.locator('[data-edit-activity="laser_game"] .dossier-activity-count').count() === 1, 'Laser participant editor not duplicated ' + size);
       check(await page.locator('[data-edit-activity="laser_game"] [aria-label="Nombre de parties Laser Game"]').count() === 1, 'Laser games edit has one clear control ' + size);
       check(await page.locator('#editPriceInput').isVisible() && await page.locator('#editPricePerPerson').isVisible(), 'total and per-person prices directly available ' + size);
-      check(/2 tables.*1h/.test(await page.locator('[data-edit-activity="billards"] > .dossier-edit-help').innerText()), 'stored Billard tables and hours visible ' + size);
-      check(/2 pistes.*2 tours de 1h/.test(await page.locator('[data-edit-activity="duckpin_bowling"] > .dossier-edit-help').innerText()), 'stored Duckpin lanes and rounds visible ' + size);
-      check(/3 × 15 min/.test(await page.locator('[data-edit-activity="fun_run"] > .dossier-edit-help').innerText()), 'stored Fun Run passages visible ' + size);
-      check(/journée/.test(await page.locator('[data-edit-activity="playground"] > .dossier-edit-help').innerText()), 'Playground day entry visible ' + size);
+      check(/2 tables.*1h/.test(await page.locator('[data-edit-activity="billards"] .fm-act-detail').innerText()), 'stored Billard tables and hours visible ' + size);
+      check(/2 pistes.*2 tours de 1h/.test(await page.locator('[data-edit-activity="duckpin_bowling"] .fm-act-detail').innerText()), 'stored Duckpin lanes and rounds visible ' + size);
+      check(/3 × 15 min/.test(await page.locator('[data-edit-activity="fun_run"] .fm-act-detail').innerText()), 'stored Fun Run passages visible ' + size);
+      check(/journée/.test(await page.locator('[data-edit-activity="playground"] .fm-act-detail').innerText()), 'Playground day entry visible ' + size);
       await page.screenshot({ path: path.join(out, size + '-initial.png'), fullPage: false });
       const layout = await page.evaluate(() => ({ labels: [...document.querySelectorAll('.edit-modal label, .edit-modal h3, .edit-modal legend')].map(n => n.textContent.trim()), text: document.querySelector('.edit-modal').innerText }));
       fs.writeFileSync(path.join(out, size + '-content.json'), JSON.stringify(layout, null, 2));

@@ -21540,6 +21540,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .input:focus { outline: 
 /* Le programme : une rangee par activite, son heure a gauche. */
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin { margin: -4px 0 12px; font-size: 13px; line-height: 1.45; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin strong { font-weight: 600; color: var(--text); }
+/* La formule du dossier se change ici (2026-10-27) : un menu, toutes les
+   formules du centre comme a la creation ; une formule hors regles ce jour-la
+   le dit sous le menu, du ton de l avis « heures recalculees ». */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-formule { max-width: 440px; margin: -2px 0 16px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-formule .field-hint.is-hors { font-size: 13px; font-weight: 600; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-replan { display: none; margin: -4px 0 12px; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-replan { display: block; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure:not(.is-vide) { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }

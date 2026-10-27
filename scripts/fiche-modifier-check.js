@@ -50,6 +50,27 @@
 //   [O1] l occasion se change en un clic, la barre le dit, elle part ;
 //   [O2] les accompagnants d un Kids Fun Day (adultes presents, qui ne jouent
 //        pas) se changent et partent ; sans accompagnants, pas de champ.
+// Changer de formule (Movsar, 27/10 : « passer par exemple de FORMULE 4 à
+// FORMULE 5, avec le prix et le programme qui suivent »), sur Noah (FORMULE 4,
+// 10 joueurs, pistes 1 et 2) et Lina (FORMULE 5, 11 joueurs, sans piste) :
+//   [F1] un menu Formule propose toutes les formules du centre, celle du
+//        dossier choisie ; une formule hors regles ce jour-la le dit dans le
+//        menu et reste choisissable (le comptoir decide) ;
+//   [F2] FORMULE 4 -> FORMULE 5 (au clavier, le focus reste sur le menu) : le
+//        programme devient celui de la carte (laser, minigolf ; ni bowling ni
+//        pistes ni champ Duree), sans les heures de l ancienne, le prix suit
+//        (260 EUR) et la barre dit « Formule 4 → Formule 5 · Prix … » ;
+//   [F3] l enregistrement envoie la nouvelle formule depuis sa carte : type,
+//        formuleId, nom, duree, sans programme ni plan de l ancienne (le
+//        serveur la planifie a partir de l arrivee), sans pistes, son prix ;
+//   [F4] revenir a la formule du dossier rend ce qu il avait a l ouverture,
+//        pistes choisies a la main comprises ;
+//   [F5] FORMULE 5 -> FORMULE 4 : le bowling arrive avec ses pistes, libres a
+//        son heure, et elles partent ;
+//   [F6] une formule hors regles (Kids Fun Day un samedi) le dit sous le menu,
+//        « possible au comptoir », se lit par sa carte et part quand meme ;
+//   [F7] la variante de l ancienne formule (la Formule 4 aux arcades) ne
+//        suit pas la nouvelle.
 //   [L1] la fiche tient dans l ecran, sans defilement de cote, sans champ qui
 //        en chevauche un autre, sans texte sous 12 px, la barre du bas visible
 //        pendant qu on fait defiler ;
@@ -280,7 +301,10 @@ async function extrasEtOccasion(page, ou) {
   const vite = { timeout: 5000 };
   const ouvrir = (nom, extras = null, prix = null) => page.evaluate(({ nom, extras, prix }) => {
     const r = state.reservations.find((x) => x.name.includes(nom));
-    if (extras) { r.extras = JSON.parse(JSON.stringify(extras)); r.price = prix; }
+    // Le dossier servi aussi : le rafraichissement periodique le relit, et
+    // rendait sinon a la fiche le prix d avant pendant le geste.
+    const servi = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === r.id);
+    if (extras) [r, servi].filter(Boolean).forEach((d) => { d.extras = JSON.parse(JSON.stringify(extras)); d.price = prix; });
     closePos(); openPos(r.id); setTab('modifier');
     return { basePrice: r.basePrice, price: r.price, pax: r.pax };
   }, { nom, extras, prix });
@@ -352,8 +376,11 @@ async function extrasEtOccasion(page, ou) {
   // [E4] des arcades vendues a tout le groupe suivent le groupe.
   const ar = await page.evaluate(() => {
     const r = state.reservations.find((x) => x.name.includes('Club de foot'));
-    r.extras = [{ id: 'arcades-temps', name: `Arcades 30 min × ${r.pax} joueurs`, price: 5 * r.pax }];
-    r.price = Number(r.basePrice) + 5 * r.pax;
+    const servi = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === r.id);
+    [r, servi].filter(Boolean).forEach((d) => {
+      d.extras = [{ id: 'arcades-temps', name: `Arcades 30 min × ${d.pax} joueurs`, price: 5 * d.pax }];
+      d.price = Number(d.basePrice) + 5 * d.pax;
+    });
     closePos(); openPos(r.id); setTab('modifier');
     return { pax: Number(r.pax) };
   });
@@ -384,6 +411,131 @@ async function extrasEtOccasion(page, ou) {
   await fermer();
 }
 
+// CHANGER DE FORMULE. La Formule 4 jouee aux arcades : la variante que son plan
+// garde (lib/formula-choice), telle que le serveur l ecrit.
+const VARIANTE_ARCADES = { id: 'arcade60', label: '60 min d’arcades', replaces: ['laser_game'], steps: [{ activityId: 'arcade_time', count: 1, durationMinutes: 60 }], desc: ['1 partie de Minigolf', '1h de Bowling', '60 min d’arcades', '2 cruches boissons'], formulaId: 'f4' };
+async function changementDeFormule(page, ou) {
+  const vite = { timeout: 5000 };
+  const menu = '#posOverlay #editFormuleSelect';
+  const ouvrir = (nom, prep = {}) => page.evaluate(({ nom, prep }) => {
+    const r = state.reservations.find((x) => x.name.includes(nom));
+    const servi = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === r.id);
+    [r, servi].filter(Boolean).forEach((dossier) => {
+      if (prep.lanes) dossier.lanes = prep.lanes;
+      if (prep.variante) dossier.opsPlan = { ...(dossier.opsPlan || {}), formulaChoice: prep.variante };
+    });
+    closePos(); openPos(r.id); setTab('modifier');
+    return { pax: Number(r.pax), price: Number(r.price) };
+  }, { nom, prep });
+  const lire = () => page.evaluate(() => {
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const m = document.querySelector('#posOverlay .edit-modal');
+    const sel = m.querySelector('#editFormuleSelect');
+    const replan = m.querySelector('.fm-replan');
+    return {
+      formule: sel ? sel.value : null,
+      options: sel ? Array.from(sel.options).map((o) => ({ id: o.value, t: o.textContent, off: o.disabled })) : [],
+      catalogue: getEffectiveCatalogFormules().map((f) => f.id),
+      indice: txt(m.querySelector('#editFormuleHint')),
+      hors: Boolean(m.querySelector('#editFormuleHint.is-hors')),
+      activites: Array.from(m.querySelectorAll('[data-edit-activity]')).map((row) => row.dataset.editActivity).join(','),
+      heures: Array.from(m.querySelectorAll('.fm-act-heure .fm-heure')).map((n) => n.textContent.trim()).join(' '),
+      carte: Array.from(m.querySelectorAll('.fm-acts .edit-formule-list li')).map(txt),
+      selecteurPistes: Boolean(m.querySelector('.lane-picker')),
+      pistes: Array.from(m.querySelectorAll('.lane-picker .lane-chip.is-on')).map((n) => Number(n.textContent.trim())),
+      dureeEnTete: Boolean(m.querySelector('.fm-quand #editDurationInput')),
+      replanVu: Boolean(replan) && replan.checkVisibility(),
+      prix: document.getElementById('editPriceInput').value,
+      ligne: txt(document.getElementById('editPrixEstime')),
+      detail: Array.from(m.querySelectorAll('.dossier-price-detail li')).map(txt),
+      modifs: txt(document.getElementById('editModifs')),
+      focus: document.activeElement ? document.activeElement.id : '',
+    };
+  });
+  const choisir = async (id) => { await page.selectOption(menu, id, vite); await page.waitForTimeout(200); };
+  const enregistrer = async () => {
+    await page.evaluate(() => { window.__FIXTURE__.patchs.length = 0; });
+    await page.click('#posOverlay .es-save', vite);
+    await page.waitForTimeout(700);
+    return page.evaluate(() => (window.__FIXTURE__.patchs || []).slice(-1)[0] || null);
+  };
+  const champs = (p) => (p ? Object.fromEntries(['type', 'formuleId', 'label', 'program', 'opsPlan', 'lanes', 'laneCount', 'requiresLanes', 'duration', 'price', 'basePrice', 'pax'].map((k) => [k, p[k]])) : 'aucun envoi');
+  const fermer = () => page.evaluate(() => { try { closePos(); } catch (e) { /* deja fermee */ } });
+
+  // [F1] le menu, a l ouverture.
+  await ouvrir('Anniversaire Noah');
+  const a = await lire();
+  const kfd = a.options.find((o) => o.id === 'kfd');
+  ok(a.formule === 'f4' && a.options.length === a.catalogue.length && a.catalogue.every((id) => a.options.some((o) => o.id === id)) && a.indice === 'Changer une activité ne vaut que pour cette visite.',
+    `[F1] Anniversaire Noah ${ou} : le menu Formule propose les ${a.catalogue.length} formules du centre, FORMULE 4 choisie`, { formule: a.formule, options: a.options.length, catalogue: a.catalogue.length, indice: a.indice });
+  ok(kfd && /Indisponible ce jour/.test(kfd.t) && a.options.every((o) => !o.off),
+    `[F1] Anniversaire Noah ${ou} : une formule hors regles ce jour-la le dit dans le menu et reste choisissable (le comptoir decide)`, { kfd, desactivees: a.options.filter((o) => o.off).map((o) => o.id) });
+
+  // [F2] FORMULE 4 -> FORMULE 5 au clavier.
+  await page.focus(menu);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(250);
+  const b = await lire();
+  ok(b.formule === 'f5' && b.focus === 'editFormuleSelect', `[F2] Anniversaire Noah ${ou} : la fleche du clavier passe a FORMULE 5 et le menu garde le focus`, { formule: b.formule, focus: b.focus });
+  ok(b.activites === 'laser_game,minigolf_blacklight' && !b.selecteurPistes && b.heures === '--:-- --:--' && b.replanVu && !b.dureeEnTete,
+    `[F2] Anniversaire Noah ${ou} : le programme devient celui de la carte (laser, minigolf ; ni bowling ni pistes), sans les heures de l ancienne ni champ Duree`, b);
+  ok(b.prix === '260' && b.ligne === 'Nouveau tarif, avant 390 €.' && /^FORMULE 5 /.test(b.detail[0] || '') && /Formule 4 → Formule 5/.test(b.modifs) && /Prix 390 € → 260 €/.test(b.modifs) && !/Durée/.test(b.modifs),
+    `[F2] Anniversaire Noah ${ou} : le prix suit (26 € × 10 = 260 €), la barre dit « Formule 4 → Formule 5 · Prix 390 € → 260 € »`, { prix: b.prix, ligne: b.ligne, detail: b.detail, modifs: b.modifs });
+  // [F3]
+  const e1 = await enregistrer();
+  ok(e1 && e1.type === 'formule' && e1.formuleId === 'f5' && e1.label === 'FORMULE 5' && e1.program === null && e1.opsPlan === null && JSON.stringify(e1.lanes) === '[]' && e1.requiresLanes === false && Number(e1.duration) === 0.5 && Number(e1.price) === 260 && Number(e1.basePrice) === 260 && Number(e1.pax) === 10,
+    `[F3] Anniversaire Noah ${ou} : l enregistrement envoie la FORMULE 5 depuis sa carte (sans programme ni plan de la 4, sans pistes, 260 €)`, champs(e1));
+  await fermer();
+
+  // [F4] revenir a la formule du dossier, des pistes choisies a la main (3 pour 2).
+  await ouvrir('Anniversaire Noah', { lanes: [1, 2, 3] });
+  const c0 = await lire();
+  await choisir('f5');
+  await choisir('f4');
+  const c = await lire();
+  ok(c.formule === 'f4' && c.modifs === 'Aucune modification' && JSON.stringify(c.pistes) === '[1,2,3]' && c.heures === c0.heures && c.prix === c0.prix && c.activites === c0.activites,
+    `[F4] Anniversaire Noah ${ou} : revenir a FORMULE 4 rend le dossier tel qu a l ouverture (pistes 1, 2, 3, heures, prix)`, { avant: c0, apres: c });
+  await page.evaluate(() => {
+    const r = state.reservations.find((x) => x.name.includes('Anniversaire Noah'));
+    [r, window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === r.id)].filter(Boolean).forEach((dossier) => { dossier.lanes = [1, 2]; });
+  });
+  await fermer();
+
+  // [F5] FORMULE 5 -> FORMULE 4 : la formule avec bowling recoit ses pistes.
+  const lina = await ouvrir('Anniversaire Lina');
+  await choisir('f4');
+  const d = await lire();
+  const e2 = await enregistrer();
+  ok(d.selecteurPistes && d.pistes.length === 2 && d.activites === 'bowling,laser_game,minigolf_blacklight' && d.prix === String(39 * lina.pax) && /Formule 5 → Formule 4/.test(d.modifs),
+    `[F5] Anniversaire Lina ${ou} : FORMULE 5 → FORMULE 4, le bowling arrive avec ses 2 pistes et le prix suit (39 € × ${lina.pax})`, d);
+  ok(e2 && e2.formuleId === 'f4' && e2.requiresLanes === true && JSON.stringify(e2.lanes) === JSON.stringify(d.pistes) && Number(e2.laneCount) === 2 && Number(e2.duration) === 1 && Number(e2.price) === 39 * lina.pax,
+    `[F5] Anniversaire Lina ${ou} : l enregistrement envoie la FORMULE 4, ses pistes et son prix`, champs(e2));
+  await fermer();
+
+  // [F6] hors regles : Kids Fun Day un samedi.
+  await ouvrir('Anniversaire Noah');
+  await choisir('kfd');
+  const g = await lire();
+  const e3 = await enregistrer();
+  ok(g.hors && g.indice === 'Indisponible ce jour · possible au comptoir.' && g.carte.includes('Toutes les activités illimitées') && g.prix === '300',
+    `[F6] Anniversaire Noah ${ou} : Kids Fun Day un samedi le dit sous le menu (« possible au comptoir ») et se lit par sa carte`, g);
+  ok(e3 && e3.formuleId === 'kfd' && Number(e3.price) === 300, `[F6] Anniversaire Noah ${ou} : elle part quand meme, le comptoir decide`, champs(e3));
+  await fermer();
+
+  // [F7] la variante de l ancienne formule ne suit pas.
+  await ouvrir('Anniversaire Noah', { variante: VARIANTE_ARCADES });
+  const h0 = await lire();
+  await choisir('f5');
+  const h = await lire();
+  ok(!/laser_game/.test(h0.activites) && h.activites === 'laser_game,minigolf_blacklight' && /^FORMULE 5 /.test(h.detail[0] || '') && !/arcades/.test(h.detail[0] || ''),
+    `[F7] Anniversaire Noah ${ou} : la FORMULE 4 jouee aux arcades passe en FORMULE 5 avec ses parties de laser, sans les arcades de l ancienne`, { avant: h0.activites, apres: h.activites, detail: h.detail });
+  await page.evaluate(() => {
+    const r = state.reservations.find((x) => x.name.includes('Anniversaire Noah'));
+    [r, window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === r.id)].filter(Boolean).forEach((dossier) => { if (dossier.opsPlan) delete dossier.opsPlan.formulaChoice; });
+  });
+  await fermer();
+}
+
 const ici = (s) => `${s.appareil}${s.theme === 'light' ? ' clair' : ''}`;
 async function scenario(browser, s) {
   const { ctx, page, erreurs } = await FX.monter(browser, { fixture: 'pic', appareil: s.appareil, theme: s.theme || 'dark', port: PORT });
@@ -399,6 +551,7 @@ async function scenario(browser, s) {
       await formuleQuiGrandit(page, `Anniversaire Noah ${ici(s)}`);
       await extrasEtOccasion(page, ici(s));
     }
+    if (s.gestes || s.formules) await changementDeFormule(page, ici(s));
     ok(erreurs.length === 0, `[J1] ${ici(s)} : aucune erreur JS`, erreurs.slice(0, 3));
   } finally { await ctx.close(); }
 }
@@ -418,6 +571,7 @@ const SCENARIOS = [
 // ---------------------------------------------------------------------------
 const ORDI = [{ appareil: 'ordinateur', dossiers: ['Club de foot'] }];
 const GESTES = [{ appareil: 'ordinateur', dossiers: [], gestes: true }];
+const FORMULES = [{ appareil: 'ordinateur', dossiers: [], formules: true }];
 const MUTATIONS = [
   { nom: 'une-seule-colonne', lettre: 'M1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);', vers: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1fr);' }] },
   { nom: 'client-en-tete', lettre: 'M1', scenarios: ORDI, editions: [{ fichier: JS, de: '        <aside class="fm-cote">\n          ${adapte ? renderEditPrix(r) : \'\'}', vers: '        <aside class="fm-cote">\n          <section class="fm-client"></section>${adapte ? renderEditPrix(r) : \'\'}' }] },
@@ -429,9 +583,9 @@ const MUTATIONS = [
   { nom: 'barre-muette', lettre: 'M4', scenarios: GESTES, editions: [{ fichier: JS, de: '    zone.innerHTML = resumeModifsEditionHtml();', vers: "    zone.innerHTML = 'Aucune modification';" }] },
   { nom: 'replan-tu', lettre: 'M5', scenarios: GESTES, editions: [{ fichier: CSS, de: '.fx-modal .fm-programme.is-replan .fm-replan { display: block; }', vers: '.fx-modal .fm-programme.is-replan .fm-replan { }' }] },
   { nom: 'groupe-ne-suit-pas', lettre: 'M6', scenarios: GESTES, editions: [{ fichier: JS, de: '    suivreLeGroupe(value);\n', vers: '' }] },
-  { nom: 'pistes-a-l-arrivee', lettre: 'M7', scenarios: ORDI, editions: [{ fichier: JS, de: 'getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(state.selectedRes, state.editState), duration', vers: 'getSuggestedEditLanes(requiredCount, state.selectedRes.date, state.editState.startTime, duration' }] },
+  { nom: 'pistes-a-l-arrivee', lettre: 'M7', scenarios: ORDI, editions: [{ fichier: JS, de: 'getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossier, state.editState), duration', vers: 'getSuggestedEditLanes(requiredCount, state.selectedRes.date, state.editState.startTime, duration' }] },
   { nom: 'groupe-adapte', lettre: 'M8', scenarios: GESTES, editions: [{ fichier: JS, de: '      if (modifsProgrammeEdition().length) updated.label = libelleAdapte;', vers: '      updated.label = libelleAdapte;' }] },
-  { nom: 'formule-a-la-carte', lettre: 'P1', scenarios: GESTES, editions: [{ fichier: JS, de: '  const formule = estimerFormuleEdition(r, e);\n  if (formule) return formule;\n', vers: '' }] },
+  { nom: 'formule-a-la-carte', lettre: 'P1', scenarios: GESTES, editions: [{ fichier: JS, de: '  const formule = estimerFormuleEdition(dossierPourFormule(r), e);\n  if (formule) return formule;\n', vers: '' }] },
   { nom: 'formule-ecrite-par-le-groupe', lettre: 'P1', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (!(Number(options.participants) > 0) || participantsLigneProgramme(options, reference) !== reference) return;', vers: '    if (participantsLigneProgramme(options, reference) !== reference) return;' }] },
   { nom: 'telephone-oublie', lettre: 'M8', scenarios: GESTES, editions: [{ fichier: JS, de: `oninput="setEditField('phone', this.value)"`, vers: 'oninput="majModifsEdition()"' }] },
   { nom: 'ajuste-sans-extras', lettre: 'P2', scenarios: GESTES, editions: [{ fichier: JS, de: '  const etat = getReservationPriceState(r);\n  if (etat.ajuste)', vers: '  const etat = { ajuste: Number(r.basePrice) > 0 && Math.round(Number(r.basePrice) * 100) !== Math.round((Number(r.price) || 0) * 100), reference: Number(r.basePrice) };\n  if (etat.ajuste)' }] },
@@ -446,6 +600,19 @@ const MUTATIONS = [
   { nom: 'occasion-oubliee', lettre: 'O1', scenarios: GESTES, editions: [{ fichier: JS, de: "occasion: String(es.occasion || ''), ", vers: '' }] },
   { nom: 'accompagnants-caches', lettre: 'O2', scenarios: GESTES, editions: [{ fichier: JS, de: '${Number(r.companions) > 0 || Number(e.companions) > 0 ? `<div class="fm-champ fm-accompagnants">', vers: '${false ? `<div class="fm-champ fm-accompagnants">' }] },
   { nom: 'accompagnants-oublies', lettre: 'O2', scenarios: GESTES, editions: [{ fichier: JS, de: '  if (accompagnants !== Math.trunc(Number(origine.companions) || 0)) champsSaisis.companions = accompagnants;\n', vers: '' }] },
+  { nom: 'hors-regles-tue', lettre: 'F1', scenarios: FORMULES, editions: [{ fichier: JS, de: "${dispo.ok ? '' : ` · ${dispo.message}`}`;", vers: '`;' }] },
+  { nom: 'hors-regles-interdite', lettre: 'F1', scenarios: FORMULES, editions: [{ fichier: JS, de: "${String(f.id) === String(e.formuleId) ? ' selected' : ''}>", vers: "${String(f.id) === String(e.formuleId) ? ' selected' : ''}${dispo.ok ? '' : ' disabled'}>" }] },
+  { nom: 'focus-perdu', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: ' data-pl-focus="fiche.edit.formule"', vers: '' }] },
+  { nom: 'programme-de-l-ancienne', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  delete e.programmeEdite;\n  delete e.programmeEditeInitial;\n  ensureEditProgram(dossierPourFormule(r));\n', vers: '' }] },
+  { nom: 'prix-de-l-ancienne', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  const formule = estimerFormuleEdition(dossierPourFormule(r), e);', vers: '  const formule = estimerFormuleEdition(r, e);' }] },
+  { nom: 'barre-sans-formule', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  if (formuleChangee) modifs.push(`${nomFormule(origine.formuleId)} → ${nomFormule(e.formuleId)}`);\n', vers: '' }] },
+  { nom: 'duree-en-tete', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: " && String(rf.type || '') !== 'formule') ? durationControl", vers: ') ? durationControl' }] },
+  { nom: 'formule-non-envoyee', lettre: 'F3', scenarios: FORMULES, editions: [{ fichier: JS, de: '      updated.formuleId = nouvelleFormule.id;\n', vers: '' }] },
+  { nom: 'plan-de-l-ancienne', lettre: 'F3', scenarios: FORMULES, editions: [{ fichier: JS, de: '      updated.opsPlan = null;\n', vers: '' }] },
+  { nom: 'retour-sans-pistes', lettre: 'F4', scenarios: FORMULES, editions: [{ fichier: JS, de: "  if (retour) e.lanesStr = (origine.lanes || []).join(', ');\n  else syncEditLaneAssignment();", vers: '  syncEditLaneAssignment();' }] },
+  { nom: 'pistes-de-l-ancienne', lettre: 'F5', scenarios: FORMULES, editions: [{ fichier: JS, de: '  const dossier = dossierPourFormule(state.selectedRes);\n  const requiresLanes = reservationNeedsLanes(dossier.type, dossier.formuleId);', vers: '  const dossier = state.selectedRes;\n  const requiresLanes = reservationNeedsLanes(dossier.type, dossier.formuleId);' }] },
+  { nom: 'hors-regles-muet', lettre: 'F6', scenarios: FORMULES, editions: [{ fichier: JS, de: '    : { texte: `${dispo.message} · possible au comptoir.`, hors: true };', vers: "    : { texte: 'Programme et prix de la nouvelle formule.', hors: false };" }] },
+  { nom: 'variante-qui-suit', lettre: 'F7', scenarios: FORMULES, editions: [{ fichier: JS, de: '  const { program: _programme, opsPlan: _plan, ...reste } = r;', vers: '  const { program: _programme, ...reste } = r;' }] },
   { nom: 'champ-qui-deborde', lettre: 'L1', scenarios: [{ appareil: 'telephone', dossiers: ['Club de foot'] }], editions: [{ fichier: CSS, de: '.fx-modal .fm .input { box-sizing: border-box; width: 100%; min-width: 0;', vers: '.fx-modal .fm .input { box-sizing: border-box; width: 100%; min-width: 200px;' }] },
   { nom: 'libelle-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fm .lbl { margin: 0; font-size: 12px;', vers: '.fx-modal .fm .lbl { margin: 0; font-size: 11px;' }] },
   { nom: 'pied-qui-defile', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fm .fm-pied.dossier-actions { position: sticky;', vers: '.fx-modal .fm .fm-pied.dossier-actions { position: static;' }] },

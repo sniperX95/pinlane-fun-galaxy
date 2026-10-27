@@ -9,7 +9,7 @@ const c = vm.createContext({ console, state: { booking: { pax: 4, activities: {}
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), c);
 c.catalog = [{ id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', minPax: 2 }, { id: 'minigolf_blacklight', name: 'Minigolf', priceType: 'per_pax', defaultMinutes: 45 }];
 vm.runInContext('setCenterActivities(catalog)', c);
-for (const name of ['participantsLigneProgramme', 'catalogueDeLigne', 'activityCountsChildren', 'activityParticipantsBounds', 'bowlingCapacityMessage', 'funRunSessionMinutes', 'buildEditProgramFromReservation', 'getEditProgramItems', 'estimerPrixProgramme', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'ligneALaJournee', 'renderVisitRecapItem', 'getChosenActivities', 'getBookingActivityParticipants', 'normalizeBookingMode', 'deriveBookingType', 'buildBookingProgramPayload', 'setEditLaserGames', 'setEditActivityParticipants']) {
+for (const name of ['participantsLigneProgramme', 'catalogueDeLigne', 'activityCountsChildren', 'activityParticipantsBounds', 'bowlingCapacityMessage', 'funRunSessionMinutes', 'buildEditProgramFromReservation', 'getEditProgramItems', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'estimerPrixProgramme', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'ligneALaJournee', 'renderVisitRecapItem', 'getChosenActivities', 'getBookingActivityParticipants', 'normalizeBookingMode', 'deriveBookingType', 'buildBookingProgramPayload', 'setEditLaserGames', 'setEditActivityParticipants']) {
   const start = source.indexOf(`function ${name}(`);
   if (start < 0 && vm.runInContext(`typeof ${name}`, c) === 'function') continue;
   assert.ok(start >= 0, name);

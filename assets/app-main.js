@@ -1528,7 +1528,8 @@ function refreshEditPreview() {
   // (journal 186), et meme parade : rappeler la MEME fonction, aucune regle
   // recopiee.
   const adviceEl = document.getElementById('editLanesHint');
-  if (adviceEl) adviceEl.textContent = editLaneAdvice(state.selectedRes, e);
+  if (adviceEl) adviceEl.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
+  peindreFormuleEdition();
   if (paxEl) paxEl.textContent = e.pax || 0;
   if (durationEl) durationEl.textContent = formatDurationLabel(e.duration || 0);
   if (assignEl) assignEl.textContent = e.lanesStr || 'Hors piste';
@@ -1554,7 +1555,9 @@ function debutBowlingEdition(r, e) {
 
 function syncEditLaneAssignment() {
   if (!state.selectedRes || !state.editState) return null;
-  const requiresLanes = reservationNeedsLanes(state.selectedRes.type, state.selectedRes.formuleId);
+  // La formule choisie dans le formulaire dit s il faut des pistes.
+  const dossier = dossierPourFormule(state.selectedRes);
+  const requiresLanes = reservationNeedsLanes(dossier.type, dossier.formuleId);
   if (!requiresLanes) {
     state.editState.lanesStr = '';
     refreshEditPreview();
@@ -1566,9 +1569,9 @@ function syncEditLaneAssignment() {
     refreshEditPreview();
     return null;
   }
-  const requiredCount = getEditBowlingCapacityNeed(state.selectedRes, state.editState).requiredCount;
+  const requiredCount = getEditBowlingCapacityNeed(dossier, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
-  const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(state.selectedRes, state.editState), duration, state.selectedRes.id, state.editState.lanesStr);
+  const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossier, state.editState), duration, state.selectedRes.id, state.editState.lanesStr);
   if (suggested) state.editState.lanesStr = formatLaneInput(suggested);
   refreshEditPreview();
   return suggested;
@@ -27887,7 +27890,7 @@ function getEditPrixActivites() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return null;
-  const formule = estimerFormuleEdition(r, e);
+  const formule = estimerFormuleEdition(dossierPourFormule(r), e);
   if (formule) return formule;
   const items = getEditProgramItems();
   if (!items.length) return null;
@@ -27938,6 +27941,8 @@ function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
+  // Une autre formule, un autre tarif.
+  if (formuleChangeeEdition()) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -27954,7 +27959,7 @@ function getEditProgramItems() {
   if (e.programmeEdite.bowling?.on) {
     const item = { activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax, participants: participantsLigneProgramme(e.programmeEdite.bowling, pax) };
     if (state.selectedRes) {
-      const capacity = getEditBowlingCapacityNeed(state.selectedRes, e);
+      const capacity = getEditBowlingCapacityNeed(dossierPourFormule(state.selectedRes), e);
       if (capacity.bowlingCapacity.emergency) { item.bowlingCapacity = capacity.bowlingCapacity; item.laneCount = capacity.requiredCount; }
     }
     items.push(item);
@@ -28126,6 +28131,119 @@ function formuleAcheteeDuDossier(r) {
   return String((r && r.type) || '') === 'formule' ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;
 }
 
+// CHANGER DE FORMULE DANS MODIFIER (2026-10-27, Movsar : « rends possible le
+// changement de formule dans Modifier (passer par exemple de FORMULE 4 à
+// FORMULE 5), avec le prix et le programme qui suivent »). La formule choisie
+// vit dans l etat d edition (formuleId, label), comme les autres champs du
+// dossier ; elle est changee quand elle differe de celle du dossier a
+// l ouverture du formulaire.
+function formuleChangeeEdition() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  return Boolean(origine && String(origine.type || '') === 'formule' && e.formuleId && String(e.formuleId) !== String(origine.formuleId || ''));
+}
+
+// LE DOSSIER LU AVEC LA FORMULE CHOISIE : le contenu de sa carte, sans le
+// programme, le plan ni la variante de l ancienne (la Formule 4 aux arcades ne
+// passe pas ses arcades a la Formule 5). Sans changement, le dossier tel quel.
+function dossierPourFormule(r) {
+  if (!r || !formuleChangeeEdition()) return r;
+  const { program: _programme, opsPlan: _plan, ...reste } = r;
+  return { ...reste, type: 'formule', formuleId: state.editState.formuleId, label: state.editState.label };
+}
+
+// Les formules du centre, comme a la creation : toutes se choisissent, celles
+// hors regles ce jour-la disent pourquoi (« possible au comptoir »). La formule
+// du dossier reste dans la liste meme si le catalogue ne la propose plus.
+function formulesProposeesEdition() {
+  const origine = departsEdition().get(state.editState)?.origine;
+  const catalogue = getEffectiveCatalogFormules();
+  const actuelle = origine && !catalogue.some(f => String(f.id) === String(origine.formuleId)) ? resolveDisplayFormule(origine.formuleId) : null;
+  return actuelle ? [actuelle, ...catalogue] : catalogue;
+}
+
+function disponibiliteFormuleEdition(formule) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  return getFormuleAvailability(formule, e.date || r.date, Math.max(1, Number(e.pax) || 1), e.startTime || r.startTime);
+}
+
+function optionsFormuleEditionHtml() {
+  const e = state.editState;
+  const origine = departsEdition().get(e)?.origine;
+  const liste = formulesProposeesEdition();
+  const option = (f) => {
+    const dispo = String(f.id) === String(origine?.formuleId) ? { ok: true } : disponibiliteFormuleEdition(f);
+    const texte = `${rvNomFormule(f)} · ${formatMoney(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
+    return `<option value="${escapeHtml(f.id)}"${String(f.id) === String(e.formuleId) ? ' selected' : ''}>${escapeHtml(texte)}</option>`;
+  };
+  const familles = [...new Set(liste.map(f => f.family || ''))];
+  return familles.length > 1
+    ? familles.map(famille => `<optgroup label="${escapeHtml(famille || 'Autres formules')}">${liste.filter(f => (f.family || '') === famille).map(option).join('')}</optgroup>`).join('')
+    : liste.map(option).join('');
+}
+
+// Sous le menu : ce que le changement fait, et une formule hors regles le dit.
+function indiceFormuleEdition() {
+  if (!formuleChangeeEdition()) return { texte: 'Changer une activité ne vaut que pour cette visite.', hors: false };
+  const formule = resolveDisplayFormule(state.editState.formuleId);
+  const dispo = formule ? disponibiliteFormuleEdition(formule) : { ok: true };
+  return dispo.ok
+    ? { texte: 'Programme et prix de la nouvelle formule.', hors: false }
+    : { texte: `${dispo.message} · possible au comptoir.`, hors: true };
+}
+
+function renderEditFormuleChoix() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!origine || String(origine.type || '') !== 'formule' || !origine.formuleId) return '';
+  const indice = indiceFormuleEdition();
+  return `<div class="fm-champ fm-formule">
+      <label class="lbl" for="editFormuleSelect">Formule</label>
+      <select id="editFormuleSelect" class="input" data-pl-focus="fiche.edit.formule" aria-describedby="editFormuleHint" onchange="changerFormuleEdition(this.value)">${optionsFormuleEditionHtml()}</select>
+      <p class="field-hint${indice.hors ? ' is-hors' : ''}" id="editFormuleHint">${escapeHtml(indice.texte)}</p>
+    </div>`;
+}
+
+// Les joueurs, l heure ou le jour changent sans re-rendu : ce qui est hors
+// regles se relit en place.
+function peindreFormuleEdition() {
+  const menu = document.getElementById('editFormuleSelect');
+  if (menu && document.activeElement !== menu) menu.innerHTML = optionsFormuleEditionHtml();
+  const zone = document.getElementById('editFormuleHint');
+  if (!zone) return;
+  const indice = indiceFormuleEdition();
+  zone.textContent = indice.texte;
+  zone.classList.toggle('is-hors', indice.hors);
+}
+
+// Choisir une formule : le dossier prend le contenu de sa carte (programme,
+// duree, pistes), comme a la creation (syncQuickBookDuration), et le prix suit
+// (estimerFormuleEdition). Revenir a celle du dossier rend ce qu il avait a
+// l ouverture.
+function changerFormuleEdition(id) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const origine = e && departsEdition().get(e)?.origine;
+  const formule = resolveDisplayFormule(id);
+  if (!e || !r || !origine || !formule) return;
+  if (state.editError) setEditError('');
+  const retour = String(formule.id) === String(origine.formuleId || '');
+  e.type = retour ? origine.type : 'formule';
+  e.formuleId = retour ? origine.formuleId : formule.id;
+  e.label = retour ? origine.label : formule.name;
+  e.duration = retour ? origine.duration : getFormuleLaneDuration(formule);
+  e.totalDuration = retour ? origine.totalDuration : getFormuleTotalDuration(formule);
+  delete e.programmeEdite;
+  delete e.programmeEditeInitial;
+  ensureEditProgram(dossierPourFormule(r));
+  // Au retour, les pistes du dossier telles qu a l ouverture ; une autre
+  // formule recoit celles qu il lui faut (aucune sans bowling).
+  if (retour) e.lanesStr = (origine.lanes || []).join(', ');
+  else syncEditLaneAssignment();
+  renderPos();
+}
+
 // L HEURE DE CHAQUE ACTIVITE, telle que le dossier l a aujourd hui : la meme
 // source que le programme de l onglet Infos (getGroupeProgramme).
 function heuresDuProgrammeEnregistre(r) {
@@ -28146,6 +28264,7 @@ function editionReplanifie() {
   const origine = e && departsEdition().get(e)?.origine;
   if (!e || !origine) return false;
   return editProgramAChange()
+    || formuleChangeeEdition()
     || String(e.startTime || '') !== String(origine.startTime || '')
     || String(e.date || '') !== String(origine.date || '')
     || Number(e.pax) !== Number(origine.pax)
@@ -28174,7 +28293,10 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const supplement = Object.keys(programme.others || {})
     .filter((id) => !connus.has(id))
     .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
-  const heures = heuresDuProgrammeEnregistre(r);
+  // Une formule changee n a pas encore d heures : le serveur la place a
+  // l enregistrement, celles de l ancienne ne disent rien d elle.
+  const formuleChangee = formuleChangeeEdition();
+  const heures = formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
   const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
   const rangees = [...choix, ...supplement].map((choice) => {
@@ -28216,13 +28338,18 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
         <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">Retirer</button></div>
         <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
         ${estBowling ? controls.lanes || '' : ''}
-        ${estLaser ? renderDossierLaserEditor(r) : ''}
+        ${estLaser && !formuleChangee ? renderDossierLaserEditor(r) : ''}
       </div>
     </section>`;
   }).join('');
-  return `${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : ''}
+  // Une formule sans activite a regler (« Toutes les activités illimitées »)
+  // se lit par sa carte, pas par un programme vide.
+  const sansActivite = lignes.length && !editProgramAChange()
+    ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
+    : '<p class="fm-vide">Aucune activité au programme.</p>';
+  return `${renderEditFormuleChoix() || (formule?.name ?`<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
-    <div class="fm-acts">${rangees || '<p class="fm-vide">Aucune activité au programme.</p>'}</div>
+    <div class="fm-acts">${rangees || sansActivite}</div>
     ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
 }
 
@@ -28547,7 +28674,11 @@ function resumeModifsEdition() {
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
   const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
   if (accompagnants(e) !== accompagnants(origine)) modifs.push(`Accompagnants ${accompagnants(origine)} → ${accompagnants(e)}`);
-  if (e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
+  // « Formule 4 → Formule 5 » : sa duree vient avec elle, elle ne se redit pas.
+  const formuleChangee = formuleChangeeEdition();
+  const nomFormule = (id) => { const f = resolveDisplayFormule(id); return f ? rvNomFormule(f) : String(id || ''); };
+  if (formuleChangee) modifs.push(`${nomFormule(origine.formuleId)} → ${nomFormule(e.formuleId)}`);
+  if (!formuleChangee && e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
   const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
@@ -28621,7 +28752,7 @@ function dossierHasUnsavedChanges() {
   const e = state.editState;
   const original = e && departsEdition().get(e)?.origine;
   if (!original) return true;
-  return editProgramAChange() || editExtrasAChange() || e.prixFige || ['name', 'phone', 'email', 'occasion', 'companions', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
+  return editProgramAChange() || editExtrasAChange() || e.prixFige || ['name', 'phone', 'email', 'occasion', 'companions', 'formuleId', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
     || JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput(e.laserScheduleInitialLanes ?? (original.lanes || []).join(',')));
 }
 
@@ -28693,13 +28824,16 @@ function renderPosEdit(r) {
   // piste, une formule sans bowling non plus. La fiche s'adapte au lieu de
   // parler bowling a tout le monde.
   const isLaserRes = String(r.type || '') === 'laser';
-  const editNeedsLanes = reservationNeedsLanes(r.type, r.formuleId);
+  // La formule choisie dans ce formulaire (changerFormuleEdition) decide des
+  // pistes et du contenu ; sans changement, c est celle du dossier.
+  const rf = dossierPourFormule(r);
+  const editNeedsLanes = reservationNeedsLanes(rf.type, rf.formuleId);
   // CE QUE LA FORMULE CONTIENT VRAIMENT (corrige 2026-08-20, Movsar : « quand
   // on va dans laser game pour modifier alors que c est une formule bah ça me
   // met tjr celle du bowling »). La description vient du catalogue, seule
   // source de verite : la fiche n'invente pas le contenu d'une formule, elle
   // le RECOPIE.
-  const editFormule = formuleAcheteeDuDossier(r);
+  const editFormule = formuleAcheteeDuDossier(rf);
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
   // L ONGLET « MODIFIER », RANGE COMME LA FICHE (2026-10-27, Movsar :
   // « ameliore encore plus beau [...] surtout ameliorer tout le frontend de
@@ -28740,7 +28874,7 @@ function renderPosEdit(r) {
                   onclick="toggleEditLane(${lane})">${lane}</button>`;
               }).join('')}
             </div>
-            <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
+            <p class="field-hint" id="editLanesHint">${editLaneAdvice(rf, e)}</p>
           </div>`;
   const durationControl = `<div class="fm-champ fm-duree">
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
@@ -28751,7 +28885,7 @@ function renderPosEdit(r) {
                 ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
               </select>
             </div>`;
-  const contenuBloc = renderEditFormuleBloc(r, editFormule, editFormuleLignes, {
+  const contenuBloc = renderEditFormuleBloc(rf, editFormule, editFormuleLignes, {
     bowlingDuration: editNeedsLanes ? durationControl.replace("setEditField('duration', this.value, true)", "setEditField('duration', this.value, true);setEditBowlingDuration(this.value)") : '',
     lanes: editNeedsLanes ? pistesBloc : ''
   });
@@ -28770,7 +28904,7 @@ function renderPosEdit(r) {
               <label class="lbl" for="editStartInput">Arrivée</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
             </div>
-${!adapte || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
+${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formule') ? durationControl : ''}
             <div class="fm-champ fm-joueurs">
               <label class="lbl" for="editPaxInput">Joueurs</label>
               <div class="es-stepper staff-stepper fm-stepper">
@@ -28903,8 +29037,12 @@ async function saveEdit(e) {
   // Sans version connue (etat restaure d un ancien onglet), on part de l ecran
   // le plus frais, comme avant : rien a controler, mais rien de perime envoye.
   const versionDeBase = [edition && edition.base, origine].find((dossier) => dossier && dossier.updatedAt) || state.selectedRes;
-  const requiresLanes = reservationNeedsLanes(state.selectedRes.type, state.selectedRes.formuleId);
-  const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(state.selectedRes, es).requiredCount : 0;
+  // UNE AUTRE FORMULE (changerFormuleEdition) : ses pistes, son contenu, son
+  // nom. Sans changement, le dossier tel qu il est.
+  const formuleChangee = formuleChangeeEdition();
+  const dossierFormule = dossierPourFormule(state.selectedRes);
+  const requiresLanes = reservationNeedsLanes(dossierFormule.type, dossierFormule.formuleId);
+  const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(dossierFormule, es).requiredCount : 0;
   const duration = Number(es.duration);
   const pax = Number(es.pax);
   // UN AUTRE JOUR : ses horaires d ouverture valent, ses pistes et son laser
@@ -28923,7 +29061,7 @@ async function saveEdit(e) {
   // reference honnete pour lui dire, apres coup, si on a du changer.
   const lanesVoulues = lanes.slice();
   if (requiresLanes && !jourChange) {
-    const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(state.selectedRes, es), duration, state.selectedRes.id, es.lanesStr);
+    const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
       failEdit('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.');
       return;
@@ -28932,7 +29070,7 @@ async function saveEdit(e) {
     state.editState.lanesStr = formatLaneInput(lanes);
   }
   if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
-  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(state.selectedRes, es), duration, lanes, state.selectedRes.id);
+  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
   if (conflicts.length) { failEdit('Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').'); return; }
   if (state.selectedRes.type === 'laser' && !jourChange) {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
@@ -28966,9 +29104,10 @@ async function saveEdit(e) {
     // value.items) : le contenu edite serait ecrit NULL et la modification
     // ne survivrait pas au premier rechargement.
     programme = { items };
-    const nomOrigine = (state.selectedRes.formuleId ? resolveDisplayFormule(state.selectedRes.formuleId)?.name : '') || state.selectedRes.label || '';
-    libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (state.selectedRes.label || 'Sur mesure');
+    const nomOrigine = (dossierFormule.formuleId ? resolveDisplayFormule(dossierFormule.formuleId)?.name : '') || dossierFormule.label || '';
+    libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (dossierFormule.label || 'Sur mesure');
   }
+  const nouvelleFormule = formuleChangee ? resolveDisplayFormule(es.formuleId) : null;
   // CE QU ON AFFICHE EST CE QU ON ENVOIE.
   // Sur un PATCH, le serveur ne recalcule PAS le prix : api/staff-reservations
   // ne passe pas par normalizeReservationRequest (reserve au POST), et le
@@ -28988,12 +29127,25 @@ async function saveEdit(e) {
     touches.forEach((champ) => { updated[champ] = champsSaisis[champ]; });
     if (pistesTouchees) updated.lanes = lanesFinales;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
+    // LA NOUVELLE FORMULE SE JOUE DEPUIS SA CARTE : sans programme (celui de
+    // l ancienne, adaptee ou non, ne la suit pas) et sans plan (ses ancres et
+    // la variante de l ancienne non plus). Le serveur la planifie a partir de
+    // l arrivee, comme une creation (formuleId est dans REPLAN_FIELDS).
+    if (nouvelleFormule) {
+      updated.type = 'formule';
+      updated.formuleId = nouvelleFormule.id;
+      updated.label = nouvelleFormule.name;
+      updated.duration = Number(es.duration) || getFormuleLaneDuration(nouvelleFormule);
+      updated.totalDuration = Number(es.totalDuration) || getFormuleTotalDuration(nouvelleFormule);
+      updated.program = null;
+      updated.opsPlan = null;
+    }
     // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
     // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
-    const changementOperationnel=Boolean(programme) || touches.some(champ=>['pax','duration','startTime','date'].includes(champ)) || pistesTouchees;
+    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || touches.some(champ=>['pax','duration','startTime','date'].includes(champ)) || pistesTouchees;
     // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, un telephone, une
     // occasion, des extras) : la reference reste celle du dossier, et le prix
     // ne bouge que de ses extras. La recalculer ici reecrivait celle d une

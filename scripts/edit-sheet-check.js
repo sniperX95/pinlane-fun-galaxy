@@ -269,11 +269,15 @@ srv.listen(PORT, '127.0.0.1', async () => {
     contenu: [...document.querySelectorAll('[data-edit-activity] h5')].map((n) => n.textContent.trim()),
     lanePicker: !!document.querySelector('.lane-picker'),
     labels: [...document.querySelectorAll('.edit-form .lbl, .dossier-formula-origin strong')].map((l) => l.textContent.trim()),
+    // Le nom se lit aussi dans le menu Formule (2026-10-27), qui remplace la
+    // ligne « Formule … » quand on peut changer de formule.
+    menu: document.querySelector('#editFormuleSelect')?.selectedOptions[0]?.textContent.trim() || '',
   }));
   ok(ficheF.contenu.length >= 3, 'le contenu REEL de la formule est liste (' + JSON.stringify(ficheF.contenu) + ')');
   ok(ficheF.contenu.some((l) => /laser/i.test(l)), 'le laser de cette formule est NOMME a l ecran');
   ok(!ficheF.lanePicker, 'formule sans bowling : aucun selecteur de pistes');
-  ok(ficheF.labels.includes(FORMULES.find(f => f.id === 'f2').name), 'la fiche annonce le nom réel de la formule (' + JSON.stringify(ficheF.labels) + ')');
+  const nomF2 = FORMULES.find(f => f.id === 'f2').name;
+  ok(ficheF.labels.includes(nomF2) || ficheF.menu.toLowerCase().startsWith(nomF2.toLowerCase()), 'la fiche annonce le nom réel de la formule (' + JSON.stringify({ labels: ficheF.labels, menu: ficheF.menu }) + ')');
   await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
   await pg.waitForTimeout(400);
 

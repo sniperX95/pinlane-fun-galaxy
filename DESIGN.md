@@ -407,9 +407,9 @@ Les trois plannings se lisent comme les feuilles de service des logiciels de loi
 - Un filet en tête de chaque demi-heure : ses groupes et ses personnes, et « complet » sous Bowling ou Laser quand la demi-heure est pleine. Rien d’autre en couleur.
 - L’argent au bon moment : la visite finie d’un groupe venu affiche « À encaisser » et son montant au bout de la ligne ; un groupe jamais pointé garde « À clôturer ».
 - Chercher ou filtrer grise, ne cache pas : au planning bowling, la piste d’un groupe qui ne correspond pas reste prise.
-- Laser : un bandeau de départ neutre (une barre d’accent de 3 px, pas de bloc bleu), des alertes qui passent à la ligne au lieu de défiler, les groupes d’un même départ qui se partagent la ligne (le détail cède avant le nom), rien sous 12 px.
+- Laser : un bandeau de départ neutre (une barre d’accent de 3 px, pas de bloc bleu) qui montre tous les groupes du prochain départ, « armes à préparer » sous l’heure ; sur un grand écran, les groupes pas venus sur toute la largeur, un par ligne, « Décaler à » au même endroit pour chacun (un écran court garde la bande sur une ligne) ; les groupes d’un même départ qui se partagent la ligne (le détail cède avant le nom) ; rien sous 12 px.
 
-Gate : `test:planning-global` (E3, E4, F6, G3).
+Gates : `test:planning-global` (E3, E4, F6, G3, G4), `test:cartes-bowling` (la carte passée), `test:planning-laser` (les pictos du prochain départ).
 
 ## Do's and Don'ts
 

@@ -241,7 +241,10 @@ async function main() {
     assert(doubleSubmit === 1, `2 saveQuickBook() concurrents → 1 seul POST (obtenu ${doubleSubmit})`);
 
     // ============ CHANTIER 1 : recherche planning en direct + effacement ============
-    console.log('\n[CHANTIER 1] Recherche planning : filtre à la frappe + effacement ré-affiche tout');
+    // (2026-10-27 : la recherche GRISE les autres groupes au lieu de les
+    // retirer ; une piste prise ne parait plus libre. On compte donc les
+    // cartes claires, et on verifie que rien n est retire.)
+    console.log('\n[CHANTIER 1] Recherche planning : grise à la frappe + effacement rend tout');
     const search = await page.evaluate(({ date }) => {
       state.view = 'staff';
       state.staffMenuPage = 'planning';
@@ -253,27 +256,30 @@ async function main() {
         { id: 602, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '18:00', duration: 1, lanes: [3], name: 'Bob Durand', phone: '+32470222222', email: 'bob@x.com' },
       ];
       renderStaffData();
-      const countBookings = () => document.querySelectorAll('#planningGridWrap .booking').length;
-      const initial = countBookings();
-      // 1) Frappe : filtre EN DIRECT le planning (pas seulement la liste).
+      const lire = () => {
+        const cartes = Array.from(document.querySelectorAll('#planningGridWrap .booking'));
+        return { total: cartes.length, claires: cartes.filter((c) => !c.classList.contains('is-grise')).map((c) => Number(c.dataset.bookingResId)) };
+      };
+      const initial = lire();
+      // 1) Frappe : grise EN DIRECT le planning (pas seulement la liste).
       applyStaffSearch('Alice', { immediate: true });
-      const afterType = countBookings();
+      const afterType = lire();
       const planningInputVal = document.getElementById('planningSearchInput').value;
       const listInputVal = document.getElementById('searchInput').value;
-      // 2) Effacement : le planning se re-remplit immédiatement (bug « vide »).
+      // 2) Effacement : tout redevient clair immédiatement (bug « vide »).
       applyStaffSearch('', { immediate: true });
-      const afterClear = countBookings();
+      const afterClear = lire();
       // 3) Recherche téléphone.
       applyStaffSearch('222222', { immediate: true });
-      const afterPhone = countBookings();
+      const afterPhone = lire();
       applyStaffSearch('', { immediate: true });
       return { initial, afterType, afterClear, afterPhone, planningInputVal, listInputVal };
     }, { date: TEST_DATE });
-    assert(search.initial === 2, `planning affiche les 2 réservations au départ (obtenu ${search.initial})`);
-    assert(search.afterType === 1, `taper « Alice » filtre le planning EN DIRECT → 1 booking (obtenu ${search.afterType})`);
+    assert(search.initial.total === 2 && search.initial.claires.length === 2, `planning affiche les 2 réservations au départ (obtenu ${JSON.stringify(search.initial)})`);
+    assert(search.afterType.total === 2 && search.afterType.claires.join() === '601', `taper « Alice » grise l autre groupe EN DIRECT, sans le retirer → 2 cartes, Alice seule claire (obtenu ${JSON.stringify(search.afterType)})`);
     assert(search.planningInputVal === 'Alice' && search.listInputVal === 'Alice', 'les champs de recherche jumeaux (planning + liste) restent synchronisés');
-    assert(search.afterClear === 2, `EFFACER la recherche ré-affiche TOUT le planning immédiatement (obtenu ${search.afterClear}, bug « vide » corrigé)`);
-    assert(search.afterPhone === 1, `recherche par téléphone « 222222 » filtre aussi le planning (obtenu ${search.afterPhone})`);
+    assert(search.afterClear.total === 2 && search.afterClear.claires.length === 2, `EFFACER la recherche rend TOUT le planning clair immédiatement (obtenu ${JSON.stringify(search.afterClear)}, bug « vide » corrigé)`);
+    assert(search.afterPhone.total === 2 && search.afterPhone.claires.join() === '602', `recherche par téléphone « 222222 » grise aussi le planning, Bob seul clair (obtenu ${JSON.stringify(search.afterPhone)})`);
 
     // ============ CHANTIER 2 : synchro live différentielle sobre ============
     console.log('\n[CHANTIER 2] Poll différentiel : une résa serveur apparaît sans action + tick 304 minuscule');

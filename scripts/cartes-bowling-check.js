@@ -7,7 +7,9 @@
 // ajuste, 34 joueurs sur 1h30, 30 minutes, 2 heures, les trois etats),
 // photographiee en fenetre et en plein ecran de 1920 a 390 px :
 //   [A] la carte prend la couleur de son etat, encre comprise, et ses textes
-//       font 4,5:1 sur son fond, dans les deux themes ;
+//       font 4,5:1 sur son fond, dans les deux themes ; une carte passee
+//       passe au gris, une seule barre grise hors des trois etats
+//       (2026-10-27) ;
 //   [B] le badge laser du pied : l heure du planning Laser, « +1 », « à
 //       placer » ; complet, ou son pictogramme, ou absent selon la place
 //       libre du pied : s il est la il tient en entier, s il manque c est qu il
@@ -282,15 +284,20 @@ async function scenarios(browser, mutation = null) {
             .map(([nom, e]) => ({ nom, encre: getComputedStyle(e).color, ratio: ratio(getComputedStyle(e).color, getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)' ? getComputedStyle(e).backgroundColor : fond) }));
           const badge = c.querySelector('.bk-laser:not(.is-compact)');
           if (badge && getComputedStyle(badge).display !== 'none') paires.push({ nom: 'badge', encre: getComputedStyle(badge).color, ratio: ratio(getComputedStyle(badge).color, getComputedStyle(badge).backgroundColor) });
-          return { id: Number(c.dataset.bookingResId), etat: (c.className.match(/\b(conf|arr|paid)\b/) || [])[1], fond, fondLisible: lisible(fond), barre: getComputedStyle(c).borderLeftColor, paires };
+          return { id: Number(c.dataset.bookingResId), etat: (c.className.match(/\b(conf|arr|paid)\b/) || [])[1], passee: c.classList.contains('is-passee'), fond, fondLisible: lisible(fond), barre: getComputedStyle(c).borderLeftColor, paires };
         });
       });
       const sous = m.flatMap(c => c.paires.filter(p => !(p.ratio >= 4.5)).map(p => `${c.id} ${p.nom} ${p.ratio}`));
       ok(m.length > 0 && m.every(c => c.fondLisible && c.paires.length >= 2), `[A] ${theme} : chaque carte a un fond plein mesurable (rgb) et ses textes mesures`, m.filter(c => !c.fondLisible).map(c => `${c.id} ${c.fond}`).join(' | '));
       ok(sous.length === 0, `[A] ${theme} : chaque texte de carte fait 4,5:1 sur son fond (nom, effectif, duree, offre, badge)`, sous.slice(0, 4).join(' | ') || `${m.reduce((s, c) => s + c.paires.length, 0)} paires`);
-      const barres = Object.fromEntries(['conf', 'arr', 'paid'].map(e => [e, [...new Set(m.filter(c => c.etat === e).map(c => c.barre))]]));
+      // (une carte passee passe au gris, 2026-10-27 : elle sort du compte des
+      // etats et porte sa propre barre, la meme pour toutes)
+      const barres = Object.fromEntries(['conf', 'arr', 'paid'].map(e => [e, [...new Set(m.filter(c => c.etat === e && !c.passee).map(c => c.barre))]]));
       ok(barres.conf.length === 1 && barres.arr.length === 1 && barres.paid.length === 1 && new Set([barres.conf[0], barres.arr[0], barres.paid[0]]).size === 3,
         `[A] ${theme} : une barre par etat, confirme / arrive / paye distincts`, JSON.stringify(barres));
+      const passees = [...new Set(m.filter(c => c.passee).map(c => c.barre))];
+      ok(passees.length === 1 && ![barres.conf[0], barres.arr[0], barres.paid[0]].includes(passees[0]),
+        `[A] ${theme} : une carte passee porte la barre grise, une seule, hors des trois etats`, JSON.stringify({ passees, cartes: m.filter(c => c.passee).length }));
     } finally { await ctx.close(); }
   }
 
@@ -362,8 +369,13 @@ const MUTATIONS = [
   // Le fond plein redevient un melange : les gates de contraste ne le lisent
   // plus (color(srgb ...)).
   { nom: 'mesurable', lettre: 'fond plein mesurable', fichier: 'assets/pinlane-staff.css',
-    de: '  background-color: var(--bk-haut);\n  background-image: linear-gradient(180deg, var(--bk-haut), var(--bk-bas));',
-    vers: '  background-color: color-mix(in srgb, var(--bk-haut) 99%, white);\n  background-image: linear-gradient(180deg, var(--bk-haut), var(--bk-bas));' },
+    de: '  background-color: var(--bk-haut);\n  background-image: none;',
+    vers: '  background-color: color-mix(in srgb, var(--bk-haut) 99%, white);\n  background-image: none;' },
+  // Une carte passee garde la barre de son etat : le passe ne se distingue
+  // plus du present.
+  { nom: 'passee-coloree', lettre: 'une carte passee porte la barre grise', fichier: 'assets/pinlane-staff.css',
+    de: '.booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(--line-strong);',
+    vers: '.booking.is-passee { --bk-haut: var(--subtle);' },
 ];
 
 async function main() {

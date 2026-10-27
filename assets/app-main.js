@@ -24175,8 +24175,10 @@ function lpAjusterJournee(wrap) {
   poserVariableSiChange(lp, '--lp-hour-font', rowHeight >= 26 ? '16px' : '14px');
   poserVariableSiChange(lp, '--lp-hour-column', rowHeight >= 26 ? '60px' : '44px');
   poserVariableSiChange(lp, '--lp-count-font', rowHeight >= 26 ? '14px' : '12px');
-  poserVariableSiChange(lp, '--lp-unit-font', rowHeight >= 26 && columns < 3 ? '12px' : '10px');
-  poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 && columns < 3 ? '92px' : '70px');
+  // (« places » et « complet » ne passent jamais sous 12 px, DESIGN.md : sur
+  // un ecran court, la colonne du compte s elargit au lieu de les reduire)
+  poserVariableSiChange(lp, '--lp-unit-font', '12px');
+  poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 ? '92px' : '84px');
   poserVariableSiChange(lp, '--lp-column-rows', String(columnRows));
   poserVariableSiChange(lp, '--lp-columns', String(columns));
   const heading = journee.querySelector('.lp-journee__h .lp-lbl');

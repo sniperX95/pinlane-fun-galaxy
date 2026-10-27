@@ -21101,7 +21101,7 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 .lp-bande > .lp-jeu { flex: 1 1 100%; min-width: 0; }
 .lp-alertes { flex: 1 1 auto; min-width: 0; }
 .lp-jeu { display: flex; align-items: center; gap: 10px; min-height: 48px; background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 12px; padding: 6px 12px; flex-wrap: wrap; }
-.lp-jeu .lp-lbl { font-size: 11.5px; color: var(--lp-bleu-texte); }
+.lp-jeu .lp-lbl { font-size: 12px; color: var(--lp-bleu-texte); }
 .lp-jeu b { font-size: 18px; font-weight: 700; }
 .lp-prog { flex: 1; min-width: 60px; height: 8px; border-radius: 4px; background: var(--lp-vide); overflow: hidden; }
 .lp-prog i { display: block; height: 100%; background: var(--lp-bleu); border-radius: 4px; }
@@ -21293,7 +21293,10 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-jeu > :not(.lp-prog) { flex-shrink: 0; white-space: nowrap; }
   .lp-compact .lp-jeu .lp-prog { min-width: 20px; }
   .lp-compact .lp-alertes { max-width: 58%; display: flex; overflow-x: auto; scrollbar-width: thin; }
-  .lp-compact .lp-alertes .lp-alerte { flex: none; min-height: 44px; overflow: visible; }
+  /* (ici chaque alerte reste sur une ligne : elle defile avec ses voisines,
+     et deux lignes doublaient la bande, deux departs sortaient de l ecran a
+     1366 x 768 pendant un placement, laser-fit-day) */
+  .lp-compact .lp-alertes .lp-alerte { flex: none; flex-wrap: nowrap; min-height: 44px; overflow: visible; }
 }
 @media (min-width: 1101px) {
   #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head { margin-bottom: 8px; }
@@ -21336,6 +21339,29 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-qui > .lp-g b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .lp-compact .lp-qui > .lp-g .lp-card-info { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .lp-compact .lp-qui > .lp-g :is(.lp-pictos, .lp-card-status) { flex: none; }
+}
+/* (2026-10-27) LES RETARDS SUR TOUTE LA LARGEUR, un par ligne, sous le
+   prochain depart et la partie en jeu. Empiles sous « En jeu », ils
+   laissaient un trou sous le prochain depart ; sur une ligne, « Décaler à »
+   tombe a la meme place pour chacun. Un ecran court garde la bande sur une
+   ligne (le bloc max-height plus haut) : la journee y compte chaque pixel. */
+@media (min-width: 1101px) and (min-height: 821px) {
+  .lp-compact .lp-synthese { align-items: stretch; }
+  .lp-compact .lp-synthese:has(.lp-alertes) { grid-template-areas: 'prochain jeu' 'alertes alertes'; row-gap: 8px; }
+  .lp-compact .lp-synthese > .lp-prochain { grid-area: prochain; }
+  .lp-compact .lp-bande { display: contents; }
+  .lp-compact .lp-bande > .lp-jeu { grid-area: jeu; }
+  .lp-compact .lp-alertes { grid-area: alertes; gap: 6px; }
+  .lp-compact .lp-alerte { flex-wrap: nowrap; min-height: 44px; padding: 3px 6px 3px 14px; border-radius: 10px; }
+  .lp-compact .lp-alerte__t { flex: 1 1 auto; min-width: 0; }
+  /* Le prochain depart montre TOUS ses groupes : « armes à préparer » passe
+     sous l heure, les groupes se partagent la place (le nom s abrege, la bulle
+     le donne entier). Un second groupe defilait hors de la vue a 1 440 px,
+     avec son « Ils sont là ». Au-dela de deux, la rangee defile. */
+  .lp-compact .lp-prochain:has(.lp-groupes) { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'quand groupes' 'armes groupes'; row-gap: 2px; }
+  .lp-compact .lp-prochain:has(.lp-groupes) .lp-prochain__g { justify-self: start; align-self: start; padding-right: 0; }
+  .lp-compact .lp-synthese .lp-groupes { align-self: center; }
+  .lp-compact .lp-synthese .lp-groupe { flex: 0 1 auto; min-width: min(220px, 100%); }
 }
 
 @media (max-width: 1100px) {

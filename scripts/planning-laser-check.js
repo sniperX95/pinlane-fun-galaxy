@@ -34,7 +34,9 @@
 //       vraiment, comme le serveur, et 16:30 reste libre ;
 //   [P] les pictos des cartes bowling (note, anniversaire, prix ajuste)
 //       suivent le nom du groupe dans sa rangee, sur la carte du prochain
-//       depart (en blanc) et dans la file, sans marqueur laser ni texte ;
+//       depart (dans leurs couleurs : la carte est neutre depuis le
+//       2026-10-27, plus un bloc bleu) et dans la file, sans marqueur laser
+//       ni texte ;
 //       au telephone, la rangee ne garde que le premier (la note) ;
 //   [K] contre-preuves : chaque regle cassee expres fait rougir sa lettre.
 'use strict';
@@ -691,8 +693,11 @@ async function scenarios(browser, mutation = null) {
           `[P] ${appareil} ${theme} : la rangee de son depart porte la note, l anniversaire et le prix, apres le nom`, JSON.stringify(r));
       }
       const p = m.prochain;
-      ok(trois(p) && colle(p, 8) && lisible(p) && p.couleurs.every((c) => c === '255,255,255'),
-        `[P] ${appareil} ${theme} : la carte du prochain depart les porte en blanc, sur la ligne du nom`, JSON.stringify(p));
+      // (2026-10-27 : la carte du prochain depart n est plus un bloc bleu ; sur
+      // sa surface neutre, les pictos gardent leurs couleurs, la note et le
+      // prix d un ton, l anniversaire d un autre, comme sur la rangee)
+      ok(trois(p) && colle(p, 8) && lisible(p) && p.couleurs[0] !== p.couleurs[1] && p.couleurs[0] === p.couleurs[2] && p.couleurs.every((c) => c !== '255,255,255'),
+        `[P] ${appareil} ${theme} : la carte du prochain depart les porte dans leurs couleurs, lisibles, sur la ligne du nom`, JSON.stringify(p));
       const f = m.file;
       ok(f && JSON.stringify(f.marques) === '["note"]' && colle(f, 8) && lisible(f) && f.detailSous === true,
         `[P] ${appareil} ${theme} : la file « À placer » porte la note de Chloé, son detail reste dessous`, JSON.stringify(f));
@@ -765,10 +770,11 @@ const MUTATIONS = [
   { nom: 'laser', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
     de: 'renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(',
     vers: 'renderCardFlags(r) + renderReservationPriceMark(' },
-  // Les pictos gardent l ambre et le bleu sur la carte bleue du prochain depart.
+  // Les pictos repassent en blanc, comme sur l ancienne carte bleue : sur la
+  // surface neutre, ils disparaissent en theme clair.
   { nom: 'blanc', lettre: '[P] tablette light : la carte du prochain depart', fichier: 'assets/pinlane-staff.css',
-    de: '.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }',
-    vers: '' },
+    de: '.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }',
+    vers: '.lp-prochain__g small { font-size: 12px; color: var(--lp-muted); }\n.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }' },
   // Le nom et ses pictos ne partagent plus une boite : au telephone, la carte
   // du prochain depart empile le nom, puis les pictos, puis le detail.
   { nom: 'ligne', lettre: '[P] telephone dark : la carte du prochain depart', fichier: 'assets/app-main.js',

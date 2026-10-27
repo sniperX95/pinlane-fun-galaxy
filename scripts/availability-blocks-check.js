@@ -49,15 +49,17 @@ function ok(cond, label) {
 // les dates figees de la premiere version etaient AUJOURD HUI le jour de la
 // mesure, et planLaser refuse un creneau du jour deja passe : le gate etait
 // vert a l aube et rouge l apres-midi, par pure horloge). On saute les
-// vacances scolaires wallonnes, leur grille changerait les verdicts.
-const { WALLONIA_SCHOOL_HOLIDAYS } = require('../lib/booking-config');
+// vacances scolaires wallonnes et les feries (la table du code), pour le mardi
+// ET le mercredi qui le suit : leur grille changerait les verdicts (du 04/11
+// au 10/11/2026, le mercredi choisi etait le 11/11, ferie).
+const { isHolidayScheduleDate } = require('../lib/booking-config');
 function prochainJour(weekday) {
   const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date()).split('-').map(Number);
   const cursor = new Date(Date.UTC(y, m - 1, d));
-  const enConge = (iso) => WALLONIA_SCHOOL_HOLIDAYS.some((range) => iso >= range.start && iso <= range.end);
+  const special = (iso) => isHolidayScheduleDate(iso) || isHolidayScheduleDate(plusJours(iso, 1));
   do { cursor.setUTCDate(cursor.getUTCDate() + 1); }
-  while (cursor.getUTCDay() !== weekday || enConge(cursor.toISOString().slice(0, 10)));
+  while (cursor.getUTCDay() !== weekday || special(cursor.toISOString().slice(0, 10)));
   return cursor.toISOString().slice(0, 10);
 }
 function plusJours(iso, n) {

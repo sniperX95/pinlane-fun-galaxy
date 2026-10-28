@@ -21310,10 +21310,21 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-g i { display: none; }
   .lp-compact .lp-g b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lp-text); font-weight: 600; }
   .lp-compact .lp-g .lp-pictos { flex: none; }
-  /* Un depart a plusieurs groupes : chaque carte ne garde que la consigne (la
-     note), comme au telephone ; le nom prend la place des autres pictos, que
-     la carte du prochain depart, la file et la fiche gardent. */
-  .lp-compact .lp-qui:has(> .lp-g + .lp-g) .lp-pictos .bk-flags .bk-flag:nth-child(n+2), .lp-compact .lp-qui:has(> .lp-g + .lp-g) .lp-pictos .bk-flags ~ .flag-prix { display: none; }
+  /* Un depart a plusieurs groupes : LE NOM D ABORD (2026-10-28, Movsar :
+     « règle les noms coupés des départs à trois groupes »). La note y devient
+     un coin replie en haut a droite, la marque d une note dans un tableur,
+     sans prendre de largeur au nom ; les autres pictos se taisent a l ecran
+     (un lecteur d ecran les lit toujours ; la carte du prochain depart, la
+     file et la fiche les montrent). Les cartes se serrent, et un nom qui ne
+     tient pas sur sa ligne passe sur la seconde, a la place du detail
+     (lpNomsLongs, qui ne le fait que si la rangee a deux lignes). */
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) { gap: 4px; }
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g { position: relative; padding-left: 9px; padding-right: 6px; }
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g .lp-pictos { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g:has(.flag-note)::after { content: ''; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 9px 9px 0; border-color: transparent var(--warning) transparent transparent; border-top-right-radius: 3px; }
+  .lp-compact .lp-g.is-nom-long .lp-g__sous { display: none; }
+  .lp-compact .lp-g.is-nom-long .lp-g__nom { height: auto; max-height: 32px; }
+  .lp-compact .lp-g.is-nom-long b { white-space: normal; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 16px; }
   .lp-compact .lp-card-info { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lp-muted); font-size: 13px; }
   .lp-compact .lp-card-status { flex: none; margin-left: auto; color: var(--lp-c); font-size: 13px; font-weight: 600; }
   .lp-compact.lp-cards-tight .lp-g { height: calc(100% - 2px); padding: 0 8px 0 10px; }

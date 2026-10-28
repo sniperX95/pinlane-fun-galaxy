@@ -38,6 +38,11 @@
 //       2026-10-27, plus un bloc bleu) et dans la file, sans marqueur laser
 //       ni texte ;
 //       au telephone, la rangee ne garde que le premier (la note) ;
+//   [Q] le nom d abord (Movsar, 2026-10-28) : dans un depart a trois
+//       groupes, sur ordinateur, chaque nom se lit (en entier sur grand
+//       ecran, sur deux lignes a la place du detail s il le faut), la note
+//       devient un coin replie, les autres pictos se taisent ; un depart a
+//       un seul groupe garde son detail ;
 //   [K] contre-preuves : chaque regle cassee expres fait rougir sa lettre.
 'use strict';
 const fs = require('fs');
@@ -171,9 +176,14 @@ async function installerServeur(page, dossiers) {
 }
 
 async function ouvrir(browser, { appareil = 'tablette', theme = 'dark', dossiers = journee(), mutation = null, apres = null } = {}) {
-  const ctx = await browser.newContext(appareil === 'telephone'
-    ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true }
-    : { viewport: { width: 800, height: 1280 }, deviceScaleFactor: 1, hasTouch: true });
+  const ecrans = {
+    telephone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true },
+    tablette: { viewport: { width: 800, height: 1280 }, deviceScaleFactor: 1, hasTouch: true },
+    // (la journee sur ordinateur, deux colonnes : [Q])
+    grand: { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 },
+    ordinateur: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+  };
+  const ctx = await browser.newContext(ecrans[appareil] || ecrans.tablette);
   const page = await ctx.newPage();
   page.setDefaultTimeout(8000);
   const erreurs = [];
@@ -714,6 +724,99 @@ async function scenarios(browser, mutation = null) {
       ok(erreurs.length === 0, `[P] ${appareil} ${theme} : zero erreur JS ni console`, erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }
   }
+
+  // ── [Q] le nom d abord dans un depart a plusieurs groupes ──
+  // Movsar, 2026-10-28 : « règle les noms coupés des départs à trois
+  // groupes ». A 19:00, trois groupes aux noms longs, comme un samedi d
+  // anniversaires (avant : « Annivers… » sur les trois cartes, la note et le
+  // detail prenaient la place). Le mot qui distingue chaque groupe se lit ;
+  // sur grand ecran, le nom entier. Un depart a un seul groupe (Kevin, 19:30)
+  // garde son detail. A 1440 x 900 la file « À placer » rend les rangees
+  // trop basses pour deux lignes : le nom y gagne la largeur des pictos,
+  // et la vue agrandie lui rend sa seconde ligne.
+  for (const [appareil, vue] of [['grand', 'grand'], ['ordinateur', 'ordinateur agrandi']]) {
+    const d = journee().filter(x => x.name !== 'Scouts Bastogne');
+    const nathan = dossier19(d, 'Anniversaire Nathan (13 ans)', 8);
+    nathan.notes = 'Gâteau à 19:45';
+    dossier19(d, 'Anniversaire Maxime (30 ans)', 12);
+    dossier19(d, 'Collègues de bureau', 8);
+    const apres = vue === 'grand' ? null : (page) => page.evaluate(() => toggleLaserPlanningExpanded());
+    const { ctx, page, erreurs } = await ouvrir(browser, { appareil, theme: 'light', dossiers: d, mutation, apres });
+    try {
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(150);
+      const m = await page.evaluate(() => {
+        const MOTS = { 'Anniversaire Nathan (13 ans)': 'Nathan', 'Anniversaire Maxime (30 ans)': 'Maxime', 'Collègues de bureau': 'bureau' };
+        // Un bout de texte se lit s il est peint dans la boite du nom : ni
+        // passe l ellipse a droite, ni sur une ligne coupee par le bas. (Au
+        // milieu de la hauteur : les glyphes debordent la ligne de 16 px.)
+        const dans = (boite) => (x) => x.width > 0 && x.left >= boite.left - 0.5 && x.right <= boite.right + 0.5 && (x.top + x.bottom) / 2 >= boite.top && (x.top + x.bottom) / 2 <= boite.bottom;
+        const largeurSeule = (b, texte) => {
+          const s = document.createElement('span');
+          const c = getComputedStyle(b);
+          ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'fontFeatureSettings'].forEach((p) => { s.style[p] = c[p]; });
+          s.style.position = 'absolute'; s.style.visibility = 'hidden'; s.style.whiteSpace = 'pre';
+          s.textContent = texte;
+          document.body.appendChild(s);
+          const w = s.getBoundingClientRect().width;
+          s.remove();
+          return w;
+        };
+        const carte = (g) => {
+          const b = g.querySelector('.lp-g__nom b');
+          const boite = b.getBoundingClientRect();
+          const noeud = b.firstChild;
+          const lu = (debut, fin) => {
+            const r = document.createRange();
+            r.setStart(noeud, debut); r.setEnd(noeud, fin);
+            const rects = [...r.getClientRects()].filter((x) => x.width > 0);
+            // tous ses morceaux peints dans la boite, et toute sa largeur (une
+            // ellipse peut ne rendre que le debut d un mot)
+            return rects.length > 0 && rects.every(dans(boite)) && rects.reduce((s, x) => s + x.width, 0) >= largeurSeule(b, noeud.textContent.slice(debut, fin).replace(/ /g, '')) - 1;
+          };
+          const mot = MOTS[b.textContent] || '';
+          const i = noeud && mot ? noeud.textContent.indexOf(mot) : -1;
+          const pictos = g.querySelector('.lp-pictos');
+          const p = pictos ? pictos.getBoundingClientRect() : null;
+          const coin = getComputedStyle(g, '::after');
+          return {
+            nom: b.textContent,
+            entier: Boolean(noeud) && b.scrollWidth <= b.clientWidth && noeud.textContent.split(' ').every((w, k, mots) => { const debut = mots.slice(0, k).join(' ').length + (k ? 1 : 0); return lu(debut, debut + w.length); }),
+            motLu: i >= 0 && lu(i, i + mot.length),
+            lignes: Math.round(boite.height / 16),
+            detail: getComputedStyle(g.querySelector('.lp-g__sous')).display !== 'none',
+            pictosVus: p ? p.width > 1 || p.height > 1 : false,
+            coin: coin.content !== 'none' && coin.borderRightColor !== 'rgba(0, 0, 0, 0)' && parseFloat(coin.borderRightWidth) >= 8,
+          };
+        };
+        const rangee = (t) => [...document.querySelectorAll(`#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"] .lp-qui > .lp-g`)].map(carte);
+        return { a19: rangee(19), a1930: rangee(19.5), deuxColonnes: document.querySelector('#laserPlanningGridWrap .lp-journee.is-two-columns') !== null, serree: document.querySelector('#laserPlanningGridWrap .lp-cards-tight') !== null };
+      });
+      const j = JSON.stringify(m.a19);
+      ok(m.deuxColonnes && !m.serree && m.a19.length === 3, `[Q] ${vue} : le depart de 19:00 porte ses trois groupes, deux colonnes, rangees de deux lignes`, j);
+      ok(m.a19.length === 3 && m.a19.every(c => c.motLu), `[Q] ${vue} : chaque groupe de 19:00 se reconnait (Nathan, Maxime, bureau se lisent)`, j);
+      if (vue === 'grand') ok(m.a19.length === 3 && m.a19.every(c => c.entier), '[Q] grand : les trois noms du depart de 19:00 se lisent en entier', j);
+      // Un nom sur deux lignes l est a la place du detail, jamais en plus.
+      ok(m.a19.length === 3 && m.a19.every(c => c.lignes <= 2 && (c.lignes === 1 || !c.detail)), `[Q] ${vue} : un nom sur deux lignes prend la place du detail`, j);
+      ok(m.a19.length === 3 && m.a19.filter(c => c.coin).map(c => c.nom).join() === 'Anniversaire Nathan (13 ans)', `[Q] ${vue} : la note devient un coin, seulement sur la carte qui en a une`, j);
+      ok(m.a19.length === 3 && m.a19.every(c => !c.pictosVus), `[Q] ${vue} : les pictos se taisent dans un depart a plusieurs groupes`, j);
+      ok(m.a1930.length === 1 && m.a1930[0].detail && m.a1930[0].lignes === 1 && !m.a1930[0].coin, `[Q] ${vue} : un depart a un seul groupe garde son detail`, JSON.stringify(m.a1930));
+      ok(erreurs.length === 0, `[Q] ${vue} : zero erreur JS ni console`, erreurs.slice(0, 3).join(' | '));
+    } finally { await ctx.close(); }
+  }
+}
+
+// Un dossier d une partie au depart de 19:00, au bout de la journee [Q].
+function dossier19(dossiers, nom, pax) {
+  const modele = dossiers.find(x => x.name === 'Kevin');
+  const id = 9200 + dossiers.length;
+  const bloc = { ...modele.opsPlan.resourceBlocks[0], start: 19 * 60, end: 19 * 60 + 25, startTime: '19:00', endTime: '19:25', players: pax, groupPlayers: pax };
+  const d = {
+    ...JSON.parse(JSON.stringify(modele)), id, name: nom, pax, phone: `+32470${String(id).padStart(6, '0')}`, startTime: '19:00', price: 10 * pax, basePrice: 10 * pax,
+    opsPlan: { resourceBlocks: [bloc], laserManual: true, laserPassPlan: { mode: 'manual_after_first', totalGames: 1, scheduledPasses: [{ countIndex: 1, status: 'scheduled', pax, startTime: '19:00' }], pendingPasses: [] } },
+  };
+  dossiers.push(d);
+  return d;
 }
 
 // ── [K] LES CONTRE-PREUVES ─────────────────────────────────────────────────
@@ -792,6 +895,22 @@ const MUTATIONS = [
   // Au telephone, la rangee garde ses trois pictos : le nom tombe a « An… ».
   { nom: 'cedent', lettre: '[P] telephone dark : la rangee de son depart', fichier: 'assets/pinlane-staff.css',
     de: '  .lp-qui .lp-pictos .bk-flags .bk-flag:nth-child(n+2), .lp-qui .lp-pictos .bk-flags ~ .flag-prix { display: none; }',
+    vers: '' },
+  // Le nom ne passe plus sur sa seconde ligne : « Annivers… » revient.
+  { nom: 'deux-lignes', lettre: '[Q] grand : les trois noms du depart de 19:00 se lisent en entier', fichier: 'assets/pinlane-staff.css',
+    de: '  .lp-compact .lp-g.is-nom-long b { white-space: normal; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 16px; }',
+    vers: '' },
+  // Les noms ne se mesurent plus : aucune carte ne passe sur deux lignes.
+  { nom: 'mesure', lettre: '[Q] grand : les trois noms du depart de 19:00 se lisent en entier', fichier: 'assets/app-main.js',
+    de: '  if (!deuxLignes) return;',
+    vers: '  return;' },
+  // La note ne fait plus son coin : elle disparait de la carte.
+  { nom: 'coin', lettre: '[Q] grand : la note devient un coin', fichier: 'assets/pinlane-staff.css',
+    de: "  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g:has(.flag-note)::after { content: ''; ",
+    vers: '  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g:has(.flag-note)::after { content: none; ' },
+  // Les pictos reprennent leur largeur sur la ligne du nom.
+  { nom: 'taisent', lettre: '[Q] grand : les pictos se taisent', fichier: 'assets/pinlane-staff.css',
+    de: '  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g .lp-pictos { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
     vers: '' },
 ];
 

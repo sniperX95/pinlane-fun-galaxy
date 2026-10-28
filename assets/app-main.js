@@ -24209,6 +24209,40 @@ function lpAjusterJournee(wrap) {
   poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 ? '116px' : '108px');
   poserVariableSiChange(lp, '--lp-column-rows', String(columnRows));
   poserVariableSiChange(lp, '--lp-columns', String(columns));
+  lpNomsLongs(journee, rowHeight >= 38);
+}
+
+// LE NOM D ABORD (2026-10-28, Movsar : « règle les noms coupés des départs à
+// trois groupes »). Dans un depart a plusieurs groupes, une carte dont le nom
+// ne tient pas sur sa ligne le continue sur la seconde, a la place du detail
+// (il reste dans l infobulle et la fiche), quand la rangee a la hauteur de
+// deux lignes. Le nom se mesure a son noeud de texte : scrollWidth est
+// arrondi, une ellipse de moins d un pixel lui echappe.
+function lpNomsLongs(journee, deuxLignes) {
+  journee.querySelectorAll('.lp-g.is-nom-long').forEach(g => g.classList.remove('is-nom-long'));
+  if (!deuxLignes) return;
+  const texte = document.createRange();
+  const longs = [];
+  journee.querySelectorAll('.lp-qui').forEach(qui => {
+    const groupes = qui.querySelectorAll(':scope > .lp-g:not(.is-enligne)');
+    if (groupes.length < 2) return;
+    groupes.forEach(g => {
+      const nom = g.querySelector('.lp-g__nom b');
+      if (!nom) return;
+      texte.selectNodeContents(nom);
+      if (nom.scrollWidth > nom.clientWidth || texte.getBoundingClientRect().width > nom.getBoundingClientRect().width + 0.5) longs.push(g);
+    });
+  });
+  longs.forEach(g => g.classList.add('is-nom-long'));
+}
+
+// Geist arrive apres la premiere peinture (font-display: swap) : les noms se
+// remesurent dans la vraie police.
+if (document.fonts && typeof document.fonts.addEventListener === 'function') {
+  document.fonts.addEventListener('loadingdone', () => {
+    const wrap = document.getElementById('laserPlanningGridWrap');
+    if (wrap && !lpEtat.glisse) lpAjusterJournee(wrap);
+  });
 }
 
 let lpResizeFrame = 0;

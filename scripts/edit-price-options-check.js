@@ -214,13 +214,14 @@ async function mesurer(b) {
     });
     await pg.waitForSelector('.edit-form', { timeout: 15000 }).catch(() => {});
     await pg.waitForTimeout(400);
-    // Ouvrir "Adapter pour ce dossier" SANS RIEN COCHER NI TAPER.
-    const clique = await pg.evaluate(() => {
-      const btn = [...document.querySelectorAll('.edit-adapter-btn')].find((x) => /Adapter pour ce dossier/i.test(x.textContent));
-      if (btn) { btn.click(); return true; }
-      return false;
-    });
-    await pg.waitForTimeout(300);
+    // Ouvrir la composition SANS RIEN COCHER NI TAPER. Depuis la fiche refaite
+    // du 2026-10-10 (83a6629), Modifier la montre d emblee, sans le bouton
+    // « Adapter pour ce dossier » : ouvrir l onglet, c est ouvrir le panneau.
+    // Le montage verifie qu il est la (le formulaire et le detail du prix).
+    const panneau = await pg.evaluate(() => ({
+      form: Boolean(document.querySelector('#posOverlay .edit-form')),
+      lignes: document.querySelectorAll('#posOverlay .edit-prix-detail li').length,
+    }));
     const apres = await pg.evaluate(() => ({
       champ: document.getElementById('editPriceInput') ? document.getElementById('editPriceInput').value : null,
       ligne: document.getElementById('editPrixEstime') ? document.getElementById('editPrixEstime').textContent : null,
@@ -235,7 +236,7 @@ async function mesurer(b) {
       const patches = window.__QA_PATCH__ || [];
       return patches.length ? patches[patches.length - 1] : null;
     });
-    resultats[id] = { clique, apres, envoye };
+    resultats[id] = { panneau, apres, envoye };
     await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
     await pg.waitForTimeout(300);
   }
@@ -246,7 +247,7 @@ async function mesurer(b) {
 function juger(m) {
   const v = [];
   const r1 = m.resultats[9001] || {};
-  v.push({ ok: Boolean(r1.clique), label: '[9001] bouton "Adapter pour ce dossier" trouve et clique' });
+  v.push({ ok: Boolean(r1.panneau && r1.panneau.form && r1.panneau.lignes > 0), label: `[9001] MONTAGE : Modifier ouvre la composition du dossier (formulaire et detail du prix : ${JSON.stringify(r1.panneau)})` });
   v.push({ ok: r1.apres && String(r1.apres.champ) === '120', label: `[A] billards : le champ de prix apres simple ouverture affiche le prix reel du dossier (affiche ${r1.apres && r1.apres.champ}, attendu 120)` });
   v.push({ ok: Boolean(r1.envoye) && Number(r1.envoye.price) === 120, label: `[B] billards : prix ENVOYE au serveur apres un simple enregistrement = 120 (envoye ${r1.envoye ? r1.envoye.price : 'aucun PATCH'})` });
   const lignes = r1.envoye && r1.envoye.program && r1.envoye.program.items ? r1.envoye.program.items : null;
@@ -254,7 +255,7 @@ function juger(m) {
   v.push({ ok: !lignes || (lignes.length === 1 && Number(lignes[0].units) === 3 && Number(lignes[0].hours) === 2), label: `[B] billards : le programme envoye, s il part, porte toujours 3 tables x 2 h (${JSON.stringify(lignes)})` });
 
   const r2 = m.resultats[9002] || {};
-  v.push({ ok: Boolean(r2.clique), label: '[9002] bouton "Adapter pour ce dossier" trouve et clique' });
+  v.push({ ok: Boolean(r2.panneau && r2.panneau.form && r2.panneau.lignes > 0), label: `[9002] MONTAGE : Modifier ouvre la composition du dossier (formulaire et detail du prix : ${JSON.stringify(r2.panneau)})` });
   v.push({ ok: r2.apres && String(r2.apres.champ) === '376', label: `[A] offre d attente : le champ garde les 376 EUR du dossier a la simple ouverture (affiche ${r2.apres && r2.apres.champ})` });
   v.push({ ok: Boolean(r2.envoye) && Number(r2.envoye.price) === 376, label: `[B] offre d attente : un simple enregistrement renvoie 376 EUR (envoye ${r2.envoye ? r2.envoye.price : 'aucun PATCH'})` });
   const detail = (r2.apres && r2.apres.detail) || [];

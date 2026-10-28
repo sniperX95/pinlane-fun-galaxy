@@ -83,10 +83,11 @@ const checks = `
   await pg.evaluate(()=>{closeQuickBook();openStaffReservationDetail(9900);});
   await pg.evaluate(()=>{const button=[...document.querySelectorAll('#posOverlay button')].find(b=>b.textContent.trim()==='Modifier');if(button)button.click();});
   await pg.waitForTimeout(250);
-  await pg.evaluate(()=>{const button=[...document.querySelectorAll('.edit-adapter-btn')].find(b=>/Adapter pour ce dossier/.test(b.textContent));if(button)button.click();});
   // The direct Laser editor is a separate control above the eight-activity list.
   const edit=await pg.locator('#posOverlay .qb-visit-compteur .qb-step-valeur:not(.dossier-laser-editor .qb-step-valeur)').allTextContents();
-  ok(JSON.stringify(edit)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','4 / 18','6 / 18']),'live edit all8 counters roundtrip unchanged');
+  // (depuis la fiche refaite du 2026-10-10, le compteur de Modifier dit « 4 »
+  // et non plus « 4 / 18 » : la regle est le nombre de chaque activite)
+  ok(JSON.stringify(edit.map(t=>parseInt(t,10)))===JSON.stringify([4,3,8,5,2,6,4,6]),'live edit all8 counters roundtrip unchanged: '+JSON.stringify(edit));
   const transfer=await pg.evaluate(()=>{
     closePos();
     const demande={date:state.currentDate,participants:18,formulas:[],activities:[{id:'bowling',name:'Bowling',participants:6,duration:1.5},{id:'laser_game',name:'Laser Game',participants:4,games:3},{id:'minigolf_blacklight',name:'Minigolf Blacklight',participants:3},{id:'billards',name:'Billard',participants:8,units:2,hours:2},{id:'arcade_time',name:'Arcades',participants:5},{id:'playground',name:'Playground',participants:2},{id:'duckpin_bowling',name:'Duckpin Bowling',participants:6,duration:0.5},{id:'fun_run',name:'Fun Run',participants:6,minutes:30}]};

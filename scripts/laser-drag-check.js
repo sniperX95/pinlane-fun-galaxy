@@ -366,7 +366,9 @@ async function main() {
     // pointeur ne fait alors rien defiler, et le depot vise ce qu on a choisi.
     await page.evaluate(() => { state.reservations = window.__QA_BUILD__(state.currentDate); state.staffResourceView = 'laser'; state.staffLaserPlanningExpanded = true; save(); renderStaff(); });
     await page.waitForTimeout(400);
-    const cadreLaser = () => page.evaluate(() => { const c = lpDefileur(); return c && c.id === 'laserPlanningGridWrap' ? c.scrollTop : null; });
+    // Le cadre qui defile, quel qu il soit (lpDefileur) : depuis que la journee
+    // laser tient a l ecran, en plein ecran c est la page qui defile.
+    const cadreLaser = () => page.evaluate(() => { const c = lpDefileur(); return c ? Math.round(c.scrollTop) : null; });
     const amener = (selecteur) => page.evaluate((selecteur) => {
       const el = document.querySelector(selecteur);
       const cadre = lpDefileur();
@@ -402,9 +404,9 @@ async function main() {
     console.log('\n[C] Laser plein écran : drop ne remet pas le planning en haut');
     const montageC = await page.evaluate(() => {
       const cadre = lpDefileur();
-      return { cadre: cadre ? cadre.id || cadre.className : null, defilable: Boolean(cadre) && cadre.scrollHeight > cadre.clientHeight + 1, departs: document.querySelectorAll('#laserPlanningGridWrap .lp-dep').length, groupe: Boolean(document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]')) };
+      return { cadre: cadre ? cadre.id || cadre.className || cadre.tagName : null, defilable: Boolean(cadre) && cadre.scrollHeight > cadre.clientHeight + 1, course: cadre ? cadre.scrollHeight - cadre.clientHeight : 0, departs: document.querySelectorAll('#laserPlanningGridWrap .lp-dep').length, groupe: Boolean(document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]')) };
     });
-    if (ok(montageC.cadre === 'laserPlanningGridWrap' && montageC.defilable && montageC.departs > 0 && montageC.groupe, `planning laser défilable en plein écran, groupe 9010 dans son départ (${JSON.stringify(montageC)})`)) {
+    if (ok(Boolean(montageC.cadre) && montageC.defilable && montageC.departs > 0 && montageC.groupe, `planning laser défilable en plein écran, groupe 9010 dans son départ (${JSON.stringify(montageC)})`)) {
       const tC = await departVide();
       const srcC = await amener('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');
       if (ok(tC !== null && srcC && srcC.y, `un départ vide pour le drop (${tC})${srcC && srcC.raison ? ' :: ' + srcC.raison : ''}`)) {
@@ -420,7 +422,10 @@ async function main() {
         await page.waitForTimeout(400);
         const afterC = await cadreLaser();
         const movedC = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return w.length ? w[0].start : null; });
-        ok(beforeC !== null && afterC !== null && Math.abs(afterC - beforeC) <= 20, `planning immobile pendant le drop (${beforeC} -> ${afterC})`);
+        // Descendu de plus que la tolerance avant le lacher, sinon un retour en
+        // haut passerait inapercu (la journee tient a l ecran : la page ne
+        // defile plus que d une trentaine de pixels en plein ecran).
+        ok(beforeC !== null && beforeC > 20 && afterC !== null && Math.abs(afterC - beforeC) <= 20, `planning immobile pendant le drop (${beforeC} -> ${afterC}, course ${montageC.course})`);
         ok(posee && movedC !== null && Math.abs(Number(movedC) - Number(tC)) <= 0.01, `la partie s'est bien déplacée (${tC}, lu ${movedC})`);
       }
     }

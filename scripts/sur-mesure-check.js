@@ -209,9 +209,14 @@ function verifierRegles(S) {
       if (serveur !== client) ecarts.push(`${centreId} ${j.date} moments serveur=${serveur} formulaire=${client}`);
       vus.jours.add(`${j.schedule.open}-${j.schedule.close}`);
     }
-    // 2. La regle des 24 heures : les trois prochains jours ouverts, a toute heure.
+    // 2. La regle des 24 heures : les quatre prochains jours ouverts, a toute
+    //    heure, et le premier jour qui ouvre trop tard pour un matin (en
+    //    vacances scolaires, les quatre prochains ouvrent tous tot : sans lui,
+    //    « ouvre à » n etait jamais rencontre, 2026-10-28).
     const HEURES = [0, 7.5, 9, 10, 11.75, 12, 13.5, 14, 16, 17.99, 18, 20, 23.5];
-    for (const j of ouverts.slice(0, 4)) {
+    const tard = ouverts.find((j) => { const m = S.regles.momentsDuJour(j.schedule); return m && !m.matin.ok; });
+    const joursRegle = ouverts.slice(0, 4).concat(tard && !ouverts.slice(0, 4).includes(tard) ? [tard] : []);
+    for (const j of joursRegle) {
       for (const nowHour of HEURES) {
         for (const moment of Object.keys(S.regles.MOMENTS)) {
           cas += 1;
@@ -616,7 +621,18 @@ async function parcours(browser, mock, { largeur = 1440, hauteur = 900 } = {}) {
     const aujourdHui = jourBruxelles();
     const dates = mock.metaPayload('', 90).center.calendar;
     const ouverts = dates.filter((j) => j.open && j.date > aujourdHui);
-    const cible = ouverts.find((j) => j.schedule.open <= 10 && j.schedule.close >= 21) || ouverts[0];
+    // Le jour vise se choisit a ses proprietes, pas a son rang : ouvert tot et
+    // tard, une formule possible le soir pour ce groupe (le parcours en
+    // choisit une) et le Kids Fun Day refuse (le parcours lit sa raison). En
+    // vacances scolaires, le premier jour ouvert n avait aucune formule
+    // possible le soir et le parcours rougissait (2026-10-28).
+    const reglesSM = require('../lib/custom-request');
+    const formulesSM = require('../lib/booking-config').getEffectiveFormules('libramont');
+    const verdictSoir = (f, j) => reglesSM.verdictFormuleSurMesure(f, { jour: j, moment: 'soiree', participants: 31, ages: ['moins7', '7-12'] });
+    const convient = (j) => j.schedule.open <= 10 && j.schedule.close >= 21
+      && formulesSM.some((f) => verdictSoir(f, j).ok)
+      && formulesSM.some((f) => f.id === 'kfd' && !verdictSoir(f, j).ok);
+    const cible = ouverts.find(convient) || ouverts.find((j) => j.schedule.open <= 10 && j.schedule.close >= 21) || ouverts[0];
     const veille = plusJours(cible.date, -1);
     await page.clock.setFixedTime(instantBruxelles(veille, 15));
     await page.goto(`${BASE_URL}/fungalaxy/libramont?v=sur-mesure-${largeur}`, { waitUntil: 'domcontentloaded' });

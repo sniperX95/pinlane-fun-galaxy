@@ -266,6 +266,14 @@ async function scenarioBlocs(browser, jour) {
     ok(sections.map((s) => s.cle).join(',') === 'active', '[A] les visites non terminées restent dans une grille active stable', sections.map((s) => s.cle).join(','));
     const ids = (cle) => sections.flatMap(s => s.cartes).filter(c => c.phase === cle).sort((a,b) => a.quand.localeCompare(b.quand)).map(c => c.id).join(',');
     ok(ids('late') === '81006,81007', '[A] en retard : Martin (14:30) puis Nguyen (15:00)', ids('late'));
+    // (la phase ci-dessus vient du modele ; depuis le 2026-10-10 les visites
+    // partagent une grille, et c est la puce qui dit le retard a l ecran)
+    const puceRetard = await page.evaluate(() => {
+      const puce = [...document.querySelectorAll('#resList .status-chip')].find((x) => /En retard/.test(x.textContent));
+      const n = puce ? puce.querySelector('span') : null;
+      return n ? Number(n.textContent.trim()) : null;
+    });
+    ok(puceRetard === 2, '[A] la puce « En retard » compte Martin et Nguyen', String(puceRetard));
     ok(ids('upcoming') === '81008,81009,81010,81011,81012', '[A] à venir, par heure', ids('upcoming'));
     ok(ids('onsite') === '81001,81004', '[A] sur place : payé non terminé Peeters et Dupont', ids('onsite'));
     ok(ids('closing').split(',').sort().join(',') === '81002,81003,81005', '[A] à clôturer : Léa, FC Bertrix, Hôtel des Ardennes', ids('closing'));

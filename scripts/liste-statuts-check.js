@@ -265,7 +265,9 @@ const lireListe = (page) => page.evaluate(() => {
   }));
   const moments = getStaffReservationMoments(state.reservations);
   const phases = Object.fromEntries(state.reservations.map(r => { const m = moments.get(String(r.id)); return [r.id, r.absentAt ? 'absent' : m?.late ? 'late' : m?.etat]; }));
-  return { puces, sections, phases };
+  // Le mot que chaque carte AFFICHE (« En retard », « À venir »...).
+  const mots = Object.fromEntries([...document.querySelectorAll('#resList .gc[data-res-row-id]')].map((c) => [Number(c.dataset.resRowId), ((c.querySelector('.gc-visit-state') || {}).textContent || '').trim()]));
+  return { puces, sections, phases, mots };
 });
 const sectionDe = (liste, id) => liste.phases[id] || (liste.sections.find((s) => s.ids.includes(id)) || {}).cle || 'aucune';
 const motDeFiche = (page, id) => page.evaluate((x) => {
@@ -372,11 +374,14 @@ const SCENARIOS = {
     const { ctx, page } = await ouvrir(browser, variante(base), { instant: `${JOUR}T15:04:30+02:00`, horloge: 'installee' });
     try {
       const avant = await lireListe(page);
-      c(sectionDe(avant, 81007) === 'upcoming', '[0] prerequis : vers 15:04, Nguyen (15:00) est attendu, pas en retard', sectionDe(avant, 81007));
+      c(sectionDe(avant, 81007) === 'upcoming' && avant.mots[81007] === 'À venir', '[0] prerequis : vers 15:04, Nguyen (15:00) est attendu, pas en retard', `${sectionDe(avant, 81007)} · carte « ${avant.mots[81007]} »`);
       await page.clock.runFor(31000);
       const apres = await lireListe(page);
       const heure = await page.evaluate(() => new Date().toTimeString().slice(0, 8));
-      c(sectionDe(apres, 81007) === 'late', '[F] passe 15:05, il est « En retard » sans attendre une minute de plus', `${heure} · ${sectionDe(apres, 81007)}`);
+      // CE QUE LA CARTE AFFICHE, pas l avis du modele (sectionDe le recalcule a
+      // l heure de la lecture : depuis le 2026-10-10 il disait « en retard »
+      // sans que la liste ait ete repeinte, et le gate ne voyait plus le tic).
+      c(apres.mots[81007] === 'En retard', '[F] passe 15:05, il est « En retard » sans attendre une minute de plus', `${heure} · carte « ${apres.mots[81007]} »`);
     } finally { await ctx.close(); }
     return out;
   },
@@ -389,13 +394,13 @@ const SCENARIOS = {
     try {
       await page.clock.pauseAt(new Date(`${JOUR}T15:04:45+02:00`));
       const avant = await lireListe(page);
-      c(sectionDe(avant, 81007) === 'upcoming', '[0] prerequis : a 15:04:45, Nguyen est attendu', sectionDe(avant, 81007));
+      c(sectionDe(avant, 81007) === 'upcoming' && avant.mots[81007] === 'À venir', '[0] prerequis : a 15:04:45, Nguyen est attendu', `${sectionDe(avant, 81007)} · carte « ${avant.mots[81007]} »`);
       // La tablette dormait : l heure a avance sans qu aucun minuteur ne joue.
       await page.clock.setSystemTime(new Date(`${JOUR}T15:06:00+02:00`));
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await attendre(300);
       const apres = await lireListe(page);
-      c(sectionDe(apres, 81007) === 'late', '[G] au reveil, la liste se redessine tout de suite', sectionDe(apres, 81007));
+      c(apres.mots[81007] === 'En retard', '[G] au reveil, la liste se redessine tout de suite', `carte « ${apres.mots[81007]} »`);
     } finally { await ctx.close(); }
     return out;
   },
@@ -695,6 +700,14 @@ const SCENARIOS = {
       c(largeurs.length > 0 && Math.max(...largeurs) - Math.min(...largeurs) <= 1, '[O] une seule grille : toutes les cartes a servir ont la meme largeur', [...new Set(largeurs)].join(','));
       const horaires = await matin.page.locator('#resList .gc-section.active .gc-when b').allTextContents();
       c(horaires.length === servir.length && horaires.every((h, i) => !i || h >= horaires[i - 1]), '[O] chaque carte affiche son heure en ordre chronologique', horaires.join(' · '));
+      // La puce « À venir » range encore par heure (7 groupes sur au moins
+      // deux heures) : dans la boite de la liste, l heure tient en tete de sa
+      // rangee, au-dessus de ses cartes (depuis le 2026-10-10, la grille par
+      // defaut n a plus de rangees, ce controle ne vivait plus que la).
+      await matin.page.evaluate(() => setStaffStatusFilter('upcoming'));
+      const f = await mesurer(matin.page, 'light');
+      const gaucheF = Math.min(...f.cartes.filter((x) => !x.compacte).map((x) => x.gauche));
+      c(f.heures.length >= 2 && f.heures.every((h) => h.basEtiquette <= h.hautCarte && h.gaucheCarte === gaucheF), '[O] « À venir » : l heure est en tete de sa rangee, ses cartes au meme bord gauche que les autres', JSON.stringify(f.heures.slice(0, 3)));
     } finally { await matin.ctx.close(); }
     return out;
   },
@@ -714,7 +727,9 @@ const MUTATIONS = [
   { lettre: 'C', scenario: 'journeeJouee', fichier: JS, nom: 'la fiche relit le statut enregistre',
     de: "  if (reservation.status === 'cancelled') return { label: 'Annulé', className: 'cancelled' };\n  const moments = getStaffReservationMoments([reservation], reservation.date || state.currentDate);",
     vers: "  if (reservation.status === 'cancelled') return { label: 'Annulé', className: 'cancelled' };\n  if (reservation.status !== 'paid' && !isReservationAwaitingReview(reservation)) return reservation.status === 'arrived' ? { label: 'Arrivé', className: 'arrived' } : { label: 'Confirmé', className: 'pending' };\n  const moments = getStaffReservationMoments([reservation], reservation.date || state.currentDate);" },
-  { lettre: 'D', scenario: 'journeeJouee', fichier: JS, nom: 'les puces recomptent les moments (le paye sur place compte « Sur place »)',
+  // (depuis le 2026-10-10, les visites a suivre partagent une section : [D]
+  // ne voit plus ce recompte, [B] le voit, le retard y retombe « À venir »)
+  { lettre: 'B', scenario: 'journeeJouee', fichier: JS, nom: 'les puces recomptent les moments (le retard compte « À venir »)',
     de: "  reservations.forEach(r => { counts[getStaffListeSection(moments, r)] += 1; });",
     vers: "  reservations.forEach(r => { const e = getStaffReservationMomentState(moments, r); counts[e === 'done' ? 'paid' : e] = (counts[e === 'done' ? 'paid' : e] || 0) + 1; });" },
   { lettre: 'E', scenario: 'pollRedessine', fichier: JS, nom: 'la signature de rendu oublie les coches',

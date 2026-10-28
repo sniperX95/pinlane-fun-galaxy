@@ -92,6 +92,11 @@ const CODES_TELEPHONE = ['H', 'I'];
 // [fichier, ancre, remplacement, verifications qui doivent rougir] : chaque
 // ancre doit exister une seule fois.
 const SURFACE_TOUCHEE = "  return mutations.some((m) => !ecritureDuMotion(m) && (m.type === 'childList' || m.target !== conteneur));";
+// Une cascade anime au plus CASCADE_MAX lignes par groupe (assets/pinlane-motion.js).
+// Depuis le 2026-10-10, les visites a suivre forment UN groupe : la cascade
+// pleine fait 8 lignes, plus les 20 d avant (plusieurs sections de 8). A 8,
+// une lecture par ligne (contre-preuve « cascade ») en fait encore 8 contre 2.
+const CASCADE_PLEINE = 8;
 const MUTATIONS = {
   surface: ['assets/app-main.js', '    if (!suivi.touchee && suivi.html === html) return false;', '    if (false) return false;', ['A', 'F']],
   touchee: ['assets/app-main.js', SURFACE_TOUCHEE, '  return false;', ['C']],
@@ -327,7 +332,7 @@ async function tablette(browser, seulement) {
       const lignes = await page.evaluate(() => { PinlaneMotion.oublier(); PinlaneMotion.cascade(document); return document.querySelectorAll('#resList .pl-in').length; });
       await repos(page);
       const cascade = await reconstructions(page, () => { renderStaffData(); renderStaff(); });
-      verifier('A', lignes >= 20 && cascade.resList === 0, 'une cascade rejouee (pl-in, delais) ne fait pas reconstruire la liste au rendu identique suivant', { lignes, ...cascade });
+      verifier('A', lignes >= CASCADE_PLEINE && cascade.resList === 0, 'une cascade rejouee (pl-in, delais) ne fait pas reconstruire la liste au rendu identique suivant', { lignes, ...cascade });
     }
     if (veut('B')) {
       const id = await page.evaluate(() => state.reservations.find((r) => r.type === 'bowling' && r.status === 'confirmed').id);
@@ -399,8 +404,8 @@ async function tablette(browser, seulement) {
       });
       const m1 = await metriques(cdp);
       const mises = m1.LayoutCount - m0.LayoutCount;
-      verifier('E', enEntree >= 20, 'MONTAGE : la cascade est rejouee sur des lignes encore en entree', `${enEntree} lignes en entree sur ${r}`);
-      verifier('E', decalees >= 20, 'MONTAGE : la cascade redemarre beaucoup de lignes', `${decalees} lignes decalees sur ${r}`);
+      verifier('E', enEntree >= CASCADE_PLEINE, 'MONTAGE : la cascade est rejouee sur des lignes encore en entree', `${enEntree} lignes en entree sur ${r}`);
+      verifier('E', decalees >= CASCADE_PLEINE, 'MONTAGE : la cascade redemarre toutes les lignes qu elle anime', `${decalees} lignes decalees sur ${r}`);
       verifier('E', mises <= 2, 'la cascade redemarre toutes ses lignes en une seule lecture', `${mises} mise(s) en page pour ${decalees} lignes`);
       await repos(page);
     }

@@ -371,11 +371,21 @@ const SCENARIOS = {
   async ticMinute(browser, base) {
     const out = [];
     const c = (cond, label, detail = '') => out.push({ cond: Boolean(cond), label, detail });
-    const { ctx, page } = await ouvrir(browser, variante(base), { instant: `${JOUR}T15:04:30+02:00`, horloge: 'installee' });
+    // L horloge de la page court en temps reel pendant le montage : sous la
+    // charge d une suite, il en mange des dizaines de secondes, et le tic de
+    // la contre-preuve (60 s apres le chargement) tombait dans la fenetre.
+    // Chargee a 15:04:01, la page se pose a 15:04:59 quoi que le montage ait
+    // coute : le tic a la minute tombe a 15:05:00, celui qui repart du
+    // chargement jamais avant 15:05:01.
+    const { ctx, page } = await ouvrir(browser, variante(base), { instant: `${JOUR}T15:04:01+02:00`, horloge: 'installee' });
     try {
+      const pose = new Date(`${JOUR}T15:04:59+02:00`);
+      const monte = await page.evaluate(() => Date.now());
+      c(monte < pose.getTime(), '[0] MONTAGE : la page est prete avant 15:04:59', `${Math.round((monte - pose.getTime()) / 1000)} s`);
+      if (monte < pose.getTime()) await page.clock.pauseAt(pose);
       const avant = await lireListe(page);
-      c(sectionDe(avant, 81007) === 'upcoming' && avant.mots[81007] === 'À venir', '[0] prerequis : vers 15:04, Nguyen (15:00) est attendu, pas en retard', `${sectionDe(avant, 81007)} · carte « ${avant.mots[81007]} »`);
-      await page.clock.runFor(31000);
+      c(sectionDe(avant, 81007) === 'upcoming' && avant.mots[81007] === 'À venir', '[0] prerequis : a 15:04:59, Nguyen (15:00) est attendu, pas en retard', `${sectionDe(avant, 81007)} · carte « ${avant.mots[81007]} »`);
+      await page.clock.runFor(1600);
       const apres = await lireListe(page);
       const heure = await page.evaluate(() => new Date().toTimeString().slice(0, 8));
       // CE QUE LA CARTE AFFICHE, pas l avis du modele (sectionDe le recalcule a
@@ -390,9 +400,14 @@ const SCENARIOS = {
   async reveil(browser, base) {
     const out = [];
     const c = (cond, label, detail = '') => out.push({ cond: Boolean(cond), label, detail });
-    const { ctx, page } = await ouvrir(browser, variante(base), { instant: `${JOUR}T15:04:30+02:00`, horloge: 'installee' });
+    // (meme montage a l abri du temps que [F] : chargee a 15:04:01, posee a
+    // 15:04:45, l horloge arretee ; seul le reveil peut repeindre)
+    const { ctx, page } = await ouvrir(browser, variante(base), { instant: `${JOUR}T15:04:01+02:00`, horloge: 'installee' });
     try {
-      await page.clock.pauseAt(new Date(`${JOUR}T15:04:45+02:00`));
+      const pose = new Date(`${JOUR}T15:04:45+02:00`);
+      const monte = await page.evaluate(() => Date.now());
+      c(monte < pose.getTime(), '[0] MONTAGE : la page est prete avant 15:04:45', `${Math.round((monte - pose.getTime()) / 1000)} s`);
+      if (monte < pose.getTime()) await page.clock.pauseAt(pose);
       const avant = await lireListe(page);
       c(sectionDe(avant, 81007) === 'upcoming' && avant.mots[81007] === 'À venir', '[0] prerequis : a 15:04:45, Nguyen est attendu', `${sectionDe(avant, 81007)} · carte « ${avant.mots[81007]} »`);
       // La tablette dormait : l heure a avance sans qu aucun minuteur ne joue.
@@ -811,7 +826,7 @@ async function main() {
         const rouges = controles.filter((x) => !x.cond);
         const bonne = rouges.filter((x) => x.label.startsWith(`[${m.lettre}]`));
         ok(bonne.length > 0, `[contre-preuve ${m.lettre}] « ${m.nom} » fait rougir [${m.lettre}]`,
-          rouges.length ? `rouges : ${rouges.map((x) => x.label).join(' | ')}` : 'LE GATE EST AVEUGLE : il ne protege rien');
+          rouges.length ? `rouges : ${rouges.map((x) => x.label).join(' | ')}` : `LE GATE EST AVEUGLE : il ne protege rien (${controles.filter((x) => x.label.startsWith(`[${m.lettre}]`)).map((x) => x.detail).join(' | ')})`);
       }
     }
   } finally {

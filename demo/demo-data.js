@@ -136,19 +136,20 @@
 
   var ONGLETS = [
     { cle: 'bowling', titre: 'Planning Bowling', sous: PISTES + ' pistes', compte: DEMO.length, actif: true },
-    { cle: 'laser', titre: 'Planning Laser Game', sous: '2 zones', compte: 12 },
-    { cle: 'toutes', titre: 'Toutes les réservations', sous: '2 hors planning', compte: DEMO.length + 12 },
+    { cle: 'laser', titre: 'Planning Laser Game', sous: '30 armes', compte: 12 },
+    { cle: 'toutes', titre: 'Planning global', sous: 'Le jour au complet', compte: DEMO.length + 12 },
   ];
 
-  /* Les puces de la liste du produit depuis le 2026-10-08 : « À gérer » et
-     « Terminées » n'existent plus, « Payées » range les dossiers encaissés.
-     La démonstration n'a ni retard ni clôture : elle garde les trois états
-     qu'elle montre, dans l'ordre du produit. */
+  /* Les puces de la liste du produit depuis le 2026-10-27 : « Tout »,
+     « À venir », « Sur place », « À clôturer », « Terminées » (les dossiers
+     encaissés, « Payées » avant). La démonstration n'a ni retard ni
+     clôture : elle garde les trois états qu'elle montre, dans l'ordre du
+     produit. */
   var FILTRES = [
     { cle: 'all', libelle: 'Tout' },
     { cle: 'pending', libelle: 'À venir' },
     { cle: 'arrived', libelle: 'Sur place' },
-    { cle: 'paid', libelle: 'Payées' },
+    { cle: 'paid', libelle: 'Terminées' },
   ];
 
   /* ---- L'AGENT MARKETING ---------------------------------------------------

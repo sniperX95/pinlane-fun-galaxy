@@ -21281,9 +21281,9 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
    rangee trop basse pour deux lignes, la carte garde le nom et ses pictos. */
 @media (min-width: 901px) {
   .lp-compact { --lp-row-height: 28px; gap: 0; padding: 8px 16px 0; }
-  .lp-compact .lp-journee.is-two-columns { display: grid; grid-template-columns: repeat(var(--lp-columns, 2), minmax(0, 1fr)); grid-template-rows: 36px repeat(var(--lp-column-rows), var(--lp-row-height)); grid-auto-flow: column; }
+  .lp-compact .lp-journee.is-two-columns { display: grid; grid-template-columns: repeat(var(--lp-columns, 2), minmax(0, 1fr)); grid-template-rows: 36px repeat(var(--lp-column-rows, 1), var(--lp-row-height)); grid-auto-flow: column; }
   .lp-compact .lp-journee.is-two-columns .lp-journee__h { grid-column: 1 / -1; grid-row: 1; }
-  .lp-compact .lp-journee.is-two-columns:has(> .lp-alertes) { grid-template-rows: 36px auto repeat(var(--lp-column-rows), var(--lp-row-height)); }
+  .lp-compact .lp-journee.is-two-columns:has(> .lp-alertes) { grid-template-rows: 36px auto repeat(var(--lp-column-rows, 1), var(--lp-row-height)); }
   .lp-compact .lp-journee.is-two-columns > .lp-alertes { grid-column: 1 / -1; grid-row: 2; }
   /* Le filet entre les deux colonnes, sous la tete seulement. */
   .lp-compact .lp-journee.is-two-columns { background: linear-gradient(var(--lp-line), var(--lp-line)) 50% 36px / 1px calc(100% - 36px) no-repeat; }

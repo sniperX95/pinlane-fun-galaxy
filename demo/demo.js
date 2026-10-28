@@ -304,7 +304,7 @@
 
     h += '<div class="d-boite" data-d-bloc="liste">'
       + '<div class="d-boite-tete"><div><h2>Réservations Bowling</h2>'
-      + '<p>Bowling uniquement · ' + comptes.pending + ' à venir · ' + comptes.arrived + ' sur place · ' + comptes.paid + ' payées</p></div></div>'
+      + '<p>Bowling uniquement · ' + comptes.pending + ' à venir · ' + comptes.arrived + ' sur place · ' + comptes.paid + ' terminées</p></div></div>'
       + '<div class="d-filtres">';
     D.FILTRES.forEach(function (f) {
       h += '<button type="button" class="d-puce' + (etat.filtre === f.cle ? ' is-actif' : '') + '"'

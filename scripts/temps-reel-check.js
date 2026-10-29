@@ -251,7 +251,12 @@ async function run() {
     serveurPartage.reservations.push(resa(8102, { name: 'Anniversaire Martin', startTime: '16:00', lanes: [4] }));
     bump(`jour:${JOUR}`);
     bump('reservations');
-    const vuResa = await attendre(B.page, () => (document.getElementById('planningGridWrap') || { textContent: '' }).textContent.includes('Anniversaire Martin'));
+    // La carte de la reservation, pas une phrase : depuis le nom d abord (2026-10-29), la
+    // carte bowling ecrit « Anniv. Martin » et garde le nom entier dans son infobulle.
+    const vuResa = await attendre(B.page, () => {
+      const carte = document.querySelector('#planningGridWrap .booking[data-booking-res-id="8102"]');
+      return Boolean(carte && carte.textContent.includes('Martin'));
+    });
     ok(vuResa, '[B] une reservation prise ailleurs apparait sur le planning', vuResa ? 'en moins de 6 s' : 'toujours absente');
     ok(await B.page.evaluate(() => window.__temoinTempsReel === 'pose'), '[B] sans rechargement (le temoin a survecu)');
 

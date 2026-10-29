@@ -22589,7 +22589,10 @@ function renderCardFlags(reservation, options = {}) {
   // comparaison portait sur la categorie : aucune occasion ne pouvait jamais
   // l egaler, donc le marqueur anniversaire n a jamais atteint une seule carte,
   // meme sur les pistes assez larges pour l afficher.
-  if (getReservationOccasion(reservation) === 'anniversaire') {
+  // Le gateau ne redit pas le nom : une carte qui lit deja « Anniv. Noah » ne
+  // paie pas 17 px de tete pour le dire une seconde fois (`options.nom`, le nom
+  // affiche par la carte bowling).
+  if (getReservationOccasion(reservation) === 'anniversaire' && !/anniv/i.test(options.nom || '')) {
     marques.push({
       cls: 'flag-birthday',
       label: 'Anniversaire',
@@ -23452,7 +23455,7 @@ function renderPlanning() {
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
-          ${renderCardFlags(r)}
+          ${renderCardFlags(r, { nom: displayName })}
           ${/* LA PUCE DE RETARD PREND SA PLACE AU LIEU DE FLOTTER DESSUS. Elle
                etait posee en position absolue en haut a droite de la carte, donc
                par-dessus la tete : mesure, une puce de 42 px de large recouvrait
@@ -23557,7 +23560,13 @@ function markPlanningGridFresh(wrap, dateKey) {
 }
 
 function getPlanningBookingDisplayName(reservation) {
-  const fullName = String(reservation?.name || 'Client').trim();
+  // LE PRENOM AVANT LE MOT QUI NE DIT PAS QUI (2026-10-29, le nom d abord sur
+  // les cartes bowling). « Anniversaire » ne devenait « Anniv. » qu au-dela de
+  // 26 caracteres, donc sur une piste etroite « Anniversaire Noah (10 ans) »
+  // se lisait « Anniversaire… » : le prenom tombait le premier. Il devient
+  // « Anniv. » partout, le prenom remonte de cinq caracteres. Le nom complet
+  // reste dans l infobulle et la fiche.
+  const fullName = String(reservation?.name || 'Client').trim().replace(/^Anniversaire\b/i, 'Anniv.');
   if (fullName.length <= 26) return fullName;
   const id = fullName.match(/#\d+\b/)?.[0] || '';
   const activityMatch = fullName.match(/\s+(?:formule|bowling|laser(?: game)?)(?:\s|$)/i);

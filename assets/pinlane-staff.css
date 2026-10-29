@@ -2775,8 +2775,9 @@ button.staff-date-label:focus-visible,
    Les planchers sont CALCULÉS depuis ces mesures, pas choisis :
    - pastille de progression : 83px de contenu → il faut 107px de piste (10,7em) ;
      c'est du suivi terrain, elle a son écran, elle part la première ;
-   - marqueurs : nom 4ch (28) + 5 + marqueurs (23) + 5 + état (11) = 72px de
-     contenu → 96px de piste ; la consigne se lit dans la fiche ;
+   - marqueurs : ils ont maintenant leur échelle, marqueur par marqueur (« LE
+     NOM D'ABORD », juste en dessous) ; le plancher unique de 96px, calculé sur
+     23px de marqueurs, laissait passer la carte qui en porte 54 ;
    - séparateur : purement décoratif, il cède dès que la ligne se resserre.
    EN `px`, ET C'EST LE CORRECTIF DU 2026-09-03. Ces trois planchers étaient
    écrits en `em` « parce que la police de la carte passe de 10 à 12px en
@@ -2798,8 +2799,74 @@ button.staff-date-label:focus-visible,
 @container piste (max-width: 107px) {
   .booking .activity-pill { display: none; }
 }
-@container piste (max-width: 96px) {
-  .booking .bk-flags { display: none; }
+/* LE NOM D'ABORD SUR UNE CARTE DE DEUX LIGNES ET PLUS (2026-10-29, après les
+   noms coupés du laser). « Le nom ne part jamais » ne valait que sur la carte
+   d'une ligne : sur une carte haute, les marqueurs gardaient leur largeur et le
+   nom n'avait aucun plancher. Mesuré sur le samedi chargé : la carte
+   d'anniversaire porte 54px de marqueurs (note, gâteau, « x2 » de laser), son
+   nom gardait 35px à 1440 × 900 (« Anni… ») et 8px sur tablette, une lettre.
+   La tête d'une carte haute appartient donc au nom et à son état :
+   - la note devient un coin replié en haut à droite, comme au planning Laser :
+     visible sans prendre de largeur, sa bulle reste lue par un lecteur
+     d'écran ; la carte terminée, dont la coche tient ce coin, le lui laisse ;
+   - le gâteau ne redit pas « Anniv. » quand le nom le dit (renderCardFlags) ;
+   - le laser, puis le gâteau, cèdent par paliers de piste CALCULÉS pour que le
+     nom garde 76px : « Anniv. Noah » (67,6px) et son ellipse (7,9px), le
+     prénom lu au comptoir. Mesuré sur une carte payée, en largeur de piste :
+     cadre 23 (marges, bordures), état 11 et sa gouttière 5, laser chiffré
+     29,2, laser seul 16, gâteau 17, gouttière comprise. Le palier vaut nom 76 +
+     cadre 23 + état 16 + marqueurs. Le laser chiffré perd d'abord son « x2 »
+     (il reste dans son infobulle) puis son pictogramme : à 1440 × 900
+     « Anniv. Noah » se lit à côté du pictogramme laser. Une carte confirmée,
+     sans repère d'état, cède un peu plus tôt que nécessaire : c'est le nom qui
+     en profite ;
+   - la puce de retard (42,5 avec « +15 », 23 sans) prend sa part : sur une
+     carte retardée qui porte le gâteau, les marqueurs cèdent sous 203,7px,
+     palier de la plus chargée (gâteau et laser chiffré) ; sans gâteau, le
+     « x2 » sous 186,7px et le laser sous 173,5px ; puis le « +15 » sous
+     157,5px (il reste dans l'infobulle) ;
+   - l'heure de la fenêtre agrandie (33,4px) n'y prend pas non plus la place du
+     nom (règle de `.bk-time`) : elle ne s'écrit que sur une piste qui garde le
+     nom de la carte la plus chargée à côté d'elle, 194,6px, 237,1px pour une
+     carte retardée.
+   Le laser reste écrit sur le badge du pied quand la carte l'a, au planning
+   Laser et dans la fiche. */
+.booking:not(.dens-xs) .booking-head .bk-flags { display: contents; }
+.booking:not(.dens-xs) .booking-head .bk-flag.flag-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.booking:not(.dens-xs):has(.booking-head .bk-flag.flag-note)::before { content: ''; position: absolute; top: 3px; right: 3px; border-style: solid; border-width: 0 7px 7px 0; border-color: transparent var(--warning) transparent transparent; pointer-events: none; }
+.booking.activities-complete::before { display: none; }
+@container piste (max-width: 237.1px) {
+  .planning-box.expanded .booking.is-delayed:not(.dens-xs) .bk-time { display: none; }
+}
+@container piste (max-width: 203.7px) {
+  .booking.is-delayed:not(.dens-xs):has(.booking-head .flag-birthday) .booking-head :is(.flag-laser, .flag-birthday) { display: none; }
+}
+@container piste (max-width: 194.6px) {
+  .planning-box.expanded .booking:not(.dens-xs) .bk-time { display: none; }
+}
+@container piste (max-width: 186.7px) {
+  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser .bk-flag-num { display: none; }
+}
+@container piste (max-width: 173.5px) {
+  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser { display: none; }
+}
+@container piste (max-width: 161.2px) {
+  .booking:not(.dens-xs):has(.booking-head .flag-birthday) .booking-head .flag-laser .bk-flag-num { display: none; }
+}
+@container piste (max-width: 157.5px) {
+  .booking.is-delayed:not(.dens-xs) .delay-indicator .delay-indicator-label { display: none; }
+}
+@container piste (max-width: 148px) {
+  .booking:not(.dens-xs):has(.booking-head .flag-birthday) .booking-head .flag-laser { display: none; }
+}
+@container piste (max-width: 144.2px) {
+  .booking:not(.dens-xs) .booking-head .flag-laser .bk-flag-num { display: none; }
+}
+@container piste (max-width: 132px) {
+  .booking:not(.dens-xs) .booking-head .flag-birthday { display: none; }
+}
+@container piste (max-width: 131px) {
+  .booking:not(.dens-xs) .booking-head .flag-laser { display: none; }
 }
 @container piste (max-width: 168px) {
   .booking .bk-sep { display: none; }

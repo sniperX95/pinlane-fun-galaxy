@@ -869,8 +869,11 @@ const PROPRIETES = [
       nom: 'le plancher des marqueurs repasse en `em` (l unite qui se resout sur .lane-col, pas sur la carte)',
       vise: /taille NON NULLE/,
       fichier: 'assets/pinlane-staff.css',
-      de: '@container piste (max-width: 96px) {\n  .booking .bk-flags { display: none; }\n}',
-      vers: '@container piste (max-width: 9.6em) {\n  .booking .bk-flags { display: none; }\n}',
+      // Le plancher unique de 96 px est parti avec le nom d abord du
+      // 2026-10-29 ; celui qui fait vivre la bulle sur la carte la plus courte
+      // est le palier de la carte d une ligne.
+      de: '@container piste (max-width: 114px) {\n  .booking.dens-xs .bk-flags { display: none; }\n}',
+      vers: '@container piste (max-width: 9.6em) {\n  .booking.dens-xs .bk-flags { display: none; }\n}',
     },
   },
   {

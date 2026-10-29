@@ -20,6 +20,14 @@
 //       trois ;
 //   [D] relie : les heures du badge sont les departs ou le planning Laser
 //       montre le groupe ;
+//   [E] le nom d abord (2026-10-29) : sur une carte de deux lignes et plus, un
+//       nom coupe garde 76 px (« Anniv. Noah… ») des qu un marqueur, le « +15 »
+//       d un retard ou l heure de la fenetre agrandie reste a cote de lui ; la
+//       note y est un coin replie sans largeur (la carte d une ligne garde sa
+//       bulle) ; le gateau ne redit pas « Anniv. » et reste quand le nom ne le
+//       dit pas ; « Anniversaire » se lit « Anniv. » ; au comptoir (1440) le
+//       prenom se lit a cote du laser ; sur grand ecran rien n est retire qui
+//       tenait ;
 //   [K] contre-preuves (--contre-preuves) : chaque regle cassee fait rougir sa
 //       lettre.
 'use strict';
@@ -100,6 +108,47 @@ const BADGES = { 9601: '17:00', 9602: '17:30 +1', 9603: '18:00', 9604: '16:30', 
 const FORMULES = new Set([9603, 9609, 9610]);
 const badgeAttendu = (c) => Boolean(BADGES[c.id]) && c.dens !== 'xs' && !(FORMULES.has(c.id) && c.dens === 'md');
 
+// LA JOURNEE DU NOM D ABORD [E] : chaque combinaison de la tete d une carte
+// d une heure, a 16:00, une par piste. La formule d une heure garde le laser en
+// tete (son offre tient le pied) : c est la que le nom se bat pour sa place.
+function journeeNoms() {
+  const min = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+  const hh = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  const laser = (depart, joueurs, extra = {}) => {
+    const a = min(depart);
+    return { type: 'activity', activityId: 'laser_game', label: 'Laser Game', resourceType: 'laser_arena', countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1, manualLaserPass: true, critical: true, start: a, end: a + 25, startTime: hh(a), endTime: hh(a + 25), durationMinutes: 25, players: joueurs, groupPlayers: joueurs, ...extra };
+  };
+  const plan = (pax, departs, extra = {}) => ({
+    resourceBlocks: departs.map((t, i) => laser(t, pax, { countIndex: i + 1 })), laserManual: true,
+    laserPassPlan: { mode: 'manual_after_first', totalGames: departs.length, scheduledPasses: departs.map((t, i) => ({ countIndex: i + 1, status: 'scheduled', pax, startTime: t })), pendingPasses: [] },
+    ...extra,
+  });
+  const programme = (pax, parties) => ({ items: [{ activityId: 'bowling', participants: pax }, ...(parties ? [{ activityId: 'laser_game', games: parties, participants: pax }] : [])] });
+  const formule = (pax, departs, extra = {}) => ({ type: 'formule', formuleId: 'qa-formule', program: programme(pax, departs.length), opsPlan: plan(pax, departs, extra) });
+  const d = (id, name, lane, duration, pax, extra = {}) => ({
+    id, centerId: 'libramont', date: JOUR, name, phone: `+32470${String(id).padStart(6, '0')}`, status: 'confirmed', type: 'bowling',
+    startTime: '16:00', duration, totalDuration: duration, pax, lanes: [lane], price: 20 * pax, basePrice: 20 * pax, source: 'staff', updatedAt: '2026-10-10T08:00:00.000Z', ...extra,
+  });
+  return [
+    // Le pire cas du samedi : note, deux parties de laser, arrives ; le nom dit « Anniv. ».
+    d(9701, 'Anniversaire Noah (10 ans)', 1, 1, 12, { status: 'arrived', occasion: 'anniversaire', notes: 'Gâteau à 17:00', ...formule(12, ['17:00', '17:30']) }),
+    // Le nom ne dit pas l anniversaire : le gateau reste, avec le laser seul et une note.
+    d(9702, 'Famille Dubois', 2, 1, 10, { status: 'paid', occasion: 'anniversaire', notes: 'Allergie arachides', ...formule(10, ['17:00']) }),
+    // Le gateau et le laser chiffre.
+    d(9703, 'Collègues Durand', 3, 1, 12, { status: 'arrived', occasion: 'anniversaire', ...formule(12, ['17:30', '18:00']) }),
+    // Le gateau seul.
+    d(9704, 'Amis Lambert', 4, 1, 8, { status: 'arrived', occasion: 'anniversaire' }),
+    // Un retard avec le laser chiffre.
+    d(9705, 'Anniv. Sacha (10 ans)', 5, 1, 12, { status: 'arrived', ...formule(12, ['17:00', '17:30'], { delayFlag: { minutes: 15, from: '16:00', to: '16:15' } }) }),
+    // Une note seule : le coin, rien d autre.
+    d(9706, 'Kevin', 6, 1, 4, { notes: 'Ballon' }),
+    // Trente minutes et une note : la carte d une ligne garde sa bulle.
+    d(9707, 'Soirée Sarah', 7, 0.5, 6, { notes: 'Gâteau' }),
+    // Le badge du pied porte le laser (pas une formule) ; « Anniv. » sans gateau.
+    d(9708, 'Anniversaire Léa (9 ans)', 8, 1, 10, { status: 'paid', occasion: 'anniversaire', program: programme(10, 1), opsPlan: plan(10, ['17:00']) }),
+  ];
+}
+
 async function installerServeur(page, dossiers) {
   await page.addInitScript(({ dossiers }) => {
     window.__CB_DOSSIERS__ = dossiers;
@@ -129,7 +178,7 @@ const APPAREILS = {
   telephone: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
 };
 
-async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false, mutation = null } = {}) {
+async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false, mutation = null, dossiers = journee() } = {}) {
   const ctx = await browser.newContext({ deviceScaleFactor: 1, ...APPAREILS[appareil] });
   const page = await ctx.newPage();
   page.setDefaultTimeout(8000);
@@ -145,7 +194,7 @@ async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false,
   }
   await page.clock.setFixedTime(new Date(`${JOUR}T${MAINTENANT}:00`));
   await installMock(page, { maintenant: new Date(`${JOUR}T${MAINTENANT}:00`).getTime() });
-  await installerServeur(page, journee());
+  await installerServeur(page, dossiers);
   await boot(page, { installer: false });
   await page.evaluate(({ theme, JOUR, plein }) => {
     state.staffTheme = theme;
@@ -155,7 +204,7 @@ async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false,
     openStaffPlanningResource('bowling');
     if (plein) { state.staffPlanningExpanded = true; renderStaff(); }
   }, { theme, JOUR, plein });
-  await page.waitForSelector('#planningGridWrap .booking[data-booking-res-id="9601"]', { timeout: 10000 });
+  await page.waitForSelector(`#planningGridWrap .booking[data-booking-res-id="${dossiers[0].id}"]`, { timeout: 10000 });
   // Le changement de theme se fond (150 ms) ; les cartes jouent leur entree.
   await page.waitForTimeout(700);
   return { ctx, page, erreurs };
@@ -219,6 +268,8 @@ const lire = (page) => page.evaluate(mesurerDansLaPage);
 
 // ── LES SCENARIOS ───────────────────────────────────────────────────────────
 async function scenarios(browser, mutation = null) {
+  // [E] a sa propre journee : ses contre-preuves ne rejouent qu elle.
+  if (mutation && mutation.partie === 'E') { await scenariosNoms(browser, mutation); return; }
   // [B] [C] dans chaque appareil, fenetre puis plein ecran (theme sombre : la
   // geometrie ne depend pas du theme).
   const vus = new Set();
@@ -247,9 +298,10 @@ async function scenarios(browser, mutation = null) {
         const deuxFois = avecBadge.filter(c => c.teteLaser === true);
         ok(deuxFois.length === 0, `[B] ${ou} : la tete ne redit pas « laser » quand le pied le porte`, deuxFois.map(c => c.id).join(','));
         // La formule d une heure : son offre dans le pied, le laser dans sa tete
-        // (des que la tete a la place de ses marqueurs, au-dessus de 96 px).
+        // des que la tete a la place du nom et du laser seul (au-dessus de
+        // 132 px de piste, [E] : le nom d abord).
         const formules = cartes.filter(c => FORMULES.has(c.id) && c.dens === 'md');
-        const formulesKo = formules.filter(c => c.badge || (c.piste > 96 && c.teteLaser !== true));
+        const formulesKo = formules.filter(c => c.badge || (c.piste > 132.5 && c.teteLaser !== true));
         ok(formulesKo.length === 0, `[B] ${ou} : une formule d une heure garde son offre au pied et le laser en tete`, formulesKo.map(c => `${c.id} badge ${Boolean(c.badge)} tete ${c.teteLaser} (piste ${c.piste})`).join(' | '));
         avecBadge.filter(c => c.badge.forme === 'complet').forEach(c => vus.add(`${appareil}${plein ? '+' : ''}:${c.id}`));
         if (plein) {
@@ -330,6 +382,100 @@ async function scenarios(browser, mutation = null) {
       ok(erreurs.length === 0, '[D] zero erreur JS ni console', erreurs.slice(0, 2).join(' | '));
     } finally { await ctx.close(); }
   }
+  if (!mutation) await scenariosNoms(browser);
+}
+
+// ── [E] LE NOM D ABORD ──────────────────────────────────────────────────────
+// Par carte : le nom (coupe ou entier, mesure au noeud de texte ; les
+// caracteres vraiment lus, l ellipse deduite), les marqueurs de la tete
+// visibles, la bulle de la note et le coin dessine par `::before`.
+function mesurerNomsDansLaPage() {
+  const r = document.createRange();
+  const vu = (e) => Boolean(e) && e.getBoundingClientRect().width > 1 && getComputedStyle(e).display !== 'none';
+  return [...document.querySelectorAll('#planningGridWrap .booking')].map((c) => {
+    const nom = c.querySelector('.booking-name');
+    const noeud = nom.firstChild;
+    const texte = noeud ? noeud.textContent : '';
+    const box = nom.getBoundingClientRect();
+    const cs = getComputedStyle(nom);
+    const uneLigne = cs.whiteSpace === 'nowrap';
+    r.selectNodeContents(nom);
+    const tout = r.getBoundingClientRect();
+    const coupe = uneLigne ? tout.width > box.width + 0.5 : tout.bottom > box.bottom + 2;
+    // L ellipse prend la place des derniers caracteres : un caractere n est lu
+    // que s il finit avant elle.
+    const s = document.createElement('span');
+    ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'fontStretch'].forEach((p) => { s.style[p] = cs[p]; });
+    s.style.position = 'absolute'; s.style.visibility = 'hidden'; s.style.whiteSpace = 'pre'; s.textContent = '…';
+    document.body.appendChild(s);
+    const ellipse = s.getBoundingClientRect().width;
+    s.remove();
+    let lus = texte.length;
+    if (uneLigne && coupe && noeud) {
+      lus = 0;
+      for (let i = 0; i < texte.length; i++) { r.setStart(noeud, i); r.setEnd(noeud, i + 1); if (r.getBoundingClientRect().right <= box.right - ellipse + 0.5) lus += 1; else break; }
+    }
+    const bulle = c.querySelector('.booking-head .bk-flag.flag-note');
+    const coin = getComputedStyle(c, '::before');
+    return {
+      id: Number(c.dataset.bookingResId),
+      dens: (c.className.match(/\bdens-(xs|md|lg)\b/) || [])[1] || '',
+      piste: Math.round(c.closest('.lane-col').getBoundingClientRect().width * 10) / 10,
+      texte, titre: nom.getAttribute('title') || '', lus, coupe, uneLigne, nom: Math.round(box.width * 10) / 10,
+      // Le laser chiffre se lit « laser x2 » tant que son chiffre se voit.
+      marqueurs: [...c.querySelectorAll('.booking-head .bk-flag:not(.flag-note), .booking-head .delay-indicator-label, .booking-head .bk-time')].filter(vu)
+        .map((e) => (e.classList.contains('delay-indicator-label') ? 'retard' : e.classList.contains('bk-time') ? 'heure'
+          : e.classList.contains('flag-birthday') ? 'gateau' : vu(e.querySelector('.bk-flag-num')) ? 'laser x2' : 'laser')),
+      gateau: Boolean(c.querySelector('.booking-head .flag-birthday')),
+      bulle: bulle ? { large: Math.round(bulle.getBoundingClientRect().width * 10) / 10, dit: bulle.getAttribute('aria-label') || '' } : null,
+      coin: coin.content !== 'none' && parseFloat(coin.borderRightWidth) > 0 && coin.borderRightColor !== 'rgba(0, 0, 0, 0)',
+      deborde: c.scrollWidth - c.clientWidth > 1 || c.scrollHeight - c.clientHeight > 1,
+    };
+  });
+}
+
+async function scenariosNoms(browser, mutation = null) {
+  for (const appareil of Object.keys(APPAREILS)) {
+    for (const plein of [false, true]) {
+      const { ctx, page, erreurs } = await ouvrir(browser, { appareil, plein, mutation, dossiers: journeeNoms() });
+      const ou = `${appareil}${plein ? ' plein ecran' : ''}`;
+      try {
+        await page.evaluate(() => document.fonts.ready);
+        const cartes = await page.evaluate(mesurerNomsDansLaPage);
+        const hautes = cartes.filter(c => c.dens !== 'xs');
+        const sousLePlancher = hautes.filter(c => c.coupe && c.nom < 76 && c.marqueurs.length);
+        ok(hautes.length >= 6 && sousLePlancher.length === 0, `[E] ${ou} : un nom coupe garde 76 px des qu un marqueur reste a cote de lui`,
+          sousLePlancher.map(c => `${c.id} ${c.nom}px [${c.marqueurs.join(', ')}] (piste ${c.piste})`).join(' | ') || `${hautes.length} cartes hautes`);
+        const notes = cartes.filter(c => c.bulle);
+        const notesKo = notes.filter(c => (c.dens !== 'xs'
+          ? !(c.coin && c.bulle.large <= 1 && c.bulle.dit)
+          : c.coin || (c.piste > 115.5 && c.bulle.large < 10)));
+        ok(notes.length === 4 && notesKo.length === 0, `[E] ${ou} : la note d une carte haute est un coin replie sans largeur, la carte d une ligne garde sa bulle`,
+          notesKo.map(c => `${c.id} ${c.dens} coin ${c.coin} bulle ${c.bulle.large}`).join(' | ') || notes.map(c => `${c.id}:${c.dens}`).join(' '));
+        const gateauKo = cartes.filter(c => (/anniv/i.test(c.texte) && c.gateau)
+          || ([9702, 9703, 9704].includes(c.id) && (!c.gateau || (c.dens !== 'xs' && c.piste > 133.5 && !c.marqueurs.includes('gateau')))));
+        ok(gateauKo.length === 0, `[E] ${ou} : le gateau ne redit pas « Anniv. » et reste quand le nom ne le dit pas`,
+          gateauKo.map(c => `${c.id} « ${c.texte} » gateau ${c.gateau} [${c.marqueurs.join(', ')}] (piste ${c.piste})`).join(' | '));
+        const noah = cartes.find(c => c.id === 9701);
+        const lea = cartes.find(c => c.id === 9708);
+        ok(noah && lea && noah.texte === 'Anniv. Noah (10 ans)' && noah.titre === 'Anniversaire Noah (10 ans)' && lea.texte === 'Anniv. Léa (9 ans)',
+          `[E] ${ou} : « Anniversaire » se lit « Anniv. », le nom entier reste dans l infobulle`, `${noah && noah.texte} / ${noah && noah.titre} / ${lea && lea.texte}`);
+        const debordent = cartes.filter(c => c.deborde);
+        ok(debordent.length === 0, `[E] ${ou} : aucune carte ne deborde`, debordent.map(c => `${c.id} ${c.dens}`).join(' | '));
+        if (appareil === '1440' && !plein) {
+          ok(noah && noah.lus >= 'Anniv. Noah'.length && noah.marqueurs.some(m => m.startsWith('laser')), '[E] 1440 : au comptoir, le prenom de la carte la plus chargee se lit a cote de son laser',
+            `${noah && noah.lus} caracteres lus de « ${noah && noah.texte} » (${noah && noah.nom} px, [${noah && noah.marqueurs.join(', ')}])`);
+        }
+        if (appareil === '1920' && !plein) {
+          const attendu = { 9701: ['laser x2'], 9702: ['gateau', 'laser'], 9703: ['gateau', 'laser x2'], 9704: ['gateau'], 9705: ['laser x2', 'retard'] };
+          const retires = Object.entries(attendu).filter(([id, m]) => { const c = cartes.find(x => x.id === Number(id)); return !c || m.some(k => !c.marqueurs.includes(k)); });
+          ok(retires.length === 0, '[E] 1920 : aucun marqueur retire la ou il tient',
+            retires.map(([id]) => { const c = cartes.find(x => x.id === Number(id)); return `${id} [${c ? c.marqueurs.join(', ') : 'absente'}] (piste ${c && c.piste})`; }).join(' | '));
+        }
+        ok(erreurs.length === 0, `[E] ${ou} : zero erreur JS ni console`, erreurs.slice(0, 2).join(' | '));
+      } finally { await ctx.close(); }
+    }
+  }
 }
 
 // ── [K] LES CONTRE-PREUVES ─────────────────────────────────────────────────
@@ -376,6 +522,44 @@ const MUTATIONS = [
   { nom: 'passee-coloree', lettre: 'une carte passee porte la barre grise', fichier: 'assets/pinlane-staff.css',
     de: '.booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(--line-strong);',
     vers: '.booking.is-passee { --bk-haut: var(--subtle);' },
+  // [E] Le coin de la note n est plus dessine.
+  { nom: 'coin', partie: 'E', lettre: 'la note d une carte haute est un coin replie', fichier: 'assets/pinlane-staff.css',
+    de: ":has(.booking-head .bk-flag.flag-note)::before { content: '';",
+    vers: ':has(.booking-head .bk-flag.flag-note)::before { content: none;' },
+  // [E] La bulle de la note reprend sa largeur dans la tete.
+  { nom: 'bulle', partie: 'E', lettre: 'la note d une carte haute est un coin replie', fichier: 'assets/pinlane-staff.css',
+    de: '.booking:not(.dens-xs) .booking-head .bk-flag.flag-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
+    vers: '' },
+  // [E] Le pictogramme laser ne cede plus : sur une piste etroite le nom
+  // retombe sous 76 px.
+  { nom: 'palier', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',
+    de: '@container piste (max-width: 131px) {\n  .booking:not(.dens-xs) .booking-head .flag-laser { display: none; }\n}',
+    vers: '' },
+  // [E] Le « x2 » ne cede plus : a 1440 le nom de Noah retombe a 65 px.
+  { nom: 'chiffre', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',
+    de: '@container piste (max-width: 144.2px) {\n  .booking:not(.dens-xs) .booking-head .flag-laser .bk-flag-num { display: none; }\n}',
+    vers: '' },
+  // [E] Sur une carte retardee, le laser reste a cote de la puce.
+  { nom: 'retard', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',
+    de: '@container piste (max-width: 173.5px) {\n  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser { display: none; }\n}',
+    vers: '' },
+  // [E] L heure de la fenetre agrandie s ecrit sur toute piste.
+  { nom: 'heure', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',
+    de: '@container piste (max-width: 194.6px) {\n  .planning-box.expanded .booking:not(.dens-xs) .bk-time { display: none; }\n}',
+    vers: '' },
+  // [E] Le « x2 » d une carte qui porte le gateau cede jusqu a 400 px : il
+  // part meme la ou il tient.
+  { nom: 'trop-tot', partie: 'E', lettre: 'aucun marqueur retire la ou il tient', fichier: 'assets/pinlane-staff.css',
+    de: '@container piste (max-width: 161.2px) {',
+    vers: '@container piste (max-width: 400px) {' },
+  // [E] Le gateau redit le nom.
+  { nom: 'gateau', partie: 'E', lettre: 'le gateau ne redit pas', fichier: 'assets/app-main.js',
+    de: "if (getReservationOccasion(reservation) === 'anniversaire' && !/anniv/i.test(options.nom || '')) {",
+    vers: "if (getReservationOccasion(reservation) === 'anniversaire') {" },
+  // [E] « Anniversaire » reste en toutes lettres en tete du nom.
+  { nom: 'anniv', partie: 'E', lettre: 'se lit « Anniv. »', fichier: 'assets/app-main.js',
+    de: "const fullName = String(reservation?.name || 'Client').trim().replace(/^Anniversaire\\b/i, 'Anniv.');",
+    vers: "const fullName = String(reservation?.name || 'Client').trim();" },
 ];
 
 async function main() {

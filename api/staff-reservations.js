@@ -10,6 +10,7 @@ const {
   setReservationActivityProgress,
   setReservationActivityDone,
   noterReservationEquipe,
+  notesAvecCompte,
   lireVersionAttendue,
   memeVersion,
   reservationModifieeEntreTemps,
@@ -732,6 +733,22 @@ module.exports = async (req, res) => {
         ...body,
         centerId: requestedCenterId,
       };
+      // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33) : le groupe recompte au
+      // comptoir passe par ce chemin, celui de Modifier (meme droit, meme
+      // replanification, le prix que la console a calcule). Le serveur le trace
+      // dans une note d equipe, dans la meme ecriture et a l auteur de la
+      // session, jamais a celui du corps : « 10 → 13 ». Seul un groupe pointe
+      // arrive se compte.
+      const compteArrivee = patch.compteArrivee === true;
+      delete patch.compteArrivee;
+      if (compteArrivee) {
+        if (current.status !== 'arrived') throw createHttpError('Le compte se fait sur un groupe pointé arrivé.', 422);
+        const de = Math.trunc(Number(current.pax) || 0);
+        const a = Number(patch.pax);
+        if (!Number.isInteger(a) || a < 1 || a > 240) throw createHttpError('Nombre de personnes invalide : entre 1 et 240.', 422);
+        const membre = session && session.member ? session.member : null;
+        if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: (membre && (membre.name || membre.displayName)) || 'Équipe' });
+      }
       const proposedProgram = patch.program ?? current.program;
       const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
         : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];

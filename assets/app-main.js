@@ -23998,10 +23998,16 @@ function lpProchainHtml(modele) {
     const la = r.status === 'arrived' || r.status === 'paid';
     const absent = r.absentAt && r.status !== 'paid';
     const detail = [lpPluriel(lpGroupe(w), 'joueur'), lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : ''].filter(Boolean).join(' · ');
+    // Arrives, ils se comptent : « Arrivés · 10 », un second toucher ouvre le
+    // compte (ouvrirCompteArrivee), et les armes a preparer suivent.
+    const coche = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+    const nombre = r.status === 'arrived' ? ` · ${Math.trunc(Number(r.pax) || 0)}` : '';
     const action = absent
       ? '<span class="lp-etat lp-etat--absent">Pas venus</span>'
       : la
-        ? `<span class="lp-etat lp-etat--la"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Arrivés</span>`
+        ? (peutCompterArrivee(r)
+          ? `<button type="button" class="lp-etat lp-etat--la lp-etat--compte" data-compte-id="${Number(r.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Arrivés, ils sont ${Math.trunc(Number(r.pax) || 0)} : changer le nombre`)}" onclick="ouvrirCompteArrivee(${Number(r.id)}, this, event)">${coche}Arrivés${nombre}</button>`
+          : `<span class="lp-etat lp-etat--la">${coche}Arrivés${nombre}</span>`)
         : `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Ils sont là</button>`;
     return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : toucher pour sa fiche, glisser pour le déplacer`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
   }).join('');
@@ -26119,6 +26125,8 @@ function montrerAuPlanning(reservationId, ressource, essais) {
 }
 
 function closePos() {
+  // La bulle du compte ouverte depuis la fiche part avec elle.
+  if (compteArrivee().id && compteArrivee().dansFiche) fermerCompteArrivee(false);
   state.selectedRes = null;
   ficheFaitsPeints = '';
   const overlay = document.getElementById('posOverlay');
@@ -26572,7 +26580,13 @@ function ficheEtat(r, moment, droits) {
     boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
   }
   if (droits.statut) {
-    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>`);
+    // LE COMPTE A L ARRIVEE (2026-10-29) : pointe, le bouton dit « Arrivé · 10 »,
+    // et le toucher une seconde fois ouvre le compte (ouvrirCompteArrivee).
+    // Qui ne peut pas modifier le dossier voit le nombre, sans la bulle.
+    const arrive = r.status === 'arrived';
+    const compter = peutCompterArrivee(r);
+    const pax = Math.trunc(Number(r.pax) || 0);
+    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${arrive ? 'active arrived' : ''}" aria-pressed="${arrive}"${compter ? ` data-compte-id="${r.id}" aria-haspopup="dialog" aria-label="Arrivé, ils sont ${pax} : changer le nombre"` : ''} onclick="${compter ? `ouvrirCompteArrivee(${r.id}, this, event)` : `setReservationStatusDirect(${r.id}, 'arrived')`}">${arrive ? `Arrivé · ${pax}` : 'Arrivé'}</button>`);
   }
   if (droits.encaisser) {
     GROUPE_MOYENS.forEach(m => {
@@ -29137,9 +29151,15 @@ function failEdit(message) {
   toast(message);
 }
 
-async function saveEdit(e) {
-  e.preventDefault();
-  if (dossierLaserSaving) return;
+// CE QUE « ENREGISTRER » ENVERRAIT pour l etat d edition courant
+// (state.editState sur state.selectedRes) : les controles de la saisie, puis
+// l action `appliquer` (dossier -> dossier) qui pose ce qui a change et
+// recalcule le prix. `appliquer` ne relit pas l etat d edition : elle se
+// rejoue apres coup sur une version plus recente du dossier
+// (envoyerModificationReservation). saveEdit et le compte a l arrivee
+// (preparerCompte) partent d ici : un seul calcul, un seul chemin serveur.
+// Un controle qui echoue rend { erreur }.
+function preparerModificationEdition() {
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
   // le dossier a l ouverture du formulaire, pas contre l ecran rafraichi
@@ -29162,9 +29182,9 @@ async function saveEdit(e) {
   // affiche). On ne deplace pas un dossier dans le passe.
   const jourChange = Boolean(es.date) && es.date !== state.selectedRes.date;
   const jourLong = jourChange ? parseLocalDate(es.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
-  if (jourChange && es.date < todayStr()) { failEdit('Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.'); return; }
+  if (jourChange && es.date < todayStr()) return { erreur: 'Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.' };
   const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
-  if (!slotCheck.ok) { failEdit(slotCheck.message); return; }
+  if (!slotCheck.ok) return { erreur: slotCheck.message };
   // Un autre jour part avec les pistes du dossier, inchangees : le serveur les
   // remplace par celles qu il attribue ce jour-la. Celles que le formulaire a
   // proposees valaient pour le jour d origine.
@@ -29175,18 +29195,17 @@ async function saveEdit(e) {
   if (requiresLanes && !jourChange) {
     const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
-      failEdit('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.');
-      return;
+      return { erreur: 'Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.' };
     }
     lanes = suggested;
     state.editState.lanesStr = formatLaneInput(lanes);
   }
-  if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
+  if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
   const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
-  if (conflicts.length) { failEdit('Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').'); return; }
+  if (conflicts.length) return { erreur: 'Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').' };
   if (state.selectedRes.type === 'laser' && !jourChange) {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
-    if (!laserAvailability.ok) { failEdit(laserAvailability.message); return; }
+    if (!laserAvailability.ok) return { erreur: laserAvailability.message };
   }
 
   // Les champs du formulaire, et ceux que la personne a VRAIMENT changes :
@@ -29210,7 +29229,7 @@ async function saveEdit(e) {
   let libelleAdapte = '';
   if (programmeModifie) {
     const items = getEditProgramItems();
-    if (!items.length) { failEdit('Gardez au moins une activité dans ce dossier.'); return; }
+    if (!items.length) return { erreur: 'Gardez au moins une activité dans ce dossier.' };
     // FORME CANONIQUE : { items }. Un tableau nu passe la planification mais
     // est refuse par l ecriture en base (normalizeReservationProgram teste
     // value.items) : le contenu edite serait ecrit NULL et la modification
@@ -29231,6 +29250,10 @@ async function saveEdit(e) {
   const prixEcran = peutAdapterFormule() ? getEditPriceValue() : null;
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
+  // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
+  // plus etre celui de ce dossier (le compte a l arrivee le rend aussitot).
+  const devisActivites = getEditPrixActivites();
+  const programmeAdapte = Boolean(programme) && modifsProgrammeEdition().length > 0;
 
   // L ACTION, rejouable sur une version plus recente du dossier : elle pose ce
   // que la personne a change et recalcule le prix sur ce qui est en base.
@@ -29267,7 +29290,7 @@ async function saveEdit(e) {
       updated.basePrice = dossier.basePrice;
       updated.price = Math.round(((Number(dossier.price) || 0) + sumExtras(updated.extras || []) - sumExtras(dossier.extras || [])) * 100) / 100;
     } else {
-      const quote=programmeArcades ? getEditPrixActivites() : null;
+      const quote=programmeArcades ? devisActivites : null;
       updated.basePrice=quote?.complet ? quote.total : getBasePrice(updated.type, updated.duration, (updated.lanes || []).length, updated.pax, updated.formuleId, updated.date);
       updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
     }
@@ -29275,11 +29298,20 @@ async function saveEdit(e) {
       updated.program = programme;
       // Un groupe qui grandit fait suivre ses activites (suivreLeGroupe) : le
       // programme part, mais le dossier ne devient pas « adapté » pour autant.
-      if (modifsProgrammeEdition().length) updated.label = libelleAdapte;
+      if (programmeAdapte) updated.label = libelleAdapte;
     }
     if (prixEcran !== null) updated.price = prixEcran;
     return updated;
   };
+  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches };
+}
+
+async function saveEdit(e) {
+  e.preventDefault();
+  if (dossierLaserSaving) return;
+  const envoi = preparerModificationEdition();
+  if (envoi.erreur) { failEdit(envoi.erreur); return; }
+  const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches } = envoi;
   const previousReservation = state.selectedRes;
   if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length) {
     const delta = timeToNum(es.startTime) - timeToNum(origine.startTime);
@@ -29365,6 +29397,235 @@ async function saveEdit(e) {
 
 function setStatus(id, st) {
   setReservationStatusDirect(id, st);
+}
+
+// ---------------------------------------------------------------------------
+// LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33 ; Movsar : « Oui, le
+// compte »). « Arrivé » reste un geste ; il devient « Arrivé · 10 », et le
+// toucher une seconde fois ouvre « Ils sont : 10 [−] [+] ». Un anniversaire
+// reserve a 10 qui arrive a 13, ce sont trois personnes facturees au lieu de
+// trois perdues.
+// Tranche par Movsar le 29/10 : le compte est une modification du groupe telle
+// que Modifier la fait. Meme etat d edition, memes regles (une activite qui
+// avait tout le groupe le suit ; une piste de plus quand le groupe ne tient plus
+// sur les siennes, et sans piste libre rien ne part), meme prix
+// (prixSuiviEdition : il suit le compte, a la baisse aussi), meme envoi
+// (envoyerModificationReservation), meme droit (reservations.edit : le Staff
+// bar voit le nombre sans le changer). Les heures restent celles du plan : le
+// serveur replanifie sur elles. Le PATCH porte `compteArrivee` : le serveur
+// trace « 10 → 13 » dans une note d equipe, a l auteur de sa session.
+// ---------------------------------------------------------------------------
+function peutCompterArrivee(r) {
+  return Boolean(r) && r.status === 'arrived' && !r.absentAt && r.date === todayStr() && peutAdapterFormule();
+}
+
+// Le nombre de la reservation : celui d avant le premier compte (la note du
+// serveur le garde), sinon le groupe tel qu il est.
+function nombreReserve(r) {
+  const premier = getReservationNotesEquipe(r).find((n) => n.compte && Number(n.compte.de) > 0);
+  return premier ? Math.trunc(Number(premier.compte.de)) : Math.trunc(Number(r && r.pax) || 0);
+}
+
+// Ce que Modifier enverrait pour « Ils sont n » : son etat d edition, monte
+// comme a l ouverture de l onglet (le programme, les extras, puis le prix du
+// champ), et le nombre change par le chemin de ses boutons − et + (editPaxPas).
+// Le temps du calcul, la fiche « est » ce dossier ; rien n est peint, tout
+// revient comme avant.
+function preparerCompte(r, n) {
+  const avant = { selectedRes: state.selectedRes, editState: state.editState, editError: state.editError };
+  state.selectedRes = r;
+  state.editState = etatEditionDepuis(r);
+  state.editError = '';
+  try {
+    const e = state.editState;
+    ensureEditProgram(dossierPourFormule(r));
+    ensureEditExtras(r);
+    e.price = String(prixSuiviEdition(getEditPrixEstime()));
+    setEditField('pax', n, true);
+    const estime = getEditPrixEstime();
+    e.price = String(prixSuiviEdition(estime));
+    return { ...preparerModificationEdition(), estime, prix: getEditPriceValue() };
+  } finally {
+    state.selectedRes = avant.selectedRes;
+    state.editState = avant.editState;
+    state.editError = avant.editError;
+  }
+}
+
+// La bulle du compte : une a la fois, posee sous ce qu on a touche (la ligne de
+// la feuille, le prochain depart laser, la fiche). Elle vit dans le body : la
+// feuille qui se repeint ne l emporte pas, elle se repose sur la nouvelle ancre.
+// (L etat se cree a la demande : une fonction est hissee, une constante ne
+// l est pas, et closePos le lit.)
+function compteArrivee() {
+  if (!compteArrivee.etat) compteArrivee.etat = { id: 0, n: 0, dansFiche: false, enCours: false, erreur: '' };
+  return compteArrivee.etat;
+}
+
+function ancreCompteArrivee() {
+  const portee = compteArrivee().dansFiche ? document.getElementById('posOverlay') : document;
+  return portee ? portee.querySelector(`[data-compte-id="${compteArrivee().id}"]`) : null;
+}
+
+function ouvrirCompteArrivee(id, ancre, ev) {
+  if (ev) ev.stopPropagation();
+  const r = findStaffReservationById(id);
+  if (!r || !peutCompterArrivee(r)) { toast('Ce groupe ne se compte plus ici : passez par Modifier.'); return; }
+  compteArrivee().id = Number(r.id);
+  compteArrivee().n = Math.max(1, Math.trunc(Number(r.pax) || 1));
+  compteArrivee().dansFiche = Boolean(ancre && ancre.closest && ancre.closest('#posOverlay'));
+  compteArrivee().enCours = false;
+  compteArrivee().erreur = '';
+  peindreCompteArrivee();
+  document.addEventListener('pointerdown', compteArriveeDehors, true);
+  document.addEventListener('keydown', compteArriveeClavier, true);
+  window.addEventListener('resize', poserCompteArrivee);
+  document.addEventListener('scroll', poserCompteArrivee, true);
+  const plus = document.querySelector('#comptePop [data-compte-pas="1"]');
+  if (plus) plus.focus();
+}
+
+function fermerCompteArrivee(rendreFocus = true) {
+  const pop = document.getElementById('comptePop');
+  if (pop) pop.remove();
+  document.removeEventListener('pointerdown', compteArriveeDehors, true);
+  document.removeEventListener('keydown', compteArriveeClavier, true);
+  window.removeEventListener('resize', poserCompteArrivee);
+  document.removeEventListener('scroll', poserCompteArrivee, true);
+  const ancre = compteArrivee().id ? ancreCompteArrivee() : null;
+  compteArrivee().id = 0;
+  compteArrivee().enCours = false;
+  compteArrivee().erreur = '';
+  if (rendreFocus && ancre) ancre.focus({ preventScroll: true });
+}
+
+function compteArriveeDehors(ev) {
+  const pop = document.getElementById('comptePop');
+  if (!pop || pop.contains(ev.target)) return;
+  // L ancre elle-meme rouvre la bulle (son clic suit).
+  if (ev.target.closest && ev.target.closest(`[data-compte-id="${compteArrivee().id}"]`)) return;
+  fermerCompteArrivee(false);
+}
+
+function compteArriveeClavier(ev) {
+  if (!document.getElementById('comptePop')) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); fermerCompteArrivee(); }
+}
+
+function compteArriveePas(delta) {
+  if (compteArrivee().enCours) return;
+  compteArrivee().n = Math.max(1, Math.min(240, compteArrivee().n + delta));
+  compteArrivee().erreur = '';
+  peindreCompteArrivee();
+}
+
+// Le contenu se reecrit a chaque pas (le prix suit) ; le bouton touche garde
+// le focus.
+function peindreCompteArrivee() {
+  const r = findStaffReservationById(compteArrivee().id);
+  if (!r) { fermerCompteArrivee(false); return; }
+  const devis = preparerCompte(r, compteArrivee().n);
+  const pax = Math.trunc(Number(r.pax) || 0);
+  const reserve = nombreReserve(r);
+  const avant = Number(r.price) || 0;
+  const connu = devis.prix !== null && (prixDossierConnu(r) || Boolean(devis.estime && devis.estime.utilisable));
+  const ligne = devis.estime && devis.estime.lignes.length === 1 ? devis.estime.lignes[0] : null;
+  const erreur = compteArrivee().erreur || devis.erreur || '';
+  const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#comptePop') ? document.activeElement.getAttribute('data-compte-focus') : '';
+  const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
+  let pop = document.getElementById('comptePop');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'comptePop';
+    pop.className = 'compte-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-labelledby', 'comptePopTitre');
+    document.body.appendChild(pop);
+  }
+  pop.innerHTML = `<p class="compte-pop__titre" id="comptePopTitre">${escapeHtml(r.name || 'Groupe')}</p>
+    <div class="compte-pop__rang">
+      <span class="compte-pop__lib" id="comptePopLib">Ils sont</span>
+      <div class="compte-pop__pas" role="group" aria-labelledby="comptePopLib">
+        <button type="button" data-compte-pas="-1" data-compte-focus="moins" aria-label="Une personne de moins" onclick="compteArriveePas(-1)"${compteArrivee().n <= 1 ? ' aria-disabled="true"' : ''}>${signe(false)}</button>
+        <output aria-live="polite">${compteArrivee().n}</output>
+        <button type="button" data-compte-pas="1" data-compte-focus="plus" aria-label="Une personne de plus" onclick="compteArriveePas(1)">${signe(true)}</button>
+      </div>
+    </div>
+    <p class="compte-pop__ref">${reserve === compteArrivee().n ? 'Comme à la réservation' : `${reserve} à la réservation`}</p>
+    ${connu ? `<div class="compte-pop__prix"><span>${ligne ? `${escapeHtml(ligne.nom)}${ligne.detail ? ` · ${escapeHtml(ligne.detail)}` : ''}` : 'Total'}</span><b>${escapeHtml(formatMoneyCentimes(devis.prix))}</b></div>
+    ${Math.round(devis.prix * 100) !== Math.round(avant * 100) ? `<p class="compte-pop__avant">avant ${escapeHtml(formatMoneyCentimes(avant))}</p>` : ''}` : '<div class="compte-pop__prix"><span>Prix au comptoir</span></div>'}
+    ${erreur ? `<p class="compte-pop__erreur" role="alert">${escapeHtml(erreur)}</p>` : ''}
+    <div class="compte-pop__actions">
+      <button type="button" class="compte-pop__annuler" data-compte-focus="annuler" onclick="fermerCompteArrivee()">Annuler</button>
+      <button type="button" class="compte-pop__ok" data-compte-focus="ok" onclick="enregistrerCompteArrivee()"${compteArrivee().enCours ? ' aria-busy="true"' : ''}>${compteArrivee().enCours ? 'Enregistrement…' : 'Enregistrer'}</button>
+    </div>`;
+  pop.dataset.compteId = String(compteArrivee().id);
+  pop.classList.toggle('is-occupe', compteArrivee().enCours);
+  // Le nombre reserve change d un geste : l ecart se lit sans compter.
+  pop.classList.toggle('is-ecart', compteArrivee().n !== pax);
+  poserCompteArrivee();
+  if (focus) { const cible = pop.querySelector(`[data-compte-focus="${focus}"]`); if (cible) cible.focus({ preventScroll: true }); }
+}
+
+// Sous l ancre, alignee sur son bord droit ; au-dessus si la place manque en
+// bas ; jamais hors de l ecran (16 px de marge).
+function poserCompteArrivee() {
+  const pop = document.getElementById('comptePop');
+  const ancre = ancreCompteArrivee();
+  if (!pop || !ancre) return;
+  const a = ancre.getBoundingClientRect();
+  const largeur = pop.offsetWidth;
+  const hauteur = pop.offsetHeight;
+  const gauche = Math.max(16, Math.min(window.innerWidth - largeur - 16, a.right - largeur));
+  const enBas = a.bottom + 8 + hauteur <= window.innerHeight - 16 || a.top - 8 - hauteur < 16;
+  pop.style.left = `${Math.round(gauche)}px`;
+  pop.style.top = `${Math.round(enBas ? a.bottom + 8 : a.top - 8 - hauteur)}px`;
+  pop.classList.toggle('is-dessus', !enBas);
+  pop.style.setProperty('--compte-fleche', `${Math.round(Math.max(18, Math.min(largeur - 18, a.left + a.width / 2 - gauche)))}px`);
+}
+
+async function enregistrerCompteArrivee() {
+  if (compteArrivee().enCours) return;
+  const id = compteArrivee().id;
+  const n = compteArrivee().n;
+  const r = findStaffReservationById(id);
+  if (!r) { fermerCompteArrivee(false); return; }
+  // Le meme nombre : rien a envoyer.
+  if (n === Math.trunc(Number(r.pax) || 0)) { fermerCompteArrivee(); return; }
+  const envoi = preparerCompte(r, n);
+  if (envoi.erreur) { compteArrivee().erreur = envoi.erreur; peindreCompteArrivee(); toast(envoi.erreur); return; }
+  compteArrivee().enCours = true;
+  peindreCompteArrivee();
+  applyOptimisticReservation(envoi.appliquer(r), { preserveEditState: true });
+  try {
+    // (les options de saveEdit, plus le drapeau qui fait ecrire la note)
+    const payload = await envoyerModificationReservation(envoi.versionDeBase, envoi.appliquer, { requiresLanes: envoi.requiresLanes, allowPastStart: true, compteArrivee: true });
+    const fait = payload && payload.reservation;
+    // Seul le dossier ecrit fait foi : un serveur qui rend un autre nombre n a
+    // pas enregistre ce compte.
+    if (!fait || String(fait.id) !== String(id) || Math.trunc(Number(fait.pax)) !== n) throw new Error('Le serveur n’a pas confirmé ce nombre. Actualisez le dossier.');
+    applyOptimisticReservation(fait, { preserveEditState: true });
+    save();
+    const nom = fait.name || 'Le groupe';
+    const pistes = (fait.lanes || []).join(', ');
+    const pistesChangees = envoi.requiresLanes && pistes !== (r.lanes || []).join(', ');
+    const constat = fait.validationStatus === 'staff_review'
+      ? `${nom} : ${fait.pax} personnes, mais le moteur n’a pas pu replacer le groupe : il passe en « à surveiller ».`
+      : `${nom} : ${fait.pax} personnes${pistesChangees ? `, pistes ${pistes}` : ''}${prixDossierConnu(fait) ? `, ${formatMoneyCentimes(fait.price)}` : ''}.`;
+    if (compteArrivee().id === id) fermerCompteArrivee();
+    toast(payload.changeEntreTemps ? `${constat} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.` : constat);
+  } catch (error) {
+    applyOptimisticReservation(error.conflit && error.reservation ? error.reservation : r, { preserveEditState: true });
+    const message = error.conflit && error.reservation
+      ? `La réservation a changé entre-temps${libellesChampsReservation(error.champs) ? ` (${libellesChampsReservation(error.champs)})` : ''}. Recomptez sur la version à jour.`
+      : error.status ? `${error.message || 'Le compte est refusé.'} Rien n’a été enregistré.` : (error.message || 'Le compte n’est pas enregistré.');
+    if (compteArrivee().id === id) {
+      compteArrivee().enCours = false;
+      compteArrivee().erreur = message;
+      peindreCompteArrivee();
+    }
+    toast(message);
+  }
 }
 
 // L ECART DE PRIX D UN DOSSIER SURVIT A SES EXTRAS (2026-08-26).

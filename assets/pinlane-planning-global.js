@@ -557,7 +557,8 @@
     var parts = [];
     var mot = typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '';
     if (mot) parts.push(mot);
-    if (typeof getReservationNotesEquipe === 'function') getReservationNotesEquipe(r).forEach(function (n) { if (n && n.t) parts.push(n.t); });
+    // (le compte a l arrivee se lit dans la colonne Pers., sa note dans la fiche)
+    if (typeof getReservationNotesEquipe === 'function') getReservationNotesEquipe(r).forEach(function (n) { if (n && n.t && !n.compte) parts.push(n.t); });
     var client = window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '';
     if (client) parts.push(client);
     return parts.join(' · ').replace(/\s+/g, ' ').trim();
@@ -574,7 +575,8 @@
     if (note) sous += '<span class="gf-nom__note">' + GF_ICONE_NOTE + gpEsc(note) + '</span>';
     // (au telephone, les colonnes Formule et Pers. passent sous le nom)
     var pax = Number(r.pax) || 0;
-    var meta = [pax + ' pers.'].concat(g.formule ? [g.formule.long] : r.type === 'custom' || r.surMesure === true ? ['Sur mesure'] : []).join(' · ');
+    var reserve = gfNombreReserve(r);
+    var meta = [pax + ' pers.' + (reserve !== pax ? ' (' + reserve + ' rés.)' : '')].concat(g.formule ? [g.formule.long] : r.type === 'custom' || r.surMesure === true ? ['Sur mesure'] : []).join(' · ');
     return '<td class="gf-nom"><span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>'
       + (sous ? '<span class="gf-nom__sous" title="' + gpEsc(infos.concat(note ? [note] : []).join(' · ')) + '">' + sous + '</span>' : '')
       + '<span class="gf-nom__meta" aria-hidden="true">' + gpEsc(meta) + '</span></td>';
@@ -586,12 +588,20 @@
     if (r.type === 'custom' || r.surMesure === true) return '<td class="gf-f"><span class="gf-formule is-mesure">Sur mesure</span></td>';
     return '<td class="gf-f"></td>';
   }
+  // LE COMPTE A L ARRIVEE (2026-10-29) : un groupe recompte au comptoir dit
+  // son nombre, et dessous celui de la reservation (« 13 », « 10 rés. »).
+  function gfNombreReserve(r) {
+    var pax = Number(r.pax) || 0;
+    return typeof nombreReserve === 'function' ? nombreReserve(r) : pax;
+  }
   function gfPersonnes(g) {
     var r = g.r;
     var pax = Number(r.pax) || 0;
     var avec = Math.max(0, Math.trunc(Number(r.companions) || 0));
-    var bulle = pax + (pax > 1 ? ' personnes' : ' personne') + (avec ? ' + ' + avec + (avec > 1 ? ' accompagnants' : ' accompagnant') : '');
-    return '<td class="gf-n" title="' + gpEsc(bulle) + '"><b>' + pax + '</b>' + (avec ? '<span class="gf-n__plus">+' + avec + '</span>' : '') + '</td>';
+    var reserve = gfNombreReserve(r);
+    var bulle = pax + (pax > 1 ? ' personnes' : ' personne') + (avec ? ' + ' + avec + (avec > 1 ? ' accompagnants' : ' accompagnant') : '') + (reserve !== pax ? ', ' + reserve + ' à la réservation' : '');
+    return '<td class="gf-n" title="' + gpEsc(bulle) + '"><b>' + pax + '</b>' + (avec ? '<span class="gf-n__plus">+' + avec + '</span>' : '')
+      + (reserve !== pax ? '<span class="gf-n__res">' + reserve + ' rés.</span>' : '') + '</td>';
   }
 
   // L ETAT, au bout de la ligne : le statut (sa couleur est celle de la
@@ -604,6 +614,15 @@
     var venu = r.status === 'arrived' || (typeof groupeAJoue === 'function' && groupeAJoue(r));
     return venu && typeof prixDossierConnu === 'function' && prixDossierConnu(r) ? formatMoneyCentimes(r.price) : '';
   }
+  // Pointe : « Arrivé · 10 ». Le toucher une seconde fois ouvre le compte
+  // (ouvrirCompteArrivee, app-main.js) ; qui ne modifie pas voit le nombre.
+  function gfArrive(r) {
+    var n = Number(r.pax) || 0;
+    if (typeof peutCompterArrivee === 'function' && peutCompterArrivee(r)) {
+      return '<button type="button" class="gf-b t-arr gf-compte" data-compte-id="' + gpEsc(r.id) + '" aria-haspopup="dialog" aria-label="' + gpEsc('Arrivé, ils sont ' + n + ' : changer le nombre') + '">Arrivé · ' + n + '</button>';
+    }
+    return '<span class="gf-b t-arr">Arrivé · ' + n + '</span>';
+  }
   function gfPeutArriver(g, m) {
     var r = g.r;
     if (!m.aujourdHui || g.etat !== 'upcoming' || r.status === 'paid' || r.status === 'arrived' || r.absentAt) return false;
@@ -615,7 +634,7 @@
     var h = '';
     if (g.etat === 'absent' || g.teinte === 'absent') h += '<span class="gf-b t-absent">Pas venu</span>';
     else if (g.teinte === 'paid') h += '<span class="gf-b t-paid">Payé</span>';
-    else if (g.teinte === 'arr') h += '<span class="gf-b t-arr">Arrivé</span>';
+    else if (g.teinte === 'arr') h += gfArrive(r);
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) h += '<span class="gf-b is-valider">À valider</span>';
     // L ARGENT AU BON MOMENT (2026-10-27) : la visite finie d un groupe venu,
     // son montant a encaisser ; personne ne part sans payer. Un groupe jamais
@@ -635,7 +654,8 @@
   // Ce qu une ligne dit a un lecteur d ecran, d une traite.
   function gfAria(g, m) {
     var r = g.r;
-    var parts = [gpHeure(g.heure), r.name || 'Client', (Number(r.pax) || 0) + ' personnes'];
+    var reserve = gfNombreReserve(r);
+    var parts = [gpHeure(g.heure), r.name || 'Client', (Number(r.pax) || 0) + ' personnes' + (reserve !== (Number(r.pax) || 0) ? ', ' + reserve + ' à la réservation' : '')];
     if (g.formule) parts.push(g.formule.long);
     m.colonnes.forEach(function (c) {
       var liste = g.cases.get(c.cle) || [];
@@ -819,12 +839,14 @@
   function gfCleFocus(el) {
     var ligne = el.closest && el.closest('[data-gf-id]');
     if (!ligne) return null;
-    return { id: ligne.getAttribute('data-gf-id'), arrive: Boolean(el.closest('[data-gf-arrive]')) };
+    return { id: ligne.getAttribute('data-gf-id'), arrive: Boolean(el.closest('[data-gf-arrive], [data-compte-id]')) };
   }
+  // (« Arrivé » pointe puis devient « Arrivé · 10 » : le focus passe de l un a
+  // l autre, le second toucher est sous le doigt)
   function gfRendreFocus(defile, f) {
     var ligne = defile.querySelector('[data-gf-id="' + CSS.escape(f.id) + '"]');
     if (!ligne) return;
-    var cible = f.arrive ? ligne.querySelector('[data-gf-arrive]') || ligne : ligne;
+    var cible = f.arrive ? ligne.querySelector('[data-gf-arrive], [data-compte-id]') || ligne : ligne;
     cible.focus({ preventScroll: true });
   }
 
@@ -898,12 +920,15 @@
 
   // ---- LES GESTES ------------------------------------------------------------
   // « Arrivé » pointe le groupe (le chemin de la vue Terrain, avec son toast
-  // « Annuler ») ; un clic ou Entree ailleurs sur la ligne ouvre la fiche.
+  // « Annuler ») ; « Arrivé · 10 » ouvre le compte ; un clic ou Entree ailleurs
+  // sur la ligne ouvre la fiche.
   function gfBrancher(wrap) {
     wrap.addEventListener('click', function (e) {
       if (!e.target.closest) return;
       var arrive = e.target.closest('[data-gf-arrive]');
       if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }
+      var compte = e.target.closest('[data-compte-id]');
+      if (compte && typeof ouvrirCompteArrivee === 'function') { ouvrirCompteArrivee(Number(compte.getAttribute('data-compte-id')), compte, e); return; }
       if (e.target.closest('.gf-retour')) { gfAllerAMaintenant(wrap, true); return; }
       if (e.target.closest('a, button, input')) return;
       var ligne = e.target.closest('[data-gf-id]');

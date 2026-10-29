@@ -378,9 +378,10 @@ async function structure(page, s, label) {
     ok(fautesRetard.length === 0 && (s.fixture !== 'pic' || groupes.some((l) => l.retard)), `[E2] ${label} : chaque groupe en retard le dit sous son heure, avec ses minutes`, fautesRetard.slice(0, 3).map((l) => ({ nom: l.nom, retard: l.retard, cls: l.cls })));
     const fautesEtatLigne = groupes.filter((l) => {
       const g = parId.get(l.id);
-      const statut = g.etat === 'absent' || g.absent ? 'Pas venu' : g.status === 'paid' ? 'Payé' : g.status === 'arrived' ? 'Arrivé' : '';
+      // (pointe, le groupe dit son nombre : « Arrivé · 8 », le compte a l arrivee)
+      const statut = g.etat === 'absent' || g.absent ? 'Pas venu' : g.status === 'paid' ? 'Payé' : g.status === 'arrived' ? `Arrivé · ${g.pax}` : '';
       const peut = g.etat === 'upcoming' && !['paid', 'arrived'].includes(g.status) && !g.absent;
-      return (statut ? l.badges[0] !== statut : l.badges.some((b) => /^(Pas venu|Payé|Arrivé)$/.test(b)))
+      return (statut ? l.badges[0] !== statut : l.badges.some((b) => /^(Pas venu|Payé|Arrivé( · \d+)?)$/.test(b)))
         || l.badges.includes('À valider') !== g.aValider
         || l.badges.includes('À clôturer') !== (g.etat === 'closing' && !g.du)
         || l.badges.includes('À encaisser') !== (g.etat === 'closing' && Boolean(g.du))

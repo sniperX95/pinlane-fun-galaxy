@@ -105,6 +105,8 @@
 .gf-n { text-align: right; white-space: nowrap; }
 .gf-n b { font-size: 15px; font-weight: 700; }
 .gf-n__plus { margin-left: 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
+/* (un groupe recompte a l arrivee : le nombre de la reservation sous le sien) */
+.gf-n__res { display: block; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--muted); }
 
 /* LES ACTIVITES : une colonne chacune, separees comme sur le papier. */
 .gf-t :is(td.gf-a, .gf-th--a) { border-left: 1px solid var(--line); }
@@ -178,6 +180,11 @@
 .gf-arrive:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* En retard, le geste attendu passe devant. */
 .gf-r.is-retard .gf-arrive { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }
+/* « Arrivé · 10 » (2026-10-29) : le badge du statut, qui se touche une seconde
+   fois pour compter le groupe (ouvrirCompteArrivee). */
+button.gf-b.gf-compte { border: 0; font: inherit; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color 120ms ease; }
+button.gf-b.gf-compte:hover { background: color-mix(in srgb, var(--bk-haut) 80%, var(--bk-barre)); }
+button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* L HEURE QU IL EST : une barre entre les heures passees et a venir, sa
    pastille dans la colonne des heures. */

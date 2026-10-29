@@ -292,6 +292,7 @@
     "test:fiche-gestes": "node scripts/fiche-gestes-check.js",
     "test:fiche-simple": "node scripts/fiche-simple-check.js && node scripts/fiche-simple-check.js --contre-preuves",
     "test:fiche-modifier": "node scripts/fiche-modifier-check.js && node scripts/fiche-modifier-check.js --contre-preuves",
+    "test:compte-arrivee": "node scripts/compte-arrivee-check.js && node scripts/compte-arrivee-check.js --contre-preuves",
     "test:planning-matrix:fast": "node scripts/planning-matrix-check.js --fast",
     "test:simulation-access": "node scripts/simulation-access-check.js",
     "test:reservations-ghost": "node scripts/reservations-ghost-cache-check.js",

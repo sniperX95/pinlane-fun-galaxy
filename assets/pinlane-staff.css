@@ -21828,3 +21828,39 @@ body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jo
 #toast .toast-annuler { pointer-events: auto; min-height: 32px; margin-left: 6px; padding: 0 12px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-weight: 650; cursor: pointer; }
 #toast .toast-annuler:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 #toast .toast-annuler:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33). « Arrivé · 10 » se touche
+   une seconde fois : la bulle « Ils sont » se pose sous lui (ouvrirCompteArrivee,
+   app-main.js). Fixe, a l etage des menus flottants (au-dessus de la fiche et
+   du plein ecran) ; des pas de 40 px pour le doigt ; chiffres tabulaires. */
+.compte-pop { position: fixed; z-index: 700; width: min(300px, calc(100vw - 32px)); box-sizing: border-box; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); box-shadow: var(--shadow-overlay); font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
+.compte-pop::before { content: ''; position: absolute; top: -7px; left: var(--compte-fleche, 50%); width: 12px; height: 12px; margin-left: -6px; background: var(--surface); border-left: 1px solid var(--line-strong); border-top: 1px solid var(--line-strong); transform: rotate(45deg); }
+.compte-pop.is-dessus::before { top: auto; bottom: -7px; transform: rotate(225deg); }
+.compte-pop__titre { margin: 0 0 10px; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compte-pop__rang { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.compte-pop__lib { font-size: 15px; font-weight: 600; }
+.compte-pop__pas { display: inline-flex; align-items: stretch; border: 1px solid var(--line-strong); border-radius: var(--radius-md); overflow: hidden; }
+.compte-pop__pas button { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: var(--subtle); color: var(--text); cursor: pointer; }
+.compte-pop__pas button:hover { background: var(--line); }
+.compte-pop__pas button[aria-disabled='true'] { color: var(--muted); cursor: default; }
+.compte-pop__pas button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.compte-pop__pas output { min-width: 52px; display: inline-flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-size: 22px; font-weight: 700; }
+.compte-pop__ref { margin: 6px 0 0; text-align: right; font-size: 12px; color: var(--muted); }
+.compte-pop.is-ecart .compte-pop__ref { color: var(--text); font-weight: 600; }
+.compte-pop__prix { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+.compte-pop__prix span { color: var(--muted); }
+.compte-pop__prix b { font-size: 16px; font-weight: 700; }
+.compte-pop__avant { margin: 2px 0 0; text-align: right; font-size: 12px; color: var(--muted); }
+.compte-pop__erreur { margin: 10px 0 0; font-size: 13px; color: var(--danger); }
+.compte-pop__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.compte-pop__actions button { min-height: 36px; padding: 0 14px; border-radius: var(--radius-md); font: 600 13px var(--font-ui); cursor: pointer; }
+.compte-pop__annuler { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }
+.compte-pop__ok { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-contrast); }
+.compte-pop__actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.compte-pop.is-occupe :is(.compte-pop__pas button, .compte-pop__ok) { cursor: progress; }
+
+/* Au prochain depart laser, « Arrivés · 10 » est le meme geste : un bouton qui
+   garde l air de l etat. */
+.lp-etat--compte { cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; transition: background-color .12s ease; }
+.lp-etat--compte:hover { background: var(--lp-page); }
+.lp-etat--compte:focus-visible { outline: 2px solid var(--lp-bleu); outline-offset: 2px; }

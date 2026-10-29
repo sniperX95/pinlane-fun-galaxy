@@ -147,6 +147,15 @@ function mockNavigateur(cfg) {
       var liste = jours[JOUR];
       var i = liste.findIndex(function (x) { return String(x.id) === String(corps.id); });
       if (i < 0) return J({ ok: false, error: 'introuvable' }, 404);
+      // UN GATE PEUT Y BRANCHER LE VRAI SERVEUR (window.__fixtureServeur, pose
+      // par page.exposeFunction avant le chargement, scripts/compte-arrivee-check.js) :
+      // le PATCH part au vrai handler, sa reponse revient telle quelle, et la
+      // journee garde le dossier qu il a ecrit.
+      if (typeof window.__fixtureServeur === 'function') {
+        var rep = await window.__fixtureServeur(corps);
+        if (rep && rep.json && rep.json.reservation) liste[i] = Object.assign({}, rep.json.reservation);
+        return J(rep ? rep.json : { ok: false, error: 'serveur muet' }, rep ? rep.statut : 500);
+      }
       if (corps.status) { liste[i] = Object.assign({}, liste[i], { status: corps.status, updatedAt: new Date().toISOString() }); return J({ ok: true, reservation: liste[i] }); }
       return J({ ok: false, error: 'non gere par la fixture' }, 400);
     }

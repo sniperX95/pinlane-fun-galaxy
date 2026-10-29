@@ -413,6 +413,10 @@ Les trois plannings se lisent comme les feuilles de service des logiciels de loi
 
 Gates : `test:planning-global` (E3, E4, F6, G3, G4 : le haut du laser sur une ligne, les pas venus repliés), `test:cartes-bowling` (la carte passée ; E : le nom d’abord), `test:planning-laser` (les pictos du prochain départ, « 1 groupe pas venu » replié), `test:laser-fit-day` (la journée laser entière à l’écran, de 1366 à 1705 px).
 
+### Le compte à l’arrivée (2026-10-29)
+
+« Arrivé » reste un seul geste : il pointe le groupe et ne demande rien. Pointé, le bouton devient « Arrivé · 10 » ; le toucher une seconde fois ouvre sous lui une bulle « Ils sont 10 [-] [+] », la même dans la feuille du jour, dans la bande du prochain départ laser (« Arrivés · 8 ») et dans la fiche. La bulle dit le nombre réservé (« Comme à la réservation », puis « 10 à la réservation »), le prix qui en sort (la ligne de la formule, le total, « avant 280 € » quand il change) et Enregistrer. Le prix et les pistes sortent du calcul de Modifier, d’aucun autre : une formule à la personne suit le compte, à la hausse comme à la baisse ; un forfait par piste garde son prix tant que ses pistes tiennent le groupe, prend la piste libre d’à côté et son prix sinon, et quand il n’y en a pas la bulle le dit (« Impossible de libérer… ») et n’envoie rien. Les heures du groupe ne bougent pas. Le serveur écrit le nombre et trace « Compte à l’arrivée : 10 → 13 » au nom de la session ; la feuille garde « 10 rés. » sous le nombre. Qui ne peut pas modifier une réservation (Staff bar) lit « Arrivé · 8 », sans bouton. Échap ou un clic dehors ferme la bulle et rend le focus au bouton ; au téléphone, elle tient dans l’écran. Gate : `test:compte-arrivee`.
+
 ## Do's and Don'ts
 
 ### Do:

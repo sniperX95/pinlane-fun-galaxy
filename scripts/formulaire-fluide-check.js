@@ -592,8 +592,34 @@ async function gate() {
       // geste, 0,71).
       const plancher = 2 * course.flip.length;
       const g5 = total(course.flip) <= 0.6 * total(course.ref) || total(course.flip) <= plancher;
+      // La preuve que la mesure voit une saccade : la reference perd au moins
+      // trois images par geste, une fois et demie le plancher (un formulaire
+      // retombe au chemin d avant rougirait [G5]). A 6x elle ne la fait que
+      // sur une machine lente : sans changer de code, la reference a perdu de
+      // 0 a 197 images a 6x du 26 au 29/10, 6 puis 31 au second tour d un
+      // meme passage. Plus ralentie, elle saccade a coup sur (releve
+      // 2026-10-29, machine libre : 7 a 6x, 81 a 9x, 157 a 12x). Sans la
+      // preuve a 6x, le plancher decide [G5] et la reference se rejoue seule,
+      // de plus en plus ralentie, jusqu a la preuve : la mesure qui juge le
+      // plancher compte bien les images perdues quand il y en a. [G5] reste
+      // juge a 6x : plus ralenti, le formulaire sature a son tour (meme
+      // releve : 77 contre 157 a 12x, 245 contre 248 a 16x, la page au repos
+      // perd alors des images).
+      const RALENTIS_PREUVE = [8, 10, 12, 16, 20];
+      const preuve = (l) => total(l) >= 3 * l.length;
+      const rejouee = [];
+      if (!preuve(course.ref)) {
+        for (const cpu of RALENTIS_PREUVE) {
+          const ctx = await ouvrirActivites(browser, { reference: true, cpu });
+          const l = [];
+          for (const [id, ouvre] of GESTES_TIROIR) l.push((await gesteTiroir(ctx, id, ouvre, false)).course);
+          await ctx.context.close();
+          rejouee.push({ cpu, l });
+          if (preuve(l)) break;
+        }
+      }
       ok(g5 || total(repos) <= 4, 'MONTAGE la machine est au calme pendant la mesure a 6x (la reference au repos, au plus 4 images perdues en quatre secondes ; jugee quand [G5] rougit)', repos.join(' '));
-      ok(total(course.ref) >= 15, 'MONTAGE la reference perd des images pendant ses tiroirs a 6x (au moins 15 sur dix gestes)', `${total(course.ref)} : ${course.ref.join(' ')}`);
+      ok(preuve(course.ref) || rejouee.some((x) => preuve(x.l)), `MONTAGE la mesure voit une saccade : la reference perd au moins trois images par geste, a 6x ou rejouee seule plus ralentie (jusqu a ${RALENTIS_PREUVE[RALENTIS_PREUVE.length - 1]}x)`, [{ cpu: 6, l: course.ref }].concat(rejouee).map((x) => `${x.cpu}x : ${total(x.l)} sur ${x.l.length} gestes (${x.l.join(' ')})`).join(' ; '));
       ok(g5, `[G5] a 6x, les images perdues pendant la course : au plus 60 % de la reference, ou au plus deux par geste (${plancher})`, `${total(course.flip)} contre ${total(course.ref)} (${(total(course.flip) / Math.max(1, total(course.ref))).toFixed(2)}) ; formulaire ${course.flip.join(' ')}`);
     }
 

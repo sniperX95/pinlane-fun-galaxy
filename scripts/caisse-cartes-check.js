@@ -386,7 +386,8 @@ async function scenarioBlocs(browser, jour) {
     // fois, sur la ligne d etat en haut de la fiche ; l addition garde le total
     // et le prix par joueur.
     ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser\s*258\s*€/.test(fiche.argent) && !/À encaisser|Payé/.test(fiche.addition), '[F] le total et le prix par joueur au centime dans l addition, « À encaisser 258 € » une fois, sur la ligne d etat', JSON.stringify({ total: fiche.total, argent: fiche.argent }));
-    ok(fiche.etats.join('|') === 'Confirmé|Arrivé|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Arrivé, Payé · Carte, Payé · Espèces', fiche.etats.join('|'));
+    // (un groupe pointe dit son nombre : « Arrivé · 10 », le compte a l arrivee)
+    ok(fiche.etats.join('|') === 'Confirmé|Arrivé · 10|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Arrivé · 10 (le groupe arrivé dit son nombre), Payé · Carte, Payé · Espèces', fiche.etats.join('|'));
     ok(!/Plan automatique|Risque|Consigne:|Point marche/.test(fiche.corps), '[F] plus de « Plan automatique » ni de texte interne du moteur', (fiche.corps.match(/Plan automatique|Risque[^|]*|Consigne:[^|]*/) || [''])[0]);
     ok(!/Arrivé maintenant/.test(fiche.corps), '[F] un groupe déjà arrivé n a pas « Arrivé maintenant »', '');
     await page.evaluate(() => { closePos(); openPos(81008); });

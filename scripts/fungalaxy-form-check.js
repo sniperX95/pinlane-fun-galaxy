@@ -2519,7 +2519,8 @@ async function main() {
     const avantHeures = demandes.length;
     await page.click('#goHours');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 5000), '[C] l ecran des heures est actif');
-    ok(await attendre(page, () => document.querySelectorAll('#hourZone .fg-track .fg-chip').length > 0 && document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[C] les pistes et le bloc « votre visite » sont rendus');
+    const pistesRendues = await attendre(page, () => document.querySelectorAll('#hourZone .fg-track .fg-chip').length > 0 && document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000);
+    ok(pistesRendues, '[C] les pistes et le bloc « votre visite » sont rendus', pistesRendues ? '' : await page.evaluate(() => JSON.stringify({ zone: document.querySelector('#hourZone').textContent.replace(/s+/g, ' ').trim().slice(0, 200), calcul: document.querySelector('#hourZone').classList.contains('is-busy'), voix: document.querySelector('#fgLive').textContent })));
     const demandeHeures = demandes.slice(avantHeures).find((u) => u.indexOf('/api/public-availability?') >= 0) || '';
     const pd = demandeHeures ? new URL(demandeHeures).searchParams : new URLSearchParams();
     let programmeEnvoye = null;

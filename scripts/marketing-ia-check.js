@@ -368,7 +368,14 @@ async function main() {
     });
     // LE BUREAU : fil + tableau + composer, radar 14 cellules DANS le fil.
     await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-desk .mkw-chat') && document.querySelector('#mkwSheet .mkw-panel') && document.querySelector('#staffCampaignsPage .mkw-composer'), null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('#mkwSheet .mkw-mini').length >= 14, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#mkwSheet .mkw-mini').length >= 14, null, { timeout: 15000 }).catch(async (error) => {
+      const vu = await page.evaluate(() => ({
+        minis: document.querySelectorAll('#mkwSheet .mkw-mini').length, panneau: Boolean(document.querySelector('#mkwSheet .mkw-panel')), feuille: document.getElementById('mkwSheet')?.className,
+        fil: Boolean(document.getElementById('mkwFeed')), pageVisible: document.getElementById('staffCampaignsPage')?.offsetParent !== null, erreur: document.querySelector('#staffCampaignsPage .mkw-error')?.textContent || '',
+        vue: state.view, onglet: state.staffMenuPage, briefs: window.__QA_BRIEF_CENTERS__, panelOpen: window.mkw?.panelOpen,
+      })).catch(() => ({}));
+      throw new Error(`le radar du panneau ne vient pas : ${JSON.stringify(vu)} ; ${error.message}`);
+    });
     await page.waitForTimeout(400);
 
     // Captures optionnelles (PINLANE_MK_SHOTS=<dossier>) : REGARDER le chat

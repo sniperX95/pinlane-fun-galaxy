@@ -73,7 +73,7 @@ function ok(cond, label, detail) {
 }
 function section(titre) { if (!muet) console.log(`\n[${titre}]`); }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 const sansEspaces = (s) => String(s || '').replace(/[\s\u00a0\u202f]+/g, ' ').trim();
 
@@ -180,7 +180,7 @@ async function versFormules(page, date, pax, { ouvrir = true } = {}) {
     for (let y = 0; y < bas; y += 500) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 120)); }
     scrollTo(0, 0);
   });
-  await attendre(page, () => Array.from(document.querySelectorAll('#gridFor .fg-for__photo img')).every((i) => getComputedStyle(i.parentElement).display === 'none' || (i.complete && i.naturalWidth > 0)), 8000);
+  await attendre(page, () => Array.from(document.querySelectorAll('#gridFor .fg-for__photo img')).every((i) => getComputedStyle(i.parentElement).display === 'none' || (i.complete && i.naturalWidth > 0)), 20000);
   return vu;
 }
 

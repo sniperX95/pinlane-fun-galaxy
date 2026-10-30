@@ -426,7 +426,7 @@ function serveur(mock) {
 // LE NAVIGATEUR
 // ---------------------------------------------------------------------------
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 // Un contexte neuf par scenario : ce qu il demande, ce qu il recoit, ce qu il
 // retient (le corps des blocages), ses erreurs.

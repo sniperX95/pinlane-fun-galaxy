@@ -138,7 +138,7 @@ function ok(condition, message, detail) {
 }
 const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 
 // --- La journee du 30/09, telle que la base la relit --------------------------

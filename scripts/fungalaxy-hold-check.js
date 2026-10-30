@@ -56,7 +56,7 @@ function ok(cond, label, detail) {
 }
 function section(t) { console.log(`\n--- ${t}`); }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];

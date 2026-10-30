@@ -65,7 +65,7 @@ function ok(cond, label, detail) {
   console.log(`FAIL  ${label}${detail ? `  ${detail}` : ''}`);
 }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 const blancs = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);

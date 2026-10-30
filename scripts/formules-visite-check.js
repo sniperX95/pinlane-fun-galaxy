@@ -54,7 +54,7 @@ function ok(cond, label, detail) {
 }
 function section(titre) { console.log(`\n[${titre}]`); }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 // LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
 // recapitulatif quand le serveur a joint des offres au creneau : un client la

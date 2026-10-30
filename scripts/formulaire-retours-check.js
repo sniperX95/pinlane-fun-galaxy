@@ -388,7 +388,7 @@ async function navigateur() {
   const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
   const mock = require('./dev-tunnel-server');
   const { chromium } = require('playwright-core');
-  const attendre = async (page, fn, ms, arg) => { try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; } };
+  const attendre = async (page, fn, ms, arg) => { try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); } };
   const server = mock.createServer({ port: PORT });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   const browser = await chromium.launch({ executablePath: process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: true });

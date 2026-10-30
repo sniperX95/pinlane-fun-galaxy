@@ -67,7 +67,7 @@ function ok(cond, label, detail) {
 function section(titre) { console.log(`\n[${titre}]`); }
 function viderCache() { Object.keys(require.cache).forEach((cle) => { delete require.cache[cle]; }); }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 
 // LE TARIF DES BILLARDS VIT EN BASE (activities.price_value, ligne « all » du

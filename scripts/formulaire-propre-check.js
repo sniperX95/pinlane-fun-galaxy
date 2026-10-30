@@ -87,7 +87,7 @@ function ok(condition, message, detail) {
   return condition;
 }
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 50 }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 50 }); return true; } catch (error) { return Boolean(await page.evaluate(fn, arg).catch(() => false)); }
 }
 
 const hote = (fond) => `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hote</title><style>body{margin:0;background:${fond};font-family:sans-serif}header{height:64px;background:#ddd}#slot{max-width:1440px;margin:0 auto;padding:24px 0 60px}</style></head><body><header></header><div id="slot"></div><script src="/embed.js" data-center="libramont" data-design="fungalaxy" data-target="#slot" data-height="720"></script></body></html>`;

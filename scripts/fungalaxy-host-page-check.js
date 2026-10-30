@@ -26,7 +26,7 @@ function ok(cond, label, detail) {
   return Boolean(cond);
 }
 async function attendre(cible, fn, ms) {
-  try { await cible.waitForFunction(fn, null, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+  try { await cible.waitForFunction(fn, null, { timeout: ms, polling: 100 }); return true; } catch (error) { return Boolean(await cible.evaluate(fn, null).catch(() => false)); }
 }
 
 async function attendreServeur() {

@@ -108,5 +108,5 @@ if (!mode) {
     assert.equal(Object.keys(counters).length,25);assert(Object.values(counters).every(n=>n===1),'slow batch must execute every job once');
     assert(records.every(r=>r.status==='done'));console.log('25 jobs, 31 seconds virtual each, 2 dispatchers, no duplicate execution');
   }
-  run().then(()=>console.log(`CASE_PASS:${mode}`)).catch(e=>{console.error(e.stack);process.exitCode=1;});
+  run().then(()=>console.log(`CASE_PASS:${mode}`)).catch(e=>{console.error(e.stack);process.exit(1);});
 }

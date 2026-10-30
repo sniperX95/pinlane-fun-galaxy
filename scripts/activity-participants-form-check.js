@@ -316,4 +316,4 @@ async function main() {
     console.log(`PASS ${checks} assertions; screenshots ${OUTPUT}`);
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }
-main().catch(e => { console.error(e.stack); process.exitCode = 1; });
+main().catch(e => { console.error(e.stack); process.exit(1); });

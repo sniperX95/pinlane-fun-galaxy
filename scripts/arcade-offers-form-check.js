@@ -290,4 +290,4 @@ async function gemblouxInformation(browser,errors) {
     check(errors.length===0,'no page JavaScript errors throughout offer matrix');
     console.log(`arcade-offers-form-check: ALL OK (${checks} assertions)`);
   } finally { await browser.close();server.close();delete activity.arcadeOffers; golf.description=golfDescription; }
-})().catch(error=>{console.error(error.stack||error);process.exitCode=1;});
+})().catch(error=>{console.error(error.stack||error);process.exit(1);});

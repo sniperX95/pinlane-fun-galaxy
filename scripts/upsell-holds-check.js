@@ -51,4 +51,4 @@ async function main() {
   equal(expired.statut, 409);
   console.log(`upsell-holds-check OK: ${checks} assertions (real handlers, transactional local fixture)`);
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => { console.error(error); process.exit(1); });

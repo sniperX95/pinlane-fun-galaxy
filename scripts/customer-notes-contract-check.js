@@ -152,4 +152,4 @@ async function main() {
   check(fs.readFileSync(path.join(__dirname, '../scripts/run-db-migrations.js'), 'utf8').includes("id: '0051_customer_note_author'"), 'additive author migration registered');
   console.log(`Customer notes: ${passed} assertions passed. No live database mutations.`);
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+main().catch((error) => { console.error(error); process.exit(1); });

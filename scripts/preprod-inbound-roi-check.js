@@ -440,4 +440,4 @@ async function askFromRoi(driver) {
   });
   console.log(`preprod-inbound-roi-check: ${passed} passed, ${failed} failed; fake driver, no PostgreSQL or network`);
   process.exitCode = failed ? 1 : 0;
-})().catch(error => { console.error(error.stack); process.exitCode = 1; });
+})().catch(error => { console.error(error.stack); process.exit(1); });

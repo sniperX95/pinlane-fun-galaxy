@@ -192,4 +192,4 @@ async function openEstablishment(page, cacheKey) {
   console.log(`Arcades staff DOM: ALL OK (${asserts} total assertions, mocked fetch only)`);
  } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
-checkDom().catch(error=>{console.error(error);process.exitCode=1});
+checkDom().catch(error=>{console.error(error);process.exit(1)});

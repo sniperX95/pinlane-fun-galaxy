@@ -30,4 +30,4 @@ try{
  ok(requests<=7,'one shared durations request per actual choice, no fourteen formula probes');
  ok(errors.length===0&&writes===0,'no JavaScript error or API write');console.log('PASS '+checks+' formula live card assertions');
 }finally{await browser.close();server.close();}}
-main().catch(e=>{console.error(e);process.exitCode=1;});
+main().catch(e=>{console.error(e);process.exit(1);});

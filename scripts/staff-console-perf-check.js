@@ -699,4 +699,4 @@ const option = (nom) => { const a = process.argv.find((x) => x === `--${nom}` ||
     await browser.close();
     server.close();
   }
-})().catch((e) => { console.error(e.stack || e.message); process.exitCode = 1; });
+})().catch((e) => { console.error(e.stack || e.message); process.exit(1); });

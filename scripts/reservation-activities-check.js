@@ -79,4 +79,4 @@ ok(Object.values(subsetAnalytics.byActivity).reduce((sum, row) => sum + row.reve
   ok(context.exportedCsv.includes('"Activité";"Arcades";"1";"4";"0"'), 'CSV activités : arcades 4 participants au tarif accueil');
   if (failures) { console.error(`\nreservation-activities-check: ${failures} echec(s).`); process.exitCode = 1; return; }
   console.log('\nreservation-activities-check: ALL OK - une seule grammaire d activites, du dashboard au bilan Direction.');
-})().catch((error) => { console.error(error); process.exitCode = 1; });
+})().catch((error) => { console.error(error); process.exit(1); });

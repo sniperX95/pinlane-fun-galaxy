@@ -99,4 +99,4 @@ async function main({ capture = false } = {}) {
   process.exitCode = results.some(r => !r.pass) ? 1 : 0;
 }
 module.exports = { main };
-if (require.main === module) main().catch(error => { console.error(error); server.close(); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error(error); server.close(); process.exit(1); });

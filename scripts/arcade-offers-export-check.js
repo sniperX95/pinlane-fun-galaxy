@@ -45,4 +45,4 @@ context.dhExportCsv('reservations-brutes').then(() => {
   assert.match(downloaded, /25 crédits \+ 10 bonus/);
   assert.doesNotMatch(downloaded, /undefined|null/);
   console.log('Arcades exports: 17 assertions OK (actual CSV, players, cards, credits, zero, unknown, Excel wiring).');
-}).catch(error => { console.error(error); process.exitCode = 1; });
+}).catch(error => { console.error(error); process.exit(1); });

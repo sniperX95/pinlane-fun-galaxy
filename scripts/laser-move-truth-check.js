@@ -492,4 +492,4 @@ async function main() {
   }
 }
 
-main().catch((error) => { console.error('\nlaser-move-truth-check FAIL:', error.stack || error.message); process.exitCode = 1; });
+main().catch((error) => { console.error('\nlaser-move-truth-check FAIL:', error.stack || error.message); process.exit(1); });

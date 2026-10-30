@@ -124,4 +124,4 @@ await page.locator('.ups-photo summary').click();
   console.log(`Upsell settings full app: ALL OK (${checks} assertions, actual global save and cache reload, mocked API writes only)`);
  }finally{await browser.close();await new Promise(r=>server.close(r));}
 }
-main().catch(e=>{console.error(e);process.exitCode=1});
+main().catch(e=>{console.error(e);process.exit(1)});

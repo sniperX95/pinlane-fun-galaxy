@@ -76,4 +76,4 @@ function preserved(before,after,unit){
     }
     console.log(JSON.stringify({ok:true,checks,fixtureOnly:true}));
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
-})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+})().catch(e=>{console.error(e.stack);process.exit(1);});

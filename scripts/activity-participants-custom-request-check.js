@@ -181,4 +181,4 @@ async function main() {
   }
   console.log(`activity-participants-custom-request-check: ALL OK (${assertions} assertions)`);
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+main().catch((error) => { console.error(error); process.exit(1); });

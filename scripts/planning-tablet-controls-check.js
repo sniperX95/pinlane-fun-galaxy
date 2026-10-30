@@ -65,5 +65,5 @@ for(const width of[768,834,1024,1440,390])for(const theme of['light','dark']){
  await ctx.close();
 }
 check(errors.length===0,'no browser errors');fs.writeFileSync(path.join(out,'proof.json'),JSON.stringify({checks,failures,errors,requests,records,realDatabase:false,remoteWrites:0},null,2));if(failures.length)throw new Error(failures.join('\n'));console.log(JSON.stringify({ok:true,checks,out}));
-}finally{await browser.close();server.close();}})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e.stack);process.exit(1);});
 

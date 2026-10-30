@@ -88,4 +88,4 @@ async function main(){
  console.log(JSON.stringify({ok:true,checks,writes,replans,fixtureOnly:true}));
 }
 module.exports={handler,fixture,call,db,setStored:value=>{stored=clone(value);},getStored:()=>clone(stored),setOther:value=>{other=clone(value);}};
-if(require.main===module)main().catch(e=>{console.error(e.stack);process.exitCode=1;});
+if(require.main===module)main().catch(e=>{console.error(e.stack);process.exit(1);});

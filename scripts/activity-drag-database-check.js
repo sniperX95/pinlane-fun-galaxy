@@ -147,4 +147,4 @@ async function main() {
   equal(assembledPartial.body.reservation.opsPlan.resourceBlocks.filter(b=>b.resourceType==='bowling_lane').map(b=>[b.startTime,b.lanes]),[['15:00',[1]],['18:00',[3]]],'assembled receipt returns unchanged and moved source lanes');
   console.log(JSON.stringify({ok:true,checks,writes,realDatabaseTransaction:true,fixtureOnly:true}));
 }
-main().catch(error=>{console.error(error.stack);process.exitCode=1;});
+main().catch(error=>{console.error(error.stack);process.exit(1);});

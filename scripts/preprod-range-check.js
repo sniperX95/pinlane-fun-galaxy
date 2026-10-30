@@ -524,4 +524,4 @@ async function main() {
   console.log(JSON.stringify({ cases: results.length, failures: results.filter(r => !r.ok).length, releases, network: 'blocked', database: 'synthetic SQL double' }));
   process.exitCode = results.some(r => !r.ok) ? 1 : 0;
 }
-main().catch(error => { console.error(error.stack); process.exitCode = 1; });
+main().catch(error => { console.error(error.stack); process.exit(1); });

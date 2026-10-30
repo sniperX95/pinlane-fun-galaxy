@@ -85,4 +85,4 @@ async function finish(page, expected, players, emergency, afterHold) {
     check(mock.dernierePose.body.quotedPrice===39, 'held emergency quote remains agreed price when another lane frees'); await heldPage.close();
     check(errors.length===0,'no JavaScript errors: '+errors.join('; ')); console.log(`PASS ${checks} assertions`);
   } finally { await browser.close(); await new Promise(r=>server.close(r)); }
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(e=>{console.error(e);process.exit(1);});

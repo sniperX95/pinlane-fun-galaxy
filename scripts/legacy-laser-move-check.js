@@ -49,4 +49,4 @@ async function main() {
   const full=await bridge.call({activityId:'laser_game',unitKey:'1.1',startTime:'17:00'});check(full.status===409,'legacy fallback still honors other reservations capacity');assert.deepEqual(bridge.getStored(),legacy);checks++;
   console.log(JSON.stringify({ok:true,checks,fixtureOnly:true}));
 }
-main().catch(error=>{console.error(error.stack);process.exitCode=1;});
+main().catch(error=>{console.error(error.stack);process.exit(1);});

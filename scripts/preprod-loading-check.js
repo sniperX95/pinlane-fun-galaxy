@@ -221,4 +221,4 @@ async function main() {
   console.log(`preprod-loading-check: ${results.length - failures}/${results.length} passed`);
   process.exitCode = failures ? 1 : 0;
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => { console.error(error); process.exit(1); });

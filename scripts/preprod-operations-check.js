@@ -84,5 +84,5 @@ if (!mode) {
       console.log(JSON.stringify({http:expected,waiting:pool.waitingCount,elapsedMs:Date.now()-started,connections:pool.totalCount}));
     } finally {held.forEach(c=>c.release());await pool.end();}
   }
-  run().then(()=>console.log(`CASE_PASS:${mode}`)).catch(e=>{console.error(e.stack);process.exitCode=1;});
+  run().then(()=>console.log(`CASE_PASS:${mode}`)).catch(e=>{console.error(e.stack);process.exit(1);});
 }

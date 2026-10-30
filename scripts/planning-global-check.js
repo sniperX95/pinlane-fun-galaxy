@@ -800,4 +800,4 @@ async function main() {
   if (echecs) { console.error(`\nplanning-global-check: FAIL ${echecs}`); process.exitCode = 1; return; }
   console.log(`\nplanning-global-check: ALL OK${process.argv.includes('--contre-preuves') ? ' (contre-preuves)' : ''}`);
 }
-if (require.main === module) main().catch((e) => { console.error(e); process.exitCode = 1; });
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

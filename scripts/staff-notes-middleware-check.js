@@ -61,4 +61,4 @@ async function main() {
   }
   console.log('staff-notes-middleware-check: ' + checks + ' PASS');
 }
-main().catch(error => { console.error(error.stack); process.exitCode = 1; });
+main().catch(error => { console.error(error.stack); process.exit(1); });

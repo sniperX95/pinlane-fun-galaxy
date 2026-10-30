@@ -16,4 +16,4 @@ vm.runInContext(code,ctx);
  pending={};const oldSave=ctx.window.crmSaveClientNote('qa','Old center draft');ctx.state.adminCenterId='gembloux';await ctx.loadCrmClientNote(row);
  pending.resolve({note:{updatedAt:'old-version'}});pending=null;await oldSave;assert.equal(notes.key,'gembloux:0487784816');assert.equal(notes.body,'Stored');assert.equal(notes.updatedAt,'v1');checks++;
  console.log(`CRM notes concurrency: ${checks} passed.`);
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(e=>{console.error(e);process.exit(1);});

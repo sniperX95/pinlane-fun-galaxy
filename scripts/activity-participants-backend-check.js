@@ -155,4 +155,4 @@ async function main() {
   assert.equal(laserSaved.ops_plan.resourceBlocks.find((block) => block.resourceType === 'laser_arena').players, 7);
   console.log('activity-participants-backend-check OK');
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+main().catch((error) => { console.error(error); process.exit(1); });

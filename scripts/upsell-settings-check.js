@@ -29,4 +29,4 @@ const server=http.createServer((req,res)=>{if(req.url==='/'){res.setHeader('Cont
  await page.locator('[data-ups-action=legacy]').click();ok(await page.evaluate(()=>PinlaneUpsellSettings.collect({id:'b'}))===null,'return legacy');ok(errors.length===0,'no JS errors: '+errors.join(','));
  const source=fs.readFileSync(path.join(root,'assets/app-main.js'),'utf8');ok(source.includes('config.upsellOffers = window.PinlaneUpsellSettings.collect(storedCenter)'),'save integration');ok(source.indexOf('config.upsellOffers = window.PinlaneUpsellSettings.collect(storedCenter)')<source.indexOf("submitCenterConfigInFlight = true;",source.indexOf('config.upsellOffers = window.PinlaneUpsellSettings.collect(storedCenter)')),'validated before writes');
  console.log(`Upsell settings: ALL OK (${checks} assertions, local browser, no API/database writes)`);
- }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+ }finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e);server.close();process.exit(1);});

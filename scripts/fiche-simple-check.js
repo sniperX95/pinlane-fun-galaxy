@@ -322,4 +322,4 @@ async function main() {
   if (echecs) { console.error(`\nfiche-simple-check: FAIL ${echecs}`); process.exitCode = 1; return; }
   console.log(`\nfiche-simple-check: ALL OK${process.argv.includes('--contre-preuves') ? ' (contre-preuves)' : ''}`);
 }
-if (require.main === module) main().catch((e) => { console.error(e); process.exitCode = 1; });
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

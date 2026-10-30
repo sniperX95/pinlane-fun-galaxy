@@ -87,4 +87,4 @@ function preserved(before,after,activity,unit){
   }
   check(requests.length>=15,'real UI actions reached local production handler');check(requests.filter(r=>r.activityMove).every(r=>Object.keys(r).every(k=>['id','centerId','baseUpdatedAt','activityMove'].includes(k))),'every drag request omits client plan prices and global edit fields');check(errors.length===0,'no browser JavaScript errors');
   fs.writeFileSync(path.join(out,'ui-proof.json'),JSON.stringify({checks,requests,errors,remoteWrites:0},null,2));console.log(JSON.stringify({ok:true,checks,artifacts:out}));
-}finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+}finally{await browser.close();await new Promise(r=>server.close(r));}})().catch(e=>{console.error(e.stack);process.exit(1);});

@@ -57,4 +57,4 @@ async function main() {
   assert(!notices.some(value => /mail envoye|mail envoyé/i.test(value)), 'Configured provider alone must not be reported as a sent message');
   console.log('PASS Direction mail: retry, edit, new intent, pending double click, preserved draft');
 }
-main().catch(error => { console.error(error.stack); process.exitCode = 1; });
+main().catch(error => { console.error(error.stack); process.exit(1); });

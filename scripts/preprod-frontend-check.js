@@ -309,4 +309,4 @@ async function main({ roiOnly = false, capture = false } = {}) {
   }
 }
 module.exports = { main, close: () => server.close() };
-if (require.main === module) main().catch(error => { console.error(error); server.close(); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error(error); server.close(); process.exit(1); });

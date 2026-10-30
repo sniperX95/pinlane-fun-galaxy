@@ -172,4 +172,4 @@ async function main() {
   console.log(`preprod-marketing-job-check: ${cases.length - failures}/${cases.length} passed, ${failures} failed; offline VM dependencies only`);
   process.exitCode = failures ? 1 : 0;
 }
-main().catch(error => { console.error(error.stack); process.exitCode = 1; });
+main().catch(error => { console.error(error.stack); process.exit(1); });

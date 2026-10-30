@@ -52,4 +52,4 @@ async function directDrag(page,source,target,fraction=.5,beforeRelease=null) {
  check(moved.price===multi.price&&moved.pax===multi.pax,'multiwave direct move preserves price and group attendance');
  check(JSON.stringify(moved.opsPlan.resourceBlocks.filter(b=>b.activityId!=='bowling'))===JSON.stringify(multi.opsPlan.resourceBlocks.filter(b=>b.activityId!=='bowling')),'multiwave move does not shift laser or free activities');
  check(errors.length===0,'no browser errors');fs.writeFileSync(path.join(out,'proof.json'),JSON.stringify({checks,requests,errors,remoteWrites:0},null,2));console.log(JSON.stringify({ok:true,checks}));await context.close();
- }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+ }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}})().catch(e=>{console.error(e.stack);process.exit(1);});

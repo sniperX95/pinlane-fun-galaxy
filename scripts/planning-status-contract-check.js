@@ -24,4 +24,4 @@ let checks=0;function equal(a,b,m){assert.deepEqual(a,b,m);checks++;console.log(
  n=writes;const wrong=await patch({status:'arrived',centerId:'gembloux'});equal(wrong.statusCode,403,'foreign centre blocked before write');equal(writes,n,'foreign centre no write');
  await assert.rejects(db.setReservationStatus({id:777,centerId:'gembloux',baseUpdatedAt:new Date((await db.getReservationById(777)).updatedAt).toISOString(),status:'arrived'}),e=>e.statusCode===403);checks++;equal(queries.at(-1),'ROLLBACK','DB tenant mismatch rolls back');
  console.log(JSON.stringify({ok:true,checks,writes,realHandler:true,realDatabaseMethod:true,fixtureOnly:true}));
-})().catch(e=>{console.error(e.stack);process.exitCode=1;});
+})().catch(e=>{console.error(e.stack);process.exit(1);});

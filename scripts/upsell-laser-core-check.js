@@ -26,4 +26,4 @@ const payloads=[];c.apiRequest=async(_url,init)=>{const body=JSON.parse(init.bod
  eq(run('getLaserGameCountForReservation({type:"laser",duration:1,pax:4})'),2,'legacy direct keeps duration semantics');eq(run('getLaserUnitsForReservation({type:"laser",duration:1,pax:4}).map(u=>u.players)'),[4,4],'legacy full group unchanged');
  eq(run('getPendingLaserPassesForReservation({...res,status:"cancelled"})'),[],'cancelled reservation absent queue');
  console.log(`Upsell laser core: ALL OK (${checks} assertions, manual schedule/unplace/requeue and server-normalized reload, no network writes)`);
-})().catch(e=>{console.error(e);process.exitCode=1});
+})().catch(e=>{console.error(e);process.exit(1)});

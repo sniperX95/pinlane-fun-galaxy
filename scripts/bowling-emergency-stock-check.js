@@ -221,4 +221,4 @@ async function main() {
   equal(cards.find(c=>c.id==='laser:laser_game:2').deltaTotal,56,'laser upgrade delta retains actual emergency bowling amount');
   console.log(`bowling-emergency-stock-check: ${assertions} assertions OK (memory DB, no network)`);
 }
-main().catch(error=>{console.error(error);process.exitCode=1;});
+main().catch(error=>{console.error(error);process.exit(1);});

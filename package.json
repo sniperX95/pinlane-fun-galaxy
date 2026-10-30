@@ -360,6 +360,8 @@
     "test:fungalaxy-perf": "node scripts/fungalaxy-form-perf-bench.js --gate",
     "test:staff-perf": "node scripts/staff-console-perf-check.js && node scripts/staff-console-perf-check.js --contre-preuves",
     "test:ancres": "node scripts/ancres-check.js && node scripts/ancres-check.js --contre-preuves",
+    "test:gates-parties": "node scripts/gates-parties-check.js && node scripts/gates-parties-check.js --contre-preuves",
+    "suite:github": "node scripts/suite-github.js",
     "test:impact": "node scripts/gates-lancer.js --impact",
     "test:tout": "node scripts/gates-lancer.js --tout",
     "test:crm-notes-concurrency": "node scripts/crm-notes-concurrency-check.js",

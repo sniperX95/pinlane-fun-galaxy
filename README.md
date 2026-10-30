@@ -98,6 +98,8 @@ npm run test:e2e
 
 `npm run test:ops:all` (ou `npm run test:tout`) passe par le lanceur `scripts/gates-lancer.js` : toute la suite (`scripts/gates-suite.json`) en parallele, chaque place du pool dans sa copie du depot avec ses ports, les gates sensibles au temps seuls a la fin, tout joue meme apres un rouge, un bilan vert / rouge / saute avec les durees. Pendant le travail, `npm run test:impact` ne joue que les gates que le diff touche (`scripts/gates-impactes.js`, contre le depart de la branche sur origin/main). `node scripts/gates-lancer.js test:x test:y` joue des gates choisis ; `--sur <commit>` rejoue la suite d un commit avec ce lanceur.
 
+Avant un deploiement, `npm run suite:github` (ou `node scripts/suite-github.js <commit>`) joue la suite d impact d un commit sur GitHub plutot que sur le poste : le commit part sous une etiquette `suite-<sha>`, le workflow coupe le plan en parts egales (`gates-lancer.js --partie K/N`) jouees en meme temps sur des machines Windows, `scripts/gates-assembler.js` rend un seul bilan, le script l affiche et retire l etiquette. `--tout` joue la suite entiere.
+
 `npm run test:e2e` ouvre le site dans Edge en headless, verifie la page publique et le verrou staff. Pour tester aussi une connexion reelle, definir `PINLANE_E2E_STAFF_CODE` avant la commande.
 
 Cette suite couvre:
@@ -108,4 +110,4 @@ Cette suite couvre:
 - stress test deterministe;
 - garde-fous contre les regressions critiques, dont les champs stale qui ne doivent jamais transformer un Bowling Simple en Formule.
 
-Le workflow GitHub [quality-gates.yml](C:/Users/movsa/Documents/Codex/2026-04-24/doctype-html-html-lang-fr-head/.github/workflows/quality-gates.yml) est pret pour bloquer les futures PR si ces tests echouent.
+Le workflow GitHub [quality-gates.yml](.github/workflows/quality-gates.yml) joue la suite d impact sur une etiquette `suite-*`, un push sur main et une pull request, et la suite entiere chaque nuit, en parts paralleles.

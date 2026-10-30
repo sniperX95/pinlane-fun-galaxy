@@ -2,6 +2,7 @@
   "_lisezmoi": "La suite que jouent test:ops:all, test:tout et la CI (scripts/gates-lancer.js). suite : chaque script npm, dans l ordre historique (le lanceur ordonne lui-meme, du plus long au plus court). seuls : les gates sensibles au temps, joues un par un a la fin, la machine pour eux seuls. toujours : ce que test:impact joue a chaque diff. test:audit-perf mesure un p95 en millisecondes (il rougit sous la charge d une autre suite).",
   "suite": [
     "test:ancres",
+    "test:gates-parties",
     "test:no-em-dash",
     "test:no-header-tag",
     "test:public-leak",

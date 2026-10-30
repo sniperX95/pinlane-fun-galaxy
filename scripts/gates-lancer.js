@@ -28,7 +28,12 @@
 //   extraite a part, jouee par ce lanceur : le avant/apres d un changement),
 //   --tracer (chaque gate note ce qu il lit, la preuve de la selection :
 //   node scripts/gates-impactes.js --verifier-traces <dossier du passage>),
-//   --liste (le plan, sans rien jouer), --nettoyer (retire les copies du pool).
+//   --liste (le plan, sans rien jouer), --nettoyer (retire les copies du pool),
+//   --partie K/N (la part K de la suite coupee en N parts egales : le workflow
+//   GitHub joue les N parts en meme temps sur N machines, chacune refait le
+//   meme plan et ne joue que la sienne ; scripts/gates-assembler.js rassemble
+//   leurs bilans), --parts-ci MAX (le nombre de parts que le plan merite, MAX
+//   au plus, ecrit parts=N et matrice=[1..N] pour le workflow, sans rien jouer).
 // Variables : PINLANE_GATES_PORT_DEPART (31000 ; deux lanceurs en meme temps
 //   prennent deux plages), PINLANE_GATES_DELAI_S (40 min par unite).
 // Les journaux : <tmp>/pinlane-gates/run-<horodatage>/ (bilan.txt, bilan.json,
@@ -163,6 +168,51 @@ function plan(noms, config) {
     }
   }
   return toutes;
+}
+
+// --- Les parts (le workflow GitHub) ------------------------------------------
+// Chaque machine refait le meme plan (les durees de scripts/gates-durees.json,
+// un ordre stable, rien qui depende de la machine) et la meme repartition,
+// puis ne joue que sa part : rien ne circule entre les machines. Les unites
+// seules d abord, puis le pool, chacune de la plus longue a la plus courte,
+// dans la part qui finirait le plus tot avec elle : le plus long de sa plus
+// longue unite et de son pool reparti sur ses places, plus ses seules jouees
+// a la suite.
+function repartir(unites, n, places) {
+  const parts = Array.from({ length: n }, () => ({ pool: 0, longue: 0, seuls: 0, unites: [] }));
+  const fin = (p, u) => (u.seul
+    ? Math.max(p.longue, p.pool / places) + p.seuls + u.estimee
+    : Math.max(p.longue, u.estimee, (p.pool + u.estimee) / places) + p.seuls);
+  // (l ordre des cles en points de code, pas localeCompare : la meme reponse
+  // sur la machine du plan et sur chaque machine d une part)
+  const ordre = (a, b) => b.estimee - a.estimee || (cleUnite(a) < cleUnite(b) ? -1 : cleUnite(a) > cleUnite(b) ? 1 : 0);
+  for (const u of [...unites.filter((x) => x.seul).sort(ordre), ...unites.filter((x) => !x.seul).sort(ordre)]) {
+    let meilleure = parts[0];
+    for (const p of parts) if (fin(p, u) < fin(meilleure, u)) meilleure = p;
+    meilleure.unites.push(u);
+    if (u.seul) meilleure.seuls += u.estimee;
+    else { meilleure.pool += u.estimee; meilleure.longue = Math.max(meilleure.longue, u.estimee); }
+  }
+  return parts.map((p) => ({ ...p, estimee: Math.max(p.longue, p.pool / places) + p.seuls }));
+}
+
+function partDuPlan(unites, texte, places) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(texte || ''));
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) throw new Error(`--partie K/N attendu, 1 <= K <= N, recu « ${texte} »`);
+  return repartir(unites, Number(m[2]), places)[Number(m[1]) - 1].unites;
+}
+
+// Le nombre de parts : dix minutes de pool par part environ, MAX au plus. La
+// plus longue unite borne de toute facon le mur d une part.
+function partsPourLeWorkflow(unites, max, places) {
+  const somme = unites.reduce((s, u) => s + u.estimee, 0);
+  const n = unites.length ? Math.min(Math.max(1, max || 1), Math.max(1, Math.ceil(somme / (places * 600)))) : 0;
+  const parts = n ? repartir(unites, n, places) : [];
+  console.log(`parts=${n}`);
+  console.log(`matrice=${JSON.stringify(Array.from({ length: n }, (_, i) => i + 1))}`);
+  console.log(`unites=${unites.length}`);
+  console.log(`estimee=${Math.round(Math.max(0, ...parts.map((p) => p.estimee)))}`);
+  return 0;
 }
 
 // --- Jouer une unite --------------------------------------------------------
@@ -345,12 +395,16 @@ async function main() {
     console.log(`[gates] suite du commit ${sha.slice(0, 10)} (${dossier})`);
   }
   const config = configDeLaSource();
-  const noms = choisirNoms(config);
-  const unitesDuPlan = plan(noms, config);
+  const tousLesNoms = choisirNoms(config);
+  const toutes = plan(tousLesNoms, config);
   // Par defaut : 3/4 des coeurs, mais jamais plus de places que la memoire
   // libre n en porte (environ 700 Mo par gate navigateur et son serveur).
   const parMemoire = Math.floor(os.freemem() / (700 * 1024 * 1024));
   const jobs = Math.max(1, Number(option('--jobs') || process.env.PINLANE_GATES_JOBS || Math.max(2, Math.min(Math.floor(os.cpus().length * 0.75), parMemoire))));
+  if (option('--parts-ci')) return partsPourLeWorkflow(toutes, Number(option('--parts-ci')), jobs);
+  const unitesDuPlan = option('--partie') ? partDuPlan(toutes, option('--partie'), jobs) : toutes;
+  // Une part ne rend que les scripts dont elle joue une unite au moins.
+  const noms = tousLesNoms.filter((nom) => unitesDuPlan.some((u) => u.script === nom));
   const enPool = unitesDuPlan.filter((u) => !u.seul);
   const seuls = unitesDuPlan.filter((u) => u.seul);
   if (drapeau('--liste')) {
@@ -406,7 +460,7 @@ async function main() {
     fs.mkdirSync(path.dirname(DUREES_LOCALES), { recursive: true });
     fs.writeFileSync(DUREES_LOCALES, JSON.stringify(durees, null, 1));
   } catch (error) { /* ordre seulement */ }
-  return bilan(noms, resultats, { msMur, msPool, msCopie, dossierRun, survivants, jobs: nbPlaces });
+  return bilan(noms, resultats, { msMur, msPool, msCopie, dossierRun, survivants, jobs: nbPlaces, partie: option('--partie') || null });
 }
 
 function bilan(noms, resultats, info) {
@@ -431,11 +485,13 @@ function bilan(noms, resultats, info) {
     }
   }
   const somme = resultats.reduce((s, r) => s + r.ms, 0);
-  const resume = `BILAN ${noms.length} scripts (${resultats.length} unites) : ${compte('VERT')} verts, ${compte('ROUGE')} rouges, ${compte('SAUTE')} sautes${compte('INSTABLE') ? `, ${compte('INSTABLE')} instables` : ''} ; mur ${duree(info.msMur)} (pool de ${info.jobs} : ${duree(info.msPool)}), somme des unites ${duree(somme)}, copie ${duree(info.msCopie)}${info.survivants ? ` ; ${info.survivants} processus survivants tues` : ''}`;
+  const resume = `BILAN${info.partie ? ` DE LA PART ${info.partie}` : ''} ${noms.length} scripts (${resultats.length} unites) : ${compte('VERT')} verts, ${compte('ROUGE')} rouges, ${compte('SAUTE')} sautes${compte('INSTABLE') ? `, ${compte('INSTABLE')} instables` : ''} ; mur ${duree(info.msMur)} (pool de ${info.jobs} : ${duree(info.msPool)}), somme des unites ${duree(somme)}, copie ${duree(info.msCopie)}${info.survivants ? ` ; ${info.survivants} processus survivants tues` : ''}`;
   lignes.push('', resume);
   const texte = lignes.join('\n');
   fs.writeFileSync(path.join(info.dossierRun, 'bilan.txt'), `${texte}\n`);
-  fs.writeFileSync(path.join(info.dossierRun, 'bilan.json'), JSON.stringify({ resume, msMur: info.msMur, scripts: parScript.map((s) => ({ nom: s.nom, etat: s.etat, ms: s.ms, unites: s.unites.map((r) => ({ commande: r.commande, etat: r.etat, code: r.code, ms: r.ms, raison: r.raison, parties: r.parties, journal: r.journal })) })) }, null, 1));
+  // (les lignes FAIL du premier tour y restent : le journal d une unite
+  // INSTABLE ne garde que son second tour)
+  fs.writeFileSync(path.join(info.dossierRun, 'bilan.json'), JSON.stringify({ resume, msMur: info.msMur, partie: info.partie || null, scripts: parScript.map((s) => ({ nom: s.nom, etat: s.etat, ms: s.ms, unites: s.unites.map((r) => ({ commande: r.commande, etat: r.etat, code: r.code, ms: r.ms, raison: r.raison, parties: r.parties, journal: r.journal, fails: r.fails, fin: r.fin })) })) }, null, 1));
   console.log(`\n${texte}\nbilan : ${path.join(info.dossierRun, 'bilan.txt')}`);
   return compte('ROUGE') ? 1 : 0;
 }
@@ -444,4 +500,4 @@ if (require.main === module) {
   main().then((code) => process.exit(code), (error) => { console.error(error); process.exit(1); });
 }
 
-module.exports = { retirerPlaces };
+module.exports = { retirerPlaces, repartir, partDuPlan };

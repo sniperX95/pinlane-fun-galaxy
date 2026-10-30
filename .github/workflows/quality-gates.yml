@@ -1,42 +1,165 @@
 name: Quality gates
 
+# LA SUITE EN PARTS PARALLELES (2026-10-30). Avant : toute la suite sur UNE
+# machine Ubuntu, coupee a 90 min a chaque push sans jamais finir (400 unites
+# sur 410 le 29/10), donc sans verdict. Maintenant : le plan (les gates que le
+# diff touche, ou toute la suite) se coupe en parts egales (gates-lancer.js
+# --parts-ci, puis --partie K/N), jouees en meme temps sur des machines
+# Windows, comme le poste ou les gates ont ete ecrits et calibres, a l heure et
+# dans la langue du centre ; scripts/gates-assembler.js rend un seul bilan et
+# rougit si une part n en a rendu aucun. Le depot est public : ces machines
+# ne coutent rien.
+#
+# Quand :
+#   - une etiquette suite-<sha> (scripts/suite-github.js) : la suite d impact
+#     d un commit avant de le deployer, depuis son depart sur origin/main ;
+#     suite-tout-<sha> : la suite entiere de ce commit ;
+#   - un push sur main : l impact de ce qui vient d arriver ;
+#   - une pull request : l impact depuis sa base ;
+#   - chaque nuit : la suite entiere, pour les gates qui derivent du produit ;
+#   - a la main : impact ou tout, depart au choix.
+
 on:
-  pull_request:
   push:
-    branches:
-      - main
-      - master
+    branches: [main]
+    tags: ['suite-*']
+  pull_request:
+  schedule:
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: impact (les gates que le diff touche) ou tout
+        type: choice
+        options: [impact, tout]
+        default: impact
+      base:
+        description: depart de l impact (vide = le depart sur origin/main)
+        default: ''
+
+# (l evenement dans le groupe : un push de nuit n annule pas la suite de nuit)
+concurrency:
+  group: gates-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Trois gates a la fois par machine (4 coeurs) ; seize machines au plus.
+  PLACES: '3'
+  PARTS_MAX: '16'
 
 jobs:
-  ops-tests:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      selection: ${{ steps.selection.outputs.selection }}
+      parts: ${{ steps.plan.outputs.parts }}
+      matrice: ${{ steps.plan.outputs.matrice }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Ce que la suite joue
+        id: selection
+        shell: bash
+        env:
+          EVENEMENT: ${{ github.event_name }}
+          AVANT: ${{ github.event.before }}
+          BASE_PR: ${{ github.event.pull_request.base.sha }}
+          MODE: ${{ inputs.mode }}
+          BASE_MAIN: ${{ inputs.base }}
+        run: |
+          depart() { git merge-base HEAD "$1" 2>/dev/null || echo ""; }
+          sel=""
+          case "$EVENEMENT" in
+            schedule) sel="--tout" ;;
+            workflow_dispatch)
+              if [ "$MODE" = "tout" ]; then sel="--tout"
+              else b="${BASE_MAIN:-$(depart origin/main)}"; sel="--impact --base $b"; fi ;;
+            pull_request) sel="--impact --base $(depart "$BASE_PR")" ;;
+            push)
+              case "$GITHUB_REF" in
+                refs/tags/suite-tout-*) sel="--tout" ;;
+                refs/tags/suite-*) sel="--impact --base $(depart origin/main)" ;;
+                *)
+                  if [ -z "$AVANT" ] || [ "$AVANT" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$AVANT^{commit}" 2>/dev/null; then sel="--tout"
+                  else sel="--impact --base $AVANT"; fi ;;
+              esac ;;
+          esac
+          # Un depart introuvable joue tout plutot que rien.
+          case "$sel" in *"--base ") sel="--tout" ;; esac
+          echo "selection=$sel" >> "$GITHUB_OUTPUT"
+          echo "Selection : $sel"
+      - name: Le plan, coupe en parts
+        id: plan
+        shell: bash
+        run: |
+          node scripts/gates-lancer.js ${{ steps.selection.outputs.selection }} --parts-ci "$PARTS_MAX" --jobs "$PLACES" | tee plan.txt
+          grep -E '^(parts|matrice|unites|estimee)=' plan.txt >> "$GITHUB_OUTPUT"
+
+  parts:
+    needs: plan
+    if: needs.plan.outputs.parts != '0'
+    name: part ${{ matrix.partie }}/${{ needs.plan.outputs.parts }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        partie: ${{ fromJSON(needs.plan.outputs.matrice) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: L heure et la langue du centre
+        shell: pwsh
+        run: |
+          tzutil /s "Romance Standard Time"
+          Set-Culture fr-BE
+      - run: npm ci
+      - name: La part ${{ matrix.partie }}
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node scripts/gates-lancer.js ${{ needs.plan.outputs.selection }} --partie ${{ matrix.partie }}/${{ needs.plan.outputs.parts }} --jobs $env:PLACES --deux-chances
+      - name: Son bilan et ses journaux
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: part-${{ matrix.partie }}
+          path: ${{ runner.temp }}/pinlane-gates/run-*/
+          retention-days: 7
+          if-no-files-found: warn
+
+  bilan:
+    needs: [plan, parts]
+    if: always() && needs.plan.outputs.parts != '0'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run deterministic ops tests
-        # Les gates navigateur (79 scripts Playwright) lisent
-        # E2E_BROWSER_PATH ; sans elle ils cherchent Edge a un chemin
-        # Windows et le runner Ubuntu echouait au premier gate depuis des
-        # semaines. Le Chrome stable preinstalle des runners GitHub suffit.
-        env:
-          E2E_BROWSER_PATH: /usr/bin/google-chrome
-        # Le lanceur (scripts/gates-lancer.js) joue TOUTE la suite, meme apres
-        # un rouge, en parallele (une copie du depot et une plage de ports par
-        # place), les gates sensibles au temps seuls a la fin. Deux chances :
-        # les micro-budgets de perf/motion calibres machine locale varient sur
-        # un runner partage ; un rouge se rejoue UNE fois, seul (vert au
-        # second tour = INSTABLE, dit dans le bilan) ; un vrai rouge
-        # deterministe echoue deux fois. Avant, `|| npm run test:ops:all`
-        # rejouait toute la suite.
-        run: npm run test:ops:all -- --deux-chances
-        timeout-minutes: 90
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: parts
+      - name: Un seul bilan
+        run: node scripts/gates-assembler.js parts --parts "${{ needs.plan.outputs.parts }}" --sortie bilan
+      - name: Le bilan rassemble
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bilan
+          path: bilan/
+          retention-days: 30

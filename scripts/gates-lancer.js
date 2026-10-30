@@ -458,6 +458,11 @@ async function main() {
   if (drapeau('--deux-chances')) {
     for (const r of resultats.filter((x) => x.etat === 'ROUGE')) {
       const u = unitesDuPlan.find((x) => cleUnite(x) === r.cle);
+      // Le second tour ecrit le meme journal : celui du premier, qui dit
+      // pourquoi il a rougi, se garde a cote et le bilan pointe sur lui (vu le
+      // 2026-10-30 : un gate au delai de 15 min, son journal ecrase par le vert).
+      const premier = r.journal.replace(/\.log$/, '.premier-tour.log');
+      try { fs.copyFileSync(r.journal, premier); r.journal = premier; } catch (error) { /* il garde son nom */ }
       const [second] = await pool([u], [places[0]], contexte, () => {});
       if (second.etat !== 'ROUGE') { r.etat = 'INSTABLE'; r.second = second; }
     }

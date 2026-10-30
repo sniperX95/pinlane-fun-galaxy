@@ -28,7 +28,7 @@ function preserved(before,after,unit){
       await page.exposeFunction('__qaReadReservation',()=>api.getStored());
       await page.exposeFunction('__qaPatchActivity',async body=>{requests.push(body);return body.activityMove?api.call(body.activityMove,{id:body.id,centerId:body.centerId,baseUpdatedAt:body.baseUpdatedAt}):api.call(undefined,body);});
       await installMock(page);await page.addInitScript(()=>{const old=window.fetch;window.fetch=async(input,init={})=>{const u=new URL(typeof input==='string'?input:input.url,location.origin),method=init.method||'GET';
-        if(u.pathname==='/api/staff-state'){const r=await window.__qaReadReservation();return new Response(JSON.stringify({ok:true,revision:r.updatedAt,reservations:[r],laneStatuses:{},centerId:r.centerId}),{headers:{'content-type':'application/json'}});}
+        if(u.pathname==='/api/staff-state'){const r=await window.__qaReadReservation();return new Response(JSON.stringify({ok:true,revision:r.updatedAt,reservations:u.searchParams.get('date')===r.date?[r]:[],laneStatuses:{},centerId:r.centerId}),{headers:{'content-type':'application/json'}});}
         if(u.pathname==='/api/staff-reservations'&&method==='PATCH'){const r=await window.__qaPatchActivity(JSON.parse(init.body));return new Response(JSON.stringify(r),{status:r.status,headers:{'content-type':'application/json'}});}
         if(!['GET','HEAD'].includes(method))return new Response('{}',{status:503});return old(input,init);};});
       await page.goto('http://127.0.0.1:'+process.env.PINLANE_CAPACITY_PORT+'/',{waitUntil:'networkidle'});

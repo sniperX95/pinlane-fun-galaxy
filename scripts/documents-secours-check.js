@@ -247,15 +247,26 @@ ok(/Sur mesure/.test(texteMesure) && /Demande sur mesure/.test(texteMesure) && /
 const pdfVierge = feuille.construireFeuilleSecours(FIXTURE, { ...OPTIONS, vierge: true });
 const texteVierge = PDFTOTEXT ? texteDuPdf(pdfVierge, 'vierge.pdf') : '';
 ok(pagesDuPdf(pdfVierge) === 3 && !/Samedi|03\/10\/2026/.test(texteVierge) && /feuille vierge/.test(texteVierge) && !FIXTURE.some((r) => texteVierge.includes(r.name)), 'la feuille vierge : 3 pages, Jour et Date vides, aucun dossier');
-// Le rendu.
+// Le rendu. poppler sous Windows annonce, avant de lire le PDF, chaque police
+// de sa table qu il ne trouve pas sur la machine (Symbol et six ArialNarrow sur
+// les machines GitHub, le 2026-10-30) : seule compte une police que la feuille
+// declare (pdf-writer.js : Helvetica et Helvetica-Bold).
+const ecritParPdftoppm = (stderr) => String(stderr || '').split(/\r?\n/).filter((l) => {
+  const police = /No display font for '([^']+)'/.exec(l);
+  return l.trim() && !(police && !Object.values(pdfWriter.POLICES).includes(police[1]));
+});
+ok(ecritParPdftoppm("Syntax Error: No display font for 'Symbol'\nSyntax Error: No display font for 'ArialNarrow,Bold'").length === 0
+  && ecritParPdftoppm("Syntax Error: No display font for 'Helvetica'").length === 1 && ecritParPdftoppm('Syntax Error: Invalid XRef entry 3').length === 1,
+'pdftoppm : une police que la feuille n emploie pas ne compte pas, une des siennes et toute autre erreur comptent');
 if (PDFTOPPM) {
   const r = spawnSync(PDFTOPPM, ['-r', '50', '-png', path.join(TMP, 'jour.pdf'), path.join(TMP, 'jour')], { timeout: 120000, encoding: 'utf8' });
   const pngs = fs.readdirSync(TMP).filter((n) => /^jour-\d+\.png$/.test(n));
   const tailles = pngs.map((n) => fs.statSync(path.join(TMP, n)).size);
-  const rendu = r.status === 0 && !/error|syntax/i.test(r.stderr || '') && pngs.length === pagesDuPdf(pdfJour) && tailles.every((t) => t > 2000);
+  const ecrit = ecritParPdftoppm(r.stderr);
+  const rendu = r.status === 0 && !ecrit.some((l) => /error|syntax/i.test(l)) && pngs.length === pagesDuPdf(pdfJour) && tailles.every((t) => t > 2000);
   // (rouge, il dit pourquoi : le code, la taille de chaque image, ce que
   // pdftoppm a ecrit ; la premiere machine qui l avait l a vu rouge sans raison)
-  ok(rendu, `pdftoppm rend les ${pagesDuPdf(pdfJour)} pages sans erreur (${pngs.length} PNG)${rendu ? '' : ` : code ${r.status}, ${tailles.join(' / ')} octets, « ${String(r.stderr || r.error || '').trim().slice(0, 400)} »`}`);
+  ok(rendu, `pdftoppm rend les ${pagesDuPdf(pdfJour)} pages sans erreur (${pngs.length} PNG)${rendu ? '' : ` : code ${r.status}, ${tailles.join(' / ')} octets, « ${(ecrit.join(' | ') || String(r.error || '')).slice(0, 400)} »`}`);
 }
 // Contre-preuves sur le texte : les contrôles ci-dessus savent échouer.
 const controlesTexte = (texte) => [

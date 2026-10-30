@@ -2542,7 +2542,7 @@ async function main() {
       return lireJson(`${BASE_URL}/api/public-availability?${q}`);
     };
     const ancresDe = (d) => (d.anchors && d.anchors.activities) || [];
-    const verifierPistes = async (d, pins, laserParts, label, pg = page) => {
+    const ecartsDesPistes = async (d, pins, laserParts, pg) => {
       const pistes = await lirePistes(pg);
       const defauts = (d.anchors && d.anchors.defaultTimes) || {};
       const e = [];
@@ -2560,8 +2560,16 @@ async function main() {
         if (p && p.reset !== actifs.length > 0) e.push(`${a.activityId}: « laisser l equipe placer » ${p.reset ? 'visible' : 'cache'} avec ${actifs.length} heure(s) posee(s)`);
         if (p && !p.touchee) e.push(...ecartsMenus(p, a, actifs, propose));
       });
-      ok(e.length === 0, label, e.slice(0, 4).join(' ; ') || ancresDe(d).map((a) => `${a.activityId} ${a.times.length} h`).join(', '));
-      return pistes;
+      return { e, pistes };
+    };
+    // L ecran suit la reponse : une relecture de fond peut passer devant celle de
+    // l heure posee, et le plan neuf arrive juste apres. On relit jusqu a ce qu il
+    // dise le serveur, borne : un ecran qui reste faux reste rouge.
+    const verifierPistes = async (d, pins, laserParts, label, pg = page) => {
+      let lu = await ecartsDesPistes(d, pins, laserParts, pg);
+      for (let tour = 0; lu.e.length && tour < 24; tour += 1) { await dormir(250); lu = await ecartsDesPistes(d, pins, laserParts, pg); }
+      ok(lu.e.length === 0, label, lu.e.slice(0, 4).join(' ; ') || ancresDe(d).map((a) => `${a.activityId} ${a.times.length} h`).join(', '));
+      return lu.pistes;
     };
     // Combien de plans verifies laissaient une partie a l equipe (l etape
     // « sur place ») : la propriete doit etre exercee sur un vrai plan.

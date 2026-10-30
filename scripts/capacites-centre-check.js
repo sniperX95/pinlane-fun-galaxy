@@ -148,6 +148,10 @@ async function installMock(page, { restreint = false } = {}) {
         if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
         return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
       }
+      // La reservation rapide fait simuler son plan au serveur (dryRun). Selon la
+      // vitesse de la machine, la demande part avant la fermeture de la fenetre ou
+      // jamais : non servie, elle faisait une 404 dans la console.
+      if (u.pathname === '/api/staff-reservations' && String(init.body || '').includes('"dryRun":true')) return J({ ok: true });
       if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0, 10); return J({ ok: true, revision: `qa-${d}`, reservations: build(d), laneStatuses: lanes(), centerId: 'libramont' }); }
       if (u.pathname === '/api/public-booking-meta') {
         // Ce que le serveur sert au tunnel, lisible par tous les roles.

@@ -22,8 +22,22 @@ async function number(page, root, key, value) {
 }
 async function mode(page, root, value) { await page.click(`${root} .fg-pill[data-cle="arcadeMode"][data-valeur="${value}"]`); }
 async function mounted(page) {
-  await page.goto(`http://127.0.0.1:${PORT}/fungalaxy/libramont?embed=1`, { waitUntil: 'domcontentloaded', timeout:60000 });
-  await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
+  // Le formulaire se monte sur ses lectures. Une lecture perdue l a laisse une
+  // fois sur « Choisir un jour » 30 s durant, sur GitHub : on dit ce qui a echoue
+  // et on recharge une fois. Un formulaire qui ne se monte jamais reste rouge.
+  const problemes = [];
+  const noter = (m) => { if (m.type() === 'error') problemes.push(`${m.text()} ${m.location().url || ''}`.trim()); };
+  const perdue = (r) => problemes.push(`${(r.failure() || {}).errorText} ${r.url()}`);
+  page.on('console', noter); page.on('requestfailed', perdue);
+  for (let essai = 1; ; essai += 1) {
+    await page.goto(`http://127.0.0.1:${PORT}/fungalaxy/libramont?embed=1`, { waitUntil: 'domcontentloaded', timeout:60000 });
+    const monte = await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', null, { timeout:15000 }).then(() => true, () => false);
+    if (monte) break;
+    const vu = problemes.slice(0, 3).join(' ; ') || 'aucune erreur vue';
+    if (essai === 2) throw new Error(`le formulaire ne se monte pas : ${vu}`);
+    console.log(`mounted : pas de jour apres 15 s, rechargement (${vu})`);
+  }
+  page.off('console', noter); page.off('requestfailed', perdue);
   // LE SAMEDI DU MOCK, JAMAIS AUJOURD HUI (2026-10-14) : le formulaire ouvre
   // sur le jour meme ; a 21 h 20 il ne restait plus 60 min d arcades avant la
   // fermeture, « Continuer » restait gris et time-60 attendait 30 s.

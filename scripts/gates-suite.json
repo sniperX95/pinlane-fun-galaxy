@@ -3,6 +3,7 @@
   "suite": [
     "test:ancres",
     "test:gates-parties",
+    "test:gates-horloge",
     "test:no-em-dash",
     "test:no-header-tag",
     "test:public-leak",

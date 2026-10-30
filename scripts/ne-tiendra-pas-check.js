@@ -238,6 +238,7 @@ async function ecran() {
   const BASE = `http://127.0.0.1:${PORT}`;
   const mock = require('./dev-tunnel-server');
   const { chromium } = require('playwright-core');
+  const { figerPage } = require('./gates-horloge');
   const server = mock.createServer({ port: PORT });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   const browser = await chromium.launch({ executablePath: process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: true });
@@ -253,7 +254,7 @@ async function ecran() {
         const mute = muter(source, MUTATION);
         await page.route(`**/${MUTATION.fichier}*`, (route) => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: mute }));
       }
-      await page.clock.setFixedTime(new Date(MAINTENANT));
+      await figerPage(page, MAINTENANT);
       await page.goto(`${BASE}/fungalaxy/libramont`);
       await page.click('#dayBtn');
       for (let i = 0; i < 4; i += 1) {

@@ -61,6 +61,7 @@ global.Date = class FixtureDate extends NativeDate {
   constructor(...args) { super(...(args.length ? args : [FIXTURE_NOW])); }
   static now() { return FIXTURE_NOW; }
 };
+const { figerPage } = require('./gates-horloge');
 const MUTATE = process.argv.includes('--mutate');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 
@@ -177,7 +178,7 @@ async function ouvrir(browser, jour, { heure = '15:10', largeur = 1440, seuil = 
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(e.message));
   const instant = `${JOUR}T${heure}:00+02:00`;
-  await page.clock.setFixedTime(new Date(instant));
+  await figerPage(page, instant);
   const expiresAt = new Date(new Date(instant).getTime() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, jour, centre, activites, seuil }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick', 'clients.view', 'settings.manage', 'direction.view', 'payments.markPaid'];

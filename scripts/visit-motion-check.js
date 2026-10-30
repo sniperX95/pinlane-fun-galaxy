@@ -276,6 +276,30 @@ async function measureInteraction(page, label, action) {
   return result;
 }
 
+// L INTERACTION N AJOUTE RIEN AU REPOS : pas de tache longue de plus, et une
+// image perdue au plus, le bruit d un ordonnanceur (sauf si le repos en perd
+// deja autant). Un seuil absolu mesurerait le poste, pas le parcours.
+const mesureSaine = (r, bruit) => r.longTasks <= bruit.longTasks && r.dropped <= Math.max(1, bruit.dropped);
+
+// LA MESURE SE REJOUE AVANT DE CONCLURE (GitHub, 2026-10-30). Sous la charge
+// des autres gates de la machine, une seule mesure perdait 3 images, sans
+// tache longue et jamais plus de 33,4 ms, puis 0 au tour suivant. Un parcours
+// qui saccade saccade a chaque essai : la meilleure de trois decide, et la
+// contre-epreuve (f) prouve qu une vraie saccade reste rouge.
+async function mesurerAuMieux(page, label, bruit, action, remettre) {
+  let meilleure = await measureInteraction(page, label, action);
+  for (let essai = 2; essai <= 3 && !mesureSaine(meilleure, bruit); essai += 1) {
+    await remettre();
+    const reprise = await measureInteraction(page, `${label} (essai ${essai})`, action);
+    if (reprise.dropped + reprise.longTasks < meilleure.dropped + meilleure.longTasks) meilleure = reprise;
+  }
+  return meilleure;
+}
+const revenirEtape1 = async (page) => {
+  await page.evaluate(() => goStep(1, { animate: false, focus: false }));
+  await page.waitForTimeout(500);
+};
+
 async function checkProperties(page) {
   console.log('\n[1] Ce qui bouge : transform et opacity, jamais la mise en page');
   const keyframes = await page.evaluate(READ_KEYFRAMES, LAYOUT_PROPERTIES);
@@ -654,7 +678,7 @@ async function checkFluidity(page) {
     console.log(`    ${width} px :`);
     // ETALON AU REPOS : ce que la machine perd quand la page ne fait rien.
     repos[width] = await measureInteraction(page, 'repos (etalon machine)', async () => {});
-    results[`step-${width}`] = await measureInteraction(page, 'changement d etape 1 vers 2', async () => {
+    results[`step-${width}`] = await mesurerAuMieux(page, 'changement d etape 1 vers 2', repos[width], async () => {
       if (!process.env.PINLANE_MOTION_PROFILE) { await page.evaluate(() => goStep2()); return; }
       // PROFIL OPTIONNEL : qui prend le temps pendant le changement d etape.
       // Repartition script / mise en page, et taille du DOM produit.
@@ -691,7 +715,7 @@ async function checkFluidity(page) {
       console.log(`      PROFIL ${width} px (${Math.round(dureeMs)} ms echantillonnes) :`);
       lignes.forEach((x) => console.log(`        ${String(x.ms).padStart(4)} ms  ${x.nom}  ${x.url}:${x.ligne}`));
       await cdp.detach();
-    });
+    }, () => revenirEtape1(page));
     const montage = await page.evaluate(() => ({
       total: document.querySelectorAll('.anchor-chip').length,
       visibles: [...document.querySelectorAll('.anchor-chip')].filter((chip) => chip.getBoundingClientRect().height > 0).length,
@@ -703,13 +727,16 @@ async function checkFluidity(page) {
     // Le « saut de moment » n existe plus : les onglets ont ete retires le
     // 2026-08-24 (la grille montre toute la journee). Mesurer un clic dans le
     // vide serait un faux vert : la mesure est retiree avec la fonctionnalite.
-    results[`pick-${width}`] = await measureInteraction(page, 'choix d une heure', () => page.evaluate(() => {
+    results[`pick-${width}`] = await mesurerAuMieux(page, 'choix d une heure', repos[width], () => page.evaluate(() => {
       // Une pastille REELLEMENT prenable : ni retenue, ni coincee.
       const chip = [...document.querySelectorAll('.anchor-chip')].find((item) => !item.classList.contains('active') && !item.disabled && !item.hasAttribute('data-coince'));
       if (!chip) throw new Error('Montage du choix vide : aucune heure prenable');
       chip.click();
-    }));
-    results[`back-${width}`] = await measureInteraction(page, 'retour arriere (sens inverse)', () => page.evaluate(() => goStep(1)));
+    }), () => page.waitForTimeout(300));
+    results[`back-${width}`] = await mesurerAuMieux(page, 'retour arriere (sens inverse)', repos[width], () => page.evaluate(() => goStep(1)), async () => {
+      await page.evaluate(() => goStep2());
+      await page.waitForTimeout(900);
+    });
     // Le repos est repris APRES : une machine qui se charge en cours de route
     // ne doit pas faire passer sa charge pour un defaut du parcours.
     const apres = await measureInteraction(page, 'repos (etalon machine, reprise)', async () => {});
@@ -721,12 +748,8 @@ async function checkFluidity(page) {
   Object.entries(results).forEach(([key, value]) => {
     const largeur = Number(key.split('-')[1]);
     const bruit = repos[largeur] || { longTasks: 0, dropped: 0 };
-    // L INTERACTION NE DOIT PAS AJOUTER DE JANK AU REPOS. Un seuil absolu
-    // (zero tache longue, une image perdue) mesure le poste, pas le parcours.
     ok(value.longTasks <= bruit.longTasks,
       `${key} : pas plus de taches longues qu au repos (${value.longTasks} contre ${bruit.longTasks})`);
-    // Une seule image perdue reste dans le bruit d'un ordonnanceur ; deux, non,
-    // sauf si le repos en perd deja autant.
     ok(value.dropped <= Math.max(1, bruit.dropped),
       `${key} : ${value.dropped} image(s) perdue(s), repos ${bruit.dropped} (max ${value.maxFrame} ms)`);
   });
@@ -868,6 +891,27 @@ async function checkMutations(page) {
   const delaisRendus = cascadeAgain.lignes.map((l) => l.delai);
   ok(new Set(delaisRendus).size === 6,
     `restauration inverse : les 6 delais redeviennent distincts (${delaisRendus.join('/')})`);
+
+  // (f) une vraie saccade, rejouee a chaque essai : mesurerAuMieux ne la cache
+  // pas (60 ms de travail par image, le temps du changement d etape).
+  await bootTunnel(page, 'mutation-saccade');
+  const calme = await measureInteraction(page, 'repos (etalon de la contre-epreuve)', async () => {});
+  let essais = 0;
+  const saccade = await mesurerAuMieux(page, 'changement d etape qui saccade', calme, () => {
+    essais += 1;
+    return page.evaluate(() => {
+      const fin = performance.now() + 500;
+      const lourd = () => {
+        const t = performance.now();
+        while (performance.now() - t < 60);
+        if (performance.now() < fin) requestAnimationFrame(lourd);
+      };
+      requestAnimationFrame(lourd);
+      goStep2();
+    });
+  }, () => revenirEtape1(page));
+  ok(essais === 3 && !mesureSaine(saccade, calme),
+    `saccade jouee ${essais} fois : ${saccade.dropped} image(s) perdue(s), ${saccade.longTasks} tache(s) longue(s) -> le check [4] ROUGIRAIT`);
 }
 
 async function main() {

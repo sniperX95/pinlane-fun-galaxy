@@ -49,9 +49,12 @@ async function inspecter(browser, viewport, nom) {
   // charger (deux defilements a 100 ms d ecart, vus le 2026-09-22) : lire la
   // position pendant ce va-et-vient rendait un faux rouge. On attend la hauteur
   // du cadre, puis deux lectures egales du defilement a 300 ms d ecart (au plus
-  // 6 s) ; l assertion juge ensuite l etat reel.
+  // 6 s). Sous charge le second defilement peut tomber apres ces deux lectures :
+  // sur grand ecran on attend aussi l etat vise, borne, et l assertion juge
+  // ensuite l etat reel. Un cadre qui reste sous le menu reste rouge.
   ok(await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); return f && parseInt(f.style.height, 10) > 300; }, 10000), `${nom} : le cadre a recu sa hauteur avant toute mesure`);
   await page.evaluate(() => new Promise((resolve) => { let last = -1; let stable = 0; let tours = 0; const tick = () => { const y = Math.round(window.scrollY); if (y === last) stable += 1; else { stable = 0; last = y; } tours += 1; if (stable >= 2 || tours >= 20) resolve(); else setTimeout(tick, 300); }; tick(); }));
+  if (nom === 'ordinateur') await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); const m = document.querySelector('#menu'); return f && m && f.getBoundingClientRect().top >= m.getBoundingClientRect().bottom - 2; }, 8000);
   const hote = await page.evaluate(() => {
     const frame = document.querySelector('.pinlane-local-slot iframe[title="Reservation en ligne"]');
     const rect = frame ? frame.getBoundingClientRect() : { width: 0, left: 0, right: 0, top: 0 };

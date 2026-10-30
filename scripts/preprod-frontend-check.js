@@ -43,7 +43,7 @@ async function shot(page, name) {
 }
 // Le focus revient a la fin de la sortie d une fenetre : ce qui se lisait
 // aussitot apres Echap perdait la course sur une machine chargee.
-const finit = (page, condition) => page.waitForFunction(condition, null, { timeout: 8000 }).then(() => true, () => false);
+const finit = (page, condition) => page.waitForFunction(condition, null, { timeout: 8000 }).then(() => true, () => page.evaluate(condition).then(Boolean, () => false));
 async function contained(page, selector, count = 30) {
   const escaped = [];
   for (let i = 0; i < count; i++) {
@@ -111,7 +111,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(restored, 'F1-rerender-' + suffix, 'line chevron retains focus and toggles');
         await shot(page, 'quickbook-' + suffix);
         await page.keyboard.press('Escape');
-        ok(await page.evaluate(() => !quickBookState && document.activeElement === window.__trigger), 'F1-close-' + suffix, 'Escape and opener focus');
+        ok(await finit(page, () => !quickBookState && document.activeElement === window.__trigger), 'F1-close-' + suffix, 'Escape and opener focus');
         await page.evaluate(() => closeQuickBook());
       });
       if (width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {
@@ -163,7 +163,8 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await page.locator('[data-role="confirm-ok"]').click();
         ok(await finit(page, () => window.__answer === true && document.activeElement === window.__confirmTrigger), 'F4-confirm-restore-' + suffix, 'positive confirmation');
         await page.keyboard.press('Escape');
-        ok(await finit(page, () => !state.selectedRes && document.activeElement.matches('.booking')), 'sheet-close-' + suffix, 'sheet Escape and opener restoration');
+        const fermee = await finit(page, () => !state.selectedRes && document.activeElement.matches('.booking'));
+        ok(fermee, 'sheet-close-' + suffix, fermee ? 'sheet Escape and opener restoration' : await page.evaluate(() => ({ fiche: !!state.selectedRes, focus: `${document.activeElement.tagName}.${document.activeElement.className}` })));
         await page.evaluate(() => closePos());
       });
       await scenario('F2-' + suffix, async () => {
@@ -223,7 +224,10 @@ async function main({ roiOnly = false, capture = false } = {}) {
           mkBrief.tab = 'results'; renderStaff(); renderStaffCampaignsPage();
         });
         const hero = page.locator('.mkw-hero');
-        await hero.scrollIntoViewIfNeeded();
+        // Sans attendre que le bloc soit immobile : le fond tramé se dessine en
+        // logiciel sur les machines sans carte graphique, et ses images peuvent
+        // s espacer de plusieurs secondes. Le contenu se lit, il ne se clique pas.
+        await hero.evaluate((el) => el.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
         ok(await hero.locator('.mkw-src').count() === 6 && (await hero.innerText()).includes('Mesure indisponible') && !(await hero.innerText()).includes('null'), 'C6-render-' + suffix, 'unavailable with six source labels');
         await shot(page, 'roi-unavailable-' + suffix);
       });

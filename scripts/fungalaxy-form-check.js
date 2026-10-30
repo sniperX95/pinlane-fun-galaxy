@@ -4745,9 +4745,15 @@ async function main() {
     ok(rouleAttendu.some(Boolean) && JSON.stringify(rouleN.barre) === JSON.stringify(rouleAttendu) && rouleN.prix === Boolean(lpN2 && lpN2.prix > 0 && rouleAttendu[rouleAttendu.length - 1]),
       '[N] une heure posee : dans la barre, seul ce qui a change roule (is-maj), le reste ne bouge pas', JSON.stringify({ rouleN, rouleAttendu }));
     // En bas de page : la barre a sa place, son resume montre, ne couvre rien.
-    await pn.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await attendre(pn, () => Math.abs(window.scrollY + window.innerHeight - document.documentElement.scrollHeight) <= 2, 3000);
-    await dormir(450);
+    // La page peut encore grandir apres le defilement (sous charge, le plan se
+    // repose plus tard) : on y retourne tant que l etat vise n est pas la.
+    await attendre(pn, () => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+      const bar = document.querySelector('.fg-scene.is-active .fg-dock');
+      const r = bar.getBoundingClientRect();
+      const v = document.querySelector('#planZone .fg-visit').getBoundingClientRect();
+      return !bar.classList.contains('is-stuck') && getComputedStyle(bar.querySelector('.fg-bar__count')).opacity === '1' && v.bottom <= r.top && r.top < window.innerHeight;
+    }, 8000);
     const finN = await pn.evaluate(() => {
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
       const r = bar.getBoundingClientRect();

@@ -34,14 +34,17 @@ function depot() {
   return `${m[1]}/${m[2]}`;
 }
 
-async function trouverPassage(repo, sha, etiquette) {
+function passagesDuCommit(repo, sha, etiquette) {
+  const r = gh(['run', 'list', '--repo', repo, '--workflow', WORKFLOW, '--limit', '30', '--json', 'databaseId,headSha,headBranch,event,createdAt']);
+  if (r.status !== 0) return [];
+  return JSON.parse(r.stdout || '[]').filter((x) => x.headSha === sha && x.event === 'push' && x.headBranch === etiquette);
+}
+
+async function trouverPassage(repo, sha, etiquette, deja) {
   const fin = Date.now() + 5 * 60 * 1000;
   while (Date.now() < fin) {
-    const r = gh(['run', 'list', '--repo', repo, '--workflow', WORKFLOW, '--limit', '30', '--json', 'databaseId,headSha,headBranch,event,createdAt']);
-    if (r.status === 0) {
-      const siens = JSON.parse(r.stdout || '[]').filter((x) => x.headSha === sha && x.event === 'push' && x.headBranch === etiquette);
-      if (siens.length) return siens.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
-    }
+    const siens = passagesDuCommit(repo, sha, etiquette).filter((x) => !deja.has(x.databaseId));
+    if (siens.length) return siens.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
     await attendre(10000);
   }
   return null;
@@ -74,11 +77,17 @@ async function main() {
   const sha = git('rev-parse', '--verify', `${REF}^{commit}`);
   const repo = depot();
   const etiquette = `suite-${TOUT ? 'tout-' : ''}${sha.slice(0, 12)}`;
+  // Un commit se rejoue (deux suites de suite avant un deploiement) : le passage
+  // attendu est celui de CETTE poussee, pas le precedent du meme commit, deja fini
+  // et relu comme s il etait neuf. Une etiquette deja la ne declenche rien : on se
+  // rattache alors a son passage.
+  const anciens = passagesDuCommit(repo, sha, etiquette).map((x) => x.databaseId);
   const pousse = spawnSync('git', ['-C', ROOT, 'push', 'origin', `${sha}:refs/tags/${etiquette}`], { encoding: 'utf8', windowsHide: true });
   if (pousse.status !== 0 && !/already exists/.test(pousse.stderr)) { console.error(pousse.stderr); return 2; }
   console.log(`[suite-github] ${etiquette} poussee : ${TOUT ? 'la suite entiere' : 'la suite d impact'} de ${sha.slice(0, 10)}`);
   try {
-    const passage = await trouverPassage(repo, sha, etiquette);
+    const dejaLa = /already exists|up-to-date/.test(`${pousse.stdout}${pousse.stderr}`);
+    const passage = await trouverPassage(repo, sha, etiquette, new Set(dejaLa ? [] : anciens));
     if (!passage) { console.error('[suite-github] aucun passage du workflow en 5 minutes'); return 2; }
     const id = String(passage.databaseId);
     console.log(`[suite-github] https://github.com/${repo}/actions/runs/${id}`);

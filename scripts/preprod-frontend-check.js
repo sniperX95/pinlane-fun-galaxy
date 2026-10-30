@@ -220,7 +220,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
       });
       }
       await scenario('C6-visual-' + suffix, async () => {
-        await page.evaluate(() => {
+        const peindre = () => page.evaluate(() => {
           setView('staff'); closeQuickBook(); closePos();
           // The real painter owns the center+account scope; do not substitute
           // a plain center id, which would invalidate the fixture on next paint.
@@ -229,6 +229,14 @@ async function main({ roiOnly = false, capture = false } = {}) {
             sources: ['Anniversaires', 'Relances', 'Campagnes', 'Suivi de visite', 'Messages directs', 'Autres'].map(label => ({ label, sent: null, revenue: null })) } };
           mkBrief.tab = 'results'; renderStaff(); renderStaffCampaignsPage();
         });
+        await peindre();
+        // Le bloc a deja manque une fois sur GitHub, 15 s durant, sans cause lue :
+        // l etat de la page se dit dans le journal et on repeint une fois. Un bloc
+        // qui ne vient jamais fait echouer la suite du scenario.
+        if (!await finit(page, () => !!document.querySelector('.mkw-hero'))) {
+          console.log('C6-etat-' + suffix, JSON.stringify(await page.evaluate(() => ({ vue: state.view, page: state.staffMenuPage, onglet: mkBrief.tab, texte: (document.getElementById('staffCampaignsPage')?.textContent || 'sans racine').trim().slice(0, 160) }))));
+          await peindre();
+        }
         const hero = page.locator('.mkw-hero');
         // Sans attendre que le bloc soit immobile : le fond tramé se dessine en
         // logiciel sur les machines sans carte graphique, et ses images peuvent

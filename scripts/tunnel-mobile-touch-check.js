@@ -235,7 +235,9 @@ async function main() {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // ERR_NO_BUFFER_SPACE : la machine n a plus de tampon reseau (WSAENOBUFS sous
+  // Windows), rien que la page ait fait. Le reste garde son adresse dans le message.
+  page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('net::ERR_NO_BUFFER_SPACE')) errors.push(`${m.text()} ${m.location().url || ''}`.trim()); });
 
   try {
     // --- PARCOURS COMPLET, VARIANTE SIMPLE (une activite -> cartes) --------

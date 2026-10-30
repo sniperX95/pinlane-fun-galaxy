@@ -71,6 +71,11 @@ async function main({ roiOnly = false, capture = false } = {}) {
       const page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', err => errors.push({ suffix, message: err.message }));
       await installQaApi(page);
+      // La minute est figee. Le planning porte l heure : un rendu apres un changement
+      // de minute reconstruit sa grille et detache la case ou la carte qui a ouvert
+      // la fenetre, et le focus retombe sur la page (F1-close, sheet-close : un rouge
+      // par suite, sur la tentative qui chevauchait la minute).
+      await page.clock.setFixedTime(new Date());
       await page.goto(BASE_URL, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => typeof setView === 'function');
       await seedStressDay(page);
@@ -111,7 +116,8 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(restored, 'F1-rerender-' + suffix, 'line chevron retains focus and toggles');
         await shot(page, 'quickbook-' + suffix);
         await page.keyboard.press('Escape');
-        ok(await finit(page, () => !quickBookState && document.activeElement === window.__trigger), 'F1-close-' + suffix, 'Escape and opener focus');
+        const refermee = await finit(page, () => !quickBookState && document.activeElement === window.__trigger);
+        ok(refermee, 'F1-close-' + suffix, refermee ? 'Escape and opener focus' : await page.evaluate(() => ({ fenetre: !!quickBookState, focus: `${document.activeElement.tagName}.${document.activeElement.className}`, ouvreur: window.__trigger.isConnected })));
         await page.evaluate(() => closeQuickBook());
       });
       if (width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {

@@ -494,7 +494,12 @@ async function main() {
         pushGone: !document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel'),
       };
       window.mkwPanelToggle();
-      await new Promise((r) => setTimeout(r, 420));
+      // La mesure attend la FIN de l entree (is-in pose apres deux images, puis
+      // 460 ms de transform) : prise a 420 ms, elle lisait la bulle encore en
+      // glissement sur une machine plus lente a peindre (GitHub, 2026-10-30).
+      for (let i = 0; i < 120 && !document.querySelector('#mkwSheet.is-in'); i += 1) await new Promise((r) => requestAnimationFrame(r));
+      const entrante = document.querySelector('#mkwSheet .mkw-panel');
+      await Promise.race([Promise.all((entrante ? entrante.getAnimations() : []).map((a) => a.finished.catch(() => null))), new Promise((r) => setTimeout(r, 3000))]);
       const panel = document.querySelector('#mkwSheet.is-on.is-in .mkw-panel');
       const rect = panel ? panel.getBoundingClientRect() : null;
       const style = panel ? getComputedStyle(panel) : null;
@@ -505,6 +510,7 @@ async function main() {
         // LA BULLE : pres du bord droit avec sa marge (16px), arrondie,
         // hauteur AU CONTENU (jamais une colonne bord a bord).
         edge: rect ? Math.abs(rect.right - (window.innerWidth - 16)) < 3 && Math.abs(rect.top - 16) < 3 && rect.bottom <= window.innerHeight - 12 : false,
+        mesure: rect ? `droite ${Math.round(rect.right)} pour ${window.innerWidth - 16}, haut ${Math.round(rect.top)}, bas ${Math.round(rect.bottom)} pour ${window.innerHeight - 12} au plus` : 'pas de bulle',
         rounded: style ? parseFloat(style.borderTopLeftRadius) >= 10 : false,
         glass: style ? /blur/.test(style.backdropFilter || style.webkitBackdropFilter || '') : false,
         // VRAIMENT transparent : l'alpha du fond sous 0.7 (un verre opaque
@@ -524,7 +530,7 @@ async function main() {
       };
     });
     ok(toggled.closing && toggled.sheetGone && toggled.pushGone, 'la fermeture ANIME la sortie (is-closing) puis le tiroir rentre dans le bord, le chat reprend la largeur');
-    ok(toggled.reopened && toggled.edge, 'rouvert : la BULLE vit pres du bord droit (marge 16), hauteur au contenu');
+    ok(toggled.reopened && toggled.edge, `rouvert : la BULLE vit pres du bord droit (marge 16), hauteur au contenu${toggled.edge ? '' : ` (${toggled.mesure})`}`);
     ok(toggled.rounded && toggled.glass && toggled.seeThrough, 'et c\'est une bulle VITREE arrondie, VRAIMENT transparente (alpha du fond < 0.7 + blur)');
     ok(toggled.chevron, 'la fleche de fermeture pointe vers la DROITE : le sens ou la bulle rentre');
     ok(toggled.navOneBlock, 'les 4 liens de l\'en-tete restent EN BLOC sur une ligne (jamais recroquevilles)');
@@ -851,19 +857,23 @@ async function main() {
     ok(sheetClosed.inlineGone && sheetClosed.sheetOff, 'sur petit ecran, AUCUN panneau dans la page et la feuille dort');
     const sheetOpen = await page.evaluate(async () => {
       window.mkwPanelToggle();
-      await new Promise((r) => setTimeout(r, 450));
+      // (la fin de l entree, comme a l ouverture sur grand ecran)
+      for (let i = 0; i < 120 && !document.querySelector('#mkwSheet.is-in'); i += 1) await new Promise((r) => requestAnimationFrame(r));
+      const entrante = document.querySelector('#mkwSheet .mkw-panel');
+      await Promise.race([Promise.all((entrante ? entrante.getAnimations() : []).map((a) => a.finished.catch(() => null))), new Promise((r) => setTimeout(r, 3000))]);
       const sheet = document.getElementById('mkwSheet');
       const panel = sheet && sheet.querySelector('.mkw-panel');
       const rect = panel ? panel.getBoundingClientRect() : null;
       return {
         on: Boolean(sheet && sheet.classList.contains('is-on') && sheet.classList.contains('is-in')),
         edge: rect ? Math.abs(rect.right - (window.innerWidth - 16)) < 3 && Math.abs(rect.top - 16) < 3 : false,
+        mesure: rect ? `droite ${Math.round(rect.right)} pour ${window.innerWidth - 16}, haut ${Math.round(rect.top)}` : 'pas de bulle',
         back: Boolean(sheet && sheet.querySelector('.mkw-sheet-back')),
         groups: sheet ? sheet.querySelectorAll('.mkw-bgroup').length : 0,
       };
     });
     ok(sheetOpen.on && sheetOpen.back, 'la feuille ENTRE (voile + glissement), montee dans body');
-    ok(sheetOpen.edge, 'et la bulle se cale sur le bord droit avec sa marge (plus jamais flottante au milieu)');
+    ok(sheetOpen.edge, `et la bulle se cale sur le bord droit avec sa marge (plus jamais flottante au milieu)${sheetOpen.edge ? '' : ` (${sheetOpen.mesure})`}`);
     ok(sheetOpen.groups >= 3, 'elle porte tout le travail (3 groupes + mini-radar)');
     const sheetAction = await page.evaluate(async () => {
       const mini = [...document.querySelectorAll('#mkwSheet .mkw-mini')][2];

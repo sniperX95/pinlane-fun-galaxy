@@ -80,9 +80,14 @@ const CAMILLE = 1603; // Formule 7, 15:30, pas encore arrivee
 let echecs = 0;
 let silence = false;
 const rouges = [];
+// La contre-preuve en cours (`mutation`) a mordu des que sa lettre rougit : la
+// suite de ses scenarios n apporterait plus rien (2026-10-30, la suite
+// raccourcie ; chaque scenario ferme sa page dans un finally).
+class Mordu extends Error {}
 function ok(cond, label, detail = '') {
   if (!cond) { echecs += 1; rouges.push(label); }
   if (!silence) console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}${!cond && detail !== '' ? `  ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 700)}` : ''}`);
+  if (!cond && mutation && label.startsWith(`[${mutation.lettre}]`)) throw new Mordu(label);
   return cond;
 }
 
@@ -451,7 +456,7 @@ async function main() {
         silence = !process.env.CA_BAVARD;
         try {
           await jouer(browser, m.scenarios);
-        } catch (e) { rouges.push(`[${m.lettre}] crash ${e.message}`); }
+        } catch (e) { if (!(e instanceof Mordu)) rouges.push(`[${m.lettre}] crash ${e.message}`); }
         silence = false;
         mutation = null;
         const vus = rouges.slice(garde);

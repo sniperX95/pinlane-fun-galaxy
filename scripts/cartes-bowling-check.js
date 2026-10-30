@@ -42,11 +42,17 @@ const MAINTENANT = '15:12';
 
 let echecs = 0;
 const lignes = [];
+// La contre-preuve en cours : elle a mordu des que sa lettre rougit, la suite
+// de ses scenarios n apporterait plus rien (2026-10-30, la suite raccourcie ;
+// chaque scenario ferme sa page dans un finally).
+class Mordu extends Error {}
+let attendue = null;
 function ok(cond, label, detail = '') {
   const l = `${cond ? 'ok  ' : 'FAIL'}  ${label}${detail ? `  ${detail}` : ''}`;
   lignes.push({ cond: Boolean(cond), label });
   if (!process.env.CB_SILENCE) console.log(l);
   if (!cond) echecs += 1;
+  if (!cond && attendue && label.includes(attendue.lettre)) throw new Mordu(label);
   return cond;
 }
 
@@ -573,7 +579,9 @@ async function main() {
         const avant = echecs;
         const garde = lignes.length;
         process.env.CB_SILENCE = '1';
-        try { await scenarios(browser, m); } catch (e) { lignes.push({ cond: false, label: `crash ${e.message}` }); }
+        attendue = m;
+        try { await scenarios(browser, m); } catch (e) { if (!(e instanceof Mordu)) lignes.push({ cond: false, label: `crash ${e.message}` }); }
+        attendue = null;
         delete process.env.CB_SILENCE;
         const rouges = lignes.slice(garde).filter(l => !l.cond).map(l => l.label);
         lignes.length = garde;

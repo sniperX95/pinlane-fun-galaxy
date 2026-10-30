@@ -449,8 +449,13 @@ async function scenarios(browser, mutation = null) {
       const file = await page.locator('#laserPlanningGridWrap .lp-file').boundingBox();
       await page.mouse.move(file.x + 200, file.y + file.height / 2, { steps: 8 });
       await page.mouse.up();
-      await page.waitForTimeout(600);
-      const retrait = (await requetes(page)).find(q => q.corps && q.corps.activityMove && q.corps.activityMove.unplace);
+      // Le retrait part du lacher : il s attend, 600 ms fixes ne tenaient pas
+      // sous la charge (GitHub, 2026-10-30).
+      let retrait = null;
+      for (const fin = Date.now() + 10000; !retrait && Date.now() < fin;) {
+        retrait = (await requetes(page)).find(q => q.corps && q.corps.activityMove && q.corps.activityMove.unplace) || null;
+        if (!retrait) await page.waitForTimeout(100);
+      }
       ok(retrait && Number(retrait.corps.id) === idDe(journee(), 'Collin'), '[G] lacher sur la file retire la partie du planning', JSON.stringify(retrait && retrait.corps.activityMove));
       ok(erreurs.length === 0, '[G] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }

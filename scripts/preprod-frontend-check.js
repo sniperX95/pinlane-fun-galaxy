@@ -41,6 +41,9 @@ async function shot(page, name) {
   await page.waitForTimeout(900);
   if (captureEnabled) await page.screenshot({ path: path.join(OUT, name + '.png') });
 }
+// Le focus revient a la fin de la sortie d une fenetre : ce qui se lisait
+// aussitot apres Echap perdait la course sur une machine chargee.
+const finit = (page, condition) => page.waitForFunction(condition, null, { timeout: 8000 }).then(() => true, () => false);
 async function contained(page, selector, count = 30) {
   const escaped = [];
   for (let i = 0; i < count; i++) {
@@ -65,7 +68,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         if (u.origin === BASE_URL) return route.continue();
         blocked.push(u.hostname); return route.abort();
       });
-      const page = await context.newPage(); page.setDefaultTimeout(4000);
+      const page = await context.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', err => errors.push({ suffix, message: err.message }));
       await installQaApi(page);
       await page.goto(BASE_URL, { waitUntil: 'networkidle' });
@@ -155,12 +158,12 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(!escaped.length, 'F4-trap-' + suffix, escaped);
         await shot(page, 'confirm-' + suffix);
         await page.keyboard.press('Escape');
-        ok(await page.evaluate(() => window.__answer === false && document.activeElement === window.__confirmTrigger && !!state.selectedRes), 'F4-cancel-restore-' + suffix, 'Escape closes only confirmation and restores sheet focus');
+        ok(await finit(page, () => window.__answer === false && document.activeElement === window.__confirmTrigger && !!state.selectedRes), 'F4-cancel-restore-' + suffix, 'Escape closes only confirmation and restores sheet focus');
         await page.evaluate(() => { staffConfirm({ title: 'Contrôle positif' }).then(v => window.__answer = v); });
         await page.locator('[data-role="confirm-ok"]').click();
-        ok(await page.evaluate(() => window.__answer === true && document.activeElement === window.__confirmTrigger), 'F4-confirm-restore-' + suffix, 'positive confirmation');
+        ok(await finit(page, () => window.__answer === true && document.activeElement === window.__confirmTrigger), 'F4-confirm-restore-' + suffix, 'positive confirmation');
         await page.keyboard.press('Escape');
-        ok(await page.evaluate(() => !state.selectedRes && document.activeElement.matches('.booking')), 'sheet-close-' + suffix, 'sheet Escape and opener restoration');
+        ok(await finit(page, () => !state.selectedRes && document.activeElement.matches('.booking')), 'sheet-close-' + suffix, 'sheet Escape and opener restoration');
         await page.evaluate(() => closePos());
       });
       await scenario('F2-' + suffix, async () => {

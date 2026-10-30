@@ -211,11 +211,20 @@ function partDuPlan(unites, texte, places) {
   return repartir(unites, Number(m[2]), places)[Number(m[1]) - 1].unites;
 }
 
-// Le nombre de parts : dix minutes de pool par part environ, MAX au plus. La
-// plus longue unite borne de toute facon le mur d une part.
+// Le nombre de parts : le plus petit qui rend presque le meilleur mur possible
+// (a 10 % et une minute pres de celui de MAX parts), chaque part de plus
+// coutant son installation. Compter le travail seul (dix minutes de pool par
+// part) laissait les unites seules s enchainer a la fin d une part : la suite
+// d impact du 30/10 en 2 parts, 17 min 53 pour la plus longue, quand la suite
+// entiere en 9 parts en prenait 14 min 35.
 function partsPourLeWorkflow(unites, max, places) {
-  const somme = unites.reduce((s, u) => s + u.estimee, 0);
-  const n = unites.length ? Math.min(Math.max(1, max || 1), Math.max(1, Math.ceil(somme / (places * 600)))) : 0;
+  const plafond = Math.max(1, max || 1);
+  const murDe = (k) => Math.max(0, ...repartir(unites, k, places).map((p) => p.estimee));
+  let n = 0;
+  if (unites.length) {
+    const meilleur = murDe(plafond);
+    for (n = 1; n < plafond && murDe(n) > meilleur * 1.1 + 60; n += 1);
+  }
   const parts = n ? repartir(unites, n, places) : [];
   console.log(`parts=${n}`);
   console.log(`matrice=${JSON.stringify(Array.from({ length: n }, (_, i) => i + 1))}`);

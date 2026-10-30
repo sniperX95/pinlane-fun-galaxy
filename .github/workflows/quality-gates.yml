@@ -132,7 +132,7 @@ jobs:
           foreach ($chemin in '\Microsoft\Windows\WindowsUpdate\', '\Microsoft\Windows\UpdateOrchestrator\') {
             Get-ScheduledTask -TaskPath $chemin -ErrorAction SilentlyContinue | Disable-ScheduledTask -ErrorAction SilentlyContinue | Out-Null
           }
-          Set-MpPreference -SignatureFallbackOrder FileShares
+          Set-MpPreference -SignatureFallbackOrder FileShares -ErrorAction SilentlyContinue
           Get-Service wuauserv, UsoSvc, VSS, swprv, StorSvc | ForEach-Object { "$($_.Name) : $($_.Status), $($_.StartType)" }
       - uses: actions/checkout@v4
         with:

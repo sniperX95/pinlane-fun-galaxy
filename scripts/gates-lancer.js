@@ -143,9 +143,15 @@ function synchroniser(place) {
 }
 
 // --- Le plan ----------------------------------------------------------------
+// Une suite en parts lit la graine SEULE : les durees que ce poste a mesurees
+// (tmp/) changeraient la repartition d une part a l autre, et une unite
+// tomberait dans deux parts ou dans aucune (vu le 2026-10-30 : deux parts
+// jouees a la suite sur la meme machine, la seconde relisait les durees de la
+// premiere).
 function lireDurees() {
   const d = {};
-  for (const f of [DUREES_GRAINE, DUREES_LOCALES]) {
+  const enParts = Boolean(option('--partie') || option('--parts-ci'));
+  for (const f of enParts ? [DUREES_GRAINE] : [DUREES_GRAINE, DUREES_LOCALES]) {
     try { Object.assign(d, JSON.parse(fs.readFileSync(f, 'utf8'))); } catch (error) { /* absent */ }
   }
   return d;
@@ -410,6 +416,8 @@ async function main() {
   if (drapeau('--liste')) {
     console.log(`${noms.length} scripts, ${unitesDuPlan.length} unites (${enPool.length} en pool de ${jobs}, ${seuls.length} seules a la fin)`);
     [...enPool].sort((a, b) => b.estimee - a.estimee).concat(seuls).forEach((u) => console.log(`${u.seul ? 'SEUL ' : 'POOL '} ${String(Math.round(u.estimee)).padStart(5)} s  ${u.navigateur ? 'NAV' : 'PUR'}  ${cleUnite(u).padEnd(42)} ${u.ports.join(',')}`));
+    // (lu par le workflow : ce que la machine doit installer pour cette liste)
+    console.log(`outils=${[...new Set(unitesDuPlan.flatMap((u) => commun.outilsExternes(u.fichier, SOURCE)))].sort().join(',')}`);
     return 0;
   }
   const horodatage = new Date().toISOString().replace(/[:.]/g, '-');

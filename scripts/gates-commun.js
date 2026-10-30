@@ -170,4 +170,18 @@ function piloteUnNavigateur(fichier, racine = ROOT) {
   return false;
 }
 
-module.exports = { ROOT, lf, sansCommentaires, scriptsNpm, configSuite, unites, fichiersDuDepot, scriptsLies, variablesDePort, piloteUnNavigateur };
+// Les outils hors npm qu une unite demande a la machine : WebKit (npm ci ne
+// telecharge aucun navigateur) et poppler (pdftoppm, que le Git des machines
+// GitHub n a pas). Le workflow ne les installe que dans la part qui les joue.
+// (un -webkit- de CSS ne lance pas WebKit : seul le moteur importe compte)
+function outilsExternes(fichier, racine = ROOT) {
+  const outils = new Set();
+  for (const f of scriptsLies(fichier, racine)) {
+    const source = sansCommentaires(lireSource(path.join(racine, f)));
+    if (/\{[^}]*\bwebkit\b[^}]*\}\s*=\s*require\(|\bwebkit\.launch\(/.test(source)) outils.add('webkit');
+    if (/\bpdftoppm\b/.test(source)) outils.add('poppler');
+  }
+  return [...outils].sort();
+}
+
+module.exports = { ROOT, lf, sansCommentaires, scriptsNpm, configSuite, unites, fichiersDuDepot, scriptsLies, variablesDePort, piloteUnNavigateur, outilsExternes };

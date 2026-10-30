@@ -126,6 +126,18 @@ jobs:
           tzutil /s "Romance Standard Time"
           Set-Culture fr-BE
       - run: npm ci
+      # Ce que npm ci n apporte pas, dans la seule part qui le joue
+      # (gates-commun.js outilsExternes) : WebKit pour les gates qui lancent
+      # ce moteur, poppler (pdftoppm) pour documents-secours, que le Git des
+      # machines GitHub n a pas.
+      - name: Les outils de la part
+        shell: pwsh
+        run: |
+          $liste = node scripts/gates-lancer.js ${{ needs.plan.outputs.selection }} --partie ${{ matrix.partie }}/${{ needs.plan.outputs.parts }} --jobs $env:PLACES --liste
+          $outils = (($liste | Select-String '^outils=(.*)$').Matches.Groups[1].Value) -split ',' | Where-Object { $_ }
+          if ($outils -contains 'webkit') { npx playwright-core install webkit; if ($LASTEXITCODE) { exit 1 } }
+          if ($outils -contains 'poppler') { choco install poppler -y --no-progress | Out-Null; if ($LASTEXITCODE) { exit 1 } }
+          "outils : $(if ($outils) { $outils -join ', ' } else { 'aucun' })"
       - name: La part ${{ matrix.partie }}
         shell: pwsh
         env:

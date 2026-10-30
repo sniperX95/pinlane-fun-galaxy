@@ -15,6 +15,7 @@
 // variable de port nommee (le lanceur reserve 20 ports par variable).
 // Nombre de fils : PINLANE_ECLATS (defaut 6) ou `nombre`, jamais plus que de rangs.
 'use strict';
+const os = require('os');
 const readline = require('readline');
 const { spawn, spawnSync } = require('child_process');
 
@@ -63,20 +64,24 @@ function tuer(enfant) {
 // Le pere : relance `fichier` avec `args` + --eclat dans N fils et leur
 // distribue `rangs`. ports : { NOM_VARIABLE: portDeBase }. Rend
 // Map(rang -> valeur) et, par fils, les rangs joues, son code et sa sortie
-// (pour dire pourquoi un rang manque).
+// (pour dire pourquoi un rang manque). `nombre` : un fils neuf par rang (un
+// gate qui ne rejoue pas deux rangs dans le meme processus) ; jamais plus de
+// fils en meme temps que de coeurs : 15 fils d un coup sur les 4 coeurs d une
+// machine GitHub laissaient 700 fils d execution en attente du processeur, et
+// tout ce qui tournait a cote rougissait de lenteur (2026-10-30).
 function eclater({ fichier, args = [], rangs, ports = {}, envFils = {}, delaiMs = DELAI_FILS_MS, nombre = 0, decalage = 0 }) {
   const n = nombre ? Math.max(1, Math.min(rangs.length, nombre)) : nombreDeFils(rangs.length);
   const file = [...rangs];
   const resultats = new Map();
   const sorties = [];
-  return Promise.all(Array.from({ length: n }, (_, k) => new Promise((resolve) => {
+  const unFils = (k) => new Promise((resolve) => {
     const env = { ...process.env, ...envFils };
     for (const [nom, base] of Object.entries(ports)) env[nom] = String(Number(base) + 1 + decalage + k);
     const enfant = spawn(process.execPath, [fichier, ...args, DRAPEAU], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     const sortie = { part: [], code: null, texte: '' };
     sorties[k] = sortie;
     const donner = () => {
-      if (!file.length) { enfant.stdin.end(); return; }
+      if (!file.length || (nombre && sortie.part.length)) { enfant.stdin.end(); return; }
       const rang = file.shift();
       sortie.part.push(rang);
       enfant.stdin.write(`${rang}\n`);
@@ -105,7 +110,8 @@ function eclater({ fichier, args = [], rangs, ports = {}, envFils = {}, delaiMs 
       resolve();
     });
     donner();
-  }))).then(() => ({ resultats, sorties }));
+  });
+  return enPool(Array.from({ length: n }, (_, k) => k), nombre ? Math.max(2, os.cpus().length) : n, unFils).then(() => ({ resultats, sorties }));
 }
 
 // La fin de la sortie du fils qui avait ce rang, pour dire pourquoi il manque.

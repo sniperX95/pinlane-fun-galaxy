@@ -350,6 +350,7 @@
     "test:planning-persistent-move"
   ],
   "seuls": [
+    "test:visit-motion",
     "test:crm-clients",
     "test:motion-exploitation",
     "test:staff-perf",

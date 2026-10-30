@@ -20,6 +20,9 @@ const { spawn, spawnSync } = require('child_process');
 
 const MARQUE = 'ECLAT-RESULTAT';
 const DRAPEAU = '--eclat';
+// Un fils cale s arrete avant le delai de l unite : le pere a le temps de dire
+// lequel et ou il en etait, un gate tue par le lanceur ne laisse rien.
+const DELAI_FILS_MS = Math.min(30 * 60, Math.max(60, Number(process.env.PINLANE_GATES_DELAI_S || 40 * 60) - 60)) * 1000;
 
 function estFils(argv = process.argv) {
   return argv.includes(DRAPEAU);
@@ -30,13 +33,20 @@ function rendre(rang, valeur) {
 }
 
 // Le fils : lit ses rangs sur l entree standard, un par ligne, joue chacun
-// et rend son resultat ; rend la main quand le pere ferme l entree.
+// et rend son resultat ; rend la main quand le pere ferme l entree. Un travail
+// qui plante sort d ici sans que le pere l ait fermee : sous Windows, ce tube
+// ouvert gardait le fils en vie, et le pere l attendait jusqu au delai, journal
+// vide (fungalaxy-information, 15 min sur GitHub le 2026-10-30).
 async function servir(travail) {
   const lecteur = readline.createInterface({ input: process.stdin });
-  for await (const ligne of lecteur) {
-    const rang = Number(String(ligne).trim());
-    if (!String(ligne).trim() || !Number.isInteger(rang)) continue;
-    rendre(rang, await travail(rang));
+  try {
+    for await (const ligne of lecteur) {
+      const rang = Number(String(ligne).trim());
+      if (!String(ligne).trim() || !Number.isInteger(rang)) continue;
+      rendre(rang, await travail(rang));
+    }
+  } finally {
+    process.stdin.destroy();
   }
 }
 
@@ -54,7 +64,7 @@ function tuer(enfant) {
 // distribue `rangs`. ports : { NOM_VARIABLE: portDeBase }. Rend
 // Map(rang -> valeur) et, par fils, les rangs joues, son code et sa sortie
 // (pour dire pourquoi un rang manque).
-function eclater({ fichier, args = [], rangs, ports = {}, envFils = {}, delaiMs = 30 * 60 * 1000, nombre = 0, decalage = 0 }) {
+function eclater({ fichier, args = [], rangs, ports = {}, envFils = {}, delaiMs = DELAI_FILS_MS, nombre = 0, decalage = 0 }) {
   const n = nombre ? Math.max(1, Math.min(rangs.length, nombre)) : nombreDeFils(rangs.length);
   const file = [...rangs];
   const resultats = new Map();

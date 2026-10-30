@@ -47,6 +47,29 @@ async function trouverPassage(repo, sha, etiquette) {
   return null;
 }
 
+// La fin du passage, lue par l API toutes les 30 s (90 min au plus) : `gh run
+// watch` rendait la main avant la fin, sans erreur (vu le 2026-10-30 : sorti
+// a 29 min, une part encore en cours, et la suite lue « sans bilan »). Une
+// ligne seulement quand une part finit.
+async function attendreLaFin(repo, id) {
+  const fin = Date.now() + 90 * 60 * 1000;
+  let dernier = '';
+  while (Date.now() < fin) {
+    const r = gh(['run', 'view', id, '--repo', repo, '--json', 'status,conclusion,jobs']);
+    if (r.status === 0) {
+      const passage = JSON.parse(r.stdout);
+      const parts = passage.jobs.filter((j) => j.name.startsWith('part '));
+      const finies = parts.filter((j) => j.status === 'completed');
+      const enRouge = finies.filter((j) => j.conclusion !== 'success').map((j) => j.name);
+      const etat = `${finies.length}/${parts.length} parts finies${enRouge.length ? `, en rouge : ${enRouge.join(', ')}` : ''}`;
+      if (etat !== dernier) { console.log(`[suite-github] ${new Date().toTimeString().slice(0, 8)} ${etat}`); dernier = etat; }
+      if (passage.status === 'completed') return passage.conclusion;
+    }
+    await attendre(30000);
+  }
+  return null;
+}
+
 async function main() {
   const sha = git('rev-parse', '--verify', `${REF}^{commit}`);
   const repo = depot();
@@ -59,13 +82,12 @@ async function main() {
     if (!passage) { console.error('[suite-github] aucun passage du workflow en 5 minutes'); return 2; }
     const id = String(passage.databaseId);
     console.log(`[suite-github] https://github.com/${repo}/actions/runs/${id}`);
-    gh(['run', 'watch', id, '--repo', repo, '--interval', '30'], { stdio: 'inherit', timeout: 100 * 60 * 1000 });
+    const conclusion = await attendreLaFin(repo, id);
+    if (conclusion === null) { console.error('[suite-github] le passage n a pas fini en 90 minutes'); return 2; }
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'suite-github-'));
     const telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
     const fichier = path.join(dossier, 'bilan-assemble.json');
     if (telecharge.status !== 0 || !fs.existsSync(fichier)) {
-      const vue = gh(['run', 'view', id, '--repo', repo, '--json', 'conclusion']);
-      const conclusion = vue.status === 0 ? JSON.parse(vue.stdout).conclusion : 'inconnue';
       // Aucun gate touche par le diff : le workflow est vert sans bilan.
       if (conclusion === 'success') { console.log('[suite-github] VERT : aucun gate a jouer pour ce diff'); return 0; }
       console.error(`[suite-github] pas de bilan rassemble (conclusion du workflow : ${conclusion})`);

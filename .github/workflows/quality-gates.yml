@@ -138,11 +138,15 @@ jobs:
           if ($outils -contains 'webkit') { npx playwright-core install webkit; if ($LASTEXITCODE) { exit 1 } }
           if ($outils -contains 'poppler') { choco install poppler -y --no-progress | Out-Null; if ($LASTEXITCODE) { exit 1 } }
           "outils : $(if ($outils) { $outils -join ', ' } else { 'aucun' })"
+      # Une unite a 15 min au plus (40 sur le poste) : la plus longue en prend
+      # 11 ici, et un gate bloque tenait sa place 40 min puis son second tour,
+      # au-dela des 60 min de la part (preprod-csp, le 2026-10-30).
       - name: La part ${{ matrix.partie }}
         shell: pwsh
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
+          PINLANE_GATES_DELAI_S: '900'
         run: node scripts/gates-lancer.js ${{ needs.plan.outputs.selection }} --partie ${{ matrix.partie }}/${{ needs.plan.outputs.parts }} --jobs $env:PLACES --deux-chances
       - name: Son bilan et ses journaux
         if: always()

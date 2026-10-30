@@ -230,18 +230,21 @@ async function main({ roiOnly = false, capture = false } = {}) {
           mkBrief.tab = 'results'; renderStaff(); renderStaffCampaignsPage();
         });
         await peindre();
-        // Le bloc a deja manque une fois sur GitHub, 15 s durant, sans cause lue :
-        // l etat de la page se dit dans le journal et on repeint une fois. Un bloc
-        // qui ne vient jamais fait echouer la suite du scenario.
-        if (!await finit(page, () => !!document.querySelector('.mkw-hero'))) {
-          console.log('C6-etat-' + suffix, JSON.stringify(await page.evaluate(() => ({ vue: state.view, page: state.staffMenuPage, onglet: mkBrief.tab, texte: (document.getElementById('staffCampaignsPage')?.textContent || 'sans racine').trim().slice(0, 160) }))));
-          await peindre();
-        }
-        const hero = page.locator('.mkw-hero');
         // Sans attendre que le bloc soit immobile : le fond tramé se dessine en
         // logiciel sur les machines sans carte graphique, et ses images peuvent
         // s espacer de plusieurs secondes. Le contenu se lit, il ne se clique pas.
-        await hero.evaluate((el) => el.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
+        const hero = page.locator('.mkw-hero');
+        const montrer = (delai) => hero.evaluate((el) => el.scrollIntoView({ block: 'nearest', behavior: 'instant' }), null, { timeout: delai });
+        // Le bloc peut repartir juste apres la peinture : si la portee du marketing
+        // change (centre, compte), la page vide la fixture et relit le brief, que
+        // le banc ne sert pas, et son panneau d erreur prend la place. Vu sur GitHub
+        // deux suites sur cinq. On dit l etat et on repeint une fois : la portee
+        // est alors posee, et un bloc qui ne vient jamais fait echouer le scenario.
+        if (!await montrer(4000).then(() => true, () => false)) {
+          console.log('C6-etat-' + suffix, JSON.stringify(await page.evaluate(() => ({ vue: state.view, page: state.staffMenuPage, onglet: mkBrief.tab, donnees: !!mkBrief.data, erreur: mkBrief.error, texte: (document.getElementById('staffCampaignsPage')?.textContent || 'sans racine').trim().slice(0, 120) }))));
+          await peindre();
+          await montrer(15000);
+        }
         ok(await hero.locator('.mkw-src').count() === 6 && (await hero.innerText()).includes('Mesure indisponible') && !(await hero.innerText()).includes('null'), 'C6-render-' + suffix, 'unavailable with six source labels');
         await shot(page, 'roi-unavailable-' + suffix);
       });

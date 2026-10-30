@@ -49,13 +49,11 @@ async function inspecter(browser, viewport, nom) {
   // charger (deux defilements a 100 ms d ecart, vus le 2026-09-22) : lire la
   // position pendant ce va-et-vient rendait un faux rouge. On attend la hauteur
   // du cadre, puis deux lectures egales du defilement a 300 ms d ecart (au plus
-  // 6 s) ; l assertion juge ensuite l etat reel. Sous la charge d autres gates, la
-  // page du client peut se poser pour de bon sur le saut natif, le cadre a 56 px
-  // sous le menu (attendre 8 s de plus n y change rien, vu sur GitHub le
-  // 2026-10-30) : ce gate se joue seul, a la fin (gates-suite.json, `seuls`).
+  // 6 s) ; l assertion juge ensuite l etat reel.
   ok(await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); return f && parseInt(f.style.height, 10) > 300; }, 10000), `${nom} : le cadre a recu sa hauteur avant toute mesure`);
-  await page.evaluate(() => new Promise((resolve) => { let last = -1; let stable = 0; let tours = 0; const tick = () => { const y = Math.round(window.scrollY); if (y === last) stable += 1; else { stable = 0; last = y; } tours += 1; if (stable >= 2 || tours >= 20) resolve(); else setTimeout(tick, 300); }; tick(); }));
-  const hote = await page.evaluate(() => {
+  const reposee = () => page.evaluate(() => new Promise((resolve) => { let last = -1; let stable = 0; let tours = 0; const tick = () => { const y = Math.round(window.scrollY); if (y === last) stable += 1; else { stable = 0; last = y; } tours += 1; if (stable >= 2 || tours >= 20) resolve(); else setTimeout(tick, 300); }; tick(); }));
+  await reposee();
+  const lire = () => page.evaluate(() => {
     const frame = document.querySelector('.pinlane-local-slot iframe[title="Reservation en ligne"]');
     const rect = frame ? frame.getBoundingClientRect() : { width: 0, left: 0, right: 0, top: 0 };
     const popup = document.querySelector('#popup');
@@ -74,6 +72,19 @@ async function inspecter(browser, viewport, nom) {
       menuBas: (document.querySelector('#menu') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom,
     };
   });
+  let hote = await lire();
+  // UNE PREMIERE VISITE PEUT SE POSER SOUS LE MENU. La page du client est reelle,
+  // et sur une machine neuve elle reste parfois sur le saut natif de l ancre, le
+  // cadre a 56 px sous un menu de 163 px : stable, 8 s d attente et un passage
+  // seul n y changent rien, un rechargement si. Rien de notre cote : on le dit et
+  // on recharge une fois. Un cadre qui reste sous le menu reste rouge.
+  if (nom === 'ordinateur' && hote.haut < hote.menuBas - 2) {
+    console.log(`${nom} : cadre a ${Math.round(hote.haut)} px, menu jusqu a ${Math.round(hote.menuBas)} px au premier chargement, on recharge une fois`);
+    await page.reload({ waitUntil: 'networkidle', timeout: 60000 });
+    await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); return f && parseInt(f.style.height, 10) > 300; }, 10000);
+    await reposee();
+    hote = await lire();
+  }
   ok(hote.section && hote.ancienRetire, `${nom} : emplacement d origine garde, ancien bloc (titre, portrait, Gravity Form) retire`);
   ok(hote.centre === 'Libramont', `${nom} : centre hote fixe sur Libramont`, hote.centre);
   ok(hote.src.indexOf(`${BASE_URL}/fungalaxy/libramont?embed=1`) === 0, `${nom} : le cadre vise le formulaire Fun Galaxy`, hote.src);

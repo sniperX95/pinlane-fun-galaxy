@@ -112,13 +112,15 @@ const MEASURE = () => {
   const smallTargets = [...scope.querySelectorAll('button, input, textarea, select, summary, [role="button"]')]
     .filter(visible)
     .filter((el) => {
-      if (el.getBoundingClientRect().height >= 44) return false;
+      // offsetHeight : la taille de la cible, pas celle de l instant. Un bouton
+      // pris dans son entree (scale) mesurait 43,6 px au rectangle.
+      if (el.offsetHeight >= 44) return false;
       // Une case a cocher dans une etiquette cliquable : la CIBLE est
       // l'etiquette, c'est elle qu'on mesure.
       const label = el.closest('label');
-      return !(label && label.getBoundingClientRect().height >= 44);
+      return !(label && label.offsetHeight >= 44);
     })
-    .map((el) => `${el.id || (el.className || el.tagName).toString().split(' ')[0] || el.tagName}:${Math.round(el.getBoundingClientRect().height)}`);
+    .map((el) => `${el.id || (el.className || el.tagName).toString().split(' ')[0] || el.tagName}:${el.offsetHeight}`);
   const smallText = [...scope.querySelectorAll('*')]
     .filter((el) => visible(el) && el.children.length === 0 && (el.textContent || '').trim().length > 2)
     .map((el) => `${(el.className || el.tagName).toString().split(' ')[0]}:${Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10}`)

@@ -477,7 +477,6 @@ async function tablette(browser, seulement) {
       await repos(page);
       const id = await page.evaluate(() => { const r = state.reservations.find((x) => x.status === 'confirmed' && x.type === 'bowling' && document.querySelector(`#resList [data-res-row-id="${x.id}"]`)); return r && r.id; });
       const bouton = page.locator(`#resList [data-res-row-id="${id}"] button`).filter({ hasText: /^Arrivé$/ }).first();
-      await bouton.scrollIntoViewIfNeeded();
       await bouton.click();
       const bascule = await page.waitForFunction((id) => state.reservations.find((x) => x.id === id).status === 'arrived' && [...document.querySelectorAll(`#resList [data-res-row-id="${id}"] button`)].some((b) => /Carte|Espèces/.test(b.textContent)), id, { timeout: 10000 }).then(() => true, () => false);
       verifier('J', bascule, '« Arrivé » cliqué bascule la carte en encaissement');

@@ -157,7 +157,16 @@ jobs:
           $liste = node scripts/gates-lancer.js ${{ needs.plan.outputs.selection }} --partie ${{ matrix.partie }}/${{ needs.plan.outputs.parts }} --jobs $env:PLACES --liste
           $outils = (($liste | Select-String '^outils=(.*)$').Matches.Groups[1].Value) -split ',' | Where-Object { $_ }
           if ($outils -contains 'webkit') { npx playwright-core install webkit; if ($LASTEXITCODE) { exit 1 } }
-          if ($outils -contains 'poppler') { choco install poppler -y --no-progress | Out-Null; if ($LASTEXITCODE) { exit 1 } }
+          # Le binaire fait foi : choco est deja sorti en 0 sans poser pdftoppm.
+          if ($outils -contains 'poppler') {
+            foreach ($essai in 1..3) {
+              $journal = choco install poppler -y --no-progress --force 2>&1
+              if (Get-Command pdftoppm -ErrorAction SilentlyContinue) { break }
+              "poppler, essai $essai : pdftoppm absent"; $journal | Select-Object -Last 12
+              Start-Sleep -Seconds 10
+            }
+            if (-not (Get-Command pdftoppm -ErrorAction SilentlyContinue)) { exit 1 }
+          }
           "outils : $(if ($outils) { $outils -join ', ' } else { 'aucun' })"
       # Une unite a 15 min au plus (40 sur le poste) : la plus longue en prend
       # 11 ici, et un gate bloque tenait sa place 40 min puis son second tour,

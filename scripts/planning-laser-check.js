@@ -441,20 +441,24 @@ async function scenarios(browser, mutation = null) {
     const { ctx, page, erreurs } = await ouvrir(browser, { mutation });
     try {
       const collin = page.locator('#laserPlanningGridWrap .lp-g:has-text("Collin")');
-      await collin.scrollIntoViewIfNeeded();
-      const b = await collin.boundingBox();
-      await page.mouse.move(b.x + 10, b.y + b.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(b.x + 10, b.y + 40, { steps: 5 });
-      const file = await page.locator('#laserPlanningGridWrap .lp-file').boundingBox();
-      await page.mouse.move(file.x + 200, file.y + file.height / 2, { steps: 8 });
-      await page.mouse.up();
-      // Le retrait part du lacher : il s attend, 600 ms fixes ne tenaient pas
-      // sous la charge (GitHub, 2026-10-30).
+      // Le retrait part du lacher : il s attend, 600 ms fixes ne tenaient pas sous
+      // la charge (GitHub, 2026-10-30). Un geste qui n a rien envoye se rejoue une
+      // fois (une place relue juste avant un repeint rate le groupe) : un lacher
+      // qui ne retire jamais reste rouge.
       let retrait = null;
-      for (const fin = Date.now() + 10000; !retrait && Date.now() < fin;) {
-        retrait = (await requetes(page)).find(q => q.corps && q.corps.activityMove && q.corps.activityMove.unplace) || null;
-        if (!retrait) await page.waitForTimeout(100);
+      for (let essai = 1; essai <= 2 && !retrait; essai += 1) {
+        await collin.scrollIntoViewIfNeeded();
+        const b = await collin.boundingBox();
+        await page.mouse.move(b.x + 10, b.y + b.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(b.x + 10, b.y + 40, { steps: 5 });
+        const file = await page.locator('#laserPlanningGridWrap .lp-file').boundingBox();
+        await page.mouse.move(file.x + 200, file.y + file.height / 2, { steps: 8 });
+        await page.mouse.up();
+        for (const fin = Date.now() + 6000; !retrait && Date.now() < fin;) {
+          retrait = (await requetes(page)).find(q => q.corps && q.corps.activityMove && q.corps.activityMove.unplace) || null;
+          if (!retrait) await page.waitForTimeout(100);
+        }
       }
       ok(retrait && Number(retrait.corps.id) === idDe(journee(), 'Collin'), '[G] lacher sur la file retire la partie du planning', JSON.stringify(retrait && retrait.corps.activityMove));
       ok(erreurs.length === 0, '[G] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));

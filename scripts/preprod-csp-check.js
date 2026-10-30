@@ -11,6 +11,9 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'artifacts/preprod-fixes-20260912/csp');
 const deploymentConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+// Edge, comme les autres gates : sans lui, Playwright cherche son propre
+// Chromium, que le poste a et que les machines GitHub n ont pas (2026-10-30).
+const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 let failures = 0;
 function check(label, condition, detail = '') {
   console.log(`${condition ? 'ok' : 'FAIL'} ${label}${detail ? ' ' + detail : ''}`);
@@ -41,7 +44,7 @@ async function marketingDelayCheck() {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ executablePath: process.env.E2E_BROWSER_PATH, headless: true });
+  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, serviceWorkers: 'block' });
     const errors = [];
@@ -202,7 +205,7 @@ async function renderCheck() {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ executablePath: process.env.E2E_BROWSER_PATH, headless: true });
+  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, serviceWorkers: 'block' });
     const external = [], localAssets = [], pageErrors = [], unmocked = [];
@@ -278,4 +281,6 @@ function clockCheck() {
   clockCheck();
   console.log(`preprod-csp-check: ${failures ? failures + ' ECHEC(S)' : 'ALL OK'}`);
   process.exitCode = failures ? 1 : 0;
-})().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
+// (un plantage sort tout de suite : un serveur encore ouvert gardait le gate
+// en vie 40 min, le delai de son lanceur)
+})().catch(error => { console.error(error.stack || error); process.exit(1); });

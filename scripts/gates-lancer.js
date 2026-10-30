@@ -57,6 +57,9 @@ const BASE_TMP = path.join(os.tmpdir(), 'pinlane-gates');
 let SOURCE = ROOT;
 let DOSSIER_PLACES = path.join(BASE_TMP, `places-${crypto.createHash('sha1').update(ROOT.toLowerCase()).digest('hex').slice(0, 10)}`);
 const DUREES_LOCALES = path.join(ROOT, 'tmp', 'gates-durees.json');
+// La graine : les durees mesurees sur les machines GitHub, celles qui jouent
+// les parts (passage 40984074983 du 2026-10-30) ; le poste les recouvre des
+// siennes (tmp/) hors du workflow.
 const DUREES_GRAINE = path.join(ROOT, 'scripts', 'gates-durees.json');
 const DELAI_UNITE_MS = Number(process.env.PINLANE_GATES_DELAI_S || 40 * 60) * 1000;
 const PORT_DEPART = Number(process.env.PINLANE_GATES_PORT_DEPART || 31000);

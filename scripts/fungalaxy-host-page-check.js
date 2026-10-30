@@ -76,11 +76,14 @@ async function inspecter(browser, viewport, nom) {
   // UNE PREMIERE VISITE PEUT SE POSER SOUS LE MENU. La page du client est reelle,
   // et sur une machine neuve elle reste parfois sur le saut natif de l ancre, le
   // cadre a 56 px sous un menu de 163 px : stable, 8 s d attente et un passage
-  // seul n y changent rien, un rechargement si. Rien de notre cote : on le dit et
-  // on recharge une fois. Un cadre qui reste sous le menu reste rouge.
+  // seul n y changent rien, une seconde visite si. Rien de notre cote : on le dit
+  // et on revient une fois, par une navigation neuve (page.reload garde le
+  // defilement, cadre a -100 px, et un goto de la meme adresse reste sur place).
+  // Un cadre qui reste sous le menu reste rouge.
   if (nom === 'ordinateur' && hote.haut < hote.menuBas - 2) {
-    console.log(`${nom} : cadre a ${Math.round(hote.haut)} px, menu jusqu a ${Math.round(hote.menuBas)} px au premier chargement, on recharge une fois`);
-    await page.reload({ waitUntil: 'networkidle', timeout: 60000 });
+    console.log(`${nom} : cadre a ${Math.round(hote.haut)} px, menu jusqu a ${Math.round(hote.menuBas)} px au premier chargement, on revient une fois`);
+    await page.goto('about:blank');
+    await page.goto(`${BASE_URL}/fungalaxy-local#booking`, { waitUntil: 'networkidle', timeout: 60000 });
     await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); return f && parseInt(f.style.height, 10) > 300; }, 10000);
     await reposee();
     hote = await lire();

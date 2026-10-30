@@ -251,7 +251,11 @@ ok(pagesDuPdf(pdfVierge) === 3 && !/Samedi|03\/10\/2026/.test(texteVierge) && /f
 if (PDFTOPPM) {
   const r = spawnSync(PDFTOPPM, ['-r', '50', '-png', path.join(TMP, 'jour.pdf'), path.join(TMP, 'jour')], { timeout: 120000, encoding: 'utf8' });
   const pngs = fs.readdirSync(TMP).filter((n) => /^jour-\d+\.png$/.test(n));
-  ok(r.status === 0 && !/error|syntax/i.test(r.stderr || '') && pngs.length === pagesDuPdf(pdfJour) && pngs.every((n) => fs.statSync(path.join(TMP, n)).size > 2000), `pdftoppm rend les ${pagesDuPdf(pdfJour)} pages sans erreur (${pngs.length} PNG)`);
+  const tailles = pngs.map((n) => fs.statSync(path.join(TMP, n)).size);
+  const rendu = r.status === 0 && !/error|syntax/i.test(r.stderr || '') && pngs.length === pagesDuPdf(pdfJour) && tailles.every((t) => t > 2000);
+  // (rouge, il dit pourquoi : le code, la taille de chaque image, ce que
+  // pdftoppm a ecrit ; la premiere machine qui l avait l a vu rouge sans raison)
+  ok(rendu, `pdftoppm rend les ${pagesDuPdf(pdfJour)} pages sans erreur (${pngs.length} PNG)${rendu ? '' : ` : code ${r.status}, ${tailles.join(' / ')} octets, « ${String(r.stderr || r.error || '').trim().slice(0, 400)} »`}`);
 }
 // Contre-preuves sur le texte : les contrôles ci-dessus savent échouer.
 const controlesTexte = (texte) => [

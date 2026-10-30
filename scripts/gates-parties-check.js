@@ -12,7 +12,7 @@
 //       entre deux parts revient entier, une part sans bilan rougit ;
 //   [D] le vrai lanceur : deux parts d une petite suite, jouees, rendent a
 //       elles deux chaque unite une fois, chacune signee de sa part, et
-//       l assembleur les rend vertes.
+//       l assembleur rend leurs rouges, ni plus ni moins.
 // --contre-preuves : chaque regle cassee (en memoire, le disque n est jamais
 // ecrit) fait rougir sa lettre.
 //
@@ -139,7 +139,13 @@ function verifierLanceurReel(assembleur) {
     ok(bilans.length === 2 && JSON.stringify(parts) === JSON.stringify(['1/2', '2/2']), '[D] chaque part jouee rend son bilan, signe de sa part', parts.join(', ') || 'aucun bilan');
     ok(jouees === attendues.length, '[D] les deux parts jouent a elles deux chaque unite une fois', `${jouees} jouees pour ${attendues.length} attendues`);
     const a = assembleur.assembler(bilans, 2);
-    ok(sorties.every((s) => s === 0) && !a.rouges && !a.manquantes.length, '[D] l assembleur rend vertes les deux parts vertes', `codes ${sorties.join(', ')}, ${a.rouges} rouge(s)`);
+    // Le verdict, pas la couleur des trois gates joues : si l un d eux rougit
+    // pour de vrai, la suite le dit une fois, sans rougir [D] en plus (vu le
+    // 2026-10-30 : une ancre morte rougissait test:ancres ET ce gate).
+    const rougesDe = (b) => b.scripts.filter((s) => s.etat === 'ROUGE').map((s) => s.nom);
+    const codesJustes = ['1/2', '2/2'].every((p, i) => { const b = bilans.find((x) => x.partie === p); return Boolean(b) && sorties[i] === (rougesDe(b).length ? 1 : 0); });
+    const rougesParts = new Set(bilans.flatMap(rougesDe));
+    ok(codesJustes && a.rouges === rougesParts.size && !a.manquantes.length, '[D] chaque part sort sur son bilan, l assembleur rend les rouges des parts, ni plus ni moins', `codes ${sorties.join(', ')}, ${rougesParts.size} rouge(s) dans les parts, ${a.rouges} au bilan`);
   } finally {
     // Les places du lanceur portent une jonction vers node_modules : elles se
     // retirent par le lanceur lui-meme, jonction d abord, avant tout effacement.

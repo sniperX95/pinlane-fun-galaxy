@@ -572,6 +572,11 @@ async function scenarioG(browser) {
     });
     await page.click('#goRecap');
     const ouverte = await attendre(page, () => { const v = document.querySelector('#vitrine'); return !v.hidden && !v.hasAttribute('data-attendue'); }, 10000);
+    // La sonde se lit une fois l entree du recapitulatif finie (5 s au plus) :
+    // une vitrine ouverte en avance (la contre-epreuve a 750 ms) se lisait
+    // 400 ms apres, encore pendant l entree sur une machine plus lente a
+    // peindre, pose a 0, et [G1] passait pour rien (GitHub, 2026-10-30).
+    await attendre(page, () => window.__sonde.pose > 0, 5000);
     await dormir(400);
     const s = await page.evaluate(() => Object.assign({ cartes: document.querySelectorAll('#vitrine .fg-vitrine__carte[data-carte]').length, inertePage: document.querySelector('.fg-shell').inert }, window.__sonde));
     ok(ouverte && s.cartes > 0 && s.maxAnims > 0 && s.pose > 0, 'MONTAGE [G] la vitrine s ouvre seule, avec ses offres, sur un recapitulatif qui s anime', JSON.stringify(s));

@@ -113,6 +113,24 @@ jobs:
       matrix:
         partie: ${{ fromJSON(needs.plan.outputs.matrice) }}
     steps:
+      # WINDOWS UPDATE SE TAIT PENDANT LES GATES (2026-10-30). Dix minutes et
+      # demie apres son demarrage, chaque machine installe la plateforme de
+      # Defender (KB4052623) : l antivirus et son filtre du systeme de fichiers
+      # se rechargent, puis Volume Shadow Copy et StorSvc prennent le relais.
+      # Tout gele, le lanceur compris, jusqu a 44 s d affilee (sonde : 8 machines
+      # sur 8, de la 6e a la 9e minute de la part), et ce qui tombait dans cette
+      # fenetre rougissait de lenteur, un second tour pour rien.
+      - name: Windows Update se tait
+        shell: pwsh
+        run: |
+          foreach ($service in 'wuauserv', 'UsoSvc') {
+            Stop-Service $service -Force -ErrorAction SilentlyContinue
+            Set-Service $service -StartupType Disabled -ErrorAction SilentlyContinue
+          }
+          foreach ($chemin in '\Microsoft\Windows\WindowsUpdate\', '\Microsoft\Windows\UpdateOrchestrator\') {
+            Get-ScheduledTask -TaskPath $chemin -ErrorAction SilentlyContinue | Disable-ScheduledTask -ErrorAction SilentlyContinue | Out-Null
+          }
+          Get-Service wuauserv, UsoSvc | ForEach-Object { "$($_.Name) : $($_.Status), $($_.StartType)" }
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

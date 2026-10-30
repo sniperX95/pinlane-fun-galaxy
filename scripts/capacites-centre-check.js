@@ -194,7 +194,7 @@ async function scenarios(browser, echecs) {
   const erreurs = [];
   // ---- A, B, C, E, F : role direction (configuration staff chargee) ----
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  page.on('console', (msg) => { if (msg.type() === 'error') erreurs.push(msg.text()); });
+  page.on('console', (msg) => { if (msg.type() === 'error') erreurs.push(`${msg.text()} ${msg.location().url || ''}`.trim()); });
   page.on('pageerror', (err) => erreurs.push(String(err && err.message)));
   await installMock(page);
   await page.goto(`${BASE_URL}/?v=cap-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });

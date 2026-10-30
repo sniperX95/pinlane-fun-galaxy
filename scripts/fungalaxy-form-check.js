@@ -712,8 +712,14 @@ function ok(cond, label, detail) {
   return Boolean(cond);
 }
 // Une attente BORNEE qui rend false a l echeance : jamais un vert par defaut.
+// Le delai d une attente vit dans Node, avec Playwright et le serveur du gate :
+// une machine qui gele 30 s (GitHub, 2026-10-30 : jusqu a 44 s, tous les
+// processus) le fait tomber alors que la page a fini, le minuteur passant avant
+// la reponse deja arrivee. La condition se relit une fois avant de conclure.
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) {
+    return Boolean(await page.evaluate(fn, arg).catch(() => false));
+  }
 }
 // LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
 // recapitulatif quand le serveur a joint des offres au creneau : un client la

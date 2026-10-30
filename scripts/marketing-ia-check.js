@@ -374,7 +374,8 @@ async function main() {
         fil: Boolean(document.getElementById('mkwFeed')), pageVisible: document.getElementById('staffCampaignsPage')?.offsetParent !== null, erreur: document.querySelector('#staffCampaignsPage .mkw-error')?.textContent || '',
         vue: state.view, onglet: state.staffMenuPage, briefs: window.__QA_BRIEF_CENTERS__, panelOpen: window.mkw?.panelOpen,
       })).catch(() => ({}));
-      throw new Error(`le radar du panneau ne vient pas : ${JSON.stringify(vu)} ; ${error.message}`);
+      if (vu.minis >= 14) return; // le delai est tombe pendant un gel de la machine
+      throw new Error(`le radar du panneau ne vient pas : ${JSON.stringify({ ...vu, console: errs.slice(0, 3) })} ; ${error.message}`);
     });
     await page.waitForTimeout(400);
 

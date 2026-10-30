@@ -193,8 +193,14 @@ function ok(condition, message, detail) {
   return condition;
 }
 const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Le delai d une attente vit dans Node, avec Playwright et le serveur du gate :
+// une machine qui gele 30 s (GitHub, 2026-10-30 : jusqu a 44 s, tous les
+// processus) le fait tomber alors que la page a fini, le minuteur passant avant
+// la reponse deja arrivee. La condition se relit une fois avant de conclure.
 async function attendre(page, fn, ms, arg) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 50 }); return true; } catch (error) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 50 }); return true; } catch (error) {
+    return Boolean(await page.evaluate(fn, arg).catch(() => false));
+  }
 }
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const plat = (s) => String(s || '').replace(/\s+/g, ' ').trim();

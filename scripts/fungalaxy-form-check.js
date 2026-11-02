@@ -4753,8 +4753,10 @@ async function main() {
     ok(rouleAttendu.some(Boolean) && JSON.stringify(rouleN.barre) === JSON.stringify(rouleAttendu) && rouleN.prix === Boolean(lpN2 && lpN2.prix > 0 && rouleAttendu[rouleAttendu.length - 1]),
       '[N] une heure posee : dans la barre, seul ce qui a change roule (is-maj), le reste ne bouge pas', JSON.stringify({ rouleN, rouleAttendu }));
     // En bas de page : la barre a sa place, son resume montre, ne couvre rien.
-    // La page peut encore grandir apres le defilement (sous charge, le plan se
-    // repose plus tard) : on y retourne tant que l etat vise n est pas la.
+    // Une heure posee ouvre la ligne suivante, qui se montre 950 ms plus tard en
+    // remontant la page (avancerEtape, « la suite se voit ») : tombe entre ce
+    // defilement et sa lecture, ce geste voulu donnait la barre a 1046, sous
+    // l ecran (2 suites sur 26). La lecture defile donc dans le meme tour.
     await attendre(pn, () => {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
@@ -4763,6 +4765,7 @@ async function main() {
       return !bar.classList.contains('is-stuck') && getComputedStyle(bar.querySelector('.fg-bar__count')).opacity === '1' && v.bottom <= r.top && r.top < window.innerHeight;
     }, 8000);
     const finN = await pn.evaluate(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
       const r = bar.getBoundingClientRect();
       const v = document.querySelector('#planZone .fg-visit').getBoundingClientRect();

@@ -225,6 +225,7 @@
     "test:secours-envoi": "node scripts/secours-envoi-check.js",
     "test:sonde-prod": "node scripts/sonde-prod-check.js",
     "test:sauvegarde": "node scripts/sauvegarde-check.js",
+    "test:sauvegarde-legere": "node scripts/sauvegarde-legere-check.js",
     "test:secours-api": "node scripts/secours-api-check.js",
     "test:acquisition": "node scripts/acquisition-check.js",
     "test:donnees-clients": "node scripts/donnees-clients-check.js",

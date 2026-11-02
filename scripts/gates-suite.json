@@ -327,6 +327,7 @@
     "test:secours-envoi",
     "test:sonde-prod",
     "test:sauvegarde",
+    "test:sauvegarde-legere",
     "test:secours-api",
     "test:documents-secours",
     "test:registre",

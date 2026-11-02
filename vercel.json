@@ -5,6 +5,9 @@
     "fra1"
   ],
   "functions": {
+    "api/cron.js": {
+      "maxDuration": 120
+    },
     "api/marketing-agents.js": {
       "maxDuration": 60
     },

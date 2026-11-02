@@ -102,7 +102,9 @@
       var logoUrl = String(identity.logoUrl || '').trim();
       if (logo && wordmark) {
         if (logoUrl.length <= 300 && LOGO_URL.test(logoUrl)) {
-          logo.src = logoUrl;
+          /* Un rappel ecrit avant le 2026-11-02 porte encore une adresse relative,
+             qui viserait /reserver/assets/... : meme regle que normalizeIdentity. */
+          logo.src = logoUrl.replace(/^\.?\/?(?=assets\/)/i, '/');
           logo.alt = name || 'Logo du centre';
           logo.hidden = false;
           wordmark.hidden = true;

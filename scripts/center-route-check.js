@@ -12,16 +12,22 @@
 //   2. il le garde apres une navigation dans le parcours ;
 //   3. il le garde apres un RECHARGEMENT (c est la que le defaut mordait) ;
 //   4. ce n est pas qu un affichage : la requete au serveur porte ce centre ;
-//   5. sans centre dans l adresse, l application n en invente pas un.
+//   5. sans centre dans l adresse, l application n en invente pas un ;
+//   6. le logo se charge depuis cette adresse, un niveau sous la racine : depuis
+//      la route /reserver/:center (17/08), ./assets/... visait /reserver/assets/...,
+//      un 404 sur chaque centre, vu en prod le 2026-11-02 ;
+//   7. un visiteur qui revient avec l ancien rappel ne demande plus cette adresse.
 //
 // Lancement : node scripts/center-route-check.js
 const fs = require('fs');
 const http = require('http');
+const Module = require('module');
 const path = require('path');
 const { chromium } = require('playwright-core');
 
 const ROOT = path.resolve(__dirname, '..');
 const APP_JS = path.join(ROOT, 'assets/app-main.js');
+const CENTRES = require('../ops-knowledge/centers.json').centers;
 const PORT = Number(process.env.PINLANE_CENTER_ROUTE_PORT || 4257);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -43,6 +49,15 @@ const ACTIVITIES = [
   { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 3, defaultMinutes: 45 },
 ];
 
+// L IDENTITE PASSE PAR LE VRAI CHEMIN : la donnee de centers.json, par la vraie
+// normalisation, celle de public-booking-meta. Ecrite a la main ici, elle aurait
+// prouve le gate, pas le produit.
+let normaliserIdentite = require('../lib/center-config').normalizeIdentity;
+function identiteDe(centerId) {
+  const centre = CENTRES.find((c) => c.id === centerId);
+  return centre ? normaliserIdentite(centre.identity) : null;
+}
+
 // LE SERVEUR RENVOIE LE CENTRE QU ON LUI DEMANDE, et note chaque demande : c est
 // cette trace qui prouve que le centre vient de l adresse, pas d un affichage.
 const demandes = [];
@@ -50,7 +65,7 @@ function metaPayload(centerId) {
   return {
     ok: true, today: DATE, durationOptions: [], formules: [], activities: ACTIVITIES,
     center: {
-      id: centerId, status: 'active',
+      id: centerId, status: 'active', identity: identiteDe(centerId),
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
@@ -69,7 +84,9 @@ function serveStatic() {
     }
     if (url.pathname.startsWith('/api/')) return json(200, { ok: true, slots: [], suggestions: [] });
     let p = decodeURIComponent(url.pathname);
-    if (p === '/' || p === '/reserver' || p.startsWith('/reserver/')) p = '/index.html';
+    // Un seul segment, comme la route /reserver/:center de vercel.json : plus bas,
+    // la prod repond 404, et un gate qui servait la page y aurait cache le defaut.
+    if (p === '/' || /^\/reserver(?:\/[^/]+)?$/.test(p)) p = '/index.html';
     const filePath = path.resolve(path.join(ROOT, p));
     if (!filePath.startsWith(path.resolve(ROOT))) { res.writeHead(403); res.end(); return; }
     fs.readFile(filePath, (err, content) => {
@@ -102,6 +119,58 @@ async function ouvrir(page, chemin) {
   }, null, { timeout: 20000 });
   await page.waitForTimeout(400);
   return page.evaluate(() => ({ pathname: location.pathname, titre: document.title }));
+}
+
+// LE LOGO SE LIT A L IMAGE, pas a l attribut : une adresse qui a l air juste et
+// repond 404 donne naturalWidth 0, et c est ce que voit le client.
+async function lireLogo(browser, chemin) {
+  const contexte = await browser.newContext();
+  const page = await contexte.newPage();
+  const fautes = [];
+  page.on('response', (r) => { if (r.status() >= 400) fautes.push(new URL(r.url()).pathname); });
+  await ouvrir(page, chemin);
+  await page.waitForFunction(() => {
+    const logo = document.getElementById('centerLogo');
+    return Boolean(logo && logo.getAttribute('src') && logo.complete);
+  }, null, { timeout: 15000 }).catch(() => null);
+  const logo = await page.evaluate(() => {
+    const image = document.getElementById('centerLogo');
+    return image ? { attribut: image.getAttribute('src') || '', largeur: image.naturalWidth, cache: image.hidden } : {};
+  });
+  await contexte.close();
+  return { ...logo, fautes: fautes.filter((f) => f.startsWith('/reserver/')) };
+}
+
+// UN VISITEUR QUI REVIENT porte l adresse d avant dans son rappel : boot-view.js
+// la peint avant toute reponse du serveur.
+const ANCIEN_RAPPEL = JSON.stringify({ identity: { name: 'Fun Galaxy Gembloux', logoUrl: './assets/brand/logo-fun-galaxy.svg', logoOnDark: true } });
+async function demandesDuRappel(browser, avantOuverture) {
+  const contexte = await browser.newContext();
+  await contexte.addInitScript(({ cle, valeur }) => localStorage.setItem(cle, valeur), { cle: `pinlane-brand:${CENTRE}`, valeur: ANCIEN_RAPPEL });
+  const page = await contexte.newPage();
+  if (avantOuverture) await avantOuverture(page);
+  const vues = [];
+  page.on('request', (r) => { const chemin = new URL(r.url()).pathname; if (chemin.startsWith('/reserver/assets/')) vues.push(chemin); });
+  await ouvrir(page, `/reserver/${CENTRE}`);
+  await contexte.close();
+  return vues;
+}
+
+// Contre-epreuves sans toucher au disque : le vrai fichier, son correctif retire.
+const SERVEUR_SANS_RACINE = { fichier: 'lib/center-config.js', de: 'out.logoUrl = logoDepuisLaRacine(logoUrl);', vers: 'out.logoUrl = logoUrl;' };
+const RAPPEL_SANS_RACINE = { fichier: 'assets/boot-view.js', de: "logo.src = logoUrl.replace(/^\\.?\\/?(?=assets\\/)/i, '/');", vers: 'logo.src = logoUrl;' };
+function texteMute({ fichier, de, vers }) {
+  const texte = fs.readFileSync(path.join(ROOT, fichier), 'utf8').split('\r\n').join('\n');
+  if (texte.split(de).length !== 2) throw new Error(`ancre introuvable dans ${fichier}`);
+  return texte.split(de).join(vers);
+}
+function chargerMute(mutation) {
+  const chemin = path.join(ROOT, mutation.fichier);
+  const mute = new Module(chemin, module);
+  mute.filename = chemin;
+  mute.paths = Module._nodeModulePaths(path.dirname(chemin));
+  mute._compile(texteMute(mutation), chemin);
+  return mute.exports;
 }
 
 // Mutation d un fichier de production, restaure quoi qu il arrive.
@@ -156,7 +225,51 @@ async function main() {
     const nu = await ouvrir(page, '/reserver');
     record('chemin nu inchange', nu.pathname === '/reserver', nu.pathname);
 
+    section('[6] Le logo de chaque centre se charge depuis son adresse');
+    for (const id of ['gembloux', 'ciney', 'demo']) {
+      const logo = await lireLogo(browser, `/reserver/${id}`);
+      record(`${id} : l image est chargee`, logo.largeur > 0 && !logo.cache, JSON.stringify(logo));
+      record(`${id} : rien n est demande sous /reserver/`, logo.fautes.length === 0, JSON.stringify(logo.fautes));
+    }
+    const aLaRacine = await lireLogo(browser, '/reserver');
+    record('contraste : sans centre dans l adresse aussi', aLaRacine.largeur > 0, JSON.stringify(aLaRacine));
+
+    section('[7] Un visiteur qui revient avec l ancien rappel');
+    const vuesDuRappel = await demandesDuRappel(browser);
+    record('l adresse d avant n est plus demandee', vuesDuRappel.length === 0, JSON.stringify(vuesDuRappel));
+
+    section('[8] Chaque forme d adresse admise, et les refus qui restent');
+    const { normalizeIdentity } = require('../lib/center-config');
+    [
+      ['./assets/brand/a.svg', '/assets/brand/a.svg'],
+      ['assets/brand/a.svg', '/assets/brand/a.svg'],
+      ['/assets/brand/a.svg', '/assets/brand/a.svg'],
+      ['https://cdn.exemple.be/assets/a.svg', 'https://cdn.exemple.be/assets/a.svg'],
+    ].forEach(([entree, attendu]) => {
+      const sortie = (normalizeIdentity({ logoUrl: entree }) || {}).logoUrl;
+      record(`${entree} sort en ${attendu}`, sortie === attendu, String(sortie));
+    });
+    ['../assets/a.svg', 'javascript:alert(1)', 'http://exemple.be/a.svg'].forEach((entree) => {
+      record(`${entree} reste refuse`, !(normalizeIdentity({ logoUrl: entree }) || {}).logoUrl);
+    });
+
     section('Contre-epreuve par mutation : ce gate sait-il rougir ?');
+    try {
+      normaliserIdentite = chargerMute(SERVEUR_SANS_RACINE).normalizeIdentity;
+      const sansRacine = await lireLogo(browser, `/reserver/${CENTRE}`);
+      record('serveur sans la regle : le logo casse, [6] ROUGIRAIT', sansRacine.largeur === 0 && sansRacine.fautes.length > 0, JSON.stringify(sansRacine));
+    } catch (error) {
+      record('contre-epreuve du serveur montable', false, error.message);
+    } finally {
+      normaliserIdentite = require('../lib/center-config').normalizeIdentity;
+    }
+    try {
+      const corps = texteMute(RAPPEL_SANS_RACINE);
+      const vues = await demandesDuRappel(browser, (p) => p.route('**/assets/boot-view.js*', (route) => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: corps })));
+      record('rappel sans la regle : l adresse d avant repart, [7] ROUGIRAIT', vues.length > 0, JSON.stringify(vues));
+    } catch (error) {
+      record('contre-epreuve du rappel montable', false, error.message);
+    }
     try {
       const chemin = await withSourceMutation(
         APP_JS,

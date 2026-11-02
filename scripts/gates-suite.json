@@ -322,6 +322,7 @@
     "test:validation-situations-reelles",
     "test:secours-mails",
     "test:secours-envoi",
+    "test:sonde-prod",
     "test:sauvegarde",
     "test:secours-api",
     "test:documents-secours",

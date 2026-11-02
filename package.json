@@ -221,6 +221,7 @@
     "test:validation-situations-reelles": "node scripts/validation-situations-reelles-check.js",
     "test:secours-mails": "node scripts/secours-mails-check.js",
     "test:secours-envoi": "node scripts/secours-envoi-check.js",
+    "test:sonde-prod": "node scripts/sonde-prod-check.js",
     "test:sauvegarde": "node scripts/sauvegarde-check.js",
     "test:secours-api": "node scripts/secours-api-check.js",
     "test:acquisition": "node scripts/acquisition-check.js",

@@ -46,6 +46,12 @@ const installQaApi = eval(`(${qaSource.slice(startIdx, endIdx + 1).join('\n').re
 
 function assert(cond, msg) { if (!cond) throw new Error(`ASSERT: ${msg}`); }
 
+// Le hub charge en deux requetes, deux rendus : les chiffres, puis les bilans
+// (loadAdminDataHub). 1 500 ms fixes lisaient parfois entre les deux, premier gate
+// d une part : « liste bilans (reçu 0) », 1 suite sur 26. Attente bornee : si elle
+// expire, ce sont les assertions qui disent quoi.
+const hubCharge = (page) => page.waitForSelector('.dh-report-item', { timeout: 15000 }).catch(() => {});
+
 // Jeu de données réaliste : 30 jours, 3 activités, formules, heatmap, clients.
 function buildFakeAnalytics() {
   const daily = [];
@@ -161,7 +167,7 @@ async function main() {
     await page.evaluate(() => setView('admin'));
     await page.waitForTimeout(2000);
     await page.evaluate(() => setAdminTab('data'));
-    await page.waitForTimeout(1500);
+    await hubCharge(page);
     const counts = await page.evaluate(() => ({
       tiles: document.querySelectorAll('.dh-tile').length,
       cols: document.querySelectorAll('.dh-col').length,
@@ -229,7 +235,7 @@ async function main() {
     await page.evaluate(() => { setView('admin'); });
     await page.waitForTimeout(1800);
     await page.evaluate(() => setAdminTab('data'));
-    await page.waitForTimeout(1500);
+    await hubCharge(page);
     assert(await page.locator('.dh-tile').count() === 6, `${name} : tuiles rendues`);
     // body a overflow-x:clip → le vrai test est : (1) impossible de scroller
     // horizontalement, (2) le hub lui-même tient dans le viewport.

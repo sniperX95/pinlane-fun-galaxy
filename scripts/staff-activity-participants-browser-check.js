@@ -31,8 +31,10 @@ const checks = `
     holder.innerHTML=renderReservationRow(row);
     const summary=holder.textContent;
     const timeline=getGroupeProgramme(row).map(step=>step.nom+' '+step.quoi).join(' | ');
-    renderPlanning();renderLaserPlanning();
+    // (un planning cache ne se dessine plus : chacun se lit dans son onglet)
+    setStaffResourceView('bowling');
     const bowling=[...document.querySelectorAll('.booking[data-booking-res-id="9900"] .bk-pax')].map(el=>el.title);
+    setStaffResourceView('laser');
     const laser=[...document.querySelectorAll('#laserPlanningGridWrap .lp-g[data-laser-res-id="9900"]')].map(el=>({titre:el.title,cases:el.closest('.lp-dep').querySelectorAll('.lp-cases i[data-lp-id="9900"]').length}));
     const terrain=getStaffTerrainSteps(row).map(step=>step.label||step.nom||'').join(' | ');
     const free={...row,price:0,basePrice:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};

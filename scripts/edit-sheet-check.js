@@ -100,6 +100,8 @@ srv.listen(PORT, '127.0.0.1', async () => {
   for (const [id, kind] of [[1332, 'BOWLING'], [1333, 'LASER']]) {
     console.log('');
     console.log('[' + kind + ' #' + id + ']');
+    // (un planning cache ne se dessine plus : chaque carte dans son onglet)
+    await pg.evaluate((k) => window.setStaffResourceView(k === 'LASER' ? 'laser' : 'bowling'), kind);
     // Attendre que le planning ait REELLEMENT rendu la reservation avant de
     // cliquer : dans la chaine complete la machine est chargee, et un delai
     // fixe transforme un gate juste en gate qui rougit au hasard.

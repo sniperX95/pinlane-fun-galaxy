@@ -230,12 +230,15 @@ async function main() {
     ok(tic.renders.table >= 1, `le tic a bien redessine le planning (table ${tic.renders.table})`);
     ok(tic.anim.length === 0, `aucune animation au tic de la minute (${tic.anim.length}${tic.anim.length ? ' : ' + detail(tic.anim) : ''})`);
 
-    // Contre-preuve : les cartes visibles rejouent une entree comme la cascade la
-    // pose, pendant que la fin d animation est arretee avant le module de
-    // mouvement (capture sur window, qui passe avant document). La classe reste
-    // alors posee comme avant le correctif, et le meme tic doit rejouer. La liste
-    // est d abord stabilisee par un tic : celui qui suit un changement de jour
-    // la reconstruit, et des cartes neuves n ont rien a rejouer (sonde du
+    // Les cartes visibles rejouent une entree comme la cascade la pose, pendant
+    // que la fin d animation est arretee avant le module de mouvement (capture sur
+    // window, qui passe avant document). La classe reste alors posee comme avant
+    // le correctif d octobre. Depuis le 2026-11-02 le repaint ne coupe plus les
+    // animations (la regle `.is-repaint *` recalculait toute la console a chaque
+    // tic) : meme la classe restee, le tic ne rejoue rien. La contre-preuve est
+    // donc celle du capteur : une entree rejouee pendant la mesure s entend. La
+    // liste est d abord stabilisee par un tic : celui qui suit un changement de
+    // jour la reconstruit, et des cartes neuves n ont rien a rejouer (sonde du
     // 2026-10-08).
     const rejouerUneEntree = () => page.evaluate(() => {
       const cartes = [...document.querySelectorAll('#resList .res-row')].filter((el) => el.getClientRects().length > 0).slice(0, 6);
@@ -256,8 +259,13 @@ async function main() {
     await page.waitForTimeout(900);
     const restees = await page.evaluate(() => [...document.querySelectorAll('#resList .pl-in')].filter((el) => el.getClientRects().length > 0).length);
     ok(rejouees >= 1 && restees >= 1, `contre-preuve montee : ${restees} carte(s) visible(s) gardent pl-in apres leur entree`);
-    const ticMute = await mesurerTic();
-    ok(ticMute.anim.length > 0, `classes d entree laissees en place : le tic REJOUE des entrees (${ticMute.anim.length}${ticMute.anim.length ? ' : ' + detail(ticMute.anim) : ''})`);
+    const ticClasses = await mesurerTic();
+    ok(ticClasses.renders.table >= 1 && ticClasses.anim.length === 0, `classes d entree laissees en place : le tic redessine sans les rejouer (${ticClasses.anim.length}${ticClasses.anim.length ? ' : ' + detail(ticClasses.anim) : ''})`);
+    await page.evaluate(() => { window.__ANIM__ = []; });
+    await rejouerUneEntree();
+    await page.waitForTimeout(300);
+    const entendues = await page.evaluate(() => window.__ANIM__.length);
+    ok(entendues > 0, `contre-preuve : une entree rejouee pendant la mesure s entend (${entendues})`);
     await bloquerLaFin(false);
     await rejouerUneEntree();
     await page.waitForTimeout(900);

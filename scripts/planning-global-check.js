@@ -561,7 +561,9 @@ async function gestes(browser) {
     ok(apres.ecritures === 0 && apres.memeLigne && apres.pastille === '15:11' && avant.retards.length > 0 && apres.retards.join() === avant.retards.map(plusUne).join(), `[H1] ${label} : la minute ne reecrit pas la feuille ; la pastille et les minutes de retard avancent en place`, { ecritures: apres.ecritures, memeLigne: apres.memeLigne, pastille: apres.pastille, avant: avant.retards.slice(0, 3), apres: apres.retards.slice(0, 3) });
     ok(apres.html === apres.frais, `[H1] ${label} : la feuille apres la minute est celle d un rendu frais a la meme heure`);
 
-    // [D1] le focus survit a une reecriture (un autre groupe change de statut)
+    // [D1] le focus survit a une reecriture : un autre groupe change de statut (sa
+    // ligne seule se reecrit, celle qui a le focus ne bouge pas), puis la ligne
+    // qui a le focus change elle-meme (elle est remplacee, le focus la suit).
     const d1 = await page.evaluate(() => {
       const d = document.querySelector('#globalPlanningGridWrap .gf-defile');
       const cible = d.querySelectorAll('tr.gf-r')[3];
@@ -571,9 +573,14 @@ async function gestes(browser) {
       autre.status = 'arrived';
       const e0 = window.__gfStats.ecritures;
       renderGlobalPlanningSurface();
-      return { id, reecrit: window.__gfStats.ecritures > e0, focus: document.activeElement && document.activeElement.getAttribute('data-gf-id'), neuf: document.activeElement !== cible };
+      const voisine = { reecrit: window.__gfStats.ecritures > e0, garde: document.activeElement === cible };
+      const elle = state.reservations.find((r) => String(r.id) === id);
+      elle.pax = Number(elle.pax) + 1;
+      renderGlobalPlanningSurface();
+      return { id, voisine, focus: document.activeElement && document.activeElement.getAttribute('data-gf-id'), neuf: document.activeElement !== cible };
     });
-    ok(d1.reecrit && d1.neuf && d1.focus === d1.id, `[D1] ${label} : apres une reecriture, le focus est sur la meme ligne`, d1);
+    ok(d1.voisine.reecrit && d1.voisine.garde, `[D1] ${label} : un autre groupe se reecrit, la ligne qui a le focus ne bouge pas`, d1);
+    ok(d1.neuf && d1.focus === d1.id, `[D1] ${label} : la ligne qui a le focus se reecrit, le focus la suit`, d1);
 
     // [G1] « Arrivé » ecrit le pointage
     const id = await page.evaluate(() => { const b = document.querySelector('#globalPlanningGridWrap tr.is-retard [data-gf-arrive]'); return b && b.getAttribute('data-gf-arrive'); });
@@ -731,7 +738,7 @@ const MUTATIONS = [
   { nom: 'etat-centre-muet', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: "        + (et ? '<span class=\"gf-th__etat'", vers: "        + (false ? '<span class=\"gf-th__etat'" }] },
   { nom: 'pistes-libres-fausses', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: '      var n = libres.libres.length;', vers: '      var n = libres.libres.length + 1;' }] },
   { nom: 'etat-cache-au-telephone', lettre: 'E4', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-maintenant { display: flex;', vers: '  .gf-maintenant { display: none;' }] },
-  { nom: 'demi-absente', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (nouveauBloc) corps += gfDemi(m, b, parBloc.get(b), bande);', vers: '' }] },
+  { nom: 'demi-absente', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (nouveauBloc) poser('bloc:' + b, gfDemi(m, b, parBloc.get(b), bande));", vers: '' }] },
   { nom: 'demi-compte-faux', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: '      c.groupes += 1;', vers: '      c.groupes += 2;' }] },
   { nom: 'charge-muette', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (col.nature === 'bowling' && occupation) {", vers: '      if (false) {' }] },
   { nom: 'barre-en-bas', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (!nowPose && g.heure > m.maintenant + 1e-6) {', vers: '      if (false) {' }] },
@@ -758,7 +765,7 @@ const MUTATIONS = [
   { nom: 'couleur-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__t {', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x { background: #8a2be2; }\n.gf-a[data-gf-titre="Arcades"] .gf-x { background: #2b8a3e; }\n.gf-x__t {' }] },
   { nom: 'ligne-sans-aria', lettre: 'A1', scenarios: [PIC], editions: [{ fichier: PG, de: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\" aria-label=\"' + gpEsc(gfAria(g, m)) + '\">'", vers: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\">'" }] },
   { nom: 'pastille-dans-le-html', lettre: 'H1', gestes: true, editions: [{ fichier: PG, de: '<span class="gf-now__h" data-gf-maintenant></span>', vers: "<span class=\"gf-now__h\" data-gf-maintenant>' + gpEsc(gpHeure(m.maintenant)) + '</span>" }] },
-  { nom: 'focus-perdu', lettre: 'D1', gestes: true, editions: [{ fichier: PG, de: '      if (focus) gfRendreFocus(defile, focus);', vers: '' }] },
+  { nom: 'focus-perdu', lettre: 'D1', gestes: true, editions: [{ fichier: PG, de: '      if (focus && !actif.isConnected) gfRendreFocus(defile, focus);', vers: '' }] },
 ];
 
 async function main() {

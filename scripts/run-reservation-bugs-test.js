@@ -255,6 +255,8 @@ async function main() {
         { id: 601, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '16:00', duration: 1, lanes: [1], name: 'Alice Martin', phone: '+32470111111', email: 'alice@x.com' },
         { id: 602, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '18:00', duration: 1, lanes: [3], name: 'Bob Durand', phone: '+32470222222', email: 'bob@x.com' },
       ];
+      // (un planning cache ne se dessine plus : celui-ci se lit dans son onglet)
+      setStaffResourceView('bowling');
       renderStaffData();
       const lire = () => {
         const cartes = Array.from(document.querySelectorAll('#planningGridWrap .booking'));

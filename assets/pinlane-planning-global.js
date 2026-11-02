@@ -49,6 +49,14 @@
 //     capacite de ROLLER ; sur le filet de chaque demi-heure, ce qui arrive et
 //     la ressource pleine, rouge seulement la (le quart d heure plein de Resy) ;
 //     « À encaisser » et le montant quand la visite d un groupe venu est finie.
+//   - (2026-11-02, Movsar : « met toi dans la peau d un etudiant de 18 ans pas
+//     tres tech, en plein rush avec plein de clients non stop ») la heure de la
+//     ligne teintee de son statut, a cote du nom ; les heures de la demi-heure
+//     qui vient en gras, le reste de la journee plus leger ; les groupes finis
+//     replies en une ligne, pour que les groupes encore la se touchent ; les
+//     filtres du comptoir sur la feuille, en un toucher ; « Carte » et
+//     « Espèces » sur la ligne d un groupe a encaisser ; la feuille qui suit
+//     l heure toute seule tant qu on ne la fait pas defiler.
 // Au telephone, chaque ligne devient une carte : les memes faits, l activite
 // nommee devant ses heures.
 //
@@ -467,6 +475,16 @@
     return 'avenir';
   }
   var GF_ETATS = { fini: 'fini', encours: 'en cours', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer', aplacer: 'à placer' };
+  // CE QUI VIENT DANS LA DEMI-HEURE SORT DU RESTE (2026-11-02). Toutes les heures
+  // de la feuille etaient du meme gras : a 15:10, rien ne disait lesquelles
+  // comptent. Une heure a venir dans les 30 min reste en gras, celles d apres
+  // s allegent.
+  var GF_BIENTOT = 0.5;
+  function gfBientot(g, e, etat, m) {
+    if (etat !== 'avenir' || m.maintenant == null || e.credit || e.libre) return false;
+    var debut = e.journee ? g.span.start : e.start;
+    return debut != null && debut > m.maintenant - 1e-6 && debut - m.maintenant <= GF_BIENTOT + 1e-6;
+  }
   function gfMinutesDeRetard(g, m) { return Math.max(1, Math.round((m.maintenant - g.span.start) * 60)); }
   // « +40 min », puis « +2h10 » : le retard tient sous l heure.
   function gfRetardCourt(n) { return n < 60 ? '+' + n + ' min' : '+' + Math.floor(n / 60) + 'h' + String(n % 60).padStart(2, '0'); }
@@ -497,6 +515,9 @@
   var GF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
   var GF_FAIT = '<svg class="gf-x__ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   var GF_ICONE_ARRIVE = GF_SVG + '<path d="M3 12h10"/><path d="M9 8l4 4-4 4"/><path d="M17 4v16"/></svg>';
+  var GF_FAIT_PLIS = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var GF_PLIS_MIN = 3;
+  var gfFinisOuverts = false;
   var GF_ICONE_NOTE = '<svg class="gf-nom__picto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/></svg>';
 
   // UNE ACTIVITE DANS SA CASE : son heure d abord (la croix du papier), puis
@@ -542,7 +563,7 @@
         bulle = gpTitreActivite(e.activityId) + (e.libre ? ' vers ' + gpHeure(debut) + ', sans heure fixe' : ' à ' + gpHeure(debut)) + (minutes > 0 ? ' · ' + gfDuree(minutes) : '') + (d ? ' · ' + d : '');
       }
     }
-    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '');
+    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '');
     return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"><span class="gf-x__t">' + (etat === 'fini' ? GF_FAIT : '') + '<b>' + gpEsc(t) + '</b></span>' + (d ? '<span class="gf-x__d">' + gpEsc(d) + '</span>' : '') + '</span>';
   }
   function gfCase(g, col, m) {
@@ -624,6 +645,17 @@
     }
     return '<span class="gf-b t-arr">Arrivé · ' + n + '</span>';
   }
+  // LE GESTE DU MOMENT (2026-11-02) : le groupe a fini, il est au comptoir, il
+  // paie. « Carte » et « Espèces » sont sur sa ligne, comme sur les cartes de la
+  // liste (encaisserReservation, GROUPE_MOYENS) : ouvrir la fiche pour ca coutait
+  // trois gestes par groupe qui part.
+  function gfPayer(g) {
+    if (typeof encaisserReservation !== 'function' || typeof GROUPE_MOYENS === 'undefined') return '';
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.markPaid')) return '';
+    return '<span class="gf-payer">' + GROUPE_MOYENS.map(function (moyen) {
+      return '<button type="button" class="gf-payer__b" data-gf-payer="' + gpEsc(g.id) + '" data-gf-moyen="' + gpEsc(moyen.valeur) + '" aria-label="' + gpEsc((g.r.name || 'Le groupe') + ' : payé, ' + moyen.mot) + '">' + gpEsc(moyen.mot) + '</button>';
+    }).join('') + '</span>';
+  }
   function gfPeutArriver(g, m) {
     var r = g.r;
     if (!m.aujourdHui || g.etat !== 'upcoming' || r.status === 'paid' || r.status === 'arrived' || r.absentAt) return false;
@@ -645,10 +677,14 @@
       // (le montant suit le badge sans y entrer : a l etroit, il passe dessous
       // au lieu d elargir la colonne)
       h += du
-        ? '<span class="gf-b is-encaisser" title="' + gpEsc('Visite finie : ' + du + ' à encaisser') + '">À encaisser</span><b class="gf-du">' + gpEsc(du) + '</b>'
+        ? '<span class="gf-b is-encaisser" title="' + gpEsc('Visite finie : ' + du + ' à encaisser') + '">À encaisser</span><b class="gf-du">' + gpEsc(du) + '</b>' + gfPayer(g)
         : '<span class="gf-b is-cloturer"' + (r.status === 'arrived' ? '' : ' title="Fini sans avoir été pointé arrivé"') + '>À clôturer</span>';
     }
-    if (gfPeutArriver(g, m)) h += '<button type="button" class="gf-arrive" data-gf-arrive="' + gpEsc(g.id) + '" aria-label="' + gpEsc('Pointer ' + (r.name || 'le groupe') + ' arrivé') + '">' + GF_ICONE_ARRIVE + 'Arrivé</button>';
+    if (gfPeutArriver(g, m)) {
+      // (dans la demi-heure, ou en retard, le bouton se voit sans le survoler)
+      var proche = m.maintenant != null && g.heure - m.maintenant <= GF_BIENTOT + 1e-6;
+      h += '<button type="button" class="gf-arrive' + (proche ? ' is-proche' : '') + '" data-gf-arrive="' + gpEsc(g.id) + '" aria-label="' + gpEsc('Pointer ' + (r.name || 'le groupe') + ' arrivé') + '">' + GF_ICONE_ARRIVE + 'Arrivé</button>';
+    }
     return '<td class="gf-etat"><span class="gf-etat__in">' + h + '</span></td>';
   }
 
@@ -690,13 +726,16 @@
   // sur deux. Une heure repetee (deux groupes a 14:00) s ecrit plus
   // discretement. La barre de l heure qu il est passe entre les heures passees
   // et les heures a venir.
+  // (« 11 places » et « 3 groupes » se replient sur « 11 pl » et « 3 gr » quand la
+  // feuille manque de largeur ; la bulle de la tete garde la phrase entiere)
+  function gfEtatTete(texte) { return gpEsc(texte).replace(/ (pl|gr)(aces?|oupes?)$/, ' $1<span class="gf-th__fin">$2</span>'); }
   function gfTete(m) {
     var html = '<th class="gf-th gf-th--h" scope="col" title="L’heure de la réservation">Heure</th><th class="gf-th gf-th--nom" scope="col">Groupe</th><th class="gf-th gf-th--f" scope="col">Formule</th><th class="gf-th gf-th--n" scope="col" title="Personnes">Pers.</th>';
     m.colonnes.forEach(function (c) {
       // (sous le nom, l etat du centre a cette minute ; le jour meme seulement)
       var et = m.etat && m.etat[c.cle];
       html += '<th class="gf-th gf-th--a' + (c.groupes ? '' : ' is-vide') + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + (c.groupes ? ' : ' + c.groupes + (c.groupes > 1 ? ' groupes' : ' groupe') : ' : aucun groupe ce jour-là') + (et ? ' · ' + et.bulle : '')) + '"><span class="gf-th__in">' + gfIcone(c.activites[0]) + '<span>' + gpEsc(c.titre) + '</span></span>'
-        + (et ? '<span class="gf-th__etat' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + gpEsc(c.cle) + '">' + gpEsc(et.texte) + '</span>' : '') + '</th>';
+        + (et ? '<span class="gf-th__etat' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + gpEsc(c.cle) + '">' + gfEtatTete(et.texte) + '</span>' : '') + '</th>';
     });
     return html + '<th class="gf-th gf-th--etat" scope="col">État</th>';
   }
@@ -726,6 +765,14 @@
   function gfParties(m, q) {
     var nbCol = 5 + m.colonnes.length;
     var lignes = m.groupes.filter(function (g) { return (!m.visibles || m.visibles.has(g.id)) && gfTrouve(g, q); });
+    // LES GROUPES FINIS SE REPLIENT (2026-11-02). A 16 h, un samedi, la moitie de
+    // la feuille est deja partie et les groupes encore la sont noyes entre eux.
+    // Repliee, la feuille ne garde que ce qui reste a faire : ce qui se joue, ce
+    // qui arrive, ce qui reste a encaisser. Une ligne les rend. Une recherche ou
+    // un filtre montre tout ce qu il trouve.
+    var finis = m.aujourdHui && !q && !m.visibles ? lignes.filter(function (g) { return g.parti; }) : [];
+    var plis = finis.length >= GF_PLIS_MIN;
+    if (plis && !gfFinisOuverts) lignes = lignes.filter(function (g) { return !g.parti; });
     var parBloc = new Map();
     lignes.forEach(function (g) {
       var b = gfBloc(g.heure);
@@ -742,6 +789,10 @@
     };
     var avant = null, bande = false, bloc = null;
     var nowPose = m.maintenant == null;
+    if (plis) {
+      var mot = gfPluriel(finis.length, ['groupe fini', 'groupes finis']);
+      poser('plis', '<tr class="gf-plis"><td colspan="' + nbCol + '"><button type="button" class="gf-plis__b" data-gf-plis aria-expanded="' + gfFinisOuverts + '">' + GF_FAIT_PLIS + gpEsc(gfFinisOuverts ? 'Replier les ' + mot : mot + ' · Voir') + '</button></td></tr>');
+    }
     lignes.forEach(function (g) {
       if (!nowPose && g.heure > m.maintenant + 1e-6) { poser('maintenant', gfMaintenant(m, nbCol)); nowPose = true; }
       // (la demi-heure du papier, blocDe : 14:10 va dans le bloc de 14:00,
@@ -847,6 +898,45 @@
     if (ecrit) gfStats.ecritures += 1;
   }
 
+  // LES FILTRES DU COMPTOIR (2026-11-02) : ce qui attend l equipe, sur la feuille,
+  // un toucher. Ils etaient derriere « Filtres », deux gestes et un menu en plein
+  // rush. Les comptes sont ceux de la liste du dessous (getStaffStatusCounts), la
+  // meme regle et le meme filtre (state.staffStatusFilter).
+  var GF_PUCES = [['all', 'Tout'], ['upcoming', 'À venir'], ['late', 'En retard'], ['onsite', 'Sur place'], ['closing', 'À clôturer']];
+  function gfPuces(m) {
+    var hote = document.getElementById('gfPuces');
+    if (!hote || typeof getStaffStatusCounts !== 'function') return;
+    var comptes = getStaffStatusCounts(m.groupes.map(function (g) { return g.r; }));
+    var actif = typeof normaliserFiltreListe === 'function' ? normaliserFiltreListe(state.staffStatusFilter) : 'all';
+    var html = GF_PUCES.map(function (p) {
+      var n = Number(comptes[p[0]]) || 0;
+      if (p[0] === 'late' && !n && actif !== 'late') return '';
+      return '<button type="button" class="gf-puce' + (actif === p[0] ? ' is-on' : '') + (p[0] === 'late' && n ? ' is-alerte' : '') + '" data-gf-filtre="' + p[0] + '" aria-pressed="' + (actif === p[0]) + '">' + gpEsc(p[1]) + '<b>' + n + '</b></button>';
+    }).join('');
+    if (hote._gfHtml !== html) { hote.innerHTML = html; hote._gfHtml = html; }
+    if (!hote._gfBranche) {
+      hote._gfBranche = true;
+      hote.addEventListener('click', function (e) {
+        var b = e.target.closest && e.target.closest('[data-gf-filtre]');
+        if (b && typeof applyPlanningStatusFilter === 'function') avecListeDifferable(function () { applyPlanningStatusFilter(b.getAttribute('data-gf-filtre')); });
+      });
+    }
+  }
+
+  // LA CROIX DE LA RECHERCHE (2026-11-02) : le groupe trouve, la feuille revient
+  // d un toucher ; le curseur reste dans le champ pour le nom suivant.
+  function gfCroix() {
+    var croix = document.getElementById('gfEfface');
+    if (croix) croix.hidden = !String(state.searchTerm || '').trim();
+  }
+  function gfViderRecherche() {
+    var champ = document.getElementById('globalPlanningSearchInput');
+    if (!champ) return;
+    champ.value = '';
+    applyStaffSearch('', { immediate: true });
+    champ.focus();
+  }
+
   // ---- LE RENDU --------------------------------------------------------------
   var gfStats = window.__gfStats = { rendus: 0, ecritures: 0 };
   function renderGlobalPlanning(wrap) {
@@ -859,8 +949,11 @@
       racine = wrap.firstChild;
       wrap._gfRacine = racine;
       gfBrancher(wrap);
+      gfDecrocher(wrap);
     }
     gfStats.rendus += 1;
+    gfPuces(m);
+    gfCroix();
     var bandeau = racine.querySelector('.gf-bandeau');
     var ferme = Boolean(m.fenetre && m.fenetre.closed);
     var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : !m.groupes.length ? 'Aucune réservation ce jour-là' : '';
@@ -889,8 +982,9 @@
     // ensuite, le defilement de l equipe ne bouge plus.
     if (wrap._gfJourOuvert !== m.jour) {
       wrap._gfJourOuvert = m.jour;
-      gfAllerAMaintenant(wrap, false);
+      wrap._gfSuit = true;
     }
+    if (wrap._gfSuit) gfAllerAMaintenant(wrap, false);
     gfSuivreMaintenant(wrap);
   }
   // CE QUI CHANGE A CHAQUE MINUTE s ecrit en place, ici seulement : la
@@ -956,6 +1050,11 @@
   // L HEURE QU IL EST : la ligne de maintenant se pose sous la tete, avec deux
   // lignes d avant (les groupes qui viennent d arriver, les retards). Si elle
   // sort de la vue, un bouton y ramene.
+  // LA FEUILLE SUIT L HEURE (2026-11-02) tant qu on ne la fait pas defiler : une
+  // feuille laissee ouverte toute l apres-midi reste sur maintenant, une rangee
+  // qui change de hauteur ou l agrandissement ne la decalent plus (agrandie, elle
+  // s ouvrait avec la barre de l heure hors de la vue). Un defilement a la main
+  // la laisse ou elle est ; le bouton la raccroche.
   function gfAllerAMaintenant(wrap, doux) {
     var racine = wrap._gfRacine;
     var defile = racine && racine.querySelector('.gf-defile');
@@ -971,7 +1070,20 @@
       return;
     }
     if (doux && typeof defile.scrollTo === 'function') defile.scrollTo({ top: y, behavior: 'smooth' });
-    else defile.scrollTop = y;
+    else if (Math.abs(defile.scrollTop - y) > 1) defile.scrollTop = y;
+    wrap._gfPose = doux ? null : defile.scrollTop;
+  }
+  // (un defilement qui ne vient pas d ici, ou un geste de defilement, decroche)
+  function gfDecrocher(wrap) {
+    var defile = wrap._gfRacine && wrap._gfRacine.querySelector('.gf-defile');
+    if (!defile || defile._gfEcoute) return;
+    defile._gfEcoute = true;
+    var lacher = function () { wrap._gfSuit = false; };
+    defile.addEventListener('wheel', lacher, { passive: true });
+    defile.addEventListener('touchmove', lacher, { passive: true });
+    defile.addEventListener('scroll', function () {
+      if (wrap._gfPose != null && Math.abs(defile.scrollTop - wrap._gfPose) > 2) lacher();
+    }, { passive: true });
   }
   function gfSuivreMaintenant(wrap) {
     var racine = wrap._gfRacine;
@@ -1006,8 +1118,13 @@
       var arrive = e.target.closest('[data-gf-arrive]');
       if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }
       var compte = e.target.closest('[data-compte-id]');
-      if (compte && typeof ouvrirCompteArrivee === 'function') { ouvrirCompteArrivee(Number(compte.getAttribute('data-compte-id')), compte, e); return; }
-      if (e.target.closest('.gf-retour')) { gfAllerAMaintenant(wrap, true); return; }
+      // (le second clic d un double clic sur « Arrivé » tombe sur « Arrivé · 10 » :
+      // il n ouvre pas le compte)
+      if (compte && typeof ouvrirCompteArrivee === 'function') { if (e.detail < 2) ouvrirCompteArrivee(Number(compte.getAttribute('data-compte-id')), compte, e); return; }
+      if (e.target.closest('.gf-retour')) { wrap._gfSuit = true; gfAllerAMaintenant(wrap, true); return; }
+      var payer = e.target.closest('[data-gf-payer]');
+      if (payer) { encaisserReservation(Number(payer.getAttribute('data-gf-payer')), payer.getAttribute('data-gf-moyen'), e); return; }
+      if (e.target.closest('[data-gf-plis]')) { gfFinisOuverts = !gfFinisOuverts; renderGlobalPlanning(wrap); return; }
       if (e.target.closest('a, button, input')) return;
       var ligne = e.target.closest('[data-gf-id]');
       if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));
@@ -1022,7 +1139,7 @@
     var attente = 0;
     var recalculer = function () {
       if (attente) return;
-      attente = requestAnimationFrame(function () { attente = 0; if (wrap.isConnected && wrap._gfRacine) { gfHauteur(wrap); gfSuivreMaintenant(wrap); } });
+      attente = requestAnimationFrame(function () { attente = 0; if (wrap.isConnected && wrap._gfRacine) { gfHauteur(wrap); if (wrap._gfSuit) gfAllerAMaintenant(wrap, false); gfSuivreMaintenant(wrap); } });
     };
     window.addEventListener('resize', recalculer);
     if (typeof ResizeObserver === 'function') {
@@ -1036,5 +1153,28 @@
     }
   }
 
+  // TAPER UN NOM, DE N IMPORTE OU (2026-11-02) : le client dit son nom, on tape.
+  // Une lettre tapee alors que rien n est en saisie part dans « Chercher un
+  // groupe » (ce qui s y trouvait est remplace) ; Echap vide le champ.
+  document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    var champ = document.getElementById('globalPlanningSearchInput');
+    if (!champ) return;
+    if (e.key === 'Escape' && document.activeElement === champ && champ.value) {
+      e.preventDefault();
+      gfViderRecherche();
+      return;
+    }
+    if (e.key.length !== 1 || e.key === ' ') return;
+    var boite = document.getElementById('globalPlanningBox');
+    if (!boite || boite.classList.contains('hidden') || state.view !== 'staff') return;
+    var actif = document.activeElement;
+    if (actif && actif !== document.body && !(actif.closest && actif.closest('.gf'))) return;
+    if (document.querySelector('.qb-overlay.open, #posOverlay:not(.hidden), .staff-confirm-overlay, .compte-pop, .staff-action-popover')) return;
+    champ.focus();
+    champ.select();
+  });
+
   window.renderGlobalPlanning = renderGlobalPlanning;
+  window.gfViderRecherche = gfViderRecherche;
 })();

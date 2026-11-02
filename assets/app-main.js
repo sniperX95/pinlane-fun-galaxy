@@ -21364,6 +21364,7 @@ function voirListeDuJour() {
 }
 
 function toggleGlobalPlanningActionsMenu(event) {
+  const legende = document.querySelector('#globalPlanningBox .gf-legende');
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Actions planning</div>
     <button type="button" onclick="toggleGlobalPlanningExpanded(); closeStaffFloatingMenus();">${state.staffGlobalExpanded ? 'Réduire le planning' : 'Agrandir le planning'}</button>
@@ -21372,6 +21373,7 @@ function toggleGlobalPlanningActionsMenu(event) {
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
     <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
     <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>
+    ${legende ? `<div class="gf-legende-menu" role="note" aria-label="Lire une case">${legende.innerHTML}</div>` : ''}
   `);
 }
 
@@ -21420,7 +21422,7 @@ function applyStaffSearch(value, opts = {}) {
     renderPlanning();
     renderLaserPlanning();
     renderGlobalPlanningSurface();
-    renderTable();
+    avecListeDifferable(renderTable);
   };
   clearTimeout(staffSearchDebounceTimer);
   // Effacer (champ vide) = ré-affichage instantané du planning complet, sans délai.
@@ -21531,7 +21533,7 @@ function setStaffResourceView(view) {
   setStaffRouteHash('planning', state.staffResourceView);
   syncOpsSidebar();
   save();
-  renderStaff();
+  avecListeDifferable(renderStaff);
 }
 
 // Calendrier custom (popover) : remplace le picker natif <input type=date>
@@ -25655,13 +25657,21 @@ const GC_BAND_ICONS = {
 // rame sur des PC moins puissants »). Sous la feuille du jour ou la grille, elle
 // est hors de l ecran : elle se reconstruit quand meme a chaque geste (2 400
 // elements un samedi), et c est ce travail qui retardait la ligne qu on vient
-// de toucher. Hors de l ecran, elle passe apres la peinture ; a l ecran, tout de
-// suite. Et chaque carte hors de sa boite est laissee de cote par le navigateur
+// de toucher. Les gestes du comptoir (avecListeDifferable : « Arrivé », la
+// recherche, un filtre de la feuille, un onglet) la font donc passer apres la
+// peinture quand elle est hors de l ecran ; tout le reste la rend tout de suite :
+// differer ne retire aucun travail, il ne sert que quand un geste attend. Et
+// chaque carte hors de sa boite est laissee de cote par le navigateur
 // (content-visibility, pinlane-staff.css) : reconstruire la liste ne coute plus
 // que les cartes qu on voit.
 let listeVisible = false;
 let listeEnAttente = false;
+let listeDifferable = false;
 let observateurListe = null;
+function avecListeDifferable(rendre) {
+  listeDifferable = true;
+  try { return rendre(); } finally { listeDifferable = false; }
+}
 function suivreListeALEcran(box) {
   if (observateurListe || typeof IntersectionObserver !== 'function') { if (!observateurListe) listeVisible = true; return; }
   observateurListe = new IntersectionObserver((entrees) => {
@@ -25684,7 +25694,7 @@ function rendreLaListeEnAttente() {
 function renderTable() {
   const box = document.getElementById('staffTableBox');
   if (box) suivreListeALEcran(box);
-  if (!box || listeVisible || state.staffTableExpanded) { listeEnAttente = false; rendreLaListe(); return; }
+  if (!listeDifferable || !box || listeVisible || state.staffTableExpanded) { listeEnAttente = false; rendreLaListe(); return; }
   if (listeEnAttente) return;
   listeEnAttente = true;
   // (plusieurs gestes d affilee n en font qu un : personne ne regarde cette liste)
@@ -25935,7 +25945,7 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     // On rejoint la vue complète seulement si ce dossier quitte le filtre.
     if (state.staffStatusFilter === filtreAvant && !['all', 'notes'].includes(normaliserFiltreListe(filtreAvant))
       && !filterReservationsForStaff([payload.reservation], filtreAvant).length) state.staffStatusFilter = 'all';
-    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    avecListeDifferable(() => applyOptimisticReservation(payload.reservation, { preserveEditState: true }));
     if (Number.isFinite(ancreY)) requestAnimationFrame(() => {
       const carte = document.querySelector(`[data-res-row-id="${Number(id)}"]`);
       if (!carte) return;

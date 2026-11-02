@@ -74,9 +74,16 @@
 /* L HEURE : celle de la reservation, la barre du statut a gauche. Deux
    groupes a la meme heure : la seconde s ecrit plus discretement. */
 .gf-t :is(td.gf-h, th.gf-th--h) { position: sticky; left: 0; z-index: 2; width: var(--gf-col-h); min-width: var(--gf-col-h); max-width: var(--gf-col-h); padding-left: 14px; padding-right: 6px; }
-.gf-r > td.gf-h { box-shadow: inset 3px 0 0 var(--bk-barre); }
+/* (2026-11-02, Movsar : « mieux distinguer ». La barre de 3 px se perdait : la
+   case de l heure prend la teinte du statut, a cote du nom, et la colonne se lit
+   de haut en bas : bleu attendu, ambre la, vert paye.) */
+.gf-t .gf-r > td.gf-h { box-shadow: inset 4px 0 0 var(--bk-barre); background: var(--bk-haut); color: var(--bk-encre); }
+.gf-t .gf-r.is-parti > td.gf-h { background: transparent; color: inherit; }
 .gf-h b { display: block; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-.gf-h.is-repete b { color: var(--faint); font-weight: 600; }
+.gf-h.is-repete b { font-weight: 500; }
+/* (en retard, la case passe au rouge : « le truc en retard doit etre visible
+   d office », Movsar, 2026-10-01) */
+.gf-t .gf-r.is-retard > td.gf-h { box-shadow: inset 4px 0 0 var(--danger); background: color-mix(in srgb, var(--danger) 13%, var(--surface)); color: inherit; }
 .gf-r.is-retard .gf-h b { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
 /* Le retard, sous l heure qu il depasse. */
 .gf-h__retard { display: block; margin-top: 1px; font-size: 12px; font-weight: 700; line-height: 15px; color: color-mix(in srgb, var(--danger) 78%, var(--text)); white-space: nowrap; }
@@ -132,7 +139,10 @@
    passe a la ligne ; sous 1 100 px seulement, le detail passe sous l heure) */
 .gf-x { display: inline-flex; flex-wrap: nowrap; align-items: baseline; column-gap: 5px; box-sizing: border-box; min-height: 24px; padding: 2px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); font-size: 13px; line-height: 18px; white-space: nowrap; }
 .gf-x__t { display: inline-flex; align-items: center; gap: 4px; }
-.gf-x b { font-weight: 700; }
+/* (les heures de la demi-heure qui vient, ce qui se lance et ce qui se joue
+   restent en gras ; celles d apres s allegent : a 15:10 on voit ce qui compte) */
+.gf-x b { font-weight: 500; }
+.gf-x:is(.is-bientot, .is-lancer, .is-encours, .is-retard, .is-aplacer) b { font-weight: 750; }
 .gf-x__d { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--muted); }
 .gf-x.is-lancer { background: var(--bk-haut); color: var(--bk-encre); }
 .gf-x.is-lancer .gf-x__d { color: var(--bk-encre-2); }
@@ -172,11 +182,18 @@
 .gf-b.is-encaisser::before { background: var(--warning); }
 .gf-du { font-size: 13px; font-weight: 750; line-height: 18px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gf-b small { font-size: inherit; font-weight: 500; color: var(--muted); }
+/* « Carte » et « Espèces », le geste du moment d un groupe a encaisser. */
+.gf-payer { display: inline-flex; gap: 4px; flex-basis: 100%; justify-content: flex-end; }
+.gf-payer__b { height: 30px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+.gf-payer__b:hover { background: var(--subtle); border-color: var(--text); }
+.gf-payer__b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* « Arrivé » : discret sur chaque ligne (une colonne de boutons encadres
    pesait autant que la feuille), il se montre sur la ligne survolee et passe
    devant quand le groupe est en retard. */
 .gf-arrive { display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; height: 28px; padding: 0 11px 0 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
 .gf-arrive svg { flex: none; width: 14px; height: 14px; }
+/* (dans la demi-heure qui vient, il se voit sans le survoler) */
+.gf-arrive.is-proche { height: 32px; border-color: var(--line-strong); color: var(--text); }
 .gf-r:is(:hover, :focus-within) .gf-arrive { border-color: var(--line-strong); color: var(--text); }
 .gf-arrive:hover { background: var(--subtle); border-color: var(--text); color: var(--text); }
 .gf-arrive:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -205,6 +222,11 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
 .gf-retour:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 .gf-rien > td { height: auto; padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+/* LES GROUPES FINIS, REPLIES EN UNE LIGNE (2026-11-02). */
+.gf-t tr.gf-plis > td { height: 32px; padding: 0 14px; background: var(--subtle); }
+.gf-plis__b { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; }
+.gf-plis__b:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.gf-plis__b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* LE FILET DE LA DEMI-HEURE (2026-10-27) : une ligne fine en tete du bloc, ce
    qui arrive a gauche, la ressource pleine sous sa colonne ; elle porte le
@@ -227,6 +249,38 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
 /* (fini : la coche des cases, dessinee en deux traits) */
 .gf-leg.is-fini { width: 5px; height: 9px; margin: 0 4px 2px; border: solid var(--muted); border-width: 0 2px 2px 0; border-radius: 0; background: transparent; transform: rotate(45deg); }
 
+/* LES FILTRES DU COMPTOIR (2026-11-02), a la place du titre et de la legende :
+   l onglet dit deja le titre, la legende passe au menu « ⋯ ». */
+.global-planning-box .planning-title-stack > h2, .global-planning-box .planning-title-stack > .gf-legende { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* (au telephone, sur deux rangees : un filtre coupe au bord ne se devine pas) */
+.gf-puces { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.gf-puce { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+.gf-puce b { min-width: 16px; font-size: 13px; font-weight: 700; color: var(--text); text-align: center; font-variant-numeric: tabular-nums; }
+.gf-puce:hover { background: var(--subtle); color: var(--text); }
+.gf-puce.is-on { background: var(--text); color: var(--surface); }
+.gf-puce.is-on b { color: var(--surface); }
+.gf-puce.is-alerte:not(.is-on) { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
+.gf-puce.is-alerte:not(.is-on) b { color: inherit; }
+.gf-puce:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* (hors plein ecran, rien a centrer : les filtres prennent ce que les actions
+   laissent, la moitie de la tete ne leur suffit plus a 1 024 px) */
+@media (min-width: 769px) {
+  .global-planning-box:not(.expanded) .planning-head { grid-template-columns: minmax(0, 1fr) auto auto; }
+}
+/* LA CROIX DE LA RECHERCHE, sur la loupe tant qu un nom est tape. */
+.gf-efface { position: absolute; right: 2px; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: var(--surface); color: var(--muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+.gf-efface[hidden] { display: none; }
+.gf-efface:hover { background: var(--subtle); color: var(--text); }
+.gf-efface:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* (agrandie, la tete garde ses deux colonnes : les filtres, puis la date) */
+@media (min-width: 1101px) {
+  .global-planning-box.expanded:not(.hidden) .planning-head > .planning-title-stack { grid-template-columns: max-content auto; }
+  .global-planning-box.expanded:not(.hidden) .planning-title-stack > .gf-puces { grid-column: 1; grid-row: 1 / span 2; }
+}
+/* LA LEGENDE DANS LE MENU « ⋯ » */
+.gf-legende-menu { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 6px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.gf-legende-menu > span { display: flex; align-items: center; gap: 8px; }
+
 /* LA BOITE DANS LA CONSOLE : la tete est celle du planning bowling (titre,
    legende, recherche, « ⋯ », Agrandir) ; agrandie, la feuille prend l ecran. */
 .global-planning-box .planning-title-stack > h2 { white-space: nowrap; }
@@ -235,12 +289,16 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
 .planning-box.expanded #globalPlanningGridWrap { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 .planning-box.expanded .gf { flex: 1 1 0; min-height: 0; }
 .planning-box.expanded .gf-defile { flex: 1 1 0; min-height: 0; }
-.planning-box.expanded .gf-legende > :nth-child(n+4) { display: none; }
 
 /* LA FEUILLE SE RESSERRE AVANT DE DEFILER DE COTE : sous 1 300 px de large,
    les tetes d activite perdent leur icone, les cases leur air ; sous 1 100,
-   le nom passe plus tot a la ligne. Plus etroite encore (tablette), elle
-   defile de cote, l identite collee a gauche, l etat a droite. */
+   le nom passe plus tot a la ligne et les cases se serrent, huit activites
+   tiennent sur une tablette couchee. Plus etroite encore, elle defile de cote,
+   l identite collee a gauche, l etat a droite. */
+/* (a la grande feuille, les noms d abord : ils passent sur une ligne) */
+@container feuille (min-width: 1300px) {
+  .gf-nom__t { min-width: 200px; }
+}
 @container feuille (max-width: 1299px) {
   .gf-th__in svg { display: none; }
   .gf-th__etat { padding-left: 0; }
@@ -256,8 +314,16 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
   /* (sur la feuille, pas sur .gf : une requete de conteneur ne touche jamais
      son conteneur) */
   .gf-defile { --gf-col-h: 58px; }
-  .gf-nom__t { min-width: 120px; max-width: 200px; }
-  .gf-x { flex-wrap: wrap; }
+  .gf-nom__t { min-width: 112px; max-width: 200px; }
+  .gf-th { padding: 0 3px; }
+  .gf-th--etat { padding-right: 8px; }
+  .gf-th__fin { display: none; }
+  .gf-t td { padding: 3px; }
+  .gf-t td.gf-etat { padding-right: 8px; }
+  .gf-x { flex-wrap: wrap; padding: 2px 3px; }
+  .gf-x__ok { left: -7px; }
+  /* (l etat ne prend que ce qu il faut : sa colonne nourrissait les heures) */
+  .gf-etat__in { max-width: 118px; }
   /* (« P1-2 1h30 » peut passer sur deux lignes) */
   .gf-x__d { white-space: normal; }
   .gf-a__in.is-deux { flex-wrap: wrap; }
@@ -271,11 +337,12 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
   .gf-defile { overflow: visible; }
   .gf-t, .gf-t tbody { display: block; width: 100%; }
   .gf-t thead { display: none; }
-  .gf-r { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 5px; align-items: center; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line); background: var(--surface); box-shadow: inset 3px 0 0 var(--bk-barre); }
+  .gf-r { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 5px; align-items: center; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line); background: var(--surface); box-shadow: inset 3px 0 0 var(--bk-barre); }
   .gf-r.is-bande { background: var(--gf-bande); }
   .gf-r:hover { background: var(--gf-survol); }
   .gf-t .gf-r > td { display: block; position: static; height: auto; min-width: 0; max-width: none; width: auto; padding: 0; border: 0; background: transparent; box-shadow: none; }
-  .gf-t .gf-r > td.gf-h { grid-column: 1; grid-row: 1; align-self: start; padding-top: 1px; }
+  /* (la barre de la carte dit deja le statut : ici, l heure dans sa teinte) */
+  .gf-t .gf-r > td.gf-h, .gf-t .gf-r.is-retard > td.gf-h { grid-column: 1; grid-row: 1; align-self: start; justify-self: start; padding: 1px 5px; border-radius: 5px; box-shadow: none; }
   .gf-t .gf-r > td.gf-nom { grid-column: 2; grid-row: 1; }
   .gf-t .gf-r > td.gf-etat { grid-column: 3; grid-row: 1; align-self: start; padding: 0; }
   .gf-etat__in { flex-direction: column; align-items: flex-end; }
@@ -307,10 +374,14 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
 
 /* AU DOIGT, des cibles de 44 px. */
 @media (pointer: coarse) {
-  .gf-arrive { height: 40px; padding: 0 14px 0 12px; }
+  .gf-arrive, .gf-arrive.is-proche, .gf-payer__b { height: 40px; }
+  .gf-efface { width: 40px; height: 40px; }
+  .global-planning-box .planning-search-inline input { padding-right: 42px; }
+  .gf-arrive { padding: 0 14px 0 12px; }
   .gf-retour { height: 40px; }
+  .gf-puce { height: 40px; }
 }
 /* MOUVEMENT REDUIT : le survol perd ses 120 ms, le retour a l heure saute. */
 @media (prefers-reduced-motion: reduce) {
-  .gf-arrive { transition: none; }
+  .gf-arrive, .gf-payer__b, .gf-puce { transition: none; }
 }

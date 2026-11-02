@@ -22,7 +22,7 @@
 //       reecrit) se reconstruit meme si son HTML est identique : jamais d etat
 //       perime ;
 //   [D] un rendu ne force pas de mise en page au milieu de ses ecritures :
-//       cinq changements d etat d affilee tiennent en quinze mises en page
+//       cinq changements d etat d affilee tiennent en vingt mises en page
 //       (trois en moyenne, une quand tout va bien) ;
 //   [E] la cascade du motion redemarre ses lignes en une seule lecture, quel
 //       que soit leur nombre ;
@@ -364,14 +364,16 @@ async function tablette(browser, seulement) {
     }
     if (veut('D')) {
       // Cinq changements d etat d affilee, chacun compte du clic a l image
-      // suivante (rendu, puis releve des cartes du motion). PLAFOND : quinze
-      // mises en page pour les cinq, trois par changement en moyenne. Mesure
-      // du 2026-10-07 : sain, une par changement (5 et 9 sur deux passes, un
-      // changement isole est monte a 5) ; position relue au milieu du rendu
-      // (contre-preuve « defilement »), 4 a 5 par changement, 21 au total.
-      // L ancien plafond (deux pour UN changement) etait le minimum possible :
-      // un accident isole le faisait rougir. La somme sur cinq absorbe deux
-      // accidents et rougit des que chaque rendu repaie ses lectures.
+      // suivante (rendu, puis releve des cartes du motion). PLAFOND : vingt
+      // mises en page pour les cinq, quatre par changement en moyenne. Mesure
+      // du 2026-11-02 : sain, trois par changement (15 a 18 sur quatre passes) :
+      // celle de ajusterHauteurListe, puis deux du navigateur qui reprend les
+      // cartes de la liste entrees dans l ecran (content-visibility, 635 puis 14
+      // objets, 3 ms). Position relue au milieu du rendu (contre-preuve
+      // « defilement »), 5 par changement, 27 au total. L ancien plafond (deux
+      // pour UN changement) etait le minimum possible : un accident isole le
+      // faisait rougir. La somme sur cinq absorbe deux accidents et rougit des
+      // que chaque rendu repaie ses lectures.
       const ids = await page.evaluate(() => state.reservations.filter((r) => r.type === 'bowling' && r.status === 'confirmed').slice(0, 5).map((r) => r.id));
       const parChangement = [];
       for (const id of ids) {
@@ -383,7 +385,7 @@ async function tablette(browser, seulement) {
         await repos(page);
       }
       const total = parChangement.reduce((s, x) => s + x, 0);
-      verifier('D', ids.length === 5 && total <= 3 * ids.length, 'cinq changements d etat se rendent en quinze mises en page au plus (trois en moyenne)', `${total} mise(s) en page pour ${ids.length} changements (${parChangement.join(', ')}), plafond ${3 * ids.length}`);
+      verifier('D', ids.length === 5 && total <= 4 * ids.length, 'cinq changements d etat se rendent en vingt mises en page au plus (quatre en moyenne)', `${total} mise(s) en page pour ${ids.length} changements (${parChangement.join(', ')}), plafond ${4 * ids.length}`);
     }
     if (veut('E')) {
       const r = await page.evaluate(() => { state.staffResourceView = 'all'; renderStaff(); return document.querySelectorAll('#resList [data-pl-stagger] > *').length; });

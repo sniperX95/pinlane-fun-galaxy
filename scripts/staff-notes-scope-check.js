@@ -96,7 +96,8 @@ async function add(page, id, text, scope = 'reservation') {
       await open(page, 99102); check(!(await page.locator('#posOverlay').innerText()).includes('Réservation uniquement'), name + ' reservation note absent future booking');
       await open(page, 99101); await add(page, 99101, 'Mémoire client privée', 'client');
       check(memory.size === 1 && [...memory.values()][0].body === 'Mémoire client privée', name + ' permanent note genuinely persisted');
-      check((await page.locator('#staffTableBox [data-res-row-id="99102"]').innerText()).includes('Mémoire client privée') && !(await page.locator('#staffTableBox [data-res-row-id="99103"]').innerText()).includes('Mémoire client privée'), name + ' batch planner markers follow matching customer only');
+      // (textContent : une carte hors de l ecran est laissee de cote par le navigateur, content-visibility, et son innerText est vide)
+      check((await page.locator('#staffTableBox [data-res-row-id="99102"]').textContent()).includes('Mémoire client privée') && !(await page.locator('#staffTableBox [data-res-row-id="99103"]').textContent()).includes('Mémoire client privée'), name + ' batch planner markers follow matching customer only');
       await open(page, 99102); check((await page.locator('#posOverlay').innerText()).includes('Mémoire client privée'), name + ' Belgian national alias future booking inherits permanent note');
       await open(page, 99103); check(!(await page.locator('#posOverlay').innerText()).includes('Mémoire client privée'), name + ' different phone never inherits memory');
       const cross = await notesRequest({ method: 'GET', url: '/api/staff-customer-notes?centerId=gembloux&reservationId=99104' }); check(cross.payload.note === null, name + ' other center isolated');

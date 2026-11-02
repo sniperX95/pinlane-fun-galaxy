@@ -288,7 +288,7 @@ async function main() {
     const live = await page.evaluate(async ({ date }) => {
       state.view = 'staff';
       state.staffMenuPage = 'planning';
-      state.staffResourceView = 'all';
+      state.staffResourceView = 'bowling';
       state.currentDate = date;
       state.reservations = [];
       window.__EXTRA_RES__ = [];

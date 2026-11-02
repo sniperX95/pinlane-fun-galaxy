@@ -123,7 +123,7 @@ const checks = `
       const r={id:9977,name:'SECOURS7',pax:18,date:quickBookState.date,startTime:quickBookState.startTime,duration:1,lanes:[1],type:'bowling',status:'pending',program:{items:[item]},opsPlan:{resourceBlocks:[{activityId:'bowling',resourceType:'bowling_lane',start:840,end:900,startTime:'14:00',endTime:'15:00',durationMinutes:60,players:7,lanes:[1],bowlingCapacity:one.bowlingCapacity}]}};
       state.reservations=[r];state.selectedRes=r;state.editState={pax:18,startTime:r.startTime,duration:1,programmeEdite:buildEditProgramFromReservation(r)};
       const editNeed=getEditBowlingCapacityNeed(r,state.editState);const editPrice=getEditPrixEstime().total;const advice=editLaneAdvice(r,{...state.editState,lanesStr:'1'});
-      renderPlanning();const card=[...document.querySelectorAll('.booking[data-booking-res-id="9977"] .bk-pax')].map(el=>el.title).join(' | ');const timeline=getGroupeProgramme(r).map(step=>step.quoi).join(' | ');
+      setStaffResourceView('bowling');const card=[...document.querySelectorAll('.booking[data-booking-res-id="9977"] .bk-pax')].map(el=>el.title).join(' | ');const timeline=getGroupeProgramme(r).map(step=>step.quoi).join(' | ');
       state.reservations=[];quickBookState.visit.options.bowling.participants=13;configureStock(2);renderQuickBook();const two=getQuickBookLaneNeed();const twoPrice=getQuickBookSummaryActivites().total;const twoVisible=document.querySelector('#quickBookOverlay').textContent;
       configureStock(3);const normal=getQuickBookLaneNeed();
       return {one,slot,price,visible,detail,card,timeline,two,twoPrice,twoVisible,normal,editNeed,editPrice,advice,warningCleared,warningRestored};

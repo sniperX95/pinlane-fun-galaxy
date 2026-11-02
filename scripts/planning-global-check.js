@@ -742,7 +742,7 @@ const MUTATIONS = [
   { nom: 'demi-compte-faux', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: '      c.groupes += 1;', vers: '      c.groupes += 2;' }] },
   { nom: 'charge-muette', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (col.nature === 'bowling' && occupation) {", vers: '      if (false) {' }] },
   { nom: 'barre-en-bas', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (!nowPose && g.heure > m.maintenant + 1e-6) {', vers: '      if (false) {' }] },
-  { nom: 'ouverte-en-haut', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      gfAllerAMaintenant(wrap, false);\n    }', vers: '    }' }] },
+  { nom: 'ouverte-en-haut', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '    if (wrap._gfSuit) gfAllerAMaintenant(wrap, false);', vers: '' }] },
   { nom: 'nuit-sans-24h', lettre: 'N2', scenarios: [S('pire', 'ordinateur', { heure: '24:20', nuit: true })], editions: [{ fichier: PG, de: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? 24 + currentTimeDecimal() : null;', vers: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? currentTimeDecimal() : null;' }] },
   { nom: 'arrive-sans-effet', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }", vers: '      if (arrive) return;' }] },
   { nom: 'ligne-muette', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));\n    });", vers: '    });' }] },
@@ -755,7 +755,7 @@ const MUTATIONS = [
   // tombent sous l heure.
   { nom: 'haut-sur-deux-lignes', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-prochain { flex-wrap: nowrap; }', vers: '' }] },
   { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; min-width: 150px;', vers: '.gf-nom__t { display: block; min-width: 420px;' }] },
-  { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette')], editions: [{ fichier: PGC, de: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: sticky;', vers: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: relative;' }] },
+  { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: sticky;', vers: '.gf-t :is(td.gf-etat, th.gf-th--etat) { position: relative;' }] },
   { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 16;', vers: '  var GF_BAS = -400;' }] },
   { nom: 'hauteur-des-lignes', lettre: 'L2', gestes: true, editions: [{ fichier: PG, de: '    if (defile.style.height !== valeur) defile.style.height = valeur;', vers: '    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;' }] },
   { nom: 'tableau-au-telephone', lettre: 'L3', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-r { display: grid;', vers: '  .gf-r { display: table-row;' }] },

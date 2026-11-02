@@ -225,6 +225,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   // On laisse le poll passer : ce que MOVSAR regarde, c'est le planning, pas
   // le corps d'une requete. Un envoi juste avec un ecran fige serait, pour
   // lui, exactement le meme defaut.
+  await pg.evaluate(() => window.setStaffResourceView('bowling'));
   await pg.waitForTimeout(2600);
   const planning = await pg.evaluate(() => [...document.querySelectorAll('[onclick]')]
     .filter((n) => String(n.getAttribute('onclick') || '').includes('1332'))

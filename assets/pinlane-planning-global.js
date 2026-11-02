@@ -1170,7 +1170,7 @@
     if (!boite || boite.classList.contains('hidden') || state.view !== 'staff') return;
     var actif = document.activeElement;
     if (actif && actif !== document.body && !(actif.closest && actif.closest('.gf'))) return;
-    if (document.querySelector('.qb-overlay.open, #posOverlay:not(.hidden), .staff-confirm-overlay, .compte-pop, .staff-action-popover')) return;
+    if (document.querySelector('#quickBookOverlay:not(.hidden), #posOverlay:not(.hidden), .staff-confirm-overlay, .compte-pop, .staff-action-popover')) return;
     champ.focus();
     champ.select();
   });

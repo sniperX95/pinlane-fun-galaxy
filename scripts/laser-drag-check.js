@@ -402,6 +402,9 @@ async function main() {
     const fini = () => page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse && !lpEtat.geste, null, { timeout: 8000 }).then(() => true, () => false);
 
     console.log('\n[C] Laser plein écran : drop ne remet pas le planning en haut');
+    // (depuis le 2026-11-02 la journee tient entiere a l ecran : une cale fait
+    // defiler la page, sinon un retour en haut ne se verrait pas)
+    await page.evaluate(() => { const cale = document.createElement('div'); cale.id = 'caleDefilement'; cale.style.height = '240px'; document.body.append(cale); });
     const montageC = await page.evaluate(() => {
       const cadre = lpDefileur();
       return { cadre: cadre ? cadre.id || cadre.className || cadre.tagName : null, defilable: Boolean(cadre) && cadre.scrollHeight > cadre.clientHeight + 1, course: cadre ? cadre.scrollHeight - cadre.clientHeight : 0, departs: document.querySelectorAll('#laserPlanningGridWrap .lp-dep').length, groupe: Boolean(document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]')) };
@@ -429,6 +432,7 @@ async function main() {
         ok(posee && movedC !== null && Math.abs(Number(movedC) - Number(tC)) <= 0.01, `la partie s'est bien déplacée (${tC}, lu ${movedC})`);
       }
     }
+    await page.evaluate(() => document.getElementById('caleDefilement').remove());
 
     console.log('\n[D] Laser : glisser un groupe placé vers la file « À placer » = dé-planifier');
     const srcD = await amener('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');

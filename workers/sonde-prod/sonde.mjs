@@ -39,6 +39,9 @@
 //   (les adresses visent un chemin mort, 3 passages plus tard l alerte part ;
 //   `reseau` coupe aussi les controles : aucune alerte ne doit partir).
 // Finir la simulation : npx wrangler kv key delete --binding=ETAT --remote simulation
+//   puis relire la cle : le 02/11 un delete a rendu 0 sans rien retirer.
+// Compte Cloudflare neuf : les crons exigent un sous-domaine workers.dev, meme
+//   sans adresse publique (PUT /accounts/<id>/workers/subdomain).
 // Gate : npm run test:sonde-prod
 
 const SITE = 'https://www.mngfunglxy.com';

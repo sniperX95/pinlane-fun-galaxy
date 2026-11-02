@@ -87,6 +87,8 @@ async function scheduleBowlingSelection(s) {
   const reservation=state.reservations.find(r=>Number(r.id)===s.reservationId);
   if(!reservation||!s.sourceLanes.length||!s.targetLane)return;
   const lanes=s.sourceLanes.map((lane,index)=>s.laneMapping ? Number(s.laneMapping[lane]) : s.targetLane+index);
+  const fenetresChoisies=getBowlingWindowsFromReservation(reservation).filter(w=>(w.lanes||[]).some(l=>s.sourceLanes.includes(Number(l))));
+  if(fenetresChoisies.length&&lanes.every((lane,index)=>lane===s.sourceLanes[index])&&Math.abs(Math.min(...fenetresChoisies.map(w=>Number(w.start)))-s.targetStart)<.001)return false;
   if(lanes.some(l=>l<1||l>getAvailabilityLaneCount()||state.laneStatuses[l]==='maintenance')) {showPlanningMoveNotice('Pistes indisponibles','Choisissez une autre piste de départ.');return;}
   const duration=getBowlingDurationForReservation(reservation)||Number(reservation.duration||1);
   const check=validateSlotWindow(reservation.date,numToTime(s.targetStart),duration,{allowPastStart:true});
@@ -651,6 +653,18 @@ function getBowlingDragSourceWindow(reservation, sourceLaneValue, sourceStartVal
   ) || windows.find(window => window.lanes.includes(sourceLane)) || windows[0] || null;
 }
 
+// UN DEPLACEMENT QUI NE DEPLACE RIEN (2026-11-02). Quand la piste visee est prise,
+// getTargetBowlingLanes prend les pistes libres les plus proches : au plus serre,
+// ce sont celles que le groupe occupe deja. Le geste partait quand meme, le serveur
+// reecrivait le meme plan, et « Bowling déplacé » s affichait sans rien changer.
+function bowlingResteEnPlace(reservation, groupStart, lanes) {
+  const fenetres = getBowlingWindowsFromReservation(reservation);
+  if (!fenetres.length) return false;
+  const actuelles = [...new Set(fenetres.flatMap(window => window.lanes || []))].map(Number).sort((a, b) => a - b);
+  return Math.abs(Math.min(...fenetres.map(window => Number(window.start))) - Number(groupStart)) < .001
+    && valeurReservationComparable(actuelles) === valeurReservationComparable(lanes.map(Number).sort((a, b) => a - b));
+}
+
 function getBowlingDragTargetPlan(target) {
   if (!target || !bowlingPointerDrag) return null;
   const reservation = state.reservations.find(item => Number(item.id) === Number(bowlingPointerDrag.reservationId));
@@ -705,6 +719,9 @@ function getBowlingDragTargetPlan(target) {
   }
   const firstStart = Math.min(...getBowlingWindowsFromReservation(reservation).map(window => Number(window.start)));
   const groupStart = Number(targetStart) - (Number(sourceWindow?.start ?? firstStart) - firstStart);
+  const surPlace = bowlingResteEnPlace(reservation, groupStart, lanes)
+    && !(targetLane === Number(bowlingPointerDrag.sourceLane) && Math.abs(targetStart - Number(sourceWindow?.start ?? firstStart)) < .001);
+  if (surPlace) return { reservation, targetLane, targetStart, duration, lanes, valid: false, message: 'Aucune autre piste libre' };
   const movedOpsPlan = moveBowlingOpsPlan(reservation, groupStart, lanes, duration);
   const conflicts = lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan);
   return {
@@ -904,6 +921,13 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const firstStart = bowlingBlocks.length ? Math.min(...bowlingBlocks.map(block => getBowlingBlockMinutes(block, 'start'))) / 60 : timeToNum(reservation.startTime);
   const sourceStart = sourceWindow ? Number(sourceWindow.start) : firstStart;
   const groupStart = Number(targetStart) - (sourceStart - firstStart);
+  if (bowlingResteEnPlace(reservation, groupStart, lanes)) {
+    // Reposee sur sa propre case, la carte n a rien a dire.
+    if (Number(targetLane) !== sourceLane || Math.abs(Number(targetStart) - sourceStart) > .001) {
+      showPlanningMoveNotice('Bowling non déplacé', `Aucune autre piste libre à ${formatClockDisplay(Number(targetStart))} : le groupe reste sur ses pistes.`, 'warning');
+    }
+    return;
+  }
   const movedOpsPlan = moveBowlingOpsPlan(reservation, groupStart, lanes, duration);
   if (lanesConflict(reservation.date, numToTime(groupStart), duration, lanes, reservation.id, movedOpsPlan).length) {
     showPlanningMoveNotice('Conflit détecté', 'Une autre réservation occupe déjà une piste ou un horaire de bowling.', 'warning');
@@ -3091,6 +3115,23 @@ const STAFF_SYNC_TIMEOUT_MS = 15000;
 // saisie : onglet Modifier, ou un champ de la fiche qui a le focus. Elle
 // rattrape au tour suivant.
 let ficheFaitsPeints = '';
+// CE QUI VIENT DE BOUGER SUR UN AUTRE POSTE SE VOIT (2026-11-02). Une ligne ou un bloc qui
+// change tout seul, en plein rush, on ne le remarque pas : on pointe un groupe deja pointe,
+// on crie « Manon est la » a travers la salle. Il se souligne le temps d etre vu, sur les
+// trois plannings. La comparaison porte sur la journee en memoire, ecriture locale comprise :
+// un geste fait ici y est deja, il ne se souligne pas.
+const BOUGE_MS = 2400;
+function empreinteBouge(r) { return [r.status, r.absentAt ? 1 : 0, Number(r.pax) || 0].join(':'); }
+function soulignerCeQuiABouge(ids) {
+  ids.forEach((id) => {
+    const cle = Number(id);
+    if (!Number.isFinite(cle)) return;
+    document.querySelectorAll(`.gf-r[data-gf-id="${cle}"], .booking[data-booking-res-id="${cle}"], [data-laser-res-id="${cle}"]`).forEach((el) => {
+      el.classList.add('is-bouge');
+      setTimeout(() => el.classList.remove('is-bouge'), BOUGE_MS);
+    });
+  });
+}
 function getFicheFaitsSignature() {
   const r = state.selectedRes;
   return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label]) : '';
@@ -3180,6 +3221,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     const hadBaseline = Boolean(knownRevision);
     const beforeResIds = new Set(state.reservations.filter(r => r.date === dateStr).map(r => r.id));
     staffSyncAtByDate[revisionKey] = Date.now();
+    const avantBouge = new Map(state.reservations.filter((r) => r.date === dateStr).map((r) => [r.id, empreinteBouge(r)]));
     const masque = replaceReservationsForDate(dateStr, payload.reservations || []);
     memoriserBlocagesEnLigne(getCurrentStaffCenterId(), dateStr, payload.holds);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
@@ -3207,6 +3249,8 @@ async function syncDateReservations(dateStr, opts = {}) {
       if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
         const afterData = getStaffDataSignature(dateStr);
         if (beforeData !== afterData || aMontrer) renderStaffData();
+        // (une date qu on ouvre pour la premiere fois n a rien a souligner)
+        if (hadBaseline) soulignerCeQuiABouge(state.reservations.filter((r) => r.date === dateStr && avantBouge.get(r.id) !== empreinteBouge(r)).map((r) => r.id));
       }
       if (!opts.skipRender) repeindreFicheSiChangee();
     } catch (erreurRendu) {
@@ -3294,6 +3338,12 @@ function getLiveSyncPageName() {
 
 function getLiveSyncDate() {
   return state.view === 'staff' ? String(state.currentDate || '') : '';
+}
+
+// Le jour meme, sur une page qui montre la journee : c est la que les ecrans se
+// regardent, le pouls y bat chaque seconde (assets/ops-live.js).
+function getLiveSyncJourVif() {
+  return state.view === 'staff' && state.currentDate === todayStr() && LIVE_SYNC_PAGES_JOURNEE.includes(getLiveSyncPageName());
 }
 
 // Les caches de la console. `enCours` : une lecture partie AVANT le changement
@@ -3468,6 +3518,7 @@ function getLiveSyncPages() {
 
 window.getLiveSyncPageName = getLiveSyncPageName;
 window.getLiveSyncDate = getLiveSyncDate;
+window.getLiveSyncJourVif = getLiveSyncJourVif;
 window.getLiveSyncPages = getLiveSyncPages;
 window.invalidateLiveSyncCaches = invalidateLiveSyncCaches;
 
@@ -13065,7 +13116,7 @@ function getVisiteLibreApres(reservation, windows) {
 
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
-  const items = getStaffFormulaTimedItems(reservation);
+  const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation)];
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
   if (starts.length) {
@@ -21372,12 +21423,10 @@ function toggleGlobalPlanningActionsMenu(event) {
   const legende = document.querySelector('#globalPlanningBox .gf-legende');
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Actions planning</div>
-    <button type="button" onclick="toggleGlobalPlanningExpanded(); closeStaffFloatingMenus();">${state.staffGlobalExpanded ? 'Réduire le planning' : 'Agrandir le planning'}</button>
     <button type="button" onclick="voirListeDuJour()">Voir la liste des réservations</button>
     <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Feuille de secours (PDF)</button>
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
     <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
-    <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>
     ${legende ? `<div class="gf-legende-menu" role="note" aria-label="Lire une case">${legende.innerHTML}</div>` : ''}
   `);
 }
@@ -21415,6 +21464,42 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
 // voler le focus, puis on re-render planning + planning laser + liste. Débounce
 // léger pour rester fluide à la frappe ; effacement = ré-affichage immédiat.
 let staffSearchDebounceTimer = null;
+// UNE FAUTE LEGERE DANS UN NOM (2026-11-02, audit joue sur la vraie console :
+// « mason » ne trouvait pas Masson). Au comptoir on tape ce qu on entend, dans le
+// bruit : une lettre en trop, en moins, changee, ou deux lettres inversees ; deux
+// fautes pour un mot de 8 lettres et plus. Les textes arrivent sans accents ni
+// majuscules. Sous 4 lettres, aucune tolerance : « Léa » ressemblerait a tout. Le
+// tableau et la page Réservations n y viennent que si rien d exact n existe.
+function distanceNoms(a, b, plafond) {
+  if (Math.abs(a.length - b.length) > plafond) return plafond + 1;
+  let avantDerniere = null;
+  let derniere = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const ligne = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cout = a[i - 1] === b[j - 1] ? 0 : 1;
+      let d = Math.min(derniere[j] + 1, ligne[j - 1] + 1, derniere[j - 1] + cout);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d = Math.min(d, avantDerniere[j - 2] + 1);
+      ligne[j] = d;
+    }
+    avantDerniere = derniere;
+    derniere = ligne;
+  }
+  return derniere[b.length];
+}
+
+function nomRessemble(nom, cherche) {
+  const decouper = (texte) => String(texte || '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const tolere = (mot) => mot.length >= 4 && /\p{L}/u.test(mot);
+  const mots = decouper(nom);
+  const voulus = decouper(cherche);
+  if (!mots.length || !voulus.some(tolere)) return false;
+  return voulus.every((voulu) => {
+    const plafond = voulu.length >= 8 ? 2 : 1;
+    return mots.some((mot) => mot.includes(voulu) || (tolere(voulu) && distanceNoms(mot, voulu, plafond) <= plafond));
+  });
+}
+
 function applyStaffSearch(value, opts = {}) {
   state.searchTerm = value;
   ['searchInput', 'planningSearchInput', 'laserPlanningSearchInput', 'globalPlanningSearchInput'].forEach(id => {
@@ -23081,12 +23166,15 @@ function renderKpis() {
   const signature = tiles.map(tile => tile.key).join('|');
   if (grid.dataset.tiles !== signature) {
     grid.dataset.tiles = signature;
-    grid.innerHTML = tiles.map(tile => `<div class="kpi" data-kpi="${tile.key}"><div class="label"></div><div class="value" id="${tile.id}"></div><div class="hint"></div></div>`).join('');
+    grid.innerHTML = tiles.map(tile => `<div class="kpi" data-kpi="${tile.key}"><div class="label"><span></span><span class="kpi-suite"></span></div><div class="value" id="${tile.id}"></div><div class="hint"></div></div>`).join('');
   }
   tiles.forEach(tile => {
     const card = grid.querySelector(`[data-kpi="${tile.key}"]`);
     if (!card) return;
-    poserTexte(card.querySelector('.label'), tile.label);
+    // (le premier mot reste seul quand la ligne manque de place : l onglet dit le reste)
+    const [mot, ...suite] = tile.label.split(' ');
+    poserTexte(card.querySelector('.label span'), mot);
+    poserTexte(card.querySelector('.kpi-suite'), suite.length ? ` ${suite.join(' ')}` : '');
     poserTexte(card.querySelector('.value'), tile.value);
     const hint = card.querySelector('.hint');
     poserTexte(hint, tile.hint);
@@ -24704,7 +24792,7 @@ function lpDefilerArreter() {
 }
 
 document.addEventListener('keydown', ev => {
-  if (ev.key === 'Escape' && lpEtat.choisi && !lpEtat.enCours && !document.querySelector('.qb-overlay.open, #posOverlay.open')) {
+  if (ev.key === 'Escape' && lpEtat.choisi && !lpEtat.enCours && !document.querySelector('#quickBookOverlay:not(.hidden), #posOverlay:not(.hidden)')) {
     ev.preventDefault();
     lpAnnuler();
   }
@@ -24919,12 +25007,13 @@ function getStaffReservationMoments(reservations, jour = state.currentDate) {
   poser(board.closing, 'closing');
   poser(board.done, 'done');
   poser(board.absent, 'absent');
-  // Encaisser ne termine aucune activité. Seules les coches du programme
-  // permettent de ranger un dossier payé parmi les visites terminées.
+  // Encaisser ne termine aucune activité : un groupe qui a payé avant de jouer reste
+  // sur place. Sa visite finie (l heure passée, ou les coches du programme), il est
+  // parti : le soir, le tableau disait 5 sur place quand un seul groupe restait.
   reservations.forEach(r => {
     const moment = moments.get(String(r.id));
     if (r.status === 'paid' && moment && moment.etat !== 'absent') {
-      moment.etat = groupeToutFait(r) ? 'done' : 'onsite';
+      moment.etat = moment.etat === 'done' || groupeToutFait(r) ? 'done' : 'onsite';
       moment.late = false;
     }
   });
@@ -25714,7 +25803,10 @@ function rendreLaListe() {
   let filtered = res;
   if (state.searchTerm) {
     const q = state.searchTerm.toLowerCase();
-    filtered = res.filter(r => r.name.toLowerCase().includes(q) || (r.phone || '').includes(q) || getReservationLabel(r).toLowerCase().includes(q));
+    const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;
+    filtered = trouves
+      ? res.filter(r => trouves.has(r.id))
+      : res.filter(r => r.name.toLowerCase().includes(q) || (r.phone || '').includes(q) || getReservationLabel(r).toLowerCase().includes(q));
   }
   filtered = filterReservationsForStaff(filtered, state.staffStatusFilter);
   const tableTitle = document.getElementById('tableTitleText');
@@ -26137,6 +26229,7 @@ function editRes(id, ev) {
 function openPos(id) {
   posPriceEditOpen = false;
   plisRetardOuverts.clear();
+  editContactOuvert = false;
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -26674,6 +26767,7 @@ function ficheEtat(r, moment, droits) {
       ${jamaisPointe ? '<p class="fx-moment-suite">Jamais pointé arrivé : le groupe n’est peut-être pas venu.</p>' : ''}
       ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
       ${renderGroupeEncaisseAbsence(r)}
+      ${droits.annuler && r.status !== 'cancelled' ? `<div class="fx-annuler-rang"><button type="button" class="fx-annuler" onclick="cancelRes(${r.id}, event)">Annuler la réservation</button></div>` : ''}
     </section>`;
 }
 
@@ -29016,6 +29110,13 @@ async function saveDossierLaserUnit(unitKey, unplace = false) {
   }
 }
 
+// LE CONTACT REPLIE (2026-11-02, audit joue sur la vraie console : Modifier faisait
+// 1 347 px de contenu pour 523 px visibles). Le telephone, l e-mail et l occasion se
+// changent rarement au comptoir : ils attendent dans un pli. Il garde son etat d un
+// rendu a l autre ; une fiche qui s ouvre repart replie (openPos), et un e-mail
+// invalide le rouvre (le navigateur ne sait pas montrer un champ replie).
+let editContactOuvert = false;
+
 function renderPosEdit(r) {
   const e = state.editState;
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -29128,18 +29229,23 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <label class="lbl" for="editNameInput">Nom</label>
               <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
             </div>
-            <div class="fm-champ">
-              <label class="lbl" for="editPhoneInput">Téléphone</label>
-              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" oninput="setEditField('phone', this.value)" placeholder="Facultatif">
-            </div>
-            <div class="fm-champ">
-              <label class="lbl" for="editEmailInput">E-mail</label>
-              <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" autocomplete="off" placeholder="Facultatif" oninput="setEditField('email', this.value)">
-            </div>
-            <div class="fm-champ fm-occasion">
-              <span class="lbl" id="editOccasionLabel">Occasion</span>
-              <div class="dossier-options" role="group" aria-labelledby="editOccasionLabel">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${e.occasion === v ? ' active' : ''}" data-occasion="${v}" aria-pressed="${e.occasion === v}" onclick="setEditOccasion('${v}')">${mot}</button>`).join('')}</div>
-            </div>
+            <details class="fm-pli" id="editContactPli"${editContactOuvert ? ' open' : ''} ontoggle="editContactOuvert = this.open">
+              <summary>Téléphone, e-mail, occasion</summary>
+              <div class="fm-pli-corps">
+                <div class="fm-champ">
+                  <label class="lbl" for="editPhoneInput">Téléphone</label>
+                  <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" oninput="setEditField('phone', this.value)" placeholder="Facultatif">
+                </div>
+                <div class="fm-champ">
+                  <label class="lbl" for="editEmailInput">E-mail</label>
+                  <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" autocomplete="off" placeholder="Facultatif" oninput="setEditField('email', this.value)" oninvalid="document.getElementById('editContactPli').open = true">
+                </div>
+                <div class="fm-champ fm-occasion">
+                  <span class="lbl" id="editOccasionLabel">Occasion</span>
+                  <div class="dossier-options" role="group" aria-labelledby="editOccasionLabel">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${e.occasion === v ? ' active' : ''}" data-occasion="${v}" aria-pressed="${e.occasion === v}" onclick="setEditOccasion('${v}')">${mot}</button>`).join('')}</div>
+                </div>
+              </div>
+            </details>
             ${Number(r.companions) > 0 || Number(e.companions) > 0 ? `<div class="fm-champ fm-accompagnants">
               <label class="lbl" for="editCompanionsInput">Accompagnants</label>
               <div class="es-stepper staff-stepper fm-stepper">
@@ -29429,6 +29535,11 @@ async function saveEdit(e) {
     // la reservation est bien ecrite mais elle part en « à surveiller » : le
     // dire, sinon le staff repart en croyant son planning a jour.
     const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review';
+    // CE QUE LA MODIFICATION LAISSE A FAIRE (2026-11-02) : une partie de laser que
+    // le plan ne pose pas se place au planning ; une formule adaptee devient une
+    // visite cote serveur, sa ligne ne dit plus la formule.
+    const partiesAPlacer = partiesLaserAPlacer(payload.reservation) - partiesLaserAPlacer(previousReservation);
+    const devenueVisite = Boolean(previousReservation && previousReservation.formuleId) && !(payload.reservation && payload.reservation.formuleId);
     // LE DOSSIER AVAIT CHANGE PENDANT LA SAISIE : on dit ce qui a ete garde,
     // sinon la personne croit relire sa version et lit celle d un collegue.
     const pistesObtenues = (payload.reservation && payload.reservation.lanes) || [];
@@ -29440,10 +29551,15 @@ async function saveEdit(e) {
       ? `Réservation mise à jour, mais pas sur les pistes demandées : ${obtenues || 'aucune'} au lieu de ${voulues}. Le créneau ne les laissait pas libres.`
       : aVerifier
         ? 'Réservation mise à jour, mais le moteur n’a pas pu replacer ce créneau : elle passe en « à surveiller ».'
-        : 'Réservation mise à jour';
+        : payload.planNonRefait
+          ? `Réservation mise à jour, mais le planning n’a pas suivi : ${payload.planNonRefait}`
+          : partiesAPlacer > 0
+            ? `Réservation mise à jour : ${partiesAPlacer} partie${partiesAPlacer > 1 ? 's' : ''} de laser à placer au planning.`
+            : 'Réservation mise à jour';
+    const dit = devenueVisite ? `${constat.endsWith('.') ? constat : `${constat}.`} La formule devient une visite à la carte.` : constat;
     toast(payload.changeEntreTemps
-      ? `${constat.endsWith('.') ? constat : `${constat}.`} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.`
-      : constat);
+      ? `${dit.endsWith('.') ? dit : `${dit}.`} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.`
+      : dit);
   } catch (error) {
     if (error.conflit && error.reservation) {
       // Un collegue a change ce que la personne voulait changer. Rien n est
@@ -29465,6 +29581,10 @@ async function saveEdit(e) {
     const motif = error.message || 'Impossible de mettre à jour la réservation.';
     failEdit(`${jourChange ? `Pas de déplacement au ${jourLong} : ${motif}` : motif} Rien n’a été enregistré.`);
   }
+}
+
+function partiesLaserAPlacer(r) {
+  return r ? new Set(getPendingLaserPassesForReservation(r).map(unit => Number(unit.countIndex) || 1)).size : 0;
 }
 
 function setStatus(id, st) {
@@ -29683,7 +29803,9 @@ async function enregistrerCompteArrivee() {
     const pistesChangees = envoi.requiresLanes && pistes !== (r.lanes || []).join(', ');
     const constat = fait.validationStatus === 'staff_review'
       ? `${nom} : ${fait.pax} personnes, mais le moteur n’a pas pu replacer le groupe : il passe en « à surveiller ».`
-      : `${nom} : ${fait.pax} personnes${pistesChangees ? `, pistes ${pistes}` : ''}${prixDossierConnu(fait) ? `, ${formatMoneyCentimes(fait.price)}` : ''}.`;
+      : payload.planNonRefait
+        ? `${nom} : ${fait.pax} personnes, mais le planning n’a pas suivi : ${payload.planNonRefait}`
+        : `${nom} : ${fait.pax} personnes${pistesChangees ? `, pistes ${pistes}` : ''}${prixDossierConnu(fait) ? `, ${formatMoneyCentimes(fait.price)}` : ''}.`;
     if (compteArrivee().id === id) fermerCompteArrivee();
     toast(payload.changeEntreTemps ? `${constat} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.` : constat);
   } catch (error) {
@@ -29820,7 +29942,9 @@ function isValidEmail(value) {
 
 function createQuickBookState(prefill = {}) {
   return {
-    name: prefill.name || '',
+    // (nomTape : un nom cherche sur le tableau, « Réserver pour Dupont ». Il se
+    // corrige dans son champ, il n impose pas le client comme une fiche.)
+    name: prefill.name || prefill.nomTape || '',
     phone: prefill.phone ? normalizePhoneInput(prefill.phone) : '+32 ',
     email: prefill.email || '',
     notes: prefill.notes || '',
@@ -29850,7 +29974,14 @@ function createQuickBookState(prefill = {}) {
     unlocked: {},
     moreOpen: false,
     error: '',
+    // « Créer · Carte » : le moyen a encaisser des que le dossier existe
+    // (rvCreerEtEncaisser). Le champ dormait depuis le premier commit, ecrit
+    // ici et lu nulle part : la fenetre n a jamais su encaisser.
     payNow: false,
+    // L HEURE QUI TIENT (rvProposerHeure) : l heure vient de la fenetre, pas
+    // d un choix. heureVoulue : celle que le tableau a demandee.
+    heureProposee: false,
+    heureVoulue: '',
     submitting: false,
     // LA FENETRE RESERVER (v5, 2026-10-08). Chaque activite a son heure : la
     // premiere ligne porte l heure d arrivee (startTime), les suivantes une
@@ -29895,9 +30026,14 @@ function openQuickBook(prefill = {}) {
     if (schedule) {
       const defaultStart = quickBookState.date === todayStr() ? Math.max(schedule.open, roundUpHalfHour(currentTimeDecimal())) : schedule.open;
       quickBookState.startTime = numToTime(defaultStart);
+      quickBookState.heureProposee = true;
     }
+  } else if (prefill.heureSouhaitee) {
+    quickBookState.heureVoulue = quickBookState.startTime;
+    quickBookState.heureProposee = true;
   }
   syncQuickBookDuration();
+  rvProposerHeure();
   reconcileQuickLaneSelection();
   const overlay = document.getElementById('quickBookOverlay');
   if (overlay && !overlay.dataset.rvEcoute) {
@@ -29918,6 +30054,37 @@ function openQuickBook(prefill = {}) {
       if (!quickBookState?.submitting) closeQuickBook();
     });
   }
+}
+
+// RESERVER DEPUIS LE TABLEAU (2026-11-02, Movsar : « tout doit être interconnecté
+// pour simplifier à mort tout »). Le bandeau et les cases d heure du tableau, et
+// « Réserver pour Dupont » sous une recherche sans resultat, ouvrent Reserver par
+// cette seule porte, au jour affiche. Sans heure, la fenetre propose celle qui
+// tient (rvProposerHeure). Avec une heure, c est un souhait : elle s y ouvre si
+// elle tient, sinon sur la plus proche, et le dit. Une heure deja passee reste un
+// choix : on note un groupe deja venu, comme depuis une case du planning.
+// Le laser garde sa porte, openQuickBookForLaserSession : son heure est celle
+// d un depart, il ne se deplace pas.
+function reserverAuComptoir({ type = '', startTime = '', pax = 0, name = '' } = {}) {
+  const lue = /^(\d{1,2}):(\d{2})$/.exec(String(startTime || '').trim());
+  const heure = lue ? `${lue[1].padStart(2, '0')}:${lue[2]}` : '';
+  const joueurs = Math.min(240, Math.max(0, Math.trunc(Number(pax) || 0)));
+  const nomTape = String(name || '').trim().slice(0, 120);
+  const laser = type === 'laser';
+  if (laser && heure) {
+    openQuickBookForLaserSession(timeToNum(heure), joueurs || undefined);
+    if (quickBookState && joueurs) setQuickPax(joueurs);
+    if (quickBookState && nomTape) { quickBookState.name = nomTape; renderQuickBook(); }
+    return;
+  }
+  openQuickBook({
+    date: state.currentDate,
+    ...(type ? { type } : {}),
+    ...(laser ? { duration: 0.5, totalDuration: 0.5 } : {}),
+    ...(heure ? { startTime: heure, heureSouhaitee: !rvHeurePassee(state.currentDate, heure) } : {}),
+    ...(joueurs ? { pax: joueurs } : {}),
+    ...(nomTape ? { nomTape } : {}),
+  });
 }
 
 function quickFromCell(lane, startTime) {
@@ -30338,6 +30505,8 @@ function patchQuickBookPaxDerived() {
   if (!overlay || !overlay.querySelector('.qb-modal.rv')) return;
   // v5 : chaque zone se repeint si elle a change ; celle qui tient le champ
   // qu on tape attend qu il rende la main (rvPoser). Le plan du serveur suit.
+  syncQuickBookDuration();
+  rvProposerHeure();
   rvRepeindre({ sauf: ['rvJoueursSaisie'] });
   patchQuickBookStatusLine(overlay);
   rvPlanifierSimulation();
@@ -31003,11 +31172,116 @@ function getQuickBookAvailableSlots() {
   return slots;
 }
 
+// L HEURE QUI TIENT (2026-11-02, audit joue sur la vraie console). A 15:10, un
+// client sans reservation veut une piste pour 6 : « Réserver » s ouvrait sur
+// 15:30 (la demi-heure suivante, sans rien regarder), en rouge « impossible »,
+// quand le tableau disait « Pistes 4 libres » et que 15:00 tenait. Le jour meme,
+// une heure que personne n a choisie suit ce que le centre peut servir : la plus
+// proche de maintenant (ou de l heure demandee par le tableau) ou tout tient pour
+// CETTE activite et CE nombre de joueurs, sur la liste des creneaux proposes
+// (getQuickBookAvailableSlots). Elle se recalcule quand le groupe ou l activite
+// change, jusqu a ce qu une heure soit choisie a la main. A 15:25 c est 15:30,
+// pas 15:00 : une heure payee ne perd pas 25 minutes pour etre « la premiere ».
+// Une partie de laser commencee ne se rejoint pas : le creneau en cours ne vaut
+// que pour une piste.
+function rvHeuresQuiTiennent() {
+  const s = quickBookState;
+  const maintenant = s.date === todayStr() ? currentTimeDecimal() : null;
+  const laserDabord = rvActivites()[0] === 'laser_game';
+  return getQuickBookAvailableSlots().map((slot) => slot.time)
+    .filter((h) => !(laserDabord && maintenant !== null && timeToNum(h) <= maintenant + 1e-9));
+}
+
+// (a egalite, la plus tardive : a 15:15, personne n a deja perdu son quart d heure)
+function rvHeureLaPlusProche(heures, reference) {
+  let meilleure = '';
+  let ecart = Infinity;
+  [...heures].sort((a, b) => timeToNum(a) - timeToNum(b)).forEach((h) => {
+    const e = Math.abs(timeToNum(h) - reference);
+    if (e <= ecart + 1e-9) { meilleure = h; ecart = e; }
+  });
+  return meilleure;
+}
+
+function rvPropositionActive(s = quickBookState) {
+  return Boolean(s && s.heureProposee && !s.lockStartTime && s.date === todayStr());
+}
+
+function rvReferenceDeLHeure(s = quickBookState) {
+  return s.heureVoulue ? timeToNum(s.heureVoulue) : currentTimeDecimal();
+}
+
+function rvPoserHeureProposee(heure) {
+  const s = quickBookState;
+  if (!heure || heure === s.startTime) return false;
+  s.startTime = heure;
+  s.forcer = false;
+  s.error = '';
+  reconcileQuickLaneSelection();
+  return true;
+}
+
+// Rien ne se recalcule tant que ce dont l heure depend n a pas bouge : la cle ne
+// compte ni l heure, ni le client, ni le prix.
+function rvProposerHeure() {
+  const s = quickBookState;
+  if (!rvPropositionActive(s)) return;
+  const cle = JSON.stringify([s.date, rvPlancherDuJour(s.date), s.pax, s.type, s.formuleId, s.activityId, s.duration, s.totalDuration, s.visit, s.ordre, s.pistesNombre]);
+  if (s.cleProposition === cle) return;
+  s.cleProposition = cle;
+  s.heureArretee = false;
+  rvPoserHeureProposee(rvHeureLaPlusProche(rvHeuresQuiTiennent(), rvReferenceDeLHeure(s)));
+}
+
+// LE PLANNING A LE DERNIER MOT. L estimation de ce poste ne voit pas tout (l arene
+// d une visite, une reservation en ligne en cours) : si le serveur refuse l heure
+// proposee, il a deja dit ou tout tient (rvChargerCandidats). La fenetre y va, une
+// fois par composition, sans passer par un rouge qui n apprendrait rien. Tant que
+// la reponse n est pas la, elle dit qu elle cherche (rvHeureEnRecherche). Si aucune
+// heure ne tient, le refus s affiche, avec ses vraies raisons.
+// UNE HEURE DITE POSSIBLE S ARRETE LA (heureArretee, posee par rvSimuler) : le client
+// l a entendue. Si un autre poste la prend, la fenetre ne change pas 15:30 en 16:30
+// dans le dos de l accueil, ou Entree creerait une heure que personne n a dite : le
+// refus s affiche, avec ses sorties.
+function rvRefusATraiter(s = quickBookState) {
+  const plan = rvPlanCourant();
+  return Boolean(plan && !plan.disponible && rvPropositionActive(s) && !s.heureArretee && !s.forcer && rvResas.length < 2);
+}
+
+function rvHeureEnRecherche() {
+  const s = quickBookState;
+  if (!rvRefusATraiter(s)) return false;
+  const c = s.candidats;
+  return !(c && c.base === s.cleCourante && (c.etat === 'ok' || c.etat === 'erreur' || c.etat === 'local'));
+}
+
+// Les heures ou le planning dit que tout tient. Jamais une heure deja passee : une
+// sortie se joue maintenant ou plus tard.
+function rvHeuresDuPlanning(c, s) {
+  return [...c.resultats.values()].filter((r) => r.statut !== 'ko' && r.heure !== s.startTime && !rvHeurePassee(s.date, r.heure));
+}
+
+function rvSuivreLePlanning() {
+  const s = quickBookState;
+  if (!rvRefusATraiter(s)) return false;
+  const c = s.candidats;
+  const ids = rvActivites();
+  if (!c || c.etat !== 'ok' || c.base !== s.cleCourante || c.id !== ids[0] || c.partie !== 0) return false;
+  const maintenant = currentTimeDecimal();
+  const bonnes = rvHeuresDuPlanning(c, s).map((r) => r.heure)
+    .filter((h) => !(ids[0] === 'laser_game' && timeToNum(h) <= maintenant + 1e-9));
+  s.heureArretee = true;
+  if (!rvPoserHeureProposee(rvHeureLaPlusProche(bonnes, rvReferenceDeLHeure(s)))) return false;
+  renderQuickBook();
+  return true;
+}
+
 function setQuickStartTime(time) {
   if (!quickBookState) return;
   if (quickBookState.lockStartTime && time !== quickBookState.startTime) return;
   quickBookState.error = '';
   quickBookState.startTime = time;
+  quickBookState.heureProposee = false;
   renderQuickBook();
 }
 
@@ -32357,7 +32631,7 @@ function rvAvertissement() {
 // conflit nomme l activite quand la composition n en a qu une.
 function rvRefusDuPlan() {
   const plan = rvPlanCourant();
-  if (!plan || plan.disponible) return null;
+  if (!plan || plan.disponible || rvHeureEnRecherche()) return null;
   const s = quickBookState;
   const ids = rvActivites();
   const conflits = Array.isArray(plan.conflits) ? plan.conflits.filter((c) => c && c.message) : [];
@@ -32406,6 +32680,10 @@ function rvVerdictHtml() {
     return morceaux.join('');
   }
   const ids = rvActivites();
+  if (rvHeureEnRecherche()) {
+    morceaux.push(`<div class="rv-vc is-calcul"><span class="rv-ic">${RV_I.horloge}</span><span><b>Le planning cherche l’heure qui tient</b></span></div>`);
+    return morceaux.join('');
+  }
   if (!plan.disponible) {
     const refus = rvRefusDuPlan();
     morceaux.push(`<div class="rv-verdict" id="rvRefus"><div class="rv-verdict-h"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(refus.titre)}</b><span>${escapeHtml(refus.raison)}</span></span></div>
@@ -32438,7 +32716,10 @@ function rvVerdictHtml() {
   const premiere = ids[0] || '';
   const autresHeures = premiere && !s.lockStartTime ? `<button type="button" class="rv-autres" id="rvAutresHeures" onclick="rvOuvrirHorloge('${escapeJsString(premiere)}',0)">Autres heures ›</button>` : '';
   morceaux.push(`<div class="rv-vc${ecarts.length ? ' is-att' : ''}"><span class="rv-ic">${ecarts.length ? RV_I.ko : RV_I.ok}</span><span><b>${titre}</b> <span class="rv-sp">· ${sous}</span></span>${autresHeures}</div>`);
-  if (ecarts.length || programme) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}${programme ? `<li class="is-info">${escapeHtml(programme)}</li>` : ''}</ul>`);
+  // Le tableau a demande une heure qui ne tient pas : la fenetre le dit, sinon
+  // on croit reserver 15:30 et on cree 16:00.
+  const deplacee = rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime ? `${s.heureVoulue} ne tient pas. Voici l’heure la plus proche.` : '';
+  if (ecarts.length || programme || deplacee) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}${deplacee ? `<li class="is-info" data-rv-deplacee>${escapeHtml(deplacee)}</li>` : ''}${programme ? `<li class="is-info">${escapeHtml(programme)}</li>` : ''}</ul>`);
   return morceaux.join('');
 }
 
@@ -32470,8 +32751,7 @@ function rvAlternativesHtml() {
     return '<div class="rv-alts"><span>Le planning cherche les heures où tout tient…</span></div>';
   }
   const depart = timeToNum(s.startTime || '00:00');
-  // Jamais une heure deja passee : une sortie se joue maintenant ou plus tard.
-  const bonnes = [...c.resultats.values()].filter((r) => r.statut !== 'ko' && r.heure !== s.startTime && !rvHeurePassee(s.date, r.heure))
+  const bonnes = rvHeuresDuPlanning(c, s)
     .sort((a, b) => (Math.abs(timeToNum(a.heure) - depart) - Math.abs(timeToNum(b.heure) - depart)) || ((a.statut === 'ok' ? 0 : 1) - (b.statut === 'ok' ? 0 : 1)))
     .slice(0, 3);
   if (!bonnes.length) return '<div class="rv-alts"><span>Aucune autre heure ne tient ce jour-là : changez le nombre de joueurs, une activité, ou la date.</span></div>';
@@ -32740,6 +33020,20 @@ function rvAuComptoir(s = quickBookState) {
   return ecart <= 1 && ecart >= -0.5;
 }
 
+// UN CLIENT DEVANT LE COMPTOIR EST ARRIVE (2026-11-02, audit joue sur la vraie
+// console). Cree a 15:10 pour 15:00, un groupe naissait « +10 min » : le compteur
+// En retard montait de 7 a 8 et il restait a pointer « Arrivé » un client qu on
+// avait devant soi. Une heure deja atteinte, ou dans la demi-heure, nait arrivee,
+// sans geste de plus. Une demande sur mesure traitee par telephone n a personne au
+// comptoir ; sans le droit de pointer, le dossier nait attendu, comme avant
+// (le serveur redit cette regle du droit, lib/reserver-fenetre.js).
+const RV_ARRIVE_SOUS = 0.5;
+function rvNaitArrive(s = quickBookState) {
+  if (!s || s.date !== todayStr() || !s.startTime || s.sourceRequestId) return false;
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['reservations.status', 'reservations.edit'])) return false;
+  return timeToNum(s.startTime) - currentTimeDecimal() <= RV_ARRIVE_SOUS + 1e-9;
+}
+
 // Ce que tient le champ unique : 'tel' (des chiffres) ou 'nom'. Pose a la
 // frappe ; avant, le telephone deja connu le dit.
 function rvRoleComptoir(s = quickBookState) {
@@ -32947,6 +33241,7 @@ function rvPiedHtml() {
   const total = custom != null ? custom : rvTotalReference();
   const totalLot = rvResas.length > 1 ? rvTotalDuLot() : null;
   const refuse = Boolean(plan && !plan.disponible);
+  const cherche = rvHeureEnRecherche();
   const vide = !rvActivites().length && rvResas.length < 2;
   const bloque = (refuse && !s.forcer && rvResas.length < 2) || vide;
   const refus = refuse ? rvRefusDuPlan() : null;
@@ -32954,6 +33249,7 @@ function rvPiedHtml() {
   let texte = '<b>Le planning vérifie</b>';
   if (vide) { etat = 'calcul'; texte = s.type === 'formule' ? '<b>Choisissez une formule</b>' : '<b>Ajoutez une activité</b>'; }
   else if (rvAvertissement() && !plan) { etat = 'att'; texte = `<b>${escapeHtml(rvAvertissement())}</b>`; }
+  else if (cherche) { etat = 'calcul'; texte = '<b>Le planning cherche l’heure qui tient</b>'; }
   else if (refuse) { etat = 'ko'; texte = s.forcer ? '<b>Créé à placer</b>, conflit écrit dans la note' : `<b>${escapeHtml(refus ? refus.court : 'Impossible tel quel')}</b>`; }
   else if (plan) {
     const ecart = rvEcartsDuPlan(plan).length > 0;
@@ -32969,10 +33265,43 @@ function rvPiedHtml() {
   // Bloque, le bouton dit ou regarder : « une sortie à gauche » a la
   // tablette, « plus haut » au telephone (le CSS montre l une ou l autre).
   const versSorties = '<span>Choisir une sortie <span class="rv-ou is-gauche">à gauche</span><span class="rv-ou is-haut">plus haut</span></span>';
-  const libelle = s.submitting ? 'Création…' : rvResas.length > 1 ? `Créer les ${rvResas.length}${heure}` : refuse && s.forcer ? `Créer quand même${heure}` : vide ? (s.type === 'formule' ? 'Choisissez une formule' : 'Ajoutez une activité') : bloque ? versSorties : `Créer${heure}`;
+  const libelle = s.submitting ? 'Création…' : rvResas.length > 1 ? `Créer les ${rvResas.length}${heure}` : refuse && s.forcer ? `Créer quand même${heure}` : vide ? (s.type === 'formule' ? 'Choisissez une formule' : 'Ajoutez une activité') : cherche ? 'Recherche de l’heure…' : bloque ? versSorties : `Créer${heure}`;
   const cls = `rv-creer${refuse && s.forcer ? ' is-forcer' : bloque ? ' is-bloque' : ''}`;
   return `<div class="rv-etat-pied is-${etat}"><i class="rv-d" aria-hidden="true"></i><span>${texte}</span><span class="rv-tot" id="rvTotalPied">${escapeHtml(formatMoney(totalLot != null ? totalLot : total))}</span></div>
+    ${rvEncaisserHtml()}
     <div class="rv-boutons"><button type="button" class="${cls}" id="rvCreer" ${s.submitting ? 'aria-disabled="true" aria-busy="true"' : ''} onclick="saveQuickBook()">${libelle}${s.submitting || bloque ? '' : '<kbd>Entrée</kbd>'}</button><button type="button" class="rv-encore" id="rvEncore" aria-label="Ajouter une autre réservation pour ce client" onclick="rvAjouterResa()">${RV_I.plus}Résa</button></div>`;
+}
+
+// CREER ET ENCAISSER D UN COUP (2026-11-02). Un client de passage paie en
+// commandant : creer, retrouver sa ligne et toucher « Carte » coutait trois gestes
+// de plus. Les deux boutons restent discrets (le seul bouton plein du pied est
+// « Créer ») et ne se montrent que si encaisser a un sens : aujourd hui (le
+// paiement se fait sur place : paye veut dire arrive), un seul dossier, un plan
+// qui tient, un prix connu (la regle de la feuille : « Prix à voir » ne s encaisse
+// pas). Ils sont au-dessus de « Créer » : s ils s en vont, « Créer » ne bouge pas.
+function rvPeutEncaisserEnCreant() {
+  const s = quickBookState;
+  if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || !rvActivites().length) return false;
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.markPaid')) return false;
+  const plan = rvPlanCourant();
+  if (plan && !plan.disponible) return false;
+  if (getQuickBookCustomPrice() != null) return true;
+  if (plan && Array.isArray(plan.lignesPrix) && plan.lignesPrix.some((ligne) => ligne && ligne.prix == null)) return false;
+  return Number(rvTotalReference()) > 0;
+}
+
+function rvEncaisserHtml() {
+  if (!rvPeutEncaisserEnCreant()) return '';
+  const occupe = quickBookState.submitting ? ' aria-disabled="true"' : '';
+  return `<div class="rv-encaisser" role="group" aria-label="Créer et encaisser">${GROUPE_MOYENS.map((m, i) => `<button type="button" class="rv-creer-paye" id="rvCreerPaye${i}" data-moyen="${escapeHtml(m.valeur)}"${occupe} onclick="rvCreerEtEncaisser(this.dataset.moyen)">Créer · ${escapeHtml(m.mot)}</button>`).join('')}</div>`;
+}
+
+// Le moyen voyage dans l etat le temps d un envoi (saveQuickBook le reprend).
+function rvCreerEtEncaisser(moyen) {
+  const s = quickBookState;
+  if (!s || s.submitting || !GROUPE_MOYENS.some((m) => m.valeur === moyen)) return undefined;
+  s.payNow = moyen;
+  return saveQuickBook();
 }
 
 function rvTotalDuLot() {
@@ -33091,6 +33420,7 @@ async function rvChargerCandidats(id, partie) {
     if (!quickBookState || seq !== rvCandidatsSeq) return;
     quickBookState.candidats = { base: cle, id, partie, etat: 'erreur', resultats: new Map(), message: (error && error.message) || 'réseau' };
   }
+  if (rvSuivreLePlanning()) return;
   rvRepeindre();
 }
 
@@ -33363,6 +33693,7 @@ function renderQuickBookInner() {
   const s = quickBookState;
   const overlay = document.getElementById('quickBookOverlay');
   syncQuickBookDuration();
+  rvProposerHeure();
   overlay.classList.remove('hidden');
   if (overlay.className !== 'qb-overlay is-rv') overlay.className = 'qb-overlay is-rv';
   if (!overlay.querySelector(':scope > .qb-modal.rv')) {
@@ -33408,6 +33739,8 @@ function rvChoisirHeure(id, cible, heure) {
     if (!valeur) return;
     if (s.lockStartTime && valeur !== s.startTime) return;
     s.startTime = valeur;
+    // Une heure choisie a la main ne bouge plus toute seule.
+    s.heureProposee = false;
   } else if (valeur) {
     s.heures = { ...(s.heures || {}), [id]: valeur };
   } else if (s.heures) {
@@ -33981,7 +34314,7 @@ function rvConstruire({ simulation = false } = {}) {
     totalDuration,
     lanes,
     pax: Number(s.pax),
-    status: 'pending',
+    status: !simulation && rvNaitArrive(s) ? 'arrived' : 'pending',
     basePrice,
     price,
     type: adaptee ? 'formule' : s.type,
@@ -34126,11 +34459,13 @@ async function rvSimuler() {
     quickBookState.plan = { cle, cleLot, etat: 'erreur', resultat: null, message: (error && error.message) || 'plan indisponible' };
   }
   const plan = rvPlanCourant();
+  if (plan && plan.disponible) quickBookState.heureArretee = true;
   // Un refus : on cherche tout de suite les heures ou TOUT tient.
   if (plan && !plan.disponible) {
     const premiere = rvActivites()[0];
     if (premiere) rvChargerCandidats(premiere, 0);
   }
+  if (rvSuivreLePlanning()) return;
   rvRepeindre({ sauf: ['rvJoueursSaisie'] });
 }
 
@@ -34451,6 +34786,8 @@ function rvApresCreation(reservations) {
     upsertReservationInState(reservation);
     markReservationMutation(reservation.id, reservation, ['status', 'startTime', 'lanes']);
   });
+  // Une reservation prise il y a dix secondes doit se trouver.
+  if (typeof window.pv2ResSearchInvalidate === 'function') window.pv2ResSearchInvalidate();
   save();
 }
 
@@ -34508,6 +34845,10 @@ async function saveQuickBook() {
   // (croix, fond, changement de page), la reponse arrive quand meme et ne lit
   // jamais un etat remis a null.
   const etat = quickBookState;
+  // Le moyen de « Créer · Carte » ne vaut que pour cet envoi : apres un refus, un
+  // « Créer » tout court n encaisse rien.
+  const moyen = etat.payNow || '';
+  etat.payNow = false;
   // Le lot affiche au moment du clic : la reponse ne touche la fenetre que si
   // elle le montre encore (openQuickBook et closeQuickBook en posent un autre).
   const lotSauve = rvResas;
@@ -34619,7 +34960,14 @@ async function saveQuickBook() {
     renderStaff();
     const message = creees.length > 1
       ? `${creees.length} réservations créées${aPlacer ? `, dont ${aPlacer} à placer` : ''}`
-      : aPlacer ? 'Réservation créée à placer : le conflit est écrit dans sa note' : 'Réservation créée';
+      : aPlacer ? 'Réservation créée à placer : le conflit est écrit dans sa note'
+        : creees[0] && creees[0].status === 'arrived' ? 'Réservation créée · Arrivé' : 'Réservation créée';
+    // « Créer · Carte » : le dossier existe, l encaissement suit le chemin de la
+    // fiche (encaisserReservation) : son droit, son journal et son toast « Annuler ».
+    // S il echoue, il le dit, et le groupe reste cree et arrive. Paye veut dire
+    // arrive : le statut paye vaut pour les deux.
+    const encaisser = Boolean(moyen && payload.reservation && !aPlacer);
+    if (encaisser) encaisserReservation(payload.reservation.id, moyen);
     if (demandeOrigine) {
       // La demande est traitee : la reservation existe. Le classement ne
       // doit jamais voler le message de ce qui compte (la reservation),
@@ -34632,7 +34980,7 @@ async function saveQuickBook() {
         reservationDate: payload.reservation && payload.reservation.date,
       });
       toast(classee ? `${message} · demande classée « Traitée »` : `${message} · la demande reste à traiter`);
-    } else {
+    } else if (!encaisser) {
       toast(message);
     }
   } catch (error) {

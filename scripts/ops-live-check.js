@@ -14,7 +14,7 @@
 // une horloge controlee : aucune attente reelle, aucun reseau, des verdicts
 // deterministes.
 //
-// LES QUATORZE PROPRIETES :
+// LES DIX-SEPT PROPRIETES :
 //
 //   [A] LA PREMIERE LECTURE NE RECHARGE PAS. La page vient d etre chargee : la
 //       recharger aussitot serait un aller-retour complet pour rien, a chaque
@@ -87,6 +87,17 @@
 //       repond sans empreinte ne voit rien bouger : le croire vivant figerait
 //       le planning 15 s (refresh-invisible-check l a pris en defaut).
 //
+//   [O] LE JOUR MEME, UNE SECONDE, UN TOUR SUR DEUX REDUIT. Movsar, 2026-11-02 : « que
+//       tout se fasse en instantane sur plein d appareils simultanement ». Sur une page
+//       qui montre la journee d aujourd hui, le pouls bat chaque seconde ; un tour sur
+//       deux ne lit que la journee et les pistes, le reste garde ses 2 s.
+//
+//   [P] UN PETIT POULS N EFFACE RIEN. Il ne dit rien des autres domaines : les oublier
+//       ferait prendre leur prochain changement pour une nouvelle base, donc le perdre.
+//
+//   [Q] DEUX LECTURES RATEES DE SUITE, L ECRAN LE SAIT. Il le dit sous l heure : un
+//       ecran qui ne recoit plus rien ressemble a un ecran juste.
+//
 // CONTRE-EPREUVES PAR MUTATION, compilees en memoire (crochet sur
 // Module.prototype._compile, le disque n est jamais touche).
 //
@@ -134,8 +145,8 @@ function chargerModule() {
 // Rien n attend reellement ; « avancer d un tour » veut dire « executer le
 // prochain rendez-vous programme », ce qui rend chaque verdict reproductible.
 // ---------------------------------------------------------------------------
-function banc({ empreintes = [], estActive = () => true, centres = null, refuser = null } = {}) {
-  const journal = { lectures: [], rechargements: 0, erreurs: 0, refus: 0, changes: [] };
+function banc({ empreintes = [], estActive = () => true, centres = null, refuser = null, estVif = null } = {}) {
+  const journal = { lectures: [], petits: [], rechargements: 0, erreurs: 0, refus: 0, changes: [] };
   const rendezVous = [];
   let identifiant = 0;
   let index = 0;
@@ -160,9 +171,11 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
   const synchro = creerSynchroLive({
     doc,
     estActive,
+    estVif: estVif || undefined,
     centreActuel: () => (centres ? centres() : 'libramont'),
-    lire: async (centre) => {
+    lire: async (centre, petit) => {
       journal.lectures.push(centre);
+      journal.petits.push(Boolean(petit));
       if (enAttente) {
         // Lecture volontairement lente : elle ne rend la main que sur ordre.
         await new Promise((resolve) => { enAttente.debloquer = resolve; });
@@ -172,6 +185,8 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
       if (valeur instanceof Error) throw valeur;
       // Une chaine : un serveur d avant les domaines (une seule empreinte).
       // Un objet : le pouls par domaine.
+      // { partiel: true, domaines } : le petit pouls, tel que le rend le serveur.
+      if (valeur && valeur.partiel) return { ok: true, ...valeur };
       return valeur && typeof valeur === 'object' ? { ok: true, domaines: valeur } : { ok: true, empreinte: valeur };
     },
     recharger: async (changes) => {
@@ -469,9 +484,115 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
   ok(!n2.synchro.vivant, '[N] arrete, il ne vit plus', `vivant ${n2.synchro.vivant}`);
 
   // =====================================================================
+  console.log('\n[O] le jour meme, une seconde, un tour sur deux reduit');
+  // =====================================================================
+  const JOUR = 'jour:2026-11-02';
+  const entier = (a, jour) => ({ reservations: a, pistes: 'p', [JOUR]: jour });
+  const petit = (jour) => ({ partiel: true, domaines: { pistes: 'p', [JOUR]: jour } });
+  const o = banc({ estVif: () => true, empreintes: [entier('r1', 'j1'), petit('j1'), entier('r1', 'j1'), petit('j1'), entier('r1', 'j1')] });
+  await o.demarrer();
+  ok(o.prochaineAttente === 1000, '[O] le prochain tour tombe a une seconde', String(o.prochaineAttente));
+  await o.tours(4);
+  ok(o.journal.petits.join(',') === 'false,true,false,true,false', '[O] la base est un pouls entier, puis un tour sur deux est reduit', o.journal.petits.join(','));
+  o.arreter();
+  const oSans = banc({ empreintes: [entier('r1', 'j1'), entier('r1', 'j1'), entier('r1', 'j1')] });
+  await oSans.demarrer();
+  await oSans.tours(2);
+  ok(oSans.prochaineAttente === 2000 && !oSans.journal.petits.includes(true), '[O] ailleurs, 2 s et toujours le pouls entier', `${oSans.prochaineAttente} ms`);
+  oSans.arreter();
+
+  // =====================================================================
+  console.log('\n[P] un petit pouls n efface rien');
+  // =====================================================================
+  const p = banc({ estVif: () => true, empreintes: [entier('r1', 'j1'), petit('j1'), entier('r2', 'j1')] });
+  await p.demarrer();
+  await p.tours(2);
+  ok(p.journal.rechargements === 1 && p.journal.changes[0].join(',') === 'reservations',
+    '[P] un domaine qui change apres un petit pouls se voit au pouls entier suivant', JSON.stringify(p.journal.changes));
+  p.arreter();
+  const p2 = banc({ estVif: () => true, empreintes: [entier('r1', 'j1'), petit('j2'), entier('r1', 'j2')] });
+  await p2.demarrer();
+  await p2.tours(2);
+  ok(p2.journal.rechargements === 1 && p2.journal.changes[0].join(',') === JOUR,
+    '[P] la journee qui change se voit au petit pouls, une fois', JSON.stringify(p2.journal.changes));
+  p2.arreter();
+
+  // =====================================================================
+  console.log('\n[Q] deux lectures ratees de suite, l ecran le sait');
+  // =====================================================================
+  const q = banc({ empreintes: ['e1', new Error('coupure'), new Error('coupure'), 'e1'] });
+  await q.demarrer();
+  await q.tour();
+  ok(!q.synchro.coupe, '[Q] une seule lecture ratee : rien a dire', String(q.synchro.coupe));
+  await q.tour();
+  ok(q.synchro.coupe, '[Q] deux de suite : coupe', String(q.synchro.coupe));
+  await q.tour();
+  ok(!q.synchro.coupe, '[Q] une lecture repasse : ce n est plus coupe', String(q.synchro.coupe));
+  q.arreter();
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [
+    {
+      nom: 'un petit pouls efface les autres domaines',
+      de: '        var retenir = function () { memoire = partiel ? Object.assign({}, memoire, nouveau) : nouveau; };',
+      vers: '        var retenir = function () { memoire = nouveau; };',
+      rejouer: async () => {
+        const m = banc({ estVif: () => true, empreintes: [{ reservations: 'r1', 'jour:x': 'j1' }, { partiel: true, domaines: { 'jour:x': 'j1' } }, { reservations: 'r2', 'jour:x': 'j1' }] });
+        await m.demarrer();
+        await m.tours(2);
+        const n = m.journal.rechargements;
+        m.arreter();
+        return n;
+      },
+      attendu: (n) => n === 1,
+      libelle: 'une demande ou un prix change entre deux petits pouls serait perdu pour de bon',
+    },
+    {
+      nom: 'tous les tours sont reduits',
+      de: '      var petit = vif && !dernierTourPetit && memoire !== null && centreMemorise === centre;',
+      vers: '      var petit = vif && memoire !== null && centreMemorise === centre;',
+      rejouer: async () => {
+        const m = banc({ estVif: () => true, empreintes: [{ a: '1' }, { a: '1' }, { a: '1' }, { a: '1' }] });
+        await m.demarrer();
+        await m.tours(3);
+        const liste = m.journal.petits.join(',');
+        m.arreter();
+        return liste;
+      },
+      attendu: (liste) => liste === 'false,true,false,true',
+      libelle: 'les demandes, les mails et les prix ne se reliraient plus jamais sur le planning',
+    },
+    {
+      nom: 'le jour meme ne bat plus plus vite',
+      de: '        cadence = vif ? cadenceVive : cadenceDeBase;',
+      vers: '        cadence = cadenceDeBase;',
+      rejouer: async () => {
+        const m = banc({ estVif: () => true, empreintes: [{ a: '1' }] });
+        await m.demarrer();
+        const ms = m.prochaineAttente;
+        m.arreter();
+        return ms;
+      },
+      attendu: (ms) => ms === 1000,
+      libelle: 'un geste mettrait deux fois plus de temps a arriver sur l autre ecran',
+    },
+    {
+      nom: 'une coupure ne se dit plus',
+      de: '        echecsDeSuite += 1;\n',
+      vers: '',
+      rejouer: async () => {
+        const m = banc({ empreintes: ['e1', new Error('coupure'), new Error('coupure'), 'e1'] });
+        await m.demarrer();
+        await m.tours(2);
+        const coupe = m.synchro.coupe;
+        m.arreter();
+        return coupe;
+      },
+      attendu: (coupe) => coupe === true,
+      libelle: 'un ecran qui ne recoit plus rien aurait l air juste',
+    },
     {
       nom: 'la comparaison d empreinte est retiree',
       de: '      return Object.prototype.hasOwnProperty.call(avant, nom) && avant[nom] !== apres[nom];',

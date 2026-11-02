@@ -1,7 +1,9 @@
 // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33 ; Movsar : « Oui, le compte »).
 //
-// « Arrivé » reste un geste ; il devient « Arrivé · 10 », et le toucher une
-// seconde fois ouvre « Ils sont : 10 [−] [+] ». Tranche par Movsar le 29/10 :
+// « Arrivé » reste un geste ; sur la feuille il devient « Ils sont 10 » (depuis
+// le grand tableau du 2026-11-02 ; « Arrivé · 10 » dans la fiche et pour qui ne
+// compte pas), et le toucher une seconde fois ouvre « Ils sont : 10 [−] [+] ».
+// Tranche par Movsar le 29/10 :
 // le second toucher ; le prix suit le compte, a la baisse aussi ; un forfait
 // par piste se compte comme dans Modifier ; seul qui peut modifier un dossier
 // compte. La console reelle (scripts/planning-v3-fixtures.js, le samedi « pic »
@@ -10,8 +12,8 @@
 // reserver-banc ou la journee de la fixture est semee (aucun reseau, aucune
 // base reelle, rien ne part).
 //   [A] « Arrivé » pointe en un geste (le PATCH ne porte que le statut) ; il
-//       devient « Arrivé · 10 », un bouton qui ouvre le compte, sur la feuille,
-//       au prochain depart laser et dans la fiche ;
+//       devient un bouton qui dit le nombre et ouvre le compte, sur la feuille
+//       (« Ils sont 10 »), au prochain depart laser et dans la fiche ;
 //   [B] le second toucher ouvre la bulle : « Ils sont 10 », comme a la
 //       reservation, le prix du dossier ; rien ne part a l ouverture ;
 //   [C] L ACTE FINAL, formule a la personne (Anniversaire Hugo, Formule 8,
@@ -24,8 +26,8 @@
 //       6 et 7) 7 -> 12, memes pistes, meme prix ; 17 sans piste libre a cote,
 //       la bulle le dit et rien ne part ; Famille Noel (piste 6, la 7 libre)
 //       4 -> 7, une piste de plus et son prix ;
-//   [F] le droit : le Staff bar voit « Arrivé · 8 » sans bouton, dans la
-//       feuille comme dans la fiche ; le serveur refuse son compte, et le
+//   [F] le droit : le Staff bar lit le nombre sans bouton, dans la feuille
+//       comme dans la fiche ; le serveur refuse son compte, et le
 //       compte d un groupe pas encore arrive ;
 //   [G] le meme calcul que Modifier : chaque prix envoye est celui que l onglet
 //       Modifier annonce pour ce nombre ;
@@ -151,6 +153,9 @@ function lireBulle() {
     petits, focus: document.activeElement && document.activeElement.getAttribute('data-compte-focus'),
   };
 }
+// Le nombre que dit le geste de la ligne (« Ils sont 10 », « Arrivé · 10 ») : la
+// regle est le nombre, le mot autour peut changer.
+const nombreDit = (texte) => Number((/(\d+)\s*$/.exec(String(texte || '')) || [])[1]);
 function lireLigne(id) {
   const tr = document.querySelector(`[data-gf-id="${id}"]`);
   if (!tr) return { absente: true };
@@ -158,7 +163,7 @@ function lireLigne(id) {
   const bouton = tr.querySelector('[data-compte-id]');
   return {
     bouton: bouton ? { tag: bouton.tagName, texte: txt(bouton), popup: bouton.getAttribute('aria-haspopup') } : null,
-    etat: txt(tr.querySelector('.gf-etat .gf-b.t-arr')),
+    etat: txt(tr.querySelector('.gf-etat .gf-gb--etat')),
     pers: txt(tr.querySelector('.gf-n b')),
     res: txt(tr.querySelector('.gf-n__res')),
     arriver: Boolean(tr.querySelector('[data-gf-arrive]')),
@@ -232,8 +237,8 @@ async function scenarioComptoir(browser) {
     const a = await page.evaluate(lireLigne, HUGO);
     ok(pointage.length === 1 && Object.keys(pointage[0]).filter((k) => !['id', 'centerId', 'baseUpdatedAt'].includes(k)).join() === 'status' && pointage[0].status === 'arrived' && enBase(HUGO).status === 'arrived',
       '[A] « Arrivé » pointe en un geste : un PATCH de statut seul, le groupe arrive en base', { pointage, base: enBase(HUGO).status });
-    ok(a.bouton && a.bouton.tag === 'BUTTON' && a.bouton.texte === 'Arrivé · 10' && a.bouton.popup === 'dialog' && !a.arriver,
-      '[A] feuille : le bouton devient « Arrivé · 10 », qui ouvre le compte', a);
+    ok(a.bouton && a.bouton.tag === 'BUTTON' && nombreDit(a.bouton.texte) === 10 && a.bouton.popup === 'dialog' && !a.arriver,
+      '[A] feuille : « Arrivé » devient un bouton qui dit 10 et ouvre le compte', a);
 
     // [B] le second toucher.
     const avantB = journal.length;
@@ -260,8 +265,8 @@ async function scenarioComptoir(browser) {
       '[C] le serveur trace « Compte à l’arrivée : 10 → 13 » a l auteur de sa session', noteC);
     ok(Boolean(planAvant) && baseC.heures === planAvant, '[C] les heures du groupe ne bougent pas', { avant: planAvant, apres: baseC.heures });
     const lc = await page.evaluate(lireLigne, HUGO);
-    ok(!c.bulle.ouverte && lc.pers === '13' && lc.res === '10 rés.' && lc.bouton && lc.bouton.texte === 'Arrivé · 13' && /13 personnes/.test(c.toast) && /364/.test(c.toast),
-      '[C] la bulle se ferme ; la feuille dit 13, « 10 rés. », « Arrivé · 13 » ; le toast dit 13 personnes et 364 €', { bulle: c.bulle, ligne: lc, toast: c.toast });
+    ok(!c.bulle.ouverte && lc.pers === '13' && lc.res === '10 rés.' && lc.bouton && nombreDit(lc.bouton.texte) === 13 && /13 personnes/.test(c.toast) && /364/.test(c.toast),
+      '[C] la bulle se ferme ; la feuille dit 13, « 10 rés. », et son bouton 13 ; le toast dit 13 personnes et 364 €', { bulle: c.bulle, ligne: lc, toast: c.toast });
     ok(oracle13.pax === 13 && Number(envoiC.price) === oracle13.prix, '[G] 13 : le prix envoye est celui que Modifier annonce', { modifier: oracle13, envoye: envoiC.price });
 
     // [D] moins nombreux : le prix suit.
@@ -362,8 +367,8 @@ async function scenarioComptoir(browser) {
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
     const ff = await page.evaluate(() => { const b = document.querySelector('#posOverlay .res-status-btn.arrived'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id') } : null; });
     await page.evaluate(() => closePos());
-    ok(sessionAvant && !fl.bouton && fl.etat === 'Arrivé · 8' && ff && ff.texte === 'Arrivé · 8' && !ff.compte,
-      '[F] Staff bar : « Arrivé · 8 » se lit, sans bouton de compte, dans la feuille et dans la fiche', { ligne: fl, fiche: ff });
+    ok(sessionAvant && !fl.bouton && nombreDit(fl.etat) === 8 && ff && nombreDit(ff.texte) === 8 && !ff.compte,
+      '[F] Staff bar : le nombre se lit, sans bouton de compte, dans la feuille et dans la fiche', { ligne: fl, fiche: ff });
     // Le serveur refuse son compte...
     const dernier = (d.envois[d.envois.length - 1]) || {};
     serveur.changerSession(B.sessionDuRole('staff-bar', { nom: 'Lucas' }));

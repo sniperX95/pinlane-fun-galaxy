@@ -11,7 +11,7 @@ async function scene(type, changed) {
   let center = 'libramont', finish, adopted = 0, rendered = 0;
   const row = { id: 21, date: '2026-10-10', startTime: '14:00', duration: 1, updatedAt: 'v1' };
   const ctx = vm.createContext({ state:{ currentDate:row.date, reservations:[row], staffAuthSession:{member:{id:1}} }, getCurrentStaffCenterId:()=>center,
-    getAvailabilityLaneCount:()=>8, getBowlingDurationForReservation:()=>1, validateSlotWindow:()=>({ok:true}),
+    getAvailabilityLaneCount:()=>8, getBowlingDurationForReservation:()=>1, getBowlingWindowsFromReservation:()=>[], validateSlotWindow:()=>({ok:true}),
     numToTime:()=> '18:00', showPlanningMoveNotice(){}, toast(){}, renderStaffData(){rendered++;}, save(){},
     upsertReservationInState(){adopted++;}, markReservationMutation(){}, clearReservationMutation(){},
     laserUnitInfo:()=>({unitKey:'1.1'}), checkManualLaserPassPlacement:()=>({ok:true}),

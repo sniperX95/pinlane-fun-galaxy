@@ -770,7 +770,7 @@ module.exports = async (req, res) => {
       const operationalRequest = { ...current, ...patch };
       if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
       const ops = shouldReplan
-        ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id) })
+        ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
         : {};
       if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
         === JSON.stringify((current.lanes || []).map(Number))) {
@@ -822,10 +822,17 @@ module.exports = async (req, res) => {
         ? await copierAuSecours(reservation, patch.status === 'cancelled' && current.status !== 'cancelled' ? 'annulee' : 'modifiee', current, session)
         : '';
       const avertissementsPatch = [auditPatch.warning, avertSecours].filter(Boolean);
+      // ENREGISTRE N EST PAS REPLANIFIE (2026-11-02). Le moteur a refuse : le dossier
+      // est ecrit, le planning garde l ancien plan (lib/database, opsPlan absent).
+      // « Réservation mise à jour » tout court etait alors un mensonge tranquille :
+      // la console lit ce motif et le dit. Il ne touche pas au statut de validation.
+      const planNonRefait = shouldReplan && ops.planAvailable === false
+        ? (ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.') : '';
       sendJson(res, 200, {
         ok: true,
         reservation,
         automation,
+        ...(planNonRefait ? { planNonRefait } : {}),
         ...(avertissementsPatch.length ? { warnings: avertissementsPatch } : {}),
       });
       return;

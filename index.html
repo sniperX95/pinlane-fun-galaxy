@@ -21,7 +21,7 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261008comptoir">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261102rush">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261102large">
 <link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261102large">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260930a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
@@ -71,7 +71,7 @@
      recharge la page que lorsque quelque chose a REELLEMENT bouge. Charge apres
      app-main (il utilise isStaffEmailsActive et loadOpsAdmin) et avant les
      pages staff, qui n ont rien a en savoir. -->
-<script type="text/plain" data-staff-console src="/assets/ops-live.js?v=20260925a"></script>
+<script type="text/plain" data-staff-console src="/assets/ops-live.js?v=20261102large"></script>
 <!-- La regle qui separe ce que la personne a ecrit de ce que son logiciel a
      recopie. Chargee avant les pages staff, qui l utilisent pour l affichage ;
      le serveur require le MEME fichier pour l analyse, pour qu il n existe
@@ -732,7 +732,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
              dans la tete de sa boite (gfPlacerRecherche). -->
         <div class="gf-recherche" id="gfRecherche">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="globalPlanningSearchInput" type="text" autocomplete="off" spellcheck="false" placeholder="Un client arrive ? Tapez son nom" aria-label="Chercher un groupe" oninput="applyStaffSearch(this.value)">
+          <input id="globalPlanningSearchInput" data-pl-hors-rendu type="text" autocomplete="off" spellcheck="false" placeholder="Un client arrive ? Tapez son nom" aria-label="Chercher un groupe" oninput="applyStaffSearch(this.value)">
           <button type="button" class="gf-efface" id="gfEfface" aria-label="Effacer la recherche" hidden>×</button>
         </div>
         <div class="staff-head-actions">
@@ -746,7 +746,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </div>
           <button class="btn-new" onclick="openQuickBook()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Réservation rapide
+            Réservation<span class="btn-new-suite"> rapide</span>
           </button>
         </div>
       </div>

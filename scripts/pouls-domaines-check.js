@@ -171,6 +171,26 @@ async function pouls(db, options) {
   ok(autrePanne === 'remontee', '[G] une autre panne n est pas avalee (elle remonte comme avant)', autrePanne);
 
   // =====================================================================
+  console.log('\n[H] le petit pouls : la journee et les pistes, les memes empreintes');
+  // =====================================================================
+  const petit = await pouls(db, { centerId: 'libramont', date: '2026-09-25', jourSeul: true });
+  ok(petit.reponse.partiel === true && Object.keys(petit.reponse.domaines).sort().join(',') === 'jour:2026-09-25,pistes',
+    '[H] il ne rend que la journee et les pistes, et se dit partiel', Object.keys(petit.reponse.domaines).join(','));
+  ok(petit.requete.params[0] === 'libramont' && petit.requete.params[1] === '2026-09-25', '[H] le centre et la date voyagent en parametres', JSON.stringify(petit.requete.params));
+  const morceau = (sql, nom) => { const fin = sql.indexOf(` as ${nom}`); return sql.slice(sql.lastIndexOf('coalesce((', fin), fin); };
+  ok(['jour', 'pistes'].every((nom) => morceau(db.SQL_POULS, nom).length > 40 && morceau(db.SQL_POULS, nom) === morceau(db.SQL_PETIT_POULS, nom)),
+    '[H] ses deux empreintes sont celles du pouls entier : un ecran les compare entre elles');
+  const petitSansDate = await pouls(db, { centerId: 'libramont', date: '2026-02-30', jourSeul: true });
+  ok(petitSansDate.reponse.partiel !== true && Object.keys(petitSansDate.reponse.domaines).length === 13,
+    '[H] sans date valide, le pouls entier', Object.keys(petitSansDate.reponse.domaines).length + ' domaines');
+  const petitSansTable = await (async () => {
+    panneBlocages = { code: '42P01', message: 'relation "slot_holds" does not exist' };
+    try { return await pouls(db, { centerId: 'libramont', date: '2026-09-25', jourSeul: true }); } catch (error) { return { erreur: error.message }; } finally { panneBlocages = null; }
+  })();
+  ok(!petitSansTable.erreur && petitSansTable.reponse.domaines['jour:2026-09-25'] === 'empreinte-jour' && !petitSansTable.requete.texte.includes('slot_holds'),
+    '[H] table des blocages absente : il se relit sans elle', petitSansTable.erreur || 'relu');
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [

@@ -478,9 +478,13 @@ function deriver() {
 //   eparses       Amis de Julie (journee normale) sur les pistes 1, 2, 6, 7 et 8 ;
 //   vagues        un groupe dont les deux vagues de 16:00, fusionnees, finissent
 //                 20 min apres l autre groupe de la meme partie (une partie
-//                 laser ne dure jamais plus de 25 min : l autre en dure 5).
+//                 laser ne dure jamais plus de 25 min : l autre en dure 5) ;
+//   sansdemo      les dossiers sans leur marque de demonstration, ni « DÉMO · »
+//                 devant le nom, ni la note fictive : la densite du grand tableau
+//                 se mesure sur une journee reelle, ou un dossier sur vingt seulement
+//                 porte une note (les notes de la fixture restent).
 // ---------------------------------------------------------------------------
-const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues'];
+const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues', 'sansdemo'];
 function varier(fx, centre, variantes = []) {
   const f = JSON.parse(JSON.stringify(fx));
   const c = JSON.parse(JSON.stringify(centre));
@@ -493,6 +497,7 @@ function varier(fx, centre, variantes = []) {
   for (const v of variantes) {
     if (!VARIANTES.includes(v)) throw new Error(`variante inconnue : ${v} (${VARIANTES.join(', ')})`);
     if (v === 'maintenance5') f.staffState.laneStatuses = { ...(f.staffState.laneStatuses || {}), 5: 'maintenance' };
+    if (v === 'sansdemo') res.forEach((r) => { r.name = String(r.name || '').replace(/^DÉMO · /, ''); r.notes = String(r.notes || '').split(NOTE_DEMO).join('').trim(); });
     if (v === 'enligne6') {
       const h = neuf(-1, { name: 'Réservation en ligne', pax: 4, type: 'bowling', blocs: [blocBowling('16:00', 60, [6], 4)], price: 39 });
       h.blocage = { expiresAt: instant(jour, '15:22').toISOString() };

@@ -9,7 +9,12 @@
 // son propre « Agrandir »), de 360 a 1920 px :
 //   [A] le titre, le sous-titre, la date, les actions et la bascule ne se
 //       recouvrent pas, et rien ne sort de l en-tete ;
-//   [B] le titre se lit en entier : ni coupe, ni cache par un voisin ;
+//   [B] le titre se lit en entier : ni coupe, ni cache par un voisin. Sur le
+//       grand tableau (« Toutes », 2026-11-02), le titre et la legende sont masques
+//       EXPRES en plein ecran (clip-path, 1 px : ils restent pour un lecteur
+//       d ecran) : la date et la bascule disent ou l on est, et ce qui ne se voit
+//       pas ne recouvre rien. Partout ailleurs, un titre masque rougit ; rendu
+//       visible sur le grand tableau, il redevient mesure comme les autres ;
 //   [C] la bascule tient dans l ecran, ses trois onglets entiers ;
 //   [K] contre-preuves : chaque regle retiree fait rougir sa lettre.
 'use strict';
@@ -99,10 +104,15 @@ function mesurer() {
     return r.width ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
   };
   const boite = (sel) => { const e = tete.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? r : null; };
+  // Masque expres : un clip-path sur une boite d un pixel. Il reste pour un lecteur
+  // d ecran, il ne se voit pas : il ne recouvre rien. (son texte deborde de cette boite,
+  // une mesure du texte le croirait a l ecran)
+  const masque = (e) => { const r = e.getBoundingClientRect(); return getComputedStyle(e).clipPath !== 'none' && r.width <= 1 && r.height <= 1; };
   const h2 = tete.querySelector('h2');
   const nom = h2.querySelector('[id$="TitleText"]') || [...h2.children].find((e) => e.tagName === 'SPAN') || h2;
   const sous = tete.querySelector('.planning-sub');
-  const zones = { titre: texteDe(h2), sous: sous ? texteDe(sous) : null, date: boite('.pec-date'), actions: boite(':scope > :is(.planning-actions, .table-actions)'), bascule: boite(':scope > .fs-switch') };
+  const titreMasque = masque(h2);
+  const zones = { titre: titreMasque ? null : texteDe(h2), sous: sous && !masque(sous) ? texteDe(sous) : null, date: boite('.pec-date'), actions: boite(':scope > :is(.planning-actions, .table-actions)'), bascule: boite(':scope > .fs-switch') };
   const noms = Object.keys(zones).filter((k) => zones[k]);
   const recouvre = [];
   for (let i = 0; i < noms.length; i += 1) for (let j = i + 1; j < noms.length; j += 1) {
@@ -120,7 +130,11 @@ function mesurer() {
   const t = texteDe(nom);
   const auBout = t ? document.elementFromPoint(Math.min(t.right - 2, innerWidth - 1), (t.top + t.bottom) / 2) : null;
   const onglets = [...tete.querySelectorAll('.fs-switch-btn')].map((b) => b.getBoundingClientRect());
+  const date = tete.querySelector('.pec-date');
   return {
+    titreMasque,
+    // Ce qui dit ou l on est quand le titre se tait.
+    repere: { date: Boolean(zones.date) && Boolean(date.textContent.trim()), onglet: (tete.querySelector('.fs-switch-btn[aria-selected="true"]') || { textContent: '' }).textContent.replace(/\s+/g, ' ').trim() },
     recouvre,
     sort,
     deborde: Math.max(0, tete.scrollWidth - tete.clientWidth),
@@ -176,7 +190,8 @@ async function scenarios(browser, mutation = null) {
           mesurees += 1;
           titres.add(m.titre);
           if (m.recouvre.length || m.sort.length || m.deborde > 1) rates.A.push(`${L}: ${[...m.recouvre, ...m.sort.map((s) => `${s} sort`), m.deborde > 1 ? `deborde ${m.deborde}` : ''].filter(Boolean).join(', ')}`);
-          if (m.titreCoupe || m.titreCache) rates.B.push(`${L}: « ${m.titre} »${m.titreCoupe ? ' coupe' : ''}${m.titreCache ? ' cache' : ''}`);
+          if (m.titreMasque) { if (vue !== 'all' || !m.repere.date || !/Toutes/.test(m.repere.onglet)) rates.B.push(`${L}: titre masque, repere ${JSON.stringify(m.repere)}`); }
+          else if (m.titreCoupe || m.titreCache) rates.B.push(`${L}: « ${m.titre} »${m.titreCoupe ? ' coupe' : ''}${m.titreCache ? ' cache' : ''}`);
           if (m.onglets !== 3 || m.ongletsDehors) rates.C.push(`${L}: ${m.onglets} onglets, ${m.ongletsDehors} dehors`);
         }
         const ecran = tactile ? 'de 360 a 1199 px' : 'de 1200 a 1920 px';
@@ -185,7 +200,7 @@ async function scenarios(browser, mutation = null) {
         ok(mesurees === LARGEURS.filter((l) => (tactile ? l < 1200 : l >= 1200)).length && titres.size === 1 && attendu.test([...titres][0]),
           `[A] ${vue} ${ecran} : le plein ecran est ouvert a chaque largeur`, `${mesurees} mesures, ${[...titres].join(' / ')}`);
         ok(rates.A.length === 0, `[A] ${vue} ${ecran} : titre, date, actions et bascule ne se recouvrent pas, rien ne sort`, rates.A.slice(0, 4).join(' ; '));
-        ok(rates.B.length === 0, `[B] ${vue} ${ecran} : le titre se lit en entier`, rates.B.slice(0, 4).join(' ; '));
+        ok(rates.B.length === 0, `[B] ${vue} ${ecran} : ${vue === 'all' ? 'le titre masque expres, la date et la bascule disent ou l on est' : 'le titre se lit en entier'}`, rates.B.slice(0, 4).join(' ; '));
         ok(rates.C.length === 0, `[C] ${vue} ${ecran} : la bascule tient dans l ecran`, rates.C.slice(0, 4).join(' ; '));
       }
       ok(erreurs.length === 0, `[A] ${tactile ? 'tablette' : 'ordinateur'} : zero erreur JS ni console`, erreurs.slice(0, 3).join(' | '));
@@ -209,6 +224,15 @@ const MUTATIONS = [
   { nom: 'mots', lettre: '[C] bowling de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
     de: `@media (max-width: 600px) {\n  ${S} .fs-mot { display: none; }\n}`,
     vers: '' },
+  // Le titre du grand tableau redevient visible sans sa place : une vraie collision avec
+  // la date, que la sonde doit voir (ce n est plus une boite masquee).
+  { nom: 'titre-sans-place', lettre: '[A] all de 360 a 1199 px', fichier: 'assets/pinlane-planning-global.css',
+    de: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
+    vers: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > h2 { position: absolute; white-space: nowrap; }' },
+  // Le titre se tait et la date disparait : plus rien ne dit ou l on est.
+  { nom: 'date-absente', lettre: '[B] all de 360 a 1199 px', fichier: 'assets/pinlane-planning-global.css',
+    de: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 1; grid-row: 1; }',
+    vers: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > .pec-date { display: none; }' },
 ];
 
 async function main() {

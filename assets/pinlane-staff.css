@@ -11298,6 +11298,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-etat-pied b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-etat-pied .rv-tot { margin-left: auto; font-weight: 700; color: var(--rv-text); white-space: nowrap; }
 .qb-modal.rv .rv-boutons { display: flex; gap: 8px; }
+/* Creer et encaisser d un coup : deux boutons a bordure, le seul plein reste « Créer ». */
+.qb-modal.rv .rv-encaisser { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.qb-modal.rv .rv-creer-paye { min-width: 0; min-height: 44px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--rv-line-strong); background: var(--rv-raised); color: var(--rv-text); font-size: 14.5px; font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qb-modal.rv .rv-creer-paye:hover { background: var(--rv-vide); }
+.qb-modal.rv .rv-creer-paye[aria-disabled="true"] { color: var(--rv-muted); cursor: progress; }
 .qb-modal.rv .rv-creer { flex: 1; min-width: 0; height: 56px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--rv-bleu); color: #fff; font-size: 16.5px; font-weight: 760; line-height: 1; letter-spacing: -.01em; display: inline-flex; align-items: center; justify-content: center; gap: 10px; white-space: nowrap; box-shadow: 0 1px 0 rgb(255 255 255 / .12) inset; transition: transform var(--dur-press) var(--ease-out-strong); }
 .qb-modal.rv .rv-creer:active:not(:disabled):not([aria-busy="true"]) { transform: scale(.98); }
 .qb-modal.rv .rv-creer kbd { padding: 2px 7px; border: 0; border-radius: 6px; background: rgb(0 0 0 / .2); box-shadow: none; color: inherit; font: 650 11px/1.4 var(--font-ui); letter-spacing: 0; }
@@ -11395,7 +11400,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-overlay.is-rv { padding: 0; align-items: stretch; }
   /* La tete et le pied collent : ce qu on fait defiler jusqu a soi (un champ,
      « + Note ») s arrete au-dessus d eux, jamais dessous (2026-10-12). */
-  .qb-modal.rv { width: 100%; height: 100dvh; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 120px; scroll-padding-bottom: 132px; }
+  .qb-modal.rv { width: 100%; height: 100dvh; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 120px; scroll-padding-bottom: 184px; }
   .qb-modal.rv .rv-compo { flex: none; }
   .qb-modal.rv .rv-tete { height: auto; flex-wrap: wrap; padding: 12px 14px 10px; row-gap: 10px; position: sticky; top: 0; z-index: 4; background: var(--rv-surface); }
   .qb-modal.rv .rv-tete h3 { font-size: 19px; }
@@ -18285,6 +18290,10 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .booking.is-neuve { animation: plNeuve 2.6s var(--ease-out-strong, ease) 1, plNeuvePose .3s var(--ease-out-strong, ease) 1; }
 @keyframes plNeuvePose { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 
+/* CE QUI VIENT DE BOUGER SUR UN AUTRE POSTE, sur les plannings Bowling et Laser : le meme
+   halo, sans l entree (soulignerCeQuiABouge, le tableau a sa propre teinte). */
+.booking.is-bouge, [data-laser-res-id].is-bouge { animation: plNeuve 2.4s var(--ease-out-strong, ease) 1; }
+
 /* Le meme signal, SANS mouvement : pose sur les rendus suivants pendant que
    la reservation reste « nouvelle ». L information demeure, le clignotement
    disparait. */
@@ -18299,6 +18308,7 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
   /* Le signal ne disparait pas pour autant : il devient statique. Supprimer
      l'information au lieu du mouvement serait une regression d'accessibilite. */
   .res-row.is-neuve, .booking.is-neuve { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .booking.is-bouge, [data-laser-res-id].is-bouge { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
 }
 
 /* Une liste qui se recompose apres une recherche : ses lignes se posent l'une
@@ -20527,6 +20537,13 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 .pos-encaisse-form { display: grid; grid-template-columns: minmax(110px, 140px) minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-top: 8px; }
 .pos-encaisse-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--faint); min-width: 0; }
 .pos-encaisse-form input { font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); min-width: 0; }
+/* ANNULER SE VOIT DANS INFOS : un mot sous les etats, jamais a leur hauteur. La
+   confirmation de cancelRes reste. */
+.fx-annuler-rang { display: flex; justify-content: flex-end; margin-top: 6px; }
+.fx-annuler { appearance: none; min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--danger); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.fx-annuler:hover { background: var(--subtle); }
+.fx-annuler:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .fx-annuler { min-height: 44px; } }
 .pos-absent { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .pos-absent.is-on { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--danger, #c0392b) 10%, transparent); color: var(--text); }
 @media (max-width: 560px) { .pos-encaisse-form { grid-template-columns: 1fr; } }
@@ -21443,9 +21460,20 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .value { flex: none; font-size: 16px; }
   #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
-/* (sur une tablette couchee, les chiffres seuls : leur detail ne tient plus) */
-@media (min-width: 1000px) and (max-width: 1100px) {
+/* (a 1 280 px, menu ouvert, trois cases entieres se marchaient dessus : le detail s en va
+   d abord, puis le libelle garde son premier mot, l onglet dit le reste) */
+@media (min-width: 1000px) and (max-width: 1540px) {
   #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: none; }
+}
+@media (min-width: 1000px) and (max-width: 1400px) {
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .kpi-suite { display: none; }
+}
+/* (sur une tablette couchee, menu ouvert, trois cases ne tiennent toujours pas a cote de
+   la date : « Réservations » redit le nombre de son onglet, juste dessous, et le bouton
+   perd son second mot) */
+@media (min-width: 1000px) and (max-width: 1256px) {
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: none; }
+  #staffView.avec-onglets.avec-onglets .btn-new-suite { display: none; }
 }
 @media (min-width: 1101px) {
   #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) { padding: 4px 14px; min-height: 50px; }
@@ -21797,6 +21825,13 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail b { font-weigh
    accompagnants (un compteur court, pas une ligne entiere). */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-client { display: grid; gap: 12px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-client .fm-titre { margin: 0; }
+/* Le contact se replie : ce pli suit « Annuler ou supprimer », en plus discret. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; list-style: none; font-size: 13px; font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary::-webkit-details-marker { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary::after { content: ""; flex: none; width: 7px; height: 7px; margin: -3px 0 0 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); opacity: .7; transition: transform 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary:hover { color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli-corps { display: grid; gap: 12px; padding-top: 4px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-accompagnants .fm-stepper { max-width: 200px; }
 
 /* Annuler ou supprimer : replie, en bas de la colonne. */

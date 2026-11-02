@@ -445,7 +445,7 @@ async function handleGet(req, res, options = {}) {
   if (action === 'pulse') {
     // La journee affichee par l ecran (planning, terrain) voyage avec le pouls :
     // son empreinte couvre aussi une date hors de la fenetre des reservations.
-    const pulse = await getOpsPulse({ centerId, date: url.searchParams.get('date') || '' });
+    const pulse = await getOpsPulse({ centerId, date: url.searchParams.get('date') || '', jourSeul: url.searchParams.get('leger') === '1' });
     sendJson(res, 200, { ok: true, centerId, ...pulse });
     return;
   }

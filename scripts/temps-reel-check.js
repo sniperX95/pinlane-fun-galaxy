@@ -32,6 +32,13 @@
 //       poste A se voit sur le planning du poste B.
 //   [I] QUAND RIEN NE BOUGE, RIEN N EST RELU : sur un pouls stable, aucune
 //       donnee lourde n est redemandee.
+//   [J] LE CURSEUR DANS LE CHAMP DU GRAND TABLEAU NE FIGE PAS L ECRAN. Le champ garde
+//       le curseur pour le client suivant : le rechargement du pouls attendait qu on
+//       le quitte, et l ecran n apprenait les gestes des autres que par son filet de
+//       15 s. La saisie survit, le changement arrive en moins de 3 s.
+//   [K] LA LIGNE QUI BOUGE AILLEURS SE SOULIGNE, le temps d etre vue ; un geste fait
+//       ici ne se souligne pas.
+//   [L] UNE COUPURE SE DIT SOUS L HEURE, et « en direct » revient tout seul.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a
 // la fois, et exige que chacune rougisse sa cible.
@@ -59,7 +66,17 @@ const DELAI = 6000;
 
 const MUTATIONS = {
   // Le pouls n envoie plus la journee affichee.
-  date: ['ops-live.js', "          + (date ? '&date=' + encodeURIComponent(date) : ''));", '          );', '[A] le pouls porte la journee affichee'],
+  date: ['ops-live.js', "          + (date ? '&date=' + encodeURIComponent(date) : '') + (petit ? '&leger=1' : ''));", '          );', '[A] le pouls porte la journee affichee'],
+  // Le pouls ne sait plus se reduire.
+  petit: ['ops-live.js', " + (petit ? '&leger=1' : ''));", ');', '[A] le jour meme, un tour sur deux est un petit pouls'],
+  // Le champ du comptoir retient de nouveau le rechargement.
+  curseur: ['ops-live.js', "    if (typeof actif.hasAttribute === 'function' && actif.hasAttribute('data-pl-hors-rendu')) return false;\n", '', '[J] le curseur dans le champ ne fige pas l ecran'],
+  // La ligne ne se souligne plus.
+  souligne: ['app-main.js', "      el.classList.add('is-bouge');\n", '', '[K] la ligne qui bouge ailleurs se souligne'],
+  // A chaque relecture, toute la journee se souligne.
+  voisins: ['app-main.js', "state.reservations.filter((r) => r.date === dateStr && avantBouge.get(r.id) !== empreinteBouge(r))", "state.reservations.filter((r) => r.date === dateStr)", '[K] seul ce qui a bouge se souligne'],
+  // La coupure ne se dit plus.
+  coupure: ['ops-live.js', '      get coupe() { return !arrete && echecsDeSuite >= 2; },', '      get coupe() { return false; },', '[L] une coupure se dit sous l heure'],
   // La page affichee ne relit plus rien : les changements sont « consommes ».
   relire: ['app-main.js', '  caches.forEach((cache) => cache.relire());\n  if (journee) syncDateReservations(state.currentDate, { silent: true });', '', '[B] une reservation prise ailleurs apparait sur le planning'],
   // Les caches des pages non affichees ne sont plus oublies.
@@ -91,6 +108,8 @@ const serveurPartage = {
   lecturesLourdes: 0,
   lecturesJournee: 0,
   poulsAvecDate: [],
+  petitsPouls: 0,
+  poulsCoupe: false,
 };
 function bump(domaine) { serveurPartage.versions[domaine] = (serveurPartage.versions[domaine] || 0) + 1; }
 function empreinte(domaine) { return `${domaine}-${serveurPartage.versions[domaine] || 0}`; }
@@ -125,8 +144,15 @@ async function brancher(ctx) {
     const url = new URL(req.url());
     const action = url.searchParams.get('action') || '';
     if (req.method() === 'GET' && action === 'pulse') {
+      if (serveurPartage.poulsCoupe) return route.abort();
       const date = url.searchParams.get('date') || '';
       if (date) serveurPartage.poulsAvecDate.push(date);
+      // Le petit pouls, comme le vrai (lib/database.js lirePetitPouls).
+      if (url.searchParams.get('leger') === '1' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        serveurPartage.petitsPouls += 1;
+        const petit = { pistes: empreinte('pistes'), [`jour:${date}`]: empreinte(`jour:${date}`) };
+        return reponseJson(route, { ok: true, centerId: dev.CENTER_ID, partiel: true, domaines: petit, empreinte: Object.values(petit).join('.') });
+      }
       const domaines = {};
       ['communications', 'suggestions', 'evenements', 'prises', 'reservations', 'pistes', 'blocages', 'demandes', 'catalogue', 'config', 'equipe', 'notes', 'courrier']
         .forEach((nom) => { domaines[nom] = empreinte(nom); });
@@ -244,6 +270,7 @@ async function run() {
     // =====================================================================
     const vuDate = await attendre(B.page, () => true, null, 100).then(() => new Promise((r) => setTimeout(r, 2600))).then(() => serveurPartage.poulsAvecDate.includes(JOUR));
     ok(vuDate, '[A] le pouls porte la journee affichee', serveurPartage.poulsAvecDate.slice(-3).join(','));
+    ok(serveurPartage.petitsPouls > 0, '[A] le jour meme, un tour sur deux est un petit pouls', `${serveurPartage.petitsPouls} petit(s) pouls`);
 
     // =====================================================================
     console.log('\n[B] une reservation prise ailleurs');
@@ -369,6 +396,70 @@ async function run() {
     const ecrit = serveurPartage.reservations.find((r) => r.id === 8101).status;
     const vuSurB = await attendre(B.page, () => Array.isArray(state.reservations) && (state.reservations.find((r) => r.id === 8101) || {}).status === 'arrived');
     ok(ecrit === 'arrived' && vuSurB, '[H] le statut change sur le poste A se voit sur le poste B', `serveur : ${ecrit}, poste B : ${vuSurB ? 'arrived' : 'ancien statut'}`);
+
+    // =====================================================================
+    console.log('\n[J] le curseur dans le champ du grand tableau ne fige pas l ecran');
+    // =====================================================================
+    await B.page.evaluate(() => setStaffResourceView('all'));
+    await attendre(B.page, () => Boolean(document.querySelector('#globalPlanningGridWrap .gf-r[data-gf-id="8102"]')), null, 6000);
+    await B.page.focus('#globalPlanningSearchInput');
+    await B.page.keyboard.type('mar');
+    await attendre(B.page, () => document.querySelectorAll('#globalPlanningGridWrap .gf-r').length === 1, null, 3000);
+    const martin = serveurPartage.reservations.find((r) => r.id === 8102);
+    martin.status = 'arrived';
+    martin.updatedAt = new Date().toISOString();
+    bump(`jour:${JOUR}`);
+    bump('reservations');
+    const vuAvecCurseur = await attendre(B.page, () => Boolean(document.querySelector('.gf-r.t-arr[data-gf-id="8102"]')), null, 3000);
+    ok(vuAvecCurseur, '[J] le curseur dans le champ ne fige pas l ecran', vuAvecCurseur ? 'en moins de 3 s' : 'rien apres 3 s');
+    // =====================================================================
+    console.log('\n[K] la ligne qui bouge ailleurs se souligne');
+    // =====================================================================
+    const souligne = await attendre(B.page, () => Boolean(document.querySelector('.gf-r.is-bouge[data-gf-id="8102"]')), null, 1500);
+    ok(souligne, '[K] la ligne qui bouge ailleurs se souligne', souligne ? 'soulignee' : 'rien');
+    ok(await B.page.evaluate(() => document.activeElement && document.activeElement.id === 'globalPlanningSearchInput' && document.activeElement.value === 'mar'),
+      '[J] et le champ garde son curseur et sa saisie');
+    await B.page.evaluate(() => { const c = document.getElementById('globalPlanningSearchInput'); c.value = ''; applyStaffSearch('', { immediate: true }); c.blur(); });
+    serveurPartage.reservations.push(resa(8103, { name: 'Famille Renard', startTime: '17:00', lanes: [2] }));
+    bump(`jour:${JOUR}`);
+    bump('reservations');
+    await attendre(B.page, () => Boolean(document.querySelector('.gf-r[data-gf-id="8103"]')), null, 3000);
+    await new Promise((r) => setTimeout(r, 3000));
+    // (la ligne se reecrit a l echo du serveur et perdrait sa marque : on la guette tout du long)
+    await B.page.evaluate(() => {
+      window.__bouge8103 = false;
+      new MutationObserver(() => { if (document.querySelector('.gf-r.is-bouge[data-gf-id="8103"]')) window.__bouge8103 = true; })
+        .observe(document.getElementById('globalPlanningGridWrap'), { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+    });
+    await B.page.evaluate(() => setReservationStatusDirect(8103, 'arrived'));
+    await attendre(B.page, () => Boolean(document.querySelector('.gf-r.t-arr[data-gf-id="8103"]')), null, 3000);
+    await new Promise((r) => setTimeout(r, 2500));
+    ok(await B.page.evaluate(() => window.__bouge8103 === false), '[K] un geste fait ici ne se souligne pas');
+    await B.page.evaluate(() => setStaffResourceView('bowling'));
+    await attendre(B.page, () => Boolean(document.querySelector('.booking[data-booking-res-id="8101"]')), null, 4000);
+    const lambert = serveurPartage.reservations.find((r) => r.id === 8101);
+    lambert.status = 'paid';
+    lambert.updatedAt = new Date().toISOString();
+    bump(`jour:${JOUR}`);
+    bump('reservations');
+    const blocSouligne = await attendre(B.page, () => Boolean(document.querySelector('.booking.is-bouge[data-booking-res-id="8101"]')), null, 3000);
+    ok(blocSouligne, '[K] le bloc du planning bowling se souligne aussi', blocSouligne ? 'souligne' : 'rien');
+    const soulignes = await B.page.evaluate(() => document.querySelectorAll('.booking.is-bouge').length);
+    ok(soulignes === 1, '[K] seul ce qui a bouge se souligne', `${soulignes} bloc(s)`);
+    await B.page.evaluate(() => setStaffResourceView('all'));
+    await attendre(B.page, () => Boolean(document.querySelector('[data-gf-direct]')), null, 4000);
+
+    // =====================================================================
+    console.log('\n[L] une coupure se dit sous l heure');
+    // =====================================================================
+    const direct = () => B.page.evaluate(() => (document.querySelector('[data-gf-direct]') || {}).textContent || '');
+    ok(await direct() === 'en direct', '[L] tout va bien : « en direct »', await direct());
+    serveurPartage.poulsCoupe = true;
+    const motCoupure = await attendre(B.page, () => (document.querySelector('[data-gf-direct]') || {}).textContent === 'reconnexion…', null, 9000);
+    ok(motCoupure, '[L] une coupure se dit sous l heure', await direct());
+    serveurPartage.poulsCoupe = false;
+    const retour = await attendre(B.page, () => (document.querySelector('[data-gf-direct]') || {}).textContent === 'en direct', null, 40000);
+    ok(retour, '[L] et « en direct » revient tout seul', await direct());
 
     // =====================================================================
     console.log('\n[I] quand rien ne bouge, rien n est relu');

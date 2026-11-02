@@ -432,6 +432,8 @@ async function scenarioD1(browser, v) {
         const onglet = [...fiche.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test(t.textContent.trim()));
         if (onglet) onglet.click();
       });
+      // (le telephone attend dans un pli depuis le 2026-11-02)
+      await page.click('#editContactPli > summary', { timeout: 9000 });
       await page.waitForSelector('.edit-form #editPhoneInput', { timeout: 9000 });
       const requis = await page.evaluate(() => document.getElementById('editPhoneInput').required);
       v('D1', requis === false, 'la fiche « Modifier » n exige pas le telephone', `required=${requis}`);
@@ -456,6 +458,8 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
     const avant = new Set(lireBase().map((r) => r.id));
     await page.locator('.btn-new').first().click();
     await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+    // (a la main : depuis le 2026-11-02, la fenetre s ouvre d elle-meme sur une heure qui tient)
+    await page.evaluate(() => setQuickStartTime('15:30'));
     const refuse = await planPose(page, false);
     await candidatsPoses(page);
     await page.waitForTimeout(300);
@@ -843,6 +847,8 @@ async function scenarioD10(browser, v) {
     const { context, page, erreurs } = await ouvrirConsole(browser);
     try {
       await page.locator('.btn-new').first().click();
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+      await page.evaluate(() => setQuickStartTime('15:30'));
       await planPose(page, false);
       const refus = await texteDe(page, '#rvVerdict');
       v('D10', !/ a \d{1,2}:\d{2}/.test(refus) && /à 15:30/.test(refus), 'les refus du moteur ont leurs accents (« à 15:30 »)', refus.slice(0, 140));
@@ -1002,6 +1008,7 @@ const MUTATIONS = [
   // D4
   { nom: 'nom-reconnu-ajoute', cote: 'front', vise: ['D4'], edits: [e(APP, '  rvSelectionnerAuFocus(champ);\n}\n\nfunction rvSaisieComptoirFinie', '  void champ;\n}\n\nfunction rvSaisieComptoirFinie')] },
   // D5
+  { nom: 'heure-vue-qui-bouge', cote: 'front', vise: ['D5'], edits: [e(APP, '  if (plan && plan.disponible) quickBookState.heureArretee = true;\n', '')] },
   { nom: 'cle-sans-journee', cote: 'front', vise: ['D5'], edits: [e(APP, "  return corps ? `${JSON.stringify(corps)}|${rvRevisionDuJour(corps.date)}` : '';", "  return corps ? JSON.stringify(corps) : '';")] },
   // D6
   { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, "  const remplace = id !== 'bowling' && rvBowlingProposeIntact();", '  const remplace = false;')] },
@@ -1025,7 +1032,7 @@ const MUTATIONS = [
     e(CSS, '.qb-modal.rv .rv-eyebrow em { flex: none;', '.qb-modal.rv .rv-eyebrow em { flex: 0 1 auto;'),
   ] },
   { nom: 'billet-etroit', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 336px; }', '  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 320px; }')] },
-  { nom: 'pied-par-dessus', cote: 'front', vise: ['D9'], edits: [e(CSS, ' scroll-padding-top: 120px; scroll-padding-bottom: 132px;', '')] },
+  { nom: 'pied-par-dessus', cote: 'front', vise: ['D9'], edits: [e(CSS, ' scroll-padding-top: 120px; scroll-padding-bottom: 184px;', '')] },
   // D10
   { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.` }];', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.` }];')] },
   { nom: 'laser-jargon', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', '            ? `Laser à ${heureLaser} : ${places}, il en faut ${groupe}. Décalez le départ.`', '            ? `Laser charge a ${heureLaser}: ${players}/${weaponCount} joueurs et ${launchCount}/${parallelLaunches} lancement(s).`')] },

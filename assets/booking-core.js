@@ -918,6 +918,18 @@ function applyReservationFormulaChoiceToSteps(steps, reservation) {
   return out;
 }
 
+// LE PLAN DIT QU AUCUNE PARTIE N A D HEURE (2026-11-02) : une visite dont le plan
+// a ete fait laisse tout son laser « à placer ». Il fait foi : sans lui, la session
+// estimee ci-dessous inventait une heure (la fin du bowling, sans regarder l heure
+// qu il est), et le planning comptait des armes que le serveur ne retient pas
+// (« 2 de trop »). Une formule ou un laser garde son estimation : pour eux, le
+// serveur retient bien ces armes (lib/database, resourceBlocksFromReservation).
+function planLaisseLeLaserAPlacer(reservation) {
+  if (!reservation || reservation.type === 'formule' || reservation.type === 'laser' || reservation.formuleId) return false;
+  const pass = reservation.opsPlan?.laserPassPlan;
+  return Boolean(pass) && (pass.pendingPasses || []).length > 0 && !(pass.scheduledPasses || []).length;
+}
+
 function getFormulaLaserFallbackWindows(reservation) {
   // Formule OU visite : les deux vendent des parties de laser sans etre de type
   // 'laser'. Une visite dont le plan n'a pas pu etre calcule doit quand meme
@@ -1292,6 +1304,7 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
   // régénère JAMAIS de fenêtre par fallback : l'absence de bloc laser = partie non
   // placée (sinon la carte réapparaîtrait aussitôt sur le planning).
   if (resourceType === 'laser_arena' && reservation.opsPlan?.laserManual) return planned;
+  if (resourceType === 'laser_arena' && planLaisseLeLaserAPlacer(reservation)) return planned;
   if (resourceType === 'bowling_lane' && (reservation.lanes || []).length) {
     const heures = readDurationHours(reservation.duration);
     return [{
@@ -1470,8 +1483,8 @@ function getPendingLaserPassesForReservation(reservation) {
         || getProgramLaserGameCount(reservation) > 0)
       // Plusieurs unités laser (vagues et/ou parties à placer) OU laser en gestion
       // manuelle : une unité a été dé-placée vers « à placer », y compris une
-      // session laser direct 1-partie.
-      && (getLaserUnitsForReservation(reservation).length > 1 || reservation.opsPlan?.laserManual))) return [];
+      // session laser direct 1-partie. Ou une visite dont le plan laisse tout a placer.
+      && (getLaserUnitsForReservation(reservation).length > 1 || reservation.opsPlan?.laserManual || planLaisseLeLaserAPlacer(reservation)))) return [];
   const units = getLaserUnitsForReservation(reservation);
   const scheduled = new Set(getLaserScheduledUnitKeys(reservation));
   const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
@@ -1840,10 +1853,30 @@ function buildFormulaTimelineTimeIndex(reservation) {
   timeline.forEach(step => {
     const aid = String(step.activityId || '');
     seen[aid] = (seen[aid] || 0) + 1;
+    // UNE ETAPE « flexible » N A PAS D HEURE (2026-11-02) : ses champs horaires
+    // sont la fenetre de toute la visite (lib/ops-engine, « Pass liberté »), pas
+    // un horaire. Les lire ici posait le minigolf et les arcades de chaque formule
+    // a ancres a l heure de son premier bloc (« Minigolf à 13:30 »).
+    if (step.flexible) return;
     const occ = Number(step.countIndex || seen[aid]);
     index[`${aid}-${occ}`] = { startTime: step.startTime || '', endTime: step.endTime || '' };
   });
   return index;
+}
+
+// LA FENETRE DES ACTIVITES SANS HEURE D UNE FORMULE (les etapes « flexible » du
+// plan) : aucune heure a afficher, mais la visite dure ce qu elles couvrent. Sans
+// elle, un groupe quitterait « Sur place » a son dernier bloc, minigolf encore a jouer.
+function getFormulaFreeWindows(reservation) {
+  if (!reservationHasFormulaActivities(reservation)) return [];
+  const timeline = Array.isArray(reservation.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
+  return timeline
+    .filter(step => step && step.type === 'activity' && step.flexible && step.startTime && step.endTime)
+    .map(step => {
+      const start = timeToNum(step.startTime);
+      const end = timeToNum(step.endTime);
+      return { start, end: end < start ? end + 24 : end };
+    });
 }
 
 function getFormulaActivityChecklist(reservation) {

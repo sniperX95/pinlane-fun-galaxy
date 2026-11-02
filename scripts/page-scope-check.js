@@ -22,13 +22,17 @@
 // deux commits. Seule la MESURE du rectangle rendu tranche.
 //
 // CE QUE CE GATE PROUVE, EN CLIQUANT LE MENU POUR DE VRAI :
-//   1. sur CHAQUE entree hors Planning, les six blocs de la page Planning ont
-//      une boite nulle et un display none : rien ne depasse ;
-//   2. sur les trois onglets de Planning, ils sont VISIBLES : le gate ne peut
-//      pas passer au vert en masquant tout, ce qui serait le defaut symetrique ;
-//   3. contre-epreuve par MUTATION : on ressert le CSS sans sa garde
-//      `:not(.hidden)` et le gate doit rougir. Sans ca, « 0 defaut » peut
-//      vouloir dire « la sonde ne regarde rien ».
+//   1. sur CHAQUE entree hors Planning, les blocs de la page Planning ont une
+//      boite nulle et un display none : rien ne depasse, et le grand tableau a
+//      rendu la page (body.gf-large est tombe) ;
+//   2. sur Bowling et Laser, ils sont VISIBLES : le gate ne peut pas passer au
+//      vert en masquant tout, ce qui serait le defaut symetrique. Sur « Toutes »
+//      (2026-11-02), le bandeau .gf-tete REMPLACE le bandeau KPI et les onglets :
+//      lui visible avec ses compteurs, eux caches, la liste du jour dessous ;
+//   3. contre-epreuves par MUTATION : on ressert le CSS sans sa garde
+//      `:not(.hidden)`, puis sans la regle qui fait ceder la place au bandeau, et
+//      le gate doit rougir. Sans ca, « 0 defaut » peut vouloir dire « la sonde ne
+//      regarde rien ».
 //
 // Sortie 0 quand tout est vert. Sortie 1 sinon.
 // Lancement : node scripts/page-scope-check.js
@@ -42,6 +46,7 @@ const PORT = Number(process.env.PINLANE_PAGE_SCOPE_PORT || 4272);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const CSS_REL = 'assets/pinlane-staff.css';
+const CSS_GRAND_TABLEAU = 'assets/pinlane-planning-global.css';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
 // Le serveur peut servir une VERSION MUTEE d'un fichier : c'est ce qui rend la
@@ -83,6 +88,8 @@ const BLOCS_PLANNING = {
   'bandeau KPI': '#staffView .kpi-grid',
   'onglets de ressource': '#staffView .staff-resource-tabs',
   'en-tete de journee': '#staffView .staff-head',
+  'planning global': '#globalPlanningBox',
+  'bandeau du grand tableau': '#globalPlanningBox .gf-tete',
 };
 
 // Les trois entrees de menu QUI SONT la page Planning (Planning > Bowling,
@@ -172,13 +179,13 @@ async function ouvrirConsole(page) {
 }
 
 // Parcourt le menu comme un humain et rend, pour chaque entree, l'etat mesure
-// des six blocs.
-async function balayerLeMenu(page) {
-  const entrees = await page.evaluate(() => [...document.querySelectorAll('[data-fgx-menu-key]')].map((el) => ({
+// des blocs. (`garder` : un sous-ensemble du menu, pour une contre-epreuve)
+async function balayerLeMenu(page, garder = () => true) {
+  const entrees = (await page.evaluate(() => [...document.querySelectorAll('[data-fgx-menu-key]')].map((el) => ({
     cle: el.getAttribute('data-fgx-menu-key'),
     resource: el.getAttribute('data-ops-resource') || '',
     libelle: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28),
-  })));
+  })))).filter(garder);
   const releve = [];
   for (const entree of entrees) {
     const clique = await page.evaluate(({ cle, resource }) => {
@@ -190,7 +197,7 @@ async function balayerLeMenu(page) {
     }, entree);
     if (!clique) continue;
     await page.waitForTimeout(650);
-    const blocs = await page.evaluate((selecteurs) => {
+    const { blocs, compteurs, large } = await page.evaluate((selecteurs) => {
       const out = {};
       for (const [nom, sel] of Object.entries(selecteurs)) {
         const el = document.querySelector(sel);
@@ -203,9 +210,9 @@ async function balayerLeMenu(page) {
           display: cs.display,
         };
       }
-      return out;
+      return { blocs: out, compteurs: document.querySelectorAll('#globalPlanningBox .gf-tete [data-gf-filtre]').length, large: document.body.classList.contains('gf-large') };
     }, BLOCS_PLANNING);
-    releve.push({ ...entree, blocs });
+    releve.push({ ...entree, blocs, compteurs, large });
   }
   return releve;
 }
@@ -222,6 +229,9 @@ function cssSansLaGarde() {
   }
   return mute;
 }
+
+// Sur « Toutes », le titre, le bandeau KPI et les onglets cedent la place au bandeau.
+const SANS_CEDER = { fichier: CSS_GRAND_TABLEAU, de: 'body.gf-large #staffView :is(.staff-head-titre, .kpi-grid, .staff-resource-tabs) { display: none !important; }', vers: '' };
 
 async function main() {
   const server = await serveStatic();
@@ -245,9 +255,9 @@ async function main() {
     for (const page1 of horsPlanning) {
       const fautifs = Object.entries(page1.blocs).filter(([, v]) => v.visible);
       ok(
-        fautifs.length === 0,
-        `« ${page1.libelle} » (${page1.cle}) ne peint aucun bloc de la page Planning`,
-        fautifs.length ? fautifs.map(([nom, v]) => `${nom} ${v.boite} display:${v.display}`).join(' | ') : ''
+        fautifs.length === 0 && !page1.large,
+        `« ${page1.libelle} » (${page1.cle}) ne peint aucun bloc de la page Planning, le grand tableau lui a rendu le menu`,
+        [...fautifs.map(([nom, v]) => `${nom} ${v.boite} display:${v.display}`), page1.large ? 'body.gf-large reste pose' : ''].filter(Boolean).join(' | ')
       );
     }
 
@@ -255,8 +265,18 @@ async function main() {
     //    tout serait le defaut symetrique, et il ne se verrait pas.
     for (const page2 of surPlanning) {
       ok(page2.blocs['liste du jour'].visible, `« ${page2.libelle} » affiche bien la liste du jour`, page2.blocs['liste du jour'].boite);
-      ok(page2.blocs['bandeau KPI'].visible, `« ${page2.libelle} » affiche bien le bandeau KPI`, page2.blocs['bandeau KPI'].boite);
-      ok(page2.blocs['onglets de ressource'].visible, `« ${page2.libelle} » affiche bien les onglets de ressource`, page2.blocs['onglets de ressource'].boite);
+      if (page2.cle === 'complete') {
+        // Sur le grand tableau, le bandeau remplace le bandeau KPI et les onglets : son
+        // heure, ses quatre compteurs, l etat du centre tiennent en une rangee.
+        ok(page2.large && page2.blocs['planning global'].visible, `« ${page2.libelle} » est bien le grand tableau`, page2.blocs['planning global'].boite);
+        ok(page2.blocs['bandeau du grand tableau'].visible && page2.compteurs === 4, `« ${page2.libelle} » affiche son bandeau et ses quatre compteurs`, `${page2.blocs['bandeau du grand tableau'].boite}, ${page2.compteurs} compteurs`);
+        ok(!page2.blocs['bandeau KPI'].visible, `« ${page2.libelle} » : le bandeau KPI lui cede la place`, page2.blocs['bandeau KPI'].boite);
+        ok(!page2.blocs['onglets de ressource'].visible, `« ${page2.libelle} » : les onglets de ressource lui cedent la place`, page2.blocs['onglets de ressource'].boite);
+      } else {
+        ok(!page2.large && !page2.blocs['bandeau du grand tableau'].visible, `« ${page2.libelle} » n a pas le bandeau du grand tableau`, page2.blocs['bandeau du grand tableau'].boite);
+        ok(page2.blocs['bandeau KPI'].visible, `« ${page2.libelle} » affiche bien le bandeau KPI`, page2.blocs['bandeau KPI'].boite);
+        ok(page2.blocs['onglets de ressource'].visible, `« ${page2.libelle} » affiche bien les onglets de ressource`, page2.blocs['onglets de ressource'].boite);
+      }
     }
     const bowling = surPlanning.find((r) => r.cle === 'bowling');
     const laser = surPlanning.find((r) => r.cle === 'laser');
@@ -284,6 +304,21 @@ async function main() {
         `${fuites.length} pages fautives, ex. ${fuites.slice(0, 4).map((f) => f.cle).join(', ')}`
       );
       await pageMutee.close();
+    }
+
+    // Le grand tableau : sans la regle qui fait ceder la place, le bandeau KPI revient
+    // sur « Toutes ». (une ancre, une seule fois : sinon la sonde ne prouve rien)
+    console.log('\n[3] CONTRE-EPREUVE PAR MUTATION : le grand tableau sans la regle qui fait ceder la place\n');
+    const sourceGf = fs.readFileSync(path.join(ROOT, SANS_CEDER.fichier), 'utf8').replace(/\r\n/g, '\n');
+    if (ok(sourceGf.split(SANS_CEDER.de).length === 2, 'l ancre de la regle du grand tableau existe une fois et une seule')) {
+      overrides.set(SANS_CEDER.fichier, sourceGf.replace(SANS_CEDER.de, () => SANS_CEDER.vers));
+      const pageMutee = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+      await installMock(pageMutee, JEU);
+      await ouvrirConsole(pageMutee);
+      const toutes = (await balayerLeMenu(pageMutee, (e) => e.cle === 'complete'))[0];
+      overrides.delete(SANS_CEDER.fichier);
+      await pageMutee.close();
+      ok(Boolean(toutes) && toutes.large && toutes.blocs['bandeau KPI'].visible, 'la sonde REGARDE vraiment : sans la regle, le bandeau KPI revient sur « Toutes »', toutes ? toutes.blocs['bandeau KPI'].boite : 'Toutes introuvable');
     }
   } finally {
     await browser.close();

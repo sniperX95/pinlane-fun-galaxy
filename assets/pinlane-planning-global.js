@@ -307,7 +307,7 @@
     var p = laser && laser.prochain;
     if (p) {
       var places = Number(p.places) || 0;
-      etat.laser = { texte: gpHeure(p.t) + (places > 0 ? ' · ' + places + (places > 1 ? ' places' : ' place') : ' complet'), plein: places <= 0, bulle: 'Prochain départ laser à ' + gpHeure(p.t) + ' : ' + (places > 0 ? places + ' armes libres sur ' + laser.capacite : 'complet') };
+      etat.laser = { t: p.t, places: places, texte: gpHeure(p.t) + (places > 0 ? ' · ' + places + (places > 1 ? ' places' : ' place') : ' complet'), plein: places <= 0, bulle: 'Prochain départ laser à ' + gpHeure(p.t) + ' : ' + (places > 0 ? places + ' armes libres sur ' + laser.capacite : 'complet') };
     }
     var ici = {};
     groupes.forEach(function (g) {
@@ -341,7 +341,7 @@
   function gpCharge(laser) {
     var occupation = typeof getStaffBowlingLaneOccupation === 'function' ? getStaffBowlingLaneOccupation() : null;
     var departs = laser && Array.isArray(laser.departs) ? laser.departs : [];
-    return function (b, col) {
+    var charge = function (b, col) {
       if (col.nature === 'bowling' && occupation) {
         var l = getStaffBowlingLanesFreeBetween(b, b + 0.5, occupation);
         if (l && l.ouvertes && !l.libres) return { texte: 'complet', bulle: 'Les ' + l.ouvertes + ' pistes sont prises entre ' + gpHeure(b) + ' et ' + gpHeure(b + 0.5) };
@@ -353,6 +353,17 @@
       }
       return null;
     };
+    // CE QUI RESTE A UNE HEURE (2026-11-02) : le telephone sonne, « vous avez de la place a
+    // 17:00 pour 8 ? ». Les pistes qui tiennent une partie d une heure, celle que Réserver
+    // propose (une piste libre une demi-heure annonçait une place que Réserver refusait),
+    // les places de son depart laser, les memes sources que la tete du tableau.
+    var fermeture = typeof getPlanningWindow === 'function' ? Number(getPlanningWindow(state.currentDate).close) : Infinity;
+    charge.place = function (b) {
+      var l = occupation && b + 1 <= fermeture + 1e-6 ? getStaffBowlingLanesFreeBetween(b, b + 1, occupation) : null;
+      var depart = departs.find(function (d) { return d.t >= b - 1e-6 && d.t < b + 0.5 - 1e-6 && !d.ferme && !d.hors; });
+      return { pistes: l && l.ouvertes ? l.libres : 0, laser: depart ? Math.max(0, Number(depart.places) || 0) : 0 };
+    };
+    return charge;
   }
 
   // ---- LA JOURNEE EN LIGNES ---------------------------------------------------
@@ -533,7 +544,7 @@
   function gfActivite(g, e, col, m) {
     var r = g.r;
     var etat = gfEtat(g, e, m);
-    var t = '', d = '', bulle = '';
+    var t = '', d = '', bulle = '', panne = false;
     if (e.aPlacer) {
       t = 'à placer';
       bulle = 'Laser : une partie encore sans heure, à placer au planning laser';
@@ -553,6 +564,11 @@
         var n = e.pistes ? e.pistes.length : 0;
         d = n ? 'P' + gpPistes(e.pistes) : 'pistes ?';
         if (minutes !== 60) d += ' ' + gfDuree(minutes);
+        // UNE PISTE FERMEE SE VOIT SUR LA LIGNE DU GROUPE (2026-11-02) : fermee au planning
+        // bowling, le tableau ne changeait pas, et le groupe arrivait sur une piste en
+        // panne. Un toucher mene a son bloc, pour le deplacer.
+        var fermees = (e.pistes || []).filter(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; });
+        if (fermees.length && etat !== 'fini') { d = 'P' + gpPistes(fermees) + (fermees.length > 1 ? ' fermées' : ' fermée'); panne = true; }
         bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
       } else if (col.nature === 'laser') {
         var armes = Number(e.joueurs) || 0;
@@ -568,8 +584,8 @@
         bulle = gpTitreActivite(e.activityId) + (e.libre ? ' vers ' + gpHeure(debut) + ', sans heure fixe' : ' à ' + gpHeure(debut)) + (minutes > 0 ? ' · ' + gfDuree(minutes) : '') + (d ? ' · ' + d : '');
       }
     }
-    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '">' + (etat === 'fini' && gfPresent(g) ? GF_FAIT : '') + gpEsc(t) + (d ? '<span class="gf-x__d">' + gpEsc(d) + '</span>' : '') + '</span>';
+    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (etat === 'fini' && gfPresent(g) ? GF_FAIT : '') + gpEsc(t) + (d ? '<span class="gf-x__d">' + gpEsc(d) + '</span>' : '') + '</span>';
   }
   function gfCase(g, col, m) {
     var liste = g.cases.get(col.cle) || [];
@@ -660,8 +676,12 @@
   // « PAS VENU » : discret, a l ecart du geste, sur un groupe en retard ou jamais
   // pointe a la fin de sa visite. La regle de la fiche, une seule source. Il s annule
   // depuis la fiche.
-  function gfPasVenu(g) {
-    if (!(g.retard || (g.etat === 'closing' && !gfPresent(g)))) return '';
+  // (a +10 min, le groupe se gare : le bouton trainait sur chaque ligne du rush. Et un
+  // groupe qui a annonce son retard n est pas un groupe qui ne vient pas)
+  var GF_PAS_VENU_MIN = 15;
+  function gfPasVenu(g, m) {
+    var tard = g.retard && m.maintenant != null && gfMinutesDeRetard(g, m) >= GF_PAS_VENU_MIN && !(typeof getReservationDelayFlag === 'function' && getReservationDelayFlag(g.r));
+    if (!(tard || (g.etat === 'closing' && !gfPresent(g)))) return '';
     if (typeof renderGroupePasVenu !== 'function' || !renderGroupePasVenu(g.r)) return '';
     return '<button type="button" class="gf-pv" data-gf-absent="' + gpEsc(g.id) + '" aria-label="' + gpEsc((g.r.name || 'Le groupe') + ' : pas venu') + '">Pas venu</button>';
   }
@@ -681,7 +701,7 @@
   // Le moment du groupe decide du geste, le statut ne fait que le teinter.
   function gfEtatCase(g, m, q) {
     var r = g.r;
-    var h = gfPasVenu(g);
+    var h = gfPasVenu(g, m);
     if (g.etat === 'closing') {
       var du = gfMontantDu(r);
       // (un montant long prend la marge de « Pas venu », qui reste dans la fiche)
@@ -695,11 +715,14 @@
     } else if (g.teinte === 'paid') {
       h += '<span class="gf-gb gf-gb--etat">Payé</span>';
     } else if (g.teinte === 'arr') {
-      h += gfArrive(r);
+      var duIci = gfPeutEncaisser() ? gfMontantDu(r) : '';
       // (un nom tape : le client qui dit « on peut payer ? » trouve son montant et
       // ses deux boutons, sa ligne prend une seconde rangee)
-      var duIci = q && gfPeutEncaisser() ? gfMontantDu(r) : '';
-      if (duIci) return '<td class="gf-etat is-double"><span class="gf-g">' + h + '</span><span class="gf-g">' + gfDu(duIci) + gfPayer(g) + '</span></td>';
+      if (q && duIci) return '<td class="gf-etat is-double"><span class="gf-g">' + h + gfArrive(r) + '</span><span class="gf-g">' + gfDu(duIci) + gfPayer(g) + '</span></td>';
+      // UN GROUPE SUR PLACE PAIE D UN GESTE (2026-11-02) : le montant, a cote de « Ils sont
+      // 10 », ouvre Carte et Espèces. Payer passait par la fiche.
+      if (duIci) h += '<button type="button" class="gf-du gf-du--b' + (duIci.length > 5 ? ' is-long' : '') + '" data-gf-encaisser="' + gpEsc(g.id) + '" aria-label="' + gpEsc((r.name || 'Le groupe') + ' : encaisser ' + duIci) + '">' + gpEsc(duIci) + '</button>';
+      h += gfArrive(r);
     }
     return '<td class="gf-etat"><span class="gf-g">' + h + '</span></td>';
   }
@@ -730,11 +753,50 @@
 
   // LA RECHERCHE : le nom, le telephone, l email, le libelle, sans accents.
   function gfCle(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+  // ET CE QUI EST ECRIT SUR LA LIGNE (2026-11-02, audit joue sur la vraie console) :
+  // l heure (« 15:00 », « 15h », celle de la ligne ou d une activite), la piste
+  // (« P3 »), le nombre (« 10 pers »). Le comptoir cherche autant comme ca que par le nom.
+  var GF_Q_HEURE = /^(\d{1,2})\s*[:h]\s*(\d{0,2})$/;
+  var GF_Q_PISTE = /^(?:p|piste)\s*(\d{1,2})$/;
+  var GF_Q_PERS = /^(\d{1,3})\s*(?:p|pers|personnes?|joueurs?|j)\.?$/;
+  function gfHeuresDe(g) {
+    var heures = [gpHeure(g.heure)];
+    g.cases.forEach(function (liste) {
+      liste.forEach(function (e) { if (e.start != null && !e.libre) heures.push(gpHeure(e.start)); });
+    });
+    return heures;
+  }
   function gfTrouve(g, q) {
     if (!q) return true;
     var r = g.r;
-    return gfCle([r.name, r.phone, r.email, r.label, g.formule && g.formule.long].join(' ')).indexOf(q) >= 0;
+    if (gfCle([r.name, r.phone, r.email, r.label, g.formule && g.formule.long].join(' ')).indexOf(q) >= 0) return true;
+    var heure = GF_Q_HEURE.exec(q);
+    if (heure) {
+      var hh = heure[1].padStart(2, '0');
+      return gfHeuresDe(g).some(function (h) { return h.slice(0, 2) === hh && h.slice(3).indexOf(heure[2]) === 0; });
+    }
+    var piste = GF_Q_PISTE.exec(q);
+    if (piste) return (g.cases.get('bowling') || []).some(function (e) { return (e.pistes || []).indexOf(Number(piste[1])) >= 0; });
+    var pers = GF_Q_PERS.exec(q);
+    return Boolean(pers) && Number(r.pax) === Number(pers[1]);
   }
+  // (une faute legere, « mason » pour Masson, ne joue que si rien d exact n existe :
+  // elle ne change ni ce qu un nom juste montre, ni ce qu Entree pointe)
+  function gfRecherche(m, q) {
+    if (!q) return m.groupes;
+    var justes = m.groupes.filter(function (g) { return gfTrouve(g, q); });
+    if (justes.length || typeof nomRessemble !== 'function') return justes;
+    return m.groupes.filter(function (g) { return nomRessemble(gfCle(g.r.name), q); });
+  }
+
+  // (la liste sous le tableau montre ce que le tableau a trouve : « 15:00 » y disait
+  // « Aucun résultat » juste sous les groupes de 15:00)
+  window.gfIdsTrouves = function () {
+    var wrap = document.getElementById('globalPlanningGridWrap');
+    var m = wrap && wrap._gfModele;
+    if (!m) return null;
+    return new Set(gfRecherche(m, gfCle(state.searchTerm || '')).map(function (g) { return g.r.id; }));
+  };
 
   // ---- LE GRAND TABLEAU EN HTML ----------------------------------------------------
   // Les colonnes ont leur vraie largeur, posee une fois pour toutes (table-layout:
@@ -763,27 +825,42 @@
     return b;
   }
   // LA GRANDE CASE D UNE DEMI-HEURE, comme sur le papier : elle couvre toutes ses
-  // lignes, dit l heure, ce qui arrive, et la ressource pleine (2026-10-27 : rouge
-  // seulement la, le quart d heure plein de Resy). Une ligne seule n a pas la hauteur
-  // de tout dire, elle garde l essentiel. Le filtre et la recherche comptent ce qu ils
-  // montrent ; la charge, elle, compte tout le centre.
+  // lignes, dit l heure, ce qui reste (les pistes libres, les places au laser), ce qui
+  // arrive, et la ressource pleine (2026-10-27 : rouge seulement la, le quart d heure
+  // plein de Resy). Un toucher reserve a cette heure : la reponse au telephone est deja
+  // sur le tableau. Une ligne seule n a pas la hauteur de tout dire, elle garde
+  // l essentiel. Le filtre et la recherche comptent ce qu ils montrent ; la charge, elle,
+  // compte tout le centre.
   function gfBlocCase(m, part, compte, bande) {
     var classes = 'gf-bloc' + (bande ? ' is-bande' : '') + (part.quand ? ' is-' + part.quand : '');
     var attr = ' rowspan="' + part.lignes.length + '"';
     // (la barre de l heure tombe dans la demi-heure : ce qui suit reste dans son bloc)
     if (part.suite) return '<td class="' + classes + ' is-suite"' + attr + '></td>';
-    var pleins = [];
+    var heure = gpHeure(part.b);
+    // (ce qui est passe n a plus rien a offrir, un jour ferme non plus)
+    var ouvert = part.quand !== 'passe' && !(m.fenetre && m.fenetre.closed) && !(m.maintenant == null && state.currentDate < todayStr());
+    var place = ouvert ? m.charge.place(part.b) : null;
+    var seule = part.lignes.length < 2;
+    var lignes = [];
     m.colonnes.forEach(function (col) {
       var plein = m.charge(part.b, col);
-      if (plein) pleins.push({ titre: col.titre, texte: plein.texte, bulle: plein.bulle });
+      if (plein) lignes.push({ html: '<span class="gf-bloc__plein" title="' + gpEsc(plein.bulle) + '">' + gpEsc(seule ? plein.texte : col.titre + ' ' + plein.texte) + '</span>', hauteur: seule ? 1 : 2 });
     });
-    var seule = part.lignes.length < 2;
-    var serre = pleins.length && part.lignes.length < 3;
-    var dessous = (seule || serre ? '' : '<span>' + gpEsc(gfPluriel(compte.groupes, ['groupe', 'groupes'])) + '</span>') + (seule && pleins.length ? '' : '<span>' + compte.pers + ' pers.</span>');
-    var charge = pleins.map(function (p) {
-      return '<span class="gf-bloc__plein" title="' + gpEsc(p.bulle) + '">' + gpEsc(seule ? p.texte : p.titre + ' ' + p.texte) + '</span>';
-    }).join('');
-    return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(gpHeure(part.b)) + '"><span class="gf-bloc__in"><b>' + gpEsc(gpHeure(part.b)) + '</b>' + dessous + charge + '</span></td>';
+    if (place && place.pistes) lignes.push({ html: '<span>Pistes ' + place.pistes + '</span>', hauteur: 1 });
+    if (place && place.laser) lignes.push({ html: '<span>Laser ' + place.laser + '</span>', hauteur: 1 });
+    lignes.push({ html: '<span>' + compte.pers + ' pers.</span>', hauteur: 1 });
+    // (la case n a que la hauteur de ses lignes : une ligne, un mot sous l heure)
+    var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;
+    var dessous = '';
+    lignes.forEach(function (l) {
+      if (l.hauteur > reste) return;
+      reste -= l.hauteur;
+      dessous += l.html;
+    });
+    var corps = '<b>' + gpEsc(heure) + '</b>' + dessous;
+    if (!ouvert) return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(heure) + '"><span class="gf-bloc__in">' + corps + '</span></td>';
+    var dit = 'Réserver à ' + heure + (place.pistes ? ', ' + gfPluriel(place.pistes, ['piste libre', 'pistes libres']) : '') + (place.laser ? ', ' + gfPluriel(place.laser, ['place', 'places']) + ' au laser' : '');
+    return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(heure) + '" data-gf-reserver="' + gpEsc(heure) + '"><button type="button" class="gf-bloc__in" title="' + gpEsc(dit) + '" aria-label="' + gpEsc(dit) + '">' + corps + '</button></td>';
   }
   // L heure de la ligne : celle de sa demi-heure est dans la grande case, elle ne
   // s ecrit ici que si elle n est pas pile (14:10). Le retard s y ecrit aussi : c est
@@ -794,11 +871,63 @@
     // (au telephone, chaque carte dit son heure : l attribut la garde sans un element
     // de plus par ligne)
     return '<td class="gf-h' + (pile ? ' is-pile" data-gf-heure="' + h + '">' : '"><b>' + h + '</b>')
-      + (g.retard && m.maintenant != null ? '<span class="gf-h__retard" data-gf-retard="' + gpEsc(g.id) + '"></span>' : '') + '</td>';
+      + (g.retard && m.maintenant != null ? '<button type="button" class="gf-h__retard" data-gf-retard="' + gpEsc(g.id) + '" data-gf-retarder="' + gpEsc(g.id) + '"></button>' : '') + '</td>';
+  }
+  // PERSONNE A CE NOM CE JOUR-LA (2026-11-02, audit joue sur la vraie console). « Nom pas
+  // trouvé » coutait 15 gestes : le tableau disait « Aucun groupe », sans un bouton, et
+  // la recherche de toutes les dates vivait sur la page Réservations. Dessous, les
+  // autres dates, une ligne par reservation, qui ouvre sa fiche sans quitter le jour ;
+  // et « Réserver pour Dupont », avec le nom tape. La lecture est lourde (14 mois) :
+  // une seule a la fois, gardee une minute, et si elle echoue, pas avant 30 s.
+  var gfAilleursLe = -Infinity;
+  function gfChercherAilleurs() {
+    var etat = window.pv2ResSearchEtat();
+    var t = Date.now();
+    if (etat.frais || etat.charge || t - gfAilleursLe < 30000) return;
+    gfAilleursLe = t;
+    window.pv2ResSearchEnsureData(false).then(function () {
+      var wrap = document.getElementById('globalPlanningGridWrap');
+      if (wrap && wrap._gfRacine && wrap._gfRacine.isConnected) renderGlobalPlanning(wrap);
+    });
+  }
+  function gfAutresDatesHtml(m, terme) {
+    if (typeof window.pv2ResSearchMatches !== 'function' || terme.length < 2) return '';
+    gfChercherAilleurs();
+    var etat = window.pv2ResSearchEtat();
+    if (!etat.lu) return '<span class="gf-rien__etat">' + (etat.erreur ? 'Les autres dates ne répondent pas.' : 'Recherche dans les autres dates…') + '</span>';
+    var lignes = window.pv2ResSearchMatches(terme).filter(function (r) { return r.date !== m.jour; });
+    if (!lignes.length) return '<span class="gf-rien__etat">Rien non plus aux autres dates.</span>';
+    return '<span class="gf-rien__titre" id="gfAutresDates">Autres dates</span><ul class="gf-rien__liste" aria-labelledby="gfAutresDates">' + lignes.map(function (r) {
+      var quand = (typeof formatQuickBookDateLabel === 'function' ? formatQuickBookDateLabel(r.date) : r.date) + ' · ' + String(r.startTime || '').slice(0, 5);
+      var n = Number(r.pax) || 0;
+      return '<li><button type="button" class="gf-rien__l" data-id="' + gpEsc(r.id) + '" onclick="pv2ResSearchOpen(this.dataset.id, true)"><span class="gf-rien__q">' + gpEsc(quand) + '</span><span class="gf-rien__n">' + gpEsc(r.name || 'Client') + '</span><span class="gf-rien__p">' + n + ' pers.</span></button></li>';
+    }).join('') + '</ul>';
+  }
+  // (une heure, une piste, un nombre, un e-mail ne sont pas des noms de client)
+  function gfNomTape(terme, q) {
+    return /\p{L}{2}/u.test(terme) && terme.indexOf('@') < 0 && !GF_Q_HEURE.test(q) && !GF_Q_PISTE.test(q) && !GF_Q_PERS.test(q);
+  }
+  // UN GROUPE CACHE PAR UN FILTRE N EST PAS UN GROUPE ABSENT : sous « En retard »,
+  // chercher Masson, attendu a 18:00, disait « aucun groupe » et proposait de le
+  // reserver, un doublon pour un client deja dans la journee.
+  function gfRienHtml(m, q) {
+    var caches = m.visibles ? gfRecherche(m, q).length : 0;
+    if (caches) {
+      return '<div class="gf-rien__tete"><b>' + gpEsc(gfPluriel(caches, ['groupe trouvé, caché', 'groupes trouvés, cachés'])) + ' par ce filtre</b>'
+        + '<button type="button" class="gf-rien__reserver" onclick="setStaffStatusFilter(\'all\')">Enlever le filtre</button></div>';
+    }
+    var terme = String(state.searchTerm || '').trim();
+    var peut = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.quick');
+    var reserver = peut && gfNomTape(terme, q)
+      ? '<button type="button" class="gf-rien__reserver" data-nom="' + gpEsc(terme) + '" onclick="reserverAuComptoir({ name: this.dataset.nom })">Réserver pour ' + gpEsc(terme) + '</button>'
+      : '';
+    return '<div class="gf-rien__tete"><b>Aucun groupe ne correspond à « ' + gpEsc(terme) + ' »' + (m.aujourdHui ? ' aujourd’hui' : '') + '</b>' + reserver + '</div>'
+      + (reserver || !peut ? '' : '<span>Pour un client sans réservation, touchez « Réservation rapide » en haut à droite.</span>')
+      + gfAutresDatesHtml(m, terme);
   }
   function gfParties(m, q, cartes) {
     var nbCol = 6 + m.colonnes.length;
-    var lignes = m.groupes.filter(function (g) { return (!m.visibles || m.visibles.has(g.id)) && gfTrouve(g, q); });
+    var lignes = gfRecherche(m, q).filter(function (g) { return !m.visibles || m.visibles.has(g.id); });
     // (au telephone, la page defile : les groupes finis se replient, une ligne les
     // rend. Une recherche ou un filtre montre tout ce qu il trouve.)
     var finis = cartes && m.aujourdHui && !q && !m.visibles ? lignes.filter(function (g) { return g.parti; }) : [];
@@ -860,8 +989,8 @@
       });
     });
     if (!nowPose && lignes.length) poser('maintenant', gfMaintenant(nbCol));
-    if (!lignes.length && m.groupes.length) {
-      poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? '<b>Aucun groupe ne correspond à « ' + gpEsc(String(state.searchTerm || '').trim()) + ' »</b><span>Un client sans réservation : « Réservation rapide », en haut à droite.</span>' : '<b>Aucun groupe dans ce filtre</b>') + '</td></tr>');
+    if (!lignes.length && (m.groupes.length || q)) {
+      poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? gfRienHtml(m, q) : '<b>Aucun groupe dans ce filtre</b>') + '</td></tr>');
     }
     return {
       table: '<table class="gf-t' + (m.colonnes.length > 8 ? ' is-serre' : '') + '" style="--gf-nb:' + m.colonnes.length + '" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '">',
@@ -955,26 +1084,68 @@
   // Les groupes du prochain depart laser, lus sur le modele (la regle de lpModele :
   // une partie va au depart le plus proche) : « Lina 11 · Manon 8 ».
   function gfGroupesDuDepart(m) {
-    var heure = /^(\d{1,2}):(\d{2})/.exec(m.etat.laser.texte);
-    if (!heure) return '';
-    var t = Number(heure[1]) + Number(heure[2]) / 60;
+    var t = m.etat.laser.t;
     var liste = [];
     m.groupes.forEach(function (g) {
       if (g.parti) return;
       (g.cases.get('laser') || []).some(function (e) {
         if (e.aPlacer || e.start == null || e.start <= t - 0.25 + 1e-6 || e.start > t + 0.25 + 1e-6) return false;
-        liste.push(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0));
+        // (« où sont-ils ? » : qui n est pas encore la se dit, un toucher ouvre sa fiche)
+        var la = gfPresent(g);
+        liste.push('<button type="button" class="gf-e__g' + (la ? '' : ' is-attendu') + '" data-gf-fiche="' + gpEsc(g.id) + '">' + gpEsc(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0) + (la ? '' : ' pas là')) + '</button>');
         return true;
       });
     });
     return liste.join(' · ');
   }
+  // L ETAT DU CENTRE MENE A SON GESTE (2026-11-02) : « Pistes 4 libres » ouvre Réserver, sur
+  // une heure qui tient ; complet, son planning dit quand ca se libere.
   function gfEtatBandeau(cle, libelle, et, dessous) {
-    return '<div class="gf-e' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + cle + '"><span class="gf-e__h"><span class="gf-e__l">' + gpEsc(libelle) + '</span><b class="gf-e__v">' + gpEsc(et.texte) + '</b></span><span class="gf-e__s">' + gpEsc(dessous) + '</span></div>';
+    return '<div class="gf-e' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + cle + '"><button type="button" class="gf-e__h" title="' + gpEsc(et.bulle) + '"><span class="gf-e__l">' + gpEsc(libelle) + '</span><b class="gf-e__v">' + gpEsc(et.texte) + '</b></button><span class="gf-e__s">' + dessous + '</span></div>';
+  }
+  function gfDepuisBandeau(wrap, cle) {
+    var et = wrap._gfModele && wrap._gfModele.etat && wrap._gfModele.etat[cle];
+    if (!et) return;
+    if (et.plein) openStaffPlanningResource(cle);
+    else if (cle === 'laser') openQuickBookForLaserSession(et.t, et.places);
+    else reserverAuComptoir({ type: 'bowling' });
+  }
+  // LES BULLES DU TABLEAU : la bulle des menus de la console, ancree sur ce qu on touche.
+  function gfBulle(bouton, e, html, surChoix) {
+    showStaffFloatingMenu({ currentTarget: bouton, stopPropagation: function () { e.stopPropagation(); } }, html);
+    var bulle = document.querySelector('.staff-action-popover');
+    if (!bulle) return;
+    bulle.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-gf-choix]');
+      if (!b) return;
+      closeStaffFloatingMenus();
+      surChoix(b.getAttribute('data-gf-choix'), ev);
+    });
+    var premier = bulle.querySelector('button');
+    if (premier) premier.focus({ preventScroll: true });
+  }
+  // « On arrive dans 20 minutes » : le retard annonce compte depuis l heure de la ligne,
+  // le plan de retard de la console (openDelayImpact) dit ce que ca bouscule.
+  function gfBulleRetard(wrap, bouton, e) {
+    var m = wrap._gfModele;
+    var id = bouton.getAttribute('data-gf-retarder');
+    var g = m && m.groupes.find(function (x) { return String(x.id) === id; });
+    if (!g || m.maintenant == null) return;
+    var deja = gfMinutesDeRetard(g, m);
+    var choix = [10, 20, 30].map(function (n) { return '<button type="button" data-gf-choix="' + n + '">' + n + ' min</button>'; }).join('');
+    gfBulle(bouton, e, '<div class="staff-action-popover-title">Ils arrivent dans</div>' + choix, function (n, ev) { openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev); });
+  }
+  function gfApresEncaisser() {
+    if (String(state.searchTerm || '').trim()) gfViderRecherche();
+  }
+  function gfBulleEncaisser(bouton, e) {
+    var id = Number(bouton.getAttribute('data-gf-encaisser'));
+    var choix = GROUPE_MOYENS.map(function (moyen) { return '<button type="button" data-gf-choix="' + gpEsc(moyen.valeur) + '">' + gpEsc(moyen.mot) + '</button>'; }).join('');
+    gfBulle(bouton, e, '<div class="staff-action-popover-title">' + gpEsc(bouton.textContent) + ' à encaisser</div>' + choix, function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); });
   }
   function gfBandeauHtml(m, plein) {
     var h = '';
-    if (m.aujourdHui && m.maintenant != null) h += '<div class="gf-horloge"><b data-gf-horloge></b><span>maintenant</span></div>';
+    if (m.aujourdHui && m.maintenant != null) h += '<div class="gf-horloge"><b data-gf-horloge></b><span data-gf-direct></span></div>';
     else {
       var pers = m.groupes.reduce(function (n, g) { return n + (Number(g.r.pax) || 0); }, 0);
       h += '<div class="gf-horloge is-jour"><b>' + gpEsc(gfPluriel(m.groupes.length, ['groupe', 'groupes'])) + '</b><span>' + gpEsc(gfPluriel(pers, ['joueur', 'joueurs'])) + '</span></div>';
@@ -991,7 +1162,7 @@
     });
     // (un jour de fermeture, ni piste libre ni prochain depart ne veulent rien dire)
     var e = (m.fenetre && m.fenetre.closed ? null : m.etat) || {};
-    if (e.bowling) h += gfEtatBandeau('bowling', 'Pistes', e.bowling, String(e.bowling.bulle || '').replace(/^(Libres maintenant : |Aucune piste libre, )/, ''));
+    if (e.bowling) h += gfEtatBandeau('bowling', 'Pistes', e.bowling, gpEsc(String(e.bowling.bulle || '').replace(/^(Libres maintenant : |Aucune piste libre, )/, '')));
     if (e.laser) h += gfEtatBandeau('laser', 'Laser', e.laser, gfGroupesDuDepart(m) || 'aucun groupe à ce départ');
     // (la tete de la boite est cachee hors plein ecran : ses deux portes passent ici)
     if (!plein) h += '<div class="gf-outils"><button type="button" class="gf-outil" onclick="toggleGlobalPlanningExpanded()">Agrandir</button><button type="button" class="gf-outil gf-outil--plus" aria-label="Plus d’options" onclick="toggleGlobalPlanningActionsMenu(event)">⋯</button></div>';
@@ -1015,6 +1186,23 @@
       var t = gpHeure(m.maintenant);
       if (horloge.textContent !== t) horloge.textContent = t;
     }
+    gfMajDirect();
+  }
+  // SOUS L HEURE, CE QUE VAUT L ECRAN (2026-11-02) : « en direct », ou ce qui ne va pas.
+  // Un ecran qui ne recoit plus rien ressemble a un ecran juste : c est ici qu il le dit,
+  // en plein rush, avant qu on pointe un groupe deja parti. Ecrit hors du HTML compare :
+  // la reconnexion ne reecrit pas le bandeau.
+  function gfEtatDirect() {
+    var panne = typeof getRemoteSyncIndicator === 'function' ? getRemoteSyncIndicator() : { tone: 'live' };
+    if (panne.tone === 'stale') return { mot: 'hors ligne', classe: 'is-stale', bulle: panne.label };
+    if (panne.tone === 'warning' || (typeof window.pinlanePoulsCoupe === 'function' && window.pinlanePoulsCoupe())) return { mot: 'reconnexion…', classe: 'is-warning', bulle: 'L’écran ne reçoit plus les changements des autres postes.' };
+    return { mot: 'en direct', classe: '', bulle: 'Ce que font les autres postes arrive ici tout seul.' };
+  }
+  function gfMajDirect() {
+    var n = document.querySelector('[data-gf-direct]');
+    if (!n) return;
+    var e = gfEtatDirect();
+    if (n.textContent !== e.mot) { n.textContent = e.mot; n.className = e.classe; n.title = e.bulle; }
   }
   // Un compteur montre ses groupes, par heure ; un second toucher revient. (il mene a
   // la journee : un nom tape s efface)
@@ -1059,7 +1247,7 @@
     var wrap = document.getElementById('globalPlanningGridWrap');
     var m = wrap && wrap._gfModele;
     var q = gfCle(champ.value);
-    var trouves = m ? m.groupes.filter(function (g) { return gfTrouve(g, q); }) : [];
+    var trouves = m ? gfRecherche(m, q) : [];
     if (trouves.length !== 1 || !gfPeutArriver(trouves[0], m)) return;
     setReservationStatusDirect(trouves[0].id, 'arrived');
     gfViderRecherche();
@@ -1116,7 +1304,9 @@
     if (bandeau.textContent !== texte) bandeau.textContent = texte;
     var defile = racine.querySelector('.gf-defile');
     wrap._gfModele = m;
-    if (m.groupes.length) {
+    // (un jour vide cherche aussi : le client est peut-etre sur une autre date)
+    var aEcrire = Boolean(m.groupes.length || q);
+    if (aEcrire) {
       var actif = document.activeElement;
       var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;
       gfEcrire(wrap, defile, gfParties(m, q, cartes));
@@ -1128,7 +1318,7 @@
       gfStats.ecritures += 1;
     }
     gfRemplir(wrap, defile, m, q);
-    racine.classList.toggle('is-vide', !m.groupes.length);
+    racine.classList.toggle('is-vide', !aEcrire);
     gfHauteur(wrap);
     // LE TABLEAU S OUVRE SUR CE QUI RESTE A FAIRE, une fois par jour affiche, et il y
     // revient quand un filtre ou un nom tape se retire : ensuite, le defilement de
@@ -1232,12 +1422,20 @@
     var hTete = tete ? tete.getBoundingClientRect().height : 0;
     var ligne = defile.querySelector('.gf-r');
     var h = ligne ? ligne.getBoundingClientRect().height : 36;
+    var vue = defile.clientHeight - hTete;
     var yNow = now.offsetTop - hTete;
-    var y = yNow - GF_AVANT * h;
+    // (une premiere ligne tres haute, un nom sans fin a l etroit, poussait la barre sous
+    // l ecran : la marge d avant laisse toujours la place de ce qui vient)
+    var y = yNow - Math.min(GF_AVANT * h, Math.max(0, vue - (GF_APRES + 1) * h));
     var retard = defile.querySelector('.gf-r.is-retard');
     if (retard) {
-      var plusBas = yNow + now.getBoundingClientRect().height + GF_APRES * h - (defile.clientHeight - hTete);
+      var plusBas = yNow + now.getBoundingClientRect().height + GF_APRES * h - vue;
       y = Math.min(y, Math.max(retard.offsetTop - hTete, plusBas));
+    }
+    // (jamais une ligne coupee en deux sous la tete : elle passe entiere dessous)
+    var lignes = defile.querySelectorAll('.gf-r');
+    for (var i = 0; i < lignes.length; i += 1) {
+      if (lignes[i].offsetTop - hTete >= y - 1) { y = lignes[i].offsetTop - hTete; break; }
     }
     return Math.max(0, Math.round(y));
   }
@@ -1258,7 +1456,10 @@
       var l = now.previousElementSibling, n = 0;
       while (l && n < 2) { n += 1; l = l.previousElementSibling; }
       var cible = (l ? l.nextElementSibling : defile.querySelector('tbody tr')) || now;
+      // (le gerant, au telephone : la liste s ouvre sur l heure, une fois ; ensuite, la page
+      // est a lui)
       if (doux) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (wrap._gfRegle == null) { wrap._gfRegle = 0; cible.scrollIntoView({ block: 'start' }); }
       return;
     }
     if (doux) wrap._gfRegle = null;
@@ -1329,11 +1530,23 @@
       if (compte && typeof ouvrirCompteArrivee === 'function') { if (e.detail < 2) ouvrirCompteArrivee(Number(compte.getAttribute('data-compte-id')), compte, e); return; }
       if (e.target.closest('.gf-retour')) { wrap._gfSuit = true; gfAllerAMaintenant(wrap, true); return; }
       var payer = e.target.closest('[data-gf-payer]');
-      if (payer) { encaisserReservation(Number(payer.getAttribute('data-gf-payer')), payer.getAttribute('data-gf-moyen'), e); return; }
+      if (payer) { encaisserReservation(Number(payer.getAttribute('data-gf-payer')), payer.getAttribute('data-gf-moyen'), e); gfApresEncaisser(); return; }
+      var encaisser = e.target.closest('[data-gf-encaisser]');
+      if (encaisser) { gfBulleEncaisser(encaisser, e); return; }
+      var retarder = e.target.closest('[data-gf-retarder]');
+      if (retarder) { gfBulleRetard(wrap, retarder, e); return; }
+      var voir = e.target.closest('[data-gf-voir]');
+      if (voir) { voirAuPlanning(Number(voir.closest('[data-gf-id]').getAttribute('data-gf-id')), voir.getAttribute('data-gf-voir'), e); return; }
       var absent = e.target.closest('[data-gf-absent]');
       if (absent) { basculerAbsence(Number(absent.getAttribute('data-gf-absent')), true, e); return; }
       var fiche = e.target.closest('[data-gf-fiche]');
       if (fiche) { openPos(Number(fiche.getAttribute('data-gf-fiche'))); return; }
+      // (la case d heure reserve a son heure ; elle ouvrait la fiche du premier groupe)
+      var reserver = e.target.closest('td[data-gf-reserver]');
+      if (reserver) { reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') }); return; }
+      if (e.target.closest('td.gf-bloc')) return;
+      var bandeau = e.target.closest('[data-gf-etat]');
+      if (bandeau) { gfDepuisBandeau(wrap, bandeau.getAttribute('data-gf-etat')); return; }
       if (e.target.closest('[data-gf-plis]')) { gfFinisOuverts = !gfFinisOuverts; renderGlobalPlanning(wrap); return; }
       if (e.target.closest('a, button, input')) return;
       var ligne = e.target.closest('[data-gf-id]');
@@ -1359,6 +1572,9 @@
       });
     };
     window.addEventListener('resize', recalculer);
+    // (la coupure se voit vite : un simple regard sur deux drapeaux, rien ne s ecrit
+    // tant que le mot ne change pas)
+    setInterval(gfMajDirect, 3000);
     if (typeof ResizeObserver === 'function') {
       var largeur = -1;
       new ResizeObserver(function (entrees) {

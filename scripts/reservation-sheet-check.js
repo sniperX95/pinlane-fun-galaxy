@@ -271,7 +271,9 @@ async function main() {
     // Movsar (« ajouter une note cote staff, une note du staff en interne ») :
     // le bouton « Note pour l equipe », son champ replie tant qu on ne
     // l ouvre pas. Les liens vers le planning se comptent a part (ci-dessous).
-    ok(infos.boutons <= 9, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 9, valait 11 avant refonte ; les cases des activites et les liens du planning a part)`);
+    // PLAFOND 10 DEPUIS LE 2026-11-02 : « Annuler la réservation » sort du pli de
+    // Modifier (6 gestes), un mot sous les etats (scripts/comptoir-reserver-check.js).
+    ok(infos.boutons <= 10, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 10, valait 11 avant refonte ; les cases des activites et les liens du planning a part)`);
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);

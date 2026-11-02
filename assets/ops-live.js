@@ -20,6 +20,9 @@
  * Contrats de ce module :
  *   - cadence de base 2 s, recul x1,8 jusqu a 30 s sur erreur reseau, retour a
  *     la base des qu une lecture passe ;
+ *   - le jour meme, sur une page qui montre la journee : une lecture par
+ *     seconde, un tour sur deux reduit a la journee et aux pistes (le petit
+ *     pouls), le reste des domaines garde ses 2 s ;
  *   - onglet cache : AUCUNE requete (un onglet oublie ne coute rien), et
  *     lecture immediate au retour plutot que d attendre le prochain tour ;
  *   - la premiere lecture MEMORISE sans recharger : la page vient d etre
@@ -41,6 +44,8 @@
   // serveur, c est la sensation : au-dela de 3 secondes, on a le temps de se
   // demander si l autre ecran a bien pris la modification.
   var CADENCE_MS = 2000;
+  // Le jour meme, deux ecrans se regardent, cote a cote : une seconde.
+  var CADENCE_VIVE_MS = 1000;
   var CADENCE_MAX_MS = 30000;
   var FACTEUR_RECUL = 1.8;
 
@@ -79,12 +84,14 @@
         return global.apiRequest('/api/ops?action=pulse&centerId=' + encodeURIComponent(centre));
       };
     var estActive = typeof opts.estActive === 'function' ? opts.estActive : function () { return true; };
+    var estVif = typeof opts.estVif === 'function' ? opts.estVif : function () { return false; };
     var recharger = typeof opts.recharger === 'function' ? opts.recharger : function () {};
     var centreActuel = typeof opts.centreActuel === 'function' ? opts.centreActuel : function () { return ''; };
     var programmer = opts.setTimeoutImpl || function (fn, ms) { return setTimeout(fn, ms); };
     var annuler = opts.clearTimeoutImpl || function (handle) { clearTimeout(handle); };
     var surErreur = typeof opts.surErreur === 'function' ? opts.surErreur : function () {};
     var cadenceDeBase = Number(opts.cadence) > 0 ? Number(opts.cadence) : CADENCE_MS;
+    var cadenceVive = Number(opts.cadenceVive) > 0 ? Number(opts.cadenceVive) : CADENCE_VIVE_MS;
 
     var cadence = cadenceDeBase;
     var timer = null;
@@ -96,6 +103,8 @@
     var rechargements = 0;
     var reports = 0;
     var derniereLectureReussie = 0;
+    var dernierTourPetit = false;
+    var echecsDeSuite = 0;
 
     function cache() {
       return Boolean(doc && doc.hidden);
@@ -115,12 +124,20 @@
       if (cache() || !estActive()) { replanifier(); return; }
       if (enVol) { replanifier(); return; }
       var centre = String(centreActuel() || '');
+      var vif = estVif();
+      // (une base se prend sur le pouls entier : un petit pouls ne dit rien du reste)
+      var petit = vif && !dernierTourPetit && memoire !== null && centreMemorise === centre;
       enVol = true;
       try {
-        var reponse = await lire(centre);
+        var reponse = await lire(centre, petit);
         lectures += 1;
+        echecsDeSuite = 0;
+        dernierTourPetit = petit;
         var nouveau = vecteurDe(reponse);
-        cadence = cadenceDeBase;
+        var partiel = Boolean(reponse && reponse.partiel);
+        // Un petit pouls ne dit rien des autres domaines : ils restent en memoire.
+        var retenir = function () { memoire = partiel ? Object.assign({}, memoire, nouveau) : nouveau; };
+        cadence = vif ? cadenceVive : cadenceDeBase;
         // VIVANT = une lecture qui PORTE une empreinte. Une reponse sans
         // empreinte (un serveur qui ne connait pas le pouls) ne voit aucun
         // changement : le planning garde alors sa propre lecture a 4 s au lieu
@@ -145,7 +162,7 @@
             // Rien n a bouge sur les domaines connus : on adopte la reponse,
             // ce qui range les domaines apparus (la nouvelle journee) et
             // oublie ceux qui ont disparu (l ancienne).
-            memoire = nouveau;
+            retenir();
           } else {
             // ON NE COUPE JAMAIS QUELQU UN QUI ECRIT. Un rechargement
             // reconstruit la page : si une gerante est en train de taper, elle
@@ -155,7 +172,7 @@
             // changements restent en attente et repassent au tour suivant.
             var fait = await recharger(changes);
             if (fait !== false) {
-              memoire = nouveau;
+              retenir();
               rechargements += 1;
             } else {
               reports += 1;
@@ -163,6 +180,7 @@
           }
         }
       } catch (error) {
+        echecsDeSuite += 1;
         cadence = Math.min(CADENCE_MAX_MS, Math.round(cadence * FACTEUR_RECUL));
         surErreur(error);
       } finally {
@@ -211,6 +229,8 @@
       get enVol() { return enVol; },
       // Le pouls vit-il ? Le planning s en sert pour espacer sa propre lecture.
       get vivant() { return !arrete && derniereLectureReussie > 0 && (Date.now() - derniereLectureReussie) < Math.max(3 * cadenceDeBase, 8000); },
+      // Deux lectures de suite sans reponse : l ecran ne suit plus, il doit le dire.
+      get coupe() { return !arrete && echecsDeSuite >= 2; },
     };
     return api;
   }
@@ -275,6 +295,10 @@
     var actif = document.activeElement;
     if (!actif) return false;
     if (actif.isContentEditable) return true;
+    // (la recherche du grand tableau garde le curseur pour le client suivant, et le
+    // rendu ne la reconstruit pas : la retenir figeait l ecran 15 s sur les gestes
+    // des autres postes, 2026-11-02)
+    if (typeof actif.hasAttribute === 'function' && actif.hasAttribute('data-pl-hors-rendu')) return false;
     var balise = String(actif.tagName || '').toUpperCase();
     if (balise === 'TEXTAREA') return true;
     if (balise !== 'INPUT') return false;
@@ -348,12 +372,15 @@
     if (boucle) return boucle;
     marquerLesChampsTouches();
     boucle = creerSynchroLive({
-      lire: function (centre) {
+      lire: function (centre, petit) {
         // La journee affichee voyage avec le pouls : son empreinte propre
         // couvre aussi les dates hors de la fenetre du planning.
         var date = typeof global.getLiveSyncDate === 'function' ? String(global.getLiveSyncDate() || '') : '';
         return global.apiRequest('/api/ops?action=pulse&centerId=' + encodeURIComponent(centre)
-          + (date ? '&date=' + encodeURIComponent(date) : ''));
+          + (date ? '&date=' + encodeURIComponent(date) : '') + (petit ? '&leger=1' : ''));
+      },
+      estVif: function () {
+        try { return Boolean(typeof global.getLiveSyncJourVif === 'function' && global.getLiveSyncJourVif()); } catch (error) { return false; }
       },
       estActive: function () {
         // Les pages qu on sait recharger, et elles seules : rafraichir pendant
@@ -388,6 +415,7 @@
   global.synchroniserLaConsole = synchroniserLaConsole;
   global.saisieNonEnregistreeDansLaConsole = saisieNonEnregistree;
   global.pinlanePoulsVivant = function () { return Boolean(boucle && boucle.vivant); };
+  global.pinlanePoulsCoupe = function () { return Boolean(boucle && boucle.coupe); };
 
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
     if (document.readyState === 'loading') {

@@ -473,16 +473,21 @@
     }
   }
 
-  function pv2ResSearchMatches() {
-    const q = pv2ResSearchNormalize(pv2ResSearch.query);
+  function pv2ResSearchMatches(terme = pv2ResSearch.query) {
+    // (la meme regle que pv2ResSearchEnsureData : les resultats d un autre centre
+    // ne se montrent pas, meme le temps d une lecture)
+    if (pv2ResSearch.center && pv2ResSearch.center !== getActiveOpsCenterId()) return [];
+    const q = pv2ResSearchNormalize(terme);
     if (q.length < 2) return [];
     const digits = q.replace(/[^0-9]/g, '');
     const rows = (pv2ResSearch.rows || []).filter((r) => r && r.status !== 'cancelled');
-    const hit = rows.filter((r) => {
+    const justes = rows.filter((r) => {
       if (pv2ResSearchNormalize(r.name).includes(q)) return true;
       const phone = String(r.phone || '').replace(/[^0-9]/g, '');
       return digits.length >= 4 && phone.includes(digits);
     });
+    // (une faute legere ne joue que si rien d exact n existe, comme au tableau)
+    const hit = justes.length || typeof nomRessemble !== 'function' ? justes : rows.filter((r) => nomRessemble(pv2ResSearchNormalize(r.name), q));
     // Les venues A VENIR d abord (le cas du telephone), puis les passees,
     // les plus recentes en tete.
     const today = todayStr();
@@ -511,6 +516,22 @@
   // creation / modification, la fenetre est redemandee au prochain rendu.
   window.pv2ResSearchInvalidate = function () {
     pv2ResSearch.loadedAt = 0;
+  };
+
+  // LA RECHERCHE DE TOUTES LES DATES, OUVERTE AU GRAND TABLEAU (2026-11-02). Elle
+  // vivait ici seule : un nom absent du jour coutait 15 gestes (changer de page,
+  // ouvrir la loupe, retaper). Le tableau lit la meme liste, la meme regle, le meme
+  // cache par centre (gfAutresDatesHtml, pinlane-planning-global.js).
+  window.pv2ResSearchMatches = pv2ResSearchMatches;
+  window.pv2ResSearchEnsureData = pv2ResSearchEnsureData;
+  window.pv2ResSearchEtat = function () {
+    const memeCentre = !pv2ResSearch.center || pv2ResSearch.center === getActiveOpsCenterId();
+    return {
+      charge: pv2ResSearch.loading,
+      lu: pv2ResSearch.loaded && memeCentre,
+      frais: pv2ResSearch.loaded && memeCentre && (Date.now() - pv2ResSearch.loadedAt) < 60 * 1000,
+      erreur: pv2ResSearch.error,
+    };
   };
 
   window.pv2ResSearchToggle = function () {
@@ -546,9 +567,12 @@
   // repondait « Reservation introuvable ou non chargee » : la recherche
   // trouvait le client mais refusait de l ouvrir. On injecte donc la ligne
   // dans l etat avant d ouvrir.
-  window.pv2ResSearchOpen = function (id) {
+  // (garderLeJour : le grand tableau ouvre la fiche par-dessus sa journee. En rush,
+  // fermer la fiche doit rendre le tableau du jour, pas celui de la date trouvee.)
+  window.pv2ResSearchOpen = function (id, garderLeJour) {
     const row = (pv2ResSearch.rows || []).find((r) => String(r.id) === String(id));
     if (row && typeof upsertReservationInState === 'function') upsertReservationInState(row);
+    if (garderLeJour && typeof openPos === 'function') { openPos(id); return; }
     openStaffReservationDetail(id);
   };
 

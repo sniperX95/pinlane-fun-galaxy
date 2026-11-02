@@ -230,6 +230,9 @@ function juger(f, label, appareil) {
 // ---------------------------------------------------------------------------
 // LES GESTES, sur le Club de foot : son laser n a que 6 des 10 joueurs.
 // ---------------------------------------------------------------------------
+// Le telephone, l e-mail et l occasion attendent dans un pli (2026-11-02).
+const ouvrirContact = (page) => page.click('#editContactPli > summary', { timeout: 5000 });
+
 async function gestes(page, label) {
   const avant = await page.evaluate(() => {
     const r = state.reservations.find((x) => x.name.includes('Club de foot'));
@@ -261,6 +264,7 @@ async function gestes(page, label) {
   // [M5]
   ok(plus.replanVu && plus.barree.includes('line-through'), `[M5] ${label} : les heures d avant barrees, « recalculées à l’enregistrement » dit`, { replan: plus.replanVu, barree: plus.barree });
   await page.click('.lane-picker .lane-chip[onclick="toggleEditLane(8)"]');
+  await ouvrirContact(page);
   await page.fill('#editPhoneInput', '0471 23 45 67');
   await page.waitForTimeout(150);
   const apres = await page.evaluate(() => ({ modifs: document.getElementById('editModifs').textContent.replace(/\s+/g, ' ').trim(), prix: document.getElementById('editPriceInput').value }));
@@ -348,6 +352,7 @@ async function extrasEtOccasion(page, ou) {
   await page.waitForTimeout(150);
   const c = await lire();
   ok(c.prix === '304' && /Retrait : Tapas/.test(c.modifs), `[E2] ${label} : les tapas retirees sortent du total (304 €)`, c);
+  await ouvrirContact(page);
   await page.click('#posOverlay .fm-occasion [data-occasion="anniversaire"]', vite);
   await page.waitForTimeout(100);
   const d = await lire();
@@ -372,6 +377,7 @@ async function extrasEtOccasion(page, ou) {
 
   // [E5] un telephone seul, sur une visite a plusieurs activites.
   const cf = await ouvrir('Club de foot');
+  await ouvrirContact(page);
   await page.fill('#editPhoneInput', '0471 00 00 00', vite);
   const e3 = await enregistrer();
   ok(e3 && e3.phone === '0471 00 00 00' && Number(e3.basePrice) === Number(cf.basePrice) && Number(e3.price) === Number(cf.price),

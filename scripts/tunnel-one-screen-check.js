@@ -341,7 +341,9 @@ async function main() {
   const session = await page.context().newCDPSession(page);
   await session.send('Accessibility.enable');
   const consoleErrors = [];
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  // L adresse vit dans msg.location, pas dans le texte : sans elle, le rouge du
+  // 01/11 (une erreur, verte au second tour) ne disait rien de sa cause.
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(`${m.text()} ${m.location().url || ''}`.trim()); });
   const measured = {};
   try {
     for (const viewport of VIEWPORTS) {
@@ -409,7 +411,7 @@ async function main() {
       ok(desktop.step2.freeActivities.some((entry) => entry.startsWith(label)),
         `etape creneau : « ${label} » est nommee (${desktop.step2.freeActivities.join(' | ') || 'aucune'})`);
     });
-    ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})`);
+    ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length}${consoleErrors.length ? ' : ' + consoleErrors.slice(0, 3).join(' | ') : ''})`);
 
     // --- CONTRE-EPREUVES PAR MUTATION ---------------------------------------
     console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');

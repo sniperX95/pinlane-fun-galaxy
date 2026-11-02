@@ -9,7 +9,8 @@
 //       et rien de lisible en clair dans la piece jointe ;
 //   [D] restauration complete dans une base vide au meme schema : chaque table
 //       a le meme nombre de lignes et les reservations sont identiques a
-//       l octet ; une deuxieme restauration n ajoute rien ;
+//       l octet, y compris ce qu un declencheur recalculerait ; une deuxieme
+//       restauration n ajoute rien ;
 //   [E] la lecture sans base : une feuille CSV par table, lisible.
 //
 // Usage : PINLANE_TEST_DATABASE_URL=postgres://postgres@localhost:55432/base?host=/socket node scripts/sauvegarde-check.js
@@ -50,7 +51,12 @@ const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_UR
 
 (async () => {
   const pool = new Pool({ connectionString: process.env.PINLANE_TEST_DATABASE_URL, ssl: false });
+  // Une valeur que reservations_donnees recalculerait a l insertion : sur la prod,
+  // lower() suit le reglage de langue de la base, et client_key relie le client
+  // a ses notes. La restauration doit la rendre telle qu elle a ete sauvegardee.
+  const marquee = (await pool.query('select id, client_key from reservations order by id limit 1')).rows[0];
   try {
+    await pool.query("update reservations set client_key = 'cle-sauvegardee' where id = $1", [marquee.id]);
     console.log('[A] la photo');
     const photo = await sv.photographier(pool);
     const tables = Object.keys(photo.tables);
@@ -104,6 +110,8 @@ const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_UR
       ok(!ecarts.length, '[D] chaque table a toutes ses lignes', ecarts.join(', ') || `${tables.length} tables`);
       const empreinte = async (p) => (await p.query("select md5(string_agg(to_jsonb(r)::text, '|' order by id)) as h from reservations r")).rows[0].h;
       ok(await empreinte(cible) === await empreinte(pool), '[D] les reservations sont identiques a l octet');
+      const cle = (await cible.query('select client_key from reservations where id = $1', [marquee.id])).rows[0].client_key;
+      ok(cle === 'cle-sauvegardee', '[D] un declencheur ne recalcule rien pendant la restauration', cle === 'cle-sauvegardee' ? '' : 'client_key recalculee');
       lancer();
       const n2 = Number((await cible.query('select count(*) from reservations')).rows[0].count);
       ok(n2 === nbResa, '[D] une deuxieme restauration n ajoute rien', `${n2}`);
@@ -124,6 +132,7 @@ const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_UR
     fs.rmSync(dossier, { recursive: true, force: true });
     fs.unlinkSync(chemin);
   } finally {
+    await pool.query('update reservations set client_key = $2 where id = $1', [marquee.id, marquee.client_key]);
     await pool.end();
   }
   console.log('');

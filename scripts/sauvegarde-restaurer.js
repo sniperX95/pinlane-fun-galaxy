@@ -66,7 +66,12 @@ async function restaurer(photo, url) {
         const nom = `"${table.replace(/"/g, '')}"`;
         try {
           await client.query('begin');
+          // Une ligne revient telle qu elle a ete sauvegardee. Un declencheur de
+          // la base cible recalculerait client_key, qui relie le client a ses
+          // notes et suit le reglage de langue de la base, et paid_at.
+          await client.query(`alter table ${nom} disable trigger user`);
           const r = await client.query(`insert into ${nom} select * from jsonb_populate_recordset(null::${nom}, $1::jsonb) on conflict do nothing`, [JSON.stringify(v.donnees)]);
+          await client.query(`alter table ${nom} enable trigger user`);
           await client.query('commit');
           bilan[table] = `${r.rowCount} ligne(s) remise(s) sur ${v.lignes}`;
         } catch (error) {

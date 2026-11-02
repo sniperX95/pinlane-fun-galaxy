@@ -36,6 +36,7 @@
     "test:staff-team-crud",
     "test:login-center",
     "test:staff-bootstrap-centres",
+    "test:centres-exploites",
     "test:staff-access-codes",
     "test:staff-roles-source",
     "test:browser-modules",

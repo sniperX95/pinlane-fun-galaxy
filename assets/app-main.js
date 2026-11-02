@@ -9976,7 +9976,7 @@ function renderRecap() {
     ${showLanes && pistesAssignees.length ? `<div class="recap-item"><span class="recap-label">Piste${pistesAssignees.length > 1 ? 's' : ''} assignée${pistesAssignees.length > 1 ? 's' : ''}</span><span class="recap-value teal">${escapeHtml(pistesAssignees.join(' & '))}</span></div>` : ''}
     ${visitProgramHtml}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game · ${laserOption.label}</span></div>` : ''}
-    ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
+    ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${escapeHtml(formule.name)}</span></div>` : ''}
     ${formulaRecap && formulaRecap.appointments.length ? `<div class="recap-item"><span class="recap-label">Vos rendez-vous</span><span class="recap-value">${formulaRecap.appointments.map(escapeHtml).join(' · ')}</span></div>` : ''}
     ${formulaRecap && formulaRecap.hasTable ? `<div class="recap-item"><span class="recap-label">Votre table</span><span class="recap-value">Dès l'arrivée${formulaRecap.arrivalTime ? ` (${escapeHtml(formulaRecap.arrivalTime)})` : ''}</span></div>` : ''}
     ${formulaRecap && formulaRecap.freeLabels.length ? `<div class="recap-item"><span class="recap-label">À votre rythme</span><span class="recap-value">${formulaRecap.freeLabels.map(escapeHtml).join(' · ')}</span></div>` : ''}
@@ -35073,8 +35073,8 @@ function renderFormules() {
     return `
     <section class="formule-group">
       <div class="formule-group-head">
-        <h3>${group.name}</h3>
-        ${sharedNotes.length ? `<p class="formule-group-notes">${sharedNotes.join(' · ')}</p>` : ''}
+        <h3>${escapeHtml(group.name)}</h3>
+        ${sharedNotes.length ? `<p class="formule-group-notes">${escapeHtml(sharedNotes.join(' · '))}</p>` : ''}
         ${groupSummerOpen ? '<p class="formule-group-info">Exception grandes vacances : ces formules sont bien disponibles à la date choisie.</p>' : ''}
       </div>
       ${groupBlocked ? `<div class="formule-group-alert" role="status">
@@ -35112,22 +35112,22 @@ function renderFormules() {
             // phrase en condition statique juste au-dessus est du bruit.
             .filter(entry => !cardStatus || entry.toLowerCase() !== cardStatus.toLowerCase());
           return `
-        <button type="button" data-formule-id="${escapeHtml(f.id)}" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
+        <button type="button" data-formule-id="${escapeHtml(f.id)}" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? 'onclick="selectFormule(this.dataset.formuleId)"' : 'disabled aria-disabled="true"'}>
           <span class="formule-card-head">
             <span class="formule-card-title">
-              <span class="formule-name">${f.name}</span>
+              <span class="formule-name">${escapeHtml(f.name)}</span>
               ${f.best ? '<span class="badge-best">Best deal</span>' : ''}
             </span>
             <span class="formule-card-price">
-              ${f.oldPrice ? `<s>${f.oldPrice}€</s>` : ''}
-              <strong>${f.price}€</strong>
+              ${f.oldPrice ? `<s>${escapeHtml(f.oldPrice)}€</s>` : ''}
+              <strong>${escapeHtml(f.price)}€</strong>
               <small>/ ${f.type === 'per_lane' ? 'piste' : 'pers.'}</small>
             </span>
           </span>
           <ul class="formule-card-list">
-            ${f.desc.map(line => `<li>${line}</li>`).join('')}
+            ${f.desc.map(line => `<li>${escapeHtml(line)}</li>`).join('')}
           </ul>
-          ${meta.length ? `<span class="formule-card-meta">${meta.join(' · ')}</span>` : ''}
+          ${meta.length ? `<span class="formule-card-meta">${escapeHtml(meta.join(' · '))}</span>` : ''}
           ${cardStatus ? `<span class="formule-card-status ${f.cls}">${f.cls === 'warn' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/></svg>' : ''}${escapeHtml(cardStatus)}</span>` : ''}
           <span class="formule-card-check" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

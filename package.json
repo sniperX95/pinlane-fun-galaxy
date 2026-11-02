@@ -243,6 +243,7 @@
     "test:staff-bootstrap-centres": "node scripts/staff-bootstrap-centres-check.js",
     "test:centres-exploites": "node scripts/centres-exploites-check.js",
     "test:staff-access-codes": "node scripts/staff-access-codes-check.js",
+    "test:catalogue-injection": "node scripts/catalogue-injection-check.js",
     "test:staff-roles-source": "node scripts/staff-roles-source-check.js",
     "test:users-page": "node scripts/users-page-check.js",
     "test:platform-clients": "node scripts/platform-clients-check.js",

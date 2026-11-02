@@ -21,6 +21,10 @@
 //       Libramont portaient l empreinte d anciens codes.
 //   [E] Contraste : le proprietaire entre partout, et le demarrage a froid
 //       saute encore le bootstrap quand tout est en place.
+//   [F] Un code ne valait que 32 bits (piste H17 de l audit data, 2026-11-02) :
+//       il en porte 64, tires sur toutes ses positions, et le format ne juge
+//       rien a la connexion : un code deja emis ouvre toujours et se revele a
+//       l identique, jusqu a sa regeneration.
 //
 // HONNETETE : le VRAI lib/staff-auth.js sur une base en memoire qui obeit au
 // SQL qu il envoie ('pg' remplace dans require.cache AVANT tout require
@@ -31,6 +35,7 @@
 // Usage : node scripts/staff-access-codes-check.js
 'use strict';
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const Module = require('module');
 
@@ -236,6 +241,10 @@ async function requete(texte, params = []) {
   }
   if (/^select .* from staff_members where id = \$1/i.test(sql)) {
     const m = db.staff_members.find((x) => x.id === params[0]);
+    return m ? lignes([{ ...m }]) : vide();
+  }
+  if (/^select .* from staff_members where center_id = \$1 and id = \$2/i.test(sql)) {
+    const m = db.staff_members.find((x) => x.center_id === params[0] && x.id === params[1]);
     return m ? lignes([{ ...m }]) : vide();
   }
   if (/^select .* from staff_members where center_id = \$1/i.test(sql)) {
@@ -516,7 +525,57 @@ async function scenarioE(m, recharger) {
   return v;
 }
 
-const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE };
+// ---------------------------------------------------------------------------
+// [F] 64 BITS POUR UN CODE NEUF, ET LES CODES DEJA EMIS CONTINUENT D OUVRIR
+// ---------------------------------------------------------------------------
+const FORMAT_64_BITS = /^[A-Z0-9]{1,4}(?:-[0-9A-F]{4}){4}$/;
+const positionsAleatoires = (code) => code.replace(/^[^-]*-/, '').split('-').join('');
+
+async function scenarioF(m) {
+  const v = new Map();
+  await connexion(m, 'libramont', OWNER);
+  // L ANCIEN FORMAT, tel que la base le garde aujourd hui : empreinte, indice et
+  // copie chiffree d un code de 32 bits.
+  const ancien = 'MANA-1A2B-3C4D';
+  poserMembre({
+    id: 'libramont:member:gate-32-bits', center_id: 'libramont', name: 'Salarie', contact: '', role_id: 'manager', status: 'active',
+    access_code_hash: empreinte(ancien), access_code_hint: '••••-3C4D', access_code_enc: m.__test.encryptAccessCode(ancien),
+    created_at: tic(), updated_at: tic(),
+  });
+  const parAncien = await connexion(m, 'libramont', ancien);
+  v.set('[F] un code deja emis sur 32 bits ouvre toujours', parAncien.ok && parAncien.membre === 'libramont:member:gate-32-bits');
+  const revele = await m.revealMemberCode({ centerId: 'libramont', actorMemberId: ACTEUR, memberId: 'libramont:member:gate-32-bits' });
+  v.set('[F] et il se revele a l identique', revele.code === ancien);
+  const faux = await connexion(m, 'libramont', 'MANA-1A2B-3C4E');
+  v.set('[F] contraste : un code voisin de cet ancien code est refuse', !faux.ok && faux.message === REFUS);
+
+  // LE CHEMIN REEL : le code que la console recoit, et qu elle peut relire.
+  const { accessCode: neuf } = await m.regenerateRoleCode({ centerId: 'libramont', actorMemberId: ACTEUR, roleId: 'manager' });
+  v.set('[F] un code regenere porte 64 bits', FORMAT_64_BITS.test(neuf) && positionsAleatoires(neuf).length * 4 >= 64);
+  const parNeuf = await connexion(m, 'libramont', neuf);
+  v.set('[F] et il ouvre le centre', parNeuf.ok && parNeuf.centre === 'libramont');
+  const releve = await m.revealRoleCode({ centerId: 'libramont', actorMemberId: ACTEUR, roleId: 'manager' });
+  v.set('[F] la copie chiffree le rend a l identique', releve.code === neuf);
+  const roleManager = role('libramont', 'manager');
+  v.set('[F] son indice reste « ••••- » et ses 4 derniers caracteres', roleManager.access_code_hint === `••••-${neuf.slice(-4)}`);
+  const { accessCode: pourMembre } = await m.createMember({ centerId: 'libramont', actorMemberId: ACTEUR, name: 'Nouveau salarie', contact: '', roleId: 'manager' });
+  v.set('[F] un membre cree recoit aussi 64 bits', FORMAT_64_BITS.test(pourMembre));
+
+  // L ALEA EST PARTOUT : un format long bourre de zeros passerait le motif.
+  const echantillon = Array.from({ length: 4000 }, () => m.__test.createAccessCode('DIR'));
+  v.set('[F] 4 000 codes tires, 4 000 differents', new Set(echantillon).size === echantillon.length);
+  const tirees = Array.from({ length: 16 }, (_, i) => new Set(echantillon.map((code) => positionsAleatoires(code)[i])).size);
+  v.set('[F] chacune des 16 positions prend ses 16 valeurs', tirees.length === 16 && tirees.every((n) => n === 16));
+  v.set('[F] le prefixe reste celui du role, sur 4 caracteres au plus',
+    m.__test.createAccessCode('Accueil bar').startsWith('ACCU-') && m.__test.createAccessCode('').startsWith('FG-'));
+
+  // RIEN DANS L ECRAN DE CONNEXION NE BORNE LA LONGUEUR D UN CODE.
+  const champ = (fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').match(/<input id="loginPass"[^>]*>/) || [''])[0];
+  v.set('[F] le champ de connexion accepte un code long', Boolean(champ) && !/maxlength|pattern/i.test(champ));
+  return v;
+}
+
+const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF };
 
 async function executer(cle, editions = []) {
   viderBase();
@@ -654,6 +713,40 @@ const MUTATIONS = [
         "        and (m.id <> (m.center_id || ':role:' || m.role_id) or r.access_code_hash = m.access_code_hash)",
       ),
       vers: "      where m.access_code_hash = $1 and m.status <> 'blocked'",
+    }],
+  },
+  {
+    nom: 'createAccessCode retombe sur 32 bits',
+    scenario: 'F',
+    cibles: ['[F] un code regenere porte 64 bits', '[F] un membre cree recoit aussi 64 bits'],
+    editions: [{
+      de: L(
+        "  const groupes = crypto.randomBytes(8).toString('hex').toUpperCase().match(/.{4}/g);",
+        "  return `${safePrefix}-${groupes.join('-')}`;",
+      ),
+      vers: L(
+        "  const first = crypto.randomBytes(2).toString('hex').toUpperCase();",
+        "  const second = crypto.randomBytes(2).toString('hex').toUpperCase();",
+        "  return `${safePrefix}-${first}-${second}`;",
+      ),
+    }],
+  },
+  {
+    nom: 'le format reste long mais la moitie des positions ne tirent plus rien',
+    scenario: 'F',
+    cibles: ['[F] chacune des 16 positions prend ses 16 valeurs'],
+    editions: [{
+      de: "  const groupes = crypto.randomBytes(8).toString('hex').toUpperCase().match(/.{4}/g);",
+      vers: "  const groupes = (crypto.randomBytes(4).toString('hex').toUpperCase() + '00000000').match(/.{4}/g);",
+    }],
+  },
+  {
+    nom: 'la connexion refuse les codes courts deja emis',
+    scenario: 'F',
+    cibles: ['[F] un code deja emis sur 32 bits ouvre toujours'],
+    editions: [{
+      de: '  if (!safeCode || safeCode.length < 6) {',
+      vers: '  if (!safeCode || safeCode.length < 20) {',
     }],
   },
   {

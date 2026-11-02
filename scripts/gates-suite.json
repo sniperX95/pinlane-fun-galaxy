@@ -22,6 +22,7 @@
     "test:branding-axes",
     "test:embed-hauteur",
     "test:embed-largeur",
+    "test:catalogue-injection",
     "test:tenant-write-scope",
     "test:auth-before-read",
     "test:center-tenant-isolation",

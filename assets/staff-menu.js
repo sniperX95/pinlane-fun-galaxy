@@ -473,13 +473,26 @@
     }
   }
 
-  function readCollapsed() {
+  // Ce que l equipe a choisi pour le menu, sur toutes les pages.
+  function readPreference() {
     if (typeof state !== 'undefined') return !!state.staffMenuCollapsed;
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1';
     } catch (error) {
       return false;
     }
+  }
+
+  // LE GRAND TABLEAU REPLIE LE MENU, POUR LUI SEUL (2026-11-02). Le planning global
+  // (body.gf-large, pose par assets/pinlane-planning-global.js) prend toute la largeur :
+  // le menu y passe en barre d icones, sans toucher au choix de l equipe. « Ouvrir le
+  // menu » le rouvre sur cet ecran ; l ecran quitte, tout revient comme avant.
+  let menuRouvertIci = false;
+  function grandTableau() {
+    return typeof state !== 'undefined' && state.view === 'staff' && Boolean(document.body) && document.body.classList.contains('gf-large');
+  }
+  function readCollapsed() {
+    return grandTableau() ? !menuRouvertIci : readPreference();
   }
 
   function persistCollapsed(collapsed) {
@@ -598,6 +611,7 @@
   }
 
   function applyMenuCollapsed() {
+    if (!grandTableau()) menuRouvertIci = false;
     const collapsed = readCollapsed();
     document.body.classList.toggle('staff-menu-collapsed', collapsed);
     const root = document.querySelector('[data-staff-menu-root]');
@@ -612,7 +626,8 @@
   }
 
   function toggleMenuCollapsed() {
-    persistCollapsed(!readCollapsed());
+    if (grandTableau()) menuRouvertIci = !menuRouvertIci;
+    else persistCollapsed(!readPreference());
     applyMenuCollapsed();
     syncStaffMenuState();
   }
@@ -823,6 +838,21 @@
           <small>Comparer les centres et exports</small>
         </span>
       </button>` : ''}
+    `);
+  }
+
+  // « PLANNING » SUR LA BARRE D ICONES DU GRAND TABLEAU : le groupe mene au planning
+  // deja ouvert, le toucher ne faisait rien. Ses trois plannings s ouvrent a cote.
+  function togglePlanningMenu(anchor) {
+    const groupe = visibleMenuSections().flatMap(section => section.items).find(item => item.key === 'planning');
+    const options = (groupe && groupe.children ? groupe.children : []).map(child => `
+        <button type="button" class="fgx-menu-option" data-fgx-menu-key="${escapeHtml(child.key)}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''} role="menuitem">
+          <span><strong>${escapeHtml(child.label)}</strong></span>
+        </button>
+      `).join('');
+    openMenuPopover('planning', anchor, `
+      <div class="fgx-menu-popover-title">Planning</div>
+      <div class="fgx-menu-options">${options}</div>
     `);
   }
 
@@ -1178,8 +1208,12 @@
     if (groupToggle) {
       event.preventDefault();
       event.stopPropagation();
-      closeMenuPopover();
       const key = groupToggle.dataset.fgxMenuToggle;
+      if (key === 'planning' && grandTableau() && readCollapsed()) {
+        togglePlanningMenu(groupToggle);
+        return;
+      }
+      closeMenuPopover();
       if (readCollapsed()) {
         navigateMenuGroup(key);
         return;

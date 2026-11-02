@@ -10444,12 +10444,12 @@
     const options = activities.map((a) => {
       const absent = ownedHere.length && !ownedHere.includes(String(a.id));
       const label = absent ? `${a.name} (absent de ce centre)` : a.name;
-      return `<option value="${escJs(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(label)}</option>`;
+      return `<option value="${esc(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(label)}</option>`;
     }).join('');
     // Activite absente de la liste (pseudo-activite typee a la main, ou activite
     // retiree) : on l'ajoute pour NE PAS perdre la valeur courante a l'enregistrement.
     const extra = (!known && step.activityId)
-      ? `<option value="${escJs(step.activityId)}" selected>${esc(step.activityId)} (hors catalogue)</option>`
+      ? `<option value="${esc(step.activityId)}" selected>${esc(step.activityId)} (hors catalogue)</option>`
       : '';
     return `<div class="cev-step" data-cev-step="${index}">
       <div class="cev-step-order">
@@ -11003,15 +11003,15 @@
     // enfants a y=11/13/49, corbeille a x=209 y=49).
     const actions = isFormula ? `<div class="pev-card-foot">
         <div class="pev-foot-main">
-        <button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Réglages du centre</button>
+        <button type="button" class="pv2-btn sm" data-pev-edit="${esc(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Réglages du centre</button>
         ${canManage ? `
-        <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
-        <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
+        <button type="button" class="pv2-btn sm" data-cev-steps="${esc(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
+        <button type="button" class="pv2-btn sm" data-cev-fields="${esc(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
         </div>
-        ${canManage ? `<button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${escJs(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
+        ${canManage ? `<button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${esc(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
       </div>` : '';
     return `<article class="pv2-price-card ${selected ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}"
-      ${isFormula ? `data-cev-formula="${escJs(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
+      ${isFormula ? `data-cev-formula="${esc(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
       <div class="pv2-price-head">
         <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
         <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.priceUnit || (row.type === 'bowling' ? '/piste' : row.priceType === 'per_lane' ? '/piste' : isFormula ? '/pers' : ''))}</small></div>
@@ -11118,8 +11118,8 @@
       const addBtn = !canManage
         ? ''
         : estActivite
-          ? `<button type="button" class="pv2-btn sm" data-add-activity="${escJs(group.name)}" onclick="aevOpenCreate()">+ Activité</button>`
-          : `<button type="button" class="pv2-btn sm" data-add-formula="${escJs(group.name)}" onclick="cevOpenCreate('${escJs(group.name)}')">+ Formule</button>`;
+          ? `<button type="button" class="pv2-btn sm" data-add-activity="${esc(group.name)}" onclick="aevOpenCreate()">+ Activité</button>`
+          : `<button type="button" class="pv2-btn sm" data-add-formula="${esc(group.name)}" onclick="cevOpenCreate('${escJs(group.name)}')">+ Formule</button>`;
       const compte = group.offers.length + group.activities.length;
       const cartes = group.offers.map(card).join('')
         + group.activities.map((activity) => aevCardHtml(activity, canManage)).join('');
@@ -11338,15 +11338,15 @@
       activity.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
       activity.bookable ? '<span class="pv2-chip">Réservable seule</span>' : '<span class="pv2-chip">Dans les formules</span>',
     ].filter(Boolean).join('');
-    return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${escJs(activity.id)}">
+    return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${esc(activity.id)}">
       <div class="pv2-price-head">
         <div><strong>${esc(activity.name)}</strong><small>${esc(activity.priceUnit || '')}</small></div>
         ${price}
       </div>
       <div class="pev-badges">${badges}</div>
       ${canManage ? `<div class="pev-card-foot">
-        <div class="pev-foot-main"><button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button></div>
-        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${escJs(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+        <div class="pev-foot-main"><button type="button" class="pv2-btn sm" data-aev-edit="${esc(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button></div>
+        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${esc(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
       </div>` : ''}
     </article>`;
   }

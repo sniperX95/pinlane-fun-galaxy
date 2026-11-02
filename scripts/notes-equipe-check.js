@@ -73,6 +73,7 @@ function verifier(sources) {
     const bac = {
       window: {},
       escapeHtml: (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+      escapeJsString: (v) => String(v ?? ''),
       canUseStaffPermission: () => true,
       isReservationAwaitingReview: () => false,
       renderReservationPriceMark: () => '',

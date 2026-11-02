@@ -17,7 +17,7 @@ const catalog = [
 ];
 const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null, editState: null }, quickBookState: null,
   getCenterActivity: id => catalog.find(item => item.id === id), resolveDisplayFormule: () => null,
-  renderQuickBook: () => {}, renderPos: () => {}, escapeHtml: value => String(value),
+  renderQuickBook: () => {}, renderPos: () => {}, escapeHtml: value => String(value), escapeJsString: value => String(value),
   formatDurationLabel: value => `${value}h`, getRuntimeBowlingConfig: () => null, getFreeCount: () => 12,
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);

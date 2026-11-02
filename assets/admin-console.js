@@ -1335,7 +1335,7 @@ function renderAdminCenterGrid() {
       bowling ? `${bowling.laneCount || 0} pistes` : 'bowling à confirmer',
       laser ? `${laser.weaponCount || 0} armes laser · ${laser.parallelLaunches || 1} lancement(s)` : 'laser à confirmer',
     ].join(' · ');
-    return `<button class="admin-center-card ${state.adminCenterId === center.id ? 'active' : ''}" onclick="setAdminCenter('${escapeHtml(center.id)}')">
+    return `<button class="admin-center-card ${state.adminCenterId === center.id ? 'active' : ''}" onclick="setAdminCenter('${escapeJsString(center.id)}')">
       <span class="top">
         <span class="name">${escapeHtml(center.name)}</span>
         <span class="admin-status ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>

@@ -3,7 +3,7 @@ const {
   recordMarketingFeedback,
   runMarketingAgentCycle,
 } = require('../lib/marketing-agents');
-const { loadOpsKnowledge } = require('../lib/ops-knowledge');
+const { centresExploites } = require('../lib/ops-knowledge');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
 
@@ -14,10 +14,7 @@ function getAction(req, body = {}) {
 
 function getCenterIds(centerId = 'libramont') {
   if (centerId !== 'all') return [centerId || 'libramont'];
-  const knowledge = loadOpsKnowledge();
-  return (knowledge.centers || [])
-    .filter((center) => center.status === 'active')
-    .map((center) => center.id);
+  return centresExploites().map((center) => center.id);
 }
 
 function normalizeCenterId(value, fallback = 'libramont') {

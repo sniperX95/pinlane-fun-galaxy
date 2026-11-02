@@ -282,7 +282,9 @@ async function preuves(sonde) {
 
 // Contre-preuves : chaque garde retiree rougit la preuve qu elle soutient.
 async function chargerMutant(avant, apres) {
-  const source = fs.readFileSync(SOURCE, 'utf8');
+  // Le depot sort en CRLF sous Windows, en LF ailleurs : une ancre sur deux lignes
+  // doit valoir pour les deux.
+  const source = fs.readFileSync(SOURCE, 'utf8').replace(/\r\n/g, '\n');
   if (!source.includes(avant)) throw new Error(`Ancre de mutation morte : ${avant}`);
   const fichier = path.join(os.tmpdir(), `sonde-mutant-${process.pid}-${Math.random().toString(36).slice(2)}.mjs`);
   fs.writeFileSync(fichier, source.replace(avant, apres));

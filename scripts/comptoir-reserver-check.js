@@ -119,7 +119,7 @@ const MUTATIONS = [
   { nom: 'nom-non-echappe', lettre: 'R8', cible: '[R8] un nom piege reste du texte', fichier: GF, de: `? '<button type="button" class="gf-rien__reserver" data-nom="' + gpEsc(terme) + '" onclick="reserverAuComptoir({ name: this.dataset.nom })">Réserver pour ' + gpEsc(terme) + '</button>'`, vers: `? '<button type="button" class="gf-rien__reserver" data-nom="' + gpEsc(terme) + '" onclick="reserverAuComptoir({ name: this.dataset.nom })">Réserver pour ' + terme + '</button>'` },
   { nom: 'bouton-sans-nom', lettre: 'R8', cible: '[R8] « Réserver pour Dupont » ouvre Réserver avec le nom tape', fichier: APP, de: "    name: prefill.name || prefill.nomTape || '',", vers: "    name: prefill.name || ''," },
   { nom: 'autre-centre', lettre: 'R8', cible: '[R8] les resultats d un autre centre ne se montrent pas', fichier: V2, de: '    if (pv2ResSearch.center && pv2ResSearch.center !== getActiveOpsCenterId()) return [];\n    const q = pv2ResSearchNormalize(terme);', vers: '    const q = pv2ResSearchNormalize(terme);' },
-  { nom: 'cache-garde', lettre: 'R8', cible: '[R8] une reservation creee se trouve', fichier: APP, de: "  if (typeof window.pv2ResSearchInvalidate === 'function') window.pv2ResSearchInvalidate();", vers: '' },
+  { nom: 'cache-garde', lettre: 'R8', cible: '[R8] une reservation creee se trouve', fichier: APP, de: "  if (typeof window.pv2ResSearchAjouter === 'function') window.pv2ResSearchAjouter(reservations);", vers: '' },
   { nom: 'filtre-cache-le-groupe', lettre: 'R8', cible: '[R8] un groupe cache par un filtre', fichier: GF, de: '    var caches = m.visibles ? gfRecherche(m, q).length : 0;', vers: '    var caches = 0;' },
   { nom: 'annuler-cache', lettre: 'R9', bloc: 'annuler', cible: '[R9] Annuler se voit dans Infos, sans defiler', fichier: APP, de: "${droits.annuler && r.status !== 'cancelled' ? `<div class=\"fx-annuler-rang\">", vers: "${false ? `<div class=\"fx-annuler-rang\">" },
   { nom: 'annuler-sans-droit', lettre: 'R9', bloc: 'droit', cible: '[R9] sans le droit d annuler, pas de bouton', fichier: APP, de: "${droits.annuler && r.status !== 'cancelled' ? `<div class=\"fx-annuler-rang\">", vers: "${r.status !== 'cancelled' ? `<div class=\"fx-annuler-rang\">" },
@@ -762,11 +762,12 @@ async function scenarioR8(browser) {
   await clic(n, page.locator('.gf-rien__reserver'));
   await planPose(page);
   ok(await page.locator('#qbQui').inputValue() === 'Dupont', '[R8] « Réserver pour Dupont » ouvre Réserver avec le nom tape', await page.locator('#qbQui').inputValue().catch(() => 'pas de champ'));
-  const fraisAvant = await page.evaluate(() => pv2ResSearchEtat().frais);
+  const lecturesAvant = await page.evaluate(() => window.__lecturesAutresDates);
   await clic(n, page.locator('#rvCreer'));
   await fenetreFermee(page);
   await page.waitForTimeout(250);
-  ok(fraisAvant === true && await page.evaluate(() => pv2ResSearchEtat().frais) === false, '[R8] une reservation creee se trouve : la liste des autres dates sera relue', fraisAvant);
+  const recherche = await page.evaluate(() => ({ trouvee: pv2ResSearchMatches('Dupont').some((r) => r.name === 'Dupont' && r.date === state.currentDate), lectures: window.__lecturesAutresDates }));
+  ok(recherche.trouvee && recherche.lectures === lecturesAvant, '[R8] une reservation creee se trouve tout de suite, sans relire toutes les dates', { ...recherche, lecturesAvant });
   const creee = creationsDe(journal)[0];
   ok(creee && creee.corps.name === 'Dupont' && (await nomsDe(page)).join() === 'Dupont', '[R8] le groupe cree se lit sur le tableau, sous son nom', `${creee && creee.corps.name} ${await nomsDe(page)}`);
   gestes('Nom pas trouve, client a creer', '15 gestes', `${n.n + 1} gestes (le nom, le bouton, Créer)`);

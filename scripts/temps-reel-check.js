@@ -81,6 +81,8 @@ const MUTATIONS = {
   relire: ['app-main.js', '  caches.forEach((cache) => cache.relire());\n  if (journee) syncDateReservations(state.currentDate, { silent: true });', '', '[B] une reservation prise ailleurs apparait sur le planning'],
   // Les caches des pages non affichees ne sont plus oublies.
   oublier: ['app-main.js', '    cache.oublier();\n  });', '  });', '[D] la page Reservations, rouverte, montre ce qui a change pendant qu on regardait ailleurs'],
+  // Le catalogue n est plus relu sur la page Tarifs ouverte.
+  catalogue: ['staff-pages-v2.js', "if (affiche('prices', 'establishment')) { if (relire) pevReload(); }", "if (affiche('prices', 'establishment')) { }", '[E] le nouveau prix se lit sur la page Tarifs ouverte'],
   // Le brouillon d Etablissement n est plus protege.
   brouillon: ['app-main.js', "      brouillon: page === 'establishment' ? () => Boolean(state.establishmentEditing) : undefined,", '      brouillon: undefined,', '[F] le formulaire en cours d edition garde sa saisie'],
   // L equipe n est plus relue.
@@ -247,6 +249,16 @@ async function aller(page, cible) {
 
 const attendre = (page, fn, arg, ms = DELAI) => page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }).then(() => true).catch(() => false);
 
+// Le prix sur sa carte, jamais un nombre cherche dans #staffView : ce texte
+// porte aussi les pages deja visitees, donc l heure reelle du banc. « 31 » s y
+// lisait chaque 31 du mois (Synchronise 31/10 08:24) et aux minutes :01 et :31
+// (le mail des fixtures d il y a 30 min) : [E] rouge les nuits du 31/10 et du 02/11.
+const prixF1 = () => {
+  const carte = [...document.querySelectorAll('#staffPricingPage .pv2-price-card')].find((c) => c.textContent.includes('FORMULE 1'));
+  const montant = carte ? carte.querySelector('.pv2-price-amount') : null;
+  return montant ? parseInt(montant.textContent, 10) : null;
+};
+
 let echecs = 0;
 let reussis = 0;
 function ok(cond, label, detail) {
@@ -330,12 +342,12 @@ async function run() {
     console.log('\n[E] un prix change ailleurs');
     // =====================================================================
     await aller(B.page, 'prices');
-    const tarifsPrets = await attendre(B.page, () => /FORMULE 1/.test((document.getElementById('staffView') || { textContent: '' }).textContent), null, 8000);
-    const prixAvant = await B.page.evaluate(() => (document.getElementById('staffView') || { textContent: '' }).textContent.includes('31'));
+    const tarifsPrets = await attendre(B.page, `(${prixF1})() !== null`, null, 8000);
+    const prixAvant = await B.page.evaluate(prixF1);
     serveurPartage.prixF1 = 31;
     bump('catalogue');
-    const vuPrix = await attendre(B.page, () => /31\s*€/.test((document.getElementById('staffView') || { textContent: '' }).textContent));
-    ok(tarifsPrets && !prixAvant && vuPrix, '[E] le nouveau prix se lit sur la page Tarifs ouverte', `page prete ${tarifsPrets}, 31 avant ${prixAvant}, 31 apres ${vuPrix}`);
+    const vuPrix = await attendre(B.page, `(${prixF1})() === 31`);
+    ok(tarifsPrets && prixAvant === 26 && vuPrix, '[E] le nouveau prix se lit sur la page Tarifs ouverte', `page prete ${tarifsPrets}, FORMULE 1 a ${prixAvant} € puis ${await B.page.evaluate(prixF1)} €`);
 
     // =====================================================================
     console.log('\n[F] la configuration changee, et le formulaire en cours');

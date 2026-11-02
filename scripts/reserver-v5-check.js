@@ -278,6 +278,11 @@ async function boot(page, { installer = true, maintenant } = {}) {
   await page.goto(`${BASE_URL}/?v=rv5-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
   await page.evaluate(() => window.setView('staff'));
+  // La console charge ses modules apres setView : jusque-la, #staffView reste
+  // en display:none sous « Chargement de la console… », et ce qu on y rend se
+  // mesure tout a zero (laser-fit-day, deux suites sur 23 : un module en retard
+  // de deux secondes rejoue ce rouge a l identique).
+  await page.waitForFunction(() => !document.getElementById('staffConsoleLoadStatus') && document.getElementById('staffView').getClientRects().length > 0, null, { timeout: 30000 });
   await page.waitForFunction(() => typeof window.getCenterActivities === 'function' && window.getCenterActivities().length >= 3, null, { timeout: 15000 });
   await page.waitForTimeout(600);
 }

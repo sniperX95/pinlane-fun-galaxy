@@ -13,7 +13,8 @@
 //   [B] aucune autre table n est filtree, meme avec une colonne `action` ;
 //   [C] le fichier envoye se rouvre, et le mail dit ce qui n y est pas ;
 //   [D] la vraie fonction d envoi sans cle Resend ne fait pas un succes ;
-//   [E] la fonction qui porte les taches a une limite de temps declaree.
+//   [E] la fonction qui porte les taches a une limite de temps declaree ;
+//   [F] la date que la sonde surveille ne compte que les passages reussis.
 // Le SQL lui-meme n est pas joue ici : c est la limite de cette fausse base.
 //
 // Contre-preuves : chaque mutation en memoire doit rougir au moins une ligne.
@@ -100,6 +101,12 @@ async function verifier(sv, vercelTexte, ok) {
 
   const fonction = (JSON.parse(vercelTexte).functions || {})['api/cron.js'];
   ok(Boolean(fonction) && fonction.maxDuration >= 120, '[E] api/cron.js a au moins 120 s pour finir', JSON.stringify(fonction || null));
+
+  const lues = [];
+  const date = await sv.derniereSauvegardeReussie({ query: async (sql) => { lues.push(sql); return { rows: [{ le: new Date('2026-11-02T22:12:06Z') }] }; } });
+  ok(date === '2026-11-02T22:12:06.000Z', '[F] la sonde recoit une date', String(date));
+  ok(/task_name = 'sauvegarde'/.test(lues[0]) && /status = 'ok'/.test(lues[0]), '[F] celle d un passage reussi seulement');
+  ok(await sv.derniereSauvegardeReussie({ query: async () => ({ rows: [{ le: null }] }) }) === null, '[F] jamais reussie : aucune date');
 }
 
 const MUTATIONS = [
@@ -111,6 +118,7 @@ const MUTATIONS = [
   ['le texte du mail se tait', { source: (s) => s.replace("cette boîte.\\nLes refus d'accès du journal d'audit restent dans la base : ils ne sont pas dans ce fichier.", 'cette boîte.') }],
   ['le html du mail se tait', { source: (s) => s.replace("<p>Les refus d'accès du journal d'audit restent dans la base : ils ne sont pas dans ce fichier.</p>", '') }],
   ['la limite de temps retiree', { vercel: (v) => v.replace('"api/cron.js"', '"api/ailleurs.js"') }],
+  ['un passage rate compte pour la sonde', { source: (s) => s.replace(" and status = 'ok'", '') }],
 ];
 
 async function jouer(sv, vercelTexte) {

@@ -24,7 +24,10 @@
 //   [I] le fond (la base) ne se joue qu aux minutes qui suivent le cron secours,
 //       Neon dort ; sur un passage suspect il se joue tout de suite ; aucun POST ;
 //   [J] le bilan du lundi part meme sans panne, et dit la derniere ;
-//   [K] la simulation vise un chemin mort et marque ses messages.
+//   [K] la simulation vise un chemin mort et marque ses messages ;
+//   [L] une sauvegarde de plus de 26 h : un message, un seul, puis un quand elle
+//       repart ; ce n est pas une panne, Neon dort toujours, et une vraie panne
+//       pendant ce temps alerte quand meme, sans second message de sauvegarde.
 //
 // Usage : node scripts/sonde-prod-check.js
 'use strict';
@@ -62,7 +65,7 @@ const reponse = (corps, statut = 200, type = 'text/html; charset=utf-8', entetes
 });
 const json = (corps, statut = 200) => reponse(JSON.stringify(corps), statut, 'application/json; charset=utf-8');
 const SAIN = {
-  sante: () => json({ ok: true, db: true }),
+  sante: () => json({ ok: true, db: true, derniereSauvegarde: '2026-11-04T01:15:10.000Z' }),
   catalogue: () => json({ ok: true, formules: [{ id: 'anniversaire' }], center: { id: 'libramont' } }),
   creneaux: () => json({ ok: true, slots: [{ time: '10:00' }] }),
 };
@@ -100,6 +103,9 @@ const coupure = () => { throw Object.assign(new Error('coupure'), { name: 'Timeo
 const toutCasse = (url) => (url.includes('google.com') || url.includes('api.github.com') ? null : reponse('oups', 503));
 const toutCoupe = () => coupure();
 const SAMEDI = Date.parse('2026-11-04T09:06:00Z'); // minute 6 : surface seule
+const FOND = Date.parse('2026-11-04T09:16:00Z'); // minute 16 : le fond se joue
+const santeDe = (date) => (url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, ...(date === undefined ? {} : { derniereSauvegarde: date }) }) : null);
+const ilYA = (heures) => new Date(FOND - heures * 3_600_000).toISOString();
 
 // Joue une suite de passages espaces de 5 minutes et rend ce qui est parti.
 async function jouer(sonde, { kv = fauxKv(), passages, envoyer, depart = SAMEDI }) {
@@ -234,12 +240,12 @@ async function preuves(sonde) {
   ok(aFond(journalSurface) === 0, '[I] minute 6 : aucune route qui reveille Neon', `${aFond(journalSurface)}`);
   const journalFond = [];
   await sonde.passage({ kv: fauxKv(), fetcher: fauxSite(() => null, journalFond), maintenant: Date.parse('2026-11-04T09:16:00Z'), attendre: async () => {}, envoyer: async () => {} });
-  ok(aFond(journalFond) === 3, '[I] minute 16, juste apres le cron secours : le fond se joue', `${aFond(journalFond)}`);
+  ok(aFond(journalFond) === 4, '[I] minute 16, juste apres le cron secours : le fond se joue, sauvegarde comprise', `${aFond(journalFond)}`);
   const kvSuspect = fauxKv();
   await sonde.passage({ kv: kvSuspect, fetcher: fauxSite(toutCasse), maintenant: SAMEDI, attendre: async () => {}, envoyer: async () => {} });
   const journalSuspect = [];
   await sonde.passage({ kv: kvSuspect, fetcher: fauxSite(() => null, journalSuspect), maintenant: SAMEDI + 300_000, attendre: async () => {}, envoyer: async () => {} });
-  ok(aFond(journalSuspect) === 3, '[I] passage suspect : le fond se joue tout de suite', `${aFond(journalSuspect)}`);
+  ok(aFond(journalSuspect) === 4, '[I] passage suspect : le fond se joue tout de suite', `${aFond(journalSuspect)}`);
   ok([...journalFond, ...journalSuspect].every((e) => e.methode === 'GET'), '[I] que des GET, jamais une ecriture en prod');
 
   const wrangler = fs.readFileSync(path.join(ROOT, 'workers', 'sonde-prod', 'wrangler.toml'), 'utf8');
@@ -258,6 +264,8 @@ async function preuves(sonde) {
   await jouer(sonde, { kv: kvBilan, passages: [...fois(3, toutCasse), ...fois(3, sain)] });
   await sonde.bilan({ kv: kvBilan, fetcher: fauxSite(toutCasse), maintenant: SAMEDI, attendre: async () => {}, envoyer: async (t) => { bilans.push(t); } });
   ok(/Dernière panne/.test(bilans[1] || '') && /non vert/.test(bilans[1] || ''), '[J] il dit la derniere panne et un parcours casse', bilans[1]);
+  ok(/Dernière sauvegarde : 04\/11 à /.test(bilans[0] || ''), '[J] il dit la derniere sauvegarde', bilans[0]);
+  ok(/Sauvegarde : pas de réponse/.test(bilans[1] || ''), '[J] et qu il n a pas pu la lire', bilans[1]);
 
   // [K]
   const kvSimulation = fauxKv();
@@ -276,6 +284,56 @@ async function preuves(sonde) {
   kvReseau.valeurs.set('simulation', 'reseau');
   const simuleReseau = await jouer(sonde, { kv: kvReseau, passages: fois(6, (url) => (url.includes('.invalid') ? coupure() : null)) });
   ok(simuleReseau.messages.length === 0, '[K] la simulation reseau n alerte pas');
+
+  // [L]
+  const enRetard = santeDe(ilYA(32));
+  const retard = await jouer(sonde, { passages: fois(12, enRetard) });
+  ok(retard.messages.length === 1, '[L] plus de 26 h : un seul message sur 12 passages', `${retard.messages.length}`);
+  ok(/^SAUVEGARDE Pinlane en retard/.test(retard.messages[0] || '') && /il y a 32 h 00/.test(retard.messages[0] || ''), '[L] il dit depuis quand', retard.messages[0]);
+  const etatRetard = JSON.parse(retard.kv.valeurs.get('etat'));
+  ok(etatRetard.statut === 'ok' && etatRetard.echecs === 0, '[L] ce n est pas une panne : ni statut, ni compteur');
+  const journalRetard = [];
+  await sonde.passage({ kv: retard.kv, fetcher: fauxSite(enRetard, journalRetard), maintenant: Date.parse('2026-11-04T12:06:00Z'), attendre: async () => {}, envoyer: async () => {} });
+  ok(aFond(journalRetard) === 0, '[L] en retard, Neon dort toujours : minute 6 sans route de fond', `${aFond(journalRetard)}`);
+  const repartie = await jouer(sonde, { kv: retard.kv, passages: fois(6, sain) });
+  ok(repartie.messages.length === 1 && /^SAUVEGARDE Pinlane repartie/.test(repartie.messages[0]), '[L] elle repart : un message', repartie.messages[0]);
+
+  const melees = await jouer(sonde, { passages: [...fois(4, enRetard), ...fois(3, toutCasse), ...fois(3, enRetard)] });
+  ok(melees.messages.map((m) => m.split(' ')[0]).join(',') === 'SAUVEGARDE,PANNE,RETOUR', '[L] une vraie panne alerte quand meme, sans second message de sauvegarde', melees.messages.map((m) => m.split('\n')[0]).join(' | '));
+
+  const alerteA = async (fetcher) => {
+    const recus = [];
+    await sonde.passage({ kv: fauxKv(), fetcher, maintenant: FOND, attendre: async () => {}, envoyer: async (t) => { recus.push(t); } });
+    return recus;
+  };
+  ok((await alerteA(fauxSite(santeDe(ilYA(25.9))))).length === 0, '[L] 25 h 54 : rien');
+  ok((await alerteA(fauxSite(santeDe(ilYA(26.1))))).length === 1, '[L] 26 h 06 : le message');
+  ok(/aucune date lisible/.test((await alerteA(fauxSite(santeDe(null))))[0] || ''), '[L] jamais reussie : le message');
+  ok(/aucune date lisible/.test((await alerteA(fauxSite(santeDe(undefined))))[0] || ''), '[L] champ disparu de la route : le message');
+  ok(/aucune date lisible/.test((await alerteA(fauxSite(santeDe('hier'))))[0] || ''), '[L] date illisible : le message');
+  ok((await alerteA(fauxSite(() => null, []))).length === 0, '[L] sauvegarde de la nuit : rien');
+
+  let essaisSauvegarde = 0;
+  const recusSauvegarde = [];
+  await jouer(sonde, {
+    passages: fois(8, enRetard),
+    envoyer: async (texte) => {
+      essaisSauvegarde += 1;
+      if (essaisSauvegarde === 1) throw new Error('canal coupe');
+      recusSauvegarde.push(texte);
+    },
+  });
+  ok(recusSauvegarde.length === 1, '[L] canal coupe : le message reste du et part une fois', `${recusSauvegarde.length}`);
+
+  const kvSauvegarde = fauxKv();
+  kvSauvegarde.valeurs.set('simulation', 'sauvegarde');
+  const adressesSauvegarde = [];
+  const simuleeSauvegarde = await jouer(sonde, { kv: kvSauvegarde, passages: fois(6, (url) => { adressesSauvegarde.push(url); return null; }) });
+  ok(simuleeSauvegarde.messages.length === 1 && simuleeSauvegarde.messages[0].startsWith('[simulation] SAUVEGARDE Pinlane en retard'), '[L] la simulation alerte, et le dit', simuleeSauvegarde.messages[0]);
+  ok(adressesSauvegarde.every((u) => !u.includes('/sonde-simulation')), '[L] le site reste sonde pour de vrai');
+  kvSauvegarde.valeurs.delete('simulation');
+  const finSimulee = await jouer(sonde, { kv: kvSauvegarde, passages: fois(6, sain) });
+  ok(finSimulee.messages.length === 1 && finSimulee.messages[0].startsWith('[simulation] SAUVEGARDE Pinlane repartie'), '[L] le retour aussi', finSimulee.messages[0]);
 
   return resultat;
 }
@@ -329,6 +387,24 @@ async function contrePreuves() {
     envoyer: async (texte) => { essais += 1; if (essais === 1) throw new Error('coupe'); recus.push(texte); },
   });
   ok(recus.length === 0, '[contre-épreuve] alerte non remise en attente : perdue, [H] rougit', `${recus.length}`);
+
+  const enRetard = santeDe(ilYA(32));
+  const sansSeuil = await chargerMutant('const SEUIL_SAUVEGARDE_MS = 26 * 3_600_000;', 'const SEUIL_SAUVEGARDE_MS = 9e15;');
+  const muette = await jouer(sansSeuil, { passages: fois(6, enRetard) });
+  ok(muette.messages.length === 0, '[contre-épreuve] sans seuil : la sauvegarde se tait, [L] rougit', `${muette.messages.length}`);
+
+  const sansMemoire = await chargerMutant("if (enRetard === Boolean(etat.sauvegardeEnRetard)) return etat;", '');
+  const bavarde = await jouer(sansMemoire, { passages: fois(6, enRetard) });
+  ok(bavarde.messages.length > 1, '[contre-épreuve] sans memoire du retard : un message par passage, [L] rougit', `${bavarde.messages.length}`);
+
+  const oublie = await chargerMutant('    sauvegardeEnRetard: etat.sauvegardeEnRetard,\n', '');
+  const melees = await jouer(oublie, { passages: [...fois(4, enRetard), ...fois(3, toutCasse), ...fois(3, enRetard)] });
+  ok(melees.messages.length > 3, '[contre-épreuve] le retard oublie au retour d une panne : second message, [L] rougit', `${melees.messages.length}`);
+
+  const horsDuFond = await chargerMutant('if (profond && !surLeSite) {', 'if (!surLeSite) {');
+  const journal2 = [];
+  await horsDuFond.passage({ kv: fauxKv(), fetcher: fauxSite(() => null, journal2), maintenant: SAMEDI, attendre: async () => {}, envoyer: async () => {} });
+  ok(journal2.some((e) => e.url.includes('/api/')), '[contre-épreuve] lue a chaque passage : Neon ne dort plus, [L] rougit');
 }
 
 (async () => {

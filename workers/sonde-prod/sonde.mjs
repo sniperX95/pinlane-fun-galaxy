@@ -30,6 +30,13 @@
 // 3 passages verts de suite pour dire le retour. Une alerte part une fois par
 // panne, et reste due en base tant que le canal ne l a pas prise.
 //
+// LA SAUVEGARDE DE LA NUIT A SA PROPRE ALERTE. Elle a echoue 27 nuits sans que
+// personne le sache (journal 444). Sur le fond, la sonde lit dans /api/healthz la
+// date de la derniere sauvegarde reussie : plus de 26 h, un message, un seul, et
+// un autre quand elle repart. Ce n est pas une panne, le site marche : elle ne
+// passe ni par le compteur ni par l etat de panne, sinon une sauvegarde en retard
+// masquerait une vraie panne et reveillerait Neon toutes les 5 minutes.
+//
 // LE SILENCE NE PROUVE RIEN : chaque lundi matin, un parcours complet et un
 // message. Si le message du lundi n arrive pas, c est la sonde qui est morte.
 //
@@ -37,7 +44,9 @@
 // Les secrets : npx wrangler secret put TELEGRAM_JETON (et TELEGRAM_CHAT)
 // Simuler sans toucher la prod : npx wrangler kv key put --binding=ETAT --remote simulation panne
 //   (les adresses visent un chemin mort, 3 passages plus tard l alerte part ;
-//   `reseau` coupe aussi les controles : aucune alerte ne doit partir).
+//   `reseau` coupe aussi les controles : aucune alerte ne doit partir ;
+//   `sauvegarde` fait comme si la date etait illisible, le site reste sonde pour
+//   de vrai, l alerte part au prochain passage du fond).
 // Finir la simulation : npx wrangler kv key delete --binding=ETAT --remote simulation
 //   puis relire la cle : le 02/11 un delete a rendu 0 sans rien retirer.
 // Compte Cloudflare neuf : les crons exigent un sous-domaine workers.dev, meme
@@ -53,6 +62,9 @@ const FACTURATION_VERCEL = 'https://vercel.com/teams/ansarbis20-1397s-projects/s
 // charger un module dont un export nomme est une constante.
 const SEUIL_PANNE = 3;
 const SEUIL_RETOUR = 3;
+// La sauvegarde part a 01:15 UTC : une nuit ratee se voit a 03:15 UTC.
+const SEUIL_SAUVEGARDE_MS = 26 * 3_600_000;
+const SIMULATION_SAUVEGARDE = 'sauvegarde';
 const DELAI_MS = 10_000;
 const PAUSE_AVANT_REESSAI_MS = 5_000;
 const SAMEDIS = 4;
@@ -74,6 +86,7 @@ const ETAT_INITIAL = {
   simulation: false,
   dernierePanne: null,
   aEnvoyer: [],
+  sauvegardeEnRetard: null,
 };
 
 const heure = (ms) => new Intl.DateTimeFormat('fr-BE', {
@@ -281,8 +294,45 @@ export function decider(etat, vu, maintenant) {
   suivant.aEnvoyer.push(messageRetour(suivant, maintenant));
   return {
     ...ETAT_INITIAL,
+    sauvegardeEnRetard: etat.sauvegardeEnRetard,
     dernierePanne: { debut: etat.depuis, fin: maintenant },
     aEnvoyer: suivant.aEnvoyer,
+  };
+}
+
+// undefined : on ne sait rien, c est le parcours qui dira la panne. null : le site
+// repond mais sans date valable, et ca, il faut l entendre.
+async function lireSauvegarde(fetcher, site) {
+  const r = await lire(fetcher, `${site}/api/healthz`);
+  if (refusHttp(r)) return undefined;
+  let corps;
+  try {
+    corps = JSON.parse(r.texte);
+  } catch (erreur) {
+    return undefined;
+  }
+  const date = Date.parse(corps.derniereSauvegarde);
+  return Number.isNaN(date) ? null : date;
+}
+
+function momentSauvegarde(date, maintenant) {
+  return date === null ? 'aucune date lisible' : `${jour(date)} à ${heure(date)}, il y a ${duree(maintenant - date)}`;
+}
+
+// Fonction pure, comme decider, et a cote d elle : une sauvegarde en retard ne
+// touche ni au statut ni au compteur de panne. Un message au changement, rien entre.
+export function deciderSauvegarde(etat, date, maintenant, simulation = false) {
+  if (date === undefined) return etat;
+  const enRetard = date === null || maintenant - date > SEUIL_SAUVEGARDE_MS;
+  if (enRetard === Boolean(etat.sauvegardeEnRetard)) return etat;
+  const marque = simulation || etat.sauvegardeEnRetard === 'simulation' ? '[simulation] ' : '';
+  const texte = enRetard
+    ? `${marque}SAUVEGARDE Pinlane en retard\nDernière réussie : ${momentSauvegarde(date, maintenant)}.\nLe site marche, c'est la sauvegarde de la nuit qui n'est pas partie.`
+    : `${marque}SAUVEGARDE Pinlane repartie\nDernière réussie : ${momentSauvegarde(date, maintenant)}.`;
+  return {
+    ...etat,
+    sauvegardeEnRetard: enRetard ? (simulation ? 'simulation' : 'reelle') : null,
+    aEnvoyer: [...etat.aEnvoyer, texte],
   };
 }
 
@@ -302,13 +352,19 @@ function ciblesSimulees(simulation) {
 export async function passage({ kv, envoyer, fetcher = fetch, maintenant = Date.now(), attendre = pause }) {
   const { brut, etat } = await lireEtat(kv);
   const simulation = await kv.get(CLE_SIMULATION);
+  const sauvegardeSimulee = simulation === SIMULATION_SAUVEGARDE;
+  const surLeSite = Boolean(simulation) && !sauvegardeSimulee;
   const suspect = etat.statut === 'panne' || etat.echecs > 0;
   const profond = suspect || new Date(maintenant).getUTCMinutes() % 15 === 1;
   const vu = await sonder({
-    fetcher, maintenant, profond, attendre, ...(simulation ? ciblesSimulees(simulation) : {}),
+    fetcher, maintenant, profond, attendre, ...(surLeSite ? ciblesSimulees(simulation) : {}),
   });
-  vu.simulation = Boolean(simulation);
-  const suivant = decider(etat, vu, maintenant);
+  vu.simulation = surLeSite;
+  let suivant = decider(etat, vu, maintenant);
+  if (profond && !surLeSite) {
+    const date = sauvegardeSimulee ? null : await lireSauvegarde(fetcher, SITE);
+    suivant = deciderSauvegarde(suivant, date, maintenant, sauvegardeSimulee);
+  }
 
   // L etat s ecrit AVANT l envoi : un passage qui meurt ici laisse l alerte due,
   // le suivant la reprend. Rien ne change, rien ne s ecrit (KV gratuit, 1000/jour).
@@ -339,7 +395,9 @@ export async function bilan({ kv, envoyer, fetcher = fetch, maintenant = Date.no
   const derniere = etat.dernierePanne
     ? `Dernière panne : ${jour(etat.dernierePanne.debut)}, ${duree(etat.dernierePanne.fin - etat.dernierePanne.debut)}.`
     : 'Aucune panne enregistrée.';
-  await envoyer(`Sonde Pinlane en vie.\n${parcours}\n${derniere}`);
+  const date = await lireSauvegarde(fetcher, SITE);
+  const sauvegarde = date === undefined ? 'Sauvegarde : pas de réponse ce matin.' : `Dernière sauvegarde : ${momentSauvegarde(date, maintenant)}.`;
+  await envoyer(`Sonde Pinlane en vie.\n${parcours}\n${derniere}\n${sauvegarde}`);
 }
 
 async function envoyerTelegram(env, texte) {

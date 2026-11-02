@@ -655,7 +655,8 @@ module.exports = async (req, res) => {
   }
 
   // GET /api/healthz (rewrite vercel.json) : sonde publique pour le monitoring.
-  // Aucune donnee metier : juste la vitalite fonction + DB (select 1 borne).
+  // Aucune donnee metier : juste la vitalite fonction + DB (select 1 borne), et
+  // la date de la derniere sauvegarde reussie, que la sonde surveille.
   {
     const probeUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     if (probeUrl.pathname.endsWith('/healthz')) {
@@ -668,7 +669,13 @@ module.exports = async (req, res) => {
       } catch (error) {
         db = false;
       }
-      sendJson(res, db ? 200 : 503, { ok: db, db });
+      const sante = { ok: db, db };
+      if (db) {
+        try {
+          sante.derniereSauvegarde = await require('../lib/sauvegarde').derniereSauvegardeReussie(getPool());
+        } catch (error) { /* champ absent : la sonde dit qu elle ne lit plus la date */ }
+      }
+      sendJson(res, db ? 200 : 503, sante);
       return;
     }
 

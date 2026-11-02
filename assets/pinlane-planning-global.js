@@ -396,7 +396,11 @@
     var groupes = tout.map(function (r) {
       var mo = moments.get(String(r.id)) || {};
       var span = getStaffTerrainSpan(r);
-      return { r: r, id: String(r.id), etat: mo.etat || 'upcoming', retard: Boolean(mo.late), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [] };
+      // LE TABLEAU DIT QUI EST LA. Un groupe paye dont la visite est finie a l heure est
+      // parti : le soir, « Sur place » disait 5 quand un seul groupe restait, et l accueil
+      // disait 1. La liste, elle, le garde a suivre tant que son programme n est pas coche.
+      var parti = r.status === 'paid' && mo.etat === 'onsite' && maintenant != null && span.end <= maintenant;
+      return { r: r, id: String(r.id), etat: parti ? 'done' : mo.etat || 'upcoming', retard: Boolean(mo.late), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [] };
     });
     // L ORDRE DU PAPIER : l heure de la reservation, puis le nom.
     groupes.sort(function (a, b) { return a.heure - b.heure || String(a.r.name || '').localeCompare(String(b.r.name || ''), 'fr'); });
@@ -464,9 +468,10 @@
     });
     var utilisees = colonnes.filter(function (c) { return c.groupes > 0 || gpColonneDuCentre(c); }).concat(inconnues);
     var laser = typeof lpModele === 'function' ? lpModele() : null;
+    var sortis = new Set(groupes.filter(function (g) { return g.parti; }).map(function (g) { return g.id; }));
     return {
       jour: jour, aujourdHui: aujourdHui, passe: jour < auj && !nuit, maintenant: maintenant, groupes: groupes, colonnes: utilisees,
-      visibles: filtrees ? new Set(filtrees.map(function (r) { return String(r.id); })) : null,
+      visibles: filtrees ? new Set(filtrees.map(function (r) { return String(r.id); }).filter(function (id) { return filtre !== 'onsite' || !sortis.has(id); })) : null,
       fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false },
       etat: jour === auj ? gpEtatCentre(groupes, laser, maintenant) : null,
       charge: gpCharge(laser),
@@ -766,6 +771,11 @@
     });
     return heures;
   }
+  // (le nom, le numero : une heure, une piste, un nombre, une faute trouvent une ligne,
+  // Entree ne pointe que ca : un Dupont sans reservation ne fait pas arriver un Dumont)
+  function gfTrouveParNom(g, q) {
+    return gfCle([g.r.name, g.r.phone, g.r.email].join(' ')).indexOf(q) >= 0;
+  }
   function gfTrouve(g, q) {
     if (!q) return true;
     var r = g.r;
@@ -883,7 +893,9 @@
   function gfChercherAilleurs() {
     var etat = window.pv2ResSearchEtat();
     var t = Date.now();
-    if (etat.frais || etat.charge || t - gfAilleursLe < 30000) return;
+    // (14 mois, par pages : pas a chaque client de passage. Une reservation prise ici
+    // s y ajoute d elle-meme, pv2ResSearchAjouter)
+    if (etat.frais || etat.charge || t - gfAilleursLe < (etat.erreur ? 30000 : 300000)) return;
     gfAilleursLe = t;
     window.pv2ResSearchEnsureData(false).then(function () {
       var wrap = document.getElementById('globalPlanningGridWrap');
@@ -969,7 +981,7 @@
     }
     if (q) {
       var terme = String(state.searchTerm || '').trim();
-      var seul = lignes.length === 1 && gfPeutArriver(lignes[0], m);
+      var seul = lignes.length === 1 && gfPeutArriver(lignes[0], m) && gfTrouveParNom(lignes[0], q);
       if (lignes.length) poser('resultats', '<tr class="gf-resultats"><td colspan="' + nbCol + '"><b>' + gpEsc(gfPluriel(lignes.length, ['groupe', 'groupes'])) + '</b> pour « ' + gpEsc(terme) + ' »' + (seul ? ' · Entrée pour pointer Arrivé' : '') + '</td></tr>');
     }
     var bande = false, avantB = null;
@@ -1247,7 +1259,7 @@
     var wrap = document.getElementById('globalPlanningGridWrap');
     var m = wrap && wrap._gfModele;
     var q = gfCle(champ.value);
-    var trouves = m ? gfRecherche(m, q) : [];
+    var trouves = m && q ? m.groupes.filter(function (g) { return gfTrouveParNom(g, q); }) : [];
     if (trouves.length !== 1 || !gfPeutArriver(trouves[0], m)) return;
     setReservationStatusDirect(trouves[0].id, 'arrived');
     gfViderRecherche();

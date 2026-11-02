@@ -2204,7 +2204,9 @@ const MUTATIONS = [
   { nom: 'la signature ne porte l heure d arcade qu avec une arrivee', fichier: 'lib/demande-publique.js',
     de: "  const arcade = pref.arcadeTime !== undefined && pref.arcadeTime !== null ? String(pref.arcadeTime).trim().slice(0, 5) : '';", vers: "  const arcade = arrivee && pref.arcadeTime !== undefined && pref.arcadeTime !== null ? String(pref.arcadeTime).trim().slice(0, 5) : '';", scenarios: ['M'] },
   { nom: 'une modification perd les arcades sans arrivee', fichier: 'lib/reservation-ops.js',
-    de: '    ...arcadeGardee(request, preference, { shiftMinutes }),', vers: '    ...({}),', scenarios: ['M'] },
+    de: '    ...arcadeGardee(request, preference, { shiftMinutes }),', vers: '    ...({}),', scenarios: ['M'],
+    // (garderLesHeuresDuLibre tient aussi cette heure : la perdre demande de retirer les deux)
+    aussi: [{ fichier: 'lib/reservation-ops.js', de: '    recommended = garderLesHeuresDuLibre(recommended, request.opsPlan, visitStartShiftMinutes(request));\n', vers: '' }] },
   { nom: 'le mail redit « 10 minutes plus tot » a l ouverture', fichier: 'lib/ops-communications.js',
     de: '      : Math.max(0, Math.round(Number(avanceDuPlan)));', vers: '      : Math.max(0, Math.round(Number(avanceDuPlan))) || 10;', scenarios: ['M'] },
   // La Formule 4 au choix (2026-10-13).
@@ -2360,7 +2362,7 @@ function empreinteDisque() {
 // scenarios, et ce qu ils en disent (le pere en rend le verdict).
 async function jouerContreEpreuve(mutation) {
   Object.assign(mutation, { trouvee: -1, appliquee: 0 });
-  ACTIVES = [mutation];
+  ACTIVES = [mutation, ...(mutation.aussi || [])];
   let verdicts = [];
   try {
     const H = charger();

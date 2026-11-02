@@ -254,6 +254,8 @@ function lireOracle() {
     laser: lp ? { capacite: lp.capacite, prochain: lp.prochain ? { t: lp.prochain.t, places: Number(lp.prochain.places) || 0 } : null, departs: lp.departs.map((d) => ({ t: d.t, occupe: d.occupe, places: d.places, ferme: Boolean(d.ferme), hors: Boolean(d.hors) })) } : null,
     groupes: res.map((r) => {
       const mo = moments.get(String(r.id)) || {};
+      // (paye et sa visite finie a l heure : parti du tableau, la liste le garde a suivre)
+      const parti = r.status === 'paid' && mo.etat === 'onsite' && state.currentDate === todayStr() && getStaffTerrainSpan(r).end <= currentTimeDecimal();
       const f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
       return {
         id: String(r.id),
@@ -264,7 +266,7 @@ function lireOracle() {
         status: r.status,
         absent: Boolean(r.absentAt) && r.status !== 'paid',
         aValider: typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r),
-        etat: mo.etat || 'upcoming',
+        etat: parti ? 'done' : mo.etat || 'upcoming',
         late: Boolean(mo.late),
         span: getStaffTerrainSpan(r),
         present: r.status === 'arrived' || r.status === 'paid' || (typeof groupeAJoue === 'function' && groupeAJoue(r)),

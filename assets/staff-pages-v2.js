@@ -517,6 +517,12 @@
   window.pv2ResSearchInvalidate = function () {
     pv2ResSearch.loadedAt = 0;
   };
+  // (une creation au comptoir se trouve tout de suite, sans relire 14 mois)
+  window.pv2ResSearchAjouter = function (reservations) {
+    if (!pv2ResSearch.loaded) return;
+    const ids = new Set(reservations.map((r) => String(r.id)));
+    pv2ResSearch.rows = [...reservations, ...(pv2ResSearch.rows || []).filter((r) => !ids.has(String(r.id)))];
+  };
 
   // LA RECHERCHE DE TOUTES LES DATES, OUVERTE AU GRAND TABLEAU (2026-11-02). Elle
   // vivait ici seule : un nom absent du jour coutait 15 gestes (changer de page,

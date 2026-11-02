@@ -36,7 +36,10 @@
 //   [I] UN GESTE DU PLANNING SURVIT AU COMPTE : glisser une activite ne change pas
 //       l heure du dossier, recompter le groupe ne la ramene pas en arriere
 //       (bowling seul, formule, laser seul, partie retiree du planning) ;
-//   [J] aucune erreur JS.
+//   [J] aucune erreur JS ;
+//   [K] LE CANAL PUBLIC N ENTRE PAS DANS LA MODIFICATION : un corps qui se dit
+//       « modification » n y gagne ni le chemin, ni son propre plan ;
+//   [L] UN DOSSIER A PLACER, DEPLACE PAR MODIFIER, TIENT L ARENE a sa nouvelle heure.
 // --contre-preuves : chaque regle retiree (au code servi, ou compile en memoire
 // cote serveur ; le disque n est jamais touche) fait rougir sa lettre.
 //   HD_MUTATIONS : un sous-ensemble ; HD_BAVARD : les lignes des contre-preuves.
@@ -610,6 +613,40 @@ async function scenarioMoteur() {
     '[I] une partie retiree du planning reste a placer apres un compte', { statut: manonPlus2.statut, message: manonPlus2.json.message, blocs: heuresBlocs(MANON), pass: m3.plan.laserPassPlan });
 }
 
+async function scenarioSources() {
+  // [K] UN VISITEUR FORGE UNE « MODIFICATION » : le meme corps, sans ces champs, ne pose
+  // que ce que le moteur tient.
+  let serveur = monterServeur();
+  B.semer([]);
+  const forge = {
+    centerId: 'libramont', date: JOUR, pax: 6, type: 'laser', duration: 0.5, totalDuration: 0.5, laserGames: 1, games: 1, phone: '0470111222', channel: 'public', price: 0, name: 'Pirate', email: 'p@example.com', startTime: '20:00',
+    ignoreReservationId: 1, heureEnregistree: '20:00', opsPlan: { laserManual: true, resourceBlocks: [{ resourceType: 'laser_arena', startTime: '10:30', endTime: '10:55', countIndex: 1, groupWaveIndex: 1 }], timeline: [] },
+  };
+  const pirate = await auJour(() => B.appeler(serveur.S.reservations, 'POST', '/api/public-reservations', forge));
+  const lu = pirate.json.reservation;
+  const heures = lu ? blocs(lu.opsPlan).filter((x) => x.startsWith('laser')) : [];
+  ok(pirate.statut === 201 && lu && lu.startTime === '20:00' && heures.length > 0 && heures.every((x) => x.includes('@20:')),
+    '[K] un corps public qui se dit modification ne pose pas son plan', { statut: pirate.statut, message: pirate.json.message, debut: lu && lu.startTime, heures });
+
+  // [L] A PLACER, PUIS DEPLACE A 17:00 : le dossier tient ses deux parties, un groupe de
+  // 30 n y entre plus.
+  serveur = monterServeur();
+  B.semer([]);
+  const url = '/api/staff-reservations';
+  const poser = (champs) => auJour(() => serveur.appeler('POST', url, B.corpsStaff({ date: JOUR, type: 'laser', startTime: '15:00', duration: 0.5, totalDuration: 0.5, laserGames: 1, allowPastStart: true, ...champs })));
+  await poser({ pax: 30, name: 'Plein' });
+  const aPlacer = (await poser({ pax: 6, duration: 1, totalDuration: 1, laserGames: 2, name: 'À placer', forcer: true })).json.reservation;
+  ok(aPlacer && aPlacer.opsPlan && aPlacer.opsPlan.aPlacer, '[L] MONTAGE un dossier a placer, deux parties', aPlacer && aPlacer.opsPlan);
+  if (aPlacer) {
+    const deplace = await auJour(() => serveur.appeler('PATCH', url, corpsDe(aPlacer, { startTime: '17:00' })));
+    const apres = enBase(aPlacer.id);
+    const lasers = blocs(apres.plan).filter((x) => x.startsWith('laser'));
+    ok(deplace.statut === 200 && lasers.length === 2 && lasers.every((x) => /@17:/.test(x)), '[L] deplace a 17:00, il tient ses deux parties dans l arene', { statut: deplace.statut, message: deplace.json.message, lasers });
+    const autre = await poser({ pax: 30, name: 'Autre groupe', startTime: '17:00' });
+    ok(autre.statut >= 400, '[L] un groupe de 30 n y entre plus', { statut: autre.statut, message: autre.json.message });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
@@ -620,8 +657,11 @@ const REFUS = ['refus'];
 const LASER = ['laser'];
 const GLISSER = ['glisser'];
 const MOT = ['moteur'];
+const SOURCES = ['sources'];
 const DRAPEAU = "allowPastStart: input.channel === 'staff' && Boolean(input.allowPastStart),";
 const MUTATIONS = [
+  { nom: 'public-dans-la-modification', lettre: 'K', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'Number(options.ignoreReservationId || (staff ? request.ignoreReservationId : 0) || 0)', vers: 'Number(options.ignoreReservationId || request.ignoreReservationId || 0)' }, { fichier: OPS, serveur: true, de: "  request.heureEnregistree = options.heureEnregistree || '';\n", vers: '' }] },
+  { nom: 'a-placer-sans-arene', lettre: 'L', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'if (!ancien || !ancien.laserManual || ancien.aPlacer) return plan;', vers: 'if (!ancien || !ancien.laserManual) return plan;' }] },
   { nom: 'plancher-sur-les-ancres', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n    allowPastStart,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };", vers: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };" }] },
   { nom: 'drapeau-non-transmis', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n  });\n\n  const scenarios = result.scenario`, vers: '    arcadeStart,\n  });\n\n  const scenarios = result.scenario' }] },
   { nom: 'heures-du-libre-perdues', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesHeuresDuLibre(recommended, request.opsPlan, visitStartShiftMinutes(request));\n', vers: '' }] },
@@ -668,6 +708,7 @@ const SCENARIOS = {
   deuxParties: scenarioDeuxParties,
   glisser: scenarioGlisser,
   moteur: scenarioMoteur,
+  sources: scenarioSources,
 };
 async function jouer(browser, noms) {
   for (const nom of noms) await SCENARIOS[nom](browser);

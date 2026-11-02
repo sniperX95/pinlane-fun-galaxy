@@ -28,6 +28,8 @@
 //   [M] LA LISTE SOUS LE TABLEAU TROUVE CE QUE LE TABLEAU TROUVE : une heure, une piste,
 //       un nombre, pas seulement un nom.
 //   [N] UN JOUR VIDE CHERCHE AUSSI : le client est peut-etre sur une autre date.
+//   [O] ENTREE NE POINTE QU UN NOM JUSTE : une faute, une heure, une piste, un nombre
+//       trouvent une ligne, ils ne font arriver personne.
 //
 // --contre-preuves : chaque regle retiree (au code servi, jamais au disque) fait rougir
 // sa lettre.
@@ -260,6 +262,10 @@ async function chiffresA(browser, heure) {
       return m ? Number(m[1]) : null;
     });
     ok(auTableau > 0 && aLAccueil === auTableau, `[K] a ${heure}, « Sur place » dit la meme chose au tableau et a l accueil`, { auTableau, aLAccueil });
+    await page.evaluate(() => { openStaffMenuPage('planning'); openStaffPlanningResource('all'); setStaffStatusFilter('onsite'); });
+    await page.waitForSelector('.gf-r', { timeout: 8000 });
+    const lignes = await page.evaluate(() => document.querySelectorAll('.gf-r').length);
+    ok(lignes === auTableau, `[K] a ${heure}, le compteur montre autant de lignes qu il en compte`, { lignes, auTableau });
   } finally { await ctx.close(); }
 }
 
@@ -287,8 +293,12 @@ async function scenarioChiffresDuJour(browser) {
             const r = await chiffresDuJour(page, detail);
             if (r.chevauche > 0 || r.deborde > 0) fautes.push({ vue, l, menu, detail: Boolean(detail), ...r });
           }
-          await page.evaluate(() => { const b = document.querySelector('[data-fgx-menu-collapse]'); if (b) b.click(); });
-          await page.waitForTimeout(120);
+          await page.evaluate(async () => {
+            const b = document.querySelector('[data-fgx-menu-collapse]');
+            if (b) b.click();
+            await new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin)));
+            await Promise.all(document.getAnimations().filter((a) => a.effect.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)));
+          });
         }
       }
     }
@@ -345,7 +355,27 @@ async function scenarioJourVide(browser) {
   } finally { await ctx.close(); }
 }
 
-const SCENARIOS = { liste: scenarioListe, jourVide: scenarioJourVide, chiffresDuJour: scenarioChiffresDuJour, heure: scenarioHeure, bandeau: scenarioBandeau, retard: scenarioRetard, montant: scenarioMontant, pasvenu: scenarioPasVenu, piste: scenarioPiste, telephone: scenarioTelephone, menu: scenarioMenu, chiffres: scenarioChiffres };
+async function scenarioEntree(browser) {
+  const { ctx, page } = await ouvrir(browser);
+  try {
+    const arrives = () => page.evaluate(() => state.reservations.filter((r) => r.status === 'arrived').length);
+    const avant = await arrives();
+    for (const texte of ['massen', '21:30', 'p8', '7 pers']) {
+      await taper(page, texte);
+      const lignes = await page.evaluate(() => document.querySelectorAll('.gf-r').length);
+      await page.press('#globalPlanningSearchInput', 'Enter');
+      await page.waitForTimeout(150);
+      const dit = await page.evaluate(() => (document.querySelector('.gf-resultats') || {}).textContent || '');
+      ok(lignes > 0 && (await arrives()) === avant && !/Entrée/.test(dit), `[O] « ${texte} » trouve une ligne, Entree ne pointe personne`, { lignes, dit });
+    }
+    await taper(page, 'Masson');
+    await page.press('#globalPlanningSearchInput', 'Enter');
+    await page.waitForFunction((n) => state.reservations.filter((r) => r.status === 'arrived').length === n, avant + 1, { timeout: 3000 }).catch(() => null);
+    ok((await arrives()) === avant + 1, '[O] un nom juste, Entree pointe son groupe', await arrives());
+  } finally { await ctx.close(); }
+}
+
+const SCENARIOS = { entree: scenarioEntree, liste: scenarioListe, jourVide: scenarioJourVide, chiffresDuJour: scenarioChiffresDuJour, heure: scenarioHeure, bandeau: scenarioBandeau, retard: scenarioRetard, montant: scenarioMontant, pasvenu: scenarioPasVenu, piste: scenarioPiste, telephone: scenarioTelephone, menu: scenarioMenu, chiffres: scenarioChiffres };
 const MUTATIONS = [
   { nom: 'heure-sans-pistes', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    if (place && place.pistes) lignes.push({ html: '<span>Pistes ' + place.pistes + '</span>', hauteur: 1 });\n", vers: '' }] },
   { nom: 'heure-sans-laser', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    if (place && place.laser) lignes.push({ html: '<span>Laser ' + place.laser + '</span>', hauteur: 1 });\n", vers: '' }] },
@@ -363,13 +393,16 @@ const MUTATIONS = [
   { nom: 'piste-muette', lettre: 'G', scenarios: ['piste'], editions: [{ fichier: GJS, de: "if (fermees.length && etat !== 'fini') {", vers: 'if (false) {' }] },
   { nom: 'piste-sourde', lettre: 'G', scenarios: ['piste'], editions: [{ fichier: GJS, de: "      if (voir) { voirAuPlanning(Number(voir.closest('[data-gf-id]').getAttribute('data-gf-id')), voir.getAttribute('data-gf-voir'), e); return; }\n", vers: '' }] },
   { nom: 'telephone-en-haut', lettre: 'H', scenarios: ['telephone'], editions: [{ fichier: GJS, de: "      else if (wrap._gfRegle == null) { wrap._gfRegle = 0; cible.scrollIntoView({ block: 'start' }); }\n", vers: '' }] },
+  { nom: 'entree-sur-la-faute', lettre: 'O', scenarios: ['entree'], editions: [{ fichier: GJS, de: 'var trouves = m && q ? m.groupes.filter(function (g) { return gfTrouveParNom(g, q); }) : [];', vers: 'var trouves = m ? gfRecherche(m, q) : [];' }] },
+  { nom: 'entree-promise-a-tort', lettre: 'O', scenarios: ['entree'], editions: [{ fichier: GJS, de: ' && gfPeutArriver(lignes[0], m) && gfTrouveParNom(lignes[0], q);', vers: ' && gfPeutArriver(lignes[0], m);' }] },
   { nom: 'liste-par-son-nom-seul', lettre: 'M', scenarios: ['liste'], editions: [{ fichier: 'assets/app-main.js', de: "const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;", vers: 'const trouves = null;' }] },
   { nom: 'jour-vide-sourd', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'var aEcrire = Boolean(m.groupes.length || q);', vers: 'var aEcrire = Boolean(m.groupes.length);' }] },
   { nom: 'jour-vide-sans-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: "if (!lignes.length && (m.groupes.length || q)) {", vers: 'if (!lignes.length && m.groupes.length) {' }] },
   { nom: 'trois-cases-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: none; }', vers: '.kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: flex; }' }] },
   { nom: 'libelles-entiers-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.kpi-grid .kpi .kpi-suite { display: none; }', vers: '.kpi-grid .kpi .kpi-suite { display: inline; }' }] },
   { nom: 'detail-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '@media (min-width: 1000px) and (max-width: 1540px) {\n  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: none; }', vers: '@media (min-width: 1000px) and (max-width: 1540px) {\n  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: block; }' }] },
-  { nom: 'paye-reste-sur-place', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: 'assets/app-main.js', de: "moment.etat = moment.etat === 'done' || groupeToutFait(r) ? 'done' : 'onsite';", vers: "moment.etat = groupeToutFait(r) ? 'done' : 'onsite';" }] },
+  { nom: 'paye-reste-sur-place', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: GJS, de: "var parti = r.status === 'paid' && mo.etat === 'onsite' && maintenant != null && span.end <= maintenant;", vers: 'var parti = false;' }] },
+  { nom: 'filtre-garde-les-partis', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: GJS, de: "return filtre !== 'onsite' || !sortis.has(id);", vers: 'return true;' }] },
   { nom: 'nom-brut', lettre: 'J', scenarios: ['menu'], editions: [{ fichier: GJS, de: "gpEsc(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0) + (la ? '' : ' pas là'))", vers: "(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0) + (la ? '' : ' pas là'))" }] },
 ];
 

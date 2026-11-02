@@ -845,6 +845,10 @@ const MUTATIONS = [
   { nom: 'repeint', lettre: '[H] pendant un glisser, le repeint attend', fichier: 'assets/app-main.js',
     de: 'if (lpEtat.glisse) { lpEtat.differe = true; return; }',
     vers: '' },
+  // Ce qui bouge ailleurs se souligne sous la main qui glisse.
+  { nom: 'soulignage-sous-la-main', lettre: '[H] pendant un glisser, le repeint attend', fichier: 'assets/app-main.js',
+    de: '  if (lpEtat.glisse || bowlingPointerDrag) return;\n  ids.forEach((id) => {',
+    vers: '  ids.forEach((id) => {' },
   // Deux voisins dans le meme etat ne s alternent plus : ils se confondent.
   { nom: 'tons', lettre: '[A] deux voisins dans le meme etat se distinguent', fichier: 'assets/app-main.js',
     de: '    alt = t === avant ? !alt : false;',

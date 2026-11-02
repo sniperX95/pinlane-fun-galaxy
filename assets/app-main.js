@@ -3123,6 +3123,8 @@ let ficheFaitsPeints = '';
 const BOUGE_MS = 2400;
 function empreinteBouge(r) { return [r.status, r.absentAt ? 1 : 0, Number(r.pax) || 0].join(':'); }
 function soulignerCeQuiABouge(ids) {
+  // (pendant un glisser, rien ne bouge sous la main : le repeint attend, le soulignage aussi)
+  if (lpEtat.glisse || bowlingPointerDrag) return;
   ids.forEach((id) => {
     const cle = Number(id);
     if (!Number.isFinite(cle)) return;
@@ -25007,13 +25009,12 @@ function getStaffReservationMoments(reservations, jour = state.currentDate) {
   poser(board.closing, 'closing');
   poser(board.done, 'done');
   poser(board.absent, 'absent');
-  // Encaisser ne termine aucune activité : un groupe qui a payé avant de jouer reste
-  // sur place. Sa visite finie (l heure passée, ou les coches du programme), il est
-  // parti : le soir, le tableau disait 5 sur place quand un seul groupe restait.
+  // Encaisser ne termine aucune activité. Seules les coches du programme
+  // permettent de ranger un dossier payé parmi les visites terminées.
   reservations.forEach(r => {
     const moment = moments.get(String(r.id));
     if (r.status === 'paid' && moment && moment.etat !== 'absent') {
-      moment.etat = moment.etat === 'done' || groupeToutFait(r) ? 'done' : 'onsite';
+      moment.etat = groupeToutFait(r) ? 'done' : 'onsite';
       moment.late = false;
     }
   });
@@ -34787,7 +34788,7 @@ function rvApresCreation(reservations) {
     markReservationMutation(reservation.id, reservation, ['status', 'startTime', 'lanes']);
   });
   // Une reservation prise il y a dix secondes doit se trouver.
-  if (typeof window.pv2ResSearchInvalidate === 'function') window.pv2ResSearchInvalidate();
+  if (typeof window.pv2ResSearchAjouter === 'function') window.pv2ResSearchAjouter(reservations);
   save();
 }
 

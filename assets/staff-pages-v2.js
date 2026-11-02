@@ -9878,6 +9878,7 @@
     // La classe de poussee : quand le tiroir est ouvert sur grand ecran, le
     // shell reserve sa place (padding-right anime) et le chat se recentre.
     root.classList.toggle('mkw-has-panel', Boolean(mkw.panelOpen && mkBrief.tab === 'feed' && !mkwIsMobile()));
+    root.closest('.staff-wrap')?.classList.toggle('a-bureau-mkw', Boolean(root.querySelector('.mkw-desk')));
     mkwSheetRender();
     mkwDotsInit();
     mkwMarkInit();

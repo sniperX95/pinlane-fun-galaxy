@@ -318,6 +318,12 @@
     var plans = [];
     for (var l = 0; l < listes.length; l += 1) {
       var liste = listes[l];
+      // (hors de l ecran, rien ne se voit bouger : la mesurer reveillerait la
+      // liste que le navigateur a mise de cote, et ses places se reprennent a
+      // son retour, sans animer)
+      var cadre = liste.closest('.res-list') || liste;
+      var vue = cadre.getBoundingClientRect();
+      if (vue.bottom <= 0 || vue.top >= window.innerHeight) { places = Object.create(null); continue; }
       var base = liste.getBoundingClientRect();
       if (!base.width) continue;
       var cartes = liste.querySelectorAll('[data-res-row-id]');

@@ -3499,6 +3499,10 @@ body:is(.staff-mode, .admin-mode) .laser-capacity-line { height: 3px; }
 }
 
 .res-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+/* (une carte hors de la boite, le navigateur la laisse de cote : ni style, ni
+   mise en page, ni peinture, 2026-11-02 ; `auto 132px` : sa hauteur tant qu on ne
+   l a pas vue, ensuite la vraie) */
+.res-list .res-row { content-visibility: auto; contain-intrinsic-block-size: auto 132px; }
 
 .table-toolbar {
   display: flex;
@@ -13682,7 +13686,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    PLUS RIEN ne vit sous le composer : ni padding du shell, ni padding du
    staff-wrap : le bas de page, c'est la barre, comme ChatGPT. */
 .mkw-shell:has(.mkw-desk) { padding-bottom: 0; }
-.staff-wrap:has(.mkw-desk) { padding-bottom: 0; }
+.staff-wrap.a-bureau-mkw { padding-bottom: 0; }
 .mkw-shell { transition: padding-right 460ms cubic-bezier(0.16, 1, 0.3, 1); }
 #staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 400px; }
 
@@ -18411,10 +18415,11 @@ button.pv2-cal-cell:focus-visible {
 .staff-confirm-actions button.is-danger { background: var(--danger); border-color: var(--danger); color: #ffffff; }
 .staff-confirm-actions button:hover { filter: brightness(1.08); }
 
-/* REPAINT INVISIBLE (2026-08-25) : pendant un re-rendu d une surface deja
-   ouverte, aucun rejeu d animation ou de transition : l oeil ne voit pas
-   le refresh, seul le contenu change. */
-.is-repaint, .is-repaint * { animation: none !important; transition: none !important; }
+/* REPAINT INVISIBLE (2026-08-25) : aucun rejeu d animation pendant un re-rendu.
+   Plus de regle ici depuis le 2026-11-02 : `.is-repaint *` recalculait tout le
+   style de la console, deux fois par rendu. repaintKeepingScroll (app-main.js)
+   termine les animations nees du rendu ; la classe ne sert plus que de marque
+   au script du motion. */
 
 /* Cartes 30 min du planning : l icone de note reste visible en badge de
    coin (le texte n a pas la place, l alerte si). */
@@ -21416,25 +21421,28 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-groupe { min-height: 34px; padding-top: 0; padding-bottom: 0; }
   .lp-compact .lp-alerte { min-height: 36px; }
 }
+/* (une classe posee par renderStaffShell, pas :has() : avec :has(), chaque
+   noeud ecrit dans la console recalculait le style de toute la console, les
+   7 700 elements du planning. Doublee pour garder la specificite d avant.) */
 @media (min-width: 1101px) {
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head { margin-bottom: 8px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head > div:first-child { display: flex; align-items: baseline; gap: 12px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head h1 { font-size: 18px; margin: 0; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head .sub { margin: 0; font-size: 12px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) { padding: 4px 14px; min-height: 50px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) { width: 190px; flex: 0 1 190px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) input { width: 100%; height: 40px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-toggle, .planning-more-btn, .lp-reserver) { height: 40px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .table-box:not(.expanded) .table-actions .planning-toggle { order: 9; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) h2 { margin: 0; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid:not(.hidden) { margin-bottom: 8px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi { min-height: 36px; padding: 7px 12px; flex-wrap: nowrap; align-items: center; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .label { flex: none; margin: 0; white-space: nowrap; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .value { flex: none; font-size: 16px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tabs { margin-bottom: 8px; }
-  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
+  #staffView.avec-onglets.avec-onglets .staff-head { margin-bottom: 8px; }
+  #staffView.avec-onglets.avec-onglets .staff-head > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+  #staffView.avec-onglets.avec-onglets .staff-head h1 { font-size: 18px; margin: 0; }
+  #staffView.avec-onglets.avec-onglets .staff-head .sub { margin: 0; font-size: 12px; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) { padding: 4px 14px; min-height: 50px; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) { width: 190px; flex: 0 1 190px; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) input { width: 100%; height: 40px; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-toggle, .planning-more-btn, .lp-reserver) { height: 40px; }
+  #staffView.avec-onglets.avec-onglets .table-box:not(.expanded) .table-actions .planning-toggle { order: 9; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
+  #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) h2 { margin: 0; }
+  #staffView.avec-onglets.avec-onglets .kpi-grid:not(.hidden) { margin-bottom: 8px; }
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi { min-height: 36px; padding: 7px 12px; flex-wrap: nowrap; align-items: center; }
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .label { flex: none; margin: 0; white-space: nowrap; }
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .value { flex: none; font-size: 16px; }
+  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #staffView.avec-onglets.avec-onglets .staff-resource-tabs { margin-bottom: 8px; }
+  #staffView.avec-onglets.avec-onglets .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
   /* La bande sur une ligne : le prochain depart et ses groupes prennent ce
      que la partie en jeu et le bouton des pas venus laissent ; ses groupes se
      partagent la place (le nom s abrege, la bulle le donne entier) et, au-dela,

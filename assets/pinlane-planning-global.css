@@ -62,8 +62,10 @@
    demi-heure et une bande un bloc sur deux : la journee se lit par
    demi-heure, comme les blocs du papier. */
 .gf-t td { box-sizing: border-box; height: 40px; padding: 3px 7px; border-top: 1px solid var(--line); background: var(--surface); vertical-align: middle; }
-.gf-t tbody tr:first-child > td { border-top: 0; }
-.gf-r.is-bloc > td { border-top-color: var(--line-strong); }
+/* (les rangees sans filet portent une classe, gfParties la pose. Avec
+   `tr:first-child` et `tr.gf-demi + tr`, chaque rangee ecrite ou retiree
+   faisait recalculer le style des 2 000 elements de la table, 2026-11-02) */
+.gf-t tr.gf-sans-filet > td { border-top: 0; }
 .gf-r.is-bande > td { background: var(--gf-bande); }
 .gf-r { cursor: pointer; }
 .gf-r:hover > td { background: var(--gf-survol); }
@@ -194,7 +196,6 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
 .gf-t tr.gf-now > td::after { content: ''; position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--accent); }
 .gf-t tr.gf-now > td.gf-h { position: sticky; z-index: 3; box-shadow: none; background: var(--surface); }
 .gf-now__h { position: absolute; left: 6px; top: 1px; z-index: 1; padding: 0 7px; border-radius: 999px; background: var(--accent); color: var(--accent-contrast, #fff); font-size: 12px; font-weight: 700; line-height: 20px; white-space: nowrap; }
-.gf-t tr.gf-now + tr > td { border-top: 0; }
 /* Le bouton qui ramene a l heure qu il est quand on s en est eloigne. */
 /* (au milieu : a droite, il couvrait les « Arrivé » des dernieres lignes) */
 .gf-retour { position: absolute; left: 50%; bottom: 16px; z-index: 6; translate: -50% 0; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-contrast, #fff); font: inherit; font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-overlay); cursor: pointer; }
@@ -210,7 +211,6 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
    filet franc du bloc, sa premiere ligne garde un filet simple. */
 .gf-t tr.gf-demi > td { height: 24px; padding: 2px 7px; border-top-color: var(--line-strong); font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; }
 .gf-t tr.gf-demi.is-bande > td { background: var(--gf-bande); }
-.gf-t tr.gf-demi + tr.gf-r > td { border-top-color: var(--line); }
 .gf-t td.gf-demi__t { position: sticky; left: var(--gf-col-h); z-index: 2; }
 .gf-demi__t b { font-weight: 650; color: var(--text); }
 .gf-demi__plein { font-weight: 700; color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
@@ -272,7 +272,6 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
   .gf-t, .gf-t tbody { display: block; width: 100%; }
   .gf-t thead { display: none; }
   .gf-r { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 5px; align-items: center; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line); background: var(--surface); box-shadow: inset 3px 0 0 var(--bk-barre); }
-  .gf-r.is-bloc { border-top-color: var(--line-strong); }
   .gf-r.is-bande { background: var(--gf-bande); }
   .gf-r:hover { background: var(--gf-survol); }
   .gf-t .gf-r > td { display: block; position: static; height: auto; min-width: 0; max-width: none; width: auto; padding: 0; border: 0; background: transparent; box-shadow: none; }
@@ -298,7 +297,6 @@ button.gf-b.gf-compte:focus-visible { outline: 2px solid var(--accent); outline-
   .gf-t tr.gf-demi > td { display: none; position: static; height: auto; padding: 0; border: 0; background: transparent; }
   .gf-t tr.gf-demi > td:is(.gf-demi__t, .gf-demi__a:not(.is-vide)) { display: block; }
   .gf-t tr.gf-demi > td.gf-demi__a::before { content: attr(data-gf-titre) ' '; font-weight: 600; color: var(--muted); }
-  .gf-t tr.gf-demi + tr.gf-r { border-top-color: var(--line); }
   .gf-t tr.gf-now { display: block; position: relative; height: 2px; background: var(--accent); }
   .gf-t tr.gf-now > td { display: block; height: 0; border: 0; }
   .gf-t tr.gf-now > td:not(.gf-h) { display: none; }

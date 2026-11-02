@@ -53,8 +53,9 @@
 // nommee devant ses heures.
 //
 // La console l appelle depuis renderGlobalPlanningSurface (app-main.js), a
-// chaque rendu et a chaque minute : le HTML se compare a celui du dernier rendu
-// et ne s ecrit que s il a change (le defilement et le focus restent).
+// chaque rendu et a chaque minute : chaque rangee se compare a celle du dernier
+// rendu et seule celle qui a change s ecrit (gfEcrire : le defilement, le focus
+// et le reste de la table ne bougent pas).
 (function () {
   'use strict';
 
@@ -722,7 +723,7 @@
     var b = Math.floor(heure * 2 + 1e-6) / 2;
     return b;
   }
-  function gfHtml(m, q) {
+  function gfParties(m, q) {
     var nbCol = 5 + m.colonnes.length;
     var lignes = m.groupes.filter(function (g) { return (!m.visibles || m.visibles.has(g.id)) && gfTrouve(g, q); });
     var parBloc = new Map();
@@ -733,33 +734,38 @@
       c.pers += Number(g.r.pax) || 0;
       parBloc.set(b, c);
     });
-    var corps = '';
+    var rangees = [];
+    // (la premiere rangee et celle qui suit la barre de l heure n ont pas de filet)
+    var poser = function (cle, html) {
+      var nu = !rangees.length || rangees[rangees.length - 1].cle === 'maintenant';
+      rangees.push({ cle: cle, html: nu ? html.replace('<tr class="', '<tr class="gf-sans-filet ') : html });
+    };
     var avant = null, bande = false, bloc = null;
     var nowPose = m.maintenant == null;
     lignes.forEach(function (g) {
-      if (!nowPose && g.heure > m.maintenant + 1e-6) { corps += gfMaintenant(m, nbCol); nowPose = true; }
+      if (!nowPose && g.heure > m.maintenant + 1e-6) { poser('maintenant', gfMaintenant(m, nbCol)); nowPose = true; }
       // (la demi-heure du papier, blocDe : 14:10 va dans le bloc de 14:00,
       // 14:40 dans celui de 14:30)
       var b = gfBloc(g.heure);
       var nouveauBloc = b !== bloc;
       if (nouveauBloc && bloc !== null) bande = !bande;
       bloc = b;
-      if (nouveauBloc) corps += gfDemi(m, b, parBloc.get(b), bande);
+      if (nouveauBloc) poser('bloc:' + b, gfDemi(m, b, parBloc.get(b), bande));
       var repete = avant !== null && Math.abs(avant - g.heure) < 1 / 120;
       avant = g.heure;
       var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (bande ? ' is-bande' : '') + (nouveauBloc ? ' is-bloc' : '');
       // (le retard s ecrit sous l heure : c est elle qui est depassee ; ses
       // minutes, par gfRemplir)
       var retard = g.retard && m.maintenant != null ? '<span class="gf-h__retard" data-gf-retard="' + gpEsc(g.id) + '"></span>' : '';
-      corps += '<tr class="' + classes + '" tabindex="0" data-gf-id="' + gpEsc(g.id) + '" aria-label="' + gpEsc(gfAria(g, m)) + '">'
+      poser('groupe:' + g.id, '<tr class="' + classes + '" tabindex="0" data-gf-id="' + gpEsc(g.id) + '" aria-label="' + gpEsc(gfAria(g, m)) + '">'
         + '<td class="gf-h' + (repete && !retard ? ' is-repete' : '') + '"><b>' + gpEsc(gpHeure(g.heure)) + '</b>' + retard + '</td>'
         + gfGroupe(g, m) + gfFormuleCase(g) + gfPersonnes(g)
         + m.colonnes.map(function (c) { return gfCase(g, c, m); }).join('')
-        + gfEtatCase(g, m) + '</tr>';
+        + gfEtatCase(g, m) + '</tr>');
     });
-    if (!nowPose && lignes.length) corps += gfMaintenant(m, nbCol);
+    if (!nowPose && lignes.length) poser('maintenant', gfMaintenant(m, nbCol));
     if (!lignes.length && m.groupes.length) {
-      corps += '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? 'Aucun groupe ne correspond à cette recherche.' : 'Aucun groupe dans ce filtre.') + '</td></tr>';
+      poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? 'Aucun groupe ne correspond à cette recherche.' : 'Aucun groupe dans ce filtre.') + '</td></tr>');
     }
     // (au telephone, la tete des colonnes disparait : l etat du centre passe
     // en une ligne au-dessus des cartes)
@@ -767,8 +773,78 @@
       var et = m.etat[c.cle];
       return '<span' + (et.plein ? ' class="is-plein"' : '') + '><b>' + gpEsc(c.titre) + '</b> ' + gpEsc(et.texte) + '</span>';
     }) : [];
-    return (etats.length ? '<p class="gf-maintenant">' + etats.join('') + '</p>' : '')
-      + '<table class="gf-t" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '"><thead><tr>' + gfTete(m) + '</tr></thead><tbody>' + corps + '</tbody></table>';
+    return {
+      dessus: etats.length ? '<p class="gf-maintenant">' + etats.join('') + '</p>' : '',
+      table: '<table class="gf-t" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '">',
+      colonnes: m.colonnes.map(function (c) { return c.cle; }).join('|'),
+      tete: gfTete(m),
+      rangees: rangees,
+    };
+  }
+
+  // SEULE LA LIGNE QUI CHANGE S ECRIT (2026-11-02, Movsar : « met toi dans la
+  // peau d un etudiant en plein rush [...] ça rame sur des PC moins puissants »).
+  // Un « Arrivé » reconstruisait les 2 000 elements de la feuille : analyse du
+  // HTML, style, mise en page, accessibilite et peinture de toute la table sur
+  // un petit PC. Chaque rangee porte une cle (le groupe, le bloc, la barre de
+  // l heure) et le HTML de son dernier rendu : une rangee identique reste dans
+  // la page, une rangee neuve se pose a sa place, une rangee partie s en va. La
+  // table entiere ne se reecrit qu a l ouverture d un jour ou quand les colonnes
+  // changent.
+  function gfRangeesDe(tbody, rangees) {
+    var trs = Array.prototype.slice.call(tbody.children);
+    var lignes = new Map();
+    rangees.forEach(function (r, i) { lignes.set(r.cle, { html: r.html, tr: trs[i] }); });
+    return lignes;
+  }
+  function gfEcrireTout(wrap, defile, p) {
+    defile.innerHTML = p.dessus + p.table + '<thead><tr>' + p.tete + '</tr></thead><tbody>' + p.rangees.map(function (r) { return r.html; }).join('') + '</tbody></table>';
+    wrap._gfLignes = gfRangeesDe(defile.querySelector('tbody'), p.rangees);
+    wrap._gfParties = p;
+    gfStats.ecritures += 1;
+  }
+  function gfEcrire(wrap, defile, p) {
+    var avant = wrap._gfParties;
+    var tbody = defile.querySelector('tbody');
+    if (!avant || !tbody || avant.table !== p.table || avant.colonnes !== p.colonnes) { gfEcrireTout(wrap, defile, p); return; }
+    var ecrit = false;
+    if (avant.dessus !== p.dessus) {
+      var dessus = defile.querySelector('.gf-maintenant');
+      if (dessus) dessus.remove();
+      if (p.dessus) defile.insertAdjacentHTML('afterbegin', p.dessus);
+      ecrit = true;
+    }
+    if (avant.tete !== p.tete) {
+      defile.querySelector('thead tr').innerHTML = p.tete;
+      ecrit = true;
+    }
+    var anciennes = wrap._gfLignes;
+    var nouvelles = new Map();
+    var neuves = [];
+    p.rangees.forEach(function (r) {
+      var a = anciennes.get(r.cle);
+      if (a && a.html === r.html) nouvelles.set(r.cle, a);
+      else neuves.push(r);
+    });
+    if (neuves.length) {
+      var gabarit = document.createElement('template');
+      gabarit.innerHTML = '<table><tbody>' + neuves.map(function (r) { return r.html; }).join('') + '</tbody></table>';
+      gfRangeesDe(gabarit.content.querySelector('tbody'), neuves).forEach(function (l, cle) { nouvelles.set(cle, l); });
+    }
+    anciennes.forEach(function (a, cle) {
+      var n = nouvelles.get(cle);
+      if (!n || n.tr !== a.tr) { a.tr.remove(); ecrit = true; }
+    });
+    var curseur = tbody.firstElementChild;
+    p.rangees.forEach(function (r) {
+      var tr = nouvelles.get(r.cle).tr;
+      if (tr === curseur) { curseur = curseur.nextElementSibling; return; }
+      tbody.insertBefore(tr, curseur);
+      ecrit = true;
+    });
+    wrap._gfLignes = nouvelles;
+    wrap._gfParties = p;
+    if (ecrit) gfStats.ecritures += 1;
   }
 
   // ---- LE RENDU --------------------------------------------------------------
@@ -792,15 +868,17 @@
     bandeau.className = 'gf-bandeau' + (ferme ? ' is-ferme' : '');
     if (bandeau.textContent !== texte) bandeau.textContent = texte;
     var defile = racine.querySelector('.gf-defile');
-    var html = m.groupes.length ? gfHtml(m, q) : '';
     wrap._gfModele = m;
-    if (html !== wrap._gfHtml) {
+    if (m.groupes.length) {
       var actif = document.activeElement;
       var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;
-      defile.innerHTML = html;
-      wrap._gfHtml = html;
+      gfEcrire(wrap, defile, gfParties(m, q));
+      if (focus && !actif.isConnected) gfRendreFocus(defile, focus);
+    } else if (wrap._gfParties || defile.firstChild) {
+      defile.textContent = '';
+      wrap._gfParties = null;
+      wrap._gfLignes = null;
       gfStats.ecritures += 1;
-      if (focus) gfRendreFocus(defile, focus);
     }
     gfRemplir(defile, m);
     racine.classList.toggle('is-vide', !m.groupes.length);

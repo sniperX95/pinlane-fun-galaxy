@@ -21860,9 +21860,9 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   const allCountEl = document.getElementById('staffAllCount');
   const bowlingCountEl = document.getElementById('staffBowlingCount');
   const laserCountEl = document.getElementById('staffLaserCount');
-  if (allCountEl) allCountEl.textContent = dayReservations.length;
-  if (bowlingCountEl) bowlingCountEl.textContent = bowlingCount;
-  if (laserCountEl) laserCountEl.textContent = laserCount;
+  poserTexte(allCountEl, dayReservations.length);
+  poserTexte(bowlingCountEl, bowlingCount);
+  poserTexte(laserCountEl, laserCount);
   // ---- UN ONGLET DE RESSOURCE QUE LE CENTRE N'A PAS EST UNE PROMESSE VIDE --
   //
   // Ces deux onglets etaient ecrits en dur dans index.html, sous-titres
@@ -21882,9 +21882,9 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   document.getElementById('staffTabBowling')?.classList.toggle('hidden', hiddenByPage || !hasBowling);
   document.getElementById('staffTabLaser')?.classList.toggle('hidden', hiddenByPage || !hasLaser);
   const bowlingSub = document.getElementById('staffBowlingSub');
-  if (bowlingSub && knows('bowling')) bowlingSub.textContent = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''}` : '';
+  if (knows('bowling')) poserTexte(bowlingSub, laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''}` : '');
   const laserSub = document.getElementById('staffLaserSub');
-  if (laserSub && knows('laser')) laserSub.textContent = weaponCount ? `${weaponCount} arme${weaponCount > 1 ? 's' : ''}` : '';
+  if (knows('laser')) poserTexte(laserSub, weaponCount ? `${weaponCount} arme${weaponCount > 1 ? 's' : ''}` : '');
   // Rester sur la vue d'une ressource absente afficherait une grille vide sans
   // rien dire : on retombe sur la journee complete, qui existe toujours.
   if (view === 'laser' && !hasLaser) view = 'all';
@@ -21912,7 +21912,7 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   };
   document.querySelectorAll('[data-fs-count]').forEach((el) => {
     const valeur = comptes[el.dataset.fsCount];
-    el.textContent = valeur && valeur !== '0' ? valeur : '';
+    poserTexte(el, valeur && valeur !== '0' ? valeur : '');
   });
 }
 
@@ -22950,6 +22950,10 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   ['.staff-head', '.kpi-grid', '.staff-resource-tabs', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {
     document.querySelectorAll(`#staffView ${selector}`).forEach(element => element.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive));
   });
+  // (le serre-tete des pages a onglets, lu par pinlane-staff.css a la place
+  // d un :has() qui recalculait toute la console a chaque noeud ecrit)
+  document.getElementById('staffView')?.classList.toggle('avec-onglets', !(dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive));
+  if (!campaignsActive) document.querySelector('#staffView .staff-wrap')?.classList.remove('a-bureau-mkw');
   const d = parseLocalDate(state.currentDate);
   const view = getStaffResourceView();
   const scopedReservations = dayReservations.filter(r => reservationMatchesStaffResource(r, view));
@@ -22975,13 +22979,13 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const dateLabel = document.getElementById('staffDateLabel');
   if (dateLabel) {
     const dateText = d.toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-    dateLabel.textContent = dateText.charAt(0).toUpperCase() + dateText.slice(1);
+    poserTexte(dateLabel, dateText.charAt(0).toUpperCase() + dateText.slice(1));
     dateLabel.dataset.now = new Date().toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
   }
   const dateShort = document.getElementById('staffDateShort');
   if (dateShort) {
     const shortDateText = d.toLocaleDateString('fr-BE', { weekday:'short', day:'numeric', month:'short', year:'numeric' }).replace(',', '');
-    dateShort.textContent = shortDateText.charAt(0).toUpperCase() + shortDateText.slice(1);
+    poserTexte(dateShort, shortDateText.charAt(0).toUpperCase() + shortDateText.slice(1));
   }
   const prevBtn = document.getElementById('staffPrevDateBtn');
   if (prevBtn) prevBtn.disabled = false;
@@ -23075,10 +23079,10 @@ function renderKpis() {
   tiles.forEach(tile => {
     const card = grid.querySelector(`[data-kpi="${tile.key}"]`);
     if (!card) return;
-    card.querySelector('.label').textContent = tile.label;
-    card.querySelector('.value').textContent = tile.value;
+    poserTexte(card.querySelector('.label'), tile.label);
+    poserTexte(card.querySelector('.value'), tile.value);
     const hint = card.querySelector('.hint');
-    hint.textContent = tile.hint;
+    poserTexte(hint, tile.hint);
     hint.title = tile.hint;
     if (tile.title) card.title = tile.title; else card.removeAttribute('title');
   });
@@ -23263,6 +23267,11 @@ function poserHtmlSurface(conteneur, html) {
   suivi.touchee = false;
   return true;
 }
+// Un texte reecrit a l identique remplace quand meme son noeud : un rendu de
+// plus a calculer pour un ecran qui n a pas change.
+function poserTexte(el, texte) {
+  if (el && el.textContent !== String(texte)) el.textContent = texte;
+}
 // Une variable de style reecrite a l identique invalide quand meme le style de
 // toute la boite : on ne l ecrit que si elle change.
 function poserVariableSiChange(el, nom, valeur) {
@@ -23275,6 +23284,11 @@ function renderPlanning() {
   renderPlanningHead();
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
+  // CE QUI NE SE VOIT PAS NE SE DESSINE PAS (2026-11-02, Movsar : « ça rame sur
+  // des PC moins puissants »). Chaque geste redessinait aussi les deux plannings
+  // caches (1 450 et 1 600 elements un samedi). L onglet qu on ouvre passe par
+  // syncStaffResourceTabs, qui retire `hidden`, puis par ce rendu.
+  if (planningBox && planningBox.classList.contains('hidden')) return;
   // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.
   // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
   // Lue avant le rendu, reposée après (voir ouvrirLotDefilement).
@@ -24169,6 +24183,8 @@ function renderLaserPlanning() {
   const wrap = document.getElementById('laserPlanningGridWrap');
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
+  // (caché, il ne se dessine pas : voir renderPlanning)
+  if (document.getElementById('laserPlanningBox')?.classList.contains('hidden')) return;
   // Pendant un glisser, rien ne se repeint sous le doigt : le sondage et le
   // tic attendent le lacher, puis le repeint se fait (rien n est perdu).
   if (lpEtat.glisse) { lpEtat.differe = true; return; }
@@ -25635,7 +25651,46 @@ const GC_BAND_ICONS = {
   absent: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg>',
 };
 
+// LA LISTE SOUS LE PLANNING ATTEND L IMAGE D APRES (2026-11-02, Movsar : « ça
+// rame sur des PC moins puissants »). Sous la feuille du jour ou la grille, elle
+// est hors de l ecran : elle se reconstruit quand meme a chaque geste (2 400
+// elements un samedi), et c est ce travail qui retardait la ligne qu on vient
+// de toucher. Hors de l ecran, elle passe apres la peinture ; a l ecran, tout de
+// suite. Et chaque carte hors de sa boite est laissee de cote par le navigateur
+// (content-visibility, pinlane-staff.css) : reconstruire la liste ne coute plus
+// que les cartes qu on voit.
+let listeVisible = false;
+let listeEnAttente = false;
+let observateurListe = null;
+function suivreListeALEcran(box) {
+  if (observateurListe || typeof IntersectionObserver !== 'function') { if (!observateurListe) listeVisible = true; return; }
+  observateurListe = new IntersectionObserver((entrees) => {
+    listeVisible = entrees[entrees.length - 1].isIntersecting;
+    if (listeVisible && listeEnAttente) rendreLaListeEnAttente();
+  });
+  observateurListe.observe(box);
+}
+function rendreLaListeEnAttente() {
+  if (!listeEnAttente) return;
+  listeEnAttente = false;
+  const box = document.getElementById('staffTableBox');
+  if (!box || box.classList.contains('hidden') || state.view !== 'staff' || !isStaffPlanningPageActive()) return;
+  // (hors de l ecran : ni position a garder, ni animation a jouer ; la marque
+  // dit au motion de ne pas rejouer la cascade)
+  box.classList.add('is-repaint');
+  avecLotDefilement(rendreLaListe);
+  requestAnimationFrame(() => requestAnimationFrame(() => box.classList.remove('is-repaint')));
+}
 function renderTable() {
+  const box = document.getElementById('staffTableBox');
+  if (box) suivreListeALEcran(box);
+  if (!box || listeVisible || state.staffTableExpanded) { listeEnAttente = false; rendreLaListe(); return; }
+  if (listeEnAttente) return;
+  listeEnAttente = true;
+  // (plusieurs gestes d affilee n en font qu un : personne ne regarde cette liste)
+  setTimeout(() => requestAnimationFrame(() => setTimeout(rendreLaListeEnAttente, 0)), 250);
+}
+function rendreLaListe() {
   const view = getStaffResourceView();
   const res = scopedStaffReservations(view);
   releaseDeadNoteFilter();
@@ -25764,8 +25819,9 @@ function suivreBarreDeLaListe(list) {
     const valeur = `${Math.ceil(barre.getBoundingClientRect().height)}px`;
     if (list.style.getPropertyValue('--liste-barre-h') !== valeur) list.style.setProperty('--liste-barre-h', valeur);
   };
-  poser();
-  if (typeof ResizeObserver !== 'function') return;
+  // (le ResizeObserver mesure a l arrivee a l ecran : mesurer ici, a chaque
+  // rendu, reveillerait la liste que le navigateur a mise de cote)
+  if (typeof ResizeObserver !== 'function') { poser(); return; }
   if (observateurBarreListe && observateurBarreListe.cible === barre) return;
   if (observateurBarreListe) observateurBarreListe.disconnect();
   observateurBarreListe = new ResizeObserver(poser);
@@ -25872,8 +25928,9 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
   }).then(payload => {
     if (!isLatestRequest()) return;
     // Mesuré à la réponse : on respecte aussi un défilement fait pendant
-    // l'enregistrement, et aucune ancre n'est posée si l'on a quitté la liste.
-    const ancreY = document.querySelector(`[data-res-row-id="${Number(id)}"]`)?.getBoundingClientRect().top;
+    // l'enregistrement, et aucune ancre n'est posée si l'on a quitté la liste
+    // (hors de l'écran, la mesurer la réveillerait pour rien).
+    const ancreY = listeVisible ? document.querySelector(`[data-res-row-id="${Number(id)}"]`)?.getBoundingClientRect().top : undefined;
     // Un filtre ciblé ne doit pas faire disparaître le groupe que l'on sert.
     // On rejoint la vue complète seulement si ce dossier quitte le filtre.
     if (state.staffStatusFilter === filtreAvant && !['all', 'notes'].includes(normaliserFiltreListe(filtreAvant))
@@ -34808,6 +34865,25 @@ document.addEventListener('keydown', (event) => {
 // remontait en haut : exactement le defaut qu on venait corriger. On ne retient
 // donc que les conteneurs porteurs d une cle stable (id ou data-scroll-key),
 // et on les retrouve par cette cle.
+//
+// CE QUE LE RENDU FAIT NAITRE SE TERMINE D UN COUP (2026-11-02, Movsar : « ça
+// rame sur des PC moins puissants »). La regle `.is-repaint * { animation:
+// none }` coupait les animations, mais la poser et la retirer recalculait le
+// style de TOUTE la console (7 700 elements au planning), deux fois par rendu :
+// 860 ms chacune sur un petit PC (processeur ralenti 6x). Le meme effet sans
+// toucher au style : une animation ou une transition nee du rendu a un temps
+// courant nul, elle se termine aussitot (une entree finie retire sa classe,
+// voir entreeFinie, pinlane-motion.js) ; celles qui tournaient deja continuent,
+// et l infini (un sablier) ne se termine pas.
+function terminerAnimationsDuRendu(root) {
+  if (!root || typeof root.getAnimations !== 'function') return;
+  root.getAnimations({ subtree: true }).forEach((animation) => {
+    if (animation.currentTime) return;
+    const effet = animation.effect && animation.effect.getComputedTiming();
+    if (!effet || effet.iterations === Infinity) return;
+    animation.finish();
+  });
+}
 function repaintKeepingScroll(root, render) {
   if (!root) { render(); return; }
   // UNE CLE STABLE POUR CHAQUE CONTENEUR QUI DEFILE, MEME SANS IDENTIFIANT.
@@ -34847,18 +34923,24 @@ function repaintKeepingScroll(root, render) {
   const pageLeft = page ? page.scrollLeft : 0;
   const racineTop = root.scrollTop;
   const racineLeft = root.scrollLeft;
-  root.querySelectorAll('*').forEach((el) => {
-    if (!el.scrollTop && !el.scrollLeft) return;
+  // (une surface cachee ne defile pas, une carte de la liste non plus : les
+  // sauter evite de lire 7 000 elements, et de reveiller les cartes que le
+  // navigateur a mises de cote, content-visibility)
+  const marcheur = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (el) => (el.classList.contains('hidden') || el.classList.contains('res-row') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  for (let el = marcheur.nextNode(); el; el = marcheur.nextNode()) {
+    if (!el.scrollTop && !el.scrollLeft) continue;
     const cle = cleDe(el, memeClasse);
     if (cle) scrolled.push([cle, el.scrollTop, el.scrollLeft]);
-  });
+  }
   root.classList.add('is-repaint');
   try {
     render();
   } finally {
-    // Le rendu peut lever : sans ce finally, is-repaint restait collee et
-    // TOUTES les animations et transitions de la console mouraient jusqu au
-    // rechargement.
+    // (depuis le 2026-11-02, la classe n est plus qu une marque pour le motion :
+    // voir terminerAnimationsDuRendu, plus haut)
+    terminerAnimationsDuRendu(root);
     scrolled.forEach(([cle, top, left]) => {
       const el = typeof cle === 'string'
         ? root.querySelector(cle)
@@ -34873,6 +34955,7 @@ function repaintKeepingScroll(root, render) {
       // hauteur qu a ce moment-la. Sans elle, la restauration ci-dessus est
       // clampee a la hauteur intermediaire et l ecran saute quand meme.
       if (page && pageTop && page.scrollTop !== pageTop) page.scrollTop = pageTop;
+      terminerAnimationsDuRendu(root);
       root.classList.remove('is-repaint');
     }));
   }

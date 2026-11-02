@@ -429,7 +429,7 @@ async function bench() {
 //        s ouvre quand meme.
 // Contre-epreuves (--mutate) : chaque correctif est retire EN MEMOIRE (servi
 // mute), un a la fois ; les assertions qui le portent doivent rougir, la
-// mutation servie, sans qu aucun MONTAGE ne rougisse. La hauteur animee de
+// mutation servie, sans qu aucun autre MONTAGE ne rougisse. La hauteur animee de
 // nouveau se prouve au compte des layouts ([G1], deterministe) : son [G5]
 // rougit aussi (35 contre 18, 138 contre 121, releves 2026-10-20), mais la
 // page mutee laisse le navigateur occupe et la sonde de repos de la
@@ -438,18 +438,21 @@ const MUTATIONS_GATE = [
   { nom: 'la rangee du tiroir s anime de nouveau en hauteur (grid-template-rows)', fichier: 'assets/fungalaxy-booking.css', de: '.fg-flip :is(#gridAct, #smGridAct) > .fg-grid__item > .fg-card__opt { transition: none; }', vers: '', attendu: ['[G1]'] },
   { nom: 'les cartes du dessous sautent a leur place au lieu de glisser', fichier: 'assets/fungalaxy-booking.js', de: '      if (d || t._fgGlisse) glisser(t, d, 0);', vers: '      void d;', attendu: ['[G2]'] },
   { nom: 'le contenu du tiroir n est plus devoile par translate', fichier: 'assets/fungalaxy-booking.js', de: '      if (x.ouvre) { glisser(x.dedans, x.vu - x.H, 0, null, auCarre); glisser(x.boite, x.H - x.vu, 0, null, auCarre); return; }', vers: '      if (x.ouvre) return;', attendu: ['[G3]'] },
+  { nom: 'la mesure ne compte plus les images perdues de la course', sonde: 'if (i >= 2) course += n;', attendu: ['MONTAGE la mesure voit une saccade'], passe2: true },
 ];
 const PREUVE_MUTATION = '[mutation] servie en memoire :';
+const SACCADE_MS = 60;
 const SANS_TRANSLATE = () => {
   const brut = CSS.supports.bind(CSS);
   CSS.supports = function (a, b) { if (String(a).trim() === 'translate') return false; return arguments.length > 1 ? brut(a, b) : brut(a); };
 };
 const GESTES_TIROIR = [['bowling', true], ['laser_game', true], ['minigolf_blacklight', true], ['minigolf_blacklight', false], ['laser_game', false]];
+let collecteurServi = COLLECTEUR;
 
 async function ouvrirActivites(browser, { reference, cpu, reduit }) {
   reinitialiserMock();
   const context = await browser.newContext(Object.assign({}, TELEPHONE, reduit ? { reducedMotion: 'reduce' } : {}));
-  await context.addInitScript(COLLECTEUR);
+  await context.addInitScript(collecteurServi);
   if (reference) await context.addInitScript(SANS_TRANSLATE);
   const page = await context.newPage();
   const erreurs = [];
@@ -523,7 +526,12 @@ async function etatFinal(page) {
 async function gate() {
   const indice = Number(process.env.PINLANE_FLUIDE_MUTATION || 0);
   const m = indice ? MUTATIONS_GATE[indice - 1] : null;
-  if (m) mutation = [m.fichier, m.de, m.vers];
+  if (m && m.fichier) mutation = [m.fichier, m.de, m.vers];
+  if (m && m.sonde) {
+    if (COLLECTEUR.split(m.sonde).length !== 2) { console.error(`formulaire-fluide: la mutation ne trouve pas son ancre une seule fois dans le collecteur : ${m.sonde}`); process.exit(2); }
+    collecteurServi = COLLECTEUR.replace(m.sonde, '');
+    mutationServie += 1;
+  }
   let echecs = 0;
   const ok = (cond, label, detail) => { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}${detail !== undefined && detail !== '' ? `  (${detail})` : ''}`); if (!cond) echecs += 1; return cond; };
   const srv = await serveur();
@@ -592,35 +600,30 @@ async function gate() {
       // geste, 0,71).
       const plancher = 2 * course.flip.length;
       const g5 = total(course.flip) <= 0.6 * total(course.ref) || total(course.flip) <= plancher;
-      // La preuve que la mesure voit une saccade : la reference perd au moins
-      // trois images par geste, une fois et demie le plancher (un formulaire
-      // retombe au chemin d avant rougirait [G5]). A 6x elle ne la fait que
-      // sur une machine lente : sans changer de code, la reference a perdu de
-      // 0 a 197 images a 6x du 26 au 29/10, 6 puis 31 au second tour d un
-      // meme passage. Plus ralentie, elle saccade a coup sur (releve
-      // 2026-10-29, machine libre : 7 a 6x, 81 a 9x, 157 a 12x). Sans la
-      // preuve a 6x, le plancher decide [G5] et la reference se rejoue seule,
-      // de plus en plus ralentie, jusqu a la preuve : la mesure qui juge le
-      // plancher compte bien les images perdues quand il y en a. [G5] reste
-      // juge a 6x : plus ralenti, le formulaire sature a son tour (meme
-      // releve : 77 contre 157 a 12x, 245 contre 248 a 16x, la page au repos
-      // perd alors des images).
-      const RALENTIS_PREUVE = [8, 10, 12, 16, 20];
-      const preuve = (l) => total(l) >= 3 * l.length;
-      const rejouee = [];
-      if (!preuve(course.ref)) {
-        for (const cpu of RALENTIS_PREUVE) {
-          const ctx = await ouvrirActivites(browser, { reference: true, cpu });
-          const l = [];
-          for (const [id, ouvre] of GESTES_TIROIR) l.push((await gesteTiroir(ctx, id, ouvre, false)).course);
-          await ctx.context.close();
-          rejouee.push({ cpu, l });
-          if (preuve(l)) break;
-        }
-      }
+      // La preuve que la mesure voit une saccade : le plancher de [G5] ne
+      // demande qu une mesure qui compte bien les images perdues quand il y en
+      // a. Le banc pose donc une saccade connue sur la reference (un travail
+      // fixe a chaque image, 60 ms : le meme temps sur toute machine), et la
+      // course, comptee par le chemin de [G5], doit en perdre au moins trois
+      // par geste, une fois et demie le plancher. Jusqu au 2026-11-02, cette
+      // saccade venait du ralentissement CDP, a 6x puis rejouee jusqu a 20x :
+      // il ne rend pas la meme machine d un passage a l autre (0 a 197 images
+      // a 6x du 26 au 29/10), et le 02/11 une machine n a perdu aucune image a
+      // aucun ralentissement, aux deux tours. [G5] reste juge a 6x : plus
+      // ralenti, le formulaire sature a son tour (releve 2026-10-29 : 77
+      // contre 157 a 12x, 245 contre 248 a 16x, la page au repos perd alors
+      // des images).
+      const saccade = await ouvrirActivites(browser, { reference: true, cpu: 1 });
+      await saccade.page.evaluate((ms) => {
+        const tour = () => { const fin = performance.now() + ms; while (performance.now() < fin); requestAnimationFrame(tour); };
+        requestAnimationFrame(tour);
+      }, SACCADE_MS);
+      const posee = [];
+      for (const [id, ouvre] of GESTES_TIROIR) posee.push((await gesteTiroir(saccade, id, ouvre, false)).course);
+      await saccade.context.close();
       ok(g5 || total(repos) <= 4, 'MONTAGE la machine est au calme pendant la mesure a 6x (la reference au repos, au plus 4 images perdues en quatre secondes ; jugee quand [G5] rougit)', repos.join(' '));
-      ok(preuve(course.ref) || rejouee.some((x) => preuve(x.l)), `MONTAGE la mesure voit une saccade : la reference perd au moins trois images par geste, a 6x ou rejouee seule plus ralentie (jusqu a ${RALENTIS_PREUVE[RALENTIS_PREUVE.length - 1]}x)`, [{ cpu: 6, l: course.ref }].concat(rejouee).map((x) => `${x.cpu}x : ${total(x.l)} sur ${x.l.length} gestes (${x.l.join(' ')})`).join(' ; '));
-      ok(g5, `[G5] a 6x, les images perdues pendant la course : au plus 60 % de la reference, ou au plus deux par geste (${plancher})`, `${total(course.flip)} contre ${total(course.ref)} (${(total(course.flip) / Math.max(1, total(course.ref))).toFixed(2)}) ; formulaire ${course.flip.join(' ')}`);
+      ok(total(posee) >= 3 * posee.length, `MONTAGE la mesure voit une saccade : ${SACCADE_MS} ms de travail par image sur la reference, au moins trois images perdues par geste`, `${total(posee)} sur ${posee.length} gestes (${posee.join(' ')})`);
+      ok(g5, `[G5] a 6x, les images perdues pendant la course : au plus 60 % de la reference, ou au plus deux par geste (${plancher})`, `${total(course.flip)} contre ${total(course.ref)} (${(total(course.flip) / Math.max(1, total(course.ref))).toFixed(2)}) ; formulaire ${course.flip.join(' ')} ; reference ${course.ref.join(' ')}`);
     }
 
     // --- Mouvement reduit : rien ne glisse, le tiroir s ouvre ---
@@ -654,7 +657,7 @@ function contreEpreuves() {
       const lignes = sortie.split(/\r?\n/);
       const mordu = sortie.includes(`${PREUVE_MUTATION} ${m.nom}`);
       const rouges = m.attendu.filter((a) => lignes.some((l) => l.startsWith(`FAIL  ${a}`)));
-      const montage = lignes.filter((l) => l.startsWith('FAIL  MONTAGE'));
+      const montage = lignes.filter((l) => l.startsWith('FAIL  MONTAGE') && !m.attendu.some((a) => l.startsWith(`FAIL  ${a}`)));
       if (code === 1 && mordu && rouges.length === m.attendu.length && !montage.length) console.log(`contre-epreuve OK : ${m.attendu.join(' et ')} rougit quand ${m.nom}.`);
       else { ratees += 1; console.log(sortie); console.log(`CONTRE-EPREUVE RATEE (code ${code}, mutation ${mordu ? 'servie' : 'JAMAIS servie'}, rouges ${rouges.join(' ') || 'aucun'} sur ${m.attendu.join(' ')}, ${montage.length} montage(s) rouge(s)) : ${m.nom}.`); }
       resolve();

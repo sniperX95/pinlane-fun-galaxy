@@ -2725,11 +2725,16 @@ function escapeHtml(value = '') {
   }[char]));
 }
 
+// UN ARGUMENT JS DANS UN ATTRIBUT HTML (2026-11-02, pistes H1 et H7 de l audit
+// data). Le navigateur decode l attribut AVANT de lire le JavaScript : un " y
+// fermait l attribut, et un &#39; y redevenait une apostrophe. Seuls \ et '
+// etaient traites, alors que le texte vient du catalogue ou du tunnel public.
+// Tout caractere qui compte pour HTML ou pour JS part en sequence \xNN : HTML
+// n y voit rien, et seul JavaScript la relit.
 function escapeJsString(value = '') {
   return String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r?\n/g, ' ');
+    .replace(/\r?\n/g, ' ')
+    .replace(/[\\'"&<>]/g, (char) => `\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`);
 }
 
 function formatOpsTimestamp(value) {
@@ -5600,7 +5605,7 @@ function buildActivityPicker(host, catalog) {
   const cards = catalog.map((activity, index) => `
       <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
         <span class="activity-sign" aria-hidden="true">${activitySignMarkup(activity.id)}</span>
-        <button type="button" class="activity-toggle" aria-pressed="false" aria-label="${escapeHtml(activityToggleLabel(activity, { pax }))}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+        <button type="button" class="activity-toggle" aria-pressed="false" aria-label="${escapeHtml(activityToggleLabel(activity, { pax }))}" onclick="toggleBookingActivity('${escapeJsString(activity.id)}')">
           <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
           <span class="activity-text">
             <span class="activity-name">${escapeHtml(activity.name)}</span>
@@ -6005,12 +6010,12 @@ function renderStaffArcadeOptions(activity, options, participants, context) {
   const quote = getArcadeOfferQuote(activity, options, participants);
   // Le formulaire classique partage les offres, pas le langage visuel du SaaS.
   if (context === 'booking' && !document.body.classList.contains('staff-mode')) {
-    const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
+    const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeJsString(mode)}','${escapeJsString(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
     return `<div class="qb-visit-options"><span class="qb-opt-legend">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options"><span class="qb-opt-legend">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
       + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
       + `<div class="activity-option-note">${escapeHtml(quote ? getStaffArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
   }
-  const button = (mode, offer) => `<button type="button" class="qb-dur-btn dossier-option ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')"><span>${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}</span><small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
+  const button = (mode, offer) => `<button type="button" class="qb-dur-btn dossier-option ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeJsString(mode)}','${escapeJsString(offer.id)}')"><span>${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}</span><small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
   return `<div class="staff-arcade-options"><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
     + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
     + `<div class="activity-option-note">${escapeHtml(quote ? getStaffArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div></div>`;
@@ -6033,7 +6038,7 @@ function setStaffArcadeOption(context, key, value, offerId) {
 
 function renderActivityOptionsWithoutParticipants(activity, options, pax) {
   if (!activity) return '';
-  const id = escapeHtml(activity.id);
+  const id = escapeJsString(activity.id);
   if (activity.id === 'arcade_time') return renderStaffArcadeOptions(activity, options, pax, 'booking');
   // Grille de pistes : le duckpin la partage avec le bowling (meme tarif, meme
   // regle de joueurs). Piloter par le TYPE et non par l'id, c'est ce qui rend
@@ -8743,12 +8748,12 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     const coince = Boolean(raisonCoince);
     const action = coince
       ? `expliquerHeureCoincee(this)`
-      : `setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}'${decalable ? ', true' : ''})`;
+      : `setFormulaAnchorTime('${escapeJsString(activity.activityId)}','${escapeJsString(item.time)}'${decalable ? ', true' : ''})`;
     return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs}${coince ? ` data-coince="${escapeHtml(raisonCoince)}" data-coince-motif="${escapeHtml(blocage.motif)}" aria-disabled="true"` : ''} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(coince ? `${model.label}. ${raisonCoince}` : model.label)}" onclick="${action}">${slotCardMarkup(model)}${coince ? '<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">' + escapeHtml(raisonCoince) + '</span>' : ''}</button>`;
       }).join('')}</div>
     </section>`;
   }).join('');
-  const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
+  const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeJsString(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">
       ${tabs}
@@ -8910,8 +8915,8 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
         <strong>${escapeHtml(notice.gapLabel || formatGapText(gap))} d’attente entre ${escapeHtml(notice.fromLabel || previousStep.activity.label)} et ${escapeHtml(notice.toLabel || nextStep.activity.label)}</strong>
         <span>${escapeHtml(note)}</span>
         <div class="visit-rail-advice-actions">
-          ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeHtml(nextStep.activity.activityId)}','${escapeHtml(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}
-          <button type="button" class="visit-rail-advice-ghost" onclick="dismissFormulaAdvice('${escapeHtml(signature)}')">Garder cet horaire</button>
+          ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeJsString(nextStep.activity.activityId)}','${escapeJsString(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}
+          <button type="button" class="visit-rail-advice-ghost" onclick="dismissFormulaAdvice('${escapeJsString(signature)}')">Garder cet horaire</button>
         </div>
       </div>
     </li>`;
@@ -9206,7 +9211,7 @@ function syncFormulaAnchorUi(formule, { busy }) {
         chip.removeAttribute('aria-disabled');
         chip.querySelector('.slot-card-info')?.remove();
         chip.querySelector('.slot-card-why')?.remove();
-        chip.setAttribute('onclick', `setFormulaAnchorTime('${activity.activityId}','${time}')`);
+        chip.setAttribute('onclick', `setFormulaAnchorTime('${escapeJsString(activity.activityId)}','${escapeJsString(time)}')`);
       }
       // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
       // classe reste posée tant que l'heure est active (l'animation est finie,
@@ -9310,7 +9315,7 @@ function renderFormulaArrivalPicker(formule) {
     ? `Activités à volonté${windowEnd ? ` jusqu'à ${windowEnd}` : ''}. Présentez-vous 10 min avant.`
     : "Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.";
   const chips = slots.map(slot => `
-    <button type="button" class="formula-arrival-chip ${activeSlot && slot.time === formulaArrivalChoice ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(slot.time)}')">
+    <button type="button" class="formula-arrival-chip ${activeSlot && slot.time === formulaArrivalChoice ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeJsString(slot.time)}')">
       ${escapeHtml(typeof displayTime === 'function' ? displayTime(slot.time) : slot.time)}
     </button>`).join('');
   return `
@@ -19253,7 +19258,7 @@ function renderStaffRequestStudyDay(jour, etude, d) {
     ${offres.length ? `<ul class="req-offers">${offres.join('')}</ul>` : '<p class="req-daycard-note">Aucune formule ni activité choisie : le programme est à composer avec le client.</p>'}
     <div class="req-daycard-foot">
       ${occupation ? `<span>${escapeHtml(occupation)}</span>` : ''}
-      <button type="button" class="req-link" onclick="openStaffRequestDay('${escapeHtml(jour.date)}')">${STAFF_REQUEST_ICONS.calendar}<span>Voir le planning de ce jour</span></button>
+      <button type="button" class="req-link" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">${STAFF_REQUEST_ICONS.calendar}<span>Voir le planning de ce jour</span></button>
     </div>
   </article>`;
 }
@@ -22694,7 +22699,7 @@ function renderReservationTags(reservation, options = {}) {
   if (occasion) tags.push({ cls: 'occasion', label: (STAFF_OCCASION_LABELS[occasion] || '').split(' / ')[0] });
   if (hasReservationNote(reservation)) tags.push({ cls: 'note', label: 'Note à lire' });
   if (!tags.length) return '';
-  return `<div class="reservation-tags">${tags.map(tag => `<span class="reservation-tag ${tag.cls}">${tag.label}</span>`).join('')}</div>`;
+  return `<div class="reservation-tags">${tags.map(tag => `<span class="reservation-tag ${tag.cls}">${escapeHtml(tag.label)}</span>`).join('')}</div>`;
 }
 
 // Flag d'affichage « retard » posé par l'application d'un plan de retard
@@ -25197,7 +25202,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     const toutFait = libres.every(etape => etape.fait);
     const puces = libres.map(etape => {
       const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
-      const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
+      const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
       return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
     }).join('');
     // « Libre » dit deja « a leur rythme » : la ligne laisse toute la place
@@ -25232,7 +25237,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     // ligne coche au toucher (la case porte le nom pour le clavier et les
     // lecteurs d ecran). Sur la carte, la ligne coche au lieu d ouvrir la fiche.
     const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
-    const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
+    const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
     const repere = cochable
       ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`}</button>`
       : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`;
@@ -26312,7 +26317,7 @@ function renderFormulaActivityChecklist(r, opts = {}) {
     const meta = item.done
       ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
       : '';
-    return `<button type="button" class="activity-check-row is-${phase}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
+    return `<button type="button" class="activity-check-row is-${phase}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
       <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
       <span class="activity-check-icon-wrap" aria-hidden="true">${renderActivityIcon(item.activityId)}</span>
       <span class="activity-check-main">
@@ -26737,7 +26742,7 @@ function renderGroupeNotes(r) {
     })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
       <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le), n.modifieLe ? `modifiée ${formatNoteEquipeQuand(n.modifieLe)}${n.modifiePar ? ` par ${n.modifiePar}` : ''}` : ''].filter(Boolean).join(' · '))}</span></p>
-      ${peutNoter ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeHtml(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeHtml(n.le)}', event)">Retirer</button></div>` : ''}
+      ${peutNoter ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeJsString(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeJsString(n.le)}', event)">Retirer</button></div>` : ''}
     </li>`).join('')}</ul>` : ''}
     ${ouvert ? `<div class="gc-note-ajout">
       ${window.PinlaneStaffNotes?.scopeHtml(r) || ''}
@@ -27546,7 +27551,7 @@ function renderCommCenter() {
       <div class="cm-tpl-row">${templates.filter(t => (t.category || 'Autres') === cat).map(t => {
         const on = flow.templateId === t.id;
         const sansSms = !email && !(t.channels || []).includes('sms');
-        return `<button type="button" class="cm-tpl${on ? ' is-on' : ''}" data-comm-template="${escapeHtml(t.id)}" aria-pressed="${on}" ${sansSms ? 'disabled' : ''} onclick="selectCommTemplate('${escapeHtml(t.id)}')">${escapeHtml(t.label)}</button>`;
+        return `<button type="button" class="cm-tpl${on ? ' is-on' : ''}" data-comm-template="${escapeHtml(t.id)}" aria-pressed="${on}" ${sansSms ? 'disabled' : ''} onclick="selectCommTemplate('${escapeJsString(t.id)}')">${escapeHtml(t.label)}</button>`;
       }).join('')}</div>
     </div>`).join('');
   const activeTemplate = templates.find(t => t.id === flow.templateId) || null;
@@ -27709,7 +27714,7 @@ function renderPosCaisse(r) {
            fonction : c est formatMoney qui arrondit et qui pose l espace. */''}
       <div>
         <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${formatMoney(basePrice)}</span></div>
-        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${ex.name}</span></div><span>${formatMoney(ex.price)}</span></div>`).join('')}
+        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${escapeHtml(ex.name)}</span></div><span>${formatMoney(ex.price)}</span></div>`).join('')}
       </div>
       <div class="receipt-total">
         <span class="lbl">TOTAL${hasCustomPrice ? ' <em class="receipt-custom">prix ajusté</em>' : ''}</span>
@@ -27719,7 +27724,7 @@ function renderPosCaisse(r) {
       ${r.status === 'paid' ? `<div class="paid-overlay">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <div class="paid-text">PAYÉ</div>
-        <div class="paid-method">${r.paymentMethod || ''}</div>
+        <div class="paid-method">${escapeHtml(r.paymentMethod || '')}</div>
       </div>` : ''}
     </div>
     ${r.status !== 'paid' ? `
@@ -28430,7 +28435,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
-      ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
+      ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
     let options = '';
@@ -28461,7 +28466,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     return `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
       <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span>${heureHtml}</div>
       <div class="fm-act-corps">
-        <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">Retirer</button></div>
+        <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
         <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
         ${estBowling ? controls.lanes || '' : ''}
         ${estLaser && !formuleChangee ? renderDossierLaserEditor(r) : ''}
@@ -30075,17 +30080,17 @@ function renderQuickVisitOptions(choice) {
   if (choice.id === 'arcade_time') return renderStaffArcadeOptions(activite,getQuickVisitOptions(choice.id),getQuickVisitParticipants(choice.id),'quick');
   if (activite.priceType === 'grid_bowling') {
     const courant = Number(getQuickVisitOptions(choice.id).duration) || 1;
-    return `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitActivityDuration('${escapeHtml(choice.id)}',${opt.value})">${opt.label}</button>`).join('')}</div>`;
+    return `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitActivityDuration('${escapeJsString(choice.id)}',${opt.value})">${opt.label}</button>`).join('')}</div>`;
   }
   if (activite.priceType === 'grid_fun_run') {
     const courant = getQuickVisitMinutes(choice.id);
-    return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeHtml(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
+    return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeJsString(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
   }
   if (activite.priceType === 'per_unit_hour') {
     const unites = activityUnitChoices(activite);
     const heures = activityHourChoices(activite);
     const nom = /table/i.test(activite.unitLabel || '') ? 'Tables' : 'Nombre';
-    const pastille = (cle, valeur, libelle, courant, setter) => `<button type="button" class="qb-dur-btn ${Number(courant) === Number(valeur) ? 'active' : ''}" data-opt="${cle}" data-val="${valeur}" onclick="${setter}('${escapeHtml(choice.id)}',${valeur})">${escapeHtml(libelle)}</button>`;
+    const pastille = (cle, valeur, libelle, courant, setter) => `<button type="button" class="qb-dur-btn ${Number(courant) === Number(valeur) ? 'active' : ''}" data-opt="${cle}" data-val="${valeur}" onclick="${setter}('${escapeJsString(choice.id)}',${valeur})">${escapeHtml(libelle)}</button>`;
     const unitCourant = getQuickVisitUnits(choice.id);
     const heureCourante = getQuickVisitHours(choice.id);
     return `<div class="qb-visit-options qb-visit-reglage"><span class="qb-opt-legend">${nom}</span>`
@@ -30123,9 +30128,9 @@ function renderActivityParticipantsControl(id, mode = 'quick', explicit = false)
   const nom = (activite && activite.name) || id;
   return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
     + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
-    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
+    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
     + `<span class="qb-step-valeur staff-stepper-value">${explicit ? courant : `${courant} / ${plafond}`}</span>`
-    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
 }
 
 function setEditActivityParticipants(id, nombre) {
@@ -31658,7 +31663,7 @@ function rvJoueursDetailHtml(id, { court = false } = {}) {
 function rvPlacementHtml(id, ligne, modifiable) {
   const s = quickBookState;
   const vide = '<span class="rv-place-vide"></span>';
-  const ouvrir = modifiable ? ` onclick="rvOuvrirLigne('${escapeHtml(id)}')"` : ' disabled';
+  const ouvrir = modifiable ? ` onclick="rvOuvrirLigne('${escapeJsString(id)}')"` : ' disabled';
   if (id === 'bowling') {
     const { pistes, manuelles } = rvPistesDuBowling(ligne.heure);
     const blocs = rvBlocsPlan('bowling');
@@ -31705,7 +31710,7 @@ function rvHeureHtml(id, ligne, modifiable) {
   const dans = !verrou && !ligne.foulee && ligne.index === 0 ? rvDansCombien(ligne.heure) : '';
   const sous = verrou ? '<small class="rv-verrou">verrouillé</small>' : ligne.foulee ? '<small>foulée</small>' : dans ? `<small>${escapeHtml(dans)}</small>` : '';
   const libelle = `Heure de ${nom} : ${ligne.heure || 'à choisir'}${ligne.foulee ? ', dans la foulée' : ''}${verrou ? ', départ verrouillé' : ''}`;
-  return `<span class="rv-heure-wrap"><button type="button" class="${cls}" id="rvHeure-${escapeHtml(id)}" aria-haspopup="dialog" aria-expanded="${Boolean(ouvert)}" aria-label="${escapeHtml(libelle)}" ${choix ? `onclick="rvOuvrirHorloge('${escapeHtml(id)}',0)"` : 'disabled'}>${ligne.foulee ? RV_I.lien : RV_I.horloge}<span data-rv-heure="${escapeHtml(id)}">${escapeHtml(ligne.heure || '--:--')}</span>${sous}</button></span>`;
+  return `<span class="rv-heure-wrap"><button type="button" class="${cls}" id="rvHeure-${escapeHtml(id)}" aria-haspopup="dialog" aria-expanded="${Boolean(ouvert)}" aria-label="${escapeHtml(libelle)}" ${choix ? `onclick="rvOuvrirHorloge('${escapeJsString(id)}',0)"` : 'disabled'}>${ligne.foulee ? RV_I.lien : RV_I.horloge}<span data-rv-heure="${escapeHtml(id)}">${escapeHtml(ligne.heure || '--:--')}</span>${sous}</button></span>`;
 }
 
 function rvLigneHtml(id, ligne, { modifiable, retirable }) {
@@ -31730,7 +31735,7 @@ function rvLigneHtml(id, ligne, { modifiable, retirable }) {
 // Une ligne retiree d une formule adaptee reste lisible, barree, avec
 // « Remettre » : on voit ce que le groupe ne fera pas.
 function rvLigneRetireeHtml(id) {
-  return `<div class="rv-lc is-retiree" data-rv-ligne="${escapeHtml(id)}" style="--rv-c:${rvCouleur(id)}"><div class="rv-lc-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(rvNomActivite(id))}</span></span><span class="rv-qte-fixe"></span><span class="rv-heure-wrap"></span><span class="rv-place-vide"></span><span class="rv-etat-l"><button type="button" class="rv-remettre" onclick="rvBasculerDansFormule('${escapeHtml(id)}')">Remettre</button></span><span class="rv-ouvrir is-vide" aria-hidden="true"></span></div></div>`;
+  return `<div class="rv-lc is-retiree" data-rv-ligne="${escapeHtml(id)}" style="--rv-c:${rvCouleur(id)}"><div class="rv-lc-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(rvNomActivite(id))}</span></span><span class="rv-qte-fixe"></span><span class="rv-heure-wrap"></span><span class="rv-place-vide"></span><span class="rv-etat-l"><button type="button" class="rv-remettre" onclick="rvBasculerDansFormule('${escapeJsString(id)}')">Remettre</button></span><span class="rv-ouvrir is-vide" aria-hidden="true"></span></div></div>`;
 }
 
 // LE DETAIL : tout ce qui se regle, sans plafond, et ce que chaque reglage
@@ -31741,7 +31746,7 @@ function rvDetailHtml(id, ligne, { modifiable, retirable } = {}) {
   }
   // « Retirer » se tait : un lien discret au bout de la rangee, rouge au
   // survol. Le bouton rouge criait plus fort que tout le detail.
-  const retirer = retirable ? `<button type="button" class="rv-retirer-act" id="rvRetirer-${escapeHtml(id)}" aria-label="Retirer ${escapeHtml(rvNomActivite(id))}" onclick="rvRetirerActivite('${escapeHtml(id)}')">Retirer</button>` : '';
+  const retirer = retirable ? `<button type="button" class="rv-retirer-act" id="rvRetirer-${escapeHtml(id)}" aria-label="Retirer ${escapeHtml(rvNomActivite(id))}" onclick="rvRetirerActivite('${escapeJsString(id)}')">Retirer</button>` : '';
   if (id === 'laser_game') return rvDetailLaserHtml(ligne, retirer);
   if (id === 'bowling') return rvDetailBowlingHtml(ligne, retirer);
   const rangs = [];
@@ -31943,9 +31948,9 @@ function rvLienHtml(precedent, id, ligne, modifiable) {
       : avant && avant.heure ? timeToNum(avant.heure) + rvMinutesActivite(precedent) / 60 : null;
     const ecart = finAvant != null && ligne.heure ? Math.round((timeToNum(ligne.heure) - finAvant) * 60) : null;
     const quand = ecart == null ? '' : ecart <= 0 ? ` · juste après la fin ${escapeHtml(du)}` : ` · ${ecart} min après la fin ${escapeHtml(du)}`;
-    return `<div class="rv-lien">${RV_I.lien}<span><b>Dans la foulée</b>${quand}</span><button type="button" class="rv-det" onclick="rvDetacher('${escapeHtml(id)}')">Détacher</button></div>`;
+    return `<div class="rv-lien">${RV_I.lien}<span><b>Dans la foulée</b>${quand}</span><button type="button" class="rv-det" onclick="rvDetacher('${escapeJsString(id)}')">Détacher</button></div>`;
   }
-  return `<div class="rv-lien">${RV_I.lien}<span>Détaché : ${escapeHtml(rvMinuscule(rvNomCourt(id)))} a sa propre heure</span><button type="button" class="rv-det" onclick="rvChoisirHeure('${escapeHtml(id)}',1,'')">Remettre dans la foulée</button></div>`;
+  return `<div class="rv-lien">${RV_I.lien}<span>Détaché : ${escapeHtml(rvMinuscule(rvNomCourt(id)))} a sa propre heure</span><button type="button" class="rv-det" onclick="rvChoisirHeure('${escapeJsString(id)}',1,'')">Remettre dans la foulée</button></div>`;
 }
 
 // AJOUTER : un seul bouton « + Activité » qui dit ce qu on peut ajouter ; au
@@ -31961,11 +31966,11 @@ function rvAjouterHtml(absentes, action, { mesure = false } = {}) {
     if (!absentes.length) return `<button type="button" class="rv-plus-act" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b><span>sur mesure : arcades, nourriture, boissons</span></button>`;
     const remplace = action === 'rvAjouterActivite' && rvBowlingProposeIntact();
     const directes = absentes.slice(0, RV_AJOUTS_DIRECTS);
-    const noms = directes.map((c) => `<button type="button" class="rv-plus-nom" aria-label="${escapeHtml(remplace && c.id !== 'bowling' ? `${c.label} à la place du bowling` : `Ajouter ${c.label}`)}" onclick="${action}('${escapeHtml(c.id)}')">${escapeHtml(rvNomBref(c.id, c.label))}</button>`);
+    const noms = directes.map((c) => `<button type="button" class="rv-plus-nom" aria-label="${escapeHtml(remplace && c.id !== 'bowling' ? `${c.label} à la place du bowling` : `Ajouter ${c.label}`)}" onclick="${action}('${escapeJsString(c.id)}')">${escapeHtml(rvNomBref(c.id, c.label))}</button>`);
     const suite = absentes.length > directes.length || mesure ? `<button type="button" class="rv-plus-nom is-suite" aria-label="Toutes les activités${mesure ? ' et le sur mesure' : ''}" onclick="rvBasculerAjouts()">…</button>` : '';
     return `<div class="rv-plus-act is-direct" role="group" aria-label="${remplace ? 'Une autre activité à la place du bowling' : 'Ajouter une activité'}"><button type="button" class="rv-plus-ouvrir" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b></button><span class="rv-plus-noms">${noms.join('')}${suite}</span></div>`;
   }
-  return `<div class="rv-ajouts" role="group" aria-label="Ajouter une activité">${absentes.map((c) => `<button type="button" class="rv-ajout" style="--rv-c:${rvCouleur(c.id)}" data-rv-ajout="${escapeHtml(c.id)}" aria-label="Ajouter ${escapeHtml(c.label)}" onclick="${action}('${escapeHtml(c.id)}')"><i class="rv-pt" aria-hidden="true"></i>${escapeHtml(c.label)}</button>`).join('')}${mesure ? '<button type="button" class="rv-ajout is-mesure" id="rvSurMesure" onclick="setQuickSurMesure(true)">+ Sur mesure</button>' : ''}<button type="button" class="rv-mini" id="rvFermerAjouts" aria-label="Fermer la liste des activités" onclick="rvBasculerAjouts()">×</button></div>`;
+  return `<div class="rv-ajouts" role="group" aria-label="Ajouter une activité">${absentes.map((c) => `<button type="button" class="rv-ajout" style="--rv-c:${rvCouleur(c.id)}" data-rv-ajout="${escapeHtml(c.id)}" aria-label="Ajouter ${escapeHtml(c.label)}" onclick="${action}('${escapeJsString(c.id)}')"><i class="rv-pt" aria-hidden="true"></i>${escapeHtml(c.label)}</button>`).join('')}${mesure ? '<button type="button" class="rv-ajout is-mesure" id="rvSurMesure" onclick="setQuickSurMesure(true)">+ Sur mesure</button>' : ''}<button type="button" class="rv-mini" id="rvFermerAjouts" aria-label="Fermer la liste des activités" onclick="rvBasculerAjouts()">×</button></div>`;
 }
 
 // Le nom d une activite dans une liste a virgules, court comme la maquette :
@@ -32208,7 +32213,7 @@ function rvFormulesHtml() {
   const choix = rvFormulesTriees();
   if (!choix.length) return '<p class="rv-texte">Aucune formule au catalogue de ce centre.</p>';
   const page = rvFormulesPageCourante(choix);
-  return `<div class="rv-departs is-formules" role="group" aria-label="Formules">${choix.slice(page * 4, page * 4 + 4).map((f) => `<div class="rv-depart${s.formuleId === f.id ? ' is-on' : ''}${f.available ? '' : ' is-hors'}"><button type="button" class="rv-depart-btn" data-rv-formule="${escapeHtml(f.id)}" aria-pressed="${s.formuleId === f.id}" onclick="rvChoisirFormule('${escapeHtml(f.id)}')"><b>${escapeHtml(rvNomFormule(f))} · ${escapeHtml(formatMoney(f.price))}${f.type === 'per_lane' ? ' la piste' : ''}</b><span class="rv-sous">${escapeHtml(rvResumeFormule(f) || f.family || '')}</span>${f.available ? '' : `<em>${escapeHtml(f.reason || 'hors règles')} · possible au comptoir</em>`}</button></div>`).join('')}</div>`;
+  return `<div class="rv-departs is-formules" role="group" aria-label="Formules">${choix.slice(page * 4, page * 4 + 4).map((f) => `<div class="rv-depart${s.formuleId === f.id ? ' is-on' : ''}${f.available ? '' : ' is-hors'}"><button type="button" class="rv-depart-btn" data-rv-formule="${escapeHtml(f.id)}" aria-pressed="${s.formuleId === f.id}" onclick="rvChoisirFormule('${escapeJsString(f.id)}')"><b>${escapeHtml(rvNomFormule(f))} · ${escapeHtml(formatMoney(f.price))}${f.type === 'per_lane' ? ' la piste' : ''}</b><span class="rv-sous">${escapeHtml(rvResumeFormule(f) || f.family || '')}</span>${f.available ? '' : `<em>${escapeHtml(f.reason || 'hors règles')} · possible au comptoir</em>`}</button></div>`).join('')}</div>`;
 }
 
 // LA COMPOSITION : les lignes, les liens entre elles, ce qu on peut ajouter.
@@ -32364,7 +32369,7 @@ function rvVerdictHtml() {
     if (pistes.length && debut && fin) sous = `${pistes.length > 1 ? 'pistes' : 'piste'} ${escapeHtml(rvListePistes(pistes))} ${pistes.length > 1 ? 'libres' : 'libre'} de ${escapeHtml(debut)} à ${escapeHtml(fin)}${escapeHtml(fermeture)}`;
   }
   const premiere = ids[0] || '';
-  const autresHeures = premiere && !s.lockStartTime ? `<button type="button" class="rv-autres" id="rvAutresHeures" onclick="rvOuvrirHorloge('${escapeHtml(premiere)}',0)">Autres heures ›</button>` : '';
+  const autresHeures = premiere && !s.lockStartTime ? `<button type="button" class="rv-autres" id="rvAutresHeures" onclick="rvOuvrirHorloge('${escapeJsString(premiere)}',0)">Autres heures ›</button>` : '';
   morceaux.push(`<div class="rv-vc${ecarts.length ? ' is-att' : ''}"><span class="rv-ic">${ecarts.length ? RV_I.ko : RV_I.ok}</span><span><b>${titre}</b> <span class="rv-sp">· ${sous}</span></span>${autresHeures}</div>`);
   if (ecarts.length || programme) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}${programme ? `<li class="is-info">${escapeHtml(programme)}</li>` : ''}</ul>`);
   return morceaux.join('');
@@ -32416,7 +32421,7 @@ function rvAlternativesHtml() {
   return `<div class="rv-alts-cartes" role="group" aria-label="Heures où tout le plan tient">${bonnes.map((r, i) => {
     const titre = ids.length === 1 ? `${rvNomCourt(premiere)} ${r.heure}` : `${r.heure}${r.fin ? ` → ${r.fin}` : ''}`;
     const sous = r.statut === 'ok' ? `tout tient${r.fin && ids.length === 1 ? `, fin ${r.fin}` : ''}` : (r.raison || 'tient, partie partagée');
-    return `<button type="button" class="rv-alt${i === 0 ? ' is-reco' : ''}${r.statut === 'ok' ? '' : ' is-att'}" onclick="rvChoisirHeure('${escapeHtml(premiere)}',0,'${escapeHtml(r.heure)}')"><span class="rv-alt-k">${escapeHtml(i === 0 ? 'Le plus proche' : ecart(r))}</span><b>${escapeHtml(titre)}</b>${barre}<span class="rv-alt-s">${escapeHtml(sous)}</span></button>`;
+    return `<button type="button" class="rv-alt${i === 0 ? ' is-reco' : ''}${r.statut === 'ok' ? '' : ' is-att'}" onclick="rvChoisirHeure('${escapeJsString(premiere)}',0,'${escapeJsString(r.heure)}')"><span class="rv-alt-k">${escapeHtml(i === 0 ? 'Le plus proche' : ecart(r))}</span><b>${escapeHtml(titre)}</b>${barre}<span class="rv-alt-s">${escapeHtml(sous)}</span></button>`;
   }).join('')}</div>`;
 }
 
@@ -33113,10 +33118,10 @@ function rvHorlogeHtml() {
   };
   const minutes = choisie == null ? '' : `<div class="rv-minutes" role="group" aria-label="Minutes">${[`${String(choisie).padStart(2, '0')}:00`, `${String(choisie).padStart(2, '0')}:30`].map((h) => {
     // Une heure passee se note (le droit planning.past), elle ne se propose pas.
-    if (passees.includes(h)) return `<button type="button" class="rv-mn is-passe${h === courante ? ' is-on' : ''}" aria-label="${escapeHtml(`${h} : déjà passée, pour noter un groupe déjà venu`)}" onclick="rvChoisirHeure('${escapeHtml(id)}',${cible},'${h}')"><b>${h}</b>${mots('déjà passée, à noter seulement')}</button>`;
+    if (passees.includes(h)) return `<button type="button" class="rv-mn is-passe${h === courante ? ' is-on' : ''}" aria-label="${escapeHtml(`${h} : déjà passée, pour noter un groupe déjà venu`)}" onclick="rvChoisirHeure('${escapeJsString(id)}',${cible},'${h}')"><b>${h}</b>${mots('déjà passée, à noter seulement')}</button>`;
     if (!heures.includes(h)) return `<button type="button" class="rv-mn ${passee(h) ? 'is-passe' : 'is-ko'}" disabled><b>${h}</b>${mots(passee(h) ? 'déjà passée' : 'hors horaires')}</button>`;
     const e = rvEtatHeure(id, h);
-    return `<button type="button" class="rv-mn${h === courante ? ' is-on' : ''}${e.etat === 'ko' ? ' is-ko' : e.etat === 'att' ? ' is-att' : ''}" aria-label="${escapeHtml(`${h} : ${e.mot}`)}" onclick="rvChoisirHeure('${escapeHtml(id)}',${cible},'${h}')"><b>${h}</b>${mots(e.mot)}</button>`;
+    return `<button type="button" class="rv-mn${h === courante ? ' is-on' : ''}${e.etat === 'ko' ? ' is-ko' : e.etat === 'att' ? ' is-att' : ''}" aria-label="${escapeHtml(`${h} : ${e.mot}`)}" onclick="rvChoisirHeure('${escapeJsString(id)}',${cible},'${h}')"><b>${h}</b>${mots(e.mot)}</button>`;
   }).join('')}</div>`;
   const c = s.candidats;
   const source = c && c.base === s.cleCourante && c.id === id && c.partie === partie
@@ -33124,7 +33129,7 @@ function rvHorlogeHtml() {
     : 'le planning vérifie chaque heure…';
   const ligne = rvHeuresDesLignes(ids)[id];
   const foulee = index > 0 && ligne && ligne.ancrable && !(id === 'laser_game' && partie > 0)
-    ? `<button type="button" class="rv-foulee-btn${ligne.foulee ? ' is-on' : ''}" onclick="rvChoisirHeure('${escapeHtml(id)}',${index},'')">${RV_I.lien}Dans la foulée${ligne.foulee && ligne.heure ? ` · ${escapeHtml(ligne.heure)}` : ''}</button>`
+    ? `<button type="button" class="rv-foulee-btn${ligne.foulee ? ' is-on' : ''}" onclick="rvChoisirHeure('${escapeJsString(id)}',${index},'')">${RV_I.lien}Dans la foulée${ligne.foulee && ligne.heure ? ` · ${escapeHtml(ligne.heure)}` : ''}</button>`
     : '';
   // A droite de la legende : ce que veulent dire les deux points tant que le
   // planning a repondu ; sinon d ou vient la couleur (estimation, calcul).

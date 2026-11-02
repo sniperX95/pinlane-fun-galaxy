@@ -915,7 +915,7 @@ function renderOpsSimulationProfilePicker() {
           const isActive = profile.id === active;
           const bookingLimit = profile.bookingLimit === 'max' ? 'max' : `${profile.bookingLimit || '--'} résas`;
           return `
-            <button class="ops-sim-profile ${isActive ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeHtml(profile.id)}')" aria-pressed="${isActive ? 'true' : 'false'}">
+            <button class="ops-sim-profile ${isActive ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeJsString(profile.id)}')" aria-pressed="${isActive ? 'true' : 'false'}">
               <span class="ops-sim-profile-index">${escapeHtml(tone.badge)}</span>
               <strong>${escapeHtml(profile.label || profile.id)}</strong>
               <span>${escapeHtml(profile.description || tone.proof)}</span>
@@ -1057,7 +1057,7 @@ function renderOpsSimulationReviews(payload = {}) {
           <p>${escapeHtml(review.summary || review.reason || '')}</p>
           ${alternatives.length ? `<div class="ops-review-alt-list">
             ${alternatives.map((alternative, index) => `
-              <button class="ops-review-alt" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','send_alternatives',${index})">
+              <button class="ops-review-alt" onclick="reviewOpsSimulation('${escapeJsString(review.id)}','send_alternatives',${index})">
                 <strong>${escapeHtml(alternative.summary || `${alternative.date || ''} ${alternative.startTime || ''}`)}</strong>
                 <span>${escapeHtml(alternative.reason || alternative.recommendation || 'Alternative compatible')}</span>
               </button>
@@ -1065,9 +1065,9 @@ function renderOpsSimulationReviews(payload = {}) {
           </div>` : ''}
         </div>
         <div class="ops-review-actions">
-          ${canApprove ? `<button class="ops-admin-btn primary" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','approve')">OK staff</button>` : ''}
-          ${alternatives.length ? `<button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','send_alternatives',0)">Proposer</button>` : ''}
-          <button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','reject')">Refuser proprement</button>
+          ${canApprove ? `<button class="ops-admin-btn primary" onclick="reviewOpsSimulation('${escapeJsString(review.id)}','approve')">OK staff</button>` : ''}
+          ${alternatives.length ? `<button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeJsString(review.id)}','send_alternatives',0)">Proposer</button>` : ''}
+          <button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeJsString(review.id)}','reject')">Refuser proprement</button>
         </div>
       </div>`;
   };

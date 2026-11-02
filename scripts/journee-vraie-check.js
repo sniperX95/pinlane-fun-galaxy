@@ -70,7 +70,7 @@ const MUTATIONS = {
   // chargement, ne montre encore rien).
   repeint: ['app-main.js', "  else if (isStaffPricingActive() && typeof renderStaffPricingPage === 'function') renderStaffPricingPage();\n}\n\nfunction ensureStaffClientData() {", '}\n\nfunction ensureStaffClientData() {', '[D] les chiffres de Tarifs portent sur 30 jours'],
   vide: ['staff-pages-v2.js', "        </div>`\n      : '';", "        </div>`\n      : '<div class=\"pv2-price-stats\">Aucune réservation liée</div>';", '[D] une carte sans reservation reste muette'],
-  primaire: ['staff-pages-v2.js', '<button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}"', '<button type="button" class="pv2-btn primary" data-pev-edit="${escJs(view.sourceId)}"', '[D] un seul bouton principal'],
+  primaire: ['staff-pages-v2.js', '<button type="button" class="pv2-btn sm" data-pev-edit="${esc(view.sourceId)}"', '<button type="button" class="pv2-btn primary" data-pev-edit="${esc(view.sourceId)}"', '[D] un seul bouton principal'],
   zero: ['staff-pages-v2.js', " : 'Aucune réservation'}</small>", " : `${dayAgg.count} résa · ${dayAgg.pax} joueurs`}</small>", '[E] le jour vide le dit en mots'],
   formulesvide: ['app-main.js', '    const summary = formuleRows.length ? [', '    const summary = true ? [', '[F] Formules vide sans compteur a zero'],
   appel: ['staff-pages-v2.js', "    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();", "    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();", '[H] sans droit sur l historique, Tarifs ne l appelle pas'],

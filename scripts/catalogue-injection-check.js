@@ -17,10 +17,25 @@
 // Chaque scene MONTE d abord ce qu elle juge : le texte piege est bien a l ecran,
 // en clair. Sans ce temoin, un rendu qui n arrive jamais passerait pour sur.
 //
+// CE QUE LE GATE COUVRE :
+//   [tunnel]     le tunnel classique, de la carte a la confirmation ;
+//   [formulaire] le formulaire Fun Galaxy, fiches comprises ;
+//   [sur mesure] la demande de groupe ;
+//   [console]    Tarifs, editeur des etapes, fiche client (nom saisi dans le
+//                tunnel public), et la page tarifs du fondateur, qui lit le
+//                catalogue de TOUS les clients ;
+//   [argument]   escapeJsString dans un attribut, sur des textes hostiles ;
+//   [source]     aucun gestionnaire inline ne recoit escapeHtml seul : HTML
+//                decode l attribut avant JavaScript, l apostrophe ressortirait ;
+//   [ecriture]   le second verrou : balises refusees, identifiants d etape.
+// Chaque garde a sa contre-epreuve [mutation], jouee sur le fichier SERVI : le
+// disque n est jamais touche.
+//
 // Usage : node scripts/catalogue-injection-check.js
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const Module = require('module');
 const { chromium } = require('playwright-core');
 const mock = require('./dev-tunnel-server');
 const { defaults } = require('../lib/arcade-offers');
@@ -56,7 +71,7 @@ function idPartage(nature, texte) {
 }
 const idDuTexte = (chemin, texte) => {
   if (/\.notes\.\d+$/.test(chemin)) return idPartage('note', texte);
-  if (/^f\.[^.]+\.family$/.test(chemin)) return idPartage('famille', texte);
+  if (/\.(family|bookingFamily)$/.test(chemin)) return idPartage('famille', texte);
   return chemin;
 };
 
@@ -176,6 +191,13 @@ async function tunnelClassique(browser) {
   }, mock.DATE);
   ok(await page.locator('.formule-card').count() >= 10, '[tunnel] MONTAGE : les cartes des formules sont rendues');
   await juger(page, 'tunnel cartes', { temoin: true });
+  // ECHAPPER UNE FOIS, PAS DEUX : le client lit le texte saisi, pas des entites.
+  const carteF1 = await page.evaluate(() => {
+    const noeud = document.querySelector('.formule-card[data-formule-id="f1"]');
+    return { nom: noeud.querySelector('.formule-name').textContent, ligne: noeud.querySelector('.formule-card-list li').textContent };
+  });
+  ok(carteF1.nom === `FORMULE 1${piege('f.f1.name')}`, '[tunnel cartes] le nom se lit tel qu il a ete saisi', carteF1.nom.slice(0, 90));
+  ok(carteF1.ligne.endsWith(piege('f.f1.desc.0')) && !carteF1.ligne.includes('&#39;'), '[tunnel cartes] une ligne de la formule aussi', carteF1.ligne.slice(0, 90));
   // Le clic d une carte passe par son attribut de donnee : il choisit toujours.
   const carte = page.locator('.formule-card:not(.disabled)').first();
   const choisie = await carte.getAttribute('data-formule-id');
@@ -379,6 +401,352 @@ async function contreEpreuvesTunnel(browser) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// LA CONSOLE. La vraie console sur le double de run-visual-qa (session Direction,
+// reservations du jour), avec le catalogue piege partout ou elle le lit, et un
+// nom de client hostile : il arrive du tunnel public, ou le serveur ne retire
+// que les chevrons (stripUnsafeMarkup). Le piege sans chevron passe par le
+// guillemet, et ne se voit qu au noeud : un attribut data-poison en trop.
+// ---------------------------------------------------------------------------
+function chargerInstallQaApi() {
+  const source = fs.readFileSync(path.join(ROOT, 'scripts/run-visual-qa.js'), 'utf8').split('\r\n').join('\n');
+  const debut = source.indexOf('async function installQaApi(');
+  const fin = source.indexOf('\n}\n', debut);
+  if (debut < 0 || fin < 0) throw new Error('installQaApi introuvable dans run-visual-qa.js');
+  // eslint-disable-next-line no-new-func
+  return new Function('BASE_URL', `${source.slice(debut, fin + 3)}\nreturn installQaApi;`)(BASE);
+}
+
+const FAMILLE = 'Soirees privees';
+const CLES_CATALOGUE_CONSOLE = new Set([...CLES_DE_STRUCTURE, 'centerId', 'humanValidation', 'source', 'ownerClientId', 'scope', 'generatedAt']);
+
+async function catalogueConsole(overrides, poses) {
+  const texte = (cle) => !CLES_CATALOGUE_CONSOLE.has(cle);
+  const client = await overrides.buildClientCatalog(POOL_VIDE, 'libramont');
+  const fondateur = await overrides.buildFounderCatalog(POOL_VIDE);
+  // Une famille qui n est pas celle du socle a SON onglet de filtre, et le premier
+  // pas de la formule f1 porte un identifiant hors catalogue.
+  const formules = client.formulas.map((f) => ({ ...f, family: FAMILLE, bookingFamily: FAMILLE, steps: f.id === 'f1' ? [{ ...(f.steps[0] || {}), activityId: `hors${piege('step.activityId')}` }, ...f.steps.slice(1)] : f.steps }));
+  return {
+    client: empoisonner({ ...client, formulas: formules }, 'cc', texte, poses),
+    fondateur: empoisonner(fondateur, 'fc', texte, poses),
+  };
+}
+
+const NOM_HOSTILE = 'Dupont" data-poison="r.name';
+const EMAIL_HOSTILE = 'dupont@pinlane.test" data-poison="r.email';
+
+async function consoleMontee(browser, mutants, poses) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  await muter(page, mutants);
+  await chargerInstallQaApi()(page);
+  const meta = empoisonnerMeta(mock.metaPayload('', 0, ''), poses);
+  const { overrides } = chargerEcriture();
+  const catalogues = await catalogueConsole(overrides, poses);
+  await page.addInitScript(({ meta, client, fondateur, nom, email }) => {
+    window.__poison = [];
+    const precedent = window.fetch;
+    const J = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
+    window.fetch = async (input, init = {}) => {
+      const brut = typeof input === 'string' ? input : (input && input.url) || '';
+      const u = new URL(brut, window.location.origin);
+      const methode = String(init.method || 'GET').toUpperCase();
+      if (u.pathname === '/api/public-booking-meta' && methode === 'GET') return J(meta);
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'clientCatalog') return J({ ok: true, ...client });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderCatalog') return J({ ok: true, ...fondateur });
+      const reponse = await precedent(input, init);
+      if (u.pathname !== '/api/staff-state' && u.pathname !== '/api/admin-range') return reponse;
+      const corps = await reponse.clone().json();
+      return J({ ...corps, reservations: (corps.reservations || []).map((r) => ({ ...r, name: nom, email })) });
+    };
+  }, { meta, client: catalogues.client, fondateur: catalogues.fondateur, nom: NOM_HOSTILE, email: EMAIL_HOSTILE });
+  await page.goto(`${BASE}/?v=catalogue-injection`, { waitUntil: 'load', timeout: 60000 });
+  await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 30000 });
+  await page.evaluate(async () => { setView('staff'); await ensureStaffConsolesLoaded(); });
+  return { context, page };
+}
+
+async function pageTarifs(page) {
+  await page.evaluate(() => { state.staffMenuPage = 'prices'; setView('staff'); });
+  await page.waitForSelector('#staffPricingPage [data-cev-formula="f1"]', { state: 'attached', timeout: 20000 });
+}
+
+async function ouvrirEtapes(page) {
+  await page.evaluate(() => {
+    const bouton = document.querySelector('#staffPricingPage [data-cev-formula="f1"] [data-cev-steps="f1"]') || document.querySelector('#staffPricingPage [data-cev-steps="f1"]');
+    bouton.click();
+  });
+  await page.waitForSelector('#cevOverlay .cev-step', { state: 'attached', timeout: 10000 });
+}
+
+async function ficheClient(page) {
+  await page.evaluate(() => { state.staffMenuPage = 'clients'; setView('staff'); });
+  await page.waitForFunction(() => document.querySelector('[onclick*="selectStaffClient"]'), null, { timeout: 20000 });
+  await page.evaluate(() => { document.querySelector('[onclick*="selectStaffClient"]').click(); });
+  await page.waitForFunction(() => document.querySelector('[onclick*="pv2OpenComposer"]'), null, { timeout: 20000 });
+}
+
+async function pageFondateur(page) {
+  await page.evaluate(async () => {
+    if (typeof window.renderFounderTarifsPage !== 'function') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/assets/founder-tarifs.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.append(script);
+      });
+    }
+    const hote = document.createElement('div');
+    hote.id = 'gateTarifsFondateur';
+    document.body.append(hote);
+    window.renderFounderTarifsPage(hote);
+  });
+  await page.waitForFunction(() => /FORMULE 1/.test((document.getElementById('gateTarifsFondateur') || {}).textContent || ''), null, { timeout: 20000 });
+}
+
+async function console_(browser) {
+  const poses = [];
+  const { context, page } = await consoleMontee(browser, [], poses);
+  const erreurs = [];
+  page.on('pageerror', (e) => erreurs.push(String(e.message || e)));
+  await pageTarifs(page);
+  await juger(page, 'console tarifs', { temoin: true });
+
+  // UN NOM DE CATEGORIE AVEC SES GUILLEMETS RESTE UN NOM : le bouton « + Formule »
+  // le rend a l identique, et l onglet de la categorie filtre toujours.
+  const lu = await page.evaluate(() => {
+    const bouton = document.querySelector('#staffPricingPage [data-add-formula]');
+    const attendu = bouton.dataset.addFormula;
+    bouton.click();
+    const champ = document.getElementById('cevFamily');
+    const recu = champ ? champ.value : null;
+    cevCloseModal();
+    return { attendu, recu };
+  });
+  ok(lu.attendu.includes('Soirees privees') && lu.recu === lu.attendu, '[console tarifs] « + Formule » garde la categorie exacte', JSON.stringify(lu).slice(0, 160));
+  const onglet = await page.evaluate(() => {
+    const bouton = Array.from(document.querySelectorAll('#staffPricingPage .pv2-seg button')).find((b) => /Soirees privees/.test(b.textContent));
+    if (!bouton) return null;
+    bouton.click();
+    return document.querySelectorAll('#staffPricingPage [data-cev-formula]').length;
+  });
+  ok(Number(onglet) > 0, '[console tarifs] l onglet de la categorie filtre toujours', String(onglet));
+
+  await pageTarifs(page);
+  await ouvrirEtapes(page);
+  ok(await page.evaluate(() => /hors catalogue/.test(document.getElementById('cevOverlay').textContent)), '[console etapes] MONTAGE : l identifiant hors catalogue est propose');
+  await juger(page, 'console etapes', { temoin: true });
+  await page.evaluate(() => cevCloseModal());
+
+  await ficheClient(page);
+  ok(await page.evaluate((nom) => document.body.textContent.includes(nom.slice(0, 6)), NOM_HOSTILE), '[console fiche] MONTAGE : le client hostile est a l ecran');
+  await juger(page, 'console fiche client');
+  const composeur = await page.evaluate(() => {
+    window.__ouvert = null;
+    const vrai = window.pv2OpenComposer;
+    window.pv2OpenComposer = (o) => { window.__ouvert = o; };
+    document.querySelector('[onclick*="pv2OpenComposer"]').click();
+    window.pv2OpenComposer = vrai;
+    return window.__ouvert;
+  });
+  ok(Boolean(composeur) && composeur.to === EMAIL_HOSTILE && composeur.name === NOM_HOSTILE, '[console fiche] le bouton Message recoit le nom et l adresse exacts', JSON.stringify(composeur).slice(0, 160));
+
+  await pageFondateur(page);
+  await juger(page, 'console fondateur', { temoin: true });
+  await context.close();
+  ok(erreurs.length === 0, '[console] aucune erreur JS', erreurs.slice(0, 3).join(' | '));
+}
+
+// ---------------------------------------------------------------------------
+// UN ARGUMENT JS DANS UN ATTRIBUT : le vrai escapeJsString, dans un vrai onclick
+// entre guillemets doubles puis simples. La valeur ressort a l identique, le
+// bouton garde ses seuls attributs, et aucun piege ne part.
+// ---------------------------------------------------------------------------
+const HOSTILES = [
+  '"', "'", '\\', '&', '<', '>', '"\'', '\\"', "\\'",
+  '" onfocus="__poison.push(1)', "' onfocus='__poison.push(1)",
+  '&quot;', '&#39;', '&#x27;', '&apos;', '&amp;#39;',
+  "');__poison.push(1);//", '&#39;);__poison.push(1);//', '\\\');__poison.push(1);//',
+  '</button><img src=x onerror=__poison.push(1)>', '</script><script>__poison.push(1)</script>',
+  'Bowling & Laser', "L'Arcade \"Le Grand\" <12 ans", 'é ü € 🎳',
+];
+
+async function argumentsJs(browser, mutants = []) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await muter(page, mutants);
+  await page.addInitScript(() => { window.__poison = []; });
+  await page.goto(`${BASE}/reserver`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForFunction(() => typeof escapeJsString === 'function');
+  const rendus = await page.evaluate((hostiles) => hostiles.flatMap((x) => ['"', "'"].map((q) => {
+    const hote = document.createElement('div');
+    const chaine = q === '"' ? "'" : '"';
+    hote.innerHTML = `<button id="essai" onclick=${q}window.__recu = ${chaine}${escapeJsString(x)}${chaine}${q}>ok</button>`;
+    document.body.append(hote);
+    window.__recu = undefined;
+    const bouton = hote.querySelector('#essai');
+    let erreur = '';
+    if (bouton) { try { bouton.click(); } catch (e) { erreur = String(e.message); } }
+    const rendu = { x, q, recu: window.__recu, attributs: bouton ? bouton.getAttributeNames().sort().join(',') : '', enfants: hote.children.length + hote.querySelectorAll('img,script').length, erreur };
+    hote.remove();
+    return rendu;
+  })), HOSTILES);
+  const piegees = await page.evaluate(() => window.__poison.length);
+  await context.close();
+  const fautifs = rendus.filter((r) => r.recu !== r.x || r.attributs !== 'id,onclick' || r.enfants !== 1 || r.erreur);
+  return { rendus, fautifs, piegees };
+}
+
+// ---------------------------------------------------------------------------
+// LA REGLE DU SOURCE. Dans un gestionnaire inline, escapeHtml seul est faux par
+// construction : le navigateur rend l apostrophe a JavaScript. Elle se verifie
+// sur tous les fichiers servis, y compris ceux qui ne parlent pas du catalogue.
+// ---------------------------------------------------------------------------
+const FICHIERS_SERVIS = () => fs.readdirSync(path.join(ROOT, 'assets')).filter((f) => f.endsWith('.js')).map((f) => `assets/${f}`);
+
+function reglesDuSource(lire = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')) {
+  const fautes = [];
+  let bons = 0;
+  for (const rel of FICHIERS_SERVIS()) {
+    lire(rel).split(/\r?\n/).forEach((ligne, i) => {
+      for (const m of ligne.matchAll(/([(,]\s*)'\$\{(escapeHtml|esc|msEsc|dhEsc|gpEsc)\(/g)) {
+        if (!/url\($/.test(ligne.slice(0, m.index + 1))) fautes.push(`${rel}:${i + 1}`);
+      }
+      bons += (ligne.match(/\bon[a-z]+="[^"]*\$\{(?:escJs|escapeJsString)\(/g) || []).length;
+    });
+  }
+  return { fautes, bons };
+}
+
+function source() {
+  const { fautes, bons } = reglesDuSource();
+  ok(bons > 100, `[source] MONTAGE : les gestionnaires inline sont vus (${bons} arguments proteges)`);
+  ok(fautes.length === 0, '[source] aucun argument JS de gestionnaire inline ne passe par escapeHtml seul', fautes.slice(0, 8).join(' '));
+  // Contre-epreuve sans disque : la meme lecture, sur le fichier ramene a l ancien motif.
+  const mute = reglesDuSource((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').split('escapeJsString(activity.activityId)').join('escapeHtml(activity.activityId)'));
+  ok(mute.fautes.length > 0, '[mutation] la regle du source voit escapeHtml revenir dans un gestionnaire', String(mute.fautes.length));
+}
+
+const MUTANTS_CONSOLE = [
+  { nom: 'escapeJsString d avant', mutants: [{ fichier: 'assets/app-main.js', de: ".replace(/[\\\\'\"&<>]/g, (char) => `\\\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`);", vers: ".replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");" }], scene: 'tarifs', piege: /family|famille/ },
+  { nom: 'escapeJsString d avant, nom public', mutants: [{ fichier: 'assets/app-main.js', de: ".replace(/[\\\\'\"&<>]/g, (char) => `\\\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`);", vers: ".replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");" }], scene: 'fiche', piege: /^r\.(name|email)/ },
+  { nom: 'l attribut de la categorie', mutants: [{ fichier: 'assets/staff-pages-v2.js', de: 'data-add-formula="${esc(group.name)}"', vers: 'data-add-formula="${group.name}"' }], scene: 'tarifs', piege: /family|famille/ },
+  { nom: 'la valeur hors catalogue', mutants: [{ fichier: 'assets/staff-pages-v2.js', de: '<option value="${esc(step.activityId)}" selected>', vers: '<option value="${step.activityId}" selected>' }], scene: 'etapes', piege: /^step\.activityId$/ },
+];
+
+async function contreEpreuvesConsole(browser) {
+  for (const m of MUTANTS_CONSOLE) {
+    const poses = [];
+    const { context, page } = await consoleMontee(browser, m.mutants, poses);
+    await pageTarifs(page).catch(() => {});
+    if (m.scene === 'etapes') await ouvrirEtapes(page).catch(() => {});
+    if (m.scene === 'fiche') await ficheClient(page).catch(() => {});
+    const vus = await page.evaluate(() => Array.from(document.querySelectorAll('[data-poison]')).map((n) => n.getAttribute('data-poison')));
+    await context.close();
+    ok(vus.some((id) => m.piege.test(id)), `[mutation] ${m.nom} : le piege de la console s injecte`, `${vus.length} noeud(s) vu(s)`);
+  }
+  const avant = await argumentsJs(browser, MUTANTS_CONSOLE[0].mutants);
+  ok(avant.fautifs.length > 0, `[mutation] escapeJsString d avant : ${avant.fautifs.length} texte(s) hostile(s) cassent l attribut`);
+}
+
+// ---------------------------------------------------------------------------
+// L ECRITURE : le second verrou. Le vrai lib/catalog-store.js et le vrai
+// lib/catalog-overrides.js, sur un pool qui n a rien a rendre : le refus tombe
+// avant toute requete, et le contraste prouve qu un texte ordinaire passe.
+// ---------------------------------------------------------------------------
+const CATALOG_STORE = path.join(ROOT, 'lib/catalog-store.js');
+const CATALOG_OVERRIDES = path.join(ROOT, 'lib/catalog-overrides.js');
+
+let editionsEcriture = [];
+const compileOrigine = Module.prototype._compile;
+Module.prototype._compile = function compileMute(contenu, nom) {
+  const visees = editionsEcriture.filter((e) => path.join(ROOT, e.fichier) === path.resolve(nom));
+  if (!visees.length) return compileOrigine.call(this, contenu, nom);
+  let mute = contenu.split('\r\n').join('\n');
+  for (const { de, vers } of visees) {
+    if (mute.split(de).length - 1 !== 1) throw new Error(`ANCRE absente ou multiple : ${de.slice(0, 90)}`);
+    mute = mute.split(de).join(vers);
+  }
+  return compileOrigine.call(this, mute, nom);
+};
+
+function chargerEcriture(editions = []) {
+  editionsEcriture = editions;
+  delete require.cache[require.resolve(CATALOG_OVERRIDES)];
+  delete require.cache[require.resolve(CATALOG_STORE)];
+  const store = require(CATALOG_STORE);
+  const overrides = require(CATALOG_OVERRIDES);
+  editionsEcriture = [];
+  return { store, overrides };
+}
+
+const POOL_VIDE = {
+  query: async () => ({ rows: [] }),
+  connect: async () => ({ query: async () => ({ rows: [] }), release() {} }),
+};
+const BALISE = '<img src=x onerror=alert(1)>';
+const FORMULE = { name: 'Formule test', priceType: 'per_pax', priceValue: 20, steps: [{ activityId: 'bowling', count: 1, durationMinutes: 60 }], ownerClientId: 'fungalaxy' };
+const ACTIVITE = { name: 'Activite test', priceType: 'per_pax', priceValue: 10, ownerClientId: 'fungalaxy' };
+const ID_HOSTILE = "x');alert(1);//";
+
+const ECRITURES = [
+  ['le nom d une formule neuve', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, name: `Soiree ${BALISE}` })],
+  ['la famille d une formule', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, family: BALISE })],
+  ['une ligne de description', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, descriptionLines: ['1h de bowling', BALISE] })],
+  ['humanValidation', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, humanValidation: BALISE })],
+  ['le libelle d une etape', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, steps: [{ activityId: 'bowling', count: 1, label: BALISE }] })],
+  ['le nom edite d une formule', (m) => m.store.updateFormula(POOL_VIDE, { id: 'f1', name: BALISE, ownerClientId: 'fungalaxy' })],
+  ['la description editee', (m) => m.store.updateFormula(POOL_VIDE, { id: 'f1', descriptionLines: [BALISE], ownerClientId: 'fungalaxy' })],
+  ['le libelle d une etape editee', (m) => m.store.setFormulaSteps(POOL_VIDE, { id: 'f1', steps: [{ activityId: 'bowling', count: 1, label: BALISE }], ownerClientId: 'fungalaxy' })],
+  ['l activite d une etape', (m) => m.store.createFormula(POOL_VIDE, { ...FORMULE, steps: [{ activityId: ID_HOSTILE, resourceType: 'bar_service', count: 1 }] }), 'identifiant invalide'],
+  ['la ressource d une etape', (m) => m.store.setFormulaSteps(POOL_VIDE, { id: 'f1', steps: [{ activityId: 'bowling', resourceType: ID_HOSTILE, count: 1 }], ownerClientId: 'fungalaxy' }), 'identifiant invalide'],
+  ['le nom d une activite neuve', (m) => m.store.createActivity(POOL_VIDE, { ...ACTIVITE, name: BALISE })],
+  ['l unite de prix d une activite', (m) => m.store.createActivity(POOL_VIDE, { ...ACTIVITE, priceUnit: BALISE })],
+  ['un risque d une activite', (m) => m.store.createActivity(POOL_VIDE, { ...ACTIVITE, riskDrivers: ['pluie', BALISE] })],
+  ['le nom edite d une activite', (m) => m.store.updateActivity(POOL_VIDE, { id: 'bowling', name: BALISE, ownerClientId: 'fungalaxy' })],
+  ['un risque edite', (m) => m.store.updateActivity(POOL_VIDE, { id: 'bowling', riskDrivers: [BALISE], ownerClientId: 'fungalaxy' })],
+  ['le nom par la voie du fondateur', (m) => m.overrides.upsertFormuleOverride(POOL_VIDE, { formuleId: 'f1', centerId: 'all', patch: { name: BALISE } })],
+  ['le nom par la voie des tarifs du client', (m) => m.overrides.upsertClientFormuleOverride(POOL_VIDE, { formuleId: 'f1', centerId: 'libramont', patch: { name: BALISE } })],
+];
+
+async function refus(fn, motif = 'balises') {
+  try { await fn(); return { refuse: false, message: 'accepte' }; } catch (erreur) {
+    return { refuse: erreur.expose === true && String(erreur.message).includes(motif), message: String(erreur.message).slice(0, 80) };
+  }
+}
+
+async function ecriture() {
+  const m = chargerEcriture();
+  for (const [nom, ecrire, motif] of ECRITURES) {
+    const r = await refus(() => ecrire(m), motif);
+    ok(r.refuse, `[ecriture] ${nom} : refuse`, r.message);
+  }
+  // CONTRASTE : un refus qui mange les textes ordinaires ne serait pas une defense.
+  const passe = await m.store.createFormula(POOL_VIDE, { ...FORMULE, name: 'Moins de 12 ans (< 12) & plus', family: 'Formules d\'ete', descriptionLines: ['5 > 3', "30 min d'arcades"] }).then(() => true, (e) => e.message);
+  ok(passe === true, '[ecriture] contraste : « < 12 », « 5 > 3 », une apostrophe et une esperluette passent', String(passe));
+  const pseudo = await m.store.createFormula(POOL_VIDE, { ...FORMULE, name: 'Pseudo', steps: [{ activityId: 'kara-box', resourceType: 'bar_service_then_autonomous', count: 1 }] }).then(() => true, (e) => e.message);
+  ok(pseudo === true, '[ecriture] contraste : une pseudo-activite au format de la prod passe', String(pseudo));
+  const proprietes = [
+    ['le test de la balise', [{ fichier: 'lib/catalog-store.js', de: 'if (OUVRE_UNE_BALISE.test(text)) throw', vers: 'if (false) throw' }], 'le nom d une formule neuve'],
+    ['le nom', [{ fichier: 'lib/catalog-store.js', de: "return refuserBalise(name, 'Nom');", vers: 'return name;' }], 'le nom d une formule neuve'],
+    ['la famille', [{ fichier: 'lib/catalog-store.js', de: "return refuserBalise(family, 'Famille');", vers: 'return family;' }], 'la famille d une formule'],
+    ['les textes courts', [{ fichier: 'lib/catalog-store.js', de: 'return refuserBalise(text, label);', vers: 'return text;' }], 'humanValidation'],
+    ['la description', [{ fichier: 'lib/catalog-store.js', de: "refuserBalise(String(line).slice(0, 200), 'Description')", vers: 'String(line).slice(0, 200)' }], 'une ligne de description'],
+    ['le libelle d une etape', [{ fichier: 'lib/catalog-store.js', de: 'refuserBalise(String(source.label).slice(0, 200), `Etape ${index + 1}`)', vers: 'String(source.label).slice(0, 200)' }], 'le libelle d une etape'],
+    ['les risques', [{ fichier: 'lib/catalog-store.js', de: "value.map((driver) => refuserBalise(String(driver), 'Risque'))", vers: 'value.map(String)' }], 'un risque d une activite'],
+    ['le nom par la voie des tarifs', [{ fichier: 'lib/catalog-overrides.js', de: "return catalogStore.refuserBalise(name, 'Nom');", vers: 'return name;' }], 'le nom par la voie des tarifs du client'],
+    ['l identifiant d une etape', [{ fichier: 'lib/catalog-store.js', de: 'if ((activityId && !STEP_ID_PATTERN.test(activityId)) || (resourceType && !STEP_ID_PATTERN.test(resourceType))) {', vers: 'if (false) {' }], 'l activite d une etape'],
+  ];
+  for (const [garde, editions, cible] of proprietes) {
+    const mute = chargerEcriture(editions);
+    const [, ecrire, motif] = ECRITURES.find(([nom]) => nom === cible);
+    const r = await refus(() => ecrire(mute), motif);
+    ok(!r.refuse, `[mutation] sans le refus sur ${garde}, « ${cible} » passe`, r.message);
+  }
+}
+
 async function main() {
   // Les offres des arcades portent leurs textes, comme la prod les sert.
   const arcades = mock.ACTIVITIES.find((a) => a.id === 'arcade_time');
@@ -394,6 +762,14 @@ async function main() {
     ok(prix.texte > 0, '[tunnel prix] MONTAGE : le prix piege est a l ecran', String(prix.texte));
     ok(prix.vus.length === 0, '[tunnel prix] aucun noeud injecte par un prix', prix.vus.slice(0, 5).map((v) => v.id).join(' '));
     await contreEpreuvesTunnel(browser);
+    await console_(browser);
+    const args = await argumentsJs(browser);
+    ok(args.rendus.length === HOSTILES.length * 2, `[argument] MONTAGE : ${args.rendus.length} rendus, guillemets doubles et simples`);
+    ok(args.fautifs.length === 0, '[argument] chaque texte hostile ressort a l identique, sans attribut ni noeud en plus', JSON.stringify(args.fautifs.slice(0, 2)).slice(0, 240));
+    ok(args.piegees === 0, '[argument] aucun piege ne part');
+    source();
+    await contreEpreuvesConsole(browser);
+    await ecriture();
   } finally {
     await browser.close();
     server.close();

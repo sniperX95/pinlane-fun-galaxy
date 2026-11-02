@@ -711,7 +711,7 @@ const ECRITURES = [
   ['le nom par la voie des tarifs du client', (m) => m.overrides.upsertClientFormuleOverride(POOL_VIDE, { formuleId: 'f1', centerId: 'libramont', patch: { name: BALISE } })],
 ];
 
-async function refus(fn, motif = 'balises') {
+async function refus(fn, motif = 'le signe <') {
   try { await fn(); return { refuse: false, message: 'accepte' }; } catch (erreur) {
     return { refuse: erreur.expose === true && String(erreur.message).includes(motif), message: String(erreur.message).slice(0, 80) };
   }

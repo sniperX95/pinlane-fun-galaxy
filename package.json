@@ -174,6 +174,7 @@
     "test:reserver-serveur": "node scripts/reserver-simulation-check.js && node scripts/reserver-lot-check.js && node scripts/reserver-a-placer-check.js && node scripts/reserver-arene-seuls-check.js && node scripts/reserver-plafonds-check.js && node scripts/reserver-plan-fenetre-check.js && node scripts/reserver-prix-extras-check.js && node scripts/reserver-departs-check.js",
     "test:reserver-comptoir": "node scripts/reserver-comptoir-check.js && node scripts/reserver-comptoir-check.js --contre-preuves",
     "test:comptoir-reserver": "node scripts/comptoir-reserver-check.js && node scripts/comptoir-reserver-check.js --contre-preuves",
+    "test:reserver-seances": "node scripts/reserver-seances-check.js && node scripts/reserver-seances-check.js --contre-preuves",
     "test:arene-seuls-planning": "node scripts/arene-seuls-planning-check.js",
     "test:heures-passees": "node scripts/heures-passees-check.js && node scripts/heures-passees-check.js --mutate",
     "test:formules-visite": "node scripts/formules-visite-check.js",

@@ -148,6 +148,8 @@ const {
   saveCenterConfigOverride,
   upsertCenter,
   setCenterStatus,
+  catalogueSurMesure,
+  sansCatalogueSurMesure,
 } = require('../lib/center-config');
 const { listCentersForSession } = require('../lib/center-scope');
 const { sessionHasPermission } = require('../lib/staff-auth');
@@ -1094,6 +1096,15 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // Le catalogue sur mesure du centre de la requete (la barriere inter-clients
+  // est passee au dispatcher) : Reserver et la fiche le proposent, le serveur
+  // recalcule depuis lui. Une lecture, donc le socle fichier si la base tombe.
+  if (action === 'surMesureCatalogue') {
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+    sendJson(res, 200, { ok: true, centerId, surMesure: catalogueSurMesure(centerId) });
+    return;
+  }
+
   if (action === 'agentStack') {
     let context = { centerId };
     if (startDate && endDate) {
@@ -1361,12 +1372,31 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const pool = getPool();
     let config;
     try {
-      config = await saveCenterConfigOverride(pool, targetCenter, body.config || {});
+      config = await saveCenterConfigOverride(pool, targetCenter, sansCatalogueSurMesure(body.config || {}));
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, centerId: targetCenter, config });
+    return;
+  }
+
+  // Le catalogue sur mesure du centre (2026-11-03) : ce que Reserver propose et
+  // recalcule. Sa seule porte d ecriture, avec pricing.manage : saveCenterConfig
+  // (settings.manage) le retire de son corps. Un corps vide est un refus, pas un
+  // retour au catalogue par defaut qui effacerait la carte du centre.
+  if (action === 'saveSurMesure') {
+    const targetCenter = requireConcreteCenter('catalogue sur mesure');
+    if (body.surMesure == null) throw createHttpError('Catalogue sur mesure invalide.', 422, true);
+    const pool = getPool();
+    let config;
+    try {
+      config = await saveCenterConfigOverride(pool, targetCenter, { surMesure: body.surMesure });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement du catalogue impossible pour le moment. Réessayez.'), error.expose ? (error.statusCode || 400) : 503, error.expose === true);
+    }
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, surMesure: config.surMesure });
     return;
   }
 
@@ -3662,6 +3692,9 @@ function getRequiredOpsPermission(method, action) {
     // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
     // lit founderCatalog (platform.admin), le client lit clientCatalog.
     if (action === 'clientCatalog') return 'pricing.manage';
+    // Le catalogue sur mesure : celui qui voit les reservations le voit, et
+    // celui qui le gere aussi.
+    if (action === 'surMesureCatalogue') return ['reservations.view', 'pricing.manage'];
     // Lecture de l'editeur de blocage : meme permission de CENTRE que la config
     // et que ses ecritures (saveAvailabilityBlock), la personne qui parametre le
     // centre. Jamais platform.admin : c'est un reglage d'exploitation du centre.
@@ -3707,7 +3740,7 @@ function getRequiredOpsPermission(method, action) {
   // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
   // est forcee au centre de session (withCenter) et l'override global 'all' est
   // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
-  if (['saveClientFormuleOverride', 'resetClientFormuleOverride'].includes(action)) return 'pricing.manage';
+  if (['saveClientFormuleOverride', 'resetClientFormuleOverride', 'saveSurMesure'].includes(action)) return 'pricing.manage';
   // CRUD catalogue DB (formules/activites) : permission de CENTRE settings.manage,
   // la meme que la config du centre (saveCenterConfig). Le catalogue est partage
   // (formulas globales) aujourd hui ; le scoping per-centre est un raffinement
@@ -3833,7 +3866,7 @@ const NON_MUTATING_POST_ACTIONS = new Set([
 // l'action : les dispatchers ne connaissent pas les entites, mais le nom de
 // l'action, lui, est stable.
 function auditEntityFor(action, body = {}) {
-  if (/^(saveCenterConfig|saveCenter|setCenterStatus)$/.test(action)) {
+  if (/^(saveCenterConfig|saveSurMesure|saveCenter|setCenterStatus)$/.test(action)) {
     return { entityType: 'center', entityId: body.centerId || body.center_id || '' };
   }
   // Suppressions proprietaire : l'id cible est body.id (withCenter ecrase

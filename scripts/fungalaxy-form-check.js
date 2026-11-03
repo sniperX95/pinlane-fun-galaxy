@@ -5490,8 +5490,8 @@ async function main() {
     const pF1 = await ouvrirV({ pax: 10, formule: 'f1' });
     const noteF1 = await texteV(pF1, '#hourZone .fg-track__lanes');
     ok(/2 pistes, compris dans la formule/.test(noteF1) && !/€/.test(noteF1), '[V] la note des pistes d une formule ne dit plus aucun montant', noteF1);
-    const prixF1 = await pF1.evaluate(() => ({ ligne: document.querySelector('#planZone .fg-visit__prices > div:not(.fg-visit__total)').textContent.replace(/\s+/g, ' ').trim(), total: document.querySelector('#planZone .fg-visit__total dd').textContent.replace(/\s+/g, ' ').trim() }));
-    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.total) === blancs(euros(repF1.price)) && plat(prixF1.ligne).indexOf(plat(`${f1Meta.name} · 10 personnes × ${euros(f1Meta.price)}`)) === 0, '[V] le recapitulatif d une formule dit son calcul, et son total est le prix du serveur', JSON.stringify(prixF1));
+    const prixF1 = await pF1.evaluate(() => ({ ligne: document.querySelector('#planZone .fg-visit__total dt').textContent.replace(/\s+/g, ' ').trim(), total: document.querySelector('#planZone .fg-visit__total dd').textContent.replace(/\s+/g, ' ').trim() }));
+    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.total) === blancs(euros(repF1.price)) && plat(prixF1.ligne) === plat(`Total indicatif · 10 personnes × ${euros(f1Meta.price)}`), '[V] le recapitulatif d une formule dit son calcul, et son total est le prix du serveur', JSON.stringify(prixF1));
     ok(await pF1.evaluate(() => getComputedStyle(document.querySelector('#hourSum')).display === 'none' && document.querySelectorAll('#hourZone .fg-etape--fin').length === 1 && getComputedStyle(document.querySelector('#hourZone .fg-etape--fin')).display === 'none'), '[V] la fin et le prix se lisent une fois, dans le recapitulatif : ni la barre ni le programme ne les redisent');
     await pF1.close();
 

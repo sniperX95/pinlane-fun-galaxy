@@ -3304,7 +3304,6 @@
       var id = 'per-' + String(idPiste || 'slot').replace(/[^a-z0-9_-]/gi, '') + '-' + j;
       html += '<section class="fg-period" data-period="' + esc(p) + '">'
         + '<button type="button" class="fg-period__btn" tabindex="-1" aria-expanded="false" aria-controls="' + id + '">'
-
         + '<svg class="fg-period__icon" aria-hidden="true"><use href="#' + (ICONES_PERIODE[p] || 'i-clock') + '"/></svg>'
         + '<span class="fg-period__name">' + esc(p) + '</span>'
         + '<span class="fg-period__keys" aria-hidden="true"></span>'
@@ -3772,7 +3771,6 @@
         // la ligne apres les deux-points, au lieu de pendre un « × ».
         + '<b>' + p.parPiste + '\u00a0joueurs par piste</b>\u00a0: <span class="fg-calcul">' + typo(p.joueurs + ' joueurs = ' + p.pistes + ' piste' + (p.pistes > 1 ? 's' : ''))
         + (prix ? ' ×\u00a0' + esc(typo(euros(prix))) + ' =\u00a0<b>' + esc(typo(euros(prix * p.pistes))) + '</b>' : '') + (p.services > 1 ? typo(', en ' + p.services + ' tours') : '') + (formule ? ', compris dans la formule' : '') + '.</span>'
-
         + '</span></p>';
     }
     if (ancres.length) {
@@ -4067,7 +4065,6 @@
       void ol.offsetHeight;
       bouges.forEach(function (li) { li.style.transition = 'transform .2s var(--fg-ease-out)'; li.style.transform = ''; });
       setTimeout(function () { bouges.forEach(function (li) { li.style.transition = ''; }); }, 240);
-
     }
   }
 
@@ -5157,7 +5154,6 @@
     var libresRanges = [];
     var suiteRangee = false;
     var aLaSuite = Math.max(0, Math.round(Number(plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
-
     function ligneDuLibre(it) {
       var nomL = it.name || nomActivite(it.activityId);
       var entre = it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
@@ -5470,8 +5466,7 @@
       var fois = parPiste ? Number(slot.billedLaneCount || slot.laneCount) || 0 : joueursDemandes();
       if (fois > 0 && Math.abs(fois * Number(formule.price) - prix) < 0.01) {
         var quiPaie = parPiste ? (fois > 1 ? 'pistes' : 'piste') : formule.kidsOnly ? (fois > 1 ? 'enfants' : 'enfant') : (fois > 1 ? 'personnes' : 'personne');
-        prixHtml = '<dl class="fg-visit__prices"><div><dt>' + esc(typoVisite(formule.name)) + ' <small>· ' + esc(typoVisite(fois + ' ' + quiPaie + ' × ' + euros(formule.price))) + '</small></dt><dd>' + esc(euros(prix)) + '</dd></div>'
-          + '<div class="fg-visit__total"><dt>Total indicatif</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
+        prixHtml = '<dl class="fg-visit__prices"><div class="fg-visit__total"><dt>Total indicatif <small>· ' + esc(typoVisite(fois + ' ' + quiPaie + ' × ' + euros(formule.price))) + '</small></dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
           + '<p class="fg-visit__pay">Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
       }
     }

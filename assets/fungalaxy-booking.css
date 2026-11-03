@@ -1861,6 +1861,8 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__prices dt small { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
 .fg-visit__prices dd { margin: 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg-text); }
 .fg-visit__total { margin-top: 4px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.fg-visit__total:first-child { margin: 0; padding: 0; border: 0; }
+.fg-visit__total small { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
 .fg-visit__total dt, .fg-visit__total dd { font-size: 16px; }
 .fg-visit__total dd { color: var(--fg-teal); }
 .fg-visit__pay { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-muted); }
@@ -2856,7 +2858,6 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-scene[data-scene="heures"] #planZone .fg-visit { max-width: none; margin: 0; }
   .fg-scene--center .fg-dock { max-width: 1180px; }
 }
-
 
 /* =============================================================================
    LA PASSE PREMIUM (Movsar, 2026-10-14 : « le formulaire de reservation il est

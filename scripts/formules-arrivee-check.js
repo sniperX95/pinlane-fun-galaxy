@@ -1609,6 +1609,9 @@ function laConsole() {
     'var getReservationValidationTexte = function () { return {}; }, isReservationAwaitingReview = function () { return false; }, isUpcomingReservationStatus = function () { return true; };',
     "var renderReservationPriceMark = function () { return ''; }, getReservationOccasion = function () { return ''; }, STAFF_OCCASION_LABELS = {};",
     "var hasReservationNote = function () { return false; }, getReservationNoteParts = function () { return { mot: '', suivi: [] }; }, getReservationNoteTitre = function () { return ''; }, getReservationNotesEquipe = function () { return []; };",
+    // L encadre du groupe lit aussi le dossier du Complet et sa derniere modification
+    // (2026-11-03) : sans le planning ni modification, ils ne disent rien.
+    "var notesEquipeEcrites = function () { return []; }, essentielDuDossier = function () { return null; }, texteDerniereModif = function () { return ''; };",
   ].join('\n'), bac);
   const appelle = (nom, ...args) => {
     const rendu = bac[nom](...args);

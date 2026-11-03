@@ -9918,22 +9918,6 @@
   };
 
   /* ==========================================================================
-     TARIFS : catalog grid
-     ======================================================================== */
-
-  window.pv2SelectPricing = function (id) {
-    state.staffPricingSelectedId = id;
-    save();
-    renderStaffPricingPage();
-  };
-
-  window.pv2PricingFilter = function (key) {
-    state.staffPricingFilter = key;
-    save();
-    renderStaffPricingPage();
-  };
-
-  /* ==========================================================================
      TARIFS : editeur client (override par centre, permission pricing.manage)
      Branche sur GET clientCatalog (prefill) + POST saveClientFormuleOverride /
      resetClientFormuleOverride. Chaque ecriture est SIGNEE du centre AFFICHE
@@ -9941,9 +9925,9 @@
      barriere inter-clients) puis il fait foi ; la session n'est qu'un repli.
      Correctif du 2026-08-21 : sans cette signature, l'edition d'un fondateur
      multi-centres partait sur le centre de sa SESSION, pas celui de l'ecran.
-     La modale vit dans document.body pour survivre
-     aux reconstructions innerHTML de la page. Etat hors DOM (pricingEditor),
-     encapsule dans cet IIFE, pas de variable globale sauvage.
+     Etat hors DOM (pricingEditor), encapsule dans cet IIFE, pas de variable
+     globale sauvage. La page qui le montre et l edite est plus bas
+     (TARIFS & FORMULES : LA PAGE).
      ======================================================================== */
 
   const PEV_PRICE_MIN = 0;
@@ -9956,51 +9940,13 @@
     error: '',
     byId: new Map(),      // formuleId -> entree clientCatalog
     activities: [],       // liste [{id, name, resourceType}] pour l'editeur de steps
-    modal: null,          // null | { formuleId }
-    original: null,       // snapshot effectif a l'ouverture (pour le diff)
-    draft: null,          // valeurs en cours d'edition
-    saving: false,
-    resetting: false,
-    modalError: '',
   };
 
-  function pevEq(a, b) {
-    return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
-  }
-  function pevClampPrice(raw) {
-    const v = Number(raw);
-    if (!Number.isFinite(v)) return null;
-    return Math.min(PEV_PRICE_MAX, Math.max(PEV_PRICE_MIN, v));
-  }
   function pevToast(message) {
     if (typeof toast === 'function') toast(message);
   }
   function pevEntry(formuleId) {
     return formuleId ? (pricingEditor.byId.get(String(formuleId)) || null) : null;
-  }
-
-  // Vue d'une ligne du catalogue analytics enrichie de l'etat editable courant
-  // (nom/prix effectifs + badges), sans jamais casser l'analytics existante :
-  // sans entree chargee, on retombe sur les valeurs statiques de la ligne.
-  function pevRowView(row) {
-    const sourceId = row && row.sourceId ? String(row.sourceId) : '';
-    const entry = pevEntry(sourceId);
-    if (!entry || !entry.effective) {
-      return { editable: Boolean(sourceId), sourceId, title: row.title, price: row.price, personnalise: false, removed: false };
-    }
-    const eff = entry.effective;
-    return {
-      editable: true,
-      sourceId,
-      title: eff.name != null ? eff.name : row.title,
-      price: eff.priceValue != null ? eff.priceValue : row.price,
-      // « Tarif personnalisé » ne parle que du TARIF (nom, prix, disponibilite) :
-      // un centre qui n a regle que la validation par l equipe n a pas
-      // touche a son tarif (2026-10-05).
-      personnalise: Boolean(entry.centerOverride && Object.keys(entry.centerOverride).some((k) => k !== 'humanValidation')),
-      validation: entry.effective.humanValidation || 'recommended',
-      removed: Boolean(eff.removed),
-    };
   }
 
   // ---- LE CENTRE AFFICHE VOYAGE AVEC CHAQUE REQUETE ----------------------
@@ -10067,6 +10013,8 @@
     pricingEditor.loaded = false;
     pevLoad(true);
     if (typeof loadCenterScheduleConfig === 'function') loadCenterScheduleConfig();
+    // La page Tarifs relit aussi ce que lit le formulaire client.
+    tfAuRechargement();
   }
   function pevEnsureLoaded() {
     if (!pricingEditor.loaded && !pricingEditor.loading && !pricingEditor.error) pevLoad(false);
@@ -10078,8 +10026,7 @@
   // customs comprises, editions de structure refletees, nom/prix effectifs du
   // centre appliques. Rend null tant que le catalogue n'est pas charge : les
   // appelants retombent sur la constante FORMULES, jamais sur un ecran vide.
-  window.pevLiveFormules = function () {
-    if (!pricingEditor.loaded) return null;
+  function pevFormulesVives() {
     return [...pricingEditor.byId.values()].map((entry) => {
       const eff = entry.effective || {};
       const timeLimit = (entry.timeLimitMinMinutes != null || entry.timeLimitMaxMinutes != null)
@@ -10113,6 +10060,9 @@
         source: entry.source || 'seed',
       };
     });
+  }
+  window.pevLiveFormules = function () {
+    return pricingEditor.loaded ? pevFormulesVives() : null;
   };
   // Les autres pages (Etablissement) declenchent le chargement sans dependre
   // du rendu de la page Tarifs.
@@ -10141,272 +10091,13 @@
     pricingEditor.activities = [];
     pricingEditor.centerActivityIds = [];
     pricingEditor.centerOpenDays = null;
-    // Une modale ouverte sur une formule du centre QUITTE editerait une entree
-    // qui n'existe plus ici : on la ferme avec son brouillon.
-    pricingEditor.modal = null;
-    pricingEditor.original = null;
-    pricingEditor.draft = null;
-    pricingEditor.modalError = '';
+    // Le brouillon de la page Tarifs appartient a son centre.
+    tfOublierAutresCentres();
   };
-
-  function pevModalBody() {
-    if (!pricingEditor.modal || !pricingEditor.draft) return '';
-    const d = pricingEditor.draft;
-    return `${pricingEditor.modalError ? `<div class="pev-modal-error" role="alert">${esc(pricingEditor.modalError)}</div>` : ''}
-      <div class="field pev-field">
-        <label for="pevName">Nom affiché</label>
-        <input id="pevName" type="text" maxlength="${PEV_NAME_MAX}" value="${d.name == null ? '' : esc(d.name)}" data-autofocus oninput="pevSet('name', this.value)">
-        <span class="field-hint">Laissez le nom du catalogue pour ne pas le changer.</span>
-      </div>
-      <div class="pev-grid2">
-        <div class="field pev-field">
-          <label for="pevPrice">Prix par personne (€)</label>
-          <input id="pevPrice" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceValue == null ? '' : esc(d.priceValue)}" oninput="pevSetNum('priceValue', this.value)">
-        </div>
-        <div class="field pev-field">
-          <label for="pevOld">Ancien prix barré (€)</label>
-          <input id="pevOld" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceOld == null ? '' : esc(d.priceOld)}" oninput="pevSetNum('priceOld', this.value)">
-          <span class="field-hint">Affiché barré à côté du prix. Vide = aucun.</span>
-        </div>
-      </div>
-      ${pevValidationHtml(d)}
-      <div class="pev-toggle-row">
-        <span class="pev-toggle-label">Disponible à la réservation<small>Décochée, l'offre n'est plus réservable dans ce centre mais reste au catalogue.</small></span>
-        <button type="button" class="mk-switch ${d.enabled ? 'is-on' : ''}" role="switch" aria-checked="${d.enabled ? 'true' : 'false'}" aria-label="Disponible à la réservation" onclick="pevToggle('enabled', this)"><span></span></button>
-      </div>
-      <div class="pev-toggle-row">
-        <span class="pev-toggle-label">Retirer du catalogue<small>La formule disparaît du tunnel de réservation de ce centre.</small></span>
-        <button type="button" class="mk-switch ${d.removed ? 'is-on' : ''}" role="switch" aria-checked="${d.removed ? 'true' : 'false'}" aria-label="Retirer du catalogue" onclick="pevToggle('removed', this)"><span></span></button>
-      </div>`;
-  }
-
-  // LA VALIDATION PAR L EQUIPE, REGLEE ICI PAR LE CENTRE (2026-10-05). Movsar :
-  // « que lorsque c est quasi vraiment impossible [...] il faut eviter de
-  // deranger le plus possible », puis « parametrable completement cote
-  // produit ». Le serveur applique ce mode au moteur, aux mails et a ce que
-  // l agent promet au client (lib/validation-policy.modeValidationFormule).
-  const PEV_VALIDATION = [
-    { mode: 'recommended', mot: 'Seulement si impossible', dit: 'Confirmée tout de suite au client. L’équipe n’est prévenue que si le planning ne trouve aucune place sûre.' },
-    { mode: 'required_when_laser_busy', mot: 'Si le laser est partagé', dit: 'Confirmée tout de suite, sauf si le groupe devait partager l’arène laser avec un autre : l’équipe valide d’abord et reçoit un mail.' },
-    { mode: 'required', mot: 'Toujours', dit: 'Jamais confirmée tout de suite : chaque réservation attend votre validation, vous recevez un mail et le client un « demande reçue ».' },
-  ];
-  function pevValidationHtml(d) {
-    const actuel = PEV_VALIDATION.find((x) => x.mode === d.humanValidation) || PEV_VALIDATION[0];
-    return `<div class="pev-valid" role="radiogroup" aria-labelledby="pevValidLabel">
-        <span class="pev-valid-label" id="pevValidLabel">Validation par l’équipe</span>
-        <div class="pev-seg">${PEV_VALIDATION.map((x) => `<button type="button" role="radio" aria-checked="${x.mode === actuel.mode ? 'true' : 'false'}" class="pev-seg-btn${x.mode === actuel.mode ? ' is-on' : ''}" onclick="pevSetValidation('${x.mode}')">${esc(x.mot)}</button>`).join('')}</div>
-        <span class="field-hint" id="pevValidHint">${esc(actuel.dit)}</span>
-      </div>`;
-  }
-  window.pevSetValidation = function (mode) {
-    if (!pricingEditor.draft || !PEV_VALIDATION.some((x) => x.mode === mode)) return;
-    pricingEditor.draft.humanValidation = mode;
-    const zone = document.querySelector('#pevOverlay .pev-valid');
-    if (zone) {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = pevValidationHtml(pricingEditor.draft);
-      zone.replaceWith(tmp.firstElementChild);
-      const choisi = document.querySelector('#pevOverlay .pev-seg-btn.is-on');
-      if (choisi) choisi.focus();
-    }
-  };
-
-  function pevModalFoot() {
-    if (!pricingEditor.modal) return '';
-    const entry = pevEntry(pricingEditor.modal.formuleId);
-    const hasOverride = Boolean(entry && entry.centerOverride);
-    const busy = pricingEditor.saving || pricingEditor.resetting;
-    return `<span class="pev-foot-note">Chaque enregistrement est tracé au journal.</span>
-      ${hasOverride ? `<button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="pevReset()">${pricingEditor.resetting ? 'Réinitialisation...' : 'Réinitialiser'}</button>` : ''}
-      <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="pevCloseModal()">Annuler</button>
-      <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="pevSave()">${pricingEditor.saving ? 'Enregistrement...' : 'Enregistrer'}</button>`;
-  }
-
-  function pevModalTitle() {
-    const entry = pevEntry(pricingEditor.modal && pricingEditor.modal.formuleId);
-    const draftName = pricingEditor.draft && pricingEditor.draft.name;
-    return draftName || (entry && entry.name) || 'Formule';
-  }
-
-  function pevSyncModal() {
-    const existing = document.getElementById('pevOverlay');
-    if (!pricingEditor.modal) { if (existing) existing.remove(); return; }
-    if (existing) return; // deja monte : corps/pied rafraichis en place
-    const overlay = document.createElement('div');
-    overlay.id = 'pevOverlay';
-    overlay.className = 'overlay-backdrop pev-overlay';
-    overlay.innerHTML = `<div class="modal-surface pev-modal" role="dialog" aria-modal="true" aria-labelledby="pevModalTitle">
-      <div class="pev-modal-head">
-        <div><h3 id="pevModalTitle">${esc(pevModalTitle())}</h3><p>Ajustez le tarif de cette formule pour ce centre. Le prix par personne va de 0 à 1000 €.</p></div>
-        <button type="button" class="pev-close" aria-label="Fermer" ${pricingEditor.saving || pricingEditor.resetting ? 'disabled' : ''} onclick="pevCloseModal()">&times;</button>
-      </div>
-      <div class="pev-modal-body">${pevModalBody()}</div>
-      <div class="pev-modal-foot">${pevModalFoot()}</div>
-    </div>`;
-    overlay.addEventListener('mousedown', (e) => {
-      if (e.target === overlay && !pricingEditor.saving && !pricingEditor.resetting) window.pevCloseModal();
-    });
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => {
-      const f = overlay.querySelector('[data-autofocus]');
-      if (f) { try { f.focus(); } catch (_) { /* focus best effort */ } }
-    });
-  }
-
-  function pevRefreshBody() {
-    const body = document.querySelector('#pevOverlay .pev-modal-body');
-    if (body) body.innerHTML = pevModalBody();
-  }
-  function pevRefreshFoot() {
-    const foot = document.querySelector('#pevOverlay .pev-modal-foot');
-    if (foot) foot.innerHTML = pevModalFoot();
-    const close = document.querySelector('#pevOverlay .pev-close');
-    if (close) close.disabled = pricingEditor.saving || pricingEditor.resetting;
-  }
-
-  // Ferme sans garde (apres une ecriture reussie : les flags busy sont remis).
-  function pevDismissModal() {
-    pricingEditor.modal = null;
-    pricingEditor.original = null;
-    pricingEditor.draft = null;
-    pricingEditor.saving = false;
-    pricingEditor.resetting = false;
-    pricingEditor.modalError = '';
-    const overlay = document.getElementById('pevOverlay');
-    if (overlay) overlay.remove();
-  }
-
-  window.pevOpenEdit = function (formuleId) {
-    const entry = pevEntry(formuleId);
-    if (!entry || !entry.effective) {
-      pevToast('Catalogue en cours de chargement, réessaie dans un instant.');
-      pevEnsureLoaded();
-      return;
-    }
-    const eff = entry.effective;
-    const snapshot = {
-      name: eff.name != null ? String(eff.name) : '',
-      priceValue: eff.priceValue != null ? Number(eff.priceValue) : null,
-      priceOld: eff.priceOld != null ? Number(eff.priceOld) : null,
-      enabled: eff.enabled !== false,
-      removed: Boolean(eff.removed),
-      humanValidation: eff.humanValidation || 'recommended',
-    };
-    pricingEditor.original = { ...snapshot };
-    pricingEditor.draft = { ...snapshot };
-    pricingEditor.modalError = '';
-    pricingEditor.saving = false;
-    pricingEditor.resetting = false;
-    pricingEditor.modal = { formuleId: String(formuleId) };
-    pevSyncModal();
-  };
-
-  window.pevSet = function (path, value) {
-    if (!pricingEditor.draft) return;
-    if (path === 'name') pricingEditor.draft.name = String(value == null ? '' : value);
-  };
-  window.pevSetNum = function (path, raw) {
-    if (!pricingEditor.draft) return;
-    if (path !== 'priceValue' && path !== 'priceOld') return;
-    if (raw === '' || raw == null) { pricingEditor.draft[path] = null; return; }
-    pricingEditor.draft[path] = pevClampPrice(raw);
-  };
-  window.pevToggle = function (path, btn) {
-    if (!pricingEditor.draft) return;
-    if (path !== 'enabled' && path !== 'removed') return;
-    const next = !pricingEditor.draft[path];
-    pricingEditor.draft[path] = next;
-    if (btn && btn.classList) {
-      btn.classList.toggle('is-on', next);
-      btn.setAttribute('aria-checked', String(next));
-    }
-  };
-  window.pevCloseModal = function () {
-    if (pricingEditor.saving || pricingEditor.resetting) return;
-    pevDismissModal();
-  };
-
-  // Patch PARTIEL : seuls les champs reellement changes voyagent. Les cles
-  // suivent le contrat serveur (name, priceValue, priceOld, enabled, removed).
-  // JAMAIS de centerId : le serveur force le centre de session.
-  function pevComputePatch() {
-    const o = pricingEditor.original || {};
-    const d = pricingEditor.draft || {};
-    const patch = {};
-    if (!pevEq(d.name, o.name)) patch.name = String(d.name == null ? '' : d.name).trim().slice(0, PEV_NAME_MAX);
-    if (!pevEq(d.priceValue, o.priceValue)) patch.priceValue = d.priceValue;
-    if (!pevEq(d.priceOld, o.priceOld)) patch.priceOld = d.priceOld;
-    if (!pevEq(d.enabled, o.enabled)) patch.enabled = Boolean(d.enabled);
-    if (!pevEq(d.removed, o.removed)) patch.removed = Boolean(d.removed);
-    if (!pevEq(d.humanValidation, o.humanValidation)) patch.humanValidation = d.humanValidation;
-    return patch;
-  }
-
-  window.pevSave = function () {
-    if (pricingEditor.saving || pricingEditor.resetting || !pricingEditor.modal) return;
-    const patch = pevComputePatch();
-    if (!Object.keys(patch).length) { pevToast('Aucun changement à enregistrer.'); return; }
-    if ('priceValue' in patch && (patch.priceValue == null || !Number.isFinite(patch.priceValue))) {
-      pricingEditor.modalError = 'Indiquez un prix par personne entre 0 et 1000 €.';
-      pevRefreshBody(); pevRefreshFoot();
-      return;
-    }
-    if ('name' in patch && !patch.name) {
-      pricingEditor.modalError = 'Le nom ne peut pas être vide. Réinitialise pour revenir au nom du catalogue.';
-      pevRefreshBody(); pevRefreshFoot();
-      return;
-    }
-    pricingEditor.saving = true;
-    pricingEditor.modalError = '';
-    pevRefreshFoot();
-    const formuleId = pricingEditor.modal.formuleId;
-    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
-      method: 'POST',
-      body: pevBody({ action: 'saveClientFormuleOverride', formuleId, patch }),
-    }).then(() => {
-      pevToast(Object.keys(patch).every((k) => k === 'humanValidation') ? 'Réglage de validation enregistré.' : 'Tarif mis à jour.');
-      pevDismissModal();
-      pevReload();
-    }).catch((error) => {
-      pricingEditor.saving = false;
-      pricingEditor.modalError = (error && error.message) || 'Enregistrement refusé. Réessayez.';
-      pevRefreshBody(); pevRefreshFoot();
-    });
-  };
-
-  window.pevReset = function () {
-    if (pricingEditor.saving || pricingEditor.resetting || !pricingEditor.modal) return;
-    pricingEditor.resetting = true;
-    pricingEditor.modalError = '';
-    pevRefreshFoot();
-    const formuleId = pricingEditor.modal.formuleId;
-    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
-      method: 'POST',
-      body: pevBody({ action: 'resetClientFormuleOverride', formuleId }),
-    }).then(() => {
-      pevToast('Tarif réinitialisé.');
-      pevDismissModal();
-      pevReload();
-    }).catch((error) => {
-      pricingEditor.resetting = false;
-      pricingEditor.modalError = (error && error.message) || 'Réinitialisation refusée. Réessayez.';
-      pevRefreshBody(); pevRefreshFoot();
-    });
-  };
-
-  if (!window.__pevKeydownBound) {
-    window.__pevKeydownBound = true;
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && pricingEditor.modal && !pricingEditor.saving && !pricingEditor.resetting) {
-        e.preventDefault();
-        window.pevCloseModal();
-      }
-    });
-  }
 
   /* ==========================================================================
      CATALOGUE DE L ENTREPRISE : editeur de STRUCTURE (permission settings.manage)
-     Distinct de l'editeur "mon centre" (pev, prix/dispo/retrait par centre) :
+     Distinct des reglages du centre (la planche de Tarifs, prix, vente, validation) :
      ici on edite le CATALOGUE lui-meme (formules, activites d'une formule),
      partage par tous les centres de LA MEME ENTREPRISE. Branche sur le CRUD
      backend (createFormula / updateFormula / setFormulaSteps / deleteFormula).
@@ -10414,7 +10105,7 @@
      session et en deduit l'entreprise proprietaire (migration 0042). Depuis
      cette migration, aucune de ces actions n'a le moindre effet chez un autre
      client : les textes ci-dessous le disent, parce qu'ils disaient l'inverse
-     et que c'etait faux. Meme mecanique modale que pev : etat hors DOM
+     et que c'etait faux. Mecanique modale : etat hors DOM
      (catalogEditor), modale montee dans document.body pour survivre aux
      reconstructions innerHTML de la page. Lit clientCatalog via pricingEditor
      (meme source), re-fetch via pevReload apres chaque ecriture.
@@ -10950,11 +10641,7 @@
     });
   }
 
-  // ── UNE carte par offre ───────────────────────────────────────────────────
-  // La page montrait la MEME formule deux fois : une carte (grille, figee sur
-  // la constante) ET une ligne « Catalogue partage » (vive). Une seule carte
-  // porte desormais tout : nom/prix effectifs du centre, contenu, usage, et
-  // ses DEUX niveaux d'action (tarif du centre / structure partagee).
+  // ---- LES ALERTES D UNE LIGNE DE FORMULE (page Tarifs & formules) --------
   // Les ingredients qu une formule exige et que CE centre ne possede pas.
   // Meme regle que le tunnel client (getFormulaActivityIds lit la description
   // de l offre) : les deux ecrans doivent dire la meme chose, sinon le gerant
@@ -10996,171 +10683,6 @@
     return row && row.notDuringHolidays === true
       ? `Jamais vendable : le centre est fermé le ${named} hors vacances`
       : `Jamais vendable : le centre est fermé le ${named}`;
-  }
-
-  function pricingCardHtml(row, view, { selected, ranking, index, canManage }) {
-    const isFormula = Boolean(view.sourceId);
-    const catalogRow = isFormula && pricingEditor.byId ? pricingEditor.byId.get(String(view.sourceId)) : null;
-    const missingHere = isFormula ? missingIngredientsFor(catalogRow) : [];
-    const closedDayWarning = isFormula ? closedDayWarningFor(catalogRow) : '';
-    const badges = [
-      row.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
-      view.removed ? '<span class="pv2-chip red">Retirée de ce centre</span>' : '',
-      view.personnalise && !view.removed ? '<span class="pv2-chip amber">Tarif personnalisé</span>' : '',
-      // Ce que l equipe doit valider se voit sur la carte, sans ouvrir la modale.
-      view.validation === 'required' && !view.removed ? '<span class="pv2-chip">Validée par l’équipe</span>' : '',
-      view.validation === 'required_when_laser_busy' && !view.removed ? '<span class="pv2-chip">Validée si laser partagé</span>' : '',
-      row.best ? '<span class="pv2-chip accent">Best deal</span>' : '',
-      missingHere.length
-        ? `<span class="pv2-chip red">Pas réalisable ici : il manque ${missingHere.map((name) => esc(name)).join(', ')}</span>`
-        : '',
-      closedDayWarning ? `<span class="pv2-chip red">${esc(closedDayWarning)}</span>` : '',
-    ].filter(Boolean).join('');
-    // Une carte sans reservation sur 30 jours n affiche rien : « Aucune
-    // réservation liée » se repetait sur chaque carte de la page.
-    const usage = Number(row.count)
-      ? `<div class="pv2-price-stats" title="Sur les 30 derniers jours, hors annulations">
-          <span><strong>${Number(row.count)}</strong> ${Number(row.count) > 1 ? 'réservations' : 'réservation'}</span>
-          <span><strong>${Number(row.players) || 0}</strong> ${Number(row.players) > 1 ? 'joueurs' : 'joueur'}</span>
-          <span><strong>${money(row.revenue)}</strong></span>
-          <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier moyen</span>
-        </div>`
-      : '';
-    // Pied de carte : l'action du CENTRE en premier (celle de tous les jours),
-    // les deux actions de catalogue ensuite, la suppression reduite a une icone.
-    // Les trois actions d'edition vivent dans .pev-foot-main : c'est ce groupe
-    // qui se replie, dans la colonne souple de la grille, pendant que la
-    // corbeille garde SA colonne. Sans lui, le flex-wrap posait la corbeille
-    // seule a l'extreme droite d'un troisieme rang (mesure : pied 239x77,
-    // enfants a y=11/13/49, corbeille a x=209 y=49).
-    const actions = isFormula ? `<div class="pev-card-foot">
-        <div class="pev-foot-main">
-        <button type="button" class="pv2-btn sm" data-pev-edit="${esc(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Réglages du centre</button>
-        ${canManage ? `
-        <button type="button" class="pv2-btn sm" data-cev-steps="${esc(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
-        <button type="button" class="pv2-btn sm" data-cev-fields="${esc(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
-        </div>
-        ${canManage ? `<button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${esc(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
-      </div>` : '';
-    return `<article class="pv2-price-card ${selected ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}"
-      ${isFormula ? `data-cev-formula="${esc(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
-      <div class="pv2-price-head">
-        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
-        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.priceUnit || (row.type === 'bowling' ? '/piste' : row.priceType === 'per_lane' ? '/piste' : isFormula ? '/pers' : ''))}</small></div>
-      </div>
-      ${badges ? `<div class="pev-badges">${badges}</div>` : ''}
-      <p class="pv2-price-desc">${esc(row.description || '')}</p>
-      ${(row.tags || []).length ? `<div class="pv2-price-tags">${row.tags.slice(0, 4).map((tag) => `<span class="pv2-chip">${esc(tag)}</span>`).join('')}</div>` : ''}
-      ${usage}
-      ${actions}
-    </article>`;
-  }
-
-  // ---- UNE SEULE PAGE, UNE SECTION PAR CATEGORIE -------------------------
-  //
-  // Movsar, 2026-08-22 : « j'aime pas cette section, ca vaut pas la peine de
-  // faire une toute autre section alors que tu peux directement le faire dans
-  // les cartes en haut ; chaque categorie met un ajout de formule ».
-  //
-  // Avant : les offres vendues en haut, puis un bloc de 15 cartes « Activites
-  // du catalogue » en bas, qui redisait le bowling et le laser deja affiches
-  // plus haut. Un seul bouton d'ajout dans toute la page, tout en bas.
-  //
-  // Maintenant : chaque activite rejoint la section qui la concerne, et CHAQUE
-  // section porte son bouton d'ajout, pre-remplie de sa categorie. Rien n'est
-  // perdu : les activites qui ne se vendent pas seules (boissons, table
-  // anniversaire) ont leur propre section au lieu d'etre noyees dans la liste.
-  const ACTIVITY_SECTION_LANES = 'Location de pistes';
-  const ACTIVITY_SECTION_LASER = 'Laser Game';
-  const ACTIVITY_SECTION_CARTE = 'Activités à la carte';
-  const ACTIVITY_SECTION_PARTS = 'Ingrédients de formules';
-  const ACTIVITY_SECTIONS = [
-    ACTIVITY_SECTION_LANES,
-    ACTIVITY_SECTION_LASER,
-    ACTIVITY_SECTION_CARTE,
-    ACTIVITY_SECTION_PARTS,
-  ];
-
-  // Ou tombe une activite du catalogue. Le type de RESSOURCE decide en premier
-  // (une piste est une piste, quel que soit son nom), puis le fait qu'elle se
-  // reserve seule ou non.
-  function activitySectionName(activity) {
-    const resource = String((activity && activity.resourceType) || '').toLowerCase();
-    if (resource === 'bowling_lane' || resource === 'duckpin_lane') return ACTIVITY_SECTION_LANES;
-    if (resource === 'laser_arena') return ACTIVITY_SECTION_LASER;
-    return activity && activity.bookable ? ACTIVITY_SECTION_CARTE : ACTIVITY_SECTION_PARTS;
-  }
-
-  // L'ordre de lecture de la page. Les categories de FORMULES creees par le
-  // gerant n'y figurent pas : elles se rangent apres, dans leur ordre
-  // d'apparition. Aucune liste a tenir a jour quelque part quand il en cree une.
-  const SECTION_ORDER = [
-    ACTIVITY_SECTION_LANES,
-    ACTIVITY_SECTION_LASER,
-    ACTIVITY_SECTION_CARTE,
-    'Formules anniversaires',
-    'Formules speciales',
-    'Formules spéciales',
-  ];
-
-  function pricingSectionsHtml(rows, { selected, ranking, canManage }) {
-    const card = (row, index) => pricingCardHtml(row, pevRowView(row), { selected: selected && row.id === selected.id, ranking, index, canManage });
-    if (ranking !== 'default') {
-      return `<section class="pv2-catalog-section" id="cevCatalogBlock">
-        <div class="pv2-section-head"><h3>Classement</h3><span>${rows.length} offre${rows.length > 1 ? 's' : ''}, les plus fortes d'abord</span></div>
-        <div class="pv2-catalog">${rows.map(card).join('') || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</div>
-      </section>`;
-    }
-    const groups = [];
-    const groupFor = (name) => {
-      let group = groups.find((g) => g.name === name);
-      if (!group) { group = { name, offers: [], activities: [] }; groups.push(group); }
-      return group;
-    };
-    const groupOf = (row) => {
-      if (row.type === 'bowling') return ACTIVITY_SECTION_LANES;
-      if (row.type === 'laser') return ACTIVITY_SECTION_LASER;
-      return row.family || (row.type === 'formula' ? 'Formules anniversaires' : 'Formules spéciales');
-    };
-    rows.forEach((row) => { groupFor(groupOf(row)).offers.push(row); });
-    // Les activites du catalogue rejoignent le MEME flux. Quand un filtre ou une
-    // recherche est actif, il porte sur les offres vendues : reafficher le
-    // catalogue entier par-dessus reviendrait a ne plus filtrer du tout.
-    const filtreActif = (state.staffPricingFilter || 'all') !== 'all'
-      || Boolean(String(state.staffPricingSearch || '').trim());
-    if (!filtreActif) {
-      (pricingEditor.activities || []).forEach((activity) => {
-        groupFor(activitySectionName(activity)).activities.push(activity);
-      });
-    }
-    const rank = (name) => { const i = SECTION_ORDER.indexOf(name); return i === -1 ? SECTION_ORDER.length : i; };
-    groups.sort((a, b) => rank(a.name) - rank(b.name));
-    const firstFormulaGroup = groups.find((g) => g.offers.some((row) => row.sourceId));
-    const sections = groups.map((group) => {
-      const estActivite = ACTIVITY_SECTIONS.includes(group.name);
-      const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
-      const legend = group === firstFormulaGroup
-        ? `<span class="pv2-section-legend">« Réglages du centre » (prix, disponibilité, validation) n’engagent que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS VOS centres.</span>`
-        : (group.name === ACTIVITY_SECTION_PARTS
-          ? `<span class="pv2-section-legend">Ce que vos formules peuvent contenir. Ces activités ne se réservent pas seules.</span>`
-          : '');
-      // LE BOUTON D'AJOUT DE CETTE SECTION-CI. Sur une section d'activités il
-      // ajoute une activité ; sur une catégorie de formules il ouvre la création
-      // DÉJÀ rangée dans cette catégorie, sans avoir à retaper son nom.
-      const addBtn = !canManage
-        ? ''
-        : estActivite
-          ? `<button type="button" class="pv2-btn sm" data-add-activity="${esc(group.name)}" onclick="aevOpenCreate()">+ Activité</button>`
-          : `<button type="button" class="pv2-btn sm" data-add-formula="${esc(group.name)}" onclick="cevOpenCreate('${escJs(group.name)}')">+ Formule</button>`;
-      const compte = group.offers.length + group.activities.length;
-      const cartes = group.offers.map(card).join('')
-        + group.activities.map((activity) => aevCardHtml(activity, canManage)).join('');
-      return `<section class="pv2-catalog-section"${hostId}>
-        <div class="pv2-section-head"><h3>${esc(group.name)}</h3><span>${compte} offre${compte > 1 ? 's' : ''}</span>${addBtn}${legend}</div>
-        <div class="pv2-catalog">${cartes}</div>
-      </section>`;
-    }).join('');
-    return sections || '<div class="pv2-empty" id="cevCatalogBlock"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>';
   }
 
   /* ==========================================================================
@@ -11348,149 +10870,2265 @@
     });
   }
 
-  // UNE carte d'activité du catalogue. Elle vivait dans un bloc à part, tout en
-  // bas de la page ; elle est maintenant posée dans la section qui la concerne
-  // (activitySectionName), au milieu des offres vendues.
-  function aevCardHtml(activity, canManage) {
-    // Le prix ne MENT pas : une grille (bowling, laser) annonce son point de
-    // depart, un tarif saisi son montant, et l'absence de tarif se dit en gris.
-    // « sur place » en accent sur du bowling a grille etait faux ET criait plus
-    // fort que les vrais prix.
-    const gridStart = activity.priceType === 'grid_bowling'
-      ? (typeof DURATION_OPTIONS !== 'undefined' ? Math.min(...DURATION_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
-      : activity.priceType === 'grid_laser'
-        ? (typeof LASER_GAME_OPTIONS !== 'undefined' ? Math.min(...LASER_GAME_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
-        : null;
-    const price = Number.isFinite(gridStart)
-      ? `<span class="pv2-price-amount"><small>dès </small>${money(gridStart)}</span>`
-      : activity.priceValue != null
-        ? `<span class="pv2-price-amount">${money(activity.priceValue)}</span>`
-        : '<span class="pv2-price-onsite">réglé sur place</span>';
-    const badges = [
-      activity.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
-      activity.bookable ? '<span class="pv2-chip">Réservable seule</span>' : '<span class="pv2-chip">Dans les formules</span>',
-    ].filter(Boolean).join('');
-    return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${esc(activity.id)}">
-      <div class="pv2-price-head">
-        <div><strong>${esc(activity.name)}</strong><small>${esc(activity.priceUnit || '')}</small></div>
-        ${price}
+  /* ==========================================================================
+     TARIFS & FORMULES : LA PAGE (refonte du 2026-11-03, « les fils »)
+     Movsar : « on comprend rien, qu est-ce qu on peut modifier et ca modifie
+     quoi, comment, pourquoi... des belles motion design qui montrent ce que ca
+     change et ou ». Son choix : la liste repliable de la vision B et ses fils,
+     avec trois idees de la vision C (le prix se change depuis sa ligne, un
+     seul « Publier » et son recapitulatif, le sur mesure en carte de menu).
+
+     Une LIGNE par formule. Ouverte, elle deplie sa PLANCHE : a gauche ce que
+     le gerant regle, a droite les endroits ou ca se voit, dessines en petit
+     avec les vraies regles (formulaire client, fin de reservation, mails,
+     comptoir, planning). Le champ en main tire un fil vers chaque endroit
+     qu il change ; les autres disent « Pas concerné ». Les changements
+     s accumulent dans un BROUILLON par centre et ne partent qu a « Publier ».
+
+     Aucun chiffre n est invente : les totaux suivent getBasePrice (serveur),
+     les durees viennent de /api/public-availability (type=durees), les regles
+     sont celles du formulaire client, portees plus bas a l identique. Aucun
+     gestionnaire en ligne : un seul ecouteur delegue sur la page, qui lit
+     des attributs data-tf-*.
+     ======================================================================== */
+
+  const TF_ONGLETS = ['formules', 'activites', 'surmesure'];
+  const TF_CHAMPS = ['prix', 'ancien', 'nom', 'vente', 'validation'];
+  const TF_GROUPE_MIN = 1;
+  const TF_GROUPE_MAX = 60;
+  // Les durees du mouvement : le fil se trace en 280 ms, le point le parcourt
+  // en 400 ms, la valeur roule en 220 ms, le lieu s eclaire 600 ms. Plus long
+  // que les 120-200 ms de DESIGN.md parce que ce mouvement EXPLIQUE ou va le
+  // changement (feuille de style, section tf-, meme justification).
+  const TF_FRAPPE_MS = 200;
+  const TF_TRACE_MS = 280;
+  const TF_GOUTTE_MS = 400;
+  const TF_ROULE_MS = 220;
+  const TF_ECLAT_MS = 600;
+
+  // Les trois modes du serveur (lib/validation-policy.js), avec les phrases de
+  // l ancienne modale de tarif : elles disent ce qui se passe pour le client,
+  // elles restent mot pour mot.
+  const TF_VALIDATIONS = [
+    { mode: 'recommended', mot: 'Si impossible', liste: 'Confirmée tout de suite', dit: 'Confirmée tout de suite au client. L’équipe n’est prévenue que si le planning ne trouve aucune place sûre.' },
+    { mode: 'required_when_laser_busy', mot: 'Si laser partagé', liste: 'Validée si laser partagé', dit: 'Confirmée tout de suite, sauf si le groupe devait partager l’arène laser avec un autre : l’équipe valide d’abord et reçoit un mail.' },
+    { mode: 'required', mot: 'Toujours', liste: 'Validée par l’équipe', dit: 'Jamais confirmée tout de suite : chaque réservation attend votre validation, vous recevez un mail et le client un « demande reçue ».' },
+  ];
+  const tfValidation = (mode) => TF_VALIDATIONS.find((x) => x.mode === mode) || TF_VALIDATIONS[0];
+
+  const TF_LIEUX_NOMS = {
+    formulaire: 'Formulaire de vos clients',
+    fin: 'Fin de la réservation',
+    mails: 'Mails aux clients',
+    comptoir: 'Comptoir (Réserver)',
+    planning: 'Planning et fiches',
+  };
+  const TF_MOTS_CHAMP = {
+    prix: 'le prix',
+    ancien: 'le prix barré',
+    nom: 'le nom',
+    vente: 'la mise en vente',
+    validation: 'la validation',
+    structure: 'le contenu, les jours et le minimum',
+  };
+  const TF_QUAND = 'Tout de suite : un formulaire déjà ouvert le reprend dans les 30 secondes, le comptoir en quelques secondes.';
+  const TF_DROITS = {
+    'pricing.manage': { mot: 'droit Tarifs', defaut: 'Direction et Manager' },
+    'settings.manage': { mot: 'droit Réglages', defaut: 'Direction et Technique' },
+  };
+  const TF_ICO = {
+    chevron: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"/></svg>',
+    moins: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M3.5 8h9"/></svg>',
+    plus: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M8 3.5v9M3.5 8h9"/></svg>',
+    fermer: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="m4 4 8 8M12 4l-8 8"/></svg>',
+    cherche: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>',
+    boule: '<span class="tf-m-ico" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" focusable="false"><circle cx="8" cy="8" r="6.2"/><circle class="tf-m-ico-trou" cx="6.3" cy="5.6" r="1"/><circle class="tf-m-ico-trou" cx="9" cy="5" r="1"/><circle class="tf-m-ico-trou" cx="8.3" cy="7.6" r="1"/></svg></span>',
+  };
+
+  // ---- LE FORMULAIRE CLIENT, PORTE A L IDENTIQUE ----------------------------
+  // COPIES de assets/fungalaxy-booking.js : euros (317), insecable (325),
+  // dureeExacte (404), joursLisibles (2298), heureRonde (2305), plageLisible
+  // (2306), reglesFormule (2345), texteDuree (2384). La console doit ecrire
+  // ce que le client lit, au mot pres : en changer une ici sans changer
+  // l autre fait mentir la page. window.tarifsRegles les expose au gate qui
+  // compare les deux fichiers.
+  const TF_JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const TF_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  function tfEuros(n) { n = Number(n); if (!isFinite(n)) return ''; return `${(Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`; }
+  function insecable(s) { return String(s == null ? '' : s).replace(/ /g, ' '); }
+  function dureeExacte(m) {
+    m = Math.max(0, Math.round(Number(m) || 0));
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return `${h} h${r ? ` ${String(r).padStart(2, '0')}` : ''}`;
+  }
+  function joursLisibles(liste) {
+    const noms = (liste || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
+      .map((d) => TF_JOURS_SEM[d] || '').filter(Boolean);
+    if (!noms.length) return '';
+    if (noms.length === 1) return `le ${noms[0]}`;
+    return `les ${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`;
+  }
+  function heureRonde(v) { const h = Math.floor(Number(v)); const m = Math.round((Number(v) - h) * 60); return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`; }
+  function plageLisible(limite) {
+    if (!limite) return '';
+    if (limite.min && limite.max) return `de ${heureRonde(limite.min)} à ${heureRonde(limite.max)}`;
+    if (limite.max) return `avant ${heureRonde(limite.max)}`;
+    if (limite.min) return `à partir de ${heureRonde(limite.min)}`;
+    return '';
+  }
+  function reglesFormule(f) {
+    const out = [];
+    if (f.minPax > 1) out.push(`dès ${f.minPax} personnes`);
+    if (f.validDays && f.validDays.length && f.validDays.length < 7) out.push(joursLisibles(f.validDays));
+    if (plageLisible(f.timeLimit)) out.push(plageLisible(f.timeLimit));
+    if (f.noHolidays) out.push('hors vacances et fériés');
+    return out;
+  }
+  function texteDuree(d) {
+    const a = Math.round(Number(d && d.min) / 5) * 5;
+    const b = Math.round(Number(d && d.max) / 5) * 5;
+    if (!(a > 0) || !(b > 0)) return '';
+    return a === b ? `Environ ${insecable(dureeExacte(a))} sur place` : `${insecable(dureeExacte(a))} à ${insecable(dureeExacte(b))} sur place selon l’heure`;
+  }
+  window.tarifsRegles = { euros: tfEuros, insecable, dureeExacte, joursLisibles, heureRonde, plageLisible, reglesFormule, texteDuree };
+
+  // ---- L ETAT DE LA PAGE (hors du DOM : un rendu complet ne perd rien) ------
+  const tarifs = {
+    ouvert: { formules: '', activites: '' },
+    groupe: 10,
+    // { [centre]: { formules: { [id]: { champ: valeur } }, activites: { [id]: { prix } } } }
+    brouillons: {},
+    // Ce que le gerant a TAPE, meme illisible (« 28, »), par centre et champ :
+    // un rendu complet le lui rend tel quel au lieu de reformater sous ses doigts.
+    saisies: {},
+    focus: '',
+    trace: '',
+    arrivees: {},
+    signature: '',
+    geo: null,
+    tiroir: false,
+    publication: false,
+    erreur: '',
+    dernierRendu: '',
+    rendant: false,
+    usages: null,
+    gouttes: [],
+    observateur: null,
+    minuteurs: { frappe: 0, cherche: 0, groupe: 0 },
+  };
+
+  const tfPluriel = (n, mot, pluriel = `${mot}s`) => `${n} ${n > 1 ? pluriel : mot}`;
+  const tfEt = (liste) => (liste.length < 2 ? liste.join('') : `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}`);
+  const tfPlie = (texte) => String(texte == null ? '' : texte).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const tfMajuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : '');
+  const tfReduit = () => Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const tfOps = () => (typeof API_ENDPOINTS !== 'undefined' && API_ENDPOINTS.ops) || '/api/ops';
+  // Un montant de Reserver (rsEuros) : au centime, entier quand il l est.
+  const tfEurosConsole = (n) => (typeof formatMoneyCentimes === 'function' ? formatMoneyCentimes(n) : tfEuros(n));
+  // Le montant d un mail (lib/ops-communications.js formatEuro).
+  function tfEurosMail(n) {
+    const v = Math.round(Number(n) * 100) / 100;
+    if (!Number.isFinite(v)) return '';
+    return `${Number.isInteger(v) ? String(v) : v.toFixed(2).replace('.', ',')} €`;
+  }
+  function tfEasing() {
+    try { return getComputedStyle(document.documentElement).getPropertyValue('--ease-out-strong').trim() || 'ease-out'; } catch (e) { return 'ease-out'; }
+  }
+  function tfAvecFocus(peindre) {
+    if (window.PinlaneMotion && typeof window.PinlaneMotion.garderFocus === 'function') window.PinlaneMotion.garderFocus(peindre);
+    else peindre();
+  }
+  function tfRendre() { window.renderStaffPricingPage(); }
+  function tfRepeindre() {
+    if (typeof isStaffPricingActive === 'function' && !isStaffPricingActive()) return;
+    tfRendre();
+  }
+
+  // ---- LE CENTRE, SON ENTREPRISE, LES DROITS --------------------------------
+  const tfCentre = () => pevCenterId();
+  // Les centres de la MEME entreprise (getAdminCenters, champ clientId), le
+  // centre affiche en premier. Un centre sans entreprise connue est seul.
+  function tfCentres() {
+    const id = tfCentre();
+    const tous = typeof getAdminCenters === 'function' ? (getAdminCenters() || []).filter(Boolean) : [];
+    const ici = tous.find((c) => c.id === id) || (typeof getAdminCenter === 'function' ? getAdminCenter(id) : null) || { id };
+    const client = ici && ici.clientId ? String(ici.clientId) : '';
+    const freres = client ? tous.filter((c) => c.id !== id && String(c.clientId || '') === client) : [];
+    const liste = [ici, ...freres];
+    const noms = tfNomsCourts(liste);
+    return liste.map((c, i) => ({ id: c.id, nom: noms[i] }));
+  }
+  // « Fun Galaxy Libramont » se dit « Libramont » : le nom de l entreprise,
+  // ou a defaut le debut commun des noms de ses centres, ne distingue rien.
+  function tfNomsCourts(centres) {
+    const noms = centres.map((c) => String((c && (c.shortName || c.name)) || (c && c.id) || '').trim());
+    let commun = 0;
+    if (noms.length > 1) {
+      const mots = noms.map((n) => n.split(/\s+/));
+      const court = Math.min(...mots.map((m) => m.length));
+      while (commun < court - 1 && mots.every((m) => m[commun] === mots[0][commun])) commun += 1;
+    }
+    const meta = tfMetaCentre();
+    return centres.map((c, i) => {
+      if (c && c.shortName) return String(c.shortName);
+      const client = String((c && c.clientName) || '').trim();
+      let nom = noms[i];
+      if (client && tfPlie(nom).startsWith(`${tfPlie(client)} `)) nom = nom.slice(client.length + 1).trim();
+      else if (commun) nom = nom.split(/\s+/).slice(commun).join(' ');
+      else if (i === 0 && meta && meta.city && tfPlie(nom).endsWith(tfPlie(meta.city))) nom = String(meta.city);
+      return nom || noms[i] || String((c && c.id) || '');
+    });
+  }
+  const tfNomCentre = () => tfCentres()[0].nom;
+  const tfAutresCentres = () => tfCentres().slice(1).map((c) => c.nom);
+  const tfPorteeCentre = () => `Pour ${tfNomCentre()}`;
+  function tfPorteeEntreprise() {
+    const noms = tfCentres().map((c) => c.nom);
+    if (noms.length === 1) return 'Pour tous vos centres';
+    if (noms.length === 2) return `Pour ${noms[0]} et ${noms[1]}`;
+    return `Pour vos ${noms.length} centres`;
+  }
+  // Les roles de l entreprise ne sont envoyes qu a qui gere l equipe
+  // (api/staff-auth.js) : sans eux, on nomme le droit et ses roles par defaut
+  // (lib/staff-auth.js STAFF_ROLE_PRESETS), jamais une liste devinee.
+  function tfRolesAvec(droit) {
+    const acces = typeof state !== 'undefined' && state ? state.staffAccessControl : null;
+    const roles = acces && Array.isArray(acces.roles)
+      ? acces.roles.filter((r) => r && r.id && !(typeof isPlatformStaffRole === 'function' && isPlatformStaffRole(r)))
+      : [];
+    if (!roles.length) return null;
+    return roles.filter((r) => r.locked === true || (Array.isArray(r.permissions) && r.permissions.includes(droit))).map((r) => String(r.name || r.id));
+  }
+  function tfQui(droit) {
+    const d = TF_DROITS[droit];
+    const roles = tfRolesAvec(droit);
+    return roles && roles.length ? `${tfEt(roles)} (${d.mot})` : `les rôles qui ont le ${d.mot}, par défaut ${d.defaut}`;
+  }
+  const tfPeutTarifs = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage');
+
+  // ---- LE CATALOGUE PUBLIC DU CENTRE (ce que lit le formulaire client) ------
+  // public-booking-meta porte ce que clientCatalog n a pas : le minimum releve
+  // par le laser, les offres enfants, les cartes Arcades, les grilles, la
+  // capacite des pistes, la case de l offre dans Etablissement.
+  const tfMeta = { centre: '', etat: 'vide', donnees: null, ticket: 0 };
+  function tfChargerMeta(force) {
+    const centre = tfCentre();
+    if (!centre || centre === 'all' || typeof apiRequest !== 'function') return;
+    if (!force && tfMeta.centre === centre && tfMeta.etat !== 'vide') return;
+    const ticket = (tfMeta.ticket += 1);
+    if (tfMeta.centre !== centre) tfMeta.donnees = null;
+    tfMeta.centre = centre;
+    tfMeta.etat = 'charge';
+    const url = `${(typeof API_ENDPOINTS !== 'undefined' && API_ENDPOINTS.publicBookingMeta) || '/api/public-booking-meta'}?centerId=${encodeURIComponent(centre)}`;
+    apiRequest(url, { method: 'GET' })
+      .then((payload) => {
+        if (ticket !== tfMeta.ticket) return;
+        tfMeta.donnees = payload && typeof payload === 'object' ? payload : null;
+        tfMeta.etat = tfMeta.donnees ? 'ok' : 'erreur';
+      })
+      .catch(() => { if (ticket === tfMeta.ticket) tfMeta.etat = 'erreur'; })
+      .finally(() => { if (ticket === tfMeta.ticket) tfRepeindre(); });
+  }
+  const tfMetaDonnees = () => (tfMeta.centre === tfCentre() ? tfMeta.donnees : null);
+  function tfMetaCentre() { const d = tfMetaDonnees(); return d && d.center ? d.center : null; }
+  function tfMetaFormules() { const d = tfMetaDonnees(); return d && Array.isArray(d.formules) ? d.formules : null; }
+  const tfMetaFormule = (id) => (tfMetaFormules() || []).find((f) => f && f.id === id) || null;
+  function tfMetaActivites() { const d = tfMetaDonnees(); return d && Array.isArray(d.activities) ? d.activities : []; }
+  const tfMetaActivite = (id) => tfMetaActivites().find((a) => a && a.id === id) || null;
+  function tfOffreSuspendue(id) {
+    const centre = tfMetaCentre();
+    const admin = typeof getAdminCenter === 'function' ? getAdminCenter(tfCentre()) : null;
+    const dispo = (centre && centre.offerAvailability) || (admin && admin.offerAvailability) || {};
+    return dispo[id] === false;
+  }
+
+  // ---- LA DATE DES EXEMPLES ET LES DUREES -----------------------------------
+  // Le prochain samedi ou le centre ouvre, sinon son prochain jour d ouverture.
+  // Les durees et la touche « Formules » du comptoir se lisent ce jour-la, et
+  // la planche le dit (« pour 10 personnes, samedi 7 novembre »).
+  function tfDateReference() {
+    const aujourdhui = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    const [a, m, j] = String(aujourdhui).split('-').map(Number);
+    const regulier = pricingEditor.centerOpenDays && Array.isArray(pricingEditor.centerOpenDays.regular) ? pricingEditor.centerOpenDays.regular.map(Number) : [];
+    const ouvre = (d) => !regulier.length || regulier.includes(d.getUTCDay());
+    const jour = (k) => new Date(Date.UTC(a, m - 1, j + k));
+    for (let k = 1; k <= 7; k += 1) { const d = jour(k); if (d.getUTCDay() === 6 && ouvre(d)) return d.toISOString().slice(0, 10); }
+    for (let k = 1; k <= 7; k += 1) { const d = jour(k); if (ouvre(d)) return d.toISOString().slice(0, 10); }
+    return jour(1).toISOString().slice(0, 10);
+  }
+  function tfDateLisible(iso) {
+    const [a, m, j] = String(iso).split('-').map(Number);
+    const d = new Date(Date.UTC(a, m - 1, j));
+    return `${TF_JOURS_SEM[d.getUTCDay()]} ${j} ${TF_MOIS[m - 1]}`;
+  }
+  // La duree sur place de chaque formule : la mesure du SERVEUR pour ce jour
+  // et ce groupe (api/public-availability.js, type=durees), comme la carte du
+  // formulaire. Sans reponse, la ligne s efface : rien n est devine.
+  // `perime` : un rechargement du catalogue demande une relecture, mais les
+  // durees deja lues restent a l ecran jusqu a la reponse.
+  const tfDurees = { cle: '', etat: 'vide', valeurs: {}, ticket: 0, perime: false };
+  const tfCleDurees = () => `${tfCentre()}|${tfDateReference()}|${tarifs.groupe}`;
+  function tfChargerDurees() {
+    const centre = tfCentre();
+    if (!centre || centre === 'all' || typeof apiRequest !== 'function') return;
+    const cle = tfCleDurees();
+    if (tfDurees.cle === cle && !tfDurees.perime) return;
+    const ticket = (tfDurees.ticket += 1);
+    if (tfDurees.cle !== cle) { tfDurees.valeurs = {}; tfDurees.etat = 'charge'; }
+    tfDurees.cle = cle;
+    tfDurees.perime = false;
+    const base = (typeof API_ENDPOINTS !== 'undefined' && API_ENDPOINTS.publicAvailability) || '/api/public-availability';
+    apiRequest(`${base}?centerId=${encodeURIComponent(centre)}&date=${encodeURIComponent(tfDateReference())}&pax=${encodeURIComponent(tarifs.groupe)}&type=durees`, { method: 'GET' })
+      .then((payload) => {
+        if (ticket !== tfDurees.ticket) return;
+        tfDurees.valeurs = payload && payload.durees && typeof payload.durees === 'object' ? payload.durees : {};
+        tfDurees.etat = 'ok';
+      })
+      .catch(() => { if (ticket !== tfDurees.ticket) return; tfDurees.valeurs = {}; tfDurees.etat = 'erreur'; })
+      .finally(() => { if (ticket === tfDurees.ticket) tfPoserDurees(); });
+  }
+  function tfDureeDe(id) {
+    if (tfDurees.cle !== tfCleDurees() || tfDurees.etat !== 'ok') return '';
+    return tfDurees.valeurs[id] ? texteDuree(tfDurees.valeurs[id]) : '';
+  }
+  function tfPoserDurees() {
+    const valeurs = tfValeursCourantes();
+    const planche = tfPlanche();
+    if (!valeurs || !planche) return;
+    planche.querySelectorAll('[data-tf-lieu="formulaire"]').forEach((el) => tfAppliquer(el, valeurs, false));
+    tfDessiner();
+  }
+
+  // ---- LE BROUILLON, PAR CENTRE ----------------------------------------------
+  function tfLot(creer) {
+    const centre = tfCentre();
+    if (!tarifs.brouillons[centre] && creer) tarifs.brouillons[centre] = { formules: {}, activites: {} };
+    return tarifs.brouillons[centre] || null;
+  }
+  const tfBrouillonFormule = (id) => { const lot = tfLot(false); return (lot && lot.formules[id]) || null; };
+  const tfBrouillonActivite = (id) => { const lot = tfLot(false); return (lot && lot.activites[id]) || null; };
+  function tfNbChangements(lot = tfLot(false)) {
+    if (!lot) return 0;
+    const compter = (groupe) => Object.values(groupe).reduce((n, b) => n + Object.keys(b).length, 0);
+    return compter(lot.formules) + compter(lot.activites);
+  }
+  const tfCleSaisie = (type, id, champ) => `${tfCentre()}|${type}|${id}|${champ}`;
+  function tfOublierSaisies(type, id) {
+    const debut = `${tfCentre()}|${type}|${id}|`;
+    Object.keys(tarifs.saisies).forEach((cle) => { if (cle.startsWith(debut)) delete tarifs.saisies[cle]; });
+  }
+  // « 28 », « 28,50 », « 28.5 € » : la saisie a la belge. null = vide,
+  // NaN = illisible ou hors des bornes du serveur (0 a 1000 €).
+  function tfLireNombre(brut) {
+    if (typeof brut === 'number') return Number.isFinite(brut) && brut >= PEV_PRICE_MIN && brut <= PEV_PRICE_MAX ? Math.round(brut * 100) / 100 : NaN;
+    const t = String(brut == null ? '' : brut).replace(/[\s  €]/g, '').replace(',', '.');
+    if (t === '') return null;
+    if (!/^\d+(\.\d{0,2})?$/.test(t)) return NaN;
+    const n = Number(t);
+    return n >= PEV_PRICE_MIN && n <= PEV_PRICE_MAX ? Math.round(n * 100) / 100 : NaN;
+  }
+  const tfSaisieNombre = (v) => (v == null || v === '' ? '' : Number.isInteger(Number(v)) ? String(v) : Number(v).toFixed(2).replace('.', ','));
+  function tfSaisieValide(type, champ, brut) {
+    if (champ === 'nom') return String(brut == null ? '' : brut).replace(/\s+/g, ' ').trim().length > 0;
+    const n = tfLireNombre(brut);
+    if (Number.isNaN(n)) return false;
+    return !(type === 'formule' && champ === 'prix' && n == null);
+  }
+  function tfSaisie(type, id, champ, propre) {
+    const cle = tfCleSaisie(type, id, champ);
+    if (!Object.prototype.hasOwnProperty.call(tarifs.saisies, cle)) return { texte: propre == null ? '' : String(propre), invalide: false };
+    const texte = tarifs.saisies[cle];
+    return { texte, invalide: !tfSaisieValide(type, champ, texte) };
+  }
+  // Ce qui est publie pour CE centre (clientCatalog, entry.effective). Un prix
+  // barre a 0 n existe pas : c est ce que la publication envoie pour l enlever.
+  function tfPublieFormule(entry) {
+    const eff = (entry && entry.effective) || {};
+    return {
+      prix: eff.priceValue != null && Number.isFinite(Number(eff.priceValue)) ? Number(eff.priceValue) : null,
+      ancien: Number(eff.priceOld) > 0 ? Number(eff.priceOld) : null,
+      nom: eff.name != null ? String(eff.name) : String((entry && (entry.name || entry.id)) || ''),
+      vente: eff.enabled !== false && !eff.removed,
+      validation: TF_VALIDATIONS.some((x) => x.mode === eff.humanValidation) ? eff.humanValidation : 'recommended',
+    };
+  }
+  function tfMeme(champ, a, b) {
+    if (champ === 'nom') return String(a == null ? '' : a).trim() === String(b == null ? '' : b).trim();
+    return (a == null ? null : a) === (b == null ? null : b);
+  }
+  function tfPoserFormule(id, champ, valeur) {
+    const entry = pevEntry(id);
+    if (!entry) return false;
+    let v = valeur;
+    if (champ === 'ancien') v = Number(v) > 0 ? Number(v) : null;
+    const publie = tfPublieFormule(entry);
+    const lot = tfLot(true);
+    const b = { ...(lot.formules[id] || {}) };
+    if (tfMeme(champ, v, publie[champ])) delete b[champ]; else b[champ] = v;
+    if (Object.keys(b).length) lot.formules[id] = b; else delete lot.formules[id];
+    tarifs.erreur = '';
+    return true;
+  }
+  const tfActiviteEntree = (id) => (pricingEditor.activities || []).find((a) => a && String(a.id) === String(id)) || null;
+  function tfPublieActivite(entry) {
+    return entry && entry.priceValue != null && Number.isFinite(Number(entry.priceValue)) ? Number(entry.priceValue) : null;
+  }
+  function tfPoserActivite(id, valeur) {
+    const entry = tfActiviteEntree(id);
+    if (!entry) return false;
+    const lot = tfLot(true);
+    const b = { ...(lot.activites[id] || {}) };
+    if (tfMeme('prix', valeur, tfPublieActivite(entry))) delete b.prix; else b.prix = valeur;
+    if (Object.keys(b).length) lot.activites[id] = b; else delete lot.activites[id];
+    tarifs.erreur = '';
+    return true;
+  }
+
+  // ---- UNE FORMULE TELLE QUE LA PAGE LA MONTRE --------------------------------
+  function tfPlageHeures(entry) {
+    const min = entry && entry.timeLimitMinMinutes != null ? Number(entry.timeLimitMinMinutes) / 60 : null;
+    const max = entry && entry.timeLimitMaxMinutes != null ? Number(entry.timeLimitMaxMinutes) / 60 : null;
+    if (min == null && max == null) return null;
+    return { ...(min != null ? { min } : {}), ...(max != null ? { max } : {}) };
+  }
+  // `sans` : la meme vue SANS l un des champs du brouillon (l « avant » d un
+  // changement, pour le recapitulatif).
+  function tfVueFormule(entry, sans = '') {
+    const id = String(entry.id);
+    const meta = tfMetaFormule(id);
+    const publie = tfPublieFormule(entry);
+    const brouillon = tfBrouillonFormule(id) || {};
+    const b = { ...brouillon };
+    if (sans) delete b[sans];
+    const famille = String(entry.bookingFamily || entry.family || 'Formules');
+    // L objet que lit le formulaire client (public-booking-meta) ; a defaut
+    // (formule pas en vente, donc absente du catalogue public), le catalogue
+    // de la console au meme format, sans le minimum releve par le laser.
+    const client = meta || {
+      id,
+      minPax: Math.max(1, Number(entry.minPax) || 1),
+      validDays: Array.isArray(entry.validDays) && entry.validDays.length ? entry.validDays.map(Number) : null,
+      timeLimit: tfPlageHeures(entry),
+      noHolidays: entry.noHolidays === true,
+    };
+    return {
+      id,
+      entry,
+      meta,
+      client,
+      // Hors des 14 ids du socle, le serveur refuse tout reglage de centre
+      // (catalog-overrides.js assertFormuleId) : clientCatalog le dit par
+      // source 'custom', calcule sur la meme liste (catalog-overrides.js:589).
+      custom: entry.source === 'custom',
+      famille,
+      anniversaire: /anniv/i.test(famille),
+      parPiste: entry.priceType === 'per_lane',
+      enfants: meta && meta.kidsOnly && typeof meta.kidsOnly === 'object' ? meta.kidsOnly : null,
+      minPax: Math.max(1, Number(client.minPax) || 1),
+      desc: Array.isArray(entry.desc) ? entry.desc.map(String) : [],
+      regles: reglesFormule(client),
+      best: entry.best === true,
+      hasBowling: entry.hasBowling === true,
+      suspendue: tfOffreSuspendue(id),
+      publie,
+      valeur: { ...publie, ...b },
+      modifie: Object.keys(brouillon).length > 0,
+    };
+  }
+  // Les pistes d une formule a la piste : la regle du serveur
+  // (lib/booking-config.js getRequiredLaneCount), sur la capacite du centre.
+  function tfPistes(pax, f) {
+    if (!f.hasBowling) return 0;
+    const centre = tfMetaCentre();
+    const reglage = (centre && centre.booking) || {};
+    const lu = (cle, repli) => { const v = Number(reglage[cle]); return Number.isFinite(v) && v > 0 ? v : repli; };
+    const parc = lu('laneCount', typeof getTotalLanes === 'function' ? getTotalLanes() : NaN);
+    const confort = lu('normalCapacityPerLane', typeof getMaxPerLane === 'function' ? getMaxPerLane() : NaN);
+    const secours = lu('emergencyCapacityPerLane', typeof getEmergencyMaxPerLane === 'function' ? getEmergencyMaxPerLane() : NaN);
+    if (!(parc > 0) || !(confort > 0) || !(secours > 0)) return null;
+    const joueurs = Number(pax) || 1;
+    const normal = Math.ceil(joueurs / confort);
+    return normal > parc && joueurs <= parc * secours ? parc : normal;
+  }
+  // Le nom du comptoir (app-main.js rvNomFormule) et du planning (gpFormule).
+  function tfNomComptoir(nom) {
+    const n = String(nom || 'Formule');
+    return n === n.toUpperCase() && /[A-ZÀ-Ý]{3}/.test(n) ? n.charAt(0) + n.slice(1).toLowerCase() : n;
+  }
+  function tfNomPlanning(nom) {
+    let n = String(nom || 'Formule').trim();
+    const numero = /^formule\s*(\d+)$/i.exec(n);
+    if (n === n.toUpperCase()) n = n.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (x, a, b) => a + b.toUpperCase());
+    return numero ? `F${numero[1]}` : n;
+  }
+  // La touche « Formules » de Reserver (app-main.js rsPortesConstruire et
+  // rsFormulesDuJour) : les formules valables ce jour pour ce groupe, et leur
+  // fourchette. Le brouillon du centre s y applique.
+  function tfPorteFormules() {
+    const lot = tfLot(false);
+    const brouillons = (lot && lot.formules) || {};
+    const servies = tfMetaFormules();
+    const vives = pevFormulesVives();
+    const liste = servies ? servies.map((f) => ({ ...f })) : vives.filter((f) => f.enabled !== false && !f.removed).map((f) => ({ ...f }));
+    Object.entries(brouillons).forEach(([id, b]) => {
+      const i = liste.findIndex((f) => f.id === id);
+      if ('vente' in b && !b.vente) { if (i >= 0) liste.splice(i, 1); return; }
+      if ('vente' in b && b.vente && i < 0) { const vive = vives.find((f) => f.id === id); if (vive) liste.push({ ...vive }); }
+      const f = liste.find((x) => x.id === id);
+      if (f && 'prix' in b) f.price = b.prix;
+    });
+    const date = tfDateReference();
+    const n = tarifs.groupe;
+    const valables = liste.filter((f) => {
+      let ok = true;
+      if (typeof getFormuleAvailability === 'function') {
+        try { ok = Boolean(getFormuleAvailability(f, date, n, '').ok); } catch (e) { ok = true; }
+      }
+      return ok || n < (Number(f.minPax) || 1);
+    });
+    if (!valables.length) return 'Aucune ce jour-là';
+    const prix = valables.map((f) => Number(f.price)).filter(Number.isFinite);
+    const parJoueur = valables.every((f) => f.type !== 'per_lane');
+    return `${tfPluriel(valables.length, 'formule')}${prix.length ? `, de ${tfEurosConsole(Math.min(...prix))} à ${tfEurosConsole(Math.max(...prix))}` : ''}${parJoueur ? ' par joueur' : ''}`;
+  }
+  // Ce que chaque endroit montre de la formule, pour le groupe d exemple.
+  function tfValeursFormule(f) {
+    const n = tarifs.groupe;
+    const v = f.valeur;
+    const prix = v.prix == null ? null : Number(v.prix);
+    const enfants = f.enfants;
+    const remise = !f.anniversaire && Number(prix) > 0 && Number(v.ancien) > Number(prix) ? Math.round((1 - Number(prix) / Number(v.ancien)) * 100) : 0;
+    // La bande du bas de la carte (htmlInfoFormule, fungalaxy-booking.js:718) :
+    // le montant du groupe, sinon ce qui ne se lit nulle part avant les heures.
+    const totalGroupe = !f.parPiste && !enfants && Number(prix) > 0 && n >= Math.max(1, f.minPax) ? Math.round(Number(prix) * n * 100) / 100 : null;
+    const jours = f.client.validDays && f.client.validDays.length && f.client.validDays.length < 7 ? joursLisibles(f.client.validDays) : '';
+    let bref = f.minPax > 1 ? `Dès ${f.minPax}${enfants ? ' enfants' : ' personnes'}`
+      : enfants ? `${enfants.ageMin} à ${enfants.ageMax} ans`
+        : ([jours, plageLisible(f.client.timeLimit)].filter(Boolean).join(' · ') || 'Voir les conditions');
+    const illimite = f.desc.find((d) => /^toutes les activit[eé]s illimit[eé]es$/i.test(String(d).trim())) || '';
+    if (illimite) bref = `${illimite} · ${bref}`;
+    // Le prix que le SERVEUR retient (getBasePrice) : par personne, ou par
+    // piste ; le prix public et celui des mails est arrondi a l euro
+    // (lib/reservation-request.js estimatePublicPrice).
+    const pistes = f.parPiste ? tfPistes(n, f) : 0;
+    const base = prix == null || pistes == null ? null : (f.parPiste ? prix * pistes : prix * n);
+    const publicArrondi = base == null ? null : Math.max(0, Math.round(base));
+    const confirme = v.validation !== 'required';
+    return {
+      nom: v.nom,
+      prix: prix == null ? 'Prix à l’accueil' : tfEuros(prix),
+      unite: f.parPiste ? 'la piste' : enfants ? 'par enfant' : 'par personne',
+      ancien: v.ancien ? tfEuros(v.ancien) : '',
+      remise: remise >= 5 ? `-${remise} %` : '',
+      duree: tfDureeDe(f.id),
+      bandeTotale: totalGroupe != null,
+      bandeAvant: illimite ? `${illimite} · ` : '',
+      bandeTotal: totalGroupe != null ? tfEuros(totalGroupe) : '',
+      bandePour: `pour ${tfPluriel(n, 'personne')}`,
+      bref,
+      vente: Boolean(v.vente),
+      retiree: !v.vente,
+      confirme,
+      demande: !confirme,
+      laser: v.validation === 'required_when_laser_busy',
+      finTitre: confirme ? 'Réservation confirmée' : 'Demande envoyée',
+      finTexte: confirme ? 'C’est réservé : on vous attend !' : 'L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.',
+      finMontant: publicArrondi > 0 ? `Montant indicatif ${tfEuros(publicArrondi)}` : 'Tout se règle sur place',
+      mailObjet: confirme ? 'Réservation confirmée' : 'Demande reçue',
+      mailMontant: publicArrondi != null ? tfEurosMail(publicArrondi) : 'Sur place',
+      plage: tfPorteFormules(),
+      ticketNom: tfNomComptoir(v.nom),
+      joueurs: tfPluriel(n, 'joueur'),
+      ticketTotal: base != null ? tfEurosConsole(base) : 'sur place',
+      dossier: v.validation === 'required' ? 'À vérifier' : 'Confirmé',
+      badge: v.validation === 'required' ? 'À vérifier' : 'Confirmée',
+      aVerifier: v.validation === 'required',
+      court: tfNomPlanning(v.nom),
+    };
+  }
+
+  // ---- OU VA CHAQUE REGLAGE ---------------------------------------------------
+  // Un fil = un effet verifie dans le code (carte des effets du 03/11). Le prix
+  // n arrive aux mails que si la reservation est confirmee : le mail « demande
+  // reçue » ne porte pas de montant (lib/ops-communications.js).
+  function tfLieuxFormule() {
+    return ['formulaire', 'fin', 'mails', 'comptoir', 'planning', ...(tfAutresCentres().length ? ['autres'] : [])];
+  }
+  function tfLieuxDe(champ, f) {
+    const v = f.valeur;
+    switch (champ) {
+      case 'prix': return ['formulaire', 'fin', v.validation !== 'required' ? 'mails' : '', 'comptoir'].filter(Boolean);
+      case 'ancien': return ['formulaire'];
+      case 'nom': return ['formulaire', 'fin', 'mails', 'comptoir', 'planning'];
+      case 'vente': return ['formulaire', 'comptoir'];
+      case 'validation': return ['fin', 'mails', 'comptoir', 'planning'];
+      case 'structure': return ['formulaire', 'comptoir', 'planning', ...(tfAutresCentres().length ? ['autres'] : [])];
+      default: return [];
+    }
+  }
+  function tfPhrase(champ, lieu, f) {
+    const autres = tfEt(tfAutresCentres());
+    const regles = f && f.regles && f.regles.length ? ` et les pastilles ${f.regles.map((r) => `« ${r} »`).join(', ')}` : '';
+    const textes = {
+      prix: {
+        formulaire: 'Le prix sur la carte, le total pour le groupe, et l’écart proposé dans « Envie d’un peu plus ? ».',
+        fin: 'Le montant indicatif de l’écran de fin.',
+        mails: 'Le montant estimé du mail « réservation confirmée ».',
+        comptoir: 'Le prix de la formule et le total du ticket dans Réserver.',
+      },
+      ancien: { formulaire: 'Barré à côté du prix. Sur une offre spéciale, le client lit aussi la remise « -N % », dès 5 %.' },
+      nom: {
+        formulaire: 'Le titre de la carte et le récapitulatif.',
+        fin: 'La ligne « Au programme » de l’écran de fin.',
+        mails: 'La ligne « Offre » des mails des prochaines réservations.',
+        comptoir: 'La carte de la formule et le ticket dans Réserver.',
+        planning: 'Les cartes du planning, la liste et la fiche, y compris les réservations déjà prises.',
+      },
+      vente: {
+        formulaire: `Coupée, la formule disparaît du formulaire de ${tfNomCentre()}. Un client qui l’avait choisie la perd au rafraîchissement.`,
+        comptoir: 'Elle n’est plus proposée dans Réserver.',
+      },
+      validation: {
+        fin: '« Réservation confirmée » ou « Demande envoyée, l’équipe vérifie sous 24 heures ouvrables ».',
+        mails: 'Mail « réservation confirmée » (avec rappel 48 h) ou « demande reçue », et un mail à l’équipe.',
+        comptoir: 'Au comptoir, seul « Toujours » fait partir le dossier « à vérifier ».',
+        planning: 'Le dossier arrive « À vérifier » sur le planning, la liste et la fiche, avec le bouton Valider.',
+      },
+      structure: {
+        formulaire: `La durée sur place, les heures d’arrivée proposées${regles}.`,
+        comptoir: 'La formule grisée avec sa raison. « Créer quand même » reste possible selon le rôle.',
+        planning: 'Ce que le planning réserve : pistes, arène, table.',
+        autres: `${autres} aussi : le contenu appartient à l’entreprise.`,
+      },
+    };
+    return (textes[champ] && textes[champ][lieu]) || '';
+  }
+  function tfPasConcerneAutres() {
+    const autres = tfAutresCentres();
+    return autres.length > 1
+      ? `Pas concerné : ${tfEt(autres)} gardent leurs propres prix, noms et mises en vente.`
+      : `Pas concerné : ${autres[0]} garde ses propres prix, nom et mise en vente.`;
+  }
+  // Le pied de planche du champ en main : ce qu il ne touche pas, le piege,
+  // qui peut le changer, quand ca arrive chez le client.
+  function tfPied(champ, f) {
+    const autres = tfAutresCentres();
+    const duCentre = TF_CHAMPS.includes(champ);
+    const pas = {
+      prix: 'Les réservations déjà prises gardent leur prix. Si l’équipe change ensuite leur contenu (joueurs, activités), elles passent au nouveau prix.',
+      ancien: 'Le total, le comptoir et les mails ne le montrent pas.',
+      nom: 'Les mails déjà envoyés. Le Terrain garde le nom du jour de la réservation.',
+      vente: `Les réservations déjà prises restent.${autres.length ? ` ${tfEt(autres)} ${autres.length > 1 ? 'gardent la leur' : 'garde la sienne'}.` : ''}`,
+      validation: 'Le prix et ce que voit le client avant de valider.',
+      structure: 'Le prix, le prix barré, le nom et la mise en vente de chaque centre.',
+    }[champ] || '';
+    let savoir = '';
+    if (champ === 'prix') savoir = 'À 0 €, la formule ne se réserve plus en ligne.';
+    if (champ === 'ancien') savoir = 'La remise « -N % » ne s’affiche que sur les offres spéciales, à partir de 5 %.';
+    if (champ === 'vente') {
+      savoir = f && f.suspendue
+        ? 'Suspendue dans Établissement : vos clients voient la carte grisée « momentanément suspendue ».'
+        : 'La case de l’offre dans Établissement, elle, laisse la carte visible mais grisée « momentanément suspendue ».';
+    }
+    if (champ === 'structure' && f) {
+      const pieges = [];
+      if (!f.custom) pieges.push('Pour une formule d’origine, la liste lue par le client ne suit pas le contenu : c’est sa description qui s’affiche.');
+      if (f.meta && f.meta.minPaxLaser === true) pieges.push(`Avec son laser, elle se réserve à ${Number(f.meta.minPax)} au moins, même réglée plus bas.`);
+      savoir = pieges.join(' ');
+    }
+    return {
+      pas,
+      savoir,
+      qui: `${tfMajuscule(tfQui(duCentre ? 'pricing.manage' : 'settings.manage'))}.`,
+      quand: duCentre ? TF_QUAND : 'Dès l’enregistrement de la fenêtre, pour tous vos centres.',
+    };
+  }
+
+  // ---- UNE ACTIVITE TELLE QUE LA PAGE LA MONTRE ------------------------------
+  function tfVueActivite(entry) {
+    const id = String(entry.id);
+    const meta = tfMetaActivite(id);
+    const b = tfBrouillonActivite(id) || {};
+    const publie = tfPublieActivite(entry);
+    const priceType = String((meta && meta.priceType) || entry.priceType || '');
+    const offres = (meta && meta.arcadeOffers) || entry.arcadeOffers || null;
+    const arcades = id === 'arcade_time' && Boolean(offres) && offres.enabled !== false;
+    const grille = /^grid_/.test(priceType);
+    const seule = entry.bookable === true;
+    return {
+      id,
+      entry,
+      meta,
+      nom: String(entry.name || (meta && meta.name) || id),
+      seule,
+      priceType,
+      grille,
+      arcades,
+      simple: seule && !arcades && !grille && (priceType === 'per_pax' || priceType === 'per_unit_hour'),
+      offres,
+      unitLabel: String((meta && meta.unitLabel) || entry.priceUnit || ''),
+      note: String((meta && meta.note) || ''),
+      ages: meta && typeof meta.ageRange === 'string' ? meta.ageRange : '',
+      minPax: Number(meta && meta.minPax) || 0,
+      paliers: Boolean(meta && meta.pricing && Array.isArray(meta.pricing.tiers) && meta.pricing.tiers.length),
+      publie,
+      prix: 'prix' in b ? b.prix : publie,
+      modifie: 'prix' in b,
+    };
+  }
+  function tfActivites() {
+    const possedees = Array.isArray(pricingEditor.centerActivityIds) ? pricingEditor.centerActivityIds.map(String) : [];
+    const publiques = tfMetaActivites();
+    const ordre = new Map(publiques.map((a, i) => [a.id, Number.isFinite(Number(a.order)) ? Number(a.order) : i]));
+    return (pricingEditor.activities || [])
+      .filter((a) => a && a.id && (possedees.length ? possedees.includes(String(a.id)) : ordre.has(a.id)))
+      .map(tfVueActivite)
+      .sort((x, y) => (x.seule === y.seule
+        ? ((ordre.has(x.id) ? ordre.get(x.id) : 999) - (ordre.has(y.id) ? ordre.get(y.id) : 999)) || x.nom.localeCompare(y.nom, 'fr')
+        : x.seule ? -1 : 1));
+  }
+  // Le « Dès … » de la carte d une activite dans le formulaire client, a
+  // l identique de prixCarte (fungalaxy-booking.js:1021, carte pas encore
+  // choisie), de reglageArcade (839) et d optionsPour (528).
+  function tfOptionsGrille(a) {
+    const d = tfMetaDonnees() || {};
+    if (a.priceType === 'grid_bowling' || a.id === 'bowling' || (a.entry && a.entry.resourceType === 'bowling')) {
+      // Un centre qui vend le bowling AUX PARTIES et par personne (N4) : ses
+      // paliers par jours, jamais la grille par piste de Fun Galaxy (meme
+      // lecture que getPricingRows et lib/booking-config.resolveBowlingPricing).
+      const ressource = (typeof getAdminCenter === 'function' ? ((getAdminCenter() || {}).resources || {}) : {}).bowling;
+      const duCentre = ressource && ressource.pricing && ressource.pricing.mode === 'per_game_per_person'
+        && Array.isArray(ressource.pricing.tiers) && ressource.pricing.tiers.length ? ressource.pricing : null;
+      const parties = duCentre || (typeof getBowlingPricing === 'function' ? getBowlingPricing() : null);
+      if (parties) {
+        const options = [];
+        (parties.tiers || []).forEach((tier) => {
+          const jours = typeof describePricingDays === 'function' ? describePricingDays(tier.days) : '';
+          (tier.prices || []).forEach((prix, i) => options.push({ label: `${i + 1} partie${i ? 's' : ''}${jours ? ` (${jours})` : ''}`, prix: Number(prix) || 0, unite: '/ personne' }));
+        });
+        return options;
+      }
+      return (d.durationOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ piste' }));
+    }
+    if (a.priceType === 'grid_laser') return (d.laserOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ personne' }));
+    if (a.priceType === 'grid_fun_run') return (d.funRunOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ session' }));
+    return [];
+  }
+  function tfCartesArcades(a) {
+    const c = a.offres;
+    if (!a.arcades || !c) return null;
+    const valide = (o) => o && o.enabled !== false && /^[a-z0-9][a-z0-9-]{0,59}$/.test(String(o.id)) && o.price != null && isFinite(Number(o.price)) && Number(o.price) >= 0;
+    const temps = (c.timeOffers || []).filter((o) => valide(o) && Number(o.minutes) > 0);
+    const credits = (c.creditOffers || []).filter((o) => valide(o) && Number(o.credits) >= 0 && Number(o.bonusCredits || 0) >= 0);
+    return temps.length || credits.length ? { temps, credits } : null;
+  }
+  function tfPrixCarte(a, prix = a.prix) {
+    const cartes = tfCartesArcades(a);
+    if (cartes) return `Dès ${tfEuros(Math.min(...cartes.temps.concat(cartes.credits).map((o) => Number(o.price))))} / carte`;
+    const options = tfOptionsGrille(a);
+    if (options.length) {
+      const mini = Math.min(...options.map((o) => o.prix).filter((p) => p >= 0));
+      return isFinite(mini) ? `Dès ${tfEuros(mini)} ${options[0].unite}` : 'Prix à l’accueil';
+    }
+    const connu = prix != null && isFinite(Number(prix)) && Number(prix) >= 0;
+    const unite = a.unitLabel ? ` ${a.unitLabel.replace(/^par /, '/ ')}` : '';
+    if (a.priceType === 'per_pax' || a.priceType === 'per_unit_hour') return connu ? `Dès ${tfEuros(prix)}${unite}` : 'Prix à l’accueil';
+    return connu ? `${tfEuros(prix)}${unite}` : 'Prix à l’accueil';
+  }
+  // Le nom de la touche de Reserver (app-main.js rsNomTuile).
+  function tfNomTuile(nom) {
+    const mots = String(nom || '').trim().split(/\s+/);
+    if (mots.length > 2) return mots.slice(0, 2).join(' ');
+    return mots.length === 2 && mots[0].length >= 6 ? mots[0] : mots.join(' ');
+  }
+  function tfValeursActivite(a) {
+    const n = tarifs.groupe;
+    const enfant = a.priceType === 'per_pax' && /enfant/i.test(a.unitLabel);
+    // La touche de Reserver : le calcul du comptoir (booking-core.js
+    // getFreeActivityPrice), le brouillon applique, pour le groupe d exemple.
+    let tuile = null;
+    if (typeof getFreeActivityPrice === 'function' && (a.simple || a.arcades)) {
+      const objet = { ...(a.meta || {}), id: a.id, priceType: a.priceType, priceValue: a.prix, arcadeOffers: a.offres };
+      const options = a.arcades && typeof defaultArcadeOptions === 'function' ? defaultArcadeOptions(objet) : {};
+      try { tuile = getFreeActivityPrice(objet, { pax: n, dateStr: tfDateReference(), ...options }); } catch (e) { tuile = null; }
+    }
+    return {
+      des: tfPrixCarte(a),
+      total: a.priceType === 'per_pax' && a.simple && a.prix != null ? tfEuros(Math.round(Number(a.prix) * n * 100) / 100) : '',
+      pour: tfPluriel(n, enfant ? 'enfant' : 'joueur'),
+      tuileNom: tfNomTuile(a.nom),
+      tuile: tuile != null ? tfEurosConsole(tuile) : 'sur place',
+      grille: tfOptionsGrille(a).map((o) => `${o.label} ${tfEuros(o.prix)}`).join(' · '),
+    };
+  }
+  function tfLieuxActivite(a) {
+    if (!a.seule) return [];
+    return ['formulaire', 'comptoir', ...(a.simple && tfAutresCentres().length ? ['autres'] : [])];
+  }
+  function tfPhraseActivite(lieu) {
+    if (lieu === 'formulaire') return '« Dès … » sur la carte de l’activité, et le total du groupe. Vide : « Prix à l’accueil ».';
+    if (lieu === 'comptoir') return 'La touche de l’activité et le total du ticket dans Réserver.';
+    return `${tfEt(tfAutresCentres())} aussi : le prix d’une activité vaut pour toute l’entreprise.`;
+  }
+
+  // ---- LE CONTEXTE OUVERT -------------------------------------------------------
+  const tfPlanche = () => document.querySelector('#staffPricingPage [data-tf-planche]');
+  function tfContexte() {
+    const planche = tfPlanche();
+    if (!planche) return null;
+    const id = planche.getAttribute('data-tf-planche');
+    if (planche.getAttribute('data-tf-type') === 'activite') {
+      const entree = tfActiviteEntree(id);
+      return entree ? { type: 'activite', id, vue: () => tfVueActivite(tfActiviteEntree(id) || entree) } : null;
+    }
+    const entry = pevEntry(id);
+    return entry ? { type: 'formule', id, vue: () => tfVueFormule(pevEntry(id) || entry) } : null;
+  }
+  function tfValeursCourantes() {
+    const ctx = tfContexte();
+    if (!ctx) return null;
+    const vue = ctx.vue();
+    return ctx.type === 'formule' ? tfValeursFormule(vue) : tfValeursActivite(vue);
+  }
+  function tfLieuxActifs(ctx, champ, vue) {
+    if (!ctx || !champ) return [];
+    if (ctx.type === 'formule') return tfLieuxDe(champ, vue);
+    return champ === 'prix' ? tfLieuxActivite(vue) : [];
+  }
+
+  // ---- L HISTORIQUE DE 30 JOURS ----------------------------------------------
+  // TANT QUE L HISTORIQUE N EST PAS ARRIVE, IL N Y A PAS DE CHIFFRE (gate
+  // journee-vraie) ; sans le droit, aucun appel a /api/admin-range.
+  function tfHistoriqueLisible() {
+    if (typeof canReadStaffReservationHistory === 'function' && !canReadStaffReservationHistory()) return false;
+    const h = typeof staffClientDataCache === 'undefined' ? { loaded: true } : staffClientDataCache;
+    return Boolean(h.loaded);
+  }
+  function tfLireUsages() {
+    if (!tfHistoriqueLisible() || typeof getPricingUsageMap !== 'function') return null;
+    try { return getPricingUsageMap(); } catch (e) { return null; }
+  }
+  function tfUsage(cles) {
+    const carte = tarifs.usages;
+    if (!carte) return '';
+    const n = [].concat(cles).reduce((s, c) => s + (Number((carte.get(c) || {}).count) || 0), 0);
+    return n ? `${tfPluriel(n, 'réservation')} / 30 j` : '';
+  }
+  function tfResumeTexte() {
+    if (typeof canReadStaffReservationHistory === 'function' && !canReadStaffReservationHistory()) return '30 derniers jours : non accessible avec votre rôle';
+    const h = typeof staffClientDataCache === 'undefined' ? { loaded: true } : staffClientDataCache;
+    if (!h.loaded) return h.error ? 'Historique indisponible' : 'Les 30 derniers jours arrivent du serveur…';
+    const m = getPricingMetrics(getPricingRows());
+    if (!Number(m.reservations)) return '30 derniers jours : aucune réservation';
+    const montant = typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view') ? '···' : money(m.revenue);
+    const top = m.topRow && Number(m.topRow.count) > 0 ? m.topRow : null;
+    return `30 derniers jours : ${tfPluriel(Number(m.reservations), 'réservation')} · ${montant} réservés${top ? ` · la plus demandée : ${top.title}` : ''}`;
+  }
+
+  // ---- LE RENDU ---------------------------------------------------------------
+  const tfOnglet = () => (TF_ONGLETS.includes(state.staffPricingTab) ? state.staffPricingTab : 'formules');
+  // Un rechargement (publication, direct) garde l ancien catalogue a l ecran
+  // jusqu a la reponse : la planche ouverte et le focus ne sautent pas. Seule
+  // la bascule de centre le vide (pevResetCatalogCache).
+  const tfPret = () => pricingEditor.loaded || pricingEditor.byId.size > 0;
+  const tfCherche = () => tfPlie(String(state.staffPricingQuery || '').trim());
+  const tfTrouve = (...textes) => { const q = tfCherche(); return !q || textes.some((t) => tfPlie(t).includes(q)); };
+  const tfV = (cle, vals, balise = 'span', classe = '') => `<${balise}${classe ? ` class="${classe}"` : ''} data-tf-val="${cle}"${vals[cle] === '' ? ' hidden' : ''}>${esc(vals[cle])}</${balise}>`;
+  const tfSi = (cle, vals) => `data-tf-si="${cle}"${vals[cle] ? '' : ' hidden'}`;
+  const tfSinon = (cle, vals) => `data-tf-sinon="${cle}"${vals[cle] ? ' hidden' : ''}`;
+  // La famille telle que le client la lit (fungalaxy-booking.js libelleFamille).
+  function tfLibelleFamille(famille) {
+    const cle = tfPlie(famille).trim();
+    if (cle === 'formules anniversaires') return 'Anniversaires';
+    if (cle === 'formules speciales') return 'Offres spéciales';
+    return famille;
+  }
+
+  function tfPageHtml() {
+    const onglet = tfOnglet();
+    const reglages = cevCanManage();
+    const sm = window.PinlaneSurMesureSettings || null;
+    const articles = sm && typeof sm.compte === 'function' ? sm.compte() : undefined;
+    const onglets = [
+      { cle: 'formules', mot: 'Formules', n: tfPret() ? pricingEditor.byId.size : undefined },
+      { cle: 'activites', mot: 'Activités', n: tfPret() ? tfActivites().length : undefined },
+      { cle: 'surmesure', mot: 'Sur mesure', n: articles, note: 'vu par l’équipe seulement' },
+    ];
+    const zone = onglet === 'activites' ? tfActivitesHtml() : onglet === 'surmesure' ? tfSurMesureHtml() : tfFormulesHtml();
+    return `<div class="pv2-shell tf-page" data-tf-page data-pl-libre>
+      ${bar({
+        crumb: 'Activités & tarifs',
+        title: 'Tarifs & formules',
+        sub: '',
+        actions: `<label class="pv2-search tf-cherche">${TF_ICO.cherche}<input type="search" value="${esc(state.staffPricingQuery || '')}" placeholder="Nom, contenu, condition…" aria-label="Chercher une formule ou une activité" data-tf-cherche data-pl-focus="tf:cherche"></label>
+          <button type="button" class="pv2-btn" data-tf-action="copier" data-pl-focus="tf:copier">Copier</button>
+          <button type="button" class="pv2-btn" data-tf-action="exporter" data-pl-focus="tf:exporter">Exporter</button>
+          ${reglages ? '<button type="button" class="pv2-btn" id="cevAddCategory" data-tf-action="categorie" data-pl-focus="tf:categorie" title="Créer une catégorie : donnez-lui un nom, elle apparaît partout">+ Catégorie</button>' : ''}`,
+      })}
+      <div class="tf-outils">
+        <div class="pv2-seg tf-onglets" role="tablist" aria-label="Ce que vous vendez"><span class="pv2-seg-pill"></span>${onglets.map((o) => {
+          const actif = o.cle === onglet;
+          return `<button type="button" role="tab" id="tfOnglet-${o.cle}" class="${actif ? 'active' : ''}" aria-selected="${actif}" aria-controls="tfZone" tabindex="${actif ? 0 : -1}" data-tf-onglet="${o.cle}" data-pl-focus="tf:onglet:${o.cle}">${esc(o.mot)}${o.n !== undefined ? `<em>${Number(o.n) || 0}</em>` : ''}${o.note ? `<span class="tf-onglet-note">${esc(o.note)}</span>` : ''}</button>`;
+        }).join('')}</div>
+        ${onglet === 'surmesure' ? '' : tfGroupeHtml()}
       </div>
-      <div class="pev-badges">${badges}</div>
-      ${canManage ? `<div class="pev-card-foot">
-        <div class="pev-foot-main"><button type="button" class="pv2-btn sm" data-aev-edit="${esc(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button></div>
-        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${esc(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
-      </div>` : ''}
-    </article>`;
+      <p class="tf-resume" data-tf-resume>${esc(tfResumeTexte())}</p>
+      <div class="tf-zone" id="tfZone" role="tabpanel" aria-labelledby="tfOnglet-${onglet}">${zone}</div>
+      <div class="tf-barre-place" data-tf-barre-place>${tfBarreHtml()}</div>
+    </div>
+    <aside class="tf-tiroir" data-tf-tiroir role="dialog" aria-modal="false" aria-labelledby="tfTiroirTitre"${tarifs.tiroir ? '' : ' hidden'}>${tarifs.tiroir ? tfTiroirHtml() : ''}</aside>`;
+  }
+
+  function tfGroupeHtml() {
+    return `<div class="tf-groupe" role="group" aria-labelledby="tfGroupeMot">
+      <span id="tfGroupeMot">Pour un groupe de</span>
+      <span class="tf-groupe-ctl">
+        <button type="button" data-tf-action="groupe-moins" data-pl-focus="tf:groupe-moins" aria-label="Une personne de moins">${TF_ICO.moins}</button>
+        <input type="number" min="${TF_GROUPE_MIN}" max="${TF_GROUPE_MAX}" step="1" inputmode="numeric" value="${tarifs.groupe}" aria-label="Nombre de personnes du groupe" data-tf-groupe data-pl-focus="tf:groupe">
+        <button type="button" data-tf-action="groupe-plus" data-pl-focus="tf:groupe-plus" aria-label="Une personne de plus">${TF_ICO.plus}</button>
+      </span>
+    </div>`;
+  }
+
+  function tfPanneHtml() {
+    return `<div class="tf-panne" role="alert"><p><strong>Catalogue indisponible.</strong> ${esc(pricingEditor.error)}</p><button type="button" class="pv2-btn" data-tf-action="reessayer" data-pl-focus="tf:reessayer">Réessayer</button></div>`;
+  }
+  const tfAttenteHtml = () => '<p class="tf-attente" role="status">Chargement du catalogue…</p>';
+
+  // ---- ONGLET FORMULES ----------------------------------------------------------
+  function tfFormulesHtml() {
+    if (!tfPret()) return pricingEditor.error ? tfPanneHtml() : tfAttenteHtml();
+    const reglages = cevCanManage();
+    const vues = [...pricingEditor.byId.values()].map((entry) => tfVueFormule(entry));
+    const familles = [];
+    vues.forEach((f) => { if (!familles.includes(f.famille)) familles.push(f.famille); });
+    // Anniversaires, offres speciales, puis les familles creees, dans leur
+    // ordre d apparition au catalogue.
+    const rang = (famille) => { const cle = tfPlie(famille).trim(); return cle === 'formules anniversaires' ? 0 : cle === 'formules speciales' ? 1 : 2; };
+    familles.sort((a, b) => rang(a) - rang(b));
+    const sections = familles.map((famille, i) => {
+      const toutes = vues.filter((f) => f.famille === famille);
+      const montrees = toutes.filter((f) => tfTrouve(f.valeur.nom, f.publie.nom, f.desc.join(' '), f.regles.join(' ')));
+      if (!montrees.length) return '';
+      return `<section class="tf-famille" data-tf-famille="${esc(famille)}" aria-labelledby="tfFam-${i}">
+        <div class="tf-table">
+          <div class="tf-entete">
+            <span class="tf-entete-titre"><h2 id="tfFam-${i}">${esc(tfLibelleFamille(famille))}</h2><span class="tf-compte">${toutes.length}</span></span>
+            <span class="tf-entete-col" aria-hidden="true">Contenu</span><span class="tf-entete-col" aria-hidden="true">Conditions</span><span class="tf-entete-col" aria-hidden="true">Confirmation</span><span class="tf-entete-col tf-entete-prix" aria-hidden="true">Prix</span>
+          </div>
+          ${montrees.map(tfLigneFormuleHtml).join('')}
+          ${reglages ? `<div class="tf-ajout"><button type="button" class="pv2-btn sm" data-add-formula="${esc(famille)}" data-pl-focus="tf:ajout:${esc(famille)}">+ Formule</button><span>${esc(tfPorteeEntreprise())}</span></div>` : ''}
+        </div>
+      </section>`;
+    }).join('');
+    const rien = `<p class="tf-rien">Aucune formule ne correspond à « ${esc(state.staffPricingQuery || '')} ».</p>`;
+    return `${pricingEditor.error ? tfPanneHtml() : ''}<div class="tf-formules" id="cevCatalogBlock">${sections || (tfCherche() ? rien : '<p class="tf-rien">Aucune formule dans ce catalogue.</p>')}</div>`;
+  }
+
+  function tfLigneFormuleHtml(f) {
+    const ouvert = tarifs.ouvert.formules === f.id;
+    const p = f.publie;
+    const usage = tfUsage(`formula-${f.id}`);
+    const manque = missingIngredientsFor(f.entry);
+    const ferme = closedDayWarningFor(f.entry);
+    const alertes = [
+      manque.length ? `Pas réalisable ici : il manque ${manque.join(', ')}` : '',
+      ferme,
+      f.suspendue ? 'Suspendue dans Établissement' : '',
+      p.vente ? '' : 'Pas en vente',
+    ].filter(Boolean);
+    const unite = f.parPiste ? 'la piste' : f.enfants ? '/enfant' : '/pers';
+    const changeable = !f.custom && tfPeutTarifs();
+    const libelle = `Prix de ${p.nom} : ${p.prix == null ? 'à l’accueil' : `${tfEuros(p.prix)} ${f.parPiste ? 'la piste' : f.enfants ? 'par enfant' : 'par personne'}`}${changeable ? ', le changer' : ''}`;
+    const id = esc(f.id);
+    return `<div class="tf-ligne${ouvert ? ' is-ouverte' : ''}${p.vente ? '' : ' is-coupee'}${f.modifie ? ' is-modifiee' : ''}" data-tf-ligne="${id}" data-cev-formula="${id}">
+      <button type="button" class="tf-ligne-btn" data-tf-ouvrir="${id}" data-pl-focus="tf:ouvrir:${id}" aria-expanded="${ouvert}" aria-controls="tfPlanche-${id}">
+        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${f.modifie ? '' : ' hidden'}></i><b>${esc(p.nom)}</b>${f.best ? '<span class="tf-bon">Bon plan</span>' : ''}<span class="tf-modifie" data-tf-modifie${f.modifie ? '' : ' hidden'}>modifié</span>${usage ? `<small class="tf-usage">${esc(usage)}</small>` : ''}</span>
+        <span class="tf-c-contenu">${esc(f.desc.join(' · '))}</span>
+        <span class="tf-c-regles">${esc(f.regles.join(', ') || 'Sans condition')}</span>
+        <span class="tf-c-valid${p.validation === 'recommended' ? '' : ' is-equipe'}">${esc(tfValidation(p.validation).liste)}</span>
+      </button>
+      <button type="button" class="tf-c-prix" data-tf-prix="${id}" data-pl-focus="tf:prixligne:${id}" aria-label="${esc(libelle)}"><span class="tf-montant" data-tf-montant><b>${esc(p.prix == null ? 'à l’accueil' : tfEuros(p.prix))}</b> <small>${esc(unite)}</small></span>${p.ancien ? `<s data-tf-barre-prix>${esc(tfEuros(p.ancien))}</s>` : ''}</button>
+      <span class="tf-c-chev" data-tf-ouvrir="${id}" aria-hidden="true">${TF_ICO.chevron}</span>
+      ${alertes.length ? `<div class="tf-alertes">${alertes.map((a) => `<span class="tf-alerte" data-tf-alerte>${esc(a)}</span>`).join('')}</div>` : ''}
+    </div>${ouvert ? tfPlancheFormuleHtml(f) : ''}`;
+  }
+
+  function tfRangee(cle, libelle, controle, { pour = '', apres = '', haut = false, desc = '' } = {}) {
+    const titre = pour
+      ? `<label class="tf-r-nom" for="${pour}" id="tfT-${cle}">${esc(libelle)}</label>`
+      : `<span class="tf-r-nom" id="tfT-${cle}">${esc(libelle)}</span>`;
+    return `<div class="tf-r${haut ? ' is-haut' : ''}" data-tf-r="${cle}">${titre}<div class="tf-r-saisie" data-tf-port>${controle}</div>${apres}<span class="tf-sr" id="tfD-${cle}">${esc(desc)}</span></div>`;
+  }
+  const tfSeVoit = (lieux) => `Se voit dans : ${tfEt(lieux.map((l) => (l === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[l].toLowerCase())))}.`;
+  function tfTexteAide(type, champ, brut, valide) {
+    if (type === 'activite') return valide ? 'Vide : vos clients lisent « Prix à l’accueil ».' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
+    if (champ === 'prix') { if (!valide) return 'Indiquez un prix entre 0 et 1000 €.'; return tfLireNombre(brut) === 0 ? 'À 0 €, la formule ne se réserve plus en ligne.' : ''; }
+    if (champ === 'ancien') return valide ? 'vide : pas de prix barré' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
+    if (champ === 'nom') return valide ? '' : 'Le nom ne peut pas rester vide.';
+    return '';
+  }
+  function tfAideHtml(type, champ, s) {
+    const texte = tfTexteAide(type, champ, s.texte, !s.invalide);
+    return `<p class="tf-r-aide${s.invalide ? ' is-erreur' : ''}" id="tfA-${champ}" data-tf-aide="${champ}"${texte ? '' : ' hidden'}>${esc(texte)}</p>`;
+  }
+  function tfChampNombre(type, id, champ, s, placeholder = '') {
+    return `<input id="tfChamp-${champ}" class="tf-champ tf-champ-nombre" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="9" value="${esc(s.texte)}"${placeholder ? ` placeholder="${esc(placeholder)}"` : ''} data-tf-champ="${champ}" data-pl-focus="tf:${champ}" aria-describedby="tfD-${champ} tfA-${champ}"${s.invalide ? ' aria-invalid="true"' : ''}>`;
+  }
+
+  function tfChampsFormuleHtml(f) {
+    const v = f.valeur;
+    const unite = f.parPiste ? '€ la piste' : f.enfants ? '€ par enfant' : '€ par personne';
+    const sPrix = tfSaisie('formule', f.id, 'prix', tfSaisieNombre(v.prix));
+    const sAncien = tfSaisie('formule', f.id, 'ancien', tfSaisieNombre(v.ancien));
+    const sNom = tfSaisie('formule', f.id, 'nom', v.nom);
+    const validation = tfValidation(v.validation);
+    const rouvrir = cevCanManage() ? ' <button type="button" class="tf-lien" data-tf-action="etablissement" data-pl-focus="tf:etablissement">Rouvrir dans Établissement</button>' : '';
+    const MOTS = { name: 'le nom', priceValue: 'le prix', priceOld: 'le prix barré', enabled: 'la mise en vente', removed: 'la mise en vente', humanValidation: 'la validation' };
+    const repris = f.entry.centerOverride ? [...new Set(Object.keys(f.entry.centerOverride).map((k) => MOTS[k]).filter(Boolean))] : [];
+    return [
+      tfRangee('prix', 'Prix', `${tfChampNombre('formule', f.id, 'prix', sPrix)}<span class="tf-unite">${esc(unite)}</span>`, {
+        pour: 'tfChamp-prix', desc: tfSeVoit(tfLieuxDe('prix', f)), apres: tfAideHtml('formule', 'prix', sPrix),
+      }),
+      tfRangee('ancien', 'Prix barré', `${tfChampNombre('formule', f.id, 'ancien', sAncien, 'aucun')}<span class="tf-unite">€</span>`, {
+        pour: 'tfChamp-ancien', desc: tfSeVoit(tfLieuxDe('ancien', f)), apres: tfAideHtml('formule', 'ancien', sAncien),
+      }),
+      tfRangee('nom', 'Nom', `<input id="tfChamp-nom" class="tf-champ tf-champ-nom" type="text" maxlength="${PEV_NAME_MAX}" autocomplete="off" value="${esc(sNom.texte)}" data-tf-champ="nom" data-pl-focus="tf:nom" aria-describedby="tfD-nom tfA-nom"${sNom.invalide ? ' aria-invalid="true"' : ''}>`, {
+        pour: 'tfChamp-nom', desc: tfSeVoit(tfLieuxDe('nom', f)), apres: tfAideHtml('formule', 'nom', sNom),
+      }),
+      tfRangee('vente', 'En vente', `<button type="button" class="tf-bascule${v.vente ? ' is-on' : ''}" role="switch" aria-checked="${v.vente}" aria-labelledby="tfT-vente" aria-describedby="tfDit-vente tfD-vente" data-tf-champ="vente" data-pl-focus="tf:vente"><span></span></button><span class="tf-unite" id="tfDit-vente" data-tf-dit-vente>${v.vente ? 'Proposée à vos clients' : 'Retirée de la vente'}</span>`, {
+        desc: tfSeVoit(tfLieuxDe('vente', f)),
+        apres: f.suspendue ? `<p class="tf-r-aide is-alerte">Suspendue dans Établissement : vos clients voient la carte grisée « momentanément suspendue ».${rouvrir}</p>` : '',
+      }),
+      tfRangee('validation', 'Validation par l’équipe', `<div class="tf-seg" role="radiogroup" aria-labelledby="tfT-validation" aria-describedby="tfDit-valid tfD-validation">${TF_VALIDATIONS.map((x) => `<button type="button" role="radio" aria-checked="${x.mode === validation.mode}" tabindex="${x.mode === validation.mode ? 0 : -1}" class="${x.mode === validation.mode ? 'is-on' : ''}" data-tf-valid="${x.mode}" data-pl-focus="tf:valid:${x.mode}">${esc(x.mot)}</button>`).join('')}</div>`, {
+        haut: true, desc: tfSeVoit(tfLieuxDe('validation', f)), apres: `<p class="tf-r-dit" id="tfDit-valid" data-tf-dit-valid>${esc(validation.dit)}</p>`,
+      }),
+      repris.length ? `<div class="tf-catalogue"><button type="button" class="pv2-btn sm" data-tf-action="catalogue" data-tf-id="${esc(f.id)}" data-pl-focus="tf:catalogue">Revenir au catalogue</button><span>${esc(tfMajuscule(tfEt(repris)))} de ${esc(tfNomCentre())} ${repris.length > 1 ? 'reprendraient leur' : 'reprendrait sa'} valeur du catalogue.</span></div>` : '',
+    ].join('');
+  }
+  // Les reglages du centre en lecture : une formule creee par l entreprise
+  // (le serveur refuse tout reglage de centre) ou un role sans le droit Tarifs.
+  function tfLectureFormuleHtml(f) {
+    const v = f.valeur;
+    const ligne = (libelle, texte) => `<div class="tf-r tf-r-lu"><span class="tf-r-nom">${esc(libelle)}</span><span class="tf-r-valeur">${esc(texte)}</span></div>`;
+    const unite = f.parPiste ? 'la piste' : f.enfants ? 'par enfant' : 'par personne';
+    const lignes = [
+      ligne('Prix', v.prix == null ? 'à l’accueil' : `${tfEuros(v.prix)} ${unite}`),
+      ligne('Prix barré', v.ancien ? tfEuros(v.ancien) : 'aucun'),
+      ligne('Nom', v.nom),
+      ligne('En vente', v.vente ? 'Proposée à vos clients' : 'Retirée de la vente'),
+      ligne('Validation', tfValidation(v.validation).liste),
+    ].join('');
+    if (f.custom) {
+      return `${lignes}<p class="tf-r-dit">Formule créée par votre entreprise : ses réglages valent pour tous vos centres.</p>${cevCanManage() ? `<div class="tf-catalogue"><button type="button" class="pv2-btn sm" data-cev-fields="${esc(f.id)}" data-pl-focus="tf:modifier">Modifier</button></div>` : ''}`;
+    }
+    return `${lignes}<p class="tf-r-dit">Réglé par ${esc(tfQui('pricing.manage'))}.</p>`;
+  }
+  function tfCadreHtml(f) {
+    const e = f.entry;
+    const reglages = cevCanManage();
+    const etapes = Array.isArray(e.steps) && e.steps.length ? e.steps.length : f.desc.length;
+    const jours = Array.isArray(e.validDays) ? [...new Set(e.validDays.map(Number))] : [];
+    const morceaux = [
+      etapes ? tfPluriel(etapes, 'activité') : '',
+      Number(e.minPax) > 1 ? `dès ${Number(e.minPax)} personnes` : 'sans minimum',
+      jours.length && jours.length < 7 ? joursLisibles(jours) : 'tous les jours',
+      plageLisible(tfPlageHeures(e)),
+      e.noHolidays ? 'hors vacances et fériés' : '',
+    ].filter(Boolean);
+    const gestes = reglages
+      ? `<div class="tf-cadre-gestes">
+          <button type="button" class="pv2-btn sm" data-cev-steps="${esc(f.id)}" data-pl-focus="tf:steps" aria-describedby="tfT-structure tfD-structure">Modifier le contenu</button>
+          ${f.custom ? '' : `<button type="button" class="pv2-btn sm" data-cev-fields="${esc(f.id)}" data-pl-focus="tf:fields" aria-describedby="tfT-structure tfD-structure">Jours et minimum</button>`}
+          ${f.custom ? `<button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${esc(f.id)}" data-pl-focus="tf:supprimer" aria-label="Supprimer ${esc(f.publie.nom)} du catalogue">Supprimer</button>` : ''}
+        </div>`
+      : `<p class="tf-r-dit">Réglé par ${esc(tfQui('settings.manage'))}, pour tous vos centres.</p>`;
+    return `<div class="tf-cadre" data-tf-r="structure">
+      <div class="tf-cadre-tete"><span class="tf-r-nom" id="tfT-structure">Contenu, jours, heures, minimum</span><span class="tf-portee is-entreprise">${esc(tfPorteeEntreprise())}</span></div>
+      <p class="tf-cadre-resume">${esc(tfMajuscule(morceaux.join(' · ')))}</p>
+      ${gestes}
+      <span class="tf-sr" id="tfD-structure">${esc(tfSeVoit(tfLieuxDe('structure', f)))}</span>
+    </div>`;
+  }
+
+  function tfPlancheFormuleHtml(f) {
+    const vals = tfValeursFormule(f);
+    const editable = !f.custom && tfPeutTarifs();
+    const champs = [...(editable ? TF_CHAMPS : []), 'structure'];
+    const lieux = tfLieuxFormule();
+    const reference = `pour ${tfPluriel(tarifs.groupe, 'personne')}, ${tfDateLisible(tfDateReference())}`;
+    const id = esc(f.id);
+    return `<div class="tf-planche" id="tfPlanche-${id}" data-tf-planche="${id}" data-tf-type="formule" role="region" aria-label="${esc(f.valeur.nom)} : ce que vous réglez et où ça se voit">
+      <div class="tf-cablage" data-tf-cablage>
+        <div class="tf-col tf-col-r">
+          <div class="tf-col-tete"><span class="tf-etape">Ce que vous réglez</span><span class="tf-portee">${esc(tfPorteeCentre())}</span></div>
+          ${editable ? tfChampsFormuleHtml(f) : tfLectureFormuleHtml(f)}
+          ${tfCadreHtml(f)}
+        </div>
+        <div class="tf-gouttiere" aria-hidden="true"></div>
+        <div class="tf-col tf-col-l">
+          <div class="tf-col-tete"><span class="tf-etape">Où ça se voit</span><span class="tf-ref" data-tf-ref>${esc(reference)}</span></div>
+          ${lieux.map((lieu) => tfLieuHtml(lieu, tfMiniFormule(lieu, f, vals), tfReposFormule(lieu, f, champs))).join('')}
+        </div>
+        <svg class="tf-fils" data-tf-fils aria-hidden="true" focusable="false"></svg>
+      </div>
+      ${tfPiedHtml(tfPied(tarifs.focus || champs[0], f))}
+    </div>`;
+  }
+  function tfReposFormule(lieu, f, champs) {
+    const mots = champs.filter((c) => tfLieuxDe(c, f).includes(lieu)).map((c) => TF_MOTS_CHAMP[c]);
+    return mots.length ? `Change avec ${tfEt(mots)}.` : 'Rien de ce que vous réglez ici.';
+  }
+  function tfLieuHtml(lieu, mini, repos) {
+    const nom = lieu === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[lieu];
+    return `<div class="tf-lieu" data-tf-lieu="${lieu}" data-tf-etat="repos" role="group" aria-labelledby="tfLieuNom-${lieu}">
+      <div class="tf-mini">${mini}</div>
+      <div class="tf-lieu-dit"><span class="tf-lieu-nom" id="tfLieuNom-${lieu}">${esc(nom)}</span><p class="tf-lieu-phrase" data-tf-phrase data-tf-repos="${esc(repos)}">${esc(repos)}</p></div>
+    </div>`;
+  }
+  // Les endroits en petit, avec les vrais mots de chacun (formulaire client,
+  // ecran de fin, mails, Reserver, planning). Rien n y est invente : l heure
+  // 16:00 du planning est un exemple neutre, sans client.
+  function tfMiniFormule(lieu, f, vals) {
+    if (lieu === 'formulaire') {
+      return `<div class="tf-m-carte${vals.retiree ? ' is-retiree' : ''}" data-tf-classe="is-retiree:retiree">
+        <div class="tf-m-tete">${tfV('nom', vals, 'b', 'tf-m-nom')}${f.best ? '<span class="tf-m-bon">Bon plan</span>' : ''}</div>
+        <div class="tf-m-prix">${tfV('prix', vals, 'b')}${tfV('unite', vals, 'span', 'tf-m-unite')}${tfV('ancien', vals, 's')}${tfV('remise', vals, 'span', 'tf-m-remise')}</div>
+        ${tfV('duree', vals, 'p', 'tf-m-duree')}
+        ${f.desc.length ? `<ul class="tf-m-liste">${f.desc.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
+        ${f.regles.length ? `<p class="tf-m-regles">${f.regles.map((r) => `<span>${esc(r)}</span>`).join('')}</p>` : ''}
+        <p class="tf-m-bande"><span ${tfSi('bandeTotale', vals)}>${tfV('bandeAvant', vals)}${tfV('bandeTotal', vals, 'b')} ${tfV('bandePour', vals)}</span><span ${tfSinon('bandeTotale', vals)} data-tf-val="bref">${esc(vals.bref)}</span></p>
+        ${f.suspendue ? '<p class="tf-m-note">Cette offre est momentanément suspendue.</p>' : ''}
+        <p class="tf-m-voile" ${tfSi('retiree', vals)}>Retirée du formulaire de ${esc(tfNomCentre())}</p>
+      </div>`;
+    }
+    if (lieu === 'fin') {
+      return `<div class="tf-m-fin">
+        ${tfV('finTitre', vals, 'b', 'tf-m-fin-titre')}
+        ${tfV('finTexte', vals, 'span', 'tf-m-fin-texte')}
+        <span class="tf-m-petit" ${tfSi('laser', vals)}>« Demande envoyée » si le laser est déjà pris par un autre groupe.</span>
+        <span class="tf-m-kv"><i>Au programme</i>${tfV('nom', vals, 'b')}</span>
+        ${tfV('finMontant', vals, 'span', 'tf-m-kv tf-m-montant')}
+      </div>`;
+    }
+    if (lieu === 'mails') {
+      return `<div class="tf-m-mail">
+        <div class="tf-m-mail-tete">${tfV('mailObjet', vals, 'b')}<span class="tf-m-tag" ${tfSi('confirme', vals)}>rappel 48 h</span></div>
+        <div class="tf-m-kv"><i>Offre</i>${tfV('nom', vals, 'b')}</div>
+        <div class="tf-m-kv" ${tfSi('confirme', vals)}><i>Montant estimé</i>${tfV('mailMontant', vals, 'b')}</div>
+        <div class="tf-m-kv" ${tfSi('demande', vals)}><i>À l’équipe</i><b>« Réservation à valider »</b></div>
+        <span class="tf-m-petit" ${tfSi('laser', vals)}>« Demande reçue » si le laser est déjà pris.</span>
+      </div>`;
+    }
+    if (lieu === 'comptoir') {
+      return `<div class="tf-m-ct">
+        <div class="tf-m-porte">${TF_ICO.boule}<b>Formules</b>${tfV('plage', vals, 'span', 'tf-m-plage')}<span class="tf-m-chev" aria-hidden="true">›</span></div>
+        <div class="tf-m-ticket" ${tfSi('vente', vals)}>${tfV('ticketNom', vals, 'span', 'tf-m-ticket-nom')}${tfV('joueurs', vals, 'span', 'tf-m-qte')}${tfV('ticketTotal', vals, 'b')}</div>
+        <p class="tf-m-petit" ${tfSinon('vente', vals)}>Plus proposée dans Réserver.</p>
+        <div class="tf-m-kv" ${tfSi('vente', vals)}><i>Dossier créé ici</i><span class="tf-m-pastille${vals.aVerifier ? ' is-avt' : ''}" data-tf-classe="is-avt:aVerifier" data-tf-val="dossier">${esc(vals.dossier)}</span></div>
+      </div>`;
+    }
+    if (lieu === 'planning') {
+      return `<div class="tf-m-pl">
+        <b class="tf-m-pl-h">16:00</b>
+        ${f.anniversaire ? '<span class="tf-m-pl-type">Anniversaire</span>' : ''}
+        ${tfV('joueurs', vals, 'span', 'tf-m-pl-pax')}
+        ${tfV('court', vals, 'b', 'tf-m-pl-nom')}
+        <span class="tf-m-pastille${vals.aVerifier ? ' is-avt' : ''}" data-tf-classe="is-avt:aVerifier" data-tf-val="badge">${esc(vals.badge)}</span>
+        <span class="tf-m-btn" ${tfSi('aVerifier', vals)}>Valider</span>
+      </div>`;
+    }
+    const autres = tfAutresCentres();
+    return `<div class="tf-m-autres">
+      <div class="tf-m-kv"><i>Contenu, jours, minimum</i><b>les mêmes qu’à ${esc(tfNomCentre())}</b></div>
+      <div class="tf-m-kv"><i>Prix, nom, mise en vente</i><b class="is-sien">${esc(autres.length > 1 ? 'ceux de chaque centre' : `ceux de ${autres[0]}`)}</b></div>
+    </div>`;
+  }
+  function tfPiedHtml(pied) {
+    return `<div class="tf-pied" data-tf-pied>
+      <p class="tf-pied-l" data-tf-pied-l="pas"${pied.pas ? '' : ' hidden'}><span class="tf-pied-mot">Pas touché</span><span data-tf-pied-v="pas">${esc(pied.pas)}</span></p>
+      <p class="tf-pied-l is-savoir" data-tf-pied-l="savoir"${pied.savoir ? '' : ' hidden'}><span class="tf-pied-mot">À savoir</span><span data-tf-pied-v="savoir">${esc(pied.savoir)}</span></p>
+      <p class="tf-pied-l is-qui" data-tf-pied-l="qui"><span class="tf-pied-mot">Qui le change</span><span data-tf-pied-v="qui">${esc(pied.qui)}</span></p>
+      <p class="tf-pied-l is-qui" data-tf-pied-l="quand"><span class="tf-pied-mot">Quand</span><span data-tf-pied-v="quand">${esc(pied.quand)}</span></p>
+    </div>`;
+  }
+
+  // ---- ONGLET ACTIVITES -----------------------------------------------------------
+  function tfActivitesHtml() {
+    if (!tfPret()) return pricingEditor.error ? tfPanneHtml() : tfAttenteHtml();
+    const montrees = tfActivites().filter((a) => tfTrouve(a.nom, a.note));
+    const groupes = [['À la carte', montrees.filter((a) => a.seule)], ['Dans vos formules seulement', montrees.filter((a) => !a.seule)]].filter(([, liste]) => liste.length);
+    if (!groupes.length) {
+      return `<p class="tf-rien">${tfCherche() ? `Aucune activité ne correspond à « ${esc(state.staffPricingQuery || '')} ».` : 'Aucune activité dans ce centre.'}</p>`;
+    }
+    return groupes.map(([titre, liste], i) => `<section class="tf-famille tf-famille-act" aria-labelledby="tfAct-${i}">
+      <div class="tf-table">
+        <div class="tf-entete">
+          <span class="tf-entete-titre"><h2 id="tfAct-${i}">${esc(titre)}</h2><span class="tf-compte">${liste.length}</span></span>
+          <span class="tf-entete-col" aria-hidden="true">Prix détaillés</span><span class="tf-entete-col" aria-hidden="true">À savoir</span><span class="tf-entete-col" aria-hidden="true">Qui fixe le prix</span><span class="tf-entete-col tf-entete-prix" aria-hidden="true">Prix</span>
+        </div>
+        ${liste.map(tfLigneActiviteHtml).join('')}
+      </div>
+    </section>`).join('');
+  }
+  function tfLigneActiviteHtml(a) {
+    const ouvert = tarifs.ouvert.activites === a.id;
+    const editable = a.simple && cevCanManage();
+    const options = tfOptionsGrille(a);
+    const cartes = tfCartesArcades(a);
+    const fourchette = (liste) => { const p = liste.map((o) => Number(o.price)); return `${tfPluriel(p.length, 'carte')}, de ${tfEuros(Math.min(...p))} à ${tfEuros(Math.max(...p))}`; };
+    const detail = options.length ? options.map((o) => `${o.label} ${tfEuros(o.prix)}`).join(' · ')
+      : cartes ? [cartes.temps.length ? `${fourchette(cartes.temps)} au temps` : '', cartes.credits.length ? `${fourchette(cartes.credits)} en crédits` : ''].filter(Boolean).join(' · ')
+        : !a.seule ? 'Comprise dans vos formules'
+          : a.publie != null ? `${tfEuros(a.publie)} ${a.unitLabel}`.trim() : 'Prix à l’accueil';
+    const d = tfMetaDonnees() || {};
+    const usage = a.id === 'bowling' ? tfUsage((d.durationOptions || []).map((o) => `bowling-${Number(o.value)}`))
+      : a.id === 'laser_game' ? tfUsage((d.laserOptions || []).map((o) => `laser-${o.games}`)) : '';
+    const savoir = [usage, a.note, a.ages, a.minPax > 1 ? `dès ${a.minPax} joueurs` : ''].filter(Boolean).join(' · ');
+    const qui = a.grille ? 'Pinlane, pour tous les centres' : a.arcades ? `Établissement, pour ${tfNomCentre()}` : a.seule ? 'Votre entreprise (droit Réglages)' : 'Pas de prix seul';
+    const prix = a.seule ? tfPrixCarte(a, a.publie) : 'Dans vos formules';
+    const id = esc(a.id);
+    return `<div class="tf-ligne tf-ligne-act${ouvert ? ' is-ouverte' : ''}${a.modifie ? ' is-modifiee' : ''}" data-tf-act="${id}">
+      <button type="button" class="tf-ligne-btn" data-tf-ouvrir-act="${id}" data-pl-focus="tf:ouvrir-act:${id}" aria-expanded="${ouvert}" aria-controls="tfPlanche-${id}">
+        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${a.modifie ? '' : ' hidden'}></i><b>${esc(a.nom)}</b><span class="tf-modifie" data-tf-modifie${a.modifie ? '' : ' hidden'}>modifié</span></span>
+        <span class="tf-c-contenu">${esc(detail)}</span>
+        <span class="tf-c-regles">${esc(savoir)}</span>
+        <span class="tf-c-valid">${esc(qui)}</span>
+      </button>
+      ${editable
+        ? `<button type="button" class="tf-c-prix" data-tf-prix-act="${id}" data-pl-focus="tf:prixact:${id}" aria-label="${esc(`Prix de ${a.nom} : ${prix}, le changer`)}"><span class="tf-montant" data-tf-montant>${esc(prix)}</span></button>`
+        : `<span class="tf-c-prix is-lu"><span class="tf-montant" data-tf-montant>${esc(prix)}</span></span>`}
+      <span class="tf-c-chev" data-tf-ouvrir-act="${id}" aria-hidden="true">${TF_ICO.chevron}</span>
+    </div>${ouvert ? tfPlancheActiviteHtml(a) : ''}`;
+  }
+  function tfReglageActiviteHtml(a, editable) {
+    if (a.grille) {
+      const options = tfOptionsGrille(a);
+      return `<ul class="tf-grille">${options.map((o) => `<li><span>${esc(o.label)}</span><b>${esc(tfEuros(o.prix))}</b><small>${esc(o.unite.replace(/^\/ /, 'par '))}</small></li>`).join('')}</ul>
+        <p class="tf-r-dit">Fixé par Pinlane, le même pour tous les centres. Bientôt réglable par centre.</p>
+        ${a.priceType === 'grid_bowling' ? '<p class="tf-r-dit">La même grille sert au Bowling et au Duckpin Bowling.</p>' : ''}`;
+    }
+    if (a.arcades) {
+      const cartes = tfCartesArcades(a) || { temps: [], credits: [] };
+      const ligne = (o, temps) => `<li><span>${esc(temps ? `${o.minutes} min` : `${o.credits}${Number(o.bonusCredits) ? ` + ${o.bonusCredits}` : ''} crédits`)}</span><b>${esc(tfEuros(o.price))}</b><small>par carte</small></li>`;
+      return `${cartes.temps.length ? `<p class="tf-grille-titre">Au temps</p><ul class="tf-grille">${cartes.temps.map((o) => ligne(o, true)).join('')}</ul>` : ''}
+        ${cartes.credits.length ? `<p class="tf-grille-titre">En crédits</p><ul class="tf-grille">${cartes.credits.map((o) => ligne(o, false)).join('')}</ul>` : ''}
+        <p class="tf-r-dit">Les cartes se règlent dans Établissement.${cevCanManage() ? ' <button type="button" class="tf-lien" data-tf-action="etablissement" data-pl-focus="tf:etablissement">Ouvrir Établissement</button>' : ''}</p>`;
+    }
+    if (!a.seule) return '<p class="tf-r-dit">Elle compose vos formules : son prix ne se lit nulle part seul.</p>';
+    if (!editable) {
+      return `<div class="tf-r tf-r-lu"><span class="tf-r-nom">Prix</span><span class="tf-r-valeur">${esc(a.prix == null ? 'à l’accueil' : `${tfEuros(a.prix)} ${a.unitLabel}`.trim())}</span></div>
+        <p class="tf-r-dit">Réglé par ${esc(tfQui('settings.manage'))}, pour tous vos centres.</p>`;
+    }
+    const s = tfSaisie('activite', a.id, 'prix', tfSaisieNombre(a.prix));
+    return tfRangee('prix', 'Prix', `${tfChampNombre('activite', a.id, 'prix', s, 'à l’accueil')}<span class="tf-unite">${esc(a.unitLabel ? `€ ${a.unitLabel}` : '€')}</span>`, {
+      pour: 'tfChamp-prix',
+      desc: tfSeVoit(tfLieuxActivite(a)),
+      apres: `${tfAideHtml('activite', 'prix', s)}${a.paliers ? '<p class="tf-r-dit">C’est le prix de base : des prix par jour ou par heure le remplacent sur certains créneaux.</p>' : ''}`,
+    });
+  }
+  function tfMiniActivite(lieu, a, vals) {
+    if (lieu === 'formulaire') {
+      return `<div class="tf-m-act">
+        <b class="tf-m-nom">${esc(a.nom)}</b>
+        ${tfV('des', vals, 'span', 'tf-m-des')}
+        ${a.note ? `<small class="tf-m-petit">${esc(a.note)}</small>` : ''}
+        ${a.simple && a.priceType === 'per_pax' ? `<span class="tf-m-kv" ${tfSi('total', vals)}><i>Choisie, pour ${esc(vals.pour)}</i>${tfV('total', vals, 'b')}</span>` : ''}
+      </div>`;
+    }
+    if (lieu === 'comptoir') {
+      if (a.grille) return `<div class="tf-m-ct"><span class="tf-m-tuile"><b>${esc(vals.tuileNom)}</b></span><p class="tf-m-petit">${esc(vals.grille)}</p></div>`;
+      return `<div class="tf-m-ct"><span class="tf-m-tuile"><b>${esc(vals.tuileNom)}</b>${tfV('tuile', vals)}</span><p class="tf-m-petit">Pour ${esc(vals.pour)}</p></div>`;
+    }
+    return `<div class="tf-m-autres"><div class="tf-m-kv"><i>Prix</i><b>le même qu’à ${esc(tfNomCentre())}</b></div></div>`;
+  }
+  function tfPlancheActiviteHtml(a) {
+    const vals = tfValeursActivite(a);
+    const editable = a.simple && cevCanManage();
+    const lieux = tfLieuxActivite(a);
+    const portee = a.grille ? 'Pinlane' : a.arcades ? tfPorteeCentre() : tfPorteeEntreprise();
+    const id = esc(a.id);
+    return `<div class="tf-planche" id="tfPlanche-${id}" data-tf-planche="${id}" data-tf-type="activite" role="region" aria-label="${esc(a.nom)} : son prix et où il se voit">
+      <div class="tf-cablage" data-tf-cablage>
+        <div class="tf-col tf-col-r">
+          <div class="tf-col-tete"><span class="tf-etape">${editable ? 'Ce que vous réglez' : 'Comment son prix se fixe'}</span><span class="tf-portee${a.grille ? ' is-pinlane' : a.arcades ? '' : ' is-entreprise'}">${esc(portee)}</span></div>
+          ${tfReglageActiviteHtml(a, editable)}
+          <p class="tf-seule">Se réserve seule : <b>${a.seule ? 'oui' : 'non'}</b></p>
+        </div>
+        <div class="tf-gouttiere" aria-hidden="true"></div>
+        <div class="tf-col tf-col-l">
+          <div class="tf-col-tete"><span class="tf-etape">Où ça se voit</span>${lieux.length ? `<span class="tf-ref" data-tf-ref>${esc(`pour ${tfPluriel(tarifs.groupe, 'personne')}`)}</span>` : ''}</div>
+          ${lieux.length
+            ? lieux.map((lieu) => tfLieuHtml(lieu, tfMiniActivite(lieu, a, vals), editable ? 'Change avec le prix.' : lieu === 'formulaire' ? 'Ce que lit le client.' : 'Ce que lit l’équipe.')).join('')
+            : '<p class="tf-r-dit">Ni carte dans le formulaire ni touche au comptoir : elle n’existe que dans vos formules.</p>'}
+        </div>
+        <svg class="tf-fils" data-tf-fils aria-hidden="true" focusable="false"></svg>
+      </div>
+      ${editable ? tfPiedHtml({ pas: 'Le prix des formules qui la contiennent.', savoir: '', qui: `${tfMajuscule(tfQui('settings.manage'))}.`, quand: TF_QUAND }) : ''}
+    </div>`;
+  }
+
+  // ---- ONGLET SUR MESURE ----------------------------------------------------------
+  function tfSurMesureHtml() {
+    const sm = window.PinlaneSurMesureSettings;
+    if (!sm || typeof sm.renderSection !== 'function') return '<p class="tf-rien">Le catalogue sur mesure n’est pas disponible sur ce poste.</p>';
+    return sm.renderSection({ cherche: state.staffPricingQuery || '' });
+  }
+
+  // ---- LA BARRE ET LE TIROIR « CE QUI CHANGE » ------------------------------------
+  function tfBarreHtml() {
+    const n = tfNbChangements();
+    if (!n || tarifs.tiroir) return '';
+    const centre = tfNomCentre();
+    return `<div class="tf-barre${tarifs.erreur ? ' is-erreur' : ''}" data-tf-barre role="region" aria-label="Changements à publier">
+      <span class="tf-barre-point" aria-hidden="true"></span>
+      <span class="tf-barre-texte" aria-live="polite"><b data-tf-barre-n>${n}</b> <span data-tf-barre-mot>${n > 1 ? 'changements' : 'changement'} pour ${esc(centre)}</span></span>
+      <button type="button" class="tf-lien" data-tf-action="voir" data-pl-focus="tf:voir">Voir ce qui change</button>
+      <span class="tf-barre-gestes">
+        <button type="button" class="pv2-btn" data-tf-action="annuler-tout" data-pl-focus="tf:annuler-tout"${tarifs.publication ? ' disabled' : ''}>Annuler</button>
+        <button type="button" class="pv2-btn primary" data-tf-action="publier" data-pl-focus="tf:publier"${tarifs.publication ? ' disabled aria-busy="true"' : ''}>${tarifs.publication ? 'Publication…' : 'Publier'}</button>
+      </span>
+      ${tarifs.erreur ? `<p class="tf-barre-erreur" role="alert">${esc(tarifs.erreur)}</p>` : ''}
+    </div>`;
+  }
+  const tfSignatureBarre = () => `${tfNbChangements() > 0}|${tarifs.erreur}|${tarifs.publication}|${tarifs.tiroir}|${tfNomCentre()}`;
+  function tfMajBarre() {
+    const place = document.querySelector('#staffPricingPage [data-tf-barre-place]');
+    if (!place) return;
+    const n = tfNbChangements();
+    const barre = place.querySelector('[data-tf-barre]');
+    const signature = tfSignatureBarre();
+    if (barre && place.dataset.tfSignature === signature) {
+      const nombre = barre.querySelector('[data-tf-barre-n]');
+      if (nombre && tfTexteVise(nombre) !== String(n)) tfRouler(nombre, String(n));
+      const mot = barre.querySelector('[data-tf-barre-mot]');
+      const texte = `${n > 1 ? 'changements' : 'changement'} pour ${tfNomCentre()}`;
+      if (mot && mot.textContent !== texte) mot.textContent = texte;
+      return;
+    }
+    place.dataset.tfSignature = signature;
+    tfAvecFocus(() => { place.innerHTML = tfBarreHtml(); });
+  }
+
+  function tfChangements() {
+    const lot = tfLot(false);
+    if (!lot) return [];
+    const out = [];
+    Object.entries(lot.formules).forEach(([id, b]) => Object.keys(b).forEach((champ) => out.push({ type: 'formule', id, champ })));
+    Object.entries(lot.activites).forEach(([id, b]) => Object.keys(b).forEach((champ) => out.push({ type: 'activite', id, champ })));
+    return out;
+  }
+  // Ce que chaque endroit montre, en une ligne, pour l avant et l apres.
+  const TF_APERCU = {
+    formulaire: {
+      prix: (v) => `${v.prix} ${v.unite}${v.bandeTotale ? ` · ${v.bandeTotal} ${v.bandePour}` : ''}`,
+      ancien: (v) => (v.ancien ? `${v.prix} ${v.unite}, barré ${v.ancien}${v.remise ? ` · ${v.remise}` : ''}` : `${v.prix} ${v.unite}, sans prix barré`),
+      nom: (v) => v.nom,
+      vente: (v) => (v.vente ? 'Carte proposée' : 'Carte retirée'),
+    },
+    fin: { prix: (v) => v.finMontant, nom: (v) => `Au programme : ${v.nom}`, validation: (v) => v.finTitre },
+    mails: {
+      prix: (v) => `Montant estimé ${v.mailMontant}`,
+      nom: (v) => `Offre ${v.nom}`,
+      validation: (v) => (v.confirme ? 'Au client : « Réservation confirmée »' : 'Au client : « Demande reçue » · à l’équipe : « Réservation à valider »'),
+    },
+    comptoir: {
+      prix: (v) => `${v.ticketNom}, ${v.joueurs} : ${v.ticketTotal}`,
+      nom: (v) => v.ticketNom,
+      vente: (v) => `Formules : ${v.plage}`,
+      validation: (v) => `Dossier créé ici : ${v.dossier}`,
+    },
+    planning: { nom: (v) => v.court, validation: (v) => v.badge },
+  };
+  function tfApercuHtml(texteAvant, texteApres) {
+    if (!texteApres) return '';
+    if (texteAvant === texteApres) return `<p class="tf-ap">${esc(texteApres)}</p>`;
+    return `<p class="tf-ap"><span class="tf-ap-avant">${esc(texteAvant)}</span><span aria-hidden="true"> → </span><span class="tf-sr">, devient </span><b>${esc(texteApres)}</b></p>`;
+  }
+  function tfChangementHtml(c) {
+    const annuler = `<button type="button" class="tf-lien" data-tf-action="annuler-changement" data-tf-type="${c.type}" data-tf-id="${esc(c.id)}" data-tf-cible="${esc(c.champ)}" data-pl-focus="tf:annuler:${esc(c.id)}:${esc(c.champ)}">Annuler</button>`;
+    if (c.type === 'activite') {
+      const entree = tfActiviteEntree(c.id);
+      if (!entree) return '';
+      const apres = tfVueActivite(entree);
+      const avant = { ...apres, prix: apres.publie };
+      const titre = `${apres.nom} · Prix : ${avant.prix == null ? 'à l’accueil' : tfEuros(avant.prix)} → ${apres.prix == null ? 'à l’accueil' : tfEuros(apres.prix)}${apres.unitLabel ? ` ${apres.unitLabel}` : ''}`;
+      const vA = tfValeursActivite(avant);
+      const vN = tfValeursActivite(apres);
+      const lieux = tfLieuxActivite(apres);
+      return `<section class="tf-chg" data-tf-changement="${esc(c.id)}|${esc(c.champ)}">
+        <div class="tf-chg-tete"><h3>${esc(titre)}</h3>${annuler}</div>
+        <dl class="tf-chg-lieux">
+          ${lieux.map((lieu) => `<div><dt>${esc(lieu === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[lieu])}</dt><dd><p>${esc(tfPhraseActivite(lieu))}</p>${lieu === 'formulaire' ? tfApercuHtml(vA.des, vN.des) : lieu === 'comptoir' ? tfApercuHtml(`${vA.tuileNom} : ${vA.tuile}`, `${vN.tuileNom} : ${vN.tuile}`) : ''}</dd></div>`).join('')}
+          <div class="is-note"><dt>Quand</dt><dd><p>${esc(TF_QUAND)}</p></dd></div>
+          <div class="is-note"><dt>Pas touché</dt><dd><p>Le prix des formules qui la contiennent.</p></dd></div>
+        </dl>
+      </section>`;
+    }
+    const entry = pevEntry(c.id);
+    if (!entry) return '';
+    const apres = tfVueFormule(entry);
+    const avant = tfVueFormule(entry, c.champ);
+    const vA = tfValeursFormule(avant);
+    const vN = tfValeursFormule(apres);
+    const prix = (p) => (p == null ? 'aucun' : tfEuros(p));
+    const nom = avant.valeur.nom;
+    const unite = apres.parPiste ? 'la piste' : apres.enfants ? 'par enfant' : 'par personne';
+    const titre = {
+      prix: `${nom} · Prix : ${prix(avant.valeur.prix)} → ${prix(apres.valeur.prix)} ${unite}`,
+      ancien: `${nom} · Prix barré : ${prix(avant.valeur.ancien)} → ${prix(apres.valeur.ancien)}`,
+      nom: `${nom} · Nom : ${avant.valeur.nom} → ${apres.valeur.nom}`,
+      vente: `${nom} · En vente : ${avant.valeur.vente ? 'proposée' : 'retirée'} → ${apres.valeur.vente ? 'proposée' : 'retirée'}`,
+      validation: `${nom} · Validation par l’équipe : ${tfValidation(avant.valeur.validation).mot} → ${tfValidation(apres.valeur.validation).mot}`,
+    }[c.champ] || nom;
+    const pied = tfPied(c.champ, apres);
+    const lieux = tfLieuxDe(c.champ, apres);
+    return `<section class="tf-chg" data-tf-changement="${esc(c.id)}|${esc(c.champ)}">
+      <div class="tf-chg-tete"><h3>${esc(titre)}</h3>${annuler}</div>
+      <dl class="tf-chg-lieux">
+        ${lieux.map((lieu) => {
+          const apercu = TF_APERCU[lieu] && TF_APERCU[lieu][c.champ];
+          return `<div><dt>${esc(TF_LIEUX_NOMS[lieu] || lieu)}</dt><dd><p>${esc(tfPhrase(c.champ, lieu, apres))}</p>${apercu ? tfApercuHtml(apercu(vA), apercu(vN)) : ''}</dd></div>`;
+        }).join('')}
+        <div class="is-note"><dt>Quand</dt><dd><p>${esc(pied.quand)}</p></dd></div>
+        ${pied.pas ? `<div class="is-note"><dt>Pas touché</dt><dd><p>${esc(pied.pas)}</p></dd></div>` : ''}
+        ${pied.savoir ? `<div class="is-note is-savoir"><dt>À savoir</dt><dd><p>${esc(pied.savoir)}</p></dd></div>` : ''}
+      </dl>
+    </section>`;
+  }
+  function tfTiroirHtml() {
+    const changements = tfChangements();
+    const n = changements.length;
+    return `<div class="tf-t-tete">
+        <div><h2 id="tfTiroirTitre">Ce qui change</h2><p>${n} ${n > 1 ? 'changements' : 'changement'} pour ${esc(tfNomCentre())}. Rien ne change pour vos clients avant « Publier ».</p></div>
+        <button type="button" class="tf-t-fermer" data-tf-action="fermer-tiroir" data-pl-focus="tf:tiroir-fermer" aria-label="Fermer">${TF_ICO.fermer}</button>
+      </div>
+      <div class="tf-t-corps" data-tf-t-corps>${changements.map(tfChangementHtml).join('')}</div>
+      <div class="tf-t-pied">
+        ${tarifs.erreur ? `<p class="tf-barre-erreur" role="alert">${esc(tarifs.erreur)}</p>` : ''}
+        <button type="button" class="pv2-btn" data-tf-action="annuler-tout" data-pl-focus="tf:t-annuler"${n && !tarifs.publication ? '' : ' disabled'}>Tout annuler</button>
+        <button type="button" class="pv2-btn primary" data-tf-action="publier" data-pl-focus="tf:t-publier"${n && !tarifs.publication ? '' : ' disabled'}>${tarifs.publication ? 'Publication…' : 'Publier'}</button>
+      </div>`;
+  }
+  function tfMajTiroir() {
+    const tiroir = document.querySelector('#staffPricingPage [data-tf-tiroir]');
+    if (!tiroir) return;
+    if (!tarifs.tiroir) { tiroir.hidden = true; tiroir.innerHTML = ''; return; }
+    const corps = tiroir.querySelector('[data-tf-t-corps]');
+    const haut = corps ? corps.scrollTop : 0;
+    tfAvecFocus(() => { tiroir.innerHTML = tfTiroirHtml(); tiroir.hidden = false; });
+    const neuf = tiroir.querySelector('[data-tf-t-corps]');
+    if (neuf) neuf.scrollTop = haut;
+  }
+  function tfOuvrirTiroir() {
+    if (!tfNbChangements()) return;
+    tarifs.tiroir = true;
+    tfMajTiroir();
+    tfMajBarre();
+    const fermer = document.querySelector('#staffPricingPage [data-tf-tiroir] .tf-t-fermer');
+    if (fermer) fermer.focus({ preventScroll: true });
+  }
+  function tfFermerTiroir() {
+    if (!tarifs.tiroir) return;
+    tarifs.tiroir = false;
+    tfMajTiroir();
+    tfMajBarre();
+    const voir = document.querySelector('#staffPricingPage [data-tf-action="voir"]');
+    if (voir) voir.focus({ preventScroll: true });
+  }
+
+  // ---- LE MOUVEMENT : LES FILS, LE POINT, LA VALEUR QUI ROULE --------------------
+  function tfChemin(x0, y0, lx, y1, x1, rayon) {
+    if (Math.abs(y1 - y0) < 1) return `M${x0} ${y0}H${x1}`;
+    const s = y1 > y0 ? 1 : -1;
+    const r = Math.min(rayon, Math.abs(y1 - y0) / 2);
+    return `M${x0} ${y0}H${lx - r}Q${lx} ${y0} ${lx} ${y0 + s * r}V${y1 - s * r}Q${lx} ${y1} ${lx + r} ${y1}H${x1}`;
+  }
+  // LA GEOMETRIE : ou partent les fils (le bout du controle de chaque
+  // reglage), ou ils entrent (le bord gauche de chaque endroit, a hauteur de
+  // sa premiere ligne), le tronc au milieu de la gouttiere. En mise en page
+  // empilee (pas de gouttiere), il n y a pas de fil : les etats suffisent.
+  function tfDessiner() {
+    const planche = tfPlanche();
+    const cab = planche && planche.querySelector('[data-tf-cablage]');
+    const svg = cab && cab.querySelector('svg[data-tf-fils]');
+    if (!svg) { tarifs.geo = null; return; }
+    const rc = cab.getBoundingClientRect();
+    const gouttiere = cab.querySelector('.tf-gouttiere').getBoundingClientRect();
+    if (!rc.width || gouttiere.width < 24) { tarifs.geo = null; svg.innerHTML = ''; tarifs.signature = ''; return; }
+    const geo = { r: {}, l: {}, x: Math.round((gouttiere.left + gouttiere.right) / 2 - rc.left) + 0.5 };
+    planche.querySelectorAll('[data-tf-r]').forEach((row) => {
+      const port = row.querySelector('[data-tf-port]') || row;
+      const b = port.getBoundingClientRect();
+      if (b.width) geo.r[row.getAttribute('data-tf-r')] = { x: Math.round(b.right - rc.left) + 12, y: Math.round(b.top + b.height / 2 - rc.top) + 0.5 };
+    });
+    planche.querySelectorAll('[data-tf-lieu]').forEach((el) => {
+      const m = el.querySelector('.tf-mini').getBoundingClientRect();
+      if (m.width) geo.l[el.getAttribute('data-tf-lieu')] = { x: Math.round(m.left - rc.left), y: Math.round(m.top - rc.top) + 15.5 };
+    });
+    svg.setAttribute('width', String(Math.round(rc.width)));
+    svg.setAttribute('height', String(Math.round(rc.height)));
+    svg.setAttribute('viewBox', `0 0 ${Math.round(rc.width)} ${Math.round(rc.height)}`);
+    const signature = JSON.stringify(geo);
+    tarifs.geo = geo;
+    if (signature === tarifs.signature && svg.querySelector('.tf-trace')) return;
+    tarifs.signature = signature;
+    // Le trace en cours se recale sans repartir : ses animations continuent.
+    const trace = svg.querySelector('.tf-trace');
+    if (trace && trace.getAttribute('data-tf-champ') === tarifs.trace) { tfRecaler(trace); return; }
+    tfTracer(tarifs.trace, false);
+  }
+  function tfTraits(champ) {
+    const geo = tarifs.geo;
+    const ctx = tfContexte();
+    if (!geo || !ctx || !champ || !geo.r[champ]) return [];
+    const a = geo.r[champ];
+    const lx = geo.x;
+    return tfLieuxActifs(ctx, champ, ctx.vue()).filter((l) => geo.l[l]).map((lieu) => {
+      const b = geo.l[lieu];
+      const tronc = Math.abs(lx - a.x) + Math.abs(b.y - a.y);
+      return { lieu, a, b, lx, d: tfChemin(a.x, a.y, lx, b.y, b.x - 4, 5), longueur: tronc + Math.abs(b.x - 4 - lx), tronc };
+    });
+  }
+  function tfRecaler(trace) {
+    tfTraits(trace.getAttribute('data-tf-champ')).forEach((t) => {
+      const fil = trace.querySelector(`[data-tf-fil="${t.lieu}"]`);
+      if (fil) fil.setAttribute('d', t.d);
+      const noeud = trace.querySelector(`[data-tf-fil-noeud="${t.lieu}"]`);
+      if (noeud) { noeud.setAttribute('cx', String(t.lx)); noeud.setAttribute('cy', String(t.b.y)); }
+      const port = trace.querySelector(`[data-tf-fil-port="${t.lieu}"]`);
+      if (port) { port.setAttribute('cx', String(t.b.x - 1)); port.setAttribute('cy', String(t.b.y)); }
+      const depart = trace.querySelector('[data-tf-fil-depart]');
+      if (depart) { depart.setAttribute('cx', String(t.a.x - 3)); depart.setAttribute('cy', String(t.a.y)); }
+    });
+  }
+  // LE TRACE d un seul reglage : ses fils se dessinent de la saisie vers
+  // chaque endroit touche, a vitesse constante, 280 ms pour le plus long ;
+  // chaque endroit s allume quand son fil l atteint (--tf-arrivee).
+  function tfTracer(champ, anime) {
+    tarifs.trace = champ || '';
+    tarifs.arrivees = {};
+    const planche = tfPlanche();
+    const svg = planche && planche.querySelector('svg[data-tf-fils]');
+    if (!svg) return;
+    const traits = tfTraits(champ);
+    const ancien = svg.querySelector('.tf-trace');
+    if (!traits.length) {
+      if (ancien && anime && !tfReduit() && ancien.animate) {
+        ancien.removeAttribute('data-tf-champ');
+        ancien.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.then(() => ancien.remove()).catch(() => ancien.remove());
+      } else if (ancien) ancien.remove();
+      return;
+    }
+    const mouvement = anime && !tfReduit();
+    const max = Math.max(...traits.map((t) => t.longueur));
+    traits.forEach((t) => { tarifs.arrivees[t.lieu] = mouvement ? Math.round((TF_TRACE_MS * t.longueur) / max) : 0; });
+    svg.querySelectorAll('.tf-trace').forEach((g) => g.remove());
+    const a = traits[0].a;
+    svg.insertAdjacentHTML('beforeend', `<g class="tf-trace" data-tf-champ="${champ}">
+      ${traits.map((t) => `<path class="tf-fil" pathLength="1" data-tf-fil="${t.lieu}" d="${t.d}"/>`).join('')}
+      ${traits.map((t) => `<circle class="tf-noeud" data-tf-fil-noeud="${t.lieu}" cx="${t.lx}" cy="${t.b.y}" r="2.25"/>`).join('')}
+      ${traits.map((t) => `<circle class="tf-port is-lieu" data-tf-fil-port="${t.lieu}" cx="${t.b.x - 1}" cy="${t.b.y}" r="3"/>`).join('')}
+      <circle class="tf-port" data-tf-fil-depart cx="${a.x - 3}" cy="${a.y}" r="3"/>
+    </g>`);
+    if (!mouvement) return;
+    const g = svg.querySelector('.tf-trace');
+    const ease = tfEasing();
+    traits.forEach((t) => {
+      const duree = (TF_TRACE_MS * t.longueur) / max;
+      const fil = g.querySelector(`[data-tf-fil="${t.lieu}"]`);
+      if (fil && fil.animate) fil.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: duree, easing: ease, fill: 'backwards' });
+      const montrer = (el, quand) => { if (el && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, delay: quand, fill: 'backwards' }); };
+      montrer(g.querySelector(`[data-tf-fil-noeud="${t.lieu}"]`), (duree * t.tronc) / t.longueur);
+      montrer(g.querySelector(`[data-tf-fil-port="${t.lieu}"]`), Math.max(0, duree - 40));
+    });
+  }
+  // L ETAT DES ENDROITS pour le champ en main : « concerne » (bord accent) ou
+  // « pas-concerne » (attenue, avec sa legende). Ce sont des informations,
+  // pas du mouvement : elles restent avec prefers-reduced-motion.
+  function tfAllumer({ anime = true } = {}) {
+    const planche = tfPlanche();
+    const ctx = tfContexte();
+    if (!planche || !ctx) return;
+    const champ = tarifs.focus;
+    const vue = ctx.vue();
+    const lieux = tfLieuxActifs(ctx, champ, vue);
+    const svg = planche.querySelector('svg[data-tf-fils]');
+    if (champ !== tarifs.trace || (champ && svg && !svg.querySelector('.tf-trace'))) tfTracer(champ, anime);
+    planche.querySelectorAll('[data-tf-r]').forEach((row) => row.classList.toggle('is-actif', Boolean(champ) && row.getAttribute('data-tf-r') === champ));
+    planche.querySelectorAll('[data-tf-lieu]').forEach((el) => {
+      const lieu = el.getAttribute('data-tf-lieu');
+      const touche = lieux.includes(lieu);
+      el.style.setProperty('--tf-arrivee', `${touche ? (tarifs.arrivees[lieu] || 0) : 0}ms`);
+      el.setAttribute('data-tf-etat', !champ ? 'repos' : touche ? 'concerne' : 'pas-concerne');
+      const phrase = el.querySelector('[data-tf-phrase]');
+      if (!phrase) return;
+      let texte = phrase.getAttribute('data-tf-repos') || '';
+      if (champ && touche) texte = ctx.type === 'formule' ? tfPhrase(champ, lieu, vue) : tfPhraseActivite(lieu);
+      else if (champ) texte = lieu === 'autres' && ctx.type === 'formule' && champ !== 'structure' ? tfPasConcerneAutres() : 'Pas concerné';
+      if (phrase.textContent !== texte) phrase.textContent = texte;
+    });
+    if (ctx.type === 'formule') {
+      const editable = !vue.custom && tfPeutTarifs();
+      tfMajPied(tfPied(champ || (editable ? 'prix' : 'structure'), vue));
+    }
+  }
+  function tfMajPied(pied) {
+    const zone = document.querySelector('#staffPricingPage [data-tf-planche] [data-tf-pied]');
+    if (!zone) return;
+    ['pas', 'savoir', 'qui', 'quand'].forEach((cle) => {
+      const ligne = zone.querySelector(`[data-tf-pied-l="${cle}"]`);
+      const valeur = zone.querySelector(`[data-tf-pied-v="${cle}"]`);
+      if (!ligne || !valeur) return;
+      if (valeur.textContent !== pied[cle]) valeur.textContent = pied[cle];
+      ligne.hidden = !pied[cle];
+    });
+  }
+  function tfAnnulerGouttes() {
+    tarifs.gouttes.forEach((a) => { try { a.cancel(); } catch (e) { /* deja finie */ } });
+    tarifs.gouttes = [];
+    document.querySelectorAll('#staffPricingPage .tf-goutte').forEach((g) => g.remove());
+  }
+  // LE POINT parcourt le fil (400 ms) ; la promesse dit s il est arrive.
+  function tfGoutte(champ, lieu, delai) {
+    const geo = tarifs.geo;
+    const cab = document.querySelector('#staffPricingPage [data-tf-planche] [data-tf-cablage]');
+    if (!geo || !cab || !geo.r[champ] || !geo.l[lieu] || !document.body.animate) return Promise.resolve(false);
+    const a = geo.r[champ];
+    const b = geo.l[lieu];
+    const points = [[a.x - 3, a.y], [geo.x, a.y], [geo.x, b.y], [b.x - 1, b.y]];
+    const longueurs = points.slice(1).map((p, i) => Math.abs(p[0] - points[i][0]) + Math.abs(p[1] - points[i][1]));
+    const total = longueurs.reduce((s, x) => s + x, 0) || 1;
+    let cumul = 0;
+    const images = points.map((p, i) => {
+      if (i) cumul += longueurs[i - 1];
+      return { transform: `translate(${p[0]}px, ${p[1]}px)`, offset: cumul / total };
+    });
+    const point = document.createElement('span');
+    point.className = 'tf-goutte';
+    point.setAttribute('aria-hidden', 'true');
+    cab.appendChild(point);
+    const trajet = point.animate(images, { duration: TF_GOUTTE_MS, delay: delai, easing: tfEasing(), fill: 'both' });
+    const fondu = point.animate([{ opacity: 0 }, { opacity: 1, offset: 0.1 }, { opacity: 1, offset: 0.86 }, { opacity: 0 }], { duration: TF_GOUTTE_MS, delay: delai, fill: 'both' });
+    tarifs.gouttes.push(trajet, fondu);
+    return trajet.finished.then(() => { point.remove(); return true; }).catch(() => { point.remove(); return false; });
+  }
+  // LA VALEUR ROULE : l ancienne monte et s efface, la nouvelle entre par le
+  // bas (220 ms, transform et opacity). Une frappe pendant le roulement
+  // repart du texte vise, jamais d un melange des deux.
+  const tfTexteVise = (el) => (el.dataset.tfVise != null ? el.dataset.tfVise : el.textContent);
+  function tfPoserTexte(el, texte) {
+    if (el.dataset.tfVise != null) { el.getAnimations({ subtree: true }).forEach((a) => a.cancel()); delete el.dataset.tfVise; el.classList.remove('tf-roule'); }
+    el.textContent = texte;
+  }
+  function tfRouler(el, texte) {
+    const avant = tfTexteVise(el);
+    if (avant === texte) return;
+    if (tfReduit() || !el.animate) { tfPoserTexte(el, texte); return; }
+    if (el.dataset.tfVise != null) el.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+    el.dataset.tfVise = texte;
+    el.classList.add('tf-roule');
+    const vieux = document.createElement('span');
+    vieux.className = 'tf-roule-vieux';
+    vieux.setAttribute('aria-hidden', 'true');
+    vieux.textContent = avant;
+    const neuf = document.createElement('span');
+    neuf.className = 'tf-roule-neuf';
+    neuf.textContent = texte;
+    el.replaceChildren(neuf, vieux);
+    const ease = tfEasing();
+    vieux.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-70%)', opacity: 0 }], { duration: TF_ROULE_MS, easing: ease, fill: 'forwards' });
+    neuf.animate([{ transform: 'translateY(70%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: TF_ROULE_MS, easing: ease, fill: 'backwards' })
+      .finished.then(() => { if (el.dataset.tfVise === texte) { delete el.dataset.tfVise; el.classList.remove('tf-roule'); el.textContent = texte; } }).catch(() => {});
+  }
+  // L ENDROIT S ECLAIRE : un anneau accent qui apparait puis s efface (600 ms,
+  // opacity seulement).
+  function tfEclat(el) {
+    if (!el || tfReduit() || !el.animate) return;
+    const anneau = document.createElement('span');
+    anneau.className = 'tf-eclat';
+    anneau.setAttribute('aria-hidden', 'true');
+    el.appendChild(anneau);
+    anneau.animate([{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: TF_ECLAT_MS, easing: 'linear' })
+      .finished.then(() => anneau.remove()).catch(() => anneau.remove());
+  }
+  // Pose les valeurs d un endroit : textes (qui roulent si demande),
+  // presences, classes. Rend vrai si quelque chose a change.
+  function tfAppliquer(lieuEl, vals, rouler) {
+    let change = false;
+    lieuEl.querySelectorAll('[data-tf-val]').forEach((el) => {
+      const cle = el.getAttribute('data-tf-val');
+      if (!(cle in vals)) return;
+      const texte = vals[cle] == null ? '' : String(vals[cle]);
+      if (!el.hasAttribute('data-tf-si') && !el.hasAttribute('data-tf-sinon') && el.hidden !== (texte === '')) { el.hidden = texte === ''; change = true; }
+      if (texte === '' || tfTexteVise(el) === texte) return;
+      change = true;
+      if (rouler && !el.hidden) tfRouler(el, texte); else tfPoserTexte(el, texte);
+    });
+    lieuEl.querySelectorAll('[data-tf-si]').forEach((el) => { const cache = !vals[el.getAttribute('data-tf-si')]; if (el.hidden !== cache) { el.hidden = cache; change = true; } });
+    lieuEl.querySelectorAll('[data-tf-sinon]').forEach((el) => { const cache = Boolean(vals[el.getAttribute('data-tf-sinon')]); if (el.hidden !== cache) { el.hidden = cache; change = true; } });
+    lieuEl.querySelectorAll('[data-tf-classe]').forEach((el) => {
+      const [classe, cle] = el.getAttribute('data-tf-classe').split(':');
+      const on = Boolean(vals[cle]);
+      if (el.classList.contains(classe) !== on) { el.classList.toggle(classe, on); change = true; }
+    });
+    return change;
+  }
+  // UN REGLAGE A CHANGE : un point parcourt chaque fil allume, et chaque
+  // endroit touche fait rouler sa valeur a l arrivee puis s eclaire. Sans fil
+  // (reglage pose sans focus, mise en page empilee, mouvement reduit), tout
+  // se pose tout de suite.
+  function tfPropager(champ, { direct = false } = {}) {
+    const planche = tfPlanche();
+    const ctx = tfContexte();
+    if (!planche || !ctx) return;
+    const vue = ctx.vue();
+    const vals = ctx.type === 'formule' ? tfValeursFormule(vue) : tfValeursActivite(vue);
+    tfMajControles(planche, ctx, vue);
+    tfAnnulerGouttes();
+    const enMouvement = !direct && !tfReduit() && tarifs.geo && tarifs.trace === champ;
+    const touches = enMouvement ? tfLieuxActifs(ctx, champ, vue).filter((l) => tarifs.geo.l[l]) : [];
+    planche.querySelectorAll('[data-tf-lieu]').forEach((el) => {
+      if (!touches.includes(el.getAttribute('data-tf-lieu'))) tfAppliquer(el, vals, false);
+    });
+    touches.forEach((lieu, i) => {
+      const el = planche.querySelector(`[data-tf-lieu="${lieu}"]`);
+      if (!el) return;
+      tfGoutte(champ, lieu, i * 90).then((arrive) => {
+        if (!el.isConnected) return;
+        const valeurs = tfValeursCourantes();
+        if (!valeurs) return;
+        if (tfAppliquer(el, valeurs, arrive) && arrive) tfEclat(el.querySelector('.tf-mini'));
+      });
+    });
+    if (ctx.type === 'formule') tfMajPied(tfPied(tarifs.focus || 'prix', vue));
+  }
+  // Les controles qu un clic change (interrupteur, validation, aide du prix).
+  function tfMajControles(planche, ctx, vue) {
+    if (ctx.type !== 'formule' || !vue.valeur) return;
+    const v = vue.valeur;
+    const bascule = planche.querySelector('[data-tf-champ="vente"]');
+    if (bascule) { bascule.classList.toggle('is-on', Boolean(v.vente)); bascule.setAttribute('aria-checked', String(Boolean(v.vente))); }
+    const dit = planche.querySelector('[data-tf-dit-vente]');
+    if (dit) dit.textContent = v.vente ? 'Proposée à vos clients' : 'Retirée de la vente';
+    planche.querySelectorAll('[data-tf-valid]').forEach((b) => {
+      const on = b.getAttribute('data-tf-valid') === v.validation;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    const ditValid = planche.querySelector('[data-tf-dit-valid]');
+    if (ditValid) ditValid.textContent = tfValidation(v.validation).dit;
+  }
+  function tfMajAide(type, champ, brut, valide) {
+    const aide = document.querySelector(`#staffPricingPage [data-tf-planche] [data-tf-aide="${champ}"]`);
+    if (!aide) return;
+    const texte = tfTexteAide(type, champ, brut, valide);
+    aide.textContent = texte;
+    aide.hidden = !texte;
+    aide.classList.toggle('is-erreur', !valide);
+  }
+  function tfMajLigne(type, id) {
+    const ligne = document.querySelector(`#staffPricingPage ${type === 'activite' ? `[data-tf-act="${CSS.escape(id)}"]` : `[data-tf-ligne="${CSS.escape(id)}"]`}`);
+    if (!ligne) return;
+    const b = type === 'activite' ? tfBrouillonActivite(id) : tfBrouillonFormule(id);
+    const modifie = Boolean(b && Object.keys(b).length);
+    ligne.classList.toggle('is-modifiee', modifie);
+    ligne.querySelectorAll('[data-tf-point],[data-tf-modifie]').forEach((el) => { el.hidden = !modifie; });
+  }
+  function tfApresPose(type, id, champ, { attendre = false } = {}) {
+    tfMajLigne(type, id);
+    tfMajBarre();
+    tfMajTiroir();
+    clearTimeout(tarifs.minuteurs.frappe);
+    if (attendre && !tfReduit()) tarifs.minuteurs.frappe = setTimeout(() => tfPropager(champ), TF_FRAPPE_MS);
+    else tfPropager(champ);
+  }
+
+  // ---- PUBLIER --------------------------------------------------------------------
+  // Un POST par formule, signe du centre AFFICHE (pevBody), avec les seuls
+  // champs changes (le contrat de l ancienne modale, pevComputePatch). Un prix
+  // barre vide part a 0 : null retombait sur le catalogue (booking-config.js:888)
+  // et le prix barre ne s enlevait jamais.
+  function tfPatchFormule(entry, b) {
+    const eff = entry.effective || {};
+    const patch = {};
+    if ('nom' in b) patch.name = String(b.nom).replace(/\s+/g, ' ').trim().slice(0, PEV_NAME_MAX);
+    if ('prix' in b) patch.priceValue = b.prix;
+    if ('ancien' in b) patch.priceOld = b.ancien == null ? 0 : b.ancien;
+    if ('vente' in b) {
+      patch.enabled = Boolean(b.vente);
+      // Une formule « retirée » (l ancien interrupteur) revient en vente entiere.
+      if (b.vente && eff.removed) patch.removed = false;
+    }
+    if ('validation' in b) patch.humanValidation = b.validation;
+    return patch;
+  }
+  // La valeur publiee se pose tout de suite (pas de retour en arriere le temps
+  // du rechargement), pevReload confirme ensuite depuis le serveur.
+  function tfPoserPublie(type, id, patch) {
+    if (type === 'activite') {
+      const a = tfActiviteEntree(id);
+      if (a && 'priceValue' in patch) a.priceValue = patch.priceValue;
+      return;
+    }
+    const entry = pevEntry(id);
+    if (!entry) return;
+    const eff = entry.effective || (entry.effective = {});
+    const CLES = { name: 'name', priceValue: 'priceValue', priceOld: 'priceOld', enabled: 'enabled', removed: 'removed', humanValidation: 'humanValidation' };
+    Object.keys(patch).forEach((k) => { if (CLES[k]) eff[CLES[k]] = patch[k]; });
+    entry.centerOverride = { ...(entry.centerOverride || {}), ...patch };
+  }
+  async function tfPublier() {
+    const resultat = { publies: 0, refuses: [] };
+    if (tarifs.publication) return resultat;
+    const lot = tfLot(false);
+    if (!tfNbChangements(lot)) return resultat;
+    const centre = tfNomCentre();
+    const envois = [];
+    Object.entries(lot.formules).forEach(([id, b]) => {
+      const entry = pevEntry(id);
+      if (!entry || entry.source === 'custom') { resultat.refuses.push({ type: 'formule', id, champs: Object.keys(b), message: 'Formule inconnue pour ce centre.' }); return; }
+      const patch = tfPatchFormule(entry, b);
+      if ('name' in patch && !patch.name) { resultat.refuses.push({ type: 'formule', id, champs: Object.keys(b), message: 'Le nom ne peut pas rester vide.' }); return; }
+      envois.push({ type: 'formule', id, nom: tfPublieFormule(entry).nom, champs: Object.keys(b), patch, corps: { action: 'saveClientFormuleOverride', formuleId: id, patch } });
+    });
+    Object.entries(lot.activites).forEach(([id, b]) => {
+      const entree = tfActiviteEntree(id);
+      if (!entree || !('prix' in b)) return;
+      const patch = { priceValue: b.prix };
+      envois.push({ type: 'activite', id, nom: String(entree.name || id), champs: ['prix'], patch, corps: { action: 'updateActivity', id, patch } });
+    });
+    tarifs.publication = true;
+    tarifs.erreur = '';
+    tfMajBarre();
+    tfMajTiroir();
+    const reponses = await Promise.allSettled(envois.map((e) => apiRequest(tfOps(), { method: 'POST', body: pevBody(e.corps) })));
+    reponses.forEach((r, i) => {
+      const e = envois[i];
+      if (r.status === 'fulfilled') {
+        tfPoserPublie(e.type, e.id, e.patch);
+        const groupe = e.type === 'formule' ? lot.formules : lot.activites;
+        delete groupe[e.id];
+        tfOublierSaisies(e.type, e.id);
+        resultat.publies += e.champs.length;
+      } else {
+        resultat.refuses.push({ type: e.type, id: e.id, nom: e.nom, champs: e.champs, message: (r.reason && r.reason.message) || 'Refusé par le serveur.' });
+      }
+    });
+    tarifs.publication = false;
+    if (resultat.refuses.length) {
+      const premier = resultat.refuses[0];
+      tarifs.erreur = `Refusé pour ${premier.nom || premier.id} : ${premier.message}${resultat.publies ? ' Le reste est publié.' : ' Rien n’a changé pour vos clients.'}`;
+    } else tarifs.erreur = '';
+    if (!tfNbChangements()) tarifs.tiroir = false;
+    if (resultat.publies) {
+      pevToast(`${tfPluriel(resultat.publies, 'changement')} ${resultat.publies > 1 ? 'publiés' : 'publié'} pour ${centre}`);
+      pevReload();
+    }
+    tfRepeindre();
+    return resultat;
+  }
+
+  function tfAnnulerTout() {
+    const centre = tfCentre();
+    delete tarifs.brouillons[centre];
+    Object.keys(tarifs.saisies).forEach((cle) => { if (cle.startsWith(`${centre}|`)) delete tarifs.saisies[cle]; });
+    tarifs.erreur = '';
+    tarifs.tiroir = false;
+    tfRendre();
+  }
+  function tfAnnulerChangement(type, id, champ) {
+    const lot = tfLot(false);
+    const groupe = lot && (type === 'activite' ? lot.activites : lot.formules);
+    if (!groupe || !groupe[id]) return;
+    delete groupe[id][champ];
+    if (!Object.keys(groupe[id]).length) delete groupe[id];
+    delete tarifs.saisies[tfCleSaisie(type, id, champ)];
+    if (!tfNbChangements()) tarifs.tiroir = false;
+    tarifs.erreur = '';
+    tfRendre();
+    const suite = document.querySelector('#staffPricingPage [data-tf-tiroir] [data-tf-action="annuler-changement"]')
+      || document.querySelector('#staffPricingPage [data-tf-tiroir] .tf-t-fermer')
+      || document.getElementById(`tfOnglet-${tfOnglet()}`);
+    if (suite) suite.focus({ preventScroll: true });
+  }
+  // « Revenir au catalogue » : le centre abandonne SES valeurs (prix, nom,
+  // mise en vente, validation) pour celles du catalogue de l entreprise.
+  function tfRevenirAuCatalogue(id) {
+    const entry = pevEntry(id);
+    if (!entry || !entry.centerOverride) return;
+    const MOTS = { name: 'le nom', priceValue: 'le prix', priceOld: 'le prix barré', enabled: 'la mise en vente', removed: 'la mise en vente', humanValidation: 'la validation par l’équipe' };
+    const quoi = [...new Set(Object.keys(entry.centerOverride).map((k) => MOTS[k]).filter(Boolean))];
+    const nom = tfPublieFormule(entry).nom;
+    if (!window.confirm(`Revenir au catalogue pour ${nom} ? À ${tfNomCentre()}, ${tfEt(quoi)} ${quoi.length > 1 ? 'reprennent leur' : 'reprend sa'} valeur du catalogue de l’entreprise.`)) return;
+    apiRequest(tfOps(), { method: 'POST', body: pevBody({ action: 'resetClientFormuleOverride', formuleId: id }) })
+      .then(() => {
+        const lot = tfLot(false);
+        if (lot) delete lot.formules[id];
+        tfOublierSaisies('formule', id);
+        pevToast(`${nom} reprend les valeurs du catalogue.`);
+        pevReload();
+      })
+      .catch((error) => pevToast((error && error.message) || 'Retour au catalogue refusé. Réessayez.'));
+  }
+  function tfVersEtablissement() {
+    if (typeof state !== 'undefined' && state) state.establishmentTab = 'offres';
+    if (typeof openStaffMenuPage === 'function') openStaffMenuPage('establishment');
+  }
+
+  // ---- LES GESTES (un ecouteur par type d evenement, pose une fois) ----------------
+  function tfDefileur(el) {
+    let n = el && el.parentElement;
+    while (n && n !== document.body) {
+      const s = getComputedStyle(n);
+      if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return n;
+      n = n.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function tfOuvrir(type, id, { prix = false } = {}) {
+    const cle = type === 'activite' ? 'activites' : 'formules';
+    const attribut = type === 'activite' ? 'data-tf-ouvrir-act' : 'data-tf-ouvrir';
+    const selecteur = `#staffPricingPage .tf-ligne-btn[${attribut}="${CSS.escape(id)}"]`;
+    const avant = document.querySelector(selecteur);
+    const haut = avant ? avant.getBoundingClientRect().top : null;
+    tarifs.ouvert[cle] = tarifs.ouvert[cle] === id && !prix ? '' : id;
+    tarifs.focus = '';
+    tfRendre();
+    const apres = document.querySelector(selecteur);
+    // La ligne reste sous le doigt : fermer la planche du dessus ne la fait
+    // pas sauter.
+    if (apres && haut != null) {
+      const decalage = apres.getBoundingClientRect().top - haut;
+      if (decalage) tfDefileur(apres).scrollTop += decalage;
+    }
+    if (prix && tarifs.ouvert[cle] === id) {
+      const champ = document.querySelector('#staffPricingPage [data-tf-planche] input[data-tf-champ="prix"]');
+      if (champ) {
+        champ.focus({ preventScroll: true });
+        champ.select();
+        champ.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+    }
+    if (apres) apres.focus({ preventScroll: true });
+  }
+  function tfChoisirOnglet(cle) {
+    if (!TF_ONGLETS.includes(cle)) return;
+    state.staffPricingTab = cle;
+    if (typeof save === 'function') save();
+    tarifs.focus = '';
+    tfRendre();
+    const onglet = document.getElementById(`tfOnglet-${cle}`);
+    if (onglet) onglet.focus({ preventScroll: true });
+  }
+  function tfChangerGroupe(valeur) {
+    const n = Math.min(TF_GROUPE_MAX, Math.max(TF_GROUPE_MIN, Math.round(Number(valeur)) || TF_GROUPE_MIN));
+    const champ = document.querySelector('#staffPricingPage [data-tf-groupe]');
+    if (champ && document.activeElement !== champ && champ.value !== String(n)) champ.value = String(n);
+    if (n === tarifs.groupe) return;
+    tarifs.groupe = n;
+    const planche = tfPlanche();
+    const valeurs = tfValeursCourantes();
+    if (planche && valeurs) {
+      // Le groupe n est pas un reglage : les totaux roulent, sans fil.
+      planche.querySelectorAll('[data-tf-lieu]').forEach((el) => tfAppliquer(el, valeurs, true));
+      const reference = planche.querySelector('[data-tf-ref]');
+      if (reference) reference.textContent = planche.getAttribute('data-tf-type') === 'activite' ? `pour ${tfPluriel(n, 'personne')}` : `pour ${tfPluriel(n, 'personne')}, ${tfDateLisible(tfDateReference())}`;
+      if (planche.getAttribute('data-tf-type') === 'formule') tfChargerDurees();
+    }
+    tfMajTiroir();
+  }
+  function tfSurClic(e) {
+    const cible = e.target instanceof Element ? e.target : null;
+    if (!cible || cible.closest('#smSection')) return;
+    const el = cible.closest('[data-tf-onglet],[data-tf-ouvrir],[data-tf-prix],[data-tf-ouvrir-act],[data-tf-prix-act],button[data-tf-champ="vente"],[data-tf-valid],[data-tf-action],[data-add-formula],[data-cev-steps],[data-cev-fields],[data-cev-delete]');
+    if (!el || el.disabled) return;
+    if (el.hasAttribute('data-tf-onglet')) { tfChoisirOnglet(el.getAttribute('data-tf-onglet')); return; }
+    if (el.hasAttribute('data-tf-prix')) { tfOuvrir('formule', el.getAttribute('data-tf-prix'), { prix: true }); return; }
+    if (el.hasAttribute('data-tf-ouvrir')) { tfOuvrir('formule', el.getAttribute('data-tf-ouvrir')); return; }
+    if (el.hasAttribute('data-tf-prix-act')) { tfOuvrir('activite', el.getAttribute('data-tf-prix-act'), { prix: true }); return; }
+    if (el.hasAttribute('data-tf-ouvrir-act')) { tfOuvrir('activite', el.getAttribute('data-tf-ouvrir-act')); return; }
+    if (el.hasAttribute('data-add-formula')) { cevOpenCreate(el.getAttribute('data-add-formula')); return; }
+    if (el.hasAttribute('data-cev-steps')) { cevOpenSteps(el.getAttribute('data-cev-steps')); return; }
+    if (el.hasAttribute('data-cev-fields')) { cevOpenFields(el.getAttribute('data-cev-fields')); return; }
+    if (el.hasAttribute('data-cev-delete')) { cevDelete(el.getAttribute('data-cev-delete')); return; }
+    const ctx = tfContexte();
+    if (el.matches('[data-tf-champ="vente"]') && ctx && ctx.type === 'formule') {
+      const vue = ctx.vue();
+      tfPoserFormule(ctx.id, 'vente', !vue.valeur.vente);
+      tarifs.focus = 'vente';
+      tfAllumer({ anime: true });
+      tfApresPose('formule', ctx.id, 'vente');
+      return;
+    }
+    if (el.hasAttribute('data-tf-valid') && ctx && ctx.type === 'formule') {
+      tfPoserFormule(ctx.id, 'validation', el.getAttribute('data-tf-valid'));
+      el.focus({ preventScroll: true });
+      tarifs.focus = 'validation';
+      tfAllumer({ anime: true });
+      tfApresPose('formule', ctx.id, 'validation');
+      return;
+    }
+    const action = el.getAttribute('data-tf-action');
+    if (action === 'copier') { if (typeof copyStaffPricingSummary === 'function') copyStaffPricingSummary(); return; }
+    if (action === 'exporter') { if (typeof exportStaffPricingCsv === 'function') exportStaffPricingCsv(); return; }
+    if (action === 'categorie') { cevOpenCreate(); return; }
+    if (action === 'reessayer') { pevRetryCatalog(); return; }
+    if (action === 'groupe-moins' || action === 'groupe-plus') { tfChangerGroupe(tarifs.groupe + (action === 'groupe-plus' ? 1 : -1)); return; }
+    if (action === 'voir') { tfOuvrirTiroir(); return; }
+    if (action === 'fermer-tiroir') { tfFermerTiroir(); return; }
+    if (action === 'annuler-tout') { tfAnnulerTout(); return; }
+    if (action === 'annuler-changement') { tfAnnulerChangement(el.getAttribute('data-tf-type'), el.getAttribute('data-tf-id'), el.getAttribute('data-tf-cible')); return; }
+    if (action === 'publier') { tfPublier(); return; }
+    if (action === 'catalogue') { tfRevenirAuCatalogue(el.getAttribute('data-tf-id')); return; }
+    if (action === 'etablissement') tfVersEtablissement();
+  }
+  function tfSurSaisie(e) {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement)) return;
+    if (el.hasAttribute('data-tf-cherche')) {
+      state.staffPricingQuery = el.value || '';
+      clearTimeout(tarifs.minuteurs.cherche);
+      tarifs.minuteurs.cherche = setTimeout(tfRendre, 120);
+      return;
+    }
+    if (el.hasAttribute('data-tf-groupe')) {
+      const n = Math.round(Number(el.value));
+      clearTimeout(tarifs.minuteurs.groupe);
+      if (!Number.isFinite(n) || n < TF_GROUPE_MIN || n > TF_GROUPE_MAX) return;
+      tarifs.minuteurs.groupe = setTimeout(() => tfChangerGroupe(n), TF_FRAPPE_MS);
+      return;
+    }
+    const champ = el.getAttribute('data-tf-champ');
+    const ctx = tfContexte();
+    if (!ctx || !['prix', 'ancien', 'nom'].includes(champ)) return;
+    tarifs.saisies[tfCleSaisie(ctx.type, ctx.id, champ)] = el.value;
+    const valide = tfSaisieValide(ctx.type, champ, el.value);
+    if (valide) el.removeAttribute('aria-invalid'); else el.setAttribute('aria-invalid', 'true');
+    tfMajAide(ctx.type, champ, el.value, valide);
+    if (valide) {
+      const valeur = champ === 'nom' ? el.value.replace(/\s+/g, ' ').trim() : tfLireNombre(el.value);
+      if (ctx.type === 'formule') tfPoserFormule(ctx.id, champ, valeur); else tfPoserActivite(ctx.id, valeur);
+    }
+    tfApresPose(ctx.type, ctx.id, champ, { attendre: true });
+  }
+  function tfSurChangement(e) {
+    const el = e.target;
+    if (el instanceof HTMLInputElement && el.hasAttribute('data-tf-groupe')) {
+      clearTimeout(tarifs.minuteurs.groupe);
+      tfChangerGroupe(el.value);
+      el.value = String(tarifs.groupe);
+    }
+  }
+  function tfSurFocus(e) {
+    const el = e.target instanceof Element ? e.target : null;
+    const row = el && el.closest('[data-tf-planche] [data-tf-r]');
+    if (!row) return;
+    const champ = row.getAttribute('data-tf-r');
+    if (tarifs.focus === champ) return;
+    tarifs.focus = champ;
+    tfAllumer({ anime: true });
+  }
+  function tfSurSortie(e) {
+    if (tarifs.rendant) return;
+    const el = e.target instanceof Element ? e.target : null;
+    if (!el) return;
+    // Un champ illisible reprend, en sortant, la derniere valeur valable.
+    if (el instanceof HTMLInputElement && el.hasAttribute('data-tf-champ')) {
+      const ctx = tfContexte();
+      const champ = el.getAttribute('data-tf-champ');
+      if (ctx && !tfSaisieValide(ctx.type, champ, el.value)) {
+        delete tarifs.saisies[tfCleSaisie(ctx.type, ctx.id, champ)];
+        const vue = ctx.vue();
+        const propre = ctx.type === 'activite' ? tfSaisieNombre(vue.prix) : champ === 'nom' ? vue.valeur.nom : tfSaisieNombre(vue.valeur[champ]);
+        el.value = propre;
+        el.removeAttribute('aria-invalid');
+        tfMajAide(ctx.type, champ, propre, true);
+      }
+    }
+    const colonne = el.closest('[data-tf-planche] .tf-col-r');
+    if (!colonne) return;
+    if (e.relatedTarget instanceof Element && colonne.contains(e.relatedTarget)) return;
+    tarifs.focus = '';
+    tfAllumer({ anime: true });
+  }
+  function tfSurTouche(e) {
+    const el = e.target instanceof Element ? e.target : null;
+    if (!el) return;
+    const fleche = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (el.matches('[data-tf-onglet]') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault();
+      const i = TF_ONGLETS.indexOf(el.getAttribute('data-tf-onglet'));
+      tfChoisirOnglet(TF_ONGLETS[(i + fleche + TF_ONGLETS.length) % TF_ONGLETS.length]);
+      return;
+    }
+    if (el.matches('[data-tf-valid]') && fleche) {
+      e.preventDefault();
+      const modes = TF_VALIDATIONS.map((x) => x.mode);
+      const i = modes.indexOf(el.getAttribute('data-tf-valid'));
+      const suivant = document.querySelector(`#staffPricingPage [data-tf-valid="${modes[(i + fleche + modes.length) % modes.length]}"]`);
+      if (suivant) suivant.click();
+      return;
+    }
+    if (el.matches('input[data-tf-champ]') && e.key === 'Enter') { e.preventDefault(); el.select(); }
+  }
+  function tfBrancher(root) {
+    if (root.dataset.tfBranche === '1') return;
+    root.dataset.tfBranche = '1';
+    root.addEventListener('click', tfSurClic);
+    root.addEventListener('input', tfSurSaisie);
+    root.addEventListener('change', tfSurChangement);
+    root.addEventListener('focusin', tfSurFocus);
+    root.addEventListener('focusout', tfSurSortie);
+    root.addEventListener('keydown', tfSurTouche);
+  }
+  if (!window.__tfEchapBranche) {
+    window.__tfEchapBranche = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !tarifs.tiroir) return;
+      if (typeof isStaffPricingActive === 'function' && !isStaffPricingActive()) return;
+      e.preventDefault();
+      tfFermerTiroir();
+    });
+  }
+  function tfObserver() {
+    if (tarifs.observateur) { tarifs.observateur.disconnect(); tarifs.observateur = null; }
+    const planche = tfPlanche();
+    if (!planche || typeof ResizeObserver !== 'function') return;
+    let image = 0;
+    tarifs.observateur = new ResizeObserver(() => {
+      cancelAnimationFrame(image);
+      image = requestAnimationFrame(() => { tfDessiner(); tfAllumer({ anime: false }); });
+    });
+    tarifs.observateur.observe(planche.querySelector('[data-tf-cablage]'));
+  }
+
+  // ---- LE BROUILLON APPARTIENT A SON CENTRE ---------------------------------------
+  // Appele par pevResetCatalogCache : a la bascule de centre, le brouillon d un
+  // autre centre est abandonne (jamais publie vers celui-ci), et le gerant le
+  // sait. Le meme appel arrive aussi sur un pouls catalogue page cachee : le
+  // centre n a pas change, rien ne se perd.
+  // La bascule recharge la page (staff-menu.js pinlaneRechargerPourCentre) :
+  // le message passe par sessionStorage pour etre dit APRES le rechargement,
+  // et une seule fois.
+  const TF_CLE_ABANDON = 'pinlane.tarifs.abandon';
+  function tfDireAbandon(message, delai) {
+    setTimeout(() => {
+      try {
+        if (sessionStorage.getItem(TF_CLE_ABANDON) !== message) return;
+        sessionStorage.removeItem(TF_CLE_ABANDON);
+      } catch (e) { /* stockage indisponible : le message se dit quand meme */ }
+      pevToast(message);
+    }, delai);
+  }
+  function tfOublierAutresCentres() {
+    const centre = tfCentre();
+    const perdus = Object.keys(tarifs.brouillons).filter((c) => c !== centre && tfNbChangements(tarifs.brouillons[c]) > 0);
+    Object.keys(tarifs.brouillons).forEach((c) => { if (c !== centre) delete tarifs.brouillons[c]; });
+    Object.keys(tarifs.saisies).forEach((cle) => { if (!cle.startsWith(`${centre}|`)) delete tarifs.saisies[cle]; });
+    if (tfMeta.centre && tfMeta.centre !== centre) Object.assign(tfMeta, { centre: '', etat: 'vide', donnees: null, ticket: tfMeta.ticket + 1 });
+    if (tfDurees.cle && !tfDurees.cle.startsWith(`${centre}|`)) Object.assign(tfDurees, { cle: '', etat: 'vide', valeurs: {}, ticket: tfDurees.ticket + 1 });
+    if (!perdus.length) return;
+    tarifs.tiroir = false;
+    tarifs.erreur = '';
+    const tous = typeof getAdminCenters === 'function' ? (getAdminCenters() || []) : [];
+    const noms = perdus.map((id) => { const c = tous.find((x) => x && x.id === id); return c ? tfNomsCourts([c])[0] : id; });
+    const message = `Changements pas publiés pour ${tfEt(noms)} : abandonnés au changement de centre.`;
+    try { sessionStorage.setItem(TF_CLE_ABANDON, message); } catch (e) { /* dit tout de suite plus bas */ }
+    // Apres le toast « Chargement de … » de la bascule, qui le remplacerait.
+    tfDireAbandon(message, 1200);
+  }
+  try {
+    const abandon = sessionStorage.getItem(TF_CLE_ABANDON);
+    if (abandon) tfDireAbandon(abandon, 1500);
+  } catch (e) { /* stockage indisponible */ }
+  // Appele par pevReload : le catalogue public et les durees se relisent avec
+  // le catalogue de la console. Page cachee, ils sont seulement marques
+  // perimes : la page les relira a son prochain rendu.
+  function tfAuRechargement() {
+    tfDurees.perime = true;
+    if (typeof isStaffPricingActive === 'function' && !isStaffPricingActive()) {
+      if (tfMeta.etat === 'ok') tfMeta.etat = 'vide';
+      return;
+    }
+    tfChargerMeta(true);
   }
 
   window.renderStaffPricingPage = function () {
     const root = document.getElementById('staffPricingPage');
     if (!root) return;
     pevEnsureLoaded();
+    tfChargerMeta(false);
     // La fenetre de 30 jours vient de /api/admin-range (direction.view,
-    // reservations.view ou clients.view) : sans ce droit, on ne l appelle
-    // pas, et les tuiles le disent au lieu d afficher des zeros.
-    const voitHistorique = typeof canReadStaffReservationHistory !== 'function' || canReadStaffReservationHistory();
-    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();
-    const allRows = getPricingRows();
-    const rows = getPricingRowsFiltered();
-    const selected = getSelectedPricingRow(rows);
-    if (selected && state.staffPricingSelectedId !== selected.id) state.staffPricingSelectedId = selected.id;
-    const metrics = getPricingMetrics(allRows);
-    // « Plus demandé » ne designe une offre que si elle a ete demandee.
-    const top = metrics.topRow && Number(metrics.topRow.count) > 0 ? metrics.topRow : null;
-    // TANT QUE L HISTORIQUE N EST PAS ARRIVE, IL N Y A PAS DE CHIFFRE. Avant
-    // la reponse de /api/admin-range, le compte ne voyait que les dates
-    // ouvertes sur ce poste : « 0 réservation sur 30 jours, 0 € » s affichait
-    // comme un fait le temps du chargement, et pour de bon si la lecture
-    // echouait. La page se redessine a l arrivee (loadStaffClientData).
-    const historique = typeof staffClientDataCache === 'undefined' ? { loaded: true } : staffClientDataCache;
-    const histoEtat = historique.loaded ? 'ok' : (historique.error ? 'erreur' : 'charge');
-    const filter = state.staffPricingFilter || 'all';
-    const countByType = (type) => allRows.filter((row) => row.type === type).length;
-    // « Speciales » ne compte QUE la categorie speciale du socle : les autres
-    // ont leur propre onglet, et la somme des onglets retombe juste.
-    const customFamilies = getPricingCustomFamilies(allRows);
-    const customKeys = new Set(customFamilies.map((family) => family.key));
-    const countSpecial = allRows.filter((row) => row.type === 'special'
-      && !customKeys.has(normalizePricingFamilyKey(row.family))).length;
-
-    const ranking = state.staffPricingSort || 'default';
-    const canManage = cevCanManage();
-    // LE SUR MESURE A SON ONGLET (2026-11-03, assets/pinlane-sur-mesure-settings.js) :
-    // le catalogue de ce que l equipe ajoute a un dossier, a cote des offres.
-    const surMesure = window.PinlaneSurMesureSettings || null;
-    const ongletSurMesure = Boolean(surMesure) && filter === 'surmesure';
-    const sections = ongletSurMesure ? surMesure.renderSection() : pricingSectionsHtml(rows, { selected, ranking, canManage });
-    // Catalogue vivant en panne = on le DIT (la page montre alors le socle
-    // fige) et on offre le retry, jamais un fallback silencieux.
-    const catalogAlert = pricingEditor.error
-      ? `<div class="pv2-empty pv2-catalog-alert" role="alert"><strong>Catalogue vivant indisponible</strong>${esc(pricingEditor.error)} La page montre le socle : formules ajoutées ou retirées peuvent manquer. <button type="button" class="pv2-btn" onclick="pevRetryCatalog()">Réessayer</button></div>`
-      : '';
-
-    root.innerHTML = `<div class="pv2-shell">
-      ${bar({
-        crumb: 'Activités & tarifs',
-        title: 'Tarifs & formules',
-        sub: '',
-        actions: `
-          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffPricingQuery || '')}" placeholder="Formule, activité, condition…" oninput="setStaffPricingQuery(this.value)"></label>
-          <button type="button" class="pv2-btn" onclick="copyStaffPricingSummary()">Copier</button>
-          <button type="button" class="pv2-btn" onclick="exportStaffPricingCsv()">Exporter</button>
-          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddCategory" title="Créer une catégorie : donnez-lui un nom, elle apparaît partout" onclick="cevOpenCreate()">+ Catégorie</button>' : ''}
-          <button type="button" class="pv2-btn primary" onclick="openStaffPricingBooking('${escJs(selected?.id || '')}')">+ Réservation</button>`,
-      })}
-
-      <section class="pv2-stats">
-        ${stat({ label: 'Offres actives', count: metrics.activeOffers, foot: `dont ${metrics.formulaRows} formules` })}
-        ${!voitHistorique
-          ? stat({ label: 'Réservations sur 30 jours', value: 'Non accessible avec votre rôle', empty: true, foot: 'Le chiffre et les offres les plus demandées demandent l’accès aux réservations.', className: 'pv2-stat-wide' })
-          : histoEtat !== 'ok'
-            ? stat({ label: 'Réservations sur 30 jours', value: histoEtat === 'erreur' ? 'Historique indisponible' : 'Chargement de l’historique…', empty: true, foot: histoEtat === 'erreur' ? 'Le serveur n’a pas répondu. Rechargez la page pour réessayer.' : 'Les 30 derniers jours arrivent du serveur.', className: 'pv2-stat-wide' })
-            : `
-        ${stat({ label: 'Réservations', count: metrics.reservations, foot: 'sur 30 jours, hors annulations' })}
-        ${stat({ label: 'Chiffre réservé', value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), foot: 'sur 30 jours' })}
-        ${stat({ label: 'Plus demandé', value: top ? top.title : 'Aucune réservation', empty: !top, foot: top ? `${formatStaffTerrainCount(Number(top.count), 'réservation')} sur 30 jours` : 'sur les 30 derniers jours' })}`}
-      </section>
-
-      ${seg([
-        { key: 'all', label: 'Tout', count: allRows.length, active: filter === 'all' },
-        { key: 'bowling', label: 'Bowling', count: countByType('bowling'), active: filter === 'bowling' },
-        { key: 'laser', label: 'Laser Game', count: countByType('laser'), active: filter === 'laser' },
-        { key: 'formula', label: 'Anniversaires', count: countByType('formula'), active: filter === 'formula' },
-        // Les formules speciales (Kids Fun Day, Matin Malin...) etaient les
-        // SEULES offres sans onglet : 6 cartes sur 22 injoignables au filtre,
-        // et la somme des onglets ne tombait pas juste (Movsar 2026-08-17).
-        { key: 'special', label: 'Spéciales', count: countSpecial, active: filter === 'special' },
-        // Une categorie creee par le gerant a SON onglet. Sans lui, ses
-        // formules etaient comptees avec les speciales et rien ne permettait
-        // de les isoler (mesure du 2026-08-22 : « Speciales » passait de 6 a 7
-        // apres la creation d'une categorie inedite).
-        ...customFamilies.map((family) => ({
-          key: `family:${family.key}`,
-          label: family.label,
-          count: family.count,
-          active: filter === `family:${family.key}`,
-        })),
-        ...(surMesure ? [{ key: 'surmesure', label: 'Sur mesure', count: surMesure.compte(), active: ongletSurMesure }] : []),
-      ], 'pv2PricingFilter')}
-
-      ${ongletSurMesure ? '' : `<div class="pv2-quicksorts">
-        <span>Classement</span>
-        ${[['demand', 'Plus demandées'], ['revenue', 'Top chiffre'], ['players', 'Top joueurs'], ['basket', 'Panier moyen']]
-          .map(([key, label]) => `<button type="button" class="pv2-chip-btn${ranking === key ? ' active' : ''}" onclick="setStaffPricingSort('${key}')">${label}</button>`).join('')}
-        ${ranking !== 'default' ? '<button type="button" class="pv2-chip-btn" onclick="setStaffPricingSort(state.staffPricingSort)">Ordre catalogue</button>' : ''}
-      </div>`}
-
-      ${ongletSurMesure ? '' : catalogAlert}
-      ${sections}
-    </div>`;
+    // reservations.view ou clients.view) : sans ce droit, on ne l appelle pas.
+    if ((typeof canReadStaffReservationHistory !== 'function' || canReadStaffReservationHistory()) && typeof ensureStaffClientData === 'function') ensureStaffClientData();
+    const sm = window.PinlaneSurMesureSettings || null;
+    if (sm && typeof sm.charger === 'function') sm.charger();
+    tfBrancher(root);
+    tarifs.usages = tfLireUsages();
+    const html = tfPageHtml();
+    const intact = html === tarifs.dernierRendu && Boolean(root.querySelector('[data-tf-page]'));
+    if (!intact) {
+      tarifs.dernierRendu = html;
+      tarifs.rendant = true;
+      tfAnnulerGouttes();
+      try { tfAvecFocus(() => { root.innerHTML = html; }); } finally { tarifs.rendant = false; }
+      tarifs.trace = '';
+      tarifs.signature = '';
+      const place = root.querySelector('[data-tf-barre-place]');
+      if (place) place.dataset.tfSignature = tfSignatureBarre();
+    }
     mount(root, 'pricing');
-    pevSyncModal();
     cevSyncModal();
     aevSyncModal();
-    if (surMesure) surMesure.monter();
+    if (sm && typeof sm.monter === 'function') sm.monter();
+    if (intact) return;
+    tfObserver();
+    if (tfPlanche()) {
+      if (tfContexte() && tfContexte().type === 'formule') tfChargerDurees();
+      tfDessiner();
+      tfAllumer({ anime: false });
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { tfDessiner(); tfAllumer({ anime: false }); });
+    }
   };
+
+  // ---- L API DE LA PAGE (gates, outils) ---------------------------------------------
+  // window.tarifsPoser(formuleId, champ, valeur) : pose un changement dans le
+  // brouillon du centre affiche, comme le ferait la planche. champ : 'prix' ou
+  // 'ancien' (nombre ou texte « 28,50 », '' ou null = pas de prix barre),
+  // 'nom' (texte non vide), 'vente' (booleen), 'validation' ('recommended',
+  // 'required_when_laser_busy' ou 'required'). Rend true si c est pose,
+  // false si la valeur ou la formule est refusee (formule creee par
+  // l entreprise, droit Tarifs absent).
+  window.tarifsPoser = function (formuleId, champ, valeur) {
+    const id = String(formuleId || '');
+    const entry = pevEntry(id);
+    if (!entry || entry.source === 'custom' || !tfPeutTarifs() || !TF_CHAMPS.includes(champ)) return false;
+    let v = valeur;
+    if (champ === 'prix' || champ === 'ancien') {
+      v = tfLireNombre(valeur);
+      if (Number.isNaN(v) || (champ === 'prix' && v == null)) return false;
+    } else if (champ === 'nom') {
+      v = String(valeur == null ? '' : valeur).replace(/\s+/g, ' ').trim().slice(0, PEV_NAME_MAX);
+      if (!v) return false;
+    } else if (champ === 'vente') {
+      v = Boolean(valeur);
+    } else if (!TF_VALIDATIONS.some((x) => x.mode === valeur)) {
+      return false;
+    }
+    tfPoserFormule(id, champ, v);
+    delete tarifs.saisies[tfCleSaisie('formule', id, champ)];
+    tfRendre();
+    return true;
+  };
+  // window.tarifsPublier() : publie le brouillon du centre affiche, exactement
+  // comme le bouton « Publier ». Rend une promesse { publies, refuses } :
+  // publies = nombre de champs publies, refuses = [{ type, id, champs, message }].
+  window.tarifsPublier = function () { return tfPublier(); };
 
   /* ==========================================================================
      GROUPES & ANNIVERSAIRES : la page n'existe plus (fusion du 2026-07-13).

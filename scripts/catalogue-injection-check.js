@@ -473,10 +473,13 @@ async function pageTarifs(page) {
 }
 
 async function ouvrirEtapes(page) {
+  // La page refaite (2026-11-03) : le bouton vit dans la planche de la ligne.
   await page.evaluate(() => {
-    const bouton = document.querySelector('#staffPricingPage [data-cev-formula="f1"] [data-cev-steps="f1"]') || document.querySelector('#staffPricingPage [data-cev-steps="f1"]');
-    bouton.click();
+    const ligne = document.querySelector('#staffPricingPage [data-tf-ligne="f1"] .tf-ligne-btn');
+    if (ligne && !document.querySelector('#staffPricingPage [data-cev-steps="f1"]')) ligne.click();
   });
+  await page.waitForSelector('#staffPricingPage [data-cev-steps="f1"]', { state: 'attached', timeout: 10000 });
+  await page.evaluate(() => { document.querySelector('#staffPricingPage [data-cev-steps="f1"]').click(); });
   await page.waitForSelector('#cevOverlay .cev-step', { state: 'attached', timeout: 10000 });
 }
 
@@ -526,13 +529,13 @@ async function console_(browser) {
     return { attendu, recu };
   });
   ok(lu.attendu.includes('Soirees privees') && lu.recu === lu.attendu, '[console tarifs] « + Formule » garde la categorie exacte', JSON.stringify(lu).slice(0, 160));
+  // La categorie est une SECTION de la page refaite : elle porte son nom tel
+  // qu ecrit (piege compris, en texte) et ses propres lignes.
   const onglet = await page.evaluate(() => {
-    const bouton = Array.from(document.querySelectorAll('#staffPricingPage .pv2-seg button')).find((b) => /Soirees privees/.test(b.textContent));
-    if (!bouton) return null;
-    bouton.click();
-    return document.querySelectorAll('#staffPricingPage [data-cev-formula]').length;
+    const section = Array.from(document.querySelectorAll('#staffPricingPage [data-tf-famille]')).find((x) => /Soirees privees/.test(x.textContent));
+    return section ? section.querySelectorAll('[data-cev-formula]').length : null;
   });
-  ok(Number(onglet) > 0, '[console tarifs] l onglet de la categorie filtre toujours', String(onglet));
+  ok(Number(onglet) > 0, '[console tarifs] la categorie a sa section et ses lignes', String(onglet));
 
   await pageTarifs(page);
   await ouvrirEtapes(page);
@@ -630,9 +633,9 @@ function source() {
 }
 
 const MUTANTS_CONSOLE = [
-  { nom: 'escapeJsString d avant', mutants: [{ fichier: 'assets/app-main.js', de: ".replace(/[\\\\'\"&<>]/g, (char) => `\\\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`);", vers: ".replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");" }], scene: 'tarifs', piege: /family|famille/ },
+  // (2026-11-03) La page Tarifs refaite ne passe plus la categorie a AUCUN gestionnaire inline (ecouteurs delegues sur data-*) : affaiblir escapeJsString n y injecte plus rien, la contre-preuve de cette scene ne pouvait plus mordre. escapeJsString reste prouve par la scene « fiche » ci-dessous, et l attribut de la categorie par « l attribut de la categorie ».
   { nom: 'escapeJsString d avant, nom public', mutants: [{ fichier: 'assets/app-main.js', de: ".replace(/[\\\\'\"&<>]/g, (char) => `\\\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`);", vers: ".replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");" }], scene: 'fiche', piege: /^r\.(name|email)/ },
-  { nom: 'l attribut de la categorie', mutants: [{ fichier: 'assets/staff-pages-v2.js', de: 'data-add-formula="${esc(group.name)}"', vers: 'data-add-formula="${group.name}"' }], scene: 'tarifs', piege: /family|famille/ },
+  { nom: 'l attribut de la categorie', mutants: [{ fichier: 'assets/staff-pages-v2.js', de: 'data-add-formula="${esc(famille)}"', vers: 'data-add-formula="${famille}"' }], scene: 'tarifs', piege: /family|famille/ },
   { nom: 'la valeur hors catalogue', mutants: [{ fichier: 'assets/staff-pages-v2.js', de: '<option value="${esc(step.activityId)}" selected>', vers: '<option value="${step.activityId}" selected>' }], scene: 'etapes', piege: /^step\.activityId$/ },
 ];
 

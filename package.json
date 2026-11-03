@@ -248,6 +248,7 @@
     "test:client-tarifs": "node scripts/client-tarifs-check.js",
     "test:client-catalog": "node scripts/client-catalog-check.js",
     "test:client-tarifs-ui": "node scripts/client-tarifs-ui-check.js",
+    "test:tarifs-effets": "node scripts/tarifs-effets-check.js",
     "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",
     "test:availability-blocks-ui": "node scripts/availability-blocks-ui-check.js",
     "test:availability-day-ui": "node scripts/availability-day-ui-check.js",

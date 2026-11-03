@@ -3973,7 +3973,9 @@ function niveauDeLaSession(session, cle) {
   return niveauDesPermissions(permissions, cle);
 }
 
-function niveauEffectifStaff(cle) {
+// Le niveau de la session ouverte, pour l ecran : window.niveauStaff('prix') rend
+// 'non', '5', '10', '20' ou 'libre' (DROITS_NIVEAUX). Reserver le lit.
+function niveauStaff(cle) {
   return niveauDeLaSession(normalizeStaffSession(state.staffAuthSession) || readStoredStaffSession(), cle);
 }
 
@@ -27981,7 +27983,7 @@ function renderPosCaisse(r) {
   const prixDossier = getReservationPriceState(r);
   const referencePrice = prixDossier.reference;
   const hasCustomPrice = prixDossier.ajuste;
-  const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit') && niveauEffectifStaff('prix') !== 'non';
+  const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit') && niveauStaff('prix') !== 'non';
   const priceEditorHtml = r.status !== 'paid' && canEditPrice
     ? posPriceEditOpen
       ? `<div class="pos-price-edit">
@@ -28949,7 +28951,7 @@ function renderEditExtras(r) {
       <span class="fm-x-titre">${titre}</span>
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
-        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" inputmode="numeric" aria-label="Quantité"')}
+        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
         <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en euros"')}<span aria-hidden="true">€</span></span>
         <b class="fm-x-somme" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
@@ -30901,7 +30903,12 @@ const QB_EXTRA_SUGGESTIONS = {
 // « catalogue », le serveur refuse un nom qu il ne connait pas : la liste de
 // choix doit etre la sienne. Lue une fois par centre, les suggestions tant
 // qu elle n est pas arrivee ; les listes deja ouvertes se remplissent en place.
-let catalogueSurMesureConsole = { centre: '', articles: null };
+// Reserver la lit : await window.chargerCatalogueSurMesure() rend { centre,
+// categories: [{ id, nom }], articles: [{ id, nom, categorie, prix, unite,
+// heure }] }, seulement ce qui se choisit ; articles null si la lecture echoue
+// ou si le role ne reserve pas. Un prix 0 veut dire « a saisir ».
+let catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
+let catalogueSurMesureEnCours = null;
 function suggestionsSurMesure() {
   const { centre, articles } = catalogueSurMesureConsole;
   if (!articles || centre !== getCurrentStaffCenterId()) return QB_EXTRA_SUGGESTIONS;
@@ -30920,22 +30927,38 @@ function listesSurMesure(prefixe) {
 }
 async function chargerCatalogueSurMesure() {
   const centre = getCurrentStaffCenterId();
-  if (!centre || centre === 'all' || catalogueSurMesureConsole.centre === centre) return;
-  catalogueSurMesureConsole = { centre, articles: null };
-  try {
-    const reponse = await apiRequest(`${API_ENDPOINTS.ops}?action=surMesureCatalogue&centerId=${encodeURIComponent(centre)}`);
-    const articles = (reponse && reponse.surMesure && reponse.surMesure.articles) || [];
-    catalogueSurMesureConsole = { centre, articles: articles.filter((article) => article.actif !== false) };
-    Object.entries(suggestionsSurMesure()).forEach(([g, items]) => {
-      ['qbx', 'fmx'].forEach((prefixe) => {
-        const liste = document.getElementById(`${prefixe}-${g}`);
-        if (liste) liste.innerHTML = optionsSurMesure(items);
-      });
-    });
-  } catch (error) {
-    // Les suggestions restent ; le prochain panneau ouvert relira le catalogue.
-    catalogueSurMesureConsole = { centre: '', articles: null };
+  if (!centre || centre === 'all' || !canUseStaffPermission(['reservations.create', 'reservations.edit', 'pricing.manage'])) {
+    return { centre: centre || '', categories: [], articles: null };
   }
+  if (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles) return catalogueSurMesureConsole;
+  if (catalogueSurMesureEnCours && catalogueSurMesureEnCours.centre === centre) return catalogueSurMesureEnCours.promesse;
+  const course = { centre };
+  catalogueSurMesureEnCours = course;
+  course.promesse = (async () => {
+    try {
+      const reponse = await apiRequest(`${API_ENDPOINTS.ops}?action=surMesureCatalogue&centerId=${encodeURIComponent(centre)}`);
+      const surMesure = (reponse && reponse.surMesure) || {};
+      const lu = { centre, categories: surMesure.categories || [], articles: surMesure.articles || [] };
+      // Un changement de centre pendant la lecture : la reponse ne remplit pas
+      // les listes de l autre centre.
+      if (centre === getCurrentStaffCenterId()) {
+        catalogueSurMesureConsole = lu;
+        Object.entries(suggestionsSurMesure()).forEach(([g, items]) => {
+          ['qbx', 'fmx'].forEach((prefixe) => {
+            const liste = document.getElementById(`${prefixe}-${g}`);
+            if (liste) liste.innerHTML = optionsSurMesure(items);
+          });
+        });
+      }
+      return lu;
+    } catch (error) {
+      // Les suggestions restent ; le prochain appel relira le catalogue.
+      return { centre, categories: [], articles: null };
+    } finally {
+      if (catalogueSurMesureEnCours === course) catalogueSurMesureEnCours = null;
+    }
+  })();
+  return course.promesse;
 }
 function quickExtrasEtat() {
   if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
@@ -30989,7 +31012,7 @@ function renderQuickExtras() {
       <div class="qb-x-titre"><b>${titre}</b><small>${aide}</small></div>
       ${e[groupe].map((l, i) => `<div class="qb-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
-        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
+        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
         <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en euros" placeholder="Prix"')}<i>€</i></span>
         <button type="button" class="qb-x-rm" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
       </div>`).join('')}
@@ -32526,7 +32549,7 @@ function rvSurMesureHtml() {
       <div class="rv-rg"><span class="rv-lbl">${titre}</span><span class="rv-note-r">${aide}</span></div>
       ${e[groupe].map((l, i) => `<div class="rv-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
-        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
+        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
         <span class="rv-champ-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en euros" placeholder="Prix"')}<i>€</i></span>
         <button type="button" class="rv-x1" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
       </div>`).join('')}
@@ -32869,7 +32892,7 @@ function rvVerdictHtml() {
     morceaux.push(`<div class="rv-verdict" id="rvRefus"><div class="rv-verdict-h"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(refus.titre)}</b><span>${escapeHtml(refus.raison)}</span></span></div>
       ${refus.conflits.length ? `<ul class="rv-conflits">${refus.conflits.map((c) => `<li>${escapeHtml(c.message)}</li>`).join('')}</ul>` : ''}
       ${rvAlternativesHtml()}
-      ${niveauEffectifStaff('forcer') === 'oui' ? `<div class="rv-forcer-zone"><button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button><span class="rv-texte">${s.forcer ? 'Le dossier part « à placer » : rien n’est bloqué au planning, le conflit est écrit dans sa note.' : 'Le dossier partirait « à placer », son conflit écrit dans sa note, à reprendre au planning.'}</span></div>` : ''}
+      ${niveauStaff('forcer') === 'oui' ? `<div class="rv-forcer-zone"><button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button><span class="rv-texte">${s.forcer ? 'Le dossier part « à placer » : rien n’est bloqué au planning, le conflit est écrit dans sa note.' : 'Le dossier partirait « à placer », son conflit écrit dans sa note, à reprendre au planning.'}</span></div>` : ''}
     </div>`);
     return morceaux.join('');
   }
@@ -33370,7 +33393,7 @@ function rvPrixHtml() {
   const reference = rvTotalReference(summary);
   const total = custom != null ? custom : reference;
   const joueurs = Math.max(1, Number(s.pax) || 1);
-  const peutAjuster = niveauEffectifStaff('prix') !== 'non';
+  const peutAjuster = niveauStaff('prix') !== 'non';
   const parPersonne = Math.round((total / joueurs) * 100) / 100;
   const vide = !rvActivites().length && !quickExtrasTotal();
   const tete = `<div class="rv-prix${vide ? ' is-vide' : ''}"><div class="rv-m" id="rvPrixGros">${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}</div>
@@ -34998,7 +35021,7 @@ async function rvCreerLeLot() {
 // La sortie d un refus. « Créer quand même » ne se promet qu a qui peut le faire :
 // sans le niveau forcer, le serveur le refuserait.
 function rvSortieDuRefus(pronom) {
-  return niveauEffectifStaff('forcer') === 'oui'
+  return niveauStaff('forcer') === 'oui'
     ? `Choisissez une autre heure, ou « Créer quand même » pour ${pronom} créer à placer.`
     : 'Choisissez une autre heure.';
 }

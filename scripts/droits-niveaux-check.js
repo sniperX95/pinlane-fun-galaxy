@@ -19,6 +19,7 @@
 //   [O] les notes : ajout seul sans reservations.edit, auteur forge.
 //   [U] le canal public : extras, fausses notes, faux canal, faux libelle.
 //   [K] le catalogue : bornes, defaut, vraie carte, portes d api/ops.js.
+//   [W] la console : le catalogue arrive a qui reserve, une lecture par centre.
 //
 // --contre-preuves : chaque garde retiree en memoire (le disque n est jamais
 // touche), le groupe qui la prouve doit rougir, sur la ligne attendue.
@@ -220,11 +221,12 @@ async function groupeExtrasCreation(mutations = []) {
   const { liste, v } = verdicts();
   B.semer([]);
   const catalogue = {
-    categories: [{ id: 'nourriture', nom: 'Nourriture' }, { id: 'boissons', nom: 'Boissons' }, { id: 'masquee', nom: 'Masquée', actif: false }],
+    categories: [{ id: 'nourriture', nom: 'Nourriture' }, { id: 'boissons', nom: 'Boissons' }, { id: 'decoration', nom: 'Décoration' }, { id: 'masquee', nom: 'Masquée', actif: false }],
     articles: [
       { id: 'pizza-margherita', nom: 'Pizza Margherita', categorie: 'nourriture', prix: 14, unite: 'piece', heure: true, actif: true },
       { id: 'cruche', nom: 'Cruche maison', categorie: 'boissons', prix: 6, unite: 'joueur', heure: false, actif: true },
       { id: 'gateau', nom: 'Gâteau d’anniversaire', categorie: 'nourriture', prix: 0, unite: 'piece', heure: true, actif: true },
+      { id: 'arche', nom: 'Arche de ballons', categorie: 'decoration', prix: 150, unite: 'piece', heure: false, actif: true },
       { id: 'retiree', nom: 'Pizza retirée', categorie: 'nourriture', prix: 9, unite: 'piece', heure: false, actif: false },
       { id: 'cachee', nom: 'Secrète', categorie: 'masquee', prix: 9, unite: 'piece', heure: false, actif: true },
     ],
@@ -247,10 +249,17 @@ async function groupeExtrasCreation(mutations = []) {
   v(l && l.price === 42 && l.name === 'Pizza Margherita × 3', '[C] catalogue : l article designe par son id, le nom vient de lui', { reponse: dire(x), ligne: l });
   x = await creer(roleDeMesure('catalogue'), [{ articleId: 'inconnu', name: 'Pizza Margherita', price: 14 }]);
   v(x.statut === 403 && x.code === 'sur_mesure_hors_catalogue', '[C] catalogue : un id inconnu ne se rattrape pas par le nom', dire(x));
-  x = await creer(roleDeMesure('catalogue'), [{ articleId: 'pizza-margherita', qte: 10000, name: 'Pizza', price: 1 }]);
+  const horsBorne = [];
+  for (const ligne of [{ articleId: 'pizza-margherita', qte: 1000, name: 'Pizza', price: 1 }, { articleId: 'pizza-margherita', qte: 1.5, name: 'Pizza', price: 1 },
+    { articleId: 'pizza-margherita', qte: 0, name: 'Pizza', price: 1 }, { name: 'Pizza Margherita × 1000', price: 1 }]) {
+    x = await creer(roleDeMesure('catalogue'), [ligne]);
+    horsBorne.push(`${x.statut} ${x.code || ''} ${lignesEcrites()}`);
+  }
+  v(horsBorne.every((r) => r === '422 quantite_invalide 0'), '[C] catalogue : une quantite hors de 1 a 999 est refusee, jamais devinee', horsBorne);
+  x = await creer(roleDeMesure('catalogue'), [{ articleId: 'pizza-margherita', qte: 999, name: 'Pizza', price: 1 }]);
   l = ligneDe(x);
-  v(x.statut === 201 && l && l.qte === 1 && l.price === 14, '[C] catalogue : une quantite hors borne ne s ecrit pas', { reponse: dire(x), ligne: l });
-  x = await creer(roleDeMesure('catalogue'), [{ articleId: 'pizza-margherita', qte: 9999, name: 'Pizza', price: 1 }]);
+  v(x.statut === 201 && l && l.qte === 999 && l.price === 13986 && l.prixUnitaire === 14, '[C] catalogue : 999 passe, price = qte × prixUnitaire', { reponse: dire(x), ligne: l });
+  x = await creer(roleDeMesure('catalogue'), [{ articleId: 'arche', qte: 999, name: 'Arche', price: 1 }]);
   v(x.statut === 422 && x.code === 'prix_invalide' && lignesEcrites() === 0, '[C] catalogue : une ligne calculee au dela de 100 000 EUR : refus', dire(x));
   x = await creer(roleDeMesure('catalogue'), [{ articleId: 'cruche', name: 'Cruche', price: 0 }]);
   l = ligneDe(x);
@@ -468,10 +477,11 @@ async function groupeExtrasPatch(mutations = []) {
   const ligne = () => DOSSIER(501, { base_price: 60, price: 110, extras: [ancienne, signee] });
   B.semer([ligne()]);
   B.base.centers = [{ id: 'libramont', name: 'Libramont', status: 'active', timezone: 'Europe/Brussels', settings: { config: { surMesure: {
-    categories: [{ id: 'nourriture', nom: 'Nourriture' }, { id: 'boissons', nom: 'Boissons' }],
+    categories: [{ id: 'nourriture', nom: 'Nourriture' }, { id: 'boissons', nom: 'Boissons' }, { id: 'decoration', nom: 'Décoration' }],
     articles: [
       { id: 'pizza-margherita', nom: 'Pizza Margherita', categorie: 'nourriture', prix: 14, unite: 'piece', heure: true, actif: true },
       { id: 'cruche', nom: 'Cruche maison', categorie: 'boissons', prix: 6, unite: 'joueur', heure: false, actif: true },
+      { id: 'arche', nom: 'Arche de ballons', categorie: 'decoration', prix: 150, unite: 'piece', heure: false, actif: true },
     ],
   } } } }];
   const m = monter(mutations);
@@ -506,7 +516,7 @@ async function groupeExtrasPatch(mutations = []) {
   v(x.statut === 403 && x.code === 'sur_mesure_refuse' && enBase(501).extras.length === 2, '[E] une ligne dupliquee n est pas une ligne deja la', dire(x));
   x = await essai(roleDeMesure('libre', 'libre'), { extras: [ancienne, signee, { name: 'Remise', price: -200 }], price: 0 });
   v(x.statut === 200 && Number(enBase(501).price) === 0 && !notesDe(enBase(501)).length, '[E] une remise plus grande que le dossier : la reference s arrete a zero, aucun ecart', dire(x));
-  x = await essai(roleDeMesure('catalogue', 'libre'), { extras: [ancienne, signee, { articleId: 'pizza-margherita', qte: 9999, name: 'Pizza', price: 1 }], price: 110, prixRaison: 'Geste' });
+  x = await essai(roleDeMesure('catalogue', 'libre'), { extras: [ancienne, signee, { articleId: 'arche', qte: 999, name: 'Arche', price: 1 }], price: 110, prixRaison: 'Geste' });
   v(x.statut === 422 && x.code === 'prix_invalide' && enBase(501).extras.length === 2, '[E] catalogue : une ligne calculee au dela de 100 000 EUR : refus', dire(x));
   x = await essai(roleDeMesure('catalogue'), { pax: 6, extras: [ancienne, signee, { articleId: 'cruche', name: 'Cruche', price: 0 }], price: 146 });
   const cruche = (enBase(501).extras || [])[2] || {};
@@ -514,9 +524,16 @@ async function groupeExtrasPatch(mutations = []) {
   B.base.centers = [];
   // La derniere barriere, sous les gardes : la lib borne ce qu elle ecrit.
   B.semer([ligne()]);
-  await m.S.db.updateReservation({ id: 501, centerId: 'libramont', extras: [{ name: 'Fou', price: 200000, articleId: 'a'.repeat(99), qte: 'beaucoup', heure: '25:99', note: `<b>${'n'.repeat(300)}</b>` }] }).catch(() => null);
-  const borne = (enBase(501).extras || [])[0] || {};
-  v(borne.price === 100000 && borne.articleId.length === 60 && borne.qte === undefined && borne.heure === undefined && borne.note.length === 200 && !/[<>]/.test(borne.note), '[E] normalizeExtras borne le prix et les champs', borne);
+  await m.S.db.updateReservation({ id: 501, centerId: 'libramont', extras: [
+    { name: 'Fou', price: 200000, articleId: 'a'.repeat(99), qte: 'beaucoup', heure: '25:99', note: `<b>${'n'.repeat(300)}</b>` },
+    { name: 'Mille', price: 1, qte: 1000, heure: '9:30' },
+    { name: 'Demi', price: 1, qte: 2.5, heure: '09:3' },
+    { name: 'Juste', price: 1, qte: 999, heure: '23:59', inconnu: 'garde' },
+  ] }).catch(() => null);
+  const [borne = {}, mille = {}, demi = {}, juste = {}] = enBase(501).extras || [];
+  v(borne.price === 100000 && borne.articleId.length === 60 && borne.qte === undefined && borne.heure === undefined && borne.note.length === 200 && !/[<>]/.test(borne.note)
+    && mille.qte === undefined && mille.heure === undefined && demi.qte === undefined && demi.heure === undefined
+    && juste.qte === 999 && juste.heure === '23:59' && juste.inconnu === undefined, '[E] normalizeExtras borne le prix et les champs', enBase(501).extras);
   return liste;
 }
 
@@ -786,10 +803,13 @@ async function groupeCatalogue(mutations = []) {
   const ops = require(path.join(ROOT, 'api/ops.js'));
   const lire = (s) => { m.changerSession(s); return B.appeler(ops, 'GET', `${URL_OPS}?action=surMesureCatalogue&centerId=libramont`); };
   const ecrire = (s, corps) => { m.changerSession(s); return B.appeler(ops, 'POST', URL_OPS, { centerId: 'libramont', ...corps }); };
-  let r = await lire(session(['reservations.view']));
-  v(r.statut === 200 && r.json.surMesure && r.json.surMesure.articles.some((a) => a.id === 'pizza-margherita'), '[K] lire : celui qui voit les reservations lit le catalogue du centre', `${r.statut} ${r.json.message || ''}`);
-  r = await lire(session(['dashboard.view']));
-  v(r.statut === 403, '[K] lire : sans voir les reservations, 403', r.statut);
+  let r = await lire(session(CREE));
+  v(r.statut === 200 && r.json.surMesure && r.json.surMesure.articles.some((a) => a.id === 'pizza-margherita'), '[K] lire : un role qui reserve lit le catalogue du centre', `${r.statut} ${r.json.message || ''}`);
+  r = await lire(session(['reservations.view', 'reservations.edit']));
+  v(r.statut === 200 && r.json.surMesure && r.json.surMesure.articles.length > 0, '[K] lire : un role qui modifie sans creer le lit aussi', `${r.statut} ${r.json.message || ''}`);
+  r = await lire(session(['reservations.view']));
+  const tableau = await lire(session(['dashboard.view']));
+  v(r.statut === 403 && tableau.statut === 403, '[K] lire : voir sans reserver ne lit pas le catalogue, 403', `${r.statut} ${tableau.statut}`);
   r = await ecrire(session(['settings.manage']), { action: 'saveSurMesure', surMesure: BON });
   v(r.statut === 403 && !B.base.centers[0].settings.config, '[K] ecrire : settings.manage ne suffit pas', `${r.statut} ${r.json.message || ''}`);
   r = await ecrire(session(['pricing.manage']), { action: 'saveSurMesure', surMesure: BON });
@@ -800,7 +820,7 @@ async function groupeCatalogue(mutations = []) {
   r = await ecrire(session(['pricing.manage']), { action: 'saveSurMesure', surMesure: article({ prix: 7 }) });
   journalEnPanne = false;
   v(r.statut === 503 && (((B.base.centers[0].settings.config || {}).surMesure || {}).articles || [{}])[0].prix === 3, '[K] sans trace possible, le catalogue ne s ecrit pas', `${r.statut} ${r.json.message || ''}`);
-  r = await lire(session(['reservations.view']));
+  r = await lire(session(CREE));
   v(r.statut === 200 && r.json.surMesure.articles.length === 1, '[K] le catalogue ecrit se relit aussitot', r.json.surMesure && r.json.surMesure.articles.length);
   r = await ecrire(session(['pricing.manage']), { action: 'saveSurMesure', surMesure: { categories: [{ id: 'nourriture', nom: 'Repas' }] } });
   v(r.statut === 422 && (((B.base.centers[0].settings.config || {}).surMesure || {}).categories || [{}])[0].nom === 'Nourriture', '[K] un catalogue incomplet ne se fusionne pas avec l ancien', `${r.statut} ${r.json.message || ''}`);
@@ -810,14 +830,109 @@ async function groupeCatalogue(mutations = []) {
   v(r.statut === 422 && (((B.base.centers[0].settings.config.surMesure || {}).articles || [])[0] || {}).prix === 3, '[K] une saisie fausse revient au contrat, rien n est ecrit', `${r.statut} ${r.json.message || ''}`);
   r = await ecrire(session(['settings.manage', 'ai.ops']), { action: 'saveCenterConfig', config: { surMesure: { categories: [], articles: [] }, accueil: { lateThresholdMinutes: 9 } } });
   v(r.statut === 200 && ((B.base.centers[0].settings.config.surMesure || {}).articles || []).length === 1 && B.base.centers[0].settings.config.accueil.lateThresholdMinutes === 9, '[K] saveCenterConfig ecrit sa config, pas le catalogue', `${r.statut} ${r.json.message || ''}`);
+  // La console ne recoit que ce qui se choisit : ni article retire, ni categorie
+  // masquee, ni interrupteur, ni rien d autre de la configuration du centre.
+  const MELANGE = {
+    categories: [{ id: 'nourriture', nom: 'Nourriture' }, { id: 'cachee', nom: 'Cachée', actif: false }],
+    articles: [
+      { id: 'a', nom: 'Article', categorie: 'nourriture', prix: 3, unite: 'piece', heure: true, actif: true },
+      { id: 'b', nom: 'Retire', categorie: 'nourriture', prix: 4, unite: 'piece', heure: false, actif: false },
+      { id: 'c', nom: 'Secret', categorie: 'cachee', prix: 5, unite: 'joueur', heure: false, actif: true },
+    ],
+  };
+  r = await ecrire(session(['pricing.manage']), { action: 'saveSurMesure', surMesure: MELANGE });
+  const ecritMelange = r.statut;
+  r = await lire(session(CREE));
+  const attendu = { categories: [{ id: 'nourriture', nom: 'Nourriture' }], articles: [{ id: 'a', nom: 'Article', categorie: 'nourriture', prix: 3, unite: 'piece', heure: true }] };
+  v(ecritMelange === 200 && r.statut === 200 && JSON.stringify(r.json.surMesure) === JSON.stringify(attendu) && JSON.stringify(Object.keys(r.json).sort()) === '["centerId","ok","surMesure"]',
+    '[K] la console ne recoit que ce qui se choisit, rien d autre du centre', { ecrit: ecritMelange, recu: r.json });
   B.base.centers = [];
+  return liste;
+}
+
+// ---------------------------------------------------------------------------
+// [W] LA CONSOLE : chargerCatalogueSurMesure, la lecture que Reserver appelle.
+// Le vrai source d assets/app-main.js, joue dans un bac (les mutations y sont
+// posees comme ailleurs, en memoire).
+// ---------------------------------------------------------------------------
+function fonctionDuSource(src, nom) {
+  const debut = src.indexOf(`function ${nom}(`);
+  if (debut < 0) throw new Error(`fonction absente : ${nom}`);
+  let i = src.indexOf('{', src.indexOf(')', debut));
+  let profondeur = 0;
+  for (; i < src.length; i += 1) {
+    if (src[i] === '{') profondeur += 1;
+    else if (src[i] === '}') { profondeur -= 1; if (profondeur === 0) break; }
+  }
+  return src.slice(src.lastIndexOf('\n', debut) + 1, i + 1);
+}
+
+async function groupeConsole(mutations = []) {
+  const { liste, v } = verdicts();
+  const vm = require('vm');
+  let src = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8').replace(/\r\n/g, '\n');
+  for (const mutation of mutations.filter((mu) => mu.fichier === 'assets/app-main.js')) src = src.replace(mutation.de, mutation.vers);
+  const appels = [];
+  const reponses = [];
+  const bac = {
+    centre: 'libramont',
+    droits: ['reservations.view'],
+    getCurrentStaffCenterId: () => bac.centre,
+    canUseStaffPermission: (p) => (Array.isArray(p) ? p : [p]).some((x) => bac.droits.includes(x)),
+    API_ENDPOINTS: { ops: '/api/ops' },
+    apiRequest: (url) => { appels.push(url); return new Promise((ok, ko) => reponses.push({ ok, ko })); },
+    document: { getElementById: () => null },
+    QB_EXTRA_SUGGESTIONS: { nourriture: [], boissons: [] },
+    escapeHtml: String,
+  };
+  vm.createContext(bac);
+  const etat = (/let catalogueSurMesureConsole = [^;]+;\nlet catalogueSurMesureEnCours = null;/.exec(src) || [''])[0];
+  vm.runInContext(`${etat}\n${['suggestionsSurMesure', 'optionsSurMesure', 'chargerCatalogueSurMesure', 'niveauStaff'].map((n) => fonctionDuSource(src, n)).join('\n')}
+    this.api = { chargerCatalogueSurMesure, niveauStaff, lu: () => catalogueSurMesureConsole };`, bac);
+  const { chargerCatalogueSurMesure, lu } = bac.api;
+  v(typeof bac.api.niveauStaff === 'function' && /^function niveauStaff\(cle\)/m.test(src), '[W] window.niveauStaff(cle) est une fonction de premier niveau de la console');
+  const CARTE = { surMesure: { categories: [{ id: 'nourriture', nom: 'Nourriture' }], articles: [{ id: 'a', nom: 'Article', categorie: 'nourriture', prix: 3, unite: 'piece', heure: false }] } };
+  // Chaque lecture partie recoit sa reponse : une mutation qui en ajoute une ne
+  // laisse jamais le gate pendu.
+  const repondre = (echec = false) => { while (reponses.length) { const r = reponses.shift(); if (echec) r.ko(new Error('reseau')); else r.ok(CARTE); } };
+  let p = chargerCatalogueSurMesure();
+  repondre();
+  let x = await p;
+  v(appels.length === 0 && x.articles === null, '[W] voir sans reserver : aucune lecture, aucun catalogue', { appels, x });
+  bac.droits = ['reservations.view', 'reservations.create'];
+  const premier = chargerCatalogueSurMesure();
+  const second = chargerCatalogueSurMesure();
+  const lectures = appels.length;
+  repondre();
+  const [a, b] = await Promise.all([premier, second]);
+  v(lectures === 1 && a.articles && a.articles.length === 1 && a.categories.length === 1 && b === a && lu().centre === 'libramont', '[W] un role qui reserve recoit le catalogue, une seule lecture pour deux appels', { lectures, a, b });
+  p = chargerCatalogueSurMesure();
+  const relu = appels.length;
+  repondre();
+  x = await p;
+  v(relu === 1 && x.articles.length === 1, '[W] le catalogue lu se relit sans requete', appels);
+  bac.centre = 'gembloux';
+  const ailleurs = chargerCatalogueSurMesure();
+  bac.centre = 'ciney';
+  repondre();
+  x = await ailleurs;
+  v(x.centre === 'gembloux' && lu().centre === 'libramont', '[W] une reponse arrivee apres un changement de centre ne remplit pas celui d a cote', { x, garde: lu() });
+  const panne = chargerCatalogueSurMesure();
+  repondre(true);
+  x = await panne;
+  const avant = appels.length;
+  const relance = chargerCatalogueSurMesure();
+  const apres = appels.length;
+  repondre();
+  await relance;
+  v(x.articles === null && apres === avant + 1, '[W] une lecture en panne rend null et se relit au prochain appel', { x, appels });
   return liste;
 }
 
 // ---------------------------------------------------------------------------
 // LES GROUPES ET LEURS CONTRE-PREUVES.
 // ---------------------------------------------------------------------------
-const GROUPES = { groupeNiveaux, groupePrixCreation, groupeExtrasCreation, groupeFormuleForcer, groupePrixPatch, groupeParties, groupeExtrasPatch, groupeFormulePatch, groupeNotes, groupePublic, groupeCatalogue };
+const GROUPES = { groupeNiveaux, groupePrixCreation, groupeExtrasCreation, groupeFormuleForcer, groupePrixPatch, groupeParties, groupeExtrasPatch, groupeFormulePatch, groupeNotes, groupePublic, groupeCatalogue, groupeConsole };
 
 const CONTRE_PREUVES = [
   // Le niveau d une session.
@@ -853,16 +968,19 @@ const CONTRE_PREUVES = [
   { nom: 'les accents comptent', groupe: 'groupeExtrasCreation', attendu: /« prix a saisir »/, fichier: 'lib/droits-reservation.js', de: ".normalize('NFD')", vers: '' },
   { nom: 'l apostrophe droite perdue', groupe: 'groupeExtrasCreation', attendu: /l apostrophe droite/, fichier: 'lib/droits-reservation.js', de: ".replace(/[’`]/g, '\\'')", vers: '' },
   { nom: 'id inconnu rattrape par le nom', groupe: 'groupeExtrasCreation', attendu: /un id inconnu/, fichier: 'lib/droits-reservation.js', de: 'if (id) return choisissables.find((article) => article.id === id) || null;', vers: 'if (id && choisissables.find((article) => article.id === id)) return choisissables.find((article) => article.id === id);' },
-  { nom: 'quantite envoyee ignoree', groupe: 'groupeExtrasCreation', attendu: /l article designe par son id/, fichier: 'lib/droits-reservation.js', de: '  if (envoyee >= 1 && envoyee <= 9999) return envoyee;\n', vers: '' },
-  { nom: 'quantite sans borne', groupe: 'groupeExtrasCreation', attendu: /une quantite hors borne/, fichier: 'lib/droits-reservation.js', de: 'if (envoyee >= 1 && envoyee <= 9999) return envoyee;', vers: 'if (envoyee >= 1) return envoyee;' },
+  { nom: 'quantite envoyee ignoree', groupe: 'groupeExtrasCreation', attendu: /l article designe par son id/, fichier: 'lib/droits-reservation.js', de: '    : Number(ligne.qte);', vers: '    : nomEtQuantite(ligne.name).qte || null;' },
+  { nom: 'quantite du libelle ignoree', groupe: 'groupeExtrasCreation', attendu: /14 x 2, pas 999/, fichier: 'lib/droits-reservation.js', de: '    ? nomEtQuantite(ligne.name).qte || null', vers: '    ? null' },
+  { nom: 'quantite sans borne', groupe: 'groupeExtrasCreation', attendu: /une quantite hors de 1 a 999/, fichier: 'lib/droits-reservation.js', de: 'return Number.isInteger(envoyee) && envoyee >= 1 && envoyee <= EXTRA_QTE_MAX ? envoyee : null;', vers: 'return envoyee >= 1 ? Math.trunc(envoyee) : null;' },
+  { nom: 'quantite refusee qui passe', groupe: 'groupeExtrasCreation', attendu: /une quantite hors de 1 a 999/, fichier: 'lib/droits-reservation.js', de: "      if (qte === null) {\n        noter(refus('quantite_invalide'", vers: "      if (false) {\n        noter(refus('quantite_invalide'" },
+  { nom: 'plafond de 999 deplace', groupe: 'groupeExtrasCreation', attendu: /999 passe, price = qte × prixUnitaire/, fichier: 'lib/database.js', de: 'const EXTRA_QTE_MAX = 999;', vers: 'const EXTRA_QTE_MAX = 99;' },
   { nom: 'ligne calculee sans plafond', groupe: 'groupeExtrasPatch', attendu: /une ligne calculee au dela/, fichier: 'lib/droits-reservation.js', de: 'if (Math.abs(resolue.price) > PRIX_MAX) {', vers: 'if (false) {' },
   { nom: 'une valeur nue jugee comme une ligne', groupe: 'groupeExtrasCreation', attendu: /ce qui n est pas une ligne/, fichier: 'lib/droits-reservation.js', de: ".filter((ligne) => ligne && typeof ligne === 'object')", vers: '' },
   { nom: 'des extras qui ne sont pas une liste', groupe: 'groupeExtrasCreation', attendu: /des extras qui ne sont pas une liste/, fichier: 'lib/droits-reservation.js', de: 'const lignes = (Array.isArray(extras) ? extras : [])', vers: 'const lignes = (extras || [])' },
   { nom: 'categorie masquee perdue a la lecture', groupe: 'groupeExtrasCreation', attendu: /une categorie masquee/, fichier: 'lib/center-config.js', de: 'categories.push(brute.actif === false ? { id, nom, actif: false } : { id, nom });', vers: 'categories.push({ id, nom });' },
   { nom: 'reference sous zero a la creation', groupe: 'groupeExtrasCreation', attendu: /une remise plus grande que le dossier/, fichier: 'lib/droits-reservation.js', de: 'const reference = Math.max(0, euros(centimes(dossier.basePrice) + centimes(totalExtrasComptoir(dossier.extras))));', vers: 'const reference = euros(centimes(dossier.basePrice) + centimes(totalExtrasComptoir(dossier.extras)));' },
-  { nom: 'article inactif accepte', groupe: 'groupeExtrasCreation', attendu: /un article inactif/, fichier: 'lib/droits-reservation.js', de: 'catalogue.articles.filter((article) => article.actif && ouvertes.has(article.categorie));', vers: 'catalogue.articles.filter((article) => ouvertes.has(article.categorie));' },
-  { nom: 'categorie masquee acceptee', groupe: 'groupeExtrasCreation', attendu: /une categorie masquee/, fichier: 'lib/droits-reservation.js', de: 'catalogue.articles.filter((article) => article.actif && ouvertes.has(article.categorie));', vers: 'catalogue.articles.filter((article) => article.actif);' },
-  { nom: 'quantite d un article par joueur oubliee', groupe: 'groupeExtrasCreation', attendu: /un article par joueur/, fichier: 'lib/droits-reservation.js', de: "return article.unite === 'joueur' ? Math.max(1, Math.trunc(Number(pax)) || 1) : 1;", vers: 'return 1;' },
+  { nom: 'article inactif accepte', groupe: 'groupeExtrasCreation', attendu: /un article inactif/, fichier: 'lib/center-config.js', de: 'catalogue.articles.filter((article) => article.actif && ouvertes.has(article.categorie))', vers: 'catalogue.articles.filter((article) => ouvertes.has(article.categorie))' },
+  { nom: 'categorie masquee acceptee', groupe: 'groupeExtrasCreation', attendu: /une categorie masquee/, fichier: 'lib/center-config.js', de: 'const categories = catalogue.categories.filter((categorie) => categorie.actif !== false);', vers: 'const categories = catalogue.categories;' },
+  { nom: 'quantite d un article par joueur oubliee', groupe: 'groupeExtrasCreation', attendu: /un article par joueur/, fichier: 'lib/droits-reservation.js', de: "if (envoyee === null) return article.unite === 'joueur' ? Math.max(1, Math.trunc(Number(pax)) || 1) : 1;", vers: 'if (envoyee === null) return 1;' },
   { nom: 'l auteur du corps garde', groupe: 'groupeExtrasCreation', attendu: /l auteur du corps ne survit pas/, fichier: 'lib/droits-reservation.js', de: 'id: ligne.id, name: ligne.name, price: prix, par, le };', vers: 'id: ligne.id, name: ligne.name, price: prix, par: ligne.par, le: ligne.le };' },
   { nom: 'ligne negative sans prix libre', groupe: 'groupeExtrasCreation', attendu: /ligne negative sans prix libre/, fichier: 'lib/droits-reservation.js', de: "if (prix < 0 && !(niveau === 'libre' && prixLibre)) {", vers: 'if (false) {' },
   { nom: 'ligne illisible acceptee', groupe: 'groupeExtrasCreation', attendu: /un prix de ligne illisible/, fichier: 'lib/droits-reservation.js', de: 'if (!Number.isFinite(prix) || Math.abs(prix) > PRIX_MAX) {', vers: 'if (false) {' },
@@ -897,6 +1015,8 @@ const CONTRE_PREUVES = [
   { nom: 'le corps reecrit l auteur d une ligne', groupe: 'groupeExtrasPatch', attendu: /leur auteur reste/, fichier: 'lib/droits-reservation.js', de: 'return { ...stockee, ...(ligne.heure', vers: 'return { ...stockee, par: ligne.par, le: ligne.le, ...(ligne.heure' },
   { nom: 'extras non liste qui effacent', groupe: 'groupeExtrasPatch', attendu: /n effacent rien/, fichier: 'api/staff-reservations.js', de: "      if (Object.prototype.hasOwnProperty.call(patch, 'extras') && !Array.isArray(patch.extras)) delete patch.extras;\n", vers: '' },
   { nom: 'normalizeExtras sans borne', groupe: 'groupeExtrasPatch', attendu: /normalizeExtras borne/, fichier: 'lib/database.js', de: 'price: Math.max(-EXTRA_PRIX_MAX, Math.min(EXTRA_PRIX_MAX, toNumber(item.price, 0))),', vers: 'price: toNumber(item.price, 0),' },
+  { nom: 'normalizeExtras sans borne de quantite', groupe: 'groupeExtrasPatch', attendu: /normalizeExtras borne/, fichier: 'lib/database.js', de: 'if (Number.isInteger(qte) && qte >= 1 && qte <= EXTRA_QTE_MAX) ligne.qte = qte;', vers: 'if (qte >= 1) ligne.qte = qte;' },
+  { nom: 'normalizeExtras sans format d heure', groupe: 'groupeExtrasPatch', attendu: /normalizeExtras borne/, fichier: 'lib/database.js', de: "if (EXTRA_HEURE.test(String(item.heure || ''))) ligne.heure = String(item.heure);", vers: 'if (item.heure) ligne.heure = String(item.heure);' },
   { nom: 'heure et note d une ligne perdues', groupe: 'groupeExtrasPatch', attendu: /l heure et la note d une ligne deja la/, fichier: 'lib/droits-reservation.js', de: 'return { ...stockee, ...(ligne.heure !== undefined ? { heure: ligne.heure } : {}), ...(ligne.note !== undefined ? { note: ligne.note } : {}) };', vers: 'return stockee;' },
   { nom: 'trace partie de l ancien prix', groupe: 'groupeExtrasPatch', attendu: /la trace part de la nouvelle reference/, fichier: 'lib/droits-reservation.js', de: 'de: prixInchange ? reference : prixAvant,', vers: 'de: prixAvant,' },
   { nom: 'la casse d une ligne compte', groupe: 'groupeExtrasPatch', attendu: /les lignes deja la passent/, fichier: 'lib/droits-reservation.js', de: ".toLowerCase().replace(/\\s+/g, ' ').trim();", vers: ".replace(/\\s+/g, ' ').trim();" },
@@ -940,7 +1060,10 @@ const CONTRE_PREUVES = [
   // Le catalogue.
   { nom: 'saveCenterConfig ecrit le catalogue', groupe: 'groupeCatalogue', attendu: /saveCenterConfig ecrit sa config/, fichier: 'api/ops.js', de: 'sansCatalogueSurMesure(body.config || {})', vers: 'body.config || {}' },
   { nom: 'ecriture du catalogue hors pricing.manage', groupe: 'groupeCatalogue', attendu: /pricing.manage passe|settings.manage ne suffit pas/, fichier: 'api/ops.js', de: "'resetClientFormuleOverride', 'saveSurMesure'].includes(action)", vers: "'resetClientFormuleOverride'].includes(action)" },
-  { nom: 'lecture du catalogue ouverte', groupe: 'groupeCatalogue', attendu: /sans voir les reservations, 403/, fichier: 'api/ops.js', de: "if (action === 'surMesureCatalogue') return ['reservations.view', 'pricing.manage'];", vers: "if (action === 'surMesureCatalogue') return ['reservations.view', 'pricing.manage', 'dashboard.view'];" },
+  { nom: 'lecture du catalogue ouverte a qui voit', groupe: 'groupeCatalogue', attendu: /voir sans reserver ne lit pas le catalogue/, fichier: 'api/ops.js', de: "if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];", vers: "if (action === 'surMesureCatalogue') return ['reservations.view', 'reservations.create', 'reservations.edit', 'pricing.manage'];" },
+  { nom: 'lecture du catalogue fermee a qui modifie', groupe: 'groupeCatalogue', attendu: /un role qui modifie sans creer le lit aussi/, fichier: 'api/ops.js', de: "if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];", vers: "if (action === 'surMesureCatalogue') return ['reservations.create', 'pricing.manage'];" },
+  { nom: 'la console recoit tout le catalogue', groupe: 'groupeCatalogue', attendu: /ne recoit que ce qui se choisit/, fichier: 'api/ops.js', de: 'surMesure: surMesureChoisissable(catalogueSurMesure(centerId)) });', vers: 'surMesure: catalogueSurMesure(centerId) });' },
+  { nom: 'la console recoit les interrupteurs', groupe: 'groupeCatalogue', attendu: /ne recoit que ce qui se choisit/, fichier: 'lib/center-config.js', de: '\n    .map(({ id, nom, categorie, prix, unite, heure }) => ({ id, nom, categorie, prix, unite, heure }));', vers: ';' },
   { nom: 'corps vide qui efface la carte', groupe: 'groupeCatalogue', attendu: /un corps vide n efface pas/, fichier: 'api/ops.js', de: "    if (body.surMesure == null) throw createHttpError('Catalogue sur mesure invalide.', 422, true);\n", vers: '' },
   { nom: 'prix illisible lu 0', groupe: 'groupeCatalogue', attendu: /un prix illisible ne devient jamais 0/, fichier: 'lib/center-config.js', de: "const prix = brut?.prix === '' || brut?.prix == null ? NaN : Number(brut.prix);", vers: 'const prix = Number(brut?.prix) || 0;' },
   { nom: 'sans centre, le catalogue de Libramont', groupe: 'groupeCatalogue', attendu: /sans centre nomme/, fichier: 'lib/center-config.js', de: '  if (!centerId) return catalogueSurMesureParDefaut();\n', vers: '  if (!centerId) return normalizeSurMesure(require(\'./ops-knowledge\').getCenter().surMesure);\n' },
@@ -968,7 +1091,20 @@ const CONTRE_PREUVES = [
   { nom: 'chevrons gardes dans un nom', groupe: 'groupeCatalogue', attendu: /un nom ne porte pas de balise/, fichier: 'lib/center-config.js', de: "String(valeur ?? '').replace(/[\\u0000-\\u001f\\u007f<>]/g, ' ').replace(/\\s+/g, ' ').trim();", vers: "String(valeur ?? '').replace(/\\s+/g, ' ').trim();" },
   { nom: 'prix sans arrondi', groupe: 'groupeCatalogue', attendu: /prix au centime/, fichier: 'lib/center-config.js', de: 'prix: Math.round(prix * 100) / 100,', vers: 'prix,' },
   { nom: 'article actif par defaut perdu', groupe: 'groupeCatalogue', attendu: /sans interrupteur/, fichier: 'lib/center-config.js', de: 'actif: brut.actif !== false });', vers: 'actif: brut.actif === true });' },
+  // La console.
+  { nom: 'catalogue lu par qui ne reserve pas', groupe: 'groupeConsole', attendu: /voir sans reserver : aucune lecture/, fichier: 'assets/app-main.js', de: " || !canUseStaffPermission(['reservations.create', 'reservations.edit', 'pricing.manage'])) {", vers: ') {' },
+  { nom: 'deux lectures pour deux appels', groupe: 'groupeConsole', attendu: /une seule lecture pour deux appels/, fichier: 'assets/app-main.js', de: '  if (catalogueSurMesureEnCours && catalogueSurMesureEnCours.centre === centre) return catalogueSurMesureEnCours.promesse;\n', vers: '' },
+  { nom: 'catalogue relu a chaque appel', groupe: 'groupeConsole', attendu: /se relit sans requete/, fichier: 'assets/app-main.js', de: '  if (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles) return catalogueSurMesureConsole;\n', vers: '' },
+  { nom: 'reponse d un autre centre posee', groupe: 'groupeConsole', attendu: /changement de centre/, fichier: 'assets/app-main.js', de: '      if (centre === getCurrentStaffCenterId()) {', vers: '      if (true) {' },
+  { nom: 'lecture en panne jamais relue', groupe: 'groupeConsole', attendu: /une lecture en panne/, fichier: 'assets/app-main.js', de: '      if (catalogueSurMesureEnCours === course) catalogueSurMesureEnCours = null;', vers: '' },
 ];
+
+// Une promesse jamais tenue vide la boucle et Node sort en 0 sans bilan : ce
+// silence-la est un rouge (B.sortir sort toujours par process.exit).
+process.on('beforeExit', () => {
+  console.error('FAIL  droits-niveaux-check s est arrete avant son bilan : une promesse jamais tenue');
+  process.exit(1);
+});
 
 async function main() {
   const contrePreuves = process.argv.includes('--contre-preuves');

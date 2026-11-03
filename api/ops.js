@@ -150,6 +150,7 @@ const {
   setCenterStatus,
   catalogueSurMesure,
   sansCatalogueSurMesure,
+  surMesureChoisissable,
 } = require('../lib/center-config');
 const { listCentersForSession } = require('../lib/center-scope');
 const { sessionHasPermission } = require('../lib/staff-auth');
@@ -1098,10 +1099,11 @@ async function handleGet(req, res, options = {}) {
 
   // Le catalogue sur mesure du centre de la requete (la barriere inter-clients
   // est passee au dispatcher) : Reserver et la fiche le proposent, le serveur
-  // recalcule depuis lui. Une lecture, donc le socle fichier si la base tombe.
+  // recalcule depuis lui. Seulement ce qui se choisit, rien d autre de la
+  // configuration du centre. Une lecture, donc le socle fichier si la base tombe.
   if (action === 'surMesureCatalogue') {
     try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
-    sendJson(res, 200, { ok: true, centerId, surMesure: catalogueSurMesure(centerId) });
+    sendJson(res, 200, { ok: true, centerId, surMesure: surMesureChoisissable(catalogueSurMesure(centerId)) });
     return;
   }
 
@@ -3692,9 +3694,9 @@ function getRequiredOpsPermission(method, action) {
     // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
     // lit founderCatalog (platform.admin), le client lit clientCatalog.
     if (action === 'clientCatalog') return 'pricing.manage';
-    // Le catalogue sur mesure : celui qui voit les reservations le voit, et
-    // celui qui le gere aussi.
-    if (action === 'surMesureCatalogue') return ['reservations.view', 'pricing.manage'];
+    // Le catalogue sur mesure : celui qui reserve ou modifie un dossier le lit,
+    // et celui qui le gere aussi. Voir les reservations ne suffit pas.
+    if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];
     // Lecture de l'editeur de blocage : meme permission de CENTRE que la config
     // et que ses ecritures (saveAvailabilityBlock), la personne qui parametre le
     // centre. Jamais platform.admin : c'est un reglage d'exploitation du centre.

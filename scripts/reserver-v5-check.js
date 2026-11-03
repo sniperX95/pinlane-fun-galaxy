@@ -81,9 +81,9 @@ const MUTATIONS = {
   // « a placer » sans raison.
   forcerPerime: { fichier: 'assets/app-main.js', de: '  const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);', vers: '  const forcer = !simulation && Boolean(s.forcer);', vise: ['C'] },
   // « Créer quand même » se montre a un role que le serveur refuserait.
-  forcerSansNiveau: { fichier: 'assets/app-main.js', de: "${niveauEffectifStaff('forcer') === 'oui' ? `<div class=\"rv-forcer-zone\">", vers: '${true ? `<div class="rv-forcer-zone">', vise: ['C'] },
+  forcerSansNiveau: { fichier: 'assets/app-main.js', de: "${niveauStaff('forcer') === 'oui' ? `<div class=\"rv-forcer-zone\">", vers: '${true ? `<div class="rv-forcer-zone">', vise: ['C'] },
   // La phrase du refus promet ce qu il ne peut pas faire.
-  promesseSansNiveau: { fichier: 'assets/app-main.js', de: "  return niveauEffectifStaff('forcer') === 'oui'\n    ? `Choisissez", vers: '  return true\n    ? `Choisissez', vise: ['C'] },
+  promesseSansNiveau: { fichier: 'assets/app-main.js', de: "  return niveauStaff('forcer') === 'oui'\n    ? `Choisissez", vers: '  return true\n    ? `Choisissez', vise: ['C'] },
   // « Création… » pose a la main sur le bouton : apres un refus, il reste
   // desactive (la zone du pied se croit a jour).
   creation: { fichier: 'assets/app-main.js', de: '  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  renderQuickBook();', vers: "  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  { const b = document.getElementById('rvCreer'); if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Création…'; } }", vise: ['C'] },
@@ -422,8 +422,8 @@ async function scenarioC(page, verifier) {
   await page.evaluate((jour) => {
     window.__QA_REFUS__ = '20:00';
     closeQuickBook();
-    window.__niveauReel = window.niveauEffectifStaff;
-    window.niveauEffectifStaff = (cle) => (cle === 'forcer' ? 'non' : window.__niveauReel(cle));
+    window.__niveauReel = window.niveauStaff;
+    window.niveauStaff = (cle) => (cle === 'forcer' ? 'non' : window.__niveauReel(cle));
     openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
   }, JOUR);
   await planPose(page, false);
@@ -431,7 +431,7 @@ async function scenarioC(page, verifier) {
   await page.click('#rvCreer');
   await page.waitForTimeout(400);
   const sansNiveau = await page.evaluate(() => ({ bouton: Boolean(document.getElementById('rvForcer')), erreur: quickBookState ? quickBookState.error : '' }));
-  await page.evaluate(() => { window.niveauEffectifStaff = window.__niveauReel; window.__QA_REFUS__ = null; closeQuickBook(); });
+  await page.evaluate(() => { window.niveauStaff = window.__niveauReel; window.__QA_REFUS__ = null; closeQuickBook(); });
   verifier('C', !sansNiveau.bouton && /Choisissez une autre heure\./.test(sansNiveau.erreur) && !/quand même/.test(sansNiveau.erreur), 'sans le niveau forcer : ni bouton, ni promesse dans le message du refus', JSON.stringify(sansNiveau));
 }
 

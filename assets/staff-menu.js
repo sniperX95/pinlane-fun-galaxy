@@ -96,7 +96,7 @@
           children: [
             { key: 'bowling', label: 'Bowling', resource: 'bowling' },
             { key: 'laser', label: 'Laser Game', resource: 'laser' },
-            { key: 'complete', label: 'Toutes', resource: 'all' }
+            { key: 'complete', label: 'Complet', resource: 'all' }
           ]
         },
         { key: 'reservations', label: 'Réservations', icon: 'reservations' },
@@ -483,10 +483,10 @@
     }
   }
 
-  // LE GRAND TABLEAU REPLIE LE MENU, POUR LUI SEUL (2026-11-02). Le planning global
-  // (body.gf-large, pose par assets/pinlane-planning-global.js) prend toute la largeur :
-  // le menu y passe en barre d icones, sans toucher au choix de l equipe. « Ouvrir le
-  // menu » le rouvre sur cet ecran ; l ecran quitte, tout revient comme avant.
+  // LES TROIS PLANNINGS REPLIENT LE MENU (2026-11-02, les trois depuis le 2026-11-03,
+  // pour que la largeur ne saute jamais d un planning a l autre) : body.gf-large, pose par
+  // pbSyncBarre (assets/app-main.js). Le menu y passe en barre d icones, sans toucher au
+  // choix de l equipe. « Ouvrir le menu » le rouvre sur ces ecrans ; quittes, tout revient.
   let menuRouvertIci = false;
   function grandTableau() {
     return typeof state !== 'undefined' && state.view === 'staff' && Boolean(document.body) && document.body.classList.contains('gf-large');

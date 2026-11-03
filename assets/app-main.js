@@ -30442,36 +30442,6 @@ function ligneProgrammeQuick(activityId) {
   return ligne;
 }
 
-// Le petit bloc de reglages d une activite du catalogue, ou rien du tout quand
-// elle n en a pas.
-function renderQuickVisitOptions(choice) {
-  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(choice.id) : null;
-  if (!activite) return '';
-  if (choice.id === 'arcade_time') return renderStaffArcadeOptions(activite,getQuickVisitOptions(choice.id),getQuickVisitParticipants(choice.id),'quick');
-  if (activite.priceType === 'grid_bowling') {
-    const courant = Number(getQuickVisitOptions(choice.id).duration) || 1;
-    return `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitActivityDuration('${escapeJsString(choice.id)}',${opt.value})">${opt.label}</button>`).join('')}</div>`;
-  }
-  if (activite.priceType === 'grid_fun_run') {
-    const courant = getQuickVisitMinutes(choice.id);
-    return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeJsString(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
-  }
-  if (activite.priceType === 'per_unit_hour') {
-    const unites = activityUnitChoices(activite);
-    const heures = activityHourChoices(activite);
-    const nom = /table/i.test(activite.unitLabel || '') ? 'Tables' : 'Nombre';
-    const pastille = (cle, valeur, libelle, courant, setter) => `<button type="button" class="qb-dur-btn ${Number(courant) === Number(valeur) ? 'active' : ''}" data-opt="${cle}" data-val="${valeur}" onclick="${setter}('${escapeJsString(choice.id)}',${valeur})">${escapeHtml(libelle)}</button>`;
-    const unitCourant = getQuickVisitUnits(choice.id);
-    const heureCourante = getQuickVisitHours(choice.id);
-    return `<div class="qb-visit-options qb-visit-reglage"><span class="qb-opt-legend">${nom}</span>`
-      + unites.map((value) => pastille('units', value, String(value), unitCourant, 'setQuickVisitUnits')).join('')
-      + `</div><div class="qb-visit-options qb-visit-reglage"><span class="qb-opt-legend">Durée</span>`
-      + heures.map((option) => pastille('hours', option.hours, option.label, heureCourante, 'setQuickVisitHours')).join('')
-      + `</div>`;
-  }
-  return '';
-}
-
 function setQuickVisitActivityDuration(id, value) {
   if (!quickBookState) return;
   if (!DURATION_OPTIONS.some(option => Number(option.value) === Number(value))) return;
@@ -30517,17 +30487,6 @@ function setEditActivityParticipants(id, nombre) {
   renderPos();
 }
 
-function toggleQuickVisitActivity(id) {
-  if (!quickBookState) return;
-  const visit = ensureQuickVisit();
-  if (id === 'bowling') visit.bowling.on = !visit.bowling.on;
-  else if (id === 'laser_game') visit.laser_game.on = !visit.laser_game.on;
-  else visit.others[id] = !visit.others[id];
-  if (id === 'arcade_time' && visit.others[id] && !getQuickVisitOptions(id).arcadeMode) Object.assign(getQuickVisitOptions(id),defaultArcadeOptions(getCenterActivity(id)));
-  syncQuickBookDuration();
-  renderQuickBook();
-}
-
 function setQuickVisitBowlingDuration(value) {
   if (!quickBookState) return;
   const visit = ensureQuickVisit();
@@ -30558,13 +30517,6 @@ function getQuickBookCustomPrice() {
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) return null;
   return Math.round(value * 100) / 100;
-}
-
-function clearQuickCustomPrice() {
-  if (!quickBookState) return;
-  quickBookState.customPrice = '';
-  quickBookState.priceOpen = false;
-  renderQuickBook();
 }
 
 // Frappe du prix : etat + montant patches EN PLACE (un re-render pendant la
@@ -30702,14 +30654,6 @@ function quickActiviteRetenue(id) {
   if (id === 'bowling') return quickBookState.type === 'bowling';
   if (id === 'laser_game') return quickBookState.type === 'laser';
   return quickBookState.type === 'activity' && String(quickBookState.activityId || '') === id;
-}
-
-// LES DEUX MODES DE LA FENETRE : Activites ou Formule. Revenir aux activites
-// depuis une formule repart du bowling, l activite socle du centre.
-function setQuickModeActivites() {
-  if (!quickBookState) return;
-  if (quickBookState.type !== 'formule') return;
-  setQuickType('bowling');
 }
 
 // Cocher / decocher dans LA liste. Une activite : la reservation classique de
@@ -31019,27 +30963,9 @@ function normalizePhoneInput(value = '') {
   return `+32 ${raw}`.trim();
 }
 
-function onQuickPhoneFocus() {
-  if (!quickBookState) return;
-  if (!quickBookState.phone.trim()) quickBookState.phone = '+32 ';
-}
-
 function onQuickPhoneInput(value) {
   if (!quickBookState) return;
   quickBookState.phone = value;
-}
-
-function onQuickPhoneBlur(elOrValue) {
-  if (!quickBookState) return;
-  const el = elOrValue && typeof elOrValue === 'object' ? elOrValue : null;
-  const value = el ? el.value : elOrValue;
-  quickBookState.phone = normalizePhoneInput(value);
-  // Pas de re-render complet ici : le clic sur « Créer la réservation »
-  // déclenche d'abord le blur du téléphone. Un renderQuickBook() reconstruirait
-  // la modale (innerHTML) et détruirait le bouton avant que le clic n'atterrisse
-  // : d'où le fameux « il faut cliquer deux fois ». On reflète juste la valeur
-  // normalisée dans le champ, sans reconstruire le DOM.
-  if (el) el.value = quickBookState.phone;
 }
 
 function getQuickBookFormulaChoices() {
@@ -31359,29 +31285,6 @@ function rvSuivreLePlanning() {
   return true;
 }
 
-function setQuickStartTime(time) {
-  if (!quickBookState) return;
-  if (quickBookState.lockStartTime && time !== quickBookState.startTime) return;
-  quickBookState.error = '';
-  quickBookState.startTime = time;
-  quickBookState.heureProposee = false;
-  renderQuickBook();
-}
-
-function applyQuickSuggestedLanes() {
-  if (!quickBookState || !quickBookState.startTime) return;
-  const { requiredCount } = getQuickBookLaneNeed();
-  // Garde la piste déjà choisie (case du planning) et complète jusqu'à N.
-  const seed = quickBookState.autoAssign ? [] : (quickBookState.lanes || []);
-  const suggested = seed.length
-    ? allocateLanesIncludingSeed(requiredCount, seed, quickBookState.date, quickBookState.startTime, quickBookState.duration)
-    : allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration);
-  if (!suggested || !suggested.length) return;
-  quickBookState.autoAssign = false;
-  quickBookState.lanes = suggested;
-  renderQuickBook();
-}
-
 // Les pistes touchees a la main sont retenues a part (lanesALaMain) : celles
 // que la fenetre ajoute quand le groupe grandit (reconcileQuickLaneSelection)
 // ne se disent pas « choisies à la main » sur le billet.
@@ -31438,23 +31341,6 @@ function getQuickBookSummaryActivites() {
   const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const detail = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''} prévue${laneCount > 1 ? 's' : ''}` : 'Sans piste';
   return { total, detail };
-}
-
-// Un champ « acquis » par le contexte reste modifiable : le rappel propose un
-// lien discret qui rouvre le contrôle correspondant (zéro perte de capacité).
-function quickFieldKnown(field) {
-  if (!quickBookState) return false;
-  return quickBookState.context.known.includes(field) && !quickBookState.unlocked[field];
-}
-
-function unlockQuickField(field) {
-  if (!quickBookState) return;
-  quickBookState.unlocked[field] = true;
-  // v5 : le controle vit sur la ligne. Les pistes s ouvrent dans le detail du
-  // bowling, le depart dans celui de la premiere ligne (heure precise).
-  if (field === 'lanes') quickBookState.ouverte = 'bowling';
-  if (field === 'startTime' || field === 'duration') quickBookState.ouverte = rvActivites()[0] || quickBookState.ouverte;
-  renderQuickBook();
 }
 
 function toggleQuickBookMore() {
@@ -31900,20 +31786,6 @@ function rvNomBref(id, libelle = '') {
   return rvMinuscule(nom);
 }
 
-function rvBasculerAjouts() {
-  const s = quickBookState;
-  if (!s) return;
-  s.ajoutsOuverts = !s.ajoutsOuverts;
-  renderQuickBook();
-  const cible = s.ajoutsOuverts ? document.querySelector('#quickBookOverlay .rv-ajout') : document.getElementById('rvPlusActivite');
-  if (cible) cible.focus({ preventScroll: true });
-}
-
-// ── LES ZONES ────────────────────────────────────────────────────────────────
-function rvAide(texte) {
-  return quickBookState && quickBookState.aide ? `<p class="rv-aide">${RV_I.info}<span>${texte}</span></p>` : '';
-}
-
 // Toucher le nombre de joueurs le selectionne en entier : la frappe le
 // remplace (« 12 » puis 15 donne 15, pas 152 : le champ a la largeur de ses
 // chiffres, un toucher au milieu posait le curseur entre les deux). Le
@@ -32154,73 +32026,6 @@ function rvClientConnuHtml() {
   return `<span class="rv-av" aria-hidden="true">${escapeHtml(initiales)}</span><span><b>${r.visites ? rvPluriel(r.visites, 'visite') : 'Pas encore venu'}</b>${quand ? ` · ${quand}` : ''}${quoi ? `<br>${quoi}` : ''}${prochaine ? `<br>${prochaine}` : ''}</span>${refaire}`;
 }
 
-// LE CLIENT : le telephone d abord (il reconnait un client deja venu), le nom,
-// puis ce qu on ajoute : l e-mail (confirmation et rappel), l occasion, la note.
-function rvClientHtml() {
-  const s = quickBookState;
-  const o = s.ouverts || {};
-  const tout = Boolean(s.moreOpen);
-  const emailValid = !s.email || isValidEmail(s.email);
-  const acquis = quickFieldKnown('client');
-  const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
-  const comptoir = !acquis && rvAuComptoir(s);
-  const champTel = `<label class="rv-saisie">${RV_I.tel}<input id="qbPhone" type="tel" value="${escapeHtml(s.phone)}" aria-label="Téléphone" placeholder="Téléphone" autocomplete="off" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value); rvPlanifierClientConnu()" onblur="onQuickPhoneBlur(this)"></label>`;
-  const champNom = (etiquette) => `<label class="rv-saisie">${RV_I.pers}<input id="qbName" value="${escapeHtml(s.name)}" aria-label="Nom du client" placeholder="Nom du client" autocomplete="off" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; majQuickRecapClient()">${etiquette}</label>`;
-  const etiquetteReconnu = reconnu ? '<span class="rv-tag">reconnu</span>' : '';
-  const morceaux = [];
-  if (acquis) {
-    morceaux.push(`<div class="rv-acquis">${RV_I.pers}<span><b>${escapeHtml(s.name || 'Client')}</b><span>${escapeHtml([s.phone && s.phone.replace(/\D/g, '').length > 2 ? s.phone : ''].filter(Boolean).join(' · '))}</span></span><button type="button" onclick="unlockQuickField('client')">Modifier</button></div>`);
-  } else if (comptoir) {
-    // AU COMPTOIR (maquette v5, X4) : rien n est obligatoire. Un seul champ
-    // range ce qu on tape au bon endroit (des chiffres : le telephone, qui
-    // reconnait un client deja venu ; des lettres : le nom). L autre moitie
-    // se rajoute d un toucher, et se montre d elle-meme quand elle est connue
-    // (le nom d un client reconnu).
-    const role = rvRoleComptoir(s);
-    morceaux.push(`<label class="rv-saisie">${RV_I.pers}<input id="qbQui" value="${escapeHtml((role === 'tel' ? s.phone : s.name) || '')}" aria-label="Prénom ou téléphone du client, facultatif" placeholder="Prénom ou téléphone (facultatif)" autocomplete="off" oninput="rvSaisieComptoir(this.value)" onblur="rvSaisieComptoirFinie(this)">${etiquetteReconnu}</label>`);
-    if (rvAutreComptoirVisible(s)) morceaux.push(role === 'tel' ? champNom('') : champTel);
-  } else {
-    // Hors du comptoir (une autre heure), le champ unique oublie ce qu il
-    // tenait : s il revient, le telephone connu decide.
-    s.comptoirRole = null;
-    morceaux.push(champTel);
-    morceaux.push(champNom(etiquetteReconnu));
-  }
-  morceaux.push(`<div class="rv-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>`);
-  const voirEmail = Boolean(o.email || s.email || tout);
-  const voirOccasion = Boolean(o.occasion || s.occasion || tout);
-  const voirNote = Boolean(o.note || (s.notes || '').trim() || tout);
-  if (voirEmail) morceaux.push(`<label class="rv-saisie${emailValid ? '' : ' is-invalide'}">${RV_I.mail}<input id="qbEmail" type="email" value="${escapeHtml(s.email)}" aria-label="E-mail du client, pour la confirmation et le rappel" placeholder="E-mail · confirmation et rappel" autocomplete="off" oninput="quickBookState.email=this.value"></label>${emailValid ? '' : '<p class="rv-texte is-danger">Format e-mail invalide.</p>'}`);
-  if (voirOccasion) morceaux.push(`<div class="rv-plus" role="group" aria-label="Occasion">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="${s.occasion === v ? 'is-on' : ''}" aria-pressed="${s.occasion === v}" onclick="rvChoisirOccasion('${v}')">${mot}</button>`).join('')}</div>`);
-  if (voirNote) morceaux.push(`<div class="rv-note-champ"><label class="rv-etq" for="qbNotes">Note pour l’équipe · jamais envoyée au client</label><span class="rv-saisie is-zone">${RV_I.note}<textarea id="qbNotes" rows="2" maxlength="500" placeholder="Ex. gâteau à sortir vers 19:45, paiement à l’arrivée…" oninput="quickBookState.notes=this.value">${escapeHtml(s.notes || '')}</textarea></span></div>`);
-  const plus = [];
-  if (comptoir) {
-    // Au comptoir, la note et l e-mail d abord (la maquette), puis l autre
-    // moitie du client ; l occasion attend une vraie reservation.
-    if (!voirNote) plus.push('<button type="button" id="rvPlusNote" onclick="rvBasculerOuvert(\'note\',\'qbNotes\')">+ Note pour l’équipe</button>');
-    if (!voirEmail) plus.push('<button type="button" id="rvPlusEmail" onclick="rvBasculerOuvert(\'email\',\'qbEmail\')">+ E-mail</button>');
-    if (!rvAutreComptoirVisible(s)) plus.push(`<button type="button" id="rvPlusAutre" onclick="rvOuvrirAutreComptoir()">${rvRoleComptoir(s) === 'tel' ? '+ Nom' : '+ Téléphone'}</button>`);
-  } else {
-    if (!voirEmail) plus.push('<button type="button" id="rvPlusEmail" onclick="rvBasculerOuvert(\'email\',\'qbEmail\')">+ E-mail</button>');
-    if (!voirOccasion) plus.push('<button type="button" id="rvPlusOccasion" onclick="rvBasculerOuvert(\'occasion\')">+ Occasion</button>');
-    if (!voirNote) plus.push('<button type="button" id="rvPlusNote" onclick="rvBasculerOuvert(\'note\',\'qbNotes\')">+ Note pour l’équipe</button>');
-  }
-  if (plus.length) morceaux.push(`<div class="rv-plus">${plus.join('')}</div>`);
-  morceaux.push(rvAide(comptoir
-    ? 'Au comptoir, rien n’est obligatoire : un prénom ou un numéro suffit, ou rien. Le numéro reconnaît un client déjà venu.'
-    : 'Le numéro reconnaît un client déjà venu dans ce centre. La note part dans les notes de l’équipe du dossier, avec votre nom et l’heure.'));
-  return morceaux.join('');
-}
-
-// AU COMPTOIR : un groupe qui joue AUJOURD HUI, dans l heure qui vient (ou
-// dont la demi-heure a commence), sans client impose par l ouverture (fiche,
-// appel). La meme heure donne toujours le meme ecran.
-function rvAuComptoir(s = quickBookState) {
-  if (!s || s.date !== todayStr() || !s.startTime) return false;
-  const ecart = timeToNum(s.startTime) - currentTimeDecimal();
-  return ecart <= 1 && ecart >= -0.5;
-}
-
 // UN CLIENT DEVANT LE COMPTOIR EST ARRIVE (2026-11-02, audit joue sur la vraie
 // console). Cree a 15:10 pour 15:00, un groupe naissait « +10 min » : le compteur
 // En retard montait de 7 a 8 et il restait a pointer « Arrivé » un client qu on
@@ -32240,21 +32045,6 @@ function rvNaitArrive(s = quickBookState) {
 function rvRoleComptoir(s = quickBookState) {
   if (s.comptoirRole) return s.comptoirRole;
   return String(s.phone || '').replace(/\D/g, '').length > 2 ? 'tel' : 'nom';
-}
-
-// L autre moitie du client a l ecran : ouverte d un toucher, ou deja connue.
-function rvAutreComptoirVisible(s = quickBookState) {
-  if (s.moreOpen || (s.ouverts || {}).autre) return true;
-  return rvRoleComptoir(s) === 'tel' ? Boolean(String(s.name || '').trim()) : String(s.phone || '').replace(/\D/g, '').length > 2;
-}
-
-function rvOuvrirAutreComptoir() {
-  const s = quickBookState;
-  if (!s) return;
-  s.ouverts = { ...(s.ouverts || {}), autre: true };
-  renderQuickBook();
-  const champ = document.getElementById(rvRoleComptoir(s) === 'tel' ? 'qbName' : 'qbPhone');
-  if (champ) champ.focus();
 }
 
 function rvSaisieComptoir(valeur) {
@@ -32282,26 +32072,11 @@ function rvSaisieComptoir(valeur) {
     if (avant === 'tel') s.phone = '';
   }
   rvPlanifierClientConnu();
-  // Ce qui se voit suit ce qui part. Le nom que le numero efface ou ramene
-  // s ecrit dans son champ ; « + Nom » et « + Téléphone » s echangent sur
-  // place (le meme bouton sous le doigt) ; une autre forme (l autre moitie
-  // qui parait ou s en va) se repeint quand le champ rend la main.
+  // Ce qui se voit suit ce qui part : le nom que le numero efface ou ramene
+  // s ecrit dans son champ, et sous le champ unique (rsMajQuiAutre).
   const champNom = document.getElementById('qbName');
   if (champNom && document.activeElement !== champNom && champNom.value !== s.name) champNom.value = s.name;
-  const bouton = document.getElementById('rvPlusAutre');
-  if (bouton) bouton.textContent = role === 'tel' ? '+ Nom' : '+ Téléphone';
-  if (!rvComptoirFormeAJour(s)) rvPoser('rvChamps', rvClientHtml());
-  majQuickRecapClient();
-}
-
-// La forme a l ecran est celle de l etat : la bonne moitie du client quand
-// elle doit se voir, sinon son bouton.
-function rvComptoirFormeAJour(s = quickBookState) {
-  const attendu = rvRoleComptoir(s) === 'tel' ? 'qbName' : 'qbPhone';
-  const presents = ['qbName', 'qbPhone'].filter((id) => document.getElementById(id));
-  return rvAutreComptoirVisible(s)
-    ? presents.length === 1 && presents[0] === attendu
-    : !presents.length && Boolean(document.getElementById('rvPlusAutre'));
+  rsMajQuiAutre();
 }
 
 // LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
@@ -32792,9 +32567,19 @@ function rvRepeindre({ sauf = [] } = {}) {
   const modal = overlay.querySelector('.qb-modal.rv');
   const classes = `qb-modal rv rs qb-context-${quickBookState.context.source} is-q-${b.q}${b.ajout ? ' is-ajout' : ''}${b.ticket ? ' is-ticket' : ''}`;
   if (modal.className !== classes) modal.className = classes;
+  // Au telephone, le ticket ouvert couvre la colonne : ce qu il cache ne prend pas le focus.
+  const gauche = modal.querySelector('.rs-gauche');
+  const couverte = Boolean(b.ticket) && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches;
+  if (gauche && gauche.inert !== couverte) gauche.inert = couverte;
   const actif = overlay.contains(document.activeElement) ? document.activeElement : null;
   const actifId = actif ? actif.id : '';
   const actifAction = actif ? actif.getAttribute('onclick') : '';
+  // Une heure garde le focus, pas sa place : la rangee des seances glisse pour garder
+  // l heure choisie en vue, et le meme bouton dirait alors l heure voisine.
+  const cleHeure = (el) => (!el || !el.dataset ? '' : el.dataset.heure ? `h:${el.dataset.heure}` : el.dataset.heureL ? `l:${el.dataset.heureL}` : '');
+  const actifHeure = cleHeure(actif);
+  const actifActivite = actif && actif.dataset ? actif.dataset.activite || '' : '';
+  const memeHeure = () => (actifHeure ? [...overlay.querySelectorAll('[data-heure], [data-heure-l]')].find((el) => cleHeure(el) === actifHeure && (el.dataset.activite || '') === actifActivite) : null);
   rsPoser('rsHaut', rsHautHtml());
   // Une autre page se pose neuve : le repeint qui garde les noeuds sert a la meme page.
   const page = `${b.q}|${b.ligne}|${b.quandDe}|${b.quandPartie}`;
@@ -32816,10 +32601,15 @@ function rvRepeindre({ sauf = [] } = {}) {
   rsChercherLaProche();
   if (actif && !actif.isConnected) {
     const suivant = (actifId && document.getElementById(actifId))
+      || memeHeure()
       || (actifAction && [...overlay.querySelectorAll('[onclick]')].find((el) => el.getAttribute('onclick') === actifAction))
+      || (couverte && document.getElementById('rsReplier'))
       || document.getElementById('rsQ')
       || document.getElementById('rsCol');
     if (suivant) suivant.focus({ preventScroll: true });
+  } else if (actifHeure && cleHeure(actif) !== actifHeure) {
+    const meme = memeHeure();
+    if (meme) meme.focus({ preventScroll: true });
   }
 }
 
@@ -32850,14 +32640,6 @@ function renderQuickBookInner() {
   if (s.horloge) rvChargerCandidats(s.horloge.id, s.horloge.partie);
   else if (formule) rvChargerCandidats(rvActivites()[0], 0);
   else if (b.q === 'autres' && b.quandPartie) rvChargerCandidats('laser_game', b.quandPartie);
-}
-
-// Le nom tape se lit dans le billet, sans redessiner la fenetre.
-function majQuickRecapClient() {
-  if (!quickBookState) return;
-  const badge = document.querySelector('#quickBookOverlay .rv-eyebrow em');
-  const occasion = (RV_OCCASIONS.find(([v]) => v === quickBookState.occasion) || [])[1];
-  if (badge && occasion) badge.textContent = `${occasion}${quickBookState.name ? ` · ${quickBookState.name}` : ''}`;
 }
 
 // ── LES GESTES ───────────────────────────────────────────────────────────────
@@ -33070,31 +32852,6 @@ function rvBasculerForcer() {
   renderQuickBook();
 }
 
-// Changer de mode repart propre : une formule adaptee ou des heures choisies
-// pour une autre composition ne survivent pas au changement. MAIS LES
-// ACTIVITES COMPOSEES REVIENNENT (2026-10-12) : passer de Formule a Activites
-// repartait du bowling seul, et le laser compose avant s effacait. La
-// composition d avant la formule est gardee, et rendue au retour.
-function rvModeActivites() {
-  if (!quickBookState) return;
-  const s = quickBookState;
-  s.adaptee = false;
-  s.heures = {};
-  s.forcer = false;
-  const avant = s.type === 'formule' ? s.activitesAvantFormule : null;
-  s.activitesAvantFormule = null;
-  if (avant) {
-    Object.assign(s, JSON.parse(JSON.stringify(avant)));
-    s.formuleId = '';
-    s.bowlingParDefaut = false;
-    syncQuickBookDuration();
-    reconcileQuickLaneSelection();
-    renderQuickBook();
-    return;
-  }
-  setQuickModeActivites();
-}
-
 function rvModeFormule() {
   if (!quickBookState || quickBookState.type === 'formule') return;
   const s = quickBookState;
@@ -33129,13 +32886,6 @@ function rvChoisirDate(valeur) {
       .then(() => { if (quickBookState && quickBookState.date === valeur) renderQuickBook(); })
       .catch(() => {});
   }
-}
-
-function rvBasculerOuvert(cle, focus) {
-  if (!quickBookState) return;
-  quickBookState.ouverts = { ...(quickBookState.ouverts || {}), [cle]: !(quickBookState.ouverts || {})[cle] };
-  renderQuickBook();
-  if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
 }
 
 function rvChoisirOccasion(valeur) {
@@ -33671,9 +33421,8 @@ async function rvChercherClientConnu() {
       quickBookState.nomReconnu = r.nom;
       const champ = document.getElementById('qbName');
       if (champ && document.activeElement !== champ) champ.value = r.nom;
-      // Au comptoir, le nom reconnu apparait sous le numero (quand le champ
-      // rend la main, s il est encore tape).
-      else if (!champ && document.getElementById('qbQui')) rvPoser('rvChamps', rvClientHtml());
+      // Le nom reconnu se lit sous le numero, tout de suite : c est lui qui partira.
+      rsMajQuiAutre();
     }
   } catch (error) {
     if (!quickBookState || seq !== rvClientSeq) return;
@@ -33746,7 +33495,8 @@ function rsEtat(s = quickBookState) {
 // bandeau, fiche client, depart laser). La ligne du ticket reste touchable.
 function rsDepart(s) {
   return {
-    q: 'activites',
+    // « Nouvelle formule » s ouvre sur le choix des formules.
+    q: s.type === 'formule' && !s.formuleId ? 'formules' : 'activites',
     ajout: false,
     ligne: '',
     quandDe: '',
@@ -33802,7 +33552,11 @@ function rsPoserFocus() {
   if (!b || b.barre) return;
   const overlay = document.getElementById('quickBookOverlay');
   const actif = document.activeElement;
-  if (overlay && actif && actif !== document.body && actif !== overlay.querySelector('.qb-modal.rv') && overlay.contains(actif)) return;
+  // Au telephone, le geste peut cacher la touche qui a le focus (la ligne du ticket, quand
+  // sa page replie le ticket) : le focus tomberait sur le document.
+  const cachee = Boolean(b.cachable) && actif && actif !== document.body && !actif.getClientRects().length;
+  b.cachable = false;
+  if (overlay && actif && !cachee && actif !== document.body && actif !== overlay.querySelector('.qb-modal.rv') && overlay.contains(actif)) return;
   const cible = document.getElementById('rsQ') || document.getElementById('rsCol');
   if (cible) cible.focus({ preventScroll: true });
 }
@@ -33816,6 +33570,7 @@ function rsVersQuestion(q) {
   b.quandDe = '';
   b.quandPartie = 0;
   b.retourLigne = '';
+  if (b.ticket) b.cachable = true;
   b.ticket = false;
 }
 
@@ -33999,7 +33754,7 @@ function rsHautHtml() {
   const cle = (n) => `<button type="button" class="rs-n${on(n) ? ' is-on' : ''}" data-pax="${n}" aria-pressed="${on(n)}" onclick="rsNombre(${n})">${n}</button>`;
   const jours = rsJours();
   const hors = !jours.some(([iso]) => iso === s.date);
-  return `<div class="rs-rangee${b.faits.combien ? '' : ' is-manque'}"><span class="rs-lbl" id="rsJoueursT">Joueurs</span><div class="rs-ns" role="group" aria-labelledby="rsJoueursT">${RS_NOMBRES.map(cle).join('')}<label class="rs-n rs-autre${autre ? ' is-on' : ''}"><input id="qbPax" type="number" min="1" max="240" inputmode="numeric" value="${escapeHtml(autre)}" placeholder="Autre" aria-label="Autre nombre de joueurs" onchange="rsNombre(this.value)"></label></div></div>
+  return `<div class="rs-rangee${b.faits.combien ? '' : ' is-manque'}"><span class="rs-lbl" id="rsJoueursT">Joueurs</span><div class="rs-ns" role="group" aria-labelledby="rsJoueursT">${RS_NOMBRES.map(cle).join('')}<label class="rs-n rs-autre${autre ? ' is-on' : ''}"><input id="qbPax" type="number" min="1" max="240" inputmode="numeric" value="${escapeHtml(autre)}" placeholder="Autre" aria-label="Autre nombre de joueurs" onfocus="rvSelectionnerAuFocus(this)" onchange="rsNombre(this.value)"></label></div></div>
     <div class="rs-rangee"><span class="rs-lbl" id="rsJourT">Jour</span><div class="rs-seg" role="group" aria-labelledby="rsJourT">${jours.map(([iso, mot]) => `<button type="button" class="${s.date === iso ? 'is-on' : ''}" id="rsJour-${iso}" data-jour="${iso}" aria-pressed="${s.date === iso}" onclick="rsJour(this.dataset.jour)">${escapeHtml(mot)}</button>`).join('')}<label class="rs-seg-date${hors ? ' is-on' : ''}"><span>${hors ? escapeHtml(rsDateCourte(s.date)) : 'Autre date'}</span><input id="qbDate" type="date" value="${escapeHtml(s.date)}" aria-label="Autre date" onclick="try { this.showPicker(); } catch (e) {}" onchange="rsJour(this.value)"></label></div></div>`;
 }
 
@@ -34252,11 +34007,17 @@ function rsHeuresHtml(id) {
   if (!getSchedule(s.date, state.isHolidayMode)) return '<p class="rs-texte">Centre fermé ce jour-là.</p>';
   const pris = rsPris(id);
   const choisie = pris ? (rvHeuresDesLignes()[id] || {}).heure || '' : '';
+  const sid = escapeJsString(id);
+  // Un depart rejoint ne change pas : son bloc ne montre que lui, ni autre heure ni
+  // « Autres » ; le toucher ouvre sa ligne, qui le dit.
+  if (pris && s.lockStartTime && rvActivites().indexOf(id) === 0) {
+    const dite = rsHeureDite();
+    return `<div class="rs-s-l" data-verifie="1"><button type="button" class="rs-h is-on" id="rvHeure-${escapeHtml(id)}" data-activite="${escapeHtml(id)}" data-heure="${escapeHtml(choisie)}" aria-label="${escapeHtml(`Départ de ${dite}, il ne change pas`)}" aria-pressed="true" onclick="rsOuvrirLigne('${sid}')"><b>${escapeHtml(dite)}</b><small>ne change pas</small></button></div>`;
+  }
   const { liste, lue } = rsListeBloc(id);
   const refus = pris ? rvRefusDuPlan() : null;
   const vues = rsFenetre(liste, choisie);
   rsMotsVus(id, vues);
-  const sid = escapeJsString(id);
   const cles = vues.map(({ heure, mot }) => {
     const on = heure === choisie;
     const ko = on && refus && refus.activite === id;
@@ -34481,9 +34242,32 @@ function rsDetailLigne(id, etapes, ligne, ids) {
 function rsClientHtml() {
   const s = quickBookState;
   const valeur = (rvRoleComptoir(s) === 'tel' ? String(s.phone || '').replace(/^\+32\s*$/, '') : s.name) || '';
-  return `<label class="rs-tk-nom"><span>Client</span><input id="qbQui" value="${escapeHtml(valeur)}" placeholder="Nom ou téléphone" autocomplete="off" aria-label="Nom ou téléphone du client, facultatif" oninput="rvSaisieComptoir(this.value); rsMajTicket()" onblur="rvSaisieComptoirFinie(this)"></label>
+  const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
+  return `<label class="rs-tk-nom"><span>Client</span><input id="qbQui" value="${escapeHtml(valeur)}" placeholder="Nom ou téléphone" autocomplete="off" aria-label="Nom ou téléphone du client, facultatif" oninput="rvSaisieComptoir(this.value); rsMajTicket()" onblur="rvSaisieComptoirFinie(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}${rsQuiAutreHtml(s)}</label>
     <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>
     <button type="button" class="rs-lien" id="rsL-client" onclick="rsOuvrir('client')">E-mail, note, occasion</button>`;
+}
+
+// L AUTRE MOITIE DU CLIENT, sous le champ unique : le nom d un numero reconnu ou venu
+// d une fiche, le numero d un nom. Il part dans le dossier : il se lit avant de partir.
+function rsQuiAutre(s = quickBookState) {
+  if (rvRoleComptoir(s) === 'tel') return String(s.name || '').trim();
+  const tel = String(s.phone || '').trim();
+  return tel.replace(/\D/g, '').length > 2 ? tel : '';
+}
+
+function rsQuiAutreHtml(s = quickBookState) {
+  const autre = rsQuiAutre(s);
+  return `<small class="rs-tk-autre" id="rsQuiAutre"${autre ? '' : ' hidden'}>${escapeHtml(autre)}</small>`;
+}
+
+// A la frappe, le champ garde sa zone (rvPoser) : l autre moitie suit sans attendre.
+function rsMajQuiAutre() {
+  const el = document.getElementById('rsQuiAutre');
+  if (!el || !quickBookState) return;
+  const autre = rsQuiAutre();
+  if (el.textContent !== autre) el.textContent = autre;
+  if (el.hidden !== !autre) el.hidden = !autre;
 }
 
 function rsOffres() {
@@ -34675,7 +34459,13 @@ function rsChercherLaProche() {
   if (!refus) return;
   const ids = rvActivites();
   const id = ids.includes(refus.activite) ? refus.activite : ids[0];
-  if (id) rvChargerCandidats(id, 0);
+  if (!id) return;
+  // Une recherche en panne ne se relance pas d elle-meme : chaque repeint la relancait
+  // (512 requetes en 4 s, « Recherche… » sans fin). Le refus se dit ; un geste qui change
+  // la commande change la cle et cherche a nouveau.
+  const c = quickBookState.candidats;
+  if (c && c.etat === 'erreur' && c.id === id && c.partie === 0 && c.base === quickBookState.cleCourante) return;
+  rvChargerCandidats(id, 0);
 }
 
 // « Prendre 17:00 » : un toucher corrige, puis Créer revient. La question en cours
@@ -35270,7 +35060,8 @@ function rsLignesActivites() {
     const refus = rvRefusDuPlan();
     const ko = !s.adaptee && (etapes.find((x) => x.ko) || (refus ? { d: refus.raison } : null));
     const detail = ko ? rsPhrase(ko.d) : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
-    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, ko: Boolean(ko), prix: montant > 0 && combien ? rsEuros(montant) : '', aria: `${nomF}, changer` }));
+    const prixF = montant > 0 && combien ? rsEuros(montant) : '';
+    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, detail, prixF) }));
     if (!s.adaptee) return lignes.join('');
   }
   ids.forEach((id) => {
@@ -35278,9 +35069,17 @@ function rsLignesActivites() {
     const nom = id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id);
     const ko = e.some((x) => x.ko);
     const detail = ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
-    lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus: ko ? '' : rsPartage(id, e), ko, prix: s.adaptee || !combien ? '' : rsPrixDeLigne(id), aria: `${nom}${ko ? `, ${detail}` : ''}, changer` }));
+    const plus = ko ? '' : rsPartage(id, e);
+    const prix = s.adaptee || !combien ? '' : rsPrixDeLigne(id);
+    lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, ko, prix, aria: rsAriaLigne(nom, [detail, plus].filter(Boolean).join(', '), prix) }));
   });
   return lignes.join('');
+}
+
+// Le nom accessible d une ligne dit ce qu elle montre (l heure, les pistes, le prix) :
+// « Bowling 1 h, changer » ne disait pas quelles pistes a qui ne voit pas la ligne.
+function rsAriaLigne(nom, detail, prix) {
+  return `${[nom, detail, prix].filter(Boolean).join(', ')}, changer`;
 }
 
 // Le sur mesure : des lignes du ticket comme les autres, chacune se touche.
@@ -35330,14 +35129,21 @@ function rsVerdictHtml() {
   if (rvHeureEnRecherche()) morceaux.push('<p class="rs-v-ligne">Le planning cherche l’heure qui tient.</p>');
   else if (refus && !refus.activite && (!rvFormule() || s.adaptee)) morceaux.push(`<p class="rs-v-ligne is-ko" id="rvRefus">${escapeHtml(rsPhrase(refus.raison))}</p>`);
   else if (refus) morceaux.push(`<p class="rs-sr">${escapeHtml(`${rsPhrase(refus.titre)}. ${rsPhrase(refus.raison)}`)}</p>`);
-  else if (plan) {
-    // Une session partagee se dit sur la ligne Laser, pas au-dessus du total.
-    const surLaLigne = rsPartage('laser_game', rvEtapesDuBillet().filter((x) => x.id === 'laser_game'));
-    const ecart = rvEcartsDuPlan(plan).filter((texte) => !surLaLigne || !/partager|session laser/i.test(texte))[0];
-    if (ecart) morceaux.push(`<p class="rs-v-ligne is-att">${escapeHtml(rsPhrase(ecart))}</p>`);
-  } else {
-    const avertissement = rvAvertissement();
-    if (avertissement) morceaux.push(`<p class="rs-v-ligne is-att">${escapeHtml(rsPhrase(avertissement))}</p>`);
+  else {
+    if (plan) {
+      // Une session partagee se dit sur la ligne Laser, pas au-dessus du total. Chaque point
+      // a savoir se dit, une fois : le premier seul cachait la vraie raison (les vacances
+      // d une formule derriere « toujours valider »).
+      const surLaLigne = rsPartage('laser_game', rvEtapesDuBillet().filter((x) => x.id === 'laser_game'));
+      const ecarts = [...new Set(rvEcartsDuPlan(plan).filter((texte) => !surLaLigne || !/partager|session laser/i.test(texte)).map(rsPhrase))];
+      ecarts.forEach((ecart) => morceaux.push(`<p class="rs-v-ligne is-att">${escapeHtml(ecart)}</p>`));
+    } else {
+      const avertissement = rvAvertissement();
+      if (avertissement) morceaux.push(`<p class="rs-v-ligne is-att">${escapeHtml(rsPhrase(avertissement))}</p>`);
+    }
+    // Le tableau a demande une heure qui ne tient pas : la fenetre le dit, sinon on croit
+    // reserver 15:30 et on cree 15:00.
+    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) morceaux.push(`<p class="rs-v-ligne" data-rv-deplacee>${escapeHtml(`${s.heureVoulue} ne tient pas. Voici l’heure la plus proche.`)}</p>`);
   }
   return morceaux.join('');
 }
@@ -35346,6 +35152,10 @@ function rsBasculerTicket() {
   const b = rsEtat();
   if (!b) return;
   rsGeste(() => { b.ticket = !b.ticket; }, { focus: false });
+  // La touche qui ouvre le ticket se cache dessous, « Réduire » avec lui quand il se
+  // replie : le focus passe a celle du geste inverse, jamais au document derriere.
+  const cible = document.getElementById(b.ticket ? 'rsReplier' : 'rsResume');
+  if (cible && cible.getClientRects().length) cible.focus({ preventScroll: true });
 }
 
 function rsForcer() {
@@ -35863,6 +35673,15 @@ function rsOuvrirBarre(caractere) {
   const champ = document.getElementById('rsBarre');
   if (!zone || !champ || !b) return;
   if (!b.barre) b.barre = { avant: { etat: rsInstantane(s), faits: { ...b.faits } }, lu: '' };
+  // Au telephone, le ticket ouvert couvre la barre : on tape, il se replie (sinon la frappe
+  // se ferait a l aveugle, et la colonne couverte ne prend pas le focus).
+  if (b.ticket) {
+    b.ticket = false;
+    const modal = zone.closest('.qb-modal.rv');
+    const gauche = zone.closest('.rs-gauche');
+    if (modal) modal.classList.remove('is-ticket');
+    if (gauche) gauche.inert = false;
+  }
   champ.value = caractere;
   zone.hidden = false;
   champ.focus({ preventScroll: true });

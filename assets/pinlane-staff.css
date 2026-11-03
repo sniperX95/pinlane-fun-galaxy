@@ -2710,7 +2710,20 @@ button.staff-date-label:focus-visible,
    Laser et dans la fiche. */
 .booking:not(.dens-xs) .booking-head .bk-flags { display: contents; }
 .booking:not(.dens-xs) .booking-head .bk-flag.flag-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.booking:not(.dens-xs):has(.booking-head .bk-flag.flag-note)::before { content: ''; position: absolute; top: 3px; right: 3px; border-style: solid; border-width: 0 7px 7px 0; border-color: transparent var(--warning) transparent transparent; pointer-events: none; }
+.booking:not(.dens-xs):has(.booking-head .bk-flag.flag-note)::before { content: ''; position: absolute; top: 3px; right: 3px; border-style: solid; border-width: 0 7px 7px 0; border-color: transparent var(--bk-coin, var(--warning)) transparent transparent; pointer-events: none; }
+/* LE DOSSIER SUR LA CARTE (2026-11-03, Movsar : « tout ce qui est sur mesure modifier ou
+   prix ajuster tout bien visible [...] sur les cartes des reservations »). Deux marqueurs
+   de plus, dessines comme la bulle (renderCardFlags) : la note de l equipe (un bloc-notes)
+   et le sur mesure (un plus). Ils prennent l encre de la carte, lisible sur ses trois
+   teintes. L allergie passe en rouge sur le marqueur qui la porte ; sur une carte haute,
+   le coin replie rougit avec elle. Le coin a sa zone de survol (.bk-coin), la bulle qu il
+   remplace n ayant pas de largeur. Le prix revu reste la pastille du pied : son infobulle
+   dit la reference et la raison. */
+.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }
+.bk-flag.is-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); }
+.booking.a-allergie { --bk-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }
+.bk-coin { position: absolute; top: 0; right: 0; width: 12px; height: 12px; }
+.booking.activities-complete .bk-coin { display: none; }
 .booking.activities-complete::before { display: none; }
 @container piste (max-width: 237.1px) {
   .planning-box.expanded .booking.is-delayed:not(.dens-xs) .bk-time { display: none; }
@@ -2745,6 +2758,45 @@ button.staff-date-label:focus-visible,
 @container piste (max-width: 131px) {
   .booking:not(.dens-xs) .booking-head .flag-laser { display: none; }
 }
+/* LES MARQUEURS DU DOSSIER (sur mesure, note de l equipe : renderCardFlags, carte
+   .a-dossier) CEDENT AVANT LE NOM, et prennent la place de ce qui se relit ailleurs.
+   Paliers releves par balayage (1024 a 1920 px, normal et agrandi, cartes chargees),
+   pour qu un nom coupe garde 76 px (cartes-bowling [E]) :
+   - le gateau et le laser de la tete cedent devant eux sous 217 px de piste (le laser
+     reste au pied, au planning Laser et dans la fiche ; le gateau, dans le nom et la
+     fiche) : la carte la plus chargee, deux marqueurs, laser x2, coche et heure de la
+     vue agrandie, garde ainsi son nom ;
+   - le second marqueur cede sous 132 px, 147 px sur une carte cochee (arrive, paye),
+     180 px sur une carte en retard ; le libelle du retard sous 164 px ;
+   - le premier sous 116 px, 130 px coche, 144 px en retard.
+   L information reste entiere dans la ligne du Complet, la fiche et le Terrain. */
+@container piste (max-width: 217px) {
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-birthday, .flag-laser) { display: none; }
+}
+@container piste (max-width: 180px) {
+  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+@container piste (max-width: 164px) {
+  .booking.a-dossier.is-delayed:not(.dens-xs) .delay-indicator .delay-indicator-label { display: none; }
+}
+@container piste (max-width: 147px) {
+  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+@container piste (max-width: 144px) {
+  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+@container piste (max-width: 132px) {
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+@container piste (max-width: 130px) {
+  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+@container piste (max-width: 116px) {
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+}
+/* La carte d une seule ligne (trente minutes) a son echelle de cession, mesuree sans eux :
+   avec un marqueur du dossier, elle n en garde qu un, le premier ecrit. */
+.booking.dens-xs.a-dossier .bk-flag:nth-child(n+2) { display: none; }
 @container piste (max-width: 168px) {
   .booking .bk-sep { display: none; }
 }
@@ -6342,6 +6394,16 @@ body.dashboard-detail-open { overflow: hidden; }
 .terrain-row-marks { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .terrain-row-marks .pl-price-adjusted { padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; line-height: 16px; }
 .terrain-row .res-special-request { grid-column: 2 / -1; margin-top: 2px; }
+/* LE DOSSIER AU TERRAIN (renderStaffTerrainNote, 2026-11-03) : sous le mot du client, une
+   ligne par rubrique de la ligne du Complet, son nom devant (Équipe, Sur mesure, Prix).
+   Le prix revu dans la couleur du prix du Complet, l allergie en rouge et en gras. */
+.terrain-rub { display: flex; align-items: baseline; gap: 6px; margin: 0; color: var(--text); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.terrain-rub__mot { flex: 0 0 70px; color: var(--muted); white-space: nowrap; }
+.terrain-rub__t { min-width: 0; }
+.terrain-rub__par { color: var(--muted); }
+.terrain-rub--prix .terrain-rub__t { color: var(--warning); font-weight: 600; }
+.terrain-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); font-weight: 700; }
+.terrain-row .terrain-rub { grid-column: 2 / -1; }
 
 /* Sous 1180 px, trois colonnes laissent moins de 110 px au nom du client :
    elles s empilent. « À clôturer » passe alors devant quand il y a de
@@ -18636,6 +18698,12 @@ button.pv2-cal-cell:focus-visible {
 .pv2-flow-marks .res-note-line,
 .pv2-flow-marks .res-note-line span { color: var(--warning); font-size: 11.5px; }
 .pv2-flow-marks .pl-price-adjusted { padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; }
+/* Les rubriques du dossier en une ligne (renderLigneRubriquesDossier), comme la ligne du
+   Complet : leur nom en gris, leur texte a l encre, le prix revu dans la couleur du prix. */
+.pv2-flow-marks .res-rub-line { display: flex; flex-wrap: wrap; flex: 1 1 100%; gap: 2px 12px; min-width: 0; }
+.pv2-flow-marks .res-rub { min-width: 0; color: var(--text); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.pv2-flow-marks .res-rub b { color: var(--muted); font-weight: 500; }
+.pv2-flow-marks .res-rub--prix { color: var(--warning); font-weight: 600; }
 
 /* Le seuil du badge « Client clé », ecrit sous les chiffres de la fiche. */
 .crm-kpi-note {
@@ -21304,7 +21372,8 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-qui:has(> .lp-g + .lp-g) { gap: 4px; }
   .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g { position: relative; padding-left: 9px; padding-right: 6px; }
   .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g .lp-pictos { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g:has(.flag-note)::after { content: ''; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 9px 9px 0; border-color: transparent var(--warning) transparent transparent; border-top-right-radius: 3px; }
+  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g:has(.flag-note)::after { content: ''; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 9px 9px 0; border-color: transparent var(--lp-coin, var(--warning)) transparent transparent; border-top-right-radius: 3px; }
+  .lp-g.a-allergie { --lp-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }
   .lp-compact .lp-g.is-nom-long .lp-g__sous { display: none; }
   .lp-compact .lp-g.is-nom-long .lp-g__nom { height: auto; max-height: 32px; }
   .lp-compact .lp-g.is-nom-long b { white-space: normal; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 16px; }

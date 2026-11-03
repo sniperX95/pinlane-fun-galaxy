@@ -637,7 +637,7 @@
   function gfRubrique(cle, mot, html, texte, allergie) {
     return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--' + cle + '"><span>' + gpEsc(mot) + '</span><p title="' + gpEsc(texte) + '">' + (allergie ? '<b class="gf-i__a">Allergie</b> ' : '') + html + '</p></div>' };
   }
-  function gfPrixTexte(r, notePrix) {
+  function gfPrixTexte(r, notePrix, sortie) {
     var etat = typeof getReservationPriceState === 'function' ? getReservationPriceState(r) : { ajuste: false };
     // Une note du serveur ne parle que du prix qu elle a pose : si le prix a bouge
     // depuis, ni son montant ni sa raison ne decrivent plus le dossier.
@@ -650,6 +650,7 @@
     if (!morceaux.length) return '';
     var raison = (notePrix && notePrix.raison) || r.discountReason || '';
     if (raison) morceaux.push(gfEnMinuscule(gfUneLigne(raison)));
+    if (sortie && raison) sortie.raison = gfEnMinuscule(gfUneLigne(raison));
     return morceaux.join(', ');
   }
   // LA TABLE D ANNIVERSAIRE (l audit du 2026-11-03 : le bar ne savait ni quand servir ni
@@ -661,14 +662,9 @@
     var texte = gpHeure(g.table.start) + ' à ' + gpHeure(fin);
     return g.boissons ? texte + ', ' + g.boissons.nom + ' à ' + gpHeure(g.boissons.start) : texte;
   }
-  function gfRubriques(g) {
-    var r = g.r;
-    var liste = [];
-    var parts = typeof getReservationNoteParts === 'function' ? getReservationNoteParts(r) : { mot: typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '', suivi: [] };
-    var mot = gfUneLigne(parts.mot);
-    if (mot) liste.push(gfRubrique('client', 'Client', gpEsc(mot), mot, gfAllergie(mot)));
-    // (le compte a l arrivee se lit dans la colonne Joueurs, sa note dans la fiche ;
-    // une note de prix va a la rubrique Prix)
+  // LES NOTES DE L EQUIPE D UN DOSSIER, dans l ordre ou elles ont ete ecrites : la derniere
+  // est la plus recente. La ligne du Complet les lit toutes, le Terrain la derniere.
+  function gfNotesEquipe(r) {
     var notePrix = null;
     var equipe = [];
     (typeof getReservationNotesEquipe === 'function' ? getReservationNotesEquipe(r) : []).forEach(function (n) {
@@ -679,6 +675,19 @@
       if (p) { if (!notePrix || p.a != null) notePrix = p; return; }
       equipe.push({ t: gfUneLigne(n.t), par: gfUneLigne(n.par) });
     });
+    return { notePrix: notePrix, equipe: equipe };
+  }
+  function gfRubriques(g) {
+    var r = g.r;
+    var liste = [];
+    var parts = typeof getReservationNoteParts === 'function' ? getReservationNoteParts(r) : { mot: typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '', suivi: [] };
+    var mot = gfUneLigne(parts.mot);
+    if (mot) liste.push(gfRubrique('client', 'Client', gpEsc(mot), mot, gfAllergie(mot)));
+    // (le compte a l arrivee se lit dans la colonne Joueurs, sa note dans la fiche ;
+    // une note de prix va a la rubrique Prix)
+    var lues = g.lues || gfNotesEquipe(r);
+    var notePrix = lues.notePrix;
+    var equipe = lues.equipe.slice();
     (parts.suivi || []).forEach(function (s) { equipe.push({ t: gfUneLigne(s), par: '' }); });
     if (equipe.length) {
       var texteEquipe = equipe.map(function (n) { return n.t + (n.par ? ' ' + n.par : ''); }).join(' · ');
@@ -689,10 +698,37 @@
     var table = gfTableTexte(g);
     if (table) liste.push(gfRubrique('table', 'Table', gpEsc(table), table));
     if (g.extras.length) { var mesure = g.extras.join(', '); liste.push(gfRubrique('mesure', 'Sur mesure', gpEsc(mesure), mesure)); }
-    var prix = gfPrixTexte(r, notePrix);
+    var prix = gfPrixTexte(r, notePrix, g.sortie);
     if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));
     return liste;
   }
+  // CE QUI CHANGE LA MANIERE DE SERVIR, POUR LES CARTES ET LE TERRAIN (2026-11-03, Movsar :
+  // « tout ce qui est sur mesure modifier ou prix ajuster tout bien visible sur le planning
+  // complet et sur les cartes des reservations »). Les rubriques de cette ligne, lues une
+  // fois et rendues en texte : les cartes Bowling et Laser en font des marqueurs
+  // (renderCardFlags), le Terrain et la liste du jour des lignes (renderStaffTerrainNote,
+  // renderLigneRubriquesDossier). Aucun ecran ne relit une note, un extra ou un prix a sa
+  // maniere. `allergies` dit quelles rubriques en parlent ; `notes`, les seules notes
+  // ecrites par l equipe (la rubrique Équipe y ajoute les traces du moteur, retard ou
+  // decalage, que la carte dit deja par sa puce).
+  window.pgEssentiel = function (r) {
+    var e = { client: '', equipe: '', fiche: '', mesure: '', prix: '', raison: '', notes: '', derniere: null, adaptee: false, allergies: {} };
+    if (!r) return e;
+    var lues = gfNotesEquipe(r);
+    var sortie = {};
+    gfRubriques({ r: r, extras: gpExtras(r), table: null, lues: lues, sortie: sortie }).forEach(function (x) {
+      e[x.cle] = x.texte;
+      if (x.allergie) e.allergies[x.cle] = true;
+    });
+    e.notes = lues.equipe.map(function (n) { return n.t + (n.par ? ' (' + n.par + ')' : ''); }).join(' · ');
+    if (e.notes && gfAllergie(e.notes)) e.allergies.notes = true;
+    e.raison = e.prix ? sortie.raison || '' : '';
+    var d = lues.equipe[lues.equipe.length - 1];
+    if (d) e.derniere = { t: d.t, par: d.par, allergie: gfAllergie(d.t) };
+    var f = gpFormule(r);
+    e.adaptee = Boolean(f && f.adaptee);
+    return e;
+  };
   // Sa ligne : le nom d abord, a la meme place sur chaque ligne ; a sa suite le retard,
   // qui se touche (« Ils arrivent dans »), le telephone, toujours, et l etiquette. Une
   // heure pas pile sur la demi-heure s ecrit devant le nom.

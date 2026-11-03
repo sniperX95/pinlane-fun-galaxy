@@ -427,6 +427,18 @@ Movsar : « faut qu’on puisse switcher de planning et que tout soit de la mêm
 
 Disparus de ces trois écrans : les titres, les tuiles de chiffres, les onglets, l’en-tête de chaque planning et le deuxième champ de recherche. Gate : `test:planning-barre`.
 
+### Le dossier sur les cartes et au Terrain (2026-11-03)
+
+Movsar : « tout ce qui est sur mesure modifier ou prix ajuster tout bien visible sur le planning complet et sur les cartes des réservations ». Une seule lecture du dossier, `pgEssentiel` : les rubriques de la ligne du Complet. Aucun écran ne relit une note, un extra ou un prix à sa manière.
+
+- Cartes Bowling et Laser : le mot du client et la fiche dans la bulle (le coin replié d’une carte haute), un plus pour le sur mesure (les extras avec leurs heures, la formule adaptée), un bloc-notes pour les notes écrites par l’équipe (les traces du moteur, retard ou décalage, ont déjà leur puce). Ils prennent l’encre de la carte. L’allergie passe en rouge sur le marqueur qui la porte, le coin replié rougit avec elle. Le prix revu reste la pastille ambre du pied : son infobulle dit la référence et la raison (« Prix ajusté 59 €, référence 69 €, carte de fidélité pleine »). Une note de prix n’est jamais une note d’équipe, une note de prix passée se tait.
+- Chaque marqueur dit tout au survol, le coin replié a sa zone de survol ; le toucher ouvre ce que la carte ouvre déjà.
+- La place : ils cèdent avant le nom (76 px quand il est coupé), par paliers relevés de 1024 à 1920 px, et prennent celle du gâteau et du laser de la tête (le laser reste au pied, au planning Laser et dans la fiche). La carte de trente minutes n’en garde qu’un. Dans une rangée laser serrée, le coin replié rougit aussi, et l’infobulle de la carte dit la note.
+- Terrain : sous le mot du client (l’allergie devant, en rouge), la dernière note de l’équipe avec son auteur, le sur mesure, le prix revu dans la couleur du prix du Complet. Une ligne par rubrique, aucune quand elle est vide.
+- Liste du jour de la page Réservations : la même chose en une ligne de rubriques sous la consigne, le prix revu dans sa couleur.
+
+Gate : `test:planning-barre`, lettre [R].
+
 ### Le grand tableau (2026-11-02)
 
 Le planning complet est la feuille papier du comptoir, en grand et bord à bord : les heures à gauche, un groupe par ligne, une colonne par activité aux heures alignées, toute la journée d’un seul tenant. Sa ligne 2 de barre dit l’heure et l’état du direct, quatre compteurs qui filtrent, les pistes libres et le prochain départ laser.

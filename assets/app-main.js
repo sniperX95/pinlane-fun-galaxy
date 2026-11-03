@@ -13268,10 +13268,22 @@ function formatStaffTerrainCount(count, word) {
 const STAFF_TERRAIN_NOTE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>';
 const STAFF_TERRAIN_PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
+// LE TERRAIN DIT LE DOSSIER, PAS SEULEMENT LE MOT DU CLIENT (2026-11-03). Sous le mot du
+// client (l allergie devant, en rouge), la derniere note de l equipe avec son auteur, le
+// sur mesure avec ses heures et le prix revu avec sa raison : les rubriques de la ligne du
+// Complet (pgEssentiel), une ligne chacune, aucune quand elle est vide.
 function renderStaffTerrainNote(reservation) {
-  return hasReservationNote(reservation)
-    ? `<p class="res-special-request">${STAFF_TERRAIN_NOTE_ICON}${escapeHtml(getReservationNoteText(reservation))}</p>`
-    : '';
+  const e = essentielDuDossier(reservation);
+  const mot = getReservationNoteText(reservation);
+  const allergie = (oui) => (oui ? '<b class="terrain-allergie">Allergie</b> ' : '');
+  const lignes = [];
+  if (e ? mot : hasReservationNote(reservation)) lignes.push(`<p class="res-special-request">${STAFF_TERRAIN_NOTE_ICON}${allergie(e && e.allergies.client)}${escapeHtml(mot)}</p>`);
+  if (!e) return lignes.join('');
+  const rubrique = (cle, nom, html) => `<p class="terrain-rub terrain-rub--${cle}"><span class="terrain-rub__mot">${nom}</span><span class="terrain-rub__t">${html}</span></p>`;
+  if (e.derniere) lignes.push(rubrique('equipe', 'Équipe', `${allergie(e.derniere.allergie)}${escapeHtml(e.derniere.t)}${e.derniere.par ? ` <span class="terrain-rub__par">${escapeHtml(e.derniere.par)}</span>` : ''}`));
+  if (e.mesure || e.adaptee) lignes.push(rubrique('mesure', 'Sur mesure', escapeHtml([e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', '))));
+  if (e.prix) lignes.push(rubrique('prix', 'Prix', escapeHtml(e.prix)));
+  return lignes.join('');
 }
 
 // OU EN EST LE GROUPE, d apres son programme : l activite prevue maintenant et
@@ -22795,7 +22807,11 @@ function renderReservationPriceMark(reservation, options = {}) {
   // « Entreprise Ardenne · 15:00 - 16:30 : ... 290 € », sans le mot « ajusté ».
   // La marque de note de la page Evenements porte deja `role="img"` : meme
   // geste, meme fichier.
-  return `<span class="${base} pl-price-adjusted"${forme === 'signal' ? ' style="color:var(--warning);background:none;border:0"' : ''} role="img" title="${escapeHtml(forme === 'signal' ? vocal : getReservationPriceAdjustmentTitle(reservation))}" aria-label="${escapeHtml(vocal)}">${forme === 'signal' ? icone.replace('class="pl-price-icon"', 'class="pl-price-icon" style="margin-right:0"') : icone}${escapeHtml(texte)}</span>`;
+  // Sur une carte du planning, l infobulle dit aussi la raison du prix (pgEssentiel, la
+  // rubrique Prix du Complet) : « Prix ajusté 59 €, référence 69 €, carte de fidélité
+  // pleine ». Le mot « référence » garde son role : il dit lequel des deux est le tarif.
+  const revu = options.essentiel && options.essentiel.raison ? `Prix ajusté ${montant}, référence ${formatMoneyCentimes(etat.reference)}, ${options.essentiel.raison}` : '';
+  return `<span class="${base} pl-price-adjusted"${forme === 'signal' ? ' style="color:var(--warning);background:none;border:0"' : ''} role="img" title="${escapeHtml(revu || (forme === 'signal' ? vocal : getReservationPriceAdjustmentTitle(reservation)))}" aria-label="${escapeHtml(vocal)}">${forme === 'signal' ? icone.replace('class="pl-price-icon"', 'class="pl-price-icon" style="margin-right:0"') : icone}${escapeHtml(texte)}</span>`;
 }
 
 // UNE NOTE QU ON NE PEUT PAS LIRE N EST PAS UNE NOTE, C EST UN RAPPEL D OUBLI.
@@ -22884,6 +22900,22 @@ function renderPosNoteBlock(reservation) {
   </section>`;
 }
 
+// LES RUBRIQUES DU DOSSIER EN UNE LIGNE, POUR LES LISTES (2026-11-03) : ce que la ligne
+// du Complet ecrit (pgEssentiel), sauf le mot du client que la ligne de note dit deja :
+// le sur mesure avec ses heures, la derniere note de l equipe et son auteur, le prix
+// revu et sa raison. Rien quand le dossier n en a pas.
+function renderLigneRubriquesDossier(reservation) {
+  const e = essentielDuDossier(reservation);
+  if (!e) return '';
+  const morceaux = [];
+  if (e.mesure || e.adaptee) morceaux.push(['mesure', 'Sur mesure', [e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', ')]);
+  if (e.derniere) morceaux.push(['equipe', 'Équipe', `${e.derniere.t}${e.derniere.par ? ` (${e.derniere.par})` : ''}`]);
+  if (e.prix) morceaux.push(['prix', 'Prix', e.prix]);
+  if (!morceaux.length) return '';
+  const texte = morceaux.map(([, mot, t]) => `${mot} : ${t}`).join(' · ');
+  return `<span class="res-rub-line" title="${escapeHtml(texte)}">${morceaux.map(([cle, mot, t]) => `<span class="res-rub res-rub--${cle}"><b>${mot}</b> ${escapeHtml(t)}</span>`).join('')}</span>`;
+}
+
 function renderReservationNoteLine(reservation) {
   const note = getReservationNoteText(reservation);
   if (!note) return '';
@@ -22918,18 +22950,57 @@ function renderReservationNoteLine(reservation) {
 // note d abord (un gateau, une allergie), l occasion ensuite, le decompte des
 // parties en dernier, parce qu il se relit sur le planning laser et dans la
 // fiche alors que la note ne se lit nulle part ailleurs sur le planning.
+// LE DOSSIER SE LIT SUR LA CARTE (2026-11-03, Movsar : « tout ce qui est sur mesure
+// modifier ou prix ajuster tout bien visible sur le planning complet et sur les cartes
+// des reservations »). Les rubriques de la ligne du Complet (pgEssentiel, dans
+// pinlane-planning-global.js) : le mot du client et la fiche dans la bulle, les notes de
+// l equipe et le sur mesure dans leurs marqueurs, l allergie en rouge sur celui qui la
+// porte, le prix revu dans l infobulle de sa pastille. Chaque marqueur dit tout au
+// survol ; le toucher ouvre ce que la carte ouvre deja. Sans pgEssentiel (une page sans
+// le planning), la bulle garde son ancienne regle et rien ne s ajoute.
+function essentielDuDossier(reservation) {
+  return typeof window.pgEssentiel === 'function' ? window.pgEssentiel(reservation) : null;
+}
+function texteNoteDeCarte(e) {
+  if (!e) return '';
+  const texte = [e.client && `Client : ${e.client}`, e.fiche && `Fiche : ${e.fiche}`].filter(Boolean).join(' · ');
+  return texte && (e.allergies.client || e.allergies.fiche) ? `Allergie · ${texte}` : texte;
+}
 function renderCardFlags(reservation, options = {}) {
   const marques = [];
-  if (hasReservationNote(reservation)) {
+  const e = options.essentiel || essentielDuDossier(reservation);
+  const noteCarte = texteNoteDeCarte(e);
+  const allergieNote = /^Allergie · /.test(noteCarte);
+  if (e ? noteCarte : hasReservationNote(reservation)) {
     marques.push({
-      cls: 'flag-note',
-      label: 'Note à lire',
+      cls: allergieNote ? 'flag-note is-allergie' : 'flag-note',
+      label: allergieNote ? 'Allergie, note à lire' : 'Note à lire',
+      // (son nom reste court, son infobulle dit tout)
+      titre: escapeHtml(noteCarte),
       // UNE BULLE, PAS UN ROND D'ALERTE. Movsar, 2026-08-14 : « le petit badge
       // attention est proche de celui qui montre la piste en retard, donc
       // relou ». Les deux etaient un cercle : a 12px, un cercle avec un point
       // ressemble a tous les autres cercles avec un point. Une bulle de message
       // ne peut se confondre avec rien, et elle dit ce qu'elle est.
       path: '<path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/><path d="M8.4 8.6h7.6M8.4 11.8h4.8"/>',
+    });
+  }
+  // Le sur mesure : un plus, des extras ou une formule adaptee, avec leurs heures.
+  // Il passe avant la note de l equipe : c est lui que la demande nomme.
+  if (e && (e.mesure || e.adaptee)) {
+    marques.push({
+      cls: 'flag-mesure',
+      label: escapeHtml(`Sur mesure : ${[e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', ')}`),
+      path: '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 8v8M8 12h8"/>',
+    });
+  }
+  // La note de l equipe : un bloc-notes, pas la bulle du client. Son nom dit tout.
+  if (e && e.notes) {
+    const allergie = Boolean(e.allergies.notes);
+    marques.push({
+      cls: allergie ? 'flag-equipe is-allergie' : 'flag-equipe',
+      label: escapeHtml(`${allergie ? 'Allergie · ' : ''}Équipe : ${e.notes}`),
+      path: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.8 10h6.4M8.8 14h4.2"/>',
     });
   }
   // DEUX VOCABULAIRES, PAS UN. `getReservationOccasion` rend une OCCASION
@@ -22971,7 +23042,7 @@ function renderCardFlags(reservation, options = {}) {
   // La boite dont le seul marqueur est le laser part avec lui quand le badge
   // du pied le reprend (feuille de style) : sinon elle garderait sa gouttiere.
   const seulLaser = marques.length === 1 && /flag-laser/.test(marques[0].cls);
-  return `<span class="bk-flags${seulLaser ? ' is-laser-seul' : ''}">${marques.map(m => `<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">`
+  return `<span class="bk-flags${seulLaser ? ' is-laser-seul' : ''}">${marques.map(m => `<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.titre || m.label}">`
     + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${m.path}</svg>`
     + (m.texte ? `<span class="bk-flag-num">${escapeHtml(m.texte)}</span>` : '')
     + `</span>`).join('')}</span>`;
@@ -23756,11 +23827,17 @@ function renderPlanning() {
       // ou il tenait largement : mesure, 0 pastille a 1280 px comme a 390 px
       // alors que la carte avait 19 px de rab. La classe dit la longueur, la
       // feuille de style pose un plancher par longueur.
+      // Le dossier lu une fois pour la carte : ses marqueurs et l infobulle de son prix
+      // disent la meme chose que la ligne du Complet. Le coin replie d une carte haute
+      // a sa zone de survol (la bulle qu il remplace n a pas de largeur) et rougit
+      // avec une allergie.
+      const essentiel = essentielDuDossier(r);
+      const noteDuCoin = densClass === 'dens-xs' ? '' : texteNoteDeCarte(essentiel);
       const etatPrix = getReservationPriceState(r);
       const chiffresPrix = String(Math.abs(Math.round(etatPrix.price))).length;
       const classeLongueur = chiffresPrix <= 2 ? 'bk-price-c2' : chiffresPrix === 3 ? 'bk-price-c3' : 'bk-price-c4';
       const prixHtml = (densClass === 'dens-lg' || densClass === 'dens-md')
-        ? renderReservationPriceMark(r, { forme: 'montant', base: `bk-price ${classeLongueur}` })
+        ? renderReservationPriceMark(r, { forme: 'montant', base: `bk-price ${classeLongueur}`, essentiel })
         : '';
       // Le badge laser prend la place libre d un pied qui n a pas deja l offre
       // (renderCardLaserBadge) ; une formule d une heure, dont l offre occupe
@@ -23770,11 +23847,12 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+        ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
-          ${renderCardFlags(r, { nom: displayName })}
+          ${renderCardFlags(r, { nom: displayName, essentiel })}
           ${/* LA PUCE DE RETARD PREND SA PLACE AU LIEU DE FLOTTER DESSUS. Elle
                etait posee en position absolue en haut a droite de la carte, donc
                par-dessus la tete : mesure, une puce de 42 px de large recouvrait
@@ -23976,7 +24054,7 @@ function lpTeinte(r) {
 // Chaque marque est titree et vocalisee (role="img") et ne porte aucun texte :
 // le nom et le compte du groupe se lisent comme avant.
 function lpPictos(r) {
-  const marques = renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(r, { forme: 'signal', base: 'bk-flag flag-prix' });
+  const marques = renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(r, { forme: 'signal', base: 'bk-flag flag-prix', essentiel: essentielDuDossier(r) });
   return marques ? `<span class="lp-pictos">${marques}</span>` : '';
 }
 function lpTeintesDuDepart(d) {
@@ -24237,7 +24315,10 @@ function lpLegende(modele, d, choisi) {
     const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
     const vagues = Number(w.waveCount || w.groupWaveCount || 1);
     const infos = `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
+    // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
+    // avec une allergie, et l infobulle de la carte dit la note en entier.
+    const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.

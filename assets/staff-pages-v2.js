@@ -600,8 +600,10 @@
     const note = typeof renderReservationNoteLine === 'function' ? renderReservationNoteLine(r) : '';
     const forme = options.montantDeja ? 'reference' : 'complet';
     const prix = typeof renderReservationPriceMark === 'function' ? renderReservationPriceMark(r, { forme }) : '';
-    if (!note && !prix) return '';
-    return `<span class="pv2-flow-marks">${prix}${note}</span>`;
+    // (le sur mesure, l equipe et le prix revu, comme la ligne du Complet)
+    const rubriques = typeof renderLigneRubriquesDossier === 'function' ? renderLigneRubriquesDossier(r) : '';
+    if (!note && !prix && !rubriques) return '';
+    return `<span class="pv2-flow-marks">${prix}${note}${rubriques}</span>`;
   }
 
   function pv2ResSearchResultRow(r) {

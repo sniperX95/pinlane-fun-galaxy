@@ -3047,3 +3047,96 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-card--formule.is-fete { padding-top: 22px; }
   .fg-card--formule.is-fete .fg-card__box { top: 20px; }
 }
+
+/* =============================================================================
+   SIMPLE, ET LA COULEUR DIT OU ON EN EST (Ansar, 2026-11-03 : « trop de texte
+   trop de truc », « pense a des mamies », « tout de meme couleur on se perd »).
+   Un mot qui n aide pas a decider disparait. Quatre couleurs, chacune a un
+   sens : le violet vif, ce qui est a faire ou choisi ; le vert, ce qui est fait ;
+   le gris, ce qui viendra ou ne se peut pas ; le blanc, les noms.
+   ========================================================================== */
+#hourSub, .fg-etape__quoi small, .fg-track__lanes, .fg-track__share, .fg-why-list { display: none; }
+/* Le lien de retour ne se montre que si une heure est posee sur la ligne ouverte. */
+.fg-track:not([data-activity="arcade_time"]) .fg-track__note { display: none; }
+.fg-track:not([data-activity="arcade_time"]) .fg-track__foot:not(:has(.fg-track__reset:not([hidden]))) { display: none; }
+.fg-etape .fg-track__foot { justify-content: center; padding-top: 8px; }
+.fg-etape .fg-track__reset { width: auto; margin: 0; min-height: 44px; font-size: 15px; text-align: center; color: var(--fg-muted); }
+/* L heure d arrivee n est plus une etape : celle de la premiere activite la dit. */
+.fg-etape--arrivee { display: none; }
+.fg-etapes { padding: 6px; background: transparent; box-shadow: none; display: grid; gap: 8px; }
+.fg-etape + .fg-etape:not(.fg-etape--fin) { box-shadow: none; }
+.fg-etape { border-radius: 14px; background: #141216; }
+.fg-etape__tete { grid-template-columns: 30px minmax(0, 1fr) auto 16px; gap: 12px; min-height: 58px; padding: 8px 14px; }
+.fg-etape__icone { width: 30px; height: 30px; border-radius: 50%; background: rgba(255, 255, 255, 0.08); color: var(--fg-muted); }
+.fg-etape__quoi b { color: var(--fg-muted); font-size: 16px; font-weight: 650; }
+.fg-etape .fg-etape__heure, .fg-etape.is-propose .fg-etape__heure, .fg-etape.is-vide .fg-etape__heure, .fg-etape.is-surplace .fg-etape__heure, .fg-etape.is-libre .fg-etape__heure { color: var(--fg-muted); font-size: 16px; font-weight: 650; }
+.fg-etape:is(.is-libre, .is-vide):not(.is-open) .fg-etape__heure { font-size: 14px; font-weight: 500; }
+/* L etape a faire : elle seule est en couleur franche, et elle pose sa question. */
+.fg-etapes > .fg-etape.is-open:not(.fg-etape--fin) { background: #1d1321; box-shadow: inset 0 0 0 2px var(--fg-purple-2); }
+.fg-etape.is-open .fg-etape__tete { grid-template-columns: 30px minmax(0, 1fr) 16px; min-height: 64px; border-radius: 14px 14px 0 0; background: var(--fg-purple-2); }
+.fg-etape.is-open .fg-etape__icone { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.fg-etape.is-open .fg-etape__quoi b { color: #fff; font-size: 18px; font-weight: 700; text-wrap: balance; }
+.fg-etape.is-open .fg-etape__quoi b::after { content: "\00a0: quelle heure\00a0?"; }
+.fg-etape.is-open .fg-etape__heure { display: none; }
+.fg-etape.is-open .fg-etape__chev { color: #fff; }
+/* L etape faite : repliee, en vert, sa coche et son heure. */
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) { background: #15291e; }
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__icone { background: #5fd38d; color: #0b0b0c; }
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__icone svg { display: none; }
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__icone::before { content: "\2713"; font-size: 17px; font-weight: 800; line-height: 1; }
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__quoi b { color: #fff; }
+.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__heure { color: #5fd38d; font-size: 18px; font-weight: 700; }
+.fg-etape__piste { padding: 2px 14px 10px; }
+/* Une partie laissee a l equipe : un choix, en trois mots. */
+.fg-etape__alt, .fg-etape .fg-etape__alt { padding: 0 14px 14px; }
+.fg-etape__surplace { width: 100%; min-height: 48px; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.16); font-size: 15px; font-weight: 600; color: #fff; }
+.fg-etape__surplace svg { display: none; }
+/* LES HEURES : de grosses touches, trois par ligne au telephone, l heure seule. */
+.fg-periods { display: flex; flex-direction: column; }
+.fg-chips { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.fg-chip { height: 56px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: #fff; }
+.fg-chip b { font-size: 18px; font-weight: 650; }
+.fg-chip small { display: none; }
+/* La proposee, en premier et marquee a part : un contour vif. */
+.fg-period:has(.fg-chip.is-proposed), .fg-period:has(.fg-chip.is-on:not(.is-autre)) { order: -1; }
+.fg-chips > li:has(.fg-chip.is-proposed), .fg-chips > li:has(.fg-chip.is-on:not(.is-autre)) { order: -1; }
+.fg-chip.is-proposed { border: 2px solid var(--fg-purple-em); background: rgba(176, 79, 176, 0.18); }
+/* Ce qui se prend reste une heure comme une autre : le recapitulatif dit ce que ca change. */
+.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip:is(.is-soft, .is-shift)[data-teinte] { border: 1px solid rgba(255, 255, 255, 0.16); }
+/* L impossible : grise, un seul mot. */
+.fg-chip.is-off, .fg-chip.is-off[data-teinte], .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.42); cursor: default; }
+.fg-chip.is-off[data-mot]::after { content: attr(data-mot); margin-top: 2px; font-size: 12px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
+.fg-chip.is-wave { border: 1px solid transparent; background: rgba(176, 79, 176, 0.26); }
+/* La choisie : pleine, l heure d une autre partie aussi, avec son mot. */
+.fg-chip.is-on, .fg-chip.is-pending, .fg-etape .fg-chip.is-on.is-autre { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
+.fg-chip.is-wave small, .fg-chip.is-autre small, .fg-etape .fg-chip.is-on small { display: block; color: #fff; opacity: 1; }
+.fg-etape .fg-chip.is-on:not(.is-autre) small { display: none; }
+/* Une heure complete touchee, quand le moteur peut arranger : une question, un bouton. */
+.fg-quand, .fg-etape .fg-quand { margin: 10px 0 0; padding: 0; border: 0; }
+.fg-quand__dit { font-size: 15px; }
+/* LE RECAPITULATIF : les heures en couleur, les noms en blanc, le montant bien visible. */
+.fg-visit { padding: 18px 18px 20px; border: 0; border-radius: 16px; background: #141216; }
+.fg-visit__quand { margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--fg-muted); }
+.fg-visit__list { margin: 0; gap: 10px; }
+.fg-visit__list > li { margin-left: calc(var(--v-axe) + var(--v-pas) + 6px); }
+.fg-visit__step > b, .fg-visit__step--bloc > b, .fg-visit__step--in > b { width: calc(var(--v-axe) + 6px); font-size: 16px; font-weight: 700; line-height: 22px; text-align: left; color: var(--fg-purple-em); }
+.fg-visit__step > span { font-size: 16px; font-weight: 650; line-height: 22px; color: #fff; }
+.fg-visit__step > small:empty { display: none; }
+.fg-visit__step--in { display: block; }
+.fg-visit__step--in > span { font-weight: 500; color: var(--fg-muted); }
+.fg-visit__step--hors > span { color: var(--fg-muted); text-decoration: line-through; }
+.fg-visit__list > .fg-visit__aussi { margin: 4px 0 0; font-size: 14px; line-height: 20px; color: var(--fg-muted); }
+.fg-visit__list > .fg-visit__step--out { display: flex; gap: 6px; margin: 4px 0 0; }
+.fg-visit__step--out > b { position: static; width: auto; color: #fff; }
+.fg-visit__step--out > span { font-weight: 500; color: var(--fg-muted); }
+.fg-visit__paye { margin: 14px 0 0; font-size: 14px; color: var(--fg-muted); }
+.fg-visit__paye .fg-visit__price { font-size: 26px; font-weight: 800; color: #fff; }
+.fg-visit__reste { margin: 4px 0 0; font-size: 13px; color: var(--fg-muted); }
+.fg-visit__warn { margin: 0 0 12px; }
+/* Le bouton pour continuer : le seul gros bouton plein, sans une couleur de plus. */
+#goContact, #goContact:hover, #goContact[disabled], #goContact.is-busy { box-shadow: none; }
+@media (hover: hover) { #goContact:hover { transform: none; } }
+@media (max-width: 680px) {
+  .fg-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fg-etape .fg-chip { height: 56px; }
+}

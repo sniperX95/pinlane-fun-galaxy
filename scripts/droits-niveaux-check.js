@@ -12,7 +12,8 @@
 //   [C] la creation : prix, raison, reference du serveur, sur mesure, formule,
 //       « a placer », notes signees, simulation, lot.
 //   [P] le prix d un PATCH : plafond, raison, trace du serveur, ajustement garde,
-//       contenu change a prix constant, reference forgee, valeurs vides.
+//       contenu change a prix constant, reference forgee, valeurs vides, et
+//       sans prix envoye, le prix qui suit pose par le serveur.
 //   [J] un centre qui vend aux parties, ou le moteur reprend la base recue.
 //   [E] les extras d un PATCH : lignes inchangees, changees, retirees, catalogue.
 //   [F] la formule d un PATCH : mot, programme, autre formule.
@@ -414,8 +415,14 @@ async function groupePrixPatch(mutations = []) {
   v(x.statut === 200 && Number(enBase(501).price) === 200 && Number(enBase(501).base_price) === 200, '[P] le groupe double, le prix suit : passe, et la base du corps ne s ecrit pas', `${dire(x)} base ${enBase(501).base_price}`);
   x = await essai(roleDePrix('non'), { pax: 8, price: 100, basePrice: 100, laserGames: 3, prixRaison: 'Geste' }, laser());
   v(x.statut === 403 && x.code === 'prix_niveau_insuffisant', '[P] un laser sans plan de pistes : la base forgee du corps ne le sauve pas', dire(x));
+  // Sans prix envoye, le contenu change : le serveur pose le prix qui suit
+  // (prixQuiSuit). Il gardait 100 EUR pour 8 et refusait.
   x = await essai(roleDePrix('non'), { pax: 8, laserGames: 3 }, laser());
-  v(x.statut === 403 && x.code === 'prix_niveau_insuffisant' && Number(enBase(501).pax) === 4, '[P] un laser sans prix envoye garderait 100 EUR pour 8 : refus', dire(x));
+  v(x.statut === 200 && Number(enBase(501).pax) === 8 && Number(enBase(501).price) > 100 && Number(enBase(501).price) === Number(enBase(501).base_price) && !notesDe(enBase(501)).some((n) => n.type === 'prix'),
+    '[P] un laser sans prix envoye : le serveur pose le tarif de 8, aucune trace, meme au niveau non', `${dire(x)} prix ${enBase(501).price} base ${enBase(501).base_price}`);
+  x = await essai(roleDePrix('non'), { pax: 8, laserGames: 3 }, DOSSIER(501, { type: 'laser', lanes: [], pax: 4, duration: 1.5, total_duration: 1.5, base_price: 100, price: 80, label: 'Laser Game' }));
+  v(x.statut === 200 && Number(enBase(501).price) === Number(enBase(501).base_price) - 20 && !notesDe(enBase(501)).some((n) => n.type === 'prix'),
+    '[P] un prix d ami sans prix envoye garde son ecart sur le nouveau tarif, sans rien redemander', `${dire(x)} prix ${enBase(501).price} base ${enBase(501).base_price}`);
   x = await essai(roleDePrix('non'), { pax: 8, price: 60 });
   v(x.statut === 200 && Number(enBase(501).price) > 60 && Number(enBase(501).price) === Number(enBase(501).base_price), '[P] un bowling a son prix de reference : le moteur le recalcule, rien a juger', `${dire(x)} prix ${enBase(501).price}`);
   // Une formule retiree de la carte n a plus de tarif : sa base est la derniere connue.
@@ -497,9 +504,11 @@ async function groupeExtrasPatch(mutations = []) {
   v(x.statut === 403 && x.code === 'sur_mesure_refuse', '[E] niveau non : changer le prix d une ligne, c est une ligne changee', dire(x));
   x = await essai(roleDeMesure('non'), { extras: [ancienne], price: 80 });
   v(x.statut === 200 && enBase(501).extras.length === 1 && Number(enBase(501).price) === 80, '[E] retirer une ligne reste permis, le prix suit', dire(x));
-  x = await essai(roleDeMesure('libre', 'libre'), { extras: [ancienne], prixRaison: 'Garde tel quel' });
+  x = await essai(roleDeMesure('libre', 'libre'), { extras: [ancienne], price: 110, prixRaison: 'Garde tel quel' });
   const garde = notesDe(enBase(501)).find((n) => n.type === 'prix');
   v(x.statut === 200 && garde && garde.prix.de === 80 && garde.prix.a === 110, '[E] un prix garde malgre une ligne retiree : la trace part de la nouvelle reference', { reponse: dire(x), garde });
+  x = await essai(roleDeMesure('non'), { extras: [ancienne] });
+  v(x.statut === 200 && Number(enBase(501).price) === 80 && !notesDe(enBase(501)).some((n) => n.type === 'prix'), '[E] une ligne retiree sans prix envoye : le prix suit (80 EUR), aucune trace', dire(x));
   x = await essai(roleDeMesure('non'), { extras: [{ ...ancienne, heure: '15:30', note: 'Pour le gouter' }, signee], price: 110 });
   const precisee = (enBase(501).extras || [])[0] || {};
   v(x.statut === 200 && precisee.heure === '15:30' && precisee.note === 'Pour le gouter', '[E] l heure et la note d une ligne deja la se precisent sans la rejuger', { reponse: dire(x), precisee });
@@ -1003,6 +1012,8 @@ const CONTRE_PREUVES = [
   { nom: 'le prix du moteur ignore', groupe: 'groupePrixPatch', attendu: /le moteur le recalcule, rien a juger/, fichier: 'api/staff-reservations.js', de: 'const prixFinal = ops.price ?? patch.price ?? current.price;', vers: 'const prixFinal = patch.price ?? current.price;' },
   { nom: 'un tarif nul efface la base', groupe: 'groupePrixPatch', attendu: /sans tarif calculable/, fichier: 'lib/droits-reservation.js', de: 'return tarif > 0 ? tarif : Number(current.basePrice) || 0;', vers: 'return tarif;' },
   { nom: 'raison du prix perdue au PATCH', groupe: 'groupePrixPatch', attendu: /5 % : 57 sur 60 passe/, fichier: 'api/staff-reservations.js', de: 'contenuChange, raison: patch.prixRaison });', vers: 'contenuChange });' },
+  { nom: 'le prix qui suit non pose', groupe: 'groupePrixPatch', attendu: /un laser sans prix envoye : le serveur pose/, fichier: 'api/staff-reservations.js', de: '      if (prixSuivi) {\n        patch.price = prixQuiSuit(', vers: '      if (false) {\n        patch.price = prixQuiSuit(' },
+  { nom: 'le prix qui suit perd l ajustement', groupe: 'groupePrixPatch', attendu: /un prix d ami sans prix envoye garde son ecart/, fichier: 'lib/droits-reservation.js', de: '(baseAvant > 0 ? prixAvant - baseAvant - extrasAvant : 0)', vers: '0' },
   // Un centre qui vend aux parties.
   { nom: 'la base forgee reprise par le moteur', groupe: 'groupeParties', attendu: /une base forgee que le moteur reprendrait/, fichier: 'lib/droits-reservation.js', de: 'if (!auxParties) return donnee;', vers: 'return donnee;' },
   { nom: 'le changement de jour ne compte pas', groupe: 'groupeParties', attendu: /tarif du jour/, fichier: 'lib/droits-reservation.js', de: 'if (!contenuChange && !jourChange) return', vers: 'if (!contenuChange) return' },

@@ -65,21 +65,57 @@ const checks = `
   const info=await pg.locator('#posOverlay').innerText();
   ok(/Minigolf Blacklight/.test(info)&&/3 joueurs/.test(info)&&/Arcades/.test(info)&&/5 joueurs/.test(info),'live staff detail shows activity counts');
   await pg.evaluate(()=>{closePos();openQuickBook({pax:18,date:state.currentDate,startTime:'14:00'});quickBookState.type='visite';quickBookState.visit={bowling:{on:true,duration:1},laser_game:{on:true,games:2},others:{minigolf_blacklight:true,billards:true,arcade_time:true,playground:true,duckpin_bowling:true,fun_run:true},options:{bowling:{participants:6},laser_game:{participants:4},minigolf_blacklight:{participants:3},billards:{participants:8,units:2,hours:2},arcade_time:{participants:5},playground:{participants:2},duckpin_bowling:{participants:6},fun_run:{participants:4,minutes:30}}};syncQuickBookDuration();renderQuickBook();if(!quickBookState.moreOpen)toggleQuickBookMore();});
-  // v5 (2026-10-08) : chaque activite a sa ligne ; les joueurs du bowling et
-  // du laser vivent dans leur detail, que « Tout regler » ouvre. Le compteur
-  // se lit sur SA ligne : la valeur ET l activite qui la porte.
-  const lireCompteurs=()=>pg.evaluate(()=>{const parLigne={};let total=0;for(const ligne of document.querySelectorAll('#quickBookOverlay .rv-lignes > [data-rv-ligne]')){const id=ligne.dataset.rvLigne;const compteur=ligne.querySelector('.rv-joueurs-l .rv-qte')||ligne.querySelector('.rv-lc-h .rv-qte[aria-label$="joueurs"], .rv-lc-h .rv-qte[aria-label$="enfants"]');if(!compteur)continue;total+=1;parLigne[id]=compteur.querySelector('b').textContent.trim()+' / '+quickBookState.pax;}return {parLigne,total};});
+  // LES SEANCES (2026-11-03) : chaque activite est une ligne du ticket
+  // (#rsL-a-<id>) ; son compteur de joueurs (ou d enfants) vit sur SA page, que
+  // la ligne ouvre. Au telephone, le ticket s ouvre d abord (#rsResume). Le
+  // compteur se lit sur sa page : la valeur ET « sur N personnes » a cote.
+  const ouvrirLigne=async(id)=>{
+    const visible=await pg.evaluate(i=>{const l=document.getElementById('rsL-a-'+i);return Boolean(l&&l.getClientRects().length&&l.getBoundingClientRect().height>0);},id);
+    if(!visible){const resume=pg.locator('#rsResume');if(await resume.isVisible())await resume.click();}
+    await pg.click('#rsL-a-'+id);
+    await pg.waitForTimeout(120);
+  };
+  const auTicket=()=>pg.evaluate(()=>[...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a[data-activite]')].map(e=>e.dataset.activite));
+  const compteurDe=sens=>'#rsCorps .rs-pas[aria-label="Joueurs"] [aria-label$="'+sens+'"], #rsCorps .rs-pas[aria-label="Enfants"] [aria-label$="'+sens+'"]';
+  const lireCompteurs=async()=>{
+    const parLigne={};let total=0;
+    for(const id of await auTicket()){
+      await ouvrirLigne(id);
+      const lu=await pg.evaluate(i=>{
+        const pas=document.querySelector('#quickBookOverlay #rsCorps .rs-pas[aria-label="Joueurs"], #quickBookOverlay #rsCorps .rs-pas[aria-label="Enfants"]');
+        if(!pas)return null;
+        const titre=((document.getElementById('rsQ')||{}).textContent||'').trim();
+        const rang=pas.closest('.rs-rang');
+        const sur=/sur (\\d+) personne/.exec(rang?rang.textContent:'');
+        return titre===rvNomActivite(i)?pas.querySelector('b').textContent.trim()+' / '+(sur?sur[1]:'?'):'page '+titre;
+      },id);
+      if(lu===null)continue;
+      total+=1;parLigne[id]=lu;
+    }
+    return {parLigne,total};
+  };
   const counters=await lireCompteurs();
   ok(counters.total===8&&JSON.stringify(counters.parLigne)===JSON.stringify({bowling:'6 / 18',laser_game:'4 / 18',minigolf_blacklight:'3 / 18',billards:'8 / 18',arcade_time:'5 / 18',playground:'2 / 18',duckpin_bowling:'6 / 18',fun_run:'4 / 18'}),'live quickbook all8 counters retain distinct counts: '+JSON.stringify(counters));
+  // Les cibles du compteur, page par page : 44 px au moins, rien hors de l ecran.
   for(const width of [1440,390]) {
     await pg.setViewportSize({width,height:900});
-    const min=await pg.evaluate(()=>Math.min(...Array.from(document.querySelectorAll('#quickBookOverlay .rv-qte button')).flatMap(b=>[b.getBoundingClientRect().width,b.getBoundingClientRect().height])));
-    ok(min>=44,'counter targets at '+width+'px: '+min+'px');
-    const clipped=await pg.evaluate(()=>[...document.querySelectorAll('#quickBookOverlay .rv-qte')].some(el=>el.getBoundingClientRect().right>innerWidth));
-    ok(!clipped,'participant controls fit '+width+'px viewport');
+    await pg.waitForTimeout(200);
+    const mesures=[];
+    for(const id of await auTicket()){
+      await ouvrirLigne(id);
+      mesures.push(await pg.evaluate(()=>{const boutons=[...document.querySelectorAll('#quickBookOverlay #rsCorps .rs-pas button')];const tailles=boutons.flatMap(b=>[b.getBoundingClientRect().width,b.getBoundingClientRect().height]);return {n:boutons.length,min:tailles.length?Math.min(...tailles):0,coupe:[...document.querySelectorAll('#quickBookOverlay #rsCorps .rs-pas')].some(el=>el.getBoundingClientRect().right>innerWidth||el.getBoundingClientRect().left<0)};}));
+    }
+    const min=mesures.length?Math.min(...mesures.map(m=>m.min)):0;
+    ok(mesures.length===8&&mesures.every(m=>m.n>=2)&&min>=44,'counter targets at '+width+'px: '+min+'px ('+mesures.length+' pages)');
+    ok(mesures.length===8&&!mesures.some(m=>m.coupe),'participant controls fit '+width+'px viewport');
     await pg.screenshot({path:p.join(REPO,'tmp','staff-participants-'+width+'.png')});
   }
-  await pg.evaluate(()=>{setQuickVisitParticipants('arcade_time',7);setQuickVisitParticipants('minigolf_blacklight',2);});
+  // Le geste du comptoir : + sur la page Arcades (5 -> 7), - sur celle du minigolf (3 -> 2).
+  await ouvrirLigne('arcade_time');
+  for(let i=0;i<2;i++){await pg.click(compteurDe('un de plus'));await pg.waitForTimeout(120);}
+  await ouvrirLigne('minigolf_blacklight');
+  await pg.click(compteurDe('un de moins'));
+  await pg.waitForTimeout(150);
   const values=await pg.evaluate(()=>({arcade:getQuickVisitParticipants('arcade_time'),golf:getQuickVisitParticipants('minigolf_blacklight'),bowling:getQuickVisitParticipants('bowling'),laser:getQuickVisitParticipants('laser_game'),pax:quickBookState.pax}));
   ok(JSON.stringify(values)===JSON.stringify({arcade:7,golf:2,bowling:6,laser:4,pax:18}),'live counter changes preserve every other activity and visitors');
   await pg.evaluate(()=>{closeQuickBook();openStaffReservationDetail(9900);});
@@ -104,9 +140,47 @@ const checks = `
   const smCounters=await lireCompteurs();
   ok(smCounters.total===8&&JSON.stringify(smCounters.parLigne)===JSON.stringify({bowling:'6 / 18',laser_game:'4 / 18',minigolf_blacklight:'3 / 18',billards:'8 / 18',arcade_time:'5 / 18',playground:'2 / 18',duckpin_bowling:'6 / 18',fun_run:'6 / 18'}),'actual custom request all8 visible counters retain distinct counts: '+JSON.stringify(smCounters));
   ok(transfer.labels.includes('Billard : 8 joueurs · 2 tables · 2h')&&transfer.labels.includes('Laser Game : 4 joueurs · 3 parties'),'actual request labels show players+full choices');
-  const emergency=await pg.evaluate(()=>{
-    const savedReservations=state.reservations;const savedStatuses=state.laneStatuses;const savedQuick=quickBookState;const savedSelected=state.selectedRes;const savedEdit=state.editState;const savedDate=state.currentDate;
-    try {
+  // LA CAPACITE DE SECOURS, DITE PAR LE PLAN DU SERVEUR (2026-11-03). La
+  // fenetre « Les seances » ne calcule plus son avertissement de secours : sa
+  // ligne d etat (#rvVerdict) dit l avertissement du plan a blanc du serveur,
+  // le meme moteur que la creation. Mesure du 2026-11-03 sur le vrai handler
+  // (scripts/reserver-banc.js, base en memoire) : 7 joueurs sur la derniere
+  // piste, le plan porte avertissement = la phrase de
+  // lib/bowling-allocation.js (« ... environ 70 min ... n est pas garantie ») ;
+  // a 6, il ne porte rien. Le double du serveur ci-dessous rend ce plan : la
+  // phrase vient de la VRAIE allocateBowlingCapacity, sur les pistes libres du
+  // jour et les joueurs du bowling que la fenetre envoie a sa simulation.
+  const { allocateBowlingCapacity } = require(p.join(REPO, 'lib', 'bowling-allocation.js'));
+  await pg.exposeFunction('__secoursDuServeur', ({ joueurs, libres, minutes, normal, secours }) => {
+    const plan = allocateBowlingCapacity({ players: joueurs, config: { normalCapacityPerLane: normal, emergencyCapacityPerLane: secours }, requiredLanes: 0, allocate: (n) => (n <= libres ? Array.from({ length: n }, (_, i) => i + 1) : null), durationMinutes: minutes, games: 1 });
+    return plan ? plan.emergencyWarning : '';
+  });
+  await pg.evaluate(()=>{
+    window.__secoursGarde={reservations:state.reservations,statuses:state.laneStatuses,quick:quickBookState,selected:state.selectedRes,edit:state.editState,date:state.currentDate,fetch:window.fetch};
+    const precedent=window.fetch;
+    const J=payload=>new Response(JSON.stringify(payload),{status:200,headers:{'content-type':'application/json; charset=utf-8'}});
+    window.fetch=async(input,init)=>{
+      const raw=typeof input==='string'?input:(input&&input.url)||'';
+      const u=new URL(raw,window.location.origin);
+      // La lecture de la journee rend celle que le scenario a posee (son stock de
+      // pistes) : une lecture de fond ne remet pas les huit pistes au milieu.
+      if(u.pathname==='/api/staff-state'){const jour=u.searchParams.get('date')||state.currentDate;return J({ok:true,revision:'qa-secours',reservations:state.reservations.filter(r=>r.date===jour),laneStatuses:state.laneStatuses,centerId:'libramont'});}
+      if(u.pathname==='/api/admin-range')return J({ok:true,reservations:state.reservations,laneStatuses:state.laneStatuses,centerId:'libramont',revision:'qa-secours',syncedAt:new Date().toISOString()});
+      const corps=String((init&&init.method)||'GET').toUpperCase()==='POST'?JSON.parse(String((init&&init.body)||'{}')):{};
+      if(u.pathname!=='/api/staff-reservations'||!corps.dryRun||corps.candidats)return precedent(input,init);
+      const ligne=(Array.isArray(corps.program)?corps.program:[]).find(l=>l&&l.activityId==='bowling');
+      const heures=Number((ligne&&ligne.duration)||corps.duration)||1;
+      const avertissement=ligne?await window.__secoursDuServeur({joueurs:Number(ligne.participants)||Number(corps.pax)||1,libres:getFreeCount(corps.date,corps.startTime,heures),minutes:heures*60,normal:getMaxPerLane(),secours:Math.max(getMaxPerLane(),getEmergencyMaxPerLane())}):'';
+      return J({ok:true,dryRun:true,plan:{disponible:true,debut:corps.startTime||'',fin:'',blocs:[],etapes:[],prix:null,avertissement,aSurveiller:[],conflits:[]}});
+    };
+  });
+  // Le plan de la composition affichee est arrive (sa cle est celle de l ecran).
+  const planDuServeur=()=>pg.waitForFunction(()=>{const s=quickBookState;return Boolean(s&&s.plan&&s.plan.etat==='ok'&&s.plan.cle===s.cleCourante&&rvPlanCourant());},null,{timeout:8000});
+  const texteFenetre=()=>pg.evaluate(()=>document.querySelector('#quickBookOverlay').textContent);
+  const SECOURS=/capacité exceptionnelle/;
+  let emergency;
+  try {
+    const debut=await pg.evaluate(()=>{
       state.reservations=[];
       // Un jour FUTUR ouvert a 14:00 : le jour meme, les heures passees ne
       // sont plus proposees et le creneau de 14:00 disparaissait le soir.
@@ -114,21 +188,37 @@ const checks = `
       const jourOuvert=[...Array(14)].map((_,k)=>jour(k+1)).find(d=>{const s=getSchedule(d,state.isHolidayMode);return s&&s.open<=14&&s.close>=15;});
       if(!jourOuvert)throw Error('aucun jour ouvert a 14:00 dans les 14 prochains jours');
       state.currentDate=jourOuvert;
-      const configureStock=n=>{state.laneStatuses={};for(let i=n+1;i<=getAvailabilityLaneCount();i++)state.laneStatuses[i]='maintenance';};
-      quickBookState={...savedQuick,date:jourOuvert,startTime:'14:00',pax:18,type:'visite',duration:1,totalDuration:1,visit:{bowling:{on:true,duration:1},laser_game:{on:false},others:{},options:{bowling:{participants:7}}}};
-      configureStock(1);renderQuickBook();
-      const one=getQuickBookLaneNeed();const slot=getQuickBookAvailableSlots().find(s=>s.time===quickBookState.startTime);const price=getQuickBookSummaryActivites().total;const visible=document.querySelector('#quickBookOverlay').textContent;
-      quickBookState.visit.options.bowling.participants=6;patchQuickBookStatusLine(document.querySelector('#quickBookOverlay'));const warningCleared=document.querySelector('[data-bowling-capacity-warning]').hidden;quickBookState.visit.options.bowling.participants=7;patchQuickBookStatusLine(document.querySelector('#quickBookOverlay'));const warningRestored=!document.querySelector('[data-bowling-capacity-warning]').hidden;
+      window.__configureStock=n=>{state.laneStatuses={};for(let i=n+1;i<=getAvailabilityLaneCount();i++)state.laneStatuses[i]='maintenance';};
+      // L ecran de la fenetre repart de l accueil (rs), sans plan ni heure proposee : 14:00 est choisie.
+      quickBookState={...window.__secoursGarde.quick,rs:null,plan:null,candidats:null,heureProposee:false,date:jourOuvert,startTime:'14:00',pax:18,type:'visite',duration:1,totalDuration:1,visit:{bowling:{on:true,duration:1},laser_game:{on:false},others:{},options:{bowling:{participants:7}}}};
+      window.__configureStock(1);renderQuickBook();
+      return {one:getQuickBookLaneNeed(),slot:getQuickBookAvailableSlots().find(s=>s.time===quickBookState.startTime),price:getQuickBookSummaryActivites().total};
+    });
+    await planDuServeur();
+    const visible=await texteFenetre();
+    // Le compteur redescend a 6 : la fenetre redemande son plan, l avertissement part ; a 7 il revient.
+    await pg.evaluate(()=>{quickBookState.visit.options.bowling.participants=6;renderQuickBook();});
+    await planDuServeur();
+    const warningCleared=!SECOURS.test(await texteFenetre());
+    await pg.evaluate(()=>{quickBookState.visit.options.bowling.participants=7;renderQuickBook();});
+    await planDuServeur();
+    const warningRestored=SECOURS.test(await texteFenetre());
+    const suite=await pg.evaluate((one)=>{
       const item={...ligneProgrammeQuick('bowling'),duration:1};const detail=detailLigneProgramme(item,{pax:18});
       const r={id:9977,name:'SECOURS7',pax:18,date:quickBookState.date,startTime:quickBookState.startTime,duration:1,lanes:[1],type:'bowling',status:'pending',program:{items:[item]},opsPlan:{resourceBlocks:[{activityId:'bowling',resourceType:'bowling_lane',start:840,end:900,startTime:'14:00',endTime:'15:00',durationMinutes:60,players:7,lanes:[1],bowlingCapacity:one.bowlingCapacity}]}};
       state.reservations=[r];state.selectedRes=r;state.editState={pax:18,startTime:r.startTime,duration:1,programmeEdite:buildEditProgramFromReservation(r)};
       const editNeed=getEditBowlingCapacityNeed(r,state.editState);const editPrice=getEditPrixEstime().total;const advice=editLaneAdvice(r,{...state.editState,lanesStr:'1'});
       setStaffResourceView('bowling');const card=[...document.querySelectorAll('.booking[data-booking-res-id="9977"] .bk-pax')].map(el=>el.title).join(' | ');const timeline=getGroupeProgramme(r).map(step=>step.quoi).join(' | ');
-      state.reservations=[];quickBookState.visit.options.bowling.participants=13;configureStock(2);renderQuickBook();const two=getQuickBookLaneNeed();const twoPrice=getQuickBookSummaryActivites().total;const twoVisible=document.querySelector('#quickBookOverlay').textContent;
-      configureStock(3);const normal=getQuickBookLaneNeed();
-      return {one,slot,price,visible,detail,card,timeline,two,twoPrice,twoVisible,normal,editNeed,editPrice,advice,warningCleared,warningRestored};
-    } finally {state.reservations=savedReservations;state.laneStatuses=savedStatuses;quickBookState=savedQuick;state.selectedRes=savedSelected;state.editState=savedEdit;state.currentDate=savedDate;renderQuickBook();}
-  });
+      state.reservations=[];quickBookState.visit.options.bowling.participants=13;window.__configureStock(2);renderQuickBook();const two=getQuickBookLaneNeed();const twoPrice=getQuickBookSummaryActivites().total;
+      return {detail,card,timeline,two,twoPrice,editNeed,editPrice,advice};
+    },debut.one);
+    await planDuServeur();
+    const twoVisible=await texteFenetre();
+    const normal=await pg.evaluate(()=>{window.__configureStock(3);return getQuickBookLaneNeed();});
+    emergency={...debut,visible,warningCleared,warningRestored,...suite,twoVisible,normal};
+  } finally {
+    await pg.evaluate(()=>{const g=window.__secoursGarde;state.reservations=g.reservations;state.laneStatuses=g.statuses;quickBookState=g.quick;state.selectedRes=g.selected;state.editState=g.edit;state.currentDate=g.date;window.fetch=g.fetch;renderQuickBook();});
+  }
   ok(emergency.one.requiredCount===1&&emergency.slot?.lanes.length===1&&emergency.price===39,'actual stock1 own7 of group18 offers one lane at39');
   ok(emergency.visible.includes('70 min')&&emergency.visible.includes('pas garanti')&&emergency.detail.includes('7 joueurs')&&emergency.detail.includes('70 min'),'actual quick dialog and detail show own7 emergency70min warning');
   ok(emergency.card.includes('7 joueurs')&&emergency.card.includes('70 min')&&emergency.timeline.includes('70 min'),'persisted emergency planning card and timeline warning');

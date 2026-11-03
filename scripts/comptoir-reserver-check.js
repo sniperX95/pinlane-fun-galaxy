@@ -22,10 +22,11 @@
 //   [R3] UN CLIENT DEVANT LE COMPTOIR EST ARRIVE. Une heure atteinte ou dans la
 //        demi-heure nait « Ils sont 6 », jamais « +10 min » : En retard ne bouge pas.
 //        Plus tard, le groupe reste attendu.
-//   [R4] CREER ET ENCAISSER D UN COUP. « Créer · Carte » et « Créer · Espèces » : un
+//   [R4] CREER ET ENCAISSER D UN COUP. « Payé carte » et « Payé espèces » : un
 //        dossier, une fois, paye, avec son moyen, son toast « Annuler ». Un refus du
 //        paiement laisse le groupe cree ; un refus de creation ne paie rien ensuite.
-//        Pas de bouton sans le droit, ni pour un autre jour.
+//        Pas de bouton utilisable sans le droit, ni pour un autre jour, ni pour un
+//        lot : Les seances les eteignent (disabled) au lieu de les retirer.
 //   [R5] LE SERVEUR NE CREE NI PAYE NI ARRIVE SANS LE DROIT.
 //   [R6] LE MOINS DE CHAMPS POSSIBLE. Rien tape : le dossier part sous « Client », sans
 //        contact, et ne devient pas un faux client.
@@ -41,6 +42,11 @@
 //   [*]  Zero erreur JavaScript.
 //
 // Les gestes (le nombre de clics pour chaque parcours) se comptent et s affichent.
+//
+// LA FENETRE EST « LES SEANCES » (2026-11-03) : le nombre de joueurs se choisit d abord
+// (#rsHaut [data-pax], Créer dit « Combien de joueurs ? » avant), Créer dit « Créer à
+// 15:00 » et porte data-pret="1" quand le plan du serveur est la et tient ; un refus se
+// dit en rouge sur la ligne du ticket (#rvRefus) et Créer devient « Prendre 16:00 ».
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la
 // fois (les fichiers sont modifies en memoire, le disque n est jamais touche), et
@@ -94,14 +100,17 @@ const MUTATIONS = [
   { nom: 'serveur-ignore', lettre: 'R1', bloc: 'serveur', cible: '[R1] le planning a le dernier mot', fichier: APP, de: "  if (rvSuivreLePlanning()) return;\n  rvRepeindre();\n}", vers: '  rvRepeindre();\n}' },
   { nom: 'rouge-montre', lettre: 'R1', bloc: 'serveur', cible: '[R1] sans passer par le rouge', fichier: APP, de: '  if (!plan || plan.disponible || rvHeureEnRecherche()) return null;', vers: '  if (!plan || plan.disponible) return null;' },
   { nom: 'recherche-sans-fin', lettre: 'R1', bloc: 'aucune', cible: '[R1] si les heures candidates ne repondent pas', fichier: APP, de: "  return !(c && c.base === s.cleCourante && (c.etat === 'ok' || c.etat === 'erreur' || c.etat === 'local'));", vers: '  return true;' },
+  { nom: 'panne-relancee', lettre: 'R1', bloc: 'aucune', cible: '[R1] une recherche en panne ne se relance pas d elle-meme', fichier: APP, de: "  if (c && c.etat === 'erreur' && c.id === id && c.partie === 0 && c.base === quickBookState.cleCourante) return;\n", vers: '' },
   { nom: 'passe-deplace', lettre: 'R2', cible: '[R2] une heure deja passee reste un choix', fichier: APP, de: 'heureSouhaitee: !rvHeurePassee(state.currentDate, heure)', vers: 'heureSouhaitee: true' },
   { nom: 'laser-commence', lettre: 'R2', cible: '[R2] une partie de laser commencee ne se propose pas', fichier: APP, de: '    .filter((h) => !(laserDabord && maintenant !== null && timeToNum(h) <= maintenant + 1e-9));', vers: ';' },
-  { nom: 'souhait-muet', lettre: 'R2', cible: '[R2] une heure qui ne tient pas donne la plus proche, et le dit', fichier: APP, de: "${deplacee ? `<li class=\"is-info\" data-rv-deplacee>${escapeHtml(deplacee)}</li>` : ''}", vers: '' },
+  // (la phrase « 15:30 ne tient pas » se dit sur la ligne d etat du ticket, rsVerdictHtml)
+  { nom: 'souhait-muet', lettre: 'R2', cible: '[R2] et le dit', fichier: APP, de: '    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) morceaux.push(', vers: '    if (false) morceaux.push(' },
+  { nom: 'souhait-fige', lettre: 'R2', cible: '[R2] une heure qui ne tient pas donne la plus proche', fichier: APP, de: '    quickBookState.heureVoulue = quickBookState.startTime;\n    quickBookState.heureProposee = true;', vers: '    quickBookState.heureVoulue = quickBookState.startTime;' },
   { nom: 'souhait-ignore', lettre: 'R2', cible: '[R2] une heure qui tient s ouvre dessus', fichier: APP, de: "...(heure ? { startTime: heure, heureSouhaitee: !rvHeurePassee(state.currentDate, heure) } : {}),", vers: '' },
   { nom: 'naît-attendu', lettre: 'R3', bloc: 'atteinte', cible: '[R3] une heure atteinte nait arrivee', fichier: APP, de: "status: !simulation && rvNaitArrive(s) ? 'arrived' : 'pending',", vers: "status: 'pending'," },
   { nom: 'demi-heure-oubliee', lettre: 'R3', bloc: 'demi-heure', cible: '[R3] une heure dans la demi-heure nait arrivee', fichier: APP, de: 'const RV_ARRIVE_SOUS = 0.5;', vers: 'const RV_ARRIVE_SOUS = 0;' },
   { nom: 'tout-arrive', lettre: 'R3', bloc: 'plus-tard', cible: '[R3] plus tard, le groupe reste attendu', fichier: APP, de: 'const RV_ARRIVE_SOUS = 0.5;', vers: 'const RV_ARRIVE_SOUS = 24;' },
-  { nom: 'pas-encaisse', lettre: 'R4', bloc: 'Carte', cible: '[R4] Créer · Carte cree et encaisse d un coup', fichier: APP, de: '    if (encaisser) encaisserReservation(payload.reservation.id, moyen);', vers: '' },
+  { nom: 'pas-encaisse', lettre: 'R4', bloc: 'Carte', cible: '[R4] Payé carte cree et encaisse d un coup', fichier: APP, de: '    if (encaisser) encaisserReservation(payload.reservation.id, moyen);', vers: '' },
   { nom: 'moyen-reste', lettre: 'R4', bloc: 'creation-refusee', cible: '[R4] apres un refus de creation, Créer n encaisse rien', fichier: APP, de: "  const moyen = etat.payNow || '';\n  etat.payNow = false;", vers: "  const moyen = etat.payNow || '';" },
   { nom: 'droit-oublie', lettre: 'R4', bloc: 'boutons', cible: '[R4] sans le droit d encaisser, pas de bouton', fichier: APP, de: "  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.markPaid')) return false;\n  const plan = rvPlanCourant();", vers: '  const plan = rvPlanCourant();' },
   { nom: 'autre-jour-paye', lettre: 'R4', bloc: 'boutons', cible: '[R4] pour un autre jour, pas de bouton', fichier: APP, de: "  if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || !rvActivites().length) return false;", vers: "  if (!s || rvResas.length > 1 || s.forcer || !rvActivites().length) return false;" },
@@ -126,8 +135,8 @@ const MUTATIONS = [
   { nom: 'pli-ouvert', lettre: 'R9', bloc: 'pli', cible: '[R9] le telephone, l e-mail et l occasion attendent dans un pli', fichier: APP, de: `<details class="fm-pli" id="editContactPli"\${editContactOuvert ? ' open' : ''}`, vers: `<details class="fm-pli" id="editContactPli" open` },
   { nom: 'pli-oublie', lettre: 'R9', bloc: 'pli', cible: '[R9] le pli garde son etat d un rendu a l autre', fichier: APP, de: ' ontoggle="editContactOuvert = this.open"', vers: '' },
   { nom: 'email-cache', lettre: 'R9', bloc: 'pli', cible: '[R9] un e-mail invalide rouvre le pli', fichier: APP, de: ` oninvalid="document.getElementById('editContactPli').open = true"`, vers: '' },
-  { nom: 'bouton-petit', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] au doigt, 44 px', fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv .rv-creer-paye { min-width: 0; min-height: 44px;', vers: '.qb-modal.rv .rv-creer-paye { min-width: 0; min-height: 24px;' },
-  { nom: 'deux-pleins', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] un seul bouton plein au pied', fichier: 'assets/pinlane-staff.css', de: 'border: 1px solid var(--rv-line-strong); background: var(--rv-raised); color: var(--rv-text); font-size: 14.5px;', vers: 'border: 0; background: var(--rv-bleu); color: #fff; font-size: 14.5px;' },
+  { nom: 'bouton-petit', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] au doigt, 44 px', fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv.rs .rs-payer { min-width: 0; height: 44px;', vers: '.qb-modal.rv.rs .rs-payer { min-width: 0; height: 24px;' },
+  { nom: 'deux-pleins', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] un seul bouton plein au pied', fichier: 'assets/pinlane-staff.css', de: 'border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); font-size: 14px; font-weight: 550; line-height: 1; color: var(--text);', vers: 'border: 0; border-radius: 10px; background: var(--accent); font-size: 14px; font-weight: 550; line-height: 1; color: var(--accent-contrast);' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -250,6 +259,7 @@ async function ouvrir(browser, { fixture = 'pic', appareil = 'comptoir', theme =
           return new Response(JSON.stringify({ ok: false, message: 'Refus du gate.' }), { status: 422, headers: { 'content-type': 'application/json; charset=utf-8' } });
         }
         if (window.__refuserCandidats && me === 'POST' && corps && corps.candidats) {
+          window.__candidatsRefuses = (window.__candidatsRefuses || 0) + 1;
           return new Response(JSON.stringify({ ok: false, message: 'Panne du gate.' }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } });
         }
         const rep = await window.__vraiAppel(me, u.pathname + u.search, corps);
@@ -269,10 +279,21 @@ async function ouvrir(browser, { fixture = 'pic', appareil = 'comptoir', theme =
 
 // ---- Lire l ecran ---------------------------------------------------------
 const texte = (page, sel) => page.evaluate((s) => Array.from(document.querySelectorAll(s)).filter((e) => e.getClientRects().length).map((e) => e.innerText.replace(/\s+/g, ' ').trim()).join(' | '), sel);
+// Le plan est pose : Créer est pret (data-pret="1" : le plan du serveur est la et
+// tient), ou le refus se dit (#rvRefus, « Prendre 16:00 »), et la fenetre ne cherche
+// plus (« Recherche… », « Le planning cherche l’heure qui tient »).
 const planPose = (page) => page.waitForFunction(() => {
-  const e = document.querySelector('#rvPied .rv-etat-pied');
-  return e && !e.classList.contains('is-calcul') && !/vérifie|cherche/.test(e.textContent);
+  const b = document.getElementById('rvCreer');
+  if (!b || /cherche|Création/.test(b.textContent) || /cherche/.test((document.getElementById('rvVerdict') || {}).textContent || '')) return false;
+  return b.dataset.pret === '1' || Boolean(b.dataset.proche) || Boolean(document.getElementById('rvRefus'));
 }, null, { timeout: 8000 }).catch(() => {});
+const pret = (page) => page.evaluate(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); });
+// Les joueurs se choisissent sur leur touche ; celle qui est choisie est pressee.
+const joueurs = (page, n) => page.locator(`#rsHaut [data-pax="${n}"]`);
+const joueursPris = (page) => page.evaluate(() => { const k = document.querySelector('#rsHaut [data-pax][aria-pressed="true"]'); const autre = document.getElementById('qbPax'); return k ? k.dataset.pax : (autre ? autre.value : ''); });
+// Les deux boutons « Payé » du pied : affiches, et utilisables (pas disabled).
+const payes = (page) => page.evaluate(() => Array.from(document.querySelectorAll('#rvPied .rs-payer')).map((b) => ({ mot: b.textContent.trim(), visible: b.getClientRects().length > 0, actif: !b.disabled })));
+const utilisables = (liste) => liste.filter((p) => p.visible && p.actif).length;
 const fenetreFermee = (page) => page.waitForFunction(() => document.getElementById('quickBookOverlay').classList.contains('hidden'), null, { timeout: 8000 });
 const creationsDe = (journal) => journal.filter((j) => j.m === 'POST' && j.corps && !j.corps.dryRun);
 const compteur = (page, f) => page.evaluate((c) => Number((document.querySelector(`[data-gf-filtre="${c}"] .gf-c__v`) || {}).textContent), f);
@@ -289,9 +310,11 @@ async function chercher(page, terme) {
 }
 const nomsDe = (page) => page.evaluate(() => Array.from(document.querySelectorAll('#globalPlanningGridWrap tr.gf-r .gf-nom__t')).map((n) => n.textContent));
 // Le rouge se guette tout du long : un etat qui passe ne laisse pas de trace a la fin.
+// Un refus se dit sur la ligne du ticket (#rvRefus), sur la seance choisie, au resume
+// du telephone, dans le verdict, et Créer propose « Prendre 16:00 » (data-proche).
 const guetterLeRouge = (page) => page.evaluate(() => {
   window.__rouge = 0;
-  const note = () => { if (document.querySelector('#rvRefus, #rvPied .rv-etat-pied.is-ko, #quickBookOverlay .rv-ko')) window.__rouge += 1; };
+  const note = () => { if (document.querySelector('#rvRefus, #quickBookOverlay .rs-h.is-ko, #quickBookOverlay .rs-v-ligne.is-ko, #rsResume .is-ko, #rvCreer[data-proche]')) window.__rouge += 1; };
   new MutationObserver(note).observe(document.getElementById('quickBookOverlay'), { subtree: true, childList: true, attributes: true, characterData: true });
 });
 const leRouge = (page) => page.evaluate(() => window.__rouge || 0);
@@ -307,27 +330,29 @@ async function scenarioR1(browser) {
     await guetterLeRouge(page);
     const n = { n: 0 };
     await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
-    await planPose(page);
+    await page.waitForSelector('#rvCreer');
     const a4 = await texte(page, '#rvCreer');
-    await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
+    await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
     const a6 = await texte(page, '#rvCreer');
-    const verdict = await texte(page, '#rvVerdict');
-    ok(/Créer · 15:00/.test(a6), '[R1] a 15:10, Réserver s ouvre sur une heure qui tient (15:00 pour 6)', `${a4} | ${a6} | ${verdict}`);
-    ok(/Possible/.test(verdict) && /piste \d/.test(verdict), '[R1] et dit ses pistes libres', verdict);
+    const pret6 = await pret(page);
+    const ligne6 = await texte(page, '#rsL-a-bowling');
+    ok(/Créer à 15:00/.test(a6), '[R1] a 15:10, Réserver s ouvre sur une heure qui tient (15:00 pour 6)', `${a4} | ${a6} | ${ligne6}`);
+    // (« Possible » : le plan du serveur est la et tient ; ses pistes se lisent sur la ligne du ticket)
+    ok(pret6 && /piste \d/.test(ligne6), '[R1] et dit ses pistes libres', `pret ${pret6} | ${ligne6}`);
     ok(await leRouge(page) === 0, '[R1] sans passer par le rouge, a l ouverture', await leRouge(page));
     // Le groupe grandit : l heure le suit, puis revient.
-    await page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^20$/ }).click();
+    await joueurs(page, 20).click();
     await page.waitForTimeout(350);
     await planPose(page);
     const a20 = await texte(page, '#rvCreer');
-    const v20 = await texte(page, '#rvVerdict');
-    ok(!/15:00/.test(a20) && /Possible/.test(v20), '[R1] pour 20, l heure suit le groupe', `${a20} | ${v20}`);
-    await page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }).click();
+    const pret20 = await pret(page);
+    ok(!/15:00/.test(a20) && pret20, '[R1] pour 20, l heure suit le groupe', `${a20} | pret ${pret20} | ${await texte(page, '#rsL-a-bowling')}`);
+    await joueurs(page, 6).click();
     await page.waitForTimeout(350);
     await planPose(page);
-    ok(/Créer · 15:00/.test(await texte(page, '#rvCreer')), '[R1] et revient pour 6', await texte(page, '#rvCreer'));
+    ok(/Créer à 15:00/.test(await texte(page, '#rvCreer')), '[R1] et revient pour 6', await texte(page, '#rvCreer'));
     await page.evaluate(() => closeQuickBook());
     await m.finir('R1');
   }
@@ -335,16 +360,17 @@ async function scenarioR1(browser) {
     // A LA MAIN, ELLE NE BOUGE PLUS.
     const m = await ouvrir(browser);
     const { page } = m;
+    // (le groupe de 4, puis « Autres » du bowling : toutes les heures, 17:30 a la main)
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
     await planPose(page);
-    await page.locator('#rvHeure-bowling').click();
-    await page.waitForSelector('#rvHorloge .rv-hc');
-    await page.locator('#rvHorloge .rv-hc', { hasText: /^17/ }).click();
-    await page.locator('#rvHorloge .rv-mn', { hasText: /17:30/ }).click();
+    await page.locator('#quickBookOverlay .rs-h-autres[data-activite="bowling"]').click();
+    await page.locator('#quickBookOverlay .rs-heures .rs-h[data-heure="17:30"]').click();
     await page.waitForTimeout(350);
     await planPose(page);
     const choisie = await texte(page, '#rvCreer');
-    await page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^2$/ }).click();
+    await joueurs(page, 2).click();
     await page.waitForTimeout(350);
     await planPose(page);
     const apres = await texte(page, '#rvCreer');
@@ -361,12 +387,14 @@ async function scenarioR1(browser) {
     [1, 2, 5, 8].forEach((p, i) => {
       B.base.reservations.set(9700 + i, B.ligne(9700 + i, { start_time: '15:00', lanes: [p], date: '2027-01-16', duration: 1, total_duration: 1, center_id: 'libramont', name: `Autre poste ${p}`, status: 'pending' }));
     });
+    // (le groupe de 4, celui qui ouvrait la fenetre avant Les seances)
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
-    await page.waitForFunction(() => /Créer · (?!15:00)\d\d:\d\d/.test((document.getElementById('rvCreer') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    await joueurs(page, 4).click();
+    await page.waitForFunction(() => /Créer à (?!15:00)\d\d:\d\d/.test((document.getElementById('rvCreer') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
     await planPose(page);
     const creer = await texte(page, '#rvCreer');
-    const verdict = await texte(page, '#rvVerdict');
-    ok(/Créer · \d\d:\d\d/.test(creer) && !/15:00/.test(creer) && /Possible/.test(verdict), '[R1] le planning a le dernier mot : la fenetre va ou il dit que tout tient', `${creer} | ${verdict}`);
+    const tient = await pret(page);
+    ok(/Créer à \d\d:\d\d/.test(creer) && !/15:00/.test(creer) && tient, '[R1] le planning a le dernier mot : la fenetre va ou il dit que tout tient', `${creer} | pret ${tient} | ${await texte(page, '#rsL-a-bowling')}`);
     ok(await leRouge(page) === 0, '[R1] sans passer par le rouge, quand le serveur refuse', await leRouge(page));
     await page.evaluate(() => closeQuickBook());
     await m.finir('R1 serveur');
@@ -376,8 +404,10 @@ async function scenarioR1(browser) {
     const m = await ouvrir(browser, { fixture: 'calme', heure: '15:25' });
     const { page } = m;
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
     await planPose(page);
-    ok(/Créer · 15:30/.test(await texte(page, '#rvCreer')), '[R1] a 15:25 sur un jour calme, c est 15:30', await texte(page, '#rvCreer'));
+    ok(/Créer à 15:30/.test(await texte(page, '#rvCreer')), '[R1] a 15:25 sur un jour calme, c est 15:30', await texte(page, '#rvCreer'));
     await page.evaluate(() => closeQuickBook());
     await m.finir('R1 calme');
   }
@@ -385,18 +415,25 @@ async function scenarioR1(browser) {
     // AUCUNE HEURE NE TIENT : la fenetre ne cherche pas pour rien, elle dit le refus.
     const m = await ouvrir(browser);
     const { page } = m;
+    // (« cherche » : Créer dit « Recherche… », le verdict « Le planning cherche l’heure qui tient »)
+    const enRecherche = async () => `${await texte(page, '#rvCreer')} | ${await texte(page, '#rvVerdict')}`;
     await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 240 }));
     await page.waitForSelector('#rvRefus', { timeout: 8000 }).catch(() => {});
     const refus = await texte(page, '#rvRefus');
-    const pied = await texte(page, '#rvPied .rv-etat-pied');
+    const pied = await enRecherche();
     ok(Boolean(refus) && !/cherche/.test(pied), '[R1] si aucune heure ne tient, le refus se dit, sans chercher pour rien', `${refus} | ${pied}`);
     await page.evaluate(() => closeQuickBook());
     // La recherche ne repond pas : la fenetre ne reste pas a chercher non plus.
     await page.evaluate(() => { window.__refuserCandidats = true; reserverAuComptoir({ type: 'bowling', pax: 240 }); });
     await page.waitForSelector('#rvRefus', { timeout: 8000 }).catch(() => {});
     const refusPanne = await texte(page, '#rvRefus');
-    const piedPanne = await texte(page, '#rvPied .rv-etat-pied');
+    const piedPanne = await enRecherche();
     ok(Boolean(refusPanne) && !/cherche/.test(piedPanne), '[R1] si les heures candidates ne repondent pas, le refus se dit aussi', `${refusPanne} | ${piedPanne}`);
+    // (2026-11-03 : chaque repeint relancait la recherche en panne, 512 requetes en 4 s)
+    const relancesAvant = await page.evaluate(() => window.__candidatsRefuses || 0);
+    await page.waitForTimeout(1500);
+    const relances = (await page.evaluate(() => window.__candidatsRefuses || 0)) - relancesAvant;
+    ok(relances <= 1, '[R1] une recherche en panne ne se relance pas d elle-meme', `${relances} requete(s) en 1,5 s sans un geste`);
     await page.evaluate(() => closeQuickBook());
     await m.finir('R1 aucune heure');
   }
@@ -409,15 +446,18 @@ async function scenarioR2(browser) {
   console.log('\n[R2] reserverAuComptoir');
   const m = await ouvrir(browser);
   const { page } = m;
+  // (les joueurs donnes se lisent sur leur touche, pressee : #qbPax n est plus que « Autre »)
   await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 6 }));
   await planPose(page);
-  ok(/Créer · 15:00/.test(await texte(page, '#rvCreer')) && await page.locator('#qbPax').inputValue() === '6', '[R2] sans heure, la plus proche qui tient, avec ses joueurs', await texte(page, '#rvCreer'));
+  ok(/Créer à 15:00/.test(await texte(page, '#rvCreer')) && await joueursPris(page) === '6', '[R2] sans heure, la plus proche qui tient, avec ses joueurs', `${await texte(page, '#rvCreer')} | joueurs ${await joueursPris(page)}`);
   await page.evaluate(() => closeQuickBook());
 
+  // (ce que la fenetre dit d une heure deplacee, elle le dit dans son texte visible)
+  const fenetre = () => texte(page, '#quickBookOverlay');
   await page.evaluate(() => reserverAuComptoir({ type: 'bowling', startTime: '17:30', pax: 4 }));
   await planPose(page);
   const tient = await texte(page, '#rvCreer');
-  ok(/Créer · 17:30/.test(tient) && !(await texte(page, '[data-rv-deplacee]')), '[R2] une heure qui tient s ouvre dessus', tient);
+  ok(/Créer à 17:30/.test(tient) && !/17:30 ne tient pas|ne tient pas à 17:30/.test(await fenetre()), '[R2] une heure qui tient s ouvre dessus', tient);
   await page.evaluate(() => closeQuickBook());
 
   await guetterLeRouge(page);
@@ -425,8 +465,10 @@ async function scenarioR2(browser) {
   await page.waitForTimeout(350);
   await planPose(page);
   const proche = await texte(page, '#rvCreer');
-  const dit = await texte(page, '[data-rv-deplacee]');
-  ok(/Créer · \d\d:\d\d/.test(proche) && !/15:30/.test(proche) && /15:30 ne tient pas/.test(dit), '[R2] une heure qui ne tient pas donne la plus proche, et le dit', `${proche} | ${dit}`);
+  const dit = await fenetre();
+  ok(/Créer à \d\d:\d\d/.test(proche) && !/15:30/.test(proche), '[R2] une heure qui ne tient pas donne la plus proche', proche);
+  // (l ancienne fenetre : « 15:30 ne tient pas. Voici l’heure la plus proche. »)
+  ok(/15:30 ne tient pas|ne tient pas à 15:30/.test(dit), '[R2] et le dit : « 15:30 ne tient pas »', `${proche} | ${dit.slice(0, 400)}`);
   ok(await leRouge(page) === 0, '[R2] sans rouge', await leRouge(page));
   await page.evaluate(() => closeQuickBook());
 
@@ -441,7 +483,7 @@ async function scenarioR2(browser) {
   await planPose(page);
   const depart = await texte(page, '#rvCreer');
   const verrou = await page.evaluate(() => quickBookState.lockStartTime);
-  ok(/Créer · 15:2\d/.test(depart) && verrou === true && await page.locator('#qbPax').inputValue() === '4', '[R2] le laser garde openQuickBookForLaserSession : son depart, verrouille', `${depart} ${verrou}`);
+  ok(/Créer à 15:30/.test(depart) && verrou === true && await joueursPris(page) === '4', '[R2] le laser garde openQuickBookForLaserSession : son depart, verrouille', `${depart} ${verrou} joueurs ${await joueursPris(page)}`);
   await page.evaluate(() => closeQuickBook());
 
   await page.evaluate(() => reserverAuComptoir({ type: 'laser', pax: 4 }));
@@ -464,8 +506,7 @@ async function scenarioR3(browser) {
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
     await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
-    await planPose(page);
-    await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
+    await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
     await clic(n, page.locator('#rvCreer'));
@@ -513,7 +554,7 @@ async function scenarioR3(browser) {
 // ---------------------------------------------------------------------------
 async function scenarioR4(browser) {
   console.log('\n[R4] creer et encaisser d un coup');
-  for (const [mot, valeur, moyenBase] of [['Carte', 'Créer · Carte', 'Carte Bancaire'], ['Espèces', 'Créer · Espèces', 'Espèces']]) {
+  for (const [mot, valeur, moyenBase] of [['Carte', 'Payé carte', 'Carte Bancaire'], ['Espèces', 'Payé espèces', 'Espèces']]) {
     if (!joue(mot)) continue;
     const m = await ouvrir(browser);
     const { page, journal } = m;
@@ -521,16 +562,15 @@ async function scenarioR4(browser) {
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
     await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
-    await planPose(page);
-    await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
+    await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
-    await clic(n, page.locator('#rvPied button', { hasText: valeur }));
+    await clic(n, page.locator('#rvPied .rs-payer', { hasText: valeur }));
     await fenetreFermee(page);
     await page.waitForFunction(() => /pay/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
     const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
     const base = enBase(id);
-    ok(base && base.status === 'paid' && base.moyen === moyenBase && creationsDe(journal).length === 1 && journal.filter((j) => j.m === 'PATCH').length === 1, `[R4] Créer · ${mot} cree et encaisse d un coup`, `${JSON.stringify(base)} ${journal.map((j) => j.m + (j.corps && j.corps.dryRun ? ':dry' : '')).join(',')}`);
+    ok(base && base.status === 'paid' && base.moyen === moyenBase && creationsDe(journal).length === 1 && journal.filter((j) => j.m === 'PATCH').length === 1, `[R4] ${valeur} cree et encaisse d un coup`, `${JSON.stringify(base)} ${journal.map((j) => j.m + (j.corps && j.corps.dryRun ? ':dry' : '')).join(',')}`);
     await page.waitForTimeout(150);
     ok(/Payé/.test(await ligneDe(page, id)) && !/\+\d/.test(await ligneDe(page, id)), `[R4] la ligne dit Payé (${mot})`, await ligneDe(page, id));
     ok(await compteur(page, 'late') === late && await compteur(page, 'onsite') === onsite + 1, `[R4] paye veut dire arrive : En retard ne bouge pas, Sur place compte le groupe (${mot})`, `retard ${late} -> ${await compteur(page, 'late')}, sur place ${onsite} -> ${await compteur(page, 'onsite')}`);
@@ -552,7 +592,7 @@ async function scenarioR4(browser) {
     const upcoming = await compteur(page, 'upcoming');
     await page.evaluate(() => reserverAuComptoir({ type: 'bowling', startTime: '17:30', pax: 4 }));
     await planPose(page);
-    await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).click();
+    await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await fenetreFermee(page);
     await page.waitForFunction(() => /pay/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(200);
@@ -567,8 +607,10 @@ async function scenarioR4(browser) {
     sansEncaisser.permissions = sansEncaisser.permissions.filter((p) => p !== 'payments.markPaid');
     serveur.changerSession(sansEncaisser);
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
     await planPose(page);
-    await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).click();
+    await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await fenetreFermee(page);
     await page.waitForFunction(() => /(permission|droit|insuffisant)/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
     const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
@@ -581,9 +623,11 @@ async function scenarioR4(browser) {
     const m = await ouvrir(browser);
     const { page, journal } = m;
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
     await planPose(page);
     await page.evaluate(() => { window.__refuserCreation = true; });
-    await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).click();
+    await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await page.waitForFunction(() => /Refus du gate/.test((document.getElementById('rvVerdict') || {}).textContent || ''), null, { timeout: 6000 });
     await page.evaluate(() => { window.__refuserCreation = false; });
     await page.locator('#rvCreer').click();
@@ -598,39 +642,51 @@ async function scenarioR4(browser) {
     const m = await ouvrir(browser);
     const { page, journal } = m;
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
     await planPose(page);
-    await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).dblclick();
+    await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).dblclick();
     await fenetreFermee(page);
     await page.waitForTimeout(400);
     ok(creationsDe(journal).length === 1, '[R4] un double clic ne cree qu un dossier', creationsDe(journal).length);
     await m.finir('R4 double clic');
   }
   if (joue('boutons')) {
-    // OU LES BOUTONS SE MONTRENT.
+    // OU LES BOUTONS SERVENT. Les seances les laissent a leur place, eteints (disabled),
+    // quand encaisser n a pas de sens : chaque cas se joue avec un plan qui tient et des
+    // joueurs choisis, pour que seule la regle du cas les eteigne.
     const m = await ouvrir(browser);
     const { page } = m;
+    const etat = async () => `${JSON.stringify(await payes(page))} pret ${await pret(page)} | ${await texte(page, '#rvCreer')}`;
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
-    await planPose(page);
-    ok(await page.locator('#rvPied .rv-creer-paye').count() === 2, '[R4] aujourd hui, les deux boutons', await texte(page, '#rvPied'));
-    await page.locator('#rvPied .rv-boutons button', { hasText: 'Résa' }).click();
+    await joueurs(page, 6).click();
     await page.waitForTimeout(350);
     await planPose(page);
-    ok(await page.locator('#rvPied .rv-creer-paye').count() === 0, '[R4] pour plusieurs dossiers, pas de bouton : chacun se paie sur sa fiche', await texte(page, '#rvPied'));
+    const aujourdhui = await payes(page);
+    ok(aujourdhui.length === 2 && utilisables(aujourdhui) === 2, '[R4] aujourd hui, les deux boutons Payé, utilisables', await etat());
+    await page.locator('#rvEncore').click();
+    await page.waitForTimeout(350);
+    await joueurs(page, 4).click();
+    await page.waitForTimeout(350);
+    await planPose(page);
+    ok(utilisables(await payes(page)) === 0 && await pret(page), '[R4] pour plusieurs dossiers, pas de bouton Payé utilisable : chacun se paie sur sa fiche', await etat());
     await page.evaluate(() => closeQuickBook());
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
-    await planPose(page);
-    await page.locator('#quickBookOverlay .rv-jour', { hasText: 'Demain' }).click();
+    await joueurs(page, 6).click();
+    await page.locator('#rsHaut [data-jour]', { hasText: 'Demain' }).click();
     await page.waitForTimeout(350);
     await planPose(page);
-    ok(await page.locator('#rvPied .rv-creer-paye').count() === 0, '[R4] pour un autre jour, pas de bouton : on paie sur place', await texte(page, '#rvPied'));
+    ok(utilisables(await payes(page)) === 0 && await pret(page), '[R4] pour un autre jour, pas de bouton Payé utilisable : on paie sur place', await etat());
     await page.evaluate(() => closeQuickBook());
     await page.evaluate(() => {
       const s = state.staffAuthSession;
       state.staffAuthSession = { ...s, role: { ...s.role, locked: false }, permissions: (s.permissions || []).filter((p) => p !== 'payments.markPaid') };
     });
     await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
+    await joueurs(page, 6).click();
+    await page.waitForTimeout(350);
     await planPose(page);
-    ok(await page.locator('#rvPied .rv-creer-paye').count() === 0, '[R4] sans le droit d encaisser, pas de bouton', await texte(page, '#rvPied'));
+    ok(utilisables(await payes(page)) === 0 && await pret(page), '[R4] sans le droit d encaisser, pas de bouton Payé utilisable', await etat());
     await page.evaluate(() => closeQuickBook());
     await m.finir('R4 boutons');
   }
@@ -667,8 +723,10 @@ async function scenarioR6(browser) {
   const { page } = m;
   await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 6 }));
   await planPose(page);
-  const invite = await page.locator('#qbQui').getAttribute('placeholder');
-  ok(/facultatif/.test(invite), '[R6] la fenetre dit que le nom est facultatif', invite);
+  // (Les seances : le champ dit « Nom ou téléphone » ; « facultatif » est dans son nom
+  // accessible, ce que lit un lecteur d ecran, plus dans le texte qu on voit)
+  const invite = await page.locator('#qbQui').getAttribute('aria-label');
+  ok(/facultatif/.test(invite), '[R6] la fenetre dit que le nom est facultatif', `${invite} | ${await page.locator('#qbQui').getAttribute('placeholder')}`);
   await page.locator('#rvCreer').click();
   await fenetreFermee(page);
   const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
@@ -761,8 +819,12 @@ async function scenarioR8(browser) {
   const n = { n: 0 };
   ok(/Réserver pour Dupont/.test(await texte(page, '.gf-rien__reserver')), '[R8] le bouton nomme le client', await texte(page, '.gf-rien__reserver'));
   await clic(n, page.locator('.gf-rien__reserver'));
-  await planPose(page);
+  await page.waitForSelector('#qbQui').catch(() => {});
   ok(await page.locator('#qbQui').inputValue() === 'Dupont', '[R8] « Réserver pour Dupont » ouvre Réserver avec le nom tape', await page.locator('#qbQui').inputValue().catch(() => 'pas de champ'));
+  // (Les seances demandent le nombre de joueurs avant Créer : 4, comme avant)
+  await clic(n, joueurs(page, 4));
+  await page.waitForTimeout(350);
+  await planPose(page);
   const lecturesAvant = await page.evaluate(() => window.__lecturesAutresDates);
   await clic(n, page.locator('#rvCreer'));
   await fenetreFermee(page);
@@ -771,7 +833,7 @@ async function scenarioR8(browser) {
   ok(recherche.trouvee && recherche.lectures === lecturesAvant, '[R8] une reservation creee se trouve tout de suite, sans relire toutes les dates', { ...recherche, lecturesAvant });
   const creee = creationsDe(journal)[0];
   ok(creee && creee.corps.name === 'Dupont' && (await nomsDe(page)).join() === 'Dupont', '[R8] le groupe cree se lit sur le tableau, sous son nom', `${creee && creee.corps.name} ${await nomsDe(page)}`);
-  gestes('Nom pas trouve, client a creer', '15 gestes', `${n.n + 1} gestes (le nom, le bouton, Créer)`);
+  gestes('Nom pas trouve, client a creer', '15 gestes', `${n.n + 1} gestes (le nom, le bouton, les joueurs, Créer)`);
   await chercher(page, '');
   // UN GROUPE CACHE PAR UN FILTRE N EST PAS ABSENT : pas de doublon propose.
   await page.locator('button[data-gf-filtre="late"]').click();
@@ -790,7 +852,7 @@ async function scenarioR8(browser) {
   const injecte = await page.evaluate(() => ({ img: document.querySelectorAll('.gf-rien img').length, piege: window.__piege || 0 }));
   ok(injecte.img === 0 && injecte.piege === 0, '[R8] un nom piege reste du texte', injecte);
   await page.locator('.gf-rien__reserver').click();
-  await planPose(page);
+  await page.waitForSelector('#qbQui').catch(() => {});
   ok(await page.locator('#qbQui').inputValue() === piege, '[R8] et arrive tel quel dans le champ', await page.locator('#qbQui').inputValue().catch(() => 'pas de champ'));
   await page.evaluate(() => closeQuickBook());
   await chercher(page, '');
@@ -910,12 +972,23 @@ async function scenarioR10(browser) {
     const min = doigt ? 44 : 32;
     await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 6 }));
     await planPose(page);
+    // (au telephone, les boutons Payé vivent dans le ticket, qui s ouvre au toucher du resume)
+    if (appareil === 'telephone') { await page.locator('#rsResume').click(); await page.waitForSelector('.qb-modal.rv.is-ticket #rvCreerPaye0'); }
     const pied = await page.evaluate(mesures, ['#rvPied .rv-creer-paye', '#rvCreer']);
     ok(pied.length === 3 && pied.every((x) => x.h >= 44), `[R10] au doigt, 44 px : les boutons du pied (${lieu})`, pied);
     ok(pied.every((x) => x.police >= 12 && x.contraste >= 4.5), `[R10] rien sous 12 px, contraste 4,5:1 au pied (${lieu})`, pied);
-    const pleins = await page.evaluate(() => Array.from(document.querySelectorAll('#rvPied button')).filter((b) => { const f = getComputedStyle(b).backgroundColor; return /rgb\(6, 100, 254\)|rgb\(34, 110, 242\)/.test(f); }).length);
-    ok(pleins === 1, `[R10] un seul bouton plein au pied (${lieu})`, pleins);
-    const deborde = await page.evaluate(() => { const p = document.getElementById('rvPied'); const m = document.querySelector('.qb-modal.rv').getBoundingClientRect(); return Array.from(p.querySelectorAll('button')).filter((b) => { const r = b.getBoundingClientRect(); return r.right > m.right + 1 || r.left < m.left - 1 || b.scrollWidth > b.clientWidth + 1; }).map((b) => b.textContent); });
+    // (plein : le fond est la couleur d accent de la console, celle de Créer)
+    const pleins = await page.evaluate(() => {
+      const modale = document.querySelector('.qb-modal.rv');
+      const sonde = document.createElement('i');
+      sonde.style.background = 'var(--accent)';
+      modale.appendChild(sonde);
+      const accent = getComputedStyle(sonde).backgroundColor;
+      sonde.remove();
+      return Array.from(document.querySelectorAll('#rvPied button')).filter((b) => b.getClientRects().length && getComputedStyle(b).backgroundColor === accent).map((b) => b.textContent.trim());
+    });
+    ok(pleins.length === 1, `[R10] un seul bouton plein au pied (${lieu})`, pleins);
+    const deborde = await page.evaluate(() => { const p = document.getElementById('rvPied'); const m = document.querySelector('.qb-modal.rv').getBoundingClientRect(); return Array.from(p.querySelectorAll('button')).filter((b) => b.getClientRects().length).filter((b) => { const r = b.getBoundingClientRect(); return r.right > m.right + 1 || r.left < m.left - 1 || b.scrollWidth > b.clientWidth + 1; }).map((b) => b.textContent); });
     ok(deborde.length === 0, `[R10] rien ne deborde du pied (${lieu})`, deborde);
     await photo(page, `${appareil}-${theme}-reserver`);
     await page.evaluate(() => closeQuickBook());

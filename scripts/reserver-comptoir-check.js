@@ -11,6 +11,12 @@
 // (scripts/reserver-banc.js). Le faux serveur de reserver-v5-check accepte tout :
 // c est pour cela qu il n a pas vu D1.
 //
+// LA FENETRE « LES SEANCES » (2026-11-03) a remplace celle de 2026-10 : les
+// memes regles s y lisent autrement (ouvrirReserver, lireTicket, memeEtat). Le
+// nombre de joueurs se touche avant de creer ; l horloge, l arrivee conseillee,
+// « joueurs par piste », « Aussi au programme » et la bascule Formule/Activites
+// n existent plus ; scripts/reserver-seances-check.js tient ses 12 commandes.
+//
 //   [D1] AU COMPTOIR, RIEN N EST OBLIGATOIRE. Sans telephone ni nom, « Créer »
 //        cree le dossier (nom lisible « Client », telephone vide, jamais un
 //        numero invente) ; il reste modifiable dans la fiche (le telephone n y
@@ -18,9 +24,10 @@
 //        obligatoires, et un champ qui manque vraiment se nomme. Un dossier
 //        anonyme ne devient pas un faux client « Client » dans le CRM.
 //   [D2] JAMAIS UNE HEURE PASSEE PROPOSEE. A 15:12, 8 pistes prises de 15:00 a
-//        17:00 : aucune sortie ni aucun point vert avant 15:00 (15:00 reste
-//        proposable) ; une heure deja passee se dit « passée » a qui a le droit
-//        « Modifier une date passée », elle n existe pas pour les autres.
+//        17:00 : aucune sortie (« Prendre HH:MM », les seances) ni aucune heure
+//        libre avant 15:00 (15:00 reste proposable) ; une heure deja passee se
+//        dit « passée » a qui a le droit « Modifier une date passée » (« Plus
+//        tôt » sur la page Autres), elle n existe pas pour les autres.
 //   [D3] UNE FORMULE EN VACANCES SE RESERVE AU COMPTOIR. F4 pour 10 un jour de
 //        vacances : un vrai plan (pistes et arene posees), la vraie raison dite
 //        avant le clic et notee sur le dossier, jamais « Pas de plan possible » ;
@@ -33,12 +40,12 @@
 //   [D7] EN AUTO, AUCUNE PISTE N EST ENVOYEE COMME UN CHOIX, et jamais
 //        « Simulation » a l ecran : deux resas du meme envoi ne se voient pas
 //        en conflit sur une piste que personne n a choisie.
-//   [D8] AU CLAVIER, L HORLOGE SE PARCOURT : les fleches bougent d une heure,
-//        Entree sur une heure mene a ses minutes, Entree sur une minute rend
-//        le focus au bouton de l heure (pas a la fenetre).
+//   [D8] AU CLAVIER, LES SEANCES SE PARCOURENT : les fleches vont d une heure a
+//        sa voisine, Entree sur une heure atteinte au clavier la choisit (sans
+//        rien creer) et le focus reste sur l heure choisie (pas sur la fenetre).
 //   [D9] TABLETTE 1024 x 768 ET TELEPHONE 390 : rien de coupe ni de cache.
-//   [D10] LES MOTS : accents, « joueurs par piste » juste, un verdict et un
-//        pied de la meme couleur, une heure d arrivee jamais deja passee.
+//   [D10] LES MOTS : accents, pistes conseillees justes, un verdict et un pied
+//        qui disent le meme etat, la seance en cours dite « maintenant ».
 //   [*]  Zero erreur JS ni erreur console.
 //
 // Contre-preuves : node scripts/reserver-comptoir-check.js --contre-preuves
@@ -310,6 +317,51 @@ async function fenetreFermee(page, ms = 8000) {
 
 const texteDe = (page, sel) => page.evaluate((sel) => { const el = document.querySelector(sel); return el ? el.innerText.replace(/\s+/g, ' ').trim() : ''; }, sel);
 
+// LA FENETRE « LES SEANCES » (2026-11-03, assets/app-main.js, bloc RESERVER, LES
+// SEANCES). A gauche les joueurs, le jour et les seances de chaque activite ; a
+// droite le ticket : ses lignes (#rsLignes, un refus en rouge sur sa ligne :
+// #rvRefus), le champ client unique #qbQui, la ligne d etat #rvVerdict et le pied,
+// dont le seul bouton plein est #rvCreer (data-pret="1" quand le plan du serveur
+// tient ; « Prendre 17:00 », data-proche, quand le planning refuse).
+async function ouvrirReserver(page) {
+  await page.locator('.btn-new').first().click();
+  await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs', { timeout: 8000 });
+}
+
+// Le nombre de joueurs se touche avant tout (« Combien de joueurs ? »).
+async function choisirJoueurs(page, n) {
+  await page.click(`#quickBookOverlay #rsHaut [data-pax="${n}"]`);
+}
+
+async function lireTicket(page) {
+  return page.evaluate(() => {
+    const t = (el) => (el ? el.innerText.replace(/\s+/g, ' ').trim() : '');
+    const creer = document.getElementById('rvCreer');
+    const refus = document.getElementById('rvRefus');
+    return {
+      verdict: t(document.getElementById('rvVerdict')),
+      lignesVerdict: [...document.querySelectorAll('#rvVerdict .rs-v-ligne')].map((p) => ({ texte: t(p), classe: p.className })),
+      refus: t(refus),
+      refusRouge: Boolean(refus && /is-ko/.test(refus.className)),
+      ticket: t(document.getElementById('rsLignes')),
+      creer: creer ? { texte: t(creer), pret: creer.dataset.pret || '', proche: creer.dataset.proche || '', bloque: creer.classList.contains('is-bloque') } : null,
+    };
+  });
+}
+
+// LE HAUT ET LE BAS DU TICKET DISENT LE MEME ETAT. L ancienne fenetre peignait un
+// bandeau dans son pied (.rv-etat-pied) ; la nouvelle dit l etat une seule fois (la
+// ligne d etat, ou le rouge sur la ligne du ticket) et son pied ne porte que Créer.
+// Un refus arrete Créer (« Prendre 17:00 », ou bloque), un avertissement le laisse
+// pret : un verdict rouge au-dessus d un Créer pret, ou un Créer arrete sous un
+// ticket sans refus, se contredisent.
+async function memeEtat(page) {
+  const t = await lireTicket(page);
+  const verdict = t.refusRouge || t.lignesVerdict.some((l) => /is-ko/.test(l.classe)) ? 'ko' : t.lignesVerdict.some((l) => /is-att/.test(l.classe)) ? 'att' : 'ok';
+  const pied = t.creer && t.creer.pret === '1' && !t.creer.bloque ? 'pret' : 'arrete';
+  return { verdict, pied, creer: t.creer ? t.creer.texte : '', lignes: t.lignesVerdict.map((l) => l.texte), meme: (verdict === 'ko') === (pied === 'arrete') };
+}
+
 // Une condition lue cote serveur (la base du banc), attendue sans la page.
 async function attendreNode(condition, ms = 8000) {
   const fin = Date.now() + ms;
@@ -390,16 +442,19 @@ async function scenarioD1(browser, v) {
     const { context, page, erreurs } = await ouvrirConsole(browser);
     try {
       const avant = new Set(lireBase().map((r) => r.id));
-      await page.locator('.btn-new').first().click();
-      await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+      await ouvrirReserver(page);
+      // La fenetre des seances demande le nombre de joueurs avant de creer
+      // (« Combien de joueurs ? ») : un toucher, rien de tape.
+      await choisirJoueurs(page, 4);
       const pose = await planPose(page, true);
-      const comptoir = await texteDe(page, '#quickBookOverlay .rv-eyebrow em');
-      v('D1', pose && comptoir === 'au comptoir', 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, badge « ${comptoir} »`);
+      // Le comptoir : le ticket porte le champ unique du client, vide et facultatif.
+      const qui = await page.evaluate(() => { const c = document.getElementById('qbQui'); return c ? { valeur: c.value, aria: c.getAttribute('aria-label') || '' } : null; });
+      v('D1', pose && Boolean(qui) && qui.valeur === '' && /facultatif/i.test(qui.aria), 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, champ client ${JSON.stringify(qui)}`);
       await capture(page, 'D1-comptoir-ouvert');
       await page.click('#rvCreer');
       const ferme = await fenetreFermee(page);
       const nouvelles = creees(avant);
-      const erreur = ferme ? '' : await texteDe(page, '#quickBookOverlay .rv-erreur');
+      const erreur = ferme ? '' : await texteDe(page, '#quickBookOverlay #rvVerdict');
       v('D1', ferme && nouvelles.length === 1 && nouvelles[0].tel === '' && nouvelles[0].nom === 'Client', 'au comptoir, rien tape : « Créer » cree le dossier (telephone vide, nom « Client »)', ferme ? JSON.stringify(nouvelles.map((r) => ({ nom: r.nom, tel: r.tel, debut: r.debut }))) : `refus : « ${erreur} »`);
       if (!ferme) await capture(page, 'D1-refus');
       id = nouvelles[0] ? nouvelles[0].id : null;
@@ -454,41 +509,74 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
   B.semer([1, 2, 3, 4, 5, 6, 7, 8].map((p) => pisteOccupee(820 + p, p)));
   monter({ role });
   const { context, page, erreurs } = await ouvrirConsole(browser);
+  // La page « Autres » : toutes les heures du jour ; celles qui ne tiennent pas
+  // s effacent (.is-efface) et restent touchables.
+  const lireAutres = () => page.evaluate(() => ({
+    heures: [...document.querySelectorAll('#quickBookOverlay .rs-heures .rs-h[data-heure]')].map((b) => ({ h: b.dataset.heure, efface: b.classList.contains('is-efface'), aria: b.getAttribute('aria-label') || '' })),
+    plusTot: Boolean(document.getElementById('rsPlusTot')),
+  }));
+  const ouvrirAutres = async () => {
+    await page.click('#quickBookOverlay #rsZ-bowling .rs-h-autres');
+    await page.waitForSelector('#quickBookOverlay .rs-heures .rs-h[data-heure]', { timeout: 6000 });
+    await page.waitForTimeout(300);
+  };
   try {
     const avant = new Set(lireBase().map((r) => r.id));
-    await page.locator('.btn-new').first().click();
-    await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
-    // (a la main : depuis le 2026-11-02, la fenetre s ouvre d elle-meme sur une heure qui tient)
-    await page.evaluate(() => setQuickStartTime('15:30'));
+    await ouvrirReserver(page);
+    await choisirJoueurs(page, 4);
+    await planPose(page);
+    // (depuis le 2026-11-02, la fenetre s ouvre d elle-meme sur une heure qui tient :
+    // 15:30 se choisit a la main, sur la page « Autres » ou elle est effacee)
+    await ouvrirAutres();
+    const autres = await lireAutres();
+    const passeesDuJour = autres.heures.filter((x) => x.h < '15:00');
+    const quinze = autres.heures.find((x) => x.h === '15:00');
+    v('D2', Boolean(quinze), '15:00 reste proposable (le creneau en cours)', JSON.stringify(autres.heures.slice(0, 2)));
+    if (role === 'manager') {
+      // Les heures d avant ne se montrent que derriere « Plus tôt », pour noter un groupe deja venu.
+      const avantPlusTot = passeesDuJour.length === 0 && autres.plusTot;
+      if (autres.plusTot) await page.click('#rsPlusTot');
+      await page.waitForTimeout(300);
+      const tot = await lireAutres();
+      const passees = tot.heures.filter((x) => x.h < '15:00');
+      v('D2', passees.every((x) => x.efface), 'la page « Autres » ne peint aucune heure passee comme libre', JSON.stringify(passees.filter((x) => !x.efface).slice(0, 3)));
+      await capture(page, `D2-plus-tot-${role}`, '.rs-heures');
+      // Choisie, une heure passee se dit « passée » (noter un groupe deja venu).
+      const notee = passees.find((x) => x.h === '14:00') || passees[0];
+      let dite = '';
+      if (notee) {
+        await page.click(`#quickBookOverlay .rs-heures .rs-h[data-heure="${notee.h}"]`);
+        await planPose(page);
+        await page.waitForTimeout(300);
+        const t = await lireTicket(page);
+        dite = `${t.verdict} ${t.refus}`.trim();
+        await capture(page, `D2-passee-${role}`, '#rvVerdict');
+        await ouvrirAutres();
+      }
+      v('D2', avantPlusTot && passees.length > 0 && /passée/.test(dite), 'avec le droit « Modifier une date passée », les heures passees restent la (« Plus tôt »), dites « passée » une fois choisies', `plus tot ${autres.plusTot}, ${passees.length} heure(s) avant 15:00, ${notee ? notee.h : '-'} : « ${dite.slice(0, 120)} »`);
+    } else {
+      v('D2', passeesDuJour.every((x) => x.efface), 'la page « Autres » ne peint aucune heure passee comme libre', JSON.stringify(passeesDuJour.filter((x) => !x.efface).slice(0, 3)));
+      v('D2', passeesDuJour.length === 0 && !autres.plusTot, 'sans ce droit, la page « Autres » commence au creneau en cours (pas de « Plus tôt »)', JSON.stringify({ premieres: autres.heures.slice(0, 2).map((x) => x.h), plusTot: autres.plusTot }));
+    }
+    await capture(page, `D2-autres-${role}`, '.rs-heures');
+    await page.click('#quickBookOverlay .rs-heures .rs-h[data-heure="15:30"]');
     const refuse = await planPose(page, false);
     await candidatsPoses(page);
+    await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.proche); }, null, { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(300);
-    const cartes = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay .rv-alt')].map((b) => (b.querySelector('b') || {}).textContent || ''));
-    const heuresCartes = cartes.map((t) => (String(t).match(/\d{2}:\d{2}/) || [''])[0]).filter(Boolean);
-    v('D2', refuse && heuresCartes.length > 0, 'MONTAGE : 15:30 refuse (pistes prises), des sorties proposees', `refus ${refuse}, cartes ${JSON.stringify(cartes)}`);
-    v('D2', heuresCartes.every((h) => h >= '15:00'), 'aucune sortie avant le creneau de la demi-heure en cours (15:00)', JSON.stringify(heuresCartes));
+    // Les sorties : « Prendre HH:MM » sur Créer, et les seances qui tiennent.
+    const sorties = await page.evaluate(() => ({
+      proche: (document.getElementById('rvCreer') || { dataset: {} }).dataset.proche || '',
+      seances: [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]:not(.is-on)')].map((b) => b.dataset.heure),
+    }));
+    const heuresSorties = [sorties.proche, ...sorties.seances].filter(Boolean);
+    v('D2', refuse && Boolean(sorties.proche) && heuresSorties.length > 0, 'MONTAGE : 15:30 refuse (pistes prises), des sorties proposees', `refus ${refuse}, ${JSON.stringify(sorties)}`);
+    v('D2', heuresSorties.every((h) => h >= '15:00'), 'aucune sortie avant le creneau de la demi-heure en cours (15:00)', JSON.stringify(heuresSorties));
     await capture(page, `D2-sorties-${role}`, '#rvRefus');
-    // L horloge.
-    await page.click('#rvHeure-bowling');
-    await page.waitForSelector('#rvHorloge .rv-hc', { timeout: 6000 });
-    await candidatsPoses(page);
-    await page.waitForTimeout(300);
-    const cadran = await page.evaluate(() => [...document.querySelectorAll('#rvHorloge .rv-hc')].map((b) => ({ h: Number((b.querySelector('b') || {}).textContent), points: [...b.querySelectorAll('.rv-dd i')].map((i) => i.className || 'ok') })));
-    const passees = cadran.filter((c) => c.h < 15);
-    const vertesAvant = cadran.filter((c) => c.h < 15 && c.points.some((p) => p === 'ok' || p === '' || /is-att/.test(p)));
-    v('D2', vertesAvant.length === 0, 'l horloge ne peint aucune heure passee comme libre', JSON.stringify(vertesAvant.slice(0, 3)));
-    if (role === 'manager') {
-      v('D2', passees.length > 0 && passees.every((c) => c.points.every((p) => /is-passe/.test(p))), 'avec le droit « Modifier une date passée », les heures passees restent la, dites « passée »', JSON.stringify(passees.slice(0, 2)));
-    } else {
-      v('D2', passees.length === 0, 'sans ce droit, l horloge commence au creneau en cours', JSON.stringify(cadran.slice(0, 2).map((c) => c.h)));
-    }
-    const quinze = cadran.find((c) => c.h === 15);
-    v('D2', Boolean(quinze) && !/is-passe/.test(quinze.points[0]), '15:00 reste proposable (le creneau en cours)', JSON.stringify(quinze));
-    await capture(page, `D2-horloge-${role}`, '#rvHorloge');
-    await page.click('#rvHorlogeFermer');
-    // La sortie la plus proche, puis Creer.
-    await page.locator('#quickBookOverlay .rv-alt').first().click();
+    // La sortie la plus proche (« Prendre HH:MM »), puis Creer.
+    await page.click('#rvCreer');
     await planPose(page, true);
+    await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); }, null, { timeout: 6000 }).catch(() => {});
     await page.click('#rvCreer');
     await fenetreFermee(page);
     const nouvelles = creees(avant);
@@ -543,12 +631,17 @@ async function scenarioD3(browser, v) {
       const p = quickBookState.plan && quickBookState.plan.resultat;
       return p ? { disponible: p.disponible, refus: p.refus, avertissement: p.avertissement, blocs: (p.blocs || []).map((b) => `${b.activite}:${b.debut}${b.pistes.length ? ` p${b.pistes.join('+')}` : ''}`), conflits: (p.conflits || []).map((c) => c.message) } : null;
     });
+    // Avant le clic : tout ce que la fenetre montre (le ticket, sa ligne d etat, le pied,
+    // et la page de gauche).
+    const fenetre = await texteDe(page, '#quickBookOverlay .qb-modal');
     const verdict = await texteDe(page, '#rvVerdict');
-    const pied = await texteDe(page, '#rvPied');
     v('D3', Boolean(etat && etat.disponible && etat.blocs.some((b) => /^bowling:.* p\d/.test(b)) && etat.blocs.some((b) => /^laser_game:/.test(b))), 'au comptoir, F4 en vacances a un vrai plan : pistes et arene posees', JSON.stringify(etat));
-    v('D3', /vacances/i.test(verdict) && !/Pas de plan possible/i.test(verdict) && !/Pas de plan possible/i.test(pied), 'la vraie raison (vacances) est dite avant le clic, jamais « Pas de plan possible »', `verdict « ${verdict.slice(0, 160)} »`);
-    const couleurs = await memeCouleur(page);
-    v('D3', couleurs.meme && /is-att/.test(couleurs.verdict) && /is-att/.test(couleurs.pied), 'c est un avertissement : le verdict et le pied en orange', JSON.stringify(couleurs));
+    // Le prerequis : le serveur donne la raison avec le plan ; la fenetre doit la dire.
+    v('D3', Boolean(etat) && /vacances/i.test(String(etat.avertissement || '')), 'MONTAGE : le plan du serveur porte la vraie raison (vacances)', JSON.stringify(etat ? etat.avertissement : null));
+    v('D3', /vacances/i.test(fenetre) && !/Pas de plan possible/i.test(fenetre), 'la vraie raison (vacances) est dite avant le clic, jamais « Pas de plan possible »', `verdict « ${verdict.slice(0, 160)} »`);
+    // Un avertissement n est pas un refus : il se dit en orange, et Créer reste pret.
+    const couleurs = await memeEtat(page);
+    v('D3', couleurs.meme && couleurs.verdict === 'att' && couleurs.pied === 'pret', 'c est un avertissement : le verdict le dit en orange, Créer reste pret', JSON.stringify(couleurs));
     await capture(page, 'D3-formule-vacances', '#rvVerdict');
     await page.click('#rvCreer');
     const ferme = await fenetreFermee(page);
@@ -574,6 +667,8 @@ async function scenarioD4(browser, v) {
   const { context, page, erreurs } = await ouvrirConsole(browser);
   try {
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '18:00', pax: 6 }), JOUR);
+    // Le nom et le telephone ont chacun leur champ sur la page Client du ticket.
+    await page.click('#quickBookOverlay #rsL-client');
     await page.waitForSelector('#qbPhone', { timeout: 8000 });
     await page.click('#qbPhone');
     await page.keyboard.press('Control+A');
@@ -595,11 +690,14 @@ async function scenarioD5(browser, v) {
   monter({ role: 'manager' });
   const { context, page, erreurs } = await ouvrirConsole(browser);
   try {
-    await page.locator('.btn-new').first().click();
-    await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+    await ouvrirReserver(page);
+    await choisirJoueurs(page, 4);
     const possible = await planPose(page, true);
-    const avantTexte = await texteDe(page, '#rvVerdict');
-    v('D5', possible && /piste 8/.test(avantTexte), 'MONTAGE : 15:30, il reste la piste 8 : « possible »', avantTexte.slice(0, 120));
+    await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); }, null, { timeout: 6000 }).catch(() => {});
+    // « Possible » se lit sur le ticket : la ligne du bowling dit sa piste, Créer est pret.
+    const avantTicket = await lireTicket(page);
+    const avantTexte = `${avantTicket.ticket} | ${avantTicket.creer ? avantTicket.creer.texte : ''}`;
+    v('D5', possible && /piste 8\b/.test(avantTicket.ticket) && Boolean(avantTicket.creer && avantTicket.creer.pret === '1'), 'MONTAGE : a l heure proposee, il reste la piste 8 : « possible »', avantTexte.slice(0, 160));
     // L autre poste.
     const autre = await banc.monte.appeler('POST', '/api/staff-reservations', B.corpsStaff({ type: 'bowling', pax: 4, startTime: '15:30', duration: 1, totalDuration: 1, lanes: [8], laneCount: 1, name: 'Autre poste', phone: '0470999999' }));
     v('D5', autre.statut === 201, 'MONTAGE : un autre poste prend la piste 8 a 15:30', `${autre.statut} ${autre.json.message || ''}`);
@@ -608,15 +706,20 @@ async function scenarioD5(browser, v) {
       const p = s && s.plan && s.plan.etat === 'ok' && s.plan.cle === s.cleCourante ? s.plan.resultat : null;
       return Boolean(p && p.disponible === false);
     }, null, { timeout: 9000, polling: 200 }).then(() => true, () => false);
-    const apresTexte = await texteDe(page, '#rvVerdict');
-    v('D5', suivi && !/Possible/.test(apresTexte), 'le verdict suit la journee : il ne dit plus « possible »', apresTexte.slice(0, 140));
+    await page.waitForTimeout(400);
+    // Il ne dit plus « possible » : le refus est en rouge sur la ligne, et Créer n est plus
+    // pret a creer l heure dite (il propose une sortie ou s arrete).
+    const apres = await lireTicket(page);
+    const apresTexte = `${apres.refus} | ${apres.creer ? apres.creer.texte : ''}`;
+    v('D5', suivi && apres.refusRouge && Boolean(apres.creer) && apres.creer.pret !== '1' && !/^Créer à/.test(apres.creer.texte), 'le verdict suit la journee : il ne dit plus « possible »', apresTexte.slice(0, 140));
     const avant = new Set(lireBase().map((r) => r.id));
     await page.focus('#rvCreer');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(1200);
-    const erreur = await texteDe(page, '#quickBookOverlay .rv-erreur');
+    const erreur = await texteDe(page, '#quickBookOverlay .qb-modal');
     const nouvelles = creees(avant);
-    v('D5', nouvelles.length === 0 && !/Il faut 1 piste/.test(erreur), 'Entree ne cree rien par-dessus l autre poste, et ne repond pas « Il faut 1 piste disponible »', `« ${erreur} » ${nouvelles.length} cree(s)`);
+    const ditApres = await texteDe(page, '#rvVerdict');
+    v('D5', nouvelles.length === 0 && !/Il faut 1 piste/.test(erreur), 'Entree ne cree rien par-dessus l autre poste, et ne repond pas « Il faut 1 piste disponible »', `« ${(erreur.match(/[^.]*Il faut 1 piste[^.]*/) || [ditApres])[0].slice(0, 140)} » ${nouvelles.length} cree(s)`);
     await capture(page, 'D5-autre-poste');
     v('*', erreurs.length === 0, 'zero erreur JS ni console [D5]', erreurs.slice(0, 2).join(' | '));
   } finally { await context.close(); }
@@ -631,18 +734,21 @@ async function scenarioD6(browser, v) {
   try {
     const avant = new Set(lireBase().map((r) => r.id));
     await clic(clics, page.locator('#planningReserver'), 'Réservation');
-    await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
-    await clic(clics, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^12$/ }), '12');
-    // Le laser se touche dans la rangee « + Activité » ; s il n y est pas, on
-    // ouvre la liste, comme au comptoir (un geste de plus, compte).
-    const laser = page.locator('#quickBookOverlay').getByRole('button', { name: /^(ajouter )?laser/i });
-    if (!(await laser.first().isVisible().catch(() => false))) await clic(clics, page.locator('#rvPlusActivite'), '+ Activité');
-    await clic(clics, laser, 'laser');
+    await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs', { timeout: 8000 });
+    await clic(clics, page.locator('#quickBookOverlay #rsHaut [data-pax="12"]'), '12');
+    // Le laser a ses seances sur l ecran d accueil : un toucher sur 16:30 choisit le
+    // laser et l heure d un coup. Si 16:30 n est pas parmi les seances montrees, on
+    // passe par « Autres », comme au comptoir (un geste de plus, compte).
+    await page.waitForSelector('#quickBookOverlay #rsZ-laser_game .rs-s-l .rs-h-autres', { timeout: 6000 });
+    const seance = page.locator('#quickBookOverlay #rsZ-laser_game .rs-h[data-heure="16:30"]');
+    if (await seance.first().isVisible().catch(() => false)) {
+      await clic(clics, seance, 'laser 16:30');
+    } else {
+      await clic(clics, page.locator('#quickBookOverlay #rsZ-laser_game .rs-h-autres'), 'Autres (laser)');
+      await clic(clics, page.locator('#quickBookOverlay .rs-heures .rs-h[data-heure="16:30"]'), '16:30');
+    }
     const compo = await page.evaluate(() => rvActivites());
     v('D6', JSON.stringify(compo) === '["laser_game"]', 'un toucher sur « laser » compose un laser seul (le bowling de depart n etait qu une proposition)', JSON.stringify(compo));
-    await clic(clics, page.locator('#rvHeure-laser_game'), 'heure');
-    await clic(clics, page.locator('#rvHorloge .rv-hc', { hasText: /^16/ }), '16');
-    await clic(clics, page.locator('#rvHorloge .rv-mn', { hasText: '16:30' }), '16:30');
     await planPose(page, true);
     await capture(page, 'D6-laser-12-1630');
     await clic(clics, page.locator('#rvCreer'), 'Créer');
@@ -668,6 +774,8 @@ async function scenarioD7(browser, v) {
     await planPose(page, true);
     await page.click('#rvEncore');
     await page.waitForTimeout(400);
+    // La 2e resa du lot a son propre nombre de joueurs, a toucher (« Combien de joueurs ? »).
+    await choisirJoueurs(page, 4);
     await planPose(page);
     await page.waitForTimeout(500);
     const sims = journalApi.filter((j) => j.nom === 'staff-reservations' && j.corps && j.corps.dryRun);
@@ -701,39 +809,41 @@ async function scenarioD7(browser, v) {
   } finally { await context.close(); }
 }
 
-// [D8] Le clavier dans l horloge.
+// [D8] Le clavier dans les seances (l horloge de l ancienne fenetre n existe plus).
 async function scenarioD8(browser, v) {
   B.semer([]);
   monter({ role: 'manager' });
   const { context, page, erreurs } = await ouvrirConsole(browser);
-  const focus = () => page.evaluate(() => { const a = document.activeElement; if (!a) return ''; if (a.id) return `#${a.id}`; if (a.classList.contains('rv-hc')) return `hc:${(a.querySelector('b') || {}).textContent}`; if (a.classList.contains('rv-mn')) return `mn:${(a.querySelector('b') || {}).textContent}`; return `.${String(a.className).split(' ').join('.')}`; });
+  // Une seance se nomme par son heure ; l heure choisie porte l id #rvHeure-<activite>.
+  const focus = () => page.evaluate(() => { const a = document.activeElement; if (!a) return ''; const h = a.classList.contains('rs-h') && a.dataset.heure ? `${a.id ? `#${a.id}` : 'h'}:${a.dataset.heure}` : ''; if (h) return h; if (a.id) return `#${a.id}`; return `.${String(a.className).split(' ').join('.')}`; });
   try {
+    const avant = new Set(lireBase().map((r) => r.id));
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '18:00', type: 'bowling', pax: 4 }), JOUR);
     await planPose(page, true);
+    await page.waitForSelector('#quickBookOverlay #rsZ-bowling #rvHeure-bowling', { timeout: 6000 });
+    await page.waitForTimeout(400);
     await page.focus('#rvHeure-bowling');
-    await page.keyboard.press('Enter');
-    await page.waitForSelector('#rvHorloge .rv-hc', { timeout: 6000 });
     const ouvert = await focus();
-    v('D8', ouvert === 'hc:18', 'MONTAGE : Entree sur l heure ouvre l horloge, le focus sur 18', ouvert);
+    v('D8', ouvert === '#rvHeure-bowling:18:00', 'MONTAGE : le focus sur la seance choisie, 18:00', ouvert);
     await page.keyboard.press('ArrowRight');
     const droite = await focus();
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
     const gauche = await focus();
-    v('D8', droite === 'hc:19' && gauche === 'hc:17', 'les fleches parcourent les heures', `${ouvert} > ${droite} > ${gauche}`);
+    v('D8', droite === 'h:18:30' && gauche === 'h:17:30', 'les fleches parcourent les heures', `${ouvert} > ${droite} > ${gauche}`);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
+    const visee = await focus();
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(250);
-    const minutes = await focus();
-    v('D8', minutes === 'mn:19:00', 'Entree sur une heure mene a ses minutes (19:00 tout de suite, pas apres 20 a 23)', minutes);
-    await page.keyboard.press('ArrowRight');
-    const demie = await focus();
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(600);
     const apres = await focus();
-    const heure = await page.evaluate(() => quickBookState.startTime);
-    v('D8', demie === 'mn:19:30' && heure === '19:30' && apres === '#rvHeure-bowling', 'Entree sur une minute la pose et rend le focus au bouton de l heure', `${demie} > ${heure}, focus ${apres}`);
+    const heure = await page.evaluate(() => quickBookState && quickBookState.startTime);
+    const nouvelles = creees(avant);
+    // Deux choses : le focus ne tombe pas sur la fenetre (il reste sur une seance), et
+    // c est la seance choisie qui l a.
+    v('D8', visee === 'h:18:30' && heure === '18:30' && /^(#rvHeure-bowling|h):\d{2}:\d{2}$/.test(apres) && nouvelles.length === 0, 'Entree sur une heure atteinte au clavier la pose (sans creer), le focus reste sur les seances (pas sur la fenetre)', `${visee} > ${heure}, focus ${apres}, ${nouvelles.length} cree(s)`);
+    v('D8', apres === '#rvHeure-bowling:18:30', 'apres Entree, le focus est sur l heure choisie', `focus ${apres}`);
+    await capture(page, 'D8-clavier', '#rvHeure-bowling');
     v('*', erreurs.length === 0, 'zero erreur JS ni console [D8]', erreurs.slice(0, 2).join(' | '));
   } finally { await context.close(); }
 }
@@ -775,17 +885,16 @@ async function scenarioD9(browser, v) {
   {
     const { context, page, erreurs } = await ouvrirConsole(browser, { viewport: { width: 1024, height: 768 }, toucher: true });
     try {
-      await page.locator('.btn-new').first().click();
-      await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+      await ouvrirReserver(page);
       await planPose(page);
       await page.waitForTimeout(400);
       const lu = await page.evaluate((MESURE) => {
         const { coupe, texteCoupe } = eval(MESURE);
-        const autre = [...document.querySelectorAll('#quickBookOverlay .rv-jours .rv-jour')].pop();
-        const tailles = [...document.querySelectorAll('#quickBookOverlay .rv-tailles button')].map((b) => ({ t: b.textContent.trim(), c: coupe(b) }));
-        const badge = document.querySelector('#quickBookOverlay .rv-eyebrow em');
+        // La rangee Jour finit par « Autre date » ; la rangee Joueurs va de 1 a 20.
+        const autre = [...document.querySelectorAll('#quickBookOverlay #rsHaut .rs-seg > *')].pop();
+        const tailles = [...document.querySelectorAll('#quickBookOverlay #rsHaut [data-pax]')].map((b) => ({ t: b.textContent.trim(), c: coupe(b) }));
         const champ = document.getElementById('qbQui');
-        let placeholder = '';
+        let placeholder = champ ? '' : 'absent';
         if (champ) {
           const ctx = document.createElement('canvas').getContext('2d');
           const st = getComputedStyle(champ);
@@ -794,48 +903,63 @@ async function scenarioD9(browser, v) {
           const utile = champ.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight);
           placeholder = largeur > utile + 1 ? `invite coupee (${Math.round(largeur)} > ${Math.round(utile)})` : '';
         }
-        return { autre: autre ? `${autre.textContent.trim()} ${coupe(autre)}` : 'absent', autreCoupe: autre ? coupe(autre) : 'absent', tailles, badge: badge ? `${badge.textContent} ${texteCoupe(badge)}` : 'absent', badgeCoupe: badge ? texteCoupe(badge) : '', placeholder };
+        return { autre: autre ? `${autre.textContent.trim()} ${coupe(autre)}` : 'absent', autreCoupe: autre ? coupe(autre) : 'absent', tailles, invite: champ ? `« ${champ.placeholder} » ${texteCoupe(champ) || placeholder}` : 'absent', placeholder };
       }, MESURE);
       v('D9', lu.autreCoupe === '', '1024 x 768 : le bouton de date « Autre » est entier', lu.autre);
       v('D9', lu.tailles.length >= 8 && lu.tailles.every((t) => t.c === ''), '1024 x 768 : toutes les tailles du groupe (jusqu a 20) se voient', JSON.stringify(lu.tailles.filter((t) => t.c)));
-      v('D9', lu.badgeCoupe === '' && lu.placeholder === '', '1024 x 768 : « au comptoir » et l invite du champ client ne sont pas coupes', `${lu.badge} | ${lu.placeholder}`);
+      v('D9', lu.placeholder === '', '1024 x 768 : l invite du champ client n est pas coupee', lu.invite);
       await capture(page, 'D9-1024');
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D9 1024]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
   }
   {
     const { context, page, erreurs } = await ouvrirConsole(browser, { viewport: { width: 390, height: 844 }, toucher: true });
+    // Ce qui se touche est entier sous le doigt : rien du pied (ligne d etat, Créer)
+    // ni d autre chose par-dessus, une fois amene a l ecran.
+    const sousLeDoigt = (sels) => page.evaluate(async (sels) => {
+      const res = [];
+      for (const sel of sels) {
+        const b = document.querySelector(sel);
+        if (!b) { res.push({ t: sel, ok: false, dessus: 'absent' }); continue; }
+        b.scrollIntoView({ block: 'nearest' });
+        await new Promise((ok) => setTimeout(ok, 120));
+        const r = b.getBoundingClientRect();
+        const dessus = r.width && r.height ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+        const lu = dessus && dessus.closest('label') ? dessus.closest('label') : dessus;
+        res.push({ t: sel, ok: Boolean(dessus && (dessus === b || b.contains(dessus) || (lu && lu.contains(b)))), dessus: dessus ? (dessus.id || dessus.className || dessus.tagName) : 'rien' });
+      }
+      return res;
+    }, sels);
     try {
-      await page.locator('.btn-new').first().click();
-      await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
+      await ouvrirReserver(page);
       await planPose(page);
       await page.waitForTimeout(400);
-      const sous = await page.evaluate(async () => {
-        const res = [];
-        for (const b of [...document.querySelectorAll('#quickBookOverlay .rv-plus button')]) {
-          b.scrollIntoView({ block: 'nearest' });
-          await new Promise((ok) => setTimeout(ok, 120));
-          const r = b.getBoundingClientRect();
-          const dessus = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-          res.push({ t: b.textContent.trim(), ok: Boolean(dessus && (dessus === b || b.contains(dessus))), dessus: dessus ? (dessus.id || dessus.className || dessus.tagName) : 'rien' });
-        }
-        return res;
-      });
-      v('D9', sous.length > 0 && sous.every((x) => x.ok), '390 : « + Note », « + E-mail » se touchent, rien du pied par-dessus', JSON.stringify(sous.filter((x) => !x.ok)));
-      await capture(page, 'D9-390');
+      // Au telephone, le ticket s ouvre au toucher du resume (barre basse).
+      await page.click('#quickBookOverlay #rsResume');
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs.is-ticket', { timeout: 6000 });
+      await page.waitForTimeout(300);
+      const ticket = await sousLeDoigt(['#qbQui', '#rsL-client']);
+      // « E-mail, note, occasion » ouvre la page Client : l e-mail et la note s y touchent.
+      await page.click('#quickBookOverlay #rsL-client');
+      await page.waitForSelector('#quickBookOverlay #qbNotes', { timeout: 6000 });
+      await page.waitForTimeout(300);
+      const client = await sousLeDoigt(['#qbName', '#qbPhone', '#qbEmail', '#qbNotes']);
+      const sous = [...ticket, ...client];
+      v('D9', sous.length === 6 && sous.every((x) => x.ok), '390 : le client, l e-mail et la note se touchent, rien du pied par-dessus', JSON.stringify(sous.filter((x) => !x.ok)));
+      await capture(page, 'D9-390', '#qbNotes');
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D9 390]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
   }
 }
 
-// Le verdict et le pied disent-ils la meme couleur ?
-async function memeCouleur(page) {
-  return page.evaluate(() => {
-    const verdict = (document.querySelector('#rvVerdict .rv-vc, #rvVerdict .rv-verdict') || {}).className || '';
-    const pied = (document.querySelector('#rvPied .rv-etat-pied') || {}).className || '';
-    const ton = (c) => (/rv-verdict|is-ko/.test(c) ? 'ko' : /is-att/.test(c) ? 'att' : /is-calcul/.test(c) ? 'calcul' : 'ok');
-    return { verdict, pied, meme: ton(verdict) === ton(pied) };
-  });
+// La page d une ligne du bowling : ses touches « Pistes » (combien, laquelle est
+// prise, laquelle est dite conseillee), le mot sous une heure, le tarif en tete.
+async function lirePistes(page) {
+  return page.evaluate(() => ({
+    touches: [...document.querySelectorAll('#quickBookOverlay [data-pistes]')].map((b) => ({ n: Number(b.dataset.pistes), texte: ((b.querySelector('b') || {}).textContent || '').trim(), on: b.getAttribute('aria-pressed') === 'true', sous: ((b.querySelector('small') || {}).textContent || '').trim() })),
+    tete: ((document.querySelector('#quickBookOverlay .rs-seance.is-page .rs-s-n small') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+    heures: [...document.querySelectorAll('#quickBookOverlay [data-heure-l]')].map((b) => ({ h: b.dataset.heureL, mot: ((b.querySelector('small') || {}).textContent || '').trim() })),
+  }));
 }
 
 // [D10] Les mots.
@@ -846,11 +970,13 @@ async function scenarioD10(browser, v) {
   {
     const { context, page, erreurs } = await ouvrirConsole(browser);
     try {
-      await page.locator('.btn-new').first().click();
-      await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
-      await page.evaluate(() => setQuickStartTime('15:30'));
+      await ouvrirReserver(page);
+      await choisirJoueurs(page, 4);
+      await page.evaluate(() => rvChoisirHeure('bowling', 0, '15:30'));
       await planPose(page, false);
-      const refus = await texteDe(page, '#rvVerdict');
+      await page.waitForSelector('#quickBookOverlay #rvRefus', { timeout: 6000 }).catch(() => {});
+      // Le refus se dit une fois, en rouge sur la ligne du ticket.
+      const refus = await texteDe(page, '#quickBookOverlay #rvRefus');
       v('D10', !/ a \d{1,2}:\d{2}/.test(refus) && /à 15:30/.test(refus), 'les refus du moteur ont leurs accents (« à 15:30 »)', refus.slice(0, 140));
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D10 refus]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
@@ -869,97 +995,115 @@ async function scenarioD10(browser, v) {
   monter({ role: 'manager' });
   const { context, page, erreurs } = await ouvrirConsole(browser);
   try {
-    // 2. A 15:12, l arrivee conseillee n est jamais deja passee.
+    // 2. A 15:12, la seance en cours (15:00) se dit « maintenant » : jamais une
+    // heure d arrivee deja passee.
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '15:00', type: 'bowling', pax: 4 }), JOUR);
     await planPose(page);
-    const sousHeures = await texteDe(page, '#quickBookOverlay .rv-heures-sous');
-    const conseillee = (sousHeures.match(/Arrivée conseillée (\d{2}:\d{2})/) || [])[1] || '';
-    v('D10', !conseillee || conseillee >= '15:12', 'a 15:12, l arrivee conseillee n est jamais deja passee', sousHeures);
-    // 3. « joueurs par piste » dit le vrai partage ; les pistes conseillees
-    // sont celles que la ligne pose ; « libres » ne compte pas le groupe.
+    await page.waitForFunction(() => { const b = document.querySelector('#quickBookOverlay #rsZ-bowling .rs-h[data-heure="15:00"] small'); return Boolean(b && b.textContent.trim()); }, null, { timeout: 6000 }).catch(() => {});
+    const seances = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]')].map((b) => ({ h: b.dataset.heure, mot: ((b.querySelector('small') || {}).textContent || '').trim() })));
+    const enCours = seances.find((x) => x.h === '15:00');
+    v('D10', Boolean(enCours) && enCours.mot === 'maintenant' && seances.every((x) => x.h >= '15:00'), 'a 15:12, la seance en cours (15:00) se dit « maintenant », jamais une arrivee deja passee', JSON.stringify(seances.slice(0, 3)));
+    // 3. Les pistes conseillees sont celles que le plan pose ; « libres » ne compte
+    // pas le groupe. La page de la ligne du bowling les dit.
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '18:00', type: 'bowling', pax: 5 }); }, JOUR);
     await planPose(page);
     await page.waitForTimeout(300);
-    const consequence = await texteDe(page, '#rvConsequence');
-    const lu = await page.evaluate(() => ({ plan: (quickBookState.plan && quickBookState.plan.resultat ? quickBookState.plan.resultat.blocs : []).filter((b) => b.activite === 'bowling').flatMap((b) => b.pistes), etat: ((document.querySelector('[data-rv-dispo="bowling"]') || {}).textContent || '').replace(/\s+/g, ' ').trim() }));
-    const nombre = Number((consequence.match(/(\d+) pistes? conseill/) || [])[1] || 0);
-    const parPiste = Number((consequence.match(/(\d+) joueurs? par piste/) || [])[1] || 0);
-    v('D10', nombre > 0 && nombre === new Set(lu.plan).size, 'les pistes conseillees sont celles que le plan pose', `${consequence} | plan ${JSON.stringify(lu.plan)}`);
-    v('D10', parPiste > 0 && parPiste * nombre >= 5 && (parPiste - 1) * nombre < 5, '« joueurs par piste » dit le vrai partage (5 joueurs)', consequence);
-    v('D10', !/^\d+ pistes libres/.test(lu.etat) || /^8 pistes/.test(lu.etat), 'sur une journee vide, la ligne ne dit pas « 7 pistes libres » a cote de la piste du groupe', lu.etat);
-    // 4. Verdict et pied disent la meme couleur.
-    const c1 = await memeCouleur(page);
+    await page.click('#quickBookOverlay #rsL-a-bowling');
+    await page.waitForSelector('#quickBookOverlay [data-pistes]', { timeout: 6000 });
+    await page.waitForFunction(() => { const b = document.querySelector('#quickBookOverlay [data-heure-l="18:00"] small'); return Boolean(b && b.textContent.trim()); }, null, { timeout: 6000 }).catch(() => {});
+    const plan5 = await page.evaluate(() => (quickBookState.plan && quickBookState.plan.resultat ? quickBookState.plan.resultat.blocs : []).filter((b) => b.activite === 'bowling').flatMap((b) => b.pistes));
+    const p5 = await lirePistes(page);
+    const prise5 = (p5.touches.find((t) => t.on) || {}).n || 0;
+    const conseillee5 = (p5.touches.find((t) => t.sous === 'conseillé') || {}).n || 0;
+    v('D10', prise5 > 0 && prise5 === conseillee5 && prise5 === new Set(plan5).size, 'les pistes conseillees sont celles que le plan pose', `${JSON.stringify(p5.touches.map((t) => `${t.texte}${t.on ? '*' : ''}${t.sous ? ` (${t.sous})` : ''}`))} | plan ${JSON.stringify(plan5)}`);
+    const libresTete = (p5.tete.match(/(\d+) pistes? libres?/) || [])[1];
+    const motDix8 = (p5.heures.find((x) => x.h === '18:00') || {}).mot || '';
+    const libresHeure = (motDix8.match(/^(\d+) pistes?$/) || [])[1];
+    v('D10', Boolean(libresHeure) && libresHeure === '8' && (!libresTete || libresTete === '8'), 'sur une journee vide, la ligne ne dit pas « 7 pistes libres » a cote de la piste du groupe', `tete « ${p5.tete} » | 18:00 « ${motDix8} »`);
+    // 4. Le haut et le bas du ticket disent le meme etat.
+    const c1 = await memeEtat(page);
     v('D10', c1.meme, 'le verdict et le pied ont la meme couleur (bowling 5)', JSON.stringify(c1));
-    // 4 bis. Le nombre CONSEILLE est celui du centre : deux pistes posees au
-    // compteur pour 4 joueurs ne se disent pas « 2 pistes conseillées » a cote
-    // de « Auto : 1 piste » ; la suggestion nomme ce qu elle compte.
-    await page.evaluate(() => { setQuickPax(4); quickBookState.ouverte = 'bowling'; renderQuickBook(); rvPistesNombre(1); });
+    // 4 bis. Le nombre CONSEILLE est celui du centre : deux pistes posees pour 4
+    // joueurs ne deplacent pas « conseillé » sur 2 ; chaque touche nomme ce qu elle
+    // compte (« 2 pistes »).
+    await choisirJoueurs(page, 4);
+    await planPose(page);
+    await page.click('#quickBookOverlay [data-pistes="2"]');
     await planPose(page);
     await page.waitForTimeout(300);
-    const conseil = await page.evaluate(() => {
-      const note = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d .rv-rg')].find((r) => /Pistes/.test((r.querySelector('.rv-lbl') || {}).textContent || ''));
-      return { consequence: (document.getElementById('rvConsequence') || {}).textContent || '', note: note ? note.textContent.replace(/\s+/g, ' ').trim() : '' };
-    });
-    const autoN = Number((conseil.note.match(/Auto : (\d+) pistes?/) || [])[1] || 0);
-    const ditConseil = Number((conseil.consequence.match(/(\d+) pistes? conseill/) || [])[1] || 0);
-    const conseilDirect = (conseil.consequence.match(/(\d+) conseill/) || [])[1];
-    v('D10', autoN === 1 && (ditConseil === 0 || ditConseil === autoN) && (!conseilDirect || Number(conseilDirect) === autoN), 'le nombre dit « conseillé » est celui de la regle Auto (2 pistes posees pour 4 joueurs : 1 conseillee)', `${conseil.consequence} | ${conseil.note}`);
-    v('D10', !/Avec \d+, ils sont/.test(conseil.note) && (!/Avec \d/.test(conseil.note) || /Avec \d+ pistes?/.test(conseil.note)), 'la suggestion de pistes nomme ce qu elle compte (« Avec 3 pistes », pas « Avec 3, ils sont »)', conseil.note);
+    const p4 = await lirePistes(page);
+    const prise4 = (p4.touches.find((t) => t.on) || {}).n || 0;
+    const conseillees4 = p4.touches.filter((t) => t.sous === 'conseillé').map((t) => t.n);
+    v('D10', prise4 === 2 && conseillees4.join() === '1', 'le nombre dit « conseillé » est celui de la regle Auto (2 pistes posees pour 4 joueurs : 1 conseillee)', JSON.stringify(p4.touches.map((t) => `${t.texte}${t.on ? '*' : ''}${t.sous ? ` (${t.sous})` : ''}`)));
+    v('D10', p4.touches.length > 0 && p4.touches.every((t) => /^\d+ pistes?$/.test(t.texte) && Number(t.texte.split(' ')[0]) === t.n), 'la suggestion de pistes nomme ce qu elle compte (« Avec 3 pistes », pas « Avec 3, ils sont »)', JSON.stringify(p4.touches.map((t) => t.texte)));
     await page.evaluate(() => { quickBookState.pistesNombre = null; renderQuickBook(); });
     // 5. Des pistes choisies a la main, puis plus de joueurs : seules les
-    // choisies se disent « choisies à la main ».
+    // choisies se disent « choisies à la main » (la ligne du ticket).
     await page.evaluate(() => { toggleQuickLane(7); toggleQuickLane(8); });
     await planPose(page);
     await page.evaluate(() => setQuickPax(20));
     await planPose(page);
     await page.waitForTimeout(300);
-    const etape = await page.evaluate(() => { const e = [...document.querySelectorAll('#quickBookOverlay .rv-etape')].find((x) => /Bowling/.test(x.textContent)); return e ? e.textContent.replace(/\s+/g, ' ').trim() : ''; });
+    const etape = await texteDe(page, '#quickBookOverlay #rsL-a-bowling');
     const pistesEtape = ((etape.match(/pistes? ([\d, et]+)/) || [])[1] || '').match(/\d+/g) || [];
     const ditesALaMain = /dont ([\d, et]+) choisies? à la main/.test(etape) ? (etape.match(/dont ([\d, et]+) choisies? à la main/)[1].match(/\d+/g) || []) : /choisies? à la main/.test(etape) ? pistesEtape : [];
     v('D10', pistesEtape.length >= 4 && ditesALaMain.every((p) => p === '7' || p === '8') && ditesALaMain.length > 0, 'des pistes ajoutees par la fenetre ne se disent pas « choisies à la main » (seules 7 et 8 le sont)', etape);
-    // 6. Une formule adaptee : le detail du prix fait le total.
+    // 6. Une formule adaptee : le detail du prix (le recu de la page Total) fait le total.
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '18:00', type: 'formule', formuleId: 'f4', pax: 10 }); }, JOUR);
     await planPose(page);
     await page.evaluate(() => rvAdapterFormule(true));
     await planPose(page);
     await page.waitForTimeout(300);
-    const prix = await page.evaluate(() => ({ total: (document.getElementById('rvPrixGros') || {}).textContent || '', detail: (document.getElementById('rvPrixDetail') || {}).textContent || '' }));
-    // Le detail dit d ou vient le total : un prix fois un nombre qui le fait,
-    // ou des montants dont la somme le fait.
+    await page.click('#quickBookOverlay #rsL-total');
+    await page.waitForSelector('#quickBookOverlay .rs-recu li', { timeout: 6000 });
+    const prix = await page.evaluate(() => ({
+      total: ((document.querySelector('#quickBookOverlay .rs-total-g') || {}).textContent || '').trim(),
+      pied: ((document.getElementById('rvTotalPied') || {}).textContent || '').trim(),
+      lignes: [...document.querySelectorAll('#quickBookOverlay .rs-recu li')].map((li) => ({ detail: ((li.querySelector('small') || {}).textContent || '').trim(), montant: ((li.querySelector('b') || {}).textContent || '').trim(), texte: li.innerText.replace(/\s+/g, ' ').trim() })),
+    }));
+    // Le detail dit d ou vient le total : un prix fois un nombre qui fait sa ligne,
+    // et des montants dont la somme le fait.
     const euros = (t) => Number(String(t).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
     const total = euros(prix.total);
-    const produit = /(\d+(?:[.,]\d+)?)\s*€\s*×\s*(\d+)/.exec(prix.detail);
-    const somme = (prix.detail.match(/(\d+(?:[.,]\d+)?)\s*€/g) || []).reduce((s, m) => s + euros(m), 0);
-    const explique = produit ? Math.abs(euros(produit[1]) * Number(produit[2]) - total) < 0.01 : Math.abs(somme - total) < 0.01;
+    const somme = prix.lignes.reduce((s, l) => s + euros(l.montant), 0);
+    const produits = prix.lignes.map((l) => ({ l, m: /(\d+) joueurs? × (\d+(?:[.,]\d+)?)/.exec(l.detail) })).filter((x) => x.m);
+    const explique = prix.lignes.length > 0 && produits.every((x) => Math.abs(Number(x.m[1]) * euros(x.m[2]) - euros(x.l.montant)) < 0.01) && Math.abs(somme - total) < 0.01 && Math.abs(euros(prix.pied) - total) < 0.01;
     v('D10', total > 0 && explique, 'le detail d une formule adaptee fait son total', JSON.stringify(prix));
-    const c2 = await memeCouleur(page);
+    const c2 = await memeEtat(page);
     v('D10', c2.meme, 'le verdict et le pied ont la meme couleur (formule adaptee)', JSON.stringify(c2));
     // 6 bis. Une formule un jour ordinaire : son programme (minigolf, boissons)
-    // se lit, il ne passe pas le verdict en orange au-dessus d un pied vert.
+    // ne passe pas la ligne d etat en orange.
     const ordinaire = jourHorsVacances();
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '15:00', type: 'formule', formuleId: 'f4', pax: 10 }); }, ordinaire);
     const poseOrdinaire = await planPose(page, true);
     await page.waitForTimeout(300);
-    const c3 = await memeCouleur(page);
+    const c3 = await memeEtat(page);
     v('D10', poseOrdinaire && c3.meme, `le verdict et le pied ont la meme couleur (F4 un jour ordinaire, ${ordinaire})`, JSON.stringify(c3));
-    // F4 se valide toujours (reglage du centre) : ses deux bandeaux sont
-    // orange de toute facon. F3 n a pas d ecart : seul son programme parle.
+    // F4 se valide toujours (reglage du centre) : elle a un ecart de toute facon.
+    // F3 n a pas d ecart : seul son programme existe en plus de ses activites.
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '15:00', type: 'formule', formuleId: 'f3', pax: 10 }); }, ordinaire);
     const poseF3 = await planPose(page, true);
     await page.waitForTimeout(300);
-    const c4 = await memeCouleur(page);
-    const verdictF3 = await texteDe(page, '#rvVerdict');
-    v('D10', poseF3 && /is-ok/.test(c4.pied) && /Aussi au programme/.test(verdictF3), `MONTAGE : F3 un jour ordinaire, sans ecart, avec un programme (${ordinaire})`, `${c4.pied} | ${verdictF3.slice(0, 160)}`);
-    v('D10', c4.meme, 'le programme d une formule se lit sans passer le verdict en orange au-dessus d un pied vert (F3)', JSON.stringify(c4));
-    // 7. Passer de Formule a Activites ne perd pas le laser compose.
+    const montageF3 = await page.evaluate(() => {
+      const plan = rvPlanCourant();
+      const ids = rvActivites();
+      return { ecarts: rvEcartsDuPlan(plan), programme: ((plan && plan.etapes) || []).filter((e) => !ids.includes(e.activite) && e.libelle && !/accueil/i.test(e.libelle)).map((e) => `${e.libelle} ${e.debut}`) };
+    });
+    const c4 = await memeEtat(page);
+    v('D10', poseF3 && montageF3.ecarts.length === 0 && montageF3.programme.length > 0, `MONTAGE : F3 un jour ordinaire, sans ecart, avec un programme (${ordinaire})`, JSON.stringify(montageF3));
+    v('D10', c4.meme && c4.verdict === 'ok', 'le programme d une formule se lit sans passer le verdict en orange au-dessus d un pied vert (F3)', JSON.stringify(c4));
+    // 7. Ouvrir les Formules puis revenir (« ‹ Activités ») ne perd pas le laser compose.
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '18:00', type: 'bowling', pax: 6 }); rvAppliquerComposition({ type: 'visite', program: [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }] }); }, JOUR);
     await page.waitForTimeout(300);
-    await page.evaluate(() => rvModeFormule());
+    await page.click('#quickBookOverlay #rsFormules');
+    await page.waitForSelector('#quickBookOverlay .rs-fs-g', { timeout: 6000 });
     await page.waitForTimeout(300);
-    await page.evaluate(() => rvModeActivites());
+    await page.click('#quickBookOverlay #rsRetour');
+    await page.waitForSelector('#quickBookOverlay #rsZ-bowling', { timeout: 6000 });
     await page.waitForTimeout(300);
     const compo = await page.evaluate(() => rvActivites());
-    v('D10', compo.includes('laser_game') && compo.includes('bowling'), 'Formule puis Activites : la composition revient (bowling et laser)', JSON.stringify(compo));
+    const lignesTicket = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a')].map((b) => b.id.replace(/^rsL-/, '')));
+    v('D10', compo.includes('laser_game') && compo.includes('bowling') && lignesTicket.includes('a-bowling') && lignesTicket.includes('a-laser_game') && !lignesTicket.includes('a-formule'), 'Formules puis retour : la composition reste (bowling et laser)', JSON.stringify({ compo, lignesTicket }));
     v('*', erreurs.length === 0, 'zero erreur JS ni console [D10]', erreurs.slice(0, 2).join(' | '));
   } finally { await context.close(); }
 }
@@ -994,11 +1138,12 @@ const MUTATIONS = [
   { nom: 'anonyme-client', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/donnees-clients.js', "  return String(nom || '').trim().toLowerCase() === NOM_ANONYME;", '  return false;')] },
   { nom: 'fiche-telephone-requis', cote: 'front', vise: ['D1'], edits: [e(APP, 'oninput="setEditField(\'phone\', this.value)" placeholder="Facultatif">', 'oninput="setEditField(\'phone\', this.value)" required>')] },
   { nom: 'crm-console-anonyme', cote: 'front', vise: ['D1'], edits: [e(APP, "  return nom && nom !== 'client' ? `name:${nom}` : '';", "  return `name:${nom || 'client'}`;")] },
-  // D2
+  // D2 (la page « Autres » et la sortie d un refus partent du creneau en cours ;
+  // les seances viennent des creneaux proposes, getQuickBookAvailableSlots)
   { nom: 'plancher-du-jour', cote: 'front', vise: ['D2'], edits: [
     e(APP, '  const debut = plancher !== null ? Math.max(schedule.open, plancher) : schedule.open;', '  const debut = schedule.open;'),
     e(APP, ' && r.heure !== s.startTime && !rvHeurePassee(s.date, r.heure))', ' && r.heure !== s.startTime)'),
-    e(APP, '  const passee = (h) => rvHeurePassee(s.date, h) && timeToNum(h) >= bornes.ouverture - 1e-9;', '  const passee = () => false;'),
+    e(APP, '  if (plancher !== null) minTime = Math.max(minTime, plancher);', '  void plancher;'),
   ] },
   { nom: 'droit-passe-ignore', cote: 'front', vise: ['D2'], edits: [e(APP, '  if (!bornes || !rvPeutNoterLePasse()) return [];', '  if (!bornes) return [];')] },
   // D3
@@ -1010,9 +1155,10 @@ const MUTATIONS = [
   // D5
   { nom: 'heure-vue-qui-bouge', cote: 'front', vise: ['D5'], edits: [e(APP, '  if (plan && plan.disponible) quickBookState.heureArretee = true;\n', '')] },
   { nom: 'cle-sans-journee', cote: 'front', vise: ['D5'], edits: [e(APP, "  return corps ? `${JSON.stringify(corps)}|${rvRevisionDuJour(corps.date)}` : '';", "  return corps ? JSON.stringify(corps) : '';")] },
-  // D6
-  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, "  const remplace = id !== 'bowling' && rvBowlingProposeIntact();", '  const remplace = false;')] },
-  { nom: 'noms-dans-la-liste', cote: 'front', vise: ['D6'], edits: [e(APP, '    const directes = absentes.slice(0, RV_AJOUTS_DIRECTS);', '    const directes = [];')] },
+  // D6 (un toucher sur une seance remplace la proposition, rsHeure ; le laser a ses
+  // seances sur l ecran d accueil, rsActivitesHtml)
+  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, '      else rsRemplacer(id, variante);', '      else rsBasculer(id, variante);')] },
+  { nom: 'laser-hors-accueil', cote: 'front', vise: ['D6'], edits: [e(APP, '  const zones = getQuickBookActivityChoices().filter((c) => RV_ANCRABLES.includes(c.id)).map(', "  const zones = getQuickBookActivityChoices().filter((c) => c.id === 'bowling').map(")] },
   // D7
   { nom: 'auto-envoie-ses-pistes', cote: 'front', vise: ['D7'], edits: [
     e(APP, '  } else if (needsLanes && !s.autoAssign) {', '  } else if (needsLanes) {'),
@@ -1020,32 +1166,40 @@ const MUTATIONS = [
   ] },
   { nom: 'nom-simulation', cote: 'front', vise: ['D7'], edits: [e(APP, "    name: simulation ? '' : (s.name.trim() || 'Client'),", "    name: simulation ? 'Simulation' : (s.name.trim() || 'Client'),")] },
   { nom: 'virtuel-sans-rang', cote: 'serveur', vise: ['D7'], edits: [e('lib/reserver-fenetre.js', 'nom ? `${nom} (même envoi)` : `la réservation ${Number(reservation.rang) || 1} de cet envoi`', "`${nom || 'un autre dossier'} (même envoi)`")] },
-  // D8
-  { nom: 'fleches-inertes', cote: 'front', vise: ['D8'], edits: [e(APP, "    overlay.addEventListener('keydown', rvToucheHorloge);\n", '')] },
-  { nom: 'focus-minutes', cote: 'front', vise: ['D8'], edits: [e(APP, '  if (minute) minute.focus({ preventScroll: true });', '  void minute;')] },
-  { nom: 'focus-heure', cote: 'front', vise: ['D8'], edits: [e(APP, "    const retour = (ouverte.id === 'laser_game' && ouverte.partie > 0 && document.getElementById(`rvPartie-${ouverte.partie}`)) || document.getElementById(`rvHeure-${ouverte.id}`);", '    const retour = null;')] },
-  // D9
-  { nom: 'titre-qui-pousse-les-jours', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv .rv-tete h3 { margin-right: 4px; font-size: 17px; }\n', '')] },
-  { nom: 'tailles-masquees', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv .rv-consequence { font-size: 12px; }', '  .qb-modal.rv .rv-tailles button:nth-child(n+7) { display: none; }\n  .qb-modal.rv .rv-consequence { font-size: 12px; }')] },
-  { nom: 'jours-coupes', cote: 'front', vise: ['D9'], edits: [e(CSS, '@media (min-width: 901px) and (max-width: 1100px) {\n  .qb-modal.rv .rv-jour small { display: none; }\n}', '')] },
-  { nom: 'badge-coupe', cote: 'front', vise: ['D9'], edits: [
-    e(CSS, '.qb-modal.rv .rv-eyebrow { display: flex; flex-wrap: wrap;', '.qb-modal.rv .rv-eyebrow { display: flex; flex-wrap: nowrap;'),
-    e(CSS, '.qb-modal.rv .rv-eyebrow em { flex: none;', '.qb-modal.rv .rv-eyebrow em { flex: 0 1 auto;'),
-  ] },
-  { nom: 'billet-etroit', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 336px; }', '  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 320px; }')] },
-  { nom: 'pied-par-dessus', cote: 'front', vise: ['D9'], edits: [e(CSS, ' scroll-padding-top: 120px; scroll-padding-bottom: 184px;', '')] },
+  // D8 (les fleches passent par rsTouche puis rsFleches ; apres un geste, le focus
+  // reste sur la touche, rsPoserFocus)
+  { nom: 'fleches-inertes', cote: 'front', vise: ['D8'], edits: [e(APP, "  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { rsFleches(event); return; }", '')] },
+  { nom: 'focus-heure', cote: 'front', vise: ['D8'], edits: [e(APP, "  if (overlay && actif && !cachee && actif !== document.body && actif !== overlay.querySelector('.qb-modal.rv') && overlay.contains(actif)) return;\n", '')] },
+  // (la rangee des seances glisse pour garder l heure choisie en vue : le focus suit
+  // l heure, pas la place, rvRepeindre)
+  { nom: 'focus-garde-la-place', cote: 'front', vise: ['D8'], edits: [e(APP, '  } else if (actifHeure && cleHeure(actif) !== actifHeure) {', '  } else if (false) {')] },
+  // D9 (la tablette range les joueurs sur deux rangees de 7 ; les jours se disent
+  // courts ; le ticket a sa largeur ; au telephone, le pied a sa rangee a lui)
+  { nom: 'tailles-masquees', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv.rs .rs-ns { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }', '  .qb-modal.rv.rs .rs-ns { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }\n  .qb-modal.rv.rs .rs-ns .rs-n:nth-child(n+7) { display: none; }')] },
+  { nom: 'jours-coupes', cote: 'front', vise: ['D9'], edits: [e(APP, "  const court = (iso) => { const t = rsDateLue(iso, { weekday: 'short', day: 'numeric' });", "  const court = (iso) => { const t = rsDateLue(iso, { weekday: 'long', day: 'numeric', month: 'long' });")] },
+  { nom: 'billet-etroit', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv.rs { --rs-gouttiere: 20px; --rs-ticket: 316px; }', '  .qb-modal.rv.rs { --rs-gouttiere: 20px; --rs-ticket: 180px; }')] },
+  { nom: 'pied-par-dessus', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv.rs .rs-tk-p { grid-row: 4; display: grid;', '  .qb-modal.rv.rs .rs-tk-p { grid-row: 2; align-self: end; z-index: 3; display: grid;')] },
   // D10
   { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.` }];', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.` }];')] },
   { nom: 'laser-jargon', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', '            ? `Laser à ${heureLaser} : ${places}, il en faut ${groupe}. Décalez le départ.`', '            ? `Laser charge a ${heureLaser}: ${players}/${weaponCount} joueurs et ${launchCount}/${parallelLaunches} lancement(s).`')] },
-  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (minutes < 0) return rvHeurePassee(s.date, heure) ? '' : 'maintenant';", "  if (minutes < 0) return '';")] },
-  { nom: 'pistes-libres', cote: 'front', vise: ['D10'], edits: [e(APP, '`<span class="rv-ok">${reste} autres pistes</span> libres`', '`<span class="rv-ok">${reste} pistes</span> libres`')] },
-  { nom: 'conseil-ou-choix', cote: 'front', vise: ['D10'], edits: [e(APP, '      lignes.push(voulu > conseille', '      lignes.push(false')] },
-  { nom: 'avec-sans-nom', cote: 'front', vise: ['D10'], edits: [e(APP, "    const avec = (n) => ` Avec ${rvPluriel(n, 'piste')} : ${rvPluriel(Math.ceil(joueurs / n), 'joueur')} par piste.`;", '    const avec = (n) => ` Avec ${n}, ils sont ${Math.ceil(joueurs / n)} par piste.`;')] },
-  { nom: 'pied-sans-ecarts', cote: 'front', vise: ['D3', 'D10'], edits: [e(APP, '    const ecart = rvEcartsDuPlan(plan).length > 0;', '    const ecart = false;')] },
-  { nom: 'programme-en-ecart', cote: 'front', vise: ['D10'], edits: [e(APP, '  const ecarts = rvEcartsDuPlan(plan);\n  // Le reste du programme', "  const ecarts = rvEcartsDuPlan(plan).concat((plan.etapes || []).some((x) => !ids.includes(x.activite) && x.libelle && !/accueil/i.test(x.libelle)) ? ['programme'] : []);\n  // Le reste du programme")] },
-  { nom: 'detail-a-la-carte', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (formule) return `${rvNomFormule(formule)}${s.adaptee ? ' adaptée' : ''}", "  if (formule && !s.adaptee) return `${rvNomFormule(formule)}${s.adaptee ? ' adaptée' : ''}")] },
+  // (le mot sous une seance, rsMotHeure : le creneau en cours, puis les pistes libres)
+  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "    if (timeToNum(heure) === rvPlancherDuJour(s.date)) return 'maintenant';\n", '')] },
+  { nom: 'pistes-libres', cote: 'front', vise: ['D10'], edits: [e(APP, "    return rvPluriel(getFreeCount(s.date, heure, rvBowlingDuree()), 'piste');", "    return rvPluriel(getFreeCount(s.date, heure, rvBowlingDuree()) - rvPistesDuBowling(heure).besoin, 'piste');")] },
+  // (les touches « Pistes » de la ligne du bowling, rsLigneBowlingHtml)
+  { nom: 'conseil-ou-choix', cote: 'front', vise: ['D10'], edits: [e(APP, "n === auto ? 'conseillé' : ''", "besoin === n ? 'conseillé' : ''")] },
+  { nom: 'avec-sans-nom', cote: 'front', vise: ['D10'], edits: [e(APP, "cles.push(rsPetite(rvPluriel(n, 'piste'), besoin === n,", 'cles.push(rsPetite(String(n), besoin === n,')] },
+  // (un ecart se dit en orange sur la ligne d etat, rsVerdictHtml ; le pied n a plus
+  // de bandeau : l ancienne « pied-sans-ecarts » n a plus de cible)
+  { nom: 'ecart-dit-en-rouge', cote: 'front', vise: ['D3', 'D10'], edits: [e(APP, '      ecarts.forEach((ecart) => morceaux.push(`<p class="rs-v-ligne is-att">${escapeHtml(ecart)}</p>`));', '      ecarts.forEach((ecart) => morceaux.push(`<p class="rs-v-ligne is-ko">${escapeHtml(ecart)}</p>`));')] },
+  // (chaque point a savoir se dit : le premier seul cachait la raison des vacances)
+  { nom: 'premier-ecart-seul', cote: 'front', vise: ['D3'], edits: [e(APP, '      ecarts.forEach((ecart) => morceaux.push(', '      ecarts.slice(0, 1).forEach((ecart) => morceaux.push(')] },
+  { nom: 'programme-en-ecart', cote: 'front', vise: ['D10'], edits: [e(APP, '  if (plan.avertissement) ecarts.push(plan.avertissement);\n  (plan.aSurveiller', "  if (plan.avertissement) ecarts.push(plan.avertissement);\n  (plan.etapes || []).filter((x) => !rvActivites().includes(x.activite) && x.libelle && !/accueil/i.test(x.libelle)).forEach((x) => ecarts.push(`Aussi au programme : ${x.libelle} à ${x.debut}`));\n  (plan.aSurveiller")] },
+  // (le recu de la page Total, rsRecuHtml)
+  { nom: 'detail-a-la-carte', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (f) {\n    const quantite = f.type === 'per_lane'", "  if (f && !s.adaptee) {\n    const quantite = f.type === 'per_lane'")] },
   { nom: 'main-pour-toutes', cote: 'front', vise: ['D10'], edits: [e(APP, "        : aLaMain.length >= pistes.length ? ', choisies à la main'", "        : true ? ', choisies à la main'")] },
-  { nom: 'formule-efface', cote: 'front', vise: ['D10'], edits: [e(APP, "  const avant = s.type === 'formule' ? s.activitesAvantFormule : null;", '  const avant = null;')] },
+  // (la porte Formules ne fait qu ouvrir la page : seule une formule touchee change la
+  // composition, rsFormule)
+  { nom: 'formule-efface', cote: 'front', vise: ['D10'], edits: [e(APP, 'id="rsFormules" onclick="rsOuvrir(\'formules\')"', 'id="rsFormules" onclick="rvModeFormule(); rsOuvrir(\'formules\')"')] },
 ];
 
 // Une ancre absente ou double desarmerait la contre-preuve en silence : on la

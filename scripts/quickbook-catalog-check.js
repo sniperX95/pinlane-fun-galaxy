@@ -8,6 +8,15 @@
 //      integre tout plein d autre » : trois boutons codes en dur pendant que le
 //      centre vend huit activites. Meme classe de defaut que la grille Tarifs
 //      du 2026-08-17, qui enumerait une CONSTANTE figee au deploiement.
+// LES SEANCES (2026-11-03) : la fenetre du comptoir a change d ecran, pas de
+// regles. Les activites a seances (bowling, laser) sont des blocs #rsZ-<id>,
+// les autres des tuiles #rsT-<id>, les formules et le sur mesure des portes ;
+// chaque activite retenue est une ligne du ticket (#rsL-a-<id>) qui ouvre sa
+// page : ses reglages, ses pistes, « Retirer ». Les joueurs se touchent
+// (#rsHaut [data-pax]) ou se tapent dans « Autre » (#qbPax, pose a Entree).
+// La ligne d etat sous le nombre (#rvConsequence) n existe plus : ce que le
+// nombre change se lit sur la page de la ligne (« conseillé » sous le nombre
+// de pistes) et sur la ligne du ticket (« pistes 1 et 2 »).
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -91,10 +100,30 @@ async function installMock(page) {
   }, { expiresAt, ACTIVITIES });
 }
 
-// v5 (2026-10-08) : ce que le nombre de joueurs change s ecrit a cote du
-// nombre (#rvConsequence) : « 2 pistes conseillées », « Sans piste ni arène ».
-function statusText(page) {
-  return page.evaluate(() => (document.getElementById('rvConsequence') || {}).textContent || '');
+// Ce que le nombre de joueurs change au bowling, lu a l ecran : la page de la
+// ligne Bowling marque « conseillé » le nombre de pistes du centre (la regle
+// « Auto ») et presse celui qui part ; la ligne du ticket dit les pistes posees.
+async function pistesLues(page) {
+  await page.click('#rsL-a-bowling');
+  await page.waitForSelector('#rsCorps [data-pistes]', { timeout: 5000 });
+  return page.evaluate(() => {
+    const cles = [...document.querySelectorAll('#rsCorps [data-pistes]')].map((b) => ({
+      n: Number(b.dataset.pistes),
+      conseille: /conseillé/.test((b.querySelector('small') || {}).textContent || ''),
+      on: b.classList.contains('is-on') && b.getAttribute('aria-pressed') === 'true',
+    }));
+    const conseillee = cles.find((c) => c.conseille);
+    const choisie = cles.find((c) => c.on);
+    const detail = ((document.querySelector('#rsL-a-bowling .rs-tk-n small') || {}).textContent || '').trim();
+    const posees = /\bpistes?\s+((?:\d+(?:, | et )?)+)/.exec(detail);
+    return {
+      conseille: conseillee ? conseillee.n : 0,
+      choisie: choisie ? choisie.n : 0,
+      ticketPistes: posees ? posees[1].match(/\d+/g).length : 0,
+      unePiste: cles.some((c) => c.n === 1 && (c.conseille || c.on)),
+      texte: `${conseillee ? conseillee.n : '?'} conseillée(s), ${choisie ? choisie.n : '?'} choisie(s), ticket « ${detail || 'absent'} »`,
+    };
+  });
 }
 
 async function main() {
@@ -116,82 +145,116 @@ async function main() {
     // Un jour FUTUR a 14:00 : le soir, aujourd hui n a plus d heure ouverte.
     const demain = await page.evaluate(() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
     await page.evaluate((jour) => window.openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 }), demain);
-    await page.waitForSelector('#quickBookOverlay .qb-modal.rv [data-rv-ligne]', { timeout: 8000 });
+    await page.waitForSelector('#quickBookOverlay .qb-modal.rv #rsL-a-bowling', { timeout: 8000 });
     await page.waitForTimeout(700);
-    // Les noms a l ecran : les lignes posees, et les pastilles de « + Activité ».
-    const lignes = () => page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay .rv-lignes > [data-rv-ligne]:not(.is-retiree) .rv-nom > span')].map((e) => e.textContent.trim()));
-    const ouvrirAjouts = () => page.evaluate(() => { if (!quickBookState.ajoutsOuverts) document.getElementById('rvPlusActivite').click(); });
-    const ajouter = async (id) => { await ouvrirAjouts(); await page.waitForTimeout(250); await page.click(`[data-rv-ajout="${id}"]`); await page.waitForTimeout(400); };
-    // Retirer vit dans le detail de la ligne (le chevron l ouvre).
-    const retirer = (id) => page.evaluate(async (id) => {
-      const ligne = document.querySelector(`[data-rv-ligne="${id}"]`);
-      if (!ligne) return false;
-      if (!document.getElementById(`rvRetirer-${id}`)) { const ouvrir = ligne.querySelector('.rv-ouvrir'); if (ouvrir) ouvrir.click(); await new Promise((r) => setTimeout(r, 300)); }
-      const bouton = document.getElementById(`rvRetirer-${id}`);
-      if (!bouton) return false;
-      bouton.click();
-      await new Promise((r) => setTimeout(r, 400));
+    // Les activites retenues, a l ecran : les lignes du ticket, dans leur ordre.
+    const lignes = () => page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a[id^="rsL-a-"] .rs-tk-n > b')].map((e) => e.textContent.trim()));
+    // « + Ajouter une activité » met la fenetre en ajout : le toucher suivant, sur
+    // une seance (bowling, laser) ou sur une tuile, ajoute au lieu de remplacer.
+    const ajouter = async (id) => {
+      if (!(await page.locator('#quickBookOverlay .rs-tk-plus.is-on').count())) await page.click('#rsL-ajouter');
+      await page.waitForSelector('#quickBookOverlay .rs-tk-plus.is-on', { timeout: 3000 });
+      await page.click(['bowling', 'laser_game'].includes(id) ? `#rsZ-${id} .rs-h[data-heure] >> nth=0` : `#rsT-${id}`);
+      await page.waitForSelector(`#rsL-a-${id}`, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    };
+    // Retirer vit sur la page de la ligne, que sa ligne du ticket ouvre.
+    const retirer = async (id) => {
+      if (!(await page.locator(`#rsL-a-${id}`).count())) return false;
+      await page.click(`#rsL-a-${id}`);
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-ligne', { timeout: 3000 });
+      const bouton = page.locator(`#rvRetirer-${id}`);
+      if (!(await bouton.count())) return false;
+      await bouton.click();
+      await page.waitForTimeout(400);
       return true;
-    }, id);
+    };
 
     console.log('\n[1. Le selecteur suit le CATALOGUE VIVANT]');
-    await ouvrirAjouts();
-    await page.waitForTimeout(300);
-    const buttons = await page.evaluate(() => [
-      ...[...document.querySelectorAll('#quickBookOverlay .rv-lignes > [data-rv-ligne] .rv-nom > span')].map((e) => e.textContent.trim()),
-      ...[...document.querySelectorAll('#quickBookOverlay [data-rv-ajout]')].map((b) => b.textContent.trim()),
-    ].filter((nom) => nom && !/Sur mesure/.test(nom)));
+    // L accueil de la fenetre : un bloc de seances par activite a seances, une
+    // tuile par autre activite, chacune sous son nom du catalogue (une tuile
+    // garde son premier mot : « Minigolf », « Fun Run »), puis les portes.
+    const accueil = await page.evaluate(() => ({
+      choix: [
+        ...[...document.querySelectorAll('#quickBookOverlay #rsCorps .rs-z > section.rs-seance')].map((s) => ({ id: s.parentElement.id.replace(/^rsZ-/, ''), nom: ((s.querySelector('.rs-s-n > b') || {}).textContent || '').trim() })),
+        ...[...document.querySelectorAll('#quickBookOverlay #rsCorps .rs-pt[data-quoi]')].map((t) => ({ id: t.dataset.quoi, nom: ((t.querySelector('b') || {}).textContent || '').trim() })),
+      ],
+      portes: [...document.querySelectorAll('#quickBookOverlay #rsCorps .rs-porte')].map((p) => ({ id: p.id, nom: ((p.querySelector('b') || {}).textContent || '').trim() })),
+      selecteurs: document.querySelectorAll('#quickBookOverlay .rs-petits, #quickBookOverlay .rv-ajouts, #quickBookOverlay .qb-type-tile, #quickBookOverlay .qb-visit-grid').length,
+    }));
+    const buttons = accueil.choix.map((c) => c.nom).filter((nom) => nom && !/Sur mesure/.test(nom));
     ok(buttons.length >= 8, `la fenetre propose ${buttons.length} activites, pas trois (${buttons.join(' | ')})`);
-    for (const expected of ['Bowling', 'Laser Game', 'Minigolf Blacklight', 'Billards', 'Arcades', 'Playground', 'Duckpin Bowling', 'Fun Run by PIXEL']) {
-      ok(buttons.includes(expected), `« ${expected} » est proposee`);
+    for (const activite of ACTIVITIES) {
+      const choix = accueil.choix.find((c) => c.id === activite.id);
+      ok(Boolean(choix && choix.nom && activite.name.startsWith(choix.nom)), `« ${activite.name} » est proposee (${choix ? choix.nom : 'absente'})`);
     }
-    // Les modes : deux onglets, Activites et Formule (le « sur mesure » est
-    // devenu des extras, plus un mode).
-    const modes = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay .rv-plan-tete [role="tab"]')].map((b) => b.textContent.trim()));
-    ok(modes.includes('Formule') && modes.includes('Activités'), `les formules restent un mode a part (${modes.join(' | ')})`);
-    const doublons = await page.evaluate(() => document.querySelectorAll('#quickBookOverlay .rv-ajouts, #quickBookOverlay .qb-type-tile, #quickBookOverlay .qb-visit-grid').length);
-    ok(doublons === 1, `UNE seule facon de choisir les activites (${doublons} selecteur(s))`);
-    ok(!buttons.includes('Formule'), 'les formules ne sont PAS melangees aux activites');
+    // Les modes : les activites a l accueil, les formules derriere leur porte, sur
+    // leur propre page qui ramene aux Activités (le « sur mesure » est une porte
+    // d extras, pas un mode).
+    const porteFormules = accueil.portes.find((p) => p.id === 'rsFormules');
+    await page.click('#rsFormules');
+    await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-formules', { timeout: 3000 });
+    const retourFormules = await page.evaluate(() => ((document.getElementById('rsRetour') || {}).textContent || '').replace(/^‹\s*/, '').trim());
+    await page.click('#rsRetour');
+    await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-activites', { timeout: 3000 });
+    const modes = [porteFormules ? porteFormules.nom : '', retourFormules].filter(Boolean);
+    ok(modes.includes('Formules') && modes.includes('Activités'), `les formules restent un mode a part (${modes.join(' | ')})`);
+    const parActivite = ACTIVITIES.map((activite) => accueil.choix.filter((c) => c.id === activite.id).length);
+    ok(accueil.selecteurs === 1 && parActivite.every((n) => n === 1), `UNE seule facon de choisir les activites (${accueil.selecteurs} selecteur(s), ${parActivite.join('/')} par activite)`);
+    ok(!buttons.some((nom) => /^Formules?$/.test(nom)), 'les formules ne sont PAS melangees aux activites');
     ok(buttons.length + modes.length >= 10, `le selecteur reste vivant : ${buttons.length} activites + ${modes.length} modes`);
-    await page.evaluate(() => { if (quickBookState.ajoutsOuverts) rvBasculerAjouts(); });
 
-    console.log('\n[2. Les pistes suivent le nombre de joueurs PENDANT la frappe]');
-    // Le bug exact de Movsar : 9 joueurs, capacite 6 par piste -> 2 pistes.
-    const before = await statusText(page);
-    ok(/1\s*piste conseillée/.test(before), `depart a 4 joueurs : 1 piste conseillee (${before.trim()})`);
+    console.log('\n[2. Les pistes suivent le nombre de joueurs des qu il est tape]');
+    // Le bug exact de Movsar : 9 joueurs, capacite 6 par piste -> 2 pistes. Le
+    // champ « Autre » pose son nombre a Entree : rien ne se lit a moitie tape.
+    const before = await pistesLues(page);
+    ok(before.conseille === 1 && before.choisie === 1 && before.ticketPistes === 1, `depart a 4 joueurs : 1 piste conseillee (${before.texte})`);
     await page.fill('#qbPax', '9');
+    await page.press('#qbPax', 'Enter');
     await page.waitForTimeout(600);
-    const after = await statusText(page);
-    ok(/2\s*pistes conseillées/.test(after), `9 joueurs sur 6 par piste : 2 pistes conseillees (${after.trim()})`);
-    ok(!/1\s*piste conseillée/.test(after), 'la ligne ne dit plus « 1 piste conseillée »');
-    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    const after = await pistesLues(page);
+    ok(after.conseille === 2 && after.choisie === 2 && after.ticketPistes === 2, `9 joueurs sur 6 par piste : 2 pistes conseillees (${after.texte})`);
+    ok(!after.unePiste, 'la ligne ne dit plus « 1 piste conseillée »');
 
     console.log('\n[3. Une activite libre ne demande pas de piste]');
-    await page.evaluate(() => window.setQuickType('activity', 'minigolf_blacklight'));
-    await page.waitForTimeout(700);
-    const freeText = await statusText(page);
-    ok(!/pistes? conseillées?|au bowling/.test(freeText) && /Sans piste/.test(freeText), `le minigolf ne reserve aucune piste (${freeText.trim()})`);
+    // La tuile remplace le bowling (hors « + Ajouter ») et ouvre la page du minigolf.
+    await page.click('#rsRetour');
+    await page.click('#rsT-minigolf_blacklight');
+    await page.waitForSelector('#rsL-a-minigolf_blacklight', { timeout: 3000 });
+    await page.waitForTimeout(500);
+    const libre = await page.evaluate(() => ({
+      page: ((document.getElementById('rsCorps') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      ticket: [...document.querySelectorAll('#rsLignes .rs-tk-a')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join(' | '),
+      cles: document.querySelectorAll('#rsCorps [data-pistes], #rsCorps [data-piste]').length,
+    }));
+    ok(libre.cles === 0 && !/piste|arène/i.test(libre.page) && !/piste|arène/i.test(libre.ticket), `le minigolf ne reserve aucune piste (page « ${libre.page.slice(0, 80)} », ticket « ${libre.ticket} »)`);
     // Mesure par le DOM : la ligne a l ecran est l activite choisie.
     const activeLabel = (await lignes()).join(' + ');
     ok(activeLabel === 'Minigolf Blacklight', `la ligne a l ecran est l activite choisie (${activeLabel})`);
 
     console.log('\n[4. Contre-epreuve : ce gate sait-il rougir ?]');
-    // On remet le bowling et 4 joueurs : la ligne DOIT redire 1 piste.
-    await page.evaluate(() => window.setQuickType('bowling'));
-    await page.waitForTimeout(400);
-    await page.fill('#qbPax', '4');
+    // On remet le bowling (un toucher sur une de ses seances remplace le minigolf)
+    // et 4 joueurs : la page DOIT redire 1 piste.
+    await page.click('#rsRetour');
+    await page.waitForSelector('#rsZ-bowling .rs-h[data-heure]', { timeout: 3000 });
+    await page.click('#rsZ-bowling .rs-h[data-heure] >> nth=0');
+    await page.waitForSelector('#rsL-a-bowling', { timeout: 3000 });
+    await page.click('#rsHaut [data-pax="4"]');
     await page.waitForTimeout(600);
-    const backTo1 = await statusText(page);
-    ok(/1\s*piste conseillée/.test(backTo1), `retour a 4 joueurs : la ligne redescend a 1 piste (${backTo1.trim()}) -> la sonde suit vraiment l etat`);
-    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    const backTo1 = await pistesLues(page);
+    ok(backTo1.conseille === 1 && backTo1.choisie === 1 && backTo1.ticketPistes === 1, `retour a 4 joueurs : la ligne redescend a 1 piste (${backTo1.texte}) -> la sonde suit vraiment l etat`);
 
     console.log('\n[5. Plusieurs activites, ce n est PAS « sur mesure »]');
     // Movsar, 2026-08-26 : « quand on choisis plusieurs faut pas que ca mette sur
     // mesure hein, c est juste ils ont plusieurs activites et c est normal ».
     // Depuis le 2026-10-02, « sur mesure » = des EXTRAS qu on ouvre a la main.
-    const modeActif = () => page.evaluate(() => (document.querySelector('#quickBookOverlay [data-rv-ligne="sur-mesure"]') && quickBookState.surMesure ? 'Sur mesure' : ''));
-    await page.evaluate(() => window.setQuickType('bowling'));
-    await page.waitForTimeout(400);
+    // Depuis le 2026-11-03, il s ouvre par sa porte : sa page (le catalogue
+    // d extras) a gauche, une ligne du ticket par article ajoute.
+    const modeActif = () => page.evaluate(() => {
+      const modale = document.querySelector('#quickBookOverlay .qb-modal.rv');
+      if (modale && modale.classList.contains('is-q-mesure')) return 'Sur mesure';
+      return document.querySelector('#quickBookOverlay #rsLignes [id^="rsL-x-"]') ? 'Sur mesure' : '';
+    });
     await ajouter('laser_game');
     const multi = await page.evaluate(() => ({
       // `quickBookState` est un `let` de module : scope global lexical, PAS window.
@@ -203,24 +266,23 @@ async function main() {
     ok(multi.type === 'visite', `le dossier reste une visite cote donnees (${multi.type})`);
     ok(multi.apres !== 'Sur mesure', `« Sur mesure » ne s allume PAS tout seul (mode actif : « ${multi.apres || 'aucun'} »)`);
     // CONTRE-EPREUVE : choisir VRAIMENT « Sur mesure » doit, lui, l allumer.
-    await ouvrirAjouts();
-    await page.waitForTimeout(250);
-    await page.click('#rvSurMesure');
+    await page.click('#rsMesure');
     await page.waitForTimeout(400);
     const choisi = await modeActif();
     ok(choisi === 'Sur mesure', `choisi explicitement, il s allume (${choisi || 'aucun'})`);
-    await page.evaluate(() => window.setQuickSurMesure(false));
+    await page.click('#rsRetour');
+    await page.waitForTimeout(300);
 
     console.log('\n[6. Le prix se saisit au joueur autant qu au total]');
     // Movsar, 2026-08-26 : « il peut modifier le prix par personne et complet ».
     // Le total reste la valeur qui part au serveur ; le champ par personne est
     // une autre facon de l ecrire, pas une seconde verite.
-    await page.fill('#qbPax', '8');
+    // Les deux champs vivent sur la page Total, que la ligne Total du ticket ouvre.
+    await page.click('#rsHaut [data-pax="8"]');
     await page.waitForTimeout(500);
-    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.click('#rsL-total');
+    await page.waitForSelector('#qbCustomPricePerPerson', { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(300);
-    await page.click('#rvRevoir');
-    await page.waitForTimeout(400);
     const prix = await page.evaluate(async () => {
       const perso = document.getElementById('qbCustomPricePerPerson');
       const total = document.getElementById('qbCustomPrice');
@@ -239,14 +301,19 @@ async function main() {
       ok(prix.apresPerso.affiche === '120€', `le montant annonce suit (${prix.apresPerso.affiche})`);
       ok(Number(prix.apresTotal.perso) === 25, `et dans l autre sens : 200 EUR au total = ${prix.apresTotal.perso} EUR par personne`);
     }
-    await page.evaluate(() => { document.activeElement && document.activeElement.blur(); if (typeof clearQuickCustomPrice === 'function') clearQuickCustomPrice(); });
+    // Le prix du catalogue revient d un toucher (« Prix catalogue », sur la page Total).
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    if (await page.locator('#rsPrixCatalogue').count()) await page.click('#rsPrixCatalogue');
+    await page.waitForTimeout(300);
 
     console.log('\n[7. Une activite se retire autant qu elle s ajoute]');
     // Movsar, 2026-08-26 : « faut qu on puisse decocher un par un et quand on en
-    // recoche plusieurs comme on veut ». v5 : on ajoute au « + Activité », on
-    // retire dans le detail de la ligne ; la derniere ne se retire pas.
-    await page.evaluate(() => window.setQuickType('bowling'));
-    await page.waitForTimeout(400);
+    // recoche plusieurs comme on veut ». Les seances : on ajoute par « + Ajouter
+    // une activité », on retire sur la page de la ligne ; la derniere ne se
+    // retire pas. On repart du bowling seul.
+    await retirer('laser_game');
+    const depart7 = await lignes();
+    ok(depart7.length === 1 && /^Bowling/.test(depart7[0]), `prerequis : le bowling seul au depart (${depart7.join(' + ')})`);
     await ajouter('laser_game');
     await ajouter('billards');
     const troisChoisies = await lignes();
@@ -269,35 +336,40 @@ async function main() {
     // « playground on doit mettre cbn d enfant, le fun run pixel choisir 15, 30 ».
     // La detection passe par la DONNEE du catalogue (priceType, unitLabel), pas
     // par un id : un autre centre au meme modele en herite sans une ligne.
-    await page.fill('#qbPax', '8');
+    await page.click('#rsHaut [data-pax="8"]');
     await page.waitForTimeout(400);
-    await page.evaluate(() => document.activeElement && document.activeElement.blur());
     for (const id of ['playground', 'fun_run']) {
-      const deja = await page.evaluate((id) => Boolean(document.querySelector(`[data-rv-ligne="${id}"]`)), id);
-      if (!deja) await ajouter(id);
+      if (!(await page.locator(`#rsL-a-${id}`).count())) await ajouter(id);
     }
+    // Le Fun Run : sa page propose ses sessions.
+    await page.click('#rsL-a-fun_run');
+    await page.waitForTimeout(350);
+    const sessions = await page.evaluate(() => {
+      const rang = [...document.querySelectorAll('#rsCorps .rs-rang')].find((r) => ((r.querySelector('.rs-lbl') || {}).textContent || '').trim() === 'Session');
+      return rang ? [...rang.querySelectorAll('.rs-choix button > b')].map((b) => b.textContent.trim()) : [];
+    });
+    // La plaine de jeux : sa page porte un compteur, son moins en retire un.
+    await page.click('#rsL-a-playground');
+    await page.waitForTimeout(350);
     const reglages = await page.evaluate(async () => {
-      const ligne = (id) => document.querySelector(`[data-rv-ligne="${id}"]`);
-      const fun = ligne('fun_run');
-      if (fun && !fun.classList.contains('is-ouverte')) { fun.querySelector('.rv-ouvrir').click(); await new Promise((r) => setTimeout(r, 350)); }
-      const play = () => ligne('playground');
-      const compteur = (l) => (l && l.querySelector('.rv-lc-h .rv-qte') ? l.querySelector('.rv-lc-h .rv-qte') : null);
-      const compteurAvant = compteur(play()) ? compteur(play()).querySelector('b').textContent.trim() : '';
-      const libelleEnfants = compteur(play()) ? compteur(play()).textContent.replace(/\s+/g, ' ').trim() : '';
+      const compteur = () => [...document.querySelectorAll('#rsCorps .rs-rang')].find((r) => r.querySelector('.rs-pas'));
+      const valeur = () => (compteur() ? compteur().querySelector('.rs-pas > b').textContent.trim() : '');
+      const compteurAvant = valeur();
+      const libelleEnfants = compteur() ? compteur().textContent.replace(/\s+/g, ' ').trim() : '';
       const joueursAvant = quickBookState.pax;
-      const autresAvant = Object.fromEntries(Object.keys(ensureQuickVisit().options).filter((id) => id !== 'playground').map((id) => [id, getQuickVisitParticipants(id)]));
-      const moins = compteur(play()) ? compteur(play()).querySelector('button') : null;
+      const autres = [...document.querySelectorAll('#rsLignes .rs-tk-a[data-activite]')].map((e) => e.dataset.activite).filter((id) => id !== 'playground');
+      const autresAvant = Object.fromEntries(autres.map((id) => [id, getQuickVisitParticipants(id)]));
+      const moins = compteur() ? compteur().querySelector('.rs-pas > button') : null;
       if (moins) { moins.click(); await new Promise((r) => setTimeout(r, 350)); }
-      const funApres = ligne('fun_run');
       return {
-        sessions: funApres ? [...funApres.querySelectorAll('.rv-seg[aria-label="Session"] button')].map((b) => b.textContent.trim()) : [],
         compteurAvant,
         libelleEnfants, joueursAvant, joueursApres: quickBookState.pax,
         enfantsApres: getQuickVisitParticipants('playground'),
-        autresInchanges: JSON.stringify(autresAvant) === JSON.stringify(Object.fromEntries(Object.keys(autresAvant).map((id) => [id, getQuickVisitParticipants(id)]))),
-        compteurApres: compteur(play()) ? compteur(play()).querySelector('b').textContent.trim() : '',
+        autresInchanges: autres.length >= 2 && JSON.stringify(autresAvant) === JSON.stringify(Object.fromEntries(autres.map((id) => [id, getQuickVisitParticipants(id)]))),
+        compteurApres: valeur(),
       };
     });
+    reglages.sessions = sessions;
     ok(reglages.sessions.length >= 2 && /15 min/.test(reglages.sessions.join(' ')) && /30 min/.test(reglages.sessions.join(' ')),
       `le Fun Run propose ses sessions (${reglages.sessions.join(' | ') || 'aucune'})`);
     ok(/enfant/i.test(reglages.libelleEnfants), `la plaine de jeux se compte en enfants (${reglages.libelleEnfants})`);
@@ -306,7 +378,7 @@ async function main() {
     ok(reglages.joueursAvant === 8 && reglages.joueursApres === 8 && reglages.autresInchanges, '7 enfants sur 8 visiteurs sans changer les autres activites');
 
     if (process.env.QB_SHOT) {
-      await page.evaluate(() => { const i = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')].pop(); i.value = '9'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+      await page.click('#rsHaut [data-pax="9"]');
       await page.waitForTimeout(500);
       await page.screenshot({ path: process.env.QB_SHOT, fullPage: false });
     }

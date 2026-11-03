@@ -431,31 +431,58 @@ async function main() {
     // qui defile ici (.qb-modal) n a NI id NI data-scroll-key : c est exactement
     // le cas que la premiere version de repaintKeepingScroll ne savait pas
     // restaurer, puisqu elle ne reperait que les elements identifies.
+    // LES SEANCES (2026-11-03) : la modale ne defile plus elle-meme. Deux zones
+    // defilent : la colonne des pages (#rsCol) et le ticket (.rs-tk-c). L etat qui
+    // les fait deborder a 1100 x 620 : le sur mesure d un anniversaire, un article
+    // ouvert (sa bande « Servir à » au bas de la colonne) et dix articles au ticket.
     await page.setViewportSize({ width: 1100, height: 620 });
     await page.evaluate(() => { closePos(); openQuickBook({ date: state.currentDate, type: 'bowling', pax: 4 }); });
     await page.waitForTimeout(600);
-    await page.evaluate(() => { toggleQuickBookMore(); });
-    await page.waitForTimeout(500);
-    const modale = await page.evaluate(async () => {
-      // CE QUI DEFILE, quel qu il soit : la modale entiere, ou sa colonne de
-      // saisie depuis la refonte du 2026-10-01 (recapitulatif fixe a droite).
-      const candidats = ['.rv-plan', '.qb-body', '.qb-modal'];
-      const choisi = candidats.find((sel) => { const el = document.querySelector(`#quickBookOverlay ${sel}`); return el && el.scrollHeight - el.clientHeight > 80; }) || '.qb-modal';
-      const boite = document.querySelector(`#quickBookOverlay ${choisi}`);
-      if (!boite) return { erreur: 'modale absente' };
+    await page.click('#rsMesure');
+    await page.waitForSelector('#quickBookOverlay .rs-arts [id^="rsArt-"]', { timeout: 5000 });
+    for (const onglet of ['', 'boissons']) {
+      if (onglet) await page.click(`#rsOnglet-${onglet}`);
+      await page.waitForTimeout(250);
+      const n = Math.min(onglet ? 3 : 7, await page.locator('#quickBookOverlay .rs-arts [id^="rsArt-"]').count());
+      for (let i = 0; i < n; i += 1) { await page.click(`#quickBookOverlay .rs-arts [id^="rsArt-"] >> nth=${i}`); await page.waitForTimeout(150); }
+    }
+    await page.waitForTimeout(400);
+    // Ce qui defile, mis au plus bas ; puis un toucher sur le DERNIER bouton qui
+    // reste sur la meme page, visible dans la moitie basse de la zone.
+    const enBas = (zone, cibles) => page.evaluate(async ({ zone, cibles }) => {
+      const boite = document.querySelector(`#quickBookOverlay ${zone}`);
+      if (!boite) return { erreur: `${zone} absente`, course: 0 };
       const course = boite.scrollHeight - boite.clientHeight;
       boite.scrollTop = course;
+      await new Promise((r) => setTimeout(r, 100));
       const avant = boite.scrollTop;
-      const boutons = [...document.querySelectorAll('#quickBookOverlay [data-rv-ligne="bowling"] .rv-seg[aria-label="Durée du bowling"] button, #quickBookOverlay .qb-dur-btn')];
+      const r = boite.getBoundingClientRect();
+      const boutons = [...boite.querySelectorAll(cibles)];
       const cible = boutons[boutons.length - 1];
+      const c = cible ? cible.getBoundingClientRect() : null;
+      const bas = Boolean(c && c.height > 0 && c.top >= r.top + r.height / 2 && c.bottom <= r.bottom + 1);
       if (cible) cible.click();
-      await new Promise((r) => setTimeout(r, 700));
-      const apres = document.querySelector(`#quickBookOverlay ${choisi}`);
-      return { course, avant, apres: apres ? apres.scrollTop : null, choisi };
-    });
-    ok(modale.course > 80, `la modale a de quoi defiler (${modale.course} px, ${modale.choisi})`);
-    ok(modale.avant > 0 && modale.apres === modale.avant,
-      `cliquer un bouton EN BAS ne remonte pas la modale (${modale.avant} -> ${modale.apres})`);
+      await new Promise((res) => setTimeout(res, 700));
+      const apres = document.querySelector(`#quickBookOverlay ${zone}`);
+      const touche = apres ? [...apres.querySelectorAll(cibles)].pop() : null;
+      return {
+        course, avant, apres: apres ? apres.scrollTop : null, meme: apres === boite, bas,
+        cible: cible ? (cible.id || cible.textContent.trim()) : 'aucune',
+        presse: touche ? touche.getAttribute('aria-pressed') : '',
+        page: (document.querySelector('#quickBookOverlay .qb-modal.rv') || {}).className || '',
+      };
+    }, { zone, cibles });
+    // Le geste sert a quelque chose : l heure de service se pose sur l article.
+    const colonne = await enBas('#rsCol', '#rsCorps .rs-bande [data-service]');
+    ok(colonne.course > 80, `la modale a de quoi defiler (${colonne.course} px, #rsCol, la colonne des pages)`);
+    ok(colonne.bas && colonne.presse === 'true' && colonne.avant > 0 && colonne.meme && colonne.apres === colonne.avant,
+      `cliquer un bouton EN BAS ne remonte pas la modale (${colonne.avant} -> ${colonne.apres}, #rsCol, « Servir à ${colonne.cible} » ${colonne.presse === 'true' ? 'pose' : 'SANS EFFET'}${colonne.bas ? '' : ', bouton pas en bas'})`);
+    // Au bas du ticket : « E-mail, note, occasion », sous les dix articles ; il
+    // ouvre la page Client a gauche, le ticket reste ou il etait.
+    const ticket = await enBas('.rs-tk-c', '#rsLignes [id^="rsL-x-"], #rsClient #rsL-client');
+    ok(ticket.course > 80, `la modale a de quoi defiler (${ticket.course} px, .rs-tk-c, le ticket)`);
+    ok(ticket.bas && /\bis-q-client\b/.test(ticket.page) && ticket.avant > 0 && ticket.meme && ticket.apres === ticket.avant,
+      `cliquer un bouton EN BAS ne remonte pas la modale (${ticket.avant} -> ${ticket.apres}, .rs-tk-c, ${ticket.cible} ${/\bis-q-client\b/.test(ticket.page) ? 'ouvre la page Client' : 'SANS EFFET'}${ticket.bas ? '' : ', bouton pas en bas'})`);
     await page.evaluate(() => { closeQuickBook(); });
     await page.setViewportSize({ width: 1500, height: 950 });
     console.log('\n[4] LE PLEIN ECRAN DE LA LISTE EST UTILISABLE');

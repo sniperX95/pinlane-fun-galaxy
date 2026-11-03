@@ -165,7 +165,7 @@ assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,min
 assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
 assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
 assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
-for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','renderQuickVisitOptions','renderStaffRequestStudyLines','renderStaffRequestStudyDay','renderStaffRequestTimes','renderStaffRequestBudgetTag']) {
+for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderStaffRequestStudyDay','renderStaffRequestTimes','renderStaffRequestBudgetTag']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
@@ -194,7 +194,9 @@ assert.equal(run("ligneProgrammeQuick('billards').hours"),2);
 assert.equal(run("ligneProgrammeQuick('fun_run').minutes"),30);
 assert.equal(run("ligneProgrammeQuick('fun_run').participants"),6);
 assert.match(run('crActivites(customChoice).join(" | ")'),/Billard : 8 joueurs.*2 tables.*2h/);
-assert.match(run("renderQuickVisitOptions({id:'duckpin_bowling'})"),/setQuickVisitActivityDuration/);
+// La page de la ligne Duckpin offre ses durees (Les seances, 2026-11-03 : rsReglagesActivite
+// a remplace les options de l ancienne fenetre, la regle reste).
+assert.match(run("rsReglagesActivite('duckpin_bowling').join('')"),/setQuickVisitActivityDuration/);
 assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
 run("setQuickVisitActivityDuration('duckpin_bowling',2)");
 assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);

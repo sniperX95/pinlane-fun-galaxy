@@ -286,12 +286,12 @@ async function scenario(browser) {
 
     // [S] TARIFS & FORMULES, ONGLET SUR MESURE.
     await page.evaluate(() => { openStaffMenuPage('prices'); });
-    await page.waitForFunction(() => Array.from(document.querySelectorAll('.pv2-seg button')).some((b) => /Sur mesure/.test(b.textContent)), null, { timeout: 10000 });
-    await page.evaluate(() => { pv2PricingFilter('surmesure'); });
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-tf-onglet]')).some((b) => /Sur mesure/.test(b.textContent)), null, { timeout: 10000 });
+    await page.evaluate(() => { document.querySelector('[data-tf-onglet="surmesure"]').click(); });
     await page.waitForSelector('#smSection', { timeout: 10000 }).catch(() => null);
     await FX_repos(page);
     const vue = await page.evaluate(() => {
-      const onglet = Array.from(document.querySelectorAll('.pv2-seg button')).find((b) => /Sur mesure/.test(b.textContent));
+      const onglet = Array.from(document.querySelectorAll('[data-tf-onglet]')).find((b) => /Sur mesure/.test(b.textContent));
       const section = document.getElementById('smSection');
       return {
         onglet: onglet ? onglet.textContent.replace(/\s+/g, ' ').trim() : '', actif: Boolean(onglet && onglet.classList.contains('active')),
@@ -302,11 +302,11 @@ async function scenario(browser) {
     });
     ok(vue.noms.length === vue.cats && vue.noms[0] === 'Nourriture', '[S] chaque carte dit le nom de sa categorie, a l ecran', vue.noms);
     const lectures = serveur.appels.filter((a) => a.includes('surMesureGestion'));
-    ok(vue.onglet === 'Sur mesure91' && vue.actif && vue.cats >= 4 && /^91 articles · \d+ catégories/.test(vue.tete) && !vue.tri, '[S] l onglet « Sur mesure » : la carte de Libramont, 91 articles, sans le classement des offres', vue);
+    ok(/^Sur mesure ?91(?!d)/.test(vue.onglet) && vue.actif && vue.cats >= 4 && /^91 articles · \d+ catégories/.test(vue.tete) && !vue.tri, '[S] l onglet « Sur mesure » : la carte de Libramont, 91 articles, sans le classement des offres', vue);
     ok(lectures.length === 1 && lectures[0] === 'GET /api/ops?action=surMesureGestion&centerId=libramont' && /tabular-nums/.test(vue.prix), '[S] une lecture au vrai serveur, les prix en chiffres tabulaires', { lectures, prix: vue.prix });
     regles('S', 'la section Sur mesure', await page.evaluate(mesurer, '#smSection'), { pleinsMax: 0 });
     // (les onglets au-dessus de la section, dans la photo)
-    await page.evaluate(() => { document.querySelector('.pv2-seg').scrollIntoView({ block: 'start' }); window.scrollBy(0, -12); });
+    await page.evaluate(() => { document.querySelector('.tf-onglets').scrollIntoView({ block: 'start' }); window.scrollBy(0, -12); });
     await photo(page, 'sur-mesure-section');
 
     // La fenetre.

@@ -11044,7 +11044,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 54px; }
 .qb-modal.rv.rs .rs-h.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-efface b { font-weight: 400; }
-.qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r), minmax(0, 1fr)); min-height: calc(var(--rs-r) * 62px - 6px); max-height: calc(var(--rs-r) * 114px - 6px); gap: 6px; }
+.qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 62px - 6px); max-height: calc(var(--rs-r, 1) * 114px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-heures .rs-h { height: auto; }
 
 /* LES AUTRES ACTIVITES, LES PORTES */
@@ -11165,7 +11165,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-rang .rs-lbl { align-self: center; font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
 .qb-modal.rv.rs .rs-rang.is-texte .rs-lbl { align-self: start; padding-top: 3px; }
 .qb-modal.rv.rs .rs-choix { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; min-width: 0; }
-.qb-modal.rv.rs .rs-choix[style] { display: grid; grid-template-columns: repeat(var(--rs-n), minmax(0, 1fr)); grid-auto-rows: 1fr; }
+.qb-modal.rv.rs .rs-choix[style] { display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; }
 .qb-modal.rv.rs .rs-p { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; min-height: 44px; padding: 4px 8px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); }
 .qb-modal.rv.rs .rs-p b { font-size: 15px; font-weight: 600; line-height: 1.2; text-align: center; }
 .qb-modal.rv.rs .rs-p small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); text-align: center; }
@@ -11182,14 +11182,14 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-pas button:disabled { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px var(--rs-ligne); cursor: default; }
 .qb-modal.rv.rs .rs-pas b { align-self: center; min-width: 48px; text-align: center; font-size: 18px; font-weight: 600; }
 .qb-modal.rv.rs .rs-note { align-self: center; padding-left: 8px; font-size: 13px; line-height: 1.3; color: var(--muted); }
-.qb-modal.rv.rs .rs-contenu { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(var(--rs-n), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px; }
+.qb-modal.rv.rs .rs-contenu { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px; }
 .qb-modal.rv.rs .rs-contenu li { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 6px 10px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--rs-ligne); font-size: 14px; font-weight: 550; line-height: 1.25; text-align: center; color: var(--text); }
 .qb-modal.rv.rs .rs-notes { flex: none; margin: auto 0 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* LE SUR MESURE : le catalogue du centre, une touche par article */
 .qb-modal.rv.rs .rs-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .qb-modal.rv.rs .rs-tabs button { justify-content: center; height: 38px; padding: 0 6px; }
-.qb-modal.rv.rs .rs-arts { flex: 1 1 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r), minmax(0, 1fr)); min-height: calc(var(--rs-r) * 70px - 6px); max-height: calc(var(--rs-r) * 126px - 6px); gap: 6px; }
+.qb-modal.rv.rs .rs-arts { flex: 1 1 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 70px - 6px); max-height: calc(var(--rs-r, 1) * 126px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-art { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 6px 8px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-art b { max-width: 100%; font-size: 15px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
 .qb-modal.rv.rs .rs-art small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); }

@@ -700,6 +700,9 @@
     if (g.extras.length) { var mesure = g.extras.join(', '); liste.push(gfRubrique('mesure', 'Sur mesure', gpEsc(mesure), mesure)); }
     var prix = gfPrixTexte(r, notePrix, g.sortie);
     if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));
+    // La derniere modification (texteDerniereModif, le texte de la fiche) : quand, qui, quoi.
+    var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';
+    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\s*/, '')), modif));
     return liste;
   }
   // CE QUI CHANGE LA MANIERE DE SERVIR, POUR LES CARTES ET LE TERRAIN (2026-11-03, Movsar :

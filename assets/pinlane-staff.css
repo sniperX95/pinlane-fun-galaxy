@@ -2721,6 +2721,7 @@ button.staff-date-label:focus-visible,
    dit la reference et la raison. */
 .bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }
 .bk-flag.is-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); }
+.bk-flag.flag-modif { color: inherit; }
 .booking.a-allergie { --bk-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }
 .bk-coin { position: absolute; top: 0; right: 0; width: 12px; height: 12px; }
 .booking.activities-complete .bk-coin { display: none; }
@@ -2768,31 +2769,42 @@ button.staff-date-label:focus-visible,
      vue agrandie, garde ainsi son nom ;
    - le second marqueur cede sous 132 px, 147 px sur une carte cochee (arrive, paye),
      180 px sur une carte en retard ; le libelle du retard sous 164 px ;
-   - le premier sous 116 px, 130 px coche, 144 px en retard.
+   - le premier sous 116 px, 130 px coche, 144 px en retard ;
+   - le troisieme (la derniere modification, un crayon) sous 149 px, 164 px coche, 197 px
+     en retard ; le gateau et le laser cedent alors sous 234 px.
    L information reste entiere dans la ligne du Complet, la fiche et le Terrain. */
-@container piste (max-width: 217px) {
+@container piste (max-width: 234px) {
   .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-birthday, .flag-laser) { display: none; }
 }
+@container piste (max-width: 197px) {
+  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+}
+@container piste (max-width: 164px) {
+  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+}
+@container piste (max-width: 149px) {
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+}
 @container piste (max-width: 180px) {
-  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 164px) {
   .booking.a-dossier.is-delayed:not(.dens-xs) .delay-indicator .delay-indicator-label { display: none; }
 }
 @container piste (max-width: 147px) {
-  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 144px) {
-  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 132px) {
-  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) ~ :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 130px) {
-  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 116px) {
-  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }
+  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 /* La carte d une seule ligne (trente minutes) a son echelle de cession, mesuree sans eux :
    avec un marqueur du dossier, elle n en garde qu un, le premier ecrit. */

@@ -23036,6 +23036,10 @@ function renderCardFlags(reservation, options = {}) {
       path: '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 8v8M8 12h8"/>',
     });
   }
+  // La derniere modification (2026-11-03, opsPlan.derniereModif, texteDerniereModif, le
+  // texte de la fiche) : un crayon sur la carte, « Modifié 15:10, Rachel : 4 → 6 joueurs »
+  // en entier au survol et dans son nom.
+  const modif = options.modif !== undefined ? options.modif : texteDerniereModif(reservation, { max: 4 });
   // La note de l equipe : un bloc-notes, pas la bulle du client. Son nom dit tout.
   if (e && e.notes) {
     const allergie = Boolean(e.allergies.notes);
@@ -23043,6 +23047,13 @@ function renderCardFlags(reservation, options = {}) {
       cls: allergie ? 'flag-equipe is-allergie' : 'flag-equipe',
       label: escapeHtml(`${allergie ? 'Allergie · ' : ''}Équipe : ${e.notes}`),
       path: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.8 10h6.4M8.8 14h4.2"/>',
+    });
+  }
+  if (modif) {
+    marques.push({
+      cls: 'flag-modif',
+      label: escapeHtml(modif),
+      path: '<path d="M4 20h4L18.6 9.4a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.4 6.6l4 4"/>',
     });
   }
   // DEUX VOCABULAIRES, PAS UN. `getReservationOccasion` rend une OCCASION
@@ -23875,6 +23886,7 @@ function renderPlanning() {
       // avec une allergie.
       const essentiel = essentielDuDossier(r);
       const noteDuCoin = densClass === 'dens-xs' ? '' : texteNoteDeCarte(essentiel);
+      const modifCarte = texteDerniereModif(r, { max: 4 });
       const etatPrix = getReservationPriceState(r);
       const chiffresPrix = String(Math.abs(Math.round(etatPrix.price))).length;
       const classeLongueur = chiffresPrix <= 2 ? 'bk-price-c2' : chiffresPrix === 3 ? 'bk-price-c3' : 'bk-price-c4';
@@ -23889,12 +23901,12 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
-          ${renderCardFlags(r, { nom: displayName, essentiel })}
+          ${renderCardFlags(r, { nom: displayName, essentiel, modif: modifCarte })}
           ${/* LA PUCE DE RETARD PREND SA PLACE AU LIEU DE FLOTTER DESSUS. Elle
                etait posee en position absolue en haut a droite de la carte, donc
                par-dessus la tete : mesure, une puce de 42 px de large recouvrait

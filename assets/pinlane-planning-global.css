@@ -166,7 +166,11 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 /* (les cartes du laser ont leur teinte, celles du bowling lisent --bk-barre : les selecteurs
    de ces cartes, pinlane-staff.css, posent les memes valeurs sur la legende) */
 .pb-leg--laser .gf-leg { background: var(--lp-c); }
-/* Ce qui n a plus la place s efface, dans cet ordre. */
+/* Ce qui n a plus la place s efface, dans cet ordre. (« Tout » a pris sa place le 2026-11-03 :
+   les numeros des pistes libres partent d abord, leur nombre reste) */
+@container barre (max-width: 1300px) {
+  .gf-e[data-gf-etat='bowling'] .gf-e__s { display: none; }
+}
 @container barre (max-width: 1140px) {
   .gf-e[data-gf-etat='laser'] .gf-e__s { display: none; }
 }

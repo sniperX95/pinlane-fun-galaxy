@@ -43,7 +43,8 @@ function group(id, status, startTime) {
       const calls = await page.evaluate(() => window.__QA_PATCH__.calls);
       await helpers.retenirEcho(page);
       await locator.click();
-      check(await page.evaluate(id => state.reservations.find(r => r.id === id).status, id) !== expected, 'no optimistic false status before server ' + label);
+      // (depuis le 2026-11-03, le statut se peint au toucher, avant le serveur ; un refus le retire)
+      check(await page.evaluate(id => state.reservations.find(r => r.id === id).status, id) === expected, 'status shows at once, before the server ' + label);
       await helpers.libererEcho(page);
       const after = await snapshot(id);
       check(await page.evaluate(id => state.reservations.find(r => r.id === id).status, id) === expected, 'server confirms status ' + label);

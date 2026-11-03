@@ -909,8 +909,9 @@
     if (!gfPeutStatuer(r)) return h;
     var dit = (r.name || 'Le groupe') + ' : changer le statut (' + gfMotDuStatut(g) + ')';
     // (la fleche est dessinee par la feuille de style : aucun element de plus par ligne)
-    // (un etat ecrit, « Payé », « Pas venu », ou rien : c est lui qui ouvre la liste)
-    if (!h || /^<span class="gf-gb gf-gb--etat">/.test(h)) {
+    // (« Payé », « Pas venu », ou rien : c est l etat qui ouvre la liste. « Ils sont 8 » reste
+    // ecrit pour qui ne recompte pas, la fleche a sa droite)
+    if (!h || /^<span class="gf-gb gf-gb--etat">(Payé|Pas venu)<\/span>$/.test(h)) {
       return '<button type="button" class="gf-gb gf-gb--statut" data-gf-statut="' + gpEsc(g.id) + '" aria-haspopup="menu" aria-label="' + gpEsc(dit) + '"><span>' + gpEsc(gfMotDuStatut(g)) + '</span></button>';
     }
     return h + '<button type="button" class="gf-gb gf-gb--fleche" data-gf-statut="' + gpEsc(g.id) + '" aria-haspopup="menu" aria-label="' + gpEsc(dit) + '"></button>';
@@ -1780,7 +1781,12 @@
     defile.addEventListener('touchmove', lacher, { passive: true });
     defile.addEventListener('pointermove', function () { wrap._gfMain = performance.now(); }, { passive: true });
     defile.addEventListener('scroll', function () {
-      if (!wrap._gfApres && wrap._gfPose != null && Math.abs(defile.scrollTop - wrap._gfPose) > 2) lacher();
+      if (wrap._gfApres || wrap._gfPose == null || Math.abs(defile.scrollTop - wrap._gfPose) <= 2) return;
+      // (la boite qui grandit ou le tableau qui raccourcit : le navigateur ramene le
+      // defilement au bout de la feuille, la ou elle etait n existe plus. Ce n est pas une
+      // main : la feuille suit toujours l heure et se recale sur une ligne entiere)
+      if (wrap._gfSuit && wrap._gfPose > defile.scrollHeight - defile.clientHeight + 1) { wrap._gfRegle = null; gfAllerAMaintenant(wrap, false); return; }
+      lacher();
     }, { passive: true });
   }
   function gfSuivreMaintenant(wrap) {

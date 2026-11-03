@@ -209,7 +209,8 @@ async function balayerLeMenu(page, garder = () => true) {
           display: cs.display,
         };
       }
-      return { blocs: out, compteurs: document.querySelectorAll('#planningBande [data-gf-filtre]').length, large: document.body.classList.contains('gf-large') };
+      // (« Tout » n a pas de chiffre : les compteurs sont ceux qui en ont un)
+      return { blocs: out, compteurs: document.querySelectorAll('#planningBande [data-gf-filtre] .gf-c__v').length, large: document.body.classList.contains('gf-large') };
     }, BLOCS_PLANNING);
     releve.push({ ...entree, blocs, compteurs, large });
   }

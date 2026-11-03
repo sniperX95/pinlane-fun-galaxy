@@ -576,6 +576,24 @@ async function minute(browser) {
     const suivi = await page.evaluate(() => ({ suit: document.getElementById('globalPlanningGridWrap')._gfSuit, h: document.querySelector('[data-gf-maintenant]').textContent, st: document.querySelector('.gf-defile').scrollTop }));
     ok(suivi.h === '15:31', '[J] le montage : la barre est passee a 15:31', suivi);
     ok(Math.abs((await y()) - y0) <= 2 && suivi.suit, '[J] la barre passe une demi-heure : elle reste a sa hauteur, la feuille suit', { y0, y: await y(), ...suivi });
+    // LA BOITE QUI GRANDIT SOUS LA FEUILLE (2026-11-03, [N1] rouge de planning-global) : le
+    // navigateur ramene le defilement au nouveau bout, 30 px au-dessus de la ligne du haut.
+    // Ce n est pas une main : la feuille suit toujours l heure, aucune ligne coupee sous la tete.
+    const grandit = await page.evaluate(async () => {
+      const d = document.querySelector('.gf-defile');
+      const s0 = d.scrollTop;
+      if (s0 < 60) return { manque: true, s0 };
+      const avant = d.style.height;
+      d.style.height = (d.scrollHeight - (s0 - 30)) + 'px';
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 120))));
+      const haut = d.querySelector('thead th').getBoundingClientRect().bottom;
+      const coupees = Array.from(d.querySelectorAll('tbody > tr')).filter((tr) => { const b = tr.getBoundingClientRect(); return b.top < haut - 1 && b.bottom > haut + 1; }).length;
+      const lu = { s0, st: d.scrollTop, fond: d.scrollHeight - d.clientHeight, suit: document.getElementById('globalPlanningGridWrap')._gfSuit, coupees };
+      d.style.height = avant;
+      return lu;
+    });
+    await FX.repos(page, 150);
+    ok(!grandit.manque && grandit.st < grandit.s0 && grandit.suit && grandit.coupees === 0, '[J] la boite grandit sous la feuille : elle suit toujours l heure, aucune ligne coupee sous la tete', grandit);
     // Une main sur la feuille : rien ne bouge sous elle.
     await page.mouse.move(700, 400);
     await page.mouse.move(705, 402);
@@ -1105,6 +1123,7 @@ const MUTATIONS = [
   // [J] la minute
   { nom: 'feuille-qui-ne-suit-pas', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      y = Math.max(0, now.offsetTop - wrap._gfRegle);', vers: '      y = defile.scrollTop;' }] },
   { nom: 'saute-sous-la-main', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (Math.abs(defile.scrollTop - y) > 1 && performance.now() - (wrap._gfMain || -GF_MAIN) < GF_MAIN) return;\n', vers: '' }] },
+  { nom: 'boite-qui-grandit-decroche', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (wrap._gfSuit && wrap._gfPose > defile.scrollHeight - defile.clientHeight + 1) { wrap._gfRegle = null; gfAllerAMaintenant(wrap, false); return; }\n', vers: '' }] },
   // [K] un autre jour
   { nom: 'aujourd-hui-cache', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PGC, de: '#planningBarre .staff-today-btn { flex: none; box-sizing: border-box;', vers: '#planningBarre .staff-today-btn { display: none; flex: none; box-sizing: border-box;' }] },
   { nom: 'passe-en-vente', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PG, de: ' && !(m.maintenant == null && state.currentDate < todayStr());', vers: ';' }] },

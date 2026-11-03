@@ -906,7 +906,7 @@ const MUTATIONS = [
   // La case ne couvre plus ses lignes.
   { nom: 'case-d-une-ligne', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "    var attr = ' rowspan=\"' + part.lignes.length + '\"';", vers: "    var attr = ' rowspan=\"1\"';" }] },
   // Ce qui reste dans une demi-heure est faux.
-  { nom: 'pistes-de-la-case-fausses', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "lignes.push({ html: '<span>Pistes ' + place.pistes + '</span>', hauteur: 1 });", vers: "lignes.push({ html: '<span>Pistes ' + (place.pistes + 1) + '</span>', hauteur: 1 });" }] },
+  { nom: 'pistes-de-la-case-fausses', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });", vers: "lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes + 1, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });" }] },
   // La case promet une piste libre une demi-heure, Réserver la refuse pour une heure.
   { nom: 'case-sur-une-demi-heure', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: 'getStaffBowlingLanesFreeBetween(b, b + 1, occupation)', vers: 'getStaffBowlingLanesFreeBetween(b, b + 0.5, occupation)' }] },
   // La derniere demi-heure promet une partie qui finit apres la fermeture.
@@ -935,7 +935,7 @@ const MUTATIONS = [
   { nom: 'haut-sur-deux-lignes', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-prochain { flex-wrap: nowrap; }', vers: '' }] },
   // Defilee de cote, la ligne perd le nom de son groupe.
   { nom: 'nom-pas-colle', lettre: 'L4', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '  .gf-t td.gf-nom { position: sticky; left: calc(var(--c-bloc) + var(--c-h)); z-index: 2; }\n  .gf-th--h { left: 0; }', vers: '  .gf-th--h { left: 0; }' }] },
-  { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 54px;', vers: '--c-nom: 832px; --c-n: 54px;' }] },
+  { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 60px;', vers: '--c-nom: 832px; --c-n: 60px;' }] },
   { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '.gf-t td.gf-etat { position: sticky; right: 0;', vers: '.gf-t td.gf-etat { position: relative; right: 0;' }] },
   { nom: 'heure-pas-collee', lettre: 'L1', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '.gf-t td.gf-bloc { position: sticky; left: 0;', vers: '.gf-t td.gf-bloc { position: relative; left: 0;' }] },
   { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 7;', vers: '  var GF_BAS = -400;' }] },

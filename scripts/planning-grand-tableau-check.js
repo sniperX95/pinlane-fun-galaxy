@@ -1118,7 +1118,7 @@ const MUTATIONS = [
   { nom: 'montant-long-qui-deborde', lettre: 'M', scenarios: ['texteCase'], editions: [{ fichier: PGC, de: '.gf-du.is-long { font-size: 13px; }', vers: '.gf-du.is-long { font-size: 26px; }' }] },
   { nom: 'case-d-heure-trop-pleine', lettre: 'M', scenarios: ['texteCase'], editions: [{ fichier: PG, de: '    var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;', vers: '    var reste = 99;' }] },
   // [N] les autres jours
-  { nom: 'table-trop-large', lettre: 'N', scenarios: ['jours'], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 54px;', vers: '--c-nom: 1232px; --c-n: 54px;' }] },
+  { nom: 'table-trop-large', lettre: 'N', scenarios: ['jours'], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 60px;', vers: '--c-nom: 1232px; --c-n: 60px;' }] },
   // [P] la case d heure
   { nom: 'case-ouvre-la-fiche', lettre: 'P', scenarios: ['caseHeure'], editions: [{ fichier: PG, de: "      if (reserver) { reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') }); return; }", vers: "      if (reserver) { openPos(Number(reserver.closest('[data-gf-id]').getAttribute('data-gf-id'))); return; }" }] },
   { nom: 'case-sans-son-heure', lettre: 'P', scenarios: ['caseHeure'], editions: [{ fichier: PG, de: "reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') });", vers: 'reserverAuComptoir({});' }] },

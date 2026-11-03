@@ -23044,7 +23044,7 @@ function renderCardFlags(reservation, options = {}) {
   if (e && e.notes) {
     const allergie = Boolean(e.allergies.notes);
     marques.push({
-      cls: allergie ? 'flag-equipe is-allergie' : 'flag-equipe',
+      cls: 'flag-equipe' + (allergie ? ' is-allergie' : ''),
       label: escapeHtml(`${allergie ? 'Allergie · ' : ''}Équipe : ${e.notes}`),
       path: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.8 10h6.4M8.8 14h4.2"/>',
     });

@@ -29,7 +29,7 @@
 //   [D5] LE VERDICT SUIT LA JOURNEE. Un autre poste prend la derniere piste :
 //        le verdict ne dit plus « possible », et Entree ne repond pas « Il faut
 //        1 piste disponible ».
-//   [D6] « LASER 12 A 16:30 » DEPUIS « Réservation rapide » EN 7 CLICS AU PLUS.
+//   [D6] « LASER 12 A 16:30 » DEPUIS « + Réservation » EN 7 CLICS AU PLUS.
 //   [D7] EN AUTO, AUCUNE PISTE N EST ENVOYEE COMME UN CHOIX, et jamais
 //        « Simulation » a l ecran : deux resas du meme envoi ne se voient pas
 //        en conflit sur une piste que personne n a choisie.
@@ -394,7 +394,7 @@ async function scenarioD1(browser, v) {
       await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
       const pose = await planPose(page, true);
       const comptoir = await texteDe(page, '#quickBookOverlay .rv-eyebrow em');
-      v('D1', pose && comptoir === 'au comptoir', 'MONTAGE : « Réservation rapide » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, badge « ${comptoir} »`);
+      v('D1', pose && comptoir === 'au comptoir', 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, badge « ${comptoir} »`);
       await capture(page, 'D1-comptoir-ouvert');
       await page.click('#rvCreer');
       const ferme = await fenetreFermee(page);
@@ -622,7 +622,7 @@ async function scenarioD5(browser, v) {
   } finally { await context.close(); }
 }
 
-// [D6] « Laser 12 a 16:30 » depuis le bouton « Réservation rapide ».
+// [D6] « Laser 12 a 16:30 » depuis le bouton « + Réservation ».
 async function scenarioD6(browser, v) {
   B.semer([]);
   monter({ role: 'staff-bar' });
@@ -630,7 +630,7 @@ async function scenarioD6(browser, v) {
   const clics = [];
   try {
     const avant = new Set(lireBase().map((r) => r.id));
-    await clic(clics, page.locator('.btn-new'), 'Réservation rapide');
+    await clic(clics, page.locator('#planningReserver'), 'Réservation');
     await page.waitForSelector('#quickBookOverlay .qb-modal.rv', { timeout: 8000 });
     await clic(clics, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^12$/ }), '12');
     // Le laser se touche dans la rangee « + Activité » ; s il n y est pas, on
@@ -1025,6 +1025,7 @@ const MUTATIONS = [
   { nom: 'focus-minutes', cote: 'front', vise: ['D8'], edits: [e(APP, '  if (minute) minute.focus({ preventScroll: true });', '  void minute;')] },
   { nom: 'focus-heure', cote: 'front', vise: ['D8'], edits: [e(APP, "    const retour = (ouverte.id === 'laser_game' && ouverte.partie > 0 && document.getElementById(`rvPartie-${ouverte.partie}`)) || document.getElementById(`rvHeure-${ouverte.id}`);", '    const retour = null;')] },
   // D9
+  { nom: 'titre-qui-pousse-les-jours', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv .rv-tete h3 { margin-right: 4px; font-size: 17px; }\n', '')] },
   { nom: 'tailles-masquees', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv .rv-consequence { font-size: 12px; }', '  .qb-modal.rv .rv-tailles button:nth-child(n+7) { display: none; }\n  .qb-modal.rv .rv-consequence { font-size: 12px; }')] },
   { nom: 'jours-coupes', cote: 'front', vise: ['D9'], edits: [e(CSS, '@media (min-width: 901px) and (max-width: 1100px) {\n  .qb-modal.rv .rv-jour small { display: none; }\n}', '')] },
   { nom: 'badge-coupe', cote: 'front', vise: ['D9'], edits: [

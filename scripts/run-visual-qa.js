@@ -960,7 +960,7 @@ async function collectIssues(page, scopeLabel) {
 
     const watched = [
       '.booking',
-      '.staff-resource-tab',
+      '.pb-seg__b',
       '.lane-header',
       '.clients-table-row',
       '.client-profile-panel',
@@ -2225,13 +2225,14 @@ async function main() {
       };
     });
 
-    // 1) Generique (bouton « Réserver ») : le bowling par defaut, l essentiel
+    // 1) Generique (bouton « + Réservation ») : le bowling par defaut, l essentiel
     // a l ecran, le detail des lignes replie.
     await page.evaluate(() => openQuickBook());
     await page.waitForTimeout(400);
     const qbGeneric = await readQuickBook();
     assert(qbGeneric, 'Réserver générique : la fenêtre doit s ouvrir.');
-    assert(qbGeneric.title === 'Réserver', `Générique : titre « Réserver » attendu (reçu ${qbGeneric.title}).`);
+    // (un ecran, un nom : la fenetre et son bouton s appellent « Réservation », l audit du 2026-11-03)
+    assert(qbGeneric.title === 'Réservation', `Générique : titre « Réservation » attendu (reçu ${qbGeneric.title}).`);
     assert(qbGeneric.lignes.join(',') === 'bowling' && qbGeneric.heureBowling && qbGeneric.dureeBowling, `Générique : une ligne bowling avec sa durée et son heure (reçu ${qbGeneric.lignes.join(',') || 'aucune ligne'}).`);
     // Le bouton « Réserver » ouvre la demi-heure qui vient : au comptoir aux
     // heures d ouverture, la fenetre ordinaire avant. Les deux formes du

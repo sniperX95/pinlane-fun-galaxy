@@ -12,7 +12,9 @@
 //     son titre « Planning 8 pistes » etait ecrit en dur dans la page, quelle
 //     que soit la grille dessinee dessous ; puis, corrige, il restait sur la
 //     valeur par defaut quand la configuration arrivait apres le premier rendu
-//     (la grille, redessinee par les blocages, montrait 6 pistes) ;
+//     (la grille, redessinee par les blocages, montrait 6 pistes). Depuis la
+//     barre des plannings (2026-11-03), les horaires sont dans le menu « ⋯ » et
+//     le nombre de pistes dans la bulle de l onglet : la regle ne change pas ;
 // [C] la page Pistes dessinait 8 rangees pour tout centre ;
 // [D] les chiffres de Tarifs & formules portaient sur « les données locales »
 //     (le jour affiche et ses voisins, une fenetre que personne ne connait),
@@ -53,14 +55,14 @@ const MUTATIONS = {
   // [A] Le bandeau du planning. Le calcul oublie les reservations du jour :
   // la piste 5, prise, se dit libre.
   libresfaux: ['app-main.js', '  poser(todaysReservations());\n', '', '[A] les pistes libres maintenant sont les vraies'],
-  perimetre: ['app-main.js', "      label: ressource ? `Réservations ${ressource}` : 'Réservations',", "      label: 'Réservations',", '[A] le bandeau dit son perimetre'],
+  perimetre: ['app-main.js', "title: `Occupation ${ressource} sur la journée` },", "title: 'Occupation sur la journée' },", '[A] le bandeau dit son perimetre'],
   // (2026-10-27 : l occupation des pistes est lue par
   // getStaffBowlingLaneOccupation, qui porte la garde des blocages ; la garde
   // du jour meme reste ici)
-  demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  const occupation = getStaffBowlingLaneOccupation();', '  const occupation = getStaffBowlingLaneOccupation();', '[A] « Libres maintenant » seulement le jour meme'],
-  argent: ['app-main.js', "      hint: `${pax} joueur${pax > 1 ? 's' : ''}`\n", "      hint: `${pax} joueur${pax > 1 ? 's' : ''} · ${formatMoney(99)}`\n", '[A] aucun montant ni « aujourd hui » dans le bandeau'],
-  soustitre: ['app-main.js', "planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;", "planningSub.textContent = `${todaysReservations().length} réservations • ${planningWindow.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
-  titrepistes: ['app-main.js', "    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;\n", '', '[B] le titre compte les pistes de la grille'],
+  demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  const occupation = getStaffBowlingLaneOccupation();', '  const occupation = getStaffBowlingLaneOccupation();', '[A] « Libres » seulement le jour meme'],
+  argent: ['app-main.js', "id: 'kpiRes', value: String(res.length), title: `${pax} joueur${pax > 1 ? 's' : ''}` },", "id: 'kpiRes', value: String(res.length), title: `${pax} joueur${pax > 1 ? 's' : ''} · ${formatMoney(99)}` },", '[A] aucun montant ni « aujourd hui » dans le bandeau'],
+  soustitre: ['app-main.js', "const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}`;", "const horaires = `${todaysReservations().length} réservations • ${fenetre.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
+  titrepistes: ['app-main.js', "function pbBulleBowling() {\n  const laneCount = getAvailabilityLaneCount();", "function pbBulleBowling() {\n  const laneCount = 8;", '[B] le titre compte les pistes de la grille'],
   // La configuration arrivee ne redessine plus le planning ouvert : la tete et
   // la grille gardent les valeurs par defaut (la course du 2026-09-25).
   configrepeint: ['app-main.js', "    if (planningBox && !planningBox.classList.contains('hidden')) repaintKeepingScroll(planningBox, () => renderPlanning());\n", '', '[B] le titre compte les pistes de la grille'],
@@ -211,18 +213,19 @@ async function run() {
     console.log('[A][B] LE PLANNING');
     // =====================================================================
     const p = await ouvrir(browser, '#/staff/planning', { journee: [...JOURNEE, EN_COURS] });
-    await attendre(p.page, () => document.querySelectorAll('#staffView .kpi-grid .kpi').length === 3, null, 8000);
-    await attendre(p.page, () => (document.getElementById('planningLaneTitle') || {}).textContent === 'Planning 6 pistes', null, 6000);
+    await attendre(p.page, () => document.querySelectorAll('#planningBande .pb-k').length === 3, null, 8000);
+    await attendre(p.page, () => document.getElementById('staffTabBowling').title === 'Planning Bowling, 6 pistes', null, 6000);
     const lireBandeau = () => p.page.evaluate(() => {
-      const grille = document.querySelector('#staffView .kpi-grid');
+      const cases = [...document.querySelectorAll('#planningBande .pb-k')];
       return {
-        cases: [...(grille ? grille.querySelectorAll('.kpi') : [])].map((k) => ({
-          label: ((k.querySelector('.label') || {}).textContent || '').trim(),
-          value: ((k.querySelector('.value') || {}).textContent || '').trim(),
-          hint: ((k.querySelector('.hint') || {}).textContent || '').trim(),
+        cases: cases.map((k) => ({
+          label: ((k.querySelector('.gf-c__l') || {}).textContent || '').trim(),
+          value: ((k.querySelector('.gf-c__v') || {}).textContent || '').trim(),
+          hint: ((k.querySelector('.gf-e__s') || {}).textContent || '').trim(),
           title: k.getAttribute('title') || '',
         })),
-        texte: grille ? grille.textContent.replace(/\s+/g, ' ').trim() : '',
+        // (ce que la case dit a l ecran et dans sa bulle)
+        texte: cases.map((k) => `${k.textContent} ${k.getAttribute('title') || ''}`).join(' ').replace(/\s+/g, ' ').trim(),
       };
     });
     const libelles = (b) => b.cases.map((k) => k.label).join(' | ');
@@ -242,19 +245,24 @@ async function run() {
         || [...col.querySelectorAll('.booking, .planning-hold, .planning-blocked')].some((b) => { const x = b.getBoundingClientRect(); return x.top <= y && x.bottom > y; });
       return colonnes.filter((col) => !prise(col)).map((col) => Number(col.getAttribute('data-lane')));
     });
-    const libresDeLaCase = ((cas('Libres maintenant').title || '').match(/Piste \d+ libre/g) || []).map((x) => Number(x.match(/\d+/)[0]));
-    ok(libelles(bandeau) === 'Occupation des pistes | Réservations bowling | Libres maintenant', '[A] le bandeau dit son perimetre et ne garde que ce qui sert a planifier', libelles(bandeau));
+    const libresDeLaCase = ((cas('Libres').title || '').match(/Piste \d+ libre/g) || []).map((x) => Number(x.match(/\d+/)[0]));
+    ok(libelles(bandeau) === 'Occupation | Réservations | Libres' && cas('Occupation').title === 'Occupation des pistes sur la journée', '[A] le bandeau dit son perimetre et ne garde que ce qui sert a planifier', `${libelles(bandeau)} · ${cas('Occupation').title}`);
     ok(bandeau.texte !== '' && !/€|\bEUR\b/.test(bandeau.texte) && !/aujourd/i.test(bandeau.texte), '[A] aucun montant ni « aujourd hui » dans le bandeau', `« ${bandeau.texte} »`);
-    ok(cas('Réservations bowling').value === '3' && cas('Réservations bowling').hint === '12 joueurs', '[A] les reservations du bowling et leurs joueurs', `${cas('Réservations bowling').value} · ${cas('Réservations bowling').hint}`);
-    ok(cas('Libres maintenant').value === '5 pistes' && cas('Libres maintenant').hint === '1, 2, 3, 4 et 6 · la 2 jusqu’à 16:00', '[A] les pistes libres maintenant sont les vraies', `${cas('Libres maintenant').value} · ${cas('Libres maintenant').hint}`);
+    ok(cas('Réservations').value === '3' && cas('Réservations').title === '12 joueurs', '[A] les reservations du bowling et leurs joueurs', `${cas('Réservations').value} · ${cas('Réservations').title}`);
+    ok(cas('Libres').value === '5 pistes' && cas('Libres').hint === '1, 2, 3, 4 et 6' && /Piste 2 libre jusqu’à 16:00/.test(cas('Libres').title), '[A] les pistes libres maintenant sont les vraies', `${cas('Libres').value} · ${cas('Libresintenant').hint}`);
     ok(Array.isArray(libresDeLaGrille) && libresDeLaGrille.join(',') === '1,2,3,4,6' && libresDeLaCase.join(',') === libresDeLaGrille.join(','), '[A] la case dit les pistes que la grille montre libres', `grille ${libresDeLaGrille ? libresDeLaGrille.join(',') : 'illisible'} · case ${libresDeLaCase.join(',')}`);
-    const jour = await p.page.evaluate(() => ({
-      sub: (document.getElementById('planningSub') || {}).textContent || '',
-      titre: (document.getElementById('planningLaneTitle') || {}).textContent || '',
-      pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map((c) => c.getAttribute('data-bowling-drop-lane'))).size,
-    }));
+    const jour = await p.page.evaluate(() => {
+      document.getElementById('planningPlus').click();
+      const sub = (document.querySelector('.staff-action-popover [data-pb-horaires]') || {}).textContent || '';
+      closeStaffFloatingMenus();
+      return {
+        sub,
+        titre: document.getElementById('staffTabBowling').title,
+        pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map((c) => c.getAttribute('data-bowling-drop-lane'))).size,
+      };
+    });
     ok(/^Ouvert \S/.test(jour.sub) && !/réservation|joueur/.test(jour.sub), '[B] la tete du planning ne redit pas les tuiles', `« ${jour.sub} »`);
-    ok(jour.titre === 'Planning 6 pistes' && jour.pistes === 6, '[B] le titre compte les pistes de la grille', `« ${jour.titre} » · grille ${jour.pistes} piste(s)`);
+    ok(jour.titre === 'Planning Bowling, 6 pistes' && jour.pistes === 6, '[B] le titre compte les pistes de la grille', `« ${jour.titre} » · grille ${jour.pistes} piste(s)`);
     // Isoler l'arrivée de configuration APRÈS le montage : attendre plusieurs
     // secondes pouvait laisser le poll, les blocages ou le bootstrap réparer
     // le mutant qui retirait le repaint immédiat. Réponse synthétique en
@@ -263,7 +271,7 @@ async function run() {
     const configImmediate = await p.page.evaluate(async () => {
       const center = staffCenterConfigCache.centers.find(c => c.id === getCurrentStaffCenterId());
       const ancienne = { ...center, resources: { ...center.resources, bowling: { ...center.resources.bowling, laneCount: 8 } } };
-      const lire = () => ({ titre: document.getElementById('planningLaneTitle')?.textContent, pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map(c => c.getAttribute('data-bowling-drop-lane'))).size });
+      const lire = () => ({ titre: document.getElementById('staffTabBowling').title, pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map(c => c.getAttribute('data-bowling-drop-lane'))).size });
       setCenterScheduleConfig(ancienne);
       staffCenterConfigCache.centers = staffCenterConfigCache.centers.map(c => c.id === center.id ? ancienne : c);
       renderPlanning();
@@ -286,21 +294,21 @@ async function run() {
         window.renderPlanning = renderOrigine;
       }
     });
-    ok(configImmediate.avant.titre === 'Planning 8 pistes' && configImmediate.avant.pistes === 8,
+    ok(configImmediate.avant.titre === 'Planning Bowling, 8 pistes' && configImmediate.avant.pistes === 8,
       'MONTAGE [B] la scène stable commence avec huit pistes', JSON.stringify(configImmediate.avant));
-    ok(configImmediate.apres.titre === 'Planning 6 pistes' && configImmediate.apres.pistes === 6
+    ok(configImmediate.apres.titre === 'Planning Bowling, 6 pistes' && configImmediate.apres.pistes === 6
       && configImmediate.trace.some(e => e.evenement === 'renderPlanning' && /loadStaffCenterConfig/.test(e.appel)),
       '[B] le titre compte les pistes de la grille dès la réponse configuration', JSON.stringify(configImmediate));
     // L onglet laser dit le sien : l arene, ses reservations, pas de pistes.
     await p.page.evaluate(() => setStaffResourceView('laser'));
-    await attendre(p.page, () => /arène/.test((document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent || ''));
+    await attendre(p.page, () => /arène/.test((document.querySelector('#planningBande .pb-k') || { getAttribute: () => '' }).getAttribute('title') || ''));
     const laser = await lireBandeau();
-    ok(libelles(laser) === 'Occupation de l’arène | Réservations laser', '[A] le bandeau dit son perimetre, onglet laser compris', libelles(laser));
+    ok(/^Occupation \| Réservations\b/.test(libelles(laser)) && laser.cases[0].title === 'Occupation de l’arène sur la journée', '[A] le bandeau dit son perimetre, onglet laser compris', `${libelles(laser)} · ${laser.cases[0].title}`);
     await p.page.evaluate(() => setStaffResourceView('bowling'));
     await p.page.evaluate(() => shiftDate(1));
-    await attendre(p.page, () => document.querySelectorAll('#staffView .kpi-grid .kpi').length === 2);
+    await attendre(p.page, () => document.querySelectorAll('#planningBande .pb-k').length === 2);
     const demain = await lireBandeau();
-    ok(libelles(demain) === 'Occupation des pistes | Réservations bowling', '[A] « Libres maintenant » seulement le jour meme', `le lendemain : ${libelles(demain)}`);
+    ok(libelles(demain) === 'Occupation | Réservations', '[A] « Libres » seulement le jour meme', `le lendemain : ${libelles(demain)}`);
     ok(p.erreurs.length === 0, '[A][B] aucune erreur JavaScript', p.erreurs.slice(0, 3).join(' | '));
     await p.ctx.close();
 

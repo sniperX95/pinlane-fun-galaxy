@@ -5,16 +5,17 @@
 // pouvait tomber a zero pendant que les actions gardaient toute leur largeur
 // (85 px de recouvrement a 769, 60 a 820). Au telephone, la bascule sortait
 // de l ecran des deux cotes (55 px a 390, deja vrai avant). Pour chaque plein
-// ecran (Bowling, Laser Game, Planning global, et la liste du jour qui garde
-// son propre « Agrandir »), de 360 a 1920 px :
+// ecran (Bowling, Laser Game, Planning complet, et la liste du jour qui garde
+// son propre « Agrandir »), de 360 a 1920 px. Depuis le 2026-11-03, l en-tete des
+// trois plannings est leur barre commune (#planningBarre), la meme en normal et en
+// agrandi ; la liste garde le sien :
 //   [A] le titre, le sous-titre, la date, les actions et la bascule ne se
 //       recouvrent pas, et rien ne sort de l en-tete ;
-//   [B] le titre se lit en entier : ni coupe, ni cache par un voisin. Sur le
-//       grand tableau (« Toutes », 2026-11-02), le titre et la legende sont masques
-//       EXPRES en plein ecran (clip-path, 1 px : ils restent pour un lecteur
+//   [B] le titre se lit en entier : ni coupe, ni cache par un voisin. Sur la barre,
+//       le titre est masque EXPRES (clip-path, 1 px : il reste pour un lecteur
 //       d ecran) : la date et la bascule disent ou l on est, et ce qui ne se voit
-//       pas ne recouvre rien. Partout ailleurs, un titre masque rougit ; rendu
-//       visible sur le grand tableau, il redevient mesure comme les autres ;
+//       pas ne recouvre rien. Sur la liste, un titre masque rougit ; rendu visible
+//       sur la barre, il redevient mesure comme les autres ;
 //   [C] la bascule tient dans l ecran, ses trois onglets entiers ;
 //   [K] contre-preuves : chaque regle retiree fait rougir sa lettre.
 'use strict';
@@ -95,8 +96,11 @@ async function installerServeur(page, dossiers) {
 
 // Mesure dans la page : les cinq zones de l en-tete du plein ecran ouvert.
 function mesurer() {
-  const tete = [...document.querySelectorAll(':is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head)')].find((t) => t.getBoundingClientRect().width > 0);
-  if (!tete) return null;
+  const liste = document.querySelector('.table-box.expanded:not(.hidden) .table-head');
+  const barre = document.getElementById('planningBarre');
+  const tete = liste && liste.getBoundingClientRect().width > 0 ? liste : barre;
+  if (!tete || !tete.getBoundingClientRect().width) return null;
+  const surBarre = tete === barre;
   const texteDe = (el) => {
     const x = document.createRange();
     x.selectNodeContents(el);
@@ -108,11 +112,13 @@ function mesurer() {
   // d ecran, il ne se voit pas : il ne recouvre rien. (son texte deborde de cette boite,
   // une mesure du texte le croirait a l ecran)
   const masque = (e) => { const r = e.getBoundingClientRect(); return getComputedStyle(e).clipPath !== 'none' && r.width <= 1 && r.height <= 1; };
-  const h2 = tete.querySelector('h2');
-  const nom = h2.querySelector('[id$="TitleText"]') || [...h2.children].find((e) => e.tagName === 'SPAN') || h2;
+  const h2 = tete.querySelector('h1, h2');
+  const nom = h2.querySelector('[id$="TitleText"]') || (surBarre ? h2 : [...h2.children].find((e) => e.tagName === 'SPAN')) || h2;
   const sous = tete.querySelector('.planning-sub');
   const titreMasque = masque(h2);
-  const zones = { titre: titreMasque ? null : texteDe(h2), sous: sous && !masque(sous) ? texteDe(sous) : null, date: boite('.pec-date'), actions: boite(':scope > :is(.planning-actions, .table-actions)'), bascule: boite(':scope > .fs-switch') };
+  const zones = surBarre
+    ? { titre: titreMasque ? null : texteDe(h2), date: boite('.pb-date'), bascule: boite('.pb-seg'), recherche: boite('.gf-recherche'), reserver: boite('.pb-res'), agrandir: boite('#planningAgrandir'), plus: boite('#planningPlus'), chiffres: boite('.pb-bande') }
+    : { titre: titreMasque ? null : texteDe(h2), sous: sous && !masque(sous) ? texteDe(sous) : null, date: boite('.pec-date'), actions: boite(':scope > :is(.planning-actions, .table-actions)'), bascule: boite(':scope > .fs-switch') };
   const noms = Object.keys(zones).filter((k) => zones[k]);
   const recouvre = [];
   for (let i = 0; i < noms.length; i += 1) for (let j = i + 1; j < noms.length; j += 1) {
@@ -123,18 +129,20 @@ function mesurer() {
     if (dx > 0.5 && dy > 0.5) recouvre.push(`${noms[i]}/${noms[j]} ${Math.round(dx)}px`);
   }
   const bord = tete.getBoundingClientRect();
-  const sort = [...tete.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > bord.right + 1 || r.left < bord.left - 1); })
+  // (au telephone, les chiffres defilent dans leur bande : ce qu ils ont de plus se touche)
+  const dansUneBande = (e) => { for (let n = e.parentElement; n && n !== tete; n = n.parentElement) if (/auto|scroll/.test(getComputedStyle(n).overflowX)) return true; return false; };
+  const sort = [...tete.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > bord.right + 1 || r.left < bord.left - 1) && !dansUneBande(e) && !(titreMasque && h2.contains(e)); })
     .slice(0, 3).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).split(' ')[0]}`);
   // Le titre en entier : pas de coupe, et le point au bout de son texte est
   // bien a lui (aucun voisin peint par-dessus).
   const t = texteDe(nom);
   const auBout = t ? document.elementFromPoint(Math.min(t.right - 2, innerWidth - 1), (t.top + t.bottom) / 2) : null;
-  const onglets = [...tete.querySelectorAll('.fs-switch-btn')].map((b) => b.getBoundingClientRect());
-  const date = tete.querySelector('.pec-date');
+  const onglets = [...tete.querySelectorAll(surBarre ? '.pb-seg__b' : '.fs-switch-btn')].map((b) => b.getBoundingClientRect());
+  const date = tete.querySelector(surBarre ? '.pb-date' : '.pec-date');
   return {
     titreMasque,
     // Ce qui dit ou l on est quand le titre se tait.
-    repere: { date: Boolean(zones.date) && Boolean(date.textContent.trim()), onglet: (tete.querySelector('.fs-switch-btn[aria-selected="true"]') || { textContent: '' }).textContent.replace(/\s+/g, ' ').trim() },
+    repere: { date: Boolean(zones.date) && Boolean(date.textContent.trim()), onglet: (tete.querySelector('.fs-switch-btn[aria-selected="true"], .pb-seg__b[aria-selected="true"]') || { textContent: '' }).textContent.replace(/\s+/g, ' ').trim() },
     recouvre,
     sort,
     deborde: Math.max(0, tete.scrollWidth - tete.clientWidth),
@@ -190,17 +198,17 @@ async function scenarios(browser, mutation = null) {
           mesurees += 1;
           titres.add(m.titre);
           if (m.recouvre.length || m.sort.length || m.deborde > 1) rates.A.push(`${L}: ${[...m.recouvre, ...m.sort.map((s) => `${s} sort`), m.deborde > 1 ? `deborde ${m.deborde}` : ''].filter(Boolean).join(', ')}`);
-          if (m.titreMasque) { if (vue !== 'all' || !m.repere.date || !/Toutes/.test(m.repere.onglet)) rates.B.push(`${L}: titre masque, repere ${JSON.stringify(m.repere)}`); }
+          if (m.titreMasque) { if (vue === 'liste' || !m.repere.date || !{ bowling: /Bowling/, laser: /Laser/, all: /Complet/ }[vue].test(m.repere.onglet)) rates.B.push(`${L}: titre masque, repere ${JSON.stringify(m.repere)}`); }
           else if (m.titreCoupe || m.titreCache) rates.B.push(`${L}: « ${m.titre} »${m.titreCoupe ? ' coupe' : ''}${m.titreCache ? ' cache' : ''}`);
           if (m.onglets !== 3 || m.ongletsDehors) rates.C.push(`${L}: ${m.onglets} onglets, ${m.ongletsDehors} dehors`);
         }
         const ecran = tactile ? 'de 360 a 1199 px' : 'de 1200 a 1920 px';
         // Le prerequis : chaque largeur a mesure l en-tete du BON plein ecran.
-        const attendu = { bowling: /^Planning \d+ pistes$/, laser: /^Planning Laser Game$/, all: /^Planning global$/, liste: /^Toutes les réservations$/ }[vue];
+        const attendu = { bowling: /^Planning du jour/, laser: /^Planning du jour/, all: /^Planning du jour/, liste: /^Toutes les réservations$/ }[vue];
         ok(mesurees === LARGEURS.filter((l) => (tactile ? l < 1200 : l >= 1200)).length && titres.size === 1 && attendu.test([...titres][0]),
           `[A] ${vue} ${ecran} : le plein ecran est ouvert a chaque largeur`, `${mesurees} mesures, ${[...titres].join(' / ')}`);
         ok(rates.A.length === 0, `[A] ${vue} ${ecran} : titre, date, actions et bascule ne se recouvrent pas, rien ne sort`, rates.A.slice(0, 4).join(' ; '));
-        ok(rates.B.length === 0, `[B] ${vue} ${ecran} : ${vue === 'all' ? 'le titre masque expres, la date et la bascule disent ou l on est' : 'le titre se lit en entier'}`, rates.B.slice(0, 4).join(' ; '));
+        ok(rates.B.length === 0, `[B] ${vue} ${ecran} : ${vue === 'liste' ? 'le titre se lit en entier' : 'le titre masque expres, la date et la bascule disent ou l on est'}`, rates.B.slice(0, 4).join(' ; '));
         ok(rates.C.length === 0, `[C] ${vue} ${ecran} : la bascule tient dans l ecran`, rates.C.slice(0, 4).join(' ; '));
       }
       ok(erreurs.length === 0, `[A] ${tactile ? 'tablette' : 'ordinateur'} : zero erreur JS ni console`, erreurs.slice(0, 3).join(' | '));
@@ -221,18 +229,18 @@ const MUTATIONS = [
     de: `  ${S} .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }\n}\n@media (max-width: 768px) {`,
     vers: '}\n@media (max-width: 768px) {' },
   // Les mots longs de la bascule au telephone : elle sort de l ecran.
-  { nom: 'mots', lettre: '[C] bowling de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
+  { nom: 'mots', lettre: '[C] liste de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
     de: `@media (max-width: 600px) {\n  ${S} .fs-mot { display: none; }\n}`,
     vers: '' },
-  // Le titre du grand tableau redevient visible sans sa place : une vraie collision avec
-  // la date, que la sonde doit voir (ce n est plus une boite masquee).
+  // Le titre de la barre redevient visible sans sa place : une vraie collision avec
+  // la bascule, que la sonde doit voir (ce n est plus une boite masquee).
   { nom: 'titre-sans-place', lettre: '[A] all de 360 a 1199 px', fichier: 'assets/pinlane-planning-global.css',
-    de: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
-    vers: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > h2 { position: absolute; white-space: nowrap; }' },
+    de: '.pb-titre { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
+    vers: '.pb-titre { position: absolute; margin: 0; white-space: nowrap; }' },
   // Le titre se tait et la date disparait : plus rien ne dit ou l on est.
   { nom: 'date-absente', lettre: '[B] all de 360 a 1199 px', fichier: 'assets/pinlane-planning-global.css',
-    de: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 1; grid-row: 1; }',
-    vers: '.global-planning-box.expanded:not(.hidden) .planning-title-stack > .pec-date { display: none; }' },
+    de: '.pb .pb-date { flex: none; height: var(--pb-l1);',
+    vers: '.pb .pb-date { display: none; flex: none; height: var(--pb-l1);' },
 ];
 
 async function main() {

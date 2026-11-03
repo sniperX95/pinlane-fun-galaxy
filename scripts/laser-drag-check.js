@@ -156,7 +156,8 @@ async function main() {
 
     // --- A : bowling normal, drop au centre, page immobile ---
     console.log('\n[A] Bowling normal : drop ne fait pas remonter la page');
-    await setPageTop(400);
+    // (la boite du planning tient sous la barre collee : a 400, elle sortirait de l ecran)
+    await setPageTop(120);
     const posA = await page.evaluate(() => {
       // ON CONSTRUIT LA SITUATION AU LIEU DE L ESPERER. Le produit ne retient
       // comme cible de depot que `.slot-cell.clickable`, et le planning a son
@@ -215,7 +216,7 @@ async function main() {
     // --- B : bowling, curseur près du bord haut, page immobile ---
     console.log('\n[B] Bowling : curseur au bord haut ne happe pas la page');
     await page.evaluate(() => { state.reservations = window.__QA_BUILD__(state.currentDate); save(); renderStaff(); });
-    await page.waitForTimeout(150); await setPageTop(500);
+    await page.waitForTimeout(150); await setPageTop(120);
     const beforeB = await pageTop();
     const posB = await page.evaluate(() => { const el = document.querySelector('.booking[data-booking-res-id="9004"]') || document.querySelector('.booking'); const b = el.getBoundingClientRect(); return { x: b.x + b.width/2, y: b.y + b.height/2 }; });
     await page.mouse.move(posB.x, posB.y); await page.mouse.down();
@@ -277,6 +278,8 @@ async function main() {
       ok(await page.evaluate(() => state.reservations.some((x) => x.id === 9020)),
         `montage : la reservation de 30 min est bien en place${reposee ? ' (reposee apres un rafraichissement)' : ''}`);
       const posF = await page.evaluate((piste) => {
+        // (la page en haut : le toast tombe sur la boite du planning)
+        (document.scrollingElement || document.documentElement).scrollTop = 0;
         toast('Bowling deplace a 16:00 piste 5');
         const toastEl = document.getElementById('toast');
         const carte = document.querySelector('.booking[data-booking-res-id="9020"]');
@@ -375,8 +378,10 @@ async function main() {
       if (!el || !cadre) return { raison: `${selecteur} : ${el ? 'aucun cadre de defilement' : 'absent'}` };
       const r = cadre.getBoundingClientRect();
       const file = document.querySelector('#laserPlanningGridWrap .lp-file');
-      const haut = Math.max(0, r.top) + 96 + 12;
-      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+      // (la bande de bord fait defiler sous le pointeur ; une journee qui tient n en a pas)
+      const bord = cadre.scrollHeight > cadre.clientHeight + 1 ? 96 + 12 : 0;
+      const haut = Math.max(0, r.top) + bord;
+      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - bord;
       for (let essai = 0; essai < 12; essai += 1) {
         const b = el.getBoundingClientRect();
         const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
@@ -402,9 +407,15 @@ async function main() {
     const fini = () => page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse && !lpEtat.geste, null, { timeout: 8000 }).then(() => true, () => false);
 
     console.log('\n[C] Laser plein écran : drop ne remet pas le planning en haut');
-    // (depuis le 2026-11-02 la journee tient entiere a l ecran : une cale fait
-    // defiler la page, sinon un retour en haut ne se verrait pas)
-    await page.evaluate(() => { const cale = document.createElement('div'); cale.id = 'caleDefilement'; cale.style.height = '240px'; document.body.append(cale); });
+    // (la journee se tasse pour tenir a l ecran, et agrandi la page entiere est figee : le
+    // cadre qui defile n existe que sur un petit ecran, ou les departs passent en une
+    // colonne. C est la qu un retour en haut se voit)
+    const taille = async (width, height) => {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(() => { renderStaff(); });
+      await page.waitForTimeout(350);
+    };
+    await taille(1000, 440);
     const montageC = await page.evaluate(() => {
       const cadre = lpDefileur();
       return { cadre: cadre ? cadre.id || cadre.className || cadre.tagName : null, defilable: Boolean(cadre) && cadre.scrollHeight > cadre.clientHeight + 1, course: cadre ? cadre.scrollHeight - cadre.clientHeight : 0, departs: document.querySelectorAll('#laserPlanningGridWrap .lp-dep').length, groupe: Boolean(document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]')) };
@@ -426,13 +437,12 @@ async function main() {
         const afterC = await cadreLaser();
         const movedC = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return w.length ? w[0].start : null; });
         // Descendu de plus que la tolerance avant le lacher, sinon un retour en
-        // haut passerait inapercu (la journee tient a l ecran : la page ne
-        // defile plus que d une trentaine de pixels en plein ecran).
+        // haut passerait inapercu.
         ok(beforeC !== null && beforeC > 20 && afterC !== null && Math.abs(afterC - beforeC) <= 20, `planning immobile pendant le drop (${beforeC} -> ${afterC}, course ${montageC.course})`);
         ok(posee && movedC !== null && Math.abs(Number(movedC) - Number(tC)) <= 0.01, `la partie s'est bien déplacée (${tC}, lu ${movedC})`);
       }
     }
-    await page.evaluate(() => document.getElementById('caleDefilement').remove());
+    await taille(1100, 680);
 
     console.log('\n[D] Laser : glisser un groupe placé vers la file « À placer » = dé-planifier');
     const srcD = await amener('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');

@@ -119,18 +119,14 @@ const LIRE_PRODUIT = `(() => {
     const lab = el.querySelector('.fgx-menu-label, .label, span:not(.badge)');
     return { cle, libelle: txt(lab) || txt(el).split('  ')[0] };
   }) : [];
-  const kpis = [].map.call(document.querySelectorAll('#staffView .kpi'), (k) => {
-    const l = k.querySelector('.kpi-label, .label, .k-lab');
-    return txt(l) || txt(k).split(/\\d/)[0];
-  });
-  const onglets = [].map.call(document.querySelectorAll('#staffView .staff-resource-tab'), (t) => txt(t.querySelector('.main')));
+  const kpis = [].map.call(document.querySelectorAll('#planningBande .pb-k .gf-c__l'), txt);
+  const onglets = [].map.call(document.querySelectorAll('#planningBarre .pb-seg__b'), (t) => txt(t.firstChild));
   const filtres = [].map.call(document.querySelectorAll('#staffView .status-chip'), (c) => {
     const clone = c.cloneNode(true);
     [].forEach.call(clone.querySelectorAll('span'), (s) => s.remove());
     return (clone.textContent || '').replace(/\\s+/g, ' ').trim();
   });
-  const titre = txt(document.querySelector('#staffView .staff-head h1'))
-    || txt(document.querySelector('#staffView h1'));
+  const titre = txt((document.querySelector('#planningBarre h1') || {}).firstChild);
   return { entrees, kpis, onglets, filtres, titre };
 })()`;
 

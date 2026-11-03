@@ -248,7 +248,8 @@ const READ_STATE = `(() => ({
     const el = document.getElementById(id);
     if (!el) return { id, present: false };
     const r = el.getBoundingClientRect();
-    const sub = el.querySelector('.sub');
+    // (ce que l onglet disait dessous est dans sa bulle : la barre n a plus de sous-titre)
+    const sub = { textContent: el.title };
     return { id, present: true, visible: r.width > 0 && r.height > 0, sub: sub ? sub.textContent.trim() : '' };
   }),
   // L'ECRAN Tarifs & formules, mesure sur les CARTES REELLEMENT PEINTES.
@@ -268,13 +269,14 @@ const blockCalls = (calls, centerId) => calls.filter(c => c.action === 'listAvai
 
 // La page Tarifs & formules ouverte par le VRAI chemin : le clic du menu, pas
 // un appel de fonction interne. Le groupe parent est deplie d'abord, sinon le
-// sous-item existe dans le DOM sans etre atteignable.
+// sous-item existe dans le DOM sans etre atteignable. (sur un planning, le menu
+// est replie : le sous-item reste dans le DOM, masque, et se touche pareil)
 async function openPricingPage(page) {
   await page.evaluate(() => {
     if (typeof setMenuGroupOpen === 'function') setMenuGroupOpen('activities', true);
     if (typeof renderStaffMenu === 'function') renderStaffMenu();
   });
-  await page.waitForSelector('[data-fgx-menu-key="prices"]', { timeout: 10000 });
+  await page.waitForSelector('[data-fgx-menu-key="prices"]', { state: 'attached', timeout: 10000 });
   // Clic DOM sur le bouton exact : un clic par coordonnees atterrissait sur le
   // voisin quand le groupe venait d'etre deplie (mesure : la page ouverte etait
   // « users »). C'est le VRAI listener delegue du menu qui traite l'evenement,
@@ -453,7 +455,7 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       record('le resume du centre n annonce aucune arme laser', Boolean(metaB) && !/laser/i.test(metaB), metaB || 'vide');
       const tabsB = Object.fromEntries(onB.resourceTabs.map(t => [t.id, t]));
       record(
-        'aucun onglet Planning Laser Game dans la page',
+        'aucun onglet Laser dans la page',
         tabsB.staffTabLaser && tabsB.staffTabLaser.visible === false,
         tabsB.staffTabLaser ? ('visible=' + tabsB.staffTabLaser.visible) : 'absent',
       );
@@ -490,7 +492,7 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       const metaA = await centerMetaInPopover(page, CENTER_A.id);
       const tabsA = Object.fromEntries(onA.resourceTabs.map(t => [t.id, t]));
       record(
-        'l onglet Planning Laser Game est de retour, avec SES armes',
+        'l onglet Laser est de retour, avec SES armes',
         Boolean(tabsA.staffTabLaser && tabsA.staffTabLaser.visible && /arme/.test(tabsA.staffTabLaser.sub)),
         tabsA.staffTabLaser ? (tabsA.staffTabLaser.sub || 'sans sous-titre') : 'absent',
       );

@@ -311,6 +311,14 @@ async function tablette(browser, seulement) {
       // ne doit pas la reconstruire pour autant. Un dossier annule quitte la
       // liste : son fantome s en va, le compteur de la section descend. Le
       // montage verifie que le motion a bien ecrit tout ca avant ce rendu.
+      // (la boite du planning a la hauteur de l ecran : la liste est dessous, hors de
+      // l ecran, et une liste hors de l ecran se peint sans motion. On la regarde, puis
+      // une mutation du document lance la passe du motion, qui releve les places de la
+      // liste a l ecran : sans elles, une carte partie n a pas de fantome)
+      await page.evaluate(() => document.getElementById('staffTableBox').scrollIntoView({ block: 'start' }));
+      await page.waitForFunction(() => listeVisible && !listeEnAttente, null, { timeout: 4000 }).catch(() => null);
+      await page.evaluate(() => { const i = document.createElement('i'); document.body.appendChild(i); i.remove(); });
+      await repos(page);
       const id = await page.evaluate(() => state.reservations.find((r) => r.type === 'bowling' && r.status === 'confirmed').id);
       await page.evaluate(() => {
         const liste = document.getElementById('resList');
@@ -333,6 +341,8 @@ async function tablette(browser, seulement) {
       await repos(page);
       const cascade = await reconstructions(page, () => { renderStaffData(); renderStaff(); });
       verifier('A', lignes >= CASCADE_PLEINE && cascade.resList === 0, 'une cascade rejouee (pl-in, delais) ne fait pas reconstruire la liste au rendu identique suivant', { lignes, ...cascade });
+      await page.evaluate(() => { (document.scrollingElement || document.documentElement).scrollTop = 0; });
+      await repos(page);
     }
     if (veut('B')) {
       const id = await page.evaluate(() => state.reservations.find((r) => r.type === 'bowling' && r.status === 'confirmed').id);
@@ -374,6 +384,17 @@ async function tablette(browser, seulement) {
       // pour UN changement) etait le minimum possible : un accident isole le
       // faisait rougir. La somme sur cinq absorbe deux accidents et rougit des
       // que chaque rendu repaie ses lectures.
+      // 2026-11-03, la barre commune (plus d en-tete ni de tuiles a reecrire entre
+      // deux lectures) : sain, trois par changement, 15 sur six passes ; position relue
+      // au milieu du rendu, quatre par changement, 20. PLAFOND : dix-sept, trois par
+      // changement et deux accidents (vingt ne voyait plus la relecture).
+      // (la boite du planning a la hauteur de l ecran : la liste est dessous, et hors de
+      // l ecran elle attend pour se peindre, sans lire ses positions. Les cinq changements
+      // se mesurent avec le bas du planning et le haut de la liste a l ecran, les deux
+      // surfaces que le changement reecrit)
+      await page.evaluate(() => { const se = document.scrollingElement || document.documentElement; se.scrollTop = document.getElementById('staffTableBox').getBoundingClientRect().top + se.scrollTop - innerHeight / 2; });
+      await page.waitForFunction(() => listeVisible && !listeEnAttente, null, { timeout: 4000 }).catch(() => null);
+      await repos(page);
       const ids = await page.evaluate(() => state.reservations.filter((r) => r.type === 'bowling' && r.status === 'confirmed').slice(0, 5).map((r) => r.id));
       const parChangement = [];
       for (const id of ids) {
@@ -385,7 +406,9 @@ async function tablette(browser, seulement) {
         await repos(page);
       }
       const total = parChangement.reduce((s, x) => s + x, 0);
-      verifier('D', ids.length === 5 && total <= 4 * ids.length, 'cinq changements d etat se rendent en vingt mises en page au plus (quatre en moyenne)', `${total} mise(s) en page pour ${ids.length} changements (${parChangement.join(', ')}), plafond ${4 * ids.length}`);
+      verifier('D', ids.length === 5 && total <= 3 * ids.length + 2, 'cinq changements d etat se rendent en dix-sept mises en page au plus (trois chacun, deux accidents)', `${total} mise(s) en page pour ${ids.length} changements (${parChangement.join(', ')}), plafond ${3 * ids.length + 2}`);
+      await page.evaluate(() => { (document.scrollingElement || document.documentElement).scrollTop = 0; });
+      await repos(page);
     }
     if (veut('E')) {
       const r = await page.evaluate(() => { state.staffResourceView = 'all'; renderStaff(); return document.querySelectorAll('#resList [data-pl-stagger] > *').length; });

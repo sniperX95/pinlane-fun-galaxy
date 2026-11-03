@@ -25,12 +25,12 @@
 //   1. sur CHAQUE entree hors Planning, les blocs de la page Planning ont une
 //      boite nulle et un display none : rien ne depasse, et le grand tableau a
 //      rendu la page (body.gf-large est tombe) ;
-//   2. sur Bowling et Laser, ils sont VISIBLES : le gate ne peut pas passer au
-//      vert en masquant tout, ce qui serait le defaut symetrique. Sur « Toutes »
-//      (2026-11-02), le bandeau .gf-tete REMPLACE le bandeau KPI et les onglets :
-//      lui visible avec ses compteurs, eux caches, la liste du jour dessous ;
+//   2. sur Bowling, Laser et Complet, ils sont VISIBLES : le gate ne peut pas passer
+//      au vert en masquant tout, ce qui serait le defaut symetrique. La barre commune
+//      (2026-11-03) est a l ecran sur les trois, ses chiffres sur sa ligne 2, la liste
+//      du jour dessous ;
 //   3. contre-epreuves par MUTATION : on ressert le CSS sans sa garde
-//      `:not(.hidden)`, puis sans la regle qui fait ceder la place au bandeau, et
+//      `:not(.hidden)`, puis sans la regle qui cache la barre hors des plannings, et
 //      le gate doit rougir. Sans ca, « 0 defaut » peut vouloir dire « la sonde ne
 //      regarde rien ».
 //
@@ -85,11 +85,10 @@ const BLOCS_PLANNING = {
   'liste du jour': '#staffTableBox',
   'grille bowling': '#planningBox',
   'grille laser': '#laserPlanningBox',
-  'bandeau KPI': '#staffView .kpi-grid',
-  'onglets de ressource': '#staffView .staff-resource-tabs',
-  'en-tete de journee': '#staffView .staff-head',
-  'planning global': '#globalPlanningBox',
-  'bandeau du grand tableau': '#globalPlanningBox .gf-tete',
+  'barre des plannings': '#planningBarre',
+  'bascule': '#planningBarre .pb-seg',
+  'chiffres': '#planningBande',
+  'planning complet': '#globalPlanningBox',
 };
 
 // Les trois entrees de menu QUI SONT la page Planning (Planning > Bowling,
@@ -210,7 +209,7 @@ async function balayerLeMenu(page, garder = () => true) {
           display: cs.display,
         };
       }
-      return { blocs: out, compteurs: document.querySelectorAll('#globalPlanningBox .gf-tete [data-gf-filtre]').length, large: document.body.classList.contains('gf-large') };
+      return { blocs: out, compteurs: document.querySelectorAll('#planningBande [data-gf-filtre]').length, large: document.body.classList.contains('gf-large') };
     }, BLOCS_PLANNING);
     releve.push({ ...entree, blocs, compteurs, large });
   }
@@ -230,8 +229,8 @@ function cssSansLaGarde() {
   return mute;
 }
 
-// Sur « Toutes », le titre, le bandeau KPI et les onglets cedent la place au bandeau.
-const SANS_CEDER = { fichier: CSS_GRAND_TABLEAU, de: 'body.gf-large #staffView :is(.staff-head-titre, .kpi-grid, .staff-resource-tabs) { display: none !important; }', vers: '' };
+// La barre des plannings ne se peint que sur eux : pbSyncBarre et le masquage de page.
+const SANS_CEDER = { fichier: CSS_GRAND_TABLEAU, de: '.pb.hidden { display: none; }\n', vers: '' };
 
 async function main() {
   const server = await serveStatic();
@@ -265,17 +264,16 @@ async function main() {
     //    tout serait le defaut symetrique, et il ne se verrait pas.
     for (const page2 of surPlanning) {
       ok(page2.blocs['liste du jour'].visible, `« ${page2.libelle} » affiche bien la liste du jour`, page2.blocs['liste du jour'].boite);
+      // La meme barre sur les trois : la bascule, la date, les chiffres.
+      ok(page2.large && page2.blocs['barre des plannings'].visible, `« ${page2.libelle} » a la barre des plannings`, page2.blocs['barre des plannings'].boite);
+      ok(page2.blocs.bascule.visible, `« ${page2.libelle} » affiche la bascule`, page2.blocs.bascule.boite);
+      ok(page2.blocs.chiffres.visible, `« ${page2.libelle} » affiche ses chiffres`, page2.blocs.chiffres.boite);
       if (page2.cle === 'complete') {
-        // Sur le grand tableau, le bandeau remplace le bandeau KPI et les onglets : son
-        // heure, ses quatre compteurs, l etat du centre tiennent en une rangee.
-        ok(page2.large && page2.blocs['planning global'].visible, `« ${page2.libelle} » est bien le grand tableau`, page2.blocs['planning global'].boite);
-        ok(page2.blocs['bandeau du grand tableau'].visible && page2.compteurs === 4, `« ${page2.libelle} » affiche son bandeau et ses quatre compteurs`, `${page2.blocs['bandeau du grand tableau'].boite}, ${page2.compteurs} compteurs`);
-        ok(!page2.blocs['bandeau KPI'].visible, `« ${page2.libelle} » : le bandeau KPI lui cede la place`, page2.blocs['bandeau KPI'].boite);
-        ok(!page2.blocs['onglets de ressource'].visible, `« ${page2.libelle} » : les onglets de ressource lui cedent la place`, page2.blocs['onglets de ressource'].boite);
+        ok(page2.blocs['planning complet'].visible, `« ${page2.libelle} » est bien le grand tableau`, page2.blocs['planning complet'].boite);
+        ok(page2.compteurs === 4, `« ${page2.libelle} » affiche ses quatre compteurs`, `${page2.compteurs} compteurs`);
       } else {
-        ok(!page2.large && !page2.blocs['bandeau du grand tableau'].visible, `« ${page2.libelle} » n a pas le bandeau du grand tableau`, page2.blocs['bandeau du grand tableau'].boite);
-        ok(page2.blocs['bandeau KPI'].visible, `« ${page2.libelle} » affiche bien le bandeau KPI`, page2.blocs['bandeau KPI'].boite);
-        ok(page2.blocs['onglets de ressource'].visible, `« ${page2.libelle} » affiche bien les onglets de ressource`, page2.blocs['onglets de ressource'].boite);
+        ok(!page2.blocs['planning complet'].visible, `« ${page2.libelle} » n a pas le grand tableau`, page2.blocs['planning complet'].boite);
+        ok(page2.compteurs === 0, `« ${page2.libelle} » n a pas les compteurs du Complet`, `${page2.compteurs} compteurs`);
       }
     }
     const bowling = surPlanning.find((r) => r.cle === 'bowling');
@@ -306,19 +304,19 @@ async function main() {
       await pageMutee.close();
     }
 
-    // Le grand tableau : sans la regle qui fait ceder la place, le bandeau KPI revient
-    // sur « Toutes ». (une ancre, une seule fois : sinon la sonde ne prouve rien)
-    console.log('\n[3] CONTRE-EPREUVE PAR MUTATION : le grand tableau sans la regle qui fait ceder la place\n');
+    // La barre : sans la regle qui la cache, elle se peint hors des plannings. (une ancre,
+    // une seule fois : sinon la sonde ne prouve rien)
+    console.log('\n[3] CONTRE-EPREUVE PAR MUTATION : la barre sans la regle qui la cache hors des plannings\n');
     const sourceGf = fs.readFileSync(path.join(ROOT, SANS_CEDER.fichier), 'utf8').replace(/\r\n/g, '\n');
-    if (ok(sourceGf.split(SANS_CEDER.de).length === 2, 'l ancre de la regle du grand tableau existe une fois et une seule')) {
+    if (ok(sourceGf.split(SANS_CEDER.de).length === 2, 'l ancre de la regle de la barre existe une fois et une seule')) {
       overrides.set(SANS_CEDER.fichier, sourceGf.replace(SANS_CEDER.de, () => SANS_CEDER.vers));
       const pageMutee = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
       await installMock(pageMutee, JEU);
       await ouvrirConsole(pageMutee);
-      const toutes = (await balayerLeMenu(pageMutee, (e) => e.cle === 'complete'))[0];
+      const hors = await balayerLeMenu(pageMutee, (e) => e.cle === 'reservations');
       overrides.delete(SANS_CEDER.fichier);
       await pageMutee.close();
-      ok(Boolean(toutes) && toutes.large && toutes.blocs['bandeau KPI'].visible, 'la sonde REGARDE vraiment : sans la regle, le bandeau KPI revient sur « Toutes »', toutes ? toutes.blocs['bandeau KPI'].boite : 'Toutes introuvable');
+      ok(hors.length === 1 && hors[0].blocs['barre des plannings'].visible, 'la sonde REGARDE vraiment : sans la regle, la barre fuit hors des plannings', hors.length ? hors[0].blocs['barre des plannings'].boite : 'entree introuvable');
     }
   } finally {
     await browser.close();

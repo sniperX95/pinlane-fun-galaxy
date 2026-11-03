@@ -133,6 +133,8 @@ async function bootStaff(page, cacheKey) {
 
 async function switchTab(page, view) {
   await page.evaluate((v) => { setStaffResourceView(v); }, view);
+  // (la liste est sous le planning, hors de l ecran : elle s ecrit apres la bascule)
+  await page.waitForFunction(() => !listeEnAttente, null, { timeout: 4000 }).catch(() => null);
   await page.waitForTimeout(250);
 }
 
@@ -177,11 +179,11 @@ async function main() {
     for (const view of ['bowling', 'laser', 'all']) {
       await switchTab(page, view);
       const tab = await page.evaluate(() => ({
-        sub: document.getElementById('staffAllSub')?.textContent || '',
+        bulle: document.getElementById('staffTabAll')?.title || '',
         alert: !!document.getElementById('staffTabAll')?.classList.contains('has-alert'),
         count: document.getElementById('staffAllCount')?.textContent || '',
       }));
-      ok(tab.sub === 'Le jour au complet', `onglet ${view} : le sous-titre ne parle plus de hors planning (obtenu « ${tab.sub} »)`);
+      ok(tab.bulle === 'Planning complet', `onglet ${view} : la bulle ne parle plus de hors planning (obtenu « ${tab.bulle} »)`);
       ok(tab.alert === false, `onglet ${view} : l onglet ne porte plus d alerte`);
       ok(tab.count === '4', `onglet ${view} : le compteur reste le total du jour (obtenu ${tab.count})`);
     }
@@ -267,24 +269,24 @@ async function main() {
       ok(false, `ancre de mutation introuvable ou ambigue (${occurrences})`);
     } else {
       appOverride = original.replace(anchor, toFileEol('  return false;'));
-      let mutated = { sub: '', off: true };
+      let mutated = { bulle: '', off: true };
       try {
         await bootStaff(page, 'mutation');
         mutated = await page.evaluate(() => ({
-          sub: document.getElementById('staffAllSub')?.textContent || '',
+          bulle: document.getElementById('staffTabAll')?.title || '',
           off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
         }));
       } finally {
         appOverride = null;
       }
-      ok(mutated.off === false && mutated.sub === 'Le jour au complet',
-        `regle neutralisee : plus de zone hors planning, sous-titre « ${mutated.sub} » -> le gate ROUGIRAIT`);
+      ok(mutated.off === false && mutated.bulle === 'Planning complet',
+        `regle neutralisee : plus de zone hors planning, bulle « ${mutated.bulle} » -> le gate ROUGIRAIT`);
       await bootStaff(page, 'restore');
       const restored = await page.evaluate(() => ({
-        sub: document.getElementById('staffAllSub')?.textContent || '',
+        bulle: document.getElementById('staffTabAll')?.title || '',
         off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
       }));
-      ok(restored.off === false && restored.sub === 'Le jour au complet', 'regle retablie : toujours ni marque ni alerte, l affichage ne depend plus de la regle');
+      ok(restored.off === false && restored.bulle === 'Planning complet', 'regle retablie : toujours ni marque ni alerte, l affichage ne depend plus de la regle');
     }
 
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' : ' + errs.slice(0, 3).join(' | ') : ''}`);

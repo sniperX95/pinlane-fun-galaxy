@@ -684,13 +684,13 @@ window.__PLANNING_CONTRAST__ = function () {
     '#planningGridWrap .lane-header .pl',
     '#planningGridWrap .lane-header .num',
     '#planningGridWrap .current-badge',
-    '.staff-resource-tab .main',
-    '.staff-resource-tab .sub',
-    '.staff-resource-tab.active .main',
-    '.staff-resource-tab.active .sub',
-    '.staff-resource-tab > span:last-child:not(:first-child)',
-    '.staff-resource-tab.active > span:last-child:not(:first-child)',
-    '.staff-head .sub',
+    '.pb-seg__b',
+    '.pb-seg__b.active',
+    '.pb-seg__b span',
+    '.pb-seg__b.active span',
+    '.pb-bande .gf-c__l',
+    '.pb-bande .gf-c__v',
+    '.pb-bande .pb-leg',
   ];
   const rows = [];
   SEL.forEach((sel) => {

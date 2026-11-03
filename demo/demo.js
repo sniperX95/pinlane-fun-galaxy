@@ -270,7 +270,7 @@
       + '<button type="button" aria-label="Jour suivant">' + svg('droite', 'd-x') + '</button>'
       + '</div>'
       + '<button type="button" class="d-btn">Aujourd’hui</button>'
-      + '<button type="button" class="d-btn d-btn-fort">+ Réservation rapide</button>'
+      + '<button type="button" class="d-btn d-btn-fort">+ Réservation</button>'
       + '</div></div>';
 
     h += '<div class="d-kpis" data-d-bloc="kpi">';

@@ -98,32 +98,65 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await trigger.scrollIntoViewIfNeeded(); await trigger.focus();
         await page.evaluate(() => { window.__trigger = document.activeElement; });
         await page.keyboard.press('Enter');
+        // La croix de la fenetre garde son id d une version a l autre (#rvFermer) ;
+        // sa classe a change avec Les seances (2026-11-03).
         const ax = await page.evaluate(() => {
           const modal = document.querySelector('.qb-modal');
           return { role: modal?.getAttribute('role'), name: document.getElementById(modal?.getAttribute('aria-labelledby'))?.textContent,
-            inside: modal?.contains(document.activeElement), close: modal?.querySelector('.close-btn, .rv-fermer')?.getAttribute('aria-label'),
+            inside: modal?.contains(document.activeElement), close: modal?.querySelector('#rvFermer')?.getAttribute('aria-label'),
             fields: [...modal.querySelectorAll('input,textarea,select')].map(el => ({ id: el.id, named: !!(el.labels?.length || el.getAttribute('aria-label')) })) };
         });
         ok(ax.role === 'dialog' && ax.name && ax.inside && ax.close && ax.fields.every(f => f.named), 'F1-semantics-' + suffix, ax);
         ok((await contained(page, '.qb-modal')).length === 0, 'F1-trap-' + suffix, '30 mixed Tab/Shift+Tab');
-        // v5 : le detail s ouvre au chevron de la ligne ; le re-rendu lui
-        // garde le focus et le chevron dit qu il a bascule.
-        const chevron = page.locator('#quickBookOverlay .rv-ouvrir[aria-controls]').first();
-        const chevronId = await chevron.getAttribute('id');
-        const avant = await chevron.getAttribute('aria-expanded');
-        await chevron.click();
-        const restored = await page.evaluate(({ id, avant }) => document.activeElement.id === id && document.activeElement.getAttribute('aria-expanded') !== avant, { id: chevronId, avant });
-        ok(restored, 'F1-rerender-' + suffix, 'line chevron retains focus and toggles');
+        // Les seances (2026-11-03) : le detail d une ligne s ouvre en touchant sa ligne
+        // du ticket (#rsL-a-<activite>), sa page a gauche ; la ligne le dit
+        // (aria-current) et le re-rendu lui garde le focus. Au telephone (<= 900 px)
+        // le ticket est replie derriere #rsResume, qui dit qu il l ouvre
+        // (aria-expanded). Une touche que le geste cache (#rsResume quand le ticket
+        // s ouvre, la ligne quand sa page replie le ticket) ne peut plus tenir le
+        // focus : il reste alors dans la fenetre, sur une touche visible, jamais sur
+        // la page derriere.
+        const garde = (id) => page.evaluate((id) => {
+          const actif = document.activeElement, modal = document.querySelector('.qb-modal'), cible = document.getElementById(id);
+          const vu = el => !!el && el.getClientRects().length > 0;
+          return { surLui: actif === cible, dansLaFenetre: !!modal && modal.contains(actif) && actif !== modal && vu(actif), visible: vu(cible), focus: `${actif.tagName}#${actif.id}.${actif.className}` };
+        }, id);
+        let ticket = null;
+        if (width <= 900) {
+          const resume = page.locator('#quickBookOverlay #rsResume');
+          const replie = await resume.getAttribute('aria-expanded');
+          await resume.click();
+          ticket = { avant: replie, apres: await resume.getAttribute('aria-expanded'), ...await garde('rsResume') };
+        }
+        const ligne = page.locator('#quickBookOverlay #rsLignes .rs-tk-a').first();
+        const ligneId = await ligne.getAttribute('id');
+        const avant = await ligne.getAttribute('aria-current');
+        await ligne.click();
+        const lue = { id: ligneId, avant, apres: await ligne.getAttribute('aria-current'), ...await garde(ligneId) };
+        const ticketOk = !ticket || (ticket.avant === 'false' && ticket.apres === 'true' && (ticket.visible ? ticket.surLui : ticket.dansLaFenetre));
+        const ligneOk = lue.avant !== 'step' && lue.apres === 'step' && (lue.visible ? lue.surLui : lue.dansLaFenetre);
+        ok(ticketOk && ligneOk, 'F1-rerender-' + suffix, ticketOk && ligneOk ? 'ticket line retains focus and says its page is open' : { ticket, ligne: lue });
         await shot(page, 'quickbook-' + suffix);
+        // Echap remonte d un cran a la fois : la page de la ligne revient a l accueil,
+        // fenetre ouverte et focus dedans, puis l Echap suivant ferme et rend le focus
+        // a l ouvreur.
+        await page.keyboard.press('Escape');
+        const accueil = await finit(page, () => !!quickBookState && !!document.querySelector('.qb-modal.is-q-activites') && document.querySelector('.qb-modal').contains(document.activeElement));
         await page.keyboard.press('Escape');
         const refermee = await finit(page, () => !quickBookState && document.activeElement === window.__trigger);
-        ok(refermee, 'F1-close-' + suffix, refermee ? 'Escape and opener focus' : await page.evaluate(() => ({ fenetre: !!quickBookState, focus: `${document.activeElement.tagName}.${document.activeElement.className}`, ouvreur: window.__trigger.isConnected })));
-        await page.evaluate(() => closeQuickBook());
+        ok(accueil && refermee, 'F1-close-' + suffix, accueil && refermee ? 'Escape backs out to the welcome page, then closes; opener focus' : { accueil, ...await page.evaluate(() => ({ fenetre: !!quickBookState, focus: `${document.activeElement.tagName}.${document.activeElement.className}`, ouvreur: window.__trigger.isConnected })) });
       });
+      // Fermee meme apres un echec du scenario : une fenetre restee ouverte garde son
+      // piege a focus sur la fiche du scenario suivant (sheet-trap et F4 rougissaient
+      // en cascade).
+      await page.evaluate(() => closeQuickBook()).catch(() => {});
       if (width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {
         // Le jour vient du scenario, jamais de l heure du gate : une fenetre
-        // ouverte pour la demi-heure qui vient est « au comptoir » (un champ
-        // unique, maquette v5), une autre heure redemande telephone et nom.
+        // ouverte pour la demi-heure qui vient est « au comptoir », une autre heure
+        // est une reservation ordinaire. Les seances (2026-11-03) ont la meme forme a
+        // toute heure : le champ unique « Nom ou téléphone » au ticket (#qbQui), sans
+        // champ de nom a part sur l ecran, et le formulaire complet sur la page
+        // Client, a un toucher du ticket (#rsL-client).
         const champs = (auComptoir) => page.evaluate((auComptoir) => {
           let date = todayStr(), startTime = numToTime(Math.min(23.5, Math.ceil(currentTimeDecimal() * 2) / 2));
           if (!auComptoir) {
@@ -131,17 +164,20 @@ async function main({ roiOnly = false, capture = false } = {}) {
             date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
             startTime = '16:00';
           }
-          openQuickBook({ date, startTime }); toggleQuickBookMore();
-          const lus = [...document.querySelectorAll('.qb-modal input,.qb-modal textarea')].map(el => ({ id: el.id, name: el.labels?.[0]?.textContent || el.getAttribute('aria-label') }));
+          openQuickBook({ date, startTime });
+          const lire = () => [...document.querySelectorAll('.qb-modal input,.qb-modal textarea')].map(el => ({ id: el.id, name: el.labels?.[0]?.textContent || el.getAttribute('aria-label') }));
+          const ecran = lire();
+          document.getElementById('rsL-client').click();
+          const lus = lire();
           closeQuickBook();
-          return lus;
+          return { ecran, lus };
         }, auComptoir);
         const full = await champs(false);
-        // v5 : le formulaire complet = le jour, les joueurs, le contact, l e-mail
-        // et la note ; l heure se regle a l horloge de chaque ligne.
-        ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => full.some((f) => f.id === id)) && full.every(f => f.name), 'F1-full-fields', full);
+        // Le formulaire complet = le jour, les joueurs, le contact, l e-mail et la
+        // note, chaque champ nomme.
+        ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => full.lus.some((f) => f.id === id)) && full.lus.every(f => f.name), 'F1-full-fields', full.lus);
         const comptoir = await champs(true);
-        ok(['qbDate', 'qbPax', 'qbQui', 'qbPhone', 'qbEmail', 'qbNotes'].every((id) => comptoir.some((f) => f.id === id)) && !comptoir.some((f) => f.id === 'qbName') && comptoir.every(f => f.name), 'F1-full-fields-comptoir', comptoir);
+        ok(['qbDate', 'qbPax', 'qbQui', 'qbPhone', 'qbEmail', 'qbNotes'].every((id) => comptoir.lus.some((f) => f.id === id)) && comptoir.ecran.some((f) => f.id === 'qbQui') && !comptoir.ecran.some((f) => f.id === 'qbName') && comptoir.lus.every(f => f.name), 'F1-full-fields-comptoir', comptoir);
         await page.evaluate(() => { openQuickBook(); });
         const focusCases = await page.evaluate(() => {
           const root = document.querySelector('.qb-modal'), fixture = document.createElement('div');
@@ -258,7 +294,11 @@ async function main({ roiOnly = false, capture = false } = {}) {
         });
         await page.locator('#rvCreer').click();
         ok(await page.evaluate(() => !window.__PINLANE_QA_RES_POSTS__.length && !quickBookState.submitting && !!quickBookState.error && !!document.activeElement.closest('.qb-modal')), 'submit-invalid', 'invalid email blocked, button/focus recovered');
+        // L e-mail vit sur la page Client (Les seances, 2026-11-03) ; on revient a
+        // l accueil avant l envoi : la, sans envoi en vol, Echap fermerait la fenetre.
+        await page.locator('#rsL-client').click();
         await page.locator('#qbEmail').fill('qa@example.test');
+        await page.locator('#rsRetour').click();
         await page.evaluate(() => {
           const original = apiRequest;
           apiRequest = async (url, options = {}) => {
@@ -270,8 +310,9 @@ async function main({ roiOnly = false, capture = false } = {}) {
           window.__saveTask = Promise.all([saveQuickBook(), saveQuickBook()]).finally(() => { apiRequest = original; });
         });
         await page.waitForFunction(() => typeof window.__releaseSubmit === 'function');
+        const surAccueil = await page.evaluate(() => !!document.querySelector('.qb-modal.is-q-activites'));
         await page.keyboard.press('Escape');
-        ok(await page.evaluate(() => !!quickBookState?.submitting && !!document.activeElement.closest('.qb-modal')), 'submit-escape-pending', 'pending POST remains visible');
+        ok(surAccueil && await page.evaluate(() => !!quickBookState?.submitting && !!document.activeElement.closest('.qb-modal')), 'submit-escape-pending', surAccueil ? 'pending POST remains visible' : 'Escape not played on the welcome page');
         await page.evaluate(async () => { window.__releaseSubmit(); await window.__saveTask; });
         ok(await page.evaluate(() => !quickBookState && window.__PINLANE_QA_RES_POSTS__.length === 1), 'submit-success-single', 'one simulated POST; modal closed');
       });

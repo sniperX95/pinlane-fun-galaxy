@@ -1,5 +1,6 @@
 // LA FENETRE RESERVER CREE CE QU ELLE MONTRE (v5, lot I2 de la console,
-// 2026-10-08).
+// 2026-10-08 ; relu le 2026-11-03 sur « Les seances », la fenetre qui l a
+// remplacee).
 //
 // Movsar sur les maquettes : « on est le staff, on doit pouvoir faire ce qu on
 // veut », « plus que 3 parties », « plus que 2 heures », « tout doit suivre »,
@@ -7,26 +8,36 @@
 // expliqué », « Même client, un envoi ». La fenetre fait juger son plan par le
 // serveur (simulation a blanc, dryRun) avant de creer : ce gate garde que ce
 // jugement porte sur CE qui sera cree, et que chaque geste du comptoir suit.
+// Les seances ont change l ecran, pas ces regles : elles se lisent ici sur le
+// nouvel ecran (le ticket a droite, une page par ligne a gauche). Leurs douze
+// commandes du comptoir ont leur gate, scripts/reserver-seances-check.js.
 //
 //   [A] TOUT SUIT. Le dossier que « Créer » envoie est celui que le planning a
 //       simule : meme programme, memes heures, memes pistes, memes preferences,
 //       meme prix. Seuls le contact et la note s y ajoutent.
-//   [B] AU-DELA DU CATALOGUE. 4 parties de laser et 2 h 30 de bowling se posent
-//       au « + » de la ligne, se disent « hors catalogue » (la ligne s ouvre au
-//       franchissement) et partent telles quelles.
+//   [B] AU-DELA DU CATALOGUE. 4 parties de laser (« + Partie », page du laser)
+//       et 2 h 30 de bowling (page du bowling) se posent ; le laser se dit
+//       « hors catalogue » avec son prix, le Total propose la raison « Hors
+//       catalogue », et tout part tel quel.
 //   [C] UN REFUS SE DIT AVANT, ET « CREER QUAND MEME » LE PORTE. Plan refuse :
-//       le verdict l explique (conflit compris), « Créer » n envoie rien et dit
-//       quoi faire ; « Créer quand même » envoie le dossier avec forcer.
-//   [D] L HORLOGE JUGE CHAQUE HEURE AVEC LE PLANNING. L ouvrir envoie au
-//       serveur une variante par heure ; chaque minute dit ce qu il a repondu ;
-//       choisir une heure la pose et relance le plan.
+//       la ligne du ticket le dit en rouge avec sa raison, l heure refusee est
+//       rouge ; « Créer » n envoie rien et dit quoi faire (« Prendre 19:30 »,
+//       un toucher prend l heure qui tient) ; « Créer quand même » envoie le
+//       dossier avec forcer, et ne se propose jamais a un role sans ce niveau.
+//       Un refus du serveur a la creation se dit dans la fenetre, et « Créer »
+//       rend la main.
+//   [D] LE PLANNING JUGE CHAQUE HEURE PROPOSEE. Les seances du bowling, la page
+//       « Autres » et les heures d une partie de laser partent au serveur, une
+//       variante par heure ; l heure qu il refuse ne se propose plus, ou
+//       s efface en disant pourquoi ; choisir une heure la pose et relance le
+//       plan.
 //   [E] MEME CLIENT, UN ENVOI. Deux resas partent dans UN POST `dossiers`, le
 //       contact commun, sans « forcer » global. Un lot en partie refuse (le
 //       serveur repond ok:false, 207) : la resa creee sort de la fenetre, la
 //       refusee y reste avec sa raison, et le clic suivant ne renvoie qu elle.
-//   [F] LA SAISIE N EST JAMAIS ECRASEE. Un repeint pendant qu on tape le nom
+//   [F] LA SAISIE N EST JAMAIS ECRASEE. Un repeint pendant qu on tape le client
 //       garde le champ, son texte et le focus ; il se fait quand le champ rend
-//       la main.
+//       la main. Un bouton remplace par un repeint garde le focus.
 //   [G] AU TELEPHONE (390 px). Rien ne deborde de cote ; « Créer » reste a
 //       l ecran, la fenetre defilee en haut comme en bas.
 //   [H] LA REPONSE D UNE CREATION NE FERME QUE SA FENETRE. « Créer », puis
@@ -34,21 +45,34 @@
 //       dossier cree au planning et laisse la nouvelle fenetre ouverte (trouve
 //       par ce gate le 2026-10-08 : elle la fermait).
 //   [I] AU COMPTOIR (maquette v5, X4). Un groupe qui joue dans la demi-heure :
-//       « au comptoir », UN champ facultatif « Prénom ou téléphone » qui range
-//       des lettres en nom et des chiffres en telephone ; « + Téléphone »
-//       devient « + Nom » sur place ; Entree y cree ; un numero deja venu dit
-//       « reconnu » et montre son nom, un autre numero ne garde pas le nom de
-//       l ancien ; un nom tape a part reste. Demain a la meme heure : la
-//       fenetre ordinaire (contre-preuve dans le scenario).
-//   [J] LA PASTILLE DES PISTES N EST JAMAIS COUPEE. « Pistes 7 et 8 » en
-//       entier (Movsar, 2026-10-08 : « Pistes 7 et… »), et de 1 a 8 pistes, a
-//       1280 et 1180 px, mesure au noeud de texte ; la liste entiere reste
-//       dans le libelle du bouton.
-//   [K] TABLETTE EN PORTRAIT (800 px). Une colonne comme au telephone, le billet
-//       sous la composition ; chaque jour entier ; rien ne se pose sur son
-//       voisin dans une ligne (en deux colonnes : « Demain ven… », « pour
-//       vous » sous le chevron).
+//       UN champ facultatif « Nom ou téléphone » au ticket, qui range des
+//       lettres en nom et des chiffres en telephone ; le reste (e-mail, note,
+//       occasion) est a un toucher ; Entree y cree ; un numero deja venu dit
+//       « reconnu », un autre numero ne garde pas le nom de l ancien ; un nom
+//       tape a part reste.
+//   [J] LES PISTES CHOISIES SE LISENT EN ENTIER. « pistes 7 et 8 » en toutes
+//       lettres sur la ligne du ticket (Movsar, 2026-10-08 : « Pistes 7
+//       et… »), et de 1 a 8 pistes, a 1280 et 1180 px, jamais coupees, mesure
+//       au noeud de texte.
+//   [K] TABLETTE EN PORTRAIT (800 px). Une colonne comme au telephone, le
+//       ticket replie sous la composition et ouvert d un toucher ; chaque jour
+//       entier ; rien ne se pose sur son voisin (l ancienne fenetre, en deux
+//       colonnes : « Demain ven… », « pour vous » sous le chevron).
+//   [L] LE NOM RECONNU SE LIT AVANT DE PARTIR. Un numero deja venu met son nom
+//       dans le dossier : le ticket le montre une fois le champ rendu, comme
+//       l ancienne fenetre le montrait sous le numero.
+//   [M] LA LIGNE DIT SES PISTES A QUI NE LA VOIT PAS. Le nom accessible du
+//       bouton de la ligne garde la liste entiere des pistes, comme le libelle
+//       de l ancienne pastille.
 //   [*] Zero erreur JS ni erreur console.
+//
+// CE QUE LES SEANCES ONT RETIRE EXPRES, et que ce gate ne demande plus :
+// l horloge et ses points « partagée », la ligne qui s ouvre quand on franchit
+// le catalogue, l etiquette « hors catalogue » sur la duree du bowling (la
+// touche 2 h 30 dit son prix, comme les autres), la phrase du refus et la
+// liste de ses conflits (le refus se dit une fois, sur la ligne), la fenetre
+// « au comptoir » distincte de l ordinaire (« + Nom », « tout deplier »), la
+// pastille des pistes.
 //
 // Le serveur est simule dans la page (ses reponses suivent le contrat de
 // api/staff-reservations : plan, candidats, dossiers) ; ce gate garde la
@@ -75,54 +99,65 @@ const MUTATIONS = {
   preference: { fichier: 'assets/app-main.js', de: '    preference: rvPreference(ids, heures, programme),', vers: '    preference: simulation ? rvPreference(ids, heures, programme) : undefined,', vise: ['A'] },
   // Le plafond du catalogue revient : 3 parties au plus.
   plafond: { fichier: 'assets/app-main.js', de: 'const RV_PARTIES_MAX = 12;', vers: 'const RV_PARTIES_MAX = 3;', vise: ['B'] },
-  // Un refus du plan part quand meme, en silence.
-  refus: { fichier: 'assets/app-main.js', de: '  if (!lot && plan && !plan.disponible && !etat.forcer) {', vers: '  if (false) {', vise: ['C'] },
+  // « Créer » ne garde plus le refus du plan : le clic file vers l envoi au
+  // lieu de prendre l heure qui tient. (La garde de saveQuickBook, derriere,
+  // ne se rejoint plus depuis l ecran : un plan refuse s arrete ici, rsCreer.)
+  refus: { fichier: 'assets/app-main.js', de: '  if (plan && !plan.disponible && !s.forcer && !lot) {', vers: '  if (false) {', vise: ['C'] },
   // « Créer quand même » vaut meme quand le plan tient : le dossier part
   // « a placer » sans raison.
   forcerPerime: { fichier: 'assets/app-main.js', de: '  const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);', vers: '  const forcer = !simulation && Boolean(s.forcer);', vise: ['C'] },
   // « Créer quand même » se montre a un role que le serveur refuserait.
-  forcerSansNiveau: { fichier: 'assets/app-main.js', de: "${niveauStaff('forcer') === 'oui' ? `<div class=\"rv-forcer-zone\">", vers: '${true ? `<div class="rv-forcer-zone">', vise: ['C'] },
-  // La phrase du refus promet ce qu il ne peut pas faire.
-  promesseSansNiveau: { fichier: 'assets/app-main.js', de: "  return niveauStaff('forcer') === 'oui'\n    ? `Choisissez", vers: '  return true\n    ? `Choisissez', vise: ['C'] },
+  forcerSansNiveau: { fichier: 'assets/app-main.js', de: "  const forcer = refuse && !lot && rsNiveau('forcer') === 'oui' ?", vers: '  const forcer = refuse && !lot && true ?', vise: ['C'] },
   // « Création… » pose a la main sur le bouton : apres un refus, il reste
   // desactive (la zone du pied se croit a jour).
   creation: { fichier: 'assets/app-main.js', de: '  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  renderQuickBook();', vers: "  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  { const b = document.getElementById('rvCreer'); if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Création…'; } }", vise: ['C'] },
-  // L horloge n envoie plus ses heures : les points ne viennent plus du planning.
+  // Les heures d une partie de laser ne partent plus au planning : leur
+  // verdict ne vient plus du serveur (l horloge de l ancienne fenetre).
   horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes })", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] })", vise: ['D'] },
+  // Les seances ne partent plus au planning : une heure qu il refuse reste
+  // proposee.
+  seances: { fichier: 'assets/app-main.js', de: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes })', vers: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: [] })', vise: ['D'] },
   // Plusieurs resas : seule celle a l ecran part.
   lot: { fichier: 'assets/app-main.js', de: '  const lot = rvResas.length > 1 && rvResas.includes(etat);', vers: '  const lot = false;', vise: ['E'] },
   // Un lot en partie refuse passe pour une panne : la resa creee reste dans la
   // fenetre, et le clic suivant la recree.
   partiel: { fichier: 'assets/app-main.js', de: '    if (reponse && (Array.isArray(reponse.reservations) || Array.isArray(reponse.echecs))) return reponse;', vers: '    if (false) return reponse;', vise: ['E'] },
   // La reponse d une creation ferme toute fenetre ouverte depuis.
-  fermeture: { fichier: 'assets/app-main.js', de: '    if (rvResas === lotSauve) closeQuickBook();', vers: '    if (quickBookState === etat || rvResas.includes(quickBookState)) closeQuickBook();', vise: ['H'] },
+  fermeture: { fichier: 'assets/app-main.js', de: '    if (rvResas === lotSauve) { closeQuickBook(); rsApresLaFrame(renderStaff); } else renderStaff();', vers: '    if (quickBookState === etat || rvResas.includes(quickBookState)) { closeQuickBook(); rsApresLaFrame(renderStaff); } else renderStaff();', vise: ['H'] },
   // Le repeint ne respecte plus le champ qu on tape.
   saisie: { fichier: 'assets/app-main.js', de: "  if (actif && actif !== zone && zone.contains(actif) && actif.matches(", vers: "  if (false && actif && actif !== zone && zone.contains(actif) && actif.matches(", vise: ['F'] },
   // Le repeint ne rend plus le focus au controle remplace.
   focus: { fichier: 'assets/app-main.js', de: '  if (actif && !actif.isConnected) {', vers: '  if (false) {', vise: ['F'] },
-  // Au telephone, le pied ne colle plus en bas : « Créer » sort de l ecran.
-  pied: { fichier: 'assets/pinlane-staff.css', de: '  .qb-modal.rv .rv-pied { position: sticky; bottom: 0;', vers: '  .qb-modal.rv .rv-pied { position: static; bottom: 0;', vise: ['G'] },
-  // Le comptoir n existe plus : un depart dans la demi-heure redemande
-  // telephone et nom.
-  comptoir: { fichier: 'assets/app-main.js', de: '  return ecart <= 1 && ecart >= -0.5;', vers: '  return false;', vise: ['I'] },
+  // Au telephone, la colonne ne defile plus entre ses deux barres : sa rangee
+  // prend toute la hauteur du contenu et pousse le pied hors de l ecran,
+  // « Créer » avec. (`auto` ne suffit pas a la casser : la colonne a un
+  // min-height nul, sa rangee prend encore le reste de l ecran.)
+  pied: { fichier: 'assets/pinlane-staff.css', de: 'grid-template-rows: auto minmax(0, 1fr) auto auto;', vers: 'grid-template-rows: auto max-content auto auto;', vise: ['G'] },
   // Entree dans le champ unique ne cree plus.
-  comptoirEntree: { fichier: 'assets/app-main.js', de: "'#qbName, #qbPhone, #qbEmail, #qbQui'", vers: "'#qbName, #qbPhone, #qbEmail'", vise: ['I'] },
+  comptoirEntree: { fichier: 'assets/app-main.js', de: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes, #qbQui')", vers: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')", vise: ['I'] },
   // Le nom reconnu d un numero reste quand on en tape un autre.
   nomPerime: { fichier: 'assets/app-main.js', de: "    if (avant === 'nom' || !String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {", vers: "    if (avant === 'nom' || !String(s.name || '').trim()) {", vise: ['I'] },
-  // « + Téléphone » ne devient plus « + Nom » pendant la frappe : la zone
-  // attend que le champ rende la main pour se repeindre.
-  boutonSurPlace: { fichier: 'assets/app-main.js', de: "  if (bouton) bouton.textContent = role === 'tel' ? '+ Nom' : '+ Téléphone';", vers: "  if (bouton) rvPoser('rvChamps', rvClientHtml());", vise: ['I'] },
-  // « reconnu » ne se pose plus que dans le champ du nom, absent au comptoir.
+  // « reconnu » ne se pose plus que dans le champ du nom, absent du ticket.
   reconnu: { fichier: 'assets/app-main.js', de: "    const champ = document.getElementById('qbQui') || document.getElementById('qbName');", vers: "    const champ = document.getElementById('qbName');", vise: ['I'] },
-  // Le nom reconnu reste dans le dossier sans jamais s afficher.
-  nomCache: { fichier: 'assets/app-main.js', de: "      else if (!champ && document.getElementById('qbQui')) rvPoser('rvChamps', rvClientHtml());", vers: '', vise: ['I'] },
-  // La pastille dit toujours la liste entiere : 3 pistes la coupent.
-  pastille: { fichier: 'assets/app-main.js', de: '  if (enLettres.length <= RV_PASTILLE_MAX) return enLettres;', vers: '  return enLettres;', vise: ['J'] },
+  // Les pistes se disent en plage, plus en toutes lettres : « pistes 7-8 »,
+  // et « pistes 1-5 » pour 1, 3 et 5.
+  pastille: { fichier: 'assets/app-main.js', de: "  return liste.length > 2 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : liste.join(' et ');", vers: "  return liste.length > 2 ? `${liste[0]}-${liste[liste.length - 1]}` : liste.join('-');", vise: ['J'] },
+  // Le detail de la ligne du ticket tient sur une ligne et se coupe :
+  // « pistes 7 et… ».
+  pastilleColonne: { fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); }', vers: '.qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }', vise: ['J'] },
   // La tablette en portrait revient aux deux colonnes serrees.
-  portrait: { fichier: 'assets/pinlane-staff.css', de: '@media (max-width: 900px) {\n  .qb-overlay.is-rv { padding: 0; align-items: stretch; }', vers: '@media (max-width: 700px) {\n  .qb-overlay.is-rv { padding: 0; align-items: stretch; }', vise: ['K'] },
-  // La colonne de la pastille revient a 118 px : « Pistes 7 et… ».
-  pastilleColonne: { fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 128px minmax(0, 1fr) 34px;', vers: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 118px minmax(0, 1fr) 34px;', vise: ['J'] },
+  portrait: { fichier: 'assets/pinlane-staff.css', de: '@media (max-width: 900px) {\n  .qb-modal.rv.rs { --rs-gouttiere: 16px;', vers: '@media (max-width: 700px) {\n  .qb-modal.rv.rs { --rs-gouttiere: 16px;', vise: ['K'] },
+  // Le nom reconnu reste dans le dossier sans jamais s afficher (rsQuiAutre, sous le
+  // champ unique du ticket).
+  nomCache: { fichier: 'assets/app-main.js', de: "  if (rvRoleComptoir(s) === 'tel') return String(s.name || '').trim();", vers: "  if (rvRoleComptoir(s) === 'tel') return '';", vise: ['L'] },
+  // La ligne ne dit plus que son nom a qui ne la voit pas : « Bowling 1 h, changer ».
+  ligneMuette: { fichier: 'assets/app-main.js', de: "  return `${[nom, detail, prix].filter(Boolean).join(', ')}, changer`;", vers: '  return `${nom}, changer`;', vise: ['M'] },
 };
+// Retirees avec les seances (2026-11-03), leur code ne peignant plus rien a
+// l ecran : comptoir (la regle « au comptoir » ne decide plus de l ecran, le
+// champ unique est partout), boutonSurPlace (« + Nom » n existe plus),
+// promesseSansNiveau (la phrase de rvSortieDuRefus n atteint plus l ecran : le
+// refus se dit sur la ligne).
 
 let mutationActive = null;
 const desarmees = [];
@@ -178,6 +213,9 @@ async function installMock(page, { maintenant = Date.now() } = {}) {
     window.__QA_CREES__ = [];
     window.__QA_REFUS__ = null;
     window.__QA_RETENUE__ = null;
+    // Un message : le serveur refuse la creation (le planning a change entre
+    // la simulation et le clic), comme api/staff-reservations ({ ok:false }).
+    window.__QA_REFUS_CREATION__ = null;
     window.__QA_INCONNUES__ = [];
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : (input && input.url) || '';
@@ -212,6 +250,7 @@ async function installMock(page, { maintenant = Date.now() } = {}) {
         if (corps.dryRun) { window.__QA_SIMS__.push(corps); return J({ ok: true, dryRun: true, plan: planPour(corps) }); }
         window.__QA_CREES__.push(corps);
         if (window.__QA_RETENUE__) await window.__QA_RETENUE__;
+        if (window.__QA_REFUS_CREATION__) return new Response(JSON.stringify({ ok: false, message: window.__QA_REFUS_CREATION__ }), { status: 409, headers: { 'content-type': 'application/json; charset=utf-8' } });
         if (Array.isArray(corps.dossiers) && window.__QA_LOT_PARTIEL__) {
           return new Response(JSON.stringify({ ok: false, reservations: [{ index: 0, reservation: { ...corps.dossiers[0], id: 7000, status: 'pending' }, aPlacer: false, conflits: [], warnings: [] }], echecs: [{ index: 1, message: 'Plus aucune piste libre à 14:00.' }] }), { status: 207, headers: { 'content-type': 'application/json; charset=utf-8' } });
         }
@@ -298,32 +337,29 @@ async function scenarioAB(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 8 });
     rvAppliquerComposition({ type: 'visite', program: [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 2 }] });
   }, JOUR);
-  await page.waitForSelector('[data-rv-ligne="laser_game"]', { timeout: 8000 });
-  const plusLaser = '[data-rv-ligne="laser_game"] button[aria-label="Laser : une partie de plus"]';
-  const plusBowling = '[data-rv-ligne="bowling"] button[aria-label="Bowling : 30 minutes de plus"]';
-  for (let i = 0; i < 2; i += 1) await page.click(plusLaser);
-  const ouverteApresLaser = await page.evaluate(() => quickBookState.ouverte);
-  for (let i = 0; i < 3; i += 1) await page.click(plusBowling);
+  await page.waitForSelector('#rsL-a-laser_game', { timeout: 8000 });
+  // « + Partie » vit sur la page du laser, la duree sur celle du bowling : on
+  // les ouvre depuis leur ligne du ticket, comme au comptoir.
+  await page.click('#rsL-a-laser_game');
+  for (let i = 0; i < 2; i += 1) {
+    const plus = await page.$('#rsCorps #rvPlusPartie');
+    if (plus) await plus.click();
+  }
+  const pageLaser = await page.evaluate(() => [...document.querySelectorAll('#rsCorps .rs-texte')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  await page.click('#rsL-a-bowling');
+  await page.click('#rsCorps [data-duree="2.5"]');
   await planPose(page, true);
-  const lu = await page.evaluate(() => ({
-    parties: (document.querySelector('[data-rv-ligne="laser_game"] .rv-qte b') || {}).textContent || '',
-    duree: (document.querySelector('[data-rv-ligne="bowling"] .rv-qte b') || {}).textContent || '',
-    ouverte: quickBookState.ouverte,
-  }));
-  await page.evaluate(() => { if (!quickBookState.moreOpen) toggleQuickBookMore(); });
-  // Le laser dit son depassement dans un bandeau ; le bowling, dans sa rangee
-  // « Durée » : la duree choisie, puis le prix et l etiquette « hors catalogue ».
-  const bandeaux = await page.evaluate(() => [
-    ...[...document.querySelectorAll('#quickBookOverlay .rv-hors')].map((e) => e.textContent),
-    ...[...document.querySelectorAll('#quickBookOverlay [data-rv-ligne="bowling"] [data-rv-prix-piste]')].map((note) => {
-      const rangee = note.closest('.rv-rg');
-      const choisie = rangee ? rangee.querySelector('button[aria-pressed="true"]') : null;
-      return `${choisie ? choisie.textContent : ''} : ${note.textContent}`;
-    }),
-  ].map((e) => e.replace(/\s+/g, ' ').trim()));
-  await page.evaluate(() => toggleQuickBookMore());
+  const lu = await page.evaluate(() => {
+    const nom = (id) => ((document.querySelector(`#rsL-a-${id} .rs-tk-n b`) || {}).textContent || '').replace(/\s+/g, ' ').trim();
+    return { laser: nom('laser_game'), bowling: nom('bowling') };
+  });
+  // Le Total : les raisons d un prix revu, « Hors catalogue » en tete.
+  await page.click('#rsL-total');
+  const raisons = await page.evaluate(() => [...document.querySelectorAll('#rsCorps [data-raison]')].map((b) => b.getAttribute('data-raison')));
   await planPose(page, true);
   const simule = await page.evaluate(() => window.__QA_SIMS__[window.__QA_SIMS__.length - 1] || null);
+  // Le contact, sur la page Client qu ouvre le ticket.
+  await page.click('#rsL-client');
   await page.fill('#qbPhone', '0470 12 34 56');
   await page.fill('#qbName', 'Famille Martin');
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
@@ -339,9 +375,9 @@ async function scenarioAB(page, verifier) {
   verifier('A', ferme, 'la fenetre se ferme une fois le dossier cree');
   const laser = cree && Array.isArray(cree.program) ? cree.program.find((l) => l.activityId === 'laser_game') : null;
   const bowling = cree && Array.isArray(cree.program) ? cree.program.find((l) => l.activityId === 'bowling') : null;
-  verifier('B', lu.parties === '4' && lu.duree.replace(/\s/g, '') === '2h30', 'MONTAGE : la ligne montre 4 parties et 2 h 30', `${lu.parties} parties, ${lu.duree}`);
-  verifier('B', ouverteApresLaser === 'laser_game', 'franchir le catalogue au « + » ouvre la ligne du laser (son bandeau dit le prix)', `ligne ouverte : ${ouverteApresLaser}`);
-  verifier('B', bandeaux.some((t) => /4 parties, hors catalogue/.test(t)) && bandeaux.some((t) => /hors catalogue/.test(t) && /2\s*h\s*30/.test(t)), 'les deux depassements se disent « hors catalogue »', bandeaux.join(' | ') || 'aucun bandeau');
+  verifier('B', lu.laser === 'Laser, 4 parties' && /^Bowling 2\s*h\s*30$/.test(lu.bowling), 'MONTAGE : le ticket montre 4 parties et 2 h 30', `${lu.laser} | ${lu.bowling}`);
+  verifier('B', pageLaser.some((t) => /^4 parties, hors catalogue\. Prix proposé/.test(t)), 'le laser au-dela du catalogue se dit « hors catalogue » sur sa page, avec son prix', pageLaser.join(' | ') || 'aucune phrase');
+  verifier('B', raisons[0] === 'Hors catalogue', 'le Total propose d abord la raison « Hors catalogue »', raisons.join(', ') || 'aucune raison');
   verifier('B', Boolean(laser && Number(laser.games) === 4), '4 parties choisies, 4 parties envoyees', laser ? `games=${laser.games}` : 'pas de ligne laser');
   verifier('B', Boolean(bowling && Number(bowling.duration) === 2.5), '2 h 30 choisies, 2 h 30 envoyees', bowling ? `duration=${bowling.duration}` : 'pas de ligne bowling');
   const heures = cree && cree.preference && Array.isArray(cree.preference.laserGameTimes) ? cree.preference.laserGameTimes : [];
@@ -357,68 +393,84 @@ function diff(a, b) {
 
 // ── [C] ───────────────────────────────────────────────────────────────────────
 async function scenarioC(page, verifier) {
-  await page.evaluate((jour) => {
+  const ouvrirRefuse = () => page.evaluate((jour) => {
     window.__QA_REFUS__ = '20:00';
     closeQuickBook();
     openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
   }, JOUR);
-  // LA JOURNEE EST DEJA LUE, comme au comptoir ou la lecture tourne toutes
-  // les 4 s. Jouee seule (contre-preuves), la scene C ouvrait une page neuve
-  // et le clic « Créer » faisait aussi la premiere lecture du jour : sa
-  // revision entrait dans la cle du plan (rvCleDe), le pied repassait par
-  // « Le planning vérifie » et se redessinait, et un bouton reste
-  // « Création… » ne se voyait plus (contre-preuve « creation » aveugle).
+  // Le planning a dit ou tout tient : « Créer » porte l heure proche.
+  const procheDite = () => page.waitForSelector('#rvCreer[data-proche]', { timeout: 8000 }).then(() => true, () => false);
+  const lireCreer = () => page.evaluate(() => {
+    const b = document.getElementById('rvCreer');
+    return { texte: b ? b.textContent.replace(/\s+/g, ' ').trim() : '', proche: b ? b.getAttribute('data-proche') || '' : '', desactive: Boolean(b && b.disabled), occupe: b ? b.getAttribute('aria-busy') : null, dedans: Boolean(document.activeElement && document.activeElement.closest('.qb-modal.rv')) };
+  });
+
+  // 1. AVANT : le refus se lit, et « Créer » dit quoi faire.
+  await ouvrirRefuse();
   await page.evaluate((jour) => syncDateReservations(jour, { silent: true }), JOUR);
   await planPose(page, false);
-  const verdict = await page.evaluate(() => (document.getElementById('rvVerdict') || {}).textContent || '');
-  await page.fill('#qbName', 'Groupe Refus');
+  await procheDite();
+  const avant = await page.evaluate(() => {
+    const ligne = document.querySelector('#rsL-a-laser_game small.is-ko');
+    const seance = document.querySelector('#rsZ-laser_game .rs-h[data-heure="20:00"]');
+    return {
+      ligne: ligne ? `${ligne.id}|${ligne.textContent.trim()}` : '',
+      seance: seance ? seance.className : '',
+      verdict: ((document.getElementById('rvVerdict') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+    };
+  });
+  const creerAvant = await lireCreer();
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
-  const cleAvant = await page.evaluate(() => quickBookState.cleCourante);
   await page.click('#rvCreer');
   await page.waitForTimeout(900);
-  const cleApres = await page.evaluate(() => (quickBookState ? quickBookState.cleCourante : null));
-  const avant = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, erreur: quickBookState ? quickBookState.error : '', ecran: (document.querySelector('#rvVerdict .rv-erreur') || {}).textContent || '' }));
+  const apres = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, heure: quickBookState ? quickBookState.startTime : '', rouge: Boolean(document.querySelector('#rsLignes small.is-ko')) }));
+  await planPose(page, true).catch(() => {});
   // Le refus rend la main : « Créer » se reclique (ni desactive, ni occupe,
   // ni « Création… »), et le clavier reste dans la fenetre.
-  const main = await page.evaluate(() => { const b = document.getElementById('rvCreer'); return { desactive: Boolean(b && b.disabled), occupe: b ? b.getAttribute('aria-busy') : null, texte: b ? b.textContent.trim() : '', dedans: Boolean(document.activeElement && document.activeElement.closest('.qb-modal.rv')) }; });
+  const creerApres = await lireCreer();
+
+  verifier('C', /^rvRefus\|L’arène est complète à cette heure\./.test(avant.ligne) && /\bis-on\b/.test(avant.seance) && /\bis-ko\b/.test(avant.seance) && /Laser à 20:00 impossible/.test(avant.verdict), 'AVANT : la ligne du laser dit le refus en rouge avec sa raison, l heure refusee est rouge, le verdict nomme ce qui bloque et a quelle heure', JSON.stringify(avant));
+  verifier('C', apres.posts === 0, '« Créer » sur un plan refuse n envoie rien', `${apres.posts} POST`);
+  verifier('C', creerAvant.proche === '19:30' && /^Prendre 19:30/.test(creerAvant.texte) && apres.heure === '19:30' && !apres.rouge && /^Créer à 19:30/.test(creerApres.texte), 'il dit quoi faire : « Prendre 19:30 » sur « Créer », et le toucher prend l heure qui tient', JSON.stringify({ avant: creerAvant.texte, proche: creerAvant.proche, heure: apres.heure, rouge: apres.rouge, apres: creerApres.texte }));
+  verifier('C', !creerApres.desactive && creerApres.occupe !== 'true' && !/Création/.test(creerApres.texte) && creerApres.dedans, 'apres le refus, « Créer » rend la main (cliquable, sans « Création… ») et le focus reste dans la fenetre', JSON.stringify(creerApres));
+
+  // 2. « Créer quand même » porte le refus.
+  await ouvrirRefuse();
+  await planPose(page, false);
+  await page.waitForSelector('#rvForcer', { timeout: 8000 }).catch(() => {});
+  const offre = await page.evaluate(() => ((document.getElementById('rvForcer') || {}).textContent || '').trim());
   await page.click('#rvForcer');
-  const libelle = await page.evaluate(() => (document.getElementById('rvCreer') || {}).textContent || '');
+  const libelle = (await lireCreer()).texte;
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const cree = await page.evaluate(() => window.__QA_CREES__[0] || null);
   const cFerme = await fenetreFermee(page);
   await page.evaluate(() => { window.__QA_REFUS__ = null; });
-
-  verifier('C', /Laser à 20:00 impossible/.test(verdict) && /il manque 4 places/.test(verdict), 'AVANT : le verdict dit ce qui bloque, a quelle heure, et son conflit', verdict.replace(/\s+/g, ' ').slice(0, 160));
-  verifier('C', cleAvant === cleApres, 'MONTAGE : le clic « Créer » ne refait pas le plan (la journee etait deja lue)', `${String(cleAvant).slice(-40)} / ${String(cleApres).slice(-40)}`);
-  verifier('C', avant.posts === 0, '« Créer » sur un plan refuse n envoie rien', `${avant.posts} POST`);
-  verifier('C', !main.desactive && main.occupe !== 'true' && !/Création/.test(main.texte) && main.dedans, 'apres le refus, « Créer » rend la main (cliquable, sans « Création… ») et le focus reste dans la fenetre', JSON.stringify(main));
-  verifier('C', /Créer quand même/.test(avant.erreur) && /Créer quand même/.test(avant.ecran), 'il dit pourquoi et quoi faire, dans la fenetre', avant.erreur.slice(0, 160));
-  verifier('C', /Créer quand même/.test(libelle), '« Créer quand même » change le bouton', libelle.trim());
+  verifier('C', offre === 'Créer quand même, à placer', 'sous un refus, « Créer quand même, à placer » se propose (niveau forcer)', offre || 'absent');
+  verifier('C', /^Créer quand même à 20:00/.test(libelle), '« Créer quand même » change le bouton', libelle);
   verifier('C', Boolean(cree && cree.forcer === true), '« Créer quand même » envoie le dossier avec forcer (cree « a placer »)', cree ? `forcer=${cree.forcer}` : 'aucun POST');
   verifier('C', cFerme, 'le dossier a placer cree, la fenetre se ferme');
 
-  // « Créer quand même » arme, puis le plan redevient possible sans que
+  // 3. « Créer quand même » arme, puis le plan redevient possible sans que
   // rien ne le desarme (une taille de groupe) : le dossier part normal.
-  await page.evaluate((jour) => {
-    window.__QA_REFUS__ = '20:00';
-    closeQuickBook();
-    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
-  }, JOUR);
+  await ouvrirRefuse();
   await planPose(page, false);
+  await page.waitForSelector('#rvForcer', { timeout: 8000 }).catch(() => {});
   await page.click('#rvForcer');
-  await page.evaluate(() => { window.__QA_REFUS__ = null; window.__QA_CREES__.length = 0; setQuickPax(4); });
+  await page.evaluate(() => { window.__QA_REFUS__ = null; window.__QA_CREES__.length = 0; });
+  await page.click('#rsHaut [data-pax="4"]');
   await planPose(page, true);
-  await page.fill('#qbName', 'Groupe Rendu Possible');
-  const rendu = await page.evaluate(() => ({ arme: Boolean(quickBookState && quickBookState.forcer), libelle: ((document.getElementById('rvCreer') || {}).textContent || '').trim() }));
+  const rendu = await page.evaluate(() => ({ arme: Boolean(quickBookState && quickBookState.forcer), libelle: ((document.getElementById('rvCreer') || {}).textContent || '').replace(/\s+/g, ' ').trim() }));
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const normal = await page.evaluate(() => window.__QA_CREES__[0] || null);
-  verifier('C', rendu.arme && /^Créer · 20:00/.test(rendu.libelle), 'MONTAGE : « Créer quand même » reste arme, le plan redevenu possible redit « Créer »', JSON.stringify(rendu));
+  await fenetreFermee(page);
+  verifier('C', rendu.arme && /^Créer à 20:00/.test(rendu.libelle), 'MONTAGE : « Créer quand même » reste arme, le plan redevenu possible redit « Créer »', JSON.stringify(rendu));
   verifier('C', Boolean(normal) && normal.forcer !== true, 'le plan redevenu possible, le dossier part normal (pas « a placer »)', normal ? `forcer=${normal.forcer}` : 'aucun POST');
 
-  // Sans le niveau « forcer », la fenetre ne propose pas ce que le serveur
-  // refuserait : ni le bouton, ni la phrase du refus.
+  // 4. Sans le niveau « forcer », la fenetre ne propose pas ce que le serveur
+  // refuserait : ni le bouton, ni « quand même » nulle part.
   await page.evaluate((jour) => {
     window.__QA_REFUS__ = '20:00';
     closeQuickBook();
@@ -427,12 +479,43 @@ async function scenarioC(page, verifier) {
     openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
   }, JOUR);
   await planPose(page, false);
-  await page.fill('#qbName', 'Groupe Sans Niveau');
+  await procheDite();
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  const lireSansNiveau = () => page.evaluate(() => ({ bouton: Boolean(document.getElementById('rvForcer')), posts: window.__QA_CREES__.length, quandMeme: /quand même/i.test((document.querySelector('#quickBookOverlay .qb-modal.rv') || {}).textContent || '') }));
+  const sansNiveauAvant = await lireSansNiveau();
   await page.click('#rvCreer');
-  await page.waitForTimeout(400);
-  const sansNiveau = await page.evaluate(() => ({ bouton: Boolean(document.getElementById('rvForcer')), erreur: quickBookState ? quickBookState.error : '' }));
+  await page.waitForTimeout(600);
+  const sansNiveau = await lireSansNiveau();
   await page.evaluate(() => { window.niveauStaff = window.__niveauReel; window.__QA_REFUS__ = null; closeQuickBook(); });
-  verifier('C', !sansNiveau.bouton && /Choisissez une autre heure\./.test(sansNiveau.erreur) && !/quand même/.test(sansNiveau.erreur), 'sans le niveau forcer : ni bouton, ni promesse dans le message du refus', JSON.stringify(sansNiveau));
+  verifier('C', !sansNiveauAvant.bouton && !sansNiveauAvant.quandMeme && !sansNiveau.bouton && !sansNiveau.quandMeme && sansNiveau.posts === 0, 'sans le niveau forcer : ni bouton, ni « quand même » dans la fenetre, avant ou apres le clic, et rien ne part', JSON.stringify({ avant: sansNiveauAvant, apres: sansNiveau }));
+
+  // 5. LE SERVEUR REFUSE A LA CREATION (le planning a change entre la
+  // simulation et le clic) : la fenetre le dit, « Créer » rend la main.
+  // LA JOURNEE EST DEJA LUE, comme au comptoir ou la lecture tourne toutes
+  // les 4 s. Jouee seule (contre-preuves), la scene C ouvrait une page neuve
+  // et le clic « Créer » faisait aussi la premiere lecture du jour : sa
+  // revision entrait dans la cle du plan (rvCleDe), le pied repassait par
+  // « Le planning vérifie » et se redessinait, et un bouton reste
+  // « Création… » ne se voyait plus (contre-preuve « creation » aveugle).
+  await page.evaluate((jour) => {
+    window.__QA_REFUS_CREATION__ = 'Ce créneau vient de changer : plus aucune place à 20:00.';
+    closeQuickBook();
+    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
+  }, JOUR);
+  await page.evaluate((jour) => syncDateReservations(jour, { silent: true }), JOUR);
+  await planPose(page, true);
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  const cleAvant = await page.evaluate(() => quickBookState.cleCourante);
+  await page.click('#rvCreer');
+  await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  const cleApres = await page.evaluate(() => (quickBookState ? quickBookState.cleCourante : null));
+  const refusServeur = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, ouverte: quickBookState !== null, verdict: ((document.querySelector('#rvVerdict .rs-v-ligne.is-ko[role="alert"]') || {}).textContent || '').trim() }));
+  const main = await lireCreer();
+  await page.evaluate(() => { window.__QA_REFUS_CREATION__ = null; closeQuickBook(); });
+  verifier('C', refusServeur.posts === 1 && cleAvant === cleApres, 'MONTAGE : le clic « Créer » part au serveur sans refaire le plan (la journee etait deja lue)', `${refusServeur.posts} POST, ${String(cleAvant).slice(-40)} / ${String(cleApres).slice(-40)}`);
+  verifier('C', refusServeur.ouverte && /plus aucune place à 20:00/.test(refusServeur.verdict), 'un refus du serveur a la creation se dit dans la fenetre', JSON.stringify(refusServeur));
+  verifier('C', !main.desactive && main.occupe !== 'true' && !/Création/.test(main.texte) && main.dedans, 'apres ce refus, « Créer » rend la main (cliquable, sans « Création… ») et le focus reste dans la fenetre', JSON.stringify(main));
 }
 
 // ── [D] ───────────────────────────────────────────────────────────────────────
@@ -442,50 +525,110 @@ async function scenarioD(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 });
   }, JOUR);
   await planPose(page, true);
-  const avant = await page.evaluate(() => window.__QA_CANDIDATS__.length);
-  await page.click('#rvHeure-bowling');
-  await page.waitForSelector('#rvHorloge', { timeout: 5000 });
-  await page.waitForFunction((n) => window.__QA_CANDIDATS__.length > n, avant, { timeout: 8000 }).catch(() => {});
-  const envoi = await page.evaluate((n) => window.__QA_CANDIDATS__[n] || null, avant);
-  await page.waitForFunction(() => quickBookState && quickBookState.candidats && quickBookState.candidats.etat !== 'calcul', null, { timeout: 8000 }).catch(() => {});
-  const heure = (hh) => page.locator('#rvHorloge .rv-hc').filter({ has: page.locator('b', { hasText: new RegExp(`^${hh}$`) }) });
-  await heure('15').click();
-  const minutes = await page.evaluate(() => [...document.querySelectorAll('#rvHorloge .rv-mn')].map((b) => ({ texte: b.querySelector('b') ? b.querySelector('b').textContent : '', cls: b.className, label: b.getAttribute('aria-label') || '' })));
-  const sims = await page.evaluate(() => window.__QA_SIMS__.length);
-  await heure('16').click();
-  await page.locator('#rvHorloge .rv-mn').filter({ has: page.locator('b', { hasText: /^16:00$/ }) }).click();
-  await page.waitForFunction((n) => window.__QA_SIMS__.length > n, sims, { timeout: 8000 }).catch(() => {});
-  const apres = await page.evaluate(() => ({ heure: quickBookState.startTime, horloge: Boolean(document.getElementById('rvHorloge')), derniere: (window.__QA_SIMS__[window.__QA_SIMS__.length - 1] || {}).startTime }));
-  const variantes = envoi && Array.isArray(envoi.candidats) ? envoi.candidats : [];
-  const quinze = minutes.find((x) => x.texte === '15:00');
-  const quinzeTrente = minutes.find((x) => x.texte === '15:30');
+  // 1. Les seances du bowling, relues par le planning (le faux serveur refuse
+  // 15:00, partage 15:30, laisse tenir le reste).
+  const relues = await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).then(() => true, () => false);
+  const accueil = await page.evaluate(() => {
+    const envoi = window.__QA_CANDIDATS__.filter((c) => c.type === 'bowling').pop() || null;
+    return {
+      variantes: envoi ? envoi.candidats : [],
+      seances: [...document.querySelectorAll('#rsZ-bowling .rs-s-l .rs-h[data-heure]')].map((b) => b.getAttribute('data-heure')),
+    };
+  });
+  const variantes = accueil.variantes;
+  verifier('D', variantes.length >= 4 && new Set(variantes.map((v) => v.heure)).size === variantes.length && variantes.every((v) => v.startTime === v.heure), 'les seances du bowling partent au planning, une variante par heure (le depart de chacune)', `${variantes.length} variante(s) : ${variantes.slice(0, 12).map((v) => v.heure).join(', ')}`);
+  verifier('D', relues && variantes.some((v) => v.heure === '15:00') && !accueil.seances.includes('15:00') && accueil.seances.includes('15:30'), '15:00, que le planning refuse, ne se propose plus (seances relues), 15:30 reste', `relues=${relues}, seances : ${accueil.seances.join(', ')}`);
 
-  verifier('D', variantes.length >= 4 && new Set(variantes.map((v) => v.heure)).size === variantes.length && variantes.every((v) => v.startTime === v.heure), 'l horloge envoie au planning une variante par heure (le depart de chacune)', `${variantes.length} variante(s) : ${variantes.slice(0, 6).map((v) => v.heure).join(', ')}`);
-  verifier('D', Boolean(quinze && /is-ko/.test(quinze.cls) && /Toutes les pistes sont prises/.test(quinze.label)), '15:00 dit le refus du planning, avec sa raison', quinze ? `${quinze.cls} / ${quinze.label}` : 'absente');
-  verifier('D', Boolean(quinzeTrente && /is-att/.test(quinzeTrente.cls)), '15:30 dit l ecart (partie partagee)', quinzeTrente ? quinzeTrente.cls : 'absente');
-  verifier('D', apres.heure === '16:00' && !apres.horloge && apres.derniere === '16:00', 'choisir 16:00 pose l heure, ferme l horloge et relance le plan', JSON.stringify(apres));
+  // 2. « Autres » : toutes les heures du jour, jugees par le planning.
+  const nAutres = await page.evaluate(() => window.__QA_CANDIDATS__.length);
+  await page.click('#rsZ-bowling .rs-h-autres');
+  await page.waitForFunction((n) => window.__QA_CANDIDATS__.slice(n).some((c) => c.type === 'bowling' && c.candidats.length > 12), nAutres, { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#rsCorps .rs-heures .rs-h.is-efface', { timeout: 5000 }).catch(() => {});
+  const autres = await page.evaluate((n) => {
+    const envoi = window.__QA_CANDIDATS__.slice(n).filter((c) => c.type === 'bowling').pop() || null;
+    const heures = [...document.querySelectorAll('#rsCorps .rs-heures .rs-h[data-heure]')];
+    return {
+      page: document.querySelector('#quickBookOverlay .qb-modal.rv').classList.contains('is-q-autres'),
+      envoyees: envoi ? envoi.candidats.map((v) => v.heure) : [],
+      heures: heures.map((b) => b.getAttribute('data-heure')),
+      effacees: heures.filter((b) => b.classList.contains('is-efface')).map((b) => `${b.getAttribute('data-heure')}|${b.getAttribute('aria-label')}|${b.disabled ? 'desactivee' : 'touchable'}`),
+    };
+  }, nAutres);
+  verifier('D', autres.page && autres.heures.length >= 20 && autres.heures.every((h) => autres.envoyees.includes(h)) && JSON.stringify(autres.effacees) === JSON.stringify(['15:00|15:00, ne tient pas|touchable']), '« Autres » : chaque heure du jour part au planning ; seule celle qu il refuse (15:00) s efface, touchable, et dit pourquoi', JSON.stringify({ heures: autres.heures.length, envoyees: autres.envoyees.length, effacees: autres.effacees }));
+
+  // 3. Choisir une heure la pose, et le plan repart.
+  const sims = await page.evaluate(() => window.__QA_SIMS__.length);
+  await page.click('#rsCorps .rs-heures .rs-h[data-heure="16:00"]');
+  await page.waitForFunction((n) => window.__QA_SIMS__.length > n, sims, { timeout: 8000 }).catch(() => {});
+  const apres = await page.evaluate(() => {
+    const on = document.getElementById('rvHeure-bowling');
+    return { heure: quickBookState.startTime, seances: document.querySelector('#quickBookOverlay .qb-modal.rv').classList.contains('is-q-activites'), choisie: on ? `${on.getAttribute('data-heure')}|${on.getAttribute('aria-pressed')}` : '', derniere: (window.__QA_SIMS__[window.__QA_SIMS__.length - 1] || {}).startTime };
+  });
+  verifier('D', apres.heure === '16:00' && apres.seances && apres.choisie === '16:00|true' && apres.derniere === '16:00', 'choisir 16:00 pose l heure, revient aux seances (16:00 choisie) et relance le plan', JSON.stringify(apres));
+
+  // 4. Les heures d une partie de laser : la partie 2, deplacee a chaque heure.
+  await page.evaluate((jour) => {
+    closeQuickBook();
+    openQuickBook({ date: jour, startTime: '14:00', type: 'laser', pax: 4, duration: 1, totalDuration: 1 });
+  }, JOUR);
+  await planPose(page, true);
+  await page.click('#rsL-a-laser_game');
+  const nPartie = await page.evaluate(() => window.__QA_CANDIDATS__.length);
+  await page.click('#rvPartie-1');
+  await page.waitForFunction((n) => window.__QA_CANDIDATS__.slice(n).some((c) => c.candidats.some((v) => v.preference && Array.isArray(v.preference.laserGameTimes))), nPartie, { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#rsCorps .rs-heures .rs-h.is-efface', { timeout: 5000 }).catch(() => {});
+  const partie = await page.evaluate((n) => {
+    const envoi = window.__QA_CANDIDATS__.slice(n).filter((c) => c.candidats.some((v) => v.preference && Array.isArray(v.preference.laserGameTimes))).pop() || null;
+    const heures = [...document.querySelectorAll('#rsCorps .rs-heures .rs-h[data-heure]')];
+    return {
+      titre: ((document.getElementById('rsQ') || {}).textContent || '').trim(),
+      variantes: envoi ? envoi.candidats.map((v) => ({ heure: v.heure, departs: v.preference && v.preference.laserGameTimes ? v.preference.laserGameTimes.join('+') : '' })) : [],
+      heures: heures.map((b) => b.getAttribute('data-heure')),
+      effacees: heures.filter((b) => b.classList.contains('is-efface')).map((b) => b.getAttribute('data-heure')),
+    };
+  }, nPartie);
+  const deplacees = partie.variantes.filter((v) => v.heure > '14:30');
+  verifier('D', partie.titre === 'Laser, partie 2, à quelle heure ?' && new Set(partie.variantes.map((v) => v.heure)).size === partie.variantes.length && deplacees.length >= 4 && deplacees.every((v) => v.departs === `14:00+${v.heure}`) && partie.heures.every((h) => partie.variantes.some((v) => v.heure === h)), 'les heures de la partie 2 partent au planning, une variante par heure, la partie deplacee a cette heure', JSON.stringify({ titre: partie.titre, variantes: partie.variantes.length, exemple: deplacees.slice(0, 2) }));
+  verifier('D', JSON.stringify(partie.effacees) === JSON.stringify(['15:00']), '15:00, refusee par le planning pour la partie 2, s efface', `effacees : ${partie.effacees.join(', ') || 'aucune'}`);
+  const simsPartie = await page.evaluate(() => window.__QA_SIMS__.length);
+  await page.click('#rsCorps .rs-heures .rs-h[data-heure="16:00"]');
+  await page.waitForFunction((n) => window.__QA_SIMS__.length > n, simsPartie, { timeout: 8000 }).catch(() => {});
+  const posee = await page.evaluate(() => ({
+    partie: ((document.getElementById('rvPartie-1') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+    departs: (((window.__QA_SIMS__[window.__QA_SIMS__.length - 1] || {}).preference || {}).laserGameTimes || []).join('+'),
+  }));
+  await page.evaluate(() => closeQuickBook());
+  verifier('D', /^16:00/.test(posee.partie) && posee.departs === '14:00+16:00', 'choisir 16:00 pour la partie 2 la pose et relance le plan', JSON.stringify(posee));
 }
 
 // ── [E] ───────────────────────────────────────────────────────────────────────
 async function scenarioE(page, verifier) {
+  // Une autre resa pour le meme client : elle demande son nombre de joueurs,
+  // on lui en donne 4.
+  const autreResa = async () => {
+    await page.click('#rvEncore');
+    await page.waitForFunction(() => rvResas.length === 2 && quickBookState === rvResas[1], null, { timeout: 5000 }).catch(() => {});
+    await page.click('#rsHaut [data-pax="4"]');
+    await planPose(page, true);
+  };
   await page.evaluate((jour) => {
     closeQuickBook();
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 6 });
   }, JOUR);
   await planPose(page, true);
+  // Le contact, sur la page Client qu ouvre le ticket : il vaut pour le lot.
+  await page.click('#rsL-client');
   await page.fill('#qbPhone', '0470 11 22 33');
   await page.fill('#qbName', 'Anniversaire Léa');
-  await page.click('#rvEncore');
-  await page.waitForFunction(() => rvResas.length === 2 && quickBookState === rvResas[1], null, { timeout: 5000 }).catch(() => {});
-  await planPose(page, true);
-  const libelle = await page.evaluate(() => (document.getElementById('rvCreer') || {}).textContent || '');
+  await autreResa();
+  const libelle = await page.evaluate(() => `${(document.getElementById('rvCreer') || {}).textContent || ''} | ${document.querySelectorAll('#rvResasZone .rv-resa').length} onglets`);
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const eFerme = await fenetreFermee(page);
   const r = await page.evaluate((eFerme) => ({ posts: window.__QA_CREES__.length, corps: window.__QA_CREES__[0] || null, ferme: eFerme, rangees: state.reservations.filter((x) => Number(x.id) === 7000 || Number(x.id) === 7001).map((x) => x.name) }), eFerme);
   const dossiers = r.corps && Array.isArray(r.corps.dossiers) ? r.corps.dossiers : [];
-  verifier('E', /Créer les 2/.test(libelle), 'MONTAGE : la fenetre porte deux resas et le dit sur « Créer »', libelle.trim());
+  verifier('E', /^Créer les 2/.test(libelle) && /\| 2 onglets$/.test(libelle), 'MONTAGE : la fenetre porte deux resas (deux onglets) et le dit sur « Créer »', libelle.trim());
   verifier('E', r.posts === 1 && dossiers.length === 2, 'deux resas, UN envoi `dossiers`', `${r.posts} POST, ${dossiers.length} dossier(s)`);
   verifier('E', dossiers.length === 2 && dossiers.every((d) => d.name === 'Anniversaire Léa' && String(d.phone || '').replace(/\D/g, '').endsWith('470112233')), 'le contact est commun aux deux dossiers', dossiers.map((d) => `${d.name} / ${d.phone}`).join(' ; '));
   verifier('E', Boolean(r.corps) && !('forcer' in r.corps), 'aucun « forcer » global sur le lot', r.corps ? Object.keys(r.corps).join(',') : '');
@@ -499,10 +642,9 @@ async function scenarioE(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 6 });
   }, JOUR);
   await planPose(page, true);
+  await page.click('#rsL-client');
   await page.fill('#qbName', 'Anniversaire Léa');
-  await page.click('#rvEncore');
-  await page.waitForFunction(() => rvResas.length === 2 && quickBookState === rvResas[1], null, { timeout: 5000 }).catch(() => {});
-  await planPose(page, true);
+  await autreResa();
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
@@ -512,6 +654,7 @@ async function scenarioE(page, verifier) {
     ouverte: quickBookState !== null,
     pax: quickBookState ? quickBookState.pax : null,
     erreur: quickBookState ? quickBookState.error : '',
+    ecran: ((document.querySelector('#rvVerdict .rs-v-ligne.is-ko') || {}).textContent || '').trim(),
     rangee: state.reservations.some((x) => Number(x.id) === 7000),
   }));
   await page.evaluate(() => { window.__QA_LOT_PARTIEL__ = false; window.__QA_CREES__.length = 0; });
@@ -522,7 +665,7 @@ async function scenarioE(page, verifier) {
   }
   const second = await page.evaluate(() => window.__QA_CREES__[0] || null);
   await fenetreFermee(page);
-  verifier('E', partiel.ouverte && partiel.resas === 1 && partiel.pax === 4 && /Plus aucune piste libre/.test(partiel.erreur), 'lot en partie refuse : seule la resa refusee reste, avec sa raison', JSON.stringify(partiel));
+  verifier('E', partiel.ouverte && partiel.resas === 1 && partiel.pax === 4 && /Plus aucune piste libre/.test(partiel.erreur) && /Plus aucune piste libre/.test(partiel.ecran), 'lot en partie refuse : seule la resa refusee reste, avec sa raison a l ecran', JSON.stringify(partiel));
   verifier('E', partiel.rangee, 'la resa creee entre au planning', '');
   verifier('E', Boolean(second) && !Array.isArray(second.dossiers) && Number(second.pax) === 4, 'le clic suivant ne renvoie que la resa refusee (pas de doublon)', second ? `pax=${second.pax}, dossiers=${Array.isArray(second.dossiers) ? second.dossiers.length : 0}` : 'aucun POST');
 }
@@ -534,32 +677,35 @@ async function scenarioF(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 });
   }, JOUR);
   await planPose(page, true);
-  await page.click('#qbName');
-  await page.evaluate(() => { document.getElementById('qbName').__qa = 1; });
+  // Le champ du client, au ticket : celui qu on tape au comptoir.
+  await page.click('#qbQui');
+  await page.evaluate(() => { document.getElementById('qbQui').__qa = 1; });
   await page.keyboard.type('Dup', { delay: 15 });
   // Ce que fait la reponse du planning quand elle arrive : tout se repeint.
   await page.evaluate(() => rvRepeindre());
   await page.keyboard.type('ont', { delay: 15 });
-  const pendant = await page.evaluate(() => { const el = document.getElementById('qbName'); return { meme: Boolean(el && el.__qa === 1), focus: document.activeElement === el, valeur: el ? el.value : '', etat: quickBookState.name }; });
+  const pendant = await page.evaluate(() => { const el = document.getElementById('qbQui'); return { meme: Boolean(el && el.__qa === 1), focus: document.activeElement === el, valeur: el ? el.value : '', etat: quickBookState.name }; });
   // Le champ rend la main (on touche ailleurs) : la zone qui attendait se repeint.
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.waitForTimeout(120);
-  const apres = await page.evaluate(() => { const el = document.getElementById('qbName'); return { neuf: Boolean(el && el.__qa === undefined), valeur: el ? el.value : '' }; });
+  const apres = await page.evaluate(() => { const el = document.getElementById('qbQui'); return { neuf: Boolean(el && el.__qa === undefined), valeur: el ? el.value : '' }; });
   verifier('F', pendant.meme && pendant.focus, 'pendant la frappe, le repeint ne remplace pas le champ et garde le focus', JSON.stringify(pendant));
   verifier('F', pendant.valeur === 'Dupont' && pendant.etat === 'Dupont', 'le texte tape est entier, a l ecran et dans le dossier', `${pendant.valeur} / ${pendant.etat}`);
   verifier('F', apres.neuf && apres.valeur === 'Dupont', 'le champ rendu, le repeint attendu se fait, avec le texte tape', JSON.stringify(apres));
-  // Un BOUTON focalise, sa zone repeinte (le plan arrive pendant qu on
-  // tabule) : le focus revient au meme controle, jamais au document.
+  // Un BOUTON focalise, sa zone repeinte (le nom d un client reconnu arrive
+  // pendant qu on tabule) : le focus revient au meme controle, jamais au
+  // document. La zone du client se repeint entiere ; le pied, lui, garde ses
+  // noeuds (rsPoser), son bouton n est jamais remplace.
   const bouton = await page.evaluate(() => {
-    const avant = document.getElementById('rvCreer');
+    const avant = document.getElementById('rsL-client');
     avant.focus();
     avant.__qa = 1;
-    quickBookState.plan = null;
+    quickBookState.name = 'Famille Lambert';
     rvRepeindre();
-    const apres = document.getElementById('rvCreer');
+    const apres = document.getElementById('rsL-client');
     return { remplace: Boolean(apres && apres.__qa === undefined), focus: document.activeElement === apres, actif: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null };
   });
-  verifier('F', bouton.remplace, 'MONTAGE : le repeint a bien remplace le bouton « Créer »', JSON.stringify(bouton));
+  verifier('F', bouton.remplace, 'MONTAGE : le repeint a bien remplace le bouton « E-mail, note, occasion »', JSON.stringify(bouton));
   verifier('F', bouton.focus, 'le bouton remplace par le repeint garde le focus (le clavier ne tombe pas derriere la fenetre)', JSON.stringify(bouton));
 }
 
@@ -607,7 +753,7 @@ async function scenarioH(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 });
   }, JOUR);
   await planPose(page, true);
-  await page.fill('#qbName', 'Premier client');
+  await page.fill('#qbQui', 'Premier client');
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
@@ -617,9 +763,22 @@ async function scenarioH(page, verifier) {
   await page.evaluate(() => { window.__QA_LIBERER__(); window.__QA_RETENUE__ = null; });
   await page.waitForFunction(() => state.reservations.some((x) => x.name === 'Premier client'), null, { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(300);
-  const r = await page.evaluate(() => ({ ouverte: quickBookState !== null, pax: quickBookState ? quickBookState.pax : null, heure: quickBookState ? quickBookState.startTime : '', rangee: state.reservations.some((x) => x.name === 'Premier client') }));
+  const r = await page.evaluate(() => {
+    const overlay = document.getElementById('quickBookOverlay');
+    const joueurs = document.querySelector('#rsHaut [data-pax].is-on');
+    const heure = document.getElementById('rvHeure-bowling');
+    return {
+      ouverte: quickBookState !== null,
+      aLEcran: Boolean(overlay && !overlay.classList.contains('hidden') && overlay.querySelector('.qb-modal.rv')),
+      pax: quickBookState ? quickBookState.pax : null,
+      heure: quickBookState ? quickBookState.startTime : '',
+      joueursLus: joueurs ? joueurs.getAttribute('data-pax') : '',
+      heureLue: heure ? heure.getAttribute('data-heure') : '',
+      rangee: state.reservations.some((x) => x.name === 'Premier client'),
+    };
+  });
   verifier('H', r.rangee, 'MONTAGE : la reponse arrivee, le premier dossier entre au planning', JSON.stringify(r));
-  verifier('H', r.ouverte && r.pax === 6 && r.heure === '15:00', 'la nouvelle fenetre reste ouverte, avec ce qu on y a pose', JSON.stringify(r));
+  verifier('H', r.ouverte && r.aLEcran && r.pax === 6 && r.heure === '15:00' && r.joueursLus === '6' && r.heureLue === '15:00', 'la nouvelle fenetre reste ouverte, avec ce qu on y a pose (6 joueurs, 15:00)', JSON.stringify(r));
   await page.evaluate(() => closeQuickBook());
 }
 
@@ -641,64 +800,72 @@ function instantComptoir() {
 }
 
 // Un groupe qui joue dans la demi-heure qui vient, a l heure lue dans la
-// page. `demain` : la meme heure demain.
-async function ouvrirAuComptoir(page, { demain = false } = {}) {
-  return page.evaluate((demain) => {
+// page.
+async function ouvrirAuComptoir(page) {
+  return page.evaluate(() => {
     closeQuickBook();
     const maintenant = currentTimeDecimal();
     const prochaine = Math.ceil(maintenant * 2) / 2;
     const heure = numToTime(prochaine < 24 ? prochaine : Math.floor(maintenant * 2) / 2);
-    let date = todayStr();
-    if (demain) {
-      const d = parseLocalDate(date);
-      d.setDate(d.getDate() + 1);
-      date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-    }
+    const date = todayStr();
     openQuickBook({ date, startTime: heure, type: 'bowling', pax: 4 });
-    return { date, heure };
-  }, demain);
+    return { date, heure, dans: Math.round((timeToNum(heure) - maintenant) * 60) };
+  });
 }
 
+// Le client tel que la fenetre le montre : le champ unique du ticket, ce qui
+// l entoure, et ce qui partira dans le dossier.
 function lireClient(page) {
   return page.evaluate(() => {
     const m = document.querySelector('#quickBookOverlay .qb-modal.rv');
     const q = (sel) => (m ? m.querySelector(sel) : null);
     const qui = q('#qbQui');
+    const texte = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
     return {
-      badge: ((q('.rv-eyebrow em') || {}).textContent || '').trim(),
+      entete: texte(q('.rs-tk-l')),
       qui: Boolean(qui),
+      auTicket: Boolean(qui && qui.closest('.rs-tk')),
+      valeur: qui ? qui.value : null,
       invite: qui ? qui.placeholder : '',
+      libelle: qui ? qui.getAttribute('aria-label') || '' : '',
       tel: Boolean(q('#qbPhone')),
       nom: Boolean(q('#qbName')),
       nomValeur: q('#qbName') ? q('#qbName').value : null,
-      plus: m ? [...m.querySelectorAll('[id^="rvPlus"]')].map((b) => b.textContent.trim()) : [],
+      lien: texte(q('#rsL-client')),
       reconnu: Boolean(qui && qui.parentElement.querySelector('.rv-tag')),
+      carte: texte(q('#rvClientConnu')),
+      // Ce qui se lit au ticket : le texte rendu, pas celui d un element cache.
+      ticket: q('.rs-tk') ? q('.rs-tk').innerText.replace(/\s+/g, ' ').trim() : '',
+      fenetre: texte(m),
       etat: quickBookState ? { name: quickBookState.name, phone: quickBookState.phone } : null,
     };
   });
 }
 
 async function scenarioI(page, verifier) {
-  // 1. L ouverture : un seul champ, rien d obligatoire, le billet le dit.
+  // 1. L ouverture : un seul champ au ticket, rien d obligatoire.
   const ouvert = await ouvrirAuComptoir(page);
   await planPose(page, true);
   const a = await lireClient(page);
-  verifier('I', a.badge === 'au comptoir', 'MONTAGE : un depart dans la demi-heure ouvre la fenetre « au comptoir »', `${ouvert.date} ${ouvert.heure}, badge « ${a.badge} »`);
-  verifier('I', a.qui && a.invite === 'Prénom ou téléphone (facultatif)' && !a.tel && !a.nom, 'au comptoir, UN champ « Prénom ou téléphone (facultatif) », ni telephone ni nom a remplir', JSON.stringify(a));
-  verifier('I', a.plus.includes('+ Téléphone') && a.plus.includes('+ Note pour l’équipe') && a.plus.includes('+ E-mail'), 'le reste se rajoute d un toucher (+ Téléphone, + Note, + E-mail)', a.plus.join(' · '));
+  verifier('I', /aujourd’hui/.test(a.entete) && ouvert.dans >= 0 && ouvert.dans <= 30, 'MONTAGE : un groupe qui joue aujourd hui, dans la demi-heure', `${ouvert.date} ${ouvert.heure}, dans ${ouvert.dans} min, ticket « ${a.entete} »`);
+  verifier('I', a.qui && a.auTicket && a.invite === 'Nom ou téléphone' && /facultatif/.test(a.libelle) && !a.tel && !a.nom, 'au comptoir, UN champ « Nom ou téléphone » au ticket, facultatif, ni telephone ni nom a remplir', JSON.stringify({ qui: a.qui, auTicket: a.auTicket, invite: a.invite, libelle: a.libelle, tel: a.tel, nom: a.nom }));
+  await page.click('#rsL-client');
+  const client = await page.evaluate(() => ['qbName', 'qbPhone', 'qbEmail', 'qbNotes'].filter((id) => document.querySelector(`#rsCorps #${id}`)).concat(document.querySelectorAll('#rsCorps .rs-occasions button').length ? ['occasions'] : []));
+  await page.click('#rsRetour');
+  verifier('I', a.lien === 'E-mail, note, occasion' && client.join() === 'qbName,qbPhone,qbEmail,qbNotes,occasions', 'le reste se rajoute d un toucher : « E-mail, note, occasion » ouvre le client entier (nom, telephone, e-mail, note, occasion)', `${a.lien} -> ${client.join(', ')}`);
 
-  // 2. Des lettres : le nom. Puis des chiffres : le telephone, et « +
-  // Téléphone » devient « + Nom » SUR PLACE (le meme bouton sous le doigt).
+  // 2. Des lettres : le nom. Puis des chiffres : le telephone. Le champ ne
+  // bouge pas sous le doigt pendant que le ticket suit la frappe.
   await page.click('#qbQui');
-  await page.evaluate(() => { document.getElementById('rvPlusAutre').__qa = 1; });
+  await page.evaluate(() => { document.getElementById('qbQui').__qa = 1; });
   await page.keyboard.type('Lucas', { delay: 10 });
   const lettres = await lireClient(page);
   await page.keyboard.press('Control+A');
   await page.keyboard.type('0470 99 88 77', { delay: 10 });
-  const chiffres = await page.evaluate(() => { const b = document.getElementById('rvPlusAutre'); return { meme: Boolean(b && b.__qa === 1), texte: b ? b.textContent.trim() : '', focus: document.activeElement ? document.activeElement.id : '', name: quickBookState.name, phone: quickBookState.phone }; });
-  verifier('I', lettres.etat.name === 'Lucas' && lettres.etat.phone.replace(/\D/g, '').length <= 2 && lettres.plus.includes('+ Téléphone'), 'des lettres : c est le nom, le telephone reste vide', JSON.stringify(lettres.etat));
+  const chiffres = await page.evaluate(() => { const c = document.getElementById('qbQui'); return { meme: Boolean(c && c.__qa === 1), focus: document.activeElement ? document.activeElement.id : '', name: quickBookState.name, phone: quickBookState.phone }; });
+  verifier('I', lettres.etat.name === 'Lucas' && lettres.etat.phone.replace(/\D/g, '').length <= 2, 'des lettres : c est le nom, le telephone reste vide', JSON.stringify(lettres.etat));
   verifier('I', chiffres.phone === '0470 99 88 77' && chiffres.name === '', 'des chiffres : c est le telephone, et les lettres d avant ne restent pas en nom', JSON.stringify(chiffres));
-  verifier('I', chiffres.meme && chiffres.texte === '+ Nom' && chiffres.focus === 'qbQui', '« + Téléphone » devient « + Nom » sur place, le champ garde le focus', JSON.stringify(chiffres));
+  verifier('I', chiffres.meme && chiffres.focus === 'qbQui', 'pendant la frappe, le champ reste le meme et garde le focus', JSON.stringify(chiffres));
 
   // 3. Entree dans le champ unique cree : numero mis en forme, nom par defaut.
   await page.waitForTimeout(600);
@@ -712,8 +879,8 @@ async function scenarioI(page, verifier) {
   verifier('I', Boolean(cree) && /^\+32/.test(String(cree.phone || '')) && String(cree.phone).replace(/\D/g, '').endsWith('470998877') && cree.name === 'Client', 'Entree dans le champ unique cree le dossier (numero mis en forme, nom par defaut)', cree ? `${cree.name} / ${cree.phone}` : 'aucun POST');
   verifier('I', ferme, 'la fenetre se ferme une fois le dossier cree');
 
-  // 4. Un numero deja venu : « reconnu » pendant la frappe, son nom parait
-  // sous le numero quand le champ rend la main.
+  // 4. Un numero deja venu : « reconnu » pendant la frappe, son nom repris ;
+  // le champ rendu, ce nom (celui qui partira) se lit au ticket.
   await ouvrirAuComptoir(page);
   await planPose(page, true);
   await page.click('#qbQui');
@@ -723,8 +890,8 @@ async function scenarioI(page, verifier) {
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.waitForTimeout(150);
   const rendu = await lireClient(page);
-  verifier('I', pendant.reconnu && pendant.etat.name === 'Lucas Martin', 'un numero deja venu : « reconnu » dans le champ pendant la frappe, son nom repris', JSON.stringify(pendant));
-  verifier('I', rendu.nom && rendu.nomValeur === 'Lucas Martin' && !rendu.plus.includes('+ Nom'), 'le champ rendu, le nom reconnu parait sous le numero', JSON.stringify(rendu));
+  verifier('I', pendant.reconnu && pendant.etat.name === 'Lucas Martin', 'un numero deja venu : « reconnu » dans le champ pendant la frappe, son nom repris', JSON.stringify({ reconnu: pendant.reconnu, etat: pendant.etat }));
+  verifier('L', rendu.etat.name === 'Lucas Martin' && rendu.ticket.includes('Lucas Martin'), 'le champ rendu, le nom reconnu (celui qui partira dans le dossier) se lit au ticket', JSON.stringify({ dossier: rendu.etat.name, champ: rendu.valeur, carte: rendu.carte, ticket: rendu.ticket.slice(0, 220) }));
 
   // 5. Un autre numero : le nom de l ancien ne part pas avec lui.
   await page.click('#qbQui');
@@ -741,36 +908,24 @@ async function scenarioI(page, verifier) {
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const cree2 = await page.evaluate(() => window.__QA_CREES__[0] || null);
   await fenetreFermee(page);
-  verifier('I', change.etat.name === '' && change.nomValeur === '', 'un autre numero efface le nom reconnu de l ancien, a l ecran comme dans le dossier', JSON.stringify(change));
-  verifier('I', !apresChange.nom && apresChange.plus.includes('+ Nom') && !apresChange.reconnu, 'le champ rendu, « + Nom » revient et « reconnu » s en va', JSON.stringify(apresChange));
+  verifier('I', change.etat.name === '' && !change.fenetre.includes('Lucas Martin'), 'un autre numero efface le nom reconnu de l ancien, a l ecran comme dans le dossier', JSON.stringify(change.etat));
+  verifier('I', !apresChange.reconnu && !apresChange.carte && !apresChange.fenetre.includes('Lucas Martin'), 'le champ rendu, « reconnu » et la carte de l ancien client s en vont', JSON.stringify({ reconnu: apresChange.reconnu, carte: apresChange.carte }));
   verifier('I', Boolean(cree2) && cree2.name === 'Client' && String(cree2.phone || '').replace(/\D/g, '').endsWith('470998877'), 'le dossier part avec le nouveau numero, sans le nom de l autre client', cree2 ? `${cree2.name} / ${cree2.phone}` : 'aucun POST');
 
-  // 6. « + Nom » ouvre le nom ; un nom tape a part reste quand on corrige le
-  // numero. Le clic arrive alors que le plan du serveur est en route.
+  // 6. Un nom tape a part (page Client) reste quand on corrige le numero au
+  // ticket. Le clic arrive alors que le plan du serveur est en route.
   await ouvrirAuComptoir(page);
   await page.click('#qbQui');
   await page.keyboard.type('0470 99 88 77', { delay: 10 });
-  await page.click('#rvPlusAutre');
-  const focusNom = await page.evaluate(() => (document.activeElement ? document.activeElement.id : ''));
+  await page.click('#rsL-client');
+  await page.click('#qbName');
   await page.keyboard.type('Dupont', { delay: 10 });
   await page.click('#qbQui');
   await page.keyboard.press('End');
   await page.keyboard.press('Backspace');
   await page.keyboard.type('8', { delay: 10 });
   const garde = await lireClient(page);
-  verifier('I', focusNom === 'qbName', '« + Nom » ouvre le champ du nom, le focus dedans', `focus : ${focusNom}`);
-  verifier('I', garde.etat.name === 'Dupont' && garde.nomValeur === 'Dupont' && garde.etat.phone === '+32 470 99 88 78', 'un nom tape a part reste quand on corrige le numero', JSON.stringify(garde));
-
-  // 7. Tout deplie : l autre moitie du client se montre aussi.
-  await ouvrirAuComptoir(page);
-  await page.evaluate(() => toggleQuickBookMore());
-  const tout = await lireClient(page);
-  verifier('I', tout.qui && tout.tel && !tout.plus.includes('+ Téléphone'), 'tout deplie, le telephone se montre sous le champ unique', JSON.stringify(tout));
-
-  // 8. CONTRE-PREUVE : demain a la meme heure, ce n est plus le comptoir.
-  await ouvrirAuComptoir(page, { demain: true });
-  const demain = await lireClient(page);
-  verifier('I', demain.badge !== 'au comptoir' && !demain.qui && demain.tel && demain.nom, 'demain a la meme heure : la fenetre ordinaire (telephone et nom), sans « au comptoir »', JSON.stringify(demain));
+  verifier('I', garde.etat.name === 'Dupont' && garde.nomValeur === 'Dupont' && garde.etat.phone === '+32 470 99 88 78', 'un nom tape a part reste quand on corrige le numero', JSON.stringify({ etat: garde.etat, nomValeur: garde.nomValeur }));
   await page.evaluate(() => closeQuickBook());
 }
 
@@ -778,6 +933,7 @@ async function scenarioI(page, verifier) {
 async function scenarioJ(page, verifier) {
   const CAS = [[7, 8], [6, 7, 8], [1, 3, 5], [1, 2, 4, 5], [1, 2, 3, 4, 5, 6, 7, 8], [8]];
   const enLettres = (p) => (p.length > 2 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : p.join(' et '));
+  const dite = (p) => `${p.length > 1 ? 'pistes' : 'piste'} ${enLettres(p)}`;
   const lus = [];
   try {
     for (const largeur of [1280, 1180]) {
@@ -785,13 +941,17 @@ async function scenarioJ(page, verifier) {
       for (const pistes of CAS) {
         await page.evaluate(({ jour, pistes }) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: pistes.length * 6, lanes: pistes }); }, { jour: JOUR, pistes });
         await page.waitForTimeout(150);
+        // La ligne du bowling au ticket : son detail dit l heure et les pistes.
         lus.push(await page.evaluate(({ largeur, pistes }) => {
-          const bouton = document.querySelector('[data-rv-ligne="bowling"] .rv-lc-h .rv-place');
-          const b = bouton ? bouton.querySelector('b') : null;
-          if (!b) return { largeur, pistes, texte: '', coupe: true, libelle: bouton ? bouton.getAttribute('aria-label') : '' };
+          const bouton = document.getElementById('rsL-a-bowling');
+          const b = bouton ? bouton.querySelector('.rs-tk-n small') : null;
+          const libelle = bouton ? bouton.getAttribute('aria-label') || bouton.textContent : '';
+          if (!b) return { largeur, pistes, texte: '', coupe: true, libelle };
           const r = document.createRange();
           r.selectNodeContents(b);
-          return { largeur, pistes, texte: b.textContent, coupe: r.getBoundingClientRect().width > b.getBoundingClientRect().width + 0.5, libelle: bouton.getAttribute('aria-label') || '' };
+          const t = r.getBoundingClientRect();
+          const cadre = b.getBoundingClientRect();
+          return { largeur, pistes, texte: b.textContent, coupe: t.width > cadre.width + 0.5 || t.right > cadre.right + 0.5, libelle };
         }, { largeur, pistes }));
       }
     }
@@ -801,55 +961,83 @@ async function scenarioJ(page, verifier) {
   }
   const coupees = lus.filter((l) => l.coupe);
   const deux = lus.find((l) => l.largeur === 1280 && l.pistes.join() === '7,8');
-  const sansListe = lus.filter((l) => !l.libelle.endsWith(`${l.pistes.length > 1 ? 'pistes' : 'piste'} ${enLettres(l.pistes)}`));
-  verifier('J', lus.length === CAS.length * 2 && lus.every((l) => l.texte), 'MONTAGE : chaque pastille de pistes choisies est a l ecran', lus.map((l) => `${l.largeur}:${l.texte || '(rien)'}`).join(' | '));
-  verifier('J', coupees.length === 0, 'aucune pastille de pistes coupee, de 1 a 8 pistes, a 1280 et 1180 px', coupees.length ? coupees.map((l) => `${l.largeur} ${JSON.stringify(l.pistes)} « ${l.texte} »`).join(' | ') : [...new Set(lus.map((l) => l.texte))].join(' · '));
-  verifier('J', Boolean(deux) && deux.texte === 'Pistes 7 et 8', 'deux pistes se disent en toutes lettres : « Pistes 7 et 8 », comme la maquette', deux ? deux.texte : 'absente');
-  verifier('J', sansListe.length === 0, 'le libelle du bouton garde la liste entiere des pistes', sansListe.map((l) => l.libelle).join(' | ') || 'ok');
+  const sansListe = lus.filter((l) => !l.texte.includes(dite(l.pistes)));
+  const libellesSansListe = lus.filter((l) => !l.libelle.includes(dite(l.pistes)));
+  verifier('J', lus.length === CAS.length * 2 && lus.every((l) => l.texte), 'MONTAGE : la ligne du bowling dit ses pistes au ticket', lus.map((l) => `${l.largeur}:${l.texte || '(rien)'}`).join(' | '));
+  verifier('J', coupees.length === 0, 'aucune liste de pistes coupee, de 1 a 8 pistes, a 1280 et 1180 px', coupees.length ? coupees.map((l) => `${l.largeur} ${JSON.stringify(l.pistes)} « ${l.texte} »`).join(' | ') : [...new Set(lus.map((l) => l.texte))].join(' · '));
+  verifier('J', Boolean(deux) && deux.texte.includes('pistes 7 et 8'), 'deux pistes se disent en toutes lettres : « pistes 7 et 8 », comme la maquette', deux ? deux.texte : 'absente');
+  verifier('J', sansListe.length === 0, 'la ligne dit la liste entiere des pistes', sansListe.map((l) => `${l.largeur} ${JSON.stringify(l.pistes)} « ${l.texte} »`).join(' | ') || 'ok');
+  verifier('M', libellesSansListe.length === 0, 'le nom accessible du bouton de la ligne garde la liste entiere des pistes', libellesSansListe.length ? `${libellesSansListe.length}/${lus.length} sans la liste, ex. « ${libellesSansListe[0].libelle} » pour ${dite(libellesSansListe[0].pistes)}` : 'ok');
 }
 
 // ── [K] ───────────────────────────────────────────────────────────────────────
 // Tablette en portrait (800 px) : une colonne, comme au telephone, ou rien
-// n est coupe ni pose sur son voisin. En deux colonnes, les jours finissaient
-// sur « Demain ven… » et « pour vous » passait sous le chevron (vu sur les
-// photos du planning Laser, 2026-10-08).
+// n est coupe ni pose sur son voisin. L ancienne fenetre, en deux colonnes,
+// finissait ses jours sur « Demain ven… » et passait « pour vous » sous le
+// chevron (vu sur les photos du planning Laser, 2026-10-08).
 async function scenarioK(page, verifier) {
+  // Les enfants d un element ne se posent pas l un sur l autre.
+  const poses = (selecteur) => page.evaluate((selecteur) => {
+    const trouves = [];
+    document.querySelectorAll(`#quickBookOverlay ${selecteur}`).forEach((h) => {
+      const enfants = [...h.children].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      for (let i = 0; i < enfants.length; i += 1) {
+        for (let j = i + 1; j < enfants.length; j += 1) {
+          const a = enfants[i].getBoundingClientRect();
+          const b = enfants[j].getBoundingClientRect();
+          const l = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+          const hauteur = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+          if (l * hauteur > 4) trouves.push(`${enfants[i].className} / ${enfants[j].className}`);
+        }
+      }
+    });
+    return trouves;
+  }, selecteur);
   for (const [nom, prefill] of [['bowling', { startTime: '14:00', type: 'bowling', pax: 4 }], ['laser', { startTime: '18:00', type: 'laser', pax: 4, duration: 0.5, totalDuration: 0.5 }]]) {
     await page.evaluate(({ jour, prefill }) => { closeQuickBook(); openQuickBook({ date: jour, ...prefill }); }, { jour: JOUR, prefill });
     await planPose(page, true);
     await page.waitForTimeout(250);
     const m = await page.evaluate(() => {
       const modal = document.querySelector('#quickBookOverlay .qb-modal.rv');
-      const boite = (sel) => { const e = modal.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
-      const jours = modal.querySelector('.rv-jours');
+      const boite = (sel) => { const e = modal.querySelector(sel); return e && e.getClientRects().length ? e.getBoundingClientRect() : null; };
+      const cadre = modal.getBoundingClientRect();
+      const gauche = boite('.rs-gauche');
+      const resume = boite('#rsResume');
+      const creer = boite('#rvCreer');
+      // Les jours : chaque touche dans sa rangee, son texte entier.
+      const premier = modal.querySelector('#rsHaut [data-jour]');
+      const jours = premier ? premier.parentElement : null;
       const cadreJours = jours ? jours.getBoundingClientRect() : null;
-      const joursCoupes = jours ? [...jours.querySelectorAll('button')].filter((b) => { const r = b.getBoundingClientRect(); return r.left < cadreJours.left - 0.5 || r.right > cadreJours.right + 0.5; }).map((b) => b.textContent.replace(/\s+/g, ' ').trim()) : ['(pas de jours)'];
-      // Les morceaux de l en-tete de ligne ne se posent pas l un sur l autre.
-      const poses = [];
-      modal.querySelectorAll('.rv-lc-h').forEach((h) => {
-        const enfants = [...h.children].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-        for (let i = 0; i < enfants.length; i += 1) {
-          for (let j = i + 1; j < enfants.length; j += 1) {
-            const a = enfants[i].getBoundingClientRect();
-            const b = enfants[j].getBoundingClientRect();
-            const l = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-            const hauteur = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-            if (l * hauteur > 4) poses.push(`${enfants[i].className} / ${enfants[j].className}`);
-          }
-        }
-      });
-      const compo = boite('.rv-compo');
-      const recap = boite('.rv-recap');
-      return { largeur: Math.round(modal.getBoundingClientRect().width), joursCoupes, poses, colonne: Boolean(compo && recap && recap.top >= compo.bottom - 1), recapVu: Boolean(recap && recap.height > 0) };
+      const joursCoupes = jours ? [...jours.children].filter((b) => { const r = b.getBoundingClientRect(); return r.left < cadreJours.left - 0.5 || r.right > cadreJours.right + 0.5 || b.scrollWidth > b.clientWidth + 1; }).map((b) => b.textContent.replace(/\s+/g, ' ').trim()) : ['(pas de jours)'];
+      return {
+        largeur: Math.round(cadre.width),
+        colonnes: getComputedStyle(modal).gridTemplateColumns.split(' ').filter(Boolean).length,
+        gauchePleine: Boolean(gauche && Math.abs(gauche.width - cadre.width) < 2),
+        ticketReplie: !boite('#rsLignes'),
+        resumeSous: Boolean(resume && gauche && resume.top >= gauche.bottom - 1),
+        creerVu: Boolean(creer && creer.top >= 0 && creer.bottom <= window.innerHeight),
+        joursCoupes,
+      };
     });
-    verifier('K', m.colonne && m.recapVu, `${nom} a 800 px : une colonne, le billet (heures et fil du temps) sous la composition`, JSON.stringify(m));
+    const posesSeances = await poses('.rs-s-t');
+    // Le ticket s ouvre d un toucher sur le resume (quand il est a l ecran :
+    // en deux colonnes, il n existe pas et le ticket est deja la).
+    const resume = await page.$('#rsResume');
+    if (resume && await resume.isVisible()) await resume.click();
+    await page.waitForTimeout(200);
+    const ouvert = await page.evaluate(() => {
+      const lignes = document.querySelector('#quickBookOverlay #rsLignes');
+      return Boolean(lignes && lignes.getClientRects().length && document.querySelector('#quickBookOverlay .qb-modal.rv').classList.contains('is-ticket'));
+    });
+    const posesTicket = await poses('.rs-tk-a');
+    verifier('K', m.colonnes === 1 && m.gauchePleine && m.ticketReplie && m.resumeSous && m.creerVu && ouvert, `${nom} a 800 px : une colonne comme au telephone, le ticket replie sous la composition (resume et « Créer »), ouvert d un toucher`, JSON.stringify({ ...m, ouvert }));
     verifier('K', m.joursCoupes.length === 0, `${nom} a 800 px : chaque jour se lit entier`, m.joursCoupes.join(' | ') || 'aucun coupe');
-    verifier('K', m.poses.length === 0, `${nom} a 800 px : rien ne se pose sur son voisin dans la ligne`, m.poses.join(' | ') || 'aucun');
+    verifier('K', posesSeances.length === 0 && posesTicket.length === 0, `${nom} a 800 px : rien ne se pose sur son voisin (tete des seances, lignes du ticket)`, [...posesSeances, ...posesTicket].join(' | ') || 'aucun');
   }
   await page.evaluate(() => closeQuickBook());
 }
 
-const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ, K: scenarioK };
+const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ, K: scenarioK, L: scenarioI, M: scenarioJ };
 
 async function passe(browser, lettres, { bavard = true } = {}) {
   const echecs = new Set();
@@ -857,7 +1045,9 @@ async function passe(browser, lettres, { bavard = true } = {}) {
     if (bavard || !cond) console.log(`${cond ? 'OK  ' : 'FAIL'} [${lettre}] ${label}${detail ? `  ->  ${detail}` : ''}`);
     if (!cond) echecs.add(lettre);
   };
-  const tablette = lettres.filter((l) => l !== 'G' && l !== 'I' && l !== 'K');
+  // [L] se joue avec [I], au comptoir ; [M] avec [J].
+  const comptoir = lettres.filter((l) => l === 'I' || l === 'L');
+  const tablette = lettres.filter((l) => !['G', 'I', 'L', 'K'].includes(l));
   const lancer = async (viewport, liste, { horloge = null } = {}) => {
     if (!liste.length) return;
     const contexte = await browser.newContext({ viewport, deviceScaleFactor: 1 });
@@ -884,7 +1074,7 @@ async function passe(browser, lettres, { bavard = true } = {}) {
     }
   };
   await lancer({ width: 1280, height: 820 }, tablette);
-  if (lettres.includes('I')) await lancer({ width: 1280, height: 820 }, ['I'], { horloge: instantComptoir() });
+  if (comptoir.length) await lancer({ width: 1280, height: 820 }, comptoir, { horloge: instantComptoir() });
   if (lettres.includes('G')) await lancer({ width: 390, height: 844 }, ['G']);
   if (lettres.includes('K')) await lancer({ width: 800, height: 1280 }, ['K']);
   return echecs;
@@ -897,7 +1087,7 @@ async function main() {
   let rouge = false;
   try {
     if (!arg) {
-      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']);
+      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']);
       rouge = echecs.size > 0;
       console.log(rouge ? `\nreserver-v5-check : ${[...echecs].join(', ')} en echec` : '\nreserver-v5-check: ALL OK, la fenetre cree ce qu elle montre.');
     } else {

@@ -172,14 +172,15 @@ async function main() {
     assert(b2ko.alloc === null, '6 libres < 7 requis → allocation impossible (null)');
     assert(b2ko.lanesLen < 7, `6 libres → la sélection ne se sur-étend pas (reste ${b2ko.lanesLen})`);
 
-    // Bouton « Compléter les pistes » en incluant la piste cliquée
-    const b2btn = await page.evaluate(({ date }) => {
+    // La piste cliquée n°8, au bord du parc, reste dans les 7 pistes du groupe qui grandit.
+    // (La v5 avait un bouton « Compléter les pistes » ; Les seances, 2026-11-03, completent
+    // d elles-memes, comme pour la piste 1 ci-dessus.)
+    const b2bord = await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [8], allowPastStart: true });
-      quickBookState.autoAssign = false; quickBookState.lanes = [8]; quickBookState.pax = 40;
-      applyQuickSuggestedLanes();
+      setQuickPax(40);
       return quickBookState.lanes.slice();
     }, { date: TEST_DATE });
-    assert(b2btn.length === 7 && b2btn.includes(8), `« Compléter les pistes » donne 7 pistes dont la cliquée n°8 (${b2btn.join('-')})`);
+    assert(b2bord.length === 7 && b2bord.includes(8), `40 joueurs depuis la piste n°8 : 7 pistes dont la n°8 (${b2bord.join('-')})`);
 
     // ================= BUG 3 : capacité laser =================
     console.log('\n[BUG 3] Capacité laser : session avec places restantes');
@@ -206,26 +207,53 @@ async function main() {
     assert(b3b.okEmpty === true && b3b.remEmpty === 20, 'créneau vide : 10 joueurs OK, 20 places restantes');
 
     // ================= BUG 1 : double-clic / anti double-submit =================
+    // Les seances (2026-11-03) : le telephone se tape dans le champ du ticket (#qbQui,
+    // nom OU telephone) ou sur la page Client (#qbPhone) ; le blur de chacun normalise
+    // le numero et repeint. Créer ne cree qu une fois le nombre de joueurs choisi (une
+    // entree qui donne pax le pose) et porte data-pret="1" quand le plan du serveur est la.
     console.log('\n[BUG 1] Un seul clic crée la réservation + anti double-submit');
+    const creerPret = () => page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 8000 }).catch(() => {});
+    const montage = () => page.evaluate(() => ({ focus: document.activeElement ? document.activeElement.id : '', valeur: document.activeElement ? document.activeElement.value : '', pret: (document.getElementById('rvCreer') || {}).dataset?.pret || '' }));
+    const unClic = async () => {
+      // UN SEUL clic réel sur « Créer »
+      await page.click('#rvCreer');
+      await page.waitForFunction(() => window.__RES_POSTS__ && window.__RES_POSTS__.length >= 1, null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      return page.evaluate(() => window.__RES_POSTS__.length);
+    };
     await seed([]);
     await page.evaluate(({ date }) => {
       window.__RES_POSTS__ = [];
-      openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true });
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true, pax: 4 });
       quickBookState.name = 'Client Test';
       quickBookState.phone = '+32470111222';
       quickBookState.email = 'client@test.com';
       renderQuickBook();
-      // focus le champ téléphone : son blur déclenchait un re-render qui détruisait
-      // le bouton avant l'arrivée du clic (le fameux « cliquer 2 fois »).
-      const inputs = [...document.querySelectorAll('#quickBookOverlay input')];
-      const phone = inputs.find((i) => (i.getAttribute('onblur') || '').includes('onQuickPhoneBlur'));
-      if (phone) phone.focus();
     }, { date: TEST_DATE });
-    // UN SEUL clic réel sur « Créer la réservation »
-    await page.click('#rvCreer');
-    await page.waitForFunction(() => window.__RES_POSTS__ && window.__RES_POSTS__.length >= 1, null, { timeout: 5000 }).catch(() => {});
-    const postsAfterOneClick = await page.evaluate(() => window.__RES_POSTS__.length);
+    await creerPret();
+    // focus le champ téléphone : son blur déclenchait un re-render qui détruisait
+    // le bouton avant l'arrivée du clic (le fameux « cliquer 2 fois »).
+    await page.focus('#qbQui');
+    const montageTicket = await montage();
+    assert(montageTicket.focus === 'qbQui' && montageTicket.valeur.replace(/\D/g, '') === '32470111222' && montageTicket.pret === '1', `montage : le téléphone tapé dans le ticket (#qbQui) a le focus, Créer est prêt (${JSON.stringify(montageTicket)})`);
+    const postsAfterOneClick = await unClic();
     assert(postsAfterOneClick === 1, `1 clic (champ tél. focus) → exactement 1 POST (obtenu ${postsAfterOneClick})`);
+
+    // Le meme, le telephone tape sur la page Client (« E-mail, note, occasion »).
+    await seed([]);
+    await page.evaluate(({ date }) => {
+      window.__RES_POSTS__ = [];
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true, pax: 4 });
+      quickBookState.name = 'Client Page';
+      renderQuickBook();
+    }, { date: TEST_DATE });
+    await page.click('#rsL-client');
+    await page.fill('#qbPhone', '0470 11 12 22');
+    await creerPret();
+    const montageClient = await montage();
+    assert(montageClient.focus === 'qbPhone' && montageClient.valeur === '0470 11 12 22' && montageClient.pret === '1', `montage : le téléphone tapé sur la page Client (#qbPhone) a le focus, Créer est prêt (${JSON.stringify(montageClient)})`);
+    const postsPageClient = await unClic();
+    assert(postsPageClient === 1, `1 clic (téléphone de la page Client focus) → exactement 1 POST (obtenu ${postsPageClient})`);
 
     // Anti double-submit : 2 appels concurrents → 1 seul POST
     const doubleSubmit = await page.evaluate(({ date }) => {
@@ -339,37 +367,50 @@ async function main() {
       const badEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'pas-un-email' });
       // Email valide : part normalement.
       const goodEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'client@test.com' });
-      // Badges « obligatoire » (qb-req) absents dans la modale staff.
+      // Badges « obligatoire » (qb-req) absents dans la modale staff. Les seances : le
+      // champ e-mail vit sur la page Client (« E-mail, note, occasion »), lue aussi.
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       renderQuickBook();
-      const modalHtml = document.querySelector('#quickBookOverlay').innerHTML;
+      const accueil = document.querySelector('#quickBookOverlay').innerHTML;
+      document.getElementById('rsL-client').click();
+      const champEmail = Boolean(document.querySelector('#quickBookOverlay input[type="email"]'));
+      const modalHtml = accueil + document.querySelector('#quickBookOverlay').innerHTML;
       const hasReqBadge = /qb-req|>obligatoire</i.test(modalHtml);
       const emailRequiredAttr = /type="email"[^>]*\brequired\b/i.test(modalHtml);
-      return { noEmail, emptyAll, badEmail, goodEmail, hasReqBadge, emailRequiredAttr };
+      return { noEmail, emptyAll, badEmail, goodEmail, hasReqBadge, emailRequiredAttr, champEmail };
     }, { date: TEST_DATE });
     assert(emailFront.noEmail.posts === 1, `staff sans email : la réservation part quand même (1 POST, obtenu ${emailFront.noEmail.posts})`);
     assert(emailFront.emptyAll.posts === 1 && emailFront.emptyAll.last && emailFront.emptyAll.last.name === 'Client', `staff nom/tél/email vides : accepté avec fallback nom « Client » (obtenu "${emailFront.emptyAll.last && emailFront.emptyAll.last.name}")`);
     assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé saisi : refusé + message ("${emailFront.badEmail.error}")`);
     assert(emailFront.goodEmail.posts === 1, `email valide : la réservation part (1 POST, obtenu ${emailFront.goodEmail.posts})`);
     assert(!emailFront.hasReqBadge, 'aucun badge « OBLIGATOIRE » (qb-req) dans la modale staff');
-    assert(!emailFront.emailRequiredAttr, 'le champ email staff n\'a plus l\'attribut HTML required');
+    assert(emailFront.champEmail && !emailFront.emailRequiredAttr, `le champ email staff n'a plus l'attribut HTML required (champ lu sur la page Client : ${emailFront.champEmail})`);
 
     // ============ CHANTIER 3b : champ Joueurs : saisie sans perte de focus ============
+    // Les seances (2026-11-03) : les joueurs se choisissent sur leurs touches (1 a 10, 12,
+    // 15, 20) ; #qbPax est « Autre », pour un autre nombre, qui s applique a Entree ou a
+    // la sortie du champ (onchange), plus a chaque chiffre.
     console.log('\n[CHANTIER 3b] Champ Joueurs : taper « 40 », backspace jusqu\'à vide, focus conservé');
     await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       renderQuickBook();
     }, { date: TEST_DATE });
     const paxSelector = '#qbPax';
+    const lirePax = () => page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const touche = document.querySelector('#rsHaut [data-pax][aria-pressed="true"]');
+      return { focused: document.activeElement === el, value: el.value, statePax: quickBookState.pax, touche: touche ? touche.dataset.pax : '' };
+    }, paxSelector);
     await page.click(paxSelector);
     await page.evaluate((sel) => { const el = document.querySelector(sel); el.focus(); el.value = ''; }, paxSelector);
     // Tape « 40 » chiffre par chiffre.
     await page.type(paxSelector, '40', { delay: 20 });
-    let paxStep = await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      return { focused: document.activeElement === el, value: el.value, statePax: quickBookState.pax };
-    }, paxSelector);
-    assert(paxStep.focused && paxStep.value === '40' && paxStep.statePax === 40, `après « 40 » : focus conservé, champ = 40, état = 40 (obtenu focus=${paxStep.focused} val=${paxStep.value} pax=${paxStep.statePax})`);
+    let paxStep = await lirePax();
+    assert(paxStep.focused && paxStep.value === '40', `après « 40 » : focus conservé, champ = 40 (obtenu focus=${paxStep.focused} val=${paxStep.value})`);
+    // Entree pose le nombre : etat = 40, et « Autre » le garde.
+    await page.keyboard.press('Enter');
+    paxStep = await lirePax();
+    assert(paxStep.value === '40' && paxStep.statePax === 40, `Entrée pose « 40 » : état = 40, champ = 40 (obtenu val=${paxStep.value} pax=${paxStep.statePax})`);
     // Backspace jusqu'à vide : PAS de « 1 » forcé pendant la frappe, focus conservé.
     // v5 : le champ a la largeur de ses chiffres ; un clic au milieu pose le
     // curseur entre « 4 » et « 0 ». On efface depuis la fin, comme le doigt.
@@ -377,69 +418,66 @@ async function main() {
     await page.keyboard.press('End');
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
-    paxStep = await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      return { focused: document.activeElement === el, value: el.value };
-    }, paxSelector);
+    paxStep = await lirePax();
     assert(paxStep.focused && paxStep.value === '', `backspace jusqu'à vide : focus conservé et champ vide, PAS de « 1 » forcé (obtenu focus=${paxStep.focused} val="${paxStep.value}")`);
-    // Au blur seulement : normalisation vers 1 (entier >= 1).
+    // Au blur seulement : normalisation vers 1 (entier >= 1), que sa touche montre.
     await page.evaluate((sel) => { document.querySelector(sel).blur(); }, paxSelector);
-    const paxBlur = await page.evaluate((sel) => ({ value: document.querySelector(sel).value, statePax: quickBookState.pax }), paxSelector);
-    assert(paxBlur.value === '1' && paxBlur.statePax === 1, `au blur : valeur normalisée à 1 (obtenu val=${paxBlur.value} pax=${paxBlur.statePax})`);
-    // Toucher le nombre le selectionne en entier : la frappe le REMPLACE
-    // (« 1 » puis 15 donne 15, pas 151 ni 115).
+    const paxBlur = await lirePax();
+    assert(paxBlur.statePax === 1 && paxBlur.touche === '1' && paxBlur.value === '', `au blur : valeur normalisée à 1, sur sa touche (obtenu val=${paxBlur.value} pax=${paxBlur.statePax} touche=${paxBlur.touche})`);
+    // Toucher le nombre le selectionne en entier : la frappe le REMPLACE (« 40 » puis
+    // 15 donne 15, pas 4015 ni 1540). « Autre » ne montre un nombre que hors des
+    // touches : 40.
+    await page.click(paxSelector);
+    await page.keyboard.type('40', { delay: 20 });
+    await page.keyboard.press('Enter');
     await page.click(paxSelector);
     await page.keyboard.type('15', { delay: 20 });
-    const remplace = await page.evaluate((sel) => ({ value: document.querySelector(sel).value, statePax: quickBookState.pax }), paxSelector);
-    assert(remplace.value === '15' && remplace.statePax === 15, `toucher le nombre puis taper le remplace (obtenu val=${remplace.value} pax=${remplace.statePax})`);
+    const tape = await lirePax();
+    await page.keyboard.press('Enter');
+    const remplace = await lirePax();
+    assert(tape.value === '15' && remplace.statePax === 15, `toucher le nombre puis taper le remplace (obtenu val=${tape.value} pax=${remplace.statePax})`);
     await page.evaluate(() => closeQuickBook());
 
-    // ============ CHANTIER 4 : « Plus d'options » repensé + email en essentiel ============
-    console.log('\n[CHANTIER 4] Plus d\'options structuré + email remonté en champ essentiel');
+    // ============ CHANTIER 4 : les réglages d une ligne + l e-mail à un geste ============
+    // LES OPTIONS REMISES EN ORDRE (2026-10-02, Movsar : « les + d options c est moche et
+    // illogique ») : ce qui ouvre les reglages dit ce qu il ouvre, chaque section porte
+    // son titre, l e-mail n est jamais noye dans les reglages d une ligne. Les seances
+    // (2026-11-03) n ont plus de repli ni de chevrons : chaque ligne du ticket ouvre sa
+    // page a gauche (Durée, Pistes, Laquelle, Heure) ; « E-mail, note, occasion », dans
+    // le ticket, ouvre la page Client (e-mail, note pour l equipe).
+    console.log('\n[CHANTIER 4] Chaque ligne ouvre ses réglages, l\'e-mail reste à un geste');
     const options = await page.evaluate(({ date }) => {
-      openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
-      quickBookState.moreOpen = false;
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true, pax: 4 });
       renderQuickBook();
-      // v5 fidele a la maquette (2026-10-08) : plus de repli global. Chaque
-      // ligne ouvre son detail (.rv-lc-d) a son chevron, qui dit ce qu il
-      // ouvre ; toggleQuickBookMore les ouvre toutes d un coup. L essentiel
-      // = ce qui se voit SANS rien ouvrir : hors detail.
-      const toggle = document.querySelector('#quickBookOverlay .rv-ouvrir[aria-controls]');
-      // Maquette v5 : l e-mail est a un geste dans le billet (« + E-mail »),
-      // jamais dans le detail d une ligne ; saisi une fois, il reste ouvert.
-      const email = document.querySelector('#quickBookOverlay input[type="email"]');
-      const plusEmail = document.getElementById('rvPlusEmail');
-      const essentiel = (el) => Boolean(el && !el.closest('.rv-lc-d') && el.getClientRects().length);
-      const emailInEssential = essentiel(email) || essentiel(plusEmail);
-      const toggleLabel = toggle ? toggle.getAttribute('aria-label') || '' : '';
-      // Le depart precis se regle sur la ligne : son heure ouvre l horloge.
-      const depart = document.querySelector('#quickBookOverlay [data-rv-ligne] .rv-heure[aria-haspopup="dialog"]');
-      const departLabel = depart ? depart.getAttribute('aria-label') || '' : '';
-      quickBookState.moreOpen = true;
-      renderQuickBook();
-      const blockLabels = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d .rv-lbl, #quickBookOverlay .rv-lc-d .rv-precis')].map((el) => el.textContent.trim());
-      // Région « avancée » = les details que « Tout régler » vient d ouvrir.
-      const advancedRegion = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d')].map((el) => el.innerHTML).join('');
-      const advancedHasEmail = /type="email"/i.test(advancedRegion);
-      const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
-      const hasNoteLabel = Boolean(document.querySelector('#quickBookOverlay label[for="qbNotes"]'));
-      return { emailInEssential, toggleLabel, departLabel, blockLabels, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
+      const ticket = document.querySelector('#quickBookOverlay .rs-tk');
+      const lien = document.getElementById('rsL-client');
+      const emailUnGeste = Boolean(lien && ticket && ticket.contains(lien) && lien.getClientRects().length && /E-mail/.test(lien.textContent));
+      // La ligne Bowling du ticket : ce qu elle dit, puis la page qu elle ouvre.
+      const ligne = document.getElementById('rsL-a-bowling');
+      const ligneLabel = ligne ? ligne.getAttribute('aria-label') || '' : '';
+      if (ligne) ligne.click();
+      const corps = document.getElementById('rsCorps');
+      const titre = ((document.getElementById('rsQ') || {}).textContent || '').trim();
+      const blockLabels = [...corps.querySelectorAll('.rs-rang .rs-lbl')].map((el) => el.textContent.trim());
+      const heure = corps.querySelector('[data-heure-l][aria-pressed="true"]');
+      const departLabel = heure && blockLabels.includes('Heure') ? `Heure ${heure.dataset.heureL}` : '';
+      const ligneHasEmail = /type="email"/i.test(corps.innerHTML);
+      // La page Client : l e-mail et la note pour l equipe.
+      const versClient = document.getElementById('rsL-client');
+      if (versClient) versClient.click();
+      const email = document.querySelector('#rsCorps input[type="email"]');
+      const notes = document.getElementById('qbNotes');
+      const noteLabel = notes ? ((notes.closest('label') || {}).textContent || '').trim() : '';
+      return { emailUnGeste, emailClient: Boolean(email && email.getClientRects().length), ligneLabel, titre, blockLabels, departLabel, ligneHasEmail, hasNotesTextarea: Boolean(notes && notes.tagName === 'TEXTAREA' && notes.getClientRects().length), noteLabel };
     }, { date: TEST_DATE });
-    assert(options.emailInEssential, 'l\'e-mail reste à un geste dans le billet (« + E-mail » ou le champ), jamais dans le détail d\'une ligne');
-    assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
-    // LES OPTIONS REMISES EN ORDRE (2026-10-02, Movsar : « les + d options
-    // c est moche et illogique ») : le repli dit ce qu il ouvre, chaque section
-    // porte son titre ; plus de cartes qui repetent la ligne d etat, plus de
-    // durees en double (elles vivent dans la liste des activites).
-    // v5 : le chevron de chaque ligne dit ce qu il ouvre et pour quelle
-    // activite ; le depart precis se regle a l heure de la ligne (l horloge),
-    // la note dans le billet (toujours lisible).
-    assert(/^(Régler en détail|Refermer le détail) : \S/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
-    assert(/^Heure de .+ : \d{2}:\d{2}/.test(options.departLabel), `le départ précis se règle sur la ligne, à son horloge ("${options.departLabel}")`);
-    assert(options.blockLabels.some((l) => /^Pistes$|Arène laser/i.test(l)), 'section des pistes présente et étiquetée');
-    assert(options.hasNoteLabel, 'la note pour l équipe est présente et étiquetée');
-    assert(!options.advancedHasEmail, 'l\'email n\'est plus noyé dans « Plus d\'options »');
-    assert(options.hasNotesTextarea, 'les notes internes sont saisissables dans « Plus d\'options »');
+    assert(options.emailUnGeste && options.emailClient && !options.ligneHasEmail, `l'e-mail reste à un geste dans le billet (« E-mail, note, occasion »), jamais dans le détail d'une ligne (lien ${options.emailUnGeste}, page Client ${options.emailClient}, ligne ${options.ligneHasEmail})`);
+    assert(!/mail/i.test(options.ligneLabel), `le libellé de ce qui ouvre les réglages ne mentionne pas « email » ("${options.ligneLabel}")`);
+    assert(/^Bowling .*, changer$/.test(options.ligneLabel) && options.titre === 'Bowling', `la ligne dit ce qu elle ouvre, sa page porte son nom ("${options.ligneLabel}" -> "${options.titre}")`);
+    assert(options.departLabel === 'Heure 16:00', `le départ précis se règle sur la ligne, à sa rangée Heure ("${options.departLabel}")`);
+    assert(options.blockLabels.includes('Pistes'), `section des pistes présente et étiquetée (${options.blockLabels.join(', ')})`);
+    assert(/Note pour l’équipe/.test(options.noteLabel), `la note pour l équipe est présente et étiquetée ("${options.noteLabel}")`);
+    assert(!options.ligneHasEmail, 'l\'email n\'est pas noyé dans les réglages d\'une ligne');
+    assert(options.hasNotesTextarea, 'les notes internes sont saisissables (page Client)');
 
     assert(pageErrors.length === 0, `aucune erreur JS pendant le test (${pageErrors.join(' | ') || 'RAS'})`);
     console.log('\nreservation-bugs-test-ok');

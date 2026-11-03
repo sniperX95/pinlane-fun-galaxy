@@ -218,13 +218,19 @@ async function scenarios(browser, echecs) {
     r.fiche = document.querySelectorAll('.lane-picker .lane-chip').length;
     closePos();
     openQuickBook({ date: jour, startTime: '11:00', type: 'bowling', duration: 1, pax: 4 });
-    await new Promise((res) => setTimeout(res, 100));
-    // La grille des pistes vit dans « Plus d options », repliee a l ouverture.
-    toggleQuickBookMore();
+    await new Promise((res) => setTimeout(res, 250));
+    // Les seances (2026-11-03) : la grille des pistes vit sur la page de la ligne
+    // Bowling, que sa ligne du ticket ouvre (« Laquelle » : Auto, puis une touche
+    // par piste du centre).
+    const ligneBowling = document.getElementById('rsL-a-bowling');
+    if (ligneBowling) ligneBowling.click();
     await new Promise((res) => setTimeout(res, 150));
-    r.rapide = document.querySelectorAll('#quickBookOverlay .rv-pistes-choix [data-piste]').length;
+    const grille = [...document.querySelectorAll('#quickBookOverlay #rsCorps [data-piste]')].map((b) => Number(b.dataset.piste));
+    r.rapide = grille.length;
+    r.rapideMax = grille.length ? Math.max(...grille) : 0;
     const overlay = document.getElementById('quickBookOverlay');
-    r.rapideDiag = `overlay ${overlay ? (overlay.classList.contains('hidden') ? 'cache' : 'ouvert') : 'absent'}, ${overlay ? overlay.textContent.replace(/\s+/g, ' ').slice(0, 600) : ''}, type ${quickBookState && quickBookState.type}, grilles ${document.querySelectorAll('#quickBookOverlay .rv-pistes-choix').length}, boutons ${document.querySelectorAll('#quickBookOverlay .rv-pistes-choix [data-piste]').length}`;
+    const seances = [...document.querySelectorAll('#quickBookOverlay #rsCorps [data-heure-l] small')].map((x) => x.textContent.trim());
+    r.rapideDiag = `overlay ${overlay ? (overlay.classList.contains('hidden') ? 'cache' : 'ouvert') : 'absent'}, ${overlay ? overlay.textContent.replace(/\s+/g, ' ').slice(0, 600) : ''}, type ${quickBookState && quickBookState.type}, page ${((document.getElementById('rsQ') || {}).textContent || '').trim() || 'aucune'}, pistes ${JSON.stringify(grille)}, seances ${seances.join(' | ')}`;
     closeQuickBook();
     const avant = availabilityBlocksCache.blocks;
     availabilityBlocksCache.blocks = [{ id: 1, scopeType: 'center', scopeRef: null, recurrence: 'once', date: jour, startTime: null, endTime: null, reason: 'QA' }];
@@ -243,7 +249,7 @@ async function scenarios(browser, echecs) {
   controle(a.pistes === 6, 'A1 pistes du centre : 6', `obtenu ${a.pistes}`);
   controle(a.libres === 6 && Array.isArray(a.six) && a.six.length === 6 && Math.max(...a.six) <= 6 && !a.sept, 'A2 allocation : 6 pistes libres, aucune au-dela de 6, 7 refusees', `libres ${a.libres}, 6 -> ${JSON.stringify(a.six)}, 7 -> ${JSON.stringify(a.sept)}`);
   controle(a.fiche === 6, 'A3 fiche de modification : 6 pistes proposees', `obtenu ${a.fiche}`);
-  controle(a.rapide === 6, 'A4 reservation rapide : 6 pistes dans la grille', a.rapide === 6 ? 'obtenu 6' : `obtenu ${a.rapide} (${a.rapideDiag})`);
+  controle(a.rapide === 6 && a.rapideMax === 6, 'A4 reservation rapide : 6 pistes dans la grille', a.rapide === 6 && a.rapideMax === 6 ? 'obtenu 6' : `obtenu ${a.rapide} (${a.rapideDiag})`);
   controle(JSON.stringify(a.blocage) === '[1,2,3,4,5,6]', 'A5 blocage de tout le centre : ses 6 pistes', `obtenu ${JSON.stringify(a.blocage)}`);
   controle(a.prerequisLaser, 'A6a prerequis : le depart de 20:30 chevauche le lancement de 20:10 sans le rejoindre');
   controle(a.parallele.ok === true, 'A6 laser : 2e lancement en parallele accepte (6 lancements, 14 joueurs sur 20 armes)', a.parallele.message || 'accepte');
@@ -429,7 +435,9 @@ async function serveur(echecs, remplacement = null) {
 const MUTATIONS = [
   { vise: 'A2', file: 'assets/app-main.js', find: "for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;", replace: "for (let i = 1; i <= TOTAL_LANES; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;" },
   { vise: 'A3', file: 'assets/app-main.js', find: '${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {', replace: '${Array.from({ length: TOTAL_LANES }, (_, index) => index + 1).map(lane => {' },
-  { vise: 'A4', file: 'assets/app-main.js', find: '${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map((lane) => {', replace: '${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map((lane) => {' },
+  // La grille des pistes de la reservation rapide : la page Bowling de la fenetre
+  // « Les seances » (rsLigneBowlingHtml), une touche par piste du parc du centre.
+  { vise: 'A4', file: 'assets/app-main.js', find: 'const cases = Array.from({ length: parc }, (_, i) => i + 1).map((n) => {', replace: 'const cases = Array.from({ length: TOTAL_LANES }, (_, i) => i + 1).map((n) => {' },
   { vise: 'A5', file: 'assets/app-main.js', find: 'for (let lane = 1; lane <= laneCount; lane += 1) push(lane, toWindow(block));', replace: 'for (let lane = 1; lane <= TOTAL_LANES; lane += 1) push(lane, toWindow(block));' },
   { vise: 'A6', file: 'assets/app-main.js', find: 'if (launchCount > lancementsMax) {', replace: 'if (launchCount > 1) {' },
   { vise: 'A7', file: 'assets/app-main.js', find: 'const postesArene = getAvailabilityLaserCapacity();', replace: 'const postesArene = LASER_GAME_MAX_PLAYERS;' },

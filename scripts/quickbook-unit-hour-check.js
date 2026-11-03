@@ -26,7 +26,15 @@
 //   E. Non-regression : le fun run garde ses minutes, la plaine ses enfants.
 //
 // Contre-epreuve par mutation : on retire units/hours de la ligne envoyee, on
-// prouve que le gate rougit, on restaure.
+// prouve que le gate rougit. Depuis le 2026-11-03 la mutation se sert EN
+// MEMOIRE (le serveur du gate rend app-main.js mute) : le disque n est jamais
+// ecrit, d autres gates lisent le meme fichier au meme moment.
+//
+// LES SEANCES (2026-11-03) : la fenetre du comptoir a change d ecran. Le gate
+// joue les gestes du comptoir : le nombre de joueurs (#rsHaut [data-pax]),
+// « + Ajouter une activité » puis la tuile #rsT-billards pour une visite, la
+// tuile seule pour l activite seule ; les reglages vivent sur la page de la
+// ligne ([data-opt="units"], [data-opt="hours"]) et « Créer » (#rvCreer) envoie.
 //
 // Lancement : node scripts/quickbook-unit-hour-check.js
 'use strict';
@@ -44,6 +52,12 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 let failures = 0;
 function ok(cond, label) { console.log((cond ? 'ok  ' : 'FAIL') + '  ' + label); if (!cond) failures += 1; return cond; }
 
+// LA MUTATION : la ligne envoyee perd units et hours (le trou d avant).
+const MARQUEUR = "if (activite.priceType === 'per_unit_hour') {\n    ligne.units";
+const lf = (texte) => texte.split('\r\n').join('\n');
+const MUTEE = process.env.PINLANE_QBUNIT_MUTATION === '1';
+let mutationServie = false;
+
 function serveStatic() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
@@ -52,8 +66,16 @@ function serveStatic() {
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
+      let corps = content;
+      if (MUTEE && path.resolve(filePath) === path.resolve(APP)) {
+        const texte = lf(content.toString('utf8'));
+        if (texte.includes(MARQUEUR)) {
+          corps = Buffer.from(texte.replace(MARQUEUR, MARQUEUR.replace("activite.priceType === 'per_unit_hour'", 'false')), 'utf8');
+          mutationServie = true;
+        }
+      }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-      res.end(content);
+      res.end(corps);
     });
   });
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
@@ -145,30 +167,52 @@ async function main() {
     await page.evaluate(() => window.setView('staff'));
     await page.waitForTimeout(1500);
     await page.waitForFunction(() => typeof window.getCenterActivities === 'function' && window.getCenterActivities().length >= 5, null, { timeout: 15000 });
+    if (MUTEE) console.log(mutationServie ? '[mutation servie]' : '[mutation NON servie]');
+
+    const demain = await page.evaluate(() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
+    // Les gestes du comptoir. « Créer » ne part qu une fois le nombre de
+    // joueurs choisi (« Combien de joueurs ? ») : le gate le choisit d abord.
+    const ouvrir = async (prefill) => {
+      await page.evaluate((p) => window.openQuickBook(p), { date: demain, startTime: '14:00', ...prefill });
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv #rsLignes .rs-tk-a', { timeout: 8000 });
+      await page.click('#rsHaut [data-pax="4"]');
+      await page.waitForSelector('#rsHaut [data-pax="4"].is-on', { timeout: 3000 });
+    };
+    const ajouter = async (id) => {
+      if (!(await page.locator('#quickBookOverlay .rs-tk-plus.is-on').count())) await page.click('#rsL-ajouter');
+      await page.waitForSelector('#quickBookOverlay .rs-tk-plus.is-on', { timeout: 3000 });
+      await page.click(`#rsT-${id}`);
+      await page.waitForSelector(`#rsL-a-${id}`, { timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    };
+    const auTicket = () => page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a[data-activite]')].map((e) => e.dataset.activite));
+    // Les reglages des billards, lus sur la page de leur ligne.
+    const reglagesBillards = () => page.evaluate(() => {
+      const modale = document.querySelector('#quickBookOverlay .qb-modal.rv');
+      const titre = ((document.getElementById('rsQ') || {}).textContent || '').trim();
+      const ouverte = Boolean(modale && modale.classList.contains('is-q-ligne') && titre === 'Billards' && document.getElementById('rsL-a-billards'));
+      const val = (sel) => [...document.querySelectorAll(`#rsCorps ${sel}`)].map((b) => b.textContent.trim());
+      const choisi = (cle) => { const b = document.querySelector(`#rsCorps [data-opt="${cle}"][aria-pressed="true"]`); return b ? b.dataset.val : ''; };
+      return { absente: !ouverte, tables: ouverte ? val('[data-opt="units"]') : [], durees: ouverte ? val('[data-opt="hours"]') : [], units: choisi('units'), hours: choisi('hours') };
+    });
+    // « Créer », comme au comptoir, et ce qui part au serveur.
+    const creer = async () => {
+      await page.evaluate(() => { window.__QA_POSTS__.length = 0; });
+      await page.click('#rvCreer');
+      await page.waitForFunction(() => window.__QA_POSTS__.length > 0, null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      return page.evaluate(() => window.__QA_POSTS__.map((p) => ({ program: p.program })));
+    };
 
     // --- A. Les deux reglages existent -------------------------------------
-    await page.evaluate(() => {
-      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
-      window.setQuickStartTime('14:00');
-      window.setQuickType('visite');
-      window.toggleQuickVisitActivity('billards');
-    });
-    await page.waitForSelector('[data-rv-ligne="billards"]', { timeout: 8000 });
-    // v5 (2026-10-08) : les reglages d une activite vivent dans le detail de
-    // sa ligne ; le comptoir l ouvre au chevron, le gate aussi.
-    await page.evaluate(() => {
-      const ligne = document.querySelector('[data-rv-ligne="billards"]');
-      if (ligne && !ligne.classList.contains('is-ouverte')) ligne.querySelector('.rv-ouvrir').click();
-    });
-    await page.waitForTimeout(400);
-
-    const reglages = await page.evaluate(() => {
-      const rangee = document.querySelector('[data-rv-ligne="billards"]');
-      if (!rangee) return { absente: true, tables: [], durees: [] };
-      const val = (sel) => [...rangee.querySelectorAll(sel)].map((b) => b.textContent.trim());
-      return { absente: false, tables: val('[data-opt="units"]'), durees: val('[data-opt="hours"]') };
-    });
-    ok(!reglages.absente, 'la rangee Billards est bien dans le composeur');
+    // Une visite : le bowling choisi (l entree « bowling a 14:00 », comme une
+    // case du planning), puis « + Ajouter une activité » et la tuile Billards,
+    // qui ouvre la page de sa ligne.
+    await ouvrir({ type: 'bowling' });
+    await ajouter('billards');
+    const reglages = await reglagesBillards();
+    const visite = await auTicket();
+    ok(!reglages.absente && visite.join(' + ') === 'bowling + billards', `la ligne Billards est au ticket, en visite, et sa page s ouvre (${visite.join(' + ') || 'rien'})`);
     ok(reglages.tables.length > 0,
       `les billards proposent un nombre de tables (${reglages.tables.join(' | ') || 'AUCUN reglage'})`);
     ok(reglages.durees.length > 1,
@@ -179,17 +223,12 @@ async function main() {
       `un centre qui declare 6 tables peut en vendre 6 (proposes : ${reglages.tables.join(' | ') || 'aucun'})`);
 
     // --- B. Le POST porte le choix du comptoir ------------------------------
-    await page.evaluate(() => {
-      window.setQuickVisitUnits('billards', 3);
-      window.setQuickVisitHours('billards', 2);
-    });
+    await page.click('#rsCorps [data-opt="units"][data-val="3"]');
+    await page.click('#rsCorps [data-opt="hours"][data-val="2"]');
     await page.waitForTimeout(300);
-    await page.evaluate(async () => {
-      window.__QA_POSTS__.length = 0;
-      await window.saveQuickBook();
-    });
-    await page.waitForTimeout(600);
-    const enVisite = await page.evaluate(() => window.__QA_POSTS__.map((p) => ({ program: p.program })));
+    const choisis = await reglagesBillards();
+    ok(choisis.units === '3' && choisis.hours === '2', `prerequis : 3 tables et 2 h sont pressees a l ecran (units ${choisis.units || 'aucun'}, hours ${choisis.hours || 'aucune'})`);
+    const enVisite = await creer();
     const ligneVisite = ligneBillards(enVisite);
     ok(!!ligneVisite,
       `le comptoir a bien envoye une ligne billards (${JSON.stringify(enVisite[enVisite.length - 1] || null)})`);
@@ -199,46 +238,39 @@ async function main() {
       `2 heures choisies, 2 heures envoyees (hours=${ligneVisite ? ligneVisite.hours : 'ABSENT'})`);
 
     // --- C. Le mode « une seule activite » n est pas un trou ----------------
-    await page.evaluate(() => {
-      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
-      window.setQuickStartTime('14:00');
-      window.setQuickType('activity', 'billards');
-      // v5 : les reglages vivent dans le detail de la ligne, au chevron.
-      const ligne = document.querySelector('[data-rv-ligne="billards"]');
-      if (ligne && !ligne.classList.contains('is-ouverte')) ligne.querySelector('.rv-ouvrir').click();
-    });
-    await page.waitForTimeout(500);
-    const seule = await page.evaluate(() => ({
-      tables: [...document.querySelectorAll('#quickBookOverlay [data-opt="units"]')].map((b) => b.textContent.trim()),
-      durees: [...document.querySelectorAll('#quickBookOverlay [data-opt="hours"]')].map((b) => b.textContent.trim()),
-    }));
+    // Hors ajout, la tuile Billards remplace le bowling propose a l ouverture :
+    // les billards seuls, et la page de leur ligne.
+    await ouvrir({});
+    await page.click('#rsT-billards');
+    await page.waitForSelector('#rsL-a-billards', { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const seule = await reglagesBillards();
+    const seuleAuTicket = await auTicket();
+    ok(!seule.absente && seuleAuTicket.join(' + ') === 'billards', `prerequis : les billards seuls au ticket, leur page ouverte (${seuleAuTicket.join(' + ') || 'rien'})`);
     ok(seule.tables.length > 0 && seule.durees.length > 1,
       `activite seule : les reglages sont la aussi (${seule.tables.length} tables, ${seule.durees.length} durees)`);
 
-    await page.evaluate(async () => {
-      window.setQuickVisitUnits('billards', 2);
-      window.setQuickVisitHours('billards', 3);
-      window.__QA_POSTS__.length = 0;
-      await window.saveQuickBook();
-    });
-    await page.waitForTimeout(600);
-    const enSeule = await page.evaluate(() => window.__QA_POSTS__.map((p) => ({ program: p.program })));
+    await page.click('#rsCorps [data-opt="units"][data-val="2"]');
+    await page.click('#rsCorps [data-opt="hours"][data-val="3"]');
+    await page.waitForTimeout(300);
+    const enSeule = await creer();
     const ligneSeule = ligneBillards(enSeule);
     ok(ligneSeule && Number(ligneSeule.units) === 2 && Number(ligneSeule.hours) === 3,
       `activite seule : 2 tables x 3h partent bien (${ligneSeule ? `units=${ligneSeule.units} hours=${ligneSeule.hours}` : 'AUCUNE ligne billards'})`);
 
     // --- E. Non-regression : minutes et participants ------------------------
-    await page.evaluate(async () => {
-      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
-      window.setQuickStartTime('14:00');
-      window.setQuickType('visite');
-      window.toggleQuickVisitActivity('fun_run');
-      window.toggleQuickVisitActivity('playground');
-      window.setQuickVisitParticipants('playground', 2);
-      window.__QA_POSTS__.length = 0;
-      await window.saveQuickBook();
-    });
-    await page.waitForTimeout(600);
+    // La visite bowling + fun run + plaine ; la plaine descend a 2 enfants par le
+    // moins de sa page.
+    await ouvrir({ type: 'bowling' });
+    await ajouter('fun_run');
+    await ajouter('playground');
+    for (let i = 0; i < 2; i += 1) {
+      await page.click('#rsCorps .rs-pas [aria-label$="un de moins"]');
+      await page.waitForTimeout(250);
+    }
+    const enfants = await page.evaluate(() => ((document.querySelector('#rsCorps .rs-pas > b') || {}).textContent || '').trim());
+    ok(enfants === '2', `prerequis : la plaine dit 2 enfants a l ecran (${enfants || 'aucun compteur'})`);
+    await creer();
     const autres = await page.evaluate(() => {
       const p = window.__QA_POSTS__[window.__QA_POSTS__.length - 1];
       const prog = (p && p.program) || [];
@@ -264,21 +296,21 @@ async function main() {
 }
 
 if (process.argv.includes('--mutate')) {
-  const source = fs.readFileSync(APP, 'utf8');
-  const marqueur = "if (activite.priceType === 'per_unit_hour') {\r\n    ligne.units";
-  const marqueurLf = marqueur.split('\r\n').join('\n');
-  const trouve = source.includes(marqueur) ? marqueur : (source.includes(marqueurLf) ? marqueurLf : '');
-  if (!trouve) {
-    console.error('mutation impossible : la ligne units/hours est introuvable dans assets/app-main.js');
+  // L ancre doit exister UNE fois : une ancre morte ou ambigue ne prouve rien.
+  const occurrences = lf(fs.readFileSync(APP, 'utf8')).split(MARQUEUR).length - 1;
+  if (occurrences !== 1) {
+    console.error(`mutation impossible : la ligne units/hours apparait ${occurrences} fois dans assets/app-main.js (attendu : 1)`);
     process.exit(1);
   }
-  // On remet le trou d avant : la ligne part sans units ni hours.
-  const mute = source.replace(trouve, trouve.replace("activite.priceType === 'per_unit_hour'", 'false'));
-  fs.writeFileSync(APP, mute);
+  // On remet le trou d avant, servi en memoire au navigateur du gate : la ligne
+  // part sans units ni hours.
   const { spawnSync } = require('child_process');
-  const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
-  fs.writeFileSync(APP, source);
+  const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8', env: { ...process.env, PINLANE_QBUNIT_MUTATION: '1' } });
   console.log(run.stdout || '');
+  if (!String(run.stdout || '').includes('[mutation servie]')) {
+    console.error('CONTRE-EPREUVE RATEE : la mutation n a pas ete servie au navigateur.');
+    process.exit(1);
+  }
   if (run.status === 0) {
     console.error('CONTRE-EPREUVE RATEE : le gate reste vert sans units/hours dans la ligne envoyee.');
     process.exit(1);

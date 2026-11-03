@@ -42,10 +42,11 @@ function serveStatic() {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
 }
 
-async function installMock(page) {
+async function installMock(page, permsVoulues) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-  await page.addInitScript(({ expiresAt }) => {
-    const perms = ['dashboard.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
+  await page.addInitScript(({ expiresAt, permsVoulues }) => {
+    const perms = permsVoulues || ['dashboard.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
+    window.__tfRange = 0;
     const qaSession = {
       token: 'qa', cookieBacked: false, centerId: 'gembloux', expiresAt,
       member: { id: 'gembloux:dir', name: 'Directrice' },
@@ -93,13 +94,23 @@ async function installMock(page) {
         }
         return J({ ok: true });
       }
+      if (u.pathname === '/api/admin-range') { window.__tfRange += 1; return J({ ok: true, reservations: [] }); }
       if (u.pathname.endsWith('/public-availability')) return J({ ok: true, durees: { f1: { min: 135, max: 135 }, f2: { min: 150, max: 150 } } });
       if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], activities: [], center: null });
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [] });
       return nf(input, init);
     };
     try { localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession)); } catch (e) { /* ignore */ }
-  }, { expiresAt });
+  }, { expiresAt, permsVoulues: permsVoulues || null });
+}
+
+async function ouvrirTarifs(page) {
+  await page.goto(`${BASE_URL}/?v=tarifs-${Date.now()}`, { waitUntil: 'load', timeout: 45000 });
+  await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+  await page.evaluate(async () => { setView('staff'); await ensureStaffConsolesLoaded(); });
+  await page.waitForFunction(() => typeof window.renderStaffPricingPage === 'function' && typeof state !== 'undefined', null, { timeout: 15000 });
+  await page.evaluate(() => { if (typeof hasSavedAuth === 'function') hasSavedAuth(); state.staffMenuPage = 'prices'; setView('staff'); });
+  await page.waitForSelector('#staffPricingPage [data-tf-prix="f1"]', { state: 'visible', timeout: 20000 });
 }
 
 async function main() {
@@ -169,6 +180,23 @@ async function main() {
     const l2 = await ligne('f1');
     ok(/^28\b/.test(l2.montant), 'ligne-relue-apres-publication', l2.montant);
     ok(erreurs.length === 0, 'aucune-erreur-de-page', erreurs.join(' | '));
+
+    // Un role Tarifs SANS acces aux reservations (le Manager reduit) : la page
+    // ne demande jamais l historique a /api/admin-range et dit pourquoi elle
+    // n a pas de chiffre, au lieu d afficher des zeros.
+    const sansHisto = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await installMock(sansHisto, ['dashboard.view', 'pricing.manage']);
+    await ouvrirTarifs(sansHisto);
+    await sansHisto.waitForTimeout(1200);
+    const h = await sansHisto.evaluate(() => ({
+      appels: window.__tfRange,
+      resume: ((document.querySelector('#staffPricingPage [data-tf-resume]') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      ajout: Boolean(document.querySelector('#staffPricingPage [data-add-formula], #cevAddCategory')),
+    }));
+    ok(h.appels === 0, 'sans-historique-aucun-appel-admin-range', String(h.appels));
+    ok(/non accessible/i.test(h.resume) && !/\d+\s*réservation/.test(h.resume), 'sans-historique-le-resume-le-dit', h.resume);
+    ok(!h.ajout, 'sans-reglages-pas-de-creation-de-formule', String(h.ajout));
+    await sansHisto.close();
   } finally {
     await browser.close();
     server.close();

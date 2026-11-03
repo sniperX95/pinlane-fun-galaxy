@@ -43,10 +43,11 @@
 //        sur plusieurs activités »). Chaque tuile dit le prix du serveur, « sur place »
 //        quand il n a pas de tarif ; trois touchers sur trois tuiles donnent trois
 //        activites au ticket, chacune son heure et son prix, et le total du serveur ; un
-//        deuxieme toucher retire, la croix d une ligne aussi ; une seance d une activite
-//        pas encore prise l ajoute a son heure, une autre seance la deplace, la meme la
-//        retire ; ce qui est pris est coche ; une formule s adapte d un toucher quand le
-//        role le peut (le role qui ne le peut pas : [S6]). Le dossier cree le dit.
+//        deuxieme toucher retire, la croix d une ligne aussi, la derniere reste (sans
+//        croix, sa tuile ouvre sa page) ; une seance d une activite pas encore prise
+//        l ajoute a son heure, une autre seance la deplace, la meme la retire ; ce qui est
+//        pris est coche ; une formule s adapte d un toucher quand le role le peut (le role
+//        qui ne le peut pas : [S6]). Le dossier cree le dit.
 //   [*]  Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois
@@ -124,6 +125,8 @@ const MUTATIONS = [
   { nom: 'heure-hors-tuile', lettre: 'S9', bloc: 'tuiles', cible: '[S9] une tuile prise dit son heure du ticket', fichier: APP, de: "    mot = telle ? 'dans la formule' : e && e.h ? e.h : e || ligne.index > 0 ? 'accès libre' : ligne.heure || '';", vers: '    mot = rsPrixTuile(id);' },
   { nom: 'coche-absente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] ce qui est pris est coche', fichier: CSS, de: '.qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }', vers: '' },
   { nom: 'croix-absente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque ligne se retire d une croix', fichier: APP, de: "retirer: retirable ? 'rsRetirer(this.dataset.activite)' : ''", vers: "retirer: ''" },
+  { nom: 'derniere-croix', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  const retirable = ids.length > 1;', vers: '  const retirable = true;' },
+  { nom: 'derniere-tuile-muette', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  if (ids.length === 1 && ids[0] === id && rvModifiable()) { rsOuvrirLigne(id); return; }\n', vers: '' },
   { nom: 'seance-remplace', lettre: 'S9', bloc: 'seances', cible: '[S9] une seance d une activite pas encore prise l ajoute a cette heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '    if (!pris) rsRemplacer(id, variante);\n' },
   { nom: 'seance-retire-au-lieu-de-deplacer', lettre: 'S9', bloc: 'seances', cible: '[S9] une autre seance d une activite prise deplace son heure', fichier: APP, de: "    if (pris && heure === courante && b.q === 'activites') {", vers: "    if (pris && b.q === 'activites') {" },
   { nom: 'seance-reste', lettre: 'S9', bloc: 'seances', cible: '[S9] la meme seance touchee deux fois retire l activite', fichier: APP, de: '      if (ids.length > 1 && rsPeutChanger()) rsEnlever(id);', vers: '      if (false) rsEnlever(id);' },
@@ -1061,6 +1064,14 @@ async function scenarioS9(browser) {
     await pret(page).catch(() => {});
     const une = await lireTicket(page);
     ok(deux.lignes.every((l) => l.croix) && JSON.stringify(une.lignes.map((l) => l.id)) === '["minigolf_blacklight"]', '[S9] chaque ligne se retire d une croix', { avant: deux.lignes, apres: une.lignes.map((l) => l.id) });
+    // La derniere reste, il faut bien reserver quelque chose : sa ligne n a pas de croix,
+    // et sa tuile touchee encore ouvre sa page (son heure, ses joueurs) au lieu de la retirer.
+    await page.locator('#rsT-minigolf_blacklight').click();
+    await page.waitForTimeout(260);
+    const derniere = await page.evaluate(() => ({ ids: rvActivites(), page: (/\bis-q-([\w-]+)/.exec(document.querySelector('.qb-modal.rv').className) || [])[1] || '' }));
+    ok(une.lignes.length === 1 && !une.lignes[0].croix && JSON.stringify(derniere.ids) === '["minigolf_blacklight"]' && derniere.page === 'ligne', '[S9] la derniere activite reste : sans croix, sa tuile ouvre sa page', { croix: une.lignes.map((l) => l.croix), derniere });
+    await page.locator('#rsRetour').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForSelector('.is-q-activites #rsT-arcade_time', { timeout: 3000 }).catch(() => {});
     // 5. Le dossier cree porte ce que le ticket montre, a son prix.
     await page.locator('#rsT-arcade_time').click();
     await page.waitForSelector('#rsL-a-arcade_time', { state: 'attached', timeout: 4000 }).catch(() => {});

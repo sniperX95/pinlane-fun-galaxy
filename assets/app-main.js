@@ -26112,10 +26112,6 @@ function espaceSousLaListe(box) {
 }
 window.addEventListener('resize', () => ajusterHauteurListe());
 
-function quickAction(id, status) {
-  setReservationStatusDirect(id, status);
-}
-
 async function setReservationStatusDirect(id, status, ev, options = {}) {
   if (ev) ev.stopPropagation();
   const key = String(id);
@@ -26221,10 +26217,6 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     if (clicked?.isConnected) { clicked.disabled = false; clicked.removeAttribute('aria-busy'); clicked.textContent = previousLabel; }
     if (isLatestRequest()) delete statusSaveLatestSeqByReservation[requestKey];
   });
-}
-
-function quickPay(id) {
-  setReservationStatusDirect(id, 'paid');
 }
 
 // Coche/décoche une activité de formule comme « faite ». PATCH MINIMAL
@@ -30568,14 +30560,6 @@ function getQuickBookCustomPrice() {
   return Math.round(value * 100) / 100;
 }
 
-function toggleQuickCustomPrice() {
-  if (!quickBookState) return;
-  quickBookState.priceOpen = true;
-  renderQuickBook();
-  const el = document.getElementById('qbCustomPrice');
-  if (el) el.focus();
-}
-
 function clearQuickCustomPrice() {
   if (!quickBookState) return;
   quickBookState.customPrice = '';
@@ -30670,37 +30654,6 @@ function patchQuickBookStatusLine(overlay) {
   if (host.innerHTML !== html) host.innerHTML = html;
 }
 
-// Champ « Joueurs » de la modale staff : saisie NORMALE sans re-render destructif.
-// Pendant la frappe on met à jour l'état + la réconciliation pistes/laser SANS
-// reconstruire l'input (sinon perte de focus) et SANS forcer « 1 » (le champ peut
-// rester vide transitoirement, backspace inclus). La normalisation (entier >= 1)
-// n'a lieu qu'au blur/commit.
-function onQuickPaxInput(value) {
-  if (!quickBookState) return;
-  const trimmed = String(value).trim();
-  if (trimmed === '') return; // champ vidé : on laisse l'utilisateur, aucune normalisation
-  const n = Math.trunc(Number(trimmed));
-  if (!Number.isFinite(n) || n < 1) return; // valeur transitoire invalide : on ne force rien
-  quickBookState.pax = n;
-  syncQuickBookDuration();
-  reconcileQuickLaneSelection();
-  patchQuickBookPaxDerived();
-}
-
-function onQuickPaxBlur(el, ev) {
-  if (!quickBookState) return;
-  const n = Math.max(1, Math.trunc(Number(el && el.value) || 1));
-  quickBookState.pax = n;
-  syncQuickBookDuration();
-  reconcileQuickLaneSelection();
-  // On reflète la valeur normalisée directement dans le champ (pas de re-render :
-  // reconstruire la modale ici détruirait « Créer la réservation » avant l'arrivée
-  // du clic : le même piège que le champ téléphone, et volerait le focus si on
-  // tabule vers un autre champ). Le « Total estimé » est patché en place.
-  if (el) el.value = String(n);
-  patchQuickBookPaxDerived();
-}
-
 // LES ACTIVITES DU QUICKBOOK VIENNENT DU CATALOGUE VIVANT (2026-08-19).
 // Trois boutons etaient codes en dur (Bowling, Laser, Formule) pendant que le
 // centre vendait huit activites et que le tunnel public les proposait toutes :
@@ -30735,90 +30688,6 @@ function getQuickBookActivityChoices() {
     choices.push({ id: 'laser_game', label: 'Laser', type: 'laser', activity: null });
   }
   return choices;
-}
-
-// PLUSIEURS ACTIVITES A LA FOIS (Movsar 2026-08-26 : « autorise le fait de
-// choisir plusieurs activites en meme temps »). Le selecteur reste simple :
-// un clic choisit l activite, un DEUXIEME clic sur une autre l AJOUTE et fait
-// basculer la reservation en visite sur mesure. Le serveur accepte deja
-// plusieurs activites dans une reservation (program renormalise par
-// lib/visit-program) : il n y a rien a changer cote API.
-// Lecture seule de la composition en cours : quickBookState est un `let` de
-// module, invisible depuis un harnais de test.
-function quickBookStateVisitPourTest() {
-  return quickBookState ? { type: quickBookState.type, visit: quickBookState.visit || null } : null;
-}
-
-// LE « + » BASCULE, IL N AJOUTE PAS SEULEMENT. Premiere version : il ne savait
-// qu ajouter, donc une activite cochee par erreur restait la pour toujours et il
-// fallait fermer la fenetre pour repartir. Movsar, 2026-08-26 : « faut qu on
-// puisse decocher un par un et quand on en recoche plusieurs comme on veut ».
-// Retirer l avant-derniere activite ramene au mode simple de celle qui reste :
-// une seule activite n est pas une visite. On ne retire jamais la derniere, il
-// faut bien reserver quelque chose.
-function basculerQuickActivite(id) {
-  if (!quickBookState) return;
-  if (quickActiviteRetenue(id)) { retirerQuickActivite(id); return; }
-  ajouterQuickActivite(id);
-}
-
-function retirerQuickActivite(id) {
-  if (!quickBookState) return;
-  const restantes = getQuickBookActivityChoices()
-    .filter((choice) => quickActiviteRetenue(choice.id) && choice.id !== id)
-    .map((choice) => choice.id);
-  if (!restantes.length) return;
-  if (quickBookState.type !== 'visite') {
-    // Mode simple : l activite affichee EST le type. La retirer n a de sens que
-    // s il y en a une autre a mettre a la place, et il n y en a pas.
-    return;
-  }
-  const visit = ensureQuickVisit();
-  if (id === 'bowling') visit.bowling.on = false;
-  else if (id === 'laser_game') visit.laser_game.on = false;
-  else if (visit.others) delete visit.others[id];
-  if (restantes.length === 1) {
-    const seule = restantes[0];
-    if (seule === 'bowling') setQuickType('bowling');
-    else if (seule === 'laser_game') setQuickType('laser');
-    else setQuickType('activity', seule);
-    return;
-  }
-  syncQuickBookDuration();
-  renderQuickBook();
-}
-
-function ajouterQuickActivite(id) {
-  if (!quickBookState) return;
-  const visit = ensureQuickVisit();
-  // Ce qui etait deja choisi entre dans la composition, pour ne rien perdre.
-  const dejaChoisi = quickBookState.type === 'bowling' ? 'bowling'
-    : quickBookState.type === 'laser' ? 'laser_game'
-      : quickBookState.type === 'activity' ? String(quickBookState.activityId || '')
-        : '';
-  if (dejaChoisi === 'bowling') visit.bowling.on = true;
-  else if (dejaChoisi === 'laser_game') visit.laser_game.on = true;
-  else if (dejaChoisi) visit.others[dejaChoisi] = true;
-  if (id === 'bowling') visit.bowling.on = true;
-  else if (id === 'laser_game') visit.laser_game.on = true;
-  else visit.others[id] = true;
-  quickBookState.type = 'visite';
-  // Cumuler des activites ne rend pas la reservation « sur mesure » : voir
-  // setQuickType. Le type sert au serveur, le drapeau sert a l ecran.
-  quickBookState.surMesure = false;
-  quickBookState.activityId = '';
-  quickBookState.formuleId = '';
-  quickBookState.lanes = [];
-  quickBookState.autoAssign = false;
-  syncQuickBookDuration();
-  renderQuickBook();
-}
-
-// LE NOM D UNE VISITE, C EST CE QU ELLE CONTIENT. « Sur mesure » ne dit rien a
-// quelqu un qui lit son planning : « Bowling + Laser Game » se comprend seul.
-function decrireVisiteRetenue() {
-  const choix = getQuickBookActivityChoices().filter((c) => quickActiviteRetenue(c.id));
-  return choix.length ? choix.map((c) => c.label).join(' + ') : '';
 }
 
 // Une activite est-elle retenue, quel que soit le mode (mono ou visite) ?
@@ -31131,13 +31000,6 @@ function setQuickType(type, activityId = '') {
     const visit = ensureQuickVisit();
     if (!visit.bowling.on && !visit.laser_game.on && !Object.values(visit.others || {}).some(Boolean)) visit.bowling.on = true;
   }
-  syncQuickBookDuration();
-  renderQuickBook();
-}
-
-function setQuickDuration(duration) {
-  if (quickBookState.type === 'formule' && quickBookState.formuleId) return;
-  quickBookState.duration = duration;
   syncQuickBookDuration();
   renderQuickBook();
 }
@@ -31609,39 +31471,6 @@ function formatQuickBookDateLabel(dateStr) {
   }
 }
 
-// Titre + tonalité par contexte : la popup « parle » l'endroit d'où elle vient.
-function getQuickBookHeader(formule) {
-  const s = quickBookState;
-  const src = s.context.source;
-  if (src === 'planning-bowling') {
-    const laneText = s.lanes.length ? `la piste ${s.lanes.join(' & ')}` : 'le bowling';
-    return { eyebrow: 'Planning bowling', title: `Réserver ${laneText}${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Créneau repris du planning, il ne reste que le client à compléter.' };
-  }
-  if (src === 'laser-session') {
-    return { eyebrow: 'Laser Game', title: `Rejoindre le lancement${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Le groupe complète une session existante, départ verrouillé.' };
-  }
-  if (src === 'laser-slot' || (src === 'activite' && s.type === 'laser')) {
-    return { eyebrow: 'Laser Game', title: `Nouvelle session laser${quickFieldKnown('startTime') && s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Session laser depuis le planning des lancements.' };
-  }
-  if (src === 'groupe' || (src === 'activite' && s.type === 'formule')) {
-    return { eyebrow: 'Groupes & anniversaires', title: 'Réservation groupe · anniversaire', sub: 'Choisissez la formule, le reste suit.' };
-  }
-  if (src === 'client') {
-    return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche, choisissez le créneau.' };
-  }
-  if (src === 'activite' && s.type === 'bowling') {
-    return { eyebrow: 'Comptoir', title: 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
-  }
-  if (s.type === 'activity' && s.activityId) {
-    const activite = typeof getCenterActivity === 'function' ? getCenterActivity(s.activityId) : null;
-    return { eyebrow: 'Comptoir', title: (activite && activite.name) || 'Activité', sub: '' };
-  }
-  if (s.type === 'visite') {
-    return { eyebrow: s.surMesure ? 'Sur mesure' : 'Plusieurs activités', title: decrireVisiteRetenue() || 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
-  }
-  return { eyebrow: 'Comptoir', title: 'Réservation rapide', sub: '' };
-}
-
 function renderQuickBook() {
   if (rsRetenu) { rsAPeindre = true; return; }
   const overlay = document.getElementById('quickBookOverlay');
@@ -31678,7 +31507,6 @@ const RV_ANCRABLES = ['bowling', 'laser_game'];
 // bowling = la borne staff du serveur. Le tunnel public garde ses options.
 const RV_PARTIES_MAX = 12;
 const RV_BOWLING_MAX = 6;
-const RV_TAILLES = [2, 4, 6, 8, 10, 12, 15, 20];
 const RV_OCCASIONS = [['anniversaire', 'Anniversaire'], ['entreprise', 'Entreprise'], ['ecole', 'École'], ['famille', 'Famille'], ['amis', 'Entre amis'], ['evg', 'EVG / EVJF'], ['autre', 'Autre']];
 const RV_RAISONS_PRIX = ['Geste commercial', 'Client fidèle', 'Groupe', 'Erreur de tarif'];
 const RV_DUREES_BOWLING = [0.5, 1, 1.5, 2, 2.5, 3];
@@ -31937,19 +31765,6 @@ function rvHeuresDesLignes(ids = rvActivites()) {
   return res;
 }
 
-// CE QUI RESTE A CETTE HEURE, pour CETTE activite, sur la journee de ce poste
-// (en attendant le plan du serveur). Les memes regles que la creation.
-function rvDispoLaser(heure) {
-  const joueurs = getQuickVisitParticipants('laser_game');
-  const capacite = getAvailabilityLaserCapacity() || 30;
-  return rvDepartsLaser(heure).map((depart) => {
-    const a = getLaserAvailability(quickBookState.date, depart, 0.5, joueurs);
-    const vague = a.waveCount > 1 ? Math.ceil(joueurs / a.waveCount) : joueurs;
-    const libres = Math.max(0, Math.min(capacite, (Number(a.remainingPlaces) || 0) + (a.ok ? vague : 0)));
-    return { depart, ok: a.ok, libres, apres: Number(a.remainingPlaces) || 0, autres: Math.max(0, capacite - libres), vague, vagues: a.waveCount, message: a.message };
-  });
-}
-
 function rvBowlingDuree() {
   return Number(rvComposition().bowling && rvComposition().bowling.duration) || 1;
 }
@@ -31990,26 +31805,6 @@ function rvListePistes(pistes) {
 // tiennent, en plage (« Pistes 6-8 ») sinon, le nombre seul en dernier
 // recours. La liste entiere reste dans son libelle et dans le detail.
 const RV_PASTILLE_MAX = 14;
-function rvPastillePistes(pistes) {
-  const mot = pistes.length > 1 ? 'Pistes' : 'Piste';
-  const enLettres = `${mot} ${rvListePistes(pistes)}`;
-  if (enLettres.length <= RV_PASTILLE_MAX) return enLettres;
-  const enPlage = `${mot} ${rvPlagePistes(pistes)}`;
-  return enPlage.length <= RV_PASTILLE_MAX ? enPlage : `${pistes.length} pistes`;
-}
-
-// Les pistes en plage, comme sur la ligne de la maquette : « 3-4 », « 1-3, 6 ».
-function rvPlagePistes(pistes) {
-  const liste = [...new Set(pistes.map(Number))].sort((a, b) => a - b);
-  const plages = [];
-  liste.forEach((p) => {
-    const derniere = plages[plages.length - 1];
-    if (derniere && p === derniere[1] + 1) derniere[1] = p;
-    else plages.push([p, p]);
-  });
-  return plages.map(([a, b]) => (a === b ? String(a) : `${a}-${b}`)).join(', ');
-}
-
 // « 1 et 2 », « 1, 2 et 3 » : une liste dite comme a l oral.
 function rvListe(elements) {
   const liste = elements.map(String);
@@ -32033,26 +31828,6 @@ function rvPrixPiste(heures) {
   const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
   if (grille && grille[heures] != null) return Number(grille[heures]);
   return typeof prixBowlingAuPalier === 'function' ? prixBowlingAuPalier(grille, heures) : null;
-}
-
-// « laser 216 € · bowling 78 € » : le nom de la ligne, tel qu on le lit sur le billet.
-function rvNomPrix(id, libelle = '') {
-  if (id === 'laser_game') return 'laser';
-  if (id === 'bowling') return 'bowling';
-  return rvMinuscule(rvNomActivite(id) || libelle);
-}
-
-// « dans 18 min » : l heure d arrivee d aujourd hui, dite comme au comptoir.
-function rvDansCombien(heure) {
-  const s = quickBookState;
-  if (!heure || !s || s.date !== todayStr()) return '';
-  const minutes = Math.round((timeToNum(heure) - currentTimeDecimal()) * 60);
-  // Le creneau en cours (15:00 a 15:12) : le groupe joue maintenant.
-  if (minutes < 0) return rvHeurePassee(s.date, heure) ? '' : 'maintenant';
-  if (minutes > 180) return '';
-  if (minutes < 1) return 'maintenant';
-  if (minutes < 60) return `dans ${minutes} min`;
-  return `dans ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`;
 }
 
 // L OCCUPATION DE CHAQUE PISTE pendant la fenetre de la ligne bowling : prise
@@ -32079,311 +31854,6 @@ function rvOccupationPistes(heure, duree) {
   return res;
 }
 
-// L ETAT D UNE LIGNE, a droite, en UNE ligne de mots courts (« 20/30 ·
-// partagée », « 3 pistes libres », « Libres jusqu’à 00:00 ») et en barre
-// (les autres groupes en gris, ce groupe a sa couleur). Le plan du serveur
-// fait foi des qu il est la ; avant, la journee de ce poste. Un refus du
-// serveur qui vise cette activite la passe en rouge, meme si la journee du
-// poste la croyait libre.
-function rvEtatLigne(id, ligne) {
-  const s = quickBookState;
-  if (ligne.libre) return { html: 'Accès libre', barre: [], etat: 'ok' };
-  if (!ligne.heure) return { html: RV_ANCRABLES.includes(id) ? 'Choisissez l’heure' : '', barre: [], etat: '' };
-  const refus = rvRefusDuPlan();
-  if (refus && refus.activite === id) return { html: `<span class="rv-ko">Ne tient pas à ${escapeHtml(refus.heure || ligne.heure)}</span>`, barre: [], etat: 'ko' };
-  if (id === 'laser_game') {
-    const capacite = getAvailabilityLaserCapacity() || 30;
-    const blocs = rvBlocsPlan('laser_game');
-    const departs = blocs.length
-      ? blocs.filter((b) => (Number(b.vague) || 1) === 1).map((b) => ({ ok: true, autres: s.arene === 'seuls' ? 0 : Number(b.joueursAvant) || 0, nous: Number(b.joueursReels ?? b.joueurs) || 0 }))
-      : rvDispoLaser(ligne.heure).map((d) => ({ ok: d.ok, autres: d.autres, nous: d.vague, message: d.message }));
-    const ko = departs.find((d) => !d.ok);
-    if (ko) return { html: `<span class="rv-ko">${escapeHtml(ko.message || 'Arène complète')}</span>`, barre: [], etat: 'ko' };
-    if (!departs.length) return { html: '', barre: [], etat: '' };
-    const totaux = departs.map((d) => d.autres + d.nous);
-    const min = Math.min(...totaux);
-    const max = Math.max(...totaux);
-    const partagee = departs.some((d) => d.autres > 0);
-    const quoi = s.arene === 'seuls' ? 'pour vous seuls' : partagee ? 'partagée' : min === max ? 'pour vous' : '';
-    const premier = departs[0];
-    return {
-      html: `<b>${min === max ? max : `${min} à ${max}`}</b>/${capacite}${quoi ? ` · ${quoi}` : ''}`,
-      barre: [{ cls: 'is-autres', part: premier.autres / capacite }, { cls: 'is-nous', part: premier.nous / capacite }],
-      etat: partagee ? 'att' : 'ok',
-    };
-  }
-  if (id === 'bowling') {
-    const parc = getAvailabilityLaneCount() || 1;
-    const { besoin, libres, pistes, duree } = rvPistesDuBowling(ligne.heure);
-    const blocs = rvBlocsPlan('bowling');
-    const posees = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))] : pistes;
-    if (!blocs.length && pistes.length < besoin) {
-      return { html: `<span class="rv-ko">${libres} ${libres > 1 ? 'libres' : 'libre'}, il en faut ${besoin}</span>`, barre: [{ cls: 'is-autres', part: (parc - libres) / parc }], etat: 'ko' };
-    }
-    // Les pistes choisies a la main : prises (le plan en met d autres), ou
-    // libres jusqu a la prochaine reservation sur elles, sinon la fermeture.
-    if (rvPlacementManuel()) {
-      const occupation = rvOccupationPistes(ligne.heure, duree);
-      const prise = (s.lanes || []).map(Number).find((p) => (blocs.length ? !posees.includes(p) : occupation[p] && occupation[p].etat !== 'libre'));
-      if (prise) return { html: `<span class="rv-att">Piste ${prise} prise</span>`, barre: [], etat: 'att' };
-      const jusqua = rvPistesLibresJusqua(posees, ligne.heure, duree);
-      return { html: `<span class="rv-ok">${posees.length > 1 ? 'Libres' : 'Libre'}</span>${jusqua ? ` jusqu’à ${escapeHtml(jusqua)}` : ''}`, barre: [], etat: 'ok' };
-    }
-    // Ce qui reste A COTE de ce groupe : « 7 pistes libres » sur un planning
-    // vide se lisait comme une piste deja prise par quelqu un d autre.
-    const reste = Math.max(0, libres - posees.length);
-    return {
-      html: reste > 1 ? `<span class="rv-ok">${reste} autres pistes</span> libres` : reste === 1 ? '<span class="rv-ok">1 autre piste</span> libre' : '<span class="rv-att">Dernières pistes</span>',
-      barre: [{ cls: 'is-autres', part: Math.max(0, parc - libres) / parc }, { cls: 'is-nous', part: posees.length / parc }],
-      etat: reste ? 'ok' : 'att',
-    };
-  }
-  const plan = rvPlanCourant();
-  const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;
-  if (etape && etape.libre) return { html: 'Accès libre', barre: [], etat: 'ok' };
-  if (etape && etape.debut) return { html: `De <b>${escapeHtml(etape.debut)}</b>${etape.fin ? ` à ${escapeHtml(etape.fin)}` : ''}`, barre: [], etat: 'ok' };
-  return { html: `${escapeHtml(rvHeuresLabel(rvMinutesActivite(id) / 60))} prévues`, barre: [], etat: 'ok' };
-}
-
-// Jusqu a quand ces pistes restent libres apres le bowling : le debut de la
-// prochaine reservation posee sur l une d elles, sinon la fermeture du jour.
-function rvPistesLibresJusqua(pistes, heure, duree) {
-  const s = quickBookState;
-  if (!heure || !pistes.length) return '';
-  const fin = timeToNum(heure) + (Number(duree) || 0);
-  const suivantes = state.reservations
-    .filter((r) => r.date === s.date && r.status !== 'cancelled' && (r.lanes || []).some((p) => pistes.includes(Number(p))))
-    .flatMap((r) => getBowlingWindowsFromReservation(r))
-    .filter((w) => (w.lanes || []).some((p) => pistes.includes(Number(p))) && w.start >= fin - 1e-6)
-    .map((w) => w.start);
-  if (suivantes.length) return numToTime(Math.min(...suivantes));
-  const horaire = typeof getSchedule === 'function' ? getSchedule(s.date, state.isHolidayMode) : null;
-  return horaire ? rvHeureAffichee(horaire.close) : '';
-}
-
-function rvBarreHtml(barre) {
-  if (!barre.length) return '';
-  return `<span class="rv-barre-l" aria-hidden="true">${barre.map((b) => `<i class="${b.cls}" style="width:${Math.round(Math.min(1, Math.max(0, b.part)) * 1000) / 10}%"></i>`).join('')}</span>`;
-}
-
-// LA QUANTITE de la ligne : la duree du bowling, les parties du laser, et
-// pour le reste le compteur de l activite (joueurs ou enfants). Aucun plafond
-// de catalogue : 4 parties, 2 h 30, c est le staff qui decide.
-function rvQuantiteHtml(id, modifiable) {
-  if (id === 'bowling') {
-    const duree = rvBowlingDuree();
-    if (!modifiable) return `<span class="rv-qte-fixe">${escapeHtml(rvHeuresLabel(duree))}</span>`;
-    return `<span class="rv-qte" role="group" aria-label="Durée du bowling"><button type="button" aria-label="Bowling : 30 minutes de moins" ${duree <= 0.5 ? 'disabled' : ''} onclick="rvBowlingPas(-0.5)">−</button><b>${escapeHtml(rvHeuresLabel(duree))}</b><button type="button" aria-label="Bowling : 30 minutes de plus" ${duree >= RV_BOWLING_MAX ? 'disabled' : ''} onclick="rvBowlingPas(0.5)">+</button></span>`;
-  }
-  if (id === 'laser_game') {
-    const parties = rvPartiesLaser();
-    if (!modifiable) return `<span class="rv-qte-fixe">${rvPluriel(parties, 'partie')}</span>`;
-    return `<span class="rv-qte" role="group" aria-label="Parties de laser"><button type="button" aria-label="Laser : une partie de moins" ${parties <= 1 ? 'disabled' : ''} onclick="rvLaserParties(-1)">−</button><b>${parties}</b><span>partie${parties > 1 ? 's' : ''}</span><button type="button" aria-label="Laser : une partie de plus" ${parties >= RV_PARTIES_MAX ? 'disabled' : ''} onclick="rvLaserParties(1)">+</button></span>`;
-  }
-  if (!modifiable) return `<span class="rv-qte-fixe">${escapeHtml(rvPluriel(getQuickVisitParticipants(id), 'joueur'))}</span>`;
-  return rvParticipantsHtml(id);
-}
-
-// LES JOUEURS D UNE ACTIVITE : tout le groupe par defaut, moins si certains ne
-// jouent pas (la plaine par enfant, le laser sans les parents). Le meme
-// compteur que la quantite de la ligne.
-function rvParticipantsHtml(id) {
-  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
-  const enfants = Boolean(activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite));
-  const unite = enfants ? 'enfant' : 'joueur';
-  const bornes = activityParticipantsBounds(id, quickBookState.pax);
-  const n = getQuickVisitParticipants(id);
-  const nom = escapeHtml(rvNomActivite(id));
-  const sid = escapeHtml(id);
-  return `<span class="rv-qte" role="group" aria-label="${nom} : ${unite}s"><button type="button" aria-label="${nom} : retirer un ${unite}" ${n <= bornes.min ? 'disabled' : ''} onclick="setQuickVisitParticipants('${sid}',${n - 1})">−</button><b>${n}</b><span>${n > 1 ? `${unite}s` : unite}</span><button type="button" aria-label="${nom} : ajouter un ${unite}" ${n >= bornes.max ? 'disabled' : ''} onclick="setQuickVisitParticipants('${sid}',${n + 1})">+</button></span>`;
-}
-
-// Les joueurs d une activite dans son detail : un compteur, et « sur 12 »
-// seulement quand certains ne jouent pas. `court` le range a droite d une
-// rangee d actions (le laser), sans etiquette alignee.
-function rvJoueursDetailHtml(id, { court = false } = {}) {
-  const n = getQuickVisitParticipants(id);
-  const pax = Math.max(1, Number(quickBookState.pax) || 1);
-  return `<span class="rv-joueurs-l${court ? ' is-court' : ''}"><span class="rv-lbl${court ? ' is-court' : ''}">Joueurs</span>${rvParticipantsHtml(id)}${n < pax ? `<span class="rv-note-r">sur ${pax}</span>` : ''}</span>`;
-}
-
-// LE PLACEMENT, en un mot sur la ligne : les pistes (Auto ou choisies),
-// l arene, ou le reglage propre a l activite (tables, session...).
-function rvPlacementHtml(id, ligne, modifiable) {
-  const s = quickBookState;
-  const vide = '<span class="rv-place-vide"></span>';
-  const ouvrir = modifiable ? ` onclick="rvOuvrirLigne('${escapeJsString(id)}')"` : ' disabled';
-  if (id === 'bowling') {
-    const { pistes, manuelles } = rvPistesDuBowling(ligne.heure);
-    const blocs = rvBlocsPlan('bowling');
-    const posees = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))].sort((a, b) => a - b) : pistes;
-    const texte = manuelles
-      ? `<b>${escapeHtml(rvPastillePistes(posees))}</b>`
-      : `Auto${posees.length ? ` · ${escapeHtml(rvPlagePistes(posees))}` : ''}`;
-    const liste = manuelles && posees.length ? `, ${posees.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(posees)}` : '';
-    return `<button type="button" class="rv-place${manuelles ? ' is-manuel' : ''}" aria-label="Placement des pistes : ${manuelles ? 'choisi' : 'automatique'}${escapeHtml(liste)}"${ouvrir}>${RV_I.place}${texte}</button>`;
-  }
-  if (id === 'laser_game') {
-    const seuls = s.arene === 'seuls';
-    return `<button type="button" class="rv-place${seuls ? ' is-manuel' : ''}" aria-label="Arène : ${seuls ? 'pour vous seuls' : 'automatique'}"${ouvrir}>${RV_I.place}${seuls ? '<b>Pour vous seuls</b>' : 'Auto'}</button>`;
-  }
-  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
-  if (!activite) return vide;
-  let resume = '';
-  if (activite.priceType === 'per_unit_hour') {
-    const unites = getQuickVisitUnits(id);
-    resume = `${rvPluriel(unites, /table/i.test(activite.unitLabel || '') ? 'table' : 'unité')} · ${rvHeuresLabel(getQuickVisitHours(id))}`;
-  } else if (activite.priceType === 'grid_fun_run') {
-    resume = `${getQuickVisitMinutes(id)} min`;
-  } else if (activite.priceType === 'grid_bowling') {
-    resume = rvHeuresLabel(Number(getQuickVisitOptions(id).duration) || 1);
-  } else if (id === 'arcade_time') {
-    resume = getQuickVisitOptions(id).arcadeOfferId ? 'Offre choisie' : 'Offre à choisir';
-  }
-  if (!resume) return vide;
-  return `<button type="button" class="rv-place" aria-label="Réglages de ${escapeHtml(rvNomActivite(id))}"${ouvrir}>${escapeHtml(resume)}</button>`;
-}
-
-// L HEURE DE LA LIGNE : un toucher ouvre l horloge (chaque heure dit si TOUT
-// le plan tient pour ce groupe). La premiere ligne porte l heure d arrivee,
-// verrouillee quand on rejoint un lancement laser.
-function rvHeureHtml(id, ligne, modifiable) {
-  const s = quickBookState;
-  const nom = rvNomActivite(id);
-  if (ligne.libre) return '<span class="rv-heure-wrap"><span class="rv-heure-libre">pendant la visite</span></span>';
-  const verrou = ligne.index === 0 && s.lockStartTime;
-  const ouvert = s.horloge && s.horloge.id === id && s.horloge.partie <= 0;
-  const etat = rvEtatLigne(id, ligne).etat;
-  const cls = `rv-heure${ouvert ? ' is-ouvert' : ''}${etat === 'ko' ? ' is-ko' : ''}${ligne.foulee ? ' is-foulee' : ''}`;
-  const choix = modifiable && !verrou && (ligne.index === 0 || ligne.ancrable);
-  const dans = !verrou && !ligne.foulee && ligne.index === 0 ? rvDansCombien(ligne.heure) : '';
-  const sous = verrou ? '<small class="rv-verrou">verrouillé</small>' : ligne.foulee ? '<small>foulée</small>' : dans ? `<small>${escapeHtml(dans)}</small>` : '';
-  const libelle = `Heure de ${nom} : ${ligne.heure || 'à choisir'}${ligne.foulee ? ', dans la foulée' : ''}${verrou ? ', départ verrouillé' : ''}`;
-  return `<span class="rv-heure-wrap"><button type="button" class="${cls}" id="rvHeure-${escapeHtml(id)}" aria-haspopup="dialog" aria-expanded="${Boolean(ouvert)}" aria-label="${escapeHtml(libelle)}" ${choix ? `onclick="rvOuvrirHorloge('${escapeJsString(id)}',0)"` : 'disabled'}>${ligne.foulee ? RV_I.lien : RV_I.horloge}<span data-rv-heure="${escapeHtml(id)}">${escapeHtml(ligne.heure || '--:--')}</span>${sous}</button></span>`;
-}
-
-function rvLigneHtml(id, ligne, { modifiable, retirable }) {
-  const s = quickBookState;
-  const nom = rvNomActivite(id);
-  const ouverte = s.moreOpen || s.ouverte === id;
-  const etat = rvEtatLigne(id, ligne);
-  const sid = escapeHtml(id);
-  return `<div class="rv-lc${ouverte ? ' is-ouverte' : ''}${etat.etat === 'ko' ? ' is-ko' : ''}" data-rv-ligne="${sid}" style="--rv-c:${rvCouleur(id)}">
-    <div class="rv-lc-h">
-      <span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(nom)}</span></span>
-      ${rvQuantiteHtml(id, modifiable)}
-      ${rvHeureHtml(id, ligne, modifiable)}
-      ${rvPlacementHtml(id, ligne, modifiable)}
-      <span class="rv-etat-l" data-rv-dispo="${sid}">${rvBarreHtml(etat.barre)}<span>${etat.html}</span></span>
-      <button type="button" class="rv-ouvrir" id="rvOuvrir-${sid}" aria-expanded="${Boolean(ouverte)}" aria-controls="rvDetail-${sid}" aria-label="${ouverte ? 'Refermer le détail' : 'Régler en détail'} : ${escapeHtml(nom)}" onclick="rvBasculerLigne('${sid}')">${RV_I.chev}</button>
-    </div>
-    ${ouverte ? `<div class="rv-lc-d" id="rvDetail-${sid}">${rvDetailHtml(id, ligne, { modifiable, retirable })}</div>` : ''}
-  </div>`;
-}
-
-// Une ligne retiree d une formule adaptee reste lisible, barree, avec
-// « Remettre » : on voit ce que le groupe ne fera pas.
-function rvLigneRetireeHtml(id) {
-  return `<div class="rv-lc is-retiree" data-rv-ligne="${escapeHtml(id)}" style="--rv-c:${rvCouleur(id)}"><div class="rv-lc-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(rvNomActivite(id))}</span></span><span class="rv-qte-fixe"></span><span class="rv-heure-wrap"></span><span class="rv-place-vide"></span><span class="rv-etat-l"><button type="button" class="rv-remettre" onclick="rvBasculerDansFormule('${escapeJsString(id)}')">Remettre</button></span><span class="rv-ouvrir is-vide" aria-hidden="true"></span></div></div>`;
-}
-
-// LE DETAIL : tout ce qui se regle, sans plafond, et ce que chaque reglage
-// change (heures, places, prix).
-function rvDetailHtml(id, ligne, { modifiable, retirable } = {}) {
-  if (!modifiable) {
-    return `<p class="rv-texte">Dans la formule telle quelle : ${escapeHtml(rvEtatLigneTexte(id, ligne))}. « Adapter pour ce groupe » ouvre les réglages.</p>`;
-  }
-  // « Retirer » se tait : un lien discret au bout de la rangee, rouge au
-  // survol. Le bouton rouge criait plus fort que tout le detail.
-  const retirer = retirable ? `<button type="button" class="rv-retirer-act" id="rvRetirer-${escapeHtml(id)}" aria-label="Retirer ${escapeHtml(rvNomActivite(id))}" onclick="rvRetirerActivite('${escapeJsString(id)}')">Retirer</button>` : '';
-  if (id === 'laser_game') return rvDetailLaserHtml(ligne, retirer);
-  if (id === 'bowling') return rvDetailBowlingHtml(ligne, retirer);
-  const rangs = [];
-  rangs.push(rvOptionsActiviteHtml(id) || '<p class="rv-texte">Rien à régler : l’activité suit le groupe.</p>');
-  if (ligne.libre) rangs.push('<p class="rv-texte">En accès libre pendant la visite : le planning ne lui réserve pas d’heure à part.</p>');
-  if (retirer) rangs.push(`<div class="rv-rg">${retirer}</div>`);
-  return rangs.join('');
-}
-
-// LES REGLAGES PROPRES A UNE ACTIVITE DU CATALOGUE (duree, session, tables),
-// en segments comme le reste de la fenetre. La detection passe par la donnee
-// du catalogue (priceType, unitLabel), jamais par un id de centre.
-function rvOptionsActiviteHtml(id) {
-  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
-  if (!activite) return '';
-  const sid = escapeHtml(id);
-  const seg = (aria, items) => `<span class="rv-seg" role="group" aria-label="${escapeHtml(aria)}">${items.map((o) => `<button type="button" class="${o.on ? 'is-on' : ''}" aria-pressed="${o.on}"${o.data || ''} onclick="${o.action}">${escapeHtml(o.label)}</button>`).join('')}</span>`;
-  if (id === 'arcade_time') return `<div class="rv-rg rv-options-arcades">${renderStaffArcadeOptions(activite, getQuickVisitOptions(id), getQuickVisitParticipants(id), 'quick')}</div>`;
-  if (activite.priceType === 'grid_bowling') {
-    const courant = Number(getQuickVisitOptions(id).duration) || 1;
-    return `<div class="rv-rg"><span class="rv-lbl">Durée</span>${seg('Durée', DURATION_OPTIONS.map((o) => ({ label: rvHeuresLabel(Number(o.value)), on: courant === Number(o.value), action: `setQuickVisitActivityDuration('${sid}',${o.value})` })))}</div>`;
-  }
-  if (activite.priceType === 'grid_fun_run') {
-    const courant = getQuickVisitMinutes(id);
-    return `<div class="rv-rg"><span class="rv-lbl">Session</span>${seg('Session', FUN_RUN_OPTIONS.map((o) => ({ label: `${o.label} · ${formatMoney(o.price)}`, on: courant === Number(o.minutes), action: `setQuickVisitMinutes('${sid}',${o.minutes})` })))}</div>`;
-  }
-  if (activite.priceType === 'per_unit_hour') {
-    const nom = /table/i.test(activite.unitLabel || '') ? 'Tables' : 'Nombre';
-    const unites = getQuickVisitUnits(id);
-    const heures = Number(getQuickVisitHours(id));
-    return `<div class="rv-rg"><span class="rv-lbl">${nom}</span>${seg(nom, activityUnitChoices(activite).map((v) => ({ label: String(v), on: unites === Number(v), data: ` data-opt="units" data-val="${v}"`, action: `setQuickVisitUnits('${sid}',${v})` })))}</div>
-      <div class="rv-rg"><span class="rv-lbl">Durée</span>${seg('Durée', activityHourChoices(activite).map((o) => ({ label: o.label, on: heures === Number(o.hours), data: ` data-opt="hours" data-val="${o.hours}"`, action: `setQuickVisitHours('${sid}',${o.hours})` })))}</div>`;
-  }
-  return '';
-}
-
-function rvEtatLigneTexte(id, ligne) {
-  const div = document.createElement('div');
-  div.innerHTML = rvEtatLigne(id, ligne).html;
-  return div.textContent || '';
-}
-
-function rvDetailLaserHtml(ligne, retirer = '') {
-  const s = quickBookState;
-  const capacite = getAvailabilityLaserCapacity() || 30;
-  const joueurs = getQuickVisitParticipants('laser_game');
-  const vagues = rvVaguesLaser();
-  const pas = rvPasLaser();
-  const departs = rvDepartsLaser(ligne.heure);
-  const ecarts = rvEcartsLaser();
-  const blocs = rvBlocsPlan('laser_game');
-  const locaux = blocs.length ? [] : rvDispoLaser(ligne.heure);
-  const arene = s.arene === 'seuls' ? 'seuls' : 'auto';
-  const rangs = [];
-  let espacement = '';
-  if (departs.length > 1) {
-    const choix = [30, 60, 90].filter((m) => m >= pas);
-    espacement = `<span class="rv-lbl is-court">Espacement</span><span class="rv-seg" role="group" aria-label="Espacement des parties">${choix.map((m) => { const on = !s.partiesEcarts && rvEspacementCourant() === m; return `<button type="button" class="${on ? 'is-on' : ''}" aria-pressed="${on}" onclick="rvChoisirEspacement(${m})">${escapeHtml(rvHeuresLabel(m / 60))}</button>`; }).join('')}</span>${s.partiesEcarts ? '<span class="rv-note-r">heures posées à la main</span>' : ''}`;
-  }
-  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Arène</span><span class="rv-seg" role="group" aria-label="Arène">${[['auto', 'Auto'], ['seuls', 'Pour vous seuls']].map(([valeur, mot]) => `<button type="button" class="${arene === valeur ? 'is-on' : ''}" aria-pressed="${arene === valeur}" onclick="rvChoisirArene('${valeur}')">${mot}</button>`).join('')}</span>${espacement}</div>`);
-  if (vagues > 1) rangs.push(`<p class="rv-note-r"><b>${vagues} vagues de ${Math.ceil(joueurs / vagues)}</b> : l’arène tient ${capacite} joueurs, la vague suivante part 30 min après.</p>`);
-  departs.forEach((depart, k) => {
-    if (k > 0) {
-      const pause = ecarts[k] - ecarts[k - 1] - pas;
-      if (pause > 0) rangs.push(`<div class="rv-pause"><span class="rv-p">Pause</span><span>${escapeHtml(rvHeuresLabel(pause / 60))} · goûter, bar ou arcades</span><button type="button" class="rv-x1" aria-label="Retirer la pause avant la partie ${k + 1}" onclick="rvRetirerPause(${k})">×</button></div>`);
-    }
-    const bloc = blocs.find((b) => (Number(b.partie) || 1) === k + 1 && (Number(b.vague) || 1) === 1);
-    const local = locaux[k];
-    const autres = arene === 'seuls' ? 0 : bloc ? Number(bloc.joueursAvant) || 0 : local ? local.autres : 0;
-    const nous = bloc ? Number(bloc.joueursReels ?? bloc.joueurs) || 0 : local ? local.vague : joueurs;
-    const refus = !bloc && local && !local.ok ? local.message : '';
-    const cases = Array.from({ length: capacite }, (_, i) => `<i class="${i < autres ? 'is-autres' : i < autres + nous ? 'is-nous' : ''}"></i>`).join('');
-    const cpt = refus
-      ? `<span class="rv-ko">${escapeHtml(refus)}</span>`
-      : `<b>${autres + nous}/${capacite}</b> · ${arene === 'seuls' ? 'pour vous seuls' : autres ? `partagée (${autres})` : 'pour vous'}${vagues > 1 ? ` · ${vagues} vagues` : ''}`;
-    const ouverte = s.horloge && s.horloge.id === 'laser_game' && s.horloge.partie === k;
-    const verrou = k === 0 && ligne.index === 0 && s.lockStartTime;
-    rangs.push(`<div class="rv-pr"><span class="rv-p">Partie ${k + 1}</span><span class="rv-heure-wrap"><button type="button" class="rv-heure${ouverte ? ' is-ouvert' : ''}" id="rvPartie-${k}" aria-haspopup="dialog" aria-expanded="${Boolean(ouverte)}" aria-label="Heure de la partie ${k + 1} : ${escapeHtml(depart)}" ${verrou ? 'disabled' : `onclick="rvOuvrirHorloge('laser_game',${k})"`}>${RV_I.horloge}${escapeHtml(depart)}</button></span><span class="rv-jauge" style="--rv-cases:${capacite}" aria-hidden="true">${cases}</span><span class="rv-cpt">${cpt}</span></div>`);
-  });
-  // Une seule rangee d actions : + Partie, + Pause, puis les joueurs et
-  // « Retirer » a droite (une rangee de moins que la premiere version).
-  const joueursL = rvActivites().length > 1 ? rvJoueursDetailHtml('laser_game', { court: true }) : '';
-  rangs.push(`<div class="rv-rg rv-rg-actions"><span class="rv-ajouts-l"><button type="button" id="rvPlusPartie" ${departs.length >= RV_PARTIES_MAX ? 'disabled' : ''} onclick="rvLaserParties(1)">+ Partie</button>${departs.length > 1 ? '<button type="button" id="rvPlusPause" onclick="rvAjouterPause()">+ Pause</button>' : ''}</span>${joueursL}${retirer}</div>`);
-  const hors = rvHorsCatalogueLaserHtml(departs.length);
-  if (hors) rangs.push(hors);
-  return rangs.join('');
-}
-
 function rvOptionsLaserCentre() {
   const options = typeof getLaserOptionsCatalog === 'function' ? getLaserOptionsCatalog() : LASER_GAME_OPTIONS;
   return (Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS).map((o) => ({ games: Number(o.games), price: Number(o.price) })).filter((o) => o.games > 0 && Number.isFinite(o.price));
@@ -32404,20 +31874,6 @@ function rvHorsCatalogueLaserHtml(parties) {
   return `<p class="rs-texte">${escapeHtml(`${parties} parties, hors catalogue. ${detail}`)}</p>`;
 }
 
-// LE PRIX D UNE PISTE pour la duree choisie, dit dans la ligne « Durée » :
-// la grille du centre, et au-dela le palier puis l unite (Movsar, 2026-10-08).
-// Une phrase qui tient sur la rangee, a cote des durees, comme la maquette ;
-// au-dela du site, une etiquette « hors catalogue » le dit sans paragraphe.
-function rvNotePrixBowling(duree) {
-  const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
-  const max = Math.max(0, ...Object.keys(grille || {}).map(Number).filter((h) => h > 0));
-  const hors = `<span class="rv-etiquette is-att" title="Le site s’arrête à ${escapeHtml(rvHeuresLabel(max))}">hors catalogue</span>`;
-  if (grille && grille[duree] != null) return `<b>${escapeHtml(formatMoney(grille[duree]))} par piste</b> pour ${escapeHtml(rvHeuresLabel(duree))}`;
-  const prix = typeof prixBowlingAuPalier === 'function' ? prixBowlingAuPalier(grille, duree) : null;
-  if (prix == null || !max) return `<b>${escapeHtml(rvHeuresLabel(duree))}</b> : le prix se vérifie avant de créer ${hors}`;
-  return `<b>${escapeHtml(formatMoney(prix))} par piste</b> : ${escapeHtml(rvHeuresLabel(max))} à ${escapeHtml(formatMoney(grille[max]))}, plus ${escapeHtml(rvHeuresLabel(duree - max))} à ${escapeHtml(formatMoney(prix - grille[max]))} ${hors}`;
-}
-
 // Le nombre de pistes que le centre conseille pour ce groupe (la regle
 // « Auto ») : une seule source pour la ligne « Pistes », le compteur et la
 // phrase sous le nombre de joueurs.
@@ -32426,99 +31882,12 @@ function rvPistesConseillees() {
   return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), getAvailabilityLaneCount(), rvBowlingDuree() * 60).requiredCount || 1;
 }
 
-function rvDetailBowlingHtml(ligne, retirer = '') {
-  const s = quickBookState;
-  const heure = ligne.heure || s.startTime;
-  const duree = rvBowlingDuree();
-  const joueurs = getQuickVisitParticipants('bowling');
-  const { besoin, pistes, manuelles } = rvPistesDuBowling(heure);
-  const parc = getAvailabilityLaneCount();
-  const rangs = [];
-  if (s.type === 'bowling') {
-    const auto = rvPistesConseillees();
-    const parPiste = typeof getBookingCatalogConfig === 'function' && getBookingCatalogConfig() ? Number(getBookingCatalogConfig().normalCapacityPerLane) || 6 : 6;
-    // « Avec 5 pistes : 4 joueurs par piste. » Le nombre dit ce qu il compte
-    // (« Avec 5, ils sont 4 par piste » se lisait 5 joueurs).
-    const avec = (n) => ` Avec ${rvPluriel(n, 'piste')} : ${rvPluriel(Math.ceil(joueurs / n), 'joueur')} par piste.`;
-    const suite = besoin > auto ? avec(besoin) : auto + 1 <= parc ? avec(auto + 1) : '';
-    rangs.push(`<div class="rv-rg"><span class="rv-lbl">Pistes</span><span class="rv-qte" role="group" aria-label="Nombre de pistes"><button type="button" aria-label="Une piste de moins" ${besoin <= auto ? 'disabled' : ''} onclick="rvPistesNombre(-1)">−</button><b>${besoin}</b><span>piste${besoin > 1 ? 's' : ''}</span><button type="button" aria-label="Une piste de plus" ${besoin >= parc ? 'disabled' : ''} onclick="rvPistesNombre(1)">+</button></span><span class="rv-note-r">Auto : <b>${rvPluriel(auto, 'piste')}</b> pour ${joueurs} joueurs (${parPiste} maximum par piste).${suite}</span></div>`);
-  }
-  const autoPrendrait = manuelles && heure ? (allocateLanes(besoin, s.date, heure, duree) || []) : [];
-  // En Auto, ce que le planning a pose fait foi (la fenetre n envoie plus de
-  // pistes) ; avant sa reponse, l estimation de ce poste.
-  const poseesAuto = [...new Set(rvBlocsPlan('bowling').flatMap((b) => b.pistes || []))];
-  const prises = poseesAuto.length ? poseesAuto : pistes;
-  const note = manuelles
-    ? `${autoPrendrait.length ? `Auto aurait pris ${escapeHtml(rvListePistes(autoPrendrait))}. ` : ''}${s.lanes.length < besoin ? `Encore ${besoin - s.lanes.length} à toucher.` : 'Touchez les pistes voulues.'}`
-    : `${prises.length ? `Auto prend ${escapeHtml(rvListePistes(prises))}.` : 'Le planning choisit à la création.'} « Choisir » pour les poser à la main.`;
-  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Placement</span><span class="rv-seg" role="group" aria-label="Placement des pistes"><button type="button" class="${manuelles ? '' : 'is-on'}" aria-pressed="${!manuelles}" onclick="setQuickAutoAssign()">Auto</button><button type="button" class="${manuelles ? 'is-on' : ''}" aria-pressed="${manuelles}" onclick="rvPlacementChoisir()">Choisir</button></span><span class="rv-note-r">${note}</span></div>`);
-  rangs.push(rvGrillePistesHtml(heure, duree, besoin));
-  const durees = [1, 1.5, 2, 2.5, 3];
-  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Durée</span><span class="rv-seg" role="group" aria-label="Durée du bowling">${durees.map((h) => `<button type="button" class="${duree === h ? 'is-on' : ''}" aria-pressed="${duree === h}" data-duree="${h}" onclick="rvBowlingFixer(${h})">${escapeHtml(rvHeuresLabel(h))}</button>`).join('')}</span><span class="rv-note-r" data-rv-prix-piste>${rvNotePrixBowling(duree)}</span></div>`);
-  if (rvActivites().length > 1 || retirer) rangs.push(`<div class="rv-rg rv-rg-actions">${rvActivites().length > 1 ? rvJoueursDetailHtml('bowling') : ''}${retirer}</div>`);
-  return rangs.join('');
-}
-
-// LA GRILLE DES PISTES : chaque piste dit si elle est libre a l heure du
-// bowling, prise jusqu a quand, ou en maintenance. Le nombre de cases vient
-// du centre (getAvailabilityLaneCount), jamais d une constante.
-function rvGrillePistesHtml(heure, duree, besoin) {
-  const s = quickBookState;
-  const occupation = rvOccupationPistes(heure, duree);
-  const manuelles = rvPlacementManuel();
-  const suggerees = !manuelles && heure ? (allocateLanes(besoin, s.date, heure, duree) || []) : [];
-  return `<div class="rv-pistes-choix" style="--rv-pistes:${Math.min(8, getAvailabilityLaneCount())}" role="group" aria-label="Pistes à ${escapeHtml(heure || '')}">
-    ${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map((lane) => {
-      const o = occupation[lane] || { etat: 'libre', part: 0, texte: 'libre' };
-      const on = manuelles && s.lanes.includes(lane);
-      const bloquee = o.etat === 'pris' || o.etat === 'maint';
-      const cls = `rv-pc${on ? ' is-on' : ''}${o.etat === 'pris' ? ' is-pris' : ''}${o.etat === 'maint' ? ' is-maint' : ''}${suggerees.includes(lane) ? ' is-suggeree' : ''}`;
-      const libelle = `Piste ${lane} : ${on ? 'choisie' : o.texte}${o.nom && o.etat === 'pris' ? ` (${o.nom})` : ''}`;
-      return `<button type="button" class="${cls}" data-piste="${lane}" aria-pressed="${on}" aria-label="${escapeHtml(libelle)}" ${bloquee && !on ? 'disabled aria-disabled="true"' : `onclick="toggleQuickLane(${lane})"`}><b>${lane}</b><span class="rv-occ" aria-hidden="true"><i style="width:${Math.round(o.part * 100)}%"></i></span><small>${escapeHtml(on ? 'choisie' : suggerees.includes(lane) ? 'auto' : o.texte)}</small></button>`;
-    }).join('')}
-  </div>`;
-}
-
-// ENTRE DEUX LIGNES : « dans la foulee » (et combien apres), ou detachee. La
-// fin de la ligne d avant est celle du plan des qu il est la (une partie de
-// laser dure 20 minutes, pas la demi-heure de sa case).
-function rvLienHtml(precedent, id, ligne, modifiable) {
-  if (!ligne || ligne.libre || !ligne.ancrable) return '';
-  const du = precedent === 'laser_game' ? 'du laser' : precedent === 'bowling' ? 'du bowling' : `de ${rvNomActivite(precedent)}`;
-  if (!modifiable) return `<div class="rv-lien">${RV_I.lien}<span><b>${escapeHtml(rvNomActivite(id))}</b> à ${escapeHtml(ligne.heure || '--:--')}, d’après la formule</span></div>`;
-  if (ligne.foulee) {
-    const avant = rvHeuresDesLignes()[precedent];
-    const blocsAvant = rvBlocsPlan(precedent).filter((b) => b.fin || b.debut);
-    const finAvant = blocsAvant.length
-      ? Math.max(...blocsAvant.map((b) => timeToNum(b.fin || b.debut)))
-      : avant && avant.heure ? timeToNum(avant.heure) + rvMinutesActivite(precedent) / 60 : null;
-    const ecart = finAvant != null && ligne.heure ? Math.round((timeToNum(ligne.heure) - finAvant) * 60) : null;
-    const quand = ecart == null ? '' : ecart <= 0 ? ` · juste après la fin ${escapeHtml(du)}` : ` · ${ecart} min après la fin ${escapeHtml(du)}`;
-    return `<div class="rv-lien">${RV_I.lien}<span><b>Dans la foulée</b>${quand}</span><button type="button" class="rv-det" onclick="rvDetacher('${escapeJsString(id)}')">Détacher</button></div>`;
-  }
-  return `<div class="rv-lien">${RV_I.lien}<span>Détaché : ${escapeHtml(rvMinuscule(rvNomCourt(id)))} a sa propre heure</span><button type="button" class="rv-det" onclick="rvChoisirHeure('${escapeJsString(id)}',1,'')">Remettre dans la foulée</button></div>`;
-}
-
 // AJOUTER : un seul bouton « + Activité » qui dit ce qu on peut ajouter ; au
 // toucher, une pastille par activite absente, et le sur mesure.
 // Replie, la rangee garde sa forme (« + Activité  laser, minigolf… ») mais
 // chaque nom se touche : un toucher ajoute l activite (ou remplace le bowling
 // propose, rvAjouterActivite) sans ouvrir la liste. « + Activité » l ouvre.
 const RV_AJOUTS_DIRECTS = 4;
-function rvAjouterHtml(absentes, action, { mesure = false } = {}) {
-  const s = quickBookState;
-  if (!absentes.length && !mesure) return '';
-  if (!s.ajoutsOuverts) {
-    if (!absentes.length) return `<button type="button" class="rv-plus-act" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b><span>sur mesure : arcades, nourriture, boissons</span></button>`;
-    const remplace = action === 'rvAjouterActivite' && rvBowlingProposeIntact();
-    const directes = absentes.slice(0, RV_AJOUTS_DIRECTS);
-    const noms = directes.map((c) => `<button type="button" class="rv-plus-nom" aria-label="${escapeHtml(remplace && c.id !== 'bowling' ? `${c.label} à la place du bowling` : `Ajouter ${c.label}`)}" onclick="${action}('${escapeJsString(c.id)}')">${escapeHtml(rvNomBref(c.id, c.label))}</button>`);
-    const suite = absentes.length > directes.length || mesure ? `<button type="button" class="rv-plus-nom is-suite" aria-label="Toutes les activités${mesure ? ' et le sur mesure' : ''}" onclick="rvBasculerAjouts()">…</button>` : '';
-    return `<div class="rv-plus-act is-direct" role="group" aria-label="${remplace ? 'Une autre activité à la place du bowling' : 'Ajouter une activité'}"><button type="button" class="rv-plus-ouvrir" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b></button><span class="rv-plus-noms">${noms.join('')}${suite}</span></div>`;
-  }
-  return `<div class="rv-ajouts" role="group" aria-label="Ajouter une activité">${absentes.map((c) => `<button type="button" class="rv-ajout" style="--rv-c:${rvCouleur(c.id)}" data-rv-ajout="${escapeHtml(c.id)}" aria-label="Ajouter ${escapeHtml(c.label)}" onclick="${action}('${escapeJsString(c.id)}')"><i class="rv-pt" aria-hidden="true"></i>${escapeHtml(c.label)}</button>`).join('')}${mesure ? '<button type="button" class="rv-ajout is-mesure" id="rvSurMesure" onclick="setQuickSurMesure(true)">+ Sur mesure</button>' : ''}<button type="button" class="rv-mini" id="rvFermerAjouts" aria-label="Fermer la liste des activités" onclick="rvBasculerAjouts()">×</button></div>`;
-}
-
 // Le nom d une activite dans une liste a virgules, court comme la maquette :
 // « minigolf » pour Minigolf Blacklight, « plaine » pour Plaine de jeux ; un
 // nom de marque fait de mots courts (« Fun Run ») reste tel quel.
@@ -32540,80 +31909,9 @@ function rvBasculerAjouts() {
   if (cible) cible.focus({ preventScroll: true });
 }
 
-// LE SUR MESURE : une ligne comme les autres, ses extras dedans (arcades,
-// nourriture, boissons, le reste). Ajoute au total, jamais montre au client
-// tel quel.
-function rvSurMesureHtml() {
-  const e = quickExtrasEtat();
-  const pax = Math.max(1, Number(quickBookState.pax) || 1);
-  const champ = (groupe, i, cle, valeur, attrs) => `<input class="rv-champ" ${attrs} value="${escapeHtml(String(valeur ?? ''))}" oninput="setQuickExtra('${groupe}',${i},'${cle}',this.value)">`;
-  const lignes = (groupe, titre, aide, ajout) => `<div class="rv-x-groupe">
-      <div class="rv-rg"><span class="rv-lbl">${titre}</span><span class="rv-note-r">${aide}</span></div>
-      ${e[groupe].map((l, i) => `<div class="rv-x-ligne">
-        ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
-        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
-        <span class="rv-champ-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en euros" placeholder="Prix"')}<i>€</i></span>
-        <button type="button" class="rv-x1" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
-      </div>`).join('')}
-      <span class="rv-ajouts-l"><button type="button" onclick="ajouterQuickExtra('${groupe}')">+ ${ajout}</button></span>
-    </div>`;
-  const arcades = quickHasPaidArcades()
-    ? '<p class="rv-texte">Les cartes Arcades sont déjà comprises dans les activités choisies.</p>'
-    : `<div class="rv-x-groupe">
-      <div class="rv-rg"><span class="rv-lbl">Arcades</span><span class="rv-seg" role="group" aria-label="Arcades">${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="${e.arcades.mode === v ? 'is-on' : ''}" aria-pressed="${e.arcades.mode === v}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}</span><span class="rv-note-r">par joueur (${pax})</span></div>
-      ${e.arcades.mode === 'temps' ? `<div class="rv-rg"><span class="rv-lbl">Temps</span><span class="rv-seg" role="group" aria-label="Temps d arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="${Number(e.arcades.minutes) === m ? 'is-on' : ''}" aria-pressed="${Number(e.arcades.minutes) === m}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</span></div>` : ''}
-      ${e.arcades.mode ? `<div class="rv-rg"><span class="rv-lbl">${e.arcades.mode === 'temps' ? 'Prix / joueur' : 'Montant / joueur'}</span><span class="rv-champ-euro rv-champ-court"><input class="rv-champ" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="0" aria-label="${e.arcades.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d arcades par joueur'}" oninput="setQuickArcades('prix',this.value,true)"><i>€</i></span></div>` : ''}
-    </div>`;
-  const listes = listesSurMesure('qbx');
-  return `<div class="rv-lc is-mesure is-ouverte" data-rv-ligne="sur-mesure">
-    <div class="rv-mesure-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>Sur mesure</span></span><span class="rv-total-x">Extras : <b id="qbExtrasTotal">${escapeHtml(formatMoney(quickExtrasTotal()))}</b></span><button type="button" class="rv-retirer-act" id="rvRetirerMesure" onclick="setQuickSurMesure(false)">Retirer</button></div>
-    <div class="rv-lc-d"><p class="rv-texte">En plus des activités : ajouté au total, jamais montré au client tel quel.</p>${arcades}${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité', 'Ajouter un plat')}${lignes('boissons', 'Boissons', 'cruches, boissons par enfant…', 'Ajouter des boissons')}${lignes('autres', 'Autre', 'décoration, cadeau, tout le reste', 'Ajouter une ligne')}${listes}</div>
-  </div>`;
-}
-
 // ── LES ZONES ────────────────────────────────────────────────────────────────
 function rvAide(texte) {
   return quickBookState && quickBookState.aide ? `<p class="rv-aide">${RV_I.info}<span>${texte}</span></p>` : '';
-}
-
-// LES JOURS : aujourd hui, demain, le week-end qui vient, et n importe quelle
-// date. C est la premiere question au telephone.
-function rvJoursHtml() {
-  const s = quickBookState;
-  const aujourdHui = todayStr();
-  const decaler = (iso, n) => { const d = parseLocalDate(iso); d.setDate(d.getDate() + n); return rvIso(d); };
-  const court = (iso) => { try { return new Intl.DateTimeFormat('fr-BE', { weekday: 'short', day: 'numeric' }).format(parseLocalDate(iso)); } catch (e) { return iso; } };
-  const jours = [[aujourdHui, 'Aujourd’hui', court(aujourdHui)], [decaler(aujourdHui, 1), 'Demain', court(decaler(aujourdHui, 1))]];
-  const jourSemaine = parseLocalDate(aujourdHui).getDay();
-  const samedi = decaler(aujourdHui, ((6 - jourSemaine + 7) % 7) || 7);
-  [samedi, decaler(samedi, 1)].forEach((iso) => {
-    if (!jours.some(([j]) => j === iso)) {
-      const libelle = court(iso);
-      jours.push([iso, libelle.charAt(0).toUpperCase() + libelle.slice(1), '']);
-    }
-  });
-  const autre = !jours.some(([iso]) => iso === s.date);
-  const boutons = jours.map(([iso, mot, sous]) => `<button type="button" class="rv-jour${s.date === iso ? ' is-on' : ''}" aria-pressed="${s.date === iso}" onclick="rvChoisirDate('${iso}')">${escapeHtml(mot)}${sous ? ` <small>${escapeHtml(sous)}</small>` : ''}</button>`).join('');
-  return `<div class="rv-jours" role="group" aria-label="Jour de la réservation">${boutons}<label class="rv-jour${autre ? ' is-on' : ''}">${RV_I.cal}<span>${autre ? escapeHtml(formatQuickBookDateLabel(s.date)) : 'Autre'}</span><input id="qbDate" type="date" value="${escapeHtml(s.date)}" aria-label="Date de la réservation" onclick="try { this.showPicker(); } catch (e) {}" onchange="rvChoisirDate(this.value)"></label></div>`;
-}
-
-function rvTeteHtml() {
-  const s = quickBookState;
-  return `<h3 id="qbTitle">Réserver</h3>
-    ${rvJoursHtml()}
-    <div class="rv-droite">
-      <button type="button" class="rv-rond${s.aide ? ' is-on' : ''}" id="rvAide" aria-pressed="${Boolean(s.aide)}" aria-label="Aide" onclick="rvBasculerAide()">?</button>
-      <button type="button" class="rv-rond rv-fermer" id="rvFermer" aria-label="Fermer la réservation rapide" onclick="closeQuickBook()">×</button>
-    </div>`;
-}
-
-// LE NOMBRE DE JOUEURS : le champ a la largeur de son nombre (« 12 » colle au
-// mot « joueurs », comme la maquette) et la suit pendant la frappe.
-function rvJoueursSaisieHtml() {
-  const s = quickBookState;
-  const pax = Number(s.pax) || 1;
-  const chiffres = Math.max(1, String(s.pax ?? '').length);
-  return `<span class="rv-stepper"><button type="button" id="rvMoins" aria-label="Un joueur de moins" ${pax <= 1 ? 'disabled' : ''} onclick="rvPasJoueurs(-1)">−</button><input id="qbPax" type="number" min="1" max="240" inputmode="numeric" value="${escapeHtml(String(s.pax))}" style="--rv-chiffres:${chiffres}" aria-label="Joueurs" onfocus="rvSelectionnerAuFocus(this)" oninput="this.style.setProperty('--rv-chiffres', Math.max(1, this.value.length)); onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event); this.style.setProperty('--rv-chiffres', Math.max(1, this.value.length))"><span class="rv-suf">joueurs</span><button type="button" id="rvPlus" aria-label="Un joueur de plus" ${pax >= 240 ? 'disabled' : ''} onclick="rvPasJoueurs(1)">+</button></span>`;
 }
 
 // Toucher le nombre de joueurs le selectionne en entier : la frappe le
@@ -32668,76 +31966,12 @@ function rvConsequenceHtml() {
   return lignes.join('<br>');
 }
 
-function rvJoueursSuiteHtml() {
-  const s = quickBookState;
-  const pax = Number(s.pax) || 1;
-  return `<span class="rv-tailles" role="group" aria-label="Taille du groupe">${RV_TAILLES.map((t) => `<button type="button" class="${t === pax ? 'is-on' : ''}" aria-pressed="${t === pax}" onclick="setQuickPax(${t})">${t}</button>`).join('')}</span>
-    <span class="rv-consequence" id="rvConsequence" aria-live="polite">${rvConsequenceHtml()}</span>`;
-}
-
-function rvPlanTeteHtml(ids, modifiable) {
-  const s = quickBookState;
-  const enFormule = s.type === 'formule';
-  const ordre = ids.length > 1 && modifiable
-    ? `<button type="button" class="rv-puce" id="rvOrdre" aria-label="Inverser l’ordre : ${escapeHtml(rvNomActivite(ids[1]))} d’abord" onclick="rvInverserOrdre()">${RV_I.ordre}<b>${escapeHtml(rvNomCourt(ids[0]))}</b> puis ${escapeHtml(rvMinuscule(rvNomCourt(ids[1])))}</button>`
-    : '';
-  // En formule, la droite pagine les formules (« F5 à F8 › ») ; sinon les
-  // departs rapides et l ordre des activites.
-  const formules = enFormule ? rvFormulesTriees() : [];
-  const pages = Math.ceil(formules.length / 4);
-  const suivante = pages > 1 ? (rvFormulesPageCourante(formules) + 1) % pages : -1;
-  const droite = enFormule
-    ? (suivante >= 0 ? `<button type="button" class="rv-puce" id="rvFormulesSuite" onclick="rvFormulesSuivantes()">${suivante === 0 ? '‹ ' : ''}${escapeHtml(rvLibellePageFormules(formules, suivante))}${suivante === 0 ? '' : ' ›'}</button>` : '') + ordre
-    : s.departsOuverts
-      ? `<span class="rv-legende-departs"><span class="rv-etq">${escapeHtml(rvLegendeDeparts())}</span><button type="button" class="rv-mini" id="rvDeparts" aria-expanded="true" aria-label="Fermer les départs rapides" onclick="rvBasculerDeparts()">×</button></span>`
-      : `<button type="button" class="rv-puce" id="rvDeparts" aria-expanded="false" onclick="rvBasculerDeparts()">${RV_I.eclair}Départs rapides</button>${ordre}`;
-  return `<div class="rv-plan-tete">
-    <span class="rv-seg" role="tablist" aria-label="Composer la réservation"><button type="button" role="tab" class="${enFormule ? '' : 'is-on'}" aria-selected="${!enFormule}" onclick="rvModeActivites()">Activités</button><button type="button" role="tab" class="${enFormule ? 'is-on' : ''}" aria-selected="${enFormule}" onclick="rvModeFormule()">Formule</button></span>
-    <span class="rv-dr">${droite}</span>
-  </div>`;
-}
-
-// « Départs rapides · épinglés, puis les plus réservés le jeudi »
-function rvLegendeDeparts() {
-  const d = rvDepartsEtat;
-  if (!d || d.etat === 'calcul') return 'Départs rapides';
-  if (d.source !== 'centre') return 'Départs rapides · du catalogue';
-  return `Départs rapides · ${(d.epingles || []).length ? 'épinglés, puis les plus réservés' : 'les plus réservés'} le ${rvNomJour(quickBookState.date)}`;
-}
-
 // LES FORMULES : quatre tuiles a la fois, dans l ordre du catalogue du centre
 // (celles valables ce jour d abord), chacune avec son prix et ce qu elle
 // contient (« bowling, 1 laser, arcades »). « F5 à F8 › » montre les suivantes.
 function rvFormulesTriees() {
   const ordre = new Map(getEffectiveCatalogFormules().map((f, i) => [f.id, i]));
   return getQuickBookFormulaChoices().slice().sort((a, b) => (a.available === b.available ? (ordre.get(a.id) ?? 999) - (ordre.get(b.id) ?? 999) : a.available ? -1 : 1));
-}
-
-function rvFormulesPageCourante(choix) {
-  const s = quickBookState;
-  const pages = Math.max(1, Math.ceil(choix.length / 4));
-  if (s.formulesPage == null) {
-    const i = choix.findIndex((f) => f.id === s.formuleId);
-    return i >= 0 ? Math.floor(i / 4) : 0;
-  }
-  return Math.min(pages - 1, Math.max(0, Number(s.formulesPage) || 0));
-}
-
-// « F5 à F8 », ou « 4 autres » quand les noms ne sont pas numerotes.
-function rvLibellePageFormules(choix, page) {
-  const tranche = choix.slice(page * 4, page * 4 + 4);
-  const courts = tranche.map((f) => { const m = /^formule\s*(\d+)$/i.exec(String(f.name || '').trim()); return m ? `F${m[1]}` : ''; });
-  if (courts.every(Boolean)) return courts.length > 1 ? `${courts[0]} à ${courts[courts.length - 1]}` : courts[0];
-  return rvPluriel(tranche.length, 'autre');
-}
-
-function rvFormulesSuivantes() {
-  const s = quickBookState;
-  if (!s) return;
-  const choix = rvFormulesTriees();
-  const pages = Math.max(1, Math.ceil(choix.length / 4));
-  s.formulesPage = (rvFormulesPageCourante(choix) + 1) % pages;
-  renderQuickBook();
 }
 
 // Le nom d une formule tel qu on le lit : « FORMULE 1 » du catalogue devient
@@ -32752,64 +31986,6 @@ function rvResumeFormule(f) {
   if (!f) return '';
   const prog = buildEditProgramFromReservation({ formuleId: f.id });
   return rvIdsDeComposition(prog).map((id) => (id === 'laser_game' ? rvPluriel(Number(prog.laser_game && prog.laser_game.games) || 1, 'laser') : rvNomBref(id))).join(', ');
-}
-
-function rvFormulesHtml() {
-  const s = quickBookState;
-  const choix = rvFormulesTriees();
-  if (!choix.length) return '<p class="rv-texte">Aucune formule au catalogue de ce centre.</p>';
-  const page = rvFormulesPageCourante(choix);
-  return `<div class="rv-departs is-formules" role="group" aria-label="Formules">${choix.slice(page * 4, page * 4 + 4).map((f) => `<div class="rv-depart${s.formuleId === f.id ? ' is-on' : ''}${f.available ? '' : ' is-hors'}"><button type="button" class="rv-depart-btn" data-rv-formule="${escapeHtml(f.id)}" aria-pressed="${s.formuleId === f.id}" onclick="rvChoisirFormule('${escapeJsString(f.id)}')"><b>${escapeHtml(rvNomFormule(f))} · ${escapeHtml(formatMoney(f.price))}${f.type === 'per_lane' ? ' la piste' : ''}</b><span class="rv-sous">${escapeHtml(rvResumeFormule(f) || f.family || '')}</span>${f.available ? '' : `<em>${escapeHtml(f.reason || 'hors règles')} · possible au comptoir</em>`}</button></div>`).join('')}</div>`;
-}
-
-// LA COMPOSITION : les lignes, les liens entre elles, ce qu on peut ajouter.
-function rvCompositionHtml() {
-  const s = quickBookState;
-  const ids = rvActivites();
-  const heures = rvHeuresDesLignes(ids);
-  const modifiable = rvModifiable();
-  const enFormule = s.type === 'formule';
-  const formule = rvFormule();
-  const morceaux = [];
-  ids.forEach((id, i) => {
-    if (i > 0) morceaux.push(rvLienHtml(ids[i - 1], id, heures[id], modifiable));
-    // « Retirer » vit dans le detail : la ligne reste celle de la maquette.
-    // La derniere activite ne se retire pas, on change de composition.
-    morceaux.push(rvLigneHtml(id, heures[id], { modifiable, retirable: modifiable && ids.length > 1 }));
-  });
-  if (enFormule && formule) {
-    const base = rvIdsDeComposition(buildEditProgramFromReservation({ formuleId: formule.id }));
-    const retirees = s.adaptee ? base.filter((id) => !ids.includes(id)) : [];
-    retirees.forEach((id) => morceaux.push(rvLigneRetireeHtml(id)));
-    if (s.adaptee) {
-      morceaux.push(rvAjouterHtml(getQuickBookActivityChoices().filter((c) => !ids.includes(c.id) && !retirees.includes(c.id)), 'rvBasculerDansFormule'));
-      morceaux.push(`<button type="button" class="rv-lien-btn" onclick="rvAdapterFormule(false)">Revenir à ${escapeHtml(formule.name)} telle quelle</button>`);
-    } else if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit')) {
-      morceaux.push(`<button type="button" class="rv-plus-act" id="rvAdapter" onclick="rvAdapterFormule(true)">${RV_I.plus}<b>Adapter pour ce groupe</b><span>retirer, remettre ou ajouter une activité</span></button>`);
-    }
-  } else if (!enFormule) {
-    morceaux.push(rvAjouterHtml(getQuickBookActivityChoices().filter((c) => !ids.includes(c.id)), 'rvAjouterActivite', { mesure: !s.surMesure }));
-    if (s.surMesure) morceaux.push(rvSurMesureHtml());
-  }
-  return `<div class="rv-lignes">${morceaux.join('')}</div>`;
-}
-
-function rvPlanCompoHtml() {
-  const s = quickBookState;
-  const ids = rvActivites();
-  const modifiable = rvModifiable();
-  const enFormule = s.type === 'formule';
-  const capacite = bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity);
-  return `<section class="rv-sec" aria-label="Composition">
-      ${rvPlanTeteHtml(ids, modifiable)}
-      ${s.departsOuverts && !enFormule ? rvDepartsHtml() : ''}
-      ${enFormule ? rvFormulesHtml() : ''}
-      ${enFormule && !rvFormule() ? '<p class="rv-texte">Choisissez une formule : ses activités et leurs heures s’affichent ici.</p>' : rvCompositionHtml()}
-    </section>
-    <p class="rv-texte is-danger" role="status" data-bowling-capacity-warning ${capacite ? '' : 'hidden'}>${escapeHtml(capacite)}</p>
-    ${rvAide(enFormule
-      ? '« Adapter » retire, remet ou ajoute une activité pour ce groupe seulement : le catalogue ne change pas, le dossier garde le prix de la formule sauf si vous le revoyez.'
-      : 'Chaque activité a <b>son</b> heure : touchez l’heure pour ouvrir l’horloge, ses deux points disent si tout le plan tient à :00 et à :30. Le chevron ouvre le détail (pistes, parties, pauses, joueurs). « Dans la foulée » place l’activité juste après la précédente.')}`;
 }
 
 // CE QUI COINCE AVANT MEME LE PLAN : un jour ferme, une heure hors horaires,
@@ -32858,76 +32034,6 @@ function rvRefusDuPlan() {
   };
 }
 
-// LE VERDICT DU PLANNING. Vert : le moteur a pose tout le plan. Orange : il
-// tient, mais avec un ecart a connaitre (une piste choisie prise, un dossier
-// « a verifier »). Rouge : il ne tient pas, et il dit quoi, a quelle heure et
-// pourquoi, avec ses sorties en cartes. « Créer quand même » reste possible
-// (Movsar) : le conflit s explique avant, et reste ecrit apres, dans la fiche.
-function rvVerdictHtml() {
-  const s = quickBookState;
-  if (!s) return '';
-  const morceaux = [];
-  if (s.error) morceaux.push(`<p class="rv-erreur" role="alert">${escapeHtml(s.error)}</p>`);
-  // Rien a verifier tant que rien n est compose : l invite est dans le plan.
-  if (!rvActivites().length) return morceaux.join('');
-  const avertissement = rvAvertissement();
-  const plan = rvPlanCourant();
-  if (avertissement && !plan) {
-    morceaux.push(`<div class="rv-vc is-att"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(avertissement)}</b></span></div>`);
-    return morceaux.join('');
-  }
-  if (!plan) {
-    if (s.plan && s.plan.etat === 'erreur' && s.plan.cle === s.cleCourante) {
-      morceaux.push(`<div class="rv-vc is-att"><span class="rv-ic">${RV_I.ko}</span><span><b>Plan du planning indisponible</b> <span class="rv-sp">· ${escapeHtml(s.plan.message || 'réseau')} : la création vérifiera tout.</span></span></div>`);
-    } else {
-      morceaux.push(`<div class="rv-vc is-calcul"><span class="rv-ic">${RV_I.horloge}</span><span><b>Le planning vérifie</b> <span class="rv-sp">· pistes, arène et horaires de tout le plan</span></span></div>`);
-    }
-    return morceaux.join('');
-  }
-  const ids = rvActivites();
-  if (rvHeureEnRecherche()) {
-    morceaux.push(`<div class="rv-vc is-calcul"><span class="rv-ic">${RV_I.horloge}</span><span><b>Le planning cherche l’heure qui tient</b></span></div>`);
-    return morceaux.join('');
-  }
-  if (!plan.disponible) {
-    const refus = rvRefusDuPlan();
-    morceaux.push(`<div class="rv-verdict" id="rvRefus"><div class="rv-verdict-h"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(refus.titre)}</b><span>${escapeHtml(refus.raison)}</span></span></div>
-      ${refus.conflits.length ? `<ul class="rv-conflits">${refus.conflits.map((c) => `<li>${escapeHtml(c.message)}</li>`).join('')}</ul>` : ''}
-      ${rvAlternativesHtml()}
-      ${niveauStaff('forcer') === 'oui' ? `<div class="rv-forcer-zone"><button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button><span class="rv-texte">${s.forcer ? 'Le dossier part « à placer » : rien n’est bloqué au planning, le conflit est écrit dans sa note.' : 'Le dossier partirait « à placer », son conflit écrit dans sa note, à reprendre au planning.'}</span></div>` : ''}
-    </div>`);
-    return morceaux.join('');
-  }
-  const ecarts = rvEcartsDuPlan(plan);
-  // Le reste du programme (le minigolf d une formule) est une information,
-  // pas un ecart : il ne passe pas le verdict en orange.
-  const autres = (plan.etapes || []).filter((e) => !ids.includes(e.activite) && e.libelle && !/accueil/i.test(e.libelle));
-  const programme = autres.length ? `Aussi au programme : ${autres.map((e) => `${e.libelle} à ${e.debut}`).join(', ')}.` : '';
-  const partage = rvBlocsPlan('laser_game').some((b) => b.partagee || Number(b.joueursAvant) > 0);
-  const bowlingSeul = ids.length === 1 && ids[0] === 'bowling';
-  const titre = ecarts.length ? 'Possible, avec un point à savoir' : partage ? 'Possible, partie partagée' : bowlingSeul ? 'Possible' : 'Possible, sans attente';
-  // Le bowling seul dit ce que le planning a pose : quelles pistes, de quand
-  // a quand, et la fermeture quand elle suit de pres (maquette X3).
-  let sous = `${plan.fin ? `fin ${escapeHtml(plan.fin)}, ` : ''}vérifié par le planning`;
-  const blocsBowling = bowlingSeul ? rvBlocsPlan('bowling') : [];
-  if (blocsBowling.length) {
-    const pistes = [...new Set(blocsBowling.flatMap((b) => b.pistes || []))];
-    const debut = blocsBowling[0].debut;
-    const fin = blocsBowling[blocsBowling.length - 1].fin || plan.fin;
-    const horaire = typeof getSchedule === 'function' ? getSchedule(s.date, state.isHolidayMode) : null;
-    const fermeture = horaire && fin && horaire.close - timeToNum(fin) <= 1 ? `, fermeture ${rvHeureAffichee(horaire.close)}` : '';
-    if (pistes.length && debut && fin) sous = `${pistes.length > 1 ? 'pistes' : 'piste'} ${escapeHtml(rvListePistes(pistes))} ${pistes.length > 1 ? 'libres' : 'libre'} de ${escapeHtml(debut)} à ${escapeHtml(fin)}${escapeHtml(fermeture)}`;
-  }
-  const premiere = ids[0] || '';
-  const autresHeures = premiere && !s.lockStartTime ? `<button type="button" class="rv-autres" id="rvAutresHeures" onclick="rvOuvrirHorloge('${escapeJsString(premiere)}',0)">Autres heures ›</button>` : '';
-  morceaux.push(`<div class="rv-vc${ecarts.length ? ' is-att' : ''}"><span class="rv-ic">${ecarts.length ? RV_I.ko : RV_I.ok}</span><span><b>${titre}</b> <span class="rv-sp">· ${sous}</span></span>${autresHeures}</div>`);
-  // Le tableau a demande une heure qui ne tient pas : la fenetre le dit, sinon
-  // on croit reserver 15:30 et on cree 16:00.
-  const deplacee = rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime ? `${s.heureVoulue} ne tient pas. Voici l’heure la plus proche.` : '';
-  if (ecarts.length || programme || deplacee) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}${deplacee ? `<li class="is-info" data-rv-deplacee>${escapeHtml(deplacee)}</li>` : ''}${programme ? `<li class="is-info">${escapeHtml(programme)}</li>` : ''}</ul>`);
-  return morceaux.join('');
-}
-
 // CE QU IL FAUT SAVOIR D UN PLAN QUI TIENT, compte une seule fois pour le
 // verdict et pour le pied (2026-10-12 : un verdict orange « un point à
 // savoir » au-dessus d un pied vert « vérifié par le planning », chacun
@@ -32941,58 +32047,6 @@ function rvEcartsDuPlan(plan) {
   (plan.aSurveiller || []).slice(0, 2).forEach((phrase) => ecarts.push(phrase));
   if (rvHeurePassee(s.date, s.startTime)) ecarts.push(`${s.startTime} est déjà passée : à n’utiliser que pour noter un groupe déjà venu.`);
   return ecarts;
-}
-
-// LES SORTIES D UN REFUS : les heures voisines ou TOUT le plan tient, lues
-// dans l horloge du serveur (memes regles que la creation), en cartes comme
-// la maquette : la plus proche d abord (recommandee), puis les autres, chacune
-// avec son heure, la forme du plan (une barre par activite, dans l ordre) et
-// ce qu il faut savoir (fin, partie partagee).
-function rvAlternativesHtml() {
-  const s = quickBookState;
-  const c = s.candidats;
-  const ids = rvActivites();
-  if (!c || c.etat !== 'ok' || c.base !== s.cleCourante || c.id !== ids[0] || c.partie !== 0) {
-    return '<div class="rv-alts"><span>Le planning cherche les heures où tout tient…</span></div>';
-  }
-  const depart = timeToNum(s.startTime || '00:00');
-  const bonnes = rvHeuresDuPlanning(c, s)
-    .sort((a, b) => (Math.abs(timeToNum(a.heure) - depart) - Math.abs(timeToNum(b.heure) - depart)) || ((a.statut === 'ok' ? 0 : 1) - (b.statut === 'ok' ? 0 : 1)))
-    .slice(0, 3);
-  if (!bonnes.length) return '<div class="rv-alts"><span>Aucune autre heure ne tient ce jour-là : changez le nombre de joueurs, une activité, ou la date.</span></div>';
-  const duree = (id) => Math.max(0.25, rvMinutesActivite(id) / 60);
-  const total = ids.reduce((t, id) => t + duree(id), 0) || 1;
-  const barre = `<span class="rv-alt-barre" aria-hidden="true">${ids.map((id) => `<i style="--rv-c:${rvCouleur(id)};flex:${(duree(id) / total).toFixed(3)}"></i>`).join('')}</span>`;
-  const ecart = (r) => {
-    const minutes = Math.round((timeToNum(r.heure) - depart) * 60);
-    const n = Math.abs(minutes);
-    const quand = n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${String(n % 60).padStart(2, '0')}` : ''}` : `${n} min`;
-    return `${quand} plus ${minutes < 0 ? 'tôt' : 'tard'}`;
-  };
-  const premiere = ids[0] || '';
-  return `<div class="rv-alts-cartes" role="group" aria-label="Heures où tout le plan tient">${bonnes.map((r, i) => {
-    const titre = ids.length === 1 ? `${rvNomCourt(premiere)} ${r.heure}` : `${r.heure}${r.fin ? ` → ${r.fin}` : ''}`;
-    const sous = r.statut === 'ok' ? `tout tient${r.fin && ids.length === 1 ? `, fin ${r.fin}` : ''}` : (r.raison || 'tient, partie partagée');
-    return `<button type="button" class="rv-alt${i === 0 ? ' is-reco' : ''}${r.statut === 'ok' ? '' : ' is-att'}" onclick="rvChoisirHeure('${escapeJsString(premiere)}',0,'${escapeJsString(r.heure)}')"><span class="rv-alt-k">${escapeHtml(i === 0 ? 'Le plus proche' : ecart(r))}</span><b>${escapeHtml(titre)}</b>${barre}<span class="rv-alt-s">${escapeHtml(sous)}</span></button>`;
-  }).join('')}</div>`;
-}
-
-// LES DEPARTS RAPIDES : les compositions les plus reservees ce jour de la
-// semaine, et celles que le gerant epingle. Un toucher compose la ligne.
-function rvDepartsHtml() {
-  const d = rvDepartsEtat;
-  if (!d || d.etat === 'calcul') return '<p class="rv-departs-pied">Les départs du centre se chargent…</p>';
-  const tuiles = rvTuilesDeparts();
-  if (!tuiles.length) return '<p class="rv-departs-pied">Pas encore assez de réservations pour proposer des départs : ils apparaîtront d’eux-mêmes.</p>';
-  const peutEpingler = Boolean(d.epinglage) && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage'));
-  const courante = rvCleDepart(rvCompositionCourante());
-  return `<div class="rv-departs" role="group" aria-label="Départs rapides">${tuiles.map((t, i) => {
-    const actif = rvCleDepart(t.brut) === courante;
-    const epingle = peutEpingler
-      ? `<button type="button" class="rv-epingle${t.epingle ? ' is-on' : ''}" aria-pressed="${t.epingle}" aria-label="${t.epingle ? 'Désépingler' : 'Épingler pour tout le centre'} : ${escapeHtml(t.titre)}" onclick="rvEpinglerDepart(${i})">${RV_I.pin}<span>épinglé</span></button>`
-      : t.epingle ? `<span class="rv-epingle is-on">${RV_I.pin}<span>épinglé</span></span>` : '';
-    return `<div class="rv-depart${actif ? ' is-on' : ''}" style="--rv-c:${rvCouleur(t.ids[0] || '')}"><button type="button" class="rv-depart-btn" aria-pressed="${actif}" onclick="rvAppliquerDepart(${i})"><span class="rv-pts" aria-hidden="true">${t.ids.map((id) => `<i style="--rv-c:${rvCouleur(id)}"></i>`).join('')}</span><b>${escapeHtml(t.titre)}</b><span class="rv-sous">${escapeHtml(t.sous)}</span></button>${epingle}</div>`;
-  }).join('')}</div>`;
 }
 
 function rvNomJour(iso) {
@@ -33077,64 +32131,6 @@ function rvEtapesDuBillet() {
     });
   }
   return etapes.sort((a, b) => (a.debut ?? 99) - (b.debut ?? 99));
-}
-
-// LA FRISE : les activites sur l axe des heures. Une visite courte (moins de
-// 2 h) se lit dans un cadre d heures pleines, au moins deux : une heure seule
-// remplissait toute la barre et ne disait plus rien (maquette X4, 17:00 a
-// 19:00 pour un bowling de 17:30).
-function rvFriseHtml(etapes, debutPlan, finPlan) {
-  if (!(finPlan > debutPlan)) return '';
-  const court = finPlan - debutPlan < 2;
-  const debut = court ? Math.floor(debutPlan) : debutPlan;
-  const fin = court ? Math.max(Math.ceil(finPlan), debut + 2) : finPlan;
-  const pc = (t) => ((t - debut) / (fin - debut)) * 100;
-  const segments = etapes.filter((e) => e.debut != null).flatMap((e) => (e.segments || [[e.debut, e.fin]]).map(([a, b]) => `<i class="${e.pause ? 'is-pause' : ''}${e.ko ? ' is-ko' : ''}" style="--rv-c:${rvCouleur(e.id)};left:${pc(a).toFixed(2)}%;width:calc(${Math.max(1, pc(Math.min(b, fin)) - pc(a)).toFixed(2)}% - 2px)"></i>`)).join('');
-  const pas = fin - debut <= 2 ? 0.5 : 1;
-  const graduations = [];
-  for (let t = Math.ceil(debut / pas) * pas; t <= fin + 1e-9; t += pas) graduations.push(t);
-  if (graduations[0] !== debut) graduations.unshift(debut);
-  if (graduations[graduations.length - 1] !== fin) graduations.push(fin);
-  const axe = graduations.filter((t, i) => i === 0 || i === graduations.length - 1 || (t - graduations[0] >= pas * 0.9 && fin - t >= pas * 0.9));
-  return `<div class="rv-frise" aria-hidden="true">${segments}</div><div class="rv-frise-axe" aria-hidden="true">${axe.map((t) => `<span style="left:${pc(t).toFixed(2)}%">${numToTime(t)}</span>`).join('')}</div>`;
-}
-
-function rvRecapHtml() {
-  const s = quickBookState;
-  const plan = rvPlanCourant();
-  const etapes = rvEtapesDuBillet();
-  const datees = etapes.filter((e) => e.debut != null);
-  const debut = datees.length ? Math.min(...datees.map((e) => e.debut)) : (s.startTime ? timeToNum(s.startTime) : null);
-  const finLocale = datees.length ? Math.max(...datees.map((e) => e.fin)) : null;
-  const fin = plan && plan.fin ? timeToNum(plan.fin) : finLocale;
-  let jour = s.date;
-  try { jour = new Intl.DateTimeFormat('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }).format(parseLocalDate(s.date)); jour = jour.charAt(0).toUpperCase() + jour.slice(1); } catch (e) { /* date brute */ }
-  if (s.date === todayStr()) jour = `Aujourd’hui · ${jour}`;
-  const occasion = (RV_OCCASIONS.find(([v]) => v === s.occasion) || [])[1];
-  const badge = occasion ? `${occasion}${s.name ? ` · ${s.name}` : ''}` : rvAuComptoir(s) && !quickFieldKnown('client') ? 'au comptoir' : rvPluriel(Number(s.pax) || 1, 'joueur');
-  const dans = s.date === todayStr() && debut != null ? rvDansCombien(numToTime(debut)) : '';
-  const refus = rvRefusDuPlan();
-  const vide = !etapes.length;
-  // Sous les heures : l invite tant que rien n est compose, ce qui bloque en
-  // cas de refus, sinon l arrivee conseillee et la fin (ou « Dans 18 minutes »
-  // aujourd hui, ecrit en toutes lettres : la place ne manque pas ici).
-  // Une arrivee conseillee n est jamais deja passee : une heure passee (notee
-  // apres coup) se dit comme telle.
-  const finTexte = fin != null ? ` · fin des activités ${numToTime(fin)}` : '';
-  const sous = vide ? (s.type === 'formule' ? 'Choisissez une formule' : 'Ajoutez une activité')
-    : refus ? `${refus.bloque} : choisissez une sortie`
-      : debut != null
-        ? dans ? `${dans.charAt(0).toUpperCase()}${dans.slice(1).replace(/ min$/, ' minutes')} · ${rvPluriel(Number(s.pax) || 1, 'joueur')}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
-          : rvHeurePassee(s.date, numToTime(debut)) ? `Heure déjà passée${finTexte}`
-            : `Arrivée conseillée ${numToTime(debut - 10 / 60)}${finTexte}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
-        : 'Choisissez une heure';
-  return `<div class="rv-recap${refus ? ' is-ko' : ''}">
-    <div class="rv-eyebrow"><span>${escapeHtml(jour)}</span><em>${escapeHtml(badge)}</em></div>
-    <div class="rv-heures">${debut != null ? numToTime(debut) : '--:--'}<span>→</span>${fin != null ? numToTime(fin) : '--:--'}</div>
-    <div class="rv-heures-sous">${escapeHtml(sous)}</div>
-    ${debut != null && fin != null ? rvFriseHtml(datees, debut, fin) : ''}
-    ${vide ? '' : `<div class="rv-etapes">${etapes.map((e) => `<div class="rv-etape${e.ko ? ' is-ko' : ''}" style="--rv-c:${e.pause ? 'var(--rv-line-strong)' : rvCouleur(e.id)}"><span class="rv-h">${escapeHtml(e.h || '')}</span><i class="rv-pt" aria-hidden="true"></i><span class="rv-q">${escapeHtml(e.q)}<small>${escapeHtml(e.d)}</small></span></div>`).join('')}</div>`}
-  </div>`;
 }
 
 // LE CLIENT DEJA VENU : combien de visites, la derniere (« le 14 juin »), ce
@@ -33347,72 +32343,6 @@ function rvRaisonsPrix() {
   return raisons;
 }
 
-// CE QUE LE PRIX CONTIENT, en une ligne : « laser 216 € · bowling 78 € ». Le
-// plan du serveur fait foi ; avant lui, l estimation de ce poste.
-function rvDetailPrix(summary) {
-  const s = quickBookState;
-  // Rien de compose : rien a detailler (le resume historique disait « 2
-  // pistes prévues » pour une formule pas encore choisie).
-  if (!rvActivites().length && !quickExtrasTotal()) return '';
-  const plan = rvPlanCourant();
-  const extras = quickExtrasTotal();
-  const plusExtras = extras ? ` · extras ${formatMoney(extras)}` : '';
-  // Une formule, adaptee ou non, se paie au prix de sa formule (« Adapter »
-  // ne le change pas, sauf « Revoir ») : son detail dit d ou vient le total.
-  // Adaptee, il listait les activites au prix a la carte (« bowling 78 € ·
-  // laser 180 € · minigolf sur place ») sous un total de 390 € qu elles ne
-  // faisaient pas.
-  const formule = rvFormule();
-  if (formule) return `${rvNomFormule(formule)}${s.adaptee ? ' adaptée' : ''} · ${formatMoney(formule.price)} ${formule.type === 'per_lane' ? 'la piste' : `× ${Number(s.pax) || 1}`}${plusExtras}`;
-  if (plan && Array.isArray(plan.lignesPrix) && plan.lignesPrix.length) {
-    const connues = plan.lignesPrix.filter((l) => l && l.prix != null);
-    if (connues.length) return `${connues.map((l) => `${rvNomPrix(l.activite, l.libelle)} ${formatMoney(l.prix)}`).join(' · ')}${connues.length < plan.lignesPrix.length ? ' · le reste sur place' : ''}${plusExtras}`;
-  }
-  if (s.type === 'bowling') {
-    const blocs = rvBlocsPlan('bowling');
-    const pistes = blocs.length ? new Set(blocs.flatMap((b) => b.pistes || [])).size : (s.autoAssign ? (getQuickBookLaneNeed().requiredCount || 1) : Math.max(1, (s.lanes || []).length));
-    const parPiste = rvPrixPiste(Number(s.duration) || 1);
-    return `${rvPluriel(pistes || 1, 'piste')}${parPiste != null ? ` × ${formatMoney(parPiste)}` : ''}${plusExtras}`;
-  }
-  if (s.type === 'laser') {
-    const parties = rvPartiesLaser();
-    const options = rvOptionsLaserCentre();
-    const option = options.find((x) => x.games === parties);
-    const unitaire = option ? option.price : (typeof prixLaserAuPalier === 'function' ? prixLaserAuPalier(options, parties) : null);
-    return `${rvPluriel(parties, 'partie')}${unitaire != null ? ` à ${formatMoney(unitaire)}` : ''} × ${rvPluriel(Number(s.pax) || 1, 'joueur')}${plusExtras}`;
-  }
-  const visit = s.visit || {};
-  const items = rvActivites().map((id) => (id === 'bowling' ? { ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling && visit.bowling.duration) || 1 } : id === 'laser_game' ? { ...ligneProgrammeQuick('laser_game'), games: Number(visit.laser_game && visit.laser_game.games) || 1 } : ligneProgrammeQuick(id)));
-  if (!items.length) return summary.detail || '';
-  const estime = estimerPrixProgramme(items, s.pax, s.date, s.startTime);
-  return `${items.map((it, i) => { const l = estime.lignes[i]; return `${rvNomPrix(it.activityId)} ${l && l.montant != null ? formatMoney(l.montant) : 'sur place'}`; }).join(' · ')}${plusExtras} · estimation`;
-}
-
-function rvPrixHtml() {
-  const s = quickBookState;
-  const summary = getQuickBookSummary();
-  const custom = getQuickBookCustomPrice();
-  const reference = rvTotalReference(summary);
-  const total = custom != null ? custom : reference;
-  const joueurs = Math.max(1, Number(s.pax) || 1);
-  const peutAjuster = niveauStaff('prix') !== 'non';
-  const parPersonne = Math.round((total / joueurs) * 100) / 100;
-  const vide = !rvActivites().length && !quickExtrasTotal();
-  const tete = `<div class="rv-prix${vide ? ' is-vide' : ''}"><div class="rv-m" id="rvPrixGros">${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}</div>
-    <div class="rv-pp"><b id="rvPrixParPersonne">${escapeHtml(formatMoneyCentimes(parPersonne))}</b> / ${joueurs > 1 ? 'joueur' : 'personne'}<br><span id="rvPrixDetail">${escapeHtml(rvDetailPrix(summary))}</span></div>
-    ${peutAjuster && !s.priceOpen ? '<button type="button" class="rv-revoir" id="rvRevoir" onclick="toggleQuickCustomPrice()">Revoir</button>' : ''}</div>`;
-  if (!s.priceOpen || !peutAjuster) return tete;
-  return `${tete}<div class="rv-prix-edit">
-    <div class="rv-prix-champs">
-      <label>Total<span class="rv-saisie"><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(s.customPrice ?? ''))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">€</span></label>
-      <label>ou par personne<span class="rv-saisie"><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">€</span></label>
-    </div>
-    <div class="rv-raisons" role="group" aria-label="Raison du prix">${rvRaisonsPrix().map((r) => `<button type="button" class="${s.prixRaison === r ? 'is-on' : ''}" aria-pressed="${s.prixRaison === r}" data-raison="${escapeHtml(r)}" onclick="rvChoisirRaison(this.dataset.raison)">${escapeHtml(r)}</button>`).join('')}</div>
-    <label class="rv-saisie"><input id="rvRaisonLibre" value="${escapeHtml(s.prixRaisonLibre || '')}" maxlength="120" placeholder="Autre raison…" aria-label="Autre raison du prix" oninput="quickBookState.prixRaisonLibre=this.value"></label>
-    <p class="rv-texte">La raison part dans les notes du dossier. Seul ce dossier change : la grille du centre reste la même. <button type="button" class="rv-lien-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button></p>
-  </div>`;
-}
-
 // LES RESAS D UN MEME CLIENT, en onglets au-dessus du billet : leur nom (l
 // occasion, sinon ce qu elles composent) et leur nombre ; la croix vit DANS
 // l onglet ouvert, et « + Résa » ferme la rangee comme sur la maquette.
@@ -33490,12 +32420,6 @@ function rvPeutEncaisserEnCreant() {
   if (getQuickBookCustomPrice() != null) return true;
   if (plan && Array.isArray(plan.lignesPrix) && plan.lignesPrix.some((ligne) => ligne && ligne.prix == null)) return false;
   return Number(rvTotalReference()) > 0;
-}
-
-function rvEncaisserHtml() {
-  if (!rvPeutEncaisserEnCreant()) return '';
-  const occupe = quickBookState.submitting ? ' aria-disabled="true"' : '';
-  return `<div class="rv-encaisser" role="group" aria-label="Créer et encaisser">${GROUPE_MOYENS.map((m, i) => `<button type="button" class="rv-creer-paye" id="rvCreerPaye${i}" data-moyen="${escapeHtml(m.valeur)}"${occupe} onclick="rvCreerEtEncaisser(this.dataset.moyen)">Créer · ${escapeHtml(m.mot)}</button>`).join('')}</div>`;
 }
 
 // Le moyen voyage dans l etat le temps d un envoi (saveQuickBook le reprend).
@@ -33981,19 +32905,6 @@ function rvChoisirHeure(id, cible, heure) {
   }
 }
 
-function rvOuvrirHorloge(id, partie = 0) {
-  const s = quickBookState;
-  if (!s || !id) return;
-  const meme = s.horloge && s.horloge.id === id && s.horloge.partie === Number(partie);
-  s.horloge = meme ? null : { id, partie: Number(partie) || 0 };
-  s.horlogeH = null;
-  renderQuickBook();
-  if (!meme) {
-    const premier = document.querySelector('#rvHorloge .rv-hc.is-on') || document.querySelector('#rvHorloge .rv-hc');
-    if (premier) premier.focus({ preventScroll: true });
-  }
-}
-
 function rvFermerHorloge() {
   const s = quickBookState;
   if (!s || !s.horloge) return;
@@ -34055,31 +32966,6 @@ function rvToucheHorloge(event) {
   suivant.focus({ preventScroll: true });
 }
 
-// Une seule ligne ouverte a la fois (« tout se lit d un regard ») ; la
-// maquette n a pas de repli global, toggleQuickBookMore les ouvre toutes
-// (les gates lisent ainsi la fenetre entiere d un coup).
-function rvBasculerLigne(id) {
-  const s = quickBookState;
-  if (!s) return;
-  if (s.moreOpen) { s.moreOpen = false; s.ouverte = id; }
-  else s.ouverte = s.ouverte === id ? '' : id;
-  renderQuickBook();
-}
-
-function rvOuvrirLigne(id) {
-  const s = quickBookState;
-  if (!s) return;
-  if (!s.moreOpen) s.ouverte = id;
-  renderQuickBook();
-}
-
-// Le pas des joueurs lit l etat au moment du clic : un nombre fige dans le
-// bouton au dernier rendu repartirait de 4 apres qu on a tape 9.
-function rvPasJoueurs(delta) {
-  if (!quickBookState) return;
-  setQuickPax(Math.min(240, Math.max(1, (Number(quickBookState.pax) || 1) + Number(delta || 0))));
-}
-
 function rvBowlingFixer(heures) {
   const s = quickBookState;
   if (!s) return;
@@ -34092,10 +32978,6 @@ function rvBowlingFixer(heures) {
   if (s.type === 'bowling') { s.duration = h; syncQuickBookDuration(); reconcileQuickLaneSelection(); renderQuickBook(); return; }
   if (s.type === 'formule' && s.adaptee && s.visit) { s.visit.bowling = { ...(s.visit.bowling || {}), on: true, duration: h }; syncQuickBookDuration(); renderQuickBook(); return; }
   setQuickVisitBowlingDuration(h);
-}
-
-function rvBowlingPas(delta) {
-  rvBowlingFixer(rvBowlingDuree() + Number(delta || 0));
 }
 
 // Les parties du laser, sans plafond de catalogue (le moteur en pose 12).
@@ -34111,15 +32993,6 @@ function rvLaserParties(delta) {
   if (s.type === 'laser') { s.duration = n / 2; syncQuickBookDuration(); renderQuickBook(); return; }
   if (s.type === 'formule' && s.adaptee && s.visit) { s.visit.laser_game = { ...(s.visit.laser_game || {}), on: true, games: n }; syncQuickBookDuration(); renderQuickBook(); return; }
   setQuickVisitLaserGames(n);
-}
-
-function rvRetirerPartie(k) {
-  const s = quickBookState;
-  if (!s || k < 1) return;
-  const ecarts = rvEcartsLaser();
-  ecarts.splice(k, 1);
-  s.partiesEcarts = ecarts;
-  rvLaserParties(-1);
 }
 
 // Une pause posee a la main : 30 min avant la derniere partie (on la deplace
@@ -34173,31 +33046,6 @@ function rvPistesNombre(delta) {
   if (rvPlacementManuel() && s.lanes.length > voulu) s.lanes = s.lanes.slice(0, voulu);
   s.forcer = false;
   reconcileQuickLaneSelection();
-  renderQuickBook();
-}
-
-function rvPlacementChoisir() {
-  const s = quickBookState;
-  if (!s) return;
-  if (rvPlacementManuel()) return;
-  const heure = rvHeuresDesLignes().bowling?.heure || s.startTime;
-  const { pistes } = rvPistesDuBowling(heure);
-  // « Choisir » part des pistes que le planning a posees, sinon de l estimation.
-  const posees = [...new Set(rvBlocsPlan('bowling').flatMap((b) => b.pistes || []))].sort((a, b) => a - b);
-  const depart = posees.length ? posees : pistes;
-  s.autoAssign = false;
-  s.lanes = [...depart];
-  s.lanesALaMain = [...depart];
-  s.bowlingParDefaut = false;
-  renderQuickBook();
-}
-
-function rvDetacher(id) {
-  const s = quickBookState;
-  if (!s) return;
-  const ligne = rvHeuresDesLignes()[id];
-  if (!ligne || !ligne.heure) return;
-  s.heures = { ...(s.heures || {}), [id]: ligne.heure };
   renderQuickBook();
 }
 
@@ -34281,12 +33129,6 @@ function rvChoisirDate(valeur) {
       .then(() => { if (quickBookState && quickBookState.date === valeur) renderQuickBook(); })
       .catch(() => {});
   }
-}
-
-function rvBasculerAide() {
-  if (!quickBookState) return;
-  quickBookState.aide = !quickBookState.aide;
-  renderQuickBook();
 }
 
 function rvBasculerOuvert(cle, focus) {
@@ -34729,112 +33571,11 @@ function rvRetirerResa(i) {
 
 // ── LES DEPARTS RAPIDES ──────────────────────────────────────────────────────
 let rvDepartsEtat = null;
-async function rvChargerDeparts() {
-  const s = quickBookState;
-  if (!s) return;
-  if (rvDepartsEtat && rvDepartsEtat.date === s.date && rvDepartsEtat.etat !== 'erreur') return;
-  rvDepartsEtat = { date: s.date, etat: 'calcul', liste: [], epingles: [], epinglage: false, source: '' };
-  try {
-    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?departs=1&date=${encodeURIComponent(s.date)}`, { method: 'GET' });
-    const liste = payload && Array.isArray(payload.departs) ? payload.departs : null;
-    rvDepartsEtat = liste
-      ? { date: s.date, etat: 'ok', liste, epingles: Array.isArray(payload.epingles) ? payload.epingles : [], epinglage: Array.isArray(payload.epingles), source: 'centre' }
-      : { date: s.date, etat: 'ok', liste: [], epingles: [], epinglage: false, source: 'catalogue' };
-  } catch (error) {
-    rvDepartsEtat = { date: s.date, etat: 'ok', liste: [], epingles: [], epinglage: false, source: 'catalogue' };
-  }
-  if (quickBookState) rvRepeindre();
-}
-
 // La cle d un depart : son type, sa formule, sa quantite et ses activites,
 // jamais ses joueurs. La meme pour un depart du serveur (activites, compte),
 // une epingle et la composition a l ecran.
 function rvLignesDepart(d) {
   return d && Array.isArray(d.activites) && d.activites.length ? d.activites : d && Array.isArray(d.program) ? d.program : [];
-}
-
-function rvCleDepart(d) {
-  if (!d) return '';
-  const type = d.type === 'activity' ? 'activite' : String(d.type || '');
-  const lignes = rvLignesDepart(d).filter((l) => l && l.activityId).map((l) => [l.activityId, Number(l.duration) || 0, Number(l.games) || 0, Number(l.minutes) || 0]);
-  const seule = lignes.length === 1 ? lignes[0] : null;
-  if (type === 'bowling' && (!lignes.length || (seule && seule[0] === 'bowling'))) return JSON.stringify(['bowling', '', Number(d.duration || (seule && seule[1])) || 1]);
-  if (type === 'laser' && (!lignes.length || (seule && seule[0] === 'laser_game'))) return JSON.stringify(['laser', '', Number(d.laserGames || d.games || (seule && seule[2])) || 1]);
-  return JSON.stringify([type, String(d.formuleId || ''), lignes]);
-}
-
-// La composition a l ecran, sous la forme d un depart.
-function rvCompositionCourante() {
-  const s = quickBookState;
-  if (!s) return null;
-  if (s.type === 'formule') return { type: 'formule', formuleId: s.formuleId };
-  if (s.type === 'bowling') return { type: 'bowling', duration: Number(s.duration) || 1 };
-  if (s.type === 'laser') return { type: 'laser', laserGames: rvPartiesLaser() };
-  const c = rvComposition();
-  const activites = rvActivites().map((id) => (id === 'bowling' ? { activityId: id, duration: Number(c.bowling && c.bowling.duration) || 1 } : id === 'laser_game' ? { activityId: id, games: Number(c.laser_game && c.laser_game.games) || 1 } : { activityId: id }));
-  return { type: s.type === 'activity' ? 'activite' : 'visite', activites };
-}
-
-// Les tuiles : les epinglees d abord, puis les plus reservees, au plus 4 ;
-// sans historique, les departs du catalogue (bowling 1 h, laser 2 parties,
-// laser puis bowling, la premiere formule). Chaque tuile dit son prix.
-function rvTuilesDeparts() {
-  const d = rvDepartsEtat || { liste: [], epingles: [] };
-  const vues = new Set();
-  const brutes = [];
-  [...(d.epingles || []).map((x) => ({ ...x, epingle: true })), ...(d.liste || [])].forEach((x) => {
-    const cle = rvCleDepart(x);
-    if (vues.has(cle)) return;
-    vues.add(cle);
-    brutes.push(x);
-  });
-  if (!brutes.length) {
-    const ids = getQuickBookActivityChoices().map((c) => c.id);
-    if (ids.includes('bowling')) brutes.push({ type: 'bowling', duration: 1 });
-    if (ids.includes('laser_game')) brutes.push({ type: 'laser', laserGames: 2 });
-    if (ids.includes('bowling') && ids.includes('laser_game')) brutes.push({ type: 'visite', activites: [{ activityId: 'laser_game', games: 2 }, { activityId: 'bowling', duration: 1 }] });
-    const formule = getQuickBookFormulaChoices().find((f) => f.available);
-    if (formule) brutes.push({ type: 'formule', formuleId: formule.id });
-  }
-  return brutes.slice(0, 4).map((x) => {
-    const type = x.type === 'activity' ? 'activite' : x.type;
-    const lignes = rvLignesDepart(x).filter((l) => l && l.activityId);
-    const formule = type === 'formule' ? resolveDisplayFormule(x.formuleId) : null;
-    const seule = lignes.length === 1 ? lignes[0] : null;
-    let ids;
-    let titre = '';
-    let sous = '';
-    if (type === 'bowling' && (!lignes.length || (seule && seule.activityId === 'bowling'))) {
-      const h = Number(x.duration || (seule && seule.duration)) || 1;
-      ids = ['bowling'];
-      titre = `Bowling · ${rvHeuresLabel(h)}`;
-      const prix = rvPrixPiste(h);
-      sous = prix != null ? `${formatMoney(prix)} la piste` : 'par piste';
-    } else if (type === 'laser' && (!lignes.length || (seule && seule.activityId === 'laser_game'))) {
-      const n = Number(x.laserGames || x.games || (seule && seule.games)) || 1;
-      ids = ['laser_game'];
-      titre = `Laser · ${rvPluriel(n, 'partie')}`;
-      const option = rvOptionsLaserCentre().find((o) => o.games === n);
-      sous = option ? `${formatMoney(option.price)} / joueur` : 'par joueur';
-    } else if (type === 'formule') {
-      ids = formule ? rvIdsDeComposition(buildEditProgramFromReservation({ formuleId: formule.id })) : [];
-      titre = formule ? rvNomFormule(formule) : 'Formule';
-      sous = formule ? `${formatMoney(formule.price)} / ${formule.type === 'per_lane' ? 'piste' : 'pers.'}${formule.minPax ? `, dès ${formule.minPax}` : ''}` : 'plus au catalogue de ce centre';
-    } else {
-      ids = lignes.map((l) => l.activityId);
-      titre = ids.map((id, i) => (i ? rvMinuscule(rvNomCourt(id)) : rvNomCourt(id))).join(' puis ');
-      sous = lignes.map((l) => (l.games ? rvPluriel(l.games, 'partie') : l.duration ? rvHeuresLabel(l.duration) : l.minutes ? `${l.minutes} min` : '')).filter(Boolean).join(' + ') || rvNomActivite(ids[0] || '');
-    }
-    if (x.epingle && String(x.libelle || '').trim()) titre = String(x.libelle).trim();
-    return { brut: x, ids, titre, sous, epingle: Boolean(x.epingle) };
-  });
-}
-
-function rvAppliquerDepart(i) {
-  const s = quickBookState;
-  const tuile = rvTuilesDeparts()[i];
-  if (!s || !tuile) return;
-  rvAppliquerComposition(tuile.brut);
 }
 
 // RECOMPOSER une composition connue (un depart rapide, la derniere visite
@@ -34887,44 +33628,6 @@ function rvAppliquerComposition(x) {
   s.autoAssign = false;
   s.ordre = lignes.map((l) => l.activityId);
   syncQuickBookDuration();
-  renderQuickBook();
-}
-
-// EPINGLER : le gerant (droit « tarifs ») fixe les departs du centre. Le
-// serveur exige un nom et un type connu (lib/departs-rapides) : la tuile
-// donne son titre, son type et ses activites.
-async function rvEpinglerDepart(i) {
-  const tuile = rvTuilesDeparts()[i];
-  const d = rvDepartsEtat;
-  if (!tuile || !d || !d.epinglage) return;
-  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('pricing.manage')) { toast('Épingler un départ demande le droit de gérer les tarifs.'); return; }
-  const forme = (x, libelle) => {
-    const type = x.type === 'activity' ? 'activite' : x.type;
-    const e = { libelle: String(libelle || '').trim().slice(0, 60), type };
-    if (x.formuleId) e.formuleId = String(x.formuleId);
-    if (Number(x.duration) > 0) e.duration = Number(x.duration);
-    if (type === 'laser' && Number(x.laserGames || x.games) > 0) e.laserGames = Number(x.laserGames || x.games);
-    e.activites = rvLignesDepart(x).filter((l) => l && l.activityId).map((l) => { const o = { activityId: l.activityId }; ['duration', 'games', 'minutes', 'units', 'hours'].forEach((k) => { if (Number(l[k]) > 0) o[k] = Number(l[k]); }); return o; });
-    return e;
-  };
-  const cle = rvCleDepart(tuile.brut);
-  const gardees = (d.epingles || []).map((x) => forme(x, x.libelle));
-  const epingles = tuile.epingle ? gardees.filter((x) => rvCleDepart(x) !== cle) : [...gardees, forme(tuile.brut, tuile.titre)].slice(0, 8);
-  try {
-    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?departs=1`, { method: 'POST', body: JSON.stringify({ epingles }) });
-    rvDepartsEtat = { ...d, epingles: payload && Array.isArray(payload.epingles) ? payload.epingles : epingles };
-    toast(tuile.epingle ? 'Départ désépinglé.' : 'Départ épinglé pour tout le centre.');
-  } catch (error) {
-    const statut = Number(error && error.status) || 0;
-    toast(statut === 503 ? 'Les épingles arrivent avec la prochaine mise à jour de la base.' : statut === 403 ? 'Épingler un départ demande le droit de gérer les tarifs.' : (error && error.message) || 'Épingle impossible.');
-  }
-  if (quickBookState) rvRepeindre();
-}
-
-function rvBasculerDeparts() {
-  const s = quickBookState;
-  if (!s) return;
-  s.departsOuverts = !s.departsOuverts;
   renderQuickBook();
 }
 

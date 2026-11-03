@@ -109,9 +109,12 @@ async function scenarioHeure(browser) {
       const depart = lpModele().departs.find((d) => d.t === 17);
       return { dixSept: lire('17:00'), treize: lire('13:00'), libres: lanes.libres, places: depart ? depart.places : null, passee: Boolean(document.querySelector('td.gf-bloc[data-gf-bloc="13:00"][data-gf-reserver]')) };
     });
-    ok(cases.dixSept && cases.dixSept.includes(`Pistes ${cases.libres}`), '[A] la case de 17:00 dit ses pistes libres', cases);
-    ok(cases.dixSept && cases.dixSept.includes(`Laser ${cases.places}`), '[A] et les places de son depart laser', cases);
-    ok(cases.treize && !/Pistes|Laser \d/.test(cases.treize) && !cases.passee, '[A] une demi-heure passee n offre plus rien', cases);
+    // (en toutes lettres depuis le 2026-11-03 : « 4 pistes libres », « 11 places laser »)
+    const libres = (n) => `${n} ${n > 1 ? 'pistes libres' : 'piste libre'}`;
+    const places = (n) => `${n} ${n > 1 ? 'places laser' : 'place laser'}`;
+    ok(cases.dixSept && cases.dixSept.includes(libres(cases.libres)), '[A] la case de 17:00 dit ses pistes libres', cases);
+    ok(cases.dixSept && cases.dixSept.includes(places(cases.places)), '[A] et les places de son depart laser', cases);
+    ok(cases.treize && !/pistes? libres?|places? laser/.test(cases.treize) && !cases.passee, '[A] une demi-heure passee n offre plus rien', cases);
     ok(cases.dixSept && !/groupes?/.test(cases.dixSept), '[A] les groupes ne s y comptent plus : les lignes les montrent', cases.dixSept);
 
     await page.locator('td[data-gf-reserver="17:00"]').click();

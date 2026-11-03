@@ -120,7 +120,8 @@ function lireFeuille() {
   const etats = {};
   if (tete) tete.querySelectorAll('[data-gf-etat]').forEach((e) => { etats[e.getAttribute('data-gf-etat')] = { v: (e.querySelector('.gf-e__v') || {}).textContent || '', vu: vu(e) }; });
   // Le texte d une case : ses noeuds de texte a elle, sans son detail.
-  const texteDe = (x) => Array.from(x.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
+  // (l heure d une case est dans sa pastille depuis le 2026-11-03 ; le reste, du texte nu)
+  const texteDe = (x) => { const t = x.querySelector('.gf-x__t'); return t ? t.textContent.trim() : Array.from(x.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim(); };
   const lignes = defile ? Array.from(defile.querySelectorAll('tbody > tr')).map((tr) => {
     if (tr.classList.contains('gf-now')) return { now: true, h: (tr.querySelector('.gf-now__h') || {}).textContent || '' };
     if (tr.classList.contains('gf-rien')) return { rien: true, texte: tr.textContent.trim() };
@@ -160,9 +161,10 @@ function lireFeuille() {
         pieces: Array.from(bloc.querySelectorAll('.gf-bloc__in > span')).map((s) => ({ t: s.textContent.trim(), plein: s.classList.contains('gf-bloc__plein'), bulle: s.getAttribute('title') || '' })),
         vu: vu(bloc),
       } : null,
-      // Le geste, au bord droit. (`.gf-gb--etat` : le statut ecrit.) Le montant a sa
-      // colonne : `<b>`, bouton sur place.
-      statut: (etat.querySelector('.gf-gb--etat') || {}).textContent || '',
+      // Le geste, au bord droit. (`.gf-gb--etat` : le statut ecrit ; depuis le 2026-11-03,
+      // « Payé » et « Pas venu » ouvrent la liste des statuts, `.gf-gb--statut`.) Le montant
+      // a sa colonne : `<b>`, bouton sur place.
+      statut: (etat.querySelector('.gf-gb--etat, .gf-gb--statut > span') || {}).textContent || '',
       valide: Boolean(tr.querySelector('.gf-nom__valide')),
       caisse: (tr.querySelector('.gf-nom__caisse') || {}).textContent || '',
       du: (reste.querySelector('.gf-du') || {}).textContent || '',
@@ -204,6 +206,9 @@ function lireFeuille() {
     };
   })() : null;
   return {
+    // (sous 1060 px, la case d heure dit « 4 pistes », « 6 places » : elle n a plus la largeur
+    // de « 4 pistes libres »)
+    court: Boolean(wrap && wrap.querySelector('.gf')) && R(wrap.querySelector('.gf')).width < 1060,
     cles,
     tetes,
     etats,
@@ -410,7 +415,9 @@ async function structure(page, s, label) {
       pistes: o.pistes && o.pistes.ouvertes ? o.pistes.libresSurUneHeure[m.b * 2] : 0,
       laser: Math.max(0, Number(((o.laser ? o.laser.departs : []).find((d) => d.t >= m.b - 1e-6 && d.t < m.b + 0.5 - 1e-6 && !d.ferme && !d.hors) || {}).places) || 0),
     };
-    const attendues = [...pleins, ...(place.pistes ? [`Pistes ${place.pistes}`] : []), ...(place.laser ? [`Laser ${place.laser}`] : []), `${c.pers} ${c.pers > 1 ? 'joueurs' : 'joueur'}`];
+    // (ce qui reste se dit « libre », en toutes lettres, depuis le 2026-11-03)
+    const mot = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+    const attendues = [...pleins, ...(place.pistes ? [f.court ? mot(place.pistes, 'piste', 'pistes') : mot(place.pistes, 'piste libre', 'pistes libres')] : []), ...(place.laser ? [f.court ? mot(place.laser, 'place', 'places') : mot(place.laser, 'place laser', 'places laser')] : []), mot(c.pers, 'joueur', 'joueurs')];
     const lues = case0.pieces.map((p) => p.t);
     // (dans l ordre, sans rien inventer)
     let rang = -1;

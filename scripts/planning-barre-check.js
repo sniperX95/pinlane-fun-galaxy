@@ -875,14 +875,28 @@ async function ligne(browser) {
     const bulle = await page.evaluate(() => (document.querySelector('.staff-action-popover') || {}).textContent || '');
     ok(/Ils arrivent dans/.test(bulle), '[J] le retard se touche : « Ils arrivent dans »', bulle);
     await page.evaluate(() => closeStaffFloatingMenus());
-    // « Payé » se lit comme un etat.
+    // « Payé » se lit comme un etat, a la teinte de son statut, et depuis le 2026-11-03
+    // (Movsar : « on doit pouvoir appuyer et que ça mette direct sur confirmé ou payé ou
+    // autre ») il ouvre tous les statuts, celui du dossier coche.
     const paye = await page.evaluate(() => {
-      const e = Array.from(document.querySelectorAll('.gf-r.t-paid .gf-etat .gf-gb--etat'))[0];
+      const e = Array.from(document.querySelectorAll('.gf-r.t-paid .gf-etat .gf-gb--statut'))[0];
       if (!e) return null;
-      const s = getComputedStyle(e);
-      return { balise: e.tagName, texte: e.textContent, fond: s.backgroundColor, cadre: s.boxShadow, curseur: s.cursor };
+      const lire = (s) => String(s).match(/[0-9.]+/g).map(Number);
+      const c = lire(getComputedStyle(e).color);
+      return { id: e.getAttribute('data-gf-statut'), texte: e.textContent.trim(), menu: e.getAttribute('aria-haspopup'), vert: c[1] > c[0] * 1.2 && c[1] > c[2] * 1.05 };
     });
-    ok(paye && paye.balise === 'SPAN' && paye.texte === 'Payé' && /, 0\)$|transparent/.test(paye.fond) && paye.cadre === 'none' && paye.curseur === 'default', '[J] « Payé » n est pas un bouton : un etat, sans cadre', paye);
+    ok(paye && paye.texte === 'Payé' && paye.menu === 'menu' && paye.vert, '[J] « Payé » se lit comme un etat, en vert, et s ouvre', paye);
+    if (paye) {
+      await page.locator(`.gf-gb--statut[data-gf-statut="${paye.id}"]`).click();
+      await FX.repos(page, 100);
+      const liste = await page.evaluate(() => { const b = document.querySelector('.staff-action-popover'); return b ? Array.from(b.querySelectorAll('button')).map((x) => x.textContent.trim() + (x.classList.contains('is-actuel') ? ' *' : '')) : []; });
+      const actuel = liste.filter((t) => t.endsWith(' *'));
+      ok(['Confirmé', 'Arrivé', 'Payé carte', 'Payé espèces'].every((t) => liste.some((x) => x.replace(' *', '') === t)) && actuel.length === 1 && /^Payé /.test(actuel[0]), '[J] la liste des statuts : Confirmé, Arrivé, Payé carte ou espèces, le sien coche', liste);
+      await page.evaluate(() => closeStaffFloatingMenus());
+    }
+    // Chaque ligne a sa fleche, toujours a la meme place.
+    const fleches = await page.evaluate(() => Array.from(new Set(Array.from(document.querySelectorAll('.gf-r [data-gf-statut]')).map((b) => Math.round(innerWidth - b.getBoundingClientRect().right)))));
+    ok(fleches.length === 1, '[J] la fleche du statut, au meme bord sur chaque ligne', fleches);
     // Un statut qui change ne deplace aucune ligne (le detail est dans planning-grand-tableau).
     const ordre = () => page.evaluate(() => Array.from(document.querySelectorAll('.gf-r')).map((tr) => tr.getAttribute('data-gf-id')).join());
     const o0 = await ordre();
@@ -906,7 +920,8 @@ async function ligne(browser) {
     await FX.repos(page, 200);
     const j = await page.evaluate(() => {
       const lignes = Array.from(document.querySelectorAll('.gf-r'));
-      const attendus = lignes.filter((tr) => !tr.querySelector('td.gf-etat .gf-gb--etat'));
+      // (un etat ecrit, « Ils sont 10 », ou « Payé » qui ouvre les statuts : pas un groupe attendu)
+      const attendus = lignes.filter((tr) => !tr.querySelector('td.gf-etat .gf-gb--etat, td.gf-etat .gf-gb--statut'));
       return { n: lignes.length, vides: lignes.filter((tr) => !tr.querySelector('td.gf-etat').textContent.trim()).length, attendus: attendus.length, tel: attendus.filter((tr) => tr.querySelector('td.gf-etat a[href^="tel:"]')).length, montants: lignes.filter((tr) => /\d\s*€/.test(tr.querySelector('td.gf-reste').textContent)).length };
     });
     ok(j.n === GROUPES_DU_PIC && j.vides === 0 && j.attendus > 20 && j.tel === j.attendus, '[J] un autre jour, « À faire » montre le telephone', j);
@@ -1101,7 +1116,7 @@ const puces = (page) => page.evaluate(() => {
 });
 const compteurs = (page) => page.evaluate(() => {
   const o = {};
-  document.querySelectorAll('#planningBande [data-gf-filtre]').forEach((e) => { o[e.querySelector('.gf-c__l').textContent] = Number(e.querySelector('.gf-c__v').textContent); });
+  document.querySelectorAll('#planningBande [data-gf-filtre]').forEach((e) => { const v = e.querySelector('.gf-c__v'); if (v) o[e.querySelector('.gf-c__l').textContent] = Number(v.textContent); });
   return o;
 });
 async function comportement(browser) {
@@ -1736,7 +1751,9 @@ const MUTATIONS = [
   { nom: 'retard-sans-cible', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-h__retard { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px;', '.gf-h__retard { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 20px;') },
   { nom: 'retard-pas-rouge', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, 'background: transparent; color: var(--gf-rouge); font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; white-space: nowrap; cursor: pointer; }', 'background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; white-space: nowrap; cursor: pointer; }') },
   { nom: 'colonnes-vides-gardees', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, '    var utilisees = colonnes.filter(function (c) { return c.groupes > 0; }).concat(inconnues);', '    var utilisees = colonnes.concat(inconnues);') },
-  { nom: 'paye-en-bouton', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-gb--etat:not(.gf-compte) { background: transparent; box-shadow: none; color: var(--bk-encre-2); font-weight: 600; cursor: default; }', '.gf-gb--etat:not(.gf-compte) { color: var(--bk-encre-2); font-weight: 600; }') },
+  { nom: 'statut-sans-liste', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, 'if (statut) { gfBulleStatut(wrap, statut, e); return; }', 'if (statut) { return; }') },
+  { nom: 'paye-sans-sa-teinte', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, 'box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bk-barre) 35%, var(--surface)); color: var(--bk-encre-2); }', 'box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bk-barre) 35%, var(--surface)); }') },
+  { nom: 'fleche-qui-bouge', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-gb--fleche { flex: 0 0 26px; padding: 0; color: var(--muted); }', '.gf-gb--fleche { flex: 0 0 26px; margin-right: 10px; padding: 0; color: var(--muted); }') },
   { nom: 'autre-jour-sans-geste', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, "      if (tel) h = '<a class=\"gf-gb gf-gb--tel\"", "      if (false) h = '<a class=\"gf-gb gf-gb--tel\"") },
   // [K] les couleurs
   { nom: 'en-cours-en-aplat', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x.is-encours { background: var(--bk-haut); color: var(--bk-encre); }', '.gf-x.is-encours { background: var(--bk-barre); color: var(--bk-plein); }') },

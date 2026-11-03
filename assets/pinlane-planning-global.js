@@ -601,7 +601,17 @@
       }
     }
     var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (etat === 'fini' && gfPresent(g) ? GF_FAIT : '') + gpEsc(t) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + (d2 ? '<span class="gf-x__d">' + gpEsc(d2) + '</span>' : '') + '</span>';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + gfHeureHtml(t, etat === 'fini' && gfPresent(g)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + (d2 ? '<span class="gf-x__d">' + gpEsc(d2) + '</span>' : '') + '</span>';
+  }
+  // L HEURE SE REPERE DE LOIN (2026-11-03, Movsar : « les heures et tout on voit pas bien
+  // [...] c trop monochrome ») : l heure fixe, une pastille de la teinte du statut de la
+  // ligne. « vers » reste du texte gris : sans heure fixe, rien ne se joue a la minute.
+  // (la coche « fait » se pose devant l heure, dans le meme mot : dans la marge, elle
+  // mordait le premier chiffre, « ‹10:00 »)
+  function gfHeureHtml(t, fait) {
+    var fixe = /^\d{1,2}:\d{2}$/.test(t);
+    if (!fixe && !fait) return gpEsc(t);
+    return '<b class="gf-x__t' + (fixe ? '' : ' is-nu') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
   }
   function gfCase(g, col, m) {
     var liste = g.cases.get(col.cle) || [];
@@ -762,7 +772,10 @@
     var avec = Math.max(0, Math.trunc(Number(r.companions) || 0));
     var reserve = gfNombreReserve(r);
     var bulle = gfPluriel(pax, ['joueur', 'joueurs']) + (avec ? ' + ' + avec + (avec > 1 ? ' accompagnants' : ' accompagnant') : '') + (reserve !== pax ? ', ' + reserve + ' à la réservation' : '');
-    return '<td class="gf-n" title="' + gpEsc(bulle) + '"><b>' + pax + '</b>' + (avec ? '<span class="gf-n__plus">' + gpEsc('et ' + avec + ' accomp.') + '</span>' : '')
+    // UN GRAND GROUPE SE REMARQUE (2026-11-03) : les paliers du planning bowling
+    // (getGroupSizeClass, app-main.js), une pastille des 15, inversee des 30, en gris.
+    var taille = typeof getGroupSizeClass === 'function' ? ' ' + getGroupSizeClass(pax) : '';
+    return '<td class="gf-n' + taille + '" title="' + gpEsc(bulle) + '"><b>' + pax + '</b>' + (avec ? '<span class="gf-n__plus">' + gpEsc('et ' + avec + ' accomp.') + '</span>' : '')
       + (reserve !== pax ? '<span class="gf-n__res">' + reserve + ' réservés</span>' : '') + '</td>';
   }
   // La formule, et sous elle « adaptée », puis les cruches quand la rubrique Table ne les
@@ -876,7 +889,31 @@
       var tel = String(r.phone || '').trim();
       if (tel) h = '<a class="gf-gb gf-gb--tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
     }
-    return '<td class="gf-etat"><span class="gf-g">' + h + '</span></td>';
+    return '<td class="gf-etat"><span class="gf-g">' + gfStatutHtml(g, h) + '</span></td>';
+  }
+  // LE STATUT SE CHANGE SUR LA LIGNE (2026-11-03, Movsar : « on doit pouvoir appuyer et que
+  // ça mette direct sur confirmé ou payé ou autre ») : le geste du moment garde son bouton,
+  // et la fleche a sa droite ouvre tous les statuts. Sans geste, l etat lui-meme ouvre la
+  // liste. La fleche est toujours a la meme place.
+  var GF_STATUTS = { pending: 'Confirmé', arrived: 'Arrivé', paid: 'Payé' };
+  function gfPeutStatuer(r) {
+    if (r.status === 'cancelled' || typeof setReservationStatusDirect !== 'function') return false;
+    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.status') || gfPeutEncaisser();
+  }
+  function gfMotDuStatut(g) {
+    if (g.etat === 'absent' || g.teinte === 'absent') return 'Pas venu';
+    return GF_STATUTS[g.r.status] || 'Confirmé';
+  }
+  function gfStatutHtml(g, h) {
+    var r = g.r;
+    if (!gfPeutStatuer(r)) return h;
+    var dit = (r.name || 'Le groupe') + ' : changer le statut (' + gfMotDuStatut(g) + ')';
+    // (la fleche est dessinee par la feuille de style : aucun element de plus par ligne)
+    // (un etat ecrit, « Payé », « Pas venu », ou rien : c est lui qui ouvre la liste)
+    if (!h || /^<span class="gf-gb gf-gb--etat">/.test(h)) {
+      return '<button type="button" class="gf-gb gf-gb--statut" data-gf-statut="' + gpEsc(g.id) + '" aria-haspopup="menu" aria-label="' + gpEsc(dit) + '"><span>' + gpEsc(gfMotDuStatut(g)) + '</span></button>';
+    }
+    return h + '<button type="button" class="gf-gb gf-gb--fleche" data-gf-statut="' + gpEsc(g.id) + '" aria-haspopup="menu" aria-label="' + gpEsc(dit) + '"></button>';
   }
 
   // Ce qu une ligne dit a un lecteur d ecran, d une traite.
@@ -1004,8 +1041,10 @@
       var plein = m.charge(part.b, col);
       if (plein) lignes.push({ html: '<span class="gf-bloc__plein" title="' + gpEsc(plein.bulle) + '">' + gpEsc(seule ? plein.texte : col.titre + ' ' + plein.texte) + '</span>', hauteur: seule ? 1 : 2 });
     });
-    if (place && place.pistes) lignes.push({ html: '<span>Pistes ' + place.pistes + '</span>', hauteur: 1 });
-    if (place && place.laser) lignes.push({ html: '<span>Laser ' + place.laser + '</span>', hauteur: 1 });
+    // (en toutes lettres, 2026-11-03, Movsar : « piste 7 laser 30 et tout c moche on capte
+    // pas » : ce qui reste se dit « libre »)
+    if (place && place.pistes) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });
+    if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['place', 'places'] : ['place laser', 'places laser'])) + '</span>', hauteur: 1 });
     lignes.push({ html: '<span>' + gpEsc(gfPluriel(compte.pers, ['joueur', 'joueurs'])) + '</span>', hauteur: 1 });
     // (la case n a que la hauteur de ses lignes : une ligne, un mot sous l heure)
     var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;
@@ -1296,6 +1335,17 @@
     showStaffFloatingMenu({ currentTarget: bouton, stopPropagation: function () { e.stopPropagation(); } }, html);
     var bulle = document.querySelector('.staff-action-popover');
     if (!bulle) return;
+    // (la feuille qui defile emporte la ligne : la bulle se ferme plutot que de rester en l air.
+    // Un defilement qui arrive juste apres le toucher, sans deplacer la ligne, ne la ferme pas)
+    var defile = bouton.closest('.gf-defile');
+    var haut = bouton.getBoundingClientRect().top;
+    var suivre = function () {
+      if (!bulle.isConnected) { defile.removeEventListener('scroll', suivre); return; }
+      if (Math.abs(bouton.getBoundingClientRect().top - haut) < 8) return;
+      defile.removeEventListener('scroll', suivre);
+      closeStaffFloatingMenus();
+    };
+    if (defile) defile.addEventListener('scroll', suivre, { passive: true });
     bulle.addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-gf-choix]');
       if (!b) return;
@@ -1323,6 +1373,36 @@
     var id = Number(bouton.getAttribute('data-gf-encaisser'));
     var choix = GROUPE_MOYENS.map(function (moyen) { return '<button type="button" data-gf-choix="' + gpEsc(moyen.valeur) + '">' + gpEsc(moyen.mot) + '</button>'; }).join('');
     gfBulle(bouton, e, '<div class="staff-action-popover-title">' + gpEsc(bouton.textContent) + ' à encaisser</div>' + choix, function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); });
+  }
+  // Tous les statuts d un toucher : celui du dossier coche, chacun selon le droit du role
+  // (le serveur juge de toute facon). « Pas venu » suit la regle de la fiche.
+  function gfBulleStatut(wrap, bouton, e) {
+    var id = bouton.getAttribute('data-gf-statut');
+    var m = wrap._gfModele;
+    var g = m && m.groupes.find(function (x) { return String(x.id) === id; });
+    if (!g) return;
+    var r = g.r;
+    var absent = Boolean(r.absentAt) || g.etat === 'absent';
+    var peut = function (p) { return typeof canUseStaffPermission !== 'function' || canUseStaffPermission(p); };
+    var choix = [];
+    var option = function (valeur, mot, actuel) {
+      choix.push('<button type="button" data-gf-choix="' + gpEsc(valeur) + '"' + (actuel ? ' class="is-actuel" aria-current="true"' : '') + '>' + gpEsc(mot) + '</button>');
+    };
+    if (peut('reservations.status')) {
+      option('pending', 'Confirmé', !absent && r.status !== 'arrived' && r.status !== 'paid');
+      option('arrived', 'Arrivé', !absent && r.status === 'arrived');
+    }
+    if (gfPeutEncaisser()) GROUPE_MOYENS.forEach(function (moyen) { option('paid:' + moyen.valeur, 'Payé ' + moyen.mot.toLowerCase(), r.status === 'paid' && r.paymentMethod === moyen.valeur); });
+    if (absent) option('present', 'Annuler « Pas venu »', false);
+    else if (typeof renderGroupePasVenu === 'function' && renderGroupePasVenu(r)) option('absent', 'Pas venu', false);
+    option('fiche', 'Ouvrir la fiche', false);
+    gfBulle(bouton, e, '<div class="staff-action-popover-title">' + gpEsc(r.name || 'Le groupe') + '</div>' + choix.join(''), function (valeur, ev) {
+      var n = Number(id);
+      if (valeur === 'fiche') { openPos(n); return; }
+      if (valeur === 'absent' || valeur === 'present') { basculerAbsence(n, valeur === 'absent', ev); return; }
+      if (valeur.indexOf('paid:') === 0) { encaisserReservation(n, valeur.slice(5), ev); gfApresEncaisser(); return; }
+      setReservationStatusDirect(n, valeur, ev);
+    });
   }
   // L HEURE, ou le chemin qui y ramene : un autre jour, « Aujourd hui » prend sa place, a la
   // meme largeur, et rien ne bouge. Un moment se lit comme sur le tableau : apres minuit, la
@@ -1353,13 +1433,16 @@
     var h = pbDirectHtml(m);
     var comptes = gfComptes(m);
     var actif = typeof normaliserFiltreListe === 'function' ? normaliserFiltreListe(state.staffStatusFilter) : 'all';
+    // TOUT SE CHOISIT (2026-11-03, Movsar : « ici on doit pouvoir choisir tout aussi ») :
+    // « Tout » revient a la journee entiere, et un compteur a zero se touche aussi (il dit
+    // qu il n y a personne). Le total reste celui de la bascule, un seul chiffre.
+    h += '<button type="button" class="gf-c gf-c--tout' + (actif === 'all' ? ' is-on' : '') + '" data-gf-filtre="all" aria-pressed="' + (actif === 'all') + '"><span class="gf-c__l">Tout</span></button>';
     GF_FILTRES.forEach(function (f) {
       var n = comptes[f] || 0;
       var on = actif === f;
       var cls = 'gf-c' + (f === 'late' && n ? ' is-alerte' : '') + (n ? '' : ' is-zero') + (on ? ' is-on' : '');
       var corps = '<span class="gf-c__l">' + gpEsc(STAFF_LISTE_MOTS[f]) + '</span><b class="gf-c__v">' + n + '</b>';
-      // (a zero, rien a toucher)
-      h += n || on ? '<button type="button" class="' + cls + '" data-gf-filtre="' + f + '" aria-pressed="' + on + '">' + corps + '</button>' : '<div class="' + cls + '" data-gf-filtre="' + f + '">' + corps + '</div>';
+      h += '<button type="button" class="' + cls + '" data-gf-filtre="' + f + '" aria-pressed="' + on + '">' + corps + '</button>';
     });
     // (un jour de fermeture, ni piste libre ni prochain depart ne veulent rien dire)
     var e = (m.fenetre && m.fenetre.closed ? null : m.etat) || {};
@@ -1428,7 +1511,7 @@
       if (champ) champ.value = '';
       applyStaffSearch('', { immediate: true });
     }
-    avecListeDifferable(function () { setStaffStatusFilter(actuel === f ? 'all' : f); });
+    avecListeDifferable(function () { setStaffStatusFilter(actuel === f || f === 'all' ? 'all' : f); });
     gfAllerAMaintenant(wrap, false);
   }
 
@@ -1477,7 +1560,11 @@
     var boite = wrap.closest('.planning-box');
     var plein = Boolean(boite && boite.classList.contains('expanded'));
     // (lu avant toute ecriture : le lire apres forcerait une mise en page de plus)
-    var cartes = racine.getBoundingClientRect().width < 640;
+    var largeur = racine.getBoundingClientRect().width;
+    var cartes = largeur < 640;
+    // (sous 1060 px, la case d heure n a plus la largeur de « 2 pistes libres » : « 2 pistes »)
+    m.blocCourt = largeur < 1060;
+    wrap._gfCourt = m.blocCourt;
     pbPoser(gfBandeauHtml(m), m);
     var bandeau = racine.querySelector('.gf-bandeau');
     var ferme = Boolean(m.fenetre && m.fenetre.closed);
@@ -1737,6 +1824,8 @@
       if (payer) { encaisserReservation(Number(payer.getAttribute('data-gf-payer')), payer.getAttribute('data-gf-moyen'), e); gfApresEncaisser(); return; }
       var encaisser = e.target.closest('[data-gf-encaisser]');
       if (encaisser) { gfBulleEncaisser(encaisser, e); return; }
+      var statut = e.target.closest('[data-gf-statut]');
+      if (statut) { gfBulleStatut(wrap, statut, e); return; }
       var retarder = e.target.closest('[data-gf-retarder]');
       if (retarder) { gfBulleRetard(wrap, retarder, e); return; }
       var voir = e.target.closest('[data-gf-voir]');
@@ -1767,6 +1856,10 @@
       attente = requestAnimationFrame(function () {
         attente = 0;
         if (!wrap.isConnected || !wrap._gfRacine) return;
+        // (la feuille passe le palier de 1060 px : les cases d heure se reecrivent. Cachee, elle
+        // mesure zero : elle ne reecrit rien, la barre est alors celle d un autre planning)
+        var large = wrap._gfRacine.getBoundingClientRect().width;
+        if (large > 0 && wrap._gfCourt != null && (large < 1060) !== wrap._gfCourt) { renderGlobalPlanning(wrap); return; }
         gfHauteur(wrap);
         wrap._gfRegle = null;
         if (wrap._gfSuit) gfAllerAMaintenant(wrap, false);

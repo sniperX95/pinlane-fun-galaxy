@@ -328,6 +328,18 @@ async function compteurs(browser) {
       const retour = await vue(page);
       ok(retour.total === depart.total && retour.barre, `[C] ${f} : un second toucher revient a toute la journee, sur l heure`, retour);
     }
+    // « TOUT » SE CHOISIT (2026-11-03, Movsar : « ici on doit pouvoir choisir tout aussi ») :
+    // d un filtre, « Tout » rend la journee ; un compteur a zero se touche aussi.
+    await page.locator('button[data-gf-filtre="upcoming"]').click();
+    await FX.repos(page, 150);
+    const toutAvant = await page.locator('button[data-gf-filtre="all"]').getAttribute('aria-pressed');
+    await page.locator('button[data-gf-filtre="all"]').click();
+    await FX.repos(page, 150);
+    const toutApres = await vue(page);
+    const toutPresse = await page.locator('button[data-gf-filtre="all"]').getAttribute('aria-pressed');
+    ok(toutAvant === 'false' && toutPresse === 'true' && toutApres.total === depart.total, '[C] « Tout » rend toute la journee, et se dit choisi', { toutAvant, toutPresse, total: toutApres.total, attendu: depart.total });
+    const zeros = await page.evaluate(() => Array.from(document.querySelectorAll('#planningBande .gf-c.is-zero')).map((e) => e.tagName));
+    ok(zeros.every((t) => t === 'BUTTON'), '[C] un compteur a zero se touche aussi', zeros);
   });
 }
 
@@ -746,12 +758,13 @@ async function bandeau(browser) {
       return {
         horloge: (t.querySelector('[data-gf-horloge]') || {}).textContent,
         direct: (t.querySelector('[data-gf-direct]') || {}).textContent,
-        compteurs: t.querySelectorAll('[data-gf-filtre]').length,
+        compteurs: t.querySelectorAll('[data-gf-filtre] .gf-c__v').length,
+        tout: Boolean(t.querySelector('button[data-gf-filtre="all"]')),
         etats: Array.from(t.querySelectorAll('[data-gf-etat]')).map((e) => ({ cle: e.getAttribute('data-gf-etat'), haut: e.querySelector('.gf-e__h').tagName, v: e.querySelector('.gf-e__v').textContent })),
         groupes: Array.from(t.querySelectorAll('[data-gf-etat="laser"] .gf-e__g')).map((g) => ({ tag: g.tagName, id: g.getAttribute('data-gf-fiche'), texte: g.textContent, present: present(g.getAttribute('data-gf-fiche')) })),
       };
     });
-    ok(b.horloge === '15:10' && Boolean(b.direct) && b.compteurs === 4 && b.etats.map((e) => e.cle).join() === 'bowling,laser', '[Q] le bandeau : l heure, ce que vaut l ecran, quatre compteurs, les pistes, le laser', b);
+    ok(b.horloge === '15:10' && Boolean(b.direct) && b.tout && b.compteurs === 4 && b.etats.map((e) => e.cle).join() === 'bowling,laser', '[Q] le bandeau : l heure, ce que vaut l ecran, « Tout » et quatre compteurs, les pistes, le laser', b);
     ok(b.etats.every((e) => e.haut === 'BUTTON'), '[Q] le haut de chaque etat est un bouton', b.etats);
     ok(b.groupes.length >= 2 && b.groupes.every((g) => g.tag === 'BUTTON' && g.id), '[Q] le montage : les groupes du prochain depart sont des boutons', b.groupes);
     ok(b.groupes.some((g) => g.present) && b.groupes.some((g) => !g.present), '[Q] le montage : un groupe du depart est la, un autre pas', b.groupes);
@@ -1069,7 +1082,8 @@ const MUTATIONS = [
   { nom: 'bouton-plein-perdu', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: "      if (ligne) ligne.classList.add('is-premier');", vers: "      if (ligne && !wrap._gfPremier) ligne.classList.add('is-premier');" }] },
   // [C] les compteurs
   { nom: 'compteur-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "      if (filtre) { gfFiltrer(wrapDe(), filtre.getAttribute('data-gf-filtre')); return; }", vers: '      if (filtre) return;' }] },
-  { nom: 'second-toucher-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "setStaffStatusFilter(actuel === f ? 'all' : f);", vers: 'setStaffStatusFilter(f);' }] },
+  { nom: 'second-toucher-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "setStaffStatusFilter(actuel === f || f === 'all' ? 'all' : f);", vers: "setStaffStatusFilter(f === 'all' ? 'all' : f);" }] },
+  { nom: 'tout-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "setStaffStatusFilter(actuel === f || f === 'all' ? 'all' : f);", vers: "setStaffStatusFilter(actuel === f ? 'all' : f === 'all' ? actuel : f);" }] },
   // [D] taper un nom
   { nom: 'entree-pointe-tout', lettre: 'D', scenarios: ['nom'], editions: [{ fichier: PG, de: '    if (trouves.length !== 1 || !gfPeutArriver(trouves[0], m)) return;', vers: '    if (!trouves.length || !gfPeutArriver(trouves[0], m)) return;' }] },
   { nom: 'lettre-perdue', lettre: 'D', scenarios: ['nom'], editions: [{ fichier: PG, de: '    champ.focus();\n    champ.select();\n  });', vers: '  });' }] },

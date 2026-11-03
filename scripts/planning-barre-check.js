@@ -1415,6 +1415,8 @@ function dossiersDesCartes() {
       if (avant) avant.set(v); else valeur = v;
       const j = v.jours[v.jour];
       Object.assign(j.find((r) => /Famille Noël/.test(r.name)), { notes: 'Allergie aux arachides.' });
+      const modif = (r, quoi) => { r.opsPlan = Object.assign({}, r.opsPlan || {}, { derniereModif: { le: '2027-01-16T14:05:00.000Z', par: 'Rachel', quoi } }); };
+      modif(j.find((r) => /Famille Gérard/.test(r.name)), ['4 → 6 joueurs']);
       const manon = j.find((r) => /Amis de Manon/.test(r.name));
       const de = Number(manon.price) || 100;
       Object.assign(manon, {
@@ -1422,6 +1424,7 @@ function dossiersDesCartes() {
         price: de - 15,
         discountReason: '',
         extras: [{ id: 'nourriture-1', name: 'Pizza × 6', heure: '16:30', price: 0 }],
+        opsPlan: Object.assign({}, manon.opsPlan || {}, { derniereModif: { le: '2027-01-16T14:05:00.000Z', par: 'Rachel', quoi: ['Pizza × 6 ajoutée', '17:30 → 15:30'] } }),
         notes: `${manon.notes}\n${eq('Table près de l’arène', 'Seb', '2027-01-15T14:00:00.000Z')}\n${eq(`Prix ${de} € → ${de - 15} €, anniversaire offert`, 'Seb', '2027-01-15T14:05:00.000Z', { de, a: de - 15, raison: 'anniversaire offert' })}`,
       });
     },
@@ -1465,6 +1468,9 @@ async function cartes(browser) {
     await page.waitForFunction(() => document.querySelectorAll('.gf-i--fiche').length > 0, null, { timeout: 8000 }).catch(() => null);
     // La couleur du prix sur la ligne du Complet : le Terrain la reprend.
     const couleurPrixComplet = await page.evaluate(() => { const p = document.querySelector('.gf-i--prix > p'); return p ? getComputedStyle(p).color : ''; });
+    // La derniere modification, en rubrique de la ligne du Complet.
+    const gComplet = await rubriquesDe(page, 'Famille Gérard');
+    ok(((gComplet.rub['Modifié'] || {}).texte || '') === '15:05, Rachel : 4 → 6 joueurs' && ((gComplet.rub['Modifié'] || {}).bulle || '') === 'Modifié 15:05, Rachel : 4 → 6 joueurs' && gComplet.ordre[gComplet.ordre.length - 1] === 'Modifié' && Object.values(gComplet.rub).every((x) => !x.coupe && x.lignes <= 2), '[R] Complet : la derniere modification en rubrique, quand, qui et quoi, entiere au survol', gComplet);
     await aller(page, 'bowling');
     await FX.repos(page, 300);
     const b = await lireCartesBowling(page, ['Famille Gérard', 'Amis de Clara', 'Famille Henrard', 'Famille Noël']);
@@ -1478,6 +1484,8 @@ async function cartes(browser) {
     const mGerard = marque(gerard, 'equipe');
     ok(Boolean(mGerard) && mGerard.vu && mGerard.dedans && mGerard.bulle === 'Équipe : Arrivent en deux voitures (Julie)', '[R] bowling : la note de l equipe a son marqueur, son infobulle dit la note et son auteur', gerard);
     ok(Boolean(mGerard) && !/→|fidèle|fidélité|€/.test(mGerard.bulle) && !marque(gerard, 'note'), '[R] bowling : une note de prix n est ni une note d equipe ni une bulle du client', gerard);
+    const mModif = marque(gerard, 'modif');
+    ok(Boolean(mModif) && mModif.vu && mModif.dedans && mModif.bulle === 'Modifié 15:05, Rachel : 4 → 6 joueurs' && mModif.nom === mModif.bulle, '[R] bowling : la derniere modification a son crayon, quand, qui et quoi au survol', gerard);
     ok(Boolean(gerard && gerard.prix) && gerard.prix.texte === '59 €' && gerard.prix.bulle === 'Prix ajusté 59 €, référence 69 €, carte de fidélité pleine' && /^Prix ajusté 59 €/.test(gerard.prix.nom), '[R] bowling : la pastille du prix revu dit le prix d avant et la raison au survol', gerard && gerard.prix);
     const henrard = carte('Famille Henrard');
     ok(Boolean(henrard) && henrard.marques.length === 0 && !henrard.prix && !henrard.coin, '[R] bowling : une note de prix passee se tait aussi sur la carte', henrard);
@@ -1518,9 +1526,9 @@ async function cartes(browser) {
       });
     });
     const lm = (cle) => (l || []).find((m) => m.cle === cle);
-    ok(Array.isArray(l) && l.map((m) => m.cle).join() === 'note,mesure,equipe,prix' && l.every((m) => m.taille === '13x13' && m.dedans), '[R] laser : la carte porte la note, le sur mesure, l equipe et le prix, dans cet ordre, sur la ligne du nom', l);
+    ok(Array.isArray(l) && l.map((m) => m.cle).join() === 'note,mesure,equipe,modif,prix' && l.every((m) => m.taille === '13x13' && m.dedans), '[R] laser : la carte porte la note, le sur mesure, l equipe, la modification et le prix, dans cet ordre, sur la ligne du nom', l);
     ok(Boolean(lm('note')) && rouge(lm('note').couleur) && lm('note').bulle === 'Allergie · Client : Sans gluten pour deux enfants.', '[R] laser : l allergie en rouge, son survol dit tout', lm('note'));
-    ok(Boolean(lm('equipe')) && lm('equipe').bulle === 'Équipe : Table près de l’arène (Seb)' && Boolean(lm('mesure')) && lm('mesure').bulle === 'Sur mesure : 6 × Pizza à 16:30', '[R] laser : l equipe et le sur mesure disent tout au survol', l);
+    ok(Boolean(lm('equipe')) && lm('equipe').bulle === 'Équipe : Table près de l’arène (Seb)' && Boolean(lm('mesure')) && lm('mesure').bulle === 'Sur mesure : 6 × Pizza à 16:30' && Boolean(lm('modif')) && lm('modif').bulle === 'Modifié 15:05, Rachel : Pizza × 6 ajoutée · 17:30 → 15:30', '[R] laser : l equipe, le sur mesure et la modification disent tout au survol', l);
     ok(Boolean(lm('prix')) && /^Prix ajusté [\d ,]+ €, référence [\d ,]+ €, anniversaire offert$/.test(lm('prix').bulle) && /^Prix ajusté/.test(lm('prix').nom), '[R] laser : le prix revu dit le prix d avant et la raison au survol', lm('prix'));
     // Dans une rangee serree (deux groupes au depart), les pictos cedent : le coin replie
     // dit la note, rouge avec une allergie, et l infobulle de la carte la dit en entier.
@@ -1757,9 +1765,11 @@ const MUTATIONS = [
   { nom: 'allergie-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.is-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); }\n', '') },
   { nom: 'marques-pales', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }\n', '') },
   { nom: 'marques-qui-ecrasent-le-nom', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }', '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; min-width: 80px; }') },
-  { nom: 'marqueur-qui-ecrase-le-nom-a-1024', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '@container piste (max-width: 116px) {\n  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }\n}\n', '') },
+  { nom: 'marqueur-qui-ecrase-le-nom-a-1024', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '@container piste (max-width: 116px) {\n  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }\n}\n', '') },
   { nom: 'coin-laser-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '  .lp-g.a-allergie { --lp-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }', '') },
   { nom: 'carte-laser-sans-sa-note', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "${noteLaser ? ` · ${noteLaser}` : ''}`)}\">", "`)}\">") },
+  { nom: 'marque-modif-absente', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '  if (modif) {\n    marques.push({\n      cls: \'flag-modif\',', '  if (false) {\n    marques.push({\n      cls: \'flag-modif\',') },
+  { nom: 'complet-sans-modif', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, "    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\\s*/, '')), modif));\n", '') },
   { nom: 'marque-qui-garde-le-toucher', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '<span class="bk-flag ${m.cls}" role="img"', '<span class="bk-flag ${m.cls}" onclick="event.stopPropagation()" role="img"') },
   { nom: 'liste-du-jour-sans-rubriques', lettre: 'R', scenarios: ['cartes'], editions: SEUL('assets/staff-pages-v2.js', "    return `<span class=\"pv2-flow-marks\">${prix}${note}${rubriques}</span>`;", "    return `<span class=\"pv2-flow-marks\">${prix}${note}</span>`;") },
   { nom: 'liste-du-jour-prix-gris', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.pv2-flow-marks .res-rub--prix { color: var(--warning); font-weight: 600; }\n', '') },

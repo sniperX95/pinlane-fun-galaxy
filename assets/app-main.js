@@ -26336,6 +26336,8 @@ window.addEventListener('resize', () => ajusterHauteurListe());
 
 async function setReservationStatusDirect(id, status, ev, options = {}) {
   if (ev) ev.stopPropagation();
+  // (le second clic d un double clic : le premier a deja peint et envoye)
+  if (ev && ev.detail > 1) return;
   const key = String(id);
   const filtreAvant = state.staffStatusFilter;
   let current = state.reservations.find(r => String(r.id) === key);
@@ -26376,9 +26378,34 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
   statusSaveLatestSeqByReservation[requestKey] = requestSeq;
   const isLatestRequest = () => statusSaveLatestSeqByReservation[requestKey] === requestSeq;
   setReservationMutationInFlight(id, 'status', status);
-  const clicked = ev?.target?.closest?.('button') || ev?.currentTarget;
-  const previousLabel = clicked?.textContent;
-  if (clicked?.tagName === 'BUTTON') { clicked.disabled = true; clicked.setAttribute('aria-busy','true'); clicked.textContent = 'Enregistrement…'; }
+  // LE STATUT CHANGE AU TOUCHER (2026-11-03, Movsar : « c trop lent quand on passe de
+  // confirmé à payé [...] ça bug un peu »). Depuis le 05/10, l ecran attendait le
+  // serveur et ecrivait « Enregistrement… » sur le bouton : un aller-retour entier
+  // pour chaque geste. Le chemin serveur du statut est sur depuis ce jour-la (verrou,
+  // version, statut seul) : l ecran peint tout de suite ce qui est demande, et un
+  // refus remet le dossier d avant, avec son message.
+  const avant = current;
+  const voulu = { ...current, status, ...(moyenDemande ? { paymentMethod: moyenDemande } : {}) };
+  const ancreY = listeVisible ? document.querySelector(`[data-res-row-id="${Number(id)}"]`)?.getBoundingClientRect().top : undefined;
+  // Un filtre ciblé ne doit pas faire disparaître le groupe que l'on sert.
+  // On rejoint la vue complète seulement si ce dossier quitte le filtre.
+  if (state.staffStatusFilter === filtreAvant && !['all', 'notes'].includes(normaliserFiltreListe(filtreAvant))
+    && !filterReservationsForStaff([voulu], filtreAvant).length) state.staffStatusFilter = 'all';
+  markReservationMutation(id, voulu, ['status', 'paymentMethod']);
+  avecListeDifferable(() => applyOptimisticReservation(voulu, { preserveEditState: true }));
+  if (Number.isFinite(ancreY)) requestAnimationFrame(() => {
+    const carte = document.querySelector(`[data-res-row-id="${Number(id)}"]`);
+    if (!carte) return;
+    let parent = carte.parentElement;
+    while (parent && parent !== document.body) {
+      if (parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY)) {
+        parent.scrollTop += carte.getBoundingClientRect().top - ancreY;
+        return;
+      }
+      parent = parent.parentElement;
+    }
+    window.scrollBy(0, carte.getBoundingClientRect().top - ancreY);
+  });
   // La version sur laquelle le geste s ecrit : c est elle que « Annuler »
   // remet (un « Payé » enchaine sur un « Arrivé » se defait en « Arrivé »).
   let versionEcrite = current;
@@ -26390,28 +26417,9 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     return payload;
   }).then(payload => {
     if (!isLatestRequest()) return;
-    // Mesuré à la réponse : on respecte aussi un défilement fait pendant
-    // l'enregistrement, et aucune ancre n'est posée si l'on a quitté la liste
-    // (hors de l'écran, la mesurer la réveillerait pour rien).
-    const ancreY = listeVisible ? document.querySelector(`[data-res-row-id="${Number(id)}"]`)?.getBoundingClientRect().top : undefined;
-    // Un filtre ciblé ne doit pas faire disparaître le groupe que l'on sert.
-    // On rejoint la vue complète seulement si ce dossier quitte le filtre.
-    if (state.staffStatusFilter === filtreAvant && !['all', 'notes'].includes(normaliserFiltreListe(filtreAvant))
-      && !filterReservationsForStaff([payload.reservation], filtreAvant).length) state.staffStatusFilter = 'all';
+    // La reponse ne repeint que ce qu elle change (un updatedAt neuf ne se dessine
+    // nulle part, la signature l ignore) : le geste ne se voit qu une fois.
     avecListeDifferable(() => applyOptimisticReservation(payload.reservation, { preserveEditState: true }));
-    if (Number.isFinite(ancreY)) requestAnimationFrame(() => {
-      const carte = document.querySelector(`[data-res-row-id="${Number(id)}"]`);
-      if (!carte) return;
-      let parent = carte.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY)) {
-          parent.scrollTop += carte.getBoundingClientRect().top - ancreY;
-          return;
-        }
-        parent = parent.parentElement;
-      }
-      window.scrollBy(0, carte.getBoundingClientRect().top - ancreY);
-    });
     // Ré-ancre la protection sur la valeur confirmée par le serveur et repousse
     // le délai de grâce : les lectures (staff-state) peuvent encore être en
     // retard sur l'écriture qui vient d'être committée.
@@ -26428,15 +26436,17 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     if (!options.sansAnnulation && ['arrived', 'paid'].includes(status)) proposerAnnulationGeste(versionEcrite, payload.reservation);
   }).catch(error => {
     if (!isLatestRequest()) return;
+    // Le refus remet ce que le serveur dit (un autre poste a ecrit : sa version), sinon
+    // le dossier d avant le toucher.
     const fresh = error.reservation || (error.status === 409 && error.payload?.reservation);
-    if (fresh) applyOptimisticReservation(fresh, { preserveEditState: true });
+    clearReservationMutation(id);
+    avecListeDifferable(() => applyOptimisticReservation(fresh || avant, { preserveEditState: true }));
     const message = error.message || 'Impossible de mettre à jour le statut.';
     if (state.selectedRes && String(state.selectedRes.id) === key) setEditError(message);
     if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Statut non enregistré', message, 'warning');
     toast(message);
   }).finally(() => {
     clearReservationMutationInFlight(id, 'status');
-    if (clicked?.isConnected) { clicked.disabled = false; clicked.removeAttribute('aria-busy'); clicked.textContent = previousLabel; }
     if (isLatestRequest()) delete statusSaveLatestSeqByReservation[requestKey];
   });
 }
@@ -30128,6 +30138,8 @@ function ancreCompteArrivee() {
 
 function ouvrirCompteArrivee(id, ancre, ev) {
   if (ev) ev.stopPropagation();
+  // (le second clic d un double clic sur « Arrivé », peint au toucher)
+  if (ev && ev.detail > 1) return;
   const r = findStaffReservationById(id);
   if (!r || !peutCompterArrivee(r)) { toast('Ce groupe ne se compte plus ici : passez par Modifier.'); return; }
   compteArrivee().id = Number(r.id);

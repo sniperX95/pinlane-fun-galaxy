@@ -26,7 +26,8 @@ for(const width of[768,834,1024,1440,390])for(const theme of['light','dark']){
  const arrived=row.locator('button').filter({hasText:/^Arrivé$/}).first();check(await arrived.count()===1,width+theme+' arrival action exists');
  if(await arrived.count()){
   const before=clone(stored);mode='wait';await arrived.click();for(let i=0;i<30&&!release;i++)await page.waitForTimeout(10);check(Boolean(release),width+theme+' click sends arrival');
-  check(await page.evaluate(()=>state.reservations[0].status==='confirmed'),width+theme+' pending arrival does not falsely claim saved');
+  // (depuis le 2026-11-03 l arrivee se peint au toucher, l envoi encore en vol ; un refus la retire, voir le 500 plus bas)
+  check(await page.evaluate(()=>state.reservations[0].status==='arrived'&&isReservationMutationInFlight(99001,'status','arrived')),width+theme+' pending arrival shows at once while still being saved');
   if(release){const n=requests.length;await page.evaluate(()=>setReservationStatusDirect(99001,'arrived'));check(requests.length===n,width+theme+' duplicate request suppressed');mode='ok';release();release=null;}
   await page.waitForTimeout(200);check(stored.status==='arrived',width+theme+' arrival persisted');check(stored.price===before.price&&JSON.stringify(stored.opsPlan)===JSON.stringify(before.opsPlan),width+theme+' arrival preserves price and plan');
   await page.reload({waitUntil:'networkidle'});await setup(page,theme);check(await page.evaluate(()=>state.reservations[0].status==='arrived'),width+theme+' fresh reload arrived');

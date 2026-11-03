@@ -38,10 +38,20 @@
 // renvoyait les seuls champs envoyes, et la console plantait sur une fiche sans
 // nom (localeCompare), ce que la prod ne fait jamais.
 //
-// Usage : node scripts/status-toggle-check.js
-// Contre-epreuves sur le vrai code servi (chacune doit faire ROUGIR le gate) :
-//   STATUS_TOGGLE_CASSE=message  remet un message de succes apres la reponse
-//   STATUS_TOGGLE_CASSE=double   redessine une deuxieme fois apres la reponse
+// DEPUIS LE 2026-11-03 (Movsar : « c trop lent quand on passe de confirmé à payé
+// [...] ça bug un peu »), le statut se peint de nouveau AU TOUCHER : le chemin
+// serveur du statut est sur depuis le 05/10, attendre coutait un aller-retour par
+// geste. Le point 1 devient : un clic = UN SEUL redessin, au toucher, et la reponse
+// qui ne change que `updatedAt` ne redessine rien. Le second clic d un double clic,
+// qui tombe sur « Carte » peint a la place d « Arrivé », ne part pas.
+//
+// Usage : node scripts/status-toggle-check.js [--contre-preuves]
+// Contre-epreuves sur le vrai code servi (chacune doit faire ROUGIR le gate,
+// --contre-preuves les joue toutes) :
+//   STATUS_TOGGLE_CASSE=message     remet un message de succes apres la reponse
+//   STATUS_TOGGLE_CASSE=double      redessine une deuxieme fois apres la reponse
+//   STATUS_TOGGLE_CASSE=attente     le statut attend de nouveau le serveur
+//   STATUS_TOGGLE_CASSE=doubleclic  le second clic d un double clic repart
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -52,6 +62,17 @@ const PORT = Number(process.env.PINLANE_STATUS_PORT || 4211);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+// L ancre des deux premieres : la ligne qui suit l application de la reponse de
+// STATUT, unique dans le fichier (sinon on casserait autre chose que le statut).
+// (une ancre sur deux lignes est une expression : le fichier sert du CRLF sous
+// Windows et du LF sur GitHub)
+const ANCRE_REPONSE = "markReservationMutation(id, payload.reservation, ['status', 'paymentMethod']);";
+const CASSES = {
+  message: { de: ANCRE_REPONSE, vers: ANCRE_REPONSE + " toast('Statut enregistré.');" },
+  double: { de: ANCRE_REPONSE, vers: ANCRE_REPONSE + ' renderStaffData();' },
+  attente: { de: 'avecListeDifferable(() => applyOptimisticReservation(voulu, { preserveEditState: true }));', vers: '' },
+  doubleclic: { de: /if \(ev && ev\.detail > 1\) return;(\r?\n  const key = String\(id\);)/, vers: '$1' },
+};
 
 function serveStatic() {
   const server = http.createServer((req, res) => {
@@ -64,15 +85,13 @@ function serveStatic() {
       const casse = process.env.STATUS_TOGGLE_CASSE;
       if (casse && url.pathname === '/assets/app-main.js') {
         const src = content.toString('utf8');
-        // L ancre : la ligne qui suit l application de la reponse de STATUT,
-        // unique dans le fichier (sinon on casserait autre chose que le statut).
-        const ancre = "markReservationMutation(id, payload.reservation, ['status', 'paymentMethod']);";
-        const ajout = { message: " toast('Statut enregistré.');", double: ' renderStaffData();' }[casse];
-        if (!ajout || src.split(ancre).length !== 2) {
+        const c = CASSES[casse];
+        const n = !c ? 0 : c.de instanceof RegExp ? (src.match(new RegExp(c.de.source, 'g')) || []).length : src.split(c.de).length - 1;
+        if (n !== 1) {
           console.error(`status-toggle-check : la casse « ${casse} » ne trouve pas son ancre (le code a change ?)`);
           process.exit(2);
         }
-        content = Buffer.from(src.replace(ancre, ancre + ajout), 'utf8');
+        content = Buffer.from(src.replace(c.de, c.vers), 'utf8');
       }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       res.end(content);
@@ -340,18 +359,22 @@ async function main() {
       await retenirEcho(page);
       const appelsAvant = await page.evaluate(() => window.__QA_PATCH__.calls);
       const pendantCarte = await cliqueEtat(page, ligne.id, vrai, statut);
-      ok(pendantCarte.enCours && pendantCarte.statut === ligne.statutAvant && !pendantCarte.ditLEtat,
-        `« ${vrai} » : en attente du serveur, le bouton dit « Enregistrement… » et rien n est peint (dossier ${ligne.id}, « ${pendantCarte.statut} »)`);
+      ok(!pendantCarte.enCours && pendantCarte.statut === statut && pendantCarte.ditLEtat,
+        `« ${vrai} » : la carte bascule au toucher, avant la reponse du serveur, sans « Enregistrement… » (dossier ${ligne.id}, « ${pendantCarte.statut} »)`);
       const pendant = await counters(page);
-      ok(pendant.domWrites === 0, `« ${vrai} » : aucun redessin avant la reponse (mesure ${pendant.domWrites})`);
-      // Le bouton est desactive : un second clic ne part pas.
-      await page.locator(`#resList .res-row[onclick="openPos(${ligne.id})"] .gc-actions button[aria-busy="true"]`).first().click({ force: true }).catch(() => {});
+      ok(pendant.domWrites === 1, `« ${vrai} » : un seul redessin, au toucher (mesure ${pendant.domWrites})`);
+      // Le second clic d un double clic tombe sur ce qui a pris la place du bouton
+      // (« Carte » apres « Arrivé ») : il ne part pas.
+      await page.evaluate((id) => {
+        const b = document.querySelector(`#resList .res-row[onclick="openPos(${id})"] .gc-actions button`);
+        if (b) b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 2 }));
+      }, ligne.id);
       // L echo revient, et la page l a traite.
       await libererEcho(page);
       const apresCarte = await lireCarte(page, ligne.id, statut);
-      ok(apresCarte.statut === statut && apresCarte.ditLEtat, `« ${vrai} » : a la reponse, la carte bascule (« ${apresCarte.statut} »)`);
+      ok(apresCarte.statut === statut && apresCarte.ditLEtat, `« ${vrai} » : a la reponse, la carte reste basculee (« ${apresCarte.statut} »)`);
       const apres = await counters(page);
-      ok(apres.domWrites === 1, `« ${vrai} » : 1 seul redessin pour le clic (mesure ${apres.domWrites})`);
+      ok(apres.domWrites === 1, `« ${vrai} » : la reponse qui ne change que updatedAt ne redessine rien, 1 redessin en tout (mesure ${apres.domWrites})`);
       ok(apres.renders === 1, `« ${vrai} » : renderStaffData appele une seule fois (mesure ${apres.renders})`);
       ok(apres.toasts === 0, `« ${vrai} » : aucun message de succes (mesure ${apres.toasts} : ${apres.toastTexts.join(' | ') || 'aucun'})`);
       const appelsApres = await page.evaluate(() => window.__QA_PATCH__.calls);
@@ -369,7 +392,9 @@ async function main() {
     const appels = await page.evaluate(() => window.__QA_PATCH__.calls);
     ok(appels >= 3, `le PATCH a bien ete emis a chaque clic (${appels} appels)`);
 
-    console.log("\n[3] LA REPONSE DU SERVEUR FAIT FOI : CE QU'ELLE CHANGE SE VOIT, EN UN SEUL REDESSIN");
+    // (le toucher a peint le statut ; la reponse qui change une valeur visible repeint
+    // une fois de plus, pas davantage)
+    console.log("\n[3] LA REPONSE DU SERVEUR FAIT FOI : CE QU'ELLE CHANGE SE VOIT, EN UN REDESSIN DE PLUS");
     await page.evaluate(() => { window.__QA_PATCH__.mode = 'echo-changed'; });
     const ligne3 = await choisirLigne(page, 'arrived');
     ok(!!ligne3, 'une ligne a basculer existe');
@@ -383,7 +408,7 @@ async function main() {
     const apres2 = await counters(page);
     const paxApres = await page.evaluate((id) => Number(state.reservations.find((r) => Number(r.id) === id).pax), ligne3.id);
     ok(paxAvant > 0 && paxApres === paxAvant + 3, `l effectif renvoye par le serveur remplace celui de l ecran (${paxAvant} -> ${paxApres})`);
-    ok(apres2.domWrites === 1, `et il ne coute qu un redessin (mesure ${apres2.domWrites})`);
+    ok(apres2.domWrites === 2, `et il ne coute qu un redessin de plus que le toucher (mesure ${apres2.domWrites})`);
     await degelerReleves(page);
 
     console.log('\n[4] ECHEC SERVEUR : L\'ETAT RESTE CELUI D AVANT, AVEC UN MESSAGE');
@@ -430,5 +455,22 @@ async function main() {
   }
 }
 
-if (require.main === module) main();
+// Chaque casse doit faire rougir le gate (code 1) ; une ancre perdue (code 2) ne compte
+// pas comme une morsure.
+function contrePreuves() {
+  const { spawnSync } = require('child_process');
+  let rates = 0;
+  Object.keys(CASSES).forEach((casse) => {
+    const r = spawnSync(process.execPath, [__filename], { env: { ...process.env, STATUS_TOGGLE_CASSE: casse }, encoding: 'utf8' });
+    const mord = r.status === 1;
+    console.log(`${mord ? 'ok  ' : 'FAIL'}  contre-preuve « ${casse} » : le gate ${mord ? 'rougit' : 'ne rougit pas'} (code ${r.status})`);
+    if (!mord) rates += 1;
+  });
+  process.exit(rates ? 1 : 0);
+}
+
+if (require.main === module) {
+  if (process.argv.includes('--contre-preuves')) contrePreuves();
+  else main();
+}
 module.exports = { serveStatic, installMock, installStatusPatchMock, bootStaff, gelerReleves, degelerReleves, retenirEcho, libererEcho };

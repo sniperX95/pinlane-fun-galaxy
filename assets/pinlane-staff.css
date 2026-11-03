@@ -10964,6 +10964,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   --rs-gouttiere: 26px;
   --rs-ticket: 336px;
   --rs-seances: 7;
+  /* Le toucher : une sortie (ease-out) courte, sur transform et opacity seulement. */
+  --rs-duree: 160ms;
+  --rs-sortie: cubic-bezier(.23, 1, .32, 1);
   position: relative;
   width: min(1148px, 100%);
   height: min(724px, calc(100dvh - 32px));
@@ -11047,14 +11050,27 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 62px - 6px); max-height: calc(var(--rs-r, 1) * 114px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-heures .rs-h { height: auto; }
 
+/* LA COCHE : ce que le ticket a pris, sur sa tuile et sur sa seance, en plus du bleu (la
+   couleur ne dit pas seule l etat). Le bowling propose au depart n en porte pas, une heure
+   refusee non plus. Elle entre en fondu, sans bouger la touche. */
+.qb-modal.rv.rs .rs-h, .qb-modal.rv.rs .rs-pt { position: relative; }
+.qb-modal.rv.rs .rs-coche { position: absolute; top: 5px; right: 5px; width: 16px; height: 16px; display: grid; place-items: center; color: var(--accent-strong); opacity: 0; transform: scale(.6); transition: opacity var(--rs-duree) var(--rs-sortie), transform var(--rs-duree) var(--rs-sortie); pointer-events: none; }
+.qb-modal.rv.rs .rs-coche svg { width: 14px; height: 14px; }
+.qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }
+.qb-modal.rv.rs .rs-h.is-propose > .rs-coche, .qb-modal.rv.rs .rs-h.is-ko > .rs-coche { opacity: 0; transform: scale(.6); }
+
 /* LES AUTRES ACTIVITES, LES PORTES */
 .qb-modal.rv.rs .rs-petits { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 6px; }
 .qb-modal.rv.rs .rs-pt { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 10px 4px 12px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-pt .rs-ic2 { width: auto; height: 24px; background: transparent; }
 .qb-modal.rv.rs .rs-pt b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 550; line-height: 1.25; }
-.qb-modal.rv.rs .rs-pt small { min-height: 15px; font-size: 12px; font-weight: 400; line-height: 1.25; color: var(--muted); }
+.qb-modal.rv.rs .rs-pt small { max-width: 100%; min-height: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; line-height: 1.25; color: var(--muted); }
 .qb-modal.rv.rs .rs-pt.is-on { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-pt.is-on .rs-ic2, .qb-modal.rv.rs .rs-pt.is-on small { color: var(--accent-strong); }
+.qb-modal.rv.rs .rs-pt.is-on small { font-weight: 550; }
+/* Dans une formule que le role ne peut pas adapter : une activite de plus ne se prend pas. */
+.qb-modal.rv.rs .rs-pt.is-hors { color: var(--muted); }
+.qb-modal.rv.rs .rs-pt.is-hors b { font-weight: 500; }
 .qb-modal.rv.rs .rs-portes { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .qb-modal.rv.rs .rs-portes.is-seule { grid-template-columns: minmax(0, 1fr); }
 .qb-modal.rv.rs .rs-porte { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 50px; padding: 0 14px 0 9px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--text); text-align: left; }
@@ -11088,6 +11104,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-lignes { display: flex; flex-direction: column; }
 .qb-modal.rv.rs .rs-tk-l { margin: 0; padding: 0 10px; font-size: 14px; font-weight: 550; line-height: 1.3; color: var(--text); }
 .qb-modal.rv.rs .rs-tk-sep { flex: none; height: 1px; margin: 12px 10px; background: var(--rs-ligne); }
+/* Une ligne et sa croix. La colonne de la croix reste la meme sans elle : les prix restent
+   alignes d une ligne a l autre. */
+.qb-modal.rv.rs .rs-tk-ligne { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px; }
+.qb-modal.rv.rs .rs-tk-x { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; font-size: 18px; line-height: 1; color: var(--muted); }
 .qb-modal.rv.rs .rs-tk-a { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; }
 .qb-modal.rv.rs .rs-tk-a.is-ici { background: var(--accent-soft); }
 .qb-modal.rv.rs .rs-tk-i { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--text); }
@@ -11099,10 +11119,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-n small.is-att { font-weight: 500; color: var(--warning); }
 .qb-modal.rv.rs .rs-tk-q { font-size: 14px; font-weight: 600; line-height: 1; }
 .qb-modal.rv.rs .rs-tk-a em { font-style: normal; font-size: 15px; font-weight: 600; white-space: nowrap; }
-.qb-modal.rv.rs .rs-tk-plus { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; margin: 8px 10px 0; padding: 0 12px; border: 1px dashed var(--rs-ligne-forte); border-radius: 10px; background: transparent; font-size: 14px; font-weight: 550; color: var(--accent-strong); text-align: center; }
-.qb-modal.rv.rs .rs-tk-plus > span[aria-hidden] { font-size: 17px; line-height: 1; }
-.qb-modal.rv.rs .rs-tk-plus.is-on { justify-content: space-between; padding: 0 12px; border: 0; background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13px; white-space: nowrap; }
-.qb-modal.rv.rs .rs-tk-plus.is-on .rs-lien { color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-tk-client { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 8px; }
 .qb-modal.rv.rs .rs-tk-client > .rs-lien { align-self: flex-start; }
 .qb-modal.rv.rs .rs-tk-nom { display: flex; flex-direction: column; gap: 6px; }
@@ -11247,21 +11263,25 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rv-resa .rv-x { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; margin-right: 3px; padding: 0; border: 0; border-radius: 8px; background: transparent; font-size: 16px; line-height: 1; color: inherit; }
 .qb-modal.rv.rs .rv-resa-plus { height: 32px; padding: 0 10px; border: 1px dashed var(--rs-ligne-forte); border-radius: 8px; background: transparent; font-size: 13px; font-weight: 550; line-height: 1; color: var(--accent-strong); white-space: nowrap; }
 
-/* Le toucher se sent, sans bouger la mise en page */
-.qb-modal.rv.rs .rs-n, .qb-modal.rv.rs .rs-h, .qb-modal.rv.rs .rs-pt, .qb-modal.rv.rs .rs-f, .qb-modal.rv.rs .rs-p, .qb-modal.rv.rs .rs-art, .qb-modal.rv.rs .rs-tk-creer, .qb-modal.rv.rs .rs-payer { transition: transform 80ms cubic-bezier(.23, 1, .32, 1); }
-.qb-modal.rv.rs .rs-n:active, .qb-modal.rv.rs .rs-h:active, .qb-modal.rv.rs .rs-pt:active, .qb-modal.rv.rs .rs-p:active:not(:disabled), .qb-modal.rv.rs .rs-art:active, .qb-modal.rv.rs .rs-tk-creer:active, .qb-modal.rv.rs .rs-payer:active:not(:disabled) { transform: scale(.97); }
+/* Le toucher se sent, sans bouger la mise en page : la touche s enfonce (scale) et revient
+   en une sortie courte. Une ligne du ticket, trop large pour s enfoncer, se teinte. */
+.qb-modal.rv.rs .rs-n, .qb-modal.rv.rs .rs-h, .qb-modal.rv.rs .rs-pt, .qb-modal.rv.rs .rs-porte, .qb-modal.rv.rs .rs-f, .qb-modal.rv.rs .rs-p, .qb-modal.rv.rs .rs-art, .qb-modal.rv.rs .rs-tk-x, .qb-modal.rv.rs .rs-tk-creer, .qb-modal.rv.rs .rs-payer { transition: transform var(--rs-duree) var(--rs-sortie), opacity var(--rs-duree) var(--rs-sortie); }
+.qb-modal.rv.rs .rs-n:active, .qb-modal.rv.rs .rs-h:active, .qb-modal.rv.rs .rs-pt:active, .qb-modal.rv.rs .rs-porte:active, .qb-modal.rv.rs .rs-p:active:not(:disabled), .qb-modal.rv.rs .rs-art:active, .qb-modal.rv.rs .rs-tk-x:active, .qb-modal.rv.rs .rs-tk-creer:active, .qb-modal.rv.rs .rs-payer:active:not(:disabled) { transform: scale(.97); }
+.qb-modal.rv.rs .rs-tk-a:active { background: var(--rs-touche); }
 
 @media (hover: hover) and (pointer: fine) {
   .qb-modal.rv.rs .rs-n:hover:not(.is-on), .qb-modal.rv.rs .rs-h:hover:not(.is-on):not(.is-ko), .qb-modal.rv.rs .rs-p:hover:not(.is-on):not(:disabled), .qb-modal.rv.rs .rs-art:hover:not(.is-on), .qb-modal.rv.rs .rs-pas button:hover:not(:disabled) { background: var(--rs-survol); }
-  .qb-modal.rv.rs .rs-pt:hover:not(.is-on), .qb-modal.rv.rs .rs-porte:hover, .qb-modal.rv.rs .rs-f:hover:not(.is-on), .qb-modal.rv.rs .rs-tk-plus:hover:not(.is-on), .qb-modal.rv.rs .rs-h-autres:hover { background: var(--rs-touche); }
-  .qb-modal.rv.rs .rs-seg button:hover:not(.is-on), .qb-modal.rv.rs .rs-seg-date:hover:not(.is-on), .qb-modal.rv.rs .rs-lien:hover, .qb-modal.rv.rs .rs-x:hover { color: var(--text); }
-  .qb-modal.rv.rs .rs-tk-a:hover:not(.is-ici), .qb-modal.rv.rs .rs-x:hover { background: var(--rs-touche); }
+  .qb-modal.rv.rs .rs-pt:hover:not(.is-on), .qb-modal.rv.rs .rs-porte:hover, .qb-modal.rv.rs .rs-f:hover:not(.is-on), .qb-modal.rv.rs .rs-h-autres:hover { background: var(--rs-touche); }
+  .qb-modal.rv.rs .rs-seg button:hover:not(.is-on), .qb-modal.rv.rs .rs-seg-date:hover:not(.is-on), .qb-modal.rv.rs .rs-lien:hover, .qb-modal.rv.rs .rs-x:hover, .qb-modal.rv.rs .rs-tk-x:hover { color: var(--text); }
+  .qb-modal.rv.rs .rs-tk-a:hover:not(.is-ici), .qb-modal.rv.rs .rs-x:hover, .qb-modal.rv.rs .rs-tk-x:hover { background: var(--rs-touche); }
   .qb-modal.rv.rs .rs-payer:hover:not(:disabled) { background: var(--rs-touche); }
   .qb-modal.rv.rs .rs-tk-creer:not(.is-bloque):not([aria-busy="true"]):hover { background: var(--accent-strong); }
 }
 
 @media (pointer: coarse) {
-  .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date, .qb-modal.rv.rs .rs-lien, .qb-modal.rv.rs .rs-retour, .qb-modal.rv.rs .rs-discret, .qb-modal.rv.rs .rs-x, .qb-modal.rv.rs .rs-tk-plus, .qb-modal.rv.rs .rs-payer, .qb-modal.rv.rs .rs-connu .rv-refaire, .qb-modal.rv.rs .rv-resa, .qb-modal.rv.rs .rv-resa-plus { min-height: 44px; }
+  .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date, .qb-modal.rv.rs .rs-lien, .qb-modal.rv.rs .rs-retour, .qb-modal.rv.rs .rs-discret, .qb-modal.rv.rs .rs-x, .qb-modal.rv.rs .rs-payer, .qb-modal.rv.rs .rs-connu .rv-refaire, .qb-modal.rv.rs .rv-resa, .qb-modal.rv.rs .rv-resa-plus { min-height: 44px; }
+  .qb-modal.rv.rs .rs-tk-ligne { grid-template-columns: minmax(0, 1fr) 44px; }
+  .qb-modal.rv.rs .rs-tk-x { width: 44px; height: 44px; }
   .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date, .qb-modal.rv.rs .rs-payer, .qb-modal.rv.rs .rs-connu .rv-refaire, .qb-modal.rv.rs .rv-resa, .qb-modal.rv.rs .rv-resa-plus { height: 44px; }
   .qb-modal.rv.rs .rs-tabs button { height: 44px; }
   .qb-modal.rv.rs .rv-resa .rv-x { min-width: 44px; min-height: 44px; }
@@ -11346,7 +11366,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qb-modal.rv.rs .rs-n:active, .qb-modal.rv.rs .rs-h:active, .qb-modal.rv.rs .rs-pt:active, .qb-modal.rv.rs .rs-p:active:not(:disabled), .qb-modal.rv.rs .rs-art:active, .qb-modal.rv.rs .rs-tk-creer:active, .qb-modal.rv.rs .rs-payer:active:not(:disabled) { transform: none; }
+  .qb-modal.rv.rs .rs-n:active, .qb-modal.rv.rs .rs-h:active, .qb-modal.rv.rs .rs-pt:active, .qb-modal.rv.rs .rs-porte:active, .qb-modal.rv.rs .rs-p:active:not(:disabled), .qb-modal.rv.rs .rs-art:active, .qb-modal.rv.rs .rs-tk-x:active, .qb-modal.rv.rs .rs-tk-creer:active, .qb-modal.rv.rs .rs-payer:active:not(:disabled) { transform: none; }
+  .qb-modal.rv.rs .rs-coche { transform: none; transition: opacity var(--rs-duree) var(--rs-sortie); }
 }
 
 /* Notifications « nouvelle réservation du jour » : z-index 950 : au-dessus du

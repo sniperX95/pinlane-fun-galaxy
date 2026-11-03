@@ -10852,8 +10852,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-btn-save:hover { opacity: 0.88; }
 
 /* ── RESERVER, LES SEANCES (2026-11-03) ─────────────────────────────────────
-   Le voile de la fenetre ; au telephone et en portrait elle prend tout l ecran. */
-.qb-overlay.is-rv { padding: 16px; background: var(--backdrop); }
+   Le voile de la fenetre ; au telephone et en portrait elle prend tout l ecran. Le
+   planning reserve la place de sa barre de defilement (html.pb-page, scrollbar-gutter) :
+   le voile la couvre aussi (100vw), la fenetre reste centree sur l ecran entier. */
+.qb-overlay.is-rv { right: auto; width: 100vw; padding: 16px; background: var(--backdrop); }
 @media (max-width: 900px) { .qb-overlay.is-rv { padding: 0; align-items: stretch; } }
 
 /* LE SOCLE : ce que l ancienne fenetre posait sous les seances quand le fondateur les a

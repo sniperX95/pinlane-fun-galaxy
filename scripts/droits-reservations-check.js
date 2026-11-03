@@ -293,7 +293,8 @@ const aucuneEcriture = (r) => !r.ecrit.statut.length && !r.ecrit.maj.length && !
       ok(r.statut === 422 && /Prix invalide/.test(r.message) && aucuneEcriture(r), `prix ${JSON.stringify(prix)} : 422, rien n est ecrit`, `recu ${r.statut} ${r.message}`);
     }
     for (const prix of [0, 100000, '45.5']) {
-      const r = await cas(handler, 'PATCH', 'manager', { id: 501, name: 'Groupe Essai', price: prix });
+      // La borne, pas le plafond du role : Direction, avec sa raison.
+      const r = await cas(handler, 'PATCH', 'direction', { id: 501, name: 'Groupe Essai', price: prix, prixRaison: 'Geste du centre' });
       ok(r.statut === 200 && r.ecrit.maj.length === 1, `prix ${JSON.stringify(prix)} : 200, ecrit`, `recu ${r.statut} ${r.message}`);
     }
     for (const [mot, corps] of [['null', { price: null }], ['vide', { price: '' }], ['absent', {}]]) {
@@ -332,7 +333,7 @@ const aucuneEcriture = (r) => !r.ecrit.statut.length && !r.ecrit.maj.length && !
       nom: 'borne du prix retiree : prix -5 accepte',
       de: 'if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw',
       vers: 'if (false) throw',
-      appel: ['PATCH', 'manager', { id: 501, name: 'Groupe Essai', price: -5 }],
+      appel: ['PATCH', 'direction', { id: 501, name: 'Groupe Essai', price: -5, prixRaison: 'Geste du centre' }],
     },
   ];
   for (const ce of contreEpreuves) {

@@ -151,7 +151,7 @@ async function main() {
   // Le vrai endpoint reçoit le DTO complet du comptoir, pas un PATCH minimal.
   let replans=0;
   const replace=(file,overrides)=>{const key=require.resolve('../'+file);const actual=require(key);require.cache[key].exports={...actual,...overrides};};
-  const session={authorizedCenterId:'libramont',centerId:'libramont',member:{id:'memory',name:'Memory'}};
+  const session={authorizedCenterId:'libramont',centerId:'libramont',member:{id:'memory',name:'Memory'},role:{id:'direction',locked:true}};
   replace('lib/staff-auth.js',{getStaffSessionFromRequest:async()=>session,requireStaffPermission:async()=>session});
   replace('lib/database.js',{getReservationById:async(id)=>(await S.db.readStaffState(bench.JOUR,'libramont')).reservations.find(r=>r.id===Number(id)),cancelReservationCommunications:async()=>[],cancelReservationOpsJobs:async()=>[],createOpsEvent:async()=>({})});
   replace('lib/audit-log.js',{writeAuditLog:async()=>({})});
@@ -162,7 +162,7 @@ async function main() {
   const staffHandler=require('../api/staff-reservations');
   const patchStaff=async(body)=>{const req=require('node:stream').Readable.from([Buffer.from(JSON.stringify(body))]);req.method='PATCH';req.headers={};const res={statusCode:200,setHeader(){},end(value){this.body=JSON.parse(value);}};await staffHandler(req,res);return res;};
   const full=await S.db.updateReservation({id:row.id,price:50});
-  for(const changes of [{name:'Full DTO contact'},{validationStatus:'confirmed'},{price:47},{pax:20}]) {
+  for(const changes of [{name:'Full DTO contact'},{validationStatus:'confirmed'},{price:47,prixRaison:'Geste'},{pax:20}]) {
     const response=await patchStaff({...full,...changes,laneCount:0,requiresLanes:false});
     equal(response.statusCode,200,JSON.stringify(response.body));
     equal(response.body.reservation.program.items[0].arcadeOffer.price,25,'full DTO keeps disabled historical card contract');
@@ -199,7 +199,7 @@ async function main() {
   bench.base.reservations.delete(900);
   const bowlingFull=(await S.db.readStaffState(bench.JOUR,'libramont')).reservations.find(r=>r.id===bowlingRow.id);
   const beforeBowlingReplans=replans;
-  for(const changes of [{name:'Full bowling contact'},{pax:20},{price:35}]) {
+  for(const changes of [{name:'Full bowling contact'},{pax:20},{price:35,prixRaison:'Geste'}]) {
     const response=await patchStaff({...bowlingFull,...changes,laneCount:1,requiresLanes:true});
     equal(response.statusCode,200,JSON.stringify(response.body));
     equal(response.body.reservation.lanes,[8],'full DTO keeps actual emergency lane after another lane frees');
@@ -207,7 +207,7 @@ async function main() {
   }
   equal(replans,beforeBowlingReplans,'unchanged own bowling players never replan from full DTO');
   const moreBowlers=structuredClone(bowlingFull.program);moreBowlers.items[0].participants=8;
-  const bowlingChanged=await patchStaff({...bowlingFull,program:moreBowlers,laneCount:1,requiresLanes:true});
+  const bowlingChanged=await patchStaff({...bowlingFull,program:moreBowlers,laneCount:1,requiresLanes:true,prixRaison:'Geste'});
   equal(replans,beforeBowlingReplans+1,'actual own bowling players change replans');
   equal(bowlingChanged.statusCode,200,JSON.stringify(bowlingChanged.body));
   equal(bowlingChanged.body.reservation.lanes.length,2,'eight actual bowlers use two available lanes');

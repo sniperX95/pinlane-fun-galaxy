@@ -1910,6 +1910,8 @@ function hydrateSelectedReservation() {
   state.editState = etatEditionDepuis(fresh);
 }
 
+const RAISON_PRIX_PAR_DEFAUT = 'Prix revu au comptoir';
+
 function buildReservationApiPayload(reservation, overrides = {}) {
   const requiresLanes = overrides.requiresLanes ?? reservationNeedsLanes(reservation.type, reservation.formuleId);
   const laneCount = overrides.laneCount ?? (requiresLanes ? ((reservation.lanes || []).length || getRequiredLaneCount(reservation.type, getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId)) : 0);
@@ -2078,10 +2080,13 @@ function envoyerModificationReservation(avant, appliquer, overrides = {}) {
     // Des options qui dependent du dossier (le nombre de pistes d une partie
     // laser) se recalculent sur la version envoyee, pas sur celle d avant.
     const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides);
+    // La fiche et Modifier n ont pas encore de champ pour la raison d un prix :
+    // la leur part d office, et le serveur ne la lit que s il y a un ecart.
     const envoyer = (version, reservation) => apiRequest(API_ENDPOINTS.staffReservations, {
       method: 'PATCH',
       body: JSON.stringify({
         ...buildReservationApiPayload(reservation, optionsPour(reservation)),
+        prixRaison: RAISON_PRIX_PAR_DEFAUT,
         ...(version ? { baseUpdatedAt: version } : {})
       })
     });
@@ -26955,6 +26960,9 @@ function renderGroupeNotes(r) {
     || canUseStaffPermission('reservations.status') || canUseStaffPermission('reservations.edit'));
   const peutNoterClient = typeof canUseStaffPermission === 'function' && canUseStaffPermission('clients.edit');
   const peutAjouter = peutNoter || peutNoterClient;
+  // Ajouter est un geste d accueil ; reecrire ou retirer demande de pouvoir
+  // modifier le dossier, comme au serveur.
+  const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));
   const ouvert = peutAjouter && (notesEquipeOuvertes.has(id) || Boolean(brouillon));
   const contenu = Boolean(motClient || parts.suivi.length || notes.length || getReservationDelayFlag(r) || noteClientPermanente);
   if (!contenu && !peutAjouter) return '';
@@ -26982,7 +26990,7 @@ function renderGroupeNotes(r) {
     })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
       <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le), n.modifieLe ? `modifiée ${formatNoteEquipeQuand(n.modifieLe)}${n.modifiePar ? ` par ${n.modifiePar}` : ''}` : ''].filter(Boolean).join(' · '))}</span></p>
-      ${peutNoter ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeJsString(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeJsString(n.le)}', event)">Retirer</button></div>` : ''}
+      ${peutReecrire ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeJsString(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeJsString(n.le)}', event)">Retirer</button></div>` : ''}
     </li>`).join('')}</ul>` : ''}
     ${ouvert ? `<div class="gc-note-ajout">
       ${window.PinlaneStaffNotes?.scopeHtml(r) || ''}
@@ -27921,7 +27929,7 @@ function renderPosCaisse(r) {
   const prixDossier = getReservationPriceState(r);
   const referencePrice = prixDossier.reference;
   const hasCustomPrice = prixDossier.ajuste;
-  const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
+  const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit') && niveauEffectifStaff('prix') !== 'non';
   const priceEditorHtml = r.status !== 'paid' && canEditPrice
     ? posPriceEditOpen
       ? `<div class="pos-price-edit">
@@ -28896,7 +28904,8 @@ function renderEditExtras(r) {
       </div>`).join('')}
     </div>`).join('');
   const total = sumExtras(extrasDepuisLignes(modele, state.editState.pax));
-  const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="fmx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
+  const listes = listesSurMesure('fmx');
+  chargerCatalogueSurMesure();
   return `<section class="fm-extras" aria-labelledby="fmExtrasTitre">
     <div class="fm-x-tete"><h4 class="fm-titre" id="fmExtrasTitre">Nourriture et extras</h4><span class="fm-x-total" id="fmExtrasTotal"${total > 0 ? '' : ' hidden'}>${escapeHtml(formatMoneyCentimes(total))}</span></div>
     ${arcades}${groupes}
@@ -30836,6 +30845,46 @@ const QB_EXTRA_SUGGESTIONS = {
   nourriture: ['Pizza', 'Frites', 'Hot-dog', 'Nuggets', 'Croque-monsieur', 'Gâteau d’anniversaire', 'Bonbons'],
   boissons: ['Cruche de soda', 'Cruche de jus', 'Cruche d’eau', 'Boisson par enfant', 'Bière', 'Café'],
 };
+// LE CATALOGUE DU CENTRE PROPOSE SES ARTICLES (2026-11-03). Au niveau
+// « catalogue », le serveur refuse un nom qu il ne connait pas : la liste de
+// choix doit etre la sienne. Lue une fois par centre, les suggestions tant
+// qu elle n est pas arrivee ; les listes deja ouvertes se remplissent en place.
+let catalogueSurMesureConsole = { centre: '', articles: null };
+function suggestionsSurMesure() {
+  const { centre, articles } = catalogueSurMesureConsole;
+  if (!articles || centre !== getCurrentStaffCenterId()) return QB_EXTRA_SUGGESTIONS;
+  const groupes = { nourriture: [], boissons: [], autres: [] };
+  articles.forEach((article) => {
+    const groupe = article.categorie === 'boissons' ? 'boissons' : ['nourriture', 'gateaux'].includes(article.categorie) ? 'nourriture' : 'autres';
+    groupes[groupe].push(article.nom);
+  });
+  return groupes;
+}
+function optionsSurMesure(noms) {
+  return noms.map((v) => `<option value="${escapeHtml(v)}">`).join('');
+}
+function listesSurMesure(prefixe) {
+  return Object.entries(suggestionsSurMesure()).map(([g, items]) => `<datalist id="${prefixe}-${g}">${optionsSurMesure(items)}</datalist>`).join('');
+}
+async function chargerCatalogueSurMesure() {
+  const centre = getCurrentStaffCenterId();
+  if (!centre || centre === 'all' || catalogueSurMesureConsole.centre === centre) return;
+  catalogueSurMesureConsole = { centre, articles: null };
+  try {
+    const reponse = await apiRequest(`${API_ENDPOINTS.ops}?action=surMesureCatalogue&centerId=${encodeURIComponent(centre)}`);
+    const articles = (reponse && reponse.surMesure && reponse.surMesure.articles) || [];
+    catalogueSurMesureConsole = { centre, articles: articles.filter((article) => article.actif !== false) };
+    Object.entries(suggestionsSurMesure()).forEach(([g, items]) => {
+      ['qbx', 'fmx'].forEach((prefixe) => {
+        const liste = document.getElementById(`${prefixe}-${g}`);
+        if (liste) liste.innerHTML = optionsSurMesure(items);
+      });
+    });
+  } catch (error) {
+    // Les suggestions restent ; le prochain panneau ouvert relira le catalogue.
+    catalogueSurMesureConsole = { centre: '', articles: null };
+  }
+}
 function quickExtrasEtat() {
   if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
   return quickBookState.extrasSM;
@@ -30894,7 +30943,7 @@ function renderQuickExtras() {
       </div>`).join('')}
       <button type="button" class="qb-x-add" onclick="ajouterQuickExtra('${groupe}')">+ ${groupe === 'nourriture' ? 'Ajouter un plat' : groupe === 'boissons' ? 'Ajouter des boissons' : 'Ajouter une ligne'}</button>
     </div>`;
-  const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="qbx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
+  const listes = listesSurMesure('qbx');
   return `<div class="qb-extras">
     <div class="qb-extras-head"><b>Sur mesure</b><small>En plus des activités : ajouté au total, jamais montré au client tel quel.</small><button type="button" class="qb-x-close" onclick="setQuickSurMesure(false)">Retirer</button></div>
     ${quickHasPaidArcades() ? `<div class="activity-option-note">Les cartes Arcades sont déjà comprises dans les activités choisies.</div>` : `<div class="qb-x-groupe">
@@ -30917,7 +30966,7 @@ function setQuickSurMesure(on) {
   if (!quickBookState) return;
   quickBookState.surMesure = Boolean(on);
   quickBookState.ajoutsOuverts = false;
-  if (on) quickExtrasEtat();
+  if (on) { quickExtrasEtat(); chargerCatalogueSurMesure(); }
   renderQuickBook();
 }
 function setQuickArcades(cle, valeur, sansRendu) {
@@ -32438,7 +32487,7 @@ function rvSurMesureHtml() {
       ${e.arcades.mode === 'temps' ? `<div class="rv-rg"><span class="rv-lbl">Temps</span><span class="rv-seg" role="group" aria-label="Temps d arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="${Number(e.arcades.minutes) === m ? 'is-on' : ''}" aria-pressed="${Number(e.arcades.minutes) === m}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</span></div>` : ''}
       ${e.arcades.mode ? `<div class="rv-rg"><span class="rv-lbl">${e.arcades.mode === 'temps' ? 'Prix / joueur' : 'Montant / joueur'}</span><span class="rv-champ-euro rv-champ-court"><input class="rv-champ" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="0" aria-label="${e.arcades.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d arcades par joueur'}" oninput="setQuickArcades('prix',this.value,true)"><i>€</i></span></div>` : ''}
     </div>`;
-  const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="qbx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
+  const listes = listesSurMesure('qbx');
   return `<div class="rv-lc is-mesure is-ouverte" data-rv-ligne="sur-mesure">
     <div class="rv-mesure-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>Sur mesure</span></span><span class="rv-total-x">Extras : <b id="qbExtrasTotal">${escapeHtml(formatMoney(quickExtrasTotal()))}</b></span><button type="button" class="rv-retirer-act" id="rvRetirerMesure" onclick="setQuickSurMesure(false)">Retirer</button></div>
     <div class="rv-lc-d"><p class="rv-texte">En plus des activités : ajouté au total, jamais montré au client tel quel.</p>${arcades}${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité', 'Ajouter un plat')}${lignes('boissons', 'Boissons', 'cruches, boissons par enfant…', 'Ajouter des boissons')}${lignes('autres', 'Autre', 'décoration, cadeau, tout le reste', 'Ajouter une ligne')}${listes}</div>
@@ -32768,7 +32817,7 @@ function rvVerdictHtml() {
     morceaux.push(`<div class="rv-verdict" id="rvRefus"><div class="rv-verdict-h"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(refus.titre)}</b><span>${escapeHtml(refus.raison)}</span></span></div>
       ${refus.conflits.length ? `<ul class="rv-conflits">${refus.conflits.map((c) => `<li>${escapeHtml(c.message)}</li>`).join('')}</ul>` : ''}
       ${rvAlternativesHtml()}
-      <div class="rv-forcer-zone"><button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button><span class="rv-texte">${s.forcer ? 'Le dossier part « à placer » : rien n’est bloqué au planning, le conflit est écrit dans sa note.' : 'Le dossier partirait « à placer », son conflit écrit dans sa note, à reprendre au planning.'}</span></div>
+      ${niveauEffectifStaff('forcer') === 'oui' ? `<div class="rv-forcer-zone"><button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button><span class="rv-texte">${s.forcer ? 'Le dossier part « à placer » : rien n’est bloqué au planning, le conflit est écrit dans sa note.' : 'Le dossier partirait « à placer », son conflit écrit dans sa note, à reprendre au planning.'}</span></div>` : ''}
     </div>`);
     return morceaux.join('');
   }
@@ -33269,7 +33318,7 @@ function rvPrixHtml() {
   const reference = rvTotalReference(summary);
   const total = custom != null ? custom : reference;
   const joueurs = Math.max(1, Number(s.pax) || 1);
-  const peutAjuster = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit');
+  const peutAjuster = niveauEffectifStaff('prix') !== 'non';
   const parPersonne = Math.round((total / joueurs) * 100) / 100;
   const vide = !rvActivites().length && !quickExtrasTotal();
   const tete = `<div class="rv-prix${vide ? ' is-vide' : ''}"><div class="rv-m" id="rvPrixGros">${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}</div>
@@ -34373,11 +34422,11 @@ function rvConstruire({ simulation = false } = {}) {
   // « 0 EUR » sont deux intentions differentes, et le serveur garde un 0
   // envoye comme un prix offert (l ancienne fenetre envoyait 0 pour une
   // activite seule : getBasePrice('activity') vaut 0).
-  const tarifeParLeServeur = programme || s.type === 'activity';
-  const basePrice = tarifeParLeServeur ? undefined : getBasePrice(s.type, duration, lanes.length || requiredCount, s.pax, s.formuleId, s.date);
+  // LE SERVEUR TARIFE TOUT (2026-11-03) : la reference ne voyage plus, il la
+  // calcule, et un prix qui s en ecarte exige sa raison, qui part avec lui.
   const extras = quickExtrasLignes();
-  let price = prixSaisi != null ? prixSaisi : basePrice;
-  if (!tarifeParLeServeur && prixSaisi == null && extras.length) price = Math.round(((Number(basePrice) || 0) + quickExtrasTotal()) * 100) / 100;
+  const price = prixSaisi != null ? prixSaisi : undefined;
+  const raisonPrix = [s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
   const reservation = {
     // En simulation, aucun nom : le plan n en depend pas, et le serveur nomme
     // un dossier du meme envoi par son rang (« la réservation 1 de cet envoi »),
@@ -34385,7 +34434,7 @@ function rvConstruire({ simulation = false } = {}) {
     name: simulation ? '' : (s.name.trim() || 'Client'),
     phone: simulation ? '' : rvTelephoneEnvoye(),
     email: simulation ? '' : s.email.trim(),
-    notes: simulation ? '' : rvNotesEnvoyees({ horsRegles, prixSaisi, formule }),
+    notes: simulation ? '' : rvNotesEnvoyees({ horsRegles }),
     occasion: simulation ? '' : (s.occasion || ''),
     date: s.date,
     startTime: s.startTime,
@@ -34394,8 +34443,8 @@ function rvConstruire({ simulation = false } = {}) {
     lanes,
     pax: Number(s.pax),
     status: !simulation && rvNaitArrive(s) ? 'arrived' : 'pending',
-    basePrice,
     price,
+    ...(prixSaisi != null ? { prixRaison: raisonPrix || RAISON_PRIX_PAR_DEFAUT } : {}),
     type: adaptee ? 'formule' : s.type,
     formuleId: s.type === 'formule' ? s.formuleId : '',
     // UNE ACTIVITE LIBRE PART EN PROGRAMME (2026-08-19), le meme contrat que
@@ -34431,10 +34480,9 @@ function rvTelephoneEnvoye() {
 }
 
 // LES NOTES DU DOSSIER. Le contexte d ouverture (une demande sur mesure) part
-// tel quel, comme avant ; ce que le comptoir ecrit, et la raison d un prix
-// revu, partent en notes de l equipe, signees et datees : la fiche les range
-// avec les autres.
-function rvNotesEnvoyees({ horsRegles = '', prixSaisi = null, formule = null } = {}) {
+// tel quel, comme avant ; ce que le comptoir ecrit part en note de l equipe,
+// que le serveur signe. La raison d un prix revu, c est lui qui l ecrit.
+function rvNotesEnvoyees({ horsRegles = '' } = {}) {
   const s = quickBookState;
   const auteur = (state.staffAuthSession && state.staffAuthSession.member && state.staffAuthSession.member.name) || '';
   const lignes = [];
@@ -34443,12 +34491,6 @@ function rvNotesEnvoyees({ horsRegles = '', prixSaisi = null, formule = null } =
   const instant = Date.now();
   if (texte && texte === String(s.notesInitiales || '').trim()) lignes.push(texte);
   else if (texte) lignes.push(NOTE_EQUIPE_TAG + JSON.stringify({ t: texte, par: auteur, le: new Date(instant).toISOString() }));
-  const raison = [s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
-  if (prixSaisi != null && raison) {
-    const reference = rvTotalReference();
-    const quoi = formule ? `${formule.name}${s.adaptee ? ' (adaptée)' : ''}` : 'Prix';
-    lignes.push(NOTE_EQUIPE_TAG + JSON.stringify({ t: `${quoi} : ${formatMoney(prixSaisi)} au lieu de ${formatMoney(reference)}. ${raison}`, par: auteur, le: new Date(instant + 1).toISOString() }));
-  }
   return lignes.join('\n');
 }
 
@@ -34901,6 +34943,14 @@ async function rvCreerLeLot() {
   }
 }
 
+// La sortie d un refus. « Créer quand même » ne se promet qu a qui peut le faire :
+// sans le niveau forcer, le serveur le refuserait.
+function rvSortieDuRefus(pronom) {
+  return niveauEffectifStaff('forcer') === 'oui'
+    ? `Choisissez une autre heure, ou « Créer quand même » pour ${pronom} créer à placer.`
+    : 'Choisissez une autre heure.';
+}
+
 // UN REFUS DU PLANNING : la fenetre montre ses sorties (les heures ou tout
 // tient, puis « Créer quand même ») au lieu de laisser croire a une creation.
 function rvVersLesSorties() {
@@ -34964,7 +35014,7 @@ async function saveQuickBook() {
   // et son conflit est écrit dans sa note.
   const plan = rvPlanCourant();
   if (!lot && plan && !plan.disponible && !etat.forcer) {
-    failQuickBook(`${plan.refus || plan.avertissement || 'Le planning ne trouve pas de place pour ce plan.'} Choisissez une autre heure, ou « Créer quand même » pour le créer à placer.`);
+    failQuickBook(`${plan.refus || plan.avertissement || 'Le planning ne trouve pas de place pour ce plan.'} ${rvSortieDuRefus('le')}`);
     rvVersLesSorties();
     return;
   }
@@ -34979,7 +35029,7 @@ async function saveQuickBook() {
       etat.submitting = false;
       rvResaIndex = refusee;
       quickBookState = rvResas[refusee];
-      quickBookState.error = `Réservation ${refusee + 1} : le planning ne la place pas telle quelle. Choisissez une autre heure, ou « Créer quand même » pour la créer à placer.`;
+      quickBookState.error = `Réservation ${refusee + 1} : le planning ne la place pas telle quelle. ${rvSortieDuRefus('la')}`;
       renderQuickBook();
       rvVersLesSorties();
       return;

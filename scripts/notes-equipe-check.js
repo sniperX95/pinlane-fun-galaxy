@@ -131,6 +131,14 @@ function verifier(sources) {
   vm.runInContext('notesEquipeOuvertes.add(7)', bacCote);
   const ouverte = cote.renderGroupeNotes(dossier);
   c(/<textarea id="gcNoteEquipe7"[^>]*placeholder="Note pour l’équipe : le client ne la voit pas"/.test(ouverte) && /onclick="ajouterNoteEquipe\(7, event\)"/.test(ouverte), '[C] ouvert, le champ et le bouton pour ajouter la note');
+  // L ecran suit le serveur (lib/droits-reservation.js, exigerRetraitDeNote) : un
+  // role qui ne modifie pas ajoute une note, il ne reecrit pas celles du dossier.
+  bacCote.canUseStaffPermission = (droit) => droit !== 'reservations.edit';
+  const sansEdit = cote.renderGroupeNotes(dossier);
+  bacCote.canUseStaffPermission = () => true;
+  const reecrire = /aria-label="(?:Modifier|Retirer) la note/;
+  const lectureSansEdit = { avecLeDroit: reecrire.test(ouverte), sansLeDroit: reecrire.test(sansEdit), ajouter: /onclick="ajouterNoteEquipe\(7, event\)"/.test(sansEdit) };
+  c(lectureSansEdit.avecLeDroit && !lectureSansEdit.sansLeDroit && lectureSansEdit.ajouter, '[C] sans reservations.edit : ajouter reste, ni Modifier ni Retirer', JSON.stringify(lectureSansEdit));
   c(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' }).includes('is-vide') && !/Notes<\/div>/.test(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' })), '[C] une fiche sans note ne porte ni titre ni texte vide');
   c(!/\[equipe\]|\[ops:/.test(fiche), '[C] aucun marqueur interne ne s affiche');
   const comptoir = cote.renderGroupeNotes({ id: 8, channel: 'staff', status: 'confirmed', notes: 'Paie en deux fois' });
@@ -175,6 +183,7 @@ const MUTATIONS = [
   { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: '[n.par, formatNoteEquipeQuand(n.le), n.modifieLe', vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
+  { nom: 'retirer une note montre sans le droit', cible: 'app', de: "const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));", vers: 'const peutReecrire = peutNoter;' },
 ];
 
 function afficher(resultats) {

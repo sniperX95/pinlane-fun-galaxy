@@ -229,7 +229,8 @@ const avisDe = (page) => page.evaluate(() => { const n = document.getElementById
 
 function monterServeur() {
   B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
-  return B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  // Direction : ce gate parle des heures, pas du plafond de prix d un role.
+  return B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('direction', { nom: 'Rachel' }) });
 }
 async function monter(browser, serveur) {
   const journal = [];
@@ -244,7 +245,7 @@ async function monter(browser, serveur) {
 // Le corps que la console envoie pour ce dossier (le dossier entier).
 function corpsDe(r, champs = {}) {
   const lanes = (r.lanes || []).length;
-  return { ...r, centerId: 'libramont', requiresLanes: lanes > 0, laneCount: lanes, allowPastStart: true, baseUpdatedAt: r.updatedAt, ...champs };
+  return { ...r, centerId: 'libramont', requiresLanes: lanes > 0, laneCount: lanes, allowPastStart: true, baseUpdatedAt: r.updatedAt, prixRaison: 'Prix revu au comptoir', ...champs };
 }
 
 // ---------------------------------------------------------------------------

@@ -140,7 +140,7 @@ async function contrePreuve(nom, mutation, attendu) {
       { fichier: 'api/staff-reservations.js', de: '      const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true });', vers: '      const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true, readState: async () => ({ reservations: [], laneStatuses: {} }) });' },
       /\[1\] dans l ordre/);
     await contrePreuve('le premier echec arrete le lot',
-      { fichier: 'api/staff-reservations.js', de: '      echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra });', vers: '      throw error;' },
+      { fichier: 'api/staff-reservations.js', de: '      echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra, ...(estRefusDeDroit(error) ? { code: error.code, refusDeDroit: error.statusCode === 403 } : {}) });', vers: '      throw error;' },
       /\[4\] un dossier invalide au milieu|\[1\] lot partiel/);
     await contrePreuve('le forcer du lot force tous les dossiers',
       { fichier: 'api/staff-reservations.js', de: '      const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true });', vers: '      const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true || body.forcer === true });' },

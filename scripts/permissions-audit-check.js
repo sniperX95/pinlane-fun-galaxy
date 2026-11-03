@@ -177,7 +177,7 @@ function main() {
   // 'cle') cote serveur, la ou un refus tombe. `historique` est declare par ce
   // lot pour le suivant, qui ecrira sa lecture : il doit alors sortir de cette
   // liste, sinon l audit rougit.
-  const A_VENIR = ['surmesure', 'prix', 'formule', 'forcer', 'historique'];
+  const A_VENIR = ['historique'];
   const lecteurs = fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => f.endsWith('.js')).map((f) => path.join('lib', f))
     .concat(fs.readdirSync(path.join(ROOT, 'api')).filter((f) => f.endsWith('.js')).map((f) => path.join('api', f)))
     .filter((rel) => rel !== path.join('lib', 'staff-auth.js'))
@@ -197,6 +197,7 @@ function main() {
   fakeServer.set('typo.permision', ['faux.js']);
   const fakeUndeclared = [...fakeServer.keys()].filter((permission) => !declared.has(permission));
   ok(fakeUndeclared.includes('typo.permision'), 'une exigence non declarable est vue -> l audit ROUGIRAIT');
+  ok(!lue('inventee'), 'un reglage qu aucune garde ne lit est vu -> l audit ROUGIRAIT');
 
   if (failures) { console.error(`\npermissions-audit-check: ${failures} echec(s).`); process.exit(1); }
   console.log('\npermissions-audit-check: ALL OK - declaration, serveur et ecran racontent la meme histoire.');

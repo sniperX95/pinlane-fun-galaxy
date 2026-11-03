@@ -52,7 +52,8 @@ function vueConsole(r) {
 
 async function scenario(mutations = []) {
   B.semer([]);
-  const m = B.monter({ mutations });
+  // Direction : un prix fixe a la creation demande le niveau, et sa raison.
+  const m = B.monter({ mutations, session: B.sessionDuRole('direction') });
   const f = {};
   const creer = async (corps) => {
     const r = await m.appeler('POST', URL_RESA, corps);
@@ -60,8 +61,8 @@ async function scenario(mutations = []) {
     return { statut: r.statut, price: res.price, basePrice: res.basePrice, extras: (res.extras || []).map((e) => e.price), type: res.type, brut: res, message: r.json.message };
   };
   f.sansPrix = await creer(VISITE());
-  f.zero = await creer(VISITE({ startTime: '16:00', preference: { preferredTimes: { bowling: '16:00' } }, price: 0 }));
-  f.cinquante = await creer(VISITE({ startTime: '17:00', preference: { preferredTimes: { bowling: '17:00' } }, price: 50 }));
+  f.zero = await creer(VISITE({ startTime: '16:00', preference: { preferredTimes: { bowling: '16:00' } }, price: 0, prixRaison: 'Offert' }));
+  f.cinquante = await creer(VISITE({ startTime: '17:00', preference: { preferredTimes: { bowling: '17:00' } }, price: 50, prixRaison: 'Prix d ami' }));
   f.nul = await creer(VISITE({ startTime: '18:00', preference: { preferredTimes: { bowling: '18:00' } }, price: null }));
   f.vide = await creer(VISITE({ startTime: '19:00', preference: { preferredTimes: { bowling: '19:00' } }, price: '' }));
   f.activite = await creer(B.corpsStaff({ type: 'visite', pax: 4, startTime: '15:00', extras: PIZZA, program: [{ activityId: 'minigolf_blacklight', participants: 4 }] }));

@@ -11,6 +11,7 @@ const {
   setReservationActivityDone,
   noterReservationEquipe,
   notesAvecCompte,
+  notesAvecPrix,
   lireVersionAttendue,
   memeVersion,
   reservationModifieeEntreTemps,
@@ -32,7 +33,8 @@ const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
-const { finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, resoudreExtras } = require('../lib/droits-reservation');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
 
@@ -195,6 +197,21 @@ function patchChangesOperations(patch, current) {
   return comparable(patch.centerId) !== comparable(current.centerId || 'libramont');
 }
 
+// Ce qui se vend sur un dossier : le groupe, l offre, les activites, les lignes
+// de sur mesure. Sa comparaison dit si un prix doit etre rejuge.
+function contenuDuDossier(dossier) {
+  const pax = dossier.pax;
+  return JSON.stringify({
+    pax: Number(pax) || 0,
+    type: String(dossier.type || ''),
+    formuleId: String(dossier.formuleId || dossier.formulaId || ''),
+    duration: Number(dossier.duration) || 0,
+    programme: operationalProgram(dossier.program, pax),
+    extras: (Array.isArray(dossier.extras) ? dossier.extras : [])
+      .map((ligne) => `${String(ligne.name || '')}|${Math.round((Number(ligne.price) || 0) * 100)}`).sort(),
+  });
+}
+
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
@@ -321,6 +338,7 @@ function aujourdhuiABruxelles() {
 // echec remonte dans `warnings` (T4 point c), jamais en silence.
 async function creerDepuisLaFenetre(prepare, session, contexte = {}) {
   const { ops, conflits, aPlacer } = prepare;
+  exigerLesDroits(prepare);
   const reservation = await createReservation(prepare.dossier);
   const postCreate = await afterReservationCreated(reservation, prepare.request);
   const auditCreate = await writeAuditLog({
@@ -413,11 +431,11 @@ async function creerLeLot(body, session) {
     } catch (error) {
       const infra = estErreurInfra(error);
       if (infra) console.error('[staff-reservations] lot, dossier', index, error && (error.stack || error.message || error));
-      echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra });
+      echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra, ...(estRefusDeDroit(error) ? { code: error.code, refusDeDroit: error.statusCode === 403 } : {}) });
     }
   }
-  const statut = !echecs.length ? 201 : reservations.length ? 207 : echecs.every((echec) => echec.infra) ? 503 : 422;
-  return { statut, corps: { ok: !echecs.length, reservations, echecs: echecs.map(({ index, message }) => ({ index, message })) } };
+  const statut = !echecs.length ? 201 : reservations.length ? 207 : echecs.every((echec) => echec.infra) ? 503 : echecs.every((echec) => echec.refusDeDroit) ? 403 : 422;
+  return { statut, corps: { ok: !echecs.length, reservations, echecs: echecs.map(({ index, message, code }) => ({ index, message, ...(code ? { code } : {}) })) } };
 }
 
 module.exports = async (req, res) => {
@@ -589,6 +607,9 @@ module.exports = async (req, res) => {
       if (patchIsNoteEquipeOnly(body)) {
         const geste = body.noteEquipe;
         const membre = session && session.member ? session.member : null;
+        // Ajouter est un geste d accueil ; retirer ou reecrire touche a ce qui
+        // est ecrit, la raison d un prix comprise.
+        if (geste.retrait !== undefined || geste.modifier !== undefined) exigerRetraitDeNote(session);
         const updated = await noterReservationEquipe(current.id, current.centerId || 'libramont', {
           ajout: typeof geste.ajout === 'string' ? geste.ajout : undefined,
           retrait: typeof geste.retrait === 'string' ? geste.retrait : undefined,
@@ -733,6 +754,21 @@ module.exports = async (req, res) => {
         ...body,
         centerId: requestedCenterId,
       };
+      // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
+      // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.
+      // Un prix vide ne dit rien (toNumber les lisait 0), des notes nulles non
+      // plus, et des extras qui ne sont pas une liste n effacent pas les lignes
+      // du dossier.
+      if (patch.price === null || patch.price === '') delete patch.price;
+      if (patch.notes === null) delete patch.notes;
+      if (Object.prototype.hasOwnProperty.call(patch, 'extras') && !Array.isArray(patch.extras)) delete patch.extras;
+      if (Object.prototype.hasOwnProperty.call(patch, 'notes')) patch.notes = notesDuPatch({ notes: patch.notes, current, session });
+      if (patchAdapteLaFormule(patch, current)) exigerAdaptationDeFormule(session);
+      if (Object.prototype.hasOwnProperty.call(patch, 'extras')) {
+        const { extras, refus } = resoudreExtras({ extras: patch.extras, avant: current.extras, session, centerId: requestedCenterId, pax: patch.pax ?? current.pax });
+        if (refus) throw refus;
+        patch.extras = extras;
+      }
       // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33) : le groupe recompte au
       // comptoir passe par ce chemin, celui de Modifier (meme droit, meme
       // replanification, le prix que la console a calcule). Le serveur le trace
@@ -778,6 +814,19 @@ module.exports = async (req, res) => {
           .flatMap((block) => block.lanes || []);
         if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];
       }
+      // LA REFERENCE ET LE PRIX, juges sur ce qui va s ecrire. Le contenu, c est
+      // ce qui se vend : les pistes, l heure et le jour deplacent un dossier sans
+      // rouvrir son prix.
+      const extrasFinales = patch.extras ?? current.extras ?? [];
+      const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current);
+      const base = operationsChanged
+        ? baseDuServeur({ current, demande: operationalRequest, ops, contenuChange, jourChange: String(patch.date ?? current.date) !== String(current.date) })
+        : (Number(current.basePrice) || 0);
+      patch.basePrice = base;
+      if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
+      const prixFinal = ops.price ?? patch.price ?? current.price;
+      const notePrix = jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
+      if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
       const reservation = await updateReservation({
         ...patch,
         ...ops,
@@ -907,9 +956,10 @@ module.exports = async (req, res) => {
     // 409 : la version actuelle voyage avec le refus, le client rejoue son
     // action dessus. Elle ne part qu apres le controle de permission sur le
     // centre de la reservation (plus haut) : un refus de droit reste un 403.
+    // Un refus de droit garde son code stable : la console le lit, pas la phrase.
     const extra = error && error.code === 'reservation_modifiee' && error.reservation
       ? { code: error.code, reservation: error.reservation }
-      : {};
+      : estRefusDeDroit(error) ? { code: error.code } : {};
     sendError(res, (error && error.statusCode) || 400, raw, extra);
   }
 };

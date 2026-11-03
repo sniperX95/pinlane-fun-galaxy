@@ -201,6 +201,120 @@ async function installMock(page) {
     ok(afterToggle.selectedRoleId === 'maintenance', `state.selectedRoleId reste 'maintenance' (recu : "${afterToggle.selectedRoleId}")`);
     ok(afterToggle.techniqueMeta === '7/29', `la permission editee est bien enregistree : Technique passe a 7/29 (recu : "${afterToggle.techniqueMeta}")`);
 
+    // ---- Sur mesure et prix : un choix par reglage, enregistre au clic ------
+    await page.click('.staff-role-pill:has-text("Manager")');
+    await page.waitForFunction(() => (document.querySelector('.staff-role-pill.active strong') || {}).textContent === 'Manager', null, { timeout: 10000 });
+    const lireGroupe = () => page.evaluate(() => ({
+      titre: (document.querySelector('.staff-niveaux-group .staff-permission-group-head strong') || {}).textContent || '',
+      reglages: [...document.querySelectorAll('.staff-niveaux-group .staff-niveau')].map((ligne) => ({
+        nom: ligne.querySelector('.staff-niveau-nom').textContent,
+        options: [...ligne.querySelectorAll('.staff-niveau-option span')].map((s) => s.textContent),
+        choisi: (ligne.querySelector('input:checked + span') || {}).textContent || '',
+        desactive: [...ligne.querySelectorAll('input')].every((i) => i.disabled),
+      })),
+      compteur: (document.querySelector('.staff-niveaux-group .staff-permission-group-head em') || {}).textContent || '',
+    }));
+    const groupe = await lireGroupe();
+    ok(groupe.titre === 'Sur mesure et prix' && groupe.reglages.length === 5, `le groupe « Sur mesure et prix » porte cinq reglages (recu : ${groupe.titre}, ${groupe.reglages.length})`);
+    ok(JSON.stringify(groupe.reglages[1].options) === JSON.stringify(['Non', '5 %', '10 %', '20 %', 'Sans limite']), `« Ajuster un prix » propose ses cinq niveaux (recu : ${groupe.reglages[1].options.join(', ')})`);
+    ok(groupe.reglages.every((r) => r.choisi), 'un role sans niveau ecrit affiche son niveau par defaut, jamais rien de coche');
+    // Vrai clic sur le segment : POST, re-rendu, role garde, option remplacee.
+    const avantClic = await page.evaluate(() => window.__staffAuthPosts.length);
+    await page.click('.staff-niveau-option:has([data-niveau-choix="prix:10"])');
+    await page.waitForFunction((n) => window.__staffAuthPosts.length > n, avantClic, { timeout: 10000 });
+    await page.waitForTimeout(300);
+    const apresClic = await page.evaluate(() => ({
+      actif: (document.querySelector('.staff-role-pill.active strong') || {}).textContent || '',
+      coche: (document.querySelector('[name="staffNiveau-prix"]:checked') || {}).dataset?.niveauChoix || '',
+      focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.niveauChoix : '',
+      enBase: window.__AC.roles.find((r) => r.id === 'manager').permissions.filter((p) => p.startsWith('niveau:prix:')),
+    }));
+    ok(apresClic.actif === 'Manager' && apresClic.coche === 'prix:10' && apresClic.focus === 'prix:10', `le choix s enregistre au clic, le role reste, le focus revient (recu : ${JSON.stringify(apresClic)})`);
+    ok(JSON.stringify(apresClic.enBase) === JSON.stringify(['niveau:prix:10']), `une seule option par cle part au serveur (recu : ${apresClic.enBase.join(', ')})`);
+    await page.click('.staff-niveau-option:has([data-niveau-choix="prix:5"])');
+    await page.waitForFunction(() => window.__AC.roles.find((r) => r.id === 'manager').permissions.includes('niveau:prix:5'), null, { timeout: 10000 });
+    const remplace = await page.evaluate(() => window.__AC.roles.find((r) => r.id === 'manager').permissions.filter((p) => p.startsWith('niveau:prix:')));
+    ok(JSON.stringify(remplace) === JSON.stringify(['niveau:prix:5']), `changer d avis remplace l option (recu : ${remplace.join(', ')})`);
+    const meta = await page.evaluate(() => [...document.querySelectorAll('.staff-role-pill-meta em')].map((e) => e.textContent.trim()));
+    ok(meta.every((m) => { const [a, b] = m.split('/').map(Number); return a <= b; }), `les compteurs ne comptent pas les niveaux (recu : ${meta.join(' ')})`);
+    // Les cibles et les textes, dans les deux themes.
+    const mesurer = () => page.evaluate(() => {
+      const options = [...document.querySelectorAll('.staff-niveaux-group .staff-niveau-option span')];
+      const textes = [...document.querySelectorAll('.staff-niveaux-group *')].filter((n) => [...n.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
+      const lum = (c) => {
+        const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      // Fond compose : une couleur translucide se pose sur le fond du dessous.
+      const melange = (haut, bas) => {
+        const h = haut.match(/[\d.]+/g).map(Number);
+        const b = bas.match(/[\d.]+/g).map(Number);
+        const a = h.length > 3 ? h[3] : 1;
+        return `rgb(${[0, 1, 2].map((i) => h[i] * a + b[i] * (1 - a)).join(', ')})`;
+      };
+      const fond = (n) => {
+        const couches = [];
+        for (let e = n; e; e = e.parentElement) couches.push(getComputedStyle(e).backgroundColor);
+        return couches.reverse().reduce((bas, haut) => (/^rgba\(.*, 0\)$|transparent/.test(haut) ? bas : melange(haut, bas)), 'rgb(255, 255, 255)');
+      };
+      const contraste = (n) => { const a = lum(getComputedStyle(n).color); const b = lum(fond(n)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+      return {
+        hauteurMin: Math.min(...options.map((o) => o.getBoundingClientRect().height)),
+        policeMin: Math.min(...textes.map((n) => parseFloat(getComputedStyle(n).fontSize))),
+        contrasteMin: Math.min(...options.map(contraste)),
+      };
+    });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(350);
+      const m = await mesurer();
+      ok(m.hauteurMin >= 32, `${theme} : cibles de 32 px au moins a la souris (recu : ${m.hauteurMin})`);
+      ok(m.policeMin >= 12, `${theme} : rien sous 12 px (recu : ${m.policeMin})`);
+      ok(m.contrasteMin >= 4.5, `${theme} : texte lisible sur chaque segment (recu : ${m.contrasteMin.toFixed(2)})`);
+      if (process.env.PINLANE_CAPTURES) await page.locator('.staff-niveaux-group').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, `niveaux-${theme}.png`) });
+    }
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    // La direction : tout au maximum, rien a changer.
+    await page.click('.staff-role-pill:has-text("Direction")');
+    await page.waitForFunction(() => (document.querySelector('.staff-role-pill.active strong') || {}).textContent === 'Direction', null, { timeout: 10000 });
+    const direction = await lireGroupe();
+    ok(direction.reglages.every((r) => r.desactive) && direction.reglages[1].choisi === 'Sans limite' && direction.compteur === '5/5', `la direction voit le maximum, sans pouvoir le changer (recu : ${direction.reglages[1].choisi}, ${direction.compteur})`);
+    const defenseDirection = await page.evaluate(async () => {
+      const avant = window.__staffAuthPosts.length;
+      await choisirNiveauRole('direction', 'prix', 'non');
+      return window.__staffAuthPosts.length - avant;
+    });
+    ok(defenseDirection === 0, `un appel direct sur la direction ne part pas (recu : ${defenseDirection})`);
+    // Au doigt : 44 px, et rien ne deborde a la largeur d un telephone.
+    const doigt = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    const tel = await doigt.newPage();
+    await installMock(tel);
+    await tel.goto(`${BASE_URL}/?v=upt-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    await tel.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+    await tel.evaluate(() => {
+      state.staffAccessControl = JSON.parse(JSON.stringify(window.__AC));
+      state.staffMenuPage = 'users';
+      state.staffTheme = 'dark';
+      save();
+      setView('staff');
+      renderStaff();
+    });
+    await tel.waitForFunction(() => {
+      const option = document.querySelector('.staff-niveaux-group .staff-niveau-option span');
+      return option && option.getBoundingClientRect().height > 0;
+    }, null, { timeout: 15000 });
+    // La lecture de l equipe repeint la page une fois de plus : on mesure apres.
+    await tel.waitForTimeout(800);
+    const auDoigt = await tel.evaluate(() => {
+      const options = [...document.querySelectorAll('.staff-niveaux-group .staff-niveau-option span')];
+      return { grossier: matchMedia('(pointer: coarse)').matches, hauteurMin: Math.min(...options.map((o) => o.getBoundingClientRect().height)), debord: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    ok(auDoigt.grossier && auDoigt.hauteurMin >= 44, `au doigt, 44 px au moins (recu : ${JSON.stringify(auDoigt)})`);
+    ok(auDoigt.debord <= 0, `a 390 px, la page ne deborde pas (recu : ${auDoigt.debord})`);
+    if (process.env.PINLANE_CAPTURES) await tel.locator('.staff-niveaux-group').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, 'niveaux-telephone.png') });
+    await doigt.close();
+
     // ---- Contre-preuve par mutation : selection forcee sur le role plateforme
     const forced = await page.evaluate(() => {
       state.staffAccessControl.selectedRoleId = 'platform-owner';

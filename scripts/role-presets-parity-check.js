@@ -29,10 +29,11 @@
 //      lecture d une session disent la meme chose des deux cotes, sur une
 //      matrice de roles, verrouille et plateforme compris.
 //
-// Contre-epreuve par mutation : on remet une divergence dans le tableau du
-// client, on prouve que le gate rougit, on restaure.
+// Contre-epreuve par mutation : chaque divergence est remise dans une copie du
+// source, EN MEMOIRE (un gate voisin lit le meme fichier), et le gate doit
+// rougir dessus.
 //
-// Lancement : node scripts/role-presets-parity-check.js
+// Lancement : node scripts/role-presets-parity-check.js [--mutate]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -41,8 +42,9 @@ const ROOT = path.resolve(__dirname, '..');
 const APP = path.join(ROOT, 'assets/app-main.js');
 
 let failures = 0;
+let muet = false;
 function ok(condition, message) {
-  console.log(`${condition ? 'OK  ' : 'FAIL'}  ${message}`);
+  if (!muet) console.log(`${condition ? 'OK  ' : 'FAIL'}  ${message}`);
   if (!condition) failures += 1;
   return condition;
 }
@@ -56,10 +58,8 @@ function extractBlock(src, header, closing) {
   return match ? src.slice(start, start + match.index + match[0].length) : null;
 }
 
-// Le tableau du CLIENT, lu dans le fichier a chaque appel : la mutation doit
-// etre vue.
-function presetsClient() {
-  const src = fs.readFileSync(APP, 'utf8');
+// Le tableau du CLIENT, tel que le source donne le dit.
+function presetsClient(src) {
   const groupes = extractBlock(src, 'const STAFF_PERMISSION_GROUPS = [', '\\];');
   const presets = extractBlock(src, 'const STAFF_ROLE_PRESETS = [', '\\];');
   const niveaux = extractBlock(src, 'const DROITS_NIVEAUX = [', '\\];');
@@ -93,10 +93,11 @@ function matriceDeSessions(optionsConnues) {
   return sessions;
 }
 
-function main() {
+function verifier(source) {
+  failures = 0;
   const staffAuth = require(path.join(ROOT, 'lib/staff-auth.js'));
   const { STAFF_ROLE_PRESETS: serveur, ALL_PERMISSIONS, DROITS_NIVEAUX, niveauEffectif, optionsDeNiveau } = staffAuth;
-  const { presets: client, vocabulaire, niveaux: niveauxClient, lireSession } = presetsClient();
+  const { presets: client, vocabulaire, niveaux: niveauxClient, lireSession } = presetsClient(source);
 
   // --- A. Les memes roles des deux cotes ---------------------------------
   const idsServeur = serveur.map((role) => role.id).sort();
@@ -151,17 +152,11 @@ function main() {
     }
   }
   ok(ecarts.length === 0, `le niveau d une session se lit pareil des deux cotes (${sessions.length} sessions x ${DROITS_NIVEAUX.length} cles${ecarts.length ? ` : ${ecarts.slice(0, 3).join(' | ')}` : ''})`);
-
-  if (failures) {
-    console.error(`\nrole-presets-parity-check: ${failures} defaut(s).`);
-    process.exit(1);
-  }
-  console.log('\nrole-presets-parity-check: ALL OK (l ecran des roles ne ment pas sur ce qui sera applique)');
+  return failures;
 }
 
 if (process.argv.includes('--mutate')) {
-  const source = fs.readFileSync(APP, 'utf8');
-  // Chaque divergence est remise, jouee par le vrai gate, puis retiree.
+  const source = fs.readFileSync(APP, 'utf8').split('\r\n').join('\n');
   const fichier = 'assets/app-main.js';
   const MUTATIONS = [
     {
@@ -195,18 +190,14 @@ if (process.argv.includes('--mutate')) {
       vers: "if (permissions.includes('platform.admin')) return niveauMaximum(cle);",
     },
   ];
-  const { spawnSync } = require('child_process');
   let ratees = 0;
+  muet = true;
   for (const { nom, de, vers } of MUTATIONS) {
-    const lf = source.split('\r\n').join('\n');
-    if (lf.split(de).length - 1 !== 1) {
+    if (source.split(de).length - 1 !== 1) {
       console.error(`mutation impossible (${nom}) : ancre absente ou multiple dans assets/app-main.js`);
       process.exit(1);
     }
-    fs.writeFileSync(APP, lf.replace(de, vers));
-    const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
-    fs.writeFileSync(APP, source);
-    if (run.status === 0) {
+    if (verifier(source.replace(de, vers)) === 0) {
       console.error(`CONTRE-EPREUVE RATEE : le gate reste vert (${nom}).`);
       ratees += 1;
     } else {
@@ -216,4 +207,8 @@ if (process.argv.includes('--mutate')) {
   process.exit(ratees ? 1 : 0);
 }
 
-main();
+if (verifier(fs.readFileSync(APP, 'utf8'))) {
+  console.error(`\nrole-presets-parity-check: ${failures} defaut(s).`);
+  process.exit(1);
+}
+console.log('\nrole-presets-parity-check: ALL OK (l ecran des roles ne ment pas sur ce qui sera applique)');

@@ -16250,6 +16250,30 @@ async function toggleStaffRolePermission(roleId, permission, checked) {
   }, 'Permission enregistrée.');
 }
 
+// UN REGLAGE A NIVEAUX, enregistre au clic comme une permission : l option
+// choisie remplace celle de la cle, le serveur n en garde qu une. Le rendu qui
+// suit rebatit la page : le focus revient sur le choix, pour le clavier.
+async function choisirNiveauRole(roleId, cle, option) {
+  const role = getStaffAccessRole(roleId);
+  if (isPlatformStaffRole(role)) {
+    toast('Cet accès plateforme ne se gère pas depuis cette page.');
+    renderStaffUtilityPage();
+    return;
+  }
+  if (!role || role.id === 'direction') {
+    toast('La direction garde toujours tous les accès.');
+    renderStaffUtilityPage();
+    return;
+  }
+  const droit = DROITS_NIVEAUX.find(item => item.cle === cle);
+  if (!droit || !droit.options.some(([valeur]) => valeur === option)) return;
+  const prefixe = `niveau:${cle}:`;
+  const permissions = [...(role.permissions || []).filter(permission => !String(permission).startsWith(prefixe)), `${prefixe}${option}`];
+  role.permissions = permissions;
+  await runStaffAuthAction('updateRolePermissions', { roleId, permissions }, 'Réglage enregistré.');
+  document.querySelector(`[data-niveau-choix="${cle}:${option}"]`)?.focus();
+}
+
 async function setStaffRolePreset(roleId, presetId) {
   const role = getStaffAccessRole(roleId);
   const preset = STAFF_ROLE_PRESETS.find(item => item.id === presetId);
@@ -16605,6 +16629,33 @@ function renderStaffMemberListSections(access, visibleMembers, selectedRole) {
   return `<div class="staff-member-list">${selectedBlock}${othersBlock}</div>`;
 }
 
+// Le groupe « Sur mesure et prix » : un choix par reglage, en segments. La
+// direction garde le maximum, jamais lu dans son tableau, comme au serveur.
+function renderGroupeNiveaux(role) {
+  const verrouille = role.id === 'direction' || Boolean(role.locked);
+  const permissions = role.permissions || [];
+  const valeur = cle => (verrouille ? niveauMaximum(cle) : niveauDesPermissions(permissions, cle));
+  const ouverts = DROITS_NIVEAUX.filter(droit => valeur(droit.cle) !== 'non').length;
+  const agit = verrouille || permissions.includes('reservations.create') || permissions.includes('reservations.edit');
+  const isOpen = staffPermissionGroupOpenState['sur-mesure-prix'] ?? true;
+  return `<details class="staff-permission-group staff-niveaux-group" ${isOpen ? 'open' : ''} ontoggle='staffPermissionGroupOpenState["sur-mesure-prix"] = this.open'>
+    <summary class="staff-permission-group-head">
+      <div><strong>Sur mesure et prix</strong><span>Ce que ce rôle peut changer sur un dossier, et jusqu’où.</span></div>
+      <em>${ouverts}/${DROITS_NIVEAUX.length}</em>
+    </summary>
+    <div class="staff-niveaux">
+      ${verrouille ? '<p class="staff-niveaux-note">La direction garde toujours le niveau le plus haut.</p>' : agit ? '' : '<p class="staff-niveaux-note">Sans le droit de créer ou de modifier une réservation, le sur mesure et le prix n’agissent pas.</p>'}
+      ${DROITS_NIVEAUX.map(({ cle, libelle, options }) => `<div class="staff-niveau" role="radiogroup" aria-labelledby="staffNiveau-${cle}">
+        <span class="staff-niveau-nom" id="staffNiveau-${cle}">${escapeHtml(libelle)}</span>
+        <span class="staff-niveau-choix">${options.map(([option, mot]) => `<label class="staff-niveau-option">
+          <input type="radio" class="visually-hidden" name="staffNiveau-${cle}" data-niveau-choix="${cle}:${option}" ${valeur(cle) === option ? 'checked' : ''} ${verrouille ? 'disabled' : ''} onchange='choisirNiveauRole(${staffClientJs(role.id)}, ${staffClientJs(cle)}, ${staffClientJs(option)})'>
+          <span>${escapeHtml(mot)}</span>
+        </label>`).join('')}</span>
+      </div>`).join('')}
+    </div>
+  </details>`;
+}
+
 function renderStaffUtilityUsers() {
   const access = ensureStaffAccessControl();
   // La page ne montre QUE l'equipe du centre : les roles/membres plateforme
@@ -16714,6 +16765,7 @@ function renderStaffUtilityUsers() {
             </div>
           </details>`;
           }).join('')}
+          ${renderGroupeNiveaux(selectedRole)}
         </div>
       </section>
 

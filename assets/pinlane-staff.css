@@ -7961,6 +7961,60 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-permission-toggle.is-on .staff-toggle-track::after { transform: translateX(12px); }
 .staff-permission-toggle input:focus-visible + .staff-toggle-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* Les réglages à niveaux d'un rôle : un choix par réglage, en segments.
+   32 px à la souris, 44 px au doigt, rien sous 12 px. */
+.staff-permission-group.staff-niveaux-group { grid-column: 1 / -1; }
+.staff-niveaux-group .staff-permission-group-head span,
+.staff-niveaux-group .staff-permission-group-head em { font-size: 12px; }
+.staff-niveaux { display: grid; padding: 2px var(--space-3) var(--space-3); }
+.staff-niveaux-note { margin: 0 0 var(--space-2); padding: 0 8px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+.staff-niveau {
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px var(--space-4);
+  padding: 8px;
+}
+.staff-niveau + .staff-niveau { border-top: 1px solid var(--line); }
+.staff-niveau-nom { font-size: 13px; font-weight: 500; color: var(--text); min-width: 0; }
+
+.staff-niveau-choix {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+}
+.staff-niveau-option { display: inline-flex; min-width: 0; cursor: pointer; }
+.staff-niveau-option span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 2px 12px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.staff-niveau-option:hover span { color: var(--text); background: var(--surface); }
+.staff-niveau-option input:checked + span { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.staff-niveau-option input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.staff-niveau-option:has(input:disabled) { cursor: not-allowed; }
+.staff-niveau-option:has(input:disabled:not(:checked)) span { background: transparent; color: var(--muted); }
+
+@media (pointer: coarse) {
+  .staff-niveau-option span { min-height: 44px; padding: 2px 14px; }
+}
+
 /* Panneau latéral : « Ce rôle ouvre » */
 .staff-access-summary {
   display: grid;
@@ -8143,6 +8197,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .staff-permission-groups { grid-template-columns: 1fr; }
   .staff-permission-toggle { min-height: 44px; }
   .staff-role-pill { min-height: 44px; }
+  .staff-niveau { grid-template-columns: minmax(0, 1fr); }
+  .staff-niveau-choix { display: flex; }
+  .staff-niveau-option { flex: 1 1 auto; }
+  .staff-niveau-option span { flex: 1 1 auto; }
 }
 
 /* ----------------------------------------------------------------------------

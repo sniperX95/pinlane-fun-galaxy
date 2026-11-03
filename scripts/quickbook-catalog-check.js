@@ -149,11 +149,14 @@ async function main() {
     await page.waitForTimeout(700);
     // Les activites retenues, a l ecran : les lignes du ticket, dans leur ordre.
     const lignes = () => page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a[id^="rsL-a-"] .rs-tk-n > b')].map((e) => e.textContent.trim()));
-    // « + Ajouter une activité » met la fenetre en ajout : le toucher suivant, sur
-    // une seance (bowling, laser) ou sur une tuile, ajoute au lieu de remplacer.
+    // Chaque toucher ajoute (2026-11-03) : sur l ecran des activites, une seance
+    // (bowling, laser) ou une tuile entre au ticket sans quitter la page.
+    const activites = async () => {
+      if (!(await page.locator('#quickBookOverlay .qb-modal.rv.is-q-activites').count())) await page.click('#rsRetour');
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-activites', { timeout: 3000 });
+    };
     const ajouter = async (id) => {
-      if (!(await page.locator('#quickBookOverlay .rs-tk-plus.is-on').count())) await page.click('#rsL-ajouter');
-      await page.waitForSelector('#quickBookOverlay .rs-tk-plus.is-on', { timeout: 3000 });
+      await activites();
       await page.click(['bowling', 'laser_game'].includes(id) ? `#rsZ-${id} .rs-h[data-heure] >> nth=0` : `#rsT-${id}`);
       await page.waitForSelector(`#rsL-a-${id}`, { timeout: 3000 }).catch(() => {});
       await page.waitForTimeout(300);
@@ -217,10 +220,13 @@ async function main() {
     ok(!after.unePiste, 'la ligne ne dit plus « 1 piste conseillée »');
 
     console.log('\n[3. Une activite libre ne demande pas de piste]');
-    // La tuile remplace le bowling (hors « + Ajouter ») et ouvre la page du minigolf.
-    await page.click('#rsRetour');
-    await page.click('#rsT-minigolf_blacklight');
-    await page.waitForSelector('#rsL-a-minigolf_blacklight', { timeout: 3000 });
+    // La tuile s ajoute au bowling ; la croix du bowling le retire, la ligne du minigolf
+    // ouvre sa page.
+    await ajouter('minigolf_blacklight');
+    await page.click('#rsSuppr-a-bowling');
+    await page.waitForFunction(() => !document.querySelector('#rsL-a-bowling'), null, { timeout: 3000 }).catch(() => {});
+    await page.click('#rsL-a-minigolf_blacklight');
+    await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-ligne', { timeout: 3000 });
     await page.waitForTimeout(500);
     const libre = await page.evaluate(() => ({
       page: ((document.getElementById('rsCorps') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
@@ -233,12 +239,11 @@ async function main() {
     ok(activeLabel === 'Minigolf Blacklight', `la ligne a l ecran est l activite choisie (${activeLabel})`);
 
     console.log('\n[4. Contre-epreuve : ce gate sait-il rougir ?]');
-    // On remet le bowling (un toucher sur une de ses seances remplace le minigolf)
-    // et 4 joueurs : la page DOIT redire 1 piste.
-    await page.click('#rsRetour');
-    await page.waitForSelector('#rsZ-bowling .rs-h[data-heure]', { timeout: 3000 });
-    await page.click('#rsZ-bowling .rs-h[data-heure] >> nth=0');
-    await page.waitForSelector('#rsL-a-bowling', { timeout: 3000 });
+    // On remet le bowling (un toucher sur une de ses seances l ajoute, la croix du
+    // minigolf le retire) et 4 joueurs : la page DOIT redire 1 piste.
+    await ajouter('bowling');
+    await page.click('#rsSuppr-a-minigolf_blacklight');
+    await page.waitForFunction(() => !document.querySelector('#rsL-a-minigolf_blacklight'), null, { timeout: 3000 }).catch(() => {});
     await page.click('#rsHaut [data-pax="4"]');
     await page.waitForTimeout(600);
     const backTo1 = await pistesLues(page);
@@ -308,9 +313,9 @@ async function main() {
 
     console.log('\n[7. Une activite se retire autant qu elle s ajoute]');
     // Movsar, 2026-08-26 : « faut qu on puisse decocher un par un et quand on en
-    // recoche plusieurs comme on veut ». Les seances : on ajoute par « + Ajouter
-    // une activité », on retire sur la page de la ligne ; la derniere ne se
-    // retire pas. On repart du bowling seul.
+    // recoche plusieurs comme on veut ». Les seances : un toucher ajoute, on retire
+    // sur la page de la ligne ; la derniere ne se retire pas. On repart du bowling
+    // seul.
     await retirer('laser_game');
     const depart7 = await lignes();
     ok(depart7.length === 1 && /^Bowling/.test(depart7[0]), `prerequis : le bowling seul au depart (${depart7.join(' + ')})`);

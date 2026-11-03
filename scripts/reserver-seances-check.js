@@ -23,13 +23,15 @@
 //        puis le dossier nait a cette heure.
 //   [S4] LE SUR MESURE LIT LE CATALOGUE DU CENTRE, celui que le serveur accepte
 //        (chargerCatalogueSurMesure) : un toucher ajoute, un autre en ajoute un de plus,
-//        l heure de service se pose, le dossier porte ses lignes (articleId, quantite,
-//        prix unitaire, heure). Catalogue vide : le niveau catalogue le dit sans rien
-//        proposer, le niveau libre garde les suggestions, qui partent sans articleId.
+//        l heure de service se pose, la croix d une ligne la retire, le dossier porte ses
+//        lignes (articleId, quantite, prix unitaire, heure). Catalogue vide : le niveau
+//        catalogue le dit sans rien proposer, le niveau libre garde les suggestions, qui
+//        partent sans articleId.
 //   [S5] UN PRIX ARRANGE DEMANDE SA RAISON avant d envoyer, et le serveur l ecrit dans
 //        la note du dossier.
 //   [S6] LES NIVEAUX. Un role catalogue : le catalogue, pas de prix, pas de « Créer
-//        quand même », pas d « Adapter », rien a ajouter a une formule. Un role sans prix
+//        quand même », pas d « Adapter », rien a ajouter a une formule ; la croix de la
+//        formule rend la carte, ou un toucher ajoute de nouveau. Un role sans prix
 //        ni sur mesure : ni champ de prix ni porte. Un role a 20 % : le plafond
 //        s annonce avant le refus, a la baisse comme a la hausse, et ce qui passe a
 //        l ecran passe au serveur.
@@ -37,6 +39,15 @@
 //        4,5:1, cibles de 44 px, et une commande s y cree.
 //   [S8] CREER REND LA MAIN TOUT DE SUITE : la fenetre se ferme, la console se repeint
 //        apres la frame qui ferme (rsApresLaFrame), jamais dans le meme geste.
+//   [S9] PLUSIEURS ACTIVITES D UN TOUCHER (2026-11-03, Movsar : « la jpeux appuyer direct
+//        sur plusieurs activités »). Chaque tuile dit le prix du serveur, « sur place »
+//        quand il n a pas de tarif ; trois touchers sur trois tuiles donnent trois
+//        activites au ticket, chacune son heure et son prix, et le total du serveur ; un
+//        deuxieme toucher retire, la croix d une ligne aussi, la derniere reste (sans
+//        croix, sa tuile ouvre sa page) ; une seance d une activite pas encore prise
+//        l ajoute a son heure, une autre seance la deplace, la meme la retire ; ce qui est
+//        pris est coche ; une formule s adapte d un toucher quand le role le peut (le role
+//        qui ne le peut pas : [S6]). Le dossier cree le dit.
 //   [*]  Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois
@@ -82,9 +93,9 @@ const FEN = 'lib/reserver-fenetre.js';
 // LA MUTATION : le code casse expres, une regle a la fois. `lettre` dit quel scenario
 // la juge, `bloc` le seul bloc a rejouer, `cible` le debut du libelle qui doit rougir.
 const MUTATIONS = [
-  { nom: 'seances-cachees', lettre: 'S1', bloc: 'T6', cible: '[S1] T6 tient en 6 gestes', fichier: APP, de: 'const RS_SEANCES = 6;', vers: 'const RS_SEANCES = 2;' },
+  { nom: 'seances-cachees', lettre: 'S1', bloc: 'T6', cible: '[S1] T6 tient en 5 gestes', fichier: APP, de: 'const RS_SEANCES = 6;', vers: 'const RS_SEANCES = 2;' },
   { nom: 'premiere-touche-perdue', lettre: 'S1', bloc: 'TC', cible: '[S1] TC', fichier: APP, de: "  champ.value = caractere;\n  zone.hidden = false;", vers: "  champ.value = '';\n  zone.hidden = false;" },
-  { nom: 'heure-sans-activite', lettre: 'S2', bloc: 'heure', cible: '[S2] un toucher sur une heure choisit l activite et l heure', fichier: APP, de: '    if (!rsPris(id)) {\n      if (b.ajout) rsBasculer(id, variante);\n      else rsRemplacer(id, variante);\n    }\n    const rang = Math.max(0, rvActivites().indexOf(id));', vers: '    const rang = Math.max(0, rvActivites().indexOf(id));' },
+  { nom: 'heure-sans-activite', lettre: 'S2', bloc: 'heure', cible: '[S2] un toucher sur une heure choisit l activite et l heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '' },
   { nom: 'doigt-oublie', lettre: 'S2', bloc: 'doigt', cible: '[S2] un doigt pose, rien ne bouge', fichier: APP, de: "  if (rsAppui) { rsRepeintRetenu = true; return; }\n  const overlay = document.getElementById('quickBookOverlay');", vers: "  const overlay = document.getElementById('quickBookOverlay');" },
   { nom: 'refus-sans-proche', lettre: 'S3', cible: '[S3] Créer propose « Prendre » l heure qui tient', fichier: APP, de: "  const proche = refuse && !s.forcer && !lot ? rsHeureProche() : '';", vers: "  const proche = '';" },
   { nom: 'proche-ignoree', lettre: 'S3', cible: '[S3] « Prendre » prend l heure qui tient d un toucher', fichier: APP, de: '    if (rsHeureProche()) rsPrendreProche();', vers: '    if (false) rsPrendreProche();' },
@@ -103,6 +114,28 @@ const MUTATIONS = [
   { nom: 'police-11', lettre: 'S7', bloc: 'tablette', cible: '[S7] rien sous 12 px (tablette', fichier: CSS, de: '.qb-modal.rv.rs .rs-h small { font-size: 12px;', vers: '.qb-modal.rv.rs .rs-h small { font-size: 11px;' },
   { nom: 'cible-36', lettre: 'S7', bloc: 'telephone', cible: '[S7] cibles de 44 px au doigt (telephone', fichier: CSS, de: '.qb-modal.rv.rs .rs-n { flex: 1 1 0; min-width: 0; height: 44px;', vers: '.qb-modal.rv.rs .rs-n { flex: 1 1 0; min-width: 0; height: 36px;' },
   { nom: 'rendu-immediat', lettre: 'S8', cible: '[S8] la console ne se repeint pas dans le geste de Créer', fichier: APP, de: '    if (rvResas === lotSauve) { closeQuickBook(); rsApresLaFrame(renderStaff); } else renderStaff();', vers: '    if (rvResas === lotSauve) closeQuickBook();\n    renderStaff();' },
+  // [S9] et la formule du role catalogue ([S6]) : chaque toucher ajoute, retire, deplace.
+  { nom: 'formule-pour-tous', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : un toucher n adapte pas la formule', fichier: APP, de: "  if (s.type !== 'formule' || s.adaptee || rsNiveau('formule') === 'oui') return true;", vers: '  return true;' },
+  { nom: 'formule-jamais', lettre: 'S9', bloc: 'formule', cible: '[S9] direction : une activite touchee adapte la formule', fichier: APP, de: "  if (s.type !== 'formule' || s.adaptee || rsNiveau('formule') === 'oui') return true;", vers: "  if (s.type !== 'formule' || s.adaptee) return true;" },
+  { nom: 'tuile-remplace', lettre: 'S9', bloc: 'tuiles', cible: '[S9] trois touchers sur trois tuiles', fichier: APP, de: '    if (ids.includes(id)) rsEnlever(id);\n    else rsPrendre(id);', vers: '    if (ids.includes(id)) rsEnlever(id);\n    else rsRemplacer(id);' },
+  { nom: 'tuile-reste', lettre: 'S9', bloc: 'tuiles', cible: '[S9] un deuxieme toucher retire la tuile', fichier: APP, de: '    if (ids.includes(id)) rsEnlever(id);\n', vers: '    if (ids.includes(id)) return;\n' },
+  { nom: 'prix-invente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque tuile dit le prix du serveur', fichier: APP, de: "rsPrixTuilesMemo.prix.set(id, serveur === undefined ? rsPrixTouche(id) : serveur == null ? 'sur place' : rsEuros(serveur));", vers: 'rsPrixTuilesMemo.prix.set(id, rsPrixTouche(id));' },
+  { nom: 'ligne-prix-invente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque ligne du ticket dit le prix du serveur', fichier: APP, de: "  if (ligne || rsTarifInconnu(id)) return 'sur place';\n", vers: '' },
+  { nom: 'total-invente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] le total suit chaque toucher', fichier: APP, de: '  const complet = plan.lignesPrix.every((l) => !l || l.prix != null);\n  return { total: Math.round((Number(plan.prix) || 0) * 100) / 100, complet };', vers: '  let total = Number(plan.prix) || 0;\n  plan.lignesPrix.forEach((l) => { if (l && l.prix == null && rvActivites().includes(l.activite)) total += Number(rsMontantLigne(l.activite)) || 0; });\n  return { total: Math.round(total * 100) / 100, complet: true };' },
+  { nom: 'heure-hors-tuile', lettre: 'S9', bloc: 'tuiles', cible: '[S9] une tuile prise dit son heure du ticket', fichier: APP, de: "    mot = telle ? 'dans la formule' : e && e.h ? e.h : e || ligne.index > 0 ? 'accès libre' : ligne.heure || '';", vers: '    mot = rsPrixTuile(id);' },
+  { nom: 'coche-absente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] ce qui est pris est coche', fichier: CSS, de: '.qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }', vers: '' },
+  { nom: 'croix-absente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque ligne se retire d une croix', fichier: APP, de: "retirer: retirable ? 'rsRetirer(this.dataset.activite)' : ''", vers: "retirer: ''" },
+  { nom: 'derniere-croix', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  const retirable = ids.length > 1;', vers: '  const retirable = true;' },
+  { nom: 'derniere-tuile-muette', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  if (ids.length === 1 && ids[0] === id && rvModifiable()) { rsOuvrirLigne(id); return; }\n', vers: '' },
+  { nom: 'seance-remplace', lettre: 'S9', bloc: 'seances', cible: '[S9] une seance d une activite pas encore prise l ajoute a cette heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '    if (!pris) rsRemplacer(id, variante);\n' },
+  { nom: 'seance-retire-au-lieu-de-deplacer', lettre: 'S9', bloc: 'seances', cible: '[S9] une autre seance d une activite prise deplace son heure', fichier: APP, de: "    if (pris && heure === courante && b.q === 'activites') {", vers: "    if (pris && b.q === 'activites') {" },
+  { nom: 'seance-reste', lettre: 'S9', bloc: 'seances', cible: '[S9] la meme seance touchee deux fois retire l activite', fichier: APP, de: '      if (ids.length > 1 && rsPeutChanger()) rsEnlever(id);', vers: '      if (false) rsEnlever(id);' },
+  { nom: 'proposition-cochee', lettre: 'S9', bloc: 'seances', cible: '[S9] le bowling propose n est pas coche, choisi il l est', fichier: APP, de: '  const propose = pris && !rsCochee(id);', vers: '  const propose = false;' },
+  // Les croix du ticket hors activites : la formule ([S6], la sortie du role qui ne peut
+  // pas l adapter) et les articles du sur mesure ([S4]).
+  { nom: 'formule-sans-croix', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : la croix de la formule rend la carte', fichier: APP, de: "retirer: 'rsSansFormule()'", vers: "retirer: ''" },
+  { nom: 'croix-garde-la-formule', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : la croix de la formule rend la carte', fichier: APP, de: '      Object.assign(s, JSON.parse(JSON.stringify(avant)));\n', vers: '' },
+  { nom: 'article-sans-croix', lettre: 'S4', bloc: 'catalogue', cible: '[S4] la croix d un article le retire du ticket', fichier: APP, de: "retirer: 'rsRetirerExtra(this.dataset.ligne)'", vers: "retirer: ''" },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -323,10 +356,10 @@ const TACHES = [
   { id: 'T5', budget: 3, consigne: 'anniversaire, formule F3, 10 enfants, samedi 23 a 14:00, Lea',
     jouer: async (t) => { await t.ouvrir(); await barre(t, '10 f3 sam 14h Léa'); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-23' && r.pax === 10 && r.formule_id && heureDe(r) === '14:00' && /L[eé]a/i.test(r.name) },
-  { id: 'T6', budget: 6, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
+  // (chaque toucher ajoute : le laser touche apres le bowling s y ajoute, a la suite)
+  { id: 'T6', budget: 5, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
     jouer: async (t) => {
       await t.ouvrir(); await nombre(t, 8); await heureProche(t, 'bowling', '18:00');
-      await t.clic('#rsL-ajouter'); await t.page.waitForSelector('.rs-tk-plus.is-on');
       await t.page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]');
       await t.clic(`${seanceDe('laser_game')} >> nth=0`); await t.page.waitForSelector('#rsL-a-laser_game');
       await pret(t.page); await t.clic('#rvCreer');
@@ -362,8 +395,9 @@ const TACHES = [
       await t.page.waitForSelector('#qbCustomPrice'); await t.taper('#qbCustomPrice', '30'); await t.clic('#rsRaison-0'); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 6 && Number(r.price) === 30 },
-  { id: 'T12', budget: 5, consigne: 'minigolf seul pour 5, aujourd hui a 16:00',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 5); await t.clic('#rsT-minigolf_blacklight'); await t.page.waitForSelector('[data-heure-l="16:00"]'); await t.clic('[data-heure-l="16:00"]'); await pret(t.page); await t.clic('#rvCreer'); },
+  // (la tuile ajoute sans quitter les activites : son heure se regle sur sa ligne du ticket)
+  { id: 'T12', budget: 6, consigne: 'minigolf seul pour 5, aujourd hui a 16:00',
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 5); await t.clic('#rsT-minigolf_blacklight'); await t.page.waitForSelector('#rsL-a-minigolf_blacklight'); await t.clic('#rsL-a-minigolf_blacklight'); await t.page.waitForSelector('[data-heure-l="16:00"]'); await t.clic('[data-heure-l="16:00"]'); await pret(t.page); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 5 && a(r, 'minigolf') },
   // LA TACHE CLAVIER : rien que le clavier une fois la fenetre ouverte. La premiere touche
   // ouvre la barre sans se perdre, Entree cree.
@@ -549,6 +583,19 @@ async function scenarioS4(browser) {
       await page.locator('.rs-bande [data-service]').nth(1).click();
       await page.waitForSelector('.rs-bande [data-service].is-on');
     } catch (e) { console.log(`      (geste rate : ${String(e.message).split('\n')[0].slice(0, 120)})`); }
+    // Un troisieme article, retire d une croix : il quitte le ticket et le dossier.
+    const autre = CATALOGUE_LIBRAMONT.articles.find((x) => x.id !== boisson.id && x.id !== plat.id);
+    let pose = false;
+    try {
+      await page.locator(`[data-onglet="${autre.categorie}"]`).click();
+      await page.locator(`#rsArt-${autre.id}`).click();
+      await page.waitForSelector(`[id^="rsL-x-${autre.id}-"]`, { state: 'attached', timeout: 3000 });
+      pose = true;
+      await page.locator(`[id^="rsSuppr-x-${autre.id}-"]`).click({ timeout: 3000 });
+      await page.waitForTimeout(300);
+    } catch (e) { console.log(`      (geste rate : ${String(e.message).split('\n')[0].slice(0, 120)})`); }
+    const reste = await texte(page, '#rsLignes');
+    ok(pose && !reste.includes(autre.nom) && reste.includes(boisson.nom) && reste.includes(plat.nom), '[S4] la croix d un article le retire du ticket', { pose, reste });
     const ticket = await texte(page, '#rsLignes');
     ok(ticket.includes(boisson.nom) && ticket.includes(plat.nom) && ticket.includes(`à ${service}`), '[S4] chaque article devient une ligne du ticket, l heure de service dite', ticket);
     await pret(page).catch(() => {});
@@ -558,7 +605,7 @@ async function scenarioS4(browser) {
     const lb = extras.find((x) => x.articleId === boisson.id);
     const lp = extras.find((x) => x.articleId === plat.id);
     ok(Boolean(lb && lb.qte === 2 && Number(lb.prixUnitaire) === boisson.prix && Number(lb.price) === Math.round(boisson.prix * 200) / 100
-      && lp && lp.qte === 1 && Number(lp.prixUnitaire) === plat.prix && lp.heure === service), '[S4] le dossier porte ses lignes : article, quantite, prix unitaire, heure de service', { extras, service });
+      && lp && lp.qte === 1 && Number(lp.prixUnitaire) === plat.prix && lp.heure === service && !extras.some((x) => x.articleId === autre.id)), '[S4] le dossier porte ses lignes : article, quantite, prix unitaire, heure de service', { extras, service });
     await m.finir('S4 catalogue');
   }
   if (joue('vide')) {
@@ -650,10 +697,37 @@ async function scenarioS6(browser) {
     await page.keyboard.press('Escape');
     await page.locator('#rsHaut [data-pax]').first().waitFor();
     await formuleF3(page);
-    ok(!(await visible(page, '#rsL-ajouter')), '[S6] role catalogue : rien a ajouter a une formule');
+    // Un toucher sur une activite hors de la formule l adapterait : ce role ne le peut pas
+    // (le serveur refuserait). Rien ne change, le ticket dit pourquoi, la tuile le montre.
+    await page.locator('#rsRetour').click();
+    await page.waitForSelector('.is-q-activites #rsT-billards');
+    await page.locator('#rsT-billards').click();
+    await page.waitForTimeout(300);
+    const telle = await page.evaluate(() => ({
+      ids: rvActivites(),
+      formule: ((document.querySelector('#rsL-a-formule .rs-tk-n b') || {}).textContent || '').trim(),
+      billard: Boolean(document.querySelector('#rsL-a-billards')),
+      dit: ((document.querySelector('#rvVerdict [role="alert"]') || {}).textContent || '').trim(),
+      hors: (document.querySelector('#rsT-billards') || { classList: { contains: () => false } }).classList.contains('is-hors'),
+    }));
+    ok(!telle.billard && !telle.ids.includes('billards') && telle.formule && !/adaptée/.test(telle.formule) && Boolean(telle.dit) && telle.hors, '[S6] role catalogue : un toucher n adapte pas la formule, le ticket dit pourquoi', telle);
     await page.locator('#rsL-a-formule').click();
     await page.waitForSelector('.is-q-ligne');
     ok(!(await visible(page, '#rvAdapter')) && await visible(page, '#rsFormuleMesure'), '[S6] role catalogue : pas d « Adapter », le sur mesure au catalogue');
+    // Sa sortie : la croix de la formule rend le ticket a la carte, ou le meme toucher
+    // sur le billard ajoute cette fois.
+    await page.locator('#rsSuppr-a-formule').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForSelector('.is-q-activites #rsT-billards', { timeout: 3000 }).catch(() => {});
+    await page.locator('#rsT-billards').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const carte = await page.evaluate(() => ({
+      type: quickBookState.type,
+      ids: rvActivites(),
+      formule: Boolean(document.querySelector('#rsL-a-formule')),
+      billard: Boolean(document.querySelector('#rsL-a-billards')),
+      dit: ((document.querySelector('#rvVerdict [role="alert"]') || {}).textContent || '').trim(),
+    }));
+    ok(carte.type !== 'formule' && !carte.formule && carte.billard && carte.ids.includes('billards') && !/adapter une formule/.test(carte.dit), '[S6] role catalogue : la croix de la formule rend la carte, le toucher ajoute', carte);
     await m.finir('S6 catalogue formule');
     const n = await ouvrirConsole(browser, { role: 'catalogue' });
     await n.page.locator('.btn-new').click();
@@ -789,6 +863,11 @@ async function scenarioS7(browser) {
       ['total', async () => { await ticket(); await page.locator('#rsL-total').click(); await page.waitForSelector('#qbCustomPrice'); }],
       ['client', async () => { await ticket(); await page.locator('#rsL-client').click(); await page.waitForSelector('#qbNotes'); }],
       ['formules', async () => { await page.locator('#rsFormules').click(); await page.waitForSelector('.rs-fs-g'); }],
+      // Trois activites prises : les tuiles cochees, les lignes du ticket et leurs croix.
+      ['plusieurs', async () => {
+        for (const id of ['minigolf_blacklight', 'billards', 'arcade_time']) { await page.locator(`#rsT-${id}`).click(); await page.waitForSelector(`#rsL-a-${id}`, { state: 'attached' }); }
+        await ticket();
+      }],
     ];
     const bilan = { deborde: [], petits: [], pales: [], cibles: [], prerequis: [] };
     for (const [etat, aller] of etats) {
@@ -809,7 +888,7 @@ async function scenarioS7(browser) {
       if (r.pales.length) bilan.pales.push(`${etat} : ${r.pales.join(', ')}`);
       if (r.cibles.length) bilan.cibles.push(`${etat} : ${r.cibles.join(', ')}`);
     }
-    ok(bilan.prerequis.length === 0, `[S7] les sept pages se jouent au doigt (${lieu})`, bilan.prerequis);
+    ok(bilan.prerequis.length === 0, `[S7] les huit pages se jouent au doigt (${lieu})`, bilan.prerequis);
     ok(bilan.deborde.length === 0, `[S7] rien ne deborde (${lieu})`, bilan.deborde);
     ok(bilan.petits.length === 0, `[S7] rien sous 12 px (${lieu})`, bilan.petits);
     ok(bilan.pales.length === 0, `[S7] contraste 4,5:1 (${lieu})`, bilan.pales);
@@ -863,7 +942,218 @@ async function scenarioS8(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { S1: scenarioS1, S2: scenarioS2, S3: scenarioS3, S4: scenarioS4, S5: scenarioS5, S6: scenarioS6, S7: scenarioS7, S8: scenarioS8 };
+// [S9] PLUSIEURS ACTIVITES D UN TOUCHER
+// ---------------------------------------------------------------------------
+// Movsar (03/11) : « la jpeux appuyer direct sur plusieurs activités pour prendre plusieurs
+// activité ». Un toucher ajoute, un deuxieme retire, une autre seance deplace. Ce qui se lit
+// se compare au serveur : le prix d une tuile a celui que le vrai handler donne a cette
+// activite seule, le prix d une ligne et le total a son plan, puis au dossier cree.
+const PETITES = ['minigolf_blacklight', 'billards', 'arcade_time'];
+
+// Le prix que le serveur donne a chaque activite seule, pour ce groupe, ce jour, cette heure :
+// le corps que la fenetre enverrait (ses gestes, sur une copie qui ne peint rien), juge par
+// le vrai handler sans passer par la fenetre.
+function prixDuServeur(page, ids) {
+  return page.evaluate(async (liste) => {
+    const out = {};
+    for (const id of liste) {
+      const garde = quickBookState;
+      let corps = null;
+      rsRetenu += 1;
+      try {
+        quickBookState = JSON.parse(JSON.stringify({ ...garde, plan: null, candidats: null, clientConnu: null, rs: null, horloge: null }));
+        rsRemplacer(id);
+        corps = rvCorpsDeSimulation();
+      } finally { quickBookState = garde; rsRetenu -= 1; rsAPeindre = false; }
+      const rep = corps ? await window.__vraiAppel('POST', '/api/staff-reservations', { ...corps, dryRun: true }) : null;
+      const ligne = rep && rep.json && rep.json.plan ? (rep.json.plan.lignesPrix || []).find((l) => l.activite === id) : null;
+      out[id] = ligne ? (ligne.prix == null ? 'sur place' : rsEuros(ligne.prix)) : '?';
+    }
+    return out;
+  }, ids);
+}
+
+// Le ticket tel qu il se lit, et ce que le serveur en a dit (son plan, sa reponse).
+const lireTicket = (page) => page.evaluate(() => {
+  const p = quickBookState.plan;
+  const plan = p && p.etat === 'ok' && p.cle === quickBookState.cleCourante ? p.resultat : null;
+  // (les montants s ecrivent avec une espace insecable : on compare des textes normalises)
+  const norme = (x) => String(x).replace(/\s+/g, ' ').trim();
+  const euros = (x) => norme(rsEuros(x));
+  const texteDe = (el) => norme((el || {}).textContent || '');
+  const lignes = [...document.querySelectorAll('#rsLignes .rs-tk-a[id^="rsL-a-"]')].map((b) => ({
+    id: b.id.slice('rsL-a-'.length),
+    detail: texteDe(b.querySelector('.rs-tk-n small')),
+    prix: texteDe(b.querySelector('em')),
+    croix: Boolean(document.getElementById(`rsSuppr-${b.id.slice('rsL-'.length)}`)),
+  }));
+  const inconnu = plan ? (plan.lignesPrix || []).some((l) => l.prix == null) : false;
+  return {
+    lignes,
+    serveur: plan ? Object.fromEntries((plan.lignesPrix || []).map((l) => [l.activite, l.prix == null ? 'sur place' : euros(l.prix)])) : {},
+    prixServeur: plan ? Number(plan.prix) : null,
+    total: texteDe(document.getElementById('rvTotalPied')),
+    attendu: plan ? (Number(plan.prix) === 0 && inconnu ? 'sur place' : euros(plan.prix)) : '?',
+    reste: /sur place/.test(texteDe(document.querySelector('#rsL-total small'))),
+    resteAttendu: inconnu && Number(plan && plan.prix) > 0,
+  };
+});
+
+const lireSeances = (page) => page.evaluate(() => {
+  const texteDe = (el) => ((el || {}).textContent || '').replace(/\s+/g, ' ').trim();
+  const heure = (id) => ((document.getElementById(`rvHeure-${id}`) || { dataset: {} }).dataset.heure || '');
+  const coche = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).opacity : ''; };
+  return {
+    ids: [...document.querySelectorAll('#rsLignes .rs-tk-a[id^="rsL-a-"]')].map((b) => b.id.slice('rsL-a-'.length)),
+    bowling: heure('bowling'),
+    laser: heure('laser_game'),
+    ligneLaser: texteDe(document.getElementById('rsL-a-laser_game')),
+    cocheBowling: coche('#rvHeure-bowling .rs-coche'),
+  };
+});
+
+async function scenarioS9(browser) {
+  console.log('\n[S9] plusieurs activites d un toucher');
+  if (joue('tuiles')) {
+    const m = await ouvrirConsole(browser);
+    const { page } = m;
+    await page.locator('.btn-new').click();
+    await page.locator('#rsHaut [data-pax="8"]').click();
+    await pret(page);
+    // 1. Chaque tuile dit le prix du serveur (il chiffre les tuiles juste apres la peinture).
+    const attendus = await prixDuServeur(page, PETITES);
+    const prixLus = () => page.evaluate((ids) => Object.fromEntries(ids.map((id) => [id, ((document.querySelector(`#rsT-${id} small`) || {}).textContent || '').trim()])), PETITES);
+    await page.waitForFunction((a) => Object.keys(a).every((id) => ((document.querySelector(`#rsT-${id} small`) || {}).textContent || '').trim() === a[id]), attendus, { timeout: 6000 }).catch(() => {});
+    const affiches = await prixLus();
+    ok(Object.values(attendus).includes('sur place') && Object.values(attendus).some((x) => /\d/.test(x)), '[S9] MONTAGE : une activite sans tarif au serveur, une avec', attendus);
+    ok(PETITES.every((id) => affiches[id] === attendus[id]), '[S9] chaque tuile dit le prix du serveur, « sur place » quand il n en a pas', { affiches, attendus });
+    // 2. Trois touchers sur trois tuiles : trois activites au ticket, le total a chaque toucher.
+    const apres = [];
+    for (const id of PETITES) {
+      await page.locator(`#rsT-${id}`).click();
+      await page.waitForSelector(`#rsL-a-${id}`, { state: 'attached', timeout: 4000 }).catch(() => {});
+      await pret(page).catch(() => {});
+      apres.push(await lireTicket(page));
+    }
+    const trois = apres[apres.length - 1];
+    ok(JSON.stringify(trois.lignes.map((l) => l.id)) === JSON.stringify(PETITES), '[S9] trois touchers sur trois tuiles : trois activites au ticket', apres.map((t) => t.lignes.map((l) => l.id)));
+    ok(trois.lignes.length === 3 && trois.lignes.every((l) => l.prix === trois.serveur[l.id] && /\d\d:\d\d|accès libre/.test(l.detail)), '[S9] chaque ligne du ticket dit le prix du serveur, et son heure', trois.lignes.map((l) => ({ ...l, serveur: trois.serveur[l.id] })));
+    ok(apres.length === 3 && apres.every((t) => t.total === t.attendu && t.reste === t.resteAttendu), '[S9] le total suit chaque toucher : celui du serveur, le reste sur place', apres.map((t) => ({ total: t.total, attendu: t.attendu, reste: t.reste })));
+    // 3. Ce qui est pris est coche, et la tuile prise dit l heure de sa ligne du ticket.
+    await page.waitForTimeout(260);
+    const tuiles = await page.evaluate((ids) => ids.map((id) => {
+      const t = document.getElementById(`rsT-${id}`);
+      const detail = ((document.querySelector(`#rsL-a-${id} .rs-tk-n small`) || {}).textContent || '');
+      return {
+        id,
+        on: Boolean(t) && t.classList.contains('is-on') && t.getAttribute('aria-pressed') === 'true',
+        coche: t ? getComputedStyle(t.querySelector('.rs-coche')).opacity : '',
+        mot: t ? (t.querySelector('small').textContent || '').trim() : '',
+        heure: (/\d\d:\d\d/.exec(detail) || [/accès libre/.test(detail) ? 'accès libre' : '-'])[0],
+      };
+    }), PETITES);
+    ok(tuiles.every((t) => t.on && t.coche === '1'), '[S9] ce qui est pris est coche', tuiles);
+    ok(tuiles.every((t) => t.mot === t.heure), '[S9] une tuile prise dit son heure du ticket', tuiles);
+    // 4. Un deuxieme toucher retire la tuile ; la croix d une ligne aussi.
+    await page.locator('#rsT-billards').click();
+    await pret(page).catch(() => {});
+    const deux = await lireTicket(page);
+    const billardPris = await page.evaluate(() => document.getElementById('rsT-billards').classList.contains('is-on'));
+    ok(JSON.stringify(deux.lignes.map((l) => l.id)) === '["minigolf_blacklight","arcade_time"]' && !billardPris, '[S9] un deuxieme toucher retire la tuile', { lignes: deux.lignes.map((l) => l.id), billardPris });
+    await page.locator('#rsSuppr-a-arcade_time').click({ timeout: 3000 }).catch(() => {});
+    await pret(page).catch(() => {});
+    const une = await lireTicket(page);
+    ok(deux.lignes.every((l) => l.croix) && JSON.stringify(une.lignes.map((l) => l.id)) === '["minigolf_blacklight"]', '[S9] chaque ligne se retire d une croix', { avant: deux.lignes, apres: une.lignes.map((l) => l.id) });
+    // La derniere reste, il faut bien reserver quelque chose : sa ligne n a pas de croix,
+    // et sa tuile touchee encore ouvre sa page (son heure, ses joueurs) au lieu de la retirer.
+    await page.locator('#rsT-minigolf_blacklight').click();
+    await page.waitForTimeout(260);
+    const derniere = await page.evaluate(() => ({ ids: rvActivites(), page: (/\bis-q-([\w-]+)/.exec(document.querySelector('.qb-modal.rv').className) || [])[1] || '' }));
+    ok(une.lignes.length === 1 && !une.lignes[0].croix && JSON.stringify(derniere.ids) === '["minigolf_blacklight"]' && derniere.page === 'ligne', '[S9] la derniere activite reste : sans croix, sa tuile ouvre sa page', { croix: une.lignes.map((l) => l.croix), derniere });
+    await page.locator('#rsRetour').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForSelector('.is-q-activites #rsT-arcade_time', { timeout: 3000 }).catch(() => {});
+    // 5. Le dossier cree porte ce que le ticket montre, a son prix.
+    await page.locator('#rsT-arcade_time').click();
+    await page.waitForSelector('#rsL-a-arcade_time', { state: 'attached', timeout: 4000 }).catch(() => {});
+    await pret(page).catch(() => {});
+    const final = await lireTicket(page);
+    await page.locator('#rvCreer').click();
+    const [r] = await nouveaux(page, m.avant);
+    ok(Boolean(r) && r.pax === 8 && a(r, 'minigolf_blacklight') && a(r, 'arcade_time') && !a(r, 'billards') && Number(r.price) === final.prixServeur, '[S9] le dossier cree porte les activites du ticket, au prix du ticket', { ticket: final.lignes.map((l) => `${l.id} ${l.prix}`), total: final.total, dossier: resume(r) });
+    await m.finir('S9 tuiles');
+  }
+  if (joue('seances')) {
+    const m = await ouvrirConsole(browser);
+    const { page } = m;
+    await page.locator('.btn-new').click();
+    await page.locator('#rsHaut [data-pax="8"]').click();
+    await pret(page);
+    await page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="bowling"]');
+    // Le bowling propose au depart n est pas coche ; choisi a une autre heure, il l est.
+    await page.waitForTimeout(260);
+    const propose = await lireSeances(page);
+    const bowling = page.locator('#rsZ-bowling .rs-h[data-heure]:not(.is-on)').nth(1);
+    const hb = await bowling.getAttribute('data-heure');
+    await bowling.click();
+    await pret(page).catch(() => {});
+    await page.waitForTimeout(260);
+    const choisi = await lireSeances(page);
+    ok(propose.cocheBowling === '0' && choisi.bowling === hb && choisi.cocheBowling === '1', '[S9] le bowling propose n est pas coche, choisi il l est', { propose, choisi, hb });
+    // Une seance du laser, pas encore pris : il s ajoute a cette heure, apres le bowling.
+    await page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]', { timeout: 8000 }).catch(() => {});
+    const premiere = page.locator('#rsZ-laser_game .rs-h[data-heure]').first();
+    const h1 = await premiere.getAttribute('data-heure');
+    await premiere.click();
+    await page.waitForSelector('#rsL-a-laser_game', { state: 'attached', timeout: 4000 }).catch(() => {});
+    await pret(page).catch(() => {});
+    const ajoute = await lireSeances(page);
+    ok(JSON.stringify(ajoute.ids) === '["bowling","laser_game"]' && ajoute.laser === h1 && ajoute.ligneLaser.includes(h1) && ajoute.bowling === hb, '[S9] une seance d une activite pas encore prise l ajoute a cette heure', { hb, h1, ...ajoute });
+    // Une autre seance du laser le deplace ; la meme, touchee encore, le retire.
+    const autre = page.locator('#rsZ-laser_game .rs-h[data-heure]:not(.is-on)').nth(1);
+    const h2 = await autre.getAttribute('data-heure').catch(() => '');
+    await autre.click().catch(() => {});
+    await pret(page).catch(() => {});
+    const deplace = await lireSeances(page);
+    ok(Boolean(h2) && JSON.stringify(deplace.ids) === '["bowling","laser_game"]' && deplace.laser === h2 && deplace.ligneLaser.includes(h2) && deplace.bowling === hb, '[S9] une autre seance d une activite prise deplace son heure', { h2, ...deplace });
+    await page.locator(`#rsZ-laser_game .rs-h[data-heure="${h2}"]`).click({ timeout: 3000 }).catch(() => {});
+    await pret(page).catch(() => {});
+    const retire = await lireSeances(page);
+    ok(JSON.stringify(retire.ids) === '["bowling"]' && retire.bowling === hb, '[S9] la meme seance touchee deux fois retire l activite', retire);
+    await page.locator('#rvCreer').click();
+    const [r] = await nouveaux(page, m.avant);
+    ok(Boolean(r) && r.type === 'bowling' && heureDe(r) === hb && r.pax === 8, '[S9] le dossier cree est le bowling a son heure, sans le laser retire', resume(r));
+    await m.finir('S9 seances');
+  }
+  if (joue('formule')) {
+    // Un role qui adapte les formules : un toucher ajoute l activite a la formule, au meme
+    // prix (le role qui ne le peut pas : [S6]).
+    const m = await ouvrirConsole(browser);
+    const { page } = m;
+    await page.locator('.btn-new').click();
+    await formuleF3(page);
+    await pret(page).catch(() => {});
+    const prixAvant = await page.evaluate(() => ((document.querySelector('#rsL-a-formule em') || {}).textContent || '').trim());
+    await page.locator('#rsRetour').click();
+    await page.waitForSelector('.is-q-activites #rsT-billards');
+    await page.locator('#rsT-billards').click();
+    await page.waitForSelector('#rsL-a-billards', { state: 'attached', timeout: 4000 }).catch(() => {});
+    await pret(page).catch(() => {});
+    const adaptee = await page.evaluate(() => ({
+      formule: ((document.querySelector('#rsL-a-formule .rs-tk-n b') || {}).textContent || '').trim(),
+      prix: ((document.querySelector('#rsL-a-formule em') || {}).textContent || '').trim(),
+      ids: rvActivites(),
+      billard: Boolean(document.querySelector('#rsL-a-billards')),
+    }));
+    ok(/adaptée/.test(adaptee.formule) && adaptee.billard && adaptee.ids.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant, '[S9] direction : une activite touchee adapte la formule, au meme prix', { prixAvant, ...adaptee });
+    await page.locator('#rvCreer').click();
+    const [r] = await nouveaux(page, m.avant);
+    ok(Boolean(r) && r.formule_id === 'f3' && a(r, 'billards') && r.pax === 10, '[S9] le dossier cree est la formule adaptee, billard compris', resume(r));
+    await m.finir('S9 formule');
+  }
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { S1: scenarioS1, S2: scenarioS2, S3: scenarioS3, S4: scenarioS4, S5: scenarioS5, S6: scenarioS6, S7: scenarioS7, S8: scenarioS8, S9: scenarioS9 };
 
 function verifierLesAncres() {
   let mortes = 0;

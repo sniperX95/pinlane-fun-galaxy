@@ -31,10 +31,11 @@
 // ecrit, d autres gates lisent le meme fichier au meme moment.
 //
 // LES SEANCES (2026-11-03) : la fenetre du comptoir a change d ecran. Le gate
-// joue les gestes du comptoir : le nombre de joueurs (#rsHaut [data-pax]),
-// « + Ajouter une activité » puis la tuile #rsT-billards pour une visite, la
-// tuile seule pour l activite seule ; les reglages vivent sur la page de la
-// ligne ([data-opt="units"], [data-opt="hours"]) et « Créer » (#rvCreer) envoie.
+// joue les gestes du comptoir : le nombre de joueurs (#rsHaut [data-pax]), la
+// tuile #rsT-billards, qui s ajoute a la visite (chaque toucher ajoute, depuis le
+// 2026-11-03) ou remplace le bowling seulement propose ; les reglages vivent sur
+// la page de la ligne, ouverte par sa ligne du ticket (#rsL-a-billards :
+// [data-opt="units"], [data-opt="hours"]) et « Créer » (#rvCreer) envoie.
 //
 // Lancement : node scripts/quickbook-unit-hour-check.js
 'use strict';
@@ -178,11 +179,15 @@ async function main() {
       await page.click('#rsHaut [data-pax="4"]');
       await page.waitForSelector('#rsHaut [data-pax="4"].is-on', { timeout: 3000 });
     };
+    // Un toucher sur la tuile l ajoute au ticket sans quitter l ecran des
+    // activites ; sa ligne du ticket ouvre sa page, ou vivent ses reglages.
     const ajouter = async (id) => {
-      if (!(await page.locator('#quickBookOverlay .rs-tk-plus.is-on').count())) await page.click('#rsL-ajouter');
-      await page.waitForSelector('#quickBookOverlay .rs-tk-plus.is-on', { timeout: 3000 });
+      if (!(await page.locator('#quickBookOverlay .qb-modal.rv.is-q-activites').count())) await page.click('#rsRetour');
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-activites', { timeout: 3000 });
       await page.click(`#rsT-${id}`);
       await page.waitForSelector(`#rsL-a-${id}`, { timeout: 3000 }).catch(() => {});
+      await page.click(`#rsL-a-${id}`);
+      await page.waitForSelector('#quickBookOverlay .qb-modal.rv.is-q-ligne', { timeout: 3000 }).catch(() => {});
       await page.waitForTimeout(300);
     };
     const auTicket = () => page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsLignes .rs-tk-a[data-activite]')].map((e) => e.dataset.activite));
@@ -206,8 +211,8 @@ async function main() {
 
     // --- A. Les deux reglages existent -------------------------------------
     // Une visite : le bowling choisi (l entree « bowling a 14:00 », comme une
-    // case du planning), puis « + Ajouter une activité » et la tuile Billards,
-    // qui ouvre la page de sa ligne.
+    // case du planning), puis la tuile Billards, qui s ajoute, et la page de sa
+    // ligne.
     await ouvrir({ type: 'bowling' });
     await ajouter('billards');
     const reglages = await reglagesBillards();
@@ -238,12 +243,11 @@ async function main() {
       `2 heures choisies, 2 heures envoyees (hours=${ligneVisite ? ligneVisite.hours : 'ABSENT'})`);
 
     // --- C. Le mode « une seule activite » n est pas un trou ----------------
-    // Hors ajout, la tuile Billards remplace le bowling propose a l ouverture :
+    // La tuile Billards remplace le bowling seulement propose a l ouverture :
     // les billards seuls, et la page de leur ligne.
     await ouvrir({});
-    await page.click('#rsT-billards');
-    await page.waitForSelector('#rsL-a-billards', { timeout: 3000 }).catch(() => {});
-    await page.waitForTimeout(400);
+    await ajouter('billards');
+    await page.waitForTimeout(100);
     const seule = await reglagesBillards();
     const seuleAuTicket = await auTicket();
     ok(!seule.absente && seuleAuTicket.join(' + ') === 'billards', `prerequis : les billards seuls au ticket, leur page ouverte (${seuleAuTicket.join(' + ') || 'rien'})`);

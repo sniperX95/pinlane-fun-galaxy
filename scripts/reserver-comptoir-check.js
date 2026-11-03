@@ -1155,9 +1155,10 @@ const MUTATIONS = [
   // D5
   { nom: 'heure-vue-qui-bouge', cote: 'front', vise: ['D5'], edits: [e(APP, '  if (plan && plan.disponible) quickBookState.heureArretee = true;\n', '')] },
   { nom: 'cle-sans-journee', cote: 'front', vise: ['D5'], edits: [e(APP, "  return corps ? `${JSON.stringify(corps)}|${rvRevisionDuJour(corps.date)}` : '';", "  return corps ? JSON.stringify(corps) : '';")] },
-  // D6 (un toucher sur une seance remplace la proposition, rsHeure ; le laser a ses
-  // seances sur l ecran d accueil, rsActivitesHtml)
-  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, '      else rsRemplacer(id, variante);', '      else rsBasculer(id, variante);')] },
+  // D6 (chaque toucher ajoute, mais le bowling de depart n est qu une proposition : la
+  // premiere autre activite le remplace, rsPrendre ; le laser a ses seances sur l ecran
+  // d accueil, rsActivitesHtml)
+  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, "  if (id !== 'bowling' && rvBowlingProposeIntact()) rsRemplacer(id, variante);\n  else rsBasculer(id, variante);", '  rsBasculer(id, variante);')] },
   { nom: 'laser-hors-accueil', cote: 'front', vise: ['D6'], edits: [e(APP, '  const zones = getQuickBookActivityChoices().filter((c) => RV_ANCRABLES.includes(c.id)).map(', "  const zones = getQuickBookActivityChoices().filter((c) => c.id === 'bowling').map(")] },
   // D7
   { nom: 'auto-envoie-ses-pistes', cote: 'front', vise: ['D7'], edits: [

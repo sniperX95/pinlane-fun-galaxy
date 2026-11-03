@@ -22,7 +22,6 @@
   const MAX_ARTICLES = 400;
   const MAX_NOM = 80;
   const PRIX_MAX = 100000;
-  const APERCU = 8;
   const ID = /^[a-z0-9][a-z0-9_-]{0,59}$/;
 
   const esc = (value) => (typeof escapeHtml === 'function' ? escapeHtml(value ?? '') : String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
@@ -35,6 +34,8 @@
   const centre = () => (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
   const peutGerer = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage');
   const copie = (value) => JSON.parse(JSON.stringify(value));
+  // La recherche ignore accents et casse (« creme » trouve « Crème brûlée »).
+  const plier = (texte) => String(texte == null ? '' : texte).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
   // L etat lu : un centre a la fois. `parDefaut` : le centre n a rien enregistre.
   const lecture = { centre: '', etat: 'vide', catalogue: null, parDefaut: false, message: '', ticket: 0 };
@@ -84,6 +85,8 @@
 
   // -------------------------------------------------------------------------
   // LA VUE DE LECTURE (l onglet « Sur mesure » de Tarifs & formules)
+  // Une carte de menu (2026-11-03) : chaque categorie avec TOUS ses articles,
+  // en colonnes, pour lire le catalogue d un coup d oeil sans l ouvrir.
   // -------------------------------------------------------------------------
   function detailsArticle(article) {
     return [article.unite === 'joueur' ? 'par joueur' : 'à la pièce', article.heure ? 'heure demandée' : ''].filter(Boolean).join(' · ');
@@ -91,8 +94,6 @@
 
   function vueCategorie(categorie, articles) {
     const masquee = categorie.actif === false;
-    const apercu = articles.slice(0, APERCU);
-    const reste = articles.length - apercu.length;
     // (jamais de balise <header> : en console, body.staff-mode header l ecrase)
     return `<article class="sm-cat${masquee ? ' is-masquee' : ''}" data-sm-vue="${esc(categorie.id)}">
       <div class="sm-cat-tete">
@@ -100,19 +101,20 @@
         <span class="sm-compte">${articles.length} article${articles.length > 1 ? 's' : ''}</span>
         ${masquee ? '<span class="pv2-chip">Masquée</span>' : ''}
       </div>
-      ${articles.length ? `<ul class="sm-lignes">${apercu.map((article) => `<li class="sm-ligne${article.actif === false ? ' is-masque' : ''}">
+      ${articles.length ? `<ul class="sm-lignes">${articles.map((article) => `<li class="sm-ligne${article.actif === false ? ' is-masque' : ''}">
         <span class="sm-nom">${esc(article.nom)}${article.actif === false ? ' <span class="pv2-chip">Masqué</span>' : ''}</span>
         <span class="sm-detail">${esc(detailsArticle(article))}</span>
         <span class="sm-prix">${article.prix > 0 ? esc(prixLu(article.prix)) : 'au comptoir'}</span>
-      </li>`).join('')}</ul>${reste > 0 ? `<p class="sm-reste">et ${reste} autre${reste > 1 ? 's' : ''} article${reste > 1 ? 's' : ''}</p>` : ''}` : '<p class="sm-reste">Aucun article.</p>'}
+      </li>`).join('')}</ul>` : '<p class="sm-reste">Aucun article.</p>'}
     </article>`;
   }
 
-  function renderSection() {
+  // `cherche` : la recherche de la page (nom d article ou de categorie).
+  function renderSection({ cherche = '' } = {}) {
     const id = centre();
     const tete = (compteur, bouton) => `<div class="pv2-section-head">
         <h3>Sur mesure</h3>${compteur ? `<span>${compteur}</span>` : ''}${bouton}
-        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Reserver propose ces articles et le serveur reprend leur prix ; un article à 0 € se chiffre au comptoir.</span>
+        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Vos clients ne le voient jamais : ni le formulaire, ni les mails. L’équipe l’ajoute au comptoir (Réserver) ; il apparaît sur le planning et la fiche. Le serveur reprend son prix ; un article à 0 € se chiffre au comptoir.</span>
       </div>`;
     if (!peutGerer()) {
       return `<section class="pv2-catalog-section sm-section">${tete('', '')}<p class="sm-note">Le catalogue sur mesure se gère avec le droit Tarifs.</p></section>`;
@@ -133,8 +135,20 @@
     return `<section class="pv2-catalog-section sm-section" id="smSection">
       ${tete(compteur, '<button type="button" class="pv2-btn sm-ouvrir" data-sm-action="ouvrir" data-sm-focus="ouvrir">Modifier le catalogue</button>')}
       ${lecture.parDefaut ? '<p class="sm-note">Catalogue de départ proposé par Pinlane, prix à saisir au comptoir. Ajustez-le puis enregistrez : il devient celui de votre centre.</p>' : ''}
-      <div class="sm-cats">${categories.map((categorie) => vueCategorie(categorie, articles.filter((article) => article.categorie === categorie.id))).join('')}</div>
+      ${menu(categories, articles, cherche)}
     </section>`;
+  }
+
+  // La carte, filtree par la recherche : une categorie dont le NOM correspond
+  // garde tous ses articles, sinon seuls ceux qui correspondent restent.
+  function menu(categories, articles, cherche) {
+    const q = plier(cherche);
+    const vues = categories.map((categorie) => {
+      const siens = articles.filter((article) => article.categorie === categorie.id);
+      return [categorie, !q || plier(categorie.nom).includes(q) ? siens : siens.filter((article) => plier(article.nom).includes(q))];
+    }).filter(([, siens]) => !q || siens.length);
+    if (!vues.length) return `<p class="sm-note">Aucun article ne correspond à « ${esc(String(cherche).trim())} ».</p>`;
+    return `<div class="sm-cats">${vues.map(([categorie, siens]) => vueCategorie(categorie, siens)).join('')}</div>`;
   }
 
   // -------------------------------------------------------------------------

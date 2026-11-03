@@ -173,7 +173,7 @@ async function contrePreuve(nom, mutation, attendu) {
       { fichier: 'api/staff-reservations.js', de: '    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));', vers: '    lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));' },
       /\[2\] une seule lecture/);
     await contrePreuve('l arene occupee ne ferme plus l heure',
-      { fichier: 'lib/reserver-simulation.js', de: "  if (bloquant) return { statut: 'ko', raison: String(bloquant.message || 'Pas de plan possible à cette heure.') };", vers: '' },
+      { fichier: 'lib/reserver-simulation.js', de: '  if (bloquant) return refusDHeure(bloquant.message, [bloquant, ...duMoteur]);', vers: '' },
       /\[2\] 15:00 ferme par l arene/);
     await contrePreuve('la variante remplace aussi le nombre de joueurs',
       { fichier: 'lib/reserver-simulation.js', de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'pax'];" },

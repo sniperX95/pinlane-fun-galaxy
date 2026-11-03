@@ -27,7 +27,10 @@
 //        17:00 : aucune sortie (« Prendre HH:MM », les seances) ni aucune heure
 //        libre avant 15:00 (15:00 reste proposable) ; une heure deja passee se
 //        dit « passée » a qui a le droit « Modifier une date passée » (« Plus
-//        tôt » sur la page Autres), elle n existe pas pour les autres.
+//        tôt » sur la page Autres), elle n existe pas pour les autres. 15:30
+//        coince : au niveau forcer (Manager), la toucher la prend « à placer » et
+//        « Revenir à l heure proche » rend le refus ; sans lui (Staff bar), la
+//        toucher ne la prend pas, et 15:30 tapee a la barre donne le meme refus.
 //   [D3] UNE FORMULE EN VACANCES SE RESERVE AU COMPTOIR. F4 pour 10 un jour de
 //        vacances : un vrai plan (pistes et arene posees), la vraie raison dite
 //        avant le clic et notee sur le dossier, jamais « Pas de plan possible » ;
@@ -559,15 +562,34 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
       v('D2', passeesDuJour.length === 0 && !autres.plusTot, 'sans ce droit, la page « Autres » commence au creneau en cours (pas de « Plus tôt »)', JSON.stringify({ premieres: autres.heures.slice(0, 2).map((x) => x.h), plusTot: autres.plusTot }));
     }
     await capture(page, `D2-autres-${role}`, '.rs-heures');
+    // 15:30 coince (2026-11-03) : au niveau forcer, la toucher la prend « à placer », et
+    // « Revenir à l heure proche » rend le refus et ses sorties ; sans lui, la toucher ne la
+    // prend pas, et l heure tapee a la barre donne le meme refus.
     await page.click('#quickBookOverlay .rs-heures .rs-h[data-heure="15:30"]');
+    if (role === 'manager') {
+      await page.waitForSelector('#rvAPlacer', { timeout: 6000 }).catch(() => {});
+      const prise = await page.evaluate(() => ({ heure: quickBookState.startTime, forcer: Boolean(quickBookState.forcer), aPlacer: Boolean(document.getElementById('rvAPlacer')) }));
+      v('D2', prise.heure === '15:30' && prise.forcer && prise.aPlacer, 'au niveau forcer, toucher 15:30 qui coince la prend « à placer »', JSON.stringify(prise));
+      await page.click('#rvForcer');
+    } else {
+      await page.waitForTimeout(300);
+      const gardee = await page.evaluate(() => ({ heure: quickBookState.startTime, forcer: Boolean(quickBookState.forcer) }));
+      v('D2', gardee.heure !== '15:30' && !gardee.forcer, 'sans le niveau forcer, toucher 15:30 qui coince ne la prend pas', JSON.stringify(gardee));
+      await page.click('#rsRetour');
+      await page.waitForSelector('#quickBookOverlay .is-q-activites', { timeout: 6000 });
+      await page.keyboard.press('4');
+      await page.locator('#rsBarre').fill('4 bowling 15h30');
+      await page.locator('#rsBarre').evaluate((champ) => champ.blur());
+    }
     const refuse = await planPose(page, false);
     await candidatsPoses(page);
     await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.proche); }, null, { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(300);
-    // Les sorties : « Prendre HH:MM » sur Créer, et les seances qui tiennent.
+    // Les sorties : « Prendre HH:MM » sur Créer, et les seances qui tiennent (une heure qui
+    // coince reste a sa place, elle n est pas une sortie).
     const sorties = await page.evaluate(() => ({
       proche: (document.getElementById('rvCreer') || { dataset: {} }).dataset.proche || '',
-      seances: [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]:not(.is-on)')].map((b) => b.dataset.heure),
+      seances: [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]:not(.is-on):not(.is-coince):not(.is-efface)')].map((b) => b.dataset.heure),
     }));
     const heuresSorties = [sorties.proche, ...sorties.seances].filter(Boolean);
     v('D2', refuse && Boolean(sorties.proche) && heuresSorties.length > 0, 'MONTAGE : 15:30 refuse (pistes prises), des sorties proposees', `refus ${refuse}, ${JSON.stringify(sorties)}`);
@@ -1181,7 +1203,7 @@ const MUTATIONS = [
   { nom: 'billet-etroit', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv.rs { --rs-gouttiere: 20px; --rs-ticket: 316px; }', '  .qb-modal.rv.rs { --rs-gouttiere: 20px; --rs-ticket: 180px; }')] },
   { nom: 'pied-par-dessus', cote: 'front', vise: ['D9'], edits: [e(CSS, '  .qb-modal.rv.rs .rs-tk-p { grid-row: 4; display: grid;', '  .qb-modal.rv.rs .rs-tk-p { grid-row: 2; align-self: end; z-index: 3; display: grid;')] },
   // D10
-  { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.` }];', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.` }];')] },
+  { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.`,', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.`,')] },
   { nom: 'laser-jargon', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', '            ? `Laser à ${heureLaser} : ${places}, il en faut ${groupe}. Décalez le départ.`', '            ? `Laser charge a ${heureLaser}: ${players}/${weaponCount} joueurs et ${launchCount}/${parallelLaunches} lancement(s).`')] },
   // (le mot sous une seance, rsMotHeure : le creneau en cours, puis les pistes libres)
   { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "    if (timeToNum(heure) === rvPlancherDuJour(s.date)) return 'maintenant';\n", '')] },

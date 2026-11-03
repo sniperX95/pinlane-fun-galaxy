@@ -339,6 +339,7 @@
     "test:planning-frame",
     "test:planning-global",
     "test:grand-tableau",
+    "test:planning-barre",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

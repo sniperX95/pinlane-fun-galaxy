@@ -11417,7 +11417,11 @@
 
     const ranking = state.staffPricingSort || 'default';
     const canManage = cevCanManage();
-    const sections = pricingSectionsHtml(rows, { selected, ranking, canManage });
+    // LE SUR MESURE A SON ONGLET (2026-11-03, assets/pinlane-sur-mesure-settings.js) :
+    // le catalogue de ce que l equipe ajoute a un dossier, a cote des offres.
+    const surMesure = window.PinlaneSurMesureSettings || null;
+    const ongletSurMesure = Boolean(surMesure) && filter === 'surmesure';
+    const sections = ongletSurMesure ? surMesure.renderSection() : pricingSectionsHtml(rows, { selected, ranking, canManage });
     // Catalogue vivant en panne = on le DIT (la page montre alors le socle
     // fige) et on offre le retry, jamais un fallback silencieux.
     const catalogAlert = pricingEditor.error
@@ -11468,22 +11472,24 @@
           count: family.count,
           active: filter === `family:${family.key}`,
         })),
+        ...(surMesure ? [{ key: 'surmesure', label: 'Sur mesure', count: surMesure.compte(), active: ongletSurMesure }] : []),
       ], 'pv2PricingFilter')}
 
-      <div class="pv2-quicksorts">
+      ${ongletSurMesure ? '' : `<div class="pv2-quicksorts">
         <span>Classement</span>
         ${[['demand', 'Plus demandées'], ['revenue', 'Top chiffre'], ['players', 'Top joueurs'], ['basket', 'Panier moyen']]
           .map(([key, label]) => `<button type="button" class="pv2-chip-btn${ranking === key ? ' active' : ''}" onclick="setStaffPricingSort('${key}')">${label}</button>`).join('')}
         ${ranking !== 'default' ? '<button type="button" class="pv2-chip-btn" onclick="setStaffPricingSort(state.staffPricingSort)">Ordre catalogue</button>' : ''}
-      </div>
+      </div>`}
 
-      ${catalogAlert}
+      ${ongletSurMesure ? '' : catalogAlert}
       ${sections}
     </div>`;
     mount(root, 'pricing');
     pevSyncModal();
     cevSyncModal();
     aevSyncModal();
+    if (surMesure) surMesure.monter();
   };
 
   /* ==========================================================================

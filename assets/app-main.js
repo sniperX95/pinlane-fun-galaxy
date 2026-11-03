@@ -2079,23 +2079,34 @@ function envoyerModificationReservation(avant, appliquer, overrides = {}) {
     const apres = appliquer(base);
     // Des options qui dependent du dossier (le nombre de pistes d une partie
     // laser) se recalculent sur la version envoyee, pas sur celle d avant.
-    const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides);
-    // La fiche et Modifier n ont pas encore de champ pour la raison d un prix :
-    // la leur part d office, et le serveur ne la lit que s il y a un ecart.
-    const envoyer = (version, reservation) => apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        ...buildReservationApiPayload(reservation, optionsPour(reservation)),
-        prixRaison: RAISON_PRIX_PAR_DEFAUT,
+    const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides) || {};
+    // LE PRIX QUI SUIT (2026-11-03, `prixSuivi`) : personne n a tape de prix, il
+    // suit le contenu qu on vient de changer. Ni lui ni sa raison ne partent :
+    // le serveur le pose sur sa reference (prixQuiSuit, lib/droits-reservation).
+    // L estimation de l ecran qui ne tombait pas pile sur la base du moteur
+    // s ecrivait en « Prix revu au comptoir », et un role plafonne etait refuse.
+    // Un prix tape part, avec la raison d office : la fiche et Modifier n ont pas
+    // encore de champ pour elle, et le serveur ne la lit que s il y a un ecart.
+    const prixSuivi = optionsPour(apres).prixSuivi === true;
+    const envoyer = (version, reservation) => {
+      const options = { ...optionsPour(reservation) };
+      delete options.prixSuivi;
+      const corps = {
+        ...buildReservationApiPayload(reservation, options),
+        ...(prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),
         ...(version ? { baseUpdatedAt: version } : {})
-      })
-    });
+      };
+      if (prixSuivi) delete corps.price;
+      return apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify(corps) });
+    };
     try {
       return await envoyer(base.updatedAt, apres);
     } catch (error) {
       const courante = error && error.status === 409 && error.payload ? error.payload.reservation : null;
       if (!courante) throw error;
-      const miens = champsReservationModifies(base, apres);
+      // Un prix qui suit n est pas impose : le serveur le repose sur la version
+      // courante, ajustement d un collegue compris.
+      const miens = champsReservationModifies(base, apres).filter((champ) => !(prixSuivi && champ === 'price'));
       const leurs = champsReservationModifies(base, courante);
       const rejouee = appliquer(courante);
       // Dispute : l action pose la MEME valeur quelle que soit la version (elle
@@ -3141,7 +3152,9 @@ function soulignerCeQuiABouge(ids) {
 }
 function getFicheFaitsSignature() {
   const r = state.selectedRes;
-  return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label]) : '';
+  // La derniere modification se lit dans l en-tete : un changement fait sur un
+  // autre poste la redessine, meme quand rien d autre de la signature ne bouge.
+  return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label, texteDerniereModif(r, { max: 3 })]) : '';
 }
 function repeindreFicheSiChangee() {
   const overlay = document.getElementById('posOverlay');
@@ -3777,7 +3790,7 @@ state.staffReservationsMonth = /^\d{4}-\d{2}$/.test(state.staffReservationsMonth
 state.staffReservationActivityFilter = ['all', 'bowling', 'laser', 'complete', 'event'].includes(state.staffReservationActivityFilter) ? state.staffReservationActivityFilter : 'all';
 state.staffReservationsSelectedDate = state.staffReservationsSelectedDate || state.currentDate || todayStr();
 state.staffReservationsPreset = ['today', 'month'].includes(state.staffReservationsPreset) ? state.staffReservationsPreset : 'month';
-state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special'].includes(state.staffPricingFilter)
+state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special', 'surmesure'].includes(state.staffPricingFilter)
   || /^family:.+/.test(String(state.staffPricingFilter || '')))
   ? state.staffPricingFilter : 'all';
 state.staffPricingQuery = state.staffPricingQuery || '';
@@ -22682,6 +22695,35 @@ function formatNoteEquipeQuand(le) {
   return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} · ${heure}`;
 }
 
+// ---- LA DERNIERE MODIFICATION D UN DOSSIER, EN UNE LIGNE (2026-11-03) ------
+// « Modifié 14:20, Julie : 12 → 14 joueurs ». Le serveur l ecrit avec le dossier
+// au moment ou ce qui se vend change (opsPlan.derniereModif,
+// lib/historique-dossier.js) : le staff-state la porte deja, rien a relire.
+// Partagee : la fiche l affiche sous ses faits, les cartes des plannings la
+// liront telle quelle. Texte brut (a echapper), '' pour un dossier jamais modifie
+// depuis sa creation. `max` : combien de changements dire, le reste se compte.
+function quandDerniereModif(le) {
+  const d = new Date(le);
+  if (!le || Number.isNaN(d.getTime())) return '';
+  const jourDe = (date) => date.toLocaleDateString('fr-CA', { timeZone: 'Europe/Brussels' });
+  const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+  const maintenant = new Date();
+  if (jourDe(d) === jourDe(maintenant)) return heure;
+  if (jourDe(d) === jourDe(new Date(maintenant.getTime() - 86400000))) return `hier ${heure}`;
+  return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} ${heure}`;
+}
+
+function texteDerniereModif(r, { max = 2 } = {}) {
+  const d = r && r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan.derniereModif : null;
+  const quoi = d && Array.isArray(d.quoi) ? d.quoi.filter(t => typeof t === 'string' && t.trim()) : [];
+  if (!quoi.length) return '';
+  const dits = quoi.slice(0, Math.max(1, Number(max) || 1));
+  const reste = quoi.length - dits.length;
+  const quand = quandDerniereModif(d.le);
+  const qui = typeof d.par === 'string' ? d.par.trim() : '';
+  return `Modifié${quand ? ` ${quand}` : ''}${qui ? `, ${qui}` : ''} : ${dits.join(' · ')}${reste > 0 ? ` · +${reste}` : ''}`;
+}
+
 // ---- LE PRIX AJUSTE : UNE SEULE REGLE, LUE PAR TOUS LES ECRANS ------------
 // Movsar, 2026-09-03 : « si on affichait le prix modifie de cette facon ca
 // serait plus visible ». Le defaut n etait pas une pastille manquante sur un
@@ -25878,6 +25920,7 @@ function renderGroupeEncaisseAbsence(r) {
           <label>Montant encaissé<input type="number" id="encaisse-montant-${r.id}" min="0" step="0.01" inputmode="decimal" value="${montant}"></label>
           <label>Pourquoi il diffère<input type="text" id="encaisse-raison-${r.id}" maxlength="200" placeholder="Remise, geste, joueur en moins…" value="${escapeHtml(r.discountReason || '')}"></label>
           <button type="button" class="gc-btn is-primary" onclick="noterEncaisse(${r.id}, event)">Enregistrer</button>
+          ${typeof niveauStaff === 'function' && niveauStaff('prix') === 'non' ? '<p class="pos-encaisse-note">Encaisser moins que le prix demande le droit d’ajuster un prix : votre rôle note le prix ou un montant au-dessus.</p>' : ''}
         </div>
       </details>
     </div>`;
@@ -26516,6 +26559,9 @@ function editRes(id, ev) {
 function openPos(id) {
   posPriceEditOpen = false;
   plisRetardOuverts.clear();
+  // L historique repart ferme, et relu a sa prochaine ouverture.
+  historiquesOuverts.clear();
+  historiquesLus.clear();
   editContactOuvert = false;
   const reservation = findStaffReservationById(id);
   if (!reservation) {
@@ -27141,9 +27187,95 @@ function renderPosDetails(r) {
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
         ${enRetard ? '' : pli}
+        ${renderGroupeHistorique(r)}
       </aside>
     </div>
   </div>`;
+}
+
+// L HISTORIQUE DU DOSSIER (2026-11-03) : qui a fait quoi et quand, en phrases
+// simples, lu dans le journal du serveur (GET staff-reservations?historique,
+// lib/historique-dossier.js) a l ouverture du pli, jamais avant. Le niveau
+// « historique » du role l ouvre ; sans lui, rien ne s affiche et le serveur
+// refuse de toute facon. Le pli garde son etat d un rendu a l autre (le releve
+// redessine la fiche) ; un dossier modifie pendant qu il est ouvert se relit.
+// Une lecture en panne attend « Réessayer » : elle ne se relance pas a chaque rendu.
+const historiquesOuverts = new Set();
+const historiquesLus = new Map();
+function versionHistorique(r) {
+  return String((r && r.updatedAt) || '');
+}
+function corpsHistoriqueHtml(id) {
+  const lu = historiquesLus.get(id);
+  // Une relecture garde la liste deja lue a l ecran jusqu a la reponse.
+  if (!lu || (lu.etat === 'charge' && !lu.entrees.length)) return '<p class="fx-histo-etat" role="status">Chargement de l’historique…</p>';
+  if (lu.etat === 'erreur') {
+    return `<div class="fx-histo-panne" role="alert"><p>${escapeHtml(lu.message || 'Historique indisponible.')}</p>${lu.refus ? '' : `<button type="button" class="gc-btn" data-pl-focus="fiche.histo.relire.${id}" onclick="relireHistoriqueDossier(${id}, event)">Réessayer</button>`}</div>`;
+  }
+  if (!lu.entrees.length) return '<p class="fx-histo-etat">Aucune modification enregistrée pour ce dossier.</p>';
+  return `<ol class="fx-histo">${lu.entrees.map(e => `<li class="fx-histo-entree">
+      <p class="fx-histo-meta"><time datetime="${escapeHtml(e.le)}">${escapeHtml(formatNoteEquipeQuand(e.le))}</time><span>${escapeHtml(e.par)}</span></p>
+      <ul class="fx-histo-quoi">${(e.quoi || []).map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+    </li>`).join('')}</ol>`;
+}
+function peindreHistorique(id) {
+  const corps = document.querySelector(`[data-fx-histo="${Number(id)}"] .fx-histo-corps`);
+  if (corps) corps.innerHTML = corpsHistoriqueHtml(Number(id));
+}
+async function chargerHistoriqueDossier(r) {
+  const id = Number(r && r.id);
+  if (!Number.isFinite(id)) return;
+  const version = versionHistorique(r);
+  const deja = historiquesLus.get(id);
+  if (deja && (deja.etat === 'charge' || deja.etat === 'erreur' || (deja.etat === 'ok' && deja.version === version))) return;
+  const ticket = {};
+  historiquesLus.set(id, { etat: 'charge', version, entrees: deja && deja.entrees ? deja.entrees : [], ticket });
+  if (!deja || deja.etat !== 'ok') peindreHistorique(id);
+  const centre = r.centerId || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
+  try {
+    const reponse = await apiRequest(`${API_ENDPOINTS.staffReservations}?historique=${encodeURIComponent(id)}&centerId=${encodeURIComponent(centre)}`);
+    if (historiquesLus.get(id)?.ticket !== ticket) return;
+    historiquesLus.set(id, { etat: 'ok', version, entrees: Array.isArray(reponse?.historique) ? reponse.historique : [] });
+  } catch (error) {
+    if (historiquesLus.get(id)?.ticket !== ticket) return;
+    const refus = error?.payload?.code === 'historique_refuse';
+    historiquesLus.set(id, { etat: 'erreur', version, entrees: [], refus, message: refus ? error.message : `Historique indisponible : ${error?.message || 'le serveur ne répond pas.'}` });
+  }
+  peindreHistorique(id);
+}
+function relireHistoriqueDossier(id, ev) {
+  if (ev) ev.stopPropagation();
+  const r = findStaffReservationById(Number(id)) || state.selectedRes;
+  historiquesLus.delete(Number(id));
+  if (r) chargerHistoriqueDossier(r);
+}
+// Un pli recree ouvert par le rendu declenche aussi « toggle » : seul un
+// changement d etat est un geste.
+function basculerHistorique(id, ouvert) {
+  const cle = Number(id);
+  if (ouvert === historiquesOuverts.has(cle)) return;
+  if (!ouvert) { historiquesOuverts.delete(cle); return; }
+  historiquesOuverts.add(cle);
+  const r = findStaffReservationById(cle) || (state.selectedRes && Number(state.selectedRes.id) === cle ? state.selectedRes : null);
+  if (r) chargerHistoriqueDossier(r);
+}
+function renderGroupeHistorique(r) {
+  if (!r || typeof niveauStaff !== 'function' || niveauStaff('historique') !== 'oui') return '';
+  const id = Number(r.id);
+  if (!Number.isFinite(id)) return '';
+  const ouvert = historiquesOuverts.has(id);
+  // Ouvert sur un dossier qui a change depuis la lecture : il se relit.
+  if (ouvert) {
+    const lu = historiquesLus.get(id);
+    if (lu && lu.etat === 'ok' && lu.version !== versionHistorique(r)) Promise.resolve().then(() => chargerHistoriqueDossier(r));
+  }
+  return `<details class="info-block pos-fold fx-pli fx-historique" data-fx-histo="${id}"${ouvert ? ' open' : ''} ontoggle="basculerHistorique(${id}, this.open)">
+      <summary class="pos-group-head" data-pl-focus="fiche.histo.${id}">
+        <span class="fx-titre">Historique</span>
+        <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <div class="fx-histo-corps" aria-live="polite">${ouvert ? corpsHistoriqueHtml(id) : ''}</div>
+    </details>`;
 }
 
 // LE BLOC NOTES DE LA FICHE : le mot ecrit avec la reservation, en grand,
@@ -28665,13 +28797,24 @@ function majEditPrixEstime() {
 // SEULEMENT SI L ESTIMATION CHIFFRE AU MOINS UNE LIGNE (un « 0 EUR » partiel
 // ferait facturer zero). Sinon le prix du dossier, plus ou moins ce que les
 // extras ont bouge : un prix d ami survit a ses extras (avecSupplements).
+// L AJUSTEMENT EN PLACE SURVIT AUSSI AU NOUVEAU TARIF (2026-11-03) : c est le
+// prix que le serveur pose quand le contenu change sans prix tape
+// (prixQuiSuit) ; le champ annonce celui-la, jamais sous zero.
 function prixSuiviEdition(estime) {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return 0;
-  if (estime && estime.utilisable && editionChangeLePrix()) return estime.total;
+  if (estime && estime.utilisable && editionChangeLePrix()) return Math.max(0, Math.round((estime.total + ajustementGarde(r)) * 100) / 100);
   const ecartExtras = editExtrasAChange() ? sumExtras(extrasCourantsEdition()) - sumExtras(r.extras || []) : 0;
   return Math.round(((Number(r.price) || 0) + ecartExtras) * 100) / 100;
+}
+
+// L ecart du dossier sur sa reference ECRITE (base + extras), celui que le
+// serveur garde (prixQuiSuit) : sans base ecrite, rien ne dit ce qui etait
+// ajuste, aucun ecart ne se reporte.
+function ajustementGarde(r) {
+  const etat = getReservationPriceState(r);
+  return etat.aReference ? etat.ecart : 0;
 }
 
 // La phrase sous le prix (textePrixEdition) et « Recalculer » suivent la
@@ -28689,7 +28832,7 @@ function getEditPriceValue() {
   const e=state.editState;
   if (e && !e.prixFige && editionChangeLePrix() && (getEditProgramItems() || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId)) {
     const quote=getEditPrixEstime();
-    if (quote?.utilisable && quote.complet) return quote.total;
+    if (quote?.utilisable && quote.complet) return prixSuiviEdition(quote);
   }
   const brut = String((state.editState && state.editState.price) ?? '').trim().replace(',', '.');
   if (brut === '') return null;
@@ -28947,7 +29090,13 @@ function textePrixEdition(r, estime = getEditPrixEstime()) {
   const phrase = (texte) => [texte, surPlace].filter(Boolean).join(' ');
   if (e.prixFige) return phrase(`Prix fixé à la main${estime && estime.utilisable ? `, tarif ${formatMoneyCentimes(estime.total)}` : ''}.`);
   if (estime && estime.utilisable && editionChangeLePrix()) {
-    return Math.round(estime.total * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
+    if (Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100)) return surPlace;
+    // L ajustement garde se dit : sans lui, le champ et le detail du calcul ne
+    // tomberaient pas sur le meme montant.
+    const ajustement = Math.round(ajustementGarde(r) * 100) / 100;
+    return phrase(ajustement
+      ? `Nouveau tarif ${formatMoneyCentimes(estime.total)}, ajustement de ${formatMoneyCentimes(ajustement)} gardé, avant ${formatMoneyCentimes(r.price)}.`
+      : `Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
   }
   if (editExtrasAChange()) {
     return Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau total, avant ${formatMoneyCentimes(r.price)}.`);
@@ -29708,15 +29857,20 @@ function preparerModificationEdition() {
     libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (dossierFormule.label || 'Sur mesure');
   }
   const nouvelleFormule = formuleChangee ? resolveDisplayFormule(es.formuleId) : null;
-  // CE QU ON AFFICHE EST CE QU ON ENVOIE.
-  // Sur un PATCH, le serveur ne recalcule PAS le prix : api/staff-reservations
-  // ne passe pas par normalizeReservationRequest (reserve au POST), et le
-  // montant ecrit est celui du corps. Ne pas envoyer de prix laisserait donc
-  // l ANCIEN montant en base pendant que l ecran en annonce un autre : la
-  // caisse et la fiche se contrediraient. Le comptoir est ici la seule
-  // autorite : il envoie exactement le montant qu il a sous les yeux, qu il
-  // l ait fige a la main ou laisse se calculer.
+  // CE QU ON AFFICHE EST CE QUI S ECRIT. Un prix tape, ou celui que le dossier
+  // garde (un nom, une heure, des extras), part tel quel : le serveur ecrit le
+  // montant du corps. Sans lui, l ANCIEN montant resterait en base pendant que
+  // l ecran en annonce un autre.
   const prixEcran = peutAdapterFormule() ? getEditPriceValue() : null;
+  // LE PRIX QUI SUIT (2026-11-03) : le champ suit l estimation parce que le
+  // contenu a change (les joueurs, une activite, la formule) et personne ne l a
+  // tape (prixSuiviEdition). Il ne part pas : le serveur le pose sur sa
+  // reference, l ajustement en place garde, comme le champ l annonce
+  // (prixQuiSuit, lib/droits-reservation). Un horaire d arcades deplace seul
+  // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
+  const estimeEcran = getEditPrixEstime();
+  const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
+    && (formuleChangee || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
@@ -29772,7 +29926,7 @@ function preparerModificationEdition() {
     if (prixEcran !== null) updated.price = prixEcran;
     return updated;
   };
-  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches };
+  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi };
 }
 
 async function saveEdit(e) {
@@ -29780,7 +29934,7 @@ async function saveEdit(e) {
   if (dossierLaserSaving) return;
   const envoi = preparerModificationEdition();
   if (envoi.erreur) { failEdit(envoi.erreur); return; }
-  const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches } = envoi;
+  const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi } = envoi;
   const previousReservation = state.selectedRes;
   if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length) {
     const delta = timeToNum(es.startTime) - timeToNum(origine.startTime);
@@ -29808,7 +29962,7 @@ async function saveEdit(e) {
     // client venait de cesser de l'ecraser. Sans override, le calcul par
     // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
     // max(pistes envoyees, minimum requis).
-    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, allowPastStart: true });
+    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, prixSuivi, allowPastStart: true });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
     setEditError('');
@@ -30082,7 +30236,7 @@ async function enregistrerCompteArrivee() {
   applyOptimisticReservation(envoi.appliquer(r), { preserveEditState: true });
   try {
     // (les options de saveEdit, plus le drapeau qui fait ecrire la note)
-    const payload = await envoyerModificationReservation(envoi.versionDeBase, envoi.appliquer, { requiresLanes: envoi.requiresLanes, allowPastStart: true, compteArrivee: true });
+    const payload = await envoyerModificationReservation(envoi.versionDeBase, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, allowPastStart: true, compteArrivee: true });
     const fait = payload && payload.reservation;
     // Seul le dossier ecrit fait foi : un serveur qui rend un autre nombre n a
     // pas enregistre ce compte.
@@ -31108,6 +31262,12 @@ async function chargerCatalogueSurMesure() {
     }
   })();
   return course.promesse;
+}
+// Le gerant vient d enregistrer le catalogue (Activites & tarifs,
+// assets/pinlane-sur-mesure-settings.js) : le prochain appel le relit.
+function oublierCatalogueSurMesure() {
+  catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
+  catalogueSurMesureEnCours = null;
 }
 function quickExtrasEtat() {
   if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
@@ -36137,6 +36297,8 @@ function renderPosInner() {
   // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
   // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
   const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
+  // Qui a change quoi en dernier, sans ouvrir l historique (texteDerniereModif).
+  const derniereModif = texteDerniereModif(r, { max: 3 });
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
@@ -36162,6 +36324,7 @@ function renderPosInner() {
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
           <p class="fx-chiffres">${chiffres}</p>
           <p class="dossier-facts">${facts}</p>
+          ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
           ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
             ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
             : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}

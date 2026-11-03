@@ -9003,6 +9003,85 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .pev-grid2 { grid-template-columns: 1fr; }
 }
 
+/* --- LE CATALOGUE SUR MESURE (2026-11-03, assets/pinlane-sur-mesure-settings.js)
+   L onglet « Sur mesure » de Tarifs & formules : une carte par categorie, puis
+   la fenetre qui les gere. Neutre, la couleur reste au statut ; 32 px a la
+   souris, 44 px au doigt ; rien sous 12 px ; les prix en chiffres tabulaires. */
+.sm-section .pv2-section-head .sm-ouvrir { margin-left: auto; }
+.sm-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.sm-panne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: var(--danger); }
+.sm-panne p { margin: 0; }
+.sm-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); align-items: start; }
+.sm-cat { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.sm-cat.is-masquee { background: var(--subtle); }
+.sm-cat-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.sm-cat-tete strong { font-size: 14px; font-weight: 600; color: var(--text); }
+.sm-compte { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sm-lignes { display: grid; margin: 0; padding: 0; list-style: none; }
+.sm-ligne { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.4; }
+.sm-nom { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.sm-detail { grid-column: 1; font-size: 12px; color: var(--muted); }
+.sm-prix { grid-column: 2; grid-row: 1; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sm-ligne.is-masque .sm-nom, .sm-ligne.is-masque .sm-prix { color: var(--muted); }
+.sm-reste { margin: 0; font-size: 12px; color: var(--muted); }
+
+.sm-modal { max-width: 940px; max-height: min(90vh, 860px); }
+.sm-modal .pev-close { width: 32px; height: 32px; }
+.sm-corps { gap: var(--space-3); }
+.sm-legende { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.sm-ed-cat { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.sm-ed-cat.is-masquee { background: var(--subtle); }
+.sm-ed-cat-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sm-ed-cat-tete .sm-ed-cat-nom { flex: 1 1 220px; width: auto; font-weight: 600; }
+.sm-input { box-sizing: border-box; width: 100%; min-height: 32px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.sm-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sm-input[aria-invalid="true"] { border-color: var(--danger); }
+.sm-bascule { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 13px; color: var(--text); cursor: pointer; }
+.sm-bascule input, .sm-case input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.sm-ordre { display: inline-flex; gap: 4px; }
+.sm-mini { min-width: 32px; min-height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.sm-mini:hover:not(:disabled) { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+.sm-mini:disabled { opacity: 0.45; cursor: default; }
+.sm-mini:focus-visible, .sm-plier:focus-visible, .sm-case input:focus-visible, .sm-bascule input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sm-retirer { color: var(--danger); }
+.sm-plier { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; margin-left: auto; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: none; color: var(--muted); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.sm-plier:hover { color: var(--text); background: var(--subtle); }
+.sm-plier svg { transition: transform var(--dur) var(--ease); }
+.sm-plier[aria-expanded="true"] svg { transform: rotate(180deg); }
+.sm-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.sm-table th { padding: 0 6px 6px; font-size: 12px; font-weight: 500; color: var(--muted); text-align: left; }
+.sm-table th:nth-child(2) { width: 112px; }
+.sm-table th:nth-child(3) { width: 132px; }
+.sm-table th:nth-child(4), .sm-table th:nth-child(5) { width: 72px; text-align: center; }
+.sm-table th:nth-child(6) { width: 156px; }
+.sm-table td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+.sm-ed-case { text-align: center; }
+.sm-case { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 32px; min-height: 32px; cursor: pointer; }
+.sm-case-mot { display: none; font-size: 13px; color: var(--text); }
+.sm-euro { display: flex; align-items: center; gap: 6px; }
+.sm-euro .sm-input { text-align: right; font-variant-numeric: tabular-nums; }
+.sm-euro span { color: var(--muted); }
+.sm-ed-ordre { white-space: nowrap; }
+.sm-ed-art.is-masque .sm-input { color: var(--muted); }
+.sm-ajouter { justify-self: start; }
+.sm-pied { flex-wrap: wrap; }
+.sm-pied-note { margin: 0 auto 0 0; font-size: 12px; color: var(--muted); }
+.sm-erreur { flex: 1 1 260px; margin: 0 auto 0 0; padding: 8px 10px; border-radius: var(--radius-md); background: var(--danger-soft); color: var(--danger); font-size: 13px; line-height: 1.4; }
+@media (pointer: coarse) {
+  .sm-input, .sm-bascule, .sm-case, .sm-plier, .sm-section .pv2-btn, .sm-modal .pv2-btn { min-height: 44px; }
+  .sm-mini { min-width: 44px; min-height: 44px; }
+  .sm-modal .pev-close { width: 44px; height: 44px; }
+}
+@media (max-width: 720px) {
+  .sm-table thead { display: none; }
+  .sm-table, .sm-table tbody, .sm-table tr, .sm-table td { display: block; }
+  .sm-table .sm-ed-art { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .sm-table td { padding: 0; border-top: 0; }
+  .sm-table .sm-ed-nom, .sm-table .sm-ed-ordre { grid-column: 1 / -1; }
+  .sm-ed-case { text-align: left; }
+  .sm-case-mot { display: inline; }
+}
+
 /* L'ancienne page portait DEUX listes paralleles (cartes figees + lignes
    « Catalogue partage ») avec leurs bandeaux de portee : fusionnees en une
    carte par offre (pv2-price-card, sections pv2-catalog-section). Ne survit
@@ -20490,6 +20569,26 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 .pos-encaisse-form { display: grid; grid-template-columns: minmax(110px, 140px) minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-top: 8px; }
 .pos-encaisse-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--faint); min-width: 0; }
 .pos-encaisse-form input { font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); min-width: 0; }
+/* Le role qui n ajuste pas un prix le lit avant d essayer (2026-11-03). */
+.pos-encaisse-note { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+/* --- LA DERNIERE MODIFICATION ET L HISTORIQUE DU DOSSIER (2026-11-03) : une
+   ligne sous les faits de l en-tete, puis un pli ferme dans la colonne de cote.
+   Neutre : la couleur reste au statut ; les heures en chiffres tabulaires. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-modif { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fx-historique > summary { min-height: 32px; }
+.fx-histo-corps { margin-top: 10px; }
+.fx-histo-corps:empty { display: none; }
+.fx-histo { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.fx-histo-entree { display: grid; gap: 2px; padding-left: 10px; border-left: 2px solid var(--line); }
+.fx-histo-meta { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fx-histo-meta span { font-weight: 600; color: var(--text); }
+.fx-histo-quoi { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.45; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fx-histo-etat { margin: 0; font-size: 13px; color: var(--muted); }
+.fx-histo-panne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: var(--danger); }
+.fx-histo-panne p { margin: 0; }
+.fx-histo-panne .gc-btn { min-height: 32px; }
+@media (pointer: coarse) { .fx-histo-panne .gc-btn, .fx-historique > summary { min-height: 44px; } }
 /* ANNULER SE VOIT DANS INFOS : un mot sous les etats, jamais a leur hauteur. La
    confirmation de cancelRes reste. */
 .fx-annuler-rang { display: flex; justify-content: flex-end; margin-top: 6px; }

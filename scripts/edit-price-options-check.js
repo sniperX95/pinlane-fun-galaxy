@@ -149,11 +149,14 @@ async function mesurer(b) {
           priceComplete: true,
         },
       },
-      // Un prix d ami : bowling 1 h et minigolf pour 6, 99 EUR au catalogue,
-      // vendu 80 au comptoir.
+      // Un prix d ami : bowling 1 h et minigolf pour 6, 99 EUR au catalogue du
+      // jour, vendu 80 au comptoir sur une reference ecrite a l ancien tarif
+      // (90 EUR). Depuis que l ajustement survit au nouveau tarif (2026-11-03,
+      // prixSuiviEdition), suivre l estimation sans rien changer ne se voit que
+      // la ou le tarif a bouge : 99 - 10 = 89 au lieu de 80.
       {
         id: 9003, name: 'PRIX AMI', phone: '+32487000002', email: 'a@x.be', date: today,
-        startTime: '15:00', duration: 1, pax: 6, price: 80, basePrice: 99,
+        startTime: '15:00', duration: 1, pax: 6, price: 80, basePrice: 90,
         type: 'bowling', label: 'Bowling · Minigolf Blacklight', lanes: [5], status: 'paid', centerId: 'libramont',
         channel: 'staff', activityProgress: {}, extras: [],
         program: {

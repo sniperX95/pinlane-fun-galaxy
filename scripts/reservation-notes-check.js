@@ -191,7 +191,7 @@ async function main() {
     // hasReservationNote neutralise -> plus aucun marqueur, plus aucune puce.
     // Fins de ligne CRLF dans le repo : la mutation se fait par regex tolerante.
     const broken = originalAppMain.replace(
-      /function hasReservationNote\(reservation\) \{\r?\n\s*return !!getReservationNoteText\(reservation\) \|\| getReservationNotesEquipe\(reservation\)\.length > 0 \|\| !!window\.PinlaneStaffNotes\?\.text\(reservation\);\r?\n\}/,
+      /function hasReservationNote\(reservation\) \{\r?\n\s*return !!getReservationNoteText\(reservation\) \|\| notesEquipeEcrites\(reservation\)\.length > 0 \|\| !!window\.PinlaneStaffNotes\?\.text\(reservation\);\r?\n\}/,
       'function hasReservationNote(reservation) { return false; }'
     );
     if (broken === originalAppMain) {

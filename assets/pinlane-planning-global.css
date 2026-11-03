@@ -466,7 +466,9 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
   .gf-gb--statut:hover { background: color-mix(in srgb, var(--bk-barre) 22%, var(--surface)); }
 }
 .gf-gb:active { transform: scale(0.97); }
-.gf-gb { transition: background-color 120ms ease, transform 120ms ease-out; }
+/* (l enfoncement seul : un fondu de couleur se rejouait quand la ligne se reecrit sous la
+   souris, refresh-invisible [3] le 2026-11-03) */
+.gf-gb { transition: transform 120ms ease-out; }
 .gf-r.t-paid .gf-gb--statut span::before { content: ''; display: inline-block; width: 5px; height: 10px; margin: -3px 7px 0 1px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); vertical-align: middle; }
 /* (le statut du dossier, coche dans la liste) */
 .staff-action-popover button.is-actuel { font-weight: 650; }

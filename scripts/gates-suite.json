@@ -17,6 +17,7 @@
     "test:public-endpoints",
     "test:embed-origins",
     "test:embed-booking",
+    "test:embed-demande",
     "test:embed-killswitch",
     "test:embed-chrome",
     "test:branding-axes",

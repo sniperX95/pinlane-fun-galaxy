@@ -16,10 +16,13 @@
  *   data-scroll-margin  marge haute au défilement, pour passer sous un en-tête fixe (défaut : 80)
  *   data-design         "fungalaxy" monte le formulaire aux couleurs du centre
  *                       (même parcours, mêmes réservations) ; absent, le parcours standard
+ *   data-start          "sur-mesure" ouvre le formulaire aux couleurs du centre directement
+ *                       sur la demande de groupe (page Événements d'un site)
  *
  * Le cadre s'adapte à la hauteur de son contenu. À chaque réservation confirmée, un
  * événement `pinlane_booking` est poussé dans le dataLayer de la page et un événement
- * DOM `pinlane:booking` est émis, sans aucune donnée personnelle.
+ * DOM `pinlane:booking` est émis, sans aucune donnée personnelle. À chaque demande de
+ * groupe envoyée, de même : `pinlane_demande` et `pinlane:demande`.
  *
  * Aucune dépendance, aucune étape de compilation.
  */
@@ -99,8 +102,12 @@
   // (fungalaxy.html, meme parcours, memes API). Sans l attribut, rien ne
   // change : c est le parcours /reserver, exactement comme avant.
   var design = (script.getAttribute('data-design') || '').toLowerCase();
+  // data-start="sur-mesure" ouvre ce formulaire directement sur la demande de
+  // groupe (la page Evenements d un site). Une seule valeur reconnue, toute
+  // autre est ignoree ; le parcours /reserver ne la connait pas.
+  var depart = (script.getAttribute('data-start') || '').toLowerCase() === 'sur-mesure' ? '&start=sur-mesure' : '';
   var target = design === 'fungalaxy'
-    ? origin + '/fungalaxy/' + encodeURIComponent(center || 'libramont') + '?embed=1'
+    ? origin + '/fungalaxy/' + encodeURIComponent(center || 'libramont') + '?embed=1' + depart
     : origin + '/reserver?embed=1' + (center ? '&center=' + encodeURIComponent(center) : '');
 
   // Conteneur d'accueil, résolu avant la création du cadre : c'est de là qu'est
@@ -317,6 +324,24 @@
     } catch (error) { /* idem pour l'analytics du site */ }
   }
 
+  // UNE DEMANDE DE GROUPE EST UN CONTACT, PAS UNE VENTE : `Lead` côté Meta et
+  // `generate_lead` côté GA4, les événements standard de cette famille. Aucun
+  // montant : l'équipe chiffre la demande après coup. data-track="datalayer"
+  // coupe ces appels comme pour la réservation.
+  function declencherDemandeSurLesOutilsDuSite(detail) {
+    if (!mesureDirecte) return;
+    try {
+      if (typeof window.fbq === 'function') {
+        window.fbq('track', 'Lead', { content_name: 'Demande de groupe', content_category: String(detail.type || '') });
+      }
+    } catch (error) { /* le pixel du site a refusé : ce n'est pas à nous de le rattraper */ }
+    try {
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'generate_lead', { lead_source: 'demande_sur_mesure', center: String(detail.center || '') });
+      }
+    } catch (error) { /* idem pour l'analytics du site */ }
+  }
+
   window.addEventListener('message', function (event) {
     // Deux contrôles : l'origine dit d'où vient le message, la source dit quel
     // cadre l'a envoyé. Sans le second, une autre iframe de la même origine
@@ -340,6 +365,16 @@
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_booking', pinlane: detail }); } catch (error) { /* dataLayer inaccessible */ }
       try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* CustomEvent indisponible */ }
       declencherLesOutilsDuSite(detail);
+      return;
+    }
+    if (data.type === 'pinlane:demande') {
+      // Demande de groupe envoyée (demande sur mesure) : le même chemin que la
+      // réservation, sous son propre nom, pinlane_demande. Aucune donnée
+      // personnelle.
+      var demande = data.detail && typeof data.detail === 'object' ? data.detail : {};
+      try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_demande', pinlane: demande }); } catch (error) { /* dataLayer inaccessible */ }
+      try { window.dispatchEvent(new CustomEvent('pinlane:demande', { detail: demande })); } catch (error) { /* CustomEvent indisponible */ }
+      declencherDemandeSurLesOutilsDuSite(demande);
       return;
     }
     if (data.type === 'pinlane:voir') {

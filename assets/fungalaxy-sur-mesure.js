@@ -1149,6 +1149,15 @@
       var burst = $('#finBurst');
       if (burst) burst.innerHTML = '';
       aller('fin');
+      // LA MESURE DE LA DEMANDE POUR LE SITE HOTE (2026-11-03). Comme la
+      // reservation (pinlane:booking) : GTM, GA4 et Meta du site du centre
+      // comptaient ses demandes d evenement sur son ancien formulaire. Aucune
+      // donnee personnelle : ni nom, ni coordonnees, ni organisation, ni
+      // message. La date reste vide quand le groupe ne l a pas encore fixee.
+      I.poster({ type: 'pinlane:demande', detail: {
+        requestId: reponse && reponse.id != null ? reponse.id : null, center: CENTER, type: sm.type || '',
+        pax: Number(sm.participants) || 0, date: sm.flexible ? '' : (sm.date || ''), status: 'received',
+      } });
     }
 
     // L OUVERTURE : le groupe et le jour du premier ecran passent a la demande

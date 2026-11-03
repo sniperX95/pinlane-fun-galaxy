@@ -100,6 +100,9 @@
 /* Dans le cadre du client, pas de rideau : le cadre grandit encore, la bande
    passerait sur un trou. */
 .fg.is-embed .fg-curtain { display: none; }
+/* Le depart sur la demande de groupe (start=sur-mesure) : le premier ecran
+   reste cache le temps que la demande s ouvre. */
+.fg.fg-depart-sm .fg-scene[data-scene="date"] { visibility: hidden; }
 
 /* --- Bandeau du haut (page autonome seulement, l hote a le sien) --------- */
 

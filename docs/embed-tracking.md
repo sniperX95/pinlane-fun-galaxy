@@ -92,6 +92,39 @@ Poser `data-track="datalayer"` sur la ligne d'installation, puis :
 3. **Balises** branchees sur ce declencheur : le Pixel Meta existant et un
    evenement GA4 avec `value` = `{{pinlane.amount}}`.
 
+## Les demandes de groupe
+
+Un groupe qui ne reserve pas en ligne (ecole, entreprise, association, ou un
+groupe au-dela du seuil du centre) envoie une demande sur mesure. A l'envoi
+reussi (ecran « Demande envoyee »), le site recoit le meme genre de signal,
+sous son propre nom :
+
+```js
+{
+  event: 'pinlane_demande',
+  pinlane: {
+    requestId: 912,          // numero de la demande cote Pinlane
+    center: 'libramont',     // le data-center de la ligne d'installation
+    type: 'ecole',           // ecole, entreprise, association, anniversaire, evg, amis, autre
+    pax: 31,                 // nombre de participants annonce
+    date: '2026-11-20',      // jour voulu ; vide si le groupe ne l'a pas encore fixe
+    status: 'received'       // l'equipe repond sous 24 heures ouvrables
+  }
+}
+```
+
+plus un evenement DOM `pinlane:demande` avec le meme objet. Aucune donnee
+personnelle : ni nom, ni coordonnees, ni organisation, ni message.
+
+Sans `data-track="datalayer"`, le cadre appelle aussi les outils deja charges :
+`fbq('track', 'Lead', ...)` pour le Pixel Meta et `gtag('event', 'generate_lead', ...)`
+pour GA4, les evenements standard d'une demande de contact. Aucun montant :
+l'equipe chiffre la demande apres coup.
+
+Dans GTM, meme principe que la reservation : un declencheur « Evenement
+personnalise » `pinlane_demande`, relie aux balises qui comptaient l'ancien
+formulaire d'evenements.
+
 ## Pourquoi pas un conteneur GTM a l'interieur du cadre
 
 Le cadre est un autre domaine : les cookies d'attribution du site (`_ga`,

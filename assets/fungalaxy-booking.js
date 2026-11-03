@@ -39,6 +39,10 @@
   }
   var CENTER = centreDepuisAdresse();
   var EMBED = params.get('embed') === '1' && window.parent !== window;
+  // LE DEPART SUR LA DEMANDE DE GROUPE (2026-11-03). La page Evenements du site
+  // du centre ouvre directement la demande sur mesure : embed.js passe
+  // start=sur-mesure. Une seule valeur reconnue, toute autre est ignoree.
+  var DEPART_SUR_MESURE = params.get('start') === 'sur-mesure';
 
   /* --- D ou vient le client (SEO, SEA, reseaux) ------------------------------ */
   // Les parametres de campagne de CETTE page, ou de la page du site du centre
@@ -73,6 +77,9 @@
   })();
   window.pinlaneAcquisition = function () { return ACQUISITION; };
   if (EMBED) body.classList.add('is-embed');
+  // Le premier ecran reste cache le temps que la demande s ouvre : le visiteur
+  // de la page Evenements ne le voit pas passer.
+  if (DEPART_SUR_MESURE) body.classList.add('fg-depart-sm');
   if (finPointer) body.classList.add('has-pointer');
 
   // Le fond du site hote voyage dans l URL : liste blanche de caracteres
@@ -6805,7 +6812,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261006decoche';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261103signal';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -6836,12 +6843,14 @@
   function prechargerSurMesure() { chargerSurMesure().catch(function () {}); }
 
   // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un
-  // echec se dit en clair, avec le numero du centre.
-  function ouvrirSurMesure(bouton) {
+  // echec se dit en clair, avec le numero du centre. `quandFini(ouverte)` dit
+  // au depart sur la demande quand montrer la page (ouverte ou en echec).
+  function ouvrirSurMesure(bouton, quandFini) {
     var btn = bouton && bouton.classList ? bouton : null;
-    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue(btn, function () { ouvrirSurMesure(bouton); }); return; }
+    var finir = typeof quandFini === 'function' ? quandFini : function () {};
+    if (!meta) { if (panneMeta) { direErreur(panneMeta); finir(false); } else apresCatalogue(btn, function () { ouvrirSurMesure(bouton, quandFini); }); return; }
     direErreur('');
-    if (smModule) { smModule.ouvrir(); return; }
+    if (smModule) { smModule.ouvrir(); finir(true); return; }
     // Borne comme une lecture (2026-10-12) : un fichier qui ne vient pas
     // laissait le bouton tourner sans fin. Arrive apres coup, il ne s ouvre
     // pas tout seul ; le toucher suivant l ouvre aussitot.
@@ -6852,10 +6861,16 @@
       occuper(btn, false);
       var c = meta && meta.center && meta.center.contact;
       direErreur('La demande sur mesure ne s’est pas chargée. Vérifiez votre connexion et réessayez' + (c && c.phone ? ', ou appelez le centre au ' + c.phone : '') + '.');
+      finir(false);
     };
     var delai = setTimeout(echec, DELAI_LECTURE);
     occuper(btn, true);
-    chargerSurMesure().then(function (m) { if (fini) return; fini = true; clearTimeout(delai); occuper(btn, false); m.ouvrir(); }).catch(function () { clearTimeout(delai); echec(); });
+    chargerSurMesure().then(function (m) { if (fini) return; fini = true; clearTimeout(delai); occuper(btn, false); m.ouvrir(); finir(true); }).catch(function () { clearTimeout(delai); echec(); });
+  }
+  // Le depart sur la demande : la page se montre une fois la demande ouverte,
+  // ou en echec, avec la raison sur le premier ecran.
+  function departSurMesure() {
+    ouvrirSurMesure(null, function () { body.classList.remove('fg-depart-sm'); posterHauteur(); });
   }
   if (smDoor) {
     $('#smDoorBtn').addEventListener('click', function (e) { ouvrirSurMesure(e.currentTarget); });
@@ -6900,7 +6915,7 @@
       jourLong: jourLong, joursLisibles: joursLisibles, libelleFamille: libelleFamille, lienContact: lienContact,
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
-      posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
+      poster: poster, posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
       htmlInfoFormule: htmlInfoFormule,
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
@@ -7005,6 +7020,7 @@
     espacerTitreActif();
     rendreEtapes();
     rendrePax();
+    if (DEPART_SUR_MESURE) prechargerSurMesure();
     var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', '45');
     lire('/api/public-booking-meta?' + q.toString())
       .then(function (rep) {
@@ -7042,8 +7058,11 @@
         body.classList.add('is-ready');
         posterHauteur();
         rejouerGeste();
+        // Un centre qui a quelque chose a dire sur le premier ecran (pas encore
+        // ouvert, demonstration) le montre au lieu d ouvrir la demande.
+        if (DEPART_SUR_MESURE) { if (alerte.hidden) departSurMesure(); else body.classList.remove('fg-depart-sm'); }
       })
-      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.add('is-ready'); rejouerGeste(); });
+      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

@@ -50,6 +50,7 @@ qui ne se laissent pas faire :
 | `data-center-key` | Sur un site **multi-centres qui affiche le même bloc à tout le monde**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. **À ne pas mettre** quand le site sert déjà un bloc différent par centre : sa décision à lui fait foi. |
 | `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
 | `data-design` | Facultatif. `fungalaxy` affiche le formulaire habillé aux couleurs de Fun Galaxy (fond noir, violet et sarcelle, photos du centre) : même parcours, mêmes horaires, mêmes réservations, seule l'apparence change. Sans l'attribut, le parcours standard s'affiche. |
+| `data-start` | Facultatif, avec `data-design="fungalaxy"`. `sur-mesure` ouvre le formulaire directement sur la demande de groupe (école, entreprise, association…) : c'est la ligne de la page Événements. Le visiteur peut toujours revenir à la réservation en ligne. |
 
 ### 2 bis. Si aucun bloc HTML n'est possible à cet endroit
 
@@ -101,6 +102,23 @@ site. L'argument du « viser large » (battre un script du site qui réaffiche s
 formulaire) ne s'applique pas ici : la règle `!important` d'une feuille de style
 l'emporte déjà sur le `style="display:block"` en ligne que pose ce genre de
 script.
+
+**Ou remplacer toute la zone, décor compris.** C'est le choix retenu pour le
+premier client (2026-11-03) : le parcours aux couleurs du centre remplace le
+titre de la section et la carte qui portait l'ancien formulaire, sur toute la
+largeur du contenu. `data-fallback` accepte plusieurs sélecteurs séparés par une
+virgule :
+
+```html
+<script src="https://app.pinlane.be/embed.js"
+        data-center="libramont"
+        data-design="fungalaxy"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"></script>
+```
+
+Le bouton de retour en arrière rend alors toute la zone d'origine.
 
 Si le site sert un formulaire **différent selon le centre**, chaque formulaire
 reçoit le champ avec **son** `data-center`. C'est le serveur du site qui a déjà

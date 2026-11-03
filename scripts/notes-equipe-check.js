@@ -65,7 +65,10 @@ function verifier(sources) {
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
+        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
+        // La carte lit les notes ecrites par l equipe et la derniere modification
+        // (2026-11-03) ; sans le planning, la regle de repli de notesEquipeEcrites.
+        'notesEquipeEcrites', 'essentielDuDossier', 'texteDerniereModif', 'quandDerniereModif'].map((n) => extraire(sources.app, n)),
       // L encadre de la carte nomme la formule avec la variante achetee
       // (nomDeLaFormuleAchetee) : booking-core la lit dans le plan du dossier.
       extraire(sources.core, 'getReservationFormulaChoice'),
@@ -147,6 +150,19 @@ function verifier(sources) {
   const equipe = encadres.find((e) => e.ton === 'equipe');
   c(equipe && equipe.titre === 'Note équipe · 2' && /Table près de la fenêtre \(Sam\)/.test(equipe.texte), '[C] la carte porte la note la plus recente et le nombre de notes', JSON.stringify(equipe));
   c(encadres.some((e) => e.ton === 'note' && e.titre === 'Mot du client' && e.texte === 'Gâteau à mettre au frais'), '[C] la carte porte le mot du client, titre compris');
+  // LES TRACES DU SERVEUR NE SONT PAS DES NOTES (2026-11-03) : la raison d un prix revu et
+  // le compte a l arrivee s ecrivent en note d equipe, mais la carte et « Avec note » ne
+  // comptent que ce que l equipe a ecrit.
+  const tracePrix = '[equipe] {"t":"Prix 60 € → 40 €, geste commercial","par":"Julie","le":"2026-10-01T19:10:00.000Z","type":"prix","prix":{"de":60,"a":40,"raison":"geste commercial"}}';
+  const traceCompte = '[equipe] {"t":"Compte à l’arrivée : 10 → 12","par":"Julie","le":"2026-10-01T19:11:00.000Z","compte":{"de":10,"a":12}}';
+  const avecTraces = { id: 11, channel: 'staff', status: 'confirmed', notes: [ligne, tracePrix, traceCompte].join('\n') };
+  const equipeTraces = cote.getGroupeEncadres(avecTraces).find((e) => e.ton === 'equipe');
+  c(equipeTraces && equipeTraces.titre === 'Note équipe' && /Client fidèle, offrir une boisson \(Léa\)/.test(equipeTraces.texte), '[C] la carte ne compte ni la raison d un prix ni le compte a l arrivee', JSON.stringify(equipeTraces));
+  const seulementPrix = { id: 12, channel: 'staff', status: 'confirmed', notes: tracePrix };
+  c(!cote.hasReservationNote(seulementPrix) && !cote.getGroupeEncadres(seulementPrix).some((e) => e.ton === 'equipe'), '[C] un dossier qui n a qu une raison de prix n est pas « Avec note »');
+  const modifie = { id: 13, channel: 'staff', status: 'confirmed', notes: '', opsPlan: { derniereModif: { le: '2026-10-01T13:10:00.000Z', par: 'Rachel', quoi: ['4 → 6 joueurs'] } } };
+  const encadreModif = cote.getGroupeEncadres(modifie).find((e) => e.ton === 'modif');
+  c(encadreModif && encadreModif.titre === 'Modifié' && /Rachel : 4 → 6 joueurs$/.test(encadreModif.texte), '[C] la carte dit qui a change quoi en dernier', JSON.stringify(encadreModif));
 
   // [D] LE SERVEUR
   const route = (sources.api.match(/if \(patchIsNoteEquipeOnly\(body\)\) \{[\s\S]*?\n      \}\n/) || [''])[0];
@@ -184,6 +200,10 @@ const MUTATIONS = [
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
   { nom: 'retirer une note montre sans le droit', cible: 'app', de: "const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));", vers: 'const peutReecrire = peutNoter;' },
+  { nom: 'la carte compte les traces du serveur', cible: 'app', de: 'const notesEquipe = aUneNote ? notesEquipeEcrites(r) : [];', vers: 'const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];' },
+  { nom: '« Avec note » compte une raison de prix', cible: 'app', de: 'notesEquipeEcrites(reservation).length > 0', vers: 'getReservationNotesEquipe(reservation).length > 0' },
+  { nom: 'la regle de repli garde les traces', cible: 'app', de: '.filter(n => !n.compte && n.type !== \'prix\')', vers: '.filter(n => true)' },
+  { nom: 'la carte ne dit plus qui a modifie', cible: 'app', de: "if (modif) encadres.push({ ton: 'modif', titre: 'Modifié',", vers: "if (false) encadres.push({ ton: 'modif', titre: 'Modifié'," },
 ];
 
 function afficher(resultats) {

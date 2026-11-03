@@ -22675,9 +22675,18 @@ function getReservationNoteParts(reservation = {}) {
   };
 }
 
+// LES NOTES QUE L EQUIPE A ECRITES (2026-11-03). Le serveur pose aussi des traces en
+// note d equipe : la raison d un prix revu va a l encadre du prix, le compte a
+// l arrivee a la colonne des joueurs. La meme lecture que la ligne du Complet
+// (pgNotesEquipe) ; sans le planning, les traces structurees sont ecartees ici.
+function notesEquipeEcrites(reservation) {
+  if (typeof window.pgNotesEquipe === 'function') return window.pgNotesEquipe(reservation);
+  return getReservationNotesEquipe(reservation).filter(n => !n.compte && n.type !== 'prix');
+}
+
 // « Avec note » : le mot du client OU une note de l equipe.
 function hasReservationNote(reservation) {
-  return !!getReservationNoteText(reservation) || getReservationNotesEquipe(reservation).length > 0 || !!window.PinlaneStaffNotes?.text(reservation);
+  return !!getReservationNoteText(reservation) || notesEquipeEcrites(reservation).length > 0 || !!window.PinlaneStaffNotes?.text(reservation);
 }
 
 // Le mot ecrit avec la reservation : en ligne, c est le client qui l a ecrit.
@@ -25714,7 +25723,11 @@ function getGroupeEncadres(r) {
   // Le prix ajuste passe par LE marqueur partage (renderReservationPriceMark,
   // la regle unique des neuf surfaces) : l encadre n existe que s il parle.
   const marquePrix = renderReservationPriceMark(r, { forme: 'encadre', base: 'gc-price-mark' });
-  if (marquePrix) encadres.push({ ton: 'price', titre: 'Prix ajusté', html: marquePrix });
+  // La raison du prix, le sur mesure : ce que la ligne du Complet ecrit (pgEssentiel),
+  // pour que la liste sous le planning dise le meme dossier (2026-11-03).
+  const essentiel = essentielDuDossier(r);
+  const raisonPrix = marquePrix && essentiel ? essentiel.raison : '';
+  if (marquePrix) encadres.push({ ton: 'price', titre: 'Prix ajusté', html: `${marquePrix}${raisonPrix ? `<span>${escapeHtml(raisonPrix)}</span>` : ''}`, texte: raisonPrix });
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
   // Le nom de la formule vient du catalogue du centre ; s il n est pas encore
   // charge, le libelle ecrit sur le dossier (« FORMULE 7 ») le dit. Sa
@@ -25730,6 +25743,7 @@ function getGroupeEncadres(r) {
       texte: accompagnants ? `${accompagnants} accompagnant${accompagnants > 1 ? 's' : ''} en plus des joueurs` : '',
     });
   }
+  if (essentiel && essentiel.mesure) encadres.push({ ton: 'mesure', titre: 'Sur mesure', texte: essentiel.mesure });
   // Une seule regle dit si un dossier porte une note (hasReservationNote) :
   // la puce « Avec note », le filtre et ces encadres la lisent tous.
   const aUneNote = hasReservationNote(r);
@@ -25737,8 +25751,9 @@ function getGroupeEncadres(r) {
   if (parts.mot) encadres.push({ ton: 'note', titre: getReservationNoteTitre(r), texte: parts.mot });
   if (parts.suivi.length) encadres.push({ ton: 'suivi', titre: parts.suivi.some(t => /retard/i.test(t)) ? 'Retard' : 'Suivi', texte: parts.suivi.join(' · ') });
   // La note de l equipe, la plus recente, sur la carte : les autres se lisent
-  // dans la fiche.
-  const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];
+  // dans la fiche. Seules celles que l equipe a ecrites : une raison de prix ou un
+  // compte a l arrivee ne sont pas des notes a lire (notesEquipeEcrites).
+  const notesEquipe = aUneNote ? notesEquipeEcrites(r) : [];
   const noteClientPermanente = window.PinlaneStaffNotes?.text(r);
   if (noteClientPermanente) encadres.push({ ton: 'equipe', titre: 'Note client · permanente', texte: noteClientPermanente.length > 180 ? noteClientPermanente.slice(0, 177) + '…' : noteClientPermanente });
   if (notesEquipe.length) {
@@ -25749,6 +25764,9 @@ function getGroupeEncadres(r) {
       texte: `${derniere.t}${derniere.par ? ` (${derniere.par})` : ''}`,
     });
   }
+  // Qui a change quoi en dernier, comme les cartes Bowling et Laser (texteDerniereModif).
+  const modif = texteDerniereModif(r, { max: 3 });
+  if (modif) encadres.push({ ton: 'modif', titre: 'Modifié', texte: modif.replace(/^Modifié\s*/, '') });
   return encadres;
 }
 

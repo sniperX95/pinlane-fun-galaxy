@@ -1607,6 +1607,39 @@ async function cartes(browser) {
     ok(Boolean(jg) && (jg['Équipe'] || {}).texte === 'Arrivent en deux voitures (Julie)' && (jg.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine' && (jg.Prix || {}).couleur === couleurPrixComplet, '[R] liste du jour : l equipe et le prix revu, sa raison dans la couleur du prix du Complet', jg);
     ok(Boolean(jour['Amis de Clara']) && (jour['Amis de Clara']['Sur mesure'] || {}).texte === '7 × Hot-dog à 17:00' && Boolean(jour['Famille Henrard']) && Object.keys(jour['Famille Henrard']).length === 0, '[R] liste du jour : le sur mesure avec ses heures ; une note de prix passee se tait', jour);
     ok(Object.values(jour).filter(Boolean).every((x) => Object.values(x).every((r) => r.taille >= 12 && r.dedans)), '[R] liste du jour : rien sous 12 px, rien hors de sa ligne', jour);
+    // LA LISTE SOUS LE PLANNING (#resList) DIT LE MEME DOSSIER (2026-11-03) : ses cartes de
+    // groupe lisent les notes ecrites par l equipe, la raison du prix, le sur mesure et la
+    // derniere modification par la meme regle que la ligne du Complet.
+    await page.evaluate(() => { openStaffMenuPage('planning'); });
+    await FX.repos(page, 300);
+    // (la liste suit la vue ouverte : le scenario a fini sur le planning laser)
+    await aller(page, 'all');
+    await page.waitForFunction(() => document.querySelectorAll('#resList .gc[data-res-row-id]').length > 15, null, { timeout: 8000 }).catch(() => null);
+    const groupes = await page.evaluate((noms) => {
+      const cartes = Array.from(document.querySelectorAll('#resList .gc[data-res-row-id]'));
+      const o = {};
+      noms.forEach((n) => {
+        const c = cartes.find((x) => ((x.querySelector('.res-row-name') || {}).textContent || '').trim() === n);
+        o[n] = c ? Array.from(c.querySelectorAll('.gc-flag')).map((f) => ({ ton: (Array.from(f.classList).find((k) => k.startsWith('tone-')) || '').slice(5), titre: ((f.querySelector('b') || {}).textContent || '').trim(), texte: f.textContent.replace(/\s+/g, ' ').trim(), bulle: f.getAttribute('title') || '', deborde: f.scrollWidth > f.clientWidth + 1 || f.getBoundingClientRect().right > c.getBoundingClientRect().right + 1 })) : null;
+      });
+      return { cartes: cartes.length, groupes: o };
+    }, ['Famille Gérard', 'Amis de Clara', 'Famille Henrard']);
+    if (process.env.PB_PHOTO_LISTE) {
+      // (une carte hors de l ecran n est peinte qu une fois amenee a la vue : content-visibility)
+      const photo = page.locator('#resList .gc[data-res-row-id]', { hasText: 'Famille Gérard' }).first();
+      await photo.scrollIntoViewIfNeeded();
+      await FX.repos(page, 500);
+      await photo.screenshot({ path: process.env.PB_PHOTO_LISTE });
+    }
+    const encadre = (liste, t) => (liste || []).find((e) => e.ton === t) || {};
+    const lg = groupes.groupes['Famille Gérard'];
+    ok(groupes.cartes > 0 && Boolean(lg), '[R] liste sous le planning : les cartes de groupe sont montees', groupes.cartes);
+    ok(encadre(lg, 'equipe').titre === 'Note équipe' && /Arrivent en deux voitures/.test(encadre(lg, 'equipe').texte || '') && !/→|fidél/.test(encadre(lg, 'equipe').texte || ''), '[R] liste sous le planning : la note de l equipe, sans les notes de prix ni leur nombre', lg);
+    ok(/carte de fidélité pleine/.test(encadre(lg, 'price').texte || '') && /carte de fidélité pleine/.test(encadre(lg, 'price').bulle || '') && /Rachel/.test(encadre(lg, 'modif').texte || ''), '[R] liste sous le planning : la raison du prix, aussi dans sa bulle, et qui a modifie', lg);
+    ok(['Famille Gérard', 'Amis de Clara'].every((n) => (groupes.groupes[n] || []).every((e) => !e.deborde)), '[R] liste sous le planning : aucun encadre ne sort de sa carte', groupes.groupes);
+    ok(/7 × Hot-dog à 17:00/.test(encadre(groupes.groupes['Amis de Clara'], 'mesure').texte || ''), '[R] liste sous le planning : le sur mesure et son heure', groupes.groupes['Amis de Clara']);
+    const lh = groupes.groupes['Famille Henrard'];
+    ok(Boolean(lh) && !encadre(lh, 'equipe').ton && !encadre(lh, 'price').ton, '[R] liste sous le planning : une note de prix passee ne fait ni note ni prix', lh);
   });
   // A 1024, des pistes de 110 px : les marqueurs du dossier cedent avant le nom (paliers
   // de pinlane-staff.css), et celui qui reste est entier sur la carte.
@@ -1779,6 +1812,12 @@ const MUTATIONS = [
   { nom: 'terrain-allergie-muette', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  const allergie = (oui) => (oui ? '<b class=\"terrain-allergie\">Allergie</b> ' : '');", "  const allergie = () => '';") },
   { nom: 'terrain-allergie-noire', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.terrain-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); font-weight: 700; }', '.terrain-allergie { font-weight: 700; }') },
   { nom: 'terrain-prix-sans-sa-couleur', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.terrain-rub--prix .terrain-rub__t { color: var(--warning); font-weight: 600; }\n', '') },
+  // [R] la liste sous le planning (#resList) : les cartes de groupe (2026-11-03)
+  { nom: 'liste-compte-les-notes-de-prix', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, 'const notesEquipe = aUneNote ? notesEquipeEcrites(r) : [];', 'const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];') },
+  { nom: 'liste-sans-raison-du-prix', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "const raisonPrix = marquePrix && essentiel ? essentiel.raison : '';", "const raisonPrix = '';") },
+  { nom: 'liste-sans-sur-mesure', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (essentiel && essentiel.mesure) encadres.push({ ton: 'mesure', titre: 'Sur mesure', texte: essentiel.mesure });\n", '') },
+  { nom: 'liste-sans-modif', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "if (modif) encadres.push({ ton: 'modif', titre: 'Modifié',", "if (false) encadres.push({ ton: 'modif', titre: 'Modifié',") },
+  { nom: 'notes-equipe-avec-les-traces', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, 'window.pgNotesEquipe = function (r) { return gfNotesEquipe(r || {}).equipe; };', 'window.pgNotesEquipe = function (r) { return getReservationNotesEquipe(r || {}); };') },
 ];
 
 async function jouer(browser, noms) {

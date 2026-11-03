@@ -732,6 +732,9 @@
     e.adaptee = Boolean(f && f.adaptee);
     return e;
   };
+  // Les seules notes ecrites par l equipe, sans lire le reste du dossier : la liste sous
+  // le planning et la regle « Avec note » les comptent comme la ligne du Complet.
+  window.pgNotesEquipe = function (r) { return gfNotesEquipe(r || {}).equipe; };
   // Sa ligne : le nom d abord, a la meme place sur chaque ligne ; a sa suite le retard,
   // qui se touche (« Ils arrivent dans »), le telephone, toujours, et l etiquette. Une
   // heure pas pile sur la demi-heure s ecrit devant le nom.

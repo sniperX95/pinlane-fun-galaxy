@@ -11,9 +11,13 @@ const conflict=current=>realDatabase.reservationModifieeEntreTemps(clone(current
 // vrai), plus tout le dossier avec le validateur de creation : le double doit l exposer.
 const db={validateReservationResources:realValidate,validateActivityMoveResources:realDatabase.validateActivityMoveResources,getPool:()=>null,getReservationById:async()=>clone(stored),readStaffState:async()=>({reservations:[clone(stored),...clone(other)],laneStatuses:{},blocks:[]}),lireVersionAttendue:v=>v??null,memeVersion:(a,b)=>a===b,reservationModifieeEntreTemps:conflict,
  updateReservation:async patch=>{if(patch.baseUpdatedAt&&patch.baseUpdatedAt!==stored.updatedAt)throw conflict(stored);const candidate=patch.activityMove?require(path.join(root,'lib/reservation-activity-move')).buildActivityMove(stored,patch.activityMove):{...stored,...clone(patch)};writes++;stored={...candidate,updatedAt:'2026-10-05T08:01:00.000Z'};delete stored.activityMove;return clone(stored);},createOpsEvent:async()=>{},cancelReservationCommunications:async()=>[],cancelReservationOpsJobs:async()=>[]};
+// Le jugement des droits (2026-11-03) lit ces aides pures du vrai module : le double les garde.
+for(const key of ['notesAvecPrix','notesSeulementAjoutees','signerNotesEquipe','lireNoteEquipe','EXTRA_QTE_MAX'])db[key]=realDatabase[key];
 replace('lib/database.js',db);
 const session={centerId:'libramont',authorizedCenterId:'libramont',member:{id:'qa',name:'QA'},role:{locked:true},permissions:['reservations.edit']};
-replace('lib/staff-auth.js',{getStaffSessionFromRequest:async()=>session,requireStaffPermission:async()=>session});
+// Seule la session est fausse : niveauEffectif et sessionHasPermission restent les vrais.
+const realAuth=require(path.join(root,'lib/staff-auth.js'));
+replace('lib/staff-auth.js',{...realAuth,getStaffSessionFromRequest:async()=>session,requireStaffPermission:async()=>session});
 replace('lib/reservation-ops.js',{prepareReservationOps:async()=>{replans++;return{};}});
 replace('lib/ops-communications.js',{enqueueReservationCommunications:async()=>[]});replace('lib/ops-jobs.js',{enqueueReservationAutomation:async()=>[]});
 replace('lib/audit-log.js',{writeAuditLog:async()=>({}),actorFromSession:()=>({}),buildChanges:()=>({}),newRequestId:()=> 'qa'});

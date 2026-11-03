@@ -2281,7 +2281,8 @@ async function main() {
     assert(qbPost, 'Case planning : la création doit poster sur /api/staff-reservations.');
     assert(qbPost.type === 'bowling' && qbPost.startTime === '15:00' && Array.isArray(qbPost.lanes) && qbPost.lanes.length === 1 && Number(qbPost.lanes[0]) === 7, `Case planning : payload préservé (type/heure/piste), reçu ${JSON.stringify({ type: qbPost.type, startTime: qbPost.startTime, lanes: qbPost.lanes })}.`);
     assert(qbPost.channel === 'staff' && qbPost.status === 'pending' && qbPost.requiresLanes === true && Number(qbPost.laneCount) === 1, 'Case planning : contrat API inchangé (channel, status, laneCount, requiresLanes).');
-    assert(Number(qbPost.price) === Number(qbPost.basePrice) && Number(qbPost.pax) === 4 && Number(qbPost.duration) === 1, 'Case planning : montants et durée inchangés par défaut.');
+    // Depuis le 2026-11-03 le serveur tarife : sans prix revu, la console n envoie ni prix ni raison.
+    assert(qbPost.price == null && qbPost.basePrice == null && !qbPost.prixRaison && Number(qbPost.pax) === 4 && Number(qbPost.duration) === 1, `Case planning : aucun prix imposé par défaut, 4 joueurs, 1 h (reçu ${JSON.stringify({ price: qbPost.price, basePrice: qbPost.basePrice, prixRaison: qbPost.prixRaison, pax: qbPost.pax, duration: qbPost.duration })}).`);
     const qbClosedAfterSave = await page.evaluate(() => document.getElementById('quickBookOverlay').classList.contains('hidden') || !document.querySelector('.qb-modal'));
     assert(qbClosedAfterSave, 'Case planning : la fenêtre doit se fermer après création.');
 

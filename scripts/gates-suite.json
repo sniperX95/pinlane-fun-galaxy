@@ -275,6 +275,7 @@
     "test:temps-reel",
     "test:concurrence-reservation",
     "test:droits-reservations",
+    "test:droits-niveaux",
     "test:deux-postes",
     "test:journee-en-vol",
     "test:funrun-rotation",

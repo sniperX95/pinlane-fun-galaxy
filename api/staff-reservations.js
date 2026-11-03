@@ -34,7 +34,9 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, resoudreExtras } = require('../lib/droits-reservation');
+const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
+const { exigerHistorique, jugerEncaisse } = require('../lib/droits-reservation');
+const { lireHistoriqueDossier } = require('../lib/historique-dossier');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
 
@@ -458,6 +460,30 @@ module.exports = async (req, res) => {
         sendJson(res, 200, { ok: true, date, jourSemaine: lus.jourSemaine, depuis: lus.depuis, jusqua: lus.jusqua, departs: lus.departs, epingles: epingles.epingles });
         return;
       }
+      // L HISTORIQUE D UN DOSSIER (2026-11-03, lib/historique-dossier.js) : qui a
+      // fait quoi, quand, en phrases simples. Voir le dossier, puis le niveau
+      // « historique » du role, juge avant toute lecture de la base. Le dossier
+      // doit etre du centre de la session : sinon 404, comme un dossier qui
+      // n existe pas, et le journal n est lu que pour ce centre.
+      if (requestUrl.searchParams.has('historique')) {
+        const sessionHistorique = await requireStaffPermission(req, res, 'reservations.view', { centerId: requestUrl.searchParams.get('centerId') || '' });
+        if (!sessionHistorique) return;
+        exigerHistorique(sessionHistorique);
+        const dossierId = String(requestUrl.searchParams.get('historique') || '').trim();
+        if (!/^\d{1,12}$/.test(dossierId)) {
+          sendError(res, 422, 'Dossier invalide.');
+          return;
+        }
+        const centre = sessionHistorique.authorizedCenterId;
+        const dossier = await getReservationById(Number(dossierId));
+        if (!dossier || !centre || (dossier.centerId || 'libramont') !== centre) {
+          sendError(res, 404, 'Réservation introuvable.');
+          return;
+        }
+        const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id });
+        sendJson(res, 200, { ok: true, id: dossier.id, historique });
+        return;
+      }
       // LE CLIENT DEJA VENU (2026-10-08) : la fenetre Reserver demande, pour un
       // numero tape, si ce client est deja venu dans CE centre. Lecture seule,
       // centre de la session, un resume et rien d autre.
@@ -580,10 +606,19 @@ module.exports = async (req, res) => {
         if (gesteKeys[0] === 'encaissement') {
           const paymentSession = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
           if (!paymentSession) return;
+          // Encaisser moins que le prix, c est baisser le prix : il se juge au
+          // niveau prix de la session, comme la porte du prix (2026-11-03). La
+          // version est exigee plus bas : `current` est la ligne qui s ecrira.
+          jugerEncaisse({ session, current, encaissement: body.encaissement });
         }
         const { noterEncaisseOuAbsence } = require('../lib/database');
         const reservation = await noterEncaisseOuAbsence({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, ...(gesteKeys[0] === 'encaissement' ? { encaissement: body.encaissement } : { absent: body.absent === true }) });
-        const audit = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: gesteKeys[0] === 'encaissement' ? 'noterEncaisse' : 'noterAbsence', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation), requestId: newRequestId() });
+        // L instantane du registre ne porte ni l encaisse ni l absence (colonnes
+        // 0056) : l historique du dossier les lit ici.
+        const geste = gesteKeys[0] === 'encaissement'
+          ? { encaisse: { montant: reservation.amountPaid ?? reservation.price, prix: reservation.price, raison: reservation.discountReason || '' } }
+          : { absent: Boolean(reservation.absentAt) };
+        const audit = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: gesteKeys[0] === 'encaissement' ? 'noterEncaisse' : 'noterAbsence', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, geste), requestId: newRequestId() });
         sendJson(res, 200, { ok: true, reservation, ...(audit.warning ? { warnings: [audit.warning] } : {}) });
         return;
       }
@@ -726,7 +761,7 @@ module.exports = async (req, res) => {
         try {
           validateActivityMoveResources(candidate, body.activityMove, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
         } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove });
+        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove, modifiePar: nomDeSession(session) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
         const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { activityMove: body.activityMove }), requestId: newRequestId() });
         sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });
@@ -745,7 +780,8 @@ module.exports = async (req, res) => {
       // UN PRIX SE BORNE (2026-10-12) : le comptoir ecrit le montant qu il a
       // sous les yeux, entre 0 et 100 000 EUR, comme l encaisse
       // (noterEncaisseOuAbsence). Sans prix envoye (absent, null, vide), le
-      // dossier garde le sien.
+      // dossier garde le sien, sauf si son contenu change : le serveur le pose
+      // alors sur sa reference (prixQuiSuit, plus bas).
       if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
         const prix = Number(body.price);
         if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
@@ -824,13 +860,26 @@ module.exports = async (req, res) => {
         : (Number(current.basePrice) || 0);
       patch.basePrice = base;
       if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
+      // LE PRIX QUI SUIT (2026-11-03) : le contenu change et aucun prix n est
+      // envoye, le serveur le pose sur sa reference, l ajustement en place
+      // garde. Le moteur rend un prix sans ajustement (celui d un programme) ou
+      // aucun (un plan de pistes sans prix demande) : celui-ci remplace les deux.
+      // Personne ne l a decide : rien a juger, aucune trace de prix.
+      const prixSuivi = contenuChange && !Object.prototype.hasOwnProperty.call(patch, 'price');
+      if (prixSuivi) {
+        patch.price = prixQuiSuit({ current, base, extras: extrasFinales });
+        if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = patch.price;
+      }
       const prixFinal = ops.price ?? patch.price ?? current.price;
-      const notePrix = jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
+      const notePrix = prixSuivi ? null : jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
       if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
       const reservation = await updateReservation({
         ...patch,
         ...ops,
         channel: patch.channel || current.channel || 'staff',
+        // La derniere modification se signe au nom de la session, jamais d un
+        // nom venu du corps (lib/historique-dossier.js).
+        modifiePar: nomDeSession(session),
       });
       const automation = hasAnyField(patch, AUTOMATION_REFRESH_FIELDS)
         ? await refreshReservationAutomation(current, reservation, { reason: 'reservation_updated' })

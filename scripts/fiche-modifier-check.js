@@ -25,9 +25,11 @@
 //        et le prix suit ;
 //   [M7] ouvrir l onglet ne change rien : les pistes proposees sont celles du
 //        dossier, cherchees a l heure du bowling et pas a l heure d arrivee ;
-//   [M8] l enregistrement envoie ce qui est affiche (joueurs, pistes, prix,
-//        telephone, joueurs par activite) ; un groupe qui grandit ne rend pas
-//        le dossier « adapté » ;
+//   [M8] l enregistrement envoie ce qui est affiche (joueurs, pistes,
+//        telephone, joueurs par activite), sauf le prix qui suit les joueurs :
+//        ni lui ni sa raison ne partent, le serveur le pose (prixQuiSuit ;
+//        scripts/prix-suivi-check.js le juge au vrai moteur) ; un groupe qui
+//        grandit ne rend pas le dossier « adapté » ;
 //   [P1] une formule qui change de groupe garde le prix de la formule (39 EUR
 //        x 11 pour FORMULE 4), sans partir en programme adapte : elle se
 //        chiffrait comme des activites a la carte (386 EUR au lieu de 429) ;
@@ -62,7 +64,8 @@
 //        (260 EUR) et la barre dit « Formule 4 → Formule 5 · Prix … » ;
 //   [F3] l enregistrement envoie la nouvelle formule depuis sa carte : type,
 //        formuleId, nom, duree, sans programme ni plan de l ancienne (le
-//        serveur la planifie a partir de l arrivee), sans pistes, son prix ;
+//        serveur la planifie a partir de l arrivee), sans pistes ; son prix
+//        suit sans partir ;
 //   [F4] revenir a la formule du dossier rend ce qu il avait a l ouverture,
 //        pistes choisies a la main comprises ;
 //   [F5] FORMULE 5 -> FORMULE 4 : le bowling arrive avec ses pistes, libres a
@@ -278,8 +281,10 @@ async function gestes(page, label) {
   const libelle = await page.evaluate(() => state.reservations.find((x) => x.name.includes('Club de foot')).label);
   const par = envoi && envoi.program ? Object.fromEntries(envoi.program.items.map((i) => [i.activityId, Number(i.participants)])) : {};
   // [M8]
-  ok(envoi && Number(envoi.pax) === 11 && JSON.stringify(envoi.lanes) === '[5,6,8]' && envoi.phone === '0471 23 45 67' && Number(envoi.price) === Number(apres.prix) && par.bowling === 11 && par.laser_game === 6 && par.arcade_time === 11,
-    `[M8] ${label} : l enregistrement envoie ce qui est affiche`, envoi ? { pax: envoi.pax, lanes: envoi.lanes, phone: envoi.phone, price: envoi.price, par } : 'aucun envoi');
+  // Le prix suit les joueurs : il ne part pas, sa raison non plus, le serveur
+  // le pose (prixQuiSuit, scripts/prix-suivi-check.js le juge au vrai moteur).
+  ok(envoi && Number(envoi.pax) === 11 && JSON.stringify(envoi.lanes) === '[5,6,8]' && envoi.phone === '0471 23 45 67' && !('price' in envoi) && !('prixRaison' in envoi) && par.bowling === 11 && par.laser_game === 6 && par.arcade_time === 11,
+    `[M8] ${label} : l enregistrement envoie ce qui est affiche, le prix qui suit excepte (le serveur le pose)`, envoi ? { pax: envoi.pax, lanes: envoi.lanes, phone: envoi.phone, price: envoi.price, prixRaison: envoi.prixRaison, par } : 'aucun envoi');
   ok(envoi && envoi.label === libelle && !/adaptée/.test(envoi.label || ''), `[M8] ${label} : un groupe qui grandit ne rend pas le dossier « adapté »`, envoi ? envoi.label : 'aucun envoi');
 }
 
@@ -298,8 +303,8 @@ async function formuleQuiGrandit(page, label) {
   const envoi = await page.evaluate(() => (window.__FIXTURE__.patchs || []).slice(-1)[0] || null);
   const attendu = avant.prixParJoueur * 11;
   // [P1]
-  ok(Number(ecran) === attendu && envoi && Number(envoi.price) === attendu && Number(envoi.pax) === 11,
-    `[P1] ${label} : FORMULE 4 a 11 joueurs = ${avant.prixParJoueur} € × 11 = ${attendu} € (ecran ${ecran}, envoye ${envoi ? envoi.price : 'rien'})`, envoi);
+  ok(Number(ecran) === attendu && envoi && !('price' in envoi) && Number(envoi.pax) === 11,
+    `[P1] ${label} : FORMULE 4 a 11 joueurs = ${avant.prixParJoueur} € × 11 = ${attendu} € a l ecran (${ecran}), le prix suit sans partir`, envoi);
   ok(envoi && !envoi.program && envoi.label === avant.label, `[P1] ${label} : la formule reste la formule (pas de programme adapte, libelle « ${avant.label} »)`, envoi ? { program: envoi.program, label: envoi.label } : 'aucun envoi');
 }
 
@@ -371,8 +376,8 @@ async function extrasEtOccasion(page, ou) {
   await page.waitForTimeout(150);
   const f = await page.evaluate(() => ({ prix: Number(document.getElementById('editPriceInput').value), activites: getEditPrixActivites().total }));
   const e2 = await enregistrer();
-  ok(f.prix === f.activites + 51 && e2 && Number(e2.price) === f.prix && JSON.stringify(e2.extras) === JSON.stringify(EXTRAS_VENDUS),
-    `[E4] ${label} : 9 joueurs au lieu de 8, les extras restent dans le prix (${f.activites} + 51 = ${f.prix} €)`, { ...f, envoi: e2 ? { price: e2.price, extras: e2.extras } : null });
+  ok(f.prix === f.activites + 51 && e2 && !('price' in e2) && JSON.stringify(e2.extras) === JSON.stringify(EXTRAS_VENDUS),
+    `[E4] ${label} : 9 joueurs au lieu de 8, les extras restent dans le prix (${f.activites} + 51 = ${f.prix} €) et partent, le prix suit sans partir`, { ...f, envoi: e2 ? { price: e2.price, extras: e2.extras } : null });
   await fermer();
 
   // [E5] un telephone seul, sur une visite a plusieurs activites.
@@ -494,8 +499,8 @@ async function changementDeFormule(page, ou) {
     `[F2] Anniversaire Noah ${ou} : le prix suit (26 € × 10 = 260 €), la barre dit « Formule 4 → Formule 5 · Prix 390 € → 260 € »`, { prix: b.prix, ligne: b.ligne, detail: b.detail, modifs: b.modifs });
   // [F3]
   const e1 = await enregistrer();
-  ok(e1 && e1.type === 'formule' && e1.formuleId === 'f5' && e1.label === 'FORMULE 5' && e1.program === null && e1.opsPlan === null && JSON.stringify(e1.lanes) === '[]' && e1.requiresLanes === false && Number(e1.duration) === 0.5 && Number(e1.price) === 260 && Number(e1.basePrice) === 260 && Number(e1.pax) === 10,
-    `[F3] Anniversaire Noah ${ou} : l enregistrement envoie la FORMULE 5 depuis sa carte (sans programme ni plan de la 4, sans pistes, 260 €)`, champs(e1));
+  ok(e1 && e1.type === 'formule' && e1.formuleId === 'f5' && e1.label === 'FORMULE 5' && e1.program === null && e1.opsPlan === null && JSON.stringify(e1.lanes) === '[]' && e1.requiresLanes === false && Number(e1.duration) === 0.5 && !('price' in e1) && Number(e1.basePrice) === 260 && Number(e1.pax) === 10,
+    `[F3] Anniversaire Noah ${ou} : l enregistrement envoie la FORMULE 5 depuis sa carte (sans programme ni plan de la 4, sans pistes, base 260 €, le prix suit sans partir)`, champs(e1));
   await fermer();
 
   // [F4] revenir a la formule du dossier, des pistes choisies a la main (3 pour 2).
@@ -519,8 +524,8 @@ async function changementDeFormule(page, ou) {
   const e2 = await enregistrer();
   ok(d.selecteurPistes && d.pistes.length === 2 && d.activites === 'bowling,laser_game,minigolf_blacklight' && d.prix === String(39 * lina.pax) && /Formule 5 → Formule 4/.test(d.modifs),
     `[F5] Anniversaire Lina ${ou} : FORMULE 5 → FORMULE 4, le bowling arrive avec ses 2 pistes et le prix suit (39 € × ${lina.pax})`, d);
-  ok(e2 && e2.formuleId === 'f4' && e2.requiresLanes === true && JSON.stringify(e2.lanes) === JSON.stringify(d.pistes) && Number(e2.laneCount) === 2 && Number(e2.duration) === 1 && Number(e2.price) === 39 * lina.pax,
-    `[F5] Anniversaire Lina ${ou} : l enregistrement envoie la FORMULE 4, ses pistes et son prix`, champs(e2));
+  ok(e2 && e2.formuleId === 'f4' && e2.requiresLanes === true && JSON.stringify(e2.lanes) === JSON.stringify(d.pistes) && Number(e2.laneCount) === 2 && Number(e2.duration) === 1 && !('price' in e2),
+    `[F5] Anniversaire Lina ${ou} : l enregistrement envoie la FORMULE 4 et ses pistes, le prix suit sans partir`, champs(e2));
   await fermer();
 
   // [F6] hors regles : Kids Fun Day un samedi.
@@ -530,7 +535,7 @@ async function changementDeFormule(page, ou) {
   const e3 = await enregistrer();
   ok(g.hors && g.indice === 'Indisponible ce jour · possible au comptoir.' && g.carte.includes('Toutes les activités illimitées') && g.prix === '300',
     `[F6] Anniversaire Noah ${ou} : Kids Fun Day un samedi le dit sous le menu (« possible au comptoir ») et se lit par sa carte`, g);
-  ok(e3 && e3.formuleId === 'kfd' && Number(e3.price) === 300, `[F6] Anniversaire Noah ${ou} : elle part quand meme, le comptoir decide`, champs(e3));
+  ok(e3 && e3.formuleId === 'kfd' && !('price' in e3), `[F6] Anniversaire Noah ${ou} : elle part quand meme, le comptoir decide (le prix suit sans partir)`, champs(e3));
   await fermer();
 
   // [F7] la variante de l ancienne formule ne suit pas.

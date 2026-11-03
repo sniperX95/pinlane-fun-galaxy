@@ -1107,6 +1107,18 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // LE CATALOGUE A GERER (2026-11-03) : la section Sur mesure d Activites &
+  // tarifs, droit Tarifs (pricing.manage) seul. Tout le catalogue, categories et
+  // articles masques compris, et s il est celui du centre ou le catalogue de
+  // depart. Qui reserve lit surMesureCatalogue : ce qui se choisit, rien d autre.
+  if (action === 'surMesureGestion') {
+    if (!centerId || centerId === 'all') throw createHttpError('Choisissez un centre pour gérer son catalogue sur mesure.', 400, true);
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+    const { catalogueSurMesureAGerer } = require('../lib/center-config');
+    sendJson(res, 200, { ok: true, centerId, ...catalogueSurMesureAGerer(centerId) });
+    return;
+  }
+
   if (action === 'agentStack') {
     let context = { centerId };
     if (startDate && endDate) {
@@ -3697,6 +3709,8 @@ function getRequiredOpsPermission(method, action) {
     // Le catalogue sur mesure : celui qui reserve ou modifie un dossier le lit,
     // et celui qui le gere aussi. Voir les reservations ne suffit pas.
     if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];
+    // Le catalogue entier, masques compris : celui qui le gere, lui seul.
+    if (action === 'surMesureGestion') return 'pricing.manage';
     // Lecture de l'editeur de blocage : meme permission de CENTRE que la config
     // et que ses ecritures (saveAvailabilityBlock), la personne qui parametre le
     // centre. Jamais platform.admin : c'est un reglage d'exploitation du centre.

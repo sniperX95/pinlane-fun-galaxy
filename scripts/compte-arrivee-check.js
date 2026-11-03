@@ -1,8 +1,9 @@
 // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33 ; Movsar : « Oui, le compte »).
 //
-// « Arrivé » reste un geste ; sur la feuille il devient « Ils sont 10 » (depuis
-// le grand tableau du 2026-11-02 ; « Arrivé · 10 » dans la fiche et pour qui ne
-// compte pas), et le toucher une seconde fois ouvre « Ils sont : 10 [−] [+] ».
+// « Arrivé » reste un geste ; pointe, il devient « Ils sont 10 », partout : la
+// feuille, le prochain depart laser, la fiche, et qui ne compte pas (un seul mot
+// par geste, l audit du 2026-11-03). Le toucher une seconde fois ouvre
+// « Ils sont : 10 [−] [+] ».
 // Tranche par Movsar le 29/10 :
 // le second toucher ; le prix suit le compte, a la baisse aussi ; un forfait
 // par piste se compte comme dans Modifier ; seul qui peut modifier un dossier
@@ -19,7 +20,7 @@
 //   [C] L ACTE FINAL, formule a la personne (Anniversaire Hugo, Formule 8,
 //       28 EUR, 10 reserves) : 13 -> le serveur ecrit 13 personnes et 364 EUR,
 //       la note « Compte à l’arrivée : 10 → 13 » a l auteur de SA session, les
-//       heures du groupe inchangees ; la feuille dit 13 et « 10 rés. » ;
+//       heures du groupe inchangees ; la feuille dit 13 et « 10 réservés » ;
 //   [D] moins nombreux, le prix suit (Movsar) : 13 -> 8, 224 EUR ; la bulle et
 //       la feuille gardent « 10 à la réservation » ;
 //   [E] un forfait par piste, comme Modifier : Amis de Clara (bowling, pistes
@@ -29,8 +30,9 @@
 //   [F] le droit : le Staff bar lit le nombre sans bouton, dans la feuille
 //       comme dans la fiche ; le serveur refuse son compte, et le
 //       compte d un groupe pas encore arrive ;
-//   [G] le meme calcul que Modifier : chaque prix envoye est celui que l onglet
-//       Modifier annonce pour ce nombre ;
+//   [G] le meme calcul que Modifier : le prix suit le compte sans partir (le
+//       serveur le pose, prixQuiSuit), et celui qu il ecrit est celui que
+//       l onglet Modifier annonce pour ce nombre ;
 //   [H] au telephone, la bulle tient dans l ecran, rien sous 12 px ; Echap la
 //       ferme et rend le focus au bouton ;
 //   [J] aucune erreur JS.
@@ -153,9 +155,11 @@ function lireBulle() {
     petits, focus: document.activeElement && document.activeElement.getAttribute('data-compte-focus'),
   };
 }
-// Le nombre que dit le geste de la ligne (« Ils sont 10 », « Arrivé · 10 ») : la
-// regle est le nombre, le mot autour peut changer.
+// Le nombre que dit le geste de la ligne (« Ils sont 10 ») : la regle est le
+// nombre.
 const nombreDit = (texte) => Number((/(\d+)\s*$/.exec(String(texte || '')) || [])[1]);
+// Un montant tel que la bulle l ecrit (formatMoneyCentimes) : « 78 € », « 78,50 € ».
+const euros = (v) => `${Number.isInteger(Number(v)) ? Number(v) : Number(v).toFixed(2).replace('.', ',')} €`;
 function lireLigne(id) {
   const tr = document.querySelector(`[data-gf-id="${id}"]`);
   if (!tr) return { absente: true };
@@ -257,17 +261,18 @@ async function scenarioComptoir(browser) {
     const envoiC = c.envois[c.envois.length - 1] || {};
     const baseC = enBase(HUGO);
     const noteC = baseC.notes.filter((n) => n.compte);
-    ok(c.envois.length === 1 && envoiC.compteArrivee === true && Number(envoiC.pax) === 13 && Number(envoiC.price) === 364,
-      '[C] Enregistrer envoie UN PATCH : 13 personnes, 364 €, le drapeau du compte', c.envois.map((e) => ({ pax: e.pax, price: e.price, compte: e.compteArrivee })));
+    // Le prix suit le compte : il ne part pas, le serveur le pose (prixQuiSuit).
+    ok(c.envois.length === 1 && envoiC.compteArrivee === true && Number(envoiC.pax) === 13 && !('price' in envoiC) && !('prixRaison' in envoiC),
+      '[C] Enregistrer envoie UN PATCH : 13 personnes, le drapeau du compte, ni prix ni raison (le serveur le pose)', c.envois.map((e) => ({ pax: e.pax, price: e.price, prixRaison: e.prixRaison, compte: e.compteArrivee })));
     ok(baseC.pax === 13 && baseC.price === 364 && baseC.status === 'arrived',
       '[C] le SERVEUR ecrit 13 personnes et 364 €, le groupe reste arrive', baseC);
     ok(noteC.length === 1 && noteC[0].compte.de === 10 && noteC[0].compte.a === 13 && noteC[0].t === 'Compte à l’arrivée : 10 → 13' && noteC[0].par === 'Rachel',
       '[C] le serveur trace « Compte à l’arrivée : 10 → 13 » a l auteur de sa session', noteC);
     ok(Boolean(planAvant) && baseC.heures === planAvant, '[C] les heures du groupe ne bougent pas', { avant: planAvant, apres: baseC.heures });
     const lc = await page.evaluate(lireLigne, HUGO);
-    ok(!c.bulle.ouverte && lc.pers === '13' && lc.res === '10 rés.' && lc.bouton && nombreDit(lc.bouton.texte) === 13 && /13 personnes/.test(c.toast) && /364/.test(c.toast),
-      '[C] la bulle se ferme ; la feuille dit 13, « 10 rés. », et son bouton 13 ; le toast dit 13 personnes et 364 €', { bulle: c.bulle, ligne: lc, toast: c.toast });
-    ok(oracle13.pax === 13 && Number(envoiC.price) === oracle13.prix, '[G] 13 : le prix envoye est celui que Modifier annonce', { modifier: oracle13, envoye: envoiC.price });
+    ok(!c.bulle.ouverte && lc.pers === '13' && lc.res === '10 réservés' && lc.bouton && nombreDit(lc.bouton.texte) === 13 && /13 personnes/.test(c.toast) && /364/.test(c.toast),
+      '[C] la bulle se ferme ; la feuille dit 13, « 10 réservés », et son bouton 13 ; le toast dit 13 personnes et 364 €', { bulle: c.bulle, ligne: lc, toast: c.toast });
+    ok(oracle13.pax === 13 && baseC.price === oracle13.prix, '[G] 13 : le prix que le serveur ecrit est celui que Modifier annonce', { modifier: oracle13, ecrit: baseC.price });
 
     // [D] moins nombreux : le prix suit.
     const oracle8 = await prixDeModifier(page, HUGO, 8);
@@ -279,10 +284,9 @@ async function scenarioComptoir(browser) {
     const ld = await page.evaluate(lireLigne, HUGO);
     ok(d1.n === 8 && d1.prix === '224 €' && d1.avant === 'avant 364 €' && baseD.pax === 8 && baseD.price === 224,
       '[D] 8 : le prix suit a la baisse (224 €), le serveur l ecrit', { bulle: d1, base: { pax: baseD.pax, price: baseD.price } });
-    ok(baseD.notes.filter((n) => n.compte).map((n) => `${n.compte.de}>${n.compte.a}`).join() === '10>13,13>8' && ld.pers === '8' && ld.res === '10 rés.',
-      '[D] deux comptes traces (10 → 13, 13 → 8) ; la feuille dit 8 et « 10 rés. »', { notes: baseD.notes, ligne: ld });
-    const envoiD = d.envois[d.envois.length - 1] || {};
-    ok(oracle8.pax === 8 && Number(envoiD.price) === oracle8.prix, '[G] 8 : le prix envoye est celui que Modifier annonce', { modifier: oracle8, envoye: envoiD.price });
+    ok(baseD.notes.filter((n) => n.compte).map((n) => `${n.compte.de}>${n.compte.a}`).join() === '10>13,13>8' && ld.pers === '8' && ld.res === '10 réservés',
+      '[D] deux comptes traces (10 → 13, 13 → 8) ; la feuille dit 8 et « 10 réservés »', { notes: baseD.notes, ligne: ld });
+    ok(oracle8.pax === 8 && baseD.price === oracle8.prix, '[G] 8 : le prix que le serveur ecrit est celui que Modifier annonce', { modifier: oracle8, ecrit: baseD.price });
 
     // [E] un forfait par piste : Amis de Clara, bowling sur les pistes 6 et 7.
     const lclara = `[data-gf-id="${CLARA}"]`;
@@ -295,10 +299,9 @@ async function scenarioComptoir(browser) {
     const e0 = await pas(page, 1, 5);
     const e1 = await enregistrer(page, journal);
     const baseE1 = enBase(CLARA);
-    const envoiE1 = e1.envois[e1.envois.length - 1] || {};
-    ok(e0.n === 12 && e0.ref === '7 à la réservation' && baseE1.pax === 12 && baseE1.lanes.join() === '6,7' && baseE1.price === prixClara,
-      `[E] forfait par piste, 7 -> 12 : memes pistes (6, 7), meme prix (${prixClara} €), ecrits par le serveur`, { bulle: e0, base: { pax: baseE1.pax, lanes: baseE1.lanes, price: baseE1.price } });
-    ok(oracle12.pax === 12 && Number(envoiE1.price) === oracle12.prix, '[G] forfait, 12 : le prix envoye est celui que Modifier annonce', { modifier: oracle12, envoye: envoiE1.price });
+    ok(e0.n === 12 && e0.ref === '7 à la réservation' && e0.prix === euros(prixClara) && baseE1.pax === 12 && baseE1.lanes.join() === '6,7' && baseE1.price === prixClara,
+      `[E] forfait par piste, 7 -> 12 : memes pistes (6, 7), meme prix (${prixClara} €), dits par la bulle et ecrits par le serveur`, { bulle: e0, base: { pax: baseE1.pax, lanes: baseE1.lanes, price: baseE1.price } });
+    ok(oracle12.pax === 12 && baseE1.price === oracle12.prix, '[G] forfait, 12 : le prix que le serveur ecrit est celui que Modifier annonce', { modifier: oracle12, ecrit: baseE1.price });
     // Plus de joueurs que ses pistes n en prennent, aucune piste libre a cote a
     // 15:00 (deux pistes au plus serre, 8 par piste) : la bulle le dit, rien ne
     // part, comme « Enregistrer » dans Modifier.
@@ -323,13 +326,12 @@ async function scenarioComptoir(browser) {
     const e2 = await pas(page, 1, 3);
     const e3 = await enregistrer(page, journal);
     const baseE3 = enBase(NOEL);
-    const envoiE3 = e3.envois[e3.envois.length - 1] || {};
     ok(e2.n === 7 && !e2.erreur && baseE3.pax === 7 && baseE3.lanes.join() === oracle7.pistes.replace(/\s/g, '') && baseE3.lanes.length === 2 && baseE3.price === oracle7.prix && baseE3.price > prixNoel && /pistes 6, 7/.test(e3.toast),
       '[E] une piste libre a cote : 4 -> 7 prend la piste 7 et son prix, comme Modifier ; le toast dit les pistes', { bulle: e2, base: { lanes: baseE3.lanes, price: baseE3.price }, modifier: oracle7, toast: e3.toast });
-    ok(oracle7.pax === 7 && Number(envoiE3.price) === oracle7.prix, '[G] piste en plus, 7 : le prix envoye est celui que Modifier annonce', { modifier: oracle7, envoye: envoiE3.price });
+    ok(oracle7.pax === 7 && baseE3.price === oracle7.prix, '[G] piste en plus, 7 : le prix que le serveur ecrit est celui que Modifier annonce', { modifier: oracle7, ecrit: baseE3.price });
 
     // [A] au prochain depart laser.
-    await page.evaluate(() => { const t = Array.from(document.querySelectorAll('button, [role="tab"]')).find((n) => /Planning Laser Game/.test(n.textContent)); if (t) t.click(); });
+    await page.evaluate(() => document.getElementById('staffTabLaser').click());
     await page.waitForSelector('.lp-prochain', { timeout: 8000 }).catch(() => null);
     const manon = await page.evaluate((id) => {
       const groupe = Array.from(document.querySelectorAll('.lp-prochain .lp-groupe')).find((g) => g.querySelector(`[onclick*="lpIlsSontLa(${id}"]`) || g.querySelector(`[data-compte-id="${id}"]`));
@@ -340,8 +342,8 @@ async function scenarioComptoir(browser) {
     await page.waitForSelector(`.lp-prochain [data-compte-id="${MANON}"]`, { timeout: 8000 }).catch(() => null);
     const laser = await page.evaluate((id) => { const b = document.querySelector(`.lp-prochain [data-compte-id="${id}"]`); return b ? { tag: b.tagName, texte: b.textContent.replace(/\s+/g, ' ').trim() } : null; }, MANON);
     const bl = laser ? await ouvrirBulle(page, `.lp-prochain [data-compte-id="${MANON}"]`) : { ouverte: false };
-    ok(manon && laser && laser.tag === 'BUTTON' && laser.texte === 'Arrivés · 8' && bl.ouverte && bl.n === 8,
-      '[A] laser : « Ils sont là » pointe, devient « Arrivés · 8 » et ouvre le compte', { manon, laser, bulle: bl });
+    ok(manon && laser && laser.tag === 'BUTTON' && laser.texte === 'Ils sont 8' && bl.ouverte && bl.n === 8,
+      '[A] laser : « Arrivé » pointe, devient « Ils sont 8 » et ouvre le compte', { manon, laser, bulle: bl });
     await page.keyboard.press('Escape');
 
     // [A] dans la fiche.
@@ -349,13 +351,13 @@ async function scenarioComptoir(browser) {
     await page.waitForSelector('#posOverlay .res-status-btn.arrived', { timeout: 5000 }).catch(() => null);
     const fiche = await page.evaluate(() => { const b = document.querySelector('#posOverlay .res-status-btn.arrived'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id'), presse: b.getAttribute('aria-pressed') } : null; });
     const bf = fiche && fiche.compte ? await ouvrirBulle(page, '#posOverlay .res-status-btn.arrived') : { ouverte: false };
-    ok(fiche && fiche.texte === 'Arrivé · 8' && fiche.compte && fiche.presse === 'true' && bf.ouverte && bf.n === 8 && bf.ref === '10 à la réservation',
-      '[A] fiche : « Arrivé · 8 » enfonce, le second toucher ouvre le compte (10 a la reservation)', { fiche, bulle: bf });
+    ok(fiche && fiche.texte === 'Ils sont 8' && fiche.compte && fiche.presse === 'true' && bf.ouverte && bf.n === 8 && bf.ref === '10 à la réservation',
+      '[A] fiche : « Ils sont 8 » enfonce, le second toucher ouvre le compte (10 a la reservation)', { fiche, bulle: bf });
     await page.keyboard.press('Escape');
     await page.evaluate(() => closePos());
 
     // [F] le Staff bar voit le nombre, sans le bouton.
-    await page.evaluate(() => { const t = Array.from(document.querySelectorAll('button, [role="tab"]')).find((n) => /Planning global/.test(n.textContent)); if (t) t.click(); });
+    await page.evaluate(() => document.getElementById('staffTabAll').click());
     await page.waitForSelector(ligne, { timeout: 8000 }).catch(() => null);
     const sessionAvant = await page.evaluate(() => {
       const avant = state.staffAuthSession;
@@ -367,8 +369,16 @@ async function scenarioComptoir(browser) {
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
     const ff = await page.evaluate(() => { const b = document.querySelector('#posOverlay .res-status-btn.arrived'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id') } : null; });
     await page.evaluate(() => closePos());
-    ok(sessionAvant && !fl.bouton && nombreDit(fl.etat) === 8 && ff && nombreDit(ff.texte) === 8 && !ff.compte,
-      '[F] Staff bar : le nombre se lit, sans bouton de compte, dans la feuille et dans la fiche', { ligne: fl, fiche: ff });
+    await page.evaluate(() => document.getElementById('staffTabLaser').click());
+    await page.waitForSelector('.lp-prochain', { timeout: 8000 }).catch(() => null);
+    const fz = await page.evaluate((id) => {
+      const n = document.querySelector(`.lp-prochain .lp-groupe:has(> [data-laser-res-id="${id}"]) .lp-etat--la`);
+      return n ? { tag: n.tagName, texte: n.textContent.replace(/\s+/g, ' ').trim() } : null;
+    }, MANON);
+    await page.evaluate(() => document.getElementById('staffTabAll').click());
+    await page.waitForSelector(ligne, { timeout: 8000 }).catch(() => null);
+    ok(sessionAvant && !fl.bouton && fl.etat === 'Ils sont 8' && ff && ff.texte === 'Ils sont 8' && !ff.compte && fz && fz.tag === 'SPAN' && fz.texte === 'Ils sont 8',
+      '[F] Staff bar : « Ils sont 8 » se lit, sans bouton de compte, dans la feuille, dans la fiche et au laser', { ligne: fl, fiche: ff, laser: fz });
     // Le serveur refuse son compte...
     const dernier = (d.envois[d.envois.length - 1]) || {};
     serveur.changerSession(B.sessionDuRole('staff-bar', { nom: 'Lucas' }));

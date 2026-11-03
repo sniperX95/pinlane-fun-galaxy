@@ -162,10 +162,10 @@ async function openEstablishment(page, cacheKey) {
   });
   equal(editPayloads.length,5,'actual saveEdit captured five PATCHes');
   equal(editPayloads[0].price,60,'contact-only keeps charged price with disabled offer');equal(editPayloads[0].basePrice,60,'contact-only keeps reference');equal(editPayloads[0].program.items[0].arcadeOffer.price,15,'contact-only keeps purchased snapshot');
-  equal(editPayloads[1].program.items[0].participants,3);equal(editPayloads[1].program.items[0].cards,3,'time cards follows changed ownplayers');equal(editPayloads[1].price,60,'three cards at current20');equal(editPayloads[1].program.items[0].arcadeOffer,undefined,'new choice never sends historical snapshot');
+  equal(editPayloads[1].program.items[0].participants,3);equal(editPayloads[1].program.items[0].cards,3,'time cards follows changed ownplayers');equal('price' in editPayloads[1]||'prixRaison' in editPayloads[1],false,'three cards: the following price is posed by the server, neither price nor reason sent');equal(editPayloads[1].program.items[0].arcadeOffer,undefined,'new choice never sends historical snapshot');
   equal(editPayloads[2].price,0,'explicit zero manual price preserved');equal(editPayloads[2].basePrice,60,'manual zero retains current reference');
   equal(editPayloads[3].price,80,'changing time uses current unit price');
-  equal(editPayloads[4].program.items[0].cards,4,'globalvisitors20 leaves owncards4');equal(editPayloads[4].price,60,'globalvisitor-only change keeps identical card contract');
+  equal(editPayloads[4].program.items[0].cards,4,'globalvisitors20 leaves owncards4');equal('price' in editPayloads[4],false,'globalvisitor-only change: the following price is posed by the server');
   const exactMoney=await page.evaluate(()=>{
     const r={id:901,name:'Prix Arcades',centerId:'libramont',channel:'staff',date:'2026-10-06',startTime:'15:00',duration:0.5,totalDuration:0.5,type:'activity',activityId:'arcade_time',pax:18,status:'arrived',lanes:[],price:35.35,basePrice:35.35,extras:[],program:{priceComplete:true,items:[{activityId:'arcade_time',name:'Arcades',participants:3,cards:2,price:35.35,priceKnown:true,planned:false,arcadeMode:'credit',arcadeOfferId:'credit-25',arcadeOffer:{id:'credit-25',mode:'credit',price:17.675,credits:25,bonusCredits:10,totalCredits:35,gameCostMin:1.2,gameCostMax:2.4}}]}};
     // Isolate peripheral scheduling data while executing the real monetary renderers and formatters.

@@ -282,7 +282,7 @@ async function scenarios(browser, echecs) {
     const win = getPlanningWindow(jour);
     const joueurs = state.reservations.reduce((somme, res) => somme + getLaserWindowsFromReservation(res).reduce((s, w) => s + Number(w.players || 0), 0), 0);
     r.joueurs = joueurs;
-    r.occAttendue = `${Math.round((joueurs / (20 * Math.max((win.close - win.open) * 2, 1))) * 100)}%`;
+    r.occAttendue = `${Math.round((joueurs / (20 * Math.max((win.close - win.open) * 2, 1))) * 100)} %`;
     const ligne = getPricingRows().find((row) => row.id === 'laser-1') || {};
     r.tarif = { capacity: ligne.capacity, availability: ligne.availability, tags: ligne.tags };
     return r;
@@ -341,8 +341,8 @@ async function scenarios(browser, echecs) {
   const c = await page.evaluate((jour) => getLaserAvailability(jour, '20:30', 0.5, 4, null), JOUR);
   controle(c.ok === false && /un seul lancement/.test(c.message), 'C1 un seul lancement : le 2e lancement qui chevauche est refuse', c.message);
 
-  // ---- E : N4, aucune arene, journee complete ----
-  await poser(page, { lanes: 8, weapons: 0, parallel: 1, jeu: 'n4' }, 'all');
+  // ---- E : N4, aucune arene : l occupation ne compte que ses pistes ----
+  await poser(page, { lanes: 8, weapons: 0, parallel: 1, jeu: 'n4' }, 'bowling');
   const e = await page.evaluate((jour) => {
     const reel = window.getAdminCenter;
     window.getAdminCenter = () => ({ id: 'n4-qa', name: 'N4 QA', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 0, parallelLaunches: 1 } } });
@@ -350,9 +350,9 @@ async function scenarios(browser, echecs) {
     window.getAdminCenter = reel;
     const win = getPlanningWindow(jour);
     const heuresPiste = state.reservations.reduce((s, res) => s + getBowlingWindowsFromReservation(res).reduce((t, w) => t + Number(w.duration || 0) * Math.max((w.lanes || []).length, 1), 0), 0);
-    return { occ: document.getElementById('kpiOcc')?.textContent || '', attendu: `${Math.round((heuresPiste / (8 * Math.max(win.close - win.open, 1))) * 100)}%`, heuresPiste };
+    return { occ: document.getElementById('kpiOcc')?.textContent || '', attendu: `${Math.round((heuresPiste / (8 * Math.max(win.close - win.open, 1))) * 100)} %`, heuresPiste };
   }, JOUR);
-  controle(e.heuresPiste === 26 && e.occ === e.attendu, 'E1 N4 journee complete : pas de laser fantome dans la capacite', `affiche ${e.occ}, attendu ${e.attendu}`);
+  controle(e.heuresPiste === 26 && e.occ === e.attendu, 'E1 N4 : pas de laser fantome dans la capacite', `affiche ${e.occ}, attendu ${e.attendu}`);
   await page.close();
 
   // ---- D : role sans configuration staff ----
@@ -446,7 +446,7 @@ const MUTATIONS = [
   { vise: 'A9', file: 'assets/app-main.js', find: 'const enJeu = d.chevauche.filter(w => !w.enLigne);', replace: 'const enJeu = [];' },
   { vise: 'A10', file: 'assets/app-main.js', find: '? armes * lancementsDuJour', replace: '? armes * getAvailabilityLaserParallelLaunches() * lancementsDuJour' },
   { vise: 'A11', file: 'assets/app-main.js', find: 'capacity: `${armes} joueurs en même temps au plus`,', replace: 'capacity: `${LASER_GAME_MAX_PLAYERS} joueurs en même temps au plus`,' },
-  { vise: 'E1', file: 'assets/app-main.js', find: '+ (avecArene ? lancementsDuJour : 0)', replace: '+ lancementsDuJour' },
+  { vise: 'E1', file: 'assets/app-main.js', find: '      : laneCount * heuresOuvertes;', replace: '      : laneCount * heuresOuvertes + lancementsDuJour;' },
   { vise: 'F1', file: 'assets/admin-console.js', find: 'weaponCount && openHours ? weaponCount * openHours * 2 : 0;', replace: 'weaponCount && openHours ? weaponCount * Number(laser.parallelLaunches || 1) * openHours * 2 : 0;' },
   { vise: 'F2', file: 'assets/admin-console.js', find: "const weaponCount = connait('laser') ? Math.max(0, Number(laser.weaponCount) || 0) : LASER_GAME_MAX_PLAYERS;", replace: 'const weaponCount = Number(laser.weaponCount || LASER_GAME_MAX_PLAYERS || 0);' },
   { vise: 'F3', file: 'assets/admin-console.js', find: 'const capacity = Math.max(1, Number(laser.weaponCount) || LASER_GAME_MAX_PLAYERS || 30);', replace: 'const capacity = Math.max(1, (Number(laser.weaponCount) || 30) * Number(laser.parallelLaunches || 1));' },

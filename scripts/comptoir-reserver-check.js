@@ -329,7 +329,7 @@ async function scenarioR1(browser) {
     const { page } = m;
     await guetterLeRouge(page);
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await page.waitForSelector('#rvCreer');
     const a4 = await texte(page, '#rvCreer');
     await clic(n, joueurs(page, 6));
@@ -361,7 +361,7 @@ async function scenarioR1(browser) {
     const m = await ouvrir(browser);
     const { page } = m;
     // (le groupe de 4, puis « Autres » du bowling : toutes les heures, 17:30 a la main)
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -388,7 +388,7 @@ async function scenarioR1(browser) {
       B.base.reservations.set(9700 + i, B.ligne(9700 + i, { start_time: '15:00', lanes: [p], date: '2027-01-16', duration: 1, total_duration: 1, center_id: 'libramont', name: `Autre poste ${p}`, status: 'pending' }));
     });
     // (le groupe de 4, celui qui ouvrait la fenetre avant Les seances)
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForFunction(() => /Créer à (?!15:00)\d\d:\d\d/.test((document.getElementById('rvCreer') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
     await planPose(page);
@@ -403,7 +403,7 @@ async function scenarioR1(browser) {
     // A 15:25, une heure payee ne perd pas 25 minutes pour etre « la premiere ».
     const m = await ouvrir(browser, { fixture: 'calme', heure: '15:25' });
     const { page } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -505,7 +505,7 @@ async function scenarioR3(browser) {
     const late = await compteur(page, 'late');
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
@@ -561,7 +561,7 @@ async function scenarioR4(browser) {
     const late = await compteur(page, 'late');
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
@@ -606,7 +606,7 @@ async function scenarioR4(browser) {
     const sansEncaisser = B.sessionDuRole('staff-bar', { nom: 'Accueil' });
     sansEncaisser.permissions = sansEncaisser.permissions.filter((p) => p !== 'payments.markPaid');
     serveur.changerSession(sansEncaisser);
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -622,7 +622,7 @@ async function scenarioR4(browser) {
     // UN REFUS DE CREATION N ENCAISSE RIEN ENSUITE.
     const m = await ouvrir(browser);
     const { page, journal } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -641,7 +641,7 @@ async function scenarioR4(browser) {
     // UN DOUBLE CLIC NE CREE PAS DEUX DOSSIERS.
     const m = await ouvrir(browser);
     const { page, journal } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -658,7 +658,7 @@ async function scenarioR4(browser) {
     const m = await ouvrir(browser);
     const { page } = m;
     const etat = async () => `${JSON.stringify(await payes(page))} pret ${await pret(page)} | ${await texte(page, '#rvCreer')}`;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 6).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -671,7 +671,7 @@ async function scenarioR4(browser) {
     await planPose(page);
     ok(utilisables(await payes(page)) === 0 && await pret(page), '[R4] pour plusieurs dossiers, pas de bouton Payé utilisable : chacun se paie sur sa fiche', await etat());
     await page.evaluate(() => closeQuickBook());
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 6).click();
     await page.locator('#rsHaut [data-jour]', { hasText: 'Demain' }).click();
     await page.waitForTimeout(350);
@@ -682,7 +682,7 @@ async function scenarioR4(browser) {
       const s = state.staffAuthSession;
       state.staffAuthSession = { ...s, role: { ...s.role, locked: false }, permissions: (s.permissions || []).filter((p) => p !== 'payments.markPaid') };
     });
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await joueurs(page, 6).click();
     await page.waitForTimeout(350);
     await planPose(page);
@@ -792,12 +792,13 @@ async function scenarioR8(browser) {
   const nGestes = { n: 0 };
   await page.keyboard.type('Dupont', { delay: 20 });
   nGestes.n += 1; // (le nom tape, d un trait)
-  await page.waitForFunction(() => /Autres dates/.test((document.querySelector('.gf-rien') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+  // (le nom entier : sous charge, « Dupo » avait deja ses autres dates quand la mesure partait)
+  await page.waitForFunction(() => { const t = (document.querySelector('.gf-rien') || {}).textContent || ''; return /Autres dates/.test(t) && /« Dupont »/.test(t); }, null, { timeout: 6000 }).catch(() => {});
   const rien = await texte(page, '.gf-rien');
   const lignes = await page.locator('.gf-rien__l').count();
   ok(/Aucun groupe ne correspond à « Dupont » aujourd’hui/.test(rien), '[R8] le tableau le dit', rien);
   ok(lignes === 2 && /Dupont/.test(rien) && !/Durand/.test(rien) && !/du jour/.test(rien), '[R8] les autres dates se lisent sous le tableau : une ligne par reservation, pas celles du jour', `${lignes} ${rien}`);
-  ok(/sam\. 23 janv\. · 18:00/.test(rien) && /8 pers\./.test(rien), '[R8] avec la date, l heure, le nom et le nombre', rien);
+  ok(/sam\. 23 janv\. · 18:00/.test(rien) && /8 joueurs/.test(rien), '[R8] avec la date, l heure, le nom et le nombre', rien);
   ok(await page.evaluate(() => window.__lecturesAutresDates) === 1, '[R8] une seule lecture lourde, pour toutes les lettres', await page.evaluate(() => window.__lecturesAutresDates));
   // LA FICHE D UNE AUTRE DATE, SANS QUITTER LE JOUR.
   await clicN(nGestes, page.locator('.gf-rien__l').first());

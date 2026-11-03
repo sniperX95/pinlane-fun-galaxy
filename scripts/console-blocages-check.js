@@ -176,7 +176,8 @@ async function brancher(ctx, centres) {
 }
 
 async function ouvrir(browser, centres) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'Europe/Brussels' });
+  // (1180 : le menu replie, une piste garde la largeur etroite que la regle veut lire)
+  const ctx = await browser.newContext({ viewport: { width: 1180, height: 900 }, timezoneId: 'Europe/Brussels' });
   await brancher(ctx, centres);
   const page = await ctx.newPage();
   const erreurs = [];
@@ -285,7 +286,9 @@ async function parcours(browser, centres) {
     // Le planning Laser (maquette E) : une ligne par depart ; sa jauge compte
     // les armes, son libelle les dit au lecteur d ecran.
     const rangee = carte.closest('.lp-dep');
-    const sub = document.getElementById('laserPlanningSub');
+    // (le sous-titre du laser vit dans le menu « ⋯ », apres les horaires)
+    document.getElementById('planningPlus').click();
+    const sub = document.querySelectorAll('.staff-action-popover .pb-menu__info')[1];
     const cases = rangee ? [...rangee.querySelectorAll('.lp-cases i')] : [];
     return {
       texte: carte.textContent.replace(/\s+/g, ' ').trim(),
@@ -293,6 +296,7 @@ async function parcours(browser, centres) {
       capacite: rangee ? `${rangee.querySelector('.lp-dep__n b').textContent.trim()}/${getAvailabilityLaserCapacity()}` : '',
       dit: rangee ? rangee.querySelector('.lp-dep__jauge').getAttribute('aria-label') : '',
       sous: sub ? sub.textContent.trim() : '',
+      menuFerme: closeStaffFloatingMenus(),
       // Neutre : ni la couleur d un groupe sur la carte, ni sur la jauge ;
       // ses 10 cases sont celles de la reservation en ligne.
       neutre: Boolean(rangee) && !/\bk\d\b/.test(carte.className) && !cases.some((i) => /\bk\d\b/.test(i.className))

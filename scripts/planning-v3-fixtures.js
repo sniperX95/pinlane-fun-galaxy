@@ -192,7 +192,7 @@ function mockNavigateur(cfg) {
       await loadStaffCenterConfig(true);
       renderStaff();
       window.scrollTo(0, 0);
-      if (plein) { var b = document.getElementById('globalPlanningToggle'); if (b && !document.getElementById('globalPlanningBox').classList.contains('expanded')) b.click(); }
+      if (plein && !document.getElementById('globalPlanningBox').classList.contains('expanded')) toggleGlobalPlanningExpanded();
       window.__fixturePrete = true;
     } catch (e) {
       window.__fixturePrete = 'echec : ' + e.message;

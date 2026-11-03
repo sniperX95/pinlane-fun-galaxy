@@ -9,11 +9,11 @@
 // console (scripts/planning-v3-fixtures.js, 15:10, le samedi « pic », aucun
 // reseau, aucune base), a 1366x768 : le PC du comptoir. Compteurs et ratios,
 // jamais de millisecondes absolues.
-//   [A] LA DENSITE : 17 groupes et plus entiers a l ecran, le tableau bord a bord
-//       sans defilement de cote, une case par demi-heure et plus de rangee d en-tete,
-//       un seul bouton plein, le menu en barre sans toucher au choix de l equipe,
-//       seul le retard teinte la case d heure, rien sous 12 px, chaque geste a la
-//       meme place et la meme largeur ;
+//   [A] LA FORME : le tableau bord a bord sans defilement de cote, une case par
+//       demi-heure et plus de rangee d en-tete, un seul bouton plein, le menu en barre
+//       sans toucher au choix de l equipe, la barre de gauche dit le statut, rien sous
+//       12 px, chaque geste a la meme place et la meme largeur (depuis le 2026-11-03, la
+//       lisibilite passe avant le nombre de lignes : scripts/planning-barre-check.js [O]) ;
 //   [B] UN « ARRIVÉ » ne reecrit qu une ligne : rien ne bouge d un pixel, l ordre
 //       non plus, le bouton plein passe au groupe suivant, « Ils sont N » ;
 //   [C] LES COMPTEURS filtrent, depuis le haut, et un second toucher revient ;
@@ -21,19 +21,20 @@
 //       rien s il en reste plusieurs ; un groupe sur place trouve Carte et Espèces ;
 //   [E] « PAS VENU » : a partir de 15 min de retard, jamais sur un groupe qui a
 //       annonce son retard, a la fin d une visite jamais pointee ; la ligne reste ;
-//   [F] AGRANDIR : le plein ecran, le champ dans sa tete, rien ne s y recouvre,
+//   [F] AGRANDIR : le plein ecran, le champ dans la barre, rien ne s y recouvre,
 //       au moins autant de lignes ; Reduire rend tout ;
 //   [G] LE MENU REPLIE reste utilisable ; quitter l ecran rend le menu et tout le
 //       reste ; « Ouvrir le menu » vaut pour cet ecran, pas pour la preference ;
 //   [H] LA BARRE COUPE UNE DEMI-HEURE : la suite reste dans son bloc ;
-//   [I] UNE LIGNE EN RETARD : le telephone et la note sur la meme hauteur, le
-//       contraste de tout ce qui s ecrit, en clair et en sombre ;
+//   [I] UNE LIGNE EN RETARD : le telephone a cote du nom, le mot du client dans sa
+//       rubrique, le contraste de tout ce qui s ecrit, en clair et en sombre ;
 //   [J] LA MINUTE : la barre garde sa hauteur, la feuille suit, jamais sous une main ;
 //   [K] UN AUTRE JOUR : ni barre ni compteur faux, « Aujourd hui » revient ; un jour
 //       passe ne reserve plus, un jour a venir si ;
-//   [L] LA TETE AGRANDIE, de 390 a 1920 px : deux pieces ne se recouvrent pas ;
+//   [L] LA BARRE AGRANDIE, de 390 a 1920 px : deux pieces ne se recouvrent pas ;
 //   [M] LE TEXTE RESTE DANS SA CASE, en largeur partout, en hauteur dans la case
-//       d heure, montants longs, menu rouvert, tablette, pire jour ;
+//       d heure (elle ne fait pas grandir ses lignes), montants longs, menu rouvert,
+//       tablette, pire jour ;
 //   [N] LES AUTRES JOURS : calme, ferme, vide, pire, rien ne deborde ;
 //   [P] LA CASE D HEURE reserve a son heure, une case passee ne fait rien ;
 //   [Q] LE BANDEAU : l etat du centre mene a son geste, chaque nom a sa fiche,
@@ -42,7 +43,7 @@
 //   [S] ENCAISSER : le montant d un groupe sur place ouvre Carte et Espèces, le
 //       paiement part avec son moyen, rien ne bouge ;
 //   [T] UNE PISTE FERMEE se voit sur la ligne du groupe et mene a son bloc ;
-//   [U] LE MENU « ⋯ » n a plus ce que le tableau fait lui-meme ;
+//   [U] LE MENU « ⋯ » n a pas ce que la barre et le tableau font eux-memes ;
 //   [V] AU TELEPHONE, la liste s ouvre sur l heure, une fois ;
 //   [W] LA PERF SE GARDE A SA SOURCE : les surfaces cachees restent vides, geste
 //       apres geste ; aucun selecteur qui recalcule tout (`:has()` suivi d un
@@ -168,8 +169,8 @@ const fermer = (page) => page.evaluate(() => { closeQuickBook(); closePos(); clo
 // La tete de la boite agrandie : deux pieces ne se recouvrent pas, chaque piece est dans
 // l ecran, et le doigt qui vise le champ touche bien le champ, d un bout a l autre.
 const teteDegagee = (page) => page.evaluate(() => {
-  const tete = document.querySelector('#globalPlanningBox .planning-head');
-  const pieces = Array.from(tete.querySelectorAll('.pec-date, .fs-switch, .gf-recherche, .planning-actions > *:not(.gf-recherche)')).filter((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
+  const tete = document.getElementById('planningBarre');
+  const pieces = Array.from(tete.querySelectorAll('.pb-seg, .pb-date, .gf-recherche, .pb-res, .pb-ic')).filter((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
   const boites = pieces.map((el) => { const r = el.getBoundingClientRect(); return { nom: el.id || el.className.toString().split(' ')[0], g: r.left, d: r.right, h: r.top, b: r.bottom }; });
   const chevauchements = [];
   boites.forEach((a, i) => boites.slice(i + 1).forEach((b) => { if (a.g < b.d - 0.5 && b.g < a.d - 0.5 && a.h < b.b - 0.5 && b.h < a.b - 0.5) chevauchements.push(`${a.nom} / ${b.nom}`); }));
@@ -188,9 +189,7 @@ const teteDegagee = (page) => page.evaluate(() => {
 
 // Le texte reste dans sa case : pour chaque noeud de texte d une ligne, ses deux bords
 // mesures sur le noeud lui-meme (la boite d un parent coupe ne dit pas ce qui est coupe).
-// La note d un groupe et une longue liste d extras se coupent expres : leur texte entier
-// est dans la bulle et la fiche. « 2 cruches », lui, doit tenir. Dans la case d heure,
-// la hauteur compte aussi : elle n a que celle de ses lignes.
+// Dans la case d heure, la hauteur compte aussi : elle n a que celle de ses lignes.
 const texteDansSaCase = (page) => page.evaluate(() => {
   const sorties = [];
   let noeuds = 0;
@@ -200,8 +199,7 @@ const texteDansSaCase = (page) => page.evaluate(() => {
     const enHauteur = td.classList.contains('gf-bloc');
     const marcheur = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
     for (let n = marcheur.nextNode(); n; n = marcheur.nextNode()) {
-      if (!n.nodeValue.trim() || n.parentElement.closest('.gf-nom__note')) continue;
-      if (n.parentElement.matches('.gf-f__i') && n.nodeValue.trim().length > 9) continue;
+      if (!n.nodeValue.trim()) continue;
       const portee = document.createRange();
       portee.selectNodeContents(n);
       const boites = Array.from(portee.getClientRects());
@@ -215,25 +213,38 @@ const texteDansSaCase = (page) => page.evaluate(() => {
       if (enHauteur && bas > b.bottom + 0.5) sorties.push(`${nom}, ${Math.ceil(bas - b.bottom)} px sous la case)`);
     }
   });
+  // LA CASE D HEURE N A QUE LA HAUTEUR DE SES LIGNES. Elle est dans le flux : trop
+  // pleine, elle ne deborde pas, elle fait grandir ses lignes. Celles-ci ont donc la meme
+  // hauteur avec et sans son contenu (tant qu elle est une case du tableau ; sur un
+  // telephone elle devient l en-tete de chaque carte).
+  const lignes = Array.from(document.querySelectorAll('.gf-r'));
+  const blocs = Array.from(document.querySelectorAll('.gf-r > td.gf-bloc')).filter((td) => getComputedStyle(td).display === 'table-cell');
+  const dedans = blocs.map((td) => td.querySelector('.gf-bloc__in')).filter(Boolean);
+  if (dedans.length) {
+    const avec = lignes.map((l) => l.getBoundingClientRect().height);
+    dedans.forEach((e) => { e.style.display = 'none'; });
+    const sans = lignes.map((l) => l.getBoundingClientRect().height);
+    dedans.forEach((e) => { e.style.display = ''; });
+    lignes.forEach((l, i) => { if (avec[i] > sans[i] + 0.5) sorties.push(`ligne ${i + 1} grandie de ${Math.ceil(avec[i] - sans[i])} px par sa case d heure`); });
+  }
   const uniques = Array.from(new Set(sorties));
   return { ok: noeuds > 0 && uniques.length === 0, noeuds, nombre: sorties.length, sorties: uniques.slice(0, 8) };
 });
 
 // ---------------------------------------------------------------------------
-// [A] LA DENSITE ET LA FORME
+// [A] LA FORME
 // ---------------------------------------------------------------------------
 async function densite(browser) {
   await avec(browser, { lettre: 'A' }, async (page) => {
     const v0 = await vue(page);
     ok(v0.total === GROUPES_DU_PIC, `[A] le grand tableau est monte : ${GROUPES_DU_PIC} groupes sur ${GROUPES_DU_PIC}`, v0.total);
-    ok(v0.entieres >= 17, '[A] 17 groupes et plus entiers a l ecran, a 1366x768', v0);
     ok(v0.defile <= 0, '[A] pas de defilement de cote', v0.defile);
     const g = await page.evaluate(() => {
       const tout = (s) => Array.from(document.querySelectorAll(s));
       const r = {};
       const t = document.querySelector('.gf-t').getBoundingClientRect();
       const rail = document.querySelector('.ops-sidebar').getBoundingClientRect();
-      r.bord = { gauche: Math.round(t.left - rail.right), droite: Math.round(innerWidth - t.right), rail: Math.round(rail.width) };
+      r.bord = { gauche: Math.round(t.left - rail.right), droite: Math.round(document.body.getBoundingClientRect().right - t.right), rail: Math.round(rail.width) };
       r.collapsed = document.body.classList.contains('staff-menu-collapsed');
       r.pref = Boolean(state.staffMenuCollapsed);
       r.lignesDEnTete = tout('.gf-demi').length;
@@ -248,10 +259,11 @@ async function densite(browser) {
       r.surface = tout('#globalPlanningGridWrap *').length;
       r.lignes = tout('.gf-r').length;
       r.geste = Array.from(new Set(tout('.gf-gb--arrive, .gf-gb--etat').map((b) => { const x = b.getBoundingClientRect(); return `${Math.round(innerWidth - x.right)}/${Math.round(x.width)}`; })));
-      const fond = (e) => getComputedStyle(e).backgroundColor;
-      const teintes = tout('.gf-r').map((tr) => ({ teinte: fond(tr.querySelector('td.gf-h')) !== fond(tr.querySelector('td.gf-nom')), retard: tr.classList.contains('is-retard') }));
-      r.retards = teintes.filter((x) => x.retard).length;
-      r.teintesFausses = teintes.filter((x) => x.teinte !== x.retard).length;
+      // La barre de gauche : une couleur par statut, jamais deux pour le meme.
+      const couleurs = {};
+      tout('.gf-r').forEach((tr) => { const t = /\bt-(\w+)/.exec(tr.className)[1]; (couleurs[t] = couleurs[t] || new Set()).add(getComputedStyle(tr.querySelector('td.gf-h')).backgroundColor); });
+      r.statuts = Object.keys(couleurs).map((t) => [t, couleurs[t].size]);
+      r.distinctes = new Set(Object.values(couleurs).flatMap((s) => Array.from(s))).size;
       return r;
     });
     ok(g.bord.gauche >= 0 && g.bord.gauche <= 8 && g.bord.droite >= 0 && g.bord.droite <= 8, '[A] le tableau va bord a bord, du menu au bord de l ecran', g.bord);
@@ -263,7 +275,7 @@ async function densite(browser) {
     // elements. Mesure 2026-11-02 : 29 par ligne, huit colonnes d activite comprises.)
     ok(g.surface / g.lignes <= 33, '[A] une ligne reste legere (33 elements au plus)', { surface: g.surface, lignes: g.lignes });
     ok(g.geste.length === 1, '[A] le geste : meme place, meme largeur, sur chaque ligne', g.geste);
-    ok(g.retards > 0 && g.teintesFausses === 0, '[A] seul le retard teinte la case d heure', { retards: g.retards, fausses: g.teintesFausses });
+    ok(g.statuts.length >= 3 && g.statuts.every((x) => x[1] === 1) && g.distinctes === g.statuts.length, '[A] la barre de gauche dit le statut, une couleur par statut', g.statuts);
   });
 }
 
@@ -412,7 +424,7 @@ async function pasVenu(browser) {
 async function plein(browser) {
   await avec(browser, { lettre: 'F' }, async (page) => {
     const v0 = await vue(page);
-    await page.locator('.gf-outil:not(.gf-outil--plus)').click();
+    await page.locator('#planningAgrandir').click();
     await FX.repos(page, 300);
     const p = await page.evaluate(() => {
       const boite = document.getElementById('globalPlanningBox');
@@ -421,17 +433,17 @@ async function plein(browser) {
       const c = champ.getBoundingClientRect();
       const now = document.querySelector('.gf-now').getBoundingClientRect();
       const d = document.querySelector('.gf-defile').getBoundingClientRect();
-      return { pleinEcran: b.width === innerWidth && b.height === innerHeight, champVisible: c.width > 100 && c.top >= 0 && c.bottom < innerHeight, dansLaBoite: boite.contains(champ), barre: now.top >= d.top && now.bottom <= d.bottom };
+      return { pleinEcran: Boolean(document.fullscreenElement) && document.body.getBoundingClientRect().width - b.width <= 14 && b.bottom >= innerHeight - 8, champVisible: c.width > 100 && c.top >= 0 && c.bottom < innerHeight, dansLaBarre: document.getElementById('planningBarre').contains(champ), barre: now.top >= d.top && now.bottom <= d.bottom };
     });
-    ok(p.pleinEcran && p.champVisible && p.dansLaBoite && p.barre, '[F] Agrandir : plein ecran, le champ dans sa tete, la barre a l ecran', p);
+    ok(p.pleinEcran && p.champVisible && p.dansLaBarre && p.barre, '[F] Agrandir : plein ecran, le champ dans la barre, la barre de l heure a l ecran', p);
     const t = await teteDegagee(page);
-    ok(t.ok, '[F] Agrandir : rien ne recouvre rien dans la tete', t);
+    ok(t.ok, '[F] Agrandir : rien ne recouvre rien dans la barre', t);
     const vp = await vue(page);
     ok(vp.entieres >= v0.entieres, '[F] Agrandir montre au moins autant de lignes', { avant: v0.entieres, apres: vp.entieres });
-    await page.locator('#globalPlanningToggle').click();
+    await page.locator('#planningAgrandir').click();
     await FX.repos(page, 300);
-    const r = await page.evaluate(() => { const c = document.getElementById('globalPlanningSearchInput'); return { dansLaTete: Boolean(c.closest('.staff-head')), w: Math.round(c.getBoundingClientRect().width) }; });
-    ok(r.dansLaTete && r.w > 200, '[F] Reduire : le champ revient dans la tete de la page', r);
+    const r = await page.evaluate(() => { const c = document.getElementById('globalPlanningSearchInput'); return { dansLaBarre: Boolean(c.closest('#planningBarre')), plein: Boolean(document.fullscreenElement), w: Math.round(c.getBoundingClientRect().width) }; });
+    ok(r.dansLaBarre && !r.plein && r.w > 200, '[F] Reduire : le champ reste dans la barre, le plein ecran se quitte', r);
     ok((await vue(page)).barre, '[F] Reduire : le tableau revient sur la barre de l heure');
   });
 }
@@ -441,21 +453,23 @@ async function plein(browser) {
 // ---------------------------------------------------------------------------
 async function menu(browser) {
   await avec(browser, { lettre: 'G' }, async (page) => {
-    const lire = () => page.evaluate(() => ({ collapsed: document.body.classList.contains('staff-menu-collapsed'), large: document.body.classList.contains('gf-large'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), vue: state.staffResourceView, pref: Boolean(state.staffMenuCollapsed), kpi: getComputedStyle(document.querySelector('#staffView .kpi-grid')).display, titre: getComputedStyle(document.querySelector('.staff-head-titre')).display, champ: getComputedStyle(document.getElementById('gfRecherche')).display }));
+    const lire = () => page.evaluate(() => ({ collapsed: document.body.classList.contains('staff-menu-collapsed'), large: document.body.classList.contains('gf-large'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), vue: state.staffResourceView, pref: Boolean(state.staffMenuCollapsed), barre: getComputedStyle(document.getElementById('planningBarre')).display, champ: getComputedStyle(document.getElementById('gfRecherche')).display }));
     const barre = await lire();
     ok(barre.collapsed && barre.large && barre.rail <= 80, '[G] le montage : le grand tableau, le menu en barre', barre);
     await page.locator('[data-fgx-menu-toggle="planning"]').first().click();
     await FX.repos(page, 200);
     const pop = await page.evaluate(() => { const p = document.querySelector('.fgx-menu-popover.planning'); return p ? p.textContent.replace(/\s+/g, ' ') : ''; });
-    ok(/Bowling/.test(pop) && /Laser/.test(pop) && /Toutes/.test(pop), '[G] « Planning » sur la barre ouvre ses trois plannings', pop);
+    ok(/Bowling/.test(pop) && /Laser/.test(pop) && /Complet/.test(pop), '[G] « Planning » sur la barre ouvre ses trois plannings', pop);
     await page.locator('.fgx-menu-popover.planning [data-ops-resource="bowling"]').click();
     await FX.repos(page, 400);
     const bowling = await lire();
-    ok(bowling.vue === 'bowling' && !bowling.collapsed && !bowling.large && bowling.rail > 200 && !bowling.pref && bowling.champ === 'none' && bowling.kpi !== 'none' && bowling.titre !== 'none', '[G] Bowling : le menu revient ouvert, tout redevient comme avant', bowling);
-    await page.locator('[data-ops-resource="all"]').first().click();
+    ok(bowling.vue === 'bowling' && bowling.collapsed && bowling.large && bowling.rail <= 80 && !bowling.pref && bowling.champ !== 'none' && bowling.barre !== 'none', '[G] Bowling : la meme barre, le meme menu replie, le choix de l equipe n a pas bouge', bowling);
+    await page.locator('[data-fgx-menu-toggle="planning"]').first().click();
+    await FX.repos(page, 200);
+    await page.locator('.fgx-menu-popover.planning [data-ops-resource="all"]').click();
     await FX.repos(page, 400);
     const rev = await lire();
-    ok(rev.collapsed && rev.large && rev.rail <= 80 && !rev.pref, '[G] Toutes : la barre revient', rev);
+    ok(rev.collapsed && rev.large && rev.rail <= 80 && !rev.pref, '[G] Complet : la barre reste', rev);
     await page.locator('[data-fgx-menu-collapse]').click();
     await FX.repos(page, 400);
     const ouvert = await lire();
@@ -467,7 +481,7 @@ async function menu(browser) {
     await page.locator('[data-fgx-menu-key="reservations"]').first().click();
     await FX.repos(page, 400);
     const autre = await lire();
-    ok(autre.rail > 200 && !autre.large, '[G] Réservations : le menu est entier', autre);
+    ok(autre.rail > 200 && !autre.large && autre.barre === 'none', '[G] Réservations : le menu est entier, la barre des plannings n y est pas', autre);
   });
 }
 
@@ -483,7 +497,7 @@ async function coupe(browser) {
       const t = Array.from(document.querySelectorAll('.gf-t tbody tr'));
       const i = t.findIndex((x) => x.classList.contains('gf-now'));
       const suivante = t[i + 1];
-      const heure = suivante.querySelector('.gf-h b');
+      const heure = suivante.querySelector('.gf-nom__h');
       return { avant: t[i - 1].querySelector('.gf-nom__t').textContent, apres: suivante.querySelector('.gf-nom__t').textContent, suite: Boolean(suivante.querySelector('.gf-bloc.is-suite')), heure: heure ? heure.textContent : '', voit: heure ? getComputedStyle(heure).display : 'none' };
     });
     ok(/Sacha/.test(c.apres), '[H] le montage : Sacha, 15:50, vient juste apres la barre de 15:40', c);
@@ -524,13 +538,12 @@ async function noteContraste(browser) {
       autre.notes = 'Un enfant allergique aux arachides, voir avec la maman au comptoir avant le goûter.';
       renderStaff();
       const l = document.querySelector(`.gf-r[data-gf-id="${r.id}"]`);
-      const nue = Array.from(document.querySelectorAll('.gf-r')).find((x) => !x.querySelector('.gf-nom__sous'));
-      const sous = l.querySelector('.gf-nom__sous');
-      const tel = l.querySelector('.gf-nom__tel');
-      return { sous: sous ? sous.textContent : '', h: Math.round(l.getBoundingClientRect().height), nue: Math.round(nue.getBoundingClientRect().height), tel: tel ? tel.getAttribute('href') : '', retard: l.classList.contains('is-retard') };
+      const client = l.querySelector('.gf-i--client');
+      const tel = l.querySelector('.gf-nom__l .gf-nom__tel');
+      return { client: client ? client.textContent : '', tel: tel ? tel.getAttribute('href') : '', texteTel: tel ? tel.textContent : '', retard: l.classList.contains('is-retard') };
     });
     ok(note.retard, '[I] le montage : Amis de Clara sont en retard', note);
-    ok(/0471/.test(note.sous) && /Gâteau/.test(note.sous) && note.tel === 'tel:0471234567' && note.h <= note.nue + 1, '[I] une ligne en retard : le telephone et la note, sur la meme hauteur', note);
+    ok(/0471/.test(note.texteTel) && /Gâteau/.test(note.client) && note.tel === 'tel:0471234567', '[I] une ligne en retard : le telephone a cote du nom, le mot du client dans sa rubrique', note);
     for (const theme of ['clair', 'sombre']) {
       if (theme === 'sombre') { await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await FX.repos(page, 150); }
       const res = await page.evaluate(lireContraste);
@@ -572,7 +585,7 @@ async function autreJour(browser) {
       const decale = (n) => { const d = new Date(`${F.jour}T12:00:00`); d.setDate(d.getDate() + n); const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
       [-1, 1].forEach((n) => { const j = decale(n); F.jours[j] = F.jours[F.jour].map((r) => Object.assign({}, r, { date: j })); });
     });
-    const lire = () => page.evaluate(() => ({ auj: document.body.classList.contains('gf-auj'), btn: getComputedStyle(document.querySelector('.staff-today-btn')).display, lignes: document.querySelectorAll('.gf-r').length, now: document.querySelectorAll('.gf-now').length, reserver: document.querySelectorAll('td[data-gf-reserver]').length, horloge: document.querySelectorAll('[data-gf-horloge]').length, tete: document.querySelector('.gf-tete').textContent.replace(/\s+/g, ' ').slice(0, 60) }));
+    const lire = () => page.evaluate(() => ({ auj: Boolean(document.querySelector('#planningBande [data-gf-horloge]')), btn: (() => { const b = document.querySelector('#planningBande .staff-today-btn'); return b ? getComputedStyle(b).display : 'none'; })(), lignes: document.querySelectorAll('.gf-r').length, now: document.querySelectorAll('.gf-now').length, reserver: document.querySelectorAll('td[data-gf-reserver]').length, horloge: document.querySelectorAll('[data-gf-horloge]').length, tete: document.getElementById('planningBande').textContent.replace(/\s+/g, ' ').slice(0, 60) }));
     await page.evaluate(() => { shiftDate(-1); });
     await page.waitForFunction(() => document.querySelectorAll('.gf-r').length > 0 && !document.querySelector('.gf-now'), null, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 200);
@@ -589,7 +602,7 @@ async function autreJour(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// [L] LA TETE AGRANDIE, A TOUTES LES LARGEURS
+// [L] LA BARRE AGRANDIE, A TOUTES LES LARGEURS
 // ---------------------------------------------------------------------------
 async function teteLargeurs(browser) {
   await avec(browser, { lettre: 'L' }, async (page) => {
@@ -599,7 +612,7 @@ async function teteLargeurs(browser) {
       await page.setViewportSize({ width: l, height: h });
       await page.waitForTimeout(200);
       const t = await teteDegagee(page);
-      ok(t.ok, `[L] agrandi a ${l} px : rien ne recouvre rien dans la tete`, t);
+      ok(t.ok, `[L] agrandi a ${l} px : rien ne recouvre rien dans la barre`, t);
     }
   });
 }
@@ -614,12 +627,12 @@ async function agrandiTelephone(browser) {
       const d = document.querySelector('.gf-defile');
       const b = d.getBoundingClientRect();
       const n = d.querySelector('.gf-now').getBoundingClientRect();
-      const tete = document.querySelector('#globalPlanningBox .planning-head').getBoundingClientRect();
+      const tete = document.getElementById('planningBarre').getBoundingClientRect();
       return { defile: d.scrollHeight > d.clientHeight + 1, overflow: getComputedStyle(d).overflowY, st: Math.round(d.scrollTop), haut: Math.round(n.top), bas: Math.round(n.bottom), liste: [Math.round(b.top), Math.round(b.bottom)], tete: Math.round(tete.top), ih: innerHeight };
     });
     ok(o.defile && /auto|scroll/.test(o.overflow), '[L] agrandie au telephone, la liste defile dans sa boite', o);
     ok(o.st > 0 && o.haut >= o.liste[0] - 1 && o.bas <= Math.min(o.liste[1], o.ih) + 1, '[L] et s ouvre sur l heure', o);
-    ok(o.tete >= 0, '[L] sans pousser sa tete hors de l ecran', o);
+    ok(o.tete >= 0, '[L] sans pousser la barre hors de l ecran', o);
   });
 }
 
@@ -642,8 +655,6 @@ async function texteCase(browser) {
   await avec(browser, { lettre: 'M' }, async (page) => {
     const vus = await montantsLongs(page);
     ok(vus.some((x) => /1.240/.test(x)), '[M] le montage : les montants longs sont a l ecran', vus);
-    const marges = await page.evaluate(() => Array.from(document.querySelectorAll('.gf-r.is-caisse')).filter((l) => /(1.240|139,50)/.test((l.querySelector('.gf-du') || {}).textContent || '') && l.querySelector('.gf-pv')).length);
-    ok(marges === 0, '[M] un montant long prend la marge de « Pas venu »', marges);
   });
   for (const [nomCas, o, geste] of [
     ['montants longs, 1366 px', {}, montantsLongs],
@@ -730,7 +741,7 @@ async function caseHeure(browser) {
 async function bandeau(browser) {
   await avec(browser, { lettre: 'Q' }, async (page) => {
     const b = await page.evaluate(() => {
-      const t = document.querySelector('.gf-tete');
+      const t = document.getElementById('planningBande');
       const present = (id) => { const tr = document.querySelector(`.gf-r[data-gf-id="${id}"]`); return tr ? /\bt-(arr|paid)\b/.test(tr.className) : null; };
       return {
         horloge: (t.querySelector('[data-gf-horloge]') || {}).textContent,
@@ -869,7 +880,7 @@ async function panne(browser) {
     ok(p.maintenance === 'maintenance' && p.surLa5.length > 0, '[T] le montage : la piste 5 est fermee, des groupes y sont', p);
     ok(p.enPanne.length > 0 && p.enPanne.every((id) => p.surLa5.includes(id)), '[T] une piste fermee se voit sur la ligne de ses groupes, et d eux seuls', p);
     ok(p.finies === 0, '[T] une partie finie ne parle plus de sa piste fermee', p);
-    ok(p.textes.every((t) => /P5 fermée/.test(t)) && p.lien.every((v) => v === 'bowling'), '[T] la case dit quelle piste et mene au planning bowling', p);
+    ok(p.textes.every((t) => /Piste 5 fermée/.test(t)) && p.lien.every((v) => v === 'bowling'), '[T] la case dit quelle piste et mene au planning bowling', p);
     const id = p.enPanne[0];
     await page.locator(`[data-gf-id="${id}"] .gf-x.is-panne`).first().scrollIntoViewIfNeeded();
     await page.locator(`[data-gf-id="${id}"] .gf-x.is-panne`).first().click();
@@ -884,17 +895,17 @@ async function panne(browser) {
 // ---------------------------------------------------------------------------
 async function menuPlus(browser) {
   await avec(browser, { lettre: 'U' }, async (page) => {
-    await page.locator('.gf-outil--plus').click();
+    await page.locator('#planningPlus').click();
     await FX.repos(page, 200);
     const m = await page.evaluate(() => {
       const p = document.querySelector('.staff-action-popover');
       return { boutons: p ? Array.from(p.querySelectorAll('button')).map((b) => b.textContent.trim()) : [], legende: Boolean(p && p.querySelector('.gf-legende-menu')) };
     });
     ok(m.boutons.length >= 3 && m.legende, '[U] le montage : le menu s ouvre, avec sa legende', m);
-    ok(!m.boutons.some((b) => /Agrandir|Réduire/.test(b)), '[U] plus de « Agrandir le planning » au menu : le bandeau a sa porte', m.boutons);
+    ok(!m.boutons.some((b) => /Agrandir|Réduire/.test(b)), '[U] plus de « Agrandir le planning » au menu : la barre a sa porte', m.boutons);
     ok(!m.boutons.some((b) => /Nouvelle réservation/.test(b)), '[U] plus de « Nouvelle réservation ici » : la case d heure reserve', m.boutons);
-    const porte = await page.evaluate(() => { const b = document.querySelector('.gf-outil:not(.gf-outil--plus)'); return b ? b.textContent.trim() : ''; });
-    ok(/Agrandir/.test(porte), '[U] « Agrandir » reste au bandeau', porte);
+    const porte = await page.evaluate(() => { const b = document.getElementById('planningAgrandir'); return b && b.getClientRects().length ? b.getAttribute('aria-label') : ''; });
+    ok(/Agrandir/.test(porte), '[U] « Agrandir » reste sur la barre', porte);
   });
 }
 
@@ -1046,17 +1057,18 @@ const SCENARIOS = { densite, arrive, compteurs, nom, pasVenu, plein, menu, coupe
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
-  // [A] la densite et la forme
-  { nom: 'lignes-hautes', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: PGC, de: '--gf-l: 36px;', vers: '--gf-l: 56px;' }] },
+  // [A] la forme
   { nom: 'tous-les-boutons-pleins', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: PGC, de: '.gf-t .gf-r.is-premier .gf-gb--arrive { background: var(--accent);', vers: '.gf-t .gf-r .gf-gb--arrive { background: var(--accent);' }] },
   { nom: 'menu-reste-ouvert', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: MENU, de: '    return grandTableau() ? !menuRouvertIci : readPreference();', vers: '    return readPreference();' }] },
-  { nom: 'chaque-heure-teintee', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: PGC, de: '.gf-h b { display: block;', vers: '.gf-t .gf-r > td.gf-h { background: var(--bk-haut); }\n.gf-h b { display: block;' }] },
+  { nom: 'barre-sans-statut', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: PGC, de: '.gf-t .gf-r > td.gf-h { padding: 0; background: var(--bk-barre); }', vers: '.gf-t .gf-r > td.gf-h { padding: 0; background: var(--line-strong); }' }] },
   // [B] un « Arrivé » ne reecrit qu une ligne
   { nom: 'table-reecrite', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: '    if (!avant || !tbody || avant.table !== p.table || avant.colonnes !== p.colonnes) { gfEcrireTout(wrap, defile, p); return; }', vers: '    gfEcrireTout(wrap, defile, p); return;' }] },
+  // Une rangee reecrite perd la ligne du retard : celles du dessous remontent.
+  { nom: 'hauteur-perdue', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: "      if (tr.getBoundingClientRect().height < h - 0.5) tr.style.height = h + 'px';\n", vers: '' }] },
   { nom: 'ordre-qui-bouge', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: "    groupes.sort(function (a, b) { return (a.r.status === 'arrived') - (b.r.status === 'arrived') || a.heure - b.heure ||" }] },
   { nom: 'bouton-plein-perdu', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: "      if (ligne) ligne.classList.add('is-premier');", vers: "      if (ligne && !wrap._gfPremier) ligne.classList.add('is-premier');" }] },
   // [C] les compteurs
-  { nom: 'compteur-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "      if (filtre) { gfFiltrer(wrap, filtre.getAttribute('data-gf-filtre')); return; }", vers: '      if (filtre) return;' }] },
+  { nom: 'compteur-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "      if (filtre) { gfFiltrer(wrapDe(), filtre.getAttribute('data-gf-filtre')); return; }", vers: '      if (filtre) return;' }] },
   { nom: 'second-toucher-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "setStaffStatusFilter(actuel === f ? 'all' : f);", vers: 'setStaffStatusFilter(f);' }] },
   // [D] taper un nom
   { nom: 'entree-pointe-tout', lettre: 'D', scenarios: ['nom'], editions: [{ fichier: PG, de: '    if (trouves.length !== 1 || !gfPeutArriver(trouves[0], m)) return;', vers: '    if (!trouves.length || !gfPeutArriver(trouves[0], m)) return;' }] },
@@ -1066,41 +1078,42 @@ const MUTATIONS = [
   { nom: 'pas-venu-sur-retard-annonce', lettre: 'E', scenarios: ['pasVenu'], editions: [{ fichier: PG, de: " && !(typeof getReservationDelayFlag === 'function' && getReservationDelayFlag(g.r));", vers: ';' }] },
   { nom: 'pas-venu-sourd', lettre: 'E', scenarios: ['pasVenu'], editions: [{ fichier: PG, de: "      if (absent) { basculerAbsence(Number(absent.getAttribute('data-gf-absent')), true, e); return; }", vers: '      if (absent) return;' }] },
   // [F] agrandir
-  { nom: 'champ-reste-dehors', lettre: 'F', scenarios: ['plein'], editions: [{ fichier: PG, de: '    gfPlacerRecherche(plein);\n', vers: '' }] },
+  { nom: 'agrandi-sans-ligne-de-plus', lettre: 'F', scenarios: ['plein'], editions: [{ fichier: PGC, de: 'z-index: auto; flex: 1 1 0; min-height: 0; margin: 0; border: 1px solid var(--line);', vers: 'z-index: auto; flex: 0 0 240px; min-height: 0; margin: 0; border: 1px solid var(--line);' }] },
+  { nom: 'agrandi-sans-plein-ecran', lettre: 'F', scenarios: ['plein'], editions: [{ fichier: APP, de: '  if (agrandir) pbEntrerPleinEcran();\n', vers: '' }] },
   // [G] le menu
-  { nom: 'ecran-qui-ne-rend-rien', lettre: 'G', scenarios: ['menu'], editions: [{ fichier: PG, de: "      document.body.classList.toggle('gf-large', la);", vers: "      document.body.classList.add('gf-large');" }] },
+  { nom: 'ecran-qui-ne-rend-rien', lettre: 'G', scenarios: ['menu'], editions: [{ fichier: APP, de: "    corps.classList.toggle('gf-large', surPlanning);", vers: "    corps.classList.add('gf-large');" }] },
   { nom: 'preference-ecrasee', lettre: 'G', scenarios: ['menu'], editions: [{ fichier: MENU, de: '    if (grandTableau()) menuRouvertIci = !menuRouvertIci;\n    else persistCollapsed(!readPreference());', vers: '    if (grandTableau()) menuRouvertIci = !menuRouvertIci;\n    persistCollapsed(!readPreference());' }] },
   // [H] la barre dans une demi-heure
   { nom: 'suite-sans-bloc', lettre: 'H', scenarios: ['coupe'], editions: [{ fichier: PG, de: 'courant = { b: b, lignes: [], suite: dernier === b, quand: quand };', vers: 'courant = { b: b, lignes: [], suite: false, quand: quand };' }] },
   // [I] la note, le contraste
-  { nom: 'note-sur-sa-ligne', lettre: 'I', scenarios: ['noteContraste'], editions: [{ fichier: PGC, de: '.gf-nom__sous { display: flex; gap: 10px; overflow: hidden; white-space: nowrap;', vers: '.gf-nom__sous { display: block; gap: 10px;' }] },
-  { nom: 'libelle-pale', lettre: 'I', scenarios: ['noteContraste'], editions: [{ fichier: PGC, de: '.gf-c__l { font-size: 12px; line-height: 15px; font-weight: 600; color: var(--muted);', vers: '.gf-c__l { font-size: 12px; line-height: 15px; font-weight: 600; color: color-mix(in srgb, var(--muted) 35%, var(--surface));' }] },
+  { nom: 'telephone-absent', lettre: 'I', scenarios: ['noteContraste'], editions: [{ fichier: PG, de: "    if (tel) tete += '<a class=\"gf-nom__tel\"", vers: "    if (false) tete += '<a class=\"gf-nom__tel\"" }] },
+  { nom: 'libelle-pale', lettre: 'I', scenarios: ['noteContraste'], editions: [{ fichier: PGC, de: '.gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }', vers: '.gf-i > span { font-size: 12px; color: color-mix(in srgb, var(--muted) 35%, var(--surface)); white-space: nowrap; }' }] },
   // [J] la minute
   { nom: 'feuille-qui-ne-suit-pas', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      y = Math.max(0, now.offsetTop - wrap._gfRegle);', vers: '      y = defile.scrollTop;' }] },
   { nom: 'saute-sous-la-main', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (Math.abs(defile.scrollTop - y) > 1 && performance.now() - (wrap._gfMain || -GF_MAIN) < GF_MAIN) return;\n', vers: '' }] },
   // [K] un autre jour
-  { nom: 'aujourd-hui-cache', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PGC, de: 'body.gf-large.gf-auj #staffView .staff-today-btn { display: none; }', vers: 'body.gf-large #staffView .staff-today-btn { display: none; }' }] },
+  { nom: 'aujourd-hui-cache', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PGC, de: '#planningBarre .staff-today-btn { flex: none; box-sizing: border-box;', vers: '#planningBarre .staff-today-btn { display: none; flex: none; box-sizing: border-box;' }] },
   { nom: 'passe-en-vente', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PG, de: ' && !(m.maintenant == null && state.currentDate < todayStr());', vers: ';' }] },
-  // [L] la tete agrandie
-  { nom: 'tete-trop-etroite', lettre: 'L', scenarios: ['teteLargeurs'], editions: [{ fichier: PGC, de: '.planning-actions .gf-recherche { flex: 0 1 288px; width: 288px; }', vers: '.planning-actions .gf-recherche { flex: none; width: 720px; }' }] },
+  // [L] la barre agrandie
+  { nom: 'barre-trop-etroite', lettre: 'L', scenarios: ['teteLargeurs'], editions: [{ fichier: PGC, de: '.gf-recherche { position: relative; flex: 1 1 auto; min-width: 0; height: var(--pb-l1); }', vers: '.gf-recherche { position: relative; flex: none; width: 720px; height: var(--pb-l1); }' }] },
   // Agrandie au telephone, la liste ne defile plus : le bas de la journee est perdu.
   { nom: 'agrandi-sans-defilement', lettre: 'L', scenarios: ['agrandiTelephone'], editions: [{ fichier: PGC, de: '  .planning-box.expanded .gf-defile { overflow: auto; }\n', vers: '' }] },
   // Agrandie au telephone, la liste s ouvre sur le matin.
   { nom: 'agrandi-sans-l-heure', lettre: 'L', scenarios: ['agrandiTelephone'], editions: [{ fichier: PG, de: '      else if (wrap._gfRegle == null) { wrap._gfRegle = 0; cible.scrollIntoView', vers: '      else if (wrap._gfRegle == null && !wrap._gfPlein) { wrap._gfRegle = 0; cible.scrollIntoView' }] },
   // [M] le texte dans sa case
-  { nom: 'marge-gardee', lettre: 'M', scenarios: ['texteCase'], editions: [{ fichier: PG, de: "      if (du.length > 5) h = '';\n", vers: '' }] },
+  { nom: 'montant-long-qui-deborde', lettre: 'M', scenarios: ['texteCase'], editions: [{ fichier: PGC, de: '.gf-du.is-long { font-size: 13px; }', vers: '.gf-du.is-long { font-size: 26px; }' }] },
   { nom: 'case-d-heure-trop-pleine', lettre: 'M', scenarios: ['texteCase'], editions: [{ fichier: PG, de: '    var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;', vers: '    var reste = 99;' }] },
   // [N] les autres jours
-  { nom: 'table-trop-large', lettre: 'N', scenarios: ['jours'], editions: [{ fichier: PGC, de: '--c-nom: 232px;', vers: '--c-nom: 1232px;' }] },
+  { nom: 'table-trop-large', lettre: 'N', scenarios: ['jours'], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 54px;', vers: '--c-nom: 1232px; --c-n: 54px;' }] },
   // [P] la case d heure
   { nom: 'case-ouvre-la-fiche', lettre: 'P', scenarios: ['caseHeure'], editions: [{ fichier: PG, de: "      if (reserver) { reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') }); return; }", vers: "      if (reserver) { openPos(Number(reserver.closest('[data-gf-id]').getAttribute('data-gf-id'))); return; }" }] },
   { nom: 'case-sans-son-heure', lettre: 'P', scenarios: ['caseHeure'], editions: [{ fichier: PG, de: "reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') });", vers: 'reserverAuComptoir({});' }] },
   { nom: 'case-passee-ouvre-la-fiche', lettre: 'P', scenarios: ['caseHeure'], editions: [{ fichier: PG, de: "      if (e.target.closest('td.gf-bloc')) return;\n", vers: '' }] },
   // [Q] le bandeau
-  { nom: 'etat-sans-geste', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: "      if (bandeau) { gfDepuisBandeau(wrap, bandeau.getAttribute('data-gf-etat')); return; }", vers: '      if (bandeau) return;' }] },
-  { nom: 'nom-sans-fiche', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: "      if (fiche) { openPos(Number(fiche.getAttribute('data-gf-fiche'))); return; }", vers: '      if (fiche) return;' }] },
-  { nom: 'pas-la-muet', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: " + (la ? '' : ' pas là'))", vers: ')' }] },
-  { nom: 'complet-qui-reserve', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: '    if (et.plein) openStaffPlanningResource(cle);\n    else if (', vers: '    if (' }] },
+  { nom: 'etat-sans-geste', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: "      if (etat) gfDepuisBandeau(wrapDe(), etat.getAttribute('data-gf-etat'));", vers: '      if (etat) return;' }] },
+  { nom: 'nom-sans-fiche', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: "      if (fiche) { openPos(Number(fiche.getAttribute('data-gf-fiche'))); return; }\n      var etat = e.target.closest", vers: '      if (fiche) return;\n      var etat = e.target.closest' }] },
+  { nom: 'pas-la-muet', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: " + (la ? '' : ' pas là') });", vers: ' });' }] },
+  { nom: 'complet-qui-reserve', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: '    if (et.plein) window.pbChanger(cle);\n    else if (', vers: '    if (' }] },
   // [R] le retard
   { nom: 'retard-sourd', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: '      if (retarder) { gfBulleRetard(wrap, retarder, e); return; }', vers: '      if (retarder) return;' }] },
   { nom: 'retard-oublie-ce-qui-court', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: 'openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'openDelayImpact(Number(id), Number(n), ev);' }] },
@@ -1111,14 +1124,14 @@ const MUTATIONS = [
   { nom: 'panne-muette', lettre: 'T', scenarios: ['panne'], editions: [{ fichier: PG, de: "        if (fermees.length && etat !== 'fini') {", vers: '        if (false) {' }] },
   { nom: 'panne-sans-lien', lettre: 'T', scenarios: ['panne'], editions: [{ fichier: PG, de: "      if (voir) { voirAuPlanning(Number(voir.closest('[data-gf-id]').getAttribute('data-gf-id')), voir.getAttribute('data-gf-voir'), e); return; }", vers: '      if (voir) return;' }] },
   // [U] le menu « ⋯ »
-  { nom: 'agrandir-au-menu', lettre: 'U', scenarios: ['menuPlus'], editions: [{ fichier: APP, de: '    <div class="staff-action-popover-title">Actions planning</div>\n    <button type="button" onclick="voirListeDuJour()">', vers: '    <div class="staff-action-popover-title">Actions planning</div>\n    <button type="button">Agrandir le planning</button>\n    <button type="button" onclick="voirListeDuJour()">' }] },
+  { nom: 'agrandir-au-menu', lettre: 'U', scenarios: ['menuPlus'], editions: [{ fichier: APP, de: '    <button type="button" onclick="pbFiltres(event)">Filtres</button>\n', vers: '    <button type="button" onclick="pbFiltres(event)">Filtres</button>\n    <button type="button">Agrandir le planning</button>\n' }] },
   // [V] le telephone
   { nom: 'telephone-ouvert-en-haut', lettre: 'V', scenarios: ['telephone'], editions: [{ fichier: PG, de: "      else if (wrap._gfRegle == null) { wrap._gfRegle = 0; cible.scrollIntoView({ block: 'start' }); }\n", vers: '' }] },
   { nom: 'telephone-ramene-la-page', lettre: 'V', scenarios: ['telephone'], editions: [{ fichier: PG, de: "else if (wrap._gfRegle == null) { wrap._gfRegle = 0; cible.scrollIntoView({ block: 'start' }); }", vers: "else { cible.scrollIntoView({ block: 'start' }); }" }] },
   // [W] la perf
   { nom: 'bowling-cache-dessine', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: APP, de: "  if (planningBox && planningBox.classList.contains('hidden')) return;\n  // Le re-render (polling", vers: '  // Le re-render (polling' }] },
   { nom: 'laser-cache-dessine', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: APP, de: "  if (document.getElementById('laserPlanningBox')?.classList.contains('hidden')) return;\n", vers: '' }] },
-  { nom: 'has-sur-toute-la-console', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: PGC, de: '.gf-tete { display: flex;', vers: '#staffView:has(.gf-r.is-retard) .kpi-grid { outline: 0; }\n.gf-tete { display: flex;' }] },
+  { nom: 'has-sur-toute-la-console', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: PGC, de: '.pb-bande { box-sizing: border-box;', vers: '#staffView:has(.gf-r.is-retard) .planning-box { outline: 0; }\n.pb-bande { box-sizing: border-box;' }] },
   { nom: 'has-dans-une-autre-feuille', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.res-list .res-row { content-visibility: auto;', vers: '#staffView:has(.gf-r.is-retard) .staff-wrap { outline: 0; }\n.res-list .res-row { content-visibility: auto;' }] },
   { nom: 'etoile-sur-une-classe-qui-bascule', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.res-list .res-row { content-visibility: auto;', vers: '.is-repaint * { animation: none !important; }\n.res-list .res-row { content-visibility: auto;' }] },
   { nom: 'tr-plus-tr', lettre: 'W', scenarios: ['surfaces'], editions: [{ fichier: PGC, de: '.gf-r { cursor: pointer; }', vers: '.gf-r { cursor: pointer; }\n.gf-t tr.gf-r + tr.gf-r > td { outline: 0; }' }] },

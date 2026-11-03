@@ -294,7 +294,7 @@ async function main() {
       // 1) Frappe : grise EN DIRECT le planning (pas seulement la liste).
       applyStaffSearch('Alice', { immediate: true });
       const afterType = lire();
-      const planningInputVal = document.getElementById('planningSearchInput').value;
+      const planningInputVal = document.getElementById('globalPlanningSearchInput').value;
       const listInputVal = document.getElementById('searchInput').value;
       // 2) Effacement : tout redevient clair immédiatement (bug « vide »).
       applyStaffSearch('', { immediate: true });

@@ -44,7 +44,10 @@ for(const width of[768,834,1024,1440,390])for(const theme of['light','dark']){
   stored=fixture();await setup(page,theme);
  }
  await page.evaluate(()=>{state.staffResourceView='bowling';renderStaff();togglePlanningExpanded();});
- const box=page.locator('#planningBox.expanded'),quick=box.locator('.planning-expanded-create'),date=box.locator('.staff-date-label');
+ // (depuis le 2026-11-03 la barre commune des trois plannings porte la date et « + Réservation », en normal comme agrandi : rien ne la couvre)
+ const box=page.locator('#planningBox.expanded'),quick=page.locator('#planningBarre #planningReserver'),date=page.locator('#planningBarre .staff-date-label');
+ const auDessus=l=>l.evaluate(e=>{const r=e.getBoundingClientRect(),t=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return r.width>0&&Boolean(t)&&(t===e||e.contains(t));}).catch(()=>false);
+ check(await auDessus(quick),width+theme+' expanded quick booking on top');check(await auDessus(date),width+theme+' expanded date chooser on top');
  check(await box.count()===1,width+theme+' expanded planning active');check(await quick.isVisible(),width+theme+' expanded quick booking visible');check(await date.isVisible(),width+theme+' expanded date chooser visible');
  if(await quick.isVisible()){await quick.click();check(await page.locator('#quickBookOverlay:not(.hidden)').isVisible(),width+theme+' quick modal above fullscreen');check(await page.evaluate(()=>!!document.activeElement?.closest('#quickBookOverlay')),width+theme+' quick modal has focus');await page.keyboard.press('Escape');check(await page.locator('#quickBookOverlay').evaluate(e=>e.classList.contains('hidden')),width+theme+' quick Escape closes');}
  if(await date.isVisible()){await date.click();check(await page.locator('.staff-calendar-pop').isVisible(),width+theme+' date calendar above fullscreen');await page.keyboard.press('Escape');}

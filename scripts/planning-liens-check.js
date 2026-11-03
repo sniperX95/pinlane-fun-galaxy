@@ -20,11 +20,15 @@
 //   [H] AU TELEPHONE, LA LISTE S OUVRE SUR L HEURE.
 //   [I] LE MENU NE REDIT PAS CE QUI EST A COTE DE LUI.
 //   [J] UN NOM NE SORT PAS DE SON TEXTE dans les nouveaux boutons.
-//   [K] LE MEME CHIFFRE PARTOUT : « Sur place » dit la meme chose au tableau et a
-//       l accueil, l apres-midi et le soir (un groupe paye qui joue encore compte, un
-//       groupe paye parti ne compte plus).
-//   [L] LES CHIFFRES DES PLANNINGS NE SE MARCHENT PAS DESSUS, a toutes les largeurs, menu
-//       ouvert ou replie, meme avec le detail le plus long (toutes les pistes libres).
+//   [K] UN CHIFFRE PAR ECRAN, ET LA RELATION ENTRE LES DEUX : au planning, « Sur place »
+//       dit le chiffre de la liste (planning-barre [M]) : un groupe paye y reste tant que
+//       ses activites ne sont pas cochees (la regle du 2026-10-10). L accueil compte a
+//       l heure, il ne dit que qui est la : il dit le chiffre de la barre moins les
+//       groupes payes dont la visite est finie et qui attendent leurs coches, ni plus ni
+//       moins, l apres-midi et le soir.
+//   [L] LES CHIFFRES DES PLANNINGS NE SE MARCHENT PAS DESSUS, a toutes les largeurs,
+//       meme avec le detail le plus long (toutes les pistes libres) : il se coupe, la
+//       legende reste.
 //   [M] LA LISTE SOUS LE TABLEAU TROUVE CE QUE LE TABLEAU TROUVE : une heure, une piste,
 //       un nombre, pas seulement un nom.
 //   [N] UN JOUR VIDE CHERCHE AUSSI : le client est peut-etre sur une autre date.
@@ -140,10 +144,18 @@ async function scenarioBandeau(browser) {
     ok(noms.some((n) => n.t.includes('Lina') && !n.attendu && !n.t.includes('pas là')), '[C] un groupe sur place se lit sans mot de plus', noms);
     const manon = noms.find((n) => n.t.includes('Manon'));
     ok(manon && manon.attendu && manon.t.includes('pas là'), '[C] qui n est pas encore la se lit', noms);
-    await page.locator('.gf-e__g.is-attendu').first().click();
+    // (le premier nom se lit sur la ligne ; un detail trop long pour elle se coupe, le menu
+    // « ⋯ » redit le depart entier)
+    await page.locator('.gf-e__g').first().click({ position: { x: 4, y: 8 } });
     await page.waitForTimeout(250);
     const fiche = await ouvert(page);
-    ok(fiche.fiche && fiche.ficheDe === String(manon && manon.id), '[C] le nom ouvre sa fiche', fiche);
+    ok(fiche.fiche && fiche.ficheDe === noms[0].id, '[C] le nom ouvre sa fiche', fiche);
+    await fermer(page);
+    await page.locator('#planningPlus').click();
+    await page.locator('.staff-action-popover button', { hasText: 'Manon' }).click();
+    await page.waitForTimeout(250);
+    const parMenu = await ouvert(page);
+    ok(parMenu.fiche && parMenu.ficheDe === String(manon && manon.id), '[C] et depuis le menu, le nom coupe sur la ligne', parMenu);
   } finally { await ctx.close(); }
 }
 
@@ -209,7 +221,7 @@ async function scenarioPiste(browser) {
     await page.evaluate(() => { state.laneStatuses[6] = 'maintenance'; renderStaff(); });
     await page.waitForTimeout(150);
     const cellule = page.locator(`.gf-r[data-gf-id="${clara}"] .gf-x.is-panne`);
-    ok(await cellule.count() === 1 && (await cellule.textContent()).includes('P6 fermée'), '[G] la piste fermee se lit sur la ligne du groupe', await page.evaluate((id) => document.querySelector(`.gf-r[data-gf-id="${id}"] .gf-a`) && document.querySelector(`.gf-r[data-gf-id="${id}"]`).textContent, clara));
+    ok(await cellule.count() === 1 && (await cellule.textContent()).includes('Piste 6 fermée'), '[G] la piste fermee se lit sur la ligne du groupe', await page.evaluate((id) => document.querySelector(`.gf-r[data-gf-id="${id}"] .gf-a`) && document.querySelector(`.gf-r[data-gf-id="${id}"]`).textContent, clara));
     await cellule.click();
     await page.waitForTimeout(300);
     const vu = await page.evaluate((id) => ({ vue: state.staffResourceView, fiche: !document.getElementById('posOverlay').classList.contains('hidden'), bloc: Boolean(document.querySelector(`.booking[data-booking-res-id="${id}"]`)) }), clara);
@@ -233,7 +245,7 @@ async function scenarioTelephone(browser) {
 async function scenarioMenu(browser) {
   const { ctx, page, erreurs } = await ouvrir(browser);
   try {
-    await page.locator('.gf-outil--plus').click();
+    await page.locator('#planningPlus').click();
     const texte = await page.evaluate(() => (document.querySelector('.staff-action-popover') || {}).textContent || '');
     ok(texte && !texte.includes('Agrandir') && !texte.includes('Nouvelle réservation'), '[I] le menu ne redit pas ce qui est a cote de lui', texte);
     await page.evaluate(() => closeStaffFloatingMenus());
@@ -261,7 +273,13 @@ async function chiffresA(browser, heure) {
       const m = valeur ? /^(\d+)\s*groupe/.exec(valeur.textContent.trim()) : null;
       return m ? Number(m[1]) : null;
     });
-    ok(auTableau > 0 && aLAccueil === auTableau, `[K] a ${heure}, « Sur place » dit la meme chose au tableau et a l accueil`, { auTableau, aLAccueil });
+    // (les groupes payes, leur visite finie a l heure, qui attendent leurs coches)
+    const aCocher = await page.evaluate(() => {
+      const res = todaysReservations();
+      const moments = getStaffReservationMoments(res);
+      return res.filter((r) => r.status === 'paid' && (moments.get(String(r.id)) || {}).etat === 'onsite' && getStaffTerrainSpan(r).end <= currentTimeDecimal()).length;
+    });
+    ok(auTableau > 0 && aCocher > 0 && aLAccueil === auTableau - aCocher, `[K] a ${heure}, l accueil dit « Sur place » de la barre, moins les groupes payes partis qui attendent leurs coches`, { auTableau, aLAccueil, aCocher });
     await page.evaluate(() => { openStaffMenuPage('planning'); openStaffPlanningResource('all'); setStaffStatusFilter('onsite'); });
     await page.waitForSelector('.gf-r', { timeout: 8000 });
     const lignes = await page.evaluate(() => document.querySelectorAll('.gf-r').length);
@@ -269,14 +287,18 @@ async function chiffresA(browser, heure) {
   } finally { await ctx.close(); }
 }
 
-// (les pieces de chaque case, telles qu elles occupent l ecran)
+// (les pieces de la ligne 2, telles qu elles occupent l ecran)
 const chiffresDuJour = (page, detail) => page.evaluate((long) => {
-  const g = document.querySelector('#staffView .kpi-grid');
-  if (long) g.querySelectorAll('.hint').forEach((h) => { h.textContent = long; });
+  const g = document.getElementById('planningBande');
+  if (long) g.querySelectorAll('.pb-k .gf-e__s').forEach((h) => { h.textContent = long; });
   const bord = g.getBoundingClientRect();
-  const pieces = Array.from(g.querySelectorAll('.label, .value, .hint')).filter((el) => el.getClientRects().length > 0).map((el) => { const r = el.getBoundingClientRect(); return { t: el.classList[0], g: r.left, d: r.right }; });
+  const pieces = Array.from(g.querySelectorAll('.gf-c__l, .gf-c__v, .pb-k .gf-e__s, .pb-leg')).filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0).map((el) => { const r = el.getBoundingClientRect(); return { t: el.classList[0], g: r.left, d: r.right }; });
   const chevauche = pieces.reduce((pire, p, i) => (i ? Math.max(pire, pieces[i - 1].d - p.g) : pire), 0);
-  return { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), details: pieces.filter((p) => p.t === 'hint').length, libelle: g.querySelector('.label').innerText };
+  // (un detail trop long se coupe a l ellipse dans sa case : qui en sort, sa case le cache
+  // sans le dire)
+  const horsCase = Array.from(g.querySelectorAll('.pb-k .gf-e__s')).filter((s) => s.getClientRects().length > 0)
+    .reduce((pire, s) => Math.max(pire, s.getBoundingClientRect().right - s.closest('.pb-k').getBoundingClientRect().right), 0);
+  return { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), horsCase: Math.round(horsCase), details: pieces.filter((p) => p.t === 'gf-e__s').length, libelle: g.querySelector('.pb-k .gf-c__l').textContent };
 }, detail);
 async function scenarioChiffresDuJour(browser) {
   const { ctx, page } = await ouvrir(browser);
@@ -285,30 +307,29 @@ async function scenarioChiffresDuJour(browser) {
     const fautes = [];
     for (const vue of ['bowling', 'laser']) {
       await page.evaluate((v) => { openStaffPlanningResource(v); }, vue);
-      await page.waitForSelector('#staffView .kpi-grid .kpi', { timeout: 5000 });
-      for (const [l, h] of [[1000, 700], [1024, 768], [1100, 800], [1101, 800], [1180, 820], [1256, 800], [1257, 800], [1280, 720], [1366, 768], [1400, 900], [1401, 900], [1540, 900], [1541, 900], [1600, 900], [1920, 1080]]) {
+      await page.waitForSelector('#planningBande .pb-k', { timeout: 5000 });
+      // (1110 et 1116 : le detail vient d apparaitre, la place est la plus juste ; sonde du
+      // 2026-11-03, au laser la legende y sortait de 9 px sans la regle qui coupe le detail)
+      for (const [l, h] of [[1000, 700], [1024, 768], [1100, 800], [1101, 800], [1110, 800], [1116, 800], [1180, 820], [1256, 800], [1257, 800], [1280, 720], [1366, 768], [1400, 900], [1401, 900], [1540, 900], [1541, 900], [1600, 900], [1920, 1080]]) {
         await page.setViewportSize({ width: l, height: h });
-        for (const menu of [1, 2]) {
-          for (const detail of [null, long]) {
-            const r = await chiffresDuJour(page, detail);
-            if (r.chevauche > 0 || r.deborde > 0) fautes.push({ vue, l, menu, detail: Boolean(detail), ...r });
-          }
-          await page.evaluate(async () => {
-            const b = document.querySelector('[data-fgx-menu-collapse]');
-            if (b) b.click();
-            await new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin)));
-            await Promise.all(document.getAnimations().filter((a) => a.effect.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)));
-          });
+        await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
+        for (const detail of [null, long]) {
+          const r = await chiffresDuJour(page, detail);
+          if (r.chevauche > 0 || r.deborde > 0 || r.horsCase > 0) fautes.push({ vue, l, detail: Boolean(detail), ...r });
         }
+        await page.evaluate(() => renderKpis());
       }
     }
-    ok(fautes.length === 0, '[L] les chiffres des plannings ne se marchent pas dessus, de 1 000 a 1 920 px, menu ouvert ou replie', fautes.slice(0, 4));
-    await page.setViewportSize({ width: 1366, height: 768 });
+    ok(fautes.length === 0, '[L] les chiffres des plannings ne se marchent pas dessus, de 1 000 a 1 920 px ; un detail trop long se coupe a l ellipse dans sa case', fautes.slice(0, 4));
+    await page.evaluate(() => { openStaffPlanningResource('bowling'); });
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.waitForFunction(() => document.getElementById('planningBarre').getBoundingClientRect().width < 1000, null, { timeout: 3000 }).catch(() => null);
     const petit = await chiffresDuJour(page, null);
-    ok(petit.libelle === 'Occupation' && petit.details === 0, '[L] a 1 366 px, le premier mot et le chiffre', petit);
+    ok(petit.libelle === 'Occupation' && petit.details === 0, '[L] a l etroit, le mot et le chiffre, le detail se tait', petit);
     await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.waitForFunction(() => document.getElementById('planningBarre').getBoundingClientRect().width > 1500, null, { timeout: 3000 }).catch(() => null);
     const grand = await chiffresDuJour(page, null);
-    ok(/^Occupation d/.test(grand.libelle) && grand.details > 0, '[L] a 1 920 px, le libelle entier et son detail', grand);
+    ok(grand.libelle === 'Occupation' && grand.details > 0, '[L] au large, le mot, le chiffre et son detail', grand);
   } finally { await ctx.close(); }
 }
 
@@ -382,12 +403,12 @@ const MUTATIONS = [
   { nom: 'heure-passee-offre', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    var ouvert = part.quand !== 'passe' && !(m.fenetre", vers: '    var ouvert = !(m.fenetre' }] },
   { nom: 'case-sourde', lettre: 'B', scenarios: ['heure'], editions: [{ fichier: GJS, de: "      if (reserver) { reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') }); return; }\n", vers: '' }] },
   { nom: 'case-ouvre-la-fiche', lettre: 'B', scenarios: ['heure'], editions: [{ fichier: GJS, de: "      if (e.target.closest('td.gf-bloc')) return;\n", vers: '' }] },
-  { nom: 'bandeau-sourd', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "      if (bandeau) { gfDepuisBandeau(wrap, bandeau.getAttribute('data-gf-etat')); return; }\n", vers: '' }] },
+  { nom: 'bandeau-sourd', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "      if (etat) gfDepuisBandeau(wrapDe(), etat.getAttribute('data-gf-etat'));\n", vers: '' }] },
   { nom: 'laser-comme-bowling', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "    else if (cle === 'laser') openQuickBookForLaserSession(et.t, et.places);\n", vers: '' }] },
   { nom: 'absent-muet', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "(la ? '' : ' pas là')", vers: "''" }] },
   { nom: 'retard-remis-a-zero', lettre: 'D', scenarios: ['retard'], editions: [{ fichier: GJS, de: 'Math.min(240, deja + Number(n))', vers: 'Number(n)' }] },
   { nom: 'montant-sans-effet', lettre: 'E', scenarios: ['montant'], editions: [{ fichier: GJS, de: 'function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); }', vers: 'function () {}' }] },
-  { nom: 'pas-de-montant', lettre: 'E', scenarios: ['montant'], editions: [{ fichier: GJS, de: "      if (duIci) h += '<button type=\"button\" class=\"gf-du gf-du--b'", vers: "      if (false) h += '<button type=\"button\" class=\"gf-du gf-du--b'" }] },
+  { nom: 'pas-de-montant', lettre: 'E', scenarios: ['montant'], editions: [{ fichier: GJS, de: "      else if (g.etat !== 'closing' && g.teinte === 'arr' && gfPeutEncaisser() && !q) h = '<button type=\"button\" class=\"gf-du gf-du--b'", vers: "      else if (false) h = '<button type=\"button\" class=\"gf-du gf-du--b'" }] },
   { nom: 'pas-venu-partout', lettre: 'F', scenarios: ['pasvenu'], editions: [{ fichier: GJS, de: 'gfMinutesDeRetard(g, m) >= GF_PAS_VENU_MIN', vers: 'gfMinutesDeRetard(g, m) >= 0' }] },
   { nom: 'retard-annonce-oublie', lettre: 'F', scenarios: ['pasvenu'], editions: [{ fichier: GJS, de: " && !(typeof getReservationDelayFlag === 'function' && getReservationDelayFlag(g.r))", vers: '' }] },
   { nom: 'piste-muette', lettre: 'G', scenarios: ['piste'], editions: [{ fichier: GJS, de: "if (fermees.length && etat !== 'fini') {", vers: 'if (false) {' }] },
@@ -398,12 +419,15 @@ const MUTATIONS = [
   { nom: 'liste-par-son-nom-seul', lettre: 'M', scenarios: ['liste'], editions: [{ fichier: 'assets/app-main.js', de: "const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;", vers: 'const trouves = null;' }] },
   { nom: 'jour-vide-sourd', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'var aEcrire = Boolean(m.groupes.length || q);', vers: 'var aEcrire = Boolean(m.groupes.length);' }] },
   { nom: 'jour-vide-sans-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: "if (!lignes.length && (m.groupes.length || q)) {", vers: 'if (!lignes.length && m.groupes.length) {' }] },
-  { nom: 'trois-cases-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: none; }', vers: '.kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: flex; }' }] },
-  { nom: 'libelles-entiers-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '.kpi-grid .kpi .kpi-suite { display: none; }', vers: '.kpi-grid .kpi .kpi-suite { display: inline; }' }] },
-  { nom: 'detail-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '@media (min-width: 1000px) and (max-width: 1540px) {\n  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: none; }', vers: '@media (min-width: 1000px) and (max-width: 1540px) {\n  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: block; }' }] },
-  { nom: 'paye-reste-sur-place', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: GJS, de: "var parti = r.status === 'paid' && mo.etat === 'onsite' && maintenant != null && span.end <= maintenant;", vers: 'var parti = false;' }] },
-  { nom: 'filtre-garde-les-partis', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: GJS, de: "return filtre !== 'onsite' || !sortis.has(id);", vers: 'return true;' }] },
-  { nom: 'nom-brut', lettre: 'J', scenarios: ['menu'], editions: [{ fichier: GJS, de: "gpEsc(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0) + (la ? '' : ' pas là'))", vers: "(gfCourt(g.r) + ' ' + (Number(e.joueurs) || Number(g.r.pax) || 0) + (la ? '' : ' pas là'))" }] },
+  // Un detail long pousse la legende hors de la ligne.
+  { nom: 'detail-qui-pousse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n', vers: '' }] },
+  { nom: 'detail-sans-coupure', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gf-e__s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }', vers: '.gf-e__s { flex: none; white-space: nowrap; font-size: 12px; color: var(--muted); }' }] },
+  { nom: 'detail-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '@container barre (max-width: 1020px) {\n  .gf-e__s { display: none; }', vers: '@container barre (max-width: 1020px) {' }] },
+  // La barre compte a l heure, l accueil et la liste aux coches.
+  // L accueil compte les payes qui attendent leurs coches : il dit un groupe parti.
+  { nom: 'accueil-compte-les-partis', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: 'assets/app-main.js', de: '    onsite: present,\n    closing: board.closing,', vers: '    onsite: [...present, ...board.done],\n    closing: board.closing,' }] },
+  { nom: 'paye-reste-sur-place', lettre: 'K', scenarios: ['chiffres'], editions: [{ fichier: GJS, de: '    var moments = new Map(m.groupes.map(function (g) { return [g.id, { etat: g.etatListe, late: g.retard }]; }));', vers: "    var moments = new Map(m.groupes.map(function (g) { return [g.id, { etat: g.etat, late: g.retard }]; }));" }] },
+  { nom: 'nom-brut', lettre: 'J', scenarios: ['menu'], editions: [{ fichier: GJS, de: "data-gf-fiche=\"' + gpEsc(x.id) + '\">' + gpEsc(x.texte) + '</button>';", vers: "data-gf-fiche=\"' + gpEsc(x.id) + '\">' + x.texte + '</button>';" }] },
 ];
 
 async function jouer(browser, noms) {

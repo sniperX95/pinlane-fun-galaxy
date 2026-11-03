@@ -8,7 +8,7 @@
 //       voisins dans le meme etat se distinguent en deux tons, « Libre » sur
 //       un vide, les departs joues replies puis rouverts ;
 //   [B] le prochain depart : l heure, le briefing, les armes a preparer, un
-//       groupe arrive dit « Arrivés », « Ils sont là » pose l arrivee (PATCH) ;
+//       groupe arrive dit « Ils sont N », « Arrivé » pose l arrivee (PATCH) ;
 //   [C] en jeu et retard : la partie de 15:00 et sa fin, « Dubois pas venus
 //       à 15:00 », « Décaler à 16:00 » demande 60 min, « Pas venus » pose
 //       l absence ;
@@ -296,11 +296,11 @@ async function scenarios(browser, mutation = null) {
 
       const prochain = await page.textContent('#laserPlanningGridWrap .lp-prochain');
       ok(/15:30/.test(prochain) && /briefing dans 10 min/.test(prochain) && /30\s*armes à préparer/.test(prochain) && !/gilet/i.test(prochain), '[B] le prochain depart : 15:30, briefing dans 10 min, 30 armes', prochain.replace(/\s+/g, ' ').slice(0, 120));
-      ok(/Séminaire Lutosa/.test(prochain) && /vague 2\/2/.test(prochain) && /Arrivés/.test(prochain), '[B] un groupe arrive dit « Arrivés », sa vague dite', '');
+      ok(/Séminaire Lutosa/.test(prochain) && /vague 2\/2/.test(prochain) && /Ils sont \d+/.test(prochain), '[B] un groupe arrive dit « Ils sont N », sa vague dite', '');
       await page.click('#laserPlanningGridWrap .lp-prochain .lp-etat--marquer');
       await page.waitForTimeout(400);
       const arrivee = (await requetes(page)).find(q => q.corps && q.corps.status === 'arrived');
-      ok(arrivee && Number(arrivee.corps.id) === idDe(dossiers, 'Anniv. Noah'), '[B] « Ils sont là » pose l arrivee du bon groupe', JSON.stringify(arrivee && arrivee.corps));
+      ok(arrivee && Number(arrivee.corps.id) === idDe(dossiers, 'Anniv. Noah'), '[B] « Arrivé » pose l arrivee du bon groupe', JSON.stringify(arrivee && arrivee.corps));
 
       // (2026-10-27) la partie en jeu et le bouton des pas venus vivent dans la
       // tete de la journee ; la liste des pas venus s ouvre au toucher.
@@ -915,12 +915,14 @@ const MUTATIONS = [
   { nom: 'cedent', lettre: '[P] telephone dark : la rangee de son depart', fichier: 'assets/pinlane-staff.css',
     de: '  .lp-qui .lp-pictos .bk-flags .bk-flag:nth-child(n+2), .lp-qui .lp-pictos .bk-flags ~ .flag-prix { display: none; }',
     vers: '' },
-  // Le nom ne passe plus sur sa seconde ligne : « Annivers… » revient.
-  { nom: 'deux-lignes', lettre: '[Q] grand : les trois noms du depart de 19:00 se lisent en entier', fichier: 'assets/pinlane-staff.css',
+  // Le nom ne passe plus sur sa seconde ligne : « Annivers… » revient. (Agrandi, le planning
+  // a la largeur du rail depuis le 2026-11-03 : a 1920 les noms tiennent sur une ligne d eux-
+  // memes, c est a 1440 que la seconde ligne les garde lisibles.)
+  { nom: 'deux-lignes', lettre: '[Q] ordinateur agrandi : chaque groupe de 19:00 se reconnait', fichier: 'assets/pinlane-staff.css',
     de: '  .lp-compact .lp-g.is-nom-long b { white-space: normal; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 16px; }',
     vers: '' },
   // Les noms ne se mesurent plus : aucune carte ne passe sur deux lignes.
-  { nom: 'mesure', lettre: '[Q] grand : les trois noms du depart de 19:00 se lisent en entier', fichier: 'assets/app-main.js',
+  { nom: 'mesure', lettre: '[Q] ordinateur agrandi : chaque groupe de 19:00 se reconnait', fichier: 'assets/app-main.js',
     de: '  if (!deuxLignes) return;',
     vers: '  return;' },
   // La note ne fait plus son coin : elle disparait de la carte.

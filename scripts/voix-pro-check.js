@@ -360,7 +360,7 @@ const MUTATIONS = [
   { nom: 'une phrase du brief serveur tutoie', fichier: 'lib/marketing-brief.js', de: 'je garde un œil sur vos réservations', vers: 'je garde un œil sur tes réservations' },
   { nom: 'une legende client tutoie', fichier: 'lib/marketing-brain.js', de: 'Réservez votre créneau : 30 secondes.', vers: 'Réserve ton créneau : 30 secondes.' },
   { nom: 'le jargon revient', fichier: 'assets/staff-pages-v2.js', de: '${b.dataDays || 0} j sur 90</em>', vers: '${b.dataDays || 0} j de données, verdicts causaux vers 90 j</em>' },
-  { nom: 'une page HTML tutoie', fichier: 'index.html', de: 'Réservation<span class="btn-new-suite"> rapide', vers: 'Ta réservation<span class="btn-new-suite"> rapide', toutes: true },
+  { nom: 'une page HTML tutoie', fichier: 'index.html', de: '<span class="pb-res__mot"> Réservation</span>', vers: '<span class="pb-res__mot"> Ta réservation</span>', toutes: true },
   { nom: 'un toast perd ses accents', fichier: 'assets/app-main.js', de: "'Rôle supprimé.'", vers: "'Role supprime.'" },
   { nom: 'un libelle de periode perd ses accents', fichier: 'assets/pinlane-daterange.js', de: "label: 'Cette année'", vers: "label: 'Cette annee'" },
   { nom: 'un aria-label de la page perd ses accents', fichier: 'index.html', de: 'sans quitter le plein écran', vers: 'sans quitter le plein ecran', toutes: true },

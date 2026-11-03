@@ -36,7 +36,7 @@
 //   [D5] LE VERDICT SUIT LA JOURNEE. Un autre poste prend la derniere piste :
 //        le verdict ne dit plus « possible », et Entree ne repond pas « Il faut
 //        1 piste disponible ».
-//   [D6] « LASER 12 A 16:30 » DEPUIS « Réservation rapide » EN 7 CLICS AU PLUS.
+//   [D6] « LASER 12 A 16:30 » DEPUIS « + Réservation » EN 7 CLICS AU PLUS.
 //   [D7] EN AUTO, AUCUNE PISTE N EST ENVOYEE COMME UN CHOIX, et jamais
 //        « Simulation » a l ecran : deux resas du meme envoi ne se voient pas
 //        en conflit sur une piste que personne n a choisie.
@@ -449,7 +449,7 @@ async function scenarioD1(browser, v) {
       const pose = await planPose(page, true);
       // Le comptoir : le ticket porte le champ unique du client, vide et facultatif.
       const qui = await page.evaluate(() => { const c = document.getElementById('qbQui'); return c ? { valeur: c.value, aria: c.getAttribute('aria-label') || '' } : null; });
-      v('D1', pose && Boolean(qui) && qui.valeur === '' && /facultatif/i.test(qui.aria), 'MONTAGE : « Réservation rapide » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, champ client ${JSON.stringify(qui)}`);
+      v('D1', pose && Boolean(qui) && qui.valeur === '' && /facultatif/i.test(qui.aria), 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, champ client ${JSON.stringify(qui)}`);
       await capture(page, 'D1-comptoir-ouvert');
       await page.click('#rvCreer');
       const ferme = await fenetreFermee(page);
@@ -725,7 +725,7 @@ async function scenarioD5(browser, v) {
   } finally { await context.close(); }
 }
 
-// [D6] « Laser 12 a 16:30 » depuis le bouton « Réservation rapide ».
+// [D6] « Laser 12 a 16:30 » depuis le bouton « + Réservation ».
 async function scenarioD6(browser, v) {
   B.semer([]);
   monter({ role: 'staff-bar' });
@@ -733,7 +733,7 @@ async function scenarioD6(browser, v) {
   const clics = [];
   try {
     const avant = new Set(lireBase().map((r) => r.id));
-    await clic(clics, page.locator('.btn-new'), 'Réservation rapide');
+    await clic(clics, page.locator('#planningReserver'), 'Réservation');
     await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs', { timeout: 8000 });
     await clic(clics, page.locator('#quickBookOverlay #rsHaut [data-pax="12"]'), '12');
     // Le laser a ses seances sur l ecran d accueil : un toucher sur 16:30 choisit le

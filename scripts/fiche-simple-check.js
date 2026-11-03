@@ -20,7 +20,8 @@
 //   [A2] une addition d une ligne n ecrit pas son total une deuxieme fois ;
 //        plusieurs lignes ont leur total et le prix par joueur ;
 //   [C1] le programme seul a gauche ; a droite, dans l ordre, les notes, le
-//        prix, le client ; les notes se lisent sans faire defiler la fiche ;
+//        prix, le client, puis le pli Historique ; les notes se lisent sans
+//        faire defiler la fiche ;
 //   [C2] le client sans libelle : un numero, une adresse, ou une seule ligne
 //        pour ce qui manque ;
 //   [V1] l etat d une activite se lit en mot colore, pas en pastille ;
@@ -150,7 +151,7 @@ function lireFiche({ nom, contact }) {
     lignesAddition: Array.from(m.querySelectorAll('.gc-bill-lines > div')).map((d) => txt(d)),
     total: ligne(m.querySelector('.gc-bill-total')),
     principal: principal ? Array.from(principal.children).map((c) => c.className) : [],
-    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.gc-bill') ? 'prix' : c.matches('.fx-client') ? 'client' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
+    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.gc-bill') ? 'prix' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
     notesHaut: notes ? Math.round(R(notes).top) : null,
     corpsBas: Math.round(R(corps).bottom),
     client: ligne(m.querySelector('.fx-client')),
@@ -216,10 +217,11 @@ function juger(f, label, appareil) {
   } else {
     ok(new RegExp(`^Total\\s*${f.prix.replace(/\s/g, '\\s*')}`).test(f.total) && /par (joueur|personne présente)/.test(f.total), `[A2] ${label} : plusieurs lignes, leur total et le prix par joueur`, f.total);
   }
-  // [C1]
-  const attenduCote = ['notes', 'prix', 'client'].concat(f.pastille === 'En retard' || (f.retard && f.pastille === 'À vérifier') ? [] : ['pli']);
+  // [C1] (le pli Historique ferme la colonne, 2026-11-03 : la session de la
+  // fixture, Direction, a le niveau « historique »)
+  const attenduCote = ['notes', 'prix', 'client'].concat(f.pastille === 'En retard' || (f.retard && f.pastille === 'À vérifier') ? [] : ['pli'], ['historique']);
   ok(f.principal.length === 1 && /fx-programme/.test(f.principal[0]) && JSON.stringify(f.cote) === JSON.stringify(attenduCote),
-    `[C1] ${label} : le programme seul a gauche, puis notes, prix, client a droite`, { principal: f.principal, cote: f.cote });
+    `[C1] ${label} : le programme seul a gauche, puis notes, prix, client a droite, l historique en dernier`, { principal: f.principal, cote: f.cote });
   if (ordi) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });
   // [C2]
   const joignable = f.liens.length > 0;

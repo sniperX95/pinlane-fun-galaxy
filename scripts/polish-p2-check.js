@@ -1158,7 +1158,7 @@ const PROPRIETES = [
       {
         nom: 'le marqueur de note des cartes du planning perd son role et son nom accessible',
         vise: /AUTREMENT que par la couleur/,
-        editions: [{ fichier: 'assets/app-main.js', de: '<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">', vers: '<span class="bk-flag ${m.cls}" title="${m.label}">' }],
+        editions: [{ fichier: 'assets/app-main.js', de: '<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.titre || m.label}">', vers: '<span class="bk-flag ${m.cls}" title="${m.titre || m.label}">' }],
       },
       {
         nom: 'la consigne ne remonte plus dans les pastilles d engagement (le document exporte redevient muet)',

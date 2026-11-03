@@ -123,7 +123,7 @@ function dossiers() {
       notes: `Un enfant allergique aux arachides.\n${eq('Bougies au bar à 17:00', 'Julie', '2027-01-15T16:05:00.000Z')}\n${eq('Formule 7 (adaptée) : 252 € au lieu de 280 €. Geste commercial', 'Seb', '2027-01-15T16:06:00.000Z')}`,
     });
     // (un groupe de bowling et un groupe de laser : la recherche vaut sur leurs listes)
-    Object.assign(journee.find((r) => /Amis de Clara/.test(r.name)), { extras: [{ id: 'nourriture-1', name: 'Hot-dog × 7', price: 0 }] });
+    Object.assign(journee.find((r) => /Amis de Clara/.test(r.name)), { extras: [{ id: 'nourriture-1', name: 'Hot-dog × 7', heure: '17:00', price: 0 }] });
     Object.assign(journee.find((r) => /Amis de Manon/.test(r.name)), { notes: 'Sans gluten pour deux enfants.' });
     // Depuis le 2026-11-03 le serveur ecrit la raison d un prix en note structuree : la
     // derniere decrit le prix du moment, une passee se tait.
@@ -1395,7 +1395,222 @@ async function recherche(browser) {
   });
 }
 
-const SCENARIOS = { coordonnees, agrandissement, vraiesBarres, bascule, date, collee, menuGauche, inventaire, dossier, ligne, couleurs, mots, comportement, petitsEcrans, lisibilite, contraste, recherche };
+// ---------------------------------------------------------------------------
+// [R] LES CARTES DISENT LE DOSSIER (2026-11-03, Movsar : « tout ce qui est sur mesure
+// modifier ou prix ajuster tout bien visible sur le planning complet et sur les cartes
+// des reservations »). Les cartes Bowling et Laser portent des marqueurs courts, chacun
+// dit tout au survol ; le Terrain ecrit l equipe, le sur mesure et le prix revu. Lu sur
+// l ecran, a 1366 x 768 (et le nom des cartes garde sa place a 1024).
+// ---------------------------------------------------------------------------
+// Deux dossiers de plus pour ce scenario : une allergie sur une carte bowling d une heure
+// (le coin replie), et un groupe laser qui a tout (note d equipe, extras, prix revu).
+function dossiersDesCartes() {
+  const avant = Object.getOwnPropertyDescriptor(window, '__FIXTURE__');
+  let valeur;
+  const eq = (t, par, le, prix) => `[equipe] ${JSON.stringify(prix ? { t, par, le, type: 'prix', prix } : { t, par, le })}`;
+  Object.defineProperty(window, '__FIXTURE__', {
+    configurable: true,
+    get() { return avant ? avant.get() : valeur; },
+    set(v) {
+      if (avant) avant.set(v); else valeur = v;
+      const j = v.jours[v.jour];
+      Object.assign(j.find((r) => /Famille Noël/.test(r.name)), { notes: 'Allergie aux arachides.' });
+      const manon = j.find((r) => /Amis de Manon/.test(r.name));
+      const de = Number(manon.price) || 100;
+      Object.assign(manon, {
+        basePrice: de,
+        price: de - 15,
+        discountReason: '',
+        extras: [{ id: 'nourriture-1', name: 'Pizza × 6', heure: '16:30', price: 0 }],
+        notes: `${manon.notes}\n${eq('Table près de l’arène', 'Seb', '2027-01-15T14:00:00.000Z')}\n${eq(`Prix ${de} € → ${de - 15} €, anniversaire offert`, 'Seb', '2027-01-15T14:05:00.000Z', { de, a: de - 15, raison: 'anniversaire offert' })}`,
+      });
+    },
+  });
+}
+// Une carte bowling, lue sur son ecran : ses marqueurs (visibles, leur nom, leur
+// infobulle), sa pastille de prix, son coin, son nom.
+const lireCartesBowling = (page, noms) => page.evaluate((liste) => {
+  const toile = document.createElement('canvas');
+  toile.width = 1; toile.height = 1;
+  const g = toile.getContext('2d', { willReadFrequently: true });
+  const rgb = (s) => { g.clearRect(0, 0, 1, 1); g.fillStyle = '#000'; g.fillStyle = s; g.fillRect(0, 0, 1, 1); return Array.from(g.getImageData(0, 0, 1, 1).data.slice(0, 3)); };
+  const vu = (e) => Boolean(e) && e.getBoundingClientRect().width > 1 && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden';
+  return [...document.querySelectorAll('#planningGridWrap .booking')].filter((c) => liste.some((n) => ((c.querySelector('.booking-name') || {}).title || '').includes(n))).map((c) => {
+    const nom = c.querySelector('.booking-name');
+    const rc = c.getBoundingClientRect();
+    const prix = c.querySelector('.bk-price');
+    const coin = c.querySelector('.bk-coin');
+    const avant = getComputedStyle(c, '::before');
+    return {
+      nom: nom.title,
+      dens: (c.className.match(/\bdens-(xs|md|lg)\b/) || [])[1] || '',
+      marques: [...c.querySelectorAll('.booking-head .bk-flag')].map((f) => {
+        const b = f.getBoundingClientRect();
+        return { cle: ((f.getAttribute('class') || '').match(/\bflag-(\w+)/) || [])[1] || '?', vu: vu(f), nom: f.getAttribute('aria-label') || '', bulle: f.getAttribute('title') || '', titre: (f.querySelector('svg > title') || {}).textContent || '', dedans: b.left >= rc.left - 0.5 && b.right <= rc.right + 0.5 && b.top >= rc.top - 0.5 && b.bottom <= rc.bottom + 0.5, couleur: rgb(getComputedStyle(f).color), encre: rgb(getComputedStyle(c).color) };
+      }),
+      prix: prix && vu(prix) ? { texte: prix.textContent.trim(), bulle: prix.getAttribute('title') || '', nom: prix.getAttribute('aria-label') || '' } : null,
+      coin: coin && vu(coin) ? coin.getAttribute('title') : '',
+      coinPeint: avant.content !== 'none' && parseFloat(avant.borderRightWidth) > 0 ? rgb(avant.borderRightColor) : null,
+      nomLarge: Math.round(nom.getBoundingClientRect().width * 10) / 10,
+      nomCoupe: nom.scrollWidth > nom.clientWidth + 0.5,
+      deborde: c.scrollWidth - c.clientWidth > 1 || c.scrollHeight - c.clientHeight > 1,
+    };
+  });
+}, noms);
+// (rouge, pas ambre : l ambre du prix et des notes a r = 1,6 g)
+const rouge = (c) => Boolean(c) && c[0] > c[1] * 2.5 && c[0] > c[2] * 2.5;
+async function cartes(browser) {
+  const avantChargement = async (page) => { await page.addInitScript(dossiers); await page.addInitScript(dossiersDesCartes); };
+  await avec(browser, { lettre: 'R', avantChargement }, async (page) => {
+    await page.waitForFunction(() => document.querySelectorAll('.gf-i--fiche').length > 0, null, { timeout: 8000 }).catch(() => null);
+    // La couleur du prix sur la ligne du Complet : le Terrain la reprend.
+    const couleurPrixComplet = await page.evaluate(() => { const p = document.querySelector('.gf-i--prix > p'); return p ? getComputedStyle(p).color : ''; });
+    await aller(page, 'bowling');
+    await FX.repos(page, 300);
+    const b = await lireCartesBowling(page, ['Famille Gérard', 'Amis de Clara', 'Famille Henrard', 'Famille Noël']);
+    const carte = (n) => b.find((x) => x.nom.includes(n));
+    const marque = (c, cle) => (c ? c.marques.find((m) => m.cle === cle) : null);
+    ok(b.length >= 4 && ['Famille Gérard', 'Amis de Clara', 'Famille Henrard', 'Famille Noël'].every((n) => carte(n)), '[R] MONTAGE : les cartes bowling du dossier sont sur la grille', b.map((x) => x.nom));
+    const clara = carte('Amis de Clara');
+    const mClara = marque(clara, 'mesure');
+    ok(Boolean(mClara) && mClara.vu && mClara.dedans && mClara.nom === 'Sur mesure : 7 × Hot-dog à 17:00' && mClara.bulle === mClara.nom, '[R] bowling : le sur mesure se voit sur la carte, son infobulle dit quoi et a quelle heure', clara);
+    const gerard = carte('Famille Gérard');
+    const mGerard = marque(gerard, 'equipe');
+    ok(Boolean(mGerard) && mGerard.vu && mGerard.dedans && mGerard.bulle === 'Équipe : Arrivent en deux voitures (Julie)', '[R] bowling : la note de l equipe a son marqueur, son infobulle dit la note et son auteur', gerard);
+    ok(Boolean(mGerard) && !/→|fidèle|fidélité|€/.test(mGerard.bulle) && !marque(gerard, 'note'), '[R] bowling : une note de prix n est ni une note d equipe ni une bulle du client', gerard);
+    ok(Boolean(gerard && gerard.prix) && gerard.prix.texte === '59 €' && gerard.prix.bulle === 'Prix ajusté 59 €, référence 69 €, carte de fidélité pleine' && /^Prix ajusté 59 €/.test(gerard.prix.nom), '[R] bowling : la pastille du prix revu dit le prix d avant et la raison au survol', gerard && gerard.prix);
+    const henrard = carte('Famille Henrard');
+    ok(Boolean(henrard) && henrard.marques.length === 0 && !henrard.prix && !henrard.coin, '[R] bowling : une note de prix passee se tait aussi sur la carte', henrard);
+    const noel = carte('Famille Noël');
+    const mNoel = marque(noel, 'note');
+    ok(Boolean(noel) && noel.dens !== 'xs' && Boolean(mNoel) && /^Allergie/.test(mNoel.nom) && noel.coin === 'Allergie · Client : Allergie aux arachides.' && rouge(noel.coinPeint), '[R] bowling : une allergie rougit le coin replie, son survol dit tout', noel);
+    ok(b.every((c) => c.marques.filter((m) => m.cle === 'equipe' || m.cle === 'mesure').every((m) => m.vu ? m.couleur.join() === m.encre.join() : true)), '[R] bowling : equipe et sur mesure a l encre de la carte, lisibles sur ses trois teintes', b.map((c) => c.marques));
+    ok(b.every((c) => !c.deborde && (!c.nomCoupe || c.nomLarge >= 76)), '[R] bowling : la carte ne deborde pas, un nom coupe garde 76 px', b.map((c) => `${c.nom} ${c.nomLarge}${c.nomCoupe ? ' coupe' : ''}${c.deborde ? ' DEBORDE' : ''}`));
+    // Le toucher ouvre ce que la carte ouvre deja : la fiche du groupe.
+    const ouvert = await page.evaluate(() => {
+      const f = Array.from(document.querySelectorAll('#planningGridWrap .booking .bk-flag.flag-mesure')).find((x) => x.getBoundingClientRect().width > 1);
+      if (!f) return null;
+      const id = f.closest('.booking').dataset.bookingResId;
+      const vrai = window.openPos;
+      const vus = [];
+      window.openPos = (x) => { vus.push(String(x)); };
+      const b = f.getBoundingClientRect();
+      const cible = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      if (cible) cible.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 }));
+      window.openPos = vrai;
+      return { id, vus };
+    });
+    ok(Boolean(ouvert) && ouvert.vus.length === 1 && ouvert.vus[0] === ouvert.id, '[R] bowling : toucher un marqueur ouvre la fiche, comme la carte', ouvert);
+    // Le laser : la carte du prochain depart, qui montre ses pictos.
+    await aller(page, 'laser');
+    await FX.repos(page, 300);
+    const l = await page.evaluate(() => {
+      const toile = document.createElement('canvas');
+      toile.width = 1; toile.height = 1;
+      const g = toile.getContext('2d', { willReadFrequently: true });
+      const rgb = (s) => { g.clearRect(0, 0, 1, 1); g.fillStyle = '#000'; g.fillStyle = s; g.fillRect(0, 0, 1, 1); return Array.from(g.getImageData(0, 0, 1, 1).data.slice(0, 3)); };
+      const hote = Array.from(document.querySelectorAll('#laserPlanningGridWrap .lp-prochain .lp-groupe')).find((x) => /Amis de Manon/.test((x.querySelector('b') || {}).textContent || ''));
+      if (!hote) return null;
+      const cadre = hote.getBoundingClientRect();
+      return Array.from(hote.querySelectorAll('.lp-pictos [role="img"]')).map((f) => {
+        const r = f.getBoundingClientRect();
+        return { cle: ((f.getAttribute('class') || '').match(/\bflag-(\w+)/) || [])[1] || '?', taille: `${Math.round(r.width)}x${Math.round(r.height)}`, nom: f.getAttribute('aria-label') || '', bulle: f.getAttribute('title') || '', titre: (f.querySelector('svg > title') || {}).textContent || '', couleur: rgb(getComputedStyle(f).color), dedans: r.right <= cadre.right + 0.5 && r.left >= cadre.left - 0.5 };
+      });
+    });
+    const lm = (cle) => (l || []).find((m) => m.cle === cle);
+    ok(Array.isArray(l) && l.map((m) => m.cle).join() === 'note,mesure,equipe,prix' && l.every((m) => m.taille === '13x13' && m.dedans), '[R] laser : la carte porte la note, le sur mesure, l equipe et le prix, dans cet ordre, sur la ligne du nom', l);
+    ok(Boolean(lm('note')) && rouge(lm('note').couleur) && lm('note').bulle === 'Allergie · Client : Sans gluten pour deux enfants.', '[R] laser : l allergie en rouge, son survol dit tout', lm('note'));
+    ok(Boolean(lm('equipe')) && lm('equipe').bulle === 'Équipe : Table près de l’arène (Seb)' && Boolean(lm('mesure')) && lm('mesure').bulle === 'Sur mesure : 6 × Pizza à 16:30', '[R] laser : l equipe et le sur mesure disent tout au survol', l);
+    ok(Boolean(lm('prix')) && /^Prix ajusté [\d ,]+ €, référence [\d ,]+ €, anniversaire offert$/.test(lm('prix').bulle) && /^Prix ajusté/.test(lm('prix').nom), '[R] laser : le prix revu dit le prix d avant et la raison au survol', lm('prix'));
+    // Dans une rangee serree (deux groupes au depart), les pictos cedent : le coin replie
+    // dit la note, rouge avec une allergie, et l infobulle de la carte la dit en entier.
+    const serree = await page.evaluate(() => {
+      const toile = document.createElement('canvas');
+      toile.width = 1; toile.height = 1;
+      const g = toile.getContext('2d', { willReadFrequently: true });
+      const rgb = (s) => { g.clearRect(0, 0, 1, 1); g.fillStyle = '#000'; g.fillStyle = s; g.fillRect(0, 0, 1, 1); return Array.from(g.getImageData(0, 0, 1, 1).data.slice(0, 3)); };
+      return Array.from(document.querySelectorAll('#laserPlanningGridWrap .lp-qui > .lp-g')).filter((x) => /Amis de Manon/.test((x.querySelector('b') || {}).textContent || '')).map((x) => {
+        const a = getComputedStyle(x, '::after');
+        return { coin: a.content !== 'none' && parseFloat(a.borderRightWidth) >= 8 ? rgb(a.borderRightColor) : null, bulle: x.getAttribute('title') || '' };
+      });
+    });
+    ok(serree.some((c) => c.coin) && serree.filter((c) => c.coin).every((c) => rouge(c.coin) && /· Allergie · Client : Sans gluten pour deux enfants\.$/.test(c.bulle)), '[R] laser : dans une rangee serree, le coin replie rougit avec l allergie, l infobulle de la carte dit la note', serree);
+    // Le Terrain.
+    await page.evaluate(() => { openStaffMenuPage('arrivals'); });
+    await page.waitForFunction(() => document.querySelectorAll('#staffUtilityPage [data-terrain-id]').length > 0, null, { timeout: 8000 }).catch(() => null);
+    await FX.repos(page, 200);
+    const t = await page.evaluate(() => {
+      const toile = document.createElement('canvas');
+      toile.width = 1; toile.height = 1;
+      const g = toile.getContext('2d', { willReadFrequently: true });
+      const rgb = (s) => { g.clearRect(0, 0, 1, 1); g.fillStyle = '#000'; g.fillStyle = s; g.fillRect(0, 0, 1, 1); return Array.from(g.getImageData(0, 0, 1, 1).data.slice(0, 3)); };
+      const J = window.__FIXTURE__.jours[window.__FIXTURE__.jour];
+      const o = {};
+      ['Famille Gérard', 'Amis de Clara', 'Famille Henrard', 'Anniversaire Camille', 'Amis de Manon'].forEach((n) => {
+        const r = J.find((x) => x.name.includes(n));
+        const el = r && document.querySelector(`#staffUtilityPage [data-terrain-id="${r.id}"]`);
+        if (!el) { o[n] = null; return; }
+        const rub = {};
+        el.querySelectorAll('.terrain-rub').forEach((p) => {
+          const mot = p.querySelector('.terrain-rub__mot');
+          const tx = p.querySelector('.terrain-rub__t');
+          rub[mot.textContent] = { texte: tx.textContent.replace(/\s+/g, ' ').trim(), taille: Math.min(parseFloat(getComputedStyle(mot).fontSize), parseFloat(getComputedStyle(tx).fontSize)), couleur: getComputedStyle(tx).color, coupe: p.scrollWidth > p.clientWidth + 1, dedans: p.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5 };
+        });
+        const client = el.querySelector('.res-special-request');
+        const a = el.querySelector('.terrain-allergie');
+        o[n] = { forme: el.classList.contains('terrain-row') ? 'ligne' : 'carte', rub, ordre: Array.from(el.querySelectorAll('.res-special-request, .terrain-rub')).map((p) => (p.classList.contains('terrain-rub') ? p.querySelector('.terrain-rub__mot').textContent : 'Client')), client: client ? client.textContent.replace(/\s+/g, ' ').trim() : '', allergie: a ? { mot: a.textContent, couleur: rgb(getComputedStyle(a).color), poids: Number(getComputedStyle(a).fontWeight) } : null };
+      });
+      return o;
+    });
+    const tg = t['Famille Gérard'];
+    ok(Boolean(tg) && (tg.rub['Équipe'] || {}).texte === 'Arrivent en deux voitures Julie' && (tg.rub.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine', '[R] Terrain : la derniere note de l equipe avec son auteur, et le prix revu avec sa raison', tg);
+    ok(Boolean(tg) && (tg.rub.Prix || {}).couleur === couleurPrixComplet && couleurPrixComplet !== '', '[R] Terrain : le prix revu a la couleur du prix du Complet', { terrain: tg && (tg.rub.Prix || {}).couleur, complet: couleurPrixComplet });
+    ok(Boolean(t['Amis de Clara']) && (t['Amis de Clara'].rub['Sur mesure'] || {}).texte === '7 × Hot-dog à 17:00', '[R] Terrain : le sur mesure avec ses heures', t['Amis de Clara']);
+    ok(Boolean(t['Famille Henrard']) && Object.keys(t['Famille Henrard'].rub).length === 0, '[R] Terrain : une note de prix passee se tait', t['Famille Henrard']);
+    const tc = t['Anniversaire Camille'];
+    ok(Boolean(tc) && tc.ordre.join() === 'Client,Équipe,Sur mesure,Prix' && (tc.rub['Équipe'] || {}).texte === 'Bougies au bar à 17:00 Julie' && (tc.rub['Sur mesure'] || {}).texte === 'formule adaptée, 13 × Pizza margherita, Gâteau d’anniversaire' && (tc.rub.Prix || {}).texte === '252 € au lieu de 280 €, geste commercial', '[R] Terrain : le mot du client, puis l equipe, le sur mesure et le prix, dans l ordre', tc);
+    ok(Boolean(tc && tc.allergie) && tc.allergie.mot === 'Allergie' && rouge(tc.allergie.couleur) && tc.allergie.poids >= 600 && /^Allergie Un enfant allergique/.test(tc.client), '[R] Terrain : l allergie du client en rouge, devant son mot', tc && { allergie: tc.allergie, client: tc.client });
+    ok(Object.values(t).filter(Boolean).every((x) => Object.values(x.rub).every((r) => r.taille >= 12 && !r.coupe && r.dedans)), '[R] Terrain : rien sous 12 px, rien de coupe ni hors de sa carte', t);
+    // La liste du jour (page Reservations) : une ligne de rubriques, comme le Complet. Le
+    // mois se lit par /api/admin-range : la journee du pic y est servie a chaque date.
+    await page.evaluate(() => {
+      const F = window.__FIXTURE__;
+      const r = getStaffReservationsRange();
+      for (let d = r.previousMonthStart; d <= r.gridEnd; d = addDays(d, 1)) F.jours[d] = F.jours[F.jour];
+      openStaffMenuPage('reservations');
+    });
+    await page.waitForFunction(() => document.querySelectorAll('#staffReservationsPage .pv2-flow-item').length > 5, null, { timeout: 10000 }).catch(() => null);
+    await FX.repos(page, 200);
+    const jour = await page.evaluate(() => {
+      const o = {};
+      ['Famille Gérard', 'Amis de Clara', 'Famille Henrard'].forEach((n) => {
+        const item = Array.from(document.querySelectorAll('#staffReservationsPage .pv2-flow-item')).find((x) => ((x.querySelector('.pv2-flow-body strong') || {}).textContent || '').includes(n));
+        if (!item) { o[n] = null; return; }
+        const rub = {};
+        item.querySelectorAll('.res-rub').forEach((s) => {
+          const b = s.querySelector('b');
+          rub[b.textContent] = { texte: s.textContent.slice(b.textContent.length).trim(), taille: Math.min(parseFloat(getComputedStyle(s).fontSize), parseFloat(getComputedStyle(b).fontSize)), couleur: getComputedStyle(s).color, dedans: s.getBoundingClientRect().right <= item.getBoundingClientRect().right + 0.5 };
+        });
+        o[n] = rub;
+      });
+      return o;
+    });
+    const jg = jour['Famille Gérard'];
+    ok(Boolean(jg) && (jg['Équipe'] || {}).texte === 'Arrivent en deux voitures (Julie)' && (jg.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine' && (jg.Prix || {}).couleur === couleurPrixComplet, '[R] liste du jour : l equipe et le prix revu, sa raison dans la couleur du prix du Complet', jg);
+    ok(Boolean(jour['Amis de Clara']) && (jour['Amis de Clara']['Sur mesure'] || {}).texte === '7 × Hot-dog à 17:00' && Boolean(jour['Famille Henrard']) && Object.keys(jour['Famille Henrard']).length === 0, '[R] liste du jour : le sur mesure avec ses heures ; une note de prix passee se tait', jour);
+    ok(Object.values(jour).filter(Boolean).every((x) => Object.values(x).every((r) => r.taille >= 12 && r.dedans)), '[R] liste du jour : rien sous 12 px, rien hors de sa ligne', jour);
+  });
+  // A 1024, des pistes de 110 px : les marqueurs du dossier cedent avant le nom (paliers
+  // de pinlane-staff.css), et celui qui reste est entier sur la carte.
+  await avec(browser, { lettre: 'R', appareil: 'petitPc', avantChargement: async (page) => { await page.addInitScript(dossiers); await page.addInitScript(dossiersDesCartes); } }, async (page) => {
+    await aller(page, 'bowling');
+    await FX.repos(page, 300);
+    const b = await lireCartesBowling(page, ['Famille Gérard', 'Amis de Clara', 'Famille Noël']);
+    ok(b.length >= 3 && b.every((c) => { const dossier = c.marques.filter((m) => (m.cle === 'equipe' || m.cle === 'mesure') && m.vu); return !c.deborde && dossier.every((m) => m.dedans) && (!dossier.length || !c.nomCoupe || c.nomLarge >= 76); }), '[R] 1024 : un marqueur du dossier cede avant le nom (76 px), celui qui reste est entier', b.map((c) => `${c.nom} ${c.nomLarge}${c.nomCoupe ? ' coupe' : ''}${c.deborde ? ' DEBORDE' : ''} ${c.marques.map((m) => `${m.cle}:${m.vu ? 'vu' : 'cache'}`).join(' ')}`));
+  });
+}
+
+const SCENARIOS = { coordonnees, agrandissement, vraiesBarres, bascule, date, collee, menuGauche, inventaire, dossier, ligne, couleurs, mots, comportement, petitsEcrans, lisibilite, contraste, recherche, cartes };
 
 // ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
@@ -1532,6 +1747,28 @@ const MUTATIONS = [
   { nom: 'croix-sourde', lettre: 'Q', scenarios: ['recherche'], editions: SEUL(PG, "    if (efface) efface.addEventListener('click', gfViderRecherche);\n", '') },
   { nom: 'entree-pointe-hors-du-tableau', lettre: 'Q', scenarios: ['recherche'], editions: SEUL(PG, "    if (!boite || boite.classList.contains('hidden')) return;\n", '') },
   { nom: 'taper-seulement-au-complet', lettre: 'Q', scenarios: ['recherche'], editions: SEUL(PG, "    if (!document.body.classList.contains('gf-large') || state.view !== 'staff') return;", "    if (getStaffResourceView() !== 'all' || state.view !== 'staff') return;") },
+  // [R] les cartes disent le dossier
+  { nom: 'marque-sur-mesure-absente', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e && (e.mesure || e.adaptee)) {\n    marques.push({\n      cls: 'flag-mesure',", "  if (false) {\n    marques.push({\n      cls: 'flag-mesure',") },
+  { nom: 'marque-equipe-absente', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '  if (e && e.notes) {\n    const allergie = Boolean(e.allergies.notes);', '  if (false) {\n    const allergie = Boolean(e.allergies.notes);') },
+  { nom: 'note-de-prix-sur-la-carte', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, '      if (p) { if (!notePrix || p.a != null) notePrix = p; return; }\n', '') },
+  { nom: 'prix-sans-sa-raison', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  const revu = options.essentiel && options.essentiel.raison ? `Prix ajusté ${montant}, référence ${formatMoneyCentimes(etat.reference)}, ${options.essentiel.raison}` : '';", "  const revu = '';") },
+  { nom: 'coin-sans-survol', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '        ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : \'\'}\n', '') },
+  { nom: 'coin-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.booking.a-allergie { --bk-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }\n', '') },
+  { nom: 'allergie-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.is-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); }\n', '') },
+  { nom: 'marques-pales', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }\n', '') },
+  { nom: 'marques-qui-ecrasent-le-nom', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; }', '.bk-flag.flag-equipe, .bk-flag.flag-mesure { color: inherit; min-width: 80px; }') },
+  { nom: 'marqueur-qui-ecrase-le-nom-a-1024', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '@container piste (max-width: 116px) {\n  .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe) { display: none; }\n}\n', '') },
+  { nom: 'coin-laser-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '  .lp-g.a-allergie { --lp-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }', '') },
+  { nom: 'carte-laser-sans-sa-note', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "${noteLaser ? ` · ${noteLaser}` : ''}`)}\">", "`)}\">") },
+  { nom: 'marque-qui-garde-le-toucher', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '<span class="bk-flag ${m.cls}" role="img"', '<span class="bk-flag ${m.cls}" onclick="event.stopPropagation()" role="img"') },
+  { nom: 'liste-du-jour-sans-rubriques', lettre: 'R', scenarios: ['cartes'], editions: SEUL('assets/staff-pages-v2.js', "    return `<span class=\"pv2-flow-marks\">${prix}${note}${rubriques}</span>`;", "    return `<span class=\"pv2-flow-marks\">${prix}${note}</span>`;") },
+  { nom: 'liste-du-jour-prix-gris', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.pv2-flow-marks .res-rub--prix { color: var(--warning); font-weight: 600; }\n', '') },
+  { nom: 'terrain-sans-equipe', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.derniere) lignes.push(rubrique('equipe',", "  if (false) lignes.push(rubrique('equipe',") },
+  { nom: 'terrain-sans-sur-mesure', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.mesure || e.adaptee) lignes.push(rubrique('mesure',", "  if (false) lignes.push(rubrique('mesure',") },
+  { nom: 'terrain-sans-prix', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.prix) lignes.push(rubrique('prix', 'Prix', escapeHtml(e.prix)));\n", '') },
+  { nom: 'terrain-allergie-muette', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  const allergie = (oui) => (oui ? '<b class=\"terrain-allergie\">Allergie</b> ' : '');", "  const allergie = () => '';") },
+  { nom: 'terrain-allergie-noire', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.terrain-allergie { color: color-mix(in srgb, var(--danger) 82%, var(--text)); font-weight: 700; }', '.terrain-allergie { font-weight: 700; }') },
+  { nom: 'terrain-prix-sans-sa-couleur', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.terrain-rub--prix .terrain-rub__t { color: var(--warning); font-weight: 600; }\n', '') },
 ];
 
 async function jouer(browser, noms) {

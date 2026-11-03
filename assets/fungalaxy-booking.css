@@ -1412,7 +1412,9 @@ html.fg-pilote .fg { overflow: visible; }
 /* Le voile n arrive qu apres 150 ms : une reponse rapide ne fait rien clignoter.
    Il repart sans delai (la transition de l etat de base n en a pas). */
 #hourZone .fg-visit { transition: opacity 0.15s; }
-#hourZone.is-busy .fg-period.is-open .fg-chips, #hourZone.is-busy .fg-visit { opacity: 0.55; transition: opacity 0.2s 0.15s; }
+/* Les heures ne baissent jamais de ton : c est le controle que le doigt tient
+   (2026-11-03). Seul le recapitulatif attend sa nouvelle version. */
+#hourZone.is-busy .fg-visit { opacity: 0.55; transition: opacity 0.2s 0.15s; }
 /* « indicatif » dans la barre du bas : en large seulement. Plus etroit, le
    resume passait sur deux lignes, et la carte « Votre visite » juste au-dessus
    dit deja « Total indicatif » et « Montants a titre indicatif ». */
@@ -1583,13 +1585,11 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-chip.is-wave.is-asked { border-color: #fff; box-shadow: 0 0 0 3px rgba(148, 66, 146, 0.6); }
 .fg-chip.is-off.is-asked { border-color: var(--fg-danger); color: var(--fg-muted); }
 .fg-chip.is-off.is-asked small { color: var(--fg-danger); }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-chips.is-fresh .fg-chip { animation: fg-rise 0.45s var(--fg-ease-out) backwards; animation-delay: calc(18ms * var(--i, 0)); }
-}
-/* L heure touchee s entoure des le toucher ; une onde part d elle quand le plan
+/* L heure touchee se remplit des le toucher, avant la reponse ; une onde part d elle quand le plan
    du serveur la retient. Seul le pseudo-element bouge, jamais la case. inset se
    compte depuis la boite de rembourrage (bordure 1,5 px) : -3.5px pose l anneau
    2 px hors de la case, rayon concentrique a --fg-radius. */
+.fg-chip.is-pending { background: var(--fg-purple); border-color: var(--fg-purple); color: #fff; }
 .fg-chip.is-pending::after, .fg-chip.is-pose::after { content: ""; position: absolute; inset: -3.5px; border: 2px solid var(--fg-purple); border-radius: calc(var(--fg-radius) + 2px); pointer-events: none; }
 .fg-chip.is-pose::after { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
@@ -1746,7 +1746,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__warn .fg-suggest { margin-top: 10px; }
 /* L AGENDA. Chaque ligne se pose dans la colonne des blocs ; son heure sort a
    gauche, dans la colonne des heures, a la hauteur de son titre. */
-.fg-visit__list { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 4px; }
+.fg-visit__list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
 .fg-visit__list > li { position: relative; margin-left: calc(var(--v-axe) + var(--v-pas)); }
 .fg-visit__list--libre > li { margin-left: 0; }
 .fg-visit__step > b { position: absolute; top: 0; right: calc(100% + var(--v-pas)); width: var(--v-axe); font-size: 14px; font-weight: 600; line-height: 20px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg-muted); }
@@ -1754,20 +1754,17 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__step > span { display: block; font-size: 14.5px; font-weight: 700; line-height: 20px; color: var(--fg-text); }
 .fg-visit__step > span i { font-style: normal; }
 .fg-visit__step > small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
-/* Un bloc par activite a heure fixe : sa hauteur suit sa duree, lisible meme
-   courte, jamais plus de 200 px (une longue table, l illimite). Le texte
-   blanc tient AA sur les trois violets (4,6:1 sur le plus clair). */
-.fg-visit__step--bloc { min-height: clamp(52px, calc(var(--m, 0) * var(--px, 1.8px)), 200px); padding: 9px 12px 10px; border-radius: var(--v-r); background: #5b2a5a; }
-.fg-visit__step--piste { background: var(--fg-purple); }
-.fg-visit__step--arene { background: var(--fg-purple-2); }
-.fg-visit__step--bloc > b { top: 9px; }
-.fg-visit__step--bloc > small { color: var(--fg-text); }
-/* L activite que le moteur a deplacee pour l heure posee : un trait blanc
-   tout autour, et la phrase qui dit pourquoi. */
-.fg-visit__step--bloc.is-moved { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6); }
+/* LE RECAPITULATIF SE LIT COMME UN PROGRAMME (2026-11-03, Ansar : « les recap
+   moche »). Plus d aplats violets dont la hauteur disait la duree : une heure
+   ecrite vaut mieux qu un rectangle a mesurer, et le recapitulatif ne saute
+   plus quand une heure change. L heure a gauche, l activite, son detail. */
+.fg-visit__step--bloc > b { color: var(--fg-text); font-weight: 700; }
+/* L activite que le moteur a deplacee pour l heure posee : la phrase qui dit
+   pourquoi se detache. */
+.fg-visit__step--bloc.is-moved > small { color: var(--fg-amber-ink); }
 /* Le temps vide entre deux activites : de la place, un pointille d un bloc
    a l autre, et son nom. */
-.fg-visit__gap { display: flex; align-items: center; min-height: clamp(26px, calc(var(--m, 0) * var(--px, 1.8px)), 72px); padding: 0 0 0 26px; font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
+.fg-visit__gap { display: flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
 .fg-visit__gap::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; border-left: 2px dotted var(--v-trait); }
 /* LE TEMPS LIBRE QUI SE REMPLIT (Movsar, 2026-10-13 : « des pop up adaptées
    en fonction du temps libre [...] super puissant et pointillé »). L attente
@@ -1834,19 +1831,15 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-quand__dit { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--fg-muted); }
 .fg-quand__dit b { color: var(--fg-text); font-weight: 700; }
 .fg-quand .fg-libre__action { border-radius: 10px; }
-/* LES BORNES : l arrivee et la fin, un trait sarcelle a leur heure, leur mot
-   dessous. */
-.fg-visit__step--in, .fg-visit__step--out, .fg-visit__step--debut { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; padding: 7px 0 6px; border-top: 2px solid var(--fg-teal); }
-.fg-visit__step--debut { border-top-color: var(--v-trait); }
-.fg-visit__step--in > b, .fg-visit__step--out > b, .fg-visit__step--debut > b { top: -11px; font-weight: 700; color: var(--fg-teal-ink); }
+/* LES BORNES : l arrivee et la fin, leur heure en sarcelle, leur mot a cote. */
+.fg-visit__step--in, .fg-visit__step--out, .fg-visit__step--debut { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.fg-visit__step--in > b, .fg-visit__step--out > b, .fg-visit__step--debut > b { font-weight: 700; color: var(--fg-teal-ink); }
 .fg-visit__step--debut > b { color: var(--fg-text); }
 .fg-visit__step--in > span, .fg-visit__step--out > span, .fg-visit__step--debut > span { font-size: 14px; font-weight: 600; }
 .fg-visit__step--in > small, .fg-visit__step--out > small { margin: 0; }
-.fg-visit__step--out { margin-top: 6px; }
 /* CE QUI N A PAS D HEURE (Movsar, 2026-09-29 : « dans la foulee, pas une
-   heure imposee, comme ca ils comprennent bien ») : a part de l axe, dans un
-   cadre en tirets, sans heure ni hauteur de duree. */
-.fg-visit__suite, .fg-visit__list > .fg-visit__step--suite { padding: 10px 12px 11px; border: 1.5px dashed var(--v-trait); border-radius: var(--v-r); }
+   heure imposee, comme ca ils comprennent bien ») : a part de l axe, sans
+   heure, son titre au-dessus. */
 .fg-visit__group { margin: 0; font-size: 13px; line-height: 18px; color: var(--fg-muted); }
 .fg-visit__group b { font-weight: 600; color: var(--fg-text); }
 .fg-visit__suite ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
@@ -1862,7 +1855,7 @@ html.fg-pilote .fg { overflow: visible; }
 /* LE DETAIL DU PRIX, ligne par ligne, puis le total et le paiement : les
    montants du programme de la reponse, montres seulement quand leur somme
    est le prix annonce (sinon le total seul, en tete du bloc). */
-.fg-visit__prices { display: grid; gap: 8px; margin: 22px 0 0; padding: 16px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.fg-visit__prices { display: grid; gap: 8px; margin: 18px 0 0; padding: 14px 16px; border-radius: 12px; background: rgba(255, 255, 255, 0.045); }
 .fg-visit__prices > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .fg-visit__prices dt { min-width: 0; font-size: 14px; font-weight: 600; color: var(--fg-text); }
 .fg-visit__prices dt small { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
@@ -2749,14 +2742,14 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__tete { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto 18px; align-items: center; gap: 14px; width: 100%; min-height: 66px; margin: 0; padding: 10px 20px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s; }
 @media (hover: hover) { .fg-etape:not(.is-open) .fg-etape__tete:hover { background: rgba(255, 255, 255, 0.03); } }
 .fg-etape__tete:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: -4px; border-radius: 14px; }
-.fg-etape__icone { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--fg-purple); color: #fff; }
-.fg-etape__icone svg { width: 21px; height: 21px; }
+.fg-etape__icone { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(176, 79, 176, 0.24); color: #e4b4e4; }
+.fg-etape__icone svg { width: 18px; height: 18px; }
 .fg-etape__quoi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fg-etape__quoi b { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.25; }
 .fg-etape__quoi b em { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.82); font-size: 12px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 2px; }
 .fg-etape__quoi small { font-size: 12.5px; color: var(--fg-muted); line-height: 1.3; }
 .fg-etape__quoi small:empty { display: none; }
-.fg-etape__heure { font-size: 20px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-align: right; white-space: nowrap; }
+.fg-etape__heure { font-size: 18px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-align: right; white-space: nowrap; }
 .fg-etape.is-propose .fg-etape__heure { color: var(--fg-teal-ink); }
 .fg-etape.is-vide .fg-etape__heure { font-size: 14px; font-weight: 650; color: var(--fg-amber-ink); }
 .fg-etape.is-surplace .fg-etape__heure, .fg-etape.is-libre .fg-etape__heure { font-size: 14px; font-weight: 600; color: var(--fg-muted); }
@@ -2765,28 +2758,20 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__chev { width: 18px; height: 18px; color: var(--fg-muted); transition: transform 0.35s var(--fg-ease-out); }
 .fg-etape.is-open .fg-etape__chev { transform: rotate(180deg); }
 /* Les bornes : l arrivee et la fin, en petit. */
-.fg-etape--borne { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 40px; padding: 6px 20px; color: var(--fg-muted); font-size: 13px; }
-.fg-etape--borne .fg-etape__quoi { font-weight: 600; letter-spacing: 0.02em; }
-.fg-etape--borne .fg-etape__heure { font-size: 14px; font-weight: 700; color: var(--fg-text); padding-right: 32px; }
-.fg-etapes:not(.has-bornes) .fg-etape--borne { display: none; }
-/* L heure d arrivee, en tete et facultative (2026-10-21) : la tuile turquoise
-   de l arrivee, la ligne comme celle d une activite. */
-.fg-etape--arrivee .fg-etape__icone { background: var(--fg-teal); color: #0e0c0f; }
-/* Le corps d une ligne : ses heures, deplie en grid-template-rows comme les
-   tiroirs (aucune mesure, la hauteur du cadre suit). */
-.fg-etape__corps { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--fg-ease-out); }
-.fg-etape.is-open .fg-etape__corps { grid-template-rows: 1fr; }
-.fg-etape__dedans { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear 0.4s; }
-.fg-etape.is-open .fg-etape__dedans { visibility: visible; transition-delay: 0s; }
-/* LA SUITE SE VOIT (Movsar, 2026-10-14 : « trop brusque, on comprend pas bien
-   qu on passe a une autre activite »). Apres une pose, la ligne garde son
-   heure a l ecran un instant, puis se replie ; la suivante s ouvre ensuite, et
-   son en-tete s eclaire d un voile sarcelle qui s eteint. */
+/* La fin se lit une fois, dans le recapitulatif juste dessous : le programme
+   ne la redit plus (2026-11-03). */
+.fg-etape--borne { display: none; }
+/* L heure d arrivee, en tete et facultative (2026-10-21). */
+.fg-etape--arrivee .fg-etape__icone { background: rgba(103, 186, 172, 0.2); color: var(--fg-teal-ink); }
+/* Le corps d une ligne : ses heures. Il s ouvre d un coup, sans animer une
+   hauteur image par image (2026-11-03 : « lourd, pas fluide ») ; une ligne
+   repliee ne se calcule plus. */
+.fg-etape__corps { display: none; }
+.fg-etape.is-open .fg-etape__corps { display: block; }
+/* LA SUITE SE VOIT (Movsar, 2026-10-14) : la ligne suivante est deja ouverte,
+   et son en-tete s eclaire d un voile sarcelle qui s eteint. */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-etape.is-quitte .fg-etape__corps { transition-delay: 0.42s; }
-  .fg-etape.is-quitte .fg-etape__dedans { transition-delay: 0.82s; }
-  .fg-etape.is-arrive .fg-etape__corps { transition-delay: 0.5s; }
-  .fg-etape.is-arrive .fg-etape__tete { animation: fg-etape-arrive 1.3s var(--fg-ease-out) 0.45s backwards; }
+  .fg-etape.is-arrive .fg-etape__tete { animation: fg-etape-arrive 0.9s var(--fg-ease-out) backwards; }
 }
 @keyframes fg-etape-arrive {
   0% { background-color: rgba(103, 186, 172, 0); }
@@ -2813,35 +2798,23 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape .fg-track__share, .fg-etape .fg-track__lanes { margin: 2px 0 8px; padding: 0; color: var(--fg-muted); font-size: 12.5px; }
 .fg-etape .fg-track__foot { padding: 0; min-height: 0; }
 .fg-etape .fg-track__foot:has(.fg-track__note[hidden]):has(.fg-track__reset[hidden]) { display: none; }
-/* Les plages en onglets : un seul ouvert, il le reste au toucher. Les cles
-   d une plage repliee ne s affichent plus (2026-10-13, maquette A : plus de
-   points de couleur) ; une plage sans heure possible reste grisee, ses
-   heures disent leur etat une fois ouverte, et la phrase lue aux lecteurs
-   d ecran le dit toujours. */
-.fg-etape .fg-periods { display: grid; grid-template-columns: repeat(3, auto) 1fr; column-gap: 4px; margin: 0 0 6px; }
-.fg-etape .fg-period { display: contents; }
-.fg-etape .fg-period__btn { grid-row: 1; display: inline-flex; align-items: center; gap: 7px; width: auto; min-height: 38px; padding: 6px 12px; border-radius: 10px; color: var(--fg-muted); background: transparent; }
-.fg-etape .fg-period:nth-child(1) .fg-period__btn { grid-column: 1; }
-.fg-etape .fg-period:nth-child(2) .fg-period__btn { grid-column: 2; }
-.fg-etape .fg-period:nth-child(3) .fg-period__btn { grid-column: 3; }
-.fg-etape .fg-period.is-open .fg-period__btn { color: #fff; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
-.fg-etape .fg-period__name { font-size: 13px; font-weight: 650; letter-spacing: 0.01em; text-transform: none; white-space: nowrap; }
-/* Sous 420 px, les trois onglets tiennent sur une ligne par leurs mots seuls. */
-@media (max-width: 420px) { .fg-etape .fg-period__icon { display: none; } }
-.fg-etape .fg-period__icon { width: 16px; height: 16px; }
-.fg-etape .fg-period.is-open .fg-period__icon { transform: none; }
-.fg-etape .fg-period__sum, .fg-etape .fg-period__chev { display: none; }
-.fg-etape .fg-period__keys { display: none; }
-/* Les trois plages partagent la cellule : une plage repliee garde sa
-   hauteur nulle (sans align-self, elle s etirait sur celle ouverte et,
-   posee apres elle, prenait les touchers de ses boutons), et ne prend aucun
-   toucher pendant qu elle se replie. */
-.fg-etape .fg-period__body { grid-row: 2; grid-column: 1 / -1; align-self: start; }
-.fg-etape .fg-period:not(.is-open) .fg-period__body { pointer-events: none; }
-.fg-etape .fg-period__inner > .fg-chips { padding: 0; }
-.fg-etape .fg-period.is-open .fg-period__inner > .fg-chips { padding: 10px 0 12px; }
-.fg-etape .fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
-.fg-etape .fg-chip { width: 100%; min-width: 0; height: 52px; border-radius: 12px; }
+/* TOUTES LES HEURES SE VOIENT, UN TOUCHER PAR CHOIX (2026-11-03, Ansar :
+   « lourd », « faut facilite a mort »). Les plages ne sont plus des onglets ni
+   des menus : matin, apres-midi et soiree se suivent, chacune avec ses heures
+   et ses raisons. Rien a ouvrir avant de toucher une heure, rien de cache : ce
+   qui coince le dit a sa place. Le nom de la plage n est plus qu un intertitre. */
+.fg-periods { display: block; margin: 0 0 6px; }
+.fg-period, .fg-period.is-open, .fg-period.is-picked { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.fg-period__btn { display: block; width: auto; padding: 10px 0 8px; color: var(--fg-muted); background: transparent; cursor: default; }
+.fg-period.is-empty .fg-period__btn { color: var(--fg-faint); }
+.fg-period__name { font-size: 13px; font-weight: 650; letter-spacing: 0.01em; text-transform: none; white-space: nowrap; }
+.fg-period__icon, .fg-period__sum, .fg-period__chev, .fg-period__keys { display: none; }
+.fg-period__body, .fg-period.is-open .fg-period__body { display: block; transition: none; }
+.fg-period__inner { overflow: visible; visibility: visible; content-visibility: visible; transition: none; }
+.fg-period__inner > .fg-chips, .fg-period.is-open .fg-period__inner > .fg-chips { padding: 0 0 10px; opacity: 1; transform: none; transition: none; }
+.fg-why-list { opacity: 1; transition: none; }
+.fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.fg-chip { width: 100%; min-width: 0; height: 52px; border-radius: 12px; }
 /* LES RAISONS SE LISENT SANS TOUCHER (Movsar, 2026-10-12 : « explique
    brievement et joliment » ; maquette D). Une ligne par cause sous les
    heures de la plage ouverte : les heures dans une etiquette en tirets de la
@@ -2863,16 +2836,27 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-etape--borne .fg-etape__heure { padding-right: 24px; }
   .fg-etape__piste { padding: 2px 14px 6px; }
   .fg-etape__alt { padding: 0 14px 14px; }
-  .fg-etape .fg-periods { grid-template-columns: repeat(3, minmax(0, auto)) 1fr; }
-  .fg-etape .fg-period__btn { padding: 6px 10px; gap: 6px; }
-  .fg-etape .fg-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .fg-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 /* Le calcul des pistes, d un bloc (voir notePistes). */
 .fg-calcul { display: inline-block; }
 @media (prefers-reduced-motion: reduce) {
-  .fg-etape__corps { transition: none; }
   .fg-etape__heure.is-maj { animation: none; }
 }
+/* L ECRAN DES HEURES, SANS DOUBLON (2026-11-03). Les heures et le prix sont
+   dans le recapitulatif juste au-dessus du bouton : la barre ne les redit plus.
+   Sur un grand ecran, le recapitulatif se pose a cote des heures et reste en
+   vue : chaque toucher se lit sans defiler. */
+.fg-scene[data-scene="heures"] .fg-bar__sum { display: none; }
+.fg-scene[data-scene="heures"] .fg-title { font-size: clamp(30px, 8.4vw, 46px); }
+@media (min-width: 1100px) {
+  #hourZone:has(> #planZone) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); column-gap: 20px; align-items: start; max-width: 1180px; margin-left: auto; margin-right: auto; }
+  #hourZone > .fg-prog, #hourZone > .fg-track { max-width: none; width: 100%; margin: 0; }
+  #hourZone > #planZone { position: sticky; top: 16px; }
+  .fg-scene[data-scene="heures"] #planZone .fg-visit { max-width: none; margin: 0; }
+  .fg-scene--center .fg-dock { max-width: 1180px; }
+}
+
 
 /* =============================================================================
    LA PASSE PREMIUM (Movsar, 2026-10-14 : « le formulaire de reservation il est

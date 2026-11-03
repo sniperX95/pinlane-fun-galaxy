@@ -76,7 +76,17 @@
 //       hors des scenes, la zone des heures se tait) dit la visite comme le
 //       bloc l ecrit, prix partiel compris ; « revenir a l heure proposee »
 //       masque ne fait jamais tomber le focus sur la page.
+//       DEPUIS LE 2026-11-03 (Ansar : « lourd », « un toucher par choix ») : plus
+//       de menus ni d onglets de plage, matin, apres-midi et soiree se suivent
+//       dans la ligne ouverte ; le recapitulatif n a plus d aplats, et la fin et
+//       le prix ne se redisent ni dans le programme ni dans la barre du bas.
+//   [V] LES CALCULS DE LA PAGE CLIENT (2026-11-03) : l arrivee jamais avant
+//       l ouverture, une formule a table prenable a l ouverture, « a l ouverture »
+//       dit seulement quand c est vrai, aucun montant de piste sous une formule,
+//       le calcul d une formule au recapitulatif, la fin d une visite sans heure
+//       a la minute et aucune fausse heure sur ses activites.
 //   [D] CONTACT : le recapitulatif ENTIER est a cote du formulaire (ouvert,
+
 //       pose sur la photo, a cote de la colonne, contenu par la scene) ; un
 //       envoi vide marque les 4 champs, l occasion et la case, chaque erreur
 //       liee a son champ (aria-invalid, aria-describedby), celle de la case
@@ -735,6 +745,8 @@ async function passerLaVitrine(f) {
   return ouverte;
 }
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+const timeToMinutesV = (h) => { const p = /^(\d{1,2}):(\d{2})$/.exec(String(h || '')); return p ? Number(p[1]) * 60 + Number(p[2]) : NaN; };
+
 function euros(n) {
   return (Math.round(Number(n) * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
 }
@@ -2623,15 +2635,17 @@ async function main() {
     ok(!prog0.legende && prog0.lignes.map((x) => x.cle).sort().join(',') === 'bowling,laser_game#1,laser_game#2' && ordreJournee(prog0.lignes)
       && prog0.ouvertes.length === 1 && prog0.ouvertes[0] === prog0.lignes[0].cle && Boolean(o0) && prog0.arrivee === o0.arrivee && prog0.fin === heureAffichee(o0.fin),
       '[C] plus de legende : le programme a une ligne par chose a placer (une par partie de laser), dans l ordre de la journee, entre l arrivee et la fin du plan, la premiere ouverte', JSON.stringify(prog0));
-    // LES MENUS REPLIES SORTENT DU PARCOURS CLAVIER : plus d arret sur une
-    // heure invisible (le repli dure 0,4 s, on le laisse finir).
-    await dormir(500);
+    // TOUTES LES HEURES DE LA LIGNE OUVERTE SE VOIENT, UN TOUCHER PAR CHOIX
+    // (Ansar, 2026-11-03 : « lourd », « faut facilite a mort »). Plus d onglets
+    // de plage : matin, apres-midi et soiree se suivent. Une ligne repliee sort
+    // du parcours clavier : plus d arret sur une heure invisible.
     const menus = await page.evaluate(() => {
       const toutes = Array.from(document.querySelectorAll('#hourZone .fg-chip'));
-      const vues = new Set(document.querySelectorAll('#hourZone .fg-etape.is-open .fg-period.is-open .fg-chip'));
-      return { fermees: toutes.filter((c) => !vues.has(c)).map((c) => getComputedStyle(c).visibility), ouvertes: [...vues].map((c) => getComputedStyle(c).visibility) };
+      const vues = new Set(document.querySelectorAll('#hourZone .fg-etape.is-open .fg-chip'));
+      const seVoit = (c) => c.getClientRects().length > 0 && getComputedStyle(c).visibility === 'visible' && c.getBoundingClientRect().height > 30;
+      return { fermees: toutes.filter((c) => !vues.has(c)).map((c) => c.getClientRects().length), ouvertes: [...vues].map(seVoit), plages: new Set([...vues].map((c) => c.closest('.fg-period').dataset.period)).size };
     });
-    ok(menus.fermees.length > 0 && menus.fermees.every((v) => v === 'hidden') && menus.ouvertes.length > 0 && menus.ouvertes.every((v) => v === 'visible'), '[C] les heures d un menu replie ou d une ligne repliee sortent du parcours clavier, celles du menu ouvert de la ligne ouverte y sont', `${menus.fermees.length} cachees, ${menus.ouvertes.length} visibles`);
+    ok(menus.fermees.length > 0 && menus.fermees.every((n) => n === 0) && menus.ouvertes.length > 0 && menus.ouvertes.every(Boolean) && menus.plages > 1, '[C] toutes les heures de la ligne ouverte se voient d un coup, plage apres plage, celles d une ligne repliee sortent du parcours clavier', `${menus.fermees.length} cachees, ${menus.ouvertes.length} visibles sur ${menus.plages} plages`);
     ok(await page.evaluate(() => !document.querySelector('#hourZone').hasAttribute('aria-live') && document.querySelector('#fgLive').getAttribute('role') === 'status' && !document.querySelector('#fgLive').closest('.fg-scene')), '[C] une seule voix : la zone des heures se tait, #fgLive (hors des scenes) parle');
     ok(await page.evaluate(() => document.querySelector('#keepLabel').textContent.trim() === 'Ces horaires me vont'), '[C] le bouton dit « Ces horaires me vont »');
     const centres = await centrages(page);
@@ -2729,8 +2743,8 @@ async function main() {
     await page.click('#hourZone [data-reset="laser_game"]');
     ok(Boolean(await reponseReset) && await attendre(page, () => !document.querySelector('#hourZone').classList.contains('is-busy') && document.querySelector('#planZone .fg-visit'), 25000), '[C] « laisser l equipe placer » recalcule');
     // Le bouton touche se masque (plus rien a rendre) : le focus passe au plus
-    // proche, le menu ouvert de la meme piste, jamais a la page.
-    ok(await attendre(page, () => document.activeElement === document.querySelector('#hourZone .fg-track[data-activity="laser_game"] .fg-period.is-open .fg-period__btn'), 5000), '[C] apres « revenir a l heure proposee » (bouton masque), le focus passe au menu ouvert de la meme piste, jamais a la page',
+    // proche, une heure de la meme piste, jamais a la page.
+    ok(await attendre(page, () => { const f = document.activeElement; return Boolean(f && f.matches('.fg-chip') && f.closest('.fg-track[data-activity="laser_game"]')); }, 5000), '[C] apres « revenir a l heure proposee » (bouton masque), le focus passe a une heure de la meme piste, jamais a la page',
       await page.evaluate(() => { const f = document.activeElement; return f === document.body ? 'body' : `${f.tagName.toLowerCase()}.${f.className} « ${f.textContent.replace(/\s+/g, ' ').trim().slice(0, 40)} » piste ${(f.closest('.fg-track') || { dataset: {} }).dataset.activity || 'aucune'}`; }));
     const d4 = await route();
     await verifierPistes(d4, {}, [], '[C] RENDU A L EQUIPE : plus aucune pose, la proposition revient, le menu du laser la suit de nouveau');
@@ -3226,8 +3240,13 @@ async function main() {
     const reponseTel = pageTel.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     if (telB) await pageTel.tap(`#hourZone .fg-track[data-activity="bowling"] .fg-chip[data-time="${telB}"]`);
     ok(Boolean(telB) && Boolean(await reponseTel) && await attendre(pageTel, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[G] toucher une heure de bowling la pose', telB);
-    const sautTel = await pageTel.evaluate(() => ({ meme: document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-chip.is-on') === window.__qaCase, saut: window.__qaCase ? Math.abs(window.__qaCase.getBoundingClientRect().top + window.scrollY - window.__qaHaut) : -1 }));
-    ok(sautTel.meme && sautTel.saut <= 1, '[G] sur telephone aussi, poser une heure ne fait rien sauter (le lien « laisser l equipe placer » avait deja sa place)', JSON.stringify(sautTel));
+    // UN TOUCHER, ET LA SUITE EST LA (2026-11-03). La case posee reste le meme
+    // noeud (mise a jour sur place, jamais une reconstruction), la ligne
+    // suivante s ouvre au meme instant et vient sous les yeux.
+    const memeTel = await pageTel.evaluate(() => document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-chip.is-on') === window.__qaCase);
+    const suiteEnVue = await attendre(pageTel, () => { const t = document.querySelector('#hourZone .fg-etape.is-open .fg-etape__tete'); if (!t) return false; const r = t.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }, 3000);
+    ok(memeTel && suiteEnVue, '[G] sur telephone, poser une heure garde sa case, et la ligne suivante s ouvre sous les yeux', JSON.stringify({ memeTel, suiteEnVue }));
+
     // L ECRAN DES COORDONNEES SUR TELEPHONE : le recapitulatif se replie sous
     // sa ligne de resume (le formulaire reste en tete), le bouton le deplie.
     await pageTel.tap('#goContact');
@@ -5398,14 +5417,103 @@ async function main() {
       await attendre(pTt, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 25000);
       await dormir(400);
       const barreHeuT = await lireBarreT();
-      ok([barreActT, barreHeuT].every((x) => x.lignes === 1 && x.rangee && x.dedans),
-        `[T] tablette ${lTt} px : la barre du bas tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+      // Sur l ecran des heures, le resume n est plus dans la barre (2026-11-03) :
+      // le recapitulatif juste au-dessus le dit, une seule fois.
+      ok(barreActT.lignes === 1 && barreHeuT.lignes === 0 && [barreActT, barreHeuT].every((x) => x.rangee && x.dedans),
+        `[T] tablette ${lTt} px : la barre du bas tient ses deux boutons sur une rangee, son resume sur une ligne aux activites, et aucun aux heures`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+
       ok([barreActT, barreHeuT].every((x) => !x.suit),
         `[T] tablette ${lTt} px : la barre du bas ne suit pas l ecran, elle reste a sa place (activites et heures)`, JSON.stringify({ activites: barreActT.suit, heures: barreHeuT.suit }));
       ok([barreActT, barreHeuT].every((x) => x.carre),
         `[T] tablette ${lTt} px : le retour de la barre est un carre, de la hauteur du bouton qui avance (largeur, hauteur du retour, hauteur du bouton)`, JSON.stringify({ activites: barreActT.tailles, heures: barreHeuT.tailles }));
       await ctxTt.close();
     }
+
+    // =====================================================================
+    console.log('');
+    console.log('[V] LES CALCULS DE LA PAGE CLIENT (Ansar, 2026-11-03 : « tout mal calculé »)');
+    // =====================================================================
+    // Chaque cas part d un defaut releve sur le banc, avec ce que l ecran disait
+    // avant. L oracle est la route, relue en Node ; l ecran la confronte.
+    const ctxV = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+    const ouvrirV = async (o) => {
+      const p = await ctxV.newPage();
+      await p.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+      await attendre(p, () => document.body.classList.contains('is-ready') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+      await p.click('#dayBtn');
+      await attendre(p, () => !document.querySelector('#dayPop').hidden && document.querySelectorAll('#calGrid .fg-cal__day').length >= 28, 5000);
+      await allerAuMois(p, mock.DATE);
+      await p.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+      await p.fill('#paxInput', String(o.pax));
+      await p.press('#paxInput', 'Tab');
+      await p.click('#goActivities');
+      await attendre(p, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+      if (o.formule) { await p.click('#tabFor'); await attendre(p, (id) => Boolean(document.querySelector(`.fg-card--formule[data-formule="${id}"]`)), 5000, o.formule); await p.click(`.fg-card--formule[data-formule="${o.formule}"]`); }
+      else for (const id of o.activites) await p.click(`[data-activity-toggle="${id}"]`);
+      await attendre(p, () => !document.querySelector('#goHours').disabled, 5000);
+      await p.click('#goHours');
+      await attendre(p, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+      await attendre(p, () => !document.querySelector('#hourZone').classList.contains('is-busy') && document.querySelector('#planZone .fg-visit'), 25000);
+      return p;
+    };
+    const texteV = (p, sel) => p.evaluate((s) => { const n = document.querySelector(s); return n ? n.textContent.replace(/\s+/g, ' ').trim() : ''; }, sel);
+    const routeV = (requete) => lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams({ centerId: 'libramont', date: mock.DATE, ...requete })}`);
+
+    // 1. L ARRIVEE NE PASSE JAMAIS AVANT L OUVERTURE, FORMULE ILLIMITEE COMPRISE.
+    // Avant : Matin Malin, « de 09:50 a 12:00 · 2 h 10 sur place », centre ouvert a 10:00.
+    const repMm = await routeV({ pax: '6', type: 'formule', formuleId: 'mm' });
+    const ouvertureV = Math.round(Number(repMm.schedule.open) * 60);
+    const hhV = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    ok(repMm.slots[0].opsPlan.arrivalTime === hhV(ouvertureV), '[V] (route) Matin Malin a l ouverture : l arrivee est l ouverture, jamais avant', `${repMm.slots[0].opsPlan.arrivalTime} / ouverture ${hhV(ouvertureV)}`);
+    const pMm = await ouvrirV({ pax: 6, formule: 'mm' });
+    const mmEcran = { heure: await texteV(pMm, '#planZone .fg-visit__step--in > b'), mot: await texteV(pMm, '#planZone .fg-visit__step--in > small'), span: await texteV(pMm, '#planZone .fg-visit__span') };
+    ok(mmEcran.heure === hhV(ouvertureV) && mmEcran.mot === 'à l’ouverture' && /2 h sur place/.test(mmEcran.span), '[V] (ecran) Matin Malin dit l ouverture, et 2 h sur place', JSON.stringify(mmEcran));
+    await pMm.close();
+
+    // 2. UNE FORMULE A TABLE SE PREND A L OUVERTURE ; « A L OUVERTURE » NE SE DIT QUE SI C EST VRAI.
+    // Avant : Formule 6, premiere heure 10:30, « 10:20, a l ouverture » d un centre ouvert a 10:00.
+    const repF6 = await routeV({ pax: '10', type: 'formule', formuleId: 'f6' });
+    const tableF6 = repF6.slots[0].opsPlan.resourceBlocks.find((b) => b.resourceType === 'party_table');
+    ok(repF6.slots[0].time === hhV(ouvertureV) && repF6.slots[0].opsPlan.arrivalTime === hhV(ouvertureV) && tableF6.startTime === hhV(ouvertureV) && timeToMinutesV(tableF6.endTime) - timeToMinutesV(tableF6.startTime) === 120, '[V] (route) Formule 6 : l heure d ouverture existe, arrivee et table y commencent, la table dure ses 2 h', JSON.stringify({ heure: repF6.slots[0].time, arrivee: repF6.slots[0].opsPlan.arrivalTime, table: `${tableF6.startTime}-${tableF6.endTime}` }));
+    const pF6 = await ouvrirV({ pax: 10, formule: 'f6' });
+    ok(await texteV(pF6, '#planZone .fg-visit__step--in > small') === 'à l’ouverture', '[V] (ecran) Formule 6 a l ouverture : le mot est juste');
+    await pF6.tap(`#hourZone .fg-chip[data-time="${hhV(ouvertureV + 30)}"]`);
+    await attendre(pF6, (h) => document.querySelector('#planZone .fg-visit__step--in > b').textContent.trim() === h, 5000, hhV(ouvertureV + 20));
+    const motF6 = await texteV(pF6, '#planZone .fg-visit__step--in > small');
+    ok(await texteV(pF6, '#planZone .fg-visit__step--in > b') === hhV(ouvertureV + 20) && motF6 === '10 min avant le début', '[V] (ecran) Formule 6 trente minutes apres l ouverture : dix minutes avant le debut, plus de « a l ouverture »', motF6);
+    await pF6.close();
+
+    // 3. DANS UNE FORMULE, LE BOWLING EST COMPRIS. LE PRIX SE LIT COMME SON CALCUL.
+    // Avant : « 10 joueurs = 2 pistes x 39 EUR = 78 EUR » sous une Formule 1 a 260 EUR.
+    const repF1 = await routeV({ pax: '10', type: 'formule', formuleId: 'f1' });
+    const f1Meta = meta.formules.find((f) => f.id === 'f1');
+    const pF1 = await ouvrirV({ pax: 10, formule: 'f1' });
+    const noteF1 = await texteV(pF1, '#hourZone .fg-track__lanes');
+    ok(/2 pistes, compris dans la formule/.test(noteF1) && !/€/.test(noteF1), '[V] la note des pistes d une formule ne dit plus aucun montant', noteF1);
+    const prixF1 = await pF1.evaluate(() => ({ ligne: document.querySelector('#planZone .fg-visit__prices > div:not(.fg-visit__total)').textContent.replace(/\s+/g, ' ').trim(), total: document.querySelector('#planZone .fg-visit__total dd').textContent.replace(/\s+/g, ' ').trim() }));
+    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.total) === blancs(euros(repF1.price)) && plat(prixF1.ligne).indexOf(plat(`${f1Meta.name} · 10 personnes × ${euros(f1Meta.price)}`)) === 0, '[V] le recapitulatif d une formule dit son calcul, et son total est le prix du serveur', JSON.stringify(prixF1));
+    ok(await pF1.evaluate(() => getComputedStyle(document.querySelector('#hourSum')).display === 'none' && document.querySelectorAll('#hourZone .fg-etape--fin').length === 1 && getComputedStyle(document.querySelector('#hourZone .fg-etape--fin')).display === 'none'), '[V] la fin et le prix se lisent une fois, dans le recapitulatif : ni la barre ni le programme ne les redisent');
+    await pF1.close();
+
+    // 4. UNE VISITE SANS ACTIVITE A HEURE : LA FIN A LA MINUTE, AUCUNE FAUSSE HEURE.
+    // Avant : minigolf 45 + arcades 30 annoncaient 11:30 pour 10:00, et chaque
+    // ligne disait « 10:00, jusqu a 11:30 ».
+    const progLibres = JSON.stringify([{ activityId: 'minigolf_blacklight' }, { activityId: 'arcade_time' }]);
+    const repLibres = await routeV({ pax: '6', type: 'visite', softReserve: '1', program: progLibres });
+    const minutesLibres = repLibres.program.items.reduce((s, it) => s + it.minutes, 0);
+    const debutLibres = timeToMinutesV(repLibres.slots[0].time);
+    ok(timeToMinutesV(repLibres.slots[0].visitEndTime) === debutLibres + minutesLibres, '[V] (route) la fin d une visite sans heure est la somme de ses activites, a la minute', `${repLibres.slots[0].time} + ${minutesLibres} min = ${repLibres.slots[0].visitEndTime}`);
+    const pL = await ouvrirV({ pax: 6, activites: ['minigolf_blacklight', 'arcade_time'] });
+    const libresEcran = await pL.evaluate(() => ({
+      blocs: document.querySelectorAll('#planZone .fg-visit__step--bloc').length,
+      libres: Array.from(document.querySelectorAll('#planZone .fg-visit__step--free > small')).map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
+      fin: document.querySelector('#planZone .fg-visit__step--out > b').textContent.trim(),
+      depart: document.querySelector('#planZone .fg-visit__step--in > b').textContent.trim(),
+      plage: document.querySelector('#planZone .fg-visit__span').textContent.replace(/\s+/g, ' ').trim(),
+    }));
+    ok(libresEcran.blocs === 0 && libresEcran.libres.length === 2 && libresEcran.libres.every((x) => /à votre rythme/.test(x) && !/jusqu/.test(x)) && libresEcran.fin === repLibres.slots[0].visitEndTime && libresEcran.depart === repLibres.slots[0].time && libresEcran.plage.indexOf(`de ${repLibres.slots[0].time} à ${repLibres.slots[0].visitEndTime}`) === 0, '[V] (ecran) une activite libre n a jamais d heure : elle se joue a votre rythme, entre l arrivee et la fin', JSON.stringify(libresEcran));
+    await pL.close();
+    await ctxV.close();
 
     // =====================================================================
     console.log('');

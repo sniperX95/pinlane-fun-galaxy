@@ -1296,17 +1296,22 @@ module.exports = async (req, res) => {
       // Visite 100 % libre : aucune ressource a reserver, donc aucun creneau a
       // refuser. On propose les heures d'ouverture a la demie et on laisse la
       // garde de fermeture faire son travail.
-      const visitMinutes = program.items.reduce((sum, item) => sum + (item.minutes || 0), 0);
-      const visitHours = Math.max(0.5, Math.round((visitMinutes / 60) * 2) / 2);
+      // LA FIN EST LA SOMME DES ACTIVITES, A LA MINUTE (2026-11-03). La duree
+      // etait arrondie a la demi-heure la plus proche : minigolf 45 min et
+      // arcades 30 min annoncaient 11:30 pour un depart a 10:00 (1 h 15 de jeu),
+      // et une visite de 1 h 40 finissait annoncee a 1 h 30, trop tot. Seuls
+      // les DEPARTS restent sur la grille des demi-heures.
+      const visitMinutes = Math.max(PROGRAM_GRID_MINUTES, program.items.reduce((sum, item) => sum + (item.minutes || 0), 0));
+      const visitHours = visitMinutes / 60;
       const freeSlots = [];
       for (let value = Math.ceil(minTime * 2) / 2; value <= schedule.close - visitHours; value += 0.5) {
         const startMin = Math.round(value * 60);
-        const endMin = startMin + Math.round(visitHours * 60);
+        const endMin = startMin + visitMinutes;
         // La visite entiere, pas son seul depart : sinon on propose une heure
         // dont la fin tombe dans une fermeture ponctuelle.
         if (isCenterClosedDuring(snapshot.blocks || [], date, startMin, endMin)) continue;
         const startTime = numToTime(value);
-        const endTime = numToTime(value + visitHours);
+        const endTime = numToTime(endMin / 60);
         freeSlots.push({
           time: startTime,
           lanes: [],
@@ -1314,7 +1319,7 @@ module.exports = async (req, res) => {
           opsPlan: {
             startTime,
             endTime,
-            totalMinutes: Math.round(visitHours * 60),
+            totalMinutes: visitMinutes,
             staffSummary: `${visitLabel} - ${pax} personne${pax > 1 ? 's' : ''} | ${describeProgram(program)} | Aucune ressource a bloquer`,
             assignedLanes: [],
             timeline: program.items.map((item) => ({ type: 'activity', activityId: item.activityId, label: item.name, players: item.participants ?? pax })),

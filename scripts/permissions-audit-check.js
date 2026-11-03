@@ -174,10 +174,11 @@ function main() {
   console.log('\n[5 bis. Tout reglage a niveaux sert a quelque chose]');
   // Un reglage que rien ne lit est une case qui ment, comme une permission
   // inerte (section 1). Le lecteur se releve dans le code : niveauEffectif(x,
-  // 'cle') cote serveur, la ou un refus tombe. `historique` est declare par ce
-  // lot pour le suivant, qui ecrira sa lecture : il doit alors sortir de cette
-  // liste, sinon l audit rougit.
-  const A_VENIR = ['historique'];
+  // 'cle') cote serveur, la ou un refus tombe. Un reglage declare avant sa
+  // garde entre dans A_VENIR, et en sort le jour ou sa lecture s ecrit, sinon
+  // l audit rougit : `historique` en est sorti le 2026-11-03 (exigerHistorique,
+  // lib/droits-reservation.js, l historique d un dossier).
+  const A_VENIR = [];
   const lecteurs = fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => f.endsWith('.js')).map((f) => path.join('lib', f))
     .concat(fs.readdirSync(path.join(ROOT, 'api')).filter((f) => f.endsWith('.js')).map((f) => path.join('api', f)))
     .filter((rel) => rel !== path.join('lib', 'staff-auth.js'))

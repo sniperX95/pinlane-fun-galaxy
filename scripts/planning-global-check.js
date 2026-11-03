@@ -319,9 +319,12 @@ function etatAttendu(g, w, colonne, maintenant) {
 // ---------------------------------------------------------------------------
 // LES SCENARIOS
 // ---------------------------------------------------------------------------
-const ici = (s) => `${s.fixture} ${s.appareil}${s.theme === 'light' ? ' clair' : ''}${s.plein ? ' agrandie' : ''}${s.heure ? ' ' + s.heure : ''}`;
+const ici = (s) => `${s.fixture} ${s.appareil}${s.theme === 'light' ? ' clair' : ''}${s.plein ? ' agrandie' : ''}${s.heure ? ' ' + s.heure : ''}${s.ralenti ? ` ralenti x${s.ralenti}` : ''}`;
 async function monter(browser, s) {
-  return FX.monter(browser, { fixture: s.fixture, appareil: s.appareil, theme: s.theme || 'dark', plein: Boolean(s.plein), heure: s.heure || '', port: PORT });
+  // (une machine lente : le processeur ralenti par CDP avant le chargement, comme le PC
+  // faible d un centre ou la machine de la suite GitHub)
+  const avantChargement = s.ralenti ? async (page) => { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: s.ralenti }); } : null;
+  return FX.monter(browser, { fixture: s.fixture, appareil: s.appareil, theme: s.theme || 'dark', plein: Boolean(s.plein), heure: s.heure || '', port: PORT, avantChargement });
 }
 async function sansErreur(erreurs, label) { ok(erreurs.length === 0, `[A1] ${label} : aucune erreur JS`, erreurs.slice(0, 3)); }
 
@@ -851,6 +854,8 @@ const SCENARIOS = [
   ...['grand', 'ordinateur', 'tablette', 'telephone'].map((a) => S('pire', a)),
   S('pire', 'ordinateur', { heure: '24:20', nuit: true }),
   S('calme', 'ordinateur'), S('normal', 'ordinateur'), S('normal', 'portable', { theme: 'light' }),
+  // (le rouge de la suite GitHub du 2026-11-03 : la meme ouverture sur une machine lente)
+  S('normal', 'portable', { theme: 'light', ralenti: 6 }),
   S('vide', 'ordinateur', { sansGroupe: true }), S('ferme', 'ordinateur', { sansGroupe: true }),
 ];
 async function scenario(browser, s) {

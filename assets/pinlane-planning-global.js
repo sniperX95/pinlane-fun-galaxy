@@ -1640,6 +1640,7 @@
     if (wrap._gfRegle == null) {
       y = gfOuverture(defile, now);
       wrap._gfRegle = now.offsetTop - y;
+      gfRecalerOuverture(wrap);
     } else {
       y = Math.max(0, now.offsetTop - wrap._gfRegle);
       if (Math.abs(defile.scrollTop - y) > 1 && performance.now() - (wrap._gfMain || -GF_MAIN) < GF_MAIN) return;
@@ -1647,6 +1648,37 @@
     if (doux && typeof defile.scrollTo === 'function') defile.scrollTo({ top: y, behavior: 'smooth' });
     else if (Math.abs(defile.scrollTop - y) > 1) defile.scrollTop = y;
     wrap._gfPose = doux ? null : defile.scrollTop;
+  }
+  // L OUVERTURE SE RECALE UNE FOIS, QUAND LE TABLEAU A SA HAUTEUR (2026-11-03, la suite
+  // GitHub : [N1] rouge sur une machine lente). La premiere position se prend au premier
+  // rendu ; si les lignes changent de hauteur ensuite (la police Geist qui arrive en
+  // swap, une rubrique qui passe a la ligne, un contenu arrive tard), la regle gardee
+  // (_gfRegle, la barre a la meme hauteur) laissait une ligne coupee sous la tete. Apres
+  // document.fonts.ready, puis des que deux mesures du tableau se suivent egales,
+  // l ouverture se recalcule une fois, seulement si la feuille suit encore l heure
+  // (personne n a defile, aucun filtre).
+  function gfRecalerOuverture(wrap) {
+    var jeton = (wrap._gfRecale || 0) + 1;
+    wrap._gfRecale = jeton;
+    var pret = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    pret.then(function () {
+      var avant = -1;
+      var tours = 0;
+      var mesurer = function () {
+        if (wrap._gfRecale !== jeton || !wrap.isConnected || !wrap._gfRacine) return;
+        var defile = wrap._gfRacine.querySelector('.gf-defile');
+        var now = defile && defile.querySelector('.gf-now');
+        if (!now) return;
+        var h = defile.scrollHeight + '|' + now.offsetTop;
+        if (h !== avant && tours < 60) { avant = h; tours += 1; requestAnimationFrame(mesurer); return; }
+        if (!wrap._gfSuit || wrap._gfFiltre || wrap._gfRegle == null || wrap._gfRacine.getBoundingClientRect().width < 640) return;
+        var y = gfOuverture(defile, now);
+        wrap._gfRegle = now.offsetTop - y;
+        if (Math.abs(defile.scrollTop - y) > 1) defile.scrollTop = y;
+        wrap._gfPose = defile.scrollTop;
+      };
+      requestAnimationFrame(mesurer);
+    });
   }
   // (un defilement qui ne vient pas d ici, ou un geste de defilement, decroche)
   function gfDecrocher(wrap) {

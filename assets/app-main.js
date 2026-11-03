@@ -12590,7 +12590,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </div>
       <div class="dash-actions">
         ${staffDateNavHtml()}
-        <button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation rapide</button>
+        <button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation</button>
       </div>
     </section>
 
@@ -15837,7 +15837,7 @@ const STAFF_PERMISSION_GROUPS = [
     permissions: [
       ['reservations.view', 'Voir les réservations'],
       ['reservations.create', 'Créer une réservation'],
-      ['reservations.quick', 'Utiliser la réservation rapide'],
+      ['reservations.quick', 'Créer une réservation au comptoir'],
       ['reservations.edit', 'Modifier client, heure ou ressource'],
       ['reservations.cancel', 'Annuler ou supprimer'],
       ['reservations.status', 'Changer confirmé, arrivé, payé']
@@ -17326,7 +17326,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     eyebrow: 'Journée',
     title: 'Espace staff',
     subtitle: getStaffUtilitySyncLabel(),
-    primaryLabel: 'Réservation rapide',
+    primaryLabel: 'Réservation',
     primaryAction: "openQuickBook({ date: state.currentDate, type: 'bowling' })",
     secondaryLabel: '',
     secondaryAction: '',
@@ -21346,14 +21346,8 @@ function renderStaffPage() {
   const globalPlanningBox = document.getElementById('globalPlanningBox');
   if (globalPlanningBox) globalPlanningBox.classList.toggle('expanded', !!state.staffGlobalExpanded);
   syncExpandedPlanningControls();
-  const planningToggle = document.getElementById('planningToggle');
-  if (planningToggle) planningToggle.textContent = state.staffPlanningExpanded ? 'Réduire' : 'Agrandir';
-  const laserPlanningToggle = document.getElementById('laserPlanningToggle');
-  if (laserPlanningToggle) laserPlanningToggle.textContent = state.staffLaserPlanningExpanded ? 'Réduire' : 'Agrandir';
   const tableToggle = document.getElementById('tableToggle');
   if (tableToggle) tableToggle.textContent = state.staffTableExpanded ? 'Réduire' : 'Agrandir';
-  const globalPlanningToggle = document.getElementById('globalPlanningToggle');
-  if (globalPlanningToggle) globalPlanningToggle.textContent = state.staffGlobalExpanded ? 'Réduire' : 'Agrandir';
   document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded || state.staffGlobalExpanded) ? 'hidden' : '';
   attachPlanningFullscreenResize();
   renderKpis();
@@ -21410,32 +21404,28 @@ function togglePlanningExpanded() {
 
 // L EN-TETE DU PLEIN ECRAN SUR UNE LIGNE (Movsar, 2026-10-08 : « l endroit
 // pour changer la date et la reservation rapide sont en dessous de l entete,
-// ca cree une entete super grosse, met tout sur une ligne »). La date se range
-// a cote du titre, dans sa pile ; « + Réserver » rejoint les actions, avant
-// « Réduire ». Le planning Laser a deja le sien (le prochain depart) : un
-// second bouton y ferait doublon.
+// ca cree une entete super grosse, met tout sur une ligne »). Il ne reste que
+// celui de la liste : les trois plannings ont la barre commune (pbBarre).
 function syncExpandedPlanningControls() {
-  for (const id of ['planningBox', 'laserPlanningBox', 'staffTableBox', 'globalPlanningBox']) {
-    const box = document.getElementById(id);
-    const head = box?.querySelector('.planning-head, .table-head');
-    const pile = head?.querySelector('.planning-title-stack');
-    const actions = head?.querySelector('.planning-actions, .table-actions');
-    if (!pile || !actions) continue;
-    let date = pile.querySelector(':scope > .pec-date');
-    if (!date) { date = document.createElement('div'); date.className = 'pec-date'; pile.appendChild(date); }
-    poserHtmlSurface(date, staffDateNavHtml({ court: true }));
-    let creer = actions.querySelector(':scope > .planning-expanded-create');
-    const avecCreer = id !== 'laserPlanningBox' && canUseStaffPermission('reservations.quick');
-    if (avecCreer && !creer) {
-      creer = document.createElement('button');
-      creer.type = 'button';
-      creer.className = 'btn-primary planning-expanded-create';
-      creer.textContent = '+ Réserver';
-      creer.setAttribute('onclick', "openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})");
-      actions.insertBefore(creer, actions.querySelector(':scope > .planning-toggle'));
-    }
-    if (!avecCreer && creer) creer.remove();
+  const box = document.getElementById('staffTableBox');
+  const head = box?.querySelector('.table-head');
+  const pile = head?.querySelector('.planning-title-stack');
+  const actions = head?.querySelector('.table-actions');
+  if (!pile || !actions) return;
+  let date = pile.querySelector(':scope > .pec-date');
+  if (!date) { date = document.createElement('div'); date.className = 'pec-date'; pile.appendChild(date); }
+  poserHtmlSurface(date, staffDateNavHtml({ court: true }));
+  let creer = actions.querySelector(':scope > .planning-expanded-create');
+  const avecCreer = canUseStaffPermission('reservations.quick');
+  if (avecCreer && !creer) {
+    creer = document.createElement('button');
+    creer.type = 'button';
+    creer.className = 'btn-primary planning-expanded-create';
+    creer.textContent = '+ Réservation';
+    creer.setAttribute('onclick', 'openQuickBook({ date: state.currentDate })');
+    actions.insertBefore(creer, actions.querySelector(':scope > .planning-toggle'));
   }
+  if (!avecCreer && creer) creer.remove();
 }
 
 // La fermeture ne supprime pas des dossiers déjà enregistrés. Cette plage
@@ -21467,6 +21457,7 @@ function toggleLaserPlanningExpanded() {
 
 function collapseStaffPlanningFullscreen() {
   if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded && !state.staffTableExpanded && !state.staffGlobalExpanded) return false;
+  pbQuitterPleinEcran();
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
   state.staffTableExpanded = false;
@@ -21497,8 +21488,85 @@ function goFullscreenResource(cible) {
   state.staffTableExpanded = false;
   state.staffGlobalExpanded = surface === 'all';
   state.staffStatusFilter = 'all';
+  setStaffRouteHash('planning', surface);
   save();
   renderStaff();
+  syncOpsSidebar();
+}
+
+// LA BARRE DES TROIS PLANNINGS (2026-11-03). Un seul composant, aux memes
+// coordonnees sur Complet, Bowling et Laser, en normal et en agrandi : le menu de
+// gauche replie sur les trois (body.gf-large), la largeur ne saute jamais. Agrandi
+// passe en vrai plein ecran (l audit du 2026-11-03 : l ancien ne gagnait que 4 px
+// de haut et 78 px de large) : le navigateur rend sa hauteur, le rail s efface,
+// son logo reste a sa place, le contenu prend la largeur du rail. La barre, elle,
+// ne bouge pas d un pixel.
+function pbVueAgrandie() {
+  const vue = getStaffResourceView();
+  return Boolean((vue === 'bowling' && state.staffPlanningExpanded) || (vue === 'laser' && state.staffLaserPlanningExpanded) || (vue === 'all' && state.staffGlobalExpanded));
+}
+
+function pbChanger(vue) {
+  if (pbVueAgrandie()) goFullscreenResource(vue);
+  else setStaffResourceView(vue);
+}
+
+function pbEntrerPleinEcran() {
+  const racine = document.documentElement;
+  if (document.fullscreenElement || typeof racine.requestFullscreen !== 'function') return;
+  // (refuse, ou sans geste : l ecran reste agrandi dans la page)
+  racine.requestFullscreen().catch(() => {});
+}
+
+function pbQuitterPleinEcran() {
+  if (document.fullscreenElement && typeof document.exitFullscreen === 'function') document.exitFullscreen().catch(() => {});
+}
+
+function pbAgrandir() {
+  const agrandir = !pbVueAgrandie();
+  if (agrandir) pbEntrerPleinEcran();
+  else pbQuitterPleinEcran();
+  const vue = getStaffResourceView();
+  if (vue === 'laser') toggleLaserPlanningExpanded();
+  else if (vue === 'all') toggleGlobalPlanningExpanded();
+  else togglePlanningExpanded();
+}
+
+// Echap ou F11 sortent du plein ecran sans passer par la barre : l ecran suit.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && pbVueAgrandie()) collapseStaffPlanningFullscreen();
+});
+
+// Le menu replie, l etat Agrandi et le bouton suivent la meme decision que les
+// boites (syncStaffResourceTabs). Hors planning, tout revient comme avant.
+function pbSyncBarre(surPlanning) {
+  const corps = document.body;
+  if (corps.classList.contains('gf-large') !== surPlanning) {
+    corps.classList.toggle('gf-large', surPlanning);
+    document.documentElement.classList.toggle('pb-page', surPlanning);
+    if (typeof window.syncStaffMenuState === 'function') window.syncStaffMenuState();
+  }
+  const agrandi = surPlanning && state.view === 'staff' && pbVueAgrandie();
+  corps.classList.toggle('pb-agrandi', agrandi);
+  if (!agrandi && !state.staffTableExpanded) pbQuitterPleinEcran();
+  const bouton = document.getElementById('planningAgrandir');
+  if (bouton) {
+    const mot = agrandi ? 'Réduire' : 'Agrandir';
+    if (bouton.title !== mot) {
+      bouton.title = mot;
+      bouton.setAttribute('aria-label', `${mot} le planning`);
+      bouton.setAttribute('aria-pressed', String(agrandi));
+    }
+  }
+  const reserver = document.getElementById('planningReserver');
+  if (reserver) reserver.hidden = !canUseStaffPermission('reservations.quick');
+}
+
+// « + Réservation » : la meme place sur les trois plannings, le geste du planning
+// ouvert. Sur Bowling, une partie ; sur Laser, le prochain depart qui a de la place.
+function pbReserver(ev) {
+  if (getStaffResourceView() === 'laser') { lpReserverAuProchain(ev); return; }
+  openQuickBook();
 }
 
 // « Toutes les reservations » s agrandit comme les plannings : plein ecran,
@@ -21554,20 +21622,49 @@ function renderGlobalPlanningSurface() {
 // la liste » y descend (en quittant le plein ecran s il le faut).
 function voirListeDuJour() {
   closeStaffFloatingMenus();
-  if (state.staffGlobalExpanded) toggleGlobalPlanningExpanded();
+  // (agrandi, la liste est cachee, sur les trois plannings)
+  if (pbVueAgrandie()) pbAgrandir();
   document.getElementById('staffTableBox')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function toggleGlobalPlanningActionsMenu(event) {
-  const legende = document.querySelector('#globalPlanningBox .gf-legende');
+// LA LEGENDE DES CASES : le statut est sur la barre, ceci dit lire une case.
+const PB_LEGENDE_CASES = '<span><i class="gf-leg is-encours" aria-hidden="true"></i>en cours</span><span><i class="gf-leg is-fini" aria-hidden="true"></i>fini</span><span><i class="gf-leg is-libre" aria-hidden="true"></i>vers : sans heure fixe</span>';
+
+// LE MENU « ⋯ » DES TROIS PLANNINGS : la meme liste, au meme endroit. Ce que les
+// tetes de chaque planning faisaient et que la barre ne montre pas : les filtres,
+// les horaires, l impression, l export, l actualisation.
+function togglePlanningActionsMenu(event) {
+  const vue = getStaffResourceView();
+  const fenetre = getPlanningWindow(state.currentDate);
+  const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}`;
+  const agrandi = pbVueAgrandie();
+  const laser = vue === 'laser' ? lpSousTitre(lpModele()) : '';
+  const depart = vue === 'all' && typeof window.gfDepartDuMenu === 'function' ? window.gfDepartDuMenu() : '';
+  // (au telephone, la barre n a pas la place d « Agrandir »)
+  const agrandirVu = document.getElementById('planningAgrandir')?.getClientRects().length > 0;
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Actions planning</div>
+    <div class="pb-menu__info" data-pb-horaires>${escapeHtml(horaires)}</div>
+    ${laser ? `<div class="pb-menu__info">${escapeHtml(laser)}</div>` : ''}
+    <button type="button" onclick="pbFiltres(event)">Filtres</button>
+    ${agrandirVu ? '' : `<button type="button" onclick="pbAgrandir(); closeStaffFloatingMenus();">${agrandi ? 'Réduire le planning' : 'Agrandir le planning'}</button>`}
     <button type="button" onclick="voirListeDuJour()">Voir la liste des réservations</button>
-    <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Feuille de secours (PDF)</button>
+    <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Imprimer la feuille de secours (PDF)</button>
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
     <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
-    ${legende ? `<div class="gf-legende-menu" role="note" aria-label="Lire une case">${legende.innerHTML}</div>` : ''}
+    ${vue === 'all' ? '' : `<button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>`}
+    ${vue === 'laser' ? '<button type="button" onclick="lpReserverAuProchain(event); closeStaffFloatingMenus();">Réserver au prochain départ</button>' : ''}
+    ${depart}
+    ${vue === 'all' ? `<div class="gf-legende-menu" role="note" aria-label="Lire une case">${PB_LEGENDE_CASES}</div>` : ''}
   `);
+}
+
+// Les filtres, dans le meme menu : ouvrir une seconde bulle depuis la premiere
+// perdrait son ancre.
+function pbFiltres(event) {
+  event.stopPropagation();
+  const menu = document.querySelector('.staff-action-popover');
+  if (menu) menu.innerHTML = planningFiltresHtml();
 }
 
 function setStaffStatusFilter(filter) {
@@ -21588,11 +21685,20 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
   const query = String(state.searchTerm || '').trim().toLowerCase();
   if (query) {
     reservations = reservations.filter(r => {
-      const label = `${r.name || ''} ${r.phone || ''} ${getReservationLabel(r)} ${r.email || ''}`.toLowerCase();
+      const label = `${r.name || ''} ${r.phone || ''} ${getReservationLabel(r)} ${r.email || ''} ${texteRecherchableDuDossier(r)}`.toLowerCase();
       return label.includes(query);
     });
   }
   return reservations;
+}
+
+// CE QUI EST ECRIT SUR LE DOSSIER SE CHERCHE AUSSI (l audit du 2026-11-03 : « pizza »,
+// « arachide » ne trouvaient rien) : les notes, les extras, la note de fiche.
+function texteRecherchableDuDossier(r) {
+  const extras = (Array.isArray(r.extras) ? r.extras : []).map(e => (e && (e.name || e.label)) || '');
+  const equipe = getReservationNotesEquipe(r).map(n => n.t);
+  const fiche = window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '';
+  return [getReservationNoteText(r), ...equipe, fiche, ...extras].join(' ');
 }
 
 // Recherche planning/liste unifiée. Root cause du bug : les champs de recherche
@@ -21639,12 +21745,19 @@ function nomRessemble(nom, cherche) {
   });
 }
 
+// (la croix du champ, sur les trois plannings)
+function syncStaffSearchCroix() {
+  const croix = document.getElementById('gfEfface');
+  if (croix) croix.hidden = !String(state.searchTerm || '').trim();
+}
+
 function applyStaffSearch(value, opts = {}) {
   state.searchTerm = value;
-  ['searchInput', 'planningSearchInput', 'laserPlanningSearchInput', 'globalPlanningSearchInput'].forEach(id => {
+  ['searchInput', 'globalPlanningSearchInput'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el !== document.activeElement && el.value !== value) el.value = value;
   });
+  syncStaffSearchCroix();
   const run = () => {
     save();
     if (state.view !== 'staff') return;
@@ -21706,14 +21819,14 @@ function applyPlanningStatusFilter(filter) {
 // touche, c'est la même classe d'erreur que les compteurs qui ne se
 // recomposent pas. Depuis le 2026-10-08 : les sections de la liste, dans son
 // ordre et sous ses mots (STAFF_LISTE_MOTS).
-function togglePlanningFilterMenu(event) {
+function planningFiltresHtml() {
   const active = normaliserFiltreListe(state.staffStatusFilter);
   const bouton = ([key, label]) => `<button type="button" class="${active === key ? 'active' : ''}" onclick="applyPlanningStatusFilter('${key}')">${label}</button>`;
-  const etats = [['all', 'Toutes'], ...STAFF_LISTE_SECTIONS.map(cle => [cle, STAFF_LISTE_MOTS[cle]])];
-  showStaffFloatingMenu(event, `
+  const etats = [['all', 'Tout voir'], ...STAFF_LISTE_SECTIONS.map(cle => [cle, STAFF_LISTE_MOTS[cle]])];
+  return `
     <div class="staff-action-popover-title">Filtrer le planning</div>
     ${etats.map(bouton).join('')}
-  `);
+  `;
 }
 
 function refreshStaffPlanning() {
@@ -21744,16 +21857,6 @@ function exportStaffPlanningCsv(scope = '') {
   const header = ['Date', 'Heure', 'Client', 'Téléphone', 'Offre', 'Joueurs', 'Ressources', 'Statut', 'Montant'];
   downloadTextFile(`${getCurrentStaffCenterId()}-planning-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
   closeStaffFloatingMenus();
-}
-
-function togglePlanningActionsMenu(event) {
-  showStaffFloatingMenu(event, `
-    <div class="staff-action-popover-title">Actions planning</div>
-    <button type="button" onclick="togglePlanningExpanded(); closeStaffFloatingMenus();">${state.staffPlanningExpanded ? 'Réduire le planning' : 'Agrandir le planning'}</button>
-    <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
-    <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
-    <button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>
-  `);
 }
 
 function setStaffResourceView(view) {
@@ -22077,14 +22180,27 @@ function isStaffPlanningPageActive() {
     || isStaffUtilityActive() || isStaffCockpitActive());
 }
 
+// LA BULLE DE L ONGLET BOWLING COMPTE LES PISTES DE LA GRILLE : c est ce que disait
+// « Planning 8 pistes », et elle suit la configuration qui arrive apres le premier
+// rendu, comme la grille.
+function pbBulleBowling() {
+  const laneCount = getAvailabilityLaneCount();
+  const onglet = document.getElementById('staffTabBowling');
+  const texte = `Planning Bowling, ${laneCount} piste${laneCount > 1 ? 's' : ''}`;
+  if (onglet && onglet.title !== texte) onglet.title = texte;
+}
+
 function syncStaffResourceTabs(dayReservations = todaysReservations(), view = getStaffResourceView()) {
   const hiddenByPage = !isStaffPlanningPageActive();
   const bowlingCount = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0).length;
   const laserCount = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0).length;
-  const allTab = document.getElementById('staffTabAll');
-  allTab?.classList.toggle('active', view === 'all');
-  document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
-  document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
+  [['staffTabAll', 'all'], ['staffTabBowling', 'bowling'], ['staffTabLaser', 'laser']].forEach(([id, vue]) => {
+    const onglet = document.getElementById(id);
+    if (!onglet) return;
+    onglet.classList.toggle('active', view === vue);
+    onglet.setAttribute('aria-selected', String(view === vue));
+    onglet.tabIndex = view === vue ? 0 : -1;
+  });
   // (plus de « N hors planning » sur l onglet : Movsar, 2026-10-20, « plus
   // besoin de montrer des résas hors planning, on s'en fout » ; le planning
   // global dessine la table et la plaine, la regle isOffPlanningReservation reste)
@@ -22112,10 +22228,11 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   const hasLaser = !knows('laser') || weaponCount > 0;
   document.getElementById('staffTabBowling')?.classList.toggle('hidden', hiddenByPage || !hasBowling);
   document.getElementById('staffTabLaser')?.classList.toggle('hidden', hiddenByPage || !hasLaser);
-  const bowlingSub = document.getElementById('staffBowlingSub');
-  if (knows('bowling')) poserTexte(bowlingSub, laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''}` : '');
-  const laserSub = document.getElementById('staffLaserSub');
-  if (knows('laser')) poserTexte(laserSub, weaponCount ? `${weaponCount} arme${weaponCount > 1 ? 's' : ''}` : '');
+  // (ce que l onglet disait dessous, a la demande : le centre a 8 pistes, 30 armes)
+  const bulle = (id, texte) => { const el = document.getElementById(id); if (el && el.title !== texte) el.title = texte; };
+  if (knows('bowling')) { if (laneCount) pbBulleBowling(); else bulle('staffTabBowling', 'Planning Bowling'); }
+  if (knows('laser')) bulle('staffTabLaser', weaponCount ? `Planning Laser, ${weaponCount} arme${weaponCount > 1 ? 's' : ''}` : 'Planning Laser');
+  bulle('staffTabAll', 'Planning complet');
   // Rester sur la vue d'une ressource absente afficherait une grille vide sans
   // rien dire : on retombe sur la journee complete, qui existe toujours.
   if (view === 'laser' && !hasLaser) view = 'all';
@@ -22133,6 +22250,7 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   // decision. Un bloc qu'on oublie de rattacher a cette decision est visible
   // par defaut, et personne ne le voit en relisant le code.
   document.getElementById('staffTableBox')?.classList.toggle('hidden', hiddenByPage);
+  pbSyncBarre(!hiddenByPage);
   // La barre du plein ecran porte les MEMES compteurs que les onglets : en
   // plein ecran, ils sont la seule facon de voir ce que contiennent les deux
   // autres surfaces avant d y aller.
@@ -23178,7 +23296,7 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   setPageVisibility('staffCampaignsPage', campaignsActive);
   setPageVisibility('staffUtilityPage', utilityActive);
   setPageVisibility('staffCockpitPage', cockpitActive);
-  ['.staff-head', '.kpi-grid', '.staff-resource-tabs', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {
+  ['#planningBarre', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {
     document.querySelectorAll(`#staffView ${selector}`).forEach(element => element.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive));
   });
   // (le serre-tete des pages a onglets, lu par pinlane-staff.css a la place
@@ -23216,20 +23334,28 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const dateShort = document.getElementById('staffDateShort');
   if (dateShort) {
     const shortDateText = d.toLocaleDateString('fr-BE', { weekday:'short', day:'numeric', month:'short', year:'numeric' }).replace(',', '');
-    poserTexte(dateShort, shortDateText.charAt(0).toUpperCase() + shortDateText.slice(1));
+    const dateCourte = shortDateText.charAt(0).toUpperCase() + shortDateText.slice(1);
+    // (au telephone, l annee se tait : la classe la replie)
+    if (dateShort.textContent !== dateCourte) {
+      const coupe = dateCourte.lastIndexOf(' ');
+      dateShort.innerHTML = `${escapeHtml(dateCourte.slice(0, coupe))}<span class="pb-an">${escapeHtml(dateCourte.slice(coupe))}</span>`;
+    }
   }
   const prevBtn = document.getElementById('staffPrevDateBtn');
   if (prevBtn) prevBtn.disabled = false;
 
-  const planningSearchInput = document.getElementById('planningSearchInput');
-  if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
-  const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
-  if (laserPlanningSearchInput && laserPlanningSearchInput !== document.activeElement) laserPlanningSearchInput.value = state.searchTerm || '';
+  const champ = document.getElementById('globalPlanningSearchInput');
+  if (champ && champ !== document.activeElement && champ.value !== (state.searchTerm || '')) champ.value = state.searchTerm || '';
+  syncStaffSearchCroix();
   syncStaffResourceTabs(dayReservations, view);
 }
 
 function renderKpis() {
   const view = getStaffResourceView();
+  // LA LIGNE 2 DE LA BARRE (2026-11-03) : sur Bowling et Laser, l occupation, les
+  // reservations, ce qui est libre et la legende. Le Complet ecrit la sienne
+  // (gfBandeauHtml) : ses compteurs filtrent.
+  if (view === 'all' || typeof window.pbEcrireChiffres !== 'function') return;
   const res = scopedStaffReservations(view);
   // La capacite DU CENTRE. Les armes se partagent entre les lancements
   // paralleles (le serveur compte les joueurs de tous les lancements qui se
@@ -23242,30 +23368,18 @@ function renderKpis() {
     pax += Number(r.pax) || 0;
     if (view === 'laser') {
       bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + (Number(window.players || r.pax) || 0), 0);
-    } else if (view === 'all') {
-      bookedUnits += getBowlingWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
-      bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.players || r.pax) || 0) / Math.max(armes, 1)), 0);
     } else {
       bookedUnits += getBowlingWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
     }
   });
   const windowCfg = getPlanningWindow(state.currentDate);
-  // Sur la journee complete, une ressource que le centre n a pas n ajoute pas
-  // de capacite : N4 (aucune arene) voyait son occupation diluee par un laser
-  // fantome. Cle absente = on ne sait pas encore, on garde les deux.
-  const ressources = (typeof getAdminCenter === 'function' ? (getAdminCenter() || {}).resources : null) || {};
-  const connait = (kind) => Object.prototype.hasOwnProperty.call(ressources, kind);
-  const avecPistes = !connait('bowling') || Number(ressources.bowling?.laneCount) > 0;
-  const avecArene = !connait('laser') || Number(ressources.laser?.weaponCount) > 0;
   const heuresOuvertes = Math.max(windowCfg.close - windowCfg.open, 1);
   const lancementsDuJour = Math.max((windowCfg.close - windowCfg.open) * 2, 1);
   const totalAvail = windowCfg.closed
     ? 0
-    : view === 'all'
-      ? (avecPistes ? laneCount * heuresOuvertes : 0) + (avecArene ? lancementsDuJour : 0)
-      : view === 'laser'
-        ? armes * lancementsDuJour
-        : laneCount * heuresOuvertes;
+    : view === 'laser'
+      ? armes * lancementsDuJour
+      : laneCount * heuresOuvertes;
   const occ = totalAvail > 0 ? Math.round((bookedUnits / totalAvail) * 100) : 0;
   // LE BANDEAU DU PLANNING NE RECOPIE PLUS L ACCUEIL (2026-09-30). Ses quatre
   // cases redisaient reservations, joueurs, chiffre d affaires et occupation a
@@ -23276,50 +23390,26 @@ function renderKpis() {
   // l occupation de la ressource, ses reservations et joueurs, et le jour
   // meme, les pistes libres maintenant. L argent vit sur l accueil et la page
   // Reservations. Aucune case ne dit « aujourd hui » : l en-tete dit la date.
-  const grid = document.querySelector('#staffView .kpi-grid');
-  if (!grid) return;
-  const ressource = view === 'laser' ? 'laser' : view === 'all' ? '' : 'bowling';
-  const tiles = [
-    {
-      key: 'occupation',
-      label: view === 'laser' ? 'Occupation de l’arène' : view === 'all' ? 'Occupation' : 'Occupation des pistes',
-      id: 'kpiOcc',
-      value: `${occ}%`,
-      hint: view === 'all' ? 'pistes et arène, sur la journée' : 'sur la journée'
-    },
-    {
-      key: 'reservations',
-      label: ressource ? `Réservations ${ressource}` : 'Réservations',
-      id: 'kpiRes',
-      value: String(res.length),
-      hint: `${pax} joueur${pax > 1 ? 's' : ''}`
-    }
+  const ressource = view === 'laser' ? 'de l’arène' : 'des pistes';
+  const chiffres = [
+    { key: 'occupation', label: 'Occupation', id: 'kpiOcc', value: `${occ} %`, title: `Occupation ${ressource} sur la journée` },
+    { key: 'reservations', label: 'Réservations', id: 'kpiRes', value: String(res.length), title: `${pax} joueur${pax > 1 ? 's' : ''}` },
   ];
-  // (la feuille du jour ecrit les pistes libres dans la tete de sa colonne
-  // Bowling : sur son onglet, le bandeau ne les redit pas)
-  const libres = view === 'laser' || view === 'all' ? null : getStaffBowlingLanesFreeNow();
-  if (libres) tiles.push({ key: 'libres', label: 'Libres maintenant', id: 'kpiFree', ...describeStaffLanesFreeNow(libres) });
-  // Mise a jour EN PLACE quand les cases sont les memes : le bandeau porte
-  // l animation d entree (.stagger), et le reconstruire a chaque sondage la
-  // rejouerait toutes les quelques secondes.
-  const signature = tiles.map(tile => tile.key).join('|');
-  if (grid.dataset.tiles !== signature) {
-    grid.dataset.tiles = signature;
-    grid.innerHTML = tiles.map(tile => `<div class="kpi" data-kpi="${tile.key}"><div class="label"><span></span><span class="kpi-suite"></span></div><div class="value" id="${tile.id}"></div><div class="hint"></div></div>`).join('');
+  if (view === 'bowling') {
+    const libres = getStaffBowlingLanesFreeNow();
+    if (libres) {
+      const dit = describeStaffLanesFreeNow(libres);
+      chiffres.push({ key: 'libres', label: 'Libres', id: 'kpiFree', value: dit.value, hint: String(dit.hint).split(' · ')[0], title: dit.title || dit.hint });
+    }
+  } else if (state.currentDate === todayStr()) {
+    const modele = lpModele();
+    const p = modele.prochain;
+    if (p) {
+      const places = Math.max(0, Number(p.places) || 0);
+      chiffres.push({ key: 'libres', label: 'Libres', id: 'kpiFree', value: places ? `${places} place${places > 1 ? 's' : ''}` : 'complet', hint: `à ${formatClockDisplay(p.t)}`, title: `Prochain départ à ${formatClockDisplay(p.t)}` });
+    }
   }
-  tiles.forEach(tile => {
-    const card = grid.querySelector(`[data-kpi="${tile.key}"]`);
-    if (!card) return;
-    // (le premier mot reste seul quand la ligne manque de place : l onglet dit le reste)
-    const [mot, ...suite] = tile.label.split(' ');
-    poserTexte(card.querySelector('.label span'), mot);
-    poserTexte(card.querySelector('.kpi-suite'), suite.length ? ` ${suite.join(' ')}` : '');
-    poserTexte(card.querySelector('.value'), tile.value);
-    const hint = card.querySelector('.hint');
-    poserTexte(hint, tile.hint);
-    hint.title = tile.hint;
-    if (tile.title) card.title = tile.title; else card.removeAttribute('title');
-  });
+  window.pbEcrireChiffres(chiffres);
 }
 
 // LES PISTES LIBRES MAINTENANT, lues sur les memes sources que la grille :
@@ -23411,28 +23501,6 @@ function describeStaffLanesFreeNow({ libres, occupees, close }) {
   };
 }
 
-// La tete du planning ne redit pas les comptes des tuiles juste au-dessus
-// (reservations, joueurs) : elle dit ce qu elles ne disent pas, les
-// horaires du jour. Son titre compte les pistes que la grille dessine
-// vraiment (getAvailabilityLaneCount), plus un « 8 » ecrit dans la page.
-//
-// ELLE SE DESSINE AVEC SA GRILLE, JAMAIS A PART. Elle etait posee par
-// renderStaffShell et la grille par renderPlanning : quand la configuration du
-// centre arrivait apres le premier rendu, les blocages redessinaient la grille
-// (6 pistes) et le titre gardait la valeur par defaut (« Planning 8 pistes »),
-// vu le 2026-09-25 dans la suite complete. Horaires et pistes viennent de la
-// meme configuration : un seul chemin pour la tete et la grille.
-function renderPlanningHead() {
-  const planningWindow = getPlanningWindow(state.currentDate);
-  const planningSub = document.getElementById('planningSub');
-  if (planningSub) planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;
-  const planningLaneTitle = document.getElementById('planningLaneTitle');
-  if (planningLaneTitle) {
-    const laneCount = getAvailabilityLaneCount();
-    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;
-  }
-}
-
 // UNE SURFACE IDENTIQUE NE SE RECONSTRUIT PAS (2026-10-07). Le sondage, le
 // tic de l horloge et chaque geste re-rendent les deux plannings et la liste ;
 // le plus souvent l une des trois (la grille cachee, celle que le geste n a
@@ -23515,7 +23583,6 @@ function poserVariableSiChange(el, nom, valeur) {
 function renderPlanning() {
   ensureAvailabilityBlocksForPlanning();
   ensureStaffCenterConfigForPlanning();
-  renderPlanningHead();
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
   // CE QUI NE SE VOIT PAS NE SE DESSINE PAS (2026-11-02, Movsar : « ça rame sur
@@ -23527,6 +23594,7 @@ function renderPlanning() {
   // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
   // Lue avant le rendu, reposée après (voir ouvrirLotDefilement).
   const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
+  pbBulleBowling();
   const config = planningDisplayWindow('bowling');
   if (config.closed && !config.showExisting) {
     poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
@@ -23556,11 +23624,13 @@ function renderPlanning() {
   // le plancher de la ligne d'heure.
   const MIN_CARD_H = compactTouch ? 42 : 22;
   const MIN_HOUR_H = (MIN_CARD_H + verticalInset * 2) * 2;
-  let HH = state.staffPlanningExpanded ? 52 : compactTouch ? 88 : 48;
+  // (la boite a la hauteur de l ecran sous la barre, sur les trois plannings)
+  const remplit = state.staffPlanningExpanded || (!compactTouch && wrap.clientHeight > 0);
+  let HH = remplit ? 52 : compactTouch ? 88 : 48;
   // Les réglages restent dans l'en-tête : leur cible fait 44 px + 2 px de marge.
   // Les cartes et l'aperçu de déplacement utilisent la même hauteur.
   const HEADER_H = compactTouch ? 38 : 46;
-  if (state.staffPlanningExpanded) {
+  if (remplit) {
     // Plein écran comptoir : toutes les heures d'ouverture doivent tenir d'une
     // traite, sans scroll vertical. La hauteur de ligne n'est donc PAS fixe :
     // on la calcule pour remplir la hauteur disponible.
@@ -23699,7 +23769,8 @@ function renderPlanning() {
       const progressionHtml = renderActivityProgressPill(r);
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      const casProgression = progressionHtml ? ' a-progression' : '';
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
@@ -24246,17 +24317,16 @@ function lpProchainHtml(modele) {
     const la = r.status === 'arrived' || r.status === 'paid';
     const absent = r.absentAt && r.status !== 'paid';
     const detail = [lpPluriel(lpGroupe(w), 'joueur'), lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : ''].filter(Boolean).join(' · ');
-    // Arrives, ils se comptent : « Arrivés · 10 », un second toucher ouvre le
+    // Arrives, ils se comptent : « Ils sont 10 », un second toucher ouvre le
     // compte (ouvrirCompteArrivee), et les armes a preparer suivent.
     const coche = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
-    const nombre = r.status === 'arrived' ? ` · ${Math.trunc(Number(r.pax) || 0)}` : '';
     const action = absent
       ? '<span class="lp-etat lp-etat--absent">Pas venus</span>'
       : la
         ? (peutCompterArrivee(r)
-          ? `<button type="button" class="lp-etat lp-etat--la lp-etat--compte" data-compte-id="${Number(r.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Arrivés, ils sont ${Math.trunc(Number(r.pax) || 0)} : changer le nombre`)}" onclick="ouvrirCompteArrivee(${Number(r.id)}, this, event)">${coche}Arrivés${nombre}</button>`
-          : `<span class="lp-etat lp-etat--la">${coche}Arrivés${nombre}</span>`)
-        : `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Ils sont là</button>`;
+          ? `<button type="button" class="lp-etat lp-etat--la lp-etat--compte" data-compte-id="${Number(r.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Arrivé, ils sont ${Math.trunc(Number(r.pax) || 0)} : changer le nombre`)}" onclick="ouvrirCompteArrivee(${Number(r.id)}, this, event)">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</button>`
+          : `<span class="lp-etat lp-etat--la">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</span>`)
+        : `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Arrivé</button>`;
     return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : toucher pour sa fiche, glisser pour le déplacer`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
   }).join('');
   return `<section class="lp-prochain" data-lp-t="${d.t}" aria-label="Prochain départ, ${lpHeure(d.t)}">
@@ -24415,7 +24485,6 @@ function renderLaserPlanning() {
   ensureAvailabilityBlocksForPlanning();
   ensureStaffCenterConfigForPlanning();
   const wrap = document.getElementById('laserPlanningGridWrap');
-  const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
   // (caché, il ne se dessine pas : voir renderPlanning)
   if (document.getElementById('laserPlanningBox')?.classList.contains('hidden')) return;
@@ -24425,7 +24494,6 @@ function renderLaserPlanning() {
   const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
   const focus = lpFocusAvant(wrap);
   const modele = lpModele();
-  if (sub) sub.textContent = modele.config.closed && !modele.config.showExisting ? 'Centre fermé' : lpSousTitre(modele);
   if (modele.config.closed && !modele.config.showExisting) {
     poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
     return;
@@ -25944,7 +26012,7 @@ function rendreLaListe() {
     const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;
     filtered = trouves
       ? res.filter(r => trouves.has(r.id))
-      : res.filter(r => r.name.toLowerCase().includes(q) || (r.phone || '').includes(q) || getReservationLabel(r).toLowerCase().includes(q));
+      : res.filter(r => `${r.name} ${r.phone || ''} ${getReservationLabel(r)} ${texteRecherchableDuDossier(r)}`.toLowerCase().includes(q));
   }
   filtered = filterReservationsForStaff(filtered, state.staffStatusFilter);
   const tableTitle = document.getElementById('tableTitleText');
@@ -26005,7 +26073,7 @@ function rendreLaListe() {
     poserHtmlSurface(list, `${toolbar}<div class="empty-state">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       <div class="e-title">${state.searchTerm ? 'Aucun résultat' : `Aucune réservation ${resourceName}`}</div>
-      <div class="e-sub">${state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation rapide" ou ${planningName} pour en créer une`}</div>
+      <div class="e-sub">${state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation" ou ${planningName} pour en créer une`}</div>
     </div>`);
     poserDefilementRendu(list, listScrollTop, listScrollLeft);
     return;
@@ -26883,13 +26951,13 @@ function ficheEtat(r, moment, droits) {
     boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
   }
   if (droits.statut) {
-    // LE COMPTE A L ARRIVEE (2026-10-29) : pointe, le bouton dit « Arrivé · 10 »,
+    // LE COMPTE A L ARRIVEE (2026-10-29) : pointe, le bouton dit « Ils sont 10 »,
     // et le toucher une seconde fois ouvre le compte (ouvrirCompteArrivee).
-    // Qui ne peut pas modifier le dossier voit le nombre, sans la bulle.
+    // Qui ne peut pas modifier le dossier lit le meme nombre, sans la bulle.
     const arrive = r.status === 'arrived';
     const compter = peutCompterArrivee(r);
     const pax = Math.trunc(Number(r.pax) || 0);
-    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${arrive ? 'active arrived' : ''}" aria-pressed="${arrive}"${compter ? ` data-compte-id="${r.id}" aria-haspopup="dialog" aria-label="Arrivé, ils sont ${pax} : changer le nombre"` : ''} onclick="${compter ? `ouvrirCompteArrivee(${r.id}, this, event)` : `setReservationStatusDirect(${r.id}, 'arrived')`}">${arrive ? `Arrivé · ${pax}` : 'Arrivé'}</button>`);
+    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${arrive ? 'active arrived' : ''}" aria-pressed="${arrive}"${compter ? ` data-compte-id="${r.id}" aria-haspopup="dialog" aria-label="Arrivé, ils sont ${pax} : changer le nombre"` : ''} onclick="${compter ? `ouvrirCompteArrivee(${r.id}, this, event)` : `setReservationStatusDirect(${r.id}, 'arrived')`}">${arrive ? `Ils sont ${pax}` : 'Arrivé'}</button>`);
   }
   if (droits.encaisser) {
     GROUPE_MOYENS.forEach(m => {
@@ -29735,7 +29803,7 @@ function setStatus(id, st) {
 
 // ---------------------------------------------------------------------------
 // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33 ; Movsar : « Oui, le
-// compte »). « Arrivé » reste un geste ; il devient « Arrivé · 10 », et le
+// compte »). « Arrivé » reste un geste ; il devient « Ils sont 10 », et le
 // toucher une seconde fois ouvre « Ils sont : 10 [−] [+] ». Un anniversaire
 // reserve a 10 qui arrive a 13, ce sont trois personnes facturees au lieu de
 // trois perdues.
@@ -30158,7 +30226,7 @@ function createQuickBookState(prefill = {}) {
 let quickBookDialogRelease = null;
 
 function openQuickBook(prefill = {}) {
-  if (!requireClientPermission('reservations.quick', 'Votre rôle ne permet pas la réservation rapide.')) return;
+  if (!requireClientPermission('reservations.quick', 'Votre rôle ne permet pas de créer une réservation.')) return;
   quickBookState = createQuickBookState(prefill);
   rvResas = [quickBookState];
   rvResaIndex = 0;
@@ -31621,7 +31689,7 @@ function getQuickBookHeader(formule) {
   if (s.type === 'visite') {
     return { eyebrow: s.surMesure ? 'Sur mesure' : 'Plusieurs activités', title: decrireVisiteRetenue() || 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
   }
-  return { eyebrow: 'Comptoir', title: 'Réservation rapide', sub: '' };
+  return { eyebrow: 'Comptoir', title: 'Réservation', sub: '' };
 }
 
 function renderQuickBook() {
@@ -32597,11 +32665,11 @@ function rvJoursHtml() {
 
 function rvTeteHtml() {
   const s = quickBookState;
-  return `<h3 id="qbTitle">Réserver</h3>
+  return `<h3 id="qbTitle">Réservation</h3>
     ${rvJoursHtml()}
     <div class="rv-droite">
       <button type="button" class="rv-rond${s.aide ? ' is-on' : ''}" id="rvAide" aria-pressed="${Boolean(s.aide)}" aria-label="Aide" onclick="rvBasculerAide()">?</button>
-      <button type="button" class="rv-rond rv-fermer" id="rvFermer" aria-label="Fermer la réservation rapide" onclick="closeQuickBook()">×</button>
+      <button type="button" class="rv-rond rv-fermer" id="rvFermer" aria-label="Fermer la réservation" onclick="closeQuickBook()">×</button>
     </div>`;
 }
 
@@ -35801,6 +35869,20 @@ function renderFormules() {
 // disait « 13:30 - 14:30 (1h) » pour un groupe de 64 qui jouait jusqu a
 // 16:55 (la fenetre de son premier bowling), et tassait offre, pistes et prix
 // sur la meme ligne grise : le programme et le prix ont maintenant leur bloc.
+// L ARRIVEE N EST PAS LE DEBUT (l audit du 2026-11-03) : le tableau dit 15:30, l heure
+// reservee, et la fiche disait « 15:20 → 17:38 », l accueil conseille. Quand les deux
+// different, chacune porte son nom.
+function getPosHeures(r, span) {
+  const debut = gfHeureDuDossier(r, span);
+  const fin = formatClockDisplay(span.end);
+  if (span.start < debut - 1 / 120) return `Arrivée ${formatClockDisplay(span.start)}, début ${formatClockDisplay(debut)} → ${fin}`;
+  return `${formatClockDisplay(span.start)} → ${fin}`;
+}
+function gfHeureDuDossier(r, span) {
+  const heure = /^\d{1,2}:\d{2}/.test(String(r.startTime || '')) ? timeToNum(r.startTime) : span.start;
+  return Number.isFinite(heure) ? heure : span.start;
+}
+
 function getPosIdentityParts(r) {
   const span = getStaffTerrainSpan(r);
   const jour = r.date ? parseLocalDate(r.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
@@ -35812,7 +35894,7 @@ function getPosIdentityParts(r) {
   const lieu = [pistes.length ? `Piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : '', arene ? 'arène laser' : ''].filter(Boolean).join(' + ');
   return [
     escapeHtml(jour),
-    escapeHtml(`${formatClockDisplay(span.start)} → ${formatClockDisplay(span.end)}`),
+    escapeHtml(getPosHeures(r, span)),
     escapeHtml(lieu ? lieu.charAt(0).toUpperCase() + lieu.slice(1) : 'Hors piste'),
     escapeHtml(joueursDuDossier(r)),
   ].filter(Boolean);

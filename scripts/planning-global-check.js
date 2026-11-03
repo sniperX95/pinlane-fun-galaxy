@@ -29,21 +29,20 @@
 //        heure d une formule ; les colonnes dans l ordre du papier ;
 //   [F4] le nom entier, jamais coupe ; [F5] les personnes et la formule ;
 //   [E1] l etat de chaque activite a 15:10 (finie, en cours, a lancer, en
-//        retard, a venir) ; [E2] le retard sur la ligne et ses minutes ;
+//        retard, a venir) ; [E2] le retard sur la ligne du nom et ses minutes ;
 //   [E3] l etat au bout de la ligne et « Arrivé » tant que le groupe est
-//        attendu ; la visite finie, « À encaisser » ou « À clôturer » et son
-//        montant ; un groupe sur place, son montant qui se touche ;
+//        attendu ; la visite finie, « À encaisser » ou « À clôturer » ; le montant
+//        toujours a droite, celui d un groupe sur place se touche ;
 //   [E4] l etat du centre, au bandeau : les pistes libres a cette minute, le
 //        prochain depart laser du planning laser ; les groupes pointes sur une
 //        activite et les enfants a la plaine, dans la bulle de sa colonne ;
 //   [F6] la grande case de chaque demi-heure : elle couvre ses lignes, dit
 //        l heure, la ressource pleine, ce qui reste (« Pistes 3 », « Laser 11 »)
-//        puis les personnes, selon la hauteur disponible ; une demi-heure qui
+//        puis les joueurs, selon la hauteur disponible ; une demi-heure qui
 //        peut encore se vendre reserve d un toucher, une passee non ;
 //   [N1] la barre de l heure entre les heures passees et a venir ; le tableau
-//        s ouvre sur ce qui reste a faire (le plus ancien retard en haut, la
-//        barre et ce qui vient dessous) ; [N2] apres minuit, la soiree de la
-//        veille continue ;
+//        s ouvre sur ce qui reste a faire (la barre au tiers haut de l ecran, ce
+//        qui vient dessous) ; [N2] apres minuit, la soiree de la veille continue ;
 //   [G1] « Arrivé » ecrit le pointage, un clic ou Entree ouvre la fiche ;
 //   [G2] la recherche (sans accents) et le filtre de statut ; [G3] au
 //        planning bowling, chercher grise les autres groupes sans les retirer
@@ -109,7 +108,7 @@ function lireFeuille() {
   const wrap = document.getElementById('globalPlanningGridWrap');
   const defile = wrap && wrap.querySelector('.gf-defile');
   const bandeau = wrap && wrap.querySelector('.gf-bandeau');
-  const tete = wrap && wrap.querySelector('.gf-tete');
+  const tete = document.getElementById('planningBande');
   const table = defile && defile.querySelector('.gf-t');
   const R = (el) => el.getBoundingClientRect();
   const vu = (el) => Boolean(el) && getComputedStyle(el).display !== 'none' && R(el).width > 0 && R(el).height > 0;
@@ -134,7 +133,8 @@ function lireFeuille() {
     });
     const h = tr.querySelector('td.gf-h');
     const etat = tr.querySelector('td.gf-etat');
-    const ecrite = h.querySelector('b');
+    const reste = tr.querySelector('td.gf-reste');
+    const ecrite = tr.querySelector('.gf-nom__h');
     const bloc = tr.querySelector('td.gf-bloc');
     return {
       id: tr.getAttribute('data-gf-id'),
@@ -142,10 +142,10 @@ function lireFeuille() {
       tabindex: tr.getAttribute('tabindex'),
       aria: tr.getAttribute('aria-label') || '',
       // (l heure pile n est plus ecrite sur la ligne : elle reste dans l attribut,
-      // l heure hors demi-heure dans son <b>)
+      // l heure hors demi-heure devant le nom)
       h: (ecrite ? ecrite.textContent : h.getAttribute('data-gf-heure')) || '',
       hEcrite: Boolean(ecrite),
-      retard: (h.querySelector('.gf-h__retard') || {}).textContent || '',
+      retard: (tr.querySelector('.gf-nom__l .gf-h__retard') || {}).textContent || '',
       nom: nom ? nom.textContent : '',
       coupe: nom ? nom.scrollWidth > nom.clientWidth + 1 || nom.scrollHeight > nom.clientHeight + 1 || getComputedStyle(nom).textOverflow === 'ellipsis' : true,
       formule: (tr.querySelector('.gf-formule') || {}).textContent || '',
@@ -160,13 +160,14 @@ function lireFeuille() {
         pieces: Array.from(bloc.querySelectorAll('.gf-bloc__in > span')).map((s) => ({ t: s.textContent.trim(), plein: s.classList.contains('gf-bloc__plein'), bulle: s.getAttribute('title') || '' })),
         vu: vu(bloc),
       } : null,
-      // Le geste, au bord droit. (`.gf-gb--etat` : le statut ecrit ; le montant :
-      // `<b>` a la caisse, bouton sur place)
+      // Le geste, au bord droit. (`.gf-gb--etat` : le statut ecrit.) Le montant a sa
+      // colonne : `<b>`, bouton sur place.
       statut: (etat.querySelector('.gf-gb--etat') || {}).textContent || '',
       valide: Boolean(tr.querySelector('.gf-nom__valide')),
       caisse: (tr.querySelector('.gf-nom__caisse') || {}).textContent || '',
-      du: (etat.querySelector('.gf-du') || {}).textContent || '',
-      duBouton: Boolean(etat.querySelector('button[data-gf-encaisser]')),
+      du: (reste.querySelector('.gf-du') || {}).textContent || '',
+      paye: Boolean(reste.querySelector('.gf-du__paye')),
+      duBouton: Boolean(reste.querySelector('button[data-gf-encaisser]')),
       payer: etat.querySelectorAll('[data-gf-payer]').length,
       cloturer: Boolean(etat.querySelector('[data-gf-fiche]')),
       arrive: Boolean(etat.querySelector('[data-gf-arrive]')),
@@ -198,6 +199,7 @@ function lireFeuille() {
       hLigne: hauteurs.length ? Math.min(...hauteurs) : 0,
       hGrande: hauteurs.length ? Math.max(...hauteurs) : 0,
       coupee: avant.concat(apres).some((tr) => R(tr).top < haut - 1 && R(tr).bottom > haut + 1),
+      rang: (R(now).top - haut) / (bas - haut),
       retard: retard ? { haut: Math.round(R(retard).top - haut), entier: entiere(retard) } : null,
     };
   })() : null;
@@ -273,6 +275,7 @@ function lireOracle() {
         // (l argent du dossier : un groupe jamais pointe doit aussi le sien, il ne
         // sort pas sans issue)
         du: r.status !== 'paid' && r.status !== 'cancelled' && prixDossierConnu(r) ? formatMoneyCentimes(r.price) : '',
+        regle: r.status === 'paid' && prixDossierConnu(r) ? formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price) : '',
         formule: r.formuleId || r.type === 'formule' ? String((f && f.name) || r.label || 'Formule').trim() : '',
         surMesure: r.type === 'custom' || r.surMesure === true,
         bowling: getBowlingWindowsFromReservation(r).map((w) => ({ start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite) })),
@@ -366,7 +369,7 @@ async function structure(page, s, label) {
   // Laser le pire depart de la demi-heure, plein ou en trop ; puis ce qui reste
   // (pistes qui tiennent une partie d une heure avant la fermeture, places de son
   // premier depart ouvert) tant que la demi-heure n est pas passee ; puis les
-  // personnes. La case n a que la hauteur de ses
+  // joueurs. La case n a que la hauteur de ses
   // lignes : ce qu elle dit est VRAI, dans cet ordre, et rien d essentiel ne
   // saute avant le reste.
   const blocs = new Map();
@@ -404,7 +407,7 @@ async function structure(page, s, label) {
       pistes: o.pistes && o.pistes.ouvertes ? o.pistes.libresSurUneHeure[m.b * 2] : 0,
       laser: Math.max(0, Number(((o.laser ? o.laser.departs : []).find((d) => d.t >= m.b - 1e-6 && d.t < m.b + 0.5 - 1e-6 && !d.ferme && !d.hors) || {}).places) || 0),
     };
-    const attendues = [...pleins, ...(place.pistes ? [`Pistes ${place.pistes}`] : []), ...(place.laser ? [`Laser ${place.laser}`] : []), `${c.pers} pers.`];
+    const attendues = [...pleins, ...(place.pistes ? [`Pistes ${place.pistes}`] : []), ...(place.laser ? [`Laser ${place.laser}`] : []), `${c.pers} ${c.pers > 1 ? 'joueurs' : 'joueur'}`];
     const lues = case0.pieces.map((p) => p.t);
     // (dans l ordre, sans rien inventer)
     let rang = -1;
@@ -430,7 +433,7 @@ async function structure(page, s, label) {
     const t = heureDe(g);
     const bowling = (l.cases.bowling || []);
     const attenduB = g.bowling.slice().sort((a, b) => a.start - b.start);
-    if (bowling.length !== attenduB.length || attenduB.some((w, i) => bowling[i].t !== hhmm(w.start) || !bowling[i].d.startsWith(w.pistes.length ? `P${pistes(w.pistes)}` : 'pistes ?'))) fautesCase.push({ nom: l.nom, col: 'bowling', ecrit: bowling.map((x) => x.t + ' ' + x.d), attendu: attenduB.map((w) => hhmm(w.start) + ' P' + pistes(w.pistes)) });
+    if (bowling.length !== attenduB.length || attenduB.some((w, i) => bowling[i].t !== hhmm(w.start) || !bowling[i].d.startsWith(w.pistes.length ? `${w.pistes.length > 1 ? 'Pistes' : 'Piste'} ${pistes(w.pistes)}` : 'pistes ?'))) fautesCase.push({ nom: l.nom, col: 'bowling', ecrit: bowling.map((x) => x.t + ' ' + x.d), attendu: attenduB.map((w) => hhmm(w.start) + ' Pistes ' + pistes(w.pistes)) });
     const laser = (l.cases.laser || []).filter((x) => x.etat !== 'aplacer').map((x) => x.t);
     const attenduL = [...new Set(g.laser.map((w) => Math.round(w.start * 60)))].sort((a, b) => a - b).map((m) => hhmm(m / 60));
     if (laser.join() !== attenduL.join() || (l.cases.laser || []).filter((x) => x.etat === 'aplacer').length !== g.aPlacer) fautesCase.push({ nom: l.nom, col: 'laser', ecrit: laser, attendu: attenduL, aPlacer: g.aPlacer });
@@ -479,7 +482,7 @@ async function structure(page, s, label) {
       const attendu = g.late ? retardCourt(Math.max(1, Math.round((o.maintenant - (t <= o.maintenant ? t : g.span.start)) * 60))) : '';
       return /\bis-retard\b/.test(l.cls) !== g.late || l.retard !== attendu;
     });
-    ok(fautesRetard.length === 0 && (s.fixture !== 'pic' || groupes.some((l) => l.retard)), `[E2] ${label} : chaque groupe en retard le dit sous son heure, avec ses minutes`, fautesRetard.slice(0, 3).map((l) => ({ nom: l.nom, retard: l.retard, cls: l.cls })));
+    ok(fautesRetard.length === 0 && (s.fixture !== 'pic' || groupes.some((l) => l.retard)), `[E2] ${label} : chaque groupe en retard le dit sur la ligne de son nom, avec ses minutes`, fautesRetard.slice(0, 3).map((l) => ({ nom: l.nom, retard: l.retard, cls: l.cls })));
     const fautesEtatLigne = groupes.filter((l) => {
       const g = parId.get(l.id);
       const caisse = g.etat === 'closing';
@@ -489,15 +492,18 @@ async function structure(page, s, label) {
       const statut = caisse ? '' : absent ? 'Pas venu' : g.status === 'paid' ? 'Payé' : g.status === 'arrived' ? String(g.pax) : '';
       const statutJuste = statut === String(g.pax) ? new RegExp(`\\b${g.pax}$`).test(l.statut) : l.statut === statut;
       const peut = g.etat === 'upcoming' && !['paid', 'arrived'].includes(g.status) && !g.absent;
-      // Sur place, le montant se touche (Carte, Espèces) ; a la caisse, il s ecrit a cote
-      // de ses deux boutons, ou « Prix à voir » et « Clôturer » si le dossier n a pas de prix.
+      // LE MONTANT, TOUJOURS A DROITE (l audit du 2026-11-03) : avant l arrivee et apres le
+      // paiement, avec « payé » ; sur place, il se touche (Carte, Espèces) ; a la caisse, a
+      // cote de ses deux boutons, ou « Prix à voir » et « Clôturer » si le dossier n a pas
+      // de prix.
       const surPlace = !caisse && !absent && g.status === 'arrived';
-      const du = caisse ? g.du || 'Prix à voir' : surPlace ? g.du : '';
+      const du = g.status === 'paid' ? g.regle : caisse ? g.du || 'Prix à voir' : g.du;
       return !statutJuste
         || l.valide !== g.aValider
         || /^À clôturer/.test(l.caisse) !== (caisse && !g.present)
         || /^À encaisser/.test(l.caisse) !== (caisse && g.present)
         || l.du !== du
+        || l.paye !== (g.status === 'paid')
         || l.duBouton !== Boolean(surPlace && g.du)
         || l.payer !== (caisse && g.du ? 2 : 0)
         || l.cloturer !== Boolean(caisse && !g.du)
@@ -505,13 +511,13 @@ async function structure(page, s, label) {
         || l.arrive !== peut
         || (peut && l.arriveAria !== `Pointer ${g.nom} arrivé`);
     });
-    ok(fautesEtatLigne.length === 0 && (s.fixture !== 'pic' || (groupes.some((l) => l.arrive) && groupes.some((l) => l.du) && groupes.some((l) => l.duBouton))), `[E3] ${label} : le statut, « À valider », « À clôturer » ou « À encaisser » et son montant, celui d un groupe sur place, « Arrivé » tant que le groupe est attendu`, fautesEtatLigne.slice(0, 3).map((l) => ({ nom: l.nom, statut: l.statut, caisse: l.caisse, du: l.du, attendu: parId.get(l.id).du, duBouton: l.duBouton, payer: l.payer, cloturer: l.cloturer, arrive: l.arrive })));
+    ok(fautesEtatLigne.length === 0 && (s.fixture !== 'pic' || (groupes.some((l) => l.arrive) && groupes.some((l) => l.du) && groupes.some((l) => l.duBouton))), `[E3] ${label} : le statut, « À valider », « À clôturer » ou « À encaisser », le montant toujours a droite, « Arrivé » tant que le groupe est attendu`, fautesEtatLigne.slice(0, 3).map((l) => ({ nom: l.nom, statut: l.statut, caisse: l.caisse, du: l.du, attendu: parId.get(l.id).du, duBouton: l.duBouton, payer: l.payer, cloturer: l.cloturer, arrive: l.arrive })));
 
     // [E4] l etat du centre a cette minute, au bandeau (les pistes, le laser) et dans la
     // bulle des colonnes (ce qui se joue sur les autres activites).
     const attenduEtat = {};
     if (o.pistes && o.pistes.libresMaintenant != null) { const n = o.pistes.libresMaintenant; attenduEtat.bowling = n ? `${n} ${n > 1 ? 'libres' : 'libre'}` : 'complet'; }
-    if (o.laser && o.laser.prochain) { const p = o.laser.prochain; attenduEtat.laser = `${hhmm(p.t)}${p.places > 0 ? ` · ${p.places} ${p.places > 1 ? 'places' : 'place'}` : ' complet'}`; }
+    if (o.laser && o.laser.prochain) { const p = o.laser.prochain; attenduEtat.laser = `${hhmm(p.t)}${p.places > 0 ? `, ${p.places} ${p.places > 1 ? 'places' : 'place'}` : ', complet'}`; }
     const surPlace = new Map();
     o.groupes.forEach((g) => {
       if (!g.present || g.etat === 'done' || g.etat === 'absent') return;
@@ -537,16 +543,14 @@ async function structure(page, s, label) {
     const avantNow = f.lignes.slice(0, idx).filter((l) => l.id);
     const apresNow = f.lignes.slice(idx + 1).filter((l) => l.id);
     ok(f.lignes.filter((l) => l.now).length === 1 && f.lignes[idx].h === hhmm(o.maintenant) && avantNow.every((l) => heureDe(parId.get(l.id)) <= o.maintenant + 1e-6) && apresNow.every((l) => heureDe(parId.get(l.id)) > o.maintenant), `[N1] ${label} : une barre de l heure, ${hhmm(o.maintenant)}, entre les heures passees et a venir`, { idx, h: idx >= 0 ? f.lignes[idx].h : null });
-    // LE TABLEAU S OUVRE SUR CE QUI RESTE A FAIRE (2026-11-02) : la barre est a l ecran,
-    // avec au moins trois hauteurs de ligne dessous ; le plus ancien retard est en haut,
-    // sous la tete, sauf s il est trop ancien pour tenir avec elles (le compteur « En
-    // retard » le dit alors, et le tableau n en montre pas plus que ces trois lignes, plus
-    // celle qui passe entiere sous la tete au lieu d y rester coupee).
+    // LE TABLEAU S OUVRE SUR CE QUI RESTE A FAIRE (2026-11-02, l audit du 2026-11-03) : la
+    // barre est au tiers haut de l ecran, avec au moins trois hauteurs de ligne dessous ;
+    // les retards qui sortent par le haut, le compteur « En retard » les dit, et aucune
+    // ligne ne reste coupee sous la tete.
     if (!telephone && f.defile.sh > f.defile.ch + 40 && avantNow.length > 2) {
       const v = f.ouverture;
-      const retardVu = !v.retard || v.retard.entier || v.sous <= 4 * v.hGrande + 2;
       ok(!v.coupee, `[N1] ${label} : a l ouverture, aucune ligne coupee en deux sous la tete`, v);
-      ok(v.barre && v.sous >= Math.min(3, v.restent) * v.hLigne - 2 && v.st > 0 && retardVu, `[N1] ${label} : le tableau s ouvre sur ce qui reste a faire (la barre, ce qui vient dessous, le plus ancien retard s il tient)`, v);
+      ok(v.barre && v.sous >= Math.min(3, v.restent) * v.hLigne - 2 && v.st > 0 && v.rang <= 0.5, `[N1] ${label} : le tableau s ouvre sur ce qui reste a faire (la barre au tiers haut, ce qui vient dessous)`, v);
     }
   }
 
@@ -578,8 +582,8 @@ async function structure(page, s, label) {
   // [L2] la hauteur
   if (!telephone) {
     if (s.plein) {
-      const p = await page.evaluate(() => { const b = document.getElementById('globalPlanningBox').getBoundingClientRect(); const h = document.querySelector('#globalPlanningBox .planning-head').getBoundingClientRect(); return { bas: b.bottom, tete: h.height, ih: innerHeight }; });
-      ok(f.plein && p.bas <= p.ih + 1 && p.tete >= 40 && f.defile.ch >= 200, `[L2] ${label} : agrandie, la feuille prend l ecran sans ecraser sa tete`, { ...p, ch: f.defile.ch });
+      const p = await page.evaluate(() => { const b = document.getElementById('globalPlanningBox').getBoundingClientRect(); const h = document.getElementById('planningBarre').getBoundingClientRect(); return { bas: b.bottom, tete: h.height, ih: innerHeight }; });
+      ok(f.plein && p.bas <= p.ih + 1 && p.tete >= 40 && f.defile.ch >= 200, `[L2] ${label} : agrandie, la feuille prend l ecran sans ecraser la barre`, { ...p, ch: f.defile.ch });
     } else {
       const p = await page.evaluate(() => { window.scrollTo(0, 0); const d = document.querySelector('#globalPlanningGridWrap .gf-defile').getBoundingClientRect(); return { haut: d.top, bas: d.bottom, ih: innerHeight }; });
       const borne = p.haut > p.ih / 2 ? p.bas - p.haut <= p.ih : p.bas <= p.ih + 1;
@@ -596,7 +600,7 @@ async function structure(page, s, label) {
       const vue = (s) => cs(tr.querySelector(s)).display !== 'none' && R(s).width > 0 && R(s).height > 0;
       return { grille: cs(tr).display, tete: cs(document.querySelector('#globalPlanningGridWrap thead')).display, formuleVue: vue('td.gf-f'), paxVu: vue('td.gf-n'), sousLeNom: R('td.gf-n').top >= R('td.gf-nom').bottom - 1 && R('td.gf-f').top >= R('td.gf-nom').bottom - 1, pers: getComputedStyle(tr.querySelector('td.gf-n b'), '::after').content, avant: a ? getComputedStyle(a, '::before').content : '', titre: a ? a.getAttribute('data-gf-titre') : '' };
     });
-    ok(c.grille === 'grid' && c.tete === 'none' && c.formuleVue && c.paxVu && c.sousLeNom && /pers\./.test(c.pers) && c.avant === `"${c.titre}"`, `[L3] ${label} : une carte par groupe, les personnes et la formule sous le nom, chaque activite nommee`, c);
+    ok(c.grille === 'grid' && c.tete === 'none' && c.formuleVue && c.paxVu && c.sousLeNom && /joueurs/.test(c.pers) && c.avant === `"${c.titre}"`, `[L3] ${label} : une carte par groupe, les joueurs et la formule sous le nom, chaque activite nommee`, c);
   }
 
   // [V1] ni degrade, la police, rien sous 12 px, la couleur du statut
@@ -791,7 +795,7 @@ async function gestes(browser) {
     // journee tient toujours a l ecran.
     await page.evaluate(() => { location.hash = '#/staff/planning/laser'; });
     await FX.repos(page, 900);
-    const g4 = await page.evaluate(() => {
+    const mesurerG4 = () => page.evaluate(() => {
       const R = (el) => el.getBoundingClientRect();
       const lp = document.getElementById('laserPlanningGridWrap');
       const synthese = lp.querySelector('.lp-synthese');
@@ -803,7 +807,16 @@ async function gestes(browser) {
       const groupes = zone ? Array.from(zone.querySelectorAll('.lp-groupe')).map((g) => { const r = R(g); return r.left >= z.left - 1 && r.right <= z.right + 1; }) : [];
       return { haut: Math.round(R(synthese).height), groupes, bouton: bouton.textContent.replace(/\s+/g, ' ').trim(), ferme: bouton.getAttribute('aria-expanded') === 'false', alertes: lp.querySelectorAll('.lp-alerte').length };
     });
-    ok(!g4.manque && g4.haut <= 60 && g4.groupes.length >= 2 && g4.groupes.every(Boolean), `[G4] ${label} : au planning laser, le haut tient sur une ligne, chaque groupe du prochain depart entier, son « Ils sont là » compris`, g4);
+    const g4 = await mesurerG4();
+    ok(!g4.manque && g4.haut <= 60 && g4.groupes.length >= 2 && g4.groupes.every(Boolean), `[G4] ${label} : au planning laser, le haut tient sur une ligne, chaque groupe du prochain depart entier, son geste compris`, g4);
+    // (le menu replie sur les plannings rend sa largeur au laser : a 1440 la bande tient
+    // d elle-meme, c est a 1180 px que sa regle la garde sur une ligne)
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await FX.repos(page, 500);
+    const g4etroit = await mesurerG4();
+    ok(!g4etroit.manque && g4etroit.haut <= 60 && g4etroit.groupes.length >= 2 && g4etroit.groupes.every(Boolean), '[G4] 1180 px : au planning laser, le haut tient sur une ligne, chaque groupe du prochain depart entier', g4etroit);
+    await page.setViewportSize(FX.APPAREILS.ordinateur.viewport);
+    await FX.repos(page, 500);
     if (!g4.manque) await page.click('#laserPlanningGridWrap .lp-journee__h .lp-retards');
     await FX.repos(page, 600);
     const g4b = await page.evaluate(() => {
@@ -860,21 +873,23 @@ const MUTATIONS = [
   { nom: 'ordre-par-nom', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: '    groupes.sort(function (a, b) { return 0 ||' }] },
   { nom: 'blocs-d-une-heure', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '    var b = Math.floor(heure * 2 + 1e-6) / 2;', vers: '    var b = Math.floor(heure + 1e-6);' }] },
   // L heure pile se reecrit sur chaque ligne, la grande case ne sert plus a rien.
-  { nom: 'heure-pile-sur-la-ligne', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '    var pile = Math.abs(g.heure * 2 - Math.round(g.heure * 2)) * 30 < 0.5;', vers: '    var pile = false;' }] },
+  { nom: 'heure-pile-sur-la-ligne', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '  function gfPile(g) { return Math.abs(g.heure * 2 - Math.round(g.heure * 2)) * 30 < 0.5; }', vers: '  function gfPile(g) { return false; }' }] },
   { nom: 'laser-chez-le-bowling', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "        poser('laser_game', e);", vers: "        poser('bowling', e);" }] },
-  { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : (e.libre ? '≈ ' : '') + gpHeure(debut);", vers: "      t = desLeDebut ? '' : (e.libre ? '≈ ' : '') + gpHeure(debut + 0.5);" }] },
-  { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { display: block; font-size: 15px;', vers: '.gf-nom__t { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; font-size: 15px;' }] },
+  { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : (e.libre ? 'vers ' : '') + gpHeure(debut);", vers: "      t = desLeDebut ? '' : (e.libre ? 'vers ' : '') + gpHeure(debut + 0.5);" }] },
+  { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { min-width: 0; font-size: 15px;', vers: '.gf-nom__t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; font-size: 15px;' }] },
   { nom: 'personnes-plus-une', lettre: 'F5', scenarios: [PIC], editions: [{ fichier: PG, de: "'\"><b>' + pax + '</b>'", vers: "'\"><b>' + (pax + 1) + '</b>'" }] },
   { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return 'fini';", vers: "    if (fin <= m.maintenant - 1) return 'fini';" }] },
   { nom: 'retard-muet', lettre: 'E2', scenarios: [PIC], editions: [{ fichier: PG, de: "(g.retard ? ' is-retard' : '')", vers: "''" }] },
   { nom: 'jamais-arrive', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (!m.aujourdHui || g.etat !== 'upcoming'", vers: "    if (true || g.etat !== 'upcoming'" }] },
   { nom: 'argent-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (r.status === 'paid' || r.status === 'cancelled') return '';", vers: "    return '';" }] },
   // Un groupe sur place ne peut plus payer d un geste.
-  { nom: 'montant-sur-place-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (duIci) h += '<button type=\"button\" class=\"gf-du gf-du--b'", vers: "      if (false) h += '<button type=\"button\" class=\"gf-du gf-du--b'" }] },
+  { nom: 'montant-sur-place-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "      else if (g.etat !== 'closing' && g.teinte === 'arr' && gfPeutEncaisser() && !q) h = '<button type=\"button\" class=\"gf-du gf-du--b'", vers: "      else if (false) h = '<button type=\"button\" class=\"gf-du gf-du--b'" }] },
+  // Le montant disparait une fois paye.
+  { nom: 'montant-paye-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "      h = (regle ? gfDu(regle) : '') + '<span class=\"gf-du__paye\">payé</span>';", vers: "      h = '<span class=\"gf-du__paye\">payé</span>';" }] },
   { nom: 'etat-centre-muet', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: '    if (e.bowling) h += gfEtatBandeau(', vers: '    if (false) h += gfEtatBandeau(' }] },
   { nom: 'depart-laser-muet', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: '    if (e.laser) h += gfEtatBandeau(', vers: '    if (false) h += gfEtatBandeau(' }] },
   { nom: 'pistes-libres-fausses', lettre: 'E4', scenarios: [PIC], editions: [{ fichier: PG, de: '      var n = libres.libres.length;', vers: '      var n = libres.libres.length + 1;' }] },
-  { nom: 'etat-cache-au-telephone', lettre: 'E4', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-e { grid-column: span 5;', vers: '  .gf-e { display: none; grid-column: span 5;' }] },
+  { nom: 'etat-cache-au-telephone', lettre: 'E4', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-e { flex: none; overflow: visible; }', vers: '  .gf-e { display: none; }' }] },
   { nom: 'demi-absente', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "          + (nouveau ? gfBlocCase(m, part, parBloc.get(part.b), bande) : '')\n", vers: '' }] },
   // La case ne couvre plus ses lignes.
   { nom: 'case-d-une-ligne', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "    var attr = ' rowspan=\"' + part.lignes.length + '\"';", vers: "    var attr = ' rowspan=\"1\"';" }] },
@@ -890,11 +905,11 @@ const MUTATIONS = [
   { nom: 'charge-muette', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "      if (col.nature === 'bowling' && occupation) {", vers: '      if (false) {' }] },
   { nom: 'barre-en-bas', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '      if (!nowPose && g.heure > m.maintenant + 1e-6) {', vers: '      if (false) {' }] },
   { nom: 'ouverte-en-haut', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '  function gfAllerAMaintenant(wrap, doux) {\n', vers: '  function gfAllerAMaintenant(wrap, doux) {\n    if (!doux) return;\n' }] },
-  // Le tableau s ouvre sur la barre, comme avant la v5 : les retards sortent par le haut.
-  { nom: 'ouverte-sur-la-barre', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '    if (retard) {\n      var plusBas', vers: '    if (false) {\n      var plusBas' }] },
-  // Une premiere ligne tres haute pousse la barre sous l ecran.
-  { nom: 'barre-poussee-sous-l-ecran', lettre: 'N1', scenarios: [S('pire', 'tablette')], editions: [{ fichier: PG, de: 'var y = yNow - Math.min(GF_AVANT * h, Math.max(0, vue - (GF_APRES + 1) * h));', vers: 'var y = yNow - GF_AVANT * h;' }] },
-  { nom: 'ligne-coupee-en-haut', lettre: 'N1', scenarios: [S('pic', 'portable')], editions: [{ fichier: PG, de: "      if (lignes[i].offsetTop - hTete >= y - 1) { y = lignes[i].offsetTop - hTete; break; }\n", vers: '' }] },
+  // La barre s ouvre au bas de l ecran : treize groupes dessus, quatre dessous.
+  { nom: 'barre-au-bas-de-l-ecran', lettre: 'N1', scenarios: [PIC], editions: [{ fichier: PG, de: '    var y = now.offsetTop - hTete - vue / 3;', vers: '    var y = now.offsetTop - hTete - vue * 0.75;' }] },
+  // La barre sous l ecran.
+  { nom: 'barre-poussee-sous-l-ecran', lettre: 'N1', scenarios: [S('pire', 'tablette')], editions: [{ fichier: PG, de: '    var y = now.offsetTop - hTete - vue / 3;', vers: '    var y = now.offsetTop - hTete - vue * 1.5;' }] },
+  { nom: 'ligne-coupee-en-haut', lettre: 'N1', scenarios: [S('pic', 'portable')], editions: [{ fichier: PG, de: '    return Math.max(0, Math.round(meilleur));', vers: '    return Math.max(0, Math.round(y + 17));' }] },
   { nom: 'nuit-sans-24h', lettre: 'N2', scenarios: [S('pire', 'ordinateur', { heure: '24:20', nuit: true })], editions: [{ fichier: PG, de: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? 24 + currentTimeDecimal() : null;', vers: '    var maintenant = jour === auj ? currentTimeDecimal() : nuit ? currentTimeDecimal() : null;' }] },
   { nom: 'arrive-sans-effet', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }", vers: '      if (arrive) return;' }] },
   { nom: 'ligne-muette', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));\n    });", vers: '    });' }] },
@@ -908,14 +923,14 @@ const MUTATIONS = [
   { nom: 'haut-sur-deux-lignes', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .lp-compact .lp-prochain { flex-wrap: nowrap; }', vers: '' }] },
   // Defilee de cote, la ligne perd le nom de son groupe.
   { nom: 'nom-pas-colle', lettre: 'L4', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '  .gf-t td.gf-nom { position: sticky; left: calc(var(--c-bloc) + var(--c-h)); z-index: 2; }\n  .gf-th--h { left: 0; }', vers: '  .gf-th--h { left: 0; }' }] },
-  { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '--c-nom: 232px;', vers: '--c-nom: 832px;' }] },
+  { nom: 'trop-large', lettre: 'L1', scenarios: [PIC], editions: [{ fichier: PGC, de: '--c-nom: 210px; --c-n: 54px;', vers: '--c-nom: 832px; --c-n: 54px;' }] },
   { nom: 'etat-pas-colle', lettre: 'L1', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '.gf-t td.gf-etat { position: sticky; right: 0;', vers: '.gf-t td.gf-etat { position: relative; right: 0;' }] },
   { nom: 'heure-pas-collee', lettre: 'L1', scenarios: [S('pic', 'tablette-portrait')], editions: [{ fichier: PGC, de: '.gf-t td.gf-bloc { position: sticky; left: 0;', vers: '.gf-t td.gf-bloc { position: relative; left: 0;' }] },
-  { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 6;', vers: '  var GF_BAS = -400;' }] },
+  { nom: 'sous-l-ecran', lettre: 'L2', scenarios: [PIC], editions: [{ fichier: PG, de: '  var GF_BAS = 7;', vers: '  var GF_BAS = -400;' }] },
   { nom: 'hauteur-des-lignes', lettre: 'L2', gestes: true, editions: [{ fichier: PG, de: '    if (defile.style.height !== valeur) defile.style.height = valeur;', vers: '    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;' }] },
   { nom: 'tableau-au-telephone', lettre: 'L3', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-r { display: grid;', vers: '  .gf-r { display: table-row;' }] },
   { nom: 'bandeau-cache', lettre: 'J1', scenarios: [S('ferme', 'ordinateur', { sansGroupe: true })], editions: [{ fichier: PG, de: '    bandeau.hidden = !texte;', vers: '    bandeau.hidden = true;' }] },
-  { nom: 'detail-10px', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__d { font-size: 12px;', vers: '.gf-x__d { font-size: 10px;' }] },
+  { nom: 'detail-10px', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__d { font-size: 13px;', vers: '.gf-x__d { font-size: 10px;' }] },
   { nom: 'degrade', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-x { background-image: linear-gradient(#fff0, #0001); }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'couleur-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x { background: #8a2be2; }\n.gf-a[data-gf-titre="Arcades"] .gf-x { background: #2b8a3e; }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'ligne-sans-aria', lettre: 'A1', scenarios: [PIC], editions: [{ fichier: PG, de: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\" aria-label=\"' + gpEsc(gfAria(g, m)) + '\">'", vers: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\">'" }] },

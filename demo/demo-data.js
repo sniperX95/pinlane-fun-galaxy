@@ -123,21 +123,21 @@
   var capacite = PISTES * (FERMETURE - OUVERTURE);
   var occupation = Math.round((heuresPistes / capacite) * 100);
 
-  /* LE BANDEAU DU PRODUIT DEPUIS LE 2026-09-30 : l'occupation des pistes et
-     les reservations bowling avec leurs joueurs, le perimetre dans le
-     libelle. Le chiffre d'affaires en est sorti (il vit sur l'accueil du
+  /* LE BANDEAU DU PRODUIT DEPUIS LE 2026-09-30, sur la barre des plannings
+     depuis le 2026-11-03 : l'occupation et les reservations, le perimetre
+     dans la bascule. Le chiffre d'affaires en est sorti (il vit sur l'accueil du
      produit) et aucune case ne dit plus « aujourd'hui ». « Libres
      maintenant » n'est pas repris : il se lit a l'heure, et la journee de
      demonstration n'a pas d'heure. */
   var INDICATEURS = [
-    { cle: 'occupation', libelle: 'Occupation des pistes', valeur: occupation + '%', unite: 'sur la journée', fort: true },
-    { cle: 'reservations', libelle: 'Réservations bowling', valeur: String(DEMO.length), unite: joueurs + ' joueurs' },
+    { cle: 'occupation', libelle: 'Occupation', valeur: occupation + '%', unite: 'sur la journée', fort: true },
+    { cle: 'reservations', libelle: 'Réservations', valeur: String(DEMO.length), unite: joueurs + ' joueurs' },
   ];
 
   var ONGLETS = [
-    { cle: 'bowling', titre: 'Planning Bowling', sous: PISTES + ' pistes', compte: DEMO.length, actif: true },
-    { cle: 'laser', titre: 'Planning Laser Game', sous: '30 armes', compte: 12 },
-    { cle: 'toutes', titre: 'Planning global', sous: 'Le jour au complet', compte: DEMO.length + 12 },
+    { cle: 'bowling', titre: 'Bowling', sous: PISTES + ' pistes', compte: DEMO.length, actif: true },
+    { cle: 'laser', titre: 'Laser', sous: '30 armes', compte: 12 },
+    { cle: 'toutes', titre: 'Complet', sous: 'Le jour au complet', compte: DEMO.length + 12 },
   ];
 
   /* Les puces de la liste du produit depuis le 2026-10-27 : « Tout »,

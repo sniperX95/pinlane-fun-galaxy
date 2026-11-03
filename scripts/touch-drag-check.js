@@ -367,11 +367,15 @@ async function main() {
 
     // --- B : un doigt qui part tout de suite fait defiler --------------------
     console.log('\n[B] Bowling : un doigt qui part tout de suite d une carte fait defiler, ne deplace rien');
+    // (la boite du planning tient sous la barre et le doigt defile dedans : a 820 px de
+    // haut, la journee y tient presque. La hauteur d une tablette sous sa barre d adresse :
+    // la marge lue est celle du cadre sous le doigt, pas celle de la page derriere)
+    await page.setViewportSize({ width: TABLETTE.viewport.width, height: 680 });
     await ouvrirPlanning(page, 'bowling');
     await page.evaluate(() => { (document.scrollingElement || document.documentElement).scrollTop = 0; });
     const srcB = await centre(page, '.booking[data-booking-res-id="9001"]');
     const avantB = await releverDefilements(page, '.booking[data-booking-res-id="9001"]');
-    const margeB = Math.max(...avantB.map((d) => d.marge));
+    const margeB = (avantB[1] || avantB[0]).marge;
     if (ok(srcB && srcB.visible && margeB > 150, `MONTAGE : la carte 9001 est a l ecran et il reste de quoi defiler (${margeB} px)`)) {
       const patchsB = await page.evaluate(() => window.__QA_PATCHES__.length);
       // Un defilement LENT (plus long que l appui long) : un doigt qui part
@@ -384,6 +388,7 @@ async function main() {
       ok(ecartMax(avantB, apresB) >= 60, `le planning defile sous le doigt (${ecartMax(avantB, apresB)} px)`);
       ok(resB.patchs === 0 && resB.start === '14:00', `et rien n est deplace (${resB.patchs} modification(s), 9001 a ${resB.start})`);
     }
+    await page.setViewportSize(TABLETTE.viewport);
 
     // --- C : un tap ouvre toujours la reservation ---------------------------
     console.log('\n[C] Planning : un tap sur une carte ouvre toujours la reservation');

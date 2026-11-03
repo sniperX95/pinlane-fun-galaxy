@@ -306,7 +306,7 @@ async function scenarioR1(browser) {
     const { page } = m;
     await guetterLeRouge(page);
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await planPose(page);
     const a4 = await texte(page, '#rvCreer');
     await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
@@ -335,7 +335,7 @@ async function scenarioR1(browser) {
     // A LA MAIN, ELLE NE BOUGE PLUS.
     const m = await ouvrir(browser);
     const { page } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     await page.locator('#rvHeure-bowling').click();
     await page.waitForSelector('#rvHorloge .rv-hc');
@@ -361,7 +361,7 @@ async function scenarioR1(browser) {
     [1, 2, 5, 8].forEach((p, i) => {
       B.base.reservations.set(9700 + i, B.ligne(9700 + i, { start_time: '15:00', lanes: [p], date: '2027-01-16', duration: 1, total_duration: 1, center_id: 'libramont', name: `Autre poste ${p}`, status: 'pending' }));
     });
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await page.waitForFunction(() => /Créer · (?!15:00)\d\d:\d\d/.test((document.getElementById('rvCreer') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
     await planPose(page);
     const creer = await texte(page, '#rvCreer');
@@ -375,7 +375,7 @@ async function scenarioR1(browser) {
     // A 15:25, une heure payee ne perd pas 25 minutes pour etre « la premiere ».
     const m = await ouvrir(browser, { fixture: 'calme', heure: '15:25' });
     const { page } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     ok(/Créer · 15:30/.test(await texte(page, '#rvCreer')), '[R1] a 15:25 sur un jour calme, c est 15:30', await texte(page, '#rvCreer'));
     await page.evaluate(() => closeQuickBook());
@@ -463,7 +463,7 @@ async function scenarioR3(browser) {
     const late = await compteur(page, 'late');
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await planPose(page);
     await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
     await page.waitForTimeout(350);
@@ -520,7 +520,7 @@ async function scenarioR4(browser) {
     const late = await compteur(page, 'late');
     const onsite = await compteur(page, 'onsite');
     const n = { n: 0 };
-    await clic(n, page.getByRole('button', { name: 'Réservation rapide' }).first());
+    await clic(n, page.getByRole('button', { name: 'Réservation', exact: true }).first());
     await planPose(page);
     await clic(n, page.locator('#quickBookOverlay .rv-tailles button', { hasText: /^6$/ }));
     await page.waitForTimeout(350);
@@ -566,7 +566,7 @@ async function scenarioR4(browser) {
     const sansEncaisser = B.sessionDuRole('staff-bar', { nom: 'Accueil' });
     sansEncaisser.permissions = sansEncaisser.permissions.filter((p) => p !== 'payments.markPaid');
     serveur.changerSession(sansEncaisser);
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).click();
     await fenetreFermee(page);
@@ -580,7 +580,7 @@ async function scenarioR4(browser) {
     // UN REFUS DE CREATION N ENCAISSE RIEN ENSUITE.
     const m = await ouvrir(browser);
     const { page, journal } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     await page.evaluate(() => { window.__refuserCreation = true; });
     await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).click();
@@ -597,7 +597,7 @@ async function scenarioR4(browser) {
     // UN DOUBLE CLIC NE CREE PAS DEUX DOSSIERS.
     const m = await ouvrir(browser);
     const { page, journal } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     await page.locator('#rvPied button', { hasText: 'Créer · Carte' }).dblclick();
     await fenetreFermee(page);
@@ -609,7 +609,7 @@ async function scenarioR4(browser) {
     // OU LES BOUTONS SE MONTRENT.
     const m = await ouvrir(browser);
     const { page } = m;
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     ok(await page.locator('#rvPied .rv-creer-paye').count() === 2, '[R4] aujourd hui, les deux boutons', await texte(page, '#rvPied'));
     await page.locator('#rvPied .rv-boutons button', { hasText: 'Résa' }).click();
@@ -617,7 +617,7 @@ async function scenarioR4(browser) {
     await planPose(page);
     ok(await page.locator('#rvPied .rv-creer-paye').count() === 0, '[R4] pour plusieurs dossiers, pas de bouton : chacun se paie sur sa fiche', await texte(page, '#rvPied'));
     await page.evaluate(() => closeQuickBook());
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     await page.locator('#quickBookOverlay .rv-jour', { hasText: 'Demain' }).click();
     await page.waitForTimeout(350);
@@ -628,7 +628,7 @@ async function scenarioR4(browser) {
       const s = state.staffAuthSession;
       state.staffAuthSession = { ...s, role: { ...s.role, locked: false }, permissions: (s.permissions || []).filter((p) => p !== 'payments.markPaid') };
     });
-    await page.getByRole('button', { name: 'Réservation rapide' }).first().click();
+    await page.getByRole('button', { name: 'Réservation', exact: true }).first().click();
     await planPose(page);
     ok(await page.locator('#rvPied .rv-creer-paye').count() === 0, '[R4] sans le droit d encaisser, pas de bouton', await texte(page, '#rvPied'));
     await page.evaluate(() => closeQuickBook());
@@ -734,12 +734,13 @@ async function scenarioR8(browser) {
   const nGestes = { n: 0 };
   await page.keyboard.type('Dupont', { delay: 20 });
   nGestes.n += 1; // (le nom tape, d un trait)
-  await page.waitForFunction(() => /Autres dates/.test((document.querySelector('.gf-rien') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
+  // (le nom entier : sous charge, « Dupo » avait deja ses autres dates quand la mesure partait)
+  await page.waitForFunction(() => { const t = (document.querySelector('.gf-rien') || {}).textContent || ''; return /Autres dates/.test(t) && /« Dupont »/.test(t); }, null, { timeout: 6000 }).catch(() => {});
   const rien = await texte(page, '.gf-rien');
   const lignes = await page.locator('.gf-rien__l').count();
   ok(/Aucun groupe ne correspond à « Dupont » aujourd’hui/.test(rien), '[R8] le tableau le dit', rien);
   ok(lignes === 2 && /Dupont/.test(rien) && !/Durand/.test(rien) && !/du jour/.test(rien), '[R8] les autres dates se lisent sous le tableau : une ligne par reservation, pas celles du jour', `${lignes} ${rien}`);
-  ok(/sam\. 23 janv\. · 18:00/.test(rien) && /8 pers\./.test(rien), '[R8] avec la date, l heure, le nom et le nombre', rien);
+  ok(/sam\. 23 janv\. · 18:00/.test(rien) && /8 joueurs/.test(rien), '[R8] avec la date, l heure, le nom et le nombre', rien);
   ok(await page.evaluate(() => window.__lecturesAutresDates) === 1, '[R8] une seule lecture lourde, pour toutes les lettres', await page.evaluate(() => window.__lecturesAutresDates));
   // LA FICHE D UNE AUTRE DATE, SANS QUITTER LE JOUR.
   await clicN(nGestes, page.locator('.gf-rien__l').first());

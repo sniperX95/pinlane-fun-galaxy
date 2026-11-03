@@ -68,13 +68,13 @@ async function main() {
       assert(!overlayStillVisible, 'La connexion staff a echoue avec le code E2E fourni.');
       authenticated = true;
 
-      await page.locator('#staffView .kpi-grid .kpi').first().waitFor({ timeout: 15000 });
-      // Le bandeau du planning (2026-09-30) : l occupation et les reservations
-      // de la ressource, et le jour meme les pistes libres. Deux cases au
+      await page.locator('#planningBande .pb-k').first().waitFor({ timeout: 15000 });
+      // La ligne 2 de la barre (2026-11-03) : l occupation et les reservations
+      // de la ressource, et le jour meme ce qui est libre. Deux cases au
       // moins, chacune avec son libelle et sa valeur.
-      const cases = await page.$eval('#staffView .kpi-grid .kpi', (cards) => cards.map((card) => ({
-        label: ((card.querySelector('.label') || {}).textContent || '').trim(),
-        value: ((card.querySelector('.value') || {}).textContent || '').trim(),
+      const cases = await page.$$eval('#planningBande .pb-k', (cards) => cards.map((card) => ({
+        label: ((card.querySelector('.gf-c__l') || {}).textContent || '').trim(),
+        value: ((card.querySelector('.gf-c__v') || {}).textContent || '').trim(),
       })));
       assert(cases.length >= 2, 'Le bandeau du planning staff n est pas rendu.');
       assert(cases.every((c) => c.label && c.value), 'Une case du bandeau du planning n a pas de libelle ou de valeur.');

@@ -184,8 +184,8 @@ const APPAREILS = {
   telephone: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
 };
 
-async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false, mutation = null, dossiers = journee() } = {}) {
-  const ctx = await browser.newContext({ deviceScaleFactor: 1, ...APPAREILS[appareil] });
+async function ouvrir(browser, { appareil = 1440, theme = 'dark', plein = false, mutation = null, dossiers = journee(), hauteur = null } = {}) {
+  const ctx = await browser.newContext({ deviceScaleFactor: 1, ...APPAREILS[appareil], ...(hauteur ? { viewport: { ...APPAREILS[appareil].viewport, height: hauteur } } : {}) });
   const page = await ctx.newPage();
   page.setDefaultTimeout(8000);
   const erreurs = [];
@@ -443,7 +443,11 @@ function mesurerNomsDansLaPage() {
 async function scenariosNoms(browser, mutation = null) {
   for (const appareil of Object.keys(APPAREILS)) {
     for (const plein of [false, true]) {
-      const { ctx, page, erreurs } = await ouvrir(browser, { appareil, plein, mutation, dossiers: journeeNoms() });
+      // (la boite du planning a la hauteur de l ecran : a 1080 px, une heure fait 71 px et
+      // passe sur trois lignes, le laser descend au pied ([B] le lit). Le nom se bat pour
+      // sa place sur deux lignes : la hauteur d un 1080p dans une fenetre de navigateur)
+      const hauteur = appareil === '1920' ? 960 : null;
+      const { ctx, page, erreurs } = await ouvrir(browser, { appareil, plein, mutation, dossiers: journeeNoms(), hauteur });
       const ou = `${appareil}${plein ? ' plein ecran' : ''}`;
       try {
         await page.evaluate(() => document.fonts.ready);

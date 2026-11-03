@@ -1023,19 +1023,6 @@ body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; 
 /* ----------------------------------------------------------------------------
    3. STAFF HEAD + KPI + ONGLETS RESSOURCE
    -------------------------------------------------------------------------- */
-.staff-head:not(.hidden) {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-5);
-}
-
-.staff-head h1 { font-size: 20px; }
-.staff-head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-
-.staff-head-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 .date-nav {
   position: relative; /* contient l'input date invisible */
@@ -1245,12 +1232,6 @@ button.staff-date-label:focus-visible,
 .btn-new:hover { opacity: 0.88; }
 
 /* KPI strip */
-.kpi-grid:not(.hidden) {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-}
 
 .kpi {
   background: var(--surface);
@@ -1293,145 +1274,33 @@ button.staff-date-label:focus-visible,
    heure sous la ligne de flottaison. Ici ils deviennent UNE bande : un
    cadre, quatre cases separees d un filet, le chiffre sur la ligne de son
    complement. Meme information, moitie de hauteur. */
-#staffView .kpi-grid:not(.hidden) {
-  gap: 0;
-  margin-bottom: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  overflow: hidden;
-}
-#staffView .kpi-grid .kpi {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 8px;
-  min-width: 0;
-  padding: 10px var(--space-4) 12px;
-  border: 0;
-  border-radius: 0;
-  background: none;
-}
-#staffView .kpi-grid .kpi + .kpi { border-left: 1px solid var(--line); }
-#staffView .kpi-grid .kpi .label { flex: 1 0 100%; margin-bottom: 2px; }
-#staffView .kpi-grid .kpi .value { font-size: 20px; }
-#staffView .kpi-grid .kpi .hint,
-#staffView .kpi-grid .kpi .tag-ok { margin-top: 0; }
 /* Deux ou trois cases selon l onglet et le jour (renderKpis) : elles se
    partagent la ligne, au telephone aussi (les libelles passent a la ligne,
    aucune case ne reste seule sur une rangee). Vide avant le premier rendu,
    la bande ne dessine pas de cadre. */
-#staffView .kpi-grid:not(.hidden) { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-#staffView .kpi-grid:empty { display: none; }
-#staffView .kpi-grid .kpi .hint { color: var(--muted); }
 /* (sous 1 000 px, les chiffres gardent leur rangee, sous la date) */
-@media (max-width: 999px) {
-  #staffView .staff-head:not(.hidden) { flex-wrap: wrap; }
-  #staffView .staff-head > .kpi-grid { order: 3; flex: 1 0 100%; margin-bottom: 0; }
-}
-@media (max-width: 768px) {
-  #staffView .kpi-grid .kpi { padding: 8px 10px 10px; }
-  #staffView .kpi-grid .kpi .value { font-size: 17px; }
-}
 
 /* Onglets ressource (Bowling / Laser / Complet) */
-.staff-resource-tabs:not(.hidden) {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
 
 /* `:not(.hidden)` OBLIGATOIRE, meme piege que .table-box le 2026-08-14 : cette
    regle et `.hidden` ont la meme specificite (une classe chacune) et ce fichier
    est charge apres pinlane.css, donc `display: inline-flex` GAGNAIT. L'onglet
    Laser Game d'un centre sans arene recevait bien sa classe `hidden` et restait
    peint. Une classe posee ne prouve rien : seule la boite rendue tranche. */
-.staff-resource-tab:not(.hidden) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 48px;
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--muted);
-  font-family: var(--font-ui);
-  cursor: pointer;
-  position: relative;
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.staff-resource-tab:hover { border-color: var(--line-strong); color: var(--text); }
-
-.staff-resource-tab.active {
-  background: var(--subtle);
-  border-color: var(--line-strong);
-  color: var(--text);
-}
-
-.staff-resource-tab.active::before {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-
-.staff-resource-tab .main { display: block; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: inherit; }
 /* `--faint` mesurait 4,49:1 sur le fond de l'onglet ACTIF (`--subtle`) en
    thème clair : sous le seuil AA de 4,5:1, d'un centième. « 8 pistes » est ce
    qui dit de quelle ressource on parle ; il ne peut pas être le texte le moins
    lisible de l'écran. `--muted` monte à 5,13:1 sur `--subtle`, 5,74:1 sur
    `--surface` (onglet inactif) et 6,74:1 en thème sombre. */
-.staff-resource-tab .sub { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
 
 /* Alerte « hors planning » : ces reservations n'occupent ni piste ni zone laser,
    elles n'apparaissent donc sur AUCUNE grille. Le signal doit se voir depuis les
    deux autres onglets, sinon la reservation reste invisible jusqu'a l'arrivee. */
-.staff-resource-tab .sub.is-alert { color: var(--warning); font-weight: 600; }
-.staff-resource-tab.has-alert { border-color: var(--warning); }
-
-.staff-resource-tab > span:last-child:not(:first-child) {
-  display: inline-grid;
-  place-items: center;
-  min-width: 24px;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: var(--radius-full);
-  background: var(--subtle);
-  border: 1px solid var(--line);
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--muted);
-}
 
 /* `--accent` sur `--accent-soft` mesurait 4,00:1 en thème clair : la pastille
    PORTE UN NOMBRE, c'est-à-dire une donnée, pas une décoration. `--accent-strong`
    existe exactement pour ça (5,06:1 ici, 6,52:1 en sombre). C'est la même paire
    fautive que celle corrigée sur la fiche de réservation le 2026-08-13. */
-.staff-resource-tab.active > span:last-child:not(:first-child) {
-  background: var(--accent-soft);
-  border-color: transparent;
-  color: var(--accent-strong);
-}
-
-.resource-strip-actions {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.resource-strip-actions > span { display: inline-flex; align-items: center; gap: 6px; }
 
 .resource-filter-btn {
   display: inline-flex;
@@ -1608,20 +1477,7 @@ button.staff-date-label:focus-visible,
   --planning-hour-col: 76px;
 }
 
-.planning-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
 .planning-title-stack { display: flex; flex-direction: column; gap: 4px; }
-.planning-head h2 { display: flex; align-items: center; gap: 10px; font-size: 16px; }
-.planning-head h2 svg { color: var(--muted); }
 .planning-sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .planning-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
@@ -1700,8 +1556,6 @@ button.staff-date-label:focus-visible,
    Typographie agrandie pour une lecture nette à distance, en-têtes collants,
    bouton fermer explicite. S'applique aussi bien au bowling qu'au laser.
    -------------------------------------------------------------------------- */
-.planning-box.expanded .planning-head { padding: 16px 24px; }
-.planning-box.expanded .planning-head h2 { font-size: 19px; }
 .planning-box.expanded .planning-sub { font-size: 13px; }
 
 /* Bouton fermer bien visible en plein écran */
@@ -2349,6 +2203,15 @@ button.staff-date-label:focus-visible,
     max-height: 2.32em;
   }
 }
+/* LA PUCE DE RETARD PREND SA LARGEUR AU NOM (2026-11-03). Le seuil ci-dessus suppose
+   que le nom a toute la tete ; a cote de la puce (+15 et son icone, ~46 px) le nom le
+   plus long demande trois lignes jusqu a 173,5 px de piste, le seuil ou le laser cede
+   deja a cote d elle. En dessous, il reste sur une ligne avec son ellipse. (Depuis que
+   la boite a la hauteur de l ecran, plus de cartes passent sur trois lignes : run-visual-qa
+   l a vu, « Famille Lambert #9002 » sur 28 px pour 42.) */
+@container piste (min-width: 10.2em) and (max-width: 173.5px) {
+  .booking.is-delayed.dens-lg .booking-name { display: block; white-space: nowrap; max-height: none; }
+}
 
 /* L ETIQUETTE D ACTIVITE : ENTIERE OU ABSENTE, JAMAIS UN MORCEAU.
    `text-overflow: ellipsis` rendait « Bowl… » a partir de « Bowling », un mot
@@ -2803,6 +2666,15 @@ button.staff-date-label:focus-visible,
    lisent dans la même unité, sans rien changer à ce qui est rendu. */
 @container piste (max-width: 107px) {
   .booking .activity-pill { display: none; }
+}
+/* UNE BOITE DE BADGE VIDE NE GARDE PAS SA GOUTTIERE (2026-11-03). Sur une carte qui
+   porte au pied sa progression ET la boite du badge laser, cette boite tombe a 0 px
+   sur une piste etroite, mais sa gouttiere de 6 px restait : le pied debordait d un
+   pixel a 109 px de piste (1024 px, menu replie ; effectif « 34 j · 1h30 » 48,8 px,
+   pastille 26 px). Sous 117 px, l effectif le plus long (trois chiffres) ne laisse
+   plus de place au pictogramme : la boite s efface, le reste du pied ne bouge pas. */
+@container piste (max-width: 117px) {
+  .booking.a-progression .bk-reste { display: none; }
 }
 /* LE NOM D'ABORD SUR UNE CARTE DE DEUX LIGNES ET PLUS (2026-10-29, après les
    noms coupés du laser). « Le nom ne part jamais » ne valait que sur la carte
@@ -9290,14 +9162,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-panel-sub { margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.4; max-width: 72ch; }
 .pv2-camp-card-sub { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin: -2px 0 2px; }
 
-@media (prefers-reduced-motion: reduce) {
-}
-
 @media (max-width: 900px) {
   .pv2-camp-board { grid-template-columns: minmax(0, 1fr); }
-}
-
-@media (max-width: 560px) {
 }
 
 /* ----------------------------------------------------------------------------
@@ -11528,6 +11394,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 @media (min-width: 901px) and (max-width: 1100px) {
   .qb-modal.rv .rv-jour small { display: none; }
 }
+/* (« Réservation » est plus long que « Réserver » : les jours gardent leur largeur) */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .qb-modal.rv .rv-tete { padding-left: 14px; }
+  .qb-modal.rv .rv-tete h3 { margin-right: 4px; font-size: 17px; }
+}
 /* TABLETTE EN PORTRAIT (701 a 900 px) : la colonne du telephone, avec ce que
    la largeur garde : le billet (heures et fil du temps) et les departs rapides. */
 @media (min-width: 701px) and (max-width: 900px) {
@@ -12456,7 +12327,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    -------------------------------------------------------------------------- */
 @media (max-width: 1280px) {
   .dash-grid-bottom { grid-template-columns: 1fr 1fr; }
-  .pv2-stats, .kpi-grid:not(.hidden), .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pv2-stats, .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pv2-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .groups-main-layout { grid-template-columns: 1fr; }
   .ops-cockpit-body, .ai-org-layout, .ops-sim-scoreboard { grid-template-columns: 1fr; }
@@ -12579,9 +12450,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .fgx-menu-popover, body.staff-menu-collapsed .fgx-menu-popover { left: 10px; right: 10px; top: 60px; width: auto; }
 
   .staff-wrap { padding: 14px 12px 32px; }
-  .admin-shell { padding: 16px 12px 40px; }
-
-  .kpi-grid:not(.hidden), .dash-kpis, .dash-grid-bottom,
+  .admin-shell { padding: 16px 12px 40px; } .dash-kpis, .dash-grid-bottom,
   .pv2-pipeline, .edit-summary,
   .qb-row.three, .qb-snapshot-row, .qb-type-row, .edit-grid-2,
   .dashboard-detail-summary { grid-template-columns: 1fr; }
@@ -12656,10 +12525,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .search-wrap input, .date-nav, .btn-new, .dash-new-btn, .admin-date-nav, .staff-today-btn { height: 44px; }
   .date-nav button { min-width: 44px; }
   .date-nav button.staff-date-label { min-width: auto; }
-  .staff-cal-day, .staff-cal-nav, .staff-cal-today-btn { min-height: 44px; }
-
-  .staff-head:not(.hidden), .dash-hero, .pv2-bar, .admin-hero { align-items: flex-start; flex-direction: column; }
-  .resource-strip-actions { margin-left: 0; }
+  .staff-cal-day, .staff-cal-nav, .staff-cal-today-btn { min-height: 44px; } .dash-hero, .pv2-bar, .admin-hero { align-items: flex-start; flex-direction: column; }
   .laser-pass-queue { grid-template-columns: 1fr; }
   .laser-agenda-header, .laser-agenda-row { grid-template-columns: 72px minmax(420px, 1fr) 90px; }
 
@@ -18810,7 +18676,6 @@ button.pv2-cal-cell:focus-visible {
    Une seule regle, sans condition d etat : titre a gauche, bascule au milieu,
    recherche et actions a droite, sur UNE ligne. Hors plein ecran la bascule est
    masquee : la colonne du milieu vaut alors zero et rien ne bouge. */
-.planning-head,
 .table-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -18818,16 +18683,12 @@ button.pv2-cal-cell:focus-visible {
   gap: var(--space-3);
   flex-wrap: nowrap;
 }
-.planning-head > *,
 .table-head > * { grid-row: 1; }
-.planning-head > *:first-child,
 .table-head > *:first-child { grid-column: 1; justify-self: start; }
-.planning-head > .fs-switch,
 .table-head > .fs-switch { grid-column: 2; justify-self: center; }
 /* Tout le reste file a DROITE, dans la meme cellule, sans jamais s empiler :
    c est l empilement qui faisait passer « Reduire » sous la recherche et
    gonflait la tete de 69 a 115 px. */
-.planning-head > *:not(:first-child):not(.fs-switch),
 .table-head > *:not(:first-child):not(.fs-switch) {
   grid-column: 3;
   justify-self: end;
@@ -18860,8 +18721,6 @@ button.pv2-cal-cell:focus-visible {
 }
 .table-head .table-actions .planning-toggle { order: -1; flex: none; }
 .table-head .table-actions .search-wrap { min-width: 0; flex: 0 1 auto; }
-
-.planning-head .planning-actions,.planning-head .planning-actions,.planning-head .planning-actions,
 .table-head .table-actions { flex-wrap: nowrap; }
 /* AU TELEPHONE, DEUX LIGNES. « Tout sur une ligne » est la regle du bureau et
    du plein ecran : a 390 px, recherche, menu, legende et « Agrandir »
@@ -18870,16 +18729,10 @@ button.pv2-cal-cell:focus-visible {
    champ de recherche sorti du cadre a gauche). Le titre garde sa ligne, les
    actions passent dessous et reviennent a la ligne s il le faut. */
 @media (max-width: 768px) {
-  .planning-head,
   .table-head { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-2); }
-  .planning-head > *:not(:first-child):not(.fs-switch),
   .table-head > *:not(:first-child):not(.fs-switch) { grid-column: 1; grid-row: 2; justify-self: stretch; }
-  .planning-head > .fs-switch,
   .table-head > .fs-switch { grid-column: 1; grid-row: 3; justify-self: start; }
-  .planning-head .planning-actions,
   .table-head .table-actions { flex-wrap: wrap; gap: var(--space-2); }
-  .planning-head .planning-search-inline { flex: 1 1 140px; }
-  .planning-head .planning-search-inline input { width: 100%; }
 }
 .planning-box.expanded:not(.hidden) .fs-switch,
 .table-box.expanded:not(.hidden) .fs-switch {
@@ -19915,7 +19768,6 @@ body:is(.staff-mode, .admin-mode) .ops-sidebar { background: var(--surface); bor
 body:is(.staff-mode, .admin-mode) :is(.fgx-menu-item, .fgx-menu-subitem) { min-height: 40px; border-radius: 8px; }
 body:is(.staff-mode, .admin-mode) :is(.fgx-menu-item, .fgx-menu-subitem).active { background: var(--subtle); color: var(--text); }
 body:is(.staff-mode, .admin-mode) :is(.fgx-menu-item, .fgx-menu-subitem).active::before { background: var(--text); }
-body:is(.staff-mode, .admin-mode) .staff-head h1 { font-size: 24px; letter-spacing: -.025em; font-weight: 650; }
 body:is(.staff-mode, .admin-mode) :is(.pv2-panel, .utility-card, .establishment-card) { border-radius: 12px; }
 
 /* La fiche : identite, faits utiles, navigation. Un seul panneau eleve,
@@ -20275,25 +20127,6 @@ body:is(.staff-mode, .admin-mode) .fs-switch-btn { color: var(--muted); font-wei
   #staffTableBox .status-group { flex-wrap: nowrap; }
   #staffTableBox .status-chip { flex: none; }
 }
-@media (max-width: 600px) {
-  body.staff-mode .staff-resource-tabs:not(.hidden) {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-  body.staff-mode .staff-resource-tab:not(.hidden) {
-    min-width: 0;
-    padding: 8px 10px;
-    gap: 6px;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: space-between;
-    text-align: left;
-  }
-  body.staff-mode .staff-resource-tab .main { font-size: 12.5px; line-height: 1.2; white-space: normal; }
-  body.staff-mode .staff-resource-tab .sub:not(.is-alert) { display: none; }
-  body.staff-mode .staff-resource-tabs > .resource-strip-actions { grid-column: 1 / -1; justify-self: end; }
-}
 
 /* La sortie du plein ecran garde son accent, mais avec le jeton du bouton
    principal : blanc sur #74b6ff ne faisait que 2,1:1 en sombre. */
@@ -20301,12 +20134,6 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   background: var(--console-selected);
   border-color: var(--console-selected);
   color: var(--console-selected-text);
-}
-@media (max-width: 600px) {
-  /* Le compteur en haut a droite de l onglet, a cote du nom : en bas a gauche
-     il flottait comme un bouton orphelin. */
-  body.staff-mode .staff-resource-tab:not(.hidden) { flex-direction: row; align-items: flex-start; }
-  body.staff-mode .staff-resource-tab > span:first-child { min-width: 0; flex: 1 1 auto; }
 }
 @media (max-width: 768px) {
   /* « Agrandir » et la recherche sur la meme ligne : seul sur sa ligne, le
@@ -20963,33 +20790,37 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
    pour l encre dans les deux themes : c est lui que les gates mesurent.
    Contrastes au pire (haut ou bas du fond), bleu / ambre / vert :
    clair, nom 7,5 / 7,1 / 7,1:1, chiffres 5,3 / 5,4 / 5,5:1, duree ambre
-   4,6 / 5,0 / 4,9:1 ; sombre, nom 11:1 et plus, chiffres 7,4:1 et plus. */
-.booking {
+   4,6 / 5,0 / 4,9:1 ; sombre, nom 11:1 et plus, chiffres 7,4:1 et plus.
+   LA BARRE CLAIRE EST CELLE DU GRAND TABLEAU (2026-11-03) : la legende de la barre
+   reprend ces couleurs, et ses pastilles sur la page restaient a 2,0:1 (ambre #f5a623)
+   et 2,3:1 (vert #22c55e). #c47a06 et #1f9d55 tiennent 3:1 sur la page et sur la
+   teinte de la carte (WCAG 1.4.11), et les trois plannings parlent le meme ambre. */
+.booking, .pb-leg--bowling .gf-leg {
   --bk-haut: #d9eafd; --bk-bas: #ebf4fe; --bk-cadre: #aecbed;
   --bk-barre: #0070f3; --bk-encre: #004597; --bk-encre-2: #005ac2;
   --bk-pastille: #b9d6fb;
 }
-.booking.arr {
+.booking.arr, .pb-leg--bowling .gf-leg.t-arr {
   --bk-haut: #fef2de; --bk-bas: #fef8ed; --bk-cadre: #eed9b7;
-  --bk-barre: #f5a623; --bk-encre: #6e4b10; --bk-encre-2: #875b13;
+  --bk-barre: #c47a06; --bk-encre: #6e4b10; --bk-encre-2: #875b13;
   --bk-pastille: #fbdcae;
 }
-.booking.paid {
+.booking.paid, .pb-leg--bowling .gf-leg.t-paid {
   --bk-haut: #def6e7; --bk-bas: #edfaf2; --bk-cadre: #b7e1c6;
-  --bk-barre: #22c55e; --bk-encre: #0b5c2d; --bk-encre-2: #0e6f36;
+  --bk-barre: #1f9d55; --bk-encre: #0b5c2d; --bk-encre-2: #0e6f36;
   --bk-pastille: #b6eac9;
 }
-[data-theme='dark'] .booking {
+[data-theme='dark'] .booking, [data-theme='dark'] .pb-leg--bowling .gf-leg {
   --bk-haut: #142a45; --bk-bas: #0f1c2a; --bk-cadre: #2a4a70;
   --bk-barre: #3291ff; --bk-encre: #deedff; --bk-encre-2: #84bdff;
   --bk-pastille: #1f4470;
 }
-[data-theme='dark'] .booking.arr {
+[data-theme='dark'] .booking.arr, [data-theme='dark'] .pb-leg--bowling .gf-leg.t-arr {
   --bk-haut: #422f10; --bk-bas: #291e0d; --bk-cadre: #6c5225;
   --bk-barre: #f5a623; --bk-encre: #fdefd7; --bk-encre-2: #f8bf61;
   --bk-pastille: #6a4a14;
 }
-[data-theme='dark'] .booking.paid {
+[data-theme='dark'] .booking.paid, [data-theme='dark'] .pb-leg--bowling .gf-leg.t-paid {
   --bk-haut: #163b29; --bk-bas: #11251b; --bk-cadre: #2e6249;
   --bk-barre: #3dd68c; --bk-encre: #e0f8ed; --bk-encre-2: #7fe4b3;
   --bk-pastille: #1f5c3f;
@@ -21187,18 +21018,18 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
    assez profonds pour 3:1 contre le fond de la rangee ; le second ton (is-alt, un
    voisin dans le meme etat) s eloigne du fond. --lp-sur est l encre posee sur
    la teinte (le chiffre d une partie a placer), 4,5:1 au moins. */
-.lp .st-conf, .lp-fantome.st-conf { --lp-c: #0070f3; --lp-sur: #fff; }
+.lp .st-conf, .lp-fantome.st-conf, .pb-leg--laser .gf-leg { --lp-c: #0070f3; --lp-sur: #fff; }
 .lp .st-conf.is-alt { --lp-c: #0a4fb0; }
-.lp .st-arr, .lp-fantome.st-arr { --lp-c: #b86f00; --lp-sur: #1f1300; }
+.lp .st-arr, .lp-fantome.st-arr, .pb-leg--laser .gf-leg.t-arr { --lp-c: #b86f00; --lp-sur: #1f1300; }
 .lp .st-arr.is-alt { --lp-c: #8a5300; --lp-sur: #fff; }
-.lp .st-paid, .lp-fantome.st-paid { --lp-c: #1f9d55; --lp-sur: #04210f; }
+.lp .st-paid, .lp-fantome.st-paid, .pb-leg--laser .gf-leg.t-paid { --lp-c: #1f9d55; --lp-sur: #04210f; }
 .lp .st-paid.is-alt { --lp-c: #12703b; --lp-sur: #fff; }
 .lp .st-absent, .lp-fantome.st-absent { --lp-c: #6b7280; --lp-sur: #fff; }
-[data-theme='dark'] :is(.lp .st-conf, .lp-fantome.st-conf) { --lp-c: #3291ff; --lp-sur: #031027; }
+[data-theme='dark'] :is(.lp .st-conf, .lp-fantome.st-conf, .pb-leg--laser .gf-leg) { --lp-c: #3291ff; --lp-sur: #031027; }
 [data-theme='dark'] .lp .st-conf.is-alt { --lp-c: #8cbcff; }
-[data-theme='dark'] :is(.lp .st-arr, .lp-fantome.st-arr) { --lp-c: #f5a623; --lp-sur: #1f1300; }
+[data-theme='dark'] :is(.lp .st-arr, .lp-fantome.st-arr, .pb-leg--laser .gf-leg.t-arr) { --lp-c: #f5a623; --lp-sur: #1f1300; }
 [data-theme='dark'] .lp .st-arr.is-alt { --lp-c: #f8c977; }
-[data-theme='dark'] :is(.lp .st-paid, .lp-fantome.st-paid) { --lp-c: #3dd68c; --lp-sur: #04210f; }
+[data-theme='dark'] :is(.lp .st-paid, .lp-fantome.st-paid, .pb-leg--laser .gf-leg.t-paid) { --lp-c: #3dd68c; --lp-sur: #04210f; }
 [data-theme='dark'] .lp .st-paid.is-alt { --lp-c: #8be6b9; }
 [data-theme='dark'] :is(.lp .st-absent, .lp-fantome.st-absent) { --lp-c: #6b7280; --lp-sur: #fff; }
 .lp-lbl { font-size: 13px; font-weight: 600; color: var(--lp-muted); }
@@ -21504,33 +21335,12 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
 /* (une classe posee par renderStaffShell, pas :has() : avec :has(), chaque
    noeud ecrit dans la console recalculait le style de toute la console, les
    7 700 elements du planning. Doublee pour garder la specificite d avant.) */
-@media (min-width: 1000px) {
-  /* LA LIGNE DE LA DATE PORTE LES CHIFFRES DU JOUR (2026-11-02, Movsar : « tout
-     mieux voir ») : le titre redit le menu et la date, il reste pour les lecteurs
-     d ecran ; une rangee de moins au-dessus du planning. */
-  #staffView.avec-onglets.avec-onglets .staff-head { margin-bottom: 8px; flex-wrap: nowrap; align-items: center; }
-  #staffView.avec-onglets.avec-onglets .staff-head > .staff-head-titre { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #staffView.avec-onglets.avec-onglets .staff-head-actions { flex: none; flex-wrap: nowrap; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid:not(.hidden) { display: flex; flex: 1 1 0; min-width: 0; margin: 0 12px 0 0; border: 0; border-radius: 0; background: none; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi { flex: 0 1 auto; min-height: 0; padding: 0 12px; flex-wrap: nowrap; align-items: baseline; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi:first-child { padding-left: 0; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .label { flex: none; margin: 0; white-space: nowrap; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .value { flex: none; font-size: 16px; }
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-}
 /* (a 1 280 px, menu ouvert, trois cases entieres se marchaient dessus : le detail s en va
    d abord, puis le libelle garde son premier mot, l onglet dit le reste) */
-@media (min-width: 1000px) and (max-width: 1540px) {
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .hint { display: none; }
-}
-@media (min-width: 1000px) and (max-width: 1400px) {
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi .kpi-suite { display: none; }
-}
 /* (sur une tablette couchee, menu ouvert, trois cases ne tiennent toujours pas a cote de
    la date : « Réservations » redit le nombre de son onglet, juste dessous, et le bouton
    perd son second mot) */
 @media (min-width: 1000px) and (max-width: 1256px) {
-  #staffView.avec-onglets.avec-onglets .kpi-grid .kpi[data-kpi="reservations"]:not(:last-child) { display: none; }
   #staffView.avec-onglets.avec-onglets .btn-new-suite { display: none; }
 }
 @media (min-width: 1101px) {
@@ -21541,8 +21351,6 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   #staffView.avec-onglets.avec-onglets .table-box:not(.expanded) .table-actions .planning-toggle { order: 9; }
   #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
   #staffView.avec-onglets.avec-onglets :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) h2 { margin: 0; }
-  #staffView.avec-onglets.avec-onglets .staff-resource-tabs { margin-bottom: 8px; }
-  #staffView.avec-onglets.avec-onglets .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
   /* La bande sur une ligne : le prochain depart et ses groupes prennent ce
      que la partie en jeu et le bouton des pas venus laissent ; ses groupes se
      partagent la place (le nom s abrege, la bulle le donne entier) et, au-dela,

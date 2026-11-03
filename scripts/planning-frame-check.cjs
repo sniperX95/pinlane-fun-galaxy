@@ -1,11 +1,10 @@
 'use strict';
 // Fixture-only stable frame across Bowling and Laser, including return
 // transitions and visible toolbar controls. No production API access.
-// « Toutes » (the global planning, since 2026-11-02 a wall board edge to edge,
-// body.gf-large) has its own frame: its head band replaces the title, the KPI
-// and the tabs, the menu folds, the search box is in the page head. It is not
-// compared to the two others any more: it must hold still on its own, coming
-// back to it, under a counter filter, under a typed name.
+// Since 2026-11-03 the three plannings (Bowling, Laser and « Toutes », the wall
+// board) share one bar, #planningBarre: it must not move between them, nor coming
+// back, nor under a counter filter, nor under a typed name, nor in fullscreen.
+// What sits under the bar is compared per surface.
 // --contre-preuves: a broken frame, served from memory, must turn red.
 const fs=require('fs'),path=require('path'),Module=require('module');
 process.env.PINLANE_RESERVER_PORT=process.env.PINLANE_FRAME_PORT||'5183';
@@ -21,7 +20,7 @@ const MUTATIONS=[
   // The sheet takes the height of its rows: a filter shrinks it, the list below jumps.
   {nom:'hauteur-des-lignes',fichier:GF_JS,de:'    if (defile.style.height !== valeur) defile.style.height = valeur;',vers:'    if (defile.style.maxHeight !== valeur) defile.style.maxHeight = valeur;',attendu:/"key":"tableau","prop":"height"/},
   // The head band grows under a filter: everything below it moves.
-  {nom:'bandeau-qui-grandit',fichier:GF_CSS,de:'button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); }',vers:'button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); padding-block: 22px; }',attendu:/"key":"tete","prop":"height"/},
+  {nom:'bandeau-qui-grandit',fichier:GF_CSS,de:'button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); }',vers:'button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); }\n.pb-bande:has(.gf-c.is-on) { height: 60px; }',attendu:/"key":"kpi","prop":"height"/},
 ];
 function comparer(capturesDuCadre,cles,variations){
   const [initial,...suite]=capturesDuCadre;
@@ -58,32 +57,33 @@ async function jouer(browser,{datasets,viewports,mutation}){
         const metrics=await page.evaluate(({surface})=>{
           const box=document.querySelector(surface==='bowling'?'#planningBox':surface==='laser'?'#laserPlanningBox':'#globalPlanningBox');
           const bounds=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,font:s.fontSize,line:s.lineHeight,visible:s.display!=='none'&&r.width>0&&r.height>0};};
-          const head=box.querySelector('.planning-head,.table-head');
-          const title=head.querySelector('h2'),date=head.querySelector('.staff-date-widget');
+          const head=document.getElementById('planningBarre'),bande=document.getElementById('planningBande');
+          const title=head.querySelector('h1'),date=head.querySelector('.pb-date');
           const range=document.createRange();range.selectNodeContents(title);
           const titleContent=range.getBoundingClientRect(),dr=date?.getBoundingClientRect();
-          // (the title of Toutes is masked on purpose in fullscreen, clip-path on a 1 px box:
-          // it stays for screen readers, its text range overflows a box nobody sees)
+          // (the title of the bar is masked on purpose, clip-path on a 1 px box: it stays for
+          // screen readers, its text range overflows a box nobody sees)
           const titleBox=title.getBoundingClientRect(),titleMasked=getComputedStyle(title).clipPath!=='none'&&titleBox.width<=1&&titleBox.height<=1;
           const titleCollision=!titleMasked&&!!dr&&titleContent.right>dr.left-4&&titleContent.top<dr.bottom&&titleContent.bottom>dr.top;
           const sw=head.querySelector('.fs-switch')?.getBoundingClientRect();
           const dateSwitchCollision=!!dr&&!!sw&&sw.width>0&&dr.left<sw.right&&dr.right>sw.left&&dr.top<sw.bottom&&dr.bottom>sw.top;
-          // (the head of Toutes is hidden outside fullscreen: its doors are in the band)
-          const commandes=[...head.querySelectorAll('button,input'),...(surface==='all'?box.querySelectorAll('.gf-tete button'):[])];
+          const commandes=[...head.querySelectorAll('button,input')];
           const buttons=commandes.filter(e=>bounds(e).visible).map(e=>({text:e.textContent.trim()||e.getAttribute('placeholder'),...bounds(e),unobscured:(()=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(e===hit||e.contains(hit));})()}));
-          return{surface,titleCollision,dateSwitchCollision,titleContent:{left:titleContent.left,right:titleContent.right,top:titleContent.top,bottom:titleContent.bottom},staffHead:bounds(document.querySelector('.staff-head')),title:bounds(document.querySelector('.staff-head h1')),date:bounds(document.querySelector('#staffDateLabel')),dateNav:bounds(document.querySelector('.staff-date-widget')),kpi:bounds(document.querySelector('.kpi-grid')),kpiLabel:bounds(document.querySelector('.kpi-grid .label')),kpiValue:bounds(document.querySelector('.kpi-grid .value')),tabLabel:bounds(document.querySelector('.staff-resource-tab .main')),tabs:bounds(document.querySelector('.staff-resource-tabs')),box:bounds(box),head:bounds(head),headTitle:bounds(head.querySelector('h2')),headDate:bounds(head.querySelector('.staff-date-widget')),switch:bounds(head.querySelector('.fs-switch')),tete:bounds(box.querySelector('.gf-tete')),recherche:bounds(document.getElementById('gfRecherche')),tableau:bounds(box.querySelector('.gf-defile')),gf:{large:document.body.classList.contains('gf-large'),lignes:box.querySelectorAll('.gf-r').length,filtre:box.querySelectorAll('.gf-c.is-on').length,rien:box.querySelectorAll('.gf-rien').length},buttons,viewport:{width:innerWidth,height:innerHeight}};
+          return{surface,titleCollision,dateSwitchCollision,titleContent:{left:titleContent.left,right:titleContent.right,top:titleContent.top,bottom:titleContent.bottom},head:bounds(head),title:bounds(title),date:bounds(document.querySelector('#staffDateShort')),dateNav:bounds(date),kpi:bounds(bande),kpiLabel:bounds(bande.querySelector('.pb-k .gf-c__l')),kpiValue:bounds(bande.querySelector('.pb-k .gf-c__v')),tabLabel:bounds(head.querySelector('.pb-seg__b')),tabs:bounds(head.querySelector('.pb-seg')),box:bounds(box),headDate:bounds(date),switch:null,recherche:bounds(document.getElementById('gfRecherche')),tableau:bounds(box.querySelector('.gf-defile')),gf:{large:document.body.classList.contains('gf-large'),lignes:box.querySelectorAll('.gf-r').length,filtre:bande.querySelectorAll('.gf-c.is-on').length,rien:box.querySelectorAll('.gf-rien').length},buttons,viewport:{width:innerWidth,height:innerHeight}};
         },{surface});
         const name=`${viewport.width}x${viewport.height}-${dataset}-${mode}-${surface}${retour?'-return':''}${etat?`-${etat}`:''}-${i}`;
         await page.screenshot({path:path.join(OUT,`${name}.png`)});captures.push({name,etat,metrics});
       }
-      // The common frame: Bowling, Laser and the way back.
+      // The one bar: Bowling, Laser, Toutes and the way back.
       const variations=[];
-      comparer(captures.filter(c=>c.metrics.surface!=='all'),mode==='window'?['staffHead','title','date','dateNav','kpi','kpiLabel','kpiValue','tabLabel','tabs','box']:['box','head','headTitle','headDate','switch'],variations);
-      // The frame of Toutes, against itself.
+      comparer(captures,['head','title','date','dateNav','kpi','tabLabel','tabs','recherche'],variations);
+      // What only Bowling and Laser show: their figures, their boxes.
+      comparer(captures.filter(c=>c.metrics.surface!=='all'),['kpiLabel','kpiValue','box'],variations);
+      // Under the bar, Toutes against itself.
       const toutes=captures.filter(c=>c.metrics.surface==='all');
-      comparer(toutes,mode==='window'?['staffHead','dateNav','box','tete','recherche','tableau']:['box','head','headDate','switch','tete','tableau'],variations);
+      comparer(toutes,['box','tableau'],variations);
       // The set-up: a gate that does not reach the board must not pass.
-      const montage=toutes.filter(c=>!c.metrics.gf.large||!c.metrics.tete?.visible).map(c=>c.name);
+      const montage=toutes.filter(c=>!c.metrics.gf.large||!c.metrics.kpi?.visible).map(c=>c.name);
       if(dataset==='busy'){
         if(!toutes[0].metrics.gf.lignes)montage.push('no row on the board');
         if(!toutes.find(c=>c.etat==='filtre').metrics.gf.filtre)montage.push('counter filter not on');

@@ -2079,23 +2079,34 @@ function envoyerModificationReservation(avant, appliquer, overrides = {}) {
     const apres = appliquer(base);
     // Des options qui dependent du dossier (le nombre de pistes d une partie
     // laser) se recalculent sur la version envoyee, pas sur celle d avant.
-    const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides);
-    // La fiche et Modifier n ont pas encore de champ pour la raison d un prix :
-    // la leur part d office, et le serveur ne la lit que s il y a un ecart.
-    const envoyer = (version, reservation) => apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        ...buildReservationApiPayload(reservation, optionsPour(reservation)),
-        prixRaison: RAISON_PRIX_PAR_DEFAUT,
+    const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides) || {};
+    // LE PRIX QUI SUIT (2026-11-03, `prixSuivi`) : personne n a tape de prix, il
+    // suit le contenu qu on vient de changer. Ni lui ni sa raison ne partent :
+    // le serveur le pose sur sa reference (prixQuiSuit, lib/droits-reservation).
+    // L estimation de l ecran qui ne tombait pas pile sur la base du moteur
+    // s ecrivait en « Prix revu au comptoir », et un role plafonne etait refuse.
+    // Un prix tape part, avec la raison d office : la fiche et Modifier n ont pas
+    // encore de champ pour elle, et le serveur ne la lit que s il y a un ecart.
+    const prixSuivi = optionsPour(apres).prixSuivi === true;
+    const envoyer = (version, reservation) => {
+      const options = { ...optionsPour(reservation) };
+      delete options.prixSuivi;
+      const corps = {
+        ...buildReservationApiPayload(reservation, options),
+        ...(prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),
         ...(version ? { baseUpdatedAt: version } : {})
-      })
-    });
+      };
+      if (prixSuivi) delete corps.price;
+      return apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify(corps) });
+    };
     try {
       return await envoyer(base.updatedAt, apres);
     } catch (error) {
       const courante = error && error.status === 409 && error.payload ? error.payload.reservation : null;
       if (!courante) throw error;
-      const miens = champsReservationModifies(base, apres);
+      // Un prix qui suit n est pas impose : le serveur le repose sur la version
+      // courante, ajustement d un collegue compris.
+      const miens = champsReservationModifies(base, apres).filter((champ) => !(prixSuivi && champ === 'price'));
       const leurs = champsReservationModifies(base, courante);
       const rejouee = appliquer(courante);
       // Dispute : l action pose la MEME valeur quelle que soit la version (elle
@@ -28584,13 +28595,24 @@ function majEditPrixEstime() {
 // SEULEMENT SI L ESTIMATION CHIFFRE AU MOINS UNE LIGNE (un « 0 EUR » partiel
 // ferait facturer zero). Sinon le prix du dossier, plus ou moins ce que les
 // extras ont bouge : un prix d ami survit a ses extras (avecSupplements).
+// L AJUSTEMENT EN PLACE SURVIT AUSSI AU NOUVEAU TARIF (2026-11-03) : c est le
+// prix que le serveur pose quand le contenu change sans prix tape
+// (prixQuiSuit) ; le champ annonce celui-la, jamais sous zero.
 function prixSuiviEdition(estime) {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return 0;
-  if (estime && estime.utilisable && editionChangeLePrix()) return estime.total;
+  if (estime && estime.utilisable && editionChangeLePrix()) return Math.max(0, Math.round((estime.total + ajustementGarde(r)) * 100) / 100);
   const ecartExtras = editExtrasAChange() ? sumExtras(extrasCourantsEdition()) - sumExtras(r.extras || []) : 0;
   return Math.round(((Number(r.price) || 0) + ecartExtras) * 100) / 100;
+}
+
+// L ecart du dossier sur sa reference ECRITE (base + extras), celui que le
+// serveur garde (prixQuiSuit) : sans base ecrite, rien ne dit ce qui etait
+// ajuste, aucun ecart ne se reporte.
+function ajustementGarde(r) {
+  const etat = getReservationPriceState(r);
+  return etat.aReference ? etat.ecart : 0;
 }
 
 // La phrase sous le prix (textePrixEdition) et « Recalculer » suivent la
@@ -28608,7 +28630,7 @@ function getEditPriceValue() {
   const e=state.editState;
   if (e && !e.prixFige && editionChangeLePrix() && (getEditProgramItems() || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId)) {
     const quote=getEditPrixEstime();
-    if (quote?.utilisable && quote.complet) return quote.total;
+    if (quote?.utilisable && quote.complet) return prixSuiviEdition(quote);
   }
   const brut = String((state.editState && state.editState.price) ?? '').trim().replace(',', '.');
   if (brut === '') return null;
@@ -28866,7 +28888,13 @@ function textePrixEdition(r, estime = getEditPrixEstime()) {
   const phrase = (texte) => [texte, surPlace].filter(Boolean).join(' ');
   if (e.prixFige) return phrase(`Prix fixé à la main${estime && estime.utilisable ? `, tarif ${formatMoneyCentimes(estime.total)}` : ''}.`);
   if (estime && estime.utilisable && editionChangeLePrix()) {
-    return Math.round(estime.total * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
+    if (Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100)) return surPlace;
+    // L ajustement garde se dit : sans lui, le champ et le detail du calcul ne
+    // tomberaient pas sur le meme montant.
+    const ajustement = Math.round(ajustementGarde(r) * 100) / 100;
+    return phrase(ajustement
+      ? `Nouveau tarif ${formatMoneyCentimes(estime.total)}, ajustement de ${formatMoneyCentimes(ajustement)} gardé, avant ${formatMoneyCentimes(r.price)}.`
+      : `Nouveau tarif, avant ${formatMoneyCentimes(r.price)}.`);
   }
   if (editExtrasAChange()) {
     return Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100) ? surPlace : phrase(`Nouveau total, avant ${formatMoneyCentimes(r.price)}.`);
@@ -29627,15 +29655,20 @@ function preparerModificationEdition() {
     libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (dossierFormule.label || 'Sur mesure');
   }
   const nouvelleFormule = formuleChangee ? resolveDisplayFormule(es.formuleId) : null;
-  // CE QU ON AFFICHE EST CE QU ON ENVOIE.
-  // Sur un PATCH, le serveur ne recalcule PAS le prix : api/staff-reservations
-  // ne passe pas par normalizeReservationRequest (reserve au POST), et le
-  // montant ecrit est celui du corps. Ne pas envoyer de prix laisserait donc
-  // l ANCIEN montant en base pendant que l ecran en annonce un autre : la
-  // caisse et la fiche se contrediraient. Le comptoir est ici la seule
-  // autorite : il envoie exactement le montant qu il a sous les yeux, qu il
-  // l ait fige a la main ou laisse se calculer.
+  // CE QU ON AFFICHE EST CE QUI S ECRIT. Un prix tape, ou celui que le dossier
+  // garde (un nom, une heure, des extras), part tel quel : le serveur ecrit le
+  // montant du corps. Sans lui, l ANCIEN montant resterait en base pendant que
+  // l ecran en annonce un autre.
   const prixEcran = peutAdapterFormule() ? getEditPriceValue() : null;
+  // LE PRIX QUI SUIT (2026-11-03) : le champ suit l estimation parce que le
+  // contenu a change (les joueurs, une activite, la formule) et personne ne l a
+  // tape (prixSuiviEdition). Il ne part pas : le serveur le pose sur sa
+  // reference, l ajustement en place garde, comme le champ l annonce
+  // (prixQuiSuit, lib/droits-reservation). Un horaire d arcades deplace seul
+  // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
+  const estimeEcran = getEditPrixEstime();
+  const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
+    && (formuleChangee || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
@@ -29691,7 +29724,7 @@ function preparerModificationEdition() {
     if (prixEcran !== null) updated.price = prixEcran;
     return updated;
   };
-  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches };
+  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi };
 }
 
 async function saveEdit(e) {
@@ -29699,7 +29732,7 @@ async function saveEdit(e) {
   if (dossierLaserSaving) return;
   const envoi = preparerModificationEdition();
   if (envoi.erreur) { failEdit(envoi.erreur); return; }
-  const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches } = envoi;
+  const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi } = envoi;
   const previousReservation = state.selectedRes;
   if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length) {
     const delta = timeToNum(es.startTime) - timeToNum(origine.startTime);
@@ -29727,7 +29760,7 @@ async function saveEdit(e) {
     // client venait de cesser de l'ecraser. Sans override, le calcul par
     // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
     // max(pistes envoyees, minimum requis).
-    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, allowPastStart: true });
+    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, prixSuivi, allowPastStart: true });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
     setEditError('');
@@ -30001,7 +30034,7 @@ async function enregistrerCompteArrivee() {
   applyOptimisticReservation(envoi.appliquer(r), { preserveEditState: true });
   try {
     // (les options de saveEdit, plus le drapeau qui fait ecrire la note)
-    const payload = await envoyerModificationReservation(envoi.versionDeBase, envoi.appliquer, { requiresLanes: envoi.requiresLanes, allowPastStart: true, compteArrivee: true });
+    const payload = await envoyerModificationReservation(envoi.versionDeBase, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, allowPastStart: true, compteArrivee: true });
     const fait = payload && payload.reservation;
     // Seul le dossier ecrit fait foi : un serveur qui rend un autre nombre n a
     // pas enregistre ce compte.

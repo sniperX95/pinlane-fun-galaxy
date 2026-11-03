@@ -34,7 +34,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, resoudreExtras } = require('../lib/droits-reservation');
+const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
 
@@ -745,7 +745,8 @@ module.exports = async (req, res) => {
       // UN PRIX SE BORNE (2026-10-12) : le comptoir ecrit le montant qu il a
       // sous les yeux, entre 0 et 100 000 EUR, comme l encaisse
       // (noterEncaisseOuAbsence). Sans prix envoye (absent, null, vide), le
-      // dossier garde le sien.
+      // dossier garde le sien, sauf si son contenu change : le serveur le pose
+      // alors sur sa reference (prixQuiSuit, plus bas).
       if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
         const prix = Number(body.price);
         if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
@@ -824,8 +825,18 @@ module.exports = async (req, res) => {
         : (Number(current.basePrice) || 0);
       patch.basePrice = base;
       if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
+      // LE PRIX QUI SUIT (2026-11-03) : le contenu change et aucun prix n est
+      // envoye, le serveur le pose sur sa reference, l ajustement en place
+      // garde. Le moteur rend un prix sans ajustement (celui d un programme) ou
+      // aucun (un plan de pistes sans prix demande) : celui-ci remplace les deux.
+      // Personne ne l a decide : rien a juger, aucune trace de prix.
+      const prixSuivi = contenuChange && !Object.prototype.hasOwnProperty.call(patch, 'price');
+      if (prixSuivi) {
+        patch.price = prixQuiSuit({ current, base, extras: extrasFinales });
+        if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = patch.price;
+      }
       const prixFinal = ops.price ?? patch.price ?? current.price;
-      const notePrix = jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
+      const notePrix = prixSuivi ? null : jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
       if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
       const reservation = await updateReservation({
         ...patch,

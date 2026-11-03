@@ -157,6 +157,7 @@
     "test:concurrence-reservation": "node scripts/concurrence-reservation-check.js",
     "test:droits-reservations": "node scripts/droits-reservations-check.js",
     "test:droits-niveaux": "node scripts/droits-niveaux-check.js && node scripts/droits-niveaux-check.js --contre-preuves",
+    "test:prix-suivi": "node scripts/prix-suivi-check.js && node scripts/prix-suivi-check.js --contre-preuves",
     "test:deux-postes": "node scripts/deux-postes-check.js && node scripts/deux-postes-check.js --contre-preuves",
     "test:funrun-rotation": "node scripts/funrun-rotation-check.js",
     "test:laser-minimum": "node scripts/laser-minimum-check.js",

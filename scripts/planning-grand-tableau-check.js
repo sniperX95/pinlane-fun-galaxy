@@ -248,7 +248,7 @@ async function densite(browser) {
       r.collapsed = document.body.classList.contains('staff-menu-collapsed');
       r.pref = Boolean(state.staffMenuCollapsed);
       r.lignesDEnTete = tout('.gf-demi').length;
-      r.cases = tout('td.gf-bloc[data-gf-bloc]').length;
+      r.cases = tout('tr:not(.gf-libre) > td.gf-bloc[data-gf-bloc]').length;
       r.demiHeures = new Set(tout('.gf-r td.gf-h').map((td) => { const h = (td.querySelector('b') || {}).textContent || td.getAttribute('data-gf-heure'); const [a, b] = h.split(':').map(Number); return a * 2 + (b >= 30 ? 1 : 0); })).size;
       r.premier = tout('.is-premier').map((x) => x.getAttribute('data-gf-id'));
       const el = document.querySelector('.is-premier .gf-gb--arrive');
@@ -256,7 +256,7 @@ async function densite(browser) {
       r.fondsAutres = Array.from(new Set(tout('.gf-r:not(.is-premier) .gf-gb--arrive').map((b) => getComputedStyle(b).backgroundColor)));
       r.nbAutres = tout('.gf-r:not(.is-premier) .gf-gb--arrive').length;
       r.tailleMin = Math.min(...tout('#globalPlanningGridWrap *').filter((n) => Array.from(n.childNodes).some((c) => c.nodeType === 3 && c.textContent.trim())).map((n) => parseFloat(getComputedStyle(n).fontSize)));
-      r.surface = tout('#globalPlanningGridWrap *').length;
+      r.surface = tout('#globalPlanningGridWrap *').length - tout('#globalPlanningGridWrap tr.gf-libre, #globalPlanningGridWrap tr.gf-libre *').length;
       r.lignes = tout('.gf-r').length;
       r.geste = Array.from(new Set(tout('.gf-gb--arrive, .gf-gb--etat').map((b) => { const x = b.getBoundingClientRect(); return `${Math.round(innerWidth - x.right)}/${Math.round(x.width)}`; })));
       // La barre de gauche : une couleur par statut, jamais deux pour le meme.

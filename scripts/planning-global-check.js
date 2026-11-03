@@ -127,6 +127,8 @@ function lireFeuille() {
     if (tr.classList.contains('gf-rien')) return { rien: true, texte: tr.textContent.trim() };
     if (tr.classList.contains('gf-plis')) return { plis: true, texte: tr.textContent.trim() };
     if (tr.classList.contains('gf-resultats')) return { resultats: true, texte: tr.textContent.trim() };
+    // (la demi-heure sans groupe, depuis le 2026-11-03 : sa case d heure seule)
+    if (tr.classList.contains('gf-libre')) return { libre: true, h: (tr.querySelector('td.gf-bloc') || { getAttribute: () => '' }).getAttribute('data-gf-bloc') || '' };
     const nom = tr.querySelector('.gf-nom__t');
     const cases = {};
     tr.querySelectorAll('td.gf-a').forEach((td, i) => {
@@ -674,7 +676,7 @@ async function nuit(page, s, label) {
 async function sansGroupe(page, s, label) {
   const f = await page.evaluate(lireFeuille);
   const attendu = s.fixture === 'ferme' ? /^Centre fermé ce jour-là/ : /^Aucune réservation ce jour-là$/;
-  ok(f.bandeau && f.bandeau.vu && attendu.test(f.bandeau.texte) && f.lignes.length === 0 && !f.defile.vu, `[J1] ${label} : le bandeau « ${s.fixture === 'ferme' ? 'Centre fermé ce jour-là' : 'Aucune réservation ce jour-là'} », aucune ligne`, { bandeau: f.bandeau, lignes: f.lignes.length });
+  ok(f.bandeau && f.bandeau.vu && attendu.test(f.bandeau.texte) && f.lignes.filter((l) => l.id).length === 0 && (s.fixture === 'ferme' ? !f.defile.vu : f.defile.vu && f.lignes.filter((l) => l.libre).length >= 10), `[J1] ${label} : le bandeau « ${s.fixture === 'ferme' ? 'Centre fermé ce jour-là' : 'Aucune réservation ce jour-là'} », aucun groupe${s.fixture === 'ferme' ? '' : ', la journée garde ses demi-heures'}`, { bandeau: f.bandeau, lignes: f.lignes.length });
 }
 
 // [G1] [G2] [H1] [D1] LES GESTES, au pic a 1440

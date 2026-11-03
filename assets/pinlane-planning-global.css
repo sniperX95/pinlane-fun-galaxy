@@ -68,7 +68,7 @@ body.pb-agrandi .ops-sidebar .fgx-menu-logo-frame { visibility: visible; }
    ⋯. Ligne 2, 34 px : l heure et le direct, puis les chiffres du planning. Chaque piece
    a une largeur qui ne depend ni du planning, ni de la date, ni des nombres : passer de
    l un a l autre ne deplace rien. Collee en haut : elle ne sort jamais de l ecran. */
-.pb { --pb-l1: 38px; --pb-l2: 34px; --pb-seg-h: 32px; position: sticky; top: 0; z-index: 30; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: var(--pb-g, 6px) 0; background: var(--page); color: var(--text); font-family: var(--font-ui); font-variant-numeric: tabular-nums; container: barre / inline-size; }
+.pb { --pb-l1: 42px; --pb-l2: 44px; --pb-seg-h: 36px; position: sticky; top: 0; z-index: 30; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: var(--pb-g, 6px) 0; background: var(--page); color: var(--text); font-family: var(--font-ui); font-variant-numeric: tabular-nums; container: barre / inline-size; }
 .pb.hidden { display: none; }
 .pb-titre { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pb-ligne { display: flex; align-items: center; gap: 8px; min-width: 0; height: var(--pb-l1); }
@@ -81,7 +81,7 @@ body.pb-agrandi .ops-sidebar .fgx-menu-logo-frame { visibility: visible; }
 #staffTabAll { width: 96px; }
 #staffTabBowling { width: 96px; }
 #staffTabLaser { width: 80px; }
-.pb-seg__b span { min-width: 20px; font-size: 12px; font-weight: 500; color: var(--faint); text-align: left; }
+.pb-seg__b span { min-width: 20px; font-size: 13px; font-weight: 500; color: var(--faint); text-align: left; }
 .pb-seg__b:hover { color: var(--text); }
 .pb-seg__b.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .pb-seg__b.active span { color: var(--accent-strong); font-weight: 600; }
@@ -119,21 +119,21 @@ body.pb-agrandi .pb-ic__moins { display: block; }
 
 /* LA LIGNE 2 : l heure, puis les chiffres du planning, a plat. Une seule rangee : ce qui
    ne tient pas s efface par la droite, la legende reste. */
-.pb-bande { box-sizing: border-box; display: flex; align-items: center; gap: 4px; min-width: 0; height: var(--pb-l2); padding: 0 8px 0 10px; overflow: hidden; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; white-space: nowrap; }
+.pb-bande { box-sizing: border-box; display: flex; align-items: center; gap: 4px; min-width: 0; height: var(--pb-l2); padding: 0 10px 0 12px; overflow: hidden; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; white-space: nowrap; }
 /* (une largeur posee : l heure, « reconnexion… » et « Aujourd hui » prennent la meme place) */
 .pb-direct { flex: none; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; width: 142px; height: 100%; color: var(--muted); }
-.pb-direct b { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
+.pb-direct b { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
 .pb-direct i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
 .pb-direct span.is-warning { font-weight: 650; color: color-mix(in srgb, var(--warning) 70%, var(--text)); }
 .pb-direct span.is-stale { font-weight: 700; color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
 .pb-direct.is-coupe i { background: var(--danger); }
-#planningBarre .staff-today-btn { flex: none; box-sizing: border-box; height: 28px; min-height: 28px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+#planningBarre .staff-today-btn { flex: none; box-sizing: border-box; height: 34px; min-height: 34px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 600; }
 .gf-c, .pb-k { flex: none; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; }
 /* (un detail long se coupe, la legende reste) */
 .pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .pb-k > :is(.gf-c__l, .gf-c__v) { flex: none; }
-.gf-c__l { color: var(--muted); }
-.gf-c__v { font-size: 15px; font-weight: 650; }
+.gf-c__l { color: color-mix(in srgb, var(--muted) 55%, var(--text)); font-weight: 500; }
+.gf-c__v { font-size: 17px; font-weight: 700; }
 button.gf-c { appearance: none; cursor: pointer; transition: background-color 120ms ease; }
 button.gf-c:hover { background: var(--subtle); }
 button.gf-c:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -171,7 +171,7 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 @container barre (max-width: 1300px) {
   .gf-e[data-gf-etat='bowling'] .gf-e__s { display: none; }
 }
-@container barre (max-width: 1140px) {
+@container barre (max-width: 1300px) {
   .gf-e[data-gf-etat='laser'] .gf-e__s { display: none; }
 }
 @container barre (max-width: 1020px) {
@@ -682,4 +682,21 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 @media (prefers-reduced-motion: reduce) {
   .gf-gb, button.gf-c, .pb-seg__b, .pb-ic { transition: none; }
   .gf-t .gf-r.is-bouge > td:not(.gf-bloc, .gf-etat, .gf-h) { animation: none; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+}
+/* LA DEMI-HEURE LIBRE (2026-11-03) : sa case d heure, rien d autre, a la hauteur d une ligne */
+.gf-t tr.gf-libre > td.gf-libre__l { height: 40px; }
+/* (sous 1300 px de barre, la ligne 2 reprend sa taille de texte d avant : tout s y lit entier) */
+@container barre (max-width: 1300px) {
+  .pb-bande { padding: 0 8px 0 10px; font-size: 13px; }
+  .gf-c__l { font-weight: 400; }
+  .pb-direct b { font-size: 16px; }
+  #planningBarre .staff-today-btn { font-size: 13px; }
+  .gf-c, .pb-k { padding: 0 6px; }
+  .gf-c__v { font-size: 15px; font-weight: 650; }
+}
+/* (sous 1020 px de barre, la ligne 2 se resserre : tout y tient, la legende comprise) */
+@container barre (max-width: 1020px) {
+  .pb-bande { gap: 2px; }
+  .pb-direct { width: 120px; }
+  .gf-c, .pb-k { padding: 0 4px; }
 }

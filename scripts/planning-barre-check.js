@@ -10,7 +10,7 @@
 // jamais de millisecondes absolues.
 //   [A] LES COORDONNEES : a 1366x768, 1920x1080 et 1024x768, chaque controle aux memes
 //       coordonnees et aux memes tailles sur les trois plannings, en normal et en agrandi
-//       (tolerance 0), la largeur du contenu identique, 76 px au plus, aucun chevauchement,
+//       (tolerance 0), la largeur du contenu identique, 92 px au plus, aucun chevauchement,
 //       rien de coupe sur la ligne 2 ;
 //   [B] AGRANDIR : un vrai plein ecran, le rail s efface, le logo reste a sa place, le
 //       contenu prend la place, plus aucun autre en-tete, le plein ecran survit au
@@ -264,7 +264,7 @@ async function coordonnees(browser) {
         const n = await mesurer(page);
         ok(ecarts(ref, n).length === 0, `[A] ${appareil} : ${vue}, chaque controle aux memes coordonnees, aux memes tailles`, ecarts(ref, n));
         const f = await formeDeLaBarre(page);
-        ok(f.hauteur <= 76 && f.l1 === 38 && f.l2 === 34, `[A] ${appareil} : ${vue}, 76 px au plus, 38 et 34 par ligne`, f);
+        ok(f.hauteur <= 92 && f.l1 === 42 && f.l2 === 44, `[A] ${appareil} : ${vue}, 92 px au plus, 42 et 44 par ligne`, f);
         ok(f.chevauchements.length === 0 && f.dehors.length === 0, `[A] ${appareil} : ${vue}, aucun chevauchement, rien hors de l ecran`, f);
         ok(!f.deborde && f.coupes.length === 0 && f.rognes.length === 0, `[A] ${appareil} : ${vue}, la ligne 2 se lit entiere`, f);
         const c = await contenu(page, vue);

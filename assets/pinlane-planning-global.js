@@ -1029,7 +1029,7 @@
   // compte tout le centre.
   function gfBlocCase(m, part, compte, bande) {
     var classes = 'gf-bloc' + (bande ? ' is-bande' : '') + (part.quand ? ' is-' + part.quand : '');
-    var attr = ' rowspan="' + part.lignes.length + '"';
+    var attr = ' rowspan="' + Math.max(1, part.lignes.length) + '"';
     // (la barre de l heure tombe dans la demi-heure : ce qui suit reste dans son bloc)
     if (part.suite) return '<td class="' + classes + ' is-suite"' + attr + '></td>';
     var heure = gpHeure(part.b);
@@ -1046,7 +1046,7 @@
     // pas » : ce qui reste se dit « libre »)
     if (place && place.pistes) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });
     if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['place', 'places'] : ['place laser', 'places laser'])) + '</span>', hauteur: 1 });
-    lignes.push({ html: '<span>' + gpEsc(gfPluriel(compte.pers, ['joueur', 'joueurs'])) + '</span>', hauteur: 1 });
+    if (compte.pers) lignes.push({ html: '<span>' + gpEsc(gfPluriel(compte.pers, ['joueur', 'joueurs'])) + '</span>', hauteur: 1 });
     // (la case n a que la hauteur de ses lignes : une ligne, un mot sous l heure)
     var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;
     var dessous = '';
@@ -1138,10 +1138,22 @@
     });
     // LA JOURNEE EN MORCEAUX : une demi-heure, coupee en deux si la barre de l heure
     // tombe dans ses lignes. Pas de barre sur un nom tape : ce sont des resultats.
+    // LA JOURNEE ENTIERE (Movsar, 2026-11-03 : « laisse tout le planning complet avec heure
+    // meme vide ») : chaque demi-heure d ouverture a sa case, meme sans groupe, et se touche
+    // pour reserver. Un jour vide ou calme se lit comme un planning, pas comme une page
+    // cassee. Pas sur un nom tape, un filtre ou au telephone : ce sont des resultats.
+    var suite = lignes;
+    var fen = m.fenetre;
+    if (!q && !m.visibles && !cartes && fen && !fen.closed && fen.close > fen.open) {
+      var pris = new Set(lignes.map(function (g) { return gfBloc(g.heure); }));
+      suite = lignes.slice();
+      for (var b0 = Math.ceil(fen.open * 2 - 1e-6) / 2; b0 < fen.close - 1e-6; b0 += 0.5) if (!pris.has(b0)) suite.push({ libre: true, heure: b0 });
+      suite.sort(function (a, b) { return a.heure - b.heure; });
+    }
     var morceaux = [];
     var nowPose = m.maintenant == null || Boolean(q);
     var courant = null, dernier = null;
-    lignes.forEach(function (g) {
+    suite.forEach(function (g) {
       var b = gfBloc(g.heure);
       if (!nowPose && g.heure > m.maintenant + 1e-6) { morceaux.push(null); nowPose = true; courant = null; }
       if (!courant || courant.b !== b) {
@@ -1150,7 +1162,7 @@
         morceaux.push(courant);
         dernier = b;
       }
-      courant.lignes.push(g);
+      if (!g.libre) courant.lignes.push(g);
     });
     var rangees = [];
     // (la premiere rangee et celle qui suit la barre de l heure n ont pas de filet)
@@ -1170,6 +1182,7 @@
     var bande = false, avantB = null;
     morceaux.forEach(function (part) {
       if (!part) { poser('maintenant', gfMaintenant(nbCol)); return; }
+      if (!part.lignes.length) { poser('libre:' + part.b, '<tr class="gf-libre is-bloc">' + gfBlocCase(m, part, { groupes: 0, pers: 0 }, false) + '<td class="gf-libre__l" colspan="' + (nbCol - 1) + '"></td></tr>'); return; }
       if (avantB !== null && part.b !== avantB) bande = !bande;
       avantB = part.b;
       part.lignes.forEach(function (g, i) {
@@ -1183,7 +1196,7 @@
           + gfResteCase(g, m, q) + gfEtatCase(g, m, q) + '</tr>');
       });
     });
-    if (!nowPose && lignes.length) poser('maintenant', gfMaintenant(nbCol));
+    if (!nowPose && suite.length) poser('maintenant', gfMaintenant(nbCol));
     if (!lignes.length && (m.groupes.length || q)) {
       poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? gfRienHtml(m, q) : '<b>Aucun groupe dans ce filtre</b>') + '</td></tr>');
     }
@@ -1576,7 +1589,7 @@
     var defile = racine.querySelector('.gf-defile');
     wrap._gfModele = m;
     // (un jour vide cherche aussi : le client est peut-etre sur une autre date)
-    var aEcrire = Boolean(m.groupes.length || q);
+    var aEcrire = Boolean(m.groupes.length || q || (!ferme && !cartes));
     if (aEcrire) {
       var actif = document.activeElement;
       var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;
@@ -1694,7 +1707,7 @@
     var y = now.offsetTop - hTete - vue / 3;
     // (jamais une ligne coupee en deux sous la tete : la plus proche passe entiere dessous,
     // parmi celles que le defilement peut y amener : au bas de la feuille, il s arrete avant)
-    var lignes = defile.querySelectorAll('.gf-r');
+    var lignes = defile.querySelectorAll('.gf-r, .gf-libre');
     var fond = defile.scrollHeight - defile.clientHeight;
     var meilleur = 0;
     for (var i = 0; i < lignes.length; i += 1) {

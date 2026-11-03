@@ -3958,6 +3958,20 @@ function canUseStaffPermission(permission) {
   return has(permission);
 }
 
+// LE NIVEAU D UNE SESSION, miroir de niveauEffectif (lib/staff-auth.js). Le
+// serveur decide ; ceci sert a montrer le bon ecran.
+// role-presets-parity-check rougit si les deux se separent.
+function niveauDeLaSession(session, cle) {
+  if (!session || !DROITS_NIVEAUX.some(droit => droit.cle === cle)) return 'non';
+  const permissions = Array.isArray(session.permissions) ? session.permissions : [];
+  if (session.role?.locked || permissions.includes('platform.admin')) return niveauMaximum(cle);
+  return niveauDesPermissions(permissions, cle);
+}
+
+function niveauEffectifStaff(cle) {
+  return niveauDeLaSession(normalizeStaffSession(state.staffAuthSession) || readStoredStaffSession(), cle);
+}
+
 function canUseStaffPage(page) {
   if (!hasSavedAuth()) return false;
   const rawPage = String(page || 'planning').trim();
@@ -15859,6 +15873,56 @@ const STAFF_PERMISSION_GROUPS = [
   }
 ];
 
+// LES DROITS A NIVEAUX : miroir de DROITS_NIVEAUX (lib/staff-auth.js), qui fait
+// foi. Un choix par reglage et par role, `niveau:<cle>:<option>` dans le tableau
+// de ses droits. Les options vont du moins au plus.
+const DROITS_NIVEAUX = [
+  {
+    cle: 'surmesure',
+    libelle: 'Ajouter du sur mesure',
+    options: [['non', 'Non'], ['catalogue', 'Depuis le catalogue'], ['libre', 'Libre (nom et prix au choix)']]
+  },
+  {
+    cle: 'prix',
+    libelle: 'Ajuster un prix',
+    options: [['non', 'Non'], ['5', '5 %'], ['10', '10 %'], ['20', '20 %'], ['libre', 'Sans limite']]
+  },
+  {
+    cle: 'formule',
+    libelle: 'Adapter une formule',
+    options: [['non', 'Non'], ['oui', 'Oui']]
+  },
+  {
+    cle: 'forcer',
+    libelle: 'Créer quand même, à placer',
+    options: [['non', 'Non'], ['oui', 'Oui']]
+  },
+  {
+    cle: 'historique',
+    libelle: "Voir l'historique d'un dossier",
+    options: [['non', 'Non'], ['oui', 'Oui']]
+  }
+];
+
+function niveauMaximum(cle) {
+  const droit = DROITS_NIVEAUX.find(item => item.cle === cle);
+  return droit ? droit.options[droit.options.length - 1][0] : 'non';
+}
+
+// L option ecrite pour cette cle, sinon le defaut : reservations.edit vaut le
+// plus haut niveau, reservations.create sans edit vaut le catalogue pour le sur
+// mesure et non ailleurs, sans create non (niveauParDefaut, lib/staff-auth.js).
+function niveauDesPermissions(permissions, cle) {
+  const liste = Array.isArray(permissions) ? permissions : [];
+  const droit = DROITS_NIVEAUX.find(item => item.cle === cle);
+  if (!droit) return 'non';
+  const ecrite = droit.options.map(option => option[0]).filter(option => liste.includes(`niveau:${cle}:${option}`))
+    .sort((a, b) => liste.lastIndexOf(`niveau:${cle}:${b}`) - liste.lastIndexOf(`niveau:${cle}:${a}`))[0];
+  if (ecrite) return ecrite;
+  if (liste.includes('reservations.edit')) return niveauMaximum(cle);
+  return liste.includes('reservations.create') && cle === 'surmesure' ? 'catalogue' : 'non';
+}
+
 const STAFF_ROLE_PRESETS = [
   {
     id: 'direction',
@@ -15867,7 +15931,10 @@ const STAFF_ROLE_PRESETS = [
     summary: 'Contrôle total multi-centres',
     description: 'Pour la direction du centre, avec tous les droits.',
     tone: 'admin',
-    permissions: STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0]))
+    permissions: [
+      ...STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0])),
+      'niveau:surmesure:libre', 'niveau:prix:libre', 'niveau:formule:oui', 'niveau:forcer:oui', 'niveau:historique:oui'
+    ]
   },
   {
     id: 'manager',
@@ -15886,7 +15953,8 @@ const STAFF_ROLE_PRESETS = [
       'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'planning.past',
       'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'reservations.quick',
       'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',
-      'emails.view', 'reports.export', 'pricing.manage'
+      'emails.view', 'reports.export', 'pricing.manage',
+      'niveau:surmesure:libre', 'niveau:prix:20', 'niveau:formule:oui', 'niveau:forcer:oui', 'niveau:historique:oui'
     ]
   },
   {
@@ -15901,7 +15969,8 @@ const STAFF_ROLE_PRESETS = [
     permissions: [
       'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser',
       'reservations.view', 'reservations.create', 'reservations.status', 'reservations.quick',
-      'payments.view', 'payments.markPaid'
+      'payments.view', 'payments.markPaid',
+      'niveau:surmesure:catalogue', 'niveau:prix:non', 'niveau:formule:non', 'niveau:forcer:non', 'niveau:historique:non'
     ]
   },
   {
@@ -15913,7 +15982,8 @@ const STAFF_ROLE_PRESETS = [
     tone: 'marketing',
     permissions: [
       'dashboard.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents',
-      'reports.export'
+      'reports.export',
+      'niveau:surmesure:non', 'niveau:prix:non', 'niveau:formule:non', 'niveau:forcer:non', 'niveau:historique:non'
     ]
   },
   // id ALIGNE sur lib/staff-auth.js : le bouton « preset » n'envoie que l'id et
@@ -15929,7 +15999,8 @@ const STAFF_ROLE_PRESETS = [
     tone: 'tech',
     permissions: [
       'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag',
-      'reservations.view', 'settings.manage', 'ai.ops'
+      'reservations.view', 'settings.manage', 'ai.ops',
+      'niveau:surmesure:non', 'niveau:prix:non', 'niveau:formule:non', 'niveau:forcer:non', 'niveau:historique:non'
     ]
   }
 ];
@@ -16038,6 +16109,13 @@ function ensureStaffAccessControl() {
 
 function getStaffPermissionKeys() {
   return STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0]));
+}
+
+// Les droits a cocher d un role : ses niveaux (niveau:<cle>:<option>) ne sont
+// pas des cases, un compteur « 34/29 » ne voudrait rien dire.
+function permissionsCocheesDuRole(role) {
+  const cases = new Set(getStaffPermissionKeys());
+  return [...new Set(role?.permissions || [])].filter(permission => cases.has(permission));
 }
 
 function getStaffAccessRole(roleId) {
@@ -16547,7 +16625,7 @@ function renderStaffUtilityUsers() {
           <em>${visibleRoles.length}</em>
         </div>
         ${visibleRoles.map(role => {
-          const count = (role.permissions || []).length;
+          const count = permissionsCocheesDuRole(role).length;
           const activeCount = visibleMembers.filter(member => member.roleId === role.id && member.status === 'active').length;
           return `<button type="button" class="staff-role-pill ${role.id === selectedRole.id ? 'active' : ''} tone-${escapeHtml(role.tone || 'custom')}" onclick='setStaffAccessSelectedRole(${staffClientJs(role.id)})' ${role.id === selectedRole.id ? 'aria-current="true"' : ''}>
             <span class="staff-person-icon" aria-hidden="true">${escapeHtml(role.code || role.name.slice(0, 2).toUpperCase())}</span>
@@ -17374,7 +17452,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     const visibleMembers = getVisibleStaffAccessMembers(access);
     const selectedRole = getStaffAccessRole(access.selectedRoleId);
     const permissionTotal = getStaffPermissionKeys().length;
-    const selectedPermissionCount = new Set(selectedRole.permissions || []).size;
+    const selectedPermissionCount = permissionsCocheesDuRole(selectedRole).length;
     const activeMembers = visibleMembers.filter(member => member.status === 'active').length;
     const pendingMembers = visibleMembers.filter(member => member.status === 'pending').length;
     return {

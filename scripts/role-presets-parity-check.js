@@ -19,12 +19,15 @@
 // question « qui a le droit de changer un prix » a laquelle le produit
 // repondait faux.
 //
-// Trois proprietes :
+// Quatre proprietes :
 //   A. Les deux cotes connaissent les MEMES roles (deja couvert par
 //      staff-roles-source-check, repris ici comme garde-fou de montage).
 //   B. Pour chaque preset, les deux cotes accordent EXACTEMENT les memes
-//      permissions.
+//      permissions, niveaux compris.
 //   C. Aucun preset ne cite une permission inconnue du vocabulaire commun.
+//   D. LES DROITS A NIVEAUX (2026-11-03) : la definition, le defaut et la
+//      lecture d une session disent la meme chose des deux cotes, sur une
+//      matrice de roles, verrouille et plateforme compris.
 //
 // Contre-epreuve par mutation : on remet une divergence dans le tableau du
 // client, on prouve que le gate rougit, on restaure.
@@ -59,16 +62,41 @@ function presetsClient() {
   const src = fs.readFileSync(APP, 'utf8');
   const groupes = extractBlock(src, 'const STAFF_PERMISSION_GROUPS = [', '\\];');
   const presets = extractBlock(src, 'const STAFF_ROLE_PRESETS = [', '\\];');
-  if (!groupes || !presets) throw new Error('bloc introuvable dans assets/app-main.js');
-  const bac = { presets: null, vocabulaire: null };
+  const niveaux = extractBlock(src, 'const DROITS_NIVEAUX = [', '\\];');
+  const maximum = extractBlock(src, 'function niveauMaximum(cle) {', '}');
+  const lecture = extractBlock(src, 'function niveauDesPermissions(permissions, cle) {', '}');
+  const session = extractBlock(src, 'function niveauDeLaSession(session, cle) {', '}');
+  if (!groupes || !presets || !niveaux || !maximum || !lecture || !session) throw new Error('bloc introuvable dans assets/app-main.js');
+  const bac = { presets: null, vocabulaire: null, niveaux: null, lireSession: null };
   vm.createContext(bac);
-  vm.runInContext(`${groupes}\n${presets}\npresets = STAFF_ROLE_PRESETS;\nvocabulaire = STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0]));`, bac);
-  return { presets: bac.presets, vocabulaire: bac.vocabulaire };
+  vm.runInContext(`${groupes}\n${presets}\n${niveaux}\n${maximum}\n${lecture}\n${session}\npresets = STAFF_ROLE_PRESETS;\nvocabulaire = STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0]));\nniveaux = DROITS_NIVEAUX;\nlireSession = niveauDeLaSession;`, bac);
+  return { presets: bac.presets, vocabulaire: bac.vocabulaire, niveaux: bac.niveaux, lireSession: bac.lireSession };
+}
+
+// Une matrice de sessions : ce que la base peut contenir, jusqu aux cas limites
+// (deux options d une cle, une option morte, un role sans aucun droit).
+function matriceDeSessions(optionsConnues) {
+  const sansRole = (permissions) => ({ permissions, role: { locked: false } });
+  const sessions = [
+    ['role vide', sansRole([])],
+    ['lecture seule', sansRole(['reservations.view'])],
+    ['creation sans modification', sansRole(['reservations.view', 'reservations.create'])],
+    ['modification sans creation', sansRole(['reservations.view', 'reservations.edit'])],
+    ['creation et modification', sansRole(['reservations.view', 'reservations.create', 'reservations.edit'])],
+    ['deux options d une cle, la derniere gagne', sansRole(['reservations.edit', 'niveau:prix:libre', 'niveau:prix:5'])],
+    ['option morte, le defaut reste', sansRole(['reservations.edit', 'niveau:prix:15', 'niveau:surmesure:peut-etre'])],
+    ['role verrouille, tableau vide', { permissions: [], role: { locked: true } }],
+    ['role verrouille, tableau qui dit non', { permissions: ['niveau:prix:non', 'niveau:surmesure:non'], role: { locked: true } }],
+    ['plateforme non verrouille, tableau qui dit non', { permissions: ['platform.admin', 'niveau:prix:non'], role: { locked: false } }],
+  ];
+  optionsConnues.forEach((option) => sessions.push([`option seule ${option}`, sansRole([option])]));
+  return sessions;
 }
 
 function main() {
-  const { STAFF_ROLE_PRESETS: serveur, ALL_PERMISSIONS } = require(path.join(ROOT, 'lib/staff-auth.js'));
-  const { presets: client, vocabulaire } = presetsClient();
+  const staffAuth = require(path.join(ROOT, 'lib/staff-auth.js'));
+  const { STAFF_ROLE_PRESETS: serveur, ALL_PERMISSIONS, DROITS_NIVEAUX, niveauEffectif, optionsDeNiveau } = staffAuth;
+  const { presets: client, vocabulaire, niveaux: niveauxClient, lireSession } = presetsClient();
 
   // --- A. Les memes roles des deux cotes ---------------------------------
   const idsServeur = serveur.map((role) => role.id).sort();
@@ -98,10 +126,31 @@ function main() {
     ].filter(Boolean).join(' | ');
     ok(!ecart, `preset ${roleServeur.id} : l ecran dit ce que le serveur applique (${ecart || `${a.size} permissions identiques`})`);
 
-    const horsVocabulaire = [...a, ...b].filter((id) => !vocabServeur.has(id));
+    const horsVocabulaire = [...a, ...b].filter((id) => !vocabServeur.has(id) && !optionsDeNiveau().includes(id));
     ok(horsVocabulaire.length === 0,
       `preset ${roleServeur.id} : aucune permission fantome (${horsVocabulaire.join(', ') || 'aucune'})`);
+
+    // Un choix pour chaque reglage, ecrit en toutes lettres : un preset qui
+    // laisserait une cle au defaut changerait de sens selon les droits du role.
+    const cles = DROITS_NIVEAUX.map((droit) => droit.cle);
+    const manquantes = cles.filter((cle) => [...a].filter((id) => id.startsWith(`niveau:${cle}:`)).length !== 1);
+    ok(manquantes.length === 0, `preset ${roleServeur.id} : une option et une seule par reglage (${manquantes.join(', ') || `${cles.length} reglages`})`);
   }
+
+  // --- D. Les droits a niveaux -------------------------------------------
+  const definition = (liste) => JSON.stringify(liste.map(({ cle, libelle, options }) => [cle, libelle, options]));
+  ok(definition(DROITS_NIVEAUX) === definition(JSON.parse(JSON.stringify(niveauxClient))),
+    `une seule definition des reglages (${DROITS_NIVEAUX.length} cles, ${optionsDeNiveau().length} options, memes mots des deux cotes)`);
+  const ecarts = [];
+  const sessions = matriceDeSessions(optionsDeNiveau());
+  for (const [nom, session] of sessions) {
+    for (const { cle } of DROITS_NIVEAUX) {
+      const s = niveauEffectif(session, cle);
+      const c = lireSession(session, cle);
+      if (s !== c) ecarts.push(`${nom} / ${cle} : serveur ${s}, ecran ${c}`);
+    }
+  }
+  ok(ecarts.length === 0, `le niveau d une session se lit pareil des deux cotes (${sessions.length} sessions x ${DROITS_NIVEAUX.length} cles${ecarts.length ? ` : ${ecarts.slice(0, 3).join(' | ')}` : ''})`);
 
   if (failures) {
     console.error(`\nrole-presets-parity-check: ${failures} defaut(s).`);
@@ -112,24 +161,59 @@ function main() {
 
 if (process.argv.includes('--mutate')) {
   const source = fs.readFileSync(APP, 'utf8');
-  const marqueur = "'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',";
-  if (!source.includes(marqueur)) {
-    console.error('mutation impossible : le preset manager est introuvable dans assets/app-main.js');
-    process.exit(1);
-  }
-  // On remet une divergence : le client affiche une permission de moins.
-  const mute = source.replace(marqueur, "'clients.view', 'payments.view', 'payments.markPaid',");
-  fs.writeFileSync(APP, mute);
+  // Chaque divergence est remise, jouee par le vrai gate, puis retiree.
+  const fichier = 'assets/app-main.js';
+  const MUTATIONS = [
+    {
+      nom: 'une permission retiree du tableau client',
+      fichier,
+      de: "'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',",
+      vers: "'clients.view', 'payments.view', 'payments.markPaid',",
+    },
+    {
+      nom: 'le preset Manager affiche un autre plafond de prix',
+      fichier,
+      de: "'niveau:surmesure:libre', 'niveau:prix:20', 'niveau:formule:oui'",
+      vers: "'niveau:surmesure:libre', 'niveau:prix:10', 'niveau:formule:oui'",
+    },
+    {
+      nom: 'le miroir oublie une option',
+      fichier,
+      de: "options: [['non', 'Non'], ['5', '5 %'], ['10', '10 %'], ['20', '20 %'], ['libre', 'Sans limite']]\n",
+      vers: "options: [['non', 'Non'], ['5', '5 %'], ['20', '20 %'], ['libre', 'Sans limite']]\n",
+    },
+    {
+      nom: 'le miroir change le defaut d un role sans modification',
+      fichier,
+      de: "return liste.includes('reservations.create') && cle === 'surmesure' ? 'catalogue' : 'non';",
+      vers: "return liste.includes('reservations.create') && cle === 'surmesure' ? 'libre' : 'non';",
+    },
+    {
+      nom: 'le miroir lit le tableau d un role verrouille',
+      fichier,
+      de: "if (session.role?.locked || permissions.includes('platform.admin')) return niveauMaximum(cle);",
+      vers: "if (permissions.includes('platform.admin')) return niveauMaximum(cle);",
+    },
+  ];
   const { spawnSync } = require('child_process');
-  const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
-  fs.writeFileSync(APP, source);
-  console.log(run.stdout || '');
-  if (run.status === 0) {
-    console.error('CONTRE-EPREUVE RATEE : le gate reste vert avec un preset desaligne.');
-    process.exit(1);
+  let ratees = 0;
+  for (const { nom, de, vers } of MUTATIONS) {
+    const lf = source.split('\r\n').join('\n');
+    if (lf.split(de).length - 1 !== 1) {
+      console.error(`mutation impossible (${nom}) : ancre absente ou multiple dans assets/app-main.js`);
+      process.exit(1);
+    }
+    fs.writeFileSync(APP, lf.replace(de, vers));
+    const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
+    fs.writeFileSync(APP, source);
+    if (run.status === 0) {
+      console.error(`CONTRE-EPREUVE RATEE : le gate reste vert (${nom}).`);
+      ratees += 1;
+    } else {
+      console.log(`contre-epreuve OK : ${nom} fait rougir le gate.`);
+    }
   }
-  console.log('contre-epreuve OK : une permission retiree du tableau client fait rougir le gate.');
-  process.exit(0);
+  process.exit(ratees ? 1 : 0);
 }
 
 main();

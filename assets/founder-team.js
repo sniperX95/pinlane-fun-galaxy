@@ -291,7 +291,9 @@
   // ---- Roles ----------------------------------------------------------------
 
   function roleCard(r) {
-    const permCount = Array.isArray(r.permissions) ? r.permissions.length : 0;
+    // Les droits a niveaux (niveau:<cle>:<option>) ne sont pas des cases : ils
+    // ne comptent pas parmi les permissions du role.
+    const permCount = Array.isArray(r.permissions) ? r.permissions.filter((k) => !String(k).startsWith('niveau:')).length : 0;
     const revealKey = `role:${r.id}`;
     const revealed = team.reveal[revealKey];
     const revealBlock = revealed
@@ -418,7 +420,8 @@
   };
 
   function renderPermGroups(checkedSet, keyPrefix) {
-    const catalog = permissionsCatalog();
+    // Les droits a niveaux se reglent dans Equipe & acces du centre : pas de case ici.
+    const catalog = permissionsCatalog().filter((p) => !p.niveau);
     if (!catalog.length) return emptyLine('Catalogue de permissions indisponible.');
     const groups = [];
     const byGroup = new Map();

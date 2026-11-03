@@ -459,7 +459,7 @@
     const session = getCurrentSession();
     if (!session) return 'Session locale';
     if (session.role?.locked) return 'Accès complet';
-    const count = Array.isArray(session.permissions) ? session.permissions.length : 0;
+    const count = Array.isArray(session.permissions) ? session.permissions.filter(item => !String(item).startsWith('niveau:')).length : 0;
     return `${count} permission${count > 1 ? 's' : ''}`;
   }
 

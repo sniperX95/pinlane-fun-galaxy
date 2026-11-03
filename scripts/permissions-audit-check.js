@@ -28,6 +28,8 @@ const {
   STAFF_PERMISSION_GROUPS,
   ALL_PERMISSIONS,
   STAFF_ROLE_PRESETS,
+  DROITS_NIVEAUX,
+  optionsDeNiveau,
 } = require(path.join(ROOT, 'lib', 'staff-auth.js'));
 const { getRequiredOpsPermission } = require(path.join(ROOT, 'api', 'ops.js'));
 
@@ -146,7 +148,8 @@ function main() {
   };
   for (const role of STAFF_ROLE_PRESETS) {
     const perms = new Set(role.permissions || []);
-    const unknown = [...perms].filter((permission) => !declared.has(permission));
+    const niveauxConnus = new Set(optionsDeNiveau());
+    const unknown = [...perms].filter((permission) => !declared.has(permission) && !niveauxConnus.has(permission));
     ok(unknown.length === 0, `role « ${role.name} » : aucune permission inconnue${unknown.length ? ' (' + unknown.join(', ') + ')' : ''}`);
     const orphans = [...perms].filter((permission) => IMPLIES[permission] && !perms.has(IMPLIES[permission]));
     ok(orphans.length === 0, `role « ${role.name} » : aucun droit d agir sans le droit de voir${orphans.length ? ' (' + orphans.map((p) => p + ' sans ' + IMPLIES[p]).join(', ') + ')' : ''}`);
@@ -166,6 +169,23 @@ function main() {
     const opensWith = pageMap[rule.page] || [];
     const needsGuard = !opensWith.includes(rule.blockPermission);
     ok(!needsGuard || guarded.includes(rule.marker), `${rule.label} (page ouverte par ${opensWith.join('/')})`);
+  }
+
+  console.log('\n[5 bis. Tout reglage a niveaux sert a quelque chose]');
+  // Un reglage que rien ne lit est une case qui ment, comme une permission
+  // inerte (section 1). Le lecteur se releve dans le code : niveauEffectif(x,
+  // 'cle') cote serveur, la ou un refus tombe. `historique` est declare par ce
+  // lot pour le suivant, qui ecrira sa lecture : il doit alors sortir de cette
+  // liste, sinon l audit rougit.
+  const A_VENIR = ['surmesure', 'prix', 'formule', 'forcer', 'historique'];
+  const lecteurs = fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => f.endsWith('.js')).map((f) => path.join('lib', f))
+    .concat(fs.readdirSync(path.join(ROOT, 'api')).filter((f) => f.endsWith('.js')).map((f) => path.join('api', f)))
+    .filter((rel) => rel !== path.join('lib', 'staff-auth.js'))
+    .map(readFile).join('\n');
+  const lue = (cle) => new RegExp(`niveauEffectif\\([^)]*'${cle}'\\)`).test(lecteurs);
+  for (const { cle } of DROITS_NIVEAUX) {
+    if (A_VENIR.includes(cle)) ok(!lue(cle), `reglage « ${cle} » : annonce pour le lot suivant, aucune garde ne le lit encore`);
+    else ok(lue(cle), `reglage « ${cle} » : une garde du serveur le lit`);
   }
 
   console.log('\n[6. Contre-epreuve : cet audit sait-il rougir ?]');

@@ -11038,7 +11038,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* LES HEURES */
 .qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 62px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-h b { font-size: 16px; font-weight: 600; line-height: 1.15; }
-.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; }
+.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .qb-modal.rv.rs .rs-h.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .qb-modal.rv.rs .rs-h.is-on small { color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-h.is-ko, .qb-modal.rv.rs .rs-h.is-ko.is-on { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
@@ -11047,6 +11047,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 54px; }
 .qb-modal.rv.rs .rs-h.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-efface b { font-weight: 400; }
+/* UNE HEURE QUI COINCE reste a sa place et dit pourquoi : la touche s efface comme une
+   heure qui ne tient pas, son mot prend le ton de refus de la fenetre. Rien de neuf. */
+.qb-modal.rv.rs .rs-h.is-coince, .qb-modal.rv.rs .rs-p.is-coince, .qb-modal.rv.rs .rs-p.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
+.qb-modal.rv.rs .rs-h.is-coince b, .qb-modal.rv.rs .rs-p.is-coince b, .qb-modal.rv.rs .rs-p.is-efface b { font-weight: 500; }
+.qb-modal.rv.rs .rs-h.is-coince small, .qb-modal.rv.rs .rs-p.is-coince small { color: var(--danger); }
 .qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 62px - 6px); max-height: calc(var(--rs-r, 1) * 114px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-heures .rs-h { height: auto; }
 
@@ -11187,6 +11192,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-p small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); text-align: center; }
 .qb-modal.rv.rs .rs-p.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .qb-modal.rv.rs .rs-p.is-on small { color: var(--accent-strong); }
+.qb-modal.rv.rs .rs-p.is-ko, .qb-modal.rv.rs .rs-p.is-ko.is-on { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
+.qb-modal.rv.rs .rs-p.is-ko small { color: var(--danger); }
 .qb-modal.rv.rs .rs-p.is-plus { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); }
 .qb-modal.rv.rs .rs-p.is-plus b { font-size: 14px; font-weight: 550; color: var(--muted); }
 .qb-modal.rv.rs .rs-p:disabled { cursor: default; }

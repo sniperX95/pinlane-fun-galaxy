@@ -5,7 +5,9 @@
 // comme un film ses seances, un toucher sur une heure choisit l activite et l heure, le
 // ticket a droite est la reservation. Elle a ete mise au point sur un banc (le vrai
 // moteur, un samedi a 46 groupes) : 12 commandes du comptoir sur 12, en 58 gestes au
-// lieu de 94. Ce gate porte ce banc dans le depot, et les regles qu elle tient.
+// lieu de 94 ; 59 depuis que la rangee garde les heures qui coincent ([S10]) : a 18:00
+// pour 8, trois heures refusees poussent 18:00 hors des six, T6 passe par « Autres ». Ce
+// gate porte ce banc dans le depot, et les regles qu elle tient.
 //
 // Il joue la VRAIE console (scripts/planning-v3-fixtures.js), le VRAI handler
 // api/staff-reservations.js et le vrai moteur (scripts/reserver-banc.js, base en
@@ -13,7 +15,7 @@
 // base, jamais seulement l ecran.
 //
 //   [S1] LES DOUZE COMMANDES DU COMPTOIR ET LA TACHE CLAVIER, jouees comme au comptoir,
-//        chacune dans le budget de gestes du banc (58 pour les douze) ; le dossier cree
+//        chacune dans le budget de gestes du banc (59 pour les douze) ; le dossier cree
 //        dit la commande (jour, joueurs, activite, heure, pistes, nom, paiement, prix).
 //   [S2] LA REGLE DES TOUCHERS. Un toucher sur une heure choisit l activite et l heure
 //        d un coup. Un doigt pose, rien ne bouge : un repeint qui arrive pendant l appui
@@ -48,13 +50,21 @@
 //        l ajoute a son heure, une autre seance la deplace, la meme la retire ; ce qui est
 //        pris est coche ; une formule s adapte d un toucher quand le role le peut (le role
 //        qui ne le peut pas : [S6]). Le dossier cree le dit.
+//   [S10] TOUTES LES HEURES, ET CELLES QUI COINCENT (2026-11-03, Movsar : « desfois ya pas
+//        toute les heures »). La rangee montre chaque demi-heure, sans trou ; une heure
+//        refusee reste a sa place et dit le mot du serveur, demande a part au vrai handler
+//        (les pistes qui restent : celles du planning) ; « Autres » montre toute la journee.
+//        Au niveau forcer, toucher une heure qui coince la prend : le ticket dit « à
+//        placer » et pourquoi, le dossier part a placer, forcer voyage sur lui seul, meme
+//        dans un lot. Sans ce niveau, le toucher ne la prend pas et dit pourquoi, et le
+//        serveur refuse forcer.
 //   [*]  Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois
 // (en memoire, le disque n est jamais touche), et exige que chacune rougisse sa cible ;
 // `--contre-preuves=nom,nom` en joue quelques-unes ; `--ancres` verifie que chaque
-// ancre existe une seule fois. `--seul=S3` ne joue qu une lettre, `--bloc=T6` qu un de
-// ses blocs. Les mutations se jouent dans un pool de fils (PINLANE_ECLATS).
+// ancre existe une seule fois et que deux contre-preuves ne portent pas le meme nom.
+// `--seul=S3` ne joue qu une lettre, `--bloc=T6` qu un de ses blocs. Les mutations se jouent dans un pool de fils (PINLANE_ECLATS).
 //
 // Zero reseau sortant, zero vraie base : rien ne part.
 'use strict';
@@ -93,7 +103,7 @@ const FEN = 'lib/reserver-fenetre.js';
 // LA MUTATION : le code casse expres, une regle a la fois. `lettre` dit quel scenario
 // la juge, `bloc` le seul bloc a rejouer, `cible` le debut du libelle qui doit rougir.
 const MUTATIONS = [
-  { nom: 'seances-cachees', lettre: 'S1', bloc: 'T6', cible: '[S1] T6 tient en 5 gestes', fichier: APP, de: 'const RS_SEANCES = 6;', vers: 'const RS_SEANCES = 2;' },
+  { nom: 'seances-cachees', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: 'const RS_SEANCES = 6;', vers: 'const RS_SEANCES = 2;' },
   { nom: 'premiere-touche-perdue', lettre: 'S1', bloc: 'TC', cible: '[S1] TC', fichier: APP, de: "  champ.value = caractere;\n  zone.hidden = false;", vers: "  champ.value = '';\n  zone.hidden = false;" },
   { nom: 'heure-sans-activite', lettre: 'S2', bloc: 'heure', cible: '[S2] un toucher sur une heure choisit l activite et l heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '' },
   { nom: 'doigt-oublie', lettre: 'S2', bloc: 'doigt', cible: '[S2] un doigt pose, rien ne bouge', fichier: APP, de: "  if (rsAppui) { rsRepeintRetenu = true; return; }\n  const overlay = document.getElementById('quickBookOverlay');", vers: "  const overlay = document.getElementById('quickBookOverlay');" },
@@ -136,6 +146,19 @@ const MUTATIONS = [
   { nom: 'formule-sans-croix', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : la croix de la formule rend la carte', fichier: APP, de: "retirer: 'rsSansFormule()'", vers: "retirer: ''" },
   { nom: 'croix-garde-la-formule', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : la croix de la formule rend la carte', fichier: APP, de: '      Object.assign(s, JSON.parse(JSON.stringify(avant)));\n', vers: '' },
   { nom: 'article-sans-croix', lettre: 'S4', bloc: 'catalogue', cible: '[S4] la croix d un article le retire du ticket', fichier: APP, de: "retirer: 'rsRetirerExtra(this.dataset.ligne)'", vers: "retirer: ''" },
+  // [S10] toutes les heures, celles qui coincent, forcer par role.
+  { nom: 'heures-filtrees', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: "    return { suite, liste: heures.map((heure) => ({ heure, tient: tient(heure), ...(heure === suite ? { mot: 'à la suite' } : {}) })) };", vers: "    return { suite, liste: heures.filter((heure) => tient(heure)).map((heure) => ({ heure, tient: true, ...(heure === suite ? { mot: 'à la suite' } : {}) })) };" },
+  { nom: 'refus-retire', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: '  return { suite: brut.suite, lue, liste: brut.liste };', vers: '  return { suite: brut.suite, lue, liste: brut.liste.filter((x) => !rsCoince(x, id)) };' },
+  { nom: 'mot-du-poste', lettre: 'S10', bloc: 'toutes', cible: '[S10] une heure qui coince le dit sur l heure', fichier: APP, de: "  const court = String((verdict && verdict.court) || 'impossible');", vers: "  const court = 'complet';" },
+  { nom: 'mot-sans-nombre', lettre: 'S10', bloc: 'toutes', cible: '[S10] le mot dit les pistes qui restent', serveur: true, fichier: 'lib/ops-engine.js', de: 'libres: lanesFreeOver(center, laneStatuses, reservations, start, end, availabilityBlocks, date), voulues: requiredLanes }];', vers: 'libres: 0, voulues: requiredLanes }];' },
+  { nom: 'autres-sans-refus', lettre: 'S10', bloc: 'toutes', cible: '[S10] « Autres » montre toute la journee', fichier: APP, de: '    const coince = Boolean(rsCoince(x, id));\n    const gris = !coince && !x.verdict && x.tient === false;\n    if (!coince && !gris) tiennent += 1;', vers: '    const coince = false;\n    const gris = !x.verdict && x.tient === false;\n    if (!coince && !gris) tiennent += 1;' },
+  { nom: 'autres-pas-lues', lettre: 'S10', bloc: 'toutes', cible: '[S10] « Autres » du laser : toute son horloge', fichier: APP, de: '      return corps ? { corps, variantes: rvHeuresHorloge(id).slice(0, 48).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;', vers: '      return corps ? { corps, variantes: brut.liste.slice(0, 48).map((x) => rvVariante(id, 0, x.heure)).filter(Boolean) } : null;' },
+  { nom: 'forcer-jamais', lettre: 'S10', bloc: 'forcer', cible: '[S10] direction : toucher une heure qui coince la prend', fichier: APP, de: "  if (rsNiveau('forcer') === 'oui') return 'forcer';", vers: "  if (false) return 'forcer';" },
+  { nom: 'a-placer-muet', lettre: 'S10', bloc: 'forcer', cible: '[S10] direction : toucher une heure qui coince la prend', fichier: APP, de: '      e.d = s.forcer ? `À placer, ${refus.raison.charAt(0).toLowerCase()}${refus.raison.slice(1)}` : refus.raison;', vers: '      e.d = refus.raison;' },
+  { nom: 'forcer-oublie', lettre: 'S10', bloc: 'forcer', cible: '[S10] le dossier part « à placer »', fichier: APP, de: "  if (quoi === 'forcer' || (dejaForce && x && x.verdict && x.verdict.statut === 'ko')) quickBookState.forcer = true;", vers: '  if (false) quickBookState.forcer = true;' },
+  { nom: 'forcer-sur-le-lot', lettre: 'S10', bloc: 'lot', cible: '[S10] dans un lot, forcer ne voyage que sur le dossier pris quand meme', fichier: APP, de: '  if (forcer) reservation.forcer = true;', vers: '  reservation.forcer = true;' },
+  { nom: 'coince-pour-tous', lettre: 'S10', bloc: 'sans-droit', cible: '[S10] role sans le droit : l heure dit pourquoi, le toucher ne la prend pas', fichier: APP, de: "  if (rsNiveau('forcer') === 'oui') return 'forcer';", vers: "  return 'forcer';" },
+  { nom: 'forcer-serveur-ouvert', lettre: 'S10', bloc: 'sans-droit', cible: '[S10] role sans le droit : le serveur refuse forcer', serveur: true, fichier: 'lib/droits-reservation.js', de: "function exigerForcer(session) {\n  if (niveauEffectif(session, 'forcer') !== 'oui') {", vers: 'function exigerForcer(session) {\n  if (false) {' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -282,7 +305,9 @@ async function ouvrirConsole(browser, { role = 'direction', appareil = 'comptoir
 // ---- Lire l ecran, lire la base -------------------------------------------
 const pret = (page) => page.waitForFunction(() => { const b = document.querySelector('#rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 8000 });
 const jourPris = (page, iso) => page.waitForFunction((j) => { const k = document.querySelector(`[data-jour="${j}"]`); return k && k.classList.contains('is-on'); }, iso, { timeout: 8000 });
-const seanceDe = (id) => `.rs-seance [data-activite="${id}"][data-heure]`;
+// Une heure qui tient : ni refusee par le serveur, ni grisee en attendant qu il reponde.
+const QUI_TIENT = ':not(.is-coince):not(.is-efface)';
+const seanceDe = (id) => `.rs-seance [data-activite="${id}"][data-heure]${QUI_TIENT}`;
 const texte = (page, sel) => page.evaluate((s) => Array.from(document.querySelectorAll(s)).filter((e) => e.getClientRects().length).map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join(' | '), sel);
 const visible = (page, sel) => page.evaluate((s) => Array.from(document.querySelectorAll(s)).some((e) => e.getClientRects().length > 0), sel);
 const creations = (journal) => journal.filter((j) => j.m === 'POST' && j.corps && !j.corps.dryRun);
@@ -321,13 +346,13 @@ async function jour(t, iso) {
 // proche, comme au comptoir, et on le dit au client.
 async function heureProche(t, id, voulue) {
   await t.page.waitForSelector(`.rs-s-l[data-verifie="1"] [data-activite="${id}"]`);
-  const directe = `.rs-s-l [data-activite="${id}"][data-heure="${voulue}"]`;
+  const directe = `.rs-s-l [data-activite="${id}"][data-heure="${voulue}"]${QUI_TIENT}`;
   if (await t.page.locator(directe).count()) { await t.clic(directe); return; }
   await t.clic(`.rs-h-autres[data-activite="${id}"]`);
   await t.page.waitForSelector('.rs-heures .rs-h');
   const libre = await t.page.evaluate((v) => {
     const minutes = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
-    const cles = [...document.querySelectorAll('.rs-heures .rs-h:not(.is-efface)')].map((c) => c.dataset.heure);
+    const cles = [...document.querySelectorAll('.rs-heures .rs-h:not(.is-efface):not(.is-coince)')].map((c) => c.dataset.heure);
     return cles.sort((x, y) => Math.abs(minutes(x) - minutes(v)) - Math.abs(minutes(y) - minutes(v)))[0];
   }, voulue);
   await t.clic(`.rs-heures [data-heure="${libre}"]`);
@@ -357,7 +382,7 @@ const TACHES = [
     jouer: async (t) => { await t.ouvrir(); await barre(t, '10 f3 sam 14h Léa'); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-23' && r.pax === 10 && r.formule_id && heureDe(r) === '14:00' && /L[eé]a/i.test(r.name) },
   // (chaque toucher ajoute : le laser touche apres le bowling s y ajoute, a la suite)
-  { id: 'T6', budget: 5, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
+  { id: 'T6', budget: 6, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
     jouer: async (t) => {
       await t.ouvrir(); await nombre(t, 8); await heureProche(t, 'bowling', '18:00');
       await t.page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]');
@@ -410,7 +435,7 @@ const TACHES = [
     },
     attendu: ([r]) => r.date === JOUR && r.pax === 8 && a(r, 'laser') && a(r, '17:00') && /^dupont$/i.test(r.name) },
 ];
-const BUDGET_DOUZE = 58;
+const BUDGET_DOUZE = 59;
 
 async function scenarioS1(browser) {
   console.log('\n[S1] les douze commandes du comptoir et la tache clavier');
@@ -483,7 +508,7 @@ async function scenarioS2(browser) {
     await page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="bowling"]');
     // Une heure qui n est pas celle du ticket : l appui, un repeint qui refait la page
     // (le plan du serveur qui arrive), puis le relachement.
-    const cible = page.locator('#rsZ-bowling .rs-h[data-heure]:not(.is-on)').nth(1);
+    const cible = page.locator(`#rsZ-bowling .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).nth(1);
     const heure = await cible.getAttribute('data-heure');
     const boite = await cible.boundingBox();
     await page.mouse.move(boite.x + boite.width / 2, boite.y + boite.height / 2);
@@ -1092,7 +1117,7 @@ async function scenarioS9(browser) {
     // Le bowling propose au depart n est pas coche ; choisi a une autre heure, il l est.
     await page.waitForTimeout(260);
     const propose = await lireSeances(page);
-    const bowling = page.locator('#rsZ-bowling .rs-h[data-heure]:not(.is-on)').nth(1);
+    const bowling = page.locator(`#rsZ-bowling .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).nth(1);
     const hb = await bowling.getAttribute('data-heure');
     await bowling.click();
     await pret(page).catch(() => {});
@@ -1101,7 +1126,7 @@ async function scenarioS9(browser) {
     ok(propose.cocheBowling === '0' && choisi.bowling === hb && choisi.cocheBowling === '1', '[S9] le bowling propose n est pas coche, choisi il l est', { propose, choisi, hb });
     // Une seance du laser, pas encore pris : il s ajoute a cette heure, apres le bowling.
     await page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]', { timeout: 8000 }).catch(() => {});
-    const premiere = page.locator('#rsZ-laser_game .rs-h[data-heure]').first();
+    const premiere = page.locator(`#rsZ-laser_game .rs-h[data-heure]${QUI_TIENT}`).first();
     const h1 = await premiere.getAttribute('data-heure');
     await premiere.click();
     await page.waitForSelector('#rsL-a-laser_game', { state: 'attached', timeout: 4000 }).catch(() => {});
@@ -1109,7 +1134,7 @@ async function scenarioS9(browser) {
     const ajoute = await lireSeances(page);
     ok(JSON.stringify(ajoute.ids) === '["bowling","laser_game"]' && ajoute.laser === h1 && ajoute.ligneLaser.includes(h1) && ajoute.bowling === hb, '[S9] une seance d une activite pas encore prise l ajoute a cette heure', { hb, h1, ...ajoute });
     // Une autre seance du laser le deplace ; la meme, touchee encore, le retire.
-    const autre = page.locator('#rsZ-laser_game .rs-h[data-heure]:not(.is-on)').nth(1);
+    const autre = page.locator(`#rsZ-laser_game .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).nth(1);
     const h2 = await autre.getAttribute('data-heure').catch(() => '');
     await autre.click().catch(() => {});
     await pret(page).catch(() => {});
@@ -1153,7 +1178,192 @@ async function scenarioS9(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { S1: scenarioS1, S2: scenarioS2, S3: scenarioS3, S4: scenarioS4, S5: scenarioS5, S6: scenarioS6, S7: scenarioS7, S8: scenarioS8, S9: scenarioS9 };
+// [S10] TOUTES LES HEURES, ET CELLES QUI COINCENT
+// ---------------------------------------------------------------------------
+// Movsar (03/11) : « desfois ya pas toute les heures et genre quand ya des heures impossible
+// ça affiche direct sur lheure comme ça on sait et permet egalement de pouvoir quand meme
+// prendre et choisir meme si ça coince et ça faut que ce soit une permission qui peut etre
+// choisi d etre mise pour chaque role ». Ce qui se lit se compare au serveur, demande a part :
+// pour chaque heure de l horloge, le corps que la fenetre enverrait, juge par le vrai handler.
+const minutesDe = (h) => Number(String(h).slice(0, 2)) * 60 + Number(String(h).slice(3, 5));
+const demiHeures = (heures) => heures.every((h, i) => i === 0 || minutesDe(h) - minutesDe(heures[i - 1]) === 30);
+const phrase = (texte) => String(texte || '').replace(/\s:\s/g, ', ');
+
+function verdictsDuServeur(page, id) {
+  return page.evaluate(async (bloc) => {
+    const demande = rsDansLaCopie(bloc, () => ({ corps: rvCorpsDeSimulation(), variantes: rvHeuresHorloge(bloc).map((h) => rvVariante(bloc, 0, h)).filter(Boolean) }));
+    const rep = await window.__vraiAppel('POST', '/api/staff-reservations', { ...demande.corps, dryRun: true, candidats: demande.variantes });
+    return Object.fromEntries((((rep.json || {}).candidats) || []).map((c) => [c.heure, { statut: c.statut, court: c.court || '', raison: c.raison || '' }]));
+  }, id);
+}
+
+// Les touches d une rangee (ou des « Autres ») telles qu elles se lisent.
+const lireHeures = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s)].map((b) => ({
+  heure: b.dataset.heure,
+  coince: b.classList.contains('is-coince') || b.classList.contains('is-ko'),
+  efface: b.classList.contains('is-efface'),
+  mot: ((b.querySelector('small') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+  nom: b.getAttribute('aria-label') || '',
+})), sel);
+
+// Une heure lue contre le verdict du serveur : elle coince quand il dit non, avec son mot
+// (precede de l activite qui coince quand c est une autre : « laser, 7 places sur 8 ») et
+// sa phrase ; elle ne coince pas quand il dit oui.
+const commeLeServeur = (x, v) => Boolean(v) && (v.statut === 'ko'
+  ? x.coince && Boolean(v.court) && x.mot.endsWith(v.court) && x.nom.includes(phrase(v.raison))
+  : !x.coince);
+const planDe = (r) => (r && (typeof r.ops_plan === 'string' ? JSON.parse(r.ops_plan) : r.ops_plan)) || {};
+
+async function huitJoueurs(page) {
+  await page.locator('.btn-new').click();
+  await page.locator('#rsHaut [data-pax="8"]').click();
+  await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#rsZ-laser_game .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(300);
+}
+
+// La premiere heure du bowling que le serveur refuse, et son verdict.
+async function heureQuiCoince(page) {
+  const serveur = await verdictsDuServeur(page, 'bowling');
+  const heure = (await lireHeures(page, '#rsZ-bowling .rs-h[data-heure]')).map((x) => x.heure).find((h) => serveur[h] && serveur[h].statut === 'ko') || '';
+  return { heure, verdict: serveur[heure] || null };
+}
+
+async function scenarioS10(browser) {
+  console.log('\n[S10] toutes les heures, et celles qui coincent');
+  if (joue('toutes')) {
+    const m = await ouvrirConsole(browser);
+    const { page } = m;
+    await huitJoueurs(page);
+    const bowling = await lireHeures(page, '#rsZ-bowling .rs-h[data-heure]');
+    const laser = await lireHeures(page, '#rsZ-laser_game .rs-h[data-heure]');
+    const sb = await verdictsDuServeur(page, 'bowling');
+    const sl = await verdictsDuServeur(page, 'laser_game');
+    const hb = bowling.map((x) => x.heure);
+    const hl = laser.map((x) => x.heure);
+    // A 15:10 : le bowling part de la seance en cours, le laser de la suivante (une partie
+    // commencee ne se rejoint pas).
+    ok(hb.length === 6 && hb[0] === '15:00' && demiHeures(hb) && hl.length === 6 && hl[0] === '15:30' && demiHeures(hl), '[S10] la rangee montre chaque demi-heure, sans trou', { bowling: hb, laser: hl });
+    const lues = [...bowling.map((x) => ({ ...x, id: 'bowling', v: sb[x.heure] })), ...laser.map((x) => ({ ...x, id: 'laser_game', v: sl[x.heure] }))];
+    const refusees = lues.filter((x) => x.v && x.v.statut === 'ko');
+    ok(refusees.length >= 2 && lues.some((x) => x.v && x.v.statut !== 'ko'), '[S10] MONTAGE : le serveur refuse des heures de la rangee et en garde', lues.map((x) => `${x.heure} ${x.v ? x.v.statut : '?'}`));
+    ok(lues.every((x) => commeLeServeur(x, x.v)), '[S10] une heure qui coince le dit sur l heure : le mot et la phrase du serveur', lues.filter((x) => !commeLeServeur(x, x.v)).map((x) => ({ id: x.id, heure: x.heure, lu: x.mot, coince: x.coince, serveur: x.v })));
+    // Le mot d une heure du bowling : les pistes qui restent a cette heure, celles que le
+    // planning de la console compte (la meme journee), sur celles qu il faut au groupe.
+    const pistes = await page.evaluate((heures) => heures.map((h) => {
+      const { besoin, libres } = rsDansLaCopie('bowling', () => rvPistesDuBowling(h));
+      return { h, attendu: libres ? `${libres} piste${libres > 1 ? 's' : ''} sur ${besoin}` : 'complet' };
+    }), refusees.filter((x) => x.id === 'bowling' && /piste/i.test(x.v.raison)).map((x) => x.heure));
+    const motsBowling = Object.fromEntries(bowling.map((x) => [x.heure, x.mot]));
+    ok(pistes.length > 0 && pistes.some((p) => p.attendu !== 'complet') && pistes.every((p) => motsBowling[p.h] === p.attendu), '[S10] le mot dit les pistes qui restent, celles du planning, sur celles qu il faut', { pistes, lus: motsBowling });
+    // « Autres » : toute la journee du bowling, de la seance en cours a la derniere heure qui
+    // finit a la fermeture, chacune comme le serveur la juge.
+    await page.locator('.rs-h-autres[data-activite="bowling"]').click();
+    await page.waitForSelector('.rs-heures .rs-h.is-coince', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const toutes = await lireHeures(page, '.rs-heures .rs-h[data-heure]');
+    // La derniere demi-heure dont la partie finit a la fermeture.
+    const fin = await page.evaluate(() => { const sch = getSchedule(quickBookState.date, state.isHolidayMode); return numToTime(Math.floor((sch.close - rvBowlingDuree()) * 2) / 2); });
+    const ht = toutes.map((x) => x.heure);
+    ok(ht[0] === '15:00' && ht[ht.length - 1] === fin && demiHeures(ht) && toutes.every((x) => commeLeServeur(x, sb[x.heure])), '[S10] « Autres » montre toute la journee, chaque heure comme le serveur la juge', { premiere: ht[0], derniere: ht[ht.length - 1], fin, faux: toutes.filter((x) => !commeLeServeur(x, sb[x.heure])).map((x) => ({ heure: x.heure, lu: x.mot, coince: x.coince, serveur: sb[x.heure] })) });
+    // Celle du laser, a la suite du bowling : toute son horloge, celles d avant la rangee
+    // comprises (la seance en cours), que le serveur lit aussi : aucune ne reste grisee en
+    // attendant une reponse qui ne vient pas.
+    await page.locator('#rsRetour').click();
+    await page.waitForSelector('.is-q-activites');
+    await page.locator('.rs-h-autres[data-activite="laser_game"]').click();
+    await page.waitForSelector('.rs-heures .rs-h[data-heure]', { timeout: 8000 });
+    await page.waitForFunction(() => !document.querySelector('.rs-heures .rs-h.is-efface[data-heure]'), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const duLaser = await lireHeures(page, '.rs-heures .rs-h[data-heure]');
+    const avantLaRangee = duLaser.filter((x) => x.heure < hl[0]);
+    ok(avantLaRangee.length > 0 && demiHeures(duLaser.map((x) => x.heure)) && duLaser.every((x) => !x.efface && commeLeServeur(x, sl[x.heure])), '[S10] « Autres » du laser : toute son horloge, celles d avant la rangee comprises, comme le serveur la juge', { avant: avantLaRangee, faux: duLaser.filter((x) => x.efface || !commeLeServeur(x, sl[x.heure])).map((x) => ({ heure: x.heure, lu: x.mot, efface: x.efface, coince: x.coince, serveur: sl[x.heure] })) });
+    await m.finir('S10 toutes');
+  }
+  if (joue('forcer')) {
+    const m = await ouvrirConsole(browser);
+    const { page, journal } = m;
+    await huitJoueurs(page);
+    const { heure, verdict } = await heureQuiCoince(page);
+    await page.locator(`#rsZ-bowling .rs-h[data-heure="${heure || '00:00'}"]`).click({ timeout: 3000 }).catch(() => {});
+    await page.waitForSelector('#rvAPlacer', { timeout: 8000 }).catch(() => {});
+    const pris = await page.evaluate(() => ({
+      heure: quickBookState.startTime,
+      ligne: ((document.getElementById('rsL-a-bowling') || {}).textContent || '').replace(/\s+/g, ' '),
+      aPlacer: Boolean(document.getElementById('rvAPlacer')),
+      creer: ((document.getElementById('rvCreer') || {}).textContent || '').replace(/\s+/g, ' '),
+    }));
+    // Le ticket dit « à placer » et pourquoi : la phrase du serveur pour cette heure.
+    const pourquoi = verdict ? phrase(verdict.raison).slice(1) : '?';
+    ok(Boolean(heure) && pris.heure === heure && /à placer/i.test(pris.ligne) && phrase(pris.ligne).includes(pourquoi) && pris.aPlacer && pris.creer.includes(heure), '[S10] direction : toucher une heure qui coince la prend, le ticket dit « à placer » et pourquoi', { heure, verdict, pris });
+    const depuis = journal.length;
+    await page.locator('#rvCreer').click();
+    const [r] = await nouveaux(page, m.avant);
+    const corps = (creations(journal.slice(depuis))[0] || {}).corps || {};
+    ok(Boolean(r) && heureDe(r) === heure && r.validation_status === 'staff_review' && Boolean(planDe(r).aPlacer) && corps.forcer === true, '[S10] le dossier part « à placer », forcer voyage avec lui', { dossier: resume(r), validation: r && r.validation_status, forcer: corps.forcer });
+    await m.finir('S10 forcer');
+  }
+  if (joue('lot')) {
+    const m = await ouvrirConsole(browser);
+    const { page, journal } = m;
+    await huitJoueurs(page);
+    const { heure } = await heureQuiCoince(page);
+    await page.locator(`#rsZ-bowling .rs-h[data-heure="${heure || '00:00'}"]`).click({ timeout: 3000 }).catch(() => {});
+    await page.waitForSelector('#rvAPlacer', { timeout: 8000 }).catch(() => {});
+    // La deuxieme reservation du meme client, a une heure qui tient.
+    await page.locator('#rvEncore').click();
+    await page.waitForSelector('.rv-resa:nth-child(2)');
+    await page.locator('#rsHaut [data-pax="4"]').click();
+    await page.waitForSelector('#rsHaut [data-pax="4"].is-on');
+    await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
+    await page.locator(`#rsZ-bowling .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).first().click();
+    await pret(page).catch(() => {});
+    const depuis = journal.length;
+    await page.locator('#rvCreer').click();
+    const crees = await nouveaux(page, m.avant, (lignes) => lignes.length >= 2);
+    const corps = (creations(journal.slice(depuis))[0] || {}).corps || {};
+    const dossiers = Array.isArray(corps.dossiers) ? corps.dossiers : [];
+    const aPlacer = crees.filter((r) => planDe(r).aPlacer);
+    ok(dossiers.length === 2 && dossiers[0].forcer === true && dossiers[1].forcer !== true && crees.length === 2 && aPlacer.length === 1 && heureDe(aPlacer[0]) === heure, '[S10] dans un lot, forcer ne voyage que sur le dossier pris quand meme', { forcer: dossiers.map((d) => d.forcer === true), crees: crees.map(resume), aPlacer: aPlacer.length });
+    await m.finir('S10 lot');
+  }
+  if (joue('sans-droit')) {
+    // Le preset Staff bar : forcer « non ».
+    const m = await ouvrirConsole(browser, { role: 'catalogue' });
+    const { page } = m;
+    await huitJoueurs(page);
+    const { heure, verdict } = await heureQuiCoince(page);
+    const avant = await page.evaluate(() => quickBookState.startTime);
+    const touche = (await lireHeures(page, `#rsZ-bowling .rs-h[data-heure="${heure || '00:00'}"]`))[0] || {};
+    await page.locator(`#rsZ-bowling .rs-h[data-heure="${heure || '00:00'}"]`).click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const apres = await page.evaluate(() => ({
+      heure: quickBookState.startTime,
+      forcer: Boolean(quickBookState.forcer),
+      dit: ((document.querySelector('#rvVerdict [role="alert"]') || {}).textContent || '').replace(/\s+/g, ' '),
+    }));
+    ok(Boolean(heure) && commeLeServeur(touche, verdict) && apres.heure === avant && !apres.forcer && apres.dit.includes(phrase(verdict.raison)), '[S10] role sans le droit : l heure dit pourquoi, le toucher ne la prend pas et le dit', { heure, verdict, touche, avant, apres });
+    // Le serveur garde son refus : un corps qui demande forcer pour ce role, a cette heure.
+    const essai = await page.evaluate(async (h) => {
+      rvChoisirHeure('bowling', 0, h);
+      await rvSimuler();
+      const p = rvPlanCourant();
+      if (!p || p.disponible) return { erreur: 'le plan a blanc ne refuse pas cette heure' };
+      quickBookState.forcer = true;
+      const c = rvConstruire();
+      if (c.erreur) return { erreur: c.erreur };
+      const corps = buildReservationApiPayload(c.reservation, { channel: 'staff', laneCount: c.requiredCount, requiresLanes: c.needsLanes });
+      const rep = await window.__vraiAppel('POST', '/api/staff-reservations', corps);
+      return { forcer: corps.forcer === true, statut: rep.statut, code: (rep.json || {}).code || '' };
+    }, heure || '00:00');
+    const crees = await nouveaux(page, m.avant, () => true);
+    ok(essai.forcer === true && essai.statut === 403 && essai.code === 'forcer_refuse' && crees.length === 0, '[S10] role sans le droit : le serveur refuse forcer', { essai, crees: crees.length });
+    await m.finir('S10 sans droit');
+  }
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { S1: scenarioS1, S2: scenarioS2, S3: scenarioS3, S4: scenarioS4, S5: scenarioS5, S6: scenarioS6, S7: scenarioS7, S8: scenarioS8, S9: scenarioS9, S10: scenarioS10 };
 
 function verifierLesAncres() {
   let mortes = 0;
@@ -1161,6 +1371,9 @@ function verifierLesAncres() {
     const n = verifierAncre(m);
     if (n !== 1) { mortes += 1; console.log(`FAIL  ancre ${m.nom || m.fichier} trouvee ${n} fois : ${m.de.slice(0, 80)}`); }
   }
+  // Deux contre-preuves du meme nom : la carte garde la derniere, la premiere ne se joue
+  // jamais et son « rougit » est celui de l autre.
+  MUTATIONS.filter((m, i) => MUTATIONS.findIndex((x) => x.nom === m.nom) !== i).forEach((m) => { mortes += 1; console.log(`FAIL  contre-preuve ${m.nom} nommee deux fois`); });
   console.log(`reserver-seances-check --ancres : ${MUTATIONS.length + 1 - mortes}/${MUTATIONS.length + 1} uniques`);
   return mortes;
 }

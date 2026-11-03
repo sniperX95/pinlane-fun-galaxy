@@ -13,7 +13,12 @@
 //   [4] une heure en erreur devient un « ko » qui dit l erreur, les autres
 //       heures continuent ;
 //   [5] contre-preuves par mutation : le gate rougit si les parties ne
-//       glissent plus, ou si le partage n est plus vu.
+//       glissent plus, ou si le partage n est plus vu ;
+//   [6] le mot de l heure refusee (2026-11-03) : deux ou trois mots tires des
+//       faits que le moteur pose sur ses conflits (« 1 piste sur 2 »,
+//       « 7 places sur 8 », « complet », « arène prise »), sinon le motif de sa
+//       phrase (« fermé »), sinon « impossible » : jamais une raison inventee ;
+//       le verdict garde aussi ce qui coince, activite par activite.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -98,6 +103,31 @@ async function verifier(sim, { sortie = true } = {}) {
   try { await sim.simulerCandidats({ corps: { ...CORPS, startTime: '' }, candidats: ['10:00'], planifier: async () => planLaser([]) }); } catch (e) { refus = e.message; }
   verif(/Heure de départ/.test(refus), '[4] sans heure de depart, rien n est essaye (refus clair)');
 
+  // [6] Le mot de l heure
+  const mot = (raison, conflits = []) => sim.motCourtDuRefus({ raison, conflits });
+  const pistes = mot('Pas assez de pistes libres à 16:30 : il en faut 2.', [{ type: 'bowling_conflict', severity: 'blocking', message: 'Pas assez de pistes libres à 16:30 : il en faut 2.', libres: 1, voulues: 2 }]);
+  verif(pistes.court === '1 piste sur 2' && pistes.activite === 'bowling', `[6] les pistes qui restent sur celles qu il faut (${pistes.court}, ${pistes.activite})`);
+  const plein = mot('Pas assez de pistes libres à 17:00.', [{ type: 'bowling_conflict', severity: 'blocking', message: 'Pas assez de pistes libres à 17:00.', libres: 0, voulues: 3 }]);
+  verif(plein.court === 'complet', `[6] plus une piste libre : « complet » (${plein.court})`);
+  const laser = 'Laser à 16:00 : il reste 7 places sur 30, il en faut 8. Décalez le départ.';
+  const places = mot(laser, [{ type: 'laser_conflict', severity: 'blocking', message: laser, reste: 7, groupe: 8 }]);
+  verif(places.court === '7 places sur 8' && places.activite === 'laser_game', `[6] les places qui restent au laser sur celles qu il faut (${places.court}, ${places.activite})`);
+  const prise = 'Arène laser déjà prise à 16:00 par une autre partie. Décalez le départ.';
+  const arene = mot(prise, [{ type: 'laser_conflict', severity: 'blocking', message: prise, arenePrise: true }]);
+  verif(arene.court === 'arène prise', `[6] l arene prise par une autre partie (${arene.court})`);
+  const ferme = mot('Le centre est fermé à cette date.');
+  verif(ferme.court === 'fermé', `[6] sans conflit, le motif de la phrase du moteur (${ferme.court})`);
+  const inconnu = mot('Une phrase que le moteur dirait pour la premiere fois.');
+  verif(inconnu.court === 'impossible', `[6] une phrase inconnue dit « impossible », jamais une raison inventee (${inconnu.court})`);
+  const deux = sim.verdictDuPlan({ planAvailable: false, planRefusal: 'Pas assez de pistes libres à 16:30 : il en faut 2.' }, { opsPlan: { conflicts: [
+    { type: 'bowling_conflict', severity: 'blocking', message: 'Pas assez de pistes libres à 16:30 : il en faut 2.', libres: 1, voulues: 2 },
+    { type: 'laser_conflict', severity: 'blocking', message: 'Laser à 17:30 : il reste 3 places sur 30, il en faut 8. Décalez le départ.', reste: 3, groupe: 8 },
+  ] } });
+  const parActivite = JSON.stringify((deux.bloquants || []).map((b) => [b.activite, b.court]));
+  verif(deux.statut === 'ko' && deux.court === '1 piste sur 2' && parActivite === JSON.stringify([['bowling', '1 piste sur 2'], ['laser_game', '3 places sur 8']]),
+    `[6] le verdict garde son mot et ce qui coince, activite par activite (${deux.court}, ${parActivite})`);
+  verif(parHeure['16:00'].court === 'impossible' && parHeure['15:30'].court === 'impossible', `[6] un ko de l horloge porte son mot (${parHeure['16:00'].court}, ${parHeure['15:30'].court})`);
+
   if (sortie) notes.forEach(([cond, label]) => ok(cond, label));
   return notes;
 }
@@ -130,6 +160,14 @@ async function contrePreuve(label, avant, apres, attendu) {
       "&& (bloc.sharedSession || Number(bloc.playersBefore) > 0));",
       '&& bloc.sharedSession);',
       /partage vu sur les joueurs/);
+    await contrePreuve('le mot ne dit plus les pistes qui restent',
+      "return entier(conflit.libres) ? `${compte(entier(conflit.libres), 'piste')} sur ${entier(conflit.voulues)}` : 'complet';",
+      "return 'complet';",
+      /les pistes qui restent/);
+    await contrePreuve('une phrase inconnue recoit une raison inventee',
+      "|| { court: 'impossible', activite };",
+      "|| { court: 'complet', activite };",
+      /jamais une raison inventee/);
   } catch (error) {
     console.error('\nreserver-simulation-check FAIL:', error.stack || error.message);
     failures += 1;

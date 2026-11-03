@@ -3141,7 +3141,9 @@ function soulignerCeQuiABouge(ids) {
 }
 function getFicheFaitsSignature() {
   const r = state.selectedRes;
-  return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label]) : '';
+  // La derniere modification se lit dans l en-tete : un changement fait sur un
+  // autre poste la redessine, meme quand rien d autre de la signature ne bouge.
+  return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label, texteDerniereModif(r, { max: 3 })]) : '';
 }
 function repeindreFicheSiChangee() {
   const overlay = document.getElementById('posOverlay');
@@ -3777,7 +3779,7 @@ state.staffReservationsMonth = /^\d{4}-\d{2}$/.test(state.staffReservationsMonth
 state.staffReservationActivityFilter = ['all', 'bowling', 'laser', 'complete', 'event'].includes(state.staffReservationActivityFilter) ? state.staffReservationActivityFilter : 'all';
 state.staffReservationsSelectedDate = state.staffReservationsSelectedDate || state.currentDate || todayStr();
 state.staffReservationsPreset = ['today', 'month'].includes(state.staffReservationsPreset) ? state.staffReservationsPreset : 'month';
-state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special'].includes(state.staffPricingFilter)
+state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special', 'surmesure'].includes(state.staffPricingFilter)
   || /^family:.+/.test(String(state.staffPricingFilter || '')))
   ? state.staffPricingFilter : 'all';
 state.staffPricingQuery = state.staffPricingQuery || '';
@@ -22552,6 +22554,35 @@ function formatNoteEquipeQuand(le) {
   return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} · ${heure}`;
 }
 
+// ---- LA DERNIERE MODIFICATION D UN DOSSIER, EN UNE LIGNE (2026-11-03) ------
+// « Modifié 14:20, Julie : 12 → 14 joueurs ». Le serveur l ecrit avec le dossier
+// au moment ou ce qui se vend change (opsPlan.derniereModif,
+// lib/historique-dossier.js) : le staff-state la porte deja, rien a relire.
+// Partagee : la fiche l affiche sous ses faits, les cartes des plannings la
+// liront telle quelle. Texte brut (a echapper), '' pour un dossier jamais modifie
+// depuis sa creation. `max` : combien de changements dire, le reste se compte.
+function quandDerniereModif(le) {
+  const d = new Date(le);
+  if (!le || Number.isNaN(d.getTime())) return '';
+  const jourDe = (date) => date.toLocaleDateString('fr-CA', { timeZone: 'Europe/Brussels' });
+  const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+  const maintenant = new Date();
+  if (jourDe(d) === jourDe(maintenant)) return heure;
+  if (jourDe(d) === jourDe(new Date(maintenant.getTime() - 86400000))) return `hier ${heure}`;
+  return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} ${heure}`;
+}
+
+function texteDerniereModif(r, { max = 2 } = {}) {
+  const d = r && r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan.derniereModif : null;
+  const quoi = d && Array.isArray(d.quoi) ? d.quoi.filter(t => typeof t === 'string' && t.trim()) : [];
+  if (!quoi.length) return '';
+  const dits = quoi.slice(0, Math.max(1, Number(max) || 1));
+  const reste = quoi.length - dits.length;
+  const quand = quandDerniereModif(d.le);
+  const qui = typeof d.par === 'string' ? d.par.trim() : '';
+  return `Modifié${quand ? ` ${quand}` : ''}${qui ? `, ${qui}` : ''} : ${dits.join(' · ')}${reste > 0 ? ` · +${reste}` : ''}`;
+}
+
 // ---- LE PRIX AJUSTE : UNE SEULE REGLE, LUE PAR TOUS LES ECRANS ------------
 // Movsar, 2026-09-03 : « si on affichait le prix modifie de cette facon ca
 // serait plus visible ». Le defaut n etait pas une pastille manquante sur un
@@ -25729,6 +25760,7 @@ function renderGroupeEncaisseAbsence(r) {
           <label>Montant encaissé<input type="number" id="encaisse-montant-${r.id}" min="0" step="0.01" inputmode="decimal" value="${montant}"></label>
           <label>Pourquoi il diffère<input type="text" id="encaisse-raison-${r.id}" maxlength="200" placeholder="Remise, geste, joueur en moins…" value="${escapeHtml(r.discountReason || '')}"></label>
           <button type="button" class="gc-btn is-primary" onclick="noterEncaisse(${r.id}, event)">Enregistrer</button>
+          ${typeof niveauStaff === 'function' && niveauStaff('prix') === 'non' ? '<p class="pos-encaisse-note">Encaisser moins que le prix demande le droit d’ajuster un prix : votre rôle note le prix ou un montant au-dessus.</p>' : ''}
         </div>
       </details>
     </div>`;
@@ -26367,6 +26399,9 @@ function editRes(id, ev) {
 function openPos(id) {
   posPriceEditOpen = false;
   plisRetardOuverts.clear();
+  // L historique repart ferme, et relu a sa prochaine ouverture.
+  historiquesOuverts.clear();
+  historiquesLus.clear();
   editContactOuvert = false;
   const reservation = findStaffReservationById(id);
   if (!reservation) {
@@ -26992,9 +27027,95 @@ function renderPosDetails(r) {
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
         ${enRetard ? '' : pli}
+        ${renderGroupeHistorique(r)}
       </aside>
     </div>
   </div>`;
+}
+
+// L HISTORIQUE DU DOSSIER (2026-11-03) : qui a fait quoi et quand, en phrases
+// simples, lu dans le journal du serveur (GET staff-reservations?historique,
+// lib/historique-dossier.js) a l ouverture du pli, jamais avant. Le niveau
+// « historique » du role l ouvre ; sans lui, rien ne s affiche et le serveur
+// refuse de toute facon. Le pli garde son etat d un rendu a l autre (le releve
+// redessine la fiche) ; un dossier modifie pendant qu il est ouvert se relit.
+// Une lecture en panne attend « Réessayer » : elle ne se relance pas a chaque rendu.
+const historiquesOuverts = new Set();
+const historiquesLus = new Map();
+function versionHistorique(r) {
+  return String((r && r.updatedAt) || '');
+}
+function corpsHistoriqueHtml(id) {
+  const lu = historiquesLus.get(id);
+  // Une relecture garde la liste deja lue a l ecran jusqu a la reponse.
+  if (!lu || (lu.etat === 'charge' && !lu.entrees.length)) return '<p class="fx-histo-etat" role="status">Chargement de l’historique…</p>';
+  if (lu.etat === 'erreur') {
+    return `<div class="fx-histo-panne" role="alert"><p>${escapeHtml(lu.message || 'Historique indisponible.')}</p>${lu.refus ? '' : `<button type="button" class="gc-btn" data-pl-focus="fiche.histo.relire.${id}" onclick="relireHistoriqueDossier(${id}, event)">Réessayer</button>`}</div>`;
+  }
+  if (!lu.entrees.length) return '<p class="fx-histo-etat">Aucune modification enregistrée pour ce dossier.</p>';
+  return `<ol class="fx-histo">${lu.entrees.map(e => `<li class="fx-histo-entree">
+      <p class="fx-histo-meta"><time datetime="${escapeHtml(e.le)}">${escapeHtml(formatNoteEquipeQuand(e.le))}</time><span>${escapeHtml(e.par)}</span></p>
+      <ul class="fx-histo-quoi">${(e.quoi || []).map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+    </li>`).join('')}</ol>`;
+}
+function peindreHistorique(id) {
+  const corps = document.querySelector(`[data-fx-histo="${Number(id)}"] .fx-histo-corps`);
+  if (corps) corps.innerHTML = corpsHistoriqueHtml(Number(id));
+}
+async function chargerHistoriqueDossier(r) {
+  const id = Number(r && r.id);
+  if (!Number.isFinite(id)) return;
+  const version = versionHistorique(r);
+  const deja = historiquesLus.get(id);
+  if (deja && (deja.etat === 'charge' || deja.etat === 'erreur' || (deja.etat === 'ok' && deja.version === version))) return;
+  const ticket = {};
+  historiquesLus.set(id, { etat: 'charge', version, entrees: deja && deja.entrees ? deja.entrees : [], ticket });
+  if (!deja || deja.etat !== 'ok') peindreHistorique(id);
+  const centre = r.centerId || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
+  try {
+    const reponse = await apiRequest(`${API_ENDPOINTS.staffReservations}?historique=${encodeURIComponent(id)}&centerId=${encodeURIComponent(centre)}`);
+    if (historiquesLus.get(id)?.ticket !== ticket) return;
+    historiquesLus.set(id, { etat: 'ok', version, entrees: Array.isArray(reponse?.historique) ? reponse.historique : [] });
+  } catch (error) {
+    if (historiquesLus.get(id)?.ticket !== ticket) return;
+    const refus = error?.payload?.code === 'historique_refuse';
+    historiquesLus.set(id, { etat: 'erreur', version, entrees: [], refus, message: refus ? error.message : `Historique indisponible : ${error?.message || 'le serveur ne répond pas.'}` });
+  }
+  peindreHistorique(id);
+}
+function relireHistoriqueDossier(id, ev) {
+  if (ev) ev.stopPropagation();
+  const r = findStaffReservationById(Number(id)) || state.selectedRes;
+  historiquesLus.delete(Number(id));
+  if (r) chargerHistoriqueDossier(r);
+}
+// Un pli recree ouvert par le rendu declenche aussi « toggle » : seul un
+// changement d etat est un geste.
+function basculerHistorique(id, ouvert) {
+  const cle = Number(id);
+  if (ouvert === historiquesOuverts.has(cle)) return;
+  if (!ouvert) { historiquesOuverts.delete(cle); return; }
+  historiquesOuverts.add(cle);
+  const r = findStaffReservationById(cle) || (state.selectedRes && Number(state.selectedRes.id) === cle ? state.selectedRes : null);
+  if (r) chargerHistoriqueDossier(r);
+}
+function renderGroupeHistorique(r) {
+  if (!r || typeof niveauStaff !== 'function' || niveauStaff('historique') !== 'oui') return '';
+  const id = Number(r.id);
+  if (!Number.isFinite(id)) return '';
+  const ouvert = historiquesOuverts.has(id);
+  // Ouvert sur un dossier qui a change depuis la lecture : il se relit.
+  if (ouvert) {
+    const lu = historiquesLus.get(id);
+    if (lu && lu.etat === 'ok' && lu.version !== versionHistorique(r)) Promise.resolve().then(() => chargerHistoriqueDossier(r));
+  }
+  return `<details class="info-block pos-fold fx-pli fx-historique" data-fx-histo="${id}"${ouvert ? ' open' : ''} ontoggle="basculerHistorique(${id}, this.open)">
+      <summary class="pos-group-head" data-pl-focus="fiche.histo.${id}">
+        <span class="fx-titre">Historique</span>
+        <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <div class="fx-histo-corps" aria-live="polite">${ouvert ? corpsHistoriqueHtml(id) : ''}</div>
+    </details>`;
 }
 
 // LE BLOC NOTES DE LA FICHE : le mot ecrit avec la reservation, en grand,
@@ -30959,6 +31080,12 @@ async function chargerCatalogueSurMesure() {
     }
   })();
   return course.promesse;
+}
+// Le gerant vient d enregistrer le catalogue (Activites & tarifs,
+// assets/pinlane-sur-mesure-settings.js) : le prochain appel le relit.
+function oublierCatalogueSurMesure() {
+  catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
+  catalogueSurMesureEnCours = null;
 }
 function quickExtrasEtat() {
   if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
@@ -35974,6 +36101,8 @@ function renderPosInner() {
   // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
   // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
   const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
+  // Qui a change quoi en dernier, sans ouvrir l historique (texteDerniereModif).
+  const derniereModif = texteDerniereModif(r, { max: 3 });
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
@@ -35999,6 +36128,7 @@ function renderPosInner() {
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
           <p class="fx-chiffres">${chiffres}</p>
           <p class="dossier-facts">${facts}</p>
+          ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
           ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
             ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
             : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}

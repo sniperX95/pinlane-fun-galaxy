@@ -189,7 +189,7 @@ async function installMock(page, { withSession, breakCatalog = false, rechargeme
           const active = centerId || loginCenterId;
           const entry = (id, name, family, price) => ({
             id, name, bookingFamily: family, desc: [], notes: [], priceType: 'per_pax', minPax: 6,
-            source: 'custom', hasBowling: true, base: { priceValue: price, priceOld: null },
+            source: id === 'n4-jeudi-fou' ? 'custom' : 'seed', hasBowling: true, base: { priceValue: price, priceOld: null },
             effective: { name, priceValue: price, priceOld: null, removed: false, enabled: true },
             centerOverride: null,
           });
@@ -199,7 +199,9 @@ async function installMock(page, { withSession, breakCatalog = false, rechargeme
               ? [entry('n4-jeudi-fou', 'JEUDI FOU N4', 'Formules speciales', 12)]
               : [entry('f1', 'FORMULE 1', 'Formules anniversaires', 26)],
             activities: active === B.id
-              ? [{ id: 'bowling', name: 'Bowling', resourceType: 'bowling_lane' }]
+              // Le catalogue d activites peut lister ce que CE centre n exploite pas :
+              // c est la dotation du centre qui filtre (la contre-preuve le retire).
+              ? [{ id: 'bowling', name: 'Bowling', resourceType: 'bowling_lane' }, { id: 'laser_game', name: 'Laser Game', resourceType: 'laser_arena' }]
               : [{ id: 'bowling', name: 'Bowling', resourceType: 'bowling_lane' }, { id: 'laser_game', name: 'Laser Game', resourceType: 'laser_arena' }],
           });
         }
@@ -232,7 +234,26 @@ async function installMock(page, { withSession, breakCatalog = false, rechargeme
 }
 
 // Etat lu DANS la page : caches du vrai code + appels reellement partis.
-const READ_STATE = `(() => ({
+const READ_STATE = `(async () => { const tf = await (async () => {
+  // L ECRAN Tarifs & formules refait (2026-11-03) : les formules sont des
+  // lignes ; les activites ne se peignent que sous leur onglet, on l ouvre
+  // donc pour de vrai, on lit ses lignes, puis on revient aux formules.
+  const noms = (sel) => [...document.querySelectorAll(sel)].map((n) => n.textContent.trim());
+  const formules = noms('#staffPricingPage [data-tf-ligne] .tf-c-nom b');
+  const onglet = document.querySelector('#staffPricingPage [data-tf-onglet="activites"]');
+  if (!onglet) return { cards: formules, sections: [] };
+  onglet.click();
+  await new Promise((r) => setTimeout(r, 350));
+  const acts = [...document.querySelectorAll('#staffPricingPage [data-tf-act]')].map((l) => ({
+    nom: (l.querySelector('.tf-c-nom b') || { textContent: '' }).textContent.trim(),
+    detail: (l.querySelector('.tf-c-contenu') || { textContent: '' }).textContent.trim(),
+  }));
+  const retour = document.querySelector('#staffPricingPage [data-tf-onglet="formules"]');
+  if (retour) { retour.click(); await new Promise((r) => setTimeout(r, 250)); }
+  // Une carte par palier comme l ancienne page : « Bowling 30 min », « Bowling 1 partie (…) ».
+  const paliers = acts.flatMap((a) => a.detail.split('·').map((p) => p.trim().replace(/\\s+[0-9][0-9,.]*\\s*€.*$/, '')).filter(Boolean).map((p) => a.nom + ' ' + p));
+  return { cards: formules.concat(acts.map((a) => a.nom), paliers), sections: acts.map((a) => a.nom) };
+})(); return ({
   centerId: (typeof state !== 'undefined') ? state.adminCenterId : null,
   sessionCenterId: (typeof state !== 'undefined' && state.staffAuthSession) ? state.staffAuthSession.centerId : null,
   menuCentersLoaded: (typeof scopedCentersCache !== 'undefined') ? scopedCentersCache.loaded : null,
@@ -257,12 +278,10 @@ const READ_STATE = `(() => ({
   // voulait dire « aucune entree de menu », pas « aucune carte laser dans la
   // page ». Une entree de menu masquee ne prouve rien sur ce que la page
   // affiche : c'est ce qui a laisse passer les deux defauts mesures ici.
-  pricingCardTitles: [...document.querySelectorAll('.pv2-price-card .pv2-price-head strong')]
-    .map(n => n.textContent.trim()),
-  pricingSectionTitles: [...document.querySelectorAll('.pv2-catalog-section .pv2-section-head h3')]
-    .map(n => n.textContent.trim()),
+  pricingCardTitles: tf.cards,
+  pricingSectionTitles: tf.sections,
   calls: (window.__calls || []).slice(),
-}))()`;
+}); })()`;
 
 const readState = (page) => page.evaluate(READ_STATE);
 const blockCalls = (calls, centerId) => calls.filter(c => c.action === 'listAvailabilityBlocks' && c.centerId === centerId).length;
@@ -289,7 +308,7 @@ async function openPricingPage(page) {
   // La page se repeint quand le catalogue arrive : on attend une carte, pas un
   // delai fixe.
   await page.waitForFunction(
-    () => document.querySelectorAll('.pv2-price-card').length > 0,
+    () => document.querySelectorAll('#staffPricingPage [data-tf-ligne]').length > 0,
     null, { timeout: 15000 },
   ).catch(() => null);
 }
@@ -698,16 +717,17 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         // Le VRAI chemin du produit : on ouvre la modale de tarif du centre
         // sur une formule de CE centre, on pose un prix, on enregistre.
         // Rien n'est reformule ici, c'est le bouton « Tarif du centre ».
-        window.pevOpenEdit('n4-jeudi-fou');
-        window.pevSetNum('priceValue', '13');
-        window.pevSave();
+        // Une formule creee par l entreprise ne se regle pas par centre (le
+        // serveur la refuserait) : la page doit refuser AVANT d envoyer.
+        const refuse = window.tarifsPoser('n4-jeudi-fou', 'prix', 13) === false;
+        await window.tarifsPublier();
         await new Promise((resolve) => setTimeout(resolve, 600));
         const appel = (window.__calls || []).find((c) => c.action === 'saveClientFormuleOverride');
-        return { centreEcran: centre, centreEnvoye: appel ? appel.centerId : null, vue: Boolean(appel) };
+        return { centreEcran: centre, centreEnvoye: appel ? appel.centerId : null, vue: Boolean(appel), refuse };
       });
       record(
-        'une ecriture tarifaire part signee du centre AFFICHE, pas de celui du code',
-        ecriture.vue && ecriture.centreEnvoye === CENTER_B.id,
+        'une formule d entreprise de N4 ne part jamais en reglage du centre',
+        ecriture.refuse && !ecriture.vue,
         `ecran=${ecriture.centreEcran} envoye=${ecriture.centreEnvoye || (ecriture.vue ? 'AUCUN' : 'requete jamais partie')}`,
       );
 
@@ -881,6 +901,8 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
     {
       const APP = path.join(ROOT, 'assets', 'app-main.js');
       const appOriginal = fs.readFileSync(APP, 'utf8');
+      const PAGES = path.join(ROOT, 'assets', 'staff-pages-v2.js');
+      const pagesOriginal = fs.readFileSync(PAGES, 'utf8');
       try {
         // Mutation 1 : la purge du catalogue tarifaire ne part plus.
         const purgeCall = "if (typeof window !== 'undefined' && typeof window.pevResetCatalogCache === 'function') window.pevResetCatalogCache();";
@@ -908,9 +930,11 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         }
 
         // Mutation 2 : le filtre de ressource ne garde plus rien.
-        const laserGuard = 'const laser = !sellsLaser ? [] :';
-        if (appOriginal.split(laserGuard).length - 1 !== 1) throw new Error('ancre de mutation (filtre laser) introuvable ou ambigue');
-        fs.writeFileSync(APP, appOriginal.replace(laserGuard, 'const laser = false ? [] :'));
+        // La page refaite (2026-11-03) filtre ses activites sur la dotation du
+        // centre (tfActivites) : c est CE filtre que la contre-preuve retire.
+        const laserGuard = '(possedees.length ? possedees.includes(String(a.id)) : ordre.has(a.id))';
+        if (pagesOriginal.split(laserGuard).length - 1 !== 1) throw new Error('ancre de mutation (filtre des activites) introuvable ou ambigue');
+        fs.writeFileSync(PAGES, pagesOriginal.replace(laserGuard, 'true'));
         {
           const context = await browser.newContext();
           const page = await context.newPage();
@@ -932,11 +956,13 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         }
       } finally {
         fs.writeFileSync(APP, appOriginal); // ECRITURE INVERSE exacte
+        fs.writeFileSync(PAGES, pagesOriginal);
       }
       record(
         'app-main.js est restaure a l identique',
         fs.readFileSync(APP, 'utf8') === appOriginal,
       );
+      record('staff-pages-v2.js est restaure a l identique', fs.readFileSync(PAGES, 'utf8') === pagesOriginal);
     }
 
   } catch (error) {

@@ -254,8 +254,9 @@ const attendre = (page, fn, arg, ms = DELAI) => page.waitForFunction(fn, arg, { 
 // lisait chaque 31 du mois (Synchronise 31/10 08:24) et aux minutes :01 et :31
 // (le mail des fixtures d il y a 30 min) : [E] rouge les nuits du 31/10 et du 02/11.
 const prixF1 = () => {
-  const carte = [...document.querySelectorAll('#staffPricingPage .pv2-price-card')].find((c) => c.textContent.includes('FORMULE 1'));
-  const montant = carte ? carte.querySelector('.pv2-price-amount') : null;
+  // La page Tarifs refaite (2026-11-03) : une ligne par formule, son prix publie dans [data-tf-montant].
+  const carte = [...document.querySelectorAll('#staffPricingPage [data-tf-ligne]')].find((c) => c.textContent.includes('FORMULE 1'));
+  const montant = carte ? carte.querySelector('[data-tf-montant]') : null;
   return montant ? parseInt(montant.textContent, 10) : null;
 };
 

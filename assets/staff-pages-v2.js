@@ -11594,7 +11594,24 @@
   // choisie), de reglageArcade (839) et d optionsPour (528).
   function tfOptionsGrille(a) {
     const d = tfMetaDonnees() || {};
-    if (a.priceType === 'grid_bowling') return (d.durationOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ piste' }));
+    if (a.priceType === 'grid_bowling' || a.id === 'bowling' || (a.entry && a.entry.resourceType === 'bowling')) {
+      // Un centre qui vend le bowling AUX PARTIES et par personne (N4) : ses
+      // paliers par jours, jamais la grille par piste de Fun Galaxy (meme
+      // lecture que getPricingRows et lib/booking-config.resolveBowlingPricing).
+      const ressource = (typeof getAdminCenter === 'function' ? ((getAdminCenter() || {}).resources || {}) : {}).bowling;
+      const duCentre = ressource && ressource.pricing && ressource.pricing.mode === 'per_game_per_person'
+        && Array.isArray(ressource.pricing.tiers) && ressource.pricing.tiers.length ? ressource.pricing : null;
+      const parties = duCentre || (typeof getBowlingPricing === 'function' ? getBowlingPricing() : null);
+      if (parties) {
+        const options = [];
+        (parties.tiers || []).forEach((tier) => {
+          const jours = typeof describePricingDays === 'function' ? describePricingDays(tier.days) : '';
+          (tier.prices || []).forEach((prix, i) => options.push({ label: `${i + 1} partie${i ? 's' : ''}${jours ? ` (${jours})` : ''}`, prix: Number(prix) || 0, unite: '/ personne' }));
+        });
+        return options;
+      }
+      return (d.durationOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ piste' }));
+    }
     if (a.priceType === 'grid_laser') return (d.laserOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ personne' }));
     if (a.priceType === 'grid_fun_run') return (d.funRunOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ session' }));
     return [];

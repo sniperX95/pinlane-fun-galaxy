@@ -27,12 +27,14 @@
 //       tient plus avant 22:00, la grille le dit, la fin aussi ;
 //   [F] la fenetre Reserver de l equipe dit la meme fin ;
 //   [G] la fiche de l equipe aussi ;
-//   [H] l ecran (390 et 1280 px) : le minigolf « Dans la foulée » et « Fin de
-//       la visite 17:45 » ; « Entre les deux » quand il tient dans l attente,
-//       l attente qui reste dessous, plus rien de lui « Dans la foulée », ni
-//       d avis « 1 h 05 d attente » ; les arcades d une visite « Entre les
-//       deux », dans une attente de 35 min, le minigolf seul « Dans la
-//       foulée » ;
+//   [H] l ecran (390 et 1280 px) : le recapitulatif dit le minigolf une fois
+//       (« Aussi »), « Fin vers 17:45 », et le conseil dit qu il tient dans
+//       l attente. Le detail a quitte l ecran (Ansar, 2026-11-03 : « trop de
+//       texte ») et reste a la voix (#fgLive) : le minigolf « Dans la foulée » ;
+//       « Entre les deux » quand il tient dans l attente, l attente qui reste
+//       ensuite, plus rien de lui « Dans la foulée », ni d avis « 1 h 05
+//       d attente » ; les arcades d une visite « Entre les deux », dans une
+//       attente de 35 min, le minigolf seul « Dans la foulée » ;
 //   [I] le mail de confirmation dit « Fin estimée vers 17:45 » (il disait la
 //       fin du bowling, sans le minigolf), lu sur le dossier enregistre.
 // La fin attendue est refaite ici, sans le moteur (finDuRangement) : toutes
@@ -154,8 +156,8 @@ const MUTATIONS = [
   {
     nom: 'l attente garde les minutes du libre qui s y joue',
     fichier: 'assets/fungalaxy-booking.js',
-    de: '        var reste = Math.max(0, ecart - pris);',
-    vers: '        var reste = ecart;',
+    de: '        ligneAttente(Math.max(0, ecart - pris));',
+    vers: '        ligneAttente(ecart);',
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -445,46 +447,54 @@ async function ecran() {
               classe: li.className,
               heure: txt(li.querySelector(':scope > b')),
               texte: txt(li),
-              groupe: txt(li.querySelector('.fg-visit__group b')),
             })),
-            span: txt(document.querySelector('#planZone .fg-visit__span')),
+            aussi: txt(document.querySelector('#planZone .fg-visit__aussi')),
+            conseil: txt(document.querySelector('#hourZone .fg-conseil:not([hidden])')),
             avis: Array.from(document.querySelectorAll('#planZone .fg-visit__warn')).map(txt).join(' | '),
             barre: txt(document.querySelector('#hourSum')),
+            voix: txt(document.querySelector('#fgLive')),
           };
         });
         const indexDe = (f) => v.lignes.findIndex(f);
-        const groupe = (mot) => v.lignes.find((l) => l.groupe === mot) || null;
-        const foulee = groupe('Dans la foulée');
-        const entre = groupe('Entre les deux');
         const fin = v.lignes.find((l) => /fg-visit__step--out/.test(l.classe)) || {};
         const minigolfs = v.lignes.filter((l) => /Minigolf Blacklight/.test(l.texte)).length;
+        // L ecran n ecrit plus ces mots (Ansar, 2026-11-03) : la voix les garde. Ce qui
+        // suit un groupe de la voix va jusqu au point.
+        const groupe = (mot) => { const m = new RegExp(`${mot}, sans heure fixe : ([^.]*)\\.`).exec(v.voix); return m ? m[1] : null; };
+        const foulee = groupe('Dans la foulée');
+        const entre = groupe('Entre les deux');
+        // « 35 min d attente avant le bowling » est le conseil, pas une ligne du programme.
+        const attentes = v.voix.match(/(\d+ h )?\d+ min d’attente(?! avant)/g) || [];
+        const lignesLues = JSON.stringify(v.lignes.map((l) => l.texte));
         if (nom === 'capture') {
-          ok(Boolean(foulee) && /Minigolf Blacklight/.test(foulee.texte) && /11 joueurs · à votre rythme · environ 45 min/.test(foulee.texte) && !entre,
-            `[H] ${largeur} la capture : le minigolf « Dans la foulée », 11 joueurs, environ 45 min`, JSON.stringify(v.lignes.map((l) => l.texte)));
-          // L en-tete compte depuis l arrivee, dix minutes avant le laser.
-          ok(fin.heure === '17:45' && v.span === 'de 13:50 à 17:45 environ · 3 h 55 sur place' && /^13:50 → 17:45 environ/.test(v.barre),
-            `[H] ${largeur} la capture : « Fin de la visite 17:45 », l en-tete (3 h 55 sur place depuis l arrivee) et la barre du bas aussi`, JSON.stringify({ fin: fin.heure, span: v.span, barre: v.barre }));
-          const attentes = v.lignes.filter((l) => /fg-visit__gap/.test(l.classe)).map((l) => l.texte);
-          ok(attentes.length === 2 && attentes.every((t) => t === '35 min d’attente'), `[H] ${largeur} la capture : les deux attentes de 35 min restent entieres`, JSON.stringify(attentes));
+          ok(v.aussi === 'Aussi : Minigolf Blacklight' && minigolfs === 1, `[H] ${largeur} la capture : le recapitulatif dit le minigolf une fois, sans heure`, lignesLues);
+          ok(foulee === 'Minigolf Blacklight, à votre rythme, environ 45 min' && entre === null, `[H] ${largeur} la capture : la voix dit le minigolf « Dans la foulée », environ 45 min`, v.voix);
+          // La barre compte depuis l arrivee, dix minutes avant le laser.
+          ok(fin.heure === '17:45' && /^13:50 → 17:45 environ/.test(v.barre),
+            `[H] ${largeur} la capture : « Fin vers 17:45 » (le minigolf y compte), et la barre du bas aussi`, JSON.stringify({ fin: fin.heure, barre: v.barre }));
+          ok(attentes.length === 2 && attentes.every((t) => t === '35 min d’attente'), `[H] ${largeur} la capture : la voix garde les deux attentes de 35 min entieres`, JSON.stringify(attentes));
+          ok(v.conseil === '35 min d’attente avant le laser game', `[H] ${largeur} la capture : le conseil dit l attente, le minigolf (45 min) n y tient pas`, v.conseil);
         } else if (nom === 'trou') {
           const iLaser = indexDe((l) => l.heure === '14:00' && /Laser/.test(l.texte));
-          const iEntre = v.lignes.indexOf(entre);
           const iBowling = indexDe((l) => l.heure === '15:30' && /Bowling/.test(l.texte));
-          ok(Boolean(entre) && /Minigolf Blacklight/.test(entre.texte) && /11 joueurs · à votre rythme · environ 45 min/.test(entre.texte) && iLaser >= 0 && iLaser < iEntre && iEntre < iBowling,
-            `[H] ${largeur} le minigolf « Entre les deux », sans heure fixe, entre le laser et le bowling`, JSON.stringify(v.lignes.map((l) => l.texte)));
-          const attente = v.lignes.slice(iEntre + 1, iBowling).filter((l) => /fg-visit__gap/.test(l.classe)).map((l) => l.texte);
-          ok(attente.length === 1 && attente[0] === '20 min d’attente', `[H] ${largeur} dessous, l attente qui reste : 20 min (1 h 05 moins les 45 du minigolf)`, JSON.stringify(attente));
-          ok(!foulee && minigolfs === 1, `[H] ${largeur} le minigolf ne se redit pas « Dans la foulée »`, JSON.stringify(v.lignes.map((l) => l.texte)));
-          ok(fin.heure === '16:30' && /16:30/.test(v.span), `[H] ${largeur} « Fin de la visite 16:30 »`, JSON.stringify({ fin: fin.heure, span: v.span }));
+          ok(iLaser >= 0 && iLaser < iBowling && v.aussi === 'Aussi : Minigolf Blacklight' && minigolfs === 1, `[H] ${largeur} le laser, puis le bowling ; le minigolf dit une fois, sans heure`, lignesLues);
+          ok(v.conseil === '1 h 05 avant le bowling : le minigolf y tient', `[H] ${largeur} le conseil dit que le minigolf tient dans l attente`, v.conseil);
+          const dansLaVoix = (mot) => v.voix.indexOf(mot);
+          ok(entre === 'Minigolf Blacklight, à votre rythme, environ 45 min' && dansLaVoix('Laser Game') < dansLaVoix('Entre les deux') && dansLaVoix('Entre les deux') < dansLaVoix('Bowling'),
+            `[H] ${largeur} la voix dit le minigolf « Entre les deux », entre le laser et le bowling`, v.voix);
+          ok(attentes.length === 1 && attentes[0] === '20 min d’attente' && dansLaVoix('Entre les deux') < dansLaVoix(attentes[0]) && dansLaVoix(attentes[0]) < dansLaVoix('Bowling'),
+            `[H] ${largeur} ensuite, l attente qui reste : 20 min (1 h 05 moins les 45 du minigolf)`, JSON.stringify(attentes));
+          ok(foulee === null, `[H] ${largeur} le minigolf ne se redit pas « Dans la foulée »`, v.voix);
+          ok(fin.heure === '16:30', `[H] ${largeur} « Fin vers 16:30 »`, JSON.stringify({ fin: fin.heure }));
           ok(!/d.attente entre/.test(v.avis), `[H] ${largeur} plus d avis « 1 h 05 d attente » au-dessus de l agenda`, JSON.stringify(v.avis));
         } else {
-          const entres = v.lignes.filter((l) => l.groupe === 'Entre les deux');
-          const attentes = v.lignes.filter((l) => /fg-visit__gap/.test(l.classe)).map((l) => l.texte);
-          ok(entres.length === 1 && /Arcade/i.test(entres[0].texte) && !/Minigolf/.test(entres[0].texte),
-            `[H] ${largeur} une visite avec des arcades : elles se disent « Entre les deux », dans une attente de 35 min`, JSON.stringify(v.lignes.map((l) => l.texte)));
+          ok(v.aussi === 'Aussi : Minigolf Blacklight, Arcades' && minigolfs === 1, `[H] ${largeur} une visite avec des arcades : le recapitulatif les dit, sans heure`, lignesLues);
+          ok(entre !== null && /Arcade/i.test(entre) && !/Minigolf/.test(entre),
+            `[H] ${largeur} une visite avec des arcades : la voix les dit « Entre les deux », dans une attente de 35 min`, v.voix);
           ok(attentes.length === 1 && attentes[0] === '35 min d’attente', `[H] ${largeur} l autre attente reste entiere, celle des arcades n en garde que 5 min (rien a dire)`, JSON.stringify(attentes));
-          ok(Boolean(foulee) && /Minigolf Blacklight/.test(foulee.texte) && !/Arcade/i.test(foulee.texte) && fin.heure === '17:45',
-            `[H] ${largeur} le minigolf seul « Dans la foulée », et « Fin de la visite 17:45 »`, JSON.stringify({ foulee: foulee && foulee.texte, fin: fin.heure }));
+          ok(v.conseil === '35 min avant le laser game : les arcades y tiennent', `[H] ${largeur} le conseil dit que les arcades tiennent dans l attente`, v.conseil);
+          ok(foulee !== null && /Minigolf Blacklight/.test(foulee) && !/Arcade/i.test(foulee) && fin.heure === '17:45',
+            `[H] ${largeur} le minigolf seul « Dans la foulée », et « Fin vers 17:45 »`, JSON.stringify({ foulee, fin: fin.heure }));
         }
         ok(erreurs.length === 0, `[H] ${largeur} ${nom} : aucune erreur de page`, erreurs.join(' | '));
         await page.close();

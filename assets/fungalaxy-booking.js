@@ -3017,7 +3017,9 @@
         rendreFocus(repere);
       });
   }
+  var arriveeEffacee = '';
   function relacher() {
+    if (arriveeEffacee) { state.arrivee = arriveeEffacee; arriveeEffacee = ''; conseilPonctuel = 'Sans cette arrivée, ces heures ne tiennent pas.'; return true; }
     if (Object.keys(state.retenues.pins).length) { state.retenues = { pins: {}, parties: [] }; return true; }
     if (state.arrivee) { conseilPonctuel = 'Arrivée à ' + state.arrivee + ' impossible avec ces heures.'; state.arrivee = ''; return true; }
     return false;
@@ -3027,6 +3029,7 @@
   // la redemander. `texte` : la reponse telle que recue, que la relecture
   // compare.
   function poserPlan(j, texte, cle, repere, idAttente, heureAttente) {
+    arriveeEffacee = '';
     state.dispo = j; state.dispoCle = cle; state.dispoTexte = texte;
     $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
     heuresLues = Date.now();
@@ -4269,7 +4272,7 @@
     var liste = arcades.cle === cleArcades() ? arcades.liste : null;
     // L heure ou le plan tient les arcades a sa puce, meme hors de la grille
     // (la fin d une activite, prise dans un temps libre) : elle tient.
-    var duPlan = arcadeDuPlan().startTime || '';
+    var duPlan = state.arcade ? arcadeDuPlan().startTime || '' : '';
     if (liste && duPlan && !liste.some(function (x) { return x.time === duPlan; })) liste = liste.concat([{ time: duPlan, ok: true }]).sort(function (a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
     var etat = liste ? 'l:' + liste.map(function (x) { return x.time; }).join(',') : arcades.erreur ? '!' : '…';
     if (track.dataset.etat !== etat) {
@@ -4288,7 +4291,7 @@
     if (!liste) return;
     var parHeure = {};
     liste.forEach(function (x) { parHeure[x.time] = x; });
-    var rangee = state.arcade ? '' : arcadeDuPlan().startTime || '';
+    var rangee = '';
     $$('.fg-chip', track).forEach(function (chip) {
       var x = parHeure[chip.dataset.time] || {}, refus = x.ok === false;
       var court = refus ? String((x.shortReason && x.shortReason !== 'Indisponible' ? x.shortReason : x.reason) || 'Indisponible').replace(/\.$/, '') : '';
@@ -4393,11 +4396,12 @@
       if (estTouchee(id) || !h) return;
       var b = plageDe(id, h);
       var tient = id !== regle.enConflit && (apres === null || b.debut >= apres) && !occupes.some(function (o) { return seChevauchent(o, b); });
+      var repere = h;
       if (tient && regle.touche && !state.arrivee) {
         var t0 = plageDe(regle.touche.id, regle.touche.t);
-        if (Math.max(t0.debut, b.debut) - Math.min(t0.fin, b.fin) > ECART_RETENU) return;
+        if (Math.max(t0.debut, b.debut) - Math.min(t0.fin, b.fin) > ECART_RETENU) { tient = false; repere = hhmm(t0.fin); }
       }
-      var garde = tient ? h : heureLaPlusProche(a, h, apres, occupes);
+      var garde = tient ? h : heureLaPlusProche(a, repere, apres, occupes);
       if (!garde) return;
       retenues.pins[id] = garde;
       if (id === 'laser_game' && Number(a.count) > 1) retenues.parties = [garde];
@@ -4519,6 +4523,7 @@
   // EFFACER L ARRIVEE : les activites restent ou elles sont, l arrivee redevient
   // celle du plan.
   function effacerArrivee() {
+    arriveeEffacee = state.arrivee;
     state.arrivee = ''; adaptation = null;
     $$('.fg-track', hourZone).forEach(function (tr) { delete tr.dataset.touched; });
     chargerPlan();
@@ -5264,7 +5269,7 @@
     });
     if (!meilleur) return null;
     var possibles = formule
-      ? (plan.timeline || []).filter(function (s) { return s && s.flexible && s.activityId; }).map(function (s) { return { id: s.activityId, minutes: Number(s.durationMinutes) || 0 }; })
+      ? (plan.timeline || []).filter(function (s) { return s && s.activityId && (s.flexible || (s.activityId === 'arcade_time' && !state.arcade)); }).map(function (s) { return { id: s.activityId, minutes: Number(s.durationMinutes) || 0 }; })
       : libres.map(function (it) { return { id: it.activityId, minutes: it.dayAccess ? 1 : Number(it.minutes) || 0 }; });
     var libre = possibles.filter(function (x) { return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];
     var nomAvant = leNom(meilleur.avant.id), duree = dureeExacte(meilleur.minutes);
@@ -5331,8 +5336,10 @@
     var parts = partiesDuPlan(cr);
     // Les arcades a l heure du client : une partie a heure, a sa place dans
     // la journee.
+    // Seulement celles que le client a choisies : les autres restent dans ce qui est
+    // compris, meme quand le moteur les range dans le temps d avant la premiere activite.
     var arcPlan = arcadeDuPlan();
-    if (arcPlan.startTime) parts = parts.concat([{ id: 'arcade_time', partie: 1, groupes: [{ joueurs: 0, debut: arcPlan.startTime, fin: arcPlan.endTime || '' }], pistes: 0, label: arcPlan.label || '', debut: arcPlan.startTime, fin: arcPlan.endTime || '', arcade: true }])
+    if (arcPlan.startTime && state.arcade) parts = parts.concat([{ id: 'arcade_time', partie: 1, groupes: [{ joueurs: 0, debut: arcPlan.startTime, fin: arcPlan.endTime || '' }], pistes: 0, label: arcPlan.label || '', debut: arcPlan.startTime, fin: arcPlan.endTime || '', arcade: true }])
       .sort(function (x, y) { return x.debut.localeCompare(y.debut); });
     var planifies = {};
     parts.forEach(function (p) { planifies[p.id] = 1; });

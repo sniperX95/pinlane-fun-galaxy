@@ -67,6 +67,7 @@ const liste = (v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : nu
 FX.APPAREILS.comptoir = { viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1, locale: 'fr-BE' };
 FX.APPAREILS.grandEcran = { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, locale: 'fr-BE' };
 FX.APPAREILS.petitPc = { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, locale: 'fr-BE' };
+FX.APPAREILS.pc960 = { viewport: { width: 960, height: 720 }, deviceScaleFactor: 1, locale: 'fr-BE' };
 const JOUR = FX.lireFixture('pic').staffState.date;
 const GROUPES_DU_PIC = FX.lireFixture('pic').staffState.reservations.length;
 
@@ -255,7 +256,8 @@ async function coordonnees(browser) {
   for (const appareil of ['comptoir', 'grandEcran', 'petitPc']) {
     await avec(browser, { lettre: 'A', appareil }, async (page) => {
       const ref = await mesurer(page);
-      const manquants = Object.keys(ref).filter((k) => !ref[k]);
+      // (sur petit PC, la legende cede sa place a l enseigne du centre : 85 px de trop a 1024 px)
+      const manquants = Object.keys(ref).filter((k) => !ref[k] && !(appareil === 'petitPc' && k === 'legende'));
       ok(manquants.length === 0, `[A] ${appareil} : chaque controle de la barre est a l ecran`, manquants);
       const logo = await lireLogo(page);
       const larges = { normal: null, agrandi: null };
@@ -284,6 +286,11 @@ async function coordonnees(browser) {
       }
     });
   }
+  // A 960 px, l enseigne et les chiffres tiennent encore sur une rangee : c est le palier de la ligne 2 qui le permet.
+  await avec(browser, { lettre: 'A', appareil: 'pc960' }, async (page) => {
+    const f = await formeDeLaBarre(page);
+    ok(f.l2 === 44 && !f.deborde, '[A] a 960 px : l enseigne et les chiffres tiennent sur une rangee', f);
+  });
   // Le pire jour, a 1024 : deux chiffres partout, la ligne 2 tient encore.
   await avec(browser, { lettre: 'A', appareil: 'petitPc', fixture: 'pire' }, async (page) => {
     const f = await formeDeLaBarre(page);

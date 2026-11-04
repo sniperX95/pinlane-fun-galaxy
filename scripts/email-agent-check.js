@@ -874,7 +874,9 @@ const anthropicOk = (object) => ({
   const { getFormula: documentDeFormule } = require('../lib/ops-knowledge');
   const activitesDeGembloux = centreConfigure('gembloux').activityAvailability || {};
   const idParNom = new Map(require('../lib/booking-config').getEffectiveFormules('libramont').map((f) => [String(f.name || f.id), f.id]));
-  const refuseesParSonTunnel = nomsDuMail.filter((nom) => ((documentDeFormule(idParNom.get(nom)) || {}).steps || [])
+  // (apres ce que le centre retire d une fenetre ouverte : le Kids Fun Day se vend a Gembloux, sans plaine de jeux)
+  const { formuleDuCentre } = require('../lib/formula-choice');
+  const refuseesParSonTunnel = nomsDuMail.filter((nom) => ((formuleDuCentre(documentDeFormule(idParNom.get(nom)), centreConfigure('gembloux')) || {}).steps || [])
     .some((etape) => activitesDeGembloux[etape.activityId] === false));
   ok(refuseesParSonTunnel.length > 0,
     'MONTAGE : des formules de Libramont passent par une activite que Gembloux n a pas',
@@ -1398,7 +1400,7 @@ const anthropicOk = (object) => ({
   const { FUN_RUN_OPTIONS: grilleFunRun } = require('../lib/booking-config');
   const ligneFunRun = blocUnitaire.split('\n').find((l) => l.startsWith('fun run :')) || '';
   const ligneDuckpin = blocUnitaire.split('\n').find((l) => l.startsWith('duckpin bowling :')) || '';
-  ok(grilleFunRun.every((o) => ligneFunRun.includes(`${o.price} EUR la session de ${o.minutes} min`)) && /5 joueurs par session/.test(ligneFunRun),
+  ok(grilleFunRun.every((o) => ligneFunRun.includes(`${o.price} EUR la session de ${Number(o.minutes) === 60 ? '1 h' : `${o.minutes} min`}`)) && /5 joueurs par session/.test(ligneFunRun),
     'LE POINT : le Fun Run est annonce a la session, avec ce que le centre en dit', ligneFunRun);
   ok(Object.values(grilleParPiste).every((prix) => ligneDuckpin.includes(`${prix} EUR la piste pour`)),
     'LE POINT : le duckpin est annonce a la piste, sur la grille du moteur', ligneDuckpin);

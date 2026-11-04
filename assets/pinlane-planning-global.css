@@ -200,6 +200,7 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
    redessine sans cesse, d ou le contenu genere, porte par la racine) */
 @container barre (max-width: 1040px) {
   .pb-ligne > .pb-centre { display: none; }
+  .pb-leg { display: none; }
   .pb-bande::before { content: var(--centre-nom, none); flex: none; margin-right: 12px; color: var(--centre-texte); font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 23px; font-weight: 400; line-height: 1; letter-spacing: 0.015em; text-transform: uppercase; white-space: nowrap; }
   [data-theme='light'] .pb-bande::before { color: var(--centre-texte-clair); }
 }

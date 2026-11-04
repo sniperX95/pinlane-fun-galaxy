@@ -3718,7 +3718,9 @@
         vagues.hidden = !v;
       }
       var reset = $('[data-reset]', track);
-      if (reset) reset.hidden = !actifs.length;
+      // Dans la ligne d une partie suivante, le lien ne parle que de cette partie :
+      // il defaisait la 1re, touchee plus tot, depuis une ligne encore a choisir.
+      if (reset) reset.hidden = !actifs.length || (multi && kLigne > 1 && !state.laserParts[kLigne - 1]);
       majPeriodes(track);
     });
   }
@@ -4590,6 +4592,8 @@
     if (reset) {
       var idr = reset.dataset.reset;
       if (idr === 'arrivee') { effacerArrivee(); return; }
+      var kReset = idr === 'laser_game' ? Number(String(etapeOuverte || '').split('#')[1]) || 0 : 0;
+      if (kReset > 1 && state.laserParts[kReset - 1]) { state.laserParts.splice(kReset - 1, 1); state.retenues.parties = []; adaptation = null; chargerPlan(); return; }
       // Rendre la main a l equipe rend aussi les menus : la piste rouvre la
       // periode de l heure proposee.
       var pisteReset = reset.closest('.fg-track');
@@ -4879,6 +4883,8 @@
   // colonne des heures, puis le titre et son detail. Une activite a heure fixe
   // porte sa duree (--m, en minutes) : la hauteur de son bloc en vient. Ni
   // icone ni puce : l heure, la place et la couleur disent ce qu est la ligne.
+  // L heure d arrivee que le client a choisie n est plus un conseil.
+  function motArrivee() { return state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
     return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
@@ -5548,8 +5554,11 @@
       var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite && !participants ? ' · ' + environ(aLaSuite) : '')
         + (coupees.length ? ' · ' + (coupees.length > 1 ? 'parties ' + joindreListe(coupees, ' et ') + ' : ne tiendront pas' : 'partie ' + coupees[0] + ' : ne tiendra pas') + ' avant ' + heureAffichee(fin) : '');
       if (participants) detail = participants + ' joueur' + (participants > 1 ? 's' : '') + ' · ' + detail;
-      // « Laser Game, 2e partie » : une ligne simple, sans heure.
-      var titres = total === 1 ? [nomR] : reste.map(function (k) { return nomR + ', ' + k + 'e partie' + (participants ? ' (' + participants + ' joueurs)' : ''); });
+      // « Laser Game, 2e partie, vers 16:30 » : personne ne l a choisie, l equipe la
+      // place, et le moteur dit ou elle tombe (la fin compte deja ce temps). Une ligne
+      // sans heure faisait croire a un oubli.
+      var ouElleTombe = id === 'laser_game' && !participants && plan.laserPassPlan && plan.laserPassPlan.followOnStart;
+      var titres = (total === 1 ? [nomR] : reste.map(function (k) { return nomR + ', ' + k + 'e partie' + (participants ? ' (' + participants + ' joueurs)' : ''); })).map(function (t, i) { return ouElleTombe && !i ? t + ', vers ' + ouElleTombe : t; });
       return { o: { genre: 'onsite', titres: titres, hors: coupees.length > 0 && coupees.length === reste.length }, voix: nomR + ', ' + quelles + ', ' + detail };
     }
     items.forEach(function (it) {
@@ -5674,7 +5683,7 @@
     // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
     // prix (et ce qui se regle sur place), les avertissements.
     if (sceneCourante === 'heures') dire(('Votre visite. '
-      + (arrivee ? 'Arrivée conseillée à ' + arrivee + '. ' : '')
+      + (arrivee ? motArrivee() + ' ' + arrivee + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (arrivee ? '' : 'Début à ' + slot.time + '. '))
       + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : illimite ? 'Fin de la formule à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
       + (prixVisible ? euros(prix) + (complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL) + '. ' : '')
@@ -6270,7 +6279,7 @@
         + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
     });
     html += '<div class="fg-recap__sep"></div>'
-      + (arrivee ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>' + 'Arrivée conseillée à' + ' <b>' + esc(arrivee) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(arrivee, fin) + '</span></div>' : '')
+      + (arrivee ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>' + motArrivee() + ' <b>' + esc(arrivee) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(arrivee, fin) + '</span></div>' : '')
       + (horsFinal.length ? '<div class="fg-recap__row fg-recap__hors fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-info"/></svg><span><b>' + esc(phraseHorsDelai(horsFinal, fin, false).tete) + ' :</b> ' + esc(phraseHorsDelai(horsFinal, fin, false).noms) + '</span></div>' : '')
       + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + esc(totalIndicatif(complet, (rep.program && rep.program.items) || [])) + '</div>'
       + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 || (complet && items.some(function (it) { return it.priceKnown === true; })) ? esc(euros(prix)) : 'Sur place') + '</div></div>'
@@ -6887,7 +6896,7 @@
     var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
-    var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
+    var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. ' + motArrivee() + ' <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
     var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
     var ligneMontant = Number(r.price) > 0 || (prixComplet && itemsFin.some(function (it) { return it.priceKnown === true; })) ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }

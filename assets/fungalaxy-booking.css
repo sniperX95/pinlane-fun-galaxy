@@ -1562,8 +1562,6 @@ html.fg-pilote .fg { overflow: visible; }
    grille (data-teinte) ; deux problemes d une meme plage n ont jamais la
    meme teinte. Gris tant que la ligne n est pas ecrite. */
 .fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed; border-color: rgba(255, 255, 255, 0.36); border-width: 1.5px; }
-.fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte] { border-color: var(--teinte); }
-@media (hover: hover) { .fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte]:hover { border-style: solid; } }
 
 
 
@@ -2829,6 +2827,11 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    vue : chaque toucher se lit sans defiler. */
 .fg-scene[data-scene="heures"] .fg-bar__sum { display: none; }
 .fg-scene[data-scene="heures"] .fg-title { font-size: clamp(30px, 8.4vw, 46px); }
+/* Sur une colonne, les lignes juste au-dessus disent deja ces heures : le recap ne les
+   repete pas (Ansar, 2026-11-03 : « trop de texte »). A deux colonnes, il reste le resume. */
+@media (max-width: 1099.98px) {
+  #hourZone:has(> .fg-prog) > #planZone :is(.fg-visit__step--bloc, .fg-visit__step--in) { display: none; }
+}
 @media (min-width: 1100px) {
   #hourZone:has(> #planZone) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); column-gap: 20px; align-items: start; max-width: 1180px; margin-left: auto; margin-right: auto; }
   #hourZone > .fg-prog, #hourZone > .fg-track { max-width: none; width: 100%; margin: 0; }

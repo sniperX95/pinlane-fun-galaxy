@@ -1171,6 +1171,7 @@ function lignePlan(reponse) {
     libres: items.filter((i) => !planifies.has(i.activityId)).map((i) => i.name),
     // Le temps que les parties de laser sans heure prennent a la suite.
     suite: Math.max(0, Math.round(Number(plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0)),
+    suiteDebut: (plan.laserPassPlan && plan.laserPassPlan.followOnStart) || '',
     fin: slot.visitEndTime || plan.endTime || '',
     fermeture: Boolean(slot.visitEndsAtClose),
     manque: Number(slot.visitShortfallMinutes) || 0,
@@ -1355,7 +1356,7 @@ function visiteAttendue(o) {
     const coupees = it.id === 'laser_game' && o.fermeture ? reste.filter((k) => o.hors.some((h) => h.sansHeure && String(h.partie) === k)) : [];
     const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`
       + (coupees.length ? ` · ${coupees.length > 1 ? `parties ${joindreQa(coupees, ' et ')} : ne tiendront pas` : `partie ${coupees[0]} : ne tiendra pas`} avant ${heureAffichee(o.fin)}` : '');
-    (it.games === 1 ? [nom(it.id)] : reste.map((k) => `${nom(it.id)}, ${k}e partie`)).forEach((titre, i) => surPlace.push({ t: '', nom: titre, detail: '', voix: i ? '' : `${nom(it.id)}, ${quelles}, ${detail}` }));
+    (it.games === 1 ? [nom(it.id)] : reste.map((k) => `${nom(it.id)}, ${k}e partie`)).forEach((titre, i) => surPlace.push({ t: '', nom: titre + (it.id === 'laser_game' && !i && o.suiteDebut ? `, vers ${o.suiteDebut}` : ''), detail: '', voix: i ? '' : `${nom(it.id)}, ${quelles}, ${detail}` }));
   });
   const premiere = o.parties[0];
   const repere = premiere ? premiere.debut : o.time;
@@ -2564,7 +2565,9 @@ async function main() {
         const propose = actifs.length ? '' : ((d.heuresDemandees || {})[a.activityId] || defauts[a.activityId] || '');
         e.push(...ecartsPiste(pistes.find((p) => p.id === a.activityId), a, actifs, propose, d, laserParts));
         const p = pistes.find((x) => x.id === a.activityId);
-        if (p && p.reset !== actifs.length > 0) e.push(`${a.activityId}: « laisser l equipe placer » ${p.reset ? 'visible' : 'cache'} avec ${actifs.length} heure(s) posee(s)`);
+        // Sur une partie suivante encore a choisir, le lien se tait : il ne parle que de sa partie.
+        const lienSeTait = a.activityId === 'laser_game' && !p?.reset && laserParts.length >= 1 && laserParts.length < Math.max(1, Number(a.count) || 1);
+        if (p && !lienSeTait && p.reset !== actifs.length > 0) e.push(`${a.activityId}: « laisser l equipe placer » ${p.reset ? 'visible' : 'cache'} avec ${actifs.length} heure(s) posee(s)`);
         if (p && !p.touchee) e.push(...ecartsMenus(p, a, actifs, propose));
       });
       return { e, pistes };

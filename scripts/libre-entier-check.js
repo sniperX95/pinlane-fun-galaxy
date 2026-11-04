@@ -448,7 +448,7 @@ async function ecran() {
               heure: txt(li.querySelector(':scope > b')),
               texte: txt(li),
             })),
-            aussi: txt(document.querySelector('#planZone .fg-visit__aussi')),
+            aussi: (() => { const l = [...document.querySelector('#planZone').querySelectorAll('.fg-visit__step--aussi')]; return l.length ? (txt(l[0].querySelector('b')) === 'compris' ? 'Compris' : 'Aussi') + ' : ' + l.map((li) => txt(li.querySelector('span'))).join(', ') : ''; })(),
             conseil: txt(document.querySelector('#hourZone .fg-conseil:not([hidden])')),
             avis: Array.from(document.querySelectorAll('#planZone .fg-visit__warn')).map(txt).join(' | '),
             barre: txt(document.querySelector('#hourSum')),
@@ -473,12 +473,12 @@ async function ecran() {
           ok(fin.heure === '17:45' && /^13:50 → 17:45 environ/.test(v.barre),
             `[H] ${largeur} la capture : « Fin vers 17:45 » (le minigolf y compte), et la barre du bas aussi`, JSON.stringify({ fin: fin.heure, barre: v.barre }));
           ok(attentes.length === 2 && attentes.every((t) => t === '35 min d’attente'), `[H] ${largeur} la capture : la voix garde les deux attentes de 35 min entieres`, JSON.stringify(attentes));
-          ok(v.conseil === '35 min d’attente avant le laser game', `[H] ${largeur} la capture : le conseil dit l attente, le minigolf (45 min) n y tient pas`, v.conseil);
+          ok(v.conseil === '35 min d’attente avant le laser game.', `[H] ${largeur} la capture : le conseil dit l attente, le minigolf (45 min) n y tient pas`, v.conseil);
         } else if (nom === 'trou') {
           const iLaser = indexDe((l) => l.heure === '14:00' && /Laser/.test(l.texte));
           const iBowling = indexDe((l) => l.heure === '15:30' && /Bowling/.test(l.texte));
           ok(iLaser >= 0 && iLaser < iBowling && v.aussi === 'Aussi : Minigolf Blacklight' && minigolfs === 1, `[H] ${largeur} le laser, puis le bowling ; le minigolf dit une fois, sans heure`, lignesLues);
-          ok(v.conseil === '1 h 05 avant le bowling : le minigolf y tient', `[H] ${largeur} le conseil dit que le minigolf tient dans l attente`, v.conseil);
+          ok(v.conseil === 'Vous avez 1 h 05 avant le bowling, le minigolf y tient.', `[H] ${largeur} le conseil dit que le minigolf tient dans l attente`, v.conseil);
           const dansLaVoix = (mot) => v.voix.indexOf(mot);
           ok(entre === 'Minigolf Blacklight, à votre rythme, environ 45 min' && dansLaVoix('Laser Game') < dansLaVoix('Entre les deux') && dansLaVoix('Entre les deux') < dansLaVoix('Bowling'),
             `[H] ${largeur} la voix dit le minigolf « Entre les deux », entre le laser et le bowling`, v.voix);
@@ -492,7 +492,7 @@ async function ecran() {
           ok(entre !== null && /Arcade/i.test(entre) && !/Minigolf/.test(entre),
             `[H] ${largeur} une visite avec des arcades : la voix les dit « Entre les deux », dans une attente de 35 min`, v.voix);
           ok(attentes.length === 1 && attentes[0] === '35 min d’attente', `[H] ${largeur} l autre attente reste entiere, celle des arcades n en garde que 5 min (rien a dire)`, JSON.stringify(attentes));
-          ok(v.conseil === '35 min avant le laser game : les arcades y tiennent', `[H] ${largeur} le conseil dit que les arcades tiennent dans l attente`, v.conseil);
+          ok(v.conseil === 'Vous avez 35 min avant le laser game, les arcades y tiennent.', `[H] ${largeur} le conseil dit que les arcades tiennent dans l attente`, v.conseil);
           ok(foulee !== null && /Minigolf Blacklight/.test(foulee) && !/Arcade/i.test(foulee) && fin.heure === '17:45',
             `[H] ${largeur} le minigolf seul « Dans la foulée », et « Fin vers 17:45 »`, JSON.stringify({ foulee, fin: fin.heure }));
         }

@@ -146,8 +146,8 @@ function lireVisite(page) {
     const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const zone = document.querySelector('#planZone');
     return {
-      etapes: [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), genre: li.className })),
-      aussi: t(zone.querySelector('.fg-visit__aussi')),
+      etapes: [...zone.querySelectorAll('.fg-visit__step:not(.fg-visit__step--aussi)')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), genre: li.className })),
+      aussi: (() => { const l = [...zone.querySelectorAll('.fg-visit__step--aussi')]; return l.length ? (t(l[0].querySelector('b')) === 'compris' ? 'Compris' : 'Aussi') + ' : ' + l.map((li) => t(li.querySelector('span'))).join(', ') : ''; })(),
       fin: t(zone.querySelector('.fg-visit__step--out')),
       voix: t(document.querySelector('#fgLive')),
       encadre: Boolean(zone.querySelector('.fg-visit__incl')),
@@ -246,8 +246,8 @@ function verifierF4(bureau, tel) {
   // imposee ») : la 2e partie, sans heure, et la voix dit qui la place et combien de
   // temps. L ecran dit quand elle tombe : une ligne sans heure faisait croire a un oubli.
   const seconde = laser.find((e) => /2e partie/.test(e.titre)) || { titre: '' };
-  const vers = (/^Laser Game, 2e partie, vers (\d{2}:\d{2})$/.exec(seconde.titre) || [])[1];
-  ok(seconde.b === '' && Boolean(vers) && vers > premiere.b, 'la 2e partie n a pas d heure imposee : « vers HH:MM », apres la 1re', lignesLaser);
+  const vers = /^Laser Game, 2e partie$/.test(seconde.titre) ? (/^vers (\d{2}:\d{2})$/.exec(seconde.b) || [])[1] : '';
+  ok(Boolean(vers) && vers > premiere.b, 'la 2e partie n a pas d heure imposee : « vers HH:MM », apres la 1re', lignesLaser);
   ok(/Dans la foulée, sans heure fixe : Laser Game, partie 2 sur 2, placée sur place avec l’équipe · environ \d/.test(v.voix), 'la voix dit la 2e partie « dans la foulee », placee par l equipe, avec le temps qu elle prend', v.voix);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const f4 = getEffectiveFormules('libramont').find((f) => f.id === 'f4');

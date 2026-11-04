@@ -153,7 +153,7 @@ async function lireVisite(page) {
     return {
       texte: blancsDom(v),
       etapes: Array.from(v.querySelectorAll('.fg-visit__step')).map((li) => ({ heure: blancsDom(li.querySelector('b')), titre: blancsDom(li.querySelector('span')), detail: blancsDom(li.querySelector('small')) })),
-      aussi: blancsDom(v.querySelector('.fg-visit__aussi')),
+      aussi: (() => { const l = [...v.querySelectorAll('.fg-visit__step--aussi')]; return l.length ? (blancsDom(l[0].querySelector('b')) === 'compris' ? 'Compris' : 'Aussi') + ' : ' + l.map((li) => blancsDom(li.querySelector('span'))).join(', ') : ''; })(),
       barre: blancsDom(document.querySelector('#hourSum')),
       voix: blancsDom(document.querySelector('#fgLive')),
     };

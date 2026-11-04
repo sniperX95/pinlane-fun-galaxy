@@ -1193,8 +1193,8 @@ async function lireEcranPlan(page) {
     const fin = p.querySelector('.fg-visit__step--out');
     return {
       arrivee: txt(p.querySelector('.fg-visit__step--in > b')),
-      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--onsite):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
-      aussi: txt(p.querySelector('.fg-visit__aussi')),
+      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--onsite):not(.fg-visit__step--out):not(.fg-visit__step--aussi)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
+      aussi: (() => { const l = [...p.querySelectorAll('.fg-visit__step--aussi')]; return l.length ? (txt(l[0].querySelector('b')) === 'compris' ? 'Compris' : 'Aussi') + ' : ' + l.map((li) => txt(li.querySelector('span'))).join(', ') : ''; })(),
       surplace: Array.from(p.querySelectorAll('.fg-visit__step--onsite')).map(etape),
       finEtape: fin ? etape(fin) : null,
       prix: prixEl && prixEl.firstChild ? prixEl.firstChild.textContent.trim() : '',
@@ -1339,11 +1339,12 @@ function visiteAttendue(o) {
       : (sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${p.groupes.length > 1 ? ' par groupe' : ''}` : ''));
     const titre = nom(p.id) + (p.partie > 1 ? `, ${p.partie}e partie` : '');
     const voix = `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`;
-    if (p.groupes.length > 1) p.groupes.forEach((g, k) => etapes.push({ t: g.debut, nom: `${titre}, groupe ${k + 1}`, detail: '', voix }));
-    else etapes.push({ t: p.debut, nom: titre, detail: '', voix });
+    const detailQa = (fin, joueurs, k) => [fin ? `jusqu’à ${heureAffichee(fin)}` : '', p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : '', joueurs ? `${joueurs} joueurs` : '', p.partie === 1 && !k && it.sait && it.prix > 0 ? euros(it.prix).replace(/\s+/g, ' ') : ''].filter(Boolean).join(' · ');
+    if (p.groupes.length > 1) p.groupes.forEach((g, k) => etapes.push({ t: g.debut, nom: `${titre}, groupe ${k + 1}`, detail: detailQa(g.fin, g.joueurs, k), voix }));
+    else etapes.push({ t: p.debut, nom: titre, detail: detailQa(p.fin, 0, 0), voix });
   });
   // Sans activite a heure : une ligne par activite, l heure sur la premiere.
-  if (!o.parties.length) o.libres.forEach((n, k) => etapes.push({ t: k ? '' : o.time, nom: n, detail: '', voix: '' }));
+  if (!o.parties.length && o.libres.length) etapes.push({ t: o.time, nom: o.libres[0], detail: null, voix: '' });
   if (!o.parties.length && !o.libres.length && !o.arrivee) etapes.push({ t: o.time, nom: 'Début', detail: '', voix: '' });
   const surPlace = [];
   // LES PARTIES SANS HEURE (Movsar, 2026-09-29) : sans heure, placees par l equipe.
@@ -1356,7 +1357,7 @@ function visiteAttendue(o) {
     const coupees = it.id === 'laser_game' && o.fermeture ? reste.filter((k) => o.hors.some((h) => h.sansHeure && String(h.partie) === k)) : [];
     const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`
       + (coupees.length ? ` · ${coupees.length > 1 ? `parties ${joindreQa(coupees, ' et ')} : ne tiendront pas` : `partie ${coupees[0]} : ne tiendra pas`} avant ${heureAffichee(o.fin)}` : '');
-    (it.games === 1 ? [nom(it.id)] : reste.map((k) => `${nom(it.id)}, ${k}e partie`)).forEach((titre, i) => surPlace.push({ t: '', nom: titre + (it.id === 'laser_game' && !i && o.suiteDebut ? `, vers ${o.suiteDebut}` : ''), detail: '', voix: i ? '' : `${nom(it.id)}, ${quelles}, ${detail}` }));
+    (it.games === 1 ? [nom(it.id)] : reste.map((k) => `${nom(it.id)}, ${k}e partie`)).forEach((titre, i) => surPlace.push({ t: it.id === 'laser_game' && !i && o.suiteDebut ? `vers ${o.suiteDebut}` : 'sur place', nom: titre, detail: '', voix: i ? '' : `${nom(it.id)}, ${quelles}, ${detail}` }));
   });
   const premiere = o.parties[0];
   const repere = premiere ? premiere.debut : o.time;
@@ -1391,10 +1392,11 @@ function ecartsPlan(ecran, o) {
     if (!x) return;
     if (x.t !== a.t || x.nom !== a.nom) e.push(`etape ${i + 1} « ${x.t} ${x.nom} » vs « ${a.t} ${a.nom} »`);
     // « déplacé » s ajoute a l etape que le toucher a fait bouger ([C] le verifie a part).
-    const detail = x.bouge ? x.detail.replace(/^déplacé$/, '') : x.detail;
-    if (detail !== a.detail) e.push(`etape ${a.t} « ${x.detail} » vs « ${a.detail} »`);
+    const detail = x.bouge ? x.detail.replace(/^déplacé( · )?/, '') : x.detail;
+    if (a.detail !== null && detail !== a.detail) e.push(`etape ${a.t} « ${x.detail} » vs « ${a.detail} »`);
   });
-  const aussi = o.parties.length && o.libres.length ? `Aussi : ${o.libres.join(', ')}` : '';
+  const aussiLibres = o.parties.length ? o.libres : o.libres.slice(1);
+  const aussi = aussiLibres.length ? `Aussi : ${aussiLibres.join(', ')}` : '';
   if (ecran.aussi !== aussi) e.push(`« ${ecran.aussi} » vs « ${aussi} »`);
   const sp = v.surPlace.map(({ t, nom, detail }) => ({ t, nom, detail }));
   if (JSON.stringify(ecran.surplace) !== JSON.stringify(sp)) e.push(`sur place ${JSON.stringify(ecran.surplace)} vs ${JSON.stringify(sp)}`);
@@ -2724,7 +2726,7 @@ async function main() {
     await verifierPistes(d2, { laser_game: L0 }, [L0], '[C] APRES LE DECALAGE : la pose du bowling est levee, les pistes = la route preferredTimes={laser} + laserGameTimes');
     const v2 = await verifierPlan(d2, '[C] APRES LE DECALAGE : « votre visite » = la route (le bowling replace par le moteur)');
     const deplace = v2.ecran ? v2.ecran.etapes.find((x) => x.bouge) : null;
-    ok(Boolean(deplace) && deplace.nom === nomDe('bowling') && deplace.detail === 'déplacé', '[C] le bloc dit en un mot que le bowling a ete deplace', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
+    ok(Boolean(deplace) && deplace.nom === nomDe('bowling') && /^déplacé( · |$)/.test(deplace.detail), '[C] le bloc dit en un mot que le bowling a ete deplace', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
     // 4. DEUX PARTIES DE LASER SUR DEUX HEURES.
     const laser2 = ancresDe(d2).find((a) => a.activityId === 'laser_game');
     const candidats = laser2.times.filter((t) => t.ok !== false && !t.warning && t.time > L0).map((t) => t.time);
@@ -5491,8 +5493,8 @@ async function main() {
     const f1Meta = meta.formules.find((f) => f.id === 'f1');
     const pF1 = await ouvrirV({ pax: 10, formule: 'f1' });
     ok(await pF1.evaluate(() => { const n = document.querySelector('#hourZone .fg-track__lanes'); return !n || getComputedStyle(n).display === 'none'; }), '[V] « 6 joueurs par piste » et la note des pistes ne se lisent plus');
-    const prixF1 = await pF1.evaluate(() => ({ prix: document.querySelector('#planZone .fg-visit__price').textContent.replace(/\s+/g, ' ').trim(), ligne: document.querySelector('#planZone .fg-visit__paye').textContent.replace(/\s+/g, ' ').trim() }));
-    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.prix) === blancs(euros(repF1.price)) && /, à payer sur place$/.test(prixF1.ligne) && !/×/.test(prixF1.ligne), '[V] le recapitulatif d une formule dit le prix du serveur, a payer sur place, sans le calcul', JSON.stringify(prixF1));
+    const prixF1 = await pF1.evaluate(() => ({ prix: document.querySelector('#planZone .fg-visit__price').textContent.replace(/\s+/g, ' ').trim(), ligne: document.querySelector('#planZone .fg-visit__paye').textContent.replace(/\s+/g, ' ').trim(), regle: document.querySelector('#planZone .fg-visit__regle').textContent.trim() }));
+    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.prix) === blancs(euros(repF1.price)) && /^À payer sur place/.test(prixF1.regle) && !/×/.test(prixF1.ligne), '[V] le recapitulatif d une formule dit le prix du serveur, a payer sur place, sans le calcul', JSON.stringify(prixF1));
     ok(await pF1.evaluate(() => getComputedStyle(document.querySelector('#hourSum')).display === 'none' && document.querySelectorAll('#hourZone .fg-etape--fin').length === 1 && getComputedStyle(document.querySelector('#hourZone .fg-etape--fin')).display === 'none'), '[V] la fin et le prix se lisent une fois, dans le recapitulatif : ni la barre ni le programme ne les redisent');
     await pF1.close();
 
@@ -5506,11 +5508,11 @@ async function main() {
     ok(timeToMinutesV(repLibres.slots[0].visitEndTime) === debutLibres + minutesLibres, '[V] (route) la fin d une visite sans heure est la somme de ses activites, a la minute', `${repLibres.slots[0].time} + ${minutesLibres} min = ${repLibres.slots[0].visitEndTime}`);
     const pL = await ouvrirV({ pax: 6, activites: ['minigolf_blacklight', 'arcade_time'] });
     const libresEcran = await pL.evaluate(() => ({
-      lignes: Array.from(document.querySelectorAll('#planZone .fg-visit__step--bloc > b')).map((b) => b.textContent.trim()),
+      lignes: Array.from(document.querySelectorAll('#planZone :is(.fg-visit__step--bloc, .fg-visit__step--aussi) > b')).map((b) => b.textContent.trim()),
       fin: document.querySelector('#planZone .fg-visit__step--out > b').textContent.trim(),
       arrivee: document.querySelectorAll('#planZone .fg-visit__step--in').length,
     }));
-    ok(libresEcran.lignes.length === 2 && libresEcran.lignes[0] === repLibres.slots[0].time && libresEcran.lignes[1] === '' && libresEcran.fin === repLibres.slots[0].visitEndTime && libresEcran.arrivee === 0, '[V] (ecran) une visite sans activite a heure : une ligne par activite, l heure de debut sur la premiere seule, la fin a la minute', JSON.stringify(libresEcran));
+    ok(libresEcran.lignes.length === 2 && libresEcran.lignes[0] === repLibres.slots[0].time && libresEcran.lignes[1] === 'à votre rythme' && libresEcran.fin === repLibres.slots[0].visitEndTime && libresEcran.arrivee === 0, '[V] (ecran) une visite sans activite a heure : une ligne par activite, l heure de debut sur la premiere seule, la fin a la minute', JSON.stringify(libresEcran));
     await pL.close();
     await ctxV.close();
 

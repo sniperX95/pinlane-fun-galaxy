@@ -292,7 +292,7 @@ async function ecran() {
             const liste = document.querySelector('#planZone .fg-visit__list');
             return Boolean(h && liste && (h.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING));
           })(),
-          aussi: txt(document.querySelector('#planZone .fg-visit__aussi')),
+          aussi: (() => { const l = [...document.querySelector('#planZone').querySelectorAll('.fg-visit__step--aussi')]; return l.length ? (txt(l[0].querySelector('b')) === 'compris' ? 'Compris' : 'Aussi') + ' : ' + l.map((li) => txt(li.querySelector('span'))).join(', ') : ''; })(),
           voix: txt(document.querySelector('#fgLive')),
           bowling: Array.from(document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip.is-on, .fg-track[data-activity="bowling"] .fg-chip.is-proposed')).map((c) => c.dataset.time),
           garder: !document.querySelector('#goContact').disabled,

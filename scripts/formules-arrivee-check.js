@@ -2044,7 +2044,7 @@ const MUTATIONS = [
     vers: '      return { ok: false, code: borne.code, reason: borne.reason, scenario: decorated, arrival: borne };', scenarios: ['C', 'K'] },
   { nom: 'le libre ne remplit plus l attente avant la premiere ancre', fichier: 'lib/ops-engine.js',
     de: '  const rangees = meilleurRangement(trous.map((trou) => trou.fin - trou.debut), mobiles.map((rang) => libres[rang].minutes));',
-    vers: '  const rangees = mobiles.map(() => -1);', scenarios: ['B'] },
+    vers: '  const rangees = mobiles.map(() => -1);', scenarios: ['E'] },
   { nom: 'le choix ne prend plus la visite qui finit le plus tot', fichier: 'lib/ops-engine.js',
     de: '  const classer = (gauche, droite) => (gauche.raw.end - droite.raw.end)', vers: '  const classer = (gauche, droite) => (droite.raw.end - gauche.raw.end)', scenarios: ['B'] },
   { nom: 'les arcades perdent leur heure', fichier: 'lib/formula-visit.js',

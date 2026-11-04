@@ -2895,7 +2895,13 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   --fg-fait-fond: #12211f;
 }
 #hourSub, .fg-etape__quoi small, .fg-track__lanes, .fg-track__share, .fg-why-list { display: none; }
-/* Le titre s aligne sur ce qu il annonce, comme aux autres etapes. */
+/* Le titre s aligne sur ce qu il annonce, comme aux autres etapes. Le voile suit : sa
+   colonne de 700 px au milieu le laissait sur la photo, a 1,6:1 sur la plus claire. */
+.fg-scene[data-scene="heures"].fg-scene--full.fg-scene--center .fg-art::after {
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 730px), rgba(5, 5, 5, 0.55) calc(50% - 590px), rgba(5, 5, 5, 0.55) calc(50% + 590px), rgba(5, 5, 5, 0) calc(50% + 730px)),
+    linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
+}
 .fg-scene[data-scene="heures"] .fg-scene__body { text-align: left; }
 .fg-scene[data-scene="heures"] .fg-title { max-width: 820px; margin-left: auto; margin-right: auto; }
 .fg-prog { margin-bottom: 10px; }
@@ -2954,7 +2960,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* Ce qui se prend reste une heure comme une autre : le recapitulatif dit ce que ca change. */
 .fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid transparent; }
 /* L impossible : a sa place, un seul mot. */
-.fg-chip.is-off, .fg-chip.is-off.is-asked { border: 1px dashed rgba(255, 255, 255, 0.13); background: transparent; color: rgba(255, 255, 255, 0.5); cursor: default; }
+.fg-chip.is-off, .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); cursor: default; }
 .fg-chip.is-off b { font-size: 14px; font-weight: 500; }
 .fg-chip.is-off[data-mot]::after { content: attr(data-mot); margin-top: 1px; font-size: 10.5px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
 .fg-chip.is-wave { border: 1px solid transparent; background: rgba(176, 79, 176, 0.26); }

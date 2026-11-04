@@ -141,7 +141,7 @@ const MUTATIONS = [
   { nom: 'la ligne des arcades dit « À choisir »', fichier: JS, scenarios: ['C'],
     de: ": e.etat === 'libre' ? 'Quand vous voulez' : 'À choisir';", vers: ": 'À choisir';" },
   { nom: '« Quand vous voulez » se lit comme une heure', fichier: CSS, scenarios: ['C'],
-    de: '.fg-etape:is(.is-libre, .is-vide):not(.is-open) .fg-etape__heure { font-size: 14px; font-weight: 500; }', vers: '' },
+    de: '.fg-etape:is(.is-libre, .is-vide, .is-surplace):not(.is-open) .fg-etape__heure { max-width: 92px; font-size: 13.5px; font-weight: 600; line-height: 1.2; white-space: normal; color: var(--fg-muted); }', vers: '' },
   { nom: 'les heures d arcade se demandent des l arrivee sur les heures', fichier: JS, scenarios: ['C'],
     de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArcades(); rendreArrivees(); }', vers: '    if (ancres.length) { majPistes(d); majEtapes(d); if (aDesArcades(d)) chargerArcades(); rendreArrivees(); }' },
   { nom: 'la liste des heures d arcade part avec l heure choisie', fichier: JS, scenarios: ['D'],
@@ -177,7 +177,7 @@ const MUTATIONS = [
   { nom: 'le mot d un probleme revient sous l heure', fichier: JS, scenarios: ['E'],
     de: "    $('small', chip).textContent = on || prop || e.etat === 'wave' || e.nom ? mot : '';", vers: "    $('small', chip).textContent = mot;" },
   { nom: 'une heure a probleme se lit en tirets', fichier: CSS, scenarios: ['E'],
-    de: '.fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid rgba(255, 255, 255, 0.16); }', vers: '' },
+    de: '.fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid transparent; }', vers: '.fg-chip.is-soft, .fg-chip.is-shift { border: 1px dashed rgba(255, 255, 255, 0.36); }' },
   { nom: 'le temps libre ne propose plus rien', fichier: JS, scenarios: ['F'],
     de: 'var libre = possibles.filter(function (x) { return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];', vers: 'var libre = null;' },
   { nom: 'le temps libre propose une activite qui n y tient pas', fichier: JS, scenarios: ['F'],
@@ -829,7 +829,7 @@ async function scenarioE(browser, mock) {
       'un seul toucher regle : les arcades prennent 14:00, le bowling se recale', `${demande} || ${resumeLignes(p)}`);
     const v = await lireVisite(un.page);
     const bowling = v.etapes.find((e) => /bowling/i.test(e.titre)) || {};
-    ok(bowling.detail === 'déplacé', 'la visite dit le bowling « déplacé »', JSON.stringify(bowling));
+    ok(/^déplacé( · |$)/.test(bowling.detail), 'la visite dit le bowling « déplacé »', JSON.stringify(bowling));
   } finally {
     ok(un.suivi.erreurs.length === 0, '[E] aucune erreur JavaScript (arcades sur le bowling)', un.suivi.erreurs.slice(0, 3).join(' | '));
     await un.ctx.close();
@@ -894,8 +894,8 @@ async function scenarioF(browser, mock) {
     await poser(un.page, 'laser_game', '12:30');
     const conseil = await lireConseil(un.page);
     const combien = await un.page.evaluate(() => document.querySelectorAll('#hourZone .fg-conseil:not([hidden])').length);
-    ok(arrive && sansTrou === '' && petitTrou === '' && conseil === '30 min avant le laser game : les arcades sont comprises' && combien === 1,
-      'sans trou, ou sous la demi-heure, aucun conseil ; bowling 11:00, laser 12:30 : une seule ligne, « 30 min avant le laser game : les arcades sont comprises »', JSON.stringify({ sansTrou, petitTrou, conseil, combien }));
+    ok(arrive && sansTrou === '' && petitTrou === '' && conseil === 'Vous avez 30 min avant le laser game, les arcades sont comprises.' && combien === 1,
+      'sans trou, ou sous la demi-heure, aucun conseil ; bowling 11:00, laser 12:30 : une seule ligne, « Vous avez 30 min avant le laser game, les arcades sont comprises. »', JSON.stringify({ sansTrou, petitTrou, conseil, combien }));
   } finally {
     ok(un.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript', un.suivi.erreurs.slice(0, 3).join(' | '));
     await un.ctx.close();
@@ -911,7 +911,7 @@ async function scenarioF(browser, mock) {
     const p = await lireProgramme(deux.page);
     ok(pris && (ligneDe(p, 'arcade_time') || {}).heure === '10:30' && (borneArrivee(p) || {}).heure === '10:20', 'MONTAGE arcades a 10:30, avant le bowling de 11:00 : leur ligne le dit, l arrivee 10:20', resumeLignes(p));
     const conseil = await lireConseil(deux.page);
-    ok(conseil === '30 min d’attente avant le laser game', 'arcades deja a 10:30 : la demi-heure de 12:00 est une attente, rien a proposer', conseil);
+    ok(conseil === '30 min d’attente avant le laser game.', 'arcades deja a 10:30 : la demi-heure de 12:00 est une attente, rien a proposer', conseil);
   } finally {
     ok(deux.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript (arcades deja posees)', deux.suivi.erreurs.slice(0, 3).join(' | '));
     await deux.ctx.close();
@@ -920,7 +920,7 @@ async function scenarioF(browser, mock) {
   // Movsar, la veille : « FIN estimé a 17h et le mini golf se joue quand du coup ? »).
   // Les 45 min du minigolf ne tiennent pas dans les 35 entre deux parties, les 30 des
   // arcades si ; 1 h 05 portent le minigolf. Une partie dure 25 min.
-  for (const cas of [{ p1: '10:30', p2: '11:30', texte: '35 min avant le laser game : les arcades sont comprises' }, { p1: '10:00', p2: '11:30', texte: '1 h 05 avant le laser game : le minigolf est compris' }]) {
+  for (const cas of [{ p1: '10:30', p2: '11:30', texte: 'Vous avez 35 min avant le laser game, les arcades sont comprises.' }, { p1: '10:00', p2: '11:30', texte: 'Vous avez 1 h 05 avant le laser game, le minigolf est compris.' }]) {
     const trois = await ouvrir(browser);
     try {
       const arrive = await versHeures(trois.page, mock, 'f2');

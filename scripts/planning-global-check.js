@@ -884,7 +884,7 @@ async function scenario(browser, s) {
 const PIC = S('pic', 'ordinateur');
 const MUTATIONS = [
   { nom: 'heure-de-l-accueil', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    var d = gpMinutesDe(r.startTime);\n    return d == null ? span.start : d;', vers: '    var d = gpMinutesDe((r.opsPlan || {}).arrivalTime || r.startTime);\n    return d == null ? span.start : d;' }] },
-  { nom: 'ordre-par-nom', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: '    groupes.sort(function (a, b) { return 0 ||' }] },
+  { nom: 'ordre-par-nom', lettre: 'F1', scenarios: [PIC], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: '    groupes.sort(function (a, b) { return 0 ||' }, { fichier: PG, de: '      suite.sort(function (a, b) { return a.heure - b.heure; });', vers: '      suite.sort(function () { return 0; });' }] },
   { nom: 'blocs-d-une-heure', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '    var b = Math.floor(heure * 2 + 1e-6) / 2;', vers: '    var b = Math.floor(heure + 1e-6);' }] },
   // L heure pile se reecrit sur chaque ligne, la grande case ne sert plus a rien.
   { nom: 'heure-pile-sur-la-ligne', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '  function gfPile(g) { return Math.abs(g.heure * 2 - Math.round(g.heure * 2)) * 30 < 0.5; }', vers: '  function gfPile(g) { return false; }' }] },

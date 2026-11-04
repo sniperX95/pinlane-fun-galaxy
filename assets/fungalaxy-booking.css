@@ -1476,9 +1476,9 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-track__waves[hidden] { display: none; }
 /* La partie de laser se partage : dit sous le nom de l activite, avant ses
    heures (Movsar, 2026-09-30). */
-.fg-track__share, .fg-track__lanes { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 14px 22px 0 26px; font-size: 13px; line-height: 1.5; color: var(--fg-muted); }
-.fg-track__share svg, .fg-track__lanes svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: rgba(255, 255, 255, 0.62); }
-.fg-track__share b, .fg-track__lanes b { color: var(--fg-text); font-weight: 600; }
+
+
+
 .fg-track__waves b { color: var(--fg-teal-ink); font-weight: 700; }
 /* Toucher l heure d une de ses parties que rien ne deplace eclaire la note
    des groupes (la ligne de la partie a son propre eclat), une fois. */
@@ -1564,10 +1564,10 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed; border-color: rgba(255, 255, 255, 0.36); border-width: 1.5px; }
 .fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte] { border-color: var(--teinte); }
 @media (hover: hover) { .fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte]:hover { border-style: solid; } }
-.fg-chip[data-teinte="0"], .fg-why-list__item[data-teinte="0"] { --teinte: var(--fg-amber); }
-.fg-chip[data-teinte="1"], .fg-why-list__item[data-teinte="1"] { --teinte: #f0648c; }
-.fg-chip[data-teinte="2"], .fg-why-list__item[data-teinte="2"] { --teinte: #7cb7ff; }
-.fg-chip[data-teinte="3"], .fg-why-list__item[data-teinte="3"] { --teinte: rgba(255, 255, 255, 0.78); }
+
+
+
+
 /* Impossible : le texte eteint, le contour de son probleme. Elle reste
    cliquable pour lire la raison entiere. */
 .fg-chip.is-off { color: var(--fg-faint); background: transparent; cursor: help; }
@@ -1655,35 +1655,13 @@ html.fg-pilote .fg { overflow: visible; }
 /* LES RAISONS D UNE PLAGE, sous ses heures : une ligne par raison, la cle au
    contour de la puce qu elle decrit, les heures en gras, la phrase ensuite.
    Un filet les detache des heures sans en faire une boite de plus. */
-.fg-why-list {
-  display: grid;
-  gap: 8px;
-  margin: 0 14px 14px;
-  padding: 12px 0 0;
-  list-style: none;
-  border-top: 1px dashed rgba(255, 255, 255, 0.12);
-  opacity: 0;
-  transition: opacity 0.3s 0.08s;
-}
-.fg-period.is-open .fg-why-list { opacity: 1; }
-.fg-why-list[hidden] { display: none; }
-.fg-why-list__item {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: baseline;
-  column-gap: 10px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--fg-muted);
-  border-radius: 6px;
-  transition: background-color 0.4s, color 0.4s;
-}
-.fg-why-list__item b { color: var(--fg-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+
+
+
+
 /* Toucher une heure qui coince eclaire SA ligne, une fois. */
-.fg-why-list__item.is-lit { color: var(--fg-text); background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.06); }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-why-list__item.is-lit { animation: fg-lit 1.1s var(--fg-ease-out); }
-}
+
 @keyframes fg-lit { 0% { background: rgba(255, 255, 255, 0.16); box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.1); } 100% { background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.06); } }
 /* La ligne du programme qu une heure touchee designe s eclaire une fois, puis
    revient a son fond. */
@@ -1705,7 +1683,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-key--soft { color: var(--fg-amber); }
 .fg-key--shift { color: var(--fg-muted); }
 .fg-key--hard { border-color: rgba(255, 255, 255, 0.07); color: var(--fg-faint); }
-.fg-why-list__item[data-teinte] > .fg-key { border-style: dashed; border-color: var(--teinte); color: var(--teinte); }
+
 
 /* LE BLOC « VOTRE VISITE », EN AGENDA (Movsar, 2026-10-13, sur trois
    maquettes : « la B, mais plus travaille, mieux fait et toujours moins IA »).
@@ -1729,17 +1707,17 @@ html.fg-pilote .fg { overflow: visible; }
   background: #0e0c0f;
   text-align: left;
 }
-.fg-visit__head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 16px; }
-.fg-visit__title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.3; color: var(--fg-text); }
+
+
 /* Chiffres tabulaires, comme le total du detail : en chiffres proportionnels,
    l espace fine des milliers disparaissait (« 1273 € » en tete, « 1 273 € »
    au total, sur la capture de prod du lot visite). */
 .fg-visit__price { font-size: 21px; font-weight: 700; line-height: 1.2; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fg-visit__span, .fg-visit__reste { grid-column: 1 / -1; margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
-.fg-visit__span b { color: var(--fg-text); font-weight: 700; }
+
 .fg-visit__reste { margin-top: 2px; font-size: 13px; }
 .fg-visit__warn { margin: 16px 0 0; padding: 11px 14px; border: 1px solid rgba(227, 179, 65, 0.55); border-radius: var(--v-r); font-size: 13px; line-height: 1.5; color: var(--fg-text); }
-.fg-visit__hors b { color: var(--fg-amber-ink); }
+
 .fg-visit__warn + .fg-visit__warn { margin-top: 8px; }
 /* Pour tout faire avant la fermeture : la phrase sur sa ligne, puis le bouton. */
 .fg-fit { display: block; margin-top: 8px; font-weight: 600; }
@@ -1748,7 +1726,7 @@ html.fg-pilote .fg { overflow: visible; }
    gauche, dans la colonne des heures, a la hauteur de son titre. */
 .fg-visit__list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
 .fg-visit__list > li { position: relative; margin-left: calc(var(--v-axe) + var(--v-pas)); }
-.fg-visit__list--libre > li { margin-left: 0; }
+
 .fg-visit__step > b { position: absolute; top: 0; right: calc(100% + var(--v-pas)); width: var(--v-axe); font-size: 14px; font-weight: 600; line-height: 20px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg-muted); }
 .fg-visit__step > b:empty, .fg-visit__step > small:empty { display: none; }
 .fg-visit__step > span { display: block; font-size: 14.5px; font-weight: 700; line-height: 20px; color: var(--fg-text); }
@@ -1764,16 +1742,16 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__step--bloc.is-moved > small { color: var(--fg-amber-ink); }
 /* Le temps vide entre deux activites : de la place, un pointille d un bloc
    a l autre, et son nom. */
-.fg-visit__gap { display: flex; align-items: center; font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
-.fg-visit__gap::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; border-left: 2px dotted var(--v-trait); }
+
+
 /* LE TEMPS LIBRE QUI SE REMPLIT (Movsar, 2026-10-13 : « des pop up adaptées
    en fonction du temps libre [...] super puissant et pointillé »). L attente
    ou quelque chose tient devient un cadre en pointille, a la hauteur de sa
    duree, comme une case d agenda a remplir ; le toucher deplie sur place ce
    qui y tient. Pas de fenetre flottante : dans le cadre du site, une
    position fixe se colle au cadre, pas a l ecran. */
-.fg-visit__gap--libre { display: block; min-height: 0; padding: 0; }
-.fg-visit__gap--libre::before { content: none; }
+
+
 .fg-libre {
   display: flex;
   align-items: center;
@@ -1794,13 +1772,13 @@ html.fg-pilote .fg { overflow: visible; }
 @media (hover: hover) {
   .fg-libre:hover { border-color: var(--fg-teal-ink); background: rgba(103, 186, 172, 0.07); }
 }
-.fg-libre__quoi { font-size: 14px; font-weight: 700; line-height: 20px; }
-.fg-libre__aide { margin-left: auto; font-size: 12.5px; font-weight: 600; line-height: 17px; color: var(--fg-teal-ink); white-space: nowrap; }
-.fg-libre__chev { flex: none; width: 14px; height: 14px; color: var(--fg-teal-ink); transition: transform 0.2s var(--fg-ease-out); }
-.fg-visit__gap--libre.is-open .fg-libre { border-color: var(--fg-teal-ink); background: rgba(103, 186, 172, 0.07); }
-.fg-visit__gap--libre.is-open .fg-libre__chev { transform: rotate(180deg); }
-.fg-libre__choix { display: grid; gap: 6px; margin-top: 6px; }
-.fg-libre__choix[hidden] { display: none; }
+
+
+
+
+
+
+
 .fg-libre__action {
   display: grid;
   gap: 2px;
@@ -1840,9 +1818,9 @@ html.fg-pilote .fg { overflow: visible; }
 /* CE QUI N A PAS D HEURE (Movsar, 2026-09-29 : « dans la foulee, pas une
    heure imposee, comme ca ils comprennent bien ») : a part de l axe, sans
    heure, son titre au-dessus. */
-.fg-visit__group { margin: 0; font-size: 13px; line-height: 18px; color: var(--fg-muted); }
-.fg-visit__group b { font-weight: 600; color: var(--fg-text); }
-.fg-visit__suite ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+
+
+
 .fg-visit__step--suite > span { font-size: 14px; font-weight: 600; line-height: 19px; }
 /* CE QUI NE TIENDRA PAS AVANT LA FERMETURE (Movsar, 2026-10-01 : « faut dire
    tout ce qui se jouera pas ») : la ligne reste, estompee, son detail en
@@ -1855,16 +1833,16 @@ html.fg-pilote .fg { overflow: visible; }
 /* LE DETAIL DU PRIX, ligne par ligne, puis le total et le paiement : les
    montants du programme de la reponse, montres seulement quand leur somme
    est le prix annonce (sinon le total seul, en tete du bloc). */
-.fg-visit__prices { display: grid; gap: 8px; margin: 18px 0 0; padding: 14px 16px; border-radius: 12px; background: rgba(255, 255, 255, 0.045); }
-.fg-visit__prices > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.fg-visit__prices dt { min-width: 0; font-size: 14px; font-weight: 600; color: var(--fg-text); }
-.fg-visit__prices dt small { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
-.fg-visit__prices dd { margin: 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg-text); }
-.fg-visit__total { margin-top: 4px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
-.fg-visit__total:first-child { margin: 0; padding: 0; border: 0; }
-.fg-visit__total small { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); }
-.fg-visit__total dt, .fg-visit__total dd { font-size: 16px; }
-.fg-visit__total dd { color: var(--fg-teal); }
+
+
+
+
+
+
+
+
+
+
 .fg-visit__pay { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-muted); }
 .fg-notice {
   max-width: 720px;
@@ -1883,7 +1861,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-track__head { padding: 14px 15px 12px 19px; }
   .fg-track > .fg-periods { padding: 12px 15px 10px 19px; }
   .fg-track__waves { padding: 12px 15px 0 19px; }
-  .fg-track__share, .fg-track__lanes { padding: 12px 15px 0 19px; }
+  
   .fg-track__foot { padding: 0 15px 12px 19px; }
   .fg-visit { --v-axe: 42px; --v-pas: 10px; padding: 18px 16px 20px; }
   .fg-visit__step > b { font-size: 13.5px; }
@@ -2295,7 +2273,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-period__sum { grid-area: sum; justify-self: start; text-align: left; }
   .fg-period__chev { grid-area: chev; }
   .fg-chips { gap: 8px; }
-  .fg-why-list__item { grid-template-columns: 1fr; row-gap: 4px; }
+  
   .fg-chip { min-width: 0; flex: 1 1 calc(25% - 8px); height: 50px; padding: 0 6px; }
   .fg-chip b { font-size: 15px; }
   .fg-total { grid-template-columns: 1fr; }
@@ -2629,15 +2607,15 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transla
 .fg-info-section--faits { order:-1; display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:8px; }
 .fg-info-section--faits p + p { margin:0; }
 .fg-info-fait { display:flex; flex-direction:column; gap:2px; min-width:0; margin:0; padding:10px 12px 11px; border-radius:14px; background:var(--fi-soft); box-shadow:inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 0 1px rgba(255,255,255,.04); }
-.fg-info-fait__k { color:var(--fi-muted); font-size:11.5px; font-weight:500; line-height:1.25; }
-.fg-info-fait__v { color:#fff; font-size:15px; font-weight:650; line-height:1.25; }
+
+
 .fg-info-section--tarifs { display:grid; grid-template-columns:minmax(0,1fr); column-gap:24px; }
 @container (min-width:470px) { .fg-info-section--tarifs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .fg-info-section--tarifs h3 { grid-column:1 / -1; }
 .fg-info-section--tarifs p + p { margin:0; }
 .fg-info-tarif { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.07); }
-.fg-info-tarif__k { color:var(--fi-text); }
-.fg-info-tarif__v { flex:none; max-width:62%; color:#fff; font-weight:650; text-align:right; font-variant-numeric:tabular-nums; }
+
+
 .fg-info-section--inclus p { position:relative; padding-left:24px; }
 .fg-info-section--inclus p::before { content:""; position:absolute; left:2px; top:.42em; width:12px; height:7px; border-left:2px solid var(--fg-teal-ink,#8fd6c9); border-bottom:2px solid var(--fg-teal-ink,#8fd6c9); transform:rotate(-45deg); }
 .fg-info-section--note { padding-top:14px; border-top:1px solid rgba(255,255,255,.07); }
@@ -2749,8 +2727,8 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__quoi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fg-etape__quoi b { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.25; }
 .fg-etape__quoi b em { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.82); font-size: 12px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 2px; }
-.fg-etape__quoi small { font-size: 12.5px; color: var(--fg-muted); line-height: 1.3; }
-.fg-etape__quoi small:empty { display: none; }
+
+
 .fg-etape__heure { font-size: 18px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-align: right; white-space: nowrap; }
 .fg-etape.is-propose .fg-etape__heure { color: var(--fg-teal-ink); }
 .fg-etape.is-vide .fg-etape__heure { font-size: 14px; font-weight: 650; color: var(--fg-amber-ink); }
@@ -2797,7 +2775,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape .fg-track__head { display: none; }
 .fg-etape .fg-track > .fg-periods { padding: 0; }
 .fg-etape .fg-track__waves { margin: 0 0 10px; padding: 0; font-size: 12.5px; }
-.fg-etape .fg-track__share, .fg-etape .fg-track__lanes { margin: 2px 0 8px; padding: 0; color: var(--fg-muted); font-size: 12.5px; }
+
 .fg-etape .fg-track__foot { padding: 0; min-height: 0; }
 .fg-etape .fg-track__foot:has(.fg-track__note[hidden]):has(.fg-track__reset[hidden]) { display: none; }
 /* TOUTES LES HEURES SE VOIENT, UN TOUCHER PAR CHOIX (2026-11-03, Ansar :
@@ -2814,7 +2792,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-period__body, .fg-period.is-open .fg-period__body { display: block; transition: none; }
 .fg-period__inner { overflow: visible; visibility: visible; content-visibility: visible; transition: none; }
 .fg-period__inner > .fg-chips, .fg-period.is-open .fg-period__inner > .fg-chips { padding: 0 0 10px; opacity: 1; transform: none; transition: none; }
-.fg-why-list { opacity: 1; transition: none; }
+
 .fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
 .fg-chip { width: 100%; min-width: 0; height: 52px; border-radius: 12px; }
 /* LES RAISONS SE LISENT SANS TOUCHER (Movsar, 2026-10-12 : « explique
@@ -2824,10 +2802,10 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    teinte par probleme, 2026-10-13), puis la phrase courte. La cle (le mot
    de la puce) ne se dit pas a l ecran. Toucher une heure impossible allume
    sa ligne. */
-.fg-etape .fg-why-list { gap: 8px; margin: 0 0 14px; padding: 2px 0 0; border-top: 0; }
-.fg-etape .fg-why-list__item { display: flex; align-items: center; gap: 10px; margin: 0 -6px; padding: 3px 6px; font-size: 13.5px; line-height: 1.35; }
-.fg-etape .fg-why-list__item > .fg-key { display: none; }
-.fg-etape .fg-why-list__quand { flex: none; padding: 3px 8px; border: 1.5px dashed var(--teinte, rgba(255, 255, 255, 0.36)); border-radius: 8px; color: var(--teinte, var(--fg-text)); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+
+
+
 @media (max-width: 680px) {
   .fg-etape__tete { grid-template-columns: 32px minmax(0, 1fr) auto 14px; gap: 10px; min-height: 62px; padding: 10px 14px; }
   .fg-etape__icone { width: 32px; height: 32px; border-radius: 9px; }
@@ -3100,9 +3078,9 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-chip b { font-size: 18px; font-weight: 650; }
 .fg-chip small { display: none; }
 /* Ce qui se prend reste une heure comme une autre : le recapitulatif dit ce que ca change. */
-.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip:is(.is-soft, .is-shift)[data-teinte] { border: 1px solid rgba(255, 255, 255, 0.16); }
+.fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid rgba(255, 255, 255, 0.16); }
 /* L impossible : grise, un seul mot. */
-.fg-chip.is-off, .fg-chip.is-off[data-teinte], .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); cursor: default; }
+.fg-chip.is-off, .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); cursor: default; }
 .fg-chip.is-off[data-mot]::after { content: attr(data-mot); margin-top: 2px; font-size: 12px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
 .fg-chip.is-wave { border: 1px solid transparent; background: rgba(176, 79, 176, 0.26); }
 /* UNE SEULE TUILE PLEINE : l heure qui sera reservee, proposee ou choisie. Une

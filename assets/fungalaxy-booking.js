@@ -3066,7 +3066,7 @@
     // calcul : ni reveil, ni focus pour lui (« Garder » s eveille une fois, a
     // l arrivee sur les heures). Rallume dans la meme tache, il garde son focus.
     goContact.disabled = true;
-    if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(true); }
+    if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(true, repere); }
     goContact.disabled = !slot;
     var retenu = contactRetenu;
     lacherContact();
@@ -3520,7 +3520,6 @@
     // d ecran, et sa ligne d explication le dit sous la grille. Seuls
     // « choisi », « proposé » et le nom d une partie s ecrivent.
     $('small', chip).textContent = on || prop || e.etat === 'wave' || e.nom ? mot : '';
-    if (on || prop || !/^(soft|shift|hard)$/.test(e.etat)) delete chip.dataset.teinte;
   }
   // LES RAISONS D UNE PLAGE, SOUS SES HEURES. Une ligne par raison, avec toutes
   // les heures qui la partagent ; rien pour une plage ou tout est prenable. La
@@ -3528,12 +3527,6 @@
   // obstacle.
   // Chaque heure expliquee POINTE sa ligne (aria-describedby) : un lecteur
   // d ecran lit la raison en arrivant sur l heure.
-  // UNE TEINTE PAR PROBLEME (Movsar, 2026-10-13 : « expliqué super proprement
-  // en bas avec couleur différente par problème pour pas avoir la même
-  // chose ») : chaque ligne d une plage a la sienne, et les heures qu elle
-  // explique ont un contour en tirets de cette teinte (data-teinte).
-  var TEINTES = 4;
-  function teinteDe(k) { return String(k % TEINTES); }
   function expliquerPeriode(sec, nomPiste) {
     var liste = $('.fg-why-list', sec);
     if (!liste) return;
@@ -3542,7 +3535,6 @@
     var groupes = [], index = {};
     $$('.fg-chip', sec).forEach(function (c) {
       c.removeAttribute('aria-describedby');
-      delete c.dataset.teinte;
       var etat = c.dataset.state;
       // L heure d une de SES parties ne s explique pas ici : son nom est sur
       // la puce (« partie 1 », « 2e groupe »), sa plage dans le cadre des
@@ -3571,12 +3563,11 @@
       if (chiffres && (chiffres.besoin || chiffres.minutes)) index[cle].places.push(chiffres.besoin ? chiffres.places : chiffres.minutes);
     });
     liste.innerHTML = groupes.map(function (g, k) {
-      return '<li class="fg-why-list__item" id="' + esc(racine) + '-why-' + k + '" data-etat="' + esc(g.etat) + '" data-teinte="' + teinteDe(k) + '" data-heures="' + esc(g.heures.join(' ')) + '">'
+      return '<li class="fg-why-list__item" id="' + esc(racine) + '-why-' + k + '" data-etat="' + esc(g.etat) + '" data-heures="' + esc(g.heures.join(' ')) + '">'
         + '<i class="fg-key fg-key--' + esc(g.etat) + '">' + esc(g.mot) + '</i>'
         + '<b class="fg-why-list__quand">' + esc(plageHeures(g.heures)) + '</b> <span>' + esc(phraseRaison(g, nomPiste)) + '</span></li>';
     }).join('');
     groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });
-    groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.dataset.teinte = teinteDe(k); }); });
     liste.hidden = !groupes.length;
   }
   function vaguesPour(cr, id) {
@@ -4060,10 +4051,13 @@
   // son heure a l ecran un instant puis se replie, la suivante s ouvre ensuite
   // et s eclaire (is-quitte, is-arrive : la feuille porte les delais), puis se
   // montre si elle sort de l ecran.
-  function avancerEtape(apresPose) {
+  function avancerEtape(apresPose, repere) {
     if (!state.dispo) return;
     var suivante = etapesDe(state.dispo).filter(aPlacer)[0];
-    var f = doc.activeElement, ligne = f && f.closest && f.closest('.fg-etape'), clavier = ligne ? focusClavier(f) : false;
+    var f = doc.activeElement, ligne = f && f.closest && f.closest('.fg-etape'), clavier = ligne ? focusClavier(f) : Boolean(repere && repere.clavier);
+    // La ligne touchee a pu changer de place dans le rendu (une heure proposee passe
+    // avant elle) : le focus est tombe, il suit quand meme le programme.
+    var tombe = Boolean(repere && repere.piste) && (!f || f === body);
     var arrive = apresPose && suivante ? $('.fg-etape[data-cle="' + suivante.cle + '"]', hourZone) : null;
     // UN TOUCHER, ET LA SUITE EST LA (2026-11-03 : « lourd, pas fluide »). La
     // ligne suivante s ouvrait au bout de 0,5 s, se montrait au bout de 0,95 s,
@@ -4073,7 +4067,7 @@
     ouvrirEtape(suivante ? suivante.cle : null);
     if (!suivante && !goContact.disabled) eveiller(goContact);
     // Le focus ne reste pas dans une ligne qui se replie : il suit le programme.
-    if (ligne && !ligne.classList.contains('is-open')) {
+    if (tombe || (ligne && !ligne.classList.contains('is-open'))) {
       var vers = suivante ? $('.fg-etape[data-cle="' + suivante.cle + '"] .fg-etape__tete', hourZone) : goContact;
       if (vers && !vers.disabled) { vers.focus({ preventScroll: true }); if (clavier) montrer(vers); }
     }

@@ -769,7 +769,8 @@ async function caseHeure(browser) {
 // [Q] LE BANDEAU : L ETAT DU CENTRE MENE A SON GESTE
 // ---------------------------------------------------------------------------
 async function bandeau(browser) {
-  await avec(browser, { lettre: 'Q' }, async (page) => {
+  // (les noms du prochain depart ne se montrent qu au-dessus de 1300 px de barre)
+  await avec(browser, { lettre: 'Q', appareil: 'ordinateur' }, async (page) => {
     const b = await page.evaluate(() => {
       const t = document.getElementById('planningBande');
       const present = (id) => { const tr = document.querySelector(`.gf-r[data-gf-id="${id}"]`); return tr ? /\bt-(arr|paid)\b/.test(tr.className) : null; };
@@ -1096,7 +1097,7 @@ const MUTATIONS = [
   { nom: 'table-reecrite', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: '    if (!avant || !tbody || avant.table !== p.table || avant.colonnes !== p.colonnes) { gfEcrireTout(wrap, defile, p); return; }', vers: '    gfEcrireTout(wrap, defile, p); return;' }] },
   // Une rangee reecrite perd la ligne du retard : celles du dessous remontent.
   { nom: 'hauteur-perdue', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: "      if (tr.getBoundingClientRect().height < h - 0.5) tr.style.height = h + 'px';\n", vers: '' }] },
-  { nom: 'ordre-qui-bouge', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: "    groupes.sort(function (a, b) { return (a.r.status === 'arrived') - (b.r.status === 'arrived') || a.heure - b.heure ||" }] },
+  { nom: 'ordre-qui-bouge', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: '    groupes.sort(function (a, b) { return a.heure - b.heure ||', vers: "    groupes.sort(function (a, b) { return (a.r.status === 'arrived') - (b.r.status === 'arrived') || a.heure - b.heure ||" }, { fichier: PG, de: '      suite.sort(function (a, b) { return a.heure - b.heure; });', vers: "      suite.sort(function (a, b) { return Boolean(a.r && a.r.status === 'arrived') - Boolean(b.r && b.r.status === 'arrived') || a.heure - b.heure; });" }] },
   { nom: 'bouton-plein-perdu', lettre: 'B', scenarios: ['arrive'], editions: [{ fichier: PG, de: "      if (ligne) ligne.classList.add('is-premier');", vers: "      if (ligne && !wrap._gfPremier) ligne.classList.add('is-premier');" }] },
   // [C] les compteurs
   { nom: 'compteur-sourd', lettre: 'C', scenarios: ['compteurs'], editions: [{ fichier: PG, de: "      if (filtre) { gfFiltrer(wrapDe(), filtre.getAttribute('data-gf-filtre')); return; }", vers: '      if (filtre) return;' }] },

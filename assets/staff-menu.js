@@ -397,7 +397,8 @@
             // Un client n'a qu'un seul clientId dans sa liste (deja scopee serveur),
             // donc son switcher reste une liste plate.
             clientId: center.clientId || null,
-            clientName: center.clientName || null
+            clientName: center.clientName || null,
+            city: center.city || null
           }));
         }
       }
@@ -436,6 +437,69 @@
   // Expose au reste de la console : c'est la SEULE source du nom lisible du
   // centre courant (le composeur email s'en sert pour la variable {{centre}}).
   window.staffCenterDisplayName = () => centerDisplayName();
+
+  // LE CENTRE SE VOIT PARTOUT (Ansar, 2026-11-04 : entre Libramont et Gembloux « on remarque
+  // pas la diff »). Une teinte par centre, tiree de son identifiant : aucun nom de centre
+  // dans le code. Jamais une couleur de statut du planning (bleu, orange, vert), et toujours
+  // une encre lisible dessus.
+  const TEINTES_CENTRE = [
+    { fond: '#d6589f', encre: '#2a0a1c', texte: '#e77fb8', texteClair: '#b4367f' },
+    { fond: '#e3b341', encre: '#241c00', texte: '#e3b341', texteClair: '#8a6a12' },
+    { fond: '#b04fb0', encre: '#ffffff', texte: '#c25ec2', texteClair: '#944292' },
+    { fond: '#67baac', encre: '#06201c', texte: '#67baac', texteClair: '#27695f' },
+    { fond: '#94a3b8', encre: '#0f172a', texte: '#94a3b8', texteClair: '#51607a' },
+    { fond: '#c026d3', encre: '#ffffff', texte: '#d55ee6', texteClair: '#a21caf' }
+  ];
+
+  function teinteDuCentre(id) {
+    let somme = 0;
+    for (const lettre of String(id || '')) somme += lettre.charCodeAt(0);
+    return TEINTES_CENTRE[somme % TEINTES_CENTRE.length];
+  }
+
+  // « Fun Galaxy Gembloux » se dit « Gembloux » ; un centre sans ville ni client connus
+  // garde son nom entier.
+  function nomCourtDuCentre(center) {
+    const nom = String(centerDisplayName(center)).trim();
+    const ville = String(center?.city || '').trim();
+    if (ville && nom.toLowerCase().endsWith(ville.toLowerCase())) return ville;
+    const client = String(center?.clientName || '').trim();
+    if (client && nom.toLowerCase().startsWith(`${client.toLowerCase()} `)) return nom.slice(client.length + 1).trim();
+    return nom;
+  }
+
+  // Seul un centre reellement ouvert porte la marque : ni le premier de la liste a sa
+  // place, ni la vue de tous les centres.
+  function centreOuvert() {
+    const id = getSelectedCenterId();
+    return getMenuCenters().find(center => center.id === id) || null;
+  }
+
+  window.staffCenterShortName = () => {
+    const centre = centreOuvert();
+    return centre ? nomCourtDuCentre(centre) : '';
+  };
+
+  function poserMarqueCentre() {
+    const centre = centreOuvert();
+    const racine = document.documentElement;
+    const nom = centre ? nomCourtDuCentre(centre) : '';
+    if (centre) {
+      const teinte = teinteDuCentre(centre.id);
+      racine.style.setProperty('--centre-fond', teinte.fond);
+      racine.style.setProperty('--centre-encre', teinte.encre);
+      racine.style.setProperty('--centre-texte', teinte.texte);
+      racine.style.setProperty('--centre-texte-clair', teinte.texteClair);
+      racine.style.setProperty('--centre-nom', JSON.stringify(nom));
+    } else {
+      ['--centre-fond', '--centre-encre', '--centre-texte', '--centre-texte-clair', '--centre-nom'].forEach(nomVariable => racine.style.removeProperty(nomVariable));
+    }
+    document.querySelectorAll('[data-centre-nom]').forEach(element => {
+      if (element.textContent !== nom) element.textContent = nom;
+    });
+    const titre = nom ? `${nom} · Pinlane` : 'Pinlane';
+    if (document.title !== titre) document.title = titre;
+  }
 
   function getCurrentSession() {
     try {
@@ -805,7 +869,7 @@
     return `
         <button type="button" class="fgx-menu-option fgx-center-option${isActive ? ' is-active' : ''}" data-fgx-center-option="${escapeHtml(center.id)}" role="menuitem">
           <span>
-            <strong>${escapeHtml(centerDisplayName(center))}</strong>
+            <strong><i class="fgx-center-teinte" style="background:${teinteDuCentre(center.id).fond}" aria-hidden="true"></i>${escapeHtml(centerDisplayName(center))}</strong>
             <small>${escapeHtml(center.meta || '')}</small>
           </span>
           <em>${escapeHtml(center.status || 'Actif')}</em>
@@ -1085,6 +1149,7 @@
     const center = getSelectedCenter();
     const displayName = centerDisplayName(center);
     const roleLabel = getRoleLabel();
+    poserMarqueCentre();
     root.innerHTML = `
       <div class="fgx-menu-top">
         <button type="button" class="fgx-menu-brand${hasCustomBrandLogo() ? ' est-perso' : ''}" data-fgx-menu-key="dashboard" title="Tableau de bord Pinlane">
@@ -1100,7 +1165,7 @@
       </div>
 
       <button type="button" class="fgx-menu-center" data-fgx-center-menu aria-haspopup="menu" aria-expanded="false" title="Changer de centre">
-        <span class="fgx-center-dot">${icons.center}</span>
+        <span class="fgx-center-dot" aria-hidden="true">${escapeHtml(nomCourtDuCentre(center).charAt(0).toUpperCase())}</span>
         <span class="fgx-menu-label">${escapeHtml(displayName)}</span>
         <span class="fgx-menu-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M6 4l4 4-4 4"/></svg></span>
       </button>

@@ -19,10 +19,12 @@
      s'executer avant le body. -->
 <script src="/assets/boot-view.js?v=20261102logo"></script>
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<!-- La typo d affiche de Fun Galaxy, pour la seule enseigne du centre : elle ne retient pas la premiere peinture. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&display=swap" media="print" onload="this.media='all'">
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261008comptoir">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261104grilles">
-<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261104chiffres">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261104centre">
+<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261104centre">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260930a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
@@ -63,7 +65,7 @@
      renderGlobalPlanning, que la console appelle a chaque rendu de l onglet.
      Charge avant app-main, le premier rendu le trouve deja la. -->
 <script defer src="/assets/pinlane-planning-global.js?v=20261103heures"></script>
-<script defer src="/assets/app-main.js?v=20261104grilles"></script>
+<script defer src="/assets/app-main.js?v=20261104centre"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260925f"></script>
@@ -77,7 +79,7 @@
      le serveur require le MEME fichier pour l analyse, pour qu il n existe
      jamais deux versions de cette regle. -->
 <script type="text/plain" data-staff-console src="/assets/email-thread.js?v=20260906a"></script>
-<script type="text/plain" data-staff-console src="/assets/staff-menu.js?v=20261103barre"></script>
+<script type="text/plain" data-staff-console src="/assets/staff-menu.js?v=20261104centre"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-fx.js?v=20260728e"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-sur-mesure-settings.js?v=20261104tarifs3"></script>
 <script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20261104grilles"></script>
@@ -727,6 +729,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <section class="pb" id="planningBarre" aria-label="Commandes du planning">
         <h1 class="pb-titre">Planning du jour <span id="staffDateLabel"></span></h1>
         <div class="pb-ligne">
+          <span class="pb-centre" id="planningCentre" data-centre-nom></span>
           <div class="pb-seg" role="tablist" aria-label="Changer de planning">
             <button type="button" role="tab" class="pb-seg__b" id="staffTabAll" data-pb-vue="all" aria-selected="false" onclick="pbChanger('all')">Complet<span id="staffAllCount">0</span></button>
             <button type="button" role="tab" class="pb-seg__b" id="staffTabBowling" data-pb-vue="bowling" aria-selected="false" onclick="pbChanger('bowling')">Bowling<span id="staffBowlingCount">0</span></button>

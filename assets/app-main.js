@@ -32804,7 +32804,7 @@ function rvCoquilleHtml() {
       </div>
     </div>
     <aside class="rs-tk" aria-label="Le ticket de la réservation">
-      <div class="rs-tk-t"><h3 id="qbTitle">Réservation</h3><button type="button" class="rs-replier" id="rsReplier" onclick="rsBasculerTicket()">Réduire</button><button type="button" class="rs-x" id="rvFermer" aria-label="Fermer la réservation" onclick="closeQuickBook()">×</button></div>
+      <div class="rs-tk-t"><h3 id="qbTitle">Réservation</h3><span class="rs-centre">${escapeHtml(typeof window.staffCenterShortName === 'function' ? window.staffCenterShortName() : '')}</span><button type="button" class="rs-replier" id="rsReplier" onclick="rsBasculerTicket()">Réduire</button><button type="button" class="rs-x" id="rvFermer" aria-label="Fermer la réservation" onclick="closeQuickBook()">×</button></div>
       <div class="rv-zone-contenu" id="rvResasZone"></div>
       <div class="rs-tk-c">
         <div class="rs-tk-lignes" id="rsLignes"></div>

@@ -865,6 +865,7 @@ module.exports = async (req, res) => {
         // l'identite d'un autre centre.
         name: typeof center.name === 'string' ? center.name : '',
         city: centerPublicInfo && typeof centerPublicInfo.city === 'string' ? centerPublicInfo.city : '',
+        address: centerPublicInfo && typeof centerPublicInfo.address === 'string' ? centerPublicInfo.address : '',
         identity: normalizeIdentity(center.identity),
         status: center.status || 'active',
         // CE CENTRE EST-IL UNE DEMONSTRATION ? Le tunnel doit pouvoir le DIRE

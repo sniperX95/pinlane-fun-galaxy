@@ -198,6 +198,7 @@
     "test:client-tarifs-ui",
     "test:tarifs-effets",
     "test:tarifs-grilles",
+    "test:centre-marque",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

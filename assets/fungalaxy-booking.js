@@ -6293,7 +6293,8 @@
     var j = jourInfo(state.date);
     var fin = cr ? (cr.slot.visitEndTime || '') : '';
     var horsFinal = fin ? horsDelaiDu(cr.slot) : [];
-    var html = '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>' + esc(jourLong(state.date)) + '</span>' + (j && j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
+    var html = lieuDuCentre()
+      + '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>' + esc(jourLong(state.date)) + '</span>' + (j && j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
       + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(groupeLisible()) + '</span></div>'
       + '<div class="fg-recap__sep"></div>';
     lignes.forEach(function (l, i) {
@@ -6334,6 +6335,14 @@
   // client qui regarde a ce moment-la voit un prix qui n existe pas.
   // `calme` : un ajout redessine sur place, sans rejouer l entree des lignes.
   // A l arrivee sur l ecran, la phrase d un ajout precedent ne revient pas.
+  // OU, en tete du recapitulatif : le nom du centre et son adresse, tels que le serveur les donne.
+  function lieuDuCentre() {
+    var c = meta && meta.center;
+    var nom = String(c && c.name || '').trim();
+    if (!nom) return '';
+    var adresse = String(c.address || '').trim();
+    return '<div class="fg-recap__lieu fg-rise" style="--i:0"><b>' + esc(nom) + '</b>' + (adresse ? '<span>' + esc(adresse) + '</span>' : '') + '</div>';
+  }
   function rendreRecap(calme) {
     var r = $('#recap');
     if (!calme && plus.statut && plus.statut.ecran === 'recap') { plus.statut = null; plus.annuler = null; }
@@ -6929,7 +6938,11 @@
     poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');
     // Aucun numero de reservation : le SaaS ne s en sert nulle part, le
     // client n aurait rien a en faire (Movsar, 2026-09-24).
+    var centreFin = meta && meta.center;
+    var nomCentreFin = String(centreFin && centreFin.name || '').trim();
+    var adresseFin = String(centreFin && centreFin.address || '').trim();
     $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
+      + (nomCentreFin ? rangee('i-lieu', '<b>' + esc(nomCentreFin) + '</b>' + (adresseFin ? '<br>' + esc(adresseFin) : '')) : '')
       + rangee('i-calendar', quand)
       + (quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
       + (avertissementBowling(r.program ? r : state.creneau) ? rangee('i-info', esc(avertissementBowling(r.program ? r : state.creneau))) : '')
@@ -7234,6 +7247,13 @@
         // vaut pour CE centre (la liste est tenue centre par centre).
         var nomOffres = meta.center && meta.center.name ? String(meta.center.name) : '';
         if (nomOffres) $$('[data-centre-nom]').forEach(function (el) { el.textContent = (/^[aeiouyhàâäéèêëîïôöûü]/i.test(nomOffres) ? 'd’' : 'de ') + nomOffres; });
+        // LE CENTRE SE VOIT TOUT LE TEMPS (Ansar, 2026-11-04, lancement sur deux centres) : le
+        // client ne doit jamais douter de l endroit ou il reserve.
+        var villeCentre = String(meta.center && meta.center.city || '').trim() || nomOffres;
+        if (villeCentre) {
+          $$('[data-centre-ville]').forEach(function (el) { el.textContent = villeCentre; });
+          document.title = 'Réserver à ' + villeCentre + ' · Fun Galaxy';
+        }
         if (meta.center && meta.center.status && meta.center.status !== 'active') {
           direErreur('Ce centre n’ouvre pas encore ses réservations en ligne.');
         }

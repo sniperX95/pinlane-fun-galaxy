@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20261104vers">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20261104centre">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -27,6 +27,7 @@
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 18l-6-6 6-6"/></symbol>
+    <symbol id="i-lieu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s7-6.4 7-11.9a7 7 0 0 0-14 0c0 5.5 7 11.9 7 11.9z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
     <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.4c2.9.2 5 2.4 5 5.6"/></symbol>
     <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></symbol>
@@ -60,7 +61,10 @@
 </svg>
 
 <header class="fg-top" data-standalone>
-  <a href="https://fungalaxy.be/" class="fg-top__brand" aria-label="Fun Galaxy"><img class="fg-top__logo" src="/assets/brand/logo-fun-galaxy.svg" alt="Fun Galaxy" width="112" height="76"></a>
+  <div class="fg-top__gauche">
+    <a href="https://fungalaxy.be/" class="fg-top__brand" aria-label="Fun Galaxy"><img class="fg-top__logo" src="/assets/brand/logo-fun-galaxy.svg" alt="Fun Galaxy" width="112" height="76"></a>
+    <span class="fg-centre" data-centre-ville></span>
+  </div>
   <a class="fg-top__cta" href="https://fungalaxy.be/contact/">Réserver</a>
 </header>
 
@@ -73,6 +77,8 @@
        chaque geste (fgLive), hors des scenes pour qu un changement d ecran ne
        l emporte pas. La zone des heures, elle, ne se relit plus en entier. -->
   <p class="sr-only" id="fgLive" role="status"></p>
+  <!-- Le centre, dans le cadre du site : le bandeau du haut n y est pas. -->
+  <p class="fg-centre fg-centre--cadre" data-centre-ville></p>
   <div class="fg-stage" id="fgStage">
 
     <!-- 1. RESERVEZ VOTRE SORTIE -->
@@ -346,6 +352,6 @@
   </div>
 </div>
 
-<script src="/assets/fungalaxy-booking.js?v=20261104photos" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20261104centre" defer></script>
 </body>
 </html>

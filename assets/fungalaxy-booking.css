@@ -114,8 +114,17 @@
   position: relative;
   z-index: 3;
 }
-.fg-top__brand { display: inline-flex; }
+.fg-top__gauche { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.fg-top__brand { flex: none; display: inline-flex; }
 .fg-top__logo { width: 112px; height: auto; }
+/* LE CENTRE, EN GRAND (Ansar, 2026-11-04) : a cote du logo sur la page, en tete du cadre dans
+   le site du client. Un aplat plein, sa typo d affiche, jamais coupe. */
+.fg-centre { display: block; min-width: 0; margin: 0; padding: 5px 13px 6px; overflow: hidden; border-radius: 6px; background: var(--fg-teal); color: #06201c; font-family: var(--fg-display); font-size: 30px; font-weight: 400; line-height: 1.12; letter-spacing: 0.02em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.fg-centre:empty { display: none; }
+.fg-centre--cadre { display: none; width: max-content; max-width: calc(100% - 2 * var(--fg-gutter)); box-sizing: border-box; margin: 16px var(--fg-gutter) 0; font-size: 26px; }
+.fg.is-embed .fg-centre--cadre:not(:empty) { display: block; }
+/* (sans ca, sa marge du haut sort du corps de page, et le cadre garde 16 px a defiler) */
+.fg.is-embed .fg-shell { display: flow-root; }
 .fg-top__cta {
   display: inline-flex;
   align-items: center;
@@ -131,6 +140,14 @@
   transition: background-color 0.2s, color 0.2s;
 }
 @media (hover: hover) { .fg-top__cta:hover { background: var(--fg-text); color: var(--fg-bg); } }
+/* (au telephone : le logo, le centre et le bouton sur une rangee, le centre jamais coupe) */
+@media (max-width: 560px) {
+  .fg-top__gauche { flex: none; gap: 10px; }
+  .fg-centre { padding: 4px 9px 5px; font-size: 22px; }
+  .fg-top__cta { flex: none; padding: 9px 13px; font-size: 12px; letter-spacing: 0.05em; }
+}
+@media (max-width: 380px) { .fg-top__logo { width: 92px; } }
+@media (max-width: 350px) { .fg-top__cta { display: none; } }
 .fg.is-embed .fg-top { display: none; }
 /* Dans le cadre du client, la hauteur suit le contenu : un plancher a 100vh
    vaudrait la hauteur du cadre, et le cadre ne saurait alors que grandir. */
@@ -1844,6 +1861,9 @@ html.fg-pilote .fg { overflow: visible; }
 /* Une rangee : l icone, le texte, parfois une etiquette. Le texte se replie
    sur lui-meme (min-width: 0), jamais sous l icone : une rangee qui passait
    a la ligne laissait l icone seule au-dessus sur telephone. */
+.fg-recap__lieu { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.fg-recap__lieu b { display: block; font-family: var(--fg-display); font-size: 26px; font-weight: 400; line-height: 1.1; letter-spacing: 0.01em; text-transform: uppercase; color: var(--fg-teal-ink); }
+.fg-recap__lieu span { display: block; margin-top: 4px; font-size: 14px; line-height: 1.35; color: var(--fg-muted); text-wrap: pretty; }
 .fg-recap__row {
   display: flex;
   align-items: center;

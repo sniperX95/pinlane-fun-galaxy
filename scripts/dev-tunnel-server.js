@@ -198,6 +198,7 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
       id: 'libramont', status: 'active', demonstration: false,
       name: FUN_GALAXY_CENTER.name,
       city: info.city || '',
+      address: info.address || '',
       identity: FUN_GALAXY_CENTER.identity,
       contact: { phone: info.phone || '', email: info.email || '' },
       // Le seuil de la demande sur mesure, lu comme le serveur le lit.

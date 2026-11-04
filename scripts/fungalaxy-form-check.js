@@ -898,6 +898,8 @@ const MUTATIONS = {
   orphelin: ["function finInsecable(s) { return String(s == null ? '' : s).replace(/ ([^ ]+)$/, '\\u00a0$1'); }", "function finInsecable(s) { return String(s == null ? '' : s); }"],
   flechefocus: ['    if (navFocus && navFocus.disabled) (navFocus', '    if (false) (navFocus'],
   sortieclavier: ['  dayWrap.addEventListener(\'focusout\', sortieClavier);\n  dayPop.addEventListener(\'focusout\', sortieClavier);\n', ''],
+  lieurecap: ["    var html = lieuDuCentre()\n      + ", "    var html = ''\n      + "],
+  lieufin: ["      + (nomCentreFin ? rangee('i-lieu', '<b>' + esc(nomCentreFin) + '</b>' + (adresseFin ? '<br>' + esc(adresseFin) : '')) : '')\n", ''],
   numero: ["    $('#finBody').innerHTML = '<div class=\"fg-done__ticket", "    $('#finBody').innerHTML = '<div>Réservation n° ' + esc(r.id) + '</div><div class=\"fg-done__ticket"],
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
@@ -2972,6 +2974,9 @@ async function main() {
     const ligneArrivee = recap.lignes.find((l) => /^Arrivée conseillée/.test(l)) || '';
     ok(ligneArrivee === `Arrivée conseillée à ${o6.arrivee}${o6.fermeture ? `, jusqu’à la fermeture (${heureAffichee(o6.fin)})` : `, fin vers ${heureAffichee(o6.fin)}`}${surPlaceAttendu(o6.arrivee, o6.fin)}`, '[E] l arrivee, la fin (ici : jusqu a la fermeture) et la duree sur place sont celles de la reponse', ligneArrivee);
     ok(recap.lignes[0] && recap.lignes[0].indexOf(jourLong(mock.DATE)) === 0 && recap.lignes[1] === '6 personnes', '[E] date et groupe en tete', recap.lignes.slice(0, 2).join(' | '));
+    // LE CENTRE EN TETE DU RECAPITULATIF (Ansar, 2026-11-04) : son nom et son adresse, avant de valider.
+    const lieuRecap = await page.evaluate(() => { const l = document.querySelector('#recap .fg-recap__lieu'); return l ? l.textContent.replace(/\s+/g, ' ').trim() : ''; });
+    ok(lieuRecap.indexOf('Fun Galaxy Libramont') === 0 && lieuRecap.indexOf('6800 Libramont') > 0, '[E] le recapitulatif dit le centre et son adresse', lieuRecap);
     ok(plat(recap.tag) === plat(jourMock && jourMock.holiday ? jourMock.holiday.label : ''), '[E] l etiquette ferie/conge du jour n apparait que si le calendrier la porte', recap.tag || 'aucune, comme le calendrier');
     ok(recap.etoiles === 0, '[E] plus aucune etoile au-dessus du titre final');
     // LES COORDONNEES RELUES telles qu elles partiront (le « (0) » retire), et
@@ -3012,6 +3017,7 @@ async function main() {
     // ne decide rien).
     ok(corps.sansOffres === false, '[E] la case des offres, laissee vide, part avec la reservation (sansOffres : false)', JSON.stringify(corps.sansOffres));
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
+    ok(fin.indexOf('Fun Galaxy Libramont') === 0 && fin.indexOf('6800 Libramont') > 0, '[E] l ecran final dit le centre et son adresse', fin.slice(0, 90));
     ok(!/n°\s*\d+/.test(fin) && !/numéro de réservation/i.test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite l adresse, et aucun numero de reservation (le SaaS ne s en sert pas)', fin.slice(0, 120));
     // L ECRAN FINAL EST UN RECU : l e-mail n est annonce que parce que la
     // reponse l a mis en file ; l arrivee est celle du plan rendu ; le

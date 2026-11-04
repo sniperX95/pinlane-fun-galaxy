@@ -296,7 +296,7 @@ body.staff-menu-collapsed .fgx-menu-collapse svg { transform: scaleX(-1); }
 }
 
 .fgx-menu-center {
-  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
   gap: 9px;
   padding: 0 10px;
   font-size: 13px;
@@ -311,7 +311,7 @@ body.staff-menu-collapsed .fgx-menu-collapse svg { transform: scaleX(-1); }
   border-color: var(--line);
 }
 
-.fgx-center-dot { width: 15px; height: 15px; color: var(--muted); }
+.fgx-center-dot { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--centre-fond); color: var(--centre-encre); font-size: 12px; font-weight: 700; line-height: 1; }
 
 .fgx-center-dot svg,
 .fgx-menu-icon svg {
@@ -636,6 +636,8 @@ body.staff-menu-collapsed .fgx-menu-account {
 body.staff-menu-collapsed .fgx-menu-icon,
 body.staff-menu-collapsed .fgx-center-dot,
 body.staff-menu-collapsed .fgx-menu-avatar { margin: 0 auto; }
+
+body.staff-menu-collapsed .fgx-center-dot { width: 30px; height: 30px; border-radius: 8px; font-size: 15px; }
 
 /* --- Popovers sidebar (centres + compte) : surface flottante --- */
 /* Entree : fade + legere montee/scale DEPUIS l'ancre (transform-origin cote
@@ -22092,3 +22094,12 @@ input.tf-champ[aria-invalid="true"] { border-color: var(--danger); }
   .tf-goutte, .tf-eclat { display: none; }
   .tf-ligne, .tf-c-chev, .tf-r, .tf-r-nom, .tf-lieu-nom, .tf-lieu-phrase, .tf-mini, .tf-bascule, .tf-bascule span, .tf-mini [data-tf-val], .tf-mini [data-tf-lie] { transition: none; }
 }
+
+/* LA MARQUE DU CENTRE (2026-11-04). Les couleurs sont posees par staff-menu.js sur la racine :
+   l enseigne dans la barre du planning et dans la fenetre de reservation, l initiale dans
+   le menu, son point dans la liste des centres. */
+:root { --centre-fond: transparent; --centre-encre: currentColor; --centre-texte: currentColor; --centre-texte-clair: currentColor; }
+.qb-modal.rv.rs .rs-tk-t .rs-centre { flex: none; max-width: 170px; margin: 0 auto 0 10px; overflow: hidden; color: var(--centre-texte); font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 20px; font-weight: 400; line-height: 1.15; letter-spacing: 0.015em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+[data-theme='light'] .qb-modal.rv.rs .rs-tk-t .rs-centre { color: var(--centre-texte-clair); }
+.qb-modal.rv.rs .rs-tk-t .rs-centre:empty { display: none; }
+.fgx-center-teinte { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 3px; vertical-align: 0; }

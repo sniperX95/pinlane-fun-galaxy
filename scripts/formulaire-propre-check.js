@@ -61,6 +61,7 @@ const MUTATIONS = [
   { nom: 'le fil du programme revient', fichier: 'assets/fungalaxy-booking.css', de: '.fg-etape { position: relative; }\n', vers: '.fg-etapes::before { content: ""; position: absolute; left: 28px; top: 30px; bottom: 30px; width: 2px; background: rgba(255, 255, 255, 0.09); }\n.fg-etape { position: relative; }\n' },
   { nom: 'le point revient devant l icone de chaque ligne', fichier: 'assets/fungalaxy-booking.js', de: "      + '<span class=\"fg-etape__icone\"'", vers: "      + '<span class=\"fg-etape__point\" aria-hidden=\"true\"></span><span class=\"fg-etape__icone\"'" },
   { nom: 'la grille des activites recompte ses colonnes sans retirer ses placements', fichier: 'assets/fungalaxy-booking.js', de: "        tuiles.forEach(function (tile) { tile.style.gridColumn = ''; tile.style.gridRow = ''; });\n", vers: '' },
+  { nom: 'la photo de la ligne ne part plus du bord', fichier: 'assets/fungalaxy-booking.css', de: '.fg-etape.has-photo .fg-etape__icone { display: block;', vers: '.fg-etape.has-photo .fg-etape__icone { margin-left: 12px; display: block;' },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_PROPRE_MUTATION || 0);
@@ -200,8 +201,8 @@ async function verifierPetitEcran(browser) {
     ok(heures.calcul === 'inline-block', '[B] le calcul des pistes (10 joueurs = 2 pistes × 39 € = 78 €) se tient d un bloc', heures.calcul);
 
     // Le fil se lit sur le pseudo-element de la liste ; le point, sur la
-    // ligne elle-meme : l icone en est le premier element peint, au ras de
-    // son retrait.
+    // ligne elle-meme : sa photo, ou son nom si elle n en a pas, en est le
+    // premier element peint, au ras de son retrait.
     const sansFil = () => page.evaluate(() => {
       const liste = document.querySelector('#hourZone .fg-etapes');
       if (!liste) return null;
@@ -211,13 +212,13 @@ async function verifierPetitEcran(browser) {
         points: document.querySelectorAll('#hourZone .fg-etape__point').length,
         lignes: tetes.length,
         decalees: tetes.filter((t) => {
-          const i = t.querySelector('.fg-etape__icone');
-          return !i || Math.abs(i.getBoundingClientRect().left - t.getBoundingClientRect().left - parseFloat(getComputedStyle(t).paddingLeft)) > 1;
+          const premier = Array.from(t.children).find((e) => e.getClientRects().length);
+          return !premier || Math.abs(premier.getBoundingClientRect().left - t.getBoundingClientRect().left - parseFloat(getComputedStyle(t).paddingLeft)) > 1;
         }).length,
       };
     });
     const etroit = await sansFil();
-    ok(Boolean(etroit) && etroit.lignes >= 2 && etroit.fil === 'none' && etroit.points === 0 && etroit.decalees === 0, '[C] a 360 px, le programme n a ni fil ni point : l icone ouvre chaque ligne', JSON.stringify(etroit));
+    ok(Boolean(etroit) && etroit.lignes >= 2 && etroit.fil === 'none' && etroit.points === 0 && etroit.decalees === 0, '[C] a 360 px, le programme n a ni fil ni point : la photo ou le nom ouvre chaque ligne', JSON.stringify(etroit));
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(300);
     const large = await sansFil();

@@ -21,14 +21,15 @@
 //   [A] le serveur : l offre reservee aux enfants se lit dans les mots du
 //       centre ; les accompagnants ne valent que pour elle ; le prix se fait
 //       sur les enfants ; la base garde les accompagnants ;
-//   [B] la Formule 4 a l ecran des heures : ses deux parties de laser (la 2e
-//       sur place), ce qu elle comprend (les mots de sa carte), le conseil de
-//       choisir l heure de la 2e partie ;
+//   [B] la Formule 4 a l ecran des heures : une ligne par partie de laser (la 2e
+//       sans heure, « vers HH:MM »), « Compris : ... » dans les mots de sa carte, la
+//       ligne « À choisir » de la 2e partie ; le detail, a la voix (2026-11-03) ;
 //   [C] les plages repliees disent ce qu elles cachent, avec les memes mots
 //       que les puces, sans changer de hauteur ;
 //   [D] le Kids Fun Day : combien d enfants, les adultes a cote, le prix sur
-//       les enfants, la disponibilite demandee pour les enfants, le temps de
-//       jeu qui reste a l heure d arrivee, le recapitulatif et l envoi ;
+//       les enfants, la disponibilite demandee pour les enfants, l heure d arrivee
+//       et « Jusqu’à » la fin de la formule (le temps de jeu qui reste, a la voix),
+//       le recapitulatif et l envoi ;
 //   [E] la console : une partie de laser sans heure se voit sur la ligne du
 //       dossier, et les accompagnants aussi ;
 //   [F] contre-epreuves servies en memoire : chaque regle retiree, ce gate
@@ -145,12 +146,13 @@ function lireVisite(page) {
     const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const zone = document.querySelector('#planZone');
     return {
-      etapes: [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), detail: t(li.querySelector('small')), detail2: t(li.querySelectorAll('small')[1]), genre: li.className })),
-      groupes: [...zone.querySelectorAll('.fg-visit__group')].map(t),
+      etapes: [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), genre: li.className })),
+      aussi: t(zone.querySelector('.fg-visit__aussi')),
+      fin: t(zone.querySelector('.fg-visit__step--out')),
+      voix: t(document.querySelector('#fgLive')),
       encadre: Boolean(zone.querySelector('.fg-visit__incl')),
-      tete: t(zone.querySelector('.fg-visit__span')),
       // La partie sans heure : sa ligne au programme (« À choisir ») et la
-      // sortie « Laisser l equipe la placer sur place ».
+      // sortie « Laisser l equipe choisir ».
       partie2: (() => {
         const li = document.querySelector('#hourZone .fg-etape[data-cle="laser_game#2"]');
         if (!li) return null;
@@ -236,22 +238,27 @@ function verifierF4(bureau, tel) {
   ok(bureau.arrive && bureau.heures && bureau.erreurs.length === 0, 'MONTAGE le formulaire arrive aux heures de la Formule 4, sans erreur', bureau.erreurs.join(' | '));
   const v = bureau.visite || { etapes: [], compris: [] };
   const laser = v.etapes.filter((e) => /Laser Game/.test(e.titre));
-  ok(laser.some((e) => /partie 1 sur 2/.test(e.titre)), 'la 1re partie de laser a son heure et se dit « partie 1 sur 2 »', laser.map((e) => `${e.b} ${e.titre}`).join(' | '));
-  // DANS LA FOULEE (Movsar, 2026-09-29 : « met "dans la foulee", pas une
-  // heure imposee ») : la 2e partie, sans heure, sous le titre du groupe.
-  const suite = v.etapes.filter((e) => /fg-visit__step--suite/.test(e.genre));
-  ok((v.groupes || []).some((g) => /^Dans la foulée/.test(g)) && laser.some((e) => /partie 2 sur 2/.test(e.titre) && /fg-visit__step--suite/.test(e.genre) && e.b === '' && /^placée sur place avec l’équipe · environ \d/.test(e.detail)),
-    'la 2e partie se joue « dans la foulee », sans heure, placee par l equipe, avec le temps qu elle prend', `${(v.groupes || []).join(' | ')} :: ${laser.map((e) => `[${e.b}] ${e.titre} ${e.detail}`).join(' | ')}`);
+  const lignesLaser = laser.map((e) => `[${e.b}] ${e.titre}`).join(' | ');
+  const premiere = laser.find((e) => e.titre === 'Laser Game') || {};
+  // L HEURE ET LE NOM, RIEN D AUTRE (Ansar, 2026-11-03) : « partie 1 sur 2 » reste a la voix.
+  ok(/^\d{2}:\d{2}$/.test(premiere.b || '') && new RegExp(`Laser Game, partie 1 sur 2, de ${premiere.b} à `).test(v.voix), 'la 1re partie de laser a son heure et son nom ; la voix dit « partie 1 sur 2 »', `${lignesLaser} / ${v.voix}`);
+  // DANS LA FOULEE (Movsar, 2026-09-29 : « met "dans la foulee", pas une heure
+  // imposee ») : la 2e partie, sans heure, et la voix dit qui la place et combien de
+  // temps. L ecran dit quand elle tombe : une ligne sans heure faisait croire a un oubli.
+  const seconde = laser.find((e) => /2e partie/.test(e.titre)) || { titre: '' };
+  const vers = (/^Laser Game, 2e partie, vers (\d{2}:\d{2})$/.exec(seconde.titre) || [])[1];
+  ok(seconde.b === '' && Boolean(vers) && vers > premiere.b, 'la 2e partie n a pas d heure imposee : « vers HH:MM », apres la 1re', lignesLaser);
+  ok(/Dans la foulée, sans heure fixe : Laser Game, partie 2 sur 2, placée sur place avec l’équipe · environ \d/.test(v.voix), 'la voix dit la 2e partie « dans la foulee », placee par l equipe, avec le temps qu elle prend', v.voix);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const f4 = getEffectiveFormules('libramont').find((f) => f.id === 'f4');
-  // Ce que comprend la carte, DANS la visite : chaque mot de la carte a sa
-  // ligne ; ce qui a deja sa ligne a heure (bowling, laser) n est pas redit.
-  const attenduDansLaFoulee = f4.desc.filter((d) => !/bowling|laser/i.test(d));
-  const compris = suite.filter((e) => /fg-visit__step--incl/.test(e.genre)).map((e) => e.titre);
-  ok(JSON.stringify(compris) === JSON.stringify(attenduDansLaFoulee) && !v.encadre,
-    'ce que comprend la formule se lit DANS la visite, dans les mots de sa carte (minigolf, boissons), sans encadre a part', `${compris.join(' | ')} / attendu ${attenduDansLaFoulee.join(' | ')}`);
-  ok(Boolean(v.partie2) && v.partie2.vide && v.partie2.heure === 'À choisir' && /placer sur place/.test(v.partie2.sortie),
-    'la 2e partie sans heure a sa ligne « À choisir » au programme, avec la sortie « laisser l equipe la placer sur place »', JSON.stringify(v.partie2));
+  // Ce que comprend la carte, DANS la visite, sur une ligne, dans ses mots raccourcis ;
+  // ce qui a deja sa ligne a heure (bowling, laser) n est pas redit.
+  const motCompris = (s) => s.replace(/^1 (partie|entrée)( de| à la)? /i, '').replace(/ boissons$/i, '');
+  const attendu = `Compris : ${f4.desc.filter((d) => !/bowling|laser/i.test(d)).map(motCompris).join(', ')}`;
+  ok(v.aussi === attendu && !v.encadre,
+    'ce que comprend la formule se lit DANS la visite, dans les mots de sa carte (minigolf, boissons), sans encadre a part', `${v.aussi} / attendu ${attendu}`);
+  ok(Boolean(v.partie2) && v.partie2.vide && v.partie2.heure === 'À choisir' && /Laisser l’équipe choisir/.test(v.partie2.sortie),
+    'la 2e partie sans heure a sa ligne « À choisir » au programme, avec la sortie « Laisser l’équipe choisir »', JSON.stringify(v.partie2));
 
   section('C. LES PLAGES REPLIEES DISENT CE QU ELLES CACHENT');
   ok(bureau.pose, 'MONTAGE le bowling se pose a 11:00');
@@ -263,8 +270,11 @@ function verifierF4(bureau, tel) {
   ok(ecartsAvant.length === 0 && ecartsApres.length === 0, 'chaque en-tete porte exactement les mots de ses puces (decale, serre, complet), ou « rien ne coince »', ecartsAvant.concat(ecartsApres).slice(0, 4).join(' ; '));
   ok(apres.some((p) => p.nom === 'Matin' && p.cles.some((k) => k.classe.includes('fg-key--shift'))), 'le MATIN dit « decale » quand ses heures decalent le bowling (Movsar : « y a que sur soiree »)',
     apres.filter((p) => p.nom === 'Matin').map((p) => `${p.piste}: ${p.cles.map((k) => k.texte).join(',')}`).join(' | '));
-  const hauteurs = (tel.plagesAvant || []).concat(tel.plagesApres || []).map((p) => p.hauteur);
-  ok(hauteurs.length > 0 && new Set(hauteurs).size === 1, 'au telephone, tous les en-tetes gardent la meme hauteur, cles ou pas', [...new Set(hauteurs)].join(','));
+  // Une piste dans une ligne repliee ne se voit pas (hauteur 0) : seuls les en-tetes a
+  // l ecran se comparent, et il en faut avec et sans cles pour que la regle soit exercee.
+  const visibles = (tel.plagesAvant || []).concat(tel.plagesApres || []).filter((p) => p.hauteur > 0);
+  const hauteurs = visibles.map((p) => p.hauteur);
+  ok(visibles.some((p) => p.cles.length) && new Set(hauteurs).size === 1, 'au telephone, tous les en-tetes a l ecran gardent la meme hauteur, cles ou pas', JSON.stringify(visibles.map((p) => [p.piste, p.nom, p.cles.length, p.hauteur])));
 }
 
 // ---------------------------------------------------------------------------
@@ -351,18 +361,18 @@ function verifierKfd(r) {
   const pax = r.demande ? new URL(r.demande).searchParams.get('pax') : '';
   ok(pax === '6', 'la disponibilite se demande pour les 6 enfants', `pax=${pax}`);
   const midi = r.visiteMidi || { etapes: [], compris: [] };
-  // L ILLIMITE EST UN BLOC DE L AGENDA (2026-10-13) : il part de l heure
-  // d arrivee, qu il porte dans la colonne des heures, et dit sa fin.
-  const illimiteDe = (v) => ((v || { etapes: [] }).etapes || []).find((e) => /fg-visit__step--illimite/.test(e.genre)) || {};
+  // L ILLIMITE EST UNE LIGNE DE L AGENDA : elle part de l heure d arrivee, et la fin
+  // de la formule se lit dessous ; le temps de jeu qui reste, a la voix (2026-11-03).
+  const illimiteDe = (v) => ((v || { etapes: [] }).etapes || []).find((e) => /KIDS FUN DAY/.test(e.titre)) || {};
   const illimiteMidi = illimiteDe(midi);
-  ok(illimiteMidi.b === '12:00' && /KIDS FUN DAY/.test(illimiteMidi.titre) && /jusqu’à 17:00/.test(illimiteMidi.detail) && /5 h de jeu/.test(illimiteMidi.detail) && /même prix à toute heure/.test(illimiteMidi.detail),
-    'arrivee a 12:00 : le bloc part de 12:00, a volonte jusqu a 17:00, 5 h de jeu, meme prix a toute heure', JSON.stringify(illimiteMidi));
+  ok(illimiteMidi.b === '12:00' && midi.fin === 'Jusqu’à 17:00' && /à partir de 12:00, à volonté jusqu’à 17:00 : 5 h de jeu, même prix à toute heure/.test(midi.voix),
+    'arrivee a 12:00 : la ligne part de 12:00, jusqu a 17:00 ; la voix dit a volonte, 5 h de jeu, meme prix a toute heure', JSON.stringify({ ligne: illimiteMidi, fin: midi.fin, voix: midi.voix }));
   const tard = illimiteDe(r.visiteTard);
-  ok(r.tard && tard.b === '16:30' && /30 min de jeu/.test(tard.detail), 'arrivee a 16:30 : le bloc part de 16:30 et dit 30 min de jeu (plus de visite de 5 h vendue pour 40 min sans le dire)', JSON.stringify(tard));
-  ok(/fin de la formule/.test((r.visiteTard || {}).tete || ''), 'l en-tete dit « fin de la formule », pas une heure estimee', `« ${(r.visiteTard || {}).tete} »`);
+  ok(r.tard && tard.b === '16:30' && (r.visiteTard || {}).fin === 'Jusqu’à 17:00' && /30 min de jeu/.test((r.visiteTard || {}).voix || ''), 'arrivee a 16:30 : la ligne part de 16:30, jusqu a 17:00, et la voix dit 30 min de jeu (plus de visite de 5 h vendue pour 40 min sans le dire)', JSON.stringify({ ligne: tard, fin: (r.visiteTard || {}).fin, voix: (r.visiteTard || {}).voix }));
+  ok(/Fin de la formule à 17:00/.test((r.visiteTard || {}).voix || ''), 'la fin se dit « Jusqu’à », et a la voix « fin de la formule », pas une heure estimee', `« ${(r.visiteTard || {}).fin} » / ${(r.visiteTard || {}).voix}`);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const kfd = getEffectiveFormules('libramont').find((f) => f.id === 'kfd');
-  ok(illimiteMidi.detail2 === kfd.desc.join(' · ') && !midi.encadre, 'ce qu elle comprend : les mots du centre (« toutes les activites illimitees »), sur sa ligne, pas la liste du moteur', `« ${illimiteMidi.detail2} »`);
+  ok(midi.aussi === `Compris : ${kfd.desc.join(', ')}` && !midi.encadre, 'ce qu elle comprend : les mots du centre (« toutes les activites illimitees »), sur sa ligne, pas la liste du moteur', `« ${midi.aussi} » / ${kfd.desc.join(', ')}`);
   ok(/6 enfants \+ 2 adultes/.test(midi.sous || ''), 'le rappel des heures dit « 6 enfants + 2 adultes »', `« ${midi.sous} »`);
   ok((r.recap || []).some((l) => l === '6 enfants + 2 adultes'), 'le recapitulatif aussi', (r.recap || []).join(' | '));
   const e = r.envoi || {};
@@ -499,7 +509,7 @@ async function contreEpreuves(browser, mock, jourKfd, jourConsole) {
     mutation = 'compris';
     const r = await parcoursF4(browser, mock, 1440);
     mutation = '';
-    ok(!((r.visite || {}).etapes || []).some((e) => /fg-visit__step--incl/.test(e.genre)), 'sans les mots de la carte, le minigolf et les boissons disparaissent de l ecran des heures : ce gate ROUGIRAIT');
+    ok(!((r.visite || {}).aussi), 'sans les mots de la carte, le minigolf et les boissons disparaissent de l ecran des heures : ce gate ROUGIRAIT', (r.visite || {}).aussi);
   }
   if (ok(ancreUnique('fungalaxy-booking.js', MUTATIONS.enfants[0]), 'contre-epreuve montable : les joueurs de la demande se comptent une fois')) {
     mutation = 'enfants';

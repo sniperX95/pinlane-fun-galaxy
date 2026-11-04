@@ -71,12 +71,12 @@ const MUTATIONS = {
   // Le repeint APRES l arrivee de l historique (le premier, au debut du
   // chargement, ne montre encore rien).
   repeint: ['app-main.js', "  else if (isStaffPricingActive() && typeof renderStaffPricingPage === 'function') renderStaffPricingPage();\n}\n\nfunction ensureStaffClientData() {", '}\n\nfunction ensureStaffClientData() {', '[D] les chiffres de Tarifs portent sur 30 jours'],
-  vide: ['staff-pages-v2.js', "        </div>`\n      : '';", "        </div>`\n      : '<div class=\"pv2-price-stats\">Aucune réservation liée</div>';", '[D] une carte sans reservation reste muette'],
-  primaire: ['staff-pages-v2.js', '<button type="button" class="pv2-btn sm" data-pev-edit="${esc(view.sourceId)}"', '<button type="button" class="pv2-btn primary" data-pev-edit="${esc(view.sourceId)}"', '[D] un seul bouton principal'],
+  vide: ['staff-pages-v2.js', "return n ? `${tfPluriel(n, 'réservation')} / 30 j` : '';", "return `${tfPluriel(n, 'réservation')} / 30 j`;", '[D] une ligne sans reservation reste muette'],
+  primaire: ['staff-pages-v2.js', 'class="pv2-btn sm" data-add-formula=', 'class="pv2-btn primary" data-add-formula=', '[D] au repos, aucun bouton ne crie'],
   zero: ['staff-pages-v2.js', " : 'Aucune réservation'}</small>", " : `${dayAgg.count} résa · ${dayAgg.pax} joueurs`}</small>", '[E] le jour vide le dit en mots'],
   formulesvide: ['app-main.js', '    const summary = formuleRows.length ? [', '    const summary = true ? [', '[F] Formules vide sans compteur a zero'],
-  appel: ['staff-pages-v2.js', "    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();", "    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();", '[H] sans droit sur l historique, Tarifs ne l appelle pas'],
-  tuiles: ['staff-pages-v2.js', '        ${!voitHistorique\n', '        ${false\n', '[H] et ses tuiles disent que l historique n est pas accessible'],
+  appel: ['staff-pages-v2.js', "if ((typeof canReadStaffReservationHistory !== 'function' || canReadStaffReservationHistory()) && typeof ensureStaffClientData === 'function') ensureStaffClientData();", "if (typeof ensureStaffClientData === 'function') ensureStaffClientData();", '[H] sans droit sur l historique, Tarifs ne l appelle pas'],
+  tuiles: ['staff-pages-v2.js', "if (typeof canReadStaffReservationHistory === 'function' && !canReadStaffReservationHistory()) return '30 derniers jours : non accessible avec votre rôle';", '', '[H] et le resume dit que l historique n est pas accessible'],
   utc: ['app-main.js', 'd.setDate(d.getDate() - 30); return toLocalDateStr(d); })();', 'd.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();', '[G] la fenetre compte 30 jours'],
 };
 
@@ -327,49 +327,31 @@ async function run() {
     console.log('[D] TARIFS & FORMULES : 30 JOURS');
     // =====================================================================
     const t = await ouvrir(browser, '#/staff/prices');
-    await attendre(t.page, () => document.querySelector('#staffPricingPage .pv2-stats'), null, 8000);
+    await attendre(t.page, () => document.querySelector('#staffPricingPage [data-tf-resume]'), null, 8000);
     // La fenetre arrive apres le premier rendu : on attend sa trace.
-    const arrive = await attendre(t.page, () => {
-      const stat = [...document.querySelectorAll('#staffPricingPage .pv2-stat')].find((s) => /^Réservations$/.test((s.querySelector('.pv2-stat-label span') || {}).textContent || ''));
-      return stat && stat.querySelector('[data-pv2-count]') && stat.querySelector('[data-pv2-count]').getAttribute('data-pv2-count') === '3';
-    }, null, 6000);
-    // Le chiffre d affaires passe de 0 € (premier rendu, sans historique) a sa
-    // valeur par l animateur de chiffres, qui porte data-pl-anim tant qu il
-    // defile : lu trop tot, le gate voyait un pas de l animation (« 0 € »).
-    await attendre(t.page, () => {
-      const stat = [...document.querySelectorAll('#staffPricingPage .pv2-stat')].find((s) => ((s.querySelector('.pv2-stat-label span') || {}).textContent || '') === 'Chiffre réservé');
-      return Boolean(stat) && !stat.querySelector('[data-pl-anim]');
-    }, null, 4000);
+    const arrive = await attendre(t.page, () => /\b3 réservations\b/.test((document.querySelector('#staffPricingPage [data-tf-resume]') || {}).textContent || ''), null, 6000);
     const tarifs = await t.page.evaluate(() => {
       const root = document.getElementById('staffPricingPage');
-      const tuile = (nom) => {
-        const s = [...root.querySelectorAll('.pv2-stat')].find((x) => ((x.querySelector('.pv2-stat-label span') || {}).textContent || '') === nom);
-        if (!s) return null;
-        const compte = s.querySelector('[data-pv2-count]');
-        return { valeur: compte ? compte.getAttribute('data-pv2-count') : (s.querySelector('.pv2-stat-value') || {}).textContent.trim(), pied: ((s.querySelector('.pv2-stat-foot') || {}).textContent || '').trim() };
-      };
-      const cartes = [...root.querySelectorAll('.pv2-price-card')];
-      const f1 = cartes.find((c) => c.getAttribute('data-cev-formula') === 'f1');
+      const lignes = [...root.querySelectorAll('[data-tf-ligne]')];
+      const f1 = lignes.find((l) => l.getAttribute('data-tf-ligne') === 'f1');
       return {
         crumb: ((root.querySelector('.pv2-bar-crumb') || {}).textContent || '').trim(),
         titre: ((root.querySelector('.pv2-bar h1') || {}).textContent || '').trim(),
-        resas: tuile('Réservations'),
-        chiffre: tuile('Chiffre réservé'),
-        top: tuile('Plus demandé'),
-        cartes: cartes.length,
-        avecChiffres: cartes.filter((c) => c.querySelector('.pv2-price-stats')).length,
-        f1: f1 ? ((f1.querySelector('.pv2-price-stats') || {}).textContent || '').replace(/\s+/g, ' ').trim() : '',
-        muettes: cartes.filter((c) => /Aucune réservation liée/.test(c.textContent)).length,
+        resume: ((root.querySelector('[data-tf-resume]') || {}).textContent || '').replace(/[\s\u00a0\u202f]+/g, ' ').trim(),
+        lignes: lignes.length,
+        avecUsage: lignes.filter((l) => l.querySelector('.tf-usage')).length,
+        f1: f1 ? ((f1.querySelector('.tf-usage') || {}).textContent || '').trim() : '',
+        muettes: lignes.filter((l) => /\b0 réservation/.test(l.textContent)).length,
         principaux: root.querySelectorAll('.pv2-btn.primary').length,
-        tarifDuCentre: root.querySelectorAll('[data-pev-edit]').length,
+        prixCliquables: root.querySelectorAll('[data-tf-prix]').length,
       };
     });
-    ok(arrive && tarifs.resas && tarifs.resas.valeur === '3' && /30 jours/.test(tarifs.resas.pied), '[D] les chiffres de Tarifs portent sur 30 jours', `réservations ${tarifs.resas && tarifs.resas.valeur} (${tarifs.resas && tarifs.resas.pied})`);
-    ok(tarifs.chiffre && /^403\s*€$/.test(tarifs.chiffre.valeur.replace(/\u202f/g, ' ')) && /30 jours/.test(tarifs.chiffre.pied), '[D] le chiffre additionne la fenetre, rien d autre', `${tarifs.chiffre && tarifs.chiffre.valeur} (${tarifs.chiffre && tarifs.chiffre.pied})`);
-    ok(tarifs.top && /FORMULE 1/i.test(tarifs.top.valeur) && /^2 réservations sur 30 jours$/.test(tarifs.top.pied), '[D] « Plus demandé » designe l offre la plus demandee', `${tarifs.top && tarifs.top.valeur} (${tarifs.top && tarifs.top.pied})`);
-    ok(/^2 réservations 14 joueurs/.test(tarifs.f1) && /panier moyen/.test(tarifs.f1), '[D] la carte de l offre dit ses chiffres', `« ${tarifs.f1} »`);
-    ok(tarifs.cartes > 4 && tarifs.avecChiffres === 2 && tarifs.muettes === 0, '[D] une carte sans reservation reste muette', `${tarifs.avecChiffres} carte(s) chiffree(s) sur ${tarifs.cartes}, ${tarifs.muettes} « Aucune réservation liée »`);
-    ok(tarifs.principaux === 1 && tarifs.tarifDuCentre > 0, '[D] un seul bouton principal', `${tarifs.principaux} bouton(s) principal(aux), ${tarifs.tarifDuCentre} « Tarif du centre »`);
+    ok(arrive && /^30 derniers jours : 3 réservations/.test(tarifs.resume), '[D] les chiffres de Tarifs portent sur 30 jours', tarifs.resume);
+    ok(/· 403 ?€ réservés/.test(tarifs.resume), '[D] le chiffre additionne la fenetre, rien d autre', tarifs.resume);
+    ok(/la plus demandée : FORMULE 1/i.test(tarifs.resume), '[D] « Plus demandé » designe l offre la plus demandee', tarifs.resume);
+    ok(/^2 réservations \/ 30 j$/.test(tarifs.f1), '[D] la ligne de l offre dit ses chiffres', `« ${tarifs.f1} »`);
+    ok(tarifs.lignes > 1 && tarifs.avecUsage === 1 && tarifs.muettes === 0, '[D] une ligne sans reservation reste muette', `${tarifs.avecUsage} ligne(s) chiffree(s) sur ${tarifs.lignes}, ${tarifs.muettes} « 0 réservation »`);
+    ok(tarifs.principaux === 0 && tarifs.prixCliquables > 0, '[D] au repos, aucun bouton ne crie', `${tarifs.principaux} bouton(s) principal(aux), ${tarifs.prixCliquables} prix cliquable(s)`);
     ok(tarifs.crumb === 'Activités & tarifs' && tarifs.titre === 'Tarifs & formules', '[D] le surtitre est le groupe du menu, le titre la page', `${tarifs.crumb} / ${tarifs.titre}`);
     // [G] la fenetre elle-meme, a Bruxelles
     const fenetre = await t.page.evaluate(() => getStaffResourceHistoryRows().map((r) => r.date).sort());
@@ -427,26 +409,21 @@ async function run() {
     // ou clients.view. Un role qui n a que pricing.manage ne l appelle pas, et
     // la page ne pretend pas « 0 réservation ».
     const h = await ouvrir(browser, '#/staff/prices', { permissions: ['dashboard.view', 'pricing.manage'] });
-    await attendre(h.page, () => document.querySelector('#staffPricingPage .pv2-stats'), null, 8000);
+    await attendre(h.page, () => document.querySelector('#staffPricingPage [data-tf-resume]'), null, 8000);
     await h.page.waitForTimeout(1200);
     const restreint = await h.page.evaluate(() => {
       const root = document.getElementById('staffPricingPage');
-      // La tuile des reservations, quel que soit son libelle exact
-      // (« Réservations » ou « Réservations sur 30 jours ») : la regle porte
-      // sur ce qu elle affirme, pas sur ses mots.
-      const resas = [...root.querySelectorAll('.pv2-stat')].find((x) => /^Réservations/.test(((x.querySelector('.pv2-stat-label span') || {}).textContent || '').trim()));
       return {
         droits: typeof canReadStaffReservationHistory === 'function' ? canReadStaffReservationHistory() : 'absent',
-        valeur: resas ? ((resas.querySelector('.pv2-stat-value') || {}).textContent || '').trim() : '',
-        pied: resas ? ((resas.querySelector('.pv2-stat-foot') || {}).textContent || '').trim() : '',
-        chiffrees: root.querySelectorAll('.pv2-price-card .pv2-price-stats').length,
+        resume: ((root.querySelector('[data-tf-resume]') || {}).textContent || '').trim(),
+        chiffrees: root.querySelectorAll('.tf-usage').length,
       };
     });
     ok(restreint.droits === false, 'MONTAGE [H] la session servie n a pas le droit de lire l historique', String(restreint.droits));
     ok(h.appelsHistorique.length === 0, '[H] sans droit sur l historique, Tarifs ne l appelle pas', `${h.appelsHistorique.length} appel(s)`);
-    // LA REGLE : aucun chiffre (un « 0 » serait un fait faux), la raison
-    // est dite, aucune carte d offre ne porte de chiffres.
-    ok(restreint.valeur !== '' && !/\d/.test(restreint.valeur) && /non accessible/i.test(`${restreint.valeur} ${restreint.pied}`) && restreint.chiffrees === 0, '[H] et ses tuiles disent que l historique n est pas accessible', `« ${restreint.valeur} » · « ${restreint.pied} » · ${restreint.chiffrees} carte(s) chiffree(s)`);
+    // LA REGLE : aucun chiffre (un « 0 » serait un fait faux), la raison est
+    // dite, aucune ligne d offre ne porte de chiffres.
+    ok(/non accessible/i.test(restreint.resume) && !/\d+\s*réservation/.test(restreint.resume) && restreint.chiffrees === 0, '[H] et le resume dit que l historique n est pas accessible', `« ${restreint.resume} » · ${restreint.chiffrees} ligne(s) chiffree(s)`);
     ok(h.erreurs.length === 0, '[H] aucune erreur JavaScript', h.erreurs.slice(0, 3).join(' | '));
     await h.ctx.close();
   } finally {

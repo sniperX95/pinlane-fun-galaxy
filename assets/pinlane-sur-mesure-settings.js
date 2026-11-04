@@ -114,7 +114,7 @@
     const id = centre();
     const tete = (compteur, bouton) => `<div class="pv2-section-head">
         <h3>Sur mesure</h3>${compteur ? `<span>${compteur}</span>` : ''}${bouton}
-        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Vos clients ne le voient jamais : ni le formulaire, ni les mails. L’équipe l’ajoute au comptoir (Réserver) ; il apparaît sur le planning et la fiche. Le serveur reprend son prix ; un article à 0 € se chiffre au comptoir.</span>
+        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Vos clients ne le voient jamais : ni le formulaire, ni les mails. L’équipe l’ajoute au comptoir (Réserver) ; il apparaît sur le planning et la fiche. Son prix vient de ce catalogue ; un article à 0 € se chiffre au comptoir.</span>
       </div>`;
     if (!peutGerer()) {
       return `<section class="pv2-catalog-section sm-section">${tete('', '')}<p class="sm-note">Le catalogue sur mesure se gère avec le droit Tarifs.</p></section>`;

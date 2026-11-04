@@ -196,6 +196,7 @@
     "test:tunnel-mobile-v2",
     "test:public-error-message",
     "test:client-tarifs-ui",
+    "test:tarifs-effets",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

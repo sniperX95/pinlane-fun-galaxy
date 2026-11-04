@@ -128,7 +128,7 @@ async function installMock(page) {
       },
       f3: {
         id: 'f3', name: 'FORMULE 3', family: 'Anniversaire', minPax: 6, priceType: 'per_pax',
-        source: 'seed', active: true, isBirthdayFormula: true, validDays: null,
+        source: 'custom', active: true, isBirthdayFormula: true, validDays: null,
         timeLimitMinMinutes: null, timeLimitMaxMinutes: null,
         base: { priceValue: 28, priceOld: 34 },
         effective: { name: 'FORMULE 3', priceValue: 28, priceOld: 34, enabled: true, removed: false },
@@ -235,6 +235,14 @@ async function boot(page) {
   await page.waitForSelector('#staffPricingPage [data-cev-formula="f1"]', { state: 'visible', timeout: 15000 });
 }
 
+// La page refaite (2026-11-03) : les gestes du catalogue vivent dans la planche
+// de la ligne, qu on ouvre d abord.
+async function ouvrirPlanche(page, id) {
+  if (await page.$(`#staffPricingPage [data-cev-steps="${id}"]`)) return;
+  await page.click(`#staffPricingPage [data-tf-ligne="${id}"] .tf-ligne-btn`);
+  await page.waitForSelector(`#staffPricingPage [data-cev-steps="${id}"]`, { state: 'visible', timeout: 8000 });
+}
+
 async function cevEnsureNoModal(page) {
   await page.evaluate(() => {
     if (typeof cevCloseModal === 'function') { try { window.cevCloseModal(); } catch (e) { /* ignore */ } }
@@ -262,17 +270,13 @@ async function runSuite(browser, quiet) {
 
     // ---- 5. La PORTEE des actions est dite a l'ecran --------------------------
     // L'invariant est que l'operateur SACHE ce qui n'engage que son centre et
-    // ce qui change tous les centres. Depuis la fusion en une carte par offre
-    // (2026-08-17), cette distinction vit dans la legende du rayon formules,
-    // plus dans deux bandeaux separes.
-    const scopeText = await page.evaluate(() => document.getElementById('staffPricingPage').textContent || '');
-    // « TOUS VOS centres » depuis la migration 0042 : la portee d'une edition de
-    // catalogue est l'ENTREPRISE, plus la plateforme entiere. L'assertion suit
-    // le texte, sinon elle certifierait une phrase devenue fausse.
-    // « Réglages du centre » (2026-10-05) : l apostrophe typographique et le
-    // pluriel disent la meme portee ; l invariant ne change pas.
-    ok(/n['’]engagen?t? que ce centre/i.test(scopeText) && /TOUS VOS centres/.test(scopeText), 'scope-distinction',
-      `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS VOS centres/.test(scopeText)}`);
+    // ce qui change tous les centres. Depuis la page refaite (2026-11-03), chaque
+    // colonne de la planche porte sa pastille de portee, a cote du reglage.
+    await ouvrirPlanche(page, 'f1');
+    const portees = await page.evaluate(() => [...document.querySelectorAll('#staffPricingPage [data-tf-planche] .tf-portee')].map((p) => p.textContent.trim()));
+    // La portee d'une edition de catalogue est l'ENTREPRISE (migration 0042),
+    // celle des reglages du centre, le centre affiche.
+    ok(portees.length === 2 && /^Pour (?!tous)/.test(portees[0]) && /tous vos centres|et /i.test(portees[1]), 'scope-distinction', JSON.stringify(portees));
     // La page a change de forme (2026-08-22) : le bouton du haut cree une
     // CATEGORIE, et chaque section porte son propre « + Formule », pre-rempli
     // de sa categorie. On verifie les deux portes d'entree.
@@ -314,6 +318,7 @@ async function runSuite(browser, quiet) {
 
     // ---- 2. "Modifier les activites" (f1) : prefill + ajout laser + save -----
     await cevEnsureNoModal(page);
+    await ouvrirPlanche(page, 'f1');
     await page.click('#staffPricingPage [data-cev-steps="f1"]');
     await page.waitForSelector('#cevOverlay #cevStepsList', { timeout: 10000 });
     const prefill = await page.$$eval('#cevOverlay .cev-step select[data-cev-field="activityId"]', (els) => els.map((e) => e.value));
@@ -331,6 +336,7 @@ async function runSuite(browser, quiet) {
 
     // ---- 4. reorder (f2) : monter/descendre change l'ordre effectivement envoye
     await cevEnsureNoModal(page);
+    await ouvrirPlanche(page, 'f2');
     await page.click('#staffPricingPage [data-cev-steps="f2"]');
     await page.waitForSelector('#cevOverlay #cevStepsList', { timeout: 10000 });
     const beforeOrder = await page.$$eval('#cevOverlay .cev-step select[data-cev-field="activityId"]', (els) => els.map((e) => e.value));
@@ -344,8 +350,12 @@ async function runSuite(browser, quiet) {
       'reorder-order', JSON.stringify({ before: beforeOrder, sent: sentOrder }));
 
     // ---- 3. "Supprimer" (f3) -> deleteFormula + disparait apres re-fetch -----
+    // Une formule du socle ne se supprime pas (elle se retire de la vente) : le
+    // bouton n existe que sur une formule creee par l entreprise. f3 l est ici.
     await cevEnsureNoModal(page);
     ok(await page.$('#staffPricingPage [data-cev-formula="f3"]') !== null, 'delete-target-present');
+    await ouvrirPlanche(page, 'f3');
+    ok(await page.$('#staffPricingPage [data-cev-delete="f1"]') === null, 'pas-de-suppression-sur-le-socle');
     await page.click('#staffPricingPage [data-cev-delete="f3"]');
     await page.waitForFunction(() => window.__cevPosts.some((p) => p.action === 'deleteFormula' && p.id === 'f3'), null, { timeout: 5000 }).catch(() => {});
     const posts3 = await page.evaluate(() => window.__cevPosts.slice());

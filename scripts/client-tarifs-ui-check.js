@@ -4,17 +4,19 @@
 // centre precis mockee, /api/ops mocke (clientCatalog au chargement, ok au save,
 // clientCatalog MIS A JOUR au re-fetch). Preuves COMPORTEMENTALES, jamais une
 // simple presence de chaine :
-//   1. la page prices garde l'analytics (stats + Copier/Exporter) ET affiche des
-//      lignes editables (boutons Modifier) ;
-//   2. VRAI clic sur Modifier -> la modale s'ouvre PREFILLED avec la valeur
+//   (page refaite le 2026-11-03 : plus de modale, le reglage vit dans la planche
+//   de la ligne et part avec « Publier »)
+//   1. la page prices garde l'analytics (resume + Copier/Exporter) ET affiche des
+//      lignes editables (le prix de la ligne est un bouton) ;
+//   2. VRAI clic sur le prix -> la planche s'ouvre PREFILLED avec la valeur
 //      courante (prix + nom) ;
-//   3. changer le prix + Enregistrer -> une requete POST saveClientFormuleOverride
+//   3. changer le prix + Publier -> une requete POST saveClientFormuleOverride
 //      part avec le bon formuleId et patch.priceValue, SIGNEE du centre AFFICHE
 //      (centerId=libramont ici, session mockee sur gembloux : la preuve que
 //      l'ecriture suit l'ECRAN, pas la session), et apres
 //      re-fetch la ligne montre la NOUVELLE valeur ;
-//   4. toggle Retirer -> POST avec patch.removed=true ;
-//   5. bouton Reinitialiser sur une formule personnalisee -> POST
+//   4. interrupteur En vente -> POST avec patch.enabled=false ;
+//   5. bouton Revenir au catalogue sur une formule personnalisee -> POST
 //      resetClientFormuleOverride.
 // Puis DEUX contre-preuves par MUTATION (le gate sait rougir), restauration par
 // EDITION INVERSE exacte (jamais git checkout) :
@@ -46,16 +48,16 @@ const MIME = {
 const MUTATIONS = [
   {
     name: 'envoi de patch.priceValue neutralise',
-    find: 'patch.priceValue = d.priceValue;',
-    replace: 'void d.priceValue;',
+    find: "if ('prix' in b) patch.priceValue = b.prix;",
+    replace: "if ('prix' in b) void b.prix;",
     expect: 'save-post-price',
   },
   {
-    name: 're-render apres save neutralise',
-    // Le toast dit depuis le 2026-10-05 « Réglage de validation enregistré »
-    // quand seule la validation change : l ancre vise le re-rendu, pas le mot.
-    find: "pevDismissModal();\n      pevReload();\n    }).catch((error) => {\n      pricingEditor.saving = false;",
-    replace: "pevDismissModal();\n      void 0;\n    }).catch((error) => {\n      pricingEditor.saving = false;",
+    name: 'la ligne ne lit plus la valeur publiee',
+    // La ligne lit la valeur du catalogue au lieu de la valeur publiee : elle
+    // garde l ancien prix apres la publication.
+    find: "      prix: eff.priceValue != null && Number.isFinite(Number(eff.priceValue)) ? Number(eff.priceValue) : null,\n      ancien: Number(eff.priceOld)",
+    replace: "      prix: entry && entry.base ? Number(entry.base.priceValue) : null,\n      ancien: Number(eff.priceOld)",
     expect: 'reload-shows-new',
   },
   {
@@ -187,36 +189,29 @@ async function boot(page) {
     state.staffMenuPage = 'prices';
     setView('staff');
   });
-  // Boutons Modifier presents (lignes editables) puis catalogue charge : le badge
-  // "personnalise" de f2 n'apparait qu'apres le fetch clientCatalog + re-render.
-  await page.waitForSelector('#staffPricingPage [data-pev-edit="f1"]', { state: 'visible', timeout: 15000 });
-  await page.waitForFunction(() => {
-    const btn = document.querySelector('#staffPricingPage [data-pev-edit="f2"]');
-    const card = btn && btn.closest('.pv2-price-card');
-    return card && /personnalis/i.test(card.textContent);
-  }, null, { timeout: 15000 });
+  // Le prix de la ligne est le bouton d entree, apres le fetch clientCatalog.
+  await page.waitForSelector('#staffPricingPage [data-tf-prix="f1"]', { state: 'visible', timeout: 15000 });
+  await page.waitForSelector('#staffPricingPage [data-tf-prix="f2"]', { state: 'visible', timeout: 15000 });
 }
 
 function cardAmountText(page, formuleId) {
   return page.evaluate((id) => {
-    const btn = document.querySelector(`#staffPricingPage [data-pev-edit="${id}"]`);
-    const card = btn && btn.closest('.pv2-price-card');
-    const amt = card && card.querySelector('.pv2-price-amount');
+    const amt = document.querySelector(`#staffPricingPage [data-tf-prix="${id}"] [data-tf-montant]`);
     return amt ? amt.textContent.trim() : '';
   }, formuleId);
 }
 
+// Publier part de la barre, qui reste a l ecran pendant qu on regle.
 async function clickSave(page) {
-  await page.click('#pevOverlay .pev-modal-foot .btn-primary');
+  await page.waitForTimeout(350);
+  await page.click('#staffPricingPage [data-tf-barre] [data-tf-action="publier"]');
 }
 
-async function ensureNoModal(page) {
-  await page.evaluate(() => {
-    if (typeof pevCloseModal === 'function') { try { pevCloseModal(); } catch (e) { /* ignore */ } }
-    const o = document.getElementById('pevOverlay');
-    if (o) o.remove();
-  });
-  await page.waitForFunction(() => !document.getElementById('pevOverlay'), null, { timeout: 5000 }).catch(() => {});
+// La planche de la ligne, ouverte et lue a neuf.
+async function ouvrirPlanche(page, id) {
+  if (await page.$(`#staffPricingPage [data-tf-planche="${id}"]`)) return;
+  await page.click(`#staffPricingPage [data-tf-ligne="${id}"] .tf-ligne-btn`);
+  await page.waitForSelector(`#staffPricingPage [data-tf-planche="${id}"]`, { state: 'visible', timeout: 8000 });
 }
 
 async function runSuite(browser, quiet) {
@@ -236,27 +231,28 @@ async function runSuite(browser, quiet) {
       const scope = document.getElementById('staffPricingPage');
       const btns = Array.prototype.slice.call(scope.querySelectorAll('button'));
       return {
-        hasStats: !!scope.querySelector('.pv2-stats'),
+        hasStats: !!scope.querySelector('[data-tf-resume]'),
         copier: btns.some((b) => /Copier/i.test(b.textContent)),
         exporter: btns.some((b) => /Exporter/i.test(b.textContent)),
-        editBtns: scope.querySelectorAll('[data-pev-edit]').length,
+        editBtns: scope.querySelectorAll('[data-tf-prix]').length,
       };
     });
     ok(t1.hasStats && t1.copier && t1.exporter, 'analytics-preserved', JSON.stringify(t1));
-    ok(t1.editBtns > 0, 'editable-rows', `boutons Modifier=${t1.editBtns}`);
+    ok(t1.editBtns > 0, 'editable-rows', `prix cliquables=${t1.editBtns}`);
 
-    // ---- 2. Clic Modifier -> modale prefilled ------------------------------
-    await page.click('#staffPricingPage [data-pev-edit="f1"]');
-    await page.waitForSelector('#pevOverlay #pevPrice', { timeout: 10000 });
+    // ---- 2. Clic sur le prix -> planche prefilled --------------------------
+    await page.click('#staffPricingPage [data-tf-prix="f1"]');
+    await page.waitForSelector('#staffPricingPage input[data-tf-champ="prix"]', { timeout: 10000 });
     const t2 = await page.evaluate(() => ({
-      price: document.getElementById('pevPrice').value,
-      name: document.getElementById('pevName').value,
+      price: document.querySelector('#staffPricingPage input[data-tf-champ="prix"]').value,
+      name: document.querySelector('#staffPricingPage input[data-tf-champ="nom"]').value,
     }));
     ok(t2.price === '26', 'modal-prefill-price', `value=${JSON.stringify(t2.price)}`);
     ok(t2.name === 'FORMULE 1', 'modal-prefill-name', `value=${JSON.stringify(t2.name)}`);
 
-    // ---- 3. Changer le prix + Enregistrer ----------------------------------
-    await page.fill('#pevOverlay #pevPrice', '55');
+    // ---- 3. Changer le prix + Publier --------------------------------------
+    await page.click('#staffPricingPage input[data-tf-champ="prix"]', { clickCount: 3 });
+    await page.keyboard.type('55', { delay: 30 });
     await clickSave(page);
     // Attentes BORNEES + swallow : sous mutation, l'absence de POST / re-render
     // doit rougir le check attendu, pas jeter une exception qui masque l'id.
@@ -276,37 +272,27 @@ async function runSuite(browser, quiet) {
     ok(Boolean(save) && save.centerId === 'libramont', 'save-signed-center', save ? `centerId=${save.centerId}` : 'aucun POST');
 
     await page.waitForFunction(() => {
-      const btn = document.querySelector('#staffPricingPage [data-pev-edit="f1"]');
-      const card = btn && btn.closest('.pv2-price-card');
-      const amt = card && card.querySelector('.pv2-price-amount');
+      const amt = document.querySelector('#staffPricingPage [data-tf-prix="f1"] [data-tf-montant]');
       return amt && /55/.test(amt.textContent);
     }, null, { timeout: 5000 }).catch(() => {});
     const amount3 = await cardAmountText(page, 'f1');
-    ok(/55/.test(amount3), 'reload-shows-new', `montant carte f1="${amount3}"`);
+    ok(/55/.test(amount3), 'reload-shows-new', `montant ligne f1="${amount3}"`);
 
-    // ---- 4. Toggle Retirer -> POST patch.removed=true ----------------------
-    await ensureNoModal(page);
-    await page.click('#staffPricingPage [data-pev-edit="f1"]');
-    await page.waitForSelector('#pevOverlay button[aria-label="Retirer du catalogue"]', { timeout: 10000 });
-    await page.click('#pevOverlay button[aria-label="Retirer du catalogue"]');
+    // ---- 4. Interrupteur En vente -> POST patch.enabled=false ---------------
+    await ouvrirPlanche(page, 'f1');
+    await page.click('#staffPricingPage [data-tf-champ="vente"]');
     await clickSave(page);
-    await page.waitForFunction(() => window.__pevPosts.some((p) => p.action === 'saveClientFormuleOverride' && p.patch && p.patch.removed === true), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => window.__pevPosts.some((p) => p.action === 'saveClientFormuleOverride' && p.patch && p.patch.enabled === false), null, { timeout: 5000 }).catch(() => {});
     const posts4 = await page.evaluate(() => window.__pevPosts.slice());
-    const removed = posts4.find((p) => p.action === 'saveClientFormuleOverride' && p.formuleId === 'f1' && p.patch && p.patch.removed === true);
+    const removed = posts4.find((p) => p.action === 'saveClientFormuleOverride' && p.formuleId === 'f1' && p.patch && p.patch.enabled === false);
     ok(Boolean(removed) && removed.centerId === 'libramont', 'save-post-removed', JSON.stringify(posts4[posts4.length - 1] || null));
 
-    // ---- 5. Reinitialiser sur une formule personnalisee (f2) ---------------
-    await ensureNoModal(page);
-    await page.click('#staffPricingPage [data-pev-edit="f2"]');
-    await page.waitForSelector('#pevOverlay .pev-modal-foot', { timeout: 10000 });
-    const hasReset = await page.evaluate(() => Array.prototype.slice
-      .call(document.querySelectorAll('#pevOverlay .pev-modal-foot button'))
-      .some((b) => /initialis/i.test(b.textContent)));
-    ok(hasReset, 'reset-button-shown', `Reinitialiser present=${hasReset}`);
-    await page.evaluate(() => {
-      const b = Array.prototype.slice.call(document.querySelectorAll('#pevOverlay .pev-modal-foot button')).find((x) => /initialis/i.test(x.textContent));
-      if (b) b.click();
-    });
+    // ---- 5. Revenir au catalogue sur une formule personnalisee (f2) ---------
+    await ouvrirPlanche(page, 'f2');
+    const hasReset = Boolean(await page.$('#staffPricingPage [data-tf-planche="f2"] [data-tf-action="catalogue"]'));
+    ok(hasReset, 'reset-button-shown', `Revenir au catalogue present=${hasReset}`);
+    page.once('dialog', (d) => d.accept());
+    await page.click('#staffPricingPage [data-tf-planche="f2"] [data-tf-action="catalogue"]');
     await page.waitForFunction(() => window.__pevPosts.some((p) => p.action === 'resetClientFormuleOverride'), null, { timeout: 5000 }).catch(() => {});
     const posts5 = await page.evaluate(() => window.__pevPosts.slice());
     const reset = posts5.find((p) => p.action === 'resetClientFormuleOverride' && p.formuleId === 'f2');
@@ -366,7 +352,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('client-tarifs-ui-check: ALL OK (analytics preservee, lignes editables, modale prefilled, save priceValue signe du centre affiche + nouvelle valeur affichee, toggle removed, reset ; 3 contre-preuves par mutation)');
+    console.log('client-tarifs-ui-check: ALL OK (analytics preservee, lignes editables, planche prefilled, publication du prix signee du centre affiche + nouvelle valeur affichee, interrupteur En vente, retour au catalogue ; 3 contre-preuves par mutation)');
   } finally {
     // Ultime garde-fou : si une exception a laisse le fichier mute, on restaure.
     try {

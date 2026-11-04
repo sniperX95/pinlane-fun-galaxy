@@ -2970,6 +2970,10 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    plan : elle reste une heure comme une autre. */
 .fg-chip.is-on, .fg-chip.is-pending, .fg-chip.is-proposed:not([data-suggere]) { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
 .fg-chip.is-on b, .fg-chip.is-proposed:not([data-suggere]) b { font-weight: 700; }
+/* Meme pendant le calcul : l heure touchee prend la place de l ancienne au toucher. Deux
+   tuiles pleines, le temps de la reponse, faisaient croire a un bug (Ansar, 2026-11-04). */
+.fg-track:has(.fg-chip.is-pending) .fg-chip:is(.is-on, .is-proposed):not(.is-pending, .is-autre) { border-color: transparent; background: rgba(255, 255, 255, 0.075); }
+.fg-track:has(.fg-chip.is-pending) .fg-chip:is(.is-on, .is-proposed):not(.is-pending, .is-autre) b { font-weight: 600; }
 .fg-etape .fg-chip.is-on small, .fg-etape .fg-chip.is-proposed small { display: none; }
 /* L heure d une autre partie : deja prise par le groupe, avec son mot. */
 .fg-etape .fg-chip.is-on.is-autre { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.55); }

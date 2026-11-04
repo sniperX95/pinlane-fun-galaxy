@@ -3061,7 +3061,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-track:not([data-activity="arcade_time"]):not([data-activity="arrivee"]) .fg-track__foot:not(:has(.fg-track__reset:not([hidden]))) { display: none; }
 .fg-etape .fg-track__foot { justify-content: center; padding-top: 8px; }
 .fg-etape .fg-track__reset { width: auto; margin: 0; min-height: 44px; font-size: 15px; text-align: center; color: var(--fg-muted); }
-.fg-etapes { padding: 6px; background: transparent; box-shadow: none; display: grid; gap: 8px; }
+.fg-etapes { padding: 0; background: transparent; box-shadow: none; display: grid; gap: 8px; }
 .fg-etape + .fg-etape:not(.fg-etape--fin) { box-shadow: none; }
 .fg-etape { border-radius: 14px; background: #141216; }
 .fg-etape__tete { grid-template-columns: 30px minmax(0, 1fr) auto 16px; gap: 12px; min-height: 58px; padding: 8px 14px; }
@@ -3087,7 +3087,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__piste { padding: 2px 14px 10px; }
 .fg-etape--arrivee .fg-etape__icone { background: rgba(255, 255, 255, 0.08); color: var(--fg-muted); }
 /* Le conseil : une ligne discrete, la ou le client regarde. */
-.fg-conseil { margin: 10px 14px 4px; font-size: 14px; line-height: 20px; color: var(--fg-muted); text-wrap: pretty; }
+.fg-conseil { margin: 10px 14px 4px; font-size: 14px; line-height: 20px; color: var(--fg-muted); text-wrap: balance; }
 .fg-visit .fg-conseil { margin: 0 0 12px; }
 .fg-conseil .fg-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 /* Une partie laissee a l equipe : un choix, en trois mots. */

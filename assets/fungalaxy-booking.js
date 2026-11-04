@@ -3017,11 +3017,14 @@
         rendreFocus(repere);
       });
   }
-  var arriveeEffacee = '';
+  // Ce que le refus total n a pas mis en cause se rend : seule l heure touchee coince,
+  // l arrivee du client reste la sienne pour le prochain toucher.
+  var arriveeEffacee = '', arriveeTombee = '';
   function relacher() {
     if (arriveeEffacee) { state.arrivee = arriveeEffacee; arriveeEffacee = ''; conseilPonctuel = 'Sans cette arrivée, ces heures ne tiennent pas.'; return true; }
     if (Object.keys(state.retenues.pins).length) { state.retenues = { pins: {}, parties: [] }; return true; }
-    if (state.arrivee) { conseilPonctuel = 'Arrivée à ' + state.arrivee + ' impossible avec ces heures.'; state.arrivee = ''; return true; }
+    if (state.arrivee) { conseilPonctuel = 'Arrivée à ' + state.arrivee + ' impossible avec ces heures.'; arriveeTombee = state.arrivee; state.arrivee = ''; return true; }
+    if (arriveeTombee) { state.arrivee = arriveeTombee; arriveeTombee = ''; conseilPonctuel = ''; }
     return false;
   }
   // LA REPONSE DEVIENT LE PLAN : celle du calcul demande (chargerPlan), ou
@@ -3030,6 +3033,7 @@
   // compare.
   function poserPlan(j, texte, cle, repere, idAttente, heureAttente) {
     arriveeEffacee = '';
+    if ((j.slots || []).length) arriveeTombee = '';
     state.dispo = j; state.dispoCle = cle; state.dispoTexte = texte;
     $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
     heuresLues = Date.now();
@@ -3622,6 +3626,21 @@
     });
     return Object.keys(parParties).map(function (k) { return parParties[k]; }).sort();
   }
+  // LA DERNIERE HEURE OU TOUTES LES PARTIES TIENNENT. Une partie posee, le serveur
+  // juge chaque heure comme une partie DE PLUS. Dans la ligne de cette partie, le
+  // toucher la DEPLACE, et celles qui restent a poser doivent tenir apres elle :
+  // 23:30 s offrait, puis « ces heures ne rentrent pas ». Seule une reponse sans
+  // partie posee dit cette borne ; chaque partie deja posee au-dela de la premiere
+  // la repousse d une partie.
+  var borneLaser = { cle: '', t: '' };
+  function borneDesParties(a) {
+    var cle = cleBase();
+    if (borneLaser.cle !== cle) borneLaser = { cle: cle, t: '' };
+    if (!state.laserParts.length && !state.retenues.parties.length) {
+      (a.times || []).forEach(function (x) { if (x.ok !== false && x.time > borneLaser.t) borneLaser.t = x.time; });
+    }
+    return borneLaser.t ? hhmm(minutesDe(borneLaser.t) + 30 * Math.max(0, state.laserParts.length - 1)) : '';
+  }
   function majPistes(d) {
     var ancres = (d.anchors && d.anchors.activities) || [];
     var defauts = (d.anchors && d.anchors.defaultTimes) || {};
@@ -3658,9 +3677,12 @@
         kLigne = Number(String(cleLaserHote(etapes) || '#1').split('#')[1]) || 1;
         if (kLigne > 1) propose = proposeePartie(a, kLigne, etapes);
       }
+      var borne = multi ? borneDesParties(a) : '';
+      var seDeplace = multi && Boolean(state.laserParts[kLigne - 1]) && state.laserParts.length < compte;
       (a.times || []).forEach(function (t) {
         var chip = $('.fg-chip[data-time="' + t.time + '"]', track);
-        if (chip) majChip(chip, t, actifs, propose, toutSerre, a.activityId, emportees, compte);
+        var trop = seDeplace && borne && t.ok !== false && t.time > borne && state.laserParts.indexOf(t.time) < 0;
+        if (chip) majChip(chip, trop ? { time: t.time, ok: false, code: 'schedule', reason: 'Les parties suivantes ne tiendraient plus.' } : t, actifs, propose, toutSerre, a.activityId, emportees, compte);
       });
       // Dans la ligne d une partie, l heure d une AUTRE partie n est pas « la »
       // sienne : elle se lit pour ce qu elle est, l heure de l autre partie.

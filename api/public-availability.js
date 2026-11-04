@@ -1999,9 +1999,19 @@ module.exports = async (req, res) => {
             return;
           }
           const fitAll = plan?.plan?.refusalCode === 'schedule' ? pourToutFaire() : null;
+          // UNE HEURE TOUCHEE DEVENUE PLEINE ne laisse aucune place proposable a
+          // l autre activite : « Choisissez une heure pour Bowling » accusait celle
+          // que le client n a pas touchee. C est l heure touchee qui se dit.
+          const heureEnCause = plan?.plan?.refusalCode === 'missing_anchor'
+            ? ((anchorMeta && anchorMeta.activities) || []).map((activity) => {
+              const posee = preferredTimes[activity.activityId];
+              const verdict = posee && (activity.times || []).find((item) => item.time === posee);
+              return verdict && verdict.ok === false && verdict.code !== 'anchor_overlap' ? `${activity.label} à ${posee} : ${String(verdict.reason || 'indisponible').toLowerCase()}.` : '';
+            }).find(Boolean)
+            : '';
           respondFormula(
             [],
-            plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.',
+            heureEnCause || plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.',
             plan?.plan?.anchorSuggestions || [],
             null,
             fitAll ? { fitAll } : {},

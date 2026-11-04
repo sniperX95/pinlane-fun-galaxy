@@ -13,8 +13,10 @@
 // SANS le mode souple du formulaire (softReserve), alors que la grille l avait
 // deja applique a chaque heure. Le serveur nomme maintenant ce qui saute
 // (visitShortfallItems, la meme mesure que la fin de la visite) et l ecran le
-// dit : sous la derniere piste serree, dans « Votre visite » (lignes rayees et
-// encadre), et au recapitulatif.
+// dit : sous la derniere piste serree, dans un conseil d une ligne (Ansar,
+// 2026-11-04 : l encadre et les lignes rayees ont quitte l ecran), et au
+// recapitulatif. La voix garde le detail : les heures qui restent, le montant
+// encore compte, ce qui tiendra ou non.
 //
 //   [A] API, aucune heure posee : un creneau, et ce qui saute est nomme.
 //   [B] API, bowling coche a 20:00 : l heure reste, les memes noms.
@@ -23,8 +25,8 @@
 //   [D] API, les autres tunnels (sans softReserve) gardent leur verdict ; un
 //       jour normal ne nomme rien.
 //   [E] Ecran (telephone et bureau) : plus d « Aucune combinaison », la note
-//       nommee UNE fois, les lignes rayees, l encadre, les heures gardees, le
-//       recapitulatif.
+//       nommee UNE fois, le conseil, a la voix les heures gardees et les lignes
+//       qui ne tiendront pas, le recapitulatif.
 //
 // L horloge est figee au mercredi 7 octobre 2026, 19:25 a Bruxelles (serveur
 // et page) : le gate se rejoue a l identique, quel que soit le jour.
@@ -92,7 +94,7 @@ const MUTATIONS = [
     vers: '        if (false) {',
   },
   {
-    nom: 'l encadre redevient « il manque X »',
+    nom: 'le conseil redevient « il manque X »',
     fichier: 'assets/fungalaxy-booking.js',
     de: '    if (horsDelai.length) {\n      // Les heures posees ne bougent pas',
     vers: '    if (false) {\n      // Les heures posees ne bougent pas',
@@ -104,18 +106,18 @@ const MUTATIONS = [
     vers: 'var quoi = sautent.length',
   },
   {
-    nom: 'les lignes de la visite ne sont plus rayees',
+    nom: 'la voix ne dit plus ce qui ne tiendra pas, ligne par ligne',
     fichier: 'assets/fungalaxy-booking.js',
     de: '      var tiendra = !horsLibres[it.activityId];',
     vers: '      var tiendra = true;',
   },
   {
-    // L agenda (2026-10-13) n a plus de repli : l encadre perdrait sa place en
-    // passant sous le detail du prix, loin des lignes qu il raye.
-    nom: 'l encadre passe sous le detail du prix, loin de l agenda',
+    // Le conseil garde sa place, en tete du recapitulatif : sous le prix, il se
+    // lirait loin des lignes dont il parle.
+    nom: 'le conseil passe sous le prix, loin de l agenda',
     fichier: 'assets/fungalaxy-booking.js',
-    de: "    html2 += horsHtml;\n    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml;",
-    vers: "    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml + horsHtml;",
+    de: "    html2 += '<p class=\"fg-conseil\" hidden></p>';\n    if (avisEcran.length) html2 += '<p class=\"fg-visit__warn\">' + avisEcran.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml;",
+    vers: "    if (avisEcran.length) html2 += '<p class=\"fg-visit__warn\">' + avisEcran.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml + '<p class=\"fg-conseil\" hidden></p>';",
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -229,7 +231,7 @@ async function main() {
   section('E. L ECRAN, TELEPHONE ET BUREAU');
   await ecran();
 
-  console.log(failures ? `\nne-tiendra-pas-check: ${failures} defaut(s).` : '\nne-tiendra-pas-check: ALL OK (plus d « Aucune combinaison » quand une heure tient, ce qui saute est nomme une fois sous les pistes, raye dans la visite, redit au recapitulatif, et les heures posees restent)');
+  console.log(failures ? `\nne-tiendra-pas-check: ${failures} defaut(s).` : '\nne-tiendra-pas-check: ALL OK (plus d « Aucune combinaison » quand une heure tient, ce qui saute est nomme une fois sous les pistes, dans le conseil, redit au recapitulatif, et les heures posees restent)');
   process.exit(failures ? 1 : 0);
 }
 
@@ -273,22 +275,24 @@ async function ecran() {
         return {
           notice: txt(document.querySelector('.fg-notice')),
           notes: Array.from(document.querySelectorAll('.fg-track')).map((t) => ({ id: t.dataset.activity, note: (t.querySelector('.fg-track__note') && !t.querySelector('.fg-track__note').hidden) ? txt(t.querySelector('.fg-track__note')) : '' })),
-          encadre: txt(document.querySelector('#planZone .fg-visit__hors')),
-          // L encadre se lit sous l en-tete, juste avant l agenda qui porte les
-          // lignes qu il raye (seuls les autres avertissements s intercalent),
-          // ou juste apres lui ; affiche, jamais replie ni cache (l agenda,
-          // 2026-10-13, n a plus de repli).
-          sousLaListe: (() => {
-            const h = document.querySelector('#planZone .fg-visit__hors');
+          conseil: txt(document.querySelector('#hourZone .fg-conseil:not([hidden])')),
+          // Le conseil se lit la ou le client regarde : dans la ligne ouverte, sinon en tete
+          // du recapitulatif, avant ses lignes ; affiche, jamais replie ni cache.
+          conseilSeLit: (() => {
+            const h = document.querySelector('#hourZone .fg-conseil:not([hidden])');
             if (!h || document.querySelector('#planZone [data-plus], #planZone .fg-plus')) return false;
             if (!h.checkVisibility({ visibilityProperty: true, opacityProperty: true }) || !h.getBoundingClientRect().height) return false;
-            if (h.previousElementSibling && h.previousElementSibling.classList.contains('fg-visit__list')) return true;
-            let s = h.nextElementSibling;
-            while (s && s.classList.contains('fg-visit__warn')) s = s.nextElementSibling;
-            return Boolean(s && s.classList.contains('fg-visit__list'));
+            if (!h.closest('#planZone')) return true;
+            const liste = document.querySelector('#planZone .fg-visit__list');
+            return Boolean(liste && (h.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING));
           })(),
-          rayees: Array.from(document.querySelectorAll('#planZone .fg-visit__step--hors')).map((li) => ({ nom: txt(li.querySelector('i')) || txt(li.querySelector(':scope > span')), detail: txt(li.querySelector('small')) })),
-          tient: Array.from(document.querySelectorAll('#planZone .fg-visit__step--free:not(.fg-visit__step--hors) i')).map(txt),
+          // La place du conseil dans le recapitulatif, ligne ouverte ou non.
+          placeDuConseil: (() => {
+            const h = document.querySelector('#planZone .fg-conseil');
+            const liste = document.querySelector('#planZone .fg-visit__list');
+            return Boolean(h && liste && (h.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING));
+          })(),
+          aussi: txt(document.querySelector('#planZone .fg-visit__aussi')),
           voix: txt(document.querySelector('#fgLive')),
           bowling: Array.from(document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip.is-on, .fg-track[data-activity="bowling"] .fg-chip.is-proposed')).map((c) => c.dataset.time),
           garder: !document.querySelector('#goContact').disabled,
@@ -300,13 +304,13 @@ async function ecran() {
         const nommees = v.notes.filter((n) => n.note.indexOf('Ne tiendront pas') >= 0);
         ok(nommees.length === 1 && nommees[0].id === 'laser_game' && nommees[0].note.endsWith(courte), `[E] ${largeur} ${etiquette} : la liste nommee UNE fois, sous la derniere piste serree (laser)`, JSON.stringify(v.notes));
         if (avecChoix) ok(nommees[0] && nommees[0].note.indexOf('avec votre Bowling à 20:00') >= 0, `[E] ${largeur} ${etiquette} : la note garde l heure choisie (« avec votre Bowling à 20:00 »)`, nommees[0] && nommees[0].note);
-        ok(v.encadre.indexOf(phrase) === 0, `[E] ${largeur} ${etiquette} : l encadre nomme tout, avec les durees`, v.encadre);
-        ok(v.encadre.indexOf('Vos heures ne bougent pas : Bowling à 20:00 et Laser Game à 21:00.') >= 0, `[E] ${largeur} ${etiquette} : l encadre dit que les heures restent`, v.encadre);
-        ok(v.encadre.indexOf('Le total indicatif compte encore Duckpin Bowling (78 €).') >= 0, `[E] ${largeur} ${etiquette} : le montant encore compte est dit (seul le duckpin a un tarif connu)`, v.encadre);
-        ok(v.sousLaListe, `[E] ${largeur} ${etiquette} : l encadre se lit contre l agenda qu il raye, affiche ; aucune offre a l ecran des horaires (elles vivent dans la fenetre de fin)`);
-        ok(JSON.stringify(v.rayees.map((r) => r.nom.replace(/ \(.*$/, ''))) === JSON.stringify(ATTENDUS) && v.rayees.every((r) => r.detail.includes('ne tiendra pas avant 22:00') && /8 (joueurs|enfants)/.test(r.detail)),
-          `[E] ${largeur} ${etiquette} : les trois lignes rayees, « ne tiendra pas avant 22:00 »`, JSON.stringify(v.rayees));
-        ok(v.tient.length === 1 && v.tient[0].indexOf('Fun Run') === 0, `[E] ${largeur} ${etiquette} : le Fun Run reste « a votre rythme »`, JSON.stringify(v.tient));
+        ok(v.conseil.indexOf(phrase) === 0, `[E] ${largeur} ${etiquette} : le conseil nomme tout, avec les durees`, v.conseil);
+        ok(v.voix.indexOf('Vos heures ne bougent pas : Bowling à 20:00 et Laser Game à 21:00.') >= 0, `[E] ${largeur} ${etiquette} : la voix dit que les heures restent`, v.voix);
+        ok(v.voix.indexOf('Le total indicatif compte encore Duckpin Bowling (78 €).') >= 0, `[E] ${largeur} ${etiquette} : la voix dit le montant encore compte (seul le duckpin a un tarif connu)`, v.voix);
+        ok(v.conseilSeLit && v.placeDuConseil, `[E] ${largeur} ${etiquette} : le conseil se lit, affiche, en tete du recapitulatif ou dans la ligne ouverte ; aucune offre a l ecran des horaires (elles vivent dans la fenetre de fin)`);
+        const lignesHors = ATTENDUS.filter((nom) => new RegExp(`${nom}[^;.]*, ne tiendra pas avant 22:00`).test(v.voix));
+        ok(JSON.stringify(lignesHors) === JSON.stringify(ATTENDUS), `[E] ${largeur} ${etiquette} : la voix dit les trois lignes, « ne tiendra pas avant 22:00 »`, v.voix);
+        ok(/Fun Run[^;.]*, à votre rythme/.test(v.voix) && /Fun Run/.test(v.aussi), `[E] ${largeur} ${etiquette} : le Fun Run reste « a votre rythme »`, `${v.aussi} / ${v.voix}`);
         ok(v.voix.indexOf(phrase) >= 0, `[E] ${largeur} ${etiquette} : la voix dit la meme liste`, v.voix.slice(0, 160));
         ok(v.bowling.includes('20:00'), `[E] ${largeur} ${etiquette} : le bowling est a 20:00`, JSON.stringify(v.bowling));
       };

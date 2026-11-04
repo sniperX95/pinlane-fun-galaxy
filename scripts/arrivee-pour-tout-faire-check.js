@@ -22,8 +22,10 @@
 //   [C] API, tout tient deja : aucune proposition.
 //   [D] API, rien ne tient ce jour-la (19:50 le jour meme) : `none`, sans heure.
 //   [E] API, une formule dans le meme cas : la meme proposition, qui tient.
-//   [F] Ecran (telephone 390x844) : la phrase et le bouton dans l encadre,
-//       le toucher pose le plan, le message honnete quand rien ne tient.
+//   [F] Ecran (telephone 390x844) : le conseil d une ligne dit ce qui ne tiendra
+//       pas et porte le bouton (l encadre a quitte l ecran, Ansar, 2026-11-04), la
+//       voix dit la phrase et les heures ; le toucher pose le plan ; quand rien ne
+//       tient, la voix le dit et le conseil mene aux activites ou au jour.
 //
 // Contre-epreuve : node scripts/arrivee-pour-tout-faire-check.js --mutate (7
 // mutations servies en memoire, aucun fichier touche).
@@ -270,13 +272,12 @@ async function ecran() {
   };
   const lire = (page) => page.evaluate(() => {
     const t = (n) => (n ? n.textContent.replace(/[\s\u00a0\u202f]+/g, ' ').trim() : '');
-    const bouton = document.querySelector('#planZone [data-fit]');
+    const conseil = document.querySelector('#hourZone .fg-conseil:not([hidden])');
     return {
-      encadre: t(document.querySelector('#planZone .fg-visit__hors')),
-      phrase: t(document.querySelector('#planZone .fg-fit')),
-      bouton: t(bouton),
+      conseil: t(conseil),
+      bouton: t(conseil && conseil.querySelector('[data-fit]')),
       notice: t(document.querySelector('#planZone .fg-notice')),
-      allers: Array.from(document.querySelectorAll('#planZone .fg-visit__hors [data-goto]')).map((b) => b.dataset.goto),
+      allers: Array.from((conseil || document.createDocumentFragment()).querySelectorAll('[data-goto]')).map((b) => b.dataset.goto),
       posees: Object.fromEntries(Array.from(document.querySelectorAll('.fg-track')).map((tr) => [tr.dataset.activity, Array.from(tr.querySelectorAll('.fg-chip.is-on')).map((c) => c.dataset.time)])),
       arrivee: t(document.querySelector('#planZone .fg-visit__step--in b')),
       voix: t(document.querySelector('#fgLive')),
@@ -288,18 +289,17 @@ async function ecran() {
     await poser(page, 'bowling', POSEES.bowling);
     const v = await lire(page);
     const attendue = `Pour tout faire avant 22:00, arrivez à ${ARRIVEE} : Bowling à 18:00, puis Laser Game à 19:00.`;
-    ok(v.encadre.indexOf('Ne tiendront pas avant la fermeture (22:00)') === 0 && v.encadre.indexOf('Vos heures ne bougent pas') > 0, '[F] l encadre de la capture reste (ce qui ne tiendra pas, les heures gardees)', v.encadre.slice(0, 120));
-    ok(v.phrase === attendue && v.encadre.indexOf(attendue) > 0, '[F] la proposition dans l encadre, avec les nouvelles heures', v.phrase);
-    ok(v.bouton === `Arriver à ${ARRIVEE}`, `[F] le bouton « Arriver à ${ARRIVEE} »`, v.bouton);
-    ok(v.voix.indexOf(attendue) >= 0, '[F] la voix dit la meme proposition', v.voix.slice(-160));
-    const ecarts = verifierEcritureClient(v.phrase, { etat: 'sans-promesse' });
-    ok(!ecarts.length && !/[\u2013\u2014]/.test(v.phrase) && (v.phrase.match(/\s:\s/g) || []).length <= 1, '[F] la phrase respecte l ecriture client (vouvoiement, ni « on » ni « nous », un seul « : », aucune promesse, aucun tiret long)', JSON.stringify(ecarts));
+    ok(v.conseil.indexOf('Ne tiendront pas avant la fermeture (22:00)') === 0 && v.voix.indexOf('Vos heures ne bougent pas') > 0, '[F] le conseil dit ce qui ne tiendra pas, la voix redit les heures gardees', `${v.conseil.slice(0, 120)} / ${v.voix.slice(-200)}`);
+    ok(v.bouton === `Arriver à ${ARRIVEE}`, `[F] le bouton « Arriver à ${ARRIVEE} », dans le conseil`, v.bouton);
+    ok(v.voix.indexOf(attendue) >= 0, '[F] la voix dit la proposition, avec les nouvelles heures', v.voix.slice(-160));
+    const ecarts = verifierEcritureClient(attendue, { etat: 'sans-promesse' });
+    ok(!ecarts.length && !/[\u2013\u2014]/.test(attendue) && (attendue.match(/\s:\s/g) || []).length <= 1, '[F] la phrase respecte l ecriture client (vouvoiement, ni « on » ni « nous », un seul « : », aucune promesse, aucun tiret long)', JSON.stringify(ecarts));
     ok(JSON.stringify(v.posees.laser_game) === '["20:30"]' && JSON.stringify(v.posees.bowling) === '["21:00"]', '[F] avant le toucher, les heures du client restent posees', JSON.stringify(v.posees));
     if (CAPTURES) {
       await page.$eval('#planZone', (z) => z.scrollIntoView({ block: 'start' }));
       await page.screenshot({ path: path.join(CAPTURES, `${process.env.PINLANE_ARRIVEE_PREFIXE || 'apres-correctif'}-1-proposition.png`) });
     }
-    const b = await page.$('#planZone [data-fit]');
+    const b = await page.$('#hourZone .fg-conseil:not([hidden]) [data-fit]');
     if (b) {
       await b.click();
       await page.waitForFunction(() => !document.querySelector('#hourZone.is-busy') && !document.querySelector('#planZone [data-fit]'), null, { timeout: 15000 }).catch(() => {});
@@ -307,7 +307,7 @@ async function ecran() {
     }
     const w = await lire(page);
     ok(JSON.stringify(w.posees.bowling) === '["18:00"]' && JSON.stringify(w.posees.laser_game) === '["19:00"]', '[F] le toucher pose le plan : bowling 18:00, laser 19:00', JSON.stringify(w.posees));
-    ok(!w.encadre && !w.bouton && w.arrivee === ARRIVEE, `[F] plus rien ne deborde, l agenda commence a ${ARRIVEE}`, `${w.encadre} | arrivee ${w.arrivee}`);
+    ok(!/Ne tiendr/.test(w.conseil) && !w.bouton && w.arrivee === ARRIVEE, `[F] plus rien ne deborde, l agenda commence a ${ARRIVEE}`, `${w.conseil} | arrivee ${w.arrivee}`);
     if (CAPTURES) {
       await page.$eval('#planZone', (z) => z.scrollIntoView({ block: 'start' }));
       await page.screenshot({ path: path.join(CAPTURES, `${process.env.PINLANE_ARRIVEE_PREFIXE || 'apres-correctif'}-2-apres-le-toucher.png`) });
@@ -325,7 +325,7 @@ async function ecran() {
     await tard.page.waitForTimeout(600);
     const y = await lire(tard.page);
     const honnete = 'Aucune heure de ce jour ne fait tout tenir avant 22:00. Retirez une activité ou choisissez un autre jour.';
-    ok(y.phrase === honnete && !y.bouton, '[F] rien ne tient : la phrase le dit, sans heure ni bouton d arrivee', y.phrase || y.notice);
+    ok(/^Ne tiendr/.test(y.conseil) && y.voix.indexOf(honnete) >= 0 && !y.bouton, '[F] rien ne tient : le conseil dit ce qui saute, la voix le dit en entier, sans heure ni bouton d arrivee', `${y.conseil} / ${y.voix.slice(-160)}`);
     ok(JSON.stringify(y.allers) === '["activites","date"]', '[F] rien ne tient : retirer une activite ou changer de jour, d un toucher', JSON.stringify(y.allers));
     ok(!verifierEcritureClient(honnete, { etat: 'sans-promesse' }).length, '[F] le message honnete respecte l ecriture client');
     if (CAPTURES) {

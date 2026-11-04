@@ -1711,7 +1711,7 @@ html.fg-pilote .fg { overflow: visible; }
    l espace fine des milliers disparaissait (« 1273 € » en tete, « 1 273 € »
    au total, sur la capture de prod du lot visite). */
 .fg-visit__price { font-size: 21px; font-weight: 700; line-height: 1.2; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.fg-visit__span, .fg-visit__reste { grid-column: 1 / -1; margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
+.fg-visit__reste { grid-column: 1 / -1; margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
 
 .fg-visit__reste { margin-top: 2px; font-size: 13px; }
 .fg-visit__warn { margin: 16px 0 0; padding: 11px 14px; border: 1px solid rgba(227, 179, 65, 0.55); border-radius: var(--v-r); font-size: 13px; line-height: 1.5; color: var(--fg-text); }
@@ -1819,7 +1819,6 @@ html.fg-pilote .fg { overflow: visible; }
 
 
 
-.fg-visit__step--suite > span { font-size: 14px; font-weight: 600; line-height: 19px; }
 /* CE QUI NE TIENDRA PAS AVANT LA FERMETURE (Movsar, 2026-10-01 : « faut dire
    tout ce qui se jouera pas ») : la ligne reste, estompee, son detail en
    ambre. */
@@ -1841,7 +1840,6 @@ html.fg-pilote .fg { overflow: visible; }
 
 
 
-.fg-visit__pay { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-muted); }
 .fg-notice {
   max-width: 720px;
   margin: 0 auto 22px;
@@ -2965,7 +2963,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    prix d une carte : equilibre, « 100 € · 10 joueurs · 2 joueurs minimum »
    passait de deux lignes a trois. */
 .fg-card__rot, .fg-for__list li, .fg-for__off, .fg-etape__quoi small, .fg-why-list__item span,
-.fg-visit__span, .fg-visit__step > small, .fg-quand__dit, .fg-field__hint, .fg-confirm__note, .fg-libre__action small { text-wrap: pretty; }
+.fg-visit__step > small, .fg-quand__dit, .fg-field__hint, .fg-confirm__note, .fg-libre__action small { text-wrap: pretty; }
 
 /* LES FORMULES AU TELEPHONE, DEUX PAR RANGEE (Movsar, 2026-10-14 au soir :
    « choix des formules toujours aussi moche fait en deux colonne »), comme les

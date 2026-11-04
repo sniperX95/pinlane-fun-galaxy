@@ -4728,8 +4728,11 @@
     delete state.heuresPassees[idA];
     // Avant l arrivee, elle l avance. Les heures seulement proposees restent ou
     // elles sont tant qu elles tiennent.
-    avancerArriveeSiBesoin(t);
-    retenirProposees({ touche: { id: idA, t: t }, enConflit: chip.dataset.conflict || '' });
+    // Retouchee, elle se retire : elle n occupe plus rien, n avance plus l arrivee, et ni
+    // elle ni ses voisines ne bougent. Sinon l heure retiree poussait tout d un cran.
+    var posee = state.pins[idA] === t || (idA === 'laser_game' && state.laserParts.indexOf(t) >= 0);
+    if (posee) avancerArriveeSiBesoin(t);
+    retenirProposees(posee ? { touche: { id: idA, t: t }, enConflit: chip.dataset.conflict || '' } : {});
     // L heure touchee s entoure tout de suite, avant la reponse : le toucher
     // est entendu. chargerPlan relit cette case a la reponse.
     $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); }); chip.classList.add('is-pending');
@@ -5662,7 +5665,7 @@
         .filter(function (it) { return it && it.priceKnown === true && Number(it.price) > 0; });
       var compte = comptees.length ? 'Le total indicatif compte encore ' + joindreListe(comptees.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + euros(it.price) + ')'; }), ' et ') + '.' : '';
       var phrase = phraseHorsDelai(horsDelai, fin, true);
-      conseilFin = { texte: phrase.tete + '\u00a0: ' + phrase.noms + '.', boutons: fit ? fit.boutons : '' };
+      conseilFin = { texte: phrase.tete + '\u00a0: ' + phrase.noms + '.' + (compte ? ' ' + compte : ''), boutons: fit ? fit.boutons : '' };
       avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte, fit ? fit.texte : ''].filter(Boolean).join(' '));
     } else if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) {
       var manque = 'Tout ne tiendra pas : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '.';

@@ -3644,7 +3644,13 @@
       // sienne : elle se lit pour ce qu elle est, l heure de l autre partie.
       if (multi) {
         var sienne = state.laserParts[kLigne - 1] || '';
-        $$('.fg-chip', track).forEach(function (c) { c.classList.toggle('is-autre', c.classList.contains('is-on') && c.dataset.time !== sienne); });
+        // L heure conseillee pour une partie que le plan ne pose pas : elle ne
+        // sera pas reservee tant qu elle n est pas touchee (rien de plein).
+        var duPlanK = debutsDesParties(state.creneau, a.activityId)[kLigne - 1] || '';
+        $$('.fg-chip', track).forEach(function (c) {
+          c.classList.toggle('is-autre', c.classList.contains('is-on') && c.dataset.time !== sienne);
+          c.toggleAttribute('data-suggere', kLigne > 1 && c.classList.contains('is-proposed') && c.dataset.time !== duPlanK);
+        });
       }
       $$('.fg-period', track).forEach(function (sec) { expliquerPeriode(sec, a.label || a.activityId); });
       var note = $('.fg-track__note', track);
@@ -3736,6 +3742,7 @@
       rendreArrivees();
       rendreVisite();
       posterHauteur();
+      montrerLigneOuverte();
       return;
     }
     var html = '';
@@ -3829,6 +3836,7 @@
     else { $$('.fg-chip', hourZone).forEach(function (chip) { majChip(chip, { time: chip.dataset.time, ok: true }, state.heure ? [state.heure] : [], ''); }); $$('.fg-track', hourZone).forEach(majPeriodes); }
     rendreVisite();
     posterHauteur();
+    montrerLigneOuverte();
   }
 
   /* --- LE PROGRAMME, PAS A PAS (Movsar, 2026-10-07) -------------------------
@@ -3981,6 +3989,23 @@
     if (cle === 'arrivee') chargerArrivees();
     posterHauteur();
     setTimeout(posterHauteur, 450);
+    montrerLigneOuverte();
+  }
+  // LA RANGEE DE L HEURE EN COURS SE VOIT A L OUVERTURE D UNE LIGNE (2026-11-04) :
+  // les heures restent dans l ordre du temps, l heure retenue reste a sa place.
+  // L en-tete et l heure, en defilant le moins possible (montrer : le cadre
+  // embarque compris) ; l heure prime si les deux ne tiennent pas ensemble.
+  var ligneMontree = '';
+  function montrerLigneOuverte() {
+    if (!etapeOuverte) { ligneMontree = ''; return; }
+    if (etapeOuverte === ligneMontree) return;
+    var li = $('.fg-etape[data-cle="' + etapeOuverte + '"]', hourZone), tete = li && $('.fg-etape__tete', li);
+    if (!tete || !tete.getClientRects().length) return;
+    var puce = $('.fg-chip.is-on:not(.is-autre), .fg-chip.is-proposed:not([data-suggere])', li);
+    if (!puce && (etapeOuverte === 'arrivee' || etapeOuverte === 'arcade_time') && !$('.fg-chip', li)) return;
+    ligneMontree = etapeOuverte;
+    var tient = puce && puce.getBoundingClientRect().bottom - tete.getBoundingClientRect().top <= window.innerHeight - 32;
+    montrer(puce || tete, puce && !tient ? null : tete);
   }
   // Apres une heure posee et retenue : la prochaine ligne a placer s ouvre ;
   // tout est place, tout se replie et le bouton s eveille.
@@ -4000,7 +4025,6 @@
     // au meme instant ; seul son en-tete s eclaire, pour dire qu on a avance.
     rejouer(arrive, 'is-arrive', 900);
     ouvrirEtape(suivante ? suivante.cle : null);
-    if (arrive) montrer($('.fg-etape__dedans', arrive), $('.fg-etape__tete', arrive));
     if (!suivante && !goContact.disabled) eveiller(goContact);
     // Le focus ne reste pas dans une ligne qui se replie : il suit le programme.
     if (ligne && !ligne.classList.contains('is-open')) {
@@ -4306,6 +4330,7 @@
         arrivees.lu = Date.now();
         rendreArrivees();
         posterHauteur();
+        montrerLigneOuverte();
       }, function () {
         if (arrivees.enCours === cle) arrivees.enCours = '';
         if (cle !== cleArrivees()) return;

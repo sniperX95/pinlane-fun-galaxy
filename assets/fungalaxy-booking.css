@@ -3061,8 +3061,6 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-track:not([data-activity="arcade_time"]) .fg-track__foot:not(:has(.fg-track__reset:not([hidden]))) { display: none; }
 .fg-etape .fg-track__foot { justify-content: center; padding-top: 8px; }
 .fg-etape .fg-track__reset { width: auto; margin: 0; min-height: 44px; font-size: 15px; text-align: center; color: var(--fg-muted); }
-/* L heure d arrivee n est plus une etape : celle de la premiere activite la dit. */
-.fg-etape--arrivee { display: none; }
 .fg-etapes { padding: 6px; background: transparent; box-shadow: none; display: grid; gap: 8px; }
 .fg-etape + .fg-etape:not(.fg-etape--fin) { box-shadow: none; }
 .fg-etape { border-radius: 14px; background: #141216; }
@@ -3092,26 +3090,25 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__surplace { width: 100%; min-height: 48px; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.16); font-size: 15px; font-weight: 600; color: #fff; }
 .fg-etape__surplace svg { display: none; }
 /* LES HEURES : de grosses touches, trois par ligne au telephone, l heure seule. */
-.fg-periods { display: flex; flex-direction: column; }
 .fg-chips { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
 .fg-chip { height: 56px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: #fff; }
 .fg-chip b { font-size: 18px; font-weight: 650; }
 .fg-chip small { display: none; }
-/* La proposee, en premier et marquee a part : un contour vif. */
-.fg-period:has(.fg-chip.is-proposed), .fg-period:has(.fg-chip.is-on:not(.is-autre)) { order: -1; }
-.fg-chips > li:has(.fg-chip.is-proposed), .fg-chips > li:has(.fg-chip.is-on:not(.is-autre)) { order: -1; }
-.fg-chip.is-proposed { border: 2px solid var(--fg-purple-em); background: rgba(176, 79, 176, 0.18); }
 /* Ce qui se prend reste une heure comme une autre : le recapitulatif dit ce que ca change. */
 .fg-chip.is-soft, .fg-chip.is-shift, .fg-chip:is(.is-soft, .is-shift)[data-teinte] { border: 1px solid rgba(255, 255, 255, 0.16); }
 /* L impossible : grise, un seul mot. */
 .fg-chip.is-off, .fg-chip.is-off[data-teinte], .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); cursor: default; }
 .fg-chip.is-off[data-mot]::after { content: attr(data-mot); margin-top: 2px; font-size: 12px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
 .fg-chip.is-wave { border: 1px solid transparent; background: rgba(176, 79, 176, 0.26); }
-/* La choisie : pleine, l heure d une autre partie aussi, avec son mot. */
-.fg-chip.is-on, .fg-chip.is-pending, .fg-etape .fg-chip.is-on.is-autre { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
-.fg-chip.is-wave small, .fg-chip.is-autre small, .fg-etape .fg-chip.is-on small { display: block; color: #fff; opacity: 1; }
-.fg-etape .fg-chip.is-on:not(.is-autre) small { display: none; }
-.fg-etape .fg-chip.is-on.is-autre small { color: #fff; }
+/* UNE SEULE TUILE PLEINE : l heure qui sera reservee, proposee ou choisie. Une
+   heure seulement conseillee pour une partie suivante n est pas retenue par le
+   plan : elle reste une heure comme une autre. */
+.fg-chip.is-on, .fg-chip.is-pending, .fg-chip.is-proposed:not([data-suggere]) { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
+.fg-etape .fg-chip.is-on small, .fg-etape .fg-chip.is-proposed small { display: none; }
+/* L heure d une autre partie : deja prise par le groupe, grise, avec son mot. */
+.fg-etape .fg-chip.is-on.is-autre { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); }
+.fg-etape .fg-chip.is-on.is-autre small { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
+.fg-chip.is-wave small { display: block; color: #fff; }
 /* Une heure complete touchee, quand le moteur peut arranger : une question, un bouton. */
 .fg-quand, .fg-etape .fg-quand { margin: 10px 0 0; padding: 0; border: 0; }
 .fg-quand__dit { font-size: 15px; }

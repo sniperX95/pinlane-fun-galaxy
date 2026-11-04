@@ -22060,7 +22060,8 @@ input.tf-champ[aria-invalid="true"] { border-color: var(--danger); }
   input.tf-champ-nombre { width: 70px; }
   input.tf-champ-nom { width: 156px; }
   .tf-seg button { padding: 0 7px; font-size: 12px; }
-  .tf-cadre-gestes .pv2-btn.sm { padding: 0 7px; font-size: 12px; }
+  .tf-cadre-gestes { gap: 4px; }
+  .tf-cadre-gestes .pv2-btn.sm { padding: 0 6px; font-size: 12px; }
   .tf-lieu { grid-template-columns: minmax(0, 1.35fr) minmax(140px, 1fr); column-gap: 12px; }
 }
 /* Trop etroit pour les fils : les endroits s empilent sous les reglages, les

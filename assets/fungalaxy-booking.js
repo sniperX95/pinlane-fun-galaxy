@@ -448,6 +448,7 @@
     if (/arcade/.test(s)) return 'a-arcade';
     if (/playground|plaine/.test(s)) return 'a-plaine';
     if (/fun_run|funrun|fun-run/.test(s)) return 'a-funrun';
+    if (/boisson|cruche|bi[eè]re/.test(s)) return 'a-boisson';
     // La table d une formule anniversaire : le gateau des occasions.
     if (/table/.test(s)) return 'o-anniversaire';
     return 'a-star';
@@ -4894,7 +4895,7 @@
   function motArrivee() { return state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
-    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
+    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '>' + (o.ico ? '<svg class="fg-visit__ico" aria-hidden="true"><use href="#' + o.ico + '"/></svg>' : '') + '<b>' + esc(o.heure || '') + '</b>'
       + '<span>' + (o.titreHtml || esc(typoVisite(o.titre))) + '</span>'
       + '<small>' + esc(typoVisite(o.detail || '')) + '</small>' + (o.detail2 ? '<small>' + esc(typoVisite(o.detail2)) + '</small>' : '') + '</li>';
   }
@@ -5304,9 +5305,9 @@
       : libres.map(function (it) { return { id: it.activityId, minutes: it.dayAccess ? 1 : Number(it.minutes) || 0 }; });
     var libre = possibles.filter(function (x) { return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];
     var nomAvant = leNom(meilleur.avant.id), duree = dureeExacte(meilleur.minutes);
-    if (!libre) return { texte: duree + ' d’attente avant ' + nomAvant };
+    if (!libre) return { texte: duree + ' d’attente avant ' + nomAvant + '.' };
     var nomLibre = leNom(libre.id), pluriel = /^les /.test(nomLibre), feminin = /^la /.test(nomLibre);
-    return { texte: duree + ' avant ' + nomAvant + '\u00a0: ' + nomLibre + (formule ? (pluriel ? ' sont comprises' : feminin ? ' est comprise' : ' est compris') : (pluriel ? ' y tiennent' : ' y tient')) };
+    return { texte: 'Vous avez ' + duree + ' avant ' + nomAvant + ', ' + nomLibre + (formule ? (pluriel ? ' sont comprises' : feminin ? ' est comprise' : ' est compris') : (pluriel ? ' y tiennent' : ' y tient')) + '.' };
   }
   // Le conseil se lit la ou le client regarde : dans la ligne ouverte, sinon dans
   // le recapitulatif. Une seule place, jamais deux.
@@ -5317,7 +5318,7 @@
     if (!c && li) {
       // L heure conseillee d une partie suivante : le plan ne la pose pas, elle se dit.
       var suggeree = $('.fg-chip[data-suggere]', li), k = Number(li.dataset.partie) || 0;
-      if (suggeree && k > 1) c = { texte: 'Juste après la ' + (k === 2 ? '1re' : (k - 1) + 'e') + ' partie\u00a0: ' + suggeree.dataset.time };
+      if (suggeree && k > 1) c = { texte: suggeree.dataset.time + ' tombe juste après la ' + (k === 2 ? '1re' : (k - 1) + 'e') + ' partie.' };
     }
     if (!c) c = (conseilCourant && conseilCourant.trou) || null;
     if (!c) return;
@@ -5498,7 +5499,7 @@
     if (arrivee) {
       var premiere = parts.filter(function (p) { return genreCompris(p.id) !== 'table'; })[0];
       var repere = premiere ? premiere.debut : slot.time;
-      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: 'Arrivée' });
+      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: 'Arrivée', ico: 'i-clock' });
     }
     function lignePartie(p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
@@ -5517,16 +5518,19 @@
         var ici = ecart > 0 ? libresDuTrou(finPrec, p.debut) : [];
         var pris = ici.reduce(function (somme, x) { return somme + x.minutes; }, 0);
         // La partie que le moteur loge ici se lit ici, en une ligne.
-        ici.forEach(function (x) { (x.o.titres || []).forEach(function (titreS) { lignes += etapeVisite({ genre: x.o.genre, heure: '', titre: titreS }); }); });
+        ici.forEach(function (x) { lignes += lignesSurPlace(x.o); });
         if (ici.length) dits.push('Entre les deux, sans heure fixe : ' + ici.map(function (x) { return x.voix; }).join(' ; '));
         ligneAttente(Math.max(0, ecart - pris));
       }
       if (p.fin > finPrec) finPrec = p.fin;
       dits.push(nom + (quoi ? ', ' + quoi : '') + ', de ' + p.debut + (p.fin ? ' à ' + heureAffichee(p.fin) : '') + (p.groupes.length > 1 ? ', en ' + p.groupes.length + ' groupes' : '') + (p.arcade ? ', à votre heure' : '') + (bouge ? ', déplacé' : ''));
-      // L HEURE ET LE NOM, RIEN D AUTRE (Ansar, 2026-11-03 : « pense a des mamies »).
+      // L HEURE ET LE NOM, PUIS UNE LIGNE DE DETAIL : jusqu a quand, les pistes, les joueurs
+      // d un groupe, le montant a la carte (Ansar, 2026-11-04 : « un recap plus complet
+      // de toutes les activites »).
       var titreP = nom + (p.partie > 1 ? ', ' + p.partie + 'e partie' : '');
-      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: bouge ? 'déplacé' : '', bouge: bouge }); });
-      else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: bouge ? 'déplacé' : '', bouge: bouge });
+      function detailP(f, joueursG, k) { return [bouge ? 'déplacé' : '', f ? 'jusqu’à ' + heureAffichee(f) : '', p.pistes > 0 ? p.pistes + (p.pistes > 1 ? ' pistes' : ' piste') : '', joueursG ? joueursG + ' joueurs' : '', p.partie === 1 && !k ? montantDe(it) : ''].filter(Boolean).join(' · '); }
+      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge, ico: icone(p.id) }); });
+      else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge, ico: icone(p.id) });
     }
     parts.forEach(lignePartie);
     // CE QUI N A PAS D HEURE : la voix le dit sous « Dans la foulée » (Movsar,
@@ -5534,8 +5538,12 @@
     // reste va dans « Compris » ou « Aussi ».
     var suite = '';
     var suiteDits = [];
+    function montantDe(it) { return !formule && it.priceKnown === true && Number(it.price) > 0 ? euros(it.price) : ''; }
+    function lignesSurPlace(o) {
+      return (o.titres || []).map(function (titreS, i) { return etapeVisite({ genre: [o.genre].concat(o.hors ? ['hors'] : []), heure: o.vers && !i ? 'vers ' + o.vers : 'sur place', titre: titreS, ico: icone(o.id) }); }).join('');
+    }
     function ligneSuite(o, voix) {
-      (o.titres || []).forEach(function (titreS) { suite += etapeVisite({ genre: [o.genre].concat(o.hors ? ['hors'] : []), heure: '', titre: titreS }); });
+      suite += lignesSurPlace(o);
       suiteDits.push(voix);
     }
     // LES PARTIES DE LASER SANS HEURE : l equipe les place sur place, et la
@@ -5565,8 +5573,8 @@
       // place, et le moteur dit ou elle tombe (la fin compte deja ce temps). Une ligne
       // sans heure faisait croire a un oubli.
       var ouElleTombe = id === 'laser_game' && !participants && plan.laserPassPlan && plan.laserPassPlan.followOnStart;
-      var titres = (total === 1 ? [nomR] : reste.map(function (k) { return nomR + ', ' + k + 'e partie' + (participants ? ' (' + participants + ' joueurs)' : ''); })).map(function (t, i) { return ouElleTombe && !i ? t + ', vers ' + ouElleTombe : t; });
-      return { o: { genre: 'onsite', titres: titres, hors: coupees.length > 0 && coupees.length === reste.length }, voix: nomR + ', ' + quelles + ', ' + detail };
+      var titres = total === 1 ? [nomR] : reste.map(function (k) { return nomR + ', ' + k + 'e partie' + (participants ? ' (' + participants + ' joueurs)' : ''); });
+      return { o: { genre: 'onsite', titres: titres, vers: ouElleTombe, id: id, hors: coupees.length > 0 && coupees.length === reste.length }, voix: nomR + ', ' + quelles + ', ' + detail };
     }
     items.forEach(function (it) {
       partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.games) || 0, parts.filter(function (p) { return p.id === it.activityId; }).length);
@@ -5612,19 +5620,19 @@
     var jeuRestant = illimite && fin ? minutesEntre(slot.time, fin) : 0;
     var motsIllimite = illimite ? carte.map(function (c) { return c.texte; }) : [];
     if (illimite && jeuRestant > 0) {
-      lignes += etapeVisite({ genre: 'bloc', heure: slot.time, titre: formule.name });
+      lignes += etapeVisite({ genre: 'bloc', heure: slot.time, titre: formule.name, ico: 'a-formule' });
       dits.push(formule.name + ', à partir de ' + slot.time + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' + (motsIllimite.length ? '. Compris : ' + motsIllimite.join(', ') : ''));
     } else if (motsIllimite.length) {
       dits.push('Compris : ' + motsIllimite.join(', '));
     }
     var debut = !parts.length && !libres.length && !arrivee && !(illimite && jeuRestant > 0);
-    if (debut) lignes = '<li class="fg-visit__step fg-visit__step--debut"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
+    if (debut) lignes = etapeVisite({ genre: 'debut', heure: slot.time, titre: 'Début', ico: 'i-clock' }) + lignes;
     // Une visite sans activite a heure : une ligne par activite, l heure sur la premiere.
     function nomLibre(it) {
       var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
       return (it.name || nomActivite(it.activityId)) + (entre ? ' (' + entre + ')' : '');
     }
-    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: 'bloc', heure: k ? '' : slot.time, titre: nomLibre(it) }); });
+    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: montantDe(it), ico: icone(it.activityId) }); });
     // CE QUE LA FORMULE COMPREND, DANS SES MOTS, SANS HEURE : ce qui a sa ligne ne
     // se redit pas. A la carte, le reste de la visite.
     var poses = {};
@@ -5632,16 +5640,15 @@
     if (Number(ancrages.laserGames) > 0) poses.laser_game = 1;
     // « 1 partie de Minigolf, 2 cruches boissons » se lit « Minigolf, 2 cruches ».
     function motCompris(s) { return s.replace(/^1 (partie|entrée)( de| à la)? /i, '').replace(/ boissons$/i, ''); }
-    var aussi = formule ? carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).map(function (c) { return motCompris(c.texte); })
-      : parts.length ? items.filter(function (it) { return !planifies[it.activityId]; }).map(nomLibre) : [];
-    if (aussi.length) lignes += '<li class="fg-visit__aussi">' + esc(typoVisite((formule ? 'Compris' : 'Aussi') + '\u00a0: ' + aussi.join(', '))) + '</li>';
+    if (formule) carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).forEach(function (c) { lignes += etapeVisite({ genre: 'aussi', heure: 'compris', titre: motCompris(c.texte), ico: icone(c.texte) }); });
+    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: montantDe(it), ico: icone(it.activityId) }); });
     if (fin) lignes += '<li class="fg-visit__step fg-visit__step--out"><span>' + (slot.visitEndsAtClose || illimite ? 'Jusqu’à' : 'Fin vers') + '</span> <b>' + esc(heureAffichee(fin)) + '</b></li>';
     // AU PLUS : le jour et le groupe, une ligne par activite, ce qui est compris,
     // la fin, le montant (Ansar, 2026-11-03 : « un mot qui n aide pas a decider
     // disparait »).
-    var html2 = '<div class="fg-visit"><p class="fg-visit__quand">' + esc(insecable(jourCourt(state.date))) + '\u00a0· ' + esc(insecable(groupeLisible())) + '</p>';
+    var html2 = '<div class="fg-visit"><p class="fg-visit__quand"><b>' + esc(jourLong(state.date)) + '</b><span>' + esc(insecable(groupeLisible())) + (formule && !illimite ? '\u00a0· ' + esc(formule.name) : '') + '</span></p>';
     var listeHtml = '<ol class="fg-visit__list">' + lignes + '</ol>';
-    var prixHtml = '<p class="fg-visit__paye">' + (prixVisible ? '<b class="fg-visit__price">' + esc(euros(prix)) + '</b>, à payer sur place' : 'À payer sur place') + '</p>'
+    var prixHtml = '<p class="fg-visit__paye">' + (prixVisible ? '<span>Total indicatif</span><b class="fg-visit__price">' + esc(euros(prix)) + '</b></p><p class="fg-visit__regle">À payer sur place, carte ou espèces' : 'À payer sur place') + '</p>'
       + (prixVisible && !complet ? '<p class="fg-visit__reste">+ ' + esc(typoVisite(nomsSansPrix(items))) + ', ' + insecable(PRIX_ACCUEIL) + '</p>' : '');
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.gapLabel ? n.gapLabel + ' d’attente' : n.message || n.label)) || ''; }).filter(Boolean);
     // A l ecran, un trou se dit par le conseil : seul le reste garde sa ligne.

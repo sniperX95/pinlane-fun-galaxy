@@ -4438,6 +4438,8 @@
     majConseil();
     dire(conflitEnAttente.conseil.texte);
     posterHauteur();
+    // Le conseil attend un toucher, en tete de la ligne : il se montre.
+    montrer($('.fg-conseil:not([hidden])', hourZone));
   }
   // La liste depend du jour, du groupe, de ce qu il fait et de ce qu il a touche.
   function cleArrivees() { return cleDemande() + '#' + JSON.stringify([state.pins, state.laserParts, state.arcade]); }

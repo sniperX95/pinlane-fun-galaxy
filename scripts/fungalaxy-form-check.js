@@ -1089,6 +1089,14 @@ async function lireJson(url, page) {
   const r = await fetch(url, jeton ? { headers: { 'x-pinlane-hold': jeton } } : {});
   return r.json();
 }
+// La reponse a la derniere demande de la page, avec les heures qu elle a demandees :
+// celles que le client n a pas touchees sont ses heures proposees.
+async function routeDeLaPage(urls, touchees, page) {
+  const url = demandeDuPlan(urls, touchees);
+  const d = await lireJson(url, page);
+  d.heuresDemandees = JSON.parse(new URL(url).searchParams.get('preferredTimes') || '{}');
+  return d;
+}
 
 // Le poids que le navigateur recoit : le build de mise en ligne rejoue sur une
 // COPIE des trois fichiers (il retire les commentaires), jamais sur le depot.
@@ -2539,7 +2547,7 @@ async function main() {
     const jourMock = oracleJours[mock.DATE];
     ok(/6 personnes · Bowling \+ Laser Game \+ Minigolf Blacklight \+ Arcades/.test(sousTitre) && (!jourMock || plat(sousTitre).indexOf(plat(`Ouvert ${horaire(jourMock.schedule)}`)) >= 0), '[C] le sous-titre reprend groupe, activites et horaire du jour', sousTitre);
     // La reponse a la derniere demande de la page ; `extra` : les heures touchees qu elle doit porter.
-    const route = async (extra) => lireJson(demandeDuPlan(demandes, extra));
+    const route = async (extra) => routeDeLaPage(demandes, extra);
     const ancresDe = (d) => (d.anchors && d.anchors.activities) || [];
     const ecartsDesPistes = async (d, pins, laserParts, pg) => {
       const pistes = await lirePistes(pg);
@@ -2553,7 +2561,7 @@ async function main() {
       if (!ordreJournee(prog.lignes)) e.push(`programme hors de l ordre de la journee : ${prog.lignes.map((x) => `${x.cle} ${x.heure}`).join(', ')}`);
       ancresDe(d).forEach((a) => {
         const actifs = a.activityId === 'laser_game' && laserParts.length ? laserParts : (pins[a.activityId] ? [pins[a.activityId]] : []);
-        const propose = actifs.length ? '' : (defauts[a.activityId] || '');
+        const propose = actifs.length ? '' : ((d.heuresDemandees || {})[a.activityId] || defauts[a.activityId] || '');
         e.push(...ecartsPiste(pistes.find((p) => p.id === a.activityId), a, actifs, propose, d, laserParts));
         const p = pistes.find((x) => x.id === a.activityId);
         if (p && p.reset !== actifs.length > 0) e.push(`${a.activityId}: « laisser l equipe placer » ${p.reset ? 'visible' : 'cache'} avec ${actifs.length} heure(s) posee(s)`);
@@ -2742,7 +2750,7 @@ async function main() {
     ok(Boolean(LT) && await poserEtAttendre(page, 'laser_game', LT), '[C] une partie de laser posee tard', LT);
     const d5 = await route({ preferredTimes: { laser_game: LT }, laserGameTimes: [LT] });
     pistes = await verifierPistes(d5, { laser_game: LT }, [LT], '[C] LASER TARD : les pistes = la route');
-    const serrees = (pistes.find((p) => p.id === 'bowling') || { chips: [] }).chips.filter((c) => c.etat === 'soft');
+    const serrees = (pistes.find((p) => p.id === 'bowling') || { chips: [] }).chips.filter((c) => c.etat === 'soft' && !c.proposed);
     ok(serrees.length > 0 && serrees.every((c) => c.ok && c.mot === 'serré' && c.reason.length > 0 && c.titre === c.reason), '[C] les heures de bowling ou tout ne tient plus sont « serrees » : choisissables, avec leur raison', serrees.map((c) => `${c.t} « ${c.reason} »`).join(', '));
     const S = serrees.length ? serrees[serrees.length - 1].t : '';
     ok(Boolean(S) && await poserEtAttendre(page, 'bowling', S), '[C] toucher une heure « serree » la pose', S);
@@ -4013,7 +4021,7 @@ async function main() {
     const libresJ = (ancresDe(dJ).find((a) => a.activityId === 'laser_game') || { times: [] }).times.filter((t) => t.ok !== false && !t.warning).map((t) => t.time);
     const LJ = libresJ[Math.floor(libresJ.length / 2)];
     ok(Boolean(LJ) && await poserEtAttendre(pageJ, 'laser_game', LJ), '[J] a 40 personnes, une partie de laser est retenue', LJ);
-    const dLJ = await lireJson(demandeDuPlan(demandesJ, { preferredTimes: { laser_game: LJ }, laserGameTimes: [LJ] }), pageJ);
+    const dLJ = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: LJ }, laserGameTimes: [LJ] }, pageJ);
     const laserLJ = ancresDe(dLJ).find((a) => a.activityId === 'laser_game') || { times: [] };
     const bowlingLJ = ancresDe(dLJ).find((a) => a.activityId === 'bowling') || { times: [] };
     const empLJ = emporteesQa(dLJ, laserLJ, [LJ]);
@@ -4071,7 +4079,7 @@ async function main() {
     const qG2 = new URL(demandesJ.slice(avantGroupe2).filter((u) => u.indexOf('/api/public-availability?') >= 0).pop() || `${BASE_URL}/`).searchParams;
     ok(qG2.get('laserGameTimes') === JSON.stringify([hGroupe2]) && JSON.parse(qG2.get('preferredTimes') || '{}').laser_game === hGroupe2,
       '[J] la partie SUIT son 1er groupe : elle part a l heure touchee, rien ne s ajoute', `${qG2.get('laserGameTimes')} / ${qG2.get('preferredTimes')}`);
-    const dG2 = await lireJson(demandeDuPlan(demandesJ, { preferredTimes: { laser_game: hGroupe2 }, laserGameTimes: [hGroupe2] }), pageJ);
+    const dG2 = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: hGroupe2 }, laserGameTimes: [hGroupe2] }, pageJ);
     await verifierPistes(dG2, { laser_game: hGroupe2 }, [hGroupe2], '[J] 1er GROUPE DEPLACE : les pistes = la route ; l heure touchee est choisie, son 2e groupe se marque a la demi-heure suivante', pageJ);
     // DEUX PARTIES POSEES, la seconde juste apres la premiere. Toucher l heure
     // du 2e groupe de la plus tot la DEPLACERAIT : le moteur juge ce
@@ -4081,14 +4089,15 @@ async function main() {
     const P2 = (laserG2.times.find((t) => t.ok !== false && !t.warning && t.time > hGroupe2) || {}).time;
     ok(Boolean(P2) && await poserEtAttendre(pageJ, 'laser_game', P2), '[J] une seconde partie de laser est posee apres la premiere', P2);
     const partsJ = [hGroupe2, P2].sort();
-    const dP2 = await lireJson(demandeDuPlan(demandesJ, { preferredTimes: { laser_game: partsJ[0] }, laserGameTimes: partsJ }), pageJ);
+    const dP2 = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: partsJ[0] }, laserGameTimes: partsJ }, pageJ);
     const laserP2 = ancresDe(dP2).find((a) => a.activityId === 'laser_game') || { times: [] };
     const empP2 = emporteesQa(dP2, laserP2, partsJ);
     const jugees = Object.keys(empP2).filter((h) => empP2[h].depuis === partsJ[0]);
     const tardives = Object.keys(empP2).filter((h) => empP2[h].depuis === partsJ[1]);
     const verdictP2 = (h) => verdictQa(laserP2.times.find((x) => x.time === h) || {});
     const refusee = jugees.find((h) => verdictP2(h).ok === false);
-    const tardivesOk = tardives.filter((h) => verdictP2(h).ok !== false);
+    // Ce qui ne gene qu une heure seulement proposee (le bowling) se prend : elle se recale.
+    const tardivesOk = tardives.filter((h) => { const v = verdictP2(h); return v.ok !== false || Boolean(v.conflict && v.conflict.activityId && v.conflict.activityId !== 'laser_game'); });
     ok(Boolean(refusee) && tardivesOk.length > 0,
       '[J] MONTAGE : deux parties posees ; le moteur REFUSE de deplacer la plus tot a l heure de son 2e groupe et ACCEPTE de deplacer la plus tardive a la sienne', JSON.stringify({ parties: partsJ, jugees, tardives, refusee, tardivesOk }));
     await verifierPistes(dP2, { laser_game: partsJ[0] }, partsJ, '[J] DEUX PARTIES : les pistes = la route ; chaque heure de 2e groupe porte le verdict du deplacement de SA partie, les deux lignes des parties disent leur heure choisie', pageJ);
@@ -4116,7 +4125,7 @@ async function main() {
     const qTardive = new URL(demandesJ.slice(avantTardive).filter((u) => u.indexOf('/api/public-availability?') >= 0).pop() || `${BASE_URL}/`).searchParams;
     const partsTardive = [partsJ[0], hTardive].sort();
     ok(qTardive.get('laserGameTimes') === JSON.stringify(partsTardive), '[J] seule la partie tardive suit son groupe, la plus tot reste', `${qTardive.get('laserGameTimes')} attendu ${JSON.stringify(partsTardive)}`);
-    const dTardive = await lireJson(demandeDuPlan(demandesJ, { preferredTimes: { laser_game: partsTardive[0] }, laserGameTimes: partsTardive }), pageJ);
+    const dTardive = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: partsTardive[0] }, laserGameTimes: partsTardive }, pageJ);
     await verifierPistes(dTardive, { laser_game: partsTardive[0] }, partsTardive, '[J] PARTIE TARDIVE DEPLACEE : les pistes = la route', pageJ);
     // LE 2e GROUPE DANS LA PLAGE SUIVANTE (vu en prod le 2026-09-23 : 11:30
     // retenue au laser, le 2e groupe a 12:00 dans l apres-midi repliee,
@@ -4129,7 +4138,7 @@ async function main() {
     await attendre(pageJ, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000);
     ok(Boolean(bordJ) && await poserEtAttendre(pageJ, 'laser_game', bordJ), '[J] MONTAGE : une partie de laser retenue a la derniere demi-heure d une plage', bordJ || `aucune heure libre en bord de plage (${libresJ.join(' ')})`);
     if (bordJ) {
-      const dBord = await lireJson(demandeDuPlan(demandesJ, { preferredTimes: { laser_game: bordJ }, laserGameTimes: [bordJ] }), pageJ);
+      const dBord = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: bordJ }, laserGameTimes: [bordJ] }, pageJ);
       const laserBord = ancresDe(dBord).find((a) => a.activityId === 'laser_game') || { times: [] };
       const empBord = emporteesQa(dBord, laserBord, [bordJ]);
       const hBord = Object.keys(empBord).find((h) => periodeDe(h) !== periodeDe(bordJ));

@@ -5425,6 +5425,12 @@ async function main() {
     // =====================================================================
     console.log('');
     console.log('[V] LES CALCULS DE LA PAGE CLIENT (Ansar, 2026-11-03 : « tout mal calculé »)');
+    // Ces calculs se jugent sur un banc vide. Un ecran d avant peut y laisser ses horaires
+    // bloques dix minutes : sa liberation part au pagehide, en course avec la fermeture de la
+    // page. Bloquees, les pistes de 10:00 faisaient commencer Matin Malin a 11:00 une fois sur deux.
+    const laisses = mock.blocagesDev.size;
+    mock.blocagesDev.clear();
+    ok(mock.blocagesDev.size === 0, '[V] MONTAGE le banc repart sans blocage', `${laisses} laisse(s) par les ecrans d avant`);
     // =====================================================================
     // Chaque cas part d un defaut releve sur le banc, avec ce que l ecran disait
     // avant. L oracle est la route, relue en Node ; l ecran la confronte.

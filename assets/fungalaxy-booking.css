@@ -3111,6 +3111,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-chip.is-on, .fg-chip.is-pending, .fg-etape .fg-chip.is-on.is-autre { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
 .fg-chip.is-wave small, .fg-chip.is-autre small, .fg-etape .fg-chip.is-on small { display: block; color: #fff; opacity: 1; }
 .fg-etape .fg-chip.is-on:not(.is-autre) small { display: none; }
+.fg-etape .fg-chip.is-on.is-autre small { color: #fff; }
 /* Une heure complete touchee, quand le moteur peut arranger : une question, un bouton. */
 .fg-quand, .fg-etape .fg-quand { margin: 10px 0 0; padding: 0; border: 0; }
 .fg-quand__dit { font-size: 15px; }

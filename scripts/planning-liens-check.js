@@ -12,7 +12,9 @@
 //   [B] ELLE RESERVE A SON HEURE. Un toucher ouvre Réserver a cette heure, plus la fiche
 //       du premier groupe ; une demi-heure passee n ouvre rien.
 //   [C] LE BANDEAU MENE A SON GESTE : « Pistes » et « Laser » ouvrent Réserver, le groupe
-//       du prochain depart ouvre sa fiche, et qui n est pas encore la se lit.
+//       du prochain depart ouvre sa fiche, et qui n est pas encore la se lit : sur la ligne
+//       quand elle a la place (plus de 1 300 px de barre depuis la barre epaisse du
+//       2026-11-03), dans le menu « ⋯ » sinon.
 //   [D] LE RETARD SE TOUCHE : « ils arrivent dans 20 min » s ajoute au retard deja pris.
 //   [E] LE MONTANT ENCAISSE : le groupe sur place paie depuis sa ligne, sans la fiche.
 //   [F] « PAS VENU » ATTEND 15 MIN, et se tait sur un groupe qui a annonce son retard.
@@ -26,12 +28,19 @@
 //       l heure, il ne dit que qui est la : il dit le chiffre de la barre moins les
 //       groupes payes dont la visite est finie et qui attendent leurs coches, ni plus ni
 //       moins, l apres-midi et le soir.
-//   [L] LES CHIFFRES DES PLANNINGS NE SE MARCHENT PAS DESSUS, a toutes les largeurs,
-//       meme avec le detail le plus long (toutes les pistes libres) : il se coupe, la
-//       legende reste.
+//   [L] LES CHIFFRES DES PLANNINGS NE SE MARCHENT PAS DESSUS, a toutes les largeurs, avec
+//       le detail d un centre de 12 pistes, toutes libres. Celui de 40 pistes, le plafond
+//       d un centre (lib/center-config.js), ne tient jamais entier : il se coupe dans sa
+//       case, la legende reste. DEFAUT OUVERT, montre a Ansar le 2026-11-04 :
+//       a ce detail-la, sur une fenetre etroite, les deux cases voisines perdent leur
+//       chiffre ; le gate ne l asserte pas tant que ce n est pas corrige.
 //   [M] LA LISTE SOUS LE TABLEAU TROUVE CE QUE LE TABLEAU TROUVE : une heure, une piste,
 //       un nombre, pas seulement un nom.
-//   [N] UN JOUR VIDE CHERCHE AUSSI : le client est peut-etre sur une autre date.
+//   [N] UN JOUR VIDE CHERCHE AUSSI : le client est peut-etre sur une autre date. A
+//       l ordinateur, un jour ouvert sans groupe montre toute sa journee (Ansar, 03/11 :
+//       « laisse tout le planning complet avec heure meme vide ») ; au telephone et un jour
+//       ferme, la feuille n a rien a montrer tant qu on ne cherche pas. Dans les trois, un
+//       nom tape trouve sa reponse, et le champ vide rend le jour tel qu il etait.
 //   [O] ENTREE NE POINTE QU UN NOM JUSTE : une faute, une heure, une piste, un nombre
 //       trouvent une ligne, ils ne font arriver personne.
 //
@@ -82,7 +91,7 @@ async function ouvrir(browser, appareil = 'liens', fixture = 'pic', heure = '15:
     },
   });
   await m.page.evaluate(() => { renderStaff(); });
-  await m.page.waitForSelector(fixture === 'vide' ? '.gf-bandeau' : '.gf-r', { timeout: 10000 });
+  await m.page.waitForSelector(['vide', 'ferme'].includes(fixture) ? '.gf-bandeau' : '.gf-r', { timeout: 10000 });
   return m;
 }
 const idDe = (page, mot) => page.evaluate((m) => {
@@ -143,22 +152,36 @@ async function scenarioBandeau(browser) {
     const laser = await ouvert(page);
     ok(laser.reserver && laser.type === 'laser' && laser.heure, '[C] « Laser » ouvre Réserver sur son depart', laser);
     await fermer(page);
-    const noms = await page.evaluate(() => Array.from(document.querySelectorAll('.gf-e__g')).map((b) => ({ t: b.textContent, id: b.getAttribute('data-gf-fiche'), attendu: b.classList.contains('is-attendu') })));
-    ok(noms.some((n) => n.t.includes('Lina') && !n.attendu && !n.t.includes('pas là')), '[C] un groupe sur place se lit sans mot de plus', noms);
+    // Les noms du prochain depart, tels qu ils s affichent (cachee, une ligne ne se lit pas).
+    const nomsVus = () => page.evaluate(() => Array.from(document.querySelectorAll('.gf-e__g')).filter((b) => b.getClientRects().length > 0).map((b) => ({ t: b.textContent, id: b.getAttribute('data-gf-fiche'), attendu: b.classList.contains('is-attendu') })));
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.waitForFunction(() => { const b = document.querySelector('.gf-e__g'); return Boolean(b && b.getClientRects().length); }, null, { timeout: 3000 }).catch(() => null);
+    const noms = await nomsVus();
+    ok(noms.some((n) => n.t.includes('Lina') && !n.attendu && !n.t.includes('pas là')), '[C] au large, un groupe sur place se lit sur la ligne, sans mot de plus', noms);
     const manon = noms.find((n) => n.t.includes('Manon'));
     ok(manon && manon.attendu && manon.t.includes('pas là'), '[C] qui n est pas encore la se lit', noms);
-    // (le premier nom se lit sur la ligne ; un detail trop long pour elle se coupe, le menu
-    // « ⋯ » redit le depart entier)
-    await page.locator('.gf-e__g').first().click({ position: { x: 4, y: 8 } });
-    await page.waitForTimeout(250);
-    const fiche = await ouvert(page);
-    ok(fiche.fiche && fiche.ficheDe === noms[0].id, '[C] le nom ouvre sa fiche', fiche);
-    await fermer(page);
+    if (noms.length) {
+      await page.locator('.gf-e__g').first().click({ position: { x: 4, y: 8 } });
+      await page.waitForTimeout(250);
+      const fiche = await ouvert(page);
+      ok(fiche.fiche && fiche.ficheDe === noms[0].id, '[C] le nom ouvre sa fiche', fiche);
+      await fermer(page);
+    }
+    // A 1 366 px, la ligne n a plus leur place : le menu « ⋯ » redit le depart entier.
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll('.gf-e__g')).some((b) => b.getClientRects().length > 0), null, { timeout: 3000 }).catch(() => null);
+    const surLaLigne = await nomsVus();
+    ok(surLaLigne.length === 0, '[C] MONTAGE : a 1 366 px, les noms ne sont plus sur la ligne', surLaLigne);
     await page.locator('#planningPlus').click();
-    await page.locator('.staff-action-popover button', { hasText: 'Manon' }).click();
-    await page.waitForTimeout(250);
-    const parMenu = await ouvert(page);
-    ok(parMenu.fiche && parMenu.ficheDe === String(manon && manon.id), '[C] et depuis le menu, le nom coupe sur la ligne', parMenu);
+    const auMenu = page.locator('.staff-action-popover button', { hasText: 'Manon' });
+    const dansLeMenu = await auMenu.count() === 1 ? await auMenu.textContent() : '';
+    ok(dansLeMenu.includes('pas là'), '[C] le menu garde les noms, et qui n est pas encore la', dansLeMenu);
+    if (dansLeMenu) {
+      await auMenu.click();
+      await page.waitForTimeout(250);
+      const parMenu = await ouvert(page);
+      ok(parMenu.fiche && parMenu.ficheDe === String(manon && manon.id), '[C] et depuis le menu, le nom ouvre sa fiche', parMenu);
+    }
   } finally { await ctx.close(); }
 }
 
@@ -293,7 +316,9 @@ async function chiffresA(browser, heure) {
 // (les pieces de la ligne 2, telles qu elles occupent l ecran)
 const chiffresDuJour = (page, detail) => page.evaluate((long) => {
   const g = document.getElementById('planningBande');
-  if (long) g.querySelectorAll('.pb-k .gf-e__s').forEach((h) => { h.textContent = long; });
+  const details = Array.from(g.querySelectorAll('.pb-k .gf-e__s'));
+  const vrais = details.map((h) => h.textContent);
+  if (long) details.forEach((h) => { h.textContent = long; });
   const bord = g.getBoundingClientRect();
   const pieces = Array.from(g.querySelectorAll('.gf-c__l, .gf-c__v, .pb-k .gf-e__s, .pb-leg')).filter((el) => el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0).map((el) => { const r = el.getBoundingClientRect(); return { t: el.classList[0], g: r.left, d: r.right }; });
   const chevauche = pieces.reduce((pire, p, i) => (i ? Math.max(pire, pieces[i - 1].d - p.g) : pire), 0);
@@ -301,29 +326,41 @@ const chiffresDuJour = (page, detail) => page.evaluate((long) => {
   // sans le dire)
   const horsCase = Array.from(g.querySelectorAll('.pb-k .gf-e__s')).filter((s) => s.getClientRects().length > 0)
     .reduce((pire, s) => Math.max(pire, s.getBoundingClientRect().right - s.closest('.pb-k').getBoundingClientRect().right), 0);
-  return { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), horsCase: Math.round(horsCase), details: pieces.filter((p) => p.t === 'gf-e__s').length, libelle: g.querySelector('.pb-k .gf-c__l').textContent };
+  const mesure = { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), horsCase: Math.round(horsCase), details: pieces.filter((p) => p.t === 'gf-e__s').length, coupes: details.filter((s) => s.getClientRects().length > 0 && s.scrollWidth > s.clientWidth).length, libelle: g.querySelector('.pb-k .gf-c__l').textContent };
+  // (la ligne compare son html avant de s ecrire : renderKpis ne remettrait pas ce texte-la)
+  details.forEach((h, i) => { h.textContent = vrais[i]; });
+  return mesure;
 }, detail);
 async function scenarioChiffresDuJour(browser) {
   const { ctx, page } = await ouvrir(browser);
   try {
-    const long = '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 et 12 · la 2 jusqu’à 23:30';
+    // (12 pistes, toutes libres : le detail tient entier a toutes ces largeurs. 40, le plafond
+    // d un centre : il ne tient jamais, c est lui qui fait travailler la regle qui coupe.)
+    const douze = '1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 et 12 · la 2 jusqu’à 23:30';
+    const quarante = `${Array.from({ length: 39 }, (_, i) => i + 1).join(', ')} et 40`;
     const fautes = [];
+    const horsDeSaCase = [];
+    let coupes = 0;
     for (const vue of ['bowling', 'laser']) {
       await page.evaluate((v) => { openStaffPlanningResource(v); }, vue);
       await page.waitForSelector('#planningBande .pb-k', { timeout: 5000 });
-      // (1110 et 1116 : le detail vient d apparaitre, la place est la plus juste ; sonde du
-      // 2026-11-03, au laser la legende y sortait de 9 px sans la regle qui coupe le detail)
-      for (const [l, h] of [[1000, 700], [1024, 768], [1100, 800], [1101, 800], [1110, 800], [1116, 800], [1180, 820], [1256, 800], [1257, 800], [1280, 720], [1366, 768], [1400, 900], [1401, 900], [1540, 900], [1541, 900], [1600, 900], [1920, 1080]]) {
+      // (1107 et 1387 : juste au-dessus des seuils de 1 020 et 1 300 px de barre, le detail vient
+      // d apparaitre ou le texte vient de grandir, la place est la plus juste)
+      for (const [l, h] of [[1000, 700], [1024, 768], [1100, 800], [1101, 800], [1107, 800], [1110, 800], [1116, 800], [1180, 820], [1256, 800], [1257, 800], [1280, 720], [1366, 768], [1386, 800], [1387, 800], [1400, 900], [1401, 900], [1540, 900], [1541, 900], [1600, 900], [1920, 1080]]) {
         await page.setViewportSize({ width: l, height: h });
         await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
-        for (const detail of [null, long]) {
+        for (const detail of [null, douze]) {
           const r = await chiffresDuJour(page, detail);
           if (r.chevauche > 0 || r.deborde > 0 || r.horsCase > 0) fautes.push({ vue, l, detail: Boolean(detail), ...r });
         }
-        await page.evaluate(() => renderKpis());
+        const r = await chiffresDuJour(page, quarante);
+        coupes += r.coupes;
+        if (r.deborde > 0 || r.horsCase > 0) horsDeSaCase.push({ vue, l, ...r });
       }
     }
-    ok(fautes.length === 0, '[L] les chiffres des plannings ne se marchent pas dessus, de 1 000 a 1 920 px ; un detail trop long se coupe a l ellipse dans sa case', fautes.slice(0, 4));
+    ok(fautes.length === 0, '[L] les chiffres des plannings ne se marchent pas dessus, de 1 000 a 1 920 px, avec le detail d un centre de 12 pistes', fautes.slice(0, 4));
+    ok(horsDeSaCase.length === 0, '[L] le detail de 40 pistes reste dans sa case, la legende reste a l ecran', horsDeSaCase.slice(0, 4));
+    ok(coupes > 0, '[L] MONTAGE : le detail de 40 pistes ne tient pas entier, il se coupe a l ellipse', coupes);
     await page.evaluate(() => { openStaffPlanningResource('bowling'); });
     await page.setViewportSize({ width: 1024, height: 768 });
     await page.waitForFunction(() => document.getElementById('planningBarre').getBoundingClientRect().width < 1000, null, { timeout: 3000 }).catch(() => null);
@@ -357,26 +394,41 @@ async function scenarioListe(browser) {
     }
   } finally { await ctx.close(); }
 }
+// (le jour tel qu il se montre : ses lignes, ses demi-heures sans groupe, sa feuille, ce qu il
+// dit, la reponse a une recherche)
+const leJour = (page) => page.evaluate(() => {
+  const feuille = document.querySelector('.gf-defile');
+  const bandeau = document.querySelector('.gf-bandeau');
+  return { lignes: document.querySelectorAll('.gf-r').length, demiHeures: document.querySelectorAll('tr.gf-libre').length, feuille: Boolean(feuille && feuille.getClientRects().length), dit: bandeau && !bandeau.hidden ? bandeau.textContent : '', reponse: Boolean(document.querySelector('.gf-rien')) };
+});
 async function scenarioJourVide(browser) {
-  const { ctx, page } = await ouvrir(browser, 'liens', 'vide');
-  try {
-    const avant = await page.evaluate(() => ({ vide: document.querySelector('.gf').classList.contains('is-vide'), bandeau: document.querySelector('.gf-bandeau').textContent }));
-    ok(avant.vide && /Aucune réservation/.test(avant.bandeau), '[N] le montage : un jour sans groupe', avant);
-    await taper(page, 'Dupont');
-    const r = await page.evaluate(() => {
-      const bouton = document.querySelector('.gf-rien__reserver');
-      return { vu: Boolean(bouton && bouton.getClientRects().length), texte: bouton ? bouton.textContent : '', vide: document.querySelector('.gf').classList.contains('is-vide') };
-    });
-    ok(r.vu && r.texte === 'Réserver pour Dupont' && !r.vide, '[N] un nom tape sur un jour vide propose de reserver pour lui', r);
-    await page.locator('.gf-rien__reserver').click();
-    await attendreReserver(page);
-    const o = await page.evaluate(() => ({ ouvert: !document.getElementById('quickBookOverlay').classList.contains('hidden'), nom: quickBookState && quickBookState.name }));
-    ok(o.ouvert && o.nom === 'Dupont', '[N] et Réserver s ouvre avec son nom', o);
-    await page.evaluate(() => closeQuickBook());
-    await taper(page, '');
-    const apres = await page.evaluate(() => document.querySelector('.gf').classList.contains('is-vide'));
-    ok(apres, '[N] le champ vide, le jour redevient vide', apres);
-  } finally { await ctx.close(); }
+  for (const [ou, appareil, fixture, journee] of [['jour ouvert', 'liens', 'vide', true], ['telephone', 'telephone', 'vide', false], ['jour ferme', 'liens', 'ferme', false]]) {
+    const { ctx, page } = await ouvrir(browser, appareil, fixture);
+    try {
+      const avant = await leJour(page);
+      ok(avant.lignes === 0 && Boolean(avant.dit) && !avant.reponse, `[N] ${ou} : le montage, un jour sans groupe qui le dit`, avant);
+      if (journee) ok(avant.feuille && avant.demiHeures > 0, `[N] ${ou} : il montre toute sa journee, ses demi-heures vides comprises`, avant);
+      else ok(!avant.feuille, `[N] ${ou} : la feuille n a rien a montrer tant qu on ne cherche pas`, avant);
+      await taper(page, 'Dupont');
+      const r = await page.evaluate(() => {
+        const bouton = document.querySelector('.gf-rien__reserver');
+        const ailleurs = document.querySelector('.gf-rien__etat, .gf-rien__liste');
+        return { vu: Boolean(bouton && bouton.getClientRects().length), texte: bouton ? bouton.textContent : '', ailleurs: Boolean(ailleurs && ailleurs.getClientRects().length) };
+      });
+      ok(r.vu && r.texte.includes('Dupont'), `[N] ${ou} : un nom tape propose de reserver pour lui`, r);
+      ok(r.ailleurs, `[N] ${ou} : et il cherche aux autres dates`, r);
+      if (r.vu) {
+        await page.locator('.gf-rien__reserver').click();
+        await attendreReserver(page);
+        const o = await page.evaluate(() => ({ ouvert: !document.getElementById('quickBookOverlay').classList.contains('hidden'), nom: quickBookState && quickBookState.name }));
+        ok(o.ouvert && o.nom === 'Dupont', `[N] ${ou} : et Réserver s ouvre avec son nom`, o);
+        await page.evaluate(() => closeQuickBook());
+      }
+      await taper(page, '');
+      const apres = await leJour(page);
+      ok(JSON.stringify(apres) === JSON.stringify(avant), `[N] ${ou} : le champ vide, le jour redevient ce qu il etait`, { avant, apres });
+    } finally { await ctx.close(); }
+  }
 }
 
 async function scenarioEntree(browser) {
@@ -409,6 +461,8 @@ const MUTATIONS = [
   { nom: 'bandeau-sourd', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "      if (etat) gfDepuisBandeau(wrapDe(), etat.getAttribute('data-gf-etat'));\n", vers: '' }] },
   { nom: 'laser-comme-bowling', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "    else if (cle === 'laser') openQuickBookForLaserSession(et.t, et.places);\n", vers: '' }] },
   { nom: 'absent-muet', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "(la ? '' : ' pas là')", vers: "''" }] },
+  { nom: 'nom-sourd', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: GJS, de: "      var fiche = e.target.closest('[data-gf-fiche]');\n      if (fiche) { openPos(Number(fiche.getAttribute('data-gf-fiche'))); return; }\n      var etat = e.target.closest('[data-gf-etat]');", vers: "      var etat = e.target.closest('[data-gf-etat]');" }] },
+  { nom: 'menu-sans-les-noms', lettre: 'C', scenarios: ['bandeau'], editions: [{ fichier: 'assets/app-main.js', de: "const depart = vue === 'all' && typeof window.gfDepartDuMenu === 'function' ? window.gfDepartDuMenu() : '';", vers: "const depart = '';" }] },
   { nom: 'retard-remis-a-zero', lettre: 'D', scenarios: ['retard'], editions: [{ fichier: GJS, de: 'Math.min(240, deja + Number(n))', vers: 'Number(n)' }] },
   { nom: 'montant-sans-effet', lettre: 'E', scenarios: ['montant'], editions: [{ fichier: GJS, de: 'function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); }', vers: 'function () {}' }] },
   { nom: 'pas-de-montant', lettre: 'E', scenarios: ['montant'], editions: [{ fichier: GJS, de: "      else if (g.etat !== 'closing' && g.teinte === 'arr' && gfPeutEncaisser() && !q) h = '<button type=\"button\" class=\"gf-du gf-du--b'", vers: "      else if (false) h = '<button type=\"button\" class=\"gf-du gf-du--b'" }] },
@@ -422,6 +476,9 @@ const MUTATIONS = [
   { nom: 'liste-par-son-nom-seul', lettre: 'M', scenarios: ['liste'], editions: [{ fichier: 'assets/app-main.js', de: "const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;", vers: 'const trouves = null;' }] },
   { nom: 'jour-vide-sourd', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'var aEcrire = Boolean(m.groupes.length || q || (!ferme && !cartes));', vers: 'var aEcrire = Boolean(m.groupes.length || (!ferme && !cartes));' }] },
   { nom: 'jour-vide-sans-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: "if (!lignes.length && (m.groupes.length || q)) {", vers: 'if (!lignes.length && m.groupes.length) {' }] },
+  { nom: 'jour-vide-sans-autres-dates', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: "      + gfAutresDatesHtml(m, terme);", vers: "      + '';" }] },
+  { nom: 'jour-vide-garde-la-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: '} else if (wrap._gfParties || defile.firstChild) {', vers: '} else if (false) {' }] },
+  { nom: 'jour-vide-sans-sa-journee', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'if (!q && !m.visibles && !cartes && fen && !fen.closed && fen.close > fen.open) {', vers: 'if (false) {' }] },
   // Un detail long pousse la legende hors de la ligne.
   { nom: 'detail-qui-pousse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n', vers: '' }] },
   { nom: 'detail-sans-coupure', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gf-e__s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }', vers: '.gf-e__s { flex: none; white-space: nowrap; font-size: 12px; color: var(--muted); }' }] },
@@ -434,7 +491,16 @@ const MUTATIONS = [
 ];
 
 async function jouer(browser, noms) {
-  for (const nom of noms) await SCENARIOS[nom](browser);
+  for (const nom of noms) {
+    try {
+      await SCENARIOS[nom](browser);
+    } catch (e) {
+      // (un scenario qui casse n emporte pas les suivants : leur verdict se lit quand meme. Sous
+      // une mutation, la casse est un rouge de sa lettre, main le compte)
+      if (mutation) throw e;
+      ok(false, `le scenario ${nom} va au bout`, String(e.message || e).split('\n')[0]);
+    }
+  }
 }
 
 async function main() {

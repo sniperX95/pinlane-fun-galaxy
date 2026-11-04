@@ -28,9 +28,12 @@
 //       rend la main.
 //   [D] LE PLANNING JUGE CHAQUE HEURE PROPOSEE. Les seances du bowling, la page
 //       « Autres » et les heures d une partie de laser partent au serveur, une
-//       variante par heure ; l heure qu il refuse ne se propose plus, ou
-//       s efface en disant pourquoi ; choisir une heure la pose et relance le
-//       plan.
+//       variante par heure ; l heure qu il refuse reste a sa place et le dit,
+//       avec son mot et sa phrase, jamais une raison du poste (Ansar, 03/11 :
+//       « quand ya des heures impossible ça affiche direct sur lheure comme ça
+//       on sait ») ; choisir une heure la pose et relance le plan. Ce que le
+//       toucher d une heure qui coince fait selon le role : reserver-seances
+//       [S10].
 //   [E] MEME CLIENT, UN ENVOI. Deux resas partent dans UN POST `dossiers`, le
 //       contact commun, sans « forcer » global. Un lot en partie refuse (le
 //       serveur repond ok:false, 207) : la resa creee sort de la fenetre, la
@@ -86,6 +89,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { chromium } = require('playwright-core');
+const { verdictDuPlan } = require('../lib/reserver-simulation');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PINLANE_RESERVER_PORT || 4261);
@@ -114,9 +118,24 @@ const MUTATIONS = {
   // Les heures d une partie de laser ne partent plus au planning : leur
   // verdict ne vient plus du serveur (l horloge de l ancienne fenetre).
   horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes })", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] })", vise: ['D'] },
-  // Les seances ne partent plus au planning : une heure qu il refuse reste
-  // proposee.
+  // Les seances ne partent plus au planning : une heure qu il refuse a l air
+  // de tenir.
   seances: { fichier: 'assets/app-main.js', de: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes })', vers: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: [] })', vise: ['D'] },
+  // Seules les 12 premieres heures partent : « Autres » montre des heures que
+  // le serveur n a pas lues (le defaut d avant le 2026-11-03).
+  douzeHeures: { fichier: 'assets/app-main.js', de: 'variantes: rvHeuresHorloge(id).slice(0, 48).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;', vers: 'variantes: rvHeuresHorloge(id).slice(0, 12).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;', vise: ['D'] },
+  // L heure refusee sort de la rangee : elle saute sans rien dire (« desfois ya
+  // pas toute les heures »).
+  refusRetire: { fichier: 'assets/app-main.js', de: '  return { suite: brut.suite, lue, liste: brut.liste };', vers: "  return { suite: brut.suite, lue, liste: lue ? brut.liste.filter((x) => !x.verdict || x.verdict.statut !== 'ko') : brut.liste };", vise: ['D'] },
+  // L heure refusee se tait : pas de mot sur la touche.
+  refusMuet: { fichier: 'assets/app-main.js', de: '  if (coince) return rsMotCoince(id, coince);\n', vers: '', vise: ['D'] },
+  // Le poste invente son mot au lieu de dire celui du serveur.
+  motDuPoste: { fichier: 'assets/app-main.js', de: "  const court = String((verdict && verdict.court) || 'impossible');", vers: "  const court = 'impossible';", vise: ['D'] },
+  // Le nom de la touche ne dit plus la phrase du serveur.
+  phraseOubliee: { fichier: 'assets/app-main.js', de: 'const aria = coince ? `${dite}, ne tient pas, ${rsPhrase(coince.raison)}`', vers: 'const aria = coince ? `${dite}, ne tient pas`', vise: ['D'] },
+  // Les heures de la partie 2 oublient le verdict du serveur : celle qu il
+  // refuse a l air de tenir.
+  partieSansVerdict: { fichier: 'assets/app-main.js', de: "? toutes.map((heure) => ({ heure, tient: rsEtatHeure(id, heure, partie).etat !== 'ko', verdict: rsVerdictDesCandidats('laser_game', partie, heure) }))", vers: "? toutes.map((heure) => ({ heure, tient: rsEtatHeure(id, heure, partie).etat !== 'ko', verdict: null }))", vise: ['D'] },
   // Plusieurs resas : seule celle a l ecran part.
   lot: { fichier: 'assets/app-main.js', de: '  const lot = rvResas.length > 1 && rvResas.includes(etat);', vers: '  const lot = false;', vise: ['E'] },
   // Un lot en partie refuse passe pour une panne : la resa creee reste dans la
@@ -191,12 +210,19 @@ const ACTIVITIES = [
   { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', order: 3, defaultMinutes: 45 },
 ];
 
+// Une heure refusee, dans les mots du vrai serveur : sa phrase passe par le code
+// qui en tire le mot de la touche et l activite qui coince (lib/reserver-simulation).
+// Le faux serveur ne recopie pas ce contrat, il le rend. Les phrases sont celles
+// de lib/ops-engine.js.
+const REFUS_DES_PISTES = verdictDuPlan({ planAvailable: false, planRefusal: 'Pas assez de pistes libres à 15:00 : il en faut 1.' });
+const REFUS_DU_LASER = verdictDuPlan({ planAvailable: false, planRefusal: 'Laser à 15:00 : plus aucune place sur 30, il en faut 4. Décalez le départ.' });
+
 // La session du faux serveur vit 24 h apres l heure de la PAGE : une page
 // figee plus loin (le samedi du planning Laser) la trouvait expiree et la
 // console restait verrouillee (2026-10-08).
 async function installMock(page, { maintenant = Date.now() } = {}) {
   const expiresAt = new Date(Number(maintenant) + 24 * 3600 * 1000).toISOString();
-  await page.addInitScript(({ expiresAt, ACTIVITIES }) => {
+  await page.addInitScript(({ expiresAt, ACTIVITIES, REFUS_DES_PISTES, REFUS_DU_LASER }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.quick', 'reservations.edit', 'reservations.status', 'clients.view', 'payments.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     const today = new Date().toISOString().slice(0, 10);
@@ -240,12 +266,10 @@ async function installMock(page, { maintenant = Date.now() } = {}) {
         const corps = JSON.parse(init.body || '{}');
         if (corps.dryRun && Array.isArray(corps.candidats)) {
           window.__QA_CANDIDATS__.push(corps);
-          return J({ ok: true, dryRun: true, plan: planPour(corps), candidats: corps.candidats.map((v) => ({
-            heure: v.heure,
-            statut: v.heure === '15:00' ? 'ko' : v.heure === '15:30' ? 'partage' : 'ok',
-            raison: v.heure === '15:00' ? 'Toutes les pistes sont prises' : v.heure === '15:30' ? 'Partie partagée' : '',
-            fin: plus(v.startTime || v.heure, 60),
-          })) });
+          return J({ ok: true, dryRun: true, plan: planPour(corps), candidats: corps.candidats.map((v) => {
+            if (v.heure === '15:00') return { heure: v.heure, ...(v.preference && Array.isArray(v.preference.laserGameTimes) ? REFUS_DU_LASER : REFUS_DES_PISTES), fin: '', conflits: [] };
+            return { heure: v.heure, statut: v.heure === '15:30' ? 'partage' : 'ok', raison: v.heure === '15:30' ? 'Partie partagée' : '', fin: plus(v.startTime || v.heure, 60), conflits: [] };
+          }) });
         }
         if (corps.dryRun) { window.__QA_SIMS__.push(corps); return J({ ok: true, dryRun: true, plan: planPour(corps) }); }
         window.__QA_CREES__.push(corps);
@@ -275,7 +299,7 @@ async function installMock(page, { maintenant = Date.now() } = {}) {
       return nf(input, init);
     };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
-  }, { expiresAt, ACTIVITIES });
+  }, { expiresAt, ACTIVITIES, REFUS_DES_PISTES, REFUS_DU_LASER });
 }
 
 // Un jour ouvert, dans deux jours : ni heure passee, ni journee du jour.
@@ -519,6 +543,26 @@ async function scenarioC(page, verifier) {
 }
 
 // ── [D] ───────────────────────────────────────────────────────────────────────
+// Les touches d heure telles qu elles se lisent : ce qui est ecrit dessus, leur
+// nom, leur survol ; et ce qui les empeche de se toucher.
+const lireHeures = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s)].map((b) => ({
+  heure: b.getAttribute('data-heure'),
+  mot: ((b.querySelector('small') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+  nom: b.getAttribute('aria-label') || '',
+  survol: b.getAttribute('title') || '',
+  touchable: !b.disabled && b.getAttribute('aria-disabled') !== 'true',
+  grisee: b.classList.contains('is-efface'),
+})), sel);
+// (une phrase du moteur s ecrit sans deux-points au milieu : rsPhrase)
+const phraseDe = (refus) => String(refus.raison).replace(/\s:\s/g, ', ');
+// Une touche qui dit le refus du serveur : son mot, et sa phrase a qui ne la voit
+// pas ; elle se touche (ce que le toucher fait depend du role).
+const ditLeRefus = (x, refus) => Boolean(x) && x.mot === refus.court && x.nom.includes(phraseDe(refus)) && x.survol.includes(phraseDe(refus)) && x.touchable && !x.grisee;
+// Une heure a sa place : chaque demi-heure, sans trou.
+const minutesDe = (h) => Number(String(h).slice(0, 2)) * 60 + Number(String(h).slice(3, 5));
+const sansTrou = (heures) => heures.every((h, i) => i === 0 || minutesDe(h) - minutesDe(heures[i - 1]) === 30);
+const lisible = (liste) => JSON.stringify(liste.map((x) => `${x.heure}|${x.mot}|${x.nom}`));
+
 async function scenarioD(page, verifier) {
   await page.evaluate((jour) => {
     closeQuickBook();
@@ -528,33 +572,28 @@ async function scenarioD(page, verifier) {
   // 1. Les seances du bowling, relues par le planning (le faux serveur refuse
   // 15:00, partage 15:30, laisse tenir le reste).
   const relues = await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).then(() => true, () => false);
-  const accueil = await page.evaluate(() => {
+  const variantes = await page.evaluate(() => {
     const envoi = window.__QA_CANDIDATS__.filter((c) => c.type === 'bowling').pop() || null;
-    return {
-      variantes: envoi ? envoi.candidats : [],
-      seances: [...document.querySelectorAll('#rsZ-bowling .rs-s-l .rs-h[data-heure]')].map((b) => b.getAttribute('data-heure')),
-    };
+    return envoi ? envoi.candidats : [];
   });
-  const variantes = accueil.variantes;
+  const seances = await lireHeures(page, '#rsZ-bowling .rs-s-l .rs-h[data-heure]');
+  const seance = (h) => seances.find((x) => x.heure === h);
   verifier('D', variantes.length >= 4 && new Set(variantes.map((v) => v.heure)).size === variantes.length && variantes.every((v) => v.startTime === v.heure), 'les seances du bowling partent au planning, une variante par heure (le depart de chacune)', `${variantes.length} variante(s) : ${variantes.slice(0, 12).map((v) => v.heure).join(', ')}`);
-  verifier('D', relues && variantes.some((v) => v.heure === '15:00') && !accueil.seances.includes('15:00') && accueil.seances.includes('15:30'), '15:00, que le planning refuse, ne se propose plus (seances relues), 15:30 reste', `relues=${relues}, seances : ${accueil.seances.join(', ')}`);
+  verifier('D', relues && variantes.some((v) => v.heure === '15:00') && sansTrou(seances.map((x) => x.heure)) && ditLeRefus(seance('15:00'), REFUS_DES_PISTES), '15:00, que le planning refuse, reste a sa place dans la rangee et le dit : le mot et la phrase du serveur', `relues=${relues}, seances : ${lisible(seances)}`);
+  verifier('D', Boolean(seance('15:30')) && seances.filter((x) => x.heure !== '15:00').every((x) => !x.survol && x.touchable && x.mot !== REFUS_DES_PISTES.court), 'les heures qu il ne refuse pas ne disent aucun refus (15:30, partagee, comprise)', lisible(seances));
 
-  // 2. « Autres » : toutes les heures du jour, jugees par le planning.
-  const nAutres = await page.evaluate(() => window.__QA_CANDIDATS__.length);
+  // 2. « Autres » : toutes les heures du jour, jugees par le planning : les lues
+  // pour la rangee (un seul envoi, rsVerifier), aucune en attente d une reponse.
   await page.click('#rsZ-bowling .rs-h-autres');
-  await page.waitForFunction((n) => window.__QA_CANDIDATS__.slice(n).some((c) => c.type === 'bowling' && c.candidats.length > 12), nAutres, { timeout: 8000 }).catch(() => {});
-  await page.waitForSelector('#rsCorps .rs-heures .rs-h.is-efface', { timeout: 5000 }).catch(() => {});
-  const autres = await page.evaluate((n) => {
-    const envoi = window.__QA_CANDIDATS__.slice(n).filter((c) => c.type === 'bowling').pop() || null;
-    const heures = [...document.querySelectorAll('#rsCorps .rs-heures .rs-h[data-heure]')];
-    return {
-      page: document.querySelector('#quickBookOverlay .qb-modal.rv').classList.contains('is-q-autres'),
-      envoyees: envoi ? envoi.candidats.map((v) => v.heure) : [],
-      heures: heures.map((b) => b.getAttribute('data-heure')),
-      effacees: heures.filter((b) => b.classList.contains('is-efface')).map((b) => `${b.getAttribute('data-heure')}|${b.getAttribute('aria-label')}|${b.disabled ? 'desactivee' : 'touchable'}`),
-    };
-  }, nAutres);
-  verifier('D', autres.page && autres.heures.length >= 20 && autres.heures.every((h) => autres.envoyees.includes(h)) && JSON.stringify(autres.effacees) === JSON.stringify(['15:00|15:00, ne tient pas|touchable']), '« Autres » : chaque heure du jour part au planning ; seule celle qu il refuse (15:00) s efface, touchable, et dit pourquoi', JSON.stringify({ heures: autres.heures.length, envoyees: autres.envoyees.length, effacees: autres.effacees }));
+  await page.waitForSelector('#rsCorps .rs-heures .rs-h[data-heure="15:00"][title]', { timeout: 5000 }).catch(() => {});
+  const autresHeures = await lireHeures(page, '#rsCorps .rs-heures .rs-h[data-heure]');
+  const autresEtat = await page.evaluate(() => {
+    const envoi = window.__QA_CANDIDATS__.filter((c) => c.type === 'bowling').pop() || null;
+    return { page: document.querySelector('#quickBookOverlay .qb-modal.rv').classList.contains('is-q-autres'), envoyees: envoi ? envoi.candidats.map((v) => v.heure) : [] };
+  });
+  const refuseesAutres = autresHeures.filter((x) => x.survol);
+  verifier('D', autresEtat.page && autresHeures.length >= 20 && autresHeures.every((x) => autresEtat.envoyees.includes(x.heure)) && autresHeures.every((x) => !x.grisee), '« Autres » : chaque heure du jour est jugee par le planning, aucune ne reste grisee en attente', JSON.stringify({ heures: autresHeures.length, envoyees: autresEtat.envoyees.length, grisees: autresHeures.filter((x) => x.grisee).map((x) => x.heure) }));
+  verifier('D', sansTrou(autresHeures.map((x) => x.heure)) && refuseesAutres.length === 1 && refuseesAutres[0].heure === '15:00' && ditLeRefus(refuseesAutres[0], REFUS_DES_PISTES), '« Autres » : celle qu il refuse (15:00) reste a sa place, touchable, et dit pourquoi ; les autres ne disent aucun refus', lisible(refuseesAutres));
 
   // 3. Choisir une heure la pose, et le plan repart.
   const sims = await page.evaluate(() => window.__QA_SIMS__.length);
@@ -576,20 +615,19 @@ async function scenarioD(page, verifier) {
   const nPartie = await page.evaluate(() => window.__QA_CANDIDATS__.length);
   await page.click('#rvPartie-1');
   await page.waitForFunction((n) => window.__QA_CANDIDATS__.slice(n).some((c) => c.candidats.some((v) => v.preference && Array.isArray(v.preference.laserGameTimes))), nPartie, { timeout: 8000 }).catch(() => {});
-  await page.waitForSelector('#rsCorps .rs-heures .rs-h.is-efface', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('#rsCorps .rs-heures .rs-h[data-heure="15:00"][title]', { timeout: 5000 }).catch(() => {});
+  const heuresPartie = await lireHeures(page, '#rsCorps .rs-heures .rs-h[data-heure]');
   const partie = await page.evaluate((n) => {
     const envoi = window.__QA_CANDIDATS__.slice(n).filter((c) => c.candidats.some((v) => v.preference && Array.isArray(v.preference.laserGameTimes))).pop() || null;
-    const heures = [...document.querySelectorAll('#rsCorps .rs-heures .rs-h[data-heure]')];
     return {
       titre: ((document.getElementById('rsQ') || {}).textContent || '').trim(),
       variantes: envoi ? envoi.candidats.map((v) => ({ heure: v.heure, departs: v.preference && v.preference.laserGameTimes ? v.preference.laserGameTimes.join('+') : '' })) : [],
-      heures: heures.map((b) => b.getAttribute('data-heure')),
-      effacees: heures.filter((b) => b.classList.contains('is-efface')).map((b) => b.getAttribute('data-heure')),
     };
   }, nPartie);
   const deplacees = partie.variantes.filter((v) => v.heure > '14:30');
-  verifier('D', partie.titre === 'Laser, partie 2, à quelle heure ?' && new Set(partie.variantes.map((v) => v.heure)).size === partie.variantes.length && deplacees.length >= 4 && deplacees.every((v) => v.departs === `14:00+${v.heure}`) && partie.heures.every((h) => partie.variantes.some((v) => v.heure === h)), 'les heures de la partie 2 partent au planning, une variante par heure, la partie deplacee a cette heure', JSON.stringify({ titre: partie.titre, variantes: partie.variantes.length, exemple: deplacees.slice(0, 2) }));
-  verifier('D', JSON.stringify(partie.effacees) === JSON.stringify(['15:00']), '15:00, refusee par le planning pour la partie 2, s efface', `effacees : ${partie.effacees.join(', ') || 'aucune'}`);
+  verifier('D', partie.titre === 'Laser, partie 2, à quelle heure ?' && new Set(partie.variantes.map((v) => v.heure)).size === partie.variantes.length && deplacees.length >= 4 && deplacees.every((v) => v.departs === `14:00+${v.heure}`) && heuresPartie.every((x) => partie.variantes.some((v) => v.heure === x.heure)), 'les heures de la partie 2 partent au planning, une variante par heure, la partie deplacee a cette heure', JSON.stringify({ titre: partie.titre, variantes: partie.variantes.length, exemple: deplacees.slice(0, 2) }));
+  const refuseesPartie = heuresPartie.filter((x) => x.survol);
+  verifier('D', sansTrou(heuresPartie.map((x) => x.heure)) && refuseesPartie.length === 1 && refuseesPartie[0].heure === '15:00' && ditLeRefus(refuseesPartie[0], REFUS_DU_LASER), '15:00, refusee par le planning pour la partie 2, reste a sa place et le dit, avec le mot et la phrase du laser', lisible(refuseesPartie));
   const simsPartie = await page.evaluate(() => window.__QA_SIMS__.length);
   await page.click('#rsCorps .rs-heures .rs-h[data-heure="16:00"]');
   await page.waitForFunction((n) => window.__QA_SIMS__.length > n, simsPartie, { timeout: 8000 }).catch(() => {});

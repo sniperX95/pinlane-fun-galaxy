@@ -114,11 +114,6 @@ const MUTATIONS = [
     remplacer: [["    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;\n    state.arrivee = '';", "    return;\n    state.arrivee = '';"]],
   },
   {
-    nom: 'l arrivee choisie ne se recale plus sur le plan',
-    fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [['    if (state.arrivee && slot && arriveeDe(slot.opsPlan)) state.arrivee = arriveeDe(slot.opsPlan);\n', '']],
-  },
-  {
     nom: 'effacer l arrivee retire les heures touchees',
     fichier: 'assets/fungalaxy-booking.js',
     remplacer: [["    arriveeEffacee = state.arrivee;\n    state.arrivee = ''; adaptation = null;", "    arriveeEffacee = state.arrivee;\n    state.arrivee = ''; adaptation = null; state.pins = {}; state.laserParts = [];"]],

@@ -889,11 +889,13 @@ async function scenarioF(browser, mock) {
     const arrive = await versHeures(un.page, mock, 'f1');
     const sansTrou = await lireConseil(un.page);
     await poser(un.page, 'bowling', '11:00');
+    // Dix minutes d accueil et cinq de passage : rien a dire.
+    const petitTrou = await lireConseil(un.page);
     await poser(un.page, 'laser_game', '12:30');
     const conseil = await lireConseil(un.page);
     const combien = await un.page.evaluate(() => document.querySelectorAll('#hourZone .fg-conseil:not([hidden])').length);
-    ok(arrive && sansTrou === '' && conseil === '30 min avant le laser game : les arcades sont comprises' && combien === 1,
-      'sans trou, aucun conseil ; bowling 11:00, laser 12:30 : une seule ligne, « 30 min avant le laser game : les arcades sont comprises »', JSON.stringify({ sansTrou, conseil, combien }));
+    ok(arrive && sansTrou === '' && petitTrou === '' && conseil === '30 min avant le laser game : les arcades sont comprises' && combien === 1,
+      'sans trou, ou sous la demi-heure, aucun conseil ; bowling 11:00, laser 12:30 : une seule ligne, « 30 min avant le laser game : les arcades sont comprises »', JSON.stringify({ sansTrou, petitTrou, conseil, combien }));
   } finally {
     ok(un.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript', un.suivi.erreurs.slice(0, 3).join(' | '));
     await un.ctx.close();

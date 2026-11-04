@@ -15,20 +15,19 @@
 //     la sert pas.
 // [B] LE FORMULAIRE, LA PLAINE SEULE (dev-tunnel-server, disponibilite
 //     reelle) : la carte dit « accès à la journée · 4 à 12 ans » ; « Votre
-//     visite » dit « dès HH:MM, accès toute la journée », sans fin ni duree ;
-//     la ligne libre dit « Playground (toute la journée) » et « à votre
-//     rythme » ; la barre du bas dit « dès HH:MM, toute la journée » ; le
-//     recapitulatif dit « 2 enfants · accès toute la journée · 4 à 12 ans »
-//     (les enfants comptes, 2026-09-30 ; par defaut tout le groupe) ; nulle
-//     part « 1 heure », « 1 h » ni « environ ».
-// [C] BOWLING + PLAINE : la ligne libre et le detail du prix disent « toute la
-//     journée », « à votre rythme » sans duree ; la fin estimee reste celle
-//     de la reponse du serveur (la plaine y compte son heure d estimation).
+//     visite » dit HH:MM et « Playground (toute la journée) », sans fin ni
+//     duree ; la barre du bas dit « dès HH:MM, toute la journée » ; la voix dit
+//     l acces toute la journee ; le recapitulatif dit « 2 enfants · accès toute
+//     la journée · 4 à 12 ans » et « à votre rythme » (les enfants comptes,
+//     2026-09-30 ; par defaut tout le groupe) ; nulle part « 1 heure », « 1 h »
+//     ni « environ ».
+// [C] BOWLING + PLAINE : la visite dit « Aussi : Playground (toute la journée) »,
+//     sans duree ; la fin estimee reste celle de la reponse du serveur (la plaine
+//     y compte son heure d estimation).
 // [D] LE TUNNEL GENERIQUE (app-main.js) suit la meme regle dans son recap.
 //
 // CONTRE-PREUVES : PJ_CASSE=<nom> sert le JS du formulaire casse expres, et
-// chacune doit rougir sa cible : recap, detail, libre, environ, journee,
-// carte, parties, insecable.
+// chacune doit rougir sa cible : recap, libre, environ, journee, carte, insecable.
 'use strict';
 
 const fs = require('fs');
@@ -48,12 +47,10 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 
 const MUTATIONS = {
   recap: ["        } else if (it.dayAccess) {\n          morceaux.push('accès toute la journée', ageActivite(it.activityId));\n        } else {", '        } else {'],
-  detail: ["    if (it.dayAccess) return 'toute la journée';\n", ''],
-  libre: ["var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);", 'var entre = detailSessions(it);'],
-  environ: ["var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';", "var duree = Number(it.minutes) > 0 ? environ(it.minutes) : '';"],
+  libre: ["var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);", "var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? detailArcade(it) : detailSessions(it);"],
+  environ: ["var duree = !entre && !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';", "var duree = !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';"],
   journee: ['var journee = items.length > 0 && items.every(function (it) { return it.dayAccess; });', 'var journee = false;'],
-  carte: ["    return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : '', a.minPax > 1 ? a.minPax + '\\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');", "    return a.note || '';"],
-  parties: ['|| !b.startTime || journee[b.activityId]) return;', '|| !b.startTime) return;'],
+  carte: ["    return [a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : '', a.minPax > 1 ? a.minPax + '\\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');", "    return '';"],
   insecable: ["a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : ''", "a.ageRange || ''"],
 };
 
@@ -155,10 +152,10 @@ async function lireVisite(page) {
     if (!v) return null;
     return {
       texte: blancsDom(v),
-      entete: blancsDom(v.querySelector('.fg-visit__span')),
-      etapes: Array.from(v.querySelectorAll('.fg-visit__step')).map((li) => ({ heure: blancsDom(li.querySelector('b')), titre: blancsDom(li.querySelector('span')), detail: blancsDom(li.querySelector('small')), libre: li.classList.contains('fg-visit__step--free') })),
-      prix: Array.from(v.querySelectorAll('.fg-visit__prices > div')).map((d) => ({ dt: blancsDom(d.querySelector('dt')), dd: blancsDom(d.querySelector('dd')) })),
+      etapes: Array.from(v.querySelectorAll('.fg-visit__step')).map((li) => ({ heure: blancsDom(li.querySelector('b')), titre: blancsDom(li.querySelector('span')), detail: blancsDom(li.querySelector('small')) })),
+      aussi: blancsDom(v.querySelector('.fg-visit__aussi')),
       barre: blancsDom(document.querySelector('#hourSum')),
+      voix: blancsDom(document.querySelector('#fgLive')),
     };
   });
 }
@@ -257,13 +254,15 @@ async function main() {
       '[B] la carte dit l entree a la journee : par son « i » avant la selection (bref masque), par son bref visible apres, et l age du centre', JSON.stringify({ carte: b.carte, avant: b.briefAvant, apres: b.briefApres }));
     ok(b.carteBrute.indexOf('4\u00a0à\u00a012\u00a0ans') >= 0, '[B] l age ne se coupe pas en fin de ligne (espaces insecables)', JSON.stringify(b.carteBrute.slice(-14)));
     ok(b.vu, '[B] le bloc « Votre visite » est rendu pour la plaine seule');
-    const vb = await lireVisite(page) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };
-    ok(/^dès \d{2}:\d{2}, accès toute la journée$/.test(vb.entete), '[B] l en-tete dit « dès HH:MM, accès toute la journée », sans heure de fin', `« ${vb.entete} »`);
-    const libreB = vb.etapes.find((e) => e.libre) || {};
-    ok(libreB.titre === 'Playground (toute la journée)' && libreB.detail === '2 enfants · à votre rythme', '[B] la ligne libre dit la journee, ses deux enfants et « à votre rythme »', JSON.stringify(libreB));
+    const vb = await lireVisite(page) || { texte: '', etapes: [], aussi: '', barre: '', voix: '' };
+    await attendre(page, () => document.querySelector('#fgLive').textContent.includes('Votre visite'), 3000);
+    const voixB = await page.evaluate(() => blancsDom(document.querySelector('#fgLive')));
+    const libreB = vb.etapes[0] || {};
+    ok(vb.etapes.length === 1 && /^\d{2}:\d{2}$/.test(libreB.heure) && libreB.titre === 'Playground (toute la journée)' && !libreB.detail, '[B] la visite dit l heure de debut et « Playground (toute la journée) », sans heure de fin ni duree', JSON.stringify(vb.etapes));
+    ok(/Accès toute la journée\./.test(voixB), '[B] la voix dit l acces toute la journee', `« ${voixB} »`);
     ok(!vb.etapes.some((e) => /Fin de la visite/.test(e.titre)), '[B] aucune « Fin de la visite » : une entree a la journee n a pas de fin a annoncer', vb.etapes.map((e) => e.titre).join(' | '));
     ok(/^dès \d{2}:\d{2}, toute la journée( · .+)?$/.test(vb.barre), '[B] la barre du bas dit « dès HH:MM, toute la journée », sans heure de fin', `« ${vb.barre} »`);
-    ok(!UNE_HEURE.test(vb.texte), '[B] nulle part dans la visite « 1 heure », « 1 h » ni « environ »', `« ${vb.texte.slice(0, 160)} »`);
+    ok(!UNE_HEURE.test(vb.texte) && !UNE_HEURE.test(voixB), '[B] nulle part dans la visite, ni a la voix, « 1 heure », « 1 h » ni « environ »', `« ${vb.texte.slice(0, 160)} » / « ${voixB} »`);
     const rb = await lireRecap(page);
     const lignePlaine = rb.items.find((i) => i.nom === 'Playground') || {};
     ok(lignePlaine.detail === '2 enfants · accès toute la journée · 4 à 12 ans' && lignePlaine.aside === 'à votre rythme',
@@ -283,11 +282,8 @@ async function main() {
     pageC.on('response', async (r) => { if (r.url().indexOf('/api/public-availability?') >= 0) { try { reponses.push(await r.json()); } catch (error) { /* reponse sans corps */ } } });
     const c = await jusquAuxHeures(pageC, 2, ['bowling', 'playground']);
     ok(c.vu, '[C] le bloc « Votre visite » est rendu pour bowling + plaine');
-    const vc = await lireVisite(pageC) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };
-    const libreC = vc.etapes.find((e) => e.libre) || {};
-    ok(libreC.titre === 'Playground (toute la journée)' && libreC.detail === '2 enfants · à votre rythme', '[C] la ligne libre dit la journee, ses deux enfants et « à votre rythme », sans duree', JSON.stringify(libreC));
-    const prixPlaine = vc.prix.find((p) => /^Playground/.test(p.dt)) || {};
-    ok(prixPlaine.dt === 'Playground · toute la journée', '[C] le detail du prix dit « Playground · toute la journée »', JSON.stringify(prixPlaine));
+    const vc = await lireVisite(pageC) || { texte: '', etapes: [], aussi: '', barre: '', voix: '' };
+    ok(vc.aussi === 'Aussi : Playground (toute la journée)', '[C] la visite dit la journee, sans duree', `« ${vc.aussi} »`);
     const derniere = reponses.filter((r) => r && Array.isArray(r.slots) && r.slots.length).pop() || {};
     const retenu = await pageC.evaluate(() => (document.querySelector('#planZone .fg-visit__step--out b') || {}).textContent || '');
     const fins = (derniere.slots || []).map((s) => s.visitEndTime).filter(Boolean);

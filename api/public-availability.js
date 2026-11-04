@@ -1104,7 +1104,14 @@ module.exports = async (req, res) => {
           || laserGameTimes.some((time) => time));
         // Le plan de ces heures-la, par la porte de la reservation (le moteur,
         // puis la garde finale) : celui que la demande suivante recevra.
-        const planDesHeures = (heures, parties) => {
+        // L HEURE D ARRIVEE DU CLIENT, DISSOCIEE DES ACTIVITES (Ansar, 2026-11-04 :
+        // « on change l heure d arrive et les heures bowling et laser game suivent
+        // mais non »). `arrival=HH:MM` prend la porte de la formule par heure
+        // d arrivee : les heures posees restent les siennes, les autres se cherchent
+        // apres elle (chooseArrivalCombination). Sans ce parametre, rien ne change.
+        const heureArriveeVisite = String(url.searchParams.get('arrival') || '').trim().slice(0, 5);
+        const memoDesArrivees = new Map();
+        const planDesHeures = (heures, parties, arrivee = '') => {
           const plan = planningAgent(
             {
               centerId,
@@ -1113,10 +1120,10 @@ module.exports = async (req, res) => {
               formula: visitFormula,
               pax,
               duration: program.plannedItems[0]?.duration || 0,
-              preference: { preferredTimes: heures, laserGameTimes: parties, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
+              preference: { preferredTimes: heures, laserGameTimes: parties, laserPlacement: 'scheduled', arrivalConfidence: 'normal', ...(arrivee ? { arrivalTime: arrivee } : {}) },
               pauseMinutes,
             },
-            engineContext,
+            arrivee ? { ...engineContext, arrivalMemo: memoDesArrivees } : engineContext,
           );
           const recommended = plan?.plan?.recommended;
           const guarded = recommended && recommended.ok
@@ -1194,7 +1201,20 @@ module.exports = async (req, res) => {
           sendJson(res, 200, { ok: true, date, ...scheduleMeta, arrivalTimes });
           return;
         }
-        if (!hasAnchorChoice) {
+        // LES HEURES D ARRIVEE DU JOUR (`arrivals=1`), jugees avec les heures que le
+        // client a touchees, par la porte de la reservation : une arrivee apres
+        // l une d elles se refuse, elle ne la deplace jamais.
+        if (url.searchParams.get('arrivals') === '1') {
+          const grille = require('../lib/ops-engine').listFormulaArrivalTimes({ centerId, formula: visitFormula, date });
+          const arrivals = (grille.ok ? grille.times : []).map((time) => {
+            const essai = planDesHeures(preferredTimes, laserGameTimes, time);
+            if (essai.guarded.length) return { time, ok: true };
+            return { time, ok: false, code: essai.plan?.plan?.refusalCode || 'arrival_none', reason: essai.plan?.plan?.reason || 'Indisponible' };
+          });
+          sendJson(res, 200, { ok: true, date, ...scheduleMeta, arrivals });
+          return;
+        }
+        if (!hasAnchorChoice && !heureArriveeVisite) {
           // ZERO FRICTION, comme pour une formule : on ne rend pas une liste
           // vide. Une liste vide faisait afficher au client, DES SON ARRIVEE
           // sur l'ecran, un encadre rouge « Cette combinaison n'est pas
@@ -1280,7 +1300,13 @@ module.exports = async (req, res) => {
         const partiesCompletes = laserGameTimes.some((time) => time)
           ? laserGameTimes
           : (heuresCompletes.laser_game ? [heuresCompletes.laser_game] : laserGameTimes);
-        const { plan, guarded } = planDesHeures(heuresCompletes, partiesCompletes);
+        // Avec une arrivee, seules les heures du client sont tenues : le moteur
+        // cherche les autres apres elle, et ce sont elles que la grille propose.
+        const { plan, guarded } = heureArriveeVisite
+          ? planDesHeures(preferredTimes, laserGameTimes, heureArriveeVisite)
+          : planDesHeures(heuresCompletes, partiesCompletes);
+        const heuresDuPlan = (heureArriveeVisite && plan?.plan?.recommended?.anchorPlan?.times) || null;
+        if (heuresDuPlan && anchorMeta && anchorMeta.ok) anchorMeta = { ...anchorMeta, defaultTimes: { ...anchorMeta.defaultTimes, ...heuresDuPlan } };
         // Des heures que la fermeture refuse (le bowling pose a 21:30) : la meme
         // proposition que pour une visite qui deborde.
         const refusDeFermeture = !guarded.length && plan?.plan?.refusalCode === 'schedule';

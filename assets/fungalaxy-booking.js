@@ -260,6 +260,9 @@
   var meta = null;             // la reponse de public-booking-meta
   var state = {
     date: '',
+    // Les heures seulement proposees que le client garde sans les avoir touchees
+    // (retenirProposees) : elles partent comme les siennes, l ecran les dit proposees.
+    retenues: { pins: {}, parties: [] },
     pax: 4,
     selection: [],             // ids d activites cochees (onglet Activites)
     options: {},               // id -> { duration | games | minutes } choisis sur la carte
@@ -2822,8 +2825,11 @@
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
   var arcades = { cle: '', liste: null, lu: 0, enCours: '', erreur: false }; // les heures d arcade de la formule (arcades=1)
   var arrivees = { cle: '', liste: null, lu: 0, enCours: '', erreur: false }; // la ligne « Heure d'arrivée » (arrivees=1)
-  var arriveePosees = null; // les heures que l arrivee choisie a posees : l effacer les retire
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; state.heuresPassees = {}; state.arcade = ''; arcades.cle = ''; state.arrivee = ''; arrivees.cle = ''; arriveePosees = null; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
+  // Ce qu un toucher vient de montrer : deux activites touchees en meme temps, et
+  // ce qui se dit une fois (une arrivee refusee, une arrivee avancee).
+  var conflitEnAttente = null, conflitAccepte = false, conseilPonctuel = '', conseilCourant = null;
+  function oublierRetenues() { state.retenues = { pins: {}, parties: [] }; conflitEnAttente = null; conseilPonctuel = ''; }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; state.heuresPassees = {}; state.arcade = ''; arcades.cle = ''; state.arrivee = ''; arrivees.cle = ''; oublierRetenues(); adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
   // UNE DEMANDE QUI CHANGE COUPE SON CALCUL EN ROUTE (2026-10-12) : le retour
   // aux activites pendant un calcul, puis un geste. La reponse ne servait
   // plus a rien (la cle de la demande la jetait), mais elle se telechargeait
@@ -2890,17 +2896,22 @@
       // heures qui le rognent restent possibles, avec un avertissement.
       q.set('softReserve', '1');
     }
+    // La liste des arrivees se juge avec ce que le client a TOUCHE : une heure
+    // seulement proposee se recale, elle ne ferme aucune arrivee.
+    var seulementTouchees = liste === 'arrivees';
     var pins = {};
+    if (!seulementTouchees) Object.keys(state.retenues.pins).forEach(function (k) { pins[k] = state.retenues.pins[k]; });
     Object.keys(state.pins).forEach(function (k) { if (state.pins[k]) pins[k] = state.pins[k]; });
-    if (state.laserParts.length) { pins.laser_game = state.laserParts[0]; q.set('laserGameTimes', JSON.stringify(state.laserParts)); }
+    var parties = state.laserParts.length ? state.laserParts : (seulementTouchees ? [] : state.retenues.parties);
+    if (parties.length) { pins.laser_game = parties[0]; q.set('laserGameTimes', JSON.stringify(parties)); }
     if (Object.keys(pins).length) q.set('preferredTimes', JSON.stringify(pins));
-    // La liste des heures d arcade ne depend pas de celle choisie.
-    if (liste === 'arcades') { q.set('arcades', '1'); return '/api/public-availability?' + q.toString(); }
-    // Les arrivees posent toutes les heures : leur liste part sans celles du client.
-    if (liste === 'arrivees') { q.delete('preferredTimes'); q.delete('laserGameTimes'); q.set('arrivees', '1'); return '/api/public-availability?' + q.toString(); }
-    // L HEURE D ARCADE choisie part seule, en dernier : sans elle, la demande
-    // reste celle d avant, au caractere pres.
+    // L HEURE D ARCADE et L HEURE D ARRIVEE choisies partent seules, en dernier :
+    // sans elles, la demande reste celle d avant, au caractere pres. La liste des
+    // heures d arcade ne depend pas de celle choisie.
+    if (liste === 'arcades') { if (state.arrivee) q.set('arrival', state.arrivee); q.set('arcades', '1'); return '/api/public-availability?' + q.toString(); }
     if (state.arcade) q.set('arcade', state.arcade);
+    if (seulementTouchees) { q.set('arrivals', '1'); return '/api/public-availability?' + q.toString(); }
+    if (state.arrivee) q.set('arrival', state.arrivee);
     return '/api/public-availability?' + q.toString();
   }
   // UNE REPONSE NE SERT QU A LA DEMANDE QUI L A PRODUITE : le jour, le groupe,
@@ -2984,6 +2995,9 @@
         if (j && j.code === 'formula_choice_unavailable' && oublierVariante()) { variantePerdue(j.message); return; }
         if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
         if (planEnCours === controle) planEnCours = null;
+        // CE QUI N ETAIT QUE GARDE CEDE LE PREMIER. Sans plan, les heures seulement
+        // proposees se relachent, puis l arrivee : jamais une heure touchee.
+        if (!(j.slots && j.slots.length) && relacher()) { chargerPlan(); return; }
         poserPlan(j, rep.texte, cle, repere, idAttente, heureAttente);
       })
       .catch(function (err) {
@@ -3002,6 +3016,11 @@
         if (sceneCourante === 'heures') dire(msgErr);
         rendreFocus(repere);
       });
+  }
+  function relacher() {
+    if (Object.keys(state.retenues.pins).length) { state.retenues = { pins: {}, parties: [] }; return true; }
+    if (state.arrivee) { conseilPonctuel = 'Arrivée à ' + state.arrivee + ' impossible avec ces heures.'; state.arrivee = ''; return true; }
+    return false;
   }
   // LA REPONSE DEVIENT LE PLAN : celle du calcul demande (chargerPlan), ou
   // celle de la relecture de fond qui a vu un changement (relireHeures), sans
@@ -3111,7 +3130,7 @@
     return joindreHeures(suites.map(function (s) { return s.length > 2 ? s[0] + ' à ' + s[s.length - 1] : s.join(suites.length > 1 ? ', ' : ' et '); }));
   }
   var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'occupé',
-    arrival_full: 'complet', arrival_start: 'complet', arrival_after_anchor: 'trop tard', arcade_overlap: 'occupé', arcade_before_arrival: 'trop tôt' };
+    arrival_full: 'complet', arrival_start: 'complet', arrival_after_anchor: 'trop tard', arrival_welcome: 'trop tard', arcade_overlap: 'occupé', arcade_before_arrival: 'trop tôt' };
   // L AUTRE QUI BOUGE, et l heure se prend : elle chevauche une autre activite
   // posee, ou se prend avant l arrivee choisie (ou pendant son accueil) et
   // l avance. Le dernier choix gagne (Movsar, 2026-10-13 : « on peut prendre
@@ -3619,7 +3638,7 @@
       var track = $('.fg-track[data-activity="' + a.activityId + '"]', hourZone);
       if (!track) return;
       var actifs = actifsDe(a);
-      var propose = actifs.length ? '' : (defauts[a.activityId] || '');
+      var propose = actifs.length ? '' : (state.retenues.pins[a.activityId] || defauts[a.activityId] || '');
       // Ce qui se PREND, deplacements compris : leur verdict est le leur.
       var possibles = (a.times || []).map(verdictDu).filter(function (v) { return v.ok !== false; });
       var toutSerre = possibles.length > 0 && possibles.every(serree);
@@ -3861,8 +3880,8 @@
     ancres.forEach(function (a, rang) {
       var id = a.activityId, compte = Math.max(1, Number(a.count) || 1), label = a.label || nomActivite(id);
       if (!(id === 'laser_game' && compte > 1)) {
-        var choisi = state.pins[id] || '';
-        liste.push({ cle: id, id: id, partie: 0, compte: 1, rang: rang, label: label, heure: choisi || defauts[id] || '', etat: choisi ? 'choisi' : defauts[id] ? 'propose' : 'vide' });
+        var choisi = state.pins[id] || '', proposee = state.retenues.pins[id] || defauts[id] || '';
+        liste.push({ cle: id, id: id, partie: 0, compte: 1, rang: rang, label: label, heure: choisi || proposee, etat: choisi ? 'choisi' : proposee ? 'propose' : 'vide' });
         return;
       }
       // Les heures des parties : choisies, sinon celles que le plan propose ;
@@ -3887,7 +3906,7 @@
     // plan : choisie dans sa ligne, ou proposee (dix minutes avant la premiere
     // activite, a l heure pile a l ouverture). Rien n attend qu on la touche.
     var arrivee = bornesVisite().arrivee;
-    liste.unshift({ cle: 'arrivee', id: 'arrivee', partie: 0, compte: 1, rang: -1, label: 'Heure d’arrivée', heure: arrivee, etat: state.arrivee ? 'choisi' : arrivee ? 'propose' : 'libre' });
+    liste.unshift({ cle: 'arrivee', id: 'arrivee', partie: 0, compte: 1, rang: -1, label: 'Arrivée', heure: arrivee, etat: state.arrivee ? 'choisi' : arrivee ? 'propose' : 'libre' });
     return liste;
   }
   // La formule a des arcades (son pass).
@@ -3956,7 +3975,7 @@
       + '<span class="fg-etape__heure"></span>'
       + '<svg class="fg-etape__chev" aria-hidden="true"><use href="#i-chevron"/></svg>'
       + '</button>'
-      + '<div class="fg-etape__corps" id="' + idEtape(cle) + '"><div class="fg-etape__dedans">' + dedans + '</div></div></li>';
+      + '<div class="fg-etape__corps" id="' + idEtape(cle) + '"><div class="fg-etape__dedans"><p class="fg-conseil" hidden></p>' + dedans + '</div></div></li>';
   }
   // L ARRIVEE EN TETE DU PROGRAMME, FACULTATIVE (2026-10-21). Le modele A
   // (Movsar, 2026-10-13 : « tout le systeme de arrivé est mal gerer de fou »)
@@ -3987,6 +4006,8 @@
     if (state.dispo) majEtapes(state.dispo);
     if (cle === 'arcade_time') chargerArcades();
     if (cle === 'arrivee') chargerArrivees();
+    conflitEnAttente = null;
+    majConseil();
     posterHauteur();
     setTimeout(posterHauteur, 450);
     montrerLigneOuverte();
@@ -4181,7 +4202,7 @@
   function poserQuandMeme(bouton) {
     var boite = bouton.closest('.fg-quand'), essai = boite && boite._essai;
     if (!essai) return;
-    state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;
+    oublierRetenues(); state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;
     etapeOuverte = null; etapeTouchee = false;
     boite.remove();
     if (Date.now() - essai.lu < 15000) {
@@ -4288,6 +4309,7 @@
     else {
       var x = ((arcades.cle === cleArcades() && arcades.liste) || []).filter(function (e) { return e.time === t; })[0] || {};
       var c = x.ok !== false && x.conflict && x.conflict.activityId ? x.conflict : null;
+      if (c && estTouchee(c.activityId) && !conflitAccepte) { demanderConflit('arcade_time', t, c, puce); return; }
       if (c) {
         if (c.activityId === 'laser_game') {
           var parties = state.laserParts.length ? state.laserParts : (state.pins.laser_game ? [state.pins.laser_game] : []);
@@ -4297,24 +4319,108 @@
         } else delete state.pins[c.activityId];
         adaptation = { liberees: [c.activityId], pour: 'arcade_time', t: t };
       }
+      avancerArriveeSiBesoin(t);
+      retenirProposees({ touche: { id: 'arcade_time', t: t }, enConflit: c ? c.activityId : '' });
       state.arcade = t;
     }
     $$('.fg-chip.is-pending', hourZone).forEach(function (el) { el.classList.remove('is-pending'); });
     if (puce) puce.classList.add('is-pending');
     chargerPlan();
   }
-  /* --- LA LIGNE « HEURE D ARRIVEE » (Movsar, 2026-10-21) ---------------------
-     « NON, ils ont le choix de choisir l heure qu ils veulent, genre rajouter
-     une catégorie pour choisir l heure d arrivée. » Facultative, en tete du
-     programme. Ses heures (arrivees=1) se chargent a l ouverture de la ligne,
-     chacune jugee par le serveur avec la visite qu elle pose : tout tient, ce
-     qui ne tiendra pas, ou complet. Toucher une heure pose toutes les heures de
-     cette visite ; chacune reste a changer (le dernier choix gagne, l arrivee
-     suit le plan, poserPlan) ; l effacer retire les heures qu elle a posees.
-     Ce que le 13/10 a appris : aucune autre ligne ne l attend, seules les
-     heures a probleme le disent, l arrivee dite est toujours celle du plan. */
-  // La liste ne depend que du jour, du groupe et de ce qu il fait.
-  function cleArrivees() { return cleDemande(); }
+  /* --- L HEURE D ARRIVEE, DISSOCIEE (Ansar, 2026-11-04) ------------------------
+     « on change l heure d arrive et les heures bowling et laser game suivent mais
+     non jveux si je veux laisser du temps pour x ou y raison ». Elle a sa ligne, et
+     la changer ne deplace jamais une heure touchee. Une heure seulement proposee
+     reste ou elle est tant qu elle tient (retenirProposees) ; celle que l arrivee
+     rend impossible, le serveur la recale sur la plus proche, et elle seule. Une
+     activite touchee avant l arrivee l avance : on ne joue pas avant d etre la. Le
+     serveur juge chaque heure avec celles que le client a touchees (arrivals=1). */
+  // Les minutes d accueil apres l arrivee (FORMULA_ARRIVAL_MINUTES, le moteur).
+  var ACCUEIL = 10;
+  // Au-dela de ce trou, sans arrivee choisie, une heure seulement proposee n a plus
+  // de sens : le moteur la rapproche de celle que le client vient de toucher.
+  var ECART_RETENU = 60;
+  function estTouchee(id) {
+    if (id === 'arcade_time') return Boolean(state.arcade);
+    return id === 'laser_game' ? state.laserParts.length > 0 || Boolean(state.pins.laser_game) : Boolean(state.pins[id]);
+  }
+  // Ce qu une activite occupe si elle commence a cette heure, lu dans le plan.
+  function plageDe(id, h) {
+    var debut = minutesDe(h), fin = minutesDe(finOccupee(state.creneau, id, h));
+    if (!isFinite(fin)) {
+      var d0 = debutsDesParties(state.creneau, id)[0], f0 = d0 ? minutesDe(finOccupee(state.creneau, id, d0)) : NaN;
+      fin = debut + (isFinite(f0) ? f0 - minutesDe(d0) : (id === 'arcade_time' ? Number(arcadeDuPlan().minutes) || 30 : 30));
+    }
+    return { debut: debut, fin: fin };
+  }
+  function seChevauchent(a, b) { return a.debut < b.fin && b.debut < a.fin; }
+  // LA PLUS PROCHE POSSIBLE : l heure de cette activite que la grille laisse prendre,
+  // apres `apres` et sans toucher a ce qui est occupe. Plutot apres, a egale distance.
+  function heureLaPlusProche(a, h, apres, occupes) {
+    var depart = minutesDe(h), duree = plageDe(a.activityId, h);
+    duree = duree.fin - duree.debut;
+    var possibles = (a.times || []).filter(function (x) {
+      if (x.ok === false && !DECALENT[x.code]) return false;
+      var m = minutesDe(x.time);
+      if (apres !== null && m < apres) return false;
+      return !occupes.some(function (o) { return seChevauchent(o, { debut: m, fin: m + duree }); });
+    });
+    var sansAvis = possibles.filter(function (x) { return !x.warning; });
+    var meilleure = '', ecart = Infinity;
+    (sansAvis.length ? sansAvis : possibles).forEach(function (x) {
+      var d = Math.abs(minutesDe(x.time) - depart);
+      if (d < ecart || (d === ecart && x.time > meilleure)) { ecart = d; meilleure = x.time; }
+    });
+    return meilleure;
+  }
+  // LES HEURES SEULEMENT PROPOSEES RESTENT OU ELLES SONT TANT QU ELLES TIENNENT.
+  // Celle que l arrivee rend impossible (`apres`, en minutes) ou que l heure touchee
+  // chevauche (`touche`, `enConflit`) se recale sur la plus proche, et elle seule.
+  // Sans arrivee choisie, une heure qui resterait loin de celle qu on vient de
+  // toucher se relache : le moteur la rapproche.
+  function retenirProposees(regle) {
+    var apres = regle.apres === undefined ? null : regle.apres;
+    if (apres === null && state.arrivee) apres = minutesDe(state.arrivee) + ACCUEIL;
+    var ancres = (ancrage(state.dispo).activities || []).slice();
+    var occupes = [];
+    ancres.forEach(function (a) { if (estTouchee(a.activityId)) actifsDe(a).forEach(function (h) { occupes.push(plageDe(a.activityId, h)); }); });
+    if (state.arcade) occupes.push(plageDe('arcade_time', state.arcade));
+    if (regle.touche) occupes.push(plageDe(regle.touche.id, regle.touche.t));
+    var heureDe = function (a) { return debutsDesParties(state.creneau, a.activityId)[0] || ''; };
+    var retenues = { pins: {}, parties: [] };
+    ancres.sort(function (x, y) { return heureDe(x) < heureDe(y) ? -1 : heureDe(x) > heureDe(y) ? 1 : 0; }).forEach(function (a) {
+      var id = a.activityId, h = heureDe(a);
+      if (estTouchee(id) || !h) return;
+      var b = plageDe(id, h);
+      var tient = id !== regle.enConflit && (apres === null || b.debut >= apres) && !occupes.some(function (o) { return seChevauchent(o, b); });
+      if (tient && regle.touche && !state.arrivee) {
+        var t0 = plageDe(regle.touche.id, regle.touche.t);
+        if (Math.max(t0.debut, b.debut) - Math.min(t0.fin, b.fin) > ECART_RETENU) return;
+      }
+      var garde = tient ? h : heureLaPlusProche(a, h, apres, occupes);
+      if (!garde) return;
+      retenues.pins[id] = garde;
+      if (id === 'laser_game' && Number(a.count) > 1) retenues.parties = [garde];
+      occupes.push(plageDe(id, garde));
+    });
+    state.retenues = retenues;
+  }
+  function avancerArriveeSiBesoin(t) {
+    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;
+    state.arrivee = '';
+    conseilPonctuel = 'avancee';
+  }
+  // Deux activites touchees en meme temps : le dire, un seul toucher pour regler.
+  function demanderConflit(id, t, c, puce) {
+    var nom = leNom(c.activityId);
+    conflitEnAttente = { id: id, t: t, conseil: { texte: 'En même temps que ' + nom + (c.time ? ' (' + c.time + ')' : '') + '.', boutons: '<button type="button" class="fg-suggest__btn" data-regler>Déplacer ' + esc(nom) + '</button>' } };
+    if (puce) puce.classList.add('is-asked');
+    majConseil();
+    dire(conflitEnAttente.conseil.texte);
+    posterHauteur();
+  }
+  // La liste depend du jour, du groupe, de ce qu il fait et de ce qu il a touche.
+  function cleArrivees() { return cleDemande() + '#' + JSON.stringify([state.pins, state.laserParts, state.arcade]); }
   function chargerArrivees() {
     var cle = cleArrivees();
     if (arrivees.cle !== cle) { arrivees.cle = cle; arrivees.liste = null; arrivees.lu = 0; arrivees.erreur = false; }
@@ -4326,7 +4432,11 @@
       .then(function (j) {
         if (arrivees.enCours === cle) arrivees.enCours = '';
         if (cle !== cleArrivees()) return;
-        arrivees.liste = Array.isArray(j.arrivalTimes) ? j.arrivalTimes : [];
+        // Une arrivee qui libererait une heure touchee ne se prend plus : la formule
+        // le dit par `releases`, la visite par son refus.
+        arrivees.liste = (Array.isArray(j.arrivals) ? j.arrivals : []).map(function (x) {
+          return x.releases && x.releases.length ? { time: x.time, ok: false, code: 'arrival_after_anchor', reason: x.reason || 'Après une activité choisie' } : x;
+        });
         arrivees.lu = Date.now();
         rendreArrivees();
         posterHauteur();
@@ -4344,6 +4454,12 @@
     if (!track) return;
     if (etapeOuverte === 'arrivee' && arrivees.cle !== cleArrivees() && arrivees.enCours !== cleArrivees()) { chargerArrivees(); return; }
     var liste = arrivees.cle === cleArrivees() ? arrivees.liste : null;
+    // L heure du plan a sa tuile, meme hors de la demi-heure (dix minutes avant la
+    // premiere activite) : c est elle qui sera dite.
+    var heurePlan = bornesVisite().arrivee;
+    if (liste && heurePlan && !liste.some(function (x) { return x.time === heurePlan; })) {
+      liste = liste.concat([{ time: heurePlan, ok: true }]).sort(function (a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    }
     // Au repos (ligne jamais ouverte), rien ne se charge : le pied seul.
     var repos = !liste && !arrivees.erreur && arrivees.enCours !== cleArrivees();
     var etat = liste ? 'l:' + liste.map(function (x) { return x.time; }).join(',') : arrivees.erreur ? '!' : repos ? '-' : '…';
@@ -4373,39 +4489,37 @@
     $$('.fg-period', track).forEach(function (sec) { expliquerPeriode(sec, 'arrivée'); });
     majPeriodes(track);
   }
-  // Retouchee, l heure choisie s efface.
+  // Retouchee, l heure choisie s efface. L heure du plan touchee : rien ne change.
   function choisirArrivee(t, puce) {
     if (state.arrivee === t) { effacerArrivee(); return; }
+    if (!state.arrivee && bornesVisite().arrivee === t) { avancerEtape(); return; }
     var x = ((arrivees.cle === cleArrivees() && arrivees.liste) || []).filter(function (e) { return e.time === t; })[0];
-    if (!x || x.ok === false || !x.times) return;
-    poserArrivee(t, x.times, puce);
-  }
-  // L ARRIVEE POSE TOUTES LES HEURES DE SA VISITE, celles que le serveur a
-  // jugees ; chacune reste modifiable. « Arriver à 17:50 », la proposition pour
-  // tout faire avant la fermeture, passe aussi par ici. Les arcades n y ont pas
-  // d heure : le moteur les range.
-  function poserArrivee(t, heures, puce) {
-    state.pins = {}; state.laserParts = []; state.arcade = ''; adaptation = null; partiesSurPlace = false; etapeTouchee = false;
-    if (!puce) etapeOuverte = null;
-    Object.keys(heures).forEach(function (k) { if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5); });
-    var laser = $('.fg-track[data-activity="laser_game"]', hourZone);
-    if (state.pins.laser_game && laser && Number(laser.dataset.count) > 1) state.laserParts = [state.pins.laser_game];
-    state.arrivee = String(t || '').slice(0, 5);
-    arriveePosees = { pins: JSON.parse(JSON.stringify(state.pins)), laserParts: state.laserParts.slice() };
-    $$('.fg-track', hourZone).forEach(function (tr) { delete tr.dataset.touched; });
+    if (!x || x.ok === false) return;
+    retenirProposees({ apres: minutesDe(t) + ACCUEIL });
+    state.arrivee = t;
+    adaptation = null;
     $$('.fg-chip.is-pending', hourZone).forEach(function (el) { el.classList.remove('is-pending'); });
     if (puce) puce.classList.add('is-pending');
     chargerPlan();
   }
-  // EFFACER L ARRIVEE : les heures qu elle a posees et que le client n a pas
-  // changees depuis se retirent, le serveur repropose autour des siennes.
+  // « Arriver à 17:50 », la proposition pour tout faire avant la fermeture : un
+  // toucher demande, toutes les heures de cette visite posees d un coup. L arrivee
+  // est celle de son plan.
+  function poserToutFaire(heures) {
+    state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; adaptation = null; partiesSurPlace = false; etapeTouchee = false;
+    oublierRetenues();
+    etapeOuverte = null;
+    Object.keys(heures).forEach(function (k) { if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5); });
+    var laser = $('.fg-track[data-activity="laser_game"]', hourZone);
+    if (state.pins.laser_game && laser && Number(laser.dataset.count) > 1) state.laserParts = [state.pins.laser_game];
+    $$('.fg-track', hourZone).forEach(function (tr) { delete tr.dataset.touched; });
+    $$('.fg-chip.is-pending', hourZone).forEach(function (el) { el.classList.remove('is-pending'); });
+    chargerPlan();
+  }
+  // EFFACER L ARRIVEE : les activites restent ou elles sont, l arrivee redevient
+  // celle du plan.
   function effacerArrivee() {
-    var avant = arriveePosees;
-    state.arrivee = ''; arriveePosees = null; adaptation = null;
-    if (avant) {
-      Object.keys(avant.pins).forEach(function (k) { if (state.pins[k] === avant.pins[k]) delete state.pins[k]; });
-      if (avant.laserParts.length && state.laserParts.join() === avant.laserParts.join()) state.laserParts = [];
-    }
+    state.arrivee = ''; adaptation = null;
     $$('.fg-track', hourZone).forEach(function (tr) { delete tr.dataset.touched; });
     chargerPlan();
   }
@@ -4427,6 +4541,16 @@
     if (e.target.closest('[data-arrivees]')) { chargerArrivees(); return; }
     var quand = e.target.closest('[data-quand-meme]');
     if (quand) { poserQuandMeme(quand); return; }
+    if (e.target.closest('[data-regler]')) {
+      var cf = conflitEnAttente;
+      if (cf) {
+        conflitEnAttente = null; conflitAccepte = true;
+        var cePuce = $('.fg-track[data-activity="' + cf.id + '"] .fg-chip[data-time="' + cf.t + '"]', hourZone);
+        if (cePuce) cePuce.click();
+        conflitAccepte = false;
+      }
+      return;
+    }
     var enTete = e.target.closest('.fg-period__btn');
     if (enTete) {
       var sec = enTete.closest('.fg-period');
@@ -4448,7 +4572,8 @@
       var pisteReset = reset.closest('.fg-track');
       if (pisteReset) delete pisteReset.dataset.touched;
       delete state.pins[idr];
-      if (idr === 'laser_game') state.laserParts = [];
+      delete state.retenues.pins[idr];
+      if (idr === 'laser_game') { state.laserParts = []; state.retenues.parties = []; }
       if (idr === 'arcade_time') state.arcade = '';
       delete state.heuresPassees[idr];
       adaptation = null;
@@ -4461,6 +4586,8 @@
     var t = chip.dataset.time;
     $$('.fg-chip.is-asked', hourZone).forEach(function (c) { c.classList.remove('is-asked'); });
     $$('.fg-why-list__item.is-lit, .fg-etape.is-lit, .fg-track__waves.is-lit', hourZone).forEach(function (l) { l.classList.remove('is-lit'); });
+    if (conflitEnAttente) { conflitEnAttente = null; majConseil(); }
+    conseilPonctuel = '';
     if (chip.dataset.ok === 'false') {
       // Une heure qui ne se prend pas s EXPLIQUE deja : sous sa plage (la
       // ligne qui la concerne s eclaire, plus de seconde boite qui repete), ou,
@@ -4507,6 +4634,13 @@
       // (l equipe la placera sur place) : le reste du choix ne genait
       // personne (meme regle que le tunnel).
       var autre = chip.dataset.conflict;
+      // UNE ACTIVITE TOUCHEE NE BOUGE JAMAIS TOUTE SEULE (Ansar, 2026-11-04) : le
+      // chevauchement se dit, un seul toucher le regle (demanderConflit). Seule une
+      // heure encore proposee se recale d elle-meme.
+      if (estTouchee(autre) && !conflitAccepte) {
+        demanderConflit(idA, t, { activityId: autre, time: chip.dataset.conflictTime || '' }, chip);
+        return;
+      }
       // Les arcades posees que l heure chevauche : elles se levent et
       // redeviennent facultatives.
       if (autre === 'arcade_time') {
@@ -4561,6 +4695,10 @@
     }
     // Une heure choisie pour cette activite : l heure passee n est plus a dire.
     delete state.heuresPassees[idA];
+    // Avant l arrivee, elle l avance. Les heures seulement proposees restent ou
+    // elles sont tant qu elles tiennent.
+    avancerArriveeSiBesoin(t);
+    retenirProposees({ touche: { id: idA, t: t }, enConflit: chip.dataset.conflict || '' });
     // L heure touchee s entoure tout de suite, avant la reponse : le toucher
     // est entendu. chargerPlan relit cette case a la reponse.
     $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); }); chip.classList.add('is-pending');
@@ -5103,7 +5241,57 @@
     return false;
   }
 
+  // « le bowling », « les arcades » : le nom dans une phrase.
+  function leNom(id) {
+    var mots = { bowling: 'le bowling', duckpin: 'le duckpin', laser_game: 'le laser game', minigolf: 'le minigolf', billard: 'le billard', arcade: 'les arcades', plaine: 'la plaine', fun_run: 'le fun run', table: 'la table' };
+    return mots[genreCompris(id)] || 'le ' + nomBas(nomActivite(id));
+  }
+  // LE PLUS LONG TROU DE LA VISITE, avant la premiere activite comme entre deux :
+  // « 45 min avant le bowling : le minigolf est compris » s il y tient, sinon
+  // « 45 min d attente avant le bowling ». Sous la demi-heure, c est la grille des
+  // departs : rien a dire.
+  function conseilDuTrou(parts, plan, arrivee, formule, libres) {
+    var fo = plan.laserPassPlan, meilleur = null, curseur = arrivee || '';
+    parts.filter(function (p) { return genreCompris(p.id) !== 'table'; }).slice().sort(function (a, b) { return a.debut < b.debut ? -1 : a.debut > b.debut ? 1 : 0; }).forEach(function (p) {
+      if (curseur && p.debut > curseur) {
+        var ecart = minutesEntre(curseur, p.debut);
+        // La partie de laser que le moteur loge dans ce trou le remplit d autant.
+        if (fo && fo.followOnStart && fo.followOnStart >= curseur && fo.followOnEnd <= p.debut) ecart -= minutesEntre(fo.followOnStart, fo.followOnEnd);
+        var utile = curseur === arrivee ? ecart - ACCUEIL : ecart;
+        if (utile >= 30 && (!meilleur || ecart > meilleur.minutes)) meilleur = { minutes: ecart, avant: p };
+      }
+      if (p.fin > curseur) curseur = p.fin;
+    });
+    if (!meilleur) return null;
+    var possibles = formule
+      ? (plan.timeline || []).filter(function (s) { return s && s.flexible && s.activityId; }).map(function (s) { return { id: s.activityId, minutes: Number(s.durationMinutes) || 0 }; })
+      : libres.map(function (it) { return { id: it.activityId, minutes: it.dayAccess ? 1 : Number(it.minutes) || 0 }; });
+    var libre = possibles.filter(function (x) { return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];
+    var nomAvant = leNom(meilleur.avant.id), duree = dureeExacte(meilleur.minutes);
+    if (!libre) return { texte: duree + ' d’attente avant ' + nomAvant };
+    var nomLibre = leNom(libre.id), pluriel = /^les /.test(nomLibre), feminin = /^la /.test(nomLibre);
+    return { texte: duree + ' avant ' + nomAvant + '\u00a0: ' + nomLibre + (formule ? (pluriel ? ' sont comprises' : feminin ? ' est comprise' : ' est compris') : (pluriel ? ' y tiennent' : ' y tient')) };
+  }
+  // Le conseil se lit la ou le client regarde : dans la ligne ouverte, sinon dans
+  // le recapitulatif. Une seule place, jamais deux.
+  function majConseil() {
+    $$('.fg-conseil', hourZone).forEach(function (el) { el.hidden = true; el.innerHTML = ''; });
+    var li = etapeOuverte ? $('.fg-etape[data-cle="' + etapeOuverte + '"]', hourZone) : null;
+    var c = (conflitEnAttente && conflitEnAttente.conseil) || (conseilCourant && conseilCourant.fort) || null;
+    if (!c && li) {
+      // L heure conseillee d une partie suivante : le plan ne la pose pas, elle se dit.
+      var suggeree = $('.fg-chip[data-suggere]', li), k = Number(li.dataset.partie) || 0;
+      if (suggeree && k > 1) c = { texte: 'Juste après la ' + (k === 2 ? '1re' : (k - 1) + 'e') + ' partie\u00a0: ' + suggeree.dataset.time };
+    }
+    if (!c) c = (conseilCourant && conseilCourant.trou) || null;
+    if (!c) return;
+    var cible = (li && $('.fg-conseil', li)) || $('#planZone .fg-conseil');
+    if (!cible) return;
+    cible.innerHTML = esc(typoVisite(c.texte)) + (c.boutons ? '<span class="fg-suggest">' + c.boutons + '</span>' : '');
+    cible.hidden = false;
+  }
   function rendreVisite() {
+    conseilCourant = null;
     var zone = $('#planZone');
     if (!zone) return;
     var d = state.dispo || {};
@@ -5415,9 +5603,12 @@
     var prixHtml = '<p class="fg-visit__paye">' + (prixVisible ? '<b class="fg-visit__price">' + esc(euros(prix)) + '</b>, à payer sur place' : 'À payer sur place') + '</p>'
       + (prixVisible && !complet ? '<p class="fg-visit__reste">+ ' + esc(typoVisite(nomsSansPrix(items))) + ', ' + insecable(PRIX_ACCUEIL) + '</p>' : '');
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.gapLabel ? n.gapLabel + ' d’attente' : n.message || n.label)) || ''; }).filter(Boolean);
+    // A l ecran, un trou se dit par le conseil : seul le reste garde sa ligne.
+    var avisEcran = (plan.comfortNotices || []).filter(function (n) { return !(n && n.code === 'anchor_gap'); }).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     var secoursBowling = avertissementBowling(state.creneau);
     if (secoursBowling && avis.indexOf(secoursBowling) < 0) avis.push(secoursBowling);
-    var horsHtml = '', fit = toutTenir(rep);
+    if (secoursBowling && avisEcran.indexOf(secoursBowling) < 0) avisEcran.push(secoursBowling);
+    var conseilFin = null, fit = toutTenir(rep);
     if (horsDelai.length) {
       // Les heures posees ne bougent pas : elles se redisent telles quelles.
       var heuresPosees = {}, nomsPoses = [];
@@ -5433,19 +5624,26 @@
         .filter(function (it) { return it && it.priceKnown === true && Number(it.price) > 0; });
       var compte = comptees.length ? 'Le total indicatif compte encore ' + joindreListe(comptees.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + euros(it.price) + ')'; }), ' et ') + '.' : '';
       var phrase = phraseHorsDelai(horsDelai, fin, true);
-      horsHtml = '<p class="fg-visit__warn fg-visit__hors"><b>' + esc(typoVisite(phrase.tete)) + '\u00a0:</b> ' + esc(typoVisite(phrase.noms)) + '.'
-        + (fit ? '<span class="fg-suggest">' + fit.boutons + '</span>' : '') + '</p>';
+      conseilFin = { texte: phrase.tete + '\u00a0: ' + phrase.noms + '.', boutons: fit ? fit.boutons : '' };
       avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte, fit ? fit.texte : ''].filter(Boolean).join(' '));
     } else if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) {
       var manque = 'Tout ne tiendra pas : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '.';
-      if (fit) horsHtml = '<p class="fg-visit__warn">' + esc(typoVisite(manque)) + '<span class="fg-suggest">' + fit.boutons + '</span></p>';
+      conseilFin = { texte: manque, boutons: fit ? fit.boutons : '' };
       avis.unshift(manque + (fit ? ' ' + fit.texte : ''));
     }
-    var avisSimples = horsHtml ? avis.slice(1) : avis;
-    // Ce qui ne tiendra pas reste visible sous l en-tete, juste avant l agenda
-    // qui porte les lignes qu il raye.
-    html2 += horsHtml;
-    if (avisSimples.length) html2 += '<p class="fg-visit__warn">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';
+    // AU PLUS UN CONSEIL, UNE LIGNE (Ansar, 2026-11-04 : « des tips [...] sans que ça
+    // casse les couilles ») : ce qui vient de se passer, une heure passee, la fin qui
+    // depasse la fermeture ; sinon le plus long trou de la visite. Rien quand tout
+    // va bien.
+    var passeesMot = Object.keys(state.heuresPassees).map(function (k) { return (state.heuresPassees[k] || []).join(' et '); }).filter(Boolean)[0];
+    var ponctuel = conseilPonctuel === 'avancee' ? (arrivee ? 'Arrivée avancée à ' + arrivee + '.' : '') : conseilPonctuel;
+    conseilCourant = {
+      fort: ponctuel ? { texte: ponctuel } : passeesMot ? { texte: passeesMot + ' est passée\u00a0: choisissez une autre heure.' } : conseilFin,
+      trou: conseilDuTrou(parts, plan, arrivee, formule, libres),
+    };
+    if (conseilCourant.trou) avis.push(conseilCourant.trou.texte);
+    html2 += '<p class="fg-conseil" hidden></p>';
+    if (avisEcran.length) html2 += '<p class="fg-visit__warn">' + avisEcran.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';
     html2 += listeHtml + prixHtml;
     // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
     // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
@@ -5457,6 +5655,7 @@
       + (prixVisible ? euros(prix) + (complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL) + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
+    majConseil();
     if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
     posterHauteur();
   }
@@ -5467,14 +5666,14 @@
     // Toutes les poses levees d un coup : le meme geste que « revenir a
     // l heure proposee » d une piste, etendu a toutes. Sans heure posee, le
     // serveur compose sa combinaison par defaut, ou dit qu il n y en a pas.
-    if (e.target.closest('[data-reset-tout]')) { state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; arriveePosees = null; adaptation = null; $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; }); chargerPlan(); return; }
+    if (e.target.closest('[data-reset-tout]')) { state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; oublierRetenues(); adaptation = null; $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; }); chargerPlan(); return; }
     // « Arriver à 17:50 » : c est choisir cette heure dans la ligne d arrivee
     // (2026-10-21). Le plan ou tout tient se pose, chaque heure reste
     // modifiable (le dernier choix gagne). Les arcades n y ont pas d heure.
     var fitBtn = e.target.closest('[data-fit]');
     if (fitBtn) {
       try {
-        poserArrivee(fitBtn.dataset.arrivee || '', JSON.parse(fitBtn.dataset.fit), null);
+        poserToutFaire(JSON.parse(fitBtn.dataset.fit));
       } catch (err) { /* proposition illisible : rien */ }
       return;
     }
@@ -5557,7 +5756,7 @@
   var bandeaux = $$('[data-hold]'), hourErr = $('#hourErr');
   function enteteBlocage() { return blocage.jeton ? { 'X-Pinlane-Hold': blocage.jeton } : {}; }
   // Ce que le client a choisi : sa demande, puis ses heures.
-  function cleChoix() { return cleDemande() + '|' + JSON.stringify(state.pins) + '|' + JSON.stringify(state.laserParts) + (state.arcade ? '|' + state.arcade : ''); }
+  function cleChoix() { return cleDemande() + '|' + JSON.stringify(state.pins) + '|' + JSON.stringify(state.laserParts) + (state.arcade ? '|' + state.arcade : '') + (state.arrivee ? '|a' + state.arrivee : ''); }
   function cleBlocage() { return cleChoix() + '|' + (state.heure || ''); }
   // Le corps de la reservation, sans les coordonnees : un blocage n a ni nom,
   // ni telephone, ni e-mail.
@@ -6460,7 +6659,7 @@
       notes: [state.contact.occasion === 'autre' && state.contact.occasionAutre ? 'Occasion : ' + state.contact.occasionAutre : '', state.contact.note || ''].filter(Boolean).join('. '),
       // Les heures posees par le client et celles composees par le serveur
       // repartent ensemble : le serveur revalide exactement ce qui a ete montre.
-      preference: { preferredTimes: preferredTimes, laserGameTimes: state.laserParts.slice(), laserPlacement: plan && plan.anchorPlan && plan.anchorPlan.laserPlacement === 'onsite' ? 'onsite' : 'scheduled', arrivalConfidence: 'normal' },
+      preference: { preferredTimes: preferredTimes, laserGameTimes: state.laserParts.slice(), laserPlacement: plan && plan.anchorPlan && plan.anchorPlan.laserPlacement === 'onsite' ? 'onsite' : 'scheduled', arrivalConfidence: 'normal', arrivalTime: state.arrivee || undefined },
       // Le montant affiche part avec la demande, comme dans le tunnel ; le
       // serveur recalcule tout et c est son montant qui est enregistre.
       price: Number(rep.price) || 0,

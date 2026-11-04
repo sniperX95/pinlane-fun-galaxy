@@ -14,7 +14,8 @@
 //       l ecrit ; le minigolf, les arcades, les boissons et la fin de visite
 //       restent les leurs, la feuille les dit ; un groupe paye (Noah), par
 //       Modifier, aussi ; chaque formule de la journee, un de plus : ses
-//       heures, ou un refus qui dit pourquoi ;
+//       heures, ou un refus qui dit pourquoi ; une formule a table enregistree
+//       avec l ancien calcul garde son arrivee, sa table et sa premiere activite ;
 //   [B] UNE FORMULE A ANCRES (le tunnel, Reserver) : ses activites libres n ont
 //       pas d heure, la feuille n en invente aucune, la visite dure quand meme
 //       jusqu a sa fin ; recomptee apres son debut, elle passe ;
@@ -158,6 +159,13 @@ const lignePlan = (e) => `${e.activityId}#${e.countIndex || 1}@${e.flexible ? '~
 const etapes = (plan) => ((plan && plan.timeline) || []).filter((e) => e && e.activityId).map(lignePlan).sort();
 const etape = (plan, activityId, rang = 1) => ((plan && plan.timeline) || []).find((e) => e && e.activityId === activityId && Number(e.countIndex || 1) === rang) || null;
 const blocs = (plan) => ((plan && plan.resourceBlocks) || []).map((b) => `${b.resourceType}#${b.countIndex || 1}@${b.startTime}-${b.endTime}:${(b.lanes || []).join('-')}`).sort();
+// Ce qui compte pour le groupe d une formule a table : quand il arrive, quand la table
+// commence, quand commence sa premiere activite.
+const reperesDeTable = (plan) => {
+  const activites = ((plan && plan.timeline) || []).filter((e) => e && e.activityId && e.activityId !== 'party_table' && e.activityId !== 'service_drinks')
+    .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+  return { arrivee: plan && plan.arrivalTime, table: (etape(plan, 'party_table') || {}).startTime, premiere: activites[0] ? `${activites[0].activityId}@${activites[0].startTime}` : '' };
+};
 
 // ---------------------------------------------------------------------------
 // DANS LA PAGE.
@@ -304,6 +312,18 @@ async function scenarioToutesLesFormules() {
     const quoi = `${r.id} ${r.formuleId} ${r.startTime}`;
     if (rep.statut === 200) {
       const b = enBase(r.id);
+      // LES FORMULES A TABLE (f6, f7, f8) n ont aucune heure posee : un de plus refait leur
+      // plan avec la regle d aujourd hui. Ces dossiers ont ete enregistres avec l ancien
+      // calcul (boissons de 5 min, battement entre les etapes) : leurs etapes internes se
+      // resserrent et leur fin avec elles. C est accepte (2026-11-04) : ce qui compte pour
+      // le groupe ne bouge pas. Les formules a heures gardent la regle entiere.
+      if (etape(r.opsPlan, 'party_table')) {
+        const avant = reperesDeTable(r.opsPlan);
+        const apres = reperesDeTable(b.plan);
+        ok(!rep.json.planNonRefait && avant.arrivee && avant.table && avant.premiere && JSON.stringify(apres) === JSON.stringify(avant),
+          `[A] ${quoi} : un de plus a table, l arrivee, la table et la premiere activite restent`, { motif: rep.json.planNonRefait, avant, apres });
+        continue;
+      }
       ok(!rep.json.planNonRefait && JSON.stringify(etapes(b.plan)) === JSON.stringify(etapes(r.opsPlan)) && b.plan.endTime >= r.opsPlan.endTime,
         `[A] ${quoi} : un de plus, les heures et la fin restent`, { motif: rep.json.planNonRefait, avant: etapes(r.opsPlan), apres: etapes(b.plan), fin: [r.opsPlan.endTime, b.plan.endTime] });
     } else {

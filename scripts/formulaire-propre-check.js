@@ -59,7 +59,7 @@ const MUTATIONS = [
   { nom: 'typo() ne soude plus rien', fichier: 'assets/fungalaxy-booking.js', de: "  function typo(s) {\n    return String(s == null ? '' : s)\n", vers: "  function typo(s) {\n    return String(s == null ? '' : s); return String(s)\n" },
   { nom: 'le calcul des pistes ne se tient plus d un bloc', fichier: 'assets/fungalaxy-booking.css', de: '.fg-calcul { display: inline-block; }\n', vers: '' },
   { nom: 'le fil du programme revient', fichier: 'assets/fungalaxy-booking.css', de: '.fg-etape { position: relative; }\n', vers: '.fg-etapes::before { content: ""; position: absolute; left: 28px; top: 30px; bottom: 30px; width: 2px; background: rgba(255, 255, 255, 0.09); }\n.fg-etape { position: relative; }\n' },
-  { nom: 'le point revient devant l icone de chaque ligne', fichier: 'assets/fungalaxy-booking.js', de: "      + '<span class=\"fg-etape__icone\">", vers: "      + '<span class=\"fg-etape__point\" aria-hidden=\"true\"></span><span class=\"fg-etape__icone\">" },
+  { nom: 'le point revient devant l icone de chaque ligne', fichier: 'assets/fungalaxy-booking.js', de: "      + '<span class=\"fg-etape__icone\"'", vers: "      + '<span class=\"fg-etape__point\" aria-hidden=\"true\"></span><span class=\"fg-etape__icone\"'" },
   { nom: 'la grille des activites recompte ses colonnes sans retirer ses placements', fichier: 'assets/fungalaxy-booking.js', de: "        tuiles.forEach(function (tile) { tile.style.gridColumn = ''; tile.style.gridRow = ''; });\n", vers: '' },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';

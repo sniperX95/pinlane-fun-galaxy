@@ -141,7 +141,7 @@ const MUTATIONS = [
   { nom: 'la ligne des arcades dit « À choisir »', fichier: JS, scenarios: ['C'],
     de: ": e.etat === 'libre' ? 'Quand vous voulez' : 'À choisir';", vers: ": 'À choisir';" },
   { nom: '« Quand vous voulez » se lit comme une heure', fichier: CSS, scenarios: ['C'],
-    de: '.fg-etape:is(.is-libre, .is-vide, .is-surplace):not(.is-open) .fg-etape__heure { max-width: 92px; font-size: 13.5px; font-weight: 600; line-height: 1.2; white-space: normal; color: var(--fg-muted); }', vers: '' },
+    de: '.fg-etape:is(.is-libre, .is-vide, .is-surplace):not(.is-open) .fg-etape__heure { max-width: 92px; font-family: var(--fg-body); font-size: 13.5px; font-weight: 600; line-height: 1.2; letter-spacing: 0; white-space: normal; color: var(--fg-muted); }', vers: '' },
   { nom: 'les heures d arcade se demandent des l arrivee sur les heures', fichier: JS, scenarios: ['C'],
     de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArcades(); rendreArrivees(); }', vers: '    if (ancres.length) { majPistes(d); majEtapes(d); if (aDesArcades(d)) chargerArcades(); rendreArrivees(); }' },
   { nom: 'la liste des heures d arcade part avec l heure choisie', fichier: JS, scenarios: ['D'],

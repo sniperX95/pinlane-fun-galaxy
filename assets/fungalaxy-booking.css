@@ -2882,17 +2882,15 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 }
 
 /* =============================================================================
-   L ECRAN DES HEURES, PRO ET COMPLET (Ansar, 2026-11-04 : « ca fait cheap », « du
-   texte laisse en plan », « un recap plus complet de toutes les activites »). Rien
-   ne flotte : chaque texte vit dans une carte, sur sa colonne. Le langage est celui
-   de « Les seances », son choix du 2026-11-02 : une tuile d icone, le nom, la valeur
-   a droite. Trois etats : neutre a venir, violet en cours, sarcelle fait.
+   L ECRAN DES HEURES, AUX COULEURS DU CENTRE (Ansar, 2026-11-04 : « ca fait cheap »,
+   « du texte laisse en plan », puis « fait beaucoup trop IA, c est flagrant »). Pas de
+   tuiles de pictogrammes ni de cartes arrondies a filet : les vraies photos du centre,
+   sa typo d affiche pour les heures et les noms, des blocs plats. Comme un programme
+   de cinema, le « Les seances » de son choix du 2026-11-02. Rien ne flotte.
    ========================================================================== */
 :root {
-  --fg-carte: #141216;
-  --fg-carte-bord: rgba(255, 255, 255, 0.09);
-  --fg-tuile: rgba(255, 255, 255, 0.07);
-  --fg-fait-fond: #12211f;
+  --fg-carte: #151417;
+  --fg-plat: #232226;
 }
 #hourSub, .fg-etape__quoi small, .fg-track__lanes, .fg-track__share, .fg-why-list { display: none; }
 /* Le titre s aligne sur ce qu il annonce, comme aux autres etapes. Le voile suit : sa
@@ -2904,64 +2902,63 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 }
 .fg-scene[data-scene="heures"] .fg-scene__body { text-align: left; }
 .fg-scene[data-scene="heures"] .fg-title { max-width: 820px; margin-left: auto; margin-right: auto; }
-.fg-prog { margin-bottom: 10px; }
-/* LES LIGNES : une carte par heure a choisir. */
-.fg-etapes { display: grid; gap: 8px; padding: 0; }
-.fg-etape { border: 1px solid var(--fg-carte-bord); border-radius: 16px; background: var(--fg-carte); }
-.fg-etape__tete { grid-template-columns: 40px minmax(0, 1fr) auto 14px; gap: 12px; min-height: 62px; padding: 10px 14px 10px 11px; border-radius: 15px; }
-.fg-etape__icone { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--fg-tuile); color: #e6e4ea; }
-.fg-etape__icone svg { width: 23px; height: 23px; }
-.fg-etape__quoi b { font-size: 16px; font-weight: 650; line-height: 1.25; color: #fff; }
+.fg-prog { margin-bottom: 8px; }
+/* LES LIGNES : la photo de l activite, son nom, son heure. */
+.fg-etapes { display: grid; gap: 6px; padding: 0; }
+.fg-etape { border-radius: 6px; background: var(--fg-carte); }
+.fg-etape__tete { grid-template-columns: minmax(0, 1fr) auto 14px; gap: 12px; min-height: 60px; padding: 8px 14px; border-radius: 6px; }
+.fg-etape.has-photo .fg-etape__tete { grid-template-columns: 88px minmax(0, 1fr) auto 14px; padding: 0 14px 0 0; }
+.fg-etape__icone { --photo: none; display: none; }
+.fg-etape.has-photo .fg-etape__icone { display: block; align-self: stretch; min-height: 64px; border-radius: 6px 0 0 6px; background: var(--fg-plat) var(--photo) center / cover no-repeat; }
+.fg-etape__icone svg { display: none; }
+.fg-etape__quoi b { font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
 .fg-etape__chev { width: 14px; height: 14px; }
-.fg-etape .fg-etape__heure { font-size: 17px; font-weight: 600; color: #d9d7de; }
-.fg-etape:is(.is-libre, .is-vide, .is-surplace):not(.is-open) .fg-etape__heure { max-width: 92px; font-size: 13.5px; font-weight: 600; line-height: 1.2; white-space: normal; color: var(--fg-muted); }
-/* En cours : la seule en violet, et elle pose sa question. */
-.fg-etapes > .fg-etape.is-open:not(.fg-etape--fin) { border-color: var(--fg-purple-em); background: #1a1120; }
-.fg-etape.is-open .fg-etape__tete { grid-template-columns: 40px minmax(0, 1fr) 14px; }
-.fg-etape.is-open .fg-etape__icone { background: var(--fg-purple-2); color: #fff; }
-.fg-etape.is-open .fg-etape__quoi b { font-size: 17px; font-weight: 700; }
-.fg-etape.is-open .fg-etape__quoi b::after { content: "Quelle heure\00a0?"; display: block; margin-top: 1px; font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--fg-purple-ink); }
+.fg-etape .fg-etape__heure { font-family: var(--fg-display); font-size: 25px; font-weight: 400; line-height: 1; letter-spacing: 0.02em; color: #bdbbc2; }
+.fg-etape:is(.is-libre, .is-vide, .is-surplace):not(.is-open) .fg-etape__heure { max-width: 92px; font-family: var(--fg-body); font-size: 13.5px; font-weight: 600; line-height: 1.2; letter-spacing: 0; white-space: normal; color: var(--fg-muted); }
+/* En cours : un aplat de la marque, la question dessous. */
+.fg-etape.is-open .fg-etape__tete { grid-template-columns: minmax(0, 1fr) 14px; border-radius: 6px 6px 0 0; background: var(--fg-purple); }
+.fg-etape.has-photo.is-open .fg-etape__tete { grid-template-columns: 88px minmax(0, 1fr) 14px; }
+.fg-etape.has-photo.is-open .fg-etape__icone { border-radius: 6px 0 0 0; }
+.fg-etape.is-open .fg-etape__quoi b::after { content: "Quelle heure\00a0?"; display: block; margin-top: 3px; font-family: var(--fg-body); font-size: 13px; font-weight: 600; line-height: 1.2; letter-spacing: 0; text-transform: none; color: #fff; }
 .fg-etape.is-open .fg-etape__heure { display: none; }
 .fg-etape.is-open .fg-etape__chev { color: #fff; }
-/* Faite : sa coche, et son heure en sarcelle. */
-.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) { border-color: rgba(103, 186, 172, 0.38); background: var(--fg-fait-fond); }
-.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__icone { background: rgba(103, 186, 172, 0.18); color: var(--fg-teal-ink); }
-.fg-etape:is(.is-choisi, .is-surplace):not(.is-open) .fg-etape__icone::after { content: "\2713"; position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--fg-teal); box-shadow: 0 0 0 2px var(--fg-fait-fond); color: #06100e; font-size: 11px; font-weight: 800; line-height: 1; }
-.fg-etape.is-choisi:not(.is-open) .fg-etape__heure { font-size: 18px; font-weight: 700; color: var(--fg-teal-ink); }
+/* Faite : son heure en sarcelle, et sa coche. */
+.fg-etape.is-choisi:not(.is-open) .fg-etape__heure { color: var(--fg-teal-ink); }
+.fg-etape.is-choisi:not(.is-open) .fg-etape__heure::before { content: "\2713\00a0"; font-family: var(--fg-body); font-size: 15px; font-weight: 800; vertical-align: 3px; }
 .fg-etape.is-surplace:not(.is-open) .fg-etape__heure { color: var(--fg-teal-ink); }
 /* Ce que la ligne deplie. */
-.fg-etape__piste { padding: 2px 14px 12px; }
+.fg-etape__piste { padding: 12px 14px; }
 .fg-etape__alt, .fg-etape .fg-etape__alt { margin: 0; padding: 0 14px 14px; }
 .fg-track:not([data-activity="arcade_time"]):not([data-activity="arrivee"]) .fg-track__note { display: none; }
 .fg-track:not([data-activity="arcade_time"]):not([data-activity="arrivee"]) .fg-track__foot:not(:has(.fg-track__reset:not([hidden]))) { display: none; }
 .fg-etape .fg-track__foot { justify-content: center; padding-top: 10px; }
 .fg-etape .fg-track__note { font-size: 13px; line-height: 18px; color: var(--fg-muted); }
-.fg-etape__surplace, .fg-etape .fg-track__reset { width: 100%; min-height: 44px; margin: 0; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 10px; background: transparent; font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; color: #ece9f0; }
+.fg-etape__surplace, .fg-etape .fg-track__reset { width: 100%; min-height: 44px; margin: 0; justify-content: center; border: 0; border-radius: 4px; background: var(--fg-plat); font-size: 14px; font-weight: 600; text-align: center; text-decoration: none; color: #ece9f0; }
 .fg-etape__surplace svg { display: none; }
-/* Un conseil : un cadre, jamais une phrase seule au milieu de l ecran. */
-.fg-conseil { margin: 0 14px 12px; padding: 9px 12px; border-radius: 10px; background: rgba(103, 186, 172, 0.12); font-size: 13.5px; font-weight: 500; line-height: 19px; color: #d8efe9; text-wrap: pretty; }
+/* Un conseil : un aplat sarcelle, comme une etiquette, jamais une phrase seule. */
+.fg-conseil { margin: 12px 14px 0; padding: 8px 12px; border-radius: 4px; background: var(--fg-teal); font-size: 13.5px; font-weight: 600; line-height: 19px; color: #06100e; text-wrap: pretty; }
 .fg-visit .fg-conseil { margin: 0 0 14px; }
 .fg-conseil .fg-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.fg-conseil .fg-suggest__btn { border-color: #06100e; color: #06100e; }
 .fg-suggest__btn { border-color: var(--fg-purple-2); color: #fff; }
 @media (hover: hover) { .fg-suggest__btn:hover { background: var(--fg-purple-2); color: #fff; } }
-/* LES HEURES : une grille serree, comme des seances. La periode a son icone. */
+/* LES HEURES : comme des seances, les chiffres de l affiche, a plat. */
 .fg-periods { display: grid; gap: 12px; margin: 0; }
-.fg-period__btn { display: flex; align-items: center; gap: 6px; width: auto; padding: 0 0 7px; color: var(--fg-muted); background: transparent; cursor: default; }
+.fg-period__btn { display: flex; align-items: center; width: auto; padding: 0 0 6px; color: var(--fg-muted); background: transparent; cursor: default; }
 .fg-period.is-empty .fg-period__btn { color: var(--fg-faint); }
-.fg-period__icon { display: block; width: 15px; height: 15px; }
-.fg-period__sum, .fg-period__chev, .fg-period__keys { display: none; }
-.fg-period__name { font-size: 13px; font-weight: 600; white-space: nowrap; color: #cfcdd4; }
-.fg-chips { margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
-.fg-chip { height: 46px; padding: 0 4px; border: 1px solid transparent; border-radius: 10px; background: rgba(255, 255, 255, 0.075); color: #fff; }
-.fg-chip b { font-size: 16px; font-weight: 600; }
+.fg-period__icon, .fg-period__sum, .fg-period__chev, .fg-period__keys { display: none; }
+.fg-period__name { font-family: var(--fg-display); font-size: 15px; font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; color: #a9a7ae; }
+.fg-chips { margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 5px; }
+.fg-chip { height: 46px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: var(--fg-plat); color: #fff; }
+.fg-chip b { font-family: var(--fg-display); font-size: 20px; font-weight: 400; letter-spacing: 0.03em; }
 .fg-chip small { display: none; }
-.fg-chip.is-pending::after, .fg-chip.is-pose::after { border-radius: 12px; }
-@media (hover: hover) { .fg-chip:hover { border-color: rgba(255, 255, 255, 0.34); } }
+.fg-chip.is-pending::after, .fg-chip.is-pose::after { border-radius: 6px; }
+@media (hover: hover) { .fg-chip:hover { border-color: rgba(255, 255, 255, 0.4); } }
 /* Ce qui se prend reste une heure comme une autre : le recapitulatif dit ce que ca change. */
 .fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid transparent; }
 /* L impossible : a sa place, un seul mot. */
 .fg-chip.is-off, .fg-chip.is-off.is-asked { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.5); cursor: default; }
-.fg-chip.is-off b { font-size: 14px; font-weight: 500; }
+.fg-chip.is-off b { font-size: 16px; }
 .fg-chip.is-off[data-mot]::after { content: attr(data-mot); margin-top: 1px; font-size: 10.5px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.5); }
 .fg-chip.is-wave { border: 1px solid transparent; background: rgba(176, 79, 176, 0.26); }
 .fg-chip.is-wave small { display: block; color: #fff; }
@@ -2969,48 +2966,46 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    heure seulement conseillee pour une partie suivante n est pas retenue par le
    plan : elle reste une heure comme une autre. */
 .fg-chip.is-on, .fg-chip.is-pending, .fg-chip.is-proposed:not([data-suggere]) { border: 1px solid var(--fg-purple-2); background: var(--fg-purple-2); color: #fff; }
-.fg-chip.is-on b, .fg-chip.is-proposed:not([data-suggere]) b { font-weight: 700; }
 /* Meme pendant le calcul : l heure touchee prend la place de l ancienne au toucher. Deux
    tuiles pleines, le temps de la reponse, faisaient croire a un bug (Ansar, 2026-11-04). */
-.fg-track:has(.fg-chip.is-pending) .fg-chip:is(.is-on, .is-proposed):not(.is-pending, .is-autre) { border-color: transparent; background: rgba(255, 255, 255, 0.075); }
-.fg-track:has(.fg-chip.is-pending) .fg-chip:is(.is-on, .is-proposed):not(.is-pending, .is-autre) b { font-weight: 600; }
+.fg-track:has(.fg-chip.is-pending) .fg-chip:is(.is-on, .is-proposed):not(.is-pending, .is-autre) { border-color: transparent; background: var(--fg-plat); }
 .fg-etape .fg-chip.is-on small, .fg-etape .fg-chip.is-proposed small { display: none; }
 /* L heure d une autre partie : deja prise par le groupe, avec son mot. */
 .fg-etape .fg-chip.is-on.is-autre { border: 1px solid transparent; background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.55); }
+.fg-etape .fg-chip.is-on.is-autre b { font-size: 16px; }
 .fg-etape .fg-chip.is-on.is-autre small { display: block; margin-top: 1px; font-size: 10.5px; font-weight: 600; line-height: 1.1; color: rgba(255, 255, 255, 0.55); }
-/* Une formule sans ligne : la meme carte autour de ses heures. */
-#hourZone > .fg-track { margin-bottom: 10px; border-color: var(--fg-carte-bord); border-radius: 16px; background: var(--fg-carte); }
+/* Une formule sans ligne : le meme bloc autour de ses heures. */
+#hourZone > .fg-track { margin-bottom: 8px; border: 0; border-radius: 6px; background: var(--fg-carte); }
 #hourZone > .fg-track > .fg-periods { padding: 14px; }
 /* Une heure complete touchee, quand le moteur peut arranger : une question, un bouton. */
 .fg-quand, .fg-etape .fg-quand { margin: 10px 0 0; padding: 0; border: 0; }
 .fg-quand__dit { font-size: 15px; }
-/* LE RECAPITULATIF : toute la visite, une ligne par activite, le total en grand. */
-.fg-visit { --v-r: 10px; max-width: 940px; margin: 6px auto 22px; padding: 16px; border: 1px solid var(--fg-carte-bord); border-radius: 16px; background: var(--fg-carte); text-align: left; }
+/* LE RECAPITULATIF : un programme. L heure a gauche, l activite, jusqu a quand ; ce qui
+   est compris a sa ligne ; le total en grand. Aucun pictogramme. */
+.fg-visit { --v-r: 4px; max-width: 940px; margin: 6px auto 22px; padding: 16px; border: 0; border-radius: 6px; background: var(--fg-carte); text-align: left; }
 .fg-visit__quand { display: grid; gap: 2px; margin: 0 0 14px; }
-.fg-visit__quand b { font-size: 17px; font-weight: 700; line-height: 22px; color: #fff; }
+.fg-visit__quand b { font-family: var(--fg-display); font-size: 24px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
 .fg-visit__quand span { font-size: 14px; font-weight: 500; line-height: 19px; color: var(--fg-muted); }
-.fg-visit__list { margin: 0; }
-.fg-visit__step { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 11px; align-items: center; }
-.fg-visit__ico { grid-row: 1 / span 2; width: 32px; height: 32px; padding: 6px; border-radius: 9px; background: var(--fg-tuile); color: #e6e4ea; }
-/* Sans detail, la ligne se centre sur son icone. */
-.fg-visit__step:not(:has(> small:not(:empty))) > .fg-visit__ico { grid-row: 1; }
-.fg-visit__step > span { grid-column: 2; grid-row: 1; font-size: 15px; font-weight: 650; line-height: 20px; color: #fff; }
-.fg-visit__step > b { grid-column: 3; grid-row: 1; font-size: 15px; font-weight: 700; line-height: 20px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
-.fg-visit__step > small { grid-column: 2 / -1; grid-row: 2; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
-.fg-visit__step--onsite > b { font-size: 13.5px; font-weight: 600; color: #d9d7de; }
-.fg-visit__step--aussi > b { font-size: 12.5px; font-weight: 600; color: var(--fg-teal-ink); }
+.fg-visit__list { margin: 0; gap: 10px; }
+.fg-visit__step { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 8px; align-items: baseline; }
+.fg-visit__step > b { grid-column: 1; grid-row: 1 / span 2; font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--fg-purple-em); }
+.fg-visit__step > span { grid-column: 2; grid-row: 1; font-size: 15px; font-weight: 650; line-height: 22px; color: #fff; }
+.fg-visit__step > small { grid-column: 2; grid-row: 2; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+.fg-visit__step--onsite > b { font-size: 16px; white-space: nowrap; color: #bdbbc2; }
+.fg-visit__step--aussi > b { font-family: var(--fg-body); font-size: 12px; font-weight: 600; line-height: 22px; letter-spacing: 0; color: var(--fg-teal-ink); }
 .fg-visit__step--aussi > span::first-letter { text-transform: uppercase; }
 .fg-visit__step--hors > span { color: var(--fg-muted); text-decoration: line-through; }
-.fg-visit__list > .fg-visit__step--out { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--fg-carte-bord); }
+.fg-visit__list > .fg-visit__step--out { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 2px; padding-top: 12px; border-top: 2px solid var(--fg-plat); }
 .fg-visit__step--out > span { font-size: 14px; font-weight: 500; color: var(--fg-muted); }
-.fg-visit__paye { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 10px 0 0; font-size: 14px; font-weight: 500; color: var(--fg-muted); }
-.fg-visit__paye .fg-visit__price { font-family: var(--fg-display); font-size: 32px; font-weight: 400; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
+.fg-visit__step--out > b { color: #fff; }
+.fg-visit__paye { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 8px 0 0; font-size: 14px; font-weight: 500; color: var(--fg-muted); }
+.fg-visit__paye .fg-visit__price { font-family: var(--fg-display); font-size: 40px; font-weight: 400; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
 .fg-visit__regle, .fg-visit__reste { margin: 3px 0 0; font-size: 13px; font-weight: 500; line-height: 18px; text-align: right; color: var(--fg-muted); }
 .fg-visit__warn { margin: 0 0 12px; }
 @media (min-width: 681px) {
   /* Assez de place : la periode a sa colonne, comme un tableau d horaires. */
   .fg-period { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: start; }
-  .fg-period__btn { padding: 15px 0 0; }
+  .fg-period__btn { padding: 14px 0 0; }
 }
 @media (min-width: 1100px) {
   .fg-scene[data-scene="heures"] .fg-title { max-width: 1180px; }

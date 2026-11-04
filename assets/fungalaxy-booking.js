@@ -448,7 +448,6 @@
     if (/arcade/.test(s)) return 'a-arcade';
     if (/playground|plaine/.test(s)) return 'a-plaine';
     if (/fun_run|funrun|fun-run/.test(s)) return 'a-funrun';
-    if (/boisson|cruche|bi[eè]re/.test(s)) return 'a-boisson';
     // La table d une formule anniversaire : le gateau des occasions.
     if (/table/.test(s)) return 'o-anniversaire';
     return 'a-star';
@@ -3990,10 +3989,10 @@
   function idEtape(cle) { return 'etp-' + String(cle).replace(/[^a-z0-9_-]/gi, '-'); }
   // Une ligne du programme : son en-tete (l icone, le titre et son detail,
   // l heure), et ce qu elle deplie. Ni point ni fil (2026-10-13).
-  function ligneEtape(classe, attributs, cle, ico, titre, dedans) {
+  function ligneEtape(classe, attributs, cle, ico, titre, dedans, fond) {
     return '<li class="fg-etape' + classe + '" data-cle="' + esc(cle) + '"' + attributs + '>'
       + '<button type="button" class="fg-etape__tete" aria-expanded="false" aria-controls="' + idEtape(cle) + '">'
-      + '<span class="fg-etape__icone"><svg aria-hidden="true"><use href="#' + ico + '"/></svg></span>'
+      + '<span class="fg-etape__icone"' + (fond ? ' style="--photo:url(' + fond + ')"' : '') + '><svg aria-hidden="true"><use href="#' + ico + '"/></svg></span>'
       + '<span class="fg-etape__quoi"><b>' + titre + '</b><small></small></span>'
       + '<span class="fg-etape__heure"></span>'
       + '<svg class="fg-etape__chev" aria-hidden="true"><use href="#i-chevron"/></svg>'
@@ -4004,6 +4003,12 @@
   // (Movsar, 2026-10-13 : « tout le systeme de arrivé est mal gerer de fou »)
   // reste la regle : l arrivee dite est celle du plan, et aucune autre ligne ne
   // l attend. Les activites, et les arcades facultatives, se posent.
+  // LA VRAIE PHOTO DE L ACTIVITE (Ansar, 2026-11-04 : « fait trop IA ») : seule Libramont
+  // a les siennes. Sans photo, la ligne se passe d image, jamais d un pictogramme.
+  function vignette(id) {
+    var p = (meta && meta.center && meta.center.id || CENTER) === 'libramont' ? photo(id) : '';
+    return p ? '/assets/fungalaxy/' + (p === 'billard' ? 'billards-libramont' : p) + '-carte.webp' : '';
+  }
   function htmlEtapes(etapes, pistes) {
     var laserPose = false;
     var html = '<div class="fg-prog fg-rise" style="--i:0"><ol class="fg-etapes">';
@@ -4012,10 +4017,11 @@
       if (e.partie) { if (!laserPose) { piste = pistes[e.id] || ''; laserPose = true; } }
       else piste = pistes[e.id] || '';
       var arr = e.id === 'arrivee';
-      html += ligneEtape(arr ? ' fg-etape--arrivee' : '', ' data-activity="' + esc(e.id) + '" data-partie="' + e.partie + '"', e.cle, arr ? 'i-clock' : icone(e.id),
+      var fond = arr ? '' : vignette(e.id);
+      html += ligneEtape((arr ? ' fg-etape--arrivee' : '') + (fond ? ' has-photo' : ''), ' data-activity="' + esc(e.id) + '" data-partie="' + e.partie + '"', e.cle, arr ? 'i-clock' : icone(e.id),
         esc(e.label) + (e.partie > 1 ? ', ' + e.partie + 'e partie' : ''),
         '<div class="fg-etape__piste">' + piste + '</div>'
-        + (e.partie > 1 ? '<p class="fg-etape__alt"><button type="button" class="fg-etape__surplace" data-sur-place><svg aria-hidden="true"><use href="#i-users"/></svg>Laisser l’équipe choisir</button></p>' : ''));
+        + (e.partie > 1 ? '<p class="fg-etape__alt"><button type="button" class="fg-etape__surplace" data-sur-place><svg aria-hidden="true"><use href="#i-users"/></svg>Laisser l’équipe choisir</button></p>' : ''), fond);
     });
     return html + '<li class="fg-etape fg-etape--borne fg-etape--fin" aria-hidden="true"><span class="fg-etape__quoi">Fin</span><span class="fg-etape__heure"></span></li></ol></div>';
   }
@@ -4895,7 +4901,7 @@
   function motArrivee() { return state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
-    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '>' + (o.ico ? '<svg class="fg-visit__ico" aria-hidden="true"><use href="#' + o.ico + '"/></svg>' : '') + '<b>' + esc(o.heure || '') + '</b>'
+    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
       + '<span>' + (o.titreHtml || esc(typoVisite(o.titre))) + '</span>'
       + '<small>' + esc(typoVisite(o.detail || '')) + '</small>' + (o.detail2 ? '<small>' + esc(typoVisite(o.detail2)) + '</small>' : '') + '</li>';
   }
@@ -5499,7 +5505,7 @@
     if (arrivee) {
       var premiere = parts.filter(function (p) { return genreCompris(p.id) !== 'table'; })[0];
       var repere = premiere ? premiere.debut : slot.time;
-      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: 'Arrivée', ico: 'i-clock' });
+      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: 'Arrivée' });
     }
     function lignePartie(p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
@@ -5529,8 +5535,8 @@
       // de toutes les activites »).
       var titreP = nom + (p.partie > 1 ? ', ' + p.partie + 'e partie' : '');
       function detailP(f, joueursG, k) { return [bouge ? 'déplacé' : '', f ? 'jusqu’à ' + heureAffichee(f) : '', p.pistes > 0 ? p.pistes + (p.pistes > 1 ? ' pistes' : ' piste') : '', joueursG ? joueursG + ' joueurs' : '', p.partie === 1 && !k ? montantDe(it) : ''].filter(Boolean).join(' · '); }
-      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge, ico: icone(p.id) }); });
-      else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge, ico: icone(p.id) });
+      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge }); });
+      else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge });
     }
     parts.forEach(lignePartie);
     // CE QUI N A PAS D HEURE : la voix le dit sous « Dans la foulée » (Movsar,
@@ -5540,7 +5546,7 @@
     var suiteDits = [];
     function montantDe(it) { return !formule && it.priceKnown === true && Number(it.price) > 0 ? euros(it.price) : ''; }
     function lignesSurPlace(o) {
-      return (o.titres || []).map(function (titreS, i) { return etapeVisite({ genre: [o.genre].concat(o.hors ? ['hors'] : []), heure: o.vers && !i ? 'vers ' + o.vers : 'sur place', titre: titreS, ico: icone(o.id) }); }).join('');
+      return (o.titres || []).map(function (titreS, i) { return etapeVisite({ genre: [o.genre].concat(o.hors ? ['hors'] : []), heure: o.vers && !i ? 'vers ' + o.vers : 'sur place', titre: titreS }); }).join('');
     }
     function ligneSuite(o, voix) {
       suite += lignesSurPlace(o);
@@ -5574,7 +5580,7 @@
       // sans heure faisait croire a un oubli.
       var ouElleTombe = id === 'laser_game' && !participants && plan.laserPassPlan && plan.laserPassPlan.followOnStart;
       var titres = total === 1 ? [nomR] : reste.map(function (k) { return nomR + ', ' + k + 'e partie' + (participants ? ' (' + participants + ' joueurs)' : ''); });
-      return { o: { genre: 'onsite', titres: titres, vers: ouElleTombe, id: id, hors: coupees.length > 0 && coupees.length === reste.length }, voix: nomR + ', ' + quelles + ', ' + detail };
+      return { o: { genre: 'onsite', titres: titres, vers: ouElleTombe, hors: coupees.length > 0 && coupees.length === reste.length }, voix: nomR + ', ' + quelles + ', ' + detail };
     }
     items.forEach(function (it) {
       partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.games) || 0, parts.filter(function (p) { return p.id === it.activityId; }).length);
@@ -5620,19 +5626,19 @@
     var jeuRestant = illimite && fin ? minutesEntre(slot.time, fin) : 0;
     var motsIllimite = illimite ? carte.map(function (c) { return c.texte; }) : [];
     if (illimite && jeuRestant > 0) {
-      lignes += etapeVisite({ genre: 'bloc', heure: slot.time, titre: formule.name, ico: 'a-formule' });
+      lignes += etapeVisite({ genre: 'bloc', heure: slot.time, titre: formule.name });
       dits.push(formule.name + ', à partir de ' + slot.time + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' + (motsIllimite.length ? '. Compris : ' + motsIllimite.join(', ') : ''));
     } else if (motsIllimite.length) {
       dits.push('Compris : ' + motsIllimite.join(', '));
     }
     var debut = !parts.length && !libres.length && !arrivee && !(illimite && jeuRestant > 0);
-    if (debut) lignes = etapeVisite({ genre: 'debut', heure: slot.time, titre: 'Début', ico: 'i-clock' }) + lignes;
+    if (debut) lignes = etapeVisite({ genre: 'debut', heure: slot.time, titre: 'Début' }) + lignes;
     // Une visite sans activite a heure : une ligne par activite, l heure sur la premiere.
     function nomLibre(it) {
       var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
       return (it.name || nomActivite(it.activityId)) + (entre ? ' (' + entre + ')' : '');
     }
-    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: montantDe(it), ico: icone(it.activityId) }); });
+    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: montantDe(it) }); });
     // CE QUE LA FORMULE COMPREND, DANS SES MOTS, SANS HEURE : ce qui a sa ligne ne
     // se redit pas. A la carte, le reste de la visite.
     var poses = {};
@@ -5640,8 +5646,8 @@
     if (Number(ancrages.laserGames) > 0) poses.laser_game = 1;
     // « 1 partie de Minigolf, 2 cruches boissons » se lit « Minigolf, 2 cruches ».
     function motCompris(s) { return s.replace(/^1 (partie|entrée)( de| à la)? /i, '').replace(/ boissons$/i, ''); }
-    if (formule) carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).forEach(function (c) { lignes += etapeVisite({ genre: 'aussi', heure: 'compris', titre: motCompris(c.texte), ico: icone(c.texte) }); });
-    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: montantDe(it), ico: icone(it.activityId) }); });
+    if (formule) carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).forEach(function (c) { lignes += etapeVisite({ genre: 'aussi', heure: 'compris', titre: motCompris(c.texte) }); });
+    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: montantDe(it) }); });
     if (fin) lignes += '<li class="fg-visit__step fg-visit__step--out"><span>' + (slot.visitEndsAtClose || illimite ? 'Jusqu’à' : 'Fin vers') + '</span> <b>' + esc(heureAffichee(fin)) + '</b></li>';
     // AU PLUS : le jour et le groupe, une ligne par activite, ce qui est compris,
     // la fin, le montant (Ansar, 2026-11-03 : « un mot qui n aide pas a decider
@@ -6276,6 +6282,9 @@
         else if (it.services && it.services.length > 1) morceaux.push(it.services.length + ' groupes l’un après l’autre');
         lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: morceaux.filter(Boolean).join(' · '), aside: siennes[0] ? siennes[0].debut : '' });
       });
+      // Dans l ordre de la journee, comme a l ecran des heures : le client a pu cocher le
+      // bowling, puis poser son laser une heure plus tot.
+      lignes.sort(function (a, b) { return (a.aside ? 0 : 1) - (b.aside ? 0 : 1) || (a.aside < b.aside ? -1 : a.aside > b.aside ? 1 : 0); });
     } else {
       state.selection.forEach(function (id) { lignes.push({ icone: icone(id), nom: nomActivite(id), detail: '', aside: '' }); });
     }

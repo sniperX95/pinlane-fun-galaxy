@@ -358,10 +358,11 @@ async function declencheursDeProduction(planF1) {
   // Le serveur refuse encore ce qui est vraiment impossible, en une ligne.
   bench.semer([moteur(), ligne(7203, { start_time: '19:00', lanes: [], pax: 29, type: 'laser', label: 'Laser Game', duration: 0.5, total_duration: 0.5, ops_plan: null })]);
   const ecrituresAvantRefus = ecrituresSql;
+  const laserAvantRefus = JSON.stringify(await laserBase(7201, '1.1'));
   const plein = await patchHttp(7201, { activityId: 'laser_game', unitKey: '1.1', startTime: '19:00' });
   check(plein.status === 409 && plein.ok === false, `arene pleine : refus 409 (${plein.message})`);
   check(mots(plein.message) <= 14 && /complet/i.test(plein.message), `arene pleine : une ligne courte qui dit pourquoi (${mots(plein.message)} mots)`);
-  check(JSON.stringify(await laserBase(7201, '1.1')) === JSON.stringify(['17:00']), 'arene pleine : la base est inchangee');
+  check(JSON.stringify(await laserBase(7201, '1.1')) === laserAvantRefus, 'arene pleine : la base est inchangee');
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [3, 4], pax: 4 })]);
   const piste = await patchHttp(7201, { activityId: 'bowling', startTime: '18:00', lanes: [3, 4] });
   check(ecrituresSql === ecrituresAvantRefus, 'refus serveur : aucun UPDATE SQL');
@@ -383,10 +384,11 @@ async function declencheursDeProduction(planF1) {
   dossierDeux.ops_plan.resourceBlocks.push(autrePartie);
   bench.semer([dossierDeux]);
   const ecrituresAvantGroupe = ecrituresSql;
+  const laserAvantGroupe = JSON.stringify(await laserBase(7201, '1.1'));
   const surSoi = await patchHttp(7201, { activityId: 'laser_game', unitKey: '1.1', startTime: autrePartie.startTime });
   // Refus de buildActivityMove (lib/reservation-activity-move.js), 422.
   check(surSoi.status === 422 && /^Ce déplacement chevauche le Laser Game à \d\d:\d\d\. Cet horaire reste inchangé\.$/.test(surSoi.message || ''), `meme groupe : refus 422 en une ligne (${surSoi.message})`);
-  check(ecrituresSql === ecrituresAvantGroupe && JSON.stringify(await laserBase(7201, '1.1')) === JSON.stringify(['17:00']), 'meme groupe : aucun UPDATE, la base est inchangee');
+  check(ecrituresSql === ecrituresAvantGroupe && JSON.stringify(await laserBase(7201, '1.1')) === laserAvantGroupe, 'meme groupe : aucun UPDATE, la base est inchangee');
 }
 
 async function main() {

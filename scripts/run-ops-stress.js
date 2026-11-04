@@ -112,7 +112,9 @@ function validateScenarioShape(scenario, center, formulaId = '') {
   scenario.timeline.forEach((step) => {
     assert.ok(Number.isFinite(Number(step.start)), 'timeline start invalid');
     assert.ok(Number.isFinite(Number(step.end)), 'timeline end invalid');
-    assert.ok(step.end > step.start, 'timeline step has non-positive duration');
+    // Les boissons n ont pas de temps (Ansar, 2026-11-03), et a l ouverture le groupe arrive
+    // a l heure pile : ces deux etapes restent a la frise, sans duree.
+    assert.ok(step.end > step.start || (step.end === step.start && (step.activityId === 'service_drinks' || step.label === 'Arrivée & accueil')), `timeline step has non-positive duration: ${step.label} ${step.startTime}-${step.endTime}`);
     assert.ok(step.start >= previousStart, 'timeline is not ordered');
     previousStart = step.start;
   });

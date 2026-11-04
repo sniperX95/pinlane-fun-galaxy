@@ -270,7 +270,8 @@ function testPartyTableFollowsArrival() {
   const tableBlock = plan.resourceBlocks.find((block) => block.resourceType === 'party_table');
   assert.ok(tableBlock, 'table formulas must produce an internal party_table block');
   assert.strictEqual(tableBlock.startTime, plan.arrivalTime, 'table is blocked from the group arrival');
-  assert.strictEqual(tableBlock.endTime, plan.timeline[plan.timeline.length - 1].endTime, 'table stays blocked until the end of the visit');
+  // Ses 2 h de table peuvent depasser la derniere activite : les boissons n ont plus de temps.
+  assert.ok(tableBlock.endTime >= plan.timeline[plan.timeline.length - 1].endTime, 'table stays blocked until the end of the visit');
   assert.ok(tableBlock.followsArrival, 'table block must be flagged as following the arrival');
 }
 

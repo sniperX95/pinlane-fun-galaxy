@@ -219,7 +219,7 @@ async function run() {
    check(await frame.locator('#gridAct li[data-activity="arcade_time"] .fg-card').getAttribute('aria-checked')==='true',label+' MONTAGE arcades cochees par la selection complete');
    const arcade=frame.locator('#gridAct .fg-grid__item[data-activity="arcade_time"]');
    await arcade.locator('[data-compteur="participants"] input').fill('3');await arcade.locator('[data-compteur="participants"] input').press('Enter');
-   for(const [id,total] of [['time-30',45],['time-60',90]]) {
+   for(const [id,total] of [['time-30',45],['time-60',75]]) {
     await arcade.locator('.fg-pill[data-cle="arcadeOfferId"][data-valeur="'+id+'"]').click();
     check((await arcade.locator('.fg-card__price').textContent().then(sansInsecable)).includes(total+' €'),label+' timed arcade chosen total remains exact');
     await popup(page,frame,arcade.locator('[data-activity-info]'),embedded,label+'/arcade/'+id,['3 joueurs','3 cartes','sans cadeaux','illimité']);

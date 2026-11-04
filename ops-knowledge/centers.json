@@ -245,6 +245,11 @@
           "maxChildren": 90,
           "access": "toute la journée"
         },
+        "fun_run": {
+          "surfaceM2": 20,
+          "minAge": 6,
+          "maxPlayers": 5
+        },
         "bowling": {
           "lanes": 8,
           "surfaceM2": 450,
@@ -253,7 +258,8 @@
         "billards": {
           "tables": 6,
           "type": "americains",
-          "minAge": 10
+          "minAge": 10,
+          "maxPlayersPerTable": 4
         }
       },
       "publicProof": {
@@ -491,7 +497,8 @@
         "billards": {
           "tables": 6,
           "type": "americains",
-          "minAge": 10
+          "minAge": 10,
+          "maxPlayersPerTable": 4
         },
         "arcade_time": {
           "machines": "plus de 40 bornes",

@@ -199,6 +199,8 @@
     "test:tarifs-effets",
     "test:tarifs-grilles",
     "test:centre-marque",
+    "test:laser-par-centre",
+    "test:site-centres",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

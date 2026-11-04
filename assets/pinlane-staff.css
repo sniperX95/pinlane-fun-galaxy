@@ -22097,7 +22097,9 @@ input.tf-champ[aria-invalid="true"] { border-color: var(--danger); }
 
 /* LA MARQUE DU CENTRE (2026-11-04). Les couleurs sont posees par staff-menu.js sur la racine :
    l enseigne dans la barre du planning et dans la fenetre de reservation, l initiale dans
-   le menu, son point dans la liste des centres. */
+   le menu, son point dans la liste des centres. La police d affiche n est pas prechargee :
+   elle ne sert qu a ce mot, et sa police de repli lui ressemble. */
+@font-face { font-family: Anton; src: url('./fonts/anton-latin.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
 :root { --centre-fond: transparent; --centre-encre: currentColor; --centre-texte: currentColor; --centre-texte-clair: currentColor; }
 .qb-modal.rv.rs .rs-tk-t .rs-centre { flex: none; max-width: 170px; margin: 0 auto 0 10px; overflow: hidden; color: var(--centre-texte); font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 20px; font-weight: 400; line-height: 1.15; letter-spacing: 0.015em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 [data-theme='light'] .qb-modal.rv.rs .rs-tk-t .rs-centre { color: var(--centre-texte-clair); }

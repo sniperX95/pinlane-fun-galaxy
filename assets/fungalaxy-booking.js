@@ -641,6 +641,7 @@
     if (a.ageRange) lignes.push('Âge : ' + a.ageRange + '.');
     else if (a.minAge || a.maxAge) lignes.push('Âge : ' + (a.minAge ? 'dès ' + a.minAge + ' ans' : '') + (a.maxAge ? ', jusqu’à ' + a.maxAge + ' ans' : '') + '.');
     if (a.minHeightCm) lignes.push('Taille minimum : ' + a.minHeightCm + ' cm.');
+    if (a.maxPlayersPerTable) lignes.push('Jusqu’à ' + a.maxPlayersPerTable + ' joueurs par table.');
     if (a.minPax > 1) lignes.push('Au moins ' + a.minPax + ' joueurs.');
     return lignes;
   }
@@ -712,7 +713,7 @@
     if (!surMesure && state.formuleId === f.id && f.type === 'per_pax' && !f.kidsOnly) sections[0].lignes.push(euros(f.price) + ' / personne × ' + n + ' = ' + euros(Math.round(Number(f.price) * n * 100) / 100));
     if (!surMesure && f.kidsOnly && state.formuleId === f.id) sections[0].lignes.push(textesEnfants(f).prix, textesEnfants(f).adultes);
     var notes = (f.notes || []).filter(function (note) { return !(/cadeaux/i.test(note) && (f.desc || []).some(function (d) { return /cadeaux/i.test(d); })); });
-    var regles = reglesFormule(f).map(function (r) { return f.kidsOnly && f.minPax > 1 && r === 'dès ' + f.minPax + ' personnes' ? 'dès ' + f.minPax + ' enfants' : r; }).filter(function (r) { return !notes.some(function (note) { return /vacances/i.test(r) && /vacances/i.test(note) || /personnes|enfants/i.test(r) && /minimum/i.test(note) || /avant|de [0-9]|à partir/i.test(r) && /[0-9]h/i.test(note); }); }).concat(notes).filter(Boolean);
+    var regles = reglesFormule(f).map(function (r) { return f.kidsOnly && f.minPax > 1 && r === 'dès ' + f.minPax + ' personnes' ? 'dès ' + f.minPax + ' enfants' : r; }).filter(function (r) { return !notes.some(function (note) { return /vacances/i.test(r) && /vacances/i.test(note) || /personnes|enfants/i.test(r) && /minimum/i.test(note) || /avant|de [0-9]|à partir/i.test(r) && /[0-9]h/i.test(note) || /lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche/i.test(r) && /lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche/i.test(note); }); }).concat(notes).filter(Boolean);
     if (f.kidsOnly) regles.push('Pour les enfants de ' + f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans.', 'Les adultes qui accompagnent ne paient pas la formule.');
     if (regles.length) sections.push({ titre: 'Conditions de cette formule', lignes: regles.filter(function (s, i, all) { return all.indexOf(s) === i; }) });
     var acces = [];
@@ -1003,7 +1004,9 @@
   }
   function reglageBillard(a) {
     var choix = state.options[a.id] || {};
-    var tables = Math.min(tablesMax(a), Math.max(1, Math.trunc(Number(choix.units) || 1)));
+    // Les tables d office suivent les joueurs, quand le centre dit combien jouent a une table : le client garde la main.
+    var parTable = Math.trunc(Number(a && a.maxPlayersPerTable) || 0);
+    var tables = Math.min(tablesMax(a), Math.max(1, Math.trunc(Number(choix.units) || (parTable > 0 ? Math.ceil(joueursDe(a) / parTable) : 1))));
     var heures = heuresPossibles(a);
     return { units: tables, hours: heures.indexOf(Number(choix.hours)) >= 0 ? Number(choix.hours) : heures[0] };
   }
@@ -3795,11 +3798,15 @@
     function notePartage() {
       var places = Number(meta && meta.center && meta.center.booking && meta.center.booking.laserArenaCapacity) || 0;
       var n = state.onglet === 'formules' ? joueursDemandes() : joueursDe(activite('laser_game'));
-      var partage = !(places && n % places === 0);
+      // UN CENTRE A PARTIES SEPAREES NE PARTAGE RIEN (Ansar, 2026-11-04, Gembloux) : chaque groupe
+      // a sa partie, meme si un autre groupe est dans le labyrinthe au meme moment.
+      var separees = Number(meta && meta.center && meta.center.booking && meta.center.booking.laserParallelLaunches) > 1;
+      var partage = !separees && !(places && n % places === 0);
       var duree = phraseLaser();
-      if (!partage && !duree) return '';
+      if (!partage && !separees && !duree) return '';
       return '<p class="fg-track__share"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (duree ? esc(duree) + (partage ? ' ' : '') : '')
+        + (duree ? esc(duree) + (partage || separees ? ' ' : '') : '')
+        + (separees ? '<b>Votre propre partie</b> : vous ne jouez qu’entre vous, même si un autre groupe est dans le labyrinthe.' : '')
         + (!partage ? '' : '<b>Partie partagée</b>' + (places ? ' (jusqu’à ' + places + ' joueurs)' : '') + ' : d’autres groupes peuvent jouer avec vous.')
         + '</span></p>';
     }

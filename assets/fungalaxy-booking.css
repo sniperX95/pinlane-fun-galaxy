@@ -122,7 +122,9 @@
 .fg-centre { display: block; min-width: 0; margin: 0; padding: 5px 13px 6px; overflow: hidden; border-radius: 6px; background: var(--fg-teal); color: #06201c; font-family: var(--fg-display); font-size: 30px; font-weight: 400; line-height: 1.12; letter-spacing: 0.02em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .fg-centre:empty { display: none; }
 .fg-centre--cadre { display: none; width: max-content; max-width: calc(100% - 2 * var(--fg-gutter)); box-sizing: border-box; margin: 16px var(--fg-gutter) 0; font-size: 26px; }
-.fg.is-embed .fg-centre--cadre:not(:empty) { display: block; }
+/* (sa place est gardee avant que le nom n arrive du serveur : le formulaire ne saute pas) */
+.fg.is-embed .fg-centre--cadre { display: block; min-height: calc(1.12em + 11px); }
+.fg.is-embed .fg-centre--cadre:empty { background: transparent; }
 /* (sans ca, sa marge du haut sort du corps de page, et le cadre garde 16 px a defiler) */
 .fg.is-embed .fg-shell { display: flow-root; }
 .fg-top__cta {
@@ -144,6 +146,7 @@
 @media (max-width: 560px) {
   .fg-top__gauche { flex: none; gap: 10px; }
   .fg-centre { padding: 4px 9px 5px; font-size: 22px; }
+  .fg.is-embed .fg-centre--cadre { min-height: calc(1.12em + 9px); }
   .fg-top__cta { flex: none; padding: 9px 13px; font-size: 12px; letter-spacing: 0.05em; }
 }
 @media (max-width: 380px) { .fg-top__logo { width: 92px; } }

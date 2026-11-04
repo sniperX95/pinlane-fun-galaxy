@@ -53,7 +53,7 @@ async function main() {
   equal(normalizeCenterConfig({activityOffers:{arcade_time:null}},'libramont').activityOffers.arcade_time,null,'explicit no configuration');
   const line=(mode,id,cards=3,participants=3)=>({activityId:'arcade_time',participants,arcadeMode:mode,arcadeOfferId:id,cards});
   const normalized=(item,pax=18)=>visit.normalizeProgram([item],{centerId:'libramont',pax,dateStr:bench.JOUR});
-  for (const [mode,id,unit,totalCredits,minutes] of [['time','time-30',15,null,30],['time','time-60',30,null,60],['credit','credit-10',10,10,null],['credit','credit-25',25,35,null],['credit','credit-35',35,50,null],['credit','credit-50',50,75,null]]) {
+  for (const [mode,id,unit,totalCredits,minutes] of [['time','time-30',15,null,30],['time','time-60',25,null,60],['credit','credit-10',10,10,null],['credit','credit-25',25,35,null],['credit','credit-35',35,50,null],['credit','credit-50',50,75,null]]) {
     const program=normalized(line(mode,id));const item=program.items[0];
     equal(program.price,unit*3,'exact card price');equal(item.priceKnown,true,'known card amount');equal(item.cards,3,'card count');
     equal(item.participants,3,'own players');equal(item.arcadeOffer.price,unit,'server unit price');equal(item.arcadeOffer.mode,mode,'server mode');

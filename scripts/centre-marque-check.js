@@ -40,12 +40,13 @@ const MUTATIONS = [
   { nom: 'l enseigne perd sa typo d affiche', lettre: '[A]', fichier: 'assets/pinlane-planning-global.css', de: 'font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 27px;', vers: 'font-size: 27px;' },
   { nom: 'en theme clair, l enseigne garde sa couleur du sombre', lettre: '[A]', fichier: 'assets/pinlane-planning-global.css', de: "[data-theme='light'] .pb-centre { color: var(--centre-texte-clair); }", vers: '' },
   { nom: 'le nom se coupe dans la barre', lettre: '[B]', fichier: 'assets/pinlane-planning-global.css', de: 'display: block; max-width: 230px; padding: 0 6px 0 2px;', vers: 'display: block; max-width: 50px; padding: 0 6px 0 2px;' },
-  { nom: 'quand la place manque, l enseigne reste en haut', lettre: '[B]', fichier: 'assets/pinlane-planning-global.css', de: '@container barre (max-width: 920px) {\n  .pb-ligne > .pb-centre { display: none; }\n', vers: '@container barre (max-width: 920px) {\n' },
+  { nom: 'quand la place manque, l enseigne reste en haut', lettre: '[B]', fichier: 'assets/pinlane-planning-global.css', de: '@container barre (max-width: 1040px) {\n  .pb-ligne > .pb-centre { display: none; }\n', vers: '@container barre (max-width: 1040px) {\n' },
   { nom: 'dans la rangee des chiffres, l enseigne disparait', lettre: '[B]', fichier: 'assets/pinlane-planning-global.css', de: '  .pb-ligne > .pb-centre { display: none; }\n  .pb-bande::before { content: var(--centre-nom, none);', vers: '  .pb-ligne > .pb-centre { display: none; }\n  .pb-bande::before { content: none;' },
   { nom: 'la fenetre de reservation perd le centre', lettre: '[C]', fichier: 'assets/app-main.js', de: '<span class="rs-centre">${escapeHtml(typeof window.staffCenterShortName === \'function\' ? window.staffCenterShortName() : \'\')}</span>', vers: '' },
   { nom: 'le premier centre de la liste prend la marque d un centre inconnu', lettre: '[D]', fichier: 'assets/staff-menu.js', de: 'return getMenuCenters().find(center => center.id === id) || null;', vers: 'return getMenuCenters().find(center => center.id === id) || getMenuCenters()[0] || null;' },
   { nom: 'la page client ne pose plus le centre', lettre: '[E]', fichier: 'assets/fungalaxy-booking.js', de: "$$('[data-centre-ville]').forEach(function (el) { el.textContent = villeCentre; });", vers: '' },
-  { nom: 'dans le site du client, le centre disparait', lettre: '[E]', fichier: 'assets/fungalaxy-booking.css', de: '.fg.is-embed .fg-centre--cadre:not(:empty) { display: block; }', vers: '' },
+  { nom: 'dans le site du client, le centre disparait', lettre: '[E]', fichier: 'assets/fungalaxy-booking.css', de: '.fg.is-embed .fg-centre--cadre { display: block; min-height: calc(1.12em + 11px); }', vers: '' },
+  { nom: 'dans le site du client, le formulaire saute quand le nom arrive', lettre: '[E]', fichier: 'assets/fungalaxy-booking.css', de: '.fg.is-embed .fg-centre--cadre { display: block; min-height: calc(1.12em + 11px); }', vers: '.fg.is-embed .fg-centre--cadre:not(:empty) { display: block; }' },
   { nom: 'au telephone, le nom se coupe a cote du logo', lettre: '[E]', fichier: 'assets/fungalaxy-booking.css', de: '.fg-top__gauche { flex: none; gap: 10px; }', vers: '.fg-top__gauche { flex: 0 1 170px; gap: 10px; }' },
 ];
 
@@ -183,7 +184,7 @@ async function verifierConsole(browser, ok) {
     const { ctx, page } = await ouvrirPlanning(browser, 'gembloux', largeur, 800);
     const m = await lireMarque(page);
     ok(m.visible && m.nom === 'Gembloux' && !m.coupe && m.droite <= largeur, `[B] a ${largeur} px, le nom est entier et a l ecran`, `${m.nom} ${m.gauche}-${m.droite}`);
-    ok(m.enHaut === (largeur >= 1024), `[B] a ${largeur} px, l enseigne est ${largeur >= 1024 ? 'en tete de barre' : 'dans la rangee des chiffres'}`, String(m.enHaut));
+    ok(m.enHaut === (largeur >= 1180), `[B] a ${largeur} px, l enseigne est ${largeur >= 1180 ? 'en tete de barre' : 'dans la rangee des chiffres'}`, String(m.enHaut));
     ok(m.deborde <= 1 && m.debordePage <= 1, `[B] a ${largeur} px, rien ne deborde`, `barre ${m.deborde}, page ${m.debordePage}`);
     ok(m.recherche >= 120, `[B] a ${largeur} px, le champ de recherche reste utilisable`, `${m.recherche} px`);
     await ctx.close();
@@ -195,9 +196,10 @@ async function verifierConsole(browser, ok) {
   await ctx.close();
 }
 
-async function brancherClient(ctx) {
+async function brancherClient(ctx, retard = 0) {
   await sansReseau(ctx);
-  await ctx.route('**/api/**', (route) => {
+  await ctx.route('**/api/**', async (route) => {
+    if (retard) await new Promise((r) => setTimeout(r, retard));
     const u = new URL(route.request().url());
     const id = u.searchParams.get('centerId') || 'libramont';
     const ville = CENTRES[id] || id;
@@ -228,12 +230,20 @@ async function verifierClient(browser, ok) {
       await ctx.close();
     }
   }
+  // Le serveur repond lentement : le formulaire est deja la quand le nom arrive, et il ne doit pas sauter.
   const ctx = await browser.newContext({ viewport: { width: 900, height: 780 } });
-  await brancherClient(ctx);
+  await brancherClient(ctx, 1200);
   const page = await ctx.newPage();
   await page.goto(`${BASE_URL}/hote?c=gembloux`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  // (la hauteur du nom, pas sa position : ce banc n a pas de vrai catalogue, et l alerte qui s ouvre au-dessus ne dit rien du nom)
+  const hautDuFormulaire = () => page.evaluate(() => { const f = document.querySelector('iframe'); const d = f && f.contentDocument; const s = d && d.querySelector('.fg-centre--cadre'); return s && d.body.classList.contains('is-embed') ? Math.round(s.getBoundingClientRect().height) : null; });
+  await page.waitForFunction(() => { const f = document.querySelector('iframe'); const d = f && f.contentDocument; return Boolean(d && d.body && d.body.classList.contains('is-embed') && d.querySelector('.fg-stage')); }, null, { timeout: 8000 }).catch(() => {});
+  const avantNom = await page.evaluate(() => { const d = document.querySelector('iframe').contentDocument; const e = d.querySelector('.fg-centre--cadre'); return e ? e.textContent : '?'; });
+  const hautAvant = await hautDuFormulaire();
   await page.waitForFunction(() => { const f = document.querySelector('iframe'); const d = f && f.contentDocument; const e = d && d.querySelector('.fg-centre--cadre'); return e && e.textContent; }, null, { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(200);
+  const hautApres = await hautDuFormulaire();
+  ok(avantNom === '' && hautAvant > 0 && hautAvant === hautApres, '[E] dans le site du client, le formulaire ne saute pas quand le nom arrive', `avant « ${avantNom} » ${hautAvant}, apres ${hautApres}`);
   const cadre = await page.evaluate(() => {
     const d = document.querySelector('iframe').contentDocument;
     const e = d.querySelector('.fg-centre--cadre');

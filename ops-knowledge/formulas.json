@@ -135,7 +135,7 @@
       "name": "BACK TO SCHOOL/WORK",
       "family": "Speciale",
       "minPax": 4,
-      "price": { "type": "per_pax", "value": 20, "oldValue": 50 },
+      "price": { "type": "per_pax", "value": 20, "oldValue": 59 },
       "notDuringHolidays": true,
       "validDays": [0, 2, 3, 4],
       "timeLimit": { "min": "18:00", "max": "22:00" },
@@ -198,7 +198,6 @@
       "minPax": 1,
       "price": { "type": "per_pax", "value": 20 },
       "validDays": [4],
-      "notDuringHolidays": true,
       "orderPolicy": "flexible",
       "humanValidation": "recommended",
       "steps": [
@@ -214,7 +213,6 @@
       "minPax": 1,
       "price": { "type": "per_pax", "value": 30 },
       "validDays": [5],
-      "notDuringHolidays": true,
       "orderPolicy": "flexible",
       "humanValidation": "recommended",
       "steps": [

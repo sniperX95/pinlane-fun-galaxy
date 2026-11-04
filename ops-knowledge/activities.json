@@ -104,7 +104,9 @@
         "bookable": true,
         "order": 4,
         "priceType": "per_pax",
-        "unitLabel": "par personne"
+        "priceValue": 12.5,
+        "unitLabel": "par personne",
+        "note": "12 trous, 6 joueurs par groupe"
       }
     },
     {
@@ -332,7 +334,7 @@
         "type": "fixed_or_selected",
         "defaultMinutes": 30,
         "minMinutes": 15,
-        "maxMinutes": 30
+        "maxMinutes": 60
       },
       "serviceModel": {
         "explainMinutes": 3,

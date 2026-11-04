@@ -251,6 +251,8 @@
     "test:tarifs-effets": "node scripts/tarifs-effets-check.js",
     "test:tarifs-grilles": "node scripts/tarifs-grilles-check.js",
     "test:centre-marque": "node scripts/centre-marque-check.js && node scripts/centre-marque-check.js --contre-preuves",
+    "test:laser-par-centre": "node scripts/laser-par-centre-check.js && node scripts/laser-par-centre-check.js --contre-preuves",
+    "test:site-centres": "node scripts/site-centres-check.js",
     "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",
     "test:availability-blocks-ui": "node scripts/availability-blocks-ui-check.js",
     "test:availability-day-ui": "node scripts/availability-day-ui-check.js",

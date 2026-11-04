@@ -195,28 +195,13 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 }
 
 /* LA TABLETTE EN HAUTEUR : la ligne 1 passe sur deux rangees, le meme ordre. */
-/* (sur petit PC, la barre se serre pour garder l enseigne en tete : l annee laisse sa place au
-   champ de recherche) */
-@container barre (min-width: 921px) and (max-width: 1000px) {
-  .pb-centre { font-size: 24px; }
-  .pb .pb-date button.staff-date-label { width: 96px; min-width: 96px; }
-  .pb-an { display: none; }
-}
-/* (plus etroit, l enseigne descend dans la rangee des chiffres, qu elle ouvre : la barre du haut
-   reste celle d avant. La rangee se redessine sans cesse, d ou le contenu genere, porte par la
-   racine) */
-@container barre (max-width: 920px) {
+/* (quand la place manque, l enseigne descend dans la rangee des chiffres, qu elle ouvre, et la
+   legende des couleurs lui cede sa place : la barre du haut reste celle d avant. La rangee se
+   redessine sans cesse, d ou le contenu genere, porte par la racine) */
+@container barre (max-width: 1040px) {
   .pb-ligne > .pb-centre { display: none; }
   .pb-bande::before { content: var(--centre-nom, none); flex: none; margin-right: 12px; color: var(--centre-texte); font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 23px; font-weight: 400; line-height: 1; letter-spacing: 0.015em; text-transform: uppercase; white-space: nowrap; }
   [data-theme='light'] .pb-bande::before { color: var(--centre-texte-clair); }
-}
-/* (au doigt, les boutons sont plus grands : sur une tablette couchee, c est deja le cas) */
-@media (pointer: coarse) {
-  @container barre (max-width: 1000px) {
-    .pb-ligne > .pb-centre { display: none; }
-    .pb-bande::before { content: var(--centre-nom, none); flex: none; margin-right: 12px; color: var(--centre-texte); font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 23px; font-weight: 400; line-height: 1; letter-spacing: 0.015em; text-transform: uppercase; white-space: nowrap; }
-    [data-theme='light'] .pb-bande::before { color: var(--centre-texte-clair); }
-  }
 }
 @container barre (max-width: 860px) {
   .pb-ligne { flex-wrap: wrap; height: auto; }

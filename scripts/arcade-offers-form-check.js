@@ -191,7 +191,7 @@ async function gemblouxInformation(browser,errors) {
     await informationMatrix(browser,errors);
     await gemblouxInformation(browser,errors);
     if(process.env.PINLANE_ACTIVITY_INFO_ONLY) { check(errors.length===0,'information UI has no JavaScript errors'); console.log(`activity-info: ALL OK (${checks} assertions)`); return; }
-    const cases = [{ mode:'time',id:'time-30',cards:3,price:45 },{ mode:'time',id:'time-60',cards:3,price:90 },
+    const cases = [{ mode:'time',id:'time-30',cards:3,price:45 },{ mode:'time',id:'time-60',cards:3,price:75 },
       {mode:'credit',id:'credit-10',cards:2,price:20,credits:10},{mode:'credit',id:'credit-25',cards:2,price:50,credits:35},
       {mode:'credit',id:'credit-35',cards:2,price:70,credits:50},{mode:'credit',id:'credit-50',cards:2,price:100,credits:75}];
     for (const width of process.env.PINLANE_ARCADE_CANONICAL_ONLY ? [] : [1440,390,320]) {

@@ -1408,7 +1408,9 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
       entry.players += Number(window.players || window.reservation?.pax || 0);
       sessions.set(key, entry);
     });
-    const joinable = [...sessions.values()]
+    // (un centre a parties separees ne fait rejoindre personne : chaque groupe a la sienne,
+    // lib/laser-parties)
+    const joinable = lancementsMax > 1 ? null : [...sessions.values()]
       .filter(session =>
         session.players + Number(candidate.players || 0) <= postesArene
         && Math.abs(normalizeKey(session.start) - candidateStartMin) <= 15
@@ -1425,12 +1427,12 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     const sessionKey = `${normalizeKey(effStart)}-${normalizeKey(effEnd)}`;
     const sessionKeys = new Set(overlapping.map(window => `${normalizeKey(window.start)}-${normalizeKey(window.end)}`));
     const joinsExistingSession = sessionKeys.has(sessionKey);
-    const launchCount = sessionKeys.size + (joinsExistingSession ? 0 : 1);
+    const launchCount = lancementsMax > 1 ? overlapping.length + 1 : sessionKeys.size + (joinsExistingSession ? 0 : 1);
     const playersBefore = overlapping.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
     const playersTotal = playersBefore + Number(candidate.players || 0);
     maxPlayersTotal = Math.max(maxPlayersTotal, playersTotal);
     tightestRemaining = Math.min(tightestRemaining, Math.max(0, postesArene - playersTotal));
-    sharedNow = sharedNow || (playersBefore > 0 && joinsExistingSession);
+    sharedNow = sharedNow || (lancementsMax <= 1 && playersBefore > 0 && joinsExistingSession);
     // DEUX CAUSES DISTINCTES, DEUX MESSAGES. Un total brut « 48/30 » laisse
     // croire que le groupe entier ne rentre pas, alors que le moteur l a deja
     // scinde en vagues : ce qui coince, c est UNE vague sur UN lancement. Et
@@ -1474,7 +1476,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     splitGroup: waveCount > 1,
     remainingPlaces: Math.max(0, tightestRemaining),
     sharedNow,
-    mayShare: maxPlayersTotal < postesArene,
+    mayShare: lancementsMax <= 1 && maxPlayersTotal < postesArene,
     message: ok ? '' : message
   };
 }
@@ -9594,7 +9596,7 @@ function renderSlots(formule) {
       // STAFF : il ne porte que les activites planifiees.
       endTime: s.visitEndTime || (s.opsPlan && s.opsPlan.endTime) || '',
       tag: isLaser
-        ? (s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte')
+        ? (s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : Number(getAvailabilitySessionCenter()?.resources?.laser?.parallelLaunches) > 1 ? 'Leur propre partie' : 'Session ouverte')
         : (s.opsPlan ? 'Plan conseillé' : ''),
       meta: bouts.filter(Boolean).join(' · '),
     };
@@ -32251,7 +32253,8 @@ function rvEtapesDuBillet() {
       const parties = blocs.length
         ? [...new Map(blocs.map((b) => [Number(b.partie) || 1, b])).values()].map((b) => ({ h: b.debut, fin: b.fin || numToTime(timeToNum(b.debut) + 0.5), autres: s.arene === 'seuls' ? 0 : Number(b.joueursAvant) || 0 }))
         : rvDepartsLaser(ligne.heure).map((h) => ({ h, fin: numToTime(timeToNum(h) + 0.5), autres: 0 }));
-      const sens = (p) => (s.arene === 'seuls' ? 'l’arène pour vous seuls' : p.autres ? `partagée avec ${rvPluriel(p.autres, 'joueur')}` : 'l’arène pour vous');
+      const separees = Number(getAvailabilitySessionCenter()?.resources?.laser?.parallelLaunches) > 1;
+      const sens = (p) => (s.arene === 'seuls' ? 'l’arène pour vous seuls' : p.autres ? `partagée avec ${rvPluriel(p.autres, 'joueur')}` : separees ? 'leur propre partie' : 'l’arène pour vous');
       const duree = (p) => (blocs.length ? `${Math.round((timeToNum(p.fin) - timeToNum(p.h)) * 60)} min, ` : '');
       const pauseApres = (k) => Number(ecarts[k + 1]) - Number(ecarts[k]) - pas;
       let k = 0;

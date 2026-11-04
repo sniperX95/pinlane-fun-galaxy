@@ -445,7 +445,7 @@
   const TEINTES_CENTRE = [
     { fond: '#d6589f', encre: '#2a0a1c', texte: '#e77fb8', texteClair: '#b4367f' },
     { fond: '#e3b341', encre: '#241c00', texte: '#e3b341', texteClair: '#8a6a12' },
-    { fond: '#b04fb0', encre: '#ffffff', texte: '#c25ec2', texteClair: '#944292' },
+    { fond: '#b04fb0', encre: '#ffffff', texte: '#c25ec2', texteClair: '#96399a' },
     { fond: '#67baac', encre: '#06201c', texte: '#67baac', texteClair: '#27695f' },
     { fond: '#94a3b8', encre: '#0f172a', texte: '#94a3b8', texteClair: '#51607a' },
     { fond: '#c026d3', encre: '#ffffff', texte: '#d55ee6', texteClair: '#a21caf' }
@@ -465,6 +465,8 @@
     if (ville && nom.toLowerCase().endsWith(ville.toLowerCase())) return ville;
     const client = String(center?.clientName || '').trim();
     if (client && nom.toLowerCase().startsWith(`${client.toLowerCase()} `)) return nom.slice(client.length + 1).trim();
+    const id = String(center?.id || '').trim();
+    if (id && nom.toLowerCase().endsWith(` ${id.toLowerCase()}`)) return nom.slice(nom.length - id.length);
     return nom;
   }
 

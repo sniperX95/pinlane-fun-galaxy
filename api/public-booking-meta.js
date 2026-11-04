@@ -29,7 +29,7 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
-const { formuleAvecChoix } = require('../lib/formula-choice');
+const { formuleAvecChoix, formuleDuCentre } = require('../lib/formula-choice');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
 const surMesure = require('../lib/custom-request');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
@@ -366,7 +366,7 @@ function activitesManquantes(formuleId, center) {
   if (!availability) return [];
   let doc = null;
   try { doc = getFormula(formuleId); } catch (error) { return []; }
-  return absentesDuDocument(doc, availability);
+  return absentesDuDocument(formuleDuCentre(doc, center), availability);
 }
 
 // LES VARIANTES QUE CE CENTRE NE PEUT PAS JOUER (lib/formula-choice) : une
@@ -425,6 +425,8 @@ function activitesPubliques(centerId, center) {
     if (Number.isFinite(minAge) && minAge >= 1 && minAge <= 99) extra.minAge = minAge;
     const taille = Math.trunc(Number(theme.minHeightCm));
     if (Number.isFinite(taille) && taille >= 50 && taille <= 250) extra.minHeightCm = taille;
+    const parTable = Math.trunc(Number(theme.maxPlayersPerTable));
+    if (Number.isFinite(parTable) && parTable >= 1 && parTable <= 50) extra.maxPlayersPerTable = parTable;
     // LA PARTIE DE LASER : le JEU que la fiche du centre declare, et le
     // creneau de l arene qui l entoure (explication des regles et encodage des
     // joueurs compris). Movsar, 2026-09-30 : « une partie dure 20 minutes, on

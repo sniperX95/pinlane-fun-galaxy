@@ -2059,7 +2059,7 @@ ok('LE POINT : un tarif saisi au catalogue est rendu tel que le tunnel le factur
     && JSON.stringify(autreDe('billards')) === JSON.stringify({ id: 'billards', options: ['10 EUR par table et par heure'], note: '' }),
   JSON.stringify([autreDe('playground'), autreDe('billards')]));
 ok('LE POINT : les grilles du moteur (Fun Run a la session, duckpin a la piste) sont rendues avec leurs montants',
-  Boolean(autreDe('fun_run')) && grilleFunRun.every((o) => autreDe('fun_run').options.includes(`${o.price} EUR la session de ${o.minutes} min`))
+  Boolean(autreDe('fun_run')) && grilleFunRun.every((o) => autreDe('fun_run').options.includes(`${o.price} EUR la session de ${Number(o.minutes) === 60 ? '1 h' : `${o.minutes} min`}`))
     && Boolean(autreDe('duckpin_bowling')) && Object.values(grillePiste).every((prix) => autreDe('duckpin_bowling').options.some((o) => o.startsWith(`${prix} EUR la piste pour`))),
   JSON.stringify([autreDe('fun_run'), autreDe('duckpin_bowling')]));
 ok('LE POINT : sans tarif saisi, ou avec des paliers selon le jour, l activite reste « sans tarif » (rien d invente, rien d un seul mot)',
@@ -2366,9 +2366,19 @@ ok('MONTAGE : Gembloux n a pas de plaine de jeu, des formules en contiennent une
   (centreGembloux.activityAvailability || {}).playground === false && avecPlaine.length > 0
     && avecPlaine.every((id) => gemblouxSansTunnel.some((p) => p.id === id)),
   JSON.stringify({ avecPlaine, sansTunnel: gemblouxSansTunnel.map((p) => p.id) }));
-ok('LE POINT : avec le tunnel, aucune formule a plaine de jeu n est publiee a Gembloux',
-  !prixDeGembloux.some((p) => avecPlaine.includes(p.id)),
+// Le Kids Fun Day est une fenetre ouverte (« toutes les activites illimitees ») : le site le vend a Gembloux,
+// il s y joue sans la plaine de jeu que Gembloux n a pas. Les formules a etapes (F6, F7, F8) n y existent pas.
+const fenetreOuverte = (id) => (formuleDuCatalogue(id) || {}).orderPolicy === 'open_window';
+ok('LE POINT : avec le tunnel, aucune formule a plaine de jeu n est publiee a Gembloux, sauf la fenetre ouverte',
+  !prixDeGembloux.some((p) => avecPlaine.includes(p.id) && !fenetreOuverte(p.id)),
   JSON.stringify(prixDeGembloux.map((p) => p.id)));
+{
+  const { formuleDuCentre } = require('../lib/formula-choice');
+  const kfd = formuleDuCentre(formuleDuCatalogue('kfd'), centreGembloux);
+  ok('LE POINT : le Kids Fun Day est publie a Gembloux, et son programme n y porte plus de plaine de jeu',
+    prixDeGembloux.some((p) => p.id === 'kfd') && kfd.steps.every((etape) => etape.activityId !== 'playground') && kfd.steps.some((etape) => etape.activityId === 'arcade_time'),
+    JSON.stringify(kfd.steps.map((etape) => etape.activityId)));
+}
 ok('CONTRE-PREUVE : et ses autres formules le restent',
   prixDeGembloux.length > 0 && gemblouxSansTunnel.filter((p) => !avecPlaine.includes(p.id)).every((p) => prixDeGembloux.some((q) => q.id === p.id)),
   JSON.stringify(prixDeGembloux.map((p) => p.id)));

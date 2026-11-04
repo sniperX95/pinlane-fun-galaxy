@@ -23,7 +23,7 @@ const FORMULES = [
   { id:'f6', name:'FORMULE 6', family:'Formules anniversaires', desc:["1 table privée pendant 2 heures","1 entrée à la plaine de jeu","8 crédits d'arcade (8€) par enfant","2 cruches boissons"], price:18, oldPrice:20, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f7', name:'FORMULE 7', family:'Formules anniversaires', desc:["1 table privée pendant 2 heures","1 entrée à la plaine de jeu","1 entrée Mini Golf Blacklight","8 crédits d'arcade (8€) par enfant","2 cruches boissons"], price:24, oldPrice:30, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f8', name:'FORMULE 8', family:'Formules anniversaires', desc:["1 table privée pendant 2 heures","1 entrée à la plaine de jeu","1 entrée Mini Golf Blacklight","30 minutes d'arcade à volonté par enfant","2 cruches boissons"], price:28, oldPrice:37, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
-  { id:'bts', name:'BACK TO SCHOOL/WORK', family:'Formules spéciales', desc:["1h de Bowling","1h d'Arcades"], price:20, oldPrice:50, type:'per_pax', minPax:4, validDays:[0,2,3,4], timeLimit:{min:18,max:22}, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Mardi, mercredi, jeudi et dimanche","De 18h à 22h","4 personnes minimum","Non valable durant les vacances scolaires et jours fériés"] },
+  { id:'bts', name:'BACK TO SCHOOL/WORK', family:'Formules spéciales', desc:["1h de Bowling","1h d'Arcades"], price:20, oldPrice:59, type:'per_pax', minPax:4, validDays:[0,2,3,4], timeLimit:{min:18,max:22}, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Mardi, mercredi, jeudi et dimanche","De 18h à 22h","4 personnes minimum","Non valable durant les vacances scolaires et jours fériés"] },
   { id:'mm', name:'MATIN MALIN', family:'Formules spéciales', desc:["Arcades illimitées, hors jeux à cadeaux","Laser Game illimité"], price:25, oldPrice:90, type:'per_pax', minPax:1, timeLimit:{max:12}, estimatedTotalDuration:2, orderPolicy:'open_window', noHolidays:true, hasBowling:false, notes:["Toutes les activités de la formule doivent être terminées à 12h","Les jeux d’arcade à cadeaux ne sont pas inclus","Non valable durant les vacances scolaires et jours fériés"] },
   { id:'css', name:'CRAZY STUDENT STRIKE', family:'Formules spéciales', desc:["1h de Bowling","1 mètre de bière"], price:55, type:'per_lane', minPax:1, validDays:[2], noHolidays:false, hasBowling:true, bowlingDur:1, notes:["Disponible uniquement le mardi"] },
   { id:'kfd', name:'KIDS FUN DAY', family:'Formules spéciales', desc:["Toutes les activités illimitées","De 12h à 17h pour les enfants de 5 à 12 ans"], price:30, type:'per_pax', minPax:1, validDays:[3], timeLimit:{min:12,max:17}, orderPolicy:'open_window', noHolidays:true, hasBowling:false, notes:["Disponible uniquement le mercredi","Non valable durant les vacances scolaires et jours fériés"] },
@@ -42,6 +42,7 @@ const UPSELL_CATALOG = [
 const FUN_RUN_OPTIONS = [
   { minutes: 15, label: '15 min', price: 30 },
   { minutes: 30, label: '30 min', price: 55 },
+  { minutes: 60, label: '60 min', price: 100 },
 ];
 const FUN_RUN_MAX_PAX = 5;
 const DURATION_OPTIONS = [
@@ -56,7 +57,7 @@ const DURATION_OPTIONS = [
 // Miroir minimal de ops-knowledge/centers.json.
 const ADMIN_CENTER_FALLBACKS = [
   { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30, parallelLaunches: 1, requiresCompleteGroupBeforeLaunch: true } } },
-  { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30, parallelLaunches: 3, requiresCompleteGroupBeforeLaunch: false } } },
+  { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 20, parallelLaunches: 3, requiresCompleteGroupBeforeLaunch: false } } },
   { id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned', resources: { bowling: null, laser: null } }
 ];
 

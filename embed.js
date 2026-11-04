@@ -70,7 +70,16 @@
     return identifiantDeCentre(valeur);
   }
 
-  var center = centreChoisiParLeVisiteur() || script.getAttribute('data-center') || '';
+  // (normalise comme le choix du visiteur : une espace en trop ou une majuscule ne change pas de centre)
+  var center = centreChoisiParLeVisiteur() || identifiantDeCentre(script.getAttribute('data-center')) || '';
+
+  // SANS CENTRE, PAS DE FORMULAIRE (Ansar, 2026-11-04 : « des resa qui spawn a gembloux et pas a libra »). Sur un site a
+  // plusieurs centres, une ligne qui ne nomme pas le sien rangerait ses reservations chez un autre : elle ne monte rien,
+  // le formulaire du site reste en place, et l oubli se lit dans la console du navigateur.
+  if ((script.getAttribute('data-design') || '').toLowerCase() === 'fungalaxy' && !center) {
+    try { console.error('Pinlane embed.js : data-center manquant, aucun formulaire monte.'); } catch (error) { /* console absente */ }
+    return;
+  }
 
   // Le formulaire existant est masqué, jamais retiré de la page : le retour en
   // arrière reste un simple réglage, sans intervention sur le site.
@@ -107,7 +116,7 @@
   // autre est ignoree ; le parcours /reserver ne la connait pas.
   var depart = (script.getAttribute('data-start') || '').toLowerCase() === 'sur-mesure' ? '&start=sur-mesure' : '';
   var target = design === 'fungalaxy'
-    ? origin + '/fungalaxy/' + encodeURIComponent(center || 'libramont') + '?embed=1' + depart
+    ? origin + '/fungalaxy/' + encodeURIComponent(center) + '?embed=1' + depart
     : origin + '/reserver?embed=1' + (center ? '&center=' + encodeURIComponent(center) : '');
 
   // Conteneur d'accueil, résolu avant la création du cadre : c'est de là qu'est

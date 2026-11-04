@@ -13,10 +13,10 @@
 //      formula, once ET weekly, jour entier VS plage horaire ;
 //   2. creer "piste 3, mardi, 14:00-16:00" => POST saveAvailabilityBlock avec
 //      scopeType:'lane', scopeRef:'3', recurrence:'weekly', dayOfWeek:2,
-//      startTime:'14:00', endTime:'16:00' et SANS centerId dans le corps ;
+//      startTime:'14:00', endTime:'16:00' et le centre AFFICHE dans le corps ;
 //   3. creer "fermer le centre le 2026-08-15 toute la journee" => POST
 //      scopeType:'center', recurrence:'once', date:'2026-08-15', sans start/end,
-//      sans centerId ;
+//      et le centre affiche (sans lui, le blocage tombait au centre de connexion) ;
 //   4. supprimer un blocage => POST deleteAvailabilityBlock avec l'id ; apres
 //      re-fetch la liste ne le montre plus ;
 //   5. planning bowling : un blocage sur le jour affiche marque la bonne piste
@@ -253,7 +253,7 @@ async function runSuite(browser, quiet) {
     ok(saveLane && saveLane.recurrence === 'weekly' && saveLane.dayOfWeek === 2, 'save-lane-weekly', JSON.stringify(saveLane));
     ok(saveLane && saveLane.startTime === '14:00', 'save-lane-starttime', JSON.stringify(saveLane));
     ok(saveLane && saveLane.endTime === '16:00', 'save-lane-endtime', JSON.stringify(saveLane));
-    ok(saveLane && !('centerId' in saveLane), 'save-lane-no-centerid', saveLane ? `keys=${Object.keys(saveLane).join(',')}` : 'aucun POST');
+    ok(saveLane && saveLane.centerId === 'gembloux', 'save-lane-centre-affiche', saveLane ? `keys=${Object.keys(saveLane).join(',')}` : 'aucun POST');
 
     // ---- 3. Creer "fermer le centre le 2026-08-15 toute la journee" --------
     await page.selectOption('#avb-scope', 'center');
@@ -265,7 +265,7 @@ async function runSuite(browser, quiet) {
     ok(saveCenter && saveCenter.recurrence === 'once' && saveCenter.date === '2026-08-15', 'save-center-once', JSON.stringify(saveCenter));
     ok(saveCenter && !('startTime' in saveCenter) && !('endTime' in saveCenter), 'save-center-fullday', JSON.stringify(saveCenter));
     ok(saveCenter && !('scopeRef' in saveCenter), 'save-center-no-scoperef', JSON.stringify(saveCenter));
-    ok(saveCenter && !('centerId' in saveCenter), 'save-center-no-centerid', saveCenter ? `keys=${Object.keys(saveCenter).join(',')}` : 'aucun POST');
+    ok(saveCenter && saveCenter.centerId === 'gembloux', 'save-center-centre-affiche', saveCenter ? `keys=${Object.keys(saveCenter).join(',')}` : 'aucun POST');
 
     // ---- 4. Supprimer un blocage (id 1) -> POST + disparait de la liste -----
     await page.click('#avbList .availability-item[data-block-id="1"] .availability-del');
@@ -344,7 +344,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('availability-blocks-ui-check: ALL OK (libelles humains center/lane/activity/formula once+weekly plage/jour, save lane weekly HH:MM sans centerId, save center once jour entier sans centerId, delete + disparition, planning piste marquee ; 2 contre-preuves par mutation)');
+    console.log('availability-blocks-ui-check: ALL OK (libelles humains center/lane/activity/formula once+weekly plage/jour, save lane weekly HH:MM au centre affiche, save center once jour entier sans centerId, delete + disparition, planning piste marquee ; 2 contre-preuves par mutation)');
   } finally {
     try {
       if (fs.readFileSync(SRC, 'utf8') !== original) fs.writeFileSync(SRC, original);

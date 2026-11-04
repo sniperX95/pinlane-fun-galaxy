@@ -17152,8 +17152,8 @@ async function submitAvailabilityBlock() {
   const value = id => (document.getElementById(id)?.value || '').trim();
   const scopeType = value('avb-scope') || 'center';
   const recurrence = value('avb-recurrence') || 'once';
-  // Le centre est FORCE par le serveur : on n'envoie JAMAIS centerId.
-  const body = { action: 'saveAvailabilityBlock', scopeType, recurrence };
+  // Le centre affiche : le serveur verifie le droit de le viser. Sans lui, le blocage tombait au centre de connexion.
+  const body = { action: 'saveAvailabilityBlock', centerId: getCurrentStaffCenterId(), scopeType, recurrence };
   if (scopeType === 'lane') {
     const lane = value('avb-lane');
     if (!lane) { toast('Choisissez une piste.'); return; }
@@ -17209,7 +17209,7 @@ async function deleteAvailabilityBlockUi(id) {
   const label = block ? describeAvailabilityBlock(block) : `blocage n° ${id}`;
   if (!window.confirm(`Supprimer ce blocage ?\n${label}`)) return;
   try {
-    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'deleteAvailabilityBlock', id: Number(id) }) });
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'deleteAvailabilityBlock', centerId: getCurrentStaffCenterId(), id: Number(id) }) });
     toast('Blocage supprime.');
     await loadAvailabilityBlocks(true);
   } catch (error) {
@@ -25148,7 +25148,7 @@ async function submitLaneMaintForm(lane) {
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
       method: 'PATCH',
-      body: JSON.stringify({ lane, status: 'maintenance', maintenanceFrom: from || '', maintenanceUntil: until || '', note }),
+      body: JSON.stringify({ centerId: getCurrentStaffCenterId(), lane, status: 'maintenance', maintenanceFrom: from || '', maintenanceUntil: until || '', note }),
     });
     const laneInfo = payload.lane || {};
     state.laneMaintenance = state.laneMaintenance || {};
@@ -25177,7 +25177,7 @@ async function toggleMaint(i, ev) {
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
       method: 'PATCH',
-      body: JSON.stringify({ lane: i, status: nextStatus })
+      body: JSON.stringify({ centerId: getCurrentStaffCenterId(), lane: i, status: nextStatus })
     });
     const confirmedStatus = payload.lane?.status || nextStatus;
     const changedOnConfirm = state.laneStatuses[i] !== confirmedStatus;
@@ -30731,7 +30731,7 @@ function ligneProgrammeQuick(activityId) {
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
   // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
   // un jour ne plus ignorer.
-  if (activite.priceType === 'grid_fun_run') ligne.minutes = getQuickVisitMinutes(activityId);
+  if (activite.priceType === 'grid_fun_run') { ligne.minutes = getQuickVisitMinutes(activityId); ligne.sessionMinutes = ligne.minutes; }
   if (activite.priceType === 'per_unit_hour') {
     ligne.units = getQuickVisitUnits(activityId);
     ligne.hours = getQuickVisitHours(activityId);
@@ -33721,7 +33721,7 @@ async function rvChercherClientConnu() {
   const seq = ++rvClientSeq;
   s.clientConnu = { cle: chiffres, etat: 'calcul', resultat: null };
   try {
-    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?client=${encodeURIComponent(chiffres)}`, { method: 'GET' });
+    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?client=${encodeURIComponent(chiffres)}&centerId=${encodeURIComponent(getCurrentStaffCenterId())}`, { method: 'GET' });
     if (!quickBookState || seq !== rvClientSeq) return;
     quickBookState.clientConnu = { cle: chiffres, etat: 'ok', resultat: payload && payload.client ? payload.client : null };
     const r = quickBookState.clientConnu.resultat;
@@ -36549,7 +36549,8 @@ async function rvCreerLeLot() {
   } finally { quickBookState = garde; }
   if (erreur) throw Object.assign(new Error(erreur), { expose: true });
   try {
-    return await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dossiers }) });
+    // (le centre affiche, en tete : sans lui le serveur rangeait tout le lot au centre de connexion)
+    return await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ centerId: (dossiers[0] && dossiers[0].centerId) || getCurrentStaffCenterId(), dossiers }) });
   } catch (error) {
     // UN LOT EN PARTIE REFUSE N EST PAS UNE PANNE : le serveur repond ok:false
     // (207, ou 422 si tout est refuse) avec les dossiers crees ET les refus.

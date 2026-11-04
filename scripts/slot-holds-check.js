@@ -205,8 +205,8 @@ async function sqlBlocages(tx, s, p) {
       .map((h) => clone(reservations.get(h.reservation_id)));
     return { rows, rowCount: rows.length };
   }
-  if (/^select count\(\*\)::int as n from slot_holds where ip_hash = \$1 and token_hash <> \$2 and released_at is null and expires_at > now\(\);?$/.test(s)) {
-    const n = [...vue(tx, 'holds').values()].filter((h) => h.ip_hash === p[0] && h.token_hash !== p[1] && ACTIF(h)).length;
+  if (/^select count\(\*\)::int as n from slot_holds where ip_hash = \$1 and token_hash <> \$2 and center_id = \$3 and released_at is null and expires_at > now\(\);?$/.test(s)) {
+    const n = [...vue(tx, 'holds').values()].filter((h) => h.ip_hash === p[0] && h.token_hash !== p[1] && h.center_id === p[2] && ACTIF(h)).length;
     return { rows: [{ n }], rowCount: 1 };
   }
   let m = /^update slot_holds set released_at = now\(\), release_reason = '(replaced|released)' where token_hash = \$1 and released_at is null;?$/.exec(s);
@@ -541,9 +541,11 @@ async function scenarioPlafond(S) {
   const r = [];
   for (const h of heures) r.push(await retenir(S, BOWLING(h), { ip }));
   const ailleurs = await retenir(S, BOWLING('18:00'), { ip: '10.99.0.8' });
+  // Les deux formulaires sont sur un meme site : un visiteur au plafond a Libramont reste libre a Gembloux.
+  const autreCentre = await retenir(S, { ...BOWLING('18:00'), centerId: 'gembloux' }, { ip });
   // Le meme appareil remplace un de ses blocages : ce n est pas un de plus.
   const remplace = await retenir(S, { ...BOWLING('19:00'), holdToken: r[0].json.holdToken }, { ip });
-  return { statuts: r.map((x) => x.statut).join(','), code: r[3].json.code, ailleurs: ailleurs.statut, remplace: remplace.statut };
+  return { statuts: r.map((x) => x.statut).join(','), code: r[3].json.code, ailleurs: ailleurs.statut, autreCentre: autreCentre.statut, remplace: remplace.statut };
 }
 
 async function scenarioRejeu(S) {
@@ -697,6 +699,7 @@ async function main() {
   console.log('\n[H] Le plafond par appareil');
   ok(R.plafond.statuts === '201,201,201,429' && R.plafond.code === 'hold_limit', 'trois blocages en cours par appareil, pas un de plus', R.plafond.statuts);
   ok(R.plafond.ailleurs === 201, 'un autre appareil n est pas touche');
+  ok(R.plafond.autreCentre === 201, 'le plafond se compte par centre : Libramont pleine, Gembloux reste libre', R.plafond.autreCentre);
   ok(R.plafond.remplace === 201, 'changer un de ses choix reste possible');
 
   console.log('\n[I] La confirmation renvoyee');

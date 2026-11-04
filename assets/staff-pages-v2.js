@@ -12174,7 +12174,11 @@
   // Ce qui se lit mene a son geste : chaque endroit ouvre la vraie page, quand
   // le role y a acces. Le brouillon reste, il est garde par centre.
   const TF_LIEUX_GESTES = {
-    formulaire: { mot: 'Ouvrir le formulaire', permis: () => Boolean(tfCentre()) && tfCentre() !== 'all', ouvrir: () => window.open(`/reserver/${encodeURIComponent(tfCentre())}`, '_blank', 'noopener') },
+    formulaire: { mot: 'Ouvrir le formulaire', permis: () => Boolean(tfCentre()) && tfCentre() !== 'all', ouvrir: () => {
+      // Les deux centres de Fun Galaxy vendent par leur propre formulaire : /reserver/gembloux montrait l ancien tunnel.
+      const c = tfCentre();
+      window.open(c === 'libramont' || c === 'gembloux' ? `/fungalaxy/${c}` : `/reserver/${encodeURIComponent(c)}`, '_blank', 'noopener');
+    } },
     mails: { mot: 'Ouvrir les mails', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('emails'), ouvrir: () => openStaffMenuPage('emails') },
     comptoir: { mot: 'Ouvrir Réserver', permis: () => typeof openQuickBook === 'function' && typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openQuickBook({ date: state.currentDate }) },
     planning: { mot: 'Ouvrir le planning', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openStaffMenuPage('planning') },

@@ -32,10 +32,14 @@
   var params = new URLSearchParams(window.location.search);
   var SLUG_RX = /^[a-z][a-z0-9-]{1,40}$/;
   function centreDepuisAdresse() {
-    var m = window.location.pathname.match(/^\/fungalaxy\/([a-z0-9-]+)\/?$/i);
-    var brut = (m && m[1]) || params.get('center') || params.get('centerId') || 'libramont';
-    brut = String(brut).toLowerCase();
-    return SLUG_RX.test(brut) ? brut : 'libramont';
+    var m = window.location.pathname.match(/^\/fungalaxy\/([^/]+)\/?$/i);
+    var brut = (m && m[1]) || params.get('center') || params.get('centerId') || '';
+    try { brut = decodeURIComponent(brut); } catch (e) { /* adresse illisible : refusee plus bas */ }
+    brut = String(brut).trim().toLowerCase();
+    // L adresse nue reste celle de Libramont. Une adresse qui nomme mal son centre ne vend AUCUN centre : le serveur le
+    // dit inconnu, le formulaire l annonce, et personne ne reserve ailleurs sans le savoir.
+    if (!brut) return 'libramont';
+    return SLUG_RX.test(brut) ? brut : 'centre-inconnu';
   }
   var CENTER = centreDepuisAdresse();
   var EMBED = params.get('embed') === '1' && window.parent !== window;
@@ -2867,7 +2871,7 @@
       var opt = optionChoisie(a);
       if (a.priceType === 'grid_bowling') ligne.duration = opt ? opt.valeur : 1;
       if (a.priceType === 'grid_laser') ligne.games = opt ? opt.valeur : 1;
-      if (a.priceType === 'grid_fun_run') ligne.minutes = opt ? opt.valeur : (a.defaultMinutes || 15);
+      if (a.priceType === 'grid_fun_run') { ligne.minutes = opt ? opt.valeur : (a.defaultMinutes || 15); ligne.sessionMinutes = ligne.minutes; }
       // Les billards : les tables et les heures choisies. Sans elles, le
       // serveur retombait sur une table pendant une heure, quoi qu on ait
       // choisi (audit du 2026-09-28).

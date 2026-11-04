@@ -11,9 +11,15 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
-    const centerId = body.centerId || body.center_id || 'libramont';
-    const session = await requireStaffPermission(req, res, ['planning.drag', 'settings.manage'], { centerId });
+    // Le centre nomme, sinon celui de la session, jamais un centre par defaut : fermer une piste a Gembloux fermait
+    // celle de Libramont (audit du 2026-11-04).
+    const session = await requireStaffPermission(req, res, ['planning.drag', 'settings.manage'], { centerId: body.centerId || body.center_id || '' });
     if (!session) return;
+    const centerId = session.authorizedCenterId;
+    if (!centerId || centerId === 'all') {
+      sendError(res, 422, 'Choisissez un centre pour changer une piste.');
+      return;
+    }
     const lane = await updateLaneStatus(body.lane, body.status, centerId, {
       maintenanceFrom: body.maintenanceFrom || '',
       maintenanceUntil: body.maintenanceUntil || '',

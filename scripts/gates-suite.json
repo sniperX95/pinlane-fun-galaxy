@@ -201,6 +201,8 @@
     "test:centre-marque",
     "test:laser-par-centre",
     "test:site-centres",
+    "test:centres-dissocies",
+    "test:console-centre",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

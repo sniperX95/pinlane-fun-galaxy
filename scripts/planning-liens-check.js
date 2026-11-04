@@ -401,7 +401,7 @@ async function chiffresDuComplet(browser) {
     const quarante = `${Array.from({ length: 39 }, (_, i) => i + 1).join(', ')} et 40`;
     const fautes = [];
     const coupesLarge = [];
-    for (const [l, h] of [[947, 800], [960, 800], [980, 800], [1000, 800], [1024, 768], [1107, 800], [1280, 720], [1366, 768], [1386, 800], [1387, 800], [1440, 900], [1600, 900], [1920, 1080]]) {
+    for (const [l, h] of [[900, 800], [947, 800], [960, 800], [980, 800], [1000, 800], [1024, 768], [1107, 800], [1280, 720], [1366, 768], [1386, 800], [1387, 800], [1440, 900], [1600, 900], [1920, 1080]]) {
       await page.setViewportSize({ width: l, height: h });
       await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
       const vrai = await page.evaluate(() => { const g = document.getElementById('planningBande'); return { chiffres: chiffresCoupes(g), dehors: dehorsDeLaBarre(g) }; });
@@ -421,7 +421,7 @@ async function chiffresDuComplet(browser) {
       if (pire.chiffres.length || pire.dehors.length) coupesLarge.push({ l, ...pire });
       if (l === 1387) ok(pire.coupe, '[L] MONTAGE : a 1 387 px, la ou le detail vient d apparaitre, celui de 40 pistes se coupe', pire);
     }
-    ok(fautes.length === 0, '[L] au Complet, de 947 a 1 920 px, aucune case ne coupe son chiffre et rien ne sort de la barre', fautes.slice(0, 4));
+    ok(fautes.length === 0, '[L] au Complet, de 900 a 1 920 px, aucune case ne coupe son chiffre et rien ne sort de la barre', fautes.slice(0, 4));
     ok(coupesLarge.length === 0, '[L] au Complet, 40 pistes et un depart laser sans groupe : les cases gardent leur chiffre', coupesLarge.slice(0, 4));
   } finally { await ctx.close(); }
 }

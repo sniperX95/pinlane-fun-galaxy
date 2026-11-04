@@ -125,6 +125,27 @@ reçoit le champ avec **son** `data-center`. C'est le serveur du site qui a déj
 tranché le centre en choisissant le formulaire : le suivre est plus sûr que
 relire soi-même la sélection du visiteur.
 
+**Chez Fun Galaxy (relevé le 2026-11-04 sur les 15 pages) :** les pages d'activité
+de Gembloux servent toujours le formulaire 1, celles de Libramont toujours le
+formulaire 4, quel que soit le centre choisi avant ; Contact suit le choix du
+visiteur. Le formulaire 4 reçoit donc `data-center="libramont"`, le formulaire 1
+`data-center="gembloux"`, et rien d'autre ne change entre les deux lignes :
+
+```html
+<!-- formulaire 1, Gembloux -->
+<script src="https://app.pinlane.be/embed.js"
+        data-center="gembloux"
+        data-design="fungalaxy"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"></script>
+```
+
+Une ligne sans `data-center` ne monte aucun formulaire : celui du site reste en
+place, jamais un autre centre par défaut. Juste après la pose,
+`npm run site:lignes` relit les 15 pages en visiteur et dit quel centre chacune
+réserve.
+
 **b. Le champ « Contenu » de la page.** Il fonctionne, mais le thème l'enveloppe
 souvent dans une section à lui : on récupère une bande vide au milieu de la page.
 À n'utiliser que si a. est impossible.

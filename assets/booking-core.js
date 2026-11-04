@@ -220,8 +220,9 @@ function funRunSessionMinutes(item, sessionsDuGroupe = 1) {
   const passages = Math.trunc(Number(item.sessions) || 0);
   if (minutes > 0 && passages > 1) return Math.round(minutes / passages);
   const groupe = Math.trunc(Number(sessionsDuGroupe) || 1);
-  const estUnPalier = (m) => FUN_RUN_OPTIONS.some((option) => Number(option.minutes) === m);
-  if (minutes > 0 && groupe > 1 && !estUnPalier(minutes) && minutes % groupe === 0 && estUnPalier(minutes / groupe)) {
+  // (une ligne sans passages ni palier date d avant la session de 60 min : elle se lit sur la grille de son epoque)
+  const palierDUneVieilleLigne = (m) => m === 15 || m === 30;
+  if (minutes > 0 && groupe > 1 && !palierDUneVieilleLigne(minutes) && minutes % groupe === 0 && palierDUneVieilleLigne(minutes / groupe)) {
     return minutes / groupe;
   }
   return minutes;

@@ -6,12 +6,14 @@
 // l'heure d'arrivée ». Sur l ecran des heures, une ligne « Heure d'arrivée » en
 // tete, facultative comme celle des arcades, pour la visite a la carte et la
 // formule. Chaque heure du jour se juge par le serveur avec le calcul de la
-// reservation (lib/ops-engine.js arriveesDuJour) : tout tient, ce qui ne
-// tiendra pas, ou complet. La toucher pose toutes les heures de cette visite ;
-// le client change ensuite ce qu il veut (le dernier choix gagne, l arrivee se
-// recale sur le plan) ou l efface. Ce qui avait rate le 13/10 ne revient pas :
-// aucune autre ligne ne l attend, seules les heures a probleme le disent,
-// l arrivee dite est toujours celle du plan.
+// reservation : tout tient, ce qui ne tiendra pas, ou complet.
+//
+// DISSOCIEE (Ansar, 2026-11-04 : « on change l heure d arrive et les heures bowling
+// et laser game suivent mais non jveux si je veux laisser du temps pour x ou y
+// raison »). La changer ne deplace jamais une heure touchee ; une heure seulement
+// proposee reste ou elle est tant qu elle tient, sinon elle se recale sur la plus
+// proche ; une activite touchee avant l arrivee l avance. L ecran demande ses heures
+// par `arrivals=1` ; la liste `arrivees=1`, qui posait toute la visite, reste a l API.
 //
 // Le cas de Movsar : visite du jeudi 22/10, 11 personnes, Bowling, Laser Game,
 // Playground, Arcades, Billards, fermeture 22:00.
@@ -20,13 +22,13 @@
 //       prend pose un plan qui tient cote serveur, a cette arrivee-la, avec le
 //       meme manque ; sans le parametre, rien ne change.
 //   [B] API formule (Formule 1, jeudi 5/11, 11 personnes) : pareil.
-//   [C] Ecran visite (telephone 390x844) : la ligne en tete, fermee,
-//       « Facultatif », l heure du plan, rien de demande avant de l ouvrir, le
-//       bouton du bas libre ; ouverte, ses heures et leurs raisons, seules les
-//       tardives a probleme ; 17:50 touchee pose bowling 18:00 et laser 19:00 ;
-//       le bowling change a 19:30 : il garde l heure du client, l arrivee se
-//       recale a 18:50 ; effacer retire ce que l arrivee avait pose ; « Arriver
-//       à 17:50 » de la proposition choisit cette heure dans la ligne.
+//   [C] Ecran visite (telephone 390x844) : la ligne en tete, fermee, l heure du
+//       plan, rien de demande avant de l ouvrir, le bouton du bas libre ; ouverte,
+//       ses heures ; 18:00 touchee ne touche rien d autre, les heures proposees se
+//       recalent apres elle ; le bowling change a 19:30, l arrivee ne bouge pas ; le
+//       bowling a 17:00 l avance, et le conseil le dit ; une arrivee tres en avance
+//       laisse les heures ou elles sont ; effacer ne retire aucune heure touchee ;
+//       « Arriver à 17:50 » de la proposition pose ses heures.
 //   [D] Ecran formule : la ligne, une arrivee touchee, puis effacee.
 //
 // Contre-epreuve : node scripts/choisir-arrivee-check.js --mutate (mutations
@@ -102,9 +104,14 @@ const MUTATIONS = [
     remplacer: [["function aPlacer(e) { return e.id !== 'arrivee' && e.etat", 'function aPlacer(e) { return e.etat']],
   },
   {
-    nom: 'toucher une arrivee ne pose pas ses heures',
+    nom: 'une arrivee ne garde plus les heures proposees ou elles sont',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [['if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5);', 'void k;']],
+    remplacer: [['    retenirProposees({ apres: minutesDe(t) + ACCUEIL });\n    state.arrivee = t;', '    state.retenues = { pins: {}, parties: [] };\n    state.arrivee = t;']],
+  },
+  {
+    nom: 'une activite touchee avant l arrivee ne l avance plus',
+    fichier: 'assets/fungalaxy-booking.js',
+    remplacer: [["    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;\n    state.arrivee = '';", "    return;\n    state.arrivee = '';"]],
   },
   {
     nom: 'l arrivee choisie ne se recale plus sur le plan',
@@ -112,14 +119,14 @@ const MUTATIONS = [
     remplacer: [['    if (state.arrivee && slot && arriveeDe(slot.opsPlan)) state.arrivee = arriveeDe(slot.opsPlan);\n', '']],
   },
   {
-    nom: 'effacer l arrivee laisse ses heures',
+    nom: 'effacer l arrivee retire les heures touchees',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [['Object.keys(avant.pins).forEach(function (k) { if (state.pins[k] === avant.pins[k]) delete state.pins[k]; });', 'void avant.pins;']],
+    remplacer: [["    arriveeEffacee = state.arrivee;\n    state.arrivee = ''; adaptation = null;", "    arriveeEffacee = state.arrivee;\n    state.arrivee = ''; adaptation = null; state.pins = {}; state.laserParts = [];"]],
   },
   {
-    nom: 'le bouton de la proposition ne choisit pas l heure dans la ligne',
+    nom: 'le bouton de la proposition ne pose pas ses heures',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [["poserArrivee(fitBtn.dataset.arrivee || '', JSON.parse(fitBtn.dataset.fit), null);", "poserArrivee('', JSON.parse(fitBtn.dataset.fit), null);"]],
+    remplacer: [['    Object.keys(heures).forEach(function (k) { if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5); });\n', '']],
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -239,7 +246,7 @@ async function main() {
   section('C ET D. L ECRAN, TELEPHONE 390x844');
   await ecran();
 
-  console.log(failures ? `\nchoisir-arrivee-check: ${failures} defaut(s).` : '\nchoisir-arrivee-check: ALL OK (la ligne « Heure d’arrivée » est en tete et facultative ; chaque arrivee se juge par la porte de la reservation et pose un plan qui arrive a cette heure-la ; le client change ce qu il veut, l arrivee se recale, il l efface ; la formule pareil)');
+  console.log(failures ? `\nchoisir-arrivee-check: ${failures} defaut(s).` : '\nchoisir-arrivee-check: ALL OK (la ligne « Arrivée » est en tete, dissociee des activites ; chaque arrivee se juge par la porte de la reservation et pose un plan qui arrive a cette heure-la ; le client change ce qu il veut, l arrivee se recale, il l efface ; la formule pareil)');
   process.exit(failures ? 1 : 0);
 }
 
@@ -318,7 +325,8 @@ async function ecran() {
         detail: t(li.querySelector('.fg-etape__quoi small')),
         reset: Boolean(piste && piste.querySelector('[data-reset="arrivee"]') && !piste.querySelector('[data-reset="arrivee"]').hidden),
       } : null,
-      autres: lignes.filter((l) => l !== li).map((l) => ({ cle: l.dataset.cle, ouverte: l.classList.contains('is-open') })),
+      autres: lignes.filter((l) => l !== li).map((l) => ({ cle: l.dataset.cle, ouverte: l.classList.contains('is-open'), heure: (l.querySelector('.fg-etape__heure') || { dataset: {} }).dataset.mot || '' })),
+      conseil: t(document.querySelector('#hourZone .fg-conseil:not([hidden])')),
       puces: piste ? Array.from(piste.querySelectorAll('.fg-chip')).map((c) => ({ t: c.dataset.time, etat: c.dataset.state || '', ok: c.dataset.ok !== 'false', on: c.classList.contains('is-on'), prop: c.classList.contains('is-proposed') })) : [],
       raisons: piste ? Array.from(piste.querySelectorAll('.fg-why-list__item')).map((l) => ({ heures: String(l.dataset.heures || '').split(' ').filter(Boolean), texte: t(l.querySelector('.fg-why-list__quand + span')) })) : [],
       posees: Object.fromEntries(Array.from(document.querySelectorAll('.fg-track')).filter((tr) => tr.dataset.activity !== 'arrivee').map((tr) => [tr.dataset.activity, Array.from(tr.querySelectorAll('.fg-chip.is-on')).map((c) => c.dataset.time)])),
@@ -357,87 +365,93 @@ async function ecran() {
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(CAPTURES, nom) });
   };
-  const arriveesDemandees = (demandes) => demandes.filter((u) => new URL(u).searchParams.get('arrivees') === '1');
+  const arriveesDemandees = (demandes) => demandes.filter((u) => new URL(u).searchParams.get('arrivals') === '1');
+  const heureDe = (v, cle) => (v.autres.find((l) => l.cle === cle) || {}).heure || '';
   try {
     // [C] LA VISITE DE MOVSAR
     const { page, erreurs, demandes } = await ouvrir(versVisite);
     const v0 = await lire(page);
-    ok(v0.ligne && v0.ligne.rang === 0 && v0.ligne.tete && v0.ligne.titre === 'Heure d’arrivée', '[C] la ligne « Heure d’arrivée » est la premiere du programme, avec un en-tete a toucher', JSON.stringify(v0.ligne));
-    ok(v0.ligne && !v0.ligne.ouverte && v0.ligne.expanded === 'false' && v0.ligne.etat === 'propose' && v0.ligne.detail === 'Facultatif' && v0.ligne.heure === v0.arrivee && Boolean(v0.arrivee),
-      '[C] facultative : fermee, « Facultatif », elle dit l arrivee du plan, la meme que la visite', `${JSON.stringify(v0.ligne)} | visite ${v0.arrivee}`);
-    ok(v0.garder && arriveesDemandees(demandes).length === 0 && v0.autres.some((l) => l.ouverte), '[C] rien ne l attend : « Ces horaires me vont » se touche, aucune liste d arrivee demandee, une ligne d activite s ouvre', `${v0.garder} ${arriveesDemandees(demandes).length} ${JSON.stringify(v0.autres)}`);
+    ok(v0.ligne && v0.ligne.rang === 0 && v0.ligne.tete && v0.ligne.titre === 'Arrivée', '[C] la ligne « Arrivée » est la premiere du programme, avec un en-tete a toucher', JSON.stringify(v0.ligne));
+    // A l ouverture, l arrivee est celle de la premiere activite : le recapitulatif ne la redit pas.
+    ok(v0.ligne && !v0.ligne.ouverte && v0.ligne.expanded === 'false' && v0.ligne.etat === 'propose' && v0.ligne.heure === '10:00' && !v0.arrivee,
+      '[C] fermee, elle dit l arrivee du plan ; a la meme heure que la premiere activite, le recapitulatif ne la redit pas', `${JSON.stringify(v0.ligne)} | visite « ${v0.arrivee} »`);
+    ok(v0.garder && arriveesDemandees(demandes).length === 0 && v0.autres.some((l) => l.ouverte), '[C] rien ne l attend : « Ces horaires me vont » se touche, aucune liste d arrivee demandee, une ligne d activite s ouvre', `${v0.garder} ${arriveesDemandees(demandes).length}`);
     await ouvrirLigne(page);
     const v1 = await lire(page);
     const listes = arriveesDemandees(demandes);
-    ok(listes.length === 1 && !new URL(listes[0]).searchParams.has('preferredTimes'), '[C] ouverte, ses heures se demandent une fois, sans les heures du client', listes.join(' | '));
-    const puce = (v, t) => v.puces.find((p) => p.t === t) || {};
-    ok(v1.ligne.ouverte && v1.puces.length >= 20 && puce(v1, TOT).etat === 'ok' && puce(v1, TOT).ok, `[C] ses heures s affichent, ${TOT} sans rien a dire`, `${v1.puces.length} ; ${JSON.stringify(puce(v1, TOT))}`);
-    const raisonTard = v1.raisons.find((r) => r.heures.includes(TARDIVE)) || {};
-    ok(puce(v1, TARDIVE).etat === 'soft' && puce(v1, TARDIVE).ok && raisonTard.texte === 'Ne tiendront pas avant la fermeture (22:00) : Billards, Arcades et Playground.',
-      `[C] ${TARDIVE} se prend et dit ce qui ne tiendra pas`, `${JSON.stringify(puce(v1, TARDIVE))} « ${raisonTard.texte} »`);
-    ok(puce(v1, '20:50').ok === false && (v1.raisons.find((r) => r.heures.includes('20:50')) || {}).texte === 'Trop tard pour tout faire avant la fermeture (22:00).', '[C] 20:50 ne se prend pas : trop tard, dit', JSON.stringify(puce(v1, '20:50')));
-    const signalees = v1.puces.filter((p) => p.etat !== 'ok').map((p) => p.t);
-    ok(signalees.length > 0 && signalees.every((t) => t >= '18:00') && v1.puces.filter((p) => p.t < '18:00').every((p) => p.etat === 'ok'), '[C] seules les heures tardives portent un probleme', signalees.join(', '));
+    ok(listes.length === 1 && !new URL(listes[0]).searchParams.has('preferredTimes'), '[C] ouverte, ses heures se demandent une fois, sans les heures seulement proposees', listes.join(' | '));
+    const puce = (v, h) => v.puces.find((p) => p.t === h) || {};
+    ok(v1.ligne.ouverte && v1.puces.length >= 20 && puce(v1, '18:00').etat === 'ok' && puce(v1, '18:00').ok, '[C] ses heures s affichent, 18:00 sans rien a dire', `${v1.puces.length} ; ${JSON.stringify(puce(v1, '18:00'))}`);
+    const refusees = v1.puces.filter((p) => !p.ok);
+    ok(refusees.length > 0 && refusees.every((p) => p.t >= '18:00') && refusees.every((p) => (v1.raisons.find((r) => r.heures.includes(p.t)) || {}).texte), '[C] seules des arrivees tardives se refusent, avec leur raison pour les lecteurs d ecran', refusees.map((p) => p.t).join(', '));
     ok(v1.raisons.every((r) => !verifierEcritureClient(r.texte, { etat: 'sans-promesse' }).length && (r.texte.match(/\s:\s/g) || []).length <= 1 && !/[\u2013\u2014]/.test(r.texte)), '[C] chaque raison respecte l ecriture client', v1.raisons.map((r) => r.texte).join(' | '));
-    // La soiree du cas : les arrivees ou tout tient, puis celles qui le disent.
-    if (CAPTURES) await page.click('.fg-track[data-activity="arrivee"] .fg-period[data-period="Soirée"] .fg-period__btn');
     await capture(page, '1-la-ligne-ouverte.png', '#hourZone .fg-etape[data-cle="arrivee"]');
 
-    // Une arrivee touchee : toutes les heures de sa visite se posent.
-    const prise = await toucher(page, 'arrivee', TOT);
-    await page.waitForTimeout(1200);
+    // Une arrivee touchee : elle seule est choisie, ce qui ne tient plus se recale apres elle.
+    const prise = await toucher(page, 'arrivee', '18:00');
     const v2 = await lire(page);
-    ok(prise && JSON.stringify(v2.posees.bowling) === '["18:00"]' && JSON.stringify(v2.posees.laser_game) === '["19:00"]', `[C] ${TOT} touchee : le bowling a 18:00 et le laser a 19:00 se posent`, JSON.stringify(v2.posees));
-    ok(v2.ligne.etat === 'choisi' && v2.ligne.heure === TOT && v2.ligne.detail === 'À votre heure' && v2.arrivee === TOT && !v2.hors, `[C] la ligne dit ${TOT} choisie, la visite arrive a ${TOT}, rien ne deborde`, `${JSON.stringify(v2.ligne)} | visite ${v2.arrivee} | ${v2.hors}`);
-    ok(v2.libresBowling > 3 && v2.garder, '[C] les autres heures restent a prendre, le bouton du bas aussi', `${v2.libresBowling} heures de bowling libres`);
+    ok(prise && JSON.stringify(v2.posees.bowling) === '[]' && JSON.stringify(v2.posees.laser_game) === '[]' && heureDe(v2, 'bowling') >= '18:10',
+      '[C] 18:00 touchee : aucune activite n est choisie pour autant, le bowling propose se recale apres elle', `${JSON.stringify(v2.posees)} ${JSON.stringify(v2.autres)}`);
+    ok(v2.ligne.etat === 'choisi' && v2.ligne.heure === '18:00' && v2.arrivee === '18:00' && v2.garder, '[C] la ligne dit 18:00 choisie, la visite part de 18:00, le bouton du bas reste', `${JSON.stringify(v2.ligne)} | visite ${v2.arrivee}`);
     await capture(page, '2-arrivee-choisie.png', '#hourZone .fg-prog');
 
-    // Le client change son bowling : son choix gagne, l arrivee se recale.
+    // Une activite touchee apres l arrivee : l arrivee ne bouge pas.
     const change = await toucher(page, 'bowling', '19:30');
     const v3 = await lire(page);
-    ok(change && JSON.stringify(v3.posees.bowling) === '["19:30"]' && JSON.stringify(v3.posees.laser_game) === '["19:00"]', '[C] le bowling change a 19:30 : l heure du client reste, le laser aussi', JSON.stringify(v3.posees));
-    ok(v3.arrivee === '18:50' && v3.ligne.heure === '18:50' && v3.ligne.etat === 'choisi', '[C] l arrivee se recale sur le plan : 18:50, dans la ligne comme dans la visite', `${JSON.stringify(v3.ligne)} | visite ${v3.arrivee}`);
+    ok(change && JSON.stringify(v3.posees.bowling) === '["19:30"]' && v3.ligne.etat === 'choisi' && v3.ligne.heure === '18:00' && v3.arrivee === '18:00', '[C] le bowling touche a 19:30 : l arrivee reste 18:00', `${JSON.stringify(v3.posees)} ${JSON.stringify(v3.ligne)} | visite ${v3.arrivee}`);
     await capture(page, '3-activite-changee.png', '#hourZone .fg-prog');
-    await ouvrirLigne(page);
-    const v4 = await lire(page);
-    const choisies = v4.puces.filter((p) => p.on).map((p) => p.t);
-    ok(JSON.stringify(choisies) === '["18:50"]' && v4.ligne.reset, '[C] dans la ligne, l heure choisie est celle du plan, et « Effacer » est la', `${JSON.stringify(choisies)} ${v4.ligne.reset}`);
 
-    // Effacer : ce que l arrivee avait pose et que le client n a pas change part.
+    // Une activite touchee avant l arrivee : on ne joue pas avant d etre la, elle l avance.
+    const avance = await toucher(page, 'bowling', '17:00');
+    const v4 = await lire(page);
+    ok(avance && JSON.stringify(v4.posees.bowling) === '["17:00"]' && v4.ligne.heure === '16:50' && v4.arrivee === '16:50' && v4.conseil === 'Arrivée avancée à 16:50.', '[C] le bowling touche a 17:00, avant l arrivee : elle avance a 16:50, le conseil le dit', `${JSON.stringify(v4.ligne)} | visite ${v4.arrivee} | « ${v4.conseil} »`);
+
+    // Tres en avance : les heures restent ou elles sont, la touchee comme la proposee.
+    const laserAvant = heureDe(v4, 'laser_game');
+    await ouvrirLigne(page);
+    const enAvance = await toucher(page, 'arrivee', '12:00');
+    const v5 = await lire(page);
+    ok(enAvance && JSON.stringify(v5.posees.bowling) === '["17:00"]' && Boolean(laserAvant) && heureDe(v5, 'laser_game') === laserAvant && v5.ligne.etat === 'choisi' && v5.ligne.heure === '12:00',
+      '[C] une arrivee a 12:00 : le bowling touche et le laser propose ne bougent pas', `${laserAvant} -> ${heureDe(v5, 'laser_game')} ; ${JSON.stringify(v5.ligne)}`);
+    ok(/avant le bowling/.test(v5.conseil), '[C] et le conseil dit le temps avant le bowling', v5.conseil);
+    await ouvrirLigne(page);
+    const v6 = await lire(page);
+    ok(JSON.stringify(v6.puces.filter((p) => p.on).map((p) => p.t)) === '["12:00"]' && v6.ligne.reset, '[C] dans la ligne, l heure choisie est la sienne, et « Effacer » est la', `${JSON.stringify(v6.puces.filter((p) => p.on).map((p) => p.t))} ${v6.ligne.reset}`);
+
+    // Effacer : aucune heure touchee ne part, la ligne redit l arrivee du plan.
     await page.click('.fg-track[data-activity="arrivee"] [data-reset="arrivee"]');
     await calme(page);
-    const v5 = await lire(page);
-    ok(JSON.stringify(v5.posees.bowling) === '["19:30"]' && JSON.stringify(v5.posees.laser_game) === '[]' && v5.ligne.etat === 'propose' && v5.ligne.detail === 'Facultatif' && v5.ligne.heure === v5.arrivee && !v5.ligne.reset,
-      '[C] effacee : le bowling du client reste, le laser pose par l arrivee part, la ligne redit l arrivee du plan', `${JSON.stringify(v5.posees)} ${JSON.stringify(v5.ligne)} | visite ${v5.arrivee}`);
+    const v7 = await lire(page);
+    ok(JSON.stringify(v7.posees.bowling) === '["17:00"]' && v7.ligne.etat === 'propose' && v7.ligne.heure === v7.arrivee && Boolean(v7.arrivee) && !v7.ligne.reset,
+      '[C] effacee : le bowling du client reste, la ligne redit l arrivee du plan', `${JSON.stringify(v7.posees)} ${JSON.stringify(v7.ligne)} | visite ${v7.arrivee}`);
 
-    // « Arriver à 17:50 » de la proposition : c est choisir cette heure dans la ligne.
+    // « Arriver à 17:50 » de la proposition : toutes les heures de ce plan d un coup.
     await toucher(page, 'laser_game', '20:30');
     await toucher(page, 'bowling', '21:00');
-    const fit = await page.$('#planZone [data-fit]');
+    const fit = await page.$('#hourZone [data-fit]');
     if (fit) { await fit.click(); await calme(page); }
-    const v6 = await lire(page);
-    ok(Boolean(fit) && v6.ligne.etat === 'choisi' && v6.ligne.heure === TOT && v6.arrivee === TOT && JSON.stringify(v6.posees.bowling) === '["18:00"]',
-      `[C] « Arriver à ${TOT} » choisit ${TOT} dans la ligne et pose son plan`, `${Boolean(fit)} ${JSON.stringify(v6.ligne)} ${JSON.stringify(v6.posees)}`);
+    const v8 = await lire(page);
+    ok(Boolean(fit) && v8.ligne.heure === TOT && v8.arrivee === TOT && JSON.stringify(v8.posees.bowling) === '["18:00"]',
+      `[C] « Arriver à ${TOT} » pose les heures de ce plan, la ligne dit ${TOT}`, `${Boolean(fit)} ${JSON.stringify(v8.ligne)} ${JSON.stringify(v8.posees)}`);
     ok(erreurs.length === 0, '[C] aucune erreur de page', erreurs.join(' | '));
     await page.close();
 
     // [D] LA FORMULE 1
     const f = await ouvrir(versFormule);
     const f0 = await lire(f.page);
-    ok(f0.ligne && f0.ligne.rang === 0 && !f0.ligne.ouverte && f0.ligne.detail === 'Facultatif' && f0.ligne.heure === f0.arrivee && arriveesDemandees(f.demandes).length === 0,
-      '[D] formule : la ligne en tete, fermee, facultative, l arrivee du plan', `${JSON.stringify(f0.ligne)} | visite ${f0.arrivee}`);
+    ok(f0.ligne && f0.ligne.rang === 0 && !f0.ligne.ouverte && f0.ligne.heure === '14:00' && !f0.arrivee && arriveesDemandees(f.demandes).length === 0,
+      '[D] formule : la ligne en tete, fermee, l arrivee du plan', `${JSON.stringify(f0.ligne)} | visite « ${f0.arrivee} »`);
     await ouvrirLigne(f.page);
-    const priseF = await toucher(f.page, 'arrivee', TOT);
-    await f.page.waitForTimeout(1200);
+    const priseF = await toucher(f.page, 'arrivee', '18:00');
     const f1 = await lire(f.page);
-    ok(priseF && JSON.stringify(f1.posees.bowling) === '["18:00"]' && JSON.stringify(f1.posees.laser_game) === '["19:00"]' && f1.ligne.etat === 'choisi' && f1.ligne.heure === TOT && f1.arrivee === TOT,
-      `[D] formule : ${TOT} touchee pose bowling 18:00 et laser 19:00, la visite arrive a ${TOT}`, `${JSON.stringify(f1.posees)} ${JSON.stringify(f1.ligne)} | ${f1.arrivee}`);
+    ok(priseF && JSON.stringify(f1.posees.bowling) === '[]' && JSON.stringify(f1.posees.laser_game) === '[]' && heureDe(f1, 'bowling') >= '18:10' && f1.ligne.etat === 'choisi' && f1.ligne.heure === '18:00' && f1.arrivee === '18:00',
+      '[D] formule : 18:00 touchee, aucune activite n est choisie pour autant, le bowling propose se recale, la visite part de 18:00', `${JSON.stringify(f1.posees)} ${JSON.stringify(f1.ligne)} | ${f1.arrivee} | ${JSON.stringify(f1.autres)}`);
     await ouvrirLigne(f.page);
     await f.page.click('.fg-track[data-activity="arrivee"] [data-reset="arrivee"]');
     await calme(f.page);
     const f2 = await lire(f.page);
-    ok(f2.ligne.etat === 'propose' && JSON.stringify(f2.posees.bowling) === '[]' && JSON.stringify(f2.posees.laser_game) === '[]' && f2.ligne.heure === f2.arrivee,
-      '[D] formule : effacee, les heures posees par l arrivee partent, la ligne redit l arrivee du plan', `${JSON.stringify(f2.posees)} ${JSON.stringify(f2.ligne)} | ${f2.arrivee}`);
+    ok(f2.ligne.etat === 'propose' && JSON.stringify(f2.posees.bowling) === '[]' && f2.ligne.heure === f2.arrivee,
+      '[D] formule : effacee, la ligne redit l arrivee du plan', `${JSON.stringify(f2.posees)} ${JSON.stringify(f2.ligne)} | ${f2.arrivee}`);
     ok(f.erreurs.length === 0, '[D] aucune erreur de page', f.erreurs.join(' | '));
     await f.page.close();
   } finally {

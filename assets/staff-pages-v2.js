@@ -704,7 +704,7 @@
           <div class="pv2-flow-rail"></div>
           <div class="pv2-flow-body">
             <strong>${esc(r.name || 'Sans nom')}</strong>
-            <span>${esc(programme || nomFormuleOuType(r))} · ${Number(r.pax) || 0} joueurs${pistesLabel(r.lanes) ? ` · ${pistesLabel(r.lanes)}` : ''} · ${Number(r.price) > 0 ? money(r.price) : 'prix au comptoir'}</span>
+            <span>${esc(programme || nomFormuleOuType(r))} · ${Number(r.pax) || 0} joueurs${pistesLabel(r.lanes) ? ` · ${pistesLabel(r.lanes)}` : ''} · ${Number(r.price) > 0 ? formatMontant(r.price) : 'prix au comptoir'}</span>
             ${/* La ligne au-dessus finit par le montant : la marque dit donc la
                  REFERENCE, pas une deuxieme fois le montant. */''}
             ${pv2MarqueursDossier(r, { montantDeja: true })}
@@ -1052,7 +1052,7 @@
         <summary>
           <span class="crm-hist-date">${esc(entry.date || '-')}</span>
           <span class="crm-hist-main"><strong>${esc(entry.label || 'Réservation')}</strong><small>${Number(r.pax) || 0} joueur${(Number(r.pax) || 0) > 1 ? 's' : ''}${acts.length ? ` · ${acts.join(' + ')}` : ''}</small></span>
-          <span class="crm-hist-amount ${entry.amount < 0 ? 'is-neg' : ''}">${money(Math.abs(entry.amount))}</span>
+          <span class="crm-hist-amount ${entry.amount < 0 ? 'is-neg' : ''}">${formatMontant(Math.abs(entry.amount))}</span>
           <span class="crm-pill tone-${r.status === 'paid' ? 'success' : cancelled ? 'warn' : 'muted'} crm-hist-status">${esc(entry.status)}</span>
         </summary>
         <div class="crm-hist-detail">
@@ -10954,7 +10954,7 @@
   // compare les deux fichiers.
   const TF_JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const TF_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-  function tfEuros(n) { n = Number(n); if (!isFinite(n)) return ''; return `${(Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`; }
+  function tfEuros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return `${n.toLocaleString('fr-BE', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} €`; }
   function insecable(s) { return String(s == null ? '' : s).replace(/ /g, ' '); }
   function dureeExacte(m) {
     m = Math.max(0, Math.round(Number(m) || 0));
@@ -10998,12 +10998,14 @@
   const tarifs = {
     ouvert: { formules: '', activites: '' },
     groupe: 10,
-    // { [centre]: { formules: { [id]: { champ: valeur } }, activites: { [id]: { prix } } } }
+    // { [centre]: { formules: { [id]: { champ: valeur } }, activites: { [id]: { prix } }, grilles: { 'bowling:1': prix } } }
     brouillons: {},
     // Ce que le gerant a TAPE, meme illisible (« 28, »), par centre et champ :
     // un rendu complet le lui rend tel quel au lieu de reformater sous ses doigts.
     saisies: {},
     focus: '',
+    // La case de grille dont les endroits montrent l exemple : la derniere en main.
+    caseExemple: '',
     trace: '',
     arrivees: {},
     signature: '',
@@ -11204,7 +11206,7 @@
   // ---- LE BROUILLON, PAR CENTRE ----------------------------------------------
   function tfLot(creer) {
     const centre = tfCentre();
-    if (!tarifs.brouillons[centre] && creer) tarifs.brouillons[centre] = { formules: {}, activites: {} };
+    if (!tarifs.brouillons[centre] && creer) tarifs.brouillons[centre] = { formules: {}, activites: {}, grilles: {} };
     return tarifs.brouillons[centre] || null;
   }
   const tfBrouillonFormule = (id) => { const lot = tfLot(false); return (lot && lot.formules[id]) || null; };
@@ -11212,7 +11214,7 @@
   function tfNbChangements(lot = tfLot(false)) {
     if (!lot) return 0;
     const compter = (groupe) => Object.values(groupe).reduce((n, b) => n + Object.keys(b).length, 0);
-    return compter(lot.formules) + compter(lot.activites);
+    return compter(lot.formules) + compter(lot.activites) + Object.keys(lot.grilles).length;
   }
   const tfCleSaisie = (type, id, champ) => `${tfCentre()}|${type}|${id}|${champ}`;
   function tfOublierSaisies(type, id) {
@@ -11234,6 +11236,9 @@
     if (champ === 'nom') return String(brut == null ? '' : brut).replace(/\s+/g, ' ').trim().length > 0;
     const n = tfLireNombre(brut);
     if (Number.isNaN(n)) return false;
+    // Une case de grille n est jamais vide ni a zero : le serveur la refuserait
+    // (lib/booking-config prixDeGrille).
+    if (type === 'grille') return n != null && n > 0;
     return !(type === 'formule' && champ === 'prix' && n == null);
   }
   function tfSaisie(type, id, champ, propre) {
@@ -11546,6 +11551,210 @@
     };
   }
 
+  // ---- LES GRILLES DU CENTRE : BOWLING, LASER, FUN RUN ---------------------------
+  // Chaque prix est une CASE. Elle se regle dans la planche de l activite, pour CE
+  // centre (droit Tarifs), et part a « Publier » avec le reste du brouillon, en une
+  // seule ecriture (saveGrillesTarif). Son champ se lit `grille:<nom>:<cle>`. Le prix
+  // publie est celui du catalogue public du centre : ce que lit le formulaire et ce
+  // que le serveur facture (lib/booking-config grillesDuCentre).
+  const tfEstCase = (champ) => String(champ || '').startsWith('grille:');
+  const tfLireCase = (champ) => { const [, nom, cle] = String(champ).split(':'); return { nom, cle }; };
+  // Le tarif A LA PARTIE d un centre qui vend ainsi (N4) : ses paliers par jours,
+  // jamais la grille par piste (meme lecture que getPricingRows et
+  // lib/booking-config.resolveBowlingPricing).
+  function tfTarifParties() {
+    const valide = (p) => (p && p.mode === 'per_game_per_person' && Array.isArray(p.tiers) && p.tiers.length ? p : null);
+    const centre = tfMetaCentre();
+    const ressource = typeof getAdminCenter === 'function' ? ((getAdminCenter() || {}).resources || {}).bowling : null;
+    return valide(centre && centre.booking && centre.booking.bowlingPricing)
+      || valide(ressource && ressource.pricing)
+      || (typeof getBowlingPricing === 'function' ? getBowlingPricing() : null);
+  }
+  // Le mode aux parties ne vaut que pour le bowling du centre : son duckpin reste a
+  // la piste, comme le serveur le chiffre (lib/visit-program, bowlingConfig null).
+  function tfNomGrille(priceType, id, entry) {
+    if (priceType === 'grid_laser') return 'laser';
+    if (priceType === 'grid_fun_run') return 'funRun';
+    if (priceType !== 'grid_bowling' && id !== 'bowling' && !(entry && entry.resourceType === 'bowling')) return '';
+    return id === 'bowling' && tfTarifParties() ? 'parties' : 'bowling';
+  }
+  function tfCasesDeGrille(nom) {
+    const d = tfMetaDonnees() || {};
+    const lot = tfLot(false);
+    const poses = (lot && lot.grilles) || {};
+    const kase = (cle, label, publie, unite, plus = {}) => {
+      const pose = poses[`${nom}:${cle}`];
+      const p = Number(publie) || 0;
+      return { grille: nom, cle, champ: `grille:${nom}:${cle}`, label, long: label, publie: p, prix: pose === undefined ? p : pose, modifie: pose !== undefined, unite, ...plus };
+    };
+    if (nom === 'parties') {
+      const tarif = tfTarifParties();
+      const cases = [];
+      ((tarif && tarif.tiers) || []).forEach((tier, t) => {
+        const jours = typeof describePricingDays === 'function' ? describePricingDays(tier.days) : '';
+        (tier.prices || []).forEach((prix, i) => {
+          const label = `${i + 1} partie${i ? 's' : ''}`;
+          cases.push(kase(`${t}-${i}`, label, prix, '/ personne', { groupe: jours, long: `${label}${jours ? ` (${jours})` : ''}` }));
+        });
+      });
+      return cases;
+    }
+    if (nom === 'bowling') return (d.durationOptions || []).map((o) => kase(String(Number(o.value)), o.label, o.price, '/ piste'));
+    if (nom === 'laser') return (d.laserOptions || []).map((o) => kase(String(Number(o.games)), o.label, o.price, '/ personne'));
+    if (nom === 'funRun') return (d.funRunOptions || []).map((o) => kase(String(Number(o.minutes)), o.label, o.price, '/ session'));
+    return [];
+  }
+  const tfOptionsGrille = (a) => (a.nomGrille ? tfCasesDeGrille(a.nomGrille) : []);
+  const tfUniteCase = (kase) => ({ '/ piste': 'la piste', '/ session': 'la session' }[kase.unite] || 'par personne');
+  function tfPoserCase(champ, valeur) {
+    const { nom, cle } = tfLireCase(champ);
+    const kase = tfCasesDeGrille(nom).find((c) => c.cle === cle);
+    if (!kase) return false;
+    const lot = tfLot(true);
+    if (tfMeme('prix', valeur, kase.publie)) delete lot.grilles[`${nom}:${cle}`]; else lot.grilles[`${nom}:${cle}`] = valeur;
+    tarifs.erreur = '';
+    return true;
+  }
+  // Ce que le groupe d exemple paie pour une case : la regle du serveur
+  // (lib/visit-program normalizeProgram), par les fonctions du comptoir.
+  function tfMontantCase(a, kase, prix) {
+    const n = tarifs.groupe;
+    let quantite = n;
+    let mot = 'joueur';
+    if (a.nomGrille === 'bowling') {
+      mot = 'piste';
+      quantite = a.id === 'bowling'
+        ? splitGroupIntoBowlingServices(n).reduce((total, joueurs) => total + Math.max(1, getRequiredLaneCount('bowling', joueurs, '')), 0)
+        : getActivityUnitPlan(a.meta || a.entry, n).units;
+    } else if (a.nomGrille === 'funRun') {
+      mot = 'session';
+      quantite = getActivitySessionCount(a.meta || a.entry, n);
+    }
+    return { quantite: tfPluriel(quantite, mot), total: Math.round(Number(prix) * quantite * 100) / 100 };
+  }
+  // La ligne « Offre » du mail (lib/visit-program describeProgram), la ligne du
+  // ticket de Reserver (app-main.js estimerPrixProgramme).
+  function tfOffreCase(a, kase) {
+    if (a.id === 'bowling' && a.nomGrille === 'bowling') return `Bowling ${typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(kase.cle)) : kase.label}`;
+    if (a.nomGrille === 'laser') return `Laser ${kase.label}`;
+    return a.nomGrille === 'parties' ? `${a.nom} ${kase.label}` : a.nom;
+  }
+  // Le prix de la meme case chez les autres centres de l entreprise : ils gardent
+  // le leur, et la planche le montre.
+  function tfPrixChezAutres(kase) {
+    const tous = typeof getAdminCenters === 'function' ? (getAdminCenters() || []).filter(Boolean) : [];
+    const depart = { bowling: DURATION_OPTIONS.find((o) => String(o.value) === kase.cle), laser: LASER_GAME_OPTIONS.find((o) => String(o.games) === kase.cle), funRun: FUN_RUN_OPTIONS.find((o) => String(o.minutes) === kase.cle) }[kase.grille];
+    return tfCentres().slice(1).map((c) => {
+      const centre = tous.find((x) => x.id === c.id) || {};
+      const pose = Number(centre.grillesTarif && centre.grillesTarif[kase.grille] && centre.grillesTarif[kase.grille][kase.cle]);
+      const prix = pose > 0 ? pose : depart ? depart.price : null;
+      return prix == null ? `ses prix à ${c.nom}` : `${tfEuros(prix)} à ${c.nom}`;
+    }).join(', ');
+  }
+  // Les prix publies sur la ligne. Un tarif par palier de jours (N4) se lit palier par
+  // palier : repeter les jours a chaque partie coupait la ligne avant la fin.
+  function tfDetailCases(cases) {
+    if (!cases.some((c) => c.groupe)) return cases.map((c) => `${c.long} ${tfEuros(c.publie)}`).join(' · ');
+    return [...new Set(cases.map((c) => c.groupe))].map((jours) => `${jours} : ${cases.filter((c) => c.groupe === jours).map((c) => `${c.label} ${tfEuros(c.publie)}`).join(', ')}`).join(' · ');
+  }
+  const tfDesCases = (cases) => (cases.length ? `Dès ${tfEuros(Math.min(...cases.map((c) => c.prix)))} ${cases[0].unite}` : '…');
+  // `remplace` : la meme grille avec un autre prix sur une case (l avant d un
+  // changement, pour le recapitulatif).
+  function tfValeursGrille(a, remplace = null) {
+    const cases = tfOptionsGrille(a).map((c) => (remplace && remplace.champ === c.champ ? { ...c, prix: remplace.prix } : c));
+    const n = tarifs.groupe;
+    const base = { des: tfDesCases(cases), tuileNom: tfNomTuile(a.nom), pour: tfPluriel(n, 'joueur') };
+    const kase = cases.find((c) => c.champ === (remplace ? remplace.champ : tarifs.caseExemple))
+      || cases.find((c) => c.grille === 'bowling' && c.cle === '1') || cases[0];
+    if (!kase) return base;
+    const m = tfMontantCase(a, kase, kase.prix);
+    cases.forEach((c) => { base[`opt:${c.champ}`] = tfEuros(c.prix); });
+    return {
+      ...base,
+      exempleQuoi: `${kase.long} · ${m.quantite} × ${tfEuros(kase.prix)}`,
+      exempleTotal: tfEuros(m.total),
+      finMontant: `Montant indicatif ${tfEuros(m.total)}`,
+      offre: tfOffreCase(a, kase),
+      mailMontant: tfEurosMail(m.total),
+      ticketDetail: m.quantite,
+      ticketTotal: tfEurosConsole(m.total),
+      autres: tfAutresCentres().length ? `${kase.long} : ${tfPrixChezAutres(kase)}` : '',
+    };
+  }
+  const tfLieuxGrille = () => ['formulaire', 'fin', 'mails', 'comptoir'];
+  function tfPhraseGrille(lieu) {
+    if (lieu === 'formulaire') return 'Le prix sur la carte de l’activité, le « Dès … » s’il devient le plus bas, et le total du groupe.';
+    if (lieu === 'fin') return 'Le montant indicatif de l’écran de fin.';
+    if (lieu === 'mails') return 'Le montant estimé du mail « réservation confirmée ».';
+    return 'Le montant de la ligne et le total du ticket dans Réserver.';
+  }
+  function tfPasConcerneGrille() {
+    const autres = tfAutresCentres();
+    return autres.length > 1 ? `Pas concerné : ${tfEt(autres)} gardent leurs propres prix.` : `Pas concerné : ${autres[0]} garde son propre prix.`;
+  }
+  // Dans chaque endroit, ce que la case en main change vraiment.
+  function tfVisesCase(champ, a) {
+    const cases = tfOptionsGrille(a);
+    const kase = cases.find((c) => c.champ === champ);
+    const leMoinsCher = kase && kase.prix === Math.min(...cases.map((c) => c.prix));
+    return [`opt:${champ}`, 'exempleQuoi', 'exempleTotal', 'finMontant', 'mailMontant', 'ticketTotal', ...(leMoinsCher ? ['des'] : [])];
+  }
+  function tfPiedGrille(a) {
+    const savoir = {
+      bowling: a.id === 'bowling' ? 'Au comptoir, au-delà de 2 heures, le prix part de cette grille : les 2 heures, puis l’heure et la demi-heure en plus.' : '',
+      laser: 'Au comptoir, au-delà de 3 parties, le prix part de cette grille : les 3 parties, puis une partie par partie en plus.',
+      funRun: 'Un groupe plus grand que l’installation joue et paie plusieurs sessions.',
+    }[a.nomGrille] || '';
+    return {
+      pas: 'Les réservations déjà prises gardent leur prix. Si l’équipe change ensuite leur contenu, elles passent au nouveau prix. Les formules gardent leur propre prix.',
+      savoir,
+      qui: `${tfMajuscule(tfQui('pricing.manage'))}.`,
+      quand: TF_QUAND,
+    };
+  }
+  // Une publication : une seule ecriture pour toutes les cases, le serveur relit
+  // et reecrit la ligne du centre d un bloc. Les prix a la partie partent en
+  // paliers entiers, chaque palier reste reconnu par ses jours.
+  function tfDemandeGrilles(poses) {
+    const demande = {};
+    const parties = {};
+    Object.entries(poses).forEach(([brut, prix]) => {
+      const i = brut.indexOf(':');
+      const nom = brut.slice(0, i);
+      const cle = brut.slice(i + 1);
+      if (nom === 'parties') parties[cle] = prix;
+      else demande[nom] = { ...(demande[nom] || {}), [cle]: prix };
+    });
+    if (Object.keys(parties).length) {
+      const tarif = tfTarifParties();
+      // Seules les cases touchees voyagent : les autres (null) gardent le prix du serveur.
+      demande.parties = ((tarif && tarif.tiers) || []).map((tier, t) => ({
+        days: tier.days,
+        prices: (tier.prices || []).map((prix, i) => (`${t}-${i}` in parties ? parties[`${t}-${i}`] : null)),
+      })).filter((palier) => palier.prices.some((prix) => prix !== null));
+    }
+    return demande;
+  }
+  // La valeur publiee se pose tout de suite, le rechargement la confirme.
+  function tfPoserGrillesPubliees(demande) {
+    const d = tfMetaDonnees();
+    if (!d) return;
+    const poser = (liste, nom, cle) => (liste || []).forEach((o) => {
+      const prix = (demande[nom] || {})[String(Number(o[cle]))];
+      if (prix !== undefined) o.price = prix;
+    });
+    poser(d.durationOptions, 'bowling', 'value');
+    poser(d.laserOptions, 'laser', 'games');
+    poser(d.funRunOptions, 'funRun', 'minutes');
+    const tarif = d.center && d.center.booking && d.center.booking.bowlingPricing;
+    if (demande.parties && tarif) {
+      tarif.tiers = tarif.tiers.map((tier) => {
+        const recu = demande.parties.find((palier) => JSON.stringify(palier.days) === JSON.stringify(tier.days));
+        return recu ? { ...tier, prices: tier.prices.map((prix, i) => (recu.prices[i] === null ? prix : recu.prices[i])) } : tier;
+      });
+    }
+  }
+
   // ---- UNE ACTIVITE TELLE QUE LA PAGE LA MONTRE ------------------------------
   function tfVueActivite(entry) {
     const id = String(entry.id);
@@ -11555,7 +11764,8 @@
     const priceType = String((meta && meta.priceType) || entry.priceType || '');
     const offres = (meta && meta.arcadeOffers) || entry.arcadeOffers || null;
     const arcades = id === 'arcade_time' && Boolean(offres) && offres.enabled !== false;
-    const grille = /^grid_/.test(priceType);
+    const nomGrille = tfNomGrille(priceType, id, entry);
+    const grille = Boolean(nomGrille);
     const seule = entry.bookable === true;
     return {
       id,
@@ -11565,6 +11775,7 @@
       seule,
       priceType,
       grille,
+      nomGrille,
       arcades,
       simple: seule && !arcades && !grille && (priceType === 'per_pax' || priceType === 'per_unit_hour'),
       offres,
@@ -11575,9 +11786,12 @@
       paliers: Boolean(meta && meta.pricing && Array.isArray(meta.pricing.tiers) && meta.pricing.tiers.length),
       publie,
       prix: 'prix' in b ? b.prix : publie,
-      modifie: 'prix' in b,
+      modifie: 'prix' in b || (grille && tfCasesDeGrille(nomGrille).some((c) => c.modifie)),
     };
   }
+  // Une grille se regle avec le droit Tarifs, pour le centre ; un prix simple avec
+  // le droit Reglages, pour l entreprise.
+  const tfActiviteReglable = (a) => (a.grille ? a.seule && tfPeutTarifs() && tfOptionsGrille(a).length > 0 : a.simple && cevCanManage());
   function tfActivites() {
     const possedees = Array.isArray(pricingEditor.centerActivityIds) ? pricingEditor.centerActivityIds.map(String) : [];
     const publiques = tfMetaActivites();
@@ -11589,33 +11803,6 @@
         ? ((ordre.has(x.id) ? ordre.get(x.id) : 999) - (ordre.has(y.id) ? ordre.get(y.id) : 999)) || x.nom.localeCompare(y.nom, 'fr')
         : x.seule ? -1 : 1));
   }
-  // Le « Dès … » de la carte d une activite dans le formulaire client, a
-  // l identique de prixCarte (fungalaxy-booking.js:1021, carte pas encore
-  // choisie), de reglageArcade (839) et d optionsPour (528).
-  function tfOptionsGrille(a) {
-    const d = tfMetaDonnees() || {};
-    if (a.priceType === 'grid_bowling' || a.id === 'bowling' || (a.entry && a.entry.resourceType === 'bowling')) {
-      // Un centre qui vend le bowling AUX PARTIES et par personne (N4) : ses
-      // paliers par jours, jamais la grille par piste de Fun Galaxy (meme
-      // lecture que getPricingRows et lib/booking-config.resolveBowlingPricing).
-      const ressource = (typeof getAdminCenter === 'function' ? ((getAdminCenter() || {}).resources || {}) : {}).bowling;
-      const duCentre = ressource && ressource.pricing && ressource.pricing.mode === 'per_game_per_person'
-        && Array.isArray(ressource.pricing.tiers) && ressource.pricing.tiers.length ? ressource.pricing : null;
-      const parties = duCentre || (typeof getBowlingPricing === 'function' ? getBowlingPricing() : null);
-      if (parties) {
-        const options = [];
-        (parties.tiers || []).forEach((tier) => {
-          const jours = typeof describePricingDays === 'function' ? describePricingDays(tier.days) : '';
-          (tier.prices || []).forEach((prix, i) => options.push({ label: `${i + 1} partie${i ? 's' : ''}${jours ? ` (${jours})` : ''}`, prix: Number(prix) || 0, unite: '/ personne' }));
-        });
-        return options;
-      }
-      return (d.durationOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ piste' }));
-    }
-    if (a.priceType === 'grid_laser') return (d.laserOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ personne' }));
-    if (a.priceType === 'grid_fun_run') return (d.funRunOptions || []).map((o) => ({ label: o.label, prix: Number(o.price) || 0, unite: '/ session' }));
-    return [];
-  }
   function tfCartesArcades(a) {
     const c = a.offres;
     if (!a.arcades || !c) return null;
@@ -11624,14 +11811,14 @@
     const credits = (c.creditOffers || []).filter((o) => valide(o) && Number(o.credits) >= 0 && Number(o.bonusCredits || 0) >= 0);
     return temps.length || credits.length ? { temps, credits } : null;
   }
-  function tfPrixCarte(a, prix = a.prix) {
+  // Le « Dès … » de la carte d une activite dans le formulaire client, a
+  // l identique de prixCarte (fungalaxy-booking.js:1021, carte pas encore
+  // choisie), de reglageArcade (839) et d optionsPour (528). `publie` : la ligne
+  // garde la valeur publiee, la planche montre le brouillon.
+  function tfPrixCarte(a, prix = a.prix, { publie = false } = {}) {
     const cartes = tfCartesArcades(a);
     if (cartes) return `Dès ${tfEuros(Math.min(...cartes.temps.concat(cartes.credits).map((o) => Number(o.price))))} / carte`;
-    const options = tfOptionsGrille(a);
-    if (options.length) {
-      const mini = Math.min(...options.map((o) => o.prix).filter((p) => p >= 0));
-      return isFinite(mini) ? `Dès ${tfEuros(mini)} ${options[0].unite}` : 'Prix à l’accueil';
-    }
+    if (a.grille) return tfDesCases(tfOptionsGrille(a).map((c) => (publie ? { ...c, prix: c.publie } : c)));
     const connu = prix != null && isFinite(Number(prix)) && Number(prix) >= 0;
     const unite = a.unitLabel ? ` ${a.unitLabel.replace(/^par /, '/ ')}` : '';
     if (a.priceType === 'per_pax' || a.priceType === 'per_unit_hour') return connu ? `Dès ${tfEuros(prix)}${unite}` : 'Prix à l’accueil';
@@ -11644,6 +11831,7 @@
     return mots.length === 2 && mots[0].length >= 6 ? mots[0] : mots.join(' ');
   }
   function tfValeursActivite(a) {
+    if (a.grille) return tfValeursGrille(a);
     const n = tarifs.groupe;
     const enfant = a.priceType === 'per_pax' && /enfant/i.test(a.unitLabel);
     // La touche de Reserver : le calcul du comptoir (booking-core.js
@@ -11660,11 +11848,11 @@
       pour: tfPluriel(n, enfant ? 'enfant' : 'joueur'),
       tuileNom: tfNomTuile(a.nom),
       tuile: tuile != null ? tfEurosConsole(tuile) : 'sur place',
-      grille: tfOptionsGrille(a).map((o) => `${o.label} ${tfEuros(o.prix)}`).join(' · '),
     };
   }
   function tfLieuxActivite(a) {
     if (!a.seule) return [];
+    if (a.grille) return [...tfLieuxGrille(), ...(tfAutresCentres().length ? ['autres'] : [])];
     return ['formulaire', 'comptoir', ...(a.simple && tfAutresCentres().length ? ['autres'] : [])];
   }
   function tfPhraseActivite(lieu) {
@@ -11695,6 +11883,7 @@
   function tfLieuxActifs(ctx, champ, vue) {
     if (!ctx || !champ) return [];
     if (ctx.type === 'formule') return tfLieuxDe(champ, vue);
+    if (tfEstCase(champ)) return tfLieuxGrille();
     return champ === 'prix' ? tfLieuxActivite(vue) : [];
   }
 
@@ -11864,6 +12053,7 @@
   }
   const tfSeVoit = (lieux) => `Se voit dans : ${tfEt(lieux.map((l) => (l === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[l].toLowerCase())))}.`;
   function tfTexteAide(type, champ, brut, valide) {
+    if (type === 'grille') return valide ? '' : 'Indiquez un prix de plus de 0 €, 1000 € au plus.';
     if (type === 'activite') return valide ? 'Vide : vos clients lisent « Prix à l’accueil ».' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
     if (champ === 'prix') { if (!valide) return 'Indiquez un prix entre 0 et 1000 €.'; return tfLireNombre(brut) === 0 ? 'À 0 €, la formule ne se réserve plus en ligne.' : ''; }
     if (champ === 'ancien') return valide ? 'vide : pas de prix barré' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
@@ -12094,11 +12284,11 @@
   }
   function tfLigneActiviteHtml(a) {
     const ouvert = tarifs.ouvert.activites === a.id;
-    const editable = a.simple && cevCanManage();
+    const editable = tfActiviteReglable(a);
     const options = tfOptionsGrille(a);
     const cartes = tfCartesArcades(a);
     const fourchette = (liste) => { const p = liste.map((o) => Number(o.price)); return `${tfPluriel(p.length, 'carte')}, de ${tfEuros(Math.min(...p))} à ${tfEuros(Math.max(...p))}`; };
-    const detail = options.length ? options.map((o) => `${o.label} ${tfEuros(o.prix)}`).join(' · ')
+    const detail = options.length ? tfDetailCases(options)
       : cartes ? [cartes.temps.length ? `${fourchette(cartes.temps)} au temps` : '', cartes.credits.length ? `${fourchette(cartes.credits)} en crédits` : ''].filter(Boolean).join(' · ')
         : !a.seule ? 'Comprise dans vos formules'
           : a.publie != null ? `${tfEuros(a.publie)} ${a.unitLabel}`.trim() : 'Prix à l’accueil';
@@ -12106,8 +12296,8 @@
     const usage = a.id === 'bowling' ? tfUsage((d.durationOptions || []).map((o) => `bowling-${Number(o.value)}`))
       : a.id === 'laser_game' ? tfUsage((d.laserOptions || []).map((o) => `laser-${o.games}`)) : '';
     const savoir = [usage, a.note, a.ages, a.minPax > 1 ? `dès ${a.minPax} joueurs` : ''].filter(Boolean).join(' · ');
-    const qui = a.grille ? 'Pinlane, pour tous les centres' : a.arcades ? `Établissement, pour ${tfNomCentre()}` : a.seule ? 'Votre entreprise' : 'Pas de prix seul';
-    const prix = a.seule ? tfPrixCarte(a, a.publie) : 'Dans vos formules';
+    const qui = !a.seule ? 'Pas de prix seul' : a.grille ? `Votre centre, ${tfNomCentre()}` : a.arcades ? `Établissement, pour ${tfNomCentre()}` : 'Votre entreprise';
+    const prix = a.seule ? tfPrixCarte(a, a.publie, { publie: true }) : 'Dans vos formules';
     const prixHtml = a.seule ? tfPrixLigneHtml(prix) : `<small>${esc(prix)}</small>`;
     const id = esc(a.id);
     return `<div class="tf-ligne tf-ligne-act${ouvert ? ' is-ouverte' : ''}${a.modifie ? ' is-modifiee' : ''}" data-tf-act="${id}">
@@ -12125,10 +12315,24 @@
   }
   function tfReglageActiviteHtml(a, editable) {
     if (a.grille) {
-      const options = tfOptionsGrille(a);
-      return `<ul class="tf-grille">${options.map((o) => `<li><span>${esc(o.label)}</span><b>${esc(tfEuros(o.prix))}</b><small>${esc(o.unite.replace(/^\/ /, 'par '))}</small></li>`).join('')}</ul>
-        <p class="tf-r-dit">Fixé par Pinlane, le même pour tous les centres. Bientôt réglable par centre.</p>
-        ${a.priceType === 'grid_bowling' ? '<p class="tf-r-dit">La même grille sert au Bowling et au Duckpin Bowling.</p>' : ''}`;
+      const cases = tfOptionsGrille(a);
+      if (!cases.length) return `<p class="tf-r-dit">${tfMeta.etat === 'erreur' ? 'Prix indisponibles pour le moment. Rechargez la page.' : 'Chargement des prix…'}</p>`;
+      const memes = a.nomGrille === 'bowling' ? tfActivites().filter((x) => x.nomGrille === 'bowling' && x.seule).map((x) => x.nom) : [];
+      const note = memes.length > 1 ? `<p class="tf-r-dit">La même grille sert au ${esc(tfEt(memes))}.</p>` : '';
+      if (!editable) {
+        const dit = a.seule ? `Réglé par ${esc(tfQui('pricing.manage'))}, pour ${esc(tfNomCentre())}.` : 'Elle compose vos formules : son prix ne se lit nulle part seul.';
+        return `<ul class="tf-grille">${cases.map((c) => `<li><span>${esc(c.long)}</span><b>${esc(tfEuros(c.prix))}</b><small>${esc(tfUniteCase(c))}</small></li>`).join('')}</ul>
+          <p class="tf-r-dit">${dit}</p>${note}`;
+      }
+      let jours = '';
+      return `${cases.map((c) => {
+        const s = tfSaisie('grille', c.grille, c.cle, tfSaisieNombre(c.prix));
+        const titre = c.groupe && c.groupe !== jours ? `<p class="tf-grille-titre">${esc(c.groupe)}</p>` : '';
+        jours = c.groupe || '';
+        return titre + tfRangee(c.champ, c.label, `${tfChampNombre('grille', a.id, c.champ, s)}<span class="tf-unite">€ ${esc(tfUniteCase(c))}</span>`, {
+          pour: `tfChamp-${c.champ}`, desc: tfSeVoit(tfLieuxGrille()), apres: tfAideHtml('grille', c.champ, s),
+        });
+      }).join('')}${note}`;
     }
     if (a.arcades) {
       const cartes = tfCartesArcades(a) || { temps: [], credits: [] };
@@ -12149,7 +12353,43 @@
       apres: `${tfAideHtml('activite', 'prix', s)}${a.paliers ? '<p class="tf-r-dit">C’est le prix de base : des prix par jour ou par heure le remplacent sur certains créneaux.</p>' : ''}`,
     });
   }
+  // Une grille, avec les vrais mots de chaque endroit : la carte et ses options
+  // (fungalaxy-booking.js:630), l ecran de fin, le mail, la ligne du ticket.
+  function tfMiniGrille(lieu, a, vals) {
+    if (lieu === 'formulaire') {
+      return `<div class="tf-m-act">
+        <b class="tf-m-nom">${esc(a.nom)}</b>
+        ${tfV('des', vals, 'span', 'tf-m-des')}
+        ${a.note ? `<small class="tf-m-petit">${esc(a.note)}</small>` : ''}
+        <div class="tf-m-options">${tfOptionsGrille(a).map((c) => `<span class="tf-m-option"><i>${esc(c.long)}</i>${tfV(`opt:${c.champ}`, vals, 'b')}</span>`).join('')}</div>
+        <span class="tf-m-kv">${tfV('exempleQuoi', vals, 'i')}${tfV('exempleTotal', vals, 'b')}</span>
+      </div>`;
+    }
+    if (lieu === 'fin') {
+      return `<div class="tf-m-fin">
+        <b class="tf-m-fin-titre">Réservation confirmée</b>
+        <span class="tf-m-fin-texte">C’est réservé : on vous attend !</span>
+        <span class="tf-m-kv"><i>Au programme</i>${tfV('offre', vals, 'b')}</span>
+        ${tfV('finMontant', vals, 'span', 'tf-m-kv tf-m-montant')}
+      </div>`;
+    }
+    if (lieu === 'mails') {
+      return `<div class="tf-m-mail">
+        <div class="tf-m-mail-tete"><b>Réservation confirmée</b><span class="tf-m-tag">rappel 48 h</span></div>
+        <div class="tf-m-kv"><i>Offre</i>${tfV('offre', vals, 'b')}</div>
+        <div class="tf-m-kv"><i>Montant estimé</i>${tfV('mailMontant', vals, 'b')}</div>
+      </div>`;
+    }
+    if (lieu === 'comptoir') {
+      return `<div class="tf-m-ct">
+        <span class="tf-m-tuile"><b>${esc(vals.tuileNom)}</b></span>
+        <div class="tf-m-ticket">${tfV('offre', vals, 'span', 'tf-m-ticket-nom')}${tfV('ticketDetail', vals, 'span', 'tf-m-qte')}${tfV('ticketTotal', vals, 'b')}</div>
+      </div>`;
+    }
+    return `<div class="tf-m-autres">${tfV('autres', vals, 'p', 'tf-m-petit')}</div>`;
+  }
   function tfMiniActivite(lieu, a, vals) {
+    if (a.grille) return tfMiniGrille(lieu, a, vals);
     if (lieu === 'formulaire') {
       return `<div class="tf-m-act">
         <b class="tf-m-nom">${esc(a.nom)}</b>
@@ -12159,21 +12399,26 @@
       </div>`;
     }
     if (lieu === 'comptoir') {
-      if (a.grille) return `<div class="tf-m-ct"><span class="tf-m-tuile"><b>${esc(vals.tuileNom)}</b></span><p class="tf-m-petit">${esc(vals.grille)}</p></div>`;
       return `<div class="tf-m-ct"><span class="tf-m-tuile"><b>${esc(vals.tuileNom)}</b>${tfV('tuile', vals)}</span><p class="tf-m-petit">Pour ${esc(vals.pour)}</p></div>`;
     }
     return `<div class="tf-m-autres"><div class="tf-m-kv"><i>Prix</i><b>le même qu’à ${esc(tfNomCentre())}</b></div></div>`;
   }
   function tfPlancheActiviteHtml(a) {
     const vals = tfValeursActivite(a);
-    const editable = a.simple && cevCanManage();
+    const editable = tfActiviteReglable(a);
     const lieux = tfLieuxActivite(a);
-    const portee = a.grille ? 'Pinlane' : a.arcades ? tfPorteeCentre() : tfPorteeEntreprise();
+    const duCentre = a.grille || a.arcades;
+    const portee = duCentre ? tfPorteeCentre() : tfPorteeEntreprise();
+    const repos = (lieu) => {
+      if (a.grille && lieu === 'autres') return tfAutresCentres().length > 1 ? 'Gardent leurs propres prix.' : 'Garde son propre prix.';
+      if (editable) return 'Change avec le prix.';
+      return lieu === 'formulaire' ? 'Ce que lit le client.' : 'Ce que lit l’équipe.';
+    };
     const id = esc(a.id);
     return `<div class="tf-planche" id="tfPlanche-${id}" data-tf-planche="${id}" data-tf-type="activite" role="region" aria-label="${esc(a.nom)} : son prix et où il se voit">
       <div class="tf-cablage" data-tf-cablage>
         <div class="tf-col tf-col-r">
-          <div class="tf-col-tete"><span class="tf-etape">${editable ? 'Ce que vous réglez' : 'Comment son prix se fixe'}</span><span class="tf-portee${a.grille ? ' is-pinlane' : a.arcades ? '' : ' is-entreprise'}">${esc(portee)}</span></div>
+          <div class="tf-col-tete"><span class="tf-etape">${editable ? 'Ce que vous réglez' : 'Comment son prix se fixe'}</span><span class="tf-portee${duCentre ? '' : ' is-entreprise'}">${esc(portee)}</span></div>
           ${tfReglageActiviteHtml(a, editable)}
           <p class="tf-seule">Se réserve seule : <b>${a.seule ? 'oui' : 'non'}</b></p>
         </div>
@@ -12181,12 +12426,12 @@
         <div class="tf-col tf-col-l">
           <div class="tf-col-tete"><span class="tf-etape">Où ça se voit</span>${lieux.length ? `<span class="tf-ref" data-tf-ref>${esc(`pour ${tfPluriel(tarifs.groupe, 'personne')}`)}</span>` : ''}</div>
           ${lieux.length
-            ? lieux.map((lieu) => tfLieuHtml(lieu, tfMiniActivite(lieu, a, vals), editable ? 'Change avec le prix.' : lieu === 'formulaire' ? 'Ce que lit le client.' : 'Ce que lit l’équipe.')).join('')
+            ? lieux.map((lieu) => tfLieuHtml(lieu, tfMiniActivite(lieu, a, vals), repos(lieu))).join('')
             : '<p class="tf-r-dit">Ni carte dans le formulaire ni touche au comptoir : elle n’existe que dans vos formules.</p>'}
         </div>
         <svg class="tf-fils" data-tf-fils aria-hidden="true" focusable="false"></svg>
       </div>
-      ${editable ? tfPiedHtml({ pas: 'Le prix des formules qui la contiennent.', savoir: '', qui: `${tfMajuscule(tfQui('settings.manage'))}.`, quand: TF_QUAND }) : ''}
+      ${editable ? tfPiedHtml(a.grille ? tfPiedGrille(a) : { pas: 'Le prix des formules qui la contiennent.', savoir: '', qui: `${tfMajuscule(tfQui('settings.manage'))}.`, quand: TF_QUAND }) : ''}
     </div>`;
   }
 
@@ -12240,6 +12485,7 @@
     const out = [];
     Object.entries(lot.formules).forEach(([id, b]) => Object.keys(b).forEach((champ) => out.push({ type: 'formule', id, champ })));
     Object.entries(lot.activites).forEach(([id, b]) => Object.keys(b).forEach((champ) => out.push({ type: 'activite', id, champ })));
+    Object.keys(lot.grilles).forEach((brut) => { const i = brut.indexOf(':'); out.push({ type: 'grille', id: brut.slice(0, i), champ: brut.slice(i + 1) }); });
     return out;
   }
   // Ce que chaque endroit montre, en une ligne, pour l avant et l apres.
@@ -12271,6 +12517,31 @@
   }
   function tfChangementHtml(c) {
     const annuler = `<button type="button" class="tf-lien" data-tf-action="annuler-changement" data-tf-type="${c.type}" data-tf-id="${esc(c.id)}" data-tf-cible="${esc(c.champ)}" data-pl-focus="tf:annuler:${esc(c.id)}:${esc(c.champ)}">Annuler</button>`;
+    if (c.type === 'grille') {
+      const kase = tfCasesDeGrille(c.id).find((x) => x.cle === c.champ);
+      const liees = tfActivites().filter((x) => x.nomGrille === c.id && x.seule);
+      if (!kase || !liees.length) return '';
+      const a = liees[0];
+      const vA = tfValeursGrille(a, { champ: kase.champ, prix: kase.publie });
+      const vN = tfValeursGrille(a, { champ: kase.champ, prix: kase.prix });
+      const apercu = {
+        formulaire: (v) => `${v.exempleQuoi} = ${v.exempleTotal}`,
+        fin: (v) => v.finMontant,
+        mails: (v) => `Montant estimé ${v.mailMontant}`,
+        comptoir: (v) => `${v.offre}, ${v.ticketDetail} : ${v.ticketTotal}`,
+      };
+      const pied = tfPiedGrille(a);
+      return `<section class="tf-chg" data-tf-changement="${esc(c.id)}|${esc(c.champ)}">
+        <div class="tf-chg-tete"><h3>${esc(`${tfEt(liees.map((x) => x.nom))} · ${kase.long} : ${tfEuros(kase.publie)} → ${tfEuros(kase.prix)} ${tfUniteCase(kase)}`)}</h3>${annuler}</div>
+        <dl class="tf-chg-lieux">
+          ${tfLieuxGrille().map((lieu) => `<div><dt>${esc(TF_LIEUX_NOMS[lieu])}</dt><dd><p>${esc(tfPhraseGrille(lieu))}</p>${tfApercuHtml(apercu[lieu](vA), apercu[lieu](vN))}</dd></div>`).join('')}
+          ${tfAutresCentres().length ? `<div><dt>${esc(tfEt(tfAutresCentres()))}</dt><dd><p>${esc(tfPasConcerneGrille())}</p>${vN.autres ? `<p class="tf-ap">${esc(vN.autres)}</p>` : ''}</dd></div>` : ''}
+          <div class="is-note"><dt>Quand</dt><dd><p>${esc(pied.quand)}</p></dd></div>
+          <div class="is-note"><dt>Pas touché</dt><dd><p>${esc(pied.pas)}</p></dd></div>
+          ${pied.savoir ? `<div class="is-note is-savoir"><dt>À savoir</dt><dd><p>${esc(pied.savoir)}</p></dd></div>` : ''}
+        </dl>
+      </section>`;
+    }
     if (c.type === 'activite') {
       const entree = tfActiviteEntree(c.id);
       if (!entree) return '';
@@ -12493,7 +12764,7 @@
     const svg = planche.querySelector('svg[data-tf-fils]');
     if (champ !== tarifs.trace || (champ && svg && !svg.querySelector('.tf-trace'))) tfTracer(champ, anime);
     planche.querySelectorAll('[data-tf-r]').forEach((row) => row.classList.toggle('is-actif', Boolean(champ) && row.getAttribute('data-tf-r') === champ));
-    const vises = (champ && TF_VISE[champ]) || [];
+    const vises = tfEstCase(champ) ? tfVisesCase(champ, vue) : (champ && TF_VISE[champ]) || [];
     planche.querySelectorAll('[data-tf-val]').forEach((el) => el.classList.toggle('is-vise', vises.includes(el.getAttribute('data-tf-val'))));
     planche.querySelectorAll('[data-tf-lie]').forEach((el) => el.classList.toggle('is-vise', el.getAttribute('data-tf-lie') === champ));
     planche.querySelectorAll('[data-tf-lieu]').forEach((el) => {
@@ -12504,7 +12775,8 @@
       const phrase = el.querySelector('[data-tf-phrase]');
       if (!phrase) return;
       let texte = phrase.getAttribute('data-tf-repos') || '';
-      if (champ && touche) texte = ctx.type === 'formule' ? tfPhrase(champ, lieu, vue) : tfPhraseActivite(lieu);
+      if (champ && touche) texte = ctx.type === 'formule' ? tfPhrase(champ, lieu, vue) : tfEstCase(champ) ? tfPhraseGrille(lieu) : tfPhraseActivite(lieu);
+      else if (champ && lieu === 'autres' && tfEstCase(champ)) texte = tfPasConcerneGrille();
       else if (champ) texte = lieu === 'autres' && ctx.type === 'formule' && champ !== 'structure' ? tfPasConcerneAutres() : 'Pas concerné';
       if (phrase.textContent !== texte) phrase.textContent = texte;
     });
@@ -12671,8 +12943,9 @@
   function tfMajLigne(type, id) {
     const ligne = document.querySelector(`#staffPricingPage ${type === 'activite' ? `[data-tf-act="${CSS.escape(id)}"]` : `[data-tf-ligne="${CSS.escape(id)}"]`}`);
     if (!ligne) return;
-    const b = type === 'activite' ? tfBrouillonActivite(id) : tfBrouillonFormule(id);
-    const modifie = Boolean(b && Object.keys(b).length);
+    const entree = type === 'activite' ? tfActiviteEntree(id) : null;
+    const b = type === 'activite' ? null : tfBrouillonFormule(id);
+    const modifie = type === 'activite' ? Boolean(entree && tfVueActivite(entree).modifie) : Boolean(b && Object.keys(b).length);
     ligne.classList.toggle('is-modifiee', modifie);
     ligne.querySelectorAll('[data-tf-point],[data-tf-modifie]').forEach((el) => { el.hidden = !modifie; });
   }
@@ -12707,6 +12980,7 @@
   // La valeur publiee se pose tout de suite (pas de retour en arriere le temps
   // du rechargement), pevReload confirme ensuite depuis le serveur.
   function tfPoserPublie(type, id, patch) {
+    if (type === 'grilles') { tfPoserGrillesPubliees(patch); return; }
     if (type === 'activite') {
       const a = tfActiviteEntree(id);
       if (a && 'priceValue' in patch) a.priceValue = patch.priceValue;
@@ -12739,24 +13013,42 @@
       const patch = { priceValue: b.prix };
       envois.push({ type: 'activite', id, nom: String(entree.name || id), champs: ['prix'], patch, corps: { action: 'updateActivity', id, patch } });
     });
+    const cases = Object.keys(lot.grilles);
+    if (cases.length) {
+      const demande = tfDemandeGrilles(lot.grilles);
+      envois.push({ type: 'grilles', id: 'grilles', nom: 'ces prix', champs: cases, patch: demande, corps: { action: 'saveGrillesTarif', grilles: demande } });
+    }
     tarifs.publication = true;
     tarifs.erreur = '';
     tfMajBarre();
     tfMajTiroir();
+    // Une valeur tapee pendant l envoi se perdrait a la reponse, sans un mot : les champs
+    // attendent. Le rendu par zones ne les recree pas toujours, ils se rouvrent ici.
+    const champsFiges = (figes) => document.querySelectorAll('#staffPricingPage input[data-tf-champ]').forEach((champ) => { champ.readOnly = figes; });
+    champsFiges(true);
     const reponses = await Promise.allSettled(envois.map((e) => apiRequest(tfOps(), { method: 'POST', body: pevBody(e.corps) })));
     reponses.forEach((r, i) => {
       const e = envois[i];
       if (r.status === 'fulfilled') {
         tfPoserPublie(e.type, e.id, e.patch);
-        const groupe = e.type === 'formule' ? lot.formules : lot.activites;
-        delete groupe[e.id];
-        tfOublierSaisies(e.type, e.id);
+        if (e.type === 'grilles') {
+          e.champs.forEach((brut) => {
+            const { nom, cle } = tfLireCase(`grille:${brut}`);
+            delete lot.grilles[brut];
+            delete tarifs.saisies[tfCleSaisie('grille', nom, cle)];
+          });
+        } else {
+          const groupe = e.type === 'formule' ? lot.formules : lot.activites;
+          delete groupe[e.id];
+          tfOublierSaisies(e.type, e.id);
+        }
         resultat.publies += e.champs.length;
       } else {
         resultat.refuses.push({ type: e.type, id: e.id, nom: e.nom, champs: e.champs, message: (r.reason && r.reason.message) || 'Refusé par le serveur.' });
       }
     });
     tarifs.publication = false;
+    champsFiges(false);
     if (resultat.refuses.length) {
       const premier = resultat.refuses[0];
       tarifs.erreur = `Refusé pour ${premier.nom || premier.id} : ${premier.message}${resultat.publies ? ' Le reste est publié.' : ' Rien n’a changé pour vos clients.'}`;
@@ -12780,10 +13072,14 @@
   }
   function tfAnnulerChangement(type, id, champ) {
     const lot = tfLot(false);
-    const groupe = lot && (type === 'activite' ? lot.activites : lot.formules);
-    if (!groupe || !groupe[id]) return;
-    delete groupe[id][champ];
-    if (!Object.keys(groupe[id]).length) delete groupe[id];
+    if (lot && type === 'grille') {
+      delete lot.grilles[`${id}:${champ}`];
+    } else {
+      const groupe = lot && (type === 'activite' ? lot.activites : lot.formules);
+      if (!groupe || !groupe[id]) return;
+      delete groupe[id][champ];
+      if (!Object.keys(groupe[id]).length) delete groupe[id];
+    }
     delete tarifs.saisies[tfCleSaisie(type, id, champ)];
     if (!tfNbChangements()) tarifs.tiroir = false;
     tarifs.erreur = '';
@@ -12846,7 +13142,7 @@
     const planche = tarifs.ouvert[cle] === id ? tfPlanche() : null;
     if (planche && planche.animate && !tfReduit()) planche.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: tfEasing() });
     if (prix && tarifs.ouvert[cle] === id) {
-      const champ = document.querySelector('#staffPricingPage [data-tf-planche] input[data-tf-champ="prix"]');
+      const champ = document.querySelector('#staffPricingPage [data-tf-planche] input[data-tf-champ="prix"], #staffPricingPage [data-tf-planche] input[data-tf-champ^="grille:"]');
       if (champ) {
         champ.focus({ preventScroll: true });
         champ.select();
@@ -12946,6 +13242,18 @@
     }
     const champ = el.getAttribute('data-tf-champ');
     const ctx = tfContexte();
+    if (ctx && tfEstCase(champ)) {
+      const { nom, cle } = tfLireCase(champ);
+      tarifs.saisies[tfCleSaisie('grille', nom, cle)] = el.value;
+      const valable = tfSaisieValide('grille', champ, el.value);
+      if (valable) el.removeAttribute('aria-invalid'); else el.setAttribute('aria-invalid', 'true');
+      tfMajAide('grille', champ, el.value, valable);
+      if (valable) tfPoserCase(champ, tfLireNombre(el.value));
+      tfApresPose(ctx.type, ctx.id, champ, { attendre: true });
+      // La meme grille vit sur deux lignes : le Bowling et le Duckpin.
+      tfActivites().filter((x) => x.nomGrille === nom).forEach((x) => tfMajLigne('activite', x.id));
+      return;
+    }
     if (!ctx || !['prix', 'ancien', 'nom'].includes(champ)) return;
     tarifs.saisies[tfCleSaisie(ctx.type, ctx.id, champ)] = el.value;
     const valide = tfSaisieValide(ctx.type, champ, el.value);
@@ -12972,6 +13280,13 @@
     const champ = row.getAttribute('data-tf-r');
     if (tarifs.focus === champ) return;
     tarifs.focus = champ;
+    // Les endroits montrent l exemple de la case en main.
+    if (tfEstCase(champ)) {
+      tarifs.caseExemple = champ;
+      const valeurs = tfValeursCourantes();
+      const planche = tfPlanche();
+      if (valeurs && planche) planche.querySelectorAll('[data-tf-lieu]').forEach((lieu) => tfAppliquer(lieu, valeurs, false));
+    }
     tfAllumer({ anime: true });
   }
   function tfSurSortie(e) {
@@ -12982,7 +13297,17 @@
     if (el instanceof HTMLInputElement && el.hasAttribute('data-tf-champ')) {
       const ctx = tfContexte();
       const champ = el.getAttribute('data-tf-champ');
-      if (ctx && !tfSaisieValide(ctx.type, champ, el.value)) {
+      if (ctx && tfEstCase(champ)) {
+        if (!tfSaisieValide('grille', champ, el.value)) {
+          const { nom, cle } = tfLireCase(champ);
+          delete tarifs.saisies[tfCleSaisie('grille', nom, cle)];
+          const kase = tfCasesDeGrille(nom).find((c) => c.cle === cle);
+          const propre = kase ? tfSaisieNombre(kase.prix) : '';
+          el.value = propre;
+          el.removeAttribute('aria-invalid');
+          tfMajAide('grille', champ, propre, true);
+        }
+      } else if (ctx && !tfSaisieValide(ctx.type, champ, el.value)) {
         delete tarifs.saisies[tfCleSaisie(ctx.type, ctx.id, champ)];
         const vue = ctx.vue();
         const propre = ctx.type === 'activite' ? tfSaisieNombre(vue.prix) : champ === 'nom' ? vue.valeur.nom : tfSaisieNombre(vue.valeur[champ]);

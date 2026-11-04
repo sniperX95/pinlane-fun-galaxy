@@ -677,7 +677,7 @@ function buildDirectionReportHtml(payload) {
             <td>${escapeHtml(getAdminResourceText(reservation))}</td>
             <td>${escapeHtml(engagement)}</td>
             <td>${escapeHtml(getAdminStatusLabel(reservation.status))}</td>
-            <td><strong>${formatMoney(reservation.price)}</strong>${prix.ajuste ? `<br><span style="font-size:9px;color:#a15c00;">prix ajusté, réf. ${formatMoney(prix.reference)}</span>` : ''}</td>
+            <td><strong>${formatMontant(reservation.price)}</strong>${prix.ajuste ? `<br><span style="font-size:9px;color:#a15c00;">prix ajusté, réf. ${formatMoney(prix.reference)}</span>` : ''}</td>
           </tr>`;
           }).join('')}
         </tbody>
@@ -1792,7 +1792,7 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
                  brut : un dossier a 40 EUR au lieu de 60 etait indiscernable
                  d un dossier au tarif catalogue. Meme regle que la console
                  staff, meme seuil, une seule fonction. */''}
-            <td class="admin-cell-tight"><strong>${formatMoney(reservation.price)}</strong>${renderReservationPriceMark(reservation, { forme: 'mot', base: 'admin-pill warn' })}<br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
+            <td class="admin-cell-tight"><strong>${formatMontant(reservation.price)}</strong>${renderReservationPriceMark(reservation, { forme: 'mot', base: 'admin-pill warn' })}<br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
             <td><span class="admin-pill ${riskTone}">${escapeHtml(riskLabel)}</span></td>
           </tr>`;
         }).join('')}

@@ -1,10 +1,7 @@
 const {
-  BOWLING_PRICES,
-  DURATION_OPTIONS,
   FORMULES,
-  FUN_RUN_OPTIONS,
-  LASER_GAME_OPTIONS,
   getEffectiveFormules,
+  grillesEffectives,
   getHolidayContext,
   isFormulaBlockedDate,
   isOfferEnabled,
@@ -826,13 +823,18 @@ module.exports = async (req, res) => {
     }
   }
 
+  // LES PRIX DE CE CENTRE (onglet Tarifs) : sa grille s il en a pose une, sinon le
+  // tarif de depart, au centime pres. Le serveur facture les memes
+  // (lib/booking-config grillesDuCentre).
+  const grilles = grillesEffectives(center && center.grillesTarif);
+
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
     // Le tunnel borne son champ date avec CE nombre : la limite n'est ecrite
     // qu'ici, le navigateur ne la redevine pas.
     bookingHorizonDays: BOOKING_HORIZON_DAYS,
-    durationOptions: DURATION_OPTIONS,
+    durationOptions: grilles.durationOptions,
     // Formules avec overrides catalogue appliques (prix/nom/retrait) pour ce
     // centre ; sans override, strictement identique a FORMULES.
     // `offerOff` : l interrupteur du staff (centers.settings.config
@@ -840,12 +842,12 @@ module.exports = async (req, res) => {
     // uniquement quand l offre est coupee : un formulaire qui ne la lit pas se
     // comporte comme avant.
     formules: formulesPubliques(centerId, center),
-    laserOptions: LASER_GAME_OPTIONS,
-    bowlingPrices: BOWLING_PRICES,
+    laserOptions: grilles.laserOptions,
+    bowlingPrices: grilles.bowlingPrices,
     // La grille du Fun Run (sessions de 15 et 30 min), cle ADDITIVE : le
     // formulaire Fun Galaxy affiche « des X EUR / session » depuis cette
     // grille au lieu de recopier le montant, qui n aurait alors deux verites.
-    funRunOptions: FUN_RUN_OPTIONS,
+    funRunOptions: grilles.funRunOptions,
     // Ce que CE centre vend, planifie ou non, avec son tarif quand il est saisi.
     // Cle ADDITIVE : un centre inconnu ou pas encore configure rend bowling +
     // laser, c'est-a-dire exactement le tunnel d'avant.
@@ -904,8 +906,9 @@ module.exports = async (req, res) => {
           laneCount: bowlingCapacity.laneCount,
           normalCapacityPerLane: bowlingCapacity.normalCapacityPerLane,
           emergencyCapacityPerLane: bowlingCapacity.emergencyCapacityPerLane,
-          bowlingPrices: BOWLING_PRICES,
-          laserOptions: LASER_GAME_OPTIONS,
+          bowlingPrices: grilles.bowlingPrices,
+          laserOptions: grilles.laserOptions,
+          funRunOptions: grilles.funRunOptions,
           // LES POSTES DE L ARENE, declares par le centre. Sans cette cle, le
           // tunnel retombait sur une constante de 30 : juste a Libramont par
           // coincidence, FAUX a Gembloux qui en a 20 (25 joueurs y jouent en

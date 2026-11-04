@@ -748,7 +748,8 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const timeToMinutesV = (h) => { const p = /^(\d{1,2}):(\d{2})$/.exec(String(h || '')); return p ? Number(p[1]) * 60 + Number(p[2]) : NaN; };
 
 function euros(n) {
-  return (Math.round(Number(n) * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €';
+  const v = Math.round(Number(n) * 100) / 100;
+  return v.toLocaleString('fr-BE', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
 }
 // Les libelles du calendrier sont servis sans accent ; l ecran les accentue.
 // On compare sans accent ni apostrophe typographique : le SENS, pas la police.

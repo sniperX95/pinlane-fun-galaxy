@@ -324,7 +324,7 @@
   function jourLong(s) { var d = deIso(s); return cap(JOURS[d.getDay()] + ' ' + d.getDate() + ' ' + MOIS[d.getMonth()]); }
   function jourCourt(s) { var d = deIso(s); return cap(JOURS_COURTS[d.getDay()] + ' ' + d.getDate() + ' ' + MOIS_COURTS[d.getMonth()]); }
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  function euros(n) { n = Number(n); if (!isFinite(n)) return ''; return (Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'; }
+  function euros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return n.toLocaleString('fr-BE', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function joueurs(n) { return n + ' joueur' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -7145,7 +7145,7 @@
   // recalculent. Le texte recu identique au dernier ne se relit meme pas : ni
   // analyse, ni empreinte reserialisee (2026-10-12).
   var empreinteCatalogue = '', catalogueTexte = '', catalogueLu = 0;
-  function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || [], (j && j.center && j.center.customRequest) || null]); }
+  function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || [], (j && j.center && j.center.customRequest) || null, (j && j.durationOptions) || [], (j && j.laserOptions) || [], (j && j.funRunOptions) || []]); }
   function rafraichirCatalogue() {
     // Pas pendant les coordonnees ni le recapitulatif : le client relit ce
     // qu il va envoyer, et le serveur revalide tout a l envoi.
@@ -7163,6 +7163,8 @@
         empreinteCatalogue = neuve;
         meta.activities = j.activities;
         if (Array.isArray(j.formules)) meta.formules = j.formules;
+        // Les prix du bowling, du laser et du Fun Run de ce centre (onglet Tarifs).
+        ['durationOptions', 'laserOptions', 'funRunOptions'].forEach(function (cle) { if (Array.isArray(j[cle])) meta[cle] = j[cle]; });
         if (meta.center && j.center && j.center.customRequest) meta.center.customRequest = j.center.customRequest;
         rendrePax();
         if (sceneCourante === 'sm-envies') { if (smModule) smModule.rafraichir(); return; }

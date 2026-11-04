@@ -168,7 +168,7 @@ async function gemblouxInformation(browser,errors) {
     check(await page.locator('#fgInfoTitle').textContent().then(sansInsecable)===(id==='golf_oclock'?'Golf O’Clock':'Arcades'),'Gembloux popup preserves actual activity identity');
     const text=await page.locator('.fg-info-text').textContent().then(sansInsecable);check(text.includes('3 joueurs'),'Gembloux popup uses chosen subgroup');
     if(id==='golf_oclock') {
-      check(text.includes('12 trous')&&text.includes('12,5 €'),'Gembloux Golf O’Clock preserves exact centre tariff and holes');
+      check(text.includes('12 trous')&&text.includes('12,50 €'),'Gembloux Golf O’Clock preserves exact centre tariff and holes');
       check(await page.locator('.fg-info-photo').evaluate(img=>img.getAttribute('src')==='/assets/fungalaxy/gembloux-golf-salle-800.webp'&&img.complete&&img.naturalWidth>0),'Gembloux Golf O’Clock uses proven Gembloux activity photo');
     } else {
       check(await page.locator('.fg-info-photo').evaluate(img=>img.hidden&&!img.getAttribute('src')),'Gembloux Arcades does not reuse a foreign-centre photo after golf popup');

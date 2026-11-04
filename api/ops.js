@@ -150,6 +150,8 @@ const {
   setCenterStatus,
   catalogueSurMesure,
   sansCatalogueSurMesure,
+  sansGrillesTarif,
+  saveGrillesTarif,
   surMesureChoisissable,
 } = require('../lib/center-config');
 const { listCentersForSession } = require('../lib/center-scope');
@@ -1386,7 +1388,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const pool = getPool();
     let config;
     try {
-      config = await saveCenterConfigOverride(pool, targetCenter, sansCatalogueSurMesure(body.config || {}));
+      config = await saveCenterConfigOverride(pool, targetCenter, sansGrillesTarif(sansCatalogueSurMesure(body.config || {})));
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1411,6 +1413,24 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, centerId: targetCenter, surMesure: config.surMesure });
+    return;
+  }
+
+  // LES PRIX DU BOWLING, DU LASER ET DU FUN RUN D UN CENTRE (2026-11-04) : sa seule
+  // porte d ecriture, droit Tarifs. Le centre AFFICHE fait foi, comme pour le tarif
+  // d une formule : 'all' est refuse, un centre ne regle que le sien. Ecrire ici
+  // change la ligne du centre : le pouls « config » previent les autres ecrans.
+  if (action === 'saveGrillesTarif') {
+    const targetCenter = requireConcreteCenter('grille de prix');
+    const pool = getPool();
+    let config;
+    try {
+      config = await saveGrillesTarif(pool, targetCenter, body.grilles);
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement des prix impossible pour le moment. Réessayez.'), error.expose ? (error.statusCode || 400) : 503, error.expose === true);
+    }
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, grillesTarif: config.grillesTarif, bowlingPricing: config.resources.bowling?.pricing || null });
     return;
   }
 
@@ -3756,7 +3776,7 @@ function getRequiredOpsPermission(method, action) {
   // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
   // est forcee au centre de session (withCenter) et l'override global 'all' est
   // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
-  if (['saveClientFormuleOverride', 'resetClientFormuleOverride', 'saveSurMesure'].includes(action)) return 'pricing.manage';
+  if (['saveClientFormuleOverride', 'resetClientFormuleOverride', 'saveSurMesure', 'saveGrillesTarif'].includes(action)) return 'pricing.manage';
   // CRUD catalogue DB (formules/activites) : permission de CENTRE settings.manage,
   // la meme que la config du centre (saveCenterConfig). Le catalogue est partage
   // (formulas globales) aujourd hui ; le scoping per-centre est un raffinement
@@ -3882,7 +3902,7 @@ const NON_MUTATING_POST_ACTIONS = new Set([
 // l'action : les dispatchers ne connaissent pas les entites, mais le nom de
 // l'action, lui, est stable.
 function auditEntityFor(action, body = {}) {
-  if (/^(saveCenterConfig|saveSurMesure|saveCenter|setCenterStatus)$/.test(action)) {
+  if (/^(saveCenterConfig|saveSurMesure|saveGrillesTarif|saveCenter|setCenterStatus)$/.test(action)) {
     return { entityType: 'center', entityId: body.centerId || body.center_id || '' };
   }
   // Suppressions proprietaire : l'id cible est body.id (withCenter ecrase

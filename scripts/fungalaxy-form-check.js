@@ -1168,22 +1168,16 @@ async function lireEcranPlan(page) {
     const etape = (li) => ({ t: txt(li.querySelector(':scope > b')), nom: txt(li.querySelector(':scope > span')), detail: txt(li.querySelector(':scope > small')) });
     const prixEl = p.querySelector('.fg-visit__price');
     const fin = p.querySelector('.fg-visit__step--out');
-    const total = p.querySelector('.fg-visit__total');
     return {
       arrivee: txt(p.querySelector('.fg-visit__step--in > b')),
-      arriveeDetail: txt(p.querySelector('.fg-visit__step--in > small')),
-      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--free):not(.fg-visit__step--onsite):not(.fg-visit__step--incl):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
-      libres: Array.from(p.querySelectorAll('.fg-visit__step--free i')).map((i) => txt(i)),
+      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--onsite):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
+      aussi: txt(p.querySelector('.fg-visit__aussi')),
       surplace: Array.from(p.querySelectorAll('.fg-visit__step--onsite')).map(etape),
       finEtape: fin ? etape(fin) : null,
-      span: txt(p.querySelector('.fg-visit__span')),
       prix: prixEl && prixEl.firstChild ? prixEl.firstChild.textContent.trim() : '',
       // Ce qui se regle a l accueil se lit sous la plage (l agenda, 2026-10-13).
       reste: txt(p.querySelector('.fg-visit__reste')),
       avis: txt(p.querySelector('.fg-visit__warn')),
-      prixLignes: Array.from(p.querySelectorAll('.fg-visit__prices > div:not(.fg-visit__total)')).map((l) => ({ dt: txt(l.querySelector('dt')), dd: txt(l.querySelector('dd')) })),
-      prixTotal: total ? { dt: txt(total.querySelector('dt')), dd: txt(total.querySelector('dd')) } : null,
-      paiement: txt(p.querySelector('.fg-visit__pay')),
       garder: !document.querySelector('#goContact').disabled,
     };
   });
@@ -1307,30 +1301,28 @@ function texteGroupesQa(p, avecHeures) {
 }
 const blancs = (x) => String(x).replace(/\s+/g, ' ').trim();
 // CE QUE LE BLOC « VOTRE VISITE » DOIT ECRIRE, refait en Node sur la reponse
-// (Movsar, 2026-09-24 : « plus complet et serieux, un truc super complet ») :
-// l avance de l arrivee sur la premiere activite, une etape par PARTIE (son
-// nom, « partie k sur N », la fin de son dernier groupe, ses groupes, ses
-// pistes), les parties que le plan ne pose pas, la fin, le detail du prix
-// quand la somme des montants connus EST le prix, et ce que la voix en dit.
+// (Ansar, 2026-11-03 : « un mot qui n aide pas a decider disparait ») : une ligne
+// par activite, son heure et son nom, une par groupe d un grand groupe ; une ligne
+// sans heure par partie que le plan ne pose pas ; la fin. La voix garde tout le
+// detail : la fin de chaque activite, les groupes, ce que l equipe place.
 function visiteAttendue(o) {
   const item = (id) => o.items.find((x) => x.id === id) || { id, nom: o.noms[id] || id, games: 0, minutes: 0, sessions: 1, services: 0 };
   const nom = (id) => item(id).nom || o.noms[id] || id;
-  const etapes = o.parties.map((p) => {
+  const etapes = [];
+  o.parties.forEach((p) => {
     const it = item(p.id);
     const quoi = it.games > 1 ? `partie ${p.partie} sur ${it.games}` : it.games === 1 ? '1 partie'
       : (sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${p.groupes.length > 1 ? ' par groupe' : ''}` : ''));
-    const jeu = p.id === 'laser_game' ? jeuLaserQa() : 0;
-    return {
-      t: p.debut,
-      nom: nom(p.id) + (quoi ? ` · ${quoi}` : ''),
-      detail: [it.participants > 0 ? `${it.participants} ${it.enfants ? 'enfant' : 'joueur'}${it.participants > 1 ? 's' : ''}` : '', jeu ? `${jeu} min de jeu` : '', p.fin ? `jusqu’à ${heureAffichee(p.fin)}${jeu ? ' avec les règles et la préparation' : ''}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
-      voix: `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`,
-    };
+    const titre = nom(p.id) + (p.partie > 1 ? `, ${p.partie}e partie` : '');
+    const voix = `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`;
+    if (p.groupes.length > 1) p.groupes.forEach((g, k) => etapes.push({ t: g.debut, nom: `${titre}, groupe ${k + 1}`, detail: '', voix }));
+    else etapes.push({ t: p.debut, nom: titre, detail: '', voix });
   });
+  // Sans activite a heure : une ligne par activite, l heure sur la premiere.
+  if (!o.parties.length) o.libres.forEach((n, k) => etapes.push({ t: k ? '' : o.time, nom: n, detail: '', voix: '' }));
   if (!o.parties.length && !o.libres.length && !o.arrivee) etapes.push({ t: o.time, nom: 'Début', detail: '', voix: '' });
   const surPlace = [];
-  // LES PARTIES SANS HEURE, DANS LA FOULEE (Movsar, 2026-09-29) : sans heure,
-  // placees par l equipe, avec le temps qu elles prennent a la suite.
+  // LES PARTIES SANS HEURE (Movsar, 2026-09-29) : sans heure, placees par l equipe.
   o.items.forEach((it) => {
     const posees = o.parties.filter((x) => x.id === it.id).length;
     if (!(it.games >= 1) || posees >= it.games || (!posees && it.id !== 'laser_game')) return;
@@ -1340,26 +1332,16 @@ function visiteAttendue(o) {
     const coupees = it.id === 'laser_game' && o.fermeture ? reste.filter((k) => o.hors.some((h) => h.sansHeure && String(h.partie) === k)) : [];
     const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`
       + (coupees.length ? ` · ${coupees.length > 1 ? `parties ${joindreQa(coupees, ' et ')} : ne tiendront pas` : `partie ${coupees[0]} : ne tiendra pas`} avant ${heureAffichee(o.fin)}` : '');
-    surPlace.push({ t: '', nom: `${nom(it.id)} · ${quelles}`, detail, voix: `${nom(it.id)}, ${quelles}, ${detail}` });
+    (it.games === 1 ? [nom(it.id)] : reste.map((k) => `${nom(it.id)}, ${k}e partie`)).forEach((titre, i) => surPlace.push({ t: '', nom: titre, detail: '', voix: i ? '' : `${nom(it.id)}, ${quelles}, ${detail}` }));
   });
   const premiere = o.parties[0];
-  const avance = premiere && o.arrivee ? minutesEntreQa(o.arrivee, premiere.debut) : 0;
-  const connus = o.items.filter((it) => it.sait).reduce((x, it) => x + it.prix, 0);
-  const detaille = o.items.length > 1 && o.prix > 0 && Math.abs(connus - o.prix) < 0.01;
+  const repere = premiere ? premiere.debut : o.time;
   return {
-    // A l ouverture, l heure pile (Movsar, 2026-10-13 : « lorsque il commence a
-    // louverture du centre ils peuvent venir a lheure pile ») : une avance nulle
-    // veut dire que la premiere activite ouvre la journee.
-    arriveeDetail: o.arrivee ? (avance > 0 ? `${avance} min avant ${premiere.id === 'arcade_time' ? 'vos' : 'votre'} ${nom(premiere.id).toLowerCase()}` : 'à l’ouverture') : '',
+    // L arrivee n a sa ligne que si elle tombe AVANT la premiere activite.
+    arrivee: o.arrivee && minutesEntreQa(o.arrivee, repere) > 0 ? o.arrivee : '',
     etapes,
     surPlace,
-    fin: o.fin ? { t: heureAffichee(o.fin), nom: 'Fin de la visite', detail: o.fermeture ? 'fermeture du centre' : 'heure estimée' } : null,
-    prix: detaille ? {
-      lignes: o.items.map((it) => ({ dt: blancs(`${it.nom}${detailLigneQa(it) ? ` · ${detailLigneQa(it)}` : ''}`), dd: blancs(it.sait ? euros(it.prix) : 'prix à l’accueil') })),
-      total: { dt: o.complet ? 'Total indicatif' : 'Total indicatif, hors prix à l’accueil', dd: blancs(euros(o.prix)) },
-      paiement: 'Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.',
-    } : null,
-    connus,
+    fin: o.fin ? { t: heureAffichee(o.fin), nom: o.fermeture ? 'Jusqu’à' : 'Fin vers', detail: '' } : null,
   };
 }
 // CE QUI N A PAS DE TARIF EN LIGNE SE NOMME (Movsar, 2026-10-01 : « pq sur
@@ -1378,33 +1360,27 @@ function ecartsPlan(ecran, o) {
   if (!o) return ['aucun creneau dans la reponse de la route'];
   const e = [];
   const v = visiteAttendue(o);
-  if (o.arrivee && ecran.arrivee !== o.arrivee) e.push(`arrivee ${ecran.arrivee} vs ${o.arrivee}`);
-  if (o.arrivee && ecran.arriveeDetail !== v.arriveeDetail) e.push(`arrivee « ${ecran.arriveeDetail} » vs « ${v.arriveeDetail} »`);
+  if (ecran.arrivee !== v.arrivee) e.push(`arrivee « ${ecran.arrivee} » vs « ${v.arrivee} »`);
   if (ecran.etapes.length !== v.etapes.length) e.push(`${ecran.etapes.length} etape(s) pour ${v.etapes.length} : ${ecran.etapes.map((x) => `${x.t} ${x.nom}`).join(' | ')}`);
   v.etapes.forEach((a, i) => {
     const x = ecran.etapes[i];
     if (!x) return;
     if (x.t !== a.t || x.nom !== a.nom) e.push(`etape ${i + 1} « ${x.t} ${x.nom} » vs « ${a.t} ${a.nom} »`);
-    // « deplace pour votre X a T » s ajoute a l etape que le toucher a fait
-    // bouger ([C] le verifie a part).
-    const detail = x.bouge ? x.detail.replace(/(?:^| · )déplacé pour votre .+ à \d{2}:\d{2}$/, '') : x.detail;
+    // « déplacé » s ajoute a l etape que le toucher a fait bouger ([C] le verifie a part).
+    const detail = x.bouge ? x.detail.replace(/^déplacé$/, '') : x.detail;
     if (detail !== a.detail) e.push(`etape ${a.t} « ${x.detail} » vs « ${a.detail} »`);
   });
-  if (ecran.libres.join(',') !== o.libres.join(',')) e.push(`libres ${ecran.libres.join(',')} vs ${o.libres.join(',')}`);
+  const aussi = o.parties.length && o.libres.length ? `Aussi : ${o.libres.join(', ')}` : '';
+  if (ecran.aussi !== aussi) e.push(`« ${ecran.aussi} » vs « ${aussi} »`);
   const sp = v.surPlace.map(({ t, nom, detail }) => ({ t, nom, detail }));
   if (JSON.stringify(ecran.surplace) !== JSON.stringify(sp)) e.push(`sur place ${JSON.stringify(ecran.surplace)} vs ${JSON.stringify(sp)}`);
   if (JSON.stringify(ecran.finEtape) !== JSON.stringify(v.fin)) e.push(`fin ${JSON.stringify(ecran.finEtape)} vs ${JSON.stringify(v.fin)}`);
-  const fin = o.fermeture ? `jusqu’à la fermeture (${heureAffichee(o.fin)})` : `à ${heureAffichee(o.fin)} environ`;
-  if (o.fin && ecran.span.indexOf(fin) < 0) e.push(`fin « ${ecran.span} » sans « ${fin} »`);
   if (ecran.prix !== euros(o.prix)) e.push(`prix ${ecran.prix} vs ${euros(o.prix)}`);
   if ((ecran.reste === `+ ${sansPrixQa(o)}, prix à l’accueil`) !== !o.complet) e.push(`mention « + ${sansPrixQa(o)}, prix a l accueil » : « ${ecran.reste} » pour complet=${o.complet}`);
-  const prixVu = { lignes: ecran.prixLignes, total: ecran.prixTotal, paiement: ecran.paiement };
-  const prixAttendu = v.prix || { lignes: [], total: null, paiement: '' };
-  if (JSON.stringify(prixVu) !== JSON.stringify(prixAttendu)) e.push(`detail du prix ${JSON.stringify(prixVu)} vs ${JSON.stringify(prixAttendu)} (montants connus ${v.connus}, prix ${o.prix})`);
   const manque = o.fermeture && o.manque > 0;
   const phrase = phraseManqueQa(o);
   if (manque && ecran.avis.indexOf(phrase) < 0) e.push(`avis « ${ecran.avis} » sans « ${phrase} »`);
-  if (!manque && /tout ne tiendra pas/.test(ecran.avis)) e.push(`manque annonce a tort : ${ecran.avis}`);
+  if (!manque && /tout ne tiendra pas/i.test(ecran.avis)) e.push(`manque annonce a tort : ${ecran.avis}`);
   return e;
 }
 
@@ -2612,20 +2588,11 @@ async function main() {
     let pistes = await verifierPistes(d0, {}, [], '[C] SANS POSE : une piste par activite, TOUTES les heures dans l etat du moteur (raison, mot, titre), rangees en menus matin/apres-midi/soiree, le menu de l heure proposee ouvert');
     ok(ancresDe(d0).some((a) => a.times.some((t) => t.ok === false && t.code !== 'anchor_overlap')), '[C] (la propriete est exercee) une heure impossible existe ce jour-la');
     await verifierPlan(d0, '[C] SANS POSE : « votre visite » = la reponse (arrivee et son avance, chaque partie a son heure, minigolf et arcades en libre, fin, prix et son detail, paiement) et « Garder » est actif');
-    // LE PRIX SE LIT PAREIL EN TETE ET AU TOTAL (capture de prod du lot visite) :
-    // en chiffres proportionnels, l espace fine des milliers disparaissait
-    // (« 1273 € » en tete, « 1 273 € » au total).
-    const chiffres0 = await page.evaluate(() => {
-      const v = document.querySelector('#planZone .fg-visit');
-      const a = v && v.querySelector('.fg-visit__price');
-      const b = v && v.querySelector('.fg-visit__total dd');
-      return { entete: a ? getComputedStyle(a).fontVariantNumeric : '', total: b ? getComputedStyle(b).fontVariantNumeric : '' };
-    });
-    ok(/tabular-nums/.test(chiffres0.entete) && chiffres0.entete === chiffres0.total,
-      '[C] le prix d en-tete et le total se lisent pareil, en chiffres tabulaires (« 1 273 € », jamais « 1273 € »)', JSON.stringify(chiffres0));
+    // LE PRIX SE LIT EN CHIFFRES TABULAIRES (capture de prod du lot visite) : en
+    // chiffres proportionnels, l espace fine des milliers disparaissait.
+    const chiffres0 = await page.evaluate(() => getComputedStyle(document.querySelector('#planZone .fg-visit__price')).fontVariantNumeric);
+    ok(/tabular-nums/.test(chiffres0), '[C] le prix se lit en chiffres tabulaires (« 1 273 € », jamais « 1273 € »)', chiffres0);
     const o0 = lignePlan(d0);
-    const va0 = o0 ? visiteAttendue(o0) : null;
-    ok(Boolean(va0 && va0.prix), 'MONTAGE [C] sans pose, la somme des montants connus EST le prix : le detail du prix est exerce sur un vrai plan', va0 ? `${va0.connus} connus pour ${o0.prix}` : 'aucun plan');
     // LE PROGRAMME PAS A PAS (Movsar, 2026-10-07 : « pas bcp de texte » ; les
     // clients ne comprenaient pas qu il faut une heure PAR partie de laser).
     // Plus de legende : une ligne par chose a placer, une par partie, rangees
@@ -2712,8 +2679,8 @@ async function main() {
         : dure.t.code === 'capacity' && (Number(dure.t.lanesNeeded) > 0 || Number(dure.t.placesNeeded) > 0 || dure.t.arenaBusy) ? /il faut|déjà lancée|sont prises/.test(texteDure)
         : texteDure.indexOf(raisonDure) >= 0;
       ok(lu.asked.length === 1 && lu.asked[0] === dure.t.time && lu.eclairees === 1 && lu.memePlage && lu.heures.indexOf(dure.t.time) >= 0
-        && ditDure && lu.visible,
-        '[C] toucher une heure impossible eclaire SA ligne sous sa plage : l heure y est, et la raison du moteur, dite court', `${dure.t.time} « ${lu.texte} »`);
+        && ditDure && !lu.visible,
+        '[C] toucher une heure impossible ne fait apparaitre aucune phrase (Ansar, 2026-11-03) : un seul mot, la raison du moteur reste en coulisse', `${dure.t.time} « ${lu.texte} »`);
       await dormir(300);
       ok(lecturesNeuves(demandes, avantDure).length === 0 && await page.evaluate((s) => document.querySelector(s).classList.contains('is-on'), selB), '[C] et ne demande rien, ne change rien a l heure posee');
     } else {
@@ -2726,7 +2693,7 @@ async function main() {
     await verifierPistes(d2, { laser_game: L0 }, [L0], '[C] APRES LE DECALAGE : la pose du bowling est levee, les pistes = la route preferredTimes={laser} + laserGameTimes');
     const v2 = await verifierPlan(d2, '[C] APRES LE DECALAGE : « votre visite » = la route (le bowling replace par le moteur)');
     const deplace = v2.ecran ? v2.ecran.etapes.find((x) => x.bouge) : null;
-    ok(Boolean(deplace) && deplace.nom.indexOf(`${nomDe('bowling')} · `) === 0 && deplace.detail.indexOf(`déplacé pour votre ${nomDe('laser_game')} à ${L0}`) >= 0, '[C] le bloc dit que le bowling a ete deplace, pour quoi et a quelle heure', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
+    ok(Boolean(deplace) && deplace.nom === nomDe('bowling') && deplace.detail === 'déplacé', '[C] le bloc dit en un mot que le bowling a ete deplace', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
     // 4. DEUX PARTIES DE LASER SUR DEUX HEURES.
     const laser2 = ancresDe(d2).find((a) => a.activityId === 'laser_game');
     const candidats = laser2.times.filter((t) => t.ok !== false && !t.warning && t.time > L0).map((t) => t.time);
@@ -3941,9 +3908,7 @@ async function main() {
     const finJ = ((dJ.slots || [])[0] || {}).visitEndTime || planJ.endTime || '';
     const attendueDuree = dureeExacteQa(minutesEntreQa(arriveeJ, finJ));
     ok(minutesEntreQa(arriveeJ, finJ) > 0, '[J] MONTAGE : le plan a bien une arrivee et une fin', `${arriveeJ} -> ${finJ}`);
-    const spanJ = await pageJ.evaluate(() => (document.querySelector('.fg-visit__span') || {}).textContent.replace(/\s+/g, ' ').trim() || '');
-    ok(spanJ.indexOf(`${attendueDuree} sur place`) >= 0,
-      '[J] le bloc de visite annonce la duree sur place, egale a fin moins arrivee', `« ${spanJ} » attendait « ${attendueDuree} sur place »`);
+    ok(Boolean(ecranJ && ecranJ.finEtape) && ecranJ.finEtape.t === heureAffichee(finJ), '[J] le bloc de visite annonce la fin du plan', JSON.stringify(ecranJ && ecranJ.finEtape));
 
     // Et la meme duree au recapitulatif, par le meme chemin que le client.
     await pageJ.click('#goContact');
@@ -3979,12 +3944,8 @@ async function main() {
     ok(await barreEst(pageJ, '11110'), '[J] et la barre revient a quatre segments pleins sur cinq');
     await pageJ.click('.fg-scene.is-active [data-back]');
     ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && document.querySelector('#hourZone .fg-etape[data-cle]'), 8000), '[J] retour a l ecran des heures');
-    // PLUS DE LEGENDE (Movsar, 2026-10-07 : « pas bcp de texte ») ET LES
-    // RAISONS SE LISENT SANS TOUCHER, COURTES (2026-10-12 : « la description
-    // visible des heures ou y a un probleme, il doit etre explique brievement
-    // et joliment »). Au repos, chaque heure qui coince de la plage OUVERTE de
-    // l etape ouverte a sa ligne a l ecran, et rien d autre ne s affiche ; sur
-    // 375 px, aucune ligne ne prend plus de deux lignes de texte.
+    // PLUS DE LEGENDE, PLUS DE PHRASE SOUS LES HEURES (Ansar, 2026-11-03 : « une
+    // heure impossible est grisee avec un seul mot et rien d autre »).
     await pageJ.evaluate(() => {
       // Une etape et une plage qui ont des raisons, ouvertes comme le client le ferait.
       const etape = Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]')).find((li) => li.querySelector('.fg-why-list__item'));
@@ -4018,8 +3979,8 @@ async function main() {
     await dormir(250);
     const texteEtroit = await lireTexteHeures();
     ok(!texteLarge.legende && !texteEtroit.legende && texteLarge.lignes > 0 && texteLarge.attendues > 0
-      && !texteLarge.cachees.length && !texteEtroit.cachees.length && !texteLarge.enTrop.length && !texteEtroit.enTrop.length && !texteEtroit.longues.length,
-      '[J] plus de legende ; au repos, les raisons de la plage ouverte se lisent sans toucher, en large comme sur 375 px, chacune en deux lignes au plus, et aucune autre ne s affiche', JSON.stringify({ texteLarge, texteEtroit }));
+      && texteLarge.cachees.length === texteLarge.attendues && texteEtroit.cachees.length === texteEtroit.attendues && !texteLarge.enTrop.length && !texteEtroit.enTrop.length,
+      '[J] plus de legende ni de phrase sous les heures, en large comme sur 375 px : une heure impossible se dit en un mot', JSON.stringify({ texteLarge, texteEtroit }));
 
     // --- L heure RETENUE emporte celle de son 2e groupe -------------------
     // Movsar, 2026-09-23 : « quand ya des groupes a scinder, ca doit montrer
@@ -5466,8 +5427,12 @@ async function main() {
     const hhV = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
     ok(repMm.slots[0].opsPlan.arrivalTime === hhV(ouvertureV), '[V] (route) Matin Malin a l ouverture : l arrivee est l ouverture, jamais avant', `${repMm.slots[0].opsPlan.arrivalTime} / ouverture ${hhV(ouvertureV)}`);
     const pMm = await ouvrirV({ pax: 6, formule: 'mm' });
-    const mmEcran = { heure: await texteV(pMm, '#planZone .fg-visit__step--in > b'), mot: await texteV(pMm, '#planZone .fg-visit__step--in > small'), span: await texteV(pMm, '#planZone .fg-visit__span') };
-    ok(mmEcran.heure === hhV(ouvertureV) && mmEcran.mot === 'à l’ouverture' && /2 h sur place/.test(mmEcran.span), '[V] (ecran) Matin Malin dit l ouverture, et 2 h sur place', JSON.stringify(mmEcran));
+    const mmEcran = await pMm.evaluate(() => ({
+      arrivee: document.querySelectorAll('#planZone .fg-visit__step--in').length,
+      heure: document.querySelector('#planZone .fg-visit__step > b').textContent.trim(),
+      fin: document.querySelector('#planZone .fg-visit__step--out > b').textContent.trim(),
+    }));
+    ok(mmEcran.arrivee === 0 && mmEcran.heure === hhV(ouvertureV) && mmEcran.fin === hhV(ouvertureV + 120), '[V] (ecran) Matin Malin commence a l ouverture, aucune arrivee avant, et 2 h de jeu', JSON.stringify(mmEcran));
     await pMm.close();
 
     // 2. UNE FORMULE A TABLE SE PREND A L OUVERTURE ; « A L OUVERTURE » NE SE DIT QUE SI C EST VRAI.
@@ -5476,11 +5441,10 @@ async function main() {
     const tableF6 = repF6.slots[0].opsPlan.resourceBlocks.find((b) => b.resourceType === 'party_table');
     ok(repF6.slots[0].time === hhV(ouvertureV) && repF6.slots[0].opsPlan.arrivalTime === hhV(ouvertureV) && tableF6.startTime === hhV(ouvertureV) && timeToMinutesV(tableF6.endTime) - timeToMinutesV(tableF6.startTime) === 120, '[V] (route) Formule 6 : l heure d ouverture existe, arrivee et table y commencent, la table dure ses 2 h', JSON.stringify({ heure: repF6.slots[0].time, arrivee: repF6.slots[0].opsPlan.arrivalTime, table: `${tableF6.startTime}-${tableF6.endTime}` }));
     const pF6 = await ouvrirV({ pax: 10, formule: 'f6' });
-    ok(await texteV(pF6, '#planZone .fg-visit__step--in > small') === 'à l’ouverture', '[V] (ecran) Formule 6 a l ouverture : le mot est juste');
+    ok(await pF6.evaluate(() => document.querySelectorAll('#planZone .fg-visit__step--in').length) === 0 && await texteV(pF6, '#planZone .fg-visit__step > b') === hhV(ouvertureV), '[V] (ecran) Formule 6 a l ouverture : la table a l heure d ouverture, pas de ligne d arrivee');
     await pF6.tap(`#hourZone .fg-chip[data-time="${hhV(ouvertureV + 30)}"]`);
-    await attendre(pF6, (h) => document.querySelector('#planZone .fg-visit__step--in > b').textContent.trim() === h, 5000, hhV(ouvertureV + 20));
-    const motF6 = await texteV(pF6, '#planZone .fg-visit__step--in > small');
-    ok(await texteV(pF6, '#planZone .fg-visit__step--in > b') === hhV(ouvertureV + 20) && motF6 === '10 min avant le début', '[V] (ecran) Formule 6 trente minutes apres l ouverture : dix minutes avant le debut, plus de « a l ouverture »', motF6);
+    await attendre(pF6, (h) => (document.querySelector('#planZone .fg-visit__step--in > b') || { textContent: '' }).textContent.trim() === h, 5000, hhV(ouvertureV + 20));
+    ok(await texteV(pF6, '#planZone .fg-visit__step--in > b') === hhV(ouvertureV + 20) && await texteV(pF6, '#planZone .fg-visit__step--in > span') === 'Arrivée', '[V] (ecran) Formule 6 trente minutes apres l ouverture : arrivee dix minutes avant le debut');
     await pF6.close();
 
     // 3. DANS UNE FORMULE, LE BOWLING EST COMPRIS. LE PRIX SE LIT COMME SON CALCUL.
@@ -5488,10 +5452,9 @@ async function main() {
     const repF1 = await routeV({ pax: '10', type: 'formule', formuleId: 'f1' });
     const f1Meta = meta.formules.find((f) => f.id === 'f1');
     const pF1 = await ouvrirV({ pax: 10, formule: 'f1' });
-    const noteF1 = await texteV(pF1, '#hourZone .fg-track__lanes');
-    ok(/2 pistes, compris dans la formule/.test(noteF1) && !/€/.test(noteF1), '[V] la note des pistes d une formule ne dit plus aucun montant', noteF1);
-    const prixF1 = await pF1.evaluate(() => ({ ligne: document.querySelector('#planZone .fg-visit__total dt').textContent.replace(/\s+/g, ' ').trim(), total: document.querySelector('#planZone .fg-visit__total dd').textContent.replace(/\s+/g, ' ').trim() }));
-    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.total) === blancs(euros(repF1.price)) && plat(prixF1.ligne) === plat(`Total indicatif · 10 personnes × ${euros(f1Meta.price)}`), '[V] le recapitulatif d une formule dit son calcul, et son total est le prix du serveur', JSON.stringify(prixF1));
+    ok(await pF1.evaluate(() => { const n = document.querySelector('#hourZone .fg-track__lanes'); return !n || getComputedStyle(n).display === 'none'; }), '[V] « 6 joueurs par piste » et la note des pistes ne se lisent plus');
+    const prixF1 = await pF1.evaluate(() => ({ prix: document.querySelector('#planZone .fg-visit__price').textContent.replace(/\s+/g, ' ').trim(), ligne: document.querySelector('#planZone .fg-visit__paye').textContent.replace(/\s+/g, ' ').trim() }));
+    ok(Number(repF1.price) === f1Meta.price * 10 && blancs(prixF1.prix) === blancs(euros(repF1.price)) && /, à payer sur place$/.test(prixF1.ligne) && !/×/.test(prixF1.ligne), '[V] le recapitulatif d une formule dit le prix du serveur, a payer sur place, sans le calcul', JSON.stringify(prixF1));
     ok(await pF1.evaluate(() => getComputedStyle(document.querySelector('#hourSum')).display === 'none' && document.querySelectorAll('#hourZone .fg-etape--fin').length === 1 && getComputedStyle(document.querySelector('#hourZone .fg-etape--fin')).display === 'none'), '[V] la fin et le prix se lisent une fois, dans le recapitulatif : ni la barre ni le programme ne les redisent');
     await pF1.close();
 
@@ -5505,13 +5468,11 @@ async function main() {
     ok(timeToMinutesV(repLibres.slots[0].visitEndTime) === debutLibres + minutesLibres, '[V] (route) la fin d une visite sans heure est la somme de ses activites, a la minute', `${repLibres.slots[0].time} + ${minutesLibres} min = ${repLibres.slots[0].visitEndTime}`);
     const pL = await ouvrirV({ pax: 6, activites: ['minigolf_blacklight', 'arcade_time'] });
     const libresEcran = await pL.evaluate(() => ({
-      blocs: document.querySelectorAll('#planZone .fg-visit__step--bloc').length,
-      libres: Array.from(document.querySelectorAll('#planZone .fg-visit__step--free > small')).map((s) => s.textContent.replace(/\s+/g, ' ').trim()),
+      lignes: Array.from(document.querySelectorAll('#planZone .fg-visit__step--bloc > b')).map((b) => b.textContent.trim()),
       fin: document.querySelector('#planZone .fg-visit__step--out > b').textContent.trim(),
-      depart: document.querySelector('#planZone .fg-visit__step--in > b').textContent.trim(),
-      plage: document.querySelector('#planZone .fg-visit__span').textContent.replace(/\s+/g, ' ').trim(),
+      arrivee: document.querySelectorAll('#planZone .fg-visit__step--in').length,
     }));
-    ok(libresEcran.blocs === 0 && libresEcran.libres.length === 2 && libresEcran.libres.every((x) => /à votre rythme/.test(x) && !/jusqu/.test(x)) && libresEcran.fin === repLibres.slots[0].visitEndTime && libresEcran.depart === repLibres.slots[0].time && libresEcran.plage.indexOf(`de ${repLibres.slots[0].time} à ${repLibres.slots[0].visitEndTime}`) === 0, '[V] (ecran) une activite libre n a jamais d heure : elle se joue a votre rythme, entre l arrivee et la fin', JSON.stringify(libresEcran));
+    ok(libresEcran.lignes.length === 2 && libresEcran.lignes[0] === repLibres.slots[0].time && libresEcran.lignes[1] === '' && libresEcran.fin === repLibres.slots[0].visitEndTime && libresEcran.arrivee === 0, '[V] (ecran) une visite sans activite a heure : une ligne par activite, l heure de debut sur la premiere seule, la fin a la minute', JSON.stringify(libresEcran));
     await pL.close();
     await ctxV.close();
 

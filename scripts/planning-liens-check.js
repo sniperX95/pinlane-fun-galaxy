@@ -28,12 +28,12 @@
 //       l heure, il ne dit que qui est la : il dit le chiffre de la barre moins les
 //       groupes payes dont la visite est finie et qui attendent leurs coches, ni plus ni
 //       moins, l apres-midi et le soir.
-//   [L] LES CHIFFRES DES PLANNINGS NE SE MARCHENT PAS DESSUS, a toutes les largeurs, avec
-//       le detail d un centre de 12 pistes, toutes libres. Celui de 40 pistes, le plafond
-//       d un centre (lib/center-config.js), ne tient jamais entier : il se coupe dans sa
-//       case, la legende reste. DEFAUT OUVERT, montre a Ansar le 2026-11-04 :
-//       a ce detail-la, sur une fenetre etroite, les deux cases voisines perdent leur
-//       chiffre ; le gate ne l asserte pas tant que ce n est pas corrige.
+//   [L] UNE CASE NE COUPE JAMAIS SON CHIFFRE, sur les trois plannings, du telephone au grand
+//       ecran. Seul le detail se coupe, meme celui de 40 pistes, le plafond d un centre
+//       (lib/center-config.js) ; la legende reste. Trouve le 2026-11-04 : au telephone,
+//       « Occupation » sans son nombre et « Libres 4 pi » des 8 pistes ; a 20 pistes libres,
+//       « Réservations 2 » pour 28 ; le Complet sous 1 000 px, « Pistes 4 lib ». Au telephone
+//       la rangee defile : ce qui depasse s atteint au doigt.
 //   [M] LA LISTE SOUS LE TABLEAU TROUVE CE QUE LE TABLEAU TROUVE : une heure, une piste,
 //       un nombre, pas seulement un nom.
 //   [N] UN JOUR VIDE CHERCHE AUSSI : le client est peut-etre sur une autre date. A
@@ -83,6 +83,23 @@ async function ouvrir(browser, appareil = 'liens', fixture = 'pic', heure = '15:
     fixture, appareil, theme: 'light', heure, port: PORT,
     avantChargement: async (p) => {
       await p.addInitScript(() => {
+        // (un libelle ou un chiffre qui passe le bord de sa case : la case le cache sans le dire)
+        window.chiffresCoupes = (g) => {
+          const coupes = [];
+          g.querySelectorAll('.pb-k, .gf-c, .gf-e').forEach((c) => {
+            if (!c.getClientRects().length || getComputedStyle(c).overflowX !== 'hidden') return;
+            const bord = c.getBoundingClientRect().right;
+            c.querySelectorAll('.gf-c__l, .gf-c__v, .gf-e__l, .gf-e__v').forEach((el) => {
+              if (el.getClientRects().length && el.getBoundingClientRect().right > bord + 0.5) coupes.push(el.textContent.trim());
+            });
+          });
+          return coupes;
+        };
+        // (sur une rangee qui ne defile pas, ce qui sort de la barre n existe pas pour qui regarde)
+        window.dehorsDeLaBarre = (g) => {
+          const bord = g.getBoundingClientRect().right;
+          return Array.from(g.children).filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > bord + 0.5).map((e) => e.className);
+        };
         window.__fixtureServeur = async (corps) => {
           const ancien = state.reservations.find((x) => String(x.id) === String(corps.id));
           return { statut: 200, json: { ok: true, reservation: Object.assign({}, ancien, corps, { updatedAt: new Date().toISOString() }) } };
@@ -326,7 +343,7 @@ const chiffresDuJour = (page, detail) => page.evaluate((long) => {
   // sans le dire)
   const horsCase = Array.from(g.querySelectorAll('.pb-k .gf-e__s')).filter((s) => s.getClientRects().length > 0)
     .reduce((pire, s) => Math.max(pire, s.getBoundingClientRect().right - s.closest('.pb-k').getBoundingClientRect().right), 0);
-  const mesure = { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), horsCase: Math.round(horsCase), details: pieces.filter((p) => p.t === 'gf-e__s').length, coupes: details.filter((s) => s.getClientRects().length > 0 && s.scrollWidth > s.clientWidth).length, libelle: g.querySelector('.pb-k .gf-c__l').textContent };
+  const mesure = { chevauche: Math.round(chevauche), deborde: Math.round(Math.max(...pieces.map((p) => p.d)) - bord.right), horsCase: Math.round(horsCase), details: pieces.filter((p) => p.t === 'gf-e__s').length, coupes: details.filter((s) => s.getClientRects().length > 0 && s.scrollWidth > s.clientWidth).length, chiffresCoupes: chiffresCoupes(g), libelle: g.querySelector('.pb-k .gf-c__l').textContent };
   // (la ligne compare son html avant de s ecrire : renderKpis ne remettrait pas ce texte-la)
   details.forEach((h, i) => { h.textContent = vrais[i]; });
   return mesure;
@@ -355,11 +372,11 @@ async function scenarioChiffresDuJour(browser) {
         }
         const r = await chiffresDuJour(page, quarante);
         coupes += r.coupes;
-        if (r.deborde > 0 || r.horsCase > 0) horsDeSaCase.push({ vue, l, ...r });
+        if (r.deborde > 0 || r.horsCase > 0 || r.chevauche > 0 || r.chiffresCoupes.length) horsDeSaCase.push({ vue, l, ...r });
       }
     }
     ok(fautes.length === 0, '[L] les chiffres des plannings ne se marchent pas dessus, de 1 000 a 1 920 px, avec le detail d un centre de 12 pistes', fautes.slice(0, 4));
-    ok(horsDeSaCase.length === 0, '[L] le detail de 40 pistes reste dans sa case, la legende reste a l ecran', horsDeSaCase.slice(0, 4));
+    ok(horsDeSaCase.length === 0, '[L] le detail de 40 pistes se coupe seul dans sa case : les cases voisines gardent leur chiffre, la legende reste a l ecran', horsDeSaCase.slice(0, 4));
     ok(coupes > 0, '[L] MONTAGE : le detail de 40 pistes ne tient pas entier, il se coupe a l ellipse', coupes);
     await page.evaluate(() => { openStaffPlanningResource('bowling'); });
     await page.setViewportSize({ width: 1024, height: 768 });
@@ -370,6 +387,71 @@ async function scenarioChiffresDuJour(browser) {
     await page.waitForFunction(() => document.getElementById('planningBarre').getBoundingClientRect().width > 1500, null, { timeout: 3000 }).catch(() => null);
     const grand = await chiffresDuJour(page, null);
     ok(grand.libelle === 'Occupation' && grand.details > 0, '[L] au large, le mot, le chiffre et son detail', grand);
+  } finally { await ctx.close(); }
+  await chiffresDuComplet(browser);
+  await chiffresAuTelephone(browser);
+}
+
+// (le Complet : ses compteurs, l etat des pistes et du laser. Sous 1 000 px, ce qui ne tient plus
+// passe a la ligne. Au large, 40 pistes et un depart laser sans groupe : son detail vide ne laisse
+// rien a couper, sa case reste entiere)
+async function chiffresDuComplet(browser) {
+  const { ctx, page } = await ouvrir(browser);
+  try {
+    const quarante = `${Array.from({ length: 39 }, (_, i) => i + 1).join(', ')} et 40`;
+    const fautes = [];
+    const coupesLarge = [];
+    for (const [l, h] of [[947, 800], [960, 800], [980, 800], [1000, 800], [1024, 768], [1107, 800], [1280, 720], [1366, 768], [1386, 800], [1387, 800], [1440, 900], [1600, 900], [1920, 1080]]) {
+      await page.setViewportSize({ width: l, height: h });
+      await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
+      const vrai = await page.evaluate(() => { const g = document.getElementById('planningBande'); return { chiffres: chiffresCoupes(g), dehors: dehorsDeLaBarre(g) }; });
+      if (vrai.chiffres.length || vrai.dehors.length) fautes.push({ l, ...vrai });
+      const pire = await page.evaluate((det) => {
+        const g = document.getElementById('planningBande');
+        const pistes = g.querySelector('.gf-e[data-gf-etat="bowling"] .gf-e__s');
+        const laser = g.querySelector('.gf-e[data-gf-etat="laser"] .gf-e__s');
+        const vrais = [pistes.textContent, laser.textContent];
+        pistes.textContent = det;
+        laser.textContent = '';
+        const m = { chiffres: chiffresCoupes(g), dehors: dehorsDeLaBarre(g), coupe: pistes.getClientRects().length > 0 && pistes.scrollWidth > pistes.clientWidth };
+        pistes.textContent = vrais[0];
+        laser.textContent = vrais[1];
+        return m;
+      }, quarante);
+      if (pire.chiffres.length || pire.dehors.length) coupesLarge.push({ l, ...pire });
+      if (l === 1387) ok(pire.coupe, '[L] MONTAGE : a 1 387 px, la ou le detail vient d apparaitre, celui de 40 pistes se coupe', pire);
+    }
+    ok(fautes.length === 0, '[L] au Complet, de 947 a 1 920 px, aucune case ne coupe son chiffre et rien ne sort de la barre', fautes.slice(0, 4));
+    ok(coupesLarge.length === 0, '[L] au Complet, 40 pistes et un depart laser sans groupe : les cases gardent leur chiffre', coupesLarge.slice(0, 4));
+  } finally { await ctx.close(); }
+}
+
+// (au telephone, les chiffres defilent sur une rangee : aucun ne se coupe, le dernier s atteint)
+async function chiffresAuTelephone(browser) {
+  const { ctx, page } = await ouvrir(browser, 'telephone');
+  try {
+    const fautes = [];
+    for (const vue of ['all', 'bowling', 'laser']) {
+      await page.evaluate((v) => { openStaffPlanningResource(v); }, vue);
+      await page.waitForFunction((v) => (v === 'all' ? document.querySelector('#planningBande .gf-c') : document.querySelector('#planningBande .pb-k')), vue, { timeout: 5000 }).catch(() => null);
+      for (const l of [320, 360, 375, 390, 412, 480, 640]) {
+        await page.setViewportSize({ width: l, height: 844 });
+        await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(fin))));
+        const r = await page.evaluate(() => {
+          const g = document.getElementById('planningBande');
+          const coupes = chiffresCoupes(g);
+          const valeurs = Array.from(g.querySelectorAll('.gf-c__v, .gf-e__v')).filter((v) => v.getClientRects().length > 0);
+          const dernier = valeurs[valeurs.length - 1];
+          // (le meme evaluate : le defilement ne doit pas tomber entre deux lectures)
+          g.scrollLeft = g.scrollWidth;
+          const atteint = Boolean(dernier) && dernier.getBoundingClientRect().right <= g.getBoundingClientRect().right + 0.5;
+          g.scrollLeft = 0;
+          return { coupes, nb: valeurs.length, atteint };
+        });
+        if (r.coupes.length || !r.nb || !r.atteint) fautes.push({ vue, l, ...r });
+      }
+    }
+    ok(fautes.length === 0, '[L] au telephone, de 320 a 640 px, sur les trois plannings : aucun chiffre coupe, le dernier s atteint en faisant defiler', fautes.slice(0, 4));
   } finally { await ctx.close(); }
 }
 
@@ -480,7 +562,15 @@ const MUTATIONS = [
   { nom: 'jour-vide-garde-la-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: '} else if (wrap._gfParties || defile.firstChild) {', vers: '} else if (false) {' }] },
   { nom: 'jour-vide-sans-sa-journee', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'if (!q && !m.visibles && !cartes && fen && !fen.closed && fen.close > fen.open) {', vers: 'if (false) {' }] },
   // Un detail long pousse la legende hors de la ligne.
-  { nom: 'detail-qui-pousse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n', vers: '' }] },
+  { nom: 'detail-qui-pousse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: ".pb-k[data-kpi='libres'] { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n", vers: '' }] },
+  // Toutes les cases se serrent, plus seulement celle du detail : « Réservations 2 » pour 28.
+  { nom: 'chiffres-qui-rapetissent', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: ".pb-k[data-kpi='libres'] { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n", vers: '.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n' }] },
+  // Au telephone, la case se serre au lieu de faire defiler la rangee : « Libres 4 pi ».
+  { nom: 'telephone-qui-serre', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: "  .pb-k[data-kpi='libres'] { flex: none; overflow: visible; }\n", vers: '' }] },
+  // Au Complet etroit, plus de passage a la ligne : la legende sort de la barre.
+  { nom: 'complet-sans-passage-a-la-ligne', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '  .pb-bande { flex-wrap: wrap; height: auto; min-height: var(--pb-l2); }\n', vers: '' }] },
+  // La case de l etat se serre au-dela de sa valeur : « 15:30, 11 p ».
+  { nom: 'etat-qui-rapetisse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gf-e { flex: 0 1 auto; min-width: min-content; display: inline-grid; grid-auto-flow: column; grid-auto-columns: auto minmax(0, max-content); align-items: center;', vers: '.gf-e { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center;' }] },
   { nom: 'detail-sans-coupure', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.gf-e__s { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }', vers: '.gf-e__s { flex: none; white-space: nowrap; font-size: 12px; color: var(--muted); }' }] },
   { nom: 'detail-partout', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '@container barre (max-width: 1020px) {\n  .gf-e__s { display: none; }', vers: '@container barre (max-width: 1020px) {' }] },
   // La barre compte a l heure, l accueil et la liste aux coches.

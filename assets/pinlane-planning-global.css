@@ -129,8 +129,8 @@ body.pb-agrandi .pb-ic__moins { display: block; }
 .pb-direct.is-coupe i { background: var(--danger); }
 #planningBarre .staff-today-btn { flex: none; box-sizing: border-box; height: 34px; min-height: 34px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 600; }
 .gf-c, .pb-k { flex: none; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; }
-/* (un detail long se coupe, la legende reste) */
-.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* (seul un detail long se coupe : les autres cases gardent leur chiffre, la legende reste) */
+.pb-k[data-kpi='libres'] { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .pb-k > :is(.gf-c__l, .gf-c__v) { flex: none; }
 .gf-c__l { color: color-mix(in srgb, var(--muted) 55%, var(--text)); font-weight: 500; }
 .gf-c__v { font-size: 17px; font-weight: 700; }
@@ -142,8 +142,9 @@ button.gf-c:focus-visible { outline: 2px solid var(--accent); outline-offset: -2
 button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); }
 .gf-c.is-on :is(.gf-c__l, .gf-c__v) { color: var(--surface); }
 .pb-sep { flex: none; width: 1px; height: 18px; margin: 0 6px; background: var(--line); }
-/* L ETAT DU CENTRE : ce qui repond aux cris sans clic. Le libelle, la valeur, puis qui. */
-.gf-e { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 5px; height: 100%; margin-right: 10px; overflow: hidden; }
+/* L ETAT DU CENTRE : ce qui repond aux cris sans clic. Le libelle, la valeur, puis qui. Sa case
+   se serre jusqu a son libelle et sa valeur, pas plus : seule la colonne du detail se coupe. */
+.gf-e { flex: 0 1 auto; min-width: min-content; display: inline-grid; grid-auto-flow: column; grid-auto-columns: auto minmax(0, max-content); align-items: center; gap: 5px; height: 100%; margin-right: 10px; overflow: hidden; }
 .gf-e__h { appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer; }
 .gf-e__h:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gf-e__h:hover .gf-e__v { text-decoration: underline; text-underline-offset: 2px; }
@@ -176,6 +177,10 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 }
 @container barre (max-width: 1020px) {
   .gf-e__s { display: none; }
+  /* (ce qui ne tient plus passe a la ligne : une case ne coupe pas son chiffre. Sans hauteur
+     posee, height: 100% ne vaut plus rien : l heure et l etat s etirent sur leur rangee) */
+  .pb-bande { flex-wrap: wrap; height: auto; min-height: var(--pb-l2); }
+  .pb-direct, .gf-e { height: auto; align-self: stretch; }
   .pb-bande { gap: 2px; padding: 0 6px 0 8px; }
   .gf-c, .pb-k { gap: 4px; padding: 0 4px; }
   .gf-e { margin-right: 4px; }
@@ -190,7 +195,6 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
   .pb-seg__b { flex: 1 1 0; }
   .pb-seg #staffTabAll, .pb-seg #staffTabBowling, .pb-seg #staffTabLaser { width: auto; }
   .gf-recherche { flex: 1 1 300px; }
-  .pb-bande { flex-wrap: wrap; height: auto; min-height: var(--pb-l2); }
   .pb-leg { margin-left: 0; }
 }
 /* AU TELEPHONE, LA BARRE EST COMPACTE : la bascule et le ⋯, puis la date, Agrandir et
@@ -213,6 +217,8 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
   .pb-bande::-webkit-scrollbar { display: none; }
   .pb-direct { width: auto; margin-right: 6px; }
   .gf-e { flex: none; overflow: visible; }
+  /* (la rangee defile : aucune case ne se serre pour tenir) */
+  .pb-k[data-kpi='libres'] { flex: none; overflow: visible; }
   .pb-leg { display: none; }
 }
 /* (fenetre tres basse, telephone couche : elle ne couvre pas l ecran) */

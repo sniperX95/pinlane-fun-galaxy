@@ -19,7 +19,11 @@
 //       rejouee avec `heuresPassees`) : l heure sort du choix du client (la
 //       demande suivante ne la porte plus), la piste dit « L’heure de HH:MM
 //       est passée : choisissez-en une autre. », et une nouvelle heure choisie
-//       efface la phrase.
+//       efface la phrase. Une heure seulement proposee et gardee (retenirProposees,
+//       2026-11-04), devenue passee, sort aussi : sa ligne ne la propose plus et la
+//       demande d apres ne la renvoie pas. La reponse rejouee est celle du serveur
+//       pour une demande SANS cette heure (section A) : le mock, a l heure reelle,
+//       ne la juge pas passee lui-meme.
 //
 // CONTRE-EPREUVE (--mutate) : chaque regle retiree en memoire (serveur) ou
 // servie cassee au navigateur (formulaire), le gate doit rougir ; le disque
@@ -69,6 +73,12 @@ const MUTATIONS = [
     fichier: 'assets/fungalaxy-booking.js',
     de: '    delete state.heuresPassees[idA];',
     vers: '    void 0;',
+  },
+  {
+    nom: 'une heure proposee et gardee reste apres avoir ete dite passee',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: '      if (state.retenues.pins[p.activityId] === p.time) delete state.retenues.pins[p.activityId];',
+    vers: '      void 0;',
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
@@ -194,40 +204,62 @@ async function navigateur() {
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   const browser = await chromium.launch({ executablePath: process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: true });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await ctx.newPage();
   const erreurs = [];
-  const demandes = [];
-  page.on('pageerror', (e) => erreurs.push(String((e && e.message) || e)));
-  page.on('request', (req) => { if (req.url().includes('/api/public-availability') && req.url().includes('type=visite')) demandes.push(req.url()); });
-  if (MUTATION && MUTATION.fichier.startsWith('assets/')) {
-    const brut = fs.readFileSync(path.join(ROOT, MUTATION.fichier), 'utf8');
-    const mute = muter(brut, MUTATION);
-    await page.route('**/assets/fungalaxy-booking.js*', (route) => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: mute }));
-  }
-  try {
-    const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
-    await page.goto(BASE + '/fungalaxy/libramont', { waitUntil: 'networkidle', timeout: 45000 });
-    await attendre(page, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
-    await page.click('#dayBtn');
+  // Une page neuve : ses demandes de visite, ses erreurs, le formulaire mute s il l est.
+  const nouvellePage = async () => {
+    const p = await ctx.newPage();
+    const urls = [];
+    p.on('pageerror', (e) => erreurs.push(String((e && e.message) || e)));
+    p.on('request', (req) => { if (req.url().includes('/api/public-availability') && req.url().includes('type=visite')) urls.push(req.url()); });
+    if (MUTATION && MUTATION.fichier.startsWith('assets/')) {
+      const brut = fs.readFileSync(path.join(ROOT, MUTATION.fichier), 'utf8');
+      const mute = muter(brut, MUTATION);
+      await p.route('**/assets/fungalaxy-booking.js*', (route) => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: mute }));
+    }
+    return { p, urls };
+  };
+  const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  // Jusqu a l ecran des heures : bowling + laser, 6 personnes.
+  const auxHeures = async (p) => {
+    await p.goto(BASE + '/fungalaxy/libramont', { waitUntil: 'networkidle', timeout: 45000 });
+    await attendre(p, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+    await p.click('#dayBtn');
     const [y, mo] = mock.DATE.split('-').map(Number);
     const cible = cap(MOIS[mo - 1]) + ' ' + y;
     for (let k = 0; k < 16; k += 1) {
-      const titre = await page.evaluate(() => document.querySelector('#calTitle').textContent.trim());
+      const titre = await p.evaluate(() => document.querySelector('#calTitle').textContent.trim());
       if (titre === cible) break;
       const [nom, an] = titre.split(' ');
-      await page.click(y * 12 + (mo - 1) > Number(an) * 12 + MOIS.indexOf(nom.toLowerCase()) ? '#calNext' : '#calPrev');
-      await attendre(page, (t) => document.querySelector('#calTitle').textContent.trim() !== t, 3000, titre);
+      await p.click(y * 12 + (mo - 1) > Number(an) * 12 + MOIS.indexOf(nom.toLowerCase()) ? '#calNext' : '#calPrev');
+      await attendre(p, (t) => document.querySelector('#calTitle').textContent.trim() !== t, 3000, titre);
     }
-    await attendre(page, (d) => { const x = document.querySelector('#calGrid .fg-cal__day[data-date="' + d + '"]'); return x && !x.classList.contains('is-loading'); }, 8000, mock.DATE);
-    await page.click('#calGrid .fg-cal__day[data-date="' + mock.DATE + '"]');
-    await attendre(page, () => document.querySelector('#dayPop').hidden, 3000);
-    await page.fill('#paxInput', '6');
-    await page.press('#paxInput', 'Enter');
-    await page.click('#goActivities');
-    await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
-    for (const id of ['bowling', 'laser_game']) { await page.click('#gridAct .fg-card[data-activity="' + id + '"]'); await page.waitForTimeout(250); }
-    await page.click('#goHours');
-    const pret = await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('#goContact').disabled, 15000);
+    await attendre(p, (d) => { const x = document.querySelector('#calGrid .fg-cal__day[data-date="' + d + '"]'); return x && !x.classList.contains('is-loading'); }, 8000, mock.DATE);
+    await p.click('#calGrid .fg-cal__day[data-date="' + mock.DATE + '"]');
+    await attendre(p, () => document.querySelector('#dayPop').hidden, 3000);
+    await p.fill('#paxInput', '6');
+    await p.press('#paxInput', 'Enter');
+    await p.click('#goActivities');
+    await attendre(p, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    for (const id of ['bowling', 'laser_game']) { await p.click('#gridAct .fg-card[data-activity="' + id + '"]'); await p.waitForTimeout(250); }
+    await p.click('#goHours');
+    return attendre(p, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('#goContact').disabled, 15000);
+  };
+  // Une case libre de cette activite, a partir de cette heure : elle est touchee.
+  const toucherLibre = (p, id, depuis, sauf) => p.evaluate(({ id: a, depuis: d, sauf: s }) => {
+    const c = [...document.querySelectorAll('.fg-track[data-activity="' + a + '"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className) && x.dataset.time >= d && x.dataset.time !== s);
+    if (!c) return '';
+    c.click();
+    return c.dataset.time;
+  }, { id, depuis, sauf: sauf || '' });
+  const calme = async (p) => {
+    await attendre(p, () => document.querySelectorAll('.fg-chip.is-pending').length === 0 && !document.querySelector('#hourZone.is-busy'), 10000);
+    await p.waitForTimeout(600);
+  };
+  const posees = (url) => { try { return JSON.parse(new URL(url).searchParams.get('preferredTimes') || '{}'); } catch (e) { return {}; } };
+  const plusTard = (h, minutes) => { const [a, b] = h.split(':').map(Number); return hhmm(a * 60 + b + minutes); };
+  const { p: page, urls: demandes } = await nouvellePage();
+  try {
+    const pret = await auxHeures(page);
     if (!ok(pret, 'MONTAGE l ecran des heures se charge (bowling + laser, 6 personnes)')) return;
     // Pose une heure de bowling (une case libre, pas celle proposee).
     const pose = await page.evaluate(() => {
@@ -239,38 +271,39 @@ async function navigateur() {
     await attendre(page, () => !document.querySelector('#hourZone.is-busy') && !document.querySelector('.fg-chip.is-pending'), 10000);
     await page.waitForTimeout(400);
     const derniere = () => demandes[demandes.length - 1] || '';
-    const posees = (url) => { try { return JSON.parse(new URL(url).searchParams.get('preferredTimes') || '{}'); } catch (e) { return {}; } };
     ok(Boolean(pose) && posees(derniere()).bowling === pose, 'MONTAGE le bowling est pose et part avec la demande', `${pose} ; ${JSON.stringify(posees(derniere()))}`);
-    // La prochaine reponse : le serveur dit que cette heure est passee.
+    // La prochaine reponse : le serveur dit que cette heure est passee, et son plan est
+    // celui d une demande sans elle (section A).
     let rejouee = false;
     await page.route('**/api/public-availability?*type=visite*', async (route) => {
       if (rejouee) return route.continue();
       rejouee = true;
-      const reponse = await route.fetch();
+      const u = new URL(route.request().url());
+      const sansElle = posees(u.href);
+      delete sansElle.bowling;
+      u.searchParams.set('preferredTimes', JSON.stringify(sansElle));
+      const reponse = await route.fetch({ url: u.href });
       const corps = await reponse.json();
       corps.heuresPassees = [{ activityId: 'bowling', time: pose }];
       return route.fulfill({ response: reponse, json: corps });
     });
-    const avantLaser = demandes.length;
-    const laser = await page.evaluate(() => {
-      const c = [...document.querySelectorAll('.fg-track[data-activity="laser_game"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className));
-      if (!c) return '';
-      c.click();
-      return c.dataset.time;
-    });
-    await attendre(page, (n) => document.querySelectorAll('.fg-chip.is-pending').length === 0 && !document.querySelector('#hourZone.is-busy'), 10000, avantLaser);
-    await page.waitForTimeout(600);
+    // Le laser bien plus tard : le plan du serveur place le bowling autour de lui, jamais
+    // a l heure dite passee (le mock, a l heure reelle, pourrait la reproposer).
+    const laser = await toucherLibre(page, 'laser_game', plusTard(pose, 180));
+    await calme(page);
     const note = await page.evaluate(() => { const n = document.querySelector('.fg-track[data-activity="bowling"] .fg-track__note'); return n ? { texte: n.textContent.replace(/\s+/g, ' ').trim(), cache: n.hidden } : null; });
     ok(Boolean(laser) && rejouee, 'MONTAGE une heure de laser touchee, la reponse rejouee porte l heure passee', `${laser} ; rejouee=${rejouee}`);
     ok(note && note.cache === false && note.texte.indexOf(`L’heure de ${pose} est passée : choisissez-en une autre.`) === 0,
       'la piste du bowling dit que son heure est passee', JSON.stringify(note));
-    // La demande suivante ne porte plus l heure passee.
+    const cochee = await page.evaluate((h) => Boolean(document.querySelector('.fg-track[data-activity="bowling"] .fg-chip.is-on[data-time="' + h + '"]')), pose);
+    ok(!cochee, 'l heure passee n est plus cochee', pose);
+    // La demande suivante ne porte plus l heure passee. Elle peut porter une autre heure
+    // de bowling : celle que le plan propose et que la page garde (retenirProposees).
     const avantRelecture = demandes.length;
-    await page.evaluate(() => { const c = [...document.querySelectorAll('.fg-track[data-activity="laser_game"] .fg-chip.is-on')][0]; if (c) c.click(); });
-    await attendre(page, (n) => document.querySelectorAll('.fg-chip.is-pending').length === 0, 10000, avantRelecture);
-    await page.waitForTimeout(600);
+    await toucherLibre(page, 'laser_game', plusTard(laser, 30));
+    await calme(page);
     const suivante = demandes.slice(avantRelecture).pop() || '';
-    ok(Boolean(suivante) && posees(suivante).bowling === undefined, 'la demande suivante ne porte plus le bowling passe', JSON.stringify(posees(suivante)));
+    ok(Boolean(suivante) && posees(suivante).bowling !== pose, 'la demande suivante ne porte plus le bowling passe', JSON.stringify(posees(suivante)));
     // Une nouvelle heure de bowling efface la phrase.
     const nouvelle = await page.evaluate((ancienne) => {
       const c = [...document.querySelectorAll('.fg-track[data-activity="bowling"] .fg-chip[data-time]')].find((x) => !x.disabled && !/is-(on|proposed|soft|shift|off|wave)\b/.test(x.className) && x.dataset.time !== ancienne);
@@ -282,6 +315,43 @@ async function navigateur() {
     await page.waitForTimeout(600);
     const apres = await page.evaluate(() => { const n = document.querySelector('.fg-track[data-activity="bowling"] .fg-track__note'); return n ? { texte: n.textContent.replace(/\s+/g, ' ').trim(), cache: n.hidden } : null; });
     ok(Boolean(nouvelle) && apres && apres.texte.indexOf('est passée') < 0, 'une nouvelle heure de bowling choisie efface la phrase', `${nouvelle} ; ${JSON.stringify(apres)}`);
+
+    // UNE HEURE SEULEMENT PROPOSEE ET GARDEE, DEVENUE PASSEE. Le client touche le laser :
+    // le bowling qu on lui propose part avec la demande, garde. Au toucher suivant, le
+    // serveur le dit passe et place le bowling ailleurs (AILLEURS, une heure valable).
+    const AILLEURS = '18:00';
+    const { p: page2, urls: demandes2 } = await nouvellePage();
+    if (!ok(await auxHeures(page2), 'MONTAGE second parcours : l ecran des heures se charge')) return;
+    const laser1 = await toucherLibre(page2, 'laser_game', '11:30');
+    await calme(page2);
+    const gardee = posees(demandes2[demandes2.length - 1] || '').bowling;
+    ok(Boolean(laser1) && Boolean(gardee), 'MONTAGE le laser touche, le bowling seulement propose part avec la demande', `${laser1} ; ${JSON.stringify(posees(demandes2[demandes2.length - 1] || ''))}`);
+    let dite = '';
+    await page2.route('**/api/public-availability?*type=visite*', async (route) => {
+      if (dite) return route.continue();
+      const u = new URL(route.request().url());
+      const parties = posees(u.href);
+      dite = parties.bowling || 'absente';
+      parties.bowling = AILLEURS;
+      u.searchParams.set('preferredTimes', JSON.stringify(parties));
+      const reponse = await route.fetch({ url: u.href });
+      const corps = await reponse.json();
+      corps.heuresPassees = [{ activityId: 'bowling', time: dite }];
+      // La grille du serveur propose ce que son plan pose (anchors.defaultTimes).
+      corps.anchors.defaultTimes = { ...corps.anchors.defaultTimes, bowling: AILLEURS };
+      return route.fulfill({ response: reponse, json: corps });
+    });
+    const laser2 = await toucherLibre(page2, 'laser_game', plusTard(laser1, 30), laser1);
+    await calme(page2);
+    ok(Boolean(laser2) && dite === gardee, 'MONTAGE au toucher suivant, le bowling garde part encore et le serveur le dit passe', `${laser2} ; dite ${dite}, gardee ${gardee}`);
+    const ligne = await page2.evaluate(() => (document.querySelector('.fg-etape[data-cle="bowling"] .fg-etape__heure') || {}).textContent || '');
+    ok(ligne.includes(AILLEURS) && !ligne.includes(dite), 'la ligne du bowling dit l heure du plan, plus celle qui est passee', `ligne « ${ligne} », plan ${AILLEURS}, passee ${dite}`);
+    // « Revenir a l heure proposee » redemande le plan sans recalculer ce qui est garde.
+    const avantRetour = demandes2.length;
+    await page2.evaluate(() => { const r = document.querySelector('.fg-track[data-activity="laser_game"] [data-reset]'); if (r) r.click(); });
+    await calme(page2);
+    const apresRetour = demandes2.slice(avantRetour).pop() || '';
+    ok(Boolean(apresRetour) && posees(apresRetour).bowling !== dite, 'la demande d apres ne renvoie pas au serveur l heure proposee devenue passee', JSON.stringify(posees(apresRetour)));
   } finally {
     ok(erreurs.length === 0, 'aucune erreur JavaScript', erreurs.slice(0, 3).join(' | '));
     await browser.close();

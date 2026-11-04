@@ -3048,6 +3048,10 @@
         state.laserParts = state.laserParts.filter(function (h) { return h !== p.time; });
         if (state.laserParts.length) state.pins.laser_game = state.laserParts[0]; else delete state.pins.laser_game;
       } else if (state.pins[p.activityId] === p.time) delete state.pins[p.activityId];
+      // Celle qui n etait que proposee et gardee (retenirProposees) sort de meme : restee,
+      // sa ligne la proposait encore et la demande suivante la renvoyait au serveur.
+      if (state.retenues.pins[p.activityId] === p.time) delete state.retenues.pins[p.activityId];
+      state.retenues.parties = state.retenues.parties.filter(function (h) { return h !== p.time; });
       var deja = state.heuresPassees[p.activityId] || [];
       if (deja.indexOf(p.time) < 0) state.heuresPassees[p.activityId] = deja.concat(p.time).sort();
     });

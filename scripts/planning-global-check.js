@@ -906,7 +906,7 @@ const MUTATIONS = [
   { nom: 'etat-cache-au-telephone', lettre: 'E4', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-e { flex: none; overflow: visible; }', vers: '  .gf-e { display: none; }' }] },
   { nom: 'demi-absente', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "          + (nouveau ? gfBlocCase(m, part, parBloc.get(part.b), bande) : '')\n", vers: '' }] },
   // La case ne couvre plus ses lignes.
-  { nom: 'case-d-une-ligne', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "    var attr = ' rowspan=\"' + part.lignes.length + '\"';", vers: "    var attr = ' rowspan=\"1\"';" }] },
+  { nom: 'case-d-une-ligne', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "    var attr = ' rowspan=\"' + Math.max(1, part.lignes.length) + '\"';", vers: "    var attr = ' rowspan=\"1\"';" }] },
   // Ce qui reste dans une demi-heure est faux.
   { nom: 'pistes-de-la-case-fausses', lettre: 'F6', scenarios: [PIC], editions: [{ fichier: PG, de: "lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });", vers: "lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes + 1, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });" }] },
   // La case promet une piste libre une demi-heure, Réserver la refuse pour une heure.

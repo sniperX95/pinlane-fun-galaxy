@@ -420,7 +420,7 @@ const MUTATIONS = [
   { nom: 'entree-sur-la-faute', lettre: 'O', scenarios: ['entree'], editions: [{ fichier: GJS, de: 'var trouves = m && q ? m.groupes.filter(function (g) { return gfTrouveParNom(g, q); }) : [];', vers: 'var trouves = m ? gfRecherche(m, q) : [];' }] },
   { nom: 'entree-promise-a-tort', lettre: 'O', scenarios: ['entree'], editions: [{ fichier: GJS, de: ' && gfPeutArriver(lignes[0], m) && gfTrouveParNom(lignes[0], q);', vers: ' && gfPeutArriver(lignes[0], m);' }] },
   { nom: 'liste-par-son-nom-seul', lettre: 'M', scenarios: ['liste'], editions: [{ fichier: 'assets/app-main.js', de: "const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;", vers: 'const trouves = null;' }] },
-  { nom: 'jour-vide-sourd', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'var aEcrire = Boolean(m.groupes.length || q);', vers: 'var aEcrire = Boolean(m.groupes.length);' }] },
+  { nom: 'jour-vide-sourd', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: 'var aEcrire = Boolean(m.groupes.length || q || (!ferme && !cartes));', vers: 'var aEcrire = Boolean(m.groupes.length || (!ferme && !cartes));' }] },
   { nom: 'jour-vide-sans-reponse', lettre: 'N', scenarios: ['jourVide'], editions: [{ fichier: GJS, de: "if (!lignes.length && (m.groupes.length || q)) {", vers: 'if (!lignes.length && m.groupes.length) {' }] },
   // Un detail long pousse la legende hors de la ligne.
   { nom: 'detail-qui-pousse', lettre: 'L', scenarios: ['chiffresDuJour'], editions: [{ fichier: 'assets/pinlane-planning-global.css', de: '.pb-k { flex: 0 1 auto; min-width: 0; overflow: hidden; }\n', vers: '' }] },

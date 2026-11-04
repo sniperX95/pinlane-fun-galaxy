@@ -1674,7 +1674,7 @@ const SCENARIOS = { coordonnees, agrandissement, vraiesBarres, bascule, date, co
 const SEUL = (fichier, de, vers = '') => [{ fichier, de, vers }];
 const MUTATIONS = [
   // [A] les coordonnees
-  { nom: 'ligne-1-trop-haute', lettre: 'A', scenarios: ['coordonnees'], editions: SEUL(PGC, '.pb { --pb-l1: 38px; --pb-l2: 34px;', '.pb { --pb-l1: 48px; --pb-l2: 34px;') },
+  { nom: 'ligne-1-trop-haute', lettre: 'A', scenarios: ['coordonnees'], editions: SEUL(PGC, '.pb { --pb-l1: 42px; --pb-l2: 44px;', '.pb { --pb-l1: 52px; --pb-l2: 44px;') },
   { nom: 'bascule-sans-largeurs', lettre: 'A', scenarios: ['coordonnees'], editions: SEUL(PGC, '#staffTabAll { width: 96px; }\n#staffTabBowling { width: 96px; }\n#staffTabLaser { width: 80px; }\n', '') },
   { nom: 'barre-deplacee-en-agrandi', lettre: 'A', scenarios: ['coordonnees'], editions: SEUL(PGC, 'body.pb-agrandi #planningBarre { position: static; flex: none; margin-left: var(--fgx-sidebar-width); }', 'body.pb-agrandi #planningBarre { position: static; flex: none; }') },
   { nom: 'logo-sous-le-cadre', lettre: 'A', scenarios: ['coordonnees'], editions: SEUL(PGC, 'body.pb-agrandi .ops-sidebar { z-index: 401; visibility: hidden; }', 'body.pb-agrandi .ops-sidebar { visibility: hidden; }') },
@@ -1707,7 +1707,7 @@ const MUTATIONS = [
   { nom: 'aujourd-hui-sourd', lettre: 'E', scenarios: ['date'], editions: SEUL(PG, '<button type="button" class="staff-today-btn" onclick="setStaffToday()">', '<button type="button" class="staff-today-btn">') },
   { nom: 'annee-collee', lettre: 'E', scenarios: ['date'], editions: SEUL(PGC, '.pb-an { white-space: pre; }\n', '') },
   // [F] collee
-  { nom: 'barre-qui-part', lettre: 'F', scenarios: ['collee'], editions: SEUL(PGC, '--pb-seg-h: 32px; position: sticky; top: 0; z-index: 30;', '--pb-seg-h: 32px; position: relative; z-index: 30;') },
+  { nom: 'barre-qui-part', lettre: 'F', scenarios: ['collee'], editions: SEUL(PGC, '--pb-seg-h: 36px; position: sticky; top: 0; z-index: 30;', '--pb-seg-h: 36px; position: relative; z-index: 30;') },
   { nom: 'boite-plus-haute-que-l-ecran', lettre: 'F', scenarios: ['collee'], editions: SEUL(PGC, 'height: calc(100dvh - var(--pb-bas, 88px) - var(--pb-g, 6px)); min-height: 320px; margin: 0 0 8px; }', 'height: 100dvh; min-height: 320px; margin: 0 0 8px; }') },
   { nom: 'bas-de-barre-oublie', lettre: 'F', scenarios: ['collee'], editions: SEUL(PG, "        document.documentElement.style.setProperty('--pb-bas', h + 'px');\n", '') },
   // [G] le menu de gauche
@@ -1797,7 +1797,7 @@ const MUTATIONS = [
   { nom: 'lignes-sous-46', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-t { --gf-l: 46px;', '.gf-t { --gf-l: 30px;') .concat(SEUL(PGC, '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 34px;', '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 22px;')) },
   { nom: 'libelle-trop-petit', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }', '.gf-i > span { font-size: 10px; color: var(--muted); white-space: nowrap; }') },
   // [P] le contraste
-  { nom: 'libelle-pale', lettre: 'P', scenarios: ['contraste'], editions: SEUL(PGC, '.gf-c__l { color: var(--muted); }', '.gf-c__l { color: color-mix(in srgb, var(--muted) 35%, var(--surface)); }') },
+  { nom: 'libelle-pale', lettre: 'P', scenarios: ['contraste'], editions: SEUL(PGC, '.gf-c__l { color: color-mix(in srgb, var(--muted) 55%, var(--text)); font-weight: 500; }', '.gf-c__l { color: color-mix(in srgb, var(--muted) 35%, var(--surface)); font-weight: 500; }') },
   // [Q] la recherche
   { nom: 'notes-non-cherchees', lettre: 'Q', scenarios: ['recherche'], editions: SEUL(PG, '.concat(g.rubriques.map(function (x) { return x.texte; })).join(\' \')).indexOf(q) >= 0) return true;', ".join(' ')).indexOf(q) >= 0) return true;") },
   { nom: 'liste-sourde-aux-notes', lettre: 'Q', scenarios: ['recherche'], editions: SEUL(APP, ' ${getReservationLabel(r)} ${texteRecherchableDuDossier(r)}`.toLowerCase().includes(q));', ' ${getReservationLabel(r)}`.toLowerCase().includes(q));') },

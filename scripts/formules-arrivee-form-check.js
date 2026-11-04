@@ -19,11 +19,11 @@
 //       facultative et fermee, qui dit l heure du plan (son choix :
 //       scripts/choisir-arrivee-check.js) ;
 //   [B] la borne a l ouverture : la Formule 1 proposee a l ouverture fait
-//       arriver a l heure du bowling, la visite dit « à l’ouverture » ; le
-//       bowling pose a 10:30, la borne dit 10:20, « 10 min avant votre
-//       bowling » ;
+//       arriver a l heure du bowling, et le recapitulatif ne redit pas une
+//       arrivee a la meme heure ; le bowling pose a 10:30, la borne et le
+//       recapitulatif disent 10:20 ;
 //   [C] la ligne des arcades (Formules 1, 2, 3 ; la 4 seulement avec sa
-//       variante aux arcades, [J]) : « Facultatif »,
+//       variante aux arcades, [J]) : « Quand vous voulez »,
 //       en petit, ne s ouvre pas seule, ses heures (arcades=1) ne se
 //       demandent qu a son ouverture, sans arrivee ni heure d arcade, de
 //       l ouverture a la fermeture ; une heure sur le bowling pose dit ce
@@ -32,17 +32,16 @@
 //       ligne passe en tete, le bowling se propose a 13:30, la visite les dit
 //       a leur heure, le blocage part avec elles ; les retoucher les rend
 //       facultatives ;
-//   [E] le dernier choix gagne : des arcades sur le bowling pose le liberent
-//       (le serveur le replace autour d elles), un bowling sur les arcades les
-//       leve (la visite le dit) ; leurs heures se lisent en tirets de la
-//       teinte de leur ligne ([J]) ;
-//   [F] le temps libre ou les arcades tiennent devient un cadre en pointille
-//       qui les propose et les pose ; rien quand elles ont deja leur heure, ni
-//       quand le minigolf de la formule couvre ce temps. Il ne le couvre que
-//       s il y tient tout entier (2026-10-15) : 35 min entre deux parties ne
-//       portent pas ses 45, il se joue « Dans la foulée » et les arcades s y
-//       proposent ; dans 1 h 05, il se joue « Entre les deux », et les 20 min
-//       qui restent ne portent pas les 30 des arcades ;
+//   [E] rien de touche ne bouge tout seul (Ansar, 2026-11-04) : des arcades sur
+//       le bowling touche, ou un bowling sur les arcades, se disent en un conseil,
+//       un seul toucher regle, et seule l autre activite se recale ; une heure qui
+//       pose probleme reste une heure comme une autre, sa raison reste aux
+//       lecteurs d ecran ([J]) ;
+//   [F] le temps libre se dit en un conseil, une ligne : « 30 min avant le laser
+//       game : les arcades sont comprises », « 30 min d attente » quand elles ont
+//       deja leur heure, rien sans trou. Une activite libre ne se propose que si
+//       elle y tient tout entiere : 35 min entre deux parties ne portent pas les
+//       45 du minigolf, mais les 30 des arcades ; 1 h 05 portent le minigolf ;
 //   [G] au telephone (360 px) : rien ne deborde, des cibles de 44 px, les memes
 //       boutons que les heures du bowling, le focus se voit ;
 //   [H] une heure par partie de laser (Formule 2, Movsar le 14/10 : « l heure
@@ -131,8 +130,8 @@ const MUTATIONS = [
     de: "    if (state.arcade) q.set('arcade', state.arcade);", vers: "    q.set('arcade', state.arcade);" },
   { nom: 'le blocage part avec une heure d arcade vide', fichier: JS, scenarios: ['A'],
     de: '    if (state.arcade) base.preference.arcadeTime = state.arcade;', vers: '    base.preference.arcadeTime = state.arcade;' },
-  { nom: 'l arrivee conseillee redit « 0 min avant » a l ouverture', fichier: JS, scenarios: ['B'],
-    de: "detail: avance > 0 ? avance + ' min avant ' + votre(parts[0].id) : 'à l’ouverture' });", vers: "detail: avance + ' min avant ' + votre(parts[0].id) });" },
+  { nom: 'le recapitulatif redit une arrivee a l heure de la premiere activite', fichier: JS, scenarios: ['B'],
+    de: 'if (repere && minutesEntre(arrivee, repere) > 0) lignes +=', vers: 'if (repere) lignes +=' },
   { nom: 'l arrivee passe de nouveau avant l ouverture (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['B'],
     de: '  const posee = demandeArrivee ? raw : arriveeALOuverture(raw, window.open);', vers: '  const posee = raw;' },
   { nom: 'la ligne des arcades n existe plus', fichier: JS, scenarios: ['C'],
@@ -140,21 +139,19 @@ const MUTATIONS = [
   { nom: 'les arcades ne sont plus facultatives (leur ligne s ouvre seule)', fichier: JS, scenarios: ['C'],
     de: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre'; }", vers: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace'; }" },
   { nom: 'la ligne des arcades dit « À choisir »', fichier: JS, scenarios: ['C'],
-    de: ": e.etat === 'libre' ? 'Facultatif' : 'À choisir';", vers: ": 'À choisir';" },
-  { nom: '« Facultatif » se lit comme une heure', fichier: CSS, scenarios: ['C'],
-    de: '.fg-etape.is-surplace .fg-etape__heure, .fg-etape.is-libre .fg-etape__heure {', vers: '.fg-etape.is-surplace .fg-etape__heure {' },
+    de: ": e.etat === 'libre' ? 'Quand vous voulez' : 'À choisir';", vers: ": 'À choisir';" },
+  { nom: '« Quand vous voulez » se lit comme une heure', fichier: CSS, scenarios: ['C'],
+    de: '.fg-etape:is(.is-libre, .is-vide):not(.is-open) .fg-etape__heure { font-size: 14px; font-weight: 500; }', vers: '' },
   { nom: 'les heures d arcade se demandent des l arrivee sur les heures', fichier: JS, scenarios: ['C'],
     de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArcades(); rendreArrivees(); }', vers: '    if (ancres.length) { majPistes(d); majEtapes(d); if (aDesArcades(d)) chargerArcades(); rendreArrivees(); }' },
   { nom: 'la liste des heures d arcade part avec l heure choisie', fichier: JS, scenarios: ['D'],
-    de: "    // La liste des heures d arcade ne depend pas de celle choisie.\n    if (liste === 'arcades') {", vers: "    if (state.arcade) q.set('arcade', state.arcade);\n    if (liste === 'arcades') {" },
+    de: "    if (liste === 'arcades') { if (state.arrivee)", vers: "    if (state.arcade) q.set('arcade', state.arcade);\n    if (liste === 'arcades') { if (state.arrivee)" },
   { nom: 'l heure d arcade choisie ne part pas au serveur', fichier: JS, scenarios: ['D'],
     de: "    if (state.arcade) q.set('arcade', state.arcade);", vers: '    void 0;' },
   { nom: 'le blocage part sans l heure d arcade', fichier: JS, scenarios: ['D'],
     de: '    if (state.arcade) base.preference.arcadeTime = state.arcade;', vers: '    void 0;' },
   { nom: 'la visite ne montre plus les arcades a leur heure', fichier: JS, scenarios: ['D'],
-    de: '    if (arcPlan.startTime) parts = parts.concat(', vers: '    if (false) parts = parts.concat(' },
-  { nom: 'la visite ne dit plus « à votre heure »', fichier: JS, scenarios: ['D'],
-    de: "        p.arcade ? 'à votre heure' : '',", vers: "        '',"},
+    de: '    if (arcPlan.startTime && state.arcade) parts = parts.concat(', vers: '    if (false) parts = parts.concat(' },
   { nom: 'retoucher l heure d arcade la garde', fichier: JS, scenarios: ['D'],
     de: "    if (state.arcade === t) state.arcade = '';\n    else {", vers: '    if (false) void 0;\n    else {' },
   { nom: 'sans arrivee, l heure d arcade ne se pose plus (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['D'],
@@ -169,30 +166,26 @@ const MUTATIONS = [
     de: "    if (g.etat === 'shift' && g.conflit.id === 'arcade_time') return typo('Vos arcades (' + g.conflit.time + ') se feront à un autre moment.');", vers: '' },
   { nom: 'la visite ne dit plus les arcades deplacees', fichier: JS, scenarios: ['E'],
     de: "    var arcadesLevees = Boolean(adaptation && adaptation.deplace === 'arcade_time');", vers: '    var arcadesLevees = false;' },
-  { nom: 'la visite ne dit plus le bowling replace autour des arcades', fichier: JS, scenarios: ['E'],
-    de: "        replacee ? 'replacé autour de vos arcades (' + adaptation.t + ')'", vers: "        replacee ? ''" },
+  { nom: 'la visite ne dit plus l activite deplacee', fichier: JS, scenarios: ['E'],
+    de: '      var bouge = Boolean(adaptation && adaptation.deplace === p.id) || replacee;', vers: '      var bouge = false;' },
+  { nom: 'une activite touchee bouge toute seule pour une autre', fichier: JS, scenarios: ['E'],
+    de: '      if (estTouchee(autre) && !conflitAccepte) {', vers: '      if (false) {' },
+  { nom: 'une activite touchee bouge toute seule pour des arcades', fichier: JS, scenarios: ['E'],
+    de: 'if (c && estTouchee(c.activityId) && !conflitAccepte) {', vers: 'if (false) {' },
   { nom: 'la grille des activites ne voit plus les arcades choisies (serveur)', fichier: 'api/public-availability.js', scenarios: ['E'],
     de: '      const arcadeDeLaGrille = !demandeArrivee && !listeArcadesSansArrivee && heureArcade ? { arcadeTime: heureArcade } : {};', vers: '      const arcadeDeLaGrille = {};' },
   { nom: 'le mot d un probleme revient sous l heure', fichier: JS, scenarios: ['E'],
     de: "    $('small', chip).textContent = on || prop || e.etat === 'wave' || e.nom ? mot : '';", vers: "    $('small', chip).textContent = mot;" },
-  { nom: 'deux problemes d une plage ont la meme teinte', fichier: JS, scenarios: ['E'],
-    de: '  function teinteDe(k) { return String(k % TEINTES); }', vers: "  function teinteDe(k) { return '0'; }" },
-  { nom: 'une heure a probleme ne prend pas la teinte de sa ligne', fichier: JS, scenarios: ['E'],
-    de: '    groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.dataset.teinte = teinteDe(k); }); });\n', vers: '' },
-  { nom: 'les heures a probleme ne sont plus entourees en tirets', fichier: CSS, scenarios: ['E'],
-    de: '.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed;', vers: '.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: solid;' },
-  { nom: 'le temps libre ne propose plus les arcades', fichier: JS, scenarios: ['F'],
-    de: '      if (!dureeArc || arc.startTime || m < dureeArc) return liste;', vers: '      return liste;' },
+  { nom: 'une heure a probleme se lit en tirets', fichier: CSS, scenarios: ['E'],
+    de: '.fg-chip.is-soft, .fg-chip.is-shift { border: 1px solid rgba(255, 255, 255, 0.16); }', vers: '' },
+  { nom: 'le temps libre ne propose plus rien', fichier: JS, scenarios: ['F'],
+    de: 'var libre = possibles.filter(function (x) { return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];', vers: 'var libre = null;' },
+  { nom: 'le temps libre propose une activite qui n y tient pas', fichier: JS, scenarios: ['F'],
+    de: 'return x.minutes > 0 && x.minutes <= meilleur.minutes; })[0];', vers: 'return x.minutes > 0; })[0];' },
   { nom: 'le temps libre propose des arcades qui ont deja leur heure', fichier: JS, scenarios: ['F'],
-    de: '      if (!dureeArc || arc.startTime || m < dureeArc) return liste;', vers: '      if (!dureeArc || m < dureeArc) return liste;' },
-  { nom: 'le minigolf ne couvre plus le temps libre', fichier: JS, scenarios: ['F'],
-    de: '        var reste = Math.max(0, ecart - pris);', vers: '        var reste = ecart;' },
-  { nom: 'le minigolf couvre un temps ou il ne tient pas (la somme des minutes)', fichier: JS, scenarios: ['F'],
-    de: '      if (!trousServeur) {', vers: '      if (true) {' },
-  { nom: 'le cadre du temps libre ne se deplie plus', fichier: JS, scenarios: ['F'],
-    de: '        if (choix) choix.hidden = !ici;', vers: '        void 0;' },
-  { nom: 'l idee des arcades ne les pose plus', fichier: JS, scenarios: ['F'],
-    de: "    if (versArcades) { libreOuvert = ''; adaptation = null; state.arcade = versArcades.dataset.libreArcades; chargerPlan(); return; }", vers: '    if (versArcades) return;' },
+    de: "(s.flexible || (s.activityId === 'arcade_time' && !state.arcade))", vers: "(s.flexible || s.activityId === 'arcade_time')" },
+  { nom: 'le conseil parle quand il n y a rien a dire', fichier: JS, scenarios: ['F'],
+    de: 'if (utile >= 30 && (!meilleur || ecart > meilleur.minutes))', vers: 'if (!meilleur || ecart > meilleur.minutes)' },
   { nom: 'la ligne de la partie 2 propose l heure de la partie 1', fichier: JS, scenarios: ['H'],
     de: '        if (kLigne > 1) propose = proposeePartie(a, kLigne, etapes);', vers: '        void proposeePartie;' },
   { nom: 'une heure touchee dans la ligne 2 devient celle de la partie 1', fichier: JS, scenarios: ['H'],
@@ -208,7 +201,7 @@ const MUTATIONS = [
   { nom: 'la proposition ne dit plus ce que le plan pose apres', fichier: JS, scenarios: ['I'],
     de: "        if (!b || !b.activityId || b.activityId === c.dabord || !/^(bowling_lane|laser_arena)$/.test(b.resourceType || '') || vus[b.activityId + '#' + (b.countIndex || 1)]) return;", vers: "        if (!b || b.activityId !== c.quoi || vus[b.activityId + '#' + (b.countIndex || 1)]) return;" },
   { nom: 'le toucher de la proposition ne pose plus les arcades', fichier: JS, scenarios: ['I'],
-    de: "    state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;", vers: '    state.pins = essai.c.pins; state.laserParts = []; adaptation = null;' },
+    de: "state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;", vers: 'state.pins = essai.c.pins; state.laserParts = []; adaptation = null;' },
   { nom: 'une autre heure complete garde la proposition d avant', fichier: JS, scenarios: ['I'],
     de: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;\n    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });", vers: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;" },
   // La Formule 4 au choix (2026-10-13).
@@ -324,7 +317,6 @@ const estListeArcades = (u) => params(u).get('arcades') === '1';
 const estPlan = (u) => !params(u).has('arrivals') && !params(u).has('arrivees') && !estListeArcades(u);
 const sansDoublons = (liste) => liste.filter((x, i) => liste.indexOf(x) === i);
 const minutesDe = (h) => { const [a, b] = String(h || '').split(':').map(Number); return a * 60 + b; };
-const heureDe = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const posees = (u) => { try { return JSON.parse(params(u).get('preferredTimes') || '{}'); } catch (error) { return {}; } };
 function ecartListes(a, b) {
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) if (a[i] !== b[i]) return `#${i} « ${a[i] || ''} » / « ${b[i] || ''} »`;
@@ -536,19 +528,12 @@ async function lireVisite(page) {
     const zone = document.querySelector('#planZone');
     return {
       etapes: zone ? [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), detail: t(li.querySelector('small')), genre: li.className })) : [],
-      attentes: zone ? [...zone.querySelectorAll('.fg-visit__gap')].map((li) => ({ texte: t(li), libre: li.classList.contains('fg-visit__gap--libre') })) : [],
     };
   }));
 }
-// Les groupes sans heure de la visite, dans l ordre : « Entre les deux » (un
-// trou ou le serveur range une activite libre tout entiere) et « Dans la
-// foulée » (apres la derniere activite a heure), chacun avec ses lignes.
-async function lireSuites(page) {
-  return lisible(await page.evaluate(() => [...document.querySelectorAll('#planZone .fg-visit__suite')].map((li) => ({
-    trou: li.classList.contains('fg-visit__suite--trou'),
-    groupe: ((li.querySelector('.fg-visit__group') || {}).textContent || ''),
-    lignes: [...li.querySelectorAll('.fg-visit__step')].map((s) => s.textContent || ''),
-  }))));
+// Le conseil du moment : la ligne ouverte, sinon le recapitulatif. Une seule place.
+async function lireConseil(page) {
+  return lisible(await page.evaluate(() => { const c = document.querySelector('#hourZone .fg-conseil:not([hidden])'); return c ? c.textContent : ''; }));
 }
 async function lirePuces(page, piste) {
   return lisible(await page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-chip`)].map((c) => ({
@@ -564,58 +549,35 @@ async function lirePourquoi(page, piste) {
   })), piste));
 }
 const pourquoiDe = (lignes, heure) => (lignes || []).find((l) => l.heures.includes(heure)) || null;
-async function lireLibres(page) {
-  return lisible(await page.evaluate(() => [...document.querySelectorAll('#planZone .fg-visit__gap--libre')].map((li) => ({
-    quoi: ((li.querySelector('.fg-libre__quoi') || {}).textContent || ''),
-    ouvert: li.classList.contains('is-open'),
-    choixCache: Boolean((li.querySelector('.fg-libre__choix') || {}).hidden),
-    actions: [...li.querySelectorAll('.fg-libre__action')].map((b) => ({ arcades: b.dataset.libreArcades || '', titre: (b.querySelector('b') || {}).textContent || '', detail: (b.querySelector('small') || {}).textContent || '' })),
-  }))));
-}
-// [J] LES HEURES QUI POSENT PROBLEME : plus de mot sous l heure (seuls
-// « choisi », « proposé » et le nom d une partie s ecrivent), un contour en
-// tirets de la teinte de la ligne qu elle pointe, une teinte par ligne dans
-// une plage. Lu au repos : les transitions de couleur figees le temps de la
-// lecture.
+// [J] LES HEURES QUI POSENT PROBLEME (Ansar, 2026-11-03 : « trop de texte ») : ce qui
+// se prend reste une heure comme une autre, l impossible est gris avec un seul mot ;
+// la raison reste aux lecteurs d ecran, dans la ligne que l heure pointe. Plus de mot
+// sous l heure (seuls « choisi », « proposé » et le nom d une partie s ecrivent), plus
+// de tirets ni de teintes.
 async function problemesEnCouleur(page, label) {
   await attendre(page, () => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 5000);
   const r = await page.evaluate(() => {
     const fautes = [];
-    const gel = document.createElement('style');
-    gel.textContent = '#hourZone .fg-chip, #hourZone .fg-why-list__quand { transition: none !important; }';
-    document.head.appendChild(gel);
     let lignes = 0;
     let deuxLignes = 0;
     let puces = 0;
     document.querySelectorAll('#hourZone .fg-track .fg-period').forEach((sec) => {
       const ou = `${sec.closest('.fg-track').dataset.activity}/${sec.dataset.period}`;
-      const items = [...sec.querySelectorAll('.fg-why-list__item')];
-      const teintes = items.map((li) => {
-        const q = li.querySelector('.fg-why-list__quand');
-        const s = q ? getComputedStyle(q) : null;
-        if (!s || s.borderTopStyle !== 'dashed' || s.borderTopColor !== s.color) fautes.push(`${ou} ligne ${li.dataset.heures} : contour ${s && s.borderTopStyle} ${s && s.borderTopColor}, texte ${s && s.color}`);
-        return s ? s.borderTopColor : '';
-      });
-      lignes += items.length;
-      if (items.length >= 2) deuxLignes += 1;
-      if (new Set(teintes).size !== teintes.length) fautes.push(`${ou} : ${items.length} lignes pour ${new Set(teintes).size} teintes`);
+      const items = sec.querySelectorAll('.fg-why-list__item').length;
+      lignes += items;
+      if (items >= 2) deuxLignes += 1;
       sec.querySelectorAll('.fg-chip').forEach((c) => {
         if (!['soft', 'shift', 'hard'].includes(c.dataset.state) || c.classList.contains('is-on') || c.classList.contains('is-proposed')) return;
         puces += 1;
         const ecrit = ((c.querySelector('small') || {}).textContent || '').trim();
         if (ecrit && !/^partie \d/.test(ecrit)) fautes.push(`${ou} ${c.dataset.time} ecrit « ${ecrit} »`);
-        const q = (document.getElementById(c.getAttribute('aria-describedby') || '') || { querySelector: () => null }).querySelector('.fg-why-list__quand');
-        if (!q) { fautes.push(`${ou} ${c.dataset.time} sans sa ligne`); return; }
-        if (c.matches(':hover') || c.classList.contains('is-asked')) return;
-        const cs = getComputedStyle(c);
-        if (cs.borderTopStyle !== 'dashed') fautes.push(`${ou} ${c.dataset.time} contour ${cs.borderTopStyle}`);
-        if (cs.borderTopColor !== getComputedStyle(q).borderTopColor) fautes.push(`${ou} ${c.dataset.time} ${cs.borderTopColor}, sa ligne ${getComputedStyle(q).borderTopColor}`);
+        if (!document.getElementById(c.getAttribute('aria-describedby') || '')) fautes.push(`${ou} ${c.dataset.time} sans sa raison pour les lecteurs d ecran`);
+        if (getComputedStyle(c).borderTopStyle === 'dashed') fautes.push(`${ou} ${c.dataset.time} en tirets`);
       });
     });
-    gel.remove();
     return { fautes, lignes, deuxLignes, puces };
   });
-  ok(r.puces > 0 && r.fautes.length === 0, `[J] ${label} : chaque heure qui pose probleme est sans mot, entouree en tirets de la teinte de sa ligne, une teinte par ligne (${r.puces} heures, ${r.lignes} lignes, ${r.deuxLignes} plages a deux lignes ou plus)`, r.fautes.slice(0, 4).join(' | '));
+  ok(r.puces > 0 && r.fautes.length === 0, `[J] ${label} : chaque heure qui pose probleme est sans mot ni tirets, sa raison reste aux lecteurs d ecran (${r.puces} heures, ${r.lignes} lignes, ${r.deuxLignes} plages a deux lignes ou plus)`, r.fautes.slice(0, 4).join(' | '));
   return r;
 }
 // Une heure touchee au doigt, si elle se prend.
@@ -727,15 +689,15 @@ async function scenarioB(browser, mock) {
     const p = await lireProgramme(page);
     const bowling = ligneDe(p, 'bowling') || {};
     const v = await lireVisite(page);
-    const arr = v.etapes.find((e) => e.titre === 'Arrivée conseillée') || {};
-    ok(arrive && bowling.heure === '10:00' && (borneArrivee(p) || {}).heure === '10:00' && arr.b === '10:00' && arr.detail === 'à l’ouverture',
-      'la Formule 1 proposee a l ouverture (bowling 10:00) : la borne dit 10:00, la visite « Arrivée conseillée 10:00, à l’ouverture »', `${resumeLignes(p)} || ${JSON.stringify(arr)}`);
+    const arr = v.etapes.find((e) => e.titre === 'Arrivée') || null;
+    ok(arrive && bowling.heure === '10:00' && (borneArrivee(p) || {}).heure === '10:00' && !arr,
+      'la Formule 1 proposee a l ouverture (bowling 10:00) : la borne dit 10:00 ; l arrivee ne differe pas de la premiere activite, le recapitulatif ne la redit pas', `${resumeLignes(p)} || ${JSON.stringify(arr)}`);
     const pris = await poser(page, 'bowling', '10:30');
     const p2 = await lireProgramme(page);
     const v2 = await lireVisite(page);
-    const arr2 = v2.etapes.find((e) => e.titre === 'Arrivée conseillée') || {};
-    ok(pris && (borneArrivee(p2) || {}).heure === '10:20' && arr2.b === '10:20' && arr2.detail === '10 min avant votre bowling',
-      'le bowling pose a 10:30 : la borne dit 10:20, « 10 min avant votre bowling »', `${resumeLignes(p2)} || ${JSON.stringify(arr2)}`);
+    const arr2 = v2.etapes.find((e) => e.titre === 'Arrivée') || {};
+    ok(pris && (borneArrivee(p2) || {}).heure === '10:20' && arr2.b === '10:20',
+      'le bowling pose a 10:30 : la borne et le recapitulatif disent 10:20', `${resumeLignes(p2)} || ${JSON.stringify(arr2)}`);
   } finally {
     ok(suivi.erreurs.length === 0, '[B] aucune erreur JavaScript', suivi.erreurs.slice(0, 3).join(' | '));
     await ctx.close();
@@ -754,9 +716,9 @@ async function scenarioC(browser, mock) {
     const p = await lireProgramme(page);
     const arc = ligneDe(p, 'arcade_time') || {};
     const bowling = ligneDe(p, 'bowling') || {};
-    ok(arrive && arc.heure === 'Facultatif' && /\bis-libre\b/.test(arc.classe) && arc.detail === '30 min · comprises · quand vous voulez' && !arc.ouverte,
-      'la Formule 1 a sa ligne des arcades : « Facultatif », « 30 min · comprises · quand vous voulez », fermee', JSON.stringify(arc));
-    ok(arc.taille > 0 && bowling.taille > 0 && arc.taille < bowling.taille, `« Facultatif » se lit en petit, plus petit qu une heure (${arc.taille} px contre ${bowling.taille} px)`);
+    ok(arrive && arc.heure === 'Quand vous voulez' && /\bis-libre\b/.test(arc.classe) && arc.detail === '30 min · comprises · quand vous voulez' && !arc.ouverte,
+      'la Formule 1 a sa ligne des arcades : « Quand vous voulez », fermee', JSON.stringify(arc));
+    ok(arc.taille > 0 && bowling.taille > 0 && arc.taille < bowling.taille, `« Quand vous voulez » se lit en petit, plus petit qu une heure (${arc.taille} px contre ${bowling.taille} px)`);
     for (const [id, heure] of [['bowling', '14:00'], ['laser_game', '16:00']]) {
       await poser(page, id, heure);
     }
@@ -812,10 +774,9 @@ async function scenarioD(browser, mock) {
     ok((borneArrivee(p) || {}).heure === '12:50' && premiere.cle === 'arcade_time' && premiere.heure === '13:00' && /\bis-choisi\b/.test(premiere.classe) && (ligneDe(p, 'bowling') || {}).heure === '13:30',
       'la borne dit 12:50, la ligne des arcades passe en tete (13:00, choisie), le bowling se propose a 13:30', resumeLignes(p));
     const v = await lireVisite(page);
-    const arr = v.etapes.find((e) => e.titre === 'Arrivée conseillée') || {};
+    const arr = v.etapes.find((e) => e.titre === 'Arrivée') || {};
     const arcades = v.etapes.find((e) => e.b === '13:00' && /arcade/i.test(e.titre)) || {};
-    ok(arr.b === '12:50' && arr.detail === '10 min avant vos arcades' && /jusqu’à 13:30/.test(arcades.detail || '') && /à votre heure/.test(arcades.detail || ''),
-      'la visite : « Arrivée conseillée 12:50, 10 min avant vos arcades », puis les arcades de 13:00 a 13:30, a votre heure', JSON.stringify({ arr, arcades }));
+    ok(arr.b === '12:50' && Boolean(arcades.b), 'la visite : l arrivee 12:50, puis les arcades a 13:00', JSON.stringify({ arr, arcades }));
     // Le bowling pose a 14:00 change les heures posees : la liste des arcades
     // se relit a leur ouverture, sans l heure choisie (elle n en depend pas).
     const bowling = await poser(page, 'bowling', '14:00');
@@ -827,7 +788,7 @@ async function scenarioD(browser, mock) {
     await poser(page, 'arcade_time', '13:00');
     const retire = dernierPlan(suivi);
     const pR = await lireProgramme(page);
-    ok(!params(retire).has('arcade') && (ligneDe(pR, 'arcade_time') || {}).heure === 'Facultatif', 'retouchee, l heure d arcade se retire : la demande repart sans elle, la ligne redit « Facultatif »', `${retire} || ${resumeLignes(pR)}`);
+    ok(!params(retire).has('arcade') && (ligneDe(pR, 'arcade_time') || {}).heure === 'Quand vous voulez', 'retouchee, l heure d arcade se retire : la demande repart sans elle, la ligne redit « Quand vous voulez »', `${retire} || ${resumeLignes(pR)}`);
     await ouvrirArcades(page);
     await poser(page, 'arcade_time', '13:00');
     const nB = suivi.blocages.length;
@@ -845,10 +806,10 @@ async function scenarioD(browser, mock) {
 }
 
 // ---------------------------------------------------------------------------
-// [E] LE DERNIER CHOIX GAGNE
+// [E] RIEN DE TOUCHE NE BOUGE TOUT SEUL (Ansar, 2026-11-04)
 // ---------------------------------------------------------------------------
 async function scenarioE(browser, mock) {
-  section('E. LE DERNIER CHOIX GAGNE');
+  section('E. RIEN DE TOUCHE NE BOUGE TOUT SEUL');
   semer(mock);
   const un = await ouvrir(browser);
   try {
@@ -856,13 +817,19 @@ async function scenarioE(browser, mock) {
     const pose = await poser(un.page, 'bowling', '14:00');
     await ouvrirArcades(un.page);
     const pris = await poser(un.page, 'arcade_time', '14:00');
+    const avant = dernierPlan(un.suivi);
+    const conseil = await lireConseil(un.page);
+    ok(arrive && pose && pris && !params(avant).has('arcade') && posees(avant).bowling === '14:00' && /^En même temps que le bowling \(14:00\)\./.test(conseil),
+      'des arcades a 14:00 sur le bowling touche : rien ne bouge, le conseil le dit, un bouton pour regler', `${conseil} || ${avant}`);
+    await un.page.click('#hourZone [data-regler]');
+    await calme(un.page);
     const demande = dernierPlan(un.suivi);
     const p = await lireProgramme(un.page);
-    ok(arrive && pose && pris && params(demande).get('arcade') === '14:00' && !posees(demande).bowling && (ligneDe(p, 'arcade_time') || {}).heure === '14:00' && (ligneDe(p, 'bowling') || {}).heure !== '14:00',
-      'des arcades a 14:00 sur le bowling pose : le bowling se libere (la demande ne le pose plus), le serveur le replace ailleurs', `${demande} || ${resumeLignes(p)}`);
+    ok(params(demande).get('arcade') === '14:00' && posees(demande).bowling !== '14:00' && (ligneDe(p, 'arcade_time') || {}).heure === '14:00' && (ligneDe(p, 'bowling') || {}).heure !== '14:00',
+      'un seul toucher regle : les arcades prennent 14:00, le bowling se recale', `${demande} || ${resumeLignes(p)}`);
     const v = await lireVisite(un.page);
     const bowling = v.etapes.find((e) => /bowling/i.test(e.titre)) || {};
-    ok(/replacé autour de vos arcades \(14:00\)/.test(bowling.detail || ''), 'la visite dit le bowling « replacé autour de vos arcades (14:00) »', JSON.stringify(bowling));
+    ok(bowling.detail === 'déplacé', 'la visite dit le bowling « déplacé »', JSON.stringify(bowling));
   } finally {
     ok(un.suivi.erreurs.length === 0, '[E] aucune erreur JavaScript (arcades sur le bowling)', un.suivi.erreurs.slice(0, 3).join(' | '));
     await un.ctx.close();
@@ -893,13 +860,17 @@ async function scenarioE(browser, mock) {
     ok(b1230.etat === 'shift' && b1300.etat === 'shift' && b1300.ok === 'true' && /^Vos arcades \(13:00\) se feront à un autre moment\.?$/.test(ligne.texte || ''),
       'arcades a 13:00 : le bowling a 12:30 et 13:00 les decale, se prend, et la ligne dit « Vos arcades (13:00) se feront à un autre moment »', JSON.stringify({ b1230, b1300, ligne }));
     const pris = await poser(deux.page, 'bowling', '13:00');
+    const conseil = await lireConseil(deux.page);
+    ok(pris && params(dernierPlan(deux.suivi)).get('arcade') === '13:00' && /^En même temps que les arcades \(13:00\)\./.test(conseil),
+      'le bowling touche a 13:00 sur les arcades : rien ne bouge, le conseil le dit, un bouton pour regler', conseil);
+    await deux.page.click('#hourZone [data-regler]');
+    await calme(deux.page);
     const demande = dernierPlan(deux.suivi);
     const p = await lireProgramme(deux.page);
-    ok(pris && posees(demande).bowling === '13:00' && !params(demande).has('arcade') && (ligneDe(p, 'arcade_time') || {}).heure === 'Facultatif',
-      'le bowling pris a 13:00 leve les arcades : la demande part sans elles, leur ligne redit « Facultatif »', `${demande} || ${resumeLignes(p)}`);
-    const v = await lireVisite(deux.page);
-    const arcades = v.etapes.find((e) => /arcades/i.test(e.titre) && !e.b) || {};
-    ok(/déplacées pour votre bowling à 13:00/.test(arcades.detail || ''), 'la visite dit les arcades « déplacées pour votre bowling à 13:00 »', JSON.stringify(arcades));
+    ok(posees(demande).bowling === '13:00' && !params(demande).has('arcade') && (ligneDe(p, 'arcade_time') || {}).heure === 'Quand vous voulez',
+      'un seul toucher regle : le bowling prend 13:00, les arcades se levent, leur ligne redit « Quand vous voulez »', `${demande} || ${resumeLignes(p)}`);
+    const voix = lisible(await deux.page.evaluate(() => document.querySelector('#fgLive').textContent));
+    ok(/déplacées pour votre bowling à 13:00/.test(voix), 'la voix dit les arcades « déplacées pour votre bowling à 13:00 »', voix);
   } finally {
     ok(deux.suivi.erreurs.length === 0, '[E] aucune erreur JavaScript (bowling sur les arcades)', deux.suivi.erreurs.slice(0, 3).join(' | '));
     await deux.ctx.close();
@@ -907,32 +878,22 @@ async function scenarioE(browser, mock) {
 }
 
 // ---------------------------------------------------------------------------
-// [F] LE TEMPS LIBRE QUI PROPOSE LES ARCADES
+// [F] LE TEMPS LIBRE SE DIT EN UN CONSEIL (Ansar, 2026-11-04 : « 45 min avant le
+// bowling : le minigolf est compris »). Une ligne, rien quand il n y a rien a dire.
 // ---------------------------------------------------------------------------
 async function scenarioF(browser, mock) {
-  section('F. LE TEMPS LIBRE QUI PROPOSE LES ARCADES');
+  section('F. LE TEMPS LIBRE SE DIT EN UN CONSEIL');
   semer(mock);
   const un = await ouvrir(browser);
   try {
     const arrive = await versHeures(un.page, mock, 'f1');
+    const sansTrou = await lireConseil(un.page);
     await poser(un.page, 'bowling', '11:00');
     await poser(un.page, 'laser_game', '12:30');
-    const libres = await lireLibres(un.page);
-    const cadre = libres[0] || {};
-    const idee = (cadre.actions || [])[0] || {};
-    ok(arrive && libres.length === 1 && /^30 min de libre/.test(cadre.quoi) && cadre.choixCache && idee.arcades === '12:00' && idee.titre === 'Y faire vos arcades' && idee.detail === 'de 12:00 à 12:30',
-      'bowling 11:00, laser 12:30 : la demi-heure libre devient un cadre en pointille, replie, qui propose « Y faire vos arcades, de 12:00 à 12:30 »', JSON.stringify(libres));
-    await un.page.click('#planZone [data-libre]');
-    await un.page.waitForTimeout(300);
-    const ouvert = (await lireLibres(un.page))[0] || {};
-    ok(ouvert.ouvert && !ouvert.choixCache, 'touche, le cadre se deplie sur place', JSON.stringify(ouvert));
-    await un.page.click('#planZone [data-libre-arcades="12:00"]');
-    await calme(un.page);
-    const demande = dernierPlan(un.suivi);
-    const p = await lireProgramme(un.page);
-    const v = await lireVisite(un.page);
-    ok(params(demande).get('arcade') === '12:00' && (ligneDe(p, 'arcade_time') || {}).heure === '12:00' && v.etapes.some((e) => e.b === '12:00' && /arcade/i.test(e.titre)) && (await lireLibres(un.page)).length === 0,
-      'l idee touchee pose les arcades a 12:00 : la demande, leur ligne et la visite le disent, le cadre disparait', `${demande} || ${resumeLignes(p)}`);
+    const conseil = await lireConseil(un.page);
+    const combien = await un.page.evaluate(() => document.querySelectorAll('#hourZone .fg-conseil:not([hidden])').length);
+    ok(arrive && sansTrou === '' && conseil === '30 min avant le laser game : les arcades sont comprises' && combien === 1,
+      'sans trou, aucun conseil ; bowling 11:00, laser 12:30 : une seule ligne, « 30 min avant le laser game : les arcades sont comprises »', JSON.stringify({ sansTrou, conseil, combien }));
   } finally {
     ok(un.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript', un.suivi.erreurs.slice(0, 3).join(' | '));
     await un.ctx.close();
@@ -947,21 +908,17 @@ async function scenarioF(browser, mock) {
     const pris = await poser(deux.page, 'arcade_time', '10:30');
     const p = await lireProgramme(deux.page);
     ok(pris && (ligneDe(p, 'arcade_time') || {}).heure === '10:30' && (borneArrivee(p) || {}).heure === '10:20', 'MONTAGE arcades a 10:30, avant le bowling de 11:00 : leur ligne le dit, l arrivee 10:20', resumeLignes(p));
-    const libres = await lireLibres(deux.page);
-    const v = await lireVisite(deux.page);
-    ok(libres.length === 0 && v.attentes.some((a) => /30 min d’attente/.test(a.texte)), 'arcades deja a 10:30 : la demi-heure libre de 12:00 reste une attente, rien a proposer', JSON.stringify({ libres, attentes: v.attentes }));
+    const conseil = await lireConseil(deux.page);
+    ok(conseil === '30 min d’attente avant le laser game', 'arcades deja a 10:30 : la demi-heure de 12:00 est une attente, rien a proposer', conseil);
   } finally {
     ok(deux.suivi.erreurs.length === 0, '[F] aucune erreur JavaScript (arcades deja posees)', deux.suivi.erreurs.slice(0, 3).join(' | '));
     await deux.ctx.close();
   }
-  // LE MINIGOLF DE LA FORMULE 2 NE COUVRE QUE LE TEMPS OU IL TIENT TOUT
-  // ENTIER (2026-10-15 ; Movsar, la veille : « FIN estimé a 17h et le mini
-  // golf se joue quand du coup ? »). Ses 45 min ne tiennent pas dans les 35
-  // entre deux parties : il se joue apres, et ces 35 min portent les 30 des
-  // arcades. Dans 1 h 05, il se joue « Entre les deux » ; les 20 min qui
-  // restent ne portent pas les arcades. Une partie dure 25 min, regles et
-  // preparation comprises.
-  for (const cas of [{ p1: '10:30', p2: '11:30', tient: false }, { p1: '10:00', p2: '11:30', tient: true }]) {
+  // UNE ACTIVITE LIBRE NE SE PROPOSE QUE SI ELLE Y TIENT TOUT ENTIERE (2026-10-15 ;
+  // Movsar, la veille : « FIN estimé a 17h et le mini golf se joue quand du coup ? »).
+  // Les 45 min du minigolf ne tiennent pas dans les 35 entre deux parties, les 30 des
+  // arcades si ; 1 h 05 portent le minigolf. Une partie dure 25 min.
+  for (const cas of [{ p1: '10:30', p2: '11:30', texte: '35 min avant le laser game : les arcades sont comprises' }, { p1: '10:00', p2: '11:30', texte: '1 h 05 avant le laser game : le minigolf est compris' }]) {
     const trois = await ouvrir(browser);
     try {
       const arrive = await versHeures(trois.page, mock, 'f2');
@@ -973,23 +930,9 @@ async function scenarioF(browser, mock) {
       await poser(trois.page, 'laser_game', cas.p2);
       const demande = dernierPlan(trois.suivi);
       const parts = JSON.parse(params(demande).get('laserGameTimes') || '[]');
-      const libres = await lireLibres(trois.page);
-      const v = await lireVisite(trois.page);
-      const suites = await lireSuites(trois.page);
-      const entre = suites.filter((s) => s.trou);
-      const foulee = suites.find((s) => !s.trou && /^Dans la foulée/.test(s.groupe)) || { lignes: [] };
-      const aLeMinigolf = (s) => s.lignes.some((l) => /Minigolf/.test(l));
-      const finP1 = heureDe(minutesDe(cas.p1) + 25);
-      const ecart = minutesDe(cas.p2) - minutesDe(finP1);
-      ok(arrive && JSON.stringify(parts) === JSON.stringify([cas.p1, cas.p2]), `MONTAGE Formule 2 : les deux parties de laser posees a ${cas.p1} et ${cas.p2}, ${ecart} min entre les deux`, demande);
-      if (!cas.tient) {
-        ok(!entre.length && aLeMinigolf(foulee), `les 45 min du minigolf ne tiennent pas dans les ${ecart} min entre les deux parties : il se joue « Dans la foulée », jamais « Entre les deux »`, JSON.stringify(suites));
-        const action = libres.length === 1 && libres[0].actions.length === 1 ? libres[0].actions[0] : {};
-        ok(action.arcades === finP1 && action.detail === `de ${finP1} à ${heureDe(minutesDe(finP1) + 30)}`, `ces ${ecart} min restent libres : le cadre y propose les 30 min d arcades, des ${finP1}`, JSON.stringify({ libres, attentes: v.attentes }));
-      } else {
-        ok(entre.length === 1 && aLeMinigolf(entre[0]) && !aLeMinigolf(foulee), `le minigolf tient dans les ${ecart} min entre les deux parties : « Entre les deux », plus « Dans la foulée »`, JSON.stringify(suites));
-        ok(libres.length === 0 && v.attentes.some((a) => a.texte === `${ecart - 45} min d’attente`), `les ${ecart - 45} min qui restent ne portent pas les 30 min d arcades : une attente, aucun cadre`, JSON.stringify({ libres, attentes: v.attentes }));
-      }
+      ok(arrive && JSON.stringify(parts) === JSON.stringify([cas.p1, cas.p2]), `MONTAGE Formule 2 : les deux parties de laser posees a ${cas.p1} et ${cas.p2}`, demande);
+      const conseil = await lireConseil(trois.page);
+      ok(conseil === cas.texte, `parties a ${cas.p1} et ${cas.p2} : « ${cas.texte} »`, conseil);
     } finally {
       ok(trois.suivi.erreurs.length === 0, `[F] Formule 2, parties a ${cas.p1} et ${cas.p2} : aucune erreur JavaScript`, trois.suivi.erreurs.slice(0, 3).join(' | '));
       await trois.ctx.close();
@@ -1401,7 +1344,7 @@ async function scenarioJ(browser, mock) {
       `chaque demande des heures de la Formule 4 porte la variante (${heures.length})`, heures.filter((u) => params(u).get('formulaChoice') !== 'arcade60').slice(0, 1).join(''));
     const p = await lireProgramme(page);
     const arc = ligneDe(p, 'arcade_time') || {};
-    ok(!p.lignes.some((l) => /^laser_game/.test(l.cle)) && Boolean(ligneDe(p, 'bowling')) && arc.heure === 'Facultatif' && /\b(1 heure|60 min)\b/.test(arc.detail || ''),
+    ok(!p.lignes.some((l) => /^laser_game/.test(l.cle)) && Boolean(ligneDe(p, 'bowling')) && arc.heure === 'Quand vous voulez' && /\b(1 heure|60 min)\b/.test(arc.detail || ''),
       'l ecran des heures : le bowling et les arcades de la variante (facultatives, une heure), aucune ligne de laser', resumeLignes(p));
     const v = await lireVisite(page);
     ok(v.etapes.length > 0 && !/laser/i.test(JSON.stringify(v)), 'la visite ne parle d aucune partie de laser', JSON.stringify(v.etapes.map((e) => e.titre)));
@@ -1694,7 +1637,7 @@ async function main() {
     console.error(`\nformules-arrivee-form-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient ; la Formule 4 se choisit avec ses arcades, de la carte au blocage ; une variante que le centre ou le jour ne jouent pas ne se propose pas, un refus du serveur repart de la carte)');
+  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, rien de touche ne bouge tout seul, le temps libre se dit en un conseil ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient ; la Formule 4 se choisit avec ses arcades, de la carte au blocage ; une variante que le centre ou le jour ne jouent pas ne se propose pas, un refus du serveur repart de la carte)');
   process.exit(0);
 }
 

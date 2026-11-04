@@ -2992,7 +2992,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-visit__step > b { grid-column: 1; grid-row: 1 / span 2; font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--fg-purple-em); }
 .fg-visit__step > span { grid-column: 2; grid-row: 1; font-size: 15px; font-weight: 650; line-height: 22px; color: #fff; }
 .fg-visit__step > small { grid-column: 2; grid-row: 2; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
-.fg-visit__step--onsite > b { font-size: 16px; white-space: nowrap; color: #bdbbc2; }
+.fg-visit__step--onsite > b { font-size: 15px; letter-spacing: 0.005em; white-space: nowrap; color: #bdbbc2; }
 .fg-visit__step--aussi > b { font-family: var(--fg-body); font-size: 12px; font-weight: 600; line-height: 22px; letter-spacing: 0; color: var(--fg-teal-ink); }
 .fg-visit__step--aussi > span::first-letter { text-transform: uppercase; }
 .fg-visit__step--hors > span { color: var(--fg-muted); text-decoration: line-through; }

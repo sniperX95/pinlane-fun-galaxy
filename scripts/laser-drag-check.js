@@ -437,8 +437,11 @@ async function main() {
         const afterC = await cadreLaser();
         const movedC = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return w.length ? w[0].start : null; });
         // Descendu de plus que la tolerance avant le lacher, sinon un retour en
-        // haut passerait inapercu.
-        ok(beforeC !== null && beforeC > 20 && afterC !== null && Math.abs(afterC - beforeC) <= 20, `planning immobile pendant le drop (${beforeC} -> ${afterC}, course ${montageC.course})`);
+        // haut passerait inapercu. La file « À placer » allonge le cadre pendant le geste :
+        // au lacher il raccourcit, et un defilement au bout de sa course y reste, recale
+        // par le navigateur. Ce n est pas un retour en haut.
+        const auBoutC = afterC !== null && afterC >= montageC.course - 1 && beforeC >= afterC;
+        ok(beforeC !== null && beforeC > 20 && afterC !== null && (Math.abs(afterC - beforeC) <= 20 || auBoutC), `planning immobile pendant le drop (${beforeC} -> ${afterC}, course ${montageC.course})`);
         ok(posee && movedC !== null && Math.abs(Number(movedC) - Number(tC)) <= 0.01, `la partie s'est bien déplacée (${tC}, lu ${movedC})`);
       }
     }

@@ -5,11 +5,20 @@
 //   2. un clic sur son prix ouvre la planche, le champ Prix a le focus ;
 //   3. taper 28 : la carte du formulaire client et le mail disent 280 EUR pour
 //      10 personnes (prix x groupe, la regle de getBasePrice), la ligne garde
-//      26 EUR et dit « modifié » tant que rien n est publie ;
+//      26 EUR et dit « à publier » tant que rien n est publie ;
 //   4. vider le prix barre puis Publier : UN POST saveClientFormuleOverride,
 //      signe du centre AFFICHE (session sur gembloux), patch priceValue 28 et
 //      priceOld 0 (null retomberait sur le prix barre du catalogue) ;
-//   5. apres relecture du catalogue, la ligne dit 28 EUR.
+//   5. apres relecture du catalogue, la ligne dit 28 EUR ;
+//   6. ce qui se voit VRAIMENT (tout ceci etait casse en prod le 2026-11-03,
+//      sans qu un seul test ne rougisse, faute de regarder l ecran) : sur une
+//      page plus longue que la fenetre, Publier reste a l ecran et on peut le
+//      toucher ; « Voir ce qui change » ouvre un tiroir visible ; le point qui
+//      court sur le fil et l eclat ont une taille ; l ancienne valeur roule
+//      par-dessus la nouvelle, pas a cote ; la valeur changee prend l accent ;
+//      la planche tient dans sa table et le champ prix garde sa taille ;
+//   7. chaque endroit mene a sa vraie page : le lien du planning l ouvre, et un
+//      role qui n a pas le planning n a pas le lien.
 // Sortie 0 quand tout est vert, 1 sinon. Lancement : node scripts/tarifs-effets-check.js
 
 const fs = require('fs');
@@ -45,7 +54,7 @@ function serveStatic() {
 async function installMock(page, permsVoulues) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, permsVoulues }) => {
-    const perms = permsVoulues || ['dashboard.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
+    const perms = permsVoulues || ['dashboard.view', 'planning.view', 'emails.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
     window.__tfRange = 0;
     const qaSession = {
       token: 'qa', cookieBacked: false, centerId: 'gembloux', expiresAt,
@@ -145,6 +154,18 @@ async function main() {
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('[data-tf-champ="prix"]'), null, { timeout: 5000 }).catch(() => {});
     ok(await page.evaluate(() => Boolean(document.activeElement && document.activeElement.matches('[data-tf-champ="prix"]'))), 'clic-prix-donne-le-focus');
 
+    // Le mouvement passe en 1 s : on note chaque piece au moment ou elle arrive.
+    await page.evaluate(() => {
+      window.__tfVus = { goutte: [], eclat: [], vieux: [] };
+      const noter = (el) => {
+        if (!(el instanceof Element)) return;
+        const cle = el.classList.contains('tf-goutte') ? 'goutte' : el.classList.contains('tf-eclat') ? 'eclat' : el.classList.contains('tf-roule-vieux') ? 'vieux' : '';
+        if (!cle) return;
+        const r = el.getBoundingClientRect();
+        window.__tfVus[cle].push({ l: Math.round(r.width), h: Math.round(r.height), pos: getComputedStyle(el).position });
+      };
+      new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(noter))).observe(document.querySelector('#staffPricingPage'), { childList: true, subtree: true });
+    });
     await page.keyboard.press('Control+A');
     await page.keyboard.type('28', { delay: 60 });
     await page.waitForTimeout(1200);
@@ -155,7 +176,66 @@ async function main() {
     ok(/280\s*€/.test(lieux.formulaire) && /28\s*€/.test(lieux.formulaire), 'formulaire-suit-le-brouillon', lieux.formulaire.slice(0, 160));
     ok(/280\s*€/.test(lieux.mails), 'mail-suit-le-brouillon', lieux.mails.slice(0, 160));
     const l1 = await ligne('f1');
-    ok(/^26\b/.test(l1.montant) && /modifi/i.test(l1.texte), 'ligne-garde-le-publie', `${l1.montant} | ${l1.texte.slice(0, 80)}`);
+    ok(/^26\b/.test(l1.montant) && /à publier/.test(l1.texte), 'ligne-garde-le-publie', `${l1.montant} | ${l1.texte.slice(0, 80)}`);
+
+    const vus = await page.evaluate(() => window.__tfVus);
+    ok(vus.goutte.length > 0 && vus.goutte.every((g) => g.l >= 6 && g.h >= 6 && g.pos === 'absolute'), 'le-point-sur-le-fil-a-une-taille', JSON.stringify(vus.goutte.slice(0, 3)));
+    ok(vus.eclat.length > 0 && vus.eclat.every((g) => g.l > 40 && g.pos === 'absolute'), 'l-eclat-entoure-l-endroit', JSON.stringify(vus.eclat.slice(0, 3)));
+    ok(vus.vieux.length > 0 && vus.vieux.every((g) => g.pos === 'absolute'), 'l-ancienne-valeur-roule-par-dessus', JSON.stringify(vus.vieux.slice(0, 3)));
+    const rendu = await page.evaluate(() => {
+      const planche = document.querySelector('#staffPricingPage [data-tf-planche]');
+      const couleur = (k) => { const el = planche.querySelector(`[data-tf-lieu="formulaire"] [data-tf-val="${k}"]`); return el ? getComputedStyle(el).color : ''; };
+      const table = planche.closest('.tf-table');
+      const fil = planche.querySelector('.tf-fil');
+      return {
+        prix: couleur('prix'), nom: couleur('nom'),
+        trait: fil ? getComputedStyle(fil).strokeDasharray : '',
+        deborde: table.scrollWidth - table.clientWidth,
+        champ: planche.querySelector('input[data-tf-champ="prix"]').offsetWidth,
+      };
+    });
+    ok(Boolean(rendu.prix) && rendu.prix !== rendu.nom, 'la-valeur-changee-prend-l-accent', `${rendu.prix} / nom ${rendu.nom}`);
+    ok(Boolean(rendu.trait) && rendu.trait !== 'none', 'le-fil-peut-se-dessiner', rendu.trait);
+    ok(rendu.deborde <= 1, 'la-planche-tient-dans-sa-table', String(rendu.deborde));
+    ok(rendu.champ <= 100, 'le-champ-prix-garde-sa-taille', String(rendu.champ));
+
+    // Une fenetre plus courte que la page : c est la vraie vie, 14 formules et
+    // une planche ouverte. Publier doit rester sous les yeux.
+    await page.setViewportSize({ width: 1440, height: 620 });
+    await page.waitForTimeout(400);
+    const vue = await page.evaluate(() => {
+      const b = document.querySelector('#staffPricingPage [data-tf-barre] [data-tf-action="publier"]');
+      const finPage = document.querySelector('#staffPricingPage .tf-page').getBoundingClientRect().bottom;
+      if (!b) return { absent: true, finPage, fenetre: innerHeight };
+      const r = b.getBoundingClientRect();
+      const dessus = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { haut: Math.round(r.top), bas: Math.round(r.bottom), fenetre: innerHeight, touche: Boolean(dessus && b.contains(dessus)), finPage: Math.round(finPage) };
+    });
+    ok(vue.finPage > vue.fenetre + 40, 'montage-la-page-depasse-la-fenetre', JSON.stringify(vue));
+    ok(!vue.absent && vue.haut >= 0 && vue.bas <= vue.fenetre && vue.touche, 'publier-reste-a-l-ecran', JSON.stringify(vue));
+
+    await page.click('#staffPricingPage [data-tf-action="voir"]');
+    await page.waitForTimeout(500);
+    const tiroir = await page.evaluate(() => {
+      const el = document.querySelector('#staffPricingPage [data-tf-tiroir]');
+      const r = el.getBoundingClientRect();
+      const dessus = document.elementFromPoint(r.left + r.width / 2, 200);
+      return {
+        gauche: Math.round(r.left), droite: Math.round(r.right), large: Math.round(r.width), fenetre: innerWidth,
+        visible: getComputedStyle(el).visibility, cache: el.hidden, touche: Boolean(dessus && el.contains(dessus)),
+        bloc: Boolean(el.querySelector('[data-tf-changement="f1|prix"]')), publier: Boolean(el.querySelector('[data-tf-action="publier"]')),
+      };
+    });
+    ok(tiroir.large > 300 && tiroir.droite <= tiroir.fenetre && tiroir.gauche < tiroir.fenetre && tiroir.visible === 'visible' && !tiroir.cache && tiroir.touche && tiroir.bloc && tiroir.publier, 'voir-ce-qui-change-ouvre-un-tiroir-visible', JSON.stringify(tiroir));
+    await page.click('#staffPricingPage [data-tf-tiroir] .tf-t-fermer');
+    await page.waitForTimeout(200);
+    const referme = await page.evaluate(() => ({
+      cache: document.querySelector('#staffPricingPage [data-tf-tiroir]').hidden,
+      barre: Boolean(document.querySelector('#staffPricingPage [data-tf-barre]')),
+    }));
+    ok(referme.cache && referme.barre, 'le-tiroir-se-referme-et-rend-la-barre', JSON.stringify(referme));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.waitForTimeout(200);
 
     await page.click('#staffPricingPage [data-tf-champ="ancien"]', { clickCount: 3 });
     await page.keyboard.press('Backspace');
@@ -181,6 +261,15 @@ async function main() {
     ok(/^28\b/.test(l2.montant), 'ligne-relue-apres-publication', l2.montant);
     ok(erreurs.length === 0, 'aucune-erreur-de-page', erreurs.join(' | '));
 
+    // Ce qui se lit mene a son geste.
+    if (!(await page.$('#staffPricingPage [data-tf-planche="f1"]'))) await page.click('#staffPricingPage [data-tf-ligne="f1"] .tf-ligne-btn');
+    await page.waitForSelector('#staffPricingPage [data-tf-lieu-cible="planning"]', { state: 'visible', timeout: 5000 }).catch(() => {});
+    const liens = await page.evaluate(() => [...document.querySelectorAll('#staffPricingPage [data-tf-lieu-cible]')].map((b) => b.getAttribute('data-tf-lieu-cible')));
+    ok(['formulaire', 'mails', 'comptoir', 'planning'].every((l) => liens.includes(l)), 'chaque-endroit-a-son-lien', liens.join(','));
+    await page.click('#staffPricingPage [data-tf-lieu-cible="planning"]');
+    await page.waitForFunction(() => state.staffMenuPage === 'planning', null, { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(() => state.staffMenuPage === 'planning'), 'le-lien-ouvre-le-planning', await page.evaluate(() => state.staffMenuPage));
+
     // Un role Tarifs SANS acces aux reservations (le Manager reduit) : la page
     // ne demande jamais l historique a /api/admin-range et dit pourquoi elle
     // n a pas de chiffre, au lieu d afficher des zeros.
@@ -196,6 +285,9 @@ async function main() {
     ok(h.appels === 0, 'sans-historique-aucun-appel-admin-range', String(h.appels));
     ok(/non accessible/i.test(h.resume) && !/\d+\s*réservation/.test(h.resume), 'sans-historique-le-resume-le-dit', h.resume);
     ok(!h.ajout, 'sans-reglages-pas-de-creation-de-formule', String(h.ajout));
+    await sansHisto.click('#staffPricingPage [data-tf-ligne="f1"] .tf-ligne-btn');
+    await sansHisto.waitForSelector('#staffPricingPage [data-tf-planche="f1"]', { state: 'visible', timeout: 5000 });
+    ok(!(await sansHisto.$('#staffPricingPage [data-tf-lieu-cible="planning"]')), 'sans-le-planning-pas-de-lien-vers-lui');
     await sansHisto.close();
   } finally {
     await browser.close();

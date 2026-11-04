@@ -11774,7 +11774,7 @@
         }).join('')}</div>
         ${onglet === 'surmesure' ? '' : tfGroupeHtml()}
       </div>
-      <p class="tf-resume" data-tf-resume>${esc(tfResumeTexte())}</p>
+      ${onglet === 'surmesure' ? '' : `<p class="tf-resume" data-tf-resume>${esc(tfResumeTexte())}</p>`}
       <div class="tf-zone" id="tfZone" role="tabpanel" aria-labelledby="tfOnglet-${onglet}">${zone}</div>
       <div class="tf-barre-place" data-tf-barre-place>${tfBarreHtml()}</div>
     </div>
@@ -11845,7 +11845,7 @@
     const id = esc(f.id);
     return `<div class="tf-ligne${ouvert ? ' is-ouverte' : ''}${p.vente ? '' : ' is-coupee'}${f.modifie ? ' is-modifiee' : ''}" data-tf-ligne="${id}" data-cev-formula="${id}">
       <button type="button" class="tf-ligne-btn" data-tf-ouvrir="${id}" data-pl-focus="tf:ouvrir:${id}" aria-expanded="${ouvert}" aria-controls="tfPlanche-${id}">
-        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${f.modifie ? '' : ' hidden'}></i><b>${esc(p.nom)}</b>${f.best ? '<span class="tf-bon">Bon plan</span>' : ''}<span class="tf-modifie" data-tf-modifie${f.modifie ? '' : ' hidden'}>modifié</span>${usage ? `<small class="tf-usage">${esc(usage)}</small>` : ''}</span>
+        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${f.modifie ? '' : ' hidden'}></i><b>${esc(p.nom)}</b>${f.best ? '<span class="tf-bon">Bon plan</span>' : ''}<span class="tf-modifie" data-tf-modifie${f.modifie ? '' : ' hidden'}>à publier</span>${usage ? `<small class="tf-usage">${esc(usage)}</small>` : ''}</span>
         <span class="tf-c-contenu">${esc(f.desc.join(' · '))}</span>
         <span class="tf-c-regles">${esc(f.regles.join(', ') || 'Sans condition')}</span>
         <span class="tf-c-valid${p.validation === 'recommended' ? '' : ' is-equipe'}">${esc(tfValidation(p.validation).liste)}</span>
@@ -11981,11 +11981,24 @@
     const mots = champs.filter((c) => tfLieuxDe(c, f).includes(lieu)).map((c) => TF_MOTS_CHAMP[c]);
     return mots.length ? `Change avec ${tfEt(mots)}.` : 'Rien de ce que vous réglez ici.';
   }
+  // Ce qui se lit mene a son geste : chaque endroit ouvre la vraie page, quand
+  // le role y a acces. Le brouillon reste, il est garde par centre.
+  const TF_LIEUX_GESTES = {
+    formulaire: { mot: 'Ouvrir le formulaire', permis: () => Boolean(tfCentre()) && tfCentre() !== 'all', ouvrir: () => window.open(`/reserver/${encodeURIComponent(tfCentre())}`, '_blank', 'noopener') },
+    mails: { mot: 'Ouvrir les mails', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('emails'), ouvrir: () => openStaffMenuPage('emails') },
+    comptoir: { mot: 'Ouvrir Réserver', permis: () => typeof openQuickBook === 'function' && typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openQuickBook({ date: state.currentDate }) },
+    planning: { mot: 'Ouvrir le planning', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openStaffMenuPage('planning') },
+  };
+  function tfGesteLieuHtml(lieu) {
+    const geste = TF_LIEUX_GESTES[lieu];
+    if (!geste || !geste.permis()) return '';
+    return `<button type="button" class="tf-lien" data-tf-action="ouvrir-lieu" data-tf-lieu-cible="${lieu}" data-pl-focus="tf:ouvrir-lieu:${lieu}">${esc(geste.mot)}</button>`;
+  }
   function tfLieuHtml(lieu, mini, repos) {
     const nom = lieu === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[lieu];
     return `<div class="tf-lieu" data-tf-lieu="${lieu}" data-tf-etat="repos" role="group" aria-labelledby="tfLieuNom-${lieu}">
       <div class="tf-mini">${mini}</div>
-      <div class="tf-lieu-dit"><span class="tf-lieu-nom" id="tfLieuNom-${lieu}">${esc(nom)}</span><p class="tf-lieu-phrase" data-tf-phrase data-tf-repos="${esc(repos)}">${esc(repos)}</p></div>
+      <div class="tf-lieu-dit"><span class="tf-lieu-nom" id="tfLieuNom-${lieu}">${esc(nom)}</span><p class="tf-lieu-phrase" data-tf-phrase data-tf-repos="${esc(repos)}">${esc(repos)}</p>${tfGesteLieuHtml(lieu)}</div>
     </div>`;
   }
   // Les endroits en petit, avec les vrais mots de chacun (formulaire client,
@@ -11997,8 +12010,8 @@
         <div class="tf-m-tete">${tfV('nom', vals, 'b', 'tf-m-nom')}${f.best ? '<span class="tf-m-bon">Bon plan</span>' : ''}</div>
         <div class="tf-m-prix">${tfV('prix', vals, 'b')}${tfV('unite', vals, 'span', 'tf-m-unite')}${tfV('ancien', vals, 's')}${tfV('remise', vals, 'span', 'tf-m-remise')}</div>
         ${tfV('duree', vals, 'p', 'tf-m-duree')}
-        ${f.desc.length ? `<ul class="tf-m-liste">${f.desc.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
-        ${f.regles.length ? `<p class="tf-m-regles">${f.regles.map((r) => `<span>${esc(r)}</span>`).join('')}</p>` : ''}
+        ${f.desc.length ? `<ul class="tf-m-liste" data-tf-lie="structure">${f.desc.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
+        ${f.regles.length ? `<p class="tf-m-regles" data-tf-lie="structure">${f.regles.map((r) => `<span>${esc(r)}</span>`).join('')}</p>` : ''}
         <p class="tf-m-bande"><span ${tfSi('bandeTotale', vals)}>${tfV('bandeAvant', vals)}${tfV('bandeTotal', vals, 'b')} ${tfV('bandePour', vals)}</span><span ${tfSinon('bandeTotale', vals)} data-tf-val="bref">${esc(vals.bref)}</span></p>
         ${f.suspendue ? '<p class="tf-m-note">Cette offre est momentanément suspendue.</p>' : ''}
         <p class="tf-m-voile" ${tfSi('retiree', vals)}>Retirée du formulaire de ${esc(tfNomCentre())}</p>
@@ -12073,6 +12086,12 @@
       </div>
     </section>`).join('');
   }
+  // Le montant fort, l unite en petit : « / table et par heure » passe a la
+  // ligne sans jamais couper le prix.
+  function tfPrixLigneHtml(prix) {
+    const i = prix.indexOf(' / ');
+    return i < 0 ? `<b>${esc(prix)}</b>` : `<b>${esc(prix.slice(0, i))}</b> <small>${esc(prix.slice(i + 1))}</small>`;
+  }
   function tfLigneActiviteHtml(a) {
     const ouvert = tarifs.ouvert.activites === a.id;
     const editable = a.simple && cevCanManage();
@@ -12087,19 +12106,20 @@
     const usage = a.id === 'bowling' ? tfUsage((d.durationOptions || []).map((o) => `bowling-${Number(o.value)}`))
       : a.id === 'laser_game' ? tfUsage((d.laserOptions || []).map((o) => `laser-${o.games}`)) : '';
     const savoir = [usage, a.note, a.ages, a.minPax > 1 ? `dès ${a.minPax} joueurs` : ''].filter(Boolean).join(' · ');
-    const qui = a.grille ? 'Pinlane, pour tous les centres' : a.arcades ? `Établissement, pour ${tfNomCentre()}` : a.seule ? 'Votre entreprise (droit Réglages)' : 'Pas de prix seul';
+    const qui = a.grille ? 'Pinlane, pour tous les centres' : a.arcades ? `Établissement, pour ${tfNomCentre()}` : a.seule ? 'Votre entreprise' : 'Pas de prix seul';
     const prix = a.seule ? tfPrixCarte(a, a.publie) : 'Dans vos formules';
+    const prixHtml = a.seule ? tfPrixLigneHtml(prix) : `<small>${esc(prix)}</small>`;
     const id = esc(a.id);
     return `<div class="tf-ligne tf-ligne-act${ouvert ? ' is-ouverte' : ''}${a.modifie ? ' is-modifiee' : ''}" data-tf-act="${id}">
       <button type="button" class="tf-ligne-btn" data-tf-ouvrir-act="${id}" data-pl-focus="tf:ouvrir-act:${id}" aria-expanded="${ouvert}" aria-controls="tfPlanche-${id}">
-        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${a.modifie ? '' : ' hidden'}></i><b>${esc(a.nom)}</b><span class="tf-modifie" data-tf-modifie${a.modifie ? '' : ' hidden'}>modifié</span></span>
+        <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${a.modifie ? '' : ' hidden'}></i><b>${esc(a.nom)}</b><span class="tf-modifie" data-tf-modifie${a.modifie ? '' : ' hidden'}>à publier</span></span>
         <span class="tf-c-contenu">${esc(detail)}</span>
         <span class="tf-c-regles">${esc(savoir)}</span>
         <span class="tf-c-valid">${esc(qui)}</span>
       </button>
       ${editable
-        ? `<button type="button" class="tf-c-prix" data-tf-prix-act="${id}" data-pl-focus="tf:prixact:${id}" aria-label="${esc(`Prix de ${a.nom} : ${prix}, le changer`)}"><span class="tf-montant" data-tf-montant>${esc(prix)}</span></button>`
-        : `<span class="tf-c-prix is-lu"><span class="tf-montant" data-tf-montant>${esc(prix)}</span></span>`}
+        ? `<button type="button" class="tf-c-prix" data-tf-prix-act="${id}" data-pl-focus="tf:prixact:${id}" aria-label="${esc(`Prix de ${a.nom} : ${prix}, le changer`)}"><span class="tf-montant" data-tf-montant>${prixHtml}</span></button>`
+        : `<span class="tf-c-prix is-lu"><span class="tf-montant" data-tf-montant>${prixHtml}</span></span>`}
       <span class="tf-c-chev" data-tf-ouvrir-act="${id}" aria-hidden="true">${TF_ICO.chevron}</span>
     </div>${ouvert ? tfPlancheActiviteHtml(a) : ''}`;
   }
@@ -12210,6 +12230,8 @@
     }
     place.dataset.tfSignature = signature;
     tfAvecFocus(() => { place.innerHTML = tfBarreHtml(); });
+    const neuve = barre ? null : place.querySelector('[data-tf-barre]');
+    if (neuve && neuve.animate && !tfReduit()) neuve.animate([{ transform: 'translateY(14px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 240, easing: tfEasing() });
   }
 
   function tfChangements() {
@@ -12327,6 +12349,8 @@
     tarifs.tiroir = true;
     tfMajTiroir();
     tfMajBarre();
+    const tiroir = document.querySelector('#staffPricingPage [data-tf-tiroir]');
+    if (tiroir && tiroir.animate && !tfReduit()) tiroir.animate([{ transform: 'translateX(100%)' }, { transform: 'none' }], { duration: 260, easing: tfEasing() });
     const fermer = document.querySelector('#staffPricingPage [data-tf-tiroir] .tf-t-fermer');
     if (fermer) fermer.focus({ preventScroll: true });
   }
@@ -12445,6 +12469,17 @@
       montrer(g.querySelector(`[data-tf-fil-port="${t.lieu}"]`), Math.max(0, duree - 40));
     });
   }
+  // LA VALEUR VISEE : dans chaque endroit, ce que le reglage en main change
+  // vraiment prend la couleur d accent (B-fils-1-prix.png). Le reste du mini
+  // ne bouge pas : on voit d un coup quel chiffre est concerne.
+  const TF_VISE = {
+    prix: ['prix', 'remise', 'bandeTotal', 'finMontant', 'mailMontant', 'ticketTotal', 'des', 'total', 'tuile'],
+    ancien: ['ancien', 'remise'],
+    nom: ['nom', 'ticketNom', 'court'],
+    vente: ['plage'],
+    validation: ['finTitre', 'finTexte', 'mailObjet', 'dossier', 'badge'],
+    structure: ['duree'],
+  };
   // L ETAT DES ENDROITS pour le champ en main : « concerne » (bord accent) ou
   // « pas-concerne » (attenue, avec sa legende). Ce sont des informations,
   // pas du mouvement : elles restent avec prefers-reduced-motion.
@@ -12458,6 +12493,9 @@
     const svg = planche.querySelector('svg[data-tf-fils]');
     if (champ !== tarifs.trace || (champ && svg && !svg.querySelector('.tf-trace'))) tfTracer(champ, anime);
     planche.querySelectorAll('[data-tf-r]').forEach((row) => row.classList.toggle('is-actif', Boolean(champ) && row.getAttribute('data-tf-r') === champ));
+    const vises = (champ && TF_VISE[champ]) || [];
+    planche.querySelectorAll('[data-tf-val]').forEach((el) => el.classList.toggle('is-vise', vises.includes(el.getAttribute('data-tf-val'))));
+    planche.querySelectorAll('[data-tf-lie]').forEach((el) => el.classList.toggle('is-vise', el.getAttribute('data-tf-lie') === champ));
     planche.querySelectorAll('[data-tf-lieu]').forEach((el) => {
       const lieu = el.getAttribute('data-tf-lieu');
       const touche = lieux.includes(lieu);
@@ -12805,6 +12843,8 @@
       const decalage = apres.getBoundingClientRect().top - haut;
       if (decalage) tfDefileur(apres).scrollTop += decalage;
     }
+    const planche = tarifs.ouvert[cle] === id ? tfPlanche() : null;
+    if (planche && planche.animate && !tfReduit()) planche.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: tfEasing() });
     if (prix && tarifs.ouvert[cle] === id) {
       const champ = document.querySelector('#staffPricingPage [data-tf-planche] input[data-tf-champ="prix"]');
       if (champ) {
@@ -12885,6 +12925,7 @@
     if (action === 'annuler-changement') { tfAnnulerChangement(el.getAttribute('data-tf-type'), el.getAttribute('data-tf-id'), el.getAttribute('data-tf-cible')); return; }
     if (action === 'publier') { tfPublier(); return; }
     if (action === 'catalogue') { tfRevenirAuCatalogue(el.getAttribute('data-tf-id')); return; }
+    if (action === 'ouvrir-lieu') { const geste = TF_LIEUX_GESTES[el.getAttribute('data-tf-lieu-cible')]; if (geste && geste.permis()) geste.ouvrir(); return; }
     if (action === 'etablissement') tfVersEtablissement();
   }
   function tfSurSaisie(e) {

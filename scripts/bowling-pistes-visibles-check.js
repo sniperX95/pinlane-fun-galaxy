@@ -7,7 +7,10 @@
 //   [A] la carte du bowling et l ecran des heures disent les pistes et le
 //       prix (« 3 pistes × 39 € = 117 € »), pour 1, 6, 7, 14 et 24 joueurs ;
 //       le nombre de pistes est celui que le serveur facture
-//       (getBilledLaneCount) et le total est celui du recapitulatif.
+//       (getBilledLaneCount). Le recapitulatif sous les heures ne detaille plus
+//       le prix par activite (Ansar, 2026-11-03 : « trop de texte ») : ce total
+//       est la ligne du bowling dans la reponse du serveur, et le montant affiche
+//       est la somme de ses lignes.
 //   [B] sur telephone, plus de legende des heures (le programme pas a pas se
 //       lit seul, Movsar 2026-10-07 : « pas bcp de texte ») et le bloc du
 //       laser tient en peu de texte.
@@ -39,6 +42,8 @@ async function main() {
       const page = await browser.newPage({ viewport: { width: largeur, height: 900 } });
       const erreurs = [];
       page.on('pageerror', (e) => erreurs.push(String((e && e.message) || e)));
+      let reponse = {};
+      page.on('response', async (r) => { if (r.url().includes('/api/public-availability') && r.url().includes('type=visite')) { try { reponse = await r.json(); } catch (error) { /* reponse sans corps */ } } });
       await page.goto(BASE + '/fungalaxy/libramont');
       await page.click('#dayBtn');
       for (let i = 0; i < 4; i += 1) {
@@ -62,11 +67,10 @@ async function main() {
       if (await ligneLaser.count()) { await ligneLaser.click(); await page.waitForTimeout(700); }
       const heures = await page.evaluate(() => {
         const t = document.querySelector('.fg-track[data-activity="bowling"]');
-        const lignes = Array.from(document.querySelectorAll('.fg-visit__prices *')).map((n) => n.textContent.replace(/\s+/g, ' ').trim());
         return {
           detail: (t.querySelector('.fg-track__detail') || {}).textContent || '',
           note: ((t.querySelector('.fg-track__lanes') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
-          prixBowling: lignes.filter((l) => /^Bowling/.test(l)).join(' | '),
+          montant: String((document.querySelector('#planZone .fg-visit__price') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
           legende: String((document.querySelector('.fg-legend') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
           programme: document.querySelectorAll('#hourZone .fg-etape[data-cle]').length,
           laser: String((document.querySelector('.fg-track[data-activity="laser_game"] .fg-track__share') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
@@ -83,7 +87,11 @@ async function main() {
         ok(heures.detail.endsWith(` · ${pistes} pistes`), `[A] ${pax} joueurs, en-tete des heures : ${pistes} pistes`, heures.detail);
         ok(heures.note.indexOf(`${parPiste} joueurs par piste : ${pax} joueurs = ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0,
           `[A] ${pax} joueurs, ecran des heures : le calcul du prix des pistes`, heures.note);
-        ok(heures.prixBowling.indexOf(total) >= 0, `[A] ${pax} joueurs, le recapitulatif facture le meme total (${total})`, heures.prixBowling);
+        const lignesServeur = ((reponse.program || {}).items || []).map((it) => ({ id: it.activityId, prix: Number(it.price) }));
+        const ligneBowling = lignesServeur.find((l) => l.id === 'bowling') || {};
+        const somme = lignesServeur.reduce((s, l) => s + l.prix, 0);
+        ok(ligneBowling.prix === prixPiste * pistes, `[A] ${pax} joueurs, le serveur facture le meme total pour le bowling (${total})`, JSON.stringify(lignesServeur));
+        ok(lignesServeur.length === 2 && somme > ligneBowling.prix && heures.montant === euros(somme), `[A] ${pax} joueurs, le recapitulatif affiche la somme de ce que le serveur facture, bowling compris`, `${heures.montant} / ${JSON.stringify(lignesServeur)}`);
       }
       if (largeur < 680 && pax >= 2) {
         ok(heures.legende === '' && heures.programme > 0, `[B] ${pax} joueur(s), telephone : plus de legende, le programme pas a pas se lit seul`, JSON.stringify({ legende: heures.legende, lignes: heures.programme }));

@@ -92,6 +92,38 @@ function gestesVitrine(body) {
   }
   return lignes.length ? { centerId, visite, lignes } : null;
 }
+// UNE ERREUR CHEZ LE CLIENT SE SAIT (2026-11-05). Le formulaire public ne remontait rien :
+// un plantage au milieu du parcours ne se voyait que si le client appelait. Meme table et
+// memes gardes que la console (lib/client-errors : plafonds, expurgation, 20 lignes par
+// heure et par centre). Le message Telegram ne recopie rien de ce que le navigateur envoie.
+async function handleErreurFormulaire(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'erreur-formulaire', limit: 10, windowMs: 600_000 })) return;
+  const centre = String(body.centerId || '').trim().toLowerCase();
+  try {
+    getCenter(centre);
+  } catch (error) {
+    sendJson(res, 202, { ok: true });
+    return;
+  }
+  const { recordClientError } = require('../lib/client-errors');
+  const inscrit = await recordClientError({
+    centerId: centre,
+    page: `formulaire:${String(body.scene || '').slice(0, 30)}`,
+    message: body.message,
+    source: body.source,
+    lineno: body.lineno,
+    colno: body.colno,
+    stack: body.stack,
+    memberId: `public:${centre}`,
+    userAgent: req.headers['user-agent'],
+  });
+  if (inscrit && !inscrit.dropped) {
+    const { alerter } = require('../lib/garde-alertes');
+    await alerter(`formulaire:${centre}`, `URGENT Pinlane\nLe formulaire de ${centre} a planté chez un client. Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+  }
+  sendJson(res, 202, { ok: true });
+}
+
 async function handleVitrine(req, res, body) {
   if (enforceRateLimit(req, res, { scope: 'vitrine', limit: 120, windowMs: 600_000 })) return;
   const envoi = gestesVitrine(body);
@@ -639,6 +671,10 @@ module.exports = async (req, res) => {
       await handleVitrine(req, res, body);
       return;
     }
+    if (body?.kind === 'erreur-formulaire' && url.pathname.endsWith('/public-booking-meta')) {
+      await handleErreurFormulaire(req, res, body);
+      return;
+    }
     const isCustomRequest = body?.kind === 'custom-request' || url.pathname.endsWith('/custom-request');
     if (isCustomRequest) {
       await handleCustomRequest(req, res, body || {});
@@ -673,6 +709,20 @@ module.exports = async (req, res) => {
         try {
           sante.derniereSauvegarde = await require('../lib/sauvegarde').derniereSauvegardeReussie(getPool());
         } catch (error) { /* champ absent : la sonde dit qu elle ne lit plus la date */ }
+        const garde = require('../lib/tour-controle');
+        try {
+          sante.derniereGarde = await garde.derniereGardeReussie(getPool());
+        } catch (error) { /* champ absent : la sonde dit qu elle ne lit plus la date */ }
+        // La sonde seule fait l essai d ecriture et laisse sa trace : un visiteur ne coute
+        // qu un select. Rien d autre que ce booleen ne sort.
+        if (/^pinlane-sonde\//.test(String(req.headers['user-agent'] || ''))) {
+          try {
+            sante.ecriture = await garde.essaiEcriture(getPool());
+            if (sante.ecriture) await garde.noterPassageSonde(getPool());
+          } catch (error) {
+            sante.ecriture = false;
+          }
+        }
       }
       sendJson(res, db ? 200 : 503, sante);
       return;

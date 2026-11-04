@@ -25,7 +25,44 @@ const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
 const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
+const { alerter } = require('../lib/garde-alertes');
 const { reservationChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
+
+// CE QUI N ABOUTIT PAS SE SAIT (2026-11-05). Une demande refusee ou en panne ne laissait
+// aucune trace : le client repartait, et personne ne savait qu il etait venu. Une ligne par
+// essai, sans nom, telephone ni e-mail, relue par la Tour de controle. Le corps vient du
+// navigateur : rien n en sort sans etre plafonne, et un centre qui n en est pas un se dit
+// « inconnu ». Le limiteur de debit passe avant : un robot n ecrit pas sans limite.
+function centreDeLEssai(corps, request) {
+  const centre = String((request && request.centerId) || (corps && corps.centerId) || '').trim().toLowerCase();
+  return /^[a-z][a-z0-9-]{1,40}$/.test(centre) ? centre : 'inconnu';
+}
+function resumeEssai(corps, request) {
+  const c = request || corps || {};
+  const items = Array.isArray(c.program) ? c.program : (c.program && c.program.items);
+  return {
+    date: String(c.date || '').slice(0, 10),
+    heure: String(c.startTime || '').slice(0, 5),
+    joueurs: Number(c.pax) || 0,
+    type: String(c.type || '').slice(0, 30),
+    formule: String(c.formuleId || '').slice(0, 30),
+    activites: Array.isArray(items) ? items.slice(0, 8).map((i) => String((i && i.activityId) || '').slice(0, 30)) : [],
+  };
+}
+async function tracerEssai(action, { corps = null, request = null, statut = 0, raison = '' }) {
+  await writeAuditLog({
+    centerId: centreDeLEssai(corps, request),
+    ...ACTEUR_FORMULAIRE_PUBLIC,
+    surface: 'api/public-reservations.js',
+    action,
+    method: 'POST',
+    entityType: 'formulaire',
+    outcome: 'error',
+    deniedReason: String(raison || '').slice(0, 160),
+    context: { statut, ...resumeEssai(corps, request) },
+    requestId: newRequestId(),
+  }).catch(() => {});
+}
 
 function heldOps(held, request) {
   const first = held.opsPlan?.resourceBlocks?.find((b) => b.resourceType === 'bowling_lane');
@@ -90,11 +127,13 @@ function empreinteAppareil(req) {
 // personnelle : le corps est celui de la reservation, sans nom, telephone ni
 // e-mail. `release: true` libere tout de suite (le client change d avis).
 async function traiterBlocage(req, res) {
+  let corpsRecu = null;
   if (enforceRateLimit(req, res, { scope: 'public-holds', limit: 30, windowMs: 60_000 })) {
     return;
   }
   try {
     const body = await readJson(req);
+    corpsRecu = body;
     if (body && body.release === true) {
       const libere = await releaseSlotHold(body.holdToken);
       sendJson(res, 200, { ok: true, released: libere.released });
@@ -102,6 +141,7 @@ async function traiterBlocage(req, res) {
     }
     const porte = await ouvrirDemandePublique(body);
     if (!porte.ok) {
+      await tracerEssai('blocage.refuse', { corps: body, statut: porte.status, raison: porte.message });
       sendError(res, porte.status, porte.message, porte.extra);
       return;
     }
@@ -171,6 +211,10 @@ async function traiterBlocage(req, res) {
     // pris » : le formulaire continue sans blocage, la confirmation reverifie.
     if (estErreurInfra(error) || /^[0-9A-Z]{5}$/.test(String((error && error.code) || ''))) {
       console.error('[public-holds] échec', error && (error.stack || raw || error));
+      await Promise.all([
+        tracerEssai('blocage.panne', { corps: corpsRecu, statut: 503, raison: 'panne au moment de retenir les horaires' }),
+        alerter(`panne-blocage:${centreDeLEssai(corpsRecu)}`, `À regarder, Pinlane\nLes horaires ne se retiennent plus à ${centreDeLEssai(corpsRecu)}. Le client continue sans blocage, la confirmation revérifie.`, { fenetreMs: 15 * 60_000 }),
+      ]);
       sendError(res, 503, 'Vos horaires n’ont pas pu être retenus pour le moment.', { code: 'hold_unavailable' });
       return;
     }
@@ -180,6 +224,7 @@ async function traiterBlocage(req, res) {
     }
     const statusCode = Number(error.statusCode || 0);
     if (statusCode && statusCode !== 400) {
+      await tracerEssai('blocage.refuse', { corps: corpsRecu, statut: statusCode, raison: raw });
       sendError(res, statusCode, raw || 'Requete impossible.', statusCode === 429 ? { code: 'hold_limit' } : {});
       return;
     }
@@ -189,6 +234,7 @@ async function traiterBlocage(req, res) {
     // dit quand la place se libere, si. Elle n est ajoutee par lib/database
     // que si les blocages en cours sont bien la cause du refus.
     const precision = (raw.match(/ Une réservation en ligne est en cours sur ce créneau[^.]*\./) || [''])[0];
+    await tracerEssai('blocage.refuse', { corps: corpsRecu, statut: 409, raison: 'horaires déjà pris' });
     sendError(res, 409, `Ces horaires ne sont plus libres.${precision || ' Choisissez-en d’autres.'}`, { code: 'slot_taken' });
   }
 }
@@ -230,6 +276,7 @@ module.exports = async (req, res) => {
     // des horaires, lib/demande-publique.
     const porte = await ouvrirDemandePublique(body);
     if (!porte.ok) {
+      await tracerEssai('reservation.refusee', { corps: body, statut: porte.status, raison: porte.message });
       sendError(res, porte.status, porte.message, porte.extra);
       return;
     }
@@ -240,6 +287,7 @@ module.exports = async (req, res) => {
     const frozen = typeof readUpsellSlotHold === 'function' ? await readUpsellSlotHold(holdToken, body, empreinteAppareil(req), { includeConverted: true }) : null;
     const choices = Array.isArray(body.program) ? body.program : body.program?.items;
     if (empreinteJetonBlocage(holdToken) && choices?.some(item => item.upsell || item.extraLaser) && !frozen) {
+      await tracerEssai('reservation.refusee', { corps: body, statut: 409, raison: 'réservation temporaire expirée' });
       sendError(res, 409, 'Votre réservation temporaire a expiré. Vérifiez vos horaires et le nouveau montant.'); return;
     }
     request = (frozen && requestFromHeldUpsell(body, frozen, { requireEmail: true })) || normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
@@ -355,7 +403,14 @@ module.exports = async (req, res) => {
       // le mail est vraiment parti ; sinon, le message d avant.
       const { transmettreEnPanne } = require('../lib/secours-envoi');
       const demande = { ...(corpsRecu || {}), ...(request || {}), name: (request && request.name) || (corpsRecu && corpsRecu.name), phone: (request && request.phone) || (corpsRecu && corpsRecu.phone), email: (request && request.email) || (corpsRecu && corpsRecu.email) };
-      if (await transmettreEnPanne(demande, { erreur: raw })) {
+      const transmise = await transmettreEnPanne(demande, { erreur: raw });
+      const centrePanne = centreDeLEssai(corpsRecu, request);
+      const essai = resumeEssai(corpsRecu, request);
+      await Promise.all([
+        tracerEssai('reservation.panne', { corps: corpsRecu, request, statut: 503, raison: transmise ? 'transmise à la boîte de secours' : 'non transmise, le client doit réessayer' }),
+        alerter(`panne:${centrePanne}:${transmise ? 'transmise' : 'perdue'}`, `URGENT Pinlane\nUne réservation a échoué à ${centrePanne} pour une panne.\n${essai.date} à ${essai.heure}, ${essai.joueurs} personnes.\n${transmise ? 'La demande est partie à la boîte de secours : le centre doit la saisir.' : 'La demande n’a pas pu partir : le client doit réessayer.'}`, { fenetreMs: 5 * 60_000 }),
+      ]);
+      if (transmise) {
         sendError(res, 503, 'Le site de réservation a un souci technique, mais votre demande a bien été transmise au centre : l’équipe vous recontacte pour la confirmer. Inutile de la renvoyer.', { code: 'transmise_au_centre' });
         return;
       }
@@ -363,6 +418,7 @@ module.exports = async (req, res) => {
       return;
     }
     const statusCode = Number(error.statusCode || 0);
+    await tracerEssai('reservation.refusee', { corps: corpsRecu, request, statut: statusCode || 400, raison: raw });
     if (statusCode && statusCode !== 400) {
       sendError(res, statusCode, raw || 'Requete impossible.');
       return;

@@ -494,6 +494,8 @@ const COCKPIT_ACTIONS = [
   { action: 'founderAuditLog', method: 'GET' },
   { action: 'founderAgents', method: 'GET' },
   { action: 'founderIncidents', method: 'GET' },
+  { action: 'founderTour', method: 'GET' },
+  { action: 'founderTourDossier', method: 'GET' },
   { action: 'founderClients', method: 'GET' },
   { action: 'requeueOpsJob', method: 'POST', body: { action: 'requeueOpsJob', id: 1, centerId: 'libramont' } },
 ];

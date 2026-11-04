@@ -36,6 +36,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/garde",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/sauvegarde",
       "schedule": "15 1 * * *"
     }
@@ -96,6 +100,10 @@
     {
       "source": "/api/cron/secours",
       "destination": "/api/cron?action=secours"
+    },
+    {
+      "source": "/api/cron/garde",
+      "destination": "/api/cron?action=garde"
     },
     {
       "source": "/api/cron/sauvegarde",

@@ -3711,6 +3711,7 @@ const STAFF_MENU_PAGES = [
   'users',
   'settings',
   'cockpit',
+  'cockpit-tour',
   'cockpit-clients-platform',
   'cockpit-centres',
   'cockpit-agents',
@@ -3880,6 +3881,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   users: ['users.manage'],
   settings: ['settings.manage'],
   cockpit: ['platform.admin'],
+  'cockpit-tour': ['platform.admin'],
   'cockpit-clients-platform': ['platform.admin'],
   'cockpit-centres': ['platform.admin'],
   'cockpit-agents': ['platform.admin'],
@@ -10773,7 +10775,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal', 'cockpit-ia'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-tour', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal', 'cockpit-ia'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }

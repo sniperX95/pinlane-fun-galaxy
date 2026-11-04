@@ -171,6 +171,7 @@
       // du DOM pour tous les autres ; le serveur reste l'autorité).
       title: 'Plateforme',
       items: [
+        { key: 'cockpit-tour', label: 'Tour de contrôle', icon: 'dashboard' },
         { key: 'cockpit-clients-platform', label: 'Clients Pinlane', icon: 'clients' },
         { key: 'cockpit', label: 'Cockpit', icon: 'dashboard' },
         { key: 'cockpit-centres', label: 'Centres', icon: 'establishment' },
@@ -477,6 +478,7 @@
     return getMenuCenters().find(center => center.id === id) || null;
   }
 
+  window.staffCenterTint = (id) => teinteDuCentre(id);
   window.staffCenterShortName = () => {
     const centre = centreOuvert();
     return centre ? nomCourtDuCentre(centre) : '';
@@ -1469,7 +1471,7 @@
     // admin) : le menu surlignait Cockpit mais l'ecran montrait le poste
     // d'observation. La vue Direction ne s'atteint QUE par le menu compte
     // (action "direction"), jamais par une entree de la barre laterale.
-    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal', 'cockpit-ia'].includes(key)) {
+    if (['cockpit', 'cockpit-tour', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal', 'cockpit-ia'].includes(key)) {
       setMenuPage(key);
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();

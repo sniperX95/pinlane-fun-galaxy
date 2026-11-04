@@ -57,6 +57,7 @@
   };
   const PAGE_META = {
     'cockpit-agents': { title: 'Agents IA', sub: 'Ce que chaque agent produit réellement, et ce que l\'IA coûte.' },
+    'cockpit-tour': { title: 'Tour de contrôle', sub: 'Toutes les réservations, tout ce qui ne va pas, et chaque garde. Vous seul y avez accès.' },
     'cockpit-incidents': { title: 'Incidents', sub: 'Triage unifié : les erreurs console des écrans d\'abord, puis mails, jobs, worker et refus.' },
     'cockpit-clients': { title: 'Clients', sub: 'Comment chaque centre gère son établissement : configuration, adoption, acteurs.' },
     // Journal des modifications : outil PLATEFORME. Il vivait dans la barre de
@@ -78,6 +79,8 @@
     // lignes. On le declare 'loaded' pour que le gabarit affiche son corps sans
     // attendre un chargement qui n'existe pas.
     'cockpit-journal': { loaded: true, loading: false, error: '', data: {} },
+    // Meme chose : la Tour charge ses donnees et se rafraichit toute seule, sans repeindre ses filtres.
+    'cockpit-tour': { loaded: true, loading: false, error: '', data: {} },
     'cockpit-ia': { loaded: false, loading: false, error: '', data: null },
   };
   fck.pages = pageStates;
@@ -1395,6 +1398,7 @@
     'cockpit-agents': renderAgentsPage,
     'cockpit-ia': renderIaPage,
     'cockpit-incidents': renderIncidentsPage,
+    'cockpit-tour': () => (window.PinlaneTour ? window.PinlaneTour.html() : '<section class="pv2-panel"><p class="pv2-quiet">La Tour de contrôle ne s’est pas chargée. Rechargez la page.</p></section>'),
     'cockpit-clients': renderClientsPage,
     'cockpit-journal': () => {
       // Les interactions du panneau (filtrer, deplier, actualiser) rappellent ce
@@ -1419,6 +1423,11 @@
     const st = pageStates[pageKey];
     const meta = PAGE_META[pageKey];
     if (!st || !meta) return;
+    // La Tour se repeint elle-meme : un rendu global de la console ne vide ni son champ de recherche ni son dossier ouvert.
+    if (pageKey === 'cockpit-tour' && window.PinlaneTour && root.querySelector('#tourRacine')) {
+      window.PinlaneTour.monter(root);
+      return;
+    }
     if (!st.loaded && !st.loading && !st.error) setTimeout(() => loadPage(pageKey), 0);
 
     const d = st.data || {};
@@ -1448,6 +1457,7 @@
 
     if (pageKey === 'cockpit-agents' && st.data) mountCharts(root);
     if (pageKey === 'cockpit-ia' && st.data) mountIaChart(root);
+    if (pageKey === 'cockpit-tour' && window.PinlaneTour) window.PinlaneTour.monter(root);
   }
 
   function render() {
@@ -1468,6 +1478,7 @@
       key = (fromMenu === 'cockpit' || PAGE_META[fromMenu]) ? fromMenu : 'cockpit';
     }
     activePageKey = key;
+    if (key !== 'cockpit-tour' && window.PinlaneTour) window.PinlaneTour.quitter();
     render();
   };
 })();

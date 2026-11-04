@@ -22105,3 +22105,65 @@ input.tf-champ[aria-invalid="true"] { border-color: var(--danger); }
 [data-theme='light'] .qb-modal.rv.rs .rs-tk-t .rs-centre { color: var(--centre-texte-clair); }
 .qb-modal.rv.rs .rs-tk-t .rs-centre:empty { display: none; }
 .fgx-center-teinte { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 3px; vertical-align: 0; }
+
+/* LA TOUR DE CONTROLE (2026-11-05). Des blocs plats, la couleur pour le sens seulement, des
+   lignes bien separees : on y cherche une reservation en quelques secondes. */
+.tour { display: flex; flex-direction: column; gap: 22px; }
+.tour-vide { margin: 0; padding: 10px 0; }
+.tour-etat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 14px 18px; border-radius: 8px; background: var(--subtle); color: var(--text); }
+.tour-etat strong { font-size: 18px; font-weight: 650; }
+.tour-etat span { color: var(--muted); font-size: 13px; }
+.tour-etat.is-ok { background: var(--success-soft); }
+.tour-etat.is-ok strong { color: var(--success); }
+.tour-etat.is-attention { background: var(--warning-soft); }
+.tour-etat.is-attention strong { color: var(--warning); }
+.tour-etat.is-urgent { background: var(--danger); }
+.tour-etat.is-urgent strong, .tour-etat.is-urgent span { color: var(--page); }
+.tour-problemes { display: flex; flex-direction: column; margin: 8px 0 0; padding: 0; list-style: none; }
+.tour-problemes li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line-strong); font-size: 14px; line-height: 1.45; }
+.tour-problemes li > .pv2-chip { flex: none; }
+.tour-problemes span { color: var(--muted); }
+.tour-centres { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.tour-bloc-centre { appearance: none; display: flex; flex-direction: column; gap: 3px; padding: 14px 18px; border: 0; border-radius: 8px; background: var(--subtle); color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; text-align: left; cursor: pointer; transition: background-color 120ms ease; }
+.tour-bloc-centre:hover { background: var(--line); }
+.tour-bloc-centre.is-choisi { box-shadow: inset 0 0 0 2px var(--text); }
+.tour-bloc-centre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tour-bloc-nom { margin-bottom: 4px; font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 26px; font-weight: 400; letter-spacing: 0.015em; line-height: 1.15; text-transform: uppercase; }
+.tour-mauvais { color: var(--danger); font-weight: 600; }
+.tour-attention { color: var(--warning); font-weight: 600; }
+.tour-partie h2 { margin: 0 0 10px; font-size: 16px; font-weight: 650; }
+.tour-filtres { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin-bottom: 10px; }
+.tour-filtres label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; font-weight: 550; }
+.tour-filtres select, .tour-filtres input { box-sizing: border-box; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+.tour-cherche { flex: 1 1 240px; }
+.tour-cherche input { width: 100%; }
+.tour-compte { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+.tour-defile { overflow-x: auto; }
+.tour-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tour-table th { padding: 7px 10px; border-bottom: 2px solid var(--line-strong); color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; white-space: nowrap; }
+.tour-table td { padding: 9px 10px; border-bottom: 1px solid var(--line-strong); vertical-align: top; }
+.tour-table .num { text-align: right; white-space: nowrap; }
+.tour-ligne { cursor: pointer; transition: background-color 100ms ease; }
+.tour-ligne:hover, .tour-ligne.is-ouvert { background: var(--subtle); }
+.tour-ligne.is-annulee td { color: var(--faint); }
+.tour-ligne td { white-space: nowrap; }
+.tour-ligne .tour-offre { min-width: 180px; max-width: 320px; white-space: normal; }
+.tour-centre { display: inline-block; padding: 1px 7px; border-radius: 4px; background: var(--subtle); font-size: 12px; font-weight: 650; }
+.tour-nom { appearance: none; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.tour-nom:hover { text-decoration: underline; }
+.tour-nom:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tour-message { min-width: 240px; overflow-wrap: anywhere; }
+.tour-dossier-ligne > td { padding: 0; background: var(--subtle); }
+.tour-dossier { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 8px 32px; padding: 6px 18px 18px; font-size: 14px; line-height: 1.5; }
+.tour-dossier h3 { margin: 14px 0 4px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.tour-dossier p { margin: 0 0 3px; }
+.tour-dossier a { color: inherit; text-decoration: underline; }
+.tour-note { white-space: pre-wrap; }
+.tour-liste { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.tour-brut { margin-top: 14px; }
+.tour-brut summary { color: var(--muted); font-size: 13px; cursor: pointer; }
+.tour-brut pre { max-height: 320px; margin: 6px 0 0; padding: 10px; overflow: auto; border-radius: 6px; background: var(--surface); font-size: 12px; line-height: 1.4; }
+@media (max-width: 640px) {
+  .tour-filtres label { flex: 1 1 44%; }
+  .tour-filtres select, .tour-filtres input { width: 100%; }
+}

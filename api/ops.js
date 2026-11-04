@@ -607,6 +607,21 @@ async function handleGet(req, res, options = {}) {
     sendJson(res, 200, await buildFounderIncidents());
     return;
   }
+  // La Tour de controle : toutes les reservations, tout ce qui ne va pas. Le filtre de
+  // centre voyage dans `centre` (jamais `centerId`, qui porte le scope de session).
+  if (action === 'founderTour') {
+    const { lireTour } = require('../lib/tour-controle');
+    const p = url.searchParams;
+    sendJson(res, 200, await lireTour(getPool(), { centre: p.get('centre'), canal: p.get('canal'), statut: p.get('statut'), validation: p.get('validation'), quand: p.get('quand'), visite: p.get('visite') }));
+    return;
+  }
+  if (action === 'founderTourDossier') {
+    const { lireDossierTour } = require('../lib/tour-controle');
+    const dossier = await lireDossierTour(getPool(), url.searchParams.get('id'));
+    if (!dossier) { sendError(res, 404, 'Réservation introuvable.'); return; }
+    sendJson(res, 200, dossier);
+    return;
+  }
   if (action === 'founderClients') {
     sendJson(res, 200, await buildFounderClients());
     return;
@@ -3690,7 +3705,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'setClientBilling', 'deleteClient', 'deleteCenter', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderTour', 'founderTourDossier', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'setClientBilling', 'deleteClient', 'deleteCenter', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le

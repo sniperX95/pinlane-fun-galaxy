@@ -203,6 +203,7 @@
     "test:site-centres",
     "test:centres-dissocies",
     "test:console-centre",
+    "test:tour-controle",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

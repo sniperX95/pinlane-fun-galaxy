@@ -42,6 +42,44 @@
     return SLUG_RX.test(brut) ? brut : 'centre-inconnu';
   }
   var CENTER = centreDepuisAdresse();
+
+  // CE QUI PLANTE CHEZ LE CLIENT SE SAIT (2026-11-05). Rien de ce que le client a saisi ne
+  // part, et au plus cinq signaux par page : une erreur en boucle ne coute rien. Les bruits
+  // qui ne disent rien de ce formulaire restent dehors : script d une extension, reseau du
+  // telephone coupe, requete annulee par le client lui-meme.
+  var signauxRestants = 5;
+  function signaler(detail) {
+    if (signauxRestants < 1) return;
+    signauxRestants -= 1;
+    try {
+      var active = document.querySelector('.fg-scene.is-active');
+      var corps = JSON.stringify({
+        kind: 'erreur-formulaire',
+        centerId: CENTER,
+        scene: (active && active.getAttribute('data-scene')) || '',
+        message: String(detail.message || '').slice(0, 500),
+        source: String(detail.source || '').slice(0, 300),
+        lineno: Number(detail.lineno) || 0,
+        colno: Number(detail.colno) || 0,
+        stack: String(detail.stack || '').slice(0, 2000),
+      });
+      if (navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))) return;
+      fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
+    } catch (e) { /* le capteur ne casse jamais ce qu il observe */ }
+  }
+  window.addEventListener('error', function (e) {
+    var fichier = String(e.filename || '');
+    if (!fichier || fichier.indexOf(window.location.origin) !== 0) return;
+    if (/ResizeObserver loop/.test(String(e.message || ''))) return;
+    signaler({ message: e.message, source: fichier, lineno: e.lineno, colno: e.colno, stack: e.error && e.error.stack });
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    if (r && (r.name === 'AbortError' || r.annule || r.lisible)) return;
+    var message = String((r && r.message) || r || '');
+    if (/Failed to fetch|NetworkError|Load failed|réseau/i.test(message)) return;
+    signaler({ message: message, source: 'unhandledrejection', stack: r && r.stack });
+  });
   var EMBED = params.get('embed') === '1' && window.parent !== window;
   // LE DEPART SUR LA DEMANDE DE GROUPE (2026-11-03). La page Evenements du site
   // du centre ouvre directement la demande sur mesure : embed.js passe
@@ -3014,6 +3052,7 @@
         // Plus de plan : plus rien a garder, le toucher retenu tombe avec lui.
         goContact.disabled = true;
         lacherContact();
+        if (!(err && err.lisible)) signaler({ message: 'Les horaires ne se sont pas chargés : ' + String((err && err.message) || err || ''), source: 'plan', stack: err && err.stack });
         var msgErr = err && err.lisible ? err.message : 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
         hourZone.innerHTML = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgErr) + '</b><span class="fg-suggest"><button type="button" class="fg-suggest__btn" data-retry>Réessayer</button></span></div>';
         state.dispo = null;
@@ -7295,7 +7334,7 @@
         // ouvert, demonstration) le montre au lieu d ouvrir la demande.
         if (DEPART_SUR_MESURE) { if (alerte.hidden) departSurMesure(); else body.classList.remove('fg-depart-sm'); }
       })
-      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
+      .catch(function (err) { if (!(err && err.lisible)) signaler({ message: 'Le catalogue ne s’est pas chargé : ' + String((err && err.message) || err || ''), source: 'catalogue', stack: err && err.stack }); panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

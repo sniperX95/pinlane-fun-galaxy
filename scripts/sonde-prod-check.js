@@ -27,7 +27,10 @@
 //   [K] la simulation vise un chemin mort et marque ses messages ;
 //   [L] une sauvegarde de plus de 26 h : un message, un seul, puis un quand elle
 //       repart ; ce n est pas une panne, Neon dort toujours, et une vraie panne
-//       pendant ce temps alerte quand meme, sans second message de sauvegarde.
+//       pendant ce temps alerte quand meme, sans second message de sauvegarde ;
+//   [M] Gembloux : son formulaire, son catalogue et ses creneaux cassent la sonde comme
+//       ceux de Libramont ; une base qui n ecrit plus est une panne ; la garde arretee
+//       depuis plus de 45 min : un message, un autre quand elle repart.
 //
 // Usage : node scripts/sonde-prod-check.js
 'use strict';
@@ -54,6 +57,7 @@ function ok(cond, label, detail = '') {
 const lirePage = (fichier) => fs.readFileSync(path.join(ROOT, fichier), 'utf8');
 const PAGES = {
   '/fungalaxy/libramont': lirePage('fungalaxy.html'),
+  '/fungalaxy/gembloux': lirePage('fungalaxy.html'),
   '/': lirePage('index.html'),
   '/menu/libramont/': lirePage('menu/libramont/index.html'),
   '/menu/gembloux/': lirePage('menu/gembloux/index.html'),
@@ -66,7 +70,7 @@ const reponse = (corps, statut = 200, type = 'text/html; charset=utf-8', entetes
 const json = (corps, statut = 200) => reponse(JSON.stringify(corps), statut, 'application/json; charset=utf-8');
 const SAIN = {
   sante: () => json({ ok: true, db: true, derniereSauvegarde: '2026-11-04T01:15:10.000Z' }),
-  catalogue: () => json({ ok: true, formules: [{ id: 'anniversaire' }], center: { id: 'libramont' } }),
+  catalogue: (url) => json({ ok: true, formules: [{ id: 'anniversaire' }], center: { id: new URL(url).searchParams.get('centerId') } }),
   creneaux: () => json({ ok: true, slots: [{ time: '10:00' }] }),
 };
 
@@ -80,7 +84,7 @@ function fauxSite(panne = () => null, journal = []) {
     const { pathname } = new URL(url);
     if (url.includes('google.com') || url.includes('api.github.com')) return reponse('', 200, 'text/plain');
     if (pathname === '/api/healthz') return SAIN.sante();
-    if (pathname === '/api/public-booking-meta') return SAIN.catalogue();
+    if (pathname === '/api/public-booking-meta') return SAIN.catalogue(url);
     if (pathname === '/api/public-availability') return SAIN.creneaux();
     if (PAGES[pathname]) return reponse(PAGES[pathname]);
     if (/\.js$/.test(pathname)) return reponse('//', 200, 'application/javascript; charset=utf-8');
@@ -206,7 +210,7 @@ async function preuves(sonde) {
     maintenant: SAMEDI,
     attendre: async () => {},
   });
-  ok(unSamediVide.verdict === 'ok' && samedis === 2, '[F] un seul samedi vide n est pas une panne, le suivant repond');
+  ok(unSamediVide.verdict === 'ok' && samedis === 3, '[F] un seul samedi vide n est pas une panne, le suivant repond', `${samedis}`);
 
   // [G]
   const facture = await jouer(sonde, { passages: fois(3, (url) => (url.includes('google.com') || url.includes('api.github.com') ? null
@@ -240,12 +244,12 @@ async function preuves(sonde) {
   ok(aFond(journalSurface) === 0, '[I] minute 6 : aucune route qui reveille Neon', `${aFond(journalSurface)}`);
   const journalFond = [];
   await sonde.passage({ kv: fauxKv(), fetcher: fauxSite(() => null, journalFond), maintenant: Date.parse('2026-11-04T09:16:00Z'), attendre: async () => {}, envoyer: async () => {} });
-  ok(aFond(journalFond) === 4, '[I] minute 16, juste apres le cron secours : le fond se joue, sauvegarde comprise', `${aFond(journalFond)}`);
+  ok(aFond(journalFond) === 6, '[I] minute 16, juste apres le cron secours : le fond se joue, les deux centres et la sauvegarde', `${aFond(journalFond)}`);
   const kvSuspect = fauxKv();
   await sonde.passage({ kv: kvSuspect, fetcher: fauxSite(toutCasse), maintenant: SAMEDI, attendre: async () => {}, envoyer: async () => {} });
   const journalSuspect = [];
   await sonde.passage({ kv: kvSuspect, fetcher: fauxSite(() => null, journalSuspect), maintenant: SAMEDI + 300_000, attendre: async () => {}, envoyer: async () => {} });
-  ok(aFond(journalSuspect) === 4, '[I] passage suspect : le fond se joue tout de suite', `${aFond(journalSuspect)}`);
+  ok(aFond(journalSuspect) === 6, '[I] passage suspect : le fond se joue tout de suite', `${aFond(journalSuspect)}`);
   ok([...journalFond, ...journalSuspect].every((e) => e.methode === 'GET'), '[I] que des GET, jamais une ecriture en prod');
 
   const wrangler = fs.readFileSync(path.join(ROOT, 'workers', 'sonde-prod', 'wrangler.toml'), 'utf8');
@@ -284,6 +288,29 @@ async function preuves(sonde) {
   kvReseau.valeurs.set('simulation', 'reseau');
   const simuleReseau = await jouer(sonde, { kv: kvReseau, passages: fois(6, (url) => (url.includes('.invalid') ? coupure() : null)) });
   ok(simuleReseau.messages.length === 0, '[K] la simulation reseau n alerte pas');
+
+  // [M]
+  const casse = (panne) => sonde.sonder({ fetcher: fauxSite(panne), maintenant: FOND, attendre: async () => {} });
+  const cassePour = async (panne, nom, detail) => {
+    const vu = await casse(panne);
+    return vu.verdict === 'ko' && vu.casses.some((c) => c.nom === nom && (!detail || c.detail === detail));
+  };
+  ok(await cassePour((url) => (url.includes('/fungalaxy/gembloux') ? reponse('oups', 500) : null), 'page de réservation de Gembloux'), '[M] le formulaire de Gembloux tombe : la sonde le voit');
+  ok(await cassePour((url) => (url.includes('public-booking-meta') && url.includes('centerId=gembloux') ? json({ ok: false }) : null), 'catalogue de Gembloux'), '[M] le catalogue de Gembloux tombe : la sonde le voit');
+  ok(await cassePour((url) => (url.includes('public-booking-meta') && url.includes('centerId=gembloux') ? json({ ok: true, formules: [{ id: 'a' }], center: { id: 'libramont' } }) : null), 'catalogue de Gembloux', 'mauvais centre'), '[M] Gembloux sert le catalogue de Libramont : la sonde le voit');
+  ok(await cassePour((url) => (url.includes('public-availability') && url.includes('centerId=gembloux') ? json({ ok: true, slots: [] }) : null), 'créneaux de Gembloux'), '[M] plus aucun creneau a Gembloux : la sonde le voit');
+  ok(await cassePour((url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, ecriture: false }) : null), 'base', 'la base refuse d’écrire'), '[M] la base lit mais n ecrit plus : c est une panne');
+  const gardeDe = (date) => (url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, derniereSauvegarde: ilYA(1), derniereGarde: date }) : null);
+  const arretee = await jouer(sonde, { passages: fois(9, gardeDe(ilYA(2))), depart: FOND });
+  ok(arretee.messages.length === 1 && /^GARDE Pinlane arrêtée/.test(arretee.messages[0]), '[M] la garde arretee depuis 2 h : un seul message sur 9 passages', arretee.messages.join(' | '));
+  const sansPanne = JSON.parse(arretee.kv.valeurs.get('etat'));
+  ok(sansPanne.statut === 'ok' && sansPanne.echecs === 0, '[M] ce n est pas une panne du site : ni statut, ni compteur');
+  const relancee = await jouer(sonde, { kv: arretee.kv, passages: fois(6, gardeDe(ilYA(0.1))), depart: FOND });
+  ok(relancee.messages.length === 1 && /^GARDE Pinlane repartie/.test(relancee.messages[0]), '[M] elle repart : un message', relancee.messages.join(' | '));
+  const jamais = await jouer(sonde, { passages: fois(3, gardeDe(null)), depart: FOND });
+  ok(jamais.messages.length === 1 && /aucune date lisible/.test(jamais.messages[0]), '[M] le site repond sans date de garde : ca s entend', jamais.messages.join(' | '));
+  const absente = await jouer(sonde, { passages: fois(3, santeDe(ilYA(1))), depart: FOND });
+  ok(absente.messages.length === 0, '[M] le champ absent ne dit rien : aucune alerte', absente.messages.join(' | '));
 
   // [L]
   const enRetard = santeDe(ilYA(32));
@@ -400,6 +427,14 @@ async function contrePreuves() {
   const oublie = await chargerMutant('    sauvegardeEnRetard: etat.sauvegardeEnRetard,\n', '');
   const melees = await jouer(oublie, { passages: [...fois(4, enRetard), ...fois(3, toutCasse), ...fois(3, enRetard)] });
   ok(melees.messages.length > 3, '[contre-épreuve] le retard oublie au retour d une panne : second message, [L] rougit', `${melees.messages.length}`);
+
+  const sansSeuilGarde = await chargerMutant('maintenant - date > SEUIL_GARDE_MS', 'false');
+  const gardeMuette = await jouer(sansSeuilGarde, { passages: fois(3, (url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, derniereSauvegarde: ilYA(1), derniereGarde: ilYA(2) }) : null)), depart: FOND });
+  ok(gardeMuette.messages.length === 0, '[contre-épreuve] sans seuil : la garde arretee se tait, [M] rougit', `${gardeMuette.messages.length}`);
+
+  const sansGembloux = await chargerMutant("const CENTRES = ['libramont', 'gembloux'];", "const CENTRES = ['libramont'];");
+  const gemblouxMort = await sansGembloux.sonder({ fetcher: fauxSite((url) => (url.includes('public-booking-meta') && url.includes('centerId=gembloux') ? json({ ok: false }) : null)), maintenant: FOND, attendre: async () => {} });
+  ok(gemblouxMort.verdict === 'ok', '[contre-épreuve] sans Gembloux dans la liste : sa panne ne se voit pas, [M] rougit');
 
   const horsDuFond = await chargerMutant('if (profond && !surLeSite) {', 'if (!surLeSite) {');
   const journal2 = [];

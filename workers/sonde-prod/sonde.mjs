@@ -20,8 +20,14 @@
 // worker est ecrit pour l inverse (« Neon dort, 0 $ », workers/ops-worker.js).
 // Des qu un passage est suspect, le fond se joue a chaque passage.
 //
-// CE QU IL NE VOIT PAS : une erreur JavaScript au demarrage du navigateur, une
-// base en lecture seule (aucune ecriture n est tentee), le worker Railway.
+// LES DEUX CENTRES (2026-11-05) : le formulaire, le catalogue et les creneaux de
+// Gembloux comme ceux de Libramont. Jusque-la seul son menu QR etait regarde.
+//
+// LA BASE ECRIT-ELLE ENCORE ? /api/healthz, pour cette sonde seule, ecrit une ligne et
+// l annule : une base qui lit sans ecrire est une panne que rien d autre ne montre.
+//
+// CE QU IL NE VOIT PAS : une erreur JavaScript chez un client (le formulaire la
+// remonte, la garde de l application la dit) et le worker Railway.
 //
 // LA PANNE SE CONFIRME, ELLE NE SE DEVINE PAS. Une etape cassee se rejoue une
 // fois apres 5 s. Encore cassee, on verifie que la sonde voit Internet : si les
@@ -36,6 +42,10 @@
 // un autre quand elle repart. Ce n est pas une panne, le site marche : elle ne
 // passe ni par le compteur ni par l etat de panne, sinon une sauvegarde en retard
 // masquerait une vraie panne et reveillerait Neon toutes les 5 minutes.
+//
+// LA GARDE DE L APPLICATION A LA MEME ALERTE (2026-11-05). Elle tourne chez Vercel : si
+// elle s arrete, elle ne peut pas le dire. Plus de 45 minutes sans passage, un message.
+// Et elle regarde cette sonde en retour : chacune voit l autre tomber.
 //
 // LE SILENCE NE PROUVE RIEN : chaque lundi matin, un parcours complet et un
 // message. Si le message du lundi n arrive pas, c est la sonde qui est morte.
@@ -55,7 +65,7 @@
 
 const SITE = 'https://www.mngfunglxy.com';
 const CONSOLE_STAFF = 'https://app.pinlane.be';
-const CENTRE = 'libramont';
+const CENTRES = ['libramont', 'gembloux'];
 const FACTURATION_VERCEL = 'https://vercel.com/teams/ansarbis20-1397s-projects/settings/billing';
 
 // Rien d autre qu une fonction ne s exporte ici : le moteur Cloudflare refuse de
@@ -64,6 +74,7 @@ const SEUIL_PANNE = 3;
 const SEUIL_RETOUR = 3;
 // La sauvegarde part a 01:15 UTC : une nuit ratee se voit a 03:15 UTC.
 const SEUIL_SAUVEGARDE_MS = 26 * 3_600_000;
+const SEUIL_GARDE_MS = 45 * 60_000;
 const SIMULATION_SAUVEGARDE = 'sauvegarde';
 const DELAI_MS = 10_000;
 const PAUSE_AVANT_REESSAI_MS = 5_000;
@@ -87,6 +98,7 @@ const ETAT_INITIAL = {
   dernierePanne: null,
   aEnvoyer: [],
   sauvegardeEnRetard: null,
+  gardeEnRetard: false,
 };
 
 const heure = (ms) => new Intl.DateTimeFormat('fr-BE', {
@@ -176,11 +188,14 @@ async function verifierJson(fetcher, url, contrat) {
   return contrat(corps);
 }
 
-const contratSante = (c) => (c.ok === true && c.db === true ? null : 'base injoignable');
-const contratCatalogue = (c) => {
+const contratSante = (c) => {
+  if (c.ok !== true || c.db !== true) return 'base injoignable';
+  return c.ecriture === false ? 'la base refuse d’écrire' : null;
+};
+const contratCatalogue = (centre) => (c) => {
   if (c.ok !== true) return 'catalogue refusé';
   if (!Array.isArray(c.formules) || !c.formules.length) return 'catalogue vide';
-  return c.center && c.center.id === CENTRE ? null : 'mauvais centre';
+  return c.center && c.center.id === centre ? null : 'mauvais centre';
 };
 const contratCreneaux = (c) => {
   if (c.ok !== true || !Array.isArray(c.slots)) return 'créneaux refusés';
@@ -189,10 +204,10 @@ const contratCreneaux = (c) => {
 
 // Un samedi plein ou ferme n est pas une panne : on en regarde quatre. Plus aucun
 // creneau sur quatre samedis, c en est une, meme avec que des 200.
-async function verifierCreneaux(fetcher, site, maintenant) {
+async function verifierCreneaux(fetcher, site, maintenant, centre) {
   let date = prochainSamedi(maintenant);
   for (let i = 0; i < SAMEDIS; i += 1) {
-    const url = `${site}/api/public-availability?centerId=${CENTRE}&date=${date}&pax=6&type=bowling`;
+    const url = `${site}/api/public-availability?centerId=${centre}&date=${date}&pax=6&type=bowling`;
     const refus = await verifierJson(fetcher, url, contratCreneaux);
     if (refus !== VIDE) return refus;
     date = prochainSamedi(Date.parse(`${date}T12:00:00Z`));
@@ -207,6 +222,7 @@ export function listerEtapes({ site, consoleStaff, maintenant, profond }) {
   });
   const surface = [
     page('page de réservation', '/fungalaxy/libramont', 'Fun Galaxy', /\/assets\/fungalaxy-booking\.(?:js|css)[^"\s]*/g),
+    page('page de réservation de Gembloux', '/fungalaxy/gembloux', 'Fun Galaxy'),
     page('console', '/', '<title>Pinlane', /\/assets\/app-main\.js[^"\s]*/g, consoleStaff),
     page('menu de Libramont', '/menu/libramont/', 'Fun Galaxy Libramont'),
     page('menu de Gembloux', '/menu/gembloux/', 'Fun Galaxy Gembloux'),
@@ -216,8 +232,13 @@ export function listerEtapes({ site, consoleStaff, maintenant, profond }) {
   return [
     ...surface,
     { nom: 'base', faire: (f) => verifierJson(f, `${site}/api/healthz`, contratSante) },
-    { nom: 'catalogue', faire: (f) => verifierJson(f, `${site}/api/public-booking-meta?centerId=${CENTRE}`, contratCatalogue) },
-    { nom: 'créneaux', faire: (f) => verifierCreneaux(f, site, maintenant) },
+    ...CENTRES.flatMap((centre) => {
+      const nom = centre === 'libramont' ? '' : ` de ${centre[0].toUpperCase()}${centre.slice(1)}`;
+      return [
+        { nom: `catalogue${nom}`, faire: (f) => verifierJson(f, `${site}/api/public-booking-meta?centerId=${centre}`, contratCatalogue(centre)) },
+        { nom: `créneaux${nom}`, faire: (f) => verifierCreneaux(f, site, maintenant, centre) },
+      ];
+    }),
   ];
 }
 
@@ -302,18 +323,21 @@ export function decider(etat, vu, maintenant) {
 
 // undefined : on ne sait rien, c est le parcours qui dira la panne. null : le site
 // repond mais sans date valable, et ca, il faut l entendre.
-async function lireSauvegarde(fetcher, site) {
+async function lireSante(fetcher, site) {
   const r = await lire(fetcher, `${site}/api/healthz`);
-  if (refusHttp(r)) return undefined;
-  let corps;
+  if (refusHttp(r)) return null;
   try {
-    corps = JSON.parse(r.texte);
+    return JSON.parse(r.texte);
   } catch (erreur) {
-    return undefined;
+    return null;
   }
-  const date = Date.parse(corps.derniereSauvegarde);
+}
+function dateDe(sante, champ) {
+  if (!sante) return undefined;
+  const date = Date.parse(sante[champ]);
   return Number.isNaN(date) ? null : date;
 }
+const lireSauvegarde = async (fetcher, site) => dateDe(await lireSante(fetcher, site), 'derniereSauvegarde');
 
 function momentSauvegarde(date, maintenant) {
   return date === null ? 'aucune date lisible' : `${jour(date)} à ${heure(date)}, il y a ${duree(maintenant - date)}`;
@@ -334,6 +358,18 @@ export function deciderSauvegarde(etat, date, maintenant, simulation = false) {
     sauvegardeEnRetard: enRetard ? (simulation ? 'simulation' : 'reelle') : null,
     aEnvoyer: [...etat.aEnvoyer, texte],
   };
+}
+
+// Meme famille que deciderSauvegarde : un message au changement, sans toucher a la panne.
+export function deciderGarde(etat, date, maintenant) {
+  if (date === undefined) return etat;
+  const enRetard = date === null || maintenant - date > SEUIL_GARDE_MS;
+  if (enRetard === Boolean(etat.gardeEnRetard)) return etat;
+  const moment = date === null ? 'aucune date lisible' : `il y a ${duree(maintenant - date)}`;
+  const texte = enRetard
+    ? `GARDE Pinlane arrêtée\nDernier passage : ${moment}.\nLe site répond, mais plus rien ne surveille les mails, le secours ni les réservations ratées.`
+    : `GARDE Pinlane repartie\nDernier passage : ${moment}.`;
+  return { ...etat, gardeEnRetard: enRetard, aEnvoyer: [...etat.aEnvoyer, texte] };
 }
 
 async function lireEtat(kv) {
@@ -362,8 +398,11 @@ export async function passage({ kv, envoyer, fetcher = fetch, maintenant = Date.
   vu.simulation = surLeSite;
   let suivant = decider(etat, vu, maintenant);
   if (profond && !surLeSite) {
-    const date = sauvegardeSimulee ? null : await lireSauvegarde(fetcher, SITE);
+    const sante = sauvegardeSimulee ? null : await lireSante(fetcher, SITE);
+    const date = sauvegardeSimulee ? null : dateDe(sante, 'derniereSauvegarde');
     suivant = deciderSauvegarde(suivant, date, maintenant, sauvegardeSimulee);
+    // Champ absent : l application d avant cette garde, ou une lecture ratee. On ne sait rien.
+    if (sante && sante.derniereGarde !== undefined) suivant = deciderGarde(suivant, dateDe(sante, 'derniereGarde'), maintenant);
   }
 
   // L etat s ecrit AVANT l envoi : un passage qui meurt ici laisse l alerte due,

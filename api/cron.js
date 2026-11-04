@@ -81,6 +81,22 @@ module.exports = async (req, res) => {
       sendJson(res, result.ok ? 200 : 503, result);
       return;
     }
+    // LA GARDE : ce qui ne va pas, dit a Ansar quand ca change. Si elle ne peut plus lire
+    // la base, elle le dit quand meme : c est le moment ou il faut le savoir.
+    if (action === 'garde') {
+      const { getPool } = require('../lib/database');
+      const { lancerGarde } = require('../lib/tour-controle');
+      const { recordWorkerTask } = require('../lib/cron-tasks');
+      try {
+        const result = await recordWorkerTask('garde', () => lancerGarde({ pool: getPool() }));
+        sendJson(res, result.ok === false ? 503 : 200, result);
+      } catch (error) {
+        const { alerter } = require('../lib/garde-alertes');
+        await alerter('garde:panne', 'URGENT Pinlane\nLa garde n’arrive plus à lire la base de données.', { fenetreMs: 30 * 60_000 });
+        throw error;
+      }
+      return;
+    }
     // LA SAUVEGARDE DE LA NUIT : toute la base, chiffree, vers une boite a part.
     if (action === 'sauvegarde') {
       const { getPool } = require('../lib/database');

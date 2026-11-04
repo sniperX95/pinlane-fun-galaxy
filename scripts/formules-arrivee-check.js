@@ -15,8 +15,9 @@
 //       reglage d arrivee du centre, duree du libre par defaut egale a la
 //       duree historique, signature d une demande sans arrivee inchangee ;
 //   [B] F1, 10 personnes, pistes et arene pleines de 10:00 a 10:30, arrivee
-//       10:00 : l accueil, les boissons, bowling 10:30, laser apres, les
-//       arcades juste apres lui (rien pendant l accueil, 2026-10-13) ;
+//       10:00 : l accueil, bowling 10:30, laser apres, les arcades juste
+//       apres lui (rien pendant l accueil, 2026-10-13) ; les boissons sans
+//       temps a elles (2026-11-03) ;
 //   [C] pleines jusqu a 12:00 : l attente depasse la borne, l arrivee se
 //       reserve quand meme et l avis dit pourquoi (Movsar, 2026-10-13 : « on
 //       peut prendre l heure qu on veut, juste si c est vraiment impossible on
@@ -496,7 +497,8 @@ async function scenarioA(H) {
   ];
   v.push(verdict(ecarts.length === 0, 'les reponses sans arrivee sont identiques octet pour octet, que le centre coupe l arrivee ou serre ses bornes', ecarts.slice(0, 3).join(' | ')));
   // La duree du libre par defaut : la formule d avant le reglage, etape par
-  // etape, pour chaque formule du catalogue.
+  // etape, pour chaque formule du catalogue. Les boissons n ont plus de temps
+  // (Ansar, 2026-11-03 : « pas de timing ») : zero, quoi que dise le catalogue.
   const { freeStepMinutes, formulaVisitOf } = H.visite();
   const politique = formulaVisitOf(H.knowledge.getCenter(CENTRE)).freeDurationPolicy;
   const differences = [];
@@ -504,7 +506,7 @@ async function scenarioA(H) {
     (formule.steps || []).forEach((etape) => {
       const activite = etape.activityId ? H.knowledge.loadOpsKnowledge().activityById.get(etape.activityId) : null;
       const modele = (activite && activite.durationModel) || {};
-      const historique = Number(etape.durationMinutes || modele.defaultMinutes || modele.gameMinutes || 30);
+      const historique = etape.activityId === 'service_drinks' ? 0 : Number(etape.durationMinutes || modele.defaultMinutes || modele.gameMinutes || 30);
       const retenue = freeStepMinutes(etape, modele, politique);
       if (retenue !== historique) differences.push(`${formule.id}/${etape.activityId} ${retenue} au lieu de ${historique}`);
     });
@@ -535,12 +537,12 @@ async function scenarioB(H) {
   v.push(verdict(heures.laser_game && minutesDe(heures.laser_game) >= minutesDe('11:30'), 'le laser vient apres le bowling (11:30 au plus tot)', JSON.stringify(heures)));
   // RIEN PENDANT L ACCUEIL (Movsar, 2026-10-13 : « pourquoi tu mets
   // automatiquement l heure d arrivee a arcade ») : de 10:10 a 10:30, vingt
-  // minutes ne tiennent pas les 30 minutes d arcades ; les boissons s y font,
-  // les arcades passent juste apres le laser.
+  // minutes ne tiennent pas les 30 minutes d arcades, elles passent juste apres
+  // le laser ; les boissons n ont pas de temps, elles n y prennent rien.
   const avant = arrivee.before || [];
-  v.push(verdict(avant.length > 0 && avant.every((item) => item.activityId === 'service_drinks'),
-    'avant le bowling, les boissons seulement : les 20 minutes d apres l accueil ne tiennent pas les arcades', JSON.stringify(avant)));
-  v.push(verdict(arrivee.waitMinutes === 10, '10 minutes d attente : le trou de 10:10 a 10:30, moins les boissons', String(arrivee.waitMinutes)));
+  v.push(verdict(avant.length === 0,
+    'avant le bowling, rien : les 20 minutes d apres l accueil ne tiennent pas les arcades, et les boissons n ont pas de temps', JSON.stringify(avant)));
+  v.push(verdict(arrivee.waitMinutes === 20, '20 minutes d attente : le trou de 10:10 a 10:30, entier', String(arrivee.waitMinutes)));
   const frise = arrivee.frise || [];
   const arcadesFrise = frise.find((segment) => segment.activityId === 'arcade_time') || {};
   const laserFrise = frise.find((segment) => segment.kind === 'anchor' && segment.activityId === 'laser_game') || {};
@@ -1301,8 +1303,10 @@ async function scenarioL(H) {
     && JSON.stringify(plusTard.anchors) === JSON.stringify(tot.anchors) && plusTard.waitMinutes === later.waitMinutes && tot.waitMinutes - plusTard.waitMinutes === later.savedMinutes,
     `arriver plus tard (${later.time}) : proposee avec l attente gagnee, le bowling et le laser aux memes heures, et c est la visite qu on aura`, JSON.stringify({ later, anchors: [tot.anchors, plusTard.anchors], attentes: [tot.waitMinutes, plusTard.waitMinutes] })));
   poserEtat({ reservations: [] });
+  // Les arrivees vont de 30 en 30 : les boissons ne bouchent plus ces 5 minutes, et elles
+  // restent sous le pas. (Arriver a 14:30 decalerait aussi le bowling.)
   const sansAttente = arriveeDe(await H.get({ type: 'formule', formuleId: 'f3', arrival: '14:00' }));
-  v.push(verdict(sansAttente.ok === true && sansAttente.waitMinutes === 0 && !sansAttente.later, 'sans attente avant la premiere activite, aucune arrivee plus tard', JSON.stringify([sansAttente.waitMinutes, sansAttente.later])));
+  v.push(verdict(sansAttente.ok === true && sansAttente.waitMinutes === 5 && !sansAttente.later, '5 minutes d attente avant la premiere activite, moins qu un pas : aucune arrivee plus tard', JSON.stringify([sansAttente.waitMinutes, sansAttente.later])));
 
   // 9. Des arcades sur la seule heure du bowling : le refus les nomme.
   poserEtat({ reservations: [...pleines('10:00', '12:00'), ...pleines('13:00', heureDe(fermeture))] });

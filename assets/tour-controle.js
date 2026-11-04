@@ -80,14 +80,19 @@
       const envoi = !secours.adresses
         ? '<span class="tour-mauvais">Aucune adresse de secours.</span>'
         : `Planning de secours envoyé ${secours.derniere ? `le ${esc(jourCourt(secours.derniere))} à ${esc(heure(secours.derniere))}` : 'pas encore'}, à ${secours.adresses} ${secours.adresses > 1 ? 'adresses' : 'adresse'}.`;
-      return `<button type="button" class="tour-bloc-centre${tour.filtres.centre === c.id ? ' is-choisi' : ''}" data-tour-centre="${esc(c.id)}" aria-pressed="${tour.filtres.centre === c.id}">
+      const choisi = tour.filtres.centre === c.id;
+      return `<div class="tour-bloc-centre${choisi ? ' is-choisi' : ''}" data-tour-centre="${esc(c.id)}">
         <span class="tour-bloc-nom">${esc(c.nom)}</span>
-        <span>${c.enLigne ? 'Réservation en ligne ouverte.' : '<span class="tour-mauvais">Réservation en ligne coupée.</span>'}</span>
+        <span>${c.enLigne ? 'Réservation en ligne ouverte.' : `<span class="tour-mauvais">${c.formulaireActif ? 'Ce centre n’ouvre pas encore ses réservations en ligne.' : 'Réservation en ligne coupée, l’ancien formulaire du site est revenu.'}</span>`}</span>
         <span>${c.recues ? `${c.recues} ${c.recues > 1 ? 'réservations reçues' : 'réservation reçue'} aujourd’hui, dont ${c.enLigneAujourdhui} en ligne.` : 'Aucune réservation reçue aujourd’hui.'}</span>
         <span>${c.visites ? `${c.visites} ${c.visites > 1 ? 'visites' : 'visite'} aujourd’hui, ${c.joueurs} ${c.joueurs > 1 ? 'joueurs' : 'joueur'}.` : 'Aucune visite aujourd’hui.'}</span>
         ${c.aValider ? `<span class="tour-attention">${c.aValider} à valider.</span>` : ''}
         <span>${envoi}</span>
-      </button>`;
+        <div class="tour-bloc-gestes">
+          <button type="button" class="pv2-btn ghost" data-tour-filtrer="${esc(c.id)}" aria-pressed="${choisi}">${choisi ? 'Voir tous les centres' : 'Voir ce centre seulement'}</button>
+          <button type="button" class="pv2-btn ghost" data-tour-couper="${esc(c.id)}" data-actif="${c.formulaireActif ? '0' : '1'}">${c.formulaireActif ? 'Couper la réservation en ligne' : 'Remettre la réservation en ligne'}</button>
+        </div>
+      </div>`;
     }).join('');
   }
 
@@ -298,13 +303,36 @@
     if (tour.ouvert === id) peindre();
   }
 
+  // LE GESTE DE LA PANNE : l interrupteur que embed.js lit a chaque visite (setEmbedState, deja trace au journal). Le
+  // formulaire Pinlane s efface du site du client en une minute, et son ancien formulaire revient, sans toucher au site.
+  async function basculerCentre(id, actif) {
+    const nom = nomDuCentre(id);
+    const question = actif
+      ? `Remettre la réservation en ligne de ${nom} ?`
+      : `Couper la réservation en ligne de ${nom} ? En une minute, le formulaire Pinlane s’efface du site et l’ancien revient. Plus aucune réservation n’arrive ici jusqu’à ce que vous la remettiez.`;
+    if (!window.confirm(question)) return;
+    try {
+      await apiRequest('/api/ops', { method: 'POST', body: JSON.stringify({ action: 'setEmbedState', centerId: id, actif }) });
+    } catch (error) {
+      tour.erreur = (error && error.userMessage) || 'Le changement n’a pas été enregistré.';
+      peindre();
+      return;
+    }
+    await charger();
+  }
+
   function brancher(racine) {
     if (racine.dataset.tourBranche === '1') return;
     racine.dataset.tourBranche = '1';
     racine.addEventListener('click', (e) => {
-      const centre = e.target.closest('[data-tour-centre]');
+      const couper = e.target.closest('[data-tour-couper]');
+      if (couper) {
+        basculerCentre(couper.getAttribute('data-tour-couper'), couper.getAttribute('data-actif') === '1');
+        return;
+      }
+      const centre = e.target.closest('[data-tour-filtrer]');
       if (centre) {
-        const id = centre.getAttribute('data-tour-centre');
+        const id = centre.getAttribute('data-tour-filtrer');
         tour.filtres.centre = tour.filtres.centre === id ? '' : id;
         const choix = racine.querySelector('[data-tour-filtre="centre"]');
         if (choix) choix.value = tour.filtres.centre;

@@ -439,6 +439,15 @@ const serveur = http.createServer(async (rq, rs) => {
       rs.end(JSON.stringify(await tour.lireTour(database.getPool(), { centre: p.get('centre'), canal: p.get('canal'), statut: p.get('statut'), validation: p.get('validation'), quand: p.get('quand'), visite: p.get('visite') })));
       return;
     }
+    if (u.pathname === '/api/ops' && rq.method === 'POST') {
+      const morceaux = [];
+      for await (const m of rq) morceaux.push(m);
+      const corps = JSON.parse(Buffer.concat(morceaux).toString('utf8'));
+      if (corps.action === 'setEmbedState') BD.centres.find((c) => c.id === corps.centerId).settings.config.embed = { actif: corps.actif };
+      rs.setHeader('Content-Type', 'application/json');
+      rs.end('{"ok":true}');
+      return;
+    }
     if (u.pathname.startsWith('/api/')) { rq.resume(); rs.writeHead(204); rs.end(); return; }
     const rel = u.pathname === '/' ? 'index.html' : (/^\/fungalaxy(\/|$)/.test(u.pathname) ? 'fungalaxy.html' : decodeURIComponent(u.pathname.replace(/^\/+/, '')));
     const f = path.join(ROOT, rel);
@@ -516,6 +525,7 @@ function doublures({ proprietaire, expiresAt }) {
     const raw = typeof input === 'string' ? input : (input && input.url) || '';
     const u = new URL(raw, location.origin);
     if (/^founderTour/.test(u.searchParams.get('action') || '')) { window.__appelsTour.push(u.search); return nf(input, init); }
+    if (u.pathname === '/api/ops' && /setEmbedState/.test(String(init.body || ''))) return nf(input, init);
     if (!u.pathname.startsWith('/api/')) return nf(input, init);
     if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session });
     return J({ ok: true, reservations: [], laneStatuses: {}, communications: [], centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont', city: 'Libramont' }, { id: 'gembloux', name: 'Fun Galaxy Gembloux', city: 'Gembloux' }] });
@@ -611,12 +621,29 @@ async function jouerConsole(browser) {
       await page.waitForFunction(() => !document.querySelector('[data-tour-etat="vieux"]'));
 
       // Le clic sur un centre filtre.
-      await page.click('[data-tour-centre="gembloux"]');
+      await page.click('[data-tour-filtrer="gembloux"]');
       await page.waitForFunction(() => document.querySelector('[data-tour-filtre="centre"]').value === 'gembloux' && [...document.querySelectorAll('[data-tour-ligne]')].every((l) => /Gembloux/.test(l.textContent)));
-      r.clicCentre = await page.evaluate(() => document.querySelector('[data-tour-centre="gembloux"]').getAttribute('aria-pressed'));
-      await page.click('[data-tour-centre="gembloux"]');
+      r.clicCentre = await page.evaluate(() => document.querySelector('[data-tour-filtrer="gembloux"]').getAttribute('aria-pressed'));
+      await page.click('[data-tour-filtrer="gembloux"]');
       await page.waitForFunction(() => document.querySelector('[data-tour-filtre="centre"]').value === '');
       r.appels = (await page.evaluate(() => window.__appelsTour.length)) - appelsAvant;
+
+      // Le geste de la panne : couper un centre, le voir, le remettre. Refuser la question ne change rien.
+      const formulaireDe = (id) => { const c = BD.centres.find((x) => x.id === id).settings.config.embed; return !c || c.actif !== false; };
+      let reponseQuestion = false;
+      const questions = [];
+      page.on('dialog', (d) => { questions.push(d.message()); (reponseQuestion ? d.accept() : d.dismiss()).catch(() => {}); });
+      await page.click('[data-tour-couper="gembloux"]');
+      await page.waitForTimeout(250);
+      r.coupeRefusee = formulaireDe('gembloux');
+      reponseQuestion = true;
+      await page.click('[data-tour-couper="gembloux"]');
+      await page.waitForFunction(() => /Réservation en ligne coupée/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
+      r.coupe = { actif: formulaireDe('gembloux'), libramont: formulaireDe('libramont'), bouton: await page.evaluate(() => document.querySelector('[data-tour-couper="gembloux"]').textContent), probleme: await page.evaluate(() => /La réservation en ligne est coupée à Gembloux/.test(document.querySelector('#tourEtat').textContent)), question: questions[questions.length - 1] };
+      if (PHOTOS) await page.screenshot({ path: path.join(PHOTOS, 'tour-coupe.png'), fullPage: false });
+      await page.click('[data-tour-couper="gembloux"]');
+      await page.waitForFunction(() => /Réservation en ligne ouverte/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
+      r.rouvert = formulaireDe('gembloux');
       r.menu = await page.evaluate(() => (document.querySelector('[data-page="cockpit-tour"], [data-menu-key="cockpit-tour"], [data-key="cockpit-tour"]') || { textContent: '' }).textContent.trim());
       r.debordement = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
       if (PHOTOS) {
@@ -662,6 +689,9 @@ async function preuvesConsole(browser) {
   ok(/dernière mise à jour a échoué/.test(r.panne.dit) && r.panne.lignes > 0, '[U] une lecture ratee se dit, et ce qu on savait reste affiche', r.panne);
   ok(r.clicCentre === 'true', '[U] le clic sur un centre le filtre et le marque', r.clicCentre);
   ok(r.debordement === false, '[U] la page ne deborde pas');
+  ok(r.coupeRefusee === true, '[U] couper demande confirmation : sans elle, rien ne change', r.coupeRefusee);
+  ok(r.coupe.actif === false && r.coupe.libramont === true && /Remettre/.test(r.coupe.bouton) && r.coupe.probleme && /Gembloux/.test(r.coupe.question), '[U] couper Gembloux se fait en un geste, sans toucher Libramont, et la Tour le dit', r.coupe);
+  ok(r.rouvert === true, '[U] et se remet pareil', r.rouvert);
 
   // Le menu n existe que pour le proprietaire ; une Direction qui force l adresse n y entre pas.
   const direction = await ouvrirConsole(browser, { proprietaire: false });

@@ -289,8 +289,8 @@ async function modification(mutations = []) {
     await B.contrePreuve(ok, {
       nom: 'reservation-qui-change-de-centre',
       fichier: 'api/staff-reservations.js',
-      de: "if (requestedCenterId !== (current.centerId || 'libramont')) {\n        sendError(res, 422,",
-      vers: "if (false) {\n        sendError(res, 422,",
+      de: "if (!switchSession) return;\n        sendError(res, 422, 'Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.');\n        return;",
+      vers: "if (!switchSession) return;",
       rejouer: (mutations) => modification(mutations),
       attendu: (v) => v.ailleurs.statut === 422,
       libelle: 'la reservation changerait de centre',

@@ -598,8 +598,11 @@ module.exports = async (req, res) => {
       }
 
       // UNE RESERVATION RESTE DANS SON CENTRE (2026-11-04) : ses pistes, son laser et ses horaires sont ceux de ce centre.
-      // La console nomme toujours le centre du dossier ; un autre nom est refuse, jamais un deplacement.
+      // La console nomme toujours le centre du dossier ; un autre nom est refuse, jamais un deplacement. Le droit d abord :
+      // une tentative inter-centres sans droit reste un refus trace au journal.
       if (requestedCenterId !== (current.centerId || 'libramont')) {
+        const switchSession = await requireStaffPermission(req, res, 'centers.switch', { centerId: requestedCenterId });
+        if (!switchSession) return;
         sendError(res, 422, 'Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.');
         return;
       }

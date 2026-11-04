@@ -93,7 +93,7 @@ function main() {
   for (let pax = 1; pax <= 26; pax += 1) {
     for (const minutes of PALIERS) {
       const attenduSessions = Math.ceil(pax / 5);
-      const ligne = normalizeProgram([{ activityId: 'fun_run', minutes }], { centerId: CENTRE, pax }).items[0] || {};
+      const ligne = normalizeProgram([{ activityId: 'fun_run', minutes, sessionMinutes: minutes }], { centerId: CENTRE, pax }).items[0] || {};
       const attendu = {
         sessions: attenduSessions,
         minutes: attenduSessions * minutes,

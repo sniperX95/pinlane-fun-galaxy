@@ -214,6 +214,17 @@ function contenuDuDossier(dossier) {
   });
 }
 
+// Le programme replanifie, aux montants que le dossier disait. Le contenu est le meme
+// (contenuDuDossier), ligne pour ligne : seules les heures du moteur changent.
+function programmeAuxMontantsDuDossier(programme, avant) {
+  const items = Array.isArray(programme) ? programme : programme?.items;
+  const anciens = Array.isArray(avant) ? avant : avant?.items;
+  if (!Array.isArray(items) || !Array.isArray(anciens) || items.length !== anciens.length) return programme;
+  const reprises = items.map((item, i) => ({ ...item, price: anciens[i].price, priceKnown: anciens[i].priceKnown }));
+  if (Array.isArray(programme)) return reprises;
+  return { ...programme, items: reprises, price: avant.price ?? programme.price, priceComplete: avant.priceComplete ?? programme.priceComplete };
+}
+
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
@@ -855,9 +866,19 @@ module.exports = async (req, res) => {
       // rouvrir son prix.
       const extrasFinales = patch.extras ?? current.extras ?? [];
       const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current);
+      const jourChange = String(patch.date ?? current.date) !== String(current.date);
+      const memesPistes = Number(ops.laneCount ?? (patch.lanes ?? current.lanes ?? []).length) === (current.lanes || []).length;
       const base = operationsChanged
-        ? baseDuServeur({ current, demande: operationalRequest, ops, contenuChange, jourChange: String(patch.date ?? current.date) !== String(current.date) })
+        ? baseDuServeur({ current, demande: operationalRequest, ops, contenuChange, jourChange, memesPistes })
         : (Number(current.basePrice) || 0);
+      // UNE HEURE DEPLACEE GARDE SES MONTANTS (2026-11-04). Le moteur rechiffre au tarif du
+      // jour ; rien de ce qui se vend n a bouge, le dossier garde son prix et ses lignes,
+      // meme si un tarif a ete publie depuis.
+      if (operationsChanged && !contenuChange && !jourChange && memesPistes) {
+        if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = Object.prototype.hasOwnProperty.call(patch, 'price') ? Number(patch.price) : Number(current.price) || 0;
+        if (ops.program) ops.program = programmeAuxMontantsDuDossier(ops.program, current.program);
+        if (Object.prototype.hasOwnProperty.call(ops, 'programPrice')) ops.programPrice = base;
+      }
       patch.basePrice = base;
       if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
       // LE PRIX QUI SUIT (2026-11-03) : le contenu change et aucun prix n est

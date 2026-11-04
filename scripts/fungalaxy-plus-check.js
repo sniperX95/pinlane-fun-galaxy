@@ -875,8 +875,8 @@ async function personnalisationPlus(browser, mock) {
     ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+36 €' && (await tile.locator('.fg-vitrine__n').innerText()) === '4', 'la reponse tardive pour cinq ne remplace pas le devis pour quatre');
     mode = 'nonlinear';
     await tile.locator('[data-vitrine-pas="-1"]').click();
-    await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+35,1 €', 4000);
-    ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+35,1 €', 'une unite indivisible conserve le montant autoritaire, aucun prorata client');
+    await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+35,10 €', 4000);
+    ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+35,10 €', 'une unite indivisible conserve le montant autoritaire, aucun prorata client');
     mode = 'fail';
     await tile.locator('[data-vitrine-pas="-1"]').click();
     await attendre(page, () => Boolean(document.querySelector('[data-plus-requote]')), 4000);

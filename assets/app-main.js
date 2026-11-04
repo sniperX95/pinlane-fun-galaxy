@@ -4287,7 +4287,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261102securite';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261104grilles';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261102securite';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261003b';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
@@ -4699,16 +4699,16 @@ function renderDurations() {
     g.innerHTML = games.map(o => `
       <button type="button" class="dur-pill ${Number(state.booking.duration) === Number(o.value) ? 'active' : ''}" onclick="setDuration(${o.value})">
         ${o.label}
-        <span class="price">${o.price}€ / pers</span>
+        <span class="price">${formatPrixCourt(o.price)}€ / pers</span>
       </button>
     `).join('');
     return;
   }
   if (label) label.innerHTML = 'Durée de jeu <span class="tunable-sub">par piste</span>';
-  g.innerHTML = DURATION_OPTIONS.map(o => `
+  g.innerHTML = getDurationOptionsCatalog().map(o => `
     <button type="button" class="dur-pill ${state.booking.duration === o.value ? 'active' : ''}" onclick="setDuration(${o.value})">
       ${o.label}
-      <span class="price">${o.price}€ / piste</span>
+      <span class="price">${formatPrixCourt(o.price)}€ / piste</span>
     </button>
   `).join('');
 }
@@ -4718,10 +4718,10 @@ function setDuration(v) { state.booking.duration = v; state.booking.totalDuratio
 function renderLaserOptions() {
   const grid = document.getElementById('laserGrid');
   if (!grid) return;
-  grid.innerHTML = LASER_GAME_OPTIONS.map(option => `
+  grid.innerHTML = getLaserOptionsCatalog().map(option => `
     <button type="button" class="dur-pill laser-pill ${Number(state.booking.duration) === Number(option.value) ? 'active' : ''}" onclick="setLaserDuration(${option.value})">
       ${option.label}
-      <span class="price">${option.price}€ / pers</span>
+      <span class="price">${formatPrixCourt(option.price)}€ / pers</span>
       <small>${option.games * 20} min de jeu + briefing</small>
     </button>
   `).join('');
@@ -5903,13 +5903,13 @@ function activityPriceHint(activity, pax) {
     // par personne », jamais « des 20 EUR la piste », qui serait le tarif d un
     // autre centre. Donnee de centre, pas constante du produit.
     const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
-    if (games) return games.length ? `dès ${games[0].price}€ par personne` : 'réglé sur place';
-    return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
+    if (games) return games.length ? `dès ${formatPrixCourt(games[0].price)}€ par personne` : 'réglé sur place';
+    return `dès ${formatPrixCourt(getDurationOptionsCatalog()[0].price)}€ la piste`;
   }
-  if (activity.priceType === 'grid_laser') return `dès ${LASER_GAME_OPTIONS[0].price}€ par joueur`;
-  if (activity.priceType === 'grid_fun_run') return `dès ${FUN_RUN_OPTIONS[0].price}€ la session`;
+  if (activity.priceType === 'grid_laser') return `dès ${formatPrixCourt(getLaserOptionsCatalog()[0].price)}€ par joueur`;
+  if (activity.priceType === 'grid_fun_run') return `dès ${formatPrixCourt(getFunRunOptionsCatalog()[0].price)}€ la session`;
   if (activity.priceValue == null) return 'réglé sur place';
-  return `${activity.priceValue}€ ${activity.unitLabel || ''}`.trim();
+  return `${formatPrixCourt(activity.priceValue)}€ ${activity.unitLabel || ''}`.trim();
 }
 
 // La MEME information en souffle court, pour la carte compacte du telephone :
@@ -6142,32 +6142,32 @@ function renderActivityOptionsWithoutParticipants(activity, options, pax) {
       const rangee = `<div class="activity-option-row">${games.map(option => `
         <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
           onclick="setBookingActivityOption('${id}','duration',${option.value})">
-          ${option.label}<span class="price">${option.price}€ / pers</span>
+          ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / pers</span>
         </button>`).join('')}</div>`;
       return rangee;
     }
-    const rangee = `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
+    const rangee = `<div class="activity-option-row">${getDurationOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','duration',${option.value})">
-        ${option.label}<span class="price">${option.price}€ / piste</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / piste</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
   if (activity.priceType === 'grid_laser') {
     const current = Number(options.games) || 1;
-    const rangee = `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
+    const rangee = `<div class="activity-option-row">${getLaserOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','games',${option.games})">
-        ${option.label}<span class="price">${option.price}€ / pers</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / pers</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
   if (activity.priceType === 'grid_fun_run') {
     const current = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
-    const rangee = `<div class="activity-option-row">${FUN_RUN_OPTIONS.map(option => `
+    const rangee = `<div class="activity-option-row">${getFunRunOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.minutes) ? 'active' : ''}" data-opt="minutes" data-val="${option.minutes}"${attributsOptionTropLongue(Number(option.minutes) / 60)}
         onclick="setBookingActivityOption('${id}','minutes',${option.minutes})">
-        ${option.label}<span class="price">${option.price}€ / session</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / session</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
@@ -6237,7 +6237,7 @@ function renderProgramSummary() {
           detail: `${option?.label || ''} · ${pax} joueur${pax > 1 ? 's' : ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
         };
       }
-      const option = DURATION_OPTIONS.find(item => Number(item.value) === duration);
+      const option = getDurationOptionsCatalog().find(item => Number(item.value) === duration);
       total += (option?.price || 0) * lanes;
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
       // le total double sans que rien n'explique pourquoi. Les tours aussi.
@@ -6250,12 +6250,13 @@ function renderProgramSummary() {
     }
     if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
-      total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
+      total += (getLaserOptionsCatalog().find(option => Number(option.games) === games)?.price || 0) * pax;
       return { id: activity.id, name: activity.name, detail: `${games} partie${games > 1 ? 's' : ''}` };
     }
     if (activity.priceType === 'grid_fun_run') {
       const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
-      const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
+      const grilleFunRun = getFunRunOptionsCatalog();
+      const option = grilleFunRun.find(item => item.minutes === minutes) || grilleFunRun[0];
       // Un groupe plus grand que l'installation TOURNE (Fun Run : 5 joueurs
       // a la fois) : autant de sessions, autant de fois le prix, et le detail
       // le dit pour que le comptoir et l'ecran comptent pareil.
@@ -6324,7 +6325,7 @@ function renderProgramSummary() {
   const totalEl = box.querySelector('.program-total');
   const totalNote = box.querySelector('.program-total-note');
   const roundedTotal = Math.round(total * 100) / 100;
-  const nextTotal = complete || roundedTotal > 0 ? `${roundedTotal}€` : 'Sur place';
+  const nextTotal = complete || roundedTotal > 0 ? `${formatPrixCourt(roundedTotal)}€` : 'Sur place';
   const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
   // Cocher une activite doit se VOIR dans le programme : la ligne qui arrive se
   // pose, celles deja la ne bougent pas d'un pixel. Sans ce filtre, chaque clic
@@ -9511,7 +9512,7 @@ function renderSlots(formule) {
     const option = getLaserOption(state.booking.duration);
     const waveCount = getLaserWaveCount(state.booking.pax);
     const splitText = waveCount > 1 ? ` · groupe réparti sur ${waveCount} sessions` : '';
-    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> · ${option.price}€ / personne${splitText} · session partagée selon l'affluence</div></div>`;
+    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> · ${formatPrixCourt(option.price)}€ / personne${splitText} · session partagée selon l'affluence</div></div>`;
   } else tl.innerHTML = '';
 
   const list = document.getElementById('slotList');
@@ -10023,11 +10024,11 @@ function renderRecap() {
     if (totalNote) totalNote.textContent = complete
       ? 'Tout se règle sur place'
       : (total > 0 ? 'Tout se règle sur place, certaines activités y sont tarifées' : 'Montant confirmé à votre arrivée');
-    if (totalAmount) totalAmount.textContent = complete || total > 0 ? `${total}€` : 'Sur place';
+    if (totalAmount) totalAmount.textContent = complete || total > 0 ? `${formatPrixCourt(total)}€` : 'Sur place';
   } else {
     if (totalLabel) totalLabel.textContent = 'Total estimé';
     if (totalNote) totalNote.textContent = 'À régler sur place';
-    if (totalAmount) totalAmount.textContent = `${total}€`;
+    if (totalAmount) totalAmount.textContent = `${formatPrixCourt(total)}€`;
   }
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
   // UNE LIGNE DU RECAP N EXISTE QUE SI ELLE A UNE VALEUR. Sans creneau retenu
@@ -17668,9 +17669,9 @@ function getPricingTypeLabel(type) {
 }
 
 function getPricingPriceLabel(row) {
-  if (row.type === 'bowling') return `${formatMoney(row.price)} / piste`;
-  if (row.type === 'laser') return `${formatMoney(row.price)} / personne`;
-  return `${formatMoney(row.price)} ${row.priceType === 'per_lane' ? '/ piste' : '/ personne'}`;
+  if (row.type === 'bowling') return `${formatMontant(row.price)} / piste`;
+  if (row.type === 'laser') return `${formatMontant(row.price)} / personne`;
+  return `${formatMontant(row.price)} ${row.priceType === 'per_lane' ? '/ piste' : '/ personne'}`;
 }
 
 function getPricingAsset(type) {
@@ -17759,7 +17760,7 @@ function describePricingDays(days) {
   list.sort((a, b) => weekOrder(a) - weekOrder(b));
   const contiguous = list.every((value, index) => index === 0 || weekOrder(value) === weekOrder(list[index - 1]) + 1);
   if (list.length > 2 && contiguous) {
-    return `${PRICING_DAY_NAMES[list[0]]} a ${PRICING_DAY_NAMES[list[list.length - 1]].toLowerCase()}`;
+    return `${PRICING_DAY_NAMES[list[0]]} à ${PRICING_DAY_NAMES[list[list.length - 1]].toLowerCase()}`;
   }
   const names = list.map(value => PRICING_DAY_NAMES[value]);
   if (names.length === 1) return names[0];
@@ -17833,7 +17834,7 @@ function getPricingRows() {
     });
     return rows;
   };
-  const bowlingGridCards = () => DURATION_OPTIONS.map(option => decorate({
+  const bowlingGridCards = () => getDurationOptionsCatalog().map(option => decorate({
     id: `bowling-${Number(option.value)}`,
     type: 'bowling',
     title: `Bowling ${option.label}`,
@@ -17852,7 +17853,7 @@ function getPricingRows() {
   // a Libramont. La constante disait 30 et 1 partout.
   const armes = getAvailabilityLaserCapacity();
   const lancements = getAvailabilityLaserParallelLaunches();
-  const laser = !sellsLaser ? [] : LASER_GAME_OPTIONS.map(option => decorate({
+  const laser = !sellsLaser ? [] : getLaserOptionsCatalog().map(option => decorate({
     id: `laser-${option.games}`,
     type: 'laser',
     title: `${option.label} Laser Game`,
@@ -25993,8 +25994,8 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
     late: `${formatStaffTerrainCount(joueurs, 'joueur')} attendu${joueurs > 1 ? 's' : ''}`,
     upcoming: `${formatStaffTerrainCount(joueurs, 'joueur')}`,
     onsite: `${formatStaffTerrainCount(joueurs, 'joueur')} sur place`,
-    closing: montant > 0 ? `${formatMoney(montant)} à encaisser` : `${formatStaffTerrainCount(joueurs, 'joueur')}`,
-    done: montant > 0 ? `${formatMoney(montant)} encaissés` : '',
+    closing: montant > 0 ? `${formatMontant(montant)} à encaisser` : `${formatStaffTerrainCount(joueurs, 'joueur')}`,
+    done: montant > 0 ? `${formatMontant(montant)} encaissés` : '',
   }[statusKey] || '';
   const tete = (balise, extra = '') => `<${balise} class="res-section-head gc-band" title="${escapeHtml(subtitle)}">
       <span class="gc-band-icon" aria-hidden="true">${GC_BAND_ICONS[statusKey === 'active' ? 'upcoming' : statusKey] || ''}</span>
@@ -28214,7 +28215,7 @@ function togglePosPriceEdit() {
 
 async function applyPosPrice() {
   const input = document.getElementById('posPriceInput');
-  const value = Math.round(Number(input?.value));
+  const value = Math.round(Number(input?.value) * 100) / 100;
   if (!Number.isFinite(value) || value < 0) { toast('Prix invalide.'); return; }
   const current = state.selectedRes;
   if (!current) return;
@@ -28250,7 +28251,7 @@ function renderPosCaisse(r) {
   const priceEditorHtml = r.status !== 'paid' && canEditPrice
     ? posPriceEditOpen
       ? `<div class="pos-price-edit">
-          <label>Prix total facturé <input id="posPriceInput" type="number" min="0" step="1" inputmode="numeric" value="${Math.round(Number(total) || 0)}" aria-label="Nouveau prix total en euros"></label>
+          <label>Prix total facturé <input id="posPriceInput" type="number" min="0" step="0.01" inputmode="decimal" value="${Math.round((Number(total) || 0) * 100) / 100}" aria-label="Nouveau prix total en euros"></label>
           <div class="pos-price-edit-actions">
             <button type="button" class="is-primary" onclick="applyPosPrice()">Appliquer</button>
             <button type="button" onclick="togglePosPriceEdit()">Annuler</button>
@@ -28276,14 +28277,14 @@ function renderPosCaisse(r) {
            cette fiche passe par getPosIdentityParts, donc par formatMoney, et
            rend « 308 € » (espace fine insecable) ; le ticket ecrivait « 308€ »
            colle a quelques dizaines de pixels de la. Meme donnee, meme
-           fonction : c est formatMoney qui arrondit et qui pose l espace. */''}
+           fonction : formatMontant pose le centime et l espace. */''}
       <div>
-        <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${formatMoney(basePrice)}</span></div>
-        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${escapeHtml(ex.name)}</span></div><span>${formatMoney(ex.price)}</span></div>`).join('')}
+        <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${formatMontant(basePrice)}</span></div>
+        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${escapeHtml(ex.name)}</span></div><span>${formatMontant(ex.price)}</span></div>`).join('')}
       </div>
       <div class="receipt-total">
         <span class="lbl">TOTAL${hasCustomPrice ? ' <em class="receipt-custom">prix ajusté</em>' : ''}</span>
-        <span class="amount">${formatMoney(total)}${hasCustomPrice ? `<small class="receipt-ref">réf. ${formatMoney(referencePrice)}</small>` : ''}</span>
+        <span class="amount">${formatMontant(total)}${hasCustomPrice ? `<small class="receipt-ref">réf. ${formatMontant(referencePrice)}</small>` : ''}</span>
       </div>
       ${priceEditorHtml}
       ${r.status === 'paid' ? `<div class="paid-overlay">
@@ -28295,7 +28296,7 @@ function renderPosCaisse(r) {
     ${r.status !== 'paid' ? `
       <div style="font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:0.12em;text-transform:uppercase;padding-bottom:10px;border-bottom:1px solid var(--border);">Upsell rapide</div>
       <div class="upsell-grid">
-        ${UPSELL_CATALOG.map(u => `<button class="upsell-btn" onclick="addExtra('${u.id}')"><div class="n">${u.name}</div><div class="p">+ ${formatMoney(u.price)}</div></button>`).join('')}
+        ${UPSELL_CATALOG.map(u => `<button class="upsell-btn" onclick="addExtra('${u.id}')"><div class="n">${u.name}</div><div class="p">+ ${formatMontant(u.price)}</div></button>`).join('')}
       </div>
       <div style="text-align:center;font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Encaisser</div>
       <div class="pay-grid">
@@ -28492,7 +28493,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Math.round((unitaire * effectif + supplement) * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
+      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${formatMontant(unitaire)}/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
@@ -28881,7 +28882,7 @@ function optionsFormuleEditionHtml() {
   const liste = formulesProposeesEdition();
   const option = (f) => {
     const dispo = String(f.id) === String(origine?.formuleId) ? { ok: true } : disponibiliteFormuleEdition(f);
-    const texte = `${rvNomFormule(f)} · ${formatMoney(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
+    const texte = `${rvNomFormule(f)} · ${formatMontant(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
     return `<option value="${escapeHtml(f.id)}"${String(f.id) === String(e.formuleId) ? ' selected' : ''}>${escapeHtml(texte)}</option>`;
   };
   const familles = [...new Set(liste.map(f => f.family || ''))];
@@ -29601,7 +29602,7 @@ function renderPosEdit(r) {
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
               <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
                 ${isLaserRes
-                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
+                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${formatPrixCourt(option.price)}€ / joueur)</option>`).join('')
                   : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
                 ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
               </select>
@@ -29885,8 +29886,9 @@ function preparerModificationEdition() {
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
-    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || touches.some(champ=>['pax','duration','startTime','date'].includes(champ)) || pistesTouchees;
-    // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, un telephone, une
+    const pistesEnNombre=lanesFinales.length !== (dossier.lanes || []).length;
+    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || touches.some(champ=>['pax','duration','date'].includes(champ)) || (pistesTouchees && pistesEnNombre) || (programmeArcades && touches.includes('startTime'));
+    // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, une heure, un telephone, une
     // occasion, des extras) : la reference reste celle du dossier, et le prix
     // ne bouge que de ses extras. La recalculer ici reecrivait celle d une
     // visite a plusieurs activites avec le seul bowling (getBasePrice), et le
@@ -30269,7 +30271,7 @@ function getReservationPriceGap(reservation) {
   // cafe ajoute deplacerait le total du prix entier du catalogue. L affichage,
   // lui, ne repose rien : il CONCLUT, et ne conclut donc que sur la reference
   // ecrite sur le dossier.
-  return Math.round(getReservationPriceState(reservation, { repliCatalogue: true }).ecart);
+  return Math.round(getReservationPriceState(reservation, { repliCatalogue: true }).ecart * 100) / 100;
 }
 
 // Le prix d un dossier apres un changement de supplements : reference +
@@ -30831,7 +30833,7 @@ function majQuickPrixAffiche() {
   const amt = document.getElementById('rvTotalPied');
   const custom = getQuickBookCustomPrice();
   const total = custom != null ? custom : rvTotalReference();
-  if (amt) amt.textContent = formatMoney(rvResas.length > 1 ? rvTotalDuLot() : total);
+  if (amt) amt.textContent = formatMontant(rvResas.length > 1 ? rvTotalDuLot() : total);
   const joueurs = Math.max(1, Number(quickBookState.pax) || 1);
   const parPersonne = document.getElementById('rvPrixParPersonne');
   if (parPersonne) parPersonne.textContent = formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100);
@@ -30842,7 +30844,7 @@ function majQuickPrixAffiche() {
   const gros = document.getElementById('rvPrixGros');
   if (gros) {
     const reference = rvTotalReference();
-    gros.innerHTML = `${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}`;
+    gros.innerHTML = `${custom != null && custom !== reference ? `<s>${escapeHtml(formatMontant(reference))}</s>` : ''}${escapeHtml(formatMontant(total))}`;
   }
 }
 
@@ -31166,7 +31168,7 @@ function renderQuickExtras() {
     ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
     ${lignes('boissons', 'Boissons', 'cruches, boissons par enfant…')}
     ${lignes('autres', 'Autre', 'décoration, cadeau, tout le reste')}
-    <div class="qb-x-total">Extras : <b id="qbExtrasTotal">${formatMoney(quickExtrasTotal())}</b></div>
+    <div class="qb-x-total">Extras : <b id="qbExtrasTotal">${formatMontant(quickExtrasTotal())}</b></div>
     ${listes}
   </div>`;
 }
@@ -31204,7 +31206,7 @@ function setQuickExtra(groupe, i, cle, valeur) {
 }
 function majQuickExtrasTotal() {
   const zone = document.getElementById('qbExtrasTotal');
-  if (zone) zone.textContent = formatMoney(quickExtrasTotal());
+  if (zone) zone.textContent = formatMontant(quickExtrasTotal());
   // Le total estime et son detail, par le meme chemin que le compteur de
   // joueurs (aucun re-rendu de la fenetre).
   if (typeof patchQuickBookPaxDerived === 'function') patchQuickBookPaxDerived();
@@ -31614,7 +31616,7 @@ function getQuickBookSummary() {
   const base = getQuickBookSummaryActivites();
   const extras = quickExtrasTotal();
   if (!extras) return base;
-  return { ...base, total: Math.round(((Number(base.total) || 0) + extras) * 100) / 100, detail: `${base.detail} · extras ${formatMoney(extras)}` };
+  return { ...base, total: Math.round(((Number(base.total) || 0) + extras) * 100) / 100, detail: `${base.detail} · extras ${formatMontant(extras)}` };
 }
 
 function getQuickBookSummaryActivites() {
@@ -32013,7 +32015,7 @@ function rvMinuscule(nom) {
 
 // Le prix d une piste pour une duree : la grille du centre, puis le palier.
 function rvPrixPiste(heures) {
-  const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
+  const grille = getBowlingPrices();
   if (grille && grille[heures] != null) return Number(grille[heures]);
   return typeof prixBowlingAuPalier === 'function' ? prixBowlingAuPalier(grille, heures) : null;
 }
@@ -32057,7 +32059,7 @@ function rvHorsCatalogueLaserHtml(parties) {
   const unite = options.find((o) => o.games === 1);
   const enPlus = palier ? parties - palier.games : 0;
   const detail = prix != null && palier && unite
-    ? `Prix proposé ${formatMoney(prix)} par joueur, soit ${formatMoney(palier.price)} les ${palier.games} plus ${formatMoney(unite.price)} ${enPlus === 1 ? `la ${parties}e` : 'par partie au-delà'}.`
+    ? `Prix proposé ${formatMontant(prix)} par joueur, soit ${formatMontant(palier.price)} les ${palier.games} plus ${formatMontant(unite.price)} ${enPlus === 1 ? `la ${parties}e` : 'par partie au-delà'}.`
     : 'Le prix se vérifie avant de créer.';
   return `<p class="rs-texte">${escapeHtml(`${parties} parties, hors catalogue. ${detail}`)}</p>`;
 }
@@ -33058,7 +33060,7 @@ function rvBowlingFixer(heures) {
   const h = Math.min(RV_BOWLING_MAX, Math.max(0.5, Math.round(Number(heures) * 2) / 2));
   s.forcer = false;
   // Franchir la grille du centre ouvre la ligne : son bandeau dit le prix.
-  const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
+  const grille = getBowlingPrices();
   const maxGrille = Math.max(0, ...Object.keys(grille || {}).map(Number).filter((x) => x > 0));
   if (maxGrille && h > maxGrille && rvBowlingDuree() <= maxGrille && !s.moreOpen) s.ouverte = 'bowling';
   if (s.type === 'bowling') { s.duration = h; syncQuickBookDuration(); reconcileQuickLaneSelection(); renderQuickBook(); return; }

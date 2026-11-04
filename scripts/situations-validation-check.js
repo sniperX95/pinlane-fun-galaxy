@@ -152,6 +152,7 @@ function fauxPool(config) {
     etat,
     async query(sql, params) {
       if (/^\s*select settings from centers/i.test(sql)) return { rowCount: 1, rows: [{ settings: { config: etat.config } }] };
+      if (/^\s*select status from centers/i.test(sql)) return { rowCount: 1, rows: [{ status: 'active' }] };
       if (/^\s*update centers/i.test(sql)) { etat.config = JSON.parse(params[1]); return { rowCount: 1 }; }
       throw new Error(`requete inattendue : ${sql.trim().slice(0, 60)}`);
     },

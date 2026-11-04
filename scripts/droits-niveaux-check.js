@@ -429,6 +429,38 @@ async function groupePrixPatch(mutations = []) {
   const sansTarif = () => DOSSIER(501, { type: 'formule', formule_id: 'disparue', label: 'Ancienne formule', lanes: [], pax: 8, duration: 1, total_duration: 2, base_price: 50, price: 50 });
   x = await essai(roleDePrix('non'), { pax: 9, price: 50 }, sansTarif());
   v(x.statut === 200 && Number(enBase(501).base_price) === 50 && Number(enBase(501).pax) === 9, '[P] sans tarif calculable, le groupe change et la base reste', `${dire(x)} base ${enBase(501).base_price}`);
+  // Un tarif publie depuis la reservation : le dossier est a 30, la grille dit 39.
+  // Une heure deplacee garde son prix et sa reference, sans rien demander.
+  const ancienTarif = () => DOSSIER(501, { base_price: 30, price: 30, pax: 4, lanes: [1], label: 'Bowling Classique' });
+  x = await essai(roleDePrix('non'), { startTime: '16:00', price: 30, basePrice: 30, allowPastStart: true }, ancienTarif());
+  v(x.statut === 200 && enBase(501).start_time === '16:00' && Number(enBase(501).price) === 30 && Number(enBase(501).base_price) === 30 && !notesDe(enBase(501)).some((n) => n.type === 'prix'),
+    '[P] une heure deplacee garde son prix et sa reference apres une publication', `${dire(x)} prix ${enBase(501).price} base ${enBase(501).base_price}`);
+  x = await essai(roleDePrix('non'), { startTime: '16:00', allowPastStart: true }, ancienTarif());
+  v(x.statut === 200 && enBase(501).start_time === '16:00' && Number(enBase(501).price) === 30 && Number(enBase(501).base_price) === 30,
+    '[P] une heure deplacee sans prix envoye garde aussi les siens', `${dire(x)} prix ${enBase(501).price} base ${enBase(501).base_price}`);
+  x = await essai(roleDePrix('non'), { startTime: '16:00', price: 39, basePrice: 39, allowPastStart: true }, ancienTarif());
+  v(x.statut === 403 && x.code === 'prix_niveau_insuffisant' && Number(enBase(501).price) === 30, '[P] une heure deplacee ne passe pas en douce au nouveau tarif', dire(x));
+  // La meme chose pour un programme : ses lignes gardent leurs montants. Un vrai dossier,
+  // cree par le moteur, puis rendu a l ancien tarif.
+  B.semer([]);
+  const creee = await m.creer(verrouille(), B.corpsStaff({ type: 'visite', pax: 4, startTime: '15:00', program: [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }] }));
+  const rangee = enBase(creee.r.id);
+  const programmeEnBase = typeof rangee.program === 'string' ? JSON.parse(rangee.program) : rangee.program;
+  programmeEnBase.items.forEach((ligne, i) => { ligne.price = i ? 40 : 30; });
+  programmeEnBase.price = 70;
+  rangee.program = typeof rangee.program === 'string' ? JSON.stringify(programmeEnBase) : programmeEnBase;
+  rangee.base_price = 70;
+  rangee.price = 70;
+  x = await m.modifier(roleDePrix('non'), { id: creee.r.id, startTime: '16:30', price: 70, allowPastStart: true });
+  const apresVisite = enBase(creee.r.id);
+  const lignesVisite = ((typeof apresVisite.program === 'string' ? JSON.parse(apresVisite.program) : apresVisite.program) || {}).items || [];
+  v(x.statut === 200 && Number(apresVisite.price) === 70 && Number(apresVisite.base_price) === 70 && lignesVisite.map((l) => Number(l.price)).join() === '30,40',
+    '[P] une visite deplacee d une heure garde son prix, sa reference et ses lignes', `${dire(x)} prix ${apresVisite.price} base ${apresVisite.base_price} lignes ${JSON.stringify(lignesVisite.map((l) => l.price))}`);
+  x = await m.modifier(roleDePrix('non'), { id: creee.r.id, startTime: '17:00', allowPastStart: true });
+  v(x.statut === 200 && Number(enBase(creee.r.id).price) === 70 && Number(enBase(creee.r.id).base_price) === 70, '[P] une visite deplacee sans prix envoye garde aussi le sien', `${dire(x)} prix ${enBase(creee.r.id).price} base ${enBase(creee.r.id).base_price}`);
+  // Une piste de plus se facture : la reference suit, le prix n est pas juge.
+  x = await essai(roleDePrix('non'), { lanes: [1, 2], laneCount: 2, price: 78, basePrice: 78, allowPastStart: true }, DOSSIER(501, { base_price: 39, price: 39, pax: 4, lanes: [1], label: 'Bowling Classique' }));
+  v(x.statut === 200 && Number(enBase(501).price) === 78 && Number(enBase(501).base_price) === 78, '[P] une piste de plus se facture, la reference suit', `${dire(x)} prix ${enBase(501).price} base ${enBase(501).base_price}`);
   // Les valeurs vides.
   x = await essai(roleDePrix('non'), { price: '', name: 'Sans prix' });
   v(x.statut === 200 && Number(enBase(501).price) === 60, '[P] un prix vide ne vaut pas 0', dire(x));
@@ -1004,6 +1036,9 @@ const CONTRE_PREUVES = [
   { nom: 'le contenu change a prix constant', groupe: 'groupePrixPatch', attendu: /doubler le groupe a prix constant/, fichier: 'lib/droits-reservation.js', de: 'if (!contenuChange && prixInchange) return null;', vers: 'if (prixInchange) return null;' },
   { nom: 'ajustement existant rejuge', groupe: 'groupePrixPatch', attendu: /un prix d ami garde son ecart/, fichier: 'lib/droits-reservation.js', de: 'if (Math.abs(ecart - ecartAvant) <= TOLERANCE_CENTIMES) return null;', vers: '' },
   { nom: 'trace de prix non ecrite au PATCH', groupe: 'groupePrixPatch', attendu: /la trace : qui, quand/, fichier: 'api/staff-reservations.js', de: 'if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);', vers: '' },
+  { nom: 'une heure rouvre la reference', groupe: 'groupePrixPatch', attendu: /une heure deplacee garde son prix et sa reference apres une publication/, fichier: 'lib/droits-reservation.js', de: 'const donnee = tarifGarde ? Number(current.basePrice) : Number(ops.basePrice);', vers: 'const donnee = Number(ops.basePrice);' },
+  { nom: 'une heure rechiffre les lignes', groupe: 'groupePrixPatch', attendu: /une visite deplacee d une heure garde son prix, sa reference et ses lignes/, fichier: 'api/staff-reservations.js', de: 'if (ops.program) ops.program = programmeAuxMontantsDuDossier(ops.program, current.program);', vers: '' },
+  { nom: 'une heure sans prix change le prix', groupe: 'groupePrixPatch', attendu: /une visite deplacee sans prix envoye garde aussi le sien/, fichier: 'api/staff-reservations.js', de: "ops.price = Object.prototype.hasOwnProperty.call(patch, 'price') ? Number(patch.price) : Number(current.price) || 0;", vers: "ops.price = Object.prototype.hasOwnProperty.call(patch, 'price') ? Number(patch.price) : ops.price;" },
   { nom: 'base du corps ecrite au PATCH', groupe: 'groupePrixPatch', attendu: /la base du corps ne s ecrit/, fichier: 'api/staff-reservations.js', de: '      patch.basePrice = base;\n', vers: '' },
   { nom: 'base du corps crue sans plan de pistes', groupe: 'groupePrixPatch', attendu: /un laser sans plan de pistes|doubler le groupe/, fichier: 'lib/droits-reservation.js', de: 'const tarif = tarifDeReference({ ...demande, ...(ops.laneCount != null ? { laneCount: ops.laneCount } : {}) });\n  return tarif > 0 ? tarif : Number(current.basePrice) || 0;', vers: 'return Number(demande.basePrice) || 0;' },
   { nom: 'prix vide ecrit a 0', groupe: 'groupePrixPatch', attendu: /un prix vide ne vaut pas 0/, fichier: 'api/staff-reservations.js', de: "      if (patch.price === null || patch.price === '') delete patch.price;\n", vers: '' },
@@ -1070,7 +1105,7 @@ const CONTRE_PREUVES = [
   { nom: 'les fausses traces du moteur gardees', groupe: 'groupePublic', attendu: /les fausses traces tombent/, fichier: 'lib/reservation-request.js', de: 'const LIGNE_DE_TRACE = /^\\s*\\[(?:equipe\\]|ops:)/;', vers: 'const LIGNE_DE_TRACE = /^\\s*\\[equipe\\]/;' },
   // Le catalogue.
   { nom: 'saveCenterConfig ecrit le catalogue', groupe: 'groupeCatalogue', attendu: /saveCenterConfig ecrit sa config/, fichier: 'api/ops.js', de: 'sansCatalogueSurMesure(body.config || {})', vers: 'body.config || {}' },
-  { nom: 'ecriture du catalogue hors pricing.manage', groupe: 'groupeCatalogue', attendu: /pricing.manage passe|settings.manage ne suffit pas/, fichier: 'api/ops.js', de: "'resetClientFormuleOverride', 'saveSurMesure'].includes(action)", vers: "'resetClientFormuleOverride'].includes(action)" },
+  { nom: 'ecriture du catalogue hors pricing.manage', groupe: 'groupeCatalogue', attendu: /pricing.manage passe|settings.manage ne suffit pas/, fichier: 'api/ops.js', de: "'resetClientFormuleOverride', 'saveSurMesure', 'saveGrillesTarif'].includes(action)", vers: "'resetClientFormuleOverride', 'saveGrillesTarif'].includes(action)" },
   { nom: 'lecture du catalogue ouverte a qui voit', groupe: 'groupeCatalogue', attendu: /voir sans reserver ne lit pas le catalogue/, fichier: 'api/ops.js', de: "if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];", vers: "if (action === 'surMesureCatalogue') return ['reservations.view', 'reservations.create', 'reservations.edit', 'pricing.manage'];" },
   { nom: 'lecture du catalogue fermee a qui modifie', groupe: 'groupeCatalogue', attendu: /un role qui modifie sans creer le lit aussi/, fichier: 'api/ops.js', de: "if (action === 'surMesureCatalogue') return ['reservations.create', 'reservations.edit', 'pricing.manage'];", vers: "if (action === 'surMesureCatalogue') return ['reservations.create', 'pricing.manage'];" },
   { nom: 'la console recoit tout le catalogue', groupe: 'groupeCatalogue', attendu: /ne recoit que ce qui se choisit/, fichier: 'api/ops.js', de: 'surMesure: surMesureChoisissable(catalogueSurMesure(centerId)) });', vers: 'surMesure: catalogueSurMesure(centerId) });' },
@@ -1079,7 +1114,7 @@ const CONTRE_PREUVES = [
   { nom: 'prix illisible lu 0', groupe: 'groupeCatalogue', attendu: /un prix illisible ne devient jamais 0/, fichier: 'lib/center-config.js', de: "const prix = brut?.prix === '' || brut?.prix == null ? NaN : Number(brut.prix);", vers: 'const prix = Number(brut?.prix) || 0;' },
   { nom: 'sans centre, le catalogue de Libramont', groupe: 'groupeCatalogue', attendu: /sans centre nomme/, fichier: 'lib/center-config.js', de: '  if (!centerId) return catalogueSurMesureParDefaut();\n', vers: '  if (!centerId) return normalizeSurMesure(require(\'./ops-knowledge\').getCenter().surMesure);\n' },
   { nom: 'catalogue hors du journal bloquant', groupe: 'groupeCatalogue', attendu: /la trace du catalogue part avant l ecriture/, fichier: 'lib/audit-log.js', de: "  'saveSurMesure',\n", vers: '' },
-  { nom: 'trace du catalogue sans son centre', groupe: 'groupeCatalogue', attendu: /la trace du catalogue nomme le centre/, fichier: 'api/ops.js', de: '/^(saveCenterConfig|saveSurMesure|saveCenter|setCenterStatus)$/', vers: '/^(saveCenterConfig|saveCenter|setCenterStatus)$/' },
+  { nom: 'trace du catalogue sans son centre', groupe: 'groupeCatalogue', attendu: /la trace du catalogue nomme le centre/, fichier: 'api/ops.js', de: '/^(saveCenterConfig|saveSurMesure|saveGrillesTarif|saveCenter|setCenterStatus)$/', vers: '/^(saveCenterConfig|saveGrillesTarif|saveCenter|setCenterStatus)$/' },
   { nom: 'catalogue fusionne avec l ancien', groupe: 'groupeCatalogue', attendu: /un catalogue incomplet/, fichier: 'lib/center-config.js', de: "const REMPLACES_EN_BLOC = ['validationEquipe', 'secours', 'surMesure'];", vers: "const REMPLACES_EN_BLOC = ['validationEquipe', 'secours'];" },
   { nom: 'rien de decide refuse', groupe: 'groupeCatalogue', attendu: /rien n est decide/, fichier: 'lib/center-config.js', de: '  if (input == null) return null;\n  if (!isPlainObject(input) || !Array.isArray(input.categories)', vers: '  if (!isPlainObject(input) || !Array.isArray(input.categories)' },
   { nom: 'forme fausse acceptee', groupe: 'groupeCatalogue', attendu: /une forme fausse/, fichier: 'lib/center-config.js', de: 'if (!isPlainObject(input) || !Array.isArray(input.categories) || !Array.isArray(input.articles)) {', vers: 'if (false) {' },

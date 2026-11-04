@@ -263,7 +263,8 @@ function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes
   // Un groupe plus grand que l'installation TOURNE : autant de sessions, donc
   // autant de fois le prix de la grille.
   if (activity.priceType === 'grid_fun_run') {
-    const option = FUN_RUN_OPTIONS.find((item) => item.minutes === Number(minutes)) || FUN_RUN_OPTIONS[0];
+    const grille = getFunRunOptionsCatalog();
+    const option = grille.find((item) => item.minutes === Number(minutes)) || grille[0];
     return option.price * getActivitySessionCount(activity, pax);
   }
   const unitPrice = resolveActivityUnitPrice(activity.pricing || null, activity.priceValue, { dateStr, startTime });
@@ -358,16 +359,45 @@ function getEmergencyMaxPerLane() {
   return resolveBookingCapacityValue('emergencyCapacityPerLane', EMERGENCY_MAX_PER_LANE);
 }
 
+// LES PRIX DU CENTRE AFFICHE (2026-11-04, lot 2 de l onglet Tarifs). Deux voies,
+// une seule verite : le catalogue public porte ses grilles deja calculees
+// (center.booking), la configuration staff porte les cases que le centre a
+// posees (grillesTarif). Une case absente garde le tarif de depart, comme
+// lib/booking-config grillesEffectives : le serveur facture les memes montants.
+function prixDeGrilleDuCentre(nom, cle, repli) {
+  const grille = centerScheduleConfig?.grillesTarif?.[nom];
+  const prix = grille && typeof grille === 'object' ? Number(grille[String(cle)]) : NaN;
+  return Number.isFinite(prix) && prix > 0 ? prix : repli;
+}
+
 function getBowlingPrices() {
   const prices = getBookingCatalogConfig()?.bowlingPrices;
-  return prices && typeof prices === 'object' ? prices : BOWLING_PRICES;
+  if (prices && typeof prices === 'object') return prices;
+  if (!centerScheduleConfig?.grillesTarif) return BOWLING_PRICES;
+  return Object.fromEntries(DURATION_OPTIONS.map((option) => [option.value, prixDeGrilleDuCentre('bowling', option.value, option.price)]));
+}
+
+// Les durees du bowling et leur prix chez CE centre, dans la forme de
+// DURATION_OPTIONS.
+function getDurationOptionsCatalog() {
+  const prices = getBowlingPrices();
+  return DURATION_OPTIONS.map((option) => ({ ...option, price: Number(prices[option.value]) || option.price }));
+}
+
+// Les sessions du Fun Run et leur prix chez CE centre.
+function getFunRunOptionsCatalog() {
+  const options = getBookingCatalogConfig()?.funRunOptions;
+  if (Array.isArray(options) && options.length) return options;
+  return FUN_RUN_OPTIONS.map((option) => ({ ...option, price: prixDeGrilleDuCentre('funRun', option.minutes, option.price) }));
 }
 
 // Le tarif bowling DU CENTRE : present, ce centre vend AUX PARTIES et par
 // personne (N4 Bowling) ; absent, il vend a la grille par piste et par duree
-// (Fun Galaxy). Miroir exact de lib/booking-config.resolveBowlingPricing.
+// (Fun Galaxy). Miroir exact de lib/booking-config.resolveBowlingPricing. La
+// configuration staff le porte dans `resources` : sans cette lecture, N4 passait
+// a la grille par piste des que sa configuration arrivait.
 function getBowlingPricing() {
-  const pricing = getBookingCatalogConfig()?.bowlingPricing;
+  const pricing = getBookingCatalogConfig()?.bowlingPricing || centerScheduleConfig?.resources?.bowling?.pricing;
   if (!pricing || typeof pricing !== 'object') return null;
   if (pricing.mode !== 'per_game_per_person') return null;
   if (!Array.isArray(pricing.tiers) || !pricing.tiers.length) return null;
@@ -423,7 +453,24 @@ function displayTime(value) {
 
 function getLaserOptionsCatalog() {
   const options = getBookingCatalogConfig()?.laserOptions;
-  return Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS;
+  if (Array.isArray(options) && options.length) return options;
+  if (!centerScheduleConfig?.grillesTarif) return LASER_GAME_OPTIONS;
+  return LASER_GAME_OPTIONS.map((option) => ({ ...option, price: prixDeGrilleDuCentre('laser', option.games, option.price) }));
+}
+
+// Un prix de grille dans une phrase courte (« 39€ / piste ») : au centime quand il
+// en porte (« 6,50€ »), jamais avec un point.
+function formatPrixCourt(value) {
+  const amount = Math.round((Number(value) || 0) * 100) / 100;
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace('.', ',');
+}
+
+// LE MONTANT D UN DOSSIER OU D UN PRIX : au centime quand il en porte (« 39,50 € »),
+// avec l espace fine de formatMoney, qui arrondit a l euro et reste celui des cumuls
+// et des moyennes (tableaux de bord). Un prix entier s ecrit pareil dans les deux.
+function formatMontant(value) {
+  const amount = Math.round((Number(value) || 0) * 100) / 100;
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 }).format(amount)}\u202f€`;
 }
 
 // Le formateur se construit une fois : en construire un a chaque appel coutait
@@ -745,20 +792,23 @@ function optionLaserAuPalier(options, parties) {
   return { games: n, value: n / 2, label: `${n} parties`, price: prix, durationMinutes: n * 30 };
 }
 
+// 9,90 × 3 ne fait pas 29,70 en virgule flottante : un montant se pose au centime.
+function montantAuCentime(montant) { return Math.round(montant * 100) / 100; }
+
 function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
   if (type === 'bowling') {
     const gameOptions = getBowlingGameOptions(dateStr, { pax, laneCount });
     if (gameOptions) {
       const chosen = gameOptions.find(o => Number(o.value) === Number(duration));
-      return chosen ? chosen.price * pax : 0;
+      return chosen ? montantAuCentime(chosen.price * pax) : 0;
     }
     const grille = getBowlingPrices();
-    return (grille[duration] || prixBowlingAuPalier(grille, duration) || 0) * laneCount;
+    return montantAuCentime((grille[duration] || prixBowlingAuPalier(grille, duration) || 0) * laneCount);
   }
   if (type === 'laser') {
     // Number() : jamais `undefined`, qui ferait lire l etat du tunnel par le
     // parametre par defaut de getLaserOption.
-    return getLaserOption(Number(duration)).price * pax;
+    return montantAuCentime(getLaserOption(Number(duration)).price * pax);
   }
   const formule = resolveDisplayFormule(formuleId);
   if (!formule) return 0;
@@ -1993,6 +2043,8 @@ function getFormulaActivityProgressSummary(reservation) {
     getMaxPerLane,
     getEmergencyMaxPerLane,
     getBowlingPrices,
+    getDurationOptionsCatalog,
+    getFunRunOptionsCatalog,
     getLaserOptionsCatalog,
     getReservationLabel,
     reservationNeedsLanes,

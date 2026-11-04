@@ -170,7 +170,7 @@ try {
     { fichier: 'assets/booking-core.js', de: '    || optionLaserAuPalier(options, Number(duration) * 2)\n', vers: '' },
     /\[2\] l option du jumeau dit N parties/);
   contrePreuve('le palier sert aussi le tunnel public',
-    { fichier: 'lib/booking-config.js', de: '    if (prixGrille || !options.auPalier) return prixGrille * laneCount;', vers: '    if (prixGrille) return prixGrille * laneCount;' },
+    { fichier: 'lib/booking-config.js', de: '    if (prixGrille || !options.auPalier) return auCentime(prixGrille * laneCount);', vers: '    if (prixGrille) return auCentime(prixGrille * laneCount);' },
     /\[4\] tunnel : 2 h 30/);
 } catch (error) {
   console.error('\nprix-palier-check ERREUR', error.stack || error.message);

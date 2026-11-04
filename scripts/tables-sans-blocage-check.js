@@ -299,6 +299,10 @@ class FakePool {
     if (/^(begin|commit|rollback)\b/i.test(q) || /^(savepoint|release savepoint|rollback to savepoint)\b/i.test(q) || q.includes('pg_advisory_xact_lock')) return resultat([]);
     if (q.includes('/* empreintes-caches */')) return resultat([{ centres: `gate-${BASE.versionCentres}`, surcharges: null, catalogue: null, blocages: {} }]);
     if (q === 'select id, name, status, timezone, settings from centers;') return resultat([...BASE.centres.values()].map(({ id, name, status, timezone, settings }) => ({ id, name, status, timezone, settings })));
+    if (q.startsWith('select status from centers where id = $1')) {
+      const c = BASE.centres.get(p[0]);
+      return resultat(c ? [{ status: c.status }] : []);
+    }
     if (q.startsWith('select settings from centers where id = $1')) {
       const c = BASE.centres.get(p[0]);
       return resultat(c ? [{ settings: c.settings }] : []);

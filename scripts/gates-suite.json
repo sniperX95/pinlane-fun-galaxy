@@ -197,6 +197,7 @@
     "test:public-error-message",
     "test:client-tarifs-ui",
     "test:tarifs-effets",
+    "test:tarifs-grilles",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

@@ -14,6 +14,9 @@
 // Ports : un fils recoit `port + 1 + decalage + rang du fils` dans chaque
 // variable de port nommee (le lanceur reserve 20 ports par variable).
 // Nombre de fils : PINLANE_ECLATS (defaut 6) ou `nombre`, jamais plus que de rangs.
+// En mode `nombre`, au plus un fils par coeur a la fois ; PINLANE_ECLATS, quand il est pose,
+// borne aussi ce mode (le poste a 22 coeurs : 22 navigateurs a la fois, le 2026-11-05 ; le
+// lanceur de la suite, qui donne 2 fils par gate, etait contourne aussi).
 'use strict';
 const os = require('os');
 const readline = require('readline');
@@ -111,7 +114,8 @@ function eclater({ fichier, args = [], rangs, ports = {}, envFils = {}, delaiMs 
     });
     donner();
   });
-  return enPool(Array.from({ length: n }, (_, k) => k), nombre ? Math.max(2, os.cpus().length) : n, unFils).then(() => ({ resultats, sorties }));
+  const parallele = nombre ? (process.env.PINLANE_ECLATS ? nombreDeFils(n) : Math.max(2, os.cpus().length)) : n;
+  return enPool(Array.from({ length: n }, (_, k) => k), parallele, unFils).then(() => ({ resultats, sorties }));
 }
 
 // La fin de la sortie du fils qui avait ce rang, pour dire pourquoi il manque.

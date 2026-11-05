@@ -2498,9 +2498,30 @@
       else if(off)off.remove();
       if(!v.ok && state.formuleId===f.id){state.formuleId='';card.classList.remove('is-on');card.setAttribute('aria-checked','false');card.closest('.fg-grid__item').classList.remove('is-on');}
     });
+    resumerRefusFamilles();
     // Jamais sous les yeux du client : une carte ne bouge pas sous son doigt.
     if ($('#panelFor').hidden) rangerFormules();
     rendreCompteur(false);
+  }
+  // UNE RAISON COMMUNE SE DIT UNE FOIS (Ansar, 2026-11-05 : « bcp de texte [...] ça fait surchargé ») :
+  // quand toutes les cartes d une famille sont refusees pour la meme raison (huit anniversaires a 4
+  // personnes), la phrase passe sous le titre de la famille et quitte les cartes.
+  function auPluriel(t) {
+    return t.replace('cette formule demande', 'ces formules demandent').replace('Cette formule se réserve', 'Ces formules se réservent')
+      .replace('de cette formule', 'de ces formules').replace('Cette offre est momentanément suspendue', 'Ces offres sont momentanément suspendues');
+  }
+  function resumerRefusFamilles() {
+    $$('.fg-fam', gridFor).forEach(function (fam) {
+      var cartes = $$('.fg-card--formule', fam);
+      var raisons = cartes.map(function (c) { var o = $('.fg-for__off', c); return c.classList.contains('is-refus') && o ? o.textContent : ''; });
+      var commune = cartes.length > 1 && raisons.every(function (r) { return r && r === raisons[0]; }) ? auPluriel(raisons[0]) : '';
+      var p = $('.fg-fam__refus', fam);
+      if (commune) {
+        if (!p) { p = doc.createElement('p'); p.className = 'fg-fam__refus'; ($('.fg-fam__regles', fam) || $('.fg-fam__title', fam)).insertAdjacentElement('afterend', p); }
+        p.textContent = commune;
+      } else if (p) p.remove();
+      fam.classList.toggle('is-refus-commun', Boolean(commune));
+    });
   }
   // Ce qui se reserve ce jour-la passe devant, dans l ordre du catalogue. Le verdict du serveur
   // arrive apres le rendu : l onglet range ses cartes au moment ou il s ouvre.
@@ -2604,6 +2625,7 @@
         + (communes.length ? '<p class="fg-fam__regles">' + communes.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</p>' : '')
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
+    resumerRefusFamilles();
     chargerDurees();
   }
   // LES ENFANTS D UNE OFFRE QUI LEUR EST RESERVEE (Kids Fun Day, « pour les

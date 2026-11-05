@@ -101,6 +101,8 @@ async function informationMatrix(browser, errors) {
         await btn.click();
         check(await page.locator('.fg-info-dialog').evaluate(d=>d.open),'information opens native modal');
         check(await page.locator('.fg-info-text').textContent().then(sansInsecable)===expected,'all precise activity information reaches popup intact');
+        // La grande photo se charge a l ouverture de la fiche (depuis 2026-11-05 la rangee montre une vignette) : on lui laisse le temps d arriver.
+        await page.waitForFunction(()=>{const i=document.querySelector('.fg-info-photo');return i&&i.complete&&i.naturalWidth>0;},null,{timeout:8000}).catch(()=>{});
         check(await page.locator('.fg-info-photo').evaluate(img=>img.complete&&img.naturalWidth>0&&!!img.alt),'actual activity photo loads with useful alternative');
         check(await page.locator('.fg-info-dialog').evaluate(d=>{const r=d.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;}),'modal fits both viewport axes');
         check(await btn.evaluate(b=>{const r=b.getBoundingClientRect();return r.width>=44&&r.height>=44;}),'information control is at least 44px');

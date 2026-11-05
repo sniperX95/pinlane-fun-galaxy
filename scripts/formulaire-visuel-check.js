@@ -154,7 +154,7 @@ async function jusquAuBout(b, centre, w) {
   await tousPlats(page, '.fg-scene[data-scene="contact"] .fg-hold', `[coordonnees] ${q} horaires gardes`);
   await tousPlats(page, '.fg-recall', `[coordonnees] ${q} rappel`);
   ok(await decors(page, '#contactForm .fg-occasions') === 0, `[coordonnees] ${q} : les occasions sans pictogramme`);
-  const noms = await page.evaluate(() => { const a = document.querySelector('#cPrenom').getBoundingClientRect(); const b2 = document.querySelector('#cNom').getBoundingClientRect(); const m = document.querySelector('#cEmail').getBoundingClientRect(); return { memeLigne: Math.abs(a.top - b2.top) < 1, bord: Math.abs(b2.right - m.right) < 1, l: Math.round(a.width) }; });
+  const noms = await page.evaluate(() => { const a = document.querySelector('#cPrenom').getBoundingClientRect(); const b2 = document.querySelector('#cNom').getBoundingClientRect(); const m = document.querySelector('#cTel').getBoundingClientRect(); return { memeLigne: Math.abs(a.top - b2.top) < 1, bord: Math.abs(b2.right - m.right) < 1, l: Math.round(a.width) }; });
   ok(noms.memeLigne && noms.bord && noms.l >= 120, `[coordonnees] ${q} : prenom et nom sur une ligne, a la largeur du reste`, JSON.stringify(noms));
   ok(await deborde(page) <= 0, `[largeur] ${q} : les coordonnees ne debordent pas`, String(await deborde(page)));
   // Une erreur reste visible : le filet rouge revient sur le champ refuse.

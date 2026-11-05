@@ -339,6 +339,9 @@ async function scenarioEcheance(browser, mock, etiquette) {
   const pendant = await lireBandeau(A.page, 'contact');
   const echu = await attendre(A.page, () => { const b = document.querySelector('.fg-scene[data-scene="contact"] [data-hold]'); return b && b.classList.contains('is-libre'); }, 9000);
   const apres = await lireBandeau(A.page, 'contact');
+  // Le temps ecoule ne se valide plus a l aveugle (Ansar, 2026-11-05) : le bouton de validation revérifie.
+  const lireValider = () => A.page.evaluate(() => { const c = document.querySelector('#confirmBtn'); return { revoir: c.classList.contains('is-revoir'), texte: c.textContent.trim() }; });
+  const validerEchu = await lireValider();
   await capture(A.page, `${etiquette}-echu`);
   // La place est revenue : B la prend.
   await continuer(B.page);
@@ -347,6 +350,7 @@ async function scenarioEcheance(browser, mock, etiquette) {
   await cliquer(A.page, '.fg-scene[data-scene="contact"] [data-hold-action]');
   await attendre(A.page, () => { const b = document.querySelector('.fg-scene[data-scene="contact"] [data-hold-action]'); return b && b.dataset.action === 'rechoisir'; }, 8000);
   const refus = await lireBandeau(A.page, 'contact');
+  const validerPris = await lireValider();
   await capture(A.page, `${etiquette}-reprise-refusee`);
   await cliquer(A.page, '.fg-scene[data-scene="contact"] [data-hold-action]');
   const retour = await attendre(A.page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering')
@@ -354,7 +358,7 @@ async function scenarioEcheance(browser, mock, etiquette) {
   const heureApres = await heureBowling(A.page);
   const erreurs = [...A.erreurs, ...B.erreurs];
   await Promise.all([A.ctx.close(), B.ctx.close()]);
-  return { pendant, echu, apres, bPasse, refus, retour, heureApres, erreurs };
+  return { pendant, echu, apres, bPasse, refus, retour, heureApres, erreurs, validerEchu, validerPris };
 }
 
 async function scenarioConfirmer(browser, mock, etiquette) {
@@ -495,6 +499,8 @@ function verifierEcheance(r, dire = true) {
     [r.echu && r.apres && r.apres.titre === 'Vos horaires ne sont plus bloqués' && r.apres.bouton === 'Les bloquer à nouveau' && !r.apres.temps, '[C] a zero, le bandeau dit que rien n est plus garanti et propose de les bloquer a nouveau', r.apres && `${r.apres.titre} / ${r.apres.bouton}`],
     [r.bPasse, '[C] la place revient aux autres : un deuxieme client la bloque'],
     [r.refus && /se libère au plus tard à \d{2}:\d{2}/.test(r.refus.sous) && r.refus.bouton === 'Choisir d’autres horaires', '[C] la reprise est refusee, et dit quand la place se libere', r.refus && r.refus.sous],
+    [r.validerEchu && r.validerEchu.revoir && r.validerEchu.texte === 'Revérifier mes horaires', '[B] temps ecoule : le bouton de validation revérifie les horaires au lieu de valider', JSON.stringify(r.validerEchu)],
+    [r.validerPris && r.validerPris.revoir && r.validerPris.texte === 'Choisir d’autres horaires', '[B] horaires pris entre-temps : le bouton de validation ramene aux horaires', JSON.stringify(r.validerPris)],
     [r.retour && r.heureApres && r.heureApres !== '', '[C] « Choisir d’autres horaires » ramene aux horaires, relus', r.heureApres],
     [!r.erreurs.length, '[C] aucune erreur de page', r.erreurs.join(' | ')],
   ];

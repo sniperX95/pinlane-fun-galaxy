@@ -1711,27 +1711,19 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-hold {
   position: relative;
   display: grid;
-  align-items: center;
   overflow: hidden;
 }
 .fg-hold[hidden] { display: none; }
 .fg-hold__txt { margin: 0; min-width: 0; }
 .fg-hold__txt b { display: block; }
-.fg-hold__temps { min-width: 3.4ch; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; }
+.fg-hold__temps { min-width: 3.4ch; font-variant-numeric: tabular-nums; text-align: right; }
 .fg-hold__temps[hidden], .fg-hold__btn[hidden] { display: none; }
 .fg-hold__btn {
   grid-column: 2 / -1;
   justify-self: start;
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
   margin-top: 8px;
-  padding: 8px 16px;
-  border: 1.5px solid var(--fg-teal);
-  border-radius: var(--fg-radius);
-  color: var(--fg-teal-ink);
-  font-size: 14px;
-  font-weight: 700;
   transition: background-color 0.2s, color 0.2s;
 }
 .fg-hold__btn[disabled] { border-color: var(--fg-line-2); color: var(--fg-muted); cursor: progress; }
@@ -1739,9 +1731,6 @@ html.fg-pilote .fg { overflow: visible; }
 /* Sans transition : la barre recule de moins d un pixel par seconde, un pas
    par seconde se lit deja comme un glissement. Une transition relancee chaque
    seconde laissait une animation tourner sans fin sur l ecran. */
-.fg-hold.is-urgent { border-color: rgba(227, 179, 65, 0.6); background: rgba(227, 179, 65, 0.08); }
-.fg-hold.is-urgent .fg-hold__temps { color: var(--fg-amber-ink); }
-.fg-hold.is-libre { border-color: var(--fg-line-2); background: var(--fg-bg-2); }
 /* L alerte de l ecran des horaires, juste au-dessus de la barre du bas. */
 .fg-hour-err { max-width: 720px; margin: 18px auto 0; text-align: left; }
 
@@ -2792,17 +2781,18 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-fams { display: grid; gap: 20px; }
 .fg-fam__title { display: block; margin: 0 0 8px; font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; }
 .fg-fam__title::after { display: none; }
-/* La guirlande de fanions, une fois, sur le titre des anniversaires. */
-.fg-fam.is-fete .fg-fam__title { display: flex; align-items: center; gap: 12px; }
-.fg-fam.is-fete .fg-fam__title::after { content: ""; display: block; flex: 1 1 auto; height: 17px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3C/svg%3E") 0 0 / 72px 17px round no-repeat; }
-.fg-card--formule.is-fete::before { display: none; }
+/* La guirlande de fanions sur CHAQUE formule d anniversaire (Ansar, 2026-11-05 : « pour bien distinguer
+   anniversaire de ceux qui ne le sont pas »). */
+.fg-card--formule.is-fete::before { content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: 2; height: 17px; pointer-events: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3C/svg%3E") 0 0 / 72px 17px round no-repeat; }
+.fg-grid--for .fg-card--formule.is-fete { padding-top: 23px; }
+.fg-grid--for .fg-grid__item:has(> .is-refus.is-fete) > .fg-card__info { top: 17px; }
 .fg-fam__regles { margin: -2px 0 8px; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-muted); }
 .fg-fam__regles::first-letter { text-transform: uppercase; }
 .fg-fam__regles i, .fg-for__rules i { display: inline; padding: 0; border: 0; border-radius: 0; background: none; font-style: normal; }
 .fg-fam__regles i + i::before, .fg-for__rules i + i::before { content: " \00b7  "; }
 .fg-grid--for { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .fg-grid--for > li { display: flex; flex-direction: column; margin: 0; }
-.fg-grid--for .fg-card--formule, .fg-card--formule.is-fete { position: relative; display: block; min-height: 96px; padding: 10px 44px 12px 100px; border: 0; border-radius: var(--fg-r-plat) var(--fg-r-plat) 0 0; background: var(--fg-carte); box-shadow: none; transform: none; overflow: hidden; text-align: left; }
+.fg-grid--for .fg-card--formule, .fg-card--formule.is-fete { position: relative; display: block; min-height: 96px; padding: 14px 44px 12px 100px; border: 0; border-radius: var(--fg-r-plat) var(--fg-r-plat) 0 0; background: var(--fg-carte); box-shadow: none; transform: none; overflow: hidden; text-align: left; }
 .fg-grid--for .fg-card--formule.is-on { background: var(--fg-purple); }
 .fg-for__photo { inset: 0 auto 0 0; width: 88px; border-radius: 0; background: var(--fg-plat); }
 .fg-for__photo::after { display: none; }
@@ -2834,7 +2824,8 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-card.is-refus { opacity: 1; }
 .fg-card.is-refus .fg-card__name { color: #bdbbc2; }
 .fg-card--formule.is-refus { min-height: 0; }
-.fg-card--formule.is-refus :is(.fg-for__list, .fg-for__time, .fg-for__rules) { display: none; }
+.fg-card--formule.is-refus .fg-for__time { display: none; }
+.fg-card--formule.is-refus .fg-for__list li { color: #c9c7ce; }
 .fg-card--formule.is-refus .fg-card__name, .fg-card--formule.is-refus .fg-for__price b { color: #bdbbc2; }
 .fg-card--formule .fg-for__off { display: block; margin: 6px 0 0; padding: 0; border: 0; border-radius: 0; background: none; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-amber-ink); }
 .fg-card--formule .fg-for__off svg { display: none; }
@@ -2873,11 +2864,19 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-field__hint--day { font-size: 13px; color: var(--fg-teal-ink); }
 .fg-field__hint a { color: inherit; }
 /* Les horaires gardes : un bloc plat, le temps qui reste en chiffres d affiche. */
-.fg-hold { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; max-width: none; margin: 0 0 8px; padding: 10px 14px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+/* Les horaires gardes : un bloc plein, sarcelle, qu on ne confond avec rien (Ansar, 2026-11-05 : « pas assez
+   different, faut que ce soit bien visible »). Ambre dans les deux dernieres minutes, et une fois le temps ecoule. */
+.fg-hold { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; max-width: none; margin: 0 0 10px; padding: 12px 16px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-teal); box-shadow: none; }
 .fg-hold__txt { text-wrap: pretty; }
-.fg-hold__txt b { font-size: 14px; font-weight: 700; line-height: 19px; color: #fff; }
-.fg-hold__txt span { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--fg-n3); }
-.fg-hold__temps { font-family: var(--fg-display); font-size: 26px; font-weight: 400; letter-spacing: 0.02em; color: var(--fg-teal-ink); }
+.fg-hold__txt b { font-size: 15px; font-weight: 700; line-height: 20px; color: #06100e; }
+.fg-hold__txt span { display: block; margin-top: 2px; font-size: 13.5px; font-weight: 600; line-height: 18px; color: #10302a; }
+.fg-hold__temps { font-family: var(--fg-display); font-size: 34px; font-weight: 400; line-height: 1; letter-spacing: 0.02em; color: #06100e; }
+.fg-hold.is-urgent, .fg-hold.is-libre { border: 0; background: var(--fg-amber); }
+.fg-hold.is-urgent .fg-hold__temps, .fg-hold.is-libre .fg-hold__txt b { color: #1c1404; }
+.fg-hold.is-urgent .fg-hold__txt span, .fg-hold.is-libre .fg-hold__txt span { color: #33260a; }
+.fg-hold.is-libre { grid-template-columns: minmax(0, 1fr); }
+.fg-hold.is-libre .fg-hold__btn { justify-self: start; margin-top: 8px; }
+.fg-hold__btn { min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--fg-r-tuile); background: #0b0a0c; color: #fff; box-shadow: none; font-size: 14px; font-weight: 700; }
 /* Le rappel de la visite : une rangee, toute entiere touchable. */
 .fg-recall { padding: 12px 14px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
 .fg-recall .fg-kicker { display: none; }
@@ -2911,25 +2910,25 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-recap__sep + .fg-recap__row { margin-top: 14px; }
 .fg-total { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; box-shadow: none; }
 .fg-total > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px; }
-.fg-total__label { font-size: 12.5px; font-weight: 500; color: var(--fg-n3); }
+.fg-total__label { font-size: 14px; font-weight: 500; color: var(--fg-n3); }
 .fg-total__amount { font-family: var(--fg-display); font-size: 40px; font-weight: 400; line-height: 1; letter-spacing: 0.01em; color: #fff; }
 .fg-total__pay { display: block; margin: 3px 0 0; padding: 0; border: 0; text-align: right; }
 .fg-total__icons { display: none; }
 .fg-total__how, .fg-total__how b, .fg-total__how small { display: inline; font-size: 13px; font-weight: 500; line-height: 18px; color: var(--fg-muted); }
 .fg-total__how b::after { content: " \00b7"; }
 #recap .fg-total__pay { display: none; }
-.fg-recap__who, .fg-recap__occasion, .fg-recap__note { margin: 12px 0 0; font-size: 12.5px; line-height: 17px; color: var(--fg-n3); overflow-wrap: anywhere; }
+.fg-recap__who, .fg-recap__occasion, .fg-recap__note { margin: 12px 0 0; font-size: 14px; line-height: 19px; color: var(--fg-n3); overflow-wrap: anywhere; }
 .fg-recap__occasion, .fg-recap__note { margin-top: 2px; }
 /* Envie d un peu plus : un aplat au bout du recapitulatif. */
 .fg-plus { margin: 14px -16px -16px; padding: 12px 16px; border: 0; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: var(--fg-plat); }
 .fg-plus__head { margin: 0; font-size: 14px; line-height: 19px; }
 .fg-plus__voir { min-height: 44px; font-size: 14px; font-weight: 700; color: var(--fg-teal-ink); text-decoration: none; }
 .fg-scene[data-scene="recap"] .fg-actions--column { max-width: none !important; gap: 10px; }
-.fg-confirm__note { font-size: 12px; line-height: 16px; color: var(--fg-n3); }
+.fg-confirm__note { font-size: 14px; line-height: 19px; color: var(--fg-n3); }
 /* Modifier : de petits liens sur une ligne, plus quatre gros boutons qui ressemblaient a des choix. */
 .fg-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; margin-top: 10px; }
-.fg-edit > span { margin-right: 2px; font-family: var(--fg-body); font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-n3); }
-.fg-edit .fg-edit__btn { min-height: 44px; padding: 0; border: 0; border-radius: 0; background: none; font-size: 13.5px; font-weight: 600; color: var(--fg-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+.fg-edit > span { margin-right: 2px; font-family: var(--fg-body); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-n3); }
+.fg-edit .fg-edit__btn { min-height: 44px; padding: 0; border: 0; border-radius: 0; background: none; font-size: 15px; font-weight: 600; color: var(--fg-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* --- 6. LA CONFIRMATION : a gauche, un aplat sarcelle, le meme bloc ------------ */
 .fg-scene[data-scene="fin"] .fg-scene__body { text-align: left; }
@@ -2939,12 +2938,12 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-done__ring.is-mail { background: var(--fg-plat); color: #fff; }
 .fg-done__ring svg { width: 26px; height: 26px; stroke-dasharray: none; stroke-dashoffset: 0; }
 .fg-done__ticket { padding: 16px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
-.fg-done .fg-done__row { display: block; margin: 0 0 10px; padding: 0; border: 0; font-size: 13px; font-weight: 500; line-height: 18px; color: var(--fg-n3); }
+.fg-done .fg-done__row { display: block; margin: 0 0 12px; padding: 0; border: 0; font-size: 15px; font-weight: 500; line-height: 21px; color: var(--fg-n3); }
 .fg-done .fg-done__row:last-child { margin-bottom: 0; }
 .fg-done__row svg { display: none; }
 .fg-done__row b { color: #fff; }
 .fg-done__row:first-child b { font-family: var(--fg-display); font-size: 18px; font-weight: 400; line-height: 1.1; letter-spacing: 0.02em; text-transform: uppercase; color: var(--fg-teal-ink); }
-.fg-done .fg-done__row:nth-child(2) { font-size: 16px; line-height: 22px; color: #e9e7ec; }
+.fg-done .fg-done__row:nth-child(2) { font-size: 17px; line-height: 24px; color: #fff; }
 .fg-done__lien { color: var(--fg-teal-ink); }
 .fg-scene[data-scene="fin"] .fg-actions { justify-content: flex-start; }
 .fg-scene[data-scene="fin"] .fg-actions .fg-btn { width: 100%; }
@@ -3052,23 +3051,23 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    Niveau 3, si besoin : 11,5 a 13 px, un gris plus sombre. Aucune barre qui suit l ecran : refusee
    le 2026-09-24 (journal 330 et 331), chaque ecran se resserre a la place.
    ============================================================================= */
-.fg { --fg-n3: #8f8d95; }
+.fg { --fg-n3: #b8b6be; }
 
 
 /* Coordonnees : le mot pour l equipe dit sa limite quand on l ecrit ; le legal en petit. */
 .fg-field__hint--note { display: none; }
 .fg-field:focus-within > .fg-field__hint--note, .fg-field:has(> .fg-input--area:not(:placeholder-shown)) > .fg-field__hint--note { display: block; }
-.fg-field__opt { font-family: var(--fg-body); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--fg-n3); }
-.fg-check > span:last-child { font-size: 13.5px; line-height: 19px; color: #d4d2d8; }
-.fg-field__hint--offres { font-size: 11.5px; font-weight: 500; line-height: 16px; color: var(--fg-n3); }
+.fg-field__opt { font-family: var(--fg-body); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--fg-n3); }
+.fg-check > span:last-child { font-size: 14.5px; line-height: 20px; color: #e9e7ec; }
+.fg-field__hint--offres { font-size: 13px; font-weight: 500; line-height: 18px; color: var(--fg-n3); }
 
 /* Le recapitulatif : la date, les heures et le total ressortent ; l adresse, le nom, les notes s effacent. */
-.fg-recap__lieu > span { font-size: 12px; line-height: 16px; color: var(--fg-n3); }
-.fg-recap__sep + .fg-recap__row { font-size: 13px; font-weight: 500; line-height: 18px; color: var(--fg-n3); }
+.fg-recap__lieu > span { font-size: 13.5px; line-height: 18px; color: var(--fg-n3); }
+.fg-recap__sep + .fg-recap__row { font-size: 14.5px; font-weight: 500; line-height: 20px; color: var(--fg-n3); }
 .fg-recap__sep + .fg-recap__row b { font-weight: 700; color: #fff; }
 .fg-recap__who b, .fg-recap__occasion b { color: #fff; }
 .fg-plus__head b { font-size: 14px; }
-.fg-plus__head small { font-size: 12px; color: var(--fg-n3); }
+.fg-plus__head small { font-size: 14px; color: var(--fg-n3); }
 
 
 /* --- PC STANDARD : chaque ecran tient dans la hauteur sans monter ni descendre ------------------- */
@@ -3076,7 +3075,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   /* Le titre sur une ligne : sur un PC de 768 px de haut, l en-tete, le fil et le titre prenaient 40 %
      de l ecran. */
   .fg-title br { display: none; }
-  .fg-title em { display: inline; margin-left: 0.22em; }
+  .fg-title em { display: inline; }
   .fg-title, .fg-scene--split .fg-title { font-size: 40px; margin-bottom: 14px; }
   .fg-steps { margin-bottom: 12px; }
   /* Coordonnees : l e-mail et le telephone cote a cote, les occasions sur deux rangees. */

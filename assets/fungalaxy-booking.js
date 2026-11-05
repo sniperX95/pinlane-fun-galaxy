@@ -6349,7 +6349,7 @@
     var reste = Date.parse(x.expiresAt) - Date.parse(x.serverNow);
     if (!(reste > 0)) reste = (Number(x.minutes) || 10) * 60000;
     blocage.jeton = x.holdToken; blocage.cle = cle; blocage.total = reste; blocage.echeance = Date.now() + reste;
-    blocage.etat = 'tenu'; blocage.message = ''; blocage.prevenu = false;
+    blocage.etat = 'tenu'; blocage.message = ''; blocage.prevenu = false; blocage.panne = false;
     clearInterval(blocage.minuteur);
     blocage.minuteur = setInterval(tic, 1000);
     rendreBlocage();
@@ -6413,6 +6413,21 @@
       btn.dataset.action = blocage.etat === 'pris' ? 'rechoisir' : 'reprendre';
       poserTexte(btn, blocage.etat === 'pris' ? 'Choisir d’autres horaires' : blocage.etat === 'reprise' ? 'Vérification…' : 'Les bloquer à nouveau');
     });
+    revoirAvantDeValider();
+  }
+  // LE TEMPS ECOULE NE SE VALIDE PLUS A L AVEUGLE (Ansar, 2026-11-05 : « si le timing est ecoule c est plus
+  // bloque et il se peut que ca ait deja ete reserve ») : le bouton de validation revérifie d abord les
+  // horaires, ou ramene aux horaires s ils sont pris. Une panne du blocage ne ferme rien : le serveur juge.
+  var libelleValider = '';
+  function revoirAvantDeValider() {
+    var cb = $('#confirmBtn');
+    if (!cb || !cb.firstChild || cb.firstChild.nodeType !== 3) return;
+    if (!libelleValider) libelleValider = cb.firstChild.textContent;
+    var revoir = (blocage.etat === 'echu' && !blocage.panne) || blocage.etat === 'pris' || blocage.etat === 'reprise';
+    cb.classList.toggle('is-revoir', revoir);
+    var t = !revoir ? libelleValider : blocage.etat === 'pris' ? 'Choisir d’autres horaires' : blocage.etat === 'reprise' ? 'Vérification…' : 'Revérifier mes horaires';
+    if (cb.firstChild.textContent !== t) cb.firstChild.textContent = t;
+    if (blocage.etat === 'reprise') { cb.disabled = true; cb.dataset.reprise = '1'; } else if (cb.dataset.reprise) { cb.disabled = false; delete cb.dataset.reprise; }
   }
   function rechoisirHoraires() {
     aller('heures', true);
@@ -6434,7 +6449,7 @@
         return;
       }
       // Panne technique : rien n est garanti, le bouton reste la.
-      blocage.etat = 'echu';
+      blocage.etat = 'echu'; blocage.panne = true;
       rendreBlocage();
     });
   }
@@ -7247,6 +7262,10 @@
   }
   confirmBtn.addEventListener('click', function () {
     if (confirmBtn.classList.contains('is-busy')) return;
+    if (confirmBtn.classList.contains('is-revoir')) {
+      if (blocage.etat === 'pris') rechoisirHoraires(); else if (blocage.etat === 'echu') reprendreBlocage();
+      return;
+    }
     annulerVitrine();
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
@@ -7388,7 +7407,7 @@
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
     // et ne disait rien.
-    poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');
+    poserTitre($('#t-fin'), confirme ? 'Réservation<br> <em>confirmée</em>' : 'Demande<br> <em>envoyée</em>');
     // Aucun numero de reservation : le SaaS ne s en sert nulle part, le
     // client n aurait rien a en faire (Movsar, 2026-09-24).
     var centreFin = meta && meta.center;

@@ -14,8 +14,8 @@
 // truc special pour montrer que c est pas vide » ; « plus sombre les images
 // pour mieux voir les textes ».
 //
-// DEPUIS LE 2026-11-05 (valide par Ansar sur images) : la guirlande est UNE fois, sur le titre de la
-// section, et la photo est nette, a gauche du texte, sans voile. [A], [C] et [D] lisent cela.
+// DEPUIS LE 2026-11-05 : la photo est nette, a gauche du texte, sans voile ([C] et [D]). La guirlande, posee
+// une fois sur le titre le temps d un essai, est revenue sur chaque carte (Ansar : « pour bien distinguer »).
 //   [A] chaque formule de la famille des anniversaires porte la guirlande (une
 //       tuile SVG repetee « round » : jamais un feston coupe) et 9 px de plus en
 //       haut ; aucune autre formule ;
@@ -94,7 +94,7 @@ const MUTATIONS = {
   refusAvecPhoto: ['css', '.fg-card.is-refus .fg-for__photo { display: none; }\n', ''],
   festonCoupe: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 72px 17px repeat-x'],
   guirlandeHaute: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 85px 20px round no-repeat'],
-  guirlandeLongue: ['css', 'flex: 1 1 auto; height: 17px;', 'flex: 1 1 auto; height: 20px;'],
+  guirlandeLongue: ['css', 'z-index: 2; height: 17px;', 'z-index: 2; height: 20px;'],
   feries: ['meta', 'jours fériés', 'jours feries'],
   remiseColle: ['css', '.fg-for__remise { align-self: baseline; padding: 1px 5px;', '.fg-for__remise { align-self: baseline; flex-basis: 100%; margin-top: -14px; padding: 1px 5px;'],
 };
@@ -267,17 +267,19 @@ function verifierFete(familles, largeur) {
   const anniv = familles.find((f) => /anniv/i.test(f.titre));
   const autres = familles.filter((f) => f !== anniv);
   if (!ok(Boolean(anniv) && anniv.cartes.length > 0 && autres.length > 0 && autres.every((f) => f.cartes.length > 0), 'MONTAGE la famille des anniversaires et une autre famille sont affichees', familles.map((f) => `${sansEspaces(f.titre)} ${f.cartes.length}`).join(' | '))) return;
-  const g = anniv.guirlande;
-  ok(Boolean(g) && g.contenu !== 'none' && /data:image\/svg\+xml/.test(g.fond) && g.hauteur >= 16, 'le titre des anniversaires porte la guirlande de fanions', g ? `${g.taille} dans ${g.hauteur} px` : 'absent');
-  const repetees = anniv.cartes.filter((c) => /svg/.test(c.avantFond));
-  ok(repetees.length === 0, 'une fois seulement : aucune carte ne la repete', repetees.map((c) => c.id).join(' '));
-  const enTrop = autres.flatMap((f) => f.cartes).filter((c) => c.fete || /svg/.test(c.avantFond)).map((c) => c.id).concat(autres.filter((f) => f.guirlande && /svg/.test(f.guirlande.fond)).map((f) => sansEspaces(f.titre)));
-  ok(enTrop.length === 0, 'aucune autre famille ne porte de guirlande', enTrop.join(' '));
-  ok(Boolean(g) && /^round/.test(g.repetition), 'la tuile se repete « round » : jamais un feston coupe au bord', g ? g.repetition : '');
+  const sansGuirlande = anniv.cartes.filter((c) => !(c.fete && c.avantContenu !== 'none' && /data:image\/svg\+xml/.test(c.avantFond) && c.avantHauteur >= 16));
+  ok(sansGuirlande.length === 0, 'chaque formule anniversaire porte la guirlande de fanions', sansGuirlande.map((c) => c.id).join(' ') || `${anniv.cartes.length} cartes`);
+  const enTrop = autres.flatMap((f) => f.cartes).filter((c) => c.fete || /svg/.test(c.avantFond));
+  ok(enTrop.length === 0, 'aucune autre formule ne porte de guirlande', enTrop.map((c) => c.id).join(' '));
+  ok(anniv.cartes.every((c) => /^round/.test(c.avantRepetition)), 'la tuile se repete « round » : jamais un feston coupe au bord', [...new Set(anniv.cartes.map((c) => c.avantRepetition))].join(' | '));
   // Le dessin de la tuile garde sa hauteur : une guirlande plus haute que sa
   // case serait coupee, plus basse que son dessin, ecrasee.
-  const hautTuile = (x) => { const m = /([\d.]+)px\s+([\d.]+)px/.exec(x.taille || ''); return m ? Number(m[2]) : NaN; };
-  ok(Boolean(g) && Math.abs(hautTuile(g) - g.hauteur) < 0.5, 'la tuile a la hauteur de sa case : rien de coupe, rien d ecrase', g ? `${g.taille} dans ${g.hauteur} px` : '');
+  const hautTuile = (c) => { const m = /([\d.]+)px\s+([\d.]+)px/.exec(c.avantTaille || ''); return m ? Number(m[2]) : NaN; };
+  ok(anniv.cartes.every((c) => Math.abs(hautTuile(c) - c.avantHauteur) < 0.5), 'la tuile a la hauteur de sa case : rien de coupe, rien d ecrase', `${anniv.cartes[0].avantTaille} dans ${anniv.cartes[0].avantHauteur} px`);
+  const touche = anniv.cartes.filter((c) => !(c.hautNom !== null && c.hautNom >= c.avantHauteur + 0.5));
+  ok(touche.length === 0, 'la guirlande s arrete avant la boite du texte du nom (sinon un fanion devient son pixel le plus clair)', touche.map((c) => `${c.id} nom a ${c.hautNom && c.hautNom.toFixed(1)} px, guirlande jusqu a ${c.avantHauteur} px`).join(' ; ') || `nom a ${anniv.cartes[0].hautNom.toFixed(1)} px, guirlande jusqu a ${anniv.cartes[0].avantHauteur} px`);
+  const base = autres.flatMap((f) => f.cartes)[0].hautInterne;
+  ok(anniv.cartes.every((c) => Math.abs(c.hautInterne - (base + 9)) < 0.5), 'la guirlande prend 9 px en haut, rien d autre', `${anniv.cartes[0].hautInterne} px contre ${base} px`);
 }
 function verifierPhotos(familles, largeur) {
   section(`B. LA VRAIE PHOTO EN FOND (${largeur} px, Libramont)`);
@@ -440,7 +442,7 @@ async function contreEpreuves(browser, mock, meta) {
   const empreintes = ['fungalaxy-booking.js', 'fungalaxy-booking.css'].map((f) => fs.readFileSync(path.join(ROOT, 'assets', f), 'utf8'));
   await contreEpreuve('fete', 'sans la famille des anniversaires reconnue, la guirlande disparait', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('festonCoupe', 'repetee sans « round », la guirlande coupe un feston au bord', () => parcoursComplet(browser, mock, 1440, meta, { seulement: ['A'] }));
-  await contreEpreuve('guirlandeHaute', 'une tuile plus haute que sa case est coupee', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
+  await contreEpreuve('guirlandeHaute', 'la guirlande a sa taille d avant (20 px) touche le nom', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('guirlandeLongue', 'une case plus haute que la tuile', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('repete', 'sans la seconde photo, une section montre deux fois la meme', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));
   await contreEpreuve('refusAvecPhoto', 'une formule refusee qui garde sa photo', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));

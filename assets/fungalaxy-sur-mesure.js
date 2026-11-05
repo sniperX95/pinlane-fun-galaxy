@@ -32,7 +32,7 @@
       <form class="fg-scene__body" id="smGroupeForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
         <span class="fg-sm-kicker fg-rise" style="--i:0"><svg aria-hidden="true"><use href="#i-users"/></svg>Demande sur mesure</span>
-        <h2 class="fg-title" id="t-smg" data-words>Parlez-nous<br><em>de votre groupe</em></h2>
+        <h2 class="fg-title" id="t-smg" data-words>Parlez-nous<br> <em>de votre groupe</em></h2>
         <p class="fg-sub fg-rise" style="--i:1" id="smGroupeSub">L’équipe compose votre venue et vous répond sous 24&nbsp;heures ouvrables.</p>
         <div class="fg-fields fg-sm-fields">
           <div class="fg-field fg-rise" style="--i:2">
@@ -101,7 +101,7 @@
       <form class="fg-scene__body" id="smDateForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
         <span class="fg-sm-kicker fg-rise" style="--i:0"><svg aria-hidden="true"><use href="#i-users"/></svg>Demande sur mesure</span>
-        <h2 class="fg-title" id="t-smd" data-words>Quand<br><em>venez-vous&nbsp;?</em></h2>
+        <h2 class="fg-title" id="t-smd" data-words>Quand<br> <em>venez-vous&nbsp;?</em></h2>
         <p class="fg-sub fg-rise" style="--i:1">Pas le jour même&nbsp;: une demande sur mesure se prépare au moins 24&nbsp;heures à l’avance.</p>
         <div class="fg-fields fg-sm-fields">
           <div class="fg-sm-dates" id="smDates">
@@ -160,7 +160,7 @@
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <span class="fg-sm-kicker fg-rise" style="--i:0"><svg aria-hidden="true"><use href="#i-users"/></svg>Demande sur mesure</span>
-        <h2 class="fg-title" id="t-sme" data-words>Vos<br><em>envies</em></h2>
+        <h2 class="fg-title" id="t-sme" data-words>Vos<br> <em>envies</em></h2>
         <p class="fg-sub fg-rise" style="--i:1" id="smEnviesSub"></p>
         <div class="fg-tabs fg-rise" style="--i:2" role="tablist" aria-label="Activités ou formules" id="smTabs">
           <button type="button" class="fg-tab" role="tab" id="smTabAct" aria-selected="true" aria-controls="smPanelAct">Activités<span class="fg-tab__n" id="smTabActN"></span></button>
@@ -200,7 +200,7 @@
       <form class="fg-scene__body" id="smContactForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
         <span class="fg-sm-kicker fg-rise" style="--i:0"><svg aria-hidden="true"><use href="#i-users"/></svg>Demande sur mesure</span>
-        <h2 class="fg-title" id="t-smc" data-words>Vos<br><em>coordonnées</em></h2>
+        <h2 class="fg-title" id="t-smc" data-words>Vos<br> <em>coordonnées</em></h2>
         <div class="fg-fields fg-sm-fields">
           <div class="fg-sm-pair">
             <div class="fg-field fg-rise" style="--i:1">
@@ -264,7 +264,7 @@
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <span class="fg-sm-kicker fg-rise" style="--i:0"><svg aria-hidden="true"><use href="#i-users"/></svg>Demande sur mesure</span>
-        <h2 class="fg-title" id="t-smr"><span data-words>Votre<br><em>demande</em></span></h2>
+        <h2 class="fg-title" id="t-smr"><span data-words>Votre<br> <em>demande</em></span></h2>
         <div class="fg-sm-recap" id="smRecap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:560px">
           <button type="button" class="fg-btn" id="smSend">Envoyer ma demande<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -1126,7 +1126,7 @@
       var contact = I.meta && I.meta.center && I.meta.center.contact;
       var nomCentre = I.meta && I.meta.center && I.meta.center.name ? I.meta.center.name : 'du centre';
       function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
-      poserTitre($('#t-fin'), 'Demande<br><em>envoyée</em>');
+      poserTitre($('#t-fin'), 'Demande<br> <em>envoyée</em>');
       $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
         + rangee('i-users', '<b>' + esc(sm.organisation || def.label) + '</b>, ' + esc(sm.participants + ' joueur' + (sm.participants > 1 ? 's' : '')) + (sm.accompagnants ? ' + ' + esc(sm.accompagnants + ' accompagnateur' + (sm.accompagnants > 1 ? 's' : '')) : '') + '.')
         + rangee('i-calendar', esc(libelleQuandSm()) + '.')

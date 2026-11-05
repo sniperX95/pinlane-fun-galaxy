@@ -2179,10 +2179,14 @@ async function main() {
     // lancement 47, formule 39 (sa page Formules). Le lancement varie de 42 a 47
     // selon que le bloc Bowling reprend la liste du cas d avant (meme cle a la
     // minute pres) : le plafond suit le plus haut.
+    // Le 2026-11-05 (Ansar : les joueurs de chaque activite, une piste posee a la main), les
+    // blocs Bowling et Laser portent leurs touches Joueurs et Pistes, six de plus : le
+    // lancement mesure 51 sur la machine GitHub, son plafond passe a 54. Les autres cas
+    // restent sous le leur.
     const PLAFOND_GENERIQUE = 55;
     const PLAFOND_CASE = 55;
     const PLAFOND_LASER = 55;
-    const PLAFOND_LANCEMENT = 50;
+    const PLAFOND_LANCEMENT = 54;
     const PLAFOND_FORMULE = 42;
     // Une condition qui tient : au delai, relue une fois (un gel de la machine
     // pendant l attente ne vaut pas un echec).

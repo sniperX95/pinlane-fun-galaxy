@@ -19,11 +19,12 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
   getCenterActivity: id => catalog.find(item => item.id === id), resolveDisplayFormule: () => null,
   renderQuickBook: () => {}, renderPos: () => {}, escapeHtml: value => String(value), escapeJsString: value => String(value),
   formatDurationLabel: value => `${value}h`, getRuntimeBowlingConfig: () => null, getFreeCount: () => 12,
+  getAvailabilityLaneCount: () => 8,
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;
 vm.runInContext('setCenterActivities(testCatalog)', ctx);
-const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
+const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'poseEditionChange', 'pistesALaMainDuDossier', 'parseLaneInput', 'rsFmPrix', 'rsFmActive', 'rsFmMontant', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
 for (const name of functions) {
   const from = app.indexOf(`function ${name}(`);
   assert.ok(from >= 0, name);
@@ -56,6 +57,12 @@ assert.equal(run('getEditProgramItems()[1].participants'), 2);
 assert.equal(run('editionChangeLePrix()'), true);
 ctx.state.selectedRes.formuleId = 'f1';
 assert.equal(run('editionChangeLePrix()'), false, 'allocation does not discount purchased formula');
+// Des pistes posees a la main changent le prix, meme d une formule achetee ; les memes ne le changent pas.
+Object.assign(ctx.state.editState, { pistesALaMain: true, lanesStr: '1,2,3' });
+assert.equal(run('editionChangeLePrix()'), true, 'hand lanes change the price');
+ctx.state.selectedRes.opsPlan = { resourceBlocks: [{ resourceType: 'bowling_lane', pistesALaMain: 3 }] };
+assert.equal(run('editionChangeLePrix()'), false, 'the same hand lanes keep the price');
+delete ctx.state.editState.pistesALaMain; delete ctx.state.editState.lanesStr; delete ctx.state.selectedRes.opsPlan;
 ctx.quickBookState.pax = 3;
 assert.equal(run("getQuickVisitParticipants('bowling')"), 3);
 ctx.quickBookState = { pax: 18, type: 'bowling', duration: 1, visit: { bowling: { on: true, duration: 1 }, laser_game: { on: false }, others: {} } };
@@ -72,6 +79,10 @@ assert.equal(run("estimerPrixProgramme([{activityId:'fun_run',minutes:30,partici
 assert.equal(run("estimerPrixProgramme([{activityId:'fun_run',minutes:30,participants:6}],18,'2026-10-06','14:00').total"), 110);
 ctx.quickBookState.customPrice = '30.75';
 assert.equal(run('getQuickBookCustomPrice()'), 30.75);
+// Une formule du jour a son prix par joueur : il passe avant un prix tape, et suit le groupe.
+ctx.quickBookState.fm = { nom: 'Fete', mode: 'personne', montant: '22' };
+assert.equal(run('getQuickBookCustomPrice()'), 22 * ctx.quickBookState.pax);
+delete ctx.quickBookState.fm;
 ctx.state.editState.price = '30.75';
 assert.equal(run('getEditPriceValue()'), 30.75);
 assert.equal(run("participantsLigneProgramme({participants:8})"), 8);

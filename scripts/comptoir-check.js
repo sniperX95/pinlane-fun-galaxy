@@ -89,14 +89,15 @@ MUTATIONS.push(
   { nom: 'fenetre-prix-fige', lettre: 'G', cible: '[G] par joueur, le prix suit le groupe', fichier: APP, de: "return s.fm.mode === 'total' ? montant : Math.round(montant * Math.max(1, Number(s.pax) || 1) * 100) / 100;", vers: 'return montant;' },
   { nom: 'formule-perdue-au-programme', lettre: 'G', cible: '[G] le dossier garde la formule', serveur: true, fichier: 'lib/reservation-request.js', de: 'priceComplete: program.priceComplete, ...(formuleSurMesure ? { formuleSurMesure } : {}) };', vers: 'priceComplete: program.priceComplete };' },
   { nom: 'formule-perdue-en-base', lettre: 'G', cible: '[G] le dossier garde la formule', serveur: true, fichier: 'lib/database.js', de: '    priceComplete: value.priceComplete === true,\n    ...(formuleSurMesure ? { formuleSurMesure } : {}),\n', vers: '    priceComplete: value.priceComplete === true,\n' },
-  { nom: 'une-activite-sans-programme', lettre: 'G', cible: '[G] une seule activite garde aussi sa formule', fichier: APP, de: "const programme = s.type === 'visite' || adaptee || rsFmActive(s);", vers: "const programme = s.type === 'visite' || adaptee;" },
+  { nom: 'une-activite-sans-programme', lettre: 'G', cible: '[G] le dossier garde la formule', fichier: APP, de: "const programme = s.type === 'visite' || adaptee || rsFmActive(s);", vers: "const programme = s.type === 'visite' || adaptee;" },
   { nom: 'patch-perd-la-formule', lettre: 'G', cible: '[G] la fiche garde la formule', serveur: true, fichier: 'api/staff-reservations.js', de: 'if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;', vers: '' },
   { nom: 'prix-qui-ne-suit-pas', lettre: 'G', cible: '[G] le groupe change sur la fiche, le prix de la formule suit', serveur: true, fichier: 'lib/droits-reservation.js', de: "if (formule && Number.isFinite(Number(formule.prixParPersonne)) && formule.prixParPersonne !== null) {", vers: 'if (false) {' },
   { nom: 'fiche-annonce-le-tarif', lettre: 'G', cible: '[G] la fiche annonce le prix de la formule', fichier: APP, de: '  const formule = prixFormuleEdition();\n  if (formule != null) return formule;\n', vers: '' },
   { nom: 'total-tape-suit-encore', lettre: 'G', cible: '[G] un total tape a la main ne suit plus le groupe', serveur: true, fichier: 'api/staff-reservations.js', de: 'if (ops.program) ops.program = { ...programme, formuleSurMesure: nom };\n        else if (patch.program) patch.program = { ...programme, formuleSurMesure: nom };', vers: '' },
   { nom: 'planning-sans-formule', lettre: 'G', cible: '[G] le Complet dit la formule', fichier: GLOBAL, de: "liste.push(gfRubrique('formule', 'Formule', gpEsc(formuleDite), formuleDite));", vers: '' },
   { nom: 'fiche-perd-les-drapeaux', lettre: 'G', cible: '[G] la fiche relit par personne et offert', fichier: APP, de: "else modele[groupe].push({ choix, qte, prix, ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) });", vers: 'else modele[groupe].push({ choix, qte, prix });' },
-  { nom: 'fiche-ne-suit-pas-le-groupe', lettre: 'G', cible: '[G] sur la fiche, la ligne par personne suit le groupe', fichier: APP, de: "const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;", vers: 'const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;' },
+  { nom: 'fiche-montre-l-ancien-groupe', lettre: 'G', cible: '[G] sur la fiche, la ligne par personne suit le groupe', fichier: APP, de: 'return ligne.parPersonne ? Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1)) :', vers: 'return ligne.parPersonne ? Math.max(1, Math.trunc(Number(ligne.qte) || 1)) :' },
+  { nom: 'fiche-ne-suit-pas-le-groupe', lettre: 'G', cible: '[G] la fiche retire l offre, la ligne par personne reste', fichier: APP, de: "const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;", vers: 'const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;' },
   { nom: 'droit-temporaire', lettre: 'G', cible: '[G] sans le niveau formule, le serveur refuse', serveur: true, fichier: 'lib/reserver-fenetre.js', de: 'if (corpsAdapteUneFormule(corps, formuleAdaptee) || corps.formuleSurMesure) exigerAdaptationDeFormule(session);', vers: 'if (corpsAdapteUneFormule(corps, formuleAdaptee)) exigerAdaptationDeFormule(session);' },
   { nom: 'onglet-sans-droit', lettre: 'G', cible: '[G] sans le niveau formule, pas d onglet Formule', fichier: APP, de: "const rsFmPermise = () => rsNiveau('formule') === 'oui' && quickBookState.type !== 'formule';", vers: "const rsFmPermise = () => quickBookState.type !== 'formule';" },
   { nom: 'gardee-visible-des-clients', lettre: 'G', cible: '[G] gardee au comptoir, les clients ne la voient pas', serveur: true, fichier: 'lib/booking-config.js', de: '    if (formule.comptoirSeul && !comptoir) continue;\n', vers: '' },
@@ -922,7 +923,8 @@ async function scenarioG(browser) {
 
     // La fiche : le groupe change, le prix suit la formule.
     await ouvrirModifier(page, r.id);
-    ok(/Anniversaire de Lina/.test(await page.locator('#editFormuleSM').textContent()), '[G] la fiche dit la formule', await page.locator('#editFormuleSM').textContent());
+    const formuleFiche = await page.evaluate(() => (document.getElementById('editFormuleSM') || {}).textContent || '');
+    ok(/Anniversaire de Lina/.test(formuleFiche), '[G] la fiche dit la formule', formuleFiche);
     await page.locator('#editPaxInput').fill('11');
     await page.waitForTimeout(250);
     ok(Number(await page.locator('#editPriceInput').inputValue()) === 220, '[G] la fiche annonce le prix de la formule', await page.locator('#editPriceInput').inputValue());
@@ -994,6 +996,8 @@ async function scenarioG(browser) {
     await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === 'comptoir');
     ok(!lePublicVoit(garde), '[G] on la retire du formulaire d un geste', lePublicVoit(garde));
     // Deux touches de suite, la seconde avant le retour de la premiere : la derniere compte.
+    const libre = await page.waitForFunction(() => !quickBookState.fm.enCours, null, { timeout: 8000 }).then(() => true, () => false);
+    ok(libre, '[G] rien en vol avant les deux touches');
     await page.evaluate(() => { document.getElementById('rsFmClients').click(); document.getElementById('rsFmComptoir').click(); });
     await page.waitForFunction(() => !quickBookState.fm.enCours, null, { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(300);

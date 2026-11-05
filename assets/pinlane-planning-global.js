@@ -488,9 +488,9 @@
         var k = Math.round(w.start * 60);
         var deja = parties.get(k);
         if (deja) { deja.armes += Number(w.players) || 0; return; }
-        var e = { start: w.start, end: w.end, armes: Number(w.players) || 0 };
-        parties.set(k, e);
-        poser('laser_game', e);
+        var partie = { start: w.start, end: w.end, armes: Number(w.players) || 0 };
+        parties.set(k, partie);
+        poser('laser_game', partie);
       });
       return g;
     }).sort(function (a, b) { return a.heure - b.heure; });

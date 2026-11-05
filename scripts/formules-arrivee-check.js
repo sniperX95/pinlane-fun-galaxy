@@ -2270,7 +2270,7 @@ const MUTATIONS = [
   { nom: 'une variante inconnue se reserve sur la carte (blocage, reservation)', fichier: 'lib/demande-publique.js',
     de: '  if (formuleDemandee && choixInconnu(formuleDemandee, preference.formulaChoice)) {', vers: '  if (false) {', scenarios: ['N|post'] },
   { nom: 'une modification perd la variante de son plan', fichier: 'lib/reservation-ops.js',
-    de: '            ...(visitFormula ? { formula: visitFormula } : formuleJouee ? { formula: formuleJouee } : {}),', vers: '            ...(visitFormula ? { formula: visitFormula } : {}),', scenarios: ['N|comptoir'] },
+    de: 'formuleJouee ? { formula: avecPistesALaMain(formuleJouee) }', vers: 'false ? {}', scenarios: ['N|comptoir'] },
   { nom: 'une modification relit la variante au catalogue', fichier: 'lib/formula-choice.js',
     de: '  if (instantanePour(garde, formulaId) && idDe(garde.id) === voulu) return garde;\n', vers: '', scenarios: ['N|comptoir'] },
   { nom: 'l instantane se rejoue sur une autre formule', fichier: 'lib/formula-choice.js',

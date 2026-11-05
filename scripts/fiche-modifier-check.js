@@ -606,7 +606,7 @@ const MUTATIONS = [
   { nom: 'telephone-oublie', lettre: 'M8', scenarios: GESTES, editions: [{ fichier: JS, de: `oninput="setEditField('phone', this.value)"`, vers: 'oninput="majModifsEdition()"' }] },
   { nom: 'ajuste-sans-extras', lettre: 'P2', scenarios: GESTES, editions: [{ fichier: JS, de: '  const etat = getReservationPriceState(r);\n  if (etat.ajuste)', vers: '  const etat = { ajuste: Number(r.basePrice) > 0 && Math.round(Number(r.basePrice) * 100) !== Math.round((Number(r.price) || 0) * 100), reference: Number(r.basePrice) };\n  if (etat.ajuste)' }] },
   { nom: 'extras-absents', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: "          ${adapte ? renderEditExtras(r) : ''}\n", vers: '' }] },
-  { nom: 'cruches-separees', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (meme) meme.qte += qte;\n    else modele[groupe].push({ choix, qte, prix });', vers: '    modele[groupe].push({ choix, qte, prix });' }] },
+  { nom: 'cruches-separees', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (meme) meme.qte += qte;\n    else modele[groupe].push({ choix, qte, prix, ...(parPersonne', vers: '    modele[groupe].push({ choix, qte, prix, ...(parPersonne' }] },
   { nom: 'ajout-muet', lettre: 'E2', scenarios: GESTES, editions: [{ fichier: JS, de: '  modifs.push(...modifsExtrasEdition());\n', vers: '' }] },
   { nom: 'extras-hors-prix', lettre: 'E2', scenarios: GESTES, editions: [{ fichier: JS, de: '  const ecartExtras = editExtrasAChange() ?', vers: '  const ecartExtras = false ?' }] },
   { nom: 'extras-non-envoyes', lettre: 'E3', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (extrasNouveaux) updated.extras = extrasNouveaux;\n', vers: '' }] },

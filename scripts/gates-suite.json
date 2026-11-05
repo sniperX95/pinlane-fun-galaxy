@@ -158,6 +158,7 @@
     "test:reserver-comptoir",
     "test:comptoir-reserver",
     "test:reserver-seances",
+    "test:comptoir",
     "test:arene-seuls-planning",
     "test:role-presets",
     "test:constants-drift",

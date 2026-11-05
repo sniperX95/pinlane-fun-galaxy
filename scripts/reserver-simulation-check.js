@@ -111,7 +111,7 @@ async function verifier(sim, { sortie = true } = {}) {
   verif(plein.court === 'complet', `[6] plus une piste libre : « complet » (${plein.court})`);
   const laser = 'Laser à 16:00 : il reste 7 places sur 30, il en faut 8. Décalez le départ.';
   const places = mot(laser, [{ type: 'laser_conflict', severity: 'blocking', message: laser, reste: 7, groupe: 8 }]);
-  verif(places.court === '7 places sur 8' && places.activite === 'laser_game', `[6] les places qui restent au laser sur celles qu il faut (${places.court}, ${places.activite})`);
+  verif(places.court === '7 armes sur 8' && places.activite === 'laser_game', `[6] les armes qui restent au laser sur celles qu il faut (${places.court}, ${places.activite})`);
   const prise = 'Arène laser déjà prise à 16:00 par une autre partie. Décalez le départ.';
   const arene = mot(prise, [{ type: 'laser_conflict', severity: 'blocking', message: prise, arenePrise: true }]);
   verif(arene.court === 'arène prise', `[6] l arene prise par une autre partie (${arene.court})`);
@@ -124,7 +124,7 @@ async function verifier(sim, { sortie = true } = {}) {
     { type: 'laser_conflict', severity: 'blocking', message: 'Laser à 17:30 : il reste 3 places sur 30, il en faut 8. Décalez le départ.', reste: 3, groupe: 8 },
   ] } });
   const parActivite = JSON.stringify((deux.bloquants || []).map((b) => [b.activite, b.court]));
-  verif(deux.statut === 'ko' && deux.court === '1 piste sur 2' && parActivite === JSON.stringify([['bowling', '1 piste sur 2'], ['laser_game', '3 places sur 8']]),
+  verif(deux.statut === 'ko' && deux.court === '1 piste sur 2' && parActivite === JSON.stringify([['bowling', '1 piste sur 2'], ['laser_game', '3 armes sur 8']]),
     `[6] le verdict garde son mot et ce qui coince, activite par activite (${deux.court}, ${parActivite})`);
   verif(parHeure['16:00'].court === 'impossible' && parHeure['15:30'].court === 'impossible', `[6] un ko de l horloge porte son mot (${parHeure['16:00'].court}, ${parHeure['15:30'].court})`);
 

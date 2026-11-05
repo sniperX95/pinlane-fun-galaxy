@@ -11039,15 +11039,21 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-seance.is-vide .rs-s-n { flex: none; }
 
 /* LES HEURES */
-.qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 62px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
+.qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 70px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-h b { font-size: 16px; font-weight: 600; line-height: 1.15; }
 .qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* Sur tablette et telephone, la touche fait 80 px : « reste 23 armes » y tient entier. */
+@media (max-width: 1100px) {
+  .qb-modal.rv.rs .rs-s-l { gap: 4px; }
+  .qb-modal.rv.rs .rs-h { padding: 0; }
+  .qb-modal.rv.rs .rs-h small { letter-spacing: -0.02em; }
+}
 .qb-modal.rv.rs .rs-h.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .qb-modal.rv.rs .rs-h.is-on small { color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-h.is-ko, .qb-modal.rv.rs .rs-h.is-ko.is-on { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
 .qb-modal.rv.rs .rs-h.is-ko small { color: var(--danger); }
 .qb-modal.rv.rs .rs-h-autres { grid-column: -2; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 14px; font-weight: 550; color: var(--muted); }
-.qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 54px; }
+.qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 62px; }
 .qb-modal.rv.rs .rs-h.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-efface b { font-weight: 400; }
 /* UNE HEURE QUI COINCE reste a sa place et dit pourquoi : la touche s efface comme une
@@ -11066,6 +11072,41 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-coche svg { width: 14px; height: 14px; }
 .qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }
 .qb-modal.rv.rs .rs-h.is-propose > .rs-coche, .qb-modal.rv.rs .rs-h.is-ko > .rs-coche { opacity: 0; transform: scale(.6); }
+
+/* CE QUI RESTERA APRES CETTE RESERVATION : la phrase, et une jauge qui montre ce qui est
+   pris, ce qu un client retient, ce que ce groupe prend, ce qui reste. Une case par piste,
+   une barre pour les armes. Couleurs du theme, jamais ecrites ici. */
+.qb-modal.rv.rs .rs-j { flex: none; display: flex; gap: 2px; width: min(76px, calc(100% - 18px)); height: 4px; margin-top: 4px; }
+.qb-modal.rv.rs .rs-j i { flex: 1 1 0; min-width: 2px; border-radius: 1px; }
+.qb-modal.rv.rs .rs-j .is-pris { background: var(--muted); }
+.qb-modal.rv.rs .rs-j .is-retenu { background: var(--warning); }
+.qb-modal.rv.rs .rs-j .is-ce { background: var(--accent); }
+.qb-modal.rv.rs .rs-j .is-libre { background: var(--rs-ligne-forte); }
+.qb-modal.rv.rs .rs-h.is-efface .rs-j, .qb-modal.rv.rs .rs-p.is-efface .rs-j { opacity: .55; }
+.qb-modal.rv.rs .rs-p .rs-j { width: min(64px, calc(100% - 8px)); margin-top: 3px; }
+/* « maintenant », « a la suite » : une etiquette posee sur le bord, l heure ne bouge pas. */
+.qb-modal.rv.rs .rs-h-tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); padding: 0 6px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 12px; font-style: normal; font-weight: 500; line-height: 16px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+.qb-modal.rv.rs .rs-p { position: relative; }
+.qb-modal.rv.rs .rs-h.is-on .rs-h-tag { color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent); }
+/* Les reglages d un bloc, a la taille de ses segments. */
+.qb-modal.rv.rs .rs-cpt { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.qb-modal.rv.rs .rs-cpt-l { font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); white-space: nowrap; }
+.qb-modal.rv.rs .rs-cpt .rs-pas { gap: 0; padding: 3px; border-radius: 10px; background: var(--rs-touche); }
+.qb-modal.rv.rs .rs-cpt .rs-pas button { width: 28px; min-height: 32px; border-radius: 8px; background: transparent; font-size: 17px; }
+.qb-modal.rv.rs .rs-cpt .rs-pas button:disabled { background: transparent; box-shadow: none; }
+.qb-modal.rv.rs .rs-cpt .rs-pas b { min-width: 22px; font-size: 15px; }
+.qb-modal.rv.rs .rs-joueurs-petits { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+/* Ce qu un client retient en ce moment : un aplat doux, une phrase, le temps qui descend. */
+.qb-modal.rv.rs .rs-retenues { display: flex; flex-direction: column; gap: 3px; margin-top: -4px; }
+.qb-modal.rv.rs .rs-ret { display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 10px; border-radius: 8px; background: var(--warning-soft); font-size: 13px; line-height: 1.3; color: var(--text); }
+.qb-modal.rv.rs .rs-ret i { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--warning); }
+.qb-modal.rv.rs .rs-ret b { font-weight: 600; white-space: nowrap; }
+.qb-modal.rv.rs .rs-ret.is-suite { padding-left: 26px; }
+.qb-modal.rv.rs .rs-piste.is-retenue { background: var(--warning-soft); box-shadow: inset 0 0 0 1px var(--warning); color: var(--text); }
+
+/* La fiche : garder seulement les pistes cochees. */
+.lane-main { display: inline-flex; align-items: center; min-height: 32px; margin-top: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font: inherit; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+.lane-main.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
 
 /* LES AUTRES ACTIVITES, LES PORTES */
 .qb-modal.rv.rs .rs-petits { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 6px; }
@@ -11292,6 +11333,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date, .qb-modal.rv.rs .rs-lien, .qb-modal.rv.rs .rs-retour, .qb-modal.rv.rs .rs-discret, .qb-modal.rv.rs .rs-x, .qb-modal.rv.rs .rs-payer, .qb-modal.rv.rs .rs-connu .rv-refaire, .qb-modal.rv.rs .rv-resa, .qb-modal.rv.rs .rv-resa-plus { min-height: 44px; }
   .qb-modal.rv.rs .rs-tk-ligne { grid-template-columns: minmax(0, 1fr) 44px; }
   .qb-modal.rv.rs .rs-tk-x { width: 44px; height: 44px; }
+  .qb-modal.rv.rs .rs-cpt .rs-pas button { width: 44px; min-height: 44px; }
+  .qb-modal.rv.rs .rs-s-t { flex-wrap: wrap; }
   .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date, .qb-modal.rv.rs .rs-payer, .qb-modal.rv.rs .rs-connu .rv-refaire, .qb-modal.rv.rs .rv-resa, .qb-modal.rv.rs .rv-resa-plus { height: 44px; }
   .qb-modal.rv.rs .rs-tabs button { height: 44px; }
   .qb-modal.rv.rs .rv-resa .rv-x { min-width: 44px; min-height: 44px; }

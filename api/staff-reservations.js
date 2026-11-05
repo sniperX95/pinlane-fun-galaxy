@@ -29,13 +29,13 @@ const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
-const { refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
 const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
-const { exigerHistorique, jugerEncaisse } = require('../lib/droits-reservation');
+const { exigerHistorique, exigerPistesALaMain, jugerEncaisse, pistesALaMainDuPlan } = require('../lib/droits-reservation');
 const { lireHistoriqueDossier } = require('../lib/historique-dossier');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
@@ -843,7 +843,21 @@ module.exports = async (req, res) => {
       if (proposedItems.some((item) => Number(item.participants) > Number(patch.pax ?? current.pax))) {
         throw createHttpError('Le nombre de joueurs d’une activité dépasse le nombre de personnes du groupe.', 422);
       }
-      const operationsChanged = patchChangesOperations(patch, current);
+      // LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05). Il suit le dossier : une heure ou un
+      // nom change sans qu on le redemande. Le poser, le changer ou le retirer replanifie, et
+      // descendre sous le conseil du centre demande le niveau forcer, juge ici.
+      const poseAvant = pistesALaMainDuPlan(current.opsPlan);
+      const poseEnvoyee = Object.prototype.hasOwnProperty.call(patch, 'pistesALaMain') ? Math.max(0, Math.trunc(Number(patch.pistesALaMain) || 0)) : null;
+      const poseApres = poseEnvoyee !== null ? poseEnvoyee : poseAvant && (Array.isArray(patch.lanes) ? patch.lanes.length : (current.lanes || []).length) || poseAvant;
+      delete patch.pistesALaMain;
+      if (poseApres) patch.pistesALaMain = poseApres;
+      if (poseApres && poseApres !== poseAvant) {
+        const bowling = proposedItems.find((item) => item.activityId === 'bowling');
+        const joueurs = Number(bowling && bowling.participants) || Number(patch.pax ?? current.pax) || 1;
+        const normale = Number(getCenter(requestedCenterId).resources?.bowling?.normalCapacityPerLane) || 6;
+        if (joueurs > poseApres * normale) exigerPistesALaMain(session);
+      }
+      const operationsChanged = patchChangesOperations(patch, current) || poseApres !== poseAvant;
       const shouldReplan = operationsChanged;
       if (!operationsChanged) {
         // Ne jamais adopter les métadonnées/prix/snapshots renvoyés par le client.

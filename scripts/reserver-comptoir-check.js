@@ -1022,7 +1022,7 @@ async function scenarioD10(browser, v) {
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '15:00', type: 'bowling', pax: 4 }), JOUR);
     await planPose(page);
     await page.waitForFunction(() => { const b = document.querySelector('#quickBookOverlay #rsZ-bowling .rs-h[data-heure="15:00"] small'); return Boolean(b && b.textContent.trim()); }, null, { timeout: 6000 }).catch(() => {});
-    const seances = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]')].map((b) => ({ h: b.dataset.heure, mot: ((b.querySelector('small') || {}).textContent || '').trim() })));
+    const seances = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]')].map((b) => ({ h: b.dataset.heure, mot: ((b.querySelector('.rs-h-tag') || {}).textContent || '').trim() })));
     const enCours = seances.find((x) => x.h === '15:00');
     v('D10', Boolean(enCours) && enCours.mot === 'maintenant' && seances.every((x) => x.h >= '15:00'), 'a 15:12, la seance en cours (15:00) se dit « maintenant », jamais une arrivee deja passee', JSON.stringify(seances.slice(0, 3)));
     // 3. Les pistes conseillees sont celles que le plan pose ; « libres » ne compte
@@ -1040,8 +1040,9 @@ async function scenarioD10(browser, v) {
     v('D10', prise5 > 0 && prise5 === conseillee5 && prise5 === new Set(plan5).size, 'les pistes conseillees sont celles que le plan pose', `${JSON.stringify(p5.touches.map((t) => `${t.texte}${t.on ? '*' : ''}${t.sous ? ` (${t.sous})` : ''}`))} | plan ${JSON.stringify(plan5)}`);
     const libresTete = (p5.tete.match(/(\d+) pistes? libres?/) || [])[1];
     const motDix8 = (p5.heures.find((x) => x.h === '18:00') || {}).mot || '';
-    const libresHeure = (motDix8.match(/^(\d+) pistes?$/) || [])[1];
-    v('D10', Boolean(libresHeure) && libresHeure === '8' && (!libresTete || libresTete === '8'), 'sur une journee vide, la ligne ne dit pas « 7 pistes libres » a cote de la piste du groupe', `tete « ${p5.tete} » | 18:00 « ${motDix8} »`);
+    // Ce qui RESTERA apres ce groupe (2026-11-05) : 8 pistes, une pour lui, il en reste 7.
+    const libresHeure = (motDix8.match(/^reste (\d+) pistes?$/) || [])[1];
+    v('D10', Boolean(libresHeure) && libresHeure === '7' && (!libresTete || libresTete === '8'), 'sur une journee vide, la ligne dit ce qui restera apres le groupe : 7 pistes sur 8', `tete « ${p5.tete} » | 18:00 « ${motDix8} »`);
     // 4. Le haut et le bas du ticket disent le meme etat.
     const c1 = await memeEtat(page);
     v('D10', c1.meme, 'le verdict et le pied ont la meme couleur (bowling 5)', JSON.stringify(c1));
@@ -1180,7 +1181,7 @@ const MUTATIONS = [
   // D6 (chaque toucher ajoute, mais le bowling de depart n est qu une proposition : la
   // premiere autre activite le remplace, rsPrendre ; le laser a ses seances sur l ecran
   // d accueil, rsActivitesHtml)
-  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, "  if (id !== 'bowling' && rvBowlingProposeIntact()) rsRemplacer(id, variante);\n  else rsBasculer(id, variante);", '  rsBasculer(id, variante);')] },
+  { nom: 'bowling-garde', cote: 'front', vise: ['D6'], edits: [e(APP, "  if (id !== 'bowling' && rvBowlingProposeIntact()) { rsRemplacer(id, variante); rsPoserJoueursDeclares(id); } else rsBasculer(id, variante);", '  rsBasculer(id, variante);')] },
   { nom: 'laser-hors-accueil', cote: 'front', vise: ['D6'], edits: [e(APP, '  const zones = getQuickBookActivityChoices().filter((c) => RV_ANCRABLES.includes(c.id)).map(', "  const zones = getQuickBookActivityChoices().filter((c) => c.id === 'bowling').map(")] },
   // D7
   { nom: 'auto-envoie-ses-pistes', cote: 'front', vise: ['D7'], edits: [
@@ -1206,10 +1207,10 @@ const MUTATIONS = [
   { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.`,', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.`,')] },
   { nom: 'laser-jargon', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', '            ? `Laser à ${heureLaser} : ${places}, il en faut ${groupe}. Décalez le départ.`', '            ? `Laser charge a ${heureLaser}: ${players}/${weaponCount} joueurs et ${launchCount}/${parallelLaunches} lancement(s).`')] },
   // (le mot sous une seance, rsMotHeure : le creneau en cours, puis les pistes libres)
-  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "    if (timeToNum(heure) === rvPlancherDuJour(s.date)) return 'maintenant';\n", '')] },
-  { nom: 'pistes-libres', cote: 'front', vise: ['D10'], edits: [e(APP, "    return rvPluriel(getFreeCount(s.date, heure, rvBowlingDuree()), 'piste');", "    return rvPluriel(getFreeCount(s.date, heure, rvBowlingDuree()) - rvPistesDuBowling(heure).besoin, 'piste');")] },
+  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';\n", '')] },
+  { nom: 'pistes-libres', cote: 'front', vise: ['D10'], edits: [e(APP, "  return place && !place.manque ? `reste ${rvPluriel(place.libre, place.unite)}` : '';", "  return place && !place.manque ? `reste ${rvPluriel(place.libre + place.prend, place.unite)}` : '';")] },
   // (les touches « Pistes » de la ligne du bowling, rsLigneBowlingHtml)
-  { nom: 'conseil-ou-choix', cote: 'front', vise: ['D10'], edits: [e(APP, "n === auto ? 'conseillé' : ''", "besoin === n ? 'conseillé' : ''")] },
+  { nom: 'conseil-ou-choix', cote: 'front', vise: ['D10'], edits: [e(APP, "n === auto ? 'conseillé' : n < auto ? 'à la main' : ''", "besoin === n ? 'conseillé' : n < auto ? 'à la main' : ''")] },
   { nom: 'avec-sans-nom', cote: 'front', vise: ['D10'], edits: [e(APP, "cles.push(rsPetite(rvPluriel(n, 'piste'), besoin === n,", 'cles.push(rsPetite(String(n), besoin === n,')] },
   // (un ecart se dit en orange sur la ligne d etat, rsVerdictHtml ; le pied n a plus
   // de bandeau : l ancienne « pied-sans-ecarts » n a plus de cible)

@@ -698,7 +698,7 @@ function getBowlingDragTargetPlan(target) {
     return {reservation,targetLane,targetStart,duration,lanes,valid:!message,message:message||`Pistes ${lanes.join(', ')}`,previewWindows:moved.filter(window=>window.selectedMove)};
   }
   const currentLanes = [...new Set(getBowlingWindowsFromReservation(reservation).flatMap(window => window.lanes || []))].map(Number).sort((a,b) => a-b);
-  const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
+  const requiredCount = pistesALaMainDuDossier(reservation) ? currentLanes.length : Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: slotCheck.message };
@@ -902,7 +902,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const sourceLane = Number(sourceLaneValue);
   const sourceWindow = getBowlingDragSourceWindow(reservation, sourceLaneValue, sourceStartValue);
   const currentLanes = [...new Set(getBowlingWindowsFromReservation(reservation).flatMap(window => window.lanes || []))].map(Number).sort((a,b) => a-b);
-  const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
+  const requiredCount = pistesALaMainDuDossier(reservation) ? currentLanes.length : Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
     showPlanningMoveNotice('Déplacement impossible', slotCheck.message || 'Ce créneau ne peut pas être utilisé.', 'warning');
@@ -1239,10 +1239,18 @@ function onLaserPassDrop(event, targetStart, targetEnd = null) {
   }
 }
 
+// LE NOMBRE DE PISTES POSE A LA MAIN SUR UN DOSSIER, lu sur son plan (blocs `pistesALaMain`).
+function pistesALaMainDuDossier(reservation) {
+  const blocs = (reservation && reservation.opsPlan && reservation.opsPlan.resourceBlocks) || [];
+  return blocs.reduce((max, bloc) => (bloc && bloc.resourceType === 'bowling_lane' ? Math.max(max, Number(bloc.pistesALaMain) || 0) : max), 0);
+}
+
 function getOccupiedLanes(date, startTime, duration, ignoreId) {
   const reqStart = typeof startTime === 'string' ? timeToNum(startTime) : startTime;
   const occupied = new Set();
-  state.reservations.forEach(r => {
+  // UN HORAIRE RETENU PAR UN CLIENT EN LIGNE PREND SA PISTE (2026-11-05, Ansar : « ça montre
+  // et bloque vrm pdt les X temps ») : le serveur la refuse deja, ce poste la compte aussi.
+  [...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {
     if (r.id === ignoreId) return;
     if (r.date === date && r.status !== 'cancelled' && (r.lanes || []).length > 0) {
       getBowlingWindowsFromReservation(r).forEach(window => {
@@ -1346,7 +1354,7 @@ function getBowlingCandidateWindows(startTime, duration, lanes, opsPlan = null) 
 function lanesConflict(date, startTime, duration, lanes, ignoreId, candidateOpsPlan = null) {
   if (!Array.isArray(lanes) || !lanes.length) return [];
   const candidateWindows = getBowlingCandidateWindows(startTime, duration, lanes, candidateOpsPlan);
-  return state.reservations.filter(r =>
+  return [...state.reservations, ...getBlocagesEnLigne(date)].filter(r =>
     r.id !== ignoreId &&
     r.date === date &&
     r.status !== 'cancelled' &&
@@ -1386,7 +1394,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
   let message = '';
 
   const normalizeKey = value => Math.round(Number(value) * 60);
-  const laserWindowsForDate = () => state.reservations
+  const laserWindowsForDate = () => [...state.reservations, ...getBlocagesEnLigne(date)]
     .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')
     .flatMap(getLaserWindowsFromReservation);
 
@@ -1691,6 +1699,25 @@ function toggleEditLane(lane) {
   refreshEditPreview();
 }
 window.toggleEditLane = toggleEditLane;
+
+// « Seulement ces pistes, à la main » : le dossier garde les pistes cochees, sans en ajouter
+// pour la capacite (le serveur juge le droit, exigerPistesALaMain).
+function basculerPistesALaMainEdition() {
+  const e = state.editState;
+  if (!e || niveauStaff('forcer') !== 'oui') return;
+  if (state.editError) setEditError('');
+  e.pistesALaMain = !e.pistesALaMain;
+  const bouton = document.getElementById('editPistesMain');
+  if (bouton) {
+    bouton.classList.toggle('is-on', e.pistesALaMain);
+    bouton.setAttribute('aria-pressed', e.pistesALaMain ? 'true' : 'false');
+  }
+  if (!e.pistesALaMain) syncEditLaneAssignment();
+  const hint = document.getElementById('editLanesHint');
+  if (hint && state.selectedRes) hint.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
+  refreshEditPreview();
+}
+window.basculerPistesALaMainEdition = basculerPistesALaMainEdition;
 
 const STORAGE_KEY = 'funGalaxy_v4';
 const AUTH_KEY = 'funGalaxy_auth_v1';
@@ -2144,6 +2171,7 @@ function departsEdition() {
 function etatEditionDepuis(reservation) {
   const etat = { ...reservation };
   etat.lanesStr = (reservation.lanes || []).join(', ');
+  etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
 }
@@ -15969,7 +15997,7 @@ const DROITS_NIVEAUX = [
   },
   {
     cle: 'forcer',
-    libelle: 'Prendre une heure qui coince : le dossier part à placer',
+    libelle: 'Prendre une heure qui coince, ou mettre plus de joueurs par piste que conseillé',
     options: [['non', 'Non'], ['oui', 'Oui']]
   },
   {
@@ -28392,6 +28420,7 @@ function renderPosCaisse(r) {
 function editLaneAdvice(r, e) {
   const capacity = getEditBowlingCapacityNeed(r, e);
   const requis = reservationNeedsLanes(r.type, r.formuleId) ? capacity.requiredCount : 0;
+  if (capacity.aLaMain && requis) return `${capacity.players} joueur${capacity.players > 1 ? 's' : ''} sur ${requis} piste${requis > 1 ? 's' : ''}, à la main. Comptez environ ${capacity.bowlingCapacity.estimatedMinutes} min par piste à 10 min par joueur.`;
   if (capacity.bowlingCapacity.emergency && requis) return bowlingCapacityMessage(capacity.bowlingCapacity);
   const choisies = String(e.lanesStr || '').split(',').map(x => Number(String(x).trim())).filter(n => Number.isFinite(n) && n >= 1).length;
   if (!requis) return 'Cette réservation ne demande aucune piste.';
@@ -29646,6 +29675,7 @@ function renderPosEdit(r) {
                   onclick="toggleEditLane(${lane})">${lane}</button>`;
               }).join('')}
             </div>
+            ${niveauStaff('forcer') === 'oui' ? `<button type="button" class="lane-main${e.pistesALaMain ? ' is-on' : ''}" id="editPistesMain" aria-pressed="${e.pistesALaMain ? 'true' : 'false'}" onclick="basculerPistesALaMainEdition()">Seulement ces pistes, à la main</button>` : ''}
             <p class="field-hint" id="editLanesHint">${editLaneAdvice(rf, e)}</p>
           </div>`;
   const durationControl = `<div class="fm-champ fm-duree">
@@ -29853,7 +29883,7 @@ function preparerModificationEdition() {
   }
   if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
   const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
-  if (conflicts.length) return { erreur: 'Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').' };
+  if (conflicts.length) return { erreur: `Conflit sur ce créneau avec ${String(conflicts[0].name || 'une autre réservation')}.` };
   if (state.selectedRes.type === 'laser' && !jourChange) {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
     if (!laserAvailability.ok) return { erreur: laserAvailability.message };
@@ -29917,6 +29947,8 @@ function preparerModificationEdition() {
     const updated = { ...dossier, allowPastStart: true };
     touches.forEach((champ) => { updated[champ] = champsSaisis[champ]; });
     if (pistesTouchees) updated.lanes = lanesFinales;
+    if (es.pistesALaMain) updated.pistesALaMain = lanesFinales.length;
+    else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
     // LA NOUVELLE FORMULE SE JOUE DEPUIS SA CARTE : sans programme (celui de
     // l ancienne, adaptee ou non, ne la suit pas) et sans plan (ses ancres et
@@ -31436,6 +31468,8 @@ function getQuickBookLaneNeed(time = quickBookState && quickBookState.startTime)
   const free = time ? getFreeCount(quickBookState.date, time, duration) : getTotalLanes();
   const servicePlayers = Math.max(...splitGroupIntoBowlingServices(players));
   const plan = getBowlingCapacityPlan(servicePlayers, free, duration * 60);
+  const aLaMain = rvPistesALaMain();
+  if (aLaMain) return { needsLanes: true, ...plan, requiredCount: aLaMain, aLaMain: true };
   // UN BOWLING SEUL PEUT PRENDRE PLUS DE PISTES QUE LE MINIMUM (Movsar,
   // 2026-10-08 : « on est le staff ») : 12 joueurs sur 3 pistes, 4 par piste.
   // Jamais moins que le minimum, jamais plus que le parc.
@@ -31454,6 +31488,12 @@ function getEditBowlingCapacityNeed(reservation, edition) {
   const bowling = edition.programmeEdite?.bowling;
   const duration = Number(bowling?.on ? bowling.duration : edition.duration || reservation.duration) || 1;
   const players = bowling?.on ? participantsLigneProgramme(bowling, edition.pax) : Number(edition.pax) || 1;
+  // Les pistes de ce dossier sont posees a la main : c est ce nombre qu il faut, rien de plus.
+  if (edition.pistesALaMain) {
+    const posees = Math.max(1, parseLaneInput(edition.lanesStr).length);
+    const lanePlayers = Array.from({ length: posees }, (_, index) => Math.floor(players / posees) + (index >= posees - players % posees ? 1 : 0));
+    return { requiredCount: posees, aLaMain: true, players, bowlingCapacity: { emergency: false, lanePlayers, estimatedMinutes: Math.max(...lanePlayers) * 10 } };
+  }
   return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(players)), getFreeCount(reservation.date, debutBowlingEdition(reservation, edition), duration, reservation.id), duration * 60);
 }
 
@@ -32017,7 +32057,25 @@ function rvBesoinPistes(heure) {
   const duree = rvBowlingDuree();
   const libres = heure ? getFreeCount(s.date, heure, duree) : getTotalLanes();
   const joueurs = getQuickVisitParticipants('bowling');
-  return { duree, ...getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), libres, duree * 60) };
+  const plan = getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), libres, duree * 60);
+  const aLaMain = rvPistesALaMain();
+  return aLaMain ? { duree, ...plan, requiredCount: aLaMain, aLaMain: true } : { duree, ...plan };
+}
+
+// LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05, Ansar : « pouvoir mettre sur une seul piste
+// mm si ils sont plus que 6 et ttout manuellement si on le desire »). Null : le centre conseille
+// (rvPistesConseillees). Le moteur le lit tel quel (pistesALaMain, lib/ops-engine.js) ; sous le
+// minimum, il faut le niveau forcer, juge au serveur (exigerPistesALaMain).
+function rvPistesALaMain() {
+  const n = Math.trunc(Number(quickBookState && quickBookState.pistesALaMain) || 0);
+  return n > 0 ? Math.min(n, getAvailabilityLaneCount() || n) : 0;
+}
+
+// Les pistes que ce groupe prendra : la main d abord, puis le nombre voulu d un bowling seul.
+function rvPistesVoulues() {
+  const s = quickBookState;
+  const auto = rvPistesConseillees();
+  return rvPistesALaMain() || (s && s.type === 'bowling' && Number(s.pistesNombre) > auto ? Number(s.pistesNombre) : auto);
 }
 
 function rvPlacementManuel() {
@@ -32081,8 +32139,11 @@ function rvOccupationPistes(heure, duree) {
   const fenetres = state.reservations
     .filter((r) => r.date === s.date && r.status !== 'cancelled' && (r.lanes || []).length > 0)
     .flatMap((r) => getBowlingWindowsFromReservation(r).map((w) => ({ ...w, nom: r.name || '' })));
+  const retenues = getBlocagesEnLigne(s.date).flatMap((r) => getBowlingWindowsFromReservation(r).map((w) => ({ ...w, blocage: r })));
   for (let piste = 1; piste <= parc; piste += 1) {
     if (state.laneStatuses[piste] === 'maintenance') { res[piste] = { etat: 'maint', part: 1, texte: 'en maintenance' }; continue; }
+    const retenue = retenues.find((w) => w.lanes.includes(piste) && overlap(debut, duree, w.start, w.duration));
+    if (retenue) { res[piste] = { etat: 'retenu', part: 1, texte: `retenue par un client en ligne, libre à ${heureLiberationBlocage(retenue.blocage)} s’il ne confirme pas` }; continue; }
     const prises = fenetres.filter((w) => w.lanes.includes(piste) && overlap(debut, duree, w.start, w.duration));
     if (!prises.length) { res[piste] = { etat: 'libre', part: 0, texte: 'libre' }; continue; }
     const occupe = prises.reduce((t, w) => t + Math.max(0, Math.min(debut + duree, w.start + w.duration) - Math.max(debut, w.start)), 0);
@@ -32955,6 +33016,7 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPoser('rvCouche', rvCoucheHtml());
   rvPlacerHorloge();
   rsChercherLaProche();
+  rsArmerCompteurs();
   if (actif && !actif.isConnected) {
     const suivant = (actifId && document.getElementById(actifId))
       || memeHeure()
@@ -33508,6 +33570,7 @@ function rvConstruire({ simulation = false } = {}) {
     allowPastStart: quickBookAllowsPastSelectedTime(),
     preference: rvPreference(ids, heures, programme),
     extras,
+    ...(needsLanes && rvPistesALaMain() ? { pistesALaMain: rvPistesALaMain() } : {}),
   };
   if (forcer) reservation.forcer = true;
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
@@ -33841,6 +33904,11 @@ const RS_SUGGESTIONS_NOMS = { nourriture: 'Nourriture', boissons: 'Boissons' };
 // La quantite d une ligne, de 1 a 999 (EXTRA_QTE_MAX, lib/database.js) : au-dela, le
 // serveur refuse la ligne.
 const RS_QTE_MAX = 999;
+// Le groupe de la fenetre (rsNombre) : le meme plafond quand une activite le fait grandir.
+const RS_JOUEURS_MAX = 240;
+// Deux retenues se disent en entier sur un bloc, les autres se comptent.
+const RS_RETENUES_VUES = 2;
+let rsCompteurTimer = null;
 let rsCatalogueEssai = '';
 let rsCatalogueEnCours = false;
 // Ce que la barre de frappe touche : Echap rend tout tel quel.
@@ -34081,6 +34149,7 @@ function rsNombre(n) {
   rsGeste(() => {
     rsLacherChamp();
     b.faits.combien = true;
+    quickBookState.pistesALaMain = null;
     setQuickPax(pax);
   });
 }
@@ -34174,9 +34243,169 @@ function rsInfoBloc(id) {
   const s = quickBookState;
   const prix = rsPrixUnite(id, rsVariante(id));
   const tarif = prix == null ? 'sur place' : `${rsEuros(prix)} ${id === 'bowling' ? 'la piste' : 'par joueur'}`;
-  if (id !== 'bowling' || s.date !== todayStr()) return tarif;
+  if (id !== 'bowling') return rsEtat().faits.combien ? `${tarif}, ${rvPluriel(getQuickVisitParticipants(id), 'arme')}` : tarif;
+  // Le groupe connu, l entete porte ses compteurs : ce qui reste se lit sur les heures.
+  if (rsEtat().faits.combien) return rvPistesVoulues() < rvPistesConseillees() ? `${tarif}, à la main` : tarif;
+  if (s.date !== todayStr()) return tarif;
   const maintenant = getStaffBowlingLanesFreeNow();
   return maintenant ? `${tarif}, ${rvPluriel(maintenant.libres.length, 'piste libre', 'pistes libres')}` : tarif;
+}
+
+// LES JOUEURS D UNE ACTIVITE, SUR SON BLOC (2026-11-05, Ansar : « on doit pouvoir choisir pour
+// chaque activité le nombre de joueur separement et dcp ça decompte direct nombre de piste et
+// arme »). Le groupe est le plus grand nombre : monter au-dessus le fait grandir, et les autres
+// activites gardent le leur. Une activite qui n est pas encore au ticket garde son nombre pour
+// le moment ou elle y entre (rsPoserJoueursDeclares).
+function rsJoueursBloc(id, n) {
+  const s = quickBookState;
+  if (!s || !rsEtat()) return;
+  const voulu = Math.max(1, Math.trunc(Number(n)) || 1);
+  rsGeste(() => {
+    s.error = '';
+    s.forcer = false;
+    if (rsAuTicket(id) && !rsPeutChanger()) return;
+    const groupe = Math.max(1, Number(s.pax) || 1);
+    if (voulu > groupe) {
+      rsGarderLesJoueursDesAutres(id, groupe);
+      s.pax = voulu;
+    }
+    if (rsAuTicket(id)) {
+      if (id === 'bowling') s.bowlingParDefaut = false;
+      if (s.type === 'formule' && !s.adaptee) rvAdapterFormule(true);
+      setQuickVisitParticipants(id, voulu);
+      return;
+    }
+    const bornes = activityParticipantsBounds(id, s.pax);
+    getQuickVisitOptions(id).participants = Math.min(bornes.max, Math.max(bornes.min, voulu));
+    syncQuickBookDuration();
+    renderQuickBook();
+  });
+}
+
+// Le groupe grandit par une activite : les autres gardent le nombre qu elles avaient.
+function rsGarderLesJoueursDesAutres(id, groupe) {
+  const autres = new Set([...RV_ANCRABLES, ...rvActivites()]);
+  autres.delete(id);
+  autres.forEach((autre) => {
+    const options = getQuickVisitOptions(autre);
+    if (!(Number(options.participants) >= 1)) options.participants = Math.min(groupe, activityParticipantsBounds(autre, groupe).max);
+  });
+}
+
+// Une activite seule au ticket part en visite des que ses joueurs ne sont pas tout le groupe :
+// c est sous cette forme que le serveur les lit (setQuickVisitParticipants).
+function rsPoserJoueursDeclares(id) {
+  const s = quickBookState;
+  if (!((s.type === 'bowling' && id === 'bowling') || (s.type === 'laser' && id === 'laser_game'))) return;
+  const declare = Number((((s.visit || {}).options || {})[id] || {}).participants) || 0;
+  if (declare >= 1 && declare < Math.max(1, Number(s.pax) || 1)) setQuickVisitParticipants(id, declare);
+}
+
+function rsFixerPistes(n) {
+  const s = quickBookState;
+  if (!s) return;
+  const auto = rvPistesConseillees();
+  const plancher = rsNiveau('forcer') === 'oui' ? 1 : auto;
+  const voulu = Math.min(getAvailabilityLaneCount() || auto, Math.max(plancher, Math.trunc(Number(n)) || auto));
+  s.pistesNombre = null;
+  s.pistesALaMain = null;
+  if (voulu > auto && s.type === 'bowling') s.pistesNombre = voulu;
+  else if (voulu !== auto) s.pistesALaMain = voulu;
+  if (s.type === 'bowling') s.bowlingParDefaut = false;
+  if (rvPlacementManuel() && s.lanes.length > voulu) s.lanes = s.lanes.slice(0, voulu);
+  s.forcer = false;
+  s.error = '';
+  syncQuickBookDuration();
+  reconcileQuickLaneSelection();
+  renderQuickBook();
+}
+
+function rsCompteurHtml(mot, valeur, moins, plus, attributs = '', aria = mot) {
+  return `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(mot)}</span>${rsPasHtml(moins, plus, valeur, aria, attributs)}</span>`;
+}
+
+function rsCompteurJoueursHtml(id, mot, aria) {
+  const n = getQuickVisitParticipants(id);
+  const bornes = activityParticipantsBounds(id, quickBookState.pax);
+  const peutMonter = n < bornes.max || (bornes.max === Math.max(1, Number(quickBookState.pax) || 1) && n < RS_JOUEURS_MAX);
+  return rsCompteurHtml(mot, n, n > bornes.min ? `rsJoueursBloc(this.dataset.activite,${n - 1})` : '', peutMonter ? `rsJoueursBloc(this.dataset.activite,${n + 1})` : '', `data-activite="${escapeHtml(id)}"`, aria);
+}
+
+// Les reglages d un bloc, une fois le groupe connu : ses joueurs, et les pistes du bowling.
+function rsReglagesBlocHtml(id) {
+  if (!rsEtat().faits.combien) return '';
+  const joueurs = rsCompteurJoueursHtml(id, 'Joueurs', `Joueurs, ${rsNomCourt(id)}`);
+  return id === 'bowling' ? `${joueurs}${rsCompteurPistesHtml()}` : joueurs;
+}
+
+// Les pistes de ce groupe, partout ou elles se reglent : le bloc du bowling, une formule.
+function rsCompteurPistesHtml() {
+  const n = rvPistesVoulues();
+  const auto = rvPistesConseillees();
+  const plancher = rsNiveau('forcer') === 'oui' ? 1 : auto;
+  return rsCompteurHtml('Pistes', n, n > plancher ? `rsFixer(() => rsFixerPistes(${n - 1}))` : '', n < (getAvailabilityLaneCount() || n) ? `rsFixer(() => rsFixerPistes(${n + 1}))` : '', 'data-pistes-pas="1"');
+}
+
+// LES RETENUES D UN BLOC (2026-11-05, Ansar : « ça montre si ya des pistes ou des armes laser
+// qui sont en cours de reservation par les clients avec le formulaire [...] precisement et
+// joliement »). Une phrase par client : quoi, quand, et dans combien de temps ca se libere.
+// Le temps se compte a la seconde (rsTicCompteurs) sans repeindre la fenetre.
+function rsRetenuesDuBloc(id) {
+  const lignes = [];
+  getBlocagesEnLigne(quickBookState.date).forEach((r) => {
+    const echeance = r.blocage.expiresAt;
+    if (id === 'bowling') {
+      getBowlingWindowsFromReservation(r).filter((w) => w.lanes.length).forEach((w) => {
+        const pistes = [...w.lanes].map(Number).sort((a, b) => a - b);
+        lignes.push({ debut: w.start, echeance, plusieurs: pistes.length > 1, quoi: `${pistes.length > 1 ? 'les pistes' : 'la piste'} ${rvListe(pistes)} de ${numToTime(w.start)} à ${numToTime(w.start + w.duration)}` });
+      });
+    } else if (id === 'laser_game') {
+      getLaserWindowsFromReservation(r).forEach((w) => {
+        const armes = Number(w.players || r.pax) || 0;
+        if (armes) lignes.push({ debut: w.start, echeance, plusieurs: armes > 1, quoi: `${rvPluriel(armes, 'arme')} à ${numToTime(w.start)}` });
+      });
+    }
+  });
+  return lignes.sort((a, b) => a.debut - b.debut);
+}
+
+function rsDitEcheance(iso) {
+  const secondes = Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 1000));
+  const minutes = Math.floor(secondes / 60);
+  return minutes ? `${minutes} min ${String(secondes % 60).padStart(2, '0')} s` : `${secondes} s`;
+}
+
+function rsRetenuesHtml(id) {
+  const lignes = rsRetenuesDuBloc(id);
+  if (!lignes.length) return '';
+  const vues = lignes.slice(0, RS_RETENUES_VUES).map((l) => `<p class="rs-ret"><i aria-hidden="true"></i><span>Un client réserve en ligne ${escapeHtml(l.quoi)}. ${l.plusieurs ? 'Elles se libèrent' : 'Elle se libère'} dans <b data-echeance="${escapeHtml(l.echeance)}">${escapeHtml(rsDitEcheance(l.echeance))}</b> s’il ne confirme pas.</span></p>`).join('');
+  const reste = lignes.length - RS_RETENUES_VUES;
+  return `<div class="rs-retenues" role="note" data-retenues="${escapeHtml(id)}">${vues}${reste > 0 ? `<p class="rs-ret is-suite"><span>${escapeHtml(`Et ${rvPluriel(reste, 'autre réservation', 'autres réservations')} en ligne en cours.`)}</span></p>` : ''}</div>`;
+}
+
+// Le temps d une retenue descend a la seconde, sans repeindre : seul son texte change. Une
+// retenue echue rend sa place tout de suite, le serveur relit ses heures (sa cle a change).
+function rsArmerCompteurs() {
+  if (rsCompteurTimer || !quickBookState || !getBlocagesEnLigne(quickBookState.date).length) return;
+  rsCompteurTimer = setInterval(rsTicCompteurs, 1000);
+}
+
+function rsTicCompteurs() {
+  const overlay = document.getElementById('quickBookOverlay');
+  const arreter = () => { clearInterval(rsCompteurTimer); rsCompteurTimer = null; };
+  if (!quickBookState || !overlay || !overlay.querySelector('.qb-modal.rv')) { arreter(); return; }
+  let echue = false;
+  overlay.querySelectorAll('[data-echeance]').forEach((el) => {
+    const texte = rsDitEcheance(el.dataset.echeance);
+    if (el.textContent !== texte) el.textContent = texte;
+    if (Date.parse(el.dataset.echeance) <= Date.now()) echue = true;
+  });
+  if (echue) {
+    rvRepeindre();
+    rsPlanifierVerif();
+    rvPlanifierSimulation();
+  }
+  if (!getBlocagesEnLigne(quickBookState.date).length) arreter();
 }
 
 function rsBlocHtml(id) {
@@ -34184,8 +34413,9 @@ function rsBlocHtml(id) {
   const courante = rsVariante(id);
   const seg = rsVariantesDe(id).map((v) => `<button type="button" class="${v.valeur === courante ? 'is-on' : ''}" id="rsV-${escapeHtml(id)}-${String(v.valeur).replace('.', '-')}" data-quoi="${escapeHtml(id)}" data-var="${v.valeur}" aria-pressed="${v.valeur === courante}" onclick="rsVarianteTouche(this.dataset.quoi, this.dataset.var)">${escapeHtml(v.mot)}</button>`).join('');
   return `<section class="rs-seance${rsAuTicket(id) ? ' is-on' : ''}" aria-label="${escapeHtml(nom)}">
-    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div><div class="rs-seg" role="group" aria-label="${escapeHtml(id === 'bowling' ? 'Durée du bowling' : 'Parties de laser')}">${seg}</div></div>
+    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${rsReglagesBlocHtml(id)}<div class="rs-seg" role="group" aria-label="${escapeHtml(id === 'bowling' ? 'Durée du bowling' : 'Parties de laser')}">${seg}</div></div>
     <div class="rs-s-h" role="group" aria-label="${escapeHtml(`Heures, ${nom}`)}">${rsHeuresHtml(id)}</div>
+    ${rsRetenuesHtml(id)}
   </section>`;
 }
 
@@ -34193,6 +34423,20 @@ function rsBlocHtml(id) {
 // cochee et dit quand : son heure au ticket, « accès libre » pendant une visite, « dans la
 // formule » ; son prix est sur sa ligne du ticket, juste a cote. Dans une formule que le
 // role ne peut pas adapter, une activite de plus se lit « hors formule ».
+// Chaque activite prise a ses joueurs, tout de suite sous les tuiles. Un enfant de la plaine
+// se compte comme le catalogue le dit (activityCountsChildren).
+function rsJoueursPetitsHtml(petites) {
+  if (!rsEtat().faits.combien) return '';
+  const prises = petites.filter((c) => rsAuTicket(c.id) && rvModifiable());
+  if (!prises.length) return '';
+  const lignes = prises.map((c) => {
+    const activite = getCenterActivity(c.id);
+    const enfants = Boolean(activite && activityCountsChildren(activite));
+    return rsCompteurJoueursHtml(c.id, `${rsNomTuile(c.id)}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${rsNomTuile(c.id)}`);
+  }).join('');
+  return `<div class="rs-joueurs-petits" role="group" aria-label="Joueurs par activité">${lignes}</div>`;
+}
+
 function rsTuileHtml(id, etapes) {
   const s = quickBookState;
   const pris = rsAuTicket(id);
@@ -34338,7 +34582,7 @@ function rsModeBloc(id) {
 function rsCleBloc(id) {
   const s = quickBookState;
   const mode = rsModeBloc(id);
-  const base = [id, mode, s.date, s.pax, rsVariante(id), rvRevisionDuJour(s.date), state.reservations.length, Math.floor(currentTimeDecimal() * 60)];
+  const base = [id, mode, s.date, s.pax, getQuickVisitParticipants(id), rvPistesALaMain(), rsVariante(id), rvRevisionDuJour(s.date), state.reservations.length, getBlocagesEnLigne(s.date).map((b) => b.id).join(), Math.floor(currentTimeDecimal() * 60)];
   const compose = mode === 'seul' ? [] : [s.type, s.formuleId, s.adaptee, s.activityId, s.duration, s.visit, s.ordre, s.pistesNombre];
   const heures = mode === 'suite' || mode === 'ajout' ? [s.startTime, mode === 'suite' ? null : s.heures] : [];
   return JSON.stringify([...base, ...compose, ...heures]);
@@ -34353,8 +34597,7 @@ function rsDansLaCopie(id, faire) {
   rsRetenu += 1;
   try {
     quickBookState = copie;
-    if (mode === 'seul') rsRemplacer(id, variante);
-    else if (mode === 'ajout') rsBasculer(id, variante);
+    if (mode === 'seul') { rsRemplacer(id, variante); rsPoserJoueursDeclares(id); } else if (mode === 'ajout') rsBasculer(id, variante);
     return faire(mode);
   } finally {
     quickBookState = garde;
@@ -34363,15 +34606,115 @@ function rsDansLaCopie(id, faire) {
   }
 }
 
-function rsMotHeure(id, heure) {
+// CE QUI RESTERA APRES CETTE RESERVATION (2026-11-05, Ansar : « quand on prend un horaire
+// combien de piste il va rester apres cette reservation pareil pour laser game »). Le meme
+// compte que le planning, sur la copie de ce bloc : ce qui est deja pris, ce qu un client
+// retient en ce moment, ce que ce groupe prendrait, ce qui reste. Rien pour une activite qui
+// ne prend ni piste ni arme.
+function rsPlaceDeLHeure(id, heure) {
+  if (id === 'bowling') return rsPlaceBowling(heure);
+  return id === 'laser_game' ? rsPlaceLaser(heure) : null;
+}
+
+function rsPlaceBowling(heure) {
   const s = quickBookState;
-  if (id === 'bowling') {
-    if (timeToNum(heure) === rvPlancherDuJour(s.date)) return 'maintenant';
-    return rvPluriel(getFreeCount(s.date, heure, rvBowlingDuree()), 'piste');
+  const duree = rvBowlingDuree();
+  const parc = getAvailabilityLaneCount();
+  const debut = timeToNum(heure);
+  const retenues = new Set(getBlocagesEnLigne(s.date).flatMap((r) => getBowlingWindowsFromReservation(r)
+    .filter((w) => overlap(debut, duree, w.start, w.duration)).flatMap((w) => w.lanes.map(Number))));
+  const occupees = getOccupiedLanes(s.date, heure, duree);
+  let pris = 0;
+  let retenu = 0;
+  let libres = 0;
+  for (let piste = 1; piste <= parc; piste += 1) {
+    if (state.laneStatuses[piste] === 'maintenance') pris += 1;
+    else if (retenues.has(piste)) retenu += 1;
+    else if (occupees.has(piste)) pris += 1;
+    else libres += 1;
   }
-  if (id !== 'laser_game') return '';
-  const depart = rvDispoLaserA(heure)[0];
-  return depart ? rvPluriel(depart.libres, 'place') : '';
+  const { requiredCount } = rvBesoinPistes(heure);
+  const voulu = Math.max(requiredCount || 1, rvPlacementManuel() ? s.lanes.length : 0);
+  const prend = Math.min(libres, voulu);
+  return { unite: 'piste', total: parc, pris, retenu, prend, libre: libres - prend, manque: voulu - prend };
+}
+
+// Le laser : la partie la plus serree du groupe, celle qui decide de ce qui reste. Une
+// fenetre compte ce qui la chevauche (la regle de getLaserAvailability), jamais au-dela de
+// l arene : un dossier force ne fait pas monter le compte au-dessus des armes.
+function rsArmesComptees(date, c, capacite) {
+  const compter = (liste) => liste.flatMap(getLaserWindowsFromReservation)
+    .filter((w) => overlap(c.start, c.duration, w.start, w.duration))
+    .reduce((total, w) => total + Number(w.players || (w.reservation && w.reservation.pax) || 0), 0);
+  const pris = Math.min(capacite, compter(state.reservations.filter((r) => r.date === date && r.status !== 'cancelled')));
+  return { pris, retenu: Math.min(capacite - pris, compter(getBlocagesEnLigne(date))) };
+}
+
+function rsPlaceLaser(heure) {
+  const s = quickBookState;
+  const capacite = getAvailabilityLaserCapacity() || 30;
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const base = Math.round(timeToNum(heure) * 60);
+  let pire = null;
+  rvEcartsLaser().forEach((minutes) => {
+    getLaserCandidateWindows(numToTime((base + minutes) / 60), 0.5, joueurs)
+      .filter((c) => Number(c.countIndex || 1) === 1)
+      .forEach((c) => {
+        const { pris, retenu } = rsArmesComptees(s.date, c, capacite);
+        const libres = capacite - pris - retenu;
+        const voulu = Number(c.players) || joueurs;
+        const prend = Math.min(libres, voulu);
+        const place = { unite: 'arme', total: capacite, pris, retenu, prend, libre: libres - prend, manque: voulu - prend };
+        if (!pire || place.libre < pire.libre) pire = place;
+      });
+  });
+  return pire;
+}
+
+// CE QUI RESTERA POUR UNE FORMULE : le serveur dit ce que son plan prend a cette heure
+// (verdict.prend, bloc par bloc), la journee se compte comme sur les blocs, le bloc le plus
+// serre decide. Une liste de mots : « 2 pistes », « 14 armes ».
+function rsResteDuPlan(prend) {
+  const s = quickBookState;
+  const blocs = Array.isArray(prend) ? prend : [];
+  const duree = (b) => timeToNum(b.f) - timeToNum(b.d);
+  const capacite = getAvailabilityLaserCapacity() || 30;
+  const dire = (restes, unite) => (restes.length ? [rvPluriel(Math.max(0, Math.min(...restes)), unite)] : []);
+  return [
+    ...dire(blocs.filter((b) => b.t === 'piste').map((b) => getFreeCount(s.date, b.d, duree(b)) - b.n), 'piste'),
+    ...dire(blocs.filter((b) => b.t === 'arme').map((b) => {
+      const { pris, retenu } = rsArmesComptees(s.date, { start: timeToNum(b.d), duration: duree(b) }, capacite);
+      return capacite - pris - retenu - b.n;
+    }), 'arme'),
+  ];
+}
+
+function rsResteDit(place) {
+  return place && !place.manque ? `reste ${rvPluriel(place.libre, place.unite)}` : '';
+}
+
+// Une heure se remplit quand on la voit : ce qui restera, et le petit mot qui l accompagne.
+function rsRemplirHeure(id, x) {
+  const s = quickBookState;
+  x.place = rsPlaceDeLHeure(id, x.heure);
+  x.mot = rsResteDit(x.place);
+  if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';
+}
+
+// LA JAUGE D UNE HEURE : ce qui est pris, ce qu un client retient, ce que ce groupe prend, ce
+// qui reste. Une case par piste, une barre pour les armes (30 cases ne se lisent plus).
+function rsJaugeHtml(place) {
+  if (!place) return '';
+  const parts = [['is-pris', place.pris], ['is-retenu', place.retenu], ['is-ce', place.prend], ['is-libre', place.libre]].filter(([, n]) => n > 0);
+  const cases = place.unite === 'piste' && place.total <= 16
+    ? parts.flatMap(([classe, n]) => Array.from({ length: n }, () => `<i class="${classe}"></i>`)).join('')
+    : parts.map(([classe, n]) => `<i class="${classe}" style="flex-grow:${n}"></i>`).join('');
+  return `<span class="rs-j" aria-hidden="true">${cases}</span>`;
+}
+
+// L interieur d une touche d heure.
+function rsDedansHeure(x, dite, mot) {
+  return `<b>${dite}</b>${x.tag ? `<em class="rs-h-tag">${escapeHtml(x.tag)}</em>` : ''}${mot ? `<small>${escapeHtml(mot)}</small>` : ''}${(x.restes || []).map((r) => `<small>${escapeHtml(`reste ${r}`)}</small>`).join('')}${rsJaugeHtml(x.place)}`;
 }
 
 // Le calcul d un bloc : ce que le planning dirait. Les mots sous les heures ne se calculent
@@ -34407,13 +34750,13 @@ function rsCalculerSeances(id) {
       heures = rvHeuresHorloge(id).filter((h) => maintenant === null || timeToNum(h) > maintenant + 1e-9);
       tient = (h) => bonnes.has(h);
     }
-    return { suite, liste: heures.map((heure) => ({ heure, tient: tient(heure), ...(heure === suite ? { mot: 'à la suite' } : {}) })) };
+    return { suite, liste: heures.map((heure) => ({ heure, tient: tient(heure), ...(heure === suite ? { tag: 'à la suite' } : {}) })) };
   });
 }
 
 function rsMotsVus(id, vues) {
   if (rsLeger || !vues.some((x) => x.mot === undefined)) return;
-  rsDansLaCopie(id, () => vues.forEach((x) => { if (x.mot === undefined) x.mot = rsMotHeure(id, x.heure); }));
+  rsDansLaCopie(id, () => vues.forEach((x) => { if (x.mot === undefined) rsRemplirHeure(id, x); }));
 }
 
 // Les seances ne font jamais attendre un toucher. La liste du meme jour reste a l ecran,
@@ -34524,7 +34867,7 @@ function rsDitLHeure(dite, x, mot, id) {
   const coince = rsCoince(x, id);
   const aria = coince ? `${dite}, ne tient pas, ${rsPhrase(coince.raison)}`
     : x.passee ? `${dite}, passée`
-      : !x.verdict && x.tient === false ? `${dite}, vérification` : `${dite}${mot ? `, ${mot}` : ''}`;
+      : !x.verdict && x.tient === false ? `${dite}, vérification` : `${dite}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}${(x.restes || []).map((r) => `, reste ${r}`).join('')}${x.place && x.place.retenu ? `, ${rvPluriel(x.place.retenu, x.place.unite)} en cours de réservation en ligne` : ''}`;
   return `${coince ? ` title="${escapeHtml(rsPhrase(coince.raison))}"` : ''} aria-label="${escapeHtml(aria)}"`;
 }
 
@@ -34556,7 +34899,7 @@ function rsFenetre(liste, choisie) {
   const i = choisie ? liste.findIndex((x) => x.heure === choisie) : -1;
   const debut = i >= RS_SEANCES ? Math.max(0, Math.min(i - 2, liste.length - RS_SEANCES)) : 0;
   const vues = liste.slice(debut, debut + RS_SEANCES);
-  if (choisie && i < 0) return [...vues.slice(0, RS_SEANCES - 1), { heure: choisie, mot: '' }].sort((a, b) => timeToNum(a.heure) - timeToNum(b.heure));
+  if (choisie && i < 0) return [...vues.slice(0, RS_SEANCES - 1), { heure: choisie }].sort((a, b) => timeToNum(a.heure) - timeToNum(b.heure));
   return vues;
 }
 
@@ -34587,7 +34930,7 @@ function rsHeuresHtml(id) {
     const gris = !on && !x.verdict && x.tient === false;
     const dite = on && s.lockStartTime ? rsHeureDite() : heure;
     const mot = rsMotDeLHeure(id, x);
-    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && propose ? ' is-propose' : ''}${ko ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${escapeHtml(id)}"` : ''} data-activite="${escapeHtml(id)}" data-heure="${heure}"${rsDitLHeure(dite, x, mot, id)} aria-pressed="${on}" onclick="rsHeure('${sid}','${heure}')">${coche}<b>${dite}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`;
+    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && propose ? ' is-propose' : ''}${ko ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${escapeHtml(id)}"` : ''} data-activite="${escapeHtml(id)}" data-heure="${heure}"${rsDitLHeure(dite, x, mot, id)} aria-pressed="${on}" onclick="rsHeure('${sid}','${heure}')">${coche}${rsDedansHeure(x, dite, mot)}</button>`;
   }).join('');
   const vide = vues.length ? '' : '<p class="rs-texte">Plus de séance ce jour-là.</p>';
   return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}<button type="button" class="rs-h rs-h-autres" data-activite="${escapeHtml(id)}" onclick="rsAutres('${sid}')">Autres</button></div>`;
@@ -34700,6 +35043,7 @@ function rsAutresHtml() {
   const heures = partie ? toutes : [...(b.passees ? passees : []), ...rvHeuresHorloge(id)];
   const sid = escapeJsString(id);
   let tiennent = 0;
+  if (!partie && !formule) rsMotsVus(id, liste);
   const cles = heures.map((h) => {
     // Une heure hors de la liste : passee (elle se note, grisee « passée »), ou que le
     // serveur juge aussi : avant l heure a la suite, la partie de laser en cours, hors de
@@ -34713,7 +35057,7 @@ function rsAutresHtml() {
     const on = h === choisie;
     const action = partie ? `rsHeurePartie('${h}')` : formule ? `rsHeureFormule('${h}',true)` : `rsHeure('${sid}','${h}')`;
     const mot = rsMotDeLHeure(id, x);
-    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris && !on ? ' is-efface' : ''}" data-heure="${h}" aria-pressed="${on}"${rsDitLHeure(h, x, mot, id)} onclick="${action}"><b>${h}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`;
+    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris && !on ? ' is-efface' : ''}" data-heure="${h}" aria-pressed="${on}"${rsDitLHeure(h, x, mot, id)} onclick="${action}">${rsDedansHeure(x, h, mot)}</button>`;
   }).join('');
   const plusTot = passees.length && !b.passees ? '<button type="button" class="rs-discret" id="rsPlusTot" onclick="rsPlusTot()">Plus tôt</button>' : '';
   const compte = `${rvPluriel(tiennent, 'heure tient', 'heures tiennent')} sur ${heures.length}`;
@@ -34766,14 +35110,17 @@ function rsHeuresDeLaFormule() {
 
 function rsListeFormule() {
   const s = quickBookState;
-  const cle = JSON.stringify([s.date, s.pax, s.formuleId, rvRevisionDuJour(s.date), Math.floor(currentTimeDecimal() * 60)]);
+  const cle = JSON.stringify([s.date, s.pax, s.formuleId, rvPistesALaMain(), rvRevisionDuJour(s.date), Math.floor(currentTimeDecimal() * 60)]);
   if (rsFormuleMemo.cle !== cle) {
     const bonnes = new Set(rvHeuresQuiTiennent());
     rsFormuleMemo = { cle, liste: rsHeuresDeLaFormule().map((heure) => ({ heure, mot: '', tient: bonnes.has(heure) })) };
   }
   const c = s.candidats;
   const lue = Boolean(c && c.etat === 'ok' && c.id === rvActivites()[0] && c.partie === 0 && c.base === s.cleCourante);
-  rsFormuleMemo.liste.forEach((x) => { x.verdict = lue ? c.resultats.get(x.heure) || null : null; });
+  rsFormuleMemo.liste.forEach((x) => {
+    x.verdict = lue ? c.resultats.get(x.heure) || null : null;
+    x.restes = x.verdict && x.verdict.statut !== 'ko' ? rsResteDuPlan(x.verdict.prend) : [];
+  });
   return { lue, liste: rsFormuleMemo.liste };
 }
 
@@ -34810,10 +35157,10 @@ function rsBlocFormuleHtml() {
     const coince = Boolean(rsCoince(x, id));
     const gris = !on && !x.verdict && x.tient === false;
     const mot = rsMotDeLHeure(id, x);
-    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}" data-heure="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id)} onclick="rsHeureFormule('${heure}')"><b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`;
+    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}" data-heure="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id)} onclick="rsHeureFormule('${heure}')">${rsDedansHeure(x, heure, mot)}</button>`;
   }).join('');
   return `<section class="rs-seance is-on" aria-label="${escapeHtml(`${nom}, à quelle heure ?`)}">
-    <div class="rs-s-t"><div class="rs-s-n"><b>${escapeHtml(`${nom} à quelle heure ?`)}</b>${duree ? `<small>${escapeHtml(duree)}</small>` : ''}</div></div>
+    <div class="rs-s-t"><div class="rs-s-n"><b>${escapeHtml(`${nom} à quelle heure ?`)}</b>${duree ? `<small>${escapeHtml(duree)}</small>` : ''}</div>${rvActivites().includes('bowling') && rsEtat().faits.combien ? rsCompteurPistesHtml() : ''}</div>
     <div class="rs-s-h"><div class="rs-s-l is-formule" data-verifie="${lue ? '1' : '0'}">${cles || '<p class="rs-texte">Plus de départ ce jour-là.</p>'}<button type="button" class="rs-h rs-h-autres" onclick="rsAutres('formule')">Autres</button></div></div>
   </section>`;
 }
@@ -34843,8 +35190,7 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   const suite = ligne && ligne.foulee && avant ? `à la suite ${avant === 'bowling' ? 'du bowling' : avant === 'laser_game' ? 'du laser' : `de ${rvMinuscule(rsNomCourt(avant))}`}` : '';
   if (id === 'laser_game') {
     const departs = etapes.flatMap((x) => (x.segments || []).map(([debut]) => numToTime(debut)));
-    const libres = (rvDispoLaserA(e.h)[0] || {}).libres;
-    return [e.h, departs.length > 1 ? `puis ${rvListe(departs.slice(1))}` : '', suite || (departs.length === 1 && libres != null ? `${rvPluriel(libres, 'place libre', 'places libres')}` : ''), quickBookState.arene === 'seuls' ? 'pour vous seuls' : ''].filter(Boolean).join(', ');
+    return [e.h, departs.length > 1 ? `puis ${rvListe(departs.slice(1))}` : '', suite, quickBookState.arene === 'seuls' ? 'pour vous seuls' : ''].filter(Boolean).join(', ');
   }
   const fin = etapes[etapes.length - 1].fin;
   const plage = fin != null ? `${e.h} à ${numToTime(fin)}` : e.h;
@@ -34948,8 +35294,7 @@ function rsBasculer(id, variante) {
 // UN TOUCHER AJOUTE. Le bowling de depart n est qu une proposition (rvBowlingProposeIntact) :
 // la premiere autre activite le remplace, comme avant.
 function rsPrendre(id, variante) {
-  if (id !== 'bowling' && rvBowlingProposeIntact()) rsRemplacer(id, variante);
-  else rsBasculer(id, variante);
+  if (id !== 'bowling' && rvBowlingProposeIntact()) { rsRemplacer(id, variante); rsPoserJoueursDeclares(id); } else rsBasculer(id, variante);
 }
 
 // UN TOUCHER RETIRE : la tuile touchee une deuxieme fois, sa propre seance, ou sa croix au
@@ -35298,7 +35643,7 @@ function rsRangHeures(id, ligne) {
     const coince = Boolean(rsCoince(x, id));
     const gris = !on && !x.verdict && x.tient === false;
     const mot = rsMotDeLHeure(id, x);
-    return `<button type="button" class="rs-p${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${sid}"` : ''} data-activite="${sid}" data-heure-l="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id)} onclick="rsHeureLigne(this.dataset.activite, this.dataset.heureL)"><b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`;
+    return `<button type="button" class="rs-p${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${sid}"` : ''} data-activite="${sid}" data-heure-l="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id)} onclick="rsHeureLigne(this.dataset.activite, this.dataset.heureL)">${rsDedansHeure(x, heure, mot)}</button>`;
   });
   cles.push(`<button type="button" class="rs-p is-plus" id="rsAutreHeure" data-activite="${sid}" aria-label="Toutes les heures" onclick="rsAutres(this.dataset.activite)"><b>Autres</b></button>`);
   return rsRang('Heure', cles.join(''), RS_SEANCES + 1);
@@ -35327,7 +35672,7 @@ function rsRangJoueurs(id) {
   const enfants = Boolean(activite && activityCountsChildren(activite));
   const bornes = activityParticipantsBounds(id, quickBookState.pax);
   const n = getQuickVisitParticipants(id);
-  const pas = (x) => `rsFixer(() => setQuickVisitParticipants(this.dataset.activite,${x}))`;
+  const pas = (x) => `rsJoueursBloc(this.dataset.activite,${x})`;
   const attr = `data-activite="${escapeHtml(id)}"`;
   return rsRang(enfants ? 'Enfants' : 'Joueurs', `${rsPasHtml(n > bornes.min ? pas(n - 1) : '', n < bornes.max ? pas(n + 1) : '', n, enfants ? 'Enfants' : 'Joueurs', attr)}<span class="rs-note">sur ${rvPluriel(Math.max(1, Number(quickBookState.pax) || 1), 'personne')}</span>`);
 }
@@ -35344,23 +35689,20 @@ function rsLigneBowlingHtml(ligne) {
   rangs.push(rsRang('Durée', RV_DUREES_BOWLING.map((h) => {
     return rsPetite(rvHeuresLabel(h), duree === h, `rsFixer(() => rvBowlingFixer(${h}))`, `data-duree="${h}"`, rsPrixTouche('bowling', h));
   }).join(''), RV_DUREES_BOWLING.length));
-  if (s.type === 'bowling') {
-    const auto = rvPistesConseillees();
-    const cles = [];
-    for (let n = auto; n <= parc; n += 1) cles.push(rsPetite(rvPluriel(n, 'piste'), besoin === n, `rsFixer(() => rvPistesNombre(${n - besoin}))`, `data-pistes="${n}"`, n === auto ? 'conseillé' : ''));
-    rangs.push(rsRang('Pistes', cles.join(''), Math.max(cles.length, 4)));
-  } else {
-    rangs.push(rsRangTexte('Pistes', `${rvPluriel(besoin, 'piste')} pour ${rvPluriel(getQuickVisitParticipants('bowling'), 'joueur')}, le planning les pose.`));
-  }
+  const auto = rvPistesConseillees();
+  const plancher = rsNiveau('forcer') === 'oui' ? 1 : auto;
+  const cles = [];
+  for (let n = plancher; n <= parc; n += 1) cles.push(rsPetite(rvPluriel(n, 'piste'), besoin === n, `rsFixer(() => rsFixerPistes(${n}))`, `data-pistes="${n}"`, n === auto ? 'conseillé' : n < auto ? 'à la main' : ''));
+  rangs.push(rsRang('Pistes', cles.join(''), Math.max(cles.length, 4)));
   const cases = Array.from({ length: parc }, (_, i) => i + 1).map((n) => {
     const o = occupation[n] || { etat: 'libre', texte: 'libre' };
     const on = manuelles && (s.lanes || []).includes(n);
     const prise = o.etat !== 'libre' && !on;
-    return `<button type="button" class="rs-p rs-piste${on ? ' is-on' : ''}${prise ? ' is-prise' : ''}" data-piste="${n}" aria-pressed="${on}" aria-label="${escapeHtml(`Piste ${n}, ${on ? 'choisie' : o.texte}`)}" ${prise ? 'disabled' : `onclick="rsPiste(${n})"`}><b>${n}</b></button>`;
+    return `<button type="button" class="rs-p rs-piste${on ? ' is-on' : ''}${prise ? ' is-prise' : ''}${prise && o.etat === 'retenu' ? ' is-retenue' : ''}" data-piste="${n}" aria-pressed="${on}" aria-label="${escapeHtml(`Piste ${n}, ${on ? 'choisie' : o.texte}`)}" ${prise ? 'disabled' : `onclick="rsPiste(${n})"`}><b>${n}</b></button>`;
   }).join('');
   rangs.push(rsRang('Laquelle', `${rsPetite('Auto', !manuelles, 'rsFixer(() => setQuickAutoAssign())', 'id="rsPisteAuto"')}${cases}`, parc + 1));
   rangs.push(rsRangHeures('bowling', ligne));
-  if (rvActivites().length > 1) rangs.push(rsRangJoueurs('bowling'));
+  rangs.push(rsRangJoueurs('bowling'));
   return rangs;
 }
 
@@ -35410,7 +35752,7 @@ function rsLigneLaserHtml(ligne) {
   }
   const hors = rvHorsCatalogueLaserHtml(departs.length);
   if (hors) rangs.push(hors);
-  if (rvActivites().length > 1) rangs.push(rsRangJoueurs('laser_game'));
+  rangs.push(rsRangJoueurs('laser_game'));
   return rangs;
 }
 
@@ -35503,8 +35845,7 @@ function rsTarif(id) {
 function rsLigneAutreHtml(id, ligne) {
   const activite = getCenterActivity(id);
   const rangs = rsReglagesActivite(id);
-  const parEnfant = Boolean(activite && activityCountsChildren(activite));
-  if (rvActivites().length > 1 || parEnfant) rangs.push(rsRangJoueurs(id));
+  rangs.push(rsRangJoueurs(id));
   if (ligne && (ligne.ancrable || ligne.index === 0)) rangs.push(rsRangHeures(id, ligne));
   else if (ligne && ligne.libre) rangs.push('<p class="rs-texte">En accès libre pendant la visite, le planning ne lui réserve pas d’heure à part.</p>');
   return rangs;
@@ -35765,10 +36106,10 @@ function rsLigneIci() {
 
 // Une ligne du ticket : elle ouvre sa page, sa croix la retire (`retirer`, l action). La
 // colonne de la croix reste la meme sans elle : les prix restent alignes.
-function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', prix = '', data = '', aria = '', ko = false, retirer = '' }) {
+function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', apres = '', prix = '', data = '', aria = '', ko = false, retirer = '' }) {
   const marquee = rsLigneIci() === cle;
   const croix = retirer ? `<button type="button" class="rs-tk-x" id="rsSuppr-${escapeHtml(cle)}" ${data} aria-label="${escapeHtml(`Retirer ${nom}`)}" onclick="${retirer}">×</button>` : '<span class="rs-tk-x" aria-hidden="true"></span>';
-  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}</span><em>${escapeHtml(prix)}</em></button>${croix}</div>`;
+  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}${apres ? `<small class="is-apres">${escapeHtml(apres)}</small>` : ''}</span><em>${escapeHtml(prix)}</em></button>${croix}</div>`;
 }
 
 function rsPrixDeLigne(id) {
@@ -35804,7 +36145,10 @@ function rsLignesActivites() {
     const ko = !s.adaptee && (etapes.find((x) => x.ko) || (refus ? { d: refus.raison } : null));
     const detail = ko ? rsPhrase(ko.d) : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
     const prixF = montant > 0 && combien ? rsEuros(montant) : '';
-    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, detail, prixF), retirer: 'rsSansFormule()' }));
+    const verdictF = !ko && !s.adaptee ? rsVerdictDesCandidats(ids[0], 0, s.startTime) : null;
+    const resteF = verdictF && verdictF.statut !== 'ko' ? rsResteDuPlan(verdictF.prend) : [];
+    const apresF = resteF.length ? `il restera ${resteF.join(', ')}` : '';
+    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
     if (!s.adaptee) return lignes.join('');
   }
   // La derniere activite ne se retire pas : il faut bien reserver quelque chose.
@@ -35815,10 +36159,26 @@ function rsLignesActivites() {
     const ko = e.some((x) => x.ko);
     const detail = ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
+    const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
     const prix = s.adaptee || !combien ? '' : rsPrixDeLigne(id);
-    lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, ko, prix, aria: rsAriaLigne(nom, [detail, plus].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
+    lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, aria: rsAriaLigne(nom, [detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
   return lignes.join('');
+}
+
+// Sous une ligne du ticket : ses joueurs quand ce n est pas tout le groupe, et ce qui restera
+// a cette heure une fois le dossier cree.
+function rsPlusDuTicket(id, ligne) {
+  const s = quickBookState;
+  const morceaux = [];
+  const groupe = Math.max(1, Number(s.pax) || 1);
+  const joueurs = getQuickVisitParticipants(id);
+  if (joueurs < groupe) morceaux.push(`${rvPluriel(joueurs, 'joueur')} sur ${groupe}`);
+  if (rvActivites().includes(id) && RV_ANCRABLES.includes(id) && ligne && ligne.heure) {
+    const place = rsPlaceDeLHeure(id, ligne.heure);
+    if (place && !place.manque) morceaux.push(`il restera ${rvPluriel(place.libre, place.unite)}`);
+  }
+  return morceaux.join(', ');
 }
 
 // Le nom accessible d une ligne dit ce qu elle montre (l heure, les pistes, le prix) :
@@ -36254,7 +36614,7 @@ function rsPeindreActivites() {
   // L heure d une tuile prise est celle de sa ligne du ticket (rvEtapesDuBillet).
   const petites = choix.filter((c) => !RV_ANCRABLES.includes(c.id));
   const etapes = petites.some((c) => rsAuTicket(c.id)) ? rvEtapesDuBillet() : [];
-  rsPoser('rsZ-petits', `<div class="rs-petits" role="group" aria-label="Autres activités">${petites.map((c) => rsTuileHtml(c.id, etapes)).join('')}</div>`);
+  rsPoser('rsZ-petits', `<div class="rs-petits" role="group" aria-label="Autres activités">${petites.map((c) => rsTuileHtml(c.id, etapes)).join('')}</div>${rsJoueursPetitsHtml(petites)}`);
   rsPoser('rsZ-portes', `<div class="rs-portes${rsNiveau('surmesure') === 'non' ? ' is-seule' : ''}">${rsPortesHtml()}</div>`);
 }
 

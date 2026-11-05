@@ -7503,8 +7503,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel4';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel4';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

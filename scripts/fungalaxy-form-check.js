@@ -392,10 +392,8 @@
 // (l erreur perimee survit a « Modifier »), sousledoigt (l erreur nait hors
 // de l ecran), mailfin (l ecran final tait l e-mail mis en file), accuse (une
 // demande annonce une confirmation), arriveefin (l arrivee quitte l ecran
-// final), couvre (le montant se dit complet quand il ne l est pas), fete (une
-// demande a verifier a ses confettis), anneau (elle a sa coche), cochecalme
-// (en mouvement reduit, la coche attend un trace qui ne vient pas : feuille
-// cassee). Sauf mention : JS servi casse.
+// final), couvre (le montant se dit complet quand il ne l est pas). Sauf
+// mention : JS servi casse.
 //
 // CONTRE-PREUVES DE LA BARRE DU BAS : suitencore (la barre colle de nouveau
 // au bas de l ecran : FEUILLE servie cassee), resume (le resume des heures
@@ -894,8 +892,6 @@ const MUTATIONS = {
   accuse: ["(mailQ.templateId === 'confirmation' ? 'La confirmation part à ' :", "(true ? 'La confirmation part à ' :"],
   arriveefin: ["(arrivee ? '. Arrivée conseillée à <b>'", "(false ? '. Arrivée conseillée à <b>'"],
   couvre: ["(prixComplet ? ', à régler'", "(true ? ', à régler'"],
-  fete: ['if (confirme && !reduced) for', 'if (!reduced) for'],
-  anneau: ["confirme ? '#i-check' : '#i-mail'", "'#i-check'"],
   lisible: ['var msgErr = err && err.lisible ? err.message : ', 'var msgErr = err.message || '],
   separateur: ["hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b>\\u00a0· '", "hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b> · '"],
   orphelin: ["function finInsecable(s) { return String(s == null ? '' : s).replace(/ ([^ ]+)$/, '\\u00a0$1'); }", "function finInsecable(s) { return String(s == null ? '' : s); }"],
@@ -948,7 +944,6 @@ const MUTATIONS_CSS = {
   mailcoupe: ['min-height: 44px; max-width: 100%; padding: 0 4px; overflow-wrap: anywhere; ', 'min-height: 44px; padding: 0 4px; '],
   zoom: ['zoome sur le champ touche. */\n  font-size: 16px;', 'zoome sur le champ touche. */\n  font-size: 15px;'],
   errglisse: ['  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }\n', ''],
-  cochecalme: ['@media (prefers-reduced-motion: no-preference) {\n  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n', '.fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n@media (prefers-reduced-motion: no-preference) {\n'],
   fleches44: ['.fg-cal__nav {\n  width: 44px;\n  height: 44px;\n', '.fg-cal__nav {\n  width: 34px;\n  height: 34px;\n'],
   cibleetape: ['.fg-steps__item button::after { content: ""; position: absolute; left: 0; right: 0; top: -16px; bottom: -6px; }\n', ''],
   anneaustepper: ['.fg-stepper__btn:focus-visible { outline-offset: -4px; }\n', ''],
@@ -3032,7 +3027,7 @@ async function main() {
     ok(/La confirmation part à qa@example\.com\./.test(fin), '[E] l ecran final ne promet l e-mail que parce que la reponse le met en file', fin.slice(0, 200));
     const arriveeFin = (corps.opsPlan || {}).arrivalTime;
     ok(Boolean(arriveeFin) && fin.indexOf(`Rendez-vous à ${arriveeFin}.`) >= 0, '[E] l ecran final donne l heure d arrivee du plan rendu', arriveeFin || 'plan sans arrivee');
-    const iProg = fin.indexOf('Au programme : ');
+    const iProg = fin.indexOf('Au programme');
     ok(iProg >= 0 && PROGRAMME.every((p) => fin.indexOf(nomDe(p.activityId), iProg) > iProg), '[E] l ecran final nomme chaque activite choisie', fin.slice(iProg, iProg + 120));
     // LES PHOTOS NE CHANGENT PAS PENDANT LA RESERVATION (« pour chaque
     // nouvelle reservation, pas que ca change pendant la resa ») : chaque
@@ -3055,8 +3050,8 @@ async function main() {
     // innerText suit la mise en capitales de la feuille : on compare les MOTS.
     ok(Boolean(rp) && titreFin.toLowerCase() === (confirmeQa ? 'réservation confirmée' : 'demande envoyée'),
       `[E] le titre final dit ce que le serveur a repondu (ici : ${confirmeQa ? 'reservation confirmee' : 'demande a verifier'})`, `« ${titreFin} »`);
-    const anneauE = await page.evaluate(() => ({ confettis: document.querySelectorAll('#finBurst i').length, icone: (document.querySelector('.fg-done__ring svg use') || { getAttribute: () => 'aucune' }).getAttribute('href') }));
-    ok(anneauE.confettis === 0 && anneauE.icone === (confirmeQa ? '#i-check' : '#i-mail'), `[E] la marque suit le verdict du serveur (ici : ${confirmeQa ? 'coche' : 'enveloppe'}), aucun confetti`, JSON.stringify(anneauE));
+    const marqueE = await page.evaluate(() => document.querySelectorAll('.fg-done__ring, #finBurst').length);
+    ok(marqueE === 0, '[E] le titre seul dit le verdict : ni coche, ni enveloppe, ni confettis (Ansar, 2026-11-06 : « le v est moche de fou »)', String(marqueE));
     ok(await barreEst(page, '11111') && await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.fg-scene.is-active .fg-steps__item'));
       return items.length === 5
@@ -4573,12 +4568,9 @@ async function main() {
         '[M] la reservation va jusqu a l ecran final, avec son recu');
       const finM = await fm.evaluate(() => ({
         titre: document.querySelector('#t-fin').innerText.replace(/\s+/g, ' ').trim().toLowerCase(),
-        confettis: document.querySelectorAll('#finBurst i').length,
-        icone: (document.querySelector('.fg-done__ring svg use') || { getAttribute: () => 'aucune' }).getAttribute('href'),
         texte: document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim(),
       }));
       ok(finM.titre === 'demande envoyée', 'MONTAGE [M] la reponse forcee « a verifier » arrive jusqu a l ecran final', JSON.stringify(finM.titre));
-      ok(finM.confettis === 0 && finM.icone === '#i-mail', '[M] une demande que l equipe doit verifier ne se fete pas : enveloppe dans l anneau, aucun confetti', JSON.stringify({ confettis: finM.confettis, icone: finM.icone }));
       ok(/Un accusé de réception part à site@example\.com\./.test(finM.texte) && finM.texte.indexOf('La confirmation part') < 0 && /vous répond sous 24 heures ouvrables\./.test(finM.texte),
         '[M] une demande a verifier annonce l accuse de reception que la reponse met en file, et le delai ecrit dans cet accuse', finM.texte.slice(0, 240));
     }
@@ -5556,10 +5548,6 @@ async function main() {
     const anims = await pageCalme.evaluate(() => Array.from(document.querySelectorAll('.fg-scene.is-active .fg-title .w > span, .fg-scene.is-active .fg-art img, .fg-scene.is-active .fg-rise, .fg-curtain, .fg-glow i')).map((el) => getComputedStyle(el).animationName).filter((n) => n && n !== 'none'));
     ok(anims.length === 0, '[H] avec prefers-reduced-motion, plus aucune animation (rideau compris)', anims.join(', ') || 'aucune');
     ok(await pageCalme.evaluate(() => !document.querySelector('.fg-curtain')), '[H] le rideau n existe plus');
-    // L anneau de l ecran final est dans la page des le chargement : son style
-    // se lit sans refaire le parcours.
-    const cocheCalme = await pageCalme.evaluate(() => { const s = document.querySelector('.fg-done__ring svg'); if (!s) return null; const cs = getComputedStyle(s); return { tirets: cs.strokeDasharray, decalage: cs.strokeDashoffset }; });
-    ok(Boolean(cocheCalme) && (cocheCalme.tirets === 'none' || parseFloat(cocheCalme.decalage) === 0), '[H] sans animation, la coche de l ecran final est dessinee d office (plus de trait en attente d un trace qui ne vient pas)', JSON.stringify(cocheCalme));
     await calme.close();
   } finally {
     await browser.close();

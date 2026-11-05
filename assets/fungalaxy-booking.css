@@ -1652,22 +1652,6 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* --- Confirmation ------------------------------------------------------------- */
 
-.fg-done__ring {
-  position: relative;
-}
-/* Le trace de la coche (ou de l enveloppe d une demande) ne vit qu en
-   mouvement libre. En mouvement reduit, aucun jeu de tirets : le trait est la
-   d office (avant, le decalage de 60 restait sans animation, anneau vide). */
-@media (prefers-reduced-motion: no-preference) {
-    .fg-done__ring.is-mail svg { stroke-dasharray: 64; stroke-dashoffset: 64; }
-      }
-/* Les confettis : quatorze pieces posees par le script pour une reservation
-   CONFIRMEE seulement (une demande a verifier ne se fete pas), en eventail
-   vers le haut, une seule fois. Sans remplissage apres la fin : les pieces
-   reviennent invisibles et sans decalage (rien dans scrollWidth). */
-/* Chaque confetti recoit sa trajectoire du script (--x, --y, --r, poses sur
-   son style) ; declarees ici, elles ont une valeur meme sans lui (un jeton
-   jamais declare rend la valeur initiale, sans rien dire). */
 .fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
 .fg-done p b { color: var(--fg-text); }
 /* Le recu : une carte opaque, une rangee par fait (quand, quoi, e-mail,
@@ -2951,13 +2935,10 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-edit > span { grid-column: 1 / -1; margin-top: 4px; }
 .fg-edit .fg-edit__btn { justify-content: flex-start; text-align: left; }
 
-/* --- 6. LA CONFIRMATION : a gauche, un aplat sarcelle, le meme bloc ------------ */
+/* --- 6. LA CONFIRMATION : a gauche, le titre seul, le meme bloc ---------------- */
 .fg-scene[data-scene="fin"] .fg-scene__body { text-align: left; }
 .fg-scene[data-scene="fin"] .fg-steps { margin-left: 0; }
 .fg-done { text-align: left; }
-.fg-done__ring { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 0 18px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-teal); color: #06100e; box-shadow: none; }
-.fg-done__ring.is-mail { background: var(--fg-plat); color: #fff; }
-.fg-done__ring svg { width: 26px; height: 26px; stroke-dasharray: none; stroke-dashoffset: 0; }
 .fg-done__ticket { padding: 16px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
 .fg-done .fg-done__row { display: block; margin: 0 0 12px; padding: 0; border: 0; font-size: 15px; font-weight: 500; line-height: 21px; color: var(--fg-n3); }
 .fg-done .fg-done__row:last-child { margin-bottom: 0; }
@@ -3119,3 +3100,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* Une raison commune a toute une famille de formules : une fois, sous son titre, plus sur chaque carte. */
 .fg-fam__refus { margin: -2px 0 10px; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-amber-ink); }
 .fg-fam.is-refus-commun .fg-for__off { display: none; }
+
+/* La confirmation : le programme comme au recapitulatif, ligne par ligne (Ansar, 2026-11-06 : « tres moche »). */
+.fg-done__prog { margin: 6px 0 14px; }
+.fg-done__prog-titre { margin: 0 0 10px; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-n3); }

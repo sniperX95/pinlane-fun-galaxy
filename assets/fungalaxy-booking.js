@@ -6732,8 +6732,10 @@
     });
     return out;
   }
-  function htmlRecap(final) {
-    var cr = state.creneau, rep = cr ? cr.reponse : {}, plan = cr ? (cr.slot.opsPlan || {}) : {}, arrivee = arriveeDe(plan);
+  // LE PROGRAMME, LIGNE PAR LIGNE : le recapitulatif et la confirmation le disent de la meme facon (Ansar, 2026-11-06,
+  // devant la confirmation : « tres moche », une phrase de « + » et de parentheses sans une heure).
+  function lignesDuRecap() {
+    var cr = state.creneau, rep = cr ? cr.reponse : {};
     var lignes = [];
     var items = (rep.program && rep.program.items) || [];
     if (state.onglet === 'formules') {
@@ -6780,6 +6782,21 @@
     } else {
       state.selection.forEach(function (id) { lignes.push({ id: id, icone: icone(id), nom: nomActivite(id), detail: '', aside: '' }); });
     }
+    return lignes;
+  }
+  function htmlLignesRecap(lignes, depart) {
+    return lignes.map(function (l, i) {
+      // La vraie photo de l activite, celle de ses autres ecrans ; sans photo connue, la place reste vide (jamais un pictogramme).
+      var ph = l.photo !== undefined ? l.photo : (l.id ? photo(l.id) : '');
+      return '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise" style="--i:' + (depart + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
+        + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
+        + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
+    }).join('');
+  }
+  function htmlRecap(final) {
+    var cr = state.creneau, rep = cr ? cr.reponse : {}, plan = cr ? (cr.slot.opsPlan || {}) : {}, arrivee = arriveeDe(plan);
+    var lignes = lignesDuRecap();
+    var items = (rep.program && rep.program.items) || [];
     var prix = Number(rep.price) || 0;
     var complet = !rep.program || rep.program.priceComplete !== false;
     var j = jourInfo(state.date);
@@ -6789,13 +6806,7 @@
       + '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>' + esc(jourLong(state.date)) + '</span>' + (j && j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
       + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(groupeLisible()) + '</span></div>'
       + '<div class="fg-recap__sep"></div>';
-    lignes.forEach(function (l, i) {
-      // La vraie photo de l activite, celle de ses autres ecrans ; sans photo connue, la place reste vide (jamais un pictogramme).
-      var ph = l.photo !== undefined ? l.photo : (l.id ? photo(l.id) : '');
-      html += '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
-        + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
-        + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
-    });
+    html += htmlLignesRecap(lignes, 3);
     html += '<div class="fg-recap__sep"></div>'
       + (arrivee ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>' + motArrivee() + ' <b>' + esc(arrivee) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(arrivee, fin) + '</span></div>' : '')
       + (horsFinal.length ? '<div class="fg-recap__row fg-recap__hors fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-info"/></svg><span><b>' + esc(phraseHorsDelai(horsFinal, fin, false).tete) + ' :</b> ' + esc(phraseHorsDelai(horsFinal, fin, false).noms) + '</span></div>' : '')
@@ -7439,28 +7450,18 @@
     var centreFin = meta && meta.center;
     var nomCentreFin = String(centreFin && centreFin.name || '').trim();
     var adresseFin = String(centreFin && centreFin.address || '').trim();
+    // Le creneau reserve est celui de l ecran (meme heure de depart) : ses lignes font le programme du recu.
+    var lignesFin = heureRes === state.heure && state.creneau ? lignesDuRecap() : [];
     $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
       + (nomCentreFin ? rangee('i-lieu', '<b>' + esc(nomCentreFin) + '</b>' + (adresseFin ? '<br>' + esc(adresseFin) : '')) : '')
       + rangee('i-calendar', quand)
-      + (quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
+      + (lignesFin.length ? '<div class="fg-done__prog"><p class="fg-done__prog-titre">Au programme </p>' + htmlLignesRecap(lignesFin, 3) + '</div>' : quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
       + (avertissementBowling(r.program ? r : state.creneau) ? rangee('i-info', esc(avertissementBowling(r.program ? r : state.creneau))) : '')
       + rangee('i-mail', ligneMail)
       + rangee('i-card', ligneMontant)
       + (contact && contact.phone ? '<p class="fg-done__row"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Une question ? ' + lienContact(contact) + '</span></p>' : '')
       + '</div>'
       + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:3"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
-    // L ANNEAU SUIT LE MEME VERDICT QUE LE TITRE : la coche et les confettis
-    // pour une reservation confirmee, l enveloppe pour une demande que
-    // l equipe va verifier (aucune fete, rien n est encore acquis).
-    var anneau = $('.fg-done__ring');
-    var icone = anneau && $('svg use', anneau);
-    if (anneau) anneau.classList.toggle('is-mail', !confirme);
-    if (icone) icone.setAttribute('href', confirme ? '#i-check' : '#i-mail');
-    var burst = $('#finBurst');
-    if (burst) {
-      burst.innerHTML = '';
-      
-    }
     aller('fin');
     Object.keys(plus.acceptees).forEach(function (id) {
       var c = plus.acceptees[id], act = c.patch && c.patch.activityId;
@@ -7516,8 +7517,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel5';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel5';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106visuel6';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106visuel6';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

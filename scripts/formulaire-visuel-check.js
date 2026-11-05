@@ -189,8 +189,8 @@ async function jusquAuBout(b, centre, w) {
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
   await dormir(400);
   await tousPlats(page, '.fg-done__ticket', `[fin] ${q}`);
-  const fin = await page.evaluate(() => ({ confettis: document.querySelectorAll('#finBurst i').length, pictos: [...document.querySelectorAll('.fg-done__row svg')].filter((s) => s.getClientRects().length).length, gauche: getComputedStyle(document.querySelector('.fg-scene[data-scene="fin"] .fg-title')).textAlign }));
-  ok(fin.confettis === 0 && fin.pictos === 0 && fin.gauche !== 'center', `[fin] ${q} : ni confettis ni pictogrammes, a gauche comme le reste`, JSON.stringify(fin));
+  const fin = await page.evaluate(() => ({ marque: document.querySelectorAll('.fg-done__ring, #finBurst').length, pictos: [...document.querySelectorAll('.fg-done__row svg')].filter((s) => s.getClientRects().length).length, gauche: getComputedStyle(document.querySelector('.fg-scene[data-scene="fin"] .fg-title')).textAlign }));
+  ok(fin.marque === 0 && fin.pictos === 0 && fin.gauche !== 'center', `[fin] ${q} : ni coche, ni confettis, ni pictogrammes, a gauche comme le reste`, JSON.stringify(fin));
   ok(await deborde(page) <= 0, `[largeur] ${q} : la confirmation ne deborde pas`, String(await deborde(page)));
   ok(page.__erreurs.length === 0, `[erreurs] ${q} : aucune erreur sur tout le parcours`, page.__erreurs[0] || '');
   await ctx.close();

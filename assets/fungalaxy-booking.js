@@ -2506,7 +2506,7 @@
   // arrive apres le rendu : l onglet range ses cartes au moment ou il s ouvre.
   function rangerFormules() {
     var ordre = ((meta && meta.formules) || []).map(function (f) { return f.id; });
-    $('.fg-grid--for', gridFor).forEach(function (grille) {
+    $$('.fg-grid--for', gridFor).forEach(function (grille) {
       var items = Array.from(grille.children);
       var rang = function (li) { var c = $('[data-formule]', li); return (c.classList.contains('is-refus') ? ordre.length : 0) + ordre.indexOf(c.dataset.formule); };
       var ranges = items.slice().sort(function (a, b) { return rang(a) - rang(b); });

@@ -564,6 +564,23 @@ const ouvrirParLeMenu = async (page) => {
 
 async function jouerConsole(browser) {
   remettre();
+  // La serie des revenus : une reponse sans jours ne relance pas la lecture en boucle (84 lectures par seconde, ecran fige, vu par le robot du toucher).
+  {
+    const dash = await ouvrirConsole(browser);
+    const lectures = await dash.page.evaluate(async () => {
+      let n = 0;
+      const nf = window.fetch;
+      window.fetch = function (input) { if (/days=14/.test(String(typeof input === 'string' ? input : input.url))) n += 1; return nf.apply(this, arguments); };
+      state.staffMenuPage = 'dashboard';
+      setView('staff');
+      if (typeof renderStaff === 'function') renderStaff();
+      await new Promise((r) => setTimeout(r, 1500));
+      window.fetch = nf;
+      return n;
+    });
+    ok(lectures <= 2, '[U] la Vue d ensemble ne relance pas sa lecture en boucle quand la serie revient vide', lectures);
+    await dash.ctx.close();
+  }
   const { ctx, page } = await ouvrirConsole(browser);
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(String(e.message).slice(0, 200)));

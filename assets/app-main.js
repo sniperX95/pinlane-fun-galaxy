@@ -10941,13 +10941,15 @@ function getStaffDaySeries(endDate = state.currentDate) {
 async function ensureStaffDaySeries(endDate = state.currentDate) {
   const key = `${getCurrentStaffCenterId()}|${endDate}`;
   const entry = staffDaySeriesCache.get(key);
-  if (entry && (entry.loading || (entry.days.length && (Date.now() - entry.at) < 60000))) return;
+  // Une serie vide attend aussi avant de se relire : lue sans delai, elle redessine, se relit, et fige l ecran.
+  if (entry && (entry.loading || (Date.now() - entry.at) < (entry.days.length ? 60000 : 15000))) return;
   staffDaySeriesCache.set(key, { days: entry ? entry.days : [], at: entry ? entry.at : 0, loading: true });
   try {
     const centerQuery = encodeURIComponent(getCurrentStaffCenterId());
     const payload = await apiRequest(`${API_ENDPOINTS.staffState}?date=${encodeURIComponent(endDate)}&centerId=${centerQuery}&days=14`);
-    staffDaySeriesCache.set(key, { days: Array.isArray(payload.days) ? payload.days : [], at: Date.now(), loading: false });
-    if (state.view === 'staff' && state.staffMenuPage === 'dashboard') renderStaffDashboard();
+    const days = Array.isArray(payload.days) ? payload.days : [];
+    staffDaySeriesCache.set(key, { days, at: Date.now(), loading: false });
+    if (days.length && state.view === 'staff' && state.staffMenuPage === 'dashboard') renderStaffDashboard();
   } catch (error) {
     // Repli silencieux sur la serie locale : la carte reste honnete, juste
     // limitee aux dates connues du poste.

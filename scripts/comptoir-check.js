@@ -671,7 +671,7 @@ async function scenarioF(browser) {
 
     await vue('bowling');
     const cartes = await page.evaluate(() => [...document.querySelectorAll('.planning-hold')].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
-    ok(cartes.length === 2 && cartes.every((t) => /Internet/.test(t) && /gardé jusqu’à 15:18/.test(t)), '[F] le planning bowling montre les pistes retenues', cartes);
+    ok(cartes.length === 2 && cartes.every((t) => /Internet/.test(t) && /jusqu’à 15:18/.test(t)), '[F] le planning bowling montre les pistes retenues', cartes);
     ok(/^Internet\s*2 pistes$/.test(await barre()), '[F] la barre du bowling dit ce qui est retenu', await barre());
 
     await vue('laser');

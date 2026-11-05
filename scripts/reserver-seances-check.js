@@ -1252,7 +1252,7 @@ async function scenarioS10(browser) {
     // planning de la console compte (la meme journee), sur celles qu il faut au groupe.
     const pistes = await page.evaluate((heures) => heures.map((h) => {
       const { besoin, libres } = rsDansLaCopie('bowling', () => rvPistesDuBowling(h));
-      return { h, attendu: libres ? `${libres} piste${libres > 1 ? 's' : ''} sur ${besoin}` : 'complet' };
+      return { h, attendu: libres ? `manque ${Math.max(1, besoin - libres)} piste${Math.max(1, besoin - libres) > 1 ? 's' : ''}` : 'complet' };
     }), refusees.filter((x) => x.id === 'bowling' && /piste/i.test(x.v.raison)).map((x) => x.heure));
     const motsBowling = Object.fromEntries(bowling.map((x) => [x.heure, x.mot]));
     ok(pistes.length > 0 && pistes.some((p) => p.attendu !== 'complet') && pistes.every((p) => motsBowling[p.h] === p.attendu), '[S10] le mot dit les pistes qui restent, celles du planning, sur celles qu il faut', { pistes, lus: motsBowling });

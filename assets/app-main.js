@@ -23995,7 +23995,7 @@ function renderPlanning() {
       const texte = texteBlocageEnLigne(item.blocage);
       holdHtml += `<div class="planning-hold" data-hold-lane="${i}" data-hold-start="${st}" style="top:${top}px;height:${height}px;" role="note" aria-label="${escapeHtml(`Piste ${i}, ${formatClockDisplay(st)} - ${formatClockDisplay(item.window.end)} : ${texte}`)}" title="${escapeHtml(texte)}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-        <span class="planning-hold__txt"><b>Internet</b>${heure ? ` <small>gardé jusqu’à ${escapeHtml(heure)}</small>` : ''}</span>
+        <span class="planning-hold__txt"><b>Internet</b>${heure ? ` <small>jusqu’à ${escapeHtml(heure)}</small>` : ''}</span>
       </div>`;
     });
     const laneWins = laneBlockWindows[i] || [];

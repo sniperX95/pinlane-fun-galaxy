@@ -529,7 +529,7 @@ async function structure(page, s, label) {
     // bulle des colonnes (ce qui se joue sur les autres activites).
     const attenduEtat = {};
     if (o.pistes && o.pistes.libresMaintenant != null) { const n = o.pistes.libresMaintenant; attenduEtat.bowling = n ? `${n} ${n > 1 ? 'libres' : 'libre'}` : 'complet'; }
-    if (o.laser && o.laser.prochain) { const p = o.laser.prochain; attenduEtat.laser = `${hhmm(p.t)}${p.places > 0 ? `, ${p.places} ${p.places > 1 ? 'places' : 'place'}` : ', complet'}`; }
+    if (o.laser && o.laser.prochain) { const p = o.laser.prochain; attenduEtat.laser = `${hhmm(p.t)}${p.places > 0 ? `, ${p.places} ${p.places > 1 ? 'armes' : 'arme'}` : ', complet'}`; }
     const surPlace = new Map();
     o.groupes.forEach((g) => {
       if (!g.present || g.etat === 'done' || g.etat === 'absent') return;

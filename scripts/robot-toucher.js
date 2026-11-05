@@ -119,7 +119,7 @@ function lister() {
     if (estInteractif && el.closest(INTERACTIF) !== el && el.parentElement.closest(INTERACTIF)) continue;
     cibles.push({
       chemin: chemin(el), signature: signature(el), texte: el.textContent.replace(/\s+/g, ' ').trim().slice(0, 44) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '',
-      genre: estInteractif ? 'bouton' : main ? 'main' : 'ligne', l: Math.round(r.width), h: Math.round(r.height), lien: el.closest('a[href]') ? el.closest('a[href]').getAttribute('href') : '', ferme: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      genre: estInteractif ? 'bouton' : main ? 'main' : 'ligne', l: Math.round(r.width), h: Math.round(r.height), lien: el.closest('a[href]') ? el.closest('a[href]').getAttribute('href') : '', ferme: el.disabled === true || el.getAttribute('aria-disabled') === 'true' || (el.control && el.control.disabled === true),
     });
   }
   return cibles;

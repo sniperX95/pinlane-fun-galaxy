@@ -1,6 +1,7 @@
 {
   "scripts": {
     "robot:toucher": "node scripts/robot-toucher.js",
+    "robot:console": "node scripts/robot-console.js",
     "db:migrate": "node scripts/run-db-migrations.js",
     "db:migrate:plan": "node scripts/run-db-migrations.js --plan",
     "seed:demo": "node --env-file=.env scripts/seed-demo-month.js",

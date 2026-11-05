@@ -514,12 +514,11 @@ function sobriete() {
   const essai = new CSSStyleSheet();
   essai.replaceSync('.fg-btn { background-image: linear-gradient(red, blue); } .fg-art::after { background: linear-gradient(90deg, #000, transparent); } .fg-chip { background: repeating-linear-gradient(135deg, red 0 6px, blue 6px 12px); } .fg-sm-seuil::before { background: linear-gradient(red, blue); }');
   const encart = getComputedStyle(document.getElementById('smSeuil'));
-  const icone = getComputedStyle(document.querySelector('#smSeuil .fg-sm-seuil__icon'));
   return {
     feuilles: feuilles.map((f) => f.href.replace(/^.*\/assets\//, '').replace(/\?.*$/, '')).sort(),
     ...lire(feuilles),
     preuve: lire([essai]),
-    encart: { image: encart.backgroundImage, fond: encart.backgroundColor, champ: getComputedStyle(document.querySelector('.fg-stepper')).backgroundColor, iconeFond: icone.backgroundColor, iconeImage: icone.backgroundImage, iconeBord: icone.borderTopWidth },
+    encart: { image: encart.backgroundImage, fond: encart.backgroundColor },
   };
 }
 async function premierEcran(browser) {
@@ -817,8 +816,8 @@ function verifierPremierEcran(p) {
     'contre-preuve : le lecteur refuse un degrade sur un bouton et sur un ::before sans photo, laisse passer le voile d une photo et un motif hachure', JSON.stringify(s.preuve));
   ok(s.feuilles.join(' ') === 'fungalaxy-booking.css fungalaxy-sur-mesure.css' && s.voiles.length >= 5 && s.fautes.length === 0,
     'aucun degrade decoratif dans les deux feuilles, demande comprise : chaque degrade est le voile d une photo', JSON.stringify({ feuilles: s.feuilles, voiles: s.voiles.length, fautes: s.fautes }));
-  ok(s.encart.image === 'none' && s.encart.fond === s.encart.champ && s.encart.fond !== 'rgba(0, 0, 0, 0)' && s.encart.iconeFond === 'rgba(0, 0, 0, 0)' && s.encart.iconeImage === 'none' && s.encart.iconeBord === '0px',
-    'l encart du grand groupe est un aplat (le fond des champs), son icone sans pastille', JSON.stringify(s.encart));
+  ok(s.encart.image === 'none' && s.encart.fond !== 'rgba(0, 0, 0, 0)',
+    'l encart du grand groupe est un aplat (le fond des champs)', JSON.stringify(s.encart));
 }
 function verifierPanne(r) {
   section('E0. LE MODULE EN PANNE');

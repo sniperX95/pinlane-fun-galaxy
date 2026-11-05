@@ -2179,7 +2179,7 @@ async function main() {
     ok(titres.length === 5 && new Set(ouvertures).size === 5
       && titres.every((mots) => mots.length >= 2 && !mots.some((x) => /^[?!]$/.test(x.trim())) && mots.every((x) => !/[?!]$/.test(x) || /\u00a0[?!]$/.test(x))),
       '[A] les cinq titres ouvrent chacun sur un mot different, et une ponctuation finale reste collee a son mot', titres.map((mots) => `« ${mots.join(' ')} »`).join(' '));
-    ok(await attendre(page, () => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden', 3000) && montage.halos === 0, '[A] le rideau d ouverture finit invisible (au plus 3 s), aucun halo (plus de degrade decoratif)', JSON.stringify({ halos: montage.halos }));
+    ok(await page.evaluate(() => !document.querySelector('.fg-curtain')) && montage.halos === 0, '[A] plus de rideau a l ouverture, aucun halo (plus de degrade decoratif)', JSON.stringify({ halos: montage.halos }));
     const poids = poidsServi();
     ok(poids.nettoyes && poids.octets < BUDGET_SERVI, `[A] JS + CSS + HTML SERVIS (apres le build) sous ${BUDGET_SERVI / 1024} Ko a analyser`, `${Math.round(poids.octets / 102.4) / 10} Ko, ${poids.sortie}`);
     ok(poids.transfere < BUDGET_TRANSFERE, `[A] et sous ${BUDGET_TRANSFERE / 1024} Ko a telecharger (compresses, comme le serveur les envoie)`, `${Math.round(poids.transfere / 102.4) / 10} Ko`);
@@ -2829,8 +2829,8 @@ async function main() {
     ok(Boolean(recapContact) && recapContact.items.length === PROGRAMME.length && recapContact.total === o6.prix && recapContact.logos.join(',') === '#i-card,#i-cash',
       '[D] l ecran des coordonnees porte le recapitulatif ENTIER : chaque activite, le total de la route, le paiement et ses deux logos',
       recapContact ? `${recapContact.items.map((i) => i.nom).join(' + ')} · ${recapContact.montant} · ${recapContact.paiement}` : 'absent');
-    ok(geo.ouvert && geo.bouton === 'none' && geo.ligne === 'none' && geo.gauche >= geo.colonneFin && geo.gauche >= geo.artGauche && geo.droite <= geo.artDroite && geo.bas <= geo.sceneBas,
-      '[D] sur ordinateur, il est ouvert, pose sur la photo a cote de la colonne du formulaire, et la scene le contient entier', JSON.stringify(geo));
+    ok(geo.ouvert && geo.bouton === 'none' && geo.ligne === 'none' && geo.gauche >= geo.colonneFin && geo.bas <= geo.sceneBas,
+      '[D] sur ordinateur, il est ouvert, a cote de la colonne du formulaire, et la scene le contient entier', JSON.stringify(geo));
     // ENTREE FAIT AVANCER D UN CHAMP (le clavier du telephone dit « suivant ») :
     // jamais un envoi a moitie rempli, ni l erreur de la case avant qu on ait
     // pu la cocher.
@@ -3056,7 +3056,7 @@ async function main() {
     ok(Boolean(rp) && titreFin.toLowerCase() === (confirmeQa ? 'réservation confirmée' : 'demande envoyée'),
       `[E] le titre final dit ce que le serveur a repondu (ici : ${confirmeQa ? 'reservation confirmee' : 'demande a verifier'})`, `« ${titreFin} »`);
     const anneauE = await page.evaluate(() => ({ confettis: document.querySelectorAll('#finBurst i').length, icone: (document.querySelector('.fg-done__ring svg use') || { getAttribute: () => 'aucune' }).getAttribute('href') }));
-    ok(anneauE.confettis === (confirmeQa ? 14 : 0) && anneauE.icone === (confirmeQa ? '#i-check' : '#i-mail'), `[E] l anneau suit le verdict du serveur (ici : ${confirmeQa ? 'coche et 14 confettis' : 'enveloppe, aucun confetti'})`, JSON.stringify(anneauE));
+    ok(anneauE.confettis === 0 && anneauE.icone === (confirmeQa ? '#i-check' : '#i-mail'), `[E] la marque suit le verdict du serveur (ici : ${confirmeQa ? 'coche' : 'enveloppe'}), aucun confetti`, JSON.stringify(anneauE));
     ok(await barreEst(page, '11111') && await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.fg-scene.is-active .fg-steps__item'));
       return items.length === 5
@@ -3112,7 +3112,7 @@ async function main() {
     ok(await attendre(pageHote, () => window.__hauteurs.length > 0 && parseInt(document.querySelector('.bloc iframe').style.height, 10) > 300, 8000), '[F] le cadre recoit sa hauteur (pinlane:height)');
     const f = cadre();
     ok(Boolean(f) && await f.evaluate(() => document.body.classList.contains('is-embed')), '[F] dans le cadre, le formulaire se sait embarque');
-    const bandeau = await f.evaluate(() => { const t = document.querySelector('.fg-top'); const r = t.getBoundingClientRect(); return { h: Math.round(r.height), d: getComputedStyle(t).display, rideau: getComputedStyle(document.querySelector('.fg-curtain')).display }; });
+    const bandeau = await f.evaluate(() => { const t = document.querySelector('.fg-top'); const r = t.getBoundingClientRect(); return { h: Math.round(r.height), d: getComputedStyle(t).display, rideau: document.querySelector('.fg-curtain') ? 'present' : 'none' }; });
     ok(bandeau.h === 0 && bandeau.d === 'none' && bandeau.rideau === 'none', '[F] notre bandeau (logo, « Reserver ») et le rideau sont absents chez le client', JSON.stringify(bandeau));
     const fondu = await f.evaluate(() => {
       const fond = new URLSearchParams(location.search).get('fond') || '';
@@ -3480,16 +3480,14 @@ async function main() {
     // Les onglets au clavier (motif APG) et la pastille sous l onglet choisi.
     await pageV.focus('#tabAct');
     await pageV.keyboard.press('ArrowRight');
-    await attendre(pageV, () => document.querySelector('#tabBar').getAnimations().length === 0, 2000);
     const ongletsClavier = await pageV.evaluate(() => {
       const a = document.querySelector('#tabAct'), f = document.querySelector('#tabFor');
-      const b = document.querySelector('#tabBar').getBoundingClientRect(), r = f.getBoundingClientRect();
       return { choisi: f.getAttribute('aria-selected'), focus: document.activeElement === f, panneau: !document.querySelector('#panelFor').hidden,
-        tabulation: [a.tabIndex, f.tabIndex].join(), ecart: [Math.round(b.left - r.left), Math.round(b.width - r.width)] };
+        tabulation: [a.tabIndex, f.tabIndex].join(), plein: getComputedStyle(f).backgroundColor !== getComputedStyle(a).backgroundColor };
     });
     ok(ongletsClavier.choisi === 'true' && ongletsClavier.focus && ongletsClavier.panneau && ongletsClavier.tabulation === '-1,0'
-      && Math.abs(ongletsClavier.ecart[0]) <= 1 && Math.abs(ongletsClavier.ecart[1]) <= 1,
-      '[I] au clavier, la fleche droite ouvre les formules, le focus suit, un seul onglet tabulable, la pastille couvre l onglet choisi', JSON.stringify(ongletsClavier));
+      && ongletsClavier.plein,
+      '[I] au clavier, la fleche droite ouvre les formules, le focus suit, un seul onglet tabulable, l onglet choisi est un aplat plein', JSON.stringify(ongletsClavier));
     await pageV.keyboard.press('Home');
     ok(await attendre(pageV, () => document.querySelector('#tabAct').getAttribute('aria-selected') === 'true' && !document.querySelector('#panelAct').hidden && document.activeElement.id === 'tabAct', 2000),
       '[I] la touche Debut revient aux activites, le focus suit');
@@ -3505,7 +3503,7 @@ async function main() {
         refus: c.classList.contains('is-refus'),
         aria: c.getAttribute('aria-disabled'),
         tab: c.getAttribute('tabindex'),
-        regles: Array.from(c.querySelectorAll('.fg-for__rules i')).map((n) => n.textContent.trim()),
+        regles: Array.from(c.querySelectorAll('.fg-for__rules i')).concat(Array.from(c.closest('.fg-fam').querySelectorAll('.fg-fam__regles i'))).map((n) => n.textContent.trim()),
         contenu: Array.from(c.querySelectorAll('.fg-for__list li')).map((n) => n.textContent.trim()),
         pourquoi: (c.querySelector('.fg-for__off') || {}).textContent ? c.querySelector('.fg-for__off').textContent.trim() : '',
         prix: (c.querySelector('.fg-for__price') || {}).textContent.trim(),
@@ -3513,7 +3511,7 @@ async function main() {
     }));
     ok(vue.familles.length === 2, '[I] deux familles : les anniversaires et les offres speciales', JSON.stringify(vue.familles.map((f) => f.titre)));
     ok(vue.familles[0].cartes === 8 && vue.familles[1].cartes === 6, '[I] 8 formules d anniversaire, 6 offres speciales', JSON.stringify(vue.familles.map((f) => f.cartes)));
-    ok(vue.familles.every((f) => /\d+ formules?$/.test(f.titre)), '[I] chaque famille annonce son compte', JSON.stringify(vue.familles.map((f) => f.titre)));
+    ok(vue.familles.every((f) => !/\d/.test(f.titre)), '[I] le titre d une famille dit son nom, sans compter ses cartes', JSON.stringify(vue.familles.map((f) => f.titre)));
     ok(vue.cartes.length === 14, '[I] les quatorze formules du catalogue sont a l ecran', String(vue.cartes.length));
     ok(vue.cartes.every((c) => c.contenu.length > 0), '[I] chaque carte liste ce qu elle contient, ligne par ligne');
     const f1 = vue.cartes.find((c) => c.id === 'f1');
@@ -4311,7 +4309,8 @@ async function main() {
         });
         const m = n ? await contrastesPires(pl, '[data-qa-lisible]') : [];
         const surPhoto = m.filter((x) => x.halo === null).length;
-        if (!m.length || (plein && !surPhoto)) prerequis = false;
+        const artVu = await pl.evaluate(() => { const a = document.querySelector('.fg-scene.is-active .fg-art'); return Boolean(a && a.getClientRects().length); });
+        if (!m.length || (plein && artVu && !surPhoto)) prerequis = false;
         vus.push(`${w} px ${m.length} textes, ${surPhoto} sur la photo`);
         m.filter((x) => x.ratio < x.seuil).forEach((x) => faibles.push(`${w} px « ${x.texte} » ${x.ratio}:1 < ${x.seuil}${x.halo === null ? ' sur photo' : ` (halo ${x.halo})`}`));
         // LES ACCENTS DU TITRE (2026-09-23, « CONFIRMEE » plantait son accent
@@ -5010,8 +5009,8 @@ async function main() {
         '[O] embarque, telephone : le calendrier est une fenetre au MILIEU de l ecran de l hote, 90 px de marge au moins en haut et en bas, sur un voile', JSON.stringify(fo1));
       // Vu en production le 2026-09-23 : le chevron du bouton, place sur le
       // conteneur que le calendrier agrandit, flottait au milieu du mois.
-      const icones = await fo.evaluate(() => { const b = document.querySelector('#dayBtn').getBoundingClientRect(); return Array.from(document.querySelectorAll('#dayBtn svg')).map((s) => { const r = s.getBoundingClientRect(); return { dedans: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 && r.left >= b.left - 1 && r.right <= b.right + 1, haut: Math.round(r.top - b.top) }; }); });
-      ok(icones.length === 2 && icones.every((x) => x.dedans), '[O] telephone, calendrier ouvert : les deux icones du bouton du jour restent DANS le bouton', JSON.stringify(icones));
+      const icones = await fo.evaluate(() => { const b = document.querySelector('#dayBtn').getBoundingClientRect(); return Array.from(document.querySelectorAll('#dayBtn small, #dayBtn b')).map((s) => { const r = s.getBoundingClientRect(); return { dedans: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 && r.left >= b.left - 1 && r.right <= b.right + 1, haut: Math.round(r.top - b.top) }; }); });
+      ok(icones.length === 2 && icones.every((x) => x.dedans), '[O] telephone, calendrier ouvert : le texte du bouton du jour reste DANS le bouton', JSON.stringify(icones));
       const s1 = await suitLeContenu(po, fo);
       ok(s1.ok, '[O] embarque : calendrier ouvert, le cadre a la hauteur du formulaire et ne defile pas lui-meme', JSON.stringify(s1));
       // Toucher a cote de la fenetre la ferme, et rien d autre : le voile prend
@@ -5540,7 +5539,7 @@ async function main() {
     await pageCalme.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     const anims = await pageCalme.evaluate(() => Array.from(document.querySelectorAll('.fg-scene.is-active .fg-title .w > span, .fg-scene.is-active .fg-art img, .fg-scene.is-active .fg-rise, .fg-curtain, .fg-glow i')).map((el) => getComputedStyle(el).animationName).filter((n) => n && n !== 'none'));
     ok(anims.length === 0, '[H] avec prefers-reduced-motion, plus aucune animation (rideau compris)', anims.join(', ') || 'aucune');
-    ok(await pageCalme.evaluate(() => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden'), '[H] sans animation, le rideau n existe pas (invisible par defaut)');
+    ok(await pageCalme.evaluate(() => !document.querySelector('.fg-curtain')), '[H] le rideau n existe plus');
     // L anneau de l ecran final est dans la page des le chargement : son style
     // se lit sans refaire le parcours.
     const cocheCalme = await pageCalme.evaluate(() => { const s = document.querySelector('.fg-done__ring svg'); if (!s) return null; const cs = getComputedStyle(s); return { tirets: cs.strokeDasharray, decalage: cs.strokeDashoffset }; });

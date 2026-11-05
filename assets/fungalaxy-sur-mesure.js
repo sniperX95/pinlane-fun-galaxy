@@ -278,7 +278,7 @@
     var doc = I.doc, $ = I.$, $$ = I.$$, CENTER = I.CENTER, EMBED = I.EMBED, sm = I.sm, state = I.state;
     sm.options = sm.options || {};
     var activite = I.activite, activitesVendables = I.activitesVendables, aller = I.aller, appelCentre = I.appelCentre;
-    var champ = I.champ, chargerPhotoCarte = I.chargerPhotoCarte, deIso = I.deIso, dire = I.dire, esc = I.esc;
+    var champ = I.champ, deIso = I.deIso, dire = I.dire, esc = I.esc;
     var euros = I.euros, eveiller = I.eveiller, finGeste = I.finGeste, heureRonde = I.heureRonde, icone = I.icone;
     var iso = I.iso, jourInfo = I.jourInfo, jourLong = I.jourLong, joursLisibles = I.joursLisibles;
     var libelleFamille = I.libelleFamille, lienContact = I.lienContact, ligneCentre = I.ligneCentre;
@@ -767,13 +767,11 @@
       smGridAct.innerHTML = activitesVendables().map(function (a, i) {
         var v = verdictActiviteSurMesure(a, ctx), p = photo(a.id), cap = capaciteGroupe(a), age = faitsAge(a);
         var on = sm.activites.indexOf(a.id) >= 0;
-        return carteSm({ id: a.id, i: i, on: on, v: v, formule: false, corps: (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
-          + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
+        return carteSm({ id: a.id, i: i, on: on, v: v, formule: false, corps: (p ? '<span class="fg-card__photo" aria-hidden="true"><img src="/assets/fungalaxy/' + p + '-carte.webp" alt="" loading="lazy" decoding="async"></span>' : '')
           + '<span class="fg-card__name">' + esc(a.name) + '</span>'
           + '<span class="fg-card__price">' + esc(on ? reglagesSm(a).prix : prixCarte(a, true)) + (age ? ' · ' + esc(age.replace(/ /g, ' ')) : '') + '</span>'
           });
       }).join('') || '<li class="fg-empty">Aucune activité n’est proposée pour le moment.' + ligneCentre() + '</li>';
-      $$('.fg-card.is-on', smGridAct).forEach(chargerPhotoCarte);
       I.rendreEditeurActivites(smGridAct, '', retirerSmActivite);
     }
     function rendreSmFormules() {
@@ -863,7 +861,6 @@
       var id = card.dataset.sm, i = liste.indexOf(id);
       if (i >= 0) liste.splice(i, 1); else liste.push(id);
       var on = i < 0;
-      chargerPhotoCarte(card);
       card.classList.toggle('is-on', on);
       if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');
       card.closest('.fg-grid__item').classList.toggle('is-on', on);
@@ -910,8 +907,6 @@
       if (i < 0 || i >= pills.length) return;
       e.preventDefault(); changerReglageSm(pills[i], pills[i].dataset.cle, pills[i].dataset.valeur, true); pills[i].focus();
     });
-    smGridAct.addEventListener('pointerenter' , function (e) { if (e.pointerType !== 'touch') chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
-    smGridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
     function choisirOngletSm(quel) {
       sm.onglet = quel;
       var act = quel === 'activites';

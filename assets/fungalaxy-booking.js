@@ -22,7 +22,6 @@
   var $ = function (sel, ctx) { return (ctx || doc).querySelector(sel); };
   var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || doc).querySelectorAll(sel)); };
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var finPointer = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   // La colonne etroite des cartes (maconnerie) : une seule requete, relue a
   // chaque image d un tiroir qui s ouvre, au lieu d une nouvelle par mesure.
   var petitEcran = window.matchMedia ? window.matchMedia('(max-width:560px)') : { matches: false };
@@ -122,7 +121,6 @@
   // Le premier ecran reste cache le temps que la demande s ouvre : le visiteur
   // de la page Evenements ne le voit pas passer.
   if (DEPART_SUR_MESURE) body.classList.add('fg-depart-sm');
-  if (finPointer) body.classList.add('has-pointer');
 
   // Le fond du site hote voyage dans l URL : liste blanche de caracteres
   // stricte, sinon color-scheme: dark peint un rectangle gris chez le client.
@@ -236,7 +234,7 @@
     });
     parGrille.forEach(function (ecarts, grille) {
       var colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
-      var espace = petitEcran.matches ? 10 : 14;
+      var espace = 6; // le meme ecart que les lignes de l ecran des heures
       var hauteurs = Array(colonnes).fill(0);
       Array.from(grille.children).filter(function (x) { return x.classList.contains('fg-grid__item'); }).forEach(function (tuile, i) {
         hauteurs[i % colonnes] += Math.ceil(tuile.getBoundingClientRect().height) + (ecarts.get(tuile) || 0) + espace;
@@ -515,7 +513,7 @@
     if (/bowling/.test(s)) return 'pistes-neon';
     if (/laser/.test(s)) return 'laser-joueur';
     if (/golf/.test(s)) return 'minigolf';
-    if (/billard/.test(s)) return 'billard';
+    if (/billard/.test(s)) return 'billards-libramont';
     if (/arcade/.test(s)) return 'arcades';
     if (/playground|plaine/.test(s)) return 'plaine';
     if (/fun_run|funrun|fun-run/.test(s)) return 'fun-run';
@@ -1248,9 +1246,12 @@
   // perdu : le dernier demande part des qu elle finit. Avant, « Retour »
   // touche juste apres l arrivee sur un ecran ne faisait rien.
   var allerEnAttente = null;
+  // Au telephone, ces ecrans n ont plus de photo de fond : rien a charger.
+  var sansBandePhoto = window.matchMedia('(max-width: 900px)');
   function chargerPhoto(scene) {
     var img = $('.fg-art img', scene);
     if (!img || !img.dataset.src) return;
+    if (sansBandePhoto.matches && /^(activites|(sm-)?(contact|recap))$/.test(scene.dataset.scene)) return;
     img.srcset = img.dataset.srcset || '';
     img.src = img.dataset.src;
     delete img.dataset.src; delete img.dataset.srcset;
@@ -1395,7 +1396,8 @@
     }
     espacerAccents($('.fg-title', vers));
     poster({ type: 'pinlane:screen' });
-    if (!EMBED) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+    // L ecran suivant part du haut, d un coup : remonter en glissant faisait attendre.
+    if (!EMBED) window.scrollTo({ top: 0, behavior: 'auto' });
     var focus = $('.fg-title', vers);
     if (focus) { focus.setAttribute('tabindex', '-1'); focus.focus({ preventScroll: true }); }
     setTimeout(posterHauteur, 50);
@@ -1704,8 +1706,39 @@
     state.date = dateStr;
     dayLabel.textContent = jourLong(dateStr);
     direJour(dateStr);
+    rendreJoursVite();
     invaliderDispo();
   }
+  // LES PROCHAINS JOURS OUVERTS, D UN TOUCHER, comme les heures : « Aujourd hui », « Demain », puis
+  // le jour d apres ; le calendrier reste a un toucher pour une autre date (Ansar, 2026-11-05 : « moins
+  // de gestes »). Choisir passe par la meme fonction que le calendrier, rien d autre ne change.
+  var MOIS_COURTS = ['janv', 'févr', 'mars', 'avril', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+  var joursVite = $('#joursVite'), dayAutre = $('#dayAutre'), dayAutreMot = $('#dayAutreMot');
+  function rendreJoursVite() {
+    if (!joursVite) return;
+    var liste = Object.keys(jours).sort().filter(function (s) { return s >= aujourdhui() && ouvertCeJour(s); }).slice(0, 3);
+    var html = liste.map(function (s) {
+      var d = deIso(s), on = s === state.date;
+      var mot = s === aujourdhui() ? 'Aujourd’hui' : s === demain() ? 'Demain' : cap(JOURS[d.getDay()]);
+      return '<button type="button" class="fg-jour' + (on ? ' is-on' : '') + '" data-jour="' + s + '" aria-pressed="' + on + '" aria-label="' + esc(jourLong(s)) + '"><small>' + mot + '</small><b>' + d.getDate() + ' ' + MOIS_COURTS[d.getMonth()] + '</b></button>';
+    }).join('');
+    if (joursVite.innerHTML !== html) joursVite.innerHTML = html;
+    // Une autre date, prise au calendrier, se lit sur sa propre tuile, pleine.
+    var ailleurs = Boolean(state.date) && liste.indexOf(state.date) < 0;
+    if (dayAutre) {
+      var dd = ailleurs ? deIso(state.date) : null;
+      dayAutreMot.textContent = dd ? cap(JOURS[dd.getDay()]) : 'Autre';
+      dayAutre.textContent = dd ? dd.getDate() + ' ' + MOIS_COURTS[dd.getMonth()] : 'date';
+      dayBtn.classList.toggle('is-on', ailleurs);
+    }
+  }
+  if (joursVite) joursVite.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-jour]');
+    if (!b || b.dataset.jour === state.date) return;
+    choisirJour(b.dataset.jour);
+    rejouer(dayHint, 'is-maj');
+    if (!dayPop.hidden) rendreCalendrier();
+  });
   var finVue = false;
   function direJour(dateStr) {
     var j = jourInfo(dateStr);
@@ -1865,7 +1898,7 @@
 
   /* --- Etape 1 : le groupe ------------------------------------------------------- */
 
-  var paxOut = $('#paxOut'), paxInput = $('#paxInput'), paxHint = $('#paxHint');
+  var paxOut = $('#paxOut'), paxInput = $('#paxInput'), paxHint = $('#paxHint'), paxVite = $('#paxVite');
   var paxBox = paxInput.closest('.fg-stepper');
   var PAX_MIN = 1, PAX_MAX = 240;
   // Le dernier message ecrit sous le compteur : la region live ne se reecrit
@@ -1900,6 +1933,7 @@
     ajusterLargeurPax();
     $('#paxMinus').disabled = state.pax <= PAX_MIN;
     $('#paxPlus').disabled = state.pax >= PAX_MAX;
+    $$('[data-pax]', paxVite).forEach(function (b) { var on = Number(b.dataset.pax) === state.pax; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
     var lanes = meta && meta.center && meta.center.booking;
     var indice = '';
     // Un grand groupe passe par la demande sur mesure : l encart le dit, la
@@ -1947,6 +1981,14 @@
   }
   $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(-1); });
   $('#paxPlus').addEventListener('click', function () { poserPax(state.pax + 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(1); });
+  // Les groupes les plus courants, d un toucher : de 4 a 8, le compteur demandait quatre gestes.
+  paxVite.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pax]');
+    if (!b) return;
+    poserPax(Number(b.dataset.pax));
+    paxInput.value = String(state.pax);
+    ajusterLargeurPax();
+  });
   // Le nombre se tape aussi : la valeur se prend des qu elle est lisible, et
   // se remet au propre quand le champ est quitte (vide ou hors bornes).
   paxInput.addEventListener('input', function () { ajusterLargeurPax(); var v = parseInt(paxInput.value, 10); if (isFinite(v) && v >= PAX_MIN) poserPax(v); });
@@ -2129,7 +2171,7 @@
         grille._fgCle = cle;
       }
       var colonnes = grille._fgColonnes;
-      var espace = petitEcran.matches ? 10 : 14;
+      var espace = 6; // le meme ecart que les lignes de l ecran des heures
       var hauteurs = Array(colonnes).fill(0);
       // TOUTES les lectures, PUIS toutes les ecritures. Lire la hauteur d une
       // tuile apres avoir ecrit la rangee de la precedente force un layout par
@@ -2188,7 +2230,7 @@
      transition (html sans .fg-flip). --- */
   var FLIP_TIROIR = !reduced && typeof Element.prototype.animate === 'function' && Boolean(window.CSS && CSS.supports && CSS.supports('translate', '0px 1px'));
   if (FLIP_TIROIR) root.classList.add('fg-flip');
-  var DUREE_TIROIR = 400, courbeTiroir = '';
+  var DUREE_TIROIR = 220, courbeTiroir = '';
   function decalageY(el) {
     var v = getComputedStyle(el).translate;
     if (!v || v === 'none') return 0;
@@ -2344,7 +2386,7 @@
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
-      var p = photo(a.id);
+      var p = vignette(a.id);
       var on = state.selection.indexOf(a.id) >= 0;
       var trop = false;
       // Pas assez de joueurs : la carte reste TOUCHABLE et dit pourquoi, comme
@@ -2354,8 +2396,10 @@
       var ferme = !trop && !peu && fermeCeJour(a);
       return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '" data-activity="' + esc(a.id) + '">'
         + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + (peu || ferme ? ' is-refus' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
-        + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
-        + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
+        // La vraie photo de l activite, la meme que sur sa ligne a l ecran des heures. Jamais un
+        // pictogramme (Ansar, 2026-11-05 : « ca fait trop ia les autres »). Rien ne se charge
+        // avant que l ecran s affiche : loading=lazy, l ecran est cache au depart.
+        + (p ? '<span class="fg-card__photo" aria-hidden="true"><img src="' + p + '" alt="" loading="lazy" decoding="async"></span>' : '')
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
         + '<span class="fg-card__price">' + esc(typo(prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : ''))) + '</span>'
         + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
@@ -2365,8 +2409,6 @@
         + rendreOption(a)
         + '</li>';
     }).join('') || ('<li class="fg-empty">Aucune activité ne se réserve en ligne pour le moment.' + ligneCentre() + '</li>');
-    // Une carte deja cochee (retour a cet ecran) montre sa photo tout de suite.
-    $$('.fg-card.is-on', gridAct).forEach(chargerPhotoCarte);
     rendreEditeurActivites(gridAct, '', retirerActivite);
   }
   var JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
@@ -2456,7 +2498,20 @@
       else if(off)off.remove();
       if(!v.ok && state.formuleId===f.id){state.formuleId='';card.classList.remove('is-on');card.setAttribute('aria-checked','false');card.closest('.fg-grid__item').classList.remove('is-on');}
     });
+    // Jamais sous les yeux du client : une carte ne bouge pas sous son doigt.
+    if ($('#panelFor').hidden) rangerFormules();
     rendreCompteur(false);
+  }
+  // Ce qui se reserve ce jour-la passe devant, dans l ordre du catalogue. Le verdict du serveur
+  // arrive apres le rendu : l onglet range ses cartes au moment ou il s ouvre.
+  function rangerFormules() {
+    var ordre = ((meta && meta.formules) || []).map(function (f) { return f.id; });
+    $('.fg-grid--for', gridFor).forEach(function (grille) {
+      var items = Array.from(grille.children);
+      var rang = function (li) { var c = $('[data-formule]', li); return (c.classList.contains('is-refus') ? ordre.length : 0) + ordre.indexOf(c.dataset.formule); };
+      var ranges = items.slice().sort(function (a, b) { return rang(a) - rang(b); });
+      if (ranges.some(function (li, i) { return li !== items[i]; })) ranges.forEach(function (li) { grille.appendChild(li); });
+    });
   }
   function texteDuree(d) {
     var a = Math.round(Number(d && d.min) / 5) * 5, b = Math.round(Number(d && d.max) / 5) * 5;
@@ -2515,10 +2570,15 @@
       // Les anniversaires sont une fete (guirlande) ; les autres familles
       // disent leur remise. Une photo ne revient pas dans la meme section.
       var fete = /anniv/i.test(cle), vues = {};
-      var cartes = parFamille[cle].map(function (f) {
+      // CE QUE TOUTES DISENT SE DIT UNE FOIS, sur le titre de la section (« un bloc utile
+      // devient une faute des qu il apparait deux fois »). Ce qui se reserve ce jour-la
+      // passe devant : sur onze cartes, cinq ne se prenaient pas un samedi.
+      var listeFam = parFamille[cle].slice().sort(function (a, b) { return (verdictFormule(a).ok ? 0 : 1) - (verdictFormule(b).ok ? 0 : 1); });
+      var communes = listeFam.length > 1 ? reglesFormule(listeFam[0]).filter(function (r) { return listeFam.every(function (f) { return reglesFormule(f).indexOf(r) >= 0; }); }) : [];
+      var cartes = listeFam.map(function (f) {
         var on = state.formuleId === f.id;
         var v = verdictFormule(f);
-        var regles = reglesFormule(f);
+        var regles = reglesFormule(f).filter(function (r) { return communes.indexOf(r) < 0; });
         var fond = photoFormule(f, vues);
         var remise = !fete && Number(f.price) > 0 && Number(f.oldPrice) > Number(f.price) ? Math.round((1 - Number(f.price) / Number(f.oldPrice)) * 100) : 0;
         n += 1;
@@ -2540,7 +2600,8 @@
           + (v.ok && variantesOffertes(f).length > 1 ? rendreVariantes(f) : '')
           + '</li>';
       }).join('');
-      return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
+      return '<section class="fg-fam' + (fete ? ' is-fete' : '') + '"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '</h3>'
+        + (communes.length ? '<p class="fg-fam__regles">' + communes.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</p>' : '')
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
     chargerDurees();
@@ -2676,17 +2737,6 @@
   // chargees d avance pesaient 400 Ko pour un ecran qui n en montre aucune.
   // Un doigt ne survole pas : le toucher la charge en cochant, et un doigt
   // qui fait defiler la liste ne telecharge plus chaque carte qu il effleure.
-  function chargerPhotoCarte(card) {
-    var img = card && card.querySelector('.fg-card__photo img[data-src]');
-    if (!img) return;
-    img.src = img.dataset.src;
-    delete img.dataset.src;
-  }
-  gridAct.addEventListener('pointerenter', function (e) {
-    if (e.pointerType === 'touch') return;
-    chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card'));
-  }, true);
-  gridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
   // Le prix ne roule que sur un geste qui le change (pastille choisie, carte
   // cochee) : decocher le rend a « Des X » sans rien jouer.
   function majPrixCarte(item, a, anime) {
@@ -2706,7 +2756,6 @@
       return;
     }
     if (!card || card.classList.contains('is-off')) return;
-    chargerPhotoCarte(card);
     var item = card.closest('.fg-grid__item');
     var id = item.dataset.activity;
     var i = state.selection.indexOf(id);
@@ -2851,7 +2900,7 @@
   function choisirOnglet(quel) {
     state.onglet = quel;
     var act = quel === 'activites';
-    if (!act) rendreFormulesEnRetard();
+    if (!act) { rendreFormulesEnRetard(); rangerFormules(); }
     $('#tabAct').setAttribute('aria-selected', String(act));
     $('#tabFor').setAttribute('aria-selected', String(!act));
     $('#tabAct').tabIndex = act ? 0 : -1;
@@ -4087,7 +4136,7 @@
   // a les siennes. Sans photo, la ligne se passe d image, jamais d un pictogramme.
   function vignette(id) {
     var p = photo(id);
-    return p ? '/assets/fungalaxy/' + (p === 'billard' ? 'billards-libramont' : p) + '-carte.webp' : '';
+    return p ? '/assets/fungalaxy/' + p + '-carte.webp' : '';
   }
   function htmlEtapes(etapes, pistes) {
     var laserPose = false;
@@ -7343,14 +7392,7 @@
     var burst = $('#finBurst');
     if (burst) {
       burst.innerHTML = '';
-      if (confirme && !reduced) for (var i = 0; i < 14; i += 1) {
-        var a = (-165 + i * 150 / 13) * Math.PI / 180, d = 70 + (i % 4) * 16, s = doc.createElement('i');
-        s.style.setProperty('--x', Math.round(Math.cos(a) * d) + 'px');
-        s.style.setProperty('--y', Math.round(Math.sin(a) * d) + 'px');
-        s.style.setProperty('--r', (i % 2 ? 1 : -1) * (150 + i * 15) + 'deg');
-        s.style.setProperty('--t', (i % 3) * 40 + 'ms');
-        burst.appendChild(s);
-      }
+      
     }
     aller('fin');
     Object.keys(plus.acceptees).forEach(function (id) {
@@ -7407,8 +7449,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261103signal';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {
@@ -7505,7 +7547,7 @@
     var I = {
       doc: doc, $: $, $$: $$, CENTER: CENTER, EMBED: EMBED, sm: sm, state: state,
       activite: activite, activitesVendables: activitesVendables, aller: aller, appelCentre: appelCentre, champ: champ,
-      chargerPhotoCarte: chargerPhotoCarte, decouperTitres: decouperTitres, deIso: deIso, dire: dire, esc: esc, euros: euros,
+      decouperTitres: decouperTitres, deIso: deIso, dire: dire, esc: esc, euros: euros,
       eveiller: eveiller, finGeste: finGeste, heureRonde: heureRonde, icone: icone, iso: iso, jourInfo: jourInfo,
       jourLong: jourLong, joursLisibles: joursLisibles, libelleFamille: libelleFamille, lienContact: lienContact,
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
@@ -7518,22 +7560,6 @@
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });
     return I;
-  }
-
-  /* --- La photo qui suit la souris (ordinateur seulement) ---------------------- */
-
-  if (finPointer && !reduced) {
-    var rafPara = 0;
-    doc.addEventListener('pointermove', function (e) {
-      if (rafPara) return;
-      rafPara = requestAnimationFrame(function () {
-        rafPara = 0;
-        var x = (e.clientX / window.innerWidth - 0.5).toFixed(3);
-        var y = (e.clientY / window.innerHeight - 0.5).toFixed(3);
-        root.style.setProperty('--px', x);
-        root.style.setProperty('--py', y);
-      });
-    });
   }
 
   /* --- Le catalogue se relit --------------------------------------------------------- */
@@ -7655,6 +7681,7 @@
         var premier = Object.keys(jours).sort().filter(function (s) { return ouvertCeJour(s); })[0];
         if (state.date) direJour(state.date);
         else if (premier) choisirJour(premier);
+        rendreJoursVite();
         if (!dayPop.hidden) rendreCalendrier();
         rendrePax();
         rendreActivites();

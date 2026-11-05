@@ -80,26 +80,8 @@
 
 /* Invisible par defaut : sans animation (mouvement reduit), il n existe pas.
    L animation le rend visible a 0 % et le fait sortir par la droite. */
-.fg-curtain {
-  position: fixed;
-  inset: -10% -30%;
-  z-index: 50;
-  pointer-events: none;
-  visibility: hidden;
-  background: var(--fg-purple);
-  transform: translateX(-110%) skewX(-12deg);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .fg-curtain { animation: fg-curtain 1.05s cubic-bezier(0.7, 0, 0.2, 1) backwards; }
-}
-@keyframes fg-curtain {
-  0% { visibility: visible; transform: translateX(-110%) skewX(-12deg); }
-  45% { transform: translateX(0) skewX(-12deg); }
-  100% { visibility: hidden; transform: translateX(110%) skewX(-12deg); }
-}
 /* Dans le cadre du client, pas de rideau : le cadre grandit encore, la bande
    passerait sur un trou. */
-.fg.is-embed .fg-curtain { display: none; }
 /* Le depart sur la demande de groupe (start=sur-mesure) : le premier ecran
    reste cache le temps que la demande s ouvre. */
 .fg.fg-depart-sm .fg-scene[data-scene="date"] { visibility: hidden; }
@@ -116,7 +98,7 @@
 }
 .fg-top__gauche { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .fg-top__brand { flex: none; display: inline-flex; }
-.fg-top__logo { width: 112px; height: auto; }
+.fg-top__logo { height: auto; }
 /* LE CENTRE, EN GRAND (Ansar, 2026-11-04) : a cote du logo sur la page, en tete du cadre dans
    le site du client. Un aplat plein, sa typo d affiche, jamais coupe. */
 .fg-centre { display: block; min-width: 0; margin: 0; padding: 5px 13px 6px; overflow: hidden; border-radius: 6px; background: var(--fg-teal); color: #06201c; font-family: var(--fg-display); font-size: 30px; font-weight: 400; line-height: 1.12; letter-spacing: 0.02em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
@@ -128,7 +110,6 @@
 /* (sans ca, sa marge du haut sort du corps de page, et le cadre garde 16 px a defiler) */
 .fg.is-embed .fg-shell { display: flow-root; }
 .fg-top__cta {
-  display: inline-flex;
   align-items: center;
   gap: 10px;
   padding: 10px 22px;
@@ -149,8 +130,6 @@
   .fg.is-embed .fg-centre--cadre { min-height: calc(1.12em + 9px); }
   .fg-top__cta { flex: none; padding: 9px 13px; font-size: 12px; letter-spacing: 0.05em; }
 }
-@media (max-width: 380px) { .fg-top__logo { width: 92px; } }
-@media (max-width: 350px) { .fg-top__cta { display: none; } }
 .fg.is-embed .fg-top { display: none; }
 /* Dans le cadre du client, la hauteur suit le contenu : un plancher a 100vh
    vaudrait la hauteur du cadre, et le cadre ne saurait alors que grandir. */
@@ -195,17 +174,10 @@ html.fg-pilote .fg { overflow: visible; }
    recapitulatif pose sur la photo du contact (.fg-recall) garde sa propre
    entree (fg-rise). */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-entering { animation: fg-fade-in 0.4s var(--fg-ease-out) 0.08s both; }
-  .fg-scene.is-leaving { animation: fg-fade-out 0.2s var(--fg-ease) both; }
-  .fg-scene.is-entering > .fg-scene__body { animation: fg-slide-in 0.4s var(--fg-ease-out) 0.08s both; }
-  .fg-scene.is-leaving > .fg-scene__body { animation: fg-slide-out 0.2s var(--fg-ease) both; }
-  .fg-stage.is-back { --fg-dx: -1; }
+          .fg-stage.is-back { --fg-dx: -1; }
 }
 @keyframes fg-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fg-fade-out { from { opacity: 1; } to { opacity: 0; } }
-@keyframes fg-slide-in { from { transform: translateX(calc(var(--fg-dx, 1) * 36px)); } to { transform: none; } }
-@keyframes fg-slide-out { from { transform: none; } to { transform: translateX(calc(var(--fg-dx, 1) * -24px)); } }
-
 /* --- La photo de chaque scene ---------------------------------------------- */
 
 .fg-art {
@@ -220,21 +192,14 @@ html.fg-pilote .fg { overflow: visible; }
   height: 100%;
   object-fit: cover;
   object-position: center;
-  will-change: transform;
 }
 /* A l arrivee d une scene, la photo se pose (zoom arriere de 0,9 s), puis
    derive lentement pendant 14 s. Deux animations sur transform, enchainees
    par le delai de la seconde : jamais les deux en meme temps. La scene qui
    part les garde (meme liste d animations : le navigateur les poursuit au
    lieu de les couper), sa photo ne repasse pas d un coup a l echelle 1. */
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-art img, .fg-scene.is-leaving .fg-art img { animation: fg-settle 0.9s var(--fg-ease-out) both, fg-drift 14s ease-in-out 0.9s infinite alternate; }
-}
-@keyframes fg-settle { from { transform: scale(1.18) translate3d(0, 0, 0); } to { transform: scale(1.04) translate3d(0, 0, 0); } }
-@keyframes fg-drift { from { transform: scale(1.04) translate3d(0, 0, 0); } to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); } }
 /* La photo suit la souris (ordinateur seulement) : la propriete translate se
    compose avec l animation de transform, sans la couper. */
-.fg.has-pointer .fg-art img { translate: calc(var(--px) * -16px) calc(var(--py) * -10px); transition: translate 0.7s var(--fg-ease-out); }
 /* Le voile sombre (::after) et, par-dessus, les bords qui se fondent dans le
    fond de la page (::before) : dans le cadre du client, la photo ne dessine
    plus un rectangle net, elle s eteint avant le bord. */
@@ -259,7 +224,6 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-scene--split .fg-art {
   left: auto;
   width: 52%;
-  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
 }
 .fg-scene--split .fg-art::after {
   background: linear-gradient(90deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
@@ -273,7 +237,6 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-scene--split.fg-scene--art-left .fg-art {
   left: 0;
   right: auto;
-  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
 }
 .fg-scene--split.fg-scene--art-left .fg-art::after {
   background: linear-gradient(270deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
@@ -315,7 +278,6 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-scene--split .fg-scene__body { max-width: none; padding-left: max(var(--fg-gutter), calc(50% - 640px)); padding-right: calc(52% + 12px); }
 /* A cote d une photo, la colonne de texte est etroite : le titre descend d un
    cran pour que « Réserve-t-on ? » tienne sur sa ligne. */
-.fg-scene--split .fg-title { font-size: clamp(40px, 5.4vw, 66px); }
 .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-right: max(var(--fg-gutter), calc(50% - 640px)); padding-left: calc(52% + 12px); }
 .fg-scene--center .fg-scene__body { text-align: center; }
 
@@ -434,8 +396,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-steps__item.is-settling .fg-steps__seg::after { animation: fg-seg-settle 0.7s var(--fg-ease) 0.1s backwards; }
   .fg-steps__item.is-draining .fg-steps__seg::after { animation: fg-seg-drain 0.6s var(--fg-ease) 0.1s backwards; }
   .fg-steps__item.is-sweep .fg-steps__seg::after { animation: fg-seg-fill 0.55s var(--fg-ease-out) backwards; animation-delay: calc(90ms * var(--i, 0) + 0.25s); }
-  .fg-steps__item.is-active .fg-steps__txt { animation: fg-step-in 0.5s var(--fg-ease-out) 0.22s backwards; }
-}
+  }
 @keyframes fg-seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes fg-seg-settle { from { background: var(--fg-purple-2); } to { background: rgba(255, 255, 255, 0.78); } }
 @keyframes fg-seg-drain { from { transform: scaleX(1); background: var(--fg-purple-2); } to { transform: scaleX(0); background: var(--fg-purple-2); } }
@@ -446,8 +407,6 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-title {
   font-family: var(--fg-display);
   font-weight: 400;
-  font-size: clamp(42px, 6.6vw, 78px);
-  line-height: 0.94;
   letter-spacing: 0.005em;
   text-transform: uppercase;
   margin: 0 0 22px;
@@ -471,10 +430,6 @@ html.fg-pilote .fg { overflow: visible; }
    vers le haut de ce que l accent demande (1,11 em chez Anton, pour un
    interligne de 0,94 em), avec 0,09 em d air. */
 .fg-title .w.w--accent { padding-top: 0.26em; margin-top: 0; }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-title .w > span { animation: fg-word 0.6s var(--fg-ease-out) backwards; animation-delay: calc(60ms * var(--i, 0) + 80ms); }
-}
-@keyframes fg-word { from { transform: translateY(110%); } to { transform: none; } }
 .fg-sub {
   text-wrap: balance;
   margin: -6px 0 26px;
@@ -509,52 +464,38 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* --- Apparition en cascade des blocs d une scene ----------------------------- */
 
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-rise { animation: fg-rise 0.55s var(--fg-ease-out) backwards; animation-delay: calc(70ms * var(--i, 0) + 120ms); }
-  .fg-scene.is-active .fg-card.fg-rise { animation-fill-mode: both; }
-}
 @keyframes fg-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
 /* --- Champs ------------------------------------------------------------------ */
 
-.fg-fields { display: grid; gap: 24px; }
+.fg-fields { display: grid; }
 /* Deux colonnes seulement quand chacune garde 280 px (jour + groupe cote a
    cote a l aise), sinon elles s empilent avec de l air : jamais un
    chevauchement ni deux champs serres, quelle que soit la largeur du cadre. */
 .fg-fields--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 26px 32px; max-width: 680px; }
-.fg-field { display: grid; gap: 10px; align-content: start; }
+.fg-field { display: grid; align-content: start; }
 /* Chaque champ anime porte son propre contexte d empilement : le calendrier,
    ouvert, passerait SOUS le compteur de personnes et le bouton qui suivent
    dans le document. Le champ ouvert monte au-dessus de ses voisins. */
 .fg-field.is-open { position: relative; z-index: 30; }
-.fg-field__label { font-size: 15px; font-weight: 700; }
-.fg-field__hint { font-size: 12px; color: var(--fg-faint); }
 .fg-field__hint:empty { display: none; }
-.fg-field__hint--day { color: var(--fg-teal-ink); font-weight: 600; }
+.fg-field__hint--day { font-weight: 600; }
 .fg-field__hint.is-warn { color: var(--fg-amber-ink); font-size: 13px; }
 .fg-input {
   width: 100%;
   height: 54px;
   padding: 0 16px;
-  border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-line-2);
-  background: var(--fg-bg-2);
   color: var(--fg-text);
-  /* 16 px : en dessous, Safari sur iPhone zoome sur le champ touche. */
-  font-size: 16px;
-  font-weight: 500;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.fg-input::placeholder { color: var(--fg-faint); }
 @media (hover: hover) { .fg-input:hover { border-color: #555; } }
-.fg-input:focus { outline: none; border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); }
 .fg-field.is-invalid .fg-input { border-color: var(--fg-danger); }
 .fg-field__error { font-size: 12px; color: var(--fg-danger); min-height: 0; }
 .fg-field__error:empty { display: none; }
 /* La case n est pas un champ : son erreur se pose sous elle, alignee sur son
    texte (case de 22 px + 12 px d ecart), a l ecart d un champ (24 px de
    grille moins 14 = 10 px). Vide, elle reste cachee et n ajoute rien. */
-.fg-check + .fg-field__error { margin-top: -14px; padding-left: 34px; }
+.fg-check + .fg-field__error { margin-top: -14px; }
 /* « Vouliez-vous dire ... ? » : la proposition se touche (44 px) et se coupe
    n importe ou plutot que de deborder d un telephone. Soulignee et en gras :
    jamais la couleur seule. */
@@ -565,40 +506,23 @@ html.fg-pilote .fg { overflow: visible; }
 }
 /* Le mot pour l equipe, sur plusieurs lignes. « (facultatif) » et l aide en
    gris moyen : le gris des aides (--fg-faint) tombe a 3,4:1 sous le halo. */
-.fg-input--area { height: auto; min-height: 88px; padding: 14px 16px; line-height: 1.45; resize: vertical; }
-.fg-field__opt { font-weight: 500; color: var(--fg-muted); }
+.fg-input--area { height: auto; padding: 14px 16px; line-height: 1.45; }
 .fg-field__hint--note { color: var(--fg-muted); }
 /* L OCCASION DE LA VISITE : un groupe radio de pastilles, une icone et un mot
    chacune, deux colonnes sur telephone, trois au-dela ; « Autre » prend sa
    rangee. Choisie : pleine, comme une option d activite. */
-.fg-occasions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fg-occasions { display: grid; }
 .fg-occasion:last-child { grid-column: 1 / -1; }
-@media (min-width: 561px) { .fg-occasions { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .fg-occasion {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 48px;
-  padding: 8px 12px;
-  border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-line-2);
-  background: rgba(10, 10, 10, 0.8);
-  color: var(--fg-text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  text-align: left;
   transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
-.fg-occasion svg { width: 18px; height: 18px; flex: none; color: var(--fg-purple-ink); }
-@media (hover: hover) { .fg-occasion:hover { border-color: var(--fg-purple-2); } }
-.fg-occasion.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
-.fg-occasion.is-on svg { color: #fff; }
 @media (prefers-reduced-motion: no-preference) { .fg-occasion:active { transform: scale(0.97); } }
 .fg-field.is-invalid .fg-occasion { border-color: var(--fg-danger); }
 .fg-occasion__autre { display: grid; gap: 10px; margin-top: 4px; }
 .fg-occasion__autre[hidden] { display: none; }
-.fg-recap__note { overflow-wrap: anywhere; }
 /* Les erreurs glissent en place ; le premier champ a corriger fait un petit
    « non », une fois (la classe est posee puis retiree par le script). */
 @media (prefers-reduced-motion: no-preference) {
@@ -609,30 +533,15 @@ html.fg-pilote .fg { overflow: visible; }
 @keyframes fg-nudge { 0%, 100% { transform: none; } 30% { transform: translateX(-5px); } 65% { transform: translateX(4px); } }
 
 /* Le choix du jour : un bouton qui ouvre le calendrier du mois. */
-.fg-day { position: relative; }
 /* Le chevron se place sur le BOUTON : sur telephone le calendrier ouvert est
    dans .fg-day, et un chevron place sur .fg-day flottait au milieu du mois. */
 .fg-day__btn {
   position: relative;
-  width: 100%;
-  height: 54px;
   white-space: nowrap;
-  padding: 0 40px 0 16px;
-  border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-line-2);
-  background: var(--fg-bg-2);
-  display: flex;
-  align-items: center;
-  gap: 12px;
   text-align: left;
-  font-size: 15px;
-  font-weight: 600;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-@media (hover: hover) { .fg-day__btn:hover { border-color: #555; } }
-.fg-day__btn[aria-expanded="true"], .fg-day__btn:focus-visible { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); outline: none; }
-.fg-day__btn svg { width: 18px; height: 18px; flex: none; color: var(--fg-muted); }
-.fg-day__btn .chev { position: absolute; right: 14px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); transition: transform 0.25s var(--fg-ease); }
+.fg-day__btn[aria-expanded="true"], .fg-day__btn:focus-visible { outline: none; }
 .fg-day__btn[aria-expanded="true"] .chev { transform: translateY(-50%) rotate(180deg); }
 
 /* Le calendrier : un mois par ecran, les fleches pour changer de mois, les
@@ -646,10 +555,6 @@ html.fg-pilote .fg { overflow: visible; }
   min-width: 318px;
   width: max(100%, 318px);
   max-width: 380px;
-  padding: 12px 12px 10px;
-  background: #101010;
-  border: 1px solid var(--fg-line-2);
-  border-radius: 12px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
   transform-origin: top left;
 }
@@ -705,12 +610,9 @@ html.fg-pilote .fg { overflow: visible; }
 @keyframes fg-cal-next { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 @keyframes fg-cal-prev { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
 .fg-cal__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.fg-cal__title { font-size: 14px; font-weight: 700; text-transform: capitalize; }
 .fg-cal__nav {
   width: 44px;
   height: 44px;
-  border-radius: 8px;
-  border: 1px solid var(--fg-line-2);
   display: grid;
   place-items: center;
   color: var(--fg-muted);
@@ -726,18 +628,14 @@ html.fg-pilote .fg { overflow: visible; }
   position: relative;
   aspect-ratio: 1;
   min-height: 36px;
-  border-radius: 8px;
   border: 1px solid transparent;
-  font-size: 14px;
-  font-weight: 600;
   display: grid;
   place-items: center;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .fg-cal__day:focus-visible { background: rgba(148, 66, 146, 0.22); border-color: var(--fg-purple-2); outline: none; }
 @media (hover: hover) { .fg-cal__day:hover { background: rgba(148, 66, 146, 0.22); border-color: var(--fg-purple-2); outline: none; } }
-.fg-cal__day.is-today { border-color: var(--fg-line-2); }
-.fg-cal__day.is-selected { background: var(--fg-purple); border-color: var(--fg-purple); color: var(--fg-text); }
+.fg-cal__day.is-selected { color: var(--fg-text); }
 .fg-cal__day.is-off { color: var(--fg-faint); cursor: not-allowed; opacity: 0.55; }
 @media (hover: hover) { .fg-cal__day.is-off:hover { background: none; border-color: transparent; } }
 .fg-cal__day.is-past { opacity: 0.25; }
@@ -746,7 +644,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-cal__day i { position: absolute; left: 50%; bottom: 4px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--fg-teal); }
 .fg-cal__day.is-ferie i { background: var(--fg-purple-ink); }
 .fg-cal__day.is-selected i { background: #fff; }
-.fg-cal__info { margin: 10px 2px 0; font-size: 12px; font-weight: 600; color: var(--fg-teal-ink); min-height: 18px; }
+.fg-cal__info { margin: 10px 2px 0; font-size: 12px; font-weight: 600; min-height: 18px; }
 .fg-cal__legend { margin: 6px 2px 0; font-size: 11px; color: var(--fg-faint); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .fg-cal__legend span { color: var(--fg-faint); }
 .fg-cal__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-teal); display: inline-block; }
@@ -774,29 +672,19 @@ html.fg-pilote .fg { overflow: visible; }
   display: grid;
   grid-template-columns: 56px 1fr 56px;
   height: 56px;
-  border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-line-2);
-  background: var(--fg-bg-2);
   overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.fg-stepper:focus-within { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); }
 /* Un pas donne un accuse : le cadre passe au sarcelle une demi-seconde. */
-.fg-stepper.is-bump { border-color: var(--fg-teal); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.22); }
 .fg-stepper__btn {
   display: grid;
   place-items: center;
-  font-size: 24px;
   font-weight: 500;
   line-height: 1;
-  color: var(--fg-text);
-  border-right: 1.5px solid var(--fg-line-2);
   transition: background-color 0.15s, color 0.15s, transform 0.14s var(--fg-ease);
 }
-.fg-stepper__btn:last-child { border-right: 0; border-left: 1.5px solid var(--fg-line-2); }
-@media (hover: hover) { .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); } }
-.fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); transform: scale(0.9); }
-.fg-stepper__btn[disabled] { color: var(--fg-faint); cursor: not-allowed; background: none; }
+.fg-stepper__btn:active:not([disabled]) { transform: scale(0.9); }
+.fg-stepper__btn[disabled] { cursor: not-allowed; }
 /* Le compteur coupe ce qui depasse : l anneau pose 3 px dehors ne se voyait
    que d un cote. Il passe dedans. */
 .fg-stepper__btn:focus-visible { outline-offset: -4px; }
@@ -822,8 +710,6 @@ html.fg-pilote .fg { overflow: visible; }
   background: none;
   border: 0;
   text-align: center;
-  font-size: 22px;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   color: var(--fg-text);
@@ -843,26 +729,18 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-check {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--fg-muted);
   cursor: pointer;
   user-select: none;
 }
 .fg-check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .fg-check__box {
   flex: none;
-  width: 22px;
-  height: 22px;
   margin-top: 1px;
-  border-radius: 5px;
-  border: 1.5px solid var(--fg-line-2);
   display: grid;
   place-items: center;
   transition: background-color 0.2s, border-color 0.2s;
 }
-.fg-check__box svg { width: 13px; height: 13px; stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset 0.3s var(--fg-ease-out); }
-.fg-check input:checked + .fg-check__box { background: var(--fg-purple); border-color: var(--fg-purple); }
+.fg-check__box svg { stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset 0.3s var(--fg-ease-out); }
 .fg-check input:checked + .fg-check__box svg { stroke-dashoffset: 0; }
 .fg-check input:focus-visible + .fg-check__box { outline: 2px solid var(--fg-teal); outline-offset: 3px; }
 .fg-check.is-invalid .fg-check__box { border-color: var(--fg-danger); }
@@ -924,16 +802,13 @@ html.fg-pilote .fg { overflow: visible; }
    et son gris y tombait a 2,8:1 sur une photo claire. Sur le fond de la
    page, ce fond ne se voit pas. */
 .fg-btn--ghost {
-  background: rgba(8, 8, 8, 0.86);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  border: 1.5px solid var(--fg-line-2);
   color: var(--fg-muted);
   min-height: 46px;
   padding: 0 20px;
   letter-spacing: 0.06em;
 }
 @media (hover: hover) {
-  .fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08); border-color: #555; }
+  .fg-btn--ghost:hover { transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08); border-color: #555; }
   .fg-btn--ghost:hover svg { transform: translateX(-3px); }
 }
 .fg-btn--ghost:active { transform: none; box-shadow: none; }
@@ -953,7 +828,7 @@ html.fg-pilote .fg { overflow: visible; }
    cotes (45 px). Un lien cache garde visibility: hidden, que le ::after
    herite : il ne capte rien. */
 .fg-link::after { content: ""; position: absolute; inset: -12px -8px; }
-.fg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-top: 34px; }
+.fg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; }
 .fg-actions--center { justify-content: center; }
 .fg-actions--column { flex-direction: column; align-items: stretch; }
 .fg-actions--column .fg-btn { width: 100%; }
@@ -962,58 +837,29 @@ html.fg-pilote .fg { overflow: visible; }
 /* Sous le bouton qui valide : aucun paiement en ligne, puis une rangee
    « Modifier » qui ramene a chaque etape d un toucher (sur telephone, les
    segments faits de la barre des etapes sont trop fins pour un doigt). */
-.fg-confirm__note { margin: 0; text-align: center; font-size: 13px; font-weight: 500; color: var(--fg-text); }
-.fg-edit { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 6px; font-size: 14px; color: var(--fg-muted); }
-.fg-edit__btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: var(--fg-text); text-decoration: underline; text-underline-offset: 3px; transition: color 0.2s; }
+.fg-confirm__note { margin: 0; text-align: center; font-weight: 500; }
+.fg-edit { flex-wrap: wrap; justify-content: center; align-items: center; color: var(--fg-muted); }
+.fg-edit__btn { display: inline-flex; align-items: center; text-underline-offset: 3px; transition: color 0.2s; }
 @media (hover: hover) { .fg-edit__btn:hover { color: var(--fg-teal-ink); } }
-.fg-recap__who { overflow-wrap: anywhere; }
 
 /* --- Etape 2 : les activites ------------------------------------------------ */
 
 .fg-tabs {
   position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
   width: max-content;
-  max-width: 100%;
-  padding: 4px;
   margin: 4px 0 24px;
-  border: 1px solid var(--fg-line-2);
-  border-radius: 10px;
-  background: rgba(10, 10, 10, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .fg-tab {
   position: relative;
   z-index: 1;
   width: 100%;
-  min-height: 44px;
   padding: 0 22px;
-  border-radius: 7px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--fg-muted);
   transition: color 0.2s;
 }
-.fg-tab[aria-selected="true"] { color: var(--fg-text); }
 @media (hover: hover) { .fg-tab:hover { color: var(--fg-text); } }
 /* La pastille violette glisse d un onglet a l autre. Les deux onglets ont la
    meme largeur (grille 1fr 1fr) : elle en prend une et passe a la seconde en
    translateX, sans mesure ni etirement (un scaleX ovalisait ses coins). */
-.fg-tabs__bar {
-  position: absolute;
-  z-index: 0;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc(50% - 6px);
-  border-radius: 7px;
-  background: var(--fg-purple);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transition: transform 0.35s var(--fg-ease);
-}
-.fg-tabs.is-for .fg-tabs__bar { transform: translateX(calc(100% + 4px)); }
 @media (max-width: 560px) { .fg-tabs { width: auto; } }
 .fg-panel[hidden] { display: none; }
 
@@ -1053,10 +899,6 @@ html.fg-pilote .fg { overflow: visible; }
   gap: 4px;
   min-height: 150px;
   padding: 18px 18px 16px;
-  border-radius: 8px;
-  border: 1.5px solid var(--fg-line);
-  background: rgba(8, 8, 8, 0.93);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.4);
   text-align: left;
   overflow: hidden;
   cursor: pointer;
@@ -1069,9 +911,7 @@ html.fg-pilote .fg { overflow: visible; }
    souris (jamais au toucher : voir l en-tete), et reste voilee cochee. */
 .fg-card__photo {
   position: absolute;
-  inset: 0;
   z-index: 0;
-  opacity: 0;
   transition: opacity 0.45s var(--fg-ease);
 }
 .fg-card__photo img { width: 100%; height: 100%; object-fit: cover; }
@@ -1080,21 +920,14 @@ html.fg-pilote .fg { overflow: visible; }
    photo reste vive derriere l icone. Avec l ancien degrade lineaire, un prix
    sur deux lignes tombait a 3,3:1 sur une photo claire, et sur telephone le
    nom lui-meme passait sous 4,5:1. */
-.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
 @media (hover: hover) {
-  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }
+  .fg-card:hover { transform: translateY(-3px); }
   .fg-card:hover .fg-card__photo { opacity: 1; }
 }
-.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 0 0 1px rgba(194, 94, 194, 0.3); }
 /* Cochee et suivie de son tiroir, la carte s y raccorde : angles du bas droits. */
 .fg-grid__item.is-on .fg-card:not(:only-child) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.fg-card.is-on .fg-card__photo { opacity: 0.55; }
 /* Les icones d une rangee se calent en haut (a la hauteur de la case), le nom
    et le prix restent en bas : une rangee se lit alignee. */
-.fg-card__icon { width: 40px; height: 40px; color: var(--fg-text); margin-bottom: auto; transition: transform 0.3s var(--fg-ease-out); }
-.fg-card__icon svg { width: 100%; height: 100%; }
-.fg-card__icon + .fg-card__name { margin-top: 8px; }
-@media (hover: hover) { .fg-card:hover .fg-card__icon { transform: translateY(-2px) scale(1.06); } }
 .fg-card__name { font-size: 16px; font-weight: 700; line-height: 1.2; }
 .fg-card__price { font-size: 13px; color: var(--fg-muted); font-weight: 500; min-height: 20px; }
 .fg-card.is-on .fg-card__price { color: var(--fg-teal-ink); }
@@ -1105,7 +938,6 @@ html.fg-pilote .fg { overflow: visible; }
   right: 14px;
   width: 22px;
   height: 22px;
-  border-radius: 5px;
   border: 1.5px solid var(--fg-line-2);
   display: grid;
   place-items: center;
@@ -1127,11 +959,9 @@ html.fg-pilote .fg { overflow: visible; }
   /* Les cartes d activites montrent leur case a cote de la carte (.fg-card-select),
      pas dedans : c est elle qui claque. */
   .fg-grid__item:has(> .fg-card.is-coche) > .fg-card-select svg { animation: fg-tick 0.4s var(--fg-ease-out); }
-  .fg-card.is-coche .fg-card__icon { animation: fg-hop 0.4s var(--fg-ease-out); }
-  .fg-card__price.is-maj { animation: fg-maj 0.32s var(--fg-ease-out); }
+    .fg-card__price.is-maj { animation: fg-maj 0.32s var(--fg-ease-out); }
 }
 @keyframes fg-tick { 0% { scale: 0.65; } 55% { scale: 1.13; } 100% { scale: 1; } }
-@keyframes fg-hop { 0%, 100% { translate: 0 0; scale: 1; } 40% { translate: 0 -6px; scale: 1.1; } }
 @keyframes fg-maj { 0% { opacity: 0; translate: 0 6px; } 100% { opacity: 1; translate: 0 0; } }
 /* Au clavier, dans le cadre embarque, la page hote defile juste assez pour
    montrer ce qui prend le focus, a un ou deux pixels pres (arrondis entre le
@@ -1145,26 +975,16 @@ html.fg-pilote .fg { overflow: visible; }
    pas bien rangees »). Quatorze cartes a la suite, huit « FORMULE N » et six
    offres nommees, ne se lisaient pas. Les familles sont celles du catalogue
    (champ `family`), jamais une liste ecrite ici. */
-.fg-fams { display: grid; gap: 30px; }
 .fg-fam__title {
-  display: flex;
   align-items: baseline;
   gap: 12px;
-  margin: 0 0 14px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--fg-text);
 }
 .fg-fam__title::after { content: ""; flex: 1 1 auto; height: 1px; background: rgba(255, 255, 255, 0.14); }
 /* Le nombre de formules suit le nom de la famille, le filet vient apres. Cale
    au bout du filet, il tombait sur la partie claire de la photo (a 1,1:1 sur
    une photo blanche, en gris discret). */
-.fg-fam__title span { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-muted); }
 /* Une carte de formule porte une liste et des contraintes : trois colonnes,
    pas quatre, et une seule sur telephone. */
-.fg-grid--for { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .fg-card--formule {
   justify-content: flex-start;
@@ -1172,46 +992,31 @@ html.fg-pilote .fg { overflow: visible; }
   min-height: 0;
   padding: 16px 16px 14px;
 }
-.fg-for__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 34px; }
 .fg-for__best {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--fg-teal-ink);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .fg-for__best::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 /* Le prix se lit d un coup : le montant en gros, son unite et l ancien prix
    barre a cote, sur la meme ligne de base. */
-.fg-for__price { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
-.fg-for__price b { font-family: var(--fg-display); font-size: 28px; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
-.fg-for__price small { font-size: 12px; color: var(--fg-muted); font-weight: 600; }
-.fg-for__price s { font-size: 12px; color: var(--fg-faint); }
+.fg-for__price b { line-height: 1; font-variant-numeric: tabular-nums; }
 /* La duree sur place : une ligne reservee des le rendu (pas de saut quand la
    reponse arrive), remplie en place. */
-.fg-for__time { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--fg-muted); }
-.fg-for__time svg { flex: none; width: 15px; height: 15px; }
+.fg-for__time { align-items: center; gap: 6px; min-height: 18px; }
 .fg-for__time.is-wait span { display: inline-block; width: 9em; height: 0.8em; border-radius: 4px; background: rgba(255, 255, 255, 0.08); }
 /* Ce que la formule contient : une ligne par element, jamais une phrase a
    points. */
-.fg-for__list { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
-.fg-for__list li { position: relative; padding-left: 14px; font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
+.fg-for__list { gap: 4px; }
+.fg-for__list li { position: relative; }
 .fg-for__list li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-purple-2); }
 /* Les contraintes declarees au catalogue : groupe minimum, jours, plage
    horaire, vacances. Elles n etaient nulle part avant. */
-.fg-for__rules { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 4px; }
+.fg-for__rules { flex-wrap: wrap; gap: 5px; padding-top: 4px; }
 .fg-for__rules i {
-  padding: 3px 9px;
-  border-radius: var(--fg-radius);
-  border: 1px solid var(--fg-line-2);
-  background: rgba(255, 255, 255, 0.03);
   color: var(--fg-muted);
   font-size: 10.5px;
-  font-style: normal;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -1219,12 +1024,11 @@ html.fg-pilote .fg { overflow: visible; }
    laser qui se joue a deux) : la carte reste lisible et TOUCHABLE, et dit
    pourquoi. Elle n est pas `aria-disabled` : une raison qu on ne peut pas
    atteindre ne sert a personne. */
-.fg-card.is-refus { opacity: 0.66; border-style: dashed; }
+.fg-card.is-refus { border-style: dashed; }
 @media (hover: hover) { .fg-card.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; } }
 .fg-card.is-refus .fg-card__box,
 .fg-card.is-refus .fg-card__photo { display: none; }
 /* Une formule est un choix UNIQUE (role="radio") : sa case est ronde. */
-.fg-card--formule .fg-card__box { border-radius: 50%; }
 .fg-for__off {
   display: flex;
   align-items: flex-start;
@@ -1239,7 +1043,6 @@ html.fg-pilote .fg { overflow: visible; }
   line-height: 1.35;
   transition: background-color 0.3s;
 }
-.fg-for__off svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-for__off.is-pulse { animation: fg-pulse-raison 0.6s var(--fg-ease); }
 }
@@ -1278,7 +1081,7 @@ html.fg-pilote .fg { overflow: visible; }
    Un navigateur qui ignore content-visibility garde le comportement d avant.
    Banc 2026-10-07, 4x : l arrivee sur les activites passe de 234 a 158 ms de
    longues taches, l ouverture d une plage de 13 a 8 images perdues. */
-.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); visibility: hidden; content-visibility: hidden; transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s; }
+.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); visibility: hidden; content-visibility: hidden; }
 /* Declaree a part : un navigateur qui ne connait pas allow-discrete (Safari
    avant 17.4) jette cette ligne entiere et garde la precedente. */
 .fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s, content-visibility 0.4s allow-discrete; }
@@ -1302,36 +1105,30 @@ html.fg-pilote .fg { overflow: visible; }
 :is(#gridAct, #smGridAct) > .fg-grid__item.is-fermant > .fg-card__opt > .fg-card__optin { position: absolute; top: 0; left: 0; right: 0; visibility: visible; content-visibility: visible; }
 .fg-card__optbox {
   padding: 10px 12px 12px;
-  border: 1.5px solid var(--fg-purple-2);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0 0 8px 8px;
-  background: rgba(8, 8, 8, 0.93);
 }
 .fg-card__optbox { container-type: inline-size; }
-.fg-card__optlabel { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fg-card__optlabel { display: block; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Les enfants d une offre qui leur est reservee (Kids Fun Day) : un petit
    compteur dans le tiroir de la carte, les adultes qui accompagnent a cote,
    le prix pour les enfants dessous. */
-.fg-kids__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
-.fg-kids__stepper { flex: none; grid-template-columns: 44px 52px 44px; height: 44px; }
+.fg-kids__row { display: flex; flex-wrap: wrap; align-items: center; }
+.fg-kids__stepper { flex: none; }
 .fg-kids__stepper .fg-stepper__btn { font-size: 20px; }
-.fg-kids__n { display: grid; place-items: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-text); }
-.fg-kids__adults { flex: 1 1 140px; min-width: 0; margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
+.fg-kids__n { display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.fg-kids__adults { flex: 1 1 140px; min-width: 0; margin: 0; line-height: 1.35; }
 /* Participants sur une ligne : le meme reglage pour chaque activite, sans
    ajouter une description ni un bloc de titre au-dessus du compteur. */
-.fg-count { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; margin-bottom: 12px; }
+.fg-count { flex-wrap: wrap; }
 .fg-count:last-child { margin-bottom: 0; }
-.fg-count__label { font-size: 12px; line-height: 1.25; font-weight: 600; color: var(--fg-text); }
-.fg-count__label small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--fg-muted); }
+.fg-count__label { line-height: 1.25; }
+.fg-count__label small { display: block; }
 .fg-count .fg-kids__stepper { grid-template-columns: 44px 44px 44px; width: 134px; min-width: 0; height: 46px; border-width: 1px; }
-.fg-count__input { min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: center; font: inherit; font-size: 16px; font-weight: 700; color: var(--fg-text); font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+.fg-count__input { min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: center; font: inherit; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
 .fg-count__input::-webkit-inner-spin-button, .fg-count__input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .fg-count__input:focus-visible { outline: 2px solid var(--fg-teal); outline-offset: -4px; }
 @container (max-width: 195px) {
-  .fg-count { gap: 6px; }
-  .fg-count__label { display: flex; align-items: baseline; gap: 6px; width: 100%; }
-  .fg-count__label small { margin-top: 0; }
-  .fg-count .fg-kids__stepper { width: 100%; grid-template-columns: 44px minmax(44px, 1fr) 44px; }
+    .fg-count__label { width: 100%; }
+    .fg-count .fg-kids__stepper { width: 100%; grid-template-columns: 44px minmax(44px, 1fr) 44px; }
 }
 /* Sous 134 px de tiroir (telephones de 360 px et moins, ou les cartes restent
    en deux colonnes), trois cibles de 44 px ne tiennent plus sur une ligne : le
@@ -1350,7 +1147,6 @@ html.fg-pilote .fg { overflow: visible; }
 /* Deux colonnes par defaut ; une pastille seule sur sa rangee prend toute la
    largeur (pas de trou). Quand le tiroir est assez large, toutes les options
    tiennent sur UNE rangee (data-n = leur nombre). */
-.fg-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .fg-pill:last-child:nth-child(odd) { grid-column: 1 / -1; }
 @container (min-width: 240px) {
   .fg-pills[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1365,28 +1161,17 @@ html.fg-pilote .fg { overflow: visible; }
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-height: 44px;
-  padding: 5px 6px;
-  border-radius: 6px;
-  border: 1.5px solid var(--fg-line-2);
-  background: rgba(255, 255, 255, 0.03);
   color: var(--fg-text);
   line-height: 1.1;
   transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s var(--fg-ease-out);
 }
-.fg-pill b { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.fg-pill small { font-size: 11px; color: var(--fg-muted); text-align: center; }
+.fg-pill b { white-space: nowrap; }
+.fg-pill small { text-align: center; }
 @media (hover: hover) { .fg-pill:hover { border-color: var(--fg-purple-2); } }
-.fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
-.fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
 /* Les variantes d une formule (« 2 parties de Laser Game », « 60 min
    d'arcades ») : une par rangee, le libelle passe a la ligne au besoin. */
 .fg-pills.fg-pills--choix { grid-template-columns: 1fr; }
 .fg-pills--choix .fg-pill b { white-space: normal; text-align: center; }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-pill:active { transform: scale(0.96); }
-}
-
 /* La barre du bas : compteur a gauche, bouton a droite (maquette 2). */
 .fg-bar {
   display: flex;
@@ -1400,7 +1185,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-bar__count { font-size: 15px; font-weight: 500; color: var(--fg-muted); }
 /* Le telephone et l e-mail du centre, au dernier ecran : des liens, soulignes
    pour se reconnaitre, et une zone de toucher plus haute que la ligne. */
-.fg-done__lien { color: var(--fg-text); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 12px 0; }
+.fg-done__lien { font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 12px 0; }
 @media (hover: hover) { .fg-done__lien:hover { color: var(--fg-teal-ink); } }
 .fg-bar__count b { color: var(--fg-purple-ink); font-weight: 700; font-size: 20px; margin-right: 6px; display: inline-block; }
 @media (prefers-reduced-motion: no-preference) {
@@ -1529,12 +1314,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-track__note { font-size: 13px; color: var(--fg-amber-ink); }
 .fg-track__note[hidden] { display: none; }
 .fg-chips {
-  display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 0 0 14px;
-  padding: 0;
-  list-style: none;
 }
 .fg-chip {
   position: relative;
@@ -1579,20 +1359,14 @@ html.fg-pilote .fg { overflow: visible; }
 /* Groupe suivant : l heure ou joue la suite du groupe, hachuree. Elle se
    choisit (le 1er groupe y part). Quand le moteur refuse ce depart, elle ne
    se prend pas : contour pali et curseur d aide, comme une heure complete. */
-.fg-chip.is-wave {
-  border-color: var(--fg-purple);
-  background: repeating-linear-gradient(135deg, rgba(148, 66, 146, 0.28) 0 6px, rgba(148, 66, 146, 0.14) 6px 12px);
-}
 .fg-chip.is-wave[data-ok="false"] { border-color: rgba(148, 66, 146, 0.45); cursor: help; }
-.fg-chip.is-wave small { color: rgba(255, 255, 255, 0.82); }
 @media (hover: hover) { .fg-chip.is-wave:hover { border-color: rgba(255, 255, 255, 0.5); } }
 .fg-chip.is-wave.is-asked { border-color: #fff; box-shadow: 0 0 0 3px rgba(148, 66, 146, 0.6); }
 /* L heure touchee se remplit des le toucher, avant la reponse ; une onde part d elle quand le plan
    du serveur la retient. Seul le pseudo-element bouge, jamais la case. inset se
    compte depuis la boite de rembourrage (bordure 1,5 px) : -3.5px pose l anneau
    2 px hors de la case, rayon concentrique a --fg-radius. */
-.fg-chip.is-pending { background: var(--fg-purple); border-color: var(--fg-purple); color: #fff; }
-.fg-chip.is-pending::after, .fg-chip.is-pose::after { content: ""; position: absolute; inset: -3.5px; border: 2px solid var(--fg-purple); border-radius: calc(var(--fg-radius) + 2px); pointer-events: none; }
+.fg-chip.is-pending::after, .fg-chip.is-pose::after { content: ""; position: absolute; border: 2px solid var(--fg-purple); pointer-events: none; }
 .fg-chip.is-pose::after { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-chip.is-pending::after { animation: fg-pending 0.18s var(--fg-ease-out) both; }
@@ -1660,7 +1434,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__warn .fg-suggest { margin-top: 10px; }
 /* L AGENDA. Chaque ligne se pose dans la colonne des blocs ; son heure sort a
    gauche, dans la colonne des heures, a la hauteur de son titre. */
-.fg-visit__list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.fg-visit__list { list-style: none; padding: 0; display: grid; }
 
 .fg-visit__step > b:empty, .fg-visit__step > small:empty { display: none; }
 .fg-visit__step > span i { font-style: normal; }
@@ -1734,9 +1508,9 @@ html.fg-pilote .fg { overflow: visible; }
 /* VENIR QUAND MEME (2026-10-14) : sous les raisons d une plage, l idee qui
    rend une heure complete possible, dans le pointille sarcelle du temps
    libre, et son toucher. */
-.fg-quand { display: grid; gap: 8px; margin: 0 14px 14px; padding: 10px 12px 12px; border: 1.5px dashed rgba(143, 214, 201, 0.5); border-radius: 12px; }
+.fg-quand { display: grid; gap: 8px; border-radius: 12px; }
 .fg-quand[hidden] { display: none; }
-.fg-quand__dit { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--fg-muted); }
+.fg-quand__dit { margin: 0; line-height: 1.4; color: var(--fg-muted); }
 .fg-quand__dit b { color: var(--fg-text); font-weight: 700; }
 .fg-quand .fg-libre__action { border-radius: 10px; }
 /* LES BORNES : l arrivee et la fin, leur heure en sarcelle, leur mot a cote. */
@@ -1798,12 +1572,10 @@ html.fg-pilote .fg { overflow: visible; }
   padding: 8px 14px;
   border-radius: var(--fg-radius);
   border: 1.5px solid var(--fg-teal);
-  color: var(--fg-teal-ink);
   font-size: 13px;
   font-weight: 700;
   transition: background-color 0.2s, color 0.2s;
 }
-@media (hover: hover) { .fg-suggest__btn:hover { background: var(--fg-teal); color: var(--fg-bg); } }
 .fg-loading { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--fg-muted); font-size: 14px; padding: 30px 0; }
 .fg-loading::before { content: ""; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: rgba(255, 255, 255, 0.75); animation: fg-spin 0.8s linear infinite; }
 /* L attente du premier calcul des heures : la forme d une piste, jamais un nombre de pistes devine. Elle n apparait qu apres 150 ms (une reponse rapide ne fait rien clignoter). Seules les barres respirent ; le texte, blanc comme la legende, ne bouge pas. */
@@ -1834,16 +1606,9 @@ html.fg-pilote .fg { overflow: visible; }
   float: right;
   width: min(400px, calc(52% - var(--fg-gutter) - 24px));
   margin: 32px var(--fg-gutter) 32px 0;
-  padding: 20px 22px 18px;
-  background: var(--fg-card);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 .fg-scene.is-active[data-scene="contact"] { display: flow-root; }
-.fg-recall__line { font-size: 18px; font-weight: 700; margin: 14px 0 0; }
 .fg-recall__toggle { display: none; }
-.fg-recall .fg-recap { margin-top: 14px; }
 /* Dans la carte, le total et le paiement s empilent : cote a cote, un montant
    a cinq chiffres ne tient pas dans 356 px. */
 .fg-recall .fg-total { grid-template-columns: 1fr; gap: 12px; }
@@ -1851,127 +1616,66 @@ html.fg-pilote .fg { overflow: visible; }
 @media (min-width: 901px) {
   .fg-recall__line { display: none; }
 }
-.fg-recall__bar { width: 46px; height: 3px; background: var(--fg-purple-2); margin-top: 12px; border-radius: 2px; transform-origin: left center; }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-recall { animation: fg-rise 0.6s var(--fg-ease-out) 0.35s backwards; }
-  .fg-scene.is-active .fg-recall__bar { animation: fg-grow 0.6s var(--fg-ease-out) 0.7s backwards; }
-}
-@keyframes fg-grow { from { transform: scaleX(0); } to { transform: none; } }
-
 /* --- Etape 5 : le recapitulatif ------------------------------------------------ */
 
-.fg-recap { display: grid; gap: 0; max-width: 520px; }
+.fg-recap { display: grid; gap: 0; }
 /* Une rangee : l icone, le texte, parfois une etiquette. Le texte se replie
    sur lui-meme (min-width: 0), jamais sous l icone : une rangee qui passait
    a la ligne laissait l icone seule au-dessus sur telephone. */
-.fg-recap__lieu { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-.fg-recap__lieu b { display: block; font-family: var(--fg-display); font-size: 26px; font-weight: 400; line-height: 1.1; letter-spacing: 0.01em; text-transform: uppercase; color: var(--fg-teal-ink); }
-.fg-recap__lieu span { display: block; margin-top: 4px; font-size: 14px; line-height: 1.35; color: var(--fg-muted); text-wrap: pretty; }
+.fg-recap__lieu b { display: block; line-height: 1.1; text-transform: uppercase; }
+.fg-recap__lieu span { display: block; color: var(--fg-muted); text-wrap: pretty; }
 .fg-recap__row {
-  display: flex;
   align-items: center;
   gap: 14px;
-  padding: 9px 0;
-  font-size: 16px;
-  font-weight: 600;
 }
-.fg-recap__row svg { width: 20px; height: 20px; color: var(--fg-muted); flex: none; }
 .fg-recap__row > span { min-width: 0; text-wrap: pretty; }
-.fg-recap__sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 12px 0; }
 .fg-recap__item {
-  display: grid;
-  grid-template-columns: 20px 1fr auto;
-  align-items: center;
   gap: 14px;
-  padding: 8px 0;
 }
-.fg-recap__badge { display: block; color: var(--fg-purple-ink); }
-.fg-recap__badge svg { display: block; width: 20px; height: 20px; }
-.fg-recap__name { font-weight: 700; font-size: 16px; }
-.fg-recap__detail { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
-.fg-recap__aside { text-align: right; font-size: 12px; color: var(--fg-muted); }
-.fg-recap__aside b { display: block; font-size: 17px; color: var(--fg-text); font-weight: 700; }
-.fg-recap__aside small { font-size: 11px; color: var(--fg-faint); }
+.fg-recap__aside { color: var(--fg-muted); }
 .fg-total {
-  display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 18px;
-  padding-top: 4px;
 }
-.fg-total__label { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
-.fg-total__amount { font-family: var(--fg-display); font-size: 44px; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
+.fg-total__amount { font-variant-numeric: tabular-nums; }
 .fg-total__amount small { font-size: 0.6em; margin-left: 2px; }
 .fg-total__pay {
-  display: flex;
   align-items: center;
   gap: 12px;
-  padding-left: 18px;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 13px;
   color: var(--fg-muted);
   line-height: 1.3;
 }
 /* Les deux moyens acceptes sur place, carte et especes : deux logos, puis les
    mots (Movsar, 2026-09-23 : « on accepte le liquide »). */
-.fg-total__icons { display: inline-flex; gap: 6px; flex: none; }
 .fg-total__pay svg { width: 26px; height: 26px; color: var(--fg-text); flex: none; }
-.fg-total__how { display: grid; }
-.fg-total__how b { color: var(--fg-text); font-weight: 600; }
 
 /* --- Confirmation ------------------------------------------------------------- */
 
-.fg-done { text-align: center; max-width: 620px; margin: 0 auto; }
 .fg-done__ring {
-  width: 96px;
-  height: 96px;
-  margin: 10px auto 26px;
-  border-radius: 50%;
-  border: 3px solid var(--fg-teal);
-  display: grid;
-  place-items: center;
   position: relative;
-  color: var(--fg-teal);
 }
-.fg-done__ring svg { width: 44px; height: 44px; }
-.fg-done__ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--fg-teal); opacity: 0; }
 /* Le trace de la coche (ou de l enveloppe d une demande) ne vit qu en
    mouvement libre. En mouvement reduit, aucun jeu de tirets : le trait est la
    d office (avant, le decalage de 60 restait sans animation, anneau vide). */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }
-  .fg-done__ring.is-mail svg { stroke-dasharray: 64; stroke-dashoffset: 64; }
-  .fg-scene.is-active .fg-done__ring svg { animation: fg-draw 0.45s var(--fg-ease-out) 0.35s both; }
-  .fg-scene.is-active .fg-done__ring::after { animation: fg-ring 0.6s var(--fg-ease-out) 0.5s both; }
-  .fg-scene.is-active .fg-burst i { animation: fg-confetti 0.6s var(--fg-ease-out) calc(0.55s + var(--t, 0ms)) backwards; }
-}
-@keyframes fg-draw { to { stroke-dashoffset: 0; } }
-@keyframes fg-ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.9); opacity: 0; } }
+    .fg-done__ring.is-mail svg { stroke-dasharray: 64; stroke-dashoffset: 64; }
+      }
 /* Les confettis : quatorze pieces posees par le script pour une reservation
    CONFIRMEE seulement (une demande a verifier ne se fete pas), en eventail
    vers le haut, une seule fois. Sans remplissage apres la fin : les pieces
    reviennent invisibles et sans decalage (rien dans scrollWidth). */
-.fg-burst { position: absolute; inset: 0; pointer-events: none; }
 /* Chaque confetti recoit sa trajectoire du script (--x, --y, --r, poses sur
    son style) ; declarees ici, elles ont une valeur meme sans lui (un jeton
    jamais declare rend la valeur initiale, sans rien dire). */
-.fg-burst i { --x: 0px; --y: 0px; --r: 0deg; position: absolute; left: 50%; top: 50%; width: 5px; height: 11px; margin: -5.5px 0 0 -2.5px; border-radius: 1.5px; background: var(--fg-purple-em); opacity: 0; }
-.fg-burst i:nth-child(3n+2) { background: var(--fg-teal); }
-.fg-burst i:nth-child(3n) { background: var(--fg-text); }
-@keyframes fg-confetti {
-  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.4); }
-  15% { opacity: 1; }
-  60% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); }
-  100% { opacity: 0; transform: translate(var(--x), calc(var(--y) + 34px)) rotate(calc(var(--r) * 1.4)) scale(0.9); }
-}
 .fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
 .fg-done p b { color: var(--fg-text); }
 /* Le recu : une carte opaque, une rangee par fait (quand, quoi, e-mail,
    paiement, contact). Une adresse longue se coupe au lieu de deborder. */
-.fg-done__ticket { max-width: 520px; margin: 6px auto 0; padding: 4px 20px; text-align: left; background: var(--fg-card); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
-.fg-done .fg-done__row { display: flex; align-items: flex-start; gap: 14px; margin: 0; padding: 13px 0; font-size: 15px; line-height: 1.45; }
+.fg-done__ticket { text-align: left; }
+.fg-done .fg-done__row { align-items: flex-start; gap: 14px; }
 .fg-done__row + .fg-done__row { border-top: 1px solid rgba(255, 255, 255, 0.08); }
-.fg-done__row svg { width: 20px; height: 20px; flex: none; margin-top: 1px; color: var(--fg-teal-ink); }
 .fg-done__row > span { min-width: 0; overflow-wrap: anywhere; }
 
 /* --- Erreur globale --------------------------------------------------------- */
@@ -2008,24 +1712,14 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-hold {
   position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  gap: 4px 14px;
   align-items: center;
-  max-width: 520px;
-  margin: 22px 0 24px;
-  padding: 14px 16px 17px;
-  border: 1.5px solid rgba(103, 186, 172, 0.5);
-  border-radius: var(--fg-radius);
-  background: rgba(103, 186, 172, 0.08);
   overflow: hidden;
 }
 .fg-hold[hidden] { display: none; }
-.fg-hold__ico { display: block; color: var(--fg-teal-ink); }
-.fg-hold__ico svg { display: block; width: 22px; height: 22px; }
 .fg-hold__txt { margin: 0; min-width: 0; }
-.fg-hold__txt b { display: block; font-size: 15px; line-height: 1.3; }
-.fg-hold__txt span { display: block; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--fg-muted); }
-.fg-hold__temps { min-width: 3.4ch; font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; color: var(--fg-teal-ink); }
+.fg-hold__txt b { display: block; }
+.fg-hold__txt span { display: block; margin-top: 3px; }
+.fg-hold__temps { min-width: 3.4ch; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; }
 .fg-hold__temps[hidden], .fg-hold__btn[hidden] { display: none; }
 .fg-hold__btn {
   grid-column: 2 / -1;
@@ -2044,22 +1738,12 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-hold__btn[disabled] { border-color: var(--fg-line-2); color: var(--fg-muted); cursor: progress; }
 @media (hover: hover) { .fg-hold__btn:not([disabled]):hover { background: var(--fg-teal); color: var(--fg-bg); } }
-.fg-hold__barre { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(103, 186, 172, 0.16); }
 /* Sans transition : la barre recule de moins d un pixel par seconde, un pas
    par seconde se lit deja comme un glissement. Une transition relancee chaque
    seconde laissait une animation tourner sans fin sur l ecran. */
-.fg-hold__barre > i { display: block; height: 100%; background: var(--fg-teal); transform-origin: left center; }
 .fg-hold.is-urgent { border-color: rgba(227, 179, 65, 0.6); background: rgba(227, 179, 65, 0.08); }
-.fg-hold.is-urgent .fg-hold__ico, .fg-hold.is-urgent .fg-hold__temps { color: var(--fg-amber-ink); }
-.fg-hold.is-urgent .fg-hold__barre > i { background: var(--fg-amber); }
+.fg-hold.is-urgent .fg-hold__temps { color: var(--fg-amber-ink); }
 .fg-hold.is-libre { border-color: var(--fg-line-2); background: var(--fg-bg-2); }
-.fg-hold.is-libre .fg-hold__ico { color: var(--fg-muted); }
-.fg-hold.is-libre .fg-hold__barre { display: none; }
-@media (max-width: 560px) {
-  .fg-hold { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 14px 15px; }
-  .fg-hold__ico svg { width: 20px; height: 20px; }
-  .fg-hold__temps { font-size: 21px; }
-}
 /* L alerte de l ecran des horaires, juste au-dessus de la barre du bas. */
 .fg-hour-err { max-width: 720px; margin: 18px auto 0; text-align: left; }
 
@@ -2078,18 +1762,13 @@ html.fg-pilote .fg { overflow: visible; }
 
 @media (max-width: 1080px) {
   .fg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+  }
 @media (max-width: 900px) {
   .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art {
     position: relative;
     inset: auto;
-    width: 100%;
-    height: 200px;
-    clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
   }
-  .fg-scene--split.fg-scene--art-left .fg-art { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 78%); }
-  .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after {
+    .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after {
     background: linear-gradient(180deg, rgba(5, 5, 5, 0.1) 0%, rgba(5, 5, 5, 0.75) 100%);
   }
   /* En colonne etroite, la photo est une bande : ses quatre bords s eteignent
@@ -2103,8 +1782,8 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.94) 100%); }
   /* Sur telephone, la carte passe dans le flux, entre la photo et le
      formulaire, repliee sous sa ligne de resume : le bouton la deplie. */
-  .fg-recall { float: none; width: auto; margin: 0 var(--fg-gutter) 22px; box-shadow: none; }
-  .fg-recall__toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 2px 0 -8px; font-size: 13px; font-weight: 700; color: var(--fg-teal-ink); }
+  .fg-recall { float: none; width: auto; margin: 0 var(--fg-gutter) 22px; }
+  .fg-recall__toggle { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--fg-teal-ink); }
   .fg-recall__toggle svg { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease-out); }
   .fg-recall.is-open .fg-recall__toggle svg { transform: rotate(180deg); }
   .fg-recall:not(.is-open) .fg-recall__body { display: none; }
@@ -2119,18 +1798,17 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-scene[data-scene="contact"]:is(.is-active, .is-leaving) { display: flex; flex-direction: column; }
   .fg-scene[data-scene="contact"] .fg-scene__body { display: contents; }
   .fg-scene[data-scene="contact"] .fg-scene__body > * { position: relative; z-index: 2; margin-left: var(--fg-gutter); margin-right: var(--fg-gutter); }
-  .fg-scene[data-scene="contact"] .fg-steps { order: 1; margin-top: 10px; }
+  .fg-scene[data-scene="contact"] .fg-steps { order: 1; }
   .fg-scene[data-scene="contact"] .fg-title { order: 2; }
   /* Le bandeau des horaires bloques suit le titre, comme sur un grand
      ecran. Sans rang, il passait devant le fil des etapes. En colonne flex,
      les marges ne fusionnent plus : celle du titre suffit au-dessus. */
-  .fg-scene[data-scene="contact"] .fg-hold { order: 2; margin-top: 0; margin-bottom: 22px; }
+  .fg-scene[data-scene="contact"] .fg-hold { order: 2; margin-top: 0; }
   .fg-scene[data-scene="contact"] .fg-recall { order: 3; }
   .fg-scene[data-scene="contact"] .fg-fields { order: 4; }
   .fg-scene[data-scene="contact"] .fg-actions { order: 5; margin-bottom: 44px; }
   .fg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
+    @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
   /* La barre du bas, sur tablette : le retour devient le carre du
@@ -2158,13 +1836,11 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-dock .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
 }
 @media (max-width: 560px) {
-  .fg-steps { max-width: none; margin-bottom: 26px; }
+  .fg-steps { max-width: none; }
   .fg-steps__item { font-size: 9px; letter-spacing: 0.08em; }
   .fg-steps__item:not(.is-active) span.lbl { display: none; }
-  .fg-title { font-size: clamp(38px, 12vw, 52px); }
-  .fg-card { min-height: 132px; padding: 14px; }
-  .fg-card__icon { width: 32px; height: 32px; }
-  .fg-bar { flex-direction: column; align-items: stretch; }
+    .fg-card { min-height: 132px; padding: 14px; }
+    .fg-bar { flex-direction: column; align-items: stretch; }
   .fg-bar .fg-btn { width: 100%; }
   .fg-actions .fg-btn { width: 100%; }
   /* La barre du bas : le resume sur sa ligne, puis le retour en carre (son
@@ -2186,15 +1862,10 @@ html.fg-pilote .fg { overflow: visible; }
      pastille sarcelle suffit a rattacher l horaire au jour. */
   .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }
   .fg-track__reset { margin-left: 0; width: 100%; text-align: left; }
-  .fg-chips { gap: 8px; }
-  
+    
   .fg-total { grid-template-columns: 1fr; }
-  .fg-total__pay { border-left: 0; padding-left: 0; }
-  .fg-done__ticket { padding: 4px 16px; }
-  .fg-btn { padding: 0 22px; font-size: 13px; }
-  .fg-grid--for { grid-template-columns: 1fr; }
-  .fg-fams { gap: 24px; }
-}
+      .fg-btn { padding: 0 22px; font-size: 13px; }
+    }
 /* DEUX CARTES PAR RANGEE SUR TELEPHONE (Movsar, 2026-09-24, apres une liste
    d une carte par rangee essayee le matin : « c est moche, c etait bien
    avant, range de deux »). Sous 360 px (iPhone SE de premiere generation,
@@ -2220,53 +1891,31 @@ html.fg-pilote .fg { overflow: visible; }
    relais » ; le violet reste au bouton qui avance. Ni degrade ni
    pastille (Movsar, 2026-09-29 : « fait trop IA »). */
 .fg-sm-seuil {
-  display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   max-width: 680px;
-  margin-top: 26px;
-  padding: 16px 18px;
-  border: 1.5px solid var(--fg-line-2);
-  border-radius: var(--fg-radius);
-  background: var(--fg-bg-2);
 }
 .fg-sm-seuil[hidden] { display: none; }
-.fg-sm-seuil__icon { display: block; color: var(--fg-teal-ink); }
-.fg-sm-seuil__icon svg { display: block; width: 20px; height: 20px; }
 .fg-sm-seuil__txt b { display: block; font-size: 15px; line-height: 1.3; }
-.fg-sm-seuil__txt p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--fg-muted); }
+.fg-sm-seuil__txt p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-sm-seuil.is-maj { animation: fg-rise 0.4s var(--fg-ease-out) both; }
 }
 
 /* La porte des groupes organises, sous le bouton qui avance. */
 .fg-sm-door {
-  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 16px;
   max-width: 680px;
-  margin-top: 30px;
-  padding-top: 22px;
-  border-top: 1px solid var(--fg-line);
 }
 .fg-sm-door[hidden] { display: none; }
-.fg-sm-door__icon { flex: none; display: block; color: var(--fg-teal-ink); }
-.fg-sm-door__icon svg { display: block; width: 20px; height: 20px; }
-.fg-sm-door__txt { flex: 1 1 250px; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
+.fg-sm-door__txt { flex: 1 1 250px; min-width: 0; color: var(--fg-muted); }
 .fg-sm-door__txt b { color: var(--fg-text); font-weight: 700; }
 .fg-sm-door__btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-teal);
-  color: var(--fg-teal-ink);
-  font-size: 14px;
-  font-weight: 700;
   white-space: nowrap;
   transition: background-color 0.2s, color 0.2s;
 }
@@ -2277,20 +1926,13 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-sm-door__btn.is-busy { opacity: 0.6; cursor: progress; }
 
-@media (max-width: 560px) {
-  .fg-sm-seuil { padding: 14px; }
-  .fg-sm-door__btn { width: 100%; justify-content: center; }
-}
-
-
 /* --- Le petit plus : l offre d attente et « Envie d un peu plus ? » ---------- */
 
 /* Au recapitulatif, le rappel des offres et la phrase d un ajout, de la meme
    matiere que lui : ni carte, ni pastille, ni degrade. */
-.fg-plus { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--fg-line); }
-.fg-plus__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 0 4px; }
+.fg-plus__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .fg-plus__head b { font-size: 15px; font-weight: 700; color: var(--fg-text); }
-.fg-plus__head small { font-size: 13px; line-height: 1.45; color: var(--fg-muted); }
+.fg-plus__head small { line-height: 1.45; }
 .fg-plus__annuler[disabled] { opacity: 0.55; cursor: progress; }
 .fg-plus__statut { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--fg-muted); }
 .fg-plus__statut:empty { display: none; }
@@ -2298,7 +1940,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-plus__statut[data-ton="ko"] { color: var(--fg-amber-ink); }
 .fg-plus__annuler { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; vertical-align: middle; color: var(--fg-text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 /* Le rappel des offres au recapitulatif : un lien franc qui rouvre la fenetre. */
-.fg-plus__voir { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 2px; color: var(--fg-teal-ink); font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.fg-plus__voir { display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; text-underline-offset: 3px; }
 .fg-plus__voir svg { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease); }
 @media (hover: hover) { .fg-plus__voir:hover svg { transform: translateX(3px); } }
 /* Un ajout redessine le recapitulatif sur place : ses lignes ne rejouent pas
@@ -2326,9 +1968,6 @@ html.fg-pilote .fg { overflow: visible; }
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 30px 30px 26px;
-  background: #0d0d0d;
-  border: 1px solid var(--fg-line-2);
-  border-radius: 12px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75);
   transform: translate(-50%, -50%);
 }
@@ -2336,10 +1975,9 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-vitrine__x { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--fg-radius); color: var(--fg-muted); transition: color 0.2s, background-color 0.2s; }
 .fg-vitrine__x svg { width: 20px; height: 20px; }
 @media (hover: hover) { .fg-vitrine__x:hover { color: var(--fg-text); background: #1a1a1a; } }
-.fg-vitrine__eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-teal-ink); }
-.fg-vitrine__titre { margin: 0; padding-right: 36px; font-family: var(--fg-display); font-weight: 400; font-size: clamp(30px, 4.6vw, 40px); line-height: 1.04; letter-spacing: 0.01em; text-transform: uppercase; text-wrap: balance; color: var(--fg-text); }
+.fg-vitrine__titre { margin: 0; padding-right: 36px; font-family: var(--fg-display); font-weight: 400; letter-spacing: 0.01em; text-transform: uppercase; text-wrap: balance; color: var(--fg-text); }
 .fg-vitrine__titre em { font-style: normal; color: var(--fg-purple-em); }
-.fg-vitrine__sous { margin: 10px 0 22px; font-size: 14px; color: var(--fg-muted); }
+.fg-vitrine__sous { margin: 10px 0 22px; color: var(--fg-muted); }
 /* LA MEILLEURE POUR VOUS (Movsar, 2026-10-07). Une offre en avant, photo
    franche a gauche, sa raison sur un filet sarcelle ; les autres en rangees
    qu une touche fait passer devant. Un seul « Ajouter ». La remise est un prix
@@ -2347,18 +1985,16 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-vitrine__cartes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .fg-vitrine__cartes[data-n="0"] { display: none; }
 .fg-vitrine__carte { min-width: 0; }
-.fg-vitrine__carte.is-vedette { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); grid-template-areas: "photo corps" "photo achat"; background: var(--fg-card); border: 1px solid var(--fg-line-2); border-radius: 12px; overflow: hidden; }
+.fg-vitrine__carte.is-vedette { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); grid-template-areas: "photo corps" "photo achat"; overflow: hidden; }
 .fg-vitrine__photo { display: grid; place-items: center; overflow: hidden; background: #141414; color: var(--fg-purple-ink); }
 .fg-vitrine__photo img { width: 100%; height: 100%; object-fit: cover; }
 .fg-vitrine__photo svg { width: 44px; height: 44px; }
 .is-vedette .fg-vitrine__photo { grid-area: photo; min-height: 100%; }
 .fg-vitrine__corps { grid-area: corps; display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 18px 20px 0; }
-.fg-vitrine__pour { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-purple-ink); }
-.fg-vitrine__raison { display: flex; align-items: flex-start; gap: 8px; margin: 3px 0 5px; padding: 8px 10px; border-left: 2px solid var(--fg-teal); border-radius: 0 6px 6px 0; background: rgba(103, 186, 172, 0.09); font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--fg-teal-ink); }
-.fg-vitrine__raison svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
-.fg-vitrine__nom { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--fg-text); }
-.fg-vitrine__nom svg { width: 20px; height: 20px; flex: none; color: var(--fg-purple-ink); }
-.fg-vitrine__quoi { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--fg-purple-ink); }
+.fg-vitrine__pour { text-transform: uppercase; }
+.fg-vitrine__raison { display: flex; align-items: flex-start; gap: 8px; margin: 3px 0 5px; line-height: 1.35; }
+.fg-vitrine__nom { display: flex; align-items: center; gap: 8px; color: var(--fg-text); }
+.fg-vitrine__quoi { line-height: 1.4; }
 .fg-vitrine__note { font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
 /* LE NOMBRE DE PERSONNES (Movsar, 2026-10-01 : « s il ca donne pour x
    personnes, ils peuvent choisir pour combien ») : le prix de la carte suit. */
@@ -2370,25 +2006,23 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-vitrine__achat { grid-area: achat; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; }
 .fg-vitrine__chiffre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .fg-vitrine__montant { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
-.fg-vitrine__prix { font-size: 24px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.fg-vitrine__barre { order: -1; position: relative; font-size: 14px; font-weight: 600; color: var(--fg-faint); text-decoration: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__prix { font-size: 24px; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__barre { order: -1; position: relative; color: var(--fg-faint); text-decoration: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fg-vitrine__barre::after { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: currentColor; transform-origin: left center; }
-.fg-vitrine__remise { padding: 3px 6px; border-radius: 4px; background: var(--fg-teal); color: #04110f; font-size: 12px; font-weight: 800; font-style: normal; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__remise { background: var(--fg-teal); color: #04110f; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fg-vitrine__etat { display: block; max-width: 220px; color: var(--fg-teal-ink); font-size: 12px; line-height: 1.4; }
 .fg-vitrine__etat:empty { display: none; }
 .fg-vitrine__ajouter { min-height: 48px; padding: 0 24px; }
 .fg-vitrine__aussi { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-muted); }
-.fg-vitrine__voir { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto 16px; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 8px 14px 8px 8px; border: 1px solid var(--fg-line); border-radius: 10px; background: var(--fg-card); color: var(--fg-text); text-align: left; transition: border-color 0.2s, background-color 0.2s, transform 0.2s var(--fg-ease-out); }
+.fg-vitrine__voir { display: grid; align-items: center; width: 100%; color: var(--fg-text); text-align: left; transition: border-color 0.2s, background-color 0.2s, transform 0.2s var(--fg-ease-out); }
 .fg-vitrine__voir:active { transform: scale(0.99); }
-.fg-vitrine__ligne .fg-vitrine__photo { width: 56px; height: 56px; border-radius: 8px; }
 .fg-vitrine__ligne .fg-vitrine__photo svg { width: 26px; height: 26px; }
 .fg-vitrine__ltxt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.fg-vitrine__ltxt .fg-vitrine__nom { font-size: 15px; }
 .fg-vitrine__ltxt small { font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
 .fg-vitrine__ligne .fg-vitrine__montant { justify-content: flex-end; }
 .fg-vitrine__ligne .fg-vitrine__prix { font-size: 17px; }
 .fg-vitrine__ligne .fg-vitrine__barre { display: none; }
-.fg-vitrine__fleche { width: 16px; height: 16px; color: var(--fg-muted); transition: transform 0.25s var(--fg-ease), color 0.2s; }
+.fg-vitrine__fleche { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease), color 0.2s; }
 @media (hover: hover) {
   .fg-vitrine__voir:hover { border-color: var(--fg-purple-2); background: #111; }
   .fg-vitrine__voir:hover .fg-vitrine__fleche { color: var(--fg-text); transform: translateX(3px); }
@@ -2398,27 +2032,12 @@ html.fg-pilote .fg { overflow: visible; }
 html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote) body { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-vitrine:not([hidden]) .fg-vitrine__voile { animation: fg-voile 0.24s ease-out; }
-  .fg-vitrine:not([hidden]) .fg-vitrine__panneau { animation: fg-pop-milieu 0.32s var(--fg-ease-out); }
-  /* L entree, en une phrase : la photo se pose, la raison glisse sur son
+    /* L entree, en une phrase : la photo se pose, la raison glisse sur son
      filet, le nom monte ; puis le prix : l ancien se barre, le taquet de la
      remise tombe. Les rangees suivent. Rien que de l opacite et des
      transformations. */
-  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__photo img { animation: fg-vit-photo 0.9s var(--fg-ease-out) both; }
-  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__raison { animation: fg-vit-raison 0.5s var(--fg-ease-out) 0.16s both; }
-  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__nom,
-  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__quoi { animation: fg-rise 0.5s var(--fg-ease-out) 0.22s both; }
-  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__barre::after { animation: fg-vit-barre 0.34s var(--fg-ease-out) 0.5s both; }
-  .fg-vitrine__cartes:not(.is-calme) .fg-vitrine__remise { animation: fg-vit-taquet 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 0.72s both; }
-  .fg-vitrine__cartes:not(.is-calme):not(.is-bascule) .fg-vitrine__ligne,
-  .fg-vitrine__cartes:not(.is-calme):not(.is-bascule) .fg-vitrine__aussi { animation: fg-rise 0.5s var(--fg-ease-out) both; animation-delay: calc(70ms * var(--i, 0) + 240ms); }
-  /* Une autre offre passe devant : elle entre par la droite, seule. */
-  .fg-vitrine__cartes.is-bascule .is-vedette { animation: fg-vit-bascule 0.4s var(--fg-ease-out) both; }
-}
-@keyframes fg-vit-photo { from { opacity: 0; scale: 1.08; } to { opacity: 1; scale: 1; } }
-@keyframes fg-vit-raison { from { opacity: 0; translate: -10px 0; } to { opacity: 1; translate: 0 0; } }
-@keyframes fg-vit-barre { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes fg-vit-taquet { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } to { opacity: 1; transform: none; } }
-@keyframes fg-vit-bascule { from { opacity: 0; translate: 14px 0; } to { opacity: 1; translate: 0 0; } }
+              /* Une autre offre passe devant : elle entre par la droite, seule. */
+  }
 /* Sur telephone : la photo en haut de l offre en avant, les rangees dessous. */
 @media (max-width: 560px) {
   .fg-vitrine__panneau { padding: 24px 18px 20px; }
@@ -2428,12 +2047,9 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
   .fg-vitrine__corps { padding: 14px 16px 0; }
   .fg-vitrine__achat { padding: 12px 16px 16px; flex-wrap: wrap; }
   .fg-vitrine__qui { flex-wrap: wrap; }
-  .fg-vitrine__nom { font-size: 18px; }
-  .fg-vitrine__prix { font-size: 21px; }
+    .fg-vitrine__prix { font-size: 21px; }
   .fg-vitrine__ajouter { padding: 0 18px; }
-  .fg-vitrine__voir { grid-template-columns: 48px minmax(0, 1fr) auto 14px; gap: 10px; padding: 8px 10px 8px 8px; }
-  .fg-vitrine__ligne .fg-vitrine__photo { width: 48px; height: 48px; }
-}
+    }
 
 /* --- Moins de mouvement -------------------------------------------------------- */
 
@@ -2442,16 +2058,12 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
   /* Le delai du repli survivrait a la duree coupee : un tiroir deja ferme
      resterait 0,4 s dans le parcours clavier. */
   .fg .fg-card__optin { transition-delay: 0s !important; }
-  .fg.has-pointer .fg-art img { translate: none; }
-}
+  }
 .fg-arcade-select {
   display: block;
   width: 100%;
   min-width: 0;
-  min-height: 44px;
   padding: 10px 8px;
-  border: 1px solid rgba(255,255,255,.24);
-  border-radius: 6px;
   background: #151315;
   color: var(--fg-text);
   font: inherit;
@@ -2460,7 +2072,7 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
 .fg-arcade-select:focus-visible { outline: 2px solid var(--fg-teal, #8dd5ce); outline-offset: 2px; }
 .fg-card__info { display:flex; align-items:center; gap:8px; margin-top:8px; }
 .fg-card__info .fg-card__rot { flex:1; min-width:0; margin:0; color:var(--fg-muted); font-size:12px; font-weight:400; line-height:1.45; }
-.fg-info-btn { display:inline-flex; align-items:center; justify-content:center; flex:none; width:44px; height:44px; min-width:44px; padding:0; border:0; color:var(--fg-muted); background:transparent; font:inherit; cursor:pointer; }
+.fg-info-btn { display:inline-flex; align-items:center; justify-content:center; flex:none; width:44px; height:44px; min-width:44px; padding:0; border:0; background:transparent; font:inherit; cursor:pointer; }
 .fg-info-icon { display:block; width:22px; height:22px; color:inherit; stroke:currentColor; stroke-width:1.35; stroke-linecap:round; }
 .fg-info-dot { fill:currentColor; stroke:none; }
 @media (hover:hover) { .fg-info-btn:hover .fg-info-icon { color:var(--fg-text); } }
@@ -2476,8 +2088,7 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
   --fi-bg: #121013; --fi-line: rgba(255,255,255,.085); --fi-soft: rgba(255,255,255,.045); --fi-muted: #a69ca8; --fi-text: #ece6ed;
   position:fixed; inset:0; box-sizing:border-box; width:min(600px,calc(100% - 32px));
   max-height:min(680px,calc(100dvh - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));
-  margin:auto; padding:0; overflow:hidden; border:1px solid var(--fi-line); border-radius:22px; color:var(--fi-text); background:var(--fi-bg);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 40px 90px -24px rgba(0,0,0,.8), 0 0 0 1px rgba(0,0,0,.35);
+  margin:auto; padding:0; overflow:hidden; color:var(--fi-text);
   /* Elle entre en douceur et sort d un coup : une sortie animee la laissait au
      premier plan 0,2 s, et une fiche rouverte aussitot tombait dans ce temps-la. */
   opacity:0; transform:translateY(8px) scale(.985); transition:none;
@@ -2495,7 +2106,7 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transla
 .fg-info-dialog[open] .fg-info-photo { animation:fgInfoPhoto 1.1s var(--fg-ease-out) both; }
 @keyframes fgInfoPhoto { from { transform:scale(1.07); } to { transform:none; } }
 .fg-info-grip { display:none; }
-.fg-info-close { position:absolute; z-index:2; top:12px; right:12px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; color:#fff; background:rgba(14,12,15,.62); box-shadow:inset 0 0 0 1px rgba(255,255,255,.14), 0 4px 14px rgba(0,0,0,.35); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); cursor:pointer; transition:background .15s ease, transform .15s ease; }
+.fg-info-close { position:absolute; z-index:2; top:12px; right:12px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; padding:0; border:0; border-radius:50%; color:#fff; -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); cursor:pointer; transition:background .15s ease, transform .15s ease; }
 .fg-info-close svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; }
 @media (hover:hover) { .fg-info-close:hover { background:rgba(40,34,42,.82); } }
 .fg-info-close:active { transform:scale(.94); }
@@ -2518,7 +2129,7 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transla
 .fg-info-num { color:#fff; font-weight:700; font-variant-numeric:tabular-nums; }
 .fg-info-section--faits { order:-1; display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:8px; }
 .fg-info-section--faits p + p { margin:0; }
-.fg-info-fait { display:flex; flex-direction:column; gap:2px; min-width:0; margin:0; padding:10px 12px 11px; border-radius:14px; background:var(--fi-soft); box-shadow:inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 0 1px rgba(255,255,255,.04); }
+.fg-info-fait { display:flex; flex-direction:column; gap:2px; min-width:0; margin:0; padding:10px 12px 11px; }
 
 
 .fg-info-section--tarifs { display:grid; grid-template-columns:minmax(0,1fr); column-gap:24px; }
@@ -2550,7 +2161,7 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transla
 }
 /* Telephone : tiroir flottant en bas, qui monte. */
 @media (max-width:599px) {
-  .fg-info-dialog { inset:auto 0 8px; width:calc(100% - 16px); max-height:calc(100dvh - 24px - env(safe-area-inset-top,0px)); margin:0 auto; border-radius:26px; transform:translateY(calc(100% + 24px)); transition:none; opacity:1; }
+  .fg-info-dialog { inset:auto 0 8px; width:calc(100% - 16px); max-height:calc(100dvh - 24px - env(safe-area-inset-top,0px)); margin:0 auto; transform:translateY(calc(100% + 24px)); transition:none; opacity:1; }
   .fg-info-dialog[open] { transform:none; transition:transform .46s cubic-bezier(.32,.72,0,1), overlay .46s allow-discrete, display .46s allow-discrete; }
   @starting-style { .fg-info-dialog[open] { transform:translateY(calc(100% + 24px)); } }
   .fg-info-hero { height:164px; }
@@ -2571,12 +2182,10 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 
 .fg-card__info { cursor: pointer; }
 #donneesMail { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.fg-grid__item > .fg-card__info { margin-top:0; padding:4px 12px; border:1.5px solid var(--fg-line); border-top:0; border-radius:0 0 8px 8px; background:#101010; }
+.fg-grid__item > .fg-card__info { margin-top:0; padding:4px 12px; }
 .fg-grid__item > .fg-card__info .fg-card__rot { padding:0; border:0; color:#c6c2c8; }
 .fg-grid__item:has(> .fg-card__info) > .fg-card { border-bottom-left-radius:0; border-bottom-right-radius:0; }
-.fg-grid__item.is-on > .fg-card__info { border-color:var(--fg-purple-2); }
 
-.fg-grid--for .fg-grid__item.is-on > .fg-card__info { border-radius:0 0 9px 9px; }
 @media (max-height:500px) and (max-width:759px) { .fg-info-hero { height:96px; } .fg-info-body { padding:14px 20px 18px; } }
 @media (max-height:500px) { .fg-info-body h2 { font-size:28px; } .fg-info-text { gap:14px; margin-top:10px; } }
 .fg-info-dialog.is-short:not(.has-photo) .fg-info-body,.fg-info-dialog.is-short .fg-info-body { padding-top:18px; padding-bottom:18px; }
@@ -2589,33 +2198,24 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 
 /* Original activity tiles with their own inline options. Independent columns
    are measured from their content, without stretching neighbouring cards. */
-:is(#gridAct,#smGridAct) { gap:0 14px; grid-auto-rows:1px; align-items:start; }
+:is(#gridAct,#smGridAct) { grid-auto-rows:1px; align-items:start; }
 :is(#gridAct,#smGridAct) > .fg-grid__item { position:relative; display:flex; flex-direction:column; grid-template-rows:none; grid-row:auto; margin:0; align-self:start; }
-:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { flex:none; min-height:150px; padding-right:48px; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { flex:none; }
 :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__opt { display:grid; flex:none; }
-:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { flex:none; border-radius:0 0 8px 8px; }
-:is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card__info { border-radius:0; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { flex:none; }
 /* Une activite non cochee n a pas de bande sous la carte : son resume ne sert
    qu une fois cochee, quand il dit le calcul, et son « i » se pose dans le coin
    bas-droit de la carte, dans la colonne de droite qu elle garde deja libre
    pour sa case (padding-right). Movsar, 2026-10-06 : « ça pollue, s ils veulent
    des details ils ont le i », puis « le i extend genre 25 % de la carte ». */
-:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { position:absolute; right:2px; bottom:2px; z-index:2; margin:0; padding:0; border:0; background:none; }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { position:absolute; z-index:2; margin:0; padding:0; }
 :is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info .fg-card__rot { display:none; }
-:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card { border-bottom-left-radius:8px; border-bottom-right-radius:8px; }
-:is(#gridAct,#smGridAct) .fg-card__optbox { background:#101010; border-top:0; padding:12px; }
-.fg-card-select { position:absolute; z-index:2; right:6px; top:4px; display:grid; place-items:center; width:44px; height:44px; padding:11px; border:0; background:transparent; color:var(--fg-text); cursor:pointer; }
-.fg-card-select svg { width:22px; height:22px; padding:4px; border:1px solid var(--fg-line-2); border-radius:5px; stroke-dasharray:22; stroke-dashoffset:22; }
-.fg-card-select.is-on svg { background:var(--fg-purple); border-color:var(--fg-purple); stroke-dashoffset:0; }
-.fg-option-group + .fg-option-group { margin-top:14px; }
+.fg-card-select { position:absolute; z-index:2; display:grid; place-items:center; border:0; background:transparent; color:var(--fg-text); cursor:pointer; }
+.fg-card-select svg { stroke-dasharray:22; stroke-dashoffset:22; }
+.fg-card-select.is-on svg { border-color:var(--fg-purple); stroke-dashoffset:0; }
 @media (max-width:560px) {
-  :is(#gridAct,#smGridAct) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 10px; }
-  :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { min-height:142px; padding:12px 40px 12px 12px; }
-  :is(#gridAct,#smGridAct) .fg-card__name { font-size:14px; }
-  :is(#gridAct,#smGridAct) .fg-card__price { font-size:12px; }
-  :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { padding:3px 4px 3px 10px; gap:2px; }
-  :is(#gridAct,#smGridAct) .fg-card__info .fg-card__rot { font-size:11.5px; }
-}
+          :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { padding:3px 4px 3px 10px; gap:2px; }
+  }
 
 /* LE PROGRAMME, PAS A PAS (Movsar, 2026-10-07 : « plus serieux, plus pro, plus
    facile a voir, pas bcp de texte »). Une carte, une ligne par chose a placer,
@@ -2632,7 +2232,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-scene[data-scene="heures"] .fg-visit { max-width: 820px; }
 .fg-etapes { position: relative; list-style: none; margin: 0; }
 .fg-etape { position: relative; }
-.fg-etape__tete { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto 18px; align-items: center; gap: 14px; width: 100%; min-height: 66px; margin: 0; padding: 10px 20px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s; }
+.fg-etape__tete { display: grid; align-items: center; width: 100%; margin: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s; }
 @media (hover: hover) { .fg-etape:not(.is-open) .fg-etape__tete:hover { background: rgba(255, 255, 255, 0.03); } }
 .fg-etape__tete:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: -4px; border-radius: 14px; }
 .fg-etape__quoi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -2642,7 +2242,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__heure { font-size: 18px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-align: right; white-space: nowrap; }
 .fg-etape__heure.is-maj { animation: fg-etape-heure 0.5s var(--fg-ease-out); }
 @keyframes fg-etape-heure { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.fg-etape__chev { width: 18px; height: 18px; color: var(--fg-muted); transition: transform 0.35s var(--fg-ease-out); }
+.fg-etape__chev { color: var(--fg-muted); transition: transform 0.35s var(--fg-ease-out); }
 .fg-etape.is-open .fg-etape__chev { transform: rotate(180deg); }
 /* Les bornes : l arrivee et la fin, en petit. */
 /* La fin se lit une fois, dans le recapitulatif juste dessous : le programme
@@ -2664,7 +2264,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   30% { background-color: rgba(103, 186, 172, 0.14); }
   100% { background-color: rgba(103, 186, 172, 0); }
 }
-.fg-etape__surplace { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 16px; border: 1.5px dashed rgba(255, 255, 255, 0.2); border-radius: 12px; background: transparent; color: var(--fg-text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; }
+.fg-etape__surplace { display: inline-flex; align-items: center; gap: 9px; padding: 0 16px; font: inherit; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; }
 @media (hover: hover) { .fg-etape__surplace:hover { border-color: var(--fg-teal); background: rgba(103, 186, 172, 0.06); } }
 .fg-etape__surplace:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: 2px; }
 /* L heure de l AUTRE partie du laser : prise, en gris clair, sans le violet
@@ -2684,7 +2284,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    et ses raisons. Rien a ouvrir avant de toucher une heure, rien de cache : ce
    qui coince le dit a sa place. Le nom de la plage n est plus qu un intertitre. */
 
-.fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.fg-chips { display: grid; }
 .fg-chip { width: 100%; min-width: 0; }
 /* LES RAISONS SE LISENT SANS TOUCHER (Movsar, 2026-10-12 : « explique
    brievement et joliment » ; maquette D). Une ligne par cause sous les
@@ -2700,8 +2300,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 @media (max-width: 680px) {
   .fg-etape--borne { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 14px; }
   .fg-etape--borne .fg-etape__heure { padding-right: 24px; }
-  .fg-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
+  }
 /* Le calcul des pistes, d un bloc (voir notePistes). */
 .fg-calcul { display: inline-block; }
 @media (prefers-reduced-motion: reduce) {
@@ -2767,29 +2366,18 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* La bande sous la carte et le tiroir des options : la meme surface, un cran
    plus claire, et les memes angles. */
 .fg-grid__item > .fg-card__info { border: 1px solid var(--fg-hair); border-top: 0; border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); background: var(--fg-surface-2); }
-.fg-grid__item.is-on > .fg-card__info { border-color: var(--fg-on-line); }
-.fg-grid--for .fg-grid__item.is-on > .fg-card__info { border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); }
 :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); }
-:is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card__info { border-radius: 0; }
 :is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { border: 0; background: none; }
-:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card { border-bottom-left-radius: var(--fg-r-card); border-bottom-right-radius: var(--fg-r-card); }
 .fg-card__optbox { border: 1px solid var(--fg-on-line); border-top: 1px solid var(--fg-hair); border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); background: var(--fg-surface-2); }
-.fg-card-select svg { border-color: var(--fg-hair-2); border-radius: 6px; }
 .fg-card__box { border-width: 1px; border-color: var(--fg-hair-2); border-radius: 6px; }
-.fg-card--formule .fg-card__box { border-radius: 50%; }
 
 /* La formule : son nom dans la lettre des titres (« FORMULE 1 » est ecrit en
    capitales au catalogue : en Anton, c est une enseigne, plus un cri), ses
    conditions en etiquettes fines. */
-.fg-card--formule .fg-card__name { font-family: var(--fg-display); font-size: 23px; font-weight: 400; letter-spacing: 0.02em; line-height: 1.05; }
-.fg-for__list li { color: #cfcfcf; }
-.fg-for__total { font-weight: 700; color: var(--fg-text); }
-.fg-for__rules i { border: 1px solid var(--fg-hair-2); border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
 
 /* Les champs, le jour, le compteur, les occasions : la surface levee, le filet
    fin, les angles des champs. L ombre exterieure transparente reste en tete
    (voir les controles plus haut) : l anneau de focus s y interpole. */
-.fg-input, .fg-day__btn, .fg-stepper { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); box-shadow: 0 0 0 transparent, var(--fg-lift); }
 @media (hover: hover) {
   .fg-input:hover:not(:focus), .fg-day__btn:hover:not([aria-expanded="true"]) { border-color: rgba(255, 255, 255, 0.26); }
 }
@@ -2798,32 +2386,24 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    entre eux, sans cases ni separateurs. Seul le DESSIN est en retrait : la
    zone touchee reste la case entiere, 44 px au moins, y compris dans le
    compteur compact d une carte (un bouton en retrait y tombait a 32 px). */
-.fg-stepper__btn, .fg-stepper__btn:last-child { position: relative; isolation: isolate; border: 0; background: transparent; }
+.fg-stepper__btn, .fg-stepper__btn:last-child { position: relative; isolation: isolate; }
 .fg-stepper__btn::before { content: ""; position: absolute; inset: 5px; z-index: -1; border-radius: 7px; background: rgba(255, 255, 255, 0.06); transition: background-color 0.15s; }
 @media (hover: hover) {
-  .fg-stepper__btn:hover { background: transparent; }
-  .fg-stepper__btn:hover::before { background: rgba(148, 66, 146, 0.32); }
+    .fg-stepper__btn:hover::before { background: rgba(148, 66, 146, 0.32); }
 }
 .fg-stepper__btn:active:not([disabled]) { background: transparent; }
 .fg-stepper__btn:active:not([disabled])::before { background: var(--fg-purple); }
 .fg-stepper__btn[disabled]::before { background: rgba(255, 255, 255, 0.025); }
-.fg-occasion { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
 /* L encart du grand groupe, au premier ecran, est fait de la matiere des
    champs (voir plus haut) : il suit leur surface, leur filet et leurs angles. */
-.fg-sm-seuil { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
 /* Les options d une activite (duree, parties) : le filet fin et un angle de
    10 px ; choisie, elle garde son aplat et son ombre sarcelle. */
-.fg-pill { border: 1px solid var(--fg-hair-2); border-radius: 10px; background: rgba(255, 255, 255, 0.04); }
-.fg-pill.is-on { border-color: var(--fg-purple); }
 /* Activites ou formules : un rail leve, la pastille violette qui glisse. */
-.fg-tabs { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
-.fg-tab, .fg-tabs__bar { border-radius: 8px; }
-.fg-btn--ghost { border: 1px solid var(--fg-hair-2); background: rgba(8, 8, 8, 0.86); }
 
 /* L ecran des heures : chaque heure est une case levee, au filet fin, aux
    angles des champs ; les plages prennent le meme angle. L anneau de l heure
    touchee suit (2 px hors de la case, filet de 1 px). */
-.fg-chip.is-pending::after, .fg-chip.is-pose::after { inset: -3px; border-radius: calc(var(--fg-r-ctl) + 2px); }
+.fg-chip.is-pending::after, .fg-chip.is-pose::after { inset: -3px; }
 .fg-period { border-radius: var(--fg-r-ctl); }
 
 /* Les chiffres en chasse fixe la ou ils changent ou s alignent en colonnes :
@@ -2850,26 +2430,10 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    les etiquettes et la bande passent a la ligne. Sous 360 px, une par rangee,
    comme les activites : une carte de 150 px n y tient plus. */
 @media (max-width: 560px) {
-  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; }
-  .fg-card--formule { padding: 13px 12px 12px; gap: 8px; }
-  .fg-card--formule .fg-card__name { font-size: 19px; }
-  .fg-card--formule .fg-card__box { top: 11px; right: 10px; width: 20px; height: 20px; }
-  .fg-grid--for .fg-for__head { padding-right: 24px; gap: 4px 6px; }
-  .fg-grid--for .fg-for__price { gap: 2px 6px; }
-  .fg-grid--for .fg-for__price b { font-size: 24px; }
-  .fg-grid--for .fg-for__time { align-items: flex-start; font-size: 12px; }
-  .fg-grid--for .fg-for__time svg { margin-top: 1px; }
-  .fg-grid--for .fg-for__list li { font-size: 12px; }
-  .fg-grid--for .fg-for__rules i { padding: 2px 7px; font-size: 10px; }
-  .fg-grid--for .fg-card__rot { font-size: 12px; }
-  .fg-grid--for .fg-for__total { display: block; font-size: 14px; }
-  .fg-grid--for .fg-for__mot { display: none; }
-  .fg-grid--for .fg-for__time { text-wrap: balance; }
+    .fg-card--formule { padding: 13px 12px 12px; gap: 8px; }
+            .fg-grid--for .fg-for__time { align-items: flex-start; }
+              .fg-grid--for .fg-for__time { text-wrap: balance; }
 }
-@media (max-width: 359px) {
-  .fg-grid--for { grid-template-columns: 1fr; }
-}
-
 /* LES FORMULES EN FETE (Movsar, 2026-10-14 au soir : « plus beau, un peu
    enfantin, c est pour des anniv » ; « des vraies images de Fun Galaxy » ;
    « dedans direct, pour garder une taille ok » ; « plus sombre, pour mieux
@@ -2886,26 +2450,15 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
      un fanion qui la touchait devenait son pixel le plus clair).
    - Les offres speciales gardent la carte des formules et disent leur
      remise quand le centre affiche un ancien prix. */
-.fg-for__photo { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: calc(var(--fg-r-card) - 1px); pointer-events: none; }
+.fg-for__photo { position: absolute; z-index: 0; overflow: hidden; pointer-events: none; }
 .fg-for__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.fg-for__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.74) 0%, rgba(5, 5, 5, 0.84) 24%, rgba(5, 5, 5, 0.93) 50%, rgba(5, 5, 5, 0.96) 100%); }
 .fg-card.is-refus .fg-for__photo { display: none; }
-.fg-card--formule.has-photo .fg-for__price s { color: #a6a6a6; }
 .fg-card--formule.has-photo > :not(.fg-for__photo):not(.fg-card__box) { position: relative; z-index: 1; }
 .fg-card--formule.has-photo .fg-card__box { z-index: 3; }
-.fg-card--formule.has-photo .fg-card__name, .fg-card--formule.has-photo .fg-for__price b { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
-.fg-card--formule.is-fete { padding-top: 25px; }
-.fg-card--formule.is-fete .fg-card__box { top: 23px; }
-.fg-card--formule.is-fete::before { content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: 2; height: 17px; border-radius: calc(var(--fg-r-card) - 1px) calc(var(--fg-r-card) - 1px) 0 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Ccircle cx='0' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3Ccircle cx='85' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3C/svg%3E") 0 0 / 72px 17px round no-repeat; pointer-events: none; }
-.fg-for__remise { align-self: center; padding: 2px 7px; border-radius: 6px; background: var(--fg-teal); color: #04110f; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.fg-for__remise { background: var(--fg-teal); color: #04110f; letter-spacing: 0.02em; line-height: 1.4; font-variant-numeric: tabular-nums; }
 /* Passee sous le prix au telephone, la pastille ne touche pas la boite du
    texte du prix (la police deborde de 6 px sous sa ligne). */
 .fg-for__price:has(.fg-for__remise) { row-gap: 8px; }
-@media (max-width: 560px) {
-  .fg-card--formule.is-fete { padding-top: 22px; }
-  .fg-card--formule.is-fete .fg-card__box { top: 20px; }
-}
-
 /* =============================================================================
    L ECRAN DES HEURES, AUX COULEURS DU CENTRE (Ansar, 2026-11-04 : « ca fait cheap »,
    « du texte laisse en plan », puis « fait beaucoup trop IA, c est flagrant »). Pas de
@@ -3088,3 +2641,397 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-avant-retirer svg { width: 16px; height: 16px; }
 @media (hover: hover) { .fg-avant-retirer:hover { color: #fff; } }
 @media (prefers-reduced-motion: reduce) { .fg-rdv__heure.is-maj { animation: none; } }
+
+/* =============================================================================
+   TOUT LE FORMULAIRE DANS LA LANGUE DES HEURES (Ansar, 2026-11-05 : « ameliorer
+   lesthetique et la facilite et la rapidite [...] un peu comme ta ameliorer pour
+   les heures [...] prcq ca fait trop ia les autres »). Sur chaque ecran : les vraies
+   photos, la typo d affiche pour les noms, les heures et les prix, des blocs plats
+   sans filet, un aplat plein pour dire ce qui est choisi. Aucun pictogramme de
+   decor, aucun trait entre les lignes. Les ecrans arrivent d un coup.
+   ========================================================================== */
+/* Les polices, servies d ici : l ouverture n attend plus un autre serveur. */
+@font-face { font-family: "Anton"; src: url("./fonts/anton-latin.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Montserrat"; src: url("./fonts/montserrat-latin-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Montserrat"; src: url("./fonts/montserrat-latin-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+.fg { --fg-r-plat: 6px; --fg-r-tuile: 4px; }
+
+/* Les ecrans arrivent d un coup : plus de cascade, plus de mots qui montent, plus
+   de photo qui derive. Il restait 0,7 s avant de pouvoir toucher le bouton suivant. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-entering { animation: fg-fade-in 0.12s linear both; }
+  .fg-scene.is-leaving { animation: fg-fade-out 0.08s linear both; }
+}
+.fg-art img { will-change: auto; }
+
+/* Le bandeau du haut, plus court. Sur la page de reservation, un bouton « Reserver »
+   qui emmene ailleurs fait perdre ce qui est deja rempli. */
+.fg-top { padding-top: 10px; }
+.fg-top__logo { width: 88px; }
+.fg-top__cta, .fg-hold__barre { display: none; }
+/* Le titre a la taille de celui des heures, partout. */
+.fg-title, .fg-scene--split .fg-title { font-size: clamp(30px, 8.4vw, 46px); line-height: 1; margin-bottom: 16px; }
+.fg-steps { margin-bottom: 16px; }
+.fg-sub { margin-bottom: 12px; }
+
+/* La barre du bas : pas de trait. Le bouton qui attend est gris, pas violet delave. */
+.fg-dock { border-top: 0; }
+.fg-btn:disabled { background: var(--fg-plat); color: rgba(255, 255, 255, 0.45); box-shadow: none; opacity: 1; }
+.fg-btn--ghost { border: 0; background: var(--fg-carte); box-shadow: none; }
+@media (hover: hover) { .fg-btn--ghost:hover { background: var(--fg-plat); color: #fff; } }
+.fg-actions { margin-top: 20px; }
+
+/* Les intitules : la meme voix que « Matin », « Apres-midi », « Soiree ». */
+.fg-field__label { font-family: var(--fg-display); font-size: 15px; font-weight: 400; line-height: 1.2; letter-spacing: 0.05em; text-transform: uppercase; color: #a9a7ae; }
+.fg-field__opt { font-family: var(--fg-body); font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-muted); }
+.fg-fields { gap: 14px; }
+
+/* --- 1. LE JOUR ET LE GROUPE : des tuiles, comme les heures ------------------- */
+.fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { clip-path: none; }
+.fg-jours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.fg-jours__vite { display: contents; }
+.fg-day { position: relative; min-width: 0; }
+.fg-jour, .fg-day__btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 100%; height: 58px; min-height: 0; padding: 0 2px; border: 1px solid transparent; border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; color: #fff; font: inherit; cursor: pointer; }
+.fg-jour b, .fg-day__btn b { font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 1.1; letter-spacing: 0.03em; text-transform: uppercase; }
+.fg-jour small, .fg-day__btn small { font-size: 11px; font-weight: 600; line-height: 1.2; color: #cfcdd4; white-space: nowrap; }
+.fg-jour.is-on, .fg-day__btn.is-on { border-color: var(--fg-purple-2); background: var(--fg-purple-2); }
+.fg-jour.is-on small, .fg-day__btn.is-on small { color: #fff; }
+.fg-jour:focus-visible, .fg-pax:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: 2px; }
+.fg-day__btn[aria-expanded="true"], .fg-day__btn:focus-visible { border-color: var(--fg-teal-ink); box-shadow: none; }
+@media (hover: hover) { .fg-jour:hover, .fg-day__btn:hover, .fg-pax:hover { border-color: rgba(255, 255, 255, 0.4); } }
+.fg-field__hint--day { margin-top: 2px; }
+/* Le compteur du groupe : le chiffre en grand, et les groupes courants d un toucher. */
+.fg-field .fg-stepper { grid-template-columns: 64px minmax(0, 1fr) 64px; height: 56px; overflow: visible; }
+.fg-field .fg-stepper .fg-stepper__btn { width: 100%; height: 100%; font-size: 26px; }
+.fg-stepper__value { border-radius: var(--fg-r-tuile); background: var(--fg-carte); }
+.fg-stepper__input { font-family: var(--fg-display); font-size: 32px; font-weight: 400; letter-spacing: 0.02em; }
+.fg-pax-vite { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin-top: 5px; }
+.fg-pax { height: 44px; padding: 0; border: 1px solid transparent; border-radius: var(--fg-r-tuile); background: var(--fg-carte); font-family: var(--fg-display); font-size: 19px; font-weight: 400; letter-spacing: 0.03em; color: #fff; cursor: pointer; }
+.fg-pax.is-on { border-color: var(--fg-purple-2); background: var(--fg-purple-2); }
+/* Grand groupe : un aplat, comme un conseil. La porte des groupes : une rangee plate. */
+.fg-sm-seuil { display: block; margin-top: 14px; padding: 10px 14px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-teal); color: #06100e; }
+.fg-sm-seuil__txt b { color: #06100e; }
+.fg-sm-seuil__txt p { color: #06100e; }
+.fg-sm-door { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin-top: 16px; padding: 12px 14px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); }
+.fg-sm-door__txt { font-size: 13px; line-height: 18px; }
+.fg-sm-door__txt b { display: block; font-size: 14px; }
+.fg-sm-door__btn { justify-content: flex-start; width: fit-content; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-size: 14px; font-weight: 700; color: var(--fg-teal-ink); }
+
+/* Le calendrier : un bloc plat, les jours en chiffres d affiche. */
+.fg-cal { padding: 12px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); }
+.fg-cal__nav { border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; }
+.fg-cal__title { font-family: var(--fg-display); font-size: 20px; font-weight: 400; letter-spacing: 0.03em; text-transform: uppercase; }
+.fg-cal__day { border-radius: var(--fg-r-tuile); font-family: var(--fg-display); font-size: 19px; font-weight: 400; letter-spacing: 0.02em; }
+.fg-cal__day.is-today { border-color: transparent; }
+.fg-cal__day.is-selected { border-color: var(--fg-purple-2); background: var(--fg-purple-2); }
+.fg-cal__info { color: var(--fg-teal-ink); }
+
+/* --- ACTIVITES ou FORMULES : deux aplats, celui qui est choisi est plein. ----- */
+.fg-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-width: none; margin-bottom: 10px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.fg-tab { min-height: 48px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); font-family: var(--fg-display); font-size: 19px; font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; color: #bdbbc2; box-shadow: none; }
+.fg-tab[aria-selected="true"] { background: var(--fg-purple); color: #fff; }
+
+/* --- 2. LES ACTIVITES : une rangee par activite, comme les lignes des heures -- */
+:is(#gridAct,#smGridAct) { grid-template-columns: minmax(0, 1fr); gap: 0 6px; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 76px; padding: 8px 92px 8px 100px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; transform: none; overflow: hidden; }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card { border-bottom-left-radius: var(--fg-r-plat); border-bottom-right-radius: var(--fg-r-plat); }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card:not(:has(> .fg-card__photo)) { padding-left: 14px; }
+:is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card { border-radius: var(--fg-r-plat) var(--fg-r-plat) 0 0; background: var(--fg-purple); }
+.fg-card__photo { inset: 0 auto 0 0; width: 88px; height: auto; opacity: 1; border-radius: 0; background: var(--fg-plat); }
+.fg-card__photo::after { display: none; }
+.fg-card.is-on .fg-card__photo { opacity: 1; }
+.fg-card.is-refus .fg-card__photo { display: block; opacity: 0.35; filter: grayscale(1); }
+:is(#gridAct,#smGridAct) .fg-card__name { margin: 0; font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
+:is(#gridAct,#smGridAct) .fg-card__price { min-height: 0; font-size: 13px; font-weight: 600; line-height: 17px; color: var(--fg-muted); }
+:is(#gridAct,#smGridAct) .fg-card.is-on .fg-card__price { color: #fff; }
+.fg-card .fg-for__off { margin-top: 4px; padding: 0; border: 0; background: none; font-size: 12.5px; font-weight: 600; line-height: 16px; color: var(--fg-amber-ink); }
+.fg-card .fg-for__off svg { display: none; }
+/* La case : un aplat, pleine une fois cochee. Le « i » juste a cote. */
+.fg-card-select { top: 16px; right: 2px; width: 44px; height: 44px; padding: 8px; }
+.fg-card-select svg { width: 28px; height: 28px; padding: 6px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); }
+.fg-card-select.is-on svg { background: #fff; color: var(--fg-purple); }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { top: 16px; right: 44px; bottom: auto; }
+:is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card__info { padding: 4px 4px 4px 14px; border: 0; border-radius: 0; background: var(--fg-carte); }
+.fg-grid__item > .fg-card__info .fg-card__rot, :is(#gridAct,#smGridAct) .fg-card__info .fg-card__rot { font-size: 13px; font-weight: 600; line-height: 18px; color: #e9e7ec; }
+.fg-grid__item.is-on > .fg-card__info { border-color: transparent; }
+.fg-info-btn { color: #bdbbc2; }
+/* Ce que la rangee deplie : les memes tuiles que les heures. */
+:is(#gridAct,#smGridAct) .fg-card__optbox, .fg-grid--for .fg-card__optbox { padding: 10px 14px 14px; border: 0; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-card__optlabel { margin-bottom: 6px; font-family: var(--fg-display); font-size: 15px; font-weight: 400; letter-spacing: 0.05em; color: #a9a7ae; }
+.fg-pills { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 5px; }
+.fg-pill { min-height: 52px; padding: 4px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; transform: none; }
+.fg-pill b { font-family: var(--fg-display); font-size: 18px; font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; }
+.fg-pill small { font-size: 12px; font-weight: 600; color: #cfcdd4; }
+.fg-pill.is-on { border: 0; background: var(--fg-purple-2); box-shadow: none; }
+.fg-pill.is-on b, .fg-pill.is-on small { color: #fff; }
+.fg-count { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.fg-count__label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; margin: 0; font-family: var(--fg-display); font-size: 15px; font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; color: #a9a7ae; }
+.fg-count__label small { margin: 0; font-family: var(--fg-body); font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-muted); }
+.fg-option-group + .fg-option-group { margin-top: 10px; }
+.fg-grid--for .fg-grid__item.is-on > .fg-card__info:has(+ .fg-card__opt) { border-radius: 0; }
+.fg-kids__row { gap: 8px 12px; }
+.fg-kids__adults { font-size: 13px; font-weight: 500; color: var(--fg-muted); }
+.fg-kids__total, .fg-kids__prix { border: 0; }
+
+/* Les compteurs : deux tuiles et le chiffre de l affiche, sans cadre autour. */
+.fg-stepper, .fg-stepper:focus-within, .fg-stepper.is-bump { gap: 5px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.fg-stepper__btn, .fg-stepper__btn:last-child { width: 46px; height: 46px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); color: #fff; box-shadow: none; font-size: 22px; }
+.fg-stepper__btn::before { display: none; }
+.fg-stepper__btn:disabled, .fg-stepper__btn[disabled] { background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.3); }
+@media (hover: hover) { .fg-stepper__btn:hover { background: var(--fg-purple-2); } .fg-stepper__btn[disabled]:hover { background: rgba(255, 255, 255, 0.03); } }
+.fg-kids__stepper { grid-template-columns: 46px 48px 46px; height: 46px; }
+.fg-kids__n, .fg-count__input { font-family: var(--fg-display); font-size: 24px; font-weight: 400; color: #fff; }
+
+/* --- LES FORMULES : la photo a gauche, ce qu elle contient, le prix ----------- */
+.fg-fams { display: grid; gap: 20px; }
+.fg-fam__title { display: block; margin: 0 0 8px; font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; }
+.fg-fam__title::after { display: none; }
+/* La guirlande de fanions, une fois, sur le titre des anniversaires. */
+.fg-fam.is-fete .fg-fam__title { display: flex; align-items: center; gap: 12px; }
+.fg-fam.is-fete .fg-fam__title::after { content: ""; display: block; flex: 1 1 auto; height: 17px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3C/svg%3E") 0 0 / 72px 17px round no-repeat; }
+.fg-card--formule.is-fete::before { display: none; }
+.fg-fam__regles { margin: -2px 0 8px; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-muted); }
+.fg-fam__regles::first-letter { text-transform: uppercase; }
+.fg-fam__regles i, .fg-for__rules i { display: inline; padding: 0; border: 0; border-radius: 0; background: none; font-style: normal; }
+.fg-fam__regles i + i::before, .fg-for__rules i + i::before { content: " \00b7  "; }
+.fg-grid--for { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.fg-grid--for > li { display: flex; flex-direction: column; margin: 0; }
+.fg-grid--for .fg-card--formule, .fg-card--formule.is-fete { position: relative; display: block; min-height: 96px; padding: 10px 44px 12px 100px; border: 0; border-radius: var(--fg-r-plat) var(--fg-r-plat) 0 0; background: var(--fg-carte); box-shadow: none; transform: none; overflow: hidden; text-align: left; }
+.fg-grid--for .fg-card--formule.is-on { background: var(--fg-purple); }
+.fg-for__photo { inset: 0 auto 0 0; width: 88px; border-radius: 0; background: var(--fg-plat); }
+.fg-for__photo::after { display: none; }
+.fg-card--formule.has-photo .fg-card__name, .fg-card--formule.has-photo .fg-for__price b { text-shadow: none; }
+.fg-card--formule:not(.has-photo), .fg-grid--for .fg-card--formule.is-refus { padding-left: 14px; }
+.fg-for__head, .fg-grid--for .fg-for__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 0; }
+.fg-card--formule .fg-card__name { font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
+.fg-for__best { padding: 0; border: 0; background: none; font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; text-transform: none; color: var(--fg-teal-ink); }
+.fg-for__best::before { display: none; }
+.fg-for__price, .fg-grid--for .fg-for__price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 2px 0 0; }
+.fg-for__price b, .fg-grid--for .fg-for__price b { font-family: var(--fg-display); font-size: 24px; font-weight: 400; letter-spacing: 0.01em; color: #fff; }
+.fg-for__price small { font-size: 12.5px; font-weight: 600; color: var(--fg-muted); }
+.fg-for__price s, .fg-card--formule.has-photo .fg-for__price s { font-size: 12.5px; font-weight: 600; color: var(--fg-muted); }
+.fg-for__remise { align-self: baseline; padding: 1px 5px; border-radius: 3px; font-size: 11px; font-weight: 800; }
+.fg-for__list, .fg-grid--for .fg-for__list { display: block; margin: 6px 0 0; padding: 0; list-style: none; }
+.fg-for__list li, .fg-grid--for .fg-for__list li { padding: 0; font-size: 13.5px; font-weight: 600; line-height: 19px; color: #e9e7ec; }
+.fg-for__list li::before { display: none; }
+.fg-for__time, .fg-grid--for .fg-for__time { display: block; margin: 6px 0 0; font-size: 12.5px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+.fg-for__time svg, .fg-grid--for .fg-for__time svg { display: none; }
+.fg-for__rules { display: block; margin: 4px 0 0; font-size: 12.5px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+.fg-grid--for .fg-for__rules i { padding: 0; font-size: inherit; color: inherit; }
+/* Coche en haut a droite, un aplat. Choisie, tout passe en blanc sur le violet. */
+.fg-card--formule .fg-card__box, .fg-card--formule.is-fete .fg-card__box { top: 10px; right: 10px; width: 28px; height: 28px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); transform: none; }
+.fg-card--formule.is-on .fg-card__box { background: #fff; color: var(--fg-purple); }
+.fg-card--formule.is-on :is(.fg-for__price small, .fg-for__price s, .fg-for__time, .fg-for__rules, .fg-for__best) { color: #fff; }
+.fg-card--formule.is-on .fg-for__list li, .fg-card--formule.is-on .fg-for__rules i { color: #fff; }
+/* Refusee ce jour-la : le nom, le prix et le pourquoi, sans sa liste. Le « i » la raconte. */
+.fg-card.is-refus { opacity: 1; }
+.fg-card.is-refus .fg-card__name { color: #bdbbc2; }
+.fg-card--formule.is-refus { min-height: 0; }
+.fg-card--formule.is-refus :is(.fg-for__list, .fg-for__time, .fg-for__rules) { display: none; }
+.fg-card--formule.is-refus .fg-card__name, .fg-card--formule.is-refus .fg-for__price b { color: #bdbbc2; }
+.fg-card--formule .fg-for__off { display: block; margin: 6px 0 0; padding: 0; border: 0; border-radius: 0; background: none; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-amber-ink); }
+.fg-card--formule .fg-for__off svg { display: none; }
+.fg-grid--for .fg-grid__item:has(> .is-refus) { position: relative; }
+.fg-grid--for .fg-card--formule.is-refus { padding-right: 48px; border-radius: var(--fg-r-plat); }
+.fg-grid--for .fg-grid__item:has(> .is-refus) > .fg-card__info { position: absolute; top: 4px; right: 2px; padding: 0; border: 0; background: none; }
+.fg-grid--for .fg-grid__item:has(> .is-refus) > .fg-card__info .fg-card__rot { display: none; }
+/* Le montant du groupe, sous la carte. */
+.fg-grid--for .fg-grid__item > .fg-card__info, .fg-grid--for .fg-grid__item.is-on > .fg-card__info { display: flex; align-items: center; margin: 0; padding: 0 4px 0 14px; border: 0; border-top: 2px solid #0a090b; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: var(--fg-carte); }
+.fg-grid--for .fg-card__rot { font-size: 13px; font-weight: 600; color: #e9e7ec; }
+.fg-for__total, .fg-grid--for .fg-for__total { display: inline; font-family: var(--fg-display); font-size: 18px; font-weight: 400; letter-spacing: 0.02em; color: #fff; }
+.fg-grid--for .fg-for__mot { display: inline; }
+
+/* --- 4. LES COORDONNEES : des champs plats, les deux noms sur une ligne -------- */
+.fg-input { min-height: 52px; border: 1px solid transparent; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; font-size: 16px; font-weight: 600; }
+.fg-input::placeholder { font-weight: 500; color: #77757c; }
+.fg-input:focus { border-color: var(--fg-teal-ink); box-shadow: none; outline: none; }
+.fg-input--area { min-height: 52px; resize: none; transition: min-height 0.12s linear; }
+.fg-input--area:focus, .fg-input--area:not(:placeholder-shown) { min-height: 96px; }
+.fg-scene[data-scene="contact"] .fg-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 6px; }
+.fg-scene[data-scene="contact"] .fg-fields > * { grid-column: 1 / -1; }
+.fg-scene[data-scene="contact"] .fg-fields > .fg-field:nth-child(-n+2) { grid-column: auto; min-width: 0; }
+.fg-scene[data-scene="contact"] .fg-field__label { margin-bottom: 0; }
+.fg-field { gap: 5px; }
+.fg-occasions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.fg-occasion { justify-content: center; min-height: 46px; padding: 2px 4px; border: 1px solid transparent; border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; font-family: var(--fg-display); font-size: 16.5px; font-weight: 400; line-height: 1.1; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; text-align: center; }
+.fg-occasion svg { display: none; }
+.fg-occasion.is-on { border-color: var(--fg-purple-2); background: var(--fg-purple-2); box-shadow: none; }
+@media (hover: hover) { .fg-occasion:hover { border-color: rgba(255, 255, 255, 0.4); } }
+.fg-check { gap: 10px; font-size: 14px; font-weight: 500; line-height: 19px; color: #e9e7ec; }
+.fg-check__box { width: 28px; height: 28px; border: 1px solid transparent; border-radius: var(--fg-r-tuile); background: var(--fg-plat); }
+.fg-check__box svg { width: 16px; height: 16px; }
+.fg-check input:checked + .fg-check__box { border-color: transparent; background: #fff; color: var(--fg-purple); }
+.fg-check + .fg-field__error { padding-left: 38px; }
+.fg-field__hint { font-size: 12.5px; line-height: 17px; color: var(--fg-muted); }
+.fg-field__hint--day { font-size: 13px; color: var(--fg-teal-ink); }
+.fg-field__hint a { color: inherit; }
+/* Les horaires gardes : un bloc plat, le temps qui reste en chiffres d affiche. */
+.fg-hold { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; max-width: none; margin: 0 0 8px; padding: 10px 14px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-hold__txt { text-wrap: pretty; }
+.fg-hold__txt b { font-size: 14px; font-weight: 700; line-height: 19px; color: #fff; }
+.fg-hold__txt span { font-size: 12.5px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+.fg-hold__temps { font-family: var(--fg-display); font-size: 26px; font-weight: 400; letter-spacing: 0.02em; color: var(--fg-teal-ink); }
+/* Le rappel de la visite : une rangee, toute entiere touchable. */
+.fg-recall { padding: 12px 14px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-recall .fg-kicker { display: none; }
+.fg-recall__line { margin: 0; font-size: 14.5px; font-weight: 600; line-height: 20px; color: #fff; }
+.fg-recall__toggle { min-height: 44px; margin: -8px 0 -12px; font-size: 13px; }
+.fg-recall__toggle::after { content: ""; position: absolute; inset: 0; }
+.fg-recall.is-open .fg-recall__toggle::after { bottom: auto; height: 72px; }
+.fg-recall .fg-recall__body { background: none; padding: 0; }
+.fg-recall .fg-recap { margin-top: 12px; padding: 0; background: none; }
+
+/* --- 5. LE RECAPITULATIF : le meme programme qu a l ecran des heures ----------- */
+.fg-recap { padding: 16px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-recap__lieu { margin: 0 0 14px; padding: 0; border: 0; }
+.fg-recap__lieu b { font-family: var(--fg-display); font-size: 16px; font-weight: 400; letter-spacing: 0.04em; color: var(--fg-teal-ink); }
+.fg-recap__lieu span { margin-top: 1px; font-size: 13px; font-weight: 500; line-height: 18px; }
+.fg-recap__row { display: block; margin: 0; padding: 0; border: 0; font-size: 14px; font-weight: 500; line-height: 19px; color: var(--fg-muted); }
+.fg-recap__row svg { display: none; }
+.fg-recap__lieu + .fg-recap__row { font-family: var(--fg-display); font-size: 24px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
+.fg-recap__lieu + .fg-recap__row .fg-tag { font-family: var(--fg-body); }
+.fg-recap__sep { height: 14px; margin: 0; border: 0; background: none; }
+.fg-recap__item { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 8px; align-items: start; margin: 0 0 10px; padding: 0; border: 0; }
+.fg-recap__badge { display: none; }
+.fg-recap__item > span:nth-child(2) { display: block; grid-column: 2; grid-row: 1; }
+.fg-recap__item br { display: none; }
+.fg-recap__aside { grid-column: 1; grid-row: 1; display: block; min-width: 0; font-size: 0; line-height: 0; text-align: left; }
+.fg-recap__aside b { display: block; margin: 0; font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--fg-purple-em); }
+.fg-recap__aside small { display: block; font-size: 12px; font-weight: 600; line-height: 22px; color: var(--fg-teal-ink); }
+.fg-recap__item:has(> .fg-recap__aside:empty) > span:nth-child(2) { grid-column: 1 / -1; }
+.fg-recap__name { display: block; font-size: 15px; font-weight: 700; line-height: 22px; color: #fff; }
+.fg-recap__detail { display: block; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+.fg-recap__sep + .fg-recap__row { padding-top: 12px; border-top: 2px solid var(--fg-plat); font-weight: 600; color: #fff; }
+.fg-total { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.fg-total > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px; }
+.fg-total__label { font-size: 14px; font-weight: 500; color: var(--fg-muted); }
+.fg-total__amount { font-family: var(--fg-display); font-size: 40px; font-weight: 400; line-height: 1; letter-spacing: 0.01em; color: #fff; }
+.fg-total__pay { display: block; margin: 3px 0 0; padding: 0; border: 0; text-align: right; }
+.fg-total__icons { display: none; }
+.fg-total__how, .fg-total__how b, .fg-total__how small { display: inline; font-size: 13px; font-weight: 500; line-height: 18px; color: var(--fg-muted); }
+.fg-total__how b::after { content: " \00b7"; }
+#recap .fg-total__pay { display: none; }
+.fg-recap__who, .fg-recap__occasion, .fg-recap__note { margin: 12px 0 0; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.fg-recap__occasion, .fg-recap__note { margin-top: 2px; }
+/* Envie d un peu plus : un aplat au bout du recapitulatif. */
+.fg-plus { margin: 14px -16px -16px; padding: 12px 16px; border: 0; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: var(--fg-plat); }
+.fg-plus__head { margin: 0; font-size: 14px; line-height: 19px; }
+.fg-plus__head small { font-size: 13px; color: #cfcdd4; }
+.fg-plus__voir { min-height: 44px; font-size: 14px; font-weight: 700; color: var(--fg-teal-ink); text-decoration: none; }
+.fg-scene[data-scene="recap"] .fg-actions--column { max-width: none !important; gap: 10px; }
+.fg-confirm__note { font-size: 13px; line-height: 18px; color: #e9e7ec; }
+.fg-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 8px; font-size: 13px; }
+.fg-edit > span { grid-column: 1 / -1; font-family: var(--fg-display); font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; color: #a9a7ae; }
+.fg-edit__btn { justify-content: center; min-height: 44px; padding: 0 4px; border-radius: var(--fg-r-tuile); background: var(--fg-carte); font-size: 13.5px; font-weight: 600; text-decoration: none; text-align: center; color: #fff; }
+
+/* --- 6. LA CONFIRMATION : a gauche, un aplat sarcelle, le meme bloc ------------ */
+.fg-scene[data-scene="fin"] .fg-scene__body { text-align: left; }
+.fg-scene[data-scene="fin"] .fg-steps { margin-left: 0; }
+.fg-done { text-align: left; }
+.fg-done__ring { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 0 12px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-teal); color: #06100e; box-shadow: none; }
+.fg-done__ring.is-mail { background: var(--fg-plat); color: #fff; }
+.fg-done__ring svg { width: 26px; height: 26px; stroke-dasharray: none; stroke-dashoffset: 0; }
+.fg-done__ticket { padding: 16px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-done .fg-done__row { display: block; margin: 0 0 12px; padding: 0; border: 0; font-size: 14.5px; font-weight: 500; line-height: 20px; color: var(--fg-muted); }
+.fg-done .fg-done__row:last-child { margin-bottom: 0; }
+.fg-done__row svg { display: none; }
+.fg-done__row b { color: #fff; }
+.fg-done__row:first-child b { font-family: var(--fg-display); font-size: 21px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; }
+.fg-done__lien { color: var(--fg-teal-ink); }
+.fg-scene[data-scene="fin"] .fg-actions { justify-content: flex-start; }
+.fg-scene[data-scene="fin"] .fg-actions .fg-btn { width: 100%; }
+
+/* --- ENVIE D UN PEU PLUS : la fenetre, des blocs plats et de vraies photos ----- */
+@media (prefers-reduced-motion: no-preference) { .fg-vitrine:not([hidden]) .fg-vitrine__panneau { animation: fg-voile 0.12s linear; } }
+.fg-vitrine__panneau { border: 0; border-radius: var(--fg-r-plat); background: #0d0c0f; }
+.fg-vitrine__eyebrow { display: none; }
+.fg-vitrine__titre { font-size: 30px; line-height: 1; }
+.fg-vitrine__sous { font-size: 14px; }
+.fg-vitrine__carte, .fg-vitrine__carte.is-vedette { border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: none; }
+.fg-vitrine__photo, .fg-vitrine__photo img { border-radius: 0; }
+.fg-vitrine__pour { font-family: var(--fg-display); font-size: 15px; font-weight: 400; letter-spacing: 0.05em; color: #a9a7ae; }
+.fg-vitrine__raison { padding: 6px 10px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-teal); font-size: 13.5px; font-weight: 600; color: #06100e; }
+.fg-vitrine__raison svg { display: none; }
+.fg-vitrine__nom { font-family: var(--fg-display); font-size: 22px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; }
+.fg-vitrine__nom svg { display: none; }
+.fg-vitrine__quoi { font-size: 14px; font-weight: 700; color: #fff; }
+.fg-vitrine__ltxt .fg-vitrine__nom, .fg-vitrine__ligne .fg-vitrine__nom { font-size: 19px; }
+.fg-vitrine__voir { grid-template-columns: 72px minmax(0, 1fr) auto 14px; gap: 12px; min-height: 68px; padding: 0 12px 0 0; overflow: hidden; }
+.fg-vitrine__ligne .fg-vitrine__photo { width: 72px; height: 100%; min-height: 68px; border-radius: 0; }
+.fg-vitrine__prix { font-family: var(--fg-display); font-weight: 400; letter-spacing: 0.02em; }
+.fg-vitrine__barre { font-family: var(--fg-body); font-size: 13px; font-weight: 600; }
+.fg-vitrine__remise { padding: 1px 5px; border-radius: 3px; font-family: var(--fg-body); font-size: 11px; font-weight: 800; font-style: normal; }
+.fg-vitrine__qui > span:first-child { font-family: var(--fg-display); font-size: 15px; font-weight: 400; letter-spacing: 0.05em; color: #a9a7ae; }
+.fg-vitrine__voir { border: 0; border-radius: var(--fg-r-plat); background: none; }
+.fg-vitrine__fleche { color: #bdbbc2; }
+.fg-vitrine__stepper { border: 0; background: none; }
+
+/* --- LA FICHE « i » : un bloc plat, comme le reste. ----------------------------- */
+.fg-info-dialog { border: 0; border-radius: var(--fg-r-plat); background: var(--fg-carte); box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.8); }
+.fg-info-close { background: rgba(5, 5, 5, 0.72); box-shadow: none; }
+.fg-info-fait { border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; }
+.fg-arcade-select { min-height: 46px; border: 0; border-radius: var(--fg-r-tuile); background-color: var(--fg-plat); box-shadow: none; }
+
+/* --- TELEPHONE ------------------------------------------------------------------ */
+@media (max-width: 900px) {
+  /* La photo du premier ecran : un bloc net, sans voile, a la largeur des tuiles. */
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { width: auto; height: 124px; margin: 8px var(--fg-gutter) 0; border-radius: var(--fg-r-plat); clip-path: none; }
+  .fg-scene--split .fg-art::before, .fg-scene--split.fg-scene--art-left .fg-art::before, .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after { display: none; }
+  /* Sur les coordonnees et le recapitulatif, la place va au formulaire. */
+  .fg-scene[data-scene="activites"] .fg-art, .fg-scene[data-scene="contact"] .fg-art, .fg-scene[data-scene="recap"] .fg-art, .fg-scene[data-scene="sm-contact"] .fg-art, .fg-scene[data-scene="sm-recap"] .fg-art { display: none; }
+  .fg-scene[data-scene="contact"] .fg-steps { margin-top: 26px; }
+  .fg-scene[data-scene="contact"] .fg-title { margin-bottom: 14px; }
+  .fg-scene[data-scene="contact"] .fg-hold { margin-bottom: 8px; }
+  .fg-scene[data-scene="contact"] .fg-recall { margin-bottom: 16px; }
+  :is(.fg-scene[data-scene="contact"], .fg-scene[data-scene^="sm-"]) .fg-actions { flex-wrap: nowrap; gap: 10px; margin-top: 22px; }
+  :is(.fg-scene[data-scene="contact"], .fg-scene[data-scene^="sm-"]) .fg-actions .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }
+  :is(.fg-scene[data-scene="contact"], .fg-scene[data-scene^="sm-"]) .fg-actions .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  :is(.fg-scene[data-scene="contact"], .fg-scene[data-scene^="sm-"]) .fg-actions .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
+  .fg-scene[data-scene="recap"] .fg-scene__body { padding-top: 26px; }
+  .fg-scene[data-scene="date"] .fg-scene__body { padding-top: 12px; }
+  .fg-steps { margin-bottom: 14px; }
+}
+@media (max-width: 359px) {
+  .fg-occasions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fg-jour small, .fg-day__btn small { font-size: 10px; }
+  .fg-jour b, .fg-day__btn b { font-size: 18px; }
+  :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { padding-left: 76px; padding-right: 88px; }
+  .fg-card__photo { width: 66px; }
+  .fg-grid--for .fg-card--formule, .fg-card--formule.is-fete { padding-left: 76px; }
+  .fg-for__photo { width: 66px; }
+}
+/* --- GRAND ECRAN : les rangees se posent sur plusieurs colonnes ------------------ */
+@media (min-width: 761px) {
+  :is(#gridAct,#smGridAct) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .fg-tabs { width: min(100%, 420px); }
+}
+@media (min-width: 1200px) {
+  .fg-grid--for { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* La photo d un ecran a deux colonnes : un bloc net, a ses proportions. Etiree sur toute la
+   hauteur de l ecran, elle grossissait deux fois et devenait floue. */
+@media (min-width: 901px) {
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { top: 8px; bottom: auto; right: max(var(--fg-gutter), calc(50% - 640px)); left: auto; width: calc(min(100%, 1280px) * 0.46); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
+  .fg-scene--split.fg-scene--art-left .fg-art { right: auto; left: max(var(--fg-gutter), calc(50% - 640px)); }
+  .fg-scene--split .fg-art::before, .fg-scene--split.fg-scene--art-left .fg-art::before, .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after { display: none; }
+  /* Les coordonnees : le rappel de la visite prend la colonne, la photo laisse la place. */
+  .fg-scene[data-scene="contact"] .fg-art { display: none; }
+  .fg-recall { margin-top: 8px; margin-right: max(var(--fg-gutter), calc(50% - 640px)); width: calc(min(100%, 1280px) * 0.46); }
+  .fg-scene--split .fg-scene__body { padding-right: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * 0.46 + 16px); }
+  .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * 0.46 + 16px); padding-right: max(var(--fg-gutter), calc(50% - 640px)); }
+}
+/* Le meme voile que l ecran des heures, derriere les rangees. */
+.fg-scene[data-scene="activites"].fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.86) 0%, rgba(5, 5, 5, 0.94) 100%); }
+/* Tout a la meme largeur. */
+.fg-scene[data-scene="contact"] .fg-fields { max-width: none !important; }
+.fg-scene[data-scene="date"] .fg-actions .fg-btn { width: 100%; }
+.fg-recap { max-width: none; }
+.fg-done { max-width: 640px; margin: 0; }
+.fg-done__ticket { max-width: none; margin: 0; }
+.fg-scene[data-scene="fin"] .fg-scene__body { max-width: 1280px; }
+.fg-scene[data-scene="fin"].fg-scene--full.fg-scene--center .fg-art::after {
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 730px), rgba(5, 5, 5, 0.55) calc(50% - 590px), rgba(5, 5, 5, 0.55) calc(50% + 590px), rgba(5, 5, 5, 0) calc(50% + 730px)),
+    linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
+}

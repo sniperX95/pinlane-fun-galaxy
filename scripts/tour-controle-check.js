@@ -276,6 +276,13 @@ async function preuvesServeur() {
   await tour.essaiEcriture(pool);
   await tour.noterPassageSonde(pool);
   BD.verifier = false;
+  const mail3 = BD.mails.find((m) => m.id === 3);
+  const statut3 = mail3.status;
+  mail3.status = 'delivered';
+  const relue = await tour.lireTour(pool, {});
+  mail3.status = statut3;
+  const ligne103 = relue.reservations.lignes.find((r) => Number(r.id) === 103);
+  ok(ligne103 && ligne103.mails.envoyes === 1, '[S] un mail bien recu compte comme parti', ligne103 && ligne103.mails);
   ok(lecture.ok === true && lecture.reservations.lignes.every((r) => r.centre === 'gembloux' && r.canal === 'public'), '[S] la lecture complete tourne, ses filtres vont jusqu a la requete', lecture.reservations);
   ok(dossier && dossier.mails.length === 1 && dossier.plan.etapes.length === 1, '[S] le dossier complet tourne', dossier && dossier.mails);
   ok(await tour.lireDossierTour(pool, 'x') === null && await tour.lireDossierTour(pool, 99999) === null, '[S] un numero de dossier faux ne rend rien');

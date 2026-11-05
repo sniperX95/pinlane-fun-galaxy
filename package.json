@@ -157,6 +157,7 @@
     "test:pouls-domaines": "node scripts/pouls-domaines-check.js",
     "test:temps-reel": "node scripts/temps-reel-check.js && node scripts/temps-reel-check.js --contre-preuves",
     "test:concurrence-reservation": "node scripts/concurrence-reservation-check.js",
+    "test:rush-reservations": "node scripts/rush-reservations-check.js",
     "test:droits-reservations": "node scripts/droits-reservations-check.js",
     "test:droits-niveaux": "node scripts/droits-niveaux-check.js && node scripts/droits-niveaux-check.js --contre-preuves",
     "test:prix-suivi": "node scripts/prix-suivi-check.js && node scripts/prix-suivi-check.js --contre-preuves",

@@ -234,7 +234,7 @@ async function captureError(run) {
   // -- [POOL] plafond de connexions explicite (P2-10) ------------------------
   console.log('\n[POOL] plafond de connexions');
   const pool = getPool();
-  ok(Number(pool.options.max) === 5, `max par defaut prudent = 5 (obtenu ${pool.options && pool.options.max})`);
+  ok(Number(pool.options.max) === 10, `max par defaut = 10, voir scripts/rush-reservations-check.js (obtenu ${pool.options && pool.options.max})`);
   const dbSource = readProjectFile('lib/database.js');
   ok(/max:[^\n]*DATABASE_POOL_MAX/.test(dbSource),
     'le plafond est configurable par DATABASE_POOL_MAX');

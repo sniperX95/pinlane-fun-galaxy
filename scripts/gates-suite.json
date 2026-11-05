@@ -285,6 +285,7 @@
     "test:pouls-domaines",
     "test:temps-reel",
     "test:concurrence-reservation",
+    "test:rush-reservations",
     "test:droits-reservations",
     "test:droits-niveaux",
     "test:prix-suivi",

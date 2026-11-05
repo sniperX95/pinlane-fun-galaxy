@@ -2245,7 +2245,7 @@ module.exports = async (req, res) => {
     // contrôlés) passent, les erreurs d'infrastructure (Postgres/Neon/réseau)
     // ne fuient jamais vers le public : on les log et on renvoie un 503 neutre.
     const raw = String((error && error.message) || '');
-    const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+    const isInfra = !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
     if (isInfra) {
       console.error('[public-availability] échec', error && (error.stack || raw || error));
       sendError(res, 503, 'Disponibilités momentanément indisponibles. Réessayez dans un instant.');

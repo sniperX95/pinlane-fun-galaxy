@@ -64,6 +64,17 @@ async function tracerEssai(action, { corps = null, request = null, statut = 0, r
   }).catch(() => {});
 }
 
+// LE RUSH (test sur une copie de la base, 2026-11-05). Des clients qui prennent la meme heure au meme instant composent
+// le meme plan, avec la meme piste. Le premier passe, le controle sous le verrou refuse les autres, et ils lisaient
+// « plus libres » alors que 7 pistes l etaient : 1 reservation sur 50 clients pour 8 pistes. Ce refus dit « ton plan est
+// perime », pas « c est complet » : le plan se recompose sur l etat a jour, quelques fois, avec un petit ecart pour ne pas
+// repartir tous ensemble. S il n y a vraiment plus de place, le moteur le dit au tour suivant. Une demande qui tient un
+// blocage ne repasse jamais par ici : ses pistes lui sont gardees.
+const ESSAIS_SOUS_VERROU = 4;
+const BUDGET_REJEU_MS = 12_000;
+const rejouable = (error, essai, debut) => Boolean(error && error.refusSousVerrou) && essai < ESSAIS_SOUS_VERROU && Date.now() - debut < BUDGET_REJEU_MS;
+const petitEcart = (essai) => new Promise((ok) => setTimeout(ok, 40 + Math.random() * 160 * essai));
+
 function heldOps(held, request) {
   const first = held.opsPlan?.resourceBlocks?.find((b) => b.resourceType === 'bowling_lane');
   const emergencyWarning = first?.emergencyWarning || '';
@@ -153,38 +164,50 @@ async function traiterBlocage(req, res) {
     }
     const request = (frozen && requestFromHeldUpsell({ ...body, name: '', phone: '', email: '', notes: '' }, frozen)) || normalizeReservationRequest({ ...body, name: '', phone: '', email: '', notes: '' }, { channel: 'public' });
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(jeton, request, signatureDemande(request)) : null;
-    const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: jeton });
-    if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
-      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de retenir ces horaires.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
-      return;
+    let ops = null;
+    let blocage;
+    const debutRetenue = Date.now();
+    for (let essai = 1; ; essai += 1) {
+      ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: jeton });
+      if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
+        sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de retenir ces horaires.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
+        return;
+      }
+      if (ops.blockOnlineConfirmation) {
+        // Pris par une reservation, ou retenus par un autre client en train de
+        // reserver ? Le moteur rejoue sans les blocages : s il trouve alors,
+        // ce sont eux, et on dit quand la place se libere au plus tard.
+        const sansBlocages = await prepareReservationOps(request, 'public', { readState: (date, centre) => readStaffState(date, centre) });
+        const precision = sansBlocages.blockOnlineConfirmation
+          ? ''
+          : await precisionBlocagesEnCours({ ...request, ...sansBlocages }, { saufJeton: jeton });
+        sendError(res, 409, `Ces horaires ne sont plus libres.${precision || ' Choisissez-en d’autres.'}`, { code: 'slot_unavailable' });
+        return;
+      }
+      // Les pistes du plan que le moteur vient de composer, pas celles de la
+      // page des horaires : elles ont pu etre prises depuis, celles-ci sont
+      // libres maintenant (le client ne voit jamais un numero de piste).
+      const pistesDuPlan = ops.opsPlan && Array.isArray(ops.opsPlan.assignedLanes) ? ops.opsPlan.assignedLanes : [];
+      const opsDuTour = ops;
+      try {
+        blocage = await createSlotHold({
+          ...request,
+          ...opsDuTour,
+          acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
+          ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
+          channel: 'public',
+        }, {
+          jeton,
+          empreinteAppareil: empreinteAppareil(req),
+          signatureDemande: signatureDemande(request),
+          verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || opsDuTour.opsPlan || request.opsPlan || null }, reservations),
+        });
+        break;
+      } catch (error) {
+        if (held || !rejouable(error, essai, debutRetenue)) throw error;
+        await petitEcart(essai);
+      }
     }
-    if (ops.blockOnlineConfirmation) {
-      // Pris par une reservation, ou retenus par un autre client en train de
-      // reserver ? Le moteur rejoue sans les blocages : s il trouve alors,
-      // ce sont eux, et on dit quand la place se libere au plus tard.
-      const sansBlocages = await prepareReservationOps(request, 'public', { readState: (date, centre) => readStaffState(date, centre) });
-      const precision = sansBlocages.blockOnlineConfirmation
-        ? ''
-        : await precisionBlocagesEnCours({ ...request, ...sansBlocages }, { saufJeton: jeton });
-      sendError(res, 409, `Ces horaires ne sont plus libres.${precision || ' Choisissez-en d’autres.'}`, { code: 'slot_unavailable' });
-      return;
-    }
-    // Les pistes du plan que le moteur vient de composer, pas celles de la
-    // page des horaires : elles ont pu etre prises depuis, celles-ci sont
-    // libres maintenant (le client ne voit jamais un numero de piste).
-    const pistesDuPlan = ops.opsPlan && Array.isArray(ops.opsPlan.assignedLanes) ? ops.opsPlan.assignedLanes : [];
-    const blocage = await createSlotHold({
-      ...request,
-      ...ops,
-      acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
-      ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
-      channel: 'public',
-    }, {
-      jeton,
-      empreinteAppareil: empreinteAppareil(req),
-      signatureDemande: signatureDemande(request),
-      verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || ops.opsPlan || request.opsPlan || null }, reservations),
-    });
     sendJson(res, 201, {
       ok: true,
       holdToken: jeton,
@@ -301,49 +324,61 @@ module.exports = async (req, res) => {
       return;
     }
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(holdToken, request, signatureDemande(request)) : null;
-    const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: holdToken });
-    if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
-      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de confirmer.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
-      return;
+    let ops = null;
+    let reservation;
+    const debutConfirmation = Date.now();
+    for (let essai = 1; ; essai += 1) {
+      ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: holdToken });
+      if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
+        sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de confirmer.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
+        return;
+      }
+      if (ops.blockOnlineConfirmation) {
+        const alternatives = await findReservationAlternatives(request, {
+          channel: 'public',
+          limit: 5,
+          spanDays: 14,
+          maxChecks: 160,
+          saufJeton: holdToken,
+        });
+        sendError(res, 409, alternatives.length
+          ? 'Ce créneau ne tient plus, mais nous avons trouvé des alternatives compatibles.'
+          : 'Ce créneau ne peut pas être planifié automatiquement. Merci de choisir un autre horaire.', {
+          alternatives,
+        });
+        return;
+      }
+      // Les pistes du plan que le moteur vient de composer, comme pour le
+      // blocage : celles de la page des horaires ont pu etre prises pendant que
+      // le client remplissait ses coordonnees (le moteur les garde quand elles
+      // sont encore libres). Un blocage en cours reprend, lui, les siennes sous
+      // le verrou (lib/database planDuBlocage).
+      const pistesDuPlan = ops.opsPlan && Array.isArray(ops.opsPlan.assignedLanes) ? ops.opsPlan.assignedLanes : [];
+      const opsDuTour = ops;
+      try {
+        reservation = await createReservation({
+          ...request,
+          ...opsDuTour,
+          ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
+          channel: 'public',
+          holdToken,
+          // La case « Je ne souhaite pas recevoir les offres » du formulaire :
+          // un booleen, ou rien (une surface sans la case ne decide rien).
+          ...(body && typeof body.sansOffres === 'boolean' ? { choixOffres: { refuse: body.sansOffres } } : {}),
+          signatureDemande: signatureDemande(request),
+          // D ou vient le client (UTM, gclid, page d origine, appareil) : 0055.
+          acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
+          // Les installations comptees (pistes de duckpin, tables) se reverifient
+          // SOUS le verrou de la journee : deux demandes simultanees ne prennent
+          // plus toutes deux la derniere unite.
+          verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || opsDuTour.opsPlan || request.opsPlan || null }, reservations),
+        });
+        break;
+      } catch (error) {
+        if (held || !rejouable(error, essai, debutConfirmation)) throw error;
+        await petitEcart(essai);
+      }
     }
-    if (ops.blockOnlineConfirmation) {
-      const alternatives = await findReservationAlternatives(request, {
-        channel: 'public',
-        limit: 5,
-        spanDays: 14,
-        maxChecks: 160,
-        saufJeton: holdToken,
-      });
-      sendError(res, 409, alternatives.length
-        ? 'Ce créneau ne tient plus, mais nous avons trouvé des alternatives compatibles.'
-        : 'Ce créneau ne peut pas être planifié automatiquement. Merci de choisir un autre horaire.', {
-        alternatives,
-      });
-      return;
-    }
-    // Les pistes du plan que le moteur vient de composer, comme pour le
-    // blocage : celles de la page des horaires ont pu etre prises pendant que
-    // le client remplissait ses coordonnees (le moteur les garde quand elles
-    // sont encore libres). Un blocage en cours reprend, lui, les siennes sous
-    // le verrou (lib/database planDuBlocage).
-    const pistesDuPlan = ops.opsPlan && Array.isArray(ops.opsPlan.assignedLanes) ? ops.opsPlan.assignedLanes : [];
-    const reservation = await createReservation({
-      ...request,
-      ...ops,
-      ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
-      channel: 'public',
-      holdToken,
-      // La case « Je ne souhaite pas recevoir les offres » du formulaire :
-      // un booleen, ou rien (une surface sans la case ne decide rien).
-      ...(body && typeof body.sansOffres === 'boolean' ? { choixOffres: { refuse: body.sansOffres } } : {}),
-      signatureDemande: signatureDemande(request),
-      // D ou vient le client (UTM, gclid, page d origine, appareil) : 0055.
-      acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
-      // Les installations comptees (pistes de duckpin, tables) se reverifient
-      // SOUS le verrou de la journee : deux demandes simultanees ne prennent
-      // plus toutes deux la derniere unite.
-      verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || ops.opsPlan || request.opsPlan || null }, reservations),
-    });
     const postCreate = await afterReservationCreated(reservation, request);
     // LE REGISTRE (2026-10-05) : une reservation en ligne n ecrivait AUCUNE
     // ligne d audit, seulement un ops_event sans auteur ni contenu. Elle est

@@ -331,7 +331,7 @@ const LOT_MAX = 12;
 // elles se journalisent, et le staff lit une phrase qui dit de reessayer.
 function estErreurInfra(error) {
   const raw = String((error && error.message) || '');
-  return !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+  return !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
 }
 const MESSAGE_INFRA = 'Opération réservation impossible pour le moment. Réessayez.';
 

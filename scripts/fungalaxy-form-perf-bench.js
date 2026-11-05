@@ -445,11 +445,11 @@ async function gate() {
   try {
     // --- La forme des regles, lue dans la feuille SERVIE (mutation comprise), sans ses commentaires ---
     const css = appliquerMutation('assets/fungalaxy-booking.css', fs.readFileSync(path.join(ROOT, 'assets/fungalaxy-booking.css'), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
-    const willChange = (css.match(/will-change\s*:/g) || []).length;
-    const willChangePhoto = /\.fg-art img \{[^}]*will-change: transform;/.test(css);
-    ok(willChange === 1 && willChangePhoto, 'un seul will-change dans la feuille, celui de la photo qui derive en continu', `${willChange} occurrence(s)`);
+    // Depuis le 2026-11-05 la photo ne derive plus : plus rien ne merite une couche permanente.
+    const willChange = (css.replace(/\/\*[\s\S]*?\*\//g, '').match(/will-change\s*:\s*(?!auto)[a-z]/g) || []).length;
+    ok(willChange === 0, 'aucun will-change dans la feuille : plus rien ne derive en continu', `${willChange} occurrence(s)`);
     const COMPOSITEUR = ['opacity', 'transform', 'translate', 'scale'];
-    ['fg-seg-fill', 'fg-step-in', 'fg-word', 'fg-rise', 'fg-fade-in', 'fg-fade-out', 'fg-slide-in', 'fg-slide-out', 'fg-settle', 'fg-drift'].forEach((nom) => {
+    ['fg-seg-fill', 'fg-step-in', 'fg-rise', 'fg-fade-in', 'fg-fade-out'].forEach((nom) => {
       const props = proprietesDesKeyframes(css, nom);
       ok(Boolean(props) && props.length > 0 && props.every((p) => COMPOSITEUR.indexOf(p) >= 0), `@keyframes ${nom} n anime que des proprietes du compositeur`, props ? props.join(', ') : 'absent');
     });

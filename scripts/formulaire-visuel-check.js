@@ -217,7 +217,8 @@ async function jusquAuBout(b, centre, w) {
   serveur.close();
   if (MUTER) {
     // Sur la feuille d avant, ces gardes-la doivent rougir : sinon elles ne mordent pas.
-    const attendus = [/\[jour\]/, /\[groupe\]|\[haut\]/, /\[activites\]/, /\[formules\]/];
+    // Elle arrete le parcours avant les formules : celles-ci ont leurs contre-preuves dans formules-fete-check.
+    const attendus = [/\[jour\]/, /\[groupe\]|\[haut\]/, /\[activites\]/];
     const mordent = attendus.filter((re) => rouges.some((r) => re.test(r))).length;
     console.log(`contre-preuve : ${echecs} rouges sur la feuille d avant, ${mordent}/${attendus.length} familles mordent`);
     process.exit(mordent === attendus.length ? 0 : 1);

@@ -600,7 +600,7 @@ async function main() {
       },
       {
         fichier: 'assets/fungalaxy-booking.css',
-        de: '  .fg-scene[data-scene="contact"] .fg-hold { order: 2; margin-top: 0; margin-bottom: 22px; }\n',
+        de: '  .fg-scene[data-scene="contact"] .fg-hold { order: 2; margin-top: 0; }\n',
         vers: '',
         jouer: async () => !verifierOrdreTelephone(await scenarioTelephone(browser, mock, 'k-sans-rang', true), false),
         label: 'sans le rang du bandeau, il repasse au-dessus du fil des etapes sur telephone : ce gate ROUGIRAIT',

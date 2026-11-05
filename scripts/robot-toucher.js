@@ -119,20 +119,22 @@ function lister() {
     if (estInteractif && el.closest(INTERACTIF) !== el && el.parentElement.closest(INTERACTIF)) continue;
     cibles.push({
       chemin: chemin(el), signature: signature(el), texte: el.textContent.replace(/\s+/g, ' ').trim().slice(0, 44) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '',
-      genre: estInteractif ? 'bouton' : main ? 'main' : 'ligne', l: Math.round(r.width), h: Math.round(r.height), lien: el.closest('a[href]') ? el.closest('a[href]').getAttribute('href') : '', ferme: el.disabled === true || el.getAttribute('aria-disabled') === 'true' || (el.control && el.control.disabled === true),
+      genre: estInteractif ? 'bouton' : main ? 'main' : 'ligne', choisi: el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true', l: Math.round(r.width), h: Math.round(r.height), lien: el.closest('a[href]') ? el.closest('a[href]').getAttribute('href') : '', ferme: el.disabled === true || el.getAttribute('aria-disabled') === 'true' || (el.control && el.control.disabled === true),
     });
   }
   return cibles;
 }
 // D abord une seconde sans toucher a rien : ce qui change tout seul (un compte a rebours) est mis de cote.
+// Une scene qui finit d entrer change de classe : ce n est pas du bruit pour tout ce qu elle contient (2026-11-05, les occasions passaient pour mortes).
 const poserGuet = async (page) => {
   await page.evaluate(() => {
     if (window.__guet) { window.__guet.disconnect(); }
     window.__m = 0;
     window.__calibre = true;
     window.__bruit = new WeakSet();
+    window.__soi = new WeakSet();
     const bruit = (n) => { for (let p = n; p; p = p.parentElement) if (window.__bruit.has(p)) return true; return false; };
-    window.__guet = new MutationObserver((l) => { for (const r of l) { const n = r.target.nodeType === 1 ? r.target : r.target.parentElement; if (!n || (n.closest && n.closest('.fg-art, #fgLive'))) continue; if (window.__calibre) { window.__bruit.add(n); continue; } if (!bruit(n)) window.__m += 1; } });
+    window.__guet = new MutationObserver((l) => { for (const r of l) { const n = r.target.nodeType === 1 ? r.target : r.target.parentElement; if (!n || (n.closest && n.closest('.fg-art, #fgLive'))) continue; if (window.__calibre) { if (n.matches('.fg-scene')) window.__soi.add(n); else window.__bruit.add(n); continue; } if (!bruit(n) && !window.__soi.has(n)) window.__m += 1; } });
     window.__guet.observe(document.documentElement, { subtree: true, attributes: true, childList: true, characterData: true });
     if (!window.__ecoute) { window.__ecoute = true; for (const t of ['change', 'input']) document.addEventListener(t, () => { window.__m += 1; }, true); }
   });
@@ -193,8 +195,14 @@ const toucher = async (page, cible) => {
         const toutes = await courant.page.evaluate(lister);
         // Calendrier ouvert : ce qui est dessous est couvert, c est normal.
         const brutes = e.zone ? await courant.page.evaluate(([l, z]) => l.filter((c) => { const n = document.querySelector(c.chemin); return n && n.closest(z); }), [toutes, e.zone]) : toutes;
-        const vus = {};
-        cibles = brutes.filter((c) => { vus[c.signature] = (vus[c.signature] || 0) + 1; return vus[c.signature] <= 2; });
+        // Deux exemplaires par sorte, ceux qui ne sont pas DEJA choisis d abord : retoucher le jour ou
+        // le groupe deja choisi ne change rien, comme une radio (2026-11-05, « Aujourd hui » et « 4 »
+        // passaient pour morts). Une sorte dont tous les exemplaires sont choisis se touche quand meme.
+        const parSorte = {};
+        brutes.forEach((c, i) => { (parSorte[c.signature] = parSorte[c.signature] || []).push(i); });
+        const gardes = new Set();
+        Object.values(parSorte).forEach((ix) => ix.filter((i) => !brutes[i].choisi).concat(ix.filter((i) => brutes[i].choisi)).slice(0, 2).forEach((i) => gardes.add(i)));
+        cibles = brutes.filter((c, i) => gardes.has(i));
         ligne.total = cibles.length;
         ligne.vu = brutes.length;
         for (const c of brutes) if (c.genre !== 'ligne' && (c.h < 36 || c.l < 36) && !ligne.petits.some((p) => p.s === c.signature)) ligne.petits.push({ s: c.signature, t: c.texte, l: c.l, h: c.h });

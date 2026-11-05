@@ -141,6 +141,7 @@
     "test:formulaire-lenteur": "node scripts/formulaire-lenteur-check.js && node scripts/formulaire-lenteur-check.js --mutate",
     "test:formulaire-fluide": "node scripts/formulaire-fluide-check.js && node scripts/formulaire-fluide-check.js --mutate",
     "test:formulaire-propre": "node scripts/formulaire-propre-check.js && node scripts/formulaire-propre-check.js --mutate",
+    "test:formulaire-visuel": "node scripts/formulaire-visuel-check.js && node scripts/formulaire-visuel-check.js --mutate",
     "test:fungalaxy-information": "node scripts/fungalaxy-information-check.js",
     "test:fungalaxy-formules": "node scripts/fungalaxy-formules-check.js",
     "test:activity-participants": "node scripts/activity-participants-backend-check.js && node scripts/staff-activity-participants-check.js && node scripts/staff-activity-participants-browser-check.js && node scripts/activity-participants-form-check.js && node scripts/activity-participants-custom-request-check.js && node scripts/activity-participants-custom-check.js && node scripts/bowling-emergency-stock-check.js && node scripts/activity-participants-emergency-check.js",

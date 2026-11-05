@@ -14,6 +14,8 @@
 // truc special pour montrer que c est pas vide » ; « plus sombre les images
 // pour mieux voir les textes ».
 //
+// DEPUIS LE 2026-11-05 (valide par Ansar sur images) : la guirlande est UNE fois, sur le titre de la
+// section, et la photo est nette, a gauche du texte, sans voile. [A], [C] et [D] lisent cela.
 //   [A] chaque formule de la famille des anniversaires porte la guirlande (une
 //       tuile SVG repetee « round » : jamais un feston coupe) et 9 px de plus en
 //       haut ; aucune autre formule ;
@@ -86,15 +88,15 @@ const MUTATIONS = {
   partout: ['js', "    if (!/^(libramont|gembloux)$/.test(centreDesPhotos())) return '';\n", '    if (false) return \'\';\n'],
   remiseAnniv: ['js', '        var remise = !fete && Number(f.price) > 0', '        var remise = Number(f.price) > 0'],
   remiseFausse: ['js', 'Math.round((1 - Number(f.price) / Number(f.oldPrice)) * 100)', 'Math.round(Number(f.price) / Number(f.oldPrice) * 100)'],
-  tot: ['js', 'alt="" loading="lazy" decoding="async"', 'alt="" decoding="async"'],
-  dansLeFlux: ['css', '.fg-for__photo { position: absolute; inset: 0;', '.fg-for__photo { position: relative; inset: 0;'],
-  voileClair: ['css', 'rgba(5, 5, 5, 0.74) 0%', 'rgba(5, 5, 5, 0.3) 0%'],
+  tot: ['js', "fond + '-carte.webp\" alt=\"\" loading=\"lazy\" decoding=\"async\"", "fond + '-carte.webp\" alt=\"\" decoding=\"async\""],
+  dansLeFlux: ['css', '.fg-for__photo { position: absolute; z-index: 0;', '.fg-for__photo { position: relative; z-index: 0;'],
+  voileClair: ['css', '.fg-for__photo::after { display: none; }', '.fg-for__photo::after { content: ""; display: block; background-image: linear-gradient(rgba(5, 5, 5, 0.7) 0%, rgba(5, 5, 5, 0.7) 100%); }'],
   refusAvecPhoto: ['css', '.fg-card.is-refus .fg-for__photo { display: none; }\n', ''],
   festonCoupe: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 72px 17px repeat-x'],
   guirlandeHaute: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 85px 20px round no-repeat'],
-  guirlandeLongue: ['css', 'z-index: 2; height: 17px;', 'z-index: 2; height: 20px;'],
+  guirlandeLongue: ['css', 'flex: 1 1 auto; height: 17px;', 'flex: 1 1 auto; height: 20px;'],
   feries: ['meta', 'jours fériés', 'jours feries'],
-  remiseColle: ['css', '.fg-for__price:has(.fg-for__remise) { row-gap: 8px; }\n', ''],
+  remiseColle: ['css', '.fg-for__remise { align-self: baseline; padding: 1px 5px;', '.fg-for__remise { align-self: baseline; flex-basis: 100%; margin-top: -14px; padding: 1px 5px;'],
 };
 let mutation = '';
 const lireSource = (f) => fs.readFileSync(path.join(ROOT, 'assets', f), 'utf8').replace(/\r\n/g, '\n');
@@ -190,6 +192,7 @@ async function lireCartes(page) {
     const alpha = (s) => { const m = /rgba?\(([^)]+)\)/.exec(s); if (!m) return 1; const p = m[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat); return p.length > 3 ? p[3] : 1; };
     return Array.from(document.querySelectorAll('#gridFor .fg-fam')).map((fam) => ({
       titre: (fam.querySelector('.fg-fam__title') || {}).textContent || '',
+      guirlande: (() => { const t = fam.querySelector('.fg-fam__title'); const a = t ? getComputedStyle(t, '::after') : null; return a ? { contenu: a.content, fond: a.backgroundImage, repetition: a.backgroundRepeat, taille: a.backgroundSize, hauteur: parseFloat(a.height) || 0 } : null; })(),
       cartes: Array.from(fam.querySelectorAll('.fg-card--formule')).map((c) => {
         const cs = getComputedStyle(c);
         const avant = getComputedStyle(c, '::before');
@@ -233,7 +236,7 @@ async function lireCartes(page) {
           photo: img ? img.getAttribute('src') : '',
           photoVue: ph ? getComputedStyle(ph).display !== 'none' : false,
           photoChargee: img ? img.complete && img.naturalWidth > 0 : false,
-          photoPose: ph ? { position: getComputedStyle(ph).position, z: getComputedStyle(ph).zIndex, couvre: rp.width > 0 && Math.abs(rp.left - r.left) <= 1.5 && Math.abs(rp.right - r.right) <= 1.5 && Math.abs(rp.top - r.top) <= 1.5 && Math.abs(rp.bottom - r.bottom) <= 1.5 } : null,
+          photoPose: ph ? { position: getComputedStyle(ph).position, z: getComputedStyle(ph).zIndex, aGauche: rp.width > 0 && rp.width <= 90 && Math.abs(rp.left - r.left) <= 1.5 && Math.abs(rp.top - r.top) <= 1.5 && Math.abs(rp.bottom - r.bottom) <= 1.5, texteApres: Boolean(nom) && nom.getBoundingClientRect().left >= rp.right - 0.5 } : null,
           voileMin: voile ? Math.min(...(voile.match(/rgba?\([^)]+\)/g) || ['rgba(0,0,0,0)']).map(alpha)) : null,
           texteZ: nom ? { position: getComputedStyle(nom.parentElement).position, z: getComputedStyle(nom.parentElement).zIndex } : null,
           remise: remise ? remise.textContent : '',
@@ -264,19 +267,17 @@ function verifierFete(familles, largeur) {
   const anniv = familles.find((f) => /anniv/i.test(f.titre));
   const autres = familles.filter((f) => f !== anniv);
   if (!ok(Boolean(anniv) && anniv.cartes.length > 0 && autres.length > 0 && autres.every((f) => f.cartes.length > 0), 'MONTAGE la famille des anniversaires et une autre famille sont affichees', familles.map((f) => `${sansEspaces(f.titre)} ${f.cartes.length}`).join(' | '))) return;
-  const sansGuirlande = anniv.cartes.filter((c) => !(c.fete && c.avantContenu !== 'none' && /data:image\/svg\+xml/.test(c.avantFond) && c.avantHauteur >= 16));
-  ok(sansGuirlande.length === 0, 'chaque formule anniversaire porte la guirlande de fanions', sansGuirlande.map((c) => c.id).join(' ') || `${anniv.cartes.length} cartes`);
-  const enTrop = autres.flatMap((f) => f.cartes).filter((c) => c.fete || /svg/.test(c.avantFond));
-  ok(enTrop.length === 0, 'aucune autre formule ne porte de guirlande', enTrop.map((c) => c.id).join(' '));
-  ok(anniv.cartes.every((c) => /^round/.test(c.avantRepetition)), 'la tuile se repete « round » : jamais un feston coupe au bord', [...new Set(anniv.cartes.map((c) => c.avantRepetition))].join(' | '));
+  const g = anniv.guirlande;
+  ok(Boolean(g) && g.contenu !== 'none' && /data:image\/svg\+xml/.test(g.fond) && g.hauteur >= 16, 'le titre des anniversaires porte la guirlande de fanions', g ? `${g.taille} dans ${g.hauteur} px` : 'absent');
+  const repetees = anniv.cartes.filter((c) => /svg/.test(c.avantFond));
+  ok(repetees.length === 0, 'une fois seulement : aucune carte ne la repete', repetees.map((c) => c.id).join(' '));
+  const enTrop = autres.flatMap((f) => f.cartes).filter((c) => c.fete || /svg/.test(c.avantFond)).map((c) => c.id).concat(autres.filter((f) => f.guirlande && /svg/.test(f.guirlande.fond)).map((f) => sansEspaces(f.titre)));
+  ok(enTrop.length === 0, 'aucune autre famille ne porte de guirlande', enTrop.join(' '));
+  ok(Boolean(g) && /^round/.test(g.repetition), 'la tuile se repete « round » : jamais un feston coupe au bord', g ? g.repetition : '');
   // Le dessin de la tuile garde sa hauteur : une guirlande plus haute que sa
   // case serait coupee, plus basse que son dessin, ecrasee.
-  const hautTuile = (c) => { const m = /([\d.]+)px\s+([\d.]+)px/.exec(c.avantTaille || ''); return m ? Number(m[2]) : NaN; };
-  ok(anniv.cartes.every((c) => Math.abs(hautTuile(c) - c.avantHauteur) < 0.5), 'la tuile a la hauteur de sa case : rien de coupe, rien d ecrase', `${anniv.cartes[0].avantTaille} dans ${anniv.cartes[0].avantHauteur} px`);
-  const touche = anniv.cartes.filter((c) => !(c.hautNom !== null && c.hautNom >= c.avantHauteur + 0.5));
-  ok(touche.length === 0, 'la guirlande s arrete avant la boite du texte du nom (sinon un fanion devient son pixel le plus clair)', touche.map((c) => `${c.id} nom a ${c.hautNom && c.hautNom.toFixed(1)} px, guirlande jusqu a ${c.avantHauteur} px`).join(' ; ') || `nom a ${anniv.cartes[0].hautNom.toFixed(1)} px, guirlande jusqu a ${anniv.cartes[0].avantHauteur} px`);
-  const base = autres.flatMap((f) => f.cartes)[0].hautInterne;
-  ok(anniv.cartes.every((c) => Math.abs(c.hautInterne - (base + 9)) < 0.5), 'la guirlande prend 9 px en haut, rien d autre', `${anniv.cartes[0].hautInterne} px contre ${base} px`);
+  const hautTuile = (x) => { const m = /([\d.]+)px\s+([\d.]+)px/.exec(x.taille || ''); return m ? Number(m[2]) : NaN; };
+  ok(Boolean(g) && Math.abs(hautTuile(g) - g.hauteur) < 0.5, 'la tuile a la hauteur de sa case : rien de coupe, rien d ecrase', g ? `${g.taille} dans ${g.hauteur} px` : '');
 }
 function verifierPhotos(familles, largeur) {
   section(`B. LA VRAIE PHOTO EN FOND (${largeur} px, Libramont)`);
@@ -303,14 +304,14 @@ function verifierTaille(mesures, familles, largeur) {
   const ecarts = mesures.filter((m) => Math.abs(m.h - m.sans) > 0.5);
   ok(mesures.length > 0 && ecarts.length === 0, 'retirer la photo ne change la hauteur d aucune carte', ecarts.map((m) => `${m.id} ${m.h.toFixed(1)} contre ${m.sans.toFixed(1)}`).join(' ') || `${mesures.length} cartes`);
   const poses = familles.flatMap((f) => f.cartes).filter((c) => c.photoPose && c.photoVue);
-  ok(poses.length > 0 && poses.every((c) => c.photoPose.position === 'absolute' && c.photoPose.couvre), 'la photo est posee en fond et couvre toute la carte', poses.filter((c) => !(c.photoPose.position === 'absolute' && c.photoPose.couvre)).map((c) => `${c.id} ${c.photoPose.position}`).join(' '));
+  ok(poses.length > 0 && poses.every((c) => c.photoPose.position === 'absolute' && c.photoPose.aGauche), 'la photo est a gauche, sur toute la hauteur de la carte, 90 px au plus', poses.filter((c) => !(c.photoPose.position === 'absolute' && c.photoPose.aGauche)).map((c) => `${c.id} ${c.photoPose.position}`).join(' '));
 }
 function verifierTexte(familles, largeur) {
   section(`D. LE TEXTE DEVANT LA PHOTO (${largeur} px)`);
   const poses = familles.flatMap((f) => f.cartes).filter((c) => c.photoPose && c.photoVue);
-  ok(poses.length > 0 && poses.every((c) => c.texteZ && c.texteZ.position === 'relative' && Number(c.texteZ.z) > Number(c.photoPose.z)), 'le texte passe devant la photo', poses.map((c) => `${c.id} ${c.texteZ && c.texteZ.z}>${c.photoPose.z}`).join(' '));
-  const clairs = poses.filter((c) => !(c.voileMin >= 0.74));
-  ok(clairs.length === 0, 'le voile noir couvre la photo a 74 % au moins, partout (plus sombre pour mieux voir les textes)', clairs.map((c) => `${c.id} ${c.voileMin}`).join(' ') || `voile le plus clair ${Math.min(...poses.map((c) => c.voileMin))}`);
+  ok(poses.length > 0 && poses.every((c) => c.photoPose.texteApres), 'le texte commence apres la photo, rien ne passe dessus', poses.filter((c) => !c.photoPose.texteApres).map((c) => c.id).join(' '));
+  const voilees = poses.filter((c) => c.voileMin !== 0);
+  ok(voilees.length === 0, 'la photo reste nette : aucun voile par-dessus', voilees.map((c) => `${c.id} ${c.voileMin}`).join(' '));
 }
 function verifierRemise(familles, meta, largeur) {
   section(`E. LA REMISE DES OFFRES SPECIALES (${largeur} px)`);
@@ -362,11 +363,14 @@ async function verifierChargement(browser, mock) {
   try {
     if (!ok(await versFormules(page, mock.DATE, 10, { ouvrir: false }), 'MONTAGE l ecran des activites est ouvert')) return;
     await page.waitForTimeout(800);
-    const avant = vues.length;
+    // Les rangees des activites montrent leur photo depuis le 2026-11-05 : on lit les images des formules elles-memes.
+    const chargees = () => page.evaluate(() => Array.from(document.querySelectorAll('#gridFor .fg-for__photo img')).filter((i) => i.complete && i.naturalWidth > 0).length);
+    const avant = await chargees();
     await page.click('#tabFor');
     await attendre(page, () => !document.querySelector('#panelFor').hidden && document.querySelectorAll('#gridFor .fg-for__photo img').length > 0, 5000);
     await attendre(page, () => Array.from(document.querySelectorAll('#gridFor .fg-for__photo img')).some((i) => i.complete && i.naturalWidth > 0), 8000);
-    ok(avant === 0 && vues.length > 0, 'aucune photo de carte avant l onglet des formules ; elles arrivent a son ouverture', `${avant} avant, ${vues.length} apres`);
+    const apres = await chargees();
+    ok(avant === 0 && apres > 0, 'aucune photo de formule avant son onglet ; elles arrivent a son ouverture', `${avant} avant, ${apres} apres`);
   } finally {
     await ctx.close();
   }
@@ -436,12 +440,12 @@ async function contreEpreuves(browser, mock, meta) {
   const empreintes = ['fungalaxy-booking.js', 'fungalaxy-booking.css'].map((f) => fs.readFileSync(path.join(ROOT, 'assets', f), 'utf8'));
   await contreEpreuve('fete', 'sans la famille des anniversaires reconnue, la guirlande disparait', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('festonCoupe', 'repetee sans « round », la guirlande coupe un feston au bord', () => parcoursComplet(browser, mock, 1440, meta, { seulement: ['A'] }));
-  await contreEpreuve('guirlandeHaute', 'la guirlande a sa taille d avant (20 px) touche le nom', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
+  await contreEpreuve('guirlandeHaute', 'une tuile plus haute que sa case est coupee', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('guirlandeLongue', 'une case plus haute que la tuile', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('repete', 'sans la seconde photo, une section montre deux fois la meme', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));
   await contreEpreuve('refusAvecPhoto', 'une formule refusee qui garde sa photo', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));
   await contreEpreuve('dansLeFlux', 'la photo posee dans le flux rallonge la carte', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['C'] }));
-  await contreEpreuve('voileClair', 'un voile plus clair', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['D'] }));
+  await contreEpreuve('voileClair', 'un voile revenu sur la photo', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['D'] }));
   await contreEpreuve('remiseAnniv', 'la remise posee aussi sur les anniversaires', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['E'] }));
   await contreEpreuve('remiseFausse', 'une remise mal calculee', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['E'] }));
   await contreEpreuve('remiseColle', 'la pastille collee sous le prix', () => parcoursComplet(browser, mock, 375, meta, { seulement: ['E'] }));

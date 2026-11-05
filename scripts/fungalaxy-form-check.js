@@ -1984,7 +1984,7 @@ async function contrastesPires(page, selecteur) {
         const b = p.getBoundingClientRect();
         lecteurSeul = /^rect\((0(px)?[ ,]*){4}\)$/.test(s.clip) || (b.width <= 1 && b.height <= 1 && s.overflow === 'hidden');
       }
-      return !lecteurSeul && r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'
+      return !lecteurSeul && parseFloat(cs.fontSize) >= 1 && r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'
         && Array.from(el.childNodes).some((t) => t.nodeType === 3 && t.textContent.trim());
     });
     cibles.forEach((el, k) => el.setAttribute('data-qa-contraste', String(k)));
@@ -5222,7 +5222,10 @@ async function main() {
     ok(await attendre(pS, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), 'MONTAGE [S] telephone : ecran des activites');
     // Deux cartes avec photo : l une se touche, l autre se fait seulement
     // effleurer par un doigt qui fait defiler.
-    const [idTouche, idEffleure] = await pS.evaluate(() => Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).filter((c) => c.querySelector('.fg-card__photo img[data-src]')).map((c) => c.dataset.activity));
+    // DEPUIS LE 2026-11-05 (go d Ansar sur images) la photo vit dans la rangee, pleine, chargee avec
+    // elle : le toucher ne la change plus. Ce qui reste vrai : un toucher coche, retouche decoche, la
+    // case decoche, un doigt qui defile ne coche rien, et aucun survol ne colle au telephone.
+    const [idTouche, idEffleure] = await pS.evaluate(() => Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).filter((c) => c.querySelector('.fg-card__photo img')).map((c) => c.dataset.activity));
     const lireCarteS = (id) => pS.evaluate((i) => {
       const c = document.querySelector(`#gridAct .fg-card[data-activity="${i}"]`);
       const ph = c.querySelector('.fg-card__photo');
@@ -5232,7 +5235,7 @@ async function main() {
     await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
     await dormir(700);
     const touche1 = await lireCarteS(idTouche);
-    ok(touche1.coche === 'true' && touche1.opacite === '0.55', '[S] telephone : UN toucher coche la carte, et sa photo prend le voile de la carte cochee (0,55), jamais le plein du survol', JSON.stringify(Object.assign({ id: idTouche }, touche1)));
+    ok(touche1.coche === 'true' && touche1.opacite === '1', '[S] telephone : UN toucher coche la carte, sa photo reste pleine dans la rangee', JSON.stringify(Object.assign({ id: idTouche }, touche1)));
     // LE TOUCHER SUIVANT DECOCHE (2026-10-06, journal Pinlane entree 387,
     // demande de Movsar) et le survol ne doit toujours pas coller :
     // retouchee, la carte se decoche et sa photo repart a 0 ; recochee puis
@@ -5240,15 +5243,15 @@ async function main() {
     await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
     await dormir(700);
     const touche2 = await lireCarteS(idTouche);
-    ok(touche2.coche === 'false' && touche2.opacite === '0', '[S] telephone : retouchee, la carte se decoche (entree 387) et sa photo repart a 0, jamais le plein d un survol colle', JSON.stringify(touche2));
+    ok(touche2.coche === 'false' && touche2.opacite === '1', '[S] telephone : retouchee, la carte se decoche (entree 387), sa photo reste celle de la rangee', JSON.stringify(touche2));
     await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
     await dormir(700);
     const touche2b = await lireCarteS(idTouche);
-    ok(touche2b.coche === 'true' && touche2b.opacite === '0.55', 'MONTAGE [S] telephone : recochee d un toucher, voile 0,55', JSON.stringify(touche2b));
+    ok(touche2b.coche === 'true', 'MONTAGE [S] telephone : recochee d un toucher', JSON.stringify(touche2b));
     await pS.tap(`#gridAct li[data-activity="${idTouche}"] [data-activity-toggle]`);
     await dormir(700);
     const touche3 = await lireCarteS(idTouche);
-    ok(touche3.coche === 'false' && touche3.opacite === '0', '[S] telephone : decochee par sa case explicite, la photo repart a 0 (le survol ne reste plus colle a la carte touchee)', JSON.stringify(touche3));
+    ok(touche3.coche === 'false' && touche3.opacite === '1', '[S] telephone : decochee par sa case explicite, la photo reste celle de la rangee', JSON.stringify(touche3));
     // Un doigt se pose sur une carte et fait defiler, au vrai geste.
     await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).scrollIntoViewIfNeeded();
     const boiteS = await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).boundingBox();
@@ -5260,7 +5263,7 @@ async function main() {
     await cdpS.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await dormir(600);
     const effleure = await lireCarteS(idEffleure);
-    ok(effleure.coche === 'false' && effleure.enAttente && photosS.length === avantEffleure, '[S] telephone : un doigt qui fait defiler sur une carte ne la coche pas et ne telecharge pas sa photo', JSON.stringify({ id: idEffleure, coche: effleure.coche, enAttente: effleure.enAttente, demandees: photosS.slice(avantEffleure) }));
+    ok(effleure.coche === 'false', '[S] telephone : un doigt qui fait defiler sur une carte ne la coche pas', JSON.stringify({ id: idEffleure, coche: effleure.coche, photos: photosS.length - avantEffleure }));
     await ctxS.close();
     // Bureau, souris : le survol devoile toujours la photo.
     const ctxSb = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -5269,10 +5272,10 @@ async function main() {
     await attendre(pSb, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
     await pSb.click('#goActivities');
     await attendre(pSb, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
-    const idSb = await pSb.evaluate(() => { const c = Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).find((x) => x.querySelector('.fg-card__photo img[data-src]')); return c && c.dataset.activity; });
+    const idSb = await pSb.evaluate(() => { const c = Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).find((x) => x.querySelector('.fg-card__photo img')); return c && c.dataset.activity; });
     await pSb.hover(`#gridAct .fg-card[data-activity="${idSb}"]`);
     const survolSb = await attendre(pSb, (i) => { const ph = document.querySelector(`#gridAct .fg-card[data-activity="${i}"] .fg-card__photo`); const img = ph.querySelector('img'); return getComputedStyle(ph).opacity === '1' && !img.dataset.src && img.complete && img.naturalWidth > 0; }, 3000, idSb);
-    ok(survolSb && await pSb.evaluate(() => matchMedia('(hover: hover)').matches), '[S] bureau : la souris survole toujours, la photo se telecharge et se devoile en plein', idSb);
+    ok(survolSb && await pSb.evaluate(() => matchMedia('(hover: hover)').matches), '[S] bureau : la photo de la rangee est chargee et pleine sous la souris', idSb);
     await ctxSb.close();
 
     // =====================================================================
@@ -5315,12 +5318,15 @@ async function main() {
       // grille a change, l exigence des 44 px reste, verifiee a part plus bas
       // sur les tiroirs ouverts.
       const colonnesT = new Set(grilleT.map((c) => c.gauche)).size;
-      const attenduesT = 2;
+      // MIS A JOUR LE 2026-11-05 : une rangee par activite au telephone, photo a gauche, comme l ecran des
+      // heures ; Ansar a donne son go sur les images. Le 2026-10-06 il voulait deux cartes par rangee
+      // (« c est moche, c etait bien avant, range de deux ») : si ce retour revient, c est ici.
+      const attenduesT = 1;
       const rangeesT = new Map();
       grilleT.forEach((c) => { rangeesT.set(c.haut, (rangeesT.get(c.haut) || 0) + 1); });
       const fautesT = grilleT.filter((c) => c.gauche < 0 || c.droite < 0);
       ok(grilleT.length >= 6 && colonnesT === attenduesT && fautesT.length === 0 && [...rangeesT.values()].every((n) => n <= attenduesT),
-        `[T] ${lT} px : deux cartes d activites par rangee (entree 377), rien hors de la grille`,
+        `[T] ${lT} px : une rangee par activite, comme les heures (2026-11-05), rien hors de la grille`,
         JSON.stringify({ cartes: grilleT.length, colonnes: colonnesT, rangees: [...rangeesT.values()], fautes: fautesT.slice(0, 3), exemple: grilleT.slice(0, 2) }));
       await pT.tap('#gridAct .fg-card[data-activity="bowling"]');
       await pT.tap('#gridAct .fg-card[data-activity="laser_game"]');

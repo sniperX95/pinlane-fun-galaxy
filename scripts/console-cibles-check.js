@@ -56,6 +56,11 @@ async function ouvrir(browser, hash) {
   page.on('pageerror', (e) => { const m = String(e.message || e); if (!/sandboxed and lacks/.test(m)) page.__erreurs.push(m.slice(0, 170)); });
   await page.route('**/*', (route) => { const r = route.request(); if (!r.url().startsWith(BASE) && r.method() !== 'GET') return route.abort(); return route.continue(); });
   await installerMock(page);
+  // L heure du banc est figee a 16:00 du jour (2026-11-06). Lancee apres minuit, aucune partie
+  // du jour n etait encore jouee : le banc ne trouvait plus de depart qui ne se reserve pas, et
+  // la contre-preuve jauge-muette passait sans rien verifier.
+  const seize = new Date(); seize.setHours(16, 0, 0, 0);
+  await page.clock.setFixedTime(seize);
   await page.goto(`${BASE}/${hash}`, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => typeof window.setView === 'function' && typeof state !== 'undefined', null, { timeout: 30000 });
   await dormir(900);

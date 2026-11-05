@@ -2533,6 +2533,12 @@
       var ranges = items.slice().sort(function (a, b) { return rang(a) - rang(b); });
       if (ranges.some(function (li, i) { return li !== items[i]; })) ranges.forEach(function (li) { grille.appendChild(li); });
     });
+    // Les familles ou quelque chose se reserve passent devant (Ansar, 2026-11-05 : « il faut que ca montre en
+    // premier ceux qu ils peuvent, sinon ils doivent chercher ») : a 4, les offres speciales avant les anniversaires.
+    var fams = $$('.fg-fam', gridFor);
+    var libre = function (f) { return f.querySelector('.fg-card--formule:not(.is-refus)') ? 0 : 1; };
+    var famsRangees = fams.slice().sort(function (a, b) { return libre(a) - libre(b); });
+    if (famsRangees.some(function (f, i) { return f !== fams[i]; })) famsRangees.forEach(function (f) { gridFor.appendChild(f); });
   }
   function texteDuree(d) {
     var a = Math.round(Number(d && d.min) / 5) * 5, b = Math.round(Number(d && d.max) / 5) * 5;
@@ -2626,6 +2632,7 @@
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
     resumerRefusFamilles();
+    rangerFormules();
     chargerDurees();
   }
   // LES ENFANTS D UNE OFFRE QUI LEUR EST RESERVEE (Kids Fun Day, « pour les
@@ -5705,8 +5712,14 @@
     if (!cartes.length && !s) return '';
     return '<div class="fg-plus" id="plus-recap" tabindex="-1">'
       + (cartes.length ? '<p class="fg-plus__head"><b>Envie d’un peu plus&nbsp;?</b> <small>Vos horaires ne bougent pas.</small></p>'
-        + '<button type="button" class="fg-plus__voir" data-vitrine-ouvrir>' + (cartes.length > 1 ? 'Voir les ' + cartes.length + ' options' : 'Voir l’option') + '<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>' : '')
+        + '<button type="button" class="fg-plus__voir" data-vitrine-ouvrir>' + vignettesPlus(cartes) + (cartes.length > 1 ? 'Voir les ' + cartes.length + ' options' : 'Voir l’option') + '<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>' : '')
       + statutPlus('recap') + '</div>';
+  }
+  // Les photos des offres, en petit, dans le bouton qui les ouvre : on voit ce qui attend avant de toucher.
+  // Sans texte : le bouton dit toujours « Voir les 3 options ».
+  function vignettesPlus(cartes) {
+    var imgs = cartes.slice(0, 3).map(function (c) { var p = photoDuPlus(c); return p ? '<img src="/assets/fungalaxy/' + esc(p) + '-carte.webp" alt="" loading="lazy" decoding="async">' : ''; }).join('');
+    return imgs ? '<span class="fg-plus__vignettes" aria-hidden="true">' + imgs + '</span>' : '';
   }
   function surPlus(e, ecran) {
     var retry = e.target.closest('[data-plus-requote]');

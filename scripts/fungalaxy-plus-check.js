@@ -528,30 +528,34 @@ async function attenteParcours(browser, mock, { grand, etiquette, retire = 3 }) 
     // plus 3 s apres le dernier toucher. Un prix qui ne vient jamais reste
     // « … » et rougit.
     const prixRendu = () => attendre(page, (id) => { const p = document.querySelector(`#vitrine .fg-vitrine__carte:has([data-plus="${id}"]) .fg-vitrine__prix`); return Boolean(p) && p.textContent.trim() !== '\u2026'; }, 3000, cible.id);
+    // Un parcours qui se bloque (bouton qui ne vient pas) est une panne notee et jugee par verifierAttente,
+    // jamais une exception qui arrete le gate entier.
+    try {
     await pas(-1);
     await prixRendu();
     res.f1 = await lireAttenteFenetre(page);
-    await carte.locator('[data-plus]').click();
+    await carte.locator('[data-plus]').click({ timeout: 10000 });
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
     res.r1 = await lireRecapPlus(page);
     res.envoye = requetes.length ? JSON.parse(requetes[requetes.length - 1]) : [];
-    await page.click('#plus-recap [data-plus-annuler]');
+    await page.click('#plus-recap [data-plus-annuler]', { timeout: 10000 });
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return z && z.dataset.ton === 'ok' && /^Annulé : votre visite revient/.test(z.textContent); }, 15000);
     res.r2 = await lireRecapPlus(page);
     // Reprise, toutes les personnes cette fois, puis l envoi.
-    await page.click('#plus-recap [data-vitrine-ouvrir]');
+    await page.click('#plus-recap [data-vitrine-ouvrir]', { timeout: 10000 });
     await attendre(page, () => !document.querySelector('#vitrine').hidden, 3000);
     await page.waitForTimeout(500);
     res.f2 = await lireAttenteFenetre(page);
     await pas(1);
     await prixRendu();
     res.f3 = await lireAttenteFenetre(page);
-    await carte.locator('[data-plus]').click();
+    await carte.locator('[data-plus]').click({ timeout: 10000 });
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
     res.r3 = await lireRecapPlus(page);
-    await page.click('#confirmBtn');
+    await page.click('#confirmBtn', { timeout: 10000 });
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
     res.pose = mock.dernierePose.body || {};
+    } catch (error) { res.panne = String(error.message || error).split('\n')[0]; }
     return res;
   } finally { await s.ctx.close(); }
 }
@@ -591,6 +595,7 @@ function verifierAttente(res, attendu, retire = 3) {
     juger(((res.pose && res.pose.program) || []).some((l) => l.waitOffer === true && l.participants === p) && Number(res.pose && res.pose.price) === r0.total + c.deltaTotal,
       'l envoi porte la ligne d attente et le prix affiche (le serveur de dev la garde en memoire, rien ne part)', JSON.stringify({ program: res.pose && res.pose.program, prix: res.pose && res.pose.price })),
     juger((res.erreurs || []).length === 0, 'aucune erreur dans la page', (res.erreurs || []).join(' | ')),
+    juger(!res.panne, 'le parcours va au bout : aucun bouton attendu en vain', res.panne || ''),
   ];
   return verdicts.every(Boolean);
 }

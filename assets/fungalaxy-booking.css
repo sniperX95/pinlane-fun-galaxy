@@ -1918,7 +1918,7 @@ html.fg-pilote .fg { overflow: visible; }
 /* Au recapitulatif, le rappel des offres et la phrase d un ajout, de la meme
    matiere que lui : ni carte, ni pastille, ni degrade. */
 .fg-plus__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.fg-plus__head b { font-weight: 700; color: var(--fg-text); }
+.fg-plus__head b { font-weight: 700; }
 .fg-plus__head small { line-height: 1.45; }
 .fg-plus__annuler[disabled] { opacity: 0.55; cursor: progress; }
 .fg-plus__statut { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--fg-muted); }
@@ -1927,8 +1927,8 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-plus__statut[data-ton="ko"] { color: var(--fg-amber-ink); }
 .fg-plus__annuler { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; vertical-align: middle; color: var(--fg-text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 /* Le rappel des offres au recapitulatif : un lien franc qui rouvre la fenetre. */
-.fg-plus__voir { display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; text-underline-offset: 3px; }
-.fg-plus__voir svg { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease); }
+.fg-plus__voir { text-underline-offset: 3px; }
+.fg-plus__voir svg { transition: transform 0.25s var(--fg-ease); }
 @media (hover: hover) { .fg-plus__voir:hover svg { transform: translateX(3px); } }
 /* Un ajout redessine le recapitulatif sur place : ses lignes ne rejouent pas
    leur entree. */
@@ -2903,7 +2903,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-recap__item br { display: none; }
 .fg-recap__aside { grid-column: 1; grid-row: 1; display: block; min-width: 0; font-size: 0; line-height: 0; text-align: left; }
 .fg-recap__aside b { display: block; margin: 0; font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--fg-purple-em); }
-.fg-recap__aside small { display: block; font-size: 12px; font-weight: 600; line-height: 22px; color: var(--fg-teal-ink); }
+.fg-recap__aside small { display: block; padding-top: 3px; font-size: 12px; font-weight: 600; line-height: 15px; color: var(--fg-teal-ink); }
 .fg-recap__item:has(> .fg-recap__aside:empty) > span:nth-child(2) { grid-column: 1 / -1; }
 .fg-recap__name { display: block; font-size: 15px; font-weight: 700; line-height: 22px; color: #fff; }
 .fg-recap__detail { display: block; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
@@ -2920,15 +2920,26 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-recap__who, .fg-recap__occasion, .fg-recap__note { margin: 12px 0 0; font-size: 14px; line-height: 19px; color: var(--fg-n3); overflow-wrap: anywhere; }
 .fg-recap__occasion, .fg-recap__note { margin-top: 2px; }
 /* Envie d un peu plus : un aplat au bout du recapitulatif. */
-.fg-plus { margin: 14px -16px -16px; padding: 12px 16px; border: 0; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: var(--fg-plat); }
-.fg-plus__head { margin: 0; font-size: 14px; line-height: 19px; }
-.fg-plus__voir { min-height: 44px; font-size: 14px; font-weight: 700; color: var(--fg-teal-ink); text-decoration: none; }
+/* « Envie d un peu plus ? » : les photos des offres dans un bouton franc, plus une ligne de lien perdue en bas
+   de carte (Ansar, 2026-11-05 : « moche »). */
+.fg-plus { margin: 16px -16px -16px; padding: 14px 16px 16px; border: 0; border-radius: 0 0 var(--fg-r-plat) var(--fg-r-plat); background: #1d1c21; }
+.fg-plus__head { margin: 0 0 10px; font-size: 14px; line-height: 20px; }
+.fg-plus__voir { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; margin: 0; padding: 8px 14px 8px 8px; border: 0; border-radius: var(--fg-r-plat); background: var(--fg-plat); color: var(--fg-teal-ink); font-size: 15px; font-weight: 700; text-align: left; text-decoration: none; }
+.fg-plus__voir:not(:has(.fg-plus__vignettes)) { padding-left: 14px; }
+.fg-plus__voir svg { margin-left: auto; width: 18px; height: 18px; }
+.fg-plus__vignettes { display: flex; flex: none; }
+.fg-plus__vignettes img { width: 42px; height: 42px; object-fit: cover; border: 2px solid var(--fg-plat); border-radius: var(--fg-r-tuile); }
+.fg-plus__vignettes img + img { margin-left: -12px; }
 .fg-scene[data-scene="recap"] .fg-actions--column { max-width: none !important; gap: 10px; }
 .fg-confirm__note { font-size: 14px; line-height: 19px; color: var(--fg-n3); }
 /* Modifier : de petits liens sur une ligne, plus quatre gros boutons qui ressemblaient a des choix. */
-.fg-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; margin-top: 10px; }
+.fg-edit { flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .fg-edit > span { margin-right: 2px; font-family: var(--fg-body); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--fg-n3); }
 .fg-edit .fg-edit__btn { min-height: 44px; padding: 0; border: 0; border-radius: 0; background: none; font-size: 15px; font-weight: 600; color: var(--fg-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+/* « Modifier » au-dessus, ses quatre liens en deux colonnes alignees : jamais un lien seul sur sa ligne. */
+.fg-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.fg-edit > span { grid-column: 1 / -1; margin-top: 4px; }
+.fg-edit .fg-edit__btn { justify-content: flex-start; text-align: left; }
 
 /* --- 6. LA CONFIRMATION : a gauche, un aplat sarcelle, le meme bloc ------------ */
 .fg-scene[data-scene="fin"] .fg-scene__body { text-align: left; }
@@ -3066,7 +3077,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-recap__sep + .fg-recap__row { font-size: 14.5px; font-weight: 500; line-height: 20px; color: var(--fg-n3); }
 .fg-recap__sep + .fg-recap__row b { font-weight: 700; color: #fff; }
 .fg-recap__who b, .fg-recap__occasion b { color: #fff; }
-.fg-plus__head b { font-size: 14px; }
+.fg-plus__head b { font-size: 16px; color: #fff; }
 .fg-plus__head small { font-size: 14px; color: var(--fg-n3); }
 
 

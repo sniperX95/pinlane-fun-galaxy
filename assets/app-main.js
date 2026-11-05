@@ -2263,7 +2263,7 @@ function heureLiberationBlocage(blocage) {
 }
 function texteBlocageEnLigne(blocage) {
   const heure = heureLiberationBlocage(blocage);
-  return `Réservation en ligne en cours${heure ? ` : sans confirmation, la place se libère à ${heure}` : ''}.`;
+  return `Réservation internet en cours${heure ? `, place gardée jusqu’à ${heure}` : ''}.`;
 }
 
 // Ce que les clients retiennent en ce moment sur ce jour, pour les barres des plannings : les
@@ -23584,7 +23584,7 @@ function renderKpis() {
   }
   const retenues = retenuesDuJour();
   const retenuIci = view === 'laser' ? retenues.armes : retenues.pistes;
-  if (retenuIci) chiffres.push({ key: 'enligne', label: 'En ligne', id: 'kpiEnLigne', value: `${retenuIci} ${view === 'laser' ? 'arme' : 'piste'}${retenuIci > 1 ? 's' : ''}`, title: 'Des clients réservent sur le formulaire : ces places sont retenues pendant 10 minutes.' });
+  if (retenuIci) chiffres.push({ key: 'enligne', label: 'Internet', id: 'kpiEnLigne', value: `${retenuIci} ${view === 'laser' ? 'arme' : 'piste'}${retenuIci > 1 ? 's' : ''}`, title: 'Des clients sont en train de réserver sur internet. Ces places leur sont gardées 10 minutes au plus.' });
   window.pbEcrireChiffres(chiffres);
 }
 
@@ -23995,7 +23995,7 @@ function renderPlanning() {
       const texte = texteBlocageEnLigne(item.blocage);
       holdHtml += `<div class="planning-hold" data-hold-lane="${i}" data-hold-start="${st}" style="top:${top}px;height:${height}px;" role="note" aria-label="${escapeHtml(`Piste ${i}, ${formatClockDisplay(st)} - ${formatClockDisplay(item.window.end)} : ${texte}`)}" title="${escapeHtml(texte)}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-        <span class="planning-hold__txt"><b>En ligne</b>${heure ? ` <small>libre à ${escapeHtml(heure)}</small>` : ''}</span>
+        <span class="planning-hold__txt"><b>Internet</b>${heure ? ` <small>gardé jusqu’à ${escapeHtml(heure)}</small>` : ''}</span>
       </div>`;
     });
     const laneWins = laneBlockWindows[i] || [];
@@ -24430,7 +24430,7 @@ function lpLegende(modele, d, choisi) {
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
   d.holds.forEach(w => {
     const libre = heureLiberationBlocage(w.reservation);
-    groupes.push(`<span class="lp-g is-enligne" title="${escapeHtml(texteBlocageEnLigne(w.reservation))}" onclick="event.stopPropagation()"><i aria-hidden="true"></i><span class="lp-g__nom"><b>En ligne</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? 's' : ''} · ${libre ? `libre à ${escapeHtml(libre)}` : 'en cours'}</span></span></span>`);
+    groupes.push(`<span class="lp-g is-enligne" title="${escapeHtml(texteBlocageEnLigne(w.reservation))}" onclick="event.stopPropagation()"><i aria-hidden="true"></i><span class="lp-g__nom"><b>Internet</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? 's' : ''} · ${libre ? `jusqu’à ${escapeHtml(libre)}` : 'en cours'}</span></span></span>`);
   });
   if (encore) groupes.push(`<span class="lp-libre">+ ${encore}</span>`);
   return groupes.join('');
@@ -24462,7 +24462,7 @@ function lpRangDepart(modele, d, choisi) {
     ...d.ici.map(w => `${w.reservation.name || 'Groupe'} ${lpGroupe(w)}`),
     ...d.holds.map(w => {
       const libre = heureLiberationBlocage(w.reservation);
-      return `En ligne ${lpArene(w)}${libre ? `, libre à ${libre}` : ''}`;
+      return `Internet, ${lpPluriel(lpArene(w), 'arme')}${libre ? ` jusqu’à ${libre}` : ''}`;
     }),
   ].join(', ');
   const encore = lpEncore(d);
@@ -24653,7 +24653,7 @@ function lpSousTitre(modele) {
     lpPluriel(lancements, 'départ'),
     lpPluriel(joueurs, 'joueur'),
     attente ? `${attente} à placer` : '',
-    enLigne ? `${enLigne} en ligne en cours` : '',
+    enLigne ? `${enLigne} internet en cours` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -32239,7 +32239,7 @@ function rvOccupationPistes(heure, duree) {
   for (let piste = 1; piste <= parc; piste += 1) {
     if (state.laneStatuses[piste] === 'maintenance') { res[piste] = { etat: 'maint', part: 1, texte: 'en maintenance' }; continue; }
     const retenue = retenues.find((w) => w.lanes.includes(piste) && overlap(debut, duree, w.start, w.duration));
-    if (retenue) { res[piste] = { etat: 'retenu', part: 1, texte: `retenue par un client en ligne, libre à ${heureLiberationBlocage(retenue.blocage)} s’il ne confirme pas` }; continue; }
+    if (retenue) { res[piste] = { etat: 'retenu', part: 1, texte: `gardée pour un client sur internet jusqu’à ${heureLiberationBlocage(retenue.blocage)}` }; continue; }
     const prises = fenetres.filter((w) => w.lanes.includes(piste) && overlap(debut, duree, w.start, w.duration));
     if (!prises.length) { res[piste] = { etat: 'libre', part: 0, texte: 'libre' }; continue; }
     const occupe = prises.reduce((t, w) => t + Math.max(0, Math.min(debut + duree, w.start + w.duration) - Math.max(debut, w.start)), 0);
@@ -34478,9 +34478,9 @@ function rsDitEcheance(iso) {
 function rsRetenuesHtml(id) {
   const lignes = rsRetenuesDuBloc(id);
   if (!lignes.length) return '';
-  const vues = lignes.slice(0, RS_RETENUES_VUES).map((l) => `<p class="rs-ret"><i aria-hidden="true"></i><span>Un client réserve en ligne ${escapeHtml(l.quoi)}. ${l.plusieurs ? 'Elles se libèrent' : 'Elle se libère'} dans <b data-echeance="${escapeHtml(l.echeance)}">${escapeHtml(rsDitEcheance(l.echeance))}</b> s’il ne confirme pas.</span></p>`).join('');
+  const vues = lignes.slice(0, RS_RETENUES_VUES).map((l) => `<p class="rs-ret"><i aria-hidden="true"></i><span>Un client réserve ${escapeHtml(l.quoi)} sur internet. ${l.plusieurs ? 'Gardées' : 'Gardée'} pour lui encore <b data-echeance="${escapeHtml(l.echeance)}">${escapeHtml(rsDitEcheance(l.echeance))}</b>.</span></p>`).join('');
   const reste = lignes.length - RS_RETENUES_VUES;
-  return `<div class="rs-retenues" role="note" data-retenues="${escapeHtml(id)}">${vues}${reste > 0 ? `<p class="rs-ret is-suite"><span>${escapeHtml(`Et ${rvPluriel(reste, 'autre réservation', 'autres réservations')} en ligne en cours.`)}</span></p>` : ''}</div>`;
+  return `<div class="rs-retenues" role="note" data-retenues="${escapeHtml(id)}">${vues}${reste > 0 ? `<p class="rs-ret is-suite"><span>${escapeHtml(`Et ${rvPluriel(reste, 'autre réservation', 'autres réservations')} internet en cours.`)}</span></p>` : ''}</div>`;
 }
 
 // Le temps d une retenue descend a la seconde, sans repeindre : seul son texte change. Une
@@ -34801,20 +34801,18 @@ function rsRemplirHeure(id, x) {
   if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';
 }
 
-// LA JAUGE D UNE HEURE : ce qui est pris, ce qu un client retient, ce que ce groupe prend, ce
-// qui reste. Une case par piste, une barre pour les armes (30 cases ne se lisent plus).
-function rsJaugeHtml(place) {
-  if (!place) return '';
-  const parts = [['is-pris', place.pris], ['is-retenu', place.retenu], ['is-ce', place.prend], ['is-libre', place.libre]].filter(([, n]) => n > 0);
-  const cases = place.unite === 'piste' && place.total <= 16
-    ? parts.flatMap(([classe, n]) => Array.from({ length: n }, () => `<i class="${classe}"></i>`)).join('')
-    : parts.map(([classe, n]) => `<i class="${classe}" style="flex-grow:${n}"></i>`).join('');
-  return `<span class="rs-j" aria-hidden="true">${cases}</span>`;
+// CE QU INTERNET GARDE A CETTE HEURE (2026-11-05, Ansar : « c'est pas clair direct »). La
+// petite jauge de couleurs ne se lisait pas sans legende : une phrase la remplace, seulement
+// quand un client est en train de reserver, « 2 en attente » avec le carre orange du bandeau. Ce qui reste se dit
+// deja au-dessus, et le bandeau sous les heures dit jusqu a quand.
+function rsGardeesHtml(place) {
+  if (!place || !(place.retenu > 0)) return '';
+  return `<small class="rs-h-garde">${escapeHtml(`${place.retenu} en attente`)}</small>`;
 }
 
 // L interieur d une touche d heure.
 function rsDedansHeure(x, dite, mot) {
-  return `<b>${dite}</b>${x.tag ? `<em class="rs-h-tag">${escapeHtml(x.tag)}</em>` : ''}${mot ? `<small>${escapeHtml(mot)}</small>` : ''}${(x.restes || []).map((r) => `<small>${escapeHtml(`reste ${r}`)}</small>`).join('')}${rsJaugeHtml(x.place)}`;
+  return `<b>${dite}</b>${x.tag ? `<em class="rs-h-tag">${escapeHtml(x.tag)}</em>` : ''}${mot ? `<small>${escapeHtml(mot)}</small>` : ''}${(x.restes || []).map((r) => `<small>${escapeHtml(`reste ${r}`)}</small>`).join('')}${rsGardeesHtml(x.place)}`;
 }
 
 // Le calcul d un bloc : ce que le planning dirait. Les mots sous les heures ne se calculent
@@ -34850,7 +34848,7 @@ function rsCalculerSeances(id) {
       heures = rvHeuresHorloge(id).filter((h) => maintenant === null || timeToNum(h) > maintenant + 1e-9);
       tient = (h) => bonnes.has(h);
     }
-    return { suite, liste: heures.map((heure) => ({ heure, tient: tient(heure), ...(heure === suite ? { tag: 'à la suite' } : {}) })) };
+    return { suite, liste: heures.map((heure) => ({ heure, tient: tient(heure), ...(heure === suite ? { tag: 'juste après' } : {}) })) };
   });
 }
 
@@ -34967,7 +34965,7 @@ function rsDitLHeure(dite, x, mot, id) {
   const coince = rsCoince(x, id);
   const aria = coince ? `${dite}, ne tient pas, ${rsPhrase(coince.raison)}`
     : x.passee ? `${dite}, passée`
-      : !x.verdict && x.tient === false ? `${dite}, vérification` : `${dite}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}${(x.restes || []).map((r) => `, reste ${r}`).join('')}${x.place && x.place.retenu ? `, ${rvPluriel(x.place.retenu, x.place.unite)} en cours de réservation en ligne` : ''}`;
+      : !x.verdict && x.tient === false ? `${dite}, vérification` : `${dite}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}${(x.restes || []).map((r) => `, reste ${r}`).join('')}${x.place && x.place.retenu ? `, ${rvPluriel(x.place.retenu, x.place.unite)} en attente sur internet` : ''}`;
   return `${coince ? ` title="${escapeHtml(rsPhrase(coince.raison))}"` : ''} aria-label="${escapeHtml(aria)}"`;
 }
 
@@ -36270,7 +36268,7 @@ function rsLignesActivites() {
     const detail = ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
     const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
-    const prix = s.adaptee || !combien || prixFormule != null ? '' : rsPrixDeLigne(id);
+    const prix = s.adaptee || !combien ? '' : prixFormule != null ? 'compris' : rsPrixDeLigne(id);
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, aria: rsAriaLigne(nom, [detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
   return lignes.join('');
@@ -36305,11 +36303,11 @@ function rsLignesExtras() {
   if (e && e.arcades && e.arcades.mode && !quickHasPaidArcades()) {
     const prix = Number(String(e.arcades.prix).replace(',', '.')) || 0;
     const quoi = e.arcades.mode === 'temps' ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`) : 'en argent';
-    lignes.push(rsLigne({ cle: 'x-arcades', action: "rsOuvrirMesure('arcades')", nom: 'Arcades', detail: quoi, prix: rsFmPrix() != null ? '' : prix ? rsEuros(prix * Math.max(1, Number(s.pax) || 1)) : 'à saisir', retirer: "rsRetirerExtra('arcades')" }));
+    lignes.push(rsLigne({ cle: 'x-arcades', action: "rsOuvrirMesure('arcades')", nom: 'Arcades', detail: quoi, prix: rsFmPrix() != null ? 'compris' : prix ? rsEuros(prix * Math.max(1, Number(s.pax) || 1)) : 'à saisir', retirer: "rsRetirerExtra('arcades')" }));
   }
   rsPanier().forEach((l) => {
     const prix = rsPrixLigne(l);
-    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.suit ? 'par personne' : '', l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: l.offert && prix != null ? 'offert' : rsFmPrix() != null ? '' : prix == null ? 'sur place' : rsEuros(prix), aria: `${l.name}, ${rsQte(l)}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
+    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.suit ? '1 par joueur' : '', l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: l.offert && prix != null ? 'offert' : rsFmPrix() != null ? 'compris' : prix == null ? 'sur place' : rsEuros(prix), aria: `${l.name}, ${rsQte(l)}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
   });
   return lignes.join('');
 }
@@ -36693,11 +36691,11 @@ function rsBandeHtml() {
   const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en euros" oninput="rsArticleChamp('prix',this.value)">` : '';
   const parPersonne = Boolean(ligne.suit);
   const calcul = valeur == null ? 'sur place'
-    : ligne.offert ? `offert, ${rsEuros(valeur)} de moins`
-      : q > 1 ? `${q} × ${formatMoneyCentimes(ligne.prixUnitaire)}, ${rsEuros(valeur)}` : rsEuros(valeur);
-  const mode = `<div class="rs-seg rs-unite" role="group" aria-label="À l’unité ou par personne"><button type="button" class="${parPersonne ? '' : 'is-on'}" id="rsUnite" aria-pressed="${!parPersonne}" onclick="rsUniteLigne('unite')">À l’unité</button><button type="button" class="${parPersonne ? 'is-on' : ''}" id="rsParPersonne" aria-pressed="${parPersonne}" onclick="rsUniteLigne('personne')">Par personne</button></div>`;
-  const combien = parPersonne ? `<span class="rs-note-e" id="rsPourTous">${escapeHtml(rvPluriel(q, 'personne'))}</span>` : rsPasHtml(q > 1 ? 'rsQuantite(-1)' : '', q < RS_QTE_MAX ? 'rsQuantite(1)' : '', q, 'Quantité');
-  const offrir = valeur != null && rsNiveau('prix') !== 'non' ? rsPetite('Offert', Boolean(ligne.offert), 'rsOffrirLigne()', 'id="rsOffert"') : '';
+    : ligne.offert ? `offert, au lieu de ${rsEuros(valeur)}`
+      : q > 1 ? `${q} × ${formatMoneyCentimes(ligne.prixUnitaire)} = ${rsEuros(valeur)}` : rsEuros(valeur);
+  const mode = `<div class="rs-seg rs-unite" role="group" aria-label="Un nombre choisi ou un par joueur"><button type="button" class="${parPersonne ? '' : 'is-on'}" id="rsUnite" aria-pressed="${!parPersonne}" onclick="rsUniteLigne('unite')">Nombre</button><button type="button" class="${parPersonne ? 'is-on' : ''}" id="rsParPersonne" aria-pressed="${parPersonne}" onclick="rsUniteLigne('personne')">1 par joueur</button></div>`;
+  const combien = parPersonne ? `<span class="rs-note-e" id="rsPourTous">${escapeHtml(q > 1 ? `pour les ${q} joueurs` : 'pour 1 joueur')}</span>` : rsPasHtml(q > 1 ? 'rsQuantite(-1)' : '', q < RS_QTE_MAX ? 'rsQuantite(1)' : '', q, 'Quantité');
+  const offrir = valeur != null && rsNiveau('prix') !== 'non' ? rsPetite(ligne.offert ? 'Offert' : 'Offrir', Boolean(ligne.offert), 'rsOffrirLigne()', 'id="rsOffert"') : '';
   return `<div class="rs-bande">
     <div class="rs-bande-t"><div class="rs-s-n"><b>${escapeHtml(ligne.name)}</b><small id="rsBandeCalcul">${escapeHtml(calcul)}</small></div>${mode}${combien}${offrir}<button type="button" class="rs-discret is-retirer" id="rsRetirerArticle" onclick="rsRetirerArticle()">Retirer</button></div>
     ${service}
@@ -36878,11 +36876,11 @@ function rsFmGarderHtml() {
   const fm = rsFm();
   const corps = rsFmCorps();
   const aJour = Boolean(fm.gardee) && fm.gardee.signature === rsFmSignature(corps);
-  const qui = `<div class="rs-seg rs-fm-qui" role="group" aria-label="Qui voit cette formule"><button type="button" class="${fm.clients ? '' : 'is-on'}" id="rsFmComptoir" aria-pressed="${!fm.clients}" onclick="rsFmClients(false)">Au comptoir</button><button type="button" class="${fm.clients ? 'is-on' : ''}" id="rsFmClients" aria-pressed="${Boolean(fm.clients)}" onclick="rsFmClients(true)">Aussi aux clients</button></div>`;
-  const minimum = fm.gardee ? '' : `<span class="rs-fm-min"><span class="rs-lbl">Dès</span>${rsPasHtml(rsFmMinPax(fm) > 1 ? 'rsFmPasMinPax(-1)' : '', 'rsFmPasMinPax(1)', rsFmMinPax(fm), 'Joueurs minimum')}<span class="rs-lbl">joueurs</span></span>`;
-  const geste = aJour ? '' : `<button type="button" class="rs-p rs-fm-garder" id="rsFmGarder" ${fm.enCours ? 'aria-busy="true" disabled' : ''} onclick="rsFmGarder()"><b>${fm.enCours ? 'Enregistrement…' : fm.gardee ? 'Mettre à jour' : 'Enregistrer'}</b></button>`;
-  const etat = aJour ? `<p class="rs-fm-etat" id="rsFmEtat" role="status">Gardée. Elle est dans Formules et dans Tarifs & formules${fm.gardee.clients ? ', et sur le formulaire des clients' : ''}.</p>` : '';
-  return `<div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Garder</span><div class="rs-fm-ligne">${qui}${minimum}${geste}${etat}</div></div>`;
+  const qui = `<div class="rs-seg rs-fm-qui" role="group" aria-label="Qui voit cette formule"><button type="button" class="${fm.clients ? '' : 'is-on'}" id="rsFmComptoir" aria-pressed="${!fm.clients}" onclick="rsFmClients(false)">Au comptoir seulement</button><button type="button" class="${fm.clients ? 'is-on' : ''}" id="rsFmClients" aria-pressed="${Boolean(fm.clients)}" onclick="rsFmClients(true)">Aussi sur internet</button></div>`;
+  const minimum = fm.gardee ? '' : `<span class="rs-fm-min"><span class="rs-lbl">À partir de</span>${rsPasHtml(rsFmMinPax(fm) > 1 ? 'rsFmPasMinPax(-1)' : '', 'rsFmPasMinPax(1)', rsFmMinPax(fm), 'Joueurs minimum')}<span class="rs-lbl">joueurs</span></span>`;
+  const geste = aJour ? '' : `<button type="button" class="rs-p rs-fm-garder" id="rsFmGarder" ${fm.enCours ? 'aria-busy="true" disabled' : ''} onclick="rsFmGarder()"><b>${fm.enCours ? 'Enregistrement…' : fm.gardee ? 'Mettre à jour' : 'Garder cette formule'}</b></button>`;
+  const etat = aJour ? `<p class="rs-fm-etat" id="rsFmEtat" role="status">Gardée. Elle est maintenant dans vos formules${fm.gardee.clients ? ', et les clients la voient sur internet' : ''}.</p>` : '';
+  return `<div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">La garder</span><div class="rs-fm-ligne">${qui}${minimum}${geste}${etat}</div></div>`;
 }
 
 function rsFormuleMesureHtml() {
@@ -36893,16 +36891,16 @@ function rsFormuleMesureHtml() {
   const montant = rsFmMontant(fm);
   const prix = rsFmPrix();
   const ecart = prix != null ? Math.round((reference - prix) * 100) / 100 : 0;
-  const dit = prix == null ? `Sans prix, la formule vaut le détail, ${rsEuros(reference)}.`
-    : [fm.mode === 'personne' ? `${joueurs} × ${formatMoneyCentimes(montant)}, ${rsEuros(prix)}` : `${rsEuros(prix)}, ${formatMoneyCentimes(Math.round((prix / joueurs) * 100) / 100)} par joueur`,
-      ecart > 0.5 ? `${rsEuros(ecart)} de moins que le détail` : ecart < -0.5 ? `${rsEuros(-ecart)} de plus que le détail` : ''].filter(Boolean).join(', ');
+  const dit = prix == null ? `Sans prix, elle garde le prix normal, ${rsEuros(reference)}.`
+    : [fm.mode === 'personne' ? `${joueurs} × ${formatMoneyCentimes(montant)} = ${rsEuros(prix)}` : `${rsEuros(prix)}, soit ${formatMoneyCentimes(Math.round((prix / joueurs) * 100) / 100)} par joueur`,
+      ecart > 0.5 ? `${rsEuros(ecart)} de moins que le prix normal` : ecart < -0.5 ? `${rsEuros(-ecart)} de plus que le prix normal` : ''].filter(Boolean).join(', ');
   const mode = `<div class="rs-seg" role="group" aria-label="Prix par joueur ou pour le groupe"><button type="button" class="${fm.mode === 'total' ? '' : 'is-on'}" id="rsFmParJoueur" aria-pressed="${fm.mode !== 'total'}" onclick="rsFmMode('personne')">Par joueur</button><button type="button" class="${fm.mode === 'total' ? 'is-on' : ''}" id="rsFmAuTotal" aria-pressed="${fm.mode === 'total'}" onclick="rsFmMode('total')">Pour le groupe</button></div>`;
   const prixHtml = rsNiveau('prix') === 'non'
     ? '<p class="rs-texte" id="rsPrixFixe">Le prix se change avec un responsable.</p>'
     : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en euros" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">€</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
   return `<section class="rs-fm" aria-label="Formule pour ce groupe">
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl">Nom</span><div class="rs-champ"><input id="rsFmNom" maxlength="80" autocomplete="off" value="${escapeHtml(fm.nom || '')}" aria-label="Nom de la formule" oninput="rsFmChamp('nom',this.value)"></div></div>
-    <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Comprend</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Détail</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
+    <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Contient</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Prix normal</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Prix</span><div class="rs-fm-col">${prixHtml}</div></div>
     ${rsFmGarderHtml()}
     ${fm.message ? `<p class="rs-plafond is-ko" id="rsFmErreur" role="alert">${escapeHtml(fm.message)}</p>` : ''}
@@ -36927,11 +36925,11 @@ function rsMesureHtml() {
   const niveau = rsNiveau('surmesure');
   const onglets = categories.filter((c) => articles.some((a) => a.categorie === c.id)).map((c) => [c.id, c.nom]);
   if (niveau === 'libre' && !quickHasPaidArcades()) onglets.push(['arcades', 'Arcades']);
-  if (rsFmPermise()) onglets.push(['formule', 'Formule']);
+  if (rsFmPermise()) onglets.push(['formule', 'Créer une formule']);
   const courante = onglets.some(([id]) => id === b.mesure.categorie) ? b.mesure.categorie : (onglets[0] || [''])[0];
   const lignes = quickExtrasLignes();
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
-  const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'ligne')}, ${rsEuros(somme)}`)}</span>` : '';
+  const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'article')}, ${rsEuros(somme)}`)}</span>` : '';
   const tabs = onglets.length ? `<div class="rs-seg rs-tabs" role="group" aria-label="Catégories">${onglets.map(([id, nom]) => `<button type="button" class="${id === courante ? 'is-on' : ''}" id="rsOnglet-${escapeHtml(id)}" data-onglet="${escapeHtml(id)}" aria-pressed="${id === courante}" onclick="rsOnglet(this.dataset.onglet)">${escapeHtml(nom)}</button>`).join('')}</div>` : '';
   const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Article libre</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Nom" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en euros" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;

@@ -312,7 +312,7 @@
     var p = laser && laser.prochain;
     if (p) {
       var places = Number(p.places) || 0;
-      etat.laser = { t: p.t, places: places, texte: gpHeure(p.t) + (places > 0 ? ', ' + places + (places > 1 ? ' places' : ' place') : ', complet'), plein: places <= 0, bulle: 'Prochain départ laser à ' + gpHeure(p.t) + ' : ' + (places > 0 ? places + ' armes libres sur ' + laser.capacite : 'complet') };
+      etat.laser = { t: p.t, places: places, texte: gpHeure(p.t) + (places > 0 ? ', ' + places + (places > 1 ? ' armes' : ' arme') : ', complet'), plein: places <= 0, bulle: 'Prochain départ laser à ' + gpHeure(p.t) + ' : ' + (places > 0 ? places + ' armes libres sur ' + laser.capacite : 'complet') };
     }
     var ici = {};
     groupes.forEach(function (g) {
@@ -803,7 +803,7 @@
   function gfRetenueHtml(g, m, bloc, classes) {
     var r = g.r;
     var libre = typeof heureLiberationBlocage === 'function' ? heureLiberationBlocage(r) : '';
-    var texte = typeof texteBlocageEnLigne === 'function' ? texteBlocageEnLigne(r) : 'Réservation en ligne en cours.';
+    var texte = typeof texteBlocageEnLigne === 'function' ? texteBlocageEnLigne(r) : 'Réservation internet en cours.';
     var dit = [];
     var cases = m.colonnes.map(function (col) {
       var liste = g.cases.get(col.cle) || [];
@@ -818,12 +818,12 @@
     return '<tr class="gf-r gf-retenue ' + classes + '" title="' + gpEsc(texte) + '" aria-label="' + gpEsc(dit.join(', ') + '. ' + texte) + '">'
       + bloc
       + '<td class="gf-h' + (gfPile(g) ? ' is-pile' : '') + '" data-gf-heure="' + gpEsc(gpHeure(g.heure)) + '"></td>'
-      + '<td class="gf-nom"><div class="gf-nom__l">' + tete + GF_CADENAS + '<span class="gf-nom__t">Réservation en ligne en cours</span></div></td>'
+      + '<td class="gf-nom"><div class="gf-nom__l">' + tete + GF_CADENAS + '<span class="gf-nom__t">Réservation internet en cours</span></div></td>'
       + '<td class="gf-n"><b>' + (Number(r.pax) || 0) + '</b></td>'
       + gfFormuleCase(g)
       + cases
       + '<td class="gf-reste"></td>'
-      + '<td class="gf-etat"><span class="gf-g"><span class="gf-gb gf-gb--etat">' + gpEsc(libre ? 'libre à ' + libre : 'en cours') + '</span></span></td></tr>';
+      + '<td class="gf-etat"><span class="gf-g"><span class="gf-gb gf-gb--etat">' + gpEsc(libre ? 'gardé jusqu’à ' + libre : 'en cours') + '</span></span></td></tr>';
   }
   // LE COMPTE A L ARRIVEE (2026-10-29) : un groupe recompte au comptoir dit
   // son nombre, et dessous celui de la reservation (« 13 », « 10 rés. »).
@@ -1110,7 +1110,7 @@
     // (en toutes lettres, 2026-11-03, Movsar : « piste 7 laser 30 et tout c moche on capte
     // pas » : ce qui reste se dit « libre »)
     if (place && place.pistes) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });
-    if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['place', 'places'] : ['place laser', 'places laser'])) + '</span>', hauteur: 1 });
+    if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['arme', 'armes'] : ['arme libre', 'armes libres'])) + '</span>', hauteur: 1 });
     if (compte.pers) lignes.push({ html: '<span>' + gpEsc(gfPluriel(compte.pers, ['joueur', 'joueurs'])) + '</span>', hauteur: 1 });
     // (la case n a que la hauteur de ses lignes : une ligne, un mot sous l heure)
     var reste = seule ? 1 : part.lignes.length === 2 ? 3 : part.lignes.length * 2;
@@ -1535,7 +1535,7 @@
     if (e.laser) h += gfEtatBandeau('laser', 'Laser', e.laser, gfGroupesDuDepart(m));
     var retenu = typeof retenuesDuJour === 'function' ? retenuesDuJour(m.jour) : { pistes: 0, armes: 0 };
     var motsRetenu = [retenu.pistes ? gfPluriel(retenu.pistes, ['piste', 'pistes']) : '', retenu.armes ? gfPluriel(retenu.armes, ['arme', 'armes']) : ''].filter(Boolean).join(', ');
-    if (motsRetenu) h += '<div class="pb-k" data-kpi="enligne" title="Des clients réservent sur le formulaire : ces places sont retenues pendant 10 minutes."><span class="gf-c__l">En ligne</span><b class="gf-c__v">' + gpEsc(motsRetenu) + '</b></div>';
+    if (motsRetenu) h += '<div class="pb-k" data-kpi="enligne" title="Des clients sont en train de réserver sur internet. Ces places leur sont gardées 10 minutes au plus."><span class="gf-c__l">Internet</span><b class="gf-c__v">' + gpEsc(motsRetenu) + '</b></div>';
     if (!m.aujourdHui) {
       var joueurs = m.groupes.reduce(function (n, g) { return n + (Number(g.r.pax) || 0); }, 0);
       h += '<span class="pb-sep" aria-hidden="true"></span><span class="pb-info">' + gpEsc(gfPluriel(m.groupes.length, ['groupe', 'groupes']) + ', ' + gfPluriel(joueurs, ['joueur', 'joueurs'])) + '</span>';

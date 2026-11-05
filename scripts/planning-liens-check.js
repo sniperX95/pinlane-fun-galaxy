@@ -137,7 +137,7 @@ async function scenarioHeure(browser) {
     });
     // (en toutes lettres depuis le 2026-11-03 : « 4 pistes libres », « 11 places laser »)
     const libres = (n) => `${n} ${n > 1 ? 'pistes libres' : 'piste libre'}`;
-    const places = (n) => `${n} ${n > 1 ? 'places laser' : 'place laser'}`;
+    const places = (n) => `${n} ${n > 1 ? 'armes libres' : 'arme libre'}`;
     ok(cases.dixSept && cases.dixSept.includes(libres(cases.libres)), '[A] la case de 17:00 dit ses pistes libres', cases);
     ok(cases.dixSept && cases.dixSept.includes(places(cases.places)), '[A] et les places de son depart laser', cases);
     ok(cases.treize && !/pistes? libres?|places? laser/.test(cases.treize) && !cases.passee, '[A] une demi-heure passee n offre plus rien', cases);
@@ -536,7 +536,7 @@ async function scenarioEntree(browser) {
 const SCENARIOS = { entree: scenarioEntree, liste: scenarioListe, jourVide: scenarioJourVide, chiffresDuJour: scenarioChiffresDuJour, heure: scenarioHeure, bandeau: scenarioBandeau, retard: scenarioRetard, montant: scenarioMontant, pasvenu: scenarioPasVenu, piste: scenarioPiste, telephone: scenarioTelephone, menu: scenarioMenu, chiffres: scenarioChiffres };
 const MUTATIONS = [
   { nom: 'heure-sans-pistes', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    if (place && place.pistes) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.pistes, m.blocCourt ? ['piste', 'pistes'] : ['piste libre', 'pistes libres'])) + '</span>', hauteur: 1 });\n", vers: '' }] },
-  { nom: 'heure-sans-laser', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['place', 'places'] : ['place laser', 'places laser'])) + '</span>', hauteur: 1 });\n", vers: '' }] },
+  { nom: 'heure-sans-laser', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    if (place && place.laser) lignes.push({ html: '<span>' + gpEsc(gfPluriel(place.laser, m.blocCourt ? ['arme', 'armes'] : ['arme libre', 'armes libres'])) + '</span>', hauteur: 1 });\n", vers: '' }] },
   { nom: 'heure-passee-offre', lettre: 'A', scenarios: ['heure'], editions: [{ fichier: GJS, de: "    var ouvert = part.quand !== 'passe' && !(m.fenetre", vers: '    var ouvert = !(m.fenetre' }] },
   { nom: 'case-sourde', lettre: 'B', scenarios: ['heure'], editions: [{ fichier: GJS, de: "      if (reserver) { reserverAuComptoir({ startTime: reserver.getAttribute('data-gf-reserver') }); return; }\n", vers: '' }] },
   { nom: 'case-ouvre-la-fiche', lettre: 'B', scenarios: ['heure'], editions: [{ fichier: GJS, de: "      if (e.target.closest('td.gf-bloc')) return;\n", vers: '' }] },

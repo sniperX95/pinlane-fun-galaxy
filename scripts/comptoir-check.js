@@ -50,7 +50,7 @@ const MUTATIONS = [
   { nom: 'reste-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du bowling dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n  return { unite: \'piste\'', vers: 'const prend = 0;\n  return { unite: \'piste\'' },
   { nom: 'armes-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du laser dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n        const place =', vers: 'const prend = 0;\n        const place =' },
   { nom: 'formule-sans-reste', lettre: 'A', cible: '[A] chaque heure d une formule dit ce qui reste', serveur: true, fichier: 'lib/reserver-simulation.js', de: "prend: verdict.statut === 'ko' ? [] : ceQuePrendLePlan(dossier.opsPlan) });", vers: 'prend: [] });' },
-  { nom: 'jauge-absente', lettre: 'A', cible: '[A] la jauge compte une case par piste', fichier: APP, de: '${rsJaugeHtml(x.place)}`;', vers: '`;' },
+  { nom: 'attente-muette', lettre: 'B', cible: '[B] la touche montre les pistes retenues, et le dit a qui ne la voit pas', fichier: APP, de: '${rsGardeesHtml(x.place)}`;', vers: '`;' },
   { nom: 'retenue-non-comptee-pistes', lettre: 'B', cible: '[B] une piste retenue ne compte pas comme libre', fichier: APP, de: '[...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {\n    if (r.id === ignoreId) return;', vers: 'state.reservations.forEach(r => {\n    if (r.id === ignoreId) return;' },
   { nom: 'retenue-non-comptee-laser', lettre: 'B', cible: '[B] les armes retenues ne comptent pas comme libres', fichier: APP, de: 'const laserWindowsForDate = () => [...state.reservations, ...getBlocagesEnLigne(date)]', vers: 'const laserWindowsForDate = () => state.reservations' },
   { nom: 'phrase-absente', lettre: 'B', cible: '[B] le bloc du bowling dit ce que le client retient', fichier: APP, de: '    ${rsRetenuesHtml(id)}\n  </section>`;', vers: '  </section>`;' },
@@ -75,7 +75,7 @@ MUTATIONS.push(
   { nom: 'retenues-sous-la-recherche', lettre: 'F', cible: '[F] une recherche ne montre pas les retenues', fichier: GLOBAL, de: 'var retenues = q || m.visibles ? [] : m.retenues;', vers: 'var retenues = m.visibles ? [] : m.retenues;' },
   { nom: 'barre-du-complet-muette', lettre: 'F', cible: '[F] la barre du Complet dit ce qui est retenu', fichier: GLOBAL, de: 'if (motsRetenu) h +=', vers: 'if (false) h +=' },
   { nom: 'barre-du-planning-muette', lettre: 'F', cible: '[F] la barre du bowling dit ce qui est retenu', fichier: APP, de: 'if (retenuIci) chiffres.push(', vers: 'if (false) chiffres.push(' },
-  { nom: 'carte-laser-d-avant', lettre: 'F', cible: '[F] la carte laser se lit entiere', fichier: APP, de: '<span class="lp-g__nom"><b>En ligne</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? \'s\' : \'\'} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span></span>', vers: '<b>En ligne</b> <span>${lpArene(w)} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span>' },
+  { nom: 'carte-laser-d-avant', lettre: 'F', cible: '[F] la carte laser se lit entiere', fichier: APP, de: '<span class="lp-g__nom"><b>Internet</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? \'s\' : \'\'} · ${libre ? `jusqu’à ${escapeHtml(libre)}` : \'en cours\'}</span></span></span>', vers: '<b>Internet</b> <span>${lpArene(w)} · ${libre ? `jusqu’à ${escapeHtml(libre)}` : \'en cours\'}</span></span>' },
   { nom: 'ligne-avant-ses-groupes', lettre: 'F', cible: '[F] la ligne se range dans sa demi-heure, apres ses groupes', fichier: GLOBAL, de: 'lignes.concat(retenues).sort(', vers: 'retenues.concat(lignes).sort(' },
 );
 const CONTROLE_FORMULES = 'api/ops.js';
@@ -154,7 +154,7 @@ const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(
   mot: ((b.querySelector('small') || {}).textContent || '').trim(),
   tag: ((b.querySelector('.rs-h-tag') || {}).textContent || '').trim(),
   nom: b.getAttribute('aria-label') || '',
-  cases: [...b.querySelectorAll('.rs-j i')].map((c) => [c.className, Number(c.style.flexGrow) || 1]),
+  garde: ((b.querySelector('.rs-h-garde') || {}).textContent || '').trim(),
 })), id);
 const creer = async (page, nom) => {
   await page.locator('#qbQui').fill(nom);
@@ -223,11 +223,11 @@ async function scenarioA(browser) {
     await verifie(page, 'laser_game');
     const lireB = async (joueursParPiste, minutes, pistes) => (await heures(page, 'bowling')).filter((x) => !x.coince).map((x) => {
       const libres = 8 - pistesPrises(enMin(x.heure), minutes).size;
-      return { heure: x.heure, lu: x.mot, attendu: `reste ${Math.max(0, libres - pistes)} piste${Math.max(0, libres - pistes) > 1 ? 's' : ''}`, cases: x.cases.length, nom: x.nom };
+      return { heure: x.heure, lu: x.mot, attendu: `reste ${Math.max(0, libres - pistes)} piste${Math.max(0, libres - pistes) > 1 ? 's' : ''}`, garde: x.garde, nom: x.nom };
     });
     const b7 = await lireB(6, 60, 2);
     ok(b7.length > 0 && b7.every((x) => x.lu === x.attendu && x.nom.includes(x.attendu)), '[A] chaque heure du bowling dit ce qui reste apres le groupe', b7);
-    ok(b7.every((x) => x.cases === 8), '[A] la jauge compte une case par piste', b7.map((x) => x.cases));
+    ok(b7.every((x) => x.garde === ''), '[A] sans client sur internet, aucune touche ne dit « en attente »', b7.map((x) => x.garde));
     const lireL = async (joueurs) => (await heures(page, 'laser_game')).filter((x) => !x.coince).map((x) => {
       const reste = Math.max(0, 30 - armesPrises(enMin(x.heure)) - joueurs);
       return { heure: x.heure, lu: x.mot, attendu: `reste ${reste} arme${reste > 1 ? 's' : ''}` };
@@ -312,7 +312,7 @@ async function scenarioB(browser) {
     ok(h.libres === 6 && h.prises.includes(6) && h.prises.includes(7), '[B] une piste retenue ne compte pas comme libre', h);
     ok(h.a16.retenu === 2 && h.a16.libre === 5 && h.a18.retenu === 0 && h.a18.libre === 7, '[B] ce qui reste a 16:00 tient compte de la retenue, pas a 18:00', h);
     const a16 = (await heures(page, 'bowling')).find((x) => x.heure === '16:00');
-    ok(a16 && a16.cases.filter(([c]) => c === 'is-retenu').length === 2 && /2 pistes en cours de réservation en ligne/.test(a16.nom), '[B] la touche montre les pistes retenues, et le dit a qui ne la voit pas', a16);
+    ok(a16 && a16.garde === '2 en attente' && /2 pistes en attente sur internet/.test(a16.nom), '[B] la touche montre les pistes retenues, et le dit a qui ne la voit pas', a16);
     const laser = await page.evaluate(() => rsDansLaCopie('laser_game', () => ({ dispo: rvDispoLaserA('16:30')[0], place: rsPlaceLaser('16:30') })));
     ok(laser.dispo.libres === 18 && laser.place.retenu === 12 && laser.place.libre === 14, '[B] les armes retenues ne comptent pas comme libres', laser);
     // Le serveur compte la retenue : 50 joueurs tiennent sur 7 pistes (8 par piste au plus),
@@ -645,11 +645,11 @@ async function scenarioF(browser) {
   try {
     await vue('all');
     const l = await lignes();
-    ok(l.length === 2 && /16:00/.test(l[0].texte) && /Pistes 6-7/.test(l[0].texte) && /libre à 15:18/.test(l[0].texte), '[F] le Complet montre les pistes retenues', l);
-    ok(l.length === 2 && /16:30/.test(l[1].texte) && /12 armes/.test(l[1].texte) && /libre à 15:14/.test(l[1].texte), '[F] le Complet montre les armes retenues', l);
+    ok(l.length === 2 && /16:00/.test(l[0].texte) && /Pistes 6-7/.test(l[0].texte) && /gardé jusqu’à 15:18/.test(l[0].texte), '[F] le Complet montre les pistes retenues', l);
+    ok(l.length === 2 && /16:30/.test(l[1].texte) && /12 armes/.test(l[1].texte) && /gardé jusqu’à 15:14/.test(l[1].texte), '[F] le Complet montre les armes retenues', l);
     ok(l.every((x) => x.gestes === 0 && !x.id && /repeating-linear-gradient/.test(x.hachure)), '[F] une retenue n a aucun geste et se lit hachuree', l);
-    ok(l.every((x) => /Bowling à 16:00|Laser à 16:30/.test(x.nom) && /se libère à/.test(x.nom)), '[F] la ligne se dit a qui ne la voit pas', l.map((x) => x.nom));
-    ok(/^En ligne\s*2 pistes, 12 armes$/.test(await barre()), '[F] la barre du Complet dit ce qui est retenu', await barre());
+    ok(l.every((x) => /Bowling à 16:00|Laser à 16:30/.test(x.nom) && /gardée jusqu’à \d{2}:\d{2}/.test(x.nom)), '[F] la ligne se dit a qui ne la voit pas', l.map((x) => x.nom));
+    ok(/^Internet\s*2 pistes, 12 armes$/.test(await barre()), '[F] la barre du Complet dit ce qui est retenu', await barre());
     // (une case d une seule ligne ne dit qu un mot : le reste est dans son nom)
     const blocs = await page.evaluate(() => ['16:00', '16:30'].map((h) => (document.querySelector(`td[data-gf-reserver="${h}"] button`) || { getAttribute: () => '' }).getAttribute('aria-label')));
     ok(/6 pistes libres/.test(blocs[0]) && /18 places au laser/.test(blocs[1]), '[F] la grande case compte la retenue', blocs);
@@ -671,8 +671,8 @@ async function scenarioF(browser) {
 
     await vue('bowling');
     const cartes = await page.evaluate(() => [...document.querySelectorAll('.planning-hold')].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
-    ok(cartes.length === 2 && cartes.every((t) => /En ligne/.test(t) && /libre à 15:18/.test(t)), '[F] le planning bowling montre les pistes retenues', cartes);
-    ok(/^En ligne\s*2 pistes$/.test(await barre()), '[F] la barre du bowling dit ce qui est retenu', await barre());
+    ok(cartes.length === 2 && cartes.every((t) => /Internet/.test(t) && /gardé jusqu’à 15:18/.test(t)), '[F] le planning bowling montre les pistes retenues', cartes);
+    ok(/^Internet\s*2 pistes$/.test(await barre()), '[F] la barre du bowling dit ce qui est retenu', await barre());
 
     await vue('laser');
     const carte = await page.evaluate(() => {
@@ -685,8 +685,8 @@ async function scenarioF(browser) {
       const r = c.getBoundingClientRect();
       return { nom: c.querySelector('b').textContent.trim(), dit: info.textContent.trim(), chevauche: !(b.bottom <= s.top + 1 || s.bottom <= b.top + 1 || b.right <= s.left + 1 || s.right <= b.left + 1), hauts: [b.height, s.height], carte: r.height };
     });
-    ok(carte && carte.nom === 'En ligne' && carte.dit === '12 armes · libre à 15:14' && !carte.chevauche && carte.hauts.every((h) => h >= 12), '[F] la carte laser se lit entiere', carte);
-    ok(/^En ligne\s*12 armes$/.test(await barre()), '[F] la barre du laser dit ce qui est retenu', await barre());
+    ok(carte && carte.nom === 'Internet' && carte.dit === '12 armes · jusqu’à 15:14' && !carte.chevauche && carte.hauts.every((h) => h >= 12), '[F] la carte laser se lit entiere', carte);
+    ok(/^Internet\s*12 armes$/.test(await barre()), '[F] la barre du laser dit ce qui est retenu', await barre());
 
     // Echue, elle part.
     const base = FX.instant(JOUR, C.HEURE).getTime();
@@ -695,7 +695,7 @@ async function scenarioF(browser) {
     await page.evaluate(() => renderStaff());
     await page.waitForTimeout(350);
     const apres = await lignes();
-    ok(apres.length === 1 && /Pistes 6-7/.test(apres[0].texte) && /^En ligne\s*2 pistes$/.test(await barre()), '[F] echue, la retenue quitte le Complet', { apres, barre: await barre() });
+    ok(apres.length === 1 && /Pistes 6-7/.test(apres[0].texte) && /^Internet\s*2 pistes$/.test(await barre()), '[F] echue, la retenue quitte le Complet', { apres, barre: await barre() });
   } finally { await finir(m, 'F'); }
 
   // Une vraie journee : la ligne se range dans sa demi-heure, parmi les groupes.
@@ -725,7 +725,7 @@ async function scenarioF(browser) {
       const r = tr.getBoundingClientRect();
       return { display: getComputedStyle(tr).display, largeur: r.width, dehors: r.right > innerWidth + 1, texte: tr.textContent.replace(/\s+/g, ' ').trim() };
     });
-    ok(tel && tel.display === 'grid' && !tel.dehors && /Pistes 6-7/.test(tel.texte) && /libre à 15:18/.test(tel.texte), '[F] au telephone, la retenue est une carte', tel);
+    ok(tel && tel.display === 'grid' && !tel.dehors && /Pistes 6-7/.test(tel.texte) && /gardé jusqu’à 15:18/.test(tel.texte), '[F] au telephone, la retenue est une carte', tel);
   } finally { await finir(m3, 'F3'); }
 }
 
@@ -777,11 +777,11 @@ async function scenarioG(browser) {
     ok(c.extras === 6 && /^6\s€$/.test(c.calcul), '[G] un toucher, une crepe', c.calcul);
     await page.locator('#rsParPersonne').click();
     c = await chiffres(page);
-    ok(c.extras === 72 && /12 personnes/.test(c.tous) && /par personne/.test(c.ticket), '[G] par personne, une crepe pour les 12', { extras: c.extras, tous: c.tous });
+    ok(c.extras === 72 && /pour les 12 joueurs/.test(c.tous) && /1 par joueur/.test(c.ticket), '[G] par personne, une crepe pour les 12', { extras: c.extras, tous: c.tous });
     await page.locator('#rsHaut [data-pax="15"]').click();
     await page.waitForTimeout(250);
     c = await chiffres(page);
-    ok(c.extras === 90 && /15 personnes/.test(c.tous), '[G] par personne, la ligne suit le groupe', { extras: c.extras, tous: c.tous });
+    ok(c.extras === 90 && /pour les 15 joueurs/.test(c.tous), '[G] par personne, la ligne suit le groupe', { extras: c.extras, tous: c.tous });
     await page.locator(CREPE).click();
     c = await chiffres(page);
     ok(c.extras === 90, '[G] toucher encore la tuile n ajoute rien a une ligne par personne', c.extras);
@@ -883,7 +883,7 @@ async function scenarioG(browser) {
     let c = await chiffres(page);
     ok(c.total === 240 && /Anniversaire de Lina/.test(c.ticket) && /12 joueurs × 20/.test(c.ticket), '[G] la formule se lit sur le ticket', { total: c.total, ticket: c.ticket.slice(0, 120) });
     const dit = await page.locator('#rsFmCalcul').textContent();
-    ok(/12 × 20\s€, 240\s€/.test(dit) && /90\s€ de plus que le détail/.test(dit), '[G] la page dit le calcul et l ecart', dit);
+    ok(/12 × 20\s€ = 240\s€/.test(dit) && /90\s€ de plus que le prix normal/.test(dit), '[G] la page dit le calcul et l ecart', dit);
     await page.locator('#rsHaut [data-pax="15"]').click();
     await page.waitForTimeout(250);
     c = await chiffres(page);
@@ -991,7 +991,7 @@ async function scenarioG(browser) {
     await page.locator('#rsFmClients').click();
     await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === null);
     await page.waitForFunction(() => /formulaire des clients/.test((document.getElementById('rsFmEtat') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
-    ok(lePublicVoit(garde) && !lePublicRefuse(garde) && /formulaire des clients/.test((await page.locator('#rsFmEtat').textContent()) || ''), '[G] affichee, les clients la voient', { voit: lePublicVoit(garde), etat: await page.locator('#rsFmEtat').textContent() });
+    ok(lePublicVoit(garde) && !lePublicRefuse(garde) && /les clients la voient sur internet/.test((await page.locator('#rsFmEtat').textContent()) || ''), '[G] affichee, les clients la voient', { voit: lePublicVoit(garde), etat: await page.locator('#rsFmEtat').textContent() });
     await page.locator('#rsFmComptoir').click();
     await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === 'comptoir');
     ok(!lePublicVoit(garde), '[G] on la retire du formulaire d un geste', lePublicVoit(garde));

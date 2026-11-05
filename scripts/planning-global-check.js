@@ -419,7 +419,7 @@ async function structure(page, s, label) {
     };
     // (ce qui reste se dit « libre », en toutes lettres, depuis le 2026-11-03)
     const mot = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
-    const attendues = [...pleins, ...(place.pistes ? [f.court ? mot(place.pistes, 'piste', 'pistes') : mot(place.pistes, 'piste libre', 'pistes libres')] : []), ...(place.laser ? [f.court ? mot(place.laser, 'place', 'places') : mot(place.laser, 'place laser', 'places laser')] : []), mot(c.pers, 'joueur', 'joueurs')];
+    const attendues = [...pleins, ...(place.pistes ? [f.court ? mot(place.pistes, 'piste', 'pistes') : mot(place.pistes, 'piste libre', 'pistes libres')] : []), ...(place.laser ? [f.court ? mot(place.laser, 'arme', 'armes') : mot(place.laser, 'arme libre', 'armes libres')] : []), mot(c.pers, 'joueur', 'joueurs')];
     const lues = case0.pieces.map((p) => p.t);
     // (dans l ordre, sans rien inventer)
     let rang = -1;

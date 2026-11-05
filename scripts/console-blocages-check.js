@@ -356,7 +356,7 @@ function verdict(F) {
   ok(F.arrive && F.carte.n === 1, 'arrive', '[A] le blocage arrive : une carte « En ligne », sans rechargement', `${F.carte.n} carte(s)`);
   ok(F.signatureBlocages, 'signature', '[A] la signature du planning porte l identite et l echeance des blocages recus');
   ok(F.carte.piste === F.serveur.piste && F.carte.colonne === F.serveur.piste && F.carte.debut === 14, 'arrive', '[A] sur la piste que le serveur a retenue, a 14:00', `piste ${F.carte.piste} (serveur ${F.serveur.piste}), debut ${F.carte.debut}`);
-  ok(F.carte.texte === `En ligne libre à ${F.serveur.heureB}` && /^Réservation en ligne en cours : sans confirmation, la place se libère à \d{2}:\d{2}\.$/.test(F.carte.titre), 'arrive', '[A] elle dit quand la piste se libere', `${F.carte.texte} / ${F.carte.titre}`);
+  ok(F.carte.texte === `Internet gardé jusqu’à ${F.serveur.heureB}` && /^Réservation internet en cours, place gardée jusqu’à \d{2}:\d{2}\.$/.test(F.carte.titre), 'arrive', '[A] elle dit quand la piste se libere', `${F.carte.texte} / ${F.carte.titre}`);
   ok(F.carte.heureEntiere, 'arrive', '[A] l heure de liberation se lit en entier, sur une piste etroite');
   ok(F.carte.recouvre, 'arrive', '[A] elle recouvre les cases : aucune reservation ne s y lance', F.carte.dessous);
   ok(F.groupe === 1 && F.pasUneReservation, 'arrive', '[A] le groupe reste piste 1 ; le blocage n est pas une reservation du poste', `groupe piste ${F.groupe}`);
@@ -365,7 +365,7 @@ function verdict(F) {
   ok(F.laser && F.laser.heureRangee === '16:00' && F.laser.capacite === `10/${F.capaciteArmes}`
     && F.laser.dit.startsWith(`16:00 : 10 sur ${F.capaciteArmes}, ${F.capaciteArmes - 10} places. En ligne 10, libre à ${F.serveur.heureL}.`),
   'laser', '[B] les 10 joueurs comptent dans la capacite de 16:00', F.laser && `${F.laser.heureRangee} ${F.laser.capacite} / ${F.laser.dit}`);
-  ok(F.laser && F.laser.sous === '0 départ · 0 joueur · 1 en ligne en cours', 'laser', '[B] l en-tete la compte a part, pas comme un depart', F.laser && F.laser.sous);
+  ok(F.laser && F.laser.sous === '0 départ · 0 joueur · 1 internet en cours', 'laser', '[B] l en-tete la compte a part, pas comme un depart', F.laser && F.laser.sous);
   ok(F.laser && F.laser.neutre, 'laser', '[B] un depart qui ne porte que la reservation en ligne reste neutre (aucune couleur de groupe)');
   ok(F.clicSansEffet, 'laser', '[B] un clic sur la carte en attente ne lance rien');
   // Le serveur sert encore le blocage (sa liste est celle d avant l echeance) :

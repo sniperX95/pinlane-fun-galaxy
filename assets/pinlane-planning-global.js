@@ -466,6 +466,31 @@
       g.cases.forEach(function (liste) { liste.sort(function (a, b) { return (a.start == null ? 99 : a.start) - (b.start == null ? 99 : b.start); }); });
       g.parti = g.etat === 'done' || g.etat === 'absent';
     });
+    // CE QUE LES CLIENTS RETIENNENT EN CE MOMENT (2026-11-05, Ansar : « ça montre si ya des
+    // pistes ou des armes laser qui sont en cours de reservation par les clients »). Une ligne
+    // a son heure, sans geste ; elle part seule quand la retenue finit ou devient une reservation.
+    var retenues = (typeof getBlocagesEnLigne === 'function' ? getBlocagesEnLigne(jour) : []).map(function (r) {
+      var g = { retenue: true, r: r, id: String(r.id), heure: timeToNum(r.startTime), cases: new Map(), infos: [], table: null, formule: gpFormule(r) };
+      var poser = function (id, e) {
+        var c = colonneDe(id);
+        if (!g.cases.has(c.cle)) { g.cases.set(c.cle, []); c.groupes += 1; }
+        g.cases.get(c.cle).push(e);
+      };
+      getBowlingWindowsFromReservation(r).forEach(function (w) {
+        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite) });
+      });
+      // (les vagues d une meme partie entrent ensemble : une seule heure, leurs armes ensemble)
+      var parties = new Map();
+      getLaserWindowsFromReservation(r).forEach(function (w) {
+        var k = Math.round(w.start * 60);
+        var deja = parties.get(k);
+        if (deja) { deja.armes += Number(w.players) || 0; return; }
+        var e = { start: w.start, end: w.end, armes: Number(w.players) || 0 };
+        parties.set(k, e);
+        poser('laser_game', e);
+      });
+      return g;
+    }).sort(function (a, b) { return a.heure - b.heure; });
     // (inconnues : dans l ordre de leur premiere seance, a egalite par titre)
     inconnues.sort(function (a, b) {
       var premiere = function (c) { return Math.min.apply(null, [99].concat(groupes.map(function (g) { return ((g.cases.get(c.cle) || [])[0] || {}).start; }).filter(function (x) { return x != null; }))); };
@@ -475,6 +500,7 @@
     var laser = typeof lpModele === 'function' ? lpModele() : null;
     return {
       jour: jour, aujourdHui: aujourdHui, passe: jour < auj && !nuit, maintenant: maintenant, groupes: groupes, colonnes: utilisees,
+      retenues: retenues,
       visibles: filtrees ? new Set(filtrees.map(function (r) { return String(r.id); })) : null,
       fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false },
       etat: jour === auj ? gpEtatCentre(groupes, laser, maintenant) : null,
@@ -761,6 +787,34 @@
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) tete += '<span class="gf-nom__valide">À valider</span>';
     if (g.etat === 'closing') tete += gfPresent(g) ? '<span class="gf-nom__caisse">À encaisser</span>' : '<span class="gf-nom__caisse">À clôturer<span class="gf-nom__suite"> · jamais pointé</span></span>';
     return '<td class="gf-nom"><div class="gf-nom__l">' + tete + '</div>' + g.rubriques.map(function (x) { return x.html; }).join('') + '</td>';
+  }
+  // UNE RETENUE, EN LIGNE DANS LE TABLEAU (2026-11-05). Les memes cases qu un groupe, hachurees
+  // comme sur le planning bowling : ce qu elle tient, quand ca se libere, et aucun geste.
+  var GF_CADENAS = '<svg class="gf-nom__cadenas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  function gfRetenueHtml(g, m, bloc, classes) {
+    var r = g.r;
+    var libre = typeof heureLiberationBlocage === 'function' ? heureLiberationBlocage(r) : '';
+    var texte = typeof texteBlocageEnLigne === 'function' ? texteBlocageEnLigne(r) : 'Réservation en ligne en cours.';
+    var dit = [];
+    var cases = m.colonnes.map(function (col) {
+      var liste = g.cases.get(col.cle) || [];
+      if (!liste.length) return '<td class="gf-a is-vide"></td>';
+      return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) {
+        var d = e.pistes ? (e.pistes.length ? gfPistesEnMots(e.pistes) : '') : e.armes ? gfPluriel(e.armes, ['arme', 'armes']) : '';
+        dit.push(col.titre + ' à ' + gpHeure(e.start) + (d ? ', ' + d : ''));
+        return '<span class="gf-x is-retenue"><b class="gf-x__t">' + gpEsc(gpHeure(e.start)) + '</b>' + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + '</span>';
+      }).join('') + '</td>';
+    }).join('');
+    var tete = gfPile(g) ? '' : '<b class="gf-nom__h">' + gpEsc(gpHeure(g.heure)) + '</b>';
+    return '<tr class="gf-r gf-retenue ' + classes + '" title="' + gpEsc(texte) + '" aria-label="' + gpEsc(dit.join(', ') + '. ' + texte) + '">'
+      + bloc
+      + '<td class="gf-h' + (gfPile(g) ? ' is-pile' : '') + '" data-gf-heure="' + gpEsc(gpHeure(g.heure)) + '"></td>'
+      + '<td class="gf-nom"><div class="gf-nom__l">' + tete + GF_CADENAS + '<span class="gf-nom__t">Réservation en ligne en cours</span></div></td>'
+      + '<td class="gf-n"><b>' + (Number(r.pax) || 0) + '</b></td>'
+      + gfFormuleCase(g)
+      + cases
+      + '<td class="gf-reste"></td>'
+      + '<td class="gf-etat"><span class="gf-g"><span class="gf-gb gf-gb--etat">' + gpEsc(libre ? 'libre à ' + libre : 'en cours') + '</span></span></td></tr>';
   }
   // LE COMPTE A L ARRIVEE (2026-10-29) : un groupe recompte au comptoir dit
   // son nombre, et dessous celui de la reservation (« 13 », « 10 rés. »).
@@ -1144,11 +1198,12 @@
     // meme vide ») : chaque demi-heure d ouverture a sa case, meme sans groupe, et se touche
     // pour reserver. Un jour vide ou calme se lit comme un planning, pas comme une page
     // cassee. Pas sur un nom tape, un filtre ou au telephone : ce sont des resultats.
-    var suite = lignes;
+    var retenues = q || m.visibles ? [] : m.retenues;
+    var suite = retenues.length ? lignes.concat(retenues).sort(function (a, b) { return a.heure - b.heure; }) : lignes;
     var fen = m.fenetre;
     if (!q && !m.visibles && !cartes && fen && !fen.closed && fen.close > fen.open) {
-      var pris = new Set(lignes.map(function (g) { return gfBloc(g.heure); }));
-      suite = lignes.slice();
+      var pris = new Set(suite.map(function (g) { return gfBloc(g.heure); }));
+      suite = suite.slice();
       for (var b0 = Math.ceil(fen.open * 2 - 1e-6) / 2; b0 < fen.close - 1e-6; b0 += 0.5) if (!pris.has(b0)) suite.push({ libre: true, heure: b0 });
       suite.sort(function (a, b) { return a.heure - b.heure; });
     }
@@ -1189,6 +1244,10 @@
       avantB = part.b;
       part.lignes.forEach(function (g, i) {
         var nouveau = i === 0;
+        if (g.retenue) {
+          poser('retenue:' + g.id, gfRetenueHtml(g, m, nouveau ? gfBlocCase(m, part, parBloc.get(part.b) || { groupes: 0, pers: 0 }, bande) : '', (bande ? 'is-bande' : '') + (nouveau && !part.suite ? ' is-bloc' : '')));
+          return;
+        }
         var proche = g.retard || (m.maintenant != null && g.etat === 'upcoming' && g.heure - m.maintenant <= GF_BIENTOT + 1e-6);
         var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (proche ? ' is-proche' : '') + (g.etat === 'upcoming' && !proche ? ' is-loin' : '') + (g.etat === 'closing' ? ' is-caisse' : '') + (bande ? ' is-bande' : '') + (nouveau && !part.suite ? ' is-bloc' : '');
         poser('groupe:' + g.id, '<tr class="' + classes + '" tabindex="0" data-gf-id="' + gpEsc(g.id) + '" aria-label="' + gpEsc(gfAria(g, m)) + '">'
@@ -1465,6 +1524,9 @@
     if (e.bowling || e.laser) h += '<span class="pb-sep" aria-hidden="true"></span>';
     if (e.bowling) h += gfEtatBandeau('bowling', 'Pistes', e.bowling, gpEsc(String(e.bowling.bulle || '').replace(/^(Libres maintenant : |Aucune piste libre, )/, '').split(' · ')[0]));
     if (e.laser) h += gfEtatBandeau('laser', 'Laser', e.laser, gfGroupesDuDepart(m));
+    var retenu = typeof retenuesDuJour === 'function' ? retenuesDuJour(m.jour) : { pistes: 0, armes: 0 };
+    var motsRetenu = [retenu.pistes ? gfPluriel(retenu.pistes, ['piste', 'pistes']) : '', retenu.armes ? gfPluriel(retenu.armes, ['arme', 'armes']) : ''].filter(Boolean).join(', ');
+    if (motsRetenu) h += '<div class="pb-k" data-kpi="enligne" title="Des clients réservent sur le formulaire : ces places sont retenues pendant 10 minutes."><span class="gf-c__l">En ligne</span><b class="gf-c__v">' + gpEsc(motsRetenu) + '</b></div>';
     if (!m.aujourdHui) {
       var joueurs = m.groupes.reduce(function (n, g) { return n + (Number(g.r.pax) || 0); }, 0);
       h += '<span class="pb-sep" aria-hidden="true"></span><span class="pb-info">' + gpEsc(gfPluriel(m.groupes.length, ['groupe', 'groupes']) + ', ' + gfPluriel(joueurs, ['joueur', 'joueurs'])) + '</span>';
@@ -1584,14 +1646,14 @@
     pbPoser(gfBandeauHtml(m), m);
     var bandeau = racine.querySelector('.gf-bandeau');
     var ferme = Boolean(m.fenetre && m.fenetre.closed);
-    var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : !m.groupes.length ? 'Aucune réservation ce jour-là' : '';
+    var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : !m.groupes.length && !m.retenues.length ? 'Aucune réservation ce jour-là' : '';
     bandeau.hidden = !texte;
     bandeau.className = 'gf-bandeau' + (ferme ? ' is-ferme' : '');
     if (bandeau.textContent !== texte) bandeau.textContent = texte;
     var defile = racine.querySelector('.gf-defile');
     wrap._gfModele = m;
     // (un jour vide cherche aussi : le client est peut-etre sur une autre date)
-    var aEcrire = Boolean(m.groupes.length || q || (!ferme && !cartes));
+    var aEcrire = Boolean(m.groupes.length || m.retenues.length || q || (!ferme && !cartes));
     if (aEcrire) {
       var actif = document.activeElement;
       var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;

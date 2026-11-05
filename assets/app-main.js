@@ -2266,6 +2266,17 @@ function texteBlocageEnLigne(blocage) {
   return `Réservation en ligne en cours${heure ? ` : sans confirmation, la place se libère à ${heure}` : ''}.`;
 }
 
+// Ce que les clients retiennent en ce moment sur ce jour, pour les barres des plannings : les
+// pistes de chaque retenue, les armes de sa plus grande partie (ses parties jouent l une apres
+// l autre, elle ne tient pas leurs armes en double).
+function retenuesDuJour(dateStr = state.currentDate) {
+  return getBlocagesEnLigne(dateStr).reduce((total, blocage) => {
+    const pistes = new Set(getBowlingWindowsFromReservation(blocage).flatMap(window => window.lanes || []));
+    const armes = getLaserWindowsFromReservation(blocage).map(window => Number(window.players) || 0);
+    return { pistes: total.pistes + pistes.size, armes: total.armes + Math.max(0, ...armes) };
+  }, { pistes: 0, armes: 0 });
+}
+
 function getStaffDataSignature(dateStr = state.currentDate) {
   const reservations = dateStr === state.currentDate
     ? getCurrentStaffReservationsForUi()
@@ -23566,6 +23577,9 @@ function renderKpis() {
       chiffres.push({ key: 'libres', label: 'Libres', id: 'kpiFree', value: places ? `${places} place${places > 1 ? 's' : ''}` : 'complet', hint: `à ${formatClockDisplay(p.t)}`, title: `Prochain départ à ${formatClockDisplay(p.t)}` });
     }
   }
+  const retenues = retenuesDuJour();
+  const retenuIci = view === 'laser' ? retenues.armes : retenues.pistes;
+  if (retenuIci) chiffres.push({ key: 'enligne', label: 'En ligne', id: 'kpiEnLigne', value: `${retenuIci} ${view === 'laser' ? 'arme' : 'piste'}${retenuIci > 1 ? 's' : ''}`, title: 'Des clients réservent sur le formulaire : ces places sont retenues pendant 10 minutes.' });
   window.pbEcrireChiffres(chiffres);
 }
 
@@ -24411,7 +24425,7 @@ function lpLegende(modele, d, choisi) {
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
   d.holds.forEach(w => {
     const libre = heureLiberationBlocage(w.reservation);
-    groupes.push(`<span class="lp-g is-enligne" title="${escapeHtml(texteBlocageEnLigne(w.reservation))}" onclick="event.stopPropagation()"><i aria-hidden="true"></i><b>En ligne</b> <span>${lpArene(w)} · ${libre ? `libre à ${escapeHtml(libre)}` : 'en cours'}</span></span>`);
+    groupes.push(`<span class="lp-g is-enligne" title="${escapeHtml(texteBlocageEnLigne(w.reservation))}" onclick="event.stopPropagation()"><i aria-hidden="true"></i><span class="lp-g__nom"><b>En ligne</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? 's' : ''} · ${libre ? `libre à ${escapeHtml(libre)}` : 'en cours'}</span></span></span>`);
   });
   if (encore) groupes.push(`<span class="lp-libre">+ ${encore}</span>`);
   return groupes.join('');
@@ -28555,7 +28569,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       // nombre de joueurs : le prix monte donc PAR PALIERS (un cran tous les
       // 6 joueurs a Libramont), jamais lineairement. Le comptoir doit voir
       // les pistes pour comprendre le montant.
-      const pistes = item.bowlingCapacity?.emergency && Number(item.laneCount) > 0 ? Number(item.laneCount) : splitGroupIntoBowlingServices(effectif).reduce((sum, players) => sum + Math.max(1, getRequiredLaneCount('bowling', players)), 0);
+      const pistes = (item.bowlingCapacity?.emergency || item.pistesALaMain) && Number(item.laneCount) > 0 ? Number(item.laneCount) : splitGroupIntoBowlingServices(effectif).reduce((sum, players) => sum + Math.max(1, getRequiredLaneCount('bowling', players)), 0);
       const montant = Number(getBasePrice('bowling', heures, pistes, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
@@ -28713,12 +28727,20 @@ function editArcadeTimingChanged() {
   return paid && ((e.startTime != null && e.startTime !== r.startTime) || (e.duration != null && Number(e.duration) !== Number(r.duration)) || (e.date != null && e.date !== r.date));
 }
 
+// Le nombre de pistes pose a la main change : il se paie, comme dans la fenetre.
+function poseEditionChange() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return false;
+  return (e.pistesALaMain ? parseLaneInput(e.lanesStr).length : 0) !== pistesALaMainDuDossier(r);
+}
+
 function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
   // Une autre formule, un autre tarif.
-  if (formuleChangeeEdition()) return true;
+  if (formuleChangeeEdition() || poseEditionChange()) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -28737,6 +28759,7 @@ function getEditProgramItems() {
     if (state.selectedRes) {
       const capacity = getEditBowlingCapacityNeed(dossierPourFormule(state.selectedRes), e);
       if (capacity.bowlingCapacity.emergency) { item.bowlingCapacity = capacity.bowlingCapacity; item.laneCount = capacity.requiredCount; }
+      else if (capacity.aLaMain) { item.laneCount = capacity.requiredCount; item.pistesALaMain = true; }
     }
     items.push(item);
   }
@@ -29933,7 +29956,7 @@ function preparerModificationEdition() {
   // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
   const estimeEcran = getEditPrixEstime();
   const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
-    && (formuleChangee || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
+    && (formuleChangee || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne

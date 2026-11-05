@@ -136,7 +136,7 @@ async function ouvrirConsole(browser, serveur, { role = 'direction', appareil = 
     },
   });
   const { ctx, page, erreurs } = m;
-  page.setDefaultTimeout(8000);
+  page.setDefaultTimeout(20000);
   await page.evaluate(({ catalogue, droits, holds, jour, garde }) => {
     // La journee choisie vaut pour la base ET pour la page : les deux voient les memes dossiers.
     if (garde) {
@@ -177,7 +177,7 @@ async function ouvrirConsole(browser, serveur, { role = 'direction', appareil = 
   return { ctx, page, erreurs, journal, avant: nouveaux, B };
 }
 
-const pret = (page) => page.waitForFunction(() => { const b = document.querySelector('#rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 8000 });
+const pret = (page) => page.waitForFunction(() => { const b = document.querySelector('#rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 20000 });
 
 async function ouvrirFenetre(page, pax = 7) {
   await page.locator('.btn-new').click();

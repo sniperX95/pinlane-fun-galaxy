@@ -884,7 +884,7 @@ module.exports = async (req, res) => {
       // ce qui se vend : les pistes, l heure et le jour deplacent un dossier sans
       // rouvrir son prix.
       const extrasFinales = patch.extras ?? current.extras ?? [];
-      const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current);
+      const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current) || poseApres !== poseAvant;
       const jourChange = String(patch.date ?? current.date) !== String(current.date);
       const memesPistes = Number(ops.laneCount ?? (patch.lanes ?? current.lanes ?? []).length) === (current.lanes || []).length;
       const base = operationsChanged

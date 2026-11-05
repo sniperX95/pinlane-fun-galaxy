@@ -21,6 +21,8 @@
 //   [D] LES PISTES A LA MAIN. Sept, puis vingt joueurs sur une piste, la fiche et le
 //       glisser les gardent, le droit se juge au serveur, le formulaire public n y a pas droit.
 //   [E] L ECRAN. Rien ne deborde, rien ne se coupe, tout tient sans defiler a 1366 x 768.
+//   [F] LES PLANNINGS. Le Complet, le bowling et le laser montrent ce que les clients
+//       retiennent, sans geste, sans compter comme un groupe, et echu ca part.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en
@@ -44,7 +46,7 @@ const MUTATIONS = [
   { nom: 'reste-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du bowling dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n  return { unite: \'piste\'', vers: 'const prend = 0;\n  return { unite: \'piste\'' },
   { nom: 'armes-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du laser dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n        const place =', vers: 'const prend = 0;\n        const place =' },
   { nom: 'formule-sans-reste', lettre: 'A', cible: '[A] chaque heure d une formule dit ce qui reste', serveur: true, fichier: 'lib/reserver-simulation.js', de: "prend: verdict.statut === 'ko' ? [] : ceQuePrendLePlan(dossier.opsPlan) });", vers: 'prend: [] });' },
-  { nom: 'jauge-absente', lettre: 'A', cible: '[A] la jauge compte une case par piste', fichier: APP, de: '${mot ? `<small>${escapeHtml(mot)}</small>` : \'\'}${rsJaugeHtml(x.place)}`;', vers: '${mot ? `<small>${escapeHtml(mot)}</small>` : \'\'}`;' },
+  { nom: 'jauge-absente', lettre: 'A', cible: '[A] la jauge compte une case par piste', fichier: APP, de: '${rsJaugeHtml(x.place)}`;', vers: '`;' },
   { nom: 'retenue-non-comptee-pistes', lettre: 'B', cible: '[B] une piste retenue ne compte pas comme libre', fichier: APP, de: '[...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {\n    if (r.id === ignoreId) return;', vers: 'state.reservations.forEach(r => {\n    if (r.id === ignoreId) return;' },
   { nom: 'retenue-non-comptee-laser', lettre: 'B', cible: '[B] les armes retenues ne comptent pas comme libres', fichier: APP, de: 'const laserWindowsForDate = () => [...state.reservations, ...getBlocagesEnLigne(date)]', vers: 'const laserWindowsForDate = () => state.reservations' },
   { nom: 'phrase-absente', lettre: 'B', cible: '[B] le bloc du bowling dit ce que le client retient', fichier: APP, de: '    ${rsRetenuesHtml(id)}\n  </section>`;', vers: '  </section>`;' },
@@ -55,11 +57,23 @@ const MUTATIONS = [
   { nom: 'capacite-toujours-jugee', lettre: 'D', cible: '[D] 7 joueurs sur une piste, a la main', serveur: true, fichier: 'lib/bowling-allocation.js', de: 'let lanes = aLaMain\n    ? fixedLanes || allocate(Math.max(1, Number(requiredLanes) || 1))\n    : allocate(Math.max(normalLanesNeeded, Number(requiredLanes) || 0));', vers: 'aLaMain = false;\n  let lanes = allocate(Math.max(normalLanesNeeded, Number(requiredLanes) || 0));' },
   { nom: 'base-refuse-la-main', lettre: 'D', cible: '[D] 20 joueurs sur une piste, a la main', serveur: true, fichier: 'lib/database.js', de: '    if (block.pistesALaMain) continue;\n', vers: '' },
   { nom: 'formule-sans-pistes', lettre: 'D', cible: '[D] une formule avec bowling offre le reglage des pistes', fichier: APP, de: "${rvActivites().includes('bowling') && rsEtat().faits.combien ? rsCompteurPistesHtml() : ''}</div>", vers: '</div>' },
+  { nom: 'fiche-prix-fige', lettre: 'D', cible: '[D] sur la fiche, le prix suit les pistes', serveur: true, fichier: 'api/staff-reservations.js', de: '!== contenuDuDossier(current) || poseApres !== poseAvant;', vers: '!== contenuDuDossier(current);' },
+  { nom: 'fiche-annonce-l-ancien-prix', lettre: 'D', cible: '[D] la fiche annonce le prix d une piste', fichier: APP, de: "      else if (capacity.aLaMain) { item.laneCount = capacity.requiredCount; item.pistesALaMain = true; }\n", vers: '' },
   { nom: 'droit-non-juge', lettre: 'D', cible: '[D] sans le niveau forcer, le serveur refuse', serveur: true, fichier: 'lib/reserver-fenetre.js', de: '    if (sousLeConseil(request, dossier)) exigerPistesALaMain(session);\n', vers: '' },
   { nom: 'public-garde-la-main', lettre: 'D', cible: '[D] le formulaire public n a pas droit aux pistes a la main', serveur: true, fichier: 'lib/reservation-request.js', de: '    delete request.pistesALaMain;\n', vers: '' },
   { nom: 'marque-perdue-au-patch', lettre: 'D', cible: '[D] une heure changee garde le dossier a la main', serveur: true, fichier: 'api/staff-reservations.js', de: "const poseApres = poseEnvoyee !== null ? poseEnvoyee : poseAvant && (Array.isArray(patch.lanes) ? patch.lanes.length : (current.lanes || []).length) || poseAvant;", vers: 'const poseApres = poseEnvoyee !== null ? poseEnvoyee : 0;' },
   { nom: 'glisser-rajoute-une-piste', lettre: 'D', cible: '[D] glisser la carte ne rajoute pas de piste', fichier: APP, de: "  const requiredCount = pistesALaMainDuDossier(reservation) ? currentLanes.length : Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);\n  const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });\n  if (!slotCheck.ok) {\n    showPlanningMoveNotice(", vers: "  const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);\n  const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });\n  if (!slotCheck.ok) {\n    showPlanningMoveNotice(" },
 ];
+const GLOBAL = 'assets/pinlane-planning-global.js';
+MUTATIONS.push(
+  { nom: 'complet-sans-retenues', lettre: 'F', cible: '[F] le Complet montre les pistes retenues', fichier: GLOBAL, de: 'var retenues = q || m.visibles ? [] : m.retenues;', vers: 'var retenues = [];' },
+  { nom: 'retenues-sous-le-filtre', lettre: 'F', cible: '[F] un filtre ne montre pas les retenues', fichier: GLOBAL, de: 'var retenues = q || m.visibles ? [] : m.retenues;', vers: 'var retenues = q ? [] : m.retenues;' },
+  { nom: 'retenues-sous-la-recherche', lettre: 'F', cible: '[F] une recherche ne montre pas les retenues', fichier: GLOBAL, de: 'var retenues = q || m.visibles ? [] : m.retenues;', vers: 'var retenues = m.visibles ? [] : m.retenues;' },
+  { nom: 'barre-du-complet-muette', lettre: 'F', cible: '[F] la barre du Complet dit ce qui est retenu', fichier: GLOBAL, de: 'if (motsRetenu) h +=', vers: 'if (false) h +=' },
+  { nom: 'barre-du-planning-muette', lettre: 'F', cible: '[F] la barre du bowling dit ce qui est retenu', fichier: APP, de: 'if (retenuIci) chiffres.push(', vers: 'if (false) chiffres.push(' },
+  { nom: 'carte-laser-d-avant', lettre: 'F', cible: '[F] la carte laser se lit entiere', fichier: APP, de: '<span class="lp-g__nom"><b>En ligne</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? \'s\' : \'\'} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span></span>', vers: '<b>En ligne</b> <span>${lpArene(w)} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span>' },
+  { nom: 'ligne-avant-ses-groupes', lettre: 'F', cible: '[F] la ligne se range dans sa demi-heure, apres ses groupes', fichier: GLOBAL, de: 'lignes.concat(retenues).sort(', vers: 'retenues.concat(lignes).sort(' },
+);
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
 let echecs = 0;
@@ -519,10 +533,14 @@ async function scenarioD(browser) {
     await page5.locator('#editPistesMain').click();
     const conseil = await page5.locator('#editLanesHint').textContent();
     ok(/7 joueurs sur 1 piste, à la main/.test(conseil), '[D] la fiche dit ce qu elle va garder', conseil);
+    await page5.waitForTimeout(250);
+    const champPrix = await page5.locator('#editPriceInput').inputValue();
+    ok(Number(champPrix) === 39, '[D] la fiche annonce le prix d une piste', champPrix);
     await page5.locator('.edit-form button[type="submit"]').first().click();
     await attendreBase(page5, () => B.base.reservations.get(id).lanes.join() === '2');
     const apres = B.base.reservations.get(id);
     ok(apres.lanes.join() === '2' && blocsPistes(apres)[0].pistesALaMain === 1, '[D] la fiche garde une piste, a la main', { pistes: apres.lanes, bloc: blocsPistes(apres)[0] });
+    ok(Number(apres.price) === 39 && Number(apres.base_price) === 39 && !/au lieu de/.test(String(apres.notes || '')), '[D] sur la fiche, le prix suit les pistes', { prix: apres.price, base: apres.base_price, notes: apres.notes });
     // Rouverte, elle s en souvient. On retire la main : le centre remet ses deux pistes.
     await page5.waitForTimeout(500);
     await ouvrirModifier(page5, id);
@@ -532,6 +550,7 @@ async function scenarioD(browser) {
     await attendreBase(page5, () => B.base.reservations.get(id).lanes.length === 2);
     const rendu = B.base.reservations.get(id);
     ok(rendu.lanes.length === 2 && blocsPistes(rendu).every((b) => !b.pistesALaMain), '[D] retirer la main depuis la fiche rend les pistes conseillees', { pistes: rendu.lanes, blocs: blocsPistes(rendu) });
+    ok(Number(rendu.price) === 78 && !/au lieu de/.test(String(rendu.notes || '')), '[D] retirer la main rend le prix des pistes', { prix: rendu.price, notes: rendu.notes });
   } finally { await finir(m5, 'D5'); }
 }
 
@@ -562,7 +581,110 @@ async function scenarioE(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE };
+// ---------------------------------------------------------------------------
+// [F] LES PLANNINGS
+// ---------------------------------------------------------------------------
+async function scenarioF(browser) {
+  console.log('\n[F] les plannings');
+  const m = await ouvrir(browser, { retenues: RETENUES, reservations: () => [] });
+  const { page } = m;
+  const vue = async (v) => { await page.evaluate((x) => setStaffResourceView(x), v); await page.waitForTimeout(350); };
+  const lignes = () => page.evaluate(() => [...document.querySelectorAll('tr.gf-retenue')].map((tr) => ({
+    texte: tr.textContent.replace(/\s+/g, ' ').trim(),
+    nom: tr.getAttribute('aria-label') || '',
+    id: tr.getAttribute('data-gf-id'),
+    gestes: tr.querySelectorAll('td:not(.gf-bloc) button, td:not(.gf-bloc) a').length,
+    hachure: getComputedStyle(tr.querySelector('.gf-x.is-retenue')).backgroundImage,
+  })));
+  const barre = () => page.evaluate(() => ((document.querySelector('[data-kpi="enligne"]') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+  try {
+    await vue('all');
+    const l = await lignes();
+    ok(l.length === 2 && /16:00/.test(l[0].texte) && /Pistes 6-7/.test(l[0].texte) && /libre à 15:18/.test(l[0].texte), '[F] le Complet montre les pistes retenues', l);
+    ok(l.length === 2 && /16:30/.test(l[1].texte) && /12 armes/.test(l[1].texte) && /libre à 15:14/.test(l[1].texte), '[F] le Complet montre les armes retenues', l);
+    ok(l.every((x) => x.gestes === 0 && !x.id && /repeating-linear-gradient/.test(x.hachure)), '[F] une retenue n a aucun geste et se lit hachuree', l);
+    ok(l.every((x) => /Bowling à 16:00|Laser à 16:30/.test(x.nom) && /se libère à/.test(x.nom)), '[F] la ligne se dit a qui ne la voit pas', l.map((x) => x.nom));
+    ok(/^En ligne\s*2 pistes, 12 armes$/.test(await barre()), '[F] la barre du Complet dit ce qui est retenu', await barre());
+    // (une case d une seule ligne ne dit qu un mot : le reste est dans son nom)
+    const blocs = await page.evaluate(() => ['16:00', '16:30'].map((h) => (document.querySelector(`td[data-gf-reserver="${h}"] button`) || { getAttribute: () => '' }).getAttribute('aria-label')));
+    ok(/6 pistes libres/.test(blocs[0]) && /18 places au laser/.test(blocs[1]), '[F] la grande case compte la retenue', blocs);
+    const compteurs = await page.evaluate(() => (document.querySelector('[data-gf-filtre="upcoming"] .gf-c__v') || {}).textContent);
+    ok(compteurs === '0', '[F] une retenue ne compte pas comme un groupe', compteurs);
+    await page.locator('tr.gf-retenue .gf-nom').first().click();
+    await page.waitForTimeout(250);
+    ok(await page.evaluate(() => !state.selectedRes), '[F] toucher une retenue n ouvre rien');
+    await page.locator('[data-gf-filtre="upcoming"]').click();
+    await page.waitForTimeout(250);
+    ok((await lignes()).length === 0, '[F] un filtre ne montre pas les retenues');
+    await page.locator('[data-gf-filtre="all"]').click();
+    await page.waitForTimeout(250);
+    await page.evaluate(() => { state.searchTerm = 'dupont'; renderStaff(); });
+    await page.waitForTimeout(250);
+    ok((await lignes()).length === 0, '[F] une recherche ne montre pas les retenues');
+    await page.evaluate(() => { state.searchTerm = ''; renderStaff(); });
+    await page.waitForTimeout(250);
+
+    await vue('bowling');
+    const cartes = await page.evaluate(() => [...document.querySelectorAll('.planning-hold')].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+    ok(cartes.length === 2 && cartes.every((t) => /En ligne/.test(t) && /libre à 15:18/.test(t)), '[F] le planning bowling montre les pistes retenues', cartes);
+    ok(/^En ligne\s*2 pistes$/.test(await barre()), '[F] la barre du bowling dit ce qui est retenu', await barre());
+
+    await vue('laser');
+    const carte = await page.evaluate(() => {
+      const c = document.querySelector('.lp-g.is-enligne');
+      if (!c) return null;
+      const info = c.querySelector('.lp-card-info');
+      if (!info) return { nom: '', dit: c.textContent.trim(), chevauche: true, hauts: [], carte: 0 };
+      const b = c.querySelector('b').getBoundingClientRect();
+      const s = info.getBoundingClientRect();
+      const r = c.getBoundingClientRect();
+      return { nom: c.querySelector('b').textContent.trim(), dit: info.textContent.trim(), chevauche: !(b.bottom <= s.top + 1 || s.bottom <= b.top + 1 || b.right <= s.left + 1 || s.right <= b.left + 1), hauts: [b.height, s.height], carte: r.height };
+    });
+    ok(carte && carte.nom === 'En ligne' && carte.dit === '12 armes · libre à 15:14' && !carte.chevauche && carte.hauts.every((h) => h >= 12), '[F] la carte laser se lit entiere', carte);
+    ok(/^En ligne\s*12 armes$/.test(await barre()), '[F] la barre du laser dit ce qui est retenu', await barre());
+
+    // Echue, elle part.
+    const base = FX.instant(JOUR, C.HEURE).getTime();
+    await page.clock.setFixedTime(new Date(base + 5 * 60000));
+    await vue('all');
+    await page.evaluate(() => renderStaff());
+    await page.waitForTimeout(350);
+    const apres = await lignes();
+    ok(apres.length === 1 && /Pistes 6-7/.test(apres[0].texte) && /^En ligne\s*2 pistes$/.test(await barre()), '[F] echue, la retenue quitte le Complet', { apres, barre: await barre() });
+  } finally { await finir(m, 'F'); }
+
+  // Une vraie journee : la ligne se range dans sa demi-heure, parmi les groupes.
+  const m2 = await ouvrir(browser, { retenues: RETENUES });
+  try {
+    await m2.page.evaluate(() => setStaffResourceView('all'));
+    await m2.page.waitForTimeout(350);
+    const lu = await m2.page.evaluate(() => {
+      const case16 = document.querySelector('td[data-gf-bloc="16:00"]');
+      const ligne = [...document.querySelectorAll('tr.gf-retenue')].find((tr) => /Pistes 6-7/.test(tr.textContent));
+      let tr = case16 && case16.closest('tr');
+      const rangees = [];
+      for (let i = 0; tr && i < (case16 ? case16.rowSpan : 0); i += 1) { rangees.push(tr); tr = tr.nextElementSibling; }
+      return { rowSpan: case16 && case16.rowSpan, dedans: Boolean(ligne) && rangees.includes(ligne), derniere: rangees[rangees.length - 1] === ligne, groupes: document.querySelectorAll('tr.gf-r:not(.gf-retenue)').length };
+    });
+    ok(lu.dedans && lu.derniere && lu.rowSpan === 4, '[F] la ligne se range dans sa demi-heure, apres ses groupes', lu);
+  } finally { await finir(m2, 'F2'); }
+
+  // Au telephone : une carte comme les autres.
+  const m3 = await ouvrir(browser, { appareil: 'telephone', retenues: RETENUES, reservations: () => [] });
+  try {
+    await m3.page.evaluate(() => setStaffResourceView('all'));
+    await m3.page.waitForTimeout(350);
+    const tel = await m3.page.evaluate(() => {
+      const tr = document.querySelector('tr.gf-retenue');
+      if (!tr) return null;
+      const r = tr.getBoundingClientRect();
+      return { display: getComputedStyle(tr).display, largeur: r.width, dehors: r.right > innerWidth + 1, texte: tr.textContent.replace(/\s+/g, ' ').trim() };
+    });
+    ok(tel && tel.display === 'grid' && !tel.dehors && /Pistes 6-7/.test(tel.texte) && /libre à 15:18/.test(tel.texte), '[F] au telephone, la retenue est une carte', tel);
+  } finally { await finir(m3, 'F3'); }
+}
+
+const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF };
 
 function verifierLesAncres() {
   let mortes = 0;

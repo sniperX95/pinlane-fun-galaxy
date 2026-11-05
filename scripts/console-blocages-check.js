@@ -187,6 +187,8 @@ async function ouvrir(browser, centres) {
   }, { jour: banc.JOUR });
   await page.goto(`${BASE_URL}/#/staff/planning`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof state === 'object' && state && state.view === 'staff' && typeof window.synchroniserLaConsole === 'function', null, { timeout: 20000 });
+  // (la console cachee le temps de ses modules, tout y mesure zero sur un poste charge)
+  await page.waitForFunction(() => !document.getElementById('staffConsoleLoadStatus') && document.getElementById('staffView').getClientRects().length > 0, null, { timeout: 60000 });
   // Le temoin : s il survit, aucun rechargement n a eu lieu.
   await page.evaluate(() => { window.__temoinBlocages = 'pose'; });
   return { ctx, page, erreurs };
@@ -264,6 +266,7 @@ async function parcours(browser, centres) {
       texte: c.textContent.replace(/\s+/g, ' ').trim(),
       titre: c.getAttribute('title') || '',
       recouvre: Boolean(dessous && dessous.closest('.planning-hold') === c),
+      dessous: `${dessous ? `${dessous.tagName}.${dessous.className}` : 'rien'} (${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)})`,
       colonne: Number((c.closest('.lane-col') || { dataset: {} }).dataset.lane),
       heureEntiere,
     };
@@ -355,10 +358,10 @@ function verdict(F) {
   ok(F.carte.piste === F.serveur.piste && F.carte.colonne === F.serveur.piste && F.carte.debut === 14, 'arrive', '[A] sur la piste que le serveur a retenue, a 14:00', `piste ${F.carte.piste} (serveur ${F.serveur.piste}), debut ${F.carte.debut}`);
   ok(F.carte.texte === `En ligne libre à ${F.serveur.heureB}` && /^Réservation en ligne en cours : sans confirmation, la place se libère à \d{2}:\d{2}\.$/.test(F.carte.titre), 'arrive', '[A] elle dit quand la piste se libere', `${F.carte.texte} / ${F.carte.titre}`);
   ok(F.carte.heureEntiere, 'arrive', '[A] l heure de liberation se lit en entier, sur une piste etroite');
-  ok(F.carte.recouvre, 'arrive', '[A] elle recouvre les cases : aucune reservation ne s y lance');
+  ok(F.carte.recouvre, 'arrive', '[A] elle recouvre les cases : aucune reservation ne s y lance', F.carte.dessous);
   ok(F.groupe === 1 && F.pasUneReservation, 'arrive', '[A] le groupe reste piste 1 ; le blocage n est pas une reservation du poste', `groupe piste ${F.groupe}`);
   ok(F.sansRechargement, 'arrive', '[A] sans rechargement (le temoin a survecu)');
-  ok(F.laserVu && F.laser && /^En ligne 10 · libre à \d{2}:\d{2}$/.test(F.laser.texte) && F.laser.texte.includes(`libre à ${F.serveur.heureL}`), 'laser', '[B] le planning laser montre la carte en attente, ses 10 joueurs et l heure de liberation', F.laser && F.laser.texte);
+  ok(F.laserVu && F.laser && /^En ligne 10 armes · libre à \d{2}:\d{2}$/.test(F.laser.texte) && F.laser.texte.includes(`libre à ${F.serveur.heureL}`), 'laser', '[B] le planning laser montre la carte en attente, ses 10 joueurs et l heure de liberation', F.laser && F.laser.texte);
   ok(F.laser && F.laser.heureRangee === '16:00' && F.laser.capacite === `10/${F.capaciteArmes}`
     && F.laser.dit.startsWith(`16:00 : 10 sur ${F.capaciteArmes}, ${F.capaciteArmes - 10} places. En ligne 10, libre à ${F.serveur.heureL}.`),
   'laser', '[B] les 10 joueurs comptent dans la capacite de 16:00', F.laser && `${F.laser.heureRangee} ${F.laser.capacite} / ${F.laser.dit}`);

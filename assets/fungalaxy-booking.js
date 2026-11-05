@@ -4100,8 +4100,9 @@
     var m = Number(e.durationMinutes) || 0;
     return e.flexible === false && e.startTime ? { startTime: e.startTime, endTime: e.endTime, minutes: m, label: e.label } : { minutes: m, label: e.label };
   }
-  // Une ligne a placer : ni choisie, ni sur place, ni facultative (l arrivee l est toujours).
-  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre'; }
+  // Une ligne a placer : ni choisie, ni sur place, ni facultative (l arrivee l est toujours, les arcades aussi, meme
+  // quand le moteur leur propose une heure : leur ligne ne s ouvre jamais seule).
+  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre' && e.id !== 'arcade_time'; }
   // La ligne ouverte, ou celle qui s ouvrira seule (la premiere a placer) tant
   // que le client n a ouvert ni ferme de ligne.
   function ligneAOuvrir(etapes) {

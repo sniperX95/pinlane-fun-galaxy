@@ -137,7 +137,7 @@ const MUTATIONS = [
   { nom: 'la ligne des arcades n existe plus', fichier: JS, scenarios: ['C'],
     de: '    if (aDesArcades(d)) {\n      var rangee = arcadeDuPlan();', vers: '    if (false) {\n      var rangee = arcadeDuPlan();' },
   { nom: 'les arcades ne sont plus facultatives (leur ligne s ouvre seule)', fichier: JS, scenarios: ['C'],
-    de: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre'; }", vers: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace'; }" },
+    de: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre' && e.id !== 'arcade_time'; }", vers: "  function aPlacer(e) { return e.id !== 'arrivee' && e.etat !== 'choisi' && e.etat !== 'surplace'; }" },
   { nom: 'la ligne des arcades dit « À choisir »', fichier: JS, scenarios: ['C'],
     de: ": e.etat === 'libre' ? 'Quand vous voulez' : 'À choisir';", vers: ": 'À choisir';" },
   { nom: '« Quand vous voulez » se lit comme une heure', fichier: CSS, scenarios: ['C'],

@@ -151,7 +151,7 @@ const MUTATIONS = [
   { nom: 'le blocage part sans l heure d arcade', fichier: JS, scenarios: ['D'],
     de: '    if (state.arcade) base.preference.arcadeTime = state.arcade;', vers: '    void 0;' },
   { nom: 'la visite ne montre plus les arcades a leur heure', fichier: JS, scenarios: ['D'],
-    de: '    if (arcPlan.startTime && state.arcade) parts = parts.concat(', vers: '    if (false) parts = parts.concat(' },
+    de: '    if (arcPlan.startTime) parts = parts.concat(', vers: '    if (false) parts = parts.concat(' },
   { nom: 'retoucher l heure d arcade la garde', fichier: JS, scenarios: ['D'],
     de: "    if (state.arcade === t) state.arcade = '';\n    else {", vers: '    if (false) void 0;\n    else {' },
   { nom: 'sans arrivee, l heure d arcade ne se pose plus (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['D'],

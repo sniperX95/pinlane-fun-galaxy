@@ -108,12 +108,12 @@ const MUTATIONS = [
   {
     nom: 'une arrivee ne garde plus les heures proposees ou elles sont',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [['    retenirProposees({ apres: minutesDe(t) + ACCUEIL });\n    state.arrivee = t;', '    state.retenues = { pins: {}, parties: [] };\n    state.arrivee = t;']],
+    remplacer: [['    retenirProposees({ apres: minutesDe(t) + accueilApres(t) });\n    state.arrivee = t;', '    state.retenues = { pins: {}, parties: [] };\n    state.arrivee = t;']],
   },
   {
     nom: 'une activite touchee avant l arrivee ne l avance plus',
     fichier: 'assets/fungalaxy-booking.js',
-    remplacer: [["    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;\n    state.arrivee = '';", "    return;\n    state.arrivee = '';"]],
+    remplacer: [["    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + accueilApres(state.arrivee))) return;\n    state.arrivee = '';", "    return;\n    state.arrivee = '';"]],
   },
   {
     nom: 'effacer l arrivee retire les heures touchees',

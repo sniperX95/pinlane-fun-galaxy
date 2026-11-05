@@ -8583,6 +8583,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-table td.num, .pv2-table th.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .pv2-table tbody tr { cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
 .pv2-table tbody tr:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+/* La ligne d un tableau vide ne s ouvre pas : ni main, ni survol (2026-11-05, robot de la console). */
+.pv2-table tbody tr.pv2-vide { cursor: default; }
+.pv2-table tbody tr.pv2-vide:hover { background-image: none; }
 .pv2-table tbody tr.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .pv2-table tbody tr.selected td { color: var(--text); }
 .pv2-table strong { color: var(--text); font-weight: 600; }

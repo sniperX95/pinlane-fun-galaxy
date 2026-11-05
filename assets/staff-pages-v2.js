@@ -6638,7 +6638,7 @@
           </div>
           <table class="pv2-table">
             <thead><tr><th>Message</th><th>Origine</th><th>Statut</th><th>Parcours</th><th class="num">Date</th></tr></thead>
-            <tbody data-pl-stagger="comms.file">${tableRows || `<tr><td colspan="5"><div class="pv2-empty"><strong>File vide</strong>${origin === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : origin === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : origin === 'campagne' ? 'Aucun mail de campagne ne correspond à ce filtre.' : origin === 'test' ? 'Aucun mail de test ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+            <tbody data-pl-stagger="comms.file">${tableRows || `<tr class="pv2-vide"><td colspan="5"><div class="pv2-empty"><strong>File vide</strong>${origin === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : origin === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : origin === 'campagne' ? 'Aucun mail de campagne ne correspond à ce filtre.' : origin === 'test' ? 'Aucun mail de test ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">

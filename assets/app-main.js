@@ -24905,7 +24905,13 @@ async function lpViser(t) {
   if (!d) return;
   const choisi = lpChoisiValide(modele);
   if (!choisi) {
-    if (modele.config.closed || d.ferme || d.hors || d.joue) return;
+    // Un depart qui ne se reserve pas dit pourquoi, comme « complet » : le toucher ne reste pas
+    // muet (2026-11-05, le robot de la console trouvait la jauge morte).
+    const pourquoi = modele.config.closed ? 'laser fermé ce jour-là'
+      : d.ferme ? `fermé${d.ferme.raison ? `, ${d.ferme.raison}` : ''}`
+      : d.hors ? 'hors des heures d’ouverture'
+      : d.joue ? 'partie déjà jouée' : '';
+    if (pourquoi) { toast(`${lpHeure(d.t)} : ${pourquoi}.`); return; }
     if (d.places <= 0) { toast(`${lpHeure(d.t)} : complet.`); return; }
     lpReserver(d.t, d.places);
     return;

@@ -53,6 +53,14 @@ async function ouvrirPage(browser, hash) {
   page.on('dialog', (d) => { page.__signes += 1; d.dismiss().catch(() => {}); });
   page.on('popup', (p) => { page.__signes += 1; p.close().catch(() => {}); });
   page.on('download', () => { page.__signes += 1; });
+  // Un selecteur natif (mois, date) s ouvre hors de la page : showPicker compte comme un signe,
+  // comme un dialogue (2026-11-05, « novembre 2026 » dans Reservations passait pour mort).
+  await page.exposeFunction('__robotSigne', () => { page.__signes += 1; });
+  await page.addInitScript(() => {
+    const avant = HTMLInputElement.prototype.showPicker;
+    if (typeof avant !== 'function') return;
+    HTMLInputElement.prototype.showPicker = function showPicker(...args) { try { window.__robotSigne(); } catch (error) { /* rien */ } return avant.apply(this, args); };
+  });
   await page.route('**/*', (route) => { const r = route.request(); if (!r.url().startsWith(BASE) && r.method() !== 'GET') return route.abort(); return route.continue(); });
   await installerMock(page);
   await page.goto(`${BASE}/${hash || ''}`, { waitUntil: 'load', timeout: 60000 });
@@ -85,8 +93,17 @@ async function ouvrirPage(browser, hash) {
         await dormir(600);
         await cour.page.screenshot({ path: path.join(OUT, `${cle.replace(/[^a-z0-9-]/gi, '_')}-${LARGEUR}.png`) });
         const brutes = await cour.page.evaluate(lister);
-        const vus = {};
-        const cibles = brutes.filter((c) => c.genre !== 'ligne' && !c.ferme && !(c.lien && /^(https?:|mailto:|tel:)/.test(c.lien))).filter((c) => { vus[c.signature] = (vus[c.signature] || 0) + 1; return vus[c.signature] <= 2; });
+        // Une option deja choisie (la radio cochee de son label, aria-pressed) ne change rien quand on
+        // la retouche, par construction : comme le robot du formulaire, deux exemplaires par sorte,
+        // ceux qui ne sont pas choisis d abord (2026-11-05, « Encre (sobre) » passait pour morte).
+        const coches = await cour.page.evaluate((chemins) => chemins.map((ch) => { const n = document.querySelector(ch); return Boolean(n && n.tagName === 'LABEL' && n.control && n.control.type === 'radio' && n.control.checked); }), brutes.map((c) => c.chemin));
+        brutes.forEach((c, i) => { if (coches[i]) c.choisi = true; });
+        const candidates = brutes.filter((c) => c.genre !== 'ligne' && !c.ferme && !(c.lien && /^(https?:|mailto:|tel:)/.test(c.lien)));
+        const parSorte = {};
+        candidates.forEach((c, i) => { (parSorte[c.signature] = parSorte[c.signature] || []).push(i); });
+        const gardes = new Set();
+        Object.values(parSorte).forEach((ix) => ix.filter((i) => !candidates[i].choisi).concat(ix.filter((i) => candidates[i].choisi)).slice(0, 2).forEach((i) => gardes.add(i)));
+        const cibles = candidates.filter((c, i) => gardes.has(i));
         ligne.total = cibles.length;
         ligne.vu = brutes.length;
         await poserGuet(cour.page);

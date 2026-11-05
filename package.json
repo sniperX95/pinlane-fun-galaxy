@@ -188,6 +188,7 @@
     "test:reserver-seances": "node scripts/reserver-seances-check.js && node scripts/reserver-seances-check.js --contre-preuves",
     "test:comptoir": "node scripts/comptoir-check.js && node scripts/comptoir-check.js --contre-preuves",
     "test:gates-eclats": "node scripts/gates-eclats-check.js && node scripts/gates-eclats-check.js --contre-preuves",
+    "test:console-cibles": "node scripts/console-cibles-check.js && node scripts/console-cibles-check.js --contre-preuves",
     "test:arene-seuls-planning": "node scripts/arene-seuls-planning-check.js",
     "test:heures-passees": "node scripts/heures-passees-check.js && node scripts/heures-passees-check.js --mutate",
     "test:formules-visite": "node scripts/formules-visite-check.js",

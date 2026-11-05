@@ -613,11 +613,14 @@ async function scenarioPlanRetenu(S) {
   // reservation de la piste 1 est annulee ; il confirme, le moteur (qui ne
   // compte pas son propre blocage) choisit alors la piste 1 ; et entre la
   // lecture du moteur et le verrou, un autre client retient la piste 1. La
-  // confirmation doit obtenir la piste 8, qui lui etait gardee.
+  // confirmation doit obtenir la piste 8, qui lui etait gardee. La piste 2 se
+  // libere aussi : sans le plan retenu, le rechange sous le verrou donnerait
+  // une piste libre (2 : voir scripts/rush-reservations-check.js), pas la sienne.
   semer([2, 3, 4, 5, 6, 7].map((l) => reservationLigne(900 + l, '15:00', [l])).concat([reservationLigne(991, '15:00', [1])]));
   const b = await retenir(S, corps);
   const tenue = blocagesEnCours()[0];
   base.reservations.set(991, { ...base.reservations.get(991), status: 'cancelled' });
+  base.reservations.set(902, { ...base.reservations.get(902), status: 'cancelled' });
   base.avantVerrou = () => {
     const pa = clone(tenue.payload);
     pa.lanes = [1];

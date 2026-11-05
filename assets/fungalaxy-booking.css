@@ -2897,15 +2897,25 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-recap__lieu + .fg-recap__row { font-family: var(--fg-display); font-size: 24px; font-weight: 400; line-height: 1.1; letter-spacing: 0.015em; text-transform: uppercase; color: #fff; }
 .fg-recap__lieu + .fg-recap__row .fg-tag { font-family: var(--fg-body); }
 .fg-recap__sep { height: 14px; margin: 0; border: 0; background: none; }
-.fg-recap__item { display: grid; grid-template-columns: 66px minmax(0, 1fr); column-gap: 8px; align-items: start; margin: 0 0 10px; padding: 0; border: 0; }
+/* Le programme : l heure, la vraie photo de l activite, son nom en typo d affiche (Ansar, 2026-11-05 : « trop mono
+   couleur [...] trop basic » ; valide le 2026-11-04 : photo, nom et heure en affiche). */
+.fg-recap__item { display: grid; grid-template-columns: 58px 48px minmax(0, 1fr); column-gap: 10px; align-items: start; margin: 0 0 12px; padding: 0; border: 0; }
 .fg-recap__badge { display: none; }
-.fg-recap__item > span:nth-child(2) { display: block; grid-column: 2; grid-row: 1; }
+.fg-recap__photo { grid-column: 2; grid-row: 1; display: block; width: 48px; height: 48px; overflow: hidden; border-radius: var(--fg-r-tuile); }
+.fg-recap__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fg-recap__item.is-titre .fg-recap__photo { display: none; }
+.fg-recap__item.is-titre > span:nth-child(2) { grid-column: 1 / -1; }
+.fg-recap__item > span:nth-child(2) { display: block; grid-column: 3; grid-row: 1; min-width: 0; padding-top: 1px; }
 .fg-recap__item br { display: none; }
 .fg-recap__aside { grid-column: 1; grid-row: 1; display: block; min-width: 0; font-size: 0; line-height: 0; text-align: left; }
 .fg-recap__aside b { display: block; margin: 0; font-family: var(--fg-display); font-size: 20px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--fg-purple-em); }
 .fg-recap__aside small { display: block; padding-top: 3px; font-size: 12px; font-weight: 600; line-height: 15px; color: var(--fg-teal-ink); }
-.fg-recap__item:has(> .fg-recap__aside:empty) > span:nth-child(2) { grid-column: 1 / -1; }
-.fg-recap__name { display: block; font-size: 15px; font-weight: 700; line-height: 22px; color: #fff; }
+.fg-recap__name { display: block; font-family: var(--fg-display); font-size: 18px; font-weight: 400; line-height: 22px; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; }
+@media (min-width: 901px) {
+  .fg-recap__item { grid-template-columns: 66px 56px minmax(0, 1fr); column-gap: 12px; }
+  .fg-recap__photo { width: 56px; height: 56px; }
+  .fg-recap__name { font-size: 19px; line-height: 24px; }
+}
 .fg-recap__detail { display: block; font-size: 13px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
 .fg-recap__sep + .fg-recap__row { margin-top: 14px; }
 .fg-total { display: block; margin: 8px 0 0; padding: 0; border: 0; background: none; box-shadow: none; }

@@ -6728,14 +6728,14 @@
     if (state.onglet === 'formules') {
       var f = formuleChoisie() || {};
       // La formule et ce qu elle comprend, sans heure ni rythme : son programme suit.
-      lignes.push({ icone: 'a-formule', nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '', mot: '' });
+      lignes.push({ icone: 'a-formule', photo: '', titre: true, nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '', mot: '' });
       programmeDeLaFormule(cr).forEach(function (l) { lignes.push(l); });
     } else if (items.length) {
       items.forEach(function (it) {
         // L offre d attente acceptee : pour qui, et pendant quoi.
         if (it.waitOffer === true) {
           var nAtt = Math.max(1, Number(it.participants) || 1);
-          lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: 'pendant l’attente · ' + nAtt + ' personne' + (nAtt > 1 ? 's' : '') + (it.minutes ? ' · ' + minutesLabel(it.minutes) : ''), aside: '' });
+          lignes.push({ id: it.activityId, icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: 'pendant l’attente · ' + nAtt + ' personne' + (nAtt > 1 ? 's' : '') + (it.minutes ? ' · ' + minutesLabel(it.minutes) : ''), aside: '' });
           return;
         }
         // Chaque partie a son heure, celles qui n en ont pas se jouent dans la
@@ -6761,13 +6761,13 @@
         var grand = siennes.filter(function (p) { return p.groupes.length > 1; })[0];
         if (grand) morceaux.push(texteGroupes(grand, total <= 1) + (total > 1 ? ' par partie' : ''));
         else if (it.services && it.services.length > 1) morceaux.push(it.services.length + ' groupes l’un après l’autre');
-        lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: morceaux.filter(Boolean).join(' · '), aside: siennes[0] ? siennes[0].debut : '' });
+        lignes.push({ id: it.activityId, icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: morceaux.filter(Boolean).join(' · '), aside: siennes[0] ? siennes[0].debut : '' });
       });
       // Dans l ordre de la journee, comme a l ecran des heures : le client a pu cocher le
       // bowling, puis poser son laser une heure plus tot.
       lignes.sort(function (a, b) { return (a.aside ? 0 : 1) - (b.aside ? 0 : 1) || (a.aside < b.aside ? -1 : a.aside > b.aside ? 1 : 0); });
     } else {
-      state.selection.forEach(function (id) { lignes.push({ icone: icone(id), nom: nomActivite(id), detail: '', aside: '' }); });
+      state.selection.forEach(function (id) { lignes.push({ id: id, icone: icone(id), nom: nomActivite(id), detail: '', aside: '' }); });
     }
     var prix = Number(rep.price) || 0;
     var complet = !rep.program || rep.program.priceComplete !== false;
@@ -6779,7 +6779,9 @@
       + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(groupeLisible()) + '</span></div>'
       + '<div class="fg-recap__sep"></div>';
     lignes.forEach(function (l, i) {
-      html += '<div class="fg-recap__item fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__badge"><svg aria-hidden="true"><use href="#' + l.icone + '"/></svg></span>'
+      // La vraie photo de l activite, celle de ses autres ecrans ; sans photo connue, la place reste vide (jamais un pictogramme).
+      var ph = l.photo !== undefined ? l.photo : (l.id ? photo(l.id) : '');
+      html += '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
         + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
         + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
     });
@@ -7503,8 +7505,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel4';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel4';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261105visuel5';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261105visuel5';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

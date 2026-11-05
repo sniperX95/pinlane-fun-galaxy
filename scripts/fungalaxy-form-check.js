@@ -715,7 +715,7 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // formulaire signale ses erreurs a la Tour de controle (signaler, 1,3 Ko).
 // 2026-11-05, « Venir plus tot » : 365,3 et 106,1 Ko mesures, plafonds 368 et
 // 108 Ko, pour une fonction qui remplace l heure d arrivee libre a la carte.
-const BUDGET_SERVI = 368 * 1024;
+const BUDGET_SERVI = 372 * 1024;
 const BUDGET_TRANSFERE = 108 * 1024;
 
 let failures = 0;

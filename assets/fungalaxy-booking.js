@@ -4112,7 +4112,7 @@
   var avantHeuresOuvert = false;  // la ligne de l activite d avant, ouverte sur ses heures
   function oublierAvant() { state.avant = []; avantAjoutes = {}; avantOuvert = false; avantChoisie = false; avantHeuresOuvert = false; }
   function htmlRendezVous() {
-    return '<li class="fg-rdv" hidden><p class="fg-rdv__dit"><span>Rendez-vous</span><b class="fg-rdv__heure"></b></p>'
+    return '<li class="fg-rdv" hidden><button type="button" class="fg-rdv__dit" data-rdv-heures aria-label="Changer l’heure"><span>Rendez-vous</span><b class="fg-rdv__heure"></b></button>'
       + '<button type="button" class="fg-rdv__plus" data-avant-ouvrir aria-expanded="false" aria-controls="fgAvant" hidden>Venir plus tôt</button>'
       + '<div class="fg-avant" id="fgAvant" hidden></div></li>';
   }
@@ -4315,6 +4315,13 @@
     if (state.dispo) majEtapes(state.dispo);
     if (avantHeuresOuvert) chargerArrivees();
     posterHauteur();
+  }
+  function changerRendezVous() {
+    if (state.avant.length) { if (!avantHeuresOuvert) basculerHeuresAvant(); return; }
+    var premiere = $('.fg-etape[data-cle]:not(.fg-etape--avant):not(.fg-etape--borne)', hourZone);
+    if (!premiere) return;
+    etapeTouchee = true;
+    if (!premiere.classList.contains('is-open')) ouvrirEtape(premiere.dataset.cle);
   }
   function revenirHeureAvant() {
     var debut = minutesDe(premiereHeure());
@@ -4929,6 +4936,7 @@
     if (quand) { poserQuandMeme(quand); return; }
     if (e.target.closest('[data-avant-ouvrir]')) { basculerAvant(); return; }
     if (e.target.closest('[data-avant-heures]')) { basculerHeuresAvant(); return; }
+    if (e.target.closest('[data-rdv-heures]')) { changerRendezVous(); return; }
     var avantIci = e.target.closest('[data-avant-ici]');
     if (avantIci) { ouvrirAvantIci(avantIci); return; }
     var avantChoix = e.target.closest('[data-avant-choix]');
@@ -6001,10 +6009,16 @@
     if (debut) lignes = etapeVisite({ genre: 'debut', heure: slot.time, titre: 'Début' }) + lignes;
     // Une visite sans activite a heure : une ligne par activite, l heure sur la premiere.
     function nomLibre(it) {
-      var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
+      var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? '' : it.dayAccess ? 'toute la journée' : detailSessions(it);
       return (it.name || nomActivite(it.activityId)) + (entre ? ' (' + entre + ')' : '');
     }
-    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: montantDe(it) }); });
+    function detailLibre(it) {
+      var m = montantDe(it), o = it.arcadeOffer;
+      if (!o) return m;
+      var n = Number(it.cards) || Number(it.participants) || 1;
+      return [n + ' carte' + (n > 1 ? 's' : ''), o.mode === 'time' ? minutesLabel(o.minutes) : '', m].filter(Boolean).join(' · ');
+    }
+    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: detailLibre(it) }); });
     // CE QUE LA FORMULE COMPREND, DANS SES MOTS, SANS HEURE : ce qui a sa ligne ne
     // se redit pas. A la carte, le reste de la visite.
     var poses = {};
@@ -6013,7 +6027,7 @@
     // « 1 partie de Minigolf, 2 cruches boissons » se lit « Minigolf, 2 cruches ».
     function motCompris(s) { return s.replace(/^1 (partie|entrée)( de| à la)? /i, '').replace(/ boissons$/i, ''); }
     if (formule) carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).forEach(function (c) { lignes += etapeVisite({ genre: 'aussi', heure: 'compris', titre: motCompris(c.texte) }); });
-    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: montantDe(it) }); });
+    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: detailLibre(it) }); });
     if (fin) lignes += '<li class="fg-visit__step fg-visit__step--out"><span>' + (slot.visitEndsAtClose || illimite ? 'Jusqu’à' : 'Fin vers') + '</span> <b>' + esc(heureAffichee(fin)) + '</b></li>';
     // AU PLUS : le jour et le groupe, une ligne par activite, ce qui est compris,
     // la fin, le montant (Ansar, 2026-11-03 : « un mot qui n aide pas a decider

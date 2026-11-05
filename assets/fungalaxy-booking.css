@@ -1375,7 +1375,7 @@ html.fg-pilote .fg { overflow: visible; }
   transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s var(--fg-ease-out);
 }
 .fg-pill b { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.fg-pill small { font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
+.fg-pill small { font-size: 11px; color: var(--fg-muted); text-align: center; }
 @media (hover: hover) { .fg-pill:hover { border-color: var(--fg-purple-2); } }
 .fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
 .fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
@@ -1400,7 +1400,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-bar__count { font-size: 15px; font-weight: 500; color: var(--fg-muted); }
 /* Le telephone et l e-mail du centre, au dernier ecran : des liens, soulignes
    pour se reconnaitre, et une zone de toucher plus haute que la ligne. */
-.fg-done__lien { color: var(--fg-text); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 8px 0; }
+.fg-done__lien { color: var(--fg-text); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 12px 0; }
 @media (hover: hover) { .fg-done__lien:hover { color: var(--fg-teal-ink); } }
 .fg-bar__count b { color: var(--fg-purple-ink); font-weight: 700; font-size: 20px; margin-right: 6px; display: inline-block; }
 @media (prefers-reduced-motion: no-preference) {
@@ -3053,7 +3053,8 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* VENIR PLUS TOT (2026-11-05). Le rendez-vous en tete du programme, ce qui se fait avant, et le choix de l activite. */
 .fg-rdv { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; min-height: 60px; padding: 8px 14px; border-radius: 6px; background: var(--fg-carte); }
 .fg-rdv[hidden] { display: none; }
-.fg-rdv__dit { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; margin: 0; font-size: 15px; color: var(--fg-muted); }
+.fg-rdv__dit { display: flex; flex-wrap: wrap; align-items: baseline; align-content: center; gap: 0 10px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; font: inherit; font-size: 15px; text-align: left; color: var(--fg-muted); cursor: pointer; }
+.fg-rdv__dit:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: 2px; }
 .fg-rdv__dit span { white-space: nowrap; }
 @media (max-width: 359px) { .fg-rdv { grid-template-columns: minmax(0, 1fr); } }
 .fg-rdv__heure { font-size: 18px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }

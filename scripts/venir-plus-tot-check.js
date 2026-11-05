@@ -230,6 +230,11 @@ function fonction(fichier, debut, fin, contexte) {
     ok(golf.bouton === 'Ajouter une activité' && !(await page.evaluate(() => { const p = document.querySelector('#fgAvant'); return p && !p.hidden; })), '[C] le choix se referme', golf.bouton);
 
     // [C bis] SON HEURE (Ansar : « jpeux pas changer lheure [...] ya rien »). De vrais clics : la ligne s ouvre comme les autres.
+    await page.click('[data-rdv-heures]');
+    await attendre(page, () => document.querySelectorAll('.fg-etape--avant.is-open .fg-chip').length > 0, 10000);
+    ok(await page.evaluate(() => document.querySelector('.fg-etape--avant').classList.contains('is-open')), '[C] toucher « Rendez-vous » ouvre les heures de ce qui le decide');
+    await page.click('.fg-etape--avant .fg-avant-tete');
+    await page.waitForTimeout(150);
     await page.click('.fg-etape--avant .fg-avant-tete');
     await attendre(page, () => document.querySelectorAll('.fg-etape--avant.is-open .fg-track[data-activity="arrivee"] .fg-chip').length > 0, 10000);
     const heures = await page.evaluate(() => [...document.querySelectorAll('.fg-etape--avant.is-open .fg-chip')].map((c) => c.dataset.time));

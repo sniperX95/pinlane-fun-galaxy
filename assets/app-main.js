@@ -18538,7 +18538,11 @@ window.getStaffActiveCustomRequestCount = getStaffActiveCustomRequestCount;
 function focusStaffCustomRequests() {
   if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   const panneau = document.querySelector('.cr-panel');
-  if (!panneau) return;
+  if (!panneau) {
+    const entree = document.querySelector('[data-fgx-menu-key="requests"]');
+    if (entree) entree.click();
+    return;
+  }
   panneau.scrollIntoView({ behavior: 'smooth', block: 'center' });
   panneau.classList.add('is-called');
   window.setTimeout(() => panneau.classList.remove('is-called'), 1600);

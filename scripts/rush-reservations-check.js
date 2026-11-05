@@ -16,6 +16,9 @@
 //   [G] LE VRAI CONTROLE SOUS LE VERROU marque son refus : sans la marque, le rejeu serait mort.
 //   [I] LA MEME HEURE, UNE AUTRE PISTE : la piste du plan vient d etre prise, le client recoit une piste libre, et le
 //       plan le dit partout. Un groupe garde des pistes voisines. Le comptoir et un plan en vagues restent refuses.
+//   [J] TOUT EST PRIS ET LE MOTEUR N A POSE AUCUNE PISTE : le refus dit qu il n y a plus de piste, jamais « le nombre de
+//       joueurs dépasse la capacité » (vu au comptoir, contre des retenues en ligne, sur une copie de la base). Si ce
+//       sont des retenues en ligne qui prennent les pistes, il dit a quelle heure elles se liberent.
 //   [H] LE POOL : 10 connexions et 8 s de patience, sous le delai de la sonde (10 s).
 //
 // Zero reseau, zero base : le module 'pg' est remplace AVANT tout require de lib/database.js. Contre-epreuves par
@@ -70,6 +73,7 @@ class FauxClient {
   async query(sql) {
     const texte = String(sql && sql.text ? sql.text : sql);
     if (/^\s*select\s+\*\s+from\s+reservations/i.test(texte)) return { rows: [{ ...OCCUPANTE, lanes: S.occupees }], rowCount: 1 };
+    if (/select id, payload, expires_at\s+from slot_holds/i.test(texte)) return { rows: S.retenues || [], rowCount: (S.retenues || []).length };
     return { rows: [], rowCount: 0 };
   }
 }
@@ -88,6 +92,7 @@ const S = {};
 function remettre() {
   Object.assign(S, {
     occupees: [1],
+    retenues: [],
     plans: 0,
     pistesParTour: [],
     appelsRetenue: [],
@@ -252,6 +257,24 @@ const CONFIRMATION = '/api/public-reservations';
   const comptoir = await g.vraieBase.createReservation({ ...DEMANDE, channel: 'staff', name: 'Gate', phone: '+32470000000' }).then(() => null, (e) => e);
   ok(comptoir && /vient de changer/.test(comptoir.message), '[I] le comptoir n est jamais deplace en silence', comptoir ? String(comptoir.message).slice(0, 70) : 'accepte');
 
+  // [J]
+  const sansPiste = async (vraieBase) => {
+    S.occupees = [1, 2, 3, 4, 5, 6, 7, 8];
+    return vraieBase.createReservation({ ...DEMANDE, channel: 'staff', name: 'Gate', phone: '+32470000000', lanes: [], opsPlan: { assignedLanes: [], resourceBlocks: [{ ...bloc, lanes: [] }] } }).then(() => null, (e) => e);
+  };
+  const j1 = await sansPiste(g.vraieBase);
+  const retenuesEnLigne = async (vraieBase) => {
+    S.occupees = [1, 2, 3, 4];
+    S.retenues = [{ id: 9, payload: { centerId: 'libramont', date: '2027-03-06', startTime: '16:00', duration: 1, totalDuration: 1, lanes: [5, 6, 7, 8] }, expires_at: new Date(Date.now() + 8 * 60000) }];
+    const e = await vraieBase.createReservation({ ...DEMANDE, channel: 'staff', name: 'Gate', phone: '+32470000000', lanes: [], opsPlan: { assignedLanes: [], resourceBlocks: [{ ...bloc, lanes: [] }] } }).then(() => null, (x) => x);
+    S.retenues = [];
+    return e;
+  };
+  const j2 = await retenuesEnLigne(g.vraieBase);
+  ok(j1 && /Aucune piste disponible pour 1 piste/.test(j1.message) && !/dépasse/.test(j1.message), '[J] tout est pris, le moteur n a pose aucune piste : le refus dit qu il n y en a plus, pas un groupe trop grand', j1 ? String(j1.message).slice(0, 80) : 'accepte');
+  ok(j1 && !/se libère/.test(j1.message), '[J] sans retenue en ligne, aucune liberation promise', j1 ? String(j1.message).slice(0, 80) : 'accepte');
+  ok(j2 && /Aucune piste disponible/.test(j2.message) && /se libère au plus tard à \d{2}:\d{2}/.test(j2.message), '[J] pistes retenues par des clients en ligne : le refus dit a quelle heure elles se liberent', j2 ? String(j2.message).slice(0, 140) : 'accepte');
+
   // [H]
   const options = g.vraieBase.getPool().options;
   ok(Number(options.max) === 10, '[H] 10 connexions par defaut', `${options.max}`);
@@ -280,6 +303,12 @@ const CONFIRMATION = '/api/public-reservations';
   S.occupees = [1];
   const em4 = await retenir(m4.vraieBase, DEMANDE);
   ok(em4.e && /vient de changer/.test(em4.e.message), 'sans le rechange : l ancien refus a tort revient', em4.e ? '' : 'accepte');
+  const m5 = charger([{ fichier: 'lib/database.js', de: 'if (!requestedLanes.length && serviceBlocks.length && serviceBlocks.every(', vers: 'if (false && serviceBlocks.every(' }]);
+  const em5 = await sansPiste(m5.vraieBase);
+  ok(em5 && /dépasse la capacité/.test(em5.message), 'sans le refus juste : l ancien « dépasse la capacité » revient', em5 ? String(em5.message).slice(0, 70) : 'accepte');
+  const m6 = charger([{ fichier: 'lib/database.js', de: "const precision = libresSansRetenues ? precisionBlocage(payload, reservations) : '';", vers: "const precision = '';" }]);
+  const em6 = await retenuesEnLigne(m6.vraieBase);
+  ok(em6 && !/se libère/.test(em6.message), 'sans la precision : le comptoir ne sait plus quand la place se libere', em6 ? String(em6.message).slice(0, 70) : 'accepte');
 
   if (failures) { console.error(`\nrush-reservations-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nrush-reservations-check: ALL OK');

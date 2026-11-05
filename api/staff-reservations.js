@@ -34,7 +34,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
+const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerFormuleDuCentre, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
 const { exigerHistorique, exigerPistesALaMain, jugerEncaisse, pistesALaMainDuPlan } = require('../lib/droits-reservation');
 const { lireHistoriqueDossier } = require('../lib/historique-dossier');
 const { simulerCandidats } = require('../lib/reserver-simulation');
@@ -815,7 +815,9 @@ module.exports = async (req, res) => {
       if (patch.notes === null) delete patch.notes;
       if (Object.prototype.hasOwnProperty.call(patch, 'extras') && !Array.isArray(patch.extras)) delete patch.extras;
       if (Object.prototype.hasOwnProperty.call(patch, 'notes')) patch.notes = notesDuPatch({ notes: patch.notes, current, session });
-      if (patchAdapteLaFormule(patch, current)) exigerAdaptationDeFormule(session);
+      if (patchAdapteLaFormule(patch, current) || patch.formuleSurMesure) exigerAdaptationDeFormule(session);
+      // Une formule gardee par un autre centre ne se prend pas ici (lib/formule-comptoir.js).
+      if (patch.formuleId || patch.formulaId) exigerFormuleDuCentre({ formuleId: patch.formuleId || patch.formulaId, centerId: requestedCenterId });
       if (Object.prototype.hasOwnProperty.call(patch, 'extras')) {
         const { extras, refus } = resoudreExtras({ extras: patch.extras, avant: current.extras, session, centerId: requestedCenterId, pax: patch.pax ?? current.pax });
         if (refus) throw refus;
@@ -837,6 +839,7 @@ module.exports = async (req, res) => {
         const membre = session && session.member ? session.member : null;
         if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: (membre && (membre.name || membre.displayName)) || 'Équipe' });
       }
+      if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;
       const proposedProgram = patch.program ?? current.program;
       const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
         : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];
@@ -907,10 +910,17 @@ module.exports = async (req, res) => {
       // Personne ne l a decide : rien a juger, aucune trace de prix.
       const prixSuivi = contenuChange && !Object.prototype.hasOwnProperty.call(patch, 'price');
       if (prixSuivi) {
-        patch.price = prixQuiSuit({ current, base, extras: extrasFinales });
+        patch.price = prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax });
         if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = patch.price;
       }
       const prixFinal = ops.price ?? patch.price ?? current.price;
+      const formuleDuComptoir = current.program && current.program.formuleSurMesure;
+      if (!prixSuivi && formuleDuComptoir && formuleDuComptoir.prixParPersonne !== undefined && Math.abs(Number(prixFinal) - prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax })) > 0.5) {
+        const programme = ops.program ?? patch.program;
+        const nom = { nom: formuleDuComptoir.nom };
+        if (ops.program) ops.program = { ...programme, formuleSurMesure: nom };
+        else if (patch.program) patch.program = { ...programme, formuleSurMesure: nom };
+      }
       const notePrix = prixSuivi ? null : jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
       if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
       const reservation = await updateReservation({

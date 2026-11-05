@@ -156,6 +156,9 @@
   // « FORMULE 4 » se lit « F4 » (le mot du comptoir), « KIDS FUN DAY » « Kids
   // Fun Day ». Le nom entier reste dans la bulle de la case.
   function gpFormule(r) {
+    // La formule du comptoir : le nom que l equipe lui a donne (lib/formule-comptoir.js).
+    var comptoir = r.program && !Array.isArray(r.program) && r.program.formuleSurMesure;
+    if (comptoir && comptoir.nom) return { court: 'Sur mesure', long: 'Formule sur mesure : ' + comptoir.nom, nom: comptoir.nom, comptoir: true, parJoueur: comptoir.prixParPersonne };
     if (!r.formuleId && r.type !== 'formule') return null;
     var f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
     var nom = String((f && f.name) || r.label || 'Formule').trim();
@@ -182,8 +185,8 @@
       var fois = /^(.*\S)\s*×\s*(\d+)$/.exec(brut);
       var nom = fois ? fois[1] : brut;
       var heure = /^\d{1,2}:\d{2}/.test(String(e.heure || e.time || e.startTime || '')) ? String(e.heure || e.time || e.startTime).slice(0, 5) : '';
-      var cle = nom + '|' + heure;
-      var l = compte.get(cle) || { nom: nom, heure: heure, n: 0 };
+      var cle = nom + '|' + heure + '|' + Boolean(e.offert);
+      var l = compte.get(cle) || { nom: nom + (e.offert ? ' offert' : ''), heure: heure, n: 0 };
       l.n += fois ? Number(fois[2]) : 1;
       compte.set(cle, l);
     });
@@ -735,8 +738,14 @@
     if (fiche) liste.push(gfRubrique('fiche', 'Fiche', gpEsc(fiche), fiche, gfAllergie(fiche)));
     var table = gfTableTexte(g);
     if (table) liste.push(gfRubrique('table', 'Table', gpEsc(table), table));
+    var comptoir = g.formule && g.formule.comptoir ? g.formule : null;
+    if (comptoir) {
+      var formuleDite = comptoir.nom + (comptoir.parJoueur != null && typeof formatMoneyCentimes === 'function' ? ', ' + formatMoneyCentimes(comptoir.parJoueur) + ' par joueur' : '');
+      liste.push(gfRubrique('formule', 'Formule', gpEsc(formuleDite), formuleDite));
+    }
     if (g.extras.length) { var mesure = g.extras.join(', '); liste.push(gfRubrique('mesure', 'Sur mesure', gpEsc(mesure), mesure)); }
-    var prix = gfPrixTexte(r, notePrix, g.sortie);
+    // (le nom de la formule vient de se lire : la raison du prix ne le redit pas)
+    var prix = String(gfPrixTexte(r, notePrix, g.sortie) || '').replace(comptoir ? /,?\s*formule sur mesure\s*:.*$/i : /$^/, '');
     if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));
     // La derniere modification (texteDerniereModif, le texte de la fiche) : quand, qui, quoi.
     var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';
@@ -844,7 +853,7 @@
     var infos = sous.join(' · ');
     var f = '';
     // (« Back To School/Work » peut passer a la ligne apres sa barre)
-    if (g.formule) f = '<span class="gf-formule' + (g.formule.court.length > 4 ? ' is-long' : '') + '" title="' + gpEsc(g.formule.long) + '">' + gpEsc(g.formule.court).replace(/\//g, '/<wbr>') + '</span>';
+    if (g.formule) f = '<span class="gf-formule' + (g.formule.court.length > 4 ? ' is-long' : '') + (g.formule.comptoir ? ' is-mesure' : '') + '" title="' + gpEsc(g.formule.long) + '">' + gpEsc(g.formule.court).replace(/\//g, '/<wbr>') + '</span>';
     else if (r.type === 'custom' || r.surMesure === true) f = '<span class="gf-formule is-mesure">Sur mesure</span>';
     return '<td class="gf-f">' + f + (infos ? '<span class="gf-f__i" title="' + gpEsc(infos) + '">' + gpEsc(infos) + '</span>' : '') + '</td>';
   }

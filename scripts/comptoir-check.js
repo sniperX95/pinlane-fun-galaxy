@@ -23,6 +23,10 @@
 //   [E] L ECRAN. Rien ne deborde, rien ne se coupe, tout tient sans defiler a 1366 x 768.
 //   [F] LES PLANNINGS. Le Complet, le bowling et le laser montrent ce que les clients
 //       retiennent, sans geste, sans compter comme un groupe, et echu ca part.
+//   [G] LE SUR MESURE. Une crepe ou une crepe pour tout le monde, une ligne offerte, jugee au
+//       niveau prix du role. Une formule pour ce dossier, par joueur ou pour le groupe, lue sur
+//       le ticket, le Complet et la fiche ; gardee, elle se retrouve dans Formules, les clients
+//       ne la voient que si on le choisit, et l autre centre jamais.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en
@@ -74,6 +78,43 @@ MUTATIONS.push(
   { nom: 'carte-laser-d-avant', lettre: 'F', cible: '[F] la carte laser se lit entiere', fichier: APP, de: '<span class="lp-g__nom"><b>En ligne</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? \'s\' : \'\'} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span></span>', vers: '<b>En ligne</b> <span>${lpArene(w)} · ${libre ? `libre à ${escapeHtml(libre)}` : \'en cours\'}</span></span>' },
   { nom: 'ligne-avant-ses-groupes', lettre: 'F', cible: '[F] la ligne se range dans sa demi-heure, apres ses groupes', fichier: GLOBAL, de: 'lignes.concat(retenues).sort(', vers: 'retenues.concat(lignes).sort(' },
 );
+const CONTROLE_FORMULES = 'api/ops.js';
+MUTATIONS.push(
+  { nom: 'par-personne-fige', lettre: 'G', cible: '[G] par personne, la ligne suit le groupe', fichier: APP, de: '  if (ligne.suit) return Math.max(1, Number(quickBookState.pax) || 1);\n', vers: '' },
+  { nom: 'offert-se-paie', lettre: 'G', cible: '[G] offerte, la ligne ne se paie pas', fichier: APP, de: 'return valeur != null && ligne.offert ? 0 : valeur;', vers: 'return valeur;' },
+  { nom: 'offert-perdu-en-base', lettre: 'G', cible: '[G] le dossier garde par personne et offert', serveur: true, fichier: 'lib/database.js', de: '      if (item.offert === true) {\n        ligne.offert = true;', vers: '      if (false) {\n        ligne.offert = true;' },
+  { nom: 'offre-sans-plafond', lettre: 'G', cible: '[G] une offre au-dessus du plafond est refusee au serveur', serveur: true, fichier: 'lib/droits-reservation.js', de: 'const reference = Math.max(0, euros(centimes(dossier.basePrice) + centimes(totalExtrasComptoir(dossier.extras)) + valeurOfferte(dossier.extras)));', vers: 'const reference = Math.max(0, euros(centimes(dossier.basePrice) + centimes(totalExtrasComptoir(dossier.extras))));' },
+  { nom: 'offre-sans-droit-ecran', lettre: 'G', cible: '[G] sans le niveau prix, pas de bouton Offert', fichier: APP, de: "const offrir = valeur != null && rsNiveau('prix') !== 'non' ?", vers: 'const offrir = valeur != null ?' },
+  { nom: 'quantite-perdue', lettre: 'G', cible: '[G] la quantite se lit sur le dossier', serveur: true, fichier: 'lib/droits-reservation.js', de: 'id: ligne.id, name: dit, price: offert ? 0 : prix,', vers: 'id: ligne.id, name: ligne.name, price: offert ? 0 : prix,' },
+  { nom: 'fenetre-prix-fige', lettre: 'G', cible: '[G] par joueur, le prix suit le groupe', fichier: APP, de: "return s.fm.mode === 'total' ? montant : Math.round(montant * Math.max(1, Number(s.pax) || 1) * 100) / 100;", vers: 'return montant;' },
+  { nom: 'formule-perdue-au-programme', lettre: 'G', cible: '[G] le dossier garde la formule', serveur: true, fichier: 'lib/reservation-request.js', de: 'priceComplete: program.priceComplete, ...(formuleSurMesure ? { formuleSurMesure } : {}) };', vers: 'priceComplete: program.priceComplete };' },
+  { nom: 'formule-perdue-en-base', lettre: 'G', cible: '[G] le dossier garde la formule', serveur: true, fichier: 'lib/database.js', de: '    priceComplete: value.priceComplete === true,\n    ...(formuleSurMesure ? { formuleSurMesure } : {}),\n', vers: '    priceComplete: value.priceComplete === true,\n' },
+  { nom: 'une-activite-sans-programme', lettre: 'G', cible: '[G] une seule activite garde aussi sa formule', fichier: APP, de: "const programme = s.type === 'visite' || adaptee || rsFmActive(s);", vers: "const programme = s.type === 'visite' || adaptee;" },
+  { nom: 'patch-perd-la-formule', lettre: 'G', cible: '[G] la fiche garde la formule', serveur: true, fichier: 'api/staff-reservations.js', de: 'if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;', vers: '' },
+  { nom: 'prix-qui-ne-suit-pas', lettre: 'G', cible: '[G] le groupe change sur la fiche, le prix de la formule suit', serveur: true, fichier: 'lib/droits-reservation.js', de: "if (formule && Number.isFinite(Number(formule.prixParPersonne)) && formule.prixParPersonne !== null) {", vers: 'if (false) {' },
+  { nom: 'fiche-annonce-le-tarif', lettre: 'G', cible: '[G] la fiche annonce le prix de la formule', fichier: APP, de: '  const formule = prixFormuleEdition();\n  if (formule != null) return formule;\n', vers: '' },
+  { nom: 'total-tape-suit-encore', lettre: 'G', cible: '[G] un total tape a la main ne suit plus le groupe', serveur: true, fichier: 'api/staff-reservations.js', de: 'if (ops.program) ops.program = { ...programme, formuleSurMesure: nom };\n        else if (patch.program) patch.program = { ...programme, formuleSurMesure: nom };', vers: '' },
+  { nom: 'planning-sans-formule', lettre: 'G', cible: '[G] le Complet dit la formule', fichier: GLOBAL, de: "liste.push(gfRubrique('formule', 'Formule', gpEsc(formuleDite), formuleDite));", vers: '' },
+  { nom: 'fiche-perd-les-drapeaux', lettre: 'G', cible: '[G] la fiche relit par personne et offert', fichier: APP, de: "else modele[groupe].push({ choix, qte, prix, ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) });", vers: 'else modele[groupe].push({ choix, qte, prix });' },
+  { nom: 'fiche-ne-suit-pas-le-groupe', lettre: 'G', cible: '[G] sur la fiche, la ligne par personne suit le groupe', fichier: APP, de: "const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;", vers: 'const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));\n      if (!nom) return;' },
+  { nom: 'droit-temporaire', lettre: 'G', cible: '[G] sans le niveau formule, le serveur refuse', serveur: true, fichier: 'lib/reserver-fenetre.js', de: 'if (corpsAdapteUneFormule(corps, formuleAdaptee) || corps.formuleSurMesure) exigerAdaptationDeFormule(session);', vers: 'if (corpsAdapteUneFormule(corps, formuleAdaptee)) exigerAdaptationDeFormule(session);' },
+  { nom: 'onglet-sans-droit', lettre: 'G', cible: '[G] sans le niveau formule, pas d onglet Formule', fichier: APP, de: "const rsFmPermise = () => rsNiveau('formule') === 'oui' && quickBookState.type !== 'formule';", vers: "const rsFmPermise = () => quickBookState.type !== 'formule';" },
+  { nom: 'gardee-visible-des-clients', lettre: 'G', cible: '[G] gardee au comptoir, les clients ne la voient pas', serveur: true, fichier: 'lib/booking-config.js', de: '    if (formule.comptoirSeul && !comptoir) continue;\n', vers: '' },
+  { nom: 'gardee-partout', lettre: 'G', cible: '[G] l autre centre ne la voit pas', serveur: true, fichier: 'lib/catalog-store.js', de: 'return !proprietaire || proprietaire === centre;', vers: 'return true;' },
+  { nom: 'gardee-absente-des-formules', lettre: 'G', cible: '[G] elle se retrouve dans Formules', fichier: APP, de: 'if (served && gardees.length) return [...served, ...gardees.filter((g) => !served.some((f) => f.id === g.id))];\n', vers: '' },
+  { nom: 'garder-sans-droit', lettre: 'G', cible: '[G] sans le droit Tarifs, le serveur refuse de garder', serveur: true, fichier: CONTROLE_FORMULES, de: "'saveGrillesTarif', 'garderFormuleSurMesure', 'afficherFormuleSurMesure', 'modifierFormuleSurMesure', 'retirerFormuleSurMesure'].includes(action)) return 'pricing.manage';", vers: "'saveGrillesTarif'].includes(action)) return 'pricing.manage';\n  if (['garderFormuleSurMesure', 'afficherFormuleSurMesure', 'modifierFormuleSurMesure', 'retirerFormuleSurMesure'].includes(action)) return 'reservations.create';" },
+  { nom: 'tarifs-sans-formule-gardee', lettre: 'G', cible: '[G] Tarifs montre la formule gardee', fichier: 'assets/staff-pages-v2.js', de: "comptoirSeul: /^sm-.+--/.test(id) && entry.effective && entry.effective.humanValidation === 'comptoir',", vers: 'comptoirSeul: false,' },
+  { nom: 'tarifs-sans-prix', lettre: 'G', cible: '[G] Tarifs change son prix', serveur: true, fichier: CONTROLE_FORMULES, de: "else if (action === 'modifierFormuleSurMesure') out = await catalogStore.updateFormula(getPool(), { id, ...champsDeFormule(body), ownerClientId });", vers: "else if (action === 'modifierFormuleSurMesure') out = {};" },
+  { nom: 'fiche-sans-formule', lettre: 'G', cible: '[G] la fiche dit la formule', fichier: APP, de: "${formuleSM ? `<p class=\"fm-prix-formule\" id=\"editFormuleSM\">", vers: "${false ? `<p class=\"fm-prix-formule\" id=\"editFormuleSM\">" },
+  { nom: 'addition-sans-offert', lettre: 'G', cible: '[G] l addition dit offert', fichier: APP, de: "montant: e.offert ? 'offert' : formatMoneyCentimes(Number(e.price) || 0) }));", vers: "montant: formatMoneyCentimes(Number(e.price) || 0) }));" },
+  { nom: 'garder-sans-ecran', lettre: 'G', cible: '[G] sans le droit Tarifs, pas de rangee Garder', fichier: APP, de: "  if (!rsFmPeutGarder()) return '';\n", vers: '' },
+  { nom: 'formule-d-un-autre-centre', lettre: 'G', cible: '[G] la formule d un autre centre ne se touche pas', serveur: true, fichier: CONTROLE_FORMULES, de: "if ((id || action !== 'garderFormuleSurMesure') && !estFormuleDuCentre(id, targetCenter)) {", vers: 'if (false) {' },
+  { nom: 'reservee-par-l-autre-centre', lettre: 'G', cible: '[G] la formule d un autre centre ne se reserve pas', serveur: true, fichier: 'lib/reserver-fenetre.js', de: '    exigerFormuleDuCentre({ formuleId: corps.formuleId || corps.formulaId, centerId: request.centerId });\n', vers: '' },
+  { nom: 'fiche-formule-d-un-autre-centre', lettre: 'G', cible: '[G] la fiche ne prend pas la formule d un autre centre', serveur: true, fichier: 'api/staff-reservations.js', de: 'if (patch.formuleId || patch.formulaId) exigerFormuleDuCentre(', vers: 'if (false) exigerFormuleDuCentre(' },
+  { nom: 'dernier-clic-jete', lettre: 'G', cible: '[G] deux touches de suite, la derniere compte', fichier: APP, de: 'while (fm.gardee && fm.gardee.clients !== fm.clients) {', vers: 'if (fm.gardee && fm.gardee.clients !== fm.clients) {' },
+  { nom: 'note-du-tarif-plein', lettre: 'G', cible: '[G] la note part du detail que l ecran montre', serveur: true, fichier: 'lib/droits-reservation.js', de: 'return { de: deLaNote({ reference, base: dossier.basePrice, extras: dossier.extras, prix }), a: prix,', vers: 'return { de: reference, a: prix,' },
+  { nom: 'afficher-sans-effet', lettre: 'G', cible: '[G] affichee, les clients la voient', serveur: true, fichier: CONTROLE_FORMULES, de: 'humanValidation: body.clients === true ? null : MODE_COMPTOIR, ownerClientId });', vers: 'humanValidation: MODE_COMPTOIR, ownerClientId });' },
+);
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
 let echecs = 0;
@@ -82,6 +123,9 @@ function ok(cond, label, detail) {
   if (cond) { reussis += 1; console.log(`ok    ${label}`); return true; }
   echecs += 1;
   console.log(`FAIL  ${label}${detail !== undefined ? `  ${typeof detail === 'string' ? detail : JSON.stringify(detail)}` : ''}`);
+  // Une contre-preuve s arrete des que sa cible rougit : le reste du scenario n a rien a lui
+  // apprendre, et les fermetures (contextes, navigateur, serveur) se font quand meme.
+  if (mutation && label === mutation.cible) throw Object.assign(new Error(`cible rouge : ${label}`), { cibleRouge: true });
   return false;
 }
 
@@ -684,7 +728,358 @@ async function scenarioF(browser) {
   } finally { await finir(m3, 'F3'); }
 }
 
-const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF };
+// ---------------------------------------------------------------------------
+// [G] LE SUR MESURE
+// ---------------------------------------------------------------------------
+const CREPE = '#rsArt-crepe-au-sucre';
+async function versLeSurMesure(page, pax) {
+  await C.ouvrirFenetre(page, pax);
+  await verifie(page, 'bowling');
+  await page.locator('#rsZ-bowling .rs-h[data-heure="17:00"]').click();
+  await C.pret(page);
+  await page.locator('#rsMesure').click();
+  await page.waitForSelector(CREPE);
+}
+const chiffres = (page) => page.evaluate(() => ({
+  extras: quickExtrasTotal(),
+  total: rsTotalTicket().total,
+  reference: rvTotalReference(),
+  calcul: (document.getElementById('rsBandeCalcul') || {}).textContent || '',
+  tous: (document.getElementById('rsPourTous') || {}).textContent || '',
+  lignes: quickExtrasLignes(),
+  bloque: rsPrixBloque(),
+  ticket: (document.getElementById('rsLignes') || {}).textContent || '',
+}));
+const programmeEntier = (r) => (r && (typeof r.program === 'string' ? JSON.parse(r.program) : r.program)) || {};
+const extrasDe = (r) => (r && (typeof r.extras === 'string' ? JSON.parse(r.extras) : r.extras)) || [];
+const CORPS_BOWLING = { centerId: 'libramont', date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Forge', pax: 12, laneCount: 2, lanes: [], requiresLanes: true, channel: 'staff' };
+const FORMULE_FORGEE = { nom: 'Forgee', prixParPersonne: 10, minPax: 2, activites: [{ id: 'bowling', minutes: 60, nom: 'Bowling 1 h' }], lignes: [] };
+
+async function scenarioG(browser) {
+  console.log('\n[G] le sur mesure');
+  const { getEffectiveFormules } = require(path.join(ROOT, 'lib/booking-config.js'));
+  const { normalizeReservationRequest } = require(path.join(ROOT, 'lib/reservation-request.js'));
+  const catalogue = require(path.join(ROOT, 'lib/catalog-store.js'));
+  const lePublicVoit = (id) => getEffectiveFormules('libramont').some((f) => f.id === id);
+  const lePublicRefuse = (id) => {
+    try { normalizeReservationRequest({ centerId: 'libramont', date: JOUR, startTime: '17:00', pax: 12, type: 'formule', formuleId: id, name: 'X', phone: '+32470000000', email: 'x@example.test' }, { channel: 'public' }); return false; } catch (error) { return /indisponible/i.test(error.message); }
+  };
+
+  // Une crepe, ou une crepe pour tout le monde.
+  const m = await ouvrir(browser, { reservations: () => [] });
+  let dossierOffert = null;
+  try {
+    const { page } = m;
+    await versLeSurMesure(page, 12);
+    await page.locator(CREPE).click();
+    let c = await chiffres(page);
+    ok(c.extras === 6 && /^6\s€$/.test(c.calcul), '[G] un toucher, une crepe', c.calcul);
+    await page.locator('#rsParPersonne').click();
+    c = await chiffres(page);
+    ok(c.extras === 72 && /12 personnes/.test(c.tous) && /par personne/.test(c.ticket), '[G] par personne, une crepe pour les 12', { extras: c.extras, tous: c.tous });
+    await page.locator('#rsHaut [data-pax="15"]').click();
+    await page.waitForTimeout(250);
+    c = await chiffres(page);
+    ok(c.extras === 90 && /15 personnes/.test(c.tous), '[G] par personne, la ligne suit le groupe', { extras: c.extras, tous: c.tous });
+    await page.locator(CREPE).click();
+    c = await chiffres(page);
+    ok(c.extras === 90, '[G] toucher encore la tuile n ajoute rien a une ligne par personne', c.extras);
+    await page.locator('#rsUnite').click();
+    c = await chiffres(page);
+    ok(c.extras === 6 && !c.tous, '[G] a l unite, on revient a une crepe', { extras: c.extras, tous: c.tous });
+    await page.locator('#rsParPersonne').click();
+    const avantOffre = await chiffres(page);
+    await page.locator('#rsOffert').click();
+    c = await chiffres(page);
+    ok(c.extras === 0 && Math.abs(c.total - (avantOffre.total - 90)) < 0.01 && /offert/.test(c.calcul) && /offert/.test(c.ticket), '[G] offerte, la ligne ne se paie pas', { extras: c.extras, total: c.total, avant: avantOffre.total, calcul: c.calcul });
+    await C.pret(page);
+    await creer(page, 'Banc Crepe');
+    const [r] = await neufs(page, m.avant);
+    const ligne = extrasDe(r)[0] || {};
+    dossierOffert = r;
+    ok(ligne.parPersonne === true && ligne.offert === true && Number(ligne.valeur) === 90 && Number(ligne.price) === 0, '[G] le dossier garde par personne et offert', ligne);
+    ok(/× 15$/.test(String(ligne.name)), '[G] la quantite se lit sur le dossier', ligne.name);
+    ok(r && Number(r.price) === Number(r.base_price) && /Offert : Crêpe au sucre × 15/.test(String(r.notes || '')), '[G] l offre se trace d elle-meme', r && { prix: r.price, base: r.base_price, notes: r.notes });
+    await page.waitForTimeout(400);
+
+    // La fiche relit, fait suivre, retire.
+    await page.evaluate((rid) => openPos(rid), r.id);
+    await page.waitForTimeout(500);
+    const addition = await page.evaluate(() => (document.querySelector('.gc-bill-lines') || {}).textContent || '');
+    ok(/Crêpe au sucre × 15\s*par personne\s*offert/.test(addition.replace(/\s+/g, ' ')), '[G] l addition dit offert', addition.replace(/\s+/g, ' '));
+    await page.evaluate(() => { const fermer = document.querySelector('#posOverlay .pos-close, #posOverlay [aria-label="Fermer"]'); if (fermer) fermer.click(); });
+    await page.waitForTimeout(200);
+    await ouvrirModifier(page, r.id);
+    ok(await page.locator('.fm-x-opt.is-on').count() === 2, '[G] la fiche relit par personne et offert', await page.locator('.fm-x-opt.is-on').count());
+    await page.locator('#editPaxInput').fill('14');
+    await page.waitForTimeout(250);
+    ok((await page.locator('.fm-x-tous').first().textContent()).trim() === '14', '[G] sur la fiche, la ligne par personne suit le groupe', await page.locator('.fm-x-tous').first().textContent());
+    await page.locator('.fm-x-opt', { hasText: 'Offert' }).click();
+    await page.waitForTimeout(250);
+    const prixFiche = Number(await page.locator('#editPriceInput').inputValue());
+    await page.locator('.edit-form button[type="submit"]').first().click();
+    await attendreBase(page, () => Number(B.base.reservations.get(r.id).pax) === 14);
+    const relu = B.base.reservations.get(r.id);
+    const ligneRelue = extrasDe(relu)[0] || {};
+    ok(ligneRelue.parPersonne === true && ligneRelue.offert !== true && Number(ligneRelue.price) === 84 && /× 14$/.test(String(ligneRelue.name)), '[G] la fiche retire l offre, la ligne par personne reste', ligneRelue);
+    ok(Number(relu.price) === prixFiche && Number(relu.price) === Number(relu.base_price) + 84, '[G] la fiche annonce ce qu elle ecrit', { annonce: prixFiche, prix: relu.price, base: relu.base_price });
+  } finally { await finir(m, 'G1'); }
+
+  // Le plafond du role, et le role sans niveau.
+  const m2 = await ouvrir(browser, { role: 'manager', reservations: () => [] });
+  try {
+    const { page } = m2;
+    await versLeSurMesure(page, 12);
+    await page.locator(CREPE).click();
+    await page.locator('#rsOffert').click();
+    let c = await chiffres(page);
+    ok(c.bloque === '', '[G] une petite offre passe au plafond du role', c.bloque);
+    await page.locator('#rsParPersonne').click();
+    c = await chiffres(page);
+    ok(c.bloque === 'plafond', '[G] une grande offre est au-dessus du plafond du role', c.bloque);
+    const forge = await page.evaluate(() => rvConstruire().reservation);
+    const refus = await serveur.appeler('POST', '/api/staff-reservations', { ...forge, centerId: 'libramont', name: 'Banc Offre', channel: 'staff' });
+    ok(refus.statut === 403 && refus.json.code === 'prix_niveau_insuffisant', '[G] une offre au-dessus du plafond est refusee au serveur', { statut: refus.statut, code: refus.json.code, message: refus.json.message });
+  } finally { await finir(m2, 'G2'); }
+
+  const m3 = await ouvrir(browser, { role: 'catalogue', reservations: () => [] });
+  try {
+    const { page } = m3;
+    await versLeSurMesure(page, 12);
+    await page.locator(CREPE).click();
+    ok(await page.locator('#rsParPersonne').count() === 1 && await page.locator('#rsOffert').count() === 0, '[G] sans le niveau prix, pas de bouton Offert', await page.locator('#rsOffert').count());
+    ok(await page.locator('[data-onglet="formule"]').count() === 0, '[G] sans le niveau formule, pas d onglet Formule');
+    const offre = await serveur.appeler('POST', '/api/staff-reservations', { ...CORPS_BOWLING, extras: [{ id: 'x', articleId: 'crepe-au-sucre', name: 'Crêpe au sucre', qte: 2, prixUnitaire: 6, price: 0, offert: true, valeur: 12 }] });
+    ok(offre.statut === 403 && offre.json.code === 'prix_niveau_insuffisant', '[G] sans le niveau prix, le serveur refuse l offre', { statut: offre.statut, code: offre.json.code, message: offre.json.message });
+    const temporaire = await serveur.appeler('POST', '/api/staff-reservations', { ...CORPS_BOWLING, program: [{ activityId: 'bowling', duration: 1, pax: 12, participants: 12 }], formuleSurMesure: { nom: 'Forgee' } });
+    ok(temporaire.statut === 403 && temporaire.json.code === 'formule_niveau_insuffisant', '[G] sans le niveau formule, le serveur refuse', { statut: temporaire.statut, code: temporaire.json.code, message: temporaire.json.message });
+    const garder = await serveur.appeler('POST', '/api/ops', { action: 'garderFormuleSurMesure', centerId: 'libramont', formule: FORMULE_FORGEE });
+    ok(garder.statut === 403 && C.CATALOGUE_BANC.formules.size === 0, '[G] sans le droit Tarifs, le serveur refuse de garder', { statut: garder.statut, message: garder.json.message });
+  } finally { await finir(m3, 'G3'); }
+
+  // Le manager : la formule temporaire, sans le catalogue ; un role sans Tarifs ne garde pas.
+  const m3b = await ouvrir(browser, { role: 'sans-tarifs', reservations: () => [] });
+  try {
+    const { page } = m3b;
+    await versLeSurMesure(page, 12);
+    await page.locator('[data-onglet="formule"]').click();
+    await page.waitForSelector('#rsFmNom');
+    ok(await page.locator('#rsFmGarder').count() === 0 && await page.locator('#rsFmClients').count() === 0, '[G] sans le droit Tarifs, pas de rangee Garder', await page.locator('#rsFmGarder').count());
+  } finally { await finir(m3b, 'G3b'); }
+
+  // La formule pour ce dossier.
+  const m4 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m4;
+    await versLeSurMesure(page, 12);
+    await page.locator(CREPE).click();
+    await page.locator('#rsParPersonne').click();
+    await page.locator('[data-onglet="formule"]').click();
+    await page.waitForSelector('#rsFmNom');
+    await page.locator('#rsFmNom').fill('Anniversaire de Lina');
+    await page.locator('#rsFmMontant').fill('20');
+    await page.waitForTimeout(200);
+    let c = await chiffres(page);
+    ok(c.total === 240 && /Anniversaire de Lina/.test(c.ticket) && /12 joueurs × 20/.test(c.ticket), '[G] la formule se lit sur le ticket', { total: c.total, ticket: c.ticket.slice(0, 120) });
+    const dit = await page.locator('#rsFmCalcul').textContent();
+    ok(/12 × 20\s€, 240\s€/.test(dit) && /90\s€ de plus que le détail/.test(dit), '[G] la page dit le calcul et l ecart', dit);
+    await page.locator('#rsHaut [data-pax="15"]').click();
+    await page.waitForTimeout(250);
+    c = await chiffres(page);
+    ok(c.total === 300, '[G] par joueur, le prix suit le groupe', c.total);
+    await page.locator('#rsFmAuTotal').click();
+    await page.waitForTimeout(150);
+    ok(await page.locator('#rsFmMontant').inputValue() === '300', '[G] passer au prix du groupe garde le total', await page.locator('#rsFmMontant').inputValue());
+    await page.locator('#rsHaut [data-pax="12"]').click();
+    await page.waitForTimeout(250);
+    c = await chiffres(page);
+    ok(c.total === 300, '[G] pour le groupe, le prix ne suit pas', c.total);
+    await page.locator('#rsFmParJoueur').click();
+    await page.locator('#rsFmMontant').fill('20');
+    await page.waitForTimeout(250);
+    await C.pret(page);
+    await creer(page, 'Lina Dupont');
+    const [r] = await neufs(page, m4.avant);
+    const formule = programmeEntier(r).formuleSurMesure;
+    ok(r && r.label === 'Anniversaire de Lina' && formule && formule.nom === 'Anniversaire de Lina' && Number(formule.prixParPersonne) === 20, '[G] le dossier garde la formule', r && { label: r.label, formule });
+    ok(r && Number(r.price) === 240 && /Formule sur mesure : Anniversaire de Lina/.test(String(r.notes || '')), '[G] le prix et sa raison s ecrivent', r && { prix: r.price, notes: r.notes });
+    // Une formule et une ligne offerte : la note part du detail que l ecran montre (l offre a 0 €).
+    const avecOffre = await serveur.appeler('POST', '/api/staff-reservations', { ...CORPS_BOWLING, name: 'Banc Note', program: [{ activityId: 'bowling', duration: 1, pax: 12, participants: 12 }], formuleSurMesure: { nom: 'Note claire', prixParPersonne: 5 }, price: 60, prixRaison: 'Formule sur mesure : Note claire', extras: [{ id: 'x1', articleId: 'duvel', name: 'Duvel', qte: 1, prixUnitaire: 5, price: 0, offert: true, valeur: 5 }] });
+    const idNote = avecOffre.json.reservation && avecOffre.json.reservation.id;
+    const ligneNote = idNote ? B.base.reservations.get(idNote) : null;
+    const deNote = Number((/"de":([\d.]+)/.exec(String((ligneNote && ligneNote.notes) || '')) || [])[1]);
+    ok(avecOffre.statut === 201 && ligneNote && deNote === Number(ligneNote.base_price) && Number(ligneNote.price) === 60, '[G] la note part du detail que l ecran montre', { statut: avecOffre.statut, message: avecOffre.json.message, de: deNote, base: ligneNote && ligneNote.base_price, notes: ligneNote && ligneNote.notes });
+    await page.waitForTimeout(500);
+    const ligneComplet = await page.evaluate(() => { const tr = [...document.querySelectorAll('tr.gf-r')].find((x) => /Lina Dupont/.test(x.textContent)); return tr ? { texte: tr.textContent.replace(/\s+/g, ' '), pastille: (tr.querySelector('.gf-formule.is-mesure') || {}).textContent || '' } : null; });
+    ok(ligneComplet && ligneComplet.pastille === 'Sur mesure', '[G] le Complet marque la formule sur mesure', ligneComplet);
+    ok(ligneComplet && /Formule\s*Anniversaire de Lina, 20\s€ par joueur/.test(ligneComplet.texte) && /12 × Crêpe au sucre/.test(ligneComplet.texte), '[G] le Complet dit la formule', ligneComplet);
+
+    // Une heure changee : tout reste.
+    const heure = await serveur.appeler('PATCH', '/api/staff-reservations', { id: r.id, centerId: 'libramont', startTime: '20:00', allowPastStart: true, baseUpdatedAt: new Date(r.updated_at).toISOString() });
+    let relu = B.base.reservations.get(r.id);
+    ok(heure.statut === 200 && relu.label === 'Anniversaire de Lina' && Number(relu.price) === 240 && programmeEntier(relu).formuleSurMesure && programmeEntier(relu).formuleSurMesure.nom === 'Anniversaire de Lina', '[G] une heure changee garde la formule et son prix', { statut: heure.statut, message: heure.json.message, label: relu.label, prix: relu.price, formule: programmeEntier(relu).formuleSurMesure });
+    await page.evaluate((res) => { const i = state.reservations.findIndex((x) => x.id === res.id); if (i >= 0) state.reservations[i] = { ...res }; renderStaff(); }, heure.json.reservation);
+
+    // La fiche : le groupe change, le prix suit la formule.
+    await ouvrirModifier(page, r.id);
+    ok(/Anniversaire de Lina/.test(await page.locator('#editFormuleSM').textContent()), '[G] la fiche dit la formule', await page.locator('#editFormuleSM').textContent());
+    await page.locator('#editPaxInput').fill('11');
+    await page.waitForTimeout(250);
+    ok(Number(await page.locator('#editPriceInput').inputValue()) === 220, '[G] la fiche annonce le prix de la formule', await page.locator('#editPriceInput').inputValue());
+    await page.locator('.edit-form button[type="submit"]').first().click();
+    await attendreBase(page, () => Number(B.base.reservations.get(r.id).pax) === 11);
+    relu = B.base.reservations.get(r.id);
+    ok(Number(relu.price) === 220, '[G] le groupe change sur la fiche, le prix de la formule suit', { prix: relu.price, notes: relu.notes });
+    ok(programmeEntier(relu).formuleSurMesure && Number(programmeEntier(relu).formuleSurMesure.prixParPersonne) === 20 && relu.label === 'Anniversaire de Lina', '[G] la fiche garde la formule', { label: relu.label, programme: programmeEntier(relu).formuleSurMesure });
+    ok(/× 11$/.test(String((extrasDe(relu)[0] || {}).name)), '[G] la ligne par personne suit sur le dossier', extrasDe(relu)[0]);
+
+    // Un total tape : la formule garde son nom, le prix ne suit plus le groupe.
+    const tape = await serveur.appeler('PATCH', '/api/staff-reservations', { id: r.id, centerId: 'libramont', price: 200, prixRaison: 'Geste', baseUpdatedAt: new Date(relu.updated_at).toISOString() });
+    relu = B.base.reservations.get(r.id);
+    const apresTape = programmeEntier(relu).formuleSurMesure;
+    ok(tape.statut === 200 && Number(relu.price) === 200 && apresTape && apresTape.nom === 'Anniversaire de Lina' && apresTape.prixParPersonne === undefined, '[G] un total tape a la main ne suit plus le groupe', { statut: tape.statut, message: tape.json.message, prix: relu.price, formule: apresTape });
+  } finally { await finir(m4, 'G4'); }
+
+  // Une seule activite, un prix pour le groupe.
+  const m5 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m5;
+    await C.ouvrirFenetre(page, 8);
+    await verifie(page, 'laser_game');
+    await page.locator('#rsZ-laser_game .rs-h[data-heure="18:00"]').click();
+    await C.pret(page);
+    await page.locator('#rsMesure').click();
+    await page.waitForSelector(CREPE);
+    await page.locator('[data-onglet="formule"]').click();
+    await page.locator('#rsFmNom').fill('Club de foot');
+    await page.locator('#rsFmAuTotal').click();
+    await page.locator('#rsFmMontant').fill('70');
+    await page.waitForTimeout(400);
+    await C.pret(page);
+    await creer(page, 'Banc Foot');
+    const [r] = await neufs(page, m5.avant);
+    const f = programmeEntier(r).formuleSurMesure;
+    ok(r && f && f.nom === 'Club de foot' && f.prixParPersonne === undefined && Number(r.price) === 70 && r.label === 'Club de foot', '[G] une seule activite garde aussi sa formule', r && { label: r.label, f, prix: r.price, type: r.type });
+  } finally { await finir(m5, 'G5'); }
+
+  // La garder, l afficher, la retrouver, la retirer.
+  const m6 = await ouvrir(browser, { reservations: () => [] });
+  let garde = '';
+  try {
+    const { page } = m6;
+    await versLeSurMesure(page, 12);
+    await page.locator(CREPE).click();
+    await page.locator('#rsParPersonne').click();
+    await page.locator('[data-onglet="formule"]').click();
+    await page.locator('#rsFmMontant').fill('22');
+    await page.locator('#rsFmGarder').click();
+    await page.waitForSelector('#rsFmErreur');
+    ok(/nom/.test(await page.locator('#rsFmErreur').textContent()) && C.CATALOGUE_BANC.formules.size === 0, '[G] sans nom, elle ne se garde pas', await page.locator('#rsFmErreur').textContent());
+    await page.locator('#rsFmNom').fill('Anniv du club');
+    await page.waitForTimeout(150);
+    await page.locator('#rsFmGarder').click();
+    await page.waitForSelector('#rsFmEtat');
+    const lignes = [...C.CATALOGUE_BANC.formules.values()];
+    garde = (lignes[0] || {}).id || '';
+    ok(lignes.length === 1 && /^sm-libramont--anniv-du-club$/.test(garde) && lignes[0].human_validation === 'comptoir' && Number(lignes[0].price_value) === 22 && Number(lignes[0].min_pax) === 6, '[G] gardee, elle est au catalogue de ce centre', lignes[0]);
+    const etapes = C.CATALOGUE_BANC.etapes.map((e) => [e.activity_id, e.count, e.duration_minutes, e.label]);
+    ok(etapes.length === 2 && etapes[0][0] === 'bowling' && etapes[0][2] === 60 && etapes[1][0] === 'service_drinks' && /Crêpe au sucre par personne/.test(etapes[1][3]), '[G] elle comprend ce que le ticket contient', etapes);
+    ok(!lePublicVoit(garde) && lePublicRefuse(garde) && getEffectiveFormules('libramont', { comptoir: true }).some((f) => f.id === garde), '[G] gardee au comptoir, les clients ne la voient pas', { voit: lePublicVoit(garde), refuse: lePublicRefuse(garde) });
+    ok(!catalogue.listBookingFormules('gembloux').some((f) => f.id === garde) && catalogue.listBookingFormules('libramont').some((f) => f.id === garde), '[G] l autre centre ne la voit pas');
+    await page.locator('#rsFmClients').click();
+    await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === null);
+    await page.waitForFunction(() => /formulaire des clients/.test((document.getElementById('rsFmEtat') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    ok(lePublicVoit(garde) && !lePublicRefuse(garde) && /formulaire des clients/.test((await page.locator('#rsFmEtat').textContent()) || ''), '[G] affichee, les clients la voient', { voit: lePublicVoit(garde), etat: await page.locator('#rsFmEtat').textContent() });
+    await page.locator('#rsFmComptoir').click();
+    await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === 'comptoir');
+    ok(!lePublicVoit(garde), '[G] on la retire du formulaire d un geste', lePublicVoit(garde));
+    // Deux touches de suite, la seconde avant le retour de la premiere : la derniere compte.
+    await page.evaluate(() => { document.getElementById('rsFmClients').click(); document.getElementById('rsFmComptoir').click(); });
+    await page.waitForFunction(() => !quickBookState.fm.enCours, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const dernier = await page.evaluate(() => ({ ecran: quickBookState.fm.clients, serveur: quickBookState.fm.gardee && quickBookState.fm.gardee.clients, etat: (document.getElementById('rsFmEtat') || {}).textContent || '' }));
+    ok(C.CATALOGUE_BANC.formules.get(garde).human_validation === 'comptoir' && !lePublicVoit(garde) && dernier.ecran === false && !/formulaire des clients/.test(dernier.etat), '[G] deux touches de suite, la derniere compte', { base: C.CATALOGUE_BANC.formules.get(garde).human_validation, dernier });
+    // Changer le prix apres : mettre a jour, sans en creer une autre.
+    await page.locator('#rsFmMontant').fill('24');
+    await page.waitForTimeout(200);
+    await page.locator('#rsFmGarder').click();
+    await page.waitForSelector('#rsFmEtat');
+    ok(C.CATALOGUE_BANC.formules.size === 1 && Number(C.CATALOGUE_BANC.formules.get(garde).price_value) === 24, '[G] mettre a jour ne cree pas une deuxieme formule', [...C.CATALOGUE_BANC.formules.values()].map((f) => [f.id, f.price_value]));
+  } finally { await finir(m6, 'G6'); }
+
+  // Une autre fenetre : elle est dans Formules, et elle se reserve au prix garde.
+  const m7 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m7;
+    await C.ouvrirFenetre(page, 12);
+    await page.waitForFunction((id) => getEffectiveCatalogFormules().some((f) => f.id === id), garde, { timeout: 8000 }).catch(() => {});
+    await page.locator('#rsFormules').click();
+    const tuile = page.locator(`[id="rsF-${garde}"]`);
+    ok(await tuile.count() === 1, '[G] elle se retrouve dans Formules', await page.evaluate(() => getEffectiveCatalogFormules().map((f) => f.id).slice(-3)));
+    if (await tuile.count()) {
+      await tuile.click();
+      await page.waitForSelector('.rs-s-l.is-formule .rs-h[data-heure="17:00"]');
+      await page.locator('.rs-s-l.is-formule .rs-h[data-heure="17:00"]').click();
+      await C.pret(page);
+      await creer(page, 'Banc Gardee');
+      const [r] = await neufs(page, m7.avant);
+      ok(r && r.formule_id === garde && Number(r.price) === 288, '[G] elle se reserve au prix garde', r && { formule: r.formule_id, prix: r.price, label: r.label, statut: r.status });
+    }
+    // L autre centre, et les autres formules, ne passent pas par ces portes.
+    const voisine = await serveur.appeler('POST', '/api/ops', { action: 'afficherFormuleSurMesure', centerId: 'libramont', id: 'sm-gembloux--leur-formule', clients: true });
+    const catalogueDeSociete = await serveur.appeler('POST', '/api/ops', { action: 'retirerFormuleSurMesure', centerId: 'libramont', id: 'f1' });
+    ok(voisine.statut === 403 && catalogueDeSociete.statut === 403, '[G] la formule d un autre centre ne se touche pas', { voisine: voisine.statut, societe: catalogueDeSociete.statut });
+    const prise = await serveur.appeler('POST', '/api/staff-reservations', { ...CORPS_BOWLING, type: 'formule', formuleId: 'sm-gembloux--leur-formule' });
+    ok(prise.statut === 403 && prise.json.code === 'formule_autre_centre', '[G] la formule d un autre centre ne se reserve pas', { statut: prise.statut, code: prise.json.code, message: prise.json.message });
+    const simple = await serveur.appeler('POST', '/api/staff-reservations', { ...CORPS_BOWLING, name: 'Banc Fiche Voisine' });
+    const idSimple = simple.json.reservation && simple.json.reservation.id;
+    const versLaVoisine = idSimple
+      ? await serveur.appeler('PATCH', '/api/staff-reservations', { id: idSimple, centerId: 'libramont', type: 'formule', formuleId: 'sm-gembloux--leur-formule', baseUpdatedAt: new Date(B.base.reservations.get(idSimple).updated_at).toISOString() })
+      : { statut: simple.statut, json: simple.json };
+    ok(versLaVoisine.statut === 403 && versLaVoisine.json.code === 'formule_autre_centre' && idSimple && !B.base.reservations.get(idSimple).formule_id, '[G] la fiche ne prend pas la formule d un autre centre', { statut: versLaVoisine.statut, code: versLaVoisine.json.code, message: versLaVoisine.json.message });
+  } finally { await finir(m7, 'G7'); }
+
+  // Tarifs & formules : le manager (droit Tarifs, pas droit Reglages) la regle et la retire.
+  const m8 = await ouvrir(browser, { role: 'manager', reservations: () => [] });
+  try {
+    const { page } = m8;
+    page.on('dialog', (d) => d.accept().catch(() => {}));
+    await page.evaluate(() => { const b = document.querySelector('[data-fgx-menu-key="prices"]'); if (b) b.click(); });
+    const ligne = `#staffPricingPage [data-tf-ligne="${garde}"]`;
+    await page.waitForSelector(ligne, { timeout: 20000 }).catch(() => {});
+    const texte = await page.evaluate((s) => (document.querySelector(s) || {}).textContent || '', ligne);
+    ok(/Anniv du club/.test(texte) && /Au comptoir seulement/.test(texte), '[G] Tarifs montre la formule gardee', texte.replace(/\s+/g, ' ').slice(0, 200));
+    await page.locator(`${ligne} .tf-ligne-btn`).click();
+    await page.waitForSelector('#tfSmPrix');
+    await page.locator('#tfSm-clients').click();
+    await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === null);
+    ok(lePublicVoit(garde), '[G] Tarifs l affiche aux clients', C.CATALOGUE_BANC.formules.get(garde).human_validation);
+    await page.waitForSelector(`${ligne} .tf-ligne-btn`);
+    await page.waitForTimeout(500);
+    if (!(await page.locator('#tfSmPrix').count())) await page.locator(`${ligne} .tf-ligne-btn`).click();
+    await page.waitForSelector('#tfSmPrix');
+    await page.locator('#tfSm-comptoir').click();
+    await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).human_validation === 'comptoir');
+    ok(!lePublicVoit(garde), '[G] Tarifs la remet au comptoir', C.CATALOGUE_BANC.formules.get(garde).human_validation);
+    await page.waitForTimeout(500);
+    if (!(await page.locator('#tfSmPrix').count())) await page.locator(`${ligne} .tf-ligne-btn`).click();
+    await page.waitForSelector('#tfSmPrix');
+    await page.locator('#tfSmPrix').fill('30,50');
+    await page.locator('#tfSmNom').fill('Anniv du club bis');
+    await page.locator('#tfSmEnregistrer').click();
+    await attendreBase(page, () => Number(C.CATALOGUE_BANC.formules.get(garde).price_value) === 30.5);
+    const lue = C.CATALOGUE_BANC.formules.get(garde);
+    ok(Number(lue.price_value) === 30.5 && lue.name === 'Anniv du club bis' && lue.human_validation === 'comptoir', '[G] Tarifs change son prix', lue);
+    await page.waitForTimeout(500);
+    if (!(await page.locator('#tfSmRetirer').count())) await page.locator(`${ligne} .tf-ligne-btn`).click();
+    await page.waitForSelector('#tfSmRetirer');
+    await page.locator('#tfSmRetirer').click();
+    await attendreBase(page, () => C.CATALOGUE_BANC.formules.get(garde).active === false);
+    ok(!getEffectiveFormules('libramont', { comptoir: true }).some((f) => f.id === garde), '[G] retiree, elle n existe plus', C.CATALOGUE_BANC.formules.get(garde).active);
+  } finally { await finir(m8, 'G8'); }
+}
+
+const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG };
 
 function verifierLesAncres() {
   let mortes = 0;

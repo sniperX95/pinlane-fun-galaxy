@@ -3048,6 +3048,11 @@ const FILE_SEED_CENTER_IDS = ['libramont', 'gembloux', 'ciney'];
 
 function getEffectiveCatalogFormules() {
   const served = Array.isArray(window.__pinlaneDisplayFormules) ? window.__pinlaneDisplayFormules : null;
+  // Les formules gardees au comptoir : celles que les clients ne voient pas ne sont pas dans la
+  // liste publique, et le comptoir les vend toutes (lib/formule-comptoir.js).
+  const lu = typeof catalogueSurMesureConsole === 'undefined' ? null : catalogueSurMesureConsole;
+  const gardees = lu && lu.centre === getCurrentStaffCenterId() && Array.isArray(lu.formulesGardees) ? lu.formulesGardees : [];
+  if (served && gardees.length) return [...served, ...gardees.filter((g) => !served.some((f) => f.id === g.id))];
   if (served && served.length) return served;
   if (served) return []; // le serveur a repondu « aucune formule » : on le dit
   // getTunnelCenterId, pas le centre staff : dans le tunnel public l'adresse
@@ -17441,7 +17446,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     body: ''
   };
   if (page === 'formules') {
-    const formuleRows = reservations.filter(reservation => reservation.type === 'formule' || reservation.formuleId);
+    const formuleRows = reservations.filter(reservation => reservation.type === 'formule' || reservation.formuleId || formuleDuComptoir(reservation));
     const totals = formuleRows.filter(reservationHasFormulaActivities).reduce((acc, reservation) => {
       const summary = getFormulaActivityProgressSummary(reservation);
       acc.done += summary.done;
@@ -27538,6 +27543,8 @@ function renderGroupeAddition(r) {
   const joueurs = Math.max(0, Math.trunc(Number(r.pax) || 0));
   const lignes = [];
   const items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  const formuleSM = formuleDuComptoir(r);
+  if (formuleSM) lignes.push({ nom: formuleSM.nom, detail: ['formule sur mesure', formuleSM.prixParPersonne != null ? `${formatMoneyCentimes(formuleSM.prixParPersonne)} par joueur` : ''].filter(Boolean).join(', '), montant: '' });
   if (r.formuleId || r.type === 'formule') {
     const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
     const nom = formule ? formule.name : getReservationLabel(r);
@@ -27567,7 +27574,7 @@ function renderGroupeAddition(r) {
     const base = Math.max(0, etat.reference - totalExtras);
     lignes.push({ nom: getReservationLabel(r), detail: '', montant: base > 0 ? formatMoneyCentimes(base) : '' });
   }
-  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: '', montant: formatMoneyCentimes(Number(e.price) || 0) }));
+  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: e.parPersonne ? 'par personne' : '', montant: e.offert ? 'offert' : formatMoneyCentimes(Number(e.price) || 0) }));
   const total = Number(r.price) || 0;
   const connu = prixDossierConnu(r);
   // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
@@ -28885,10 +28892,30 @@ function majEditPrixEstime() {
 // L AJUSTEMENT EN PLACE SURVIT AUSSI AU NOUVEAU TARIF (2026-11-03) : c est le
 // prix que le serveur pose quand le contenu change sans prix tape
 // (prixQuiSuit) ; le champ annonce celui-la, jamais sous zero.
+// La formule du comptoir d un dossier, ou null.
+function formuleDuComptoir(r) {
+  const formule = r && r.program && !Array.isArray(r.program) ? r.program.formuleSurMesure : null;
+  return formule && formule.nom ? formule : null;
+}
+
+// Son prix par joueur suit le groupe : celui de prixQuiSuit, au serveur. Une ligne par personne
+// est dans ce prix, une ligne a l unite s y ajoute.
+function prixFormuleEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const formule = formuleDuComptoir(r);
+  if (!formule || formule.prixParPersonne == null || !(editionChangeLePrix() || editExtrasAChange())) return null;
+  const fixes = (liste) => sumExtras((liste || []).filter((x) => !(x && x.parPersonne === true)));
+  const joueurs = Math.trunc(Number(e.pax) || 0) - Math.trunc(Number(r.pax) || 0);
+  return Math.max(0, Math.round(((Number(r.price) || 0) + Number(formule.prixParPersonne) * joueurs + fixes(extrasCourantsEdition()) - fixes(r.extras)) * 100) / 100);
+}
+
 function prixSuiviEdition(estime) {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return 0;
+  const formule = prixFormuleEdition();
+  if (formule != null) return formule;
   if (estime && estime.utilisable && editionChangeLePrix()) return Math.max(0, Math.round((estime.total + ajustementGarde(r)) * 100) / 100);
   const ecartExtras = editExtrasAChange() ? sumExtras(extrasCourantsEdition()) - sumExtras(r.extras || []) : 0;
   return Math.round(((Number(r.price) || 0) + ecartExtras) * 100) / 100;
@@ -29174,6 +29201,8 @@ function textePrixEdition(r, estime = getEditPrixEstime()) {
   const surPlace = estime && !estime.complet ? 'Certaines activités se règlent sur place.' : '';
   const phrase = (texte) => [texte, surPlace].filter(Boolean).join(' ');
   if (e.prixFige) return phrase(`Prix fixé à la main${estime && estime.utilisable ? `, tarif ${formatMoneyCentimes(estime.total)}` : ''}.`);
+  const formule = formuleDuComptoir(r);
+  if (formule && prixFormuleEdition() != null) return phrase(`Formule à ${formatMoneyCentimes(formule.prixParPersonne)} par joueur, avant ${formatMoneyCentimes(r.price)}.`);
   if (estime && estime.utilisable && editionChangeLePrix()) {
     if (Math.round(prixSuiviEdition(estime) * 100) === Math.round((Number(r.price) || 0) * 100)) return surPlace;
     // L ajustement garde se dit : sans lui, le champ et le detail du calcul ne
@@ -29211,8 +29240,10 @@ function renderEditPrix(r) {
     ? `<ul class="edit-prix-detail">${lignesDetailPrixHtml(estime)}</ul>`
     : '';
   const etat = textePrixEdition(r, estime);
+  const formuleSM = formuleDuComptoir(r);
   return `<section class="fm-prix dossier-price-section" aria-labelledby="dossierPriceHeading">
     <h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>
+    ${formuleSM ? `<p class="fm-prix-formule" id="editFormuleSM"><b>${escapeHtml(formuleSM.nom)}</b> formule sur mesure${formuleSM.prixParPersonne != null ? `, ${escapeHtml(formatMoneyCentimes(formuleSM.prixParPersonne))} par joueur` : ''}</p>` : ''}
     <div class="fm-prix-champs">
       <div class="fm-champ">
         <label class="lbl" for="editPriceInput">Total</label>
@@ -29246,6 +29277,7 @@ const EXTRAS_GROUPES = [['nourriture', 'Nourriture', 'Choix'], ['boissons', 'Boi
 
 // Un extra d avant les lignes (« Cruche Bière », « Tapas ») se range par son nom.
 function groupeExtraDossier(extra, nom) {
+  if (extra && ['nourriture', 'boissons', 'autres'].includes(extra.categorie)) return extra.categorie;
   const prefixe = String((extra && extra.id) || '').replace(/-\d+$/, '');
   if (['nourriture', 'boissons', 'autres'].includes(prefixe)) return prefixe;
   const mot = String(nom || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -29260,7 +29292,8 @@ function extrasEditionDepuis(extras, pax) {
   (Array.isArray(extras) ? extras : []).forEach((extra) => {
     if (!extra || typeof extra !== 'object') return;
     const nom = String(extra.name || '').trim();
-    const montant = Math.max(0, Number(extra.price) || 0);
+    const offert = extra.offert === true;
+    const montant = Math.max(0, Number(offert ? extra.valeur : extra.price) || 0);
     const arcades = String(extra.id || '').match(/^arcades-(temps|argent)$/);
     if (arcades && !modele.arcades) {
       const joueurs = Math.trunc(Number((nom.match(/×\s*(\d+)\s*joueurs?$/) || [])[1])) || Math.max(1, Math.trunc(Number(pax)) || 1);
@@ -29273,9 +29306,10 @@ function extrasEditionDepuis(extras, pax) {
     const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : 1;
     const prix = String(centimes(montant / qte));
     const groupe = groupeExtraDossier(extra, choix);
-    const meme = modele[groupe].find((l) => l.choix === choix && l.prix === prix);
+    const parPersonne = extra.parPersonne === true;
+    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert);
     if (meme) meme.qte += qte;
-    else modele[groupe].push({ choix, qte, prix });
+    else modele[groupe].push({ choix, qte, prix, ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) });
   });
   return modele;
 }
@@ -29295,7 +29329,9 @@ function ensureEditExtras(r) {
 function editExtrasAChange() {
   const e = state.editState;
   if (!e || !e.extrasEdites || !e.extrasEditesInitial) return false;
-  return valeurReservationComparable(extrasDepuisLignes(e.extrasEdites, e.pax)) !== valeurReservationComparable(extrasDepuisLignes(JSON.parse(e.extrasEditesInitial), e.pax));
+  // (l etat d ouverture sur le groupe d ouverture : une ligne par personne suit le groupe)
+  const groupe = state.selectedRes ? state.selectedRes.pax : e.pax;
+  return valeurReservationComparable(extrasDepuisLignes(e.extrasEdites, e.pax)) !== valeurReservationComparable(extrasDepuisLignes(JSON.parse(e.extrasEditesInitial), groupe));
 }
 
 // Les extras qui partiront : les lignes si on y a touche, sinon ceux du dossier.
@@ -29307,8 +29343,12 @@ function extrasCourantsEdition() {
 }
 
 const prixLigneExtra = (v) => Math.max(0, Number(String(v ?? '').replace(',', '.')) || 0);
+// Par personne, la quantite est le groupe.
+function qteLigneExtra(ligne) {
+  return ligne.parPersonne ? Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1)) : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
+}
 function sommeLigneExtra(ligne) {
-  return formatMoneyCentimes(Math.round(prixLigneExtra(ligne.prix) * Math.max(1, Math.trunc(Number(ligne.qte) || 1)) * 100) / 100);
+  return ligne.offert ? 'offert' : formatMoneyCentimes(Math.round(prixLigneExtra(ligne.prix) * qteLigneExtra(ligne) * 100) / 100);
 }
 function sommeArcadesExtra(arcades) {
   return formatMoneyCentimes(Math.round(prixLigneExtra(arcades.prix) * Math.max(1, Math.trunc(Number(arcades.joueurs) || 1)) * 100) / 100);
@@ -29334,10 +29374,14 @@ function renderEditExtras(r) {
       <span class="fm-x-titre">${titre}</span>
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
-        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
+        ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
         <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en euros"')}<span aria-hidden="true">€</span></span>
         <b class="fm-x-somme" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
+        <span class="fm-x-opts">
+          <button type="button" class="fm-x-opt${l.parPersonne ? ' is-on' : ''}" aria-pressed="${Boolean(l.parPersonne)}" onclick="basculerEditExtra('${groupe}',${i},'parPersonne')">Par personne</button>
+          ${niveauStaff('prix') === 'non' ? '' : `<button type="button" class="fm-x-opt${l.offert ? ' is-on' : ''}" aria-pressed="${Boolean(l.offert)}" onclick="basculerEditExtra('${groupe}',${i},'offert')">Offert</button>`}
+        </span>
       </div>`).join('')}
     </div>`).join('');
   const total = sumExtras(extrasDepuisLignes(modele, state.editState.pax));
@@ -29359,6 +29403,16 @@ function setEditExtra(groupe, i, cle, valeur) {
   if (!ligne) return;
   ligne[cle] = valeur;
   majEditExtras();
+}
+
+// Une crepe, ou une crepe pour tout le monde. Offerte, la ligne reste et vaut 0 €.
+function basculerEditExtra(groupe, i, cle) {
+  const ligne = state.editState && state.editState.extrasEdites && (state.editState.extrasEdites[groupe] || [])[i];
+  if (!ligne) return;
+  ligne[cle] = !ligne[cle];
+  if (cle === 'parPersonne' && !ligne.parPersonne) ligne.qte = 1;
+  if (!ligne[cle]) delete ligne[cle];
+  renderPos();
 }
 
 function ajouterEditExtra(groupe) {
@@ -29405,6 +29459,8 @@ function peindreExtrasEdition() {
   EXTRAS_GROUPES.forEach(([groupe]) => e.extrasEdites[groupe].forEach((ligne, i) => {
     const somme = document.getElementById(`fmxSomme-${groupe}-${i}`);
     if (somme) somme.textContent = sommeLigneExtra(ligne);
+    const tous = document.getElementById(`fmxQte-${groupe}-${i}`);
+    if (tous) tous.textContent = qteLigneExtra(ligne);
   }));
   const arcades = e.extrasEdites.arcades;
   const sommeArcades = document.getElementById('fmxSomme-arcades');
@@ -30915,6 +30971,8 @@ function setQuickVisitLaserGames(games) {
 // 0 € est un prix VALIDE (offert) : seul un champ vide ou negatif est ignore.
 function getQuickBookCustomPrice() {
   if (!quickBookState) return null;
+  const formule = rsFmPrix();
+  if (formule != null) return formule;
   const raw = String(quickBookState.customPrice ?? '').trim().replace(',', '.');
   if (raw === '') return null;
   const value = Number(raw);
@@ -30926,7 +30984,8 @@ function getQuickBookCustomPrice() {
 // frappe detruirait le champ et volerait le focus, la meme lecon que pax).
 function onQuickCustomPriceInput(value) {
   if (!quickBookState) return;
-  quickBookState.customPrice = value;
+  if (rsFmActive()) Object.assign(rsFm(), { mode: 'total', montant: value });
+  else quickBookState.customPrice = value;
   majQuickPrixAffiche();
 }
 
@@ -30959,6 +31018,7 @@ function majQuickPrixAffiche() {
 function onQuickCustomPricePerPersonInput(value) {
   if (!quickBookState) return;
   const brut = String(value ?? '').trim().replace(',', '.');
+  if (rsFmActive()) { Object.assign(rsFm(), { mode: 'personne', montant: brut }); majQuickPrixAffiche(); return; }
   if (brut === '') { quickBookState.customPrice = ''; majQuickPrixAffiche(); return; }
   const parPersonne = Number(brut);
   if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
@@ -31125,7 +31185,7 @@ const QB_EXTRA_SUGGESTIONS = {
 // categories: [{ id, nom }], articles: [{ id, nom, categorie, prix, unite,
 // heure }] }, seulement ce qui se choisit ; articles null si la lecture echoue
 // ou si le role ne reserve pas. Un prix 0 veut dire « a saisir ».
-let catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
+var catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
 let catalogueSurMesureEnCours = null;
 function suggestionsSurMesure() {
   const { centre, articles } = catalogueSurMesureConsole;
@@ -31148,15 +31208,18 @@ async function chargerCatalogueSurMesure() {
   if (!centre || centre === 'all' || !canUseStaffPermission(['reservations.create', 'reservations.edit', 'pricing.manage'])) {
     return { centre: centre || '', categories: [], articles: null };
   }
-  if (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles) return catalogueSurMesureConsole;
+  if (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles && !catalogueSurMesureConsole.perime) return catalogueSurMesureConsole;
   if (catalogueSurMesureEnCours && catalogueSurMesureEnCours.centre === centre) return catalogueSurMesureEnCours.promesse;
   const course = { centre };
   catalogueSurMesureEnCours = course;
   course.promesse = (async () => {
     try {
       const reponse = await apiRequest(`${API_ENDPOINTS.ops}?action=surMesureCatalogue&centerId=${encodeURIComponent(centre)}`);
-      const surMesure = (reponse && reponse.surMesure) || {};
-      const lu = { centre, categories: surMesure.categories || [], articles: surMesure.articles || [] };
+      // Une reponse sans catalogue n est pas un catalogue vide : rien ne se garde, le prochain
+      // appel relit (une page qui repond autre chose au demarrage ne fige pas une carte vide).
+      if (!reponse || !reponse.surMesure || typeof reponse.surMesure !== 'object') return { centre, categories: [], articles: null };
+      const surMesure = reponse.surMesure;
+      const lu = { centre, categories: surMesure.categories || [], articles: surMesure.articles || [], formulesGardees: Array.isArray(reponse && reponse.formulesGardees) ? reponse.formulesGardees : [] };
       // Un changement de centre pendant la lecture : la reponse ne remplit pas
       // les listes de l autre centre.
       if (centre === getCurrentStaffCenterId()) {
@@ -31180,8 +31243,9 @@ async function chargerCatalogueSurMesure() {
 }
 // Le gerant vient d enregistrer le catalogue (Activites & tarifs,
 // assets/pinlane-sur-mesure-settings.js) : le prochain appel le relit.
+// (ce qui est a l ecran reste jusqu a la relecture : la fenetre ouverte garde ses onglets)
 function oublierCatalogueSurMesure() {
-  catalogueSurMesureConsole = { centre: '', categories: [], articles: null };
+  catalogueSurMesureConsole = { ...catalogueSurMesureConsole, perime: true };
   catalogueSurMesureEnCours = null;
 }
 function quickExtrasEtat() {
@@ -31211,9 +31275,10 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
   ['nourriture', 'boissons', 'autres'].forEach((nomGroupe) => {
     (e[nomGroupe] || []).forEach((ligne, i) => {
       const nom = String(ligne.choix || '').trim();
-      const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));
+      const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
       if (!nom) return;
-      lignes.push({ id: `${nomGroupe}-${i + 1}`, name: `${nom} × ${qte}`, price: Math.round(prix(ligne.prix) * qte * 100) / 100 });
+      const valeur = Math.round(prix(ligne.prix) * qte * 100) / 100;
+      lignes.push({ id: `${nomGroupe}-${i + 1}`, name: `${nom} × ${qte}`, price: ligne.offert ? 0 : valeur, ...(ligne.parPersonne ? { parPersonne: true } : {}), ...(ligne.offert ? { offert: true, valeur } : {}) });
     });
   });
   return lignes;
@@ -31233,6 +31298,8 @@ function quickExtrasLignes() {
     price: rsPrixLigne(l) || 0,
     heure: l.heure || '',
     note: l.note || '',
+    ...(l.suit ? { parPersonne: true } : {}),
+    ...(l.offert && rsValeurLigne(l) != null ? { offert: true, valeur: rsValeurLigne(l) } : {}),
   }));
   const e = s.extrasSM;
   if (e && e.arcades && e.arcades.mode) lignes.unshift(...extrasDepuisLignes({ arcades: e.arcades }, s.pax, quickHasPaidArcades()));
@@ -33483,7 +33550,7 @@ function rvConstruire({ simulation = false } = {}) {
   const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
   if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
   const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
-  const programme = s.type === 'visite' || adaptee;
+  const programme = s.type === 'visite' || adaptee || rsFmActive(s);
   syncQuickBookDuration();
   const ids = rvActivites();
   const heures = rvHeuresDesLignes(ids);
@@ -33492,7 +33559,10 @@ function rvConstruire({ simulation = false } = {}) {
     const visit = s.visit || {};
     visitProgram = [];
     ids.forEach((id) => {
-      if (id === 'bowling' && visit.bowling && visit.bowling.on) visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration || 1) });
+      if (id === 'bowling' && s.type === 'bowling') visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: rvBowlingDuree() });
+      else if (id === 'laser_game' && s.type === 'laser') visitProgram.push({ ...ligneProgrammeQuick('laser_game'), games: rvPartiesLaser() });
+      else if (s.type === 'activity' && id === s.activityId) visitProgram.push(ligneProgrammeQuick(id));
+      else if (id === 'bowling' && visit.bowling && visit.bowling.on) visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration || 1) });
       else if (id === 'laser_game' && visit.laser_game && visit.laser_game.on) visitProgram.push({ ...ligneProgrammeQuick('laser_game'), games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))) });
       else if (id !== 'bowling' && id !== 'laser_game' && (visit.others || {})[id]) visitProgram.push(ligneProgrammeQuick(id));
     });
@@ -33550,7 +33620,7 @@ function rvConstruire({ simulation = false } = {}) {
   // calcule, et un prix qui s en ecarte exige sa raison, qui part avec lui.
   const extras = quickExtrasLignes();
   const price = prixSaisi != null ? prixSaisi : undefined;
-  const raisonPrix = [s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
+  const raisonPrix = rsRaisonPrix();
   const reservation = {
     // En simulation, aucun nom : le plan n en depend pas, et le serveur nomme
     // un dossier du meme envoi par son rang (« la réservation 1 de cet envoi »),
@@ -33580,7 +33650,7 @@ function rvConstruire({ simulation = false } = {}) {
       ? `${formule.name} (adaptée)`.slice(0, 160)
       : formule
         ? formule.name
-        : s.type === 'laser'
+        : !simulation && rsFmActive(s) ? rsFmNom(s) : s.type === 'laser'
           ? 'Laser Game'
           // AUCUN LIBELLE IMPOSE POUR UNE VISITE : le serveur la decrit depuis
           // son programme (« Bowling 1h · Laser 2 parties »).
@@ -33594,6 +33664,7 @@ function rvConstruire({ simulation = false } = {}) {
     preference: rvPreference(ids, heures, programme),
     extras,
     ...(needsLanes && rvPistesALaMain() ? { pistesALaMain: rvPistesALaMain() } : {}),
+    ...(!simulation && rsFmActive(s) ? { formuleSurMesure: { nom: rsFmNom(s), ...(s.fm.mode === 'personne' && rsFmMontant(s.fm) != null ? { prixParPersonne: rsFmMontant(s.fm) } : {}) } } : {}),
   };
   if (forcer) reservation.forcer = true;
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
@@ -35992,7 +36063,7 @@ function rsRetirerExtra(id) {
 // niveau du membre (rsNiveau) decide de ce qui se touche. Le serveur ecrit la note.
 function rsRaisonPrix() {
   const s = quickBookState;
-  return [s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
+  return [rsFmActive(s) ? `Formule sur mesure : ${rsFmNom(s)}` : '', s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
 }
 
 // Ajuste au sens du serveur et de la fiche : plus de 50 centimes d ecart
@@ -36008,18 +36079,21 @@ function rsPrixAjuste() {
 function rsBornes() {
   const part = Number(rsNiveau('prix'));
   if (!Number.isFinite(part)) return null;
-  const reference = Math.round(rvTotalReference() * 100);
+  const reference = Math.round((rvTotalReference() + rsOffresTotal()) * 100);
   const marge = Math.floor((reference * part) / 100);
   return { reference, bas: reference - marge, haut: reference + marge };
 }
 
 function rsPrixBloque() {
-  if (!rsPrixAjuste()) return '';
+  const ajuste = rsPrixAjuste();
+  if (!ajuste && !(rsOffresTotal() > 0)) return '';
   if (rsNiveau('prix') === 'non') return 'plafond';
   const bornes = rsBornes();
-  const prix = Math.round(getQuickBookCustomPrice() * 100);
+  const saisi = getQuickBookCustomPrice();
+  const prix = Math.round((saisi != null ? saisi : rvTotalReference()) * 100);
   if (bornes && (bornes.reference <= 0 || prix < bornes.bas || prix > bornes.haut)) return 'plafond';
-  return rsRaisonPrix() ? '' : 'raison';
+  // (une offre porte sa raison, le serveur l ecrit : « Offert : Crêpe × 12 »)
+  return !ajuste || rsRaisonPrix() ? '' : 'raison';
 }
 
 // Dans un lot, le prix de chaque reservation passe la meme porte.
@@ -36075,7 +36149,7 @@ function rsRecuHtml() {
       lignes.push([id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id), rsCalculLigne(id, prix), prix]);
     });
   }
-  quickExtrasLignes().forEach((x) => lignes.push([x.name, x.qte > 1 ? `${x.qte} × ${formatMoneyCentimes(x.prixUnitaire)}` : '', rsEuros(x.price)]));
+  quickExtrasLignes().forEach((x) => lignes.push([x.name, x.qte > 1 ? `${x.qte} × ${formatMoneyCentimes(x.prixUnitaire)}` : '', x.offert ? 'offert' : rsEuros(x.price)]));
   return `<ul class="rs-recu">${lignes.map(([nom, detail, prix]) => `<li><span>${escapeHtml(nom)}${detail ? ` <small>${escapeHtml(detail)}</small>` : ''}</span><b>${escapeHtml(prix)}</b></li>`).join('')}</ul>`;
 }
 
@@ -36091,7 +36165,7 @@ function rsTotalHtml() {
   const peut = rsNiveau('prix') !== 'non';
   const prix = peut ? `<div class="rs-prix">
       <div class="rs-qui is-deux">
-        <label class="rs-champ"><span>Total</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(s.customPrice ?? ''))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix arrangé en euros" oninput="onQuickCustomPriceInput(this.value); rsMajTicket()"></label>
+        <label class="rs-champ"><span>Total</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(rsFmActive() ? (rsFmPrix() ?? '') : (s.customPrice ?? '')))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix arrangé en euros" oninput="onQuickCustomPriceInput(this.value); rsMajTicket()"></label>
         <label class="rs-champ"><span>Par joueur</span><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par joueur en euros" oninput="onQuickCustomPricePerPersonInput(this.value); rsMajTicket()"></label>
       </div>
       ${rsPlafondHtml()}
@@ -36114,7 +36188,7 @@ function rsRaison(raison) {
 function rsPrixCatalogue() {
   const s = quickBookState;
   if (!s) return;
-  rsGeste(() => { s.customPrice = ''; });
+  rsGeste(() => { s.customPrice = ''; if (s.fm) s.fm.montant = ''; });
 }
 
 // ── LE TICKET ────────────────────────────────────────────────────────────────
@@ -36123,7 +36197,7 @@ function rsLigneIci() {
   const b = rsEtat();
   if (b.q === 'ligne') return `a-${b.ligne}`;
   if (b.q === 'autres') return b.quandDe ? `a-${b.quandDe}` : '';
-  if (b.q === 'mesure') return b.mesure.ligne ? `x-${b.mesure.ligne}` : '';
+  if (b.q === 'mesure') return b.mesure.categorie === 'formule' ? 'a-fm' : b.mesure.ligne ? `x-${b.mesure.ligne}` : '';
   return b.q;
 }
 
@@ -36174,6 +36248,13 @@ function rsLignesActivites() {
     lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
     if (!s.adaptee) return lignes.join('');
   }
+  // La formule du comptoir en tete : son nom, son prix. Les lignes dessous sont ce qu elle comprend.
+  const prixFormule = rsFmPrix();
+  if (rsFmActive()) {
+    const montant = rsFmMontant(s.fm);
+    const detailF = [montant != null && s.fm.mode === 'personne' ? `${rvPluriel(Math.max(1, Number(s.pax) || 1), 'joueur')} × ${formatMoneyCentimes(montant)}` : '', 'formule sur mesure'].filter(Boolean).join(', ');
+    lignes.push(rsLigne({ cle: 'a-fm', action: "rsOuvrirMesure('formule')", icone: '<b class="rs-tk-q">F</b>', nom: rsFmNom(), detail: detailF, prix: prixFormule != null && combien ? rsEuros(prixFormule) : '', retirer: 'rsFmRetirer()' }));
+  }
   // La derniere activite ne se retire pas : il faut bien reserver quelque chose.
   const retirable = ids.length > 1;
   ids.forEach((id) => {
@@ -36183,7 +36264,7 @@ function rsLignesActivites() {
     const detail = ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
     const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
-    const prix = s.adaptee || !combien ? '' : rsPrixDeLigne(id);
+    const prix = s.adaptee || !combien || prixFormule != null ? '' : rsPrixDeLigne(id);
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, aria: rsAriaLigne(nom, [detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
   return lignes.join('');
@@ -36218,11 +36299,11 @@ function rsLignesExtras() {
   if (e && e.arcades && e.arcades.mode && !quickHasPaidArcades()) {
     const prix = Number(String(e.arcades.prix).replace(',', '.')) || 0;
     const quoi = e.arcades.mode === 'temps' ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`) : 'en argent';
-    lignes.push(rsLigne({ cle: 'x-arcades', action: "rsOuvrirMesure('arcades')", nom: 'Arcades', detail: quoi, prix: prix ? rsEuros(prix * Math.max(1, Number(s.pax) || 1)) : 'à saisir', retirer: "rsRetirerExtra('arcades')" }));
+    lignes.push(rsLigne({ cle: 'x-arcades', action: "rsOuvrirMesure('arcades')", nom: 'Arcades', detail: quoi, prix: rsFmPrix() != null ? '' : prix ? rsEuros(prix * Math.max(1, Number(s.pax) || 1)) : 'à saisir', retirer: "rsRetirerExtra('arcades')" }));
   }
   rsPanier().forEach((l) => {
     const prix = rsPrixLigne(l);
-    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: prix == null ? 'sur place' : rsEuros(prix), aria: `${l.name}, ${rsQte(l)}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
+    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.suit ? 'par personne' : '', l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: l.offert && prix != null ? 'offert' : rsFmPrix() != null ? '' : prix == null ? 'sur place' : rsEuros(prix), aria: `${l.name}, ${rsQte(l)}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
   });
   return lignes.join('');
 }
@@ -36385,7 +36466,7 @@ function rsNiveau(cle) {
 function rsCatalogue() {
   const lu = catalogueSurMesureConsole;
   const centre = getCurrentStaffCenterId();
-  if (lu.centre !== centre || !lu.articles) rsChargerCatalogue();
+  if (lu.centre !== centre || !lu.articles || lu.perime) rsChargerCatalogue();
   const brut = lu.centre === centre && Array.isArray(lu.articles) ? lu.articles : [];
   const articles = brut.filter((a) => a && a.id && a.actif !== false).map((a) => ({ ...a, categorie: a.categorie || 'autre', prix: Number(a.prix) > 0 ? Number(a.prix) : null }));
   if (articles.length) {
@@ -36407,10 +36488,15 @@ function rsChargerCatalogue() {
   if (rsCatalogueEssai === centre) return;
   rsCatalogueEssai = centre;
   rsCatalogueEnCours = true;
+  const gardees = () => JSON.stringify(catalogueSurMesureConsole.formulesGardees || []);
+  const avant = gardees();
   chargerCatalogueSurMesure().finally(() => {
     rsCatalogueEnCours = false;
     const b = quickBookState && rsEtat();
-    if (b && b.q === 'mesure') rvRepeindre();
+    // Les formules gardees ont change : la porte et la liste les comptent.
+    const change = gardees() !== avant;
+    if (change) rsPortesMemo = { cle: '', html: '' };
+    if (b && (b.q === 'mesure' || change)) rvRepeindre();
   });
 }
 
@@ -36425,9 +36511,21 @@ function rsQte(ligne) {
   return Math.max(1, Math.trunc(Number(ligne.qte) || 1));
 }
 
-function rsPrixLigne(ligne) {
+// Ce que la ligne vaut, offerte ou non.
+function rsValeurLigne(ligne) {
   if (ligne.prixUnitaire == null || ligne.prixUnitaire === '') return null;
   return Math.round(Number(ligne.prixUnitaire) * rsQte(ligne) * 100) / 100;
+}
+
+function rsPrixLigne(ligne) {
+  const valeur = rsValeurLigne(ligne);
+  return valeur != null && ligne.offert ? 0 : valeur;
+}
+
+// Ce qui est offert sur ce ticket : un ecart de prix comme un autre, le serveur le juge au
+// niveau prix du role (jugerPrixDeCreation).
+function rsOffresTotal() {
+  return quickExtrasLignes().reduce((total, ligne) => total + (ligne.offert ? Number(ligne.valeur) || 0 : 0), 0);
 }
 
 function rsOuvrirMesure(categorie, retour = '') {
@@ -36468,7 +36566,9 @@ function rsArticle(id) {
   rsGeste(() => {
     const panier = rsPanier();
     let ligne = panier.find((l) => l.ref === id);
-    if (ligne) {
+    if (ligne && ligne.suit) {
+      // (par personne, la quantite suit le groupe : le toucher rouvre la ligne)
+    } else if (ligne) {
       ligne.qte = Math.min(RS_QTE_MAX, rsQte(ligne) + 1);
       ligne.suit = false;
     } else {
@@ -36493,6 +36593,27 @@ function rsQuantite(delta) {
     ligne.qte = Math.min(RS_QTE_MAX, Math.max(1, rsQte(ligne) + delta));
     ligne.suit = false;
   }, { focus: false });
+}
+
+// UNE CREPE, OU UNE CREPE POUR TOUT LE MONDE (2026-11-05, Ansar : « on doit pouvoir choisir si
+// c juste une crepe ou si crepe pour tlm donc par personne »). Par personne, la ligne suit le groupe.
+function rsUniteLigne(mode) {
+  const ligne = rsLigneMesure();
+  if (!ligne) return;
+  rsGeste(() => {
+    if (mode === 'personne') ligne.suit = true;
+    else if (ligne.suit) {
+      ligne.suit = false;
+      ligne.qte = 1;
+    }
+  }, { focus: false });
+}
+
+// OFFERTE, la ligne reste sur le ticket et sur le dossier, a 0 €, avec ce qu elle valait.
+function rsOffrirLigne() {
+  const ligne = rsLigneMesure();
+  if (!ligne) return;
+  rsGeste(() => { ligne.offert = !ligne.offert; }, { focus: false });
 }
 
 function rsRetirerArticle() {
@@ -36557,18 +36678,229 @@ function rsBandeHtml() {
   if (!ligne) return '<div class="rs-bande is-vide"><p class="rs-texte">Touchez un article, il s’ajoute au ticket.</p></div>';
   const a = ligne.ref ? rsCatalogue().articles.find((x) => x.id === ligne.ref) : null;
   const q = rsQte(ligne);
-  const prix = rsPrixLigne(ligne);
+  const valeur = rsValeurLigne(ligne);
   const libre = rsNiveau('surmesure') === 'libre';
   const heures = rsHeuresService();
   const service = !a || a.heure !== false ? rsRang('Servir à', heures.map((h) => rsPetite(h, ligne.heure === h, `rsServir('${h}')`, `data-service="${h}"`)).join(''), Math.max(heures.length, 5)) : '';
   // Un prix « a saisir » se tape, au niveau catalogue comme au libre : le serveur garde
   // le prix tape d un article du centre a 0. Une ligne libre n existe qu au libre.
   const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en euros" oninput="rsArticleChamp('prix',this.value)">` : '';
+  const parPersonne = Boolean(ligne.suit);
+  const calcul = valeur == null ? 'sur place'
+    : ligne.offert ? `offert, ${rsEuros(valeur)} de moins`
+      : q > 1 ? `${q} × ${formatMoneyCentimes(ligne.prixUnitaire)}, ${rsEuros(valeur)}` : rsEuros(valeur);
+  const mode = `<div class="rs-seg rs-unite" role="group" aria-label="À l’unité ou par personne"><button type="button" class="${parPersonne ? '' : 'is-on'}" id="rsUnite" aria-pressed="${!parPersonne}" onclick="rsUniteLigne('unite')">À l’unité</button><button type="button" class="${parPersonne ? 'is-on' : ''}" id="rsParPersonne" aria-pressed="${parPersonne}" onclick="rsUniteLigne('personne')">Par personne</button></div>`;
+  const combien = parPersonne ? `<span class="rs-note-e" id="rsPourTous">${escapeHtml(rvPluriel(q, 'personne'))}</span>` : rsPasHtml(q > 1 ? 'rsQuantite(-1)' : '', q < RS_QTE_MAX ? 'rsQuantite(1)' : '', q, 'Quantité');
+  const offrir = valeur != null && rsNiveau('prix') !== 'non' ? rsPetite('Offert', Boolean(ligne.offert), 'rsOffrirLigne()', 'id="rsOffert"') : '';
   return `<div class="rs-bande">
-    <div class="rs-bande-t"><div class="rs-s-n"><b>${escapeHtml(ligne.name)}</b><small>${escapeHtml(prix == null ? 'sur place' : `${rsEuros(prix)} au total`)}</small></div>${rsPasHtml(q > 1 ? 'rsQuantite(-1)' : '', q < RS_QTE_MAX ? 'rsQuantite(1)' : '', q, 'Quantité')}<button type="button" class="rs-discret is-retirer" id="rsRetirerArticle" onclick="rsRetirerArticle()">Retirer</button></div>
+    <div class="rs-bande-t"><div class="rs-s-n"><b>${escapeHtml(ligne.name)}</b><small id="rsBandeCalcul">${escapeHtml(calcul)}</small></div>${mode}${combien}${offrir}<button type="button" class="rs-discret is-retirer" id="rsRetirerArticle" onclick="rsRetirerArticle()">Retirer</button></div>
     ${service}
     <div class="rs-rang"><span class="rs-lbl">Note</span><div class="rs-champ is-ligne">${prixChamp}<input id="rsXNote" maxlength="160" value="${escapeHtml(ligne.note || '')}" aria-label="Note sur cet article" oninput="rsArticleChamp('note',this.value)"></div></div>
   </div>`;
+}
+
+// ── LA FORMULE DU COMPTOIR ───────────────────────────────────────────────────
+// (2026-11-05, Ansar : « pouvoir faire formule custom temporaire et choisir si on veut garder
+// cette formule genre sauvegarder et choisir si afficher pour les clients ».) Elle vaut d abord
+// pour CE dossier : un nom et un prix, par joueur ou pour le groupe, sur ce que le ticket
+// contient (lib/formule-comptoir.js). La garder en fait une vraie formule du centre, tout de suite
+// et sans dossier, si le role a le droit Tarifs.
+function rsFm(s = quickBookState) {
+  if (!s.fm) s.fm = { nom: '', mode: 'personne', montant: '', clients: false, minPax: null, gardee: null, message: '', enCours: false };
+  return s.fm;
+}
+
+function rsFmMontant(fm) {
+  const brut = String(fm && fm.montant != null ? fm.montant : '').trim().replace(',', '.');
+  if (brut === '') return null;
+  const valeur = Number(brut);
+  return Number.isFinite(valeur) && valeur >= 0 ? Math.round(valeur * 100) / 100 : null;
+}
+
+// Sur le ticket des qu elle a un nom ou un prix, et jamais par-dessus une formule du catalogue.
+function rsFmActive(s = quickBookState) {
+  const fm = s && s.fm;
+  return Boolean(fm && s.type !== 'formule' && (String(fm.nom || '').trim() || rsFmMontant(fm) != null));
+}
+
+function rsFmNom(s = quickBookState) {
+  return String((s.fm && s.fm.nom) || '').trim() || 'Formule sur mesure';
+}
+
+function rsFmPrix(s = quickBookState) {
+  if (!rsFmActive(s)) return null;
+  const montant = rsFmMontant(s.fm);
+  if (montant == null) return null;
+  return s.fm.mode === 'total' ? montant : Math.round(montant * Math.max(1, Number(s.pax) || 1) * 100) / 100;
+}
+
+const rsFmPermise = () => rsNiveau('formule') === 'oui' && quickBookState.type !== 'formule';
+const rsFmPeutGarder = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage');
+
+function rsFmChamp(cle, valeur) {
+  const fm = rsFm();
+  fm[cle] = valeur;
+  fm.message = '';
+  rsMajTicket();
+}
+
+// Passer de par joueur a pour le groupe garde le meme total.
+function rsFmMode(mode) {
+  const fm = rsFm();
+  if (fm.mode === mode) return;
+  rsGeste(() => {
+    const prix = rsFmPrix();
+    if (prix != null) fm.montant = String(mode === 'total' ? prix : Math.round((prix / Math.max(1, Number(quickBookState.pax) || 1)) * 100) / 100);
+    fm.mode = mode;
+    fm.message = '';
+  }, { focus: false });
+}
+
+function rsFmRetirer() {
+  const s = quickBookState;
+  if (!s) return;
+  rsGeste(() => { s.fm = null; }, { focus: false });
+}
+
+function rsFmMinPax(fm = rsFm()) {
+  return Number(fm.minPax) > 0 ? Number(fm.minPax) : Math.min(6, Math.max(1, Number(quickBookState.pax) || 1));
+}
+
+function rsFmPasMinPax(delta) {
+  const fm = rsFm();
+  rsGeste(() => { fm.minPax = Math.min(240, Math.max(1, rsFmMinPax(fm) + delta)); }, { focus: false });
+}
+
+// Ce que le serveur fait d une formule gardee : le contenu du ticket, un prix par joueur.
+function rsFmCorps() {
+  const s = quickBookState;
+  const fm = rsFm();
+  const joueurs = Math.max(1, Number(s.pax) || 1);
+  const prix = rsFmPrix();
+  const montant = rsFmMontant(fm);
+  const total = prix != null ? prix : rvTotalReference();
+  const activites = rvActivites().map((id) => ({
+    id,
+    nom: id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id),
+    ...(id === 'bowling' ? { minutes: Math.round(rvBowlingDuree() * 60) } : {}),
+    ...(id === 'laser_game' ? { parties: rvPartiesLaser() } : {}),
+    ...(id === 'arcade_time' ? { minutes: 30 } : {}),
+  }));
+  const lignes = quickExtrasLignes().map((l) => {
+    const arcades = /^arcades-/.test(String(l.id || ''));
+    return { nom: arcades ? String(l.name).replace(/\s*×\s*\d+\s*joueurs?$/, '') : l.name, qte: l.qte, parPersonne: arcades || l.parPersonne === true };
+  });
+  return { nom: String(fm.nom || '').trim(), prixParPersonne: fm.mode === 'personne' && montant != null ? montant : Math.round((total / joueurs) * 100) / 100, minPax: rsFmMinPax(fm), activites, lignes, clients: fm.clients === true };
+}
+
+// Ce qui ferait de la formule gardee une autre formule : tout, sauf qui la voit.
+function rsFmSignature(corps) {
+  const { clients, ...contenu } = corps;
+  return JSON.stringify(contenu);
+}
+
+function rsFmReponse(fm, message = '') {
+  fm.enCours = false;
+  fm.message = message;
+  if (quickBookState && quickBookState.fm === fm) rvRepeindre();
+}
+
+// Le catalogue vient de changer : la fenetre, la liste des formules et Tarifs le relisent.
+function rsFmCatalogueChange() {
+  oublierCatalogueSurMesure();
+  rsCatalogueEssai = '';
+  rsChargerCatalogue();
+  if (typeof window.pevRetryCatalog === 'function') window.pevRetryCatalog();
+}
+
+async function rsFmGarder() {
+  const fm = rsFm();
+  if (fm.enCours) return;
+  const corps = rsFmCorps();
+  if (!corps.nom) {
+    rsGeste(() => { fm.message = 'Donnez un nom à la formule.'; }, { focus: false });
+    const champ = document.getElementById('rsFmNom');
+    if (champ) champ.focus();
+    return;
+  }
+  if (!corps.activites.length) {
+    rsGeste(() => { fm.message = 'Une formule comprend au moins une activité.'; }, { focus: false });
+    return;
+  }
+  rsGeste(() => { fm.enCours = true; fm.message = ''; }, { focus: false });
+  try {
+    const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'garderFormuleSurMesure', centerId: getCurrentStaffCenterId(), ...(fm.gardee ? { id: fm.gardee.id } : {}), formule: corps }) });
+    fm.gardee = { id: reponse.id, signature: rsFmSignature(corps), clients: corps.clients };
+    rsFmCatalogueChange();
+    rsFmReponse(fm);
+    // (« Qui la voit » touche pendant l enregistrement : la derniere voulue part)
+    if (fm.clients !== fm.gardee.clients) rsFmSynchroniser(fm);
+  } catch (error) {
+    rsFmReponse(fm, (error && error.message) || 'La formule n’a pas pu être gardée. Réessayez.');
+  }
+}
+
+// Qui la voit. Une formule deja gardee change tout de suite : c est un geste sur le formulaire
+// public. L ecran suit le toucher, le serveur suit l ecran (rsFmSynchroniser).
+function rsFmClients(clients) {
+  const fm = rsFm();
+  if (fm.clients === clients) return;
+  rsGeste(() => { fm.clients = clients; fm.message = ''; }, { focus: false });
+  if (fm.gardee) rsFmSynchroniser(fm);
+}
+
+// Une demande a la fois ; celle qui revient relit ce qui est voulu et renvoie s il a change.
+async function rsFmSynchroniser(fm) {
+  if (fm.enCours) return;
+  fm.enCours = true;
+  try {
+    while (fm.gardee && fm.gardee.clients !== fm.clients) {
+      const voulu = fm.clients;
+      await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'afficherFormuleSurMesure', centerId: getCurrentStaffCenterId(), id: fm.gardee.id, clients: voulu }) });
+      fm.gardee.clients = voulu;
+    }
+    rsFmCatalogueChange();
+    rsFmReponse(fm);
+  } catch (error) {
+    if (fm.gardee) fm.clients = fm.gardee.clients;
+    rsFmReponse(fm, (error && error.message) || 'Le changement n’a pas pu se faire. Réessayez.');
+  }
+}
+
+function rsFmGarderHtml() {
+  if (!rsFmPeutGarder()) return '';
+  const fm = rsFm();
+  const corps = rsFmCorps();
+  const aJour = Boolean(fm.gardee) && fm.gardee.signature === rsFmSignature(corps);
+  const qui = `<div class="rs-seg rs-fm-qui" role="group" aria-label="Qui voit cette formule"><button type="button" class="${fm.clients ? '' : 'is-on'}" id="rsFmComptoir" aria-pressed="${!fm.clients}" onclick="rsFmClients(false)">Au comptoir</button><button type="button" class="${fm.clients ? 'is-on' : ''}" id="rsFmClients" aria-pressed="${Boolean(fm.clients)}" onclick="rsFmClients(true)">Aussi aux clients</button></div>`;
+  const minimum = fm.gardee ? '' : `<span class="rs-fm-min"><span class="rs-lbl">Dès</span>${rsPasHtml(rsFmMinPax(fm) > 1 ? 'rsFmPasMinPax(-1)' : '', 'rsFmPasMinPax(1)', rsFmMinPax(fm), 'Joueurs minimum')}<span class="rs-lbl">joueurs</span></span>`;
+  const geste = aJour ? '' : `<button type="button" class="rs-p rs-fm-garder" id="rsFmGarder" ${fm.enCours ? 'aria-busy="true" disabled' : ''} onclick="rsFmGarder()"><b>${fm.enCours ? 'Enregistrement…' : fm.gardee ? 'Mettre à jour' : 'Enregistrer'}</b></button>`;
+  const etat = aJour ? `<p class="rs-fm-etat" id="rsFmEtat" role="status">Gardée. Elle est dans Formules et dans Tarifs & formules${fm.gardee.clients ? ', et sur le formulaire des clients' : ''}.</p>` : '';
+  return `<div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Garder</span><div class="rs-fm-ligne">${qui}${minimum}${geste}${etat}</div></div>`;
+}
+
+function rsFormuleMesureHtml() {
+  const s = quickBookState;
+  const fm = rsFm();
+  const joueurs = Math.max(1, Number(s.pax) || 1);
+  const reference = rvTotalReference();
+  const montant = rsFmMontant(fm);
+  const prix = rsFmPrix();
+  const ecart = prix != null ? Math.round((reference - prix) * 100) / 100 : 0;
+  const dit = prix == null ? `Sans prix, la formule vaut le détail, ${rsEuros(reference)}.`
+    : [fm.mode === 'personne' ? `${joueurs} × ${formatMoneyCentimes(montant)}, ${rsEuros(prix)}` : `${rsEuros(prix)}, ${formatMoneyCentimes(Math.round((prix / joueurs) * 100) / 100)} par joueur`,
+      ecart > 0.5 ? `${rsEuros(ecart)} de moins que le détail` : ecart < -0.5 ? `${rsEuros(-ecart)} de plus que le détail` : ''].filter(Boolean).join(', ');
+  const mode = `<div class="rs-seg" role="group" aria-label="Prix par joueur ou pour le groupe"><button type="button" class="${fm.mode === 'total' ? '' : 'is-on'}" id="rsFmParJoueur" aria-pressed="${fm.mode !== 'total'}" onclick="rsFmMode('personne')">Par joueur</button><button type="button" class="${fm.mode === 'total' ? 'is-on' : ''}" id="rsFmAuTotal" aria-pressed="${fm.mode === 'total'}" onclick="rsFmMode('total')">Pour le groupe</button></div>`;
+  const prixHtml = rsNiveau('prix') === 'non'
+    ? '<p class="rs-texte" id="rsPrixFixe">Le prix se change avec un responsable.</p>'
+    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en euros" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">€</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
+  return `<section class="rs-fm" aria-label="Formule pour ce groupe">
+    <div class="rs-rang rs-fm-rang"><span class="rs-lbl">Nom</span><div class="rs-champ"><input id="rsFmNom" maxlength="80" autocomplete="off" value="${escapeHtml(fm.nom || '')}" aria-label="Nom de la formule" oninput="rsFmChamp('nom',this.value)"></div></div>
+    <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Comprend</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Détail</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
+    <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Prix</span><div class="rs-fm-col">${prixHtml}</div></div>
+    ${rsFmGarderHtml()}
+    ${fm.message ? `<p class="rs-plafond is-ko" id="rsFmErreur" role="alert">${escapeHtml(fm.message)}</p>` : ''}
+  </section>`;
 }
 
 function rsMesureArcadesHtml() {
@@ -36589,6 +36921,7 @@ function rsMesureHtml() {
   const niveau = rsNiveau('surmesure');
   const onglets = categories.filter((c) => articles.some((a) => a.categorie === c.id)).map((c) => [c.id, c.nom]);
   if (niveau === 'libre' && !quickHasPaidArcades()) onglets.push(['arcades', 'Arcades']);
+  if (rsFmPermise()) onglets.push(['formule', 'Formule']);
   const courante = onglets.some(([id]) => id === b.mesure.categorie) ? b.mesure.categorie : (onglets[0] || [''])[0];
   const lignes = quickExtrasLignes();
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
@@ -36596,6 +36929,7 @@ function rsMesureHtml() {
   const tabs = onglets.length ? `<div class="rs-seg rs-tabs" role="group" aria-label="Catégories">${onglets.map(([id, nom]) => `<button type="button" class="${id === courante ? 'is-on' : ''}" id="rsOnglet-${escapeHtml(id)}" data-onglet="${escapeHtml(id)}" aria-pressed="${id === courante}" onclick="rsOnglet(this.dataset.onglet)">${escapeHtml(nom)}</button>`).join('')}</div>` : '';
   const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Article libre</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Nom" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en euros" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
+  if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {
     const lu = catalogueSurMesureConsole.centre === getCurrentStaffCenterId() && Array.isArray(catalogueSurMesureConsole.articles);
     const texte = lu ? 'Le catalogue sur mesure du centre n’a aucun article à proposer.'
@@ -38340,6 +38674,8 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     }
     if (Array.isArray(payload?.formules)) {
       window.__pinlaneDisplayFormules = payload.formules;
+      // (la console vend aussi les formules gardees que les clients ne voient pas)
+      if (typeof chargerCatalogueSurMesure === 'function') chargerCatalogueSurMesure();
     }
     // Ce que CE centre vend. Sans cette liste, le tunnel ne propose que bowling
     // et laser : exactement le formulaire d'avant, jamais une page vide.

@@ -168,7 +168,8 @@ const { upsertAvailabilityBlock, deleteAvailabilityBlock, listAvailabilityBlocks
 // refreshFormuleOverrides : la carte des overrides catalogue (prix / retrait)
 // vit dans lib/booking-config ; action=plan doit la rafraichir comme le fait
 // public-availability, sinon le board staff peut voir un catalogue perime.
-const { refreshFormuleOverrides } = require('../lib/booking-config');
+const { getEffectiveFormules, refreshFormuleOverrides } = require('../lib/booking-config');
+const { MODE_COMPTOIR, champsDeFormule, estFormuleDuCentre, formuleDepuisLeComptoir, prefixeDuCentre } = require('../lib/formule-comptoir');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -1120,7 +1121,10 @@ async function handleGet(req, res, options = {}) {
   // configuration du centre. Une lecture, donc le socle fichier si la base tombe.
   if (action === 'surMesureCatalogue') {
     try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
-    sendJson(res, 200, { ok: true, centerId, surMesure: surMesureChoisissable(catalogueSurMesure(centerId)) });
+    // Les formules gardees de ce centre, affichees ou non : la liste publique ne porte pas les
+    // autres, et le comptoir les vend toutes (lib/formule-comptoir.js).
+    const formulesGardees = getEffectiveFormules(centerId, { comptoir: true }).filter((formule) => estFormuleDuCentre(formule.id, centerId));
+    sendJson(res, 200, { ok: true, centerId, surMesure: surMesureChoisissable(catalogueSurMesure(centerId)), formulesGardees });
     return;
   }
 
@@ -2277,6 +2281,35 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // ecriture ; l audit est automatique (PP1, action mutante non exclue). Les
   // bornes (name<=120, prix 0..1000, minPax>=1, steps non vide, priceType
   // per_pax|per_lane) vivent dans lib/catalog-store (erreurs exposees).
+  // LES FORMULES GARDEES AU COMPTOIR (2026-11-05, lib/formule-comptoir.js). Le droit Tarifs, comme
+  // les prix du centre : le catalogue de la societe reste a settings.manage, celles-ci n existent
+  // que pour ce centre, et aucune autre ne passe par ces portes.
+  if (['garderFormuleSurMesure', 'afficherFormuleSurMesure', 'modifierFormuleSurMesure', 'retirerFormuleSurMesure'].includes(action)) {
+    const targetCenter = requireConcreteCenter('formule');
+    const ownerClientId = await requireOwnerClientId('catalogue');
+    const id = String(body.id || '').trim().toLowerCase();
+    if ((id || action !== 'garderFormuleSurMesure') && !estFormuleDuCentre(id, targetCenter)) {
+      throw createHttpError('Cette formule n’appartient pas à ce centre.', 403, true);
+    }
+    let out;
+    try {
+      if (action === 'retirerFormuleSurMesure') out = await catalogStore.deleteFormula(getPool(), { id, ownerClientId });
+      else if (action === 'afficherFormuleSurMesure') out = await catalogStore.updateFormula(getPool(), { id, humanValidation: body.clients === true ? null : MODE_COMPTOIR, ownerClientId });
+      else if (action === 'modifierFormuleSurMesure') out = await catalogStore.updateFormula(getPool(), { id, ...champsDeFormule(body), ownerClientId });
+      else {
+        const { steps, ...champs } = formuleDepuisLeComptoir(body.formule || {});
+        if (id) {
+          await catalogStore.updateFormula(getPool(), { id, ...champs, ownerClientId });
+          out = await catalogStore.setFormulaSteps(getPool(), { id, steps, ownerClientId });
+        } else out = await catalogStore.createFormula(getPool(), { ...champs, steps, idPrefixe: prefixeDuCentre(targetCenter), ownerClientId });
+      }
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement de la formule impossible pour le moment. Réessayez.'), error.statusCode || (error.expose ? 400 : 503), error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, id: id || out.id });
+    return;
+  }
+
   if (action === 'createFormula') {
     const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
@@ -3791,7 +3824,7 @@ function getRequiredOpsPermission(method, action) {
   // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
   // est forcee au centre de session (withCenter) et l'override global 'all' est
   // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
-  if (['saveClientFormuleOverride', 'resetClientFormuleOverride', 'saveSurMesure', 'saveGrillesTarif'].includes(action)) return 'pricing.manage';
+  if (['saveClientFormuleOverride', 'resetClientFormuleOverride', 'saveSurMesure', 'saveGrillesTarif', 'garderFormuleSurMesure', 'afficherFormuleSurMesure', 'modifierFormuleSurMesure', 'retirerFormuleSurMesure'].includes(action)) return 'pricing.manage';
   // CRUD catalogue DB (formules/activites) : permission de CENTRE settings.manage,
   // la meme que la config du centre (saveCenterConfig). Le catalogue est partage
   // (formulas globales) aujourd hui ; le scoping per-centre est un raffinement

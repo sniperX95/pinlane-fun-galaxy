@@ -51,6 +51,11 @@ function ligneDepuis(r) {
 
 function roleDe(nom) {
   if (nom === 'catalogue') return B.sessionDuRole('staff-bar', { nom: 'Accueil' });
+  // Un role sur mesure : il reserve et adapte une formule, sans le droit Tarifs.
+  if (nom === 'sans-tarifs') {
+    const session = B.sessionDuRole('manager', { nom: 'Accueil' });
+    return { ...session, permissions: session.permissions.filter((p) => p !== 'pricing.manage') };
+  }
   // Un role sur mesure : il modifie les dossiers, sans le niveau forcer.
   if (nom === 'sans-forcer') {
     const session = B.sessionDuRole('manager', { nom: 'Accueil' });
@@ -106,8 +111,49 @@ function poserRetenues(retenues, maintenant) {
   return servies;
 }
 
+// LE CATALOGUE EN MEMOIRE : les ecritures et les relectures de lib/catalog-store.js, telles quelles.
+// Le centre appartient a l entreprise fungalaxy ; une formule ecrite se relit au rafraichissement.
+const CATALOGUE_BANC = { formules: new Map(), etapes: [] };
+const pg = require(require.resolve('pg', { paths: [ROOT] }));
+const queryAvant = pg.Client.prototype.query;
+pg.Client.prototype.query = async function (sql, params = []) {
+  const s = String(sql).replace(/\s+/g, ' ').trim();
+  const lignes = (rows) => ({ rows: JSON.parse(JSON.stringify(rows)), rowCount: rows.length });
+  if (s.startsWith("select nullif(client_id, '') as client_id from centers where id = $1")) return lignes([{ client_id: 'fungalaxy' }]);
+  if (/^select id,? ?(client_id)? from centers/.test(s) || /^select id, nullif\(client_id/.test(s)) return lignes([{ id: 'libramont', client_id: 'fungalaxy' }, { id: 'gembloux', client_id: 'fungalaxy' }]);
+  if (s === 'select id from formulas;') return lignes([...CATALOGUE_BANC.formules.values()].map((f) => ({ id: f.id })));
+  const ecriture = /^insert into (formulas|formula_steps) \((.+?)\) values/.exec(s);
+  if (ecriture) {
+    const ligne = {};
+    ecriture[2].split(', ').filter((c) => c !== 'updated_at').forEach((c, i) => { ligne[c] = params[i]; });
+    if (ecriture[1] === 'formulas') CATALOGUE_BANC.formules.set(ligne.id, ligne);
+    else CATALOGUE_BANC.etapes = [...CATALOGUE_BANC.etapes.filter((e) => !(e.formula_id === ligne.formula_id && e.position === ligne.position)), ligne];
+    return { rows: [], rowCount: 1 };
+  }
+  if (s.startsWith('delete from formula_steps where formula_id = $1')) {
+    CATALOGUE_BANC.etapes = CATALOGUE_BANC.etapes.filter((e) => e.formula_id !== params[0]);
+    return { rows: [], rowCount: 0 };
+  }
+  if (/^select .* from formulas where id = \$1/.test(s)) {
+    const f = CATALOGUE_BANC.formules.get(params[0]);
+    return lignes(f ? [f] : []);
+  }
+  if (/^select .* from formulas;?$/.test(s)) return lignes([...CATALOGUE_BANC.formules.values()]);
+  if (/^select .* from formula_steps/.test(s)) return lignes(CATALOGUE_BANC.etapes.slice().sort((a, b) => a.formula_id.localeCompare(b.formula_id) || a.position - b.position));
+  if (/^select .* from activities/.test(s)) return lignes([]);
+  if (/^select .* from formule_overrides/.test(s)) return lignes([]);
+  return queryAvant.call(this, sql, params);
+};
+
 function monterServeur({ mutations = [] } = {}) {
-  return B.monter({ mutations: [HORLOGE_SERVEUR, ...mutations], session: roleDe('direction') });
+  const serveur = B.monter({ mutations: [HORLOGE_SERVEUR, ...mutations], session: roleDe('direction') });
+  CATALOGUE_BANC.formules.clear();
+  CATALOGUE_BANC.etapes = [];
+  const ops = require(path.join(ROOT, 'api/ops.js'));
+  const appelerMoteur = serveur.appeler;
+  // (la meme page, le meme journal : /api/ops au vrai handler, le reste a api/staff-reservations)
+  serveur.appeler = (methode, url, corps) => (String(url).startsWith('/api/ops') ? B.appeler(ops, methode, url, corps) : appelerMoteur(methode, url, corps));
+  return serveur;
 }
 
 // LA CONSOLE OUVERTE SUR LE SAMEDI, avec ses retenues.
@@ -155,7 +201,21 @@ async function ouvrirConsole(browser, serveur, { role = 'direction', appareil = 
       const u = new URL(typeof input === 'string' ? input : input.url, location.origin);
       const me = String(init.method || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
       const json = (corps, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
-      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'surMesureCatalogue') return json({ ok: true, centerId: 'libramont', surMesure: window.__catalogue });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'surMesureCatalogue') {
+        const rep = await window.__vraiAppel('GET', '/api/ops?action=surMesureCatalogue&centerId=libramont');
+        return json({ ok: true, centerId: 'libramont', surMesure: window.__catalogue, formulesGardees: (rep.json || {}).formulesGardees || [] });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'clientCatalog') {
+        const rep = await window.__vraiAppel('GET', u.pathname + u.search);
+        return json(rep.json || {}, rep.statut);
+      }
+      if (u.pathname === '/api/ops' && me === 'POST') {
+        const corps = init.body ? JSON.parse(init.body) : {};
+        if (/FormuleSurMesure$/.test(String(corps.action))) {
+          const rep = await window.__vraiAppel('POST', '/api/ops', corps);
+          return json(rep.json || {}, rep.statut);
+        }
+      }
       if (u.pathname === '/api/staff-state' && me === 'GET' && u.searchParams.get('date') === jour) {
         const r = await avant(input, init);
         const j = await r.clone().json();
@@ -185,4 +245,4 @@ async function ouvrirFenetre(page, pax = 7) {
   await pret(page);
 }
 
-module.exports = { B, FX, ROOT, BROWSER_PATH, JOUR, HEURE, CATALOGUE, roleDe, monterServeur, ouvrirConsole, ouvrirFenetre, pret, dossierRetenu, poserRetenues, blocBowling, blocLaser };
+module.exports = { B, FX, ROOT, BROWSER_PATH, JOUR, HEURE, CATALOGUE, CATALOGUE_BANC, roleDe, monterServeur, ouvrirConsole, ouvrirFenetre, pret, dossierRetenu, poserRetenues, blocBowling, blocLaser };

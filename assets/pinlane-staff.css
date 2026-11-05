@@ -11263,10 +11263,30 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-art em { font-style: normal; font-weight: 650; }
 .qb-modal.rv.rs .rs-art.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .qb-modal.rv.rs .rs-art.is-on small { color: var(--accent-strong); }
-.qb-modal.rv.rs .rs-bande { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--rs-ligne); }
+.qb-modal.rv.rs .rs-bande { flex: none; position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne), 0 -10px 18px -14px color-mix(in srgb, var(--text) 45%, transparent); }
 .qb-modal.rv.rs .rs-bande.is-vide { align-items: center; justify-content: center; min-height: 72px; box-shadow: none; outline: 1px dashed var(--rs-ligne-forte); outline-offset: -1px; }
 .qb-modal.rv.rs .rs-bande .rs-rang { flex: none; min-height: 44px; }
-.qb-modal.rv.rs .rs-bande-t { display: flex; align-items: center; gap: 14px; }
+.qb-modal.rv.rs .rs-bande-t { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.qb-modal.rv.rs .rs-bande-t .rs-s-n { flex: 1 1 150px; min-width: 0; }
+.qb-modal.rv.rs .rs-unite { flex: none; width: auto; }
+.qb-modal.rv.rs .rs-unite button { padding: 0 12px; white-space: nowrap; }
+.qb-modal.rv.rs .rs-bande-t > .rs-p { flex: none; min-width: 76px; }
+.qb-modal.rv.rs .rs-fm { flex: 1 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.qb-modal.rv.rs .rs-fm-rang { flex: none; max-height: none; }
+.qb-modal.rv.rs .rs-fm-rang .rs-lbl.is-haut { align-self: start; padding-top: 11px; }
+.qb-modal.rv.rs .rs-fm .rs-recu li:first-child { border-top: 0; }
+.qb-modal.rv.rs .rs-fm-somme { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding: 9px 0 0; border-top: 1px solid var(--rs-ligne-forte); font-size: 15px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-fm-somme b { font-weight: 600; color: var(--text); }
+.qb-modal.rv.rs .rs-fm-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qb-modal.rv.rs .rs-fm-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; min-height: 44px; }
+.qb-modal.rv.rs .rs-champ.rs-fm-montant { flex: none; flex-direction: row; align-items: center; gap: 6px; width: 104px; }
+.qb-modal.rv.rs .rs-champ.rs-fm-montant > span { font-size: 15px; color: var(--text); }
+.qb-modal.rv.rs .rs-fm-dit { flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.3; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-fm-min { display: inline-flex; align-items: center; gap: 8px; }
+.qb-modal.rv.rs .rs-fm-min .rs-pas button { width: 44px; }
+.qb-modal.rv.rs .rs-fm-min .rs-pas b { min-width: 32px; }
+.qb-modal.rv.rs .rs-fm-garder { flex: 0 1 auto; padding: 4px 16px; margin-left: auto; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); background: transparent; }
+.qb-modal.rv.rs .rs-fm-etat { flex: 1 1 100%; margin: 0; font-size: 14px; line-height: 1.3; color: var(--success, var(--text)); }
 .qb-modal.rv.rs .rs-libre { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 120px 120px; align-items: end; gap: 8px; }
 
 /* LE TOTAL, LE CLIENT */
@@ -21699,6 +21719,13 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-ligne > .fm-euro { grid-area: 
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-ligne > .fm-x-somme { grid-area: somme; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-ligne > .fm-x-retirer { grid-area: retirer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.fm-x-ligne, .fm-x-arcades) .fm-euro .input { font-size: 15px; font-weight: 500; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-tous { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-formule { margin: 0 0 10px; font-size: 14px; line-height: 1.35; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-formule b { color: var(--text); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-somme { font-size: 14px; font-weight: 600; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-retirer { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-retirer:hover { background: var(--danger-soft); color: var(--danger); }

@@ -11327,6 +11327,10 @@
       // (catalog-overrides.js assertFormuleId) : clientCatalog le dit par
       // source 'custom', calcule sur la meme liste (catalog-overrides.js:589).
       custom: entry.source === 'custom',
+      // Gardee au comptoir (lib/formule-comptoir.js) : elle n existe que pour ce centre, et
+      // seuls les clients d une formule affichee la voient.
+      comptoir: /^sm-.+--/.test(id),
+      comptoirSeul: /^sm-.+--/.test(id) && entry.effective && entry.effective.humanValidation === 'comptoir',
       famille,
       anniversaire: /anniv/i.test(famille),
       parPiste: entry.priceType === 'per_lane',
@@ -11434,7 +11438,7 @@
       bandePour: `pour ${tfPluriel(n, 'personne')}`,
       bref,
       vente: Boolean(v.vente),
-      retiree: !v.vente,
+      retiree: !v.vente || Boolean(f.comptoirSeul),
       confirme,
       demande: !confirme,
       laser: v.validation === 'required_when_laser_busy',
@@ -11527,7 +11531,7 @@
       nom: 'Les mails déjà envoyés. Le Terrain garde le nom du jour de la réservation.',
       vente: `Les réservations déjà prises restent.${autres.length ? ` ${tfEt(autres)} ${autres.length > 1 ? 'gardent la leur' : 'garde la sienne'}.` : ''}`,
       validation: 'Le prix et ce que voit le client avant de valider.',
-      structure: 'Le prix, le prix barré, le nom et la mise en vente de chaque centre.',
+      structure: f && f.comptoir ? 'Les réservations déjà prises gardent leur prix.' : 'Le prix, le prix barré, le nom et la mise en vente de chaque centre.',
     }[champ] || '';
     let savoir = '';
     if (champ === 'prix') savoir = 'À 0 €, la formule ne se réserve plus en ligne.';
@@ -11546,8 +11550,8 @@
     return {
       pas,
       savoir,
-      qui: `${tfMajuscule(tfQui(duCentre ? 'pricing.manage' : 'settings.manage'))}.`,
-      quand: duCentre ? TF_QUAND : 'Dès l’enregistrement de la fenêtre, pour tous vos centres.',
+      qui: f && f.comptoir && !duCentre ? `${tfMajuscule(tfQui('pricing.manage'))} ; le contenu : ${tfQui('settings.manage')}.` : `${tfMajuscule(tfQui(duCentre ? 'pricing.manage' : 'settings.manage'))}.`,
+      quand: duCentre ? TF_QUAND : `Dès l’enregistrement de la fenêtre, pour ${f && f.comptoir ? 'ce centre' : 'tous vos centres'}.`,
     };
   }
 
@@ -12008,7 +12012,7 @@
             <span class="tf-entete-col" aria-hidden="true">Contenu</span><span class="tf-entete-col" aria-hidden="true">Conditions</span><span class="tf-entete-col" aria-hidden="true">Confirmation</span><span class="tf-entete-col tf-entete-prix" aria-hidden="true">Prix</span>
           </div>
           ${montrees.map(tfLigneFormuleHtml).join('')}
-          ${reglages ? `<div class="tf-ajout"><button type="button" class="pv2-btn sm" data-add-formula="${esc(famille)}" data-pl-focus="tf:ajout:${esc(famille)}">+ Formule</button><span>${esc(tfPorteeEntreprise())}</span></div>` : ''}
+          ${reglages && !toutes.every((f) => f.comptoir) ? `<div class="tf-ajout"><button type="button" class="pv2-btn sm" data-add-formula="${esc(famille)}" data-pl-focus="tf:ajout:${esc(famille)}">+ Formule</button><span>${esc(tfPorteeEntreprise())}</span></div>` : ''}
         </div>
       </section>`;
     }).join('');
@@ -12037,7 +12041,7 @@
         <span class="tf-c-nom"><i class="tf-point" data-tf-point aria-hidden="true"${f.modifie ? '' : ' hidden'}></i><b>${esc(p.nom)}</b>${f.best ? '<span class="tf-bon">Bon plan</span>' : ''}<span class="tf-modifie" data-tf-modifie${f.modifie ? '' : ' hidden'}>à publier</span>${usage ? `<small class="tf-usage">${esc(usage)}</small>` : ''}</span>
         <span class="tf-c-contenu">${esc(f.desc.join(' · '))}</span>
         <span class="tf-c-regles">${esc(f.regles.join(', ') || 'Sans condition')}</span>
-        <span class="tf-c-valid${p.validation === 'recommended' ? '' : ' is-equipe'}">${esc(tfValidation(p.validation).liste)}</span>
+        <span class="tf-c-valid${p.validation === 'recommended' ? '' : ' is-equipe'}">${esc(f.comptoirSeul ? 'Au comptoir seulement' : tfValidation(p.validation).liste)}</span>
       </button>
       <button type="button" class="tf-c-prix" data-tf-prix="${id}" data-pl-focus="tf:prixligne:${id}" aria-label="${esc(libelle)}"><span class="tf-montant" data-tf-montant><b>${esc(p.prix == null ? 'à l’accueil' : tfEuros(p.prix))}</b> <small>${esc(unite)}</small></span>${p.ancien ? `<s data-tf-barre-prix>${esc(tfEuros(p.ancien))}</s>` : ''}</button>
       <span class="tf-c-chev" data-tf-ouvrir="${id}" aria-hidden="true">${TF_ICO.chevron}</span>
@@ -12111,6 +12115,19 @@
       ligne('En vente', v.vente ? 'Proposée à vos clients' : 'Retirée de la vente'),
       ligne('Validation', tfValidation(v.validation).liste),
     ].join('');
+    if (f.comptoir) {
+      const voit = (clients, mot, code) => `<button type="button" class="tf-seg-b${Boolean(f.comptoirSeul) !== clients ? ' is-on' : ''}" aria-pressed="${Boolean(f.comptoirSeul) !== clients}" id="tfSm-${code}" data-tf-action="sm-${code}" data-tf-id="${esc(f.id)}" data-pl-focus="tf:sm-${code}">${mot}</button>`;
+      const champs = tfPeutTarifs()
+        ? `<div class="tf-r"><label class="tf-r-nom" for="tfSmNom">Nom</label><div class="tf-r-saisie"><input id="tfSmNom" class="tf-champ tf-champ-nom" type="text" maxlength="80" autocomplete="off" value="${esc(v.nom)}" data-pl-focus="tf:sm-nom"></div></div>
+          <div class="tf-r"><label class="tf-r-nom" for="tfSmPrix">Prix</label><div class="tf-r-saisie"><input id="tfSmPrix" class="tf-champ tf-champ-nombre" type="text" inputmode="decimal" autocomplete="off" maxlength="9" value="${esc(tfSaisieNombre(v.prix))}" data-pl-focus="tf:sm-prix"><span class="tf-unite">€ par personne</span></div></div>
+          <div class="tf-r"><label class="tf-r-nom" for="tfSmMin">Dès</label><div class="tf-r-saisie"><input id="tfSmMin" class="tf-champ tf-champ-nombre" type="number" min="1" max="240" inputmode="numeric" value="${esc(String(f.minPax))}" data-pl-focus="tf:sm-min"><span class="tf-unite">joueurs</span></div></div>
+          <div class="tf-catalogue"><button type="button" class="pv2-btn sm" id="tfSmEnregistrer" data-tf-action="sm-enregistrer" data-tf-id="${esc(f.id)}" data-pl-focus="tf:sm-enregistrer">Enregistrer</button></div>`
+        : `${ligne('Prix', v.prix == null ? 'à l’accueil' : `${tfEuros(v.prix)} ${unite}`)}${ligne('Nom', v.nom)}`;
+      const gestes = tfPeutTarifs()
+        ? `<div class="tf-r"><span class="tf-r-nom">Qui la voit</span><div class="tf-r-saisie"><div class="tf-seg" role="group" aria-label="Qui voit cette formule">${voit(false, 'Au comptoir', 'comptoir')}${voit(true, 'Aussi aux clients', 'clients')}</div></div></div><div class="tf-catalogue"><button type="button" class="pv2-btn sm cev-danger" id="tfSmRetirer" data-tf-action="sm-retirer" data-tf-id="${esc(f.id)}" data-pl-focus="tf:sm-retirer">Retirer cette formule</button></div>`
+        : ligne('Qui la voit', f.comptoirSeul ? 'Au comptoir seulement' : 'Aussi les clients, sur le formulaire');
+      return `${champs}${gestes}<p class="tf-r-dit">Formule gardée au comptoir : elle n’existe que pour ce centre.</p>`;
+    }
     if (f.custom) {
       return `${lignes}<p class="tf-r-dit">Formule créée par votre entreprise : ses réglages valent pour tous vos centres.</p>${cevCanManage() ? `<div class="tf-catalogue"><button type="button" class="pv2-btn sm" data-cev-fields="${esc(f.id)}" data-pl-focus="tf:modifier">Modifier</button></div>` : ''}`;
     }
@@ -12132,11 +12149,11 @@
       ? `<div class="tf-cadre-gestes">
           <button type="button" class="pv2-btn sm" data-cev-steps="${esc(f.id)}" data-pl-focus="tf:steps" aria-describedby="tfT-structure tfD-structure">Modifier le contenu</button>
           ${f.custom ? '' : `<button type="button" class="pv2-btn sm" data-cev-fields="${esc(f.id)}" data-pl-focus="tf:fields" aria-describedby="tfT-structure tfD-structure">Jours et minimum</button>`}
-          ${f.custom ? `<button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${esc(f.id)}" data-pl-focus="tf:supprimer" aria-label="Supprimer ${esc(f.publie.nom)} du catalogue">Supprimer</button>` : ''}
+          ${f.custom && !f.comptoir ? `<button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${esc(f.id)}" data-pl-focus="tf:supprimer" aria-label="Supprimer ${esc(f.publie.nom)} du catalogue">Supprimer</button>` : ''}
         </div>`
       : `<p class="tf-r-dit">Réglé par ${esc(tfQui('settings.manage'))}, pour tous vos centres.</p>`;
     return `<div class="tf-cadre" data-tf-r="structure">
-      <div class="tf-cadre-tete"><span class="tf-r-nom" id="tfT-structure">Contenu, jours, heures, minimum</span><span class="tf-portee is-entreprise">${esc(tfPorteeEntreprise())}</span></div>
+      <div class="tf-cadre-tete"><span class="tf-r-nom" id="tfT-structure">Contenu, jours, heures, minimum</span><span class="tf-portee is-entreprise">${esc(f.comptoir ? 'Ce centre seulement' : tfPorteeEntreprise())}</span></div>
       <p class="tf-cadre-resume">${esc(tfMajuscule(morceaux.join(' · ')))}</p>
       ${gestes}
       <span class="tf-sr" id="tfD-structure">${esc(tfSeVoit(tfLieuxDe('structure', f)))}</span>
@@ -13226,7 +13243,29 @@
     if (action === 'publier') { tfPublier(); return; }
     if (action === 'catalogue') { tfRevenirAuCatalogue(el.getAttribute('data-tf-id')); return; }
     if (action === 'ouvrir-lieu') { const geste = TF_LIEUX_GESTES[el.getAttribute('data-tf-lieu-cible')]; if (geste && geste.permis()) geste.ouvrir(); return; }
+    if (action === 'sm-comptoir' || action === 'sm-clients') { tfFormuleGardee('afficherFormuleSurMesure', el.getAttribute('data-tf-id'), { clients: action === 'sm-clients' }, action === 'sm-clients' ? 'Elle est sur le formulaire des clients.' : 'Elle ne se voit plus qu’au comptoir.'); return; }
+    if (action === 'sm-enregistrer') {
+      const lu = (id) => (document.getElementById(id) || {}).value;
+      const prix = tfLireNombre(lu('tfSmPrix'));
+      if (!String(lu('tfSmNom') || '').trim()) { pevToast('Le nom ne peut pas rester vide.'); return; }
+      if (prix == null || Number.isNaN(prix)) { pevToast('Indiquez un prix entre 0 et 1000 €.'); return; }
+      tfFormuleGardee('modifierFormuleSurMesure', el.getAttribute('data-tf-id'), { nom: lu('tfSmNom'), prixParPersonne: prix, minPax: Number(lu('tfSmMin')) }, 'Formule enregistrée.');
+      return;
+    }
+    if (action === 'sm-retirer') {
+      if (window.confirm('Retirer cette formule ? Les réservations déjà faites gardent leur prix.')) tfFormuleGardee('retirerFormuleSurMesure', el.getAttribute('data-tf-id'), {}, 'Formule retirée.');
+      return;
+    }
     if (action === 'etablissement') tfVersEtablissement();
+  }
+  // Le droit Tarifs suffit : ces formules n existent que pour ce centre (api/ops.js).
+  function tfFormuleGardee(action, id, corps, message) {
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: pevBody({ action, id: String(id), ...corps }) }).then(() => {
+      pevToast(message);
+      if (typeof oublierCatalogueSurMesure === 'function') oublierCatalogueSurMesure();
+      if (typeof chargerCatalogueSurMesure === 'function') chargerCatalogueSurMesure();
+      pevReload();
+    }).catch((error) => { pevToast((error && error.message) || 'Le changement n’a pas pu se faire. Réessayez.'); });
   }
   function tfSurSaisie(e) {
     const el = e.target;

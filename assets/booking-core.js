@@ -1890,7 +1890,7 @@ function reservationHasFormulaActivities(reservation) {
   if (!reservation) return false;
   if (getFormulaActivitySteps(getReservationFormulaId(reservation))) return true;
   // Fallback : formule sans définition connue mais avec un plan détaillé.
-  const isFormula = reservation.type === 'formule' || !!reservation.formuleId;
+  const isFormula = reservation.type === 'formule' || !!reservation.formuleId || Boolean(reservation.program && reservation.program.formuleSurMesure);
   const steps = Array.isArray(reservation.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
   return isFormula && steps.some(step => step && step.type === 'activity');
 }

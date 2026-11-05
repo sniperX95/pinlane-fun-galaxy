@@ -83,7 +83,7 @@ const sansEspaces = (s) => String(s || '').replace(/[\s\u00a0\u202f]+/g, ' ').tr
 const MUTATIONS = {
   fete: ['js', '      var fete = /anniv/i.test(cle), vues = {};\n', '      var fete = false, vues = {};\n'],
   repete: ['js', "    var p = cands.filter(function (c) { return !vues[c]; })[0] || cands[0] || '';\n", "    var p = cands[0] || '';\n"],
-  partout: ['js', "    if ((meta && meta.center && meta.center.id || CENTER) !== 'libramont') return '';\n", '    if (false) return \'\';\n'],
+  partout: ['js', "    if (!/^(libramont|gembloux)$/.test(centreDesPhotos())) return '';\n", '    if (false) return \'\';\n'],
   remiseAnniv: ['js', '        var remise = !fete && Number(f.price) > 0', '        var remise = Number(f.price) > 0'],
   remiseFausse: ['js', 'Math.round((1 - Number(f.price) / Number(f.oldPrice)) * 100)', 'Math.round(Number(f.price) / Number(f.oldPrice) * 100)'],
   tot: ['js', 'alt="" loading="lazy" decoding="async"', 'alt="" decoding="async"'],

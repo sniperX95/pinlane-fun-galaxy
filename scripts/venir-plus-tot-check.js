@@ -227,7 +227,37 @@ function fonction(fichier, debut, fin, contexte) {
     ok(/^15:00\s*Golf o'Clock/.test(golf.recap[0]) && golf.recap.some((l) => /^16:00\s*Bowling/.test(l)), '[C] le recapitulatif dit la journee dans l ordre', golf.recap);
     ok(golf.total === seize.total + 75, '[C] le prix suit : 6 x 12,50 €', { avant: seize.total, apres: golf.total });
     ok(await selectionnee(page, 'golf_oclock'), '[C] retour aux activites : le golf y est coche');
-    ok(golf.bouton === 'Encore plus tôt' && !(await page.evaluate(() => { const p = document.querySelector('#fgAvant'); return p && !p.hidden; })), '[C] le choix se referme', golf.bouton);
+    ok(golf.bouton === 'Ajouter une activité' && !(await page.evaluate(() => { const p = document.querySelector('#fgAvant'); return p && !p.hidden; })), '[C] le choix se referme', golf.bouton);
+
+    // [C bis] SON HEURE (Ansar : « jpeux pas changer lheure [...] ya rien »). De vrais clics : la ligne s ouvre comme les autres.
+    await page.click('.fg-etape--avant .fg-avant-tete');
+    await attendre(page, () => document.querySelectorAll('.fg-etape--avant.is-open .fg-track[data-activity="arrivee"] .fg-chip').length > 0, 10000);
+    const heures = await page.evaluate(() => [...document.querySelectorAll('.fg-etape--avant.is-open .fg-chip')].map((c) => c.dataset.time));
+    ok(heures.includes('10:00') && heures.includes('15:00') && !heures.some((h) => h > '15:00'), '[C] sa ligne s ouvre : des heures, toutes assez tot pour finir avant 16:00', heures);
+    ok(await page.evaluate(() => document.querySelector('.fg-etape--avant .fg-avant-tete').getAttribute('aria-expanded') === 'true' && !document.querySelector('.fg-etape[data-cle="bowling"]').classList.contains('is-open')), '[C] une seule ligne ouverte a la fois');
+    await page.evaluate(() => { const c = document.querySelector('.fg-etape--avant.is-open .fg-chip[data-time="13:00"]'); const s = c.closest('.fg-period'); if (s && !s.classList.contains('is-open')) s.querySelector('.fg-period__btn').click(); });
+    await page.waitForTimeout(150);
+    await page.click('.fg-etape--avant.is-open .fg-chip[data-time="13:00"]');
+    await calme(page);
+    const treize = await lire(page);
+    ok(treize.rdv === '13:00' && /^Golf o'Clock 13:00/.test(treize.lignes[0]) && /^Bowling 16:00/.test(treize.lignes[1]), '[C] 13:00 touchee : le rendez-vous et le golf y vont, le bowling reste a 16:00', treize);
+    ok(treize.total === golf.total && await page.evaluate(() => document.querySelector('.fg-etape--avant').classList.contains('is-choisi') && !document.querySelector('.fg-etape--avant').classList.contains('is-open')), '[C] la ligne se referme, choisie, au meme prix', treize.total);
+    await poser(page, 'bowling', '18:00');
+    ok((await lire(page)).rdv === '13:00', '[C] le bowling bouge ensuite : son heure reste la sienne');
+    await poser(page, 'bowling', '13:30');
+    const reculee = await lire(page);
+    ok(reculee.rdv === '12:30' && /Rendez-vous avancé à 12:30/.test(reculee.conseil), '[C] un bowling plus tot que son golf : le rendez-vous recule, et l ecran le dit', reculee);
+    await poser(page, 'bowling', '16:00');
+    await page.click('.fg-etape--avant .fg-avant-tete');
+    await attendre(page, () => document.querySelectorAll('.fg-etape--avant.is-open .fg-chip').length > 0, 10000);
+    await page.click('.fg-etape--avant.is-open .fg-chip[data-time="11:00"]', { force: true }).catch(() => page.evaluate(() => document.querySelector('.fg-etape--avant.is-open .fg-chip[data-time="11:00"]').click()));
+    await calme(page);
+    await page.click('.fg-etape--avant .fg-avant-tete');
+    await attendre(page, () => { const b = document.querySelector('.fg-etape--avant.is-open [data-reset="arrivee"]'); return b && !b.hidden; }, 10000);
+    ok(await page.evaluate(() => /Revenir à l’heure proposée/.test(document.querySelector('.fg-etape--avant.is-open [data-reset="arrivee"]').textContent)), '[C] « Revenir à l heure proposée » est la');
+    await page.click('.fg-etape--avant.is-open [data-reset="arrivee"]');
+    await calme(page);
+    ok((await lire(page)).rdv === '15:00', '[C] et ramene au plus pres du bowling');
 
     // [D] TOUT RESTE RELIE.
     await poser(page, 'bowling', '18:00');
@@ -351,6 +381,29 @@ function fonction(fichier, debut, fin, contexte) {
     ok(await page.evaluate(() => document.querySelectorAll('.fg-etape.is-open').length === 0), '[F] toutes les heures sont posees : les lignes se referment');
     ok(page.erreurs.length === 0, '[F] aucune erreur de page', page.erreurs);
     await ctx.close();
+
+    // [J] CHAQUE CENTRE MONTRE SES LIEUX (Ansar : « pq ya pas dimage [...] c pas comme gembloux », « aucune image avec mi12 »).
+    const photosDe = async (centre) => {
+      const v = await ouvrir(browser, { centre, activites: ['bowling'] });
+      const lu = await v.page.evaluate(() => ({
+        cartes: [...document.querySelectorAll('#gridAct .fg-card[data-activity] .fg-card__photo img')].map((i) => i.dataset.src || i.getAttribute('src') || ''),
+        ligne: (document.querySelector('.fg-etape[data-cle="bowling"] .fg-etape__icone') || { getAttribute: () => '' }).getAttribute('style') || '',
+        fonds: [...document.querySelectorAll('.fg-art img')].map((i) => i.dataset.photo || '').filter(Boolean),
+      }));
+      await v.ctx.close();
+      return lu;
+    };
+    const gembloux = await photosDe('gembloux');
+    const toutGembloux = [...gembloux.cartes, gembloux.ligne, ...gembloux.fonds].join(' ');
+    ok(gembloux.cartes.length >= 5 && gembloux.cartes.every((s) => /\/gembloux-/.test(s)), '[J] Gembloux : chaque carte a sa photo, prise a Gembloux', gembloux.cartes);
+    ok(/gembloux-bowling-carte/.test(gembloux.ligne), '[J] Gembloux : la ligne d heures aussi', gembloux.ligne);
+    ok(!/pistes-neon|salle-bowling|laser-joueur|laser-couloir|billards-libramont|\/arcades-|\/minigolf-|\/billard-/.test(toutGembloux), '[J] aucune photo de Libramont a Gembloux', toutGembloux.slice(0, 300));
+    const libramont = await photosDe('libramont');
+    ok(libramont.cartes.length >= 5 && libramont.cartes.every((s) => !/gembloux/.test(s)) && !/gembloux/.test(libramont.ligne), '[J] Libramont garde ses photos', libramont.cartes);
+    const fichiers = fs.readdirSync(path.join(ROOT, 'assets/fungalaxy'));
+    ok(!fichiers.some((f) => /mi12/i.test(f)), '[J] aucun fichier ne porte l ancien nom', fichiers.filter((f) => /mi12/i.test(f)));
+    for (const n of ['gembloux-bowling', 'gembloux-laser', 'gembloux-arcades', 'gembloux-billard', 'gembloux-minigolf']) ok(['-800', '-1600', '-carte'].every((t) => fichiers.includes(`${n}${t}.webp`)), `[J] ${n} existe dans ses trois tailles`);
+    ok(fichiers.includes('gembloux-golf-salle-carte.webp'), '[J] le golf a sa vignette');
 
     // [I] UNE FORMULE GARDE SA LIGNE.
     ({ ctx, page } = await ouvrir(browser, { centre: 'gembloux', pax: 8, formule: 'f1' }));

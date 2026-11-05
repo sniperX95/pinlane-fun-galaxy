@@ -1271,6 +1271,10 @@ const PROVENANCE = {
     'billards-libramont': { origine: `${UPLOADS}2026/04/C_est-Capte-111.jpg`, page: `${PAGE_FG}billards/` },
   },
   gembloux: {
+    'gembloux-bowling': { origine: `${UPLOADS}2024/10/mi12-fun-center-gembloux-bowling-1.jpg`, page: `${PAGE_FG}bowling-gembloux/`, recadree: 'cadre sous l enseigne du fond' },
+    'gembloux-laser': { origine: `${UPLOADS}2024/10/mi12-fun-center-gembloux-laser-game-4.jpg`, page: `${PAGE_FG}laser-game-gembloux/`, recadree: 'aucune enseigne dans le cadre' },
+    'gembloux-arcades': { origine: `${UPLOADS}2024/10/IMG_2956-scaled-1.jpeg`, page: `${PAGE_FG}arcades-gembloux/`, recadree: 'cadre apres la borne de recharge, qui porte l ancien logo' },
+    'gembloux-minigolf': { origine: `${UPLOADS}2024/10/mi12-fun-center-gembloux-minigolf-3.jpg`, page: `${PAGE_FG}minigolf-blacklight-gembloux/`, recadree: 'cadre au-dessus du dessin au sol' },
     'gembloux-golf-salle': { origine: `${UPLOADS}2025/08/Cest-Capte-41.jpg`, page: `${PAGE_FG}golf-oclock/` },
     'gembloux-golf-ecrans': { origine: `${UPLOADS}2025/08/Cest-Capte-2.jpg`, page: `${PAGE_FG}golf-oclock/` },
     'gembloux-golf-quilles': { origine: `${UPLOADS}2025/08/Cest-Capte-14.jpg`, page: `${PAGE_FG}golf-oclock/` },
@@ -4189,8 +4193,9 @@ async function main() {
       '[K] chaque photo de chaque centre a sa preuve (image d origine, page du site qui dit le centre), et chaque photo prouvee est servie',
       sansPreuve.join(', ') || centresTable.map((c) => `${c} ${table[c].length}`).join(', '));
     const origines = Object.values(PROVENANCE).flatMap((c) => Object.values(c));
-    const avant = origines.filter((d) => { const m = /\/uploads\/(\d{4})\/(\d{2})\//.exec(d.origine); return !m || `${m[1]}-${m[2]}` < '2025-08' || /mi12/i.test(d.origine); });
-    ok(avant.length === 0, '[K] chaque photo a ete envoyee apres l annonce du changement d enseigne (27 juillet 2025), aucune ne vient d un fichier mi12', avant.map((d) => d.origine).join(', ') || `${origines.length} photos, envoyees de 2025-08 a 2026-04`);
+    // Une photo d avant l enseigne n entre que recadree et regardee a la loupe, avec la raison ecrite dans la table.
+    const avant = origines.filter((d) => { if (d.recadree) return false; const m = /\/uploads\/(\d{4})\/(\d{2})\//.exec(d.origine); return !m || `${m[1]}-${m[2]}` < '2025-08' || /mi12/i.test(d.origine); });
+    ok(avant.length === 0, '[K] chaque photo a ete envoyee apres l annonce du changement d enseigne (27 juillet 2025), ou recadree sans l ancien nom, raison ecrite', avant.map((d) => d.origine).join(', ') || `${origines.length} photos, envoyees de 2025-08 a 2026-04`);
     const croisees = Object.keys(PROVENANCE.libramont).filter((f) => PROVENANCE.gembloux[f]);
     ok(croisees.length === 0, '[K] aucune photo n est commune a deux centres', croisees.join(', ') || 'aucune');
     const fautives = centresTable.flatMap((c) => table[c].map((x) => {

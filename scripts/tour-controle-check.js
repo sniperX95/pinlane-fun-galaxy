@@ -125,7 +125,7 @@ function repondre(sql, p = []) {
   if (/max\(finished_at\) as le/.test(s)) return rows([{ le: new Date() }]);
   if (/from communications c/.test(s)) return rows(BD.mails.filter((m) => m.reservation_id === p[0]).map((m) => ({ ...m, evenements: BD.evenements.filter((e) => e.communication_id === m.id).map((e) => e.event_type) })));
   if (/reservation_id = any/.test(s)) return rows(groupe(BD.mails.filter((m) => p[0].includes(m.reservation_id)), (m) => `${m.reservation_id}:${m.status}`).map((l) => ({ reservation_id: l[0].reservation_id, status: l[0].status, n: l.length })));
-  if (/status = 'failed' and channel = 'email'/.test(s)) return rows(groupe(BD.mails.filter((m) => m.status === 'failed'), (m) => m.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length, dernier: dernier(l, 'created_at') })));
+  if (/status = 'failed' and channel = 'email'/.test(s)) return rows(groupe(BD.mails.filter((m) => m.status === 'failed' && !(/not like 'Adresse en erreur%'/.test(s) && /^Adresse en erreur/.test(m.last_error || ''))), (m) => m.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length, dernier: dernier(l, 'created_at') })));
   if (/status = 'queued'/.test(s)) return rows(groupe(BD.mails.filter((m) => m.status === 'queued'), (m) => m.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length, depuis: l[0].created_at })));
   if (/from email_events/.test(s)) return rows(groupe(BD.evenements.filter((e) => /bounced|complained/.test(e.event_type)), (e) => `${e.center_id}:${e.event_type}`).map((l) => ({ center_id: l[0].center_id, event_type: l[0].event_type, n: l.length })));
   if (/count\(\*\)::int as recent from client_errors/.test(s)) return rows([{ recent: BD.erreurs.filter((e) => e.member_id === p[0]).length }]);
@@ -283,9 +283,13 @@ async function preuvesServeur() {
   ok(!/or 1=1|autre/.test(forge.where) && forge.params.length === 1, '[S] des filtres forges n entrent pas dans la requete', forge);
 
   // [P] Ce qui ne va pas se lit.
+  // Un mail parti puis revenu (la boite du client est pleine) n est pas une panne : il a deja sa ligne « est revenu ».
+  BD.mails.push({ id: 99901, center_id: 'libramont', reservation_id: 0, status: 'failed', channel: 'email', created_at: ilYA(30), last_error: 'Adresse en erreur (bounce) : boite pleine' });
   const { problemes } = await tour.lireProblemes(pool);
   const a = (cle) => problemes.find((x) => x.cle.startsWith(cle));
   ok(a('mail:echec:gembloux') && a('mail:echec:gembloux').gravite === 'critique', '[P] un mail perdu a Gembloux est urgent', problemes.map((x) => x.cle));
+  ok(!a('mail:echec:libramont'), '[P] un mail revenu n est pas compte comme un mail perdu', problemes.map((x) => x.cle));
+  BD.mails = BD.mails.filter((m) => m.id !== 99901);
   ok(a('mail:attente:libramont'), '[P] un mail coince depuis plus de 30 min se dit');
   ok(a('mail:bounced:libramont'), '[P] un mail revenu se dit');
   ok(a('secours:sans-adresse:gembloux') && a('secours:sans-adresse:gembloux').gravite === 'critique', '[P] Gembloux sans adresse de secours est urgent');

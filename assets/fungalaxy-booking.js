@@ -4195,7 +4195,7 @@
           + '<span class="fg-etape__heure">' + esc(p.debut) + '</span>'
           + '<svg class="fg-etape__chev" aria-hidden="true"><use href="#i-chevron"/></svg></button>'
           + '<button type="button" class="fg-avant-retirer" data-avant-retirer="' + esc(p.id) + '" aria-label="' + esc('Retirer ' + nom) + '"><svg aria-hidden="true"><use href="#i-close"/></svg></button>'
-          + (k === 0 ? '<div class="fg-etape__corps" id="fgAvantHeures"><div class="fg-etape__dedans"><section class="fg-track" data-activity="arrivee" data-count="1"></section></div></div>' : '');
+          + (k === 0 ? '<div class="fg-etape__corps" id="fgAvantHeures"><div class="fg-etape__dedans"><div class="fg-etape__piste"><section class="fg-track" data-activity="arrivee" data-count="1"></section></div></div></div>' : '');
         ol.insertBefore(li, apres.nextSibling);
         apres = li;
       });

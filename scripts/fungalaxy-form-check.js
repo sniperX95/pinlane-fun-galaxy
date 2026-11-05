@@ -711,8 +711,9 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // images perdues 206 -> 200, script 5 037 -> 5 037 ms : pas de surcout
 // constant. Plafonds : 354 Ko a analyser, 104 Ko a transferer, soit 13,0 et
 // 5,7 Ko de marge, la meme regle : une police (20 Ko compresses) ou une
-// bibliotheque font toujours sauter l un et l autre.
-const BUDGET_SERVI = 354 * 1024;
+// bibliotheque font toujours sauter l un et l autre. 2026-11-05 : 356 Ko, le
+// formulaire signale ses erreurs a la Tour de controle (signaler, 1,3 Ko).
+const BUDGET_SERVI = 356 * 1024;
 const BUDGET_TRANSFERE = 104 * 1024;
 
 let failures = 0;

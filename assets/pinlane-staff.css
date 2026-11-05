@@ -179,6 +179,7 @@ body.admin-mode .ops-sidebar {
 }
 
 .fgx-menu-top {
+  flex-shrink: 0;
   min-height: 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;

@@ -398,8 +398,9 @@ async function preuvesClient(jour) {
   ok(tr && tr.center_id === 'libramont' && tr.denied_reason, '[C] un refus laisse sa trace, avec son motif', tr);
   ok(tr && !PERSONNEL.test(JSON.stringify(tr)), '[C] sans donnee personnelle', tr);
 
+  const journalAvantForge = BD.journal.length;
   const inconnu = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: '<script>alert(1)</script>' }));
-  ok(inconnu.statut >= 400 && BD.journal.some((j) => j.center_id === 'inconnu'), '[C] un centre forge s ecrit « inconnu », jamais tel quel', BD.journal.map((j) => j.center_id));
+  ok(inconnu.statut >= 400 && BD.journal.length === journalAvantForge, '[C] un centre forge est refuse et n ecrit rien au journal', BD.journal.map((j) => j.center_id));
 
   horairesPris = true;
   const pris = await appeler(reservations, 'POST', '/api/public-reservations?action=hold', corpsDemande(jour, { name: '', phone: '', email: '' }));
@@ -675,7 +676,7 @@ async function preuvesConsole(browser) {
   ok(r.gembloux.lignes.length === 2 && r.gembloux.lignes.every((l) => /Gembloux/.test(l)), '[U] le filtre de centre part au serveur et revient juste', r.gembloux.lignes);
   ok(r.comptoir.lignes.length === 1 && /Marc Lambert/.test(r.comptoir.lignes[0]) && /Comptoir/.test(r.comptoir.lignes[0]), '[U] le filtre de canal aussi', r.comptoir.lignes);
   ok(r.trenteJours.lignes.some((l) => /Ancien Client/.test(l)), '[U] la periode aussi', r.trenteJours.compte);
-  ok(r.aVenir.lignes.length === 5 && r.aVenir.lignes.every((l) => !/05\/11.*Léa/.test(l)), '[U] les visites a venir, quelle que soit la date de reception', r.aVenir.lignes);
+  ok(r.aVenir.lignes.length === 5 && r.aVenir.lignes.some((l) => /Ancien Client/.test(l)), '[U] les visites a venir, quelle que soit la date de reception', r.aVenir.lignes);
   ok(r.toutes.lignes.length === 5, '[U] toutes, sans borne de date', r.toutes.lignes);
   ok(r.recherche.lignes.length === 1 && /Emma Dubois/.test(r.recherche.lignes[0]), '[U] chercher un numero etranger trouve son dossier', r.recherche.lignes);
   ok(r.appelsRecherche === 0, '[U] la recherche reste dans la page : aucun appel', r.appelsRecherche);

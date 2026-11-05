@@ -141,7 +141,6 @@ async function traiterBlocage(req, res) {
     }
     const porte = await ouvrirDemandePublique(body);
     if (!porte.ok) {
-      await tracerEssai('blocage.refuse', { corps: body, statut: porte.status, raison: porte.message });
       sendError(res, porte.status, porte.message, porte.extra);
       return;
     }
@@ -276,7 +275,6 @@ module.exports = async (req, res) => {
     // des horaires, lib/demande-publique.
     const porte = await ouvrirDemandePublique(body);
     if (!porte.ok) {
-      await tracerEssai('reservation.refusee', { corps: body, statut: porte.status, raison: porte.message });
       sendError(res, porte.status, porte.message, porte.extra);
       return;
     }

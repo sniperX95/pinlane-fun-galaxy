@@ -317,6 +317,7 @@
     heuresPassees: {},         // activityId -> ['HH:MM'] : heures posees devenues passees, retirees par le serveur
     arcade: '',                // formule : l heure d arcade choisie ('' : facultatif, les arcades se font sur le temps libre)
     arrivee: '',               // l heure d arrivee choisie dans sa ligne ('' : facultatif) ; elle suit l arrivee du plan
+    avant: [],                 // « Venir plus tot » : les activites libres faites avant la premiere activite a heure
     heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
     dispoCle: '',              // la demande qui a produit state.dispo, prise au depart de la requete
@@ -2676,7 +2677,7 @@
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
   function retirerActivite(id) { var card = $('.fg-card[data-activity="' + id + '"]', gridAct); basculerActivite(card); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
-  function basculerActivite(card) {
+  function basculerActivite(card, garderLesHeures) {
     // Refusee pour ce groupe : on fait lire la raison, on ne coche pas.
     if (card && card.classList.contains('is-refus')) {
       var pourquoi = card.querySelector('.fg-for__off');
@@ -2698,7 +2699,7 @@
     majPrixCarte(item, activite(id), on);
     majPastilles(item, activite(id));
     rendreCompteur(true);
-    invaliderDispo();
+    if (!garderLesHeures) invaliderDispo();
     rendreEditeurActivites(gridAct, on ? id : '', retirerActivite, on);
     setTimeout(posterHauteur, 320);
   }
@@ -2874,7 +2875,7 @@
   // ce qui se dit une fois (une arrivee refusee, une arrivee avancee).
   var conflitEnAttente = null, conflitAccepte = false, conseilPonctuel = '', conseilCourant = null;
   function oublierRetenues() { state.retenues = { pins: {}, parties: [] }; conflitEnAttente = null; conseilPonctuel = ''; }
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; state.heuresPassees = {}; state.arcade = ''; arcades.cle = ''; state.arrivee = ''; arrivees.cle = ''; oublierRetenues(); adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; state.heuresPassees = {}; state.arcade = ''; arcades.cle = ''; state.arrivee = ''; state.avant = []; avantAjoutes = {}; avantOuvert = false; arrivees.cle = ''; oublierRetenues(); adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
   // UNE DEMANDE QUI CHANGE COUPE SON CALCUL EN ROUTE (2026-10-12) : le retour
   // aux activites pendant un calcul, puis un geste. La reponse ne servait
   // plus a rien (la cle de la demande la jetait), mais elle se telechargeait
@@ -2906,6 +2907,7 @@
     return state.selection.map(function (id) {
       var a = activite(id) || {};
       var ligne = { activityId: id };
+      if (state.avant.indexOf(id) >= 0) ligne.avant = true;
       var opt = optionChoisie(a);
       if (a.priceType === 'grid_bowling') ligne.duration = opt ? opt.valeur : 1;
       if (a.priceType === 'grid_laser') ligne.games = opt ? opt.valeur : 1;
@@ -3069,6 +3071,7 @@
   function relacher() {
     if (arriveeEffacee) { state.arrivee = arriveeEffacee; arriveeEffacee = ''; conseilPonctuel = 'Sans cette arrivée, ces heures ne tiennent pas.'; return true; }
     if (Object.keys(state.retenues.pins).length) { state.retenues = { pins: {}, parties: [] }; return true; }
+    if (state.avant.length) { tomberAvant(); conseilPonctuel = 'Pas possible avec ces heures.'; return true; }
     if (state.arrivee) { conseilPonctuel = 'Arrivée à ' + state.arrivee + ' impossible avec ces heures.'; arriveeTombee = state.arrivee; state.arrivee = ''; return true; }
     if (arriveeTombee) { state.arrivee = arriveeTombee; arriveeTombee = ''; conseilPonctuel = ''; }
     return false;
@@ -3977,10 +3980,16 @@
     // le choix de choisir l heure qu ils veulent »). Elle dit toujours celle du
     // plan : choisie dans sa ligne, ou proposee (dix minutes avant la premiere
     // activite, a l heure pile a l ouverture). Rien n attend qu on la touche.
-    var arrivee = bornesVisite().arrivee;
-    liste.unshift({ cle: 'arrivee', id: 'arrivee', partie: 0, compte: 1, rang: -1, label: 'Arrivée', heure: arrivee, etat: state.arrivee ? 'choisi' : arrivee ? 'propose' : 'libre' });
+    // A LA CARTE, PLUS D HEURE D ARRIVEE LIBRE (Ansar, 2026-11-05 : « on a aucune info, c est dans le flou »). Venir plus
+    // tot passe par une activite (lignes « Rendez-vous », rendreAvant). Une formule garde sa ligne quand elle a du libre :
+    // ce qui se fait avant est deja dans son prix, le centre le sait.
+    if (state.onglet === 'formules' && aDuLibre(d)) {
+      var arrivee = bornesVisite().arrivee;
+      liste.unshift({ cle: 'arrivee', id: 'arrivee', partie: 0, compte: 1, rang: -1, label: 'Arrivée', heure: arrivee, etat: state.arrivee ? 'choisi' : arrivee ? 'propose' : 'libre' });
+    }
     return liste;
   }
+  function aDuLibre(d) { return (ancrage(d).freePass || []).some(function (x) { return x.activityId !== 'service_drinks'; }); }
   // La formule a des arcades (son pass).
   function aDesArcades(d) { return state.onglet === 'formules' && (ancrage(d).freePass || []).some(function (x) { return x.activityId === 'arcade_time'; }); }
   // Les arcades dans le plan : { startTime, endTime, minutes, label } a l heure
@@ -4061,7 +4070,7 @@
   }
   function htmlEtapes(etapes, pistes) {
     var laserPose = false;
-    var html = '<div class="fg-prog fg-rise" style="--i:0"><ol class="fg-etapes">';
+    var html = '<div class="fg-prog fg-rise" style="--i:0"><ol class="fg-etapes">' + (etapes.some(function (e) { return e.id === 'arrivee'; }) ? '' : htmlRendezVous());
     etapes.forEach(function (e) {
       var piste = '';
       if (e.partie) { if (!laserPose) { piste = pistes[e.id] || ''; laserPose = true; } }
@@ -4075,6 +4084,216 @@
     });
     return html + '<li class="fg-etape fg-etape--borne fg-etape--fin" aria-hidden="true"><span class="fg-etape__quoi">Fin</span><span class="fg-etape__heure"></span></li></ol></div>';
   }
+  /* --- VENIR PLUS TOT (Ansar, 2026-11-05 : « qu ils soient obliges de choisir une activite ») ---------------
+     Le bowling et le laser ont leur heure ; celui qui vient avant dit ce qu il fait. Le rendez-vous se calcule : assez tot
+     pour faire ce qu il a choisi avant sa premiere activite, sur l heure pleine ou la demie que le moteur accepte. L activite
+     reste une activite libre de la visite, avec son prix ; la marque « avant » la range en tete, ici et dans les mails. */
+  var avantOuvert = false, avantAjoutes = {};
+  function htmlRendezVous() {
+    return '<li class="fg-rdv" hidden><p class="fg-rdv__dit"><span>Rendez-vous</span><b class="fg-rdv__heure"></b></p>'
+      + '<button type="button" class="fg-rdv__plus" data-avant-ouvrir aria-expanded="false" aria-controls="fgAvant" hidden>Venir plus tôt</button>'
+      + '<div class="fg-avant" id="fgAvant" hidden></div></li>';
+  }
+  // La premiere heure de la visite : posee, sinon celle que le plan propose.
+  function premiereHeure() {
+    var heures = [];
+    (ancrage(state.dispo).activities || []).forEach(function (a) {
+      var id = a.activityId;
+      if (id === 'laser_game' && state.laserParts.length) heures = heures.concat(state.laserParts);
+      else if (state.pins[id]) heures.push(state.pins[id]);
+      else { var h = debutsDesParties(state.creneau, id)[0]; if (h) heures.push(h); }
+    });
+    return heures.sort()[0] || '';
+  }
+  function minutesAvantDe(a) {
+    var ar = reglageArcade(a);
+    if (ar) return Number(ar.offer && ar.offer.minutes) || Number(a.defaultMinutes) || 30;
+    if (a.priceType === 'per_unit_hour') return Math.round(reglageBillard(a).hours * 60) || 60;
+    return Number(a.defaultMinutes) || 60;
+  }
+  function minutesDejaAvant() { return state.avant.reduce(function (s, id) { return s + minutesAvantDe(activite(id) || {}); }, 0); }
+  function ouvertureDuJour() { var s = state.dispo && state.dispo.schedule; return s ? Math.round(Number(s.open) * 60) : 0; }
+  // Le rendez-vous pour tout faire avant cette heure : l accueil, le temps de jeu, puis l heure pleine ou la demie d avant.
+  function rendezVousPour(debut, minutes) { return Math.floor((debut - minutes - ACCUEIL) / 30) * 30; }
+  // Ce qui peut se faire avant : les activites libres du centre, ouvertes a ce groupe. Le bowling, le laser et les autres
+  // activites a heure ont leur propre ligne ; une entree a la journee ne se fait pas « avant ».
+  function activitesPourAvant() {
+    return $$('.fg-card[data-activity]', gridAct).map(function (card) {
+      var a = activite(card.dataset.activity);
+      if (!a || /^grid_/.test(a.priceType || '') || a.dayAccess || card.classList.contains('is-off') || card.classList.contains('is-refus') || state.avant.indexOf(a.id) >= 0) return null;
+      return { id: a.id, a: a, minutes: minutesAvantDe(a), deja: state.selection.indexOf(a.id) >= 0 };
+    }).filter(Boolean).sort(function (x, y) { return (y.deja ? 1 : 0) - (x.deja ? 1 : 0) || (x.a.priceType === 'per_unit_hour' ? 1 : 0) - (y.a.priceType === 'per_unit_hour' ? 1 : 0); });
+  }
+  function prixAvant(a) {
+    var ar = reglageArcade(a);
+    if (ar) return euros(Number(ar.offer.price)) + ' / carte';
+    var unite = a.unitLabel ? ' ' + a.unitLabel.replace(/^par /, '/ ') : '';
+    return tarifConnu(a) ? euros(a.priceValue) + unite : 'Prix à l’accueil';
+  }
+  function optionsAvant() {
+    if (state.onglet === 'formules' || !state.creneau) return [];
+    var debut = minutesDe(premiereHeure());
+    if (!debut) return [];
+    var deja = minutesDejaAvant(), ouverture = ouvertureDuJour();
+    return activitesPourAvant().filter(function (o) { return rendezVousPour(debut, deja + o.minutes) >= ouverture; });
+  }
+  function htmlOptionsAvant(options, titre) {
+    return '<p class="fg-avant__titre">' + esc(titre) + '</p><div class="fg-avant__liste">' + options.map(function (o) {
+      var fond = vignette(o.id);
+      var dit = [dureeExacte(o.minutes), o.deja ? 'déjà dans votre visite' : prixAvant(o.a), o.suite ? 'puis ' + nomBas(nomActivite(o.quoi)) + ' à ' + o.suite : ''].filter(Boolean).join(' · ');
+      return '<button type="button" class="fg-avant__choix' + (fond ? ' has-photo' : '') + '" data-avant-choix="' + esc(o.id) + '"' + (o.suite ? ' data-suite="' + esc(o.suite) + '"' : '') + '>'
+        + (fond ? '<span class="fg-avant__photo" style="background-image:url(' + fond + ')"></span>' : '')
+        + '<span class="fg-avant__quoi"><b>' + esc(nomActivite(o.id)) + '</b><small>' + esc(typo(dit)) + '</small></span>'
+        + '<svg class="fg-avant__plus" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
+    }).join('') + '</div>';
+  }
+  // Le haut du programme : l heure de rendez-vous, ce qui se fait avant, le bouton.
+  function majAvant(ol, bornes) {
+    var rdv = $('.fg-rdv', ol);
+    if (!rdv) return;
+    var heure = $('.fg-rdv__heure', rdv), dite = bornes.arrivee || '';
+    if (heure.textContent !== dite) { if (heure.textContent) rejouer(heure, 'is-maj'); heure.textContent = dite; }
+    rdv.hidden = !dite;
+    var parts = state.creneau ? partiesDuPlan(state.creneau).filter(function (p) { return p.avant; }) : [];
+    var signature = parts.map(function (p) { return p.id + '@' + p.debut; }).join('|');
+    if (ol.dataset.avant !== signature) {
+      ol.dataset.avant = signature;
+      $$('.fg-etape--avant', ol).forEach(function (li) { li.remove(); });
+      var apres = rdv;
+      parts.forEach(function (p) {
+        var li = doc.createElement('li'), fond = vignette(p.id), nom = nomActivite(p.id);
+        li.className = 'fg-etape fg-etape--avant' + (fond ? ' has-photo' : '');
+        li.innerHTML = '<div class="fg-avant-tete"><span class="fg-etape__icone"' + (fond ? ' style="--photo:url(' + fond + ')"' : '') + '><svg aria-hidden="true"><use href="#' + icone(p.id) + '"/></svg></span>'
+          + '<span class="fg-etape__quoi"><b>' + esc(nom) + '</b><small>' + esc(typo(dureeExacte(minutesEntre(p.debut, p.fin)) + ' · avant ' + nomBas(nomActivite(premiereActivite())))) + '</small></span>'
+          + '<span class="fg-etape__heure">' + esc(p.debut) + '</span>'
+          + '<button type="button" class="fg-avant-retirer" data-avant-retirer="' + esc(p.id) + '" aria-label="' + esc('Retirer ' + nom) + '"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>';
+        ol.insertBefore(li, apres.nextSibling);
+        apres = li;
+      });
+    }
+    var plus = $('[data-avant-ouvrir]', rdv), panneau = $('.fg-avant', rdv), options = optionsAvant();
+    plus.hidden = !options.length;
+    plus.textContent = state.avant.length ? 'Encore plus tôt' : 'Venir plus tôt';
+    if (!options.length) avantOuvert = false;
+    plus.setAttribute('aria-expanded', String(avantOuvert));
+    panneau.hidden = !avantOuvert;
+    if (avantOuvert) panneau.innerHTML = htmlOptionsAvant(options, 'Que faites-vous avant ?');
+    else panneau.innerHTML = '';
+  }
+  function premiereActivite() {
+    var heure = premiereHeure(), id = '';
+    (ancrage(state.dispo).activities || []).forEach(function (a) {
+      if (id) return;
+      if (state.pins[a.activityId] === heure || debutsDesParties(state.creneau, a.activityId)[0] === heure || state.laserParts[0] === heure) id = a.activityId;
+    });
+    return id || ((ancrage(state.dispo).activities || [])[0] || {}).activityId || '';
+  }
+  function basculerAvant() {
+    avantOuvert = !avantOuvert;
+    var ol = $('.fg-etapes', hourZone);
+    if (ol) majAvant(ol, bornesVisite());
+    posterHauteur();
+  }
+  // Le toucher : l activite entre dans la visite, ses voisines restent a leur heure.
+  function choisirAvant(bouton) {
+    var id = bouton.dataset.avantChoix, boite = bouton.closest('.fg-quand'), ici = boite && boite._ici;
+    if (!activite(id) || !state.dispo) return;
+    var debut = minutesDe(premiereHeure());
+    if (state.selection.indexOf(id) < 0) {
+      basculerActivite($('.fg-card[data-activity="' + id + '"]', gridAct), true);
+      if (state.selection.indexOf(id) < 0) return;
+      avantAjoutes[id] = true;
+    }
+    if (ici) {
+      state.pins[ici.quoi] = bouton.dataset.suite;
+      delete state.heuresPassees[ici.quoi];
+      state.avant.push(id);
+      state.arrivee = ici.t;
+      retenirProposees({ apres: minutesDe(ici.t) + ACCUEIL, touche: { id: ici.quoi, t: bouton.dataset.suite } });
+      boite.remove();
+    } else {
+      retenirProposees({});
+      state.avant.push(id);
+      state.arrivee = hhmm(rendezVousPour(debut, minutesDejaAvant()));
+    }
+    adaptation = null; avantOuvert = false;
+    peindreRendezVous();
+    dire(nomActivite(id) + ' d’abord. Rendez-vous à ' + state.arrivee + '.');
+    chargerPlan();
+  }
+  function peindreRendezVous() {
+    var rdv = $('.fg-rdv', hourZone);
+    if (!rdv) return;
+    var panneau = $('.fg-avant', rdv), plus = $('[data-avant-ouvrir]', rdv), heure = $('.fg-rdv__heure', rdv);
+    panneau.hidden = true; panneau.innerHTML = '';
+    plus.setAttribute('aria-expanded', 'false');
+    if (state.arrivee && heure.textContent !== state.arrivee) { heure.textContent = state.arrivee; rejouer(heure, 'is-maj'); }
+    if (!plus.hidden) plus.focus({ preventScroll: true });
+  }
+  function retirerAvant(id) {
+    var i = state.avant.indexOf(id);
+    if (i < 0) return;
+    var debut = minutesDe(premiereHeure());
+    retenirProposees({});
+    state.avant.splice(i, 1);
+    if (avantAjoutes[id]) {
+      delete avantAjoutes[id];
+      if (state.selection.indexOf(id) >= 0) basculerActivite($('.fg-card[data-activity="' + id + '"]', gridAct), true);
+    }
+    state.arrivee = state.avant.length ? hhmm(rendezVousPour(debut, minutesDejaAvant())) : '';
+    adaptation = null;
+    peindreRendezVous();
+    dire(nomActivite(id) + ' retiré.');
+    chargerPlan();
+  }
+  // Le plan refuse : les activites ajoutees ici repartent, la visite revient a ses heures.
+  function tomberAvant() {
+    state.avant.forEach(function (id) {
+      if (avantAjoutes[id] && state.selection.indexOf(id) >= 0) basculerActivite($('.fg-card[data-activity="' + id + '"]', gridAct), true);
+    });
+    state.avant = []; avantAjoutes = {}; state.arrivee = ''; avantOuvert = false;
+  }
+  // La premiere activite change d heure : le rendez-vous la suit. Plus le temps avant l ouverture : l activite reste dans
+  // la visite, elle se fera apres, et l ecran le dit.
+  function recalerAvant(t) {
+    var debut = minutesDe(premiereHeure()), rendezVous = rendezVousPour(debut, minutesDejaAvant());
+    if (rendezVous >= ouvertureDuJour()) { state.arrivee = hhmm(rendezVous); return; }
+    conseilPonctuel = joindreListe(state.avant.map(nomActivite), ' et ') + ' après : plus le temps avant ' + t + '.';
+    state.avant = []; avantAjoutes = {}; state.arrivee = '';
+  }
+  // UNE HEURE COMPLETE TOUCHEE : venir a cette heure, faire autre chose, puis jouer a la premiere heure libre. Une seule
+  // proposition, sous les raisons, et rien de plus tant qu on ne la touche pas.
+  function optionsIci(idX, T) {
+    var x = (ancrage(state.dispo).activities || []).filter(function (a) { return a.activityId === idX; })[0];
+    return activitesPourAvant().map(function (o) {
+      var suite = premiereLibreApres(x, minutesDe(T) + o.minutes + ACCUEIL);
+      return suite ? Object.assign({}, o, { suite: suite.time, quoi: idX }) : null;
+    }).filter(Boolean);
+  }
+  function proposerAvantIci(idX, T, liste) {
+    if (state.onglet === 'formules' || state.avant.length || state.laserParts.length || !idX || idX === 'arcade_time' || /#[2-9]/.test(String(etapeOuverte || ''))) return;
+    var options = optionsIci(idX, T);
+    if (!options.length) return;
+    var boite = doc.createElement('div');
+    boite.className = 'fg-quand';
+    boite.dataset.pour = idX + '@' + T;
+    boite._ici = { t: T, quoi: idX };
+    boite.innerHTML = '<p class="fg-quand__dit"><b>Venir à ' + esc(T) + ' quand même\u00a0?</b></p>'
+      + '<button type="button" class="fg-libre__action fg-quand__oui" data-avant-ici><b>Faire une autre activité d’abord</b><small>' + esc(typo('Puis ' + nomBas(nomActivite(idX)) + ' dès ' + options.map(function (o) { return o.suite; }).sort()[0])) + '</small></button>';
+    liste.parentNode.insertBefore(boite, liste.nextSibling);
+    posterHauteur();
+  }
+  function ouvrirAvantIci(bouton) {
+    var boite = bouton.closest('.fg-quand'), ici = boite && boite._ici;
+    if (!ici) return;
+    var options = optionsIci(ici.quoi, ici.t);
+    if (!options.length) { boite.remove(); posterHauteur(); return; }
+    boite.innerHTML = '<div class="fg-avant">' + htmlOptionsAvant(options, 'Que faites-vous à ' + ici.t + '\u00a0?') + '</div>';
+    posterHauteur();
+    var premier = $('[data-avant-choix]', boite);
+    if (premier) premier.focus({ preventScroll: true });
+  }
+
   function ouvrirEtape(cle) {
     var partie = function (c) { return Boolean(c) && String(c).indexOf('laser_game#') === 0; };
     var avant = etapeOuverte;
@@ -4156,6 +4375,7 @@
     ol.classList.toggle('has-bornes', Boolean(bornes.arrivee && bornes.fin));
     if ($('.fg-etape[data-cle="arcade_time"]', ol)) detailsEtapes.arcade_time = texteArcades();
     detailsEtapes.arrivee = state.arrivee ? 'À votre heure' : bornes.arrivee ? 'Facultatif' : '';
+    majAvant(ol, bornes);
     etapes.forEach(function (e) {
       var li = $('.fg-etape[data-cle="' + e.cle + '"]', ol);
       if (!li) return;
@@ -4241,7 +4461,8 @@
     $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
     var c = idX && idX !== 'arcade_time' ? candidatQuandMeme(idX, T) : null;
     var liste = sec ? $('.fg-why-list', sec) : null;
-    if (!c || !liste) return;
+    if (!liste) return;
+    if (!c) { proposerAvantIci(idX, T, liste); return; }
     var boite = doc.createElement('div');
     boite.className = 'fg-quand';
     boite.dataset.pour = idX + '@' + T;
@@ -4489,6 +4710,7 @@
     state.retenues = retenues;
   }
   function avancerArriveeSiBesoin(t) {
+    if (state.avant.length) { recalerAvant(t); return; }
     if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;
     state.arrivee = '';
     conseilPonctuel = 'avancee';
@@ -4591,7 +4813,7 @@
   // toucher demande, toutes les heures de cette visite posees d un coup. L arrivee
   // est celle de son plan.
   function poserToutFaire(heures) {
-    state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; adaptation = null; partiesSurPlace = false; etapeTouchee = false;
+    state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; state.avant = []; adaptation = null; partiesSurPlace = false; etapeTouchee = false;
     oublierRetenues();
     etapeOuverte = null;
     Object.keys(heures).forEach(function (k) { if (heures[k]) state.pins[k] = String(heures[k]).slice(0, 5); });
@@ -4627,6 +4849,13 @@
     if (e.target.closest('[data-arrivees]')) { chargerArrivees(); return; }
     var quand = e.target.closest('[data-quand-meme]');
     if (quand) { poserQuandMeme(quand); return; }
+    if (e.target.closest('[data-avant-ouvrir]')) { basculerAvant(); return; }
+    var avantIci = e.target.closest('[data-avant-ici]');
+    if (avantIci) { ouvrirAvantIci(avantIci); return; }
+    var avantChoix = e.target.closest('[data-avant-choix]');
+    if (avantChoix) { choisirAvant(avantChoix); return; }
+    var avantRetire = e.target.closest('[data-avant-retirer]');
+    if (avantRetire) { retirerAvant(avantRetire.dataset.avantRetirer); return; }
     if (e.target.closest('[data-regler]')) {
       var cf = conflitEnAttente;
       if (cf) {
@@ -4822,6 +5051,14 @@
       p.groupes.push({ joueurs: Number(b.players) || 0, debut: String(b.startTime), fin: String(b.endTime || '') });
       p.pistes = Math.max(p.pistes, Number(b.requiredLanes) || 0);
     });
+    // LES ACTIVITES D AVANT, a la suite, depuis l heure de rendez-vous.
+    var curseur = minutesDe(arriveeDe(plan));
+    if (curseur !== null && !isNaN(curseur)) (((cr && cr.reponse && cr.reponse.program) || {}).items || []).forEach(function (it) {
+      if (!it || it.avant !== true) return;
+      var duree = Number(it.minutes) || 0;
+      liste.push({ id: it.activityId, partie: 1, avant: true, pistes: 0, label: String(it.name || ''), groupes: [{ joueurs: Number(it.participants) || 0, debut: hhmm(curseur), fin: hhmm(curseur + duree) }] });
+      curseur += duree;
+    });
     liste.forEach(function (p) {
       p.groupes.sort(function (x, y) { return x.debut.localeCompare(y.debut); });
       p.debut = p.groupes[0].debut;
@@ -4948,7 +5185,7 @@
   // porte sa duree (--m, en minutes) : la hauteur de son bloc en vient. Ni
   // icone ni puce : l heure, la place et la couleur disent ce qu est la ligne.
   // L heure d arrivee que le client a choisie n est plus un conseil.
-  function motArrivee() { return state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
+  function motArrivee() { return state.onglet !== 'formules' ? 'Rendez-vous à' : state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
     return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
@@ -5555,7 +5792,7 @@
     if (arrivee) {
       var premiere = parts.filter(function (p) { return genreCompris(p.id) !== 'table'; })[0];
       var repere = premiere ? premiere.debut : slot.time;
-      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: 'Arrivée' });
+      if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: formule ? 'Arrivée' : 'Rendez-vous' });
     }
     function lignePartie(p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
@@ -5770,7 +6007,7 @@
     // Toutes les poses levees d un coup : le meme geste que « revenir a
     // l heure proposee » d une piste, etendu a toutes. Sans heure posee, le
     // serveur compose sa combinaison par defaut, ou dit qu il n y en a pas.
-    if (e.target.closest('[data-reset-tout]')) { state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; oublierRetenues(); adaptation = null; $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; }); chargerPlan(); return; }
+    if (e.target.closest('[data-reset-tout]')) { state.pins = {}; state.laserParts = []; state.arcade = ''; state.arrivee = ''; state.avant = []; oublierRetenues(); adaptation = null; $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; }); chargerPlan(); return; }
     // « Arriver à 17:50 » : c est choisir cette heure dans la ligne d arrivee
     // (2026-10-21). Le plan ou tout tient se pose, chaque heure reste
     // modifiable (le dernier choix gagne). Les arcades n y ont pas d heure.
@@ -6973,7 +7210,7 @@
     var quoi = nomsChoisis();
     var repFin = (state.creneau || {}).reponse || {};
     var itemsFin = r.program && r.program.items ? r.program.items : (repFin.program && repFin.program.items) || [];
-    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + (it.arcadeOffer || it.extraLaser ? ' · ' + detailLigne(it) : '') + ')'; }).join(' + ');
+    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.slice().sort(function (x, y) { return (y.avant === true ? 1 : 0) - (x.avant === true ? 1 : 0); }).map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + (it.arcadeOffer || it.extraLaser ? ' · ' + detailLigne(it) : '') + ')'; }).join(' + ');
     var prixComplet = !repFin.program || repFin.program.priceComplete !== false;
     var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];

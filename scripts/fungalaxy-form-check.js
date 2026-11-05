@@ -713,8 +713,10 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // 5,7 Ko de marge, la meme regle : une police (20 Ko compresses) ou une
 // bibliotheque font toujours sauter l un et l autre. 2026-11-05 : 356 Ko, le
 // formulaire signale ses erreurs a la Tour de controle (signaler, 1,3 Ko).
-const BUDGET_SERVI = 356 * 1024;
-const BUDGET_TRANSFERE = 104 * 1024;
+// 2026-11-05, « Venir plus tot » : 365,3 et 106,1 Ko mesures, plafonds 368 et
+// 108 Ko, pour une fonction qui remplace l heure d arrivee libre a la carte.
+const BUDGET_SERVI = 368 * 1024;
+const BUDGET_TRANSFERE = 108 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -1424,7 +1426,7 @@ async function lireProgramme(page) {
     // l arrivee du plan.
     lignes: Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]:not([data-cle="arrivee"])')).map((li) => ({ cle: li.dataset.cle, heure: li.querySelector('.fg-etape__heure').dataset.mot || '', etat: ['choisi', 'propose', 'vide', 'surplace'].find((k) => li.classList.contains('is-' + k)) || '' })),
     ouvertes: Array.from(document.querySelectorAll('#hourZone .fg-etape.is-open')).map((li) => li.dataset.cle),
-    arrivee: (() => { const mot = (document.querySelector('#hourZone .fg-etape[data-cle="arrivee"] .fg-etape__heure') || { dataset: {} }).dataset.mot || ''; return /^\d\d:\d\d$/.test(mot) ? mot : ''; })(),
+    arrivee: (() => { const mot = (document.querySelector('#hourZone .fg-etape[data-cle="arrivee"] .fg-etape__heure') || { dataset: {} }).dataset.mot || (document.querySelector('#hourZone .fg-rdv__heure') || {}).textContent || ''; return /^\d\d:\d\d$/.test(mot) ? mot : ''; })(),
     fin: ((document.querySelector('#hourZone .fg-etape--fin .fg-etape__heure') || {}).textContent || '').trim(),
   }));
 }
@@ -2972,8 +2974,8 @@ async function main() {
     ok(/dans la foulée/.test((recap.items[1] || {}).detail || '') === (partiesO6 < 2), '[E] la partie de laser que le plan ne pose pas est annoncee « dans la foulee »', `${partiesO6}/2 posee(s) : « ${(recap.items[1] || {}).detail} »`);
     const debutDe = (id) => (o6.blocs.find((b) => b.id === id) || {}).t;
     ok((recap.items[0] || {}).aside === `Début${debutDe('bowling')}` && (recap.items[1] || {}).aside === `Début${debutDe('laser_game')}` && recap.items.slice(2).every((i) => i.aside === 'à votre rythme'), '[E] chaque activite a creneau porte l heure du plan, les libres « a votre rythme »', recap.items.map((i) => i.aside).join(' | '));
-    const ligneArrivee = recap.lignes.find((l) => /^Arrivée conseillée/.test(l)) || '';
-    ok(ligneArrivee === `Arrivée conseillée à ${o6.arrivee}${o6.fermeture ? `, jusqu’à la fermeture (${heureAffichee(o6.fin)})` : `, fin vers ${heureAffichee(o6.fin)}`}${surPlaceAttendu(o6.arrivee, o6.fin)}`, '[E] l arrivee, la fin (ici : jusqu a la fermeture) et la duree sur place sont celles de la reponse', ligneArrivee);
+    const ligneArrivee = recap.lignes.find((l) => /^Rendez-vous à/.test(l)) || '';
+    ok(ligneArrivee === `Rendez-vous à ${o6.arrivee}${o6.fermeture ? `, jusqu’à la fermeture (${heureAffichee(o6.fin)})` : `, fin vers ${heureAffichee(o6.fin)}`}${surPlaceAttendu(o6.arrivee, o6.fin)}`, '[E] l arrivee, la fin (ici : jusqu a la fermeture) et la duree sur place sont celles de la reponse', ligneArrivee);
     ok(recap.lignes[0] && recap.lignes[0].indexOf(jourLong(mock.DATE)) === 0 && recap.lignes[1] === '6 personnes', '[E] date et groupe en tete', recap.lignes.slice(0, 2).join(' | '));
     // LE CENTRE EN TETE DU RECAPITULATIF (Ansar, 2026-11-04) : son nom et son adresse, avant de valider.
     const lieuRecap = await page.evaluate(() => { const l = document.querySelector('#recap .fg-recap__lieu'); return l ? l.textContent.replace(/\s+/g, ' ').trim() : ''; });
@@ -3025,7 +3027,7 @@ async function main() {
     // programme nomme chaque activite choisie.
     ok(/La confirmation part à qa@example\.com\./.test(fin), '[E] l ecran final ne promet l e-mail que parce que la reponse le met en file', fin.slice(0, 200));
     const arriveeFin = (corps.opsPlan || {}).arrivalTime;
-    ok(Boolean(arriveeFin) && fin.indexOf(`Arrivée conseillée à ${arriveeFin}.`) >= 0, '[E] l ecran final donne l heure d arrivee du plan rendu', arriveeFin || 'plan sans arrivee');
+    ok(Boolean(arriveeFin) && fin.indexOf(`Rendez-vous à ${arriveeFin}.`) >= 0, '[E] l ecran final donne l heure d arrivee du plan rendu', arriveeFin || 'plan sans arrivee');
     const iProg = fin.indexOf('Au programme : ');
     ok(iProg >= 0 && PROGRAMME.every((p) => fin.indexOf(nomDe(p.activityId), iProg) > iProg), '[E] l ecran final nomme chaque activite choisie', fin.slice(iProg, iProg + 120));
     // LES PHOTOS NE CHANGENT PAS PENDANT LA RESERVATION (« pour chaque
@@ -3963,7 +3965,7 @@ async function main() {
     await pageJ.click('#goRecap');
     ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[J] ecran 5 atteint');
     await passerLaVitrine(pageJ);
-    const ligneJ = await pageJ.evaluate(() => (Array.from(document.querySelectorAll('#recap .fg-recap__row')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((l) => /^Arrivée conseillée/.test(l)) || ''));
+    const ligneJ = await pageJ.evaluate(() => (Array.from(document.querySelectorAll('#recap .fg-recap__row')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((l) => /^Rendez-vous à/.test(l)) || ''));
     ok(ligneJ.indexOf(`${attendueDuree} sur place`) >= 0,
       '[J] et le recapitulatif annonce exactement la meme duree', `« ${ligneJ} » attendait « ${attendueDuree} sur place »`);
     // LES GROUPES AU RECAPITULATIF (vu en prod le 2026-09-23 : « Debut 11:00 »,

@@ -198,9 +198,11 @@
   function gpLibres(g) {
     var r = g.r;
     var items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
-    var lignes = [];
+    var lignes = [], avant = [];
     items.forEach(function (it) {
       if (!it || it.planned !== false || it.waitOffer) return;
+      var posee = typeof getEtapeAvant === 'function' ? getEtapeAvant(r, it) : null;
+      if (posee) { avant.push({ l: { id: it.activityId, nom: nomActivite(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 }, start: timeToNum(posee.startTime), end: timeToNum(posee.endTime) }); return; }
       lignes.push({ id: it.activityId, nom: nomActivite(it), minutes: gpMinutes(it.activityId, it), journee: ligneALaJournee(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 });
     });
     // Une formule suivie : ses activites sans heure que le programme ne porte pas.
@@ -243,7 +245,7 @@
       }
       if (debut !== null) places.push({ l: l, start: debut, end: fin });
     });
-    return { places: places, servis: servis };
+    return { places: avant.concat(places), servis: servis };
   }
 
   // APRES MINUIT, LA SOIREE CONTINUE : la console reste sur la veille jusqu a

@@ -13069,9 +13069,17 @@ function getStaffFormulaTimedItems(reservation) {
 // quand du coup ? ») : une activite libre ne prend qu un trou qui la contient
 // tout entiere, comme le moteur (lib/ops-engine.js, rangerLeLibre). Deux
 // attentes de 35 min ne portent pas un minigolf de 45.
+function getEtapeAvant(reservation, item) {
+  if (!item || item.avant !== true) return null;
+  const pas = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
+  return pas.find(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime && step.endTime) || null;
+}
 function getVisiteLibreApres(reservation, windows) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
-  const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item));
+  const posees = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
+  const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item)
+    // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin.
+    && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime)));
   const durees = libres.map(item => Math.max(0, Math.round(Number(item.minutes) || 0))).filter(duree => duree > 0);
   const minutes = durees.reduce((total, duree) => total + duree, 0);
   if (!minutes) return 0;
@@ -25488,19 +25496,24 @@ function getGroupeProgramme(r) {
       coche: `laser_game-${partie}`,
     }));
   const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
-  items.filter(item => !item.planned && !item.waitOffer).forEach((item, index) => etapes.push({
-    cle: `libre-${index}`,
-    activityId: item.activityId,
-    nom: nomActivite(item),
-    quoi: detailLigneProgramme(item, r),
-    ou: '',
-    groupe: '',
-    start: null,
-    end: null,
-    libre: true,
-    fait: faite(`libre-${item.activityId}`),
-    coche: `libre-${item.activityId}`,
-  }));
+  // « Venir plus tot » (2026-11-05) : ce que le groupe fait avant sa premiere activite a heure, a l heure que le plan lui
+  // donne. L equipe sait ce qu il vient faire.
+  items.filter(item => !item.planned && !item.waitOffer).forEach((item, index) => {
+    const avant = getEtapeAvant(r, item);
+    etapes.push({
+      cle: `libre-${index}`,
+      activityId: item.activityId,
+      nom: nomActivite(item),
+      quoi: avant ? [detailLigneProgramme(item, r), 'avant le reste de la visite'].filter(Boolean).join(' · ') : detailLigneProgramme(item, r),
+      ou: '',
+      groupe: '',
+      start: avant ? timeToNum(avant.startTime) : null,
+      end: avant ? timeToNum(avant.endTime) : null,
+      libre: !avant,
+      fait: faite(`libre-${item.activityId}`),
+      coche: `libre-${item.activityId}`,
+    });
+  });
   const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
   return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
 }

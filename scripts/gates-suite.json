@@ -204,6 +204,7 @@
     "test:centres-dissocies",
     "test:console-centre",
     "test:tour-controle",
+    "test:venir-plus-tot",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

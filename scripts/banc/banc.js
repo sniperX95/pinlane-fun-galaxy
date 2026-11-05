@@ -2,13 +2,14 @@
 'use strict';
 const path = require('path');
 const WT = path.resolve(__dirname, '..', '..');
-const { chromium } = require(path.join(WT, 'node_modules/playwright-core'));
+const { chromium, webkit } = require(path.join(WT, 'node_modules/playwright-core'));
 const BROWSER = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 async function attendre(page, fn, ms, arg) { try { await page.waitForFunction(fn, arg, { timeout: ms || 8000 }); return true; } catch (e) { return false; } }
-const lancer = () => chromium.launch({ executablePath: BROWSER, headless: true });
-async function ouvrir(browser, { base = 'http://127.0.0.1:4377', centre = 'libramont', date = '2026-11-07', pax = 8, formule, choix, activities, w = 390, h = 844, avantHeures }) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 700, deviceScaleFactor: w < 700 ? 2 : 1 });
+// ROBOT_MOTEUR=webkit : le moteur de Safari, celui de tous les iPhone.
+const lancer = () => (process.env.ROBOT_MOTEUR === 'webkit' ? webkit.launch({ headless: true }) : chromium.launch({ executablePath: BROWSER, headless: true }));
+async function ouvrir(browser, { base = 'http://127.0.0.1:4377', centre = 'libramont', date = '2026-11-07', pax = 8, formule, choix, activities, w = 390, h = 844, contexte, avantHeures }) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 700, deviceScaleFactor: w < 700 ? 2 : 1, ...(contexte || {}) });
   const page = await ctx.newPage();
   page.setDefaultTimeout(9000);
   page.__erreurs = []; browser.__dernierePage = page;

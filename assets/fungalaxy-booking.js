@@ -858,6 +858,8 @@
   var activityDialog, infoOpener, infoResizeObserver, infoCentreDemande = false;
   doc.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-activity-info], [data-formula-info]');
+    // Toute la rangee ouvre le detail, pas seulement le petit (i).
+    if (!btn) { var rangeeInfo = e.target.closest('.fg-card__info'); if (rangeeInfo && !e.target.closest('input, label, a, button')) btn = $('[data-activity-info], [data-formula-info]', rangeeInfo); }
     if (!btn) return;
     e.preventDefault(); e.stopPropagation();
     if (btn.dataset.formulaInfo && gridFor.contains(btn)) {
@@ -4317,11 +4319,11 @@
     posterHauteur();
   }
   function changerRendezVous() {
-    if (state.avant.length) { if (!avantHeuresOuvert) basculerHeuresAvant(); return; }
+    if (state.avant.length) { basculerHeuresAvant(); return; }
     var premiere = $('.fg-etape[data-cle]:not(.fg-etape--avant):not(.fg-etape--borne)', hourZone);
     if (!premiere) return;
     etapeTouchee = true;
-    if (!premiere.classList.contains('is-open')) ouvrirEtape(premiere.dataset.cle);
+    ouvrirEtape(premiere.classList.contains('is-open') ? null : premiere.dataset.cle);
   }
   function revenirHeureAvant() {
     var debut = minutesDe(premiereHeure());
@@ -7627,6 +7629,9 @@
         // vaut pour CE centre (la liste est tenue centre par centre).
         var nomOffres = meta.center && meta.center.name ? String(meta.center.name) : '';
         if (nomOffres) $$('[data-centre-nom]').forEach(function (el) { el.textContent = (/^[aeiouyhàâäéèêëîïôöûü]/i.test(nomOffres) ? 'd’' : 'de ') + nomOffres; });
+        // A qui ecrire pour ses donnees : l adresse du centre, sinon la phrase ne se montre pas.
+        var mailDonnees = String((meta.center && meta.center.contact && meta.center.contact.email) || '');
+        if (/^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i.test(mailDonnees)) { var lienDonnees = $('#donneesMail'); if (lienDonnees) { lienDonnees.textContent = mailDonnees; lienDonnees.href = 'mailto:' + mailDonnees; lienDonnees.parentElement.hidden = false; } }
         // LE CENTRE SE VOIT TOUT LE TEMPS (Ansar, 2026-11-04, lancement sur deux centres) : le
         // client ne doit jamais douter de l endroit ou il reserve.
         var villeCentre = String(meta.center && meta.center.city || '').trim() || nomOffres;

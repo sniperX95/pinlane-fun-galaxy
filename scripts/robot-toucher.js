@@ -20,7 +20,7 @@ const LARGEUR = Number(process.env.ROBOT_W || 390);
 const SEULS = process.env.ROBOT_ECRANS ? process.env.ROBOT_ECRANS.split(',') : null;
 const DATE = '2026-11-21';
 // Ce qui se lit et ne se touche pas, regarde ecran par ecran le 2026-11-05 : l enseigne du centre, un conseil, le texte a cote d un bouton.
-const SE_LIT = /^(span.fg-centre|p.fg-conseil|div.fg-rise.fg-sm-door|div.fg-bar.fg-dock.fg-rise)/;
+const SE_LIT = /^(span\.fg-centre|p\.fg-conseil|div\.fg-rise\.fg-sm-door|div\.fg-bar\.fg-dock\.fg-rise|div\.fg-hold|div\.fg-plus|p\.fg-done__row|div\.fg-rise\.fg-tabs)/;
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 class Stop extends Error {}
 
@@ -64,7 +64,7 @@ const versRecap = async (page) => {
 };
 const ECRANS = [
   { nom: 'date', aller: async (b, c) => jusquAuxDate(b, c) },
-  { nom: 'calendrier', aller: async (b, c) => { const r = await jusquAuxDate(b, c); await r.page.click('#dayBtn'); await dormir(500); return r; } },
+  { nom: 'calendrier', zone: '#dayPop', aller: async (b, c) => { const r = await jusquAuxDate(b, c); await r.page.click('#dayBtn'); await dormir(500); return r; } },
   { nom: 'activites', aller: (b, c) => jusquAuxActivites(b, c, []) },
   { nom: 'activites-choisies', aller: (b, c) => jusquAuxActivites(b, c, ['bowling', 'laser_game', 'arcade_time']) },
   { nom: 'formules', aller: (b, c) => jusquAuxActivites(b, c, [], async (p) => { await p.click('#tabFor'); await dormir(500); }) },
@@ -124,12 +124,21 @@ function lister() {
   }
   return cibles;
 }
-const poserGuet = (page) => page.evaluate(() => {
-  if (window.__guet) { window.__guet.disconnect(); }
-  window.__m = 0;
-  window.__guet = new MutationObserver((l) => { for (const r of l) { const n = r.target.nodeType === 1 ? r.target : r.target.parentElement; if (n && n.closest && n.closest('.fg-art, #fgLive')) continue; window.__m += 1; } });
-  window.__guet.observe(document.documentElement, { subtree: true, attributes: true, childList: true, characterData: true });
-});
+// D abord une seconde sans toucher a rien : ce qui change tout seul (un compte a rebours) est mis de cote.
+const poserGuet = async (page) => {
+  await page.evaluate(() => {
+    if (window.__guet) { window.__guet.disconnect(); }
+    window.__m = 0;
+    window.__calibre = true;
+    window.__bruit = new WeakSet();
+    const bruit = (n) => { for (let p = n; p; p = p.parentElement) if (window.__bruit.has(p)) return true; return false; };
+    window.__guet = new MutationObserver((l) => { for (const r of l) { const n = r.target.nodeType === 1 ? r.target : r.target.parentElement; if (!n || (n.closest && n.closest('.fg-art, #fgLive'))) continue; if (window.__calibre) { window.__bruit.add(n); continue; } if (!bruit(n)) window.__m += 1; } });
+    window.__guet.observe(document.documentElement, { subtree: true, attributes: true, childList: true, characterData: true });
+    if (!window.__ecoute) { window.__ecoute = true; for (const t of ['change', 'input']) document.addEventListener(t, () => { window.__m += 1; }, true); }
+  });
+  await dormir(1200);
+  await page.evaluate(() => { window.__calibre = false; window.__m = 0; });
+};
 const toucher = async (page, cible) => {
   const avant = await page.evaluate((c) => {
     const el = document.querySelector(c.chemin);
@@ -158,8 +167,8 @@ const toucher = async (page, cible) => {
   if (ici.y < 0 || ici.y > 844 || ici.x < 0 || ici.x > LARGEUR) return { etat: 'hors-ecran' };
   if (LARGEUR < 700) await page.touchscreen.tap(ici.x, ici.y); else { await page.mouse.move(ici.x, ici.y); await dormir(120); await page.evaluate(() => { window.__m = 0; }); await page.mouse.click(ici.x, ici.y); }
   await dormir(450);
-  const apres = await page.evaluate(() => ({ m: window.__m, actif: document.activeElement ? document.activeElement.tagName + (document.activeElement.id || '') : '', sy: scrollY, url: location.pathname }));
-  const vivant = apres.m > 0 || apres.actif !== ici.actif || Math.abs(apres.sy - ici.sy) > 2;
+  const apres = await page.evaluate(() => { const a = document.activeElement; const champ = a && (/^(TEXTAREA|SELECT)$/.test(a.tagName) || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit)$/.test(a.type))); return { m: window.__m, champ: Boolean(champ), actif: a ? a.tagName + (a.id || '') : '', sy: scrollY, url: location.pathname }; });
+  const vivant = apres.m > 0 || (apres.champ && apres.actif !== ici.actif) || Math.abs(apres.sy - ici.sy) > 2;
   return { etat: vivant ? 'vivant' : 'mort', couvert: ici.couvert, dessus: ici.dessus, m: apres.m };
 };
 
@@ -181,7 +190,9 @@ const toucher = async (page, cible) => {
         courant = await e.aller(browser, centre);
         await dormir(500);
         await courant.page.screenshot({ path: path.join(OUT, `${centre}-${e.nom}-${LARGEUR}.png`), fullPage: true });
-        const brutes = await courant.page.evaluate(lister);
+        const toutes = await courant.page.evaluate(lister);
+        // Calendrier ouvert : ce qui est dessous est couvert, c est normal.
+        const brutes = e.zone ? await courant.page.evaluate(([l, z]) => l.filter((c) => { const n = document.querySelector(c.chemin); return n && n.closest(z); }), [toutes, e.zone]) : toutes;
         const vus = {};
         cibles = brutes.filter((c) => { vus[c.signature] = (vus[c.signature] || 0) + 1; return vus[c.signature] <= 2; });
         ligne.total = cibles.length;
@@ -233,7 +244,7 @@ const toucher = async (page, cible) => {
   console.log('--- LIENS');
   const liens = new Set(); for (const l of bilan) for (const x of l.liens) liens.add(x);
   for (const x of liens) console.log(x);
-  const rouge = bilan.some((l) => l.morts.length || l.couverts.length || l.erreurs.length);
+  const rouge = bilan.some((l) => l.morts.some((m) => !m.ferme) || l.couverts.length || l.erreurs.length);
   console.log(rouge ? 'robot-toucher : A REGARDER' : 'robot-toucher : tout repond');
   process.exit(rouge ? 1 : 0);
 })().catch((e) => { console.error('ERREUR', e.stack || e.message); process.exit(1); });

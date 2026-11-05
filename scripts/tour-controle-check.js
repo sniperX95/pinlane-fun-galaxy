@@ -299,7 +299,7 @@ async function preuvesServeur() {
   BD.mails = BD.mails.filter((m) => m.id !== 99901);
   ok(a('mail:attente:libramont'), '[P] un mail coince depuis plus de 30 min se dit');
   ok(a('mail:bounced:libramont'), '[P] un mail revenu se dit');
-  ok(a('secours:sans-adresse:gembloux') && a('secours:sans-adresse:gembloux').gravite === 'critique', '[P] Gembloux sans adresse de secours est urgent');
+  ok(a('secours:sans-adresse:gembloux') && a('secours:sans-adresse:gembloux').gravite === 'attention', '[P] Gembloux sans adresse de secours se dit, a regarder : un choix d Ansar, pas une panne');
   ok(!a('secours:sans-adresse:libramont'), '[P] Libramont a la sienne : rien');
   ok(a('base:fabriquees:gembloux'), '[P] les reservations d essai qui occupent des places se disent');
   ok(!a('tache:'), '[P] temoin : toutes les gardes sont a l heure, rien', problemes.filter((x) => x.cle.startsWith('tache:')).map((x) => x.titre));
@@ -564,6 +564,26 @@ const ouvrirParLeMenu = async (page) => {
 
 async function jouerConsole(browser) {
   remettre();
+  // Ajouter une adresse (Ansar : « reglable met rien pour le moment mais on pzeut add ») : de vrais clics, jusqu au champ, sur le bon centre.
+  {
+    const vue = await ouvrirConsole(browser);
+    await ouvrirParLeMenu(vue.page);
+    await vue.page.waitForSelector('[data-tour-secours="gembloux"]', { timeout: 15000 });
+    ok(await vue.page.locator('[data-tour-secours="libramont"]').count() === 0, '[U] un centre qui a son adresse n a pas le bouton');
+    await vue.page.click('[data-tour-secours="gembloux"]');
+    await vue.page.waitForFunction(() => document.activeElement && document.activeElement.id === 'estab-secours-emails', null, { timeout: 8000 }).catch(() => {});
+    await vue.page.waitForTimeout(800);
+    const lire = () => vue.page.evaluate(() => { const b = document.getElementById('estabSaveBtn'); return { page: state.staffMenuPage, centre: state.establishmentCenterId, onglet: state.establishmentTab, sauve: b ? b.getAttribute('onclick') : '', focus: document.activeElement && document.activeElement.id }; });
+    const depuisTour = await lire();
+    ok(depuisTour.page === 'establishment' && depuisTour.centre === 'gembloux' && depuisTour.onglet === 'regles' && /gembloux/.test(depuisTour.sauve) && depuisTour.focus === 'estab-secours-emails', '[U] « Ajouter une adresse » ouvre le champ de CE centre, pret a ecrire, et le curseur y reste', depuisTour);
+    await vue.page.evaluate(() => { state.establishmentEditing = false; state.establishmentCenterId = 'libramont'; state.staffMenuPage = 'secours'; setView('staff'); if (typeof renderStaff === 'function') renderStaff(); });
+    await vue.page.waitForSelector('[data-secours-ajouter]', { timeout: 15000 });
+    await vue.page.click('[data-secours-ajouter]');
+    await vue.page.waitForFunction(() => document.activeElement && document.activeElement.id === 'estab-secours-emails', null, { timeout: 8000 }).catch(() => {});
+    const depuisSecours = await lire();
+    ok(depuisSecours.page === 'establishment' && depuisSecours.focus === 'estab-secours-emails' && /libramont/.test(depuisSecours.sauve), '[U] la page Secours mene au meme champ, sur le centre affiche', depuisSecours);
+    await vue.ctx.close();
+  }
   // La serie des revenus : une reponse sans jours ne relance pas la lecture en boucle (84 lectures par seconde, ecran fige, vu par le robot du toucher).
   {
     const dash = await ouvrirConsole(browser);

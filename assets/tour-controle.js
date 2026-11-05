@@ -78,7 +78,7 @@
     return centres.map((c) => {
       const secours = c.secours || {};
       const envoi = !secours.adresses
-        ? '<span class="tour-mauvais">Aucune adresse de secours.</span>'
+        ? '<span class="tour-attention">Aucune adresse de secours.</span>'
         : `Planning de secours envoyé ${secours.derniere ? `le ${esc(jourCourt(secours.derniere))} à ${esc(heure(secours.derniere))}` : 'pas encore'}, à ${secours.adresses} ${secours.adresses > 1 ? 'adresses' : 'adresse'}.`;
       const choisi = tour.filtres.centre === c.id;
       return `<div class="tour-bloc-centre${choisi ? ' is-choisi' : ''}" data-tour-centre="${esc(c.id)}">
@@ -89,6 +89,7 @@
         ${c.aValider ? `<span class="tour-attention">${c.aValider} à valider.</span>` : ''}
         <span>${envoi}</span>
         <div class="tour-bloc-gestes">
+          ${secours.adresses ? '' : `<button type="button" class="pv2-btn ghost" data-tour-secours="${esc(c.id)}">Ajouter une adresse</button>`}
           <button type="button" class="pv2-btn ghost" data-tour-filtrer="${esc(c.id)}" aria-pressed="${choisi}">${choisi ? 'Voir tous les centres' : 'Voir ce centre seulement'}</button>
           <button type="button" class="pv2-btn ghost" data-tour-couper="${esc(c.id)}" data-actif="${c.formulaireActif ? '0' : '1'}">${c.formulaireActif ? 'Couper la réservation en ligne' : 'Remettre la réservation en ligne'}</button>
         </div>
@@ -329,6 +330,11 @@
       const couper = e.target.closest('[data-tour-couper]');
       if (couper) {
         basculerCentre(couper.getAttribute('data-tour-couper'), couper.getAttribute('data-actif') === '1');
+        return;
+      }
+      const secoursCentre = e.target.closest('[data-tour-secours]');
+      if (secoursCentre) {
+        if (typeof ouvrirReglageSecours === 'function') ouvrirReglageSecours(secoursCentre.getAttribute('data-tour-secours'));
         return;
       }
       const centre = e.target.closest('[data-tour-filtrer]');

@@ -14195,6 +14195,30 @@ function getEstablishmentCenter() {
   return centers.find(center => center.id === state.establishmentCenterId) || centers[0];
 }
 
+// Ajouter une adresse de secours : le chemin direct, depuis la Tour ou la page Secours. Le champ s ouvre sur le bon centre, pret a ecrire.
+function ouvrirReglageSecours(centerId) {
+  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  state.establishmentCenterId = centerId || getCurrentStaffCenterId();
+  state.establishmentTab = 'regles';
+  state.establishmentEditing = false;
+  save();
+  const entree = document.querySelector('[data-fgx-menu-key="establishment"]');
+  if (entree) entree.click();
+  let essais = 0;
+  const poser = () => {
+    if (state.staffMenuPage !== 'establishment') { if (essais++ < 40) setTimeout(poser, 100); return; }
+    const center = getEstablishmentCenter();
+    if (!center || center.id !== state.establishmentCenterId) { if (essais++ < 40) setTimeout(poser, 100); return; }
+    if (!state.establishmentEditing) startEstablishmentEdit();
+    setEstablishmentTab('regles');
+    const champ = document.getElementById('estab-secours-emails');
+    if (!champ) { if (essais++ < 40) setTimeout(poser, 100); return; }
+    champ.scrollIntoView({ block: 'center' });
+    champ.focus();
+  };
+  setTimeout(poser, 0);
+}
+
 function selectEstablishmentCenter(id) {
   state.establishmentCenterId = id;
   state.establishmentEditing = false;
@@ -15138,7 +15162,7 @@ function renderStaffUtilitySecours() {
         <div class="sec-tete"><h3>Boîte de secours</h3>${etat(emails.length > 0, emails.length ? 'En place' : 'Aucune adresse')}</div>
         ${emails.length
           ? `<div class="sec-adresses">${emails.map(e => `<span class="estab-tag">${escapeHtml(e)}</span>`).join('')}</div>`
-          : '<p class="sec-vide">Rien ne part encore en dehors de Pinlane. Ajoutez une adresse dans Établissement &gt; Règles.</p>'}
+          : `<p class="sec-vide">Rien ne part encore en dehors de Pinlane.${canUseStaffPermission('settings.manage') ? '' : ' La direction peut ajouter une adresse dans Établissement.'}</p>${canUseStaffPermission('settings.manage') ? '<button type="button" class="btn btn-secondary" data-secours-ajouter onclick="ouvrirReglageSecours()">Ajouter une adresse</button>' : ''}`}
         <div class="sec-lignes">
           ${ligne('Copie de chaque réservation', emails.length ? 'à chaque création' : 'pas d’adresse')}
           ${ligne('Feuille du jour', envois.derniere ? escapeHtml(secoursQuand(envois.derniere)) : 'jamais', '8 h, 13 h, 17 h et à chaque changement')}

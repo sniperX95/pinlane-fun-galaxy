@@ -4211,6 +4211,7 @@
       state.arrivee = ici.t;
       retenirProposees({ apres: minutesDe(ici.t) + ACCUEIL, touche: { id: ici.quoi, t: bouton.dataset.suite } });
       boite.remove();
+      etapeOuverte = null; etapeTouchee = false;
     } else {
       retenirProposees({});
       state.avant.push(id);

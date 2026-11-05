@@ -348,6 +348,7 @@ function fonction(fichier, debut, fin, contexte) {
     const venu = await lire(page);
     ok(venu.rdv === '16:00' && /^Minigolf Blacklight 16:00/.test(venu.lignes[0]) && /^Bowling 17:00/.test(venu.lignes[1]), '[F] il vient a 16:00, joue au minigolf, puis au bowling a 17:00', venu);
     ok(await page.evaluate(() => document.querySelectorAll('.fg-quand').length === 0), '[F] la proposition s en va');
+    ok(await page.evaluate(() => document.querySelectorAll('.fg-etape.is-open').length === 0), '[F] toutes les heures sont posees : les lignes se referment');
     ok(page.erreurs.length === 0, '[F] aucune erreur de page', page.erreurs);
     await ctx.close();
 

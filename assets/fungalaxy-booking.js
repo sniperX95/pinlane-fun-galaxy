@@ -4162,7 +4162,8 @@
       var apres = rdv;
       parts.forEach(function (p) {
         var li = doc.createElement('li'), fond = vignette(p.id), nom = nomActivite(p.id);
-        li.className = 'fg-etape fg-etape--avant' + (fond ? ' has-photo' : '');
+        li.classList.add('fg-etape', 'fg-etape--avant');
+        if (fond) li.classList.add('has-photo');
         li.innerHTML = '<div class="fg-avant-tete"><span class="fg-etape__icone"' + (fond ? ' style="--photo:url(' + fond + ')"' : '') + '><svg aria-hidden="true"><use href="#' + icone(p.id) + '"/></svg></span>'
           + '<span class="fg-etape__quoi"><b>' + esc(nom) + '</b><small>' + esc(typo(dureeExacte(minutesEntre(p.debut, p.fin)) + ' · avant ' + nomBas(nomActivite(premiereActivite())))) + '</small></span>'
           + '<span class="fg-etape__heure">' + esc(p.debut) + '</span>'

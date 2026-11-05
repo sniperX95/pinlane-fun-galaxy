@@ -584,6 +584,18 @@ async function jouerConsole(browser) {
     ok(depuisSecours.page === 'establishment' && depuisSecours.focus === 'estab-secours-emails' && /libramont/.test(depuisSecours.sauve), '[U] la page Secours mene au meme champ, sur le centre affiche', depuisSecours);
     await vue.ctx.close();
   }
+  // Ouverte dans un onglet cache : elle se lit des qu on revient, sans attendre le prochain passage.
+  {
+    const cachee = await ouvrirConsole(browser);
+    await cachee.page.evaluate(() => { window.__cache = true; Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__cache === true }); });
+    await ouvrirParLeMenu(cachee.page);
+    await cachee.page.waitForTimeout(600);
+    ok(await cachee.page.locator('[data-tour-secours]').count() === 0, '[U] cachee, elle ne lit rien');
+    await cachee.page.evaluate(() => { window.__cache = false; document.dispatchEvent(new Event('visibilitychange')); });
+    const revenue = await cachee.page.waitForSelector('[data-tour-secours="gembloux"]', { timeout: 4000 }).then(() => true).catch(() => false);
+    ok(revenue, '[U] revenir sur l onglet la lit tout de suite');
+    await cachee.ctx.close();
+  }
   // La serie des revenus : une reponse sans jours ne relance pas la lecture en boucle (84 lectures par seconde, ecran fige, vu par le robot du toucher).
   {
     const dash = await ouvrirConsole(browser);

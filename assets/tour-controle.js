@@ -368,6 +368,10 @@
     tour.racine = racine;
     brancher(racine);
     peindre();
+    if (!tour.surRetour) {
+      tour.surRetour = true;
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && tour.minuteur) charger(); });
+    }
     if (!tour.minuteur) {
       charger(true);
       tour.minuteur = setInterval(charger, CADENCE_MS);

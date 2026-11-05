@@ -4816,9 +4816,19 @@ async function main() {
     await attendre(pnd, () => window.scrollY === 0, 3000);
     await auRepos(pnd);
     await dormir(300);
-    const bd = await lireBarre(pnd);
-    ok(Boolean(bd) && bd.haut > bd.vh, 'MONTAGE [N] 1440x900 : la place de la barre est sous l ecran (suivre changerait quelque chose)', JSON.stringify(bd));
-    ok(aSaPlace(bd), '[N] 1440x900 : la barre ne suit pas l ecran : « Continuer » attend a sa place, en fin d ecran', JSON.stringify(bd));
+    let bd = await lireBarre(pnd);
+    // Depuis la passe PC (2026-11-05), l ecran des activites peut tenir entier a 1440x900 : la barre est alors
+    // visible a sa place et « suivre » ne changerait rien. La mesure se refait sur un ecran moins haut, ou sa
+    // place tombe sous le bord ; la hauteur retenue est dans le detail.
+    if (bd && bd.haut <= bd.vh) {
+      await pnd.setViewportSize({ width: 1440, height: Math.max(480, bd.haut - 120) });
+      await pnd.evaluate(() => window.scrollTo(0, 0));
+      await auRepos(pnd);
+      await dormir(300);
+      bd = await lireBarre(pnd);
+    }
+    ok(Boolean(bd) && bd.haut > bd.vh, 'MONTAGE [N] 1440 de large : la place de la barre est sous l ecran (suivre changerait quelque chose)', JSON.stringify(bd));
+    ok(aSaPlace(bd), '[N] 1440 de large : la barre ne suit pas l ecran : « Continuer » attend a sa place, en fin d ecran', JSON.stringify(bd));
     await pnd.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#t-act').focus(); });
     const focusD = { vus: 0, fautes: [] };
     for (let k = 0; k < 60; k += 1) {
@@ -4841,7 +4851,7 @@ async function main() {
       if (!e.vu || e.invisible) focusD.fautes.push(e.nom);
       if (e.dans) break;
     }
-    ok(focusD.vus >= 8 && focusD.fautes.length === 0, '[N] 1440x900, au clavier : ce qui prend le focus est dans l ecran, et visible (WCAG 2.4.11)', JSON.stringify(focusD));
+    ok(focusD.vus >= 8 && focusD.fautes.length === 0, '[N] 1440 de large, au clavier : ce qui prend le focus est dans l ecran, et visible (WCAG 2.4.11)', JSON.stringify(focusD));
     await ctxNd.close();
 
     // EMBARQUE, telephone : la page hote defile, le cadre ne defile pas.

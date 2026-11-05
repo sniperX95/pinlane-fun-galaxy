@@ -269,8 +269,9 @@
 
   // Une reponse lente d un ancien filtre ne remplace jamais la liste du filtre actuel.
   let numeroLecture = 0;
-  async function charger() {
-    if (typeof state !== 'undefined' && state.staffMenuPage !== CLE_PAGE) { arreter(); return; }
+  // (la premiere lecture vient du montage : la console ne note la page ouverte qu apres ce premier rendu)
+  async function charger(auMontage) {
+    if (auMontage !== true && typeof state !== 'undefined' && state.staffMenuPage !== CLE_PAGE) { arreter(); return; }
     if (document.hidden) return;
     const numero = ++numeroLecture;
     tour.enCours = true;
@@ -362,7 +363,7 @@
     brancher(racine);
     peindre();
     if (!tour.minuteur) {
-      charger();
+      charger(true);
       tour.minuteur = setInterval(charger, CADENCE_MS);
     }
   }

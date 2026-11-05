@@ -544,6 +544,12 @@ async function ouvrirConsole(browser, { proprietaire = true, viewport = { width:
   return { ctx, page };
 }
 const allerALaTour = (page) => page.evaluate(() => { state.staffMenuPage = 'cockpit-tour'; setView('staff'); if (typeof renderStaff === 'function') renderStaff(); });
+// Comme le fondateur : un clic dans le menu. Poser l etat a la main cachait une lecture qui ne partait jamais.
+const ouvrirParLeMenu = async (page) => {
+  await page.evaluate(() => { setView('staff'); if (typeof renderStaff === 'function') renderStaff(); });
+  await page.waitForFunction(() => document.querySelector('[data-fgx-menu-key="cockpit-tour"]'));
+  await page.evaluate(() => document.querySelector('[data-fgx-menu-key="cockpit-tour"]').click());
+};
 
 async function jouerConsole(browser) {
   remettre();
@@ -551,7 +557,7 @@ async function jouerConsole(browser) {
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(String(e.message).slice(0, 200)));
   try {
-    await allerALaTour(page);
+    await ouvrirParLeMenu(page);
     await page.waitForSelector('[data-tour-etat]');
     await page.waitForSelector('[data-tour-ligne]');
     return await (async () => {

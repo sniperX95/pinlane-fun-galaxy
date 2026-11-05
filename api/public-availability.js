@@ -1749,7 +1749,8 @@ module.exports = async (req, res) => {
           // La fin de l accueil d abord (10:10 pour une arrivee a 10:00) : les
           // arcades des l arrivee, quand les pistes et l arene sont pleines ;
           // puis la grille des demi-heures.
-          const finAccueil = arrivee + FORMULA_ARRIVAL_MINUTES;
+          // A l ouverture, pas d accueil avant (Movsar, 2026-10-13 ; poserArrivee) : les arcades des l heure pile.
+          const finAccueil = arrivee + (arrivee === Math.round(Number(schedule.open) * 60) ? 0 : FORMULA_ARRIVAL_MINUTES);
           const candidates = [];
           for (let t = Math.ceil(finAccueil / 30) * 30; t + duree <= fermeture; t += 30) candidates.push(t);
           if (finAccueil % 30 && finAccueil % 5 === 0 && finAccueil + duree <= fermeture) candidates.unshift(finAccueil);
@@ -1786,7 +1787,8 @@ module.exports = async (req, res) => {
         // posees du client : c est la visite qu il aura en la touchant.
         const memoArrivee = new Map();
         const arriveePlusTard = (entree) => {
-          const debut = minutesDe(entree.time) + FORMULA_ARRIVAL_MINUTES;
+          const ouvertureDuJour = schedule ? Math.round(Number(schedule.open) * 60) : NaN;
+          const debut = minutesDe(entree.time) + (minutesDe(entree.time) === ouvertureDuJour ? 0 : FORMULA_ARRIVAL_MINUTES);
           const attente = (entree.frise || []).find((segment) => segment.kind === 'wait' && segment.placement === 'before' && minutesDe(segment.gapStartTime) === debut);
           if (!attente) return null;
           const memes = (autre) => JSON.stringify(autre.anchors || {}) === JSON.stringify(entree.anchors || {})

@@ -4072,7 +4072,7 @@
     // qu un groupe vient plus tot : ses arcades d abord.
     if (aDesArcades(d)) {
       var rangee = arcadeDuPlan();
-      liste.push({ cle: 'arcade_time', id: 'arcade_time', partie: 0, compte: 1, rang: ancres.length, label: (activite('arcade_time') && nomActivite('arcade_time')) || rangee.label || 'Arcades', heure: state.arcade || '', etat: state.arcade ? 'choisi' : 'libre' });
+      liste.push({ cle: 'arcade_time', id: 'arcade_time', partie: 0, compte: 1, rang: ancres.length, label: (activite('arcade_time') && nomActivite('arcade_time')) || rangee.label || 'Arcades', heure: state.arcade || rangee.startTime || '', etat: state.arcade ? 'choisi' : rangee.startTime ? 'propose' : 'libre' });
     }
     liste.sort(function (x, y) { return (x.heure ? 0 : 1) - (y.heure ? 0 : 1) || (x.heure < y.heure ? -1 : x.heure > y.heure ? 1 : 0) || x.rang - y.rang || x.partie - y.partie; });
     // L HEURE D ARRIVEE, EN TETE ET FACULTATIVE (Movsar, 2026-10-21 : « ils ont
@@ -4223,12 +4223,19 @@
   }
   // Ce qui peut se faire avant : les activites libres du centre, ouvertes a ce groupe. Le bowling, le laser et les autres
   // activites a heure ont leur propre ligne ; une entree a la journee ne se fait pas « avant ».
+  // Une activite qui a sa propre ligne d heure (le bowling, le laser) ne se fait pas « avant » : elle a son heure.
+  // Le Fun Run et les autres activites a votre rythme, si (le Fun Run en etait exclu par son type de prix).
+  function aSaLigne(id) { return (ancrage(state.dispo).activities || []).some(function (x) { return x.activityId === id; }); }
   function activitesPourAvant() {
-    return $$('.fg-card[data-activity]', gridAct).map(function (card) {
+    var liste = $$('.fg-card[data-activity]', gridAct).map(function (card) {
       var a = activite(card.dataset.activity);
-      if (!a || /^grid_/.test(a.priceType || '') || a.dayAccess || card.classList.contains('is-off') || card.classList.contains('is-refus') || state.avant.indexOf(a.id) >= 0) return null;
+      if (!a || aSaLigne(a.id) || (/^grid_/.test(a.priceType || '') && state.selection.indexOf(a.id) < 0) || a.dayAccess || card.classList.contains('is-off') || card.classList.contains('is-refus') || state.avant.indexOf(a.id) >= 0) return null;
       return { id: a.id, a: a, minutes: minutesAvantDe(a), deja: state.selection.indexOf(a.id) >= 0 };
     }).filter(Boolean).sort(function (x, y) { return (y.deja ? 1 : 0) - (x.deja ? 1 : 0) || (x.a.priceType === 'per_unit_hour' ? 1 : 0) - (y.a.priceType === 'per_unit_hour' ? 1 : 0); });
+    // CE QUE LE CLIENT A DEJA CHOISI D ABORD, ET SEUL (Ansar, 2026-11-05 : « quand ca propose c generique hors
+    // activite qu on a deja selectionne ») : ses arcades, son Fun Run. Le reste du centre seulement s il n a rien de libre.
+    var siennes = liste.filter(function (o) { return o.deja; });
+    return siennes.length ? siennes : liste;
   }
   function prixAvant(a) {
     var ar = reglageArcade(a);
@@ -4792,6 +4799,9 @@
      serveur juge chaque heure avec celles que le client a touchees (arrivals=1). */
   // Les minutes d accueil apres l arrivee (FORMULA_ARRIVAL_MINUTES, le moteur).
   var ACCUEIL = 10;
+  // A L OUVERTURE, PAS D ACCUEIL AVANT (Movsar, 2026-10-13 : « ils peuvent venir a l heure pile ») : la meme regle que
+  // le moteur (poserArrivee), sinon l ecran repoussait ce que le serveur accepte.
+  function accueilApres(t) { return minutesDe(t) === ouvertureDuJour() ? 0 : ACCUEIL; }
   // Au-dela de ce trou, sans arrivee choisie, une heure seulement proposee n a plus
   // de sens : le moteur la rapproche de celle que le client vient de toucher.
   var ECART_RETENU = 60;
@@ -4835,7 +4845,7 @@
   // toucher se relache : le moteur la rapproche.
   function retenirProposees(regle) {
     var apres = regle.apres === undefined ? null : regle.apres;
-    if (apres === null && state.arrivee) apres = minutesDe(state.arrivee) + ACCUEIL;
+    if (apres === null && state.arrivee) apres = minutesDe(state.arrivee) + accueilApres(state.arrivee);
     var ancres = (ancrage(state.dispo).activities || []).slice();
     var occupes = [];
     ancres.forEach(function (a) { if (estTouchee(a.activityId)) actifsDe(a).forEach(function (h) { occupes.push(plageDe(a.activityId, h)); }); });
@@ -4863,7 +4873,7 @@
   }
   function avancerArriveeSiBesoin(t) {
     if (state.avant.length) { recalerAvant(t); return; }
-    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + ACCUEIL)) return;
+    if (!state.arrivee || !(minutesDe(t) < minutesDe(state.arrivee) + accueilApres(state.arrivee))) return;
     state.arrivee = '';
     conseilPonctuel = 'avancee';
   }
@@ -4967,7 +4977,7 @@
     }
     var x = ((arrivees.cle === cleArrivees() && arrivees.liste) || []).filter(function (e) { return e.time === t; })[0];
     if (!x || x.ok === false) return;
-    retenirProposees({ apres: minutesDe(t) + ACCUEIL });
+    retenirProposees({ apres: minutesDe(t) + accueilApres(t) });
     state.arrivee = t;
     adaptation = null;
     $$('.fg-chip.is-pending', hourZone).forEach(function (el) { el.classList.remove('is-pending'); });
@@ -5760,7 +5770,7 @@
         var ecart = minutesEntre(curseur, p.debut);
         // La partie de laser que le moteur loge dans ce trou le remplit d autant.
         if (fo && fo.followOnStart && fo.followOnStart >= curseur && fo.followOnEnd <= p.debut) ecart -= minutesEntre(fo.followOnStart, fo.followOnEnd);
-        var utile = curseur === arrivee ? ecart - ACCUEIL : ecart;
+        var utile = curseur === arrivee ? ecart - accueilApres(arrivee) : ecart;
         if (utile >= 30 && (!meilleur || ecart > meilleur.minutes)) meilleur = { minutes: ecart, avant: p };
       }
       if (p.fin > curseur) curseur = p.fin;
@@ -5834,10 +5844,10 @@
     var parts = partiesDuPlan(cr);
     // Les arcades a l heure du client : une partie a heure, a sa place dans
     // la journee.
-    // Seulement celles que le client a choisies : les autres restent dans ce qui est
-    // compris, meme quand le moteur les range dans le temps d avant la premiere activite.
+    // AUSSI CELLES QUE LE MOTEUR RANGE (Ansar, 2026-11-05 : arrivee 14:00, laser 14:30, « je peux pas dire que le
+    // temps que j ai je peux faire arcade ») : a l heure ou il les place, dans le temps d avant comme ailleurs.
     var arcPlan = arcadeDuPlan();
-    if (arcPlan.startTime && state.arcade) parts = parts.concat([{ id: 'arcade_time', partie: 1, groupes: [{ joueurs: 0, debut: arcPlan.startTime, fin: arcPlan.endTime || '' }], pistes: 0, label: arcPlan.label || '', debut: arcPlan.startTime, fin: arcPlan.endTime || '', arcade: true }])
+    if (arcPlan.startTime) parts = parts.concat([{ id: 'arcade_time', partie: 1, groupes: [{ joueurs: 0, debut: arcPlan.startTime, fin: arcPlan.endTime || '' }], pistes: 0, label: arcPlan.label || '', debut: arcPlan.startTime, fin: arcPlan.endTime || '', arcade: true }])
       .sort(function (x, y) { return x.debut.localeCompare(y.debut); });
     var planifies = {};
     parts.forEach(function (p) { planifies[p.id] = 1; });

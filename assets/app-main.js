@@ -13166,7 +13166,10 @@ function getVisiteLibreApres(reservation, windows) {
 
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
-  const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation)];
+  // « Venir plus tot » : le groupe est la des son activite d avant, pas seulement a son bowling.
+  const etapesDuPlan = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
+  const avant = etapesDuPlan.filter(step => step && step.avant === true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
+  const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation), ...avant];
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
   if (starts.length) {

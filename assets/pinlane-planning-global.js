@@ -202,7 +202,7 @@
     items.forEach(function (it) {
       if (!it || it.planned !== false || it.waitOffer) return;
       var posee = typeof getEtapeAvant === 'function' ? getEtapeAvant(r, it) : null;
-      if (posee) { avant.push({ l: { id: it.activityId, nom: nomActivite(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 }, start: timeToNum(posee.startTime), end: timeToNum(posee.endTime) }); return; }
+      if (posee) { avant.push({ l: { id: it.activityId, nom: nomActivite(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 }, start: timeToNum(posee.startTime), end: timeToNum(posee.endTime), fixe: true }); return; }
       lignes.push({ id: it.activityId, nom: nomActivite(it), minutes: gpMinutes(it.activityId, it), journee: ligneALaJournee(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 });
     });
     // Une formule suivie : ses activites sans heure que le programme ne porte pas.
@@ -444,7 +444,7 @@
       });
       var libres = gpLibres(g);
       libres.places.forEach(function (p) {
-        poser(p.l.id, { start: p.start, end: p.end, libre: true, journee: Boolean(p.journee), unites: p.l.unites, nom: p.l.nom, enfants: p.l.enfants });
+        poser(p.l.id, { start: p.start, end: p.end, libre: !p.fixe, journee: Boolean(p.journee), unites: p.l.unites, nom: p.l.nom, enfants: p.l.enfants });
       });
       libres.servis.forEach(function (l) {
         if (l.id === 'arcade_credit') { var cr = gpCredits(l.nom, l.enfants || r.pax); g.credits.push(cr); poser('arcade_credit', { credit: true, nom: l.nom, credits: cr }); }

@@ -379,7 +379,14 @@ function fonction(fichier, debut, fin, contexte) {
     GP_SANS_DUREE: {}, getStaffResourceWindows: () => [{ start: 16, end: 17 }], getStaffFormulaTimedItems: () => [],
   });
   const cases = tableau.gpLibres({ r: { program: { items: [ligne] }, opsPlan: { timeline: pas } }, span: { start: 15, end: 17 } });
-  ok(cases.places.length === 1 && cases.places[0].start === 15 && cases.places[0].end === 15.75 && cases.places[0].l.id === 'golf_oclock', '[H] le grand tableau pose sa case a 15:00, avant le bowling', JSON.parse(JSON.stringify(cases.places)));
+  ok(cases.places.length === 1 && cases.places[0].start === 15 && cases.places[0].end === 15.75 && cases.places[0].fixe === true && cases.places[0].l.id === 'golf_oclock', '[H] le grand tableau pose sa case a 15:00, avant le bowling', JSON.parse(JSON.stringify(cases.places)));
+  const terrain = fonction('assets/app-main.js', 'function getStaffTerrainSpan(', '\n}\n', {
+    getStaffResourceWindows: () => [{ start: 16, end: 17 }], getStaffFormulaTimedItems: () => [], getFormulaFreeWindows: () => [], getVisiteLibreApres: () => 0,
+    timeToNum: (t) => { const [h, m] = t.split(':').map(Number); return h + m / 60; },
+  });
+  const venu = terrain.getStaffTerrainSpan({ startTime: '15:00', opsPlan: { timeline: [{ ...pas[0], avant: true }] } });
+  ok(venu.start === 15 && venu.end === 17, '[H] la fiche attend le groupe a son rendez-vous, 15:00, pas a son bowling', venu);
+  ok(terrain.getStaffTerrainSpan({ startTime: '16:00', opsPlan: { timeline: [] } }).start === 16, '[H] temoin : sans activite d avant, a son bowling');
 
   console.log(echecs ? `\nvenir-plus-tot-check: ${echecs} ECHEC(S) sur ${total}` : `\nvenir-plus-tot-check: ALL OK (${total})`);
   process.exit(echecs ? 1 : 0);

@@ -821,6 +821,8 @@
     }
     function partiesSm(a) { var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; if (r.arcade) detail.push(r.detail); else { r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); } return { detail: detail, montant: r.montant == null ? 'prix à l’accueil' : euros(r.montant) }; }
     function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var p = partiesSm(a); return a.name + ' (' + p.detail.join(' · ') + ') : ' + p.montant; }).filter(Boolean); }
+    // Les envies en lignes (photo, couleur, effectif et options, montant), au recapitulatif et a la fin.
+    function lignesEnviesSm() { return sm.activites.map(function (id) { var a = activite(id), p = a && partiesSm(a); return a ? { id: id, nom: a.name, detail: p.detail.join(' · '), mot: p.montant, teinte: teinteSm(id) } : null; }).filter(Boolean); }
     function estimationSm() {
       if (!sm.activites.length) return '';
       var total = 0, connues = 0, inconnues = [];
@@ -1052,7 +1054,7 @@
         ], 2)
         + blocRecap('Vos envies', 'sm-envies', [
           // Une ligne par activite, sa photo et sa couleur, comme le recapitulatif du formulaire.
-          acts.length ? I.htmlLignesRecap(sm.activites.map(function (id) { var a = activite(id), p = a && partiesSm(a); return a ? { id: id, nom: a.name, detail: p.detail.join(' · '), mot: p.montant, teinte: teinteSm(id) } : null; }).filter(Boolean), 3) : null,
+          acts.length ? I.htmlLignesRecap(lignesEnviesSm(), 3) : null,
           fors.length ? ['a-formule', '<b>Formules</b>&nbsp;: ' + esc(fors.join(', '))] : null,
           sm.conseil ? ['i-bulb', 'L’équipe vous propose un programme'] : null,
           sm.activites.length ? ['i-card', esc(estimationSm())] : null,
@@ -1150,7 +1152,7 @@
       $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
         + rangee('i-users', '<b>' + esc(sm.organisation || def.label) + '</b>, ' + esc(sm.participants + ' joueur' + (sm.participants > 1 ? 's' : '')) + (sm.accompagnants ? ' + ' + esc(sm.accompagnants + ' accompagnateur' + (sm.accompagnants > 1 ? 's' : '')) : '') + '.')
         + rangee('i-calendar', esc(libelleQuandSm()) + '.')
-        + (sm.activites.length ? rangee('a-star', esc(activitesRecapSm().join(' ; '))) + rangee('i-card', esc(estimationSm())) : '')
+        + (sm.activites.length ? '<div class="fg-done__prog"><p class="fg-done__prog-titre">Vos envies</p>' + I.htmlLignesRecap(lignesEnviesSm(), 3) + '</div>' + rangee('i-card', esc(estimationSm())) : '')
         + (sm.formules.length ? rangee('a-formule', esc(nomsDe(sm.formules, formulesSm()).join(', ')) + ' : à composer avec l’équipe.') : '')
         + rangee('i-clock', 'L’équipe ' + (nomCentre === 'du centre' ? 'du centre' : 'de ' + esc(nomCentre)) + ' étudie votre demande et vous répond sous <b>24 heures ouvrables</b>, avec ce qui est possible à votre date et le montant.')
         + rangee('i-mail', reponse.acknowledgementSent ? 'Un accusé de réception part à <b>' + esc(c.email) + '</b>. Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les spams.'

@@ -125,7 +125,8 @@ async function handleErreurFormulaire(req, res, body) {
     const { alerter } = require('../lib/garde-alertes');
     const etape = String(body.scene || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
     const empreinte = String(inscrit.stackHash || '').slice(0, 6);
-    await alerter(`formulaire:${centre}:${empreinte}`, `URGENT Pinlane\nLe formulaire de ${centre} a planté chez un client${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+    const { nomDuCentre } = require('../lib/garde-annonces');
+    await alerter(`formulaire:${centre}:${empreinte}`, `URGENT Pinlane\nLe formulaire de ${nomDuCentre(centre)} a planté chez un client${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
   }
   sendJson(res, 202, { ok: true });
 }
@@ -277,7 +278,7 @@ async function handleCustomRequest(req, res, body) {
     // qu il ne le fera pas. Sans nom ni contact : le centre, le nombre.
     console.error('[custom-request] échec', error && (error.stack || error.message || error));
     const { alerter } = require('../lib/garde-alertes');
-    await alerter(`demande-panne:${centerId}`, `URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à ${centerId}${demande ? ` (${demande.participants} personnes)` : ''}. Le client a lu « réessayez dans un instant ».`, { fenetreMs: 5 * 60_000 });
+    await alerter(`demande-panne:${centerId}`, `URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à ${require('../lib/garde-annonces').nomDuCentre(centerId)}${demande ? ` (${demande.participants} personnes)` : ''}. Le client a lu « réessayez dans un instant ».`, { fenetreMs: 5 * 60_000 });
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
     return;
   }

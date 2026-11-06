@@ -284,7 +284,7 @@ async function preuvesJournal() {
   const texte = (modifs[0] && modifs[0].text) || '';
   ok(modifs.length === 1 && modifs[0].disable_notification === true, '[J] les modifications du quart d heure : un seul message, sans sonnerie', modifs);
   ok(/^Modifications, 14:03 à 14:10\nGembloux\n/.test(texte) && texte.includes('\nLibramont\n'), '[J] range par centre, avec la periode', texte);
-  ok(texte.includes('14:03 Seb : réservation n° 903 (samedi 14/11 16:00) déplacée du samedi 14/11 15:00 au samedi 14/11 16:00'), '[J] une reservation deplacee : quand, qui, d ou vers ou', texte);
+  ok(texte.includes('14:03 Seb : réservation n° 903 (samedi 14/11 16:00) déplacée de 15:00 à 16:00'), '[J] une reservation deplacee : quand, qui, d ou vers ou', texte);
   ok(texte.includes('réservation n° 904 (samedi 14/11 16:00) annulée'), '[J] une reservation annulee', texte);
   ok(texte.includes('prix de 240,00 € à 200,00 €, changement : coordonnées'), '[J] un prix change, et des coordonnees changees sans les citer', texte);
   ok(texte.includes('14:07 Ansar : réglages du centre enregistrés') && texte.includes('code d’accès régénéré (direction)'), '[J] les reglages et les acces', texte);
@@ -366,7 +366,7 @@ async function preuvesConsole() {
   const plantage = { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)' };
   const r = await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
   ok(r.statut === 200 && BD.erreurs.length === 1, '[C] la console qui plante : l erreur entre en base', { r, erreurs: BD.erreurs });
-  ok(TG.length === 1 && /^URGENT Pinlane\nLa console de gembloux a planté chez Seb, page planning \(plantage \w{6}\)/.test(TG[0].text) && !/Cannot read/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[C] et sonne, sans rien recopier de ce que le navigateur envoie', TG);
+  ok(TG.length === 1 && /^URGENT Pinlane\nLa console de Gembloux a planté chez Seb, page planning \(plantage \w{6}\)/.test(TG[0].text) && !/Cannot read/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[C] et sonne, sans rien recopier de ce que le navigateur envoie', TG);
   await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
   ok(TG.length === 1, '[C] le meme plantage dans l heure : pas un second message', TG.length);
   await appeler(ops, 'POST', '/api/ops?action=logClientError', { ...plantage, message: 'autre chose', stack: 'Error: autre chose\n    at x (app-main.js:99:1)' });

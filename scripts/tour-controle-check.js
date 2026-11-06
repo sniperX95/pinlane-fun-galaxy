@@ -467,7 +467,7 @@ async function preuvesClient(jour) {
   panneDemande = true;
   const perdue = await appeler(meta, 'POST', '/api/custom-request', demande);
   panneDemande = false;
-  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à gembloux/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
+  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à Gembloux/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
 
   const tour = tourReel();
   const { essais } = await tour.lireProblemes(database.getPool());
@@ -544,7 +544,7 @@ async function preuvesReserver(browser) {
   await p.addScriptTag({ url: `${BASE}/assets/banc-reserver.js` }).catch(() => {});
   await p.waitForTimeout(600);
   ok(signaux.length === 1 && signaux[0].centerId === 'gembloux' && signaux[0].scene === 'reserver', '[F] /reserver : un plantage chez un client part au serveur, avec son centre', signaux);
-  ok(TELEGRAM.some((t) => /formulaire de gembloux a planté chez un client, étape reserver/.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.some((t) => /formulaire de Gembloux a planté chez un client, étape reserver/.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
   await p.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 })); });
   await p.evaluate(() => { window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') })); });
   await p.waitForTimeout(300);
@@ -574,14 +574,14 @@ async function preuvesFormulaire(browser) {
   ok(!/jean\.essai/.test(BD.erreurs.map((e) => e.message).join(' ')), '[F] une adresse glissee dans le message est expurgee avant d entrer en base', BD.erreurs);
   const groupeErreur = BD.erreurs.find((e) => e.member_id === 'public:gembloux');
   ok(Boolean(groupeErreur), '[F] il entre en base, compte du formulaire de Gembloux', BD.erreurs);
-  ok(TELEGRAM.length === 1 && /formulaire de gembloux a planté/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.length === 1 && /formulaire de Gembloux a planté/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
   const { problemes } = await require('../lib/tour-controle').lireProblemes(database.getPool());
   ok(problemes.some((x) => x.cle.startsWith('erreur:client:')), '[F] la Tour le range parmi les urgents', problemes.map((x) => x.cle));
 
   await p.route('**/assets/banc-plantage-2.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('encore un');" }));
   await p.addScriptTag({ url: `${BASE}/assets/banc-plantage-2.js` }).catch(() => {});
   await p.waitForTimeout(400);
-  ok(TELEGRAM.length === 2 && /formulaire de gembloux a planté/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
+  ok(TELEGRAM.length === 2 && /formulaire de Gembloux a planté/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
   ok(TELEGRAM[0].match(/plantage (\w+)/) && TELEGRAM[1].match(/plantage (\w+)/) && TELEGRAM[0].match(/plantage (\w+)/)[1] !== TELEGRAM[1].match(/plantage (\w+)/)[1], '[F] les deux plantages se distinguent par leur empreinte', TELEGRAM);
   const { alerter: alerterBanc } = require('../lib/garde-alertes');
   const empreinte = TELEGRAM[0].match(/plantage (\w+)/)[1];

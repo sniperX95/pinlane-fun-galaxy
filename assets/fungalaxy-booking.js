@@ -7504,7 +7504,7 @@
     var titre = o.centre + (noms.length ? ' · ' + noms.join(', ') : '');
     var adresse = String(o.adresse || '').replace(/\s*\([^)]*\)/g, '').trim();
     var lieu = [o.centre, adresse].filter(Boolean).join(', ');
-    var details = ['Rendez-vous à ' + o.heure + ' à l’accueil.'].concat(programme).concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.tel ? ['Une question ? ' + o.tel] : []).join('\n');
+    var details = ['Arrivée à ' + o.heure + ' à l’accueil.'].concat(programme).concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.tel ? ['Une question ? ' + o.tel] : []).join('\n');
     var google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titre) + '&dates=' + debut + '/' + fin
       + '&ctz=Europe%2FBrussels&location=' + encodeURIComponent(lieu) + '&details=' + encodeURIComponent(details);
     var tz = 'TZID=Europe/Brussels';
@@ -7517,7 +7517,7 @@
       'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + texteIcs(titre), 'TRIGGER:-PT2H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].map(plierIcs).join('\r\n') + '\r\n';
     // Le lien du plan se lit : sans accents ni virgules, des « + » entre les mots.
     var carte = adresse ? 'https://maps.google.com/?q=' + adresse.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '+').replace(/^\+|\+$/g, '') : '';
-    messageInvites = ['Rendez-vous ' + minuscule(jourLong(o.date)) + ' à ' + o.heure + ' chez ' + o.centre + '.'].concat(programme)
+    messageInvites = [jourLong(o.date) + ' chez ' + o.centre + ', arrivée à ' + o.heure + '.'].concat(programme)
       .concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.adresse ? [String(o.adresse)] : []).concat(carte ? [carte] : []).join('\n');
     var tactile = Boolean(navigator.share) && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     var photoA = (o.lignes.filter(function (l) { return l.id && photo(l.id); })[0] || {}).id;

@@ -18,6 +18,12 @@ function check(cond, message) { checks++; assert.ok(cond, message); console.log(
 // telephone ne les coupe plus. Ce gate asserte les montants, les nombres et
 // les phrases, pas l espace qui les tient ensemble.
 const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
+// La relecture et la fin de la demande listent une ligne par activite (2026-11-06) : nom, effectif et options, montant.
+const lignesDe = (page, racine) => page.$$eval(`${racine} .fg-recap__item`, (ls) => ls.map((l) => {
+  const t = (sel) => ((l.querySelector(sel) || {}).textContent || '').replace(/\s+/g, ' ').trim();
+  return { nom: t('.fg-recap__name'), detail: t('.fg-recap__detail'), mot: t('.fg-recap__aside') };
+}));
+const ligne = (lignes, nom) => lignes.find((l) => l.nom === nom) || {};
 const card = id => `#smGridAct [data-sm-activity="${id}"]`;
 const input = id => `${card(id)} [data-compteur="participants"] input`;
 // Toucher une carte cochee la decoche depuis le 2026-10-06 (journal Pinlane,
@@ -135,12 +141,14 @@ async function main() {
       await page.check('#smConsent'); await page.click('#smGoRecap');
       await page.waitForSelector('.fg-scene[data-scene="sm-recap"].is-active');
       const recap = await page.locator('.fg-scene[data-scene="sm-recap"]').textContent().then(sansInsecable);
-      check(recap.includes('Bowling (7 joueurs') && recap.includes('Billards (5 joueurs · 2 tables · 2 heures)'), `[${width}] recap describes counts and option details`);
+      const lignesRecap = await lignesDe(page, '.fg-scene[data-scene="sm-recap"]');
+      check(/^7 joueurs/.test(ligne(lignesRecap, 'Bowling').detail || '') && ligne(lignesRecap, 'Billards').detail === '5 joueurs · 2 tables · 2 heures', `[${width}] recap describes counts and option details`);
       check(recap.includes('539 €') && /sans Arcades.*prix à l’accueil/.test(recap), `[${width}] recap honest activity estimate`);
       await page.click('#smSend'); await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
       const receipt = await page.locator('#finBody').textContent().then(sansInsecable);
-      check(receipt.includes('Bowling (7 joueurs · 2 heures) : 156 €') && receipt.includes('539 €'), `[${width}] final custom receipt retains selected options and estimates`);
-      check(/Arcades \(2 joueurs\) : prix à l’accueil/.test(receipt), `[${width}] final custom receipt makes unknown price explicit`);
+      const lignesFin = await lignesDe(page, '#finBody');
+      check(ligne(lignesFin, 'Bowling').detail === '7 joueurs · 2 heures' && ligne(lignesFin, 'Bowling').mot === '156 €' && receipt.includes('539 €'), `[${width}] final custom receipt retains selected options and estimates`);
+      check(ligne(lignesFin, 'Arcades').detail === '2 joueurs' && ligne(lignesFin, 'Arcades').mot === 'prix à l’accueil', `[${width}] final custom receipt makes unknown price explicit`);
       check(posted && posted.details.participants === 31, `[${width}] POST retains custom group size`);
       for (const [id, count] of Object.entries(COUNTS)) check(posted.details.activities.find(a => a.id === id).participants === count, `[${width}] POST ${id} count`);
       const bowling = posted.details.activities.find(a => a.id === 'bowling');

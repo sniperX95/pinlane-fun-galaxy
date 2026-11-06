@@ -402,14 +402,15 @@ function buildAdminExcelXml(payload) {
     excelRow(['Signaux agents', metrics.suggestions, `${metrics.events} événement(s) terrain`]),
   ];
   const reservationRows = [
-    // « Réf. » = l'identifiant réel de la réservation, le seul que la console et
-    // la base savent résoudre. Il remplace le code « FG-… » qui sortait ici et
-    // que rien ne permettait de retrouver.
-    excelRow(['Réf.', 'Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation', 'Détail des activités'], 'Header'),
+    // Le numero de la reservation, le meme que partout (dossier, mail du client,
+    // Telegram) : tape dans une recherche de la console, il ouvre la reservation
+    // (2026-11-06). Il remplace le code « FG-… » qui sortait ici et que rien ne
+    // permettait de retrouver, puis le « #1734 » que la recherche ne prenait pas.
+    excelRow(['N° de réservation', 'Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation', 'Détail des activités'], 'Header'),
     ...reservations.map(reservation => {
       const guest = getReservationGuestOps(reservation);
       return excelRow([
-      `#${reservation.id}`,
+      Number(reservation.id) || '',
       reservation.date,
       reservation.startTime,
       reservation.name,

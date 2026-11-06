@@ -4304,6 +4304,8 @@ async function submitLogin(ev) {
       guardStaffPage();
       await syncDateReservations(state.currentDate, { silent: true, skipRender: true });
       renderStaff();
+      // Arrive par l adresse d une reservation : elle s ouvre des la connexion.
+      ouvrirReservationDuLien();
     } else if (state.view === 'admin') {
       // A1 : le rôle fraîchement connecté doit avoir direction.view pour
       // rester sur la console Direction : sinon retour vue staff.
@@ -17326,8 +17328,8 @@ async function submitAvailabilityBlock() {
 async function deleteAvailabilityBlockUi(id) {
   if (!canUseStaffPermission('settings.manage')) { toast('Réservé à la direction.'); return; }
   const block = (availabilityBlocksCache.blocks || []).find(item => Number(item.id) === Number(id));
-  const label = block ? describeAvailabilityBlock(block) : `blocage n° ${id}`;
-  if (!window.confirm(`Supprimer ce blocage ?\n${label}`)) return;
+  const label = block ? describeAvailabilityBlock(block) : '';
+  if (!window.confirm(label ? `Supprimer ce blocage ?\n${label}` : 'Supprimer ce blocage ?')) return;
   try {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'deleteAvailabilityBlock', centerId: getCurrentStaffCenterId(), id: Number(id) }) });
     toast('Blocage supprime.');
@@ -20159,7 +20161,8 @@ function openStaffRequestReservation(id) {
   const historique = item && item.suivi && Array.isArray(item.suivi.historique) ? item.suivi.historique : [];
   const evenement = historique.filter(e => e.type === 'reservation').slice(-1)[0];
   if (!evenement) return;
-  if (findStaffReservationById(evenement.reservationId)) { openStaffReservationDetail(evenement.reservationId); return; }
+  // Le numero de la reservation nee de la demande l ouvre, a son jour.
+  if (evenement.reservationId) { ouvrirReservationNumero(evenement.reservationId); return; }
   if (evenement.date) { openStaffRequestDay(evenement.date); return; }
   toast('Réservation introuvable sur ce poste : ouvrez le planning à sa date.');
 }
@@ -21308,6 +21311,166 @@ function openStaffReservationDetail(id) {
   renderPos();
 }
 
+// LE NUMERO DE RESERVATION MENE A LA RESERVATION (2026-11-06, Ansar : « chaque
+// numero encore affiche mene quelque part ou se retrouve, les autres
+// disparaissent »). Le numero est l identifiant de la reservation : celui du
+// dossier, du mail et de la page de confirmation du client, des messages
+// Telegram et des exports. Tape dans une recherche (« 1734 », « n° 1734 »,
+// « #1734 »), touche dans un message ou ouvert par l adresse /?resa=1734, il
+// ouvre la reservation, quel que soit son jour. Sans prefixe, il faut au moins
+// trois chiffres : « 3 » ou « 12 » restent ce qu ils etaient (une piste, un
+// groupe, un bout de telephone).
+function numeroReservationDe(texte) {
+  const brut = String(texte == null ? '' : texte).trim();
+  const prefixe = brut.match(/^(?:(?:r[ée]s(?:ervation|a)?|dossier)\s*)?(?:n\s*[°º]|no\.?|num(?:[ée]ro)?\.?|#)\s*(\d{1,9})$/i)
+    || brut.match(/^(?:r[ée]s(?:ervation|a)?|dossier)\s+(\d{1,9})$/i);
+  if (prefixe) return prefixe[1].replace(/^0+(?=\d)/, '');
+  const nu = brut.match(/^(\d{3,9})$/);
+  return nu ? nu[1].replace(/^0+(?=\d)/, '') : '';
+}
+function reservationPorteLeNumero(r, numero) {
+  return Boolean(numero) && r != null && String(r.id) === String(numero);
+}
+// L adresse qui ouvre la reservation : celle des messages Telegram et du mail
+// « a valider ». Le parametre reste dans l adresse le temps d un changement de
+// centre (la page se recharge), puis s efface une fois la reservation ouverte.
+function numeroDuLien() {
+  try { return numeroReservationDe(new URLSearchParams(window.location.search || '').get('resa') || ''); } catch (error) { return ''; }
+}
+function lienVersLaConsole() {
+  if (numeroDuLien()) return true;
+  try { return /^\d{1,12}$/.test(String(new URLSearchParams(window.location.search || '').get('demande') || '').trim()); } catch (error) { return false; }
+}
+function effacerNumeroDuLien() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('resa')) return;
+    url.searchParams.delete('resa');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (error) { /* l adresse reste telle quelle */ }
+}
+const NUMERO_CENTRE_TENTE = 'pl-resa-centre';
+async function ouvrirReservationNumero(numero, { depuisLeLien = false } = {}) {
+  const n = numeroReservationDe(numero) || String(numero == null ? '' : numero).replace(/\D/g, '');
+  if (!n) return false;
+  const deja = findStaffReservationById(n);
+  if (deja && (deja.centerId || getCurrentStaffCenterId()) === getCurrentStaffCenterId()) {
+    if (depuisLeLien) effacerNumeroDuLien();
+    openStaffReservationDetail(deja.id);
+    return true;
+  }
+  const centre = getCurrentStaffCenterId();
+  let reponse = null;
+  try {
+    reponse = await apiRequest(`${API_ENDPOINTS.staffReservations}?numero=${encodeURIComponent(n)}&centerId=${encodeURIComponent(centre)}`);
+  } catch (error) {
+    if (depuisLeLien) effacerNumeroDuLien();
+    toast(error?.message || `Aucune réservation n° ${n} dans ce centre.`);
+    return false;
+  }
+  // Dans un autre centre que la session peut ouvrir : on y passe, l adresse
+  // garde le numero et la page rechargee ouvre la reservation. Une seule fois :
+  // si le serveur renvoie encore ailleurs apres le passage, on s arrete.
+  if (reponse && reponse.centre && reponse.centre !== centre) {
+    let dejaTente = '';
+    try { dejaTente = window.sessionStorage.getItem(NUMERO_CENTRE_TENTE) || ''; } catch (error) { dejaTente = ''; }
+    if (dejaTente === `${n}:${reponse.centre}`) {
+      try { window.sessionStorage.removeItem(NUMERO_CENTRE_TENTE); } catch (error) { /* rien a effacer */ }
+      effacerNumeroDuLien();
+      toast(`La réservation n° ${n} est dans un autre centre.`);
+      return false;
+    }
+    try { window.sessionStorage.setItem(NUMERO_CENTRE_TENTE, `${n}:${reponse.centre}`); } catch (error) { /* tant pis */ }
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('resa', n);
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch (error) { /* le passage se fait quand meme */ }
+    if (typeof window.pinlaneChoisirCentre === 'function' && window.pinlaneChoisirCentre(reponse.centre)) return true;
+    state.adminCenterId = reponse.centre;
+    state.establishmentCenterId = reponse.centre;
+    state.staffAccessControl = null;
+    save();
+    if (typeof resetCenterScopedCaches === 'function') resetCenterScopedCaches();
+    toast('Ouverture dans l’autre centre…');
+    if (typeof window.pinlaneRechargerPourCentre === 'function') window.pinlaneRechargerPourCentre(reponse.centre);
+    else window.location.reload();
+    return true;
+  }
+  try { window.sessionStorage.removeItem(NUMERO_CENTRE_TENTE); } catch (error) { /* rien a effacer */ }
+  if (depuisLeLien) effacerNumeroDuLien();
+  const trouvee = reponse && reponse.reservation;
+  if (!trouvee) {
+    toast(`Aucune réservation n° ${n} dans ce centre.`);
+    return false;
+  }
+  if (trouvee.date && trouvee.date !== state.currentDate) {
+    state.currentDate = trouvee.date;
+    await syncDateReservations(trouvee.date, { silent: true });
+  }
+  const chargee = findStaffReservationById(trouvee.id);
+  if (!chargee) {
+    toast(`La réservation n° ${n} n’a pas pu être chargée.`);
+    return false;
+  }
+  openStaffReservationDetail(chargee.id);
+  return true;
+}
+async function ouvrirReservationDuLien() {
+  if (state.view !== 'staff' || !hasSavedAuth()) return false;
+  if (ouvrirDemandeDuLien()) return true;
+  const n = numeroDuLien();
+  if (!n) return false;
+  return ouvrirReservationNumero(n, { depuisLeLien: true });
+}
+// LA DEMANDE DE GROUPE N A PAS DE NUMERO A L ECRAN (2026-11-06) : un second
+// compteur se confondait avec celui des reservations, et rien ne le retrouvait.
+// Le message Telegram garde un lien, /?demande=4&centre=gembloux, qui ouvre la
+// demande dans « Demandes sur mesure », apres un passage de centre s il le faut.
+function ouvrirDemandeDuLien() {
+  let id = '';
+  let centre = '';
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    id = String(params.get('demande') || '').trim();
+    centre = String(params.get('centre') || '').trim().toLowerCase();
+  } catch (error) { return false; }
+  if (!/^\d{1,12}$/.test(id)) return false;
+  const effacer = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('demande');
+      url.searchParams.delete('centre');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch (error) { /* l adresse reste telle quelle */ }
+  };
+  if (centre && /^[a-z][a-z0-9-]{1,40}$/.test(centre) && centre !== getCurrentStaffCenterId()) {
+    let dejaTente = '';
+    try { dejaTente = window.sessionStorage.getItem(NUMERO_CENTRE_TENTE) || ''; } catch (error) { dejaTente = ''; }
+    if (dejaTente !== `demande-${id}:${centre}`) {
+      try { window.sessionStorage.setItem(NUMERO_CENTRE_TENTE, `demande-${id}:${centre}`); } catch (error) { /* tant pis */ }
+      if (typeof window.pinlaneChoisirCentre === 'function' && window.pinlaneChoisirCentre(centre)) return true;
+    }
+    try { window.sessionStorage.removeItem(NUMERO_CENTRE_TENTE); } catch (error) { /* rien a effacer */ }
+    effacer();
+    toast('Cette demande est dans un autre centre : passez-y depuis le menu pour l’ouvrir.');
+    return true;
+  }
+  try { window.sessionStorage.removeItem(NUMERO_CENTRE_TENTE); } catch (error) { /* rien a effacer */ }
+  effacer();
+  openStaffRequestsPage(id);
+  return true;
+}
+// Entree dans une recherche : un numero ouvre sa reservation, meme un autre
+// jour. Tout autre texte garde son filtre.
+function entreeRechercheNumero(ev) {
+  if (!ev || ev.key !== 'Enter') return;
+  const n = numeroReservationDe(ev.target && ev.target.value);
+  if (!n) return;
+  ev.preventDefault();
+  ouvrirReservationNumero(n);
+}
+
 // LE DEFILEMENT SE LIT AVANT LE RENDU ET SE REPOSE APRES (2026-10-07).
 // Chaque grille memorisait sa position au milieu du rendu (`wrap.scrollTop`)
 // puis la reposait juste apres son innerHTML. Une lecture de geometrie qui suit
@@ -21786,7 +21949,9 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
   reservations = filterReservationsForStaff(reservations, state.staffStatusFilter || 'all');
   const query = String(state.searchTerm || '').trim().toLowerCase();
   if (query) {
+    const numero = numeroReservationDe(query);
     reservations = reservations.filter(r => {
+      if (reservationPorteLeNumero(r, numero)) return true;
       const label = `${r.name || ''} ${r.phone || ''} ${getReservationLabel(r)} ${r.email || ''} ${texteRecherchableDuDossier(r)}`.toLowerCase();
       return label.includes(query);
     });
@@ -24242,7 +24407,8 @@ function lpModele() {
   const creneau = (debut) => config.open + Math.round((Number(debut) - config.open) * 2 - 0.001) / 2;
   const blocages = lpBlocages(jour);
   const recherche = String(state.searchTerm || '').trim().toLowerCase();
-  const trouve = (r) => !recherche || `${r.name || ''} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(recherche);
+  const numeroCherche = numeroReservationDe(recherche);
+  const trouve = (r) => !recherche || reservationPorteLeNumero(r, numeroCherche) || `${r.name || ''} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(recherche);
 
   const cles = new Set();
   for (let t = config.open; t < config.close - 0.001; t += 0.5) cles.add(Math.round(t * 60));
@@ -26252,12 +26418,13 @@ function rendreLaListe() {
   const counts = getStaffStatusCounts(res);
   const moments = getStaffReservationMoments(res);
   let filtered = res;
+  const numeroCherche = numeroReservationDe(state.searchTerm);
   if (state.searchTerm) {
     const q = state.searchTerm.toLowerCase();
     const trouves = view === 'all' && typeof gfIdsTrouves === 'function' ? gfIdsTrouves() : null;
     filtered = trouves
-      ? res.filter(r => trouves.has(r.id))
-      : res.filter(r => `${r.name} ${r.phone || ''} ${getReservationLabel(r)} ${texteRecherchableDuDossier(r)}`.toLowerCase().includes(q));
+      ? res.filter(r => trouves.has(r.id) || reservationPorteLeNumero(r, numeroCherche))
+      : res.filter(r => reservationPorteLeNumero(r, numeroCherche) || `${r.name} ${r.phone || ''} ${getReservationLabel(r)} ${texteRecherchableDuDossier(r)}`.toLowerCase().includes(q));
   }
   filtered = filterReservationsForStaff(filtered, state.staffStatusFilter);
   const tableTitle = document.getElementById('tableTitleText');
@@ -26317,8 +26484,8 @@ function rendreLaListe() {
   if (!filtered.length) {
     poserHtmlSurface(list, `${toolbar}<div class="empty-state">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <div class="e-title">${state.searchTerm ? 'Aucun résultat' : `Aucune réservation ${resourceName}`}</div>
-      <div class="e-sub">${state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation" ou ${planningName} pour en créer une`}</div>
+      <div class="e-title">${numeroCherche ? `Pas de réservation n°&nbsp;${numeroCherche} ce jour-là` : state.searchTerm ? 'Aucun résultat' : `Aucune réservation ${resourceName}`}</div>
+      <div class="e-sub">${numeroCherche ? `<button type="button" class="btn btn-secondary" data-ouvrir-numero="${numeroCherche}" onclick="ouvrirReservationNumero('${numeroCherche}')">Ouvrir la réservation n°&nbsp;${numeroCherche}</button>` : state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation" ou ${planningName} pour en créer une`}</div>
     </div>`);
     poserDefilementRendu(list, listScrollTop, listScrollLeft);
     return;
@@ -26651,7 +26818,7 @@ async function deleteRes(id, ev) {
   // ne dit pas laquelle : on clique dessus en pensant à une autre. Elle dit
   // aussi que c'est définitif, parce que ça l'est : il n'y a pas d'annulation.
   const quoi = `${current.name || 'Client'} · ${current.startTime || ''} · ${current.pax || 0} joueur${(current.pax || 0) > 1 ? 's' : ''}`;
-  if (!(await staffConfirm({ title: `Supprimer définitivement la réservation #${id} ?`, body: `${quoi}\n\nCette action est irréversible. Pour garder la trace du dossier, utilisez plutôt « Annuler réservation ».`, confirmLabel: 'Supprimer', danger: true }))) return;
+  if (!(await staffConfirm({ title: `Supprimer définitivement la réservation n° ${id} ?`, body: `${quoi}\n\nCette action est irréversible. Pour garder la trace du dossier, utilisez plutôt « Annuler réservation ».`, confirmLabel: 'Supprimer', danger: true }))) return;
   removeOptimisticReservation(id);
   // La fiche se ferme : elle décrivait un dossier qui n'existe plus. Elle
   // restait ouverte, avec ses boutons « Enregistrer » et « Arrivé » actifs sur
@@ -28413,7 +28580,6 @@ function renderPosCaisse(r) {
     <div class="receipt">
       <div class="receipt-head">
         <div class="title">${escapeHtml(receiptName)}</div>
-        <div style="color:var(--text-3);font-size:11px;margin-top:4px;">Ticket #${String(r.id).slice(-5)}</div>
       </div>
       ${/* UN MONTANT, UNE TYPOGRAPHIE, SUR LA MEME FENETRE. Le sous-titre de
            cette fiche passe par getPosIdentityParts, donc par formatMoney, et
@@ -37922,6 +38088,12 @@ document.addEventListener('click', (event) => {
 
 window.addEventListener('pagehide', () => { try { flushStaffActivity(); } catch (error) { /* fermeture */ } });
 
+// Entree sur un numero de reservation dans la recherche de la liste : la
+// reservation s ouvre, meme un autre jour.
+document.addEventListener('keydown', e => {
+  if (e.target && e.target.id === 'searchInput' && !e.isComposing) entreeRechercheNumero(e);
+});
+
 document.addEventListener('input', e => {
   if (e.target.id === 'searchInput') {
     applyStaffSearch(e.target.value);
@@ -38793,6 +38965,9 @@ function detectCustomerMode() {
 function shouldShowPublicEntry() {
   if (getCurrentPathname() !== '/') return false;
   if (String(window.location.hash || '').replace(/^#\/?/, '').trim()) return false;
+  // L adresse d une reservation (/?resa=1734) ou d une demande mene a la
+  // connexion de l equipe, jamais a la page d accueil publique.
+  if (lienVersLaConsole()) return false;
   return !hasSavedAuth();
 }
 
@@ -38823,6 +38998,7 @@ async function bootstrapApp() {
   const customerMode = detectCustomerMode();
   if (customerMode) document.body.classList.add('customer-mode');
   applyInitialRouteFromHash();
+  if (lienVersLaConsole() && !customerMode) state.view = 'staff';
   if (customerMode) state.view = 'client';
   initClient();
   loadCenterScheduleConfig();
@@ -38843,6 +39019,7 @@ async function bootstrapApp() {
   setView(state.view);
   applyAuthState();
   scheduleRemoteSync();
+  if (isAuthenticated) ouvrirReservationDuLien();
 }
 
 bootstrapApp();

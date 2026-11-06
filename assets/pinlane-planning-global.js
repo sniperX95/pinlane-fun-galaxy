@@ -1030,6 +1030,10 @@
   function gfTrouve(g, q) {
     if (!q) return true;
     var r = g.r;
+    // Le numero de la reservation (« 1734 », « n° 1734 ») : celui du dossier,
+    // du mail du client et de Telegram (numeroReservationDe, app-main).
+    var numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(q) : '';
+    if (numero && String(r.id) === numero) return true;
     if (gfCle([r.name, r.phone, r.email, r.label, g.formule && g.formule.long].concat(g.rubriques.map(function (x) { return x.texte; })).join(' ')).indexOf(q) >= 0) return true;
     var heure = GF_Q_HEURE.exec(q);
     if (heure) {
@@ -1619,10 +1623,15 @@
     applyStaffSearch(champ.value, { immediate: true });
     var wrap = document.getElementById('globalPlanningGridWrap');
     var boite = document.getElementById('globalPlanningBox');
+    var q = gfCle(champ.value);
+    // Le numero de la reservation, que le client lit dans son mail et donne au
+    // telephone : Entree ouvre sa reservation, a son jour, sans la pointer (un
+    // appel n est pas une arrivee). Le nom garde son geste : Entree pointe.
+    var numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(q) : '';
+    if (numero && typeof ouvrirReservationNumero === 'function') { ouvrirReservationNumero(numero); return; }
     // (sur Bowling et Laser, Entree cherche : ce tableau-ci n est pas a l ecran)
     if (!boite || boite.classList.contains('hidden')) return;
     var m = wrap && wrap._gfModele;
-    var q = gfCle(champ.value);
     var trouves = m && q ? m.groupes.filter(function (g) { return gfTrouveParNom(g, q); }) : [];
     if (trouves.length !== 1 || !gfPeutArriver(trouves[0], m)) return;
     setReservationStatusDirect(trouves[0].id, 'arrived');

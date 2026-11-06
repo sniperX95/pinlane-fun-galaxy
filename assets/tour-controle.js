@@ -114,6 +114,9 @@
   }
   const trouve = (r, q) => {
     if (!q) return true;
+    // Le numero de la reservation, ecrit comme partout (« 1734 », « n° 1734 »).
+    const numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(q) : '';
+    if (numero && String(r.id) === numero) return true;
     const chiffres = q.replace(/\D/g, '');
     const texte = `${r.nom} ${r.email} ${r.offre}`.toLowerCase();
     if (texte.includes(q)) return true;
@@ -164,7 +167,7 @@
     return `<div class="tour-dossier" data-tour-dossier="${r.id}">
       <section>
         <h3>Le client</h3>
-        <p><b>${esc(r.name)}</b>, dossier n° ${r.id}.</p>
+        <p><b>${esc(r.name)}</b>, ${/^\d{1,12}$/.test(String(r.id)) ? `<button type="button" class="pv2-lien-numero" onclick="ouvrirReservationNumero('${r.id}')">réservation n°&nbsp;${r.id}</button>` : 'réservation sans numéro'}.</p>
         <p>${r.phone ? `<a href="tel:${esc(String(r.phone).replace(/[^0-9+]/g, ''))}">${esc(r.phone)}</a>` : 'Pas de téléphone.'}</p>
         <p>${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : 'Pas d’adresse e-mail.'}</p>
         ${r.occasion ? `<p>Occasion, ${esc(r.occasion)}.</p>` : ''}
@@ -228,7 +231,7 @@
       <label>Centre <select data-tour-filtre="centre">${option('', 'Tous', f.centre)}${option('libramont', 'Libramont', f.centre)}${option('gembloux', 'Gembloux', f.centre)}</select></label>
       <label>Par <select data-tour-filtre="canal">${option('', 'Tous', f.canal)}${option('public', 'En ligne', f.canal)}${option('staff', 'Comptoir', f.canal)}</select></label>
       <label>État <select data-tour-filtre="statut">${option('', 'Tous', f.statut)}${option('pending', 'À venir', f.statut)}${option('arrived', 'Arrivées', f.statut)}${option('paid', 'Payées', f.statut)}${option('cancelled', 'Annulées', f.statut)}</select></label>
-      <label class="tour-cherche">Chercher <input type="search" data-tour-cherche placeholder="Nom, téléphone, e-mail, numéro" value="${esc(tour.cherche)}" autocomplete="off"></label>
+      <label class="tour-cherche">Chercher <input type="search" data-tour-cherche placeholder="Nom, téléphone, e-mail, n° de réservation" value="${esc(tour.cherche)}" autocomplete="off"></label>
     </div>`;
   }
   function html() {

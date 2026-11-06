@@ -479,6 +479,12 @@
     if (pv2ResSearch.center && pv2ResSearch.center !== getActiveOpsCenterId()) return [];
     const q = pv2ResSearchNormalize(terme);
     if (q.length < 2) return [];
+    // Le numero de la reservation (« 1734 », « n° 1734 ») la trouve, meme
+    // annulee : le client qui appelle avec ce numero doit entendre ce qu elle est
+    // devenue.
+    const numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(q) : '';
+    const parNumero = numero ? (pv2ResSearch.rows || []).filter((r) => r && String(r.id) === numero) : [];
+    if (parNumero.length) return parNumero;
     const digits = q.replace(/[^0-9]/g, '');
     const rows = (pv2ResSearch.rows || []).filter((r) => r && r.status !== 'cancelled');
     const justes = rows.filter((r) => {
@@ -507,7 +513,13 @@
     }
     const rows = pv2ResSearchMatches();
     if (!rows.length) {
-      return '<div class="pv2-empty"><strong>Aucun résultat</strong>Aucune réservation ne correspond à ce nom ou ce numéro (fenêtre : 2 mois passés à 12 mois à venir).</div>';
+      // Un numero de reservation hors de la fenetre (ou pas encore lu) : le
+      // serveur sait ou elle est, quel que soit son jour.
+      const numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(pv2ResSearchNormalize(pv2ResSearch.query)) : '';
+      if (numero) {
+        return `<div class="pv2-empty"><strong>Réservation n°&nbsp;${esc(numero)}</strong><span>Elle n’est pas dans les dates chargées ici.</span><button type="button" class="pv2-btn" data-ouvrir-numero="${esc(numero)}" onclick="ouvrirReservationNumero('${escJs(numero)}')">Ouvrir la réservation n°&nbsp;${esc(numero)}</button></div>`;
+      }
+      return '<div class="pv2-empty"><strong>Aucun résultat</strong>Aucune réservation ne correspond à ce nom, ce téléphone ou ce numéro de réservation (fenêtre : 2 mois passés à 12 mois à venir).</div>';
     }
     return rows.map(pv2ResSearchResultRow).join('');
   }
@@ -611,11 +623,14 @@
     const time = String(r.startTime || '').slice(0, 5);
     const offer = typeof getStaffClientOfferLabel === 'function' ? getStaffClientOfferLabel(r) : typeLabel(r);
     const paxN = Number(r.pax) || 0;
+    // (cherchee par son numero, la ligne le dit, et dit si elle est annulee)
+    const numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(pv2ResSearchNormalize(pv2ResSearch.query)) : '';
+    const parNumero = numero && String(r.id) === numero;
     return `<div class="pv2-flow-item ${statusMeta(r).tone}" onclick="pv2ResSearchOpen('${escJs(r.id)}')">
       <div class="pv2-flow-time"><strong>${esc(time || '--:--')}</strong><small>${esc(when)}</small></div>
       <div class="pv2-flow-rail"></div>
       <div class="pv2-flow-body">
-        <strong>${esc(r.name || 'Sans nom')}</strong>
+        <strong>${esc(r.name || 'Sans nom')}${parNumero ? ` <span class="pv2-numero">n°&nbsp;${esc(String(r.id))}${r.status === 'cancelled' ? ', annulée' : ''}</span>` : ''}</strong>
         <span>${esc(offer)} · ${paxN} joueur${paxN > 1 ? 's' : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}</span>
         ${pv2MarqueursDossier(r)}
       </div>
@@ -1628,7 +1643,7 @@
   // Libellés pour TOUTES les variables que les éditeurs (séquences,
   // automatiques, modèles) peuvent proposer : les jetons portent des mots, les
   // accolades restent une écriture interne.
-  const PV2_VAR_LABELS_ALL = { ...PV2_VAR_LABELS, date: 'Date', heure: 'Heure', formule: 'Formule', pax: 'Joueurs', offre: 'Offre' };
+  const PV2_VAR_LABELS_ALL = { ...PV2_VAR_LABELS, date: 'Date', heure: 'Heure', formule: 'Formule', pax: 'Joueurs', offre: 'Offre', numero: 'N° de réservation' };
 
   /* ── L'ÉDITEUR À JETONS ──────────────────────────────────────────────────
      Demande explicite du propriétaire (2026-08-06) : ne JAMAIS montrer
@@ -3908,6 +3923,31 @@
     </table>`;
   }
 
+  // CE QUE L ACTION A TOUCHE, EN MOTS (2026-11-06, Ansar : « chaque numero
+  // affiche mene quelque part, les autres disparaissent »). Une reservation
+  // garde son numero, qui l ouvre ; une demande de groupe s ouvre sans numero
+  // (son compteur ne se voit nulle part ailleurs) ; une piste garde le sien,
+  // c est celui de la salle. Les autres identifiants internes (campagne, job,
+  // modele...) ne menaient nulle part : seul le genre de l objet reste.
+  const PV2_AUDIT_OBJETS = {
+    reservation: 'Réservation', custom_request: 'Demande de groupe', client: 'Client', center: 'Centre',
+    formula: 'Formule', activity: 'Activité', campaign: 'Campagne', lane: 'Piste', email_template: 'Modèle de mail',
+    email_identity: 'Adresse d’envoi', permission: 'Droits', delay_incident: 'Retard', ops_job: 'Tâche',
+  };
+  function pv2AuditObjet(entry) {
+    const type = String(entry.entityType || '');
+    const mot = PV2_AUDIT_OBJETS[type] || type;
+    const id = String(entry.entityId == null ? '' : entry.entityId).trim();
+    if (type === 'reservation' && /^\d{1,12}$/.test(id)) {
+      return `<button type="button" class="pv2-lien-numero" onclick="event.stopPropagation(); ouvrirReservationNumero('${id}')">Réservation n°&nbsp;${id}</button>`;
+    }
+    if (type === 'custom_request' && /^\d{1,12}$/.test(id) && typeof openStaffRequestsPage === 'function') {
+      return `<button type="button" class="pv2-lien-numero" onclick="event.stopPropagation(); openStaffRequestsPage('${id}')">${esc(mot)}</button>`;
+    }
+    if (type === 'lane' && /^\d{1,3}$/.test(id)) return `${esc(mot)} ${esc(id)}`;
+    return esc(mot);
+  }
+
   function pv2AuditPanel() {
     if (pv2Audit.view === 'parcours') return pv2AuditTrailPanel();
     const entries = pv2Audit.entries || [];
@@ -3934,15 +3974,14 @@
              ${pv2AuditChangesTable(entry.changes)}
              <p class="pv2-panel-sub" style="margin-top:10px;">
                Surface ${esc(entry.surface || '-')} · methode ${esc(entry.method || '-')}
-               ${entry.entityType ? ` · objet ${esc(entry.entityType)}${entry.entityId ? ` #${esc(entry.entityId)}` : ''}` : ''}
-               ${entry.requestId ? ` · requete ${esc(entry.requestId)}` : ''}
+               ${entry.entityType ? ` · ${pv2AuditObjet(entry)}` : ''}
              </p>
            </td></tr>`
         : '';
       return `<tr${isDenied ? ' class="is-denied"' : ''}>
         <td class="num">${esc(when)}</td>
         <td><strong>${esc(actor)}</strong><small class="pv2-cell-sub">${esc(kind)}${entry.actorRoleId ? ` · ${esc(entry.actorRoleId)}` : ''}</small></td>
-        <td><strong>${esc(entry.action || '-')}</strong>${entry.entityType ? `<small class="pv2-cell-sub">${esc(entry.entityType)}${entry.entityId ? ` #${esc(entry.entityId)}` : ''}</small>` : ''}</td>
+        <td><strong>${esc(entry.action || '-')}</strong>${entry.entityType ? `<small class="pv2-cell-sub">${pv2AuditObjet(entry)}</small>` : ''}</td>
         <td>${outcomeChip}</td>
         <td class="num">${changeCount || ''}</td>
         <td><button type="button" class="pv2-btn sm ghost" onclick="pv2AuditToggleRow('${escJs(String(entry.id))}')" aria-expanded="${expanded}">${expanded ? 'Masquer' : 'Detail'}</button></td>

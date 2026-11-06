@@ -360,7 +360,10 @@ async function unParcours(page, pool, cas) {
   const idRendu = corps && corps.reservation ? String(corps.reservation.id) : '';
   ok(idRendu === String(ligne.id), `[${cas.nom}] la reponse porte le numero de la ligne inseree`, `${idRendu} / ${ligne.id}`);
   const finTexte = await f.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
-  ok(!/n°\s*\d+/.test(finTexte) && !/numéro de réservation/i.test(finTexte), `[${cas.nom}] l ecran final ne montre aucun numero de reservation`, finTexte.slice(0, 140));
+  // Le numero de la reservation (2026-11-06) : celui de la ligne inseree, que
+  // la recherche de la console retrouve, une seule fois sur l ecran.
+  ok(finTexte.indexOf(`Réservation n° ${ligne.id}. Donnez ce numéro si vous contactez le centre.`) >= 0 && (finTexte.match(/n° \d+/g) || []).length === 1,
+    `[${cas.nom}] l ecran final montre le numero de la ligne inseree, une seule fois`, finTexte.slice(0, 200));
   const jour = ligne.date instanceof Date ? ligne.date.toISOString().slice(0, 10) : String(ligne.date).slice(0, 10);
   ok(ligne.center_id === CENTER && jour === cas.date && Number(ligne.pax) === cas.pax, `[${cas.nom}] centre, jour et groupe inseres = ceux choisis`, JSON.stringify({ centre: ligne.center_id, jour, pax: ligne.pax }));
   const prix = Number(ligne.price != null ? ligne.price : ligne.total_price);

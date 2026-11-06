@@ -26,7 +26,19 @@ const { enqueueReservationCommunications } = require('../lib/ops-communications'
 const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { alerterLimiteDeTables } = require('../lib/limite-tables');
-const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
+const { requireStaffPermission, getStaffSessionFromRequest, sessionHasPermission, requestedCenterIsSameClient } = require('../lib/staff-auth');
+
+// Les deux barrieres de requireStaffPermission, sans rien envoyer : une session
+// qui demande un numero d un autre centre pourrait-elle y passer ? Changer de
+// centre (centers.switch), et seulement chez son propre client, sauf la
+// plateforme.
+async function sessionPeutOuvrirLeCentre(session, centre) {
+  if (!session || !centre) return false;
+  if (centre === session.centerId) return true;
+  if (!sessionHasPermission(session, 'centers.switch')) return false;
+  if (sessionHasPermission(session, 'platform.admin')) return true;
+  return requestedCenterIsSameClient(session.centerId, centre);
+}
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
 const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -500,6 +512,42 @@ module.exports = async (req, res) => {
         }
         const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id });
         sendJson(res, 200, { ok: true, id: dossier.id, historique });
+        return;
+      }
+      // LE NUMERO DE RESERVATION (2026-11-06, Ansar : « chaque numero affiche
+      // mene quelque part »). La recherche, le lien direct (/?resa=1734), les
+      // messages Telegram et le mail « a valider » demandent ou est la
+      // reservation n° X. Dans le centre de l ecran : son jour et son heure,
+      // pour que la console l ouvre. Dans un autre centre que la session peut
+      // ouvrir (direction, meme client) : le nom de ce centre seulement, la
+      // console y passe puis redemande. Sinon 404, le meme qu un numero qui
+      // n existe pas : un autre client n apprend jamais qu un numero existe.
+      if (requestUrl.searchParams.has('numero')) {
+        const sessionNumero = await requireStaffPermission(req, res, ['planning.view', 'dashboard.view', 'reservations.view'], { centerId: requestUrl.searchParams.get('centerId') || '' });
+        if (!sessionNumero) return;
+        const numero = String(requestUrl.searchParams.get('numero') || '').trim();
+        if (!/^\d{1,12}$/.test(numero)) {
+          sendError(res, 422, 'Numéro de réservation invalide : des chiffres seulement.');
+          return;
+        }
+        const centre = sessionNumero.authorizedCenterId;
+        const dossier = await getReservationById(Number(numero));
+        const sonCentre = dossier ? String(dossier.centerId || 'libramont') : '';
+        if (dossier && centre && sonCentre === centre) {
+          sendJson(res, 200, {
+            ok: true,
+            reservation: {
+              id: dossier.id, centerId: sonCentre, date: dossier.date, startTime: dossier.startTime,
+              name: dossier.name, pax: dossier.pax, status: dossier.status,
+            },
+          });
+          return;
+        }
+        if (dossier && await sessionPeutOuvrirLeCentre(sessionNumero, sonCentre)) {
+          sendJson(res, 200, { ok: true, centre: sonCentre });
+          return;
+        }
+        sendError(res, 404, `Aucune réservation n° ${numero} dans ce centre.`);
         return;
       }
       // LE CLIENT DEJA VENU (2026-10-08) : la fenetre Reserver demande, pour un

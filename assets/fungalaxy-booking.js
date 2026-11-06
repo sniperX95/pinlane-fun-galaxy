@@ -7515,7 +7515,9 @@
     var titre = o.centre + (noms.length ? ' · ' + noms.join(', ') : '');
     var adresse = String(o.adresse || '').replace(/\s*\([^)]*\)/g, '').trim();
     var lieu = [o.centre, adresse].filter(Boolean).join(', ');
-    var details = ['Arrivée à ' + o.heure + ' à l’accueil.'].concat(programme).concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.tel ? ['Une question ? ' + o.tel] : []).join('\n');
+    var numero = /^\d{1,12}$/.test(String(o.uid || '')) ? String(o.uid) : '';
+    var details = ['Arrivée à ' + o.heure + ' à l’accueil.'].concat(programme).concat(finConnue ? ['Fin vers ' + finDite + '.'] : [])
+      .concat(o.tel ? ['Une question ? ' + o.tel + (numero ? ', en donnant le n° ' + numero : '') + '.'] : numero ? ['Réservation n° ' + numero + '.'] : []).join('\n');
     var google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titre) + '&dates=' + debut + '/' + fin
       + '&ctz=Europe%2FBrussels&location=' + encodeURIComponent(lieu) + '&details=' + encodeURIComponent(details);
     var tz = 'TZID=Europe/Brussels';
@@ -7602,8 +7604,11 @@
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
     // et ne disait rien.
     poserTitre($('#t-fin'), confirme ? 'Réservation<br> <em>confirmée</em>' : 'Demande<br> <em>envoyée</em>');
-    // Aucun numero de reservation : le SaaS ne s en sert nulle part, le
-    // client n aurait rien a en faire (Movsar, 2026-09-24).
+    // LE NUMERO DE LA RESERVATION (2026-11-06). Le 24/09, Ansar l avait fait
+    // retirer : « il est note nulle part dans notre SaaS ». Il l est devenu :
+    // c est le numero du dossier, de son mail, de Telegram et des exports, et
+    // la recherche de la console l ouvre. Le client le donne s il appelle.
+    var numeroFin = /^\d{1,12}$/.test(String(r.id || '')) ? String(r.id) : '';
     var centreFin = meta && meta.center;
     var nomCentreFin = String(centreFin && centreFin.name || '').trim();
     var adresseFin = String(centreFin && centreFin.address || '').trim();
@@ -7617,6 +7622,7 @@
       + (avertissementBowling(r.program ? r : state.creneau) ? rangee('i-info', esc(avertissementBowling(r.program ? r : state.creneau))) : '')
       + rangee('i-mail', ligneMail)
       + rangee('i-card', ligneMontant)
+      + (numeroFin ? '<p class="fg-done__row fg-done__numero"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Réservation n°&nbsp;<b>' + numeroFin + '</b>. Donnez ce numéro si vous contactez le centre.</span></p>' : '')
       + (contact && contact.phone ? '<p class="fg-done__row"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Une question ? ' + lienContact(contact) + '</span></p>' : '')
       + '</div>'
       + apres

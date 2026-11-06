@@ -54,7 +54,7 @@ const noms = { nomActivite: (id) => ({ bowling: 'Bowling', laser_game: 'Laser Ga
 
 console.log('[A] une reservation entiere');
 const a = m.mailCopieReservation(resa, { centre, evenement: 'nouvelle', ...noms });
-const faits = ['+32 470 12 34 56', 'dupont@exemple.be', 'samedi 17 octobre 2026', '15:30', '15:20', 'Formule 4', '3, 4', '15:30 → 16:30', 'Bowling · 2 pistes · 8 joueurs', '17:00 → 17:25', 'vague 1/2', '280 €', 'tarif de référence 312 €', 'Pizza × 6', 'Confirmée', 'Gâteau apporté par les parents', '#9123', 'En ligne (formulaire)', 'Fun Galaxy Libramont'];
+const faits = ['+32 470 12 34 56', 'dupont@exemple.be', 'samedi 17 octobre 2026', '15:30', '15:20', 'Formule 4', '3, 4', '15:30 → 16:30', 'Bowling · 2 pistes · 8 joueurs', '17:00 → 17:25', 'vague 1/2', '280 €', 'tarif de référence 312 €', 'Pizza × 6', 'Confirmée', 'Gâteau apporté par les parents', 'n° 9123', 'En ligne (formulaire)', 'Fun Galaxy Libramont'];
 const manquants = faits.filter((f) => !a.html.includes(f.replace(/</g, '&lt;')));
 ok(!manquants.length, '[A] la copie porte chaque champ utile a l accueil', manquants.join(' | '));
 ok(!/client difficile/.test(a.html) && !/client difficile/.test(a.text), '[A] une note d equipe interne ne sort pas dans la copie');
@@ -69,7 +69,7 @@ console.log('[C] une demande sur mesure');
 const lead = { id: 77, centerId: 'libramont', contactName: 'Claire', company: 'Athénée', phone: '+32 470 99 88 77', email: 'claire@exemple.be', requestedDate: 'mercredi 14 octobre 2026, après-midi', pax: 42, message: 'Deux classes. <script>alert(1)</script> Allergie arachides.',
   payload: { demande: { groupTypeLabel: 'École, jeunesse', participants: 42, companions: 4, ages: ['7-12'], momentLabel: 'Après-midi', alternativeDate: '2026-10-21', activities: [{ id: 'bowling', name: 'Bowling', participants: 42, duration: 1 }, { id: 'laser_game', name: 'Laser Game', participants: 30, games: 2 }], advice: true, budgetPerPerson: 15, invoice: true, vatNumber: 'BE0123.456.789' } } };
 const c = m.mailCopieDemandeSurMesure(lead, { centre });
-const faitsC = ['Claire', 'Athénée', '+32 470 99 88 77', 'claire@exemple.be', 'École, jeunesse', '42', '7 à 12 ans', 'mercredi 21 octobre 2026', 'Bowling · 42 joueurs · 1 h', 'Laser Game · 30 joueurs · 2 parties', 'l’avis de l’équipe', '15 €', 'BE0123.456.789', 'Allergie arachides', 'Demande #77'];
+const faitsC = ['Claire', 'Athénée', '+32 470 99 88 77', 'claire@exemple.be', 'École, jeunesse', '42', '7 à 12 ans', 'mercredi 21 octobre 2026', 'Bowling · 42 joueurs · 1 h', 'Laser Game · 30 joueurs · 2 parties', 'l’avis de l’équipe', '15 €', 'BE0123.456.789', 'Allergie arachides'];
 const manquantsC = faitsC.filter((f) => !c.html.includes(f));
 ok(!manquantsC.length, '[C] la demande porte tout ce que le client a rempli', manquantsC.join(' | '));
 

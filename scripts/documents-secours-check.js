@@ -360,7 +360,7 @@ const workbook = parNomZip['xl/workbook.xml'];
 ok(exportExcel.NOMS_FEUILLES.every((n) => workbook.includes(`<sheet name="${n}"`)), `les 5 feuilles : ${exportExcel.NOMS_FEUILLES.join(', ')}`);
 const sst = parNomZip['xl/sharedStrings.xml'];
 const chaines = [...sst.matchAll(/<t xml:space="preserve">([\s\S]*?)<\/t>/g)].map((x) => x[1]);
-const enteteResas = ['Heure', 'Client', 'Téléphone', 'E-mail', 'Formule', 'Pers.', 'Bowling (pistes)', 'Duckpin', 'LG', 'Pixel', 'Arcades', 'Golf', 'O\u2019Clock', 'Playgr', 'Billard', 'Prix', 'Payé', 'Statut', 'Canal', 'Notes', 'Référence'];
+const enteteResas = ['Heure', 'Client', 'Téléphone', 'E-mail', 'Formule', 'Pers.', 'Bowling (pistes)', 'Duckpin', 'LG', 'Pixel', 'Arcades', 'Golf', 'O\u2019Clock', 'Playgr', 'Billard', 'Prix', 'Payé', 'Statut', 'Canal', 'Notes', 'N° de réservation'];
 ok(enteteResas.every((t) => chaines.includes(t)), 'l\u2019en-tête de « Réservations » est complet');
 ok(['Heure début', 'Heure fin', 'Activité', 'Pistes / parties', 'Joueurs'].every((t) => chaines.includes(t)), 'l\u2019en-tête de « Programme détaillé »');
 ok(['Reçue le', 'Type de groupe', 'Participants', 'Budget par personne', 'Suivi', 'Message du client'].every((t) => chaines.includes(t)), 'l\u2019en-tête de « Demandes sur mesure »');

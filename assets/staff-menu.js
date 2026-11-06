@@ -1565,6 +1565,15 @@
     }
   }
 
+  // Le passage d un centre a l autre, pour un numero de reservation ouvert
+  // depuis un autre centre (ouvrirReservationNumero) : le meme geste que le
+  // menu, s il connait ce centre et que le role peut changer de centre.
+  window.pinlaneChoisirCentre = (centerId) => {
+    if (!getMenuCenters().some(item => item.id === centerId)) return false;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('centers.switch')) return false;
+    selectMenuCenter(centerId);
+    return true;
+  };
   window.syncStaffMenuState = syncStaffMenuState;
   window.renderStaffMenu = renderMenu;
   window.FGX_STAFF_MENU = menuSections;

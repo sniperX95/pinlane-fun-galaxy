@@ -1366,7 +1366,7 @@ function renderOpsSimulation() {
             <div class="ops-sim-log">
               <div><span class="ops-pill ${escapeHtml(log.severity || '')}">${escapeHtml(log.severity || 'info')}</span><div class="meta">${escapeHtml(formatOpsTimestamp(log.createdAt))}</div></div>
               <div><strong>${escapeHtml(log.decisionType || 'decision')}</strong><div class="meta">${escapeHtml(log.payload?.summary || log.payload?.error || log.payload?.action || log.payload?.reason || 'Décision journalisée.')}</div></div>
-              <div class="meta">${escapeHtml(log.agentId || 'agent')}<br>${log.reservationId ? `Réservation #${escapeHtml(log.reservationId)}` : 'Run global'}</div>
+              <div class="meta">${escapeHtml(log.agentId || 'agent')}<br>${/^\d{1,12}$/.test(String(log.reservationId || '')) ? `<button type="button" class="pv2-lien-numero" onclick="ouvrirReservationNumero('${String(log.reservationId)}')">Réservation n°&nbsp;${String(log.reservationId)}</button>` : 'Run global'}</div>
             </div>
           `).join('') : `<p>Aucun log pour l’instant.</p>`}
         </div>

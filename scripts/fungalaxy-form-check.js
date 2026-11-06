@@ -449,8 +449,8 @@
 // (le « · » du sous-titre des heures redevient secable), orphelin (le
 // dernier mot d un nom se separe de nouveau), flechefocus (la fleche
 // eteinte garde le focus), sortieclavier (Tab hors du calendrier le laisse
-// ouvert), numero (l ecran final remontre un numero de reservation, dont le
-// SaaS ne se sert pas) : JS servi casse ; fleches44 (les fleches du mois
+// ouvert), numero (l ecran final perd le numero de la reservation, celui que
+// la console retrouve, 2026-11-06) : JS servi casse ; fleches44 (les fleches du mois
 // reviennent a 34 px), cibleetape (la cible d une etape faite se reduit a
 // son segment), anneaustepper (l anneau du « - » repart dehors, coupe) :
 // FEUILLE servie cassee.
@@ -907,7 +907,7 @@ const MUTATIONS = {
   sortieclavier: ['  dayWrap.addEventListener(\'focusout\', sortieClavier);\n  dayPop.addEventListener(\'focusout\', sortieClavier);\n', ''],
   lieurecap: ["    var html = lieuDuCentre()\n      + ", "    var html = ''\n      + "],
   lieufin: ["      + (nomCentreFin ? rangee('i-lieu', '<b>' + esc(nomCentreFin) + '</b>' + (adresseFin ? '<br>' + esc(adresseFin) : '')) : '')\n", ''],
-  numero: ["    $('#finBody').innerHTML = '<div class=\"fg-done__ticket", "    $('#finBody').innerHTML = '<div>Réservation n° ' + esc(r.id) + '</div><div class=\"fg-done__ticket"],
+  numero: ["      + (numeroFin ? '<p class=\"fg-done__row fg-done__numero\">", "      + (false ? '<p class=\"fg-done__row fg-done__numero\">"],
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
   panneredite: ["    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }", "    if (false) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }"],
@@ -3031,7 +3031,12 @@ async function main() {
     ok(corps.sansOffres === false, '[E] la case des offres, laissee vide, part avec la reservation (sansOffres : false)', JSON.stringify(corps.sansOffres));
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
     ok(fin.indexOf('Fun Galaxy Libramont') === 0 && fin.indexOf('6800 Libramont') > 0, '[E] l ecran final dit le centre et son adresse', fin.slice(0, 90));
-    ok(!/n°\s*\d+/.test(fin) && !/numéro de réservation/i.test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite l adresse, et aucun numero de reservation (le SaaS ne s en sert pas)', fin.slice(0, 120));
+    // LE NUMERO DE LA RESERVATION (2026-11-06) : celui que le serveur vient de
+    // rendre, le meme que la console retrouve, avec ce qu il sert a faire.
+    const poseE = await reponsePose;
+    const numeroE = poseE ? await poseE.json().then((j) => j && j.reservation && j.reservation.id).catch(() => null) : null;
+    ok(Number(numeroE) > 0 && fin.indexOf(`Réservation n° ${numeroE}. Donnez ce numéro si vous contactez le centre.`) >= 0 && (fin.match(/n° \d+/g) || []).length === 1 && fin.indexOf('qa@example.com') >= 0,
+      '[E] l ecran final cite l adresse et le numero de la reservation rendu par le serveur, une seule fois', `${numeroE} · ${fin.slice(0, 160)}`);
     // L ECRAN FINAL EST UN RECU : l e-mail n est annonce que parce que la
     // reponse l a mis en file ; l arrivee est celle du plan rendu ; le
     // programme nomme chaque activite choisie.

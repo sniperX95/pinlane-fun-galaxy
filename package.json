@@ -164,6 +164,7 @@
     "test:prix-suivi": "node scripts/prix-suivi-check.js && node scripts/prix-suivi-check.js --contre-preuves",
     "test:sur-mesure-gestion": "node scripts/sur-mesure-gestion-check.js && node scripts/sur-mesure-gestion-check.js --contre-preuves",
     "test:historique-dossier": "node scripts/historique-dossier-check.js && node scripts/historique-dossier-check.js --contre-preuves",
+    "test:numero-reservation": "node scripts/numero-reservation-check.js && node scripts/numero-reservation-check.js --contre-preuves",
     "test:derniere-modif": "node scripts/derniere-modif-check.js && node scripts/derniere-modif-check.js --contre-preuves",
     "test:encaisse-garde": "node scripts/encaisse-garde-check.js && node scripts/encaisse-garde-check.js --contre-preuves",
     "test:droits-2b-ui": "node scripts/droits-2b-ui-check.js && node scripts/droits-2b-ui-check.js --contre-preuves",

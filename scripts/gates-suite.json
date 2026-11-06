@@ -297,6 +297,7 @@
     "test:prix-suivi",
     "test:sur-mesure-gestion",
     "test:historique-dossier",
+    "test:numero-reservation",
     "test:derniere-modif",
     "test:encaisse-garde",
     "test:droits-2b-ui",

@@ -6839,7 +6839,7 @@
     return lignes.map(function (l, i) {
       // La vraie photo de l activite, celle de ses autres ecrans ; sans photo connue, la place reste vide (jamais un pictogramme).
       var ph = l.photo !== undefined ? l.photo : (l.id ? photo(l.id) : '');
-      return '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise"' + teinteAttr(l.id) + ' style="--i:' + (depart + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
+      return '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise"' + (l.teinte !== undefined ? (l.teinte ? ' data-teinte="' + l.teinte + '"' : '') : teinteAttr(l.id)) + ' style="--i:' + (depart + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
         + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
         + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
     }).join('');
@@ -7665,8 +7665,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106confirm1';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106confirm1';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106surmesure1';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106surmesure1';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {
@@ -7769,7 +7769,7 @@
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
       poster: poster, posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
-      htmlInfoFormule: htmlInfoFormule,
+      htmlInfoFormule: htmlInfoFormule, htmlLignesRecap: htmlLignesRecap, boiteDuClient: boiteDuClient,
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
       scene: function () { return sceneCourante; },

@@ -790,6 +790,11 @@ async function parcours(browser, mock, { largeur = 1440, hauteur = 900 } = {}) {
     await page.waitForTimeout(700);
     await deborde('recap');
     r.recapTexte = await page.textContent('#smRecap');
+    // Une ligne par activite (2026-11-06) : son nom, son effectif et ses options, son montant, sa couleur, sa photo.
+    r.recapLignes = await page.evaluate(() => Array.from(document.querySelectorAll('#smRecap .fg-recap__item')).map((l) => {
+      const t = (sel) => ((l.querySelector(sel) || {}).textContent || '').replace(/\s+/g, ' ').trim();
+      return { nom: t('.fg-recap__name'), detail: t('.fg-recap__detail'), montant: t('.fg-recap__aside'), teinte: l.dataset.teinte || '', photo: Boolean(l.querySelector('.fg-recap__photo img')) };
+    }));
     r.blocs = await page.evaluate(() => document.querySelectorAll('#smRecap .fg-sm-recap__block').length);
     mock.dernierePose.demande = null;
     await page.click('#smSend');
@@ -869,11 +874,14 @@ function verifierParcours(r, etiquette) {
   ok(r.contact && r.facture.visible && /École communale du gate/.test(r.facture.label), 'une ecole peut demander une facture a son nom', JSON.stringify(r.facture));
   ok(r.erreursContact === 5, 'les coordonnees vides sont refusees champ par champ', `${r.erreursContact} erreurs`);
   const recapLisible = r.recapTexte.replace(/\s+/g, ' ');
+  const ligneSm = (nom) => (r.recapLignes || []).find((l) => l.nom === nom) || {};
   ok(r.recap && r.blocs === 4 && /École communale du gate/.test(recapLisible)
-    && recapLisible.includes('Bowling (31 joueurs · 1 heure) : 234 €')
-    && recapLisible.includes('Laser Game (31 joueurs · 1 partie) : 310 €')
+    && ligneSm('Bowling').detail === '31 joueurs · 1 heure' && ligneSm('Bowling').montant === '234 €'
+    && ligneSm('Laser Game').detail === '31 joueurs · 1 partie' && ligneSm('Laser Game').montant === '310 €'
     && recapLisible.includes('Estimation des activités : 544 €') && /Institutrice/.test(recapLisible),
     'la relecture reprend le groupe, la date, les envies avec leurs effectifs, options et montants et les coordonnees', recapLisible.slice(0, 300));
+  ok(ligneSm('Bowling').teinte === '1' && ligneSm('Laser Game').teinte === '2' && ligneSm('Bowling').photo && ligneSm('Laser Game').photo,
+    'chaque envie de la relecture a sa photo et sa couleur, dans l ordre du choix (Bowling puis Laser Game)', JSON.stringify(r.recapLignes));
   ok(r.fin && /Demande\s*envoyée/.test(r.finTitre) && /24 heures ouvrables/.test(r.finTexte) && /Rien n’est encore réservé/.test(r.finTexte), 'l ecran final dit le delai de reponse et que rien n est reserve', r.finTexte.slice(0, 200));
   const d = r.envoyee && r.envoyee.payload && r.envoyee.payload.demande;
   ok(Boolean(d) && d.participants === 31 && d.companions === 2 && d.date === r.cible.date && d.moment === 'soiree' && d.organisation === 'École communale du gate'

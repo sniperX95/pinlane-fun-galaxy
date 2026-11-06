@@ -3114,11 +3114,12 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 [data-teinte="2"] { --act: #67baac; --act-vif: #67baac; --act-ink: #8fd6c9; --act-on: #04110f; }
 [data-teinte="3"] { --act: #e3b341; --act-vif: #e3b341; --act-ink: #f0cf7a; --act-on: #1c1404; }
 [data-teinte="4"] { --act: #f0648c; --act-vif: #f0648c; --act-ink: #f79bb4; --act-on: #24060f; }
-#gridAct > .fg-grid__item.is-on[data-teinte] > .fg-card { background: var(--act); }
-#gridAct > .fg-grid__item.is-on[data-teinte] > .fg-card :is(.fg-card__name, .fg-card__price) { color: var(--act-on); }
-#gridAct > .fg-grid__item[data-teinte] .fg-card-select.is-on svg { color: var(--act); }
-#gridAct > .fg-grid__item[data-teinte] .fg-pill.is-on { background: var(--act-vif); }
-#gridAct > .fg-grid__item[data-teinte] .fg-pill.is-on :is(b, small) { color: var(--act-on); }
+/* La demande sur mesure (#smGridAct) reprend les memes couleurs, dans l ordre ou le groupe coche ses activites. */
+:is(#gridAct, #smGridAct) > .fg-grid__item.is-on[data-teinte] > .fg-card { background: var(--act); }
+:is(#gridAct, #smGridAct) > .fg-grid__item.is-on[data-teinte] > .fg-card :is(.fg-card__name, .fg-card__price) { color: var(--act-on); }
+:is(#gridAct, #smGridAct) > .fg-grid__item[data-teinte] .fg-card-select.is-on svg { color: var(--act); }
+:is(#gridAct, #smGridAct) > .fg-grid__item[data-teinte] .fg-pill.is-on { background: var(--act-vif); }
+:is(#gridAct, #smGridAct) > .fg-grid__item[data-teinte] .fg-pill.is-on :is(b, small) { color: var(--act-on); }
 .fg-etape[data-teinte].is-open > .fg-etape__tete, .fg-etape[data-teinte].is-open > .fg-avant-tete { background: var(--act); }
 .fg-etape[data-teinte].is-open :is(.fg-etape__quoi b, .fg-etape__quoi small, .fg-etape__chev) { color: var(--act-on); }
 .fg-etape[data-teinte].is-open .fg-etape__quoi b::after { color: var(--act-on); }

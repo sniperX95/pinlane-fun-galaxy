@@ -161,12 +161,16 @@ function serveur(mock) {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
 }
 
-// Le jour vise : ouvert tot et tard, au plus tot demain. L horloge du
-// navigateur est posee la veille a 15 h a Bruxelles : la soiree du jour vise
-// est alors a plus de 24 heures, quelle que soit l heure du lancement.
+// Le jour vise : ouvert tot et tard, au plus tot apres-demain. L horloge du
+// navigateur est posee la veille a 15 h a Bruxelles : pour l ecran, la soiree
+// du jour vise est a plus de 24 heures. Mais le serveur juge la regle des
+// 24 heures sur SA propre horloge, l heure reelle : avec demain pour cible, la
+// soiree tombait a moins de 24 h des que la suite tournait apres 18 h, et la
+// demande partait en 422 (suite du 06/11, 18 h 49). Apres-demain est a plus de 24 heures,
+// quelle que soit l heure du lancement, des deux cotes.
 function jourVise(mock) {
   const aujourdHui = jourBruxelles();
-  const ouverts = mock.metaPayload('', 90).center.calendar.filter((j) => j.open && j.date > aujourdHui);
+  const ouverts = mock.metaPayload('', 90).center.calendar.filter((j) => j.open && j.date > plusJours(aujourdHui, 1));
   const cible = ouverts.find((j) => j.schedule.open <= 10 && j.schedule.close >= 21) || ouverts[0];
   return { cible, horloge: instantBruxelles(plusJours(cible.date, -1), 15) };
 }

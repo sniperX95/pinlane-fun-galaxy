@@ -332,7 +332,7 @@ async function preuvesServeur() {
 async function preuvesMails() {
   remettre();
   charger('lib/garde-alertes.js').oublierLesAlertes();
-  route(/from communications c left join reservations r/, () => [{ id: 55, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1234, date: '2026-11-14', start_time: '15:00:00' }]);
+  route(/from communications c left join \(select id, date, start_time from reservations where /, () => [{ id: 55, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1234, date: '2026-11-14', start_time: '15:00:00' }]);
   const { createHandler } = charger('api/inbound-email.js');
   const evenement = (resultat) => createHandler({ enregistrerEvenement: async () => resultat });
   TG.length = 0;
@@ -461,7 +461,7 @@ async function preuvesBilan() {
   ok(g && JSON.stringify(g.modificationsHier) === JSON.stringify({ annulees: 1, deplacees: 1, prix: 1, reglages: 1, acces: 1, autres: 0, arrivees: 1, encaissements: 0 }), '[B] les modifications d hier, par genre', g && g.modificationsHier);
   const regles = b.bilanEnRegles(f);
   ok(/^Bilan Pinlane du vendredi 13\/11\n/.test(regles) && /\nGEMBLOUX\n/.test(regles) && /\nLIBRAMONT\n/.test(regles) && regles.includes('150,00 €') && regles.includes('Encaissé 90,00 €') && regles.includes('LES AGENTS') && regles.includes('1 mail est revenu à Gembloux') && regles.includes('Valider 1 réservation à Gembloux.'), '[B] le texte des regles dit tout : les centres, l argent, les agents, les problemes, quoi faire', regles);
-  ok(!/[—–]/.test(regles) && !PERSONNEL.test(regles), '[B] sans tiret long ni donnee personnelle', regles);
+  ok(!/[\u2014\u2013]/.test(regles) && !PERSONNEL.test(regles), '[B] sans tiret long ni donnee personnelle', regles);
 
   const appels = [];
   const llm = (texte) => async (options) => { appels.push(options); return texte === null ? null : { text: texte }; };
@@ -471,8 +471,8 @@ async function preuvesBilan() {
   ok(!PERSONNEL.test(appels[0] ? appels[0].user : 'Jean'), '[B] aucune donnee personnelle ne part a l IA', appels[0] && appels[0].user.slice(0, 200));
   const invente = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace('150,00 €', '1 950,00 €')) });
   ok(invente.par === 'regles' && /citait un nombre absent des données/.test(invente.texte) && invente.texte.includes('150,00 €'), '[B] un chiffre invente par l IA : c est le texte des regles qui part, et il le dit', invente.texte.slice(-200));
-  const tiret = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace('Libramont : rien hier.', 'Libramont — rien hier.')) });
-  ok(tiret.par === 'ia' && !/[—–]/.test(tiret.texte) && tiret.texte.includes('Libramont, rien hier.'), '[B] un tiret long de l IA se remplace, il ne part jamais', tiret.texte.slice(0, 300));
+  const tiret = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace('Libramont : rien hier.', 'Libramont \u2014 rien hier.')) });
+  ok(tiret.par === 'ia' && !/[\u2014\u2013]/.test(tiret.texte) && tiret.texte.includes('Libramont, rien hier.'), '[B] un tiret long de l IA se remplace, il ne part jamais', tiret.texte.slice(0, 300));
   const oubli = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace(/Libramont/gi, 'l autre centre')) });
   ok(oubli.par === 'regles', '[B] un centre oublie : le texte des regles', oubli.par);
   const muet = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(null) });
@@ -679,7 +679,7 @@ async function contrePreuves() {
   });
   await rouge('un mail revenu ne sonne plus', [{ fichier: 'lib/garde-mails.js', de: "const SONNENT = new Set(['bounced', 'complained', 'failed']);", vers: 'const SONNENT = new Set([]);' }], async () => {
     remettre();
-    route(/from communications c left join reservations r/, () => [{ id: 58, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1, date: '2026-11-14', start_time: '15:00' }]);
+    route(/from communications c left join \(select id, date, start_time from reservations where /, () => [{ id: 58, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1, date: '2026-11-14', start_time: '15:00' }]);
     TG.length = 0;
     await charger('lib/garde-mails.js').alerterEvenementMail({ ok: true, deduped: false, communicationId: 58, type: 'bounced' });
     return TG.length === 1;

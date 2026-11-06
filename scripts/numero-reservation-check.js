@@ -20,6 +20,11 @@
 //       de l equipe ouvre /?resa=X ; la version texte le porte ; le fichier
 //       agenda le donne avec le telephone ; un texte reecrit par le centre
 //       reste tel quel, et {{numero}} le lui donne.
+//   [T] Telegram : « Réservation n° X » (l annonce, les modifications, un mail
+//       revenu) s ouvre d un toucher, le texte reste du texte brut (une entite
+//       text_link, juste au morceau coupe et apres la ligne du repli) ; une
+//       demande de groupe n a plus de numero, « À traiter dans la console »
+//       l ouvre ; un identifiant fait de chiffres ne s ecrit plus.
 //   [E] les exports et la copie de secours l ecrivent comme partout ; la
 //       demande de groupe n a plus de numero.
 //   [R] ce qui est parti : « Ticket # », « requete », « Demande # »,
@@ -220,6 +225,72 @@ async function groupeMails() {
   ok(j.variable, '[M] {{numero}} donne le numero au texte du centre', v.avecVariable);
   ok(j.texteReecrit, '[M] la version texte d une confirmation reecrite par le centre reste son texte, sans numero ajoute', v.texteReecrit);
   ok(j.texteConfirmation && j.texteRappel, '[M] la version texte de la confirmation et du rappel finit par « Réservation n° X »', { confirmation: (v.textes.confirmation || '').slice(-60), rappel: (v.textes.reminder_48h || '').slice(-60) });
+}
+
+// ---------------------------------------------------------------------------
+// [T] TELEGRAM.
+// ---------------------------------------------------------------------------
+function recharger(rel) {
+  const chemin = require.resolve(path.join(ROOT, rel));
+  delete require.cache[chemin];
+  return require(chemin);
+}
+async function scenarioTelegram() {
+  const alertes = recharger('lib/garde-alertes.js');
+  const annonces = recharger('lib/garde-annonces.js');
+  const journal = recharger('lib/garde-journal.js');
+  if (typeof annonces.reprendreLesAnnonces === 'function') annonces.reprendreLesAnnonces();
+  const GROUPE = '-1001234567';
+  const env = { TELEGRAM_JETON: 'jeton-du-banc', TELEGRAM_CHAT: '4242', TELEGRAM_GROUPE: GROUPE, TELEGRAM_SUJETS: 'pannes:2,reservations:3,modifications:4,bilans:5', PUBLIC_APP_URL: 'https://app.pinlane.be' };
+  let refus = false;
+  let partis = [];
+  const fetcher = async (url, options) => {
+    const corps = JSON.parse(options.body);
+    if (refus && String(corps.chat_id) === GROUPE) return new Response('{"ok":false}', { status: 400 });
+    partis.push(corps);
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  const liens = (corps) => (corps.entities || []).map((e) => ({ vu: corps.text.slice(e.offset, e.offset + e.length), url: e.url, type: e.type }));
+  const annonce = annonces.texteReservation({ id: 1734, centerId: 'gembloux', channel: 'public', date: '2026-11-14', startTime: '15:00', pax: 12, program: { items: [{ name: 'Bowling' }] }, price: 286 });
+  partis = [];
+  await alertes.envoyerTelegram(annonce, { sujet: 'reservations', env, fetcher });
+  const direct = partis.map(liens);
+  partis = [];
+  refus = true;
+  await alertes.envoyerTelegram(annonce, { sujet: 'reservations', env, fetcher });
+  refus = false;
+  const repli = partis.map((c) => ({ prefixe: /^\(Le groupe Pinlane refuse/.test(c.text), liens: liens(c) }));
+  // Un long message (plus de 3500 caracteres) part en morceaux : chaque lien tombe juste dans le sien.
+  const lignes = Array.from({ length: 160 }, (_, i) => `14:${String(i % 60).padStart(2, '0')} Seb : réservation n° ${2000 + i} (samedi 14/11 16:00) déplacée de 15:00 à 16:00`);
+  partis = [];
+  await alertes.envoyerTelegram(['Modifications', 'Gembloux', ...lignes].join('\n'), { sujet: 'modifications', env, fetcher });
+  const morceaux = partis.map((c) => ({ n: (c.text.match(/n° \d+/g) || []).length, liens: liens(c) }));
+  partis = [];
+  await annonces.annoncerDemande({ id: 61, centerId: 'gembloux', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre 2026, après-midi' }, { env, fetcher });
+  const demande = partis.map((c) => ({ texte: c.text, liens: liens(c) }));
+  const sansChiffres = journal.classer({ action: 'sendCampaign', entity_type: 'campaign', entity_id: '12', champs: {} });
+  const demandeJournal = journal.classer({ action: 'saveCenterConfig', entity_type: 'custom_request', entity_id: '61', champs: {} });
+  return { direct, repli, morceaux, demande, sansChiffres, demandeJournal };
+}
+function jugerTelegram(v) {
+  const justes = (liste) => liste.length > 0 && liste.every((l) => l.type === 'text_link' && /^n° (\d+)$/.test(l.vu) && l.url === `https://app.pinlane.be/?resa=${l.vu.slice(3)}`);
+  return {
+    annonce: v.direct.length === 1 && v.direct[0].length === 1 && justes(v.direct[0]) && v.direct[0][0].vu === 'n° 1734',
+    repli: v.repli.length === 1 && v.repli[0].prefixe && justes(v.repli[0].liens) && v.repli[0].liens[0].vu === 'n° 1734',
+    morceaux: v.morceaux.length >= 2 && v.morceaux.every((m) => m.n === m.liens.length && justes(m.liens)),
+    demande: v.demande.length === 1 && !/n° 61/.test(v.demande[0].texte) && /\nÀ traiter dans la console$/.test(v.demande[0].texte)
+      && v.demande[0].liens.length === 1 && v.demande[0].liens[0].vu === 'À traiter dans la console' && v.demande[0].liens[0].url === 'https://app.pinlane.be/?demande=61&centre=gembloux',
+    chiffres: Boolean(v.sansChiffres.ligne) && !/\(12\)/.test(v.sansChiffres.ligne) && Boolean(v.demandeJournal.ligne) && !/61/.test(v.demandeJournal.ligne),
+  };
+}
+async function groupeTelegram() {
+  const v = await scenarioTelegram();
+  const j = jugerTelegram(v);
+  ok(j.annonce, '[T] l annonce d une reservation : « n° X » est un lien vers /?resa=X, le texte reste brut', v.direct);
+  ok(j.repli, '[T] le groupe refuse, le message part a Ansar avec sa ligne devant : le lien tombe toujours sur « n° X »', v.repli);
+  ok(j.morceaux, '[T] un long message coupe en morceaux : chaque numero de chaque morceau a son lien, juste', v.morceaux.map((m) => `${m.n}/${m.liens.length}`));
+  ok(j.demande, '[T] une demande de groupe : plus de numero, « À traiter dans la console » l ouvre dans son centre', v.demande);
+  ok(j.chiffres, '[T] les modifications n ecrivent plus un identifiant fait de chiffres (campagne, demande)', { campagne: v.sansChiffres, demande: v.demandeJournal });
 }
 
 // ---------------------------------------------------------------------------
@@ -505,6 +576,37 @@ async function contrePreuvesNode() {
   await mail('texte', "  return id && corps.trim() ? `${corps}\\n\\nRéservation n° ${id}` : corps;", '  return corps;', 'texteConfirmation');
   await mail('reecrit', 'textBody: Array.isArray(message.details) ? texteAvecNumero(message.body, reservation) : message.body,', 'textBody: texteAvecNumero(message.body, reservation),', 'texteReecrit');
   await mail('variable', "  numero: 'num[eé]ro',\n", '', 'variable');
+
+  const telegram = async (nom, fichier, de, vers, regle) => {
+    const compile = require('module').prototype._compile;
+    const cible = path.join(ROOT, fichier);
+    require('module').prototype._compile = function (contenu, f) {
+      if (f !== cible) return compile.call(this, contenu, f);
+      const texte = contenu.split(CRLF).join(LF);
+      if (texte.split(de).length - 1 !== 1) throw new Error(`ancre absente : ${de.slice(0, 60)}`);
+      return compile.call(this, texte.split(de).join(vers), f);
+    };
+    let rouge = false;
+    let mesure = '';
+    try {
+      silence = true;
+      const v = await scenarioTelegram();
+      rouge = !jugerTelegram(v)[regle];
+      mesure = regle;
+    } catch (error) {
+      rouge = !/ancre absente/.test(error.message);
+      mesure = error.message;
+    } finally {
+      silence = false;
+      require('module').prototype._compile = compile;
+      ['lib/garde-alertes.js', 'lib/garde-annonces.js', 'lib/garde-journal.js'].forEach(recharger);
+    }
+    ok(rouge, `contre-preuve « ${nom} » : le gate ROUGIT (${regle})`, mesure);
+  };
+  await telegram('telegram', 'lib/garde-alertes.js', '  if (entites.length) corps.entities = entites;\n', '', 'annonce');
+  await telegram('morceau', 'lib/garde-alertes.js', '  const entites = entitesDesLiens(texte, { env, liens });', "  const entites = entitesDesLiens(String(texte).replace(/^\\(Le groupe Pinlane refuse[^\\n]*\\n/, ''), { env, liens });", 'repli');
+  await telegram('demande', 'lib/garde-annonces.js', '  lignes.push(A_TRAITER);', '  lignes.push(`Demande n° ${d.id}, à traiter dans la console`);', 'demande');
+  await telegram('identifiant', 'lib/garde-journal.js', "const quoi = l.entity_id && !/^\\d+$/.test(String(l.entity_id)) && ", 'const quoi = l.entity_id && ', 'chiffres');
 }
 async function contrePreuvesConsole(browser, installerMock) {
   const servie = async (nom, fichier, de, vers, regle, scenario) => {
@@ -545,6 +647,7 @@ async function contrePreuvesConsole(browser, installerMock) {
       await groupeServeur();
       groupeLecture();
       await groupeMails();
+      await groupeTelegram();
       groupeExportsEtRetraits();
     } else {
       await contrePreuvesNode();

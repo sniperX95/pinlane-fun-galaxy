@@ -459,7 +459,7 @@ async function preuvesClient(jour) {
   const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
   const lead = await appeler(meta, 'POST', '/api/custom-request', demande);
   const annonceDemande = TELEGRAM.find((t) => /^Nouvelle demande de groupe, Gembloux/.test(t));
-  ok(lead.statut === 201 && Boolean(annonceDemande) && annonceDemande.includes('Anniversaire, 35 personnes') && annonceDemande.includes('Demande n° 77'), '[C] une demande de groupe s annonce aussi', { statut: lead.statut, TELEGRAM });
+  ok(lead.statut === 201 && Boolean(annonceDemande) && annonceDemande.includes('Anniversaire, 35 personnes') && annonceDemande.includes('À traiter dans la console') && !annonceDemande.includes('n° 77'), '[C] une demande de groupe s annonce aussi, sans numero de demande', { statut: lead.statut, TELEGRAM });
   ok(!PERSONNEL.test(annonceDemande || 'Jean Essai'), '[C] sans le contact', annonceDemande);
   const ligneDemande = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
   ok(ligneDemande && contexte(ligneDemande).annonce === 'ok', '[C] et son sort s ecrit au journal', ligneDemande && contexte(ligneDemande));

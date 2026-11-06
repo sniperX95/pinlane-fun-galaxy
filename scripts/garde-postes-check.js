@@ -219,7 +219,7 @@ async function preuvesAnnonces() {
   const formule = an.texteReservation({ ...RESA, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', program: { items: [{ name: 'Bowling' }] } });
   ok(formule.includes('FORMULE 4') && !formule.includes('Bowling'), '[R] une formule se dit par son nom', formule);
   const d = an.texteDemande({ id: 56, centerId: 'libramont', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre 2026, après-midi', contactName: 'Jean Dupont', email: 'jean@example.be' });
-  ok(d === 'Nouvelle demande de groupe, Libramont\nAnniversaire, 35 personnes\nsamedi 21 novembre 2026, après-midi\nDemande n° 56, à traiter dans la console', '[R] une demande de groupe : le centre, l occasion, le nombre, le moment, sans le contact', d);
+  ok(d === 'Nouvelle demande de groupe, Libramont\nAnniversaire, 35 personnes\nsamedi 21 novembre 2026, après-midi\nÀ traiter dans la console', '[R] une demande de groupe : le centre, l occasion, le nombre, le moment, sans le contact ni numero de demande (2026-11-06)', d);
 
   avecGroupe();
   an.reprendreLesAnnonces();

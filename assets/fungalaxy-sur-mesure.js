@@ -762,6 +762,15 @@
         + (o.formule && o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
         + '</div>' + (o.formule ? o.info || '' : I.caseActivite(o.id, activite(o.id).name, o.on) + compteurSm(activite(o.id))) + '</li>';
     }
+    // CHAQUE ACTIVITE GARDE SA COULEUR, comme au formulaire (Ansar, 2026-11-06) : les couleurs des fanions dans
+    // l ordre ou le groupe a coche ses activites, sur sa carte, ses options et le recapitulatif.
+    function teinteSm(id) { var i = sm.activites.indexOf(id); return i < 0 ? '' : String(i % 4 + 1); }
+    function poserTeintesSm() {
+      $$('.fg-grid__item[data-sm-activity]', smGridAct).forEach(function (item) {
+        var t = teinteSm(item.dataset.smActivity);
+        if (t) item.dataset.teinte = t; else item.removeAttribute('data-teinte');
+      });
+    }
     function rendreSmActivites() {
       var ctx = contexteSm();
       smGridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -773,6 +782,7 @@
           });
       }).join('') || '<li class="fg-empty">Aucune activité n’est proposée pour le moment.' + ligneCentre() + '</li>';
       I.rendreEditeurActivites(smGridAct, '', retirerSmActivite);
+      poserTeintesSm();
     }
     function rendreSmFormules() {
       var liste = formulesSm(), ctx = contexteSm();
@@ -809,7 +819,8 @@
       sm.activites = sm.activites.filter(function (id) { return verdictActiviteSurMesure(activite(id), ctx).ok; });
       sm.formules = sm.formules.filter(function (id) { var f = formulesSm().filter(function (x) { return x.id === id; })[0]; return f && verdictFormuleSurMesure(f, ctx).ok; });
     }
-    function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; if (r.arcade) detail.push(r.detail); else { r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); } return a.name + ' (' + detail.join(' · ') + ') : ' + (r.montant == null ? 'prix à l’accueil' : euros(r.montant)); }).filter(Boolean); }
+    function partiesSm(a) { var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; if (r.arcade) detail.push(r.detail); else { r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); } return { detail: detail, montant: r.montant == null ? 'prix à l’accueil' : euros(r.montant) }; }
+    function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var p = partiesSm(a); return a.name + ' (' + p.detail.join(' · ') + ') : ' + p.montant; }).filter(Boolean); }
     function estimationSm() {
       if (!sm.activites.length) return '';
       var total = 0, connues = 0, inconnues = [];
@@ -818,6 +829,7 @@
         + '. Programme et montant à confirmer par l’équipe' + (sm.formules.length ? ' ; formules à composer avec elle' : '') + '.';
     }
     function rendreSmCompteur(bump) {
+      poserTeintesSm();
       var nA = sm.activites.length, nF = sm.formules.length, n = nA + nF + (sm.conseil ? 1 : 0);
       $('#smTabActN').textContent = nA ? String(nA) : '';
       $('#smTabForN').textContent = nF ? String(nF) : '';
@@ -1017,7 +1029,7 @@
     function blocRecap(titre, cible, lignes, i) {
       return '<section class="fg-sm-recap__block fg-rise" style="--i:' + i + '"><div class="fg-sm-recap__head"><h3>' + esc(titre) + '</h3>'
         + '<button type="button" class="fg-edit__btn" data-goto="' + cible + '">Modifier<span class="sr-only"> : ' + esc(minuscule(titre)) + '</span></button></div>'
-        + lignes.filter(Boolean).map(function (l) { return '<p class="fg-sm-recap__row"><svg aria-hidden="true"><use href="#' + l[0] + '"/></svg><span>' + l[1] + '</span></p>'; }).join('')
+        + lignes.filter(Boolean).map(function (l) { return typeof l === 'string' ? l : '<p class="fg-sm-recap__row"><svg aria-hidden="true"><use href="#' + l[0] + '"/></svg><span>' + l[1] + '</span></p>'; }).join('')
         + '</section>';
     }
     function rendreSmRecap() {
@@ -1039,7 +1051,8 @@
           proche && contact && contact.phone ? ['i-info', 'Votre date est proche&nbsp;: pour une réponse plus rapide, appelez aussi le centre au ' + lienContact({ phone: contact.phone }) + '.'] : null,
         ], 2)
         + blocRecap('Vos envies', 'sm-envies', [
-          acts.length ? ['a-star', '<b>Activités</b>&nbsp;: ' + esc(acts.join(', '))] : null,
+          // Une ligne par activite, sa photo et sa couleur, comme le recapitulatif du formulaire.
+          acts.length ? I.htmlLignesRecap(sm.activites.map(function (id) { var a = activite(id), p = a && partiesSm(a); return a ? { id: id, nom: a.name, detail: p.detail.join(' · '), mot: p.montant, teinte: teinteSm(id) } : null; }).filter(Boolean), 3) : null,
           fors.length ? ['a-formule', '<b>Formules</b>&nbsp;: ' + esc(fors.join(', '))] : null,
           sm.conseil ? ['i-bulb', 'L’équipe vous propose un programme'] : null,
           sm.activites.length ? ['i-card', esc(estimationSm())] : null,
@@ -1121,8 +1134,15 @@
           smErreur('<b>Impossible de savoir si votre demande est partie.</b> Avant de la renvoyer, ' + (appel ? appel + ' ou regardez vos e-mails.' : 'regardez vos e-mails.'));
         });
     });
+    // La fin a une vraie photo, comme la confirmation : la premiere activite cochee, sinon celle de l ecran.
+    function htmlPhotoFinSm() {
+      var id = sm.activites.filter(function (x) { return photo(x); })[0], img = $('.fg-scene[data-scene="fin"] .fg-art img');
+      var p = id ? photo(id) : (img && img.dataset.photo) || '';
+      return p ? '<div class="fg-apres"><figure class="fg-apres__photo"><img src="/assets/fungalaxy/' + esc(p) + '-800.webp" alt="" decoding="async"></figure></div>' : '';
+    }
     function reussiteSurMesure(reponse) {
       var c = sm.contact || {}, def = SM_TYPES[sm.type] || { label: '' };
+      var boite = reponse && reponse.acknowledgementSent && I.boiteDuClient ? I.boiteDuClient(c.email, (I.meta && I.meta.center && I.meta.center.name) || '') : null;
       var contact = I.meta && I.meta.center && I.meta.center.contact;
       var nomCentre = I.meta && I.meta.center && I.meta.center.name ? I.meta.center.name : 'du centre';
       function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
@@ -1133,9 +1153,11 @@
         + (sm.activites.length ? rangee('a-star', esc(activitesRecapSm().join(' ; '))) + rangee('i-card', esc(estimationSm())) : '')
         + (sm.formules.length ? rangee('a-formule', esc(nomsDe(sm.formules, formulesSm()).join(', ')) + ' : à composer avec l’équipe.') : '')
         + rangee('i-clock', 'L’équipe ' + (nomCentre === 'du centre' ? 'du centre' : 'de ' + esc(nomCentre)) + ' étudie votre demande et vous répond sous <b>24 heures ouvrables</b>, avec ce qui est possible à votre date et le montant.')
-        + rangee('i-mail', reponse.acknowledgementSent ? 'Un accusé de réception part à <b>' + esc(c.email) + '</b>.' : 'Au nom de <b>' + esc((c.prenom + ' ' + c.nom).trim()) + '</b>, ' + esc(c.email) + '.')
+        + rangee('i-mail', reponse.acknowledgementSent ? 'Un accusé de réception part à <b>' + esc(c.email) + '</b>. Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les spams.'
+          + (boite ? '<br><a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(boite.url) + '" target="_blank" rel="noopener">Ouvrir ' + esc(boite.nom) + '</a>' : '') : 'Au nom de <b>' + esc((c.prenom + ' ' + c.nom).trim()) + '</b>, ' + esc(c.email) + '.')
         + rangee('i-info', 'Rien n’est encore réservé à votre nom.' + (contact && contact.phone ? ' Une question&nbsp;? ' + lienContact(contact) : ''))
         + '</div>'
+        + htmlPhotoFinSm()
         + (!EMBED && I.meta && I.meta.center && I.meta.center.identity && I.meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:3"><a class="fg-btn fg-btn--ghost" href="' + esc(I.meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
       var anneau = $('.fg-done__ring');
       var icone2 = anneau && $('svg use', anneau);

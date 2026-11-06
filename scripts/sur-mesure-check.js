@@ -617,9 +617,13 @@ async function parcours(browser, mock, { largeur = 1440, hauteur = 900 } = {}) {
   try {
     // L horloge du centre : la veille du jour vise, 15 h a Bruxelles. Demain
     // matin est alors a moins de 24 heures, demain soir a plus.
+    // Le jour vise est au plus tot apres-demain : le VRAI gestionnaire juge
+    // les 24 heures sur l heure reelle, pas sur l horloge du navigateur. Avec
+    // demain pour cible, la soiree tombait a moins de 24 h des que la suite
+    // tournait apres 18 h, et aucune demande n arrivait (suite du 06/11).
     const aujourdHui = jourBruxelles();
     const dates = mock.metaPayload('', 90).center.calendar;
-    const ouverts = dates.filter((j) => j.open && j.date > aujourdHui);
+    const ouverts = dates.filter((j) => j.open && j.date > plusJours(aujourdHui, 1));
     // Le jour vise se choisit a ses proprietes, pas a son rang : ouvert tot et
     // tard, une formule possible le soir pour ce groupe (le parcours en
     // choisit une) et le Kids Fun Day refuse (le parcours lit sa raison). En

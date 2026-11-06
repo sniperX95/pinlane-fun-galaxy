@@ -212,7 +212,7 @@ const RESA = { id: 1234, centerId: 'gembloux', channel: 'public', date: '2026-11
 async function preuvesAnnonces() {
   const an = charger('lib/garde-annonces.js');
   const t = an.texteReservation(RESA);
-  ok(/^Nouvelle réservation, Gembloux, en ligne\n/.test(t) && t.includes('samedi 14/11 à 15:00, 12 personnes') && t.includes('Bowling, Laser Game') && t.includes('240,00 €') && t.includes('Dossier n° 1234'), '[R] une reservation en ligne : le centre, le jour, l heure, le nombre, ce qui est reserve, le prix, le dossier', t);
+  ok(/^Nouvelle réservation, Gembloux, en ligne\n/.test(t) && t.includes('samedi 14/11 à 15:00, 12 personnes') && t.includes('Bowling, Laser Game') && t.includes('240,00 €') && t.includes('Réservation n° 1234'), '[R] une reservation en ligne : le centre, le jour, l heure, le nombre, ce qui est reserve, le prix, le dossier', t);
   ok(!PERSONNEL.test(t), '[R] ni nom, ni telephone, ni e-mail', t);
   const comptoir = an.texteReservation({ ...RESA, channel: 'staff', validationStatus: 'staff_review' }, { par: 'Seb' });
   ok(/au comptoir \(Seb\)/.test(comptoir) && /À valider par l’équipe/.test(comptoir), '[R] au comptoir : qui l a faite, et si elle attend la validation', comptoir);
@@ -278,8 +278,8 @@ async function preuvesJournal() {
   const r = await j.relireLeJournal(pool, 100);
   const resa = TG.filter((m) => m.message_thread_id === 3);
   const modifs = TG.filter((m) => m.message_thread_id === 4);
-  ok(resa.length === 2 && /^Nouvelle réservation, Gembloux, en ligne \(annoncée en retard\)/.test(resa[0].text) && /Dossier n° 901/.test(resa[0].text) && /^Nouvelle demande de groupe, Gembloux \(annoncée en retard\)/.test(resa[1].text), '[J] une annonce qui n est pas partie part au quart d heure suivant, marquee en retard', resa.map((m) => m.text));
-  ok(!resa.some((m) => /Dossier n° 902/.test(m.text)), '[J] une annonce deja partie ne se redit pas', resa.map((m) => m.text));
+  ok(resa.length === 2 && /^Nouvelle réservation, Gembloux, en ligne \(annoncée en retard\)/.test(resa[0].text) && /Réservation n° 901/.test(resa[0].text) && /^Nouvelle demande de groupe, Gembloux \(annoncée en retard\)/.test(resa[1].text), '[J] une annonce qui n est pas partie part au quart d heure suivant, marquee en retard', resa.map((m) => m.text));
+  ok(!resa.some((m) => /Réservation n° 902/.test(m.text)), '[J] une annonce deja partie ne se redit pas', resa.map((m) => m.text));
   ok(!PERSONNEL.test(TG.map((m) => m.text).join(' ')), '[J] aucune donnee personnelle, meme en rattrapage', TG.map((m) => m.text));
   const texte = (modifs[0] && modifs[0].text) || '';
   ok(modifs.length === 1 && modifs[0].disable_notification === true, '[J] les modifications du quart d heure : un seul message, sans sonnerie', modifs);
@@ -635,7 +635,7 @@ async function contrePreuves() {
     TG.length = 0;
     return (await charger('lib/garde-annonces.js').annoncerReservation({ ...RESA, email: 'x@demo.fungalaxy.test' })) === 'essai' && TG.length === 0;
   });
-  await rouge('une annonce qui cite le client', [{ fichier: 'lib/garde-annonces.js', de: '  lignes.push(`Dossier n° ${r.id}`);', vers: '  lignes.push(`Dossier n° ${r.id} ${r.name}`);' }], async () => !PERSONNEL.test(charger('lib/garde-annonces.js').texteReservation(RESA)));
+  await rouge('une annonce qui cite le client', [{ fichier: 'lib/garde-annonces.js', de: '  lignes.push(`Réservation n° ${r.id}`);', vers: '  lignes.push(`Réservation n° ${r.id} ${r.name}`);' }], async () => !PERSONNEL.test(charger('lib/garde-annonces.js').texteReservation(RESA)));
   const journalRejoue = async () => {
     remettre();
     routesDuJournal(journalDuBanc());
@@ -647,7 +647,7 @@ async function contrePreuves() {
   };
   await rouge('une annonce partie se redit', [{ fichier: 'lib/garde-journal.js', de: "  if (['ok', 'essai'].includes(l.annonce)) return { ok: true, rien: true };", vers: '' }], async () => {
     await journalRejoue();
-    return !TG.some((m) => /Dossier n° 902/.test(m.text));
+    return !TG.some((m) => /Réservation n° 902/.test(m.text));
   });
   await rouge('un message perdu fait avancer le curseur', [{ fichier: 'lib/garde-journal.js', de: 'return { curseur: envois.every(Boolean) ? dernier : Number(curseur),', vers: 'return { curseur: dernier,' }], async () => {
     tgMode = 'coupe';

@@ -443,7 +443,7 @@ async function preuvesClient(jour) {
   const reussie = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
   ok(reussie.statut === 201, '[C] temoin : une reservation en ligne qui aboutit', reussie);
   const annonce = TELEGRAM.find((t) => /^Nouvelle réservation, Gembloux, en ligne/.test(t));
-  ok(Boolean(annonce) && annonce.includes('Dossier n° 900') && annonce.includes('4 personnes'), '[C] elle s annonce a Ansar, avec son dossier', TELEGRAM);
+  ok(Boolean(annonce) && annonce.includes('Réservation n° 900') && annonce.includes('4 personnes'), '[C] elle s annonce a Ansar, avec son dossier', TELEGRAM);
   ok(!PERSONNEL.test(annonce || 'Jean Essai'), '[C] l annonce ne cite ni nom, ni telephone, ni e-mail', annonce);
   const contexte = (j) => (typeof j.context === 'string' ? JSON.parse(j.context) : (j.context || {}));
   const ligneCreee = BD.journal.filter((j) => j.action === 'createReservation').pop();

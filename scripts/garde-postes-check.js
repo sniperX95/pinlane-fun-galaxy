@@ -494,7 +494,9 @@ function routesDeLaTour({ mailEchoue = false, suivis = false } = {}) {
   route(/max\(finished_at\) as dernier_ok/, () => noms.map(sain));
   if (mailEchoue) route(/status = 'failed' and channel = 'email'/, () => [{ center_id: 'gembloux', n: 1, dernier: new Date() }]);
   if (suivis) {
-    route(/validation_status = 'staff_review' and status = 'pending'/, () => [{ center_id: 'gembloux', n: 2 }]);
+    // Au comptoir, six « a verifier » a Libramont (les jours demo de la prod) : seule
+    // une requete qui oublie le canal les compte.
+    route(/validation_status = 'staff_review' and status = 'pending'/, (s) => [{ center_id: 'gembloux', n: 2 }, ...(/channel = 'public'/.test(s) ? [] : [{ center_id: 'libramont', n: 6 }])]);
     route(/from custom_requests where status = 'new'/, () => [{ center_id: 'libramont', n: 1 }]);
   }
 }
@@ -537,7 +539,8 @@ async function preuvesGarde() {
   BD.etatGarde = { ...BD.etatGarde, dits: {} };
   routesDeLaTour({ suivis: true });
   const p6 = await passe();
-  ok(p6.messages.length === 1 && /^À regarder, Pinlane\n/.test(p6.messages[0].text) && p6.messages[0].text.includes('2 réservations attendent la validation de l’équipe à Gembloux') && p6.messages[0].text.includes('1 demande de groupe attend une réponse à Libramont') && p6.messages[0].disable_notification === true, '[G] les suivis : a valider depuis 2 h, demande sans reponse depuis 24 h, dits sans sonnerie', p6.messages.map((m) => m.text));
+  ok(p6.messages.length === 1 && /^À regarder, Pinlane\n/.test(p6.messages[0].text) && p6.messages[0].text.includes('2 réservations en ligne attendent la validation de l’équipe à Gembloux') && p6.messages[0].text.includes('1 demande de groupe attend une réponse à Libramont') && p6.messages[0].disable_notification === true, '[G] les suivis : a valider depuis 2 h, demande sans reponse depuis 24 h, dits sans sonnerie', p6.messages.map((m) => m.text));
+  ok(!/la validation de l’équipe à Libramont/.test(p6.messages[0].text), '[G] les « a verifier » du comptoir ne passent pas pour un client qui attend', p6.messages[0].text);
 
   BD.routes = [];
   routesDeLaTour();
@@ -680,6 +683,15 @@ async function contrePreuves() {
     TG.length = 0;
     await charger('lib/garde-mails.js').alerterEvenementMail({ ok: true, deduped: false, communicationId: 58, type: 'bounced' });
     return TG.length === 1;
+  });
+  await rouge('une reservation du comptoir passe pour un client qui attend', [{ fichier: 'lib/tour-controle.js', de: " and channel = 'public' and date >= $1::date", vers: ' and date >= $1::date' }], async () => {
+    remettre();
+    BD.routes = [];
+    routesDeLaTour({ suivis: true });
+    BD.etatGarde = null;
+    sansGroupe();
+    const p = await passe();
+    return p.messages.length === 1 && /2 réservations en ligne attendent la validation de l’équipe à Gembloux/.test(p.messages[0].text) && !/la validation de l’équipe à Libramont/.test(p.messages[0].text);
   });
   await rouge('un chiffre invente par l IA passe', [{ fichier: 'lib/garde-bilan.js', de: '  const inconnus = [...new Set(nombres(propre).filter((n) => !permis.has(n)))];', vers: '  const inconnus = [];' }], async () => {
     remettre();

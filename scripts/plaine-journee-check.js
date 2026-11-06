@@ -258,7 +258,7 @@ async function main() {
     await attendre(page, () => document.querySelector('#fgLive').textContent.includes('Votre visite'), 3000);
     const voixB = await page.evaluate(() => blancsDom(document.querySelector('#fgLive')));
     const libreB = vb.etapes[0] || {};
-    ok(vb.etapes.length === 1 && /^\d{2}:\d{2}$/.test(libreB.heure) && libreB.titre === 'Playground (toute la journée)' && !libreB.detail, '[B] la visite dit l heure de debut et « Playground (toute la journée) », sans heure de fin ni duree', JSON.stringify(vb.etapes));
+    ok(vb.etapes.length === 1 && /^\d{2}:\d{2}$/.test(libreB.heure) && libreB.titre === 'Playground' && /^toute la journée( · .+ €)?$/.test(libreB.detail), '[B] la visite dit l heure de debut, « Playground » et « toute la journée » dessous, sans heure de fin ni duree', JSON.stringify(vb.etapes));
     ok(/Accès toute la journée\./.test(voixB), '[B] la voix dit l acces toute la journee', `« ${voixB} »`);
     ok(!vb.etapes.some((e) => /Fin de la visite/.test(e.titre)), '[B] aucune « Fin de la visite » : une entree a la journee n a pas de fin a annoncer', vb.etapes.map((e) => e.titre).join(' | '));
     ok(/^dès \d{2}:\d{2}, toute la journée( · .+)?$/.test(vb.barre), '[B] la barre du bas dit « dès HH:MM, toute la journée », sans heure de fin', `« ${vb.barre} »`);
@@ -283,7 +283,8 @@ async function main() {
     const c = await jusquAuxHeures(pageC, 2, ['bowling', 'playground']);
     ok(c.vu, '[C] le bloc « Votre visite » est rendu pour bowling + plaine');
     const vc = await lireVisite(pageC) || { texte: '', etapes: [], aussi: '', barre: '', voix: '' };
-    ok(vc.aussi === 'Aussi : Playground (toute la journée)', '[C] la visite dit la journee, sans duree', `« ${vc.aussi} »`);
+    const plaineVisiteC = vc.etapes.find((e) => e.titre === 'Playground') || {};
+    ok(vc.aussi === 'Aussi : Playground' && /^toute la journée( · .+ €)?$/.test(plaineVisiteC.detail || ''), '[C] la visite dit la journee sous le nom, sans duree', `« ${vc.aussi} » / « ${plaineVisiteC.detail} »`);
     const derniere = reponses.filter((r) => r && Array.isArray(r.slots) && r.slots.length).pop() || {};
     const retenu = await pageC.evaluate(() => (document.querySelector('#planZone .fg-visit__step--out b') || {}).textContent || '');
     const fins = (derniere.slots || []).map((s) => s.visitEndTime).filter(Boolean);

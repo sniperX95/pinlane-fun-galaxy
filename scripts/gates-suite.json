@@ -208,6 +208,7 @@
     "test:console-centre",
     "test:tour-controle",
     "test:venir-plus-tot",
+    "test:heure-relachee",
     "test:catalog-editor-ui",
     "test:visit-freedom",
     "test:visit-motion",

@@ -433,7 +433,7 @@
     if (unites > 0 && mot && it.activityId !== 'bowling') {
       var nombre = unites + ' ' + mot + (unites > 1 ? 's' : '');
       if (!mn) return nombre;
-      return n > 1 ? nombre + ' · ' + n + ' tours de ' + minutesLabel(Math.round(mn / n)) : nombre + ' · ' + minutesLabel(mn);
+      return n > 1 ? nombre + ' en ' + n + ' tours de ' + minutesLabel(Math.round(mn / n)) : nombre + ' · ' + minutesLabel(mn);
     }
     if (n < 2 || !mn) return '';
     return n + ' sessions de ' + minutesLabel(Math.round(mn / n));
@@ -1499,7 +1499,9 @@
       .then(function (r) { return r.text().then(function (texte) { finir(); return { statut: r.status, ok: r.ok, texte: texte }; }); })
       .catch(function () { finir(); var e = new Error(parDelai ? 'delai' : 'reseau'); e.delai = parDelai; e.annule = !parDelai && controle.signal.aborted; throw e; });
   }
-  function lu(rep) { try { return JSON.parse(rep.texte); } catch (e) { return null; } }
+  // L APOSTROPHE DES NOMS, comme sur le site du centre (« Golf o’Clock ») : le catalogue l ecrit droite.
+  function nomTypo(k, v) { return k === 'name' && typeof v === 'string' && v.indexOf("'") >= 0 ? v.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2') : v; }
+  function lu(rep) { try { return JSON.parse(rep.texte, nomTypo); } catch (e) { return null; } }
   // Un bouton qui travaille : la roue de .is-busy, et aria-busy pour qui ne la voit pas.
   function occuper(btn, oui) { if (!btn) return; btn.classList.toggle('is-busy', oui); if (oui) btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy'); }
   // UNE SEULE VOIX pour les gestes : une phrase courte, deja ecrite a
@@ -4803,9 +4805,11 @@
   // A L OUVERTURE, PAS D ACCUEIL AVANT (Movsar, 2026-10-13 : « ils peuvent venir a l heure pile ») : la meme regle que
   // le moteur (poserArrivee), sinon l ecran repoussait ce que le serveur accepte.
   function accueilApres(t) { return minutesDe(t) === ouvertureDuJour() ? 0 : ACCUEIL; }
-  // Au-dela de ce trou, sans arrivee choisie, une heure seulement proposee n a plus
-  // de sens : le moteur la rapproche de celle que le client vient de toucher.
-  var ECART_RETENU = 60;
+  // Au-dela d une demi-heure de trou, sans arrivee choisie, une heure seulement proposee n a plus de sens : elle se
+  // recolle a celle que le client vient de toucher. C est le seuil ou la page parle d attente (conseilDuTrou). A 60 min
+  // (jusqu au 2026-11-06), le laser propose a 19:30 restait la quand le bowling passait de 20:30 a 21:00, et
+  // 25 personnes attendaient 35 min (chasse du 2026-11-06, scripts/heure-relachee-check.js).
+  var ECART_RETENU = 30;
   function estTouchee(id) {
     if (id === 'arcade_time') return Boolean(state.arcade);
     return id === 'laser_game' ? state.laserParts.length > 0 || Boolean(state.pins.laser_game) : Boolean(state.pins[id]);
@@ -4842,8 +4846,8 @@
   // LES HEURES SEULEMENT PROPOSEES RESTENT OU ELLES SONT TANT QU ELLES TIENNENT.
   // Celle que l arrivee rend impossible (`apres`, en minutes) ou que l heure touchee
   // chevauche (`touche`, `enConflit`) se recale sur la plus proche, et elle seule.
-  // Sans arrivee choisie, une heure qui resterait loin de celle qu on vient de
-  // toucher se relache : le moteur la rapproche.
+  // Sans arrivee choisie, une heure qui laisserait plus d une demi-heure de trou avec
+  // celle qu on vient de toucher se relache : elle se recolle a elle.
   function retenirProposees(regle) {
     var apres = regle.apres === undefined ? null : regle.apres;
     if (apres === null && state.arrivee) apres = minutesDe(state.arrivee) + accueilApres(state.arrivee);
@@ -5978,6 +5982,11 @@
       var repere = premiere ? premiere.debut : slot.time;
       if (repere && minutesEntre(arrivee, repere) > 0) lignes += etapeVisite({ genre: 'in', heure: arrivee, titre: formule ? 'Arrivée' : 'Rendez-vous' });
     }
+    // UNE FIN QUI SE LIT DEJA ne se redit pas : au depart d une autre ligne, ou a « Fin vers » (Ansar,
+    // 2026-11-06). Elle reste quand elle dit un temps vide (le groupe 2 part a 11:30, le groupe 1 finit a 11:25).
+    var departs = {};
+    parts.forEach(function (p) { (p.groupes.length > 1 ? p.groupes.map(function (g) { return g.debut; }) : [p.debut]).forEach(function (d) { if (d) departs[d] = 1; }); });
+    function finDite(f) { return Boolean(f) && !departs[f] && heureAffichee(f) !== heureAffichee(fin || ''); }
     function lignePartie(p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
       var nom = nomDePartie(p);
@@ -6005,7 +6014,7 @@
       // d un groupe, le montant a la carte (Ansar, 2026-11-04 : « un recap plus complet
       // de toutes les activites »).
       var titreP = nom + (p.partie > 1 ? ', ' + p.partie + 'e partie' : '');
-      function detailP(f, joueursG, k) { return [bouge ? 'déplacé' : '', f ? 'jusqu’à ' + heureAffichee(f) : '', p.pistes > 0 ? p.pistes + (p.pistes > 1 ? ' pistes' : ' piste') : '', joueursG ? joueursG + ' joueurs' : '', p.partie === 1 && !k ? montantDe(it) : ''].filter(Boolean).join(' · '); }
+      function detailP(f, joueursG, k) { return [bouge ? 'déplacé' : '', finDite(f) ? 'jusqu’à ' + heureAffichee(f) : '', p.pistes > 0 ? p.pistes + (p.pistes > 1 ? ' pistes' : ' piste') : '', joueursG ? joueursG + ' joueurs' : '', p.partie === 1 && !k ? montantDe(it) : ''].filter(Boolean).join(' · '); }
       if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge }); });
       else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge });
     }
@@ -6105,13 +6114,12 @@
     var debut = !parts.length && !libres.length && !arrivee && !(illimite && jeuRestant > 0);
     if (debut) lignes = etapeVisite({ genre: 'debut', heure: slot.time, titre: 'Début' }) + lignes;
     // Une visite sans activite a heure : une ligne par activite, l heure sur la premiere.
-    function nomLibre(it) {
-      var entre = it.waitOffer === true ? 'pendant l’attente' : it.arcadeOffer ? '' : it.dayAccess ? 'toute la journée' : detailSessions(it);
-      return (it.name || nomActivite(it.activityId)) + (entre ? ' (' + entre + ')' : '');
-    }
+    // Le nom seul, comme au recapitulatif ; ce qui le precise passe dans son detail (Ansar, 2026-11-06 :
+    // « Billards (2 tables · 1 heure) » ne se lit pas comme un nom).
+    function nomLibre(it) { return it.name || nomActivite(it.activityId); }
     function detailLibre(it) {
       var m = montantDe(it), o = it.arcadeOffer;
-      if (!o) return m;
+      if (!o) return [it.waitOffer === true ? 'pendant l’attente' : it.dayAccess ? 'toute la journée' : detailSessions(it), m].filter(Boolean).join(' · ');
       var n = Number(it.cards) || Number(it.participants) || 1;
       return [n + ' carte' + (n > 1 ? 's' : ''), o.mode === 'time' ? minutesLabel(o.minutes) : '', m].filter(Boolean).join(' · ');
     }
@@ -7517,8 +7525,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106visuel6';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106visuel6';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106visuel7';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106visuel7';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

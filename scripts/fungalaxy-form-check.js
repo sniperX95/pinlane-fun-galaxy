@@ -1338,13 +1338,16 @@ function visiteAttendue(o) {
   const item = (id) => o.items.find((x) => x.id === id) || { id, nom: o.noms[id] || id, games: 0, minutes: 0, sessions: 1, services: 0 };
   const nom = (id) => item(id).nom || o.noms[id] || id;
   const etapes = [];
+  // Une fin qui se lit deja (depart d une autre ligne, « Fin vers ») ne se redit pas (Ansar, 2026-11-06).
+  const departsQa = new Set(o.parties.flatMap((p) => (p.groupes.length > 1 ? p.groupes.map((g) => g.debut) : [p.debut])).filter(Boolean));
+  const finDiteQa = (f) => Boolean(f) && !departsQa.has(f) && heureAffichee(f) !== heureAffichee(o.fin || '');
   o.parties.forEach((p) => {
     const it = item(p.id);
     const quoi = it.games > 1 ? `partie ${p.partie} sur ${it.games}` : it.games === 1 ? '1 partie'
       : (sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${p.groupes.length > 1 ? ' par groupe' : ''}` : ''));
     const titre = nom(p.id) + (p.partie > 1 ? `, ${p.partie}e partie` : '');
     const voix = `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`;
-    const detailQa = (fin, joueurs, k) => [fin ? `jusqu’à ${heureAffichee(fin)}` : '', p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : '', joueurs ? `${joueurs} joueurs` : '', p.partie === 1 && !k && it.sait && it.prix > 0 ? euros(it.prix).replace(/\s+/g, ' ') : ''].filter(Boolean).join(' · ');
+    const detailQa = (fin, joueurs, k) => [finDiteQa(fin) ? `jusqu’à ${heureAffichee(fin)}` : '', p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : '', joueurs ? `${joueurs} joueurs` : '', p.partie === 1 && !k && it.sait && it.prix > 0 ? euros(it.prix).replace(/\s+/g, ' ') : ''].filter(Boolean).join(' · ');
     if (p.groupes.length > 1) p.groupes.forEach((g, k) => etapes.push({ t: g.debut, nom: `${titre}, groupe ${k + 1}`, detail: detailQa(g.fin, g.joueurs, k), voix }));
     else etapes.push({ t: p.debut, nom: titre, detail: detailQa(p.fin, 0, 0), voix });
   });
@@ -4139,6 +4142,10 @@ async function main() {
     ok(qTardive.get('laserGameTimes') === JSON.stringify(partsTardive), '[J] seule la partie tardive suit son groupe, la plus tot reste', `${qTardive.get('laserGameTimes')} attendu ${JSON.stringify(partsTardive)}`);
     const dTardive = await routeDeLaPage(demandesJ, { preferredTimes: { laser_game: partsTardive[0] }, laserGameTimes: partsTardive }, pageJ);
     await verifierPistes(dTardive, { laser_game: partsTardive[0] }, partsTardive, '[J] PARTIE TARDIVE DEPLACEE : les pistes = la route', pageJ);
+    // Le plafond de la route (60 demandes par minute et par adresse) protege la prod ; ce tour en fait davantage,
+    // page et relectures du gate comprises : il repart a zero ici (sinon la page recoit un 429 a la pose suivante).
+    const seauxJ = globalThis.__pinlaneRateBuckets;
+    if (seauxJ) [...seauxJ.keys()].filter((k) => k.startsWith('public-availability:')).forEach((k) => seauxJ.delete(k));
     // LE 2e GROUPE DANS LA PLAGE SUIVANTE (vu en prod le 2026-09-23 : 11:30
     // retenue au laser, le 2e groupe a 12:00 dans l apres-midi repliee,
     // invisible). Retenue a la derniere demi-heure d une plage, la partie

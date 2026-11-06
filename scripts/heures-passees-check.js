@@ -341,7 +341,9 @@ async function navigateur() {
       corps.anchors.defaultTimes = { ...corps.anchors.defaultTimes, bowling: AILLEURS };
       return route.fulfill({ response: reponse, json: corps });
     });
-    const laser2 = await toucherLibre(page2, 'laser_game', plusTard(laser1, 30), laser1);
+    // Une demi-heure plus TOT : le bowling propose reste a moins d une demi-heure du laser, donc garde (plus loin, il se
+    // recollerait au laser : scripts/heure-relachee-check.js).
+    const laser2 = await toucherLibre(page2, 'laser_game', plusTard(laser1, -30), laser1);
     await calme(page2);
     ok(Boolean(laser2) && dite === gardee, 'MONTAGE au toucher suivant, le bowling garde part encore et le serveur le dit passe', `${laser2} ; dite ${dite}, gardee ${gardee}`);
     const ligne = await page2.evaluate(() => (document.querySelector('.fg-etape[data-cle="bowling"] .fg-etape__heure') || {}).textContent || '');

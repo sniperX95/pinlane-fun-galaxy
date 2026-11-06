@@ -223,8 +223,8 @@ function fonction(fichier, debut, fin, contexte) {
     await calme(page);
     const golf = await lire(page);
     ok(golf.rdv === '15:00', '[C] le rendez-vous se calcule : 45 min de golf et l accueil avant 16:00, sur l heure pleine', golf.rdv);
-    ok(/^Golf o'Clock 15:00/.test(golf.lignes[0]) && /^Bowling 16:00/.test(golf.lignes[1]), '[C] le golf en tete, le bowling n a pas bouge', golf.lignes);
-    ok(/^15:00\s*Golf o'Clock/.test(golf.recap[0]) && golf.recap.some((l) => /^16:00\s*Bowling/.test(l)), '[C] le recapitulatif dit la journee dans l ordre', golf.recap);
+    ok(/^Golf o’Clock 15:00/.test(golf.lignes[0]) && /^Bowling 16:00/.test(golf.lignes[1]), '[C] le golf en tete, le bowling n a pas bouge', golf.lignes);
+    ok(/^15:00\s*Golf o’Clock/.test(golf.recap[0]) && golf.recap.some((l) => /^16:00\s*Bowling/.test(l)), '[C] le recapitulatif dit la journee dans l ordre', golf.recap);
     ok(golf.total === seize.total + 75, '[C] le prix suit : 6 x 12,50 €', { avant: seize.total, apres: golf.total });
     ok(await selectionnee(page, 'golf_oclock'), '[C] retour aux activites : le golf y est coche');
     ok(golf.bouton === 'Ajouter une activité' && !(await page.evaluate(() => { const p = document.querySelector('#fgAvant'); return p && !p.hidden; })), '[C] le choix se referme', golf.bouton);
@@ -245,7 +245,7 @@ function fonction(fichier, debut, fin, contexte) {
     await page.click('.fg-etape--avant.is-open .fg-chip[data-time="13:00"]');
     await calme(page);
     const treize = await lire(page);
-    ok(treize.rdv === '13:00' && /^Golf o'Clock 13:00/.test(treize.lignes[0]) && /^Bowling 16:00/.test(treize.lignes[1]), '[C] 13:00 touchee : le rendez-vous et le golf y vont, le bowling reste a 16:00', treize);
+    ok(treize.rdv === '13:00' && /^Golf o’Clock 13:00/.test(treize.lignes[0]) && /^Bowling 16:00/.test(treize.lignes[1]), '[C] 13:00 touchee : le rendez-vous et le golf y vont, le bowling reste a 16:00', treize);
     ok(treize.total === golf.total && await page.evaluate(() => document.querySelector('.fg-etape--avant').classList.contains('is-choisi') && !document.querySelector('.fg-etape--avant').classList.contains('is-open')), '[C] la ligne se referme, choisie, au meme prix', treize.total);
     await poser(page, 'bowling', '18:00');
     ok((await lire(page)).rdv === '13:00', '[C] le bowling bouge ensuite : son heure reste la sienne');
@@ -267,11 +267,11 @@ function fonction(fichier, debut, fin, contexte) {
     // [D] TOUT RESTE RELIE.
     await poser(page, 'bowling', '18:00');
     const dixHuit = await lire(page);
-    ok(dixHuit.rdv === '17:00' && /^Golf o'Clock 17:00/.test(dixHuit.lignes[0]), '[D] le bowling passe a 18:00 : le rendez-vous le suit', dixHuit);
+    ok(dixHuit.rdv === '17:00' && /^Golf o’Clock 17:00/.test(dixHuit.lignes[0]), '[D] le bowling passe a 18:00 : le rendez-vous le suit', dixHuit);
     await poser(page, 'bowling', '10:30');
     const tot = await lire(page);
     ok(tot.rdv === '10:20' && tot.lignes.length === 1, '[D] bowling a 10:30, trop tot pour le golf : il n est plus avant', tot);
-    ok(/Golf o'Clock après : plus le temps avant 10:30/.test(tot.conseil), '[D] et l ecran le dit', tot.conseil);
+    ok(/Golf o’Clock après : plus le temps avant 10:30/.test(tot.conseil), '[D] et l ecran le dit', tot.conseil);
     ok(await selectionnee(page, 'golf_oclock') && tot.total === golf.total, '[D] le golf reste dans la visite, au meme prix', tot.total);
     await poser(page, 'bowling', '16:00');
 
@@ -287,7 +287,7 @@ function fonction(fichier, debut, fin, contexte) {
     await page.click('[data-avant-choix="arcade_time"]');
     await calme(page);
     const deux = await lire(page);
-    ok(deux.rdv === '14:30' && /^Golf o'Clock 14:30/.test(deux.lignes[0]) && /^Arcades 15:15/.test(deux.lignes[1]) && /^Bowling 16:00/.test(deux.lignes[2]), '[E] deux activites : elles se suivent, le rendez-vous recule', deux);
+    ok(deux.rdv === '14:30' && /^Golf o’Clock 14:30/.test(deux.lignes[0]) && /^Arcades 15:15/.test(deux.lignes[1]) && /^Bowling 16:00/.test(deux.lignes[2]), '[E] deux activites : elles se suivent, le rendez-vous recule', deux);
     await page.click('[data-avant-retirer="arcade_time"]');
     await calme(page);
     const retire = await lire(page);
@@ -314,12 +314,12 @@ function fonction(fichier, debut, fin, contexte) {
     await page.waitForTimeout(400);
     await fermerVitrine(page);
     const finale = await page.evaluate(() => document.querySelector('#recap').textContent.replace(/\s+/g, ' '));
-    ok(/Rendez-vous à 15:00/.test(finale) && finale.indexOf("Golf o'Clock") < finale.indexOf('Bowling'), '[G] le recapitulatif final dit le rendez-vous et l ordre', finale.slice(0, 300));
+    ok(/Rendez-vous à 15:00/.test(finale) && finale.indexOf('Golf o’Clock') < finale.indexOf('Bowling'), '[G] le recapitulatif final dit le rendez-vous et l ordre', finale.slice(0, 300));
     await page.click('#confirmBtn');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
     await page.waitForTimeout(250);
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' '));
-    ok(/Rendez-vous à 15:00/.test(fin) && fin.indexOf("Golf o'Clock") < fin.indexOf('Bowling'), '[G] l ecran de fin aussi', fin.slice(0, 300));
+    ok(/Rendez-vous à 15:00/.test(fin) && fin.indexOf('Golf o’Clock') < fin.indexOf('Bowling'), '[G] l ecran de fin aussi', fin.slice(0, 300));
     const d = DOSSIERS[DOSSIERS.length - 1];
     const lignesDossier = (d.program && d.program.items) || d.program || [];
     ok(d.centerId === 'gembloux' && d.startTime === '15:00' && lignesDossier.some((x) => x.activityId === 'golf_oclock' && x.avant === true), '[G] le dossier : a Gembloux, a 15:00, le golf marque avant', { centre: d.centerId, debut: d.startTime });

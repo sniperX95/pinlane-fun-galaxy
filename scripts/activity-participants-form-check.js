@@ -298,12 +298,9 @@ async function main() {
       // click; the production handler cancels it synchronously on confirmation.
       await page.locator('#confirmBtn').evaluate(b => b.click());
       await page.waitForSelector('.fg-scene[data-scene="fin"].is-active', { timeout: 20000 });
-      const receipt = (await page.locator('#finBody').textContent()).replace(/\s+/g, ' ');
-      for (const [id, n] of Object.entries(COUNTS)) {
-        const name = mock.ACTIVITIES.find(a => a.id === id).name;
-        check(receipt.includes(`${name} (${n} ${id === 'playground' ? 'enfants' : 'joueurs'})`), `[${width}] final receipt spells out ${id} count`, receipt);
-      }
-      check(receipt.includes('18 personnes') && receipt.includes('461 €') && /sans Arcades.*prix à l’accueil/.test(receipt), `[${width}] final receipt keeps visitor total and partial amount`, receipt);
+      // The final receipt repeats the recap lines (Ansar, 2026-11-06): it is checked like the recap, each activity
+      // keeps its participant count on its own line, the visitor total and the missing tariff stay stated.
+      await verifyReceipt(page, '#finBody', width);
       await page.screenshot({ path: path.join(OUTPUT, `receipt-${width}.png`), fullPage: true });
       const post = mock.dernierePose.body;
       check(post && post.pax === 18 && post.price === TOTAL, `[${width}] final POST visitors and subtotal`, post && { pax: post.pax, price: post.price });

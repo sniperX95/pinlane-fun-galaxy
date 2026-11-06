@@ -688,7 +688,12 @@
     else if (a.priceType === 'grid_fun_run') n = sessionsPour(a);
     if (n && opt) return opt.label + ' · ' + n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix);
     if (a.id === 'laser_game' && dureeLaser()) return dureeLaser().jeu + ' min de jeu par partie';
-    if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); return billard.units + ' table' + (billard.units > 1 ? 's' : '') + ' · ' + heuresLabel(billard.hours); }
+    if (a.priceType === 'per_unit_hour') {
+      // Le calcul, comme pour les pistes : l en-tete de la carte dit deja « 2 tables, 1 heure » (chasse du 2026-11-06).
+      var billard = reglageBillard(a), parTable = Math.round(Number(a.priceValue) * billard.hours * 100) / 100;
+      var lesTables = billard.units + ' table' + (billard.units > 1 ? 's' : '');
+      return parTable > 0 ? heuresLabel(billard.hours) + ' · ' + lesTables + ' × ' + euros(parTable) + ' = ' + euros(Math.round(billard.units * parTable * 100) / 100) : lesTables + ' · ' + heuresLabel(billard.hours);
+    }
     var journee = a.dayAccess || a.id === 'playground';
     return [journee ? 'Accès à la journée' : '', journee && /journ[eé]e/i.test(a.note || '') ? '' : a.note, a.ageRange ? a.ageRange : a.minAge ? 'Dès ' + a.minAge + ' ans' : ''].filter(Boolean).join(' · ');
   }
@@ -1502,6 +1507,12 @@
   // L APOSTROPHE DES NOMS, comme sur le site du centre (« Golf o’Clock ») : le catalogue l ecrit droite.
   function nomTypo(k, v) { return k === 'name' && typeof v === 'string' && v.indexOf("'") >= 0 ? v.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2') : v; }
   function lu(rep) { try { return JSON.parse(rep.texte, nomTypo); } catch (e) { return null; } }
+  // Les memes noms dans un objet deja lu (le devis du blocage, lu par r.json()).
+  function nomsTypo(x) {
+    if (Array.isArray(x)) x.forEach(nomsTypo);
+    else if (x && typeof x === 'object') Object.keys(x).forEach(function (k) { if (typeof x[k] === 'string') x[k] = nomTypo(k, x[k]); else nomsTypo(x[k]); });
+    return x;
+  }
   // Un bouton qui travaille : la roue de .is-busy, et aria-busy pour qui ne la voit pas.
   function occuper(btn, oui) { if (!btn) return; btn.classList.toggle('is-busy', oui); if (oui) btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy'); }
   // UNE SEULE VOIX pour les gestes : une phrase courte, deja ecrite a
@@ -3887,6 +3898,7 @@
   }
   function actualiserDevis(x, conserverBlocage) {
     if (!state.creneau || x.price == null) return;
+    nomsTypo(x);
     if (!conserverBlocage) libererBlocage();
     var cr = state.creneau, slot = Object.assign({}, cr.slot);
     if (x.program) { delete slot.bowlingCapacity; delete slot.emergencyWarning; }
@@ -6342,7 +6354,7 @@
     corps.acquisition = ACQUISITION;
     var abandonne = function () { return version !== blocage.version || Boolean(ticket && ticket.abandonne); };
     return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
-      .then(function (r) { return r.text().then(function (t) { return JSON.parse(t, nomTypo); }).catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
       .then(function (res) {
         var x = res.json;
         // Le groupe ou le panier a changé pendant le réseau : rendre la place
@@ -7324,7 +7336,7 @@
       if (blocage.jeton) corps.holdToken = blocage.jeton;
       return fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' });
     })
-      .then(function (r) { return r.text().then(function (t) { return JSON.parse(t, nomTypo); }).then(function (j) { return { status: r.status, json: j || {} }; }); })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
         envoiEnCours(false);

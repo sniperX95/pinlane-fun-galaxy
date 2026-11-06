@@ -718,8 +718,11 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // classes jamais ecrites en toutes lettres (is-vide, is-surplace) sont construites par le script. La mesure de vitesse
 // du formulaire (test:fungalaxy-perf) est verte sur la suite GitHub de la meme version. Plafonds 380 et 110 Ko : une
 // police ou une bibliotheque les font toujours sauter.
-const BUDGET_SERVI = 380 * 1024;
-const BUDGET_TRANSFERE = 110 * 1024;
+// 2026-11-06, l apres-reservation (le mail et ses spams, l agenda Google et .ics, le message pour ceux qui viennent ;
+// Ansar : « une page de confirmation plus styler complet ») : 383,7 et 111 Ko mesures. Rien de mort a retirer depuis
+// le matin ; le fichier agenda se construit dans la page, sans nouvelle route. Plafonds 388 et 113 Ko.
+const BUDGET_SERVI = 388 * 1024;
+const BUDGET_TRANSFERE = 113 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

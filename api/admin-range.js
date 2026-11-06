@@ -79,6 +79,7 @@ module.exports = async (req, res) => {
     // Jamais de message technique brut à l'écran (ex : "tuple concurrently
     // updated"). Détail en logs, message propre côté client.
     console.error('[admin-range] échec', error && (error.stack || error.message || error));
+    require('../lib/garde-serveur').signalerPanneServeur('api/admin-range', error);
     sendError(res, 503, 'Données direction momentanément indisponibles. Réessayez dans un instant.');
   }
 };

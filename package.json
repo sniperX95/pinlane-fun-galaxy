@@ -264,6 +264,7 @@
     "test:console-centre": "node scripts/console-centre-check.js",
     "test:equipe-centre": "node scripts/equipe-centre-check.js",
     "test:tour-controle": "node scripts/tour-controle-check.js",
+    "test:garde-postes": "node scripts/garde-postes-check.js",
     "test:venir-plus-tot": "node scripts/venir-plus-tot-check.js",
     "test:heure-relachee": "node scripts/heure-relachee-check.js && node scripts/heure-relachee-check.js --mutate",
     "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",

@@ -109,6 +109,8 @@ module.exports = async (req, res) => {
     }
     sendError(res, 400, 'Action cron inconnue.');
   } catch (error) {
+    // La garde qui tombe a deja son propre cri, plus haut : pas deux messages pour une panne.
+    if (getAction(req) !== 'garde') require('../lib/garde-serveur').signalerPanneServeur(`api/cron:${getAction(req)}`, error);
     sendError(res, 500, error.message || 'Cron indisponible.');
   }
 };

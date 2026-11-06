@@ -26,6 +26,7 @@ const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeld
 const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { alerter } = require('../lib/garde-alertes');
+const { annoncerReservation } = require('../lib/garde-annonces');
 const { reservationChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
 
 // CE QUI N ABOUTIT PAS SE SAIT (2026-11-05). Une demande refusee ou en panne ne laissait
@@ -379,7 +380,12 @@ module.exports = async (req, res) => {
         await petitEcart(essai);
       }
     }
-    const postCreate = await afterReservationCreated(reservation, request);
+    // L ANNONCE A ANSAR part en meme temps que la confirmation : rien de plus a attendre
+    // pour le client, et son sort s ecrit dans le journal (lib/garde-annonces.js).
+    const [postCreate, annonce] = await Promise.all([
+      afterReservationCreated(reservation, request),
+      annoncerReservation(reservation),
+    ]);
     // LE REGISTRE (2026-10-05) : une reservation en ligne n ecrivait AUCUNE
     // ligne d audit, seulement un ops_event sans auteur ni contenu. Elle est
     // journalisee comme une creation au comptoir, avec son auteur « client
@@ -402,6 +408,7 @@ module.exports = async (req, res) => {
         validationStatus: reservation.validationStatus || '',
         blocage: Boolean(holdToken),
         sansOffres: body && typeof body.sansOffres === 'boolean' ? body.sansOffres : null,
+        annonce,
       },
       requestId: newRequestId(),
     });

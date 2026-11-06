@@ -160,6 +160,7 @@ module.exports = async (req, res) => {
     // renvoie plus haut), donc toute exception qui arrive ici est une panne
     // serveur : on le dit avec un 503, sans jamais divulguer l'adresse.
     const oneClickPost = String(req.method || '').toUpperCase() === 'POST';
+    require('../lib/garde-serveur').signalerPanneServeur('api/u', error);
     res.statusCode = 503;
     res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');

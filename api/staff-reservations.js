@@ -353,7 +353,10 @@ async function creerDepuisLaFenetre(prepare, session, contexte = {}) {
   const { ops, conflits, aPlacer } = prepare;
   exigerLesDroits(prepare);
   const reservation = await createReservation(prepare.dossier);
-  const postCreate = await afterReservationCreated(reservation, prepare.request);
+  const [postCreate, annonce] = await Promise.all([
+    afterReservationCreated(reservation, prepare.request),
+    require('../lib/garde-annonces').annoncerReservation(reservation, { par: actorFromSession(session).actorLabel }),
+  ]);
   const auditCreate = await writeAuditLog({
     centerId: reservation.centerId || 'libramont',
     ...actorFromSession(session),
@@ -369,6 +372,7 @@ async function creerDepuisLaFenetre(prepare, session, contexte = {}) {
       validationStatus: reservation.validationStatus || '',
       ...(aPlacer ? { aPlacer: true, conflits: conflits.map((conflit) => conflit.message) } : {}),
       ...contexte,
+      annonce,
     },
     requestId: newRequestId(),
   });
@@ -443,7 +447,10 @@ async function creerLeLot(body, session) {
       reservations.push({ index, reservation: cree.reservation, ops: cree.ops, aPlacer: cree.aPlacer, conflits: cree.conflits, warnings: cree.warnings });
     } catch (error) {
       const infra = estErreurInfra(error);
-      if (infra) console.error('[staff-reservations] lot, dossier', index, error && (error.stack || error.message || error));
+      if (infra) {
+        console.error('[staff-reservations] lot, dossier', index, error && (error.stack || error.message || error));
+        require('../lib/garde-serveur').signalerPanneServeur('api/staff-reservations:lot', error);
+      }
       echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra, ...(estRefusDeDroit(error) ? { code: error.code, refusDeDroit: error.statusCode === 403 } : {}) });
     }
   }
@@ -1049,6 +1056,7 @@ module.exports = async (req, res) => {
     const raw = String((error && error.message) || '');
     if (estErreurInfra(error)) {
       console.error('[staff-reservations] échec', error && (error.stack || raw || error));
+      require('../lib/garde-serveur').signalerPanneServeur('api/staff-reservations', error);
       sendError(res, 503, MESSAGE_INFRA);
       return;
     }

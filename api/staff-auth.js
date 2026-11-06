@@ -502,6 +502,7 @@ module.exports = async (req, res) => {
     // message neutre et un code 500 (dire 400 ferait porter au client la faute
     // du serveur). Son detail reste dans la trace d audit ecrite juste avant.
     const venuDeLaBase = !isStorageError && isDatabaseError(error);
+    if (isStorageError || venuDeLaBase) require('../lib/garde-serveur').signalerPanneServeur('api/staff-auth', error);
     sendError(
       res,
       isStorageError ? 503 : (venuDeLaBase ? 500 : (error.statusCode || 400)),

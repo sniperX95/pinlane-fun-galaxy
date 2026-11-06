@@ -50,6 +50,12 @@
 // LE SILENCE NE PROUVE RIEN : chaque lundi matin, un parcours complet et un
 // message. Si le message du lundi n arrive pas, c est la sonde qui est morte.
 //
+// LES SUJETS (2026-11-06) : avec TELEGRAM_GROUPE et TELEGRAM_SUJETS (les memes valeurs que
+// sur Vercel, « pannes:2,...,bilans:5 »), une panne et son retour partent dans le sujet
+// Pannes du groupe Pinlane, le bilan du lundi dans Bilans, sans sonnerie. Sans ces deux
+// valeurs, tout part dans la conversation d Ansar, comme avant. Un groupe qui refuse ne perd
+// rien : le message repart dans la conversation.
+//
 // Deployer, depuis ce dossier : npx wrangler deploy
 // Les secrets : npx wrangler secret put TELEGRAM_JETON (et TELEGRAM_CHAT)
 // Simuler sans toucher la prod : npx wrangler kv key put --binding=ETAT --remote simulation panne
@@ -439,23 +445,44 @@ export async function bilan({ kv, envoyer, fetcher = fetch, maintenant = Date.no
   await envoyer(`Sonde Pinlane en vie.\n${parcours}\n${derniere}\n${sauvegarde}`);
 }
 
-async function envoyerTelegram(env, texte) {
+// Ou part un message : le sujet du groupe si le groupe est branche, sinon la conversation.
+export function destinationTelegram(env, sujet) {
+  const groupe = String(env.TELEGRAM_GROUPE || '').trim();
+  const fils = Object.fromEntries(String(env.TELEGRAM_SUJETS || '').split(',').map((m) => m.trim().match(/^([a-z]+)\s*[:=]\s*(\d{1,12})$/)).filter(Boolean).map((m) => [m[1], Number(m[2])]));
+  const base = { text: '', disable_web_page_preview: true };
+  if (/^-\d{5,20}$/.test(groupe) && fils[sujet]) return { ...base, chat_id: groupe, message_thread_id: fils[sujet], ...(sujet === 'pannes' ? {} : { disable_notification: true }) };
+  return { ...base, chat_id: env.TELEGRAM_CHAT, ...(sujet === 'pannes' ? {} : { disable_notification: true }) };
+}
+
+async function posterTelegram(env, corps) {
   const api = env.TELEGRAM_API || 'https://api.telegram.org';
   const reponse = await fetch(`${api}/bot${env.TELEGRAM_JETON}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT, text: texte, disable_web_page_preview: true }),
+    body: JSON.stringify(corps),
     signal: AbortSignal.timeout(DELAI_MS),
   });
   await reponse.body?.cancel();
-  if (!reponse.ok) throw new Error(`Telegram ${reponse.status}`);
+  return reponse.status;
+}
+
+async function envoyerTelegram(env, texte, sujet = 'pannes') {
+  const corps = { ...destinationTelegram(env, sujet), text: texte };
+  const statut = await posterTelegram(env, corps);
+  if (statut >= 200 && statut < 300) return;
+  // Le groupe refuse (bot retire, sujet supprime) : la conversation, avec une ligne qui le dit.
+  if (corps.message_thread_id && (statut === 400 || statut === 403)) {
+    const repli = await posterTelegram(env, { chat_id: env.TELEGRAM_CHAT, text: `(Le groupe Pinlane refuse ce message, sujet ${sujet} : il arrive ici.)\n${texte}`, disable_web_page_preview: true });
+    if (repli >= 200 && repli < 300) return;
+  }
+  throw new Error(`Telegram ${statut}`);
 }
 
 export default {
   async scheduled(controleur, env) {
     const dependances = {
       kv: env.ETAT,
-      envoyer: (texte) => envoyerTelegram(env, texte),
+      envoyer: (texte) => envoyerTelegram(env, texte, controleur.cron === CRON_BILAN ? 'bilans' : 'pannes'),
       maintenant: controleur.scheduledTime,
     };
     if (controleur.cron === CRON_BILAN) await bilan(dependances);

@@ -118,8 +118,14 @@ async function handleErreurFormulaire(req, res, body) {
     userAgent: req.headers['user-agent'],
   });
   if (inscrit && !inscrit.dropped) {
+    // UNE ALERTE PAR PLANTAGE DISTINCT (2026-11-06, Ansar : « chaque plantage ») : le meme
+    // plantage repete ne sonne qu une fois par heure, un autre plantage sonne aussi. Le
+    // message ne recopie rien de ce que le navigateur envoie : l etape est filtree a des
+    // lettres, le plantage se designe par le debut de son empreinte.
     const { alerter } = require('../lib/garde-alertes');
-    await alerter(`formulaire:${centre}`, `URGENT Pinlane\nLe formulaire de ${centre} a planté chez un client. Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+    const etape = String(body.scene || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
+    const empreinte = String(inscrit.stackHash || '').slice(0, 6);
+    await alerter(`formulaire:${centre}:${empreinte}`, `URGENT Pinlane\nLe formulaire de ${centre} a planté chez un client${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
   }
   sendJson(res, 202, { ok: true });
 }
@@ -267,9 +273,17 @@ async function handleCustomRequest(req, res, body) {
       },
     });
   } catch (error) {
+    // UNE DEMANDE PERDUE SE SAIT (2026-11-06) : le client a lu « réessayez », peut-etre
+    // qu il ne le fera pas. Sans nom ni contact : le centre, le nombre.
+    console.error('[custom-request] échec', error && (error.stack || error.message || error));
+    const { alerter } = require('../lib/garde-alertes');
+    await alerter(`demande-panne:${centerId}`, `URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à ${centerId}${demande ? ` (${demande.participants} personnes)` : ''}. Le client a lu « réessayez dans un instant ».`, { fenetreMs: 5 * 60_000 });
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
     return;
   }
+
+  // L ANNONCE A ANSAR, son sort ecrit dans le journal (lib/garde-annonces.js).
+  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId });
 
   // LE REGISTRE (2026-10-05) : la demande sur mesure est journalisee en
   // entier (contact, organisation, date voulue, message, demande structuree),
@@ -285,7 +299,7 @@ async function handleCustomRequest(req, res, body) {
     entityId: lead.id,
     outcome: 'success',
     changes: customRequestChanges({}, { ...lead, centerId }),
-    context: { canal: 'public', structuree: Boolean(demande) },
+    context: { canal: 'public', structuree: Boolean(demande), annonce },
     requestId: newRequestId(),
   });
 
@@ -357,6 +371,7 @@ async function handlePilotLead(req, res, body) {
     );
     sendJson(res, 201, { ok: true, id: result.rows[0]?.id ?? null });
   } catch (error) {
+    require('../lib/garde-serveur').signalerPanneServeur('api/pilot-lead', error);
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
   }
 }
@@ -649,7 +664,7 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
   };
 }
 
-module.exports = async (req, res) => {
+async function routeur(req, res) {
   setCors(res, 'GET,POST,OPTIONS');
 
   if (req.method === 'OPTIONS') {
@@ -1044,4 +1059,16 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
 // Expose pour les gates (scripts/availability-day-check.js,
 // scripts/wallonia-calendar-check.js, le mock du serveur de dev) : le verdict
 // se teste unitairement, sans reseau ni base.
+// RIEN NE S ECHAPPE EN SILENCE (2026-11-06) : une exception que le routeur ne rattrape pas
+// devenait un 500 de Vercel, vu seulement dans ses journaux. Elle sonne, et le client lit
+// une phrase neutre.
+module.exports = async (req, res) => {
+  try {
+    return await routeur(req, res);
+  } catch (error) {
+    console.error('[public-booking-meta] échec', error && (error.stack || error.message || error));
+    require('../lib/garde-serveur').signalerPanneServeur('api/public-booking-meta', error);
+    if (!res.headersSent) sendError(res, 503, 'Service momentanément indisponible. Réessayez dans un instant.');
+  }
+};
 module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine };

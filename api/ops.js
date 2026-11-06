@@ -2177,6 +2177,17 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         userAgent: req.headers['user-agent'] || '',
       });
       dropped = Boolean(out && out.dropped);
+      // LA CONSOLE QUI PLANTE SE SAIT (2026-11-06, Ansar : « chaque plantage »). Comme le
+      // formulaire : un message par plantage distinct et par heure, la page filtree a des
+      // lettres, rien de recopie du navigateur.
+      if (out && !out.dropped) {
+        const { alerter } = require('../lib/garde-alertes');
+        const empreinte = String(out.stackHash || '').slice(0, 6);
+        const page = String(body.page || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
+        const qui = String((options.session && options.session.member && options.session.member.name) || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        const centre = scopedCenterId || 'libramont';
+        await alerter(`console:${centre}:${empreinte}`, `URGENT Pinlane\nLa console de ${centre} a planté${qui ? ` chez ${qui}` : ''}${page ? `, page ${page}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+      }
     } catch (error) {
       console.error('[client-errors] enregistrement impossible :', error.message);
     }
@@ -4082,6 +4093,8 @@ module.exports = async (req, res) => {
     }
     sendError(res, 405, 'Méthode non autorisée.');
   } catch (error) {
+    // Un refus explique (expose) est une reponse ; le reste est une panne, et elle sonne.
+    if (!(error && error.expose === true)) require('../lib/garde-serveur').signalerPanneServeur('api/ops', error);
     const status = error && error.expose === true ? (error.statusCode || 400) : (error && error.statusCode >= 500 ? error.statusCode : 503);
     sendError(res, status, safeUserMessage(error, 'Opération impossible pour le moment. Réessayez dans un instant.'));
   }

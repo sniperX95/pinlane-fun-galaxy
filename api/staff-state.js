@@ -82,6 +82,7 @@ module.exports = async (req, res) => {
     try { accueil = normalizeAccueil(getCenter(centerId)?.accueil); } catch (error) { accueil = undefined; }
     sendJson(res, 200, { ok: true, ...snapshot, classification, accueil });
   } catch (error) {
+    require('../lib/garde-serveur').signalerPanneServeur('api/staff-state', error);
     if (isStaffAuthStorageError(error)) {
       const requestUrl = new URL(req.url, 'http://localhost');
       const date = requestUrl.searchParams.get('date');

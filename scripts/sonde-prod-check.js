@@ -260,6 +260,13 @@ async function preuves(sonde) {
   ok(Object.entries(sonde).every(([nom, valeur]) => typeof valeur === 'function' || (nom === 'default' && typeof valeur.scheduled === 'function')), '[I] le module ne porte que des fonctions, le moteur Cloudflare le charge');
   ok(vercel.crons.some((c) => c.path === '/api/cron/secours' && c.schedule === '*/15 * * * *'), '[I] le cron secours tourne toujours au quart d heure : le fond reste cale dessus');
 
+  // [K] Les sujets du groupe Pinlane (2026-11-06) : les memes valeurs que sur Vercel.
+  const sansGroupe = sonde.destinationTelegram({ TELEGRAM_CHAT: '42' }, 'pannes');
+  const dansLeGroupe = (sujet) => sonde.destinationTelegram({ TELEGRAM_CHAT: '42', TELEGRAM_GROUPE: '-1004294441660', TELEGRAM_SUJETS: 'pannes:2,reservations:3,modifications:4,bilans:5' }, sujet);
+  ok(sansGroupe.chat_id === '42' && !sansGroupe.message_thread_id && !sansGroupe.disable_notification, '[K] sans groupe : la conversation d Ansar, avec la sonnerie, comme avant');
+  ok(dansLeGroupe('pannes').chat_id === '-1004294441660' && dansLeGroupe('pannes').message_thread_id === 2 && !dansLeGroupe('pannes').disable_notification, '[K] une panne : le sujet Pannes du groupe, avec la sonnerie');
+  ok(dansLeGroupe('bilans').message_thread_id === 5 && dansLeGroupe('bilans').disable_notification === true, '[K] le bilan du lundi : le sujet Bilans, sans sonnerie');
+
   // [J]
   const kvBilan = fauxKv();
   const bilans = [];

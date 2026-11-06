@@ -2664,11 +2664,42 @@ async function apiRequest(url, options = {}) {
 // jamais de reentrance (une erreur du rapporteur ne se rapporte pas), dedupe
 // locale, plafond par session d'onglet, et echec toujours silencieux.
 const CLIENT_ERROR_REPORT = { seen: new Set(), sent: 0, max: 10, busy: false };
+// LE FORMULAIRE GENERIQUE AUSSI (2026-11-06, Ansar : « chaque plantage ») : un client sans
+// session staff, sur /reserver, plantait en silence. Son erreur part comme celle du
+// formulaire Fun Galaxy (assets/fungalaxy-booking.js) : meme route, memes filtres (script
+// d une extension, reseau coupe, requete annulee), cinq signaux par page au plus, et rien
+// de ce que le client a saisi.
+function signalerErreurPublique(payload, message) {
+  const rejet = payload.source === 'unhandledrejection';
+  const fichier = String(payload.source || '');
+  if (!rejet && (!fichier || fichier.indexOf(window.location.origin) !== 0)) return;
+  if (/ResizeObserver loop/.test(message)) return;
+  if (rejet && (payload.nom === 'AbortError' || /Failed to fetch|NetworkError|Load failed|réseau/i.test(message))) return;
+  if (CLIENT_ERROR_REPORT.sent >= 5) return;
+  CLIENT_ERROR_REPORT.sent += 1;
+  try {
+    const corps = JSON.stringify({
+      kind: 'erreur-formulaire',
+      centerId: typeof getUrlCenterId === 'function' ? getUrlCenterId() : '',
+      scene: 'reserver',
+      message,
+      source: fichier.slice(0, 300),
+      lineno: Number(payload.lineno) || 0,
+      colno: Number(payload.colno) || 0,
+      stack: String(payload.stack || '').slice(0, 2000),
+    });
+    if (navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))) return;
+    fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(() => {});
+  } catch (error) { /* le capteur ne casse jamais ce qu il observe */ }
+}
 function reportClientError(payload) {
   if (CLIENT_ERROR_REPORT.busy || CLIENT_ERROR_REPORT.sent >= CLIENT_ERROR_REPORT.max) return;
-  if (typeof getStaffSessionToken !== 'function' || !getStaffSessionToken()) return;
   const message = String(payload.message || '').slice(0, 500);
   if (!message) return;
+  if (typeof getStaffSessionToken !== 'function' || !getStaffSessionToken()) {
+    signalerErreurPublique(payload, message);
+    return;
+  }
   const key = `${message}|${payload.source || ''}|${payload.lineno || 0}`;
   if (CLIENT_ERROR_REPORT.seen.has(key)) return;
   CLIENT_ERROR_REPORT.seen.add(key);
@@ -2705,6 +2736,7 @@ window.addEventListener('unhandledrejection', (event) => {
   reportClientError({
     message: (reason && reason.message) || String(reason || 'promesse rejetee'),
     source: 'unhandledrejection',
+    nom: reason && reason.name,
     stack: reason && reason.stack,
   });
 });

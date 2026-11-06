@@ -330,6 +330,7 @@ function createHandler({
         });
       } catch (error) {
         console.warn(`inbound-email: evenement ${type} non enregistre (${String((error && error.message) || error).slice(0, 120)})`);
+        require('../lib/garde-serveur').signalerPanneServeur('api/inbound-email', error);
         sendError(res, 503, 'Evenement non enregistre pour le moment.');
         return;
       }
@@ -337,6 +338,7 @@ function createHandler({
         sendJson(res, 200, { ok: true, ignored: (resultat && resultat.ignored) || type });
         return;
       }
+      await require('../lib/garde-mails').alerterEvenementMail(resultat);
       sendJson(res, 200, { ok: true, recorded: resultat.type || type, deduped: Boolean(resultat.deduped) });
       return;
     }

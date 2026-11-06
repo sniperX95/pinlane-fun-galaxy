@@ -13,7 +13,7 @@
 //
 // Le refus cote serveur (403 pour une Direction) vit dans scripts/founder-cockpit-check.js, avec les autres actions.
 // Lancement : node scripts/tour-controle-check.js   (TOUR_PHOTOS=<dossier> garde les images)
-for (const nom of Object.keys(process.env)) if (/^(PG|DATABASE|POSTGRES|RESEND|TWILIO|TELEGRAM|PINLANE_SECOURS)/i.test(nom)) delete process.env[nom];
+for (const nom of Object.keys(process.env)) if (/^(PG|DATABASE|POSTGRES|RESEND|TWILIO|TELEGRAM|PINLANE_SECOURS|ANTHROPIC|OPENAI|OPENROUTER|KIMI|MOONSHOT|LLM_PROVIDER)/i.test(nom)) delete process.env[nom];
 process.env.DATABASE_URL = 'postgres://banc/banc';
 const fs = require('fs');
 const http = require('http');
@@ -58,7 +58,7 @@ function lireSchema() {
   return tables;
 }
 const SCHEMA = lireSchema();
-const MOTS_SQL = new Set('offset select distinct on from where and or not in is null as group by order desc asc limit count max min sum coalesce filter over int integer text date bigint any interval now at time zone like exists insert into values update set begin rollback commit array_agg lower true false minutes hours days hour minute day hours hours2 nullif cast'.split(' '));
+const MOTS_SQL = new Set('offset select distinct on from where and or not in is null as group by order desc asc limit count max min sum coalesce filter over int integer text date bigint any interval now at time zone like exists insert into values update set begin rollback commit array_agg lower true false minutes hours days hour minute day hours hours2 nullif cast case when then else end'.split(' '));
 const fautes = new Set();
 function verifierColonnes(sql) {
   const propre = sql.replace(/'[^']*'/g, ' ').replace(/\$\d+/g, ' ').replace(/::\s*\w+(\[\])?/g, ' ');
@@ -95,6 +95,7 @@ function remettre() {
   BD.evenements = [{ communication_id: 3, center_id: 'libramont', event_type: 'bounced', occurred_at: ilYA(30) }];
   BD.erreurs = [];
   BD.journal = [];
+  BD.demandes = [];
   const dossier = (id, c) => ({ id, name: 'Client', phone: '0470000000', email: 'client@example.be', date: DEMAIN, start_time: '15:00', duration: 1, total_duration: 1, lanes: [1], pax: 4, status: 'pending', base_price: 78, price: 78, type: 'bowling', label: 'Bowling', channel: 'public', center_id: 'libramont', validation_status: 'confirmed', created_at: ilYA(id), updated_at: ilYA(id), ...c });
   BD.resas = [
     dossier(101, { center_id: 'gembloux', name: 'Emma Dubois', phone: '+33 6 12 34 56 78', email: 'emma.dubois@example.be', pax: 8, price: 208, label: 'Laser Game', type: 'visite', program: { items: [{ activityId: 'laser_game', name: 'Laser Game', participants: 8, minutes: 20, price: 144 }] }, ops_plan: { timeline: [{ startTime: '15:00', endTime: '15:20', activityName: 'Laser Game' }], validation: { niveau: 'normal', raison: 'Groupe de plus de 6' } }, created_at: ilYA(5) }),
@@ -130,7 +131,9 @@ function repondre(sql, p = []) {
   if (/from email_events/.test(s)) return rows(groupe(BD.evenements.filter((e) => /bounced|complained/.test(e.event_type)), (e) => `${e.center_id}:${e.event_type}`).map((l) => ({ center_id: l[0].center_id, event_type: l[0].event_type, n: l.length })));
   if (/count\(\*\)::int as recent from client_errors/.test(s)) return rows([{ recent: BD.erreurs.filter((e) => e.member_id === p[0]).length }]);
   if (/^insert into client_errors/.test(s)) { BD.erreurs.push({ center_id: p[0], page: p[1], message: p[2], source: p[3], stack_hash: p[6], member_id: p[8], occurred_at: new Date() }); return rows([{ id: BD.erreurs.length }]); }
-  if (/from client_errors/.test(s)) return rows(groupe(BD.erreurs, (e) => `${e.center_id}:${e.stack_hash}`).map((l) => ({ center_id: l[0].center_id, stack_hash: l[0].stack_hash, message: l[0].message, page: l[0].page, n: l.length, personnes: 1, dernier: dernier(l, 'occurred_at'), chez_le_client: l[0].member_id.startsWith('public:') })));
+  if (/from client_errors/.test(s)) return rows(groupe(BD.erreurs, (e) => `${e.center_id}:${e.stack_hash}`).map((l) => ({ center_id: l[0].center_id, stack_hash: l[0].stack_hash, message: l[0].message, page: l[0].page, n: l.length, personnes: 1, dernier: dernier(l, 'occurred_at'), origine: l[0].member_id.startsWith('public:') ? 'client' : (l[0].member_id.startsWith('serveur:') ? 'serveur' : 'console') })));
+  if (/validation_status = 'staff_review' and status = 'pending'/.test(s)) return rows(groupe(BD.resas.filter((r) => enLigneReelle(r) && r.validation_status === 'staff_review' && r.status === 'pending' && r.date >= p[0] && r.created_at < ilYA(120)), (r) => r.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length })));
+  if (/from custom_requests/.test(s)) return rows(groupe(BD.demandes.filter((d) => d.status === 'new' && d.created_at < ilYA(24 * 60)), (d) => d.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length })));
   if (/^insert into audit_log/i.test(s)) {
     const colonnes = s.match(/\(([^)]+)\) values/i)[1].split(',').map((c) => c.trim());
     BD.journal.push({ ...Object.fromEntries(colonnes.map((c, i) => [c, p[i]])), occurred_at: new Date() });
@@ -241,6 +244,11 @@ database.createReservation = async (payload) => {
   return { ...payload, id: 900, status: 'pending', opsPlan: payload.opsPlan, price: payload.price, pax: payload.pax, centerId: payload.centerId };
 };
 require('../lib/reservation-ops').afterReservationCreated = async () => ({ communications: [], warnings: [] });
+let panneDemande = false;
+database.createCustomRequest = async (input) => {
+  if (panneDemande) throw infra();
+  return { id: 77, centerId: input.centerId, pax: input.pax, occasion: input.occasion, requestedDate: input.requestedDate, status: 'new', contactName: input.contactName, email: input.email };
+};
 for (const nom of ['error', 'warn']) { const o = console[nom]; console[nom] = (...a) => { if (!/\[public-|\[garde\]|\[tour-controle\]|TRACE PERDUE|ECRITURE PERDUE|DATABASE_URL/.test(String(a[0]))) o(...a); }; }
 const HEURES = { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} };
 kn.applyCenterOverrides(new Map([['libramont', { defaultSchedule: HEURES, secours: { emails: ['secours@fungalaxy.be'] } }], ['gembloux', { defaultSchedule: HEURES }]]));
@@ -350,12 +358,15 @@ async function preuvesServeur() {
   ok(p5.messages.length === 0 && p5.r.envois.includes(false), '[G] Telegram coupe : rien ne part, et rien n est retenu comme dit', p5.r);
   const p6 = await passe();
   ok(p6.messages.length === 1 && /adresse de secours/.test(p6.messages[0]), '[G] au passage suivant, le message part enfin', p6.messages);
-  const soir = new Date('2026-11-14T21:30:00Z');
-  const p7 = await passe({ instant: soir });
-  ok(p7.messages.length === 1 && /^Bilan Pinlane du/.test(p7.messages[0]) && /Libramont/.test(p7.messages[0]) && /Gembloux/.test(p7.messages[0]), '[G] le soir, un bilan des deux centres', p7.messages);
+  // Le bilan du matin (2026-11-06, il etait a 22 h) : 08:30 a Bruxelles, une fois, et rien l apres-midi.
+  const matin = new Date('2026-11-14T07:30:00Z');
+  const p7 = await passe({ instant: matin, llm: async () => null });
+  ok(p7.messages.length === 1 && /^Bilan Pinlane du/.test(p7.messages[0]) && /LIBRAMONT/.test(p7.messages[0]) && /GEMBLOUX/.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
   ok(!PERSONNEL.test(p7.messages.join(' ')), '[G] le bilan ne cite personne', p7.messages);
-  const p8 = await passe({ instant: new Date('2026-11-14T21:45:00Z') });
-  ok(p8.messages.length === 0, '[G] un seul bilan par soir', p8.messages);
+  const p8 = await passe({ instant: new Date('2026-11-14T07:45:00Z'), llm: async () => null });
+  ok(p8.messages.length === 0, '[G] un seul bilan par matin', p8.messages);
+  const p9 = await passe({ instant: new Date('2026-11-15T13:00:00Z'), llm: async () => null });
+  ok(p9.messages.length === 0, '[G] la garde arretee tout le matin : pas de bilan de la veille l apres-midi', p9.messages);
 
   // La sonde demande : la base ecrit-elle ?
   remettre();
@@ -424,6 +435,40 @@ async function preuvesClient(jour) {
   panneBase = false;
   ok(blocage.statut === 503 && TELEGRAM.some((t) => /ne se retiennent plus/.test(t)), '[C] les horaires qui ne se retiennent plus : un message', { blocage, TELEGRAM });
 
+  // LES ANNONCES (2026-11-06) : par le vrai formulaire, une reservation qui aboutit part dans
+  // Reservations, sans donnee personnelle, et son sort s ecrit au journal.
+  require('../lib/garde-alertes').oublierLesAlertes();
+  require('../lib/garde-annonces').reprendreLesAnnonces();
+  TELEGRAM.length = 0;
+  const reussie = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
+  ok(reussie.statut === 201, '[C] temoin : une reservation en ligne qui aboutit', reussie);
+  const annonce = TELEGRAM.find((t) => /^Nouvelle réservation, Gembloux, en ligne/.test(t));
+  ok(Boolean(annonce) && annonce.includes('Dossier n° 900') && annonce.includes('4 personnes'), '[C] elle s annonce a Ansar, avec son dossier', TELEGRAM);
+  ok(!PERSONNEL.test(annonce || 'Jean Essai'), '[C] l annonce ne cite ni nom, ni telephone, ni e-mail', annonce);
+  const contexte = (j) => (typeof j.context === 'string' ? JSON.parse(j.context) : (j.context || {}));
+  const ligneCreee = BD.journal.filter((j) => j.action === 'createReservation').pop();
+  ok(ligneCreee && contexte(ligneCreee).annonce === 'ok', '[C] le journal garde le sort de l annonce : partie', ligneCreee && contexte(ligneCreee));
+  telegramCoupe = true;
+  const sansTelegram = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
+  telegramCoupe = false;
+  const ligneRatee = BD.journal.filter((j) => j.action === 'createReservation').pop();
+  ok(sansTelegram.statut === 201 && ligneRatee && contexte(ligneRatee).annonce === 'non', '[C] Telegram en panne : la reservation passe, et le journal dit que l annonce reste a faire', { statut: sansTelegram.statut, annonce: ligneRatee && contexte(ligneRatee).annonce });
+  require('../lib/garde-annonces').reprendreLesAnnonces();
+
+  TELEGRAM.length = 0;
+  const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
+  const lead = await appeler(meta, 'POST', '/api/custom-request', demande);
+  const annonceDemande = TELEGRAM.find((t) => /^Nouvelle demande de groupe, Gembloux/.test(t));
+  ok(lead.statut === 201 && Boolean(annonceDemande) && annonceDemande.includes('Anniversaire, 35 personnes') && annonceDemande.includes('Demande n° 77'), '[C] une demande de groupe s annonce aussi', { statut: lead.statut, TELEGRAM });
+  ok(!PERSONNEL.test(annonceDemande || 'Jean Essai'), '[C] sans le contact', annonceDemande);
+  const ligneDemande = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
+  ok(ligneDemande && contexte(ligneDemande).annonce === 'ok', '[C] et son sort s ecrit au journal', ligneDemande && contexte(ligneDemande));
+  TELEGRAM.length = 0;
+  panneDemande = true;
+  const perdue = await appeler(meta, 'POST', '/api/custom-request', demande);
+  panneDemande = false;
+  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à gembloux/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
+
   const tour = tourReel();
   const { essais } = await tour.lireProblemes(database.getPool());
   ok(essais.some((e) => e.action === 'reservation.panne' && e.centre === 'gembloux' && e.n === 2), '[C] la Tour les relit, par centre et par motif', essais);
@@ -461,7 +506,7 @@ const serveur = http.createServer(async (rq, rs) => {
       return;
     }
     if (u.pathname.startsWith('/api/')) { rq.resume(); rs.writeHead(204); rs.end(); return; }
-    const rel = u.pathname === '/' ? 'index.html' : (/^\/fungalaxy(\/|$)/.test(u.pathname) ? 'fungalaxy.html' : decodeURIComponent(u.pathname.replace(/^\/+/, '')));
+    const rel = u.pathname === '/' || /^\/reserver(\/|$)/.test(u.pathname) ? 'index.html' : (/^\/fungalaxy(\/|$)/.test(u.pathname) ? 'fungalaxy.html' : decodeURIComponent(u.pathname.replace(/^\/+/, '')));
     const f = path.join(ROOT, rel);
     if (!f.startsWith(ROOT) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { rs.writeHead(404); rs.end('absent'); return; }
     let contenu = fs.readFileSync(f);
@@ -483,6 +528,30 @@ const serveur = http.createServer(async (rq, rs) => {
 });
 
 // [F] Le vrai formulaire remonte ses plantages.
+async function preuvesReserver(browser) {
+  remettre();
+  require('../lib/garde-alertes').oublierLesAlertes();
+  TELEGRAM.length = 0;
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const p = await ctx.newPage();
+  const signaux = [];
+  await p.route('**/banc-rien', (route) => route.continue());
+  p.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/public-booking-meta')) { const c = r.postData() || ''; if (c.includes('erreur-formulaire')) signaux.push(JSON.parse(c)); } });
+  await p.goto(`${BASE}/reserver/gembloux`, { waitUntil: 'networkidle', timeout: 45000 });
+  await p.waitForTimeout(400);
+  ok(signaux.length === 0, '[F] temoin : le formulaire generique (/reserver) sain ne signale rien', signaux);
+  await p.route('**/assets/banc-reserver.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('plantage du formulaire generique, jean.essai@example.be');" }));
+  await p.addScriptTag({ url: `${BASE}/assets/banc-reserver.js` }).catch(() => {});
+  await p.waitForTimeout(600);
+  ok(signaux.length === 1 && signaux[0].centerId === 'gembloux' && signaux[0].scene === 'reserver', '[F] /reserver : un plantage chez un client part au serveur, avec son centre', signaux);
+  ok(TELEGRAM.some((t) => /formulaire de gembloux a planté chez un client, étape reserver/.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
+  await p.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 })); });
+  await p.evaluate(() => { window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') })); });
+  await p.waitForTimeout(300);
+  ok(signaux.length === 1, '[F] /reserver : une extension ou un reseau coupe ne font pas de bruit', signaux.length);
+  await ctx.close();
+}
+
 async function preuvesFormulaire(browser) {
   remettre();
   require('../lib/garde-alertes').oublierLesAlertes();
@@ -512,7 +581,12 @@ async function preuvesFormulaire(browser) {
   await p.route('**/assets/banc-plantage-2.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('encore un');" }));
   await p.addScriptTag({ url: `${BASE}/assets/banc-plantage-2.js` }).catch(() => {});
   await p.waitForTimeout(400);
-  ok(TELEGRAM.length === 1, '[F] un second plantage dans l heure : pas de second message', TELEGRAM);
+  ok(TELEGRAM.length === 2 && /formulaire de gembloux a planté/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
+  ok(TELEGRAM[0].match(/plantage (\w+)/) && TELEGRAM[1].match(/plantage (\w+)/) && TELEGRAM[0].match(/plantage (\w+)/)[1] !== TELEGRAM[1].match(/plantage (\w+)/)[1], '[F] les deux plantages se distinguent par leur empreinte', TELEGRAM);
+  const { alerter: alerterBanc } = require('../lib/garde-alertes');
+  const empreinte = TELEGRAM[0].match(/plantage (\w+)/)[1];
+  const repete = await alerterBanc(`formulaire:gembloux:${empreinte}`, 'le meme plantage, repete');
+  ok(repete.deja === true && TELEGRAM.length === 2, '[F] le meme plantage repete dans l heure : pas de troisieme message', { repete, TELEGRAM });
 
   const n = signaux.length;
   await p.evaluate(() => { const e = new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 }); window.dispatchEvent(e); });
@@ -847,6 +921,14 @@ async function contrePreuves(browser, jour) {
     await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', program: [{ activityId: 'golf_oclock' }], startTime: '11:00' }));
     return BD.journal.some((j) => j.action === 'reservation.refusee');
   });
+  await rouge('une reservation en ligne ne s annonce plus', [{ fichier: FICHE_PUB, de: '      annoncerReservation(reservation),', vers: "      Promise.resolve('ok')," }], async () => {
+    remettre();
+    require('../lib/garde-alertes').oublierLesAlertes();
+    require('../lib/garde-annonces').reprendreLesAnnonces();
+    TELEGRAM.length = 0;
+    await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour));
+    return TELEGRAM.some((t) => /^Nouvelle réservation/.test(t));
+  });
   charger(FICHE_PUB);
 
   // Cote navigateur : le code d avant, servi en memoire, un scenario par piece.
@@ -863,6 +945,20 @@ async function contrePreuves(browser, jour) {
   await c1.close();
   servies = [];
   ok(vus.length === 1, '[X] le bruit d une extension passerait : rougit', vus.length);
+
+  servies = [{ fichier: 'assets/app-main.js', de: '    signalerErreurPublique(payload, message);\n', vers: '' }];
+  const c2 = await browser.newContext();
+  const p2 = await c2.newPage();
+  const vus2 = [];
+  await p2.route('**/banc-rien', (route) => route.continue());
+  p2.on('request', (r) => { if ((r.postData() || '').includes('erreur-formulaire')) vus2.push(r.postData()); });
+  await p2.goto(`${BASE}/reserver/gembloux`, { waitUntil: 'networkidle', timeout: 45000 });
+  await p2.route('**/assets/banc-reserver-x.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('x');" }));
+  await p2.addScriptTag({ url: `${BASE}/assets/banc-reserver-x.js` }).catch(() => {});
+  await p2.waitForTimeout(500);
+  await c2.close();
+  servies = [];
+  ok(vus2.length === 0, '[X] /reserver sans sa branche publique : plus rien ne part, rougit', vus2.length);
 
   servies = [{ fichier: 'assets/tour-controle.js', de: "['centre', 'canal', 'statut', 'visite'].forEach((cle) => { if (f[cle]) p.set(cle, f[cle]); });", vers: '' }];
   const { ctx, page } = await ouvrirConsole(browser);
@@ -900,6 +996,7 @@ async function contrePreuves(browser, jour) {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     await preuvesFormulaire(browser);
+    await preuvesReserver(browser);
     await preuvesConsole(browser);
     await contrePreuves(browser, jour.date);
   } finally {

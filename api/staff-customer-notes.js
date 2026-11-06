@@ -42,6 +42,7 @@ module.exports = async function handler(req, res) {
     });
     return sendJson(res, 200, { ok: true, ...reponse, versionId, ...(audit.warning ? { warnings: [audit.warning] } : {}) });
   } catch (error) {
+    if (!error.statusCode || error.statusCode >= 500) require('../lib/garde-serveur').signalerPanneServeur('api/staff-customer-notes', error);
     return sendError(res, error.statusCode || 500, publicErrorMessage(error, req.method === 'GET' ? 'Impossible de charger la note client.' : 'Impossible de sauvegarder la note client.'), error.statusCode === 409 && Object.prototype.hasOwnProperty.call(error, 'note') ? { note: error.note } : {});
   }
 };

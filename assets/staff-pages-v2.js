@@ -623,14 +623,14 @@
     const time = String(r.startTime || '').slice(0, 5);
     const offer = typeof getStaffClientOfferLabel === 'function' ? getStaffClientOfferLabel(r) : typeLabel(r);
     const paxN = Number(r.pax) || 0;
-    // (cherchee par son numero, la ligne le dit, et dit si elle est annulee)
+    // (cherchee par son numero, la ligne le montre ; l etiquette dit deja si elle est annulee)
     const numero = typeof numeroReservationDe === 'function' ? numeroReservationDe(pv2ResSearchNormalize(pv2ResSearch.query)) : '';
     const parNumero = numero && String(r.id) === numero;
     return `<div class="pv2-flow-item ${statusMeta(r).tone}" onclick="pv2ResSearchOpen('${escJs(r.id)}')">
       <div class="pv2-flow-time"><strong>${esc(time || '--:--')}</strong><small>${esc(when)}</small></div>
       <div class="pv2-flow-rail"></div>
       <div class="pv2-flow-body">
-        <strong>${esc(r.name || 'Sans nom')}${parNumero ? ` <span class="pv2-numero">n°&nbsp;${esc(String(r.id))}${r.status === 'cancelled' ? ', annulée' : ''}</span>` : ''}</strong>
+        <strong>${esc(r.name || 'Sans nom')}${parNumero ? ` <span class="pv2-numero">n°&nbsp;${esc(String(r.id))}</span>` : ''}</strong>
         <span>${esc(offer)} · ${paxN} joueur${paxN > 1 ? 's' : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}</span>
         ${pv2MarqueursDossier(r)}
       </div>

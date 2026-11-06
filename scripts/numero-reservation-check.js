@@ -446,11 +446,13 @@ async function scenarioListe(browser, installerMock) {
       rendreLaListe();
       const texte = lireListe();
       const tableau = typeof window.gfIdsTrouves === 'function' ? window.gfIdsTrouves() : null;
+      const aide = ((document.querySelector('.gf-resultats') || {}).textContent || '').replace(/\s+/g, ' ').trim();
       applyStaffSearch('', { immediate: true });
       return {
         cible: texte.indexOf(cible.name) >= 0,
         intrus: autres.filter((nom) => texte.indexOf(nom) >= 0).length,
         tableau: tableau ? [...tableau].map(String) : null,
+        aide,
       };
     }, { idDuJour });
   }
@@ -500,7 +502,8 @@ function jugerConsole(lien, liste, toutes) {
   return {
     lien: lien.ouverte && lien.jour === AUTRE_JOUR && !/resa=/.test(lien.adresse) && lien.vue === 'staff',
     liste: liste.liste.bowling.cible && liste.liste.bowling.intrus === 0,
-    tableau: liste.liste.all.cible && liste.liste.all.intrus === 0 && Array.isArray(liste.liste.all.tableau) && liste.liste.all.tableau.includes(liste.idDuJour),
+    tableau: liste.liste.all.cible && liste.liste.all.intrus === 0 && Array.isArray(liste.liste.all.tableau) && liste.liste.all.tableau.includes(liste.idDuJour)
+      && /1 groupe pour « n° \d+ » · Entrée pour ouvrir la réservation/.test(liste.liste.all.aide || ''),
     vide: liste.vide.bouton && /Pas de réservation n° \d+ ce jour-là/.test(liste.vide.titre) && liste.vide.ouverte,
     entree: liste.entree.champ && liste.entree.ouverte,
     toutes: toutes.trouve.length === 1 && toutes.trouve[0] === toutes.id && toutes.parNomAnnuleeCachee,
@@ -522,7 +525,7 @@ async function groupeConsole(browser, installerMock) {
   const j = jugerConsole(lien, liste, toutes);
   ok(j.lien, '[C] l adresse /?resa=X ouvre la reservation d un autre jour, sur son jour, puis s efface de la barre', lien);
   ok(j.liste, '[C] la liste de la ressource filtre sur le numero tape (« n° X ») : cette reservation, et elle seule', liste.liste.bowling);
-  ok(j.tableau, '[C] le tableau du jour trouve le numero comme un nom (gfTrouve), la liste suit', liste.liste.all);
+  ok(j.tableau, '[C] le tableau du jour trouve le numero comme un nom (gfTrouve), dit qu Entree l ouvre, la liste suit', liste.liste.all);
   ok(j.vide, '[C] un numero d un autre jour : « Pas de réservation n° X ce jour-là » et un bouton qui l ouvre', liste.vide);
   ok(j.entree, '[C] Entree sur « n° X » dans la recherche de la liste ouvre la reservation d un autre jour', liste.entree);
   ok(j.toutes, '[C] la page Reservations trouve le numero parmi toutes les dates, annulee comprise (un nom, lui, cache les annulees)', toutes);
@@ -633,6 +636,7 @@ async function contrePreuvesConsole(browser, installerMock) {
   await servie('lien', 'assets/app-main.js', '  if (isAuthenticated) ouvrirReservationDuLien();\n', '', 'lien', lienSeul);
   await servie('liste', 'assets/app-main.js', '      : res.filter(r => reservationPorteLeNumero(r, numeroCherche) || ', '      : res.filter(r => ', 'liste', listeSeule);
   await servie('tableau', 'assets/pinlane-planning-global.js', '    if (numero && String(r.id) === numero) return true;\n', '', 'tableau', listeSeule);
+  await servie('aide', 'assets/pinlane-planning-global.js', " : lignes.length === 1 && typeof numeroReservationDe === 'function' && numeroReservationDe(q) ? ' · Entrée pour ouvrir la réservation' : '')", " : '')", 'tableau', listeSeule);
   await servie('entree', 'assets/app-main.js', "  if (e.target && e.target.id === 'searchInput' && !e.isComposing) entreeRechercheNumero(e);\n", '', 'entree', listeSeule);
   await servie('vide', 'assets/app-main.js', " onclick=\"ouvrirReservationNumero('${numeroCherche}')\">", '>', 'vide', listeSeule);
   await servie('toutes', 'assets/staff-pages-v2.js', '    if (parNumero.length) return parNumero;\n', '', 'toutes', toutesSeule);

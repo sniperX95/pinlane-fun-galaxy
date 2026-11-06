@@ -1792,8 +1792,8 @@ async function mutationCounterProof() {
   // FICHIER, et on recharge le module. Restauration par edition inverse.
   await withSourceMutation({
     file: path.join(ROOT, 'lib', 'ops-communications.js'),
-    anchor: 'textBody: message.body, validationMode, ...sender,',
-    replacement: 'textBody: message.body, validationMode,',
+    anchor: 'validationMode, ...sender,',
+    replacement: 'validationMode,',
     label: 'identite d expediteur retiree du mail d arrivee',
     probe: async (mutated) => {
       const queue = [];

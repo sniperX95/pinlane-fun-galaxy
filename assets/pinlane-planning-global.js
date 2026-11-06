@@ -1247,7 +1247,7 @@
     if (q) {
       var terme = String(state.searchTerm || '').trim();
       var seul = lignes.length === 1 && gfPeutArriver(lignes[0], m) && gfTrouveParNom(lignes[0], q);
-      if (lignes.length) poser('resultats', '<tr class="gf-resultats"><td colspan="' + nbCol + '"><b>' + gpEsc(gfPluriel(lignes.length, ['groupe', 'groupes'])) + '</b> pour « ' + gpEsc(terme) + ' »' + (seul ? ' · Entrée pour pointer Arrivé' : '') + '</td></tr>');
+      if (lignes.length) poser('resultats', '<tr class="gf-resultats"><td colspan="' + nbCol + '"><b>' + gpEsc(gfPluriel(lignes.length, ['groupe', 'groupes'])) + '</b> pour « ' + gpEsc(terme) + ' »' + (seul ? ' · Entrée pour pointer Arrivé' : lignes.length === 1 && typeof numeroReservationDe === 'function' && numeroReservationDe(q) ? ' · Entrée pour ouvrir la réservation' : '') + '</td></tr>');
     }
     var bande = false, avantB = null;
     morceaux.forEach(function (part) {

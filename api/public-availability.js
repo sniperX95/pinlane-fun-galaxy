@@ -390,7 +390,14 @@ module.exports = async (req, res) => {
           if (schedule && window) {
             const minTime = Math.max(window.earliestStart, date === todayStr() ? roundUpHalfHour(currentTimeDecimal()) : window.earliestStart);
             const maxTime = window.latestStart;
-            if (minTime > maxTime) reason = `${f.name} : plus aucune arrivée disponible avant ${numToTime(Number(f.timeLimit?.max || schedule.close))}.`;
+            if (minTime > maxTime) {
+              const avant = numToTime(Number(f.timeLimit?.max || schedule.close));
+              // Le centre ouvre apres la plage de la formule ce jour-la (MATIN MALIN un mercredi, ouverture 12:00) : ce
+              // n est pas « plus aucune arrivee », la plage n existe pas ce jour-la (chasse du 2026-11-06).
+              reason = window.earliestStart > window.latestStart
+                ? `${f.name} se joue avant ${avant} : ce jour-là, le centre ouvre à ${numToTime(Number(schedule.open))}.`
+                : `${f.name} : plus aucune arrivée disponible avant ${avant}.`;
+            }
             else {
               liveSnapshot ||= await readAvailabilitySnapshot(date, centerId, { saufJeton: String(req.headers['x-pinlane-hold'] || '').trim() });
               const duration = getFormuleLaneDuration(f);

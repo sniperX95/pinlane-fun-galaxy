@@ -7474,6 +7474,17 @@
     if (/^telenet\.be$/.test(d)) return { nom: 'Telenet Mail', url: 'https://webmail.telenet.be/' };
     return null;
   }
+  // Les boites a ouvrir (Ansar, 2026-11-06 : « faudrait mail apple et les autres aussi genre outlook »). Celle de
+  // l adresse d abord ; l app Mail sur un appareil Apple, ou le client lit souvent toutes ses adresses ; Gmail et
+  // Outlook seulement quand l adresse ne dit rien. Trois au plus. Des noms, pas de logos : Apple et Microsoft les
+  // interdisent sans licence, Google demande une autorisation (regles lues le 06/11).
+  function boitesDuClient(adresse, centre) {
+    var connue = boiteDuClient(adresse, centre), liste = connue ? [connue] : [];
+    var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    if (/iPhone|iPad|iPod|Macintosh/.test(ua)) liste.push({ nom: 'Mail', url: 'message://' });
+    if (!connue) liste.push({ nom: 'Gmail', url: 'https://mail.google.com/mail/u/0/#search/' + encodeURIComponent('in:anywhere "' + centre + '"') }, { nom: 'Outlook', url: 'https://outlook.live.com/mail/0/' });
+    return liste.slice(0, 3);
+  }
   // Une ligne d agenda (RFC 5545) : les signes reserves echappes, pliee a 74 octets.
   function texteIcs(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
   function plierIcs(ligne) {
@@ -7582,9 +7593,9 @@
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. ' + motArrivee() + ' <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
     // Le mail annonce, son conseil s il n arrive pas, et le bouton qui ouvre la boite du client quand on la connait.
-    var boite = mailQ ? boiteDuClient(mailRes, (meta && meta.center && meta.center.name) || '') : null;
+    var boites = mailQ ? boitesDuClient(mailRes, (meta && meta.center && meta.center.name) || '') : [];
     var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>. Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les spams.'
-      + (boite ? '<br><a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(boite.url) + '" target="_blank" rel="noopener">Ouvrir ' + esc(boite.nom) + '</a>' : '') : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
+      + (boites.length ? '<span class="fg-done__boites">' + boites.map(function (b) { return '<a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(b.url) + '"' + (/^https:/.test(b.url) ? ' target="_blank" rel="noopener"' : '') + '>Ouvrir ' + esc(b.nom) + '</a>'; }).join('') + '</span>' : '') : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
     var ligneMontant = Number(r.price) > 0 || (prixComplet && itemsFin.some(function (it) { return it.priceKnown === true; })) ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que

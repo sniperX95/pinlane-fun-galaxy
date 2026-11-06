@@ -3104,3 +3104,49 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* La confirmation : le programme comme au recapitulatif, ligne par ligne (Ansar, 2026-11-06 : « tres moche »). */
 .fg-done__prog { margin: 6px 0 14px; }
 .fg-done__prog-titre { margin: 0 0 10px; font-size: 13px; font-weight: 600; line-height: 18px; color: var(--fg-n3); }
+
+/* --- CHAQUE ACTIVITE A SA COULEUR ET SA PHOTO, PARTOUT (Ansar, 2026-11-06 : « quasi la globalite des sections sans
+   image sans rien avec texte avec genre qu une couleur meme texte et tout »). Les quatre couleurs des fanions du
+   centre, dans l ordre du choix : la 1re violette, la 2e sarcelle, la 3e ambre, la 4e rose. Sa carte, ses heures,
+   le resume, le recapitulatif et la confirmation la portent. Le violet reste celui du centre pour le reste (le jour,
+   le groupe, l occasion, les boutons). Un aplat clair porte un texte fonce, comme le bandeau du blocage. */
+[data-teinte="1"] { --act: #944292; --act-vif: #b04fb0; --act-ink: #d98ad4; --act-on: #fff; }
+[data-teinte="2"] { --act: #67baac; --act-vif: #67baac; --act-ink: #8fd6c9; --act-on: #04110f; }
+[data-teinte="3"] { --act: #e3b341; --act-vif: #e3b341; --act-ink: #f0cf7a; --act-on: #1c1404; }
+[data-teinte="4"] { --act: #f0648c; --act-vif: #f0648c; --act-ink: #f79bb4; --act-on: #24060f; }
+#gridAct > .fg-grid__item.is-on[data-teinte] > .fg-card { background: var(--act); }
+#gridAct > .fg-grid__item.is-on[data-teinte] > .fg-card :is(.fg-card__name, .fg-card__price) { color: var(--act-on); }
+#gridAct > .fg-grid__item[data-teinte] .fg-card-select.is-on svg { color: var(--act); }
+#gridAct > .fg-grid__item[data-teinte] .fg-pill.is-on { background: var(--act-vif); }
+#gridAct > .fg-grid__item[data-teinte] .fg-pill.is-on :is(b, small) { color: var(--act-on); }
+.fg-etape[data-teinte].is-open > .fg-etape__tete, .fg-etape[data-teinte].is-open > .fg-avant-tete { background: var(--act); }
+.fg-etape[data-teinte].is-open :is(.fg-etape__quoi b, .fg-etape__quoi small, .fg-etape__chev) { color: var(--act-on); }
+.fg-etape[data-teinte].is-open .fg-etape__quoi b::after { color: var(--act-on); }
+.fg-etape[data-teinte] .fg-chip:is(.is-on, .is-pending, .is-proposed:not([data-suggere])):not(.is-autre) { border-color: var(--act-vif); background: var(--act-vif); color: var(--act-on); }
+.fg-etape[data-teinte] .fg-chip:is(.is-on, .is-pending, .is-proposed:not([data-suggere])):not(.is-autre) :is(b, small) { color: var(--act-on); }
+/* Une ligne fermee montre son heure comme la tuile choisie : un aplat de sa couleur. */
+.fg-etape[data-teinte]:not(.is-open):not(.is-libre):not(.is-vide):not(.is-surplace) .fg-etape__heure:not(:empty) { padding: 5px 9px 4px; border-radius: var(--fg-r-tuile); background: var(--act-vif); color: var(--act-on); }
+.fg-visit__step[data-teinte] > b, .fg-recap__item[data-teinte] .fg-recap__aside :is(b, small) { color: var(--act-ink); }
+/* Le resume des heures : la photo entre l heure et le nom, comme au recapitulatif. */
+.fg-visit__step.has-photo { grid-template-columns: 58px 44px minmax(0, 1fr); align-items: start; }
+.fg-visit__step.has-photo::before { content: ""; grid-column: 2; grid-row: 1 / span 2; width: 44px; height: 44px; border-radius: var(--fg-r-tuile); background: var(--fg-plat) var(--photo) center / cover no-repeat; }
+.fg-visit__step.has-photo > :is(span, small) { grid-column: 3; }
+/* Les coordonnees, au telephone : les photos de la visite au-dessus de sa ligne de resume. */
+.fg-recall__photos { display: flex; gap: 8px; margin: 2px 0 10px; }
+.fg-recall__photos:empty { display: none; }
+.fg-recall__photos > span { display: grid; justify-items: start; gap: 4px; }
+.fg-recall__photos img { display: block; width: 56px; height: 56px; border-radius: var(--fg-r-tuile); object-fit: cover; }
+.fg-recall__photos b { font-family: var(--fg-display); font-size: 17px; font-weight: 400; line-height: 1; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--act-ink, #fff); }
+@media (min-width: 901px) {
+  .fg-recall__photos { display: none; }
+}
+/* La confirmation : une vraie photo du centre, nette, plus une photo assombrie derriere le ticket. */
+@media (max-width: 900px) {
+  .fg-scene[data-scene="fin"] .fg-art { position: relative; inset: auto; height: 150px; margin: 8px var(--fg-gutter) 0; border-radius: var(--fg-r-plat); }
+  .fg-scene[data-scene="fin"] .fg-art::before, .fg-scene[data-scene="fin"] .fg-art::after { display: none; }
+}
+@media (min-width: 901px) {
+  .fg-scene[data-scene="fin"] .fg-art { inset: auto; top: 8px; right: calc(max(0px, (100% - 1280px) / 2) + var(--fg-gutter)); left: auto; width: calc((min(100%, 1280px) - 2 * var(--fg-gutter)) * 0.4); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
+  .fg-scene[data-scene="fin"] .fg-art::before, .fg-scene[data-scene="fin"].fg-scene--full.fg-scene--center .fg-art::after { display: none; }
+  .fg-scene[data-scene="fin"] .fg-done { max-width: min(640px, calc((min(100vw, 1280px) - 2 * var(--fg-gutter)) * 0.56)); }
+}

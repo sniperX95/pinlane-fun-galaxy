@@ -2761,6 +2761,7 @@
   // A zero, la barre dit quoi faire, et rappelle ce qui reste choisi dans
   // l autre onglet (changer d onglet ne vide ni la selection ni la formule).
   function rendreCompteur(bump) {
+    poserTeintes();
     var formules = state.onglet === 'formules';
     var nA = state.selection.length, nF = state.formuleId ? 1 : 0;
     var n = formules ? nF : nA;
@@ -4182,6 +4183,28 @@
     var p = photo(id);
     return p ? '/assets/fungalaxy/' + p + '-carte.webp' : '';
   }
+  // CHAQUE ACTIVITE A SA COULEUR (Ansar, 2026-11-06 : « quasi la globalite des sections sans image sans rien avec
+  // texte avec genre qu une couleur meme texte et tout »). Les quatre couleurs des fanions du centre, dans l ordre ou
+  // le client a choisi ses activites ; une formule, dans l ordre de son programme. La couleur suit l activite sur
+  // chaque ecran : sa carte, ses heures, le resume, le recapitulatif et la confirmation.
+  function idsDeLaFormule() {
+    var ids = [], rep = state.creneau && state.creneau.reponse;
+    (ancrage(state.dispo).activities || []).concat((rep && rep.program && rep.program.items) || []).forEach(function (a) {
+      if (a && a.activityId && ids.indexOf(a.activityId) < 0) ids.push(a.activityId);
+    });
+    return ids;
+  }
+  function teinteDe(id) {
+    var i = id ? (state.onglet === 'formules' ? idsDeLaFormule() : state.selection).indexOf(id) : -1;
+    return i < 0 ? '' : String(i % 4 + 1);
+  }
+  function teinteAttr(id) { var t = teinteDe(id); return t ? ' data-teinte="' + t + '"' : ''; }
+  function poserTeintes() {
+    $$('.fg-grid__item[data-activity]', gridAct).forEach(function (item) {
+      var i = state.selection.indexOf(item.dataset.activity);
+      if (i < 0) item.removeAttribute('data-teinte'); else item.dataset.teinte = String(i % 4 + 1);
+    });
+  }
   function htmlEtapes(etapes, pistes) {
     var laserPose = false;
     var html = '<div class="fg-prog fg-rise" style="--i:0"><ol class="fg-etapes">' + (etapes.some(function (e) { return e.id === 'arrivee'; }) ? '' : htmlRendezVous());
@@ -4191,7 +4214,7 @@
       else piste = pistes[e.id] || '';
       var arr = e.id === 'arrivee';
       var fond = arr ? '' : vignette(e.id);
-      html += ligneEtape((arr ? ' fg-etape--arrivee' : '') + (fond ? ' has-photo' : ''), ' data-activity="' + esc(e.id) + '" data-partie="' + e.partie + '"', e.cle, arr ? 'i-clock' : icone(e.id),
+      html += ligneEtape((arr ? ' fg-etape--arrivee' : '') + (fond ? ' has-photo' : ''), ' data-activity="' + esc(e.id) + '" data-partie="' + e.partie + '"' + (arr ? '' : teinteAttr(e.id)), e.cle, arr ? 'i-clock' : icone(e.id),
         esc(e.label) + (e.partie > 1 ? ', ' + e.partie + 'e partie' : ''),
         '<div class="fg-etape__piste">' + piste + '</div>'
         + (e.partie > 1 ? '<p class="fg-etape__alt"><button type="button" class="fg-etape__surplace" data-sur-place><svg aria-hidden="true"><use href="#i-users"/></svg>Laisser l’équipe choisir</button></p>' : ''), fond);
@@ -4292,6 +4315,7 @@
         var li = doc.createElement('li'), fond = vignette(p.id), nom = nomActivite(p.id);
         li.classList.add('fg-etape', 'fg-etape--avant');
         if (fond) li.classList.add('has-photo');
+        if (teinteDe(p.id)) li.dataset.teinte = teinteDe(p.id);
         li.innerHTML = '<button type="button" class="fg-avant-tete" data-avant-heures aria-expanded="false" aria-controls="fgAvantHeures"><span class="fg-etape__icone"' + (fond ? ' style="--photo:url(' + fond + ')"' : '') + '><svg aria-hidden="true"><use href="#' + icone(p.id) + '"/></svg></span>'
           + '<span class="fg-etape__quoi"><b>' + esc(nom) + '</b><small>' + esc(typo(dureeExacte(minutesEntre(p.debut, p.fin)) + ' · avant ' + nomBas(nomActivite(premiereActivite())))) + '</small></span>'
           + '<span class="fg-etape__heure">' + esc(p.debut) + '</span>'
@@ -5382,7 +5406,10 @@
   function motArrivee() { return state.onglet !== 'formules' ? 'Rendez-vous à' : state.arrivee ? 'Arrivée à' : 'Arrivée conseillée à'; }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
-    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
+    // La vraie photo de l activite et sa couleur, comme au recapitulatif.
+    var ph = o.id ? vignette(o.id) : '';
+    var style = [o.minutes > 0 ? '--m:' + Math.round(o.minutes) : '', ph ? '--photo:url(' + ph + ')' : ''].filter(Boolean).join(';');
+    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + (ph ? ' has-photo' : '') + '"' + teinteAttr(o.id) + (style ? ' style="' + style + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
       + '<span>' + (o.titreHtml || esc(typoVisite(o.titre))) + '</span>'
       + '<small>' + esc(typoVisite(o.detail || '')) + '</small>' + (o.detail2 ? '<small>' + esc(typoVisite(o.detail2)) + '</small>' : '') + '</li>';
   }
@@ -6027,8 +6054,8 @@
       // de toutes les activites »).
       var titreP = nom + (p.partie > 1 ? ', ' + p.partie + 'e partie' : '');
       function detailP(f, joueursG, k) { return [bouge ? 'déplacé' : '', finDite(f) ? 'jusqu’à ' + heureAffichee(f) : '', p.pistes > 0 ? p.pistes + (p.pistes > 1 ? ' pistes' : ' piste') : '', joueursG ? joueursG + ' joueurs' : '', p.partie === 1 && !k ? montantDe(it) : ''].filter(Boolean).join(' · '); }
-      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge }); });
-      else lignes += etapeVisite({ genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge });
+      if (p.groupes.length > 1) p.groupes.forEach(function (g, k) { lignes += etapeVisite({ id: p.id, genre: 'bloc', heure: g.debut, titre: titreP + ', groupe ' + (k + 1), detail: detailP(g.fin, g.joueurs, k), bouge: bouge }); });
+      else lignes += etapeVisite({ id: p.id, genre: 'bloc', heure: genreCompris(p.id) === 'table' ? slot.time : p.debut, titre: titreP, detail: detailP(p.fin, 0, 0), bouge: bouge });
     }
     parts.forEach(lignePartie);
     // CE QUI N A PAS D HEURE : la voix le dit sous « Dans la foulée » (Movsar,
@@ -6135,7 +6162,7 @@
       var n = Number(it.cards) || Number(it.participants) || 1;
       return [n + ' carte' + (n > 1 ? 's' : ''), o.mode === 'time' ? minutesLabel(o.minutes) : '', m].filter(Boolean).join(' · ');
     }
-    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: detailLibre(it) }); });
+    if (!formule && !parts.length) libres.forEach(function (it, k) { lignes += etapeVisite({ id: it.activityId, genre: k ? 'aussi' : 'bloc', heure: k ? 'à votre rythme' : slot.time, titre: nomLibre(it), detail: detailLibre(it) }); });
     // CE QUE LA FORMULE COMPREND, DANS SES MOTS, SANS HEURE : ce qui a sa ligne ne
     // se redit pas. A la carte, le reste de la visite.
     var poses = {};
@@ -6144,7 +6171,7 @@
     // « 1 partie de Minigolf, 2 cruches boissons » se lit « Minigolf, 2 cruches ».
     function motCompris(s) { return s.replace(/^1 (partie|entrée)( de| à la)? /i, '').replace(/ boissons$/i, ''); }
     if (formule) carte.filter(function (c) { return illimite || !c.genre || !poses[c.genre]; }).forEach(function (c) { lignes += etapeVisite({ genre: 'aussi', heure: 'compris', titre: motCompris(c.texte) }); });
-    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: detailLibre(it) }); });
+    else if (parts.length) items.filter(function (it) { return !planifies[it.activityId]; }).forEach(function (it) { lignes += etapeVisite({ id: it.activityId, genre: 'aussi', heure: 'à votre rythme', titre: nomLibre(it), detail: detailLibre(it) }); });
     if (fin) lignes += '<li class="fg-visit__step fg-visit__step--out"><span>' + (slot.visitEndsAtClose || illimite ? 'Jusqu’à' : 'Fin vers') + '</span> <b>' + esc(heureAffichee(fin)) + '</b></li>';
     // AU PLUS : le jour et le groupe, une ligne par activite, ce qui est compris,
     // la fin, le montant (Ansar, 2026-11-03 : « un mot qui n aide pas a decider
@@ -6258,6 +6285,10 @@
   function versLeContact() {
     $('#recallLine').textContent = insecable(jourCourt(state.date)) + '\u00a0· ' + insecable(groupeLisible()) + '\u00a0· ' + (arriveeDe(state.creneau.slot.opsPlan) ? 'arrivée ' + arriveeDe(state.creneau.slot.opsPlan) : state.heure);
     $('#recallBody').innerHTML = htmlRecap(false);
+    // Au telephone, le resume replie montre les photos de la visite, chacune a la couleur de son activite.
+    $('#recallPhotos').innerHTML = lignesDuRecap().filter(function (l) { return l.id && vignette(l.id); }).slice(0, 4).map(function (l) {
+      return '<span' + teinteAttr(l.id) + '><img src="' + vignette(l.id) + '" alt="" decoding="async">' + (l.aside ? '<b>' + esc(l.aside) + '</b>' : '') + '</span>';
+    }).join('');
     basculerRappel(false);
     rendreBlocage();
     aller('contact');
@@ -6808,7 +6839,7 @@
     return lignes.map(function (l, i) {
       // La vraie photo de l activite, celle de ses autres ecrans ; sans photo connue, la place reste vide (jamais un pictogramme).
       var ph = l.photo !== undefined ? l.photo : (l.id ? photo(l.id) : '');
-      return '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise" style="--i:' + (depart + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
+      return '<div class="fg-recap__item' + (l.titre ? ' is-titre' : '') + ' fg-rise"' + teinteAttr(l.id) + ' style="--i:' + (depart + i) + '"><span class="fg-recap__photo" aria-hidden="true">' + (ph ? '<img src="/assets/fungalaxy/' + esc(ph) + '-carte.webp" alt="" loading="lazy" decoding="async">' : '') + '</span>'
         + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
         + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
     }).join('');
@@ -7537,8 +7568,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106visuel7';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106visuel7';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106couleur1';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106couleur1';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

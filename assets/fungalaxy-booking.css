@@ -3143,13 +3143,40 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 @media (min-width: 901px) {
   .fg-recall__photos { display: none; }
 }
-/* La confirmation : une vraie photo du centre, nette, plus une photo assombrie derriere le ticket. */
-@media (max-width: 900px) {
+/* La confirmation : une vraie photo du centre, nette, plus une photo assombrie derriere le ticket. En bandeau jusqu a
+   1179 px : a 1024, une colonne de droite ne garde que 250 px. */
+@media (max-width: 1179px) {
   .fg-scene[data-scene="fin"] .fg-art { position: relative; inset: auto; height: 150px; margin: 8px var(--fg-gutter) 0; border-radius: var(--fg-r-plat); }
   .fg-scene[data-scene="fin"] .fg-art::before, .fg-scene[data-scene="fin"] .fg-art::after { display: none; }
 }
-@media (min-width: 901px) {
-  .fg-scene[data-scene="fin"] .fg-art { inset: auto; top: 8px; right: calc(max(0px, (100% - 1280px) / 2) + var(--fg-gutter)); left: auto; width: calc((min(100%, 1280px) - 2 * var(--fg-gutter)) * 0.4); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
-  .fg-scene[data-scene="fin"] .fg-art::before, .fg-scene[data-scene="fin"].fg-scene--full.fg-scene--center .fg-art::after { display: none; }
-  .fg-scene[data-scene="fin"] :is(.fg-done, .fg-steps) { max-width: min(640px, calc((min(100vw, 1280px) - 2 * var(--fg-gutter)) * 0.56)); }
+/* Apres la reservation : l agenda et le message pour ceux qui viennent. Au telephone sous le ticket ; sur PC dans une
+   colonne a droite, sous la vraie photo de la premiere activite (la photo du fond ne s y voit plus). */
+/* Les boutons d apres : les tuiles des options (aplat, typo d affiche), pas des boutons fantomes sur la carte. */
+.fg-apres__boutons .fg-btn, .fg-done .fg-done__boite { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 8px 12px; border: 0; border-radius: var(--fg-r-tuile); background: var(--fg-plat); box-shadow: none; font-family: var(--fg-display); font-size: 17px; font-weight: 400; line-height: 1.1; letter-spacing: 0.02em; text-transform: uppercase; text-decoration: none; color: #fff; }
+.fg-done .fg-done__boite { margin-top: 10px; padding: 8px 18px; }
+.fg-apres__boutons [data-partager] { background: var(--fg-teal); color: #04110f; }
+.fg-apres { display: grid; gap: 8px; margin: 8px 0 0; text-align: left; }
+.fg-apres__photo { display: none; margin: 0; }
+.fg-apres__bloc { padding: 14px 16px 16px; border-radius: var(--fg-r-plat); background: var(--fg-carte); }
+.fg-apres__titre { margin: 0 0 4px; font-family: var(--fg-display); font-size: 19px; font-weight: 400; line-height: 1.15; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; }
+.fg-apres__dit { margin: 0 0 12px; font-size: 14px; font-weight: 500; line-height: 20px; color: var(--fg-n3); }
+.fg-apres__voir { margin: 10px 0 0; }
+/* Replie, le message ne se rend pas du tout : ni a l oeil, ni a la mesure. */
+.fg-apres__voir:not([open]) > .fg-apres__message { display: none; }
+.fg-apres__voir summary { display: inline-flex; min-height: 32px; align-items: center; font-size: 14px; font-weight: 700; color: var(--fg-teal-ink); cursor: pointer; }
+.fg-apres__message { margin: 6px 0 0; padding: 12px 14px; border-radius: var(--fg-r-tuile); background: var(--fg-plat); font-size: 14px; font-weight: 500; line-height: 20px; color: #e9e7ec; white-space: pre-line; overflow-wrap: anywhere; }
+.fg-apres__boutons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fg-apres__boutons .fg-btn { width: 100%; }
+@media (min-width: 901px) and (max-width: 1179px) {
+  .fg-scene[data-scene="fin"] .fg-art { max-width: 640px; height: 190px; }
+}
+@media (min-width: 1180px) {
+  .fg-scene[data-scene="fin"] .fg-art { display: none; }
+  .fg-scene[data-scene="fin"] .fg-done { max-width: none; }
+  .fg-scene[data-scene="fin"] .fg-steps { max-width: 640px; }
+  #finBody { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 1fr); column-gap: 32px; align-items: start; }
+  #finBody > * { grid-column: 1; }
+  #finBody > .fg-apres { grid-column: 2; grid-row: 1 / span 3; margin: 0; }
+  .fg-apres__photo { display: block; aspect-ratio: 2 / 1; overflow: hidden; border-radius: var(--fg-r-plat); background: var(--fg-plat); }
+  .fg-apres__photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 }

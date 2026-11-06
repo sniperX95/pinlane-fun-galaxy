@@ -7460,6 +7460,98 @@
     decouperTitres();
     espacerAccents(el);
   }
+  /* --- APRES LA RESERVATION (Ansar, 2026-11-06 : « une page de confirmation plus styler complet [...] dit que bien
+     verifier les spam avec redirection vers sa boite mail et pour tout les activites bouton pour mettre dans son
+     calendrier et genre un message jolie a envoye a ceux qui viennent [...] mais faut pas que ca fasse trop »). Rien ne
+     part d ici : le client ouvre sa boite, son agenda ou sa messagerie, et le meme message part dans le mail. */
+  function boiteDuClient(adresse, centre) {
+    var d = String(adresse || '').toLowerCase().split('@')[1] || '';
+    if (/^(gmail|googlemail)\.com$/.test(d)) return { nom: 'Gmail', url: 'https://mail.google.com/mail/u/0/#search/' + encodeURIComponent('in:anywhere "' + centre + '"') };
+    if (/^(hotmail|outlook|live|msn)\.[a-z.]{2,6}$/.test(d)) return { nom: 'Outlook', url: 'https://outlook.live.com/mail/0/junkemail' };
+    if (/^(yahoo|ymail)\.[a-z.]{2,6}$/.test(d)) return { nom: 'Yahoo Mail', url: 'https://mail.yahoo.com/' };
+    if (/^(icloud|me|mac)\.com$/.test(d)) return { nom: 'iCloud Mail', url: 'https://www.icloud.com/mail/' };
+    if (/^(skynet|proximus)\.be$/.test(d)) return { nom: 'Proximus Mail', url: 'https://webmail.proximus.be/' };
+    if (/^telenet\.be$/.test(d)) return { nom: 'Telenet Mail', url: 'https://webmail.telenet.be/' };
+    return null;
+  }
+  // Une ligne d agenda (RFC 5545) : les signes reserves echappes, pliee a 74 octets.
+  function texteIcs(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+  function plierIcs(ligne) {
+    var out = '', n = 0, enc = typeof TextEncoder === 'function' ? new TextEncoder() : null;
+    for (var i = 0; i < ligne.length; i += 1) {
+      var c = ligne.charAt(i), o = enc ? enc.encode(c).length : 1;
+      if (n + o > 74) { out += '\r\n '; n = 1; }
+      out += c; n += o;
+    }
+    return out;
+  }
+  var messageInvites = '';
+  // La visite entiere dans l agenda, du rendez-vous a la fin, le programme dedans ; et le message pour les autres.
+  function htmlApres(o) {
+    var m0 = minutesDe(o.heure);
+    if (!o.date || !isFinite(m0)) return '';
+    var m1 = minutesDe(o.fin), finConnue = isFinite(m1);
+    if (!finConnue) m1 = m0 + 90;
+    if (m1 <= m0) m1 += 1440;
+    var date1 = o.date;
+    if (m1 >= 1440) { var x = new Date(o.date + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); date1 = x.toISOString().slice(0, 10); }
+    var horo = function (j, m) { return j.replace(/-/g, '') + 'T' + hhmm(m % 1440).replace(':', '') + '00'; };
+    var debut = horo(o.date, m0), fin = horo(date1, m1);
+    var finDite = heureAffichee(m1 % 1440 ? hhmm(m1 % 1440) : '24:00');
+    var programme = o.lignes.filter(function (l) { return !l.titre && l.nom; }).map(function (l) { return (l.aside ? l.aside + ' ' : '') + l.nom; });
+    var noms = o.lignes.filter(function (l) { return l.titre; }).map(function (l) { return l.nom; });
+    if (!noms.length) noms = o.lignes.filter(function (l) { return l.nom; }).map(function (l) { return l.nom; });
+    var titre = o.centre + (noms.length ? ' · ' + noms.join(', ') : '');
+    var adresse = String(o.adresse || '').replace(/\s*\([^)]*\)/g, '').trim();
+    var lieu = [o.centre, adresse].filter(Boolean).join(', ');
+    var details = ['Rendez-vous à ' + o.heure + ' à l’accueil.'].concat(programme).concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.tel ? ['Une question ? ' + o.tel] : []).join('\n');
+    var google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(titre) + '&dates=' + debut + '/' + fin
+      + '&ctz=Europe%2FBrussels&location=' + encodeURIComponent(lieu) + '&details=' + encodeURIComponent(details);
+    var tz = 'TZID=Europe/Brussels';
+    var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Pinlane//Reservation//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+      'BEGIN:VTIMEZONE', 'TZID:Europe/Brussels',
+      'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+      'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
+      'END:VTIMEZONE', 'BEGIN:VEVENT', 'UID:pinlane-' + (o.uid || debut) + '@pinlane.be', 'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''),
+      'DTSTART;' + tz + ':' + debut, 'DTEND;' + tz + ':' + fin, 'SUMMARY:' + texteIcs(titre), 'LOCATION:' + texteIcs(lieu), 'DESCRIPTION:' + texteIcs(details),
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + texteIcs(titre), 'TRIGGER:-PT2H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].map(plierIcs).join('\r\n') + '\r\n';
+    // Le lien du plan se lit : sans accents ni virgules, des « + » entre les mots.
+    var carte = adresse ? 'https://maps.google.com/?q=' + adresse.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '+').replace(/^\+|\+$/g, '') : '';
+    messageInvites = ['Rendez-vous ' + minuscule(jourLong(o.date)) + ' à ' + o.heure + ' chez ' + o.centre + '.'].concat(programme)
+      .concat(finConnue ? ['Fin vers ' + finDite + '.'] : []).concat(o.adresse ? [String(o.adresse)] : []).concat(carte ? [carte] : []).join('\n');
+    var tactile = Boolean(navigator.share) && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    var photoA = (o.lignes.filter(function (l) { return l.id && photo(l.id); })[0] || {}).id;
+    return '<div class="fg-apres fg-rise" style="--i:3">'
+      + (photoA ? '<figure class="fg-apres__photo"><img src="/assets/fungalaxy/' + esc(photo(photoA)) + '-800.webp" alt="" decoding="async"></figure>' : '')
+      + '<section class="fg-apres__bloc"><h3 class="fg-apres__titre">Dans votre agenda</h3>'
+      + '<p class="fg-apres__dit">' + esc('De ' + o.heure + (finConnue ? ' à ' + finDite : '') + ', avec le programme et l’adresse.') + '</p>'
+      + '<div class="fg-apres__boutons"><a class="fg-btn fg-btn--ghost" href="' + esc(google) + '" target="_blank" rel="noopener">Google Agenda</a>'
+      + '<a class="fg-btn fg-btn--ghost" href="' + esc('data:text/calendar;charset=utf-8,' + encodeURIComponent(ics)) + '" download="' + esc((o.centre || 'visite').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + o.date + '.ics') + '">Apple, Outlook</a></div></section>'
+      + '<section class="fg-apres__bloc"><h3 class="fg-apres__titre">Prévenez ceux qui viennent</h3>'
+      + '<p class="fg-apres__dit">Un message tout prêt, avec l’heure, le programme et l’adresse.</p>'
+      + '<div class="fg-apres__boutons"><button type="button" class="fg-btn fg-btn--ghost" data-partager' + (tactile ? ' data-natif' : '') + '>' + (tactile ? 'Envoyer' : 'Envoyer par WhatsApp') + '</button>'
+      + '<button type="button" class="fg-btn fg-btn--ghost" data-copier>Copier le message</button></div>'
+      + '<details class="fg-apres__voir"><summary>Voir le message</summary><p class="fg-apres__message">' + esc(messageInvites) + '</p></details></section></div>';
+  }
+  $('#finBody').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-partager], [data-copier]');
+    if (!b || !messageInvites) return;
+    var whatsapp = function () { window.open('https://wa.me/?text=' + encodeURIComponent(messageInvites), '_blank', 'noopener'); };
+    if (b.hasAttribute('data-partager')) {
+      if (b.hasAttribute('data-natif')) navigator.share({ text: messageInvites }).catch(function (e) { if (!e || e.name !== 'AbortError') whatsapp(); });
+      else whatsapp();
+      return;
+    }
+    var selectionner = function () {
+      var p = $('.fg-apres__message', $('#finBody'));
+      if (!p) return;
+      var r = doc.createRange(); r.selectNodeContents(p);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    };
+    var fait = function () { b.textContent = 'Message copié'; setTimeout(function () { b.textContent = 'Copier le message'; }, 2400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(messageInvites).then(fait, selectionner);
+    else selectionner();
+  });
   function reussite(reponse) {
     var r = reponse.reservation || {};
     state.reservation = r;
@@ -7489,7 +7581,10 @@
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. ' + motArrivee() + ' <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
-    var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
+    // Le mail annonce, son conseil s il n arrive pas, et le bouton qui ouvre la boite du client quand on la connait.
+    var boite = mailQ ? boiteDuClient(mailRes, (meta && meta.center && meta.center.name) || '') : null;
+    var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>. Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les spams.'
+      + (boite ? '<br><a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(boite.url) + '" target="_blank" rel="noopener">Ouvrir ' + esc(boite.nom) + '</a>' : '') : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
     var ligneMontant = Number(r.price) > 0 || (prixComplet && itemsFin.some(function (it) { return it.priceKnown === true; })) ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
@@ -7503,6 +7598,7 @@
     var adresseFin = String(centreFin && centreFin.address || '').trim();
     // Le creneau reserve est celui de l ecran (meme heure de depart) : ses lignes font le programme du recu.
     var lignesFin = heureRes === state.heure && state.creneau ? lignesDuRecap() : [];
+    var apres = htmlApres({ date: dateRes, heure: arrivee || heureRes, fin: heureRes === state.heure && state.creneau ? state.creneau.slot.visitEndTime || '' : '', centre: nomCentreFin, adresse: adresseFin, tel: contact && contact.phone, lignes: lignesFin, uid: r.id });
     $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
       + (nomCentreFin ? rangee('i-lieu', '<b>' + esc(nomCentreFin) + '</b>' + (adresseFin ? '<br>' + esc(adresseFin) : '')) : '')
       + rangee('i-calendar', quand)
@@ -7512,6 +7608,7 @@
       + rangee('i-card', ligneMontant)
       + (contact && contact.phone ? '<p class="fg-done__row"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Une question ? ' + lienContact(contact) + '</span></p>' : '')
       + '</div>'
+      + apres
       + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:3"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
     aller('fin');
     Object.keys(plus.acceptees).forEach(function (id) {
@@ -7568,8 +7665,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106couleur1';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106couleur1';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106confirm1';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106confirm1';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {

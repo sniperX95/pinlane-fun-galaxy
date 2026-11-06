@@ -3982,7 +3982,12 @@ function storeStaffAuthSession(session) {
   const normalized = normalizeStaffSession(session);
   if (!normalized) return false;
   state.staffAuthSession = normalized;
-  state.adminCenterId = normalized.centerId || state.adminCenterId || 'libramont';
+  // RANGER UNE SESSION NE CHANGE PAS LE CENTRE DE L ECRAN (2026-11-06). Seuls la
+  // connexion (submitLogin : le centre suit le code) et le menu des centres le
+  // changent. Cette ligne le remettait sur le centre de la session a chaque
+  // reponse de api/staff-auth : connecte a Libramont, Gembloux a l ecran,
+  // « Regenerer » visait Gembloux et le « Copier » suivant copiait le code de
+  // Libramont (lu en prod le 06/11 ; scripts/equipe-centre-check.js).
   if (window.PinlaneStorage?.setJson) window.PinlaneStorage.setJson(AUTH_KEY, normalized);
   else {
     try { localStorage.setItem(AUTH_KEY, JSON.stringify(normalized)); } catch (error) {}

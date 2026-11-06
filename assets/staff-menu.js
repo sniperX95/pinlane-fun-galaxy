@@ -1033,7 +1033,7 @@
     // forcait setView('admin')). On rafraichit seulement les donnees du centre.
     const applyActiveView = () => {
       // Re-affirme le centre CIBLE apres le re-auth : storeStaffAuthSession
-      // (app-main) reecrit state.adminCenterId avec le centre de la session
+      // (app-main) reecrivait state.adminCenterId avec le centre de la session
       // renvoyee par le serveur, ce qui annulait le changement en vue staff
       // (la vue admin, elle, etait deja re-imposee par setAdminCenter). Le choix
       // explicite de l'utilisateur doit gagner.

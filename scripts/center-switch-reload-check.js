@@ -860,14 +860,20 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
     }
 
     // ===================================================================== [H2]
-    section('[H2] Contre-preuve de [H] : sans la re-affirmation, le F5 derape');
+    // Depuis le 2026-11-06 la regle vit dans storeStaffAuthSession (ranger une
+    // session ne change plus le centre de l ecran) ; la re-affirmation de
+    // applyStaffAuthPayload n est plus qu un filet. Retirer le filet seul ne
+    // ramene donc plus rien : la contre-preuve retire la regle ET le filet.
+    section('[H2] Contre-preuve de [H] : sans la regle ni la re-affirmation, le F5 derape');
     {
       const APP = path.join(ROOT, 'assets', 'app-main.js');
       const appOriginal = fs.readFileSync(APP, 'utf8');
       const guard = 'if (demande && payload.session && demande !== payload.session.centerId) {';
+      const regle = '  // RANGER UNE SESSION NE CHANGE PAS LE CENTRE DE L ECRAN (2026-11-06). Seuls la';
       try {
         if (appOriginal.split(guard).length - 1 !== 1) throw new Error('ancre de mutation (re-affirmation) introuvable ou ambigue');
-        fs.writeFileSync(APP, appOriginal.replace(guard, 'if (false) {'));
+        if (appOriginal.split(regle).length - 1 !== 1) throw new Error('ancre de mutation (regle de storeStaffAuthSession) introuvable ou ambigue');
+        fs.writeFileSync(APP, appOriginal.replace(guard, 'if (false) {').replace(regle, `  state.adminCenterId = normalized.centerId || state.adminCenterId || 'libramont';\n${regle}`));
         const context = await browser.newContext();
         const page = await context.newPage();
         await installMock(page, { withSession: true });
@@ -882,7 +888,7 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         await page.waitForTimeout(1200);
         const broken = await readState(page);
         record(
-          'sans la re-affirmation : le F5 ramene au centre du code, ce gate ROUGIRAIT',
+          'sans la regle ni la re-affirmation : le F5 ramene au centre du code, ce gate ROUGIRAIT',
           broken.centerId === CENTER_A.id,
           `centre=${broken.centerId}`,
         );

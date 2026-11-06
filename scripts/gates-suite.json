@@ -206,6 +206,7 @@
     "test:site-centres",
     "test:centres-dissocies",
     "test:console-centre",
+    "test:equipe-centre",
     "test:tour-controle",
     "test:venir-plus-tot",
     "test:heure-relachee",

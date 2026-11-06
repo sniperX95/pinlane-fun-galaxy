@@ -1144,7 +1144,8 @@
     }
     function reussiteSurMesure(reponse) {
       var c = sm.contact || {}, def = SM_TYPES[sm.type] || { label: '' };
-      var boite = reponse && reponse.acknowledgementSent && I.boiteDuClient ? I.boiteDuClient(c.email, (I.meta && I.meta.center && I.meta.center.name) || '') : null;
+      // Les boites a ouvrir, celles de la confirmation (boitesDuClient) et le meme balisage.
+      var boites = reponse && reponse.acknowledgementSent && I.boitesDuClient ? I.boitesDuClient(c.email, (I.meta && I.meta.center && I.meta.center.name) || '') : [];
       var contact = I.meta && I.meta.center && I.meta.center.contact;
       var nomCentre = I.meta && I.meta.center && I.meta.center.name ? I.meta.center.name : 'du centre';
       function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
@@ -1156,7 +1157,7 @@
         + (sm.formules.length ? rangee('a-formule', esc(nomsDe(sm.formules, formulesSm()).join(', ')) + ' : à composer avec l’équipe.') : '')
         + rangee('i-clock', 'L’équipe ' + (nomCentre === 'du centre' ? 'du centre' : 'de ' + esc(nomCentre)) + ' étudie votre demande et vous répond sous <b>24 heures ouvrables</b>, avec ce qui est possible à votre date et le montant.')
         + rangee('i-mail', reponse.acknowledgementSent ? 'Un accusé de réception part à <b>' + esc(c.email) + '</b>. Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les spams.'
-          + (boite ? '<br><a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(boite.url) + '" target="_blank" rel="noopener">Ouvrir ' + esc(boite.nom) + '</a>' : '') : 'Au nom de <b>' + esc((c.prenom + ' ' + c.nom).trim()) + '</b>, ' + esc(c.email) + '.')
+          + (boites.length ? '<span class="fg-done__boites">' + boites.map(function (b) { return '<a class="fg-btn fg-btn--ghost fg-done__boite" href="' + esc(b.url) + '"' + (/^https:/.test(b.url) ? ' target="_blank" rel="noopener"' : '') + '>Ouvrir ' + esc(b.nom) + '</a>'; }).join('') + '</span>' : '') : 'Au nom de <b>' + esc((c.prenom + ' ' + c.nom).trim()) + '</b>, ' + esc(c.email) + '.')
         + rangee('i-info', 'Rien n’est encore réservé à votre nom.' + (contact && contact.phone ? ' Une question&nbsp;? ' + lienContact(contact) : ''))
         + '</div>'
         + htmlPhotoFinSm()

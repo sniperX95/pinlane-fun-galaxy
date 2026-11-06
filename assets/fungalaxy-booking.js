@@ -7780,7 +7780,7 @@
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
       poster: poster, posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
-      htmlInfoFormule: htmlInfoFormule, htmlLignesRecap: htmlLignesRecap, boiteDuClient: boiteDuClient,
+      htmlInfoFormule: htmlInfoFormule, htmlLignesRecap: htmlLignesRecap, boitesDuClient: boitesDuClient,
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
       scene: function () { return sceneCourante; },

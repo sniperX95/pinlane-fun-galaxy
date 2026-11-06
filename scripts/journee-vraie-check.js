@@ -54,7 +54,7 @@ const HEURE = `${JOUR}T15:30:00+02:00`;
 const MUTATIONS = {
   // [A] Le bandeau du planning. Le calcul oublie les reservations du jour :
   // la piste 5, prise, se dit libre.
-  libresfaux: ['app-main.js', '  poser(todaysReservations());\n', '', '[A] les pistes libres maintenant sont les vraies'],
+  libresfaux: ['app-main.js', '  poser(todaysReservations().filter(tientSesPlaces));\n', '', '[A] les pistes libres maintenant sont les vraies'],
   perimetre: ['app-main.js', "title: `Occupation ${ressource} sur la journée` },", "title: 'Occupation sur la journée' },", '[A] le bandeau dit son perimetre'],
   // (2026-10-27 : l occupation des pistes est lue par
   // getStaffBowlingLaneOccupation, qui porte la garde des blocages ; la garde

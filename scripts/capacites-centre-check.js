@@ -442,7 +442,7 @@ const MUTATIONS = [
   { vise: 'A6', file: 'assets/app-main.js', find: 'if (launchCount > lancementsMax) {', replace: 'if (launchCount > 1) {' },
   { vise: 'A7', file: 'assets/app-main.js', find: 'const postesArene = getAvailabilityLaserCapacity();', replace: 'const postesArene = LASER_GAME_MAX_PLAYERS;' },
   { vise: 'A8', file: 'assets/app-main.js', find: 'session.arena = getLaserSessionArenaPlayers(session, sessions);', replace: 'session.arena = session.players;' },
-  { vise: 'A9', file: 'assets/app-main.js', find: 'const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);', replace: 'const occupe = [...ici, ...holds].reduce((s, w) => s + lpArene(w), 0);' },
+  { vise: 'A9', file: 'assets/app-main.js', find: 'const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + (tientSesPlaces(w.reservation) ? lpArene(w) : 0), 0);', replace: 'const occupe = [...ici, ...holds].reduce((s, w) => s + (tientSesPlaces(w.reservation) ? lpArene(w) : 0), 0);' },
   { vise: 'A9', file: 'assets/app-main.js', find: 'const enJeu = d.chevauche.filter(w => !w.enLigne);', replace: 'const enJeu = [];' },
   { vise: 'A10', file: 'assets/app-main.js', find: '? armes * lancementsDuJour', replace: '? armes * getAvailabilityLaserParallelLaunches() * lancementsDuJour' },
   { vise: 'A11', file: 'assets/app-main.js', find: 'capacity: `${armes} joueurs en même temps au plus`,', replace: 'capacity: `${LASER_GAME_MAX_PLAYERS} joueurs en même temps au plus`,' },

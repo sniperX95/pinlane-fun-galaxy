@@ -6342,7 +6342,7 @@
     corps.acquisition = ACQUISITION;
     var abandonne = function () { return version !== blocage.version || Boolean(ticket && ticket.abandonne); };
     return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
+      .then(function (r) { return r.text().then(function (t) { return JSON.parse(t, nomTypo); }).catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
       .then(function (res) {
         var x = res.json;
         // Le groupe ou le panier a changé pendant le réseau : rendre la place
@@ -7324,7 +7324,7 @@
       if (blocage.jeton) corps.holdToken = blocage.jeton;
       return fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' });
     })
-      .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
+      .then(function (r) { return r.text().then(function (t) { return JSON.parse(t, nomTypo); }).then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
         envoiEnCours(false);

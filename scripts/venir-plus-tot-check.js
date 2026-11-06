@@ -314,12 +314,12 @@ function fonction(fichier, debut, fin, contexte) {
     await page.waitForTimeout(400);
     await fermerVitrine(page);
     const finale = await page.evaluate(() => document.querySelector('#recap').textContent.replace(/\s+/g, ' '));
-    ok(/Rendez-vous à 15:00/.test(finale) && finale.indexOf('Golf o’Clock') < finale.indexOf('Bowling'), '[G] le recapitulatif final dit le rendez-vous et l ordre', finale.slice(0, 300));
+    ok(/Rendez-vous à 15:00/.test(finale) && finale.indexOf('Golf o’Clock') >= 0 && finale.indexOf('Golf o’Clock') < finale.indexOf('Bowling'), '[G] le recapitulatif final dit le rendez-vous et l ordre', finale.slice(0, 300));
     await page.click('#confirmBtn');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
     await page.waitForTimeout(250);
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' '));
-    ok(/Rendez-vous à 15:00/.test(fin) && fin.indexOf('Golf o’Clock') < fin.indexOf('Bowling'), '[G] l ecran de fin aussi', fin.slice(0, 300));
+    ok(/Rendez-vous à 15:00/.test(fin) && fin.indexOf('Golf o’Clock') >= 0 && fin.indexOf('Golf o’Clock') < fin.indexOf('Bowling'), '[G] l ecran de fin aussi', fin.slice(0, 300));
     const d = DOSSIERS[DOSSIERS.length - 1];
     const lignesDossier = (d.program && d.program.items) || d.program || [];
     ok(d.centerId === 'gembloux' && d.startTime === '15:00' && lignesDossier.some((x) => x.activityId === 'golf_oclock' && x.avant === true), '[G] le dossier : a Gembloux, a 15:00, le golf marque avant', { centre: d.centerId, debut: d.startTime });

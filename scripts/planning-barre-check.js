@@ -736,13 +736,19 @@ const rubriquesDe = (page, nom) => page.evaluate((n) => {
   const rub = {};
   const ordre = [];
   tr.querySelectorAll('.gf-i').forEach((d) => {
-    const mot = d.querySelector('span').textContent;
+    // (une note porte son etiquette au debut de sa phrase depuis le 2026-11-06 : le texte
+    // se lit sans elle, et une ligne se compte une fois meme si l etiquette depasse d un
+    // pixel le texte qui la suit)
+    const etiquette = d.querySelector('span');
+    const mot = etiquette.textContent;
     const p = d.querySelector('p');
     const portee = document.createRange();
     portee.selectNodeContents(p);
-    const lignes = new Set(Array.from(portee.getClientRects()).map((x) => Math.round(x.top))).size;
+    const hauts = Array.from(portee.getClientRects()).map((x) => x.top).sort((a, b) => a - b);
+    const lignes = hauts.filter((t, i) => i === 0 || t - hauts[i - 1] > 6).length;
     ordre.push(mot);
-    rub[mot] = { texte: p.textContent, lignes, coupe: p.scrollHeight > p.clientHeight + 1, taille: parseFloat(getComputedStyle(d.querySelector('span')).fontSize), bulle: p.getAttribute('title') };
+    const texte = p.contains(etiquette) ? p.textContent.slice(p.textContent.indexOf(mot) + mot.length).trim() : p.textContent;
+    rub[mot] = { texte, lignes, coupe: p.scrollHeight > p.clientHeight + 1, taille: parseFloat(getComputedStyle(etiquette).fontSize), bulle: p.getAttribute('title') };
   });
   return { rub, ordre, hauteur: Math.round(tr.getBoundingClientRect().height), formule: tr.querySelector('td.gf-f').textContent.replace(/\s+/g, ' '), reste: tr.querySelector('td.gf-reste').textContent.replace(/\s+/g, ' ').trim(), id: tr.getAttribute('data-gf-id') };
 }, nom);
@@ -751,19 +757,19 @@ async function dossier(browser) {
     await page.waitForFunction(() => Array.from(document.querySelectorAll('.gf-i--fiche')).length > 0, null, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 150);
     const l = await rubriquesDe(page, 'Camille');
-    ok(l.ordre.join() === 'Client,Équipe,Fiche,Table,Sur mesure,Prix', '[I] chaque rubrique a son libelle en toutes lettres, dans l ordre', l.ordre);
+    ok(l.ordre.join() === 'Note du client,Note de l’équipe,Fiche,Table,Sur mesure,Prix', '[I] chaque rubrique a son libelle en toutes lettres, dans l ordre', l.ordre);
     const rub = l.rub;
-    ok(/^Allergie Un enfant allergique aux arachides\.$/.test((rub.Client || {}).texte || ''), '[I] Client : le mot du client, l allergie en tete', rub.Client);
-    ok(/Bougies au bar à 17:00/.test((rub['Équipe'] || {}).texte || '') && /Julie/.test((rub['Équipe'] || {}).texte || '') && !/252/.test((rub['Équipe'] || {}).texte || ''), '[I] Équipe : la note et son auteur, sans la note de prix', rub['Équipe']);
+    ok(/^Allergie Un enfant allergique aux arachides\.$/.test((rub['Note du client'] || {}).texte || ''), '[I] Note du client : le mot du client, l allergie en tete', rub['Note du client']);
+    ok(/Bougies au bar à 17:00/.test((rub['Note de l’équipe'] || {}).texte || '') && /Julie/.test((rub['Note de l’équipe'] || {}).texte || '') && !/252/.test((rub['Note de l’équipe'] || {}).texte || ''), '[I] Équipe : la note et son auteur, sans la note de prix', rub['Équipe']);
     ok(((rub.Fiche || {}).texte || '') === 'Client fidèle, 3e anniversaire chez nous', '[I] Fiche : la note permanente du client, a part', rub.Fiche);
     ok(/^\d\d:\d\d à \d\d:\d\d(, .+ à \d\d:\d\d)?$/.test((rub.Table || {}).texte || ''), '[I] Table : de quand a quand, et les boissons', rub.Table);
     ok(((rub['Sur mesure'] || {}).texte || '') === '13 × Pizza margherita, Gâteau d’anniversaire', '[I] Sur mesure : quantite et nom lisibles', rub['Sur mesure']);
     ok(((rub.Prix || {}).texte || '') === '252 € au lieu de 280 €, geste commercial', '[I] Prix : le prix ajuste et sa raison', rub.Prix);
     const gerard = await rubriquesDe(page, 'Famille Gérard');
     ok(((gerard.rub.Prix || {}).texte || '') === '59 € au lieu de 69 €, carte de fidélité pleine', '[I] Prix : la derniere note du serveur donne la raison du prix du moment', gerard.rub.Prix);
-    ok(/deux voitures/.test((gerard.rub['Équipe'] || {}).texte || '') && !/→|fidèle|fidélité/.test((gerard.rub['Équipe'] || {}).texte || ''), '[I] Équipe : aucune note de prix du serveur n y entre', gerard.rub['Équipe']);
+    ok(/deux voitures/.test((gerard.rub['Note de l’équipe'] || {}).texte || '') && !/→|fidèle|fidélité/.test((gerard.rub['Note de l’équipe'] || {}).texte || ''), '[I] Équipe : aucune note de prix du serveur n y entre', gerard.rub['Équipe']);
     const henrard = await rubriquesDe(page, 'Famille Henrard');
-    ok(!henrard.rub.Prix && !henrard.rub['Équipe'], '[I] une note de prix passee se tait : le prix est revenu au tarif', henrard.rub);
+    ok(!henrard.rub.Prix && !henrard.rub['Note de l’équipe'], '[I] une note de prix passee se tait : le prix est revenu au tarif', henrard.rub);
     ok(/adaptée/.test(l.formule), '[I] la formule adaptee se voit', l.formule);
     ok(/252\s*€/.test(l.reste), '[I] Reste : le montant du dossier', l.reste);
     ok(Object.values(rub).every((x) => !x.coupe && x.lignes <= 2 && x.taille >= 12), '[I] rien de coupe, deux lignes au plus, rien sous 12 px', rub);
@@ -779,7 +785,10 @@ async function dossier(browser) {
       const c = lire(s.color);
       const t = lire(getComputedStyle(a.closest('p')).color);
       const x = lum(c);
-      return { mot: a.textContent, poids: Number(s.fontWeight), rouge: c[0] > c[1] * 1.6 && c[0] > c[2] * 1.6, tete: a.parentElement.firstChild === a, different: c.join() !== t.join(), contraste: 1.05 / (x + 0.05) };
+      // (en tete : rien avant elle que l etiquette d une note, « Note du client », depuis le 2026-11-06)
+      const etiquette = a.parentElement.querySelector('.gf-i__mot');
+      const avant = a.parentElement.textContent.split('Allergie')[0].replace(etiquette ? etiquette.textContent : '', '').trim();
+      return { mot: a.textContent, poids: Number(s.fontWeight), rouge: c[0] > c[1] * 1.6 && c[0] > c[2] * 1.6, tete: avant === '', different: c.join() !== t.join(), contraste: 1.05 / (x + 0.05) };
     }, l.id);
     ok(rouge && rouge.mot === 'Allergie' && rouge.rouge && rouge.tete && rouge.different && rouge.poids >= 700 && rouge.contraste >= 4.5, '[I] l allergie : le mot Allergie, en rouge, en tete de sa rubrique', rouge);
     // Une rubrique vide ne prend aucune place.
@@ -799,7 +808,7 @@ async function dossier(browser) {
     // Une allergie ecrite par l equipe ou sur la fiche se voit aussi.
     await page.evaluate((id) => { const r = state.reservations.find((x) => String(x.id) === id); r.notes = `[equipe] ${JSON.stringify({ t: 'Intolérance au lactose, voir la maman', par: 'Julie', le: '2027-01-15T16:05:00.000Z' })}`; renderStaff(); }, l.id);
     await FX.repos(page, 150);
-    ok(await page.evaluate((id) => /^Allergie /.test((document.querySelector(`[data-gf-id="${id}"] .gf-i--equipe p`) || {}).textContent || ''), l.id), '[I] une allergie dans une note d equipe se voit de meme');
+    ok(await page.evaluate((id) => /^Note de l’équipe Allergie /.test((document.querySelector(`[data-gf-id="${id}"] .gf-i--equipe p`) || {}).textContent || ''), l.id), '[I] une allergie dans une note d equipe se voit de meme, juste apres son etiquette');
   });
 }
 // Pour chaque noeud de texte d une ligne : il reste dans sa case, et rien n est tronque par
@@ -1492,7 +1501,7 @@ async function cartes(browser) {
     const couleurPrixComplet = await page.evaluate(() => { const p = document.querySelector('.gf-i--prix > p'); return p ? getComputedStyle(p).color : ''; });
     // La derniere modification, en rubrique de la ligne du Complet.
     const gComplet = await rubriquesDe(page, 'Famille Gérard');
-    ok(((gComplet.rub['Modifié'] || {}).texte || '') === '15:05, Rachel : 4 → 6 joueurs' && ((gComplet.rub['Modifié'] || {}).bulle || '') === 'Modifié 15:05, Rachel : 4 → 6 joueurs' && gComplet.ordre[gComplet.ordre.length - 1] === 'Modifié' && Object.values(gComplet.rub).every((x) => !x.coupe && x.lignes <= 2), '[R] Complet : la derniere modification en rubrique, quand, qui et quoi, entiere au survol', gComplet);
+    ok(!gComplet.rub['Modifié'] && !gComplet.ordre.includes('Modifié') && Object.values(gComplet.rub).every((x) => !x.coupe && x.lignes <= 2), '[R] Complet : la derniere modification ne s ecrit plus sur la ligne (2026-11-06, Ansar : « ça prend trop de place »), la fiche et les cartes la gardent', gComplet);
     await aller(page, 'bowling');
     await FX.repos(page, 300);
     const b = await lireCartesBowling(page, ['Famille Gérard', 'Amis de Clara', 'Famille Henrard', 'Famille Noël']);
@@ -1747,7 +1756,7 @@ const MUTATIONS = [
   { nom: 'allergie-muette', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, '  function gfAllergie(texte) { return GF_ALLERGIE.test(gfCle(texte).replace(/œ/g, \'oe\')); }', '  function gfAllergie(texte) { return false; }') },
   { nom: 'allergie-en-noir', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PGC, '.gf-i__a { color: var(--gf-rouge); font-weight: 700; }', '.gf-i__a { font-weight: 700; }') },
   { nom: 'adaptee-muette', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "    if (g.formule && g.formule.adaptee) sous.push('adaptée');\n", '') },
-  { nom: 'rubrique-vide-qui-reste', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "    if (mot) liste.push(gfRubrique('client', 'Client', gpEsc(mot), mot, gfAllergie(mot)));", "    liste.push(gfRubrique('client', 'Client', gpEsc(mot), mot, gfAllergie(mot)));") },
+  { nom: 'rubrique-vide-qui-reste', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "    if (mot) liste.push(gfRubrique('client', 'Note du client', gpEsc(mot), mot, gfAllergie(mot)));", "    liste.push(gfRubrique('client', 'Note du client', gpEsc(mot), mot, gfAllergie(mot)));") },
   // [J] la ligne
   { nom: 'telephone-seulement-en-retard', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, "    if (tel) tete += '<a class=\"gf-nom__tel\"", "    if (tel && g.retard) tete += '<a class=\"gf-nom__tel\"") },
   { nom: 'telephone-sous-le-nom', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-nom__l { display: flex; flex-wrap: wrap;', '.gf-nom__l { display: flex; flex-direction: column; flex-wrap: wrap;') },
@@ -1826,7 +1835,7 @@ const MUTATIONS = [
   { nom: 'coin-laser-pas-rouge', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '  .lp-g.a-allergie { --lp-coin: color-mix(in srgb, var(--danger) 82%, var(--text)); }', '') },
   { nom: 'carte-laser-sans-sa-note', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "${noteLaser ? ` · ${noteLaser}` : ''}`)}\">", "`)}\">") },
   { nom: 'marque-modif-absente', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '  if (modif) {\n    marques.push({\n      cls: \'flag-modif\',', '  if (false) {\n    marques.push({\n      cls: \'flag-modif\',') },
-  { nom: 'complet-sans-modif', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, "    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\\s*/, '')), modif));\n", '') },
+  { nom: 'complet-avec-modif', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n", "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n    var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';\n    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\\s*/, '')), modif));\n") },
   { nom: 'marque-qui-garde-le-toucher', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '<span class="bk-flag ${m.cls}" role="img"', '<span class="bk-flag ${m.cls}" onclick="event.stopPropagation()" role="img"') },
   { nom: 'liste-du-jour-sans-rubriques', lettre: 'R', scenarios: ['cartes'], editions: SEUL('assets/staff-pages-v2.js', "    return `<span class=\"pv2-flow-marks\">${prix}${note}${rubriques}</span>`;", "    return `<span class=\"pv2-flow-marks\">${prix}${note}</span>`;") },
   { nom: 'liste-du-jour-prix-gris', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.pv2-flow-marks .res-rub--prix { color: var(--warning); font-weight: 600; }\n', '') },

@@ -298,6 +298,7 @@
     "test:sur-mesure-gestion",
     "test:historique-dossier",
     "test:numero-reservation",
+    "test:planning-lisible",
     "test:derniere-modif",
     "test:encaisse-garde",
     "test:droits-2b-ui",

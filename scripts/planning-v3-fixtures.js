@@ -483,8 +483,13 @@ function deriver() {
 //                 devant le nom, ni la note fictive : la densite du grand tableau
 //                 se mesure sur une journee reelle, ou un dossier sur vingt seulement
 //                 porte une note (les notes de la fixture restent).
+//   notes         la journee normale avec de vraies notes (2026-11-06, l ecran
+//                 d Ansar) : le mot du client, une allergie, des notes de
+//                 l equipe avec leur auteur, deux dossiers modifies, et
+//                 l Equipe de basket arrivee (a 19:40, sa partie de 19:30 est en
+//                 cours, celle de 20:00 a venir, dans la meme case).
 // ---------------------------------------------------------------------------
-const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues', 'sansdemo'];
+const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues', 'sansdemo', 'notes'];
 function varier(fx, centre, variantes = []) {
   const f = JSON.parse(JSON.stringify(fx));
   const c = JSON.parse(JSON.stringify(centre));
@@ -544,6 +549,24 @@ function varier(fx, centre, variantes = []) {
       const court = blocLaser('16:00', 4, 1);
       Object.assign(court, { end: court.start + 5, endTime: enHeure(court.start + 5), durationMinutes: 5 });
       res.push(neuf(9111, { name: 'DÉMO · Amis de Lou', pax: 4, type: 'laser', blocs: [court], price: 40 }));
+    }
+    if (v === 'notes') {
+      const trouver = (motif) => {
+        const r = res.find((x) => motif.test(x.name));
+        if (!r) throw new Error(`notes : pas de dossier ${motif}`);
+        return r;
+      };
+      const equipe = (t, par, heure) => `[equipe] ${JSON.stringify({ t, par, le: instant(jour, heure).toISOString() })}`;
+      const modifie = (r, heure, par, quoi) => { r.opsPlan = { ...(r.opsPlan || {}), derniereModif: { le: instant(jour, heure).toISOString(), par, quoi } }; };
+      const basket = trouver(/Équipe de basket/);
+      basket.status = 'arrived';
+      basket.notes = ['Deux joueurs arrivent un peu plus tard.', equipe('Acompte payé par virement', 'Sarah', '17:02')].join('\n');
+      modifie(basket, '19:34', 'Propriétaire plateforme', ['Laser Game déplacé à 20:00']);
+      const julie = trouver(/Amis de Julie/);
+      julie.notes = 'Anniversaire de Julie, 12 ans. Gâteau à 21 h.';
+      modifie(julie, '19:11', 'Propriétaire plateforme', ['Durée 1 h → 1 h 30', 'Formule adaptée', 'Prix 98 € → 118 €']);
+      trouver(/Collègues du garage/).notes = equipe('Facture au nom de la société, demander le numéro de TVA', 'Marc', '18:05');
+      trouver(/Amis de Chloé/).notes = 'Un enfant est allergique aux arachides.';
     }
   }
   res.sort((a, b) => enMin(a.startTime) - enMin(b.startTime) || a.id - b.id);

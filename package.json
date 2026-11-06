@@ -48,6 +48,7 @@
     "test:planning-global": "node scripts/planning-global-check.js && node scripts/planning-global-check.js --contre-preuves",
     "test:grand-tableau": "node scripts/planning-grand-tableau-check.js && node scripts/planning-grand-tableau-check.js --contre-preuves",
     "test:planning-barre": "node scripts/planning-barre-check.js && node scripts/planning-barre-check.js --contre-preuves",
+    "test:planning-lisible": "node scripts/planning-lisible-check.js && node scripts/planning-lisible-check.js --contre-preuves",
     "test:notes-scope": "node scripts/staff-notes-scope-check.js",
     "test:rush-status": "node scripts/rush-status-ui-check.cjs",
     "test:reservation-edit-clarity": "node scripts/reservation-edit-clarity-check.cjs",

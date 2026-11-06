@@ -364,6 +364,16 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-i__par { color: var(--muted); }
 .gf-i__a { color: var(--gf-rouge); font-weight: 700; }
 .gf-i--prix > p { color: var(--warning); font-weight: 550; }
+/* LES NOTES SE VOIENT ET DISENT QUI LES A ECRITES (2026-11-06, Ansar : « la note c un
+   client avec couleur et mieux expliqué que c une note client, pareil pour note équipe »).
+   Une etiquette pleine en toutes lettres, le texte a sa suite. Deux teintes qu aucun statut
+   ne porte : sarcelle pour le client, ardoise pour l equipe. */
+.gf { --gf-note-client: #0f766e; --gf-note-client-encre: #ffffff; --gf-note-equipe: #334155; --gf-note-equipe-encre: #ffffff; }
+[data-theme='dark'] .gf { --gf-note-client: #2dd4bf; --gf-note-client-encre: #042f2e; --gf-note-equipe: #cbd5e1; --gf-note-equipe-encre: #0f172a; }
+.gf-i.gf-i--note { display: block; margin-top: 4px; }
+.gf-i__mot { display: inline-block; margin-right: 2px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 700; line-height: 16px; vertical-align: 1px; white-space: nowrap; }
+.gf-i--client .gf-i__mot { background: var(--gf-note-client); color: var(--gf-note-client-encre); }
+.gf-i--equipe .gf-i__mot { background: var(--gf-note-equipe); color: var(--gf-note-equipe-encre); }
 .gf-r.is-parti :is(.gf-nom__t, .gf-n b, .gf-formule) { color: var(--muted); font-weight: 600; }
 .gf-r.is-loin .gf-nom__t { font-weight: 550; }
 .gf-r.is-loin .gf-n b { font-weight: 600; }
@@ -506,12 +516,33 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .staff-action-popover button.is-actuel::after { content: ''; flex: none; width: 5px; height: 10px; margin: -3px 2px 0 auto; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
 /* L HEURE QU IL EST COUPE LE TABLEAU : une regle noire d un bord a l autre, sa
-   pastille dans la colonne des heures. (ni bleu ni rouge : ce sont des statuts) */
-.gf-t tr.gf-now > td { position: relative; height: 16px; padding: 0; border: 0; background: var(--surface); }
-.gf-t tr.gf-now > td::after { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 2px; background: var(--text); }
+   pastille dans la colonne des heures. (ni bleu ni rouge : ce sont des statuts)
+   (2026-11-06) Elle ne prend aucune place : la rangee n a plus de hauteur, le trait se
+   pose sur le bord entre deux lignes, la pastille juste au-dessus. Dans une demi-heure
+   libre, le trait descend a sa minute (gf-now__l) et la rangee n est plus qu une ancre. */
+.gf-t tr.gf-now > td { position: relative; height: 0; padding: 0; border: 0; background: transparent; }
+.gf-t tr.gf-now > td::after { content: ''; position: absolute; z-index: 3; left: 0; right: 0; top: -1px; height: 2px; background: var(--text); pointer-events: none; }
 /* (rien avant elle : elle se fond dans le filet de la tete) */
-.gf-t tr.gf-now.gf-sans-filet > td::after { top: 0; height: 2px; }
-.gf-now__h { position: sticky; left: 6px; z-index: 1; display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 4px; background: var(--text); color: var(--surface); font-size: 13px; font-weight: 650; line-height: 16px; white-space: nowrap; vertical-align: top; }
+.gf-t tr.gf-now.gf-sans-filet > td::after { top: 0; }
+.gf-t tr.gf-now.is-ancre > td::after, .gf-t tr.gf-now.is-ancre .gf-now__h { display: none; }
+.gf-now__h { position: absolute; z-index: 4; left: 6px; bottom: 1px; display: inline-block; padding: 0 8px; border-radius: 4px; background: var(--text); color: var(--surface); font-size: 13px; font-weight: 650; line-height: 16px; white-space: nowrap; pointer-events: none; }
+.gf-t td.gf-libre__l { position: relative; }
+.gf-now__l { position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: 2px; margin-top: -1px; background: var(--text); pointer-events: none; }
+.gf-now__l .gf-now__h { left: 8px; bottom: 3px; }
+.gf-now__l.is-dessous .gf-now__h { top: 3px; bottom: auto; }
+/* DEUX PARTIES DANS LA MEME CASE (2026-11-06, Ansar : « une case fluo et l autre juste le
+   fond ») : la partie qui se joue colorait la bande de sa seule ligne, la suivante
+   n avait que sa pastille. Comme une case a une seule partie, c est la CASE ENTIERE qui
+   prend le fond doux de la partie en cours (rouge pale si le groupe n est pas la), en
+   gras ; la partie qui vient garde sa pastille, blanche sur ce fond. « À lancer » entoure
+   sa seule pastille. (au telephone, chaque partie est deja une pastille) */
+@container feuille (min-width: 640px) {
+  .gf-t .gf-r > td.gf-a.is-plusieurs.is-encours { background: var(--bk-haut); }
+  .gf-t .gf-r > td.gf-a.is-plusieurs.is-retard { background: var(--gf-rouge-pale); }
+  .gf-a.is-plusieurs:is(.is-encours, .is-retard) .gf-x:not(.is-encours, .is-retard, .is-fini) .gf-x__t:not(.is-nu) { background: var(--surface); }
+  .gf-a.is-plusieurs .gf-x.is-lancer { box-shadow: none; }
+  .gf-a.is-plusieurs .gf-x.is-lancer .gf-x__t { margin-left: -5px; padding: 0 5px; box-shadow: inset 0 0 0 1px var(--bk-cadre); }
+}
 /* Le bouton qui ramene a l heure qu il est quand on s en est eloigne. */
 /* (au milieu : a droite, il couvrait les « Arrivé » des dernieres lignes) */
 .gf-retour { position: absolute; left: 50%; bottom: 16px; z-index: 6; translate: -50% 0; height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--text); color: var(--surface); font: inherit; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-overlay); cursor: pointer; }
@@ -604,6 +635,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
   .gf-nom__suite { display: none; }
   /* (le libelle va devant son texte : deux lignes de 160 px, pas de 100) */
   .gf-i { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  /* (une note aussi : son etiquette ouvre ses deux lignes, rien de plus) */
+  .gf-i.gf-i--note { display: -webkit-box; margin-top: 2px; }
   .gf-i > span { margin-right: 4px; white-space: normal; }
   .gf-i > p { display: inline; }
   .gf-x__ok, .gf-x__t .gf-x__ok { display: none; }
@@ -674,7 +707,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
   .gf-t tr.gf-now { display: block; position: relative; z-index: 3; height: 4px; background: var(--text); }
   .gf-t tr.gf-now > td { display: block; height: 0; border: 0; background: transparent; }
   .gf-t tr.gf-now > td::after { display: none; }
-  .gf-now__h { position: absolute; left: 12px; top: -8px; margin: 0; }
+  .gf-now__h { position: absolute; left: 12px; top: -8px; bottom: auto; margin: 0; }
+  /* (au telephone, la liste n a pas de demi-heure a decouper : la barre reste entre deux
+     cartes, avec sa pastille, meme quand la demi-heure en cours est libre) */
+  .gf-now__l { display: none; }
+  .gf-t tr.gf-now.is-ancre .gf-now__h { display: inline-block; }
   .gf-resultats, .gf-rien, .gf-plis { display: block; }
   .gf-resultats > td, .gf-rien > td, .gf-plis > td { display: block; }
 }

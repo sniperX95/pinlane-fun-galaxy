@@ -647,8 +647,11 @@
   function gfCase(g, col, m) {
     var liste = g.cases.get(col.cle) || [];
     if (!liste.length) return '<td class="gf-a is-vide"></td>';
-    // (deux parties de laser partagent la case, trois aussi)
-    return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
+    // (deux parties de laser partagent la case, trois aussi ; quand l une se joue ou attend
+    // le groupe en retard, c est la case entiere qui en prend le fond, 2026-11-06)
+    var etats = liste.length > 1 ? liste.map(function (e) { return gfEtat(g, e, m); }) : [];
+    var fond = etats.indexOf('retard') >= 0 ? ' is-retard' : etats.indexOf('encours') >= 0 ? ' is-encours' : '';
+    return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + fond + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
   }
 
   // LE GROUPE : LA LIGNE QUI MONTRE TOUT (2026-11-03). Le nom et ce qui se fait sur lui
@@ -675,8 +678,17 @@
   function gfAllergie(texte) { return GF_ALLERGIE.test(gfCle(texte).replace(/œ/g, 'oe')); }
   function gfEnMinuscule(s) { var t = String(s || '').trim(); return t.charAt(0).toLowerCase() + t.slice(1); }
   function gfUneLigne(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
+  // UNE NOTE SE VOIT ET DIT QUI L A ECRITE (2026-11-06, Ansar : « on doit voir plus
+  // visiblement [...] la note c un client avec couleur et mieux expliqué que c une note
+  // client, pareil pour note équipe »). Le mot du client et les notes de l equipe portent
+  // leur etiquette pleine, en toutes lettres, au debut du texte : la seconde ligne repart
+  // sous l etiquette, la note tient dans ses deux lignes. Les autres rubriques gardent
+  // leur libelle gris dans sa colonne.
+  var GF_NOTES = { client: true, equipe: true };
   function gfRubrique(cle, mot, html, texte, allergie) {
-    return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--' + cle + '"><span>' + gpEsc(mot) + '</span><p title="' + gpEsc(texte) + '">' + (allergie ? '<b class="gf-i__a">Allergie</b> ' : '') + html + '</p></div>' };
+    var a = allergie ? '<b class="gf-i__a">Allergie</b> ' : '';
+    if (GF_NOTES[cle]) return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--note gf-i--' + cle + '"><p title="' + gpEsc(texte) + '"><span class="gf-i__mot">' + gpEsc(mot) + '</span> ' + a + html + '</p></div>' };
+    return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--' + cle + '"><span>' + gpEsc(mot) + '</span><p title="' + gpEsc(texte) + '">' + a + html + '</p></div>' };
   }
   function gfPrixTexte(r, notePrix, sortie) {
     var etat = typeof getReservationPriceState === 'function' ? getReservationPriceState(r) : { ajuste: false };
@@ -723,7 +735,7 @@
     var liste = [];
     var parts = typeof getReservationNoteParts === 'function' ? getReservationNoteParts(r) : { mot: typeof getReservationNoteText === 'function' ? getReservationNoteText(r) : '', suivi: [] };
     var mot = gfUneLigne(parts.mot);
-    if (mot) liste.push(gfRubrique('client', 'Client', gpEsc(mot), mot, gfAllergie(mot)));
+    if (mot) liste.push(gfRubrique('client', 'Note du client', gpEsc(mot), mot, gfAllergie(mot)));
     // (le compte a l arrivee se lit dans la colonne Joueurs, sa note dans la fiche ;
     // une note de prix va a la rubrique Prix)
     var lues = g.lues || gfNotesEquipe(r);
@@ -732,7 +744,7 @@
     (parts.suivi || []).forEach(function (s) { equipe.push({ t: gfUneLigne(s), par: '' }); });
     if (equipe.length) {
       var texteEquipe = equipe.map(function (n) { return n.t + (n.par ? ' ' + n.par : ''); }).join(' · ');
-      liste.push(gfRubrique('equipe', 'Équipe', equipe.map(function (n) { return gpEsc(n.t) + (n.par ? ' <span class="gf-i__par">' + gpEsc(n.par) + '</span>' : ''); }).join(' · '), texteEquipe, gfAllergie(texteEquipe)));
+      liste.push(gfRubrique('equipe', 'Note de l’équipe', equipe.map(function (n) { return gpEsc(n.t) + (n.par ? ' <span class="gf-i__par">' + gpEsc(n.par) + '</span>' : ''); }).join(' · '), texteEquipe, gfAllergie(texteEquipe)));
     }
     var fiche = gfUneLigne(window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '');
     if (fiche) liste.push(gfRubrique('fiche', 'Fiche', gpEsc(fiche), fiche, gfAllergie(fiche)));
@@ -747,9 +759,10 @@
     // (le nom de la formule vient de se lire : la raison du prix ne le redit pas)
     var prix = String(gfPrixTexte(r, notePrix, g.sortie) || '').replace(comptoir ? /,?\s*formule sur mesure\s*:.*$/i : /$^/, '');
     if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));
-    // La derniere modification (texteDerniereModif, le texte de la fiche) : quand, qui, quoi.
-    var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';
-    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\s*/, '')), modif));
+    // (la derniere modification ne s ecrit plus sur la ligne, 2026-11-06, Ansar : « quand
+    // c modifié pas besoin d écrire sur la page ici que ça a été modifié, ça prend trop de
+    // place ». Ce qui a change se lit deja sur la ligne, la duree, l activite, le prix ; le
+    // quand et le qui restent dans la fiche.)
     return liste;
   }
   // CE QUI CHANGE LA MANIERE DE SERVIR, POUR LES CARTES ET LE TERRAIN (2026-11-03, Movsar :
@@ -1082,8 +1095,19 @@
   }
   // L HEURE QU IL EST COUPE LE TABLEAU : une regle noire d un bord a l autre, qui
   // n est d aucune couleur de statut.
-  function gfMaintenant(nbCol) {
-    return '<tr class="gf-now" aria-hidden="true"><td colspan="' + nbCol + '"><span class="gf-now__h" data-gf-maintenant></span></td></tr>';
+  // ELLE NE PREND AUCUNE PLACE ET TOMBE A SA MINUTE (2026-11-06, Ansar : « la barre qui
+  // montre l heure actuelle [...] elle perturbe, place-la bien par temps »). Elle etait une
+  // rangee de plus, 16 px qui poussaient la feuille, et a 20:38 elle se posait au bord de
+  // 21:00, apres la demi-heure libre de 20:30. Elle se trace maintenant sur le bord entre
+  // deux lignes, sans hauteur ; et quand la demi-heure en cours est libre, elle se trace
+  // DANS cette demi-heure, a la hauteur de sa minute (20:38, au quart de 20:30). La rangee
+  // reste dans le tableau, sans trait, comme ancre : la feuille qui suit l heure et le
+  // bouton « Maintenant » la lisent.
+  function gfMaintenant(nbCol, ancre) {
+    return '<tr class="gf-now' + (ancre ? ' is-ancre' : '') + '" aria-hidden="true"><td colspan="' + nbCol + '"><span class="gf-now__h" data-gf-maintenant></span></td></tr>';
+  }
+  function gfMaintenantDansLibre(b) {
+    return '<span class="gf-now__l" aria-hidden="true" data-gf-now-libre="' + b + '"><span data-gf-maintenant class="gf-now__h"></span></span>';
   }
   function gfBloc(heure) {
     var b = Math.floor(heure * 2 + 1e-6) / 2;
@@ -1237,7 +1261,9 @@
     var rangees = [];
     // (la premiere rangee et celle qui suit la barre de l heure n ont pas de filet)
     var poser = function (cle, html) {
-      var nu = !rangees.length || rangees[rangees.length - 1].cle === 'maintenant';
+      // (l ancre sans trait laisse son filet a la ligne qui suit)
+      var avant = rangees[rangees.length - 1];
+      var nu = !avant || (avant.cle === 'maintenant' && avant.html.indexOf(' is-ancre') < 0);
       rangees.push({ cle: cle, html: nu ? html.replace('<tr class="', '<tr class="gf-sans-filet ') : html });
     };
     if (plis) {
@@ -1250,9 +1276,17 @@
       if (lignes.length) poser('resultats', '<tr class="gf-resultats"><td colspan="' + nbCol + '"><b>' + gpEsc(gfPluriel(lignes.length, ['groupe', 'groupes'])) + '</b> pour « ' + gpEsc(terme) + ' »' + (seul ? ' · Entrée pour pointer Arrivé' : lignes.length === 1 && typeof numeroReservationDe === 'function' && numeroReservationDe(q) ? ' · Entrée pour ouvrir la réservation' : '') + '</td></tr>');
     }
     var bande = false, avantB = null;
+    // (la demi-heure libre ou tombe l heure porte le trait ; la rangee de l heure, juste
+    // apres elle, n est plus que l ancre)
+    var dansLibre = false;
     morceaux.forEach(function (part) {
-      if (!part) { poser('maintenant', gfMaintenant(nbCol)); return; }
-      if (!part.lignes.length) { poser('libre:' + part.b, '<tr class="gf-libre is-bloc">' + gfBlocCase(m, part, { groupes: 0, pers: 0 }, false) + '<td class="gf-libre__l" colspan="' + (nbCol - 1) + '"></td></tr>'); return; }
+      if (!part) { poser('maintenant', gfMaintenant(nbCol, dansLibre)); return; }
+      if (!part.lignes.length) {
+        dansLibre = !q && m.maintenant != null && part.b <= m.maintenant + 1e-6 && m.maintenant < part.b + 0.5 - 1e-6;
+        poser('libre:' + part.b, '<tr class="gf-libre is-bloc">' + gfBlocCase(m, part, { groupes: 0, pers: 0 }, false) + '<td class="gf-libre__l" colspan="' + (nbCol - 1) + '">' + (dansLibre ? gfMaintenantDansLibre(part.b) : '') + '</td></tr>');
+        return;
+      }
+      dansLibre = false;
       if (avantB !== null && part.b !== avantB) bande = !bande;
       avantB = part.b;
       part.lignes.forEach(function (g, i) {
@@ -1270,7 +1304,7 @@
           + gfResteCase(g, m, q) + gfEtatCase(g, m, q) + '</tr>');
       });
     });
-    if (!nowPose && suite.length) poser('maintenant', gfMaintenant(nbCol));
+    if (!nowPose && suite.length) poser('maintenant', gfMaintenant(nbCol, dansLibre));
     if (!lignes.length && (m.groupes.length || q)) {
       poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? gfRienHtml(m, q) : '<b>Aucun groupe dans ce filtre</b>') + '</td></tr>');
     }
@@ -1716,8 +1750,16 @@
   // groupe attendu, si)
   function gfRemplir(wrap, defile, m, q) {
     var poser = function (n, texte) { if (n.textContent !== texte) n.textContent = texte; };
-    var pastille = defile.querySelector('[data-gf-maintenant]');
-    if (pastille) poser(pastille, gpHeure(m.maintenant));
+    defile.querySelectorAll('[data-gf-maintenant]').forEach(function (p) { poser(p, gpHeure(m.maintenant)); });
+    // (dans une demi-heure libre, le trait descend d une minute a l autre : 20:38 au quart
+    // de la case de 20:30 ; l heure s ecrit sous le trait tant qu il est dans le haut)
+    var trait = defile.querySelector('[data-gf-now-libre]');
+    if (trait && m.maintenant != null) {
+      var frac = Math.min(1, Math.max(0, (m.maintenant - Number(trait.getAttribute('data-gf-now-libre'))) / 0.5));
+      var haut = (frac * 100).toFixed(1) + '%';
+      if (trait.style.top !== haut) trait.style.top = haut;
+      trait.classList.toggle('is-dessous', frac < 0.5);
+    }
     var enRetard = q ? [] : defile.querySelectorAll('.gf-r.is-retard [data-gf-arrive]');
     var bouton = enRetard.length ? enRetard[enRetard.length - 1] : defile.querySelector(q ? '.gf-r [data-gf-arrive]' : '.gf-r.is-proche [data-gf-arrive]');
     if (q && defile.querySelectorAll('[data-gf-id]').length !== 1) bouton = null;

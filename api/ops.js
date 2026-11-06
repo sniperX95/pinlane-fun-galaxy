@@ -76,6 +76,16 @@ const {
   endOfMonth,
 } = require('../lib/direction-analytics');
 const { computeDelayImpact } = require('../lib/ops-engine');
+const { tientSesPlaces } = require('../lib/places-tenues');
+
+// UN GROUPE « PAS VENU » N A PLUS DE RETARD A DECALER (2026-11-06) : il a rendu ses
+// places, sa piste a pu etre revendue. Le retirer d abord (sa fiche), le dossier
+// redevient un groupe en retard comme un autre.
+function refuserRetardDUnAbsent(reservation) {
+  if (reservation && reservation.status !== 'cancelled' && !tientSesPlaces(reservation)) {
+    throw createHttpError('Ce groupe est noté « Pas venu ». Retirez d’abord l’absence dans sa fiche.', 409);
+  }
+}
 const {
   architectureAgent,
   communicationAgent,
@@ -1520,6 +1530,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       centerId: reservation.centerId || 'libramont',
     });
     if (!scopedSession) return;
+    refuserRetardDUnAbsent(reservation);
     const context = await buildContext({
       ...body,
       centerId: reservation.centerId || centerId,
@@ -1557,6 +1568,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       centerId: reservation.centerId || 'libramont',
     });
     if (!editSession) return;
+    refuserRetardDUnAbsent(reservation);
 
     // Serveur = source de vérité : l'impact est RECALCULÉ ici, jamais repris
     // du client. Le staff choisit seulement la stratégie parmi les faisables.

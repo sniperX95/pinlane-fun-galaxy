@@ -20915,6 +20915,11 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 /* LA RECHERCHE ET LE FILTRE GRISENT (2026-10-27), comme au planning laser :
    le groupe reste a sa place, sa piste ne se dit jamais libre. */
 .booking.is-grise { opacity: .35; }
+/* « PAS VENU » A RENDU SA PISTE (2026-11-06) : la carte reste a sa place, grisee et
+   hachuree comme une piste retenue, SOUS le groupe qui reprend la piste. */
+html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk-barre: var(--line-strong); --bk-encre: var(--muted); --bk-encre-2: var(--muted); --bk-pastille: var(--line); background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--line-strong) 45%, transparent) 6px 7px); }
+.booking.is-absent .booking-name { text-decoration: line-through; }
+.booking .bk-absent { font-weight: 600; color: var(--muted); }
 /* La nouvelle venue garde son halo : l ombre de la barre l aurait remplace,
    au repos comme sans mouvement (prefers-reduced-motion). */
 .booking.is-neuve-calme { box-shadow: inset 1px 0 0 var(--bk-barre), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }

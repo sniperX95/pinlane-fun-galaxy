@@ -63,7 +63,8 @@ module.exports = async (req, res) => {
     // Les horaires retenus par des clients en train de reserver en ligne
     // (migration 0049) arrivent A PART (`holds`) : le planning les montre en
     // attente, ils ne se melangent ni aux listes ni aux chiffres du jour.
-    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true });
+    // (les groupes « Pas venu » aussi : la console les montre barres, leurs places rendues)
+    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true });
     const requestRevision = req.headers['if-none-match'];
     if (requestRevision && requestRevision === snapshot.revision) {
       res.statusCode = 304;

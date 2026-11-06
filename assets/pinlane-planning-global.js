@@ -555,6 +555,51 @@
   function gfMinutesDeRetard(g, m) { return Math.max(1, Math.round((m.maintenant - (g.heure <= m.maintenant ? g.heure : g.span.start)) * 60)); }
   // « +40 min », puis « +2h10 » : le retard tient sous l heure.
   function gfRetardCourt(n) { return n < 60 ? '+' + n + ' min' : '+' + Math.floor(n / 60) + 'h' + String(n % 60).padStart(2, '0'); }
+  // LA PISTE REPRISE APRES UN GROUPE EN RETARD (2026-11-06). Un groupe en retard qui joue
+  // son temps entier des son arrivee deborde sur le groupe qui reprend sa piste ; rien ne
+  // le disait avant d ouvrir « Ils arrivent dans ». La ligne le dit tant que sa partie
+  // n est pas finie : la premiere heure ou une de ses pistes est reprise avant la fin de
+  // sa partie, decalee du retard. Un groupe « Pas venu » est parti (g.parti) : il ne
+  // reprend rien, il a rendu sa piste.
+  function gfReprise(g, m) {
+    if (!g.retard || m.maintenant == null) return null;
+    var retard = m.maintenant - (g.heure <= m.maintenant ? g.heure : g.span.start);
+    var parties = (g.cases.get('bowling') || []).filter(function (e) { return e.pistes && e.pistes.length && e.end > m.maintenant + 1e-6; });
+    if (retard <= 0 || !parties.length) return null;
+    var pris = null;
+    m.groupes.concat(m.retenues || []).forEach(function (autre) {
+      if (autre === g || autre.parti) return;
+      (autre.cases.get('bowling') || []).forEach(function (o) {
+        parties.forEach(function (e) {
+          if (o.start < e.end - 1e-6 || o.start >= e.end + retard - 1e-6) return;
+          var communes = (o.pistes || []).filter(function (p) { return e.pistes.indexOf(p) >= 0; });
+          if (!communes.length) return;
+          if (!pris || o.start < pris.start - 1e-6) pris = { start: o.start, pistes: communes, qui: autre, partie: e };
+          else if (Math.abs(o.start - pris.start) < 1e-6) communes.forEach(function (p) { if (pris.pistes.indexOf(p) < 0) pris.pistes.push(p); });
+        });
+      });
+    });
+    if (!pris) return null;
+    pris.pistes.sort(function (a, b) { return a - b; });
+    var plusieurs = pris.pistes.length > 1;
+    var nom = pris.qui.retenue ? 'Une réservation internet' : (pris.qui.r.name || 'Le groupe suivant');
+    var duree = gfDuree(Math.round((pris.partie.end - pris.partie.start) * 60));
+    return {
+      texte: gfPistesEnMots(pris.pistes) + (plusieurs ? ' reprises à ' : ' reprise à ') + gpHeure(pris.start),
+      bulle: nom + ' prend ' + (plusieurs ? 'les pistes ' : 'la piste ') + gpPistes(pris.pistes) + ' à ' + gpHeure(pris.start) + ' : si ' + (g.r.name || 'le groupe') + ' joue son ' + duree + ' dès son arrivée, ' + (pris.qui.retenue ? 'ce client' : nom) + ' attend. Toucher pour décaler.',
+    };
+  }
+  // L HEURE OU UN GROUPE « PAS VENU » A RENDU SES PLACES, sur l horloge de son jour : une
+  // case dit « libérée » seulement si l absence est notee avant sa fin.
+  function gfRendueA(r, fin) {
+    if (!r || !r.absentAt || r.status === 'arrived' || r.status === 'paid' || r.status === 'cancelled') return false;
+    var a = new Date(r.absentAt);
+    if (Number.isNaN(a.getTime())) return false;
+    var jour = a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0') + '-' + String(a.getDate()).padStart(2, '0');
+    if (jour < String(r.date || '')) return true;
+    var h = a.getHours() + a.getMinutes() / 60 + (jour > String(r.date || '') ? 24 : 0);
+    return fin > h + 1e-6;
+  }
 
   // ---- LES CASES ---------------------------------------------------------------
   // « Pistes 1-2 », « Piste 5 » : le mot entier, en 13 px et en noir (l audit du
@@ -616,10 +661,12 @@
         // panne. Un toucher mene a son bloc, pour le deplacer.
         var fermees = (e.pistes || []).filter(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; });
         if (fermees.length && etat !== 'fini') { d = gfPistesEnMots(fermees) + (fermees.length > 1 ? ' fermées' : ' fermée'); d2 = ''; panne = true; }
+        else if (n && gfRendueA(r, fin)) { d = gfPistesEnMots(e.pistes) + (n > 1 ? ' libérées' : ' libérée'); d2 = ''; }
         bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
       } else if (col.nature === 'laser') {
         var armes = Number(e.joueurs) || 0;
         if (armes && armes !== Number(r.pax)) d = armes + ' armes';
+        if (gfRendueA(r, fin)) d = gfPluriel(armes || Number(r.pax) || 0, ['arme libérée', 'armes libérées']);
         bulle = 'Laser à ' + gpHeure(debut) + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
       } else if (col.nature === 'plaine') {
         var enfants = Number(e.enfants) || Number(r.pax) || 0;
@@ -808,6 +855,12 @@
     if (tel) tete += '<a class="gf-nom__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) tete += '<span class="gf-nom__valide">À valider</span>';
     if (g.etat === 'closing') tete += gfPresent(g) ? '<span class="gf-nom__caisse">À encaisser</span>' : '<span class="gf-nom__caisse">À clôturer<span class="gf-nom__suite"> · jamais pointé</span></span>';
+    // LA PISTE REPRISE APRES EUX, en dernier : le telephone reste sur la ligne du nom, elle
+    // passe dessous quand la place manque. Le meme toucher que le retard (« Ils arrivent
+    // dans »). Elle change rarement, une fois quand le retard atteint le groupe suivant :
+    // elle entre dans le HTML compare, et seule la ligne qui la gagne se reecrit.
+    var reprise = g.retard && m.maintenant != null ? gfReprise(g, m) : null;
+    if (reprise) tete += '<button type="button" class="gf-h__reprise" data-gf-retarder="' + gpEsc(g.id) + '" data-gf-reprise="' + gpEsc(g.id) + '" title="' + gpEsc(reprise.bulle) + '">' + gpEsc(reprise.texte) + '</button>';
     return '<td class="gf-nom"><div class="gf-nom__l">' + tete + '</div>' + g.rubriques.map(function (x) { return x.html; }).join('') + '</td>';
   }
   // UNE RETENUE, EN LIGNE DANS LE TABLEAU (2026-11-05). Les memes cases qu un groupe, hachurees

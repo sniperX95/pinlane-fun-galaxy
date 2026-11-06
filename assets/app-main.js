@@ -1252,7 +1252,8 @@ function getOccupiedLanes(date, startTime, duration, ignoreId) {
   // et bloque vrm pdt les X temps ») : le serveur la refuse deja, ce poste la compte aussi.
   [...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {
     if (r.id === ignoreId) return;
-    if (r.date === date && r.status !== 'cancelled' && (r.lanes || []).length > 0) {
+    // (un groupe « Pas venu » a rendu sa piste : tientSesPlaces, la regle du serveur)
+    if (r.date === date && tientSesPlaces(r) && (r.lanes || []).length > 0) {
       getBowlingWindowsFromReservation(r).forEach(window => {
         if (overlap(reqStart, Number(duration), window.start, window.duration)) {
           window.lanes.forEach(l => occupied.add(l));
@@ -1357,7 +1358,7 @@ function lanesConflict(date, startTime, duration, lanes, ignoreId, candidateOpsP
   return [...state.reservations, ...getBlocagesEnLigne(date)].filter(r =>
     r.id !== ignoreId &&
     r.date === date &&
-    r.status !== 'cancelled' &&
+    tientSesPlaces(r) &&
     candidateWindows.some(candidate =>
       getBowlingWindowsFromReservation(r).some(window =>
         overlap(candidate.start, candidate.duration, window.start, window.duration) &&
@@ -1395,7 +1396,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
 
   const normalizeKey = value => Math.round(Number(value) * 60);
   const laserWindowsForDate = () => [...state.reservations, ...getBlocagesEnLigne(date)]
-    .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')
+    .filter(r => r.id !== ignoreId && r.date === date && tientSesPlaces(r))
     .flatMap(getLaserWindowsFromReservation);
 
   for (const candidate of candidateWindows) {
@@ -22387,6 +22388,14 @@ function todaysReservations() {
   return state.reservations.filter(r => r.date === state.currentDate && r.status !== 'cancelled');
 }
 
+// UN GROUPE NOTE « PAS VENU » REND SES PLACES (2026-11-06) : sa piste, ses armes et sa
+// table se revendent, au comptoir comme en ligne. Il reste au planning, barre. La meme
+// regle que le serveur (tientSesPlaces, lib/database.js) : un compte de places libres qui
+// differerait de Réserver annoncerait une place refusee, ou en cacherait une.
+function tientSesPlaces(r) {
+  return Boolean(r) && r.status !== 'cancelled' && !(r.absentAt && r.status !== 'arrived' && r.status !== 'paid');
+}
+
 function getStaffResourceView() {
   return state.staffResourceView === 'laser' ? 'laser' : state.staffResourceView === 'all' ? 'all' : 'bowling';
 }
@@ -23851,7 +23860,7 @@ function getStaffBowlingLaneOccupation() {
   };
   const poser = source => source.forEach(item => getBowlingWindowsFromReservation(item)
     .forEach(window => (window.lanes || []).forEach(lane => prendre(lane, window.start, window.end))));
-  poser(todaysReservations());
+  poser(todaysReservations().filter(tientSesPlaces));
   poser(getBlocagesEnLigne(state.currentDate));
   Object.entries(getBowlingBlockWindows(state.currentDate, config.open, config.close))
     .forEach(([lane, fenetres]) => fenetres.forEach(fenetre => prendre(lane, fenetre.startH, fenetre.endH)));
@@ -24104,7 +24113,12 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
+      // UN GROUPE « PAS VENU » A RENDU SA PISTE (2026-11-06, tientSesPlaces) : sa carte
+      // reste a sa place, grisee et hachuree, sous le groupe qui reprend la piste.
+      const absentClass = tientSesPlaces(r) ? '' : ' is-absent';
+      const statsHtml = absentClass
+        ? '<span class="bk-absent">Pas venu</span>'
+        : renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
       // offre, chiffres) en demandent 56. L'offre partage donc la ligne des
@@ -24155,7 +24169,7 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${absentClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -24420,7 +24434,8 @@ function lpModele() {
     const ici = fenetres.filter(dedans).sort((a, b) => Number(a.reservation.id) - Number(b.reservation.id) || Number(a.countIndex || 1) - Number(b.countIndex || 1));
     const holds = enLigne.filter(dedans);
     const chevauche = fenetres.concat(enLigne).filter(w => !dedans(w) && w.start < fin - 0.001 && w.end > t + 0.001);
-    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);
+    // (un groupe « Pas venu » reste au depart, ses armes sont rendues : tientSesPlaces)
+    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + (tientSesPlaces(w.reservation) ? lpArene(w) : 0), 0);
     const ferme = blocages.find(b => b.debut < fin - 0.001 && b.fin > t + 0.001) || null;
     const hors = t < config.open - 0.001 || t > config.close - 0.5 + 0.001;
     return {
@@ -26214,7 +26229,7 @@ function renderGroupeEncaisseAbsence(r) {
   }
   if (!peutStatut || !Object.prototype.hasOwnProperty.call(r, 'absentAt')) return '';
   if (r.absentAt) {
-    return `<div class="pos-absent is-on"><span>Noté absent : le groupe n’est pas venu.</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, false, event)">Annuler</button></div>`;
+    return `<div class="pos-absent is-on"><span>Noté absent : le groupe n’est pas venu, ses places sont rendues.</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, false, event)">Annuler</button></div>`;
   }
   return '';
 }
@@ -32436,7 +32451,7 @@ function rvOccupationPistes(heure, duree) {
   if (!heure) return res;
   const debut = timeToNum(heure);
   const fenetres = state.reservations
-    .filter((r) => r.date === s.date && r.status !== 'cancelled' && (r.lanes || []).length > 0)
+    .filter((r) => r.date === s.date && tientSesPlaces(r) && (r.lanes || []).length > 0)
     .flatMap((r) => getBowlingWindowsFromReservation(r).map((w) => ({ ...w, nom: r.name || '' })));
   const retenues = getBlocagesEnLigne(s.date).flatMap((r) => getBowlingWindowsFromReservation(r).map((w) => ({ ...w, blocage: r })));
   for (let piste = 1; piste <= parc; piste += 1) {
@@ -34949,7 +34964,7 @@ function rsArmesComptees(date, c, capacite) {
   const compter = (liste) => liste.flatMap(getLaserWindowsFromReservation)
     .filter((w) => overlap(c.start, c.duration, w.start, w.duration))
     .reduce((total, w) => total + Number(w.players || (w.reservation && w.reservation.pax) || 0), 0);
-  const pris = Math.min(capacite, compter(state.reservations.filter((r) => r.date === date && r.status !== 'cancelled')));
+  const pris = Math.min(capacite, compter(state.reservations.filter((r) => r.date === date && tientSesPlaces(r))));
   return { pris, retenu: Math.min(capacite - pris, compter(getBlocagesEnLigne(date))) };
 }
 

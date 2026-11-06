@@ -352,6 +352,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-h__retard span { padding: 0 5px; border-radius: 6px; background: var(--gf-rouge-pale); }
 .gf-h__retard:hover span { text-decoration: underline; text-underline-offset: 2px; }
 .gf-h__retard:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* La piste reprise apres un groupe en retard (2026-11-06) : la suite du retard, en mots,
+   sans fond ; le meme toucher. */
+.gf-h__reprise { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; padding: 0; border: 0; background: transparent; color: var(--gf-rouge); font: inherit; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; cursor: pointer; }
+.gf-h__reprise:hover { text-decoration: underline; text-underline-offset: 2px; }
+.gf-h__reprise:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .gf-nom__tel { flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .gf-nom__tel:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .gf-nom__tel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -713,8 +713,13 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // formulaire signale ses erreurs a la Tour de controle (signaler, 1,3 Ko).
 // 2026-11-05, « Venir plus tot » : 365,3 et 106,1 Ko mesures, plafonds 368 et
 // 108 Ko, pour une fonction qui remplace l heure d arrivee libre a la carte.
-const BUDGET_SERVI = 372 * 1024;
-const BUDGET_TRANSFERE = 108 * 1024;
+// 2026-11-06, chaque activite a sa couleur et sa photo sur tous les ecrans (Ansar, sur planches : « Oui, mets en
+// ligne ») : 376,2 et 108,3 Ko mesures. Poids mort cherche avant : aucune declaration morte (mort.cjs), et les seules
+// classes jamais ecrites en toutes lettres (is-vide, is-surplace) sont construites par le script. La mesure de vitesse
+// du formulaire (test:fungalaxy-perf) est verte sur la suite GitHub de la meme version. Plafonds 380 et 110 Ko : une
+// police ou une bibliotheque les font toujours sauter.
+const BUDGET_SERVI = 380 * 1024;
+const BUDGET_TRANSFERE = 110 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -4426,7 +4431,10 @@ async function main() {
     const corpsL = mock.dernierePose.body || {};
     ok(corpsL.occasion === 'autre' && corpsL.notes === 'Occasion : Départ à la retraite. Gâteau à mettre au frais',
       '[L] « Autre » part en cle, sa precision rejoint le mot pour l equipe (notes)', JSON.stringify({ occasion: corpsL.occasion, notes: corpsL.notes }));
-    await lisibleEcran('fin', true);
+    // La confirmation montre sa photo A COTE du ticket (bande au telephone, a droite sur PC, 2026-11-06), comme
+    // l ecran du jour : plus aucun texte n est pose dessus par construction. Un texte qui y tomberait (le libelle
+    // « Validation » a 1024 px, avant que la barre d etapes ne prenne la largeur du ticket) reste mesure sur la photo.
+    await lisibleEcran('fin', false);
     ok(casTitreTotal > 0, 'MONTAGE [L] au moins un titre porte une capitale accentuee sous sa premiere ligne : la mesure des accents porte sur un vrai cas', `${casTitreTotal} cas`);
     // Le telephone et l e-mail du centre se TOUCHENT (tel:, mailto:), tires
     // du catalogue servi.

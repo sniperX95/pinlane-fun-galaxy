@@ -18,14 +18,19 @@ function loadFixture(name) {
   if (name === 'installQaApi') body = body.replace("'planning.bowling',", "'planning.bowling', 'reservations.quick', 'reservations.create', 'reservations.edit', 'emails.send',");
   return new Function('BASE_URL', body + '\nreturn ' + name)(BASE_URL);
 }
+let silence = false;
 function ok(condition, id, detail) {
   results.push({ id, pass: !!condition, detail });
-  console.log((condition ? 'PASS ' : 'FAIL ') + id + ' ' + JSON.stringify(detail));
+  if (!silence) console.log((condition ? 'PASS ' : 'FAIL ') + id + ' ' + JSON.stringify(detail));
+  return !!condition;
 }
 async function scenario(id, run) {
   try { await run(); } catch (error) { ok(false, id + ':execution', error.message); }
 }
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
+// Une contre-preuve (--contre-preuves) sert son fichier avec la regle retiree : le
+// disque n est jamais touche.
+let mutation = null;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, BASE_URL);
   const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).slice(1);
@@ -34,6 +39,7 @@ const server = http.createServer((req, res) => {
   }
   fs.readFile(path.join(ROOT, rel), (err, data) => {
     res.writeHead(err ? 404 : 200, { 'Content-Type': (mime[path.extname(rel)] || 'application/octet-stream') + '; charset=utf-8' });
+    if (!err && mutation && rel === mutation.fichier) data = String(data).replace(/\r\n/g, '\n').replace(mutation.de, () => mutation.vers);
     res.end(err ? '' : data);
   });
 });
@@ -43,7 +49,7 @@ async function shot(page, name) {
 }
 // Le focus revient a la fin de la sortie d une fenetre : ce qui se lisait
 // aussitot apres Echap perdait la course sur une machine chargee.
-const finit = (page, condition) => page.waitForFunction(condition, null, { timeout: 8000 }).then(() => true, () => page.evaluate(condition).then(Boolean, () => false));
+const finit = (page, condition, arg = null) => page.waitForFunction(condition, arg, { timeout: 8000 }).then(() => true, () => page.evaluate(condition, arg).then(Boolean, () => false));
 async function contained(page, selector, count = 30) {
   const escaped = [];
   for (let i = 0; i < count; i++) {
@@ -52,8 +58,43 @@ async function contained(page, selector, count = 30) {
   }
   return escaped;
 }
-async function main({ roiOnly = false, capture = false } = {}) {
+// LE PLANNING SE REDESSINE FENETRE OUVERTE (2026-11-07). Chaque minute, la barre de
+// l heure bouge et la grille entiere est reecrite : la case ou la carte qui a ouvert la
+// fenetre est remplacee par sa copie. Deux choses se verifient avant Echap, a chaque
+// taille. A minute figee, le tic ne reecrit rien : la hauteur d heure suit la boite des
+// le premier rendu (avant, a 1180 et 1440, le premier tic la changeait d un pixel et
+// reecrivait la grille, d ou F1-close et sheet-close rouges par hasard). Puis la grille
+// marquee retouchee se reconstruit au tic comme a un changement de minute, quel que soit
+// le jour ou l heure du banc, et Echap doit rendre le focus a la copie : meme piste et
+// meme heure pour une case, meme dossier, meme piste et meme heure pour une carte.
+async function ticFenetreOuverte(page, ouvreur) {
+  return page.evaluate((nom) => {
+    const wrap = document.getElementById('planningGridWrap'), avant = window[nom];
+    tickStaffMinute();
+    const fige = avant.isConnected;
+    rendusDeSurface.get(wrap).touchee = true;
+    tickStaffMinute();
+    return { fige, reconstruite: !avant.isConnected, fenetre: !!quickBookState || !!state.selectedRes };
+  }, ouvreur);
+}
+// Fenetre et fiche fermees, le focus est sur l ouvreur ou sur sa copie (memes cles, dans
+// le document).
+function revenuALOuvreur({ nom, cles }) {
+  const actif = document.activeElement, ouvreur = window[nom];
+  const surLui = actif === ouvreur || (actif.isConnected && actif.tagName === ouvreur.tagName && cles.every((cle) => actif.getAttribute(cle) === ouvreur.getAttribute(cle)));
+  return !quickBookState && !state.selectedRes && surLui;
+}
+const ouLeFocus = (page, nom) => page.evaluate((nom) => {
+  const actif = document.activeElement;
+  return { fenetre: !!quickBookState, fiche: !!state.selectedRes, focus: `${actif.tagName}.${actif.className}`, cles: { ...actif.dataset }, ouvreur: window[nom].isConnected };
+}, nom);
+const CLES_CASE = ['data-bowling-drop-lane', 'data-bowling-drop-start'];
+const CLES_CARTE = ['data-booking-res-id', 'data-booking-lane', 'data-booking-start'];
+
+async function main({ roiOnly = false, capture = false, seulement = null, tailles = null, rapport = true } = {}) {
   captureEnabled = capture;
+  results.length = 0; errors.length = 0; blocked.length = 0;
+  const joue = (nom) => !seulement || seulement.includes(nom);
   fs.mkdirSync(OUT, { recursive: true });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   BASE_URL = 'http://127.0.0.1:' + server.address().port;
@@ -62,6 +103,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
   try {
     for (const width of [320, 390, 768, 1180, 1440]) for (const theme of ['light', 'dark']) {
       const suffix = width + '-' + theme;
+      if (tailles && !tailles.includes(suffix)) continue;
       const context = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 900 }, hasTouch: width <= 1180, serviceWorkers: 'block' });
       await context.route('**/*', route => {
         const u = new URL(route.request().url());
@@ -73,8 +115,8 @@ async function main({ roiOnly = false, capture = false } = {}) {
       await installQaApi(page);
       // La minute est figee. Le planning porte l heure : un rendu apres un changement
       // de minute reconstruit sa grille et detache la case ou la carte qui a ouvert
-      // la fenetre, et le focus retombe sur la page (F1-close, sheet-close : un rouge
-      // par suite, sur la tentative qui chevauchait la minute).
+      // la fenetre (le focus va alors a sa copie). Ce rendu, F1 et F4 le provoquent
+      // expres, au meme moment a chaque passage : ticFenetreOuverte.
       await page.clock.setFixedTime(new Date());
       await page.goto(BASE_URL, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => typeof setView === 'function');
@@ -83,7 +125,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
       await page.evaluate(t => { state.staffTheme = t; document.documentElement.dataset.theme = t; renderStaff(); }, theme);
       await page.waitForTimeout(900);
       if (!roiOnly) {
-      await scenario('F5-' + suffix, async () => {
+      if (joue('F5')) await scenario('F5-' + suffix, async () => {
         const sizes = await page.locator('.lane-header .settings').evaluateAll(list => list.map(el => {
           const r = el.getBoundingClientRect(), head = el.closest('.lane-header').getBoundingClientRect();
           const hit = document.elementFromPoint(r.x + 2, r.y + 2);
@@ -92,7 +134,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(width <= 768 ? sizes.length === 0 : sizes.length >= 8 && sizes.every(r => r.width >= 44 && r.height >= 44 && r.inside && r.hit), 'F5-' + suffix, sizes);
         await shot(page, 'planning-' + suffix);
       });
-      await scenario('F1-' + suffix, async () => {
+      if (joue('F1')) await scenario('F1-' + suffix, async () => {
         // A real focused trigger, with the existing planning click handler.
         const trigger = page.locator('.slot-cell.clickable').first();
         await trigger.scrollIntoViewIfNeeded(); await trigger.focus();
@@ -137,20 +179,24 @@ async function main({ roiOnly = false, capture = false } = {}) {
         const ligneOk = lue.avant !== 'step' && lue.apres === 'step' && (lue.visible ? lue.surLui : lue.dansLaFenetre);
         ok(ticketOk && ligneOk, 'F1-rerender-' + suffix, ticketOk && ligneOk ? 'ticket line retains focus and says its page is open' : { ticket, ligne: lue });
         await shot(page, 'quickbook-' + suffix);
+        // (la grille se redessine fenetre ouverte : ticFenetreOuverte)
+        const tic = await ticFenetreOuverte(page, '__trigger');
+        ok(tic.fige, 'F1-tic-fige-' + suffix, tic.fige ? 'frozen minute: the tick leaves the grid alone' : tic);
+        ok(tic.reconstruite && tic.fenetre, 'F1-tic-reecrit-' + suffix, tic.reconstruite && tic.fenetre ? 'grid rebuilt with the window open' : tic);
         // Echap remonte d un cran a la fois : la page de la ligne revient a l accueil,
         // fenetre ouverte et focus dedans, puis l Echap suivant ferme et rend le focus
-        // a l ouvreur.
+        // a l ouvreur, ou a sa copie : la meme case, piste et heure.
         await page.keyboard.press('Escape');
         const accueil = await finit(page, () => !!quickBookState && !!document.querySelector('.qb-modal.is-q-activites') && document.querySelector('.qb-modal').contains(document.activeElement));
         await page.keyboard.press('Escape');
-        const refermee = await finit(page, () => !quickBookState && document.activeElement === window.__trigger);
-        ok(accueil && refermee, 'F1-close-' + suffix, accueil && refermee ? 'Escape backs out to the welcome page, then closes; opener focus' : { accueil, ...await page.evaluate(() => ({ fenetre: !!quickBookState, focus: `${document.activeElement.tagName}.${document.activeElement.className}`, ouvreur: window.__trigger.isConnected })) });
+        const refermee = await finit(page, revenuALOuvreur, { nom: '__trigger', cles: CLES_CASE });
+        ok(accueil && refermee, 'F1-close-' + suffix, accueil && refermee ? 'Escape backs out to the welcome page, then closes; focus on the same cell' : { accueil, ...await ouLeFocus(page, '__trigger') });
       });
       // Fermee meme apres un echec du scenario : une fenetre restee ouverte garde son
       // piege a focus sur la fiche du scenario suivant (sheet-trap et F4 rougissaient
       // en cascade).
       await page.evaluate(() => closeQuickBook()).catch(() => {});
-      if (width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {
+      if (joue('dialog-edge-cases') && width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {
         // Le jour vient du scenario, jamais de l heure du gate : une fenetre
         // ouverte pour la demi-heure qui vient est « au comptoir », une autre heure
         // est une reservation ordinaire. Les seances (2026-11-03) ont la meme forme a
@@ -188,8 +234,8 @@ async function main({ roiOnly = false, capture = false } = {}) {
         });
         ok(JSON.stringify(focusCases) === '["qa-summary"]', 'dialog-focus-filter', focusCases);
       });
-      await scenario('F4-sheet-' + suffix, async () => {
-        await page.evaluate(() => { document.querySelector('.booking[data-booking-res-id="9002"]').focus(); openPos(9002); });
+      if (joue('F4')) await scenario('F4-sheet-' + suffix, async () => {
+        await page.evaluate(() => { window.__carte = document.querySelector('.booking[data-booking-res-id="9002"]'); window.__carte.focus(); openPos(9002); });
         ok((await contained(page, '#posOverlay .edit-modal', 35)).length === 0, 'sheet-trap-' + suffix, '35 tabs');
         await page.evaluate(() => {
           window.__confirmTrigger = document.querySelector('#posOverlay .tab.active'); window.__confirmTrigger.focus();
@@ -204,12 +250,15 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await page.evaluate(() => { staffConfirm({ title: 'Contrôle positif' }).then(v => window.__answer = v); });
         await page.locator('[data-role="confirm-ok"]').click();
         ok(await finit(page, () => window.__answer === true && document.activeElement === window.__confirmTrigger), 'F4-confirm-restore-' + suffix, 'positive confirmation');
+        // (la grille se redessine fiche ouverte : ticFenetreOuverte)
+        const tic = await ticFenetreOuverte(page, '__carte');
+        ok(tic.fige && tic.reconstruite && tic.fenetre, 'sheet-tic-' + suffix, tic.fige && tic.reconstruite && tic.fenetre ? 'frozen tick leaves the grid alone, then the grid is rebuilt with the sheet open' : tic);
         await page.keyboard.press('Escape');
-        const fermee = await finit(page, () => !state.selectedRes && document.activeElement.matches('.booking'));
-        ok(fermee, 'sheet-close-' + suffix, fermee ? 'sheet Escape and opener restoration' : await page.evaluate(() => ({ fiche: !!state.selectedRes, focus: `${document.activeElement.tagName}.${document.activeElement.className}` })));
+        const fermee = await finit(page, revenuALOuvreur, { nom: '__carte', cles: CLES_CARTE });
+        ok(fermee, 'sheet-close-' + suffix, fermee ? 'sheet Escape and opener restoration: the same card' : await ouLeFocus(page, '__carte'));
         await page.evaluate(() => closePos());
       });
-      await scenario('F2-' + suffix, async () => {
+      if (joue('F2')) await scenario('F2-' + suffix, async () => {
         await page.evaluate(() => { state.staffMenuPage = 'clients'; state.staffClientSegment = 'tous'; renderStaff(); });
         const buttons = page.locator('.crm-th button');
         ok(await buttons.count() === 4, 'F2-native-' + suffix, await buttons.count());
@@ -228,7 +277,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         }
         await shot(page, 'crm-' + suffix);
       });
-      await scenario('F3-' + suffix, async () => {
+      if (joue('F3')) await scenario('F3-' + suffix, async () => {
         await page.evaluate(t => {
           setView('client'); resetBooking(); document.documentElement.dataset.theme = t;
           const f = FORMULES.find(f => f.id === 'f1'), d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
@@ -255,7 +304,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(await page.evaluate(() => state.step === 4 && !document.querySelector('#step3 [aria-invalid="true"]') && !document.getElementById('alertBox').textContent.trim()), 'F3-recovery-' + suffix, 'valid fields reach recap');
       });
       }
-      await scenario('C6-visual-' + suffix, async () => {
+      if (joue('C6')) await scenario('C6-visual-' + suffix, async () => {
         const peindre = () => page.evaluate(() => {
           setView('staff'); closeQuickBook(); closePos();
           // The real painter owns the center+account scope; do not substitute
@@ -284,7 +333,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         ok(await hero.locator('.mkw-src').count() === 6 && (await hero.innerText()).includes('Mesure indisponible') && !(await hero.innerText()).includes('null'), 'C6-render-' + suffix, 'unavailable with six source labels');
         await shot(page, 'roi-unavailable-' + suffix);
       });
-      if (!roiOnly && width === 1440 && theme === 'light') await scenario('quickbook-submit', async () => {
+      if (!roiOnly && joue('quickbook-submit') && width === 1440 && theme === 'light') await scenario('quickbook-submit', async () => {
         await page.evaluate(() => {
           setView('staff'); state.staffMenuPage = 'planning'; renderStaff();
           const d = parseLocalDate(state.currentDate); d.setDate(d.getDate() + 7);
@@ -316,7 +365,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await page.evaluate(async () => { window.__releaseSubmit(); await window.__saveTask; });
         ok(await page.evaluate(() => !quickBookState && window.__PINLANE_QA_RES_POSTS__.length === 1), 'submit-success-single', 'one simulated POST; modal closed');
       });
-      if (!roiOnly && width === 1440 && theme === 'light') await scenario('C2', async () => {
+      if (!roiOnly && joue('C2') && width === 1440 && theme === 'light') await scenario('C2', async () => {
         const attempts = await page.evaluate(async () => {
           setView('staff'); closePos(); closeQuickBook();
           const originalApi = apiRequest, originalRows = getStaffEmailRows;
@@ -368,10 +417,51 @@ async function main({ roiOnly = false, capture = false } = {}) {
   } finally {
     await browser.close(); server.close();
     ok(errors.length === 0, 'browser-errors', errors);
-    fs.writeFileSync(path.join(OUT, roiOnly ? 'roi-results.json' : 'results.json'), JSON.stringify({ results, errors, blocked }, null, 2));
-    console.log(JSON.stringify({ output: OUT, pass: results.filter(r => r.pass).length, fail: results.filter(r => !r.pass).length }));
-    if (results.some(r => !r.pass)) process.exitCode = 1;
+    if (rapport) {
+      fs.writeFileSync(path.join(OUT, roiOnly ? 'roi-results.json' : 'results.json'), JSON.stringify({ results, errors, blocked }, null, 2));
+      console.log(JSON.stringify({ output: OUT, pass: results.filter(r => r.pass).length, fail: results.filter(r => !r.pass).length }));
+      if (results.some(r => !r.pass)) process.exitCode = 1;
+    }
   }
+  return results.slice();
+}
+
+// LES CONTRE-PREUVES (2026-11-07, --contre-preuves). Chaque regle retiree au texte servi
+// fait rougir ses verifications a 1180 et a 1440, ou le planning remplit l ecran ; chaque
+// ancre existe une fois et une seule. Une verification deja rouge sans la mutation ne
+// prouve rien : elle doit passer sans elle et rougir avec.
+const MUTATIONS = [
+  // Le focus ne revient qu a l ouvreur encore dans le document, comme avant.
+  { nom: 'focus-rendu-a-l-ancien-ouvreur', fichier: 'assets/app-main.js',
+    de: '  if (!ouvreur || ouvreur.isConnected) return ouvreur || null;\n',
+    vers: '  if (!ouvreur || ouvreur.isConnected) return ouvreur || null;\n  return null;\n',
+    rougit: ['F1-close-', 'sheet-close-'] },
+  // Le premier rendu mesure la boite avant que la barre pose sa hauteur : le tic suivant
+  // change la hauteur d heure et reecrit la grille.
+  { nom: 'boite-mesuree-avant-la-barre', fichier: 'assets/app-main.js',
+    de: "    if (typeof window.pbPoserBas === 'function') window.pbPoserBas();\n",
+    vers: '',
+    rougit: ['F1-tic-fige-'] },
+];
+async function contrePreuves() {
+  const tailles = ['1180-light', '1440-dark'], seulement = ['F1', 'F4'];
+  let rouges = 0;
+  const dire = (condition, id, detail) => { console.log((condition ? 'PASS ' : 'FAIL ') + id + ' ' + JSON.stringify(detail)); if (!condition) rouges += 1; return condition; };
+  silence = true;
+  let sans;
+  try { sans = await main({ seulement, tailles, rapport: false }); } finally { silence = false; }
+  for (const m of MUTATIONS) {
+    const n = fs.readFileSync(path.join(ROOT, m.fichier), 'utf8').replace(/\r\n/g, '\n').split(m.de).length - 1;
+    if (!dire(n === 1, `[CP] ${m.nom} : ancre unique`, n)) continue;
+    mutation = m; silence = true;
+    let avec;
+    try { avec = await main({ seulement, tailles, rapport: false }); } finally { mutation = null; silence = false; }
+    const visees = avec.filter((r) => m.rougit.some((p) => r.id.startsWith(p)));
+    const mordent = visees.filter((r) => !r.pass && (sans.find((s) => s.id === r.id) || {}).pass);
+    dire(visees.length > 0 && mordent.length === visees.length, `[CP] ${m.nom} : ${m.rougit.join(', ')} rougissent`, { visees: visees.map((r) => r.id), mordent: mordent.map((r) => r.id) });
+  }
+  console.log(rouges ? `preprod-frontend contre-preuves : FAIL ${rouges}` : 'preprod-frontend contre-preuves : ALL OK');
+  if (rouges) process.exitCode = 1;
 }
 module.exports = { main, close: () => server.close() };
-if (require.main === module) main().catch(error => { console.error(error); server.close(); process.exit(1); });
+if (require.main === module) (process.argv.includes('--contre-preuves') ? contrePreuves() : main()).catch(error => { console.error(error); server.close(); process.exit(1); });

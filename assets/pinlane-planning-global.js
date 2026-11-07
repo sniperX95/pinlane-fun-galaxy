@@ -2106,16 +2106,19 @@
     var efface = document.getElementById('gfEfface');
     if (efface) efface.addEventListener('click', gfViderRecherche);
     // LE BAS DE LA BARRE : la boite des plannings se regle dessus (au doigt et a l etroit,
-    // la barre est plus haute). Ecrit seulement quand il change.
+    // la barre est plus haute). Ecrit seulement quand il change. Le planning bowling le
+    // demande aussi avant de mesurer sa boite (renderPlanning) : son premier rendu tombe
+    // avant la premiere mesure de l observateur.
     var barre = document.getElementById('planningBarre');
-    if (barre && typeof ResizeObserver === 'function') {
+    if (barre) {
       var bas = -1;
-      new ResizeObserver(function () {
+      window.pbPoserBas = function () {
         var h = Math.round(barre.getBoundingClientRect().height);
         if (h === bas || !h) return;
         bas = h;
         document.documentElement.style.setProperty('--pb-bas', h + 'px');
-      }).observe(barre);
+      };
+      if (typeof ResizeObserver === 'function') new ResizeObserver(function () { window.pbPoserBas(); }).observe(barre);
     }
     // LA CONSIGNE DU CHAMP SE LIT EN ENTIER : a l etroit, elle se raccourcit.
     var boite = document.getElementById('gfRecherche');

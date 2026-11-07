@@ -24029,6 +24029,12 @@ function renderPlanning() {
     // Quand la fenêtre est trop courte pour ça (zoom 200 %, petit écran), la
     // grille défile verticalement : mieux vaut faire défiler que superposer.
     const SCROLLBAR_SAFETY = 14;
+    // LA BOITE A SA HAUTEUR AVANT QU ON LA MESURE (2026-11-07). Sur grand ecran, elle
+    // a la hauteur de l ecran sous la barre (--pb-bas), que la barre posait apres ce
+    // premier rendu : la grille se dessinait pour 804 px dans une boite qui en gardait
+    // 788, et le rendu suivant, quel qu il soit (le tic, un sondage), changeait la
+    // hauteur d heure et reecrivait toute la grille, fenetre ouverte comprise.
+    if (typeof window.pbPoserBas === 'function') window.pbPoserBas();
     const availableHeight = wrap.clientHeight
       || (window.innerHeight - HEADER_H - 64);
     const usableHeight = availableHeight - HEADER_H - SCROLLBAR_SAFETY;
@@ -26936,9 +26942,11 @@ function closePos() {
   overlay.classList.add('hidden');
   overlay.classList.remove('centered');
   overlay.innerHTML = '';
-  // Le focus revient d'où il venait : la ligne ou la carte qu'on avait ouverte.
-  if (posReturnFocus && document.contains(posReturnFocus)) {
-    try { posReturnFocus.focus({ preventScroll: true }); } catch (e) { /* élément disparu entre-temps */ }
+  // Le focus revient d'où il venait : la ligne ou la carte qu'on avait ouverte, ou sa
+  // copie si le planning s'est redessiné pendant que la fiche était ouverte.
+  const retour = equivalentDeLOuvreur(posReturnFocus);
+  if (retour) {
+    try { retour.focus({ preventScroll: true }); } catch (e) { /* élément disparu entre-temps */ }
   }
   posReturnFocus = null;
 }
@@ -38412,6 +38420,37 @@ function trapDialogFocus(ev, modal) {
   else if (!ev.shiftKey && (active === items[items.length - 1] || !items.includes(active))) { ev.preventDefault(); items[0].focus(); }
 }
 
+// LE FOCUS REVIENT A LA COPIE DE L OUVREUR (2026-11-07). Le planning se redessine
+// fenetre ouverte : chaque minute (la barre de l heure bouge), ou quand un sondage
+// apporte du neuf. La grille est alors reecrite, la case ou la carte qui a ouvert la
+// fenetre n est plus dans le document, et le focus rendu a l ancienne tombait sur la
+// page : au clavier, on repartait du haut. Il revient a l element qui tient la meme
+// place : meme id, meme case (piste et heure), meme carte (dossier, piste et heure,
+// sinon le dossier), meme ligne, sinon meme action. Sans copie visible, rien.
+const CLES_DE_L_OUVREUR = [
+  ['id'],
+  ['data-bowling-drop-lane', 'data-bowling-drop-start'],
+  ['data-booking-res-id', 'data-booking-lane', 'data-booking-start'],
+  ['data-booking-res-id'],
+  ['data-laser-res-id', 'data-laser-unit'],
+  ['data-laser-res-id'],
+  ['data-res-row-id'],
+  ['data-gf-fiche'],
+  ['onclick'],
+];
+function equivalentDeLOuvreur(ouvreur) {
+  if (!ouvreur || ouvreur.isConnected) return ouvreur || null;
+  if (typeof ouvreur.getAttribute !== 'function') return null;
+  for (const cles of CLES_DE_L_OUVREUR) {
+    const valeurs = cles.map((cle) => ouvreur.getAttribute(cle));
+    if (valeurs.some((valeur) => !valeur)) continue;
+    const selecteur = ouvreur.tagName.toLowerCase() + cles.map((cle, i) => `[${cle}="${CSS.escape(valeurs[i])}"]`).join('');
+    const copies = [...document.querySelectorAll(selecteur)].filter((el) => el.getClientRects().length > 0);
+    if (copies.length) return copies.find((el) => el.className === ouvreur.className) || copies[0];
+  }
+  return null;
+}
+
 const staffDialogStack = [];
 // LE FOND DE CETTE FENETRE N EST PAS INERT. containStaffDialog posait `inert` sur la
 // racine de la console : tout le planning (10 000 elements) se recalcule, a
@@ -38456,7 +38495,9 @@ function containStaffDialog(host, modalSelector, initialSelector, onEscape, { fo
     document.removeEventListener('focusin', onFocus, true);
     staffDialogStack.splice(staffDialogStack.indexOf(entry), 1);
     inert.forEach(el => { el.inert = false; });
-    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    // (ou sa copie, si le planning s est redessine pendant que la fenetre etait ouverte)
+    const retour = equivalentDeLOuvreur(returnFocus);
+    if (retour) retour.focus({ preventScroll: true });
   };
 }
 

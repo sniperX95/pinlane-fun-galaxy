@@ -388,7 +388,7 @@
     "test:preprod-range": "node scripts/preprod-range-check.js",
     "test:preprod-csp": "node scripts/preprod-csp-check.js",
     "test:preprod-frontend-contract": "node scripts/preprod-frontend-contract-check.js",
-    "test:preprod-frontend": "node scripts/preprod-frontend-check.js",
+    "test:preprod-frontend": "node scripts/preprod-frontend-check.js && node scripts/preprod-frontend-check.js --contre-preuves",
     "test:preprod-loading": "node scripts/preprod-loading-check.js",
     "test:preprod-direct-mail": "node scripts/preprod-direct-mail-check.js",
     "test:preprod-marketing-job": "node scripts/preprod-marketing-job-check.js",

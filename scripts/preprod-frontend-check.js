@@ -77,6 +77,21 @@ async function ticFenetreOuverte(page, ouvreur) {
     return { fige, reconstruite: !avant.isConnected, fenetre: !!quickBookState || !!state.selectedRes };
   }, ouvreur);
 }
+// Sans fenetre, le focus sur une case ou une carte de la grille. A minute figee, le tic
+// laisse la grille (en F1, c est le premier tic du banc : avant, la hauteur d heure y
+// changeait) ; marquee retouchee, elle se reconstruit au tic, et le focus doit etre
+// passe a la copie (memes cles).
+async function grilleSousLeFocus(page, cles) {
+  return page.evaluate((cles) => {
+    const avant = document.activeElement, wrap = document.getElementById('planningGridWrap');
+    tickStaffMinute();
+    const fige = avant.isConnected;
+    rendusDeSurface.get(wrap).touchee = true;
+    tickStaffMinute();
+    const actif = document.activeElement;
+    return { fige, reconstruite: !avant.isConnected, surLaCopie: actif !== avant && actif.isConnected && actif.tagName === avant.tagName && cles.every((cle) => actif.getAttribute(cle) === avant.getAttribute(cle)), focus: `${actif.tagName}.${actif.className}` };
+  }, cles);
+}
 // Fenetre et fiche fermees, le focus est sur l ouvreur ou sur sa copie (memes cles, dans
 // le document).
 function revenuALOuvreur({ nom, cles }) {
@@ -138,6 +153,11 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
         // A real focused trigger, with the existing planning click handler.
         const trigger = page.locator('.slot-cell.clickable').first();
         await trigger.scrollIntoViewIfNeeded(); await trigger.focus();
+        // (la grille se redessine sous le focus de la case : grilleSousLeFocus)
+        const grille = await grilleSousLeFocus(page, CLES_CASE);
+        ok(grille.fige, 'F1-tic-fige-' + suffix, grille.fige ? 'frozen minute: the first tick leaves the grid alone' : grille);
+        ok(grille.reconstruite && grille.surLaCopie, 'F1-grille-' + suffix, grille.reconstruite && grille.surLaCopie ? 'grid rebuilt under the focused cell: focus on its copy' : grille);
+        await trigger.focus();
         await page.evaluate(() => { window.__trigger = document.activeElement; });
         await page.keyboard.press('Enter');
         // La croix de la fenetre garde son id d une version a l autre (#rvFermer) ;
@@ -181,8 +201,7 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
         await shot(page, 'quickbook-' + suffix);
         // (la grille se redessine fenetre ouverte : ticFenetreOuverte)
         const tic = await ticFenetreOuverte(page, '__trigger');
-        ok(tic.fige, 'F1-tic-fige-' + suffix, tic.fige ? 'frozen minute: the tick leaves the grid alone' : tic);
-        ok(tic.reconstruite && tic.fenetre, 'F1-tic-reecrit-' + suffix, tic.reconstruite && tic.fenetre ? 'grid rebuilt with the window open' : tic);
+        ok(tic.fige && tic.reconstruite && tic.fenetre, 'F1-tic-reecrit-' + suffix, tic.fige && tic.reconstruite && tic.fenetre ? 'frozen tick leaves the grid alone, then the grid is rebuilt with the window open' : tic);
         // Echap remonte d un cran a la fois : la page de la ligne revient a l accueil,
         // fenetre ouverte et focus dedans, puis l Echap suivant ferme et rend le focus
         // a l ouvreur, ou a sa copie : la meme case, piste et heure.
@@ -235,6 +254,10 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
         ok(JSON.stringify(focusCases) === '["qa-summary"]', 'dialog-focus-filter', focusCases);
       });
       if (joue('F4')) await scenario('F4-sheet-' + suffix, async () => {
+        // (la grille se redessine sous le focus de la carte : grilleSousLeFocus)
+        await page.evaluate(() => document.querySelector('.booking[data-booking-res-id="9002"]').focus());
+        const grille = await grilleSousLeFocus(page, CLES_CARTE);
+        ok(grille.fige && grille.reconstruite && grille.surLaCopie, 'sheet-grille-' + suffix, grille.fige && grille.reconstruite && grille.surLaCopie ? 'frozen tick leaves the grid alone, then the grid is rebuilt under the focused card: focus on its copy' : grille);
         await page.evaluate(() => { window.__carte = document.querySelector('.booking[data-booking-res-id="9002"]'); window.__carte.focus(); openPos(9002); });
         ok((await contained(page, '#posOverlay .edit-modal', 35)).length === 0, 'sheet-trap-' + suffix, '35 tabs');
         await page.evaluate(() => {
@@ -436,6 +459,11 @@ const MUTATIONS = [
     de: '  if (!ouvreur || ouvreur.isConnected) return ouvreur || null;\n',
     vers: '  if (!ouvreur || ouvreur.isConnected) return ouvreur || null;\n  return null;\n',
     rougit: ['F1-close-', 'sheet-close-'] },
+  // La grille se reecrit sans rendre le focus a la case ou a la carte qui l avait.
+  { nom: 'focus-perdu-dans-la-grille', fichier: 'assets/app-main.js',
+    de: '  if (focusDansLaGrille && !focusDansLaGrille.isConnected) equivalentDeLOuvreur(focusDansLaGrille)?.focus({ preventScroll: true });\n',
+    vers: '',
+    rougit: ['F1-grille-', 'sheet-grille-'] },
   // Le premier rendu mesure la boite avant que la barre pose sa hauteur : le tic suivant
   // change la hauteur d heure et reecrit la grille.
   { nom: 'boite-mesuree-avant-la-barre', fichier: 'assets/app-main.js',

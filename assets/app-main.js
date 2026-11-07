@@ -24251,6 +24251,12 @@ function renderPlanning() {
   const nowBadge = curPos >= HEADER_H
     ? `<div class="current-badge" style="top:${curPos}px" aria-hidden="true">${formatClockDisplay(curH)}</div>`
     : '';
+  // LE FOCUS RESTE SUR SA CASE QUAND LA GRILLE SE REECRIT (2026-11-07, Ansar : « Oui,
+  // fais-le ici »). Chaque minute la barre de l heure change la grille, reecrite en
+  // entier : la case ou la carte qui avait le focus n est plus dans le document, et le
+  // clavier repartait du haut de la page. Il va a sa copie, comme a la fermeture d une
+  // fenetre (equivalentDeLOuvreur) ; le planning laser fait de meme (lpFocusAvant).
+  const focusDansLaGrille = wrap.contains(document.activeElement) ? document.activeElement : null;
   poserHtmlSurface(wrap, `
     ${planningClosedNotice(config)}
     <div class="planning-grid">
@@ -24263,6 +24269,7 @@ function renderPlanning() {
       <div class="lanes-row">${lanesHtml}</div>
     </div>`);
   poserDefilementRendu(wrap, prevScrollTop, prevScrollLeft);
+  if (focusDansLaGrille && !focusDansLaGrille.isConnected) equivalentDeLOuvreur(focusDansLaGrille)?.focus({ preventScroll: true });
   markPlanningGridFresh(wrap, state.currentDate);
   refreshPlanningMoveHighlights();
 }

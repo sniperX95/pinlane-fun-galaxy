@@ -22,9 +22,10 @@
 //       que c est en cours et de ne pas recharger ; la requete n est pas
 //       coupee, la reservation aboutit, la ligne reprend sa phrase.
 //   [F] VEILLE CALME : aucune relecture de fond pendant les gestes ; un
-//       changement vu par la relecture s applique en UNE lecture ; les
-//       relectures des heures s espacent d au moins 19 s ; une relecture sans
-//       changement ne reserialise pas la reponse.
+//       changement vu par la relecture s applique en UNE lecture ; entre la
+//       fin d une relecture des heures et le depart de la suivante, au moins
+//       19 s (lu processeur rendu, le tic de la veille a l heure) ; une
+//       relecture sans changement ne reserialise pas la reponse.
 //   [G] VITRINE APRES L ENTREE : « Envie d un peu plus ? » s ouvre une fois
 //       les animations du recapitulatif finies, et la page ne devient inerte
 //       qu une image au moins apres que la fenetre est a l ecran.
@@ -255,7 +256,7 @@ async function nouvellePage(browser, { avantChargement } = {}) {
   if (avantChargement) await avantChargement(page);
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
-  return { ctx, page, journal };
+  return { ctx, page, journal, cdp };
 }
 const estPlan = (u) => u.pathname === '/api/public-availability' && u.searchParams.get('type') !== 'durees';
 const estMeta = (u) => u.pathname === '/api/public-booking-meta';
@@ -495,7 +496,7 @@ async function scenarioE(browser) {
 
 async function scenarioF(browser) {
   console.log('\n[F] LA VEILLE SE TAIT PENDANT LES GESTES ET NE REFAIT RIEN POUR RIEN');
-  const { ctx, page, journal } = await nouvellePage(browser, {
+  const { ctx, page, journal, cdp } = await nouvellePage(browser, {
     // Les serialisations de plus de 4000 caracteres : la reponse des heures
     // en fait 16 000, la relecture ne doit plus la reserialiser.
     avantChargement: (p) => p.addInitScript(() => {
@@ -536,6 +537,19 @@ async function scenarioF(browser) {
     const lectures = journal.req.filter((r) => r.t >= t2 && r.t <= t3 && lectureHeures(r));
     ok(applique && lectures.length === 1, '[F2] le changement vu par la relecture s applique en UNE lecture, sans recalcul', JSON.stringify({ applique, lectures: lectures.length }));
     // 3. Plus rien ne change : la relecture suivante.
+    // LA CADENCE SE LIT PROCESSEUR RENDU, DEPUIS LA FIN DE LA RELECTURE
+    // (2026-11-07). Sous 6x, une page au repos ne se reveille plus a la
+    // seconde : le tic de la veille (toutes les 1000 ms) est arrive toutes les
+    // 1 a 6 s (sonde, scenario F seul), et l ecart mesure disait ce retard
+    // autant que la cadence. Mutee a 15 s, elle se lisait de 15,5 a 25,8 s :
+    // [F3] ne rougissait qu une fois sur deux, sur main comme ailleurs. Les
+    // gestes et le changement se sont joues sous 6x ([F1], [F2]) ; la cadence
+    // ne depend pas du processeur, elle se lit tic a l heure (1x : un tic par
+    // seconde, a 10 ms pres). Et elle se compte depuis la FIN de la relecture
+    // qui a change le plan, d ou la page repart (poserPlan) : le temps du
+    // serveur ne s y ajoute plus. Avec le code (20 s), l ecart ne peut pas
+    // tomber sous 20 s.
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     const gros0 = await page.evaluate(() => window.__grosJSON);
     let suivante = null;
     for (let k = 0; k < 280 && !suivante; k += 1) {
@@ -544,8 +558,9 @@ async function scenarioF(browser) {
     }
     await dormir(1500);
     const gros1 = await page.evaluate(() => window.__grosJSON);
-    const ecart = suivante && lectures.length ? Math.round((suivante.t - lectures[0].t) / 100) / 10 : 0;
-    ok(Boolean(suivante) && ecart >= 19, '[F3] les relectures des heures s espacent d au moins 19 s', `${ecart} s`);
+    const finie = lectures.length ? journal.fin.filter((r) => r.t >= lectures[0].t && r.u === lectures[0].u)[0] : null;
+    const ecart = suivante && finie ? Math.round((suivante.t - finie.t) / 100) / 10 : 0;
+    ok(Boolean(suivante) && ecart >= 19, '[F3] entre la fin d une relecture des heures et le depart de la suivante, au moins 19 s', `${ecart} s`);
     ok(Boolean(suivante) && gros1 === gros0, '[F4] une relecture sans changement ne reserialise pas la reponse', `${gros1 - gros0} serialisation(s) de plus de 4000 caracteres`);
     ok(journal.erreurs.length === 0, '[F] aucune erreur de page', journal.erreurs.join(' | '));
   } finally { await ctx.close(); }

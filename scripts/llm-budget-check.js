@@ -83,4 +83,34 @@ check('budget par défaut = 5 $ quand non configuré', () => {
   delete process.env.LLM_MONTHLY_BUDGET_USD;
 });
 
+// La caisse des mails (2026-11-07) : a part de la commune, pour qu un mois de
+// marketing gourmand ne fasse pas retomber chaque mail de client sur une reponse type.
+check('caisse des mails a part : 5 $ par defaut, LLM_MAILS_BUDGET_USD, ligne « AAAA-MM:mails »', () => {
+  delete process.env.LLM_MAILS_BUDGET_USD;
+  assert.strictEqual(budget.monthlyBudgetUsd('mails'), 5);
+  process.env.LLM_MAILS_BUDGET_USD = '3';
+  assert.strictEqual(budget.monthlyBudgetUsd('mails'), 3);
+  delete process.env.LLM_MAILS_BUDGET_USD;
+  assert.match(budget.budgetStatus('mails').month, /^\d{4}-\d{2}:mails$/);
+  assert.match(budget.budgetStatus().month, /^\d{4}-\d{2}$/);
+});
+
+check('la caisse commune videe par le marketing ne coupe pas les mails des clients', () => {
+  budget.__resetForTests();
+  process.env.LLM_MONTHLY_BUDGET_USD = '0.01';
+  budget.recordSpend(0.05);
+  assert.strictEqual(budget.isBudgetExhausted(), true, 'la commune est vide');
+  assert.strictEqual(budget.isBudgetExhausted('mails'), false, 'les mails ont leur propre caisse');
+  budget.recordSpend(0.004, 'mails');
+  assert.ok(Math.abs(budget.getMonthlySpend('mails') - 0.004) < 1e-9, 'la depense des mails reste sur sa ligne');
+  assert.ok(budget.getMonthlySpend() < 0.0541, 'la commune ne recoit pas la depense des mails');
+  delete process.env.LLM_MONTHLY_BUDGET_USD;
+  budget.__resetForTests();
+});
+
+check('Haiku 5.5 au tarif reel (1000 in + 200 out = 0.0002 $), pas au repli le plus cher', () => {
+  const cost = budget.computeCallCost({ input_tokens: 1000, output_tokens: 200 }, 'claude-haiku-5-5');
+  assert.ok(Math.abs(cost - 0.0002) < 1e-12, `attendu 0.0002, obtenu ${cost}`);
+});
+
 console.log(`\nllm-budget-check: ${passed} tests OK ✓`);

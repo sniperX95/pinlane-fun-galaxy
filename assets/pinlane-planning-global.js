@@ -1631,6 +1631,17 @@
     if (f === 'all' || dejaVus.indexOf(f) >= 0) return '';
     return '<button type="button" class="pb-filtre" aria-label="Enlever le filtre" onclick="setStaffStatusFilter(\'all\')">Filtre : ' + gpEsc(STAFF_LISTE_MOTS[f] || 'Avec note') + ' ×</button>';
   }
+  // UNE RECHERCHE SE DIT LA OU L OEIL VOIT LES CASES TRANSPARENTES (2026-11-07,
+  // Ansar : « pourquoi y en a ils sont transparents »). Bowling et laser grisent
+  // ce qui ne correspond pas : la ligne dit combien restent nets, et tout revient
+  // d un toucher.
+  function pbRechercheHtml() {
+    var r = typeof rechercheDuPlanning === 'function' ? rechercheDuPlanning() : null;
+    if (!r) return '';
+    var nets = r.nets ? gfPluriel(r.nets, ['groupe', 'groupes']) : 'aucun groupe';
+    return '<span class="pb-recherche" role="status">Recherche « ' + gpEsc(r.terme) + ' » : ' + gpEsc(nets + ' sur ' + r.total) + '</span>'
+      + '<button type="button" class="pb-filtre" data-pb-tout onclick="toutAfficherPlanning()">Tout afficher</button>';
+  }
   function gfBandeauHtml(m) {
     var h = pbDirectHtml(m);
     var comptes = gfComptes(m);
@@ -1689,7 +1700,7 @@
     chiffres.forEach(function (c) {
       h += '<div class="pb-k" data-kpi="' + gpEsc(c.key) + '"' + (c.title ? ' title="' + gpEsc(c.title) + '"' : '') + '><span class="gf-c__l">' + gpEsc(c.label) + '</span><b class="gf-c__v" id="' + gpEsc(c.id) + '">' + gpEsc(c.value) + '</b>' + (c.hint ? '<span class="gf-e__s">' + gpEsc(c.hint) + '</span>' : '') + '</div>';
     });
-    pbPoser(h + '<span class="pb-sep" aria-hidden="true"></span>' + pbFiltreHtml([]) + pbLegende(getStaffResourceView()), m);
+    pbPoser(h + '<span class="pb-sep" aria-hidden="true"></span>' + pbRechercheHtml() + pbFiltreHtml([]) + pbLegende(getStaffResourceView()), m);
   };
   // SOUS L HEURE, CE QUE VAUT L ECRAN (2026-11-02) : « en direct », ou ce qui ne va pas.
   // Un ecran qui ne recoit plus rien ressemble a un ecran juste : c est ici qu il le dit,

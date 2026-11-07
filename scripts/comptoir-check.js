@@ -77,6 +77,9 @@ MUTATIONS.push(
   { nom: 'barre-du-planning-muette', lettre: 'F', cible: '[F] la barre du bowling dit ce qui est retenu', fichier: APP, de: 'if (retenuIci) chiffres.push(', vers: 'if (false) chiffres.push(' },
   { nom: 'carte-laser-d-avant', lettre: 'F', cible: '[F] la carte laser se lit entiere', fichier: APP, de: '<span class="lp-g__nom"><b>Internet</b></span> <span class="lp-g__sous"><span class="lp-card-info">${lpArene(w)} arme${lpArene(w) > 1 ? \'s\' : \'\'} · ${libre ? `jusqu’à ${escapeHtml(libre)}` : \'en cours\'}</span></span></span>', vers: '<b>Internet</b> <span>${lpArene(w)} · ${libre ? `jusqu’à ${escapeHtml(libre)}` : \'en cours\'}</span></span>' },
   { nom: 'ligne-avant-ses-groupes', lettre: 'F', cible: '[F] la ligne se range dans sa demi-heure, apres ses groupes', fichier: GLOBAL, de: 'lignes.concat(retenues).sort(', vers: 'retenues.concat(lignes).sort(' },
+  // (2026-11-07 : la hachure tient dans la pastille de l heure, la case reste nue)
+  { nom: 'retenue-sans-hachure', lettre: 'F', cible: '[F] une retenue n a aucun geste et se lit hachuree, sur sa pastille', fichier: 'assets/pinlane-planning-global.css', de: '.gf-x.is-retenue .gf-x__t { background: repeating-linear-gradient(', vers: '.gf-x.is-retenue .gf-x__t { background-color: var(--surface); --hachure: repeating-linear-gradient(' },
+  { nom: 'retenue-case-hachuree', lettre: 'F', cible: '[F] une retenue n a aucun geste et se lit hachuree, sur sa pastille', fichier: 'assets/pinlane-planning-global.css', de: '.gf-x.is-retenue { color: var(--muted); }', vers: '.gf-x.is-retenue { color: var(--muted); background: repeating-linear-gradient(135deg, var(--subtle), var(--subtle) 6px, var(--surface) 6px, var(--surface) 12px); }' },
 );
 const CONTROLE_FORMULES = 'api/ops.js';
 MUTATIONS.push(
@@ -639,7 +642,9 @@ async function scenarioF(browser) {
     nom: tr.getAttribute('aria-label') || '',
     id: tr.getAttribute('data-gf-id'),
     gestes: tr.querySelectorAll('td:not(.gf-bloc) button, td:not(.gf-bloc) a').length,
-    hachure: getComputedStyle(tr.querySelector('.gf-x.is-retenue')).backgroundImage,
+    // (la hachure tient dans la pastille de l heure, la case reste nue, 2026-11-07)
+    hachure: getComputedStyle(tr.querySelector('.gf-x.is-retenue .gf-x__t')).backgroundImage,
+    caseNue: getComputedStyle(tr.querySelector('.gf-x.is-retenue')).backgroundImage === 'none',
   })));
   const barre = () => page.evaluate(() => ((document.querySelector('[data-kpi="enligne"]') || {}).textContent || '').replace(/\s+/g, ' ').trim());
   try {
@@ -647,7 +652,7 @@ async function scenarioF(browser) {
     const l = await lignes();
     ok(l.length === 2 && /16:00/.test(l[0].texte) && /Pistes 6-7/.test(l[0].texte) && /gardé jusqu’à 15:18/.test(l[0].texte), '[F] le Complet montre les pistes retenues', l);
     ok(l.length === 2 && /16:30/.test(l[1].texte) && /12 armes/.test(l[1].texte) && /gardé jusqu’à 15:14/.test(l[1].texte), '[F] le Complet montre les armes retenues', l);
-    ok(l.every((x) => x.gestes === 0 && !x.id && /repeating-linear-gradient/.test(x.hachure)), '[F] une retenue n a aucun geste et se lit hachuree', l);
+    ok(l.every((x) => x.gestes === 0 && !x.id && /repeating-linear-gradient/.test(x.hachure) && x.caseNue), '[F] une retenue n a aucun geste et se lit hachuree, sur sa pastille', l);
     ok(l.every((x) => /Bowling à 16:00|Laser à 16:30/.test(x.nom) && /gardée jusqu’à \d{2}:\d{2}/.test(x.nom)), '[F] la ligne se dit a qui ne la voit pas', l.map((x) => x.nom));
     ok(/^Internet\s*2 pistes, 12 armes$/.test(await barre()), '[F] la barre du Complet dit ce qui est retenu', await barre());
     // (une case d une seule ligne ne dit qu un mot : le reste est dans son nom)

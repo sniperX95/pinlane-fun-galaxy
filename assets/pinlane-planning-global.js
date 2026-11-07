@@ -679,26 +679,31 @@
       }
     }
     var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + gfHeureHtml(t, etat === 'fini' && gfPresent(g)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + (d2 ? '<span class="gf-x__d">' + gpEsc(d2) + '</span>' : '') + '</span>';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + (d2 ? '<span class="gf-x__d">' + gpEsc(d2) + '</span>' : '') + '</span>';
   }
   // L HEURE SE REPERE DE LOIN (2026-11-03, Movsar : « les heures et tout on voit pas bien
   // [...] c trop monochrome ») : l heure fixe, une pastille de la teinte du statut de la
   // ligne. « vers » reste du texte gris : sans heure fixe, rien ne se joue a la minute.
   // (la coche « fait » se pose devant l heure, dans le meme mot : dans la marge, elle
   // mordait le premier chiffre, « ‹10:00 »)
-  function gfHeureHtml(t, fait) {
+  // SEULE LA PASTILLE DIT OU EN EST L ACTIVITE, JAMAIS LA CASE (2026-11-07, Ansar : « des
+  // fois c'est toute la case qui est surlignée et des fois juste l'heure, moi je veux que
+  // ce soit que les heures »). En retard, en cours ou a lancer, « vers 19:00 » et
+  // « 10 enf. » prennent donc aussi une pastille : sans elle, leur etat ne se lirait plus.
+  // (« vers » reste devant, hors de la pastille : elle tient l heure seule)
+  function gfHeureHtml(t, fait, etat) {
     var fixe = /^\d{1,2}:\d{2}$/.test(t);
-    if (!fixe && !fait) return gpEsc(t);
-    return '<b class="gf-x__t' + (fixe ? '' : ' is-nu') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+    var signe = t !== '' && (etat === 'retard' || etat === 'encours' || etat === 'lancer');
+    if (signe && /^vers \d{1,2}:\d{2}$/.test(t)) return '<span class="gf-x__v">vers <b class="gf-x__t">' + gpEsc(t.slice(5)) + '</b></span>';
+    if (!fixe && !signe && !fait) return gpEsc(t);
+    return '<b class="gf-x__t' + (fixe || signe ? '' : ' is-nu') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
   }
+  // (deux parties de laser partagent la case, trois aussi : chacune son etat sur sa
+  // pastille)
   function gfCase(g, col, m) {
     var liste = g.cases.get(col.cle) || [];
     if (!liste.length) return '<td class="gf-a is-vide"></td>';
-    // (deux parties de laser partagent la case, trois aussi ; quand l une se joue ou attend
-    // le groupe en retard, c est la case entiere qui en prend le fond, 2026-11-06)
-    var etats = liste.length > 1 ? liste.map(function (e) { return gfEtat(g, e, m); }) : [];
-    var fond = etats.indexOf('retard') >= 0 ? ' is-retard' : etats.indexOf('encours') >= 0 ? ' is-encours' : '';
-    return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + fond + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
+    return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
   }
 
   // LE GROUPE : LA LIGNE QUI MONTRE TOUT (2026-11-03). Le nom et ce qui se fait sur lui

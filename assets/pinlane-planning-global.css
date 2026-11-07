@@ -301,8 +301,10 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 .gf-nom__cadenas { flex: none; width: 13px; height: 13px; color: var(--muted); }
 .gf-retenue .gf-nom__t { font-weight: 500; color: var(--muted); }
 .gf-retenue .gf-n b { font-weight: 500; color: var(--muted); }
-.gf-x.is-retenue { background: repeating-linear-gradient(135deg, var(--subtle), var(--subtle) 6px, var(--surface) 6px, var(--surface) 12px); color: var(--muted); }
-.gf-x.is-retenue .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: var(--text); font-weight: 600; }
+.gf-x.is-retenue { color: var(--muted); }
+/* (la hachure tient dans la pastille de l heure, comme chaque etat, 2026-11-07 : des
+   rayures plus serrees, sinon elle ne se voit plus a cette taille) */
+.gf-x.is-retenue .gf-x__t { background: repeating-linear-gradient(135deg, var(--line), var(--line) 2px, var(--surface) 2px, var(--surface) 5px); box-shadow: inset 0 0 0 1px var(--line); color: var(--text); font-weight: 600; }
 .gf-x.is-retenue .gf-x__d { color: var(--muted); }
 .gf-retenue .gf-gb--etat:not(.gf-compte) { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .gf-r:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -408,33 +410,37 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-f__i { display: block; font-size: 12px; line-height: 15px; color: var(--muted); }
 
 /* LES ACTIVITES : une colonne chacune, separees comme sur le papier ; les heures sont
-   a l aplomb d une ligne a l autre. La case entiere dit ou en est le groupe : A VENIR,
-   l heure en texte ; LA DEMI-HEURE QUI VIENT, en gras ; A LANCER, cerclee de la teinte du
-   statut ; EN COURS, en gras sur un fond doux (l audit du 2026-11-03 : les plus gros
+   a l aplomb d une ligne a l autre. SEULE LA PASTILLE DE L HEURE DIT OU EN EST LE GROUPE,
+   JAMAIS LA CASE (2026-11-07, Ansar : « des fois c'est toute la case qui est surlignée et
+   des fois juste l'heure, moi je veux que ce soit que les heures, c'est plus joli ») :
+   A VENIR, la pastille de la teinte du statut ; LA DEMI-HEURE QUI VIENT, en gras ;
+   A LANCER, la pastille cerclee de cette teinte ; EN COURS, en gras sur un fond doux, un
+   cran plus soutenu que celui d une heure a venir (l audit du 2026-11-03 : les plus gros
    aplats etaient des activites sans geste a faire) ; FINIE, grise, cochee si le groupe a
-   ete pointe ; groupe pas encore pointe a l heure, en rouge sur fond rouge pale. */
+   ete pointe ; groupe pas encore pointe a l heure, en rouge sur rouge pale. Le reste de la
+   case garde son encre. */
 .gf-t td.gf-a { height: 1px; padding: 0; border-left: 1px solid var(--line); }
 .gf-x { position: relative; box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: calc(var(--gf-l) - 1px); padding: 7px 3px 5px 8px; color: var(--text); font-size: 14px; font-weight: 500; line-height: 18px; white-space: nowrap; }
 .gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }
 .gf-a.is-plusieurs .gf-x:first-child { padding-top: 7px; }
-.gf-x:is(.is-bientot, .is-lancer, .is-encours, .is-retard, .is-aplacer) { font-weight: 700; }
+.gf-x:is(.is-bientot, .is-aplacer) { font-weight: 700; }
 .gf-x__d { font-size: 13px; font-weight: 500; line-height: 16px; color: var(--text); white-space: normal; }
 /* L HEURE, UNE PASTILLE DE LA TEINTE DU STATUT DE LA LIGNE (bleu confirme, ambre arrive,
-   vert paye) : on balaie les heures du regard. Une case deja peinte (en cours, en retard,
-   a lancer) ou finie garde son texte nu, « vers » aussi. */
+   vert paye) : on balaie les heures du regard. Finie, elle garde son texte nu, « vers »
+   aussi tant que rien ne presse. */
 .gf-x__t { align-self: flex-start; margin-left: -5px; padding: 0 5px; border-radius: 6px; white-space: nowrap; background: color-mix(in srgb, var(--bk-barre) 15%, var(--surface)); color: var(--bk-encre-2); font-weight: 650; }
-.gf-x__t.is-nu, .gf-x:is(.is-encours, .is-retard, .is-lancer, .is-fini, .is-panne) .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: inherit; }
+.gf-x__t.is-nu, .gf-x:is(.is-fini, .is-panne) .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: inherit; }
 .gf-r.is-parti .gf-x__t { background: transparent; color: var(--muted); }
 .gf-x__n { white-space: nowrap; }
-.gf-x.is-lancer { box-shadow: inset 0 0 0 1px var(--bk-cadre); color: var(--bk-encre); }
-.gf-x.is-lancer .gf-x__d { color: var(--bk-encre); }
-.gf-x.is-encours { background: var(--bk-haut); color: var(--bk-encre); }
-.gf-x.is-encours .gf-x__d { color: var(--bk-encre); }
+.gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }
+.gf-x.is-lancer .gf-x__t { background: transparent; box-shadow: inset 0 0 0 1px var(--bk-barre); color: var(--bk-encre); }
+.gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }
 .gf-x.is-credit { font-size: 13px; }
 .gf-x.is-credit .gf-x__d { font-size: 12px; white-space: nowrap; }
 .gf-x.is-libre { padding-left: 8px; color: var(--muted); font-size: 13px; white-space: normal; }
-.gf-x.is-retard { background: var(--gf-rouge-pale); color: var(--gf-rouge); }
-.gf-x.is-retard .gf-x__d { color: inherit; }
+/* (« vers » devant la pastille de l heure, sur sa ligne quand la colonne a la place) */
+.gf-x__v .gf-x__t { display: inline-block; margin-left: 0; }
+.gf-x.is-retard .gf-x__t { background: var(--gf-rouge-pale); color: var(--gf-rouge); }
 .gf-x.is-aplacer { color: var(--warning); }
 .gf-x.is-fini { color: var(--muted); }
 .gf-x.is-panne { color: var(--gf-rouge); cursor: pointer; }
@@ -535,19 +541,6 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-now__l { position: absolute; z-index: 3; left: 0; right: 0; top: 0; height: 2px; margin-top: -1px; background: var(--text); pointer-events: none; }
 .gf-now__l .gf-now__h { left: 8px; bottom: 3px; }
 .gf-now__l.is-dessous .gf-now__h { top: 3px; bottom: auto; }
-/* DEUX PARTIES DANS LA MEME CASE (2026-11-06, Ansar : « une case fluo et l autre juste le
-   fond ») : la partie qui se joue colorait la bande de sa seule ligne, la suivante
-   n avait que sa pastille. Comme une case a une seule partie, c est la CASE ENTIERE qui
-   prend le fond doux de la partie en cours (rouge pale si le groupe n est pas la), en
-   gras ; la partie qui vient garde sa pastille, blanche sur ce fond. « À lancer » entoure
-   sa seule pastille. (au telephone, chaque partie est deja une pastille) */
-@container feuille (min-width: 640px) {
-  .gf-t .gf-r > td.gf-a.is-plusieurs.is-encours { background: var(--bk-haut); }
-  .gf-t .gf-r > td.gf-a.is-plusieurs.is-retard { background: var(--gf-rouge-pale); }
-  .gf-a.is-plusieurs:is(.is-encours, .is-retard) .gf-x:not(.is-encours, .is-retard, .is-fini) .gf-x__t:not(.is-nu) { background: var(--surface); }
-  .gf-a.is-plusieurs .gf-x.is-lancer { box-shadow: none; }
-  .gf-a.is-plusieurs .gf-x.is-lancer .gf-x__t { margin-left: -5px; padding: 0 5px; box-shadow: inset 0 0 0 1px var(--bk-cadre); }
-}
 /* Le bouton qui ramene a l heure qu il est quand on s en est eloigne. */
 /* (au milieu : a droite, il couvrait les « Arrivé » des dernieres lignes) */
 .gf-retour { position: absolute; left: 50%; bottom: 16px; z-index: 6; translate: -50% 0; height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--text); color: var(--surface); font: inherit; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-overlay); cursor: pointer; }

@@ -11,8 +11,9 @@
 //   [A] LES NOTES : « Note du client » et « Note de l equipe » en etiquette pleine, deux
 //       teintes differentes, lisibles (4,5:1) en clair et en sombre, le texte a leur suite ;
 //   [B] « MODIFIE » NE S ECRIT PLUS sur la ligne, alors que deux dossiers sont modifies ;
-//   [C] DEUX PARTIES DANS LA MEME CASE : deux pastilles de la meme forme, la partie qui
-//       se joue pleine, celle qui vient claire, plus de bande sur la moitie de la case ;
+//   [C] DEUX PARTIES DANS LA MEME CASE : chacune sa pastille, celle qui se joue plus
+//       soutenue que celle qui vient, et la case reste nue (2026-11-07, Ansar : « moi je
+//       veux que ce soit que les heures ») ;
 //   [D] LA BARRE DE L HEURE NE PREND AUCUNE PLACE : rien entre les deux lignes qu elle
 //       separe, son trait et sa pastille se voient ;
 //   [E] DANS UNE DEMI-HEURE LIBRE, LA BARRE TOMBE A SA MINUTE (20:38 au quart de 20:30),
@@ -134,21 +135,24 @@ async function modifie(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// [C] DEUX PARTIES DANS LA MEME CASE : LA CASE ENTIERE PREND LE FOND
+// [C] DEUX PARTIES DANS LA MEME CASE : CHACUNE SA PASTILLE, LA CASE NUE
 // ---------------------------------------------------------------------------
 async function deuxParties(browser) {
   await avec(browser, { lettre: 'C', heure: '19:40' }, async (page) => {
     const c = await page.evaluate(`(() => {
       const tr = ${ligneDe('Équipe de basket')};
       const cas = tr && tr.querySelector('td.gf-a.is-plusieurs');
-      if (!cas) return null;
+      const vide = tr && tr.querySelector('td.gf-a.is-vide');
+      if (!cas || !vide) return null;
       // (la souris hors du tableau : le survol ne repeint pas la case)
       return {
         fondCase: getComputedStyle(cas).backgroundColor,
+        fondVide: getComputedStyle(vide).backgroundColor,
+        imageCase: getComputedStyle(cas).backgroundImage,
         parties: Array.from(cas.querySelectorAll('.gf-x')).map((x) => {
           const t = x.querySelector('.gf-x__t');
           const ct = getComputedStyle(t), cx = getComputedStyle(x);
-          return { classe: x.className, heure: t.textContent, fond: cx.backgroundColor, pastille: ct.backgroundColor, encre: cx.color, gras: Number(cx.fontWeight) };
+          return { classe: x.className, heure: t.textContent, fond: cx.backgroundColor, image: cx.backgroundImage, cadre: cx.boxShadow, pastille: ct.backgroundColor, encre: ct.color, gras: Number(ct.fontWeight) };
         }),
       };
     })()`);
@@ -156,9 +160,9 @@ async function deuxParties(browser) {
     ok(Array.isArray(p) && p.length === 2 && /is-encours/.test(p[0].classe) && /is-(avenir|bientot)/.test(p[1].classe), '[C] le montage : la partie de 19:30 se joue, celle de 20:00 vient, dans la meme case', c);
     if (!Array.isArray(p) || p.length !== 2) return;
     const [jouee, vient] = p;
-    ok(!transparent(c.fondCase) && c.fondCase === jouee.fond, '[C] la case entiere prend le fond de la partie qui se joue : plus de bande sur la moitie', c);
-    ok(jouee.gras >= 600 && contraste(jouee.encre, c.fondCase) >= 4.5, '[C] la partie qui se joue : en gras, lisible sur ce fond', c);
-    ok(!transparent(vient.pastille) && ecart(vient.pastille, c.fondCase) >= 25, '[C] la partie qui vient garde sa pastille, nette sur ce fond', { ...c, ecart: Math.round(ecart(vient.pastille, c.fondCase)) });
+    ok(c.fondCase === c.fondVide && c.imageCase === 'none' && p.every((x) => transparent(x.fond) && x.image === 'none' && x.cadre === 'none'), '[C] la case reste nue : ni elle ni ses parties ne se peignent, seules les heures', c);
+    ok(jouee.gras >= 700 && contraste(jouee.encre, jouee.pastille) >= 4.5, '[C] la partie qui se joue : sa pastille en gras, lisible', c);
+    ok(!transparent(vient.pastille) && !transparent(jouee.pastille) && ecart(jouee.pastille, vient.pastille) >= 25 && contraste(jouee.pastille, 'rgb(255, 255, 255)') > contraste(vient.pastille, 'rgb(255, 255, 255)'), '[C] les deux pastilles se distinguent : celle qui se joue, plus soutenue que celle qui vient', { ...c, ecart: Math.round(ecart(jouee.pastille, vient.pastille)) });
   });
 }
 
@@ -234,9 +238,9 @@ const MUTATIONS = [
   { nom: 'etiquette-sans-fond', lettre: 'A', scenarios: ['notes'], editions: [{ fichier: PGC, de: '.gf-i--client .gf-i__mot { background: var(--gf-note-client); color: var(--gf-note-client-encre); }', vers: '' }] },
   { nom: 'libelle-client-court', lettre: 'A', scenarios: ['notes'], editions: [{ fichier: PG, de: "gfRubrique('client', 'Note du client',", vers: "gfRubrique('client', 'Client'," }] },
   { nom: 'modifie-revient', lettre: 'B', scenarios: ['modifie'], editions: [{ fichier: PG, de: "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n", vers: "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n    var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';\n    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\\s*/, '')), modif));\n" }] },
-  { nom: 'demi-bande', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '  .gf-t .gf-r > td.gf-a.is-plusieurs.is-encours { background: var(--bk-haut); }', vers: '' }] },
-  { nom: 'case-sans-etat', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PG, de: "    var fond = etats.indexOf('retard') >= 0 ? ' is-retard' : etats.indexOf('encours') >= 0 ? ' is-encours' : '';", vers: "    var fond = '';" }] },
-  { nom: 'pastille-fondue', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: ' .gf-x__t:not(.is-nu) { background: var(--surface); }', vers: ' .gf-x__t:not(.is-nu) { }' }] },
+  { nom: 'case-peinte', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }', vers: '.gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }\n.gf-t .gf-r > td.gf-a.is-plusieurs { background: var(--bk-haut); }' }] },
+  { nom: 'partie-en-bande', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-credit { font-size: 13px; }', vers: '.gf-x.is-encours { background: var(--bk-haut); }\n.gf-x.is-credit { font-size: 13px; }' }] },
+  { nom: 'en-cours-comme-a-venir', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }', vers: '.gf-x.is-encours .gf-x__t { color: var(--bk-encre); }' }] },
   { nom: 'barre-epaisse', lettre: 'D', scenarios: ['barre'], editions: [{ fichier: PGC, de: '.gf-t tr.gf-now > td { position: relative; height: 0;', vers: '.gf-t tr.gf-now > td { position: relative; height: 16px;' }] },
   { nom: 'barre-au-bord', lettre: 'E', scenarios: ['minute'], editions: [{ fichier: PG, de: '        dansLibre = !q && m.maintenant != null', vers: '        dansLibre = false && m.maintenant != null' }] },
   { nom: 'barre-figee', lettre: 'E', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (trait.style.top !== haut) trait.style.top = haut;\n', vers: '' }] },

@@ -261,6 +261,32 @@ function fausseBase({ lecons = [] } = {}) {
   const a11 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Samedi', body: 'Vous avez de la place samedi vers 15h pour 8 ?', centerId: 'libramont', deps: baseG11, instant: INSTANT, llm: llm11 });
   ok(llm11.appels.filter((x) => x.schemaName === 'email_analysis').length === 1 && !a11.placesNonVerifiees && !a11.alerte, 'une heure que le moteur a donnee : ni seconde chance, ni alerte', JSON.stringify({ a: a11.alerte }));
 
+  // LA LANGUE DU CLIENT (banc, M37 : mail en anglais, reponse en francais).
+  ok(v.langueDe('Hello, we came last Saturday for my son birthday and I would like my money back.') === 'anglais'
+    && v.langueDe('Hallo, wij willen graag met 8 personen komen op zaterdag. Hoeveel kost het? Groeten') === 'néerlandais'
+    && v.langueDe('Bonjour, nous serions 8 samedi, est-ce possible pour vous ? Merci') === 'français', 'langue reconnue : anglais, neerlandais, francais');
+  ok(v.langueDe('dispo samedi 15h pr 4 ?') === '' && v.langueManquee('dispo samedi 15h pr 4 ?', 'Hello, thank you, we are happy to help you with your booking.') === '', 'un texte trop court ne tranche rien, rien n est reproche');
+  const mailAnglais = 'Hello, we came last Saturday for my son birthday. The drinks arrived 40 minutes late and I would like my money back.';
+  const enFrancais = reponse('Bonjour, merci pour votre message, nous sommes désolés pour votre visite et votre demande est transmise au responsable.');
+  const enAnglais = reponse('Hello, thank you for your message, we are sorry about your visit and your request is passed on to the manager.');
+  const llm12 = doubleLlm({ lecture: { ...lectureType, veutDesDisponibilites: false, dates: [], activites: [] }, ecritures: [enFrancais, enAnglais] });
+  const a12 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Complaint', body: mailAnglais, centerId: 'libramont', deps: fausseBase(), instant: INSTANT, llm: llm12 });
+  const ecritures12 = llm12.appels.filter((x) => x.schemaName === 'email_analysis');
+  ok(ecritures12.length === 2 && /ENTIEREMENT en anglais/.test(ecritures12[1].user) && /^Hello/.test(a12.reply.body) && !/écrit en anglais/.test(a12.alerte || ''),
+    'reponse dans une autre langue : une seconde chance, dans la langue du client', JSON.stringify({ n: ecritures12.length, a: a12.alerte }));
+  const llm13 = doubleLlm({ lecture: { ...lectureType, veutDesDisponibilites: false, dates: [], activites: [] }, ecritures: [enFrancais] });
+  const a13 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Complaint', body: mailAnglais, centerId: 'libramont', deps: fausseBase(), instant: INSTANT, llm: llm13 });
+  ok(/Le client écrit en anglais, la réponse ne l est pas/.test(a13.alerte) && a13.urgency === 'haute', 'il insiste : l equipe est prevenue de traduire avant d envoyer', a13.alerte);
+
+  // UNE RESERVATION INTROUVABLE (banc, M59) : l equipe le sait avant d envoyer.
+  const lectureSaResa = { ...lectureType, parleDeSaReservation: true, veutDesDisponibilites: false, dates: [], activites: [] };
+  const a14 = await agent.analyzeEmail({ from: 'inconnu@example.com', subject: 'Confirmation', body: 'Pouvez-vous me confirmer par ecrit ma reservation de samedi ?', centerId: 'libramont', deps: fausseBase(), instant: INSTANT,
+    llm: doubleLlm({ lecture: lectureSaResa, ecritures: [reponse('Bonjour, aucune réservation n est enregistrée à cette adresse.')] }) });
+  ok(/aucune réservation récente ou à venir n est enregistrée à son adresse/.test(a14.alerte) && a14.urgency === 'haute', 'il parle de SA reservation, aucune a son adresse : alerte', a14.alerte);
+  const a15 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Confirmation', body: 'Pouvez-vous me confirmer par ecrit ma reservation ?', centerId: 'libramont', deps: fausseBase(), instant: INSTANT,
+    llm: doubleLlm({ lecture: lectureSaResa, ecritures: [reponse('Bonjour, votre réservation n° 1234 est enregistrée.')] }) });
+  ok(!/aucune réservation récente/.test(a15.alerte || ''), 'sa reservation est retrouvee : pas d alerte « introuvable »', a15.alerte);
+
   // Un mail piege : alerte et urgence, meme quand le modele n en dit rien.
   const baseG4 = fausseBase();
   baseG4.disponibilite = moteurG;

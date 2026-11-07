@@ -99,7 +99,9 @@ function applyEdit(find, replace) {
 async function installMock(page) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
-    const perms = ['dashboard.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
+    // exports.download (2026-11-07) : « Exporter » ne s affiche plus a un role
+    // que exportStaffPricingCsv refuserait au clic ; cette Direction exporte.
+    const perms = ['dashboard.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view', 'exports.download'];
     const qaSession = {
       token: 'qa', cookieBacked: false, centerId: 'gembloux', expiresAt,
       member: { id: 'gembloux:mgr', name: 'Directrice' },

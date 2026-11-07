@@ -480,7 +480,13 @@ function verifierAucunEnvoi() {
     [/getCustomRequest\(url\.searchParams\.get\('id'\), \{ centerId: centerScope\(centerId\) \}\)/.test(etude), 'l etude ne lit que les demandes du centre de la session'],
     [/if \(action === 'customRequestDraft'\) return 'emails\.send';/.test(ops), 'rediger une reponse demande le droit d envoyer des mails'],
     [/if \(action === 'customRequestStudy'\) return \['clients\.view', 'reservations\.view', 'dashboard\.view'\];/.test(ops), 'l etude demande le meme droit que la file'],
-    [/if \(action === 'customRequestNote'\) return \['clients\.view', 'reservations\.edit', 'dashboard\.view'\];/.test(ops), 'une note demande le meme droit qu un changement de statut'],
+    // La regle, pas sa formulation (2026-11-07 : la Vue d ensemble seule
+    // n ecrit plus sur une demande) : la note suit le droit du statut.
+    [(() => {
+      const droit = (action) => ((new RegExp(`if \\(action === '${action}'\\) return (\\[[^\\]]*\\]|'[^']*');`).exec(ops)) || [])[1];
+      const note = droit('customRequestNote');
+      return Boolean(note) && note === droit('customRequestStatus');
+    })(), 'une note demande le meme droit qu un changement de statut'],
   ];
 }
 

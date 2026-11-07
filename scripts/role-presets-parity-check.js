@@ -162,8 +162,10 @@ if (process.argv.includes('--mutate')) {
     {
       nom: 'une permission retiree du tableau client',
       fichier,
-      de: "'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',",
-      vers: "'clients.view', 'payments.view', 'payments.markPaid',",
+      // (ancre allongee le 2026-11-07 : le modele Assistant manager reprend la
+      // meme ligne ; la suivante, propre au Manager, la rend unique)
+      de: "'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',\n      'emails.view', 'reports.export', 'pricing.manage',",
+      vers: "'clients.view', 'payments.view', 'payments.markPaid',\n      'emails.view', 'reports.export', 'pricing.manage',",
     },
     {
       nom: 'le preset Manager affiche un autre plafond de prix',

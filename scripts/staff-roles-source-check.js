@@ -55,7 +55,8 @@ function runEnsure(currentAccessControl) {
   ];
   const missing = parts.findIndex(part => !part);
   if (missing >= 0) throw new Error(`bloc introuvable dans app-main.js (index ${missing})`);
-  const sandbox = { state: { staffAccessControl: currentAccessControl }, out: null };
+  // getCurrentStaffCenterId (2026-11-07) : la page Equipe se range par centre.
+  const sandbox = { state: { staffAccessControl: currentAccessControl }, out: null, getCurrentStaffCenterId: () => 'libramont' };
   vm.createContext(sandbox);
   vm.runInContext(`${parts.join('\n')}\nout = ensureStaffAccessControl();`, sandbox);
   return sandbox.out;

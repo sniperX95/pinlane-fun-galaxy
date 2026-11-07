@@ -1528,8 +1528,8 @@ async function main() {
     await screenshot(page, 'staff-users');
     issues.push(...await collectIssues(page, 'staff-users'));
 
-    // Modale « Créer rôle » : ouverture, capture, fermeture Escape
-    await page.locator('.utility-actions button', { hasText: 'Créer rôle' }).first().click();
+    // Modale « Créer un rôle » (libellé du 2026-11-07) : ouverture, capture, fermeture Escape
+    await page.locator('.utility-actions button', { hasText: 'Créer un rôle' }).first().click();
     await page.locator('#staffAccessModalOverlay').waitFor({ timeout: 5000 });
     await screenshot(page, 'staff-users-modal');
     await page.keyboard.press('Escape');

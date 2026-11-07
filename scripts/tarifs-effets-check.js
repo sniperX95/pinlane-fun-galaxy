@@ -54,7 +54,9 @@ function serveStatic() {
 async function installMock(page, permsVoulues) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, permsVoulues }) => {
-    const perms = permsVoulues || ['dashboard.view', 'planning.view', 'emails.view', 'reservations.view', 'pricing.manage', 'settings.manage', 'direction.view'];
+    // reservations.create et .quick (2026-11-07) : « Ouvrir Réserver » ne
+    // s offre qu a un role qui peut reserver ; la Direction le peut.
+    const perms = permsVoulues || ['dashboard.view', 'planning.view', 'emails.view', 'reservations.view', 'reservations.create', 'reservations.quick', 'pricing.manage', 'settings.manage', 'direction.view'];
     window.__tfRange = 0;
     const qaSession = {
       token: 'qa', cookieBacked: false, centerId: 'gembloux', expiresAt,

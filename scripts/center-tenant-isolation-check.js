@@ -182,7 +182,9 @@ function ids(list) { return list.map((c) => c.id).sort(); }
   // ne doit pas avoir ete affaiblie : une resa/action forgee sur un centre hors
   // du client reste refusee sans centers.switch.
   const authSource = readProjectFile('lib/staff-auth.js');
-  ok(/requestedCenterId !== session\.centerId[\s\S]{0,120}sessionHasPermission\(session, 'centers\.switch'\)/.test(authSource) &&
+  // (2026-11-07 : une personne qui a sa ligne dans le centre demande y entre
+  // avec son role la-bas ; sans ligne ni centers.switch, le refus reste.)
+  ok(/requestedCenterId !== session\.centerId[\s\S]{0,800}if \(!jumelle && !sessionHasPermission\(session, 'centers\.switch'\)\) \{[\s\S]{0,400}sendError\(res, 403, 'Acces centre insuffisant\.'\)/.test(authSource) &&
      /sendError\(res, 403, 'Acces centre insuffisant\.'\)/.test(authSource),
     'requireStaffPermission garde toujours le refus 403 de scope centre (non-regression)');
 

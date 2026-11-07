@@ -293,6 +293,7 @@
     "test:temps-reel",
     "test:concurrence-reservation",
     "test:rush-reservations",
+    "test:email-verifications",
     "test:droits-reservations",
     "test:droits-niveaux",
     "test:prix-suivi",

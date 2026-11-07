@@ -131,9 +131,22 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   delete process.env.OPENAI_API_KEY;
   process.env.KIMI_API_KEY = 'test-key-kimi';
   ok(llmProvider('marketing') === 'kimi', 'cle Kimi seule -> kimi');
-  ok(llmProvider('sensitive') === 'kimi', 'Kimi sert AUSSI les usages sensibles (fournisseur contractuel)');
+  // LA FRONTIERE DES DONNEES S APPLIQUE A KIMI (decision d Ansar du 2026-11-07) :
+  // Moonshot est hors d Europe, rien qui touche un client ne sort vers lui.
+  ok(llmProvider('sensitive') === null, 'Kimi ne sert PLUS les usages sensibles : avec sa seule cle, aucun fournisseur pour une donnee de client');
+  ok(llmProvider('mails') === null, 'les mails des clients ne partent jamais chez Kimi');
+  process.env.LLM_PROVIDER = 'kimi';
+  ok(llmProvider('sensitive') === null && llmProvider('mails') === null, 'LLM_PROVIDER=kimi ne fait pas sauter la frontiere');
+  ok(llmProvider('marketing') === 'kimi', 'LLM_PROVIDER=kimi garde Kimi pour le marketing');
+  delete process.env.LLM_PROVIDER;
+  process.env.OPENAI_API_KEY = 'test-key-openai';
+  ok(llmProvider('sensitive') === 'openai', 'sensible + Kimi + OpenAI : OpenAI, jamais Kimi');
+  ok(llmProvider('mails') === null, 'les mails ne vont pas chez OpenAI non plus : Anthropic seulement');
+  delete process.env.OPENAI_API_KEY;
   process.env.ANTHROPIC_API_KEY = 'test-key-anthropic';
   ok(llmProvider('marketing') === 'kimi', 'Kimi PRIORITAIRE sur Anthropic : c\'est lui que le centre paie');
+  ok(llmProvider('sensitive') === 'anthropic', 'sensible + Kimi + Anthropic : Anthropic');
+  ok(llmProvider('mails') === 'anthropic', 'les mails des clients : Anthropic');
   delete process.env.ANTHROPIC_API_KEY;
 
   const kimiRes = (content, finishReason = 'stop', usage = {}) => ({
@@ -141,7 +154,7 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
     json: async () => ({ choices: [{ finish_reason: finishReason, message: { role: 'assistant', content } }], usage }),
   });
   const fxK = makeFetch(() => kimiRes('{"content":"Texte Kimi."}'));
-  const rK = await callLlmJson({ stableSystem: 'STABLE', system: 'volatile', user: '{"a":1}', schema, maxTokens: 900, fetchImpl: fxK.impl });
+  const rK = await callLlmJson({ usage: 'marketing', stableSystem: 'STABLE', system: 'volatile', user: '{"a":1}', schema, maxTokens: 900, fetchImpl: fxK.impl });
   const callK = fxK.calls[0];
   ok(callK.url === 'https://api.moonshot.ai/v1/chat/completions', 'URL Moonshot internationale (.ai, pas .cn)');
   ok(callK.init.headers.Authorization === 'Bearer test-key-kimi', 'header Authorization Bearer');
@@ -157,20 +170,20 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   ok(callK.body.messages[0].content.includes(JSON.stringify(schema)),
     'LE SCHEMA EST DANS LE PROMPT : sans lui, response_format json_object demande « du JSON », jamais CE JSON');
   const fxKnoSchema = makeFetch(() => kimiRes('texte libre'));
-  await callLlm({ user: 'u', fetchImpl: fxKnoSchema.impl });
+  await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxKnoSchema.impl });
   ok(!fxKnoSchema.calls[0].body.response_format && !/required/.test(fxKnoSchema.calls[0].body.messages[0] ? fxKnoSchema.calls[0].body.messages[0].content : ''),
     'CONTRE-PREUVE : sans schema demande, aucune consigne JSON n\'est ajoutee (le mode texte libre reste libre)');
   ok(rK && rK.content === 'Texte Kimi.' && rK._provider === 'kimi' && rK._model === 'kimi-k2.6', 'reponse parsee + _provider/_model');
 
   const fxKcut = makeFetch(() => kimiRes('{"content":"phrase coupee en plein mi', 'length'));
-  ok((await callLlm({ user: 'u', fetchImpl: fxKcut.impl })) === null,
+  ok((await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxKcut.impl })) === null,
     'finish_reason « length » -> null : une phrase coupee en deux ne va JAMAIS sur une surface');
   // Contre-preuve : c'est bien finish_reason qui decide, pas la forme du texte.
   // Le MEME contenu, rendu avec finish_reason « stop », doit passer. Sans cette
   // ligne, un refus qui viendrait d'ailleurs (texte vide, parse rate) passerait
   // pour une garde anti-troncature qui n'existe pas.
   const fxKsame = makeFetch(() => kimiRes('{"content":"phrase coupee en plein mi', 'stop'));
-  const rKsame = await callLlm({ user: 'u', fetchImpl: fxKsame.impl });
+  const rKsame = await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxKsame.impl });
   ok(rKsame && rKsame.text === '{"content":"phrase coupee en plein mi',
     'CONTRE-PREUVE : le meme texte avec finish_reason « stop » PASSE (c\'est bien la troncature qui bloque)');
 
@@ -183,23 +196,23 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
     servedK += 1;
     return servedK <= 2 ? { status: 429, ok: false, json: async () => ({}) } : { status: 200, ...kimiRes('{"content":"apres la fenetre"}') };
   });
-  const r429 = await callLlmJson({ user: 'u', schema, fetchImpl: fxK429.impl, retryWaitsMs: [5, 10] });
+  const r429 = await callLlmJson({ usage: 'marketing', user: 'u', schema, fetchImpl: fxK429.impl, retryWaitsMs: [5, 10] });
   ok(r429 && r429.content === 'apres la fenetre' && servedK === 3,
     `429 puis 429 puis 200 : l'appel REESSAIE et aboutit (${servedK} tentatives)`);
   let servedAll429 = 0;
   const fxK429all = makeFetch(() => { servedAll429 += 1; return { status: 429, ok: false, json: async () => ({}) }; });
-  const rAll429 = await callLlm({ user: 'u', fetchImpl: fxK429all.impl, retryWaitsMs: [5, 10] });
+  const rAll429 = await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxK429all.impl, retryWaitsMs: [5, 10] });
   ok(rAll429 === null && servedAll429 === 3,
     `429 sans fin : le nombre de tentatives est BORNE (${servedAll429}), la fonction ne part pas en salle d'attente`);
   let servedFail = 0;
   const fxK500 = makeFetch(() => { servedFail += 1; return { status: 500, ok: false, json: async () => ({}) }; });
-  ok((await callLlm({ user: 'u', fetchImpl: fxK500.impl, retryWaitsMs: [5, 10] })) === null && servedFail === 1,
+  ok((await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxK500.impl, retryWaitsMs: [5, 10] })) === null && servedFail === 1,
     'CONTRE-PREUVE : une erreur 500 n\'est PAS reessayee (seul le plafond de cadence l\'est)');
 
   llmBudget.__resetForTests();
   const beforeK = llmBudget.getMonthlySpend();
   const fxKspend = makeFetch(() => kimiRes('coupe', 'length', { prompt_tokens: 100000, completion_tokens: 50000 }));
-  await callLlm({ user: 'u', fetchImpl: fxKspend.impl });
+  await callLlm({ usage: 'marketing', user: 'u', fetchImpl: fxKspend.impl });
   const spentK = llmBudget.getMonthlySpend() - beforeK;
   // 100k in x 0.95/M + 50k out x 4/M = 0.095 + 0.20 = 0.295 $
   ok(Math.abs(spentK - 0.295) < 1e-9,

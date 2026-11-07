@@ -729,7 +729,7 @@ async function contrePreuves() {
     const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
     return problemes.some((p) => p.cle === 'suivi:a-valider:gembloux');
   });
-  await rouge('la caisse du chef de garde se confond avec la commune', [{ fichier: 'lib/llm-budget.js', de: "  return posteDe(poste) === 'garde' ? `${month}:garde` : month;", vers: '  return month;' }], async () => {
+  await rouge('la caisse du chef de garde se confond avec la commune', [{ fichier: 'lib/llm-budget.js', de: "  return p === 'commun' ? month : `${month}:${p}`;", vers: '  return month;' }], async () => {
     remettre();
     BD.depenses = [];
     route(/^insert into llm_spend/, (s, p) => { BD.depenses.push(p[0]); return []; });

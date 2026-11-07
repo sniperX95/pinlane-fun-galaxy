@@ -16,7 +16,10 @@
 //       reprise, il passe. Un « Arrivé » ordinaire ne prend pas le verrou de la journee ;
 //   [C] LE MOTEUR DES RETARDS et LA LIMITE DE TABLES ne comptent plus un groupe absent ;
 //   [D] LA MEME REGLE des deux cotes : lib/places-tenues.js et tientSesPlaces de la
-//       console rendent la meme chose sur la meme matrice.
+//       console rendent la meme chose sur la meme matrice ;
+//   [E] UNE ANNULEE REMISE A CONFIRME (2026-11-07) : elle garde sa piste en base ; si
+//       le comptoir l a reprise, le statut seul est refuse et dit qui, elle reste
+//       annulee ; sans reprise, elle revient. Pareil au laser.
 // --contre-preuves : chaque regle retiree (en memoire, le disque n est jamais touche)
 // fait rougir sa lettre ; chaque ancre existe une fois et une seule.
 'use strict';
@@ -158,6 +161,39 @@ async function scenarioLaser(mutations = []) {
   return f;
 }
 
+// [E] Une annulee garde ses pistes et son plan en base : la remettre a Confirme lui
+// rend ses places, seulement si personne ne les a prises.
+async function scenarioRemise(mutations = []) {
+  B.semer(HUIT_PISTES());
+  const m = monter(mutations);
+  const f = {};
+  f.annulation = await m.geste(906, { status: 'cancelled' });
+  f.pistesGardees = JSON.stringify((enBase(906).lanes || []).map(Number));
+  const revente = await m.appeler('POST', URL_RESA, BOWLING());
+  f.reventeStatut = revente.statut;
+  f.reventePistes = revente.json && revente.json.reservation ? (revente.json.reservation.lanes || []).map(Number) : [];
+  f.remise = await m.geste(906, { status: 'pending' });
+  f.statutApres = enBase(906).status;
+  // Sans reprise : la piste 5 reste libre, l annulee revient.
+  await m.geste(905, { status: 'cancelled' });
+  f.remiseLibre = await m.geste(905, { status: 'pending' });
+  f.libreRevenue = enBase(905).status;
+  return f;
+}
+async function scenarioRemiseLaser(mutations = []) {
+  B.semer([]);
+  const m = monter(mutations);
+  const f = {};
+  const premier = await m.appeler('POST', URL_RESA, LASER({ name: 'Banc Laser Annule' }));
+  const id = premier.json && premier.json.reservation ? Number(premier.json.reservation.id) : null;
+  if (id) Object.assign(enBase(id), { absent_at: null, amount_paid: null, discount_reason: null });
+  f.annulation = id ? await m.geste(id, { status: 'cancelled' }) : { statut: 0, message: 'pas de premier groupe' };
+  f.revente = (await m.appeler('POST', URL_RESA, LASER({ name: 'Banc Laser Revente' }))).statut;
+  f.remise = id ? await m.geste(id, { status: 'pending' }) : { statut: 0, message: '' };
+  f.statutApres = id ? enBase(id).status : '';
+  return f;
+}
+
 async function scenarioMoteur(mutations = []) {
   B.semer([]);
   const m = monter(mutations);
@@ -234,6 +270,19 @@ function jugerLaser(f, v) {
   v(f.annuler.statut === 409 && /laser est complet/.test(f.annuler.message) && /Modifier/.test(f.annuler.message) && f.toujoursAbsent,
     '[B] laser : retirer « Pas venu » est refuse, le laser est complet, l absence reste', dire(f.annuler));
 }
+function jugerRemise(f, v) {
+  v(f.annulation.statut === 200 && f.pistesGardees === '[6]', '[E] annulee, la reservation de la piste 6 garde sa piste en base', `${dire(f.annulation)} ${f.pistesGardees}`);
+  v(f.reventeStatut === 201 && f.reventePistes.length === 1 && f.reventePistes[0] === 6, '[E] la piste 6 de l annulee est reprise au comptoir', `${f.reventeStatut} ${JSON.stringify(f.reventePistes)}`);
+  v(f.remise.statut === 409 && /piste 6/.test(f.remise.message) && /Banc Revente/.test(f.remise.message) && /15:00/.test(f.remise.message),
+    '[E] la remettre a Confirme : refuse, le refus dit la piste, qui l a prise et a quelle heure', dire(f.remise));
+  v(f.statutApres === 'cancelled', '[E] refuse : elle reste annulee en base', f.statutApres);
+  v(f.remiseLibre.statut === 200 && f.libreRevenue === 'pending', '[E] sans reprise (piste 5), l annulee revient a Confirme', `${dire(f.remiseLibre)} ${f.libreRevenue}`);
+}
+function jugerRemiseLaser(f, v) {
+  v(f.annulation.statut === 200 && f.revente === 201, '[E] laser : un groupe de 20 annule, un autre groupe de 20 prend ses armes', `${dire(f.annulation)} ${f.revente}`);
+  v(f.remise.statut === 409 && /laser est complet/.test(f.remise.message) && f.statutApres === 'cancelled',
+    '[E] laser : la remettre a Confirme est refuse, le laser est complet, elle reste annulee', `${dire(f.remise)} ${f.statutApres}`);
+}
 function jugerMoteur(f, v) {
   v(f.poses[0] === 201 && f.poses[1] === 201, '[C] deux groupes poses sur la piste 2, a 17:00 et a 18:00', f.poses);
   v(f.retardSuivantPresent === 'conflicts', '[C] 20 min de retard a 17:00 : le groupe de 18:00 est touche', f.retardSuivantPresent);
@@ -252,6 +301,8 @@ async function verdicts(mutations = []) {
   jugerRevente(await scenarioRevente(mutations), v);
   jugerRetrait(await scenarioRetrait(mutations), v);
   jugerLaser(await scenarioLaser(mutations), v);
+  jugerRemise(await scenarioRemise(mutations), v);
+  jugerRemiseLaser(await scenarioRemiseLaser(mutations), v);
   jugerMoteur(await scenarioMoteur(mutations), v);
   jugerRegle(scenarioRegle(), v);
   return liste;
@@ -267,10 +318,13 @@ const MUTATIONS = [
   { nom: 'console-perd-l-absent', lettre: 'A', fichier: DB, de: '    const lus = options.avecAbsents ? dossiers : dossiers.filter(tientSesPlaces);', vers: '    const lus = dossiers.filter(tientSesPlaces);' },
   { nom: 'regle-qui-garde-tout', lettre: 'A', fichier: REGLE, de: '  return !(reservation.absentAt && reservation.status !== \'arrived\' && reservation.status !== \'paid\');', vers: '  return true;' },
   { nom: 'annuler-sans-garde', lettre: 'B', fichier: DB, de: '    if (avecAbsence && !input.absent) await refuserSiPlacesReprises(client, current, verrou);\n', vers: '' },
-  { nom: 'arrive-sans-garde', lettre: 'B', fichier: DB, de: '    if (rendrait) await refuserSiPlacesReprises(client, current, verrou);\n', vers: '' },
+  { nom: 'arrive-sans-garde', lettre: 'B', fichier: DB, de: '    if (rendSesPlaces(current, prochain)) await refuserSiPlacesReprises(client, current, verrou);\n', vers: '' },
   { nom: 'laser-sans-garde', lettre: 'B', fichier: DB, de: '    ensureLaserCapacity(current, autres);\n  } catch (error) {\n    throw refus(', vers: '    void autres;\n  } catch (error) {\n    throw refus(' },
   { nom: 'refus-muet', lettre: 'B', fichier: DB, de: '    throw refus(`${communes.length > 1 ? \'pistes\' : \'piste\'} ${communes.join(\' et \')} par ${nom} à ${String(qui.startTime || \'\').slice(0, 5)}`);', vers: '    throw refus(\'une autre réservation\');' },
-  { nom: 'arrive-ordinaire-verrouille', lettre: 'B', fichier: DB, de: '  if (tientSesPlaces(dossier)) return false;\n', vers: '' },
+  { nom: 'arrive-ordinaire-verrouille', lettre: 'B', fichier: DB, de: '  if (!rendSesPlaces(dossier, changement)) return false;\n', vers: '' },
+  // (le statut seul d une annulee, sans la garde : l ancien chemin de la remise)
+  { nom: 'annulee-remise-sans-garde', lettre: 'E', fichier: DB, de: '    if (rendSesPlaces(current, prochain)) await refuserSiPlacesReprises(client, current, verrou);', vers: "    if (rendSesPlaces(current, prochain) && current.status !== 'cancelled') await refuserSiPlacesReprises(client, current, verrou);" },
+  { nom: 'regle-de-remise-muette', lettre: 'E', fichier: REGLE, de: '  return !tientSesPlaces(reservation) && tientSesPlaces({ ...reservation, ...changement });', vers: '  return false;' },
   { nom: 'retard-compte-l-absent', lettre: 'C', fichier: MOTEUR, de: '  const allReservations = (Array.isArray(context.reservations) ? context.reservations : [])\n    .filter(tientSesPlaces);', vers: '  const allReservations = (Array.isArray(context.reservations) ? context.reservations : [])\n    .filter((reservation) => reservation && reservation.status !== \'cancelled\');' },
   { nom: 'tables-comptent-l-absent', lettre: 'C', fichier: MOTEUR, de: '    .filter((autre) => tientSesPlaces(autre) && Number(autre.id) !== Number(reservation.id))', vers: '    .filter((autre) => autre && Number(autre.id) !== Number(reservation.id))' },
   { nom: 'console-autre-regle', lettre: 'D', fichier: APP, de: '  return Boolean(r) && r.status !== \'cancelled\' && !(r.absentAt && r.status !== \'arrived\' && r.status !== \'paid\');', vers: '  return Boolean(r) && r.status !== \'cancelled\';' },

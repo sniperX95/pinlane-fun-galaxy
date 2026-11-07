@@ -164,6 +164,8 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 .gf-e__g:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .gf-e__g.is-attendu { color: var(--text); font-weight: 650; }
 .pb-info { flex: none; color: var(--muted); }
+/* (la recherche en cours, devant son « Tout afficher » : pbRechercheHtml) */
+.pb-recherche { flex: none; margin-right: 6px; color: var(--text); font-weight: 600; white-space: nowrap; }
 .pb-filtre { appearance: none; flex: none; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: var(--text); color: var(--surface); font: inherit; font-weight: 600; cursor: pointer; }
 .pb-filtre:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* LA LEGENDE : les couleurs des barres de statut, a leur place. */

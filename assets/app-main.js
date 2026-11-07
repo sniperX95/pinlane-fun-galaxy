@@ -3839,6 +3839,11 @@ try {
 // (2026-08-25, Movsar : « ca coche lui-meme le filtre... on peut se dire
 // qu il n y a que ca comme reservation »).
 state.staffStatusFilter = 'all';
+// LA RECHERCHE NON PLUS (2026-11-07, Ansar : « pourquoi y en a ils sont
+// transparents »). Restauree, un nom tape la veille grisait le planning du
+// lendemain : les groupes qui ne lui correspondent pas passent en transparent,
+// et rien a l ecran ne disait pourquoi.
+state.searchTerm = '';
 // Le plein ecran de la liste ne survit pas non plus a un rechargement : c est
 // un MODE de consultation, pas une preference. Restaure, il aurait rouvert la
 // console sur une liste bord a bord posee par-dessus la page attendue.
@@ -22029,6 +22034,8 @@ function applyStaffSearch(value, opts = {}) {
   const run = () => {
     save();
     if (state.view !== 'staff') return;
+    // (la ligne sous la barre dit la recherche en cours : pbRechercheHtml)
+    renderKpis();
     renderPlanning();
     renderLaserPlanning();
     renderGlobalPlanningSurface();
@@ -22041,6 +22048,36 @@ function applyStaffSearch(value, opts = {}) {
     return;
   }
   staffSearchDebounceTimer = setTimeout(run, 120);
+}
+
+// CE QUE LA RECHERCHE LAISSE NET, pour la ligne qui l explique sous la barre
+// (pbRechercheHtml) : les groupes que la grille de la vue dessine, comptes avec
+// sa regle. Bowling : recherche et filtre (getPlanningVisibleReservations).
+// Laser : la recherche seule (lpChercheur). Le planning complet ne grise rien,
+// il range ses resultats et les compte lui-meme.
+function rechercheDuPlanning(vue = getStaffResourceView()) {
+  const terme = String(state.searchTerm || '').trim();
+  if (!terme || (vue !== 'bowling' && vue !== 'laser')) return null;
+  const dessines = todaysReservations().filter(r => (vue === 'laser'
+    ? getLaserWindowsFromReservation(r).length > 0
+    : reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0));
+  let nets;
+  if (vue === 'laser') {
+    nets = dessines.filter(lpChercheur(terme)).length;
+  } else {
+    const retenues = new Set(getPlanningVisibleReservations('bowling').map(r => String(r.id)));
+    nets = dessines.filter(r => retenues.has(String(r.id))).length;
+  }
+  return { terme, nets, total: dessines.length };
+}
+
+// « TOUT AFFICHER » : la recherche et le filtre s enlevent d un toucher, toute
+// la journee revient nette.
+function toutAfficherPlanning() {
+  const champ = document.getElementById('globalPlanningSearchInput');
+  if (champ) champ.value = '';
+  state.staffStatusFilter = 'all';
+  applyStaffSearch('', { immediate: true });
 }
 
 function closeStaffFloatingMenus() {
@@ -24405,6 +24442,15 @@ function lpTeintesDuDepart(d) {
   return teintes;
 }
 
+// UN GROUPE QUE LA RECHERCHE LAISSE NET au planning laser : son nom, son
+// telephone, son adresse ou son numero. Les autres passent en transparent.
+// (la ligne sous la barre compte avec la meme regle : rechercheDuPlanning)
+function lpChercheur(terme) {
+  const recherche = String(terme || '').trim().toLowerCase();
+  const numeroCherche = numeroReservationDe(recherche);
+  return (r) => !recherche || reservationPorteLeNumero(r, numeroCherche) || `${r.name || ''} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(recherche);
+}
+
 // LA JOURNEE EN DONNEES : chaque depart avec ses groupes, ce qu il reste,
 // ce qui le ferme ; le prochain depart, la partie en jeu, les retards ; les
 // parties a placer. Tous les dossiers comptent (la recherche ne fait que
@@ -24433,9 +24479,7 @@ function lpModele() {
   // [t, t + bloc), comme ensureLaserCapacity cote serveur.
   const creneau = (debut) => config.open + Math.round((Number(debut) - config.open) * 2 - 0.001) / 2;
   const blocages = lpBlocages(jour);
-  const recherche = String(state.searchTerm || '').trim().toLowerCase();
-  const numeroCherche = numeroReservationDe(recherche);
-  const trouve = (r) => !recherche || reservationPorteLeNumero(r, numeroCherche) || `${r.name || ''} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(recherche);
+  const trouve = lpChercheur(state.searchTerm);
 
   const cles = new Set();
   for (let t = config.open; t < config.close - 0.001; t += 0.5) cles.add(Math.round(t * 60));

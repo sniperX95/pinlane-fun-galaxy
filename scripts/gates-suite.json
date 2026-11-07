@@ -234,6 +234,7 @@
     "test:fiche-simple",
     "test:fiche-modifier",
     "test:compte-arrivee",
+    "test:planning-recherche",
     "test:heures-du-dossier",
     "test:planning-liens",
     "test:one-screen",

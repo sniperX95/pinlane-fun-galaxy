@@ -135,7 +135,8 @@ const anthropicOk = (object) => ({
   ok(Object.keys(brain.faq).sort().join(',') === sujetsDeclares,
     `FAQ parsée : une réponse par sujet déclaré, sans orpheline (${Object.keys(brain.faq).sort().join(',')})`);
   ok(brain.context.includes('Lundi fermé') && brain.context.includes('Samedi 10h à minuit'), 'horaires RÉELS du centre dans le contexte');
-  ok(brain.context.includes('LEÇONS APPRISES') && brain.context.includes('Corps corrigé par le staff'), 'leçons mémoire injectées dans le contexte');
+  ok(brain.lecons.includes('CORRECTIONS DE L ÉQUIPE') && brain.lecons.includes('Corps corrigé par le staff') && !brain.context.includes('Corps corrigé par le staff'),
+    'leçons mémoire injectées À PART du contexte : le modèle les lit, le contrôle des nombres ne les compte pas comme source');
   // Libramont n'a pas le Golf o'Clock, mais Gembloux l'a : la question se pose
   // vraiment, donc on prévient le modèle de ne pas le promettre ICI.
   ok(!brain.context.includes("Golf O'Clock : disponible") && /PAS ici/.test(brain.context) && /Golf O'Clock/i.test(brain.context),
@@ -2080,8 +2081,8 @@ const anthropicOk = (object) => ({
     from: 'x@test.be', subject: 'Prix', body: 'Combien pour 8 personnes ?',
     deps: makeDeps({}), fetchImpl: compteur,
   });
-  ok(appelsPourHorsSujet === 1,
-    'CONTRE-PREUVE : un vrai message de client, lui, part bien vers le modele',
+  ok(appelsPourHorsSujet === 2,
+    'CONTRE-PREUVE : un vrai message de client, lui, part bien vers le modele (lecture du mail, puis ecriture)',
     `${appelsPourHorsSujet} appel(s), ${vraiClient.provider}`);
 
   // ET LE MODELE PEUT AJOUTER CE SUJET sur ce que la liste de mots rate : le

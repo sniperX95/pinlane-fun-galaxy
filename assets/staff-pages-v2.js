@@ -6329,6 +6329,8 @@
           ${analysis.urgency === 'haute' ? '<span class="pv2-inbox-urgent">Urgent</span>' : ''}
           <p>${esc(analysis.summary || '')}</p>
         </div>
+        ${analysis.alerte ? `<p class="pv2-thread-alerte"><b>À vérifier avant d'envoyer :</b> ${esc(analysis.alerte)}</p>` : ''}
+        ${analysis.repli ? `<p class="pv2-thread-alerte"><b>Réponse type de secours :</b> ${esc(({ 'modele-muet': 'l agent n a pas répondu à temps', 'reponse-invalide': 'la réponse de l agent était incomplète', 'nombres-non-sources': 'un chiffre de sa réponse ne figurait dans aucun fait' })[analysis.repli] || 'l agent n a pas pu écrire')}, relisez avant d'envoyer.</p>` : ''}
       </div>` : ''}
       <div class="pl-timeline-trace" aria-label="Parcours du message">
         ${trace.join('')}

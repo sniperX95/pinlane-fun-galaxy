@@ -1041,6 +1041,9 @@ async function handleGet(req, res, options = {}) {
     const history = (await readAdminRangeState('2023-01-01', today, centerId)).reservations;
     const recipients = buildCampaignAudience({ history, segment, today });
     const full = url.searchParams.get('full') === '1';
+    // La liste entiere (noms, emails, chiffre d affaires) part dans un fichier :
+    // c est un export, il demande en plus le droit de telecharger (2026-11-07).
+    if (full && !(await requireStaffPermission(req, res, 'exports.download', { centerId }))) return;
     sendJson(res, 200, {
       ok: true,
       centerId,
@@ -3841,8 +3844,15 @@ function getRequiredOpsPermission(method, action) {
     if (['marketingBrain', 'competitors', 'studioPacks', 'marketingBrief'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
+    // La configuration du centre : la meme regle que son handler, sans passer par
+    // ai.ops (un role qui regle le centre sans l IA voyait « Configuration
+    // indisponible », 2026-11-07).
+    if (action === 'centerConfig') return ['settings.manage', 'direction.view'];
     return 'ai.ops';
   }
+  // Les ecritures de la configuration du centre : le droit de changer les
+  // reglages, comme leurs handlers, sans ai.ops en plus (2026-11-07).
+  if (['saveCenterConfig', 'saveCenter', 'setCenterStatus'].includes(action)) return 'settings.manage';
   // Edition tarifaire CLIENT (cockpit centre) : permission de CENTRE
   // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
   // est forcee au centre de session (withCenter) et l'override global 'all' est
@@ -3864,7 +3874,11 @@ function getRequiredOpsPermission(method, action) {
   // Parcours d'equipe : meme esprit que logClientError, toute session staff
   // legitime peut deposer son lot.
   if (action === 'activityLog') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
-  if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
+  // REGLER LES MAILS DEMANDE UN DROIT D ECRITURE (2026-11-07) : direction.view
+  // (« Direction », lire les chiffres) ouvrait aussi les relances, le design,
+  // les sequences, les faits de l agent, les modeles et les adresses. Ce sont
+  // les droits nommes dans la page Equipe & acces qui decident maintenant.
+  if (action === 'automationSettings') return ['settings.manage', 'emails.send'];
   // L'aperçu ne fait que rendre un gabarit : il suffit de savoir lire les mails.
   // L'envoi de test et le renvoi font partir un vrai mail : `emails.send`.
   if (action === 'automationPreview') return ['emails.view', 'direction.view'];
@@ -3873,12 +3887,14 @@ function getRequiredOpsPermission(method, action) {
   // droit que les sequences) ; ses apercus ne rendent qu un gabarit ; les tests
   // et la reponse dans un fil font partir un vrai mail ; lire un mail et le
   // marquer lu vont ensemble.
-  if (action === 'emailDesign') return ['settings.manage', 'emails.send', 'direction.view'];
+  if (action === 'emailDesign') return ['settings.manage', 'emails.send'];
   if (['emailDesignPreview', 'customSequencePreview', 'markCommunicationRead'].includes(action)) return 'emails.view';
   if (['sendDesignTest', 'sendCustomSequenceTest', 'setThreadStatus'].includes(action)) return 'emails.send';
-  if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send', 'direction.view'];
+  if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send'];
   if (action === 'sendClientRelance') return 'emails.send';
-  if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
+  // Ecrire une note sur un client, c est « Modifier une fiche client »
+  // (clients.edit). Le voir ne suffit pas (2026-11-07).
+  if (action === 'clientNotes') return 'clients.edit';
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
   if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'marketingPlanGet', 'marketingPlanBuild', 'studioGenerate', 'propositionAction', 'propositionCreate', 'marketingAsk'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
@@ -3894,17 +3910,20 @@ function getRequiredOpsPermission(method, action) {
   // Apprendre un fait au nom du centre engage TOUTES les reponses suivantes :
   // c est un reglage du produit, pas un geste de traitement de mail. Meme droit
   // que la configuration des textes de l agent.
-  if (['answerAgentQuestion', 'forgetAgentFact', 'agentApplyFact', 'teachAgentFact', 'editAgentFact'].includes(action)) return ['emails.send', 'direction.view'];
+  if (['answerAgentQuestion', 'forgetAgentFact', 'agentApplyFact', 'teachAgentFact', 'editAgentFact'].includes(action)) return 'emails.send';
   // Couper le formulaire du site d un client est un geste de DIRECTION : il
   // change ce que voient les visiteurs du centre, hors de Pinlane. Meme droit
-  // que le reste de la configuration du centre.
-  if (action === 'setEmbedState') return ['settings.manage', 'direction.view'];
-  if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
-  if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
+  // que le reste de la configuration du centre : changer les reglages, pas
+  // seulement lire les chiffres (2026-11-07).
+  if (action === 'setEmbedState') return 'settings.manage';
+  if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return 'campaigns.manage';
+  if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return 'settings.manage';
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'directEmailPreview') return ['emails.view', 'emails.send'];
-  if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
-  if (action === 'customRequestNote') return ['clients.view', 'reservations.edit', 'dashboard.view'];
+  // Traiter une demande se fait depuis sa page (clients.view) ; la Vue
+  // d ensemble seule ne suffit plus (2026-11-07).
+  if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit'];
+  if (action === 'customRequestNote') return ['clients.view', 'reservations.edit'];
   // Rediger le brouillon, c est preparer un envoi : meme droit que l envoi.
   if (action === 'customRequestDraft') return 'emails.send';
   // Restaurer une reservation supprimee : le droit qui permet de la supprimer

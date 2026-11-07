@@ -357,7 +357,10 @@ function reset() {
     'PP2 : le 401 sans session est trace');
   ok(/logAccessDenied\(req, session, permission, '403_center_scope'/.test(staffAuthLib),
     'PP2 : la tentative inter-centres est tracee');
-  ok(/logAccessDenied\(req, session, permission, '403_permission'/.test(staffAuthLib),
+  // (depuis 2026-11-07 le refus se trace avec la session EFFECTIVE : la ligne de
+  // la personne dans le centre vise, donc son role la-bas, pas celui du centre de
+  // connexion)
+  ok(/logAccessDenied\(req, (?:session|effective), permission, '403_permission'/.test(staffAuthLib),
     'PP2 : le refus de permission est trace');
 
   const staffAuthApi = readProjectFile('api/staff-auth.js');

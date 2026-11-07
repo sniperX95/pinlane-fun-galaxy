@@ -207,6 +207,7 @@
     "test:centres-dissocies",
     "test:console-centre",
     "test:equipe-centre",
+    "test:equipe-acces",
     "test:tour-controle",
     "test:garde-postes",
     "test:venir-plus-tot",

@@ -137,115 +137,113 @@ async function installMock(page) {
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   const errs = [];
   page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
-  try {
-    await installMock(page);
-    await page.goto(`${BASE_URL}/?v=upc-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
-    await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-    await page.evaluate(() => {
+  page.on('dialog', (d) => { d.accept().catch(() => {}); });
+  const ouvrirLaPage = async (p) => {
+    await installMock(p);
+    await p.goto(`${BASE_URL}/?v=upc-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    await p.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+    await p.evaluate(() => {
       state.staffAccessControl = JSON.parse(JSON.stringify(window.__AC));
       state.staffMenuPage = 'users';
       state.staffTheme = 'dark';
+      state.equipeOnglet = 'roles';
       save();
       setView('staff');
       renderStaff();
     });
-    await page.waitForFunction(() => document.querySelectorAll('.staff-role-pill').length > 0, null, { timeout: 15000 });
-    await page.waitForTimeout(300);
+    await p.waitForFunction(() => document.querySelectorAll('[data-equipe-page] .eq-rail-role').length > 0, null, { timeout: 15000 });
+    await p.waitForTimeout(300);
+  };
+  // La page Equipe & acces du 2026-11-07 : onglets Personnes / Roles / Journal,
+  // le rail des roles a gauche, la carte du role au milieu, son menu a droite.
+  const actif = () => page.evaluate(() => ((document.querySelector('.eq-rail-role[aria-current="true"] strong') || {}).textContent || ''));
+  const choisirRole = async (nom) => {
+    await page.locator('.eq-rail-role', { hasText: nom }).first().click();
+    await page.waitForFunction((n) => ((document.querySelector('.eq-rail-role[aria-current="true"] strong') || {}).textContent || '') === n, nom, { timeout: 10000 });
+  };
+  try {
+    await ouvrirLaPage(page);
 
     // ---- (a) Le role/membre plateforme est EXCLU de tout l'affichage -------
-    const exclusion = await page.evaluate(() => {
-      const pills = [...document.querySelectorAll('.staff-role-pill')];
-      const pillNames = pills.map((p) => (p.querySelector('strong') || {}).textContent || '');
-      const railCount = (document.querySelector('.staff-role-rail-head em') || {}).textContent || '';
-      const kpiPrimary = (document.querySelector('.utility-overview-value-row strong') || {}).textContent || '';
-      const memberNames = [...document.querySelectorAll('.staff-member-card .staff-member-top strong')].map((n) => n.textContent);
-      const optionValues = [...document.querySelectorAll('.staff-member-card select option')].map((o) => o.value);
-      const meta = [...document.querySelectorAll('.staff-role-pill-meta em')].map((e) => e.textContent.trim());
-      const pageText = document.querySelector('.staff-access-console') ? document.querySelector('.staff-access-console').textContent : '';
-      return { pillNames, railCount, kpiPrimary, memberNames, optionValues, meta, pageText };
-    });
-    ok(exclusion.pillNames.length === 5, `rail : 5 roles du centre (recu : ${exclusion.pillNames.length} : ${exclusion.pillNames.join(', ')})`);
-    ok(!exclusion.pillNames.some((n) => /plateforme/i.test(n)), 'rail : aucun role "Proprietaire plateforme"');
-    ok(!/plateforme/i.test(exclusion.pageText), 'page : aucune mention du role/membre plateforme nulle part');
-    ok(exclusion.railCount === '5', `compteur du rail = 5 (recu : "${exclusion.railCount}")`);
-    ok(exclusion.kpiPrimary === '5', `KPI "Roles" de l'entete Acces = 5 (recu : "${exclusion.kpiPrimary}")`);
-    ok(!exclusion.memberNames.some((n) => /Movsar/i.test(n)), 'membres : le porteur du role plateforme est absent de la liste');
-    ok(!exclusion.optionValues.includes('platform-owner'), 'selecteurs de role membre : platform-owner jamais propose');
-    const metaOk = exclusion.meta.length === 5 && exclusion.meta.every((m) => {
-      const match = /^(\d+)\/29$/.exec(m);
-      return match && Number(match[1]) <= 29;
-    });
-    ok(metaOk, `compteurs de permissions coherents, jamais N/29 avec N > 29 (recu : ${exclusion.meta.join(' ')})`);
+    const lireRoles = () => page.evaluate(() => ({
+      noms: [...document.querySelectorAll('.eq-rail-role strong')].map((n) => n.textContent),
+      onglet: (document.querySelector('[data-eq="onglet"][data-valeur="roles"]') || {}).textContent || '',
+      texte: (document.querySelector('[data-equipe-page]') || {}).textContent || '',
+    }));
+    const roles = await lireRoles();
+    ok(roles.noms.length === 5, `rail : 5 roles du centre (recu : ${roles.noms.length} : ${roles.noms.join(', ')})`);
+    ok(!roles.noms.some((n) => /plateforme/i.test(n)), 'rail : aucun role "Proprietaire plateforme"');
+    ok(/\b5\b/.test(roles.onglet), `l onglet Roles compte 5 (recu : "${roles.onglet.trim()}")`);
+    ok(!/plateforme/i.test(roles.texte), 'onglet Roles : aucune mention du role plateforme');
+    await page.locator('[data-eq="onglet"][data-valeur="personnes"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.eq-ligne').length > 0, null, { timeout: 10000 });
+    const personnes = await page.evaluate(() => ({
+      noms: [...document.querySelectorAll('.eq-ligne .eq-ligne-qui strong')].map((n) => n.textContent),
+      options: [...document.querySelectorAll('[data-equipe-page] select option')].map((o) => o.value),
+      texte: (document.querySelector('[data-equipe-page]') || {}).textContent || '',
+    }));
+    ok(!personnes.noms.some((n) => /Movsar/i.test(n)), `personnes : le porteur du role plateforme est absent (recu : ${personnes.noms.join(', ')})`);
+    ok(!personnes.options.includes('platform-owner'), 'selecteurs de role d une personne : platform-owner jamais propose');
+    ok(!/plateforme/i.test(personnes.texte), 'onglet Personnes : aucune mention de l acces plateforme');
+    await page.locator('[data-eq="onglet"][data-valeur="roles"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.eq-rail-role').length > 0, null, { timeout: 10000 });
 
-    // ---- (b) Editer une permission GARDE le role selectionne ---------------
-    await page.click('.staff-role-pill:has-text("Technique")');
-    await page.waitForFunction(() => {
-      const active = document.querySelector('.staff-role-pill.active strong');
-      return active && active.textContent === 'Technique';
-    }, null, { timeout: 10000 });
-    // Vrai clic sur un toggle eteint d'un groupe ouvert (change -> POST -> re-rendu).
-    await page.click('.staff-permission-group[open] .staff-permission-toggle:not(.is-on)');
+    // ---- (b) Editer un droit GARDE le role choisi ---------------------------
+    await choisirRole('Technique');
+    const interrupteur = page.locator('.eq-role input.eq-switch:not(:checked)').first();
+    const droitVise = await interrupteur.getAttribute('data-permission');
+    await interrupteur.click();
     await page.waitForFunction(() => window.__staffAuthPosts.includes('updateRolePermissions'), null, { timeout: 10000 });
     await page.waitForTimeout(400);
-    const afterToggle = await page.evaluate(() => ({
-      activeName: (document.querySelector('.staff-role-pill.active strong') || {}).textContent || '',
+    const apresDroit = await page.evaluate((droit) => ({
       selectedRoleId: state.staffAccessControl ? state.staffAccessControl.selectedRoleId : '',
       responseHadSelection: window.__lastAccessControlResponse ? ('selectedRoleId' in window.__lastAccessControlResponse) : true,
-      techniqueMeta: (() => {
-        const pill = [...document.querySelectorAll('.staff-role-pill')].find((p) => ((p.querySelector('strong') || {}).textContent || '') === 'Technique');
-        return pill ? pill.querySelector('.staff-role-pill-meta em').textContent.trim() : '';
-      })(),
-    }));
-    ok(!afterToggle.responseHadSelection, 'contre-verification : la reponse serveur mockee ne porte PAS selectedRoleId (l\'ancien code aurait teleporte)');
-    ok(afterToggle.activeName === 'Technique', `apres edition d'une permission, le role selectionne reste "Technique" (recu : "${afterToggle.activeName}")`);
-    ok(afterToggle.selectedRoleId === 'maintenance', `state.selectedRoleId reste 'maintenance' (recu : "${afterToggle.selectedRoleId}")`);
-    ok(afterToggle.techniqueMeta === '7/29', `la permission editee est bien enregistree : Technique passe a 7/29 (recu : "${afterToggle.techniqueMeta}")`);
+      enBase: window.__AC.roles.find((r) => r.id === 'maintenance').permissions.includes(droit),
+      coche: Boolean(document.querySelector(`.eq-role input.eq-switch[data-permission="${droit}"]:checked`)),
+    }), droitVise);
+    ok(!apresDroit.responseHadSelection, 'contre-verification : la reponse serveur mockee ne porte PAS selectedRoleId (l ancien code aurait teleporte)');
+    ok(await actif() === 'Technique', `apres un droit change, le role choisi reste "Technique" (recu : "${await actif()}")`);
+    ok(apresDroit.selectedRoleId === 'maintenance', `state.selectedRoleId reste 'maintenance' (recu : "${apresDroit.selectedRoleId}")`);
+    ok(Boolean(droitVise) && apresDroit.enBase && apresDroit.coche, `le droit change part au serveur et reste allume (${droitVise})`);
 
-    // ---- Sur mesure et prix : un choix par reglage, enregistre au clic ------
-    await page.click('.staff-role-pill:has-text("Manager")');
-    await page.waitForFunction(() => (document.querySelector('.staff-role-pill.active strong') || {}).textContent === 'Manager', null, { timeout: 10000 });
-    const lireGroupe = () => page.evaluate(() => ({
-      titre: (document.querySelector('.staff-niveaux-group .staff-permission-group-head strong') || {}).textContent || '',
-      reglages: [...document.querySelectorAll('.staff-niveaux-group .staff-niveau')].map((ligne) => ({
-        nom: ligne.querySelector('.staff-niveau-nom').textContent,
-        options: [...ligne.querySelectorAll('.staff-niveau-option span')].map((s) => s.textContent),
+    // ---- Sur une reservation, jusqu ou : un choix par reglage, enregistre au clic
+    await choisirRole('Manager');
+    const lireNiveaux = () => page.evaluate(() => ({
+      titre: (document.querySelector('.eq-role .eq-niveaux-titre') || {}).textContent || '',
+      reglages: [...document.querySelectorAll('.eq-role .eq-niveau')].map((ligne) => ({
+        nom: (ligne.querySelector('.eq-niveau-nom') || {}).textContent || '',
+        options: [...ligne.querySelectorAll('.eq-niveau-option span')].map((s) => s.textContent),
         choisi: (ligne.querySelector('input:checked + span') || {}).textContent || '',
-        desactive: [...ligne.querySelectorAll('input')].every((i) => i.disabled),
+        desactive: [...ligne.querySelectorAll('input')].some((i) => i.disabled),
       })),
-      compteur: (document.querySelector('.staff-niveaux-group .staff-permission-group-head em') || {}).textContent || '',
     }));
-    const groupe = await lireGroupe();
-    ok(groupe.titre === 'Sur mesure et prix' && groupe.reglages.length === 5, `le groupe « Sur mesure et prix » porte cinq reglages (recu : ${groupe.titre}, ${groupe.reglages.length})`);
-    ok(JSON.stringify(groupe.reglages[1].options) === JSON.stringify(['Non', '5 %', '10 %', '20 %', 'Sans limite']), `« Ajuster un prix » propose ses cinq niveaux (recu : ${groupe.reglages[1].options.join(', ')})`);
-    ok(groupe.reglages.every((r) => r.choisi), 'un role sans niveau ecrit affiche son niveau par defaut, jamais rien de coche');
-    // Vrai clic sur le segment : POST, re-rendu, role garde, option remplacee.
+    const niveaux = await lireNiveaux();
+    ok(niveaux.reglages.length === 5, `le Manager porte cinq reglages « jusqu ou » (recu : ${niveaux.reglages.length}, « ${niveaux.titre} »)`);
+    ok(niveaux.reglages[1] && JSON.stringify(niveaux.reglages[1].options) === JSON.stringify(['Non', '5 %', '10 %', '20 %', 'Sans limite']), `« Ajuster un prix » propose ses cinq niveaux (recu : ${niveaux.reglages[1] ? niveaux.reglages[1].options.join(', ') : 'rien'})`);
+    ok(niveaux.reglages.every((r) => r.choisi), 'un role sans niveau ecrit affiche son niveau par defaut, jamais rien de choisi');
+    ok(!niveaux.reglages.some((r) => r.desactive), 'aucun reglage grise');
     const avantClic = await page.evaluate(() => window.__staffAuthPosts.length);
-    await page.click('.staff-niveau-option:has([data-niveau-choix="prix:10"])');
+    await page.click('.eq-niveau-option:has([data-niveau-choix="prix:10"])');
     await page.waitForFunction((n) => window.__staffAuthPosts.length > n, avantClic, { timeout: 10000 });
     await page.waitForTimeout(300);
     const apresClic = await page.evaluate(() => ({
-      actif: (document.querySelector('.staff-role-pill.active strong') || {}).textContent || '',
-      coche: (document.querySelector('[name="staffNiveau-prix"]:checked') || {}).dataset?.niveauChoix || '',
-      focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.niveauChoix : '',
+      coche: (document.querySelector('[name="eqNiveau-prix"]:checked') || {}).dataset?.niveauChoix || '',
       enBase: window.__AC.roles.find((r) => r.id === 'manager').permissions.filter((p) => p.startsWith('niveau:prix:')),
     }));
-    ok(apresClic.actif === 'Manager' && apresClic.coche === 'prix:10' && apresClic.focus === 'prix:10', `le choix s enregistre au clic, le role reste, le focus revient (recu : ${JSON.stringify(apresClic)})`);
+    ok(await actif() === 'Manager' && apresClic.coche === 'prix:10', `le choix s enregistre au clic et le role reste (recu : ${JSON.stringify(apresClic)})`);
     ok(JSON.stringify(apresClic.enBase) === JSON.stringify(['niveau:prix:10']), `une seule option par cle part au serveur (recu : ${apresClic.enBase.join(', ')})`);
-    await page.click('.staff-niveau-option:has([data-niveau-choix="prix:5"])');
+    await page.click('.eq-niveau-option:has([data-niveau-choix="prix:5"])');
     await page.waitForFunction(() => window.__AC.roles.find((r) => r.id === 'manager').permissions.includes('niveau:prix:5'), null, { timeout: 10000 });
     const remplace = await page.evaluate(() => window.__AC.roles.find((r) => r.id === 'manager').permissions.filter((p) => p.startsWith('niveau:prix:')));
     ok(JSON.stringify(remplace) === JSON.stringify(['niveau:prix:5']), `changer d avis remplace l option (recu : ${remplace.join(', ')})`);
-    const meta = await page.evaluate(() => [...document.querySelectorAll('.staff-role-pill-meta em')].map((e) => e.textContent.trim()));
-    ok(meta.every((m) => { const [a, b] = m.split('/').map(Number); return a <= b; }), `les compteurs ne comptent pas les niveaux (recu : ${meta.join(' ')})`);
     // Les cibles et les textes, dans les deux themes.
     const mesurer = () => page.evaluate(() => {
-      const options = [...document.querySelectorAll('.staff-niveaux-group .staff-niveau-option span')];
-      const textes = [...document.querySelectorAll('.staff-niveaux-group *')].filter((n) => [...n.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
+      const options = [...document.querySelectorAll('.eq-role .eq-niveau-option span')];
+      const textes = [...document.querySelectorAll('.eq-role .eq-niveaux *')].filter((n) => [...n.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim()));
       const lum = (c) => {
         const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
         return 0.2126 * r + 0.7152 * g + 0.0722 * b;
       };
-      // Fond compose : une couleur translucide se pose sur le fond du dessous.
       const melange = (haut, bas) => {
         const h = haut.match(/[\d.]+/g).map(Number);
         const b = bas.match(/[\d.]+/g).map(Number);
@@ -271,15 +269,19 @@ async function installMock(page) {
       const m = await mesurer();
       ok(m.hauteurMin >= 32, `${theme} : cibles de 32 px au moins a la souris (recu : ${m.hauteurMin})`);
       ok(m.policeMin >= 12, `${theme} : rien sous 12 px (recu : ${m.policeMin})`);
-      ok(m.contrasteMin >= 4.5, `${theme} : texte lisible sur chaque segment (recu : ${m.contrasteMin.toFixed(2)})`);
-      if (process.env.PINLANE_CAPTURES) await page.locator('.staff-niveaux-group').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, `niveaux-${theme}.png`) });
+      ok(m.contrasteMin >= 4.5, `${theme} : texte lisible sur chaque choix (recu : ${m.contrasteMin.toFixed(2)})`);
+      if (process.env.PINLANE_CAPTURES) await page.locator('.eq-role .eq-niveaux').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, `niveaux-${theme}.png`) });
     }
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-    // La direction : tout au maximum, rien a changer.
-    await page.click('.staff-role-pill:has-text("Direction")');
-    await page.waitForFunction(() => (document.querySelector('.staff-role-pill.active strong') || {}).textContent === 'Direction', null, { timeout: 10000 });
-    const direction = await lireGroupe();
-    ok(direction.reglages.every((r) => r.desactive) && direction.reglages[1].choisi === 'Sans limite' && direction.compteur === '5/5', `la direction voit le maximum, sans pouvoir le changer (recu : ${direction.reglages[1].choisi}, ${direction.compteur})`);
+    // La direction : tout, et rien a regler. Pas un interrupteur grise : une phrase.
+    await choisirRole('Direction');
+    const direction = await page.evaluate(() => ({
+      interrupteurs: document.querySelectorAll('.eq-role input.eq-switch').length,
+      niveaux: document.querySelectorAll('.eq-role .eq-niveau').length,
+      grises: document.querySelectorAll('.eq-role input:disabled, .eq-role button:disabled').length,
+      note: ((document.querySelector('.eq-role .eq-note') || {}).textContent || ''),
+    }));
+    ok(direction.interrupteurs === 0 && direction.niveaux === 0 && direction.grises === 0 && /tous les écrans/.test(direction.note), `la direction dit qu elle voit tout, sans interrupteur ni reglage grise (recu : ${JSON.stringify(direction)})`);
     const defenseDirection = await page.evaluate(async () => {
       const avant = window.__staffAuthPosts.length;
       await choisirNiveauRole('direction', 'prix', 'non');
@@ -289,30 +291,20 @@ async function installMock(page) {
     // Au doigt : 44 px, et rien ne deborde a la largeur d un telephone.
     const doigt = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     const tel = await doigt.newPage();
-    await installMock(tel);
-    await tel.goto(`${BASE_URL}/?v=upt-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
-    await tel.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-    await tel.evaluate(() => {
-      state.staffAccessControl = JSON.parse(JSON.stringify(window.__AC));
-      state.staffMenuPage = 'users';
-      state.staffTheme = 'dark';
-      save();
-      setView('staff');
-      renderStaff();
-    });
+    await ouvrirLaPage(tel);
+    await tel.locator('.eq-rail-role', { hasText: 'Manager' }).first().click();
     await tel.waitForFunction(() => {
-      const option = document.querySelector('.staff-niveaux-group .staff-niveau-option span');
+      const option = document.querySelector('.eq-role .eq-niveau-option span');
       return option && option.getBoundingClientRect().height > 0;
     }, null, { timeout: 15000 });
-    // La lecture de l equipe repeint la page une fois de plus : on mesure apres.
     await tel.waitForTimeout(800);
     const auDoigt = await tel.evaluate(() => {
-      const options = [...document.querySelectorAll('.staff-niveaux-group .staff-niveau-option span')];
+      const options = [...document.querySelectorAll('.eq-role .eq-niveau-option span')];
       return { grossier: matchMedia('(pointer: coarse)').matches, hauteurMin: Math.min(...options.map((o) => o.getBoundingClientRect().height)), debord: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
     ok(auDoigt.grossier && auDoigt.hauteurMin >= 44, `au doigt, 44 px au moins (recu : ${JSON.stringify(auDoigt)})`);
     ok(auDoigt.debord <= 0, `a 390 px, la page ne deborde pas (recu : ${auDoigt.debord})`);
-    if (process.env.PINLANE_CAPTURES) await tel.locator('.staff-niveaux-group').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, 'niveaux-telephone.png') });
+    if (process.env.PINLANE_CAPTURES) await tel.locator('.eq-role .eq-niveaux').screenshot({ path: path.join(process.env.PINLANE_CAPTURES, 'niveaux-telephone.png') });
     await doigt.close();
 
     // ---- Contre-preuve par mutation : selection forcee sur le role plateforme
@@ -321,39 +313,40 @@ async function installMock(page) {
       renderStaffUtilityPage();
       return {
         resolved: state.staffAccessControl.selectedRoleId,
-        pillCount: document.querySelectorAll('.staff-role-pill').length,
-        hasPlatform: /plateforme/i.test((document.querySelector('.staff-access-console') || {}).textContent || ''),
+        roles: document.querySelectorAll('.eq-rail-role').length,
+        hasPlatform: /plateforme/i.test((document.querySelector('[data-equipe-page]') || {}).textContent || ''),
       };
     });
     ok(forced.resolved !== 'platform-owner', `selectedRoleId force sur platform-owner est re-resolu ailleurs (recu : "${forced.resolved}")`);
-    ok(forced.pillCount === 5 && !forced.hasPlatform, 'apres mutation forcee, le rail reste a 5 roles sans le role plateforme');
+    ok(forced.roles === 5 && !forced.hasPlatform, 'apres mutation forcee, le rail reste a 5 roles sans le role plateforme');
 
-    // ---- Defense en profondeur : le membre plateforme est intouchable ------
+    // ---- Defense en profondeur : l acces plateforme est intouchable ----------
     const defense = await page.evaluate(async () => {
       window.confirm = () => true;
       const before = window.__staffAuthPosts.length;
-      await toggleStaffMemberStatus('libramont:platform-owner');
-      await deleteStaffMember('libramont:platform-owner');
-      await updateStaffMemberRole('libramont:platform-owner', 'manager');
-      await updateStaffMemberRole('libramont:sam', 'platform-owner');
+      await equipeBloquer('libramont:platform-owner', true);
+      await equipeSupprimer('libramont:platform-owner');
+      await equipeNouveauCode('libramont:platform-owner');
+      await equipeRoleAuCentre('libramont:platform-owner', 'libramont', 'manager');
+      await equipeRoleAuCentre('libramont:sam', 'libramont', 'platform-owner');
       return { posted: window.__staffAuthPosts.slice(before) };
     });
-    ok(defense.posted.length === 0, `bloquer/supprimer/re-roler l'acces plateforme (appels directs) : AUCUNE requete ne part (recu : ${JSON.stringify(defense.posted)})`);
+    ok(defense.posted.length === 0, `bloquer, supprimer, nouveau code, changer de role : rien ne part pour l acces plateforme (recu : ${JSON.stringify(defense.posted)})`);
 
-    // Contre-preuve : garde neutralisee en memoire -> l'appel PART. Prouve que
-    // le zero ci-dessus vient de la garde, pas d'un harnais casse.
+    // Contre-preuve : garde neutralisee en memoire -> l appel PART. Prouve que
+    // le zero ci-dessus vient de la garde, pas d un harnais casse.
     const counterProof = await page.evaluate(async () => {
       const original = window.isPlatformStaffMember;
       const before = window.__staffAuthPosts.length;
       try {
         window.isPlatformStaffMember = () => false;
-        await toggleStaffMemberStatus('libramont:platform-owner');
+        await equipeBloquer('libramont:platform-owner', true);
       } finally {
         window.isPlatformStaffMember = original;
       }
       return { posted: window.__staffAuthPosts.slice(before) };
     });
-    ok(counterProof.posted.includes('toggleMemberStatus'), `contre-preuve : garde neutralisee, la requete toggleMemberStatus PART (recu : ${JSON.stringify(counterProof.posted)})`);
+    ok(counterProof.posted.includes('setMemberBlocked'), `contre-preuve : garde neutralisee, la requete setMemberBlocked PART (recu : ${JSON.stringify(counterProof.posted)})`);
 
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     ok(fatal.length === 0, `aucune erreur page fatale (recu : ${fatal.slice(0, 3).join(' | ') || 'aucune'})`);
@@ -362,7 +355,7 @@ async function installMock(page) {
       console.error(`\nusers-page-check: ${failures} echec(s).`);
       process.exit(1);
     }
-    console.log('\nusers-page-check: ALL OK (role plateforme exclu partout et intouchable, selection de role stable apres edition, contre-preuves rouges)');
+    console.log('\nusers-page-check: ALL OK (role plateforme exclu partout et intouchable, role choisi stable apres un droit change, contre-preuves rouges)');
     process.exit(0);
   } finally {
     await browser.close();

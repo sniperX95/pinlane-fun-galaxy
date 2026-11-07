@@ -202,6 +202,10 @@ async function requete(texte, params = []) {
   const garde = sql.includes(GARDE);
 
   if (/^select 1 from centers where id = \$1/i.test(sql)) return centreExiste(params);
+  // La relation centre -> entreprise (requestedCenterIsSameClient, et depuis le
+  // 2026-11-07 les centres d une meme personne) : ces centres n ont pas
+  // d entreprise, donc aucun ne se traverse, comme avant.
+  if (/^select id, coalesce\(client_id, ''\) as client_id from centers/i.test(sql)) return lignes(db.centers.map((c) => ({ id: c.id, client_id: c.client_id || '' })));
   if (/^select m\.center_id from staff_members m join staff_roles r .* where m\.access_code_hash = \$1/i.test(sql)) {
     const eligibles = db.staff_members
       .filter((m) => m.access_code_hash === params[0] && m.status !== 'blocked' && retenu(m, garde))
@@ -300,6 +304,33 @@ async function requete(texte, params = []) {
     return vide();
   }
   if (/insert into audit_log|from schema_migrations/i.test(sql)) return vide();
+  // LES LECTURES DE L EQUIPE A PLUSIEURS CENTRES (2026-11-07) : les centres de
+  // l entreprise, leurs roles, les lignes de leurs membres, et les autres lignes
+  // d une meme personne (meme code). Lues DANS le SQL, comme le reste.
+  const ids = (p) => (Array.isArray(p) ? p.map(String) : []);
+  const partage = (m) => m.id === `${m.center_id}:role:${m.role_id}`;
+  if (/^select id, name from centers where id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.centers.filter((c) => ids(params[0]).includes(c.id)).map((c) => ({ id: c.id, name: c.name || c.id })));
+  }
+  if (/^select center_id, id, name, locked, tone, permissions from staff_roles where center_id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.staff_roles.filter((r) => ids(params[0]).includes(r.center_id)).map((r) => ({ center_id: r.center_id, id: r.id, name: r.name, locked: Boolean(r.locked), tone: r.tone, permissions: r.permissions || [] })));
+  }
+  if (/^select id, center_id, role_id, status, last_seen, access_code_hash from staff_members where center_id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.staff_members.filter((m) => ids(params[0]).includes(m.center_id)).map((m) => ({ id: m.id, center_id: m.center_id, role_id: m.role_id, status: m.status, last_seen: m.last_seen || null, access_code_hash: m.access_code_hash })));
+  }
+  if (/^select distinct m\.center_id from staff_members s join staff_members m on m\.access_code_hash = s\.access_code_hash/i.test(sql)) {
+    const s = db.staff_members.find((x) => x.id === params[0]);
+    if (!s || partage(s)) return vide();
+    return lignes([...new Set(db.staff_members.filter((x) => x.id !== s.id && x.access_code_hash === s.access_code_hash && x.status !== 'blocked' && !partage(x)).map((x) => x.center_id))].map((center_id) => ({ center_id })));
+  }
+  if (/^select m\.id as member_id, m\.name as member_name, m\.contact, m\.status as member_status, m\.role_id, r\.name as role_name/i.test(sql)) {
+    const s = db.staff_members.find((x) => x.id === params[0]);
+    if (!s || partage(s)) return vide();
+    const m = db.staff_members.find((x) => x.center_id === params[1] && x.id !== s.id && x.access_code_hash === s.access_code_hash && x.status !== 'blocked' && !partage(x));
+    const r = m && roleDe(m);
+    if (!r) return vide();
+    return lignes([{ member_id: m.id, member_name: m.name, contact: m.contact || '', member_status: m.status, role_id: m.role_id, role_name: r.name, role_code: r.code, permissions: r.permissions || [], locked: Boolean(r.locked) }]);
+  }
   NON_COUVERTES.push(sql.slice(0, 160));
   return vide();
 }

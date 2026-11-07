@@ -802,7 +802,7 @@
             <button type="button" class="pv2-btn" onclick="shiftStaffReservationsMonth(1)" aria-label="Mois suivant">›</button>
           </div>
           <button type="button" class="pv2-btn" onclick="refreshStaffReservations()">Actualiser</button>
-          <button type="button" class="pv2-btn primary" onclick="openStaffReservationsQuick()">+ Réservation</button>`,
+          ${typeof peutGeste !== 'function' || peutGeste('reserver') ? '<button type="button" class="pv2-btn primary" onclick="openStaffReservationsQuick()">+ Réservation</button>' : ''}`,
       })}
 
       <section class="pv2-stats">
@@ -943,7 +943,7 @@
       ? `<strong>${esc(formatStaffClientDateText(next.date))}</strong><small>prochaine venue${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</small>`
       : `<strong>${esc(row.lastVisitAgo || '-')}</strong><small>${esc(row.lastVisit || '')}</small>`;
     const lastCell = ctx.segment === 'relancer'
-      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email ? `<button type="button" class="pv2-btn sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">Relancer</button>` : ''}</td>`
+      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email && (typeof peutGeste !== 'function' || peutGeste('ecrire')) ? `<button type="button" class="pv2-btn sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">Relancer</button>` : ''}</td>`
       : `<td class="crm-cell-badge">${crmRowBadge(row, ctx)}</td>`;
     return `
       <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
@@ -1084,8 +1084,9 @@
 
   function crmCommsBlock(selected) {
     const comms = getStaffClientCommunications(selected);
+    const ecrire = typeof peutGeste !== 'function' || peutGeste('ecrire');
     const compose = selected.email
-      ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Nouveau message</button>`
+      ? (ecrire ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Nouveau message</button>` : '')
       : '<span class="crm-muted">Aucune adresse email</span>';
     if (comms === null) {
       const loading = staffClientCommsCache.loading;
@@ -1111,7 +1112,7 @@
         <span class="crm-comm-icon">${ci(CHAN[c.channel] || 'mail')}</span>
         <span class="crm-comm-main"><strong>${esc(c.subject || c.templateId || 'Message')}</strong><small>${esc(c.recipient || '')} · ${esc((typeof formatOpsTimestamp === 'function' && (c.sentAt || c.createdAt)) ? formatOpsTimestamp(c.sentAt || c.createdAt) : (c.sentAt || c.createdAt || ''))}${c.direction === 'inbound' ? ' · reçu' : ''}</small></span>
         <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(STATUS_FR[c.status] || c.status || '')}</span>
-        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
+        ${selected.email && ecrire ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
       </div>`).join('');
     return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
       <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
@@ -1161,6 +1162,7 @@
   }
 
   window.crmOpenRelance = function (clientId) {
+    if (typeof peutGeste === 'function' && !peutGeste('ecrire')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     const row = getStaffClientRows().find((r) => r.id === clientId);
     if (!row || !row.email) { toast('Pas d’adresse email pour ce client.'); return; }
     if (state.staffSelectedClientId !== clientId) state.staffSelectedClientId = clientId;
@@ -1183,6 +1185,7 @@
 
   window.crmSendRelance = async function (clientId) {
     if (crmRelance.busy) return;
+    if (typeof peutGeste === 'function' && !peutGeste('ecrire')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     const row = getStaffClientRows().find((r) => r.id === clientId);
     if (!row || !row.email) return;
     // Filet du moteur de variables (défini plus bas dans ce module, dispo à
@@ -1268,6 +1271,7 @@
   };
 
   window.crmSaveClientNote = async function (clientId, body) {
+    if (typeof peutGeste === 'function' && !peutGeste('noterClient')) { toast('Votre rôle ne permet pas d’écrire une note client.'); return; }
     const row = getStaffClientRows().find((r) => r.id === clientId);
     if (!row) return;
     const key = crmClientKey(row);
@@ -1354,6 +1358,15 @@
         </button>
       </section>`;
     }
+    // Un geste que le role ne peut pas faire ne se montre pas (les regles du
+    // serveur, lues dans peutGeste).
+    const ecrire = typeof peutGeste !== 'function' || peutGeste('ecrire');
+    const noter = typeof peutGeste !== 'function' || peutGeste('noterClient');
+    const noteLue = crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? crmNotes.body : null;
+    const actionsFiche = [
+      selected.email && ecrire ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Message</button>` : '',
+      typeof peutGeste !== 'function' || peutGeste('reserver') ? `<button type="button" class="pv2-btn primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>` : '',
+    ].join('');
     return `
       <div class="crm-fiche">
         <section class="crm-sec crm-head">
@@ -1365,10 +1378,7 @@
               ${selected.email ? `<a href="mailto:${esc(selected.email)}" class="crm-contact-link">${ci('mail')}${esc(selected.email)}</a>` : ''}
             </div>
           </div>
-          <div class="crm-head-actions">
-            ${selected.email ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Message</button>` : ''}
-            <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
-          </div>
+          ${actionsFiche ? `<div class="crm-head-actions">${actionsFiche}</div>` : ''}
         </section>
 
         <section class="crm-sec crm-kpis crm-kpis-3">
@@ -1391,7 +1401,7 @@
         ${relance.due ? `<section class="crm-sec crm-relance">
           <div class="crm-relance-row">
             <span class="crm-relance-why">${esc(relance.reason)}</span>
-            ${selected.email && crmRelance.openFor !== selected.id ? `<button type="button" class="pv2-btn primary" onclick="crmOpenRelance('${escJs(selected.id)}')">${ci('send')}Relancer par email</button>` : ''}
+            ${selected.email && ecrire && crmRelance.openFor !== selected.id ? `<button type="button" class="pv2-btn primary" onclick="crmOpenRelance('${escJs(selected.id)}')">${ci('send')}Relancer par email</button>` : ''}
           </div>
           ${crmRelance.openFor === selected.id ? crmRelanceComposer(selected) : ''}
         </section>` : ''}
@@ -1406,9 +1416,10 @@
         <section class="crm-sec crm-note-block">
           <div class="crm-sec-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
           ${crmNotes.error ? `<p class="staff-note-error" role="alert">${esc(crmNotes.error)}</p><button type="button" class="gc-note-retirer" onclick="crmReloadClientNote('${escJs(selected.id)}')">Réessayer</button>` : ''}
-            <textarea class="crm-note-input" data-pl-focus="clients.note" rows="3" maxlength="4000" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
+          ${noter ? `<textarea class="crm-note-input" data-pl-focus="clients.note" rows="3" maxlength="4000" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
               ${crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? '' : 'disabled'}
-              oninput="crmClientNoteDraft('${escJs(selected.id)}', this.value)" onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? (crmNotes.draft ?? crmNotes.body) : '')}</textarea>
+              oninput="crmClientNoteDraft('${escJs(selected.id)}', this.value)" onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? (crmNotes.draft ?? crmNotes.body) : '')}</textarea>`
+            : noteLue === null ? '' : noteLue ? `<p style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0">${esc(noteLue)}</p>` : '<p class="crm-muted" style="margin:0">Aucune note.</p>'}
           ${selected.notesConcat ? `<div class="crm-muted crm-note-legacy">Notes des réservations : ${esc(selected.notesConcat)}</div>` : ''}
         </section>
       </div>`;
@@ -1481,7 +1492,7 @@
         ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
           ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> réservation${crmRelanceStats.converted > 1 ? 's' : ''} liée${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> de réservations liées</span>`
           : `<span class="crm-roi-figures">Relancez un premier client : je mesure ce que chaque relance rapporte.</span>`}
-        <button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>
+        ${typeof canUseStaffPermission !== 'function' || (canUseStaffPermission('campaigns.manage') && canUseStaffPermission('emails.view')) ? `<button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>` : ''}
       </section>`;
       body = `${roi}<section class="pv2-split crm-split">
         <article class="pv2-panel crm-list-panel">
@@ -1509,8 +1520,8 @@
         sub: esc(sync),
         actions: `
           <button type="button" class="pv2-btn" onclick="refreshStaffClients()">Actualiser</button>
-          <button type="button" class="pv2-btn" onclick="exportStaffClientsCsv()">Exporter</button>
-          <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking()">+ Nouveau client</button>`,
+          ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn" onclick="exportStaffClientsCsv()">Exporter</button>' : ''}
+          ${typeof peutGeste !== 'function' || peutGeste('reserver') ? '<button type="button" class="pv2-btn primary" onclick="openStaffClientBooking()">+ Nouveau client</button>' : ''}`,
       })}
 
       <section class="pv2-stats crm-stats">
@@ -1535,8 +1546,11 @@
   };
 
   // Pont Clients → Campagne : préouvre le formulaire campagne sur les dormants.
+  // Le formulaire se peint dans Emails, section Campagnes (renderPv2RealCampaigns),
+  // pas dans la page Marketing.
   window.openStaffCampaignForRelance = function () {
-    openStaffMenuPage('campaigns');
+    if (typeof canUseStaffPermission === 'function' && !(canUseStaffPermission('campaigns.manage') && canUseStaffPermission('emails.view'))) { toast('Votre rôle ne permet pas de créer une campagne.'); return; }
+    openStaffMenuPage('emails', 'campagnes');
     setTimeout(() => {
       if (typeof window.pv2CampOpenForm === 'function') {
         pv2Camp.form.segment = 'dormant'; // id serveur réel (lib/campaigns.js)
@@ -1986,6 +2000,7 @@
   // API globale : la fiche client (et tout autre module) ouvre le composer
   // prérempli : remplace le détour console direction / mailto.
   window.pv2OpenComposer = function (prefill = {}) {
+    if (typeof peutGeste === 'function' && !peutGeste('ecrire')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     pv2Mail.composerOpen = true;
     pv2Mail.pickerOpen = false;
     pv2Mail.aiTips = [];
@@ -2334,6 +2349,7 @@
   // Un modèle fourni qui plaît devient un modèle À SOI : préremplit l'éditeur
   // de la bibliothèque (Réglages → Modèles) avec le brouillon courant.
   window.pv2ComposerSaveAsTemplate = function () {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de créer un modèle.'); return; }
     const d = pv2Mail.draft;
     if (!String(d.subject || '').trim() && !String(d.body || '').trim()) { toast('Rien à enregistrer : le message est vide.'); return; }
     pv2Settings.open = true;
@@ -2386,6 +2402,7 @@
 
   window.pv2ComposerSend = async function () {
     if (pv2Mail.busy) return;
+    if (typeof peutGeste === 'function' && !peutGeste('ecrire')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     const d = pv2Mail.draft;
     const to = String(d.to || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse email invalide.'); return; }
@@ -2684,6 +2701,7 @@
 
   window.pv2InboxReply = async function (ref) {
     if (pv2Threads.replyBusy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     const threadId = pv2ThreadRefResoudre(ref);
     const d = pv2Threads.detail;
     if (!d.thread || String(d.thread.id) !== threadId) { toast('Ouvrez d\'abord la conversation.'); return; }
@@ -2838,6 +2856,7 @@
   }
 
   window.pv2SeqNew = function () {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     pv2Seq.creating = true;
     pv2Seq.editId = '';
     pv2Seq.draft = { name: '', trigger: { type: 'after_visit', days: 7, weekday: 4 }, segment: 'all', subject: '', body: '', cap: 20, enabled: true };
@@ -2847,6 +2866,7 @@
   };
 
   window.pv2SeqEdit = function (id) {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     const sequence = pv2Seq.sequences.find((item) => item.id === id);
     if (!sequence) return;
     pv2Seq.creating = false;
@@ -2914,6 +2934,7 @@
 
   window.pv2SeqSendTest = async function (id) {
     if (pv2Seq.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     const sequence = pv2Seq.editId === id ? pv2Seq.draft : pv2Seq.sequences.find((item) => item.id === id);
     if (!sequence) return;
     pv2Seq.busy = true;
@@ -2936,6 +2957,7 @@
 
   window.pv2SeqSave = async function () {
     if (pv2Seq.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     pv2Seq.busy = true;
     renderStaffEmailsPage();
     try {
@@ -2960,6 +2982,7 @@
 
   window.pv2SeqToggle = async function (id, enabled) {
     if (pv2Seq.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     pv2Seq.busy = true;
     renderStaffEmailsPage();
     try {
@@ -2978,6 +3001,7 @@
 
   window.pv2SeqDelete = async function (id) {
     if (pv2Seq.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     const sequence = pv2Seq.sequences.find((item) => item.id === id);
     if (!sequence) return;
     if (!window.confirm(`Supprimer la séquence « ${sequence.name} » ? Les envois déjà partis restent dans l'historique.`)) return;
@@ -3027,6 +3051,9 @@
 
   function pv2SeqCard(sequence) {
     const editing = pv2Seq.editId === sequence.id;
+    // customSequences (ecriture) : settings.manage ou emails.send. Sans lui,
+    // l etat se lit en texte a la place de l interrupteur.
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
     const stats = pv2SeqStats30j(sequence);
     const NB = ' ';
     const sent30 = stats ? Number(stats.sent30d) || 0 : null;
@@ -3036,8 +3063,8 @@
       : 'Envois des 30 derniers jours : pas encore comptés';
     return `<article class="mk-auto pv2-seq-card${sequence.enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
-        <strong>${esc(sequence.name)}<span class="pv2-seq-pill">perso</span></strong>
-        <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
+        <strong>${esc(sequence.name)}<span class="pv2-seq-pill">perso</span>${regler ? '' : `<span class="pv2-seq-pill">${sequence.enabled ? 'activée' : 'désactivée'}</span>`}</strong>
+        ${regler ? `<button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>` : ''}
       </div>
       <p class="mk-auto-desc">${esc(pv2SeqTriggerLabel(sequence))} · max ${Number(sequence.cap) || 0} envois</p>
       <div class="mk-auto-effectif">
@@ -3049,8 +3076,8 @@
         <span class="mk-auto-stats">${statsTxt}</span>
         <div class="mk-auto-actions">
           <button type="button" class="mkw-link mk-auto-preview" onclick="pv2SeqPreview('${escJs(sequence.id)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir le mail</button>
-          <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="${editing ? 'pv2SeqCloseEditor()' : `pv2SeqEdit('${escJs(sequence.id)}')`}">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
-          <button type="button" class="pv2-btn sm ghost" onclick="pv2SeqDelete('${escJs(sequence.id)}')" ${pv2Seq.busy ? 'disabled' : ''}>Supprimer</button>
+          ${regler ? `<button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="${editing ? 'pv2SeqCloseEditor()' : `pv2SeqEdit('${escJs(sequence.id)}')`}">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
+          <button type="button" class="pv2-btn sm ghost" onclick="pv2SeqDelete('${escJs(sequence.id)}')" ${pv2Seq.busy ? 'disabled' : ''}>Supprimer</button>` : ''}
         </div>
       </div>
       ${editing ? pv2SeqEditor() : ''}
@@ -3110,7 +3137,7 @@
       <div class="pv2-composer-actions">
         <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
         ${pv2Seq.editId ? `<button type="button" class="pv2-btn" onclick="pv2SeqPreview('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir en grand</button>
-        <button type="button" class="pv2-btn" onclick="pv2SeqSendTest('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}
+        ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? `<button type="button" class="pv2-btn" onclick="pv2SeqSendTest('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}` : ''}
         <span class="pv2-composer-spacer"></span>
         <button type="button" class="pv2-btn primary" onclick="pv2SeqSave()" ${pv2Seq.busy ? 'disabled' : ''}>${pv2Seq.busy ? 'Enregistrement…' : 'Enregistrer la séquence'}</button>
       </div>
@@ -3185,6 +3212,7 @@
   window.pv2BrainSave = async function () {
     const brain = pv2Settings.brain;
     if (pv2Settings.busy || !brain.draft) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les textes de l’agent.'); return; }
     pv2Settings.busy = true;
     renderStaffEmailsPage();
     try {
@@ -3238,6 +3266,7 @@
   }
 
   window.pv2TplEdit = function (id) {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     if (id === null) { pv2Settings.tplEditing = { id: null, name: '', category: 'marketing', subject: '', body: '' }; }
     else {
       const tpl = pv2Mail.templates.find((t) => String(t.id) === String(id));
@@ -3263,6 +3292,7 @@
   // Un modele fourni qui plait devient un modele A SOI : l editeur s ouvre
   // prerempli, il ne reste qu a le nommer.
   window.pv2ModeleCopier = function (key) {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     const starter = PV2_STARTERS.find((s) => s.key === key);
     if (!starter) return;
     pv2Settings.tplEditing = { id: null, name: `${starter.name} (ma version)`, category: 'marketing', subject: starter.subject, body: starter.body };
@@ -3281,6 +3311,7 @@
   window.pv2TplSave = async function () {
     const tpl = pv2Settings.tplEditing;
     if (!tpl || pv2Settings.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     if (!String(tpl.name || '').trim()) { toast('Donnez un nom au modèle.'); return; }
     pv2Settings.busy = true;
     renderStaffEmailsPage();
@@ -3303,6 +3334,7 @@
 
   window.pv2TplArchive = async function (id) {
     if (pv2Settings.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     if (!window.confirm('Archiver ce modèle ? Il n\'apparaîtra plus dans le composer.')) return;
     pv2Settings.busy = true;
     renderStaffEmailsPage();
@@ -3323,6 +3355,7 @@
 
   /* Adresses d'envoi : ajouter / définir par défaut / supprimer. */
   window.pv2IdEdit = function () {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
     pv2Settings.idEditing = { label: '', email: '', isDefault: !pv2Mail.identities.length };
     if (state.staffEmailsSection !== 'expediteurs') pv2EmailsGo('expediteurs');
     else renderStaffEmailsPage();
@@ -3335,6 +3368,7 @@
   window.pv2IdSave = async function () {
     const identity = pv2Settings.idEditing;
     if (!identity || pv2Settings.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email || '').trim())) { toast('Adresse email invalide.'); return; }
     pv2Settings.busy = true;
     renderStaffEmailsPage();
@@ -3356,6 +3390,7 @@
 
   window.pv2IdDefault = async function (id) {
     if (pv2Settings.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
     const identity = pv2Mail.identities.find((i) => String(i.id) === String(id));
     if (!identity) return;
     pv2Settings.busy = true;
@@ -3376,6 +3411,7 @@
 
   window.pv2IdDelete = async function (id) {
     if (pv2Settings.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
     if (!window.confirm('Supprimer cette adresse d\'envoi ?')) return;
     pv2Settings.busy = true;
     renderStaffEmailsPage();
@@ -3400,18 +3436,23 @@
   /* ── SECTION MODELES : la galerie, puis l editeur avec son apercu ──────── */
   function pv2ModeleCarte({ ref, name, cat, subject, body, own, id, key }) {
     const excerpt = String(body || '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2).join(' ');
+    // Utiliser ouvre le composeur (emails.send) ; Modifier, Archiver et Copier
+    // finissent en saveEmailTemplate ou archiveEmailTemplate (campaigns.manage).
+    const ecrire = typeof peutGeste !== 'function' || peutGeste('ecrire');
+    const gerer = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
+    const actions = `${ecrire ? `<button type="button" class="pv2-btn sm" onclick="pv2ModeleUtiliser('${escJs(ref)}')">${ci('send')}Utiliser</button>` : ''}
+        ${!gerer ? '' : own
+          ? `<button type="button" class="pv2-btn sm" onclick="pv2TplEdit('${escJs(String(id))}')">${ci('pencil')}Modifier</button>
+             <button type="button" class="pv2-btn sm ghost" onclick="pv2TplArchive('${escJs(String(id))}')">Archiver</button>`
+          : `<button type="button" class="pv2-btn sm ghost" onclick="pv2ModeleCopier('${escJs(key)}')">${ci('copy')}Copier en modèle</button>`}`;
     return `<article class="pv2-model-card">
       <div class="pv2-model-name"><span>${esc(name)}</span>${own ? '<em class="pv2-tpl-origin">maison</em>' : ''}</div>
       <span class="pv2-model-cat">${esc(cat)}</span>
       <div class="pv2-model-subject">${pv2TexteJetons(subject) || '<em>Sans objet</em>'}</div>
       <div class="pv2-model-excerpt">${pv2TexteJetons(excerpt)}</div>
-      <div class="pv2-model-actions">
-        <button type="button" class="pv2-btn sm" onclick="pv2ModeleUtiliser('${escJs(ref)}')">${ci('send')}Utiliser</button>
-        ${own
-          ? `<button type="button" class="pv2-btn sm" onclick="pv2TplEdit('${escJs(String(id))}')">${ci('pencil')}Modifier</button>
-             <button type="button" class="pv2-btn sm ghost" onclick="pv2TplArchive('${escJs(String(id))}')">Archiver</button>`
-          : `<button type="button" class="pv2-btn sm ghost" onclick="pv2ModeleCopier('${escJs(key)}')">${ci('copy')}Copier en modèle</button>`}
-      </div>
+      ${ecrire || gerer ? `<div class="pv2-model-actions">
+        ${actions}
+      </div>` : ''}
     </article>`;
   }
 
@@ -3440,6 +3481,7 @@
 
   function pv2EmailsSectionModeles() {
     const tpl = pv2Settings.tplEditing;
+    const gerer = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
     const groups = [];
     for (const s of PV2_STARTERS) {
       let g = groups.find((x) => x.label === s.cat);
@@ -3453,13 +3495,13 @@
     return `<section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Modèles">
       <div class="pv2-panel-head has-sub">
         <div><h2>Modèles</h2><p class="pv2-panel-sub">Des textes prêts à envoyer. Les nôtres servent de départ ; les vôtres apparaissent aussi dans le composeur.</p></div>
-        ${tpl ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2TplEdit(null)">+ Nouveau modèle</button>`}
+        ${tpl || !gerer ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2TplEdit(null)">+ Nouveau modèle</button>`}
       </div>
       <div class="pv2-panel-body">
         ${tpl ? pv2ModeleEditeur() : `
         <div class="pv2-model-group">
           <h3>Vos modèles${owned.length ? ` (${owned.length})` : ''}</h3>
-          ${owned.length ? `<div class="pv2-model-grid">${owned.join('')}</div>` : '<div class="pv2-empty"><strong>Aucun modèle personnalisé</strong>Copiez un modèle fourni ou partez d\'une page blanche : il apparaîtra dans le composeur.</div>'}
+          ${owned.length ? `<div class="pv2-model-grid">${owned.join('')}</div>` : `<div class="pv2-empty"><strong>Aucun modèle personnalisé</strong>${gerer ? 'Copiez un modèle fourni ou partez d\'une page blanche : il apparaîtra dans le composeur.' : ''}</div>`}
         </div>
         ${groups.map((g) => `<div class="pv2-model-group"><h3>${esc(g.label)}</h3><div class="pv2-model-grid">${g.cards.join('')}</div></div>`).join('')}`}
       </div>
@@ -3469,6 +3511,8 @@
   /* ── SECTION EXPEDITEURS : les identites, et l adresse de reponse ───────── */
   function pv2EmailsSectionExpediteurs() {
     const identity = pv2Settings.idEditing;
+    // saveEmailIdentity et deleteEmailIdentity : settings.manage (api/ops.js).
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('settings.manage');
     const channel = pv2Mail.channel || {};
     const centre = pv2Design.center || null;
     // La meme regle que le bandeau d echec de l Apercu : les causes reelles
@@ -3494,15 +3538,15 @@
         ${pv2Mail.identities.length ? pv2Mail.identities.map((i) => `
           <div class="pv2-settings-row">
             <div><strong>${esc(i.label || i.email)}</strong><small>${esc(i.email)}${i.isDefault ? ' · par défaut' : ''}</small></div>
-            ${i.isDefault ? '<span class="pv2-chip">Par défaut</span>' : `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Mettre par défaut</button>`}
-            <button type="button" class="pv2-btn sm ghost" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>
-          </div>`).join('') : '<div class="pv2-empty"><strong>Aucune adresse configurée</strong>Ajoutez l\'adresse (ou les adresses) avec lesquelles vos emails partent.</div>'}
+            ${i.isDefault ? '<span class="pv2-chip">Par défaut</span>' : regler ? `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Mettre par défaut</button>` : ''}
+            ${regler ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>` : ''}
+          </div>`).join('') : `<div class="pv2-empty"><strong>Aucune adresse configurée</strong>${regler ? 'Ajoutez l\'adresse (ou les adresses) avec lesquelles vos emails partent.' : ''}</div>`}
       </div>`;
     return `<div class="pv2-overview-grid">
       <section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Expéditeurs">
         <div class="pv2-panel-head has-sub">
           <div><h2>Adresses d'envoi</h2><p class="pv2-panel-sub">Le nom et l'adresse que vos clients voient en tête de mail. Une adresse par défaut, les autres au choix dans le composeur.</p></div>
-          ${identity ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2IdEdit()">+ Nouvelle adresse</button>`}
+          ${identity || !regler ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2IdEdit()">+ Nouvelle adresse</button>`}
         </div>
         <div class="pv2-panel-body">${liste}</div>
       </section>
@@ -3534,10 +3578,19 @@
   /* ── SECTION L AGENT : ses textes, et ce qu il ne sait pas ───────────────── */
   function pv2EmailsSectionAgent() {
     const brain = pv2Settings.brain;
+    // emailBrain (ecriture) : settings.manage ou emails.send. Sans lui, les
+    // textes se lisent, sans champ a remplir.
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
     const form = !brain.loaded
       ? `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
       : brain.error || !brain.draft
         ? `<div class="pv2-empty" role="status"><strong>Textes indisponibles</strong>${esc(brain.error || 'Réponse incomplète du serveur.')}<button type="button" class="pv2-btn sm" onclick="pv2BrainRelire()">Réessayer</button></div>`
+      : !regler
+        ? `<div class="pv2-composer-grid">
+        <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec ces textes. Votre rôle les lit, il ne les modifie pas.</p>
+        ${[['Signature', brain.draft.signature || brain.defaults.signature], ['Consignes libres', brain.draft.extra], ...Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => [`Réponse « ${label} »`, brain.draft.faq[intent] || brain.defaults.faq[intent]?.body])]
+          .map(([label, texte]) => `<div class="pv2-composer-field pv2-composer-wide"><span>${esc(label)}</span><p style="white-space:pre-wrap;margin:0">${esc(texte || 'Aucune')}</p></div>`).join('')}
+      </div>`
       : `<div class="pv2-composer-grid">
         <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec ces textes. Modifiez-les librement : ce que vous écrivez ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
         <label class="pv2-composer-field"><span>Signature</span>
@@ -3638,6 +3691,7 @@
   };
 
   window.pv2SuppressAdd = async function () {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['campaigns.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de changer cette liste.'); return; }
     const email = String(pv2Suppress.addEmail || '').trim();
     if (!email.includes('@')) { toast('Entrez une adresse email valide.'); return; }
     if (pv2Suppress.busy) return;
@@ -3662,6 +3716,7 @@
 
   window.pv2SuppressRemove = async function (email) {
     if (pv2Suppress.busy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['campaigns.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de changer cette liste.'); return; }
     pv2Suppress.busy = `rm:${email}`;
     renderStaffEmailsPage();
     try {
@@ -3682,6 +3737,8 @@
   function pv2SuppressionPanel(options = {}) {
     const open = !!options.toujoursOuvert || !!state.staffSuppressOpen;
     const count = pv2Suppress.loaded ? pv2Suppress.total : (pv2Suppress.entries.length || 0);
+    // suppressionAdd et suppressionRemove : campaigns.manage ou emails.send (api/ops.js).
+    const exclure = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['campaigns.manage', 'emails.send']);
     const rows = pv2Suppress.entries.map((entry) => {
       const when = formatOpsTimestamp(entry.createdAt) || '-';
       const src = PV2_SUPPRESS_SOURCE[entry.source] || entry.source || '-';
@@ -3690,7 +3747,7 @@
         <td><strong>${esc(entry.email)}</strong>${entry.reason ? `<small class="pv2-cell-sub">${esc(entry.reason)}</small>` : ''}</td>
         <td><span class="pv2-chip">${esc(src)}</span></td>
         <td class="num">${esc(when)}</td>
-        <td><button type="button" class="pv2-btn sm ghost" onclick="pv2SuppressRemove('${escJs(entry.email)}')" ${busy ? 'disabled' : ''}>${busy ? 'Retrait…' : 'Réinscrire'}</button></td>
+        ${exclure ? `<td><button type="button" class="pv2-btn sm ghost" onclick="pv2SuppressRemove('${escJs(entry.email)}')" ${busy ? 'disabled' : ''}>${busy ? 'Retrait…' : 'Réinscrire'}</button></td>` : ''}
       </tr>`;
     }).join('');
     return `<section class="pv2-panel mk-auto-panel">
@@ -3704,18 +3761,18 @@
         ${options.toujoursOuvert ? '' : `<button type="button" class="pv2-btn sm" onclick="pv2ToggleSuppress()" aria-expanded="${open}">${open ? 'Masquer' : 'Voir la liste'}</button>`}
       </div>
       ${open ? `<div class="pv2-panel-body" data-pv2-mount="suppress">
-        <div class="pv2-suppress-add" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
+        ${exclure ? `<div class="pv2-suppress-add" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
           <input type="email" value="${esc(pv2Suppress.addEmail)}" placeholder="adresse@exemple.be" oninput="pv2SuppressSetAdd('email', this.value)" style="flex:1 1 220px;min-width:180px;padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
           <input type="text" value="${esc(pv2Suppress.addReason)}" placeholder="Motif (facultatif)" oninput="pv2SuppressSetAdd('reason', this.value)" style="flex:1 1 160px;min-width:140px;padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
           <button type="button" class="pv2-btn sm" onclick="pv2SuppressAdd()" ${pv2Suppress.busy === 'add' ? 'disabled' : ''}>${pv2Suppress.busy === 'add' ? 'Ajout…' : 'Ajouter à la liste'}</button>
-        </div>
+        </div>` : ''}
         ${pv2Suppress.error
           ? `<div class="pv2-empty"><strong>${esc(pv2Suppress.error)}</strong></div>`
           : !pv2Suppress.loaded
             ? `<div class="pv2-empty">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
             : pv2Suppress.entries.length
               ? `<table class="pv2-table">
-                  <thead><tr><th>Adresse</th><th>Origine</th><th class="num">Depuis</th><th></th></tr></thead>
+                  <thead><tr><th>Adresse</th><th>Origine</th><th class="num">Depuis</th>${exclure ? '<th></th>' : ''}</tr></thead>
                   <tbody>${rows}</tbody>
                 </table>`
               : '<div class="pv2-empty"><strong>Personne pour l\'instant</strong>Aucune adresse ne s\'est retirée du marketing.</div>'}
@@ -4051,6 +4108,7 @@
      2026-09-16 l editeur montre a droite le mail VIVANT rendu par le serveur
      avec le brouillon en cours : la gerante voit ce que la sequence ecrit. ── */
   window.pv2AutoEdit = function (key) {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     if (mkAuto.editKey === key) { mkAuto.editKey = ''; pv2ApercuAnnuler('auto'); renderStaffEmailsPage(); return; }
     const setting = (mkAuto.settings && mkAuto.settings[key]) || {};
     const def = mkAuto.defaults[key] || {};
@@ -4083,6 +4141,7 @@
 
   window.pv2AutoEditSave = async function (key) {
     if (mkAuto.busyKey) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     const def = mkAuto.defaults[key] || {};
     const d = mkAuto.editDraft;
     const body = { action: 'automationSettings', key, centerId: state.adminCenterId || 'libramont' };
@@ -4112,6 +4171,7 @@
 
   window.pv2AutoEditReset = async function (key) {
     if (mkAuto.busyKey) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     mkAuto.busyKey = key;
     renderStaffEmailsPage();
     try {
@@ -4171,6 +4231,7 @@
 
   window.pv2AutoSendTest = async function (key) {
     if (mkAuto.busyKey) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     mkAuto.busyKey = key;
     renderStaffEmailsPage();
     try {
@@ -4194,6 +4255,7 @@
   // bien au centre courant et qu'elle est bien en échec.
   window.pv2RetryEmail = async function (id) {
     if (!id || pv2Mail.retryingId) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     pv2Mail.retryingId = String(id);
     renderStaffEmailsPage();
     try {
@@ -4219,6 +4281,7 @@
 
   window.toggleStaffAutomation = async function (key) {
     if (mkAuto.busyKey || !mkAuto.settings) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier les séquences.'); return; }
     const current = !!(mkAuto.settings[key] && mkAuto.settings[key].enabled);
     mkAuto.busyKey = key;
     renderStaffEmailsPage();
@@ -4294,7 +4357,7 @@
         <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoPreview('${meta.key}')" ${busy ? 'disabled' : ''}>Voir le mail en grand</button>
-        <button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
+        ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? `<button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}
         <button type="button" class="pv2-btn sm ghost" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
       </div>
     </div>`;
@@ -4337,6 +4400,10 @@
     const editing = mkAuto.editKey === meta.key;
     const modified = pv2AutoHasOverride(meta.key);
     const effectif = mkAutoTexteEffectif(meta.key);
+    // automationSettings (ecriture) : settings.manage ou emails.send ;
+    // sendAutomationTest : emails.send. Sans droit d ecrire, l etat se lit.
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
+    const tester = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
     // ÉTOILE AMBRE SUPPRIMÉE : elle ne portait aucune information lisible (son
     // seul sens vivait dans un title=, invisible), et elle dépensait l'ambre
     // que cet écran réserve à l'ATTENTE. Couleur = sens, sinon rien.
@@ -4349,8 +4416,8 @@
     const statsTxt = `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · <span class="mk-auto-fail">${failed30}${NB}échec${failed30 > 1 ? 's' : ''}</span>` : ''} sur 30${NB}jours`;
     return `<article class="mk-auto${enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
-        <strong>${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
-        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
+        <strong>${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}${regler ? '' : `<span class="pv2-seq-pill">${enabled ? 'activée' : 'désactivée'}</span>`}</strong>
+        ${regler ? `<button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>` : ''}
       </div>
       <p class="mk-auto-desc">${esc(mkAutoPhraseDeclenchement(meta))}</p>
       <div class="mk-auto-effectif">
@@ -4364,8 +4431,8 @@
         <span class="mk-auto-stats">${statsTxt}</span>
         <div class="mk-auto-actions">
           <button type="button" class="mkw-link mk-auto-preview" onclick="pv2AutoPreview('${meta.key}')" ${mkAuto.busyKey === meta.key ? 'disabled' : ''}>Voir le mail</button>
-          <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
-          <button type="button" class="pv2-btn sm ghost mk-auto-test" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
+          ${regler ? `<button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>` : ''}
+          ${tester ? `<button type="button" class="pv2-btn sm ghost mk-auto-test" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}
         </div>
       </div>
       ${editing ? mkAutoEditor(meta) : ''}
@@ -4478,7 +4545,7 @@
         ${pv2Mail.aiTips.length ? `<ul class="pv2-composer-tips">${pv2Mail.aiTips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn" onclick="pv2ComposerServerPreview()">Voir le mail final</button>
-          <button type="button" class="pv2-btn" onclick="pv2ComposerSaveAsTemplate()">Garder en modèle</button>
+          ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage') ? '<button type="button" class="pv2-btn" onclick="pv2ComposerSaveAsTemplate()">Garder en modèle</button>' : ''}
           <button type="button" class="pv2-btn" onclick="pv2ComposerImprove()" ${pv2Mail.aiBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.aiBusy ? 'Analyse…' : (aiOn ? 'Améliorer par IA' : 'Conseils d\'écriture')}</button>
           <span class="pv2-composer-spacer"></span>
           <button type="button" class="pv2-btn" onclick="pv2CloseComposer()">Annuler</button>
@@ -4641,10 +4708,10 @@
     return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' }) : '';
   }
   const pv2Pluriel = (n, mot, mots) => `${n} ${n > 1 ? mots : mot}`;
-  // Le droit d apprendre est celui que le serveur exige (api/ops.js, l une ou
-  // l autre permission) : sans lui, les cases et les boutons n existent pas
+  // Le droit d apprendre est celui que le serveur exige (api/ops.js,
+  // emails.send) : sans lui, les cases et les boutons n existent pas
   // (DESIGN.md regle 9), la memoire reste lisible.
-  const pv2PeutApprendre = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['emails.send', 'direction.view']);
+  const pv2PeutApprendre = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
   // LE SUIVI : les questions de clients resolues sur toutes celles posees (la
   // jauge), et les quatre chiffres qui disent que l agent apprend.
   function pv2SavoirSuivi(suivi) {
@@ -4948,6 +5015,7 @@
 
   window.pv2ApprendreLaReponse = async function (cle) {
     if (pv2Mail.apprentissageBusy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’apprendre à l’agent.'); return; }
     const reponse = String(pv2Mail.reponsesApprises[cle] || '').trim();
     if (!reponse) { toast('Écrivez d\'abord la réponse à retenir.'); return; }
     if (reponse.length > PV2_SAVOIR_MAX) { toast(`Trop long : ${PV2_SAVOIR_MAX} caractères au plus.`); return; }
@@ -5008,6 +5076,7 @@
 
   window.pv2OublierLeFait = async function (id, question) {
     if (pv2Mail.apprentissageBusy) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’apprendre à l’agent.'); return; }
     const sur = typeof confirm !== 'function' || confirm('L\'agent oubliera ce fait. Continuer ?');
     if (!sur) return;
     pv2Mail.apprentissageBusy = 'oubli';
@@ -5913,6 +5982,7 @@
   };
   window.pv2DesignSave = async function () {
     if (pv2Design.busy || !pv2Design.design) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(['settings.manage', 'emails.send'])) { toast('Votre rôle ne permet pas de modifier l’apparence des mails.'); return; }
     pv2Design.busy = 'save';
     pv2Design.erreurServeur = '';
     renderStaffEmailsPage();
@@ -5939,6 +6009,7 @@
   };
   window.pv2DesignTest = async function () {
     if (pv2Design.busy || !pv2Design.design) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
     pv2Design.busy = 'test';
     renderStaffEmailsPage();
     try {
@@ -6070,6 +6141,10 @@
   function pv2SeqMiniHtml() {
     if (!mkAuto.loaded && !mkAuto.error) return `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
     if (mkAuto.error) return `<div class="pv2-empty"><strong>${esc(mkAuto.error)}</strong></div>`;
+    // Les interrupteurs ecrivent (automationSettings, customSequences :
+    // settings.manage ou emails.send). Sans ce droit, l etat se lit en texte.
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
+    const etat = (on) => (regler ? '' : `${on ? 'Activée' : 'Désactivée'} · `);
     const NB = ' ';
     const items = AUTOMATION_META.map((meta) => {
       const setting = mkAuto.settings ? mkAuto.settings[meta.key] : null;
@@ -6079,8 +6154,8 @@
       const failed30 = Number(stats.failed30d) || 0;
       return `<div class="pv2-seq-mini-item${enabled ? ' is-on' : ''}">
         <strong>${esc(meta.label)}</strong>
-        <span>${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · ${failed30}${NB}échec${failed30 > 1 ? 's' : ''}` : ''} · 30${NB}j</span>
-        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${mkAuto.busyKey === meta.key || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
+        <span>${etat(enabled)}${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · ${failed30}${NB}échec${failed30 > 1 ? 's' : ''}` : ''} · 30${NB}j</span>
+        ${regler ? `<button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${mkAuto.busyKey === meta.key || !mkAuto.settings ? 'disabled' : ''}><span></span></button>` : ''}
       </div>`;
     });
     pv2Seq.sequences.forEach((sequence) => {
@@ -6088,8 +6163,8 @@
       const sent30 = stats ? Number(stats.sent30d) || 0 : null;
       items.push(`<div class="pv2-seq-mini-item${sequence.enabled ? ' is-on' : ''}">
         <strong>${esc(sequence.name)}</strong>
-        <span>${sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`}</span>
-        <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
+        <span>${etat(sequence.enabled)}${sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`}</span>
+        ${regler ? `<button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>` : ''}
       </div>`);
     });
     return `<div class="pv2-seq-mini">${items.join('')}</div>`;
@@ -6332,7 +6407,7 @@
       </div>` : ''}
       <div class="pl-timeline-trace" aria-label="Parcours du message">
         ${trace.join('')}
-        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas :</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">Lui répondre</button></p>` : ''}
+        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas :</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
         ${pv2EvenementsHtml(m)}
       </div>
     </article>`;
@@ -6342,6 +6417,8 @@
     const cle = String(fil.id);
     const r = pv2ThreadReplyDraft(cle);
     const maySend = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
+    // Sans emails.send, aucun champ de reponse : une phrase a la place.
+    if (!maySend) return '<p class="pv2-thread-reply-locked">Votre rôle lit les mails, il n’y répond pas.</p>';
     const busy = pv2Threads.replyBusy === cle;
     const entrant = pv2ThreadDernierEntrant(messages);
     const proposition = entrant && entrant.analysis && entrant.analysis.reply && (entrant.analysis.reply.body || entrant.analysis.reply.subject);
@@ -6377,9 +6454,7 @@
       <div class="pv2-composer-actions">
         <button type="button" class="pv2-btn" onclick="pv2ThreadReplyPreview('${escJs(cle)}')">Voir le mail final</button>
         <span class="pv2-composer-spacer"></span>
-        ${maySend
-          ? `<button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer'}</button>`
-          : '<p class="pv2-thread-reply-locked">Votre rôle ne permet pas d\'envoyer des mails.</p>'}
+        <button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer'}</button>
       </div>
     </section>`;
   }
@@ -6564,15 +6639,17 @@
           // pourquoi le bouton n'est pas là plutôt que de le griser sans mot.
           const ageDays = (Date.now() - new Date(selected.createdAt || selected.scheduledAt || Date.now()).getTime()) / 86400000;
           const retryable = ageDays <= 7;
+          // retryCommunication : emails.send. Sans lui, ni bouton ni phrase sur le renvoi.
+          const envoyer = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
           return `<div class="pv2-mail-error">
             <strong>${esc(failure.label)}</strong>
             <p>${esc(failure.fix)}</p>
             ${failure.raw ? `<details class="pv2-mail-error-raw"><summary>Message technique</summary><code>${esc(failure.raw)}</code></details>` : ''}
-            <div class="pv2-mail-error-actions">
+            ${envoyer ? `<div class="pv2-mail-error-actions">
               ${retryable
                 ? `<button type="button" class="pv2-btn sm" onclick="pv2RetryEmail('${escJs(String(selected.id || ''))}')" ${pv2Mail.retryingId === String(selected.id) ? 'disabled' : ''}>${pv2Mail.retryingId === String(selected.id) ? 'Renvoi…' : 'Renvoyer ce mail'}</button>`
                 : `<small>Ce message date de plus de 7 jours : le renvoyer maintenant n\'aurait plus de sens pour le client.</small>`}
-            </div>
+            </div>` : ''}
           </div>`;
         })() : ''}
         <div>
@@ -6671,8 +6748,8 @@
             <h2>La file</h2>
             <div class="pv2-panel-head-actions pv2-sent-tools">
               <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" aria-label="Rechercher dans la file" oninput="setStaffEmailQuery(this.value)"></label>
-              <button type="button" class="pv2-btn sm ghost" onclick="pv2ExporterEnvoyes()">Exporter</button>
-              <button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>
+              ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn sm ghost" onclick="pv2ExporterEnvoyes()">Exporter</button>' : ''}
+              ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? '<button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>' : ''}
             </div>
           </div>
           <table class="pv2-table">
@@ -6695,6 +6772,7 @@
 
   /* ── SEQUENCES ─────────────────────────────────────────────────────────── */
   function pv2EmailsSectionSequences() {
+    const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
     return `<div class="pv2-seq-groups">
       <section class="pv2-panel mk-auto-panel" aria-label="Séquences Pinlane">
         <div class="pv2-panel-head has-sub">
@@ -6714,15 +6792,15 @@
       <section class="pv2-panel mk-auto-panel" aria-label="Vos séquences">
         <div class="pv2-panel-head has-sub">
           <div><h2>Vos séquences</h2><p class="pv2-panel-sub">Vos propres automatisations : un déclencheur, une cible, un message, un plafond.</p></div>
-          <div class="pv2-panel-head-actions">
+          ${regler ? `<div class="pv2-panel-head-actions">
             <button type="button" class="pv2-btn sm primary" onclick="pv2SeqNew()" ${pv2Seq.creating ? 'disabled' : ''}>+ Créer une séquence</button>
-          </div>
+          </div>` : ''}
         </div>
         <div class="pv2-panel-body">
           ${pv2Seq.creating ? `<div class="mk-auto-grid" style="margin-bottom:var(--space-4)"><article class="mk-auto pv2-seq-card is-editing"><div class="mk-auto-head"><strong>Nouvelle séquence<span class="pv2-seq-pill">perso</span></strong></div>${pv2SeqEditor()}</article></div>` : ''}
           ${pv2Seq.sequences.length
             ? `<div class="mk-auto-grid">${pv2Seq.sequences.map(pv2SeqCard).join('')}</div>`
-            : (pv2Seq.creating ? '' : '<div class="pv2-empty"><strong>Aucune séquence à vous</strong>Créez la première : elle tourne chaque matin avec celles de Pinlane.</div>')}
+            : (pv2Seq.creating ? '' : `<div class="pv2-empty"><strong>Aucune séquence à vous</strong>${regler ? 'Créez la première : elle tourne chaque matin avec celles de Pinlane.' : ''}</div>`)}
         </div>
       </section>
       ${mailInventoryPanel()}
@@ -6826,6 +6904,35 @@
     </div>`;
   }
 
+  // Sans le droit de modifier, le reglage se lit en texte, sans champ grise.
+  // L apercu d a cote montre le mail tel qu il part.
+  function pv2DesignLectureHtml(d) {
+    const presets = pv2Design.presets.length ? pv2Design.presets : PV2_DESIGN_PRESETS;
+    const preset = presets.find((p) => p.id === d.preset);
+    const accent = d.accent.mode === 'perso' ? `Personnalisée ${d.accent.hex || ''}` : d.accent.mode === 'centre' ? 'Couleurs du centre' : 'Encre';
+    const entete = { nom: 'Le nom du centre', logo: 'Le logo', 'logo-nom': 'Le logo et le nom', aucun: 'Rien' }[d.header.mode] || '';
+    const liste = (paires) => paires.filter(([, on]) => on).map(([label]) => label).join(', ');
+    const s = d.signature;
+    const signature = s.enabled
+      ? [s.layout === 'ligne' ? 'Une ligne' : 'Carte', s.closing, s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
+      : 'Non';
+    const ligne = (label, valeur) => `<div class="pv2-design-scope-row"><strong>${esc(label)}</strong><small>${esc(valeur)}</small></div>`;
+    return `<div class="pv2-design-form">
+      <section class="pv2-design-block" aria-label="Réglages">
+        <h3>Réglages</h3>
+        <div class="pv2-design-scope">
+          ${ligne('Gabarit', preset ? preset.label : d.preset)}
+          ${ligne('Couleur d’accent', accent)}
+          ${ligne('En-tête', entete)}
+          ${ligne('Pied de page', liste([['Adresse', d.footer.adresse], ['Téléphone', d.footer.telephone], ['Adresse email', d.footer.email]]) || 'Rien')}
+          ${ligne('Mention libre', d.footer.mention || 'Aucune')}
+          ${ligne('Signature', signature)}
+          ${ligne('Signature sur', liste([['Messages manuels', d.signatureScope.manual], ['Séquences', d.signatureScope.sequences], ['Campagnes', d.signatureScope.campaigns]]) || 'Aucun mail')}
+        </div>
+      </section>
+    </div>`;
+  }
+
   function pv2EmailsSectionApparence() {
     if (!pv2Design.loaded) {
       return `<section class="pv2-panel"><div class="pv2-panel-body"><div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div></div></section>`;
@@ -6834,16 +6941,18 @@
       return `<section class="pv2-panel"><div class="pv2-panel-body"><div class="pv2-empty"><strong>${esc(pv2Design.error)}</strong><button type="button" class="pv2-btn sm" onclick="loadPv2Design(true)">Réessayer</button></div></div></section>`;
     }
     const d = pv2Design.design || pv2DesignVide();
-    const mayEdit = typeof canUseStaffPermission !== 'function' || ['settings.manage', 'emails.send', 'direction.view'].some((p) => canUseStaffPermission(p));
+    // emailDesign (ecriture) : settings.manage ou emails.send ; sendDesignTest : emails.send.
+    const mayEdit = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
+    const mayTest = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
     const samples = [['confirmation', 'Confirmation'], ['reponse', 'Réponse'], ['campagne', 'Campagne']].map(([key, label]) => ({ key, label, active: pv2Design.sample === key }));
     const busy = pv2Design.busy;
     return `<div class="pv2-design-layout">
-      ${pv2DesignFormHtml(d, mayEdit)}
+      ${mayEdit ? pv2DesignFormHtml(d, mayEdit) : pv2DesignLectureHtml(d)}
       <div class="pv2-design-preview">
         ${pv2ApercuVivantHtml('design', { titre: 'Le mail tel qu\'il partira', tete: seg(samples, 'pv2DesignSample'), cadre: 'pv2-design-frame' })}
         ${mayEdit ? `<div class="pv2-design-actions">
           <button type="button" class="pv2-btn primary" onclick="pv2DesignSave()" ${busy || !pv2Design.dirty ? 'disabled' : ''}>${busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
-          <button type="button" class="pv2-btn" onclick="pv2DesignTest()" ${busy ? 'disabled' : ''}>${busy === 'test' ? 'Envoi…' : 'M\'envoyer un test'}</button>
+          ${mayTest ? `<button type="button" class="pv2-btn" onclick="pv2DesignTest()" ${busy ? 'disabled' : ''}>${busy === 'test' ? 'Envoi…' : 'M\'envoyer un test'}</button>` : ''}
           <button type="button" class="pv2-btn ghost" onclick="pv2DesignReset()" ${busy ? 'disabled' : ''}>Rétablir les défauts</button>
         </div>` : '<p class="pv2-note">Votre rôle ne permet pas de modifier l\'apparence des mails : vous la consultez.</p>'}
         ${pv2Design.erreurServeur ? `<p class="pv2-design-error" role="alert">${esc(pv2Design.erreurServeur)}</p>` : ''}
@@ -6911,7 +7020,7 @@
         actions: `
           <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsActualiser()" title="Recharger les données">${ci('refresh')}Actualiser</button>
           <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
-          <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
+          ${typeof peutGeste !== 'function' || peutGeste('ecrire') ? `<button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>` : ''}`,
       })}
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
       ${pv2SubnavHtml(section)}
@@ -7995,6 +8104,8 @@
   }
 
   window.pv2CampExportRecipients = async function (segment) {
+    // campaignAudience&full=1 : campaigns.manage et exports.download (api/ops.js).
+    if (typeof peutGeste === 'function' && !peutGeste('exporter')) { toast('Votre rôle ne permet pas de télécharger les exports.'); return; }
     try {
       const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&full=1&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       const rows = [['Nom', 'Email', 'Visites', 'Chiffre (EUR)', 'Dernière visite']];
@@ -8077,7 +8188,7 @@
           </label>
           <div class="ms-field"><span>Audience</span>
             <div class="ms-input" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>${esc(audienceLabel)}</span>
-              <button type="button" class="pv2-btn" onclick="pv2CampExportRecipients('${f.segment}')">Exporter la liste</button></div>
+              ${typeof peutGeste !== 'function' || peutGeste('exporter') ? `<button type="button" class="pv2-btn" onclick="pv2CampExportRecipients('${f.segment}')">Exporter la liste</button>` : ''}</div>
           </div>
         </div>
         <label class="ms-field"><span>Objet *</span><input type="text" class="ms-input" maxlength="150" value="${esc(f.subject)}" oninput="pv2Camp.form.subject = this.value"></label>
@@ -11996,7 +12107,7 @@
         sub: '',
         actions: `<label class="pv2-search tf-cherche">${TF_ICO.cherche}<input type="search" value="${esc(state.staffPricingQuery || '')}" placeholder="Nom, contenu, condition…" aria-label="Chercher une formule ou une activité" data-tf-cherche data-pl-focus="tf:cherche"></label>
           <button type="button" class="pv2-btn" data-tf-action="copier" data-pl-focus="tf:copier">Copier</button>
-          <button type="button" class="pv2-btn" data-tf-action="exporter" data-pl-focus="tf:exporter">Exporter</button>
+          ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn" data-tf-action="exporter" data-pl-focus="tf:exporter">Exporter</button>' : ''}
           ${reglages ? '<button type="button" class="pv2-btn" id="cevAddCategory" data-tf-action="categorie" data-pl-focus="tf:categorie" title="Créer une catégorie : donnez-lui un nom, elle apparaît partout">+ Catégorie</button>' : ''}`,
       })}
       <div class="tf-outils">
@@ -12236,7 +12347,7 @@
       window.open(c === 'libramont' || c === 'gembloux' ? `/fungalaxy/${c}` : `/reserver/${encodeURIComponent(c)}`, '_blank', 'noopener');
     } },
     mails: { mot: 'Ouvrir les mails', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('emails'), ouvrir: () => openStaffMenuPage('emails') },
-    comptoir: { mot: 'Ouvrir Réserver', permis: () => typeof openQuickBook === 'function' && typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openQuickBook({ date: state.currentDate }) },
+    comptoir: { mot: 'Ouvrir Réserver', permis: () => typeof openQuickBook === 'function' && typeof canUseStaffPage === 'function' && canUseStaffPage('planning') && (typeof peutGeste !== 'function' || peutGeste('reserver')), ouvrir: () => openQuickBook({ date: state.currentDate }) },
     planning: { mot: 'Ouvrir le planning', permis: () => typeof canUseStaffPage === 'function' && canUseStaffPage('planning'), ouvrir: () => openStaffMenuPage('planning') },
   };
   function tfGesteLieuHtml(lieu) {
@@ -13628,10 +13739,10 @@
       items.push({ section: 'Navigation', icon, label, hint: 'Aller à', run: () => openStaffMenuPage(key) });
     });
     const actions = [
-      ['＋', 'Nouvelle réservation', () => openQuickBook({})],
+      typeof peutGeste !== 'function' || peutGeste('reserver') ? ['＋', 'Nouvelle réservation', () => openQuickBook({})] : null,
       ['⟳', 'Actualiser les données', () => (typeof loadStaffReservationsData === 'function' ? loadStaffReservationsData(true) : null)],
       ['◐', 'Basculer le thème', () => (typeof setStaffTheme === 'function' ? setStaffTheme(document.body.classList.contains('staff-light') ? 'dark' : 'light') : null)],
-    ];
+    ].filter(Boolean);
     actions.forEach(([icon, label, run]) => {
       if (q && !label.toLowerCase().includes(q)) return;
       items.push({ section: 'Actions', icon, label, hint: 'Exécuter', run });

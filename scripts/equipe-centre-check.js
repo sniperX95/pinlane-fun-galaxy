@@ -270,6 +270,33 @@ async function requete(texte, params = []) {
     return vide();
   }
   if (/from schema_migrations/i.test(sql)) return vide();
+  // LES LECTURES DE L EQUIPE A PLUSIEURS CENTRES (2026-11-07) : les centres de
+  // l entreprise, leurs roles, les lignes de leurs membres, et les autres lignes
+  // d une meme personne (meme code). Lues DANS le SQL, comme le reste.
+  const ids = (p) => (Array.isArray(p) ? p.map(String) : []);
+  const partage = (m) => m.id === `${m.center_id}:role:${m.role_id}`;
+  if (/^select id, name from centers where id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.centers.filter((c) => ids(params[0]).includes(c.id)).map((c) => ({ id: c.id, name: c.name || c.id })));
+  }
+  if (/^select center_id, id, name, locked, tone, permissions from staff_roles where center_id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.staff_roles.filter((r) => ids(params[0]).includes(r.center_id)).map((r) => ({ center_id: r.center_id, id: r.id, name: r.name, locked: Boolean(r.locked), tone: r.tone, permissions: r.permissions || [] })));
+  }
+  if (/^select id, center_id, role_id, status, last_seen, access_code_hash from staff_members where center_id = any\(\$1::text\[\]\)/i.test(sql)) {
+    return lignes(db.staff_members.filter((m) => ids(params[0]).includes(m.center_id)).map((m) => ({ id: m.id, center_id: m.center_id, role_id: m.role_id, status: m.status, last_seen: m.last_seen || null, access_code_hash: m.access_code_hash })));
+  }
+  if (/^select distinct m\.center_id from staff_members s join staff_members m on m\.access_code_hash = s\.access_code_hash/i.test(sql)) {
+    const s = db.staff_members.find((x) => x.id === params[0]);
+    if (!s || partage(s)) return vide();
+    return lignes([...new Set(db.staff_members.filter((x) => x.id !== s.id && x.access_code_hash === s.access_code_hash && x.status !== 'blocked' && !partage(x)).map((x) => x.center_id))].map((center_id) => ({ center_id })));
+  }
+  if (/^select m\.id as member_id, m\.name as member_name, m\.contact, m\.status as member_status, m\.role_id, r\.name as role_name/i.test(sql)) {
+    const s = db.staff_members.find((x) => x.id === params[0]);
+    if (!s || partage(s)) return vide();
+    const m = db.staff_members.find((x) => x.center_id === params[1] && x.id !== s.id && x.access_code_hash === s.access_code_hash && x.status !== 'blocked' && !partage(x));
+    const r = m && roleDe(m);
+    if (!r) return vide();
+    return lignes([{ member_id: m.id, member_name: m.name, contact: m.contact || '', member_status: m.status, role_id: m.role_id, role_name: r.name, role_code: r.code, permissions: r.permissions || [], locked: Boolean(r.locked) }]);
+  }
   NON_COUVERTES.push(sql.slice(0, 160));
   return vide();
 }
@@ -457,20 +484,22 @@ async function jouerEcran(browser, { prefixe, codeLibramont }) {
     await page.locator('[data-fgx-center-menu]').click();
     await page.locator('[data-fgx-center-option="gembloux"]').click();
     await page.waitForFunction(() => !window.__avantBascule && typeof window.getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId() === 'gembloux' && Boolean(document.querySelector('[data-fgx-menu-key="users"]')), null, { timeout: 30000 });
+    // (la page Equipe & acces du 2026-11-07 : onglet Roles, Staff bar, son code partage)
     await page.locator('[data-fgx-menu-key="users"]').first().click();
-    await page.locator('.staff-code-card').waitFor({ state: 'visible' });
-    await page.locator('.staff-role-pill', { hasText: 'Staff bar' }).click();
-    await page.waitForFunction(() => /Staff bar/.test((document.querySelector('.staff-role-identity h3') || {}).textContent || ''));
-    const bouton = (texte) => page.locator('.staff-code-card button', { hasText: texte });
+    await page.locator('[data-equipe-page]').waitFor({ state: 'visible' });
+    await page.locator('[data-eq="onglet"][data-valeur="roles"]').click();
+    await page.locator('.eq-rail-role', { hasText: 'Staff bar' }).first().click();
+    await page.waitForFunction(() => /Staff bar/.test((document.querySelector('.eq-role-tete h3') || {}).textContent || ''));
+    const bouton = (geste) => page.locator(`[data-eq="${geste}"][data-role="staff-bar"]`).first();
     let n = await page.evaluate(() => window.__copies.length);
-    await bouton('Copier').click();
+    await bouton('copier-code-role').click();
     const premiereCopie = await attendreCopie(page, n);
     n += 1;
-    await bouton('Régénérer').click();
+    await bouton('nouveau-code-role').click();
     const codeRegenere = await attendreCopie(page, n);
     n += 1;
     await page.waitForTimeout(300);
-    await bouton('Copier').click();
+    await bouton('copier-code-role').click();
     const codeCopie = await attendreCopie(page, n);
     const apresGestes = await centreAffiche(page);
     const envois = await page.evaluate(() => window.__envois.slice());

@@ -267,6 +267,7 @@
     "test:centres-dissocies": "node scripts/centres-dissocies-check.js",
     "test:console-centre": "node scripts/console-centre-check.js",
     "test:equipe-centre": "node scripts/equipe-centre-check.js",
+    "test:equipe-acces": "node scripts/equipe-acces-check.js",
     "test:tour-controle": "node scripts/tour-controle-check.js",
     "test:garde-postes": "node scripts/garde-postes-check.js",
     "test:venir-plus-tot": "node scripts/venir-plus-tot-check.js",

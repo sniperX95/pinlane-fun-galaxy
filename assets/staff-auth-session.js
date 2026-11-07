@@ -18,6 +18,11 @@
       member: rawSession.member || null,
       role: rawSession.role || null,
       permissions: Array.isArray(rawSession.permissions) ? rawSession.permissions : [],
+      // Les centres ou la personne entre (null : tous, proprietaire de la
+      // plateforme ; absent : session d avant ce champ). Le menu des centres
+      // ne propose rien d autre.
+      centres: Array.isArray(rawSession.centres) ? rawSession.centres.slice() : (rawSession.centres === null ? null : undefined),
+      centreDeConnexion: rawSession.centreDeConnexion || rawSession.centerId || centerIdFallback || 'libramont',
     };
   }
 

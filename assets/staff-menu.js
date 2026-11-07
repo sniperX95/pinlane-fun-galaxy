@@ -94,8 +94,10 @@
           label: 'Planning',
           icon: 'planning',
           children: [
-            { key: 'bowling', label: 'Bowling', resource: 'bowling' },
-            { key: 'laser', label: 'Laser Game', resource: 'laser' },
+            // Chaque onglet a son droit (2026-11-07), comme dans la page : sans
+            // lui, l entree disparait.
+            { key: 'bowling', label: 'Bowling', resource: 'bowling', permission: 'planning.bowling' },
+            { key: 'laser', label: 'Laser Game', resource: 'laser', permission: 'planning.laser' },
             { key: 'complete', label: 'Complet', resource: 'all' }
           ]
         },
@@ -881,13 +883,31 @@
       `;
   }
 
+  // LES CENTRES OU LA PERSONNE ENTRE (2026-11-07). Le serveur les donne avec la
+  // session (`centres` : le sien, ceux ou elle a une fiche avec le meme code,
+  // tous ceux de l entreprise si son role a « Tous les centres » ; null pour le
+  // proprietaire de la plateforme, qui va partout). Marius voit Libramont et
+  // Gembloux, Flavy seulement Libramont : aucun centre ou elle serait refusee
+  // n est propose.
+  function centresPermis() {
+    let session = null;
+    try { session = typeof state !== 'undefined' ? state.staffAuthSession : null; } catch (error) { session = null; }
+    const liste = session && Array.isArray(session.centres) ? session.centres : null;
+    const tous = getMenuCenters();
+    if (liste) return tous.filter(center => liste.includes(center.id) || center.id === getSelectedCenterId());
+    if (session && session.centres === null) return tous;
+    // Session d avant ce champ : l ancienne regle.
+    const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
+    return canSwitch ? tous : tous.filter(center => center.id === getSelectedCenterId());
+  }
+
   function toggleCenterMenu(anchor) {
     const selectedId = getSelectedCenterId();
-    // Sans la permission centers.switch, le rôle ne voit que son centre courant
-    // (aucun autre centre à sélectionner) : on n'affiche pas d'action interdite.
-    const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
+    // Un centre ou la personne n entre pas ne se propose pas : pas d action
+    // interdite a l ecran.
     const canDirection = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('direction.view');
-    const centers = canSwitch ? getMenuCenters() : getMenuCenters().filter(center => center.id === selectedId);
+    const centers = centresPermis();
+    const canSwitch = centers.length > 1;
     const groups = groupMenuCentersByClient(centers);
     // Groupement par client seulement quand la liste couvre PLUSIEURS clients
     // (vue proprietaire). Un client garde une liste plate.
@@ -994,10 +1014,8 @@
   }
 
   function selectMenuCenter(centerId) {
-    const center = getMenuCenters().find(item => item.id === centerId);
-    if (!center) return;
-    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('centers.switch')) {
-      if (typeof toast === 'function') toast('Changement de centre réservé à la direction.');
+    const center = centresPermis().find(item => item.id === centerId);
+    if (!center) {
       closeMenuPopover();
       return;
     }
@@ -1569,8 +1587,7 @@
   // depuis un autre centre (ouvrirReservationNumero) : le meme geste que le
   // menu, s il connait ce centre et que le role peut changer de centre.
   window.pinlaneChoisirCentre = (centerId) => {
-    if (!getMenuCenters().some(item => item.id === centerId)) return false;
-    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('centers.switch')) return false;
+    if (!centresPermis().some(item => item.id === centerId)) return false;
     selectMenuCenter(centerId);
     return true;
   };

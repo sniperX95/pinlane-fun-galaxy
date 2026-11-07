@@ -242,6 +242,15 @@ function patchNeedsOnlyStatus(body = {}) {
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
 }
 
+// DEPLACER, C EST LE DROIT « DEPLACER UNE RESERVATION » (2026-11-07). Le
+// glisser du planning n envoie que activityMove ; il demandait reservations.edit,
+// et planning.drag ne servait a rien : le role Technique, qui le porte, etait
+// refuse a chaque glisser. Modifier le dossier reste le droit de modifier.
+function patchIsActivityMoveOnly(body = {}) {
+  const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
+  return keys.length === 1 && keys[0] === 'activityMove';
+}
+
 // Un PATCH qui ne touche QUE le suivi d'activités (cocher/décocher) : chemin rapide
 // dédié, aucune re-validation planning (pistes/laser/créneau).
 function patchIsActivityProgressOnly(body = {}) {
@@ -636,9 +645,25 @@ module.exports = async (req, res) => {
       // de base que changer un statut (l encaisse redemande payments.markPaid).
       const gesteAccueil = Object.keys(body).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
       const estGesteAccueil = gesteAccueil.length === 1 && ['encaissement', 'absent'].includes(gesteAccueil[0]);
-      const permission = patchNeedsOnlyStatus(body) || estGesteAccueil ? ['reservations.status', 'reservations.edit'] : 'reservations.edit';
+      const gesteDAccueil = patchNeedsOnlyStatus(body) || estGesteAccueil;
+      const permission = patchIsActivityMoveOnly(body)
+        ? ['planning.drag', 'reservations.edit']
+        : (gesteDAccueil ? ['reservations.status', 'reservations.edit'] : 'reservations.edit');
       const session = await requireStaffPermission(req, res, permission, { centerId: current.centerId || 'libramont' });
       if (!session) return;
+      // UN JOUR PASSE SE CORRIGE AVEC SON DROIT (2026-11-07). planning.past
+      // (« Changer un jour passé ») ne gardait que le bouton Valider de l ecran :
+      // modifier, deplacer ou annuler une reservation d hier passait par l API.
+      // L accueil (etat, encaisse, absence, coches, notes) reste ouvert a tous
+      // ceux qui l ont : un groupe paie encore apres minuit.
+      const changeLAnnulation = Object.prototype.hasOwnProperty.call(body, 'status')
+        && (String(body.status || '') === 'cancelled') !== (current.status === 'cancelled');
+      const aujourdhui = aujourdhuiABruxelles();
+      const jourPasse = (jour) => dateValide(jour) && jour < aujourdhui;
+      if ((!gesteDAccueil || changeLAnnulation) && (jourPasse(current.date) || jourPasse(body.date))) {
+        const sessionPasse = await requireStaffPermission(req, res, 'planning.past', { centerId: current.centerId || 'libramont' });
+        if (!sessionPasse) return;
+      }
       // ANNULER UN DOSSIER, OU LE RESTAURER, DEMANDE LE DROIT D ANNULER
       // (2026-10-12). La console ne montre « Annuler la réservation » qu a
       // reservations.cancel ; un PATCH qui faisait passer le statut a
@@ -646,8 +671,7 @@ module.exports = async (req, res) => {
       // statut, et n importe quel role du comptoir annulait par l API. Le
       // dossier entier renvoye par « Modifier » porte son statut : seul un
       // CHANGEMENT d annulation est juge.
-      if (Object.prototype.hasOwnProperty.call(body, 'status')
-        && (String(body.status || '') === 'cancelled') !== (current.status === 'cancelled')) {
+      if (changeLAnnulation) {
         const sessionAnnulation = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: current.centerId || 'libramont' });
         if (!sessionAnnulation) return;
       }
@@ -1049,6 +1073,11 @@ module.exports = async (req, res) => {
       if (!current) throw createHttpError('Reservation introuvable.', 404);
       const session = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: current.centerId || 'libramont' });
       if (!session) return;
+      // Supprimer un dossier d hier, c est le corriger : meme droit que le PATCH.
+      if (dateValide(current.date) && current.date < aujourdhuiABruxelles()) {
+        const sessionPasse = await requireStaffPermission(req, res, 'planning.past', { centerId: current.centerId || 'libramont' });
+        if (!sessionPasse) return;
+      }
       const automation = await cancelPendingAutomation(current, 'reservation_deleted');
       // LE REGISTRE (migration 0052) : la ligne entiere est copiee dans
       // reservation_archive AVANT le DELETE, dans la meme transaction. Si la

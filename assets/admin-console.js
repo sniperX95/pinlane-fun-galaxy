@@ -1384,6 +1384,11 @@ function renderAdminHeader() {
       ? `${center.name} · configuration, ressources et données opérationnelles du centre.`
       : `Cockpit du centre · ${formatAdminPeriodLabel(range)} · réservations, mails, activité et exports.`;
   }
+  // Les boutons « Excel compta » et « Rapport direction » de la tete (index.html)
+  // demandent reports.export : sans lui, ils ne se montrent pas.
+  const peutExporter = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reports.export');
+  document.querySelectorAll('#adminView .admin-actions [onclick="exportAdminExcel()"], #adminView .admin-actions [onclick="exportAdminReport()"]')
+    .forEach((bouton) => { bouton.style.display = peutExporter ? '' : 'none'; });
   ['Day', 'Week', 'Month', 'Year'].forEach(name => {
     const button = document.getElementById(`adminPeriod${name}`);
     if (button) button.classList.toggle('active', state.adminPeriod === name.toLowerCase());
@@ -1840,6 +1845,8 @@ function renderAdminOpsPanel() {
 function renderAdminExports() {
   const payload = getAdminExportPayload();
   const metrics = payload.metrics;
+  // Excel compta et Rapport direction : reports.export. Sans lui, pas de carte.
+  const peutExporter = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reports.export');
   return `<div class="admin-panel">
     <div class="admin-section-title">
       <div>
@@ -1848,7 +1855,7 @@ function renderAdminExports() {
       </div>
     </div>
     <div class="admin-export-grid">
-      <div class="admin-export-card">
+      ${peutExporter ? `<div class="admin-export-card">
         <div><h3>Excel compta multi-feuilles</h3><p>Synthèse, réservations, compta, bowling, laser, mails et agents dans un classeur Excel propre.</p></div>
         <button class="admin-btn" onclick="exportAdminExcel()">Télécharger</button>
       </div>
@@ -1858,36 +1865,47 @@ function renderAdminExports() {
              Un seul nom par action : « Rapport direction », decline web/A4. */''}
         <div><h3>Rapport direction</h3><p>Document HTML professionnel avec logo, KPIs, signaux et aperçu des réservations. Imprimable en PDF.</p></div>
         <button class="admin-btn" onclick="exportAdminReport()">Télécharger</button>
-      </div>
+      </div>` : ''}
       <div class="admin-export-card">
         <div><h3>Résumé du jour</h3><p>${metrics.reservations} réservation(s), ${metrics.players} joueurs, ${formatMoney(metrics.revenue)} prévu, ${metrics.failedMails} mail(s) en échec.</p></div>
         <button class="admin-btn" onclick="copyAdminSummary()">Copier le résumé</button>
       </div>
     </div>
-    <div class="admin-section-title" style="margin-top: var(--space-6);">
+    ${(() => {
+      // Les exports de la periode suivent leur droit (2026-11-07) : le rapport et
+      // la serie sont des rapports (reports.export) ; les clients et les
+      // reservations brutes portent des contacts, c est « Télécharger les
+      // fichiers » (exports.download). Sans aucun des deux, pas de section.
+      const peutFichier = typeof peutGeste !== 'function' || peutGeste('exporter');
+      const cartes = [
+        peutExporter && `<div class="admin-export-card">
+        <div><h3>Rapport direction A4</h3><p>KPIs, activités, formules, clients fidèles et bilan, mise en page sobre, imprimable en PDF.</p></div>
+        <button class="admin-btn" onclick="dhPrintReport()">Imprimer</button>
+      </div>`,
+        peutExporter && `<div class="admin-export-card">
+        <div><h3>Série temporelle</h3><p>Réservations, joueurs, chiffre et annulations par jour/semaine/mois sur la période.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('serie')">CSV</button>
+      </div>`,
+        peutFichier && `<div class="admin-export-card">
+        <div><h3>Clients de la période</h3><p>Visites, chiffre, première/dernière venue, activité préférée, contact.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('clients')">CSV</button>
+      </div>`,
+        peutFichier && `<div class="admin-export-card">
+        <div><h3>Réservations brutes</h3><p>Le détail ligne par ligne de toutes les réservations de la période.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('reservations-brutes')">CSV</button>
+      </div>`,
+      ].filter(Boolean);
+      if (!cartes.length) return '';
+      return `<div class="admin-section-title" style="margin-top: var(--space-6);">
       <div>
         <h2>Exports de la période analysée</h2>
         <p>Basés sur la période sélectionnée dans l'onglet Données (${typeof dhState !== 'undefined' && dhState.analytics ? `du ${dhState.analytics.startDate} au ${dhState.analytics.endDate}` : 'ouvrez l’onglet Données pour choisir la période'}). Format CSV compatible Excel belge.</p>
       </div>
     </div>
     <div class="admin-export-grid">
-      <div class="admin-export-card">
-        <div><h3>Rapport direction A4</h3><p>KPIs, activités, formules, clients fidèles et bilan, mise en page sobre, imprimable en PDF.</p></div>
-        <button class="admin-btn" onclick="dhPrintReport()">Imprimer</button>
-      </div>
-      <div class="admin-export-card">
-        <div><h3>Série temporelle</h3><p>Réservations, joueurs, chiffre et annulations par jour/semaine/mois sur la période.</p></div>
-        <button class="admin-btn" onclick="dhExportCsv('serie')">CSV</button>
-      </div>
-      <div class="admin-export-card">
-        <div><h3>Clients de la période</h3><p>Visites, chiffre, première/dernière venue, activité préférée, contact.</p></div>
-        <button class="admin-btn" onclick="dhExportCsv('clients')">CSV</button>
-      </div>
-      <div class="admin-export-card">
-        <div><h3>Réservations brutes</h3><p>Le détail ligne par ligne de toutes les réservations de la période.</p></div>
-        <button class="admin-btn" onclick="dhExportCsv('reservations-brutes')">CSV</button>
-      </div>
-    </div>
+      ${cartes.join('\n      ')}
+    </div>`;
+    })()}
   </div>`;
 }
 
@@ -3565,11 +3583,14 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
     //    outillage fondateur refuse) ne doit pas tuer l'onglet Activite et le
     //    bandeau d'honnetete avec lui. Chaque panneau degrade seul.
     const isPlatformAdmin = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
+    // (suggestions et events demandent ai.ops : sans lui, pas d appel, donc pas
+    // de refus inscrit au journal a chaque ouverture, 2026-11-07)
+    const mayAiOps = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('ai.ops');
     const settled = await Promise.allSettled([
       apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerQuery}&limit=180`),
       apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerQuery}&limit=120`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerQuery}&limit=160`),
+      mayAiOps ? apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerQuery}&limit=120`) : Promise.resolve(null),
+      mayAiOps ? apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerQuery}&limit=160`) : Promise.resolve(null),
       isPlatformAdmin
         ? apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerQuery}&startDate=${startDate}&endDate=${endDate}`)
         : Promise.resolve(null),

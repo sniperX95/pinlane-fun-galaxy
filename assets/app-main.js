@@ -25,6 +25,7 @@ function planningMoveSessionKey(){return JSON.stringify([state.view,state.staffA
 // A held booking stays selected after release. Cards toggle the selected lanes;
 // dragging any selected card drops the selected group directly.
 function selectPlanningMove(type, reservationId, sourceLane = null, sourceStart = null, unitKey = null) {
+  if (typeof peutGeste === 'function' && !peutGeste('deplacer', state.currentDate)) return;
   if(planningMoveSelection?.saving)return;
   const reservation = state.reservations.find(r => Number(r.id) === Number(reservationId));
   if (!reservation || reservation.status === 'cancelled') return;
@@ -542,6 +543,7 @@ function createLaserPointerDrag(sourceEl, reservationId, unitKey, point, touch) 
 }
 
 function startLaserPassPointerDrag(event, reservationId, unitKey) {
+  if (!peutGeste('deplacer', state.currentDate)) return;
   if(planningMoveSelection?.saving)return;
   if(planningMoveSelection&&(planningMoveSelection.type!=='laser'||planningMoveSelection.reservationId!==Number(reservationId)||planningMoveSelection.unitKey!==unitKey))cancelPlanningMove(false);
   if (event.button !== 0) return;
@@ -561,6 +563,7 @@ function startLaserPassPointerDrag(event, reservationId, unitKey) {
 // relacher la depose (assets/pinlane-touch-drag.js). La suite passe par les
 // memes fonctions que la souris : fantome, cible, defilement du bord, depot.
 function startLaserPassTouchDrag(event, reservationId, unitKey) {
+  if (!peutGeste('deplacer', state.currentDate)) return;
   if(planningMoveSelection?.saving)return;
   if(planningMoveSelection&&(planningMoveSelection.type!=='laser'||planningMoveSelection.reservationId!==Number(reservationId)||planningMoveSelection.unitKey!==unitKey))cancelPlanningMove(false);
   if (!window.PinlaneTouchDrag) return;
@@ -609,7 +612,9 @@ function getBowlingDropTargetFromPoint(clientX, clientY) {
   for (const laneCol of laneCols) {
     const laneRect = laneCol.getBoundingClientRect();
     if (clientX < laneRect.left || clientX > laneRect.right) continue;
-    const cells = [...laneCol.querySelectorAll('.slot-cell.clickable[data-bowling-drop-lane]')];
+    // Toute case qui porte ses coordonnees est une cible, cliquable ou non :
+    // un role qui deplace sans reserver glisse aussi (2026-11-07).
+    const cells = [...laneCol.querySelectorAll('.slot-cell[data-bowling-drop-lane]')];
     const cell = cells.find(item => {
       const rect = item.getBoundingClientRect();
       return clientY >= rect.top && clientY <= rect.bottom;
@@ -1105,6 +1110,9 @@ function createBowlingPointerDrag(sourceEl, reservationId, sourceLane, sourceSta
 }
 
 function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
+  // Sans « Déplacer » ce jour-la, la carte ne se souleve pas (le dessin ne pose
+  // deja plus ce gestionnaire ; la garde vaut pour une grille restee affichee).
+  if (!peutGeste('deplacer', state.currentDate)) return;
   if(planningMoveSelection?.saving)return;
   if(planningMoveSelection&&(planningMoveSelection.type!=='bowling'||planningMoveSelection.reservationId!==Number(reservationId)))cancelPlanningMove(false);
   if(planningMoveSelection&&!planningMoveSelection.sourceLanes.includes(Number(sourceLane)))return;
@@ -1155,6 +1163,7 @@ function setBowlingTouchSplitLane(point) {
 
 // AU DOIGT : voir startLaserPassTouchDrag.
 function startBowlingBookingTouchDrag(event, reservationId, sourceLane = null, sourceStart = null) {
+  if (!peutGeste('deplacer', state.currentDate)) return;
   if(planningMoveSelection?.saving)return;
   if(planningMoveSelection&&(planningMoveSelection.type!=='bowling'||planningMoveSelection.reservationId!==Number(reservationId)))cancelPlanningMove(false);
   if(planningMoveSelection&&!planningMoveSelection.sourceLanes.includes(Number(sourceLane)))return;
@@ -3996,7 +4005,9 @@ function normalizeStaffSession(rawSession) {
     expiresAt,
     member: rawSession.member || null,
     role: rawSession.role || null,
-    permissions: Array.isArray(rawSession.permissions) ? rawSession.permissions : []
+    permissions: Array.isArray(rawSession.permissions) ? rawSession.permissions : [],
+    centres: Array.isArray(rawSession.centres) ? rawSession.centres.slice() : (rawSession.centres === null ? null : undefined),
+    centreDeConnexion: rawSession.centreDeConnexion || rawSession.centerId || getCurrentStaffCenterId()
   };
 }
 
@@ -4375,10 +4386,10 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261106numero';
-const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261106numero';
-const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261003b';
-const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261107acces';
+const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261107acces';
+const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261107acces';
+const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20261107acces';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
 // seul endroit. Aucun de ces modules n'est demande pour la vue publique.
 const STAFF_CONSOLE_SOURCES = Array.from(document.querySelectorAll('script[data-staff-console]'), script => script.getAttribute('src'));
@@ -11936,12 +11947,14 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   const unpaidCount = metrics.activeReservations.filter(reservation => reservation.status !== 'paid').length;
   const baseStats = [
     { label: 'Réservations', value: String(metrics.activeReservations.length), note: `${metrics.players} joueurs` },
-    { label: 'À encaisser', value: formatMoney(metrics.revenue - metrics.collected), note: `${unpaidCount} ouvertes` },
+    { label: 'À encaisser', value: moneyForRole(metrics.revenue - metrics.collected), note: `${unpaidCount} ouvertes` },
     { label: 'Occupation', value: `${metrics.occupancy}%`, note: `${metrics.laneCount} piste${metrics.laneCount > 1 ? 's' : ''}` }
   ];
-  const openPlanning = "closeStaffDashboardDetail(); openStaffDashboardSection('planning');";
-  const openReservations = "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');";
-  const openDirection = "closeStaffDashboardDetail(); setView('admin'); openAdminTab('overview');";
+  // Un bouton du pied mene a une page : il ne se montre qu a qui l ouvre
+  // (2026-11-07). Sans le droit, l action vaut '' et ne se dessine pas.
+  const openPlanning = canUseStaffPage('planning') ? "closeStaffDashboardDetail(); openStaffDashboardSection('planning');" : '';
+  const openReservations = canUseStaffPage('reservations') ? "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');" : '';
+  const openDirection = canUseStaffPermission('direction.view') ? "closeStaffDashboardDetail(); setView('admin'); openAdminTab('overview');" : '';
   if (type === 'alerts') {
     const alerts = getStaffDashboardAlertDefinitions(metrics);
     const visibleAlerts = kind ? alerts.filter(alert => alert.kind === kind) : alerts;
@@ -11975,12 +11988,12 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       stats: metrics.liveNow ? [
         { label: 'En retard', value: String(metrics.liveNow.late.length), note: metrics.liveNow.late.length ? 'à pointer ou appeler' : 'aucun groupe attendu' },
         { label: 'Sur place', value: String(metrics.liveNow.onsite.length), note: `groupe${metrics.liveNow.onsite.length > 1 ? 's' : ''} pointé${metrics.liveNow.onsite.length > 1 ? 's' : ''}` },
-        { label: 'À clôturer', value: formatMoney(sumStaffRowsAmount(metrics.liveNow.closing.map(item => item.reservation))), note: `${metrics.liveNow.closing.length} groupe${metrics.liveNow.closing.length > 1 ? 's' : ''} fini${metrics.liveNow.closing.length > 1 ? 's' : ''} sans payer` }
+        { label: 'À clôturer', value: moneyForRole(sumStaffRowsAmount(metrics.liveNow.closing.map(item => item.reservation))), note: `${metrics.liveNow.closing.length} groupe${metrics.liveNow.closing.length > 1 ? 's' : ''} fini${metrics.liveNow.closing.length > 1 ? 's' : ''} sans payer` }
       ] : [
         { label: 'Alertes actives', value: String(alerts.length), note: alerts.length ? 'à traiter' : 'rien à signaler' },
         state.currentDate < todayStr()
-          ? { label: 'Non soldé', value: formatMoney(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} jamais marquée${unpaidCount > 1 ? 's' : ''} payée${unpaidCount > 1 ? 's' : ''}` }
-          : { label: 'Prévu', value: formatMoney(metrics.revenue), note: `${metrics.activeReservations.length} réservation${metrics.activeReservations.length > 1 ? 's' : ''}` },
+          ? { label: 'Non soldé', value: moneyForRole(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} jamais marquée${unpaidCount > 1 ? 's' : ''} payée${unpaidCount > 1 ? 's' : ''}` }
+          : { label: 'Prévu', value: moneyForRole(metrics.revenue), note: `${metrics.activeReservations.length} réservation${metrics.activeReservations.length > 1 ? 's' : ''}` },
         { label: 'Joueurs', value: String(metrics.players), note: 'sur la journée' }
       ],
       body: renderStaffDashboardAlertsDetail(visibleAlerts),
@@ -12000,8 +12013,8 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       body: renderStaffDashboardRevenueDetail(metrics),
       actions: [
         { label: 'Copier le résumé', onclick: "copyStaffDashboardSummary()" },
-        { label: 'Ouvrir direction', onclick: openDirection, className: 'secondary' }
-      ]
+        openDirection && { label: 'Ouvrir direction', onclick: openDirection, className: 'secondary' }
+      ].filter(Boolean)
     };
   }
   if (type === 'occupation') {
@@ -12012,9 +12025,9 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       stats: baseStats,
       body: renderStaffDashboardOccupationDetail(metrics),
       actions: [
-        { label: 'Ouvrir le planning', onclick: openPlanning },
-        { label: 'Nouvelle réservation', onclick: "closeStaffDashboardDetail(); openQuickBook({ date: state.currentDate, type: 'bowling' });", className: 'secondary' }
-      ]
+        openPlanning && { label: 'Ouvrir le planning', onclick: openPlanning },
+        peutGeste('reserver') && { label: 'Nouvelle réservation', onclick: "closeStaffDashboardDetail(); openQuickBook({ date: state.currentDate, type: 'bowling' });", className: 'secondary' }
+      ].filter(Boolean)
     };
   }
   if (type === 'activity') {
@@ -12026,13 +12039,13 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       title: 'Réservations par activité',
       subtitle: 'toutes les activités du catalogue vendues sur la date affichée',
       stats: topBuckets.length
-        ? topBuckets.map(bucket => ({ label: bucket.label, value: String(bucket.count), note: formatMoney(bucket.revenue) }))
+        ? topBuckets.map(bucket => ({ label: bucket.label, value: String(bucket.count), note: moneyForRole(bucket.revenue) }))
         : [{ label: 'Réservations', value: '0', note: 'aucune sur cette date' }],
       body: renderStaffDashboardActivityDetail(metrics),
-      actions: [
+      actions: openReservations ? [
         { label: 'Voir réservations', onclick: openReservations },
         { label: 'Voir toutes les réservations', onclick: "closeStaffDashboardDetail(); setStaffResourceView('all');", className: 'secondary' }
-      ]
+      ] : []
     };
   }
   // Le panneau par defaut etait « Prochaines arrivees », ouvert par la carte du
@@ -12097,7 +12110,7 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
         <small>${escapeHtml(getStaffDashboardReservationResources(reservation))}</small>
       </div>
       <div class="dashboard-detail-amount">
-        <strong>${formatMoneyCentimes(reservation.price || 0)}</strong>
+        <strong>${canUseStaffPermission('payments.view') ? formatMoneyCentimes(reservation.price || 0) : '···'}</strong>
         ${/* LE PREMIER ECRAN DE LA CONSOLE LISAIT LA REGLE NULLE PART. Ces
              lignes imprimaient le montant nu, donc un geste commercial y
              passait pour un tarif catalogue - sur l ecran d ouverture, et sur
@@ -12119,22 +12132,25 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
 // Chaque bouton est masqué si le rôle courant n'a pas la permission requise.
 function renderDashboardRowActions(reservation, kind) {
   const id = Number(reservation.id);
-  const canStatus = canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid']);
-  const canEdit = canUseStaffPermission('reservations.edit');
-  const canContact = canUseStaffPermission(['emails.send', 'emails.view', 'reservations.edit']);
+  // Chaque bouton lit la regle du serveur pour son geste (peutGeste) :
+  // « Payé » demande l etat ET l encaissement, « Contacter » ouvre un mail a
+  // ecrire, « Valider » un jour passe demande « Changer un jour passé ».
+  const canPay = peutGeste('encaisser');
+  const canStatus = peutGeste('etat');
+  const canContact = peutGeste('ecrire');
   const fiche = `<button type="button" onclick="dashboardDetailOpenReservation(${id})">Fiche</button>`;
   const open = `<button type="button" class="primary" onclick="dashboardDetailOpenReservation(${id})">Ouvrir la réservation</button>`;
   const contact = canContact ? `<button type="button" onclick="dashboardDetailContact(${id})">Contacter</button>` : '';
   // Encaisser note le moyen (2026-10-01) : Carte ou Espèces, jamais un « Payé »
   // muet que la Direction ne saurait pas ranger.
-  const payer = (classe) => (canStatus && reservation.status !== 'paid')
+  const payer = (classe) => (canPay && reservation.status !== 'paid')
     ? GROUPE_MOYENS.map(m => `<button type="button"${classe ? ` class="${classe}"` : ''} onclick="dashboardDetailSetStatus(${id}, 'paid', event, '${m.valeur}')">Payé · ${m.mot}</button>`).join('') : '';
   const encaisser = payer('primary');
   const arrived = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
     ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
   const arrivedPrimary = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
     ? `<button type="button" class="primary" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
-  const valider = canEdit
+  const valider = peutGeste('valider', reservation.date)
     ? `<button type="button" class="primary" onclick="dashboardDetailValidate(${id}, event)">Valider</button>` : '';
   if (kind === 'review') return `${valider}${fiche}${contact}`;
   if (kind === 'payment') return `${encaisser}${arrived}${fiche}`;
@@ -12148,20 +12164,20 @@ function renderDashboardRowActions(reservation, kind) {
 // Actions du footer de la modale détail, spécialisées par type d'alerte.
 function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
   const actions = [];
-  if (kind === 'payment' && canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid'])) {
+  if (kind === 'payment' && peutGeste('encaisser')) {
     actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
   }
-  if (kind === 'maintenance' && canUseStaffPermission(['planning.drag', 'settings.manage'])) {
+  if (kind === 'maintenance' && peutGeste('fermerPiste')) {
     actions.push({ label: 'Libérer toutes les pistes', onclick: 'dashboardDetailReleaseAllLanes(event)', className: 'primary' });
   }
-  if (kind === 'overdue' && canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid'])) {
+  if (kind === 'overdue' && peutGeste('encaisser')) {
     actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
   }
-  if (kind === 'lead') {
+  if (kind === 'lead' && canUseStaffPage('requests')) {
     actions.push({ label: 'Ouvrir les demandes sur mesure', onclick: 'openStaffRequestsPage(null, event)', className: 'primary' });
   }
-  actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
-  actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
+  if (nav.openReservations) actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
+  if (nav.openPlanning) actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
   return actions;
 }
 
@@ -12236,9 +12252,9 @@ function renderStaffAlertLeadRows() {
         ${metaParts ? `<span>${escapeHtml(metaParts)}</span>` : ''}
         <small>${escapeHtml(String(item.message || '').slice(0, 220))}</small>
       </div>
-      <div class="dashboard-detail-row-actions">
+      ${canUseStaffPage('requests') ? `<div class="dashboard-detail-row-actions">
         <button type="button" class="primary" onclick="openStaffRequestsPage(${jid}, event)">Gérer cette demande</button>
-      </div>
+      </div>` : ''}
     </article>`;
   }).join('');
 }
@@ -12695,7 +12711,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </div>
       <div class="dash-actions">
         ${staffDateNavHtml()}
-        <button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation</button>
+        ${peutGeste('reserver') ? '<button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation</button>' : ''}
       </div>
     </section>
 
@@ -12739,7 +12755,9 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-alerts">${renderStaffDashboardAlerts(metrics, inboxTodos, inboxKnown)}</div>
       </article>
       <div class="dash-side-stack">
-      <article class="dash-card dash-revenue-card">
+      ${/* La carte Revenus n est faite que de montants : sans « Voir les
+           montants », elle ne se dessine pas (2026-11-07). */''}
+      ${seesMoney ? `<article class="dash-card dash-revenue-card">
         <div class="dash-card-head">
           <h2>Revenus</h2>
           <div class="dash-revenue-nav">
@@ -12755,7 +12773,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         </div>
         <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span>${revenueTrendWindowText ? `<small>${escapeHtml(revenueTrendWindowText)}</small>` : ''}</div>
         ${renderStaffDashboardRevenue(revenueWindow)}
-      </article>
+      </article>` : ''}
       <article class="dash-card dash-hours-card">
         <div class="dash-card-head"><div class="dash-card-titles"><h2>Arrivées par heure</h2><span class="dash-card-meta">joueurs attendus</span></div></div>
         <div class="dash-range-chart" id="dashArrivalsChart"></div>
@@ -13459,8 +13477,9 @@ function renderStaffTerrainCard(item, phase, board) {
   const resources = getStaffTerrainResources(reservation);
   // Un prix decide a la main se voit AVANT l encaissement, pas au ticket :
   // la pastille remplace le montant nu quand il y a un ecart.
-  const price = renderReservationPriceMark(reservation, { forme: 'complet' })
-    || `<span class="terrain-price">${escapeHtml(formatMoneyCentimes(Number(reservation.price || 0)))}</span>`;
+  const price = !canUseStaffPermission('payments.view') ? ''
+    : renderReservationPriceMark(reservation, { forme: 'complet' })
+      || `<span class="terrain-price">${escapeHtml(formatMoneyCentimes(Number(reservation.price || 0)))}</span>`;
   // Le groupe en retard se rappelle : son numero est le geste utile, a la
   // place du temps relatif que sa pastille dit deja.
   const phone = String(reservation.phone || '').trim();
@@ -13470,11 +13489,12 @@ function renderStaffTerrainCard(item, phase, board) {
   const actions = [renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`)];
   // Arrivé : jamais sur un dossier deja paye, le statut est un seul champ et
   // pointer l arrivee effacerait le paiement. Une carte a venir n existe que le
-  // jour meme : une date future n a que des lignes, sans geste.
-  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid') {
+  // jour meme : une date future n a que des lignes, sans geste. Chaque geste
+  // suit le role (2026-11-07) : la page s ouvre aussi a qui ne fait que lire.
+  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid' && peutGeste('etat')) {
     actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, 'primary'));
   }
-  if ((phase === 'onsite' || phase === 'closing') && status !== 'paid') {
+  if ((phase === 'onsite' || phase === 'closing') && status !== 'paid' && peutGeste('encaisser')) {
     GROUPE_MOYENS.forEach(m => actions.push(renderStaffUtilityAction(`Payé · ${m.mot}`, `encaisserReservation(${id}, '${m.valeur}', event)`, 'primary')));
   }
   const foot = call || (timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : '');
@@ -14006,8 +14026,12 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
   const { win } = model;
   const span = Math.max(1, win.closed ? 12 : win.close - win.open);
   const pos = (value) => Math.max(0, Math.min(100, ((value - win.open) / span) * 100));
+  // Un creux se vend avec « Réserver au comptoir », une piste se ferme avec
+  // « Fermer une piste » : sans le droit, ni l un ni l autre ne se montre.
+  const reserve = peutGeste('reserver');
+  const ferme = peutGeste('fermerPiste');
   const rows = model.lanes.map((item) => {
-    const gapsHtml = item.gaps.map((gap) => `<button type="button" class="lane-gap" style="left:${pos(gap.start)}%;width:${Math.max(2, pos(gap.end) - pos(gap.start))}%" title="Réserver ${numToTime(gap.start)} - ${numToTime(gap.end)}" onclick="quickFromCell(${item.lane}, ${gap.start})" aria-label="Réserver la piste ${item.lane} de ${numToTime(gap.start)} à ${numToTime(gap.end)}"></button>`).join('');
+    const gapsHtml = !reserve ? '' : item.gaps.map((gap) => `<button type="button" class="lane-gap" style="left:${pos(gap.start)}%;width:${Math.max(2, pos(gap.end) - pos(gap.start))}%" title="Réserver ${numToTime(gap.start)} - ${numToTime(gap.end)}" onclick="quickFromCell(${item.lane}, ${gap.start})" aria-label="Réserver la piste ${item.lane} de ${numToTime(gap.start)} à ${numToTime(gap.end)}"></button>`).join('');
     const slotsHtml = item.laneWindows.map((w) => `<button type="button" class="lane-slot" style="left:${pos(w.start)}%;width:${Math.max(2, pos(w.end) - pos(w.start))}%" title="${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)} - ${numToTime(w.end)}" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})"></button>`).join('');
     // Les reperes d ouverture et de fermeture encadrent le ruban au lieu d y
     // flotter : dans le ruban, un creneau qui commence a l ouverture passait
@@ -14025,9 +14049,10 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
       statut = item.laneWindows.length ? `${item.laneWindows.length} résa${item.laneWindows.length > 1 ? 's' : ''} sur la date` : 'Libre sur la date';
     }
     const relocate = item.toRelocate.length ? `<div class="lane-relocate" data-role="lane-replace"><span>À replacer :</span>${item.toRelocate.map((w) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})">${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)}</button>`).join('')}</div>` : '';
-    const actions = item.maintenance
-      ? `<button type="button" onclick="toggleMaint(${item.lane}, event)">Rouvrir</button>`
-      : `<button type="button" onclick="toggleMaint(${item.lane}, event)">Fermer</button><button type="button" onclick="openLaneMaintForm(${item.lane}, event)">Entretien…</button>`;
+    const actions = !ferme ? ''
+      : item.maintenance
+        ? `<button type="button" onclick="toggleMaint(${item.lane}, event)">Rouvrir</button>`
+        : `<button type="button" onclick="toggleMaint(${item.lane}, event)">Fermer</button><button type="button" onclick="openLaneMaintForm(${item.lane}, event)">Entretien…</button>`;
     return `<div class="lane-row${item.maintenance ? ' is-maintenance' : ''}${item.current ? ' is-busy' : ''}" data-lane="${item.lane}">
       <div class="lane-row-id"><span class="lane-dot" aria-hidden="true"></span><strong>Piste ${item.lane}</strong></div>
       <div class="lane-row-main">
@@ -14114,7 +14139,7 @@ function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
     const partage = enParallele > 0
       ? `<div class="laser-session-shared" data-role="laser-shared">dont ${formatStaffTerrainCount(enParallele, 'joueur')} sur ${session.parallels > 1 ? `${session.parallels} lancements` : 'un lancement'} en parallèle</div>`
       : '';
-    const action = future && remaining > 0
+    const action = future && remaining > 0 && peutGeste('reserver')
       ? `<div class="laser-session-action"><button type="button" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">${weak ? 'Compléter' : 'Ajouter un groupe'} · ${remaining} place${remaining > 1 ? 's' : ''}</button></div>`
       : (remaining <= 0 ? `<div class="laser-session-action"><span>${enParallele > 0 ? 'Arène complète.' : 'Session complète.'}</span></div>` : '');
     return `<article class="laser-session">
@@ -15281,7 +15306,9 @@ function renderStaffUtilityEstablishment() {
   // Le panneau Offres consomme la liste VIVE du catalogue : son chargement se
   // declenche d'ici aussi (pas seulement depuis la page Tarifs). Une fois la
   // liste arrivee, pevLoad repeint cette page en mode lecture.
-  if (typeof window.pevEnsureCatalogLoaded === 'function') window.pevEnsureCatalogLoaded();
+  // (le catalogue vif se lit avec « Tarifs & formules » : sans ce droit, la
+  // liste fournie suffit, sans un refus du serveur a chaque ouverture)
+  if (typeof window.pevEnsureCatalogLoaded === 'function' && canUseStaffPermission('pricing.manage')) window.pevEnsureCatalogLoaded();
   if (!staffCenterConfigCache.loaded || staffCenterConfigCache.loading) {
     return `<div class="establishment-page"><div class="establishment-loading">Lecture de la configuration des centres…</div></div>`;
   }
@@ -16117,6 +16144,21 @@ const STAFF_ROLE_PRESETS = [
     ]
   },
   {
+    id: 'assistant-manager',
+    name: 'Assistant manager',
+    code: 'AM',
+    summary: 'Tient la journée',
+    description: 'Pour tenir la journée quand le manager n’est pas là : planning, réservations, clients et caisse.',
+    tone: 'manager',
+    // Recopie de lib/staff-auth.js (2026-11-07), comme les autres modeles.
+    permissions: [
+      'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag',
+      'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'reservations.quick',
+      'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid', 'emails.view',
+      'niveau:surmesure:catalogue', 'niveau:prix:10', 'niveau:formule:oui', 'niveau:forcer:non', 'niveau:historique:oui'
+    ]
+  },
+  {
     id: 'staff-bar',
     name: 'Staff bar',
     code: 'ST',
@@ -16232,11 +16274,13 @@ function ensureStaffAccessControl() {
         ...(preset || {}),
         ...role,
         permissions: Array.isArray(role.permissions) ? [...new Set(role.permissions)] : (preset?.permissions || []),
-        accessCode: role.accessCode || createStaffAccessCode(role.code || role.name || 'FG'),
+        // Jamais un code invente dans le navigateur : l ecran ne montre que
+        // la fin du vrai code, que le serveur envoie.
+        accessCode: role.accessCode || '',
         updatedAt: role.updatedAt || new Date().toISOString()
       };
     })
-    : presetRoles;
+    : presetRoles.map(role => ({ ...role, accessCode: '' }));
   // Resolution SURE de la selection : jamais un role plateforme, et la
   // selection courante est gardee tant qu'elle reste valide. A defaut, le
   // premier role visible du centre (l'ordre commence par les presets), sinon
@@ -16246,22 +16290,17 @@ function ensureStaffAccessControl() {
   const selectedRoleId = visibleRoles.some(role => role.id === current.selectedRoleId)
     ? current.selectedRoleId
     : ((visibleRoles[0] && visibleRoles[0].id) || 'direction');
+  // L EQUIPE VIENT DU SERVEUR, ou il n y a personne. L ancien repli dessinait
+  // un « Poste direction » invente, avec un faux code, quand la liste etait
+  // vide : une personne qui n existe pas, sur la page qui dit qui entre.
   state.staffAccessControl = {
+    centerId: current.centerId || getCurrentStaffCenterId(),
     selectedRoleId,
-    selectedMemberId: current.selectedMemberId || 'admin-local',
+    selectedMemberId: current.selectedMemberId || '',
     roles,
-    members: Array.isArray(current.members) && current.members.length ? current.members : [
-      {
-        id: 'admin-local',
-        name: 'Poste direction',
-        contact: 'Accès local sécurisé',
-        roleId: 'direction',
-        status: 'active',
-        code: 'pinlane-owner-demo-code',
-        lastSeen: new Date().toISOString()
-      }
-    ],
-    events: Array.isArray(current.events) ? current.events.slice(0, 12) : []
+    members: Array.isArray(current.members) ? current.members : [],
+    events: Array.isArray(current.events) ? current.events.slice(0, 20) : [],
+    entreprise: Array.isArray(current.entreprise) ? current.entreprise : []
   };
   return state.staffAccessControl;
 }
@@ -16459,44 +16498,58 @@ function openStaffAccessModal(kind) {
   closeStaffAccessModal();
   staffAccessModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const access = ensureStaffAccessControl();
-  const selectedRole = getStaffAccessRole(access.selectedRoleId);
   const isRole = kind === 'role';
-  // Roles assignables a un membre = roles NON verrouilles (comme founder-team)
-  // et JAMAIS un role plateforme : un role systeme verrouille (Direction,
-  // proprietaire plateforme) n'est jamais offert a la creation. Defaut = role
-  // du rail s'il est assignable, sinon le premier assignable.
-  const assignableRoles = access.roles.filter(role => !role.locked && !isPlatformStaffRole(role));
-  const defaultRoleId = assignableRoles.some(role => role.id === access.selectedRoleId)
+  // Les roles qu on peut donner : jamais un role plateforme, et le role
+  // verrouille (Direction) seulement par la Direction ou le proprietaire de la
+  // plateforme (le serveur refuse tous les autres, api/staff-auth.js).
+  const assignableRoles = equipeRolesDonnables(access.roles);
+  const defaultRoleId = assignableRoles.some(role => role.id === access.selectedRoleId && !role.locked)
     ? access.selectedRoleId
-    : (assignableRoles[0] && assignableRoles[0].id) || '';
+    : ((assignableRoles.find(role => !role.locked) || assignableRoles[0] || {}).id || '');
+  const ici = equipeNomDuCentre(access, access.centerId);
+  // Les autres centres de l entreprise ou l on gere aussi l equipe : la
+  // personne peut y entrer des sa creation, avec le meme role.
+  const autres = (access.entreprise || []).filter(centre => centre.id !== access.centerId && centre.gere);
+  const modeles = STAFF_ROLE_PRESETS.filter(preset => preset.id !== 'direction');
   const overlay = document.createElement('div');
   overlay.id = 'staffAccessModalOverlay';
   overlay.className = 'overlay-backdrop staff-access-modal-overlay';
   overlay.innerHTML = `
     <form class="modal-surface staff-access-modal" role="dialog" aria-modal="true" aria-labelledby="staffAccessModalTitle" onsubmit="submitStaffAccessModal(event, '${isRole ? 'role' : 'member'}')">
       <div>
-        <h3 id="staffAccessModalTitle">${isRole ? 'Créer un rôle' : 'Créer un accès staff'}</h3>
+        <h3 id="staffAccessModalTitle">${isRole ? 'Créer un rôle' : 'Ajouter une personne'}</h3>
         <p>${isRole
-          ? 'Le rôle démarre avec Dashboard et Réservations, puis s’affine permission par permission.'
-          : 'Choisissez le rôle du membre ; il reçoit un code d’accès personnel.'}</p>
+          ? 'Le rôle part d’un modèle, ou de rien. Ses droits se règlent ensuite, écran par écran.'
+          : `Elle reçoit son propre code, copié pour vous à la création : envoyez-le lui.`}</p>
       </div>
       <div class="field">
-        <label for="staffAccessModalName">${isRole ? 'Nom du rôle' : 'Nom du membre'}</label>
-        <input id="staffAccessModalName" type="text" required autocomplete="off" placeholder="${isRole ? 'Ex : Responsable anniversaires' : 'Ex : Camille Dupont'}">
+        <label for="staffAccessModalName">${isRole ? 'Nom du rôle' : 'Son nom'}</label>
+        <input id="staffAccessModalName" type="text" required autocomplete="off" maxlength="${isRole ? 60 : 80}" placeholder="${isRole ? 'Ex : Responsable anniversaires' : 'Ex : Camille'}">
       </div>
-      ${isRole ? '' : `<div class="field">
-        <label for="staffAccessModalContact">Contact : email, téléphone ou identifiant interne</label>
+      ${isRole ? `<div class="field">
+        <label for="staffAccessModalModele">Partir des droits de</label>
+        <select id="staffAccessModalModele">
+          <option value="">Aucun modèle : voir les réservations seulement</option>
+          ${modeles.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join('')}
+        </select>
+      </div>` : `<div class="field">
+        <label for="staffAccessModalContact">Son mail ou son téléphone (pour vous)</label>
         <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@votre-centre.be">
       </div>
       <div class="field">
-        <label for="staffAccessModalRole">Rôle attribué</label>
-        <select id="staffAccessModalRole">${assignableRoles.length
+        <label for="staffAccessModalRole">Son rôle</label>
+        <select id="staffAccessModalRole" onchange="equipeCentresDuModal()">${assignableRoles.length
           ? assignableRoles.map(role => `<option value="${escapeHtml(role.id)}" ${role.id === defaultRoleId ? 'selected' : ''}>${escapeHtml(role.name)}</option>`).join('')
-          : '<option value="">Aucun rôle assignable</option>'}</select>
-      </div>`}
+          : '<option value="">Aucun rôle à donner</option>'}</select>
+      </div>
+      <fieldset>
+        <legend>Ses centres</legend>
+        <p class="eq-case"><strong>${escapeHtml(ici)}</strong>&nbsp;(ce centre)</p>
+        ${autres.map(centre => `<label class="eq-case" data-eq-centre-modal="${escapeHtml(centre.id)}"><input type="checkbox" value="${escapeHtml(centre.id)}"> ${escapeHtml(equipeNomDuCentre(access, centre.id))}</label>`).join('')}
+      </fieldset>`}
       <div class="staff-access-modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeStaffAccessModal()">Annuler</button>
-        <button type="submit" class="btn btn-primary">${isRole ? 'Créer le rôle' : 'Créer l’accès'}</button>
+        <button type="submit" class="btn btn-primary">${isRole ? 'Créer le rôle' : 'Ajouter'}</button>
       </div>
     </form>`;
   overlay.addEventListener('mousedown', event => {
@@ -16504,7 +16557,26 @@ function openStaffAccessModal(kind) {
   });
   document.addEventListener('keydown', handleStaffAccessModalKeydown, true);
   document.body.appendChild(overlay);
+  if (!isRole) equipeCentresDuModal();
   overlay.querySelector('#staffAccessModalName')?.focus({ preventScroll: true });
+}
+
+function equipeRolesDonnables(roles) {
+  const direction = equipePeutDonnerDirection();
+  return (roles || []).filter(role => !isPlatformStaffRole(role) && (!role.locked || direction));
+}
+
+// Un autre centre ne se propose que si le role choisi y existe : la meme
+// personne y entre avec le meme role.
+function equipeCentresDuModal() {
+  const access = ensureStaffAccessControl();
+  const roleId = String(document.getElementById('staffAccessModalRole')?.value || '');
+  document.querySelectorAll('[data-eq-centre-modal]').forEach(case_ => {
+    const centre = (access.entreprise || []).find(item => item.id === case_.dataset.eqCentreModal);
+    const existe = Boolean(centre && (centre.roles || []).some(role => role.id === roleId));
+    case_.hidden = !existe;
+    if (!existe) case_.querySelector('input').checked = false;
+  });
 }
 
 async function submitStaffAccessModal(event, kind) {
@@ -16512,28 +16584,33 @@ async function submitStaffAccessModal(event, kind) {
   const name = String(document.getElementById('staffAccessModalName')?.value || '').trim();
   if (!name) return;
   const contact = String(document.getElementById('staffAccessModalContact')?.value || '').trim();
-  // Le role choisi doit etre lu AVANT la fermeture : closeStaffAccessModal
-  // retire l'overlay du DOM.
+  // Tout se lit AVANT la fermeture : closeStaffAccessModal retire l'overlay.
   const chosenRoleId = String(document.getElementById('staffAccessModalRole')?.value || '').trim();
+  const modele = String(document.getElementById('staffAccessModalModele')?.value || '').trim();
+  const autresCentres = [...document.querySelectorAll('[data-eq-centre-modal]:not([hidden]) input:checked')].map(input => input.value);
   closeStaffAccessModal();
   if (kind === 'role') {
-    await runStaffAuthAction('createRole', {
+    await runStaffAuthAction('createRole', modele ? { name, presetId: modele } : {
       name,
       permissions: ['dashboard.view', 'reservations.view']
-    }, 'Rôle créé.');
+    }, `Rôle ${name} créé.`);
+    if (state.staffAccessControl) state.equipeOnglet = 'roles';
+    renderStaffUtilityPage();
     return;
   }
   const access = ensureStaffAccessControl();
-  const assignableRoles = access.roles.filter(role => !role.locked && !isPlatformStaffRole(role));
+  const assignableRoles = equipeRolesDonnables(access.roles);
   const roleId = assignableRoles.some(role => role.id === chosenRoleId)
     ? chosenRoleId
-    : (assignableRoles[0] && assignableRoles[0].id) || '';
-  if (!roleId) { toast('Aucun rôle assignable disponible.'); return; }
+    : ((assignableRoles.find(role => !role.locked) || {}).id || '');
+  if (!roleId) { toast('Aucun rôle à donner.'); return; }
+  state.equipeOnglet = 'personnes';
   await runStaffAuthAction('createMember', {
     name,
     contact,
-    roleId
-  }, 'Accès staff créé.');
+    roleId,
+    autresCentres
+  }, `${name} est ajouté.`);
 }
 
 function createStaffCustomRole() {
@@ -16687,266 +16764,760 @@ async function copyStaffMemberCode(memberId) {
   }
 }
 
-function getStaffRoleAccessiblePages(roleId) {
-  const permissions = getStaffRolePermissionSet(roleId);
-  const pages = [
-    // Les noms de la barre laterale : un role « ouvre » des pages que le
-    // gerant retrouve sous le meme nom a gauche.
-    ['Vue d’ensemble', 'dashboard.view'],
-    ['Planning', 'planning.view'],
-    ['Réservations', 'reservations.view'],
-    ['Clients', 'clients.view'],
-    ['Activités & tarifs', 'pricing.manage'],
-    ['Emails & relances', 'emails.view'],
-    ['Marketing', 'campaigns.manage'],
-    ['Direction', 'direction.view'],
-    ['Équipe & accès', 'users.manage']
-  ];
-  return pages.map(([label, permission]) => ({ label, permission, allowed: permissions.has(permission) }));
+// ===========================================================================
+// ÉQUIPE & ACCÈS, REFAITE LE 2026-11-07
+//
+// Ansar : « fait un truc plus compréhensible et plus complet sur tout les
+// autorisations [...] sur la page la surtout a droite on comprend pas et c pas
+// complet ». Trois onglets : Personnes (qui entre, avec quel code, dans quels
+// centres), Rôles (ce que chaque rôle voit et fait, écran par écran, en
+// phrases), Journal (qui a fait quoi). A droite, toujours ce qu'on vient de
+// choisir : la fiche de la personne, ou le menu tel que le rôle le voit.
+//
+// Un geste qu'on n'a pas le droit de faire n'est pas dessiné : ni grisé, ni
+// refusé au clic. Le serveur refuse toujours de son côté (api/staff-auth.js).
+// ===========================================================================
+
+// LA CARTE DES DROITS : chaque écran de la console, dans l'ordre du menu de
+// gauche et sous ses noms, et chaque droit là où il agit, en une phrase.
+// Chaque permission y vit UNE fois. scripts/equipe-acces-check.js rougit si
+// une permission manque à la carte ou si un écran du menu n'y est pas.
+const CARTE_DES_DROITS = [
+  {
+    section: 'Journée',
+    ecrans: [
+      { page: 'dashboard', nom: 'Vue d’ensemble', phrase: 'La journée en un coup d’œil : réservations, arrivées, ce qui attend une réponse.', ouvre: ['dashboard.view', 'Voir la vue d’ensemble'] },
+      {
+        page: 'planning', nom: 'Planning', phrase: 'Les plannings du jour : bowling, laser et le planning complet.', ouvre: ['planning.view', 'Voir le planning'],
+        droits: [
+          ['planning.bowling', 'Bowling', 'Le planning des pistes de bowling, et la page Pistes bowling.'],
+          ['planning.laser', 'Laser Game', 'Le planning des parties de laser, et la page Laser Game.'],
+          ['planning.drag', 'Déplacer une réservation', 'La glisser vers une autre heure ou une autre piste, fermer une piste en panne, gérer un retard.'],
+          ['planning.past', 'Changer un jour passé', 'Corriger une réservation d’hier ou d’avant.']
+        ]
+      },
+      {
+        page: 'reservations', nom: 'Réservations', phrase: 'Toutes les réservations, à venir et passées, et la fiche de chacune.', ouvre: ['reservations.view', 'Voir les réservations'],
+        droits: [
+          ['reservations.create', 'Créer une réservation', 'Ajouter une réservation depuis la console.'],
+          ['reservations.quick', 'Réserver au comptoir', 'L’écran Réserver, pour un client qui est devant soi.'],
+          ['reservations.edit', 'Modifier une réservation', 'Changer le client, l’heure, les activités ou le nombre de joueurs.'],
+          ['reservations.cancel', 'Annuler une réservation', 'L’annuler, ou la rétablir.'],
+          ['reservations.status', 'Changer l’état', 'Arrivé, en cours, terminé, pas venu.']
+        ],
+        niveaux: true
+      },
+      { page: 'formules', nom: 'Formules', phrase: 'Les groupes en formule du jour et leurs étapes.', ouvrePar: ['reservations.view'] },
+      { page: 'arrivals', nom: 'Terrain', phrase: 'Qui arrive, qui joue, qui est à clôturer.', ouvrePar: ['reservations.status', 'reservations.view'] },
+      {
+        page: '', nom: 'L’argent', phrase: 'Les montants et l’encaissement, partout où ils apparaissent.',
+        droits: [
+          ['payments.view', 'Voir les montants', 'Les prix, le chiffre d’affaires et ce qui reste à payer. Sans ce droit, ils s’affichent « ··· ».'],
+          ['payments.markPaid', 'Encaisser', 'Noter qu’une réservation est payée.']
+        ]
+      }
+    ]
+  },
+  {
+    section: 'Clients & marketing',
+    ecrans: [
+      {
+        page: 'clients', nom: 'Clients', phrase: 'Les fiches des clients, leurs visites et leurs notes.', ouvre: ['clients.view', 'Voir les clients'],
+        droits: [
+          ['clients.edit', 'Modifier une fiche client', 'Changer ses coordonnées, écrire une note sur lui.'],
+          ['exports.download', 'Télécharger les fichiers', 'La liste des clients et les exports, en fichier.']
+        ]
+      },
+      { page: 'requests', nom: 'Demandes sur mesure', phrase: 'Les demandes de groupe et sur mesure à traiter.', ouvrePar: ['clients.view'] },
+      {
+        page: 'emails', nom: 'Emails & relances', phrase: 'Les mails reçus et envoyés, les modèles et les relances automatiques.', ouvre: ['emails.view', 'Voir les mails'],
+        droits: [
+          ['emails.send', 'Envoyer un mail', 'Écrire ou relancer un client, répondre à une demande, régler les mails qui partent seuls.'],
+          ['campaigns.manage', 'Campagnes', 'Préparer et envoyer un mail à plusieurs clients, garder des modèles de mails.']
+        ]
+      },
+      {
+        page: 'campaigns', nom: 'Marketing', phrase: 'Les propositions de l’agent marketing.', ouvrePar: ['campaigns.manage', 'marketing.agents'],
+        droits: [
+          ['marketing.agents', 'Agent marketing', 'Demander des propositions de publications à l’agent.']
+        ]
+      }
+    ]
+  },
+  {
+    section: 'Administration',
+    ecrans: [
+      { page: 'prices', nom: 'Tarifs & formules', phrase: 'Les prix des activités et des formules, et la carte du sur mesure.', ouvre: ['pricing.manage', 'Changer les tarifs'] },
+      { page: 'lanes', nom: 'Pistes bowling', phrase: 'L’état de chaque piste.', ouvrePar: ['planning.bowling', 'settings.manage'] },
+      { page: 'laserGame', nom: 'Laser Game', phrase: 'Les armes et les parties de laser.', ouvrePar: ['planning.laser', 'settings.manage'] },
+      {
+        page: 'users', nom: 'Équipe & accès', phrase: 'Cette page : les personnes, leurs codes et les rôles.', ouvre: ['users.manage', 'Gérer l’équipe'],
+        droits: [
+          ['security.codes', 'Les codes d’accès', 'Copier le code d’une personne, lui en donner un nouveau.']
+        ]
+      },
+      {
+        page: 'establishment', nom: 'Établissement', phrase: 'Le centre : horaires, pistes, armes, adresse.', ouvrePar: ['settings.manage', 'direction.view'],
+        droits: [
+          ['settings.manage', 'Changer les réglages', 'Les horaires, les pistes, les armes et l’adresse du centre, le formulaire du site, les adresses d’envoi des mails, et la page Paramètres.'],
+          ['ai.ops', 'Suivi des agents IA', 'Ce que les agents IA du centre ont proposé et fait.']
+        ]
+      },
+      { page: 'secours', nom: 'Secours', phrase: 'La feuille de secours, si internet tombe.', ouvrePar: ['reservations.view'] },
+      { page: 'settings', nom: 'Paramètres', phrase: 'Les préférences de ce poste.', ouvrePar: ['settings.manage'] },
+      {
+        page: '', nom: 'Direction', phrase: 'Les chiffres de la période et la comparaison des centres.', ouvre: ['direction.view', 'Voir la page Direction'],
+        droits: [
+          ['reports.export', 'Télécharger les rapports', 'Les rapports de la page Direction, en fichier.'],
+          ['centers.switch', 'Tous les centres', 'Entrer dans tous les centres de l’entreprise. Sans ce droit, la personne n’entre que dans les centres choisis sur sa fiche.']
+        ]
+      }
+    ]
+  }
+];
+
+const EQUIPE_ETATS = {
+  active: ['Actif', 'badge-success'],
+  pending: ['Jamais venu', 'badge-neutral'],
+  blocked: ['Bloqué', 'badge-danger']
+};
+
+function equipeSession() {
+  return normalizeStaffSession(state.staffAuthSession) || readStoredStaffSession() || {};
 }
 
-const staffPermissionGroupOpenState = {};
-let staffAccessCodeRevealed = false;
+function equipeEstProprietaire() {
+  return canUseStaffPermission('platform.admin');
+}
 
-function toggleStaffAccessCodeVisibility() {
-  staffAccessCodeRevealed = !staffAccessCodeRevealed;
+// La Direction ou le propriétaire de la plateforme donnent le rôle Direction
+// (le serveur refuse tous les autres : peutDonnerLeRole, api/staff-auth.js).
+function equipePeutDonnerDirection() {
+  const session = equipeSession();
+  return Boolean(session.role?.locked) || equipeEstProprietaire();
+}
+
+// Les droits d'un rôle, verrouillé compris (la Direction a tout dans son centre).
+function equipeDroitsDuRole(role) {
+  if (!role) return new Set();
+  if (role.locked) return new Set(getStaffPermissionKeys());
+  return new Set(Array.isArray(role.permissions) ? role.permissions : []);
+}
+
+// Une page s'ouvre-t-elle avec ces droits ? La même règle que la console
+// (canUseStaffPage), appliquée à un rôle au lieu de la session.
+function equipePageOuverte(page, droits, verrouille) {
+  const requises = STAFF_PAGE_PERMISSION_MAP[page];
+  if (!requises) return false;
+  return requises.some(permission => (PLATFORM_STAFF_PERMISSIONS.has(permission) ? droits.has(permission) : (verrouille || droits.has(permission))));
+}
+
+function equipeEcranOuvert(ecran, droits, verrouille) {
+  if (ecran.page) return equipePageOuverte(ecran.page, droits, verrouille);
+  if (ecran.ouvre) return verrouille || droits.has(ecran.ouvre[0]);
+  return (ecran.droits || []).some(([permission]) => verrouille || droits.has(permission));
+}
+
+// Le menu de gauche tel qu'une personne de ce rôle le voit : la même liste que
+// la vraie barre (window.FGX_STAFF_MENU, assets/staff-menu.js), la même règle.
+function equipeMenuDuRole(role) {
+  const droits = equipeDroitsDuRole(role);
+  const verrouille = Boolean(role && role.locked);
+  const peut = permission => !permission || (PLATFORM_STAFF_PERMISSIONS.has(permission) ? droits.has(permission) : (verrouille || droits.has(permission)));
+  const page = key => {
+    if (key === 'bowling' || key === 'laser' || key === 'complete') return 'planning';
+    if (String(key || '').startsWith('emails-')) return 'emails';
+    return key;
+  };
+  const sections = Array.isArray(window.FGX_STAFF_MENU) ? window.FGX_STAFF_MENU : [];
+  return sections.map(section => {
+    const items = (section.items || []).map(item => {
+      if (item.children) {
+        const enfants = item.children.filter(child => equipePageOuverte(page(child.key), droits, verrouille) && peut(child.permission));
+        if (!enfants.length && !item.landing) return null;
+        if (item.landing && !equipePageOuverte(page(item.key), droits, verrouille)) return null;
+        return { label: item.label, enfants: enfants.map(child => child.label) };
+      }
+      return equipePageOuverte(page(item.key), droits, verrouille) ? { label: item.label, enfants: [] } : null;
+    }).filter(Boolean);
+    return items.length ? { titre: section.title, items } : null;
+  }).filter(Boolean);
+}
+
+// Les écrans de la carte qui restent fermés à ce rôle.
+function equipeEcransFermes(role) {
+  const droits = equipeDroitsDuRole(role);
+  const verrouille = Boolean(role && role.locked);
+  return CARTE_DES_DROITS.flatMap(groupe => groupe.ecrans)
+    .filter(ecran => !equipeEcranOuvert(ecran, droits, verrouille))
+    .map(ecran => ecran.nom);
+}
+
+function equipeQuand(valeur) {
+  if (!valeur) return '';
+  const date = new Date(valeur);
+  if (Number.isNaN(date.getTime())) return '';
+  const heure = date.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+  const jour = d => d.toLocaleDateString('fr-BE');
+  const hier = new Date(Date.now() - 86400000);
+  if (jour(date) === jour(new Date())) return `aujourd’hui à ${heure}`;
+  if (jour(date) === jour(hier)) return `hier à ${heure}`;
+  return `le ${date.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit' })}`;
+}
+
+function equipeNomDuCentre(access, centerId) {
+  const centre = (access.entreprise || []).find(item => item.id === centerId);
+  const nom = (centre && centre.name) || centerId;
+  // « Fun Galaxy Gembloux » se dit « Gembloux » sur cette page : l'entreprise
+  // est la même partout.
+  return String(nom).replace(/^Fun Galaxy\s+/i, '').replace(/\s+Centre$/i, '') || nom;
+}
+
+// Les centres d'une personne, celui qu'on regarde en premier.
+function equipeCentresDe(member) {
+  const ici = (state.staffAccessControl && state.staffAccessControl.centerId) || getCurrentStaffCenterId();
+  const centres = Array.isArray(member.centres) && member.centres.length
+    ? member.centres.slice()
+    : [{ centerId: member.centerId, memberId: member.id, roleId: member.roleId, status: member.status }];
+  return centres.sort((a, b) => (a.centerId === ici ? -1 : 0) - (b.centerId === ici ? -1 : 0) || String(a.centerId).localeCompare(String(b.centerId)));
+}
+
+// La personne, tous centres confondus : venue dès qu'une de ses fiches l'a été
+// (une session ne rafraîchit que la fiche de son centre de connexion).
+function equipeVuDeLaPersonne(member) {
+  const dates = [member.lastSeen, ...equipeCentresDe(member).map(centre => centre.lastSeen)]
+    .filter(Boolean).map(valeur => new Date(valeur).getTime()).filter(Number.isFinite);
+  return dates.length ? new Date(Math.max(...dates)).toISOString() : '';
+}
+
+function equipeEtatDeLaPersonne(member) {
+  if (member.status === 'blocked') return 'blocked';
+  if (equipeVuDeLaPersonne(member) || equipeCentresDe(member).some(centre => centre.status === 'active')) return 'active';
+  return 'pending';
+}
+
+function equipeEstSoi(member) {
+  const session = equipeSession();
+  const ids = new Set([session.member && session.member.id].filter(Boolean));
+  return equipeCentresDe(member).some(centre => ids.has(centre.memberId));
+}
+
+function equipeRoleDe(access, member) {
+  return (access.roles || []).find(role => role.id === member.roleId) || { id: member.roleId, name: member.roleId };
+}
+
+function equipePersonnes(access) {
+  return getVisibleStaffAccessMembers(access);
+}
+
+function equipeMembreChoisi(access) {
+  const personnes = equipePersonnes(access);
+  return personnes.find(member => member.id === access.selectedMemberId) || personnes.find(member => !member.partage) || personnes[0] || null;
+}
+
+function equipeOnglet() {
+  return ['personnes', 'roles', 'journal'].includes(state.equipeOnglet) ? state.equipeOnglet : 'personnes';
+}
+
+function equipeChoisirOnglet(onglet) {
+  state.equipeOnglet = ['personnes', 'roles', 'journal'].includes(onglet) ? onglet : 'personnes';
+  state.equipeRenommage = null;
+  save();
   renderStaffUtilityPage();
 }
 
-function maskStaffAccessCode(code) {
-  return String(code || '')
-    .split('-')
-    .map((part, index) => (index === 0 ? part : '•'.repeat(Math.max(part.length, 2))))
-    .join('-');
-}
-
-const STAFF_MEMBER_STATUS_META = {
-  active: ['Actif', 'badge-success'],
-  blocked: ['Bloqué', 'badge-danger'],
-  pending: ['En attente', 'badge-warning']
-};
-
-function renderStaffMemberCard(access, member) {
-  const role = getStaffAccessRole(member.roleId);
-  const [statusLabel, statusBadge] = STAFF_MEMBER_STATUS_META[member.status] || ['Statut inconnu', 'badge-neutral'];
-  const lastSeenLabel = member.lastSeen ? `Vu ${formatOpsTimestamp(member.lastSeen)}` : 'Jamais connecté';
-  const isSelf = member.id === getStaffSessionMemberId();
-  // Reassignation : mêmes règles que la page fondateur. Les rôles verrouillés
-  // (Direction) et les rôles plateforme ne sont jamais proposés ; si le membre
-  // en porte un, il reste visible en option sélectionnée désactivée, non
-  // réassignable à la volée.
-  const assignableRoles = access.roles.filter(roleOption => !roleOption.locked && !isPlatformStaffRole(roleOption));
-  const currentRoleLocked = !assignableRoles.some(roleOption => roleOption.id === member.roleId);
-  const currentRoleName = (getStaffAccessRole(member.roleId) || {}).name || 'rôle verrouillé';
-  const memberRoleOptions = (currentRoleLocked
-    ? `<option value="${escapeHtml(member.roleId)}" selected disabled>${escapeHtml(currentRoleName)}</option>`
-    : '')
-    + assignableRoles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${!currentRoleLocked && roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('');
-  return `<article class="staff-member-card ${escapeHtml(member.status || 'active')}">
-    <div class="staff-member-top">
-      <span class="staff-person-icon tone-${escapeHtml(role.tone || 'custom')}">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
-      <div><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.contact || member.code || 'Code interne')}</small></div>
-      <span class="badge ${statusBadge}">${statusLabel}</span>
-    </div>
-    <span class="staff-member-last-seen">${escapeHtml(lastSeenLabel)}</span>
-    <select aria-label="Rôle de ${escapeHtml(member.name)}" ${currentRoleLocked ? 'disabled' : ''} onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
-      ${memberRoleOptions}
-    </select>
-    <footer>
-      <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
-      <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre accès"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
-      ${isSelf ? '' : `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffMember(${staffClientJs(member.id)})'>Supprimer</button>`}
-    </footer>
-  </article>`;
-}
-
-// Liste des membres groupee par contexte : d'abord ceux du role selectionne
-// (le panneau de droite eclaire le role en cours d'edition), puis les autres.
-// Toutes les actions restent disponibles pour chaque carte.
-function renderStaffMemberListSections(access, visibleMembers, selectedRole) {
-  if (!visibleMembers.length) {
-    return `<div class="staff-member-empty">
-      <strong>Aucun membre</strong>
-      <span>Créez un accès staff : chaque membre reçoit un code personnel.</span>
-    </div>`;
+function equipeChoisirPersonne(memberId) {
+  const access = ensureStaffAccessControl();
+  if (!access.members.some(member => member.id === memberId)) return;
+  access.selectedMemberId = memberId;
+  state.equipeRenommage = null;
+  save();
+  renderStaffUtilityPage();
+  // Au téléphone, la fiche est sous la liste : on y descend.
+  if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+    document.querySelector('.eq-fiche')?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }
-  const selectedRoleMembers = visibleMembers.filter(member => member.roleId === selectedRole.id);
-  const otherMembers = visibleMembers.filter(member => member.roleId !== selectedRole.id);
-  const selectedBlock = `<span class="staff-member-group-label">${escapeHtml(selectedRole.name)}<em>${selectedRoleMembers.length}</em></span>`
-    + (selectedRoleMembers.length
-      ? selectedRoleMembers.map(member => renderStaffMemberCard(access, member)).join('')
-      : '<p class="staff-member-group-empty">Aucun membre sur ce rôle.</p>');
-  const othersBlock = otherMembers.length
-    ? `<span class="staff-member-group-label">Autres rôles<em>${otherMembers.length}</em></span>`
-      + otherMembers.map(member => renderStaffMemberCard(access, member)).join('')
-    : '';
-  return `<div class="staff-member-list">${selectedBlock}${othersBlock}</div>`;
 }
 
-// Le groupe « Sur mesure et prix » : un choix par reglage, en segments. La
-// direction garde le maximum, jamais lu dans son tableau, comme au serveur.
-function renderGroupeNiveaux(role) {
-  const verrouille = role.id === 'direction' || Boolean(role.locked);
+function equipeChoisirRole(roleId) {
+  const access = ensureStaffAccessControl();
+  const role = access.roles.find(item => item.id === roleId);
+  if (!role || isPlatformStaffRole(role)) return;
+  access.selectedRoleId = roleId;
+  state.equipeOnglet = 'roles';
+  state.equipeRenommage = null;
+  save();
+  renderStaffUtilityPage();
+}
+
+// ---- Les gestes sur une personne -------------------------------------------
+
+function equipeRenommer(type, id) {
+  state.equipeRenommage = { type, id };
+  renderStaffUtilityPage();
+  const champ = document.getElementById('equipeRenommage');
+  if (champ) { champ.focus(); champ.select(); }
+}
+
+async function equipeValiderRenommage() {
+  const enCours = state.equipeRenommage;
+  const champ = document.getElementById('equipeRenommage');
+  if (!enCours || !champ) return;
+  const nom = String(champ.value || '').trim();
+  state.equipeRenommage = null;
+  if (!nom) { renderStaffUtilityPage(); return; }
+  // (rien de plateforme ne se renomme d ici, ni role ni personne)
+  const access = ensureStaffAccessControl();
+  const plateforme = enCours.type === 'role'
+    ? isPlatformStaffRole((access.roles || []).find(role => role.id === enCours.id))
+    : isPlatformStaffMember(access, (access.members || []).find(member => member.id === enCours.id));
+  if (plateforme) { renderStaffUtilityPage(); return; }
+  if (enCours.type === 'role') {
+    await runStaffAuthAction('renameRole', { roleId: enCours.id, name: nom }, 'Rôle renommé.');
+  } else {
+    await runStaffAuthAction('renameMember', { memberId: enCours.id, name: nom }, 'Nom changé.');
+  }
+}
+
+function equipeAnnulerRenommage() {
+  state.equipeRenommage = null;
+  renderStaffUtilityPage();
+}
+
+async function equipeBloquer(memberId, bloque) {
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  // (l acces plateforme ne se gere jamais d ici, meme par un appel direct)
+  if (!member || isPlatformStaffMember(access, member) || equipeEstSoi(member)) return;
+  const autres = equipeCentresDe(member).length > 1 ? ' dans tous ses centres' : '';
+  if (bloque && !window.confirm(`Bloquer ${member.name}${autres} ? Son code n’ouvrira plus rien et sa console se ferme tout de suite.`)) return;
+  await runStaffAuthAction('setMemberBlocked', { memberId, bloque: Boolean(bloque) }, bloque ? `${member.name} est bloqué.` : `${member.name} peut de nouveau entrer.`);
+}
+
+async function equipeSupprimer(memberId) {
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  if (!member || isPlatformStaffMember(access, member) || equipeEstSoi(member)) return;
+  const centres = equipeCentresDe(member).length;
+  if (!window.confirm(`Supprimer ${member.name}${centres > 1 ? ` de ses ${centres} centres` : ''} ? Son code n’ouvrira plus rien. Cela ne s’annule pas.`)) return;
+  const reponse = await runStaffAuthAction('supprimerPersonne', { memberId }, `${member.name} est supprimé.`);
+  if (reponse && state.staffAccessControl) state.staffAccessControl.selectedMemberId = '';
+}
+
+async function equipeNouveauCode(memberId) {
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  if (!member || isPlatformStaffMember(access, member)) return;
+  if (!window.confirm(`Donner un nouveau code à ${member.name} ? L’ancien n’ouvrira plus rien, dans tous ses centres.`)) return;
+  await runStaffAuthAction('regenerateMemberCode', { memberId }, `Nouveau code pour ${member.name}.`);
+}
+
+// Donner, changer ou retirer l'accès d'une personne à un centre de l'entreprise.
+async function equipeRoleAuCentre(memberId, centreId, roleId) {
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  if (!member || isPlatformStaffMember(access, member)) return;
+  // (et jamais un role plateforme donne depuis cette page)
+  if (roleId && isPlatformStaffRole((access.roles || []).find(role => role.id === roleId))) return;
+  const nomCentre = equipeNomDuCentre(access, centreId);
+  if (!roleId) {
+    if (!window.confirm(`Retirer à ${member.name} l’accès à ${nomCentre} ?`)) { renderStaffUtilityPage(); return; }
+    await runStaffAuthAction('setMemberCenter', { memberId, cibleCenterId: centreId, roleId: '' }, `${member.name} n’entre plus à ${nomCentre}.`);
+    return;
+  }
+  if (centreId === access.centerId) {
+    await updateStaffMemberRole(memberId, roleId);
+    return;
+  }
+  await runStaffAuthAction('setMemberCenter', { memberId, cibleCenterId: centreId, roleId }, `${member.name} : accès à ${nomCentre} enregistré.`);
+}
+
+// ---- Le rendu ---------------------------------------------------------------
+
+function equipeChampRenommage(type, id, valeur, etiquette) {
+  return `<span class="eq-renommage">
+    <label class="visually-hidden" for="equipeRenommage">${escapeHtml(etiquette)}</label>
+    <input id="equipeRenommage" type="text" maxlength="${type === 'role' ? 60 : 80}" value="${escapeHtml(valeur)}" autocomplete="off" data-eq-type="${escapeHtml(type)}" data-eq-id="${escapeHtml(id)}">
+    <button type="button" class="btn btn-primary btn-sm" data-eq="renommage-ok">Enregistrer</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-eq="renommage-annuler">Annuler</button>
+  </span>`;
+}
+
+function equipeBadgeEtat(status) {
+  const [mot, classe] = EQUIPE_ETATS[status] || ['Inconnu', 'badge-neutral'];
+  return `<span class="badge ${classe}">${escapeHtml(mot)}</span>`;
+}
+
+function equipeLigne(access, member, choisi) {
+  const role = equipeRoleDe(access, member);
+  const centres = equipeCentresDe(member).map(centre => equipeNomDuCentre(access, centre.centerId));
+  const vuLe = equipeVuDeLaPersonne(member);
+  const etat = equipeEtatDeLaPersonne(member);
+  const vu = vuLe ? `Venu ${equipeQuand(vuLe)}` : (etat === 'blocked' ? '' : 'Pas encore venu');
+  return `<button type="button" class="eq-ligne${choisi ? ' is-choisie' : ''}${member.status === 'blocked' ? ' is-bloquee' : ''}" data-eq="personne" data-id="${escapeHtml(member.id)}" ${choisi ? 'aria-current="true"' : ''}>
+    <span class="eq-avatar" aria-hidden="true">${escapeHtml(getStaffClientInitials(member.name))}</span>
+    <span class="eq-ligne-qui"><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.partage ? 'Code partagé du rôle' : (member.contact || 'Sans contact'))}</small></span>
+    <span class="eq-ligne-role">${escapeHtml(role.name)}</span>
+    <span class="eq-ligne-centres">${escapeHtml(centres.join(' · '))}</span>
+    <span class="eq-ligne-etat">${equipeBadgeEtat(etat)}</span>
+    <span class="eq-ligne-vu">${escapeHtml(vu)}</span>
+  </button>`;
+}
+
+function equipeBlocCentres(access, member) {
+  const soi = equipeEstSoi(member);
+  const centresPersonne = equipeCentresDe(member);
+  const donneDirection = equipePeutDonnerDirection();
+  // Le centre qu'on regarde d'abord, puis ceux où la personne entre, puis les autres.
+  const rang = centre => (centre.id === access.centerId ? 0 : (centresPersonne.some(item => item.centerId === centre.id) ? 1 : 2));
+  const lignes = (access.entreprise && access.entreprise.length ? access.entreprise : [{ id: access.centerId, name: access.centerId, gere: true, roles: access.roles }])
+    .slice()
+    .sort((a, b) => rang(a) - rang(b) || String(a.id).localeCompare(String(b.id)))
+    .map(centre => {
+      const ici = centresPersonne.find(item => item.centerId === centre.id);
+      const roles = (centre.roles || []).filter(role => !isPlatformStaffRole(role) && (!role.locked || donneDirection));
+      const nom = equipeNomDuCentre(access, centre.id);
+      const peutChanger = centre.gere && !soi && !member.partage;
+      if (ici) {
+        const nomRole = ici.roleName || ((centre.roles || []).find(role => role.id === ici.roleId) || {}).name || ici.roleId;
+        const garderRole = roles.some(role => role.id === ici.roleId) ? '' : `<option value="${escapeHtml(ici.roleId)}" selected>${escapeHtml(nomRole)}</option>`;
+        return `<li class="eq-centre">
+          <span class="eq-centre-nom">${escapeHtml(nom)}</span>
+          ${peutChanger
+            ? `<label class="visually-hidden" for="eqRole-${escapeHtml(centre.id)}">Rôle de ${escapeHtml(member.name)} à ${escapeHtml(nom)}</label>
+              <select id="eqRole-${escapeHtml(centre.id)}" data-eq="role-au-centre" data-id="${escapeHtml(member.id)}" data-centre="${escapeHtml(centre.id)}">
+                ${garderRole}${roles.map(role => `<option value="${escapeHtml(role.id)}" ${role.id === ici.roleId ? 'selected' : ''}>${escapeHtml(role.name)}</option>`).join('')}
+              </select>
+              ${centresPersonne.length > 1 ? `<button type="button" class="btn btn-ghost btn-sm" data-eq="retirer-centre" data-id="${escapeHtml(member.id)}" data-centre="${escapeHtml(centre.id)}">Retirer</button>` : ''}`
+            : `<span class="eq-centre-role">${escapeHtml(nomRole)}</span>`}
+        </li>`;
+      }
+      if (!peutChanger || !roles.length) return '';
+      return `<li class="eq-centre is-sans">
+        <span class="eq-centre-nom">${escapeHtml(nom)}</span>
+        <label class="visually-hidden" for="eqRole-${escapeHtml(centre.id)}">Donner à ${escapeHtml(member.name)} un accès à ${escapeHtml(nom)}</label>
+        <select id="eqRole-${escapeHtml(centre.id)}" data-eq="role-au-centre" data-id="${escapeHtml(member.id)}" data-centre="${escapeHtml(centre.id)}">
+          <option value="" selected>Pas d’accès</option>
+          ${roles.map(role => `<option value="${escapeHtml(role.id)}">Entre comme ${escapeHtml(role.name)}</option>`).join('')}
+        </select>
+      </li>`;
+    }).join('');
+  return `<section class="eq-bloc">
+    <h4>Ses centres</h4>
+    <ul class="eq-centres">${lignes}</ul>
+    <p class="eq-aide">Dans chaque centre, la personne a le rôle choisi ici. Elle passe d’un centre à l’autre par le menu en haut à gauche.</p>
+  </section>`;
+}
+
+function equipeBlocCode(member) {
+  const fin = String(member.code || member.accessCodeHint || '').replace(/^[^A-Z0-9]+/i, '').replace(/^•+-?/, '');
+  const peutCodes = canUseStaffPermission('security.codes');
+  if (member.partage) {
+    return `<section class="eq-bloc">
+      <h4>Son code</h4>
+      <p class="eq-phrase">C’est le code partagé du rôle : il se change dans l’onglet Rôles.</p>
+    </section>`;
+  }
+  return `<section class="eq-bloc">
+    <h4>Son code</h4>
+    <p class="eq-phrase">Pour entrer, la personne tape son code. ${fin ? `Il finit par <strong class="eq-code">${escapeHtml(fin)}</strong>.` : ''}</p>
+    ${peutCodes ? `<div class="eq-actions">
+      <button type="button" class="btn btn-secondary btn-sm" data-eq="copier-code" data-id="${escapeHtml(member.id)}">Copier le code</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-eq="nouveau-code" data-id="${escapeHtml(member.id)}">Nouveau code</button>
+    </div>
+    <p class="eq-aide">Copier le code le met dans le presse-papiers, pour le lui envoyer. Un nouveau code remplace l’ancien tout de suite.</p>` : ''}
+  </section>`;
+}
+
+function equipeBlocVoit(access, member) {
+  const role = equipeRoleDe(access, member);
+  const menu = equipeMenuDuRole(role);
+  const fermes = equipeEcransFermes(role);
+  const ici = equipeNomDuCentre(access, access.centerId);
+  return `<section class="eq-bloc">
+    <h4>Ce qu’il voit à ${escapeHtml(ici)}</h4>
+    <p class="eq-phrase">Le rôle ${escapeHtml(role.name)} lui ouvre : ${escapeHtml(menu.flatMap(section => section.items.map(item => item.label)).join(', ') || 'aucun écran')}.</p>
+    ${fermes.length ? `<p class="eq-phrase eq-ferme">Il ne voit pas : ${escapeHtml(fermes.join(', '))}.</p>` : '<p class="eq-phrase">Il voit tous les écrans.</p>'}
+    ${isPlatformStaffRole(role) ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-eq="voir-role" data-id="${escapeHtml(role.id)}">Voir le détail du rôle ${escapeHtml(role.name)}</button>`}
+  </section>`;
+}
+
+function equipeFiche(access, member) {
+  if (!member) {
+    return `<aside class="eq-fiche eq-vide"><p>Choisissez une personne pour voir sa fiche.</p></aside>`;
+  }
+  const soi = equipeEstSoi(member);
+  const renommage = state.equipeRenommage && state.equipeRenommage.type === 'membre' && state.equipeRenommage.id === member.id;
+  const role = equipeRoleDe(access, member);
+  const centres = equipeCentresDe(member).map(centre => equipeNomDuCentre(access, centre.centerId));
+  const vuLe = equipeVuDeLaPersonne(member);
+  const etat = member.status === 'blocked'
+    ? 'Bloqué : son code n’ouvre plus rien.'
+    : (vuLe ? `Actif : venu ${equipeQuand(vuLe)}.` : 'Pas encore venu : il n’a jamais tapé son code.');
+  return `<aside class="eq-fiche" aria-label="Fiche de ${escapeHtml(member.name)}">
+    <div class="eq-fiche-tete">
+      <span class="eq-avatar is-grand" aria-hidden="true">${escapeHtml(getStaffClientInitials(member.name))}</span>
+      <div class="eq-fiche-nom">
+        ${renommage ? equipeChampRenommage('membre', member.id, member.name, `Nouveau nom de ${member.name}`) : `<h3>${escapeHtml(member.name)}${soi ? ' <small>(vous)</small>' : ''}</h3>`}
+        <p>${escapeHtml(role.name)} · ${escapeHtml(centres.join(' et '))}</p>
+      </div>
+      ${renommage ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-eq="renommer-personne" data-id="${escapeHtml(member.id)}">Renommer</button>`}
+    </div>
+    <p class="eq-etat">${equipeBadgeEtat(equipeEtatDeLaPersonne(member))} <span>${escapeHtml(etat)}</span></p>
+    ${member.contact && !member.partage ? `<p class="eq-contact">${escapeHtml(member.contact)}</p>` : ''}
+    ${equipeBlocCentres(access, member)}
+    ${equipeBlocCode(member)}
+    ${equipeBlocVoit(access, member)}
+    ${soi ? '' : `<div class="eq-fiche-pied">
+      ${member.status === 'blocked'
+        ? `<button type="button" class="btn btn-secondary btn-sm" data-eq="debloquer" data-id="${escapeHtml(member.id)}">Débloquer</button>`
+        : `<button type="button" class="btn btn-secondary btn-sm" data-eq="bloquer" data-id="${escapeHtml(member.id)}">Bloquer</button>`}
+      <button type="button" class="btn btn-ghost btn-sm staff-danger-btn" data-eq="supprimer" data-id="${escapeHtml(member.id)}">Supprimer</button>
+    </div>`}
+  </aside>`;
+}
+
+function equipeOngletPersonnes(access) {
+  const personnes = equipePersonnes(access);
+  const nommees = personnes.filter(member => !member.partage);
+  const partagees = personnes.filter(member => member.partage);
+  const choisi = equipeMembreChoisi(access);
+  const ici = equipeNomDuCentre(access, access.centerId);
+  const actives = nommees.filter(member => member.status !== 'blocked').length;
+  return `<div class="eq-personnes">
+    <section class="eq-liste" aria-label="Les personnes">
+      <p class="eq-intro">${actives > 1 ? `${actives} personnes entrent` : (actives === 1 ? 'Une personne entre' : 'Personne n’entre encore')} dans la console de ${escapeHtml(ici)}. Chacune a son code : elle le tape une fois, et la console s’ouvre sur ce que son rôle lui permet de voir.</p>
+      <div class="eq-entete" aria-hidden="true"><span></span><span>Personne</span><span>Rôle ici</span><span>Centres</span><span>État</span><span>Dernière visite</span></div>
+      ${nommees.length ? nommees.map(member => equipeLigne(access, member, choisi && choisi.id === member.id)).join('') : '<p class="eq-vide">Personne pour l’instant. « Ajouter une personne » crée son code.</p>'}
+      ${partagees.length ? `<h4 class="eq-sous-titre">Codes partagés</h4>
+        <p class="eq-aide">Ces entrées viennent du code d’un rôle, tapé sans nom (une tablette commune, par exemple). Ce code se change dans l’onglet Rôles.</p>
+        ${partagees.map(member => equipeLigne(access, member, choisi && choisi.id === member.id)).join('')}` : ''}
+    </section>
+    ${equipeFiche(access, choisi)}
+  </div>`;
+}
+
+function equipeInterrupteur(roleId, permission, actif, mot, phrase, enfant) {
+  const id = `eqDroit-${permission.replace(/[^a-z0-9]/gi, '-')}`;
+  return `<div class="eq-droit${enfant ? ' is-enfant' : ''}">
+    <input type="checkbox" role="switch" id="${id}" class="eq-switch" data-eq="droit" data-role="${escapeHtml(roleId)}" data-permission="${escapeHtml(permission)}" ${actif ? 'checked' : ''}>
+    <label for="${id}"><strong>${escapeHtml(mot)}</strong><span>${escapeHtml(phrase)}</span></label>
+  </div>`;
+}
+
+function equipeNiveaux(role, droits) {
+  const agit = droits.has('reservations.create') || droits.has('reservations.edit');
+  if (!agit) return '';
   const permissions = role.permissions || [];
-  const valeur = cle => (verrouille ? niveauMaximum(cle) : niveauDesPermissions(permissions, cle));
-  const ouverts = DROITS_NIVEAUX.filter(droit => valeur(droit.cle) !== 'non').length;
-  const agit = verrouille || permissions.includes('reservations.create') || permissions.includes('reservations.edit');
-  const isOpen = staffPermissionGroupOpenState['sur-mesure-prix'] ?? true;
-  return `<details class="staff-permission-group staff-niveaux-group" ${isOpen ? 'open' : ''} ontoggle='staffPermissionGroupOpenState["sur-mesure-prix"] = this.open'>
-    <summary class="staff-permission-group-head">
-      <div><strong>Sur mesure et prix</strong><span>Ce que ce rôle peut changer sur un dossier, et jusqu’où.</span></div>
-      <em>${ouverts}/${DROITS_NIVEAUX.length}</em>
-    </summary>
-    <div class="staff-niveaux">
-      ${verrouille ? '<p class="staff-niveaux-note">La direction garde toujours le niveau le plus haut.</p>' : agit ? '' : '<p class="staff-niveaux-note">Sans le droit de créer ou de modifier une réservation, le sur mesure et le prix n’agissent pas.</p>'}
-      ${DROITS_NIVEAUX.map(({ cle, libelle, options }) => `<div class="staff-niveau" role="radiogroup" aria-labelledby="staffNiveau-${cle}">
-        <span class="staff-niveau-nom" id="staffNiveau-${cle}">${escapeHtml(libelle)}</span>
-        <span class="staff-niveau-choix">${options.map(([option, mot]) => `<label class="staff-niveau-option">
-          <input type="radio" class="visually-hidden" name="staffNiveau-${cle}" data-niveau-choix="${cle}:${option}" ${valeur(cle) === option ? 'checked' : ''} ${verrouille ? 'disabled' : ''} onchange='choisirNiveauRole(${staffClientJs(role.id)}, ${staffClientJs(cle)}, ${staffClientJs(option)})'>
+  return `<div class="eq-niveaux">
+    <p class="eq-niveaux-titre">Sur une réservation, jusqu’où</p>
+    ${DROITS_NIVEAUX.map(({ cle, libelle, options }) => {
+      const valeur = niveauDesPermissions(permissions, cle);
+      return `<div class="eq-niveau" role="radiogroup" aria-labelledby="eqNiveau-${cle}">
+        <span id="eqNiveau-${cle}" class="eq-niveau-nom">${escapeHtml(libelle)}</span>
+        <span class="eq-niveau-choix">${options.map(([option, mot]) => `<label class="eq-niveau-option">
+          <input type="radio" class="visually-hidden" name="eqNiveau-${cle}" data-eq="niveau" data-role="${escapeHtml(role.id)}" data-cle="${escapeHtml(cle)}" value="${escapeHtml(option)}" data-niveau-choix="${cle}:${option}" ${valeur === option ? 'checked' : ''}>
           <span>${escapeHtml(mot)}</span>
         </label>`).join('')}</span>
-      </div>`).join('')}
-    </div>
-  </details>`;
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function equipeCarteDuRole(role) {
+  const droits = equipeDroitsDuRole(role);
+  if (role.locked) {
+    return `<p class="eq-note">${escapeHtml(role.name)} voit tous les écrans et peut tout faire dans ce centre. Ses droits ne se règlent pas : c’est le rôle de ceux qui dirigent.</p>`;
+  }
+  return CARTE_DES_DROITS.map(groupe => `<section class="eq-groupe">
+    <h4>${escapeHtml(groupe.section)}</h4>
+    ${groupe.ecrans.map(ecran => {
+      const ouvert = equipeEcranOuvert(ecran, droits, false);
+      const gestes = (ecran.droits || []);
+      const tete = ecran.ouvre
+        ? equipeInterrupteur(role.id, ecran.ouvre[0], droits.has(ecran.ouvre[0]), ecran.nom, ecran.phrase, false)
+        : `<div class="eq-droit is-titre"><span class="eq-ecran-etat ${ouvert ? 'is-ouvert' : ''}" aria-hidden="true"></span><p><strong>${escapeHtml(ecran.nom)}</strong><span>${escapeHtml(ecran.phrase)}</span></p></div>`;
+      const ouvrePar = ecran.ouvrePar
+        ? `<p class="eq-ouvre-par">${ouvert ? 'Ouvert' : 'Fermé'} : s’ouvre avec ${ecran.ouvrePar.map(permission => `« ${escapeHtml(equipeMotDuDroit(permission))} »`).join(' ou ')}.</p>`
+        : '';
+      // Un écran fermé ne montre pas ses gestes : ils n'agiraient pas.
+      const montrerGestes = ecran.ouvre ? droits.has(ecran.ouvre[0]) : true;
+      return `<article class="eq-ecran${ouvert ? ' is-ouvert' : ''}">
+        ${tete}
+        ${ouvrePar}
+        ${montrerGestes && gestes.length ? `<div class="eq-gestes">${gestes.map(([permission, mot, phrase]) => equipeInterrupteur(role.id, permission, droits.has(permission), mot, phrase, true)).join('')}</div>` : ''}
+        ${montrerGestes && ecran.niveaux ? equipeNiveaux(role, droits) : ''}
+      </article>`;
+    }).join('')}
+  </section>`).join('');
+}
+
+function equipeMotDuDroit(permission) {
+  for (const groupe of CARTE_DES_DROITS) {
+    for (const ecran of groupe.ecrans) {
+      if (ecran.ouvre && ecran.ouvre[0] === permission) return ecran.ouvre[1];
+      const trouve = (ecran.droits || []).find(([p]) => p === permission);
+      if (trouve) return trouve[1];
+    }
+  }
+  return permission;
+}
+
+function equipeApercu(access, role) {
+  const menu = equipeMenuDuRole(role);
+  const fermes = equipeEcransFermes(role);
+  const personnes = equipePersonnes(access).filter(member => member.roleId === role.id && !member.partage);
+  const peutCodes = canUseStaffPermission('security.codes');
+  const fin = String(role.accessCodeHint || role.accessCode || '').replace(/^•+-?/, '');
+  return `<aside class="eq-apercu" aria-label="Ce que voit le rôle ${escapeHtml(role.name)}">
+    <section class="eq-bloc">
+      <h4>Son menu</h4>
+      <p class="eq-aide">Exactement ce qu’une personne ${escapeHtml(role.name)} voit à gauche de sa console.</p>
+      <nav class="eq-menu" aria-label="Menu du rôle ${escapeHtml(role.name)}">
+        ${menu.length ? menu.map(section => `<p class="eq-menu-section">${escapeHtml(section.titre)}</p>
+          <ul>${section.items.map(item => `<li>${escapeHtml(item.label)}${item.enfants.length ? `<span>${escapeHtml(item.enfants.join(' · '))}</span>` : ''}</li>`).join('')}</ul>`).join('') : '<p class="eq-vide">Aucun écran : ce rôle n’ouvre rien.</p>'}
+      </nav>
+      ${fermes.length ? `<p class="eq-phrase eq-ferme">Ne voit pas : ${escapeHtml(fermes.join(', '))}.</p>` : ''}
+    </section>
+    <section class="eq-bloc">
+      <h4>Les personnes</h4>
+      ${personnes.length ? `<ul class="eq-noms">${personnes.map(member => `<li><button type="button" class="eq-lien" data-eq="ouvrir-personne" data-id="${escapeHtml(member.id)}">${escapeHtml(member.name)}</button></li>`).join('')}</ul>` : '<p class="eq-phrase">Personne n’a ce rôle ici.</p>'}
+    </section>
+    <section class="eq-bloc">
+      <h4>Le code partagé du rôle</h4>
+      <p class="eq-phrase">Quiconque tape ce code entre comme ${escapeHtml(role.name)}, sans son nom. Utile pour une tablette commune.${fin ? ` Il finit par <strong class="eq-code">${escapeHtml(fin)}</strong>.` : ''}</p>
+      ${peutCodes ? `<div class="eq-actions">
+        <button type="button" class="btn btn-secondary btn-sm" data-eq="copier-code-role" data-role="${escapeHtml(role.id)}">Copier le code</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-eq="nouveau-code-role" data-role="${escapeHtml(role.id)}">Nouveau code</button>
+      </div>` : ''}
+    </section>
+  </aside>`;
+}
+
+function equipeOngletRoles(access) {
+  const roles = getVisibleStaffAccessRoles(access);
+  const role = getStaffAccessRole(access.selectedRoleId);
+  const personnes = equipePersonnes(access);
+  const renommage = state.equipeRenommage && state.equipeRenommage.type === 'role' && state.equipeRenommage.id === role.id;
+  const peutRenommer = !role.locked || equipeEstProprietaire();
+  const membres = personnes.filter(member => member.roleId === role.id).length;
+  const modeles = STAFF_ROLE_PRESETS.filter(preset => preset.id !== 'direction');
+  return `<div class="eq-roles">
+    <nav class="eq-rail" aria-label="Les rôles">
+      ${roles.map(item => {
+        const nb = personnes.filter(member => member.roleId === item.id && !member.partage).length;
+        return `<button type="button" class="eq-rail-role${item.id === role.id ? ' is-choisi' : ''}" data-eq="role" data-id="${escapeHtml(item.id)}" ${item.id === role.id ? 'aria-current="true"' : ''}>
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>${nb ? `${nb} personne${nb > 1 ? 's' : ''}` : 'Personne'}</small>
+        </button>`;
+      }).join('')}
+    </nav>
+    <section class="eq-role" aria-label="Le rôle ${escapeHtml(role.name)}">
+      <div class="eq-role-tete">
+        <div>
+          ${renommage ? equipeChampRenommage('role', role.id, role.name, `Nouveau nom du rôle ${role.name}`) : `<h3>${escapeHtml(role.name)}</h3>`}
+          <p>${escapeHtml(role.description || role.summary || 'Rôle créé par le centre.')}</p>
+        </div>
+        <div class="eq-actions">
+          ${peutRenommer && !renommage ? `<button type="button" class="btn btn-ghost btn-sm" data-eq="renommer-role" data-id="${escapeHtml(role.id)}">Renommer</button>` : ''}
+          ${!role.locked && !membres ? `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" data-eq="supprimer-role" data-id="${escapeHtml(role.id)}">Supprimer le rôle</button>` : ''}
+          ${role.locked ? '' : `<label class="visually-hidden" for="eqModele">Repartir des droits d’un modèle</label>
+            <select id="eqModele" data-eq="modele" data-role="${escapeHtml(role.id)}">
+              <option value="" selected>Repartir d’un modèle…</option>
+              ${modeles.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join('')}
+            </select>`}
+        </div>
+      </div>
+      ${role.locked ? '' : '<p class="eq-aide">Chaque interrupteur ouvre ou ferme un écran, ou un geste sur cet écran. Fermer un écran le retire du menu de la personne, avec tout ce qu’il contient.</p>'}
+      ${equipeCarteDuRole(role)}
+    </section>
+    ${equipeApercu(access, role)}
+  </div>`;
+}
+
+function equipeOngletJournal(access) {
+  const nomDe = id => ((access.members || []).find(member => member.id === id) || {}).name || '';
+  const evenements = (access.events || []).filter(event => event && event.label);
+  return `<section class="eq-journal" aria-label="Journal">
+    <p class="eq-intro">Les vingt derniers changements de l’équipe dans ce centre : codes, rôles, accès, connexions.</p>
+    ${evenements.length ? `<ol class="eq-journal-liste">${evenements.map(event => {
+      const qui = nomDe(event.actorMemberId);
+      return `<li><time>${escapeHtml(event.at ? formatOpsTimestamp(event.at) : '')}</time><span>${escapeHtml(event.label)}${qui && !String(event.label).startsWith(qui) ? ` <small>par ${escapeHtml(qui)}</small>` : ''}</span></li>`;
+    }).join('')}</ol>` : '<p class="eq-vide">Rien pour l’instant.</p>'}
+  </section>`;
 }
 
 function renderStaffUtilityUsers() {
   const access = ensureStaffAccessControl();
-  // La page ne montre QUE l'equipe du centre : les roles/membres plateforme
-  // (proprietaire Pinlane) sont exclus de tout affichage et de tout compteur.
-  const visibleRoles = getVisibleStaffAccessRoles(access);
-  const visibleMembers = getVisibleStaffAccessMembers(access);
-  const selectedRole = getStaffAccessRole(access.selectedRoleId);
-  const selectedPermissions = getStaffRolePermissionSet(selectedRole.id);
-  const allPermissions = getStaffPermissionKeys();
-  const activeMembers = visibleMembers.filter(member => member.status === 'active');
-  const accessiblePages = getStaffRoleAccessiblePages(selectedRole.id);
-  const openPagesCount = accessiblePages.filter(page => page.allowed).length;
-  const rawAccessCode = String(selectedRole.accessCode || '');
-  const codeAlreadyMasked = rawAccessCode.includes('••');
-  const displayedCode = rawAccessCode
-    ? (staffAccessCodeRevealed || codeAlreadyMasked ? rawAccessCode : maskStaffAccessCode(rawAccessCode))
-    : 'À générer';
-  return `<div class="staff-access-console">
-    <section class="staff-access-grid">
-      <aside class="staff-role-rail" aria-label="Rôles staff">
-        <div class="staff-role-rail-head">
-          <strong>Rôles du centre</strong>
-          <em>${visibleRoles.length}</em>
-        </div>
-        ${visibleRoles.map(role => {
-          const count = permissionsCocheesDuRole(role).length;
-          const activeCount = visibleMembers.filter(member => member.roleId === role.id && member.status === 'active').length;
-          return `<button type="button" class="staff-role-pill ${role.id === selectedRole.id ? 'active' : ''} tone-${escapeHtml(role.tone || 'custom')}" onclick='setStaffAccessSelectedRole(${staffClientJs(role.id)})' ${role.id === selectedRole.id ? 'aria-current="true"' : ''}>
-            <span class="staff-person-icon" aria-hidden="true">${escapeHtml(role.code || role.name.slice(0, 2).toUpperCase())}</span>
-            <span class="staff-role-pill-copy">
-              <strong>${escapeHtml(role.name)}</strong>
-              <small>${escapeHtml(role.summary || 'Rôle personnalisé')}</small>
-            </span>
-            <span class="staff-role-pill-meta">
-              <em>${count}/${allPermissions.length}</em>
-              <b>${activeCount} actif${activeCount > 1 ? 's' : ''}</b>
-            </span>
-          </button>`;
-        }).join('')}
-      </aside>
-
-      <section class="staff-permission-editor">
-        <div class="staff-permission-head">
-          <div class="staff-role-identity">
-            <span class="staff-person-portrait tone-${escapeHtml(selectedRole.tone || 'custom')}">${escapeHtml(selectedRole.code || selectedRole.name.slice(0, 2).toUpperCase())}</span>
-            <div>
-              <span>Rôle sélectionné</span>
-              <h3>${escapeHtml(selectedRole.name)}</h3>
-              <p>${escapeHtml(selectedRole.description || selectedRole.summary || '')}</p>
-              ${selectedRole.locked ? '' : `<div class="staff-role-admin-actions">
-                <button type="button" class="btn btn-ghost btn-sm" onclick='renameStaffRole(${staffClientJs(selectedRole.id)})'>Renommer</button>
-                <button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffRole(${staffClientJs(selectedRole.id)})'>Supprimer le rôle</button>
-              </div>`}
-            </div>
-          </div>
-          <div class="staff-code-card">
-            <span>Code d’accès rôle</span>
-            <strong>${escapeHtml(displayedCode)}</strong>
-            <div>
-              ${rawAccessCode && !codeAlreadyMasked ? `<button type="button" class="btn btn-secondary btn-sm" aria-pressed="${staffAccessCodeRevealed ? 'true' : 'false'}" onclick="toggleStaffAccessCodeVisibility()">${staffAccessCodeRevealed ? 'Masquer' : 'Afficher'}</button>` : ''}
-              <button type="button" class="btn btn-secondary btn-sm" onclick='copyStaffRoleCode(${staffClientJs(selectedRole.id)})'>Copier</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick='regenerateStaffAccessCode(${staffClientJs(selectedRole.id)})'>Régénérer</button>
-            </div>
-            ${rawAccessCode && selectedRole.codeCopyReady === false ? '<small class="staff-code-hint">Régénérer pour activer la copie.</small>' : ''}
-          </div>
-        </div>
-
-        <div class="staff-preset-strip">
-          <span class="staff-preset-kicker">Appliquer un preset</span>
-          ${STAFF_ROLE_PRESETS.map(preset => `<button type="button" class="staff-preset-btn" ${selectedRole.id === 'direction' ? 'disabled' : ''} onclick='setStaffRolePreset(${staffClientJs(selectedRole.id)}, ${staffClientJs(preset.id)})'>
-            ${escapeHtml(preset.name)}
-          </button>`).join('')}
-        </div>
-
-        <div class="staff-permission-groups">
-          ${STAFF_PERMISSION_GROUPS.map((group, groupIndex) => {
-            const grantedCount = group.permissions.filter(permission => selectedPermissions.has(permission[0])).length;
-            const isOpen = staffPermissionGroupOpenState[group.id] ?? groupIndex < 2;
-            return `<details class="staff-permission-group" ${isOpen ? 'open' : ''} ontoggle='staffPermissionGroupOpenState[${staffClientJs(group.id)}] = this.open'>
-            <summary class="staff-permission-group-head">
-              <div><strong>${escapeHtml(group.title)}</strong><span>${escapeHtml(group.description)}</span></div>
-              <em>${grantedCount}/${group.permissions.length}</em>
-            </summary>
-            <div class="staff-permission-list">
-              ${group.permissions.map(([key, label]) => {
-                const checked = selectedPermissions.has(key);
-                // ARBRE : la profondeur vient de la hierarchie, l'ordre du
-                // groupe. Une sous-option se lit comme ce qu'elle est, un
-                // detail de l'option qui la porte.
-                const depth = staffPermissionDepth(key);
-                const children = staffPermissionDescendants(key);
-                const grantedChildren = children.filter(child => selectedPermissions.has(child)).length;
-                const parent = STAFF_PERMISSION_PARENTS[key];
-                // Une sous-option dont le parent est refuse est INERTE : on le
-                // dit au lieu de laisser croire qu'elle agit.
-                const parentOff = Boolean(parent) && !selectedPermissions.has(parent);
-                const state = checked
-                  ? (children.length ? `Autorisé · ${grantedChildren}/${children.length} détail${children.length > 1 ? 's' : ''}` : 'Autorisé')
-                  : (parentOff ? 'Option parente fermée' : 'Bloqué');
-                return `<label class="staff-permission-toggle ${checked ? 'is-on' : ''} ${depth ? 'is-child depth-' + depth : 'is-root'} ${parentOff ? 'is-inert' : ''}">
-                  <input type="checkbox" class="visually-hidden" ${checked ? 'checked' : ''} ${selectedRole.id === 'direction' ? 'disabled' : ''} onchange='toggleStaffRolePermission(${staffClientJs(selectedRole.id)}, ${staffClientJs(key)}, this.checked)'>
-                  <span class="staff-toggle-track" aria-hidden="true"></span>
-                  <b>${escapeHtml(label)}</b>
-                  <small>${escapeHtml(state)}</small>
-                </label>`;
-              }).join('')}
-            </div>
-          </details>`;
-          }).join('')}
-          ${renderGroupeNiveaux(selectedRole)}
-        </div>
-      </section>
-
-      <aside class="staff-access-side">
-        <section class="staff-access-summary">
-          <div class="staff-access-summary-head">
-            <span>Ce rôle ouvre</span>
-            <em>${openPagesCount}/${accessiblePages.length}</em>
-          </div>
-          <div class="staff-access-page-list">
-            ${accessiblePages.map(page => `<span class="${page.allowed ? 'allowed' : 'blocked'}">${escapeHtml(page.label)}</span>`).join('')}
-          </div>
-        </section>
-        <section class="staff-member-panel">
-          <div class="staff-member-head">
-            <div><strong>Membres</strong><small>${activeMembers.length} actif${activeMembers.length > 1 ? 's' : ''} · ${visibleMembers.length} total</small></div>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="createStaffMember()">Ajouter</button>
-          </div>
-          ${renderStaffMemberListSections(access, visibleMembers, selectedRole)}
-        </section>
-        <section class="staff-access-log">
-          <strong>Journal sécurité</strong>
-          ${(access.events.length ? access.events : [{ label: 'Aucun changement récent.', at: '' }]).slice(0, 5).map(event => `<p><span>${escapeHtml(event.at ? formatOpsTimestamp(event.at) : 'Maintenant')}</span>${escapeHtml(event.label)}</p>`).join('')}
-        </section>
-      </aside>
-    </section>
+  const onglet = equipeOnglet();
+  const personnes = equipePersonnes(access).filter(member => !member.partage);
+  const roles = getVisibleStaffAccessRoles(access);
+  const corps = onglet === 'roles'
+    ? equipeOngletRoles(access)
+    : (onglet === 'journal' ? equipeOngletJournal(access) : equipeOngletPersonnes(access));
+  equipeBrancher();
+  return `<div class="eq" data-equipe-page>
+    <div class="eq-onglets" role="tablist" aria-label="Équipe & accès">
+      <button type="button" role="tab" id="eqOnglet-personnes" aria-selected="${onglet === 'personnes'}" data-eq="onglet" data-valeur="personnes">Personnes <em>${personnes.length}</em></button>
+      <button type="button" role="tab" id="eqOnglet-roles" aria-selected="${onglet === 'roles'}" data-eq="onglet" data-valeur="roles">Rôles <em>${roles.length}</em></button>
+      <button type="button" role="tab" id="eqOnglet-journal" aria-selected="${onglet === 'journal'}" data-eq="onglet" data-valeur="journal">Journal</button>
+    </div>
+    <div role="tabpanel" aria-labelledby="eqOnglet-${onglet}">${corps}</div>
   </div>`;
+}
+
+// UN SEUL ECOUTEUR, pose une fois sur la page qui porte l'écran (elle survit
+// aux rendus) : les boutons portent leur geste dans data-eq.
+function equipeBrancher() {
+  const racine = document.getElementById('staffUtilityPage');
+  if (!racine || racine.__equipeBranche) return;
+  racine.__equipeBranche = true;
+  racine.addEventListener('click', event => {
+    const cible = event.target.closest('[data-eq]');
+    if (!cible || !racine.contains(cible) || !cible.closest('[data-equipe-page]')) return;
+    const geste = cible.dataset.eq;
+    const id = cible.dataset.id || '';
+    if (geste === 'onglet') equipeChoisirOnglet(cible.dataset.valeur);
+    else if (geste === 'personne') equipeChoisirPersonne(id);
+    else if (geste === 'ouvrir-personne') { state.equipeOnglet = 'personnes'; equipeChoisirPersonne(id); }
+    else if (geste === 'role' || geste === 'voir-role') equipeChoisirRole(id);
+    else if (geste === 'renommer-personne') equipeRenommer('membre', id);
+    else if (geste === 'renommer-role') equipeRenommer('role', id);
+    else if (geste === 'renommage-ok') equipeValiderRenommage();
+    else if (geste === 'renommage-annuler') equipeAnnulerRenommage();
+    else if (geste === 'copier-code') copyStaffMemberCode(id);
+    else if (geste === 'nouveau-code') equipeNouveauCode(id);
+    else if (geste === 'bloquer') equipeBloquer(id, true);
+    else if (geste === 'debloquer') equipeBloquer(id, false);
+    else if (geste === 'supprimer') equipeSupprimer(id);
+    else if (geste === 'retirer-centre') equipeRoleAuCentre(id, cible.dataset.centre, '');
+    else if (geste === 'copier-code-role') copyStaffRoleCode(cible.dataset.role);
+    else if (geste === 'nouveau-code-role') {
+      const role = getStaffAccessRole(cible.dataset.role);
+      if (role && window.confirm(`Donner un nouveau code partagé au rôle ${role.name} ? L’ancien n’ouvrira plus rien.`)) regenerateStaffAccessCode(role.id);
+    }
+    else if (geste === 'supprimer-role') deleteStaffRole(id);
+  });
+  racine.addEventListener('change', event => {
+    const cible = event.target.closest('[data-eq]');
+    if (!cible || !cible.closest('[data-equipe-page]')) return;
+    const geste = cible.dataset.eq;
+    if (geste === 'droit') toggleStaffRolePermission(cible.dataset.role, cible.dataset.permission, cible.checked);
+    else if (geste === 'niveau') choisirNiveauRole(cible.dataset.role, cible.dataset.cle, cible.value);
+    else if (geste === 'role-au-centre') equipeRoleAuCentre(cible.dataset.id, cible.dataset.centre, cible.value);
+    else if (geste === 'modele' && cible.value) {
+      const modele = STAFF_ROLE_PRESETS.find(preset => preset.id === cible.value);
+      const role = getStaffAccessRole(cible.dataset.role);
+      if (modele && role && window.confirm(`Donner au rôle ${role.name} les droits du modèle ${modele.name} ? Ses droits actuels sont remplacés.`)) setStaffRolePreset(role.id, modele.id);
+      else renderStaffUtilityPage();
+    }
+  });
+  racine.addEventListener('keydown', event => {
+    if (event.target && event.target.id === 'equipeRenommage') {
+      if (event.key === 'Enter') { event.preventDefault(); equipeValiderRenommage(); }
+      if (event.key === 'Escape') { event.preventDefault(); equipeAnnulerRenommage(); }
+    }
+  });
 }
 
 // ===========================================================================
@@ -17449,13 +18020,13 @@ function renderStaffUtilitySettings() {
         <button type="button" aria-pressed="${light ? 'false' : 'true'}" class="${light ? '' : 'is-on'}" onclick="setStaffTheme('dark')">Sombre</button>
       </div>
     </div>
-    <div class="settings-row">
+    ${peutGeste('exporter') ? `<div class="settings-row">
       <div class="settings-copy">
         <h2>Export du planning</h2>
         <p>${escapeHtml(formatStaffTerrainCount(count, 'réservation'))} le ${escapeHtml(day)}, dans un fichier tableur (CSV) : heure, client, téléphone, offre, joueurs, pistes, statut et montant.</p>
       </div>
       <button type="button" class="utility-action" onclick="exportStaffPlanningCsv('day')"${count ? '' : ' disabled'}>Exporter en CSV</button>
-    </div>
+    </div>` : ''}
     <div class="settings-row">
       <div class="settings-copy">
         <h2>Données</h2>
@@ -17584,7 +18155,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       title: 'Contacts',
       subtitle: 'Carnet client issu des réservations réelles.',
       primaryLabel: 'Exporter CSV',
-      primaryAction: 'exportStaffClientsCsv()',
+      primaryAction: peutGeste('exporter') ? 'exportStaffClientsCsv()' : '',
       kpis: [
         ['Contacts', clientRows.length, 'profils consolidés'],
         ['Téléphone', clientRows.filter(row => row.phone).length, 'renseignés'],
@@ -17607,7 +18178,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       title: 'Pistes bowling',
       subtitle: 'Fermer, replacer, vendre un creux : l’état vivant de chaque piste.',
       primaryLabel: 'Réserver une piste',
-      primaryAction: "openQuickBook({ date: state.currentDate, type: 'bowling' })",
+      primaryAction: peutGeste('reserver') ? "openQuickBook({ date: state.currentDate, type: 'bowling' })" : '',
       kpis: laneBoard.kpis,
       body: renderStaffLaneBoard(laneBoard)
     };
@@ -17622,7 +18193,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       title: 'Laser Game',
       subtitle: 'Prochain lancement, sessions à compléter, bilan 30 jours.',
       primaryLabel: 'Réserver un laser',
-      primaryAction: "openQuickBook({ date: state.currentDate, type: 'laser' })",
+      primaryAction: peutGeste('reserver') ? "openQuickBook({ date: state.currentDate, type: 'laser' })" : '',
       kpis: laserBoard.kpis,
       body: renderStaffLaserBoard(laserBoard)
     };
@@ -17651,39 +18222,26 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: 'Ouvrir la direction',
-      primaryAction: "setView('admin'); openAdminTab('overview')",
+      primaryAction: canUseStaffPermission('direction.view') ? "setView('admin'); openAdminTab('overview')" : '',
       body: renderStaffUtilityEstablishment()
     };
   }
   if (page === 'users') {
-    const access = ensureStaffAccessControl();
-    // Entete "Acces" : memes exclusions que la page (les roles/membres
-    // plateforme ne sont ni affiches ni comptes).
-    const visibleRoles = getVisibleStaffAccessRoles(access);
-    const visibleMembers = getVisibleStaffAccessMembers(access);
-    const selectedRole = getStaffAccessRole(access.selectedRoleId);
-    const permissionTotal = getStaffPermissionKeys().length;
-    const selectedPermissionCount = permissionsCocheesDuRole(selectedRole).length;
-    const activeMembers = visibleMembers.filter(member => member.status === 'active').length;
-    const pendingMembers = visibleMembers.filter(member => member.status === 'pending').length;
+    // Plus de tuiles chiffrees en tete (« Permissions du role 19/29 » ne
+    // disait rien a personne) : la page commence par qui entre, en phrases.
     return {
       ...base,
       layout: 'users',
       eyebrow: 'Administration',
       title: 'Équipe & accès',
-      subtitle: 'Rôles, codes d’accès et permissions opérationnelles du centre.',
+      subtitle: 'Qui entre dans la console, avec quel code, dans quels centres, et ce que chacun y voit.',
       hidePanelHead: true,
       hideDateAction: true,
-      primaryLabel: 'Créer accès staff',
+      primaryLabel: 'Ajouter une personne',
       primaryAction: 'createStaffMember()',
-      secondaryLabel: 'Créer rôle',
+      secondaryLabel: 'Créer un rôle',
       secondaryAction: 'createStaffCustomRole()',
-      kpis: [
-        [visibleRoles.length > 1 ? 'Rôles' : 'Rôle', visibleRoles.length, 'du centre'],
-        ['Staff actif', activeMembers, `${pendingMembers} en attente`],
-        ['Permissions du rôle', `${selectedPermissionCount}/${permissionTotal}`, selectedRole.name],
-        ['Codes actifs', visibleRoles.filter(role => role.accessCode).length + visibleMembers.filter(member => member.code).length, 'rôles et membres']
-      ],
+      kpis: [],
       body: renderStaffUtilityUsers()
     };
   }
@@ -18155,6 +18713,56 @@ function moneyForRole(amount) {
   if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) return '···';
   return typeof formatMoney === 'function' ? formatMoney(amount) : String(amount);
 }
+
+// LES GESTES ET LEURS DROITS, EN UN SEUL ENDROIT (2026-11-07, Ansar : « si il
+// a pas accès il peut pas voir, sans que ça bug »). Un geste que le serveur
+// refuserait ne se montre pas : chaque ligne redit la regle du serveur pour ce
+// geste, et chaque bouton de la console la lit avant de se dessiner. Le serveur
+// reste l autorite ; scripts/equipe-acces-check.js compare les deux.
+//   reserver    POST api/staff-reservations (reservations.create), depuis « Les séances » (reservations.quick)
+//   deplacer    PATCH activityMove : planning.drag ou reservations.edit ; un jour passe, planning.past
+//   etat        PATCH statut seul : reservations.status ou reservations.edit
+//   valider     la demande internet : reservations.edit ; un jour passe, planning.past
+//   encaisser   PATCH paye : etat, et payments.markPaid
+//   modifier    PATCH du dossier : reservations.edit ; un jour passe, planning.past
+//   annuler     PATCH du dossier annule : reservations.edit et reservations.cancel ; un jour passe, planning.past
+//   supprimer   DELETE : reservations.cancel ; un jour passe, planning.past
+//   retard      delayApply, delayRevert (api/ops.js) : reservations.edit ou planning.drag
+//   prevenir    delayNotify : emails.send ou reservations.edit
+//   fermerPiste PATCH api/staff-lanes : planning.drag ou settings.manage
+//   ecrire      clientMessageSend, sendDirectEmail : emails.send (le composeur lit emails.view)
+//   exporter    un fichier de clients ou de chiffres : exports.download
+//   noterClient clientNotes, api/staff-customer-notes : clients.edit
+const GESTES_STAFF = {
+  reserver: (peut) => peut('reservations.quick') && peut('reservations.create'),
+  deplacer: (peut, jour) => peut(['planning.drag', 'reservations.edit']) && jour(),
+  etat: (peut) => peut(['reservations.status', 'reservations.edit']),
+  valider: (peut, jour) => peut('reservations.edit') && jour(),
+  encaisser: (peut) => peut(['reservations.status', 'reservations.edit']) && peut('payments.markPaid'),
+  modifier: (peut, jour) => peut('reservations.edit') && jour(),
+  annuler: (peut, jour) => peut('reservations.edit') && peut('reservations.cancel') && jour(),
+  supprimer: (peut, jour) => peut('reservations.cancel') && jour(),
+  retard: (peut) => peut(['reservations.edit', 'planning.drag']),
+  prevenir: (peut) => peut(['emails.send', 'reservations.edit']),
+  fermerPiste: (peut) => peut(['planning.drag', 'settings.manage']),
+  ecrire: (peut) => peut('emails.view') && peut('emails.send'),
+  exporter: (peut) => peut('exports.download'),
+  noterClient: (peut) => peut('clients.edit'),
+};
+
+// peutGeste('deplacer', '2026-11-06') : vrai si le role peut faire ce geste, ce
+// jour-la (la date ne compte que pour les gestes qui corrigent un dossier).
+// Hors console (un gate qui evalue une fonction dans un bac a sable), tout est
+// permis, comme requireClientPermission.
+function peutGeste(nom, date) {
+  const regle = GESTES_STAFF[nom];
+  if (!regle) return false;
+  if (typeof canUseStaffPermission !== 'function') return true;
+  const jourVise = String((date && typeof date === 'object' ? date.date : date) || '').slice(0, 10);
+  const jour = () => !jourVise || typeof isPastBusinessDate !== 'function' || !isPastBusinessDate(jourVise) || canUseStaffPermission('planning.past');
+  return Boolean(regle(canUseStaffPermission, jour));
+}
+window.peutGeste = peutGeste;
 
 function exportStaffPricingCsv() {
   if (!requireClientPermission('exports.download', 'Votre rôle ne permet pas de télécharger les exports.')) return;
@@ -19315,7 +19923,7 @@ function renderStaffRequestDetail(item, animate) {
     ${renderStaffRequestNextActions(item, reply)}
     ${renderStaffRequestFacts(item)}
     ${renderStaffRequestStudy(item)}
-    ${reply.open ? renderStaffRequestReplyComposer(item, reply) : ''}
+    ${reply.open && peutGeste('ecrire') ? renderStaffRequestReplyComposer(item, reply) : ''}
     ${renderStaffRequestFollowUp(item)}
     ${renderStaffRequestThread(item)}
   </section>`;
@@ -19351,15 +19959,19 @@ function renderStaffRequestNextActions(item, reply) {
   const stage = staffRequestStage(item);
   const bouton = (label, action, cls = '') => `<button type="button"${cls ? ` class="${cls}"` : ''} onclick="${action}">${escapeHtml(label)}</button>`;
   const actions = [];
+  // Repondre est un envoi de mail, creer la reservation passe par « Les
+  // séances » : chacun suit son droit (2026-11-07).
+  const ecrit = Boolean(item.email) && peutGeste('ecrire');
+  const reserve = peutGeste('reserver');
   if (stage === 'a-traiter') {
-    if (item.email) actions.push(bouton(reply.open ? 'Aller à la réponse' : 'Rédiger la réponse', reply.open ? `focusStaffRequestComposer(${jid})` : `startStaffRequestDraft(${jid})`, 'primary'));
-    if (item.status === 'new') actions.push(bouton('Prendre en charge', `setStaffCustomRequestStatus(${jid}, 'in_progress')`));
-    actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, item.email ? '' : 'primary'));
+    if (ecrit) actions.push(bouton(reply.open ? 'Aller à la réponse' : 'Rédiger la réponse', reply.open ? `focusStaffRequestComposer(${jid})` : `startStaffRequestDraft(${jid})`, 'primary'));
+    if (item.status === 'new') actions.push(bouton('Prendre en charge', `setStaffCustomRequestStatus(${jid}, 'in_progress')`, ecrit ? '' : 'primary'));
+    if (reserve) actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, ecrit || item.status === 'new' ? '' : 'primary'));
     actions.push(bouton('Marquer traitée', `setStaffCustomRequestStatus(${jid}, 'handled')`));
     actions.push(bouton('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`, 'ghost'));
   } else if (stage === 'en-attente') {
-    actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, 'primary'));
-    if (item.email) actions.push(bouton(reply.open ? 'Fermer le message' : 'Écrire au client', `toggleStaffRequestReply(${jid})`));
+    if (reserve) actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, 'primary'));
+    if (ecrit) actions.push(bouton(reply.open ? 'Fermer le message' : 'Écrire au client', `toggleStaffRequestReply(${jid})`));
     actions.push(bouton('Marquer traitée', `setStaffCustomRequestStatus(${jid}, 'handled')`));
     actions.push(bouton('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`, 'ghost'));
   } else if (stage === 'traitee') {
@@ -19932,6 +20544,7 @@ window.focusStaffRequestComposer = focusStaffRequestComposer;
 // rediger le brouillon du code a la place. Le texte deja ecrit par l equipe
 // est garde : « Revenir a ma version » le rend.
 async function startStaffRequestDraft(id) {
+  if (!peutGeste('ecrire')) return;
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   if (!item) return;
@@ -19978,6 +20591,7 @@ window.startStaffRequestDraft = startStaffRequestDraft;
 // disponibilite (le moteur deterministe reste la source de verite). Si le
 // modele ne repond pas, le texte d'origine est rendu tel quel et on le DIT.
 async function improveStaffRequestDraft(id) {
+  if (!peutGeste('ecrire')) return;
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   const reply = staffRequestReplyState[key];
@@ -20042,6 +20656,7 @@ function revertStaffRequestDraft(id) {
 }
 
 function toggleStaffRequestReply(id) {
+  if (!peutGeste('ecrire')) return;
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   if (!item) return;
@@ -20073,6 +20688,7 @@ function staffRequestReplyDraft(id, field, value) {
 }
 
 async function staffRequestSendReply(id) {
+  if (!peutGeste('ecrire')) return;
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   const reply = staffRequestReplyState[key];
@@ -21682,7 +22298,7 @@ function syncExpandedPlanningControls() {
   if (!date) { date = document.createElement('div'); date.className = 'pec-date'; pile.appendChild(date); }
   poserHtmlSurface(date, staffDateNavHtml({ court: true }));
   let creer = actions.querySelector(':scope > .planning-expanded-create');
-  const avecCreer = canUseStaffPermission('reservations.quick');
+  const avecCreer = peutGeste('reserver');
   if (avecCreer && !creer) {
     creer = document.createElement('button');
     creer.type = 'button';
@@ -21825,7 +22441,7 @@ function pbSyncBarre(surPlanning) {
     }
   }
   const reserver = document.getElementById('planningReserver');
-  if (reserver) reserver.hidden = !canUseStaffPermission('reservations.quick');
+  if (reserver) reserver.hidden = !peutGeste('reserver');
 }
 
 // « + Réservation » : la meme place sur les trois plannings, le geste du planning
@@ -21917,9 +22533,9 @@ function togglePlanningActionsMenu(event) {
     <button type="button" onclick="voirListeDuJour()">Voir la liste des réservations</button>
     <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Imprimer la feuille de secours (PDF)</button>
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
-    <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
-    ${vue === 'all' ? '' : `<button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>`}
-    ${vue === 'laser' ? '<button type="button" onclick="lpReserverAuProchain(event); closeStaffFloatingMenus();">Réserver au prochain départ</button>' : ''}
+    ${peutGeste('exporter') ? '<button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>' : ''}
+    ${vue === 'all' || !peutGeste('reserver') ? '' : `<button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>`}
+    ${vue === 'laser' && peutGeste('reserver') ? '<button type="button" onclick="lpReserverAuProchain(event); closeStaffFloatingMenus();">Réserver au prochain départ</button>' : ''}
     ${depart}
     ${vue === 'all' ? `<div class="gf-legende-menu" role="note" aria-label="Lire une case">${PB_LEGENDE_CASES}</div>` : ''}
   `);
@@ -22397,7 +23013,16 @@ function tientSesPlaces(r) {
 }
 
 function getStaffResourceView() {
-  return state.staffResourceView === 'laser' ? 'laser' : state.staffResourceView === 'all' ? 'all' : 'bowling';
+  const vue = state.staffResourceView === 'laser' ? 'laser' : state.staffResourceView === 'all' ? 'all' : 'bowling';
+  return vueDuPlanningPermise(vue) ? vue : 'all';
+}
+
+// LES ONGLETS DU PLANNING SUIVENT LE ROLE (2026-11-07) : « Bowling » demande
+// planning.bowling, « Laser » planning.laser ; le planning complet suit
+// planning.view, comme la page. Un onglet ferme retombe sur le complet.
+function vueDuPlanningPermise(vue) {
+  if (vue === 'all' || typeof canUseStaffPermission !== 'function') return true;
+  return canUseStaffPermission(vue === 'laser' ? 'planning.laser' : 'planning.bowling');
 }
 
 function getStaffResourceWindows(reservation, view = getStaffResourceView()) {
@@ -22502,8 +23127,8 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   const knows = (kind) => Object.prototype.hasOwnProperty.call(centerResources, kind);
   const hasBowling = !knows('bowling') || laneCount > 0;
   const hasLaser = !knows('laser') || weaponCount > 0;
-  document.getElementById('staffTabBowling')?.classList.toggle('hidden', hiddenByPage || !hasBowling);
-  document.getElementById('staffTabLaser')?.classList.toggle('hidden', hiddenByPage || !hasLaser);
+  document.getElementById('staffTabBowling')?.classList.toggle('hidden', hiddenByPage || !hasBowling || !vueDuPlanningPermise('bowling'));
+  document.getElementById('staffTabLaser')?.classList.toggle('hidden', hiddenByPage || !hasLaser || !vueDuPlanningPermise('laser'));
   // (ce que l onglet disait dessous, a la demande : le centre a 8 pistes, 30 armes)
   const bulle = (id, texte) => { const el = document.getElementById(id); if (el && el.title !== texte) el.title = texte; };
   if (knows('bowling')) { if (laneCount) pbBulleBowling(); else bulle('staffTabBowling', 'Planning Bowling'); }
@@ -23446,6 +24071,14 @@ function renderDelayIndicator(reservation) {
   if (!flag) return '';
   const mins = Math.round(Number(flag.minutes) || 0);
   const range = flag.from && flag.to ? ` ${flag.from}→${flag.to}` : '';
+  // Sans le droit de gerer un retard, la puce dit le retard sans etre un bouton
+  // (2026-11-07).
+  if (!peutGeste('retard')) {
+    const dit = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''}`;
+    return `<span class="delay-indicator" title="${escapeHtml(dit)}" aria-label="${escapeHtml(dit)}">`
+      + `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
+      + `<span class="delay-indicator-label">+${mins}</span></span>`;
+  }
   const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''}, cliquer pour retirer le retard et remettre à l'heure d'origine`;
   return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="revertDelay(event, ${reservation.id})">`
     + `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
@@ -23482,6 +24115,7 @@ async function clearDelayFlag(ev, id) {
 // contente de masquer l'indicateur et le signale dans le message.
 async function revertDelay(ev, id) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (!peutGeste('retard')) return;
   const reservation = state.reservations.find(item => Number(item.id) === Number(id));
   const centerId = (reservation && reservation.centerId) || state.adminCenterId || 'libramont';
   try {
@@ -24084,6 +24718,14 @@ function renderPlanning() {
   const planningLaneCount = getAvailabilityLaneCount();
   const blocagesDuJour = getBlocagesEnLigne(state.currentDate)
     .flatMap(b => getBowlingWindowsFromReservation(b).map(window => ({ blocage: b, window })));
+  // CE QUE LE ROLE PEUT FAIRE SUR CE JOUR (2026-11-07). Sans « Réserver au
+  // comptoir », une case vide n est plus un bouton ; sans « Déplacer », une
+  // carte s ouvre mais ne se glisse pas ; sans « Fermer une piste », pas de
+  // roue dentee. Les cases gardent leurs coordonnees : elles restent des cibles
+  // pour qui glisse.
+  const peutReserverIci = peutGeste('reserver');
+  const peutDeplacerIci = peutGeste('deplacer', state.currentDate);
+  const peutFermerUnePiste = peutGeste('fermerPiste');
   let lanesHtml = '';
   for (let i = 1; i <= planningLaneCount; i++) {
     const maint = state.laneStatuses[i] === 'maintenance';
@@ -24096,7 +24738,9 @@ function renderPlanning() {
       const halfClass = slot % 2 === 1 ? ' half' : '';
       cells += maint || config.closed
         ? `<div class="slot-cell${halfClass}"></div>`
-        : `<div class="slot-cell clickable${halfClass}" role="button" tabindex="0" aria-label="Réserver la piste ${i} à ${formatClockDisplay(cellTime)}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}" onclick="quickFromCell(${i},${cellTime})" title="Nouvelle réservation"></div>`;
+        : peutReserverIci
+          ? `<div class="slot-cell clickable${halfClass}" role="button" tabindex="0" aria-label="Réserver la piste ${i} à ${formatClockDisplay(cellTime)}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}" onclick="quickFromCell(${i},${cellTime})" title="Nouvelle réservation"></div>`
+          : `<div class="slot-cell${halfClass}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}"></div>`;
     }
     cells += `<div class="slot-cell end"></div>`;
     let bkHtml = '';
@@ -24175,7 +24819,7 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${absentClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${absentClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -24232,9 +24876,9 @@ function renderPlanning() {
       <div class="lane-header">
         <span class="pl">Piste</span>
         <span class="num">${i}</span>
-        <button class="settings" onclick="toggleMaint(${i}, event)" title="Maintenance" aria-label="Parametres piste ${i}">
+        ${peutFermerUnePiste ? `<button class="settings" onclick="toggleMaint(${i}, event)" title="Maintenance" aria-label="Parametres piste ${i}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
+        </button>` : ''}
       </div>
       ${cells}
       ${bkHtml}
@@ -24610,7 +25254,11 @@ function lpCases(modele, d, choisi, verdict) {
 // bouger le prend aussi, et au clavier la touche M. Une partie a placer : la
 // toucher la prend, puis on touche son depart (la maquette).
 function lpAttrsGroupe(id, unitKey, { fiche = false } = {}) {
-  const toucher = fiche ? `lpToucherGroupe(${id}, event)` : `lpChoisir(${id}, '${unitKey}', event)`;
+  // Sans « Déplacer » ce jour-la, un groupe ne se prend ni ne se glisse : le
+  // toucher ouvre sa fiche, a placer ou deja place (2026-11-07).
+  const deplace = peutGeste('deplacer', state.currentDate);
+  const toucher = fiche || !deplace ? `lpToucherGroupe(${id}, event)` : `lpChoisir(${id}, '${unitKey}', event)`;
+  if (!deplace) return `data-laser-res-id="${id}" data-laser-unit="${unitKey}" onclick="${toucher}"`;
   const clavier = fiche ? ` onkeydown="lpClavierGroupe(event, ${id}, '${unitKey}')" aria-keyshortcuts="M"` : '';
   return `data-laser-res-id="${id}" data-laser-unit="${unitKey}" onclick="${toucher}"${clavier} onmousedown="lpSouris(event, ${id}, '${unitKey}')" ${planningTouchAttrs(`lpDoigt(event, ${id}, '${unitKey}')`)}`;
 }
@@ -24744,8 +25392,9 @@ function lpProchainHtml(modele) {
         ? (peutCompterArrivee(r)
           ? `<button type="button" class="lp-etat lp-etat--la lp-etat--compte" data-compte-id="${Number(r.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Arrivé, ils sont ${Math.trunc(Number(r.pax) || 0)} : changer le nombre`)}" onclick="ouvrirCompteArrivee(${Number(r.id)}, this, event)">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</button>`
           : `<span class="lp-etat lp-etat--la">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</span>`)
-        : `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Arrivé</button>`;
-    return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : toucher pour sa fiche, glisser pour le déplacer`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
+        : peutGeste('etat') ? `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Arrivé</button>` : '';
+    const geste = peutGeste('deplacer', state.currentDate) ? 'toucher pour sa fiche, glisser pour le déplacer' : 'toucher pour sa fiche';
+    return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : ${geste}`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
   }).join('');
   return `<section class="lp-prochain" data-lp-t="${d.t}" aria-label="Prochain départ, ${lpHeure(d.t)}">
     <div class="lp-prochain__quand"><span class="lp-lbl">Prochain départ</span> <span class="lp-prochain__t">${lpHeure(d.t)}</span> <span class="lp-prochain__d">${quand}</span></div>
@@ -24788,10 +25437,14 @@ function lpRetardsHtml(modele) {
     const r = a.reservation;
     const id = Number(r.id);
     const ecart = a.cible == null ? null : Math.round((a.cible - a.fenetre.start) * 60);
-    const decaler = a.cible == null
-      ? '<span class="lp-alerte__rien">Aucun départ libre pour eux aujourd’hui</span>'
-      : `<button type="button" class="lp-btn lp-btn--rouge" onclick="lpDecaler(${id}, ${ecart}, event)">Décaler à ${lpHeure(a.cible)}</button>`;
-    return `<div class="lp-alerte" role="status"><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> <span class="lp-alerte__quand">pas venus à ${lpHeure(a.fenetre.start)}</span></span>${decaler}<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button></div>`;
+    // Decaler demande le droit de gerer un retard, « Pas venus » celui de
+    // changer l etat : sans eux, la ligne dit seulement qui manque (2026-11-07).
+    const decaler = !peutGeste('retard') ? ''
+      : a.cible == null
+        ? '<span class="lp-alerte__rien">Aucun départ libre pour eux aujourd’hui</span>'
+        : `<button type="button" class="lp-btn lp-btn--rouge" onclick="lpDecaler(${id}, ${ecart}, event)">Décaler à ${lpHeure(a.cible)}</button>`;
+    const pasVenus = peutGeste('etat') ? `<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button>` : '';
+    return `<div class="lp-alerte" role="status"><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> <span class="lp-alerte__quand">pas venus à ${lpHeure(a.fenetre.start)}</span></span>${decaler}${pasVenus}</div>`;
   }).join('') : '';
   return { bouton, liste: alertes ? `<div class="lp-alertes">${alertes}</div>` : '' };
 }
@@ -25028,6 +25681,7 @@ document.addEventListener('focusin', event => {
 function lpChoisir(id, unitKey, ev) {
   if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   if (Date.now() < lpEtat.ignorerClicJusqua || lpEtat.enCours) return;
+  if (!peutGeste('deplacer', state.currentDate)) { openPos(Number(id)); return; }
   const meme = lpEtat.choisi && lpEtat.choisi.id === Number(id) && lpEtat.choisi.unitKey === String(unitKey);
   lpEtat.choisi = meme ? null : { id: Number(id), unitKey: String(unitKey), date: state.currentDate, centre: getCurrentStaffCenterId() };
   lpEtat.raison = '';
@@ -25136,6 +25790,9 @@ async function lpViser(t) {
   if (!d) return;
   const choisi = lpChoisiValide(modele);
   if (!choisi) {
+    // Un role qui ne reserve pas au comptoir n ouvre pas « Les séances » depuis
+    // un depart : sa jauge ne sert qu a ouvrir la fiche d un groupe (2026-11-07).
+    if (!peutGeste('reserver')) return;
     // Un depart qui ne se reserve pas dit pourquoi, comme « complet » : le toucher ne reste pas
     // muet (2026-11-05, le robot de la console trouvait la jauge morte).
     const pourquoi = modele.config.closed ? 'laser fermé ce jour-là'
@@ -25204,6 +25861,7 @@ function lpPasVenus(id, ev) {
 // (assets/pinlane-touch-drag.js). Prendre et poser en un seul geste.
 function lpSouris(ev, id, unitKey) {
   if (ev.button !== 0 || lpEtat.enCours) return;
+  if (!peutGeste('deplacer', state.currentDate)) return;
   ev.stopPropagation();
   lpEtat.geste = { id: Number(id), unitKey: String(unitKey), source: ev.currentTarget, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY, glisse: false, doigt: false };
   document.addEventListener('mousemove', lpSourisBouge, true);
@@ -25238,6 +25896,7 @@ function lpSourisLache(ev) {
 
 function lpDoigt(ev, id, unitKey) {
   if (!window.PinlaneTouchDrag || lpEtat.enCours) return;
+  if (!peutGeste('deplacer', state.currentDate)) return;
   const source = ev.currentTarget;
   window.PinlaneTouchDrag.demarrer(ev, {
     lever(p) {
@@ -25441,6 +26100,7 @@ let laneMaintFormLane = null;
 
 function openLaneMaintForm(lane, ev) {
   if (ev) ev.stopPropagation();
+  if (!peutGeste('fermerPiste')) return;
   laneMaintFormLane = laneMaintFormLane === Number(lane) ? null : Number(lane);
   renderStaffUtilityPage();
 }
@@ -25493,6 +26153,9 @@ async function submitLaneMaintForm(lane) {
 }
 async function toggleMaint(i, ev) {
   if (ev) ev.stopPropagation();
+  // La bascule se peint avant la reponse : sans le droit, elle clignotait puis
+  // revenait. Elle ne part plus (2026-11-07).
+  if (!peutGeste('fermerPiste')) return;
   const previousStatus = state.laneStatuses[i];
   const nextStatus = state.laneStatuses[i] === 'maintenance' ? 'active' : 'maintenance';
   state.laneStatuses[i] = nextStatus;
@@ -26114,16 +26777,16 @@ function renderGroupePrix(r, moment) {
 function renderGroupeActions(r, moment) {
   if (r.status === 'paid' || r.status === 'cancelled') return '';
   const boutons = [];
-  const aValider = isReservationAwaitingReview(r) && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));
+  const aValider = isReservationAwaitingReview(r) && peutGeste('valider', r.date);
   if (aValider) {
     boutons.push(`<button type="button" class="gc-btn is-review" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`);
   }
   const fini = moment && (moment.etat === 'closing' || moment.etat === 'done');
   if (isUpcomingReservationStatus(r.status) && !fini && !groupeAJoue(r)) {
-    if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit'])) {
+    if (peutGeste('etat')) {
       boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
     }
-  } else if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.markPaid')) {
+  } else if (peutGeste('encaisser')) {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
     const montant = prixDossierConnu(r) ? ` ${formatMoneyCentimes(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
@@ -26221,8 +26884,8 @@ function groupeHeurePassee(r) {
 }
 function renderGroupeEncaisseAbsence(r) {
   if (!r) return '';
-  const peutEncaisser = canUseStaffPermission(['payments.markPaid']);
-  const peutStatut = canUseStaffPermission(['reservations.status', 'reservations.edit']);
+  const peutEncaisser = peutGeste('encaisser');
+  const peutStatut = peutGeste('etat');
   if (r.status === 'paid' && prixDossierConnu(r)) {
     const montant = r.amountPaid != null ? Number(r.amountPaid) : Number(r.price) || 0;
     // Le montant encaisse se lit dans la ligne d etat de la fiche (ficheEtat),
@@ -26744,6 +27407,7 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
 // rollback + protection anti-poll (markReservationMutation) comme le statut.
 function toggleFormulaActivity(reservationId, key, ev) {
   if (ev) ev.stopPropagation();
+  if (!peutGeste('etat')) return;
   const idKey = String(reservationId);
   let current = state.reservations.find(r => String(r.id) === idKey);
   if (!current) {
@@ -27124,20 +27788,25 @@ function renderFormulaActivityChecklist(r, opts = {}) {
   if (!summary.total) return '';
   const pct = Math.round((summary.done / summary.total) * 100);
   const items = sortFormulaActivityItems(summary.items);
+  const cochable = r.status !== 'cancelled' && peutGeste('etat');
   const rows = items.map(item => {
     const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? '-' + escapeHtml(item.endTime) : ''}` : '';
     const phase = getFormulaActivityPhase(item, r);
     const meta = item.done
       ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
       : '';
-    return `<button type="button" class="activity-check-row is-${phase}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
-      <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
+    const contenu = `<span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
       <span class="activity-check-icon-wrap" aria-hidden="true">${renderActivityIcon(item.activityId)}</span>
       <span class="activity-check-main">
         <span class="activity-check-label">${escapeHtml(item.label)}</span>
         ${time ? `<span class="activity-check-time">${time}</span>` : ''}
       </span>
-      <span class="activity-check-state">${item.done ? (meta || 'Fait') : FORMULA_ACTIVITY_PHASE_LABELS[phase]}</span>
+      <span class="activity-check-state">${item.done ? (meta || 'Fait') : FORMULA_ACTIVITY_PHASE_LABELS[phase]}</span>`;
+    // Cocher demande de pouvoir changer l etat (activityToggle) : sans ce droit,
+    // la ligne se lit et ne se touche pas (2026-11-07).
+    if (!cochable) return `<div class="activity-check-row is-${phase} is-lecture">${contenu}</div>`;
+    return `<button type="button" class="activity-check-row is-${phase}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
+      ${contenu}
     </button>`;
   }).join('');
   // opts.bare : sans en-tête (utilisé dans la carte Formules qui porte déjà nom + count).
@@ -27298,22 +27967,19 @@ function dureeProgrammeHeures(reservation) {
 // CHAQUE BOUTON SUIT LE ROLE (2026-10-12) : un geste que le serveur refuserait
 // ne s affiche plus. Un role sans encaissement ne voit pas « Payé », un role
 // sans modification n a pas l onglet « Modifier » (ficheDroits).
-function ficheDroits() {
-  // Les termes du serveur : api/staff-reservations.js pour le dossier (un
-  // statut seul demande reservations.status ou .edit, la validation .edit,
-  // l encaissement payments.markPaid), api/ops.js pour le retard et les
-  // messages.
-  // Hors console (un gate qui evalue ces fonctions dans un bac a sable), pas
-  // de controle de droits : tout est permis, comme ailleurs dans ce fichier.
-  const peut = (permission) => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(permission);
+function ficheDroits(r = state.selectedRes) {
+  // Les termes du serveur, lus dans GESTES_STAFF (peutGeste) : un dossier d un
+  // jour passe ne se modifie, ne s annule et ne se valide qu avec « Changer un
+  // jour passé » (2026-11-07).
+  const jour = r && r.date ? r.date : '';
   return {
-    valider: peut('reservations.edit'),
-    statut: peut(['reservations.status', 'reservations.edit']),
-    encaisser: peut('payments.markPaid'),
-    replanifier: peut(['reservations.edit', 'planning.drag']),
-    ecrire: peut('emails.send'),
-    modifier: peut('reservations.edit'),
-    annuler: peut('reservations.cancel'),
+    valider: peutGeste('valider', jour),
+    statut: peutGeste('etat'),
+    encaisser: peutGeste('encaisser'),
+    replanifier: peutGeste('retard'),
+    ecrire: peutGeste('ecrire'),
+    modifier: peutGeste('modifier', jour),
+    annuler: peutGeste('annuler', jour),
   };
 }
 
@@ -27975,6 +28641,14 @@ async function applyDelayPlan() {
       toast('Plan de retard appliqué. Aucun client avec email à prévenir.');
       return;
     }
+    // Prevenir les clients est un envoi de mail (delayNotify) : le role qui
+    // replanifie sans ecrire s arrete au plan applique, sans etape refusee
+    // ensuite (2026-11-07).
+    if (!peutGeste('prevenir')) {
+      closeDelayModal();
+      toast('Plan de retard appliqué. Prévenir les clients se fait avec un rôle qui envoie des mails.');
+      return;
+    }
     delayFlowState.step = 'notify';
     delayFlowState.notifyChecked = {};
     delayFlowState.notifyMessages = {};
@@ -28160,6 +28834,9 @@ let commCenterState = null;
 
 function openCommCenter(reservationId, ev) {
   if (ev) ev.stopPropagation();
+  // Le centre de messages sert a ecrire : sans « Envoyer un mail », il ne
+  // s ouvre pas pour finir sur un envoi refuse (2026-11-07).
+  if (!peutGeste('ecrire')) return;
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId))
     || (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId) ? state.selectedRes : null);
   const centerId = (reservation && reservation.centerId) || state.adminCenterId || 'libramont';
@@ -28724,6 +29401,15 @@ function editLaneAdvice(r, e) {
 //     dans les centres deja installes.
 function peutAdapterFormule() {
   return typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
+}
+
+// LE PROGRAMME D UNE FORMULE se change avec le niveau « Adapter une formule »
+// (exigerAdaptationDeFormule, lib/droits-reservation.js) : sans lui, il se lit
+// et ses pistes se reglent a part, comme pour qui ne modifie pas (2026-11-07).
+function peutAdapterLeProgramme(r) {
+  if (!peutAdapterFormule()) return false;
+  const estFormule = Boolean(r) && (r.type === 'formule' || r.formuleId || r.formulaId);
+  return !estFormule || typeof niveauStaff !== 'function' || niveauStaff('formule') === 'oui';
 }
 
 // Ce que CE dossier contient aujourd hui, sous une forme editable. Source :
@@ -29354,7 +30040,7 @@ function editionReplanifie() {
 // boutons sous la liste, plus un pli a ouvrir. Les permissions et les setters
 // metier restent les memes.
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
-  if (!peutAdapterFormule()) {
+  if (!peutAdapterLeProgramme(r)) {
     const items = Array.isArray(r.program?.items) ? r.program.items : [];
     return `<div class="fm-lecture dossier-program">
       ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
@@ -29629,7 +30315,9 @@ function renderEditExtras(r) {
   return `<section class="fm-extras" aria-labelledby="fmExtrasTitre">
     <div class="fm-x-tete"><h4 class="fm-titre" id="fmExtrasTitre">Nourriture et extras</h4><span class="fm-x-total" id="fmExtrasTotal"${total > 0 ? '' : ' hidden'}>${escapeHtml(formatMoneyCentimes(total))}</span></div>
     ${arcades}${groupes}
-    <div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([groupe, titre]) => `<button type="button" class="fm-ajout" onclick="ajouterEditExtra('${groupe}')">${plus}${titre}</button>`).join('')}</div>
+    ${/* Ajouter une ligne, c est « Ajouter du sur mesure » (resoudreExtras) :
+         au niveau « Non », pas de bouton (2026-11-07). */''}
+    ${typeof niveauStaff === 'function' && niveauStaff('surmesure') === 'non' ? '' : `<div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([groupe, titre]) => `<button type="button" class="fm-ajout" onclick="ajouterEditExtra('${groupe}')">${plus}${titre}</button>`).join('')}</div>`}
     ${listes}
   </section>`;
 }
@@ -30037,8 +30725,8 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
           </section>
           <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}" aria-labelledby="fmProgrammeTitre">
             <h4 class="fm-titre" id="fmProgrammeTitre">Programme</h4>
-            ${contenuBloc}${!adapte ? pistesBloc : ''}
-            ${!adapte && !autreJour ? renderDossierLaserEditor(r) : ''}
+            ${contenuBloc}${!peutAdapterLeProgramme(r) ? pistesBloc : ''}
+            ${!peutAdapterLeProgramme(r) && !autreJour ? renderDossierLaserEditor(r) : ''}
           </section>
           ${adapte ? renderEditExtras(r) : ''}
         </div>

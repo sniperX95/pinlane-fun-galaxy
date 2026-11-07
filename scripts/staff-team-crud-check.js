@@ -253,8 +253,10 @@ const COUNTERPROOFS = [
   {
     label: 'renameRole refus si verrouille',
     probe: 'renameRole-locked',
-    find: "  if (role.locked) throw new Error('Ce role systeme ne peut pas etre renomme.');",
-    replace: "  if (false && role.locked) throw new Error('Ce role systeme ne peut pas etre renomme.');",
+    // Depuis le 2026-11-07, seul le proprietaire de la plateforme renomme un
+    // role verrouille (verrouillePermis) : le refus vise tous les autres.
+    find: "  if (role.locked && !verrouillePermis) throw new Error('Ce role systeme ne peut pas etre renomme.');",
+    replace: "  if (false && role.locked && !verrouillePermis) throw new Error('Ce role systeme ne peut pas etre renomme.');",
   },
 ];
 

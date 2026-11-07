@@ -20,7 +20,14 @@ const {
   revealRoleCode,
   revealMemberCode,
   requireStaffPermission,
-  requestedCenterIsSameClient,
+  sessionAuCentre,
+  centresDeLaSession,
+  getRole,
+  renameMember,
+  setMemberBlocked,
+  regenerateMemberCode,
+  setMemberCenter,
+  supprimerPersonne,
   sessionHasPermission,
   setRolePreset,
   toggleMemberStatus,
@@ -77,16 +84,23 @@ function getRequestFingerprint(req) {
   ).split(',')[0].trim();
 }
 
-function publicSession(session) {
+// La session telle que la console la range. `centerId` est le centre ou la
+// personne travaille a l ecran : pour une personne qui a une ligne dans ce
+// centre (meme code), ce sont SON role et SES droits la-bas. `centres` dit ou
+// elle peut aller (le menu des centres n en propose pas d autre) ; `null` pour
+// le proprietaire de la plateforme, qui va partout.
+function publicSession(session, centres) {
   if (!session) return null;
   return {
     cookieBacked: true,
     emergency: Boolean(session.emergency),
     centerId: session.centerId,
+    centreDeConnexion: session.centreDeConnexion || session.centerId,
     expiresAt: session.expiresAt,
     member: session.member,
     role: session.role,
     permissions: session.permissions,
+    ...(centres === undefined ? {} : { centres }),
   };
 }
 
@@ -97,42 +111,49 @@ async function sendSessionSnapshot(req, res, centerId, session = null, extra = {
     return;
   }
   // DEUX BARRIERES, COMME LE POST. `requireStaffPermission` en applique deux :
-  // `centers.switch` (changer de centre) PUIS `requestedCenterIsSameClient`
-  // (rester chez le meme client). Ce chemin de lecture les refaisait a la
-  // main et ne gardait que la premiere. Or `centers.switch` est accordee
-  // d office a tout role verrouille : la direction d un client lisait donc
-  // `listAccessControl` du centre d un AUTRE client, c est-a-dire ses roles,
-  // ses membres, leurs contacts, les quatre derniers caracteres de leurs
-  // codes et son journal d acces. La surface la plus sensible du produit.
-  if (centerId && centerId !== activeSession.centerId) {
-    if (!sessionHasPermission(activeSession, 'centers.switch')) {
-      sendError(res, 403, 'Acces centre insuffisant.');
-      return;
-    }
-    if (centerId !== 'all'
-      && !sessionHasPermission(activeSession, 'platform.admin')
-      && !(await requestedCenterIsSameClient(activeSession.centerId, centerId))) {
-      sendError(res, 403, 'Acces centre insuffisant.');
-      return;
-    }
+  // entrer dans ce centre (une ligne de la personne la-bas, ou le droit de
+  // tous les centres) PUIS rester chez le meme client. Ce chemin de lecture
+  // les refaisait a la main et ne gardait que la premiere. Or `centers.switch`
+  // est accordee d office a tout role verrouille : la direction d un client
+  // lisait donc `listAccessControl` du centre d un AUTRE client, c est-a-dire
+  // ses roles, ses membres, leurs contacts, les quatre derniers caracteres de
+  // leurs codes et son journal d acces. La surface la plus sensible du produit.
+  // sessionAuCentre fait les deux, dans le meme ordre que le POST.
+  const effective = centerId && centerId !== activeSession.centerId
+    ? await sessionAuCentre(activeSession, centerId)
+    : activeSession;
+  if (!effective) {
+    sendError(res, 403, 'Acces centre insuffisant.');
+    return;
   }
-  const canManageUsers = activeSession.permissions.includes('users.manage') || activeSession.role?.locked;
+  const canManageUsers = sessionHasPermission(effective, 'users.manage');
   let accessControl = null;
   if (canManageUsers) {
     try {
-      accessControl = await listAccessControl(centerId || activeSession.centerId);
+      accessControl = await listAccessControl(centerId || effective.centerId, { session: effective });
     } catch (error) {
-      if (!activeSession.emergency || !isStaffAuthStorageError(error)) throw error;
-      accessControl = createEmergencyAccessControl(centerId || activeSession.centerId);
+      if (!effective.emergency || !isStaffAuthStorageError(error)) throw error;
+      accessControl = createEmergencyAccessControl(centerId || effective.centerId);
     }
   }
+  const centres = await centresDeLaSession(effective).catch(() => [effective.centerId]);
   sendJson(res, 200, {
     ok: true,
     authenticated: true,
-    session: publicSession(activeSession),
+    session: publicSession(effective, centres),
     accessControl,
     ...extra,
   });
+}
+
+// DONNER LE ROLE DIRECTION (Ansar, 2026-11-07 : « donner les roles que je veux
+// meme les plus grands »). Un role verrouille (Direction) ne se donne que par
+// la Direction elle-meme ou le proprietaire de la plateforme : avant, tout
+// porteur de « Creer roles et acces » pouvait faire d un collegue une Direction,
+// donc lui donner TOUS les droits, l ecran le cachait mais l API l acceptait.
+function peutDonnerLeRole(session, role) {
+  if (!role || !role.locked) return true;
+  return Boolean(session && (session.role?.locked || sessionHasPermission(session, 'platform.admin')));
 }
 
 module.exports = async (req, res) => {
@@ -211,7 +232,7 @@ module.exports = async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         authenticated: true,
-        session: publicSession(payload.session),
+        session: publicSession(payload.session, payload.centres),
         accessControl: payload.accessControl,
       });
       return;
@@ -245,7 +266,7 @@ module.exports = async (req, res) => {
     // on entre dans la console. Elle est enfant de 'users.manage' (hierarchie
     // PERMISSION_PARENTS) : qui la porte porte forcement son parent, et un
     // role qui gere les equipes SANS ce droit ne peut plus lire les codes.
-    const CODE_ACTIONS = ['regenerateRoleCode', 'revealRoleCode', 'revealMemberCode'];
+    const CODE_ACTIONS = ['regenerateRoleCode', 'revealRoleCode', 'revealMemberCode', 'regenerateMemberCode'];
     if (CODE_ACTIONS.includes(action) && !sessionHasPermission(session, 'security.codes')) {
       // Le refus se TRACE, comme toute action sensible de ce dispatcher : un
       // refus muet sur les codes d'acces serait la ligne la plus interessante
@@ -294,8 +315,44 @@ module.exports = async (req, res) => {
     let auditBefore = null;
     if (['updateRolePermissions', 'setRolePreset', 'regenerateRoleCode', 'revealRoleCode', 'renameRole', 'deleteRole'].includes(action) && targetRoleId) {
       auditBefore = await getAuditSubjectSnapshot({ centerId, roleId: targetRoleId });
-    } else if (['updateMemberRole', 'toggleMemberStatus', 'revealMemberCode', 'deleteMember'].includes(action) && targetMemberId) {
+    } else if (['updateMemberRole', 'toggleMemberStatus', 'revealMemberCode', 'deleteMember', 'renameMember', 'setMemberBlocked', 'regenerateMemberCode', 'setMemberCenter', 'supprimerPersonne'].includes(action) && targetMemberId) {
       auditBefore = await getAuditSubjectSnapshot({ centerId, memberId: targetMemberId });
+    }
+
+    // LES GARDES DES ROLES QUI DONNENT TOUT, avant toute trace et toute
+    // ecriture. Le role Direction ne se donne que par la Direction ou le
+    // proprietaire de la plateforme ; il ne se renomme que par ce dernier.
+    const roleDonne = ['createMember', 'updateMemberRole'].includes(action) && body.roleId
+      ? await getRole(centerId, String(body.roleId))
+      : null;
+    if (roleDonne && !peutDonnerLeRole(session, roleDonne)) {
+      await writeAuditLog({ centerId, ...actorFromSession(session), surface: 'api/staff-auth.js', action, method: 'POST', entityType: 'staff_role', entityId: String(body.roleId || ''), outcome: 'denied', context: { raison: 'role verrouille' } });
+      sendError(res, 403, 'Seule la direction peut donner ce rôle.');
+      return;
+    }
+    if (action === 'renameRole' && targetRoleId) {
+      const visee = await getRole(centerId, targetRoleId);
+      if (visee && visee.locked && !sessionHasPermission(session, 'platform.admin')) {
+        await writeAuditLog({ centerId, ...actorFromSession(session), surface: 'api/staff-auth.js', action, method: 'POST', entityType: 'staff_role', entityId: targetRoleId, outcome: 'denied', context: { raison: 'role verrouille' } });
+        sendError(res, 403, 'Seul le propriétaire de la plateforme renomme ce rôle.');
+        return;
+      }
+    }
+    // DONNER UN AUTRE CENTRE : il faut gerer l equipe la-bas aussi. Marius,
+    // Manager, n ouvre pas Gembloux a Flavy ; la Direction des deux centres,
+    // oui.
+    let sessionCible = null;
+    const centresCibles = action === 'setMemberCenter'
+      ? [String(body.cibleCenterId || '')]
+      : (action === 'createMember' && Array.isArray(body.autresCentres) ? body.autresCentres.map(String) : []);
+    for (const cible of centresCibles.filter((id) => id && id !== centerId)) {
+      sessionCible = await sessionAuCentre(session, cible);
+      const roleLaBas = body.roleId ? await getRole(cible, String(body.roleId)) : null;
+      if (!sessionCible || !sessionHasPermission(sessionCible, 'users.manage') || (roleLaBas && !peutDonnerLeRole(sessionCible, roleLaBas))) {
+        await writeAuditLog({ centerId, ...actorFromSession(session), surface: 'api/staff-auth.js', action, method: 'POST', entityType: 'staff_member', entityId: targetMemberId, outcome: 'denied', context: { centreDemande: cible, raison: 'equipe du centre cible' } });
+        sendError(res, 403, 'Vous ne gérez pas l’équipe de ce centre.');
+        return;
+      }
     }
 
     let auditChanges = {};
@@ -322,11 +379,17 @@ module.exports = async (req, res) => {
     } else if (action === 'toggleMemberStatus') {
       const before = (auditBefore && auditBefore.status) || '';
       auditChanges = buildChanges({ status: before }, { status: before === 'blocked' ? 'active' : 'blocked' }, ['status']);
-    } else if (action === 'renameRole') {
+    } else if (action === 'renameRole' || action === 'renameMember') {
       auditChanges = buildChanges(
         { name: (auditBefore && auditBefore.name) || '' },
         { name: String(body.name || '') },
         ['name'],
+      );
+    } else if (action === 'setMemberBlocked') {
+      auditChanges = buildChanges(
+        { status: (auditBefore && auditBefore.status) || '' },
+        { status: body.bloque === true ? 'blocked' : 'active' },
+        ['status'],
       );
     }
 
@@ -347,6 +410,8 @@ module.exports = async (req, res) => {
         cible: (auditBefore && auditBefore.name) || '',
         presetId: String(body.presetId || ''),
         nouveauNom: String(body.name || ''),
+        ...(action === 'setMemberCenter' ? { centreCible: String(body.cibleCenterId || ''), roleCible: String(body.roleId || '') } : {}),
+        ...(action === 'createMember' && Array.isArray(body.autresCentres) ? { autresCentres: body.autresCentres.map(String) } : {}),
       },
     };
 
@@ -355,6 +420,11 @@ module.exports = async (req, res) => {
       auditPending = auditBase;
     }
 
+    // Le membre de la SESSION (sa ligne du centre de connexion) en plus de celui
+    // du centre a l ecran : une personne ne se bloque, ne se retire ni ne se
+    // supprime elle-meme, depuis aucun de ses centres.
+    const sessionMemberId = session.membreDeConnexion || session.member.id;
+
     let extra = {};
     if (action === 'createRole') {
       const result = await createRole({
@@ -362,8 +432,21 @@ module.exports = async (req, res) => {
         actorMemberId: session.member.id,
         name: body.name,
         permissions: body.permissions || [],
+        presetId: String(body.presetId || ''),
       });
       extra = { createdRole: result.role, newAccessCode: result.accessCode };
+    } else if (action === 'renameMember') {
+      await renameMember({ centerId, actorMemberId: session.member.id, memberId: body.memberId, name: body.name });
+    } else if (action === 'setMemberBlocked') {
+      await setMemberBlocked({ centerId, actorMemberId: session.member.id, sessionMemberId, memberId: body.memberId, bloque: body.bloque === true });
+    } else if (action === 'regenerateMemberCode') {
+      const result = await regenerateMemberCode({ centerId, actorMemberId: session.member.id, sessionMemberId, memberId: body.memberId });
+      extra = { newAccessCode: result.accessCode };
+    } else if (action === 'setMemberCenter') {
+      await setMemberCenter({ centerId, actorMemberId: session.member.id, sessionMemberId, memberId: body.memberId, cibleCenterId: body.cibleCenterId, roleId: body.roleId || '' });
+    } else if (action === 'supprimerPersonne') {
+      await supprimerPersonne({ centerId, actorMemberId: session.member.id, sessionMemberId, memberId: body.memberId });
+      extra = { deletedMemberId: String(body.memberId || '') };
     } else if (action === 'updateRolePermissions') {
       await updateRolePermissions({
         centerId,
@@ -411,6 +494,7 @@ module.exports = async (req, res) => {
         name: body.name,
         contact: body.contact || '',
         roleId: body.roleId || 'staff-bar',
+        autresCentres: Array.isArray(body.autresCentres) ? body.autresCentres : [],
       });
       extra = { createdMember: result.member, newAccessCode: result.accessCode };
     } else if (action === 'updateMemberRole') {
@@ -420,7 +504,7 @@ module.exports = async (req, res) => {
         memberId: body.memberId,
         roleId: body.roleId,
       });
-      extra = { updatedMember: result.member, newAccessCode: result.accessCode };
+      extra = { updatedMember: result.member };
     } else if (action === 'toggleMemberStatus') {
       const member = await toggleMemberStatus({
         centerId,
@@ -434,6 +518,7 @@ module.exports = async (req, res) => {
         actorMemberId: session.member.id,
         roleId: body.roleId,
         name: body.name,
+        verrouillePermis: sessionHasPermission(session, 'platform.admin'),
       });
       extra = { updatedRole: { id: result.id, name: result.name } };
     } else if (action === 'deleteRole') {

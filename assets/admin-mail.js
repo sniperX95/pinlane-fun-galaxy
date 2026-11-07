@@ -194,6 +194,10 @@ function renderMsCompose() {
       : '',
   ].join('');
 
+  // Envoyer : emails.send ; garder en modele : campaigns.manage (api/ops.js).
+  const ecrire = typeof peutGeste !== 'function' || peutGeste('ecrire');
+  const modeles = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
+
   const tips = msState.aiTips.length ? `
     <div class="ms-tips">
       <div class="ms-tips-title">${msState.aiMode === 'ia' ? 'Réécrit par l\'IA : points corrigés :' : `Analyse du brouillon${msState.channel?.aiConfigured ? '' : ' (IA non branchée : conseils automatiques)'} :`}</div>
@@ -228,9 +232,9 @@ function renderMsCompose() {
       ${tips}
       <div class="ms-actions">
         <button type="button" class="admin-btn" ${msState.aiBusy ? 'disabled' : ''} onclick="msImproveWithAi(this)">${msState.aiBusy ? 'Analyse en cours…' : 'Améliorer avec l\'IA'}</button>
-        <button type="button" class="admin-btn" onclick="msSaveDraftAsTemplate()">Enregistrer comme modèle</button>
+        ${modeles ? '<button type="button" class="admin-btn" onclick="msSaveDraftAsTemplate()">Enregistrer comme modèle</button>' : ''}
         <span class="ms-actions-spacer"></span>
-        <button type="button" class="admin-btn primary" ${msState.sendBusy ? 'disabled' : ''} onclick="msSendDirect(this)">${msState.sendBusy ? 'Envoi…' : 'Envoyer le mail'}</button>
+        ${ecrire ? `<button type="button" class="admin-btn primary" ${msState.sendBusy ? 'disabled' : ''} onclick="msSendDirect(this)">${msState.sendBusy ? 'Envoi…' : 'Envoyer le mail'}</button>` : ''}
       </div>
       <p class="dh-sub">Le mail part avec la mise en page du centre (en-tête, pied de page) et s'ajoute automatiquement à l'historique.</p>
     </div>
@@ -289,6 +293,7 @@ async function msImproveWithAi(button) {
 
 async function msSendDirect(button) {
   if (msState.sendBusy) return;
+  if (typeof peutGeste === 'function' && !peutGeste('ecrire')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
   const d = msState.draft;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.to.trim())) {
     if (typeof toast === 'function') toast('Adresse email du destinataire invalide.');
@@ -334,6 +339,7 @@ async function msSendDirect(button) {
 }
 
 async function msSaveDraftAsTemplate() {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
   const d = msState.draft;
   if (!d.subject.trim() && !d.body.trim()) {
     if (typeof toast === 'function') toast('Rien à enregistrer : le brouillon est vide.');
@@ -449,6 +455,8 @@ function msReuseMail(id) {
 // ---------------------------------------------------------------------------
 
 function renderMsTemplates() {
+  // saveEmailTemplate et archiveEmailTemplate : campaigns.manage (api/ops.js).
+  const gerer = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
   const editing = msState.editingTemplate;
   const form = editing ? `
     <div class="ms-viewer">
@@ -477,16 +485,16 @@ function renderMsTemplates() {
         <div class="ms-tpl-body">${msEsc((t.body || '').slice(0, 140))}${(t.body || '').length > 140 ? '…' : ''}</div>
         <div class="ms-actions">
           <button type="button" class="admin-btn" onclick="msApplyTemplate('custom:${t.id}');msSetSection('compose')">Utiliser</button>
-          <button type="button" class="admin-btn" onclick="msEditTemplate(${t.id})">Modifier</button>
-          <button type="button" class="admin-btn" onclick="msArchiveTemplate(${t.id})">Archiver</button>
+          ${gerer ? `<button type="button" class="admin-btn" onclick="msEditTemplate(${t.id})">Modifier</button>
+          <button type="button" class="admin-btn" onclick="msArchiveTemplate(${t.id})">Archiver</button>` : ''}
         </div>
       </div>`).join('')}
-    </div>` : '<div class="dh-chart-empty">Aucun modèle personnalisé. Créez-en un ou partez d\'un « modèle de départ » dans le composer.</div>';
+    </div>` : `<div class="dh-chart-empty">Aucun modèle personnalisé.${gerer ? ' Créez-en un ou partez d\'un « modèle de départ » dans le composer.' : ''}</div>`;
 
   return `<section class="dh-card">
     <div class="dh-report-head">
       <h3>Vos modèles (${msState.templates.length})</h3>
-      <button type="button" class="admin-btn primary" onclick="msState.editingTemplate={};msRefresh()">Nouveau modèle</button>
+      ${gerer ? '<button type="button" class="admin-btn primary" onclick="msState.editingTemplate={};msRefresh()">Nouveau modèle</button>' : ''}
     </div>
     <p class="dh-sub">Les modèles de départ (promo, anniversaire, entreprise, relance) sont toujours disponibles dans le composer, enregistrez vos propres versions ici.</p>
     ${form}
@@ -500,6 +508,7 @@ function msEditTemplate(id) {
 }
 
 async function msSaveTemplate(button) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
   const editing = msState.editingTemplate || {};
   const name = document.getElementById('msTplName')?.value?.trim();
   if (!name) { if (typeof toast === 'function') toast('Nom du modèle requis.'); return; }
@@ -531,6 +540,7 @@ async function msSaveTemplate(button) {
 }
 
 async function msArchiveTemplate(id) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
   if (!window.confirm('Archiver ce modèle ? Il disparaîtra de la liste (récupérable en base).')) return;
   try {
     await apiRequest('/api/ops', {
@@ -550,15 +560,17 @@ async function msArchiveTemplate(id) {
 // ---------------------------------------------------------------------------
 
 function renderMsIdentities() {
+  // saveEmailIdentity et deleteEmailIdentity : settings.manage (api/ops.js).
+  const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('settings.manage');
   const list = msState.identities.length ? `
     <div class="dh-report-list">${msState.identities.map((i) => `
       <div class="dh-report-item" style="cursor:default">
         <span class="dh-report-kind">${msEsc(i.label)}</span>
         <span class="dh-mono">${msEsc(i.email)}</span>
-        ${i.isDefault ? '<span class="ms-pill sent">Par défaut</span>' : `<button type="button" class="admin-btn" onclick="msSetDefaultIdentity(${i.id})">Définir par défaut</button>`}
-        <span class="dh-report-meta"><button type="button" class="admin-btn" onclick="msDeleteIdentity(${i.id})">Supprimer</button></span>
+        ${i.isDefault ? '<span class="ms-pill sent">Par défaut</span>' : regler ? `<button type="button" class="admin-btn" onclick="msSetDefaultIdentity(${i.id})">Définir par défaut</button>` : ''}
+        ${regler ? `<span class="dh-report-meta"><button type="button" class="admin-btn" onclick="msDeleteIdentity(${i.id})">Supprimer</button></span>` : ''}
       </div>`).join('')}
-    </div>` : `<div class="dh-chart-empty">Aucune adresse configurée : les mails partent de l'expéditeur par défaut de la plateforme (${msEsc(msState.channel?.defaultFrom || '')}). Ajoutez vos adresses (contact@, info@, promo@…) dès qu'elles existent.</div>`;
+    </div>` : `<div class="dh-chart-empty">Aucune adresse configurée : les mails partent de l'expéditeur par défaut de la plateforme (${msEsc(msState.channel?.defaultFrom || '')}).${regler ? ' Ajoutez vos adresses (contact@, info@, promo@…) dès qu\'elles existent.' : ''}</div>`;
 
   const form = msState.identityForm ? `
     <div class="ms-viewer">
@@ -578,7 +590,7 @@ function renderMsIdentities() {
   return `<section class="dh-card">
     <div class="dh-report-head">
       <h3>Adresses d'expéditeur</h3>
-      <button type="button" class="admin-btn primary" onclick="msState.identityForm=true;msRefresh()">Ajouter une adresse</button>
+      ${regler ? '<button type="button" class="admin-btn primary" onclick="msState.identityForm=true;msRefresh()">Ajouter une adresse</button>' : ''}
     </div>
     <p class="dh-sub">Chaque adresse doit être vérifiée chez le fournisseur d'envoi (domaine validé) pour être réellement utilisée : sinon l'envoi retombe sur l'adresse par défaut.</p>
     ${form}
@@ -587,6 +599,7 @@ function renderMsIdentities() {
 }
 
 async function msSaveIdentity(button) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
   const label = document.getElementById('msIdLabel')?.value?.trim();
   const email = document.getElementById('msIdEmail')?.value?.trim();
   if (!label || !email) { if (typeof toast === 'function') toast('Libellé et adresse requis.'); return; }
@@ -613,6 +626,7 @@ async function msSaveIdentity(button) {
 }
 
 async function msSetDefaultIdentity(id) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
   const identity = msState.identities.find((i) => i.id === id);
   if (!identity) return;
   try {
@@ -627,6 +641,7 @@ async function msSetDefaultIdentity(id) {
 }
 
 async function msDeleteIdentity(id) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de gérer les adresses d’envoi.'); return; }
   if (!window.confirm('Supprimer cette adresse d\'expéditeur ?')) return;
   try {
     await apiRequest('/api/ops', {

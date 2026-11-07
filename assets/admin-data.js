@@ -269,14 +269,26 @@ function renderAdminDataTab() {
         <div class="dh-range">${Object.entries(DH_RANGES).map(([key, r]) => `
           <button type="button" class="${dhState.rangeKey === key ? 'active' : ''}" onclick="dhSetRange('${key}')">${r.label}</button>`).join('')}
         </div>
-        <button type="button" class="admin-btn" onclick="dhExportMenuToggle(event)">Exporter ▾</button>
+        ${(() => {
+          // Chaque export suit son droit (2026-11-07) : les rapports avec
+          // reports.export, les fichiers qui portent des contacts avec
+          // exports.download. Sans aucun, pas de bouton Exporter.
+          const peut = (droit) => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(droit);
+          const rapport = peut('reports.export');
+          const fichier = peut('exports.download');
+          const choix = [
+            rapport && `<button type="button" onclick="dhExportCsv('serie')">CSV : série ${DH_RANGES[dhState.rangeKey].bucket === 'daily' ? 'quotidienne' : DH_RANGES[dhState.rangeKey].bucket === 'weekly' ? 'hebdomadaire' : 'mensuelle'}</button>`,
+            fichier && '<button type="button" onclick="dhExportCsv(\'clients\')">CSV : clients</button>',
+            rapport && '<button type="button" onclick="dhExportCsv(\'formules\')">CSV : formules & activités</button>',
+            fichier && '<button type="button" onclick="dhExportCsv(\'reservations-brutes\')">CSV : réservations de la période</button>',
+            rapport && '<button type="button" onclick="dhPrintReport()">Rapport imprimable (PDF)</button>',
+          ].filter(Boolean);
+          if (!choix.length) return '';
+          return `<button type="button" class="admin-btn" onclick="dhExportMenuToggle(event)">Exporter ▾</button>
         <div class="dh-export-menu hidden" id="dhExportMenu">
-          <button type="button" onclick="dhExportCsv('serie')">CSV : série ${DH_RANGES[dhState.rangeKey].bucket === 'daily' ? 'quotidienne' : DH_RANGES[dhState.rangeKey].bucket === 'weekly' ? 'hebdomadaire' : 'mensuelle'}</button>
-          <button type="button" onclick="dhExportCsv('clients')">CSV : clients</button>
-          <button type="button" onclick="dhExportCsv('formules')">CSV : formules & activités</button>
-          <button type="button" onclick="dhExportCsv('reservations-brutes')">CSV : réservations de la période</button>
-          <button type="button" onclick="dhPrintReport()">Rapport imprimable (PDF)</button>
-        </div>
+          ${choix.join('\n          ')}
+        </div>`;
+        })()}
       </div>
     </div>`;
 
@@ -553,6 +565,13 @@ function dhExportMenuToggle(event) {
 }
 
 async function dhExportCsv(kind) {
+  // Le meme droit que le bouton (2026-11-07) : la serie est un rapport, les
+  // clients et les reservations brutes portent des contacts.
+  const droit = kind === 'serie' || kind === 'formules' ? 'reports.export' : 'exports.download';
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission(droit)) {
+    if (typeof toast === 'function') toast('Votre rôle ne permet pas de télécharger ce fichier.');
+    return;
+  }
   const a = dhState.analytics;
   if (!a) {
     if (typeof toast === 'function') toast('Ouvrez d\'abord l\'onglet Données pour charger la période.');

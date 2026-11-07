@@ -850,7 +850,12 @@
     var r = g.r;
     var tete = gfPile(g) ? '' : '<b class="gf-nom__h">' + gpEsc(gpHeure(g.heure)) + '</b>';
     tete += '<span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>';
-    if (g.retard && m.maintenant != null) tete += '<button type="button" class="gf-h__retard" data-gf-retarder="' + gpEsc(g.id) + '"><span data-gf-retard="' + gpEsc(g.id) + '"></span></button>';
+    // (sans le droit de gerer un retard, le retard se lit sans se toucher, 2026-11-07)
+    if (g.retard && m.maintenant != null) {
+      tete += gfPeut('retard')
+        ? '<button type="button" class="gf-h__retard" data-gf-retarder="' + gpEsc(g.id) + '"><span data-gf-retard="' + gpEsc(g.id) + '"></span></button>'
+        : '<span class="gf-h__retard is-lecture"><span data-gf-retard="' + gpEsc(g.id) + '"></span></span>';
+    }
     var tel = String(r.phone || '').trim();
     if (tel) tete += '<a class="gf-nom__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) tete += '<span class="gf-nom__valide">À valider</span>';
@@ -860,7 +865,11 @@
     // dans »). Elle change rarement, une fois quand le retard atteint le groupe suivant :
     // elle entre dans le HTML compare, et seule la ligne qui la gagne se reecrit.
     var reprise = g.retard && m.maintenant != null ? gfReprise(g, m) : null;
-    if (reprise) tete += '<button type="button" class="gf-h__reprise" data-gf-retarder="' + gpEsc(g.id) + '" data-gf-reprise="' + gpEsc(g.id) + '" title="' + gpEsc(reprise.bulle) + '">' + gpEsc(reprise.texte) + '</button>';
+    if (reprise) {
+      tete += gfPeut('retard')
+        ? '<button type="button" class="gf-h__reprise" data-gf-retarder="' + gpEsc(g.id) + '" data-gf-reprise="' + gpEsc(g.id) + '" title="' + gpEsc(reprise.bulle) + '">' + gpEsc(reprise.texte) + '</button>'
+        : '<span class="gf-h__reprise is-lecture" data-gf-reprise="' + gpEsc(g.id) + '" title="' + gpEsc(reprise.bulle) + '">' + gpEsc(reprise.texte) + '</span>';
+    }
     return '<td class="gf-nom"><div class="gf-nom__l">' + tete + '</div>' + g.rubriques.map(function (x) { return x.html; }).join('') + '</td>';
   }
   // UNE RETENUE, EN LIGNE DANS LE TABLEAU (2026-11-05). Les memes cases qu un groupe, hachurees
@@ -934,9 +943,13 @@
     if (r.status === 'paid' || r.status === 'cancelled') return '';
     return typeof prixDossierConnu === 'function' && prixDossierConnu(r) ? formatMoneyCentimes(r.price) : '';
   }
+  // UN GESTE SE MONTRE A QUI PEUT LE FAIRE (2026-11-07) : la regle du serveur pour
+  // chaque geste vit dans la console (peutGeste, assets/app-main.js) ; hors console,
+  // tout est permis, comme avant.
+  function gfPeut(geste) { return typeof peutGeste !== 'function' || peutGeste(geste); }
   function gfPeutEncaisser() {
     if (typeof encaisserReservation !== 'function' || typeof GROUPE_MOYENS === 'undefined') return false;
-    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.markPaid');
+    return gfPeut('encaisser');
   }
   // « Carte » et « Espèces », comme sur les cartes de la liste (encaisserReservation,
   // GROUPE_MOYENS) : ouvrir la fiche pour ca coutait trois gestes par groupe qui part.
@@ -949,7 +962,7 @@
     var r = g.r;
     if (!m.aujourdHui || g.etat !== 'upcoming' || r.status === 'paid' || r.status === 'arrived' || r.absentAt) return false;
     if (typeof setReservationStatusDirect !== 'function') return false;
-    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.status');
+    return gfPeut('etat');
   }
   // « PAS VENU » : discret, a l ecart du geste, sur un groupe en retard ou jamais
   // pointe a la fin de sa visite. La regle de la fiche, une seule source. Il s annule
@@ -1029,7 +1042,7 @@
   var GF_STATUTS = { pending: 'Confirmé', arrived: 'Arrivé', paid: 'Payé' };
   function gfPeutStatuer(r) {
     if (r.status === 'cancelled' || typeof setReservationStatusDirect !== 'function') return false;
-    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.status') || gfPeutEncaisser();
+    return gfPeut('etat') || gfPeutEncaisser();
   }
   function gfMotDuStatut(g) {
     if (g.etat === 'absent' || g.teinte === 'absent') return 'Pas venu';
@@ -1202,7 +1215,8 @@
       dessous += l.html;
     });
     var corps = '<b>' + gpEsc(heure) + '</b>' + dessous;
-    if (!ouvert) return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(heure) + '"><span class="gf-bloc__in">' + corps + '</span></td>';
+    // (une heure ne se reserve qu avec « Réserver au comptoir » : sinon elle se lit, 2026-11-07)
+    if (!ouvert || !gfPeut('reserver')) return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(heure) + '"><span class="gf-bloc__in">' + corps + '</span></td>';
     var dit = 'Réserver à ' + heure + (place.pistes ? ', ' + gfPluriel(place.pistes, ['piste libre', 'pistes libres']) : '') + (place.laser ? ', ' + gfPluriel(place.laser, ['place', 'places']) + ' au laser' : '');
     return '<td class="' + classes + '"' + attr + ' data-gf-bloc="' + gpEsc(heure) + '" data-gf-reserver="' + gpEsc(heure) + '"><button type="button" class="gf-bloc__in" title="' + gpEsc(dit) + '" aria-label="' + gpEsc(dit) + '">' + corps + '</button></td>';
   }
@@ -1258,7 +1272,7 @@
         + '<button type="button" class="gf-rien__reserver" onclick="setStaffStatusFilter(\'all\')">Enlever le filtre</button></div>';
     }
     var terme = String(state.searchTerm || '').trim();
-    var peut = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.quick');
+    var peut = gfPeut('reserver');
     var reserver = peut && gfNomTape(terme, q)
       ? '<button type="button" class="gf-rien__reserver" data-nom="' + gpEsc(terme) + '" onclick="reserverAuComptoir({ name: this.dataset.nom })">Réserver pour ' + gpEsc(terme) + '</button>'
       : '';
@@ -1495,12 +1509,20 @@
   };
   // L ETAT DU CENTRE MENE A SON GESTE (2026-11-02) : « Pistes 4 libres » ouvre Réserver, sur
   // une heure qui tient ; complet, son planning dit quand ca se libere.
+  // (le bandeau n est un bouton que si son geste est permis : ouvrir l onglet de
+  // l activite complete, ou reserver, 2026-11-07)
+  function gfBandeauAgit(cle, et) {
+    if (et.plein) return typeof vueDuPlanningPermise !== 'function' || vueDuPlanningPermise(cle);
+    return gfPeut('reserver');
+  }
   function gfEtatBandeau(cle, libelle, et, dessous) {
-    return '<div class="gf-e' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + cle + '"><button type="button" class="gf-e__h" title="' + gpEsc(et.bulle) + '"><span class="gf-e__l">' + gpEsc(libelle) + '</span><b class="gf-e__v">' + gpEsc(et.texte) + '</b></button><span class="gf-e__s">' + dessous + '</span></div>';
+    var contenu = '<span class="gf-e__l">' + gpEsc(libelle) + '</span><b class="gf-e__v">' + gpEsc(et.texte) + '</b>';
+    if (!gfBandeauAgit(cle, et)) return '<div class="gf-e' + (et.plein ? ' is-plein' : '') + ' is-lecture"><span class="gf-e__h" title="' + gpEsc(et.bulle) + '">' + contenu + '</span><span class="gf-e__s">' + dessous + '</span></div>';
+    return '<div class="gf-e' + (et.plein ? ' is-plein' : '') + '" data-gf-etat="' + cle + '"><button type="button" class="gf-e__h" title="' + gpEsc(et.bulle) + '">' + contenu + '</button><span class="gf-e__s">' + dessous + '</span></div>';
   }
   function gfDepuisBandeau(wrap, cle) {
     var et = wrap._gfModele && wrap._gfModele.etat && wrap._gfModele.etat[cle];
-    if (!et) return;
+    if (!et || !gfBandeauAgit(cle, et)) return;
     if (et.plein) window.pbChanger(cle);
     else if (cle === 'laser') openQuickBookForLaserSession(et.t, et.places);
     else reserverAuComptoir({ type: 'bowling' });

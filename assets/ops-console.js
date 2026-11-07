@@ -27,12 +27,16 @@ async function loadOpsAdmin(force = false) {
     // Reponse : on n appelle pas ce qu on n a pas le droit d appeler, et le
     // lot survit bloc par bloc (allSettled).
     const maySimulate = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('platform.admin');
+    // Meme regle pour suggestions et events (ai.ops) et pour agentStack
+    // (platform.admin) : sans le droit, pas d appel, donc pas de refus inscrit
+    // au journal a chaque ouverture. Le bloc saute vaut null, comme un refus.
+    const mayAiOps = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('ai.ops');
     const results = await Promise.allSettled([
       apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerId}&limit=500`),
       apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerId}&limit=80`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerId}&limit=80`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerId}&startDate=${startDate}&endDate=${endDate}`),
+      mayAiOps ? apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerId}&limit=80`) : Promise.resolve(null),
+      mayAiOps ? apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerId}&limit=80`) : Promise.resolve(null),
+      maySimulate ? apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerId}&startDate=${startDate}&endDate=${endDate}`) : Promise.resolve(null),
       maySimulate
         ? apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${simDate}`)
         : Promise.resolve(null),
@@ -50,8 +54,9 @@ async function loadOpsAdmin(force = false) {
     const simulationPayload = results[5].status === 'fulfilled' ? results[5].value : null;
     const claimsPayload = results[6] && results[6].status === 'fulfilled' ? results[6].value : null;
     const savoirPayload = results[7] && results[7].status === 'fulfilled' ? results[7].value : null;
-    // Si TOUT a echoue, c est une vraie panne : elle se dit, comme avant.
-    const everyFailed = results.slice(0, 5).every((entry) => entry.status === 'rejected');
+    // Si TOUT a echoue, c est une vraie panne : elle se dit, comme avant. Un
+    // bloc saute faute de droit compte comme un refus.
+    const everyFailed = results.slice(0, 5).every((entry) => entry.status === 'rejected' || entry.value === null);
     if (everyFailed) throw (results[0].reason || new Error('Console Ops indisponible.'));
     opsAdminCache = {
       communications: communicationsPayload.communications || [],
@@ -1663,6 +1668,7 @@ function closeEmailPreview() {
 }
 
 async function dispatchOpsEmails() {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) { toast('Votre rôle ne permet pas d’envoyer des mails.'); return; }
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',

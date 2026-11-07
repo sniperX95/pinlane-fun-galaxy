@@ -637,16 +637,19 @@ async function structure(page, s, label) {
     const t = box.querySelector('.gf-t');
     const css = t ? getComputedStyle(t) : null;
     // (deux activites a venir d une meme ligne : le meme fond, quelle que soit l activite ;
-    // la case et la pastille de son heure, qui porte la couleur depuis le 2026-11-07)
+    // la case, et la pastille de son heure, qui porte la couleur depuis le 2026-11-07)
     const teintes = [];
     box.querySelectorAll('tr.gf-r').forEach((tr) => {
       const fonds = new Map();
+      const pastilles = new Map();
       tr.querySelectorAll('td.gf-a').forEach((td) => {
         const x = td.querySelector('.gf-x.is-avenir:not(.is-libre):not(.is-credit):not(.is-panne)');
-        const h = x && x.querySelector('.gf-x__t');
-        if (x) fonds.set(td.getAttribute('data-gf-titre'), `${getComputedStyle(x).backgroundColor} ${h ? getComputedStyle(h).backgroundColor : ''}`);
+        const h = x && x.querySelector('.gf-x__t:not(.is-nu)');
+        if (x) fonds.set(td.getAttribute('data-gf-titre'), getComputedStyle(x).backgroundColor);
+        if (h) pastilles.set(td.getAttribute('data-gf-titre'), getComputedStyle(h).backgroundColor);
       });
       if (new Set(fonds.values()).size > 1) teintes.push([tr.getAttribute('data-gf-id'), Object.fromEntries(fonds)]);
+      if (new Set(pastilles.values()).size > 1) teintes.push([tr.getAttribute('data-gf-id'), Object.fromEntries(pastilles)]);
     });
     return { degrades, petits: petits.slice(0, 4), police: css ? css.fontFamily : '', chiffres: css ? css.fontVariantNumeric : '', teintes: teintes.slice(0, 2) };
   });

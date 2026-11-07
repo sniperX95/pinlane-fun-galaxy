@@ -191,43 +191,58 @@ async function main() {
     await page.waitForTimeout(1000);
     await page.evaluate(() => window.openStaffMenuPage('users'));
     await page.waitForTimeout(1600);
-    await page.evaluate(() => document.querySelectorAll('details.staff-permission-group').forEach((d) => { d.open = true; }));
-    await page.waitForTimeout(400);
+    // La page Equipe & acces du 2026-11-07 : les droits d un role se reglent
+    // dans l onglet Roles, un interrupteur par droit. Les gestes d un ecran
+    // (ses sous-options) ne s affichent que si l ecran est ouvert : un geste
+    // sans son ecran ne s offre plus du tout, au lieu de se dire « inerte ».
+    await page.locator('[data-eq="onglet"][data-valeur="roles"]').click();
+    await page.locator('.eq-rail-role', { hasText: 'Essai' }).first().click();
+    await page.waitForFunction(() => ((document.querySelector('.eq-rail-role[aria-current="true"] strong') || {}).textContent || '') === 'Essai', null, { timeout: 10000 });
+    const interrupteur = (permission) => page.evaluate((p) => {
+      const input = document.querySelector(`input.eq-switch[data-permission="${p}"]`);
+      return input ? input.checked : null;
+    }, permission);
+    const basculer = async (permission) => {
+      await page.evaluate((p) => { document.querySelector(`input.eq-switch[data-permission="${p}"]`).click(); }, permission);
+      await page.waitForTimeout(900);
+    };
+    const dernierEnvoi = () => page.evaluate(() => (window.__QA_SAVED__ || []).slice(-1)[0] || []);
 
-    const tree = await page.evaluate(() => [...document.querySelectorAll('.staff-permission-toggle')].map((r) => ({
-      label: (r.querySelector('b') || {}).textContent.trim(),
-      child: r.classList.contains('is-child'),
-      inert: r.classList.contains('is-inert'),
+    const tree = await page.evaluate(() => [...document.querySelectorAll('.eq-droit')].filter((r) => r.querySelector('input.eq-switch')).map((r) => ({
+      label: ((r.querySelector('label strong') || {}).textContent || '').trim(),
+      child: r.classList.contains('is-enfant'),
     })));
-    ok(tree.length > 0, `l editeur rend ses ${tree.length} options`);
+    ok(tree.length > 0, `l editeur rend ses ${tree.length} interrupteurs`);
     ok(tree.some((r) => r.child), `des SOUS-options existent (${tree.filter((r) => r.child).length} sur ${tree.length})`);
-    ok(tree.some((r) => r.inert), 'une sous-option dont le parent est ferme se declare inerte');
+    const fermes = await page.evaluate(() => [...document.querySelectorAll('article.eq-ecran')].map((a) => {
+      const tete = a.querySelector(':scope > .eq-droit:not(.is-enfant) input.eq-switch');
+      return tete && !tete.checked ? { nom: ((a.querySelector(':scope > .eq-droit strong') || {}).textContent || '').trim(), gestes: a.querySelectorAll('.eq-gestes input.eq-switch').length } : null;
+    }).filter(Boolean));
+    ok(fermes.length > 0 && fermes.every((e) => e.gestes === 0),
+      `un ecran ferme ne montre aucun de ses gestes (${fermes.map((e) => `${e.nom} : ${e.gestes}`).join(', ') || 'aucun ecran ferme'})`);
 
-    // Fermer « Voir les reservations » doit emporter ses sous-options.
-    await page.evaluate(() => {
-      const row = [...document.querySelectorAll('.staff-permission-toggle')].find((r) => /Voir les r.servations/.test(r.textContent));
-      row.querySelector('input').click();
-    });
-    await page.waitForTimeout(900);
-    const afterClose = await page.evaluate(() => (window.__QA_SAVED__ || []).slice(-1)[0] || []);
+    // Fermer « Voir les reservations » doit emporter ses sous-options, a
+    // l envoi comme a l ecran.
+    await basculer('reservations.view');
+    const afterClose = await dernierEnvoi();
     const leftovers = afterClose.filter((p) => p.startsWith('reservations.'));
     ok(leftovers.length === 0, `fermer une option ferme ses sous-options (reste : ${leftovers.join(', ') || 'rien'})`);
+    ok(await interrupteur('reservations.create') === null, 'et ses gestes quittent l ecran (« Créer une réservation » ne s offre plus)');
 
-    // Cocher « Envoyer ou relancer » quand « Voir les emails » est ferme doit
-    // rouvrir le parent : sinon le droit serait inerte.
-    await page.evaluate(() => {
-      const mail = [...document.querySelectorAll('.staff-permission-toggle')].find((r) => /Voir les emails/.test(r.textContent));
-      if (mail.classList.contains('is-on')) mail.querySelector('input').click();
-    });
-    await page.waitForTimeout(800);
-    await page.evaluate(() => {
-      const send = [...document.querySelectorAll('.staff-permission-toggle')].find((r) => /Envoyer ou relancer/.test(r.textContent));
-      send.querySelector('input').click();
-    });
-    await page.waitForTimeout(900);
-    const afterOpen = await page.evaluate(() => (window.__QA_SAVED__ || []).slice(-1)[0] || []);
-    ok(afterOpen.includes('emails.send') && afterOpen.includes('emails.view'),
-      `cocher une sous-option rouvre ce qu elle suppose (${afterOpen.filter((p) => p.startsWith('emails.')).join(' + ') || 'rien'})`);
+    // Mails fermes : « Envoyer un mail » ne s offre pas, il serait inerte.
+    if (await interrupteur('emails.view')) await basculer('emails.view');
+    ok(await interrupteur('emails.view') === false && await interrupteur('emails.send') === null,
+      'mails fermes : « Envoyer un mail » ne se propose pas');
+
+    // L ecran « L argent » n a pas d interrupteur de tete : « Encaisser »
+    // reste offert quand « Voir les montants » est ferme. Le cocher doit
+    // rouvrir ce qu il suppose, sinon le droit serait inerte.
+    if (await interrupteur('payments.view')) await basculer('payments.view');
+    const montantsFermes = await interrupteur('payments.view') === false;
+    await basculer('payments.markPaid');
+    const afterOpen = await dernierEnvoi();
+    ok(montantsFermes && afterOpen.includes('payments.markPaid') && afterOpen.includes('payments.view'),
+      `cocher une sous-option rouvre ce qu elle suppose (${afterOpen.filter((p) => p.startsWith('payments.')).join(' + ') || 'rien'})`);
 
     console.log('\n[4. Contre-epreuve : ce gate sait-il rougir ?]');
     const detector = await page.evaluate(() => {

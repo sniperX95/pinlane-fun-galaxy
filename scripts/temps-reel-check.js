@@ -389,7 +389,8 @@ async function run() {
     console.log('\n[G] un membre ajoute ailleurs');
     // =====================================================================
     await aller(B.page, 'users');
-    await attendre(B.page, () => document.querySelectorAll('.staff-member-card').length > 0, null, 8000);
+    // (selecteur suivi le 2026-11-07 : une personne est une ligne .eq-ligne de la page Equipe & acces)
+    await attendre(B.page, () => document.querySelectorAll('.eq-ligne').length > 0, null, 8000);
     serveurPartage.membres.push({ id: 'membre-nouveau', name: 'Julie Nouvelle', contact: 'julie@centre.be', roleId: 'direction', status: 'active', code: 'X', lastSeen: '' });
     bump('equipe');
     const vuMembre = await attendre(B.page, () => /Julie Nouvelle/.test((document.getElementById('staffView') || { textContent: '' }).textContent));

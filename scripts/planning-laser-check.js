@@ -873,7 +873,8 @@ const MUTATIONS = [
     vers: '' },
   // Le toucher d un groupe du jour le prend de nouveau au lieu d ouvrir sa fiche.
   { nom: 'fiche', lettre: '[L] toucher un groupe du jour ouvre SA fiche', fichier: 'assets/app-main.js',
-    de: "const toucher = fiche ? `lpToucherGroupe(${id}, event)` : `lpChoisir(${id}, '${unitKey}', event)`;",
+    // (ancre suivie le 2026-11-07 : sans le droit de deplacer, le toucher ouvre aussi la fiche)
+    de: "const toucher = fiche || !deplace ? `lpToucherGroupe(${id}, event)` : `lpChoisir(${id}, '${unitKey}', event)`;",
     vers: "const toucher = `lpChoisir(${id}, '${unitKey}', event)`;" },
   // Le contour d une case libre palit au gris d un filet (1,7:1 en clair) :
   // une case libre ne se distingue plus du fond.

@@ -319,7 +319,9 @@ const aucuneEcriture = (r) => !r.ecrit.statut.length && !r.ecrit.maj.length && !
   const contreEpreuves = [
     {
       nom: 'garde d annulation retiree : Staff bar annule',
-      de: "      if (Object.prototype.hasOwnProperty.call(body, 'status')\n        && (String(body.status || '') === 'cancelled') !== (current.status === 'cancelled')) {",
+      // (ancre suivie le 2026-11-07 : la condition vit dans changeLAnnulation,
+      // que la garde du jour passe lit aussi)
+      de: '      if (changeLAnnulation) {',
       vers: '      if (false) {',
       appel: ['PATCH', 'staff-bar', { id: 501, status: 'cancelled' }],
     },

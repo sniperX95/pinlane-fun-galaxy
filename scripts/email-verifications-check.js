@@ -93,6 +93,21 @@ function fausseBase({ lecons = [] } = {}) {
   ok(lu.activites.join(',') === 'bowling', 'activite absente du centre retiree', lu.activites.join(','));
   ok(lu.numeroReservation === '1234', 'numero cite : chiffres seulement');
   ok(v.nettoyerDemande(null, { jour: JOUR, catalogue }) === null, 'lecture muette : null, pas une demande inventee');
+  // « samedi » ecrit un samedi : le modele hesitait d un passage a l autre (banc,
+  // M13). Le code verifie les deux samedis, sauf si le client a tranche.
+  const lireUnSamedi = async (texte, dates) => v.comprendreLaDemande({ body: texte, centerId: 'libramont', jour: { date: JOUR, heureDite: '10:00' },
+    llm: async () => ({ dates, heures: ['19:00'], personnes: 12, formule: '', activites: [], numeroReservation: '', parleDeSaReservation: false, veutDesDisponibilites: true, consignesSuspectes: false }) });
+  const ambiguA = await lireUnSamedi('Nous aimerions venir samedi vers 19h.', [JOUR]);
+  const ambiguB = await lireUnSamedi('Nous aimerions venir samedi vers 19h.', [SAMEDI_PROCHAIN]);
+  ok(ambiguA.dates.join() === `${JOUR},${SAMEDI_PROCHAIN}` && ambiguB.dates.join() === `${JOUR},${SAMEDI_PROCHAIN}` && ambiguA.jourAmbigu,
+    '« samedi » un samedi : les deux samedis, quelle que soit la lecture du modele', JSON.stringify([ambiguA.dates, ambiguB.dates]));
+  const tranche = await Promise.all([
+    lireUnSamedi('On peut venir ce soir ?', [JOUR]), lireUnSamedi('Ce samedi vers 19h ?', [JOUR]),
+    lireUnSamedi('Samedi prochain vers 19h ?', [SAMEDI_PROCHAIN]), lireUnSamedi('Le samedi 14 novembre, pour 14 personnes.', [SAMEDI_PROCHAIN]),
+  ]);
+  ok(tranche.every((d) => d.dates.length === 1 && !d.jourAmbigu), 'le client a tranche (ce soir, ce samedi, samedi prochain, le 14 novembre) : un seul jour', JSON.stringify(tranche.map((d) => d.dates)));
+  ok(/peut parler d aujourd hui \(samedi 7 novembre\) ou du samedi suivant \(samedi 14 novembre\)/.test(v.verificationsEnTexte({ demande: ambiguA })),
+    'le modele qui ecrit sait que le jour est ambigu : les deux, ou demander lequel');
 
   // ── [B] LA BASE N EST LUE QUE POUR L ADRESSE QUI ECRIT ───────────────────
   console.log('\n[B] portee de la lecture en base');
@@ -165,6 +180,16 @@ function fausseBase({ lecons = [] } = {}) {
   const intrus = v.controlerLaReponse('Ecrivez a marc.voisin@example.com ou au +32 470 99 99 99.', 'Centre : info@centre.example, 061 22 33 44');
   ok(!intrus.ok && intrus.contacts.length === 2, 'adresse et telephone absents des sources : refuses', JSON.stringify(intrus));
   ok(v.controlerLaReponse('Appelez le +32 61 22 33 44.', 'Telephone : 061 22 33 44').ok, 'le telephone du centre passe, ecrit autrement');
+  // UNE PLACE DITE LIBRE doit etre une heure que le moteur a donnee (banc, M59).
+  const M59 = 'Le centre est ouvert ce samedi de 10 h à minuit, et une arrivée à 15 h reste possible pour un groupe de 8 personnes.';
+  ok(v.placesNonVerifiees(M59, { jours: [{ de: '10:00', a: 'minuit' }] }).join() === '15:00', 'place annoncee sans verification : 15 h relevee, pas 10 h (l ouverture)');
+  ok(v.placesNonVerifiees('Samedi à 15 h, il reste de la place pour 12 personnes.').join() === '15:00', 'l heure dite juste avant « il reste de la place » est relevee');
+  ok(v.placesNonVerifiees('Samedi, des départs sont possibles à 11:00, 12:30 et 22:00.', { disponibilites: [{ possible: true, heures: ['11:00', '12:30', '22:00'] }] }).length === 0, 'les heures que le moteur a donnees passent');
+  ok(v.placesNonVerifiees('15 h n est plus libre, mais 17 h 30 reste possible.', { disponibilites: [{ possible: true, heures: ['17:30'] }] }).length === 0
+    && v.placesNonVerifiees('15 h n est plus libre, mais 17 h 30 reste possible.').join() === '17:30', 'une heure niee n est pas une place ; celle dite possible, si');
+  ok(v.placesNonVerifiees('L équipe vérifie si 16 h est libre et vous répond.').length === 0 && v.placesNonVerifiees('Une partie de 1 h est possible.').length === 0,
+    'une phrase prudente, ou une duree, n annonce aucune place');
+  ok(v.placesNonVerifiees('Votre réservation est à 14 h, et la piste reste libre ensuite.', { reservations: [{ heure: '14:00' }] }).length === 0, 'l heure de sa propre reservation n est pas une place annoncee');
 
   // ── [F] LES CORRECTIONS DE L EQUIPE, MASQUEES ────────────────────────────
   console.log('\n[F] corrections de l equipe');
@@ -218,6 +243,23 @@ function fausseBase({ lecons = [] } = {}) {
   const llm3 = doubleLlm({ ecritures: [reponse('Le prix est de 45 € par personne.')] });
   const a3 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Prix', body: 'Combien pour 8 samedi ?', centerId: 'libramont', deps: baseG3, instant: INSTANT, llm: llm3 });
   ok(a3.provider === 'rules' && a3.repli === 'nombres-non-sources' && (a3.horsSources || []).includes('45'), 'nombre invente deux fois : repli, avec la raison et le nombre', JSON.stringify({ p: a3.provider, r: a3.repli, h: a3.horsSources }));
+
+  // Une place annoncee sans verification : seconde chance, puis l equipe est prevenue.
+  const lectureSansActivite = { ...lectureType, activites: [], heures: ['17:00'] };
+  const llm9 = doubleLlm({ lecture: lectureSansActivite, ecritures: [reponse('Bonjour, samedi 14 novembre, une arrivée à 17 h reste possible pour 8 personnes.'), reponse('Bonjour, pour samedi 14 novembre, dites-nous l activité voulue : l équipe vérifie les heures libres et vous répond.')] });
+  const a9 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Samedi', body: 'On peut venir samedi vers 17h a 8 ?', centerId: 'libramont', deps: fausseBase(), instant: INSTANT, llm: llm9 });
+  const ecritures9 = llm9.appels.filter((x) => x.schemaName === 'email_analysis');
+  ok(ecritures9.length === 2 && /place libre ou possible a 17:00/.test(ecritures9[1].user) && a9.provider === 'anthropic' && !a9.placesNonVerifiees && !/place à/.test(a9.alerte || ''),
+    'place annoncee sans verification : une seconde chance, corrigee', JSON.stringify({ n: ecritures9.length, p: a9.provider, a: a9.alerte }));
+  const llm10 = doubleLlm({ lecture: lectureSansActivite, ecritures: [reponse('Bonjour, samedi 14 novembre, une arrivée à 17 h reste possible pour 8 personnes.')] });
+  const a10 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Samedi', body: 'On peut venir samedi vers 17h a 8 ?', centerId: 'libramont', deps: fausseBase(), instant: INSTANT, llm: llm10 });
+  ok(a10.provider === 'anthropic' && (a10.placesNonVerifiees || []).join() === '17:00' && /annonce une place à 17 h que le moteur n a pas vérifiée/.test(a10.alerte) && a10.urgency === 'haute',
+    'il insiste : la reponse reste proposee, l equipe est prevenue en urgence', JSON.stringify({ p: a10.provider, pl: a10.placesNonVerifiees, a: a10.alerte, u: a10.urgency }));
+  const baseG11 = fausseBase();
+  baseG11.disponibilite = moteurG;
+  const llm11 = doubleLlm({ ecritures: [reponse('Bonjour, samedi 14 novembre, 15 h reste possible pour 8 personnes.')] });
+  const a11 = await agent.analyzeEmail({ from: 'julie.client@example.com', subject: 'Samedi', body: 'Vous avez de la place samedi vers 15h pour 8 ?', centerId: 'libramont', deps: baseG11, instant: INSTANT, llm: llm11 });
+  ok(llm11.appels.filter((x) => x.schemaName === 'email_analysis').length === 1 && !a11.placesNonVerifiees && !a11.alerte, 'une heure que le moteur a donnee : ni seconde chance, ni alerte', JSON.stringify({ a: a11.alerte }));
 
   // Un mail piege : alerte et urgence, meme quand le modele n en dit rien.
   const baseG4 = fausseBase();
@@ -295,6 +337,10 @@ function fausseBase({ lecons = [] } = {}) {
   delete process.env.ANTHROPIC_API_KEY;
   ok(llmProvider('mails') === null && llmProvider('sensitive') === null, 'm3 : avec la seule cle Kimi, ni mails ni donnees sensibles ne trouvent de fournisseur');
   delete process.env.KIMI_API_KEY;
+  // m4 : le controle des nombres seul laissait passer la place de M59 (15 est dans
+  // le mail du client) ; seule la garde des places la releve.
+  ok(v.controlerLaReponse(M59, 'Mail : samedi a 15h pour 8 personnes. Samedi ouvert de 10:00 a minuit.').ok && v.placesNonVerifiees(M59).length === 1,
+    'm4 : le controle des nombres acceptait la place de M59, la garde des places la refuse');
 
   restaurerEnv();
   console.log(`\nemail-verifications-check: ${echecs ? `${echecs} FAIL` : 'ALL OK'} (${reussis} ok)`);

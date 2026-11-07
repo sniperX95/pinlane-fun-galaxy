@@ -7347,7 +7347,7 @@
     const angleOpen = mkBrief.angleOpen === p.key;
     const askPublished = mkBrief.publishedAsk === p.key;
     const footer = p.kind === 'email'
-      ? `<div class="mkw-prop-actions"><button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = 'emails'; save(); renderStaff();">Ouvrir dans Emails</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrOpenCard('${escJs(p.key)}')">Réduire</button></div>`
+      ? `<div class="mkw-prop-actions">${typeof canUseStaffPage !== 'function' || canUseStaffPage('emails') ? '<button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = \'emails\'; save(); renderStaff();">Ouvrir dans Emails</button>' : ''}<button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrOpenCard('${escJs(p.key)}')">Réduire</button></div>`
       : `<div class="mkw-prop-actions">
           <button type="button" class="pv2-btn primary" onclick="mkBrCopy('${escJs(p.key)}')" ${generating || !(entry && entry.text) ? 'disabled' : ''}>${ci('copy')}Copier le post</button>
           <button type="button" class="mkw-link" onclick="mkBrAngle('${escJs(p.key)}')">Autre angle</button>

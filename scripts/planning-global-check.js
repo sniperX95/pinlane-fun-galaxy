@@ -636,13 +636,15 @@ async function structure(page, s, label) {
     }
     const t = box.querySelector('.gf-t');
     const css = t ? getComputedStyle(t) : null;
-    // (deux activites a venir d une meme ligne : le meme fond, quelle que soit l activite)
+    // (deux activites a venir d une meme ligne : le meme fond, quelle que soit l activite ;
+    // la case et la pastille de son heure, qui porte la couleur depuis le 2026-11-07)
     const teintes = [];
     box.querySelectorAll('tr.gf-r').forEach((tr) => {
       const fonds = new Map();
       tr.querySelectorAll('td.gf-a').forEach((td) => {
-        const x = td.querySelector('.gf-x.is-avenir:not(.is-libre):not(.is-credit)');
-        if (x) fonds.set(td.getAttribute('data-gf-titre'), getComputedStyle(x).backgroundColor);
+        const x = td.querySelector('.gf-x.is-avenir:not(.is-libre):not(.is-credit):not(.is-panne)');
+        const h = x && x.querySelector('.gf-x__t');
+        if (x) fonds.set(td.getAttribute('data-gf-titre'), `${getComputedStyle(x).backgroundColor} ${h ? getComputedStyle(h).backgroundColor : ''}`);
       });
       if (new Set(fonds.values()).size > 1) teintes.push([tr.getAttribute('data-gf-id'), Object.fromEntries(fonds)]);
     });
@@ -947,6 +949,7 @@ const MUTATIONS = [
   { nom: 'detail-10px', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__d { font-size: 13px;', vers: '.gf-x__d { font-size: 10px;' }] },
   { nom: 'degrade', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-x { background-image: linear-gradient(#fff0, #0001); }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'couleur-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x { background: #8a2be2; }\n.gf-a[data-gf-titre="Arcades"] .gf-x { background: #2b8a3e; }\n.gf-x__ok { position: absolute;' }] },
+  { nom: 'pastille-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x__t { background: #8a2be2; }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'ligne-sans-aria', lettre: 'A1', scenarios: [PIC], editions: [{ fichier: PG, de: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\" aria-label=\"' + gpEsc(gfAria(g, m)) + '\">'", vers: "'\" tabindex=\"0\" data-gf-id=\"' + gpEsc(g.id) + '\">'" }] },
   { nom: 'pastille-dans-le-html', lettre: 'H1', gestes: true, editions: [{ fichier: PG, de: '<span class="gf-now__h" data-gf-maintenant></span>', vers: "<span class=\"gf-now__h\" data-gf-maintenant>' + gpEsc(gpHeure(currentTimeDecimal())) + '</span>" }] },
   { nom: 'focus-perdu', lettre: 'D1', gestes: true, editions: [{ fichier: PG, de: '      if (focus && !actif.isConnected) gfRendreFocus(defile, focus);', vers: '' }] },

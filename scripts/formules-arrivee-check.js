@@ -1639,7 +1639,9 @@ function laConsole() {
   ['escapeHtml', 'formulaActivityToken', 'getFormulaActivityIds', 'getFormulaFreePassIds', 'getFormulaLaserGameCount',
     'getLaserGameCountForReservation', 'buildEditProgramFromReservation', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
     'renderCardActivityTag', 'getPlanningCardOfferLabel', 'getPlanningCardLabel', 'planningLabelWidthUnits',
-    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'renderEditFormuleBloc'].forEach((nom) => {
+    // peutAdapterLeProgramme (2026-11-07) : la vraie regle, qui lit le stub
+    // peutAdapterFormule ci-dessous (le comptoir, pas un manager).
+    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme', 'renderEditFormuleBloc'].forEach((nom) => {
     const debut = app.indexOf(`\nfunction ${nom}(`);
     const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }

@@ -20,6 +20,9 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
   renderQuickBook: () => {}, renderPos: () => {}, escapeHtml: value => String(value), escapeJsString: value => String(value),
   formatDurationLabel: value => `${value}h`, getRuntimeBowlingConfig: () => null, getFreeCount: () => 12,
   getAvailabilityLaneCount: () => 8,
+  // La table des gestes de l ecran (2026-11-07) : ce bac a tous les droits,
+  // comme quand ces fonctions lisaient canUseStaffPermission absent.
+  peutGeste: () => true,
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;

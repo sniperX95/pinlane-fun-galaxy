@@ -223,7 +223,9 @@ async function groupeConsole(mutations = []) {
     if (src.split(mutation.de).length !== 2) throw new Error(`ancre absente ou multiple dans assets/app-main.js : ${mutation.de.slice(0, 70)}`);
     src = src.replace(mutation.de, mutation.vers);
   }
-  const bac = { niveau: 'non', canUseStaffPermission: () => true, prixDossierConnu: () => true, escapeHtml: String };
+  // peutGeste (2026-11-07) : la table des gestes de l ecran, ici avec tous les
+  // droits comme canUseStaffPermission ; seul le niveau de prix varie.
+  const bac = { niveau: 'non', canUseStaffPermission: () => true, peutGeste: () => true, prixDossierConnu: () => true, escapeHtml: String };
   bac.niveauStaff = (cle) => (cle === 'prix' ? bac.niveau : 'oui');
   vm.createContext(bac);
   vm.runInContext(`${fonctionDuSource(src, 'renderGroupeEncaisseAbsence')}\nthis.rendre = renderGroupeEncaisseAbsence;`, bac);

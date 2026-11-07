@@ -21,7 +21,10 @@ function sandbox(extra = {}) {
   const s = { console, URL, Date, crypto: webcrypto, setTimeout, clearTimeout, encodeURIComponent,
     state: { adminCenterId: 'libramont' }, location: { origin: 'http://127.0.0.1' },
     renderStaffEmailsPage() {}, renderStaffCampaignsPage() {}, scheduleCampaignsRender() {}, requestOpsAdminLoad() {}, toast() {}, save() {},
-    esc: s => String(s ?? ''), money: n => String(n ?? 0) + ' €', ...extra };
+    esc: s => String(s ?? ''), money: n => String(n ?? 0) + ' €',
+    // La table des gestes de l ecran (2026-11-07) : tous les droits, comme
+    // quand ces fonctions lisaient canUseStaffPermission absent.
+    peutGeste: () => true, ...extra };
   s.window = s; return vm.createContext(s);
 }
 async function inbound() {

@@ -110,10 +110,14 @@ require.cache[pgPath] = { id: pgPath, filename: pgPath, loaded: true, exports: {
 const dossiers = new Map();
 const ecrit = { statut: [], maj: [], suppr: [], secours: [] };
 const journalAudit = [];
+// Un jour A VENIR (2026-11-07) : le serveur demande maintenant « Changer un jour
+// passé » pour toucher un dossier d hier. Une date figee finit par passer, et
+// chaque garde de ce gate se heurterait d abord a celle-la (planning.past).
+const JOUR_A_VENIR = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 function dossier(r) {
   return {
     id: r.id, centerId: 'libramont', channel: 'staff', name: 'Groupe Essai', phone: '0470000000', email: 'essai@example.test',
-    date: '2026-10-24', startTime: '15:00', duration: 1, totalDuration: 1, lanes: [3], pax: 6, status: 'pending',
+    date: JOUR_A_VENIR, startTime: '15:00', duration: 1, totalDuration: 1, lanes: [3], pax: 6, status: 'pending',
     basePrice: 60, price: 60, type: 'bowling', formuleId: null, label: 'Bowling', occasion: '', extras: [], paymentMethod: null,
     notes: '', opsPlan: null, riskLevel: '', riskScore: null, validationStatus: 'confirmed', activityProgress: {}, program: null,
     createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-10-12T10:00:00.000Z', ...r,

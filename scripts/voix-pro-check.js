@@ -46,7 +46,7 @@ const CLIENT = [
   'assets/staff-menu.js', 'assets/staff-auth-session.js', 'assets/ops-live.js', 'assets/ops-progress.js',
   'assets/pinlane-daterange.js', 'assets/boot-view.js', 'assets/fungalaxy-booking.js', 'assets/pinlane-landing.js',
   'assets/ops-console.js', 'assets/founder-cockpit.js', 'assets/founder-centres.js', 'assets/founder-clients-platform.js',
-  'assets/founder-tarifs.js', 'assets/founder-team.js',
+  'assets/founder-tarifs.js', 'assets/founder-team.js', 'assets/pinlane-assistant.js',
   'demo/demo.js',
 ];
 const HTML = ['index.html', 'demo/index.html'];
@@ -331,7 +331,7 @@ if (!CONTRE) {
   // Le lecteur lit vraiment les litteraux : il doit retrouver des phrases
   // connues, sinon un « zero tutoiement » ne prouverait rien.
   const temoins = [
-    ['assets/staff-pages-v2.js', 'Posez votre question en quelques mots.'],
+    ['assets/pinlane-assistant.js', 'Votre message est trop long.'],
     ['assets/app-main.js', 'Retirez-la avec la croix.'],
     ['lib/marketing-brief.js', 'je garde un œil sur vos réservations'],
     ['assets/app-main.js', 'Rôle supprimé.'],
@@ -353,13 +353,13 @@ if (!CONTRE) {
 // ── Contre-preuves : chaque mutation remet une faute, le gate doit la voir ───
 console.log('voix-pro-check --contre-preuves');
 const MUTATIONS = [
-  { nom: 'un toast tutoie de nouveau', fichier: 'assets/staff-pages-v2.js', de: "toast('Posez votre question en quelques mots.')", vers: "toast('Pose ta question en quelques mots.')" },
+  { nom: 'un toast tutoie de nouveau', fichier: 'assets/pinlane-assistant.js', de: "toast('Votre message est trop long.')", vers: "toast('Ton message est trop long.')" },
   { nom: 'un imperatif singulier revient', fichier: 'assets/staff-pages-v2.js', de: "toast('Collez le texte du mail reçu.')", vers: "toast('Colle le texte du mail reçu.')" },
   { nom: 'un imperatif a pronom revient', fichier: 'assets/app-main.js', de: 'Retirez-la avec la croix.', vers: 'Retire-la avec la croix.' },
-  { nom: 'un possessif dans un gabarit multiligne', fichier: 'assets/staff-pages-v2.js', de: '<h3>Ce que je sais de votre centre</h3>', vers: '<h3>Ce que je sais de ton centre</h3>' },
+  { nom: 'un possessif dans un gabarit multiligne', fichier: 'assets/pinlane-assistant.js', de: 'data-ast-convs aria-label="Vos conversations"', vers: 'data-ast-convs aria-label="Tes conversations"' },
   { nom: 'une phrase du brief serveur tutoie', fichier: 'lib/marketing-brief.js', de: 'je garde un œil sur vos réservations', vers: 'je garde un œil sur tes réservations' },
   { nom: 'une legende client tutoie', fichier: 'lib/marketing-brain.js', de: 'Réservez votre créneau : 30 secondes.', vers: 'Réserve ton créneau : 30 secondes.' },
-  { nom: 'le jargon revient', fichier: 'assets/staff-pages-v2.js', de: '${b.dataDays || 0} j sur 90</em>', vers: '${b.dataDays || 0} j de données, verdicts causaux vers 90 j</em>' },
+  { nom: 'le jargon revient', fichier: 'assets/pinlane-assistant.js', de: 'lit vos données et ne modifie rien.</p>', vers: 'lit vos données, verdicts causaux vers 90 j.</p>' },
   { nom: 'une page HTML tutoie', fichier: 'index.html', de: '<span class="pb-res__mot"> Réservation</span>', vers: '<span class="pb-res__mot"> Ta réservation</span>', toutes: true },
   { nom: 'un toast perd ses accents', fichier: 'assets/app-main.js', de: "'Rôle supprimé.'", vers: "'Role supprime.'" },
   { nom: 'un libelle de periode perd ses accents', fichier: 'assets/pinlane-daterange.js', de: "label: 'Cette année'", vers: "label: 'Cette annee'" },

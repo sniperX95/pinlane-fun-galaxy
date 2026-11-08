@@ -24030,6 +24030,7 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   setPageVisibility('staffPricingPage', pricingActive);
   setPageVisibility('staffEmailsPage', emailsActive);
   setPageVisibility('staffCampaignsPage', campaignsActive);
+  document.body.classList.toggle('page-assistant', campaignsActive);
   setPageVisibility('staffUtilityPage', utilityActive);
   setPageVisibility('staffCockpitPage', cockpitActive);
   ['#planningBarre', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {

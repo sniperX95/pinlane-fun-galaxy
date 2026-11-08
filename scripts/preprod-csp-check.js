@@ -20,90 +20,7 @@ function check(label, condition, detail = '') {
   if (!condition) failures += 1;
 }
 
-function marketingHarness() {
-  const filename = path.join(ROOT, 'scripts/marketing-ia-check.js');
-  const source = fs.readFileSync(filename, 'utf8');
-  const footer = source.lastIndexOf('main().catch(');
-  assert(footer > 0, 'point d entree du gate marketing introuvable');
-  const sandbox = { require: createRequire(filename), __dirname: path.dirname(filename), process,
-    console, module: { exports: {} } };
-  // Charge les vrais mocks/helpers, sans executer le long gate complet.
-  vm.runInNewContext(source.slice(0, footer) + '\nmodule.exports = { installMock, '
-    + 'waitForAsk: typeof waitForAsk === "function" ? waitForAsk : null };', sandbox, { filename });
-  return { ...sandbox.module.exports, source };
-}
-
-async function marketingDelayCheck() {
-  const harness = marketingHarness();
-  const server = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    if (url.pathname.startsWith('/api/')) { res.writeHead(503); res.end('API non simulee'); return; }
-    const file = path.join(ROOT, url.pathname === '/' ? 'index.html' : url.pathname);
-    const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml' };
-    fs.readFile(file, (err, body) => { res.writeHead(err ? 404 : 200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream' }); res.end(err ? '' : body); });
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, serviceWorkers: 'block' });
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await page.route('**/*', route => new URL(route.request().url()).origin === base
-      ? route.continue() : route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
-    await harness.installMock(page);
-    await page.goto(base, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => typeof window.setView === 'function');
-    await page.evaluate(() => { state.staffMenuPage = 'campaigns'; state.staffTheme = 'dark'; save(); setView('staff'); renderStaff(); });
-    await page.waitForFunction(() => document.querySelector('.mkw-chip-suggest'));
-    const send = question => page.evaluate(q => {
-      window.mkwMode('demander');
-      const input = document.getElementById('brAskInput');
-      input.value = q; input.dispatchEvent(new Event('input'));
-      const asksBefore = window.__QA_ASKS__.length;
-      window.mkwSend();
-      return { question: q, asksBefore, centerId: 'libramont' };
-    }, question);
-    await send('Que fait Bowling Arlon ?');
-    await page.waitForFunction(() => /Ce que fait Bowling Arlon/.test(document.querySelector('.mkw-turn-answer')?.textContent || '') && !document.querySelector('[aria-busy="true"]'));
-    // Retarde la CONSOMMATION du corps, pas le contenu ni le rendu produit.
-    await page.evaluate(() => {
-      const original = window.fetch;
-      window.fetch = async (input, init = {}) => {
-        const response = await original(input, init);
-        if (String(init.body || '').includes('capitale du danemark')) {
-          const read = response.text.bind(response);
-          response.text = async () => { await new Promise(resolve => setTimeout(resolve, 1400)); return read(); };
-        }
-        return response;
-      };
-    });
-    let result;
-    if (harness.waitForAsk) {
-      const sent = await send('quelle est la capitale du danemark');
-      const start = Date.now();
-      result = await harness.waitForAsk(page, sent);
-      check('G143 attend le corps retarde au-dela de 1 seconde', Date.now() - start >= 1400, JSON.stringify(result));
-    } else {
-      // Red-first : execute EXACTEMENT le bloc fautif du gate courant.
-      const begin = harness.source.indexOf('    const unknown = await page.evaluate(');
-      const end = harness.source.indexOf('\n    ok(', begin);
-      assert(begin > 0 && end > begin);
-      result = await vm.runInNewContext('(async () => {' + harness.source.slice(begin, end) + '; return unknown; })()', { page });
-      result.pending = await page.locator('[aria-busy="true"]').count() > 0;
-      console.log('G143 ancienne attente / corps retarde:', JSON.stringify(result));
-    }
-    check('G143 nouvelle reponse hors perimetre identifiee', /pas mon sujet/i.test(result.text) && !/copenhague/i.test(result.text) && !result.pending);
-    await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]'));
-    if (harness.waitForAsk) {
-      let rejected = false;
-      try { await harness.waitForAsk(page, { question: 'question jamais envoyee', asksBefore: 999, centerId: 'libramont' }, 150); }
-      catch (error) { rejected = /pending|requests|text/.test(error.message); console.log('G143 timeout attendu:', error.message); }
-      check('G143 une ancienne reponse ne satisfait pas une nouvelle question', rejected);
-    }
-    check('G143 aucune erreur JS', errors.length === 0, JSON.stringify(errors));
-  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
-}
+const { installMock } = require('./console-mock-fixture');
 
 function loadMiddleware(env = {}, config = deploymentConfig) {
   const filename = path.join(ROOT, 'middleware.ts');
@@ -223,7 +140,7 @@ async function renderCheck() {
       unmocked.push(url.href);
       return route.abort();
     });
-    await marketingHarness().installMock(page);
+    await installMock(page);
     await page.addInitScript(() => {
       window.__CSP_VIOLATIONS__ = [];
       document.addEventListener('securitypolicyviolation', event => window.__CSP_VIOLATIONS__.push({ directive: event.effectiveDirective, uri: event.blockedURI }));
@@ -238,9 +155,16 @@ async function renderCheck() {
     }
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.evaluate(() => { state.staffMenuPage = 'campaigns'; state.staffTheme = 'dark'; save(); setView('staff'); renderStaff(); });
-    await page.waitForFunction(() => document.querySelector('.mkw-mode'));
-    await page.locator('.mkw-mode').filter({ hasText: 'Demander' }).click();
-    check('DEP01 onclick inline existant fonctionne', await page.locator('.mkw-mode').filter({ hasText: 'Demander' }).getAttribute('class').then(value => /active/.test(value)));
+    await page.waitForFunction(() => document.querySelector('.ast'));
+    check('DEP01 la page Marketing se monte sous CSP complete', await page.locator('[data-ast-champ]').count() === 1);
+    check('DEP01 onclick inline existant fonctionne', await page.evaluate(() => {
+      const bouton = document.createElement('button');
+      bouton.setAttribute('onclick', 'window.__CSP_INLINE__ = true');
+      document.body.append(bouton);
+      bouton.click();
+      bouton.remove();
+      return window.__CSP_INLINE__ === true;
+    }));
     check('DEP01 script inline initial + analytics autorise', await page.evaluate(() => Boolean(document.documentElement.dataset.theme) && window.__CSP_ANALYTICS_STUB__ === true));
     const integrations = await page.evaluate(async () => {
       const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'https://fonts.googleapis.com/csp-fixture';
@@ -275,7 +199,6 @@ function clockCheck() {
 }
 
 (async () => {
-  await marketingDelayCheck();
   await cspCheck();
   await renderCheck();
   clockCheck();

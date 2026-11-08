@@ -67,7 +67,6 @@
     "test:crm-clients": "node scripts/crm-clients-check.js",
     "test:lanes-laser": "node scripts/lanes-laser-pages-check.js",
     "test:console-a11y": "node scripts/console-a11y-check.js",
-    "test:marketing-ia": "node scripts/marketing-ia-check.js",
     "test:emails-page": "node scripts/emails-page-check.js",
     "test:emails-automation": "node scripts/emails-automation-check.js",
     "test:emails-threads-ui": "node scripts/emails-threads-ui-check.js",
@@ -155,6 +154,7 @@
     "test:plaine-journee": "node scripts/plaine-journee-check.js",
     "test:accueil-vivant": "node scripts/accueil-vivant-check.js && node scripts/accueil-vivant-check.js --contre-preuves",
     "test:pilotage": "node scripts/pilotage-check.js && node scripts/pilotage-check.js --contre-preuves",
+    "test:assistant": "node scripts/assistant-check.js && node scripts/assistant-check.js --contre-preuves",
     "test:terrain": "node scripts/terrain-check.js && node scripts/terrain-check.js --contre-preuves",
     "test:voix-pro": "node scripts/voix-pro-check.js && node scripts/voix-pro-check.js --contre-preuves",
     "test:journee-vraie": "node scripts/journee-vraie-check.js && node scripts/journee-vraie-check.js --contre-preuves",
@@ -396,7 +396,6 @@
     "test:preprod-loading": "node scripts/preprod-loading-check.js",
     "test:preprod-direct-mail": "node scripts/preprod-direct-mail-check.js",
     "test:preprod-marketing-job": "node scripts/preprod-marketing-job-check.js",
-    "test:preprod-frontend-header": "node scripts/preprod-frontend-header-check.js",
     "test:activity-card-layout": "node scripts/activity-card-layout-check.js",
     "test:laser-reservation-editor": "node scripts/laser-reservation-editor-check.js",
     "test:laser-move-truth": "node scripts/laser-move-truth-check.js",
@@ -424,6 +423,7 @@
     "test:planning-persistent-move": "node scripts/planning-persistent-move-check.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@vercel/functions": "^2.2.13",
     "pg": "^8.20.0"
   },

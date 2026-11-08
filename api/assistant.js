@@ -1,0 +1,171 @@
+// L ASSISTANT DU CENTRE, POUR LE NAVIGATEUR (2026-11-08). Une question entre, la reponse sort au
+// fil de l eau (text/event-stream) : les etapes, les sources, le texte, puis le bilan de verite.
+const { readJson, sendError, setCors } = require('../lib/http');
+const { listCentersForSession } = require('../lib/center-scope');
+const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
+const { actorFromSession, newRequestId, writeAuditLog } = require('../lib/audit-log');
+const { isBudgetExhausted } = require('../lib/llm-budget');
+const { getPool } = require('../lib/database');
+const { creerContexte, PERMISSIONS_PAGE } = require('../lib/assistant-outils');
+const { bilan, MODELES, POSTE, repondre } = require('../lib/assistant-agent');
+
+const MESSAGES_MAX = 40;
+const QUESTION_MAX = 6000;
+const CONVERSATION_MAX = 60000;
+const QUESTIONS_PAR_FENETRE = 30;
+const FENETRE_MS = 10 * 60 * 1000;
+const recentes = new Map();
+
+function tropDeQuestions(cle) {
+  const maintenant = Date.now();
+  const gardees = (recentes.get(cle) || []).filter((t) => maintenant - t < FENETRE_MS);
+  if (gardees.length >= QUESTIONS_PAR_FENETRE) {
+    recentes.set(cle, gardees);
+    return true;
+  }
+  gardees.push(maintenant);
+  recentes.set(cle, gardees);
+  return false;
+}
+
+// Une conversation ne vient que du navigateur de ce gerant : on la borne, on ne lui fait pas
+// confiance pour le perimetre (les droits se lisent sur la session). Les renvois [S3] d une
+// ancienne reponse sont retires : chaque question a ses propres sources, S3 n y designe plus rien.
+function messagesValides(brut) {
+  if (!Array.isArray(brut) || !brut.length) return null;
+  const propres = brut.slice(-MESSAGES_MAX)
+    .map((m) => {
+      const role = m && m.role === 'assistant' ? 'assistant' : 'user';
+      const contenu = String((m && m.content) || '');
+      return { role, content: role === 'assistant' ? contenu.replace(/\s*\[[SG]\d+\]/g, '') : contenu };
+    })
+    .filter((m) => m.content.trim());
+  if (!propres.length || propres[propres.length - 1].role !== 'user') return null;
+  if (propres[propres.length - 1].content.length > QUESTION_MAX) return null;
+  const gardes = [];
+  let taille = 0;
+  for (let i = propres.length - 1; i >= 0; i -= 1) {
+    taille += propres[i].content.length;
+    if (taille > CONVERSATION_MAX && gardes.length) break;
+    gardes.unshift(propres[i]);
+  }
+  while (gardes.length && gardes[0].role !== 'user') gardes.shift();
+  return gardes.length ? gardes : null;
+}
+
+function aujourdhuiBruxelles() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+// Le navigateur ne recoit que les noms des clients qui figurent dans cette reponse.
+function identitesUtiles(ctx, texte) {
+  const vus = new Set(`${texte} ${JSON.stringify(ctx.sources.map((s) => s.lignes))}`.match(/\b[A-Z]\d{4}\b/g) || []);
+  return Object.fromEntries(Object.entries(ctx.identites).filter(([code]) => vus.has(code)));
+}
+
+async function centresDuClient(session, centreOuvert) {
+  const lus = await listCentersForSession(getPool(), session).catch(() => []);
+  const tous = (Array.isArray(lus) ? lus : []).filter((c) => c && c.id && c.id !== 'all');
+  const ouvert = tous.find((c) => c.id === centreOuvert);
+  // Un compte plateforme voit tous les centres : la conversation reste chez le client du centre ouvert.
+  const memeClient = ouvert && ouvert.clientId ? tous.filter((c) => c.clientId === ouvert.clientId) : tous;
+  const centres = memeClient.slice(0, 20).map((c) => ({ id: c.id, name: c.name || c.id }));
+  if (!centres.some((c) => c.id === centreOuvert)) centres.unshift({ id: centreOuvert, name: centreOuvert });
+  return centres;
+}
+
+module.exports = async (req, res) => {
+  setCors(res, 'POST,OPTIONS');
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+  if (req.method !== 'POST') {
+    sendError(res, 405, 'Méthode non autorisée.');
+    return;
+  }
+
+  let enFlux = false;
+  try {
+    const body = await readJson(req);
+    const session = await requireStaffPermission(req, res, PERMISSIONS_PAGE, { centerId: body.centerId || '' });
+    if (!session) return;
+    const centreOuvert = session.authorizedCenterId;
+    if (!centreOuvert || centreOuvert === 'all') {
+      sendError(res, 422, "Choisissez un centre pour parler à l'assistant.");
+      return;
+    }
+    const messages = messagesValides(body.messages);
+    if (!messages) {
+      sendError(res, 400, 'Votre message est vide ou trop long.');
+      return;
+    }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      sendError(res, 503, "L'assistant n'est pas encore branché.");
+      return;
+    }
+    if (isBudgetExhausted(POSTE)) {
+      sendError(res, 429, "Le plafond mensuel de l'assistant est atteint.");
+      return;
+    }
+    const membre = (session.member && session.member.id) || 'centre';
+    if (tropDeQuestions(`${centreOuvert}:${membre}`)) {
+      sendError(res, 429, "Trop de questions d'un coup. Réessayez dans quelques minutes.");
+      return;
+    }
+    const modele = Object.prototype.hasOwnProperty.call(MODELES, body.modele) ? body.modele : 'haiku';
+    const centres = await centresDuClient(session, centreOuvert);
+    const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles() });
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    enFlux = true;
+    const coupure = new AbortController();
+    // Sur res et pas sur req : req se ferme des que le corps est lu.
+    res.on('close', () => { if (!res.writableEnded) coupure.abort(); });
+    const emettre = (type, donnees) => {
+      if (!res.writableEnded) res.write(`event: ${type}\ndata: ${JSON.stringify(donnees)}\n\n`);
+    };
+    // Un commentaire toutes les 15 s : un fil muet pendant un long calcul ne se fait pas couper.
+    const pouls = setInterval(() => { if (!res.writableEnded) res.write(': pouls\n\n'); }, 15000);
+
+    let resultat = null;
+    try {
+      emettre('debut', { modele: MODELES[modele].nom, centres });
+      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), emettre, signal: coupure.signal });
+      const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
+      emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele });
+    } finally {
+      clearInterval(pouls);
+    }
+    // La question elle-meme n entre pas au journal : seul le fait qu elle a ete posee.
+    writeAuditLog({
+      centerId: centreOuvert,
+      ...actorFromSession(session),
+      surface: 'api/assistant.js',
+      action: 'assistantQuestion',
+      method: 'POST',
+      entityType: 'assistant',
+      entityId: '',
+      outcome: 'success',
+      changes: {},
+      context: { modele, tours: resultat.tours, appelsOutils: resultat.appelsOutils, coutUsd: Math.round(resultat.cout * 10000) / 10000 },
+      requestId: newRequestId(),
+    }).catch(() => {});
+    res.end();
+  } catch (error) {
+    if (!enFlux) {
+      sendError(res, error.statusCode || 500, error.expose ? error.message : "L'assistant est indisponible pour le moment.");
+      return;
+    }
+    if (!res.writableEnded) {
+      const interrompu = error && error.name === 'APIUserAbortError';
+      if (!interrompu) res.write(`event: erreur\ndata: ${JSON.stringify({ message: error && error.expose ? error.message : "L'assistant a été interrompu. Réessayez." })}\n\n`);
+      res.end();
+    }
+  }
+};

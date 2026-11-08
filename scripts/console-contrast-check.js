@@ -702,6 +702,23 @@ function staticChecks() {
   });
 }
 
+// La page Marketing vide n a presque rien a mesurer : on y ouvre une vraie reponse et sa source.
+async function remplirConversation(page) {
+  await page.evaluate(() => {
+    const cle = `pinlane-assistant:v1:${state.adminCenterId || 'libramont'}:${(typeof getStaffSessionMemberId === 'function' && getStaffSessionMemberId()) || 'poste'}`;
+    const source = { id: 'S1', titre: 'Réservations par mois', detail: 'Banc de contraste.', colonnes: [{ cle: 'mois', nom: 'Mois', type: 'texte' }, { cle: 'n', nom: 'Réservations', type: 'entier' }], lignes: [{ mois: '2026-09', n: 10 }, { mois: '2026-10', n: 12 }], ouvrables: false, lien: { page: 'reservations' } };
+    localStorage.setItem(cle, JSON.stringify({ modele: 'haiku', conversations: [{ id: 'c1', titre: 'Une question', maj: Date.now(), messages: [
+      { role: 'user', texte: 'Combien de réservations ?' },
+      { id: 'm1', role: 'assistant', statut: 'fini', texte: 'Il y a **12 réservations** en octobre [S1].\n\n| Mois | Réservations |\n|---|---|\n| octobre | 12 [S1] |\n\nUne suite de phrase pour la lecture.', sources: [source], graphiques: [], etapes: [{ id: 't1', libelle: 'Je croise les réservations', etat: 'fini', source: 'S1' }], etapesOuvertes: true, verite: { chiffresSansSource: ['99 €'] }, modele: 'claude-haiku-5-5' },
+    ] }] }));
+    document.getElementById('staffCampaignsPage').innerHTML = '';
+    window.renderStaffCampaignsPage();
+    document.querySelector('[data-ast-conv]').click();
+    document.querySelector('.ast-r-texte .ast-cite').click();
+  });
+  await page.waitForTimeout(250);
+}
+
 async function main() {
   staticChecks();
   const server = await serveStatic();
@@ -717,6 +734,7 @@ async function main() {
       for (const s of SCREENS) {
         await gotoScreen(page, s);
         await setTheme(page, theme); // un re-rendu repose le theme depuis state
+        if (s.id === 'campaigns') await remplirConversation(page);
         const label = `${theme} · ${s.label}`;
         const rows = await sweep(page, label);
         all.push(...rows);

@@ -76,13 +76,13 @@ ok(offenders.length === 0, `aucune balise <header> rendue (trouve : ${offenders.
 // ===========================================================================
 console.log('\n[3] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
 // ===========================================================================
-const target = path.join(ASSETS, 'staff-pages-v2.js');
+const target = path.join(ASSETS, 'pinlane-assistant.js');
 const original = fs.readFileSync(target, 'utf8');
-const anchor = '<section class="mkw-head">';
+const anchor = '<div class="ast-tete">';
 if ((original.split(anchor).length - 1) !== 1) {
-  ok(false, 'ancre de mutation introuvable ou ambigue dans staff-pages-v2.js');
+  ok(false, 'ancre de mutation introuvable ou ambigue dans pinlane-assistant.js');
 } else {
-  fs.writeFileSync(target, original.replace(anchor, '<header class="mkw-head">'));
+  fs.writeFileSync(target, original.replace(anchor, '<header class="ast-tete">'));
   let caught = false;
   try {
     caught = stripComments(fs.readFileSync(target, 'utf8')).some((line) => /<header[\s>]/.test(line));
@@ -90,8 +90,8 @@ if ((original.split(anchor).length - 1) !== 1) {
     fs.writeFileSync(target, original); // restauration par edition inverse
   }
   ok(caught, 'en-tete Marketing repasse en <header> : le gate ROUGIRAIT');
-  ok(!fs.readFileSync(target, 'utf8').includes(anchor.replace('section', 'header')),
-    'restauration inverse : le fichier est revenu a <section>');
+  ok(!fs.readFileSync(target, 'utf8').includes(anchor.replace('div', 'header')),
+    'restauration inverse : le fichier est revenu a <div>');
 }
 
 if (failures) {

@@ -123,6 +123,8 @@ function mockNavigateur(cfg) {
     init = init || {};
     var u = new URL(typeof input === 'string' ? input : input.url, location.origin);
     var m = String(init.method || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
+    // L assistant parle en flux : ce faux fetch ne sait pas en rendre, le gate le route lui-meme.
+    if (u.pathname === '/api/assistant') return natif(input, init);
     // UN GATE PEUT Y BRANCHER DU VRAI CODE SERVEUR EN LECTURE (window.__fixtureLecture, pose par
     // page.exposeFunction avant le chargement, scripts/pilotage-fixture.js).
     if (m === 'GET' && typeof window.__fixtureLecture === 'function' && u.pathname.indexOf('/api/') === 0) {

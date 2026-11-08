@@ -164,6 +164,8 @@ export default async function middleware(request: Request) {
     '/api/admin-range',
     '/api/inbound-email',
     '/api/marketing-agents',
+    // L assistant de la page Marketing verifie la session et les droits lui-meme.
+    '/api/assistant',
     '/api/r',
     '/api/u',
     '/api/ops',

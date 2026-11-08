@@ -878,9 +878,97 @@
     keepScaled(el, function () { trendChart(host, opts); });
   }
 
+  // ---- Plusieurs courbes sur une echelle (assistant, 2026-11-08) ------------------
+  // Trois series au plus : la palette validee n a que trois teintes. Le survol lit toutes les
+  // series au meme rang, une valeur absente coupe la courbe sans valoir zero.
+  function multiChart(host, opts) {
+    var el = resolveHost(host);
+    if (!el) return;
+    var o = opts || {};
+    var format = o.format || 'int';
+    var labels = Array.isArray(o.labels) ? o.labels.map(String) : [];
+    var series = (Array.isArray(o.series) ? o.series : []).slice(0, 3).map(function (s) {
+      return { nom: String(s.nom), valeurs: labels.map(function (_, i) { var v = s.valeurs ? s.valeurs[i] : null; return v == null || !Number.isFinite(Number(v)) ? null : Number(v); }) };
+    });
+    if (!labels.length || !series.length) { renderEmpty(el); return; }
+    var max = 0;
+    series.forEach(function (s) { s.valeurs.forEach(function (v) { if (v != null && v > max) max = v; }); });
+    if (!(max > 0)) { renderEmpty(el, FLAT_TEXT); return; }
+    var height = clampHeight(o.height, 240);
+    var scale = buildScale(max, format === 'percent' ? 'int' : format);
+    var vbW = hostWidth(el);
+    var innerW = vbW - PAD.l - PAD.r;
+    var innerH = height - PAD.t - PAD.b;
+    var n = labels.length;
+    var xDe = function (i) { return n === 1 ? PAD.l + innerW / 2 : PAD.l + (innerW * i) / (n - 1); };
+    var traces = series.map(function (s) {
+      return s.valeurs.map(function (v, i) { return { x: xDe(i), y: v == null ? null : PAD.t + innerH * (1 - v / scale.top), value: v }; });
+    });
+    var parts = [gridMarkup(scale, format, height, vbW), xLabelsMarkup(labels.map(function (label, i) { return { x: xDe(i), label: label }; }), height, vbW)];
+    traces.forEach(function (pts, k) { parts.push('<path class="plc-multi-line ton-' + (k + 1) + '" d="' + trendLineD(pts) + '"></path>'); });
+    parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(PAD.t) + '" y2="' + round2(PAD.t + innerH) + '"></line>'
+      + series.map(function (_, k) { return '<circle class="plc-multi-dot ton-' + (k + 1) + '" cx="0" cy="0" r="4"></circle>'; }).join('') + '</g>');
+    var noms = series.map(function (s) { return s.nom; }).join(', ');
+    var wrap = mountChart(el, 'plc-multi-wrap', chartFrame(parts.join(''), height, o.ariaLabel || ('Evolution de ' + noms), vbW), false);
+    el.insertAdjacentHTML('afterbegin', '<div class="plc-multi-legende">' + series.map(function (s, k) { return '<span><i class="ton-' + (k + 1) + '"></i>' + esc(s.nom) + '</span>'; }).join('') + '</div>');
+    if (wrap) cablerMulti(wrap, traces, series, labels, height, vbW, format);
+    keepScaled(el, function () { multiChart(host, opts); });
+  }
+
+  function cablerMulti(wrap, traces, series, labels, height, vbW, format) {
+    var svg = wrap.querySelector('.plc-svg');
+    var cross = wrap.querySelector('.plc-crosshair');
+    var points = wrap.querySelectorAll('.plc-multi-dot');
+    if (!svg || !cross) return;
+    var tip = makeTip(wrap);
+    tip.classList.add('plc-tip-trend');
+    var courant = -1;
+    function poser(idx) {
+      idx = Math.max(0, Math.min(labels.length - 1, idx));
+      courant = idx;
+      var srect = svg.getBoundingClientRect();
+      if (!(srect.width > 0) || !(srect.height > 0)) return;
+      var x = traces[0][idx].x;
+      cross.setAttribute('x1', round2(x));
+      cross.setAttribute('x2', round2(x));
+      var haut = height / 2;
+      traces.forEach(function (pts, k) {
+        var p = pts[idx];
+        points[k].style.display = p.y == null ? 'none' : '';
+        if (p.y != null) { points[k].setAttribute('cx', round2(p.x)); points[k].setAttribute('cy', round2(p.y)); haut = Math.min(haut, p.y); }
+      });
+      var html = '<span class="plc-tip-label">' + esc(labels[idx]) + '</span>' + series.map(function (s, k) {
+        return '<span class="plc-tip-row"><i class="plc-tip-key plc-multi-cle ton-' + (k + 1) + '"></i><span class="plc-tip-compare">' + esc(s.nom) + '</span><b class="plc-tip-value">' + esc(s.valeurs[idx] == null ? 'rien' : formatValue(s.valeurs[idx], format)) + '</b></span>';
+      }).join('');
+      var wrect = wrap.getBoundingClientRect();
+      showTip(wrap, tip, html, (x / vbW) * srect.width + (srect.left - wrect.left), (haut / height) * srect.height + (srect.top - wrect.top));
+    }
+    function versRang(ev) {
+      var srect = svg.getBoundingClientRect();
+      if (!(srect.width > 0)) return 0;
+      var sx = (ev.clientX - srect.left) / srect.width * vbW;
+      var rang = 0;
+      var ecart = Infinity;
+      traces[0].forEach(function (p, i) { var d = Math.abs(p.x - sx); if (d < ecart) { ecart = d; rang = i; } });
+      return rang;
+    }
+    wrap.addEventListener('pointermove', function (ev) { poser(versRang(ev)); });
+    wrap.addEventListener('pointerdown', function (ev) { poser(versRang(ev)); });
+    wrap.addEventListener('pointerleave', function (ev) { if (ev.pointerType !== 'touch') hideTip(wrap, tip); });
+    wrap.setAttribute('tabindex', '0');
+    wrap.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+      ev.preventDefault();
+      poser(courant < 0 ? labels.length - 1 : courant + (ev.key === 'ArrowRight' ? 1 : -1));
+    });
+    wrap.addEventListener('focus', function () { if (courant < 0) poser(labels.length - 1); });
+    wrap.addEventListener('blur', function () { hideTip(wrap, tip); courant = -1; });
+  }
+
   window.PinlaneCharts = {
     lineChart: lineChart,
     trendChart: trendChart,
+    multiChart: multiChart,
     barChart: barChart,
     donutChart: donutChart,
     heatmapChart: heatmapChart,

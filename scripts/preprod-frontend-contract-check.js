@@ -95,27 +95,6 @@ async function requestReply() {
   item.email = 'qa@example.test'; s.staffRequestReplyDraft(73, 'body', ''); await s.staffRequestSendReply(73);
   ok(posts.length === beforeInvalid, 'C2-request-validation-no-post', posts.length);
 }
-const sources = ['birthday_j30', 'winback', 'post_visit', 'campaign', 'manual', 'other'].map((key, i) => ({ key, label: 'Source ' + (i + 1), sent: null, conversions: null, revenue: null }));
-async function roi() {
-  let payload;
-  const s = sandbox({ mkBrief: { data: { receipts: [], paie: { euros: 900, young: false } }, period: 30, payOpen: true }, apiRequest: async () => { if (payload instanceof Error) throw payload; return payload; } });
-  vm.runInContext(extract(staff, 'window.mkBrPeriod = async function', 2, true), s);
-  vm.runInContext(extract(staff, 'function mkwSources(', 2), s);
-  vm.runInContext(extract(staff, 'function mkwHero(', 2), s);
-  payload = { available: false, unavailableReason: 'query_failed', days: 90, revenue: null, conversions: null, sent: null, reviewClicks: null, excludedMissingSentAt: null, bySource: sources };
-  await s.mkBrPeriod(90);
-  let p = s.mkBrief.data.paie, html = s.mkwHero();
-  ok(p.available === false && p.unavailableReason === 'query_failed' && p.euros === null && p.excludedMissingSentAt === null && p.sources.length === 6 && !p.young && !p.quietWindow, 'C6-unavailable-refetch', p);
-  ok(html.includes('Mesure indisponible') && !html.includes('null') && !html.includes('0 €') && !html.includes('aucune visite') && sources.every(row => html.includes(row.label)) && html.includes('90 j'), 'C6-unavailable-render', html);
-  payload = { available: true, days: 30, revenue: 0, conversions: 0, sent: 0, reviewClicks: 0, excludedMissingSentAt: 2, bySource: [] };
-  await s.mkBrPeriod(30); p = s.mkBrief.data.paie; html = s.mkwHero();
-  ok(p.available === true && p.young === true && p.excludedMissingSentAt === 2 && /exclu/i.test(html) && html.includes('2'), 'C6-real-zero-exclusion', { p, html });
-  payload = { days: 7, revenue: 120, conversions: 3, sent: 5, reviewClicks: 0, bySource: [{ key: 'manual', label: 'Manuel', revenue: 120, sent: 5 }] };
-  await s.mkBrPeriod(7); html = s.mkwHero();
-  ok(s.mkBrief.data.paie.available !== false && html.includes('120 €') && !html.includes('Mesure indisponible'), 'C6-legacy-positive', html);
-  payload = new Error('offline'); await s.mkBrPeriod(90); html = s.mkwHero();
-  ok(s.mkBrief.data.paie.available === false && html.includes('Mesure indisponible') && !html.includes('120 €'), 'C6-network-no-stale-period', html);
-}
 async function ranges() {
   for (const name of ['loadStaffClientData', 'loadStaffReservationsData', 'pv2ResSearchEnsureData']) for (const failSecond of [false, true]) {
     const calls = [];
@@ -142,7 +121,7 @@ async function ranges() {
   }
 }
 (async () => {
-  for (const check of [inbound, requestReply, roi, ranges]) try { await check(); } catch (e) { ok(false, check.name + '-execution', e.stack); }
+  for (const check of [inbound, requestReply, ranges]) try { await check(); } catch (e) { ok(false, check.name + '-execution', e.stack); }
   const out = path.join(root, 'artifacts/preprod-fixes-20260912/frontend'); fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, 'contracts.json'), JSON.stringify(results, null, 2));
   console.log(JSON.stringify({ pass: results.filter(r => r.pass).length, fail: results.filter(r => !r.pass).length }));

@@ -106,7 +106,7 @@ const ouLeFocus = (page, nom) => page.evaluate((nom) => {
 const CLES_CASE = ['data-bowling-drop-lane', 'data-bowling-drop-start'];
 const CLES_CARTE = ['data-booking-res-id', 'data-booking-lane', 'data-booking-start'];
 
-async function main({ roiOnly = false, capture = false, seulement = null, tailles = null, rapport = true } = {}) {
+async function main({ capture = false, seulement = null, tailles = null, rapport = true } = {}) {
   captureEnabled = capture;
   results.length = 0; errors.length = 0; blocked.length = 0;
   const joue = (nom) => !seulement || seulement.includes(nom);
@@ -139,7 +139,7 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
       await page.waitForFunction(() => !!window.pv2Mail);
       await page.evaluate(t => { state.staffTheme = t; document.documentElement.dataset.theme = t; renderStaff(); }, theme);
       await page.waitForTimeout(900);
-      if (!roiOnly) {
+      {
       if (joue('F5')) await scenario('F5-' + suffix, async () => {
         const sizes = await page.locator('.lane-header .settings').evaluateAll(list => list.map(el => {
           const r = el.getBoundingClientRect(), head = el.closest('.lane-header').getBoundingClientRect();
@@ -327,36 +327,7 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
         ok(await page.evaluate(() => state.step === 4 && !document.querySelector('#step3 [aria-invalid="true"]') && !document.getElementById('alertBox').textContent.trim()), 'F3-recovery-' + suffix, 'valid fields reach recap');
       });
       }
-      if (joue('C6')) await scenario('C6-visual-' + suffix, async () => {
-        const peindre = () => page.evaluate(() => {
-          setView('staff'); closeQuickBook(); closePos();
-          // The real painter owns the center+account scope; do not substitute
-          // a plain center id, which would invalidate the fixture on next paint.
-          state.staffMenuPage = 'campaigns'; renderStaff(); renderStaffCampaignsPage();
-          mkBrief.data = { receipts: [], paie: { available: false, unavailableReason: 'query_failed', euros: null, venues: null, sent: null, reviewClicks: null, days: 30, young: false, quietWindow: false,
-            sources: ['Anniversaires', 'Relances', 'Campagnes', 'Suivi de visite', 'Messages directs', 'Autres'].map(label => ({ label, sent: null, revenue: null })) } };
-          mkBrief.tab = 'results'; renderStaff(); renderStaffCampaignsPage();
-        });
-        await peindre();
-        // Sans attendre que le bloc soit immobile : le fond tramé se dessine en
-        // logiciel sur les machines sans carte graphique, et ses images peuvent
-        // s espacer de plusieurs secondes. Le contenu se lit, il ne se clique pas.
-        const hero = page.locator('.mkw-hero');
-        const montrer = (delai) => hero.evaluate((el) => el.scrollIntoView({ block: 'nearest', behavior: 'instant' }), null, { timeout: delai });
-        // Le bloc peut repartir juste apres la peinture : si la portee du marketing
-        // change (centre, compte), la page vide la fixture et relit le brief, que
-        // le banc ne sert pas, et son panneau d erreur prend la place. Vu sur GitHub
-        // deux suites sur cinq. On dit l etat et on repeint une fois : la portee
-        // est alors posee, et un bloc qui ne vient jamais fait echouer le scenario.
-        if (!await montrer(4000).then(() => true, () => false)) {
-          console.log('C6-etat-' + suffix, JSON.stringify(await page.evaluate(() => ({ vue: state.view, page: state.staffMenuPage, onglet: mkBrief.tab, donnees: !!mkBrief.data, erreur: mkBrief.error, texte: (document.getElementById('staffCampaignsPage')?.textContent || 'sans racine').trim().slice(0, 120) }))));
-          await peindre();
-          await montrer(15000);
-        }
-        ok(await hero.locator('.mkw-src').count() === 6 && (await hero.innerText()).includes('Mesure indisponible') && !(await hero.innerText()).includes('null'), 'C6-render-' + suffix, 'unavailable with six source labels');
-        await shot(page, 'roi-unavailable-' + suffix);
-      });
-      if (!roiOnly && joue('quickbook-submit') && width === 1440 && theme === 'light') await scenario('quickbook-submit', async () => {
+      if (joue('quickbook-submit') && width === 1440 && theme === 'light') await scenario('quickbook-submit', async () => {
         await page.evaluate(() => {
           setView('staff'); state.staffMenuPage = 'planning'; renderStaff();
           const d = parseLocalDate(state.currentDate); d.setDate(d.getDate() + 7);
@@ -388,7 +359,7 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
         await page.evaluate(async () => { window.__releaseSubmit(); await window.__saveTask; });
         ok(await page.evaluate(() => !quickBookState && window.__PINLANE_QA_RES_POSTS__.length === 1), 'submit-success-single', 'one simulated POST; modal closed');
       });
-      if (!roiOnly && joue('C2') && width === 1440 && theme === 'light') await scenario('C2', async () => {
+      if (joue('C2') && width === 1440 && theme === 'light') await scenario('C2', async () => {
         const attempts = await page.evaluate(async () => {
           setView('staff'); closePos(); closeQuickBook();
           const originalApi = apiRequest, originalRows = getStaffEmailRows;
@@ -441,7 +412,7 @@ async function main({ roiOnly = false, capture = false, seulement = null, taille
     await browser.close(); server.close();
     ok(errors.length === 0, 'browser-errors', errors);
     if (rapport) {
-      fs.writeFileSync(path.join(OUT, roiOnly ? 'roi-results.json' : 'results.json'), JSON.stringify({ results, errors, blocked }, null, 2));
+      fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ results, errors, blocked }, null, 2));
       console.log(JSON.stringify({ output: OUT, pass: results.filter(r => r.pass).length, fail: results.filter(r => !r.pass).length }));
       if (results.some(r => !r.pass)) process.exitCode = 1;
     }

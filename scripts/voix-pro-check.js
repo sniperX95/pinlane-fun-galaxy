@@ -356,7 +356,7 @@ const MUTATIONS = [
   { nom: 'un toast tutoie de nouveau', fichier: 'assets/pinlane-assistant.js', de: "toast('Votre message est trop long.')", vers: "toast('Ton message est trop long.')" },
   { nom: 'un imperatif singulier revient', fichier: 'assets/staff-pages-v2.js', de: "toast('Collez le texte du mail reçu.')", vers: "toast('Colle le texte du mail reçu.')" },
   { nom: 'un imperatif a pronom revient', fichier: 'assets/app-main.js', de: 'Retirez-la avec la croix.', vers: 'Retire-la avec la croix.' },
-  { nom: 'un possessif dans un gabarit multiligne', fichier: 'assets/pinlane-assistant.js', de: 'data-ast-convs aria-label="Vos conversations"', vers: 'data-ast-convs aria-label="Tes conversations"' },
+  { nom: 'un possessif dans un gabarit multiligne', fichier: 'assets/pinlane-assistant.js', de: 'assistant lit vos données', vers: 'assistant lit tes données' },
   { nom: 'une phrase du brief serveur tutoie', fichier: 'lib/marketing-brief.js', de: 'je garde un œil sur vos réservations', vers: 'je garde un œil sur tes réservations' },
   { nom: 'une legende client tutoie', fichier: 'lib/marketing-brain.js', de: 'Réservez votre créneau : 30 secondes.', vers: 'Réserve ton créneau : 30 secondes.' },
   { nom: 'le jargon revient', fichier: 'assets/pinlane-assistant.js', de: 'lit vos données et ne modifie rien.</p>', vers: 'lit vos données, verdicts causaux vers 90 j.</p>' },

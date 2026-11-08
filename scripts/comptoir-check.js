@@ -56,6 +56,7 @@ const MUTATIONS = [
   { nom: 'reste-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du bowling dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n  return { unite: \'piste\'', vers: 'const prend = 0;\n  return { unite: \'piste\'' },
   { nom: 'armes-sans-le-groupe', lettre: 'A', cible: '[A] chaque heure du laser dit ce qui reste apres le groupe', fichier: APP, de: 'const prend = Math.min(libres, voulu);\n        const place =', vers: 'const prend = 0;\n        const place =' },
   { nom: 'formule-sans-reste', lettre: 'A', cible: '[A] chaque heure d une formule dit ce qui reste', serveur: true, fichier: 'lib/reserver-simulation.js', de: "prend: verdict.statut === 'ko' ? [] : ceQuePrendLePlan(dossier.opsPlan) });", vers: 'prend: [] });' },
+  { nom: 'coche-sur-les-chiffres', lettre: 'E', cible: '[E] la coche ne touche pas les chiffres de l heure (comptoir', fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv.rs .rs-h > .rs-coche { top: auto; right: -4px; bottom: -4px; width: 15px; height: 15px;', vers: '.qb-modal.rv.rs .rs-h > .rs-coche { top: 5px; right: 5px; width: 16px; height: 16px;' },
   { nom: 'attente-muette', lettre: 'B', cible: '[B] la touche montre les pistes retenues, et le dit a qui ne la voit pas', fichier: APP, de: '${rsGardeesHtml(x.place)}`;', vers: '`;' },
   { nom: 'retenue-non-comptee-pistes', lettre: 'B', cible: '[B] une piste retenue ne compte pas comme libre', fichier: APP, de: '[...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {\n    if (r.id === ignoreId) return;', vers: 'state.reservations.forEach(r => {\n    if (r.id === ignoreId) return;' },
   { nom: 'retenue-non-comptee-laser', lettre: 'B', cible: '[B] les armes retenues ne comptent pas comme libres', fichier: APP, de: 'const laserWindowsForDate = () => [...state.reservations, ...getBlocagesEnLigne(date)]', vers: 'const laserWindowsForDate = () => state.reservations' },
@@ -668,6 +669,20 @@ async function scenarioE(browser) {
       ok(mesure.largeur <= 1 && mesure.dehors === 0, `[E] rien ne deborde (${appareil})`, mesure);
       ok(mesure.coupes.length === 0, `[E] rien ne se coupe (${appareil})`, mesure.coupes);
       if (appareil === 'comptoir') ok(mesure.hauteur <= 1, '[E] tout tient sans defiler a 1366 x 768', mesure);
+      // La coche de l heure prise (2026-11-08, Ansar : « le v genre correct est mal cadré ») : sa
+      // boite ne touche ni l heure ni ce qui reste, lus sur leur vrai texte. Sur une heure
+      // vraiment touchee : celle du bowling propose ne porte pas de coche.
+      await page.locator('#rsZ-bowling .rs-h[data-heure]:not(.is-on):not(.is-coince):not(.is-efface)').nth(3).click();
+      await C.pret(page);
+      await verifie(page, 'bowling');
+      await page.waitForTimeout(350);
+      const coche = await page.evaluate(() => {
+        const texte = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+        const touche = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        const prises = [...document.querySelectorAll('#rsZ-bowling .rs-h.is-on:not(.is-propose)')].filter((k) => k.getClientRects().length && k.querySelector('.rs-coche'));
+        return { prises: prises.map((k) => k.dataset.heure), visible: prises.every((k) => getComputedStyle(k.querySelector('.rs-coche')).opacity === '1'), sur: prises.filter((k) => { const c = k.querySelector('.rs-coche').getBoundingClientRect(); return [...k.querySelectorAll('b, small')].some((e) => touche(c, texte(e))); }).map((k) => k.dataset.heure) };
+      });
+      ok(coche.prises.length > 0 && coche.visible && coche.sur.length === 0, `[E] la coche ne touche pas les chiffres de l heure (${appareil})`, coche);
     } finally { await finir(m, `E ${appareil}`); }
   }
 }

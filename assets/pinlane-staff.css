@@ -10951,6 +10951,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-coche svg { width: 14px; height: 14px; }
 .qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }
 .qb-modal.rv.rs .rs-h.is-propose > .rs-coche, .qb-modal.rv.rs .rs-h.is-ko > .rs-coche { opacity: 0; transform: scale(.6); }
+/* LA COCHE D UNE HEURE (2026-11-08, Ansar : « le v genre correct est mal cadré »). Depuis que
+   toute la journee s affiche, les touches sont plus petites : la coche du coin haut touchait
+   le dernier chiffre. Une pastille sur le coin bas, hors du texte ; le haut reste aux
+   etiquettes (« juste après », « maintenant »). */
+.qb-modal.rv.rs .rs-h > .rs-coche { top: auto; right: -4px; bottom: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast); box-shadow: 0 0 0 2px var(--surface); }
+.qb-modal.rv.rs .rs-h > .rs-coche svg { width: 10px; height: 10px; }
 
 /* CE QU INTERNET GARDE A CETTE HEURE : « 2 en attente », avec le petit carre
    orange du bandeau qui dit jusqu a quand. Couleurs du theme, jamais ecrites ici. */

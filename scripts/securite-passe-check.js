@@ -34,6 +34,7 @@
 //   [T] glisser une activite demande le droit de sa ressource (bowling, laser) ;
 //   [U] le plan interne (risque, consignes) ne part pas a un visiteur anonyme ;
 //   [V] un corps public au-dela de 64 Ko est refuse avant d etre traite.
+//   [W] la feuille imprimee, les deux Excel et la question libre a l IA suivent aussi le droit.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require applicatif. Les contre-preuves
 // compilent une source mutee en memoire : le disque n est jamais ecrit.
@@ -53,6 +54,7 @@ process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-SECURITE-2026';
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const Module = require('module');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -69,6 +71,10 @@ const F = {
   reservations: path.join(ROOT, 'api', 'staff-reservations.js'),
   dispo: path.join(ROOT, 'api', 'public-availability.js'),
   meta: path.join(ROOT, 'api', 'public-booking-meta.js'),
+  secoursApi: path.join(ROOT, 'lib', 'secours-api.js'),
+  feuilleSecours: path.join(ROOT, 'lib', 'feuille-secours.js'),
+  montantsRole: path.join(ROOT, 'lib', 'montants-role.js'),
+  marketingAsk: path.join(ROOT, 'lib', 'marketing-ask.js'),
 };
 
 let echecs = 0;
@@ -171,6 +177,7 @@ const T = {
   editeur: session('fgs_gate_sec_editeur', { memberId: 'libramont:editeur', memberName: 'Correcteur', roleId: 'correcteur', roleName: 'Correcteur', permissions: EDITEUR }),
   bowlingSeul: session('fgs_gate_sec_bowling', { memberId: 'libramont:bowling', memberName: 'Pistes', roleId: 'pistes', roleName: 'Pistes', permissions: BOWLING_SEUL }),
   laserSeul: session('fgs_gate_sec_laser', { memberId: 'libramont:laser', memberName: 'Arene', roleId: 'arene', roleName: 'Arene', permissions: LASER_SEUL }),
+  analyste: session('fgs_gate_sec_analyste', { memberId: 'libramont:analyste', memberName: 'Analyste', roleId: 'analyste', roleName: 'Analyste', permissions: ['dashboard.view', 'direction.view'] }),
 };
 
 // ---------------------------------------------------------------------------
@@ -295,7 +302,7 @@ function reponse() {
     setHeader(n, v) { this.headers[String(n).toLowerCase()] = v; },
     getHeader(n) { return this.headers[String(n).toLowerCase()]; },
     writeHead(s) { this.statusCode = s; },
-    end(c) { this.body = c === undefined ? '' : (Buffer.isBuffer(c) ? `[binaire ${c.length} octets]` : String(c)); this.ended = true; },
+    end(c) { this.brut = Buffer.isBuffer(c) ? c : null; this.body = c === undefined ? '' : (Buffer.isBuffer(c) ? `[binaire ${c.length} octets]` : String(c)); this.ended = true; },
   };
 }
 async function appeler(fichier, options) {
@@ -339,6 +346,13 @@ const ANCRE = {
   droitRessource: "        if (droitDeLaRessource && !sessionHasPermission(session, droitDeLaRessource)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);",
   planAnonyme: '  res.__visiteurAnonyme = !(await sessionDuPersonnel(req));',
   corpsPublic: '      body = await readJson(req, { maxBytes: 64 * 1024 });',
+  documentTransmis: '      sansMontants: Boolean(res.__sansMontants),',
+  classeurRefuse: "  if (kind === 'excel' && sansMontants) throw Object.assign(new Error('Le classeur du jour contient les montants : votre rôle ne les voit pas.'), { statusCode: 403, expose: true });",
+  prixImprime: "  const prix = [{ texte: ctx.sansMontants ? '···' : prixTexte(resa) }];",
+  excelDonnees: "    if (action === 'exportDonnees' && res.__sansMontants) throw createHttpError('Le fichier contient les montants : votre rôle ne les voit pas.', 403, true);",
+  siNombre: "  || (CLES_ARGENT_SI_NOMBRE.has(cle) && Boolean(objet) && typeof objet[cle] === 'number')\n",
+  questionTransmise: "    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || ''), sansMontants: Boolean(res.__sansMontants) });",
+  montantsRetenus: '  const montantsReserves = sansMontants ? montantsHorsCatalogue(texteVu, dossier) : [];',
 };
 
 (async () => {
@@ -926,6 +940,130 @@ const ANCRE = {
     const r = await tropGros();
     ok(r.statusCode !== 413, '[V] contre-preuve : sans la borne, 100 Ko passent (ce gate le verrait)', r.statusCode);
   }
+
+  // =========================================================================
+  console.log('\n[W] les fichiers et la question libre suivent aussi « Voir les montants »');
+  // =========================================================================
+  const urlDocument = (action) => `/api/ops?action=${action}&centerId=libramont&date=${JOUR}`;
+  const urlDonnees = (action) => `/api/ops?action=${action}&centerId=libramont&${PLAGE}`;
+  // Les pages du PDF sont compressees : on les ouvre pour lire ce qui s imprime.
+  const contenuDuPdf = (brut) => {
+    const fichier = brut.toString('latin1');
+    const re = /\/Length (\d+) \/Filter \/FlateDecode >>\nstream\n/g;
+    const pages = [];
+    let m;
+    while ((m = re.exec(fichier))) {
+      const debut = m.index + m[0].length;
+      pages.push(zlib.inflateSync(Buffer.from(fichier.slice(debut, debut + Number(m[1])), 'latin1')).toString('latin1'));
+    }
+    return pages.join('\n');
+  };
+  const imprimeUnMontant = (texte) => ['4321,75', '4999,50', '1234,25', '3333,50', '6666,25', '77,25'].some((v) => texte.includes(v));
+  const feuille = async (token) => {
+    const r = await appeler(F.ops, { url: urlDocument('feuilleSecours'), token });
+    return { statut: r.statusCode, texte: r.brut ? contenuDuPdf(r.brut) : '' };
+  };
+  const classeur = (token) => appeler(F.ops, { url: urlDocument('classeurJour'), token });
+  const estUnXlsx = (r) => Boolean(r.brut) && r.brut.slice(0, 2).toString('latin1') === 'PK';
+  charger();
+  {
+    const technique = await feuille(T.technique);
+    ok(technique.statut === 200 && technique.texte.includes('Client Sentinelle'), '[W] montage : la feuille de secours sort pour un role sans montants, avec ses reservations', technique.statut);
+    ok(!imprimeUnMontant(technique.texte) && technique.texte.includes('\\267\\267\\267'), '[W] la feuille n imprime aucun prix : elle dit « ··· »');
+    const manager = await feuille(T.manager);
+    ok(manager.statut === 200 && imprimeUnMontant(manager.texte), '[W] contraste : le Manager lit les prix sur la feuille', manager.statut);
+    const refuse = await classeur(T.technique);
+    ok(refuse.statusCode === 403 && !refuse.brut, '[W] le classeur du jour se refuse sans le droit', refuse.statusCode);
+    ok(/ne les voit pas/.test(refuse.body), '[W] le refus dit pourquoi', refuse.body.slice(0, 120));
+    const accepte = await classeur(T.manager);
+    ok(accepte.statusCode === 200 && estUnXlsx(accepte), '[W] contraste : le Manager recoit le classeur', accepte.statusCode);
+
+    const donnees = await appeler(F.ops, { url: urlDonnees('donneesClients'), token: T.analyste });
+    const lu = JSON.parse(donnees.body || '{}');
+    const fiche = (lu.clients || [])[0] || {};
+    ok(donnees.statusCode === 200 && fiche.visites > 0, '[W] montage : les donnees clients arrivent a un role Direction sans montants', { statut: donnees.statusCode, fiche });
+    ok(fiche.depense === null && fiche.paye === null && fiche.panierMoyen === null, '[W] la fiche d un client ne dit plus ce qu il a depense ni paye', fiche);
+    ok(lu.totaux.remises === null && lu.fidelite.depenseMoyenneParClient === null, '[W] ni les remises ni la depense moyenne', [lu.totaux.remises, lu.fidelite.depenseMoyenneParClient]);
+    const direction = JSON.parse((await appeler(F.ops, { url: urlDonnees('donneesClients'), token: T.direction })).body || '{}');
+    ok(direction.clients[0].depense > 0 && direction.fidelite.depenseMoyenneParClient > 0, '[W] contraste : la Direction lit ces montants', direction.clients[0]);
+    const excelRefuse = await appeler(F.ops, { url: urlDonnees('exportDonnees'), token: T.analyste });
+    ok(excelRefuse.statusCode === 403 && !excelRefuse.brut, '[W] l Excel des donnees clients se refuse sans le droit', excelRefuse.statusCode);
+    const excel = await appeler(F.ops, { url: urlDonnees('exportDonnees'), token: T.direction });
+    ok(excel.statusCode === 200 && estUnXlsx(excel), '[W] contraste : la Direction le recoit', excel.statusCode);
+  }
+  charger([[F.ops, ANCRE.documentTransmis, '      sansMontants: false,']]);
+  {
+    const technique = await feuille(T.technique);
+    ok(imprimeUnMontant(technique.texte), '[W] contre-preuve : sans la marque transmise, la feuille imprime les prix (ce gate le verrait)');
+    ok((await classeur(T.technique)).statusCode === 200, '[W] contre-preuve : sans la marque transmise, le classeur part (ce gate le verrait)');
+  }
+  charger([[F.secoursApi, ANCRE.classeurRefuse, '']]);
+  ok((await classeur(T.technique)).statusCode === 200, '[W] contre-preuve : sans le refus, le classeur part (ce gate le verrait)');
+  charger([[F.feuilleSecours, ANCRE.prixImprime, '  const prix = [{ texte: prixTexte(resa) }];']]);
+  ok(imprimeUnMontant((await feuille(T.technique)).texte), '[W] contre-preuve : sans le masque, le prix s imprime (ce gate le verrait)');
+  charger([[F.ops, ANCRE.excelDonnees, '']]);
+  ok((await appeler(F.ops, { url: urlDonnees('exportDonnees'), token: T.analyste })).statusCode === 200, '[W] contre-preuve : sans le refus, l Excel part (ce gate le verrait)');
+  charger([[F.montantsRole, ANCRE.siNombre, '']]);
+  {
+    const lu = JSON.parse((await appeler(F.ops, { url: urlDonnees('donneesClients'), token: T.analyste })).body || '{}');
+    ok(lu.clients[0].depense > 0, '[W] contre-preuve : sans ces noms, la depense d un client repart (ce gate le verrait)', lu.clients[0].depense);
+  }
+
+  // La question libre : le serveur transmet la marque, le modele n ecrit pas de montant.
+  const fauxAgent = (mutations = []) => {
+    charger(mutations);
+    const vus = [];
+    const chemin = require.resolve(F.marketingAsk);
+    require.cache[chemin] = { id: chemin, filename: chemin, loaded: true, exports: { answerMarketingQuestion: async (centre, options) => { vus.push(options); return { ok: true, grounded: false, reason: 'sans_modele', question: options.question }; } } };
+    return vus;
+  };
+  const poser = (token) => appeler(F.ops, { method: 'POST', url: '/api/ops', token, body: { action: 'marketingAsk', centerId: 'libramont', question: 'Combien on a fait ce mois ?' } });
+  {
+    const vus = fauxAgent();
+    await poser(T.marketing);
+    await poser(T.direction);
+    ok(vus.length === 2 && vus[0].sansMontants === true && vus[1].sansMontants === false, '[W] la question libre sait si la personne voit les montants', vus);
+  }
+  {
+    const vus = fauxAgent([[F.ops, ANCRE.questionTransmise, "    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || '') });"]]);
+    await poser(T.marketing);
+    ok(vus.length === 1 && vus[0].sansMontants !== true, '[W] contre-preuve : sans la marque transmise, le modele n est pas prevenu (ce gate le verrait)', vus);
+  }
+  const demander = async (reponse, sansMontants) => {
+    const { answerMarketingQuestion } = require(F.marketingAsk);
+    const { listBookingFormules } = require(path.join(ROOT, 'lib', 'catalog-store.js'));
+    const { buildCenterFacts } = require(path.join(ROOT, 'lib', 'marketing-agents.js'));
+    const appels = [];
+    const resultat = await answerMarketingQuestion('libramont', { question: 'Comment va le mois ?', sansMontants }, {
+      llmProvider: () => 'anthropic',
+      isBudgetExhausted: () => false,
+      buildMarketingBriefBundle: async () => ({ today: JOUR, dataDays: 210, pulse: { avgBasket: 15.4 }, facts: {}, radar: [], patterns: [], paie: {}, veille: {}, propositions: [], receipts: [] }),
+      buildCenterFacts,
+      getMergedFormulas: async () => listBookingFormules(),
+      getFaitsAppris: async () => [],
+      callLlmJson: async (options) => { appels.push(options); return { titre: 'Le mois', reponse, faits: [], jeNeSaisPas: [], action: 'aucune' }; },
+    });
+    return { resultat, consigne: appels[0] ? JSON.parse(appels[0].user).consigne : null };
+  };
+  const PHRASE_CHIFFREE = 'Ton panier moyen est de 15.4 €, donc chaque visiteur ramene ce montant.';
+  charger();
+  {
+    const libre = await demander(PHRASE_CHIFFREE, false);
+    ok(libre.resultat.grounded === true && !libre.consigne, '[W] contraste : avec le droit, la phrase chiffree passe', libre.resultat);
+    const retenue = await demander(PHRASE_CHIFFREE, true);
+    ok(retenue.resultat.grounded === false && retenue.resultat.reason === 'bloque', '[W] sans le droit, une reponse qui cite un montant du centre est retenue', retenue.resultat);
+    ok(!JSON.stringify(retenue.resultat).includes('15.4'), '[W] le motif ne recite pas le montant retenu', retenue.resultat);
+    ok(Boolean(retenue.consigne), '[W] le modele est prevenu de ne pas ecrire de montant');
+    const { buildAskDossier } = require(F.marketingAsk);
+    const { listBookingFormules } = require(path.join(ROOT, 'lib', 'catalog-store.js'));
+    const { buildCenterFacts } = require(path.join(ROOT, 'lib', 'marketing-agents.js'));
+    const dossier = buildAskDossier({ bundle: {}, centerFacts: buildCenterFacts('libramont'), formulas: listBookingFormules(), activities: [] });
+    const public_ = dossier.formules.find((f) => /€/.test(f.prix));
+    const publique = await demander(`Cette formule est a ${public_.prix}.`, true);
+    ok(publique.resultat.grounded === true, '[W] contraste : un prix public du catalogue reste permis', publique.resultat);
+  }
+  charger([[F.marketingAsk, ANCRE.montantsRetenus, '  const montantsReserves = [];']]);
+  ok((await demander(PHRASE_CHIFFREE, true)).resultat.grounded === true, '[W] contre-preuve : sans la regle, le montant part a la personne (ce gate le verrait)');
 
   console.log(echecs ? `\nsecurite-passe-check: ${echecs} FAIL` : '\nsecurite-passe-check: ALL OK');
   process.exit(echecs ? 1 : 0);

@@ -753,6 +753,8 @@ async function handleGet(req, res, options = {}) {
   if (action === 'donneesClients' || action === 'exportDonnees') {
     const scoped = centerScope(centerId);
     if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    // Le classeur part par res.end, pas par sendJson : le filtre des montants ne le voit pas.
+    if (action === 'exportDonnees' && res.__sansMontants) throw createHttpError('Le fichier contient les montants : votre rôle ne les voit pas.', 403, true);
     const { lireDonnees, classeurDonnees } = require('../lib/donnees-api');
     const maintenant = new Date();
     const donnees = await lireDonnees(getPool(), { centerId: scoped, startDate: url.searchParams.get('startDate'), endDate: url.searchParams.get('endDate'), maintenant });
@@ -2831,7 +2833,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'marketingAsk') {
     const { answerMarketingQuestion } = require('../lib/marketing-ask');
     const concreteCenterId = requireConcreteCenter('agent marketing');
-    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || '') });
+    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || ''), sansMontants: Boolean(res.__sansMontants) });
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }

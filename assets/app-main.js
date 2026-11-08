@@ -33052,7 +33052,8 @@ function rvResumeFormule(f) {
 // ferme a 18:00, et la fenetre ne demandait jamais le plan d une heure que le serveur tient.
 function rvDureeDuCreneau(annoncee) {
   const formule = rvFormule();
-  return formule ? getFormuleBookedDuration(formule) : annoncee;
+  // Seule la fenetre ouverte : une formule adaptee au comptoir garde sa duree a elle.
+  return formule && formule.orderPolicy === 'open_window' ? getFormuleBookedDuration(formule) : annoncee;
 }
 
 // CE QUI COINCE AVANT MEME LE PLAN : un jour ferme, une heure hors horaires,

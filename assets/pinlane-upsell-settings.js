@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
   const MAX = 6, PHOTO_BYTES = 120 * 1024;
-  const PHOTOS = [['billard-800.webp', 'Billard'], ['minigolf-800.webp', 'Minigolf'], ['arcades-800.webp', 'Arcades'], ['laser-joueur-800.webp', 'Laser Game'], ['duckpin-800.webp', 'Duckpin'], ['fun-run-800.webp', 'Fun Run'], ['plaine-800.webp', 'Playground']];
+  const PHOTOS = [['billard-800.webp', 'Billard'], ['minigolf-800.webp', 'Minigolf'], ['arcades-800.webp', 'Arcades'], ['laser-joueur-800.webp', 'Laser Game'], ['duckpin-800.webp', 'Duckpin'], ['fun-run-800.webp', 'Pixel'], ['plaine-800.webp', 'Playground']];
   const DISCOUNTS = [['none', 'Sans remise'], ['percent', 'Pourcentage (%)'], ['fixed_per_participant', 'Euros par participant'], ['fixed_total', 'Euros sur le total']];
   let draft, catalogue = [], centerKey = '', generation = 0, serial = 0, busy = new Set();
   const copy = value => value == null ? null : JSON.parse(JSON.stringify(value));

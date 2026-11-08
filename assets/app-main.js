@@ -22355,7 +22355,7 @@ function applyStaffSearch(value, opts = {}) {
 function rechercheDuPlanning(vue = getStaffResourceView()) {
   const terme = String(state.searchTerm || '').trim();
   if (!terme || (vue !== 'bowling' && vue !== 'laser')) return null;
-  const dessines = todaysReservations().filter(r => (vue === 'laser'
+  const dessines = todaysReservations().filter(tientSesPlaces).filter(r => (vue === 'laser'
     ? getLaserWindowsFromReservation(r).length > 0
     : reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0));
   let nets;
@@ -22723,7 +22723,7 @@ function todaysReservations() {
 }
 
 // UN GROUPE NOTE « PAS VENU » REND SES PLACES (2026-11-06) : sa piste, ses armes et sa
-// table se revendent, au comptoir comme en ligne. Il reste au planning, barre. La meme
+// table se revendent, au comptoir comme en ligne. Il quitte les plannings. La meme
 // regle que le serveur (tientSesPlaces, lib/database.js) : un compte de places libres qui
 // differerait de Réserver annoncerait une place refusee, ou en cacherait une.
 function tientSesPlaces(r) {
@@ -23784,6 +23784,7 @@ function getReservationDelayFlag(reservation) {
 
 // Petit indicateur horloge « +X min » sur la carte planning, avec tooltip
 // (« retardée de X min, 15:00→15:15 »). Cliquable pour retirer l'indicateur.
+const PUCE_EN_RETARD = '<span class="delay-indicator is-retard" title="En retard : pas encore pointé arrivé" aria-label="En retard"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg><span class="delay-indicator-label">En retard</span></span>';
 function renderDelayIndicator(reservation) {
   const flag = getReservationDelayFlag(reservation);
   if (!flag) return '';
@@ -24405,7 +24406,11 @@ function renderPlanning() {
   // au planning laser, chaque groupe reste a sa place ; celui qui ne
   // correspond pas passe en gris.
   const retenues = new Set(getPlanningVisibleReservations('bowling').map(r => String(r.id)));
-  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);
+  // UN GROUPE « PAS VENU » QUITTE LE PLANNING (2026-11-08, Ansar : « ça le supprime sur les
+  // planning mais en backend ça doit etre montré noshow ») : sa piste se revend, sa carte
+  // n a plus rien a dire. Son dossier reste en base pour les chiffres et les IA.
+  const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);
+  const momentsDesCartes = getStaffReservationMoments(todaysReservations());
   const isToday = state.currentDate === todayStr();
   const curH = currentTimeDecimal();
   const curPos = isToday && curH >= startHour && curH <= closeHour ? (curH - startHour) * HH + HEADER_H : -1;
@@ -24482,12 +24487,11 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      // UN GROUPE « PAS VENU » A RENDU SA PISTE (2026-11-06, tientSesPlaces) : sa carte
-      // reste a sa place, grisee et hachuree, sous le groupe qui reprend la piste.
-      const absentClass = tientSesPlaces(r) ? '' : ' is-absent';
-      const statsHtml = absentClass
-        ? '<span class="bk-absent">Pas venu</span>'
-        : renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
+      // EN RETARD, SUR LA CARTE (2026-11-08) : la puce du retard annonce, en rouge, a sa
+      // place et avec ses regles de cession (.is-delayed).
+      const enRetardIci = !delayedClass && groupeEnRetardAuPlanning(r, momentsDesCartes.get(String(r.id)));
+      const retardClass = enRetardIci ? ' is-delayed is-en-retard' : '';
+      const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
       // offre, chiffres) en demandent 56. L'offre partage donc la ligne des
@@ -24538,7 +24542,7 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${absentClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -24552,7 +24556,7 @@ function renderPlanning() {
                retard ». Elle entre donc dans la ligne, apres les marques, et
                cede son libelle toute seule quand la carte est trop courte
                (regle .booking.dens-xs deja en place). */''}
-          ${renderDelayIndicator(r)}
+          ${enRetardIci ? PUCE_EN_RETARD : renderDelayIndicator(r)}
           ${renderBookingStateMark(cls)}
         </div>
         ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
@@ -24790,11 +24794,14 @@ function lpModele() {
   const bloc = minutes.bloc / 60;
   const aujourdHui = jour === todayStr();
   const maintenant = aujourdHui ? currentTimeDecimal() : (jour < todayStr() ? 48 : -1);
-  const resas = todaysReservations();
+  // (un groupe « Pas venu » quitte le planning, ses armes sont rendues : tientSesPlaces)
+  const resas = todaysReservations().filter(tientSesPlaces);
+  const momentsDuJour = typeof getStaffReservationMoments === 'function' ? getStaffReservationMoments(resas, jour) : new Map();
+  const enRetard = new Set(resas.filter(r => groupeEnRetardAuPlanning(r, momentsDuJour.get(String(r.id)))).map(r => Number(r.id)));
   const fenetres = resas.flatMap(r => getLaserWindowsFromReservation(r).map(w => ({ ...w, reservation: r })));
   const enLigne = getBlocagesEnLigne(jour).flatMap(b => getLaserWindowsFromReservation(b).map(w => ({ ...w, reservation: b, enLigne: true })));
   const attente = getPendingLaserPasses(jour)
-    .slice()
+    .filter(passe => tientSesPlaces(passe.reservation))
     .sort((a, b) => timeToNum(a.reservation.startTime || '00:00') - timeToNum(b.reservation.startTime || '00:00') || a.countIndex - b.countIndex || a.waveIndex - b.waveIndex);
   // UNE PARTIE HORS GRILLE SE RANGE AU DEPART LE PLUS PROCHE (2026-10-09). A
   // la demi-heure inferieure, la vague de 17:25 comptait au depart de 17:00
@@ -24840,9 +24847,8 @@ function lpModele() {
   // depart ou toutes ses parties suivantes tiennent, du meme ecart.
   let retards = [];
   if (aujourdHui && typeof getStaffReservationMoments === 'function') {
-    const moments = getStaffReservationMoments(resas, jour);
     retards = resas
-      .filter(r => getStaffListeSection(moments, r) === 'late')
+      .filter(r => getStaffListeSection(momentsDuJour, r) === 'late')
       .map(r => {
         const siennes = fenetres.filter(w => Number(w.reservation.id) === Number(r.id)).sort((a, b) => a.start - b.start);
         const manquee = siennes.find(w => w.start <= maintenant + 0.0001);
@@ -24853,7 +24859,7 @@ function lpModele() {
       .sort((a, b) => a.fenetre.start - b.fenetre.start);
   }
 
-  return { jour, config, capacite, lancements, minutes, bloc, aujourdHui, maintenant, resas, fenetres, enLigne, attente, departs, prochain, enJeu, retards, trouve, creneau };
+  return { jour, config, capacite, lancements, minutes, bloc, aujourdHui, maintenant, resas, fenetres, enLigne, attente, departs, prochain, enJeu, retards, enRetard, trouve, creneau };
 }
 
 function lpCibleDecalage(modele, reservation, siennes, depuis) {
@@ -25016,11 +25022,12 @@ function lpLegende(modele, d, choisi) {
     const k = teintes.get(w);
     const suite = [lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : '', Math.abs(w.start - d.t) > 0.001 ? `à ${lpHeure(w.start)}` : '']
       .filter(Boolean).join(' · ');
-    const etat = r.absentAt && r.status !== 'paid' ? ' is-absent' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';
+    const enRetard = modele.enRetard.has(id);
+    const etat = enRetard ? ' is-retard' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';
     const choisiIci = choisi && choisi.id === id && choisi.unitKey === unitKey ? ' is-choisi' : '';
     const grise = modele.trouve(r) ? '' : ' is-grise';
     const titre = `${r.name || 'Groupe'} : ${lpPluriel(lpGroupe(w), 'joueur')}${suite ? `, ${suite}` : ''}. Toucher : sa fiche. Glisser : le déplacer.`;
-    const statut = r.status === 'paid' ? 'Payé' : r.absentAt ? 'Pas venu' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
+    const statut = r.status === 'paid' ? 'Payé' : enRetard ? 'En retard' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
     const partie = Number(w.countIndex || 1);
     const totalParties = getLaserGameCountForReservation(r);
     const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
@@ -25107,18 +25114,15 @@ function lpProchainHtml(modele) {
     const unitKey = laserBlockUnitKey(w);
     const k = lpTeinte(r);
     const la = r.status === 'arrived' || r.status === 'paid';
-    const absent = r.absentAt && r.status !== 'paid';
     const detail = [lpPluriel(lpGroupe(w), 'joueur'), lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : ''].filter(Boolean).join(' · ');
     // Arrives, ils se comptent : « Ils sont 10 », un second toucher ouvre le
     // compte (ouvrirCompteArrivee), et les armes a preparer suivent.
     const coche = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
-    const action = absent
-      ? '<span class="lp-etat lp-etat--absent">Pas venus</span>'
-      : la
+    const action = (modele.enRetard.has(Number(r.id)) ? '<span class="lp-etat lp-etat--retard">En retard</span>' : '') + (la
         ? (peutCompterArrivee(r)
           ? `<button type="button" class="lp-etat lp-etat--la lp-etat--compte" data-compte-id="${Number(r.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(`Arrivé, ils sont ${Math.trunc(Number(r.pax) || 0)} : changer le nombre`)}" onclick="ouvrirCompteArrivee(${Number(r.id)}, this, event)">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</button>`
           : `<span class="lp-etat lp-etat--la">${coche}Ils sont ${Math.trunc(Number(r.pax) || 0)}</span>`)
-        : peutGeste('etat') ? `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Arrivé</button>` : '';
+        : peutGeste('etat') ? `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Arrivé</button>` : '');
     const geste = peutGeste('deplacer', state.currentDate) ? 'toucher pour sa fiche, glisser pour le déplacer' : 'toucher pour sa fiche';
     return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : ${geste}`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
   }).join('');
@@ -25157,7 +25161,7 @@ function lpRetardsHtml(modele) {
   }
   const n = modele.retards.length;
   const bouton = n
-    ? `<button type="button" class="lp-retards" aria-expanded="${lpEtat.retardsOuverts ? 'true' : 'false'}" onclick="lpBasculerRetards(event)"><span class="lp-retards__point" aria-hidden="true"></span>${n} groupe${n > 1 ? 's' : ''} pas venu${n > 1 ? 's' : ''}<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg></button>`
+    ? `<button type="button" class="lp-retards" aria-expanded="${lpEtat.retardsOuverts ? 'true' : 'false'}" onclick="lpBasculerRetards(event)"><span class="lp-retards__point" aria-hidden="true"></span>${n} groupe${n > 1 ? 's' : ''} en retard<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg></button>`
     : '';
   const alertes = n && lpEtat.retardsOuverts ? modele.retards.map(a => {
     const r = a.reservation;
@@ -25170,7 +25174,7 @@ function lpRetardsHtml(modele) {
         ? '<span class="lp-alerte__rien">Aucun départ libre pour eux aujourd’hui</span>'
         : `<button type="button" class="lp-btn lp-btn--rouge" onclick="lpDecaler(${id}, ${ecart}, event)">Décaler à ${lpHeure(a.cible)}</button>`;
     const pasVenus = peutGeste('etat') ? `<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button>` : '';
-    return `<div class="lp-alerte" role="status"><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> <span class="lp-alerte__quand">pas venus à ${lpHeure(a.fenetre.start)}</span></span>${decaler}${pasVenus}</div>`;
+    return `<div class="lp-alerte" role="status"><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> <span class="lp-alerte__quand">attendus à ${lpHeure(a.fenetre.start)}</span></span>${decaler}${pasVenus}</div>`;
   }).join('') : '';
   return { bouton, liste: alertes ? `<div class="lp-alertes">${alertes}</div>` : '' };
 }
@@ -26052,7 +26056,20 @@ function getStaffListeSection(moments, r) {
   if (etat === 'absent') return 'absent';
   if (etat === 'done') return 'paid';
   if (etat === 'upcoming' && m && m.late) return 'late';
+  // (jamais pointe et visite finie : il n a rien a cloturer, il n est jamais arrive)
+  if (groupeEnRetardAuPlanning(r, m)) return 'late';
   return etat;
+}
+
+// EN RETARD, SUR TOUS LES PLANNINGS (2026-11-08, Ansar : « ceux qui sont pas arrivé genre
+// ils sont au stade comfirmé mais pas venu faut que ça montre en retard sur tout les
+// planning »). Le retard du moment (splitStaffTerrainOnsite), et le groupe dont la visite
+// est finie sans que personne ne l ait pointe : il reste en retard tant que l equipe n a
+// pas dit Arrivé, Payé ou Pas venu.
+function groupeEnRetardAuPlanning(r, moment) {
+  if (!r || !moment) return false;
+  if (moment.late) return true;
+  return moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r);
 }
 
 // Un filtre garde par un poste d avant le 2026-10-08 (« open », « done »)
@@ -26631,7 +26648,7 @@ function renderGroupeEncaisseAbsence(r) {
   }
   if (!peutStatut || !Object.prototype.hasOwnProperty.call(r, 'absentAt')) return '';
   if (r.absentAt) {
-    return `<div class="pos-absent is-on"><span>Noté absent : le groupe n’est pas venu, ses places sont rendues.</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, false, event)">Annuler</button></div>`;
+    return `<div class="pos-absent is-on"><span>Noté absent : le groupe n’est pas venu, il n’est plus au planning, ses places sont rendues.</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, false, event)">Annuler</button></div>`;
   }
   return '';
 }
@@ -26653,10 +26670,12 @@ async function ecrireGesteGroupe(id, geste, ev) {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || r.center_id || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, ...geste }) });
     if (!payload?.ok || !payload.reservation) throw new Error('Le serveur n’a pas confirmé. Actualisez le dossier.');
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    return true;
   } catch (error) {
     const fresh = error.reservation || (error.status === 409 && error.payload?.reservation);
     if (fresh) applyOptimisticReservation(fresh, { preserveEditState: true });
     toast(error.message || 'Impossible d’enregistrer.');
+    return false;
   } finally {
     if (bouton?.isConnected) { bouton.disabled = false; bouton.removeAttribute('aria-busy'); }
   }
@@ -26667,8 +26686,14 @@ function noterEncaisse(id, ev) {
   if (!Number.isFinite(montant) || montant < 0) { toast('Indiquez le montant encaissé.'); return; }
   return ecrireGesteGroupe(id, { encaissement: { montant, raison } }, ev);
 }
-function basculerAbsence(id, absent, ev) {
-  return ecrireGesteGroupe(id, { absent: Boolean(absent) }, ev);
+// « PAS VENU » QUITTE LES PLANNINGS : le toast dit ou il est passe, et le reprend.
+async function basculerAbsence(id, absent, ev) {
+  const fait = await ecrireGesteGroupe(id, { absent: Boolean(absent) }, ev);
+  if (fait && absent) {
+    const r = (state.reservations || []).find(x => String(x.id) === String(id));
+    toastAnnulable(`${(r && r.name) || 'Le groupe'} : pas venu, retiré des plannings`, () => basculerAbsence(id, false));
+  }
+  return fait;
 }
 
 function encaisserReservation(id, moyen, ev) {
@@ -27563,6 +27588,8 @@ function renderFormulaActivityChecklist(r, opts = {}) {
 // s affichait tel quel des que la ligne n avait pas de `name` (Movsar,
 // 2026-08-26, capture du programme). Le catalogue du centre porte le vrai nom.
 function nomActivite(item) {
+  // (les dossiers d avant gardent l ancien nom sur leur ligne)
+  if (item && item.activityId === 'fun_run') return NOM_PIXEL;
   if (item && item.name) return item.name;
   const id = item && item.activityId;
   if (!id) return 'Activité';
@@ -27847,8 +27874,7 @@ const plisRetardOuverts = new Set();
 // contenu est celui d avant (les minutes, l analyse, « Pas venu »). Un role
 // qui ne replanifie pas garde « Pas venu » seul, sans pli.
 function fichePliRetard(r, droits) {
-  const pasVenu = renderGroupePasVenu(r);
-  if (!droits.replanifier) return pasVenu;
+  if (!droits.replanifier) return '';
   const late = getLateArrivalMinutes(r);
   const ouvert = plisRetardOuverts.has(Number(r.id));
   return `<details class="info-block pos-fold delay-control-block fx-pli"${ouvert ? ' open data-vu="1"' : ''} ontoggle="if(this.open){plisRetardOuverts.add(${Number(r.id)});}else{plisRetardOuverts.delete(${Number(r.id)});}if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
@@ -27868,7 +27894,6 @@ function fichePliRetard(r, droits) {
         <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
         <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
       </div>
-      ${pasVenu}
     </details>`;
 }
 
@@ -27878,6 +27903,10 @@ function renderPosDetails(r) {
   const moment = getStaffReservationMoments([r], r.date || state.currentDate).get(String(r.id)) || null;
   const droits = ficheDroits();
   const enRetard = Boolean(moment && moment.late);
+  // LE CHOIX SE VOIT QUAND LE GROUPE EST EN RETARD (2026-11-08, Ansar : « le choix de dire pas
+  // arrivé ») : juste sous son etat, hors du pli ; sinon, en bas de la colonne.
+  const aTrancher = groupeEnRetardAuPlanning(r, moment);
+  const pasVenu = renderGroupePasVenu(r);
   const pli = fichePliRetard(r, droits);
   // LA FICHE RANGEE (2026-10-26) : le programme seul a gauche, ce qu on lit
   // a cote a droite, dans l ordre ou on en a besoin : les notes (un gateau,
@@ -27886,7 +27915,7 @@ function renderPosDetails(r) {
   // activites.
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheEtat(r, moment, droits)}
-    ${enRetard ? pli : ''}
+    ${aTrancher ? pasVenu : ''}${enRetard ? pli : ''}
     <div class="fx-colonnes">
       <div class="fx-principal">
         <section class="info-block gc-sheet-block fx-programme">
@@ -27898,7 +27927,7 @@ function renderPosDetails(r) {
         ${renderGroupeNotes(r)}
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
-        ${enRetard ? '' : pli}
+        ${enRetard ? '' : pli}${aTrancher ? '' : pasVenu}
         ${renderGroupeHistorique(r)}
       </aside>
     </div>

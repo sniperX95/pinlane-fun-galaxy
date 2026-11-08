@@ -134,8 +134,14 @@ function centerMissingActivityIds(activityIds) {
   return wanted.filter((id) => !owned.includes(id));
 }
 
+// AU CENTRE, C EST PIXEL (2026-11-08, Ansar : « la categorie fun run doit etre renommé en
+// pixel on le nomme pixel pas fun run au centre »). La console lit ce catalogue ; le site
+// client a le sien (api/public-booking-meta) et garde le nom de la marque.
+const NOM_PIXEL = 'Pixel';
 function setCenterActivities(list) {
-  centerActivities = Array.isArray(list) ? list.filter((item) => item && item.id) : [];
+  centerActivities = Array.isArray(list)
+    ? list.filter((item) => item && item.id).map((item) => (item.id === 'fun_run' ? { ...item, name: NOM_PIXEL } : item))
+    : [];
 }
 
 function getCenterActivities() {

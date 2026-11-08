@@ -366,6 +366,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-nom__tel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .gf-nom__valide { flex: none; font-size: 12px; font-weight: 600; color: var(--warning); }
 .gf-nom__caisse { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
+.gf-nom__caisse.is-retard { color: var(--gf-rouge); font-weight: 700; }
 /* LES RUBRIQUES : le libelle en toutes lettres, le texte sur deux lignes au plus. */
 .gf-i { display: grid; grid-template-columns: 62px minmax(0, 1fr); column-gap: 6px; margin-top: 2px; font-size: 13px; line-height: 17px; }
 .gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -434,14 +435,19 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-x__t.is-nu, .gf-x:is(.is-fini, .is-panne) .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: inherit; }
 .gf-r.is-parti .gf-x__t { background: transparent; color: var(--muted); }
 .gf-x__n { white-space: nowrap; }
+/* CE QUI SORT DE L HABITUEL (2026-11-08) : une autre duree qu une heure, un autre nombre que
+   le groupe. Une pastille grise, celle du grand groupe : aucune couleur de plus. */
+.gf-x__hors { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0 0 -5px; }
+.gf-x__hors b { padding: 0 5px; border-radius: 6px; background: color-mix(in srgb, var(--text) 13%, var(--surface)); color: var(--text); font-size: 12px; font-weight: 700; line-height: 17px; white-space: nowrap; }
+.gf-x.is-fini .gf-x__hors b, .gf-r.is-parti .gf-x__hors b { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
+/* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
+.gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
 .gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }
 .gf-x.is-lancer .gf-x__t { background: transparent; box-shadow: inset 0 0 0 1px var(--bk-barre); color: var(--bk-encre); }
 .gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }
 .gf-x.is-credit { font-size: 13px; }
 .gf-x.is-credit .gf-x__d { font-size: 12px; white-space: nowrap; }
 .gf-x.is-libre { padding-left: 8px; color: var(--muted); font-size: 13px; white-space: normal; }
-/* (« vers » devant la pastille de l heure, sur sa ligne quand la colonne a la place) */
-.gf-x__v .gf-x__t { display: inline-block; margin-left: 0; }
 .gf-x.is-retard .gf-x__t { background: var(--gf-rouge-pale); color: var(--gf-rouge); }
 .gf-x.is-aplacer { color: var(--warning); }
 .gf-x.is-fini { color: var(--muted); }

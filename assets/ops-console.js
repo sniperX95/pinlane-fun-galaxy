@@ -219,7 +219,7 @@ const OPS_ACTIVITY_TYPE_LABELS = {
   arcade_time: 'Arcade',
   playground: 'Plaine de jeux',
   billards: 'Billards',
-  fun_run: 'Fun Run'
+  fun_run: 'Pixel'
 };
 
 const OPS_EVENT_REASON_LABELS = {

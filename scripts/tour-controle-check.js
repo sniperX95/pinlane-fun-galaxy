@@ -218,7 +218,7 @@ Module.prototype._compile = function (contenu, nom) {
 
 // Les doublures du chemin public, les memes que scripts/centres-dissocies-check.js. La lecture et le reste sont reels.
 function mock(rel, exports) { const r = require.resolve(path.join(ROOT, rel)); require.cache[r] = { id: r, filename: r, loaded: true, exports }; }
-mock('lib/rate-limit', { enforceRateLimit: () => false, checkRateLimit: () => ({ allowed: true, remaining: 999, retryAfterSeconds: 0 }), getClientIp: () => 'banc' });
+mock('lib/rate-limit', { enforceRateLimit: () => false, checkRateLimit: () => ({ allowed: true, remaining: 999, retryAfterSeconds: 0 }), getClientIp: () => 'banc', cleDeLAdresse: (ip) => String(ip || 'banc') });
 const kn = require('../lib/ops-knowledge');
 kn.refreshCenterOverrides = async () => false;
 kn.refreshCatalog = async () => false;
@@ -585,7 +585,9 @@ async function preuvesFormulaire(browser) {
   ok(TELEGRAM[0].match(/plantage (\w+)/) && TELEGRAM[1].match(/plantage (\w+)/) && TELEGRAM[0].match(/plantage (\w+)/)[1] !== TELEGRAM[1].match(/plantage (\w+)/)[1], '[F] les deux plantages se distinguent par leur empreinte', TELEGRAM);
   const { alerter: alerterBanc } = require('../lib/garde-alertes');
   const empreinte = TELEGRAM[0].match(/plantage (\w+)/)[1];
-  const repete = await alerterBanc(`formulaire:gembloux:${empreinte}`, 'le meme plantage, repete');
+  // La cle dit aussi si un ou plusieurs visiteurs l ont vu (passe securite du 2026-11-08) :
+  // le meme plantage vu par le meme visiteur porte la meme cle.
+  const repete = await alerterBanc(`formulaire:gembloux:${empreinte}:un`, 'le meme plantage, repete');
   ok(repete.deja === true && TELEGRAM.length === 2, '[F] le meme plantage repete dans l heure : pas de troisieme message', { repete, TELEGRAM });
 
   const n = signaux.length;

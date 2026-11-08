@@ -269,6 +269,11 @@ async function requete(texte, params = []) {
     db.staff_sessions = db.staff_sessions.filter((x) => x.token_hash !== params[0]);
     return vide();
   }
+  // Un code de role change ferme les sessions de son porte-code (passe securite du 2026-11-08).
+  if (/^delete from staff_sessions where member_id = \$1;?$/i.test(sql)) {
+    db.staff_sessions = db.staff_sessions.filter((x) => x.member_id !== params[0]);
+    return vide();
+  }
   if (/from schema_migrations/i.test(sql)) return vide();
   // LES LECTURES DE L EQUIPE A PLUSIEURS CENTRES (2026-11-07) : les centres de
   // l entreprise, leurs roles, les lignes de leurs membres, et les autres lignes

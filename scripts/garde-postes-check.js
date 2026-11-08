@@ -519,6 +519,15 @@ async function preuvesGarde() {
   ok(p1.r.miseEnService === `${GROUPE}:bilans=5,modifications=4,pannes=2,reservations=3`, '[G] et la garde le retient', p1.r.miseEnService);
   const p2 = await passe();
   ok(p2.messages.length === 0, '[G] au passage suivant : rien', p2.messages);
+  ok(/sécurité/.test(p1.messages.find((m) => m.message_thread_id === 2).text) && /sécurité/.test(p1.messages.find((m) => m.message_thread_id === 5).text), '[G] un groupe neuf apprend la garde de securite par la presentation de Pannes et de Bilans', p1.messages.map((m) => m.text.slice(-120)));
+  // LA GARDE DE SECURITE AJOUTEE A UN GROUPE DEJA EN SERVICE (la prod du 2026-11-08) : sa
+  // presentation part une fois, dans Bilans, et pas deux.
+  BD.etatGarde = { ...BD.etatGarde, curseurRefus: null };
+  const pS = await passe();
+  ok(pS.messages.length === 1 && pS.messages[0].message_thread_id === 5 && /^Mise en service de la garde de sécurité Pinlane\./.test(pS.messages[0].text), '[G] garde de securite ajoutee a un groupe deja en service : sa presentation part dans Bilans', pS.messages.map((m) => [m.message_thread_id, m.text.slice(0, 50)]));
+  ok(pS.r.curseurRefus !== null && pS.r.curseurRefus !== undefined, '[G] et la garde retient son curseur', pS.r.curseurRefus);
+  const pS2 = await passe();
+  ok(pS2.messages.length === 0, '[G] et pas deux fois', pS2.messages);
 
   BD.routes = [];
   routesDeLaTour({ mailEchoue: true });

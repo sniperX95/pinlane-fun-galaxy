@@ -16,7 +16,20 @@ const {
 } = require('../lib/booking-config');
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
-const { enforceRateLimit } = require('../lib/rate-limit');
+const { cleDeLAdresse, enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+
+// Les visiteurs distincts qui ont vu le meme plantage dans l heure (passe securite du
+// 2026-11-08). En memoire, par instance : il ne s agit que de choisir entre sonner et ne
+// pas sonner, la trace complete reste en base (lib/client-errors).
+const plantagesVus = globalThis.__pinlanePlantagesVus || new Map();
+globalThis.__pinlanePlantagesVus = plantagesVus;
+function visiteursDuPlantage(cle, adresse, maintenant = Date.now()) {
+  for (const [c, v] of plantagesVus) if (v.fin <= maintenant) plantagesVus.delete(c);
+  const vu = plantagesVus.get(cle) || { fin: maintenant + 60 * 60_000, adresses: new Set() };
+  vu.adresses.add(String(adresse || 'inconnue'));
+  plantagesVus.set(cle, vu);
+  return vu.adresses.size;
+}
 const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 const { simulationSqlExclusion } = require('../lib/simulation-filter');
@@ -122,11 +135,23 @@ async function handleErreurFormulaire(req, res, body) {
     // plantage repete ne sonne qu une fois par heure, un autre plantage sonne aussi. Le
     // message ne recopie rien de ce que le navigateur envoie : l etape est filtree a des
     // lettres, le plantage se designe par le debut de son empreinte.
+    //
+    // CE QUE N IMPORTE QUI PEUT ENVOYER NE SONNE PAS SEUL (passe securite du 2026-11-08) :
+    // cette route est publique et c est le navigateur qui decrit le plantage, donc qui
+    // choisit son empreinte. Un seul visiteur : le message part sans sonnerie. Le meme
+    // plantage vu par un deuxieme visiteur dans l heure : il sonne. Et ces messages ont
+    // leur propre compteur de rafale, qui ne fait jamais taire une panne du serveur.
     const { alerter } = require('../lib/garde-alertes');
     const etape = String(body.scene || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
     const empreinte = String(inscrit.stackHash || '').slice(0, 6);
     const { nomDuCentre } = require('../lib/garde-annonces');
-    await alerter(`formulaire:${centre}:${empreinte}`, `URGENT Pinlane\nLe formulaire de ${nomDuCentre(centre)} a planté chez un client${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+    const visiteurs = visiteursDuPlantage(`${centre}:${empreinte}`, cleDeLAdresse(getClientIp(req)));
+    const urgent = visiteurs >= 2;
+    await alerter(
+      `formulaire:${centre}:${empreinte}:${urgent ? 'plusieurs' : 'un'}`,
+      `${urgent ? 'URGENT Pinlane' : 'À regarder, Pinlane'}\nLe formulaire de ${nomDuCentre(centre)} a planté chez ${urgent ? `${visiteurs} clients différents` : 'un client'}${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`,
+      { fenetreMs: 60 * 60_000, silencieux: !urgent, origine: 'public' },
+    );
   }
   sendJson(res, 202, { ok: true });
 }

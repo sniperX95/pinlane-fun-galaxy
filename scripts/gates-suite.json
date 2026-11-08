@@ -210,6 +210,8 @@
     "test:equipe-acces",
     "test:tour-controle",
     "test:garde-postes",
+    "test:securite-passe",
+    "test:garde-securite",
     "test:venir-plus-tot",
     "test:heure-relachee",
     "test:catalog-editor-ui",

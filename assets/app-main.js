@@ -15265,9 +15265,9 @@ function renderStaffUtilitySecours() {
         <label class="sec-date"><span>Journée</span><input type="date" id="secours-date" value="${escapeHtml(jour)}"></label>
         <div class="sec-boutons">
           <button type="button" class="btn btn-primary" data-secours-dl="feuille" onclick="telechargerSecours('feuille')">Feuille du jour (PDF)</button>
-          <button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours('excel')">Excel du jour</button>
+          ${canUseStaffPermission('payments.view') ? '<button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours(\'excel\')">Excel du jour</button>' : ''}
           <button type="button" class="btn btn-secondary" data-secours-dl="vierge" onclick="telechargerSecours('vierge')">Feuille vierge</button>
-          ${canUseStaffPermission(['exports.download', 'settings.manage', 'direction.view']) ? '<button type="button" class="btn btn-secondary" data-secours-dl="tout" onclick="telechargerSecours(\'tout\')" title="Toute la base du centre, lue à la seconde">Tout exporter</button>' : ''}
+          ${canUseStaffPermission('exports.download') && canUseStaffPermission('payments.view') ? '<button type="button" class="btn btn-secondary" data-secours-dl="tout" onclick="telechargerSecours(\'tout\')" title="Toute la base du centre, lue à la seconde">Tout exporter</button>' : ''}
         </div>
       </div>
     </section>

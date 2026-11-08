@@ -35,7 +35,9 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   const noKey = await callLlm({ stableSystem: 's', user: 'u', fetchImpl: () => { throw new Error('ne doit pas être appelé'); } });
   ok(noKey === null, 'aucune clé → callLlm null sans appel réseau');
   process.env.OPENAI_API_KEY = 'test-key-openai';
-  ok(llmProvider() === 'openai', 'OpenAI seule → openai');
+  // Passe securite du 2026-11-08 : OpenAI ne sert plus que ce qui n a aucune donnee de client.
+  ok(llmProvider('marketing') === 'openai', 'OpenAI seule → openai pour le marketing');
+  ok(llmProvider() === null, 'OpenAI seule → aucun modele pour un usage sensible (le defaut)');
   process.env.ANTHROPIC_API_KEY = 'test-key-anthropic';
   ok(llmProvider() === 'anthropic', 'les deux clés → Anthropic PRIORITAIRE');
   delete process.env.OPENAI_API_KEY;
@@ -86,7 +88,7 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   const emailSchema = { type: 'object', additionalProperties: false, properties: { subject: { type: 'string' }, body: { type: 'string' } }, required: ['subject', 'body'] };
   const rO = await callLlmJson({
     stableSystem: 'REGLES', system: 'volatile', user: '{"a":1}',
-    schema: emailSchema, schemaName: 'improved_email', openaiModel: 'gpt-4o-mini', fetchImpl: fxO.impl,
+    schema: emailSchema, schemaName: 'improved_email', openaiModel: 'gpt-4o-mini', fetchImpl: fxO.impl, usage: 'marketing',
   });
   const callO = fxO.calls[0];
   ok(callO.url === 'https://api.openai.com/v1/responses', 'URL Responses API');
@@ -101,7 +103,7 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   llmBudget.__resetForTests();
   const before = llmBudget.getMonthlySpend();
   const fxSpend = makeFetch(() => ({ ok: true, json: async () => ({ output_text: 'texte', usage: { input_tokens: 100000, output_tokens: 50000 } }) }));
-  const rSpend = await callLlm({ user: 'u', openaiModel: 'gpt-4.1-mini', fetchImpl: fxSpend.impl });
+  const rSpend = await callLlm({ user: 'u', openaiModel: 'gpt-4.1-mini', fetchImpl: fxSpend.impl, usage: 'marketing' });
   ok(rSpend && rSpend.provider === 'openai', 'appel OpenAI mocké passé');
   const spent = llmBudget.getMonthlySpend() - before;
   // 100k in × 0.40/M + 50k out × 1.60/M = 0.04 + 0.08 = 0.12 $
@@ -140,7 +142,10 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   ok(llmProvider('marketing') === 'kimi', 'LLM_PROVIDER=kimi garde Kimi pour le marketing');
   delete process.env.LLM_PROVIDER;
   process.env.OPENAI_API_KEY = 'test-key-openai';
-  ok(llmProvider('sensitive') === 'openai', 'sensible + Kimi + OpenAI : OpenAI, jamais Kimi');
+  // Passe securite du 2026-11-08 : une donnee de client ne va que chez Anthropic.
+  ok(llmProvider('sensitive') === null, 'sensible + Kimi + OpenAI, sans Anthropic : aucun modele, ni Kimi ni OpenAI');
+  ok(llmProvider('garde') === null, 'le bilan de la garde, sans Anthropic : aucun modele, ni Kimi ni OpenAI');
+  ok(llmProvider('marketing') === 'kimi', 'le marketing garde Kimi quand OpenAI est la aussi');
   ok(llmProvider('mails') === null, 'les mails ne vont pas chez OpenAI non plus : Anthropic seulement');
   delete process.env.OPENAI_API_KEY;
   process.env.ANTHROPIC_API_KEY = 'test-key-anthropic';

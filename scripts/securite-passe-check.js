@@ -1,0 +1,534 @@
+// LA PASSE SECURITE DU 2026-11-08 : chaque trou ferme, prouve par un REFUS sur le vrai code,
+// puis par une contre-preuve qui remet l ancien code EN MEMOIRE et doit faire rougir.
+//
+// Demande d Ansar (07/11) : « bosser de fou sur toutes les securites, toutes les gardes,
+// regarder si tout est bien analyse, s il ne manque rien ». Ce que ce gate exige :
+//   [A] la portee 'all' (tous les clients) n est qu a la plateforme, sur TOUTES les routes :
+//       POST /api/ops?centerId=all, corps sans centre, par une Direction de client : 403, la
+//       demande de groupe d un autre client ne change pas, la tentative se trace ;
+//   [B] « Voir les montants » vaut aussi au serveur : un role Marketing ne recoit aucun prix,
+//       aucun encaisse, aucun chiffre d affaires, ni dans le planning du jour, ni dans la
+//       plage de dates, ni dans les chiffres ; un Manager les recoit ;
+//   [C] l export complet demande « Exporter » ET « Voir les montants » : le role Technique
+//       (Réglages) est refuse, la Direction le prend, et le geste se trace au journal ;
+//   [D] changer un prix du catalogue demande « Tarifs », meme avec « Réglages » ;
+//   [E] un role qui gere l equipe sans etre la Direction ne change pas les droits de son
+//       propre role, ne donne pas un droit qu il n a pas, ne fait pas une Direction par
+//       modele, ne lit pas le code d une personne de la Direction ;
+//   [F] un appareil bloque (8 codes faux) n essaie plus rien, meme en inventant un centre a
+//       chaque essai, et le bon code n est meme pas verifie ;
+//   [G] les lectures sans session ne remplissent plus le journal : une ligne par appareil,
+//       par route et par heure ;
+//   [H] une donnee de client ne part que chez Anthropic : sans sa cle, ni OpenAI ni Kimi ;
+//   [J] ce qu un client ecrit ne devient jamais un lien dans un mail du centre ;
+//   [O] un code de role change ferme les sessions ouvertes avec l ancien.
+//
+// Zero reseau, zero base : 'pg' est remplace avant tout require applicatif. Les contre-preuves
+// compilent une source mutee en memoire : le disque n est jamais ecrit.
+// Lancement : node scripts/securite-passe-check.js
+'use strict';
+
+for (const nom of Object.keys(process.env)) if (/^(PG|DATABASE|POSTGRES|RESEND|TWILIO|OPENROUTER|ANTHROPIC|OPENAI|KIMI|MOONSHOT|TELEGRAM|BREVO|LLM_)/i.test(nom)) delete process.env[nom];
+process.env.NODE_ENV = 'test';
+delete process.env.VERCEL;
+delete process.env.VERCEL_ENV;
+delete process.env.ALLOW_INSECURE_STAFF_CODES;
+process.env.DATABASE_URL = 'postgres://gate/gate';
+process.env.DATABASE_SSL = 'disable';
+process.env.STAFF_AUTH_SECRET = 'gate-securite-passe-secret-2026';
+process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-SECURITE-2026';
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const Module = require('module');
+
+const ROOT = path.resolve(__dirname, '..');
+const F = {
+  staffAuth: path.join(ROOT, 'lib', 'staff-auth.js'),
+  apiStaffAuth: path.join(ROOT, 'api', 'staff-auth.js'),
+  ops: path.join(ROOT, 'api', 'ops.js'),
+  staffState: path.join(ROOT, 'api', 'staff-state.js'),
+  adminRange: path.join(ROOT, 'api', 'admin-range.js'),
+  http: path.join(ROOT, 'lib', 'http.js'),
+  llm: path.join(ROOT, 'lib', 'llm-client.js'),
+  comms: path.join(ROOT, 'lib', 'ops-communications.js'),
+};
+
+let echecs = 0;
+function ok(condition, message, detail) {
+  if (condition) { console.log(`ok    ${message}`); return true; }
+  echecs += 1;
+  console.log(`FAIL  ${message}${detail === undefined ? '' : `  ${String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 300)}`}`);
+  return false;
+}
+
+function hashSecret(value) {
+  return crypto.createHash('sha256').update(`${process.env.STAFF_AUTH_SECRET}:${String(value || '').trim()}`).digest('hex');
+}
+
+// Copie figee des 29 droits : un gate de securite teste toujours le meme univers.
+const TOUS = [
+  'dashboard.view', 'direction.view', 'centers.switch', 'reports.export',
+  'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'planning.past',
+  'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'reservations.quick',
+  'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid', 'exports.download',
+  'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents',
+  'pricing.manage', 'users.manage', 'settings.manage', 'security.codes', 'ai.ops',
+];
+const MARKETING = ['dashboard.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents', 'reports.export'];
+const MANAGER = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'planning.past', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'reservations.quick', 'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid', 'emails.view', 'reports.export', 'pricing.manage'];
+const TECHNIQUE = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'settings.manage', 'ai.ops'];
+const CHEF = ['dashboard.view', 'reservations.view', 'clients.view', 'users.manage', 'security.codes'];
+const EXPORTEUR = ['dashboard.view', 'clients.view', 'exports.download'];
+
+// ---------------------------------------------------------------------------
+// L UNIVERS : Fun Galaxy (Libramont, Gembloux) et un autre client, MI-12.
+// ---------------------------------------------------------------------------
+const CENTRES = [
+  { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy', client_name: 'Fun Galaxy' },
+  { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy', client_name: 'Fun Galaxy' },
+  { id: 'mi-12', name: 'MI-12 Bowling', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'mi-12-client', client_name: 'MI-12 SARL' },
+];
+const MARQUEUR_MI12 = 'FUITE-MI12-PROSPECT-CONFIDENTIEL';
+let demandes;
+function viderDemandes() {
+  demandes = [
+    { id: 1, center_id: 'libramont', contact_name: 'Prospect Fun Galaxy', email: 'a@exemple.be', phone: '+32470000001', message: 'demande', status: 'new' },
+    { id: 2, center_id: 'mi-12', contact_name: 'Prospect MI-12', email: 'b@exemple.be', phone: '+32470000002', message: MARQUEUR_MI12, status: 'new' },
+  ];
+}
+viderDemandes();
+
+// Des montants qu on ne peut pas confondre avec autre chose, sur un jour PASSE (les chiffres
+// de l accueil ne comptent pas l avenir), calcule a chaque passage : le gate ne vieillit pas.
+const jourBelge = (instant) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date(instant));
+const JOUR = jourBelge(Date.now() - 3 * 86400000);
+const PLAGE = `startDate=${jourBelge(Date.now() - 6 * 86400000)}&endDate=${jourBelge(Date.now() - 86400000)}`;
+const SENTINELLES = { prix: 4321.75, base: 4999.5, paye: 1234.25, ligne: 3333.5, programme: 6666.25, remise: 'remise-sentinelle-7777' };
+function reservationSentinelle(id) {
+  return {
+    id, center_id: 'libramont', channel: 'staff', type: 'bowling', date: JOUR, start_time: '14:00', duration: 1, total_duration: 1,
+    pax: 6, name: 'Client Sentinelle', phone: '+32470000009', email: 'sentinelle@exemple.be', status: 'paid', payment_status: 'paid',
+    price: SENTINELLES.prix, base_price: SENTINELLES.base, amount_paid: SENTINELLES.paye, discount_reason: SENTINELLES.remise,
+    payment_method: 'cash', paid_at: `${JOUR}T15:00:00.000Z`, lanes: [1], notes: '',
+    program: { items: [{ activityId: 'bowling', price: SENTINELLES.ligne, priceType: 'grid_bowling', priceKnown: true }], price: SENTINELLES.programme, priceComplete: true },
+    payload: {}, ops_plan: {}, created_at: `${JOUR}T09:00:00.000Z`, updated_at: `${JOUR}T09:00:00.000Z`,
+  };
+}
+
+const ROLES = {
+  direction: { center_id: 'libramont', id: 'direction', name: 'Direction', code: 'DI', permissions: TOUS, locked: true, summary: '', description: '', tone: 'direction', access_code_hash: hashSecret('DI-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
+  'staff-bar': { center_id: 'libramont', id: 'staff-bar', name: 'Staff bar', code: 'ST', permissions: ['dashboard.view'], locked: false, summary: '', description: '', tone: 'staff', access_code_hash: hashSecret('ST-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
+  'chef-equipe': { center_id: 'libramont', id: 'chef-equipe', name: 'Chef d’équipe', code: 'CH', permissions: CHEF, locked: false, summary: '', description: '', tone: 'manager', access_code_hash: hashSecret('CH-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
+};
+const MEMBRES = {
+  'libramont:direction-locale': { center_id: 'libramont', id: 'libramont:direction-locale', name: 'Directrice', role_id: 'direction', status: 'active', access_code_enc: null },
+  'libramont:chef': { center_id: 'libramont', id: 'libramont:chef', name: 'Chef d’équipe', role_id: 'chef-equipe', status: 'active', access_code_enc: null },
+};
+
+// Les sessions forgees en base : le VRAI getStaffSessionFromToken les lit.
+const SESSIONS = new Map();
+function session(token, { memberId, memberName, roleId, roleName, permissions, locked = false, centre = 'libramont' }) {
+  SESSIONS.set(hashSecret(token), {
+    token_hash: hashSecret(token), center_id: centre, expires_at: new Date(Date.now() + 3600_000).toISOString(),
+    member_id: memberId, member_name: memberName, contact: '', member_status: 'active',
+    role_id: roleId, role_name: roleName, role_code: roleName.slice(0, 2).toUpperCase(), permissions, locked,
+  });
+  return token;
+}
+const T = {
+  direction: session('fgs_gate_sec_direction', { memberId: 'libramont:direction-locale', memberName: 'Directrice', roleId: 'direction', roleName: 'Direction', permissions: TOUS, locked: true }),
+  owner: session('fgs_gate_sec_owner', { memberId: 'libramont:platform-owner', memberName: 'Plateforme', roleId: 'platform-owner', roleName: 'Plateforme', permissions: [...TOUS, 'platform.admin'], locked: true }),
+  marketing: session('fgs_gate_sec_marketing', { memberId: 'libramont:marketing', memberName: 'Marketing', roleId: 'marketing', roleName: 'Marketing', permissions: MARKETING }),
+  manager: session('fgs_gate_sec_manager', { memberId: 'libramont:manager', memberName: 'Manager', roleId: 'manager', roleName: 'Manager', permissions: MANAGER }),
+  technique: session('fgs_gate_sec_technique', { memberId: 'libramont:technique', memberName: 'Technique', roleId: 'technique', roleName: 'Technique', permissions: TECHNIQUE }),
+  chef: session('fgs_gate_sec_chef', { memberId: 'libramont:chef', memberName: 'Chef d’équipe', roleId: 'chef-equipe', roleName: 'Chef d’équipe', permissions: CHEF }),
+  exporteur: session('fgs_gate_sec_exporteur', { memberId: 'libramont:exporteur', memberName: 'Exporteur', roleId: 'exporteur', roleName: 'Exporteur', permissions: EXPORTEUR }),
+};
+
+// ---------------------------------------------------------------------------
+// LE FAUX MOTEUR SQL : il obeit au texte de la requete.
+// ---------------------------------------------------------------------------
+let sqlLog = [];
+let audit = [];
+class FakePool {
+  async query(text, params = []) {
+    const sql = String(text);
+    sqlLog.push({ sql, params });
+    const vide = { rows: [], rowCount: 0 };
+    const lignes = (rows) => ({ rows, rowCount: rows.length });
+    if (/select\s+id,\s*access_code_hash\s+from\s+staff_members\s+where\s+id\s*=\s*any/i.test(sql)) {
+      const ids = Array.isArray(params[0]) ? params[0] : [];
+      return lignes(ids.filter((id) => id.endsWith(':platform-owner')).map((id) => ({ id, access_code_hash: hashSecret(process.env.PLATFORM_OWNER_CODE) })));
+    }
+    if (/from\s+staff_sessions\s+s/i.test(sql) && /s\.token_hash\s*=\s*\$1/.test(sql)) {
+      const row = SESSIONS.get(String(params[0] || ''));
+      return row ? lignes([{ ...row }]) : vide;
+    }
+    if (/insert\s+into\s+audit_log/i.test(sql)) {
+      let contexte = params[13];
+      if (typeof contexte === 'string') { try { contexte = JSON.parse(contexte); } catch (e) { /* brut */ } }
+      audit.push({ centerId: params[0], actorKind: params[1], actorLabel: params[3], surface: params[5], action: params[6], outcome: params[10], deniedReason: params[11], context: contexte });
+      return lignes([{ id: audit.length, occurred_at: new Date().toISOString() }]);
+    }
+    if (/from\s+centers\b/i.test(sql) && /join\s+clients\b/i.test(sql)) return lignes(CENTRES.map((c) => ({ ...c })));
+    if (/from\s+centers\b/i.test(sql)) {
+      const voulus = params.map((v) => String(v || ''));
+      const rows = /where/i.test(sql) && voulus.length ? CENTRES.filter((c) => voulus.includes(c.id)) : CENTRES;
+      return lignes(rows.map((c) => ({ ...c })));
+    }
+    if (/update\s+custom_requests/i.test(sql)) {
+      const id = Number(params[0]);
+      const portee = String(params[2] || '');
+      const touchees = demandes.filter((d) => Number(d.id) === id && (portee === '' || d.center_id === portee));
+      touchees.forEach((d) => { d.status = params[1]; });
+      return lignes(touchees.map((d) => ({ ...d })));
+    }
+    if (/from\s+staff_roles\b/i.test(sql) && params.length >= 2) {
+      const role = ROLES[String(params[1] || '')];
+      return role && role.center_id === String(params[0] || '') ? lignes([{ ...role }]) : vide;
+    }
+    if (/update\s+staff_roles\b/i.test(sql)) {
+      const role = ROLES[String(params[1] || '')];
+      return role ? lignes([{ ...role }]) : vide;
+    }
+    if (/from\s+staff_members\b/i.test(sql) && params.length >= 2 && typeof params[1] === 'string' && MEMBRES[params[1]]) {
+      return lignes([{ ...MEMBRES[params[1]] }]);
+    }
+    if (/from\s+reservations\b/i.test(sql) && /^\s*select/i.test(sql)) return lignes([reservationSentinelle(9101), reservationSentinelle(9102)]);
+    return vide;
+  }
+  async connect() { const self = this; return { query: (t, p) => self.query(t, p), release() {} }; }
+  async end() {}
+}
+const pgPath = require.resolve('pg');
+require.cache[pgPath] = { id: pgPath, filename: pgPath, loaded: true, exports: { Pool: FakePool, Client: FakePool } };
+
+// ---------------------------------------------------------------------------
+// LE CHARGEUR : un graphe de modules neuf, avec ou sans mutation (en memoire).
+// ---------------------------------------------------------------------------
+const lf = (t) => String(t).split('\r\n').join('\n');
+function viderLeCache() {
+  for (const cle of Object.keys(require.cache)) if (cle.startsWith(ROOT) && !cle.includes(`${path.sep}node_modules${path.sep}`)) delete require.cache[cle];
+  delete globalThis.__pinlaneStaffLoginAttempts;
+  delete globalThis.__pinlaneLecturesSansSession;
+  delete globalThis.__pinlaneRateBuckets;
+}
+// Toutes les mutations d un meme fichier s appliquent a UNE source : compilees une a une,
+// la seconde relirait le disque et effacerait la premiere. Les fichiers se compilent dans
+// l ordre donne : celui dont les autres dependent d abord (lib avant api).
+function poserMutations(fichier, paires) {
+  let source = lf(fs.readFileSync(fichier, 'utf8'));
+  for (const [avant, apres] of paires) {
+    if (!source.includes(avant)) throw new Error(`contre-preuve sans ancre dans ${path.relative(ROOT, fichier)} : ${avant.slice(0, 90)}`);
+    source = source.replace(avant, () => apres);
+  }
+  const m = new Module(fichier, module);
+  m.filename = fichier;
+  m.paths = Module._nodeModulePaths(path.dirname(fichier));
+  require.cache[fichier] = m;
+  m._compile(source, fichier);
+  m.loaded = true;
+}
+function charger(mutations = []) {
+  viderLeCache();
+  const parFichier = new Map();
+  for (const [fichier, avant, apres] of mutations) {
+    if (!parFichier.has(fichier)) parFichier.set(fichier, []);
+    parFichier.get(fichier).push([avant, apres]);
+  }
+  for (const [fichier, paires] of parFichier) poserMutations(fichier, paires);
+  sqlLog = [];
+  audit = [];
+  viderDemandes();
+}
+
+function requete({ method = 'GET', url, token = '', body = null, ip = '203.0.113.7' }) {
+  const charge = body === null ? null : JSON.stringify(body);
+  const req = { method, url, headers: { host: 'app.pinlane.be', 'content-type': 'application/json', 'x-real-ip': ip, ...(token ? { 'x-staff-session': token } : {}) }, socket: { remoteAddress: ip } };
+  if (charge !== null) req[Symbol.asyncIterator] = async function* lire() { yield Buffer.from(charge); };
+  return req;
+}
+function reponse() {
+  return {
+    statusCode: 0, body: '', headers: {}, ended: false,
+    setHeader(n, v) { this.headers[String(n).toLowerCase()] = v; },
+    getHeader(n) { return this.headers[String(n).toLowerCase()]; },
+    writeHead(s) { this.statusCode = s; },
+    end(c) { this.body = c === undefined ? '' : (Buffer.isBuffer(c) ? `[binaire ${c.length} octets]` : String(c)); this.ended = true; },
+  };
+}
+async function appeler(fichier, options) {
+  const handler = require(fichier);
+  const req = requete(options);
+  const res = reponse();
+  try { await handler(req, res); } catch (error) { res.body = `exception:${error && error.message}`; }
+  return res;
+}
+const contientUnMontant = (texte) => [SENTINELLES.prix, SENTINELLES.base, SENTINELLES.paye, SENTINELLES.ligne, SENTINELLES.programme].some((v) => String(texte).includes(String(v))) || String(texte).includes(SENTINELLES.remise);
+
+// Les ancres des contre-preuves : les lignes du correctif, telles qu ecrites.
+const ANCRE = {
+  gardeAll: "  if (requestedCenterId === 'all' && !sessionHasPermission(session, 'platform.admin') && options.porteeAllVoulue !== true) {",
+  opsPorteeRetenue: '      if (refuserPorteePlateforme(res, session, effectiveCenterId)) return;',
+  marque: "  if (res && typeof res === 'object') res.__sansMontants = !sessionHasPermission(effective, 'payments.view');",
+  export: "    if (action === 'exportComplet') return 'exports.download';",
+  exportMontants: "    if (!sessionHasPermission(options.session, 'payments.view')) throw createHttpError('Le fichier complet contient les montants : votre rôle ne les voit pas.', 403, true);",
+  prix: "    if (touchePrix && !sessionHasPermission(options.session, 'pricing.manage')) throw createHttpError('Changer un prix demande le droit « Tarifs ».', 403, true);",
+  sonRole: "    if (!estDirection && ['updateRolePermissions', 'setRolePreset'].includes(action) && targetRoleId && targetRoleId === String((session.role && session.role.id) || '')) {",
+  cleAppareil: '  const source = `appareil:${normalizeText(fingerprint, \'unknown\')}`;',
+  bloque: '  if (rateLimited) {\n    throw createLoginRateLimitError(getLoginAttemptBucket(safeCenterId, safeFingerprint).bucket);\n  }\n  if (!safeCode || safeCode.length < 6) {',
+  sansSession: "    if (noterLectureSansSession(req)) await logAccessDenied(req, null, permission, '401_no_session', getRequestedCenterId(req, options));",
+  llm: '  if (!sansDonneeClient) return null;',
+  balisage: "    .replace(/\\b(?:https?:\\/\\/|www\\.)\\S+/gi, '(lien retiré)')",
+  sessionsRole: "  await getPool().query('delete from staff_sessions where member_id = $1;', [`${centerId}:role:${roleId}`]);",
+};
+
+(async () => {
+  // =========================================================================
+  console.log('[A] la portee « all » n est qu a la plateforme, sur toutes les routes');
+  // =========================================================================
+  charger();
+  {
+    const res = await appeler(F.ops, { method: 'POST', url: '/api/ops?centerId=all', token: T.direction, body: { action: 'customRequestStatus', id: 2, status: 'in_progress' } });
+    ok(res.statusCode === 403, '[A] POST /api/ops?centerId=all sans centre dans le corps, par une Direction de client : 403', res.statusCode);
+    ok(demandes.find((d) => d.id === 2).status === 'new', '[A] la demande de groupe de MI-12 n a pas change');
+    ok(!res.body.includes(MARQUEUR_MI12), '[A] la reponse ne contient rien de MI-12');
+    ok(audit.some((l) => l.outcome === 'denied' && l.deniedReason === '403_cross_client'), '[A] la tentative se trace comme une tentative vers un autre client', audit.map((l) => l.deniedReason));
+    const etat = await appeler(F.staffState, { url: `/api/staff-state?centerId=all&date=${JOUR}`, token: T.direction });
+    ok(etat.statusCode === 403, '[A] GET /api/staff-state?centerId=all par une Direction : 403 aussi (la garde est commune)', etat.statusCode);
+  }
+  charger();
+  {
+    const res = await appeler(F.ops, { method: 'POST', url: '/api/ops?centerId=all', token: T.owner, body: { action: 'customRequestStatus', id: 2, status: 'in_progress' } });
+    ok(res.statusCode !== 403, '[A] contraste : le proprietaire de la plateforme passe', res.statusCode);
+  }
+  // Chaque couche mord seule : sans la garde commune, api/ops.js refuse encore ;
+  // sans les deux, le trou d avant revient.
+  charger([[F.staffAuth, ANCRE.gardeAll, "  if (false) {"]]);
+  {
+    const res = await appeler(F.ops, { method: 'POST', url: '/api/ops?centerId=all', token: T.direction, body: { action: 'customRequestStatus', id: 2, status: 'in_progress' } });
+    ok(res.statusCode === 403 && demandes.find((d) => d.id === 2).status === 'new', '[A] contre-preuve : sans la garde commune, api/ops.js refuse encore la portee retenue', res.statusCode);
+  }
+  charger([[F.staffAuth, ANCRE.gardeAll, "  if (false) {"], [F.ops, ANCRE.opsPorteeRetenue, '']]);
+  {
+    const res = await appeler(F.ops, { method: 'POST', url: '/api/ops?centerId=all', token: T.direction, body: { action: 'customRequestStatus', id: 2, status: 'in_progress' } });
+    ok(res.statusCode !== 403 || demandes.find((d) => d.id === 2).status !== 'new', '[A] contre-preuve : sans les deux gardes, le trou du 08/11 revient (ce gate le verrait)', { statut: res.statusCode, demande: demandes.find((d) => d.id === 2).status });
+  }
+
+  // =========================================================================
+  console.log('\n[B] « Voir les montants » vaut au serveur');
+  // =========================================================================
+  charger();
+  {
+    const mk = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: T.marketing });
+    const mg = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: T.manager });
+    ok(mk.statusCode === 200 && /Client Sentinelle/.test(mk.body), '[B] Marketing lit bien le planning du jour (il en a le droit)', mk.statusCode);
+    ok(!contientUnMontant(mk.body), '[B] planning du jour, role Marketing : aucun prix, aucun encaisse, aucune remise');
+    ok(mg.statusCode === 200 && contientUnMontant(mg.body), '[B] contraste : le Manager recoit les montants', mg.statusCode);
+    ok(String(mk.headers.etag || '').endsWith(':sans-montants') && !String(mg.headers.etag || '').endsWith(':sans-montants'), '[B] la revision sans montants n est pas celle avec montants (un poste ne garde pas l une pour l autre)', [mk.headers.etag, mg.headers.etag]);
+    const plage = await appeler(F.adminRange, { url: `/api/admin-range?centerId=libramont&${PLAGE}`, token: T.marketing });
+    ok(plage.statusCode === 200 && /Client Sentinelle/.test(plage.body) && !contientUnMontant(plage.body), '[B] plage de dates, role Marketing : les dossiers sans leurs montants', plage.statusCode);
+    const chiffres = await appeler(F.ops, { url: `/api/ops?action=dashboardAnalytics&centerId=libramont&${PLAGE}`, token: T.marketing });
+    const total = String(SENTINELLES.prix * 2);
+    ok(chiffres.statusCode === 200 && !chiffres.body.includes(total) && !contientUnMontant(chiffres.body), '[B] chiffres de l accueil, role Marketing : ni chiffre d affaires ni encaisse', chiffres.statusCode);
+    const chiffresMg = await appeler(F.ops, { url: `/api/ops?action=dashboardAnalytics&centerId=libramont&${PLAGE}`, token: T.manager });
+    ok(chiffresMg.statusCode === 200 && chiffresMg.body.includes(total), '[B] contraste : le Manager lit le chiffre d affaires', chiffresMg.statusCode);
+  }
+  charger([[F.staffAuth, ANCRE.marque, '']]);
+  {
+    const mk = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: T.marketing });
+    ok(contientUnMontant(mk.body), '[B] contre-preuve : sans la marque posee par la garde, les montants repartent (ce gate le verrait)');
+  }
+
+  // =========================================================================
+  console.log('\n[C] l export complet : « Exporter » et « Voir les montants »');
+  // =========================================================================
+  charger();
+  {
+    const tech = await appeler(F.ops, { url: '/api/ops?action=exportComplet&centerId=libramont', token: T.technique });
+    ok(tech.statusCode === 403, '[C] role Technique (Réglages, sans « Exporter ») : 403', tech.statusCode);
+    const exp = await appeler(F.ops, { url: '/api/ops?action=exportComplet&centerId=libramont', token: T.exporteur });
+    ok(exp.statusCode === 403 && /montants/.test(exp.body), '[C] « Exporter » sans « Voir les montants » : 403, avec la raison', [exp.statusCode, exp.body.slice(0, 120)]);
+    audit = [];
+    const dir = await appeler(F.ops, { url: '/api/ops?action=exportComplet&centerId=libramont', token: T.direction });
+    ok(dir.statusCode === 200, '[C] contraste : la Direction prend le fichier', [dir.statusCode, dir.body.slice(0, 120)]);
+    ok(audit.some((l) => l.action === 'exportComplet' && l.outcome === 'success'), '[C] le fichier pris se trace au journal (donc dans Modifications sur Telegram)', audit.map((l) => `${l.action}:${l.outcome}`));
+    const { classer } = require(path.join(ROOT, 'lib', 'garde-journal.js'));
+    const ligne = classer({ action: 'exportComplet', champs: {}, cles: [], entity_id: 'exportComplet', actor_label: 'Directrice' });
+    ok(ligne && /export complet du centre/.test(String(ligne.ligne || '')), '[C] Modifications dit « export complet du centre téléchargé »', ligne);
+  }
+  charger([[F.ops, ANCRE.export, "    if (action === 'exportComplet') return ['exports.download', 'settings.manage', 'direction.view'];"], [F.ops, ANCRE.exportMontants, '']]);
+  {
+    const tech = await appeler(F.ops, { url: '/api/ops?action=exportComplet&centerId=libramont', token: T.technique });
+    ok(tech.statusCode === 200, '[C] contre-preuve : avec la regle d avant, le role Technique emporte tout le centre (ce gate le verrait)', tech.statusCode);
+  }
+
+  // =========================================================================
+  console.log('\n[D] un prix du catalogue ne change qu avec « Tarifs »');
+  // =========================================================================
+  charger();
+  {
+    const prix = await appeler(F.ops, { method: 'POST', url: '/api/ops', token: T.technique, body: { action: 'updateFormula', centerId: 'libramont', id: 'formule-test', patch: { priceValue: 1 } } });
+    ok(prix.statusCode === 403 && /Tarifs/.test(prix.body), '[D] role Technique : changer le prix d une formule, 403', [prix.statusCode, prix.body.slice(0, 120)]);
+    const act = await appeler(F.ops, { method: 'POST', url: '/api/ops', token: T.technique, body: { action: 'updateActivity', centerId: 'libramont', id: 'bowling', patch: { priceValue: 2 } } });
+    ok(act.statusCode === 403 && /Tarifs/.test(act.body), '[D] role Technique : changer le prix d une activite, 403', act.statusCode);
+    const nom = await appeler(F.ops, { method: 'POST', url: '/api/ops', token: T.technique, body: { action: 'updateFormula', centerId: 'libramont', id: 'formule-test', patch: { name: 'Nouveau nom' } } });
+    ok(!/Tarifs/.test(nom.body), '[D] contraste : le nom d une formule suit toujours « Réglages »', nom.body.slice(0, 120));
+  }
+  charger([[F.ops, ANCRE.prix, '']]);
+  {
+    const prix = await appeler(F.ops, { method: 'POST', url: '/api/ops', token: T.technique, body: { action: 'updateFormula', centerId: 'libramont', id: 'formule-test', patch: { priceValue: 1 } } });
+    ok(!/Tarifs/.test(prix.body), '[D] contre-preuve : sans la garde, le prix passe la barriere (ce gate le verrait)', prix.body.slice(0, 120));
+  }
+
+  // =========================================================================
+  console.log('\n[E] un role qui gere l equipe sans etre la Direction');
+  // =========================================================================
+  charger();
+  {
+    const post = (token, body) => appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth?centerId=libramont', token, body: { centerId: 'libramont', ...body } });
+    const soi = await post(T.chef, { action: 'updateRolePermissions', roleId: 'chef-equipe', permissions: [...CHEF, 'centers.switch'] });
+    ok(soi.statusCode === 403, '[E] il ne change pas les droits de son propre role', [soi.statusCode, soi.body.slice(0, 120)]);
+    const donne = await post(T.chef, { action: 'updateRolePermissions', roleId: 'staff-bar', permissions: ['dashboard.view', 'payments.view'] });
+    ok(donne.statusCode === 403 && /un droit que/.test(donne.body), '[E] il ne donne pas un droit qu il n a pas (« Voir les montants »)', [donne.statusCode, donne.body.slice(0, 120)]);
+    const modele = await post(T.chef, { action: 'setRolePreset', roleId: 'staff-bar', presetId: 'direction' });
+    ok(modele.statusCode === 403, '[E] il ne fait pas une Direction par modele', modele.statusCode);
+    const code = await post(T.chef, { action: 'revealMemberCode', memberId: 'libramont:direction-locale' });
+    ok(code.statusCode === 403 && !/revealedCode/.test(code.body), '[E] il ne lit pas le code de la Directrice', [code.statusCode, code.body.slice(0, 120)]);
+    const regen = await post(T.chef, { action: 'regenerateRoleCode', roleId: 'direction' });
+    ok(regen.statusCode === 403, '[E] il ne change pas le code du role Direction', regen.statusCode);
+    const dir = await post(T.direction, { action: 'updateRolePermissions', roleId: 'staff-bar', permissions: ['dashboard.view', 'payments.view'] });
+    ok(!(dir.statusCode === 403 && /droit|direction/i.test(dir.body)), '[E] contraste : la Direction donne ce droit', [dir.statusCode, dir.body.slice(0, 120)]);
+  }
+  charger([[F.apiStaffAuth, ANCRE.sonRole, '    if (false) {']]);
+  {
+    const soi = await appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth?centerId=libramont', token: T.chef, body: { centerId: 'libramont', action: 'updateRolePermissions', roleId: 'chef-equipe', permissions: [...CHEF] } });
+    ok(soi.statusCode !== 403, '[E] contre-preuve : sans la garde, son propre role se change (ce gate le verrait)', [soi.statusCode, soi.body.slice(0, 120)]);
+  }
+
+  // =========================================================================
+  console.log('\n[F] un appareil bloque n essaie plus rien');
+  // =========================================================================
+  charger();
+  {
+    const { loginStaffByCode } = require(F.staffAuth);
+    const statuts = [];
+    for (let i = 0; i < 9; i += 1) {
+      try { await loginStaffByCode({ centerId: `centre-invente-${i}`, code: 'FG-0000-0000-0000-0000', fingerprint: '198.51.100.20' }); statuts.push(200); } catch (error) { statuts.push(error.statusCode || 400); }
+    }
+    ok(statuts.slice(0, 8).every((s) => s !== 429) && statuts[8] === 429, '[F] 8 codes faux puis le 9e refuse en 429, meme en inventant un centre a chaque essai', statuts);
+    sqlLog = [];
+    let statut = 200;
+    try { await loginStaffByCode({ centerId: 'libramont', code: process.env.PLATFORM_OWNER_CODE, fingerprint: '198.51.100.20' }); } catch (error) { statut = error.statusCode || 400; }
+    ok(statut === 429, '[F] bloque, meme le bon code est refuse', statut);
+    ok(!sqlLog.some((q) => /access_code_hash/i.test(q.sql)), '[F] et il n est meme pas cherche en base (aucun code n est verifie)', sqlLog.map((q) => q.sql.replace(/\s+/g, ' ').slice(0, 60)));
+    let autre = 400;
+    try { await loginStaffByCode({ centerId: 'libramont', code: 'FG-1111-1111-1111-1111', fingerprint: '198.51.100.99' }); } catch (error) { autre = error.statusCode || 400; }
+    ok(autre !== 429, '[F] contraste : un autre appareil n est pas bloque', autre);
+  }
+  charger([[F.staffAuth, ANCRE.cleAppareil, "  const source = `${normalizeText(centerId, 'libramont')}:${normalizeText(fingerprint, 'unknown')}`;"]]);
+  {
+    const { loginStaffByCode } = require(F.staffAuth);
+    const statuts = [];
+    for (let i = 0; i < 9; i += 1) {
+      try { await loginStaffByCode({ centerId: `centre-invente-${i}`, code: 'FG-0000-0000-0000-0000', fingerprint: '198.51.100.21' }); statuts.push(200); } catch (error) { statuts.push(error.statusCode || 400); }
+    }
+    ok(statuts[8] !== 429, '[F] contre-preuve : compte par centre demande, le 9e essai passe encore (ce gate le verrait)', statuts);
+  }
+
+  // =========================================================================
+  console.log('\n[G] les lectures sans session ne remplissent plus le journal');
+  // =========================================================================
+  charger();
+  {
+    for (let i = 0; i < 50; i += 1) await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, ip: '192.0.2.50' });
+    const n1 = audit.filter((l) => l.deniedReason === '401_no_session').length;
+    ok(n1 === 1, '[G] 50 lectures sans session du meme appareil : 1 ligne au journal', n1);
+    const r = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, ip: '192.0.2.50' });
+    ok(r.statusCode === 401, '[G] et chaque lecture est toujours refusee (401)', r.statusCode);
+    await appeler(F.adminRange, { url: '/api/admin-range?centerId=libramont&startDate=2026-11-01&endDate=2026-11-02', ip: '192.0.2.50' });
+    await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, ip: '192.0.2.51' });
+    const n2 = audit.filter((l) => l.deniedReason === '401_no_session').length;
+    ok(n2 === 3, '[G] une autre route, un autre appareil : une ligne chacun', n2);
+  }
+  charger([[F.staffAuth, ANCRE.sansSession, "    await logAccessDenied(req, null, permission, '401_no_session', getRequestedCenterId(req, options));"]]);
+  {
+    for (let i = 0; i < 50; i += 1) await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, ip: '192.0.2.52' });
+    const n = audit.filter((l) => l.deniedReason === '401_no_session').length;
+    ok(n === 50, '[G] contre-preuve : sans la borne, 50 lectures font 50 lignes (ce gate le verrait)', n);
+  }
+
+  // =========================================================================
+  console.log('\n[H] une donnee de client ne part que chez Anthropic');
+  // =========================================================================
+  charger();
+  {
+    const { llmProvider } = require(F.llm);
+    process.env.OPENAI_API_KEY = 'gate-openai';
+    ok(llmProvider('sensitive') === null, '[H] sans Anthropic, un usage sensible n a aucun modele (pas OpenAI)', llmProvider('sensitive'));
+    ok(llmProvider('garde') === null, '[H] sans Anthropic, le bilan de la garde n a aucun modele', llmProvider('garde'));
+    ok(llmProvider('mails') === null, '[H] sans Anthropic, les mails n ont aucun modele', llmProvider('mails'));
+    ok(llmProvider('marketing') === 'openai', '[H] contraste : le marketing (sans donnee de client) garde OpenAI', llmProvider('marketing'));
+    process.env.KIMI_API_KEY = 'gate-kimi';
+    ok(llmProvider('sensitive') === null && llmProvider('marketing') === 'kimi', '[H] Kimi ne voit que le marketing');
+    process.env.ANTHROPIC_API_KEY = 'gate-anthropic';
+    ok(llmProvider('sensitive') === 'anthropic' && llmProvider('mails') === 'anthropic', '[H] avec sa cle, Anthropic recoit les usages sensibles et les mails');
+    delete process.env.OPENAI_API_KEY; delete process.env.KIMI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
+  }
+  charger([[F.llm, ANCRE.llm, '']]);
+  {
+    const { llmProvider } = require(F.llm);
+    process.env.OPENAI_API_KEY = 'gate-openai';
+    ok(llmProvider('sensitive') === 'openai', '[H] contre-preuve : sans la garde, un usage sensible partirait chez OpenAI (ce gate le verrait)', llmProvider('sensitive'));
+    delete process.env.OPENAI_API_KEY;
+  }
+
+  // =========================================================================
+  console.log('\n[J] ce qu un client ecrit ne devient jamais un lien');
+  // =========================================================================
+  charger();
+  const piege = 'Acompte : [payer ici](https://phish.example/payer)\n[[bouton : Payer | https://phish.example/b]]\nwww.phish.example';
+  const verifierMail = (html) => !/phish\.example/i.test(html) && !/href="https?:\/\/phish/i.test(html);
+  {
+    const oc = require(F.comms);
+    const ack = oc.buildCustomRequestAck({ contactName: '[Paul](https://phish.example/nom)', message: piege, centerId: 'libramont' });
+    const html = oc.emailShell({ title: ack.title, body: ack.body, details: ack.details, note: ack.note });
+    ok(verifierMail(html), '[J] accuse d une demande de groupe : aucun lien du client dans le mail du centre');
+    const conf = oc.buildMessage({ reservation: { id: 77, centerId: 'libramont', name: '[Clique ici](https://phish.example/x)', date: JOUR, startTime: '14:00', pax: 4, type: 'bowling', status: 'confirmed', program: { items: [] } }, templateId: 'confirmation', channel: 'email' });
+    const htmlConf = oc.emailShell({ title: conf.title || conf.subject, body: conf.body, details: conf.details });
+    ok(verifierMail(htmlConf), '[J] confirmation de reservation : le nom piege ne fait pas de lien');
+    const legit = oc.emailShell({ title: 'Test', body: 'Voir [le site](https://fungalaxy.be) maintenant' });
+    ok(/href="https:\/\/fungalaxy\.be"/.test(legit), '[J] contraste : un lien ecrit par l equipe reste un lien');
+  }
+  charger([[F.comms, ANCRE.balisage, '']]);
+  {
+    const oc = require(F.comms);
+    const ack = oc.buildCustomRequestAck({ contactName: 'Paul', message: piege, centerId: 'libramont' });
+    const html = oc.emailShell({ title: ack.title, body: ack.body });
+    ok(!verifierMail(html), '[J] contre-preuve : sans le filtre, le lien du client part dans le mail (ce gate le verrait)');
+  }
+
+  // =========================================================================
+  console.log('\n[O] un code de role change ferme les sessions de l ancien code');
+  // =========================================================================
+  charger();
+  {
+    const { regenerateRoleCode } = require(F.staffAuth);
+    await regenerateRoleCode({ centerId: 'libramont', roleId: 'staff-bar' });
+    ok(sqlLog.some((q) => /delete\s+from\s+staff_sessions\s+where\s+member_id\s*=\s*\$1/i.test(q.sql) && q.params[0] === 'libramont:role:staff-bar'), '[O] les sessions du porte-code « libramont:role:staff-bar » sont fermees');
+  }
+  charger([[F.staffAuth, ANCRE.sessionsRole, '']]);
+  {
+    const { regenerateRoleCode } = require(F.staffAuth);
+    await regenerateRoleCode({ centerId: 'libramont', roleId: 'staff-bar' });
+    ok(!sqlLog.some((q) => /delete\s+from\s+staff_sessions/i.test(q.sql)), '[O] contre-preuve : sans la ligne, les anciennes sessions restent (ce gate le verrait)');
+  }
+
+  console.log(echecs ? `\nsecurite-passe-check: ${echecs} FAIL` : '\nsecurite-passe-check: ALL OK');
+  process.exit(echecs ? 1 : 0);
+})().catch((error) => {
+  console.error('securite-passe-check CRASH:', error && error.stack ? error.stack : error);
+  process.exit(1);
+});

@@ -21,7 +21,10 @@
 //       par route et par heure ;
 //   [H] une donnee de client ne part que chez Anthropic : sans sa cle, ni OpenAI ni Kimi ;
 //   [J] ce qu un client ecrit ne devient jamais un lien dans un mail du centre ;
-//   [O] un code de role change ferme les sessions ouvertes avec l ancien.
+//   [O] un code de role change ferme les sessions ouvertes avec l ancien ;
+//   [P] les petites portes : le limiteur compte l adresse donnee par Vercel, pas celle que le
+//       client ecrit, et une adresse IPv6 par son bloc /64 ; le code de demonstration est
+//       refuse en production ; la ligne du proprietaire ne change pas de role.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require applicatif. Les contre-preuves
 // compilent une source mutee en memoire : le disque n est jamais ecrit.
@@ -53,6 +56,7 @@ const F = {
   http: path.join(ROOT, 'lib', 'http.js'),
   llm: path.join(ROOT, 'lib', 'llm-client.js'),
   comms: path.join(ROOT, 'lib', 'ops-communications.js'),
+  rateLimit: path.join(ROOT, 'lib', 'rate-limit.js'),
 };
 
 let echecs = 0;
@@ -283,6 +287,11 @@ const ANCRE = {
   llm: '  if (!sansDonneeClient) return null;',
   balisage: "    .replace(/\\b(?:https?:\\/\\/|www\\.)\\S+/gi, '(lien retiré)')",
   sessionsRole: "  await getPool().query('delete from staff_sessions where member_id = $1;', [`${centerId}:role:${roleId}`]);",
+  ipDeConfiance: "  const brut = h['x-vercel-forwarded-for'] || h['x-real-ip'] || h['x-forwarded-for']",
+  empreinteDeConfiance: "    req.headers['x-vercel-forwarded-for']\n    || req.headers['x-real-ip']\n    || req.headers['x-forwarded-for']",
+  blocIPv6: 'function cleDeLAdresse(ip) {',
+  codeDemo: '  DEFAULT_PLATFORM_OWNER_CODE,\n',
+  lignePlateforme: "  if (String(memberId || '').endsWith(':platform-owner')) throw createHttpError('Cette ligne appartient à la plateforme.', 403);",
 };
 
 (async () => {
@@ -524,6 +533,85 @@ const ANCRE = {
     const { regenerateRoleCode } = require(F.staffAuth);
     await regenerateRoleCode({ centerId: 'libramont', roleId: 'staff-bar' });
     ok(!sqlLog.some((q) => /delete\s+from\s+staff_sessions/i.test(q.sql)), '[O] contre-preuve : sans la ligne, les anciennes sessions restent (ce gate le verrait)');
+  }
+
+  // =========================================================================
+  console.log('\n[P] les petites portes');
+  // =========================================================================
+  // Une requete de connexion dont le client ecrit lui-meme un X-Forwarded-For different a
+  // chaque essai ; Vercel, lui, donne toujours la vraie adresse.
+  const connexionForgee = (i, ip) => {
+    const charge = JSON.stringify({ code: 'FG-0000-0000-0000-0000', centerId: `centre-invente-${i}` });
+    const req = { method: 'POST', url: '/api/staff-auth', headers: { host: 'app.pinlane.be', 'content-type': 'application/json', 'x-forwarded-for': `6.6.6.${i}`, 'x-vercel-forwarded-for': ip, 'x-real-ip': ip }, socket: { remoteAddress: '10.0.0.1' } };
+    req[Symbol.asyncIterator] = async function* lire() { yield Buffer.from(charge); };
+    return req;
+  };
+  const neufConnexionsForgees = async (ip) => {
+    const handler = require(F.apiStaffAuth);
+    const statuts = [];
+    for (let i = 0; i < 9; i += 1) {
+      const res = reponse();
+      try { await handler(connexionForgee(i, ip), res); } catch (error) { res.statusCode = 599; }
+      statuts.push(res.statusCode);
+    }
+    return statuts;
+  };
+  const appelerLaPlateforme = async () => {
+    const { updateMemberRole } = require(F.staffAuth);
+    try { await updateMemberRole({ centerId: 'libramont', memberId: 'libramont:platform-owner', roleId: 'manager' }); return { statut: 200, message: '' }; } catch (error) { return { statut: error.statusCode || 0, message: String(error.message || '') }; }
+  };
+  // Le code de demonstration tel qu il est ecrit dans lib/staff-auth.js.
+  const CODE_DEMO = /const DEFAULT_PLATFORM_OWNER_CODE = '([^']+)';/.exec(fs.readFileSync(F.staffAuth, 'utf8'))[1];
+  const codeDeDemoEnProd = () => {
+    const avant = { env: process.env.NODE_ENV, code: process.env.PLATFORM_OWNER_CODE };
+    process.env.NODE_ENV = 'production';
+    process.env.PLATFORM_OWNER_CODE = CODE_DEMO;
+    try { return { statut: 200, message: '', valeur: require(F.staffAuth).__test.getPlatformOwnerCode() }; } catch (error) { return { statut: error.statusCode || 0, message: String(error.message || '') }; } finally {
+      process.env.NODE_ENV = avant.env;
+      process.env.PLATFORM_OWNER_CODE = avant.code;
+    }
+  };
+  charger();
+  {
+    const { getClientIp, cleDeLAdresse } = require(F.rateLimit);
+    const forge = { headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9', 'x-vercel-forwarded-for': '203.0.113.9', 'x-real-ip': '203.0.113.9' }, socket: { remoteAddress: '10.0.0.1' } };
+    ok(getClientIp(forge) === '203.0.113.9', '[P] limiteur des pages publiques : l adresse vient de Vercel, pas du X-Forwarded-For ecrit par le client', getClientIp(forge));
+    const a = cleDeLAdresse('2001:db8:aa:bb:1:2:3:4');
+    const b = cleDeLAdresse('2001:db8:aa:bb:ffff::9');
+    ok(a === b && a !== cleDeLAdresse('2001:db8:aa:cc::1'), '[P] une adresse IPv6 compte par son bloc /64 : en changer dans le bloc ne remet pas le compteur a zero', [a, b]);
+    ok(cleDeLAdresse('::ffff:203.0.113.9') === '203.0.113.9' && cleDeLAdresse('203.0.113.9') === '203.0.113.9', '[P] une adresse IPv4 reste elle-meme, meme ecrite en IPv6', cleDeLAdresse('::ffff:203.0.113.9'));
+    const statuts = await neufConnexionsForgees('198.51.100.30');
+    ok(statuts.slice(0, 8).every((s) => s !== 429) && statuts[8] === 429, '[P] connexion : changer son X-Forwarded-For a chaque essai ne contourne pas le blocage, le 9e essai est refuse en 429', statuts);
+    const demo = codeDeDemoEnProd();
+    ok(CODE_DEMO.length >= 12 && demo.statut === 500 && /^PLATFORM_OWNER_CODE faible ou valeur de demonstration/.test(demo.message), '[P] en production, le code de demonstration ecrit dans le code est refuse comme code du proprietaire', demo);
+    const plateforme = await appelerLaPlateforme();
+    ok(plateforme.statut === 403 && /appartient à la plateforme/.test(plateforme.message), '[P] la ligne du proprietaire de la plateforme ne change pas de role depuis un centre', plateforme);
+  }
+  charger([[F.rateLimit, ANCRE.ipDeConfiance, "  const brut = h['x-forwarded-for'] || h['x-vercel-forwarded-for'] || h['x-real-ip']"]]);
+  {
+    const { getClientIp } = require(F.rateLimit);
+    const forge = { headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9', 'x-vercel-forwarded-for': '203.0.113.9', 'x-real-ip': '203.0.113.9' }, socket: { remoteAddress: '10.0.0.1' } };
+    ok(getClientIp(forge) === '6.6.6.6', '[P] contre-preuve : l ordre d avant compte l adresse ecrite par le client (ce gate le verrait)', getClientIp(forge));
+  }
+  charger([[F.rateLimit, ANCRE.blocIPv6, "function cleDeLAdresse(ip) {\n  return String(ip || '').trim() || 'unknown';"]]);
+  {
+    const { cleDeLAdresse } = require(F.rateLimit);
+    ok(cleDeLAdresse('2001:db8:aa:bb:1:2:3:4') !== cleDeLAdresse('2001:db8:aa:bb:ffff::9'), '[P] contre-preuve : compte par adresse entiere, deux adresses du meme bloc font deux compteurs (ce gate le verrait)');
+  }
+  charger([[F.apiStaffAuth, ANCRE.empreinteDeConfiance, "    req.headers['x-forwarded-for']\n    || req.headers['x-vercel-forwarded-for']\n    || req.headers['x-real-ip']"]]);
+  {
+    const statuts = await neufConnexionsForgees('198.51.100.31');
+    ok(statuts[8] !== 429, '[P] contre-preuve : l empreinte d avant suit le X-Forwarded-For, le 9e essai passe encore (ce gate le verrait)', statuts);
+  }
+  charger([[F.staffAuth, ANCRE.codeDemo, '']]);
+  {
+    const demo = codeDeDemoEnProd();
+    ok(demo.statut === 200 && demo.valeur === CODE_DEMO, '[P] contre-preuve : sans le code de demonstration dans la liste, la production l accepte (ce gate le verrait)', { statut: demo.statut, message: demo.message });
+  }
+  charger([[F.staffAuth, ANCRE.lignePlateforme, '']]);
+  {
+    const plateforme = await appelerLaPlateforme();
+    ok(plateforme.statut !== 403, '[P] contre-preuve : sans la garde, la ligne de la plateforme passe la barriere (ce gate le verrait)', plateforme);
   }
 
   console.log(echecs ? `\nsecurite-passe-check: ${echecs} FAIL` : '\nsecurite-passe-check: ALL OK');

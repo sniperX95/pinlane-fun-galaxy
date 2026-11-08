@@ -11,7 +11,6 @@ function buildOfflineStaffState(date, centerId, error) {
     degraded: true,
     storageUnavailable: true,
     storageMessage: 'Données temps réel temporairement indisponibles. Mode secours actif.',
-    storageError: error?.message || 'Base indisponible.',
     date,
     centerId,
     reservations: [],

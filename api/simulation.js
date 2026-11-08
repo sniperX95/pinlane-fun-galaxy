@@ -5,7 +5,7 @@ const {
   startSimulation,
   stepSimulation,
 } = require('../lib/ops-simulation');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const { todayStr } = require('../lib/booking-config');
 const { requireStaffPermission } = require('../lib/staff-auth');
 
@@ -112,7 +112,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;

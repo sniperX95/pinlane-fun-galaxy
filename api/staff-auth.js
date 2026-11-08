@@ -2,6 +2,7 @@ const {
   createMember,
   createEmergencyAccessControl,
   createEmergencyOwnerSession,
+  requeteDUnAutreSite,
   createRole,
   renameRole,
   deleteRole,
@@ -38,7 +39,7 @@ const {
   niveauEffectif,
   STAFF_ROLE_PRESETS,
 } = require('../lib/staff-auth');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const {
   writeAuditLog,
   writeAuditLogOrThrow,
@@ -187,8 +188,8 @@ function peutDonnerLeRole(session, role) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
-
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
@@ -215,6 +216,11 @@ module.exports = async (req, res) => {
       return;
     }
 
+    if (requeteDUnAutreSite(req)) {
+      sendError(res, 403, 'Cette action doit venir de la console.');
+      return;
+    }
+
     const body = await readJson(req);
     const action = body.action || 'login';
     const centerId = getCenterId(req, body);
@@ -232,8 +238,10 @@ module.exports = async (req, res) => {
         });
       } catch (error) {
         if (!isStaffAuthStorageError(error)) throw error;
-        payload = createEmergencyOwnerSession({ centerId, code: loginCode });
+        payload = createEmergencyOwnerSession({ centerId, code: loginCode, fingerprint: getRequestFingerprint(req) });
         if (!payload) throw error;
+        // La cle maitresse vient de s ouvrir pendant une panne : Ansar le sait tout de suite.
+        await require('../lib/garde-securite').signalerSessionDeSecours().catch(() => null);
       }
       setStaffSessionCookie(req, res, payload.session?.token, payload.session?.expiresAt);
 

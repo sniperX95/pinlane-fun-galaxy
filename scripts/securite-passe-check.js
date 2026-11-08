@@ -24,7 +24,16 @@
 //   [O] un code de role change ferme les sessions ouvertes avec l ancien ;
 //   [P] les petites portes : le limiteur compte l adresse donnee par Vercel, pas celle que le
 //       client ecrit, et une adresse IPv6 par son bloc /64 ; le code de demonstration est
-//       refuse en production ; la ligne du proprietaire ne change pas de role.
+//       refuse en production ; la ligne du proprietaire ne change pas de role ;
+//   [Q] un role qui modifie un dossier sans voir les montants ne touche a aucun montant : la
+//       console renvoie le dossier entier, ses montants vides, et chaque ligne garde le sien ;
+//   [R] la session de secours du proprietaire : limitee pendant une panne, et elle sonne ; l etat
+//       hors ligne ne recopie pas le message du pilote de base ;
+//   [S] une ecriture du personnel vient de la console : un site voisin (Sec-Fetch-Site) est
+//       refuse, et les routes du personnel ne repondent plus aux autres origines ;
+//   [T] glisser une activite demande le droit de sa ressource (bowling, laser) ;
+//   [U] le plan interne (risque, consignes) ne part pas a un visiteur anonyme ;
+//   [V] un corps public au-dela de 64 Ko est refuse avant d etre traite.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require applicatif. Les contre-preuves
 // compilent une source mutee en memoire : le disque n est jamais ecrit.
@@ -57,6 +66,9 @@ const F = {
   llm: path.join(ROOT, 'lib', 'llm-client.js'),
   comms: path.join(ROOT, 'lib', 'ops-communications.js'),
   rateLimit: path.join(ROOT, 'lib', 'rate-limit.js'),
+  reservations: path.join(ROOT, 'api', 'staff-reservations.js'),
+  dispo: path.join(ROOT, 'api', 'public-availability.js'),
+  meta: path.join(ROOT, 'api', 'public-booking-meta.js'),
 };
 
 let echecs = 0;
@@ -85,6 +97,11 @@ const MANAGER = ['dashboard.view', 'planning.view', 'planning.bowling', 'plannin
 const TECHNIQUE = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'settings.manage', 'ai.ops'];
 const CHEF = ['dashboard.view', 'reservations.view', 'clients.view', 'users.manage', 'security.codes'];
 const EXPORTEUR = ['dashboard.view', 'clients.view', 'exports.download'];
+// Un role fait main : il corrige les dossiers sans voir les montants.
+const EDITEUR = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.past', 'reservations.view', 'reservations.edit'];
+// Deux roles faits main : chacun ne gere qu une ressource.
+const BOWLING_SEUL = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.drag', 'planning.past', 'reservations.view'];
+const LASER_SEUL = ['dashboard.view', 'planning.view', 'planning.laser', 'planning.drag', 'planning.past', 'reservations.view'];
 
 // ---------------------------------------------------------------------------
 // L UNIVERS : Fun Galaxy (Libramont, Gembloux) et un autre client, MI-12.
@@ -109,13 +126,14 @@ viderDemandes();
 const jourBelge = (instant) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date(instant));
 const JOUR = jourBelge(Date.now() - 3 * 86400000);
 const PLAGE = `startDate=${jourBelge(Date.now() - 6 * 86400000)}&endDate=${jourBelge(Date.now() - 86400000)}`;
-const SENTINELLES = { prix: 4321.75, base: 4999.5, paye: 1234.25, ligne: 3333.5, programme: 6666.25, remise: 'remise-sentinelle-7777' };
+const SENTINELLES = { prix: 4321.75, base: 4999.5, paye: 1234.25, ligne: 3333.5, programme: 6666.25, extra: 77.25, remise: 'remise-sentinelle-7777' };
 function reservationSentinelle(id) {
   return {
     id, center_id: 'libramont', channel: 'staff', type: 'bowling', date: JOUR, start_time: '14:00', duration: 1, total_duration: 1,
     pax: 6, name: 'Client Sentinelle', phone: '+32470000009', email: 'sentinelle@exemple.be', status: 'paid', payment_status: 'paid',
     price: SENTINELLES.prix, base_price: SENTINELLES.base, amount_paid: SENTINELLES.paye, discount_reason: SENTINELLES.remise,
     payment_method: 'cash', paid_at: `${JOUR}T15:00:00.000Z`, lanes: [1], notes: '',
+    extras: [{ name: 'Boisson sentinelle', price: SENTINELLES.extra }],
     program: { items: [{ activityId: 'bowling', price: SENTINELLES.ligne, priceType: 'grid_bowling', priceKnown: true }], price: SENTINELLES.programme, priceComplete: true },
     payload: {}, ops_plan: {}, created_at: `${JOUR}T09:00:00.000Z`, updated_at: `${JOUR}T09:00:00.000Z`,
   };
@@ -149,6 +167,9 @@ const T = {
   technique: session('fgs_gate_sec_technique', { memberId: 'libramont:technique', memberName: 'Technique', roleId: 'technique', roleName: 'Technique', permissions: TECHNIQUE }),
   chef: session('fgs_gate_sec_chef', { memberId: 'libramont:chef', memberName: 'Chef d’équipe', roleId: 'chef-equipe', roleName: 'Chef d’équipe', permissions: CHEF }),
   exporteur: session('fgs_gate_sec_exporteur', { memberId: 'libramont:exporteur', memberName: 'Exporteur', roleId: 'exporteur', roleName: 'Exporteur', permissions: EXPORTEUR }),
+  editeur: session('fgs_gate_sec_editeur', { memberId: 'libramont:editeur', memberName: 'Correcteur', roleId: 'correcteur', roleName: 'Correcteur', permissions: EDITEUR }),
+  bowlingSeul: session('fgs_gate_sec_bowling', { memberId: 'libramont:bowling', memberName: 'Pistes', roleId: 'pistes', roleName: 'Pistes', permissions: BOWLING_SEUL }),
+  laserSeul: session('fgs_gate_sec_laser', { memberId: 'libramont:laser', memberName: 'Arene', roleId: 'arene', roleName: 'Arene', permissions: LASER_SEUL }),
 };
 
 // ---------------------------------------------------------------------------
@@ -156,8 +177,11 @@ const T = {
 // ---------------------------------------------------------------------------
 let sqlLog = [];
 let audit = [];
+let ecritures = [];
+let panneBase = false;
 class FakePool {
   async query(text, params = []) {
+    if (panneBase) throw new Error('your project has exceeded the data transfer quota');
     const sql = String(text);
     sqlLog.push({ sql, params });
     const vide = { rows: [], rowCount: 0 };
@@ -182,6 +206,11 @@ class FakePool {
       const rows = /where/i.test(sql) && voulus.length ? CENTRES.filter((c) => voulus.includes(c.id)) : CENTRES;
       return lignes(rows.map((c) => ({ ...c })));
     }
+    if (/^\s*select\s+\*\s+from\s+custom_requests/i.test(sql)) {
+      const id = Number(params[0]);
+      const portee = String(params[1] || '');
+      return lignes(demandes.filter((d) => Number(d.id) === id && (portee === '' || d.center_id === portee)).map((d) => ({ ...d })));
+    }
     if (/update\s+custom_requests/i.test(sql)) {
       const id = Number(params[0]);
       const portee = String(params[2] || '');
@@ -199,6 +228,10 @@ class FakePool {
     }
     if (/from\s+staff_members\b/i.test(sql) && params.length >= 2 && typeof params[1] === 'string' && MEMBRES[params[1]]) {
       return lignes([{ ...MEMBRES[params[1]] }]);
+    }
+    if (/^\s*update\s+reservations\s+set\s+center_id/i.test(sql)) {
+      ecritures.push(params);
+      return lignes([reservationSentinelle(Number(params[0]))]);
     }
     if (/from\s+reservations\b/i.test(sql) && /^\s*select/i.test(sql)) return lignes([reservationSentinelle(9101), reservationSentinelle(9102)]);
     return vide;
@@ -245,12 +278,13 @@ function charger(mutations = []) {
   for (const [fichier, paires] of parFichier) poserMutations(fichier, paires);
   sqlLog = [];
   audit = [];
+  ecritures = [];
   viderDemandes();
 }
 
-function requete({ method = 'GET', url, token = '', body = null, ip = '203.0.113.7' }) {
+function requete({ method = 'GET', url, token = '', body = null, ip = '203.0.113.7', headers = {} }) {
   const charge = body === null ? null : JSON.stringify(body);
-  const req = { method, url, headers: { host: 'app.pinlane.be', 'content-type': 'application/json', 'x-real-ip': ip, ...(token ? { 'x-staff-session': token } : {}) }, socket: { remoteAddress: ip } };
+  const req = { method, url, headers: { host: 'app.pinlane.be', 'content-type': 'application/json', 'x-real-ip': ip, ...(token ? { 'x-staff-session': token } : {}), ...headers }, socket: { remoteAddress: ip } };
   if (charge !== null) req[Symbol.asyncIterator] = async function* lire() { yield Buffer.from(charge); };
   return req;
 }
@@ -267,10 +301,11 @@ async function appeler(fichier, options) {
   const handler = require(fichier);
   const req = requete(options);
   const res = reponse();
+  res.req = req;
   try { await handler(req, res); } catch (error) { res.body = `exception:${error && error.message}`; }
   return res;
 }
-const contientUnMontant = (texte) => [SENTINELLES.prix, SENTINELLES.base, SENTINELLES.paye, SENTINELLES.ligne, SENTINELLES.programme].some((v) => String(texte).includes(String(v))) || String(texte).includes(SENTINELLES.remise);
+const contientUnMontant = (texte) => [SENTINELLES.prix, SENTINELLES.base, SENTINELLES.paye, SENTINELLES.ligne, SENTINELLES.programme, SENTINELLES.extra].some((v) => String(texte).includes(String(v))) || String(texte).includes(SENTINELLES.remise);
 
 // Les ancres des contre-preuves : les lignes du correctif, telles qu ecrites.
 const ANCRE = {
@@ -292,6 +327,14 @@ const ANCRE = {
   blocIPv6: 'function cleDeLAdresse(ip) {',
   codeDemo: '  DEFAULT_PLATFORM_OWNER_CODE,\n',
   lignePlateforme: "  if (String(memberId || '').endsWith(':platform-owner')) throw createHttpError('Cette ligne appartient à la plateforme.', 403);",
+  retourMontants: "      if (res.__sansMontants) require('../lib/montants-role').retirerLesMontantsDuCorps(body, current);",
+  limiteSecours: '  if (safeFingerprint && isLoginRateLimited(safeCenterId, safeFingerprint)) {',
+  alerteSecours: "        await require('../lib/garde-securite').signalerSessionDeSecours().catch(() => null);",
+  etatHorsLigne: "    storageMessage: 'Données temps réel temporairement indisponibles. Mode secours actif.',",
+  autreSite: "  return site === 'same-site' || site === 'cross-site';",
+  droitRessource: "        if (droitDeLaRessource && !sessionHasPermission(session, droitDeLaRessource)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);",
+  planAnonyme: '  res.__visiteurAnonyme = !(await sessionDuPersonnel(req));',
+  corpsPublic: '      body = await readJson(req, { maxBytes: 64 * 1024 });',
 };
 
 (async () => {
@@ -612,6 +655,200 @@ const ANCRE = {
   {
     const plateforme = await appelerLaPlateforme();
     ok(plateforme.statut !== 403, '[P] contre-preuve : sans la garde, la ligne de la plateforme passe la barriere (ce gate le verrait)', plateforme);
+  }
+
+  // =========================================================================
+  console.log('\n[Q] sans voir les montants, modifier un dossier n en change aucun');
+  // =========================================================================
+  // Le dossier tel que la console le recoit, renvoye tel quel avec un nom corrige.
+  const dossierDuPlanning = async (token) => {
+    const lu = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token });
+    return (JSON.parse(lu.body).reservations || []).find((r) => Number(r.id) === 9101) || null;
+  };
+  const corriger = (token, corps) => appeler(F.reservations, { method: 'PATCH', url: '/api/staff-reservations', token, body: corps });
+  const ecrit = () => {
+    const p = ecritures[ecritures.length - 1] || [];
+    const lire = (v) => { try { return JSON.parse(v); } catch (e) { return null; } };
+    return { nom: p[3], base: p[13], prix: p[14], extras: lire(p[19]) || [], programme: lire(p[27]) || {} };
+  };
+  charger();
+  {
+    const dossier = await dossierDuPlanning(T.editeur);
+    ok(dossier && dossier.price === null && dossier.extras[0].price === null && dossier.program.items[0].price === null, '[Q] montage : la console du Correcteur recoit le dossier sans ses montants', dossier && { prix: dossier.price, extras: dossier.extras, programme: dossier.program });
+    const res = await corriger(T.editeur, { ...dossier, name: 'Client Corrige', prixRaison: 'Prix revu au comptoir', baseUpdatedAt: dossier.updatedAt });
+    const e = ecrit();
+    ok(res.statusCode === 200 && e.nom === 'Client Corrige', '[Q] le dossier renvoye tel quel se corrige : le nom change', { statut: res.statusCode, corps: res.body.slice(0, 200), nom: e.nom });
+    ok(e.prix === SENTINELLES.prix && e.base === SENTINELLES.base, '[Q] le prix et la base du dossier ne changent pas', { prix: e.prix, base: e.base });
+    ok(e.extras.length === 1 && e.extras[0].price === SENTINELLES.extra, '[Q] le supplement garde son prix', e.extras);
+    ok(e.programme.price === SENTINELLES.programme && e.programme.items && e.programme.items[0].price === SENTINELLES.ligne, '[Q] le programme garde ses montants', e.programme);
+    ok(!contientUnMontant(res.body), '[Q] la reponse ne lui rend aucun montant', res.body.slice(0, 200));
+    ecritures = [];
+    const tape = await corriger(T.editeur, { ...dossier, price: 1, basePrice: 1, extras: [{ ...dossier.extras[0], price: 1 }], baseUpdatedAt: dossier.updatedAt });
+    const t2 = ecrit();
+    ok(tape.statusCode === 200 && t2.prix === SENTINELLES.prix && t2.base === SENTINELLES.base && t2.extras[0].price === SENTINELLES.extra, '[Q] un montant tape par ce role ne s ecrit pas non plus', { statut: tape.statusCode, prix: t2.prix, base: t2.base, extras: t2.extras });
+    ecritures = [];
+    const direction = await dossierDuPlanning(T.direction);
+    const dir = await corriger(T.direction, { ...direction, price: 4000, prixRaison: 'Geste commercial', baseUpdatedAt: direction.updatedAt });
+    ok(dir.statusCode === 200 && ecrit().prix === 4000, '[Q] contraste : la Direction change toujours un prix', { statut: dir.statusCode, corps: dir.body.slice(0, 200), prix: ecrit().prix });
+  }
+  charger([[F.reservations, ANCRE.retourMontants, '']]);
+  {
+    const dossier = await dossierDuPlanning(T.editeur);
+    const res = await corriger(T.editeur, { ...dossier, name: 'Client Corrige', baseUpdatedAt: dossier.updatedAt });
+    const e = ecrit();
+    ok(res.statusCode !== 200 || !e.extras.length || e.extras[0].price !== SENTINELLES.extra, '[Q] contre-preuve : sans la garde, le supplement revient sans son prix (ce gate le verrait)', { statut: res.statusCode, extras: e.extras });
+  }
+
+  // =========================================================================
+  console.log('\n[R] la session de secours du proprietaire');
+  // =========================================================================
+  let telegram = [];
+  const fetchOriginal = globalThis.fetch;
+  const avecTelegram = async (geste) => {
+    process.env.TELEGRAM_JETON = 'gate';
+    process.env.TELEGRAM_CHAT = '1';
+    telegram = [];
+    globalThis.fetch = async (url, init) => { telegram.push(String(JSON.parse(String((init && init.body) || '{}')).text || '')); return { ok: true, status: 200, json: async () => ({ ok: true }) }; };
+    try { return await geste(); } finally { delete process.env.TELEGRAM_JETON; delete process.env.TELEGRAM_CHAT; globalThis.fetch = fetchOriginal; }
+  };
+  const connexionEnPanne = async (code, ip) => {
+    panneBase = true;
+    try { return await appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth', body: { action: 'login', centerId: 'libramont', code }, ip }); } finally { panneBase = false; }
+  };
+  const neufCodesFauxEnPanne = async (ip) => {
+    const statuts = [];
+    for (let i = 0; i < 9; i += 1) statuts.push((await connexionEnPanne('FG-0000-0000-0000-0000', ip)).statusCode);
+    return statuts;
+  };
+  charger();
+  await avecTelegram(async () => {
+    const statuts = await neufCodesFauxEnPanne('198.51.100.40');
+    ok(statuts.slice(0, 8).every((s) => s !== 200 && s !== 429) && statuts[8] === 429, '[R] base en panne : 8 codes faux, puis le 9e est refuse en 429', statuts);
+    const bloque = await connexionEnPanne(process.env.PLATFORM_OWNER_CODE, '198.51.100.40');
+    const secoursDit = () => telegram.filter((m) => /session de secours/.test(m));
+    ok(bloque.statusCode === 429 && secoursDit().length === 0, '[R] bloque, meme le bon code du proprietaire est refuse', { statut: bloque.statusCode, telegram });
+    const secours = await connexionEnPanne(process.env.PLATFORM_OWNER_CODE, '198.51.100.41');
+    ok(secours.statusCode === 200 && /platform-owner-emergency/.test(secours.body), '[R] contraste : un autre appareil ouvre la session de secours avec le bon code', { statut: secours.statusCode, corps: secours.body.slice(0, 160) });
+    ok(secoursDit().length === 1 && /^URGENT/.test(secoursDit()[0]), '[R] la session de secours ouverte sonne sur Telegram', telegram);
+    panneBase = true;
+    let horsLigne;
+    try { horsLigne = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: 'fgs_faux_jeton' }); } finally { panneBase = false; }
+    ok(horsLigne.statusCode === 200 && /storageMessage/.test(horsLigne.body) && !/quota/i.test(horsLigne.body), '[R] l etat hors ligne ne recopie pas le message du pilote de base', horsLigne.body.slice(0, 200));
+  });
+  charger([[F.staffAuth, ANCRE.limiteSecours, '  if (false) {']]);
+  await avecTelegram(async () => {
+    const statuts = await neufCodesFauxEnPanne('198.51.100.42');
+    ok(statuts[8] !== 429, '[R] contre-preuve : sans la limite, le 9e code s essaie encore (ce gate le verrait)', statuts);
+  });
+  charger([[F.apiStaffAuth, ANCRE.alerteSecours, '']]);
+  await avecTelegram(async () => {
+    const secours = await connexionEnPanne(process.env.PLATFORM_OWNER_CODE, '198.51.100.43');
+    ok(secours.statusCode === 200 && !telegram.some((m) => /session de secours/.test(m)), '[R] contre-preuve : sans l alerte, la cle maitresse s ouvre en silence (ce gate le verrait)', { statut: secours.statusCode, telegram });
+  });
+  charger([[F.staffState, ANCRE.etatHorsLigne, `${ANCRE.etatHorsLigne}\n    storageError: error?.message || 'Base indisponible.',`]]);
+  {
+    panneBase = true;
+    let horsLigne;
+    try { horsLigne = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: 'fgs_faux_jeton' }); } finally { panneBase = false; }
+    ok(/quota/i.test(horsLigne.body), '[R] contre-preuve : avec l ancien champ, le message du pilote sort (ce gate le verrait)', horsLigne.body.slice(0, 200));
+  }
+
+  // =========================================================================
+  console.log('\n[S] une ecriture du personnel vient de la console');
+  // =========================================================================
+  const changerLaDemande = (headers) => appeler(F.ops, { method: 'POST', url: '/api/ops?centerId=libramont', token: T.direction, body: { action: 'customRequestStatus', id: 1, status: 'in_progress' }, headers });
+  const etatDeLaDemande = () => demandes.find((d) => Number(d.id) === 1).status;
+  charger();
+  {
+    for (const site of ['same-site', 'cross-site']) {
+      const r = await changerLaDemande({ 'sec-fetch-site': site, origin: 'https://www.pinlane.be' });
+      ok(r.statusCode === 403 && etatDeLaDemande() === 'new', `[S] une ecriture venue d un autre site (${site}) : 403, rien ne change`, { statut: r.statusCode, etat: etatDeLaDemande() });
+    }
+    const console_ = await changerLaDemande({ 'sec-fetch-site': 'same-origin' });
+    ok(console_.statusCode === 200 && etatDeLaDemande() === 'in_progress', '[S] contraste : depuis la console, l ecriture passe', { statut: console_.statusCode, corps: console_.body.slice(0, 160) });
+    viderDemandes();
+    const outil = await changerLaDemande({});
+    ok(outil.statusCode === 200 && etatDeLaDemande() === 'in_progress', '[S] un outil sans cet en-tete : la session decide', { statut: outil.statusCode });
+    const lecture = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: T.manager, headers: { 'sec-fetch-site': 'same-site' } });
+    ok(lecture.statusCode === 200, '[S] une lecture n est pas une ecriture : elle passe', lecture.statusCode);
+    const connexion = await appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth', body: { action: 'login', centerId: 'libramont', code: process.env.PLATFORM_OWNER_CODE }, headers: { 'sec-fetch-site': 'cross-site' } });
+    ok(connexion.statusCode === 403, '[S] la connexion non plus ne vient pas d un autre site', connexion.statusCode);
+    for (const [route, url] of [['api/ops', F.ops], ['api/staff-auth', F.apiStaffAuth]]) {
+      const r = await appeler(url, { url: `/${route}?centerId=libramont&action=centerConfig`, token: T.direction, headers: { origin: 'https://www.pinlane.be' } });
+      ok(!r.headers['access-control-allow-origin'] && !r.headers['access-control-allow-credentials'], `[S] ${route} ne repond plus aux autres origines`, r.headers);
+    }
+    const publique = await appeler(F.meta, { method: 'OPTIONS', url: '/api/public-booking-meta', headers: { origin: 'https://www.fungalaxy.be' } });
+    ok(publique.headers['access-control-allow-origin'] === 'https://www.fungalaxy.be', '[S] contraste : une route publique repond toujours au site du client', publique.headers);
+  }
+  charger([[F.staffAuth, ANCRE.autreSite, '  return false;']]);
+  {
+    const r = await changerLaDemande({ 'sec-fetch-site': 'same-site', origin: 'https://www.pinlane.be' });
+    ok(r.statusCode === 200 && etatDeLaDemande() === 'in_progress', '[S] contre-preuve : sans la garde, un site voisin ecrit a la place de l employe (ce gate le verrait)', { statut: r.statusCode, etat: etatDeLaDemande() });
+  }
+
+  // =========================================================================
+  console.log('\n[T] glisser une activite demande le droit de sa ressource');
+  // =========================================================================
+  const REFUS_RESSOURCE = 'Ce planning ne fait pas partie de votre rôle.';
+  const glisser = (token, activityId) => appeler(F.reservations, { method: 'PATCH', url: '/api/staff-reservations', token, body: { id: 9101, centerId: 'libramont', activityMove: { activityId, startTime: '16:00', lanes: [4] } } });
+  charger();
+  {
+    const a = await glisser(T.bowlingSeul, 'laser_game');
+    ok(a.statusCode === 403 && a.body.includes(REFUS_RESSOURCE), '[T] sans « Gérer les sessions Laser Game », le laser ne se deplace pas', { statut: a.statusCode, corps: a.body.slice(0, 160) });
+    const b = await glisser(T.laserSeul, 'bowling');
+    ok(b.statusCode === 403 && b.body.includes(REFUS_RESSOURCE), '[T] sans « Gérer les pistes bowling », le bowling ne se deplace pas', { statut: b.statusCode, corps: b.body.slice(0, 160) });
+    const c1 = await glisser(T.bowlingSeul, 'bowling');
+    const c2 = await glisser(T.laserSeul, 'laser_game');
+    ok(!c1.body.includes(REFUS_RESSOURCE) && !c2.body.includes(REFUS_RESSOURCE), '[T] contraste : chacun deplace sa ressource', { bowling: c1.body.slice(0, 120), laser: c2.body.slice(0, 120) });
+  }
+  charger([[F.reservations, ANCRE.droitRessource, '']]);
+  {
+    const a = await glisser(T.bowlingSeul, 'laser_game');
+    ok(!a.body.includes(REFUS_RESSOURCE), '[T] contre-preuve : sans la garde, le laser se deplace sans son droit (ce gate le verrait)', { statut: a.statusCode, corps: a.body.slice(0, 160) });
+  }
+
+  // =========================================================================
+  console.log('\n[U] le plan interne ne part pas a un visiteur anonyme');
+  // =========================================================================
+  const INTERNES = ['risk', 'staffSummary', 'marketIntelligence', 'entitlements', 'operationsChecklist', 'customerCommitment'];
+  const FUTUR = jourBelge(Date.now() + 14 * 86400000);
+  const creneaux = async (token) => {
+    const r = await appeler(F.dispo, { url: `/api/public-availability?date=${FUTUR}&type=laser&pax=8&centerId=libramont`, token });
+    return { statut: r.statusCode, slots: (JSON.parse(r.body || '{}').slots || []), corps: r.body };
+  };
+  const internesVus = (slots) => [...new Set(slots.flatMap((s) => Object.keys(s.opsPlan || {}).filter((k) => INTERNES.includes(k))))];
+  charger();
+  {
+    const anonyme = await creneaux('');
+    ok(anonyme.slots.length > 0 && anonyme.slots[0].opsPlan && anonyme.slots[0].opsPlan.endTime, '[U] montage : un visiteur recoit des creneaux, leur heure de fin comprise', { statut: anonyme.statut, n: anonyme.slots.length, corps: anonyme.corps.slice(0, 200) });
+    ok(internesVus(anonyme.slots).length === 0, '[U] aucun champ interne dans les creneaux d un visiteur', internesVus(anonyme.slots));
+    const personnel = await creneaux(T.manager);
+    ok(personnel.slots.length > 0 && internesVus(personnel.slots).length > 0, '[U] contraste : une vraie session du personnel garde son plan', internesVus(personnel.slots));
+    const { sansValidationInterne } = require(path.join(ROOT, 'lib', 'reservation-ops.js'));
+    const nettoye = sansValidationInterne({ opsPlan: { endTime: '12:00', risk: { score: 3 }, staffSummary: 'x', validation: {}, tableLimit: 2 } }).opsPlan;
+    ok(nettoye.endTime === '12:00' && !('risk' in nettoye) && !('staffSummary' in nettoye) && !('validation' in nettoye) && !('tableLimit' in nettoye), '[U] la reponse a une reservation publique les retire aussi', nettoye);
+  }
+  charger([[F.dispo, ANCRE.planAnonyme, '  res.__visiteurAnonyme = false;']]);
+  {
+    const anonyme = await creneaux('');
+    ok(internesVus(anonyme.slots).length > 0, '[U] contre-preuve : sans la regle, le risque part au visiteur (ce gate le verrait)', internesVus(anonyme.slots));
+  }
+
+  // =========================================================================
+  console.log('\n[V] un corps public reste petit');
+  // =========================================================================
+  const tropGros = () => appeler(F.meta, { method: 'POST', url: '/api/public-booking-meta', body: { kind: 'erreur-formulaire', centerId: 'libramont', message: 'x'.repeat(100 * 1024) } });
+  charger();
+  {
+    const r = await tropGros();
+    ok(r.statusCode === 413, '[V] 100 Ko sur la route publique : refuse (413)', { statut: r.statusCode, corps: r.body.slice(0, 120) });
+    const normal = await appeler(F.meta, { method: 'POST', url: '/api/public-booking-meta', body: { kind: 'inconnu' } });
+    ok(normal.statusCode !== 413, '[V] contraste : un corps normal n est pas concerne', normal.statusCode);
+  }
+  charger([[F.meta, ANCRE.corpsPublic, '      body = await readJson(req);']]);
+  {
+    const r = await tropGros();
+    ok(r.statusCode !== 413, '[V] contre-preuve : sans la borne, 100 Ko passent (ce gate le verrait)', r.statusCode);
   }
 
   console.log(echecs ? `\nsecurite-passe-check: ${echecs} FAIL` : '\nsecurite-passe-check: ALL OK');

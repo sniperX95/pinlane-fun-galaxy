@@ -167,7 +167,7 @@ async function handleVitrine(req, res, body) {
     return;
   }
   const pool = getPool();
-  if (!pool) { sendJson(res, 202, { ok: true, enregistres: 0 }); return; }
+  if (!pool) { sendJson(res, 202, { ok: true }); return; }
   try {
     // Une « reservee » sans reservation de ce centre creee dans l heure ne
     // compte pas : un navigateur ne fabrique pas un client. Une reservation de
@@ -179,7 +179,7 @@ async function handleVitrine(req, res, body) {
       r.rows.forEach((row) => reelles.add(Number(row.id)));
     }
     const gardees = envoi.lignes.filter((l) => l.evenement !== 'reservee' || reelles.has(l.reservationId));
-    if (!gardees.length) { sendJson(res, 202, { ok: true, enregistres: 0 }); return; }
+    if (!gardees.length) { sendJson(res, 202, { ok: true }); return; }
     const valeurs = [];
     const lignesSql = gardees.map((l, i) => {
       const b = i * 13;
@@ -187,11 +187,13 @@ async function handleVitrine(req, res, body) {
       return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13})`;
     });
     await pool.query(`insert into upsell_events (center_id, visite, evenement, carte, genre, activite, raison, priorite, rang, promo, montant, personnes, reservation_id) values ${lignesSql.join(', ')}`, valeurs);
-    sendJson(res, 201, { ok: true, enregistres: gardees.length });
+    // La meme reponse dans tous les cas (passe securite du 2026-11-08) : personne ne la lit
+    // (sendBeacon), et un compte disait a un inconnu si un numero de reservation existe.
+    sendJson(res, 202, { ok: true });
   } catch (error) {
     // Une statistique perdue ne casse jamais le formulaire : elle laisse une trace.
     console.error('[public-booking-meta] vitrine', error && (error.code || error.message));
-    sendJson(res, 202, { ok: true, enregistres: 0 });
+    sendJson(res, 202, { ok: true });
   }
 }
 
@@ -702,7 +704,8 @@ async function routeur(req, res) {
   if (req.method === 'POST') {
     let body;
     try {
-      body = await readJson(req);
+      // 64 Ko : un corps public n en demande pas plus, et il est lu avant les limiteurs.
+      body = await readJson(req, { maxBytes: 64 * 1024 });
     } catch (error) {
       sendError(res, error.statusCode || 400, error.message || 'Requête invalide.');
       return;

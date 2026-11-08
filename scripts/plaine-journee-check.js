@@ -226,7 +226,7 @@ async function main() {
   const coeur = fs.readFileSync(path.join(ROOT, 'assets', 'booking-core.js'), 'utf8');
   const { DURATION_OPTIONS } = require('../lib/booking-config');
   // eslint-disable-next-line no-new-func
-  const ligneRecap = new Function('escapeHtml', 'DURATION_OPTIONS', `${extraire(coeur, 'formatDurationLabel')}\n${extraire(appMain, 'formatMoneyCentimes')}\n${extraire(appMain, 'renderVisitRecapItem')}\nreturn renderVisitRecapItem;`)((s) => String(s), DURATION_OPTIONS);
+  const ligneRecap = new Function('escapeHtml', 'DURATION_OPTIONS', 'montantsMasques', `${extraire(coeur, 'formatDurationLabel')}\n${extraire(appMain, 'formatMoneyCentimes')}\n${extraire(appMain, 'renderVisitRecapItem')}\nreturn renderVisitRecapItem;`)((s) => String(s), DURATION_OPTIONS, () => false);
   const detailDe = (html) => ((/recap-program-detail">([^<]*)</.exec(html) || [])[1] || '');
   const sansMarque = detailDe(ligneRecap({ activityId: 'playground', name: 'Playground', minutes: 60, priceKnown: true, price: 24 }));
   const avecMarque = detailDe(ligneRecap({ activityId: 'playground', name: 'Playground', dayAccess: true, minutes: 60, priceKnown: true, price: 24 }));

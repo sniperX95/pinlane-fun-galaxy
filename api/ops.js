@@ -167,7 +167,7 @@ const {
 const { listCentersForSession } = require('../lib/center-scope');
 const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
@@ -4073,7 +4073,8 @@ function auditEntityFor(action, body = {}) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;

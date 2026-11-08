@@ -651,6 +651,17 @@ module.exports = async (req, res) => {
         : (gesteDAccueil ? ['reservations.status', 'reservations.edit'] : 'reservations.edit');
       const session = await requireStaffPermission(req, res, permission, { centerId: current.centerId || 'libramont' });
       if (!session) return;
+      // Sans « Voir les montants », le dossier revient sans ses montants : ils ne s ecrivent
+      // pas, chaque ligne garde le sien (lib/montants-role.js, passe securite du 2026-11-08).
+      if (res.__sansMontants) require('../lib/montants-role').retirerLesMontantsDuCorps(body, current);
+      // GLISSER UNE ACTIVITE DEMANDE LE DROIT DE SA RESSOURCE (passe securite du 2026-11-08) :
+      // « Gérer les pistes bowling » et « Gérer les sessions Laser Game » ne gardaient que les
+      // onglets de la console, un role sans l un des deux deplacait quand meme par l API.
+      if (patchIsActivityMoveOnly(body)) {
+        const activiteDeplacee = String((body.activityMove && body.activityMove.activityId) || '');
+        const droitDeLaRessource = activiteDeplacee === 'laser_game' ? 'planning.laser' : (activiteDeplacee === 'bowling' ? 'planning.bowling' : '');
+        if (droitDeLaRessource && !sessionHasPermission(session, droitDeLaRessource)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+      }
       // UN JOUR PASSE SE CORRIGE AVEC SON DROIT (2026-11-07). planning.past
       // (« Changer un jour passé ») ne gardait que le bouton Valider de l ecran :
       // modifier, deplacer ou annuler une reservation d hier passait par l API.

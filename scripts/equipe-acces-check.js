@@ -20,6 +20,9 @@
 //       bar ne glisse pas et n a pas la roue des pistes ; Technique glisse sans reserver ; le Manager
 //       n exporte pas ; l Assistant manager n a que Libramont dans le menu des centres ; sans
 //       « Équipe & accès », ni l entree ni la page).
+//   [M] les montants a l ecran (passe securite du 2026-11-08) : le vrai filtre du serveur retire
+//       les montants d un role sans « Voir les montants », et la console dit « ··· », jamais un
+//       faux « 0 € » ni « Prix sur place » ; sa fiche de modification n a pas de champ de prix.
 //   [C] les contre-preuves, compilees en memoire (le disque n est jamais ecrit) : « deplacer »
 //       toujours vrai fait rougir [E] ; sans la garde du jour passe, [P] rougit ; sans la garde du
 //       role Direction, [S] rougit.
@@ -44,6 +47,7 @@ const Module = require('module');
 const ROOT = path.resolve(__dirname, '..');
 const STAFF_AUTH = path.join(ROOT, 'lib', 'staff-auth.js');
 const API_STAFF_AUTH = path.join(ROOT, 'api', 'staff-auth.js');
+const MONTANTS_ROLE = path.join(ROOT, 'lib', 'montants-role.js');
 const API_RESERVATIONS = path.join(ROOT, 'api', 'staff-reservations.js');
 const PORT = Number(process.env.PINLANE_EQUIPE_ACCES_PORT || 5323);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -414,10 +418,10 @@ const fiche = (c) => ({
 // La reservation du jour, sur la piste 3 de Libramont : ce que chaque role glisse ou non.
 const RESAS = [{
   id: 9201, centerId: 'libramont', date: AUJOURDHUI, startTime: '15:00', duration: 1, type: 'bowling', lanes: [3], pax: 6,
-  name: 'Groupe Martin', phone: '', status: 'confirmed', price: 60, updatedAt: '2026-11-07T09:00:00.000Z',
+  name: 'Groupe Martin', phone: '', status: 'confirmed', price: 60, basePrice: 60, extras: [{ name: 'Boisson', price: 12 }], updatedAt: '2026-11-07T09:00:00.000Z',
   opsPlan: { resourceBlocks: [{ resourceType: 'bowling_lane', activityId: 'bowling', startTime: '15:00', endTime: '16:00', lanes: [3], players: 6 }] },
 }];
-function doublure(u, rs) {
+async function doublure(u, rs, rq) {
   const J = (p) => { rs.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); rs.end(JSON.stringify(p)); };
   const action = u.searchParams.get('action');
   if (u.pathname === '/api/ops' && (action === 'menuCenters' || action === 'centerConfig')) {
@@ -426,7 +430,14 @@ function doublure(u, rs) {
   if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], durationOptions: [], center: null });
   const centre = u.searchParams.get('centerId') || 'libramont';
   const reservations = u.pathname === '/api/staff-state' ? RESAS.filter((r) => r.centerId === centre) : [];
-  return J({ ok: true, reservations, laneStatuses: {}, communications: [], blocks: [], events: [], clients: [], suggestions: [], samples: [], centers: [], revision: 'gate' });
+  const jour = { ok: true, reservations, laneStatuses: {}, communications: [], blocks: [], events: [], clients: [], suggestions: [], samples: [], centers: [], revision: 'gate' };
+  // Le vrai filtre du serveur (lib/montants-role.js) : la vraie session decide.
+  if (u.pathname === '/api/staff-state') {
+    const { getStaffSessionFromRequest, sessionHasPermission } = require(STAFF_AUTH);
+    const session = await getStaffSessionFromRequest(rq);
+    if (session && !sessionHasPermission(session, 'payments.view')) return J(require(MONTANTS_ROLE).sansMontants(jour));
+  }
+  return J(jour);
 }
 let MUTATION_ECRAN = null;
 const serveur = http.createServer((rq, rs) => {
@@ -435,7 +446,7 @@ const serveur = http.createServer((rq, rs) => {
     Promise.resolve(handler(rq, rs)).catch((e) => { if (!rs.headersSent) { rs.writeHead(500); rs.end(String(e && e.message)); } });
     return;
   }
-  if (u.pathname.startsWith('/api/')) { doublure(u, rs); return; }
+  if (u.pathname.startsWith('/api/')) { doublure(u, rs, rq).catch((e) => { if (!rs.headersSent) { rs.writeHead(500); rs.end(String(e && e.message)); } }); return; }
   const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.replace(/^\/+/, ''));
   const f = path.join(ROOT, rel);
   if (!f.startsWith(ROOT) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { rs.writeHead(404); rs.end('absent'); return; }
@@ -495,6 +506,13 @@ async function poserEquipe() {
   const membre = await appel({ action: 'createMember', centerId: 'libramont', name: 'Chef', contact: '', roleId: chefRoleId }, proprio);
   ok(membre.statut === 200 && Boolean(membre.json.newAccessCode), 'montage : une personne avec ce role', { statut: membre.statut, erreur: message(membre) });
   codes['libramont:Chef'] = membre.json.newAccessCode;
+  // Un role fait main : il corrige les dossiers sans voir les montants.
+  const correcteur = await appel({ action: 'createRole', centerId: 'libramont', name: 'Correcteur', permissions: ['dashboard.view', 'planning.view', 'planning.bowling', 'reservations.view', 'reservations.edit'] }, proprio);
+  const correcteurId = String((correcteur.json.createdRole && correcteur.json.createdRole.id) || '');
+  ok(correcteur.statut === 200 && Boolean(correcteurId), 'montage : le role « Correcteur » (modifie, sans voir les montants)', { statut: correcteur.statut, erreur: message(correcteur) });
+  const unCorrecteur = await appel({ action: 'createMember', centerId: 'libramont', name: 'Correcteur', contact: '', roleId: correcteurId }, proprio);
+  ok(unCorrecteur.statut === 200 && Boolean(unCorrecteur.json.newAccessCode), 'montage : une personne avec ce role', { statut: unCorrecteur.statut, erreur: message(unCorrecteur) });
+  codes['libramont:Correcteur'] = unCorrecteur.json.newAccessCode;
   for (const cle of Object.keys(codes)) {
     const [centre] = cle.split(':');
     const rep = await appel({ action: 'login', centerId: centre, code: codes[cle] });
@@ -776,6 +794,55 @@ async function verifierEcran(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [M] LES MONTANTS A L ECRAN
+// ---------------------------------------------------------------------------
+const UN_MONTANT = /\d\s*€/;
+const PRIX_INVENTE = /Prix sur place|Prix au comptoir/;
+async function dossierCharge(page) {
+  await page.evaluate(() => window.openStaffMenuPage('planning'));
+  await page.waitForFunction(() => Array.isArray(state.reservations) && state.reservations.some((r) => Number(r.id) === 9201), null, { timeout: 20000 });
+  return page.evaluate(() => { const r = state.reservations.find((x) => Number(x.id) === 9201); return { prix: r.price, base: r.basePrice, extras: r.extras }; });
+}
+async function ficheOuverte(page, geste) {
+  await page.evaluate(geste);
+  await page.waitForFunction(() => { const o = document.getElementById('posOverlay'); return o && !o.classList.contains('hidden') && o.innerText.length > 30; }, null, { timeout: 15000 });
+  return page.evaluate(() => document.getElementById('posOverlay').innerText);
+}
+async function accueilAffiche(page) {
+  await page.evaluate(() => { closePos(); window.openStaffMenuPage('dashboard'); });
+  await page.waitForTimeout(1200);
+  return page.evaluate(() => document.body.innerText);
+}
+async function verifierMontants(browser) {
+  const tech = await ouvrir(browser, codes['libramont:Technique']);
+  try {
+    const dossier = await dossierCharge(tech.page);
+    ok(dossier.prix === null && dossier.extras[0].price === null, '[M] montage : le vrai filtre du serveur retire les montants de Technique', dossier);
+    const fiche = await ficheOuverte(tech.page, () => openPos(9201));
+    ok(fiche.includes('···') && !UN_MONTANT.test(fiche), '[M] Technique : la fiche dit « ··· », aucun montant, pas de faux « 0 € »', fiche.slice(0, 500));
+    ok(!PRIX_INVENTE.test(fiche), '[M] Technique : et pas « Prix sur place », qui serait faux', fiche.slice(0, 500));
+    const accueil = await accueilAffiche(tech.page);
+    ok(!UN_MONTANT.test(accueil), '[M] Technique : l accueil n affiche aucun montant', (UN_MONTANT.exec(accueil) || [''])[0]);
+    ok(tech.erreurs.length === 0, '[M] Technique : aucune erreur JavaScript', tech.erreurs.slice(0, 3));
+  } finally { await tech.ctx.close(); }
+  const manager = await ouvrir(browser, codes['libramont:Gérant']);
+  try {
+    const dossier = await dossierCharge(manager.page);
+    const fiche = await ficheOuverte(manager.page, () => openPos(9201));
+    ok(dossier.prix === 60 && UN_MONTANT.test(fiche) && !fiche.includes('···'), '[M] contraste : le Manager recoit et lit les montants', { prix: dossier.prix, fiche: fiche.slice(0, 200) });
+  } finally { await manager.ctx.close(); }
+  const correcteur = await ouvrir(browser, codes['libramont:Correcteur']);
+  try {
+    await dossierCharge(correcteur.page);
+    const texte = await ficheOuverte(correcteur.page, () => editRes(9201));
+    const lu = await correcteur.page.evaluate(() => ({ modification: Boolean(state.editState) && state.activeTab === 'modifier', champ: Boolean(document.getElementById('editPriceInput') || document.getElementById('editPricePerPerson')) }));
+    ok(lu.modification && !lu.champ, '[M] Correcteur : la fiche de modification s ouvre, sans champ de prix', lu);
+    ok(!UN_MONTANT.test(texte), '[M] Correcteur : aucun montant dans la fiche de modification', (UN_MONTANT.exec(texte) || [''])[0]);
+    ok(correcteur.erreurs.length === 0, '[M] Correcteur : aucune erreur JavaScript', correcteur.erreurs.slice(0, 3));
+  } finally { await correcteur.ctx.close(); }
+}
+
+// ---------------------------------------------------------------------------
 // [C] LES CONTRE-PREUVES
 // ---------------------------------------------------------------------------
 async function contrePreuves(browser) {
@@ -804,6 +871,17 @@ async function contrePreuves(browser) {
     await ctx.close();
     MUTATION_ECRAN = null;
   }
+  // [M] sans le masque des formateurs, l ecran invente un montant.
+  MUTATION_ECRAN = ['function montantsMasques() {\n  return typeof', 'function montantsMasques() {\n  return false && typeof'];
+  const sansMasque = await ouvrir(browser, codes['libramont:Technique']);
+  try {
+    await dossierCharge(sansMasque.page);
+    const fiche = await ficheOuverte(sansMasque.page, () => openPos(9201));
+    ok(UN_MONTANT.test(fiche) || PRIX_INVENTE.test(fiche), '[C] sans le masque, [M] rougit : la fiche invente un montant ou un « Prix sur place »', fiche.slice(0, 300));
+  } finally {
+    await sansMasque.ctx.close();
+    MUTATION_ECRAN = null;
+  }
 }
 
 async function main() {
@@ -821,6 +899,7 @@ async function main() {
       const { chromium } = require(require.resolve('playwright-core', { paths: [ROOT] }));
       browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
       await verifierEcran(browser);
+      await verifierMontants(browser);
     }
     await contrePreuves(browser);
   } finally {

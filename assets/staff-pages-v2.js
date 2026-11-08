@@ -9167,7 +9167,8 @@
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">-</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
     } else if (p.quietWindow) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Vos mesures passées restent plus bas.</span></div>`;
-    } else if (p.euros > 0) {
+    } else if (p.euros > 0 || (p.euros === null && p.venues > 0)) {
+      // (null : le montant est masque pour ce role, les visites honorees, elles, sont vraies)
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de visites honorées liées à vos messages · <strong>${p.days} derniers jours</strong></span></div>`;
     } else {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune visite honorée ne leur est encore liée sur ${p.days} j</span></div>`;

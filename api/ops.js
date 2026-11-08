@@ -4095,7 +4095,7 @@ module.exports = async (req, res) => {
       // un 'all' venu d ailleurs que du parametre lu ici est refuse aussi.
       if (refuserPorteePlateforme(res, session, requestedCenterId)) return;
       if (refuserPorteePlateforme(res, session, resolveEffectiveCenterId(session, requestedCenterId))) return;
-      if (ACTIONS_DU_CATALOGUE.has(action)) res.__sansMontants = false;
+      if (ACTIONS_DU_CATALOGUE.has(action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
       await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId), session });
       return;
     }
@@ -4112,7 +4112,7 @@ module.exports = async (req, res) => {
       // Le corps sans centerId laissait passer `?centerId=all` de l adresse (passe
       // securite du 2026-11-08) : la portee retenue est controlee elle aussi.
       if (refuserPorteePlateforme(res, session, effectiveCenterId)) return;
-      if (ACTIONS_DU_CATALOGUE.has(action)) res.__sansMontants = false;
+      if (ACTIONS_DU_CATALOGUE.has(action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
 
       const audited = !NON_MUTATING_POST_ACTIONS.has(action);
       const requestId = newRequestId();

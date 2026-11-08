@@ -445,7 +445,7 @@ async function poserDoubles(page, { token, centerId, n4 = false }) {
       { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', clientId: 'fungalaxy', clientName: 'Fun Galaxy', resources: getCenter('gembloux').resources },
     ];
   await page.addInitScript(({ token, centerId, expiresAt, n4, centres }) => {
-    const permissions = ['dashboard.view', 'planning.view', 'emails.view', 'reservations.view', 'reservations.create', 'reservations.quick', 'pricing.manage', 'settings.manage', 'direction.view'];
+    const permissions = ['dashboard.view', 'planning.view', 'emails.view', 'reservations.view', 'reservations.create', 'reservations.quick', 'pricing.manage', 'settings.manage', 'direction.view', 'payments.view'];
     const qaSession = { token, cookieBacked: false, centerId, expiresAt, member: { id: `${centerId}:dir`, name: 'Direction' }, role: { id: 'director', name: 'Direction', locked: false }, permissions };
     window.__posts = [];
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });

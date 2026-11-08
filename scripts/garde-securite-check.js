@@ -222,6 +222,11 @@ function quartDHeureAgite() {
     const enPanne = async () => ({ ok: false, status: 502 });
     const rate = await g.relireLesRefus(new FakePool(), 100, { env: process.env, fetcher: enPanne, maintenant: Date.parse('2026-11-08T10:05:00Z') });
     ok(rate.curseur === 100, '[L] un message non parti garde le curseur : il sera redit', rate.curseur);
+    TELEGRAM = [];
+    let appels = 0;
+    const premierEnPanne = async (url, init) => { appels += 1; return appels === 1 ? { ok: false, status: 502 } : fauxTelegram(url, init); };
+    const raté = await g.relireLesRefus(new FakePool(), 100, { env: process.env, fetcher: premierEnPanne, maintenant: Date.parse('2026-11-08T10:05:00Z') });
+    ok(raté.curseur === 100 && TELEGRAM.length === 0, '[L] le premier message rate : on s arrete, l urgent ne partira pas deux fois', { curseur: raté.curseur, TELEGRAM: TELEGRAM.map((m) => m.texte.slice(0, 30)) });
   }
   charger([[F.securite, ANCRE.autreClientSonne, ANCRE.autreClientSonne.replace('urgent: true', 'urgent: false')]]);
   {
@@ -287,7 +292,7 @@ function quartDHeureAgite() {
     ok(TELEGRAM.length === 2 && /numéro de réservation d’un autre client/.test(TELEGRAM[1].texte), '[N] le numero d un autre client se signale aussi', TELEGRAM.map((x) => x.texte.slice(0, 60)));
     TELEGRAM = [];
     await g.signalerWebhookRefuse({ signeParLeFournisseur: true, env: process.env, fetcher: fauxTelegram });
-    ok(TELEGRAM[0] && TELEGRAM[0].sonne && /AUCUN mail de client/.test(TELEGRAM[0].texte), '[N] webhook signe par le fournisseur mais refuse : ca sonne, plus aucun mail ne rentre', TELEGRAM);
+    ok(TELEGRAM[0] && !TELEGRAM[0].sonne && /signé comme venant de Resend/.test(TELEGRAM[0].texte), '[N] webhook signe mais refuse : le message part sans sonnerie (son en-tete se fabrique)', TELEGRAM);
     await g.signalerWebhookRefuse({ signeParLeFournisseur: false, env: process.env, fetcher: fauxTelegram });
     ok(TELEGRAM[1] && !TELEGRAM[1].sonne && /sans signature valide/.test(TELEGRAM[1].texte), '[N] envoi sans signature : sans sonnerie', TELEGRAM);
     await g.signalerWebhookRefuse({ signeParLeFournisseur: false, env: process.env, fetcher: fauxTelegram });

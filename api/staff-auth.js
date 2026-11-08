@@ -235,10 +235,11 @@ module.exports = async (req, res) => {
           centerId,
           code: loginCode,
           fingerprint: getRequestFingerprint(req),
+          appareil: String(req.headers['user-agent'] || ''),
         });
       } catch (error) {
         if (!isStaffAuthStorageError(error)) throw error;
-        payload = createEmergencyOwnerSession({ centerId, code: loginCode, fingerprint: getRequestFingerprint(req) });
+        payload = createEmergencyOwnerSession({ centerId, code: loginCode, fingerprint: getRequestFingerprint(req), appareil: String(req.headers['user-agent'] || '') });
         if (!payload) throw error;
         // La cle maitresse vient de s ouvrir pendant une panne : Ansar le sait tout de suite.
         await require('../lib/garde-securite').signalerSessionDeSecours().catch(() => null);
@@ -389,13 +390,19 @@ module.exports = async (req, res) => {
       await refuserEscalade('son propre role', 'Votre rôle ne change pas ses propres droits : demandez à la direction.');
       return;
     }
-    const presetVise = action === 'setRolePreset' ? STAFF_ROLE_PRESETS.find((p) => p.id === String(body.presetId || '')) : null;
+    const presetVise = ['setRolePreset', 'createRole'].includes(action) ? STAFF_ROLE_PRESETS.find((p) => p.id === String(body.presetId || '')) : null;
     if (presetVise && presetVise.locked && !sessionHasPermission(session, 'platform.admin')) {
       await refuserEscalade('modele verrouille', 'Ce modèle ne s’applique pas : la direction est un rôle unique.');
       return;
     }
-    const droitsDemandes = action === 'updateRolePermissions' ? (body.permissions || []) : (presetVise ? presetVise.permissions : []);
-    const manquants = droitsQueLaSessionNaPas(session, droitsDemandes);
+    const droitsDemandes = [
+      ...(['updateRolePermissions', 'createRole'].includes(action) && Array.isArray(body.permissions) ? body.permissions : []),
+      ...(presetVise ? presetVise.permissions : []),
+    ];
+    // Seul ce qui S AJOUTE se juge : la console renvoie la liste entiere, et decocher une case
+    // sur un role qui porte un droit qu on n a pas ne donne rien.
+    const droitsDejaLa = new Set(auditBefore && Array.isArray(auditBefore.permissions) ? auditBefore.permissions.map(String) : []);
+    const manquants = droitsQueLaSessionNaPas(session, droitsDemandes.filter((droit) => !droitsDejaLa.has(String(droit))));
     if (manquants.length) {
       await refuserEscalade(`droit que la session n a pas : ${manquants.slice(0, 5).join(', ')}`, 'Vous ne pouvez pas donner un droit que votre rôle n’a pas.');
       return;
@@ -538,6 +545,8 @@ module.exports = async (req, res) => {
       const result = await regenerateRoleCode({
         centerId,
         actorMemberId: session.member.id,
+        sessionMemberId,
+        sessionToken: session.token || '',
         roleId: body.roleId,
       });
       extra = { updatedRole: result.role, newAccessCode: result.accessCode };

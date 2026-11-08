@@ -142,6 +142,7 @@ function reservationSentinelle(id) {
 const ROLES = {
   direction: { center_id: 'libramont', id: 'direction', name: 'Direction', code: 'DI', permissions: TOUS, locked: true, summary: '', description: '', tone: 'direction', access_code_hash: hashSecret('DI-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
   'staff-bar': { center_id: 'libramont', id: 'staff-bar', name: 'Staff bar', code: 'ST', permissions: ['dashboard.view'], locked: false, summary: '', description: '', tone: 'staff', access_code_hash: hashSecret('ST-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
+  comptable: { center_id: 'libramont', id: 'comptable', name: 'Comptable', code: 'CO', permissions: ['dashboard.view', 'payments.view'], locked: false, summary: '', description: '', tone: 'staff', access_code_hash: hashSecret('CO-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
   'chef-equipe': { center_id: 'libramont', id: 'chef-equipe', name: 'Chef d’équipe', code: 'CH', permissions: CHEF, locked: false, summary: '', description: '', tone: 'manager', access_code_hash: hashSecret('CH-AAAA-BBBB-CCCC-DDDD'), access_code_hint: '', access_code_enc: null },
 };
 const MEMBRES = {
@@ -311,24 +312,27 @@ const contientUnMontant = (texte) => [SENTINELLES.prix, SENTINELLES.base, SENTIN
 const ANCRE = {
   gardeAll: "  if (requestedCenterId === 'all' && !sessionHasPermission(session, 'platform.admin') && options.porteeAllVoulue !== true) {",
   opsPorteeRetenue: '      if (refuserPorteePlateforme(res, session, effectiveCenterId)) return;',
-  marque: "  if (res && typeof res === 'object') res.__sansMontants = !sessionHasPermission(effective, 'payments.view');",
+  marque: "  if (res && typeof res === 'object' && res.__montantsDuCatalogue !== true) res.__sansMontants = !sessionHasPermission(effective, 'payments.view');",
   export: "    if (action === 'exportComplet') return 'exports.download';",
   exportMontants: "    if (!sessionHasPermission(options.session, 'payments.view')) throw createHttpError('Le fichier complet contient les montants : votre rôle ne les voit pas.', 403, true);",
   prix: "    if (touchePrix && !sessionHasPermission(options.session, 'pricing.manage')) throw createHttpError('Changer un prix demande le droit « Tarifs ».', 403, true);",
   sonRole: "    if (!estDirection && ['updateRolePermissions', 'setRolePreset'].includes(action) && targetRoleId && targetRoleId === String((session.role && session.role.id) || '')) {",
   cleAppareil: '  const source = `appareil:${normalizeText(fingerprint, \'unknown\')}`;',
-  bloque: '  if (rateLimited) {\n    throw createLoginRateLimitError(getLoginAttemptBucket(safeCenterId, safeFingerprint).bucket);\n  }\n  if (!safeCode || safeCode.length < 6) {',
   sansSession: "    if (noterLectureSansSession(req)) await logAccessDenied(req, null, permission, '401_no_session', getRequestedCenterId(req, options));",
   llm: '  if (!sansDonneeClient) return null;',
   balisage: "    .replace(/\\b(?:https?:\\/\\/|www\\.)\\S+/gi, '(lien retiré)')",
-  sessionsRole: "  await getPool().query('delete from staff_sessions where member_id = $1;', [`${centerId}:role:${roleId}`]);",
+  sessionsRole: "    await getPool().query('delete from staff_sessions where member_id = $1;', [porteurDuCode]);",
+  plafondAdresse: 'const LOGIN_MAX_FAILURES_ADRESSE = 40;',
+  comptePoste: "    { cle: `${adresse}|${normalizeText(appareil, '')}`, max: LOGIN_MAX_FAILURES },",
+  droitsAjoutes: "    const manquants = droitsQueLaSessionNaPas(session, droitsDemandes.filter((droit) => !droitsDejaLa.has(String(droit))));",
+  identiteParNom: "  if (ligne.name) return `nom:${nomSansQuantite(ligne.name)}|${ligne.parPersonne === true ? 1 : 0}|${ligne.offert === true ? 1 : 0}`;",
   ipDeConfiance: "  const brut = h['x-vercel-forwarded-for'] || h['x-real-ip'] || h['x-forwarded-for']",
   empreinteDeConfiance: "    req.headers['x-vercel-forwarded-for']\n    || req.headers['x-real-ip']\n    || req.headers['x-forwarded-for']",
   blocIPv6: 'function cleDeLAdresse(ip) {',
   codeDemo: '  DEFAULT_PLATFORM_OWNER_CODE,\n',
   lignePlateforme: "  if (String(memberId || '').endsWith(':platform-owner')) throw createHttpError('Cette ligne appartient à la plateforme.', 403);",
   retourMontants: "      if (res.__sansMontants) require('../lib/montants-role').retirerLesMontantsDuCorps(body, current);",
-  limiteSecours: '  if (safeFingerprint && isLoginRateLimited(safeCenterId, safeFingerprint)) {',
+  limiteSecours: '  if (pleinSecours) throw createLoginRateLimitError(pleinSecours);',
   alerteSecours: "        await require('../lib/garde-securite').signalerSessionDeSecours().catch(() => null);",
   etatHorsLigne: "    storageMessage: 'Données temps réel temporairement indisponibles. Mode secours actif.',",
   autreSite: "  return site === 'same-site' || site === 'cross-site';",
@@ -443,6 +447,12 @@ const ANCRE = {
     const post = (token, body) => appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth?centerId=libramont', token, body: { centerId: 'libramont', ...body } });
     const soi = await post(T.chef, { action: 'updateRolePermissions', roleId: 'chef-equipe', permissions: [...CHEF, 'centers.switch'] });
     ok(soi.statusCode === 403, '[E] il ne change pas les droits de son propre role', [soi.statusCode, soi.body.slice(0, 120)]);
+    const retire = await post(T.chef, { action: 'updateRolePermissions', roleId: 'comptable', permissions: ['payments.view'] });
+    ok(retire.statusCode === 200, '[E] il decoche une case sur un role qui porte un droit qu il n a pas : ca passe', [retire.statusCode, retire.body.slice(0, 160)]);
+    const ajoute = await post(T.chef, { action: 'updateRolePermissions', roleId: 'comptable', permissions: ['dashboard.view', 'payments.view', 'exports.download'] });
+    ok(ajoute.statusCode === 403 && /un droit que/.test(ajoute.body), '[E] mais il n y ajoute pas un droit qu il n a pas', [ajoute.statusCode, ajoute.body.slice(0, 160)]);
+    const cree = await post(T.chef, { action: 'createRole', name: 'Caisse', permissions: ['payments.view'] });
+    ok(cree.statusCode === 403 && /un droit que/.test(cree.body), '[E] et il ne cree pas un role avec un droit qu il n a pas', [cree.statusCode, cree.body.slice(0, 160)]);
     const donne = await post(T.chef, { action: 'updateRolePermissions', roleId: 'staff-bar', permissions: ['dashboard.view', 'payments.view'] });
     ok(donne.statusCode === 403 && /un droit que/.test(donne.body), '[E] il ne donne pas un droit qu il n a pas (« Voir les montants »)', [donne.statusCode, donne.body.slice(0, 120)]);
     const modele = await post(T.chef, { action: 'setRolePreset', roleId: 'staff-bar', presetId: 'direction' });
@@ -453,6 +463,11 @@ const ANCRE = {
     ok(regen.statusCode === 403, '[E] il ne change pas le code du role Direction', regen.statusCode);
     const dir = await post(T.direction, { action: 'updateRolePermissions', roleId: 'staff-bar', permissions: ['dashboard.view', 'payments.view'] });
     ok(!(dir.statusCode === 403 && /droit|direction/i.test(dir.body)), '[E] contraste : la Direction donne ce droit', [dir.statusCode, dir.body.slice(0, 120)]);
+  }
+  charger([[F.apiStaffAuth, ANCRE.droitsAjoutes, '    const manquants = droitsQueLaSessionNaPas(session, droitsDemandes);']]);
+  {
+    const retire = await appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth?centerId=libramont', token: T.chef, body: { centerId: 'libramont', action: 'updateRolePermissions', roleId: 'comptable', permissions: ['payments.view'] } });
+    ok(retire.statusCode === 403, '[E] contre-preuve : a juger la liste entiere, decocher une case est refuse (ce gate le verrait)', [retire.statusCode, retire.body.slice(0, 120)]);
   }
   charger([[F.apiStaffAuth, ANCRE.sonRole, '    if (false) {']]);
   {
@@ -479,6 +494,27 @@ const ANCRE = {
     let autre = 400;
     try { await loginStaffByCode({ centerId: 'libramont', code: 'FG-1111-1111-1111-1111', fingerprint: '198.51.100.99' }); } catch (error) { autre = error.statusCode || 400; }
     ok(autre !== 429, '[F] contraste : un autre appareil n est pas bloque', autre);
+    const essai = async (appareil, ip = '198.51.100.70') => { try { await loginStaffByCode({ centerId: 'libramont', code: 'FG-2222-2222-2222-2222', fingerprint: ip, appareil }); return 200; } catch (error) { return error.statusCode || 400; } };
+    for (let i = 0; i < 8; i += 1) await essai('tablette-accueil');
+    ok(await essai('tablette-accueil') === 429, '[F] 8 fautes d une tablette la bloquent', 'tablette');
+    ok(await essai('poste-bar') !== 429, '[F] mais les autres postes du meme wifi ne le sont pas', 'poste');
+    const rafale = [];
+    for (let i = 0; i < 45; i += 1) rafale.push(await essai(`navigateur-invente-${i}`, '198.51.100.71'));
+    ok(rafale.slice(0, 40).every((s) => s !== 429) && rafale.slice(40).every((s) => s === 429), '[F] changer de navigateur a chaque essai ne contourne pas le plafond de l adresse (40)', rafale.join(','));
+  }
+  charger([[F.staffAuth, ANCRE.plafondAdresse, 'const LOGIN_MAX_FAILURES_ADRESSE = 100000;']]);
+  {
+    const { loginStaffByCode } = require(F.staffAuth);
+    const rafale = [];
+    for (let i = 0; i < 45; i += 1) { try { await loginStaffByCode({ centerId: 'libramont', code: 'FG-2222-2222-2222-2222', fingerprint: '198.51.100.72', appareil: `n-${i}` }); rafale.push(200); } catch (error) { rafale.push(error.statusCode || 400); } }
+    ok(rafale.every((s) => s !== 429), '[F] contre-preuve : sans plafond d adresse, 45 essais passent (ce gate le verrait)', rafale.slice(-3).join(','));
+  }
+  charger([[F.staffAuth, ANCRE.comptePoste, "    { cle: `${adresse}`, max: LOGIN_MAX_FAILURES },"]]);
+  {
+    const { loginStaffByCode } = require(F.staffAuth);
+    const essai = async (appareil) => { try { await loginStaffByCode({ centerId: 'libramont', code: 'FG-2222-2222-2222-2222', fingerprint: '198.51.100.73', appareil }); return 200; } catch (error) { return error.statusCode || 400; } };
+    for (let i = 0; i < 8; i += 1) await essai('tablette-accueil');
+    ok(await essai('poste-bar') === 429, '[F] contre-preuve : compte par adresse seule, tout le wifi est bloque (ce gate le verrait)', 'poste');
   }
   charger([[F.staffAuth, ANCRE.cleAppareil, "  const source = `${normalizeText(centerId, 'libramont')}:${normalizeText(fingerprint, 'unknown')}`;"]]);
   {
@@ -570,6 +606,10 @@ const ANCRE = {
     const { regenerateRoleCode } = require(F.staffAuth);
     await regenerateRoleCode({ centerId: 'libramont', roleId: 'staff-bar' });
     ok(sqlLog.some((q) => /delete\s+from\s+staff_sessions\s+where\s+member_id\s*=\s*\$1/i.test(q.sql) && q.params[0] === 'libramont:role:staff-bar'), '[O] les sessions du porte-code « libramont:role:staff-bar » sont fermees');
+    sqlLog = [];
+    await regenerateRoleCode({ centerId: 'libramont', actorMemberId: 'libramont:role:staff-bar', sessionMemberId: 'libramont:role:staff-bar', sessionToken: 'fgs_session_du_geste', roleId: 'staff-bar' });
+    const fermeture = sqlLog.find((q) => /delete\s+from\s+staff_sessions/i.test(q.sql));
+    ok(fermeture && /token_hash\s*<>\s*\$2/.test(fermeture.sql) && fermeture.params[1] === hashSecret('fgs_session_du_geste'), '[O] la personne qui change le code avec ce code reste connectee, les autres sont fermees', fermeture && fermeture.sql);
   }
   charger([[F.staffAuth, ANCRE.sessionsRole, '']]);
   {
@@ -690,6 +730,35 @@ const ANCRE = {
     const direction = await dossierDuPlanning(T.direction);
     const dir = await corriger(T.direction, { ...direction, price: 4000, prixRaison: 'Geste commercial', baseUpdatedAt: direction.updatedAt });
     ok(dir.statusCode === 200 && ecrit().prix === 4000, '[Q] contraste : la Direction change toujours un prix', { statut: dir.statusCode, corps: dir.body.slice(0, 200), prix: ecrit().prix });
+    // Les lignes telles que la fenetre de modification les refait : ids par position, prix masques a 0.
+    const { retirerLesMontantsDuCorps } = require(path.join(ROOT, 'lib', 'montants-role.js'));
+    const stockees = [{ id: 'pizza-3', name: 'Pizza × 2', price: 20 }, { id: 'frites-1', name: 'Frites', price: 5 }];
+    const lignes = (extras) => retirerLesMontantsDuCorps({ extras }, { extras: stockees }).extras;
+    const memes = lignes([{ id: 'nourriture-1', name: 'Pizza × 2', price: 0 }, { id: 'nourriture-2', name: 'Frites', price: null }]);
+    ok(memes[0].price === 20 && memes[1].price === 5, '[Q] des lignes refaites par position gardent leurs prix', memes);
+    const unRetire = lignes([{ id: 'nourriture-1', name: 'Frites', price: 0 }]);
+    ok(unRetire.length === 1 && unRetire[0].price === 5, '[Q] une ligne retiree ne donne pas son prix a la suivante', unRetire);
+    const autreQuantite = lignes([{ id: 'nourriture-1', name: 'Pizza × 3', price: 0 }]);
+    ok(autreQuantite[0].price === 30, '[Q] la quantite change, le prix de la ligne la suit', autreQuantite);
+    const neuve = lignes([{ id: 'nourriture-1', name: 'Cafe', price: 3 }]);
+    ok(neuve[0].price === 3, '[Q] une ligne neuve garde son propre prix', neuve);
+  }
+  charger([[path.join(ROOT, 'lib', 'montants-role.js'), ANCRE.identiteParNom, "  if (ligne.id) return `id:${ligne.id}`;"]]);
+  {
+    const { retirerLesMontantsDuCorps } = require(path.join(ROOT, 'lib', 'montants-role.js'));
+    const extras = retirerLesMontantsDuCorps({ extras: [{ id: 'nourriture-1', name: 'Pizza × 2', price: 0 }] }, { extras: [{ id: 'pizza-3', name: 'Pizza × 2', price: 20 }] }).extras;
+    ok(extras[0].price !== 20, '[Q] contre-preuve : reconnue par son id, la ligne perd son prix (ce gate le verrait)', extras);
+  }
+  // Le catalogue garde ses prix, meme quand son handler rappelle la garde.
+  charger();
+  {
+    const r = await appeler(F.ops, { url: '/api/ops?action=centerConfig&centerId=libramont', token: T.technique });
+    ok(r.statusCode === 200 && !/"price":null/.test(r.body) && /"price":\d/.test(r.body), '[Q] Technique lit les prix du catalogue dans Etablissement : il peut enregistrer', { statut: r.statusCode, corps: r.body.slice(0, 160) });
+  }
+  charger([[F.staffAuth, ANCRE.marque, "  if (res && typeof res === 'object') res.__sansMontants = !sessionHasPermission(effective, 'payments.view');"]]);
+  {
+    const r = await appeler(F.ops, { url: '/api/ops?action=centerConfig&centerId=libramont', token: T.technique });
+    ok(/"price":null/.test(r.body), '[Q] contre-preuve : la deuxieme garde efface l exemption, les prix partent vides (ce gate le verrait)', { statut: r.statusCode, corps: r.body.slice(0, 160) });
   }
   charger([[F.reservations, ANCRE.retourMontants, '']]);
   {
@@ -735,7 +804,14 @@ const ANCRE = {
     try { horsLigne = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: 'fgs_faux_jeton' }); } finally { panneBase = false; }
     ok(horsLigne.statusCode === 200 && /storageMessage/.test(horsLigne.body) && !/quota/i.test(horsLigne.body), '[R] l etat hors ligne ne recopie pas le message du pilote de base', horsLigne.body.slice(0, 200));
   });
-  charger([[F.staffAuth, ANCRE.limiteSecours, '  if (false) {']]);
+  // Une equipe qui reessaie ses codes pendant la panne n est pas bloquee quand la base revient.
+  charger();
+  await avecTelegram(async () => {
+    const statuts = await neufCodesFauxEnPanne('198.51.100.44');
+    const apres = await appeler(F.apiStaffAuth, { method: 'POST', url: '/api/staff-auth', body: { action: 'login', centerId: 'libramont', code: 'FG-0000-0000-0000-0000' }, ip: '198.51.100.44' });
+    ok(statuts[8] === 429 && apres.statusCode !== 429, '[R] la base revenue, le compteur de la panne ne bloque pas la connexion normale', { pendant: statuts[8], apres: apres.statusCode });
+  });
+  charger([[F.staffAuth, ANCRE.limiteSecours, '']]);
   await avecTelegram(async () => {
     const statuts = await neufCodesFauxEnPanne('198.51.100.42');
     ok(statuts[8] !== 429, '[R] contre-preuve : sans la limite, le 9e code s essaie encore (ce gate le verrait)', statuts);
@@ -810,7 +886,7 @@ const ANCRE = {
   // =========================================================================
   console.log('\n[U] le plan interne ne part pas a un visiteur anonyme');
   // =========================================================================
-  const INTERNES = ['risk', 'staffSummary', 'marketIntelligence', 'entitlements', 'operationsChecklist', 'customerCommitment'];
+  const INTERNES = ['risk', 'staffSummary', 'marketIntelligence', 'entitlements', 'operationsChecklist'];
   const FUTUR = jourBelge(Date.now() + 14 * 86400000);
   const creneaux = async (token) => {
     const r = await appeler(F.dispo, { url: `/api/public-availability?date=${FUTUR}&type=laser&pax=8&centerId=libramont`, token });

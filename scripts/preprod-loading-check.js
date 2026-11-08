@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'artifacts', 'preprod-fixes-20260912', 'ops07');
 const ORIGIN = 'http://127.0.0.1:4199';
 const STAFF = ['ops-progress', 'ops-live', 'email-thread', 'staff-menu', 'pinlane-fx',
-  'staff-pages-v2', 'pinlane-charts', 'pinlane-daterange', 'pinlane-analytics-board',
+  'staff-pages-v2', 'pinlane-charts', 'pinlane-daterange', 'pinlane-analytics-board', 'pinlane-pilotage',
   'founder-cockpit', 'founder-clients-platform', 'founder-centres', 'founder-tarifs', 'founder-team'];
 const ADMIN = ['admin-console', 'ops-console', 'admin-data', 'admin-mail'];
 const SHARED = ['booking-core', 'brand-color', 'app-main', 'storage-adapter', 'api-client'];

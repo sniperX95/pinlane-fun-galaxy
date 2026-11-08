@@ -115,6 +115,9 @@
   function formatValue(value, format) {
     var v = Number(value);
     if (!Number.isFinite(v)) v = 0;
+    // Un panier par joueur se lit au centime, une taille de groupe a la decimale.
+    if (format === 'euro2') return v.toFixed(2).replace('.', ',') + NBSP_FINE + '€';
+    if (format === 'dec1') return v.toFixed(1).replace('.', ',');
     v = Math.round(v);
     if (format === 'euro') return groupInt(v) + NBSP_FINE + '€';
     if (format === 'percent') return String(v) + '%';
@@ -123,6 +126,8 @@
 
   // Version compacte pour les graduations et les valeurs au-dessus des barres.
   function formatTick(value, format) {
+    if (format === 'euro2') format = 'euro';
+    if (format === 'dec1') format = 'int';
     var v = Math.round(Number(value) || 0);
     if (Math.abs(v) >= 1000) {
       var k = v / 1000;
@@ -626,6 +631,9 @@
     var colLabels = Array.isArray(o.colLabels) ? o.colLabels : [];
     var animate = shouldAnimate(o.motionKey);
     var colStep = cols > 12 ? Math.ceil(cols / 12) : 1;
+    // tip : l infobulle du moteur au lieu du title natif ; valeur(v) ecrit le nombre.
+    var infos = [];
+    var valeur = typeof o.valeur === 'function' ? o.valeur : function (v) { return String(v); };
     var out = ['<div class="plc-heat-corner"></div>'];
     for (var c = 0; c < cols; c += 1) {
       var cl = c % colStep === 0 ? String(colLabels[c] == null ? '' : colLabels[c]) : '';
@@ -636,16 +644,23 @@
       out.push('<div class="plc-heat-row">' + esc(String(rowLabels[r] == null ? '' : rowLabels[r])) + '</div>');
       var delay = Math.round(rowDelayStep * r);
       for (var i = 0; i < cols; i += 1) {
+        // null : le creneau n existe pas (centre ferme) ; il ne se lit pas comme un creux.
+        if (row[i] === null) { out.push('<div class="plc-heat-ferme"></div>'); continue; }
         var num = Number(row[i]);
         var v = Number.isFinite(num) && num > 0 ? num : 0;
         var target = v > 0 ? round2(0.12 + 0.88 * (v / max)) : 0;
-        var prefix = ((rowLabels[r] == null ? '' : rowLabels[r] + ' ') + (colLabels[i] == null ? '' : colLabels[i])).trim();
+        var prefix = typeof o.etiquette === 'function'
+          ? o.etiquette(r, i)
+          : ((rowLabels[r] == null ? '' : rowLabels[r] + ' ') + (colLabels[i] == null ? '' : colLabels[i])).trim();
         var title = prefix ? prefix + ' : ' + v : String(v);
-        out.push('<div class="plc-heat-cell" title="' + esc(title) + '"><span class="plc-heat-fill" style="--plc-o:' + target + ';--plc-d:' + delay + 'ms"></span></div>');
+        var attribut = ' title="' + esc(title) + '"';
+        if (o.tip === true) { attribut = ' data-i="' + infos.length + '"'; infos.push({ label: prefix, value: valeur(v) }); }
+        out.push('<div class="plc-heat-cell"' + attribut + '><span class="plc-heat-fill" style="--plc-o:' + target + ';--plc-d:' + delay + 'ms"></span></div>');
       }
     });
     var grid = '<div class="plc-heat-grid" style="grid-template-columns:auto repeat(' + cols + ', minmax(0, 1fr))">' + out.join('') + '</div>';
-    mountChart(el, 'plc-heatmap', grid, animate);
+    var wrapHeat = mountChart(el, 'plc-heatmap', grid, animate);
+    if (o.tip === true) wireSegments(wrapHeat, '.plc-heat-cell', infos);
   }
 
   function countUp(el, value, opts) {
@@ -674,8 +689,198 @@
     node._plcRaf = window.requestAnimationFrame(tick);
   }
 
+  // ---- Courbe comparee (dashboard, 2026-11-08) --------------------------------
+  // La periode en trait plein, la periode d avant en pointille, une seule echelle. Un jour
+  // sans valeur (ratio sans denominateur : centre ferme) coupe la ligne, il ne vaut pas zero.
+  // Le survol lit les deux periodes au meme rang ; le changement de statistique (meme nombre
+  // de points) fait glisser la courbe au lieu de la redessiner.
+  function normalizeTrend(series) {
+    if (!Array.isArray(series)) return [];
+    return series.filter(function (row) { return row != null && typeof row === 'object'; }).map(function (row) {
+      var v = row.value == null ? NaN : Number(row.value);
+      return { label: pointLabel(row), long: row.long ? String(row.long) : pointLabel(row), value: Number.isFinite(v) && v >= 0 ? v : null };
+    });
+  }
+
+  // Les morceaux continus d une serie de points (un point sans valeur les separe).
+  function trendSegments(pts) {
+    var out = [];
+    var cur = [];
+    pts.forEach(function (p) {
+      if (p.y == null) { if (cur.length) out.push(cur); cur = []; return; }
+      cur.push(p);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+
+  function trendLineD(pts) {
+    return trendSegments(pts).map(function (seg) { return seg.length === 1 ? 'M' + round2(seg[0].x) + ' ' + round2(seg[0].y) + ' h0.01' : smoothPathD(seg); }).join(' ');
+  }
+
+  function trendAreaD(pts, baseY) {
+    return trendSegments(pts).filter(function (seg) { return seg.length > 1; }).map(function (seg) {
+      return smoothPathD(seg) + ' L' + round2(seg[seg.length - 1].x) + ' ' + baseY + ' L' + round2(seg[0].x) + ' ' + baseY + ' Z';
+    }).join(' ');
+  }
+
+  function trendDelta(a, b, format) {
+    if (a == null || b == null) return '';
+    if (format === 'percent') {
+      var pts = Math.round(a - b);
+      return (pts > 0 ? '+' : '') + pts + ' pt' + (Math.abs(pts) > 1 ? 's' : '');
+    }
+    if (!(b > 0)) return '';
+    var pct = Math.round(((a - b) / b) * 100);
+    return (pct > 0 ? '+' : '') + pct + NBSP_FINE + '%';
+  }
+
+  function wireTrend(wrap, pts, comp, height, vbW, o) {
+    if (!wrap) return;
+    var svg = wrap.querySelector('.plc-svg');
+    var cross = wrap.querySelector('.plc-crosshair');
+    var dot = wrap.querySelector('.plc-trend-dot');
+    var dotC = wrap.querySelector('.plc-trend-dot-compare');
+    if (!svg || !cross || !dot) return;
+    var tip = makeTip(wrap);
+    tip.classList.add('plc-tip-trend');
+    var format = o.format || 'int';
+    var courant = -1;
+    function poser(idx) {
+      idx = Math.max(0, Math.min(pts.length - 1, idx));
+      courant = idx;
+      var p = pts[idx];
+      var q = comp[idx] || null;
+      var srect = svg.getBoundingClientRect();
+      if (!(srect.width > 0) || !(srect.height > 0)) return;
+      cross.setAttribute('x1', round2(p.x));
+      cross.setAttribute('x2', round2(p.x));
+      dot.style.display = p.y == null ? 'none' : '';
+      if (p.y != null) { dot.setAttribute('cx', round2(p.x)); dot.setAttribute('cy', round2(p.y)); }
+      if (dotC) {
+        dotC.style.display = q && q.y != null ? '' : 'none';
+        if (q && q.y != null) { dotC.setAttribute('cx', round2(q.x)); dotC.setAttribute('cy', round2(q.y)); }
+      }
+      var html = '<span class="plc-tip-label">' + esc(p.long) + '</span>'
+        + '<span class="plc-tip-row"><i class="plc-tip-key"></i><b class="plc-tip-value">' + esc(p.value == null ? 'rien ce jour-là' : formatValue(p.value, format)) + '</b></span>';
+      if (q) {
+        var delta = trendDelta(p.value, q.value, format);
+        html += '<span class="plc-tip-row"><i class="plc-tip-key is-compare"></i><span class="plc-tip-compare">' + esc(q.long) + ', ' + esc(q.value == null ? 'rien ce jour-là' : formatValue(q.value, format)) + '</span>' + (delta ? '<em class="plc-tip-delta">' + esc(delta) + '</em>' : '') + '</span>';
+      }
+      var wrect = wrap.getBoundingClientRect();
+      var px = (p.x / vbW) * srect.width + (srect.left - wrect.left);
+      var ancre = p.y != null ? p.y : height / 2;
+      var py = (ancre / height) * srect.height + (srect.top - wrect.top);
+      showTip(wrap, tip, html, px, py);
+    }
+    function versRang(ev) {
+      var srect = svg.getBoundingClientRect();
+      if (!(srect.width > 0)) return -1;
+      var sx = (ev.clientX - srect.left) / srect.width * vbW;
+      var rang = 0;
+      var best = Infinity;
+      for (var i = 0; i < pts.length; i += 1) {
+        var dx = Math.abs(pts[i].x - sx);
+        if (dx < best) { best = dx; rang = i; }
+      }
+      return rang;
+    }
+    wrap.addEventListener('pointermove', function (ev) { poser(versRang(ev)); });
+    wrap.addEventListener('pointerdown', function (ev) { poser(versRang(ev)); });
+    wrap.addEventListener('pointerleave', function (ev) { if (ev.pointerType !== 'touch') hideTip(wrap, tip); });
+    wrap.setAttribute('tabindex', '0');
+    wrap.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+      ev.preventDefault();
+      poser(courant < 0 ? pts.length - 1 : courant + (ev.key === 'ArrowRight' ? 1 : -1));
+    });
+    wrap.addEventListener('focus', function () { if (courant < 0) poser(pts.length - 1); });
+    wrap.addEventListener('blur', function () { hideTip(wrap, tip); courant = -1; });
+  }
+
+  function trendChart(host, opts) {
+    var el = resolveHost(host);
+    if (!el) return;
+    var o = opts || {};
+    var series = normalizeTrend(o.series);
+    var compare = normalizeTrend(o.compare);
+    var format = o.format || 'int';
+    if (!series.length) { renderEmpty(el); el.__plcTrend = null; return; }
+    if (!series.some(function (p) { return p.value > 0; })) { renderEmpty(el, FLAT_TEXT); el.__plcTrend = null; return; }
+    var height = clampHeight(o.height, 260);
+    var animate = shouldAnimate(o.motionKey);
+    var max = 0;
+    series.concat(compare).forEach(function (p) { if (p.value != null && p.value > max) max = p.value; });
+    // Une echelle pour les deux periodes. Un taux garde son echelle a lui : 12 % sur un axe
+    // de 0 a 100 serait une ligne plate au ras du sol.
+    var scale = buildScale(max, format === 'percent' ? 'int' : format);
+    var vbW = hostWidth(el);
+    var innerW = vbW - PAD.l - PAD.r;
+    var innerH = height - PAD.t - PAD.b;
+    var baseY = round2(PAD.t + innerH);
+    var n = series.length;
+    // relier : un jour sans valeur (centre ferme, pour un taux) n est pas une mesure. La ligne
+    // passe par-dessus au lieu de se casser ; le point, lui, dit qu il n y a rien.
+    var trace = function (rows) { return o.relier === true ? rows.filter(function (p) { return p.y != null; }) : rows; };
+    var placer = function (rows) {
+      return rows.map(function (p, i) {
+        return {
+          x: n === 1 ? PAD.l + innerW / 2 : PAD.l + (innerW * i) / (n - 1),
+          y: p.value == null ? null : PAD.t + innerH * (1 - p.value / scale.top),
+          value: p.value,
+          label: p.label,
+          long: p.long,
+        };
+      });
+    };
+    var pts = placer(series);
+    var comp = placer(compare.slice(0, n));
+    // La derniere valeur connue porte le point de fin.
+    var dernier = null;
+    pts.forEach(function (p) { if (p.y != null) dernier = p; });
+    var parts = [gridMarkup(scale, format, height, vbW), xLabelsMarkup(pts, height, vbW)];
+    if (comp.length) parts.push('<path class="plc-trend-compare" d="' + trendLineD(trace(comp)) + '"></path>');
+    parts.push('<path class="plc-trend-area" d="' + trendAreaD(trace(pts), baseY) + '"></path>');
+    parts.push('<path class="plc-trend-line" d="' + trendLineD(trace(pts)) + '" pathLength="1000"' + (animate ? ' style="stroke-dasharray:1000;stroke-dashoffset:1000"' : '') + '></path>');
+    if (dernier) parts.push('<circle class="plc-trend-end" cx="' + round2(dernier.x) + '" cy="' + round2(dernier.y) + '" r="4"></circle>');
+    parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(PAD.t) + '" y2="' + baseY + '"></line>'
+      + (comp.length ? '<circle class="plc-trend-dot-compare" cx="0" cy="0" r="3.5"></circle>' : '')
+      + '<circle class="plc-trend-dot" cx="0" cy="0" r="5"></circle></g>');
+    var precedent = el.__plcTrend;
+    var wrap = mountChart(el, 'plc-trend-wrap', chartFrame(parts.join(''), height, o.ariaLabel || 'Evolution sur la periode', vbW), animate);
+    wireTrend(wrap, pts, comp, height, vbW, o);
+    el.__plcTrend = { n: n, pts: pts.map(function (p) { return p.y; }), height: height, vbW: vbW };
+    // Meme nombre de points, autre statistique : la courbe glisse vers sa nouvelle forme.
+    if (!animate && precedent && precedent.n === n && precedent.vbW === vbW && precedent.height === height
+      && !reducedMotion() && precedent.pts.some(function (y, i) { return y !== pts[i].y; })
+      && precedent.pts.every(function (y, i) { return (y == null) === (pts[i].y == null); })) {
+      var ligne = wrap.querySelector('.plc-trend-line');
+      var aire = wrap.querySelector('.plc-trend-area');
+      var fin = wrap.querySelector('.plc-trend-end');
+      var depart = 0;
+      var DUREE = 260;
+      var pasDeTemps = function (ts) {
+        if (!depart) depart = ts;
+        var t = Math.min(1, (ts - depart) / DUREE);
+        var e = 1 - Math.pow(1 - t, 3);
+        var etape = pts.map(function (p, i) { return { x: p.x, y: p.y == null ? null : precedent.pts[i] + (p.y - precedent.pts[i]) * e }; });
+        if (ligne && ligne.isConnected) {
+          ligne.setAttribute('d', trendLineD(trace(etape)));
+          if (aire) aire.setAttribute('d', trendAreaD(trace(etape), baseY));
+          var bout = null;
+          etape.forEach(function (p) { if (p.y != null) bout = p; });
+          if (fin && bout) fin.setAttribute('cy', round2(bout.y));
+          if (t < 1) window.requestAnimationFrame(pasDeTemps);
+        }
+      };
+      window.requestAnimationFrame(pasDeTemps);
+    }
+    keepScaled(el, function () { trendChart(host, opts); });
+  }
+
   window.PinlaneCharts = {
     lineChart: lineChart,
+    trendChart: trendChart,
     barChart: barChart,
     donutChart: donutChart,
     heatmapChart: heatmapChart,

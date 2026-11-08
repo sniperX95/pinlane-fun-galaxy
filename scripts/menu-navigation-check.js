@@ -397,26 +397,25 @@ async function probeCockpitClick(browser) {
         arrivals: root.querySelectorAll('.dash-arrivals, .dash-arrival-row').length,
         resRows: root.querySelectorAll('.res-row, .dashboard-detail-reservation, [data-res-row-id]').length,
         titres: [...root.querySelectorAll('h2')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
-        // Les COLONNES de la rangee du bas, pas ses cartes : la colonne de
-        // droite empile Revenus et les arrivees par heure (des chiffres, pas
-        // une liste de dossiers ; le fil de la journee est devenu le bandeau
-        // « En ce moment » le 2026-09-30). La regle reste la meme : deux
-        // colonnes, jamais une troisieme carte a cote.
-        colonnesBas: root.querySelectorAll('.dash-grid-bottom > *').length,
-        cartesBas: root.querySelectorAll('.dash-grid-bottom .dash-card').length,
+        // Depuis le 2026-11-08 le bas de page est la partie Pilotage : le gerant
+        // choisit ses chiffres et ses cartes, l ancienne rangee a deux colonnes
+        // n existe plus. Ce sont des chiffres, jamais une liste de dossiers.
+        rangeeAncienne: root.querySelectorAll('.dash-grid-bottom').length,
+        tuiles: root.querySelectorAll('[data-plt-tuile]').length,
+        cartes: root.querySelectorAll('.plt-carte').length,
       };
     });
     // ANCRE POSITIVE D ABORD. Trois des quatre assertions qui suivent portent
     // sur une ABSENCE, et une absence est verte sur une page qui ne rend rien :
     // sans cette ancre, un dashboard casse ferait passer le controle.
     record('dashboard : la page rend bien ses cartes (ancre du controle d absence)',
-      !dash.absent && (dash.titres || []).length >= 5, `titres=${(dash.titres || []).length}`);
+      !dash.absent && (dash.titres || []).length >= 3 && dash.tuiles >= 1 && dash.cartes >= 1, `titres=${(dash.titres || []).length} tuiles=${dash.tuiles} cartes=${dash.cartes}`);
     record('dashboard : aucune liste d arrivees', !dash.absent && dash.arrivals === 0, `blocs=${dash.arrivals}`);
     record('dashboard : aucune ligne de reservation', !dash.absent && dash.resRows === 0, `lignes=${dash.resRows}`);
     record('dashboard : « Prochaines arrivees » n est plus un titre de carte',
       !dash.absent && !(dash.titres || []).some((t) => /prochaines arriv/i.test(t)), (dash.titres || []).join(' · '));
-    record('dashboard : la rangee du bas porte deux colonnes, pas trois',
-      dash.colonnesBas === 2 && dash.cartesBas <= 3, `colonnes=${dash.colonnesBas} cartes=${dash.cartesBas}`);
+    record('dashboard : le bas de page est la partie Pilotage, l ancienne rangee est partie',
+      dash.rangeeAncienne === 0 && dash.cartes >= 1, `ancienne=${dash.rangeeAncienne} cartes=${dash.cartes}`);
 
     // 3b. establishment -> vue staff (PAS admin).
     await clickNav(page, 'establishment');

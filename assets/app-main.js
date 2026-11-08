@@ -3552,7 +3552,7 @@ function getLiveSyncCaches() {
       oublier: () => { staffDaySeriesCache.forEach((entry) => { entry.at = 0; }); },
       relire: () => {
         staffDaySeriesCache.forEach((entry) => { entry.at = 0; });
-        ensureStaffDaySeries(addDays(state.currentDate, -Math.max(0, Number(state.dashRevenueOffset) || 0)));
+        ensureStaffDaySeries();
       },
     },
     {
@@ -10912,32 +10912,6 @@ function setStaffToday() {
   syncDateReservations(state.currentDate, { silent: true });
 }
 
-// MINI-COURBE D UNE TUILE : les sept derniers jours, la journee affichee au
-// bout. Elle ne se dessine que sur la serie du SERVEUR (staffDaySeriesCache) :
-// avant sa reponse, le cache du poste ne connait que les dates ouvertes ici et
-// tracerait des zeros qui n ont pas eu lieu. La place reste reservee, rien ne
-// saute a l arrivee. Les sept valeurs se lisent au survol et a la synthese
-// vocale : la courbe resume, elle ne cache rien.
-function renderDashboardSpark(values = [], { shown = false, days = [], format = (value) => String(value) } = {}) {
-  if (!shown || values.length < 2) return '<div class="dash-kpi-spark is-empty" aria-hidden="true"></div>';
-  const clean = values.map(value => Number(value) || 0);
-  const max = Math.max(...clean, 1);
-  const coords = clean.map((value, index) => [(index / (clean.length - 1)) * 100, 28 - ((value / max) * 24)]);
-  const line = coords.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-  const [lastX, lastY] = coords[coords.length - 1];
-  const detail = clean.map((value, index) => {
-    const day = days[index] ? parseLocalDate(days[index]).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
-    return `${day} : ${format(value)}`;
-  }).join(', ');
-  return `<div class="dash-kpi-spark" role="img" aria-label="${escapeHtml(`Sept derniers jours. ${detail}`)}" title="${escapeHtml(detail)}">
-    <svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <polygon points="0,32 ${line} 100,32" fill="currentColor" fill-opacity="0.12"></polygon>
-      <polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.75" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"></polyline>
-    </svg>
-    <span class="dash-kpi-spark-dot" style="left:${lastX.toFixed(2)}%;top:${((lastY / 32) * 100).toFixed(2)}%"></span>
-  </div>`;
-}
-
 function renderDashboardIcon(name) {
   const icons = {
     calendar: '<rect x="5" y="6" width="14" height="13" rx="2"></rect><path d="M8 4v4M16 4v4M5 10h14"></path>',
@@ -11059,57 +11033,6 @@ async function ensureStaffDaySeries(endDate = state.currentDate) {
     // limitee aux dates connues du poste.
     staffDaySeriesCache.set(key, { days: [], at: Date.now(), loading: false });
   }
-}
-
-// FENETRE AFFICHEE par la carte Revenus : 7 jours finissant a la date du
-// dashboard moins l'offset des fleches. Serveur d'abord ; a l'offset 0 les
-// series de metrics (deja corrigees serveur) servent de repli le temps du
-// premier chargement.
-function getDashRevenueWindow(metrics) {
-  const offset = Math.max(0, Number(state.dashRevenueOffset) || 0);
-  // Les revenus sont ceux des jours ECOULES : depuis une date future, la
-  // fenetre s arrete a aujourd hui (elle comptait des jours pas encore
-  // vecus sous le titre « 7 derniers jours »).
-  const anchor = state.currentDate > todayStr() ? todayStr() : state.currentDate;
-  const endDate = addDays(anchor, -offset);
-  const days = Array.from({ length: 7 }, (_, index) => addDays(endDate, index - 6));
-  const serverDays = getStaffDaySeries(endDate);
-  ensureStaffDaySeries(endDate);
-  if (serverDays.length === 14) {
-    const window = serverDays.slice(-7);
-    const previous = serverDays.slice(0, 7);
-    return {
-      offset, endDate, days, loaded: true,
-      values: window.map(day => Number(day.revenue) || 0),
-      counts: window.map(day => Number(day.reservations) || 0),
-      collected: window.map(day => Number(day.collected) || 0),
-      previousTotal: previous.reduce((sum, day) => sum + (Number(day.revenue) || 0), 0),
-    };
-  }
-  if (offset === 0 && anchor === state.currentDate) {
-    return { offset, endDate, days, loaded: true, values: metrics.revenueSeries, counts: metrics.reservationSeries, collected: metrics.collectedSeries, previousTotal: null };
-  }
-  return { offset, endDate, days, loaded: false, values: Array(7).fill(0), counts: Array(7).fill(0), collected: Array(7).fill(0), previousTotal: null };
-}
-
-// Les fleches de la carte Revenus : « avancer / reculer par jours » (Movsar,
-// 2026-08-18). L'offset ne descend jamais sous 0 : le futur n'a pas de caisse.
-function dashRevenueShift(delta, ev) {
-  if (ev) ev.stopPropagation();
-  const current = Math.max(0, Number(state.dashRevenueOffset) || 0);
-  const next = Math.max(0, current + delta);
-  if (next === current) return;
-  state.dashRevenueOffset = next;
-  save();
-  renderStaffDashboard();
-}
-
-function dashRevenueReset(ev) {
-  if (ev) ev.stopPropagation();
-  if (!Number(state.dashRevenueOffset)) return;
-  state.dashRevenueOffset = 0;
-  save();
-  renderStaffDashboard();
 }
 
 function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
@@ -11302,79 +11225,11 @@ function getStaffDashNow(activeReservations) {
   };
 }
 
-function formatDashboardTrend(current, previous) {
-  const currentValue = Number(current) || 0;
-  const previousValue = Number(previous) || 0;
-  if (!previousValue) return currentValue ? '+100%' : '0%';
-  const delta = Math.round(((currentValue - previousValue) / previousValue) * 100);
-  return `${delta > 0 ? '+' : ''}${delta}%`;
-}
-
 // LA REFERENCE SE DIT UNE FOIS, au-dessus des tuiles : « comparée au samedi
 // 26 septembre ». Quatre « vs sam. dernier » coupaient les libelles des
 // tuiles (« Chiffre d affair... ») pour repeter la meme chose.
 function getDashReferenceLabel(metrics) {
   return parseLocalDate(metrics.referenceDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-// UN POURCENTAGE CONTRE ZERO NE DIT RIEN. Quand la reference vaut 0 (centre
-// ferme ce jour-la, journee creuse), la comparaison produirait « +100 % » sur
-// tout ce qui bouge : la tuile ne compare pas, la legende dit pourquoi. Tant
-// que la serie du serveur n est pas arrivee (previousValue null), rien non
-// plus. Le survol de la pastille donne la valeur de reference.
-function renderDashboardKpiTrend(trendText, previousValue, referenceTitle) {
-  if (previousValue === null || previousValue === undefined || !(Number(previousValue) > 0)) return '';
-  const tone = /^\+/.test(trendText) ? 'up' : /^-/.test(trendText) ? 'down' : 'flat';
-  return `<span class="dash-kpi-delta ${tone}" title="${escapeHtml(referenceTitle)}">${escapeHtml(trendText)}</span>`;
-}
-
-// LA COMPOSITION DE LA JOURNEE EN UNE LIGNE, sous le nombre de reservations :
-// « 13 bowling · 6 formules · 5 laser game ». Elle remplace l anneau « par
-// activité », qui prenait une carte entiere pour dire trois chiffres.
-function formatDashActivityMix(activityMix = []) {
-  if (!activityMix.length) return 'sur la journée';
-  // « Formules » et « Multi-activités » sont des libelles de groupe, au
-  // pluriel : a l unite, « 1 formule », jamais « 1 formules ».
-  const singulier = { formules: 'formule', 'multi-activités': 'multi-activité' };
-  return activityMix.slice(0, 3).map(bucket => {
-    const label = bucket.label.toLowerCase();
-    return `${bucket.count} ${bucket.count > 1 ? label : (singulier[label] || label)}`;
-  }).join(' · ');
-}
-
-// ARRIVEES PAR HEURE : chaque groupe compte UNE fois, a l heure ou il arrive
-// (debut de son programme, la meme heure que le Terrain). Un groupe qui
-// enchaine bowling puis laser n apparait pas a chaque heure occupee, et une
-// formule sans piste ni arene (table et plaine de jeux) compte aussi : elle
-// etait ignoree tant que l heure venait des seules pistes. Barres et pas courbe : ce sont des
-// comptes par heure, pas une grandeur continue. Le jour meme, les heures
-// passees s effacent et l heure en cours se detache (option pastBefore).
-function renderDashArrivalsChart(host, metrics) {
-  if (!host) return;
-  const charts = window.PinlaneCharts;
-  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-  const { planningWindow, activeReservations } = metrics;
-  if (planningWindow.closed) { host.innerHTML = '<div class="dash-empty">Centre fermé ce jour-là.</div>'; return; }
-  if (!activeReservations.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation sur cette date.</div>'; return; }
-  const open = Math.floor(planningWindow.open);
-  const close = Math.ceil(planningWindow.close);
-  const buckets = new Map();
-  for (let hour = open; hour < close; hour += 1) buckets.set(hour, 0);
-  activeReservations.forEach(reservation => {
-    const startHour = Math.floor(getStaffTerrainSpan(reservation).start);
-    const hour = Math.min(Math.max(startHour, open), close - 1);
-    if (buckets.has(hour)) buckets.set(hour, buckets.get(hour) + (Number(reservation.pax) || 0));
-  });
-  const series = [...buckets.entries()].map(([hour, players]) => ({ label: formatClockDisplay(hour), value: players }));
-  if (series.every(point => !point.value)) { host.innerHTML = '<div class="dash-empty">Aucune arrivée sur les heures d\'ouverture.</div>'; return; }
-  const pastBefore = metrics.liveNow ? Math.floor(metrics.liveNow.now) - open : -1;
-  charts.barChart(host, {
-    series,
-    format: 'int',
-    height: 190,
-    pastBefore,
-    motionKey: `dash|arrivees|${state.currentDate}|${activeReservations.length}`,
-  });
 }
 
 // EN CE MOMENT (le jour meme) : quatre chiffres tires de la file de la page
@@ -11520,7 +11375,7 @@ function renderStaffDashboardAlerts(metrics, extra = [], inboxKnown = true) {
     if (!items.length) return '';
     return `<div class="dash-alert-group">
       <div class="dash-alert-group-head pr-${escapeHtml(group.meta.tone)}"><span class="priority-dot" aria-hidden="true"></span>${escapeHtml(group.meta.label)}<em>${group.items.length}</em></div>
-      ${items.map(renderDashTodoRow).join('')}
+      <div class="dash-alert-rows">${items.map(renderDashTodoRow).join('')}</div>
     </div>`;
   }).join('');
   const dayAlerts = ordered.filter(alert => !alert.open).length;
@@ -11566,43 +11421,6 @@ function formatMoneyShort(value) {
     return `${text}k €`;
   }
   return `${amount} €`;
-}
-
-function renderStaffDashboardRevenue(win) {
-  if (!win.loaded) {
-    return `<div class="dash-revenue-bars is-loading" aria-label="Chargement de la période">
-      <div class="dash-revenue-loading" role="status">Chargement de la période…</div>
-    </div>`;
-  }
-  const rawMax = Math.max(...win.values, 0);
-  const { max: axisMax, step } = niceRevenueScale(rawMax);
-  const ticks = [];
-  for (let value = axisMax; value > -step / 2; value -= step) ticks.push(Math.max(0, Math.round(value)));
-  const bars = win.values.map((value, index) => {
-    const date = parseLocalDate(win.days[index]);
-    return {
-      amount: Math.round(Number(value) || 0),
-      count: win.counts[index] || 0,
-      short: date.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', ''),
-      full: date.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }).replace('.', '')
-    };
-  });
-  const barsData = JSON.stringify(bars.map(bar => ({ f: bar.full, a: bar.amount, c: bar.count })));
-  // La cle de mouvement change avec la FENETRE : les barres poussent a
-  // l'arrivee et a chaque navigation, jamais sur un simple re-rendu.
-  const motionKey = `dashrev|${getCurrentStaffCenterId()}|${win.endDate}|${Math.round(win.values.reduce((sum, value) => sum + value, 0))}`;
-  return `<div class="dash-revenue-bars" aria-label="Revenus de la période affichée" data-revenue-bars="${escapeHtml(barsData)}" data-motion-key="${escapeHtml(motionKey)}">
-    <div class="dash-revenue-scale">${ticks.map(tick => `<span>${escapeHtml(formatMoneyShort(tick))}</span>`).join('')}</div>
-    <div class="dash-revenue-bar-grid">
-      ${bars.map((bar, index) => {
-        const height = bar.amount > 0 ? Math.max(3, Math.round((bar.amount / axisMax) * 100)) : 0;
-        return `<button type="button" class="dash-revenue-bar" data-index="${index}" style="--rev-delay:${index * 55}ms" aria-label="${escapeHtml(`${bar.full} : ${formatMoney(bar.amount)} · ${bar.count} résa${bar.count > 1 ? 's' : ''}`)}">
-          <span style="height:${height}%"></span>
-          <small>${escapeHtml(bar.short)}</small>
-        </button>`;
-      }).join('')}
-    </div>
-  </div>`;
 }
 
 function openStaffDashboardSection(section) {
@@ -12471,10 +12289,6 @@ function openStaffDashboardAlerts() {
   openStaffDashboardDetail('alerts');
 }
 
-function openStaffDashboardRevenue() {
-  openStaffDashboardDetail('revenue');
-}
-
 
 
 // L ACCUEIL QUI SALUE (2026-09-25). Movsar, devant l interface d Accountable :
@@ -12631,15 +12445,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // un « +40 % » et une courbe disent ce que le « ··· » tait.
   const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
   const reference = getDashReferenceLabel(metrics);
-  const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.referenceReservations);
-  const playerTrendText = formatDashboardTrend(metrics.players, metrics.referencePlayers);
-  const revenueTrendText = formatDashboardTrend(metrics.revenue, metrics.referenceRevenue);
-  const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.referenceOccupancy);
-  const lanesInMaintenance = getAvailabilityLanesInMaintenance(metrics.laneCount);
-  const lanesInService = metrics.laneCount - lanesInMaintenance;
-  const hours = metrics.planningWindow.closed
-    ? 'fermé ce jour-là'
-    : `${formatClockDisplay(metrics.planningWindow.open)}-${metrics.planningWindow.close >= 24 ? 'minuit' : formatClockDisplay(metrics.planningWindow.close)}`;
   // La legende des tuiles : la journee, et a quoi ses ecarts se comparent.
   // Une reference sans aucune reservation (centre ferme ce jour-la) ne
   // compare rien : la legende le dit, les tuiles n ont pas de pastille.
@@ -12648,7 +12453,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const future = state.currentDate > todayStr();
   const referenceKnown = metrics.referenceReservations !== null;
   const referenceEmpty = referenceKnown && !(metrics.referenceReservations > 0);
-  const referenceTitle = (value) => `${reference} : ${value}`;
   const dayCaption = future
     ? 'réservations prises à ce jour'
     : !referenceKnown
@@ -12656,22 +12460,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       : referenceEmpty
         ? `${reference} : aucune réservation`
         : `comparée au ${reference}`;
-  // La carte Revenus vit sur SA fenetre (fleches par jours) : total et
-  // tendance suivent la fenetre affichee, pas forcement la date du dashboard.
-  const revenueWindow = getDashRevenueWindow(metrics);
-  const totalPeriodRevenue = revenueWindow.values.reduce((sum, value) => sum + value, 0);
-  // UN POURCENTAGE CONTRE ZERO N EXISTE PAS. La carte ecrivait « +100 % »
-  // quand la periode precedente valait 0 EUR, et « 0 % » quand elle n etait
-  // pas encore arrivee. Sans periode connue, pas de comparaison ; contre zero,
-  // la reference elle-meme.
-  const revenueTrendWindowText = revenueWindow.previousTotal > 0
-    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}% vs 7 jours d’avant`
-    : (revenueWindow.previousTotal === 0 ? `7 jours d’avant : ${formatMoney(0)}` : '');
-  // « 7 derniers jours » seulement quand la fenetre finit aujourd hui ;
-  // sinon ses dates.
-  const revenueWindowLabel = revenueWindow.endDate !== todayStr()
-    ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
-    : '7 derniers jours';
   const syncIndicator = getRemoteSyncIndicator();
   // CE QUI ATTEND, EN DEUX ENDROITS QUI NE SE RECOUVRENT PAS : le retard et
   // l argent des groupes finis dans « En ce moment » (band), le reste dans
@@ -12699,14 +12487,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const arriving = active && (pages ? pages.lastPage !== 'dashboard' : !root.firstElementChild);
   if (pages && active) pages.lastPage = 'dashboard';
   root.classList.toggle('dash-enter', arriving && !prefersReducedMotion());
-  const kpiTile = ({ key, label, detail, trend, value, sub, spark }) => `
-      <article class="dash-kpi" data-kpi="${key}">
-        ${detail ? `<button type="button" class="dash-kpi-open" onclick="openStaffDashboardDetail('${detail}')" aria-label="${escapeHtml(`${label} : voir le détail`)}"></button>` : ''}
-        <div class="dash-kpi-head"><span class="dash-kpi-label">${escapeHtml(label)}</span><span class="dash-kpi-trend">${trend}</span></div>
-        <strong class="dash-kpi-value" data-pl-num="dash.${key}">${escapeHtml(String(value))}</strong>
-        <small class="dash-kpi-sub">${escapeHtml(sub)}</small>
-        ${spark}
-      </article>`;
+  const focusAvant = document.activeElement;
   root.innerHTML = `
     <section class="dash-hero dash-hello">
       <div class="dash-hello-copy">
@@ -12726,71 +12507,26 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
 
     ${metrics.liveNow ? renderStaffDashNow(metrics.liveNow) : ''}
 
-    <div class="dash-section-head"><h2>La journée</h2>${dayCaption ? `<span class="dash-card-meta">${escapeHtml(dayCaption)}</span>` : ''}</div>
-    <section class="dash-kpis">
-      ${kpiTile({
-        key: 'resa', label: 'Réservations', detail: 'activity',
-        trend: renderDashboardKpiTrend(reservationTrendText, metrics.referenceReservations, referenceTitle(`${metrics.referenceReservations} réservation${metrics.referenceReservations > 1 ? 's' : ''}`)),
-        value: metrics.activeReservations.length,
-        sub: formatDashActivityMix(metrics.activityMix),
-        spark: renderDashboardSpark(metrics.reservationSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} résa${value > 1 ? 's' : ''}` })
-      })}
-      ${kpiTile({
-        key: 'joueurs', label: 'Joueurs', detail: '',
-        trend: renderDashboardKpiTrend(playerTrendText, metrics.referencePlayers, referenceTitle(`${metrics.referencePlayers} joueur${metrics.referencePlayers > 1 ? 's' : ''}`)),
-        value: metrics.players,
-        sub: future ? 'attendus' : 'sur la journée',
-        spark: renderDashboardSpark(metrics.playerSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} joueur${value > 1 ? 's' : ''}` })
-      })}
-      ${kpiTile({
-        key: 'ca', label: 'Chiffre d’affaires', detail: seesMoney ? 'revenue' : '',
-        trend: seesMoney ? renderDashboardKpiTrend(revenueTrendText, metrics.referenceRevenue, referenceTitle(formatMoney(metrics.referenceRevenue || 0))) : '',
-        value: moneyForRole(metrics.revenue),
-        sub: future ? 'à encaisser sur place' : `${moneyForRole(metrics.collected)} encaissés`,
-        spark: renderDashboardSpark(metrics.revenueSeries, { shown: seesMoney && metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => formatMoney(value) })
-      })}
-      ${kpiTile({
-        key: 'occupation', label: 'Pistes occupées', detail: 'occupation',
-        trend: renderDashboardKpiTrend(occupancyTrendText, metrics.referenceOccupancy, referenceTitle(`${metrics.referenceOccupancy}%`)),
-        value: `${metrics.occupancy}%`,
-        sub: `${lanesInService} piste${lanesInService > 1 ? 's' : ''} en service · ${hours}`,
-        spark: renderDashboardSpark(metrics.occupancySeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value}%` })
-      })}
-    </section>
-
-    <section class="dash-grid-bottom">
-      <article class="dash-card dash-todo-card">
-        <div class="dash-card-head"><div class="dash-card-titles"><h2>À traiter</h2>${listed.length ? `<span class="dash-todo-count">${listed.length}</span>` : ''}</div><button type="button" onclick="openStaffDashboardAlerts()">Alertes du jour</button></div>
-        <div class="dash-alerts">${renderStaffDashboardAlerts(metrics, inboxTodos, inboxKnown)}</div>
-      </article>
-      <div class="dash-side-stack">
-      ${/* La carte Revenus n est faite que de montants : sans « Voir les
-           montants », elle ne se dessine pas (2026-11-07). */''}
-      ${seesMoney ? `<article class="dash-card dash-revenue-card">
-        <div class="dash-card-head">
-          <h2>Revenus</h2>
-          <div class="dash-revenue-nav">
-            ${revenueWindow.offset ? `<button type="button" class="dash-rev-today" onclick="dashRevenueReset(event)">Aujourd'hui</button>` : ''}
-            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(1, event)" aria-label="Reculer d'un jour">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <button type="button" class="dash-rev-period" onclick="openStaffDashboardRevenue()">${escapeHtml(revenueWindowLabel)}</button>
-            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(-1, event)" ${revenueWindow.offset ? '' : 'disabled'} aria-label="Avancer d'un jour">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span>${revenueTrendWindowText ? `<small>${escapeHtml(revenueTrendWindowText)}</small>` : ''}</div>
-        ${renderStaffDashboardRevenue(revenueWindow)}
-      </article>` : ''}
-      <article class="dash-card dash-hours-card">
-        <div class="dash-card-head"><div class="dash-card-titles"><h2>Arrivées par heure</h2><span class="dash-card-meta">joueurs attendus</span></div></div>
-        <div class="dash-range-chart" id="dashArrivalsChart"></div>
-      </article>
-      </div>
-    </section>
+    <article class="dash-card dash-todo-card plt-traiter">
+      <div class="dash-card-head"><div class="dash-card-titles"><h2>À traiter</h2>${listed.length ? `<span class="dash-todo-count">${listed.length}</span>` : ''}</div><button type="button" onclick="openStaffDashboardAlerts()">Alertes du jour</button></div>
+      <div class="dash-alerts">${renderStaffDashboardAlerts(metrics, inboxTodos, inboxKnown)}</div>
+    </article>
+    <div class="plt-slot-tete" data-plt-slot="tete"></div>
+    <div class="plt-slot-panneau" data-plt-slot="panneau"></div>
+    <div class="plt-slot-cartes" data-plt-slot="cartes"></div>
   `;
-  setupStaffDashboardCharts(metrics);
+  // LES CHIFFRES (2026-11-08) : un module a part, dont les noeuds survivent a ce innerHTML.
+  if (window.PinlanePilotage) {
+    const slot = (nom) => root.querySelector(`[data-plt-slot="${nom}"]`);
+    window.PinlanePilotage.afficher({
+      metrics,
+      dayReservations,
+      seesMoney,
+      legendeDuJour: dayCaption,
+      focusAvant,
+      slots: { tete: slot('tete'), panneau: slot('panneau'), cartes: slot('cartes') },
+    });
+  }
 }
 
 // La pastille du haut mene a ce qui attend : la premiere case urgente du
@@ -12806,65 +12542,6 @@ function focusDashTodo() {
   if (target) target.focus({ preventScroll: true });
 }
 
-function setupStaffDashboardCharts(metrics) {
-  const root = document.getElementById('staffDashboardPage');
-  if (!root) return;
-  renderDashArrivalsChart(document.getElementById('dashArrivalsChart'), metrics);
-  const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
-  if (revenue) setupRevenueChartInteraction(revenue);
-}
-
-
-function setupRevenueChartInteraction(container) {
-  let bars;
-  try { bars = JSON.parse(container.dataset.revenueBars || '[]'); } catch (_) { return; }
-  const barEls = Array.from(container.querySelectorAll('.dash-revenue-bar'));
-  if (!bars.length || !barEls.length) return;
-  // LA POUSSE DES BARRES, gardee par cle de fenetre (meme grammaire que
-  // PINLANE_CHARTS_SEEN) : elle joue a l'arrivee et a chaque navigation par
-  // jours, jamais sur un simple re-rendu de la meme fenetre. Le total
-  // s'anime en compteur au meme moment.
-  const seen = window.PINLANE_CHARTS_SEEN instanceof Set ? window.PINLANE_CHARTS_SEEN : (window.PINLANE_CHARTS_SEEN = new Set());
-  const motionKey = container.dataset.motionKey || '';
-  if (motionKey && !seen.has(motionKey) && !prefersReducedMotion()) {
-    seen.add(motionKey);
-    container.classList.add('rev-anim');
-    requestAnimationFrame(() => requestAnimationFrame(() => container.classList.add('rev-in')));
-    const totalEl = document.getElementById('dashRevenueTotal');
-    const charts = window.PinlaneCharts;
-    if (totalEl && charts && typeof charts.countUp === 'function') {
-      charts.countUp(totalEl, bars.reduce((sum, bar) => sum + (Number(bar.a) || 0), 0), { format: 'euro' });
-    }
-  } else {
-    container.classList.add('rev-in');
-  }
-  const tip = document.createElement('div');
-  tip.className = 'dash-chart-tip dash-chart-tip-bar';
-  tip.setAttribute('role', 'status');
-  tip.hidden = true;
-  container.appendChild(tip);
-  const hide = () => { tip.hidden = true; barEls.forEach(el => el.classList.remove('is-active')); };
-  const show = index => {
-    const info = bars[index];
-    const el = barEls[index];
-    if (!info || !el) return;
-    barEls.forEach(other => other.classList.toggle('is-active', other === el));
-    tip.innerHTML = `<strong>${escapeHtml(info.f)}</strong><b>${escapeHtml(formatMoney(info.a))}</b><small>${Number(info.c) || 0} résa${(Number(info.c) || 0) > 1 ? 's' : ''}</small>`;
-    tip.hidden = false;
-    const contRect = container.getBoundingClientRect();
-    const barRect = el.getBoundingClientRect();
-    const centerX = barRect.left - contRect.left + barRect.width / 2;
-    const left = Math.max(4, Math.min(centerX - tip.offsetWidth / 2, contRect.width - tip.offsetWidth - 4));
-    tip.style.left = `${left}px`;
-    tip.style.top = `${Math.max(0, (barRect.top - contRect.top) - tip.offsetHeight - 6)}px`;
-  };
-  barEls.forEach((el, index) => {
-    el.addEventListener('pointerenter', () => show(index));
-    el.addEventListener('focus', () => show(index));
-    el.addEventListener('blur', hide);
-  });
-  container.addEventListener('pointerleave', hide);
-}
 
 function openStaffMenuPage(page, resource = '') {
   if (typeof recordStaffActivity === 'function') recordStaffActivity('page', page);

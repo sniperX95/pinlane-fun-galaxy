@@ -123,6 +123,12 @@ function mockNavigateur(cfg) {
     init = init || {};
     var u = new URL(typeof input === 'string' ? input : input.url, location.origin);
     var m = String(init.method || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
+    // UN GATE PEUT Y BRANCHER DU VRAI CODE SERVEUR EN LECTURE (window.__fixtureLecture, pose par
+    // page.exposeFunction avant le chargement, scripts/pilotage-fixture.js).
+    if (m === 'GET' && typeof window.__fixtureLecture === 'function' && u.pathname.indexOf('/api/') === 0) {
+      var lue = await window.__fixtureLecture(u.pathname + u.search);
+      if (lue) return J(lue, lue.__statut || 200);
+    }
     if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: session, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'fixture', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), permissions: perms, locked: true }], members: [{ id: 'fixture', name: 'Accueil', roleId: 'direction' }] } });
     if (u.pathname === '/api/staff-customer-notes' && m === 'GET') {
       var lot = u.searchParams.get('reservationIds');

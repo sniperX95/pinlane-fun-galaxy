@@ -71,6 +71,7 @@ const {
   buildDirectionReportMarkdown,
   polishReportWithAi,
   previousWindow,
+  reponseDashboard,
   addDays,
   mondayOf,
   endOfMonth,
@@ -935,30 +936,25 @@ async function handleGet(req, res, options = {}) {
     const { getCenter } = require('../lib/ops-knowledge');
     const center = getCenter(centerId);
     const history = (await readAdminRangeState('2023-01-01', endDate, centerId)).reservations;
-    let analytics = buildDirectionAnalytics({ history, startDate, endDate, center });
+    if (action === 'dashboardAnalytics') {
+      sendJson(res, 200, {
+        ok: true,
+        centerId,
+        ...reponseDashboard({
+          history,
+          startDate,
+          endDate,
+          compareStart: url.searchParams.get('compareStart') || '',
+          compareEnd: url.searchParams.get('compareEnd') || '',
+          center,
+          voitLesMontants: sessionHasPermission(options.session, 'payments.view'),
+        }),
+      });
+      return;
+    }
+    const analytics = buildDirectionAnalytics({ history, startDate, endDate, center });
     const prevWin = previousWindow(startDate, endDate);
     const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
-    // dashboardAnalytics est accessible avec dashboard.view seul : on ne sert
-    // que ce que les widgets consomment : jamais le PII direction (top clients).
-    // byFormule / byOccasion / heatmap sont des agrégats anonymes (comptes et
-    // CA par formule / occasion / créneau), sans aucune identité client.
-    if (action === 'dashboardAnalytics') {
-      analytics = {
-        startDate: analytics.startDate,
-        endDate: analytics.endDate,
-        totals: analytics.totals,
-        daily: analytics.daily,
-        weekly: analytics.weekly,
-        monthly: analytics.monthly,
-        byType: analytics.byType,
-        byChannel: analytics.byChannel,
-        byPaymentMethod: analytics.byPaymentMethod,
-        byFormule: analytics.byFormule,
-        byOccasion: analytics.byOccasion,
-        heatmap: analytics.heatmap,
-        occupancy: analytics.occupancy,
-      };
-    }
     sendJson(res, 200, {
       ok: true,
       centerId,

@@ -206,7 +206,8 @@ async function lire(page) {
       bandeTitre: t('.dash-now h2'),
       vide: t('.dash-todo-empty'),
       videClair: Boolean(root.querySelector('.dash-todo-empty.is-clear')),
-      sousResa: t('[data-kpi="resa"] .dash-kpi-sub'),
+      ceQuiRapporte: t('[data-plt-carte="rapporte"] [data-plt-carte-phrase]'),
+      nomCourbe: t('.plt-nom-courbe'),
       selecteur: Boolean(root.querySelector('.dash-chart-picker')),
       titres,
       texte: root.textContent.replace(/\s+/g, ' '),
@@ -254,8 +255,8 @@ async function main() {
     ok(va.h1 === 'Bonjour Camille', '[A] le bonjour porte le prenom de la session', `« ${va.h1} »`);
     // L ordre : le bonjour, le moment, la journee, puis ce qui attend.
     const rang = (motif) => va.ordre.findIndex((c) => motif.test(c));
-    ok(rang(/dash-hello/) === 0 && rang(/dash-now/) === 1 && rang(/dash-section-head/) === 2 && rang(/dash-kpis/) === 3 && rang(/dash-grid-bottom/) === 4,
-      '[A] l ordre de lecture : le bonjour, « En ce moment », la journee, ce qui attend', va.ordre.join(' | '));
+    ok(rang(/dash-hello/) === 0 && rang(/dash-now/) === 1 && rang(/plt-traiter/) === 2 && rang(/plt-slot-tete/) === 3 && rang(/plt-slot-panneau/) === 4 && rang(/plt-slot-cartes/) === 5,
+      '[A] l ordre de lecture : le bonjour, « En ce moment », ce qui attend, puis les chiffres', va.ordre.join(' | '));
     const b = va.bande;
     ok(va.bandeTitre === 'En ce moment' && Object.keys(b).join(',') === 'next,late,onsite,closing',
       '[A] « En ce moment » porte quatre cases, dans l ordre de la page Terrain', `${va.bandeTitre} : ${Object.keys(b).join(',')}`);
@@ -282,9 +283,9 @@ async function main() {
     const echec = va.rows.find((r) => r.kind === 'bounce') || {};
     ok(echec.titre === '1 envoi en échec' && echec.bouton === 'Voir', '[A] la ligne des envois en echec', JSON.stringify(echec));
     ok(va.rows[0] && va.rows[0].kind === 'inbox', '[A] les mails qui attendent passent en tete de « À traiter »', va.rows.map((r) => r.kind).join(', '));
-    ok(va.sousResa === '5 bowling', '[A] la composition de la journee tient sous le nombre de reservations', `« ${va.sousResa} »`);
-    ok(!va.selecteur && !va.titres.some((t) => /par activité|Formules du jour|Affluence/i.test(t)) && va.titres.includes('Arrivées par heure'),
-      '[A] ni anneau, ni classement, ni selecteur de graphique : les arrivees par heure', va.titres.join(' · '));
+    ok(/^Bowling fait 100/.test(va.ceQuiRapporte || ''), '[A] la composition de la journee se lit dans « Ce qui rapporte »', `« ${va.ceQuiRapporte} »`);
+    ok(!va.selecteur && !va.titres.some((t) => /par activité|Formules du jour|Affluence/i.test(t)) && va.nomCourbe === 'Arrivées par heure',
+      '[A] ni anneau ni selecteur de graphique : le jour s ouvre sur les arrivees par heure', `${va.titres.join(' · ')} / ${va.nomCourbe}`);
     ok(va.texte.indexOf('Lasers disponibles') < 0, '[A] la tuile fausse « Lasers disponibles » n existe plus');
     ok(!va.mascotte, '[A] aucune mascotte ni dessin sur l accueil');
     const focus = await a.page.evaluate(() => {

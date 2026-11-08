@@ -18,7 +18,7 @@
 //   [D] LES DROITS : sans « Voir les montants », aucune tuile d argent, aucun euro, nulle part.
 //   [E] LES PANNES : serveur en panne, reponse sans chiffres, centre ferme, journee vide, un nom
 //       de formule qui veut s executer.
-//   [M] LES ECRANS : tablette, telephone, 320 px, sombre ; onze chiffres, quatre periodes, huit
+//   [M] LES ECRANS : tablette, telephone, 320 px, sombre ; onze chiffres, quatre periodes, neuf
 //       cartes, jamais un NaN.
 //
 // Le banc (scripts/pilotage-fixture.js) : un historique fixe passe dans le vrai calcul du serveur.
@@ -73,6 +73,23 @@ const MUTATIONS = {
   'focus-perdu': { section: 'V', fichier: MODULE_JS, de: "    if (dedans && focus.isConnected) focus.focus({ preventScroll: true });\n", vers: "", rouge: '[V] le rendu de la page laisse le focus sur la tuile' },
   'argent-sans-droit': { section: 'D', fichier: MODULE_JS, de: "return ORDRE_STATS.filter((id) => voitLArgent() || !STATS[id].argent);", vers: "return ORDRE_STATS;", rouge: '[D] sans le droit, aucune tuile d argent' },
   'reponse-sans-chiffres': { section: 'E', fichier: MODULE_JS, de: "      if (valide && !valide(reponse)) throw new Error('reponse sans chiffres');\n", vers: "", rouge: '[E] une reponse sans chiffres ne plante pas' },
+  'pv-montant-expose': { section: 'S', fichier: LIB, de: "'avgBasket', 'amount', 'absentRevenue'].forEach", vers: "'avgBasket', 'amount'].forEach", rouge: '[S] sans « Voir les montants », plus un euro dans la reponse' },
+  'pv-joueurs-faux': { section: 'S', fichier: LIB, de: "absentPax: absents.reduce((s, r) => s + r.pax, 0),", vers: "absentPax: absents.length,", rouge: '[S] les pas venus se comptent en joueurs et en euros' },
+  'pv-perdu-faux': { section: 'S', fichier: LIB, de: "absentRevenue: round2(absents.reduce((s, r) => s + r.price, 0)),", vers: "absentRevenue: round2(active.reduce((s, r) => s + r.price, 0)),", rouge: '[S] les pas venus se comptent en joueurs et en euros' },
+  'pv-tuile-muette': { section: 'J', fichier: MODULE_JS, de: "absents: div(attendus.filter((r) => r.absentAt).length, attendus.length, 100),", vers: "absents: div(0, attendus.length, 100),", rouge: '[J] la tuile Pas venus compte le groupe du jour' },
+  'pv-absent-deux-fois': { section: 'J', fichier: MODULE_JS, de: "      if (res.absentAt) return;\n      const s = seau(res);", vers: "      const s = seau(res);", rouge: '[J] le taux d une heure ne compte pas deux fois le groupe pas venu' },
+  'pv-jour-en-jours': { section: 'C', fichier: MODULE_JS, de: "if (attendue()) dessinerPasVenus(phrase, corps, pasVenusDe(reponse.analytics, true));", vers: "if (attendue()) dessinerPasVenus(phrase, corps, pasVenusDe(reponse.analytics, false));", rouge: '[C] Pas venus, journee : huit barres, une par semaine, qui font le total' },
+  'pv-chiffre-en-dur': { section: 'C', fichier: MODULE_JS, de: "      [ecrire(pv.joueurs, 'int'), pv.joueurs > 1 ? 'Joueurs' : 'Joueur'],\n", vers: "      [ecrire(n, 'int'), pv.joueurs > 1 ? 'Joueurs' : 'Joueur'],\n", rouge: '[C] Pas venus, journee : groupes, joueurs et montant viennent des dossiers' },
+  'pv-phrase-sans-taux': { section: 'C', fichier: MODULE_JS, de: "const taux = pv.taux < 1 ? 'moins de 1 %' : `${Math.round(pv.taux)} %`;", vers: "const taux = '1 %';", rouge: '[C] Pas venus, journee : la phrase dit le vrai nombre et le vrai taux' },
+  'pv-sans-periode': { section: 'C', fichier: MODULE_JS, de: "      pasVenus: pasVenusDe(a, false),\n", vers: "      pasVenus: null,\n", rouge: '[C] Pas venus, 30 jours : une barre par jour, les chiffres de la periode' },
+  'pv-vide-qui-reste': { section: 'C', fichier: MODULE_JS, de: "      poser(phrase, 'Aucun groupe pas venu sur cette période.', 'carte-p-pasvenus');\n      poser(corps, '', 'carte-c-pasvenus');\n", vers: "      poser(phrase, 'Aucun groupe pas venu sur cette période.', 'carte-p-pasvenus');\n", rouge: '[C] Pas venus : une periode sans absent ne garde pas l ancien graphique' },
+  'pv-lecture-en-retard': { section: 'C', fichier: MODULE_JS, de: "    const attendue = () => carte.isConnected && S.pasVenusAttendu === jeton;\n", vers: "    const attendue = () => carte.isConnected;\n", rouge: '[C] une lecture en retard ne repeint pas la periode choisie' },
+  'pv-repeinte': { section: 'V', fichier: MODULE_JS, de: "    if (S.peint['carte-c-pasvenus'] === cle && corps.querySelector('.plc-chart')) return;\n", vers: "", rouge: '[V] le rendu de la page ne redessine pas les cartes' },
+  'pv-sans-droit': { section: 'D', fichier: MODULE_JS, de: "      ...(montants ? [[ecrire(pv.perdu, 'euro'), n > 1 ? 'Réservations perdues' : 'Réservation perdue']] : []),\n", vers: "      [ecrire(pv.perdu, 'euro'), n > 1 ? 'Réservations perdues' : 'Réservation perdue'],\n", rouge: '[D] Pas venus : sans le droit, deux chiffres et aucun montant' },
+  'pv-panne-muette': { section: 'E', fichier: MODULE_JS, de: "      poser(phrase, 'Ces chiffres ne sont pas disponibles pour le moment.', 'carte-p-pasvenus');\n", vers: "", rouge: '[E] Pas venus : une panne se dit, aucun chiffre invente' },
+  'pv-pas-par-defaut': { section: 'C', fichier: MODULE_JS, de: "const CARTES_PAR_DEFAUT = ['heures', 'rapporte', 'reserve', 'pasvenus'];", vers: "const CARTES_PAR_DEFAUT = ['heures', 'rapporte', 'reserve'];", rouge: '[C] quatre cartes au depart, dont les pas venus' },
+  'pv-tuile-absente': { section: 'J', fichier: MODULE_JS, de: "const TUILES_PAR_DEFAUT = ['ca', 'resa', 'joueurs', 'absents', 'occupation'];", vers: "const TUILES_PAR_DEFAUT = ['ca', 'resa', 'joueurs', 'panier', 'occupation'];", rouge: '[J] cinq chiffres, dans l ordre choisi' },
+  'carte-remise-vide': { section: 'R', fichier: MODULE_JS, de: "    delete S.peint[`carte-p-${id}`];\n    delete S.peint[`carte-c-${id}`];\n", vers: "", rouge: '[R] une carte retiree puis remise se repeint' },
   'nom-qui-s-execute': { section: 'E', fichier: MODULE_JS, de: "<span class=\"plt-rang-nom\" title=\"${escapeHtml(l.label)}\">${escapeHtml(l.label)}</span>", vers: "<span class=\"plt-rang-nom\">${l.label}</span>", rouge: '[E] un nom de formule ne s execute pas' },
 };
 
@@ -141,8 +158,11 @@ function sectionCalcul() {
     '[S] les totaux sont ceux des dossiers de la periode', `${a.totals.reservations} dossiers, ${a.totals.revenue} EUR`);
   const enLigne = lignes.filter((r) => r.channel === 'public').length;
   ok(a.totals.online === enLigne, '[S] les reservations en ligne se comptent', `${a.totals.online} / ${enLigne}`);
-  const absents = propres.filter((r) => r.date >= debut && r.date <= fin && r.absentAt && ['pending', 'arrived', 'paid'].includes(r.status)).length;
+  const pasVenus = propres.filter((r) => r.date >= debut && r.date <= fin && r.absentAt && ['pending', 'arrived', 'paid'].includes(r.status));
+  const absents = pasVenus.length;
   ok(a.totals.absents === absents, '[S] les groupes absents se comptent, hors du chiffre', `${a.totals.absents} / ${absents}`);
+  ok(absents > 0 && a.totals.absentPax === somme(pasVenus, (r) => r.pax) && Math.abs(a.totals.absentRevenue - somme(pasVenus, (r) => r.price)) < 0.01,
+    '[S] les pas venus se comptent en joueurs et en euros', `${absents} groupes, ${a.totals.absentPax} joueurs, ${a.totals.absentRevenue} EUR`);
   ok(a.daily.length === 30 && a.daily.every((d) => ['count', 'revenue', 'pax', 'cancelled', 'collected', 'online', 'absents', 'laneHours', 'capacity'].every((c) => Number.isFinite(d[c]))),
     '[S] chaque jour porte toutes ses colonnes', Object.keys(a.daily[0]).join(','));
   ok(Math.abs(somme(a.daily, (d) => d.laneHours) - a.occupancy.bookedLaneHours) < 1.6 && Math.abs(somme(a.daily, (d) => d.capacity) - a.occupancy.capacityLaneHours) < 1.6,
@@ -157,11 +177,11 @@ function sectionCalcul() {
   const euros = [];
   const fouiller = (v, chemin) => {
     if (Array.isArray(v)) v.forEach((x, i) => fouiller(x, `${chemin}[${i}]`));
-    else if (v && typeof v === 'object') Object.entries(v).forEach(([k, x]) => { if (['revenue', 'collected', 'avgBasket', 'amount'].includes(k) && x !== 0) euros.push(`${chemin}.${k}=${x}`); fouiller(x, `${chemin}.${k}`); });
+    else if (v && typeof v === 'object') Object.entries(v).forEach(([k, x]) => { if (['revenue', 'collected', 'avgBasket', 'amount', 'absentRevenue'].includes(k) && x !== 0) euros.push(`${chemin}.${k}=${x}`); fouiller(x, `${chemin}.${k}`); });
   };
   fouiller(sans, 'reponse');
   ok(euros.length === 0, '[S] sans « Voir les montants », plus un euro dans la reponse', euros.slice(0, 3).join(' ; ') || 'aucun montant');
-  ok(sans.analytics.totals.pax === a.totals.pax && sans.analytics.totals.reservations === a.totals.reservations, '[S] sans montants, la forme de l activite reste', `${sans.analytics.totals.pax} joueurs`);
+  ok(sans.analytics.totals.pax === a.totals.pax && sans.analytics.totals.reservations === a.totals.reservations && sans.analytics.totals.absentPax === a.totals.absentPax, '[S] sans montants, la forme de l activite reste', `${sans.analytics.totals.pax} joueurs, ${sans.analytics.totals.absentPax} pas venus`);
   const brut = JSON.stringify(rep);
   ok(!/Client \d|0470\d{6}|"phone"|"email"|"name"/.test(brut), '[S] aucune identite de client dans la reponse');
 
@@ -207,6 +227,12 @@ async function sectionHandler() {
   const avec = await appeler(['dashboard.view', 'payments.view'], q);
   ok(avec.statut === 200 && avec.json.analytics.totals.revenue > 0, '[H] ... et les laisse a qui les voit', `${avec.json.analytics && avec.json.analytics.totals.revenue} EUR`);
   ok(avec.json.previous && avec.json.previous.startDate === ajouter(debut, -7), '[H] la fenetre de comparaison passe par la requete', avec.json.previous && avec.json.previous.startDate);
+  // Sept jours du banc sans aucun absent : trente, pour que ce controle ait de la matiere.
+  const trente = `startDate=${ajouter(fin, -29)}&endDate=${fin}`;
+  const sansPv = await appeler(['dashboard.view'], trente);
+  const avecPv = await appeler(['dashboard.view', 'payments.view'], trente);
+  ok(sansPv.json.analytics.totals.absentRevenue === 0 && sansPv.json.analytics.totals.absentPax > 0 && avecPv.json.analytics.totals.absentRevenue > 0,
+    '[H] le vrai handler retire le montant des pas venus a qui ne peut pas le voir', `${sansPv.json.analytics.totals.absentRevenue} / ${avecPv.json.analytics.totals.absentRevenue} EUR`);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +263,16 @@ const lireTuiles = (page) => page.evaluate(() => [...document.querySelectorAll('
 const tuile = (liste, id) => liste.find((t) => t.id === id) || {};
 const phrase = async (page) => normal(await page.locator('.plt-panneau [data-plt-phrase]').textContent());
 const phraseCarte = async (page, id) => normal(await page.locator(`.plt-carte[data-plt-carte="${id}"] [data-plt-carte-phrase]`).textContent());
+const lireCartePv = (page) => page.evaluate(() => {
+  const c = document.querySelector('.plt-carte[data-plt-carte="pasvenus"]');
+  const net = (s) => s.replace(/\s+/g, ' ').trim();
+  return {
+    nom: net(c.querySelector('.plt-carte-nom').textContent),
+    meta: net(c.querySelector('[data-plt-carte-meta]').textContent),
+    chiffres: [...c.querySelectorAll('.plt-pv-chiffres li')].map((li) => [...li.children].map((n) => net(n.textContent)).join(' ')),
+    barres: [...c.querySelectorAll('.plc-bar title')].map((t) => net(t.textContent)),
+  };
+});
 const argent = async (page, v) => normal(await page.evaluate((x) => formatMoney(x), Math.round(v)));
 const entier = (v) => normal(new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(Math.round(v)));
 const deltaPct = (v, ref) => { const p = Math.round(((v - ref) / ref) * 100); return `${p > 0 ? '+' : ''}${p}%`; };
@@ -251,10 +287,15 @@ async function sectionJournee(browser) {
   const joueurs = somme(actives, (r) => r.pax);
   const refs = BANC.serieDesJours(history, JOUR, 14).find((d) => d.date === ajouter(JOUR, -7));
   let t = await lireTuiles(page);
-  ok(t.map((x) => x.id).join() === 'ca,resa,joueurs,panier,occupation', '[J] cinq chiffres, dans l ordre choisi', t.map((x) => x.id).join());
+  ok(t.map((x) => x.id).join() === 'ca,resa,joueurs,absents,occupation', '[J] cinq chiffres, dans l ordre choisi', t.map((x) => x.id).join());
+  ok(await page.locator('[data-plt-tuile="absents"] .dash-kpi-label').textContent() === 'Pas venus', '[J] la tuile s appelle Pas venus');
   ok(tuile(t, 'ca').valeur === await argent(page, ca), '[J] le chiffre d affaires est celui des dossiers du jour', `${tuile(t, 'ca').valeur}`);
   ok(tuile(t, 'resa').valeur === String(actives.length) && tuile(t, 'joueurs').valeur === String(joueurs), '[J] reservations et joueurs aussi', `${tuile(t, 'resa').valeur} / ${tuile(t, 'joueurs').valeur}`);
-  ok(tuile(t, 'panier').valeur === normal(`${(ca / joueurs).toFixed(2).replace('.', ',')} €`), '[J] le panier est le chiffre divise par les joueurs', tuile(t, 'panier').valeur);
+  // Le panier n est plus une tuile de depart : on le pose a l ecran pour le lire.
+  await page.evaluate(() => { state.dashPilotage.tuiles = ['ca', 'resa', 'joueurs', 'panier', 'occupation']; PinlanePilotage.rafraichir(); });
+  await FX.repos(page, 150);
+  const panierLu = tuile(await lireTuiles(page), 'panier').valeur;
+  ok(panierLu === normal(`${(ca / joueurs).toFixed(2).replace('.', ',')} €`), '[J] le panier est le chiffre divise par les joueurs', panierLu);
   ok(tuile(t, 'ca').delta === deltaPct(ca, refs.revenue) && tuile(t, 'joueurs').delta === deltaPct(joueurs, refs.players), '[J] l ecart se compare au meme jour de la semaine d avant', `${tuile(t, 'ca').delta} / ${tuile(t, 'joueurs').delta}`);
   ok(tuile(t, 'joueurs').on && normal(await page.locator('.plt-nom-courbe').textContent()) === 'Arrivées par heure', '[J] le jour s ouvre sur les arrivees par heure');
   const pic = await page.evaluate(() => {
@@ -288,6 +329,29 @@ async function sectionJournee(browser) {
   await FX.repos(page, 300);
   t = await lireTuiles(page);
   ok(tuile(t, 'annulations').valeur === `${Math.round((1 / (DU_JOUR.length + 1)) * 100)}%`, '[J] la tuile Annulations compte les annulees du jour', tuile(t, 'annulations').valeur);
+
+  // Un groupe note « Pas venu » : sa tuile le dit, et son heure ne le divise pas deux fois.
+  await page.evaluate(() => {
+    const modele = state.reservations.find((r) => r.date === state.currentDate && r.status !== 'cancelled');
+    state.reservations.push({ ...modele, id: 777002, status: 'pending', absentAt: `${state.currentDate}T14:00:00.000Z` });
+    const r = state.dashPilotage;
+    r.tuiles = ['absents', 'resa', 'joueurs', 'ca', 'occupation'];
+    r.active = 'absents';
+    renderStaffDashboard();
+  });
+  await FX.repos(page, 300);
+  t = await lireTuiles(page);
+  ok(tuile(t, 'absents').valeur === `${Math.round((1 / (actives.length + 1)) * 100)}%`, '[J] la tuile Pas venus compte le groupe du jour', tuile(t, 'absents').valeur);
+  const heure = await page.evaluate(() => {
+    const m = getStaffDashboardMetrics(todaysReservations());
+    const debut = Math.floor(m.planningWindow.open);
+    const fin = Math.ceil(m.planningWindow.close);
+    const seau = (r) => Math.min(Math.max(Math.floor(getStaffTerrainSpan(r).start), debut), fin - 1);
+    const pasVenu = state.reservations.find((r) => r.id === 777002);
+    const memeHeure = state.reservations.filter((r) => r.date === state.currentDate && r.status !== 'cancelled' && seau(r) === seau(pasVenu)).length;
+    return { attendu: 100 / memeHeure, lu: Math.max(...window.__bar.series.map((p) => p.value)) };
+  });
+  ok(Math.abs(heure.lu - heure.attendu) < 0.01, '[J] le taux d une heure ne compte pas deux fois le groupe pas venu', JSON.stringify(heure));
 
   const cta = await page.evaluate(() => {
     const b = document.querySelector('.dash-alerts .dash-alert-cta');
@@ -374,7 +438,7 @@ async function sectionPeriodes(browser) {
 async function sectionCartes(browser) {
   console.log('\n[C] LES CARTES');
   const { ctx, page, erreurs } = await ouvrir(browser);
-  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,rapporte,reserve', '[C] trois cartes au depart');
+  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,rapporte,reserve,pasvenus', '[C] quatre cartes au depart, dont les pas venus');
   const fin = JOUR;
   const huit = servi({ debut: ajouter(fin, -55), fin });
   const heat = huit.analytics.heatmap;
@@ -412,12 +476,56 @@ async function sectionCartes(browser) {
     return { bleu, heat: getComputedStyle(document.querySelector('.plt-carte .plc-heatmap')).color, bar: getComputedStyle(document.querySelector('.plt-carte[data-plt-carte="reserve"] .plc-chart')).color };
   });
   ok(couleur.heat === couleur.bleu && couleur.bar === couleur.bleu, '[C] les graphiques des cartes portent la couleur de la marque', JSON.stringify(couleur));
+  // La carte Pas venus, relue a l ecran et recomptee a la main sur les dossiers du banc.
+  const propres = excludeSimulationRows(history);
+  const pvAttendu = (de, a) => {
+    const lignes = propres.filter((r) => r.date >= de && r.date <= a && ['pending', 'arrived', 'paid'].includes(r.status));
+    const absents = lignes.filter((r) => r.absentAt);
+    return { n: absents.length, joueurs: somme(absents, (r) => r.pax), perdu: somme(absents, (r) => r.price), taux: lignes.length ? (absents.length / lignes.length) * 100 : 0 };
+  };
+  const phrasePv = (x) => `${x.n} groupes ne sont pas venus, soit ${x.taux < 1 ? 'moins de 1 %' : `${Math.round(x.taux)} %`} de vos réservations.`;
+  const chiffresPv = async (x) => `${entier(x.n)} Groupes | ${entier(x.joueurs)} Joueurs | ${await argent(page, x.perdu)} Réservations perdues`;
+  const valeurBarre = (titre) => Number(titre.split(' : ').pop());
+  const huitPv = pvAttendu(ajouter(fin, -55), fin);
+  let pv = await lireCartePv(page);
+  ok(huitPv.n > 0 && pv.nom === 'Pas venus (no-show)' && pv.meta === '8 dernières semaines', '[C] Pas venus, journee : la carte dit ce qu elle couvre', JSON.stringify({ nom: pv.nom, meta: pv.meta, groupes: huitPv.n }));
+  ok(await phraseCarte(page, 'pasvenus') === phrasePv(huitPv), '[C] Pas venus, journee : la phrase dit le vrai nombre et le vrai taux', await phraseCarte(page, 'pasvenus'));
+  const parSemaine = Array.from({ length: 8 }, (_, i) => pvAttendu(ajouter(fin, -7 * (7 - i) - 6), ajouter(fin, -7 * (7 - i))).n);
+  ok(pv.barres.map(valeurBarre).join() === parSemaine.join() && somme(parSemaine, (v) => v) === huitPv.n, '[C] Pas venus, journee : huit barres, une par semaine, qui font le total', `${pv.barres.join(' | ')} / ${parSemaine.join()}`);
+  ok(pv.chiffres.join(' | ') === await chiffresPv(huitPv), '[C] Pas venus, journee : groupes, joueurs et montant viennent des dossiers', pv.chiffres.join(' | '));
   // Huit semaines ne changent pas avec la periode : la carte ne se redessine pas.
   await page.evaluate(() => { document.querySelector('.plt-carte[data-plt-carte="heures"] .plc-chart').__temoin = 1; });
   await periode(page, '30j');
   ok(await page.evaluate(() => document.querySelector('.plt-carte[data-plt-carte="heures"] .plc-chart').__temoin === 1), '[C] changer de periode ne redessine pas les heures creuses');
+  const trentePv = pvAttendu(ajouter(fin, -29), fin);
+  pv = await lireCartePv(page);
+  ok(trentePv.n > 0 && pv.meta === '' && pv.barres.length === 30 && somme(pv.barres, valeurBarre) === trentePv.n && pv.chiffres.join(' | ') === await chiffresPv(trentePv) && await phraseCarte(page, 'pasvenus') === phrasePv(trentePv),
+    '[C] Pas venus, 30 jours : une barre par jour, les chiffres de la periode', `${pv.barres.length} barres, ${pv.chiffres.join(' | ')}, ${await phraseCarte(page, 'pasvenus')}`);
+  await periode(page, '7j');
+  const septPv = pvAttendu(ajouter(fin, -6), fin);
+  pv = await lireCartePv(page);
+  ok(septPv.n === 0 && await phraseCarte(page, 'pasvenus') === 'Aucun groupe pas venu sur cette période.' && pv.barres.length === 0 && pv.chiffres.length === 0,
+    '[C] Pas venus : une periode sans absent ne garde pas l ancien graphique', `${septPv.n} absents, ${await phraseCarte(page, 'pasvenus')}, ${pv.barres.length} barres`);
   ok(erreurs.length === 0, '[C] aucune erreur JavaScript', erreurs.join(' | '));
   await ctx.close();
+
+  // La journee lit huit semaines : si le gerant choisit une periode avant la reponse, elle ne
+  // doit pas ecraser ce qu il regarde.
+  let relacher = null;
+  const servir = BANC.lecteur({ history, center: centre });
+  const lente = await ouvrir(browser, {
+    intercepter: (chemin) => {
+      if (!chemin.includes('dashboardAnalytics') || !chemin.includes(`startDate=${ajouter(fin, -55)}`)) return null;
+      return new Promise((rendre) => { relacher = () => rendre(servir(chemin)); });
+    },
+  });
+  await periode(lente.page, '30j');
+  const preteALire = typeof relacher === 'function';
+  if (preteALire) relacher();
+  await FX.repos(lente.page, 400);
+  const tard = await lireCartePv(lente.page);
+  ok(preteALire && tard.meta === '' && tard.barres.length === 30, '[C] une lecture en retard ne repeint pas la periode choisie', JSON.stringify({ preteALire, meta: tard.meta, barres: tard.barres.length }));
+  await lente.ctx.close();
 
   // La premiere et la derniere heure d un jour sont vides par nature : on ne les conseille pas.
   const base = BANC.lecteur({ history, center: centre });
@@ -443,8 +551,8 @@ async function sectionReglages(browser) {
   await page.locator('[data-plt-modifier]').click();
   await FX.repos(page, 300);
   ok(normal(await page.locator('[data-plt-modifier]').textContent()) === 'Terminé', '[R] « Modifier » devient « Terminé »');
-  ok(await page.locator('.plt-changer').count() === 5 && await page.locator('[data-plt-poignee]:visible').count() === 3 && await page.locator('[data-plt-retirer]:visible').count() === 3, '[R] chaque tuile se change, chaque carte se deplace et se retire');
-  await page.locator('[data-plt-tuile="panier"]').click();
+  ok(await page.locator('.plt-changer').count() === 5 && await page.locator('[data-plt-poignee]:visible').count() === 4 && await page.locator('[data-plt-retirer]:visible').count() === 4, '[R] chaque tuile se change, chaque carte se deplace et se retire');
+  await page.locator('[data-plt-tuile="absents"]').click();
   await FX.repos(page, 200);
   ok(await page.locator('.plt-choix [data-plt-choix]').count() === 11, '[R] la tuile propose les onze chiffres');
   await page.locator('[data-plt-choix="enLigne"]').click();
@@ -459,16 +567,16 @@ async function sectionReglages(browser) {
   ok(t.map((x) => x.id).join() === 'enLigne,resa,joueurs,ca,occupation', '[R] choisir un chiffre deja affiche echange les deux tuiles', t.map((x) => x.id).join());
   await page.locator('[data-plt-retirer="rapporte"]').click();
   await FX.repos(page, 300);
-  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,reserve', '[R] une carte se retire');
+  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,reserve,pasvenus', '[R] une carte se retire');
   await page.locator('[data-plt-ajouter]').click();
   await FX.repos(page, 200);
   ok(await page.locator('.plt-choix [data-plt-choix]').count() === 6, '[R] « Ajouter » propose les cartes absentes');
   await page.locator('[data-plt-choix="clients"]').click();
   await FX.repos(page, 400);
-  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,reserve,clients', '[R] une carte s ajoute a la fin');
-  // Deplacer la premiere carte sur la derniere.
+  ok((await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte))).join() === 'heures,reserve,pasvenus,clients', '[R] une carte s ajoute a la fin');
+  // Deplacer la premiere carte juste apres la troisieme, la derniere de sa rangee.
   const poignee = await page.locator('.plt-carte[data-plt-carte="heures"] [data-plt-poignee]').boundingBox();
-  const cible = await page.locator('.plt-carte[data-plt-carte="clients"]').boundingBox();
+  const cible = await page.locator('.plt-carte[data-plt-carte="pasvenus"]').boundingBox();
   await page.mouse.move(poignee.x + poignee.width / 2, poignee.y + poignee.height / 2);
   await page.mouse.down();
   await page.mouse.move(cible.x + cible.width * 0.8, cible.y + cible.height / 2, { steps: 8 });
@@ -476,7 +584,7 @@ async function sectionReglages(browser) {
   await FX.repos(page, 400);
   const apres = await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte));
   const retenu = await page.evaluate(() => (state.dashPilotage.cartes || []).join());
-  ok(apres.join() === 'reserve,clients,heures' && retenu === apres.join(), '[R] une carte deplacee garde sa place', `${apres.join()} / ${retenu}`);
+  ok(apres.join() === 'reserve,pasvenus,heures,clients' && retenu === apres.join(), '[R] une carte deplacee garde sa place', `${apres.join()} / ${retenu}`);
   ok(await page.locator('.plt-trou').count() === 0 && await page.locator('.is-deplacee').count() === 0, '[R] le deplacement ne laisse aucune trace');
   await page.locator('[data-plt-modifier]').click();
   await FX.repos(page, 300);
@@ -492,7 +600,21 @@ async function sectionReglages(browser) {
   t = await lireTuiles(page);
   const carnet = await page.locator('.plt-carte').evaluateAll((l) => l.map((c) => c.dataset.pltCarte));
   const titre = normal(await page.locator('[data-plt-titre]').textContent());
-  ok(titre === 'Les 7 derniers jours' && t.map((x) => x.id).join() === 'enLigne,resa,joueurs,ca,occupation' && tuile(t, 'occupation').on && carnet.join() === 'reserve,clients,heures', '[R] les reglages reviennent apres un rechargement', `${titre} ; ${t.map((x) => x.id).join()} ; ${carnet.join()}`);
+  ok(titre === 'Les 7 derniers jours' && t.map((x) => x.id).join() === 'enLigne,resa,joueurs,ca,occupation' && tuile(t, 'occupation').on && carnet.join() === 'reserve,pasvenus,heures,clients', '[R] les reglages reviennent apres un rechargement', `${titre} ; ${t.map((x) => x.id).join()} ; ${carnet.join()}`);
+
+  // Une carte retiree puis remise est un noeud neuf : elle doit se repeindre en entier.
+  await periode(page, '30j');
+  await page.locator('[data-plt-modifier]').click();
+  await FX.repos(page, 200);
+  const phraseAvant = await phraseCarte(page, 'pasvenus');
+  await page.locator('[data-plt-retirer="pasvenus"]').click();
+  await FX.repos(page, 200);
+  await page.locator('[data-plt-ajouter]').click();
+  await FX.repos(page, 200);
+  await page.locator('[data-plt-choix="pasvenus"]').click();
+  await FX.repos(page, 400);
+  const remise = await lireCartePv(page);
+  ok(phraseAvant.length > 0 && await phraseCarte(page, 'pasvenus') === phraseAvant && remise.barres.length === 30 && remise.chiffres.length === 3, '[R] une carte retiree puis remise se repeint', `${await phraseCarte(page, 'pasvenus')} ; ${remise.barres.length} barres`);
   ok(erreurs.length === 0, '[R] aucune erreur JavaScript', erreurs.join(' | '));
   await ctx.close();
 }
@@ -506,6 +628,7 @@ async function sectionDirect(browser) {
     document.querySelector('[data-plt-courbe] .plc-chart').__temoin = 1;
     document.querySelector('[data-plt-tuile="resa"]').__temoin = 1;
     document.querySelector('.plt-carte[data-plt-carte="reserve"] .plc-chart').__temoin = 1;
+    document.querySelector('.plt-carte[data-plt-carte="pasvenus"] .plc-chart').__temoin = 1;
   });
   await page.locator('[data-plt-tuile="resa"]').focus();
   await page.evaluate(() => { renderStaffDashboard(); renderStaffDashboard(); });
@@ -514,7 +637,7 @@ async function sectionDirect(browser) {
     panneau: document.querySelector('.plt-panneau').__temoin === 1,
     courbe: document.querySelector('[data-plt-courbe] .plc-chart').__temoin === 1,
     tuile: document.querySelector('[data-plt-tuile="resa"]').__temoin === 1,
-    carte: document.querySelector('.plt-carte[data-plt-carte="reserve"] .plc-chart').__temoin === 1,
+    carte: document.querySelector('.plt-carte[data-plt-carte="reserve"] .plc-chart').__temoin === 1 && document.querySelector('.plt-carte[data-plt-carte="pasvenus"] .plc-chart').__temoin === 1,
     focus: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.pltTuile,
   }));
   ok(lu.panneau && lu.tuile, '[V] le rendu de la page garde le panneau et ses tuiles', JSON.stringify(lu));
@@ -555,6 +678,8 @@ async function sectionDroits(browser) {
   ok(!(await sansEuro()).euro, '[D] la journee ne montre pas un euro');
   ok(/Bowling|Formules|Laser/.test(await phraseCarte(page, 'rapporte')) && /de vos réservations\.$/.test(await phraseCarte(page, 'rapporte')), '[D] « Ce qui rapporte » parle en reservations', await phraseCarte(page, 'rapporte'));
   ok(/joueurs déjà réservés/.test(await phraseCarte(page, 'reserve')), '[D] « Déjà réservé » parle en joueurs', await phraseCarte(page, 'reserve'));
+  const pvSansDroit = await lireCartePv(page);
+  ok(pvSansDroit.chiffres.length === 2 && /Groupes$/.test(pvSansDroit.chiffres[0]) && /Joueurs$/.test(pvSansDroit.chiffres[1]) && pvSansDroit.barres.length === 8, '[D] Pas venus : sans le droit, deux chiffres et aucun montant', pvSansDroit.chiffres.join(' | '));
   for (const p of ['7j', '30j', 'mois']) { await periode(page, p); ok(!(await sansEuro()).euro, `[D] ${p} : pas un euro`); }
   await page.locator('[data-plt-modifier]').click();
   await FX.repos(page, 200);
@@ -583,6 +708,8 @@ async function sectionPannes(browser) {
     },
   });
   await FX.repos(page, 400);
+  const pvPanne = await lireCartePv(page);
+  ok(await phraseCarte(page, 'pasvenus') === 'Ces chiffres ne sont pas disponibles pour le moment.' && pvPanne.chiffres.length === 0 && pvPanne.barres.length === 0, '[E] Pas venus : une panne se dit, aucun chiffre invente', await phraseCarte(page, 'pasvenus'));
   await periode(page, '7j');
   ok(await phrase(page) === 'Ces chiffres ne sont pas disponibles pour le moment.', '[E] une panne se dit en une phrase', await phrase(page));
   ok(await page.locator('[data-plt-reessayer]').count() === 1 && await page.locator('[data-plt-tuile]').count() === 0, '[E] aucun chiffre invente, un bouton pour reessayer');
@@ -599,7 +726,7 @@ async function sectionPannes(browser) {
   await page.evaluate(() => { state.currentDate = '2027-01-11'; renderStaffDashboard(); });
   await FX.repos(page, 400);
   ok(normal(await page.locator('[data-plt-courbe]').textContent()) === 'Centre fermé ce jour-là.', '[E] un jour ferme se dit', normal(await page.locator('[data-plt-courbe]').textContent()));
-  await page.evaluate(() => { state.currentDate = '2027-01-12'; renderStaffDashboard(); });
+  await page.evaluate(() => { state.dashPilotage.tuiles = ['ca', 'resa', 'joueurs', 'panier', 'occupation']; state.currentDate = '2027-01-12'; renderStaffDashboard(); });
   await FX.repos(page, 400);
   ok(normal(await page.locator('[data-plt-courbe]').textContent()) === 'Aucune réservation sur cette date.', '[E] une journee vide se dit', normal(await page.locator('[data-plt-courbe]').textContent()));
   const t = await lireTuiles(page);
@@ -647,7 +774,7 @@ async function sectionEcrans(browser) {
 
   const { ctx, page, erreurs } = await ouvrir(browser, { theme: 'dark' });
   const noms = await page.evaluate(() => ({ stats: Object.keys(PinlanePilotage.STATS), cartes: Object.keys(PinlanePilotage.CARTES) }));
-  ok(noms.stats.length === 11 && noms.cartes.length === 8, '[M] onze chiffres, huit cartes', `${noms.stats.length} / ${noms.cartes.length}`);
+  ok(noms.stats.length === 11 && noms.cartes.length === 9, '[M] onze chiffres, neuf cartes', `${noms.stats.length} / ${noms.cartes.length}`);
   const fautes = [];
   for (const p of ['jour', '7j', '30j', 'mois']) {
     for (const s of noms.stats) {
@@ -659,7 +786,7 @@ async function sectionEcrans(browser) {
       if (/[\u2014\u2013]/.test(zone)) fautes.push(`${p}/${s}: tiret long`);
     }
   }
-  ok(fautes.length === 0, '[M] onze chiffres, quatre periodes, huit cartes : jamais un NaN', fautes.slice(0, 3).join(' | '));
+  ok(fautes.length === 0, '[M] onze chiffres, quatre periodes, neuf cartes : jamais un NaN', fautes.slice(0, 3).join(' | '));
   ok(erreurs.length === 0, '[M] sombre : aucune erreur JavaScript', erreurs.join(' | '));
   await ctx.close();
 }

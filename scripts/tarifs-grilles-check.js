@@ -714,7 +714,7 @@ async function comptoir(browser) {
   await page.waitForTimeout(400);
   const fenetre = await texte(page, '.qb-modal.rv.rs');
   ok(/Bowling\s*42\s*€ la piste/.test(fenetre) && /Bowling 1 h.*84\s*€/.test(fenetre), '[C] Reserver chiffre le bowling au prix du centre', fenetre.slice(0, 260));
-  ok(/Fun Run\s*64\s*€/.test(fenetre), '[C] Reserver chiffre le Fun Run au prix du centre', fenetre.slice(0, 500));
+  ok(/Pixel\s*64\s*€/.test(fenetre), '[C] Reserver chiffre le Fun Run au prix du centre', fenetre.slice(0, 500));
   ok(/Duckpin\s*84\s*€/.test(fenetre), '[C] le Duckpin suit la meme grille', fenetre.slice(0, 500));
   await page.click('.qb-modal.rv.rs [data-quoi="laser_game"][data-var="2"]');
   await page.waitForTimeout(300);

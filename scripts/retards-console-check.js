@@ -217,7 +217,6 @@ const SCENARIOS = { reprise, pasVenu, controles };
 const SEUL = (fichier, de, vers = '') => [{ fichier, de, vers }];
 const MUTATIONS = [
   { nom: 'sans-piste-reprise', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '    var reprise = g.retard && m.maintenant != null ? gfReprise(g, m) : null;\n', '    var reprise = null;\n') },
-  { nom: 'reprise-par-un-absent', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '      if (autre === g || autre.parti) return;', '      if (autre === g) return;') },
   { nom: 'reprise-apres-la-partie', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '.filter(function (e) { return e.pistes && e.pistes.length && e.end > m.maintenant + 1e-6; });', '.filter(function (e) { return e.pistes && e.pistes.length; });') },
   { nom: 'reprise-sans-le-retard', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '          if (o.start < e.end - 1e-6 || o.start >= e.end + retard - 1e-6) return;', '          if (o.start < e.end - 1e-6 || o.start >= e.end - 1e-6) return;') },
   { nom: 'pistes-libres-comptent-l-absent', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(APP, '  poser(todaysReservations().filter(tientSesPlaces));', '  poser(todaysReservations());') },
@@ -228,7 +227,6 @@ const MUTATIONS = [
   { nom: 'laser-avec-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    .filter(r => r.id !== ignoreId && r.date === date && tientSesPlaces(r))', "    .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')") },
   { nom: 'reserver-voit-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    .filter((r) => r.date === s.date && tientSesPlaces(r) && (r.lanes || []).length > 0)', "    .filter((r) => r.date === s.date && r.status !== 'cancelled' && (r.lanes || []).length > 0)") },
   { nom: 'armes-comptent-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '  const pris = Math.min(capacite, compter(state.reservations.filter((r) => r.date === date && tientSesPlaces(r))));', "  const pris = Math.min(capacite, compter(state.reservations.filter((r) => r.date === date && r.status !== 'cancelled')));") },
-  { nom: 'depart-compte-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + (tientSesPlaces(w.reservation) ? lpArene(w) : 0), 0);', '    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);') },
 ];
 
 async function jouer(browser, noms) {

@@ -168,6 +168,7 @@ const history = buildHistory(TODAY);
   const brain = await buildMarketingBrain('libramont', { today: TODAY }, { query: brainQuery, buildCenterFacts });
   ok(brain.ok && brain.outlook.length === 14 && brain.plan.length >= 1 && Boolean(brain.instagram.caption), 'bundle complet (outlook + plan + insta)');
   ok(sqlLog.some((sql) => sql.includes("status <> 'cancelled'")), 'les résas annulées ne comptent pas dans le « déjà réservé »');
+  ok(sqlLog.some((sql) => sql.includes('from reservations') && sql.includes('absent_at is null')), 'un groupe noté « Pas venu » ne compte pas dans le « déjà réservé »');
 
   console.log('\n[PLAN DONE] marquage mesurable');
   const doneLog = [];

@@ -142,16 +142,16 @@ const JEU = [
   { id: 71008, status: 'paid', start: '14:45', duree: 1, piste: 4, note: '', off: false, moment: 'onsite' },
   { id: 71009, status: 'arrived', start: '13:00', duree: 1, piste: 7, note: '', off: false, moment: 'closing' },
   // Fini et jamais pointe : « Non pointé », peut-etre pas venu.
-  { id: 71010, status: 'confirmed', start: '12:00', duree: 1, piste: 8, note: 'Rappeler le client', off: false, moment: 'closing', nonPointe: true },
+  { id: 71010, status: 'confirmed', start: '12:00', duree: 1, piste: 8, note: 'Rappeler le client', off: false, moment: 'late', nonPointe: true },
   // Fini a la MINUTE PILE (14:10-15:10) : c'est fini, pas « en cours ».
-  { id: 71013, status: 'pending', start: '14:10', duree: 1, piste: 5, note: '', off: false, moment: 'closing', nonPointe: true },
+  { id: 71013, status: 'pending', start: '14:10', duree: 1, piste: 5, note: '', off: false, moment: 'late', nonPointe: true },
   { id: 71011, status: 'paid', start: '11:00', duree: 1, piste: 1, note: '', off: false, moment: 'done' },
   { id: 71012, status: 'paid', start: '12:30', duree: 2, piste: 2, note: 'Facture à envoyer', off: false, moment: 'done' },
   // HORS PLANNING, un par moment.
   { id: 71014, status: 'confirmed', start: '16:00', duree: 1, piste: null, note: '', off: true, moment: 'upcoming' },
   { id: 71015, status: 'arrived', start: '14:00', duree: 2, piste: null, note: '', off: true, moment: 'onsite' },
   { id: 71016, status: 'paid', start: '11:00', duree: 1, piste: null, note: '', off: true, moment: 'done' },
-  { id: 71017, status: 'pending', start: '12:00', duree: 1, piste: null, note: '', off: true, moment: 'closing', nonPointe: true },
+  { id: 71017, status: 'pending', start: '12:00', duree: 1, piste: null, note: '', off: true, moment: 'late', nonPointe: true },
 ];
 // La section attendue d'un dossier : paye en bas, retard en tete, sinon son
 // moment (ecrit a la main dans le jeu).
@@ -387,9 +387,9 @@ function controler(vue) {
   // paye pendant ou avant sa partie, il est dans « Payées », jamais « À venir ».
   c(dans('onsite', 71008) && !dans('paid', 71008), '[2] le groupe payé pendant sa partie reste Sur place');
   c(dans('onsite', 71003) && !dans('paid', 71003), '[2] le groupe payé avant son heure reste à suivre sur place');
-  c(dans('closing', 71013), '[2] fini a la minute pile, il est « À clôturer »');
+  c(dans('late', 71013), '[2] fini a la minute pile sans etre pointe, il est « En retard »');
   JEU.filter((r) => r.nonPointe).forEach((r) => {
-    c(dans('closing', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « À clôturer » avec « Non pointé »`);
+    c(dans('late', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « En retard » avec « Non pointé »`);
   });
   const nonPointesEnTrop = JEU.filter((r) => !r.nonPointe && (pastilles[r.id] || {}).nonPointe);
   c(nonPointesEnTrop.length === 0, '[2] « Non pointé » ne se pose sur aucune autre ligne', nonPointesEnTrop.map((r) => r.id).join(', '));

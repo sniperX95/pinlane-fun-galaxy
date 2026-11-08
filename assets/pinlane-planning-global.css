@@ -437,9 +437,10 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-x__n { white-space: nowrap; }
 /* CE QUI SORT DE L HABITUEL (2026-11-08) : une autre duree qu une heure, un autre nombre que
    le groupe. Une pastille grise, celle du grand groupe : aucune couleur de plus. */
+.gf-x__h { align-self: flex-start; margin: 2px 0 0 -5px; padding: 0 5px; border-radius: 6px; background: color-mix(in srgb, var(--text) 13%, var(--surface)); color: var(--text); font-size: 12px; font-weight: 700; line-height: 17px; white-space: nowrap; }
 .gf-x__hors { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0 0 -5px; }
-.gf-x__hors b { padding: 0 5px; border-radius: 6px; background: color-mix(in srgb, var(--text) 13%, var(--surface)); color: var(--text); font-size: 12px; font-weight: 700; line-height: 17px; white-space: nowrap; }
-.gf-x.is-fini .gf-x__hors b, .gf-r.is-parti .gf-x__hors b { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
+.gf-x__hors .gf-x__h { margin: 0; }
+.gf-x.is-fini .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
 .gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }

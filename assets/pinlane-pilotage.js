@@ -44,25 +44,27 @@
     occupation: { label: 'Pistes occupées', court: 'pistes occupées', format: 'percent', detail: 'occupation', jour: (j) => j.occupation, total: (a) => (a.occupancy ? a.occupancy.rate : null), serie: (d) => div(d.laneHours, d.capacity, 100) },
     enLigne: { label: 'Réservé en ligne', court: 'réservé en ligne', format: 'percent', jour: (j) => j.enLigne, total: (a) => a.totals.onlineRate, serie: (d) => div(d.online, d.count, 100) },
     annulations: { label: 'Annulations', court: 'annulations', format: 'percent', inverse: true, jour: (j) => j.annulations, total: (a) => a.totals.cancelRate, serie: (d) => div(d.cancelled, d.count + d.cancelled, 100) },
-    absents: { label: 'Groupes absents', court: 'groupes absents', format: 'percent', inverse: true, jour: (j) => j.absents, total: (a) => a.totals.absentRate, serie: (d) => div(d.absents, d.count + d.absents, 100) },
+    absents: { label: 'Pas venus', court: 'pas venus', format: 'percent', inverse: true, jour: (j) => j.absents, total: (a) => a.totals.absentRate, serie: (d) => div(d.absents, d.count + d.absents, 100) },
   };
   const ORDRE_STATS = ['ca', 'encaisse', 'aEncaisser', 'resa', 'joueurs', 'panier', 'groupe', 'occupation', 'enLigne', 'annulations', 'absents'];
-  const TUILES_PAR_DEFAUT = ['ca', 'resa', 'joueurs', 'panier', 'occupation'];
+  const TUILES_PAR_DEFAUT = ['ca', 'resa', 'joueurs', 'absents', 'occupation'];
 
   const CARTES = {
     heures: { nom: 'Heures pleines et creuses', fixe: '8 dernières semaines' },
     rapporte: { nom: 'Ce qui rapporte' },
     reserve: { nom: 'Déjà réservé', fixe: '14 prochains jours' },
+    // `fixe` vide : ce que la carte couvre depend de la periode, elle l ecrit elle-meme.
+    pasvenus: { nom: 'Pas venus (no-show)', fixe: '' },
     enligne: { nom: 'En ligne ou au comptoir' },
     clients: { nom: 'Nouveaux et habitués' },
     formules: { nom: 'Formules les plus vendues' },
     occasions: { nom: 'Occasions' },
     paiements: { nom: 'Comment on vous paie', argent: true },
   };
-  const ORDRE_CARTES = ['heures', 'rapporte', 'reserve', 'enligne', 'clients', 'formules', 'occasions', 'paiements'];
-  const CARTES_PAR_DEFAUT = ['heures', 'rapporte', 'reserve'];
+  const ORDRE_CARTES = ['heures', 'rapporte', 'reserve', 'pasvenus', 'enligne', 'clients', 'formules', 'occasions', 'paiements'];
+  const CARTES_PAR_DEFAUT = ['heures', 'rapporte', 'reserve', 'pasvenus'];
 
-  const S = { ctx: null, tete: null, panneau: null, cartes: null, jeton: 0, edition: false, choix: null, peint: {}, faits: null, tirage: null };
+  const S = { ctx: null, tete: null, panneau: null, cartes: null, jeton: 0, edition: false, choix: null, peint: {}, faits: null, tirage: null, pasVenusAttendu: '' };
 
   // ---- Reglages du poste ------------------------------------------------------
   function voitLArgent() {
@@ -168,6 +170,8 @@
     const actives = m.activeReservations;
     const nb = actives.length;
     const annulees = toutes.filter((r) => r.status === 'cancelled').length;
+    // Lus sur les dossiers du jour, comme les annulees : le taux ne depend pas de la liste active.
+    const attendus = toutes.filter((r) => r.status !== 'cancelled');
     return {
       ca: m.revenue,
       encaisse: m.collected,
@@ -179,7 +183,7 @@
       occupation: m.planningWindow.closed ? null : m.occupancy,
       enLigne: div(actives.filter((r) => r.channel === 'public').length, nb, 100),
       annulations: div(annulees, toutes.length, 100),
-      absents: div(actives.filter((r) => r.absentAt).length, nb, 100),
+      absents: div(attendus.filter((r) => r.absentAt).length, attendus.length, 100),
     };
   }
 
@@ -226,6 +230,7 @@
       formules: parNom((r) => (r.type === 'formule' || r.formuleId ? (r.label || 'Formule') : '')),
       occasions: parNom((r) => libelleOccasion(r.occasion)),
       paiements: [...moyens.values()],
+      pasVenus: null,
     };
   }
 
@@ -249,7 +254,25 @@
       formules: (a.byFormule || []).map((f) => ({ label: f.label || f.id || 'Formule', nb: f.count, ca: f.revenue })),
       occasions: (a.byOccasion || []).map((o) => ({ label: libelleOccasion(o.occasion) || 'Autre', nb: o.count })),
       paiements: (a.byPaymentMethod || []).map((m) => ({ label: m.label, nb: m.count, montant: m.amount })),
+      pasVenus: pasVenusDe(a, false),
     };
+  }
+
+  // Les pas venus d une reponse du serveur. Huit semaines se lisent par blocs de sept jours pleins
+  // en partant de la fin : une semaine civile coupee ferait deux barres trop courtes.
+  function pasVenusDe(a, parSemaine) {
+    const jours = a.daily || [];
+    const points = [];
+    if (parSemaine) {
+      for (let fin = jours.length; fin > 0; fin -= 7) {
+        const bloc = jours.slice(Math.max(0, fin - 7), fin);
+        points.unshift({ label: `Sem. du ${dit(bloc[0].date, 15).label}`, value: bloc.reduce((s, d) => s + (Number(d.absents) || 0), 0) });
+      }
+    } else {
+      jours.forEach((d) => points.push({ label: dit(d.date, jours.length).label, value: Number(d.absents) || 0 }));
+    }
+    const t = a.totals || {};
+    return { fenetre: `${a.startDate}|${a.endDate}`, groupes: Number(t.absents) || 0, joueurs: Number(t.absentPax) || 0, perdu: Number(t.absentRevenue) || 0, taux: Number(t.absentRate) || 0, points };
   }
 
   // ---- Lectures au serveur (une reponse sert 60 s) -------------------------------
@@ -442,6 +465,9 @@
     for (let h = debut; h < fin; h += 1) seaux.set(h, { count: 0, pax: 0, revenue: 0, collected: 0, online: 0, cancelled: 0, absents: 0, laneHours: 0, capacity: m.laneCount });
     const seau = (res) => seaux.get(Math.min(Math.max(Math.floor(getStaffTerrainSpan(res).start), debut), fin - 1));
     m.activeReservations.forEach((res) => {
+      // Un groupe pas venu se compte juste apres, dans `absents` et rien d autre : c est la ligne
+      // d un jour du serveur, et le taux ne le divise pas deux fois.
+      if (res.absentAt) return;
       const s = seau(res);
       if (!s) return;
       const prix = Number(res.price) || 0;
@@ -450,11 +476,11 @@
       s.revenue += prix;
       if (res.status === 'paid') s.collected += prix;
       if (res.channel === 'public') s.online += 1;
-      if (res.absentAt) s.absents += 1;
     });
-    state.reservations.filter((res) => res.date === state.currentDate && res.status === 'cancelled').forEach((res) => {
+    state.reservations.filter((res) => res.date === state.currentDate && (res.status === 'cancelled' || res.absentAt)).forEach((res) => {
       const s = seau(res);
-      if (s) s.cancelled += 1;
+      if (!s) return;
+      if (res.status === 'cancelled') s.cancelled += 1; else s.absents += 1;
     });
     (m.bowlingWindows || []).forEach((w) => {
       const pistes = Math.max((w.lanes || []).length, 1);
@@ -573,6 +599,9 @@
   }
 
   function creerCarte(id) {
+    // Une carte neuve est vide : ce qui a ete peint sur la precedente ne vaut plus pour elle.
+    delete S.peint[`carte-p-${id}`];
+    delete S.peint[`carte-c-${id}`];
     const carte = document.createElement('article');
     carte.className = 'dash-card plt-carte';
     carte.dataset.pltCarte = id;
@@ -580,7 +609,7 @@
       <div class="plt-carte-tete">
         <button type="button" class="plt-poignee" data-plt-poignee aria-label="Déplacer ${escapeHtml(CARTES[id].nom)}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="4" cy="3.5" r="1.2"/><circle cx="10" cy="3.5" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="10.5" r="1.2"/><circle cx="10" cy="10.5" r="1.2"/></svg></button>
         <h3 class="plt-carte-nom">${escapeHtml(CARTES[id].nom)}</h3>
-        ${CARTES[id].fixe ? `<span class="dash-card-meta">${escapeHtml(CARTES[id].fixe)}</span>` : ''}
+        ${CARTES[id].fixe !== undefined ? `<span class="dash-card-meta" data-plt-carte-meta>${escapeHtml(CARTES[id].fixe)}</span>` : ''}
         <button type="button" class="plt-retirer" data-plt-retirer="${id}" aria-label="Retirer ${escapeHtml(CARTES[id].nom)}"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3 L9 9 M9 3 L3 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       </div>
       <p class="plt-phrase" data-plt-carte-phrase></p>
@@ -636,6 +665,8 @@
       peindreHeuresCreuses(carte, phrase, corps);
     } else if (id === 'reserve') {
       peindreReserve(carte, phrase, corps);
+    } else if (id === 'pasvenus') {
+      peindrePasVenus(carte, phrase, corps);
     }
   }
 
@@ -754,6 +785,56 @@
     }, () => {
       if (carte.isConnected) poser(phrase, 'Ces chiffres ne sont pas disponibles pour le moment.', 'carte-p-reserve');
     });
+  }
+
+  // Les groupes qui ne sont pas venus (Ansar, 2026-11-08 : « montrer ça cettre stat dans des
+  // grapgiques et stat quon puisse voir les noshow »). Sur une periode, la periode. Une journee
+  // seule ne fait pas une evolution : huit semaines, comme les heures creuses.
+  function peindrePasVenus(carte, phrase, corps) {
+    const meta = carte.querySelector('[data-plt-carte-meta]');
+    const dePeriode = (S.faits || {}).pasVenus;
+    if (dePeriode) {
+      // Une lecture de huit semaines encore en route ne repeindra pas cette periode.
+      S.pasVenusAttendu = '';
+      meta.textContent = '';
+      dessinerPasVenus(phrase, corps, dePeriode);
+      return;
+    }
+    meta.textContent = CARTES.heures.fixe;
+    const fin = ancre();
+    const f = { debut: addDays(fin, -55), fin };
+    const jeton = `${centre()}|${f.debut}|${f.fin}`;
+    S.pasVenusAttendu = jeton;
+    const attendue = () => carte.isConnected && S.pasVenusAttendu === jeton;
+    analyse(f, 600000).then((reponse) => {
+      if (attendue()) dessinerPasVenus(phrase, corps, pasVenusDe(reponse.analytics, true));
+    }, () => {
+      if (!attendue()) return;
+      poser(phrase, 'Ces chiffres ne sont pas disponibles pour le moment.', 'carte-p-pasvenus');
+      poser(corps, '', 'carte-c-pasvenus');
+    });
+  }
+
+  function dessinerPasVenus(phrase, corps, pv) {
+    const n = pv.groupes;
+    if (!n) {
+      poser(phrase, 'Aucun groupe pas venu sur cette période.', 'carte-p-pasvenus');
+      poser(corps, '', 'carte-c-pasvenus');
+      return;
+    }
+    const taux = pv.taux < 1 ? 'moins de 1 %' : `${Math.round(pv.taux)} %`;
+    poser(phrase, escapeHtml(`${ecrire(n, 'int')} groupe${n > 1 ? 's ne sont pas venus' : ' n’est pas venu'}, soit ${taux} de vos réservations.`), 'carte-p-pasvenus');
+    const montants = voitLArgent();
+    const cle = `${centre()}|${pv.fenetre}|${montants}|${n}|${pv.joueurs}|${pv.perdu}|${pv.points.map((p) => p.value).join(',')}`;
+    if (S.peint['carte-c-pasvenus'] === cle && corps.querySelector('.plc-chart')) return;
+    S.peint['carte-c-pasvenus'] = cle;
+    const chiffres = [
+      [ecrire(n, 'int'), n > 1 ? 'Groupes' : 'Groupe'],
+      [ecrire(pv.joueurs, 'int'), pv.joueurs > 1 ? 'Joueurs' : 'Joueur'],
+      ...(montants ? [[ecrire(pv.perdu, 'euro'), n > 1 ? 'Réservations perdues' : 'Réservation perdue']] : []),
+    ];
+    corps.innerHTML = `<div></div><ul class="plt-pv-chiffres">${chiffres.map(([valeur, nom]) => `<li><b>${escapeHtml(valeur)}</b><span>${escapeHtml(nom)}</span></li>`).join('')}</ul>`;
+    window.PinlaneCharts.barChart(corps.firstElementChild, { series: pv.points, format: 'int', height: 150, motionKey: `plt|pasvenus|${pv.fenetre}` });
   }
 
   // ---- Les gestes ----------------------------------------------------------------

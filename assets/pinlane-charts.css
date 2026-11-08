@@ -410,3 +410,19 @@
 .plc-multi-dot.ton-1, .plc-multi-legende i.ton-1, .plc-tip-key.plc-multi-cle.ton-1 { fill: var(--chart-1); background: var(--chart-1); }
 .plc-multi-dot.ton-2, .plc-multi-legende i.ton-2, .plc-tip-key.plc-multi-cle.ton-2 { fill: var(--chart-2); background: var(--chart-2); }
 .plc-multi-dot.ton-3, .plc-multi-legende i.ton-3, .plc-tip-key.plc-multi-cle.ton-3 { fill: var(--chart-3); background: var(--chart-3); }
+
+/* La carte « Pas venus » du Pilotage : les chiffres sous le graphique, sur une ligne. Deux
+   colonnes pour un role sans montants, trois sinon : le nombre de chiffres decide. */
+.plt-pv-chiffres {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+.plt-pv-chiffres li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plt-pv-chiffres b { color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.plt-pv-chiffres span { color: var(--muted); font-size: 12px; line-height: 1.3; }

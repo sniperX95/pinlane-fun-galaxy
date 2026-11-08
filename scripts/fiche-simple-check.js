@@ -75,7 +75,7 @@ const DOSSIERS = [
   { nom: 'Anniversaire Arthur', etat: 'Sur place' },
   { nom: 'Famille Pirotte', etat: 'En retard', contact: { phone: '0471 23 45 67', email: 'famille.pirotte@exemple.be', notes: '' } },
   { nom: 'Club de foot', etat: 'À vérifier' },
-  { nom: 'Famille Renard', etat: 'À clôturer' },
+  { nom: 'Famille Renard', etat: 'En retard' },
   { nom: 'Famille Henrard', etat: 'À venir' },
 ];
 
@@ -195,7 +195,7 @@ function juger(f, label, appareil) {
     'Sur place': new RegExp(`^Fin prévue à ${f.fin}$`),
     'À clôturer': new RegExp(`^Visite finie à ${f.fin}`),
     'À venir': new RegExp(`^(Arrive dans .+|Attendu maintenant), à ${f.attendu}$`),
-    'En retard': new RegExp(`^Attendu à ${f.attendu}, il y a (${f.retard} min|\\d+ h( \\d\\d)?)$`),
+    'En retard': new RegExp(`^Attendu à ${f.attendu}, (il y a (${f.retard} min|\\d+ h( \\d\\d)?)|jamais pointé)$`),
     'À vérifier': /Pas encore confirmée au client\./,
   }[f.pastille];
   ok(attendu && attendu.test(f.momentPhrase), `[E2] ${label} : la ligne d etat dit ce que la pastille ne dit pas`, { phrase: f.momentPhrase, retard: f.retard, attendu: f.attendu, fin: f.fin });

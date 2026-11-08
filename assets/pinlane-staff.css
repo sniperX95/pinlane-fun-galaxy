@@ -20054,7 +20054,9 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 .booking.is-delayed { --bk-barre: #f5a623; }
 /* En retard, sur la carte (2026-11-08) : le rouge du retard, a la place du retard annonce. */
 .booking.is-en-retard { --bk-barre: var(--danger); border-left-color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent); }
-.delay-indicator.is-retard { border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+/* (a l etroit, le nom d abord : la puce garde son horloge rouge, la barre et le contour disent le reste) */
+@media (max-width: 1279px) { .booking.is-en-retard .delay-indicator-label { display: none; } }
+.delay-indicator.is-retard { border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
 /* (2026-10-27, Movsar : « les petites ombres, les petits détails [...] il
    fait super IA ». La carte est PLATE, comme une tuile de la vue capacite de
    ROLLER : sa teinte d etat d un seul ton, la barre de 3 px, ni degrade, ni
@@ -20315,7 +20317,7 @@ html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk
 .lp-etat--marquer:hover { background: var(--lp-page); }
 .lp-etat--marquer:active { transform: scale(.97); }
 .lp-etat--marquer:focus-visible { outline-color: var(--lp-bleu); }
-.lp-etat--retard { background: transparent; color: var(--danger); font-weight: 700; }
+.lp-etat--retard { background: transparent; color: color-mix(in srgb, var(--danger) 78%, var(--text)); font-weight: 700; }
 
 /* La partie en jeu et le bouton des pas venus vivent dans la tete de la
    journee ; la liste des pas venus s ouvre dessous, sur toute la largeur. */
@@ -20390,7 +20392,7 @@ html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk
 .lp-g.is-la b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--lp-ok); vertical-align: 2px; }
 .lp-g.is-retard { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger) 55%, transparent); }
 .lp-g.is-retard i { background: var(--danger); }
-.lp-g.is-retard .lp-card-status { display: inline; color: var(--danger); font-weight: 700; }
+.lp-g.is-retard .lp-card-status { display: inline; color: color-mix(in srgb, var(--danger) 78%, var(--text)); font-weight: 700; }
 .lp-g.is-grise { opacity: .35; }
 .lp-g.is-enligne { cursor: default; }
 .lp-g.is-enligne i { background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 2px, var(--lp-vide) 2px 4px); }

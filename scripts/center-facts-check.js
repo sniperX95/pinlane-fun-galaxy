@@ -586,7 +586,7 @@ ok('alors que le jour fort lui-meme est publiable',
 // Ce qui ne se dit jamais a un client : l'argent, les trous de la donnee, la
 // memoire des idees passees.
 const INTERDITS_AU_PUBLIC = [
-  'ca_total', 'panier_moyen', 'ca_par_personne', 'taux_annulation', 'argent_annule',
+  'ca_total', 'panier_moyen', 'ca_par_personne', 'taux_annulation', 'argent_annule', 'no_show',
   'trou_email', 'trou_paiement', 'trou_occasion', 'clients_dormants',
   'sous_le_minimum_de_la_formule', 'formules_jamais_vendues',
 ];

@@ -50,7 +50,7 @@ const checks = `
   ok(/Bowling 6 joueurs/.test(data.timeline)&&/Laser Game 4 joueurs/.test(data.timeline)&&/Arcades 5 joueurs/.test(data.timeline),'timeline says own bowling6 laser4 arcade5');
   ok(data.bowling.length>0&&data.bowling.every(count=>count==='6 joueurs'),'actual bowling planning cards show6 players: '+JSON.stringify(data.bowling));
   ok(data.laser.length>0&&data.laser.every(g=>/^TOUS LES EFFECTIFS : 4 joueurs\\b/.test(g.titre)&&g.cases===4),'actual laser planning legend and gauge show4 players: '+JSON.stringify(data.laser));
-  for(const [name,count] of [['Bowling',6],['Laser Game',4],['Minigolf Blacklight',3],['Billard',8],['Arcades',5],['Playground',2],['Duckpin Bowling',6],['Fun Run',4]]) {
+  for(const [name,count] of [['Bowling',6],['Laser Game',4],['Minigolf Blacklight',3],['Billard',8],['Arcades',5],['Playground',2],['Duckpin Bowling',6],['Pixel',4]]) {
     ok(data.timeline.includes(name+' '+count+' joueurs')||data.timeline.includes(name+' '+count+' enfants'),'all activities timeline '+name+' count'+count);
     const compact=data.summary.split(/\\s+/).join('');
     ok(compact.includes(name.split(' ').join('')+count+'joueurs')||compact.includes(name.split(' ').join('')+count+'enfants'),'all activities reservation card '+name+' count'+count);

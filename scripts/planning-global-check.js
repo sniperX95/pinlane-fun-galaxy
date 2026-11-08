@@ -290,6 +290,7 @@ function lireOracle() {
         aPlacer: getGroupeProgramme(r).filter((e) => e.aPlacer).length,
         faits: getGroupeProgramme(r).filter((e) => e.fait && e.start != null).map((e) => ({ id: e.activityId, start: e.start })),
         timed: getStaffFormulaTimedItems(r).map((it) => ({ id: it.activityId, start: it.start, end: it.end })),
+        illimite: Boolean(f && f.orderPolicy === 'open_window'),
       };
     }),
   };
@@ -444,6 +445,8 @@ async function structure(page, s, label) {
   const fautesCase = [];
   for (const l of groupes) {
     const g = parId.get(l.id);
+    // (une formule illimitee n a pas d heure : le grand tableau [X] la garde)
+    if (g.illimite) continue;
     const t = heureDe(g);
     const bowling = (l.cases.bowling || []);
     const attenduB = g.bowling.slice().sort((a, b) => a.start - b.start);
@@ -477,6 +480,7 @@ async function structure(page, s, label) {
     const fautesEtat = [];
     for (const l of groupes) {
       const g = parId.get(l.id);
+      if (g.illimite) continue;
       const verifier = (col, w, chip) => { const e = etatAttendu(g, w, col, o.maintenant); if (!chip || chip.etat !== e) fautesEtat.push({ nom: l.nom, col, h: hhmm(w.start), ecrit: chip && chip.etat, attendu: e }); };
       g.bowling.forEach((w) => verifier('bowling', w, (l.cases.bowling || []).find((x) => x.t === hhmm(w.start))));
       const parties = new Map();
@@ -899,7 +903,7 @@ const MUTATIONS = [
   { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);", vers: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut + 0.5);" }] },
   { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { min-width: 0; font-size: 15px;', vers: '.gf-nom__t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; font-size: 15px;' }] },
   { nom: 'personnes-plus-une', lettre: 'F5', scenarios: [PIC], editions: [{ fichier: PG, de: "'\"><b>' + pax + '</b>'", vers: "'\"><b>' + (pax + 1) + '</b>'" }] },
-  { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return 'fini';", vers: "    if (fin <= m.maintenant - 1) return 'fini';" }] },
+  { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return g.retard && !present ? 'retard' : 'fini';", vers: "    if (fin <= m.maintenant - 1) return g.retard && !present ? 'retard' : 'fini';" }] },
   { nom: 'retard-muet', lettre: 'E2', scenarios: [PIC], editions: [{ fichier: PG, de: "(g.retard ? ' is-retard' : '')", vers: "''" }] },
   { nom: 'jamais-arrive', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (!m.aujourdHui || g.etat !== 'upcoming'", vers: "    if (true || g.etat !== 'upcoming'" }] },
   { nom: 'argent-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (r.status === 'paid' || r.status === 'cancelled') return '';", vers: "    return '';" }] },

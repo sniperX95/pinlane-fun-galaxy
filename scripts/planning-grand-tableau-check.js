@@ -1113,7 +1113,7 @@ const lireCases = (page) => page.evaluate(() => {
     if (!r || cases.length !== fen.length) return;
     cases.forEach((c, i) => {
       if (c.classList.contains('is-panne')) return;
-      faits.push({ id: String(r.id), minutes: Math.round((fen[i].end - fen[i].start) * 60), joueurs: Number(fen[i].players) || Number(r.pax), pax: Number(r.pax), hors: Array.from(c.querySelectorAll('.gf-x__hors b')).map((b) => b.textContent) });
+      faits.push({ id: String(r.id), minutes: Math.round((fen[i].end - fen[i].start) * 60), joueurs: Number(fen[i].players) || Number(r.pax), pax: Number(r.pax), hors: Array.from(c.querySelectorAll('.gf-x__h')).map((b) => b.textContent) });
     });
   });
   const titres = Array.from(document.querySelectorAll('.gf-t thead th')).map((t) => t.textContent.replace(/\s+/g, ' ').trim());
@@ -1207,7 +1207,7 @@ const MUTATIONS = [
   { nom: 'vers-revient', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);", vers: "e.libre && !gfSeuleActivite(g) ? 'vers ' + gpHeure(debut) : gpHeure(debut);" }] },
   { nom: 'colonne-fun-run', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "{ cle: 'funrun', titre: 'Pixel',", vers: "{ cle: 'funrun', titre: 'Fun Run'," }] },
   { nom: 'jamais-pointe-gris', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    if (g.nonPointe && !e.fait && !e.credit) return 'retard';\n", vers: '' }] },
-  { nom: 'carte-sans-retard', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "      const retardClass = enRetardIci ? ' is-delayed is-en-retard' : '';", vers: "      const retardClass = '';" }] },
+  { nom: 'carte-sans-retard', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "      const retardClass = enRetardIci ? ' is-en-retard' : '';", vers: "      const retardClass = '';" }] },
   { nom: 'laser-sans-retard', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "    const etat = enRetard ? ' is-retard' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';", vers: "    const etat = (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';" }] },
   { nom: 'absent-reste-tableau', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    var tout = filtre === 'absent' ? duJour : duJour.filter(tientSesPlaces);", vers: '    var tout = duJour;' }] },
   { nom: 'absent-reste-bowling', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "  const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling')", vers: "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling')" }] },

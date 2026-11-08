@@ -219,7 +219,7 @@ async function main() {
     });
     ok(grid.count === 8, `8 activites proposees pour Libramont (obtenu ${grid.count})`);
     ok(grid.names.includes('Billards'), 'Billards est proposé (il n existait dans AUCUN catalogue produit avant)');
-    ok(grid.names.includes('Fun Run by PIXEL'), 'Fun Run by PIXEL est proposé');
+    ok(grid.names.includes('Pixel'), 'Pixel est proposé');
     ok(grid.checked.length === 1 && grid.checked[0] === 'Bowling', 'a l ouverture, le bowling seul est coche (formulaire identique a avant)');
     ok(grid.prices.some((p) => p === 'réglé sur place'), 'une activite sans tarif saisi annonce "réglé sur place", jamais 0 EUR');
 

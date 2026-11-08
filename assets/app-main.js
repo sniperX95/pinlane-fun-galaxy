@@ -11036,7 +11036,8 @@ async function ensureStaffDaySeries(endDate = state.currentDate) {
 }
 
 function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
-  const activeReservations = dayReservations.filter(reservation => reservation.status !== 'cancelled');
+  // (un groupe « Pas venu » n a ni joue ni paye : ni chiffre, ni joueurs, ni pistes)
+  const activeReservations = dayReservations.filter(tientSesPlaces);
   const now = currentTimeDecimal();
   const planningWindow = getPlanningWindow(state.currentDate);
   const openHours = planningWindow.closed ? 0 : Math.max(planningWindow.close - planningWindow.open, 0);
@@ -24487,10 +24488,10 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      // EN RETARD, SUR LA CARTE (2026-11-08) : la puce du retard annonce, en rouge, a sa
-      // place et avec ses regles de cession (.is-delayed).
+      // EN RETARD, SUR LA CARTE (2026-11-08) : la puce du retard annonce, en rouge et a sa
+      // place. Sans .is-delayed : les marques de la carte restent, c est le nom qui cede.
       const enRetardIci = !delayedClass && groupeEnRetardAuPlanning(r, momentsDesCartes.get(String(r.id)));
-      const retardClass = enRetardIci ? ' is-delayed is-en-retard' : '';
+      const retardClass = enRetardIci ? ' is-en-retard' : '';
       const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
@@ -24824,8 +24825,7 @@ function lpModele() {
     const ici = fenetres.filter(dedans).sort((a, b) => Number(a.reservation.id) - Number(b.reservation.id) || Number(a.countIndex || 1) - Number(b.countIndex || 1));
     const holds = enLigne.filter(dedans);
     const chevauche = fenetres.concat(enLigne).filter(w => !dedans(w) && w.start < fin - 0.001 && w.end > t + 0.001);
-    // (un groupe « Pas venu » reste au depart, ses armes sont rendues : tientSesPlaces)
-    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + (tientSesPlaces(w.reservation) ? lpArene(w) : 0), 0);
+    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);
     const ferme = blocages.find(b => b.debut < fin - 0.001 && b.fin > t + 0.001) || null;
     const hors = t < config.open - 0.001 || t > config.close - 0.5 + 0.001;
     return {
@@ -26057,7 +26057,7 @@ function getStaffListeSection(moments, r) {
   if (etat === 'done') return 'paid';
   if (etat === 'upcoming' && m && m.late) return 'late';
   // (jamais pointe et visite finie : il n a rien a cloturer, il n est jamais arrive)
-  if (groupeEnRetardAuPlanning(r, m)) return 'late';
+  if (etat === 'closing' && groupeEnRetardAuPlanning(r, m)) return 'late';
   return etat;
 }
 
@@ -27764,6 +27764,7 @@ function fichePhraseMoment(r, moment, droits = ficheDroits()) {
     return `${texte.raison ? `${texte.raison} ` : ''}Pas encore confirmée au client.${droits.valider ? '' : ' Un responsable doit la valider.'}`;
   }
   if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;
+  if (groupeEnRetardAuPlanning(r, moment)) return `Attendu à ${formatClockDisplay(moment.item.start)}, jamais pointé`;
   if (r.status === 'paid') {
     if (moment && moment.etat === 'done') return `Visite terminée à ${formatClockDisplay(span.end)}`;
     return aujourdhui && span.end <= currentTimeDecimal()
@@ -27809,7 +27810,7 @@ function ficheEtat(r, moment, droits) {
       : `Payé${moyenEcrit}`)
     : (connu ? `À encaisser <b>${escapeHtml(formatMoneyCentimes(r.price))}</b>` : 'Prix au comptoir');
   const suivant = ficheGesteSuivant(r, moment);
-  const ton = isReservationAwaitingReview(r) ? 'is-verifier' : moment && moment.late ? 'is-retard' : '';
+  const ton = isReservationAwaitingReview(r) ? 'is-verifier' : groupeEnRetardAuPlanning(r, moment) ? 'is-retard' : '';
   const phrase = fichePhraseMoment(r, moment, droits);
   const jamaisPointe = !ton && moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r);
   const boutons = [];
@@ -27927,7 +27928,7 @@ function renderPosDetails(r) {
         ${renderGroupeNotes(r)}
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
-        ${enRetard ? '' : pli}${aTrancher ? '' : pasVenu}
+        ${aTrancher ? '' : pli + pasVenu}
         ${renderGroupeHistorique(r)}
       </aside>
     </div>

@@ -192,7 +192,9 @@ async function main() {
     ok(buttons.length >= 8, `la fenetre propose ${buttons.length} activites, pas trois (${buttons.join(' | ')})`);
     for (const activite of ACTIVITIES) {
       const choix = accueil.choix.find((c) => c.id === activite.id);
-      ok(Boolean(choix && choix.nom && activite.name.startsWith(choix.nom)), `« ${activite.name} » est proposee (${choix ? choix.nom : 'absente'})`);
+      // (au comptoir, Fun Run by PIXEL s appelle Pixel)
+      const nomVu = activite.id === 'fun_run' ? 'Pixel' : activite.name;
+      ok(Boolean(choix && choix.nom && nomVu.startsWith(choix.nom)), `« ${nomVu} » est proposee (${choix ? choix.nom : 'absente'})`);
     }
     // Les modes : les activites a l accueil, les formules derriere leur porte, sur
     // leur propre page qui ramene aux Activités (le « sur mesure » est une porte

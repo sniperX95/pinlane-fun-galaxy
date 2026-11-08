@@ -674,7 +674,9 @@
   }
   function gfHorsHtml(duree, joueurs) {
     if (!duree && !joueurs) return '';
-    return '<span class="gf-x__hors">' + (duree ? '<b>' + gpEsc(duree) + '</b>' : '') + (joueurs ? '<b>' + gpEsc(joueurs) + '</b>' : '') + '</span>';
+    // (un seul mot : pas de cadre autour, chaque element de la ligne compte, [A] du grand tableau)
+    if (!duree || !joueurs) return '<b class="gf-x__h">' + gpEsc(duree || joueurs) + '</b>';
+    return '<span class="gf-x__hors"><b class="gf-x__h">' + gpEsc(duree) + '</b><b class="gf-x__h">' + gpEsc(joueurs) + '</b></span>';
   }
 
   // UNE ACTIVITE DANS SA CASE : son heure d abord (la croix du papier), puis

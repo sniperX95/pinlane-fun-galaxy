@@ -50,6 +50,12 @@ const MUTATIONS = {
   'arret-sans-effet': { section: 'E', fichier: ECRAN, de: "      if (A.flux) { A.flux.abort(); return; }\n", vers: "      if (A.flux) { return; }\n", rouge: "[E] arreter coupe la reponse" },
   'renvoi-sans-source': { section: 'E', fichier: ECRAN, de: "      if (!source) return '';\n", vers: "      if (!source) return tout;\n", rouge: "[E] un renvoi sans source ne s affiche pas" },
   'suit-le-texte': { section: 'E', fichier: ECRAN, de: "    dessinerGraphiques(article, m);\n    majDescendre();\n", vers: "    dessinerGraphiques(article, m);\n    { const fil = dom('[data-ast-fil]'); fil.scrollTop = fil.scrollHeight; }\n    majDescendre();\n", rouge: "[E] la question reste en haut pendant que le texte pousse" },
+  'no-show-hors-prompt': { section: 'A', fichier: AGENT, de: "Un no-show, un groupe pas venu et un absent sont la même chose, un groupe que l'équipe a noté Pas venu. Il ne compte ni dans", vers: "Il ne compte ni dans", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
+  'no-show-hors-outil': { section: 'A', fichier: OUT, de: "absents (les no-show, ces groupes notés Pas venu, avec leur nombre, leurs joueurs, leur taux et le montant des réservations perdues), remplissage", vers: "absents, remplissage", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
+  'perdu-non-compte': { section: 'A', fichier: OUT, de: "g.joueursAbsents += r.joueurs; g.perdu += r.prix; return;", vers: "g.joueursAbsents += r.joueurs; return;", rouge: "[A] les no-show se comptent en groupes, joueurs et euros" },
+  'montant-perdu-vu': { section: 'P', fichier: OUT, de: "montant_perdu: montants ? t.absentRevenue : undefined,", vers: "montant_perdu: t.absentRevenue,", rouge: "[P] sans le droit, aucun euro" },
+  'mesure-perdue-sans-droit': { section: 'P', fichier: OUT, de: "montant_perdu: { nom: 'Réservations perdues', type: 'euro', argent: true,", vers: "montant_perdu: { nom: 'Réservations perdues', type: 'euro',", rouge: "[P] sans le droit, aucun euro" },
+  'comparaison-sans-pas-venus': { section: 'P', fichier: OUT, de: "absents: a.totals.absents, taux_absence: a.totals.absentRate, taux_en_ligne", vers: "taux_en_ligne", rouge: "[P] la comparaison dit les pas venus de chaque centre" },
   'erreur-technique': { section: 'L', fichier: OUT, de: "const texte = error && error.expose ? error.message :", vers: "const texte = error ? error.message :", rouge: "[L] base en panne : aucun detail technique" },
 };
 
@@ -258,12 +264,28 @@ async function sectionA() {
   ok('[A] la fiche donne le catalogue reel', fiche.pistes === 8 && Array.isArray(fiche.formules) && fiche.formules.length > 0 && fiche.horaires.length === 7, `${fiche.pistes} ${fiche.horaires && fiche.horaires.length}`);
   const bilanP = contenu(r2[6]);
   ok('[A] le bilan vient du calcul du dashboard', bilanP.totaux.reservations === 4 && bilanP.totaux.chiffre === 676 && bilanP.totaux.annulations === 1 && bilanP.totaux.absents === 1, JSON.stringify(bilanP.totaux));
+  ok('[A] le bilan dit les joueurs et le montant des pas venus', bilanP.totaux.joueurs_absents === 5 && bilanP.totaux.montant_perdu === 50 && bilanP.totaux.taux_absence === 20, JSON.stringify(bilanP.totaux));
 
   reinitialiser({ session: sessionDe(DIRECTION, 'm-id') });
   etat.script = [pas([outilP('a', 'lister_reservations', { debut: '2026-10-03', fin: '2026-10-03', limite: 1 })], 'tool_use'), fin('Regardez ce dossier [S1].')];
   const q = await poser(question());
   const identites = q.un('fin').donnees.identites;
   ok('[A] le navigateur ne recoit que les noms de cette reponse', Object.keys(identites).length === 1 && Object.values(identites)[0] === 'Liamtor Peetersen', JSON.stringify(identites));
+
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-ns') });
+  etat.script = [
+    pas([outilP('a', 'croiser_reservations', { ...OCT, grouper_par: ['mois'], mesures: ['absents', 'joueurs_absents', 'montant_perdu', 'taux_absence'] }), outilP('b', 'lister_reservations', { ...OCT, statut: 'absent' })], 'tool_use'),
+    fin('Un no-show vous a coûté 50 € [S1], soit 20 % [S1].'),
+  ];
+  const ns = await poser(question('Combien de no-show ?'));
+  const [nsCroise, nsListe] = resultatsOutils(etat.appels[1]).map(contenu);
+  ok('[A] les no-show se comptent en groupes, joueurs et euros', JSON.stringify(nsCroise.lignes) === JSON.stringify([['2026-10', 1, 5, 50, 20]]), JSON.stringify(nsCroise.lignes));
+  ok('[A] la liste des no-show rend le bon dossier', nsListe.total === 1 && nsListe.lignes[0][0] === 'r5', JSON.stringify(nsListe));
+  ok('[A] un montant perdu cite par le modele est trace', ns.un('fin').donnees.verite.chiffresSansSource.length === 0 && ns.un('fin').donnees.verite.chiffres > 0, JSON.stringify(ns.un('fin').donnees.verite));
+  const lu = etat.appels[0].corps;
+  const dit = (nom) => /no-show/i.test(JSON.stringify(lu.tools.find((o) => o.name === nom) || {}));
+  const regleDite = lu.system[0].text.split(/(?<=[.!?])\s+/).some((p) => /no-show/i.test(p) && /pas venu/i.test(p) && /absent/i.test(p) && /même chose/i.test(p));
+  ok('[A] no-show et pas venu sont le meme mot pour l assistant', regleDite && ['chiffres_periode', 'croiser_reservations', 'lister_reservations', 'comparer_centres'].every(dit), JSON.stringify(lu.tools.map((o) => [o.name, dit(o.name)])));
 }
 
 async function sectionS() {
@@ -297,6 +319,10 @@ async function sectionP() {
   await poser(question());
   const compare = contenu(resultatsOutils(etat.appels[1])[0]);
   ok('[P] la comparaison ne prend que les centres de ce client', compare.lignes.length === 2 && !etat.lectures.includes('etranger'), JSON.stringify(compare.lignes));
+  const colonnePasVenus = compare.colonnes.indexOf('absents');
+  const colonneTaux = compare.colonnes.indexOf('taux_absence');
+  const libramontComp = compare.lignes.find((l) => l[0] === 'Fun Galaxy Libramont');
+  ok('[P] la comparaison dit les pas venus de chaque centre', colonnePasVenus > 0 && libramontComp[colonnePasVenus] === 1 && libramontComp[colonneTaux] === 20, JSON.stringify(compare));
 
   reinitialiser({ session: sessionDe(MARKETING_SEUL, 'm-p4') });
   etat.script = [fin('Je ne vois pas.')];
@@ -320,6 +346,7 @@ async function sectionP() {
     pas([
       outilP('a', 'chiffres_periode', OCT), outilP('b', 'croiser_reservations', { ...OCT, grouper_par: ['mois'], mesures: ['chiffre'] }), outilP('c', 'provenance_et_site', OCT),
       outilP('d', 'lister_reservations', OCT), outilP('e', 'clients', OCT), outilP('f', 'combinaisons_activites', { ...OCT, minimum: 1 }), outilP('g', 'comparer_centres', OCT),
+      outilP('h', 'croiser_reservations', { ...OCT, grouper_par: ['mois'], mesures: ['montant_perdu'] }),
     ], 'tool_use'),
     fin('Sans euros.'),
   ];
@@ -327,8 +354,8 @@ async function sectionP() {
   const argent = resultatsOutils(etat.appels[1]);
   const sortieModele = JSON.stringify(argent.map((x) => x.content));
   const sortieEcran = JSON.stringify(sa.tous('source').map((s) => s.donnees));
-  const manque = ['676', '440', '123.45', '\\"chiffre\\"', 'panier_moyen', 'partChiffreFideles', 'depenseMoyenneParClient', '\\"prix\\"'].filter((m) => sortieModele.includes(m));
-  ok('[P] sans le droit, aucun euro', manque.length === 0 && argent[1].is_error === true && !/"chiffre"|"prix"|"panier_moyen"|676|440/.test(sortieEcran), `${manque.join()} ecran=${sortieEcran.match(/"chiffre"|"prix"|"panier_moyen"|676|440/)}`);
+  const manque = ['676', '440', '123.45', '\\"chiffre\\"', 'panier_moyen', 'partChiffreFideles', 'depenseMoyenneParClient', '\\"prix\\"', 'montant_perdu'].filter((m) => sortieModele.includes(m));
+  ok('[P] sans le droit, aucun euro', manque.length === 0 && argent[1].is_error === true && argent[7].is_error === true && !/"chiffre"|"prix"|"panier_moyen"|676|440|Réservations perdues/.test(sortieEcran), `${manque.join()} ecran=${sortieEcran.match(/"chiffre"|"prix"|"panier_moyen"|676|440|Réservations perdues/)}`);
   ok('[P] le prompt le dit au modele', /ne voit pas les montants/.test(etat.appels[0].corps.system[1].text));
 
   // Le garde du site repond 401 a toute route qu il ne connait pas : le banc ne le traverse pas,

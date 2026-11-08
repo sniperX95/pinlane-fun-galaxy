@@ -624,6 +624,27 @@ async function menuGauche(browser) {
     const retour = await lire();
     ok(retour.replie && retour.large && retour.rail <= 80 && retour.ouvert && retour.barre !== 'none', '[G] en revenant sur un planning, la barre d icones revient', retour);
   });
+  // AU TELEPHONE, la barre est une bande en haut : un rayon s ouvre dessous, le menu du
+  // compte aussi, jamais par-dessus la bande ni hors de l ecran.
+  await avec(browser, { lettre: 'G', appareil: 'telephone' }, async (page) => {
+    await page.evaluate(() => { location.hash = '#/staff/reservations'; });
+    await page.waitForFunction(() => state.staffMenuPage === 'reservations', null, { timeout: 8000 }).catch(() => {});
+    await FX.repos(page, 300);
+    const lirePop = () => page.evaluate(() => {
+      const p = document.querySelector('.fgx-menu-popover:not(.is-closing)');
+      if (!p) return null;
+      const r = p.getBoundingClientRect();
+      return { genre: p.dataset.popoverKind, haut: Math.round(r.top), bas: Math.round(r.bottom), bande: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().bottom), ecran: innerHeight };
+    });
+    await page.locator('[data-fgx-menu-toggle="activities"]').first().click();
+    await FX.repos(page, 350);
+    const rayon = await lirePop();
+    ok(Boolean(rayon) && rayon.genre === 'activities' && rayon.haut >= rayon.bande - 6 && rayon.bas <= rayon.ecran, '[G] telephone : un rayon s ouvre sous la bande du menu', rayon);
+    await page.locator('[data-fgx-account-menu]').first().click();
+    await FX.repos(page, 350);
+    const compte = await lirePop();
+    ok(Boolean(compte) && compte.genre === 'account' && compte.haut >= compte.bande - 6 && compte.bas <= compte.ecran, '[G] telephone : le menu du compte aussi, entier a l ecran', compte);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1761,6 +1782,7 @@ const MUTATIONS = [
   { nom: 'large-partout', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(APP, "    corps.classList.toggle('gf-large', surPlanning);", "    corps.classList.add('gf-large');") },
   { nom: 'preference-ecrasee', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '    return grandTableau() ? !menuRouvertIci : readPreference();', "    if (grandTableau()) { state.staffMenuOuvert = false; return true; }\n    return readPreference();") },
   { nom: 'ouvert-par-defaut', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof state !== 'undefined') return state.staffMenuOuvert !== true;", "    if (typeof state !== 'undefined') return false;") },
+  { nom: 'popover-sur-la-bande', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {\n      popover.style.top = '';", "    if (false) {\n      popover.style.top = '';") },
   { nom: 'rayon-sans-pages', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '        toggleGroupMenu(groupToggle, key);\n', '        navigateMenuGroup(key);\n') },
   // [H] l inventaire
   { nom: 'second-champ-revenu', lettre: 'H', scenarios: ['inventaire'], editions: SEUL(PGC, 'body.gf-large #staffTableBox:not(.expanded) .search-wrap { display: none; }\n', '') },

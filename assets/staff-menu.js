@@ -830,6 +830,13 @@
 
   function positionPopover(popover, anchor, kind) {
     if (!popover || !anchor) return;
+    // Au telephone la barre est une bande en haut : le popover se pose dessous, comme le dit
+    // la feuille de style (top: 60px). Une position calculee sur la bande le mettait par-dessus.
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {
+      popover.style.top = '';
+      popover.style.bottom = '';
+      return;
+    }
     if (kind === 'account') {
       popover.style.top = 'auto';
       popover.style.bottom = '76px';

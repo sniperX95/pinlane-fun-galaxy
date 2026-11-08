@@ -645,6 +645,16 @@ async function menuGauche(browser) {
     const compte = await lirePop();
     ok(Boolean(compte) && compte.genre === 'account' && compte.haut >= compte.bande - 6 && compte.bas <= compte.ecran, '[G] telephone : le menu du compte aussi, entier a l ecran', compte);
   });
+  // UN POSTE DEJA VENU : le navigateur a garde l ancienne cle, a false sur chaque poste (le
+  // defaut d avant le 2026-11-08). Le menu s y replie aussi : sur un navigateur vierge, ce
+  // serait vert meme si rien ne changeait pour les vrais comptoirs.
+  await avec(browser, { lettre: 'G', avantChargement: async (page) => { await page.addInitScript(() => { try { localStorage.setItem('funGalaxy_v4', JSON.stringify({ staffMenuCollapsed: false })); } catch (e) { /* stockage bloque */ } }); } }, async (page) => {
+    await page.evaluate(() => { location.hash = '#/staff/reservations'; });
+    await page.waitForFunction(() => state.staffMenuPage === 'reservations', null, { timeout: 8000 }).catch(() => {});
+    await FX.repos(page, 400);
+    const venu = await page.evaluate(() => ({ replie: document.body.classList.contains('staff-menu-collapsed'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), ouvert: state.staffMenuOuvert === true, ancienne: 'staffMenuCollapsed' in state }));
+    ok(venu.replie && venu.rail <= 80 && !venu.ouvert && !venu.ancienne, '[G] un poste deja venu (ancienne cle a false) se replie lui aussi', venu);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1783,6 +1793,7 @@ const MUTATIONS = [
   { nom: 'preference-ecrasee', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '    return grandTableau() ? !menuRouvertIci : readPreference();', "    if (grandTableau()) { state.staffMenuOuvert = false; return true; }\n    return readPreference();") },
   { nom: 'ouvert-par-defaut', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof state !== 'undefined') return state.staffMenuOuvert !== true;", "    if (typeof state !== 'undefined') return false;") },
   { nom: 'popover-sur-la-bande', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {\n      popover.style.top = '';", "    if (false) {\n      popover.style.top = '';") },
+  { nom: 'poste-venu-reste-ouvert', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(APP, 'state.staffMenuOuvert = state.staffMenuOuvert === true;', 'state.staffMenuOuvert = state.staffMenuOuvert === true || state.staffMenuCollapsed === false;') },
   { nom: 'rayon-sans-pages', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '        toggleGroupMenu(groupToggle, key);\n', '        navigateMenuGroup(key);\n') },
   // [H] l inventaire
   { nom: 'second-champ-revenu', lettre: 'H', scenarios: ['inventaire'], editions: SEUL(PGC, 'body.gf-large #staffTableBox:not(.expanded) .search-wrap { display: none; }\n', '') },

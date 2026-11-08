@@ -219,13 +219,17 @@ function verifierRegles(S) {
     for (const j of joursRegle) {
       for (const nowHour of HEURES) {
         for (const moment of Object.keys(S.regles.MOMENTS)) {
-          cas += 1;
-          const o = { date: j.date, moment, today: aujourdHui, nowHour, schedule: j.schedule };
-          const serveur = JSON.stringify(S.regles.verdictMoment(o));
-          const client = JSON.stringify(F.verdictMoment({ ...o, schedule: F.jourInfo(j.date).schedule }));
-          if (serveur !== client) ecarts.push(`${centreId} ${j.date} ${nowHour}h ${moment} serveur=${serveur} formulaire=${client}`);
-          if (!JSON.parse(serveur).ok) vus.moments.add(JSON.parse(serveur).raison);
-          vus.heures += 1;
+          // (vu d aujourd hui ET de la veille du jour : un dimanche soir apres la fermeture, les
+          // quatre prochains jours ouverts sont tous a plus de 24 h, et la regle n etait jamais rencontree)
+          for (const today of [aujourdHui, plusJours(j.date, -1)]) {
+            cas += 1;
+            const o = { date: j.date, moment, today, nowHour, schedule: j.schedule };
+            const serveur = JSON.stringify(S.regles.verdictMoment(o));
+            const client = JSON.stringify(F.verdictMoment({ ...o, schedule: F.jourInfo(j.date).schedule }));
+            if (serveur !== client) ecarts.push(`${centreId} ${j.date} ${nowHour}h ${moment} serveur=${serveur} formulaire=${client}`);
+            if (!JSON.parse(serveur).ok) vus.moments.add(JSON.parse(serveur).raison);
+            vus.heures += 1;
+          }
         }
       }
     }

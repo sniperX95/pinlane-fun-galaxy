@@ -219,7 +219,8 @@ function juger(f, label, appareil) {
   }
   // [C1] (le pli Historique ferme la colonne, 2026-11-03 : la session de la
   // fixture, Direction, a le niveau « historique »)
-  const attenduCote = ['notes', 'prix', 'client'].concat(f.pastille === 'En retard' || (f.retard && f.pastille === 'À vérifier') ? [] : ['pli'], ['historique']);
+  // (le pli monte sous l etat quand le groupe est en retard sur son heure ; en fin de visite, jamais pointe, il reste ici)
+  const attenduCote = ['notes', 'prix', 'client'].concat(f.retard ? [] : ['pli'], ['historique']);
   ok(f.principal.length === 1 && /fx-programme/.test(f.principal[0]) && JSON.stringify(f.cote) === JSON.stringify(attenduCote),
     `[C1] ${label} : le programme seul a gauche, puis notes, prix, client a droite, l historique en dernier`, { principal: f.principal, cote: f.cote });
   if (ordi) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });

@@ -22,8 +22,9 @@
 //   [E] LA DATE : ‹ › et « Aujourd hui » ne deplacent rien, sur les trois ;
 //   [F] COLLEE : en bas de journee, la date et la bascule restent a l ecran, la boite
 //       tient sous la barre, a la souris et au doigt ;
-//   [G] LE MENU DE GAUCHE : replie sur les trois, sans toucher au choix de l equipe, rendu
-//       en quittant les plannings ;
+//   [G] LE MENU DE GAUCHE : replie par defaut partout (2026-11-08), un rayon y ouvre ses
+//       pages a cote ; replie sur les trois, sans toucher au choix de l equipe, rendu en
+//       quittant les plannings ;
 //   [H] L INVENTAIRE : les anciens en-tetes sont partis, chacun de leurs gestes reste
 //       atteignable et marche ;
 //   [I] LE DOSSIER QUI A TOUT : tout se lit sur la ligne, sur les vrais noeuds de texte ;
@@ -581,25 +582,78 @@ async function menuGauche(browser) {
       replie: document.body.classList.contains('staff-menu-collapsed'),
       large: document.body.classList.contains('gf-large'),
       rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width),
-      pref: Boolean(state.staffMenuCollapsed),
+      ouvert: state.staffMenuOuvert === true,
       gouttiere: document.documentElement.classList.contains('pb-page'),
       barre: getComputedStyle(document.getElementById('planningBarre')).display,
     }));
+    // PAR DEFAUT, LE MENU EST REPLIE PARTOUT (2026-11-08, Ansar : « les onglets replié comme
+    // ça fait bcp plus beau et quali ») : hors plannings aussi, une barre d icones.
+    await page.locator('[data-fgx-menu-key="reservations"]').first().click();
+    await FX.repos(page, 400);
+    const defaut = await lire();
+    ok(defaut.replie && !defaut.large && defaut.rail <= 80 && !defaut.ouvert, '[G] par defaut, le menu est une barre d icones, hors plannings aussi', defaut);
+    // Replie, un rayon ouvre ses pages a cote de la barre : Pistes bowling s ouvre d Activités.
+    await page.locator('[data-fgx-menu-toggle="activities"]').first().click();
+    await FX.repos(page, 250);
+    const rayon = await page.evaluate(() => { const p = document.querySelector('.fgx-menu-popover.activities:not(.is-closing)'); return p ? p.textContent.replace(/\s+/g, ' ').trim() : ''; });
+    if (/Pistes bowling/.test(rayon)) await page.locator('.fgx-menu-popover.activities .fgx-menu-option', { hasText: 'Pistes bowling' }).click();
+    await FX.repos(page, 400);
+    const pistes = await page.evaluate(() => state.staffMenuPage);
+    ok(/Tarifs/.test(rayon) && /Pistes bowling/.test(rayon) && /Laser Game/.test(rayon) && pistes === 'lanes', '[G] menu replie : Activités ouvre ses pages a cote, Pistes bowling s y ouvre', { rayon, pistes });
+    // L equipe ouvre le menu : ce choix reste, les plannings le replient sans y toucher.
+    await page.locator('[data-fgx-menu-collapse]').click();
+    await FX.repos(page, 400);
+    const choisi = await lire();
+    ok(!choisi.replie && choisi.rail > 200 && choisi.ouvert, '[G] « Ouvrir le menu » le deplie, et ce choix reste', choisi);
+    await page.evaluate(() => { location.hash = '#/staff/planning/all'; });
+    await page.waitForFunction(() => state.staffMenuPage === 'planning' && document.body.classList.contains('gf-large'), null, { timeout: 8000 }).catch(() => {});
+    await FX.repos(page, 300);
     for (const vue of VUES) {
       await aller(page, vue);
       const m = await lire();
-      ok(m.replie && m.large && m.rail <= 80 && !m.pref, `[G] ${vue} : le menu est une barre d icones, le choix de l equipe ne bouge pas`, m);
+      ok(m.replie && m.large && m.rail <= 80 && m.ouvert, `[G] ${vue} : le menu est une barre d icones, le choix de l equipe ne bouge pas`, m);
     }
     await page.locator('[data-fgx-menu-key="reservations"]').first().click();
     await FX.repos(page, 400);
     const ailleurs = await lire();
-    ok(!ailleurs.replie && !ailleurs.large && ailleurs.rail > 200 && !ailleurs.pref && !ailleurs.gouttiere, '[G] en quittant les plannings, le menu revient comme l equipe l a laisse', ailleurs);
+    ok(!ailleurs.replie && !ailleurs.large && ailleurs.rail > 200 && ailleurs.ouvert && !ailleurs.gouttiere, '[G] en quittant les plannings, le menu revient comme l equipe l a laisse', ailleurs);
     await page.locator('[data-fgx-menu-toggle="planning"], [data-fgx-menu-key="planning"]').first().click();
     await FX.repos(page, 300);
     await page.locator('[data-ops-resource="bowling"]').first().click();
     await FX.repos(page, 400);
     const retour = await lire();
-    ok(retour.replie && retour.large && retour.rail <= 80 && !retour.pref && retour.barre !== 'none', '[G] en revenant sur un planning, la barre d icones revient', retour);
+    ok(retour.replie && retour.large && retour.rail <= 80 && retour.ouvert && retour.barre !== 'none', '[G] en revenant sur un planning, la barre d icones revient', retour);
+  });
+  // AU TELEPHONE, la barre est une bande en haut : un rayon s ouvre dessous, le menu du
+  // compte aussi, jamais par-dessus la bande ni hors de l ecran.
+  await avec(browser, { lettre: 'G', appareil: 'telephone' }, async (page) => {
+    await page.evaluate(() => { location.hash = '#/staff/reservations'; });
+    await page.waitForFunction(() => state.staffMenuPage === 'reservations', null, { timeout: 8000 }).catch(() => {});
+    await FX.repos(page, 300);
+    const lirePop = () => page.evaluate(() => {
+      const p = document.querySelector('.fgx-menu-popover:not(.is-closing)');
+      if (!p) return null;
+      const r = p.getBoundingClientRect();
+      return { genre: p.dataset.popoverKind, haut: Math.round(r.top), bas: Math.round(r.bottom), bande: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().bottom), ecran: innerHeight };
+    });
+    await page.locator('[data-fgx-menu-toggle="activities"]').first().click();
+    await FX.repos(page, 350);
+    const rayon = await lirePop();
+    ok(Boolean(rayon) && rayon.genre === 'activities' && rayon.haut >= rayon.bande - 6 && rayon.bas <= rayon.ecran, '[G] telephone : un rayon s ouvre sous la bande du menu', rayon);
+    await page.locator('[data-fgx-account-menu]').first().click();
+    await FX.repos(page, 350);
+    const compte = await lirePop();
+    ok(Boolean(compte) && compte.genre === 'account' && compte.haut >= compte.bande - 6 && compte.bas <= compte.ecran, '[G] telephone : le menu du compte aussi, entier a l ecran', compte);
+  });
+  // UN POSTE DEJA VENU : le navigateur a garde l ancienne cle, a false sur chaque poste (le
+  // defaut d avant le 2026-11-08). Le menu s y replie aussi : sur un navigateur vierge, ce
+  // serait vert meme si rien ne changeait pour les vrais comptoirs.
+  await avec(browser, { lettre: 'G', avantChargement: async (page) => { await page.addInitScript(() => { try { localStorage.setItem('funGalaxy_v4', JSON.stringify({ staffMenuCollapsed: false })); } catch (e) { /* stockage bloque */ } }); } }, async (page) => {
+    await page.evaluate(() => { location.hash = '#/staff/reservations'; });
+    await page.waitForFunction(() => state.staffMenuPage === 'reservations', null, { timeout: 8000 }).catch(() => {});
+    await FX.repos(page, 400);
+    const venu = await page.evaluate(() => ({ replie: document.body.classList.contains('staff-menu-collapsed'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), ouvert: state.staffMenuOuvert === true, ancienne: 'staffMenuCollapsed' in state }));
+    ok(venu.replie && venu.rail <= 80 && !venu.ouvert && !venu.ancienne, '[G] un poste deja venu (ancienne cle a false) se replie lui aussi', venu);
   });
 }
 
@@ -1736,7 +1790,11 @@ const MUTATIONS = [
   // [G] le menu de gauche
   { nom: 'menu-ouvert-hors-complet', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '    return grandTableau() ? !menuRouvertIci : readPreference();', "    return grandTableau() && window.getStaffResourceView() === 'all' ? !menuRouvertIci : readPreference();") },
   { nom: 'large-partout', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(APP, "    corps.classList.toggle('gf-large', surPlanning);", "    corps.classList.add('gf-large');") },
-  { nom: 'preference-ecrasee', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '    return grandTableau() ? !menuRouvertIci : readPreference();', "    if (grandTableau()) { state.staffMenuCollapsed = true; return true; }\n    return readPreference();") },
+  { nom: 'preference-ecrasee', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '    return grandTableau() ? !menuRouvertIci : readPreference();', "    if (grandTableau()) { state.staffMenuOuvert = false; return true; }\n    return readPreference();") },
+  { nom: 'ouvert-par-defaut', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof state !== 'undefined') return state.staffMenuOuvert !== true;", "    if (typeof state !== 'undefined') return false;") },
+  { nom: 'popover-sur-la-bande', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, "    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {\n      popover.style.top = '';", "    if (false) {\n      popover.style.top = '';") },
+  { nom: 'poste-venu-reste-ouvert', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(APP, 'state.staffMenuOuvert = state.staffMenuOuvert === true;', 'state.staffMenuOuvert = state.staffMenuOuvert === true || state.staffMenuCollapsed === false;') },
+  { nom: 'rayon-sans-pages', lettre: 'G', scenarios: ['menuGauche'], editions: SEUL(MENU, '        toggleGroupMenu(groupToggle, key);\n', '        navigateMenuGroup(key);\n') },
   // [H] l inventaire
   { nom: 'second-champ-revenu', lettre: 'H', scenarios: ['inventaire'], editions: SEUL(PGC, 'body.gf-large #staffTableBox:not(.expanded) .search-wrap { display: none; }\n', '') },
   { nom: 'filtres-perdus', lettre: 'H', scenarios: ['inventaire'], editions: SEUL(APP, '    <button type="button" onclick="pbFiltres(event)">Filtres</button>\n', '') },

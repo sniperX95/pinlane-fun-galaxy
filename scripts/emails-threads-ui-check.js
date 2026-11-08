@@ -230,6 +230,9 @@ async function main() {
     await dormir(400);
     const nav7 = await lireNav();
     ok(nav7.section === 'envoyes' && nav7.hash === '#/staff/emails/envoyes', 'Precedent du navigateur ramene a la section precedente', nav7.hash);
+    // Le menu est replie par defaut depuis le 2026-11-08 : ses enfants se touchent menu ouvert.
+    await page.evaluate(() => setStaffMenuCollapsed(false));
+    await dormir(300);
     await page.click('.fgx-menu-subitem[data-fgx-menu-section="agent"]');
     await dormir(400);
     const nav8 = await lireNav();

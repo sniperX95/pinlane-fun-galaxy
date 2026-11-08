@@ -1,6 +1,7 @@
 (function () {
   const PLATFORM_MARK_SRC = './assets/brand/pinlane-mark.svg';
-  const COLLAPSE_KEY = 'fgx:staff-menu-collapsed';
+  // Le menu ouvert PAR CHOIX (2026-11-08) : replie par defaut, voir readPreference.
+  const OUVERT_KEY = 'fgx:staff-menu-ouvert';
   const GROUPS_KEY = 'fgx:staff-menu-groups';
   // Logo de marque personnalisable : choix MVP ASSUME, persistance localStorage
   // UNIQUEMENT (device-local, non synchronise entre machines/navigateurs).
@@ -544,12 +545,19 @@
   }
 
   // Ce que l equipe a choisi pour le menu, sur toutes les pages.
+  //
+  // REPLIE PAR DEFAUT, PARTOUT (2026-11-08, Ansar : « les onglets replié comme ça fait bcp
+  // plus beau et quali »). Une barre d icones sur chaque page, comme sur les plannings ;
+  // « Ouvrir le menu » le deplie et ce choix reste sur ce poste. La preference porte un
+  // nouveau nom, « ouvert par choix » (state.staffMenuOuvert) : l ancien staffMenuCollapsed
+  // valait false sur chaque poste deja venu, le defaut d avant, et y aurait garde le menu
+  // ouvert.
   function readPreference() {
-    if (typeof state !== 'undefined') return !!state.staffMenuCollapsed;
+    if (typeof state !== 'undefined') return state.staffMenuOuvert !== true;
     try {
-      return localStorage.getItem(COLLAPSE_KEY) === '1';
+      return localStorage.getItem(OUVERT_KEY) !== '1';
     } catch (error) {
-      return false;
+      return true;
     }
   }
 
@@ -567,13 +575,13 @@
 
   function persistCollapsed(collapsed) {
     if (typeof state !== 'undefined') {
-      state.staffMenuCollapsed = !!collapsed;
+      state.staffMenuOuvert = !collapsed;
       try {
         if (typeof save === 'function') save();
       } catch (error) {}
     }
     try {
-      localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+      localStorage.setItem(OUVERT_KEY, collapsed ? '0' : '1');
     } catch (error) {}
   }
 
@@ -814,10 +822,21 @@
       }, POPOVER_EXIT_MS);
     });
     root.querySelectorAll('[data-fgx-center-menu][aria-expanded="true"], [data-fgx-account-menu][aria-expanded="true"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+    root.querySelectorAll('[data-fgx-menu-toggle][data-fgx-pop]').forEach(button => {
+      button.removeAttribute('data-fgx-pop');
+      button.setAttribute('aria-expanded', isMenuGroupOpen(button.dataset.fgxMenuToggle) ? 'true' : 'false');
+    });
   }
 
   function positionPopover(popover, anchor, kind) {
     if (!popover || !anchor) return;
+    // Au telephone la barre est une bande en haut : le popover se pose dessous, comme le dit
+    // la feuille de style (top: 60px). Une position calculee sur la bande le mettait par-dessus.
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {
+      popover.style.top = '';
+      popover.style.bottom = '';
+      return;
+    }
     if (kind === 'account') {
       popover.style.top = 'auto';
       popover.style.bottom = '76px';
@@ -931,17 +950,33 @@
 
   // « PLANNING » SUR LA BARRE D ICONES DU GRAND TABLEAU : le groupe mene au planning
   // deja ouvert, le toucher ne faisait rien. Ses trois plannings s ouvrent a cote.
-  function togglePlanningMenu(anchor) {
-    const groupe = visibleMenuSections().flatMap(section => section.items).find(item => item.key === 'planning');
-    const options = (groupe && groupe.children ? groupe.children : []).map(child => `
-        <button type="button" class="fgx-menu-option" data-fgx-menu-key="${escapeHtml(child.key)}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''} role="menuitem">
+  //
+  // CHAQUE RAYON, MENU REPLIE (2026-11-08) : le menu est replie partout, un rayon (Planning,
+  // Activités) ouvre ses pages a cote de la barre, sur toutes les pages. Sans ca, Pistes
+  // bowling et Laser Game ne s ouvraient plus qu en depliant le menu. Sous 1100 px la barre
+  // est toujours en icones (pinlane-staff.css) : le rayon y ouvre ses pages aussi.
+  function menuEnIcones() {
+    if (readCollapsed()) return true;
+    return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches;
+  }
+  function toggleGroupMenu(anchor, key) {
+    const groupe = visibleMenuSections().flatMap(section => section.items).find(item => item.key === key);
+    const enfants = (groupe && groupe.children ? groupe.children : []).filter(itemAllowedForCenter);
+    if (!enfants.length) {
+      closeMenuPopover();
+      navigateMenuGroup(key);
+      return;
+    }
+    const options = enfants.map(child => `
+        <button type="button" class="fgx-menu-option" data-fgx-menu-key="${escapeHtml(child.key)}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''}${child.section ? ` data-fgx-menu-section="${escapeHtml(child.section)}"` : ''} role="menuitem">
           <span><strong>${escapeHtml(child.label)}</strong></span>
         </button>
       `).join('');
-    openMenuPopover('planning', anchor, `
-      <div class="fgx-menu-popover-title">Planning</div>
+    openMenuPopover(key, anchor, `
+      <div class="fgx-menu-popover-title">${escapeHtml(groupe.label)}</div>
       <div class="fgx-menu-options">${options}</div>
     `);
+    if (document.querySelector(`[data-staff-menu-root] .fgx-menu-popover[data-popover-kind="${key}"]:not(.is-closing)`)) anchor.setAttribute('data-fgx-pop', '1');
   }
 
   function toggleAccountMenu(anchor) {
@@ -1296,15 +1331,11 @@
       event.preventDefault();
       event.stopPropagation();
       const key = groupToggle.dataset.fgxMenuToggle;
-      if (key === 'planning' && grandTableau() && readCollapsed()) {
-        togglePlanningMenu(groupToggle);
+      if (menuEnIcones()) {
+        toggleGroupMenu(groupToggle, key);
         return;
       }
       closeMenuPopover();
-      if (readCollapsed()) {
-        navigateMenuGroup(key);
-        return;
-      }
       const nextOpen = groupToggle.getAttribute('aria-expanded') !== 'true';
       setMenuGroupOpen(key, nextOpen);
       applyMenuGroupOpen(groupToggle, nextOpen, { animate: true });

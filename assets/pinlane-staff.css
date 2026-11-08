@@ -706,6 +706,8 @@ body.staff-menu-collapsed .fgx-menu-popover {
 }
 
 body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; }
+/* Un rayon ouvre ses pages a cote de la barre (2026-11-08), etroit comme Planning. */
+body.staff-menu-collapsed .fgx-menu-popover.activities { width: 200px; }
 
 .fgx-menu-popover-title {
   padding: 6px 8px 4px;
@@ -10895,19 +10897,33 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-s-n { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .qb-modal.rv.rs .rs-s-n b { font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
 .qb-modal.rv.rs .rs-s-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); }
-.qb-modal.rv.rs .rs-s-l { display: grid; grid-template-columns: repeat(var(--rs-seances), minmax(0, 1fr)); gap: 6px; }
+/* Toute la journee : chaque heure a sa touche, les lignes se remplissent a la largeur du bloc.
+   L ecart entre les lignes laisse la place a l etiquette posee sur le bord (« maintenant »). */
+.qb-modal.rv.rs .rs-s-l { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--rs-h-min, 64px), 1fr)); gap: 12px 6px; }
 .qb-modal.rv.rs .rs-s-l .rs-texte { grid-column: 1 / -2; align-self: center; font-size: 14px; }
 
 .qb-modal.rv.rs .rs-seance.is-vide { min-height: 147px; align-items: center; justify-content: center; text-align: center; box-shadow: none; outline: 1px dashed var(--rs-ligne-forte); outline-offset: -1px; }
 .qb-modal.rv.rs .rs-seance.is-vide .rs-s-n { flex: none; }
+/* UNE GRANDE ACTIVITE PAS ENCORE AU TICKET : repliee sur sa ligne de titre, son prix, ses
+   parties ou sa duree, et le bouton qui dit ce qu il fait (« Ajouter », « Choisir »). */
+.qb-modal.rv.rs .rs-seance.is-replie { padding: 12px 12px 12px 16px; }
+.qb-modal.rv.rs .rs-ajout { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--accent); }
+.qb-modal.rv.rs .rs-ajout svg { flex: none; }
+.qb-modal.rv.rs .rs-ajout { transition: transform var(--rs-duree) var(--rs-sortie); }
+.qb-modal.rv.rs .rs-ajout:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) { .qb-modal.rv.rs .rs-ajout:active { transform: none; } }
+/* LES PARTIES DU LASER sous la premiere : une rangee par partie, son nom a gauche. */
+.qb-modal.rv.rs .rs-parties { display: flex; flex-direction: column; gap: 14px; padding-top: 2px; }
+.qb-modal.rv.rs .rs-partie { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; }
+.qb-modal.rv.rs .rs-partie-l { font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); }
 
 /* LES HEURES */
-.qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 70px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
+.qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 52px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-h b { font-size: 16px; font-weight: 600; line-height: 1.15; }
 .qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-/* Sur tablette et telephone, la touche fait 80 px : « reste 23 armes » y tient entier. */
+/* Sur tablette et telephone, l ecart se resserre ; celui des lignes garde la place des etiquettes. */
 @media (max-width: 1100px) {
-  .qb-modal.rv.rs .rs-s-l { gap: 4px; }
+  .qb-modal.rv.rs .rs-s-l { gap: 12px 4px; }
   .qb-modal.rv.rs .rs-h { padding: 0; }
   .qb-modal.rv.rs .rs-h small { letter-spacing: -0.02em; }
 }
@@ -10915,7 +10931,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-h.is-on small { color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-h.is-ko, .qb-modal.rv.rs .rs-h.is-ko.is-on { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
 .qb-modal.rv.rs .rs-h.is-ko small { color: var(--danger); }
-.qb-modal.rv.rs .rs-h-autres { grid-column: -2; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 14px; font-weight: 550; color: var(--muted); }
+.qb-modal.rv.rs .rs-h-autres { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 14px; font-weight: 550; color: var(--muted); }
 .qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 62px; }
 .qb-modal.rv.rs .rs-h.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-efface b { font-weight: 400; }
@@ -10935,13 +10951,22 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-coche svg { width: 14px; height: 14px; }
 .qb-modal.rv.rs .is-on > .rs-coche { opacity: 1; transform: none; }
 .qb-modal.rv.rs .rs-h.is-propose > .rs-coche, .qb-modal.rv.rs .rs-h.is-ko > .rs-coche { opacity: 0; transform: scale(.6); }
+/* LA COCHE D UNE HEURE (2026-11-08, Ansar : « le v genre correct est mal cadré »). Depuis que
+   toute la journee s affiche, les touches sont plus petites : la coche du coin haut touchait
+   le dernier chiffre. Une pastille sur le coin bas, hors du texte ; le haut reste aux
+   etiquettes (« juste après », « maintenant »). */
+.qb-modal.rv.rs .rs-h > .rs-coche { top: auto; right: -4px; bottom: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast); box-shadow: 0 0 0 2px var(--surface); }
+.qb-modal.rv.rs .rs-h > .rs-coche svg { width: 10px; height: 10px; }
 
 /* CE QU INTERNET GARDE A CETTE HEURE : « 2 en attente », avec le petit carre
    orange du bandeau qui dit jusqu a quand. Couleurs du theme, jamais ecrites ici. */
-.qb-modal.rv.rs .rs-h small.rs-h-garde { color: var(--text); }
+.qb-modal.rv.rs .rs-h small.rs-h-garde { color: var(--text); white-space: normal; overflow: visible; line-height: 1.15; }
+/* Une touche de la rangee grandit avec ce qu elle dit (« 2 en attente » passe a la ligne) : la
+   rangee prend la hauteur de sa plus haute touche. */
+.qb-modal.rv.rs .rs-s-l:not(.is-formule) .rs-h { height: auto; min-height: 52px; padding: 6px 2px; }
 .qb-modal.rv.rs .rs-h-garde::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 2px; background: var(--warning); vertical-align: 1px; }
 /* « maintenant », « juste après » : une etiquette posee sur le bord, l heure ne bouge pas. */
-.qb-modal.rv.rs .rs-h-tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); padding: 0 6px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 12px; font-style: normal; font-weight: 500; line-height: 16px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+.qb-modal.rv.rs .rs-h-tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); padding: 0 5px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 12px; font-style: normal; font-weight: 500; line-height: 16px; color: var(--muted); white-space: nowrap; pointer-events: none; }
 .qb-modal.rv.rs .rs-p { position: relative; }
 .qb-modal.rv.rs .rs-h.is-on .rs-h-tag { color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent); }
 /* Les reglages d un bloc, a la taille de ses segments. */
@@ -11087,6 +11112,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-rang.is-texte .rs-lbl { align-self: start; padding-top: 3px; }
 .qb-modal.rv.rs .rs-choix { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; min-width: 0; }
 .qb-modal.rv.rs .rs-choix[style] { display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; }
+.qb-modal.rv.rs .rs-choix.is-heures { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--rs-h-min, 64px), 1fr)); grid-auto-rows: 1fr; gap: 12px 6px; }
 .qb-modal.rv.rs .rs-p { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; min-height: 44px; padding: 4px 8px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); }
 .qb-modal.rv.rs .rs-p b { font-size: 15px; font-weight: 600; line-height: 1.2; text-align: center; }
 .qb-modal.rv.rs .rs-p small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); text-align: center; }
@@ -11275,6 +11301,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-s-t > .rs-seg { flex: 1 1 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-s-t > .rs-seg button { justify-content: center; padding: 0 4px; }
   .qb-modal.rv.rs .rs-h-autres { grid-column: auto; }
+  .qb-modal.rv.rs .rs-partie { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .qb-modal.rv.rs .rs-seance.is-replie .rs-ajout { flex: 1 1 100%; }
   .qb-modal.rv.rs .rs-petits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-fs-g { grid-template-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-porte-l { white-space: normal; }

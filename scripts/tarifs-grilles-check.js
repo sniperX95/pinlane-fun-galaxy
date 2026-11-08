@@ -718,7 +718,8 @@ async function comptoir(browser) {
   ok(/Duckpin\s*84\s*€/.test(fenetre), '[C] le Duckpin suit la meme grille', fenetre.slice(0, 500));
   await page.click('.qb-modal.rv.rs [data-quoi="laser_game"][data-var="2"]');
   await page.waitForTimeout(300);
-  await page.click('.qb-modal.rv.rs section.rs-seance[aria-label="Laser"] .rs-s-h button');
+  // (le laser est replie a cote du bowling propose : « Choisir » le prend a sa place, 2026-11-08)
+  await page.click('.qb-modal.rv.rs #rsAjout-laser_game');
   await page.waitForTimeout(500);
   const avecLaser = await texte(page, '.qb-modal.rv.rs');
   ok(/Laser\s*20\s*€ par joueur/.test(avecLaser) && /Laser, 2 parties.*200\s*€/.test(avecLaser), '[C] Reserver chiffre le laser au prix du centre', avecLaser.slice(-500));

@@ -228,7 +228,7 @@ function lireFeuille() {
 
 function lireOracle() {
   /* global todaysReservations, getStaffReservationMoments, getStaffTerrainSpan, getBowlingWindowsFromReservation, getLaserWindowsFromReservation, getStaffFormulaTimedItems, getGroupeProgramme, groupeAJoue, isReservationAwaitingReview, resolveDisplayFormule, currentTimeDecimal, state, todayStr, availabilityBlocksCache, getPlanningWindow, getAvailabilityLaneCount, getBlocagesEnLigne, getBowlingBlockWindows, lpModele, prixDossierConnu, formatMoneyCentimes */
-  const res = todaysReservations();
+  const res = todaysReservations().filter(tientSesPlaces);
   const moments = getStaffReservationMoments(res);
   // LES PISTES, refaites ici depuis ce qui les prend (reservations, horaires
   // retenus en ligne, blocages), sans passer par les fonctions que la feuille
@@ -315,9 +315,11 @@ function heureDe(g) { const d = minutesDe(g.startTime); return d == null ? g.spa
 
 // L etat attendu d une activite a heure (la regle de la feuille, redite).
 function etatAttendu(g, w, colonne, maintenant) {
-  if (g.etat === 'done' || g.etat === 'absent' || g.etat === 'closing') return 'fini';
   if (g.faits.some((f) => colonneDe(f.id) === colonne && Math.abs(f.start - w.start) < 0.02)) return 'fini';
-  if (w.end <= maintenant + 1e-6) return 'fini';
+  // (jamais pointe, visite finie : en retard tant que personne n a tranche)
+  if (g.etat === 'closing' && !g.present) return 'retard';
+  if (g.etat === 'done' || g.etat === 'absent' || g.etat === 'closing') return 'fini';
+  if (w.end <= maintenant + 1e-6) return g.late && !g.present ? 'retard' : 'fini';
   if (w.start <= maintenant + 1e-6) return g.present ? 'encours' : g.late ? 'retard' : 'avenir';
   if (g.present && w.start - maintenant <= 5 / 60 + 1e-6) return 'lancer';
   return 'avenir';
@@ -512,7 +514,7 @@ async function structure(page, s, label) {
       const du = g.status === 'paid' ? g.regle : caisse ? g.du || 'Prix à voir' : g.du;
       return !statutJuste
         || l.valide !== g.aValider
-        || /^À clôturer/.test(l.caisse) !== (caisse && !g.present)
+        || /^En retard/.test(l.caisse) !== (caisse && !g.present)
         || /^À encaisser/.test(l.caisse) !== (caisse && g.present)
         || l.du !== du
         || l.paye !== (g.status === 'paid')
@@ -853,7 +855,7 @@ async function gestes(browser) {
       const dernier = rangs.length ? R(rangs[rangs.length - 1]).bottom : Infinity;
       return { lignes: alertes.map((a) => Math.round(R(a).height)), coupees, decaler, defile: lp.scrollHeight > lp.clientHeight + 1, tient: dernier <= innerHeight + 1 };
     });
-    const compte = Number((/^(\d+) groupes? pas venus?$/.exec(g4.bouton || '') || [])[1]);
+    const compte = Number((/^(\d+) groupes? en retard$/.exec(g4.bouton || '') || [])[1]);
     ok(!g4.manque && g4.ferme && g4.alertes === 0 && compte >= 2 && g4b.lignes.length === compte && g4b.lignes.every((h) => h <= 46) && g4b.coupees.length === 0 && new Set(g4b.decaler).size === 1 && !g4b.defile && g4b.tient, `[G4] ${label} : les groupes pas venus se replient sous un bouton qui les compte ; ouverts, un par ligne, aucune action coupee, la journee tient a l ecran`, { ...g4, ...g4b });
     await sansErreur(erreurs, label + ' gestes');
   } finally { await ctx.close(); }
@@ -894,7 +896,7 @@ const MUTATIONS = [
   // L heure pile se reecrit sur chaque ligne, la grande case ne sert plus a rien.
   { nom: 'heure-pile-sur-la-ligne', lettre: 'F2', scenarios: [PIC], editions: [{ fichier: PG, de: '  function gfPile(g) { return Math.abs(g.heure * 2 - Math.round(g.heure * 2)) * 30 < 0.5; }', vers: '  function gfPile(g) { return false; }' }] },
   { nom: 'laser-chez-le-bowling', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "        poser('laser_game', e);", vers: "        poser('bowling', e);" }] },
-  { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : (e.libre ? 'vers ' : '') + gpHeure(debut);", vers: "      t = desLeDebut ? '' : (e.libre ? 'vers ' : '') + gpHeure(debut + 0.5);" }] },
+  { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);", vers: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut + 0.5);" }] },
   { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { min-width: 0; font-size: 15px;', vers: '.gf-nom__t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; font-size: 15px;' }] },
   { nom: 'personnes-plus-une', lettre: 'F5', scenarios: [PIC], editions: [{ fichier: PG, de: "'\"><b>' + pax + '</b>'", vers: "'\"><b>' + (pax + 1) + '</b>'" }] },
   { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return 'fini';", vers: "    if (fin <= m.maintenant - 1) return 'fini';" }] },
@@ -933,7 +935,7 @@ const MUTATIONS = [
   { nom: 'arrive-sans-effet', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }", vers: '      if (arrive) return;' }] },
   { nom: 'ligne-muette', lettre: 'G1', gestes: true, editions: [{ fichier: PG, de: "      if (ligne && typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));\n    });", vers: '    });' }] },
   { nom: 'recherche-ignoree', lettre: 'G2', gestes: true, editions: [{ fichier: PG, de: '    if (!q) return true;', vers: '    return true;' }] },
-  { nom: 'recherche-bowling-cache', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);", vers: "  const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);" }] },
+  { nom: 'recherche-bowling-cache', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: "  const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);", vers: "  const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);" }] },
   { nom: 'grise-pleine', lettre: 'G3', gestes: true, editions: [{ fichier: 'assets/pinlane-staff.css', de: '.booking.is-grise { opacity: .35; }', vers: '.booking.is-grise { opacity: 1; }' }] },
   // Les pas venus s ouvrent d entree : la liste repousse la journee.
   { nom: 'retards-ouverts', lettre: 'G4', gestes: true, editions: [{ fichier: 'assets/app-main.js', de: '    lpEtat.retardsOuverts = false;', vers: '    lpEtat.retardsOuverts = true;' }] },

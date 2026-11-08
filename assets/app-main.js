@@ -4396,7 +4396,7 @@ function canOpenAdminView() {
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
 const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261107acces';
-const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261107acces';
+const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261108retard';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261107acces';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20261107acces';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
@@ -22196,7 +22196,7 @@ function voirListeDuJour() {
 }
 
 // LA LEGENDE DES CASES : le statut est sur la barre, ceci dit lire une case.
-const PB_LEGENDE_CASES = '<span><i class="gf-leg is-encours" aria-hidden="true"></i>en cours</span><span><i class="gf-leg is-fini" aria-hidden="true"></i>fini</span><span><i class="gf-leg is-libre" aria-hidden="true"></i>vers : sans heure fixe</span>';
+const PB_LEGENDE_CASES = '<span><i class="gf-leg is-encours" aria-hidden="true"></i>en cours</span><span><i class="gf-leg is-fini" aria-hidden="true"></i>fini</span><span><i class="gf-leg is-libre" aria-hidden="true"></i>Libre : sans heure fixe</span>';
 
 // LE MENU « ⋯ » DES TROIS PLANNINGS : la meme liste, au meme endroit. Ce que les
 // tetes de chaque planning faisaient et que la barre ne montre pas : les filtres,
@@ -26590,7 +26590,7 @@ function renderReservationRow(r, moment = null, options = {}) {
   const etat = lpTeinte(r).slice(3);
   // (un groupe sur aucune grille ne se marque plus « Hors planning » : le
   // planning global dessine la table et la plaine ; Movsar, 2026-10-20)
-  const suivi = moment?.late ? 'En retard' : ({ upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer' }[moment?.etat] || '');
+  const suivi = groupeEnRetardAuPlanning(r, moment) ? 'En retard' : ({ upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer' }[moment?.etat] || '');
   // Une carte terminee et payee tient sur sa tete : il n y a plus rien a faire.
   if (termine) {
     return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">

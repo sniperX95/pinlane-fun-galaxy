@@ -541,8 +541,9 @@
     var debut = entiere ? g.span.start : e.start;
     var fin = entiere ? g.span.end : e.end;
     if (m.maintenant == null || debut == null) return 'avenir';
-    if (fin <= m.maintenant + 1e-6) return 'fini';
     var present = gfPresent(g);
+    // (un groupe en retard n a rien fini : ses heures passees restent en retard)
+    if (fin <= m.maintenant + 1e-6) return g.retard && !present ? 'retard' : 'fini';
     if (debut <= m.maintenant + 1e-6) {
       if (!present) return g.retard ? 'retard' : 'avenir';
       return e.libre && !entiere ? 'avenir' : 'encours';
@@ -681,8 +682,8 @@
   // n est pas d une heure (« XX (1h30) » sur le papier). Laser : une heure par
   // partie. Plaine : les enfants. Billard et duckpin : les tables ou pistes
   // quand il y en a plusieurs. Arcades d une formule : les credits.
-  // (une coche dit « fait » : l heure passee d un groupe jamais pointe reste
-  // grise, sans coche, il n est peut-etre pas venu)
+  // (une coche dit « fait » : l heure passee d un groupe jamais pointe n en a pas,
+  // elle reste en retard tant que personne n a tranche)
   function gfActivite(g, e, col, m) {
     var r = g.r;
     var etat = gfEtat(g, e, m);

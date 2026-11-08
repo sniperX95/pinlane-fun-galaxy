@@ -749,7 +749,7 @@ async function inventaire(browser) {
     ok((await appels()).join().startsWith('lpReserverAuProchain'), '[H] Laser : Réserver au prochain départ');
     await aller(page, 'all');
     const mc = await menuPlus(page);
-    ok(/Départ laser de \d\d:\d\d/.test(mc.texte) && /en cours/.test(mc.texte) && /vers : sans heure fixe/.test(mc.texte), '[H] Complet : le depart laser et la legende des cases restent au menu', mc.texte.slice(-160));
+    ok(/Départ laser de \d\d:\d\d/.test(mc.texte) && /en cours/.test(mc.texte) && /Libre : sans heure fixe/.test(mc.texte), '[H] Complet : le depart laser et la legende des cases restent au menu', mc.texte.slice(-160));
     await page.evaluate(() => closeStaffFloatingMenus());
     // La ligne 2 de chaque planning : ses chiffres.
     const mots = {
@@ -1156,7 +1156,7 @@ async function mots(browser) {
       };
     });
     ok(cases.pistes > 0 && cases.tailles >= 13 && cases.noires, '[L] « Pistes 1-2 » : le mot entier, 13 px au moins, en noir', cases);
-    ok(cases.vers.length > 0 && cases.vers.every((t) => /^vers \d\d:\d\d/.test(t)), '[L] « vers 15:30 », pas « ≈ »', cases.vers);
+    ok(cases.vers.length > 0 && cases.vers.every((t) => /^(Libre|\d\d:\d\d)/.test(t)), '[L] « Libre », plus « vers 15:30 »', cases.vers);
     ok(cases.credits.length > 0 && cases.credits.every((t) => /crédits/.test(t)), '[L] « 8 crédits », pas « cr. »', cases.credits);
     ok(cases.joueurs > 0, '[L] « joueurs », dans la case d heure', cases);
     // Les accompagnants et le nombre reserve, en toutes lettres.
@@ -1854,7 +1854,7 @@ const MUTATIONS = [
   { nom: 'toutes-revient-au-menu', lettre: 'L', scenarios: ['mots'], editions: SEUL(MENU, "{ key: 'complete', label: 'Complet', resource: 'all' }", "{ key: 'complete', label: 'Toutes', resource: 'all' }") },
   { nom: 'pistes-abregees', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "    return (liste.length > 1 ? 'Pistes ' : 'Piste ') + gpPistes(liste);", "    return 'P' + gpPistes(liste);") },
   { nom: 'pistes-en-gris', lettre: 'L', scenarios: ['mots'], editions: SEUL(PGC, '.gf-x__d { font-size: 13px; font-weight: 500; line-height: 16px; color: var(--text); white-space: normal; }', '.gf-x__d { font-size: 13px; font-weight: 500; line-height: 16px; color: var(--faint); white-space: normal; }') },
-  { nom: 'vers-abrege', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "(e.libre ? 'vers ' : '') + gpHeure(debut);\n      if (col.nature === 'bowling')", "(e.libre ? '≈' : '') + gpHeure(debut);\n      if (col.nature === 'bowling')") },
+  { nom: 'vers-revient', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);\n      if (col.nature === 'bowling')", "e.libre && !gfSeuleActivite(g) ? 'vers ' + gpHeure(debut) : gpHeure(debut);\n      if (col.nature === 'bowling')") },
   { nom: 'credits-abreges', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "      t = (cr.parEnfant ? cr.n : cr.total) + ' crédits';", "      t = (cr.parEnfant ? cr.n : cr.total) + ' cr./enf.';") },
   { nom: 'accompagnants-abreges', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "gpEsc('et ' + avec + ' accomp.')", "gpEsc('+' + avec)") },
   { nom: 'pers-revient', lettre: 'L', scenarios: ['mots'], editions: SEUL(PG, "lignes.push({ html: '<span>' + gpEsc(gfPluriel(compte.pers, ['joueur', 'joueurs'])) + '</span>', hauteur: 1 });", "lignes.push({ html: '<span>' + compte.pers + ' pers.</span>', hauteur: 1 });") },

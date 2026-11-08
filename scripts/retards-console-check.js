@@ -161,12 +161,12 @@ async function pasVenu(browser) {
     ok(/Pistes 6 libres 1, 2, 5, 6, 7 et 8/.test(barreApres), '[B] apres « Pas venu » : la barre compte 6 pistes libres', barreApres);
     ok(/2 pistes libres/.test(quinzeTrente), '[B] 15:30 a 2 pistes libres', quinzeTrente);
     ok(/1 piste libre/.test(seize) && !/Bowling complet/.test(seize), '[B] 16:00 passe de « Bowling complet » a « 1 piste libre »', seize);
-    ok(apres && apres.bowling.length === 1 && /Pistes 6-7 libérées/.test(apres.bowling[0]), '[B] la case dit « Pistes 6-7 libérées »', apres);
+    ok(!apres, '[B] la ligne d Amis de Clara quitte le planning', apres);
     // Le planning des pistes.
     await page.evaluate(() => { const t = [...document.querySelectorAll('button, a')].find((x) => /^Bowling/.test((x.textContent || '').trim())); if (t) t.click(); });
     await FX.repos(page, 500);
     const cartes = await page.evaluate((id) => [...document.querySelectorAll(`.booking[data-booking-res-id="${id}"]`)].map((c) => ({ absent: c.classList.contains('is-absent'), texte: c.textContent.replace(/\s+/g, ' ').trim(), z: getComputedStyle(c).zIndex })), clara.id);
-    ok(cartes.length === 2 && cartes.every((c) => c.absent && /Pas venu/.test(c.texte) && c.z === '1'), '[B] au planning des pistes, ses deux cartes sont grises, « Pas venu », sous les autres', cartes);
+    ok(cartes.length === 0, '[B] au planning des pistes, ses deux cartes ne sont plus la', cartes);
     const libres = await page.evaluate(() => { const k = document.getElementById('kpiFree'); return k ? k.closest('[class]').textContent.replace(/\s+/g, ' ').trim() : (document.body.textContent.match(/Libres\s*\d+\s*pistes[^A-Z]*/) || [''])[0]; });
     ok(/6 pistes/.test(libres), '[B] au planning des pistes, 6 pistes libres', libres);
     ok(!erreurs.length, '[B] aucune erreur dans la page', erreurs.slice(0, 2));
@@ -221,8 +221,8 @@ const MUTATIONS = [
   { nom: 'reprise-apres-la-partie', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '.filter(function (e) { return e.pistes && e.pistes.length && e.end > m.maintenant + 1e-6; });', '.filter(function (e) { return e.pistes && e.pistes.length; });') },
   { nom: 'reprise-sans-le-retard', lettre: 'A', scenarios: ['reprise'], editions: SEUL(PG, '          if (o.start < e.end - 1e-6 || o.start >= e.end + retard - 1e-6) return;', '          if (o.start < e.end - 1e-6 || o.start >= e.end - 1e-6) return;') },
   { nom: 'pistes-libres-comptent-l-absent', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(APP, '  poser(todaysReservations().filter(tientSesPlaces));', '  poser(todaysReservations());') },
-  { nom: 'case-sans-liberees', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(PG, "        else if (n && gfRendueA(r, fin)) { d = gfPistesEnMots(e.pistes) + (n > 1 ? ' libérées' : ' libérée'); d2 = ''; }\n", '') },
-  { nom: 'carte-absente-normale', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(APP, "      const absentClass = tientSesPlaces(r) ? '' : ' is-absent';", "      const absentClass = '';") },
+  { nom: 'ligne-absente-reste', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(PG, "    var tout = filtre === 'absent' ? duJour : duJour.filter(tientSesPlaces);", '    var tout = duJour;') },
+  { nom: 'carte-absente-reste', lettre: 'B', scenarios: ['pasVenu'], editions: SEUL(APP, "  const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling')", "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling')") },
   { nom: 'pistes-prises-avec-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    if (r.date === date && tientSesPlaces(r) && (r.lanes || []).length > 0) {', "    if (r.date === date && r.status !== 'cancelled' && (r.lanes || []).length > 0) {") },
   { nom: 'glisser-heurte-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    r.date === date &&\n    tientSesPlaces(r) &&', "    r.date === date &&\n    r.status !== 'cancelled' &&") },
   { nom: 'laser-avec-l-absent', lettre: 'C', scenarios: ['controles'], editions: SEUL(APP, '    .filter(r => r.id !== ignoreId && r.date === date && tientSesPlaces(r))', "    .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')") },

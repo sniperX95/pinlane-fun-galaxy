@@ -20,7 +20,8 @@
 //   [D] TAPER UN NOM, de n importe ou ; Entree pointe le seul groupe attendu, et
 //       rien s il en reste plusieurs ; un groupe sur place trouve Carte et Espèces ;
 //   [E] « PAS VENU » : a partir de 15 min de retard, jamais sur un groupe qui a
-//       annonce son retard, a la fin d une visite jamais pointee ; la ligne reste ;
+//       annonce son retard, a la fin d une visite jamais pointee ; la ligne quitte
+//       le planning, le toast la reprend, le compteur « Pas venus » la retrouve ;
 //   [F] AGRANDIR : le plein ecran, le champ dans la barre, rien ne s y recouvre,
 //       au moins autant de lignes ; Reduire rend tout ;
 //   [G] LE MENU REPLIE reste utilisable ; quitter l ecran rend le menu et tout le
@@ -45,6 +46,9 @@
 //   [T] UNE PISTE FERMEE se voit sur la ligne du groupe et mene a son bloc ;
 //   [U] LE MENU « ⋯ » n a pas ce que la barre et le tableau font eux-memes ;
 //   [V] AU TELEPHONE, la liste s ouvre sur l heure, une fois ;
+//   [X] CE QUI SE LIT D UN COUP D OEIL : une duree ou un nombre de joueurs hors habitude
+//       (et seulement alors), « Illimité » une fois, plus de « vers », Pixel, le retard
+//       sur les trois plannings, un pas venu sur aucun ;
 //   [W] LA PERF SE GARDE A SA SOURCE : les surfaces cachees restent vides, geste
 //       apres geste ; aucun selecteur qui recalcule tout (`:has()` suivi d un
 //       descendant, `.x *` sur une classe qui bascule, `tr + tr`) n a prise sur cet
@@ -413,7 +417,7 @@ async function pasVenu(browser) {
     ok(tot.length > 0 && tard.length > 0, '[E] le montage : des retards de moins de 15 min et d autres de plus', retards.map((l) => l.retard));
     ok(tot.every((l) => !l.pasVenu), '[E] sous 15 min de retard, pas de « Pas venu » (le groupe se gare)', tot.filter((l) => l.pasVenu).map((l) => l.nom));
     ok(tard.every((l) => l.pasVenu), '[E] a partir de 15 min de retard, « Pas venu » est la', tard.filter((l) => !l.pasVenu).map((l) => l.nom));
-    const jamais = lignes.filter((l) => /^À clôturer/.test(l.caisse) && l.du.length <= 5);
+    const jamais = lignes.filter((l) => /^En retard/.test(l.caisse) && l.du.length <= 5);
     ok(jamais.length > 0 && jamais.every((l) => l.pasVenu), '[E] une visite finie sans jamais etre pointee a son « Pas venu »', jamais.map((l) => l.nom));
     // Un groupe qui a annonce son retard n est pas un groupe qui ne vient pas.
     const annonce = tard[0];
@@ -421,16 +425,20 @@ async function pasVenu(browser) {
     await FX.repos(page, 150);
     const apresAnnonce = (await lignesDuJour(page)).find((l) => l.id === annonce.id);
     ok(!apresAnnonce.pasVenu && /\bis-retard\b/.test(apresAnnonce.cls), '[E] jamais sur un groupe qui a annonce son retard', apresAnnonce);
-    // Le geste : il part au serveur, la ligne reste a sa place, grise.
+    // Le geste : il part au serveur, la ligne quitte le planning, le toast la reprend.
     const cible = tard[1] || tot[0];
-    const ordre = lignes.map((l) => l.id).join();
+    const ordre = lignes.map((l) => l.id).filter((id) => id !== cible.id).join();
     await page.locator(`[data-gf-absent="${cible.id}"]`).click();
-    await page.waitForFunction((id) => document.querySelector(`.gf-r.is-absent[data-gf-id="${id}"]`), cible.id, { timeout: 8000 }).catch(() => null);
+    await page.waitForFunction((id) => !document.querySelector(`.gf-r[data-gf-id="${id}"]`), cible.id, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 150);
+    const toastDit = await page.evaluate(() => (document.getElementById('toast') || {}).textContent || '');
+    const compteur = await page.evaluate(() => { const c = document.querySelector('.gf-c[data-gf-filtre="absent"]'); return c ? c.textContent.replace(/\s+/g, ' ').trim() : ''; });
     const envoi = await page.evaluate((id) => window.__FIXTURE__.patchs.filter((p) => String(p.id) === id && p.absent === true).length, cible.id);
     const apres = await lignesDuJour(page);
     const ligne = apres.find((l) => l.id === cible.id);
-    ok(envoi === 1 && /\bis-absent\b/.test(ligne.cls) && /Pas venu/.test(ligne.etat) && !ligne.pasVenu && apres.map((l) => l.id).join() === ordre, '[E] « Pas venu » s ecrit, la ligne reste a sa place, grise', { envoi, ligne });
+    ok(envoi === 1 && !ligne && apres.map((l) => l.id).join() === ordre, '[E] « Pas venu » s ecrit, la ligne quitte le planning, les autres ne bougent pas', { envoi, ligne });
+    ok(/pas venu/.test(toastDit) && /Annuler/.test(toastDit), '[E] le toast le dit et propose « Annuler »', toastDit);
+    ok(/^Pas venus\s*\d+/.test(compteur), '[E] le compteur « Pas venus » le retrouve', compteur);
   });
 }
 
@@ -1091,12 +1099,119 @@ async function surfaces(browser) {
   });
 }
 
-const SCENARIOS = { densite, arrive, compteurs, nom, pasVenu, plein, menu, coupe, noteContraste, minute, autreJour, teteLargeurs, agrandiTelephone, texteCase, jours, caseHeure, bandeau, retard, encaisser, panne, menuPlus, telephone, surfaces };
+// ---------------------------------------------------------------------------
+// [X] CE QUI SE LIT D UN COUP D OEIL (2026-11-08, Ansar, sur une capture du tableau)
+// ---------------------------------------------------------------------------
+const lireCases = (page) => page.evaluate(() => {
+  const faits = [];
+  const rangees = Array.from(document.querySelectorAll('.gf-r[data-gf-id]'));
+  const dossier = (tr) => state.reservations.find((x) => String(x.id) === tr.getAttribute('data-gf-id'));
+  rangees.forEach((tr) => {
+    const r = dossier(tr);
+    const cases = Array.from(tr.querySelectorAll('.gf-a[data-gf-titre="Bowling"] .gf-x'));
+    const fen = r ? getBowlingWindowsFromReservation(r) : [];
+    if (!r || cases.length !== fen.length) return;
+    cases.forEach((c, i) => {
+      if (c.classList.contains('is-panne')) return;
+      faits.push({ id: String(r.id), minutes: Math.round((fen[i].end - fen[i].start) * 60), joueurs: Number(fen[i].players) || Number(r.pax), pax: Number(r.pax), hors: Array.from(c.querySelectorAll('.gf-x__hors b')).map((b) => b.textContent) });
+    });
+  });
+  const titres = Array.from(document.querySelectorAll('.gf-t thead th')).map((t) => t.textContent.replace(/\s+/g, ' ').trim());
+  const xs = Array.from(document.querySelectorAll('.gf-x'));
+  const illimites = rangees.filter((tr) => { const r = dossier(tr); const f = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null; return f && f.orderPolicy === 'open_window'; }).map((tr) => {
+    const cases = Array.from(tr.querySelectorAll('.gf-a:not(.is-vide)')).map((td) => Array.from(td.querySelectorAll('.gf-x:not(.is-credit)')).map((x) => x.textContent.trim()));
+    return { id: tr.getAttribute('data-gf-id'), cases };
+  });
+  const moments = getStaffReservationMoments(todaysReservations());
+  const jamais = rangees.filter((tr) => { const r = dossier(tr); const m = r && moments.get(String(r.id)); return m && m.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r); }).map((tr) => ({
+    id: tr.getAttribute('data-gf-id'), mot: (tr.querySelector('.gf-nom__caisse') || {}).textContent || '', rouges: tr.querySelectorAll('.gf-x.is-retard').length, cases: tr.querySelectorAll('.gf-x:not(.is-credit)').length,
+  }));
+  return { faits, titres, vers: xs.filter((x) => /vers /.test(x.textContent)).length, libres: xs.filter((x) => /^Libre/.test(x.textContent.trim())).length, illimites, jamais, lignes: rangees.length };
+});
+const enRetardDuJour = (page, lire) => page.evaluate((quoi) => {
+  const jour = todaysReservations();
+  const moments = getStaffReservationMoments(jour);
+  const fen = quoi === 'laser' ? getLaserWindowsFromReservation : getBowlingWindowsFromReservation;
+  const ids = (l) => l.filter((r) => fen(r).length).map((r) => String(r.id));
+  return {
+    retard: ids(jour.filter((r) => tientSesPlaces(r) && !getReservationDelayFlag(r) && groupeEnRetardAuPlanning(r, moments.get(String(r.id))))),
+    absents: ids(jour.filter((r) => !tientSesPlaces(r))),
+  };
+}, lire);
+async function habitudes(browser) {
+  await avec(browser, { lettre: 'X', fixture: 'pire' }, async (page) => {
+    // Le montage : 15 personnes, 10 au bowling ; une formule illimitee a deux parties de laser ; un no-show.
+    const m = await page.evaluate(() => {
+      const jour = todaysReservations().filter(tientSesPlaces);
+      const r = jour.find((x) => !x.formuleId && x.status === 'pending' && getBowlingWindowsFromReservation(x).length === 1 && Number(getBowlingWindowsFromReservation(x)[0].players) > 0);
+      const joueurs = Number(getBowlingWindowsFromReservation(r)[0].players);
+      r.pax = joueurs + 5;
+      const ill = jour.find((x) => x !== r && getLaserWindowsFromReservation(x).length >= 2);
+      ill.formuleId = 'mm'; ill.type = 'formule';
+      const f = resolveDisplayFormule('mm');
+      const abs = jour.find((x) => x !== r && x !== ill && x.status === 'pending' && getBowlingWindowsFromReservation(x).length && getLaserWindowsFromReservation(x).length);
+      if (abs) abs.absentAt = new Date().toISOString();
+      renderStaff();
+      return { partiel: String(r.id), joueurs, illimite: String(ill.id), politique: f && f.orderPolicy, absent: abs ? String(abs.id) : '' };
+    });
+    await FX.repos(page, 250);
+    ok(m.politique === 'open_window' && Boolean(m.absent), '[X] le montage : une formule a fenetre ouverte et un groupe note pas venu', m);
+    const lu = await lireCases(page);
+    const duree = /^(\d+h(\d\d)?|\d+ min)$/;
+    ok(lu.titres.includes('Pixel') && !lu.titres.some((t) => /Fun Run/.test(t)), '[X] la colonne s appelle Pixel', lu.titres);
+    ok(lu.faits.some((f) => f.minutes !== 60) && lu.faits.every((f) => (f.minutes !== 60) === f.hors.some((x) => duree.test(x))), '[X] une duree se dit sur sa pastille seulement si elle n est pas d une heure', lu.faits.filter((f) => (f.minutes !== 60) !== f.hors.some((x) => duree.test(x))).slice(0, 4));
+    ok(lu.faits.every((f) => (f.joueurs !== f.pax) === f.hors.some((x) => /joueur/.test(x))), '[X] un nombre de joueurs se dit seulement s il n est pas celui du groupe', lu.faits.filter((f) => (f.joueurs !== f.pax) !== f.hors.some((x) => /joueur/.test(x))).slice(0, 4));
+    const partiel = lu.faits.find((f) => f.id === m.partiel);
+    ok(partiel && partiel.hors.includes(`${m.joueurs} joueurs`), '[X] 15 personnes, 10 au bowling : « 10 joueurs »', partiel);
+    ok(lu.vers === 0 && lu.libres > 0, '[X] plus de « vers », « Libre » a la place', { vers: lu.vers, libres: lu.libres });
+    const ill = lu.illimites.find((x) => x.id === m.illimite);
+    ok(ill && ill.cases.length > 0 && ill.cases.every((c) => c.length === 1 && c[0] === 'Illimité'), '[X] une formule illimitee : « Illimité », une fois par activite, sans heure', ill);
+    ok(lu.jamais.length > 0 && lu.jamais.every((j) => /^En retard/.test(j.mot) && j.rouges === j.cases), '[X] une visite finie jamais pointee reste en retard, partout sur sa ligne', lu.jamais.slice(0, 3));
+    ok(!(await page.evaluate((id) => Boolean(document.querySelector(`.gf-r[data-gf-id="${id}"]`)), m.absent)), '[X] le groupe pas venu n est plus sur le tableau', m.absent);
+    // Les plannings bowling et laser.
+    const vers = async (mot) => { await page.evaluate((m2) => { const t = [...document.querySelectorAll('button, a')].find((x) => new RegExp('^' + m2).test((x.textContent || '').trim())); if (t) t.click(); }, mot); await FX.repos(page, 500); };
+    await vers('Bowling');
+    const b = await enRetardDuJour(page, 'bowling');
+    const cartes = await page.evaluate(() => Array.from(document.querySelectorAll('.booking[data-booking-res-id]')).map((c) => ({ id: c.getAttribute('data-booking-res-id'), retard: c.classList.contains('is-en-retard'), mot: (c.querySelector('.delay-indicator.is-retard') || {}).textContent || '' })));
+    const dessinees = new Set(cartes.map((c) => c.id));
+    const rouges = new Set(cartes.filter((c) => c.retard && /En retard/.test(c.mot)).map((c) => c.id));
+    // (une partie apres la fermeture n est pas dessinee : seules les cartes dessinees comptent)
+    const attendues = b.retard.filter((id) => dessinees.has(id));
+    ok(attendues.length > 0 && attendues.every((id) => rouges.has(id)) && [...rouges].every((id) => b.retard.includes(id)), '[X] au planning bowling, chaque groupe en retard le dit, et lui seul', { attendu: attendues, vu: [...rouges] });
+    ok(b.absents.length > 0 && b.absents.every((id) => !dessinees.has(id)), '[X] au planning bowling, un groupe pas venu n a plus de carte', b.absents);
+    await vers('Laser');
+    // (le releve du banc rend les dossiers d origine : le pas venu se repose avant de lire)
+    await page.evaluate((id) => { const r = state.reservations.find((x) => String(x.id) === id); r.absentAt = new Date().toISOString(); renderStaff(); }, m.absent);
+    await FX.repos(page, 300);
+    const l = await enRetardDuJour(page, 'laser');
+    const groupes = await page.evaluate(() => Array.from(document.querySelectorAll('#laserPlanningGridWrap [data-laser-res-id]')).map((c) => ({ id: c.getAttribute('data-laser-res-id'), retard: c.classList.contains('is-retard') })));
+    const vus = new Set(groupes.map((c) => c.id));
+    ok(l.retard.length > 0 && groupes.filter((c) => c.retard).length > 0 && groupes.filter((c) => c.retard).every((c) => l.retard.includes(c.id)), '[X] au planning laser, un groupe en retard le dit', { attendu: l.retard, vu: groupes.filter((c) => c.retard).map((c) => c.id) });
+    ok(l.absents.length > 0 && l.absents.every((id) => !vus.has(id)), '[X] au planning laser, un groupe pas venu n est plus la', l.absents);
+  });
+}
+
+const SCENARIOS = { densite, arrive, compteurs, nom, pasVenu, plein, menu, coupe, noteContraste, minute, autreJour, teteLargeurs, agrandiTelephone, texteCase, jours, caseHeure, bandeau, retard, encaisser, panne, menuPlus, telephone, surfaces, habitudes };
 
 // ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
+  // [X] ce qui se lit d un coup d oeil
+  { nom: 'duree-toujours-cachee', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    if (m <= 0 || m === 60) return '';", vers: "    if (m > 0) return '';" }] },
+  { nom: 'heure-pleine-dite', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    if (m <= 0 || m === 60) return '';", vers: "    if (m <= 0) return '';" }] },
+  { nom: 'joueurs-toujours-dits', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    return j > 0 && j !== Number(r.pax) ? gfPluriel(j, mots || ['joueur', 'joueurs']) : '';", vers: "    return j > 0 ? gfPluriel(j, mots || ['joueur', 'joueurs']) : '';" }] },
+  { nom: 'joueurs-jamais-dits', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    return j > 0 && j !== Number(r.pax) ? gfPluriel(j, mots || ['joueur', 'joueurs']) : '';", vers: "    return '';" }] },
+  { nom: 'illimite-oublie', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    return Boolean(f) && f.orderPolicy === 'open_window';", vers: '    return false;' }] },
+  { nom: 'illimite-par-partie', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: '    if (g.illimite) liste = liste.filter(function (e) { return !e.credit; }).slice(0, 1).concat(liste.filter(function (e) { return e.credit; }));\n', vers: '' }] },
+  { nom: 'vers-revient', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);", vers: "e.libre && !gfSeuleActivite(g) ? 'vers ' + gpHeure(debut) : gpHeure(debut);" }] },
+  { nom: 'colonne-fun-run', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "{ cle: 'funrun', titre: 'Pixel',", vers: "{ cle: 'funrun', titre: 'Fun Run'," }] },
+  { nom: 'jamais-pointe-gris', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    if (g.nonPointe && !e.fait && !e.credit) return 'retard';\n", vers: '' }] },
+  { nom: 'carte-sans-retard', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "      const retardClass = enRetardIci ? ' is-delayed is-en-retard' : '';", vers: "      const retardClass = '';" }] },
+  { nom: 'laser-sans-retard', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "    const etat = enRetard ? ' is-retard' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';", vers: "    const etat = (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';" }] },
+  { nom: 'absent-reste-tableau', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: PG, de: "    var tout = filtre === 'absent' ? duJour : duJour.filter(tientSesPlaces);", vers: '    var tout = duJour;' }] },
+  { nom: 'absent-reste-bowling', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "  const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling')", vers: "  const res = todaysReservations().filter(r => reservationMatchesStaffResource(r, 'bowling')" }] },
+  { nom: 'absent-reste-laser', lettre: 'X', scenarios: ['habitudes'], editions: [{ fichier: APP, de: "  const resas = todaysReservations().filter(tientSesPlaces);", vers: '  const resas = todaysReservations();' }] },
   // [A] la forme
   { nom: 'tous-les-boutons-pleins', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: PGC, de: '.gf-t .gf-r.is-premier .gf-gb--arrive { background: var(--accent);', vers: '.gf-t .gf-r .gf-gb--arrive { background: var(--accent);' }] },
   { nom: 'menu-reste-ouvert', lettre: 'A', scenarios: ['densite'], editions: [{ fichier: MENU, de: '    return grandTableau() ? !menuRouvertIci : readPreference();', vers: '    return readPreference();' }] },

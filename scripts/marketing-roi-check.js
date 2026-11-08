@@ -28,6 +28,7 @@ database.getPool = () => ({
   },
 });
 database.createCommunication = async (row) => { dbState.created.push(row); return { id: 4242, ...row }; };
+database.getReservationById = async (id) => (dbState.actuelle && Number(id) === dbState.actuelle.id ? dbState.actuelle : null);
 // Le followup termine par un dispatch immédiat : file vide, zéro DB.
 database.listDueCommunications = async () => [];
 
@@ -246,6 +247,13 @@ const opsJobs = require('../lib/ops-jobs');
   ok(tracked && /^[0-9a-f]{32}$/.test(tracked.payload.reviewToken || ''), 'token 128 bits généré');
   ok(tracked.body.includes(`/api/r?k=${tracked.payload.reviewToken}`) && tracked.body.includes('avis Google'), 'bouton avis tracké dans le mail');
   ok(tracked.payload.reviewUrl === 'https://g.page/r/fungalaxy-avis', 'destination stockée dans le payload (jamais dans l\'URL du lien)');
+
+  // Un groupe note « Pas venu » depuis la creation du job : ni merci, ni demande d avis.
+  dbState.actuelle = { id: 11, status: 'pending', absentAt: new Date().toISOString() };
+  dbState.created.length = 0;
+  const sansMerci = await followup({ payload: { reservation: { email: 'absent@test.be', name: 'Absent', centerId: 'libramont', id: 11, date: '2026-07-14' } } });
+  ok(sansMerci && sansMerci.skipped && sansMerci.reason === 'pas_venu' && dbState.created.length === 0, 'un groupe pas venu ne recoit ni merci ni demande d avis');
+  dbState.actuelle = null;
 
   if (failures) { console.error(`\nmarketing-roi-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nmarketing-roi-check: ALL OK');

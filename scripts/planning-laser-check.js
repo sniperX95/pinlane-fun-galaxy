@@ -9,7 +9,7 @@
 //       un vide, les departs joues replies puis rouverts ;
 //   [B] le prochain depart : l heure, le briefing, les armes a preparer, un
 //       groupe arrive dit « Ils sont N », « Arrivé » pose l arrivee (PATCH) ;
-//   [C] en jeu et retard : la partie de 15:00 et sa fin, « Dubois pas venus
+//   [C] en jeu et retard : la partie de 15:00 et sa fin, « Dubois attendus
 //       à 15:00 », « Décaler à 16:00 » demande 60 min, « Pas venus » pose
 //       l absence ;
 //   [D] placer au toucher : les departs possibles en bleu avec le compte
@@ -308,11 +308,11 @@ async function scenarios(browser, mutation = null) {
       ok(/En jeu/i.test(jeu) && /15:00/.test(jeu) && /fin dans 10 min/.test(jeu), '[C] la partie en jeu : 15:00, fin dans 10 min', jeu.replace(/\s+/g, ' ').slice(0, 120));
       const pasVenusOuverts = await page.$$eval('#laserPlanningGridWrap .lp-alerte', (a) => a.length);
       const bouton = await page.textContent('#laserPlanningGridWrap .lp-journee__h .lp-retards');
-      ok(pasVenusOuverts === 0 && /^1 groupe pas venu$/.test(bouton.replace(/\s+/g, ' ').trim()), '[C] le pas venu se replie sous « 1 groupe pas venu »', `${pasVenusOuverts} ouvert(s), « ${bouton.trim()} »`);
+      ok(pasVenusOuverts === 0 && /^1 groupe en retard$/.test(bouton.replace(/\s+/g, ' ').trim()), '[C] le retard se replie sous « 1 groupe en retard »', `${pasVenusOuverts} ouvert(s), « ${bouton.trim()} »`);
       await page.click('#laserPlanningGridWrap .lp-journee__h .lp-retards');
       await page.waitForTimeout(300);
       const bande = await page.textContent('#laserPlanningGridWrap .lp-alertes');
-      ok(/Dubois\s*pas venus à 15:00/.test(bande) && /Décaler à 16:00/.test(bande), '[C] « Dubois pas venus à 15:00 », « Décaler à 16:00 »', bande.replace(/\s+/g, ' ').slice(0, 120));
+      ok(/Dubois\s*attendus à 15:00/.test(bande) && /Décaler à 16:00/.test(bande), '[C] « Dubois attendus à 15:00 », « Décaler à 16:00 »', bande.replace(/\s+/g, ' ').slice(0, 120));
       await page.click('#laserPlanningGridWrap .lp-alerte .lp-btn--rouge');
       await page.waitForTimeout(500);
       const decaler = (await requetes(page)).find(q => q.corps && q.corps.action === 'delayImpact');

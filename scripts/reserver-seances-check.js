@@ -103,9 +103,10 @@ const FEN = 'lib/reserver-fenetre.js';
 // LA MUTATION : le code casse expres, une regle a la fois. `lettre` dit quel scenario
 // la juge, `bloc` le seul bloc a rejouer, `cible` le debut du libelle qui doit rougir.
 const MUTATIONS = [
-  { nom: 'seances-cachees', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: 'const RS_SEANCES = 6;', vers: 'const RS_SEANCES = 2;' },
+  { nom: 'seances-cachees', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: '  if (!choisie || liste.some((x) => x.heure === choisie)) return liste;', vers: '  if (!choisie || liste.some((x) => x.heure === choisie)) return liste.slice(0, 6);' },
+  { nom: 'reste-partout', lettre: 'S10', bloc: 'toutes', cible: '[S10] une heure qui tient : ce qui reste dans son nom', fichier: APP, de: '  x.mot = rsPeuDePlace(x.place) ? `reste ${x.place.libre}` : \'\';', vers: '  x.mot = x.reste;' },
   { nom: 'premiere-touche-perdue', lettre: 'S1', bloc: 'TC', cible: '[S1] TC', fichier: APP, de: "  champ.value = caractere;\n  zone.hidden = false;", vers: "  champ.value = '';\n  zone.hidden = false;" },
-  { nom: 'heure-sans-activite', lettre: 'S2', bloc: 'heure', cible: '[S2] un toucher sur une heure choisit l activite et l heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '' },
+  { nom: 'choisir-ajoute', lettre: 'S2', bloc: 'heure', cible: '[S2] « Choisir » prend le laser a la place du bowling propose', fichier: APP, de: '    rsPrendre(id, rsVariante(id));\n    if (!bonne', vers: '    rsBasculer(id, rsVariante(id));\n    if (!bonne' },
   { nom: 'doigt-oublie', lettre: 'S2', bloc: 'doigt', cible: '[S2] un doigt pose, rien ne bouge', fichier: APP, de: "  if (rsAppui) { rsRepeintRetenu = true; return; }\n  const overlay = document.getElementById('quickBookOverlay');", vers: "  const overlay = document.getElementById('quickBookOverlay');" },
   { nom: 'refus-sans-proche', lettre: 'S3', cible: '[S3] Créer propose « Prendre » l heure qui tient', fichier: APP, de: "  const proche = refuse && !s.forcer && !lot ? rsHeureProche() : '';", vers: "  const proche = '';" },
   { nom: 'proche-ignoree', lettre: 'S3', cible: '[S3] « Prendre » prend l heure qui tient d un toucher', fichier: APP, de: '    if (rsHeureProche()) rsPrendreProche();', vers: '    if (false) rsPrendreProche();' },
@@ -137,7 +138,8 @@ const MUTATIONS = [
   { nom: 'croix-absente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque ligne se retire d une croix', fichier: APP, de: "retirer: retirable ? 'rsRetirer(this.dataset.activite)' : ''", vers: "retirer: ''" },
   { nom: 'derniere-croix', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  const retirable = ids.length > 1;', vers: '  const retirable = true;' },
   { nom: 'derniere-tuile-muette', lettre: 'S9', bloc: 'tuiles', cible: '[S9] la derniere activite reste', fichier: APP, de: '  if (ids.length === 1 && ids[0] === id && rvModifiable()) { rsOuvrirLigne(id); return; }\n', vers: '' },
-  { nom: 'seance-remplace', lettre: 'S9', bloc: 'seances', cible: '[S9] une seance d une activite pas encore prise l ajoute a cette heure', fichier: APP, de: '    if (!pris) rsPrendre(id, variante);\n', vers: '    if (!pris) rsRemplacer(id, variante);\n' },
+  { nom: 'ajout-remplace', lettre: 'S9', bloc: 'seances', cible: '[S9] « Ajouter » prend le laser a la suite du bowling', fichier: APP, de: '    rsPrendre(id, rsVariante(id));\n    if (!bonne', vers: '    rsRemplacer(id, rsVariante(id));\n    if (!bonne' },
+  { nom: 'laser-jamais-replie', lettre: 'S9', bloc: 'seances', cible: '[S9] a cote du bowling choisi, le laser se replie', fichier: APP, de: '  return !rsAuTicket(id);\n}', vers: '  return false;\n}' },
   { nom: 'seance-retire-au-lieu-de-deplacer', lettre: 'S9', bloc: 'seances', cible: '[S9] une autre seance d une activite prise deplace son heure', fichier: APP, de: "    if (pris && heure === courante && b.q === 'activites') {", vers: "    if (pris && b.q === 'activites') {" },
   { nom: 'seance-reste', lettre: 'S9', bloc: 'seances', cible: '[S9] la meme seance touchee deux fois retire l activite', fichier: APP, de: '      if (ids.length > 1 && rsPeutChanger()) rsEnlever(id);', vers: '      if (false) rsEnlever(id);' },
   { nom: 'proposition-cochee', lettre: 'S9', bloc: 'seances', cible: '[S9] le bowling propose n est pas coche, choisi il l est', fichier: APP, de: '  const propose = pris && !rsCochee(id);', vers: '  const propose = false;' },
@@ -376,17 +378,18 @@ const TACHES = [
     jouer: async (t) => { await t.ouvrir(); await barre(t, '8 bowling demain 14h famille renard 0471 23 45 67'); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 8 && heureDe(r) === '14:00' && /Renard/i.test(r.name) && String(r.phone).replace(/\D/g, '').includes('471234567') && r.status === 'pending' },
   { id: 'T4', budget: 5, consigne: 'laser pour 12, deux parties, au prochain depart',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 12); await t.clic('[data-quoi="laser_game"][data-var="2"]'); await t.page.waitForSelector(seanceDe('laser_game')); await t.clic(`${seanceDe('laser_game')} >> nth=0`); await pret(t.page); await t.clic('#rvCreer'); },
+    // (le laser replie se prend d un toucher sur « Choisir » : le bowling propose lui cede sa
+    // place, a l heure qui tient la plus proche, le prochain depart)
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 12); await t.clic('[data-quoi="laser_game"][data-var="2"]'); await t.clic('#rsAjout-laser_game'); await t.page.waitForSelector(`${seanceDe('laser_game')}.is-on`); await pret(t.page); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 12 && a(r, 'laser') && heureDe(r) >= '15:30' },
   { id: 'T5', budget: 3, consigne: 'anniversaire, formule F3, 10 enfants, samedi 23 a 14:00, Lea',
     jouer: async (t) => { await t.ouvrir(); await barre(t, '10 f3 sam 14h Léa'); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-23' && r.pax === 10 && r.formule_id && heureDe(r) === '14:00' && /L[eé]a/i.test(r.name) },
-  // (chaque toucher ajoute : le laser touche apres le bowling s y ajoute, a la suite)
+  // (le laser replie s ajoute d un toucher sur « Ajouter », a la suite du bowling choisi)
   { id: 'T6', budget: 6, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
     jouer: async (t) => {
       await t.ouvrir(); await nombre(t, 8); await heureProche(t, 'bowling', '18:00');
-      await t.page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]');
-      await t.clic(`${seanceDe('laser_game')} >> nth=0`); await t.page.waitForSelector('#rsL-a-laser_game');
+      await t.clic('#rsAjout-laser_game'); await t.page.waitForSelector('#rsL-a-laser_game');
       await pret(t.page); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === JOUR && r.pax === 8 && a(r, 'bowling') && a(r, 'laser') },
@@ -481,8 +484,11 @@ async function scenarioS2(browser) {
     await page.locator('#rsHaut [data-pax="6"]').click();
     await pret(page);
     const avant = await visible(page, '#rsL-a-bowling');
+    // Le laser est replie a cote du bowling propose : « Choisir » le prend a sa place.
+    const bouton = await page.evaluate(() => ((document.getElementById('rsAjout-laser_game') || {}).textContent || '').trim());
+    await page.locator('#rsAjout-laser_game').click();
     await page.waitForSelector(`.rs-s-l[data-verifie="1"] ${seanceDe('laser_game').replace('.rs-seance ', '')}`);
-    const cle = page.locator(seanceDe('laser_game')).nth(1);
+    const cle = page.locator(`${seanceDe('laser_game')}:not(.is-on)`).nth(1);
     const heure = await cle.getAttribute('data-heure');
     await cle.click();
     await page.waitForSelector('#rsL-a-laser_game', { timeout: 4000 }).catch(() => {});
@@ -492,11 +498,11 @@ async function scenarioS2(browser) {
       choisie: (document.querySelector('#rvHeure-laser_game') || {}).dataset ? document.querySelector('#rvHeure-laser_game').dataset.heure : '',
       ligne: (document.querySelector('#rsL-a-laser_game') || {}).textContent || '',
     }));
-    ok(avant && apres.laser && !apres.bowling && apres.choisie === heure && apres.ligne.includes(heure), '[S2] un toucher sur une heure choisit l activite et l heure, au ticket', { heure, ...apres });
+    ok(avant && bouton === 'Choisir' && apres.laser && !apres.bowling && apres.choisie === heure && apres.ligne.includes(heure), '[S2] « Choisir » prend le laser a la place du bowling propose, un toucher sur son heure la choisit, au ticket', { bouton, heure, ...apres });
     await pret(page).catch(() => {});
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
-    ok(Boolean(r) && a(r, 'laser') && !a(r, 'bowling') && a(r, heure), '[S2] un toucher sur une heure choisit l activite et l heure, au dossier', resume(r));
+    ok(Boolean(r) && a(r, 'laser') && !a(r, 'bowling') && a(r, heure), '[S2] « Choisir » puis une heure : le laser a cette heure, au dossier', resume(r));
     await m.finir('S2 heure');
   }
   if (joue('doigt')) {
@@ -1124,15 +1130,21 @@ async function scenarioS9(browser) {
     await page.waitForTimeout(260);
     const choisi = await lireSeances(page);
     ok(propose.cocheBowling === '0' && choisi.bowling === hb && choisi.cocheBowling === '1', '[S9] le bowling propose n est pas coche, choisi il l est', { propose, choisi, hb });
-    // Une seance du laser, pas encore pris : il s ajoute a cette heure, apres le bowling.
-    await page.waitForSelector('.rs-s-l[data-verifie="1"] [data-activite="laser_game"]', { timeout: 8000 }).catch(() => {});
-    const premiere = page.locator(`#rsZ-laser_game .rs-h[data-heure]${QUI_TIENT}`).first();
-    const h1 = await premiere.getAttribute('data-heure');
-    await premiere.click();
+    // LE LASER PAS ENCORE PRIS SE REPLIE (2026-11-08, Ansar : « des fois ça prend
+    // automatiquemnet laser game aussi en meme temps ») : a cote du bowling choisi, aucune de
+    // ses heures ne se touche par megarde ; « Ajouter » le dit, et l ajoute a la suite.
+    const replie = await page.evaluate(() => ({
+      replie: Boolean(document.querySelector('#rsZ-laser_game .rs-seance.is-replie')),
+      heures: document.querySelectorAll('#rsZ-laser_game .rs-h[data-heure]').length,
+      bouton: ((document.getElementById('rsAjout-laser_game') || {}).textContent || '').trim(),
+    }));
+    ok(replie.replie && replie.heures === 0 && replie.bouton === 'Ajouter', '[S9] a cote du bowling choisi, le laser se replie : aucune heure a toucher, « Ajouter »', replie);
+    await page.locator('#rsAjout-laser_game').click();
     await page.waitForSelector('#rsL-a-laser_game', { state: 'attached', timeout: 4000 }).catch(() => {});
     await pret(page).catch(() => {});
     const ajoute = await lireSeances(page);
-    ok(JSON.stringify(ajoute.ids) === '["bowling","laser_game"]' && ajoute.laser === h1 && ajoute.ligneLaser.includes(h1) && ajoute.bowling === hb, '[S9] une seance d une activite pas encore prise l ajoute a cette heure', { hb, h1, ...ajoute });
+    const h1 = ajoute.laser;
+    ok(JSON.stringify(ajoute.ids) === '["bowling","laser_game"]' && Boolean(h1) && h1 > hb && ajoute.ligneLaser.includes(h1) && ajoute.bowling === hb, '[S9] « Ajouter » prend le laser a la suite du bowling, ses heures s ouvrent', { hb, h1, ...ajoute });
     // Une autre seance du laser le deplace ; la meme, touchee encore, le retire.
     const autre = page.locator(`#rsZ-laser_game .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).nth(1);
     const h2 = await autre.getAttribute('data-heure').catch(() => '');
@@ -1143,7 +1155,8 @@ async function scenarioS9(browser) {
     await page.locator(`#rsZ-laser_game .rs-h[data-heure="${h2}"]`).click({ timeout: 3000 }).catch(() => {});
     await pret(page).catch(() => {});
     const retire = await lireSeances(page);
-    ok(JSON.stringify(retire.ids) === '["bowling"]' && retire.bowling === hb, '[S9] la meme seance touchee deux fois retire l activite', retire);
+    const repli = await page.evaluate(() => Boolean(document.querySelector('#rsZ-laser_game .rs-seance.is-replie')));
+    ok(JSON.stringify(retire.ids) === '["bowling"]' && retire.bowling === hb && repli, '[S9] la meme seance touchee deux fois retire l activite, son bloc se replie', { ...retire, repli });
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && r.type === 'bowling' && heureDe(r) === hb && r.pax === 8, '[S9] le dossier cree est le bowling a son heure, sans le laser retire', resume(r));
@@ -1218,7 +1231,6 @@ async function huitJoueurs(page) {
   await page.locator('.btn-new').click();
   await page.locator('#rsHaut [data-pax="8"]').click();
   await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
-  await page.waitForSelector('#rsZ-laser_game .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(300);
 }
 
@@ -1235,42 +1247,52 @@ async function scenarioS10(browser) {
     const m = await ouvrirConsole(browser);
     const { page } = m;
     await huitJoueurs(page);
+    // TOUTE LA JOURNEE (2026-11-08, Ansar : « ça propose des horaires chiants ») : la rangee
+    // du bowling va de la seance en cours a la derniere heure qui finit a la fermeture, sans
+    // trou ; le soir n est plus derriere « Autres ».
     const bowling = await lireHeures(page, '#rsZ-bowling .rs-h[data-heure]');
-    const laser = await lireHeures(page, '#rsZ-laser_game .rs-h[data-heure]');
     const sb = await verdictsDuServeur(page, 'bowling');
-    const sl = await verdictsDuServeur(page, 'laser_game');
     const hb = bowling.map((x) => x.heure);
-    const hl = laser.map((x) => x.heure);
-    // A 15:10 : le bowling part de la seance en cours, le laser de la suivante (une partie
-    // commencee ne se rejoint pas).
-    ok(hb.length === 6 && hb[0] === '15:00' && demiHeures(hb) && hl.length === 6 && hl[0] === '15:30' && demiHeures(hl), '[S10] la rangee montre chaque demi-heure, sans trou', { bowling: hb, laser: hl });
-    const lues = [...bowling.map((x) => ({ ...x, id: 'bowling', v: sb[x.heure] })), ...laser.map((x) => ({ ...x, id: 'laser_game', v: sl[x.heure] }))];
-    const refusees = lues.filter((x) => x.v && x.v.statut === 'ko');
-    ok(refusees.length >= 2 && lues.some((x) => x.v && x.v.statut !== 'ko'), '[S10] MONTAGE : le serveur refuse des heures de la rangee et en garde', lues.map((x) => `${x.heure} ${x.v ? x.v.statut : '?'}`));
-    ok(lues.every((x) => commeLeServeur(x, x.v)), '[S10] une heure qui coince le dit sur l heure : le mot et la phrase du serveur', lues.filter((x) => !commeLeServeur(x, x.v)).map((x) => ({ id: x.id, heure: x.heure, lu: x.mot, coince: x.coince, serveur: x.v })));
+    const fin = await page.evaluate(() => { const sch = getSchedule(quickBookState.date, state.isHolidayMode); return numToTime(Math.floor((sch.close - rvBowlingDuree()) * 2) / 2); });
+    ok(hb[0] === '15:00' && hb[hb.length - 1] === fin && demiHeures(hb), '[S10] la rangee montre chaque demi-heure, sans trou, jusqu a la derniere', { bowling: hb, fin });
     // Le mot d une heure du bowling : les pistes qui restent a cette heure, celles que le
     // planning de la console compte (la meme journee), sur celles qu il faut au groupe.
+    const refuseesB = bowling.filter((x) => sb[x.heure] && sb[x.heure].statut === 'ko');
     const pistes = await page.evaluate((heures) => heures.map((h) => {
       const { besoin, libres } = rsDansLaCopie('bowling', () => rvPistesDuBowling(h));
       return { h, attendu: libres ? `manque ${Math.max(1, besoin - libres)} piste${Math.max(1, besoin - libres) > 1 ? 's' : ''}` : 'complet' };
-    }), refusees.filter((x) => x.id === 'bowling' && /piste/i.test(x.v.raison)).map((x) => x.heure));
+    }), refuseesB.filter((x) => /piste/i.test(sb[x.heure].raison)).map((x) => x.heure));
     const motsBowling = Object.fromEntries(bowling.map((x) => [x.heure, x.mot]));
     ok(pistes.length > 0 && pistes.some((p) => p.attendu !== 'complet') && pistes.every((p) => motsBowling[p.h] === p.attendu), '[S10] le mot dit les pistes qui restent, celles du planning, sur celles qu il faut', { pistes, lus: motsBowling });
-    // « Autres » : toute la journee du bowling, de la seance en cours a la derniere heure qui
-    // finit a la fermeture, chacune comme le serveur la juge.
+    // PEU DE PLACE SEULEMENT : une heure qui tient ne dit ce qui reste que s il en reste deux
+    // pistes ou moins ; son nom le dit toujours en entier.
+    const tiennent = bowling.filter((x) => sb[x.heure] && sb[x.heure].statut !== 'ko');
+    ok(tiennent.length > 0 && tiennent.every((x) => /reste \d+ pistes?/.test(x.nom) && (x.mot === '' || /^reste [0-2]$/.test(x.mot))), '[S10] une heure qui tient : ce qui reste dans son nom, sur la touche seulement quand il en reste peu', tiennent.map((x) => ({ heure: x.heure, mot: x.mot, nom: x.nom })));
+    // « Autres » : toute la journee du bowling, chacune comme le serveur la juge.
     await page.locator('.rs-h-autres[data-activite="bowling"]').click();
     await page.waitForSelector('.rs-heures .rs-h.is-coince', { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(300);
     const toutes = await lireHeures(page, '.rs-heures .rs-h[data-heure]');
-    // La derniere demi-heure dont la partie finit a la fermeture.
-    const fin = await page.evaluate(() => { const sch = getSchedule(quickBookState.date, state.isHolidayMode); return numToTime(Math.floor((sch.close - rvBowlingDuree()) * 2) / 2); });
     const ht = toutes.map((x) => x.heure);
     ok(ht[0] === '15:00' && ht[ht.length - 1] === fin && demiHeures(ht) && toutes.every((x) => commeLeServeur(x, sb[x.heure])), '[S10] « Autres » montre toute la journee, chaque heure comme le serveur la juge', { premiere: ht[0], derniere: ht[ht.length - 1], fin, faux: toutes.filter((x) => !commeLeServeur(x, sb[x.heure])).map((x) => ({ heure: x.heure, lu: x.mot, coince: x.coince, serveur: sb[x.heure] })) });
-    // Celle du laser, a la suite du bowling : toute son horloge, celles d avant la rangee
-    // comprises (la seance en cours), que le serveur lit aussi : aucune ne reste grisee en
-    // attendant une reponse qui ne vient pas.
     await page.locator('#rsRetour').click();
     await page.waitForSelector('.is-q-activites');
+    // Le laser, choisi a la place du bowling propose : sa rangee part de la partie suivante
+    // (une partie commencee ne se rejoint pas) et va jusqu a sa derniere heure.
+    await page.locator('#rsAjout-laser_game').click();
+    await page.waitForSelector('#rsZ-laser_game .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const laser = await lireHeures(page, '#rsZ-laser_game .rs-h[data-heure]');
+    const sl = await verdictsDuServeur(page, 'laser_game');
+    const hl = laser.map((x) => x.heure);
+    const finLaser = await page.evaluate(() => rvHeuresHorloge('laser_game').slice(-1)[0]);
+    ok(hl[0] === '15:30' && hl[hl.length - 1] === finLaser && demiHeures(hl), '[S10] la rangee du laser : de la partie suivante a sa derniere heure, sans trou', { laser: hl, finLaser });
+    const lues = [...bowling.map((x) => ({ ...x, id: 'bowling', v: sb[x.heure] })), ...laser.map((x) => ({ ...x, id: 'laser_game', v: sl[x.heure] }))];
+    const refusees = lues.filter((x) => x.v && x.v.statut === 'ko');
+    ok(refusees.length >= 2 && lues.some((x) => x.v && x.v.statut !== 'ko'), '[S10] MONTAGE : le serveur refuse des heures de la rangee et en garde', lues.map((x) => `${x.id} ${x.heure} ${x.v ? x.v.statut : '?'}`));
+    ok(lues.every((x) => commeLeServeur(x, x.v)), '[S10] une heure qui coince le dit sur l heure : le mot et la phrase du serveur', lues.filter((x) => !commeLeServeur(x, x.v)).map((x) => ({ id: x.id, heure: x.heure, lu: x.mot, coince: x.coince, serveur: x.v })));
+    // Celle du laser : toute son horloge, celles d avant la rangee comprises (la seance en
+    // cours), que le serveur lit aussi : aucune ne reste grisee en attendant une reponse.
     await page.locator('.rs-h-autres[data-activite="laser_game"]').click();
     await page.waitForSelector('.rs-heures .rs-h[data-heure]', { timeout: 8000 });
     await page.waitForFunction(() => !document.querySelector('.rs-heures .rs-h.is-efface[data-heure]'), null, { timeout: 8000 }).catch(() => {});

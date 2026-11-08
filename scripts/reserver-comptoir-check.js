@@ -758,9 +758,11 @@ async function scenarioD6(browser, v) {
     await clic(clics, page.locator('#planningReserver'), 'Réservation');
     await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs', { timeout: 8000 });
     await clic(clics, page.locator('#quickBookOverlay #rsHaut [data-pax="12"]'), '12');
-    // Le laser a ses seances sur l ecran d accueil : un toucher sur 16:30 choisit le
-    // laser et l heure d un coup. Si 16:30 n est pas parmi les seances montrees, on
-    // passe par « Autres », comme au comptoir (un geste de plus, compte).
+    // Le laser est replie a cote du bowling propose : « Choisir » le prend a sa place
+    // (2026-11-08), puis un toucher sur 16:30 choisit l heure ; toute la journee est la.
+    // Si 16:30 n est pas parmi les seances montrees, on passe par « Autres », comme au
+    // comptoir (un geste de plus, compte).
+    await clic(clics, page.locator('#quickBookOverlay #rsAjout-laser_game'), 'Choisir (laser)');
     await page.waitForSelector('#quickBookOverlay #rsZ-laser_game .rs-s-l .rs-h-autres', { timeout: 6000 });
     const seance = page.locator('#quickBookOverlay #rsZ-laser_game .rs-h[data-heure="16:30"]');
     if (await seance.first().isVisible().catch(() => false)) {
@@ -770,7 +772,7 @@ async function scenarioD6(browser, v) {
       await clic(clics, page.locator('#quickBookOverlay .rs-heures .rs-h[data-heure="16:30"]'), '16:30');
     }
     const compo = await page.evaluate(() => rvActivites());
-    v('D6', JSON.stringify(compo) === '["laser_game"]', 'un toucher sur « laser » compose un laser seul (le bowling de depart n etait qu une proposition)', JSON.stringify(compo));
+    v('D6', JSON.stringify(compo) === '["laser_game"]', '« Choisir » sur le laser compose un laser seul (le bowling de depart n etait qu une proposition)', JSON.stringify(compo));
     await planPose(page, true);
     await capture(page, 'D6-laser-12-1630');
     await clic(clics, page.locator('#rvCreer'), 'Créer');
@@ -1220,7 +1222,7 @@ const MUTATIONS = [
   { nom: 'programme-en-ecart', cote: 'front', vise: ['D10'], edits: [e(APP, '  if (plan.avertissement) ecarts.push(plan.avertissement);\n  (plan.aSurveiller', "  if (plan.avertissement) ecarts.push(plan.avertissement);\n  (plan.etapes || []).filter((x) => !rvActivites().includes(x.activite) && x.libelle && !/accueil/i.test(x.libelle)).forEach((x) => ecarts.push(`Aussi au programme : ${x.libelle} à ${x.debut}`));\n  (plan.aSurveiller")] },
   // (le recu de la page Total, rsRecuHtml)
   { nom: 'detail-a-la-carte', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (f) {\n    const quantite = f.type === 'per_lane'", "  if (f && !s.adaptee) {\n    const quantite = f.type === 'per_lane'")] },
-  { nom: 'main-pour-toutes', cote: 'front', vise: ['D10'], edits: [e(APP, "        : aLaMain.length >= pistes.length ? ', choisies à la main'", "        : true ? ', choisies à la main'")] },
+  { nom: 'main-pour-toutes', cote: 'front', vise: ['D10'], edits: [e(APP, "        : aLaMain.length >= pistes.length ? (pistes.length > 1 ? ', choisies à la main' : ', choisie à la main')", "        : true ? (pistes.length > 1 ? ', choisies à la main' : ', choisie à la main')")] },
   // (la porte Formules ne fait qu ouvrir la page : seule une formule touchee change la
   // composition, rsFormule)
   { nom: 'formule-efface', cote: 'front', vise: ['D10'], edits: [e(APP, 'id="rsFormules" onclick="rsOuvrir(\'formules\')"', 'id="rsFormules" onclick="rvModeFormule(); rsOuvrir(\'formules\')"')] },

@@ -104,7 +104,7 @@ const FEN = 'lib/reserver-fenetre.js';
 // la juge, `bloc` le seul bloc a rejouer, `cible` le debut du libelle qui doit rougir.
 const MUTATIONS = [
   { nom: 'seances-cachees', lettre: 'S10', bloc: 'toutes', cible: '[S10] la rangee montre chaque demi-heure, sans trou', fichier: APP, de: '  if (!choisie || liste.some((x) => x.heure === choisie)) return liste;', vers: '  if (!choisie || liste.some((x) => x.heure === choisie)) return liste.slice(0, 6);' },
-  { nom: 'reste-partout', lettre: 'S10', bloc: 'toutes', cible: '[S10] une heure qui tient : ce qui reste dans son nom', fichier: APP, de: '  x.mot = rsPeuDePlace(x.place) ? `reste ${x.place.libre}` : \'\';', vers: '  x.mot = x.reste;' },
+  { nom: 'reste-muet', lettre: 'S10', bloc: 'toutes', cible: '[S10] une heure qui tient : ce qui reste sur la touche', fichier: APP, de: '  x.mot = x.place && !x.place.manque ? `reste ${x.place.libre}` : \'\';', vers: '  x.mot = \'\';' },
   { nom: 'premiere-touche-perdue', lettre: 'S1', bloc: 'TC', cible: '[S1] TC', fichier: APP, de: "  champ.value = caractere;\n  zone.hidden = false;", vers: "  champ.value = '';\n  zone.hidden = false;" },
   { nom: 'choisir-ajoute', lettre: 'S2', bloc: 'heure', cible: '[S2] « Choisir » prend le laser a la place du bowling propose', fichier: APP, de: '    rsPrendre(id, rsVariante(id));\n    if (!bonne', vers: '    rsBasculer(id, rsVariante(id));\n    if (!bonne' },
   { nom: 'doigt-oublie', lettre: 'S2', bloc: 'doigt', cible: '[S2] un doigt pose, rien ne bouge', fichier: APP, de: "  if (rsAppui) { rsRepeintRetenu = true; return; }\n  const overlay = document.getElementById('quickBookOverlay');", vers: "  const overlay = document.getElementById('quickBookOverlay');" },
@@ -1264,10 +1264,12 @@ async function scenarioS10(browser) {
     }), refuseesB.filter((x) => /piste/i.test(sb[x.heure].raison)).map((x) => x.heure));
     const motsBowling = Object.fromEntries(bowling.map((x) => [x.heure, x.mot]));
     ok(pistes.length > 0 && pistes.some((p) => p.attendu !== 'complet') && pistes.every((p) => motsBowling[p.h] === p.attendu), '[S10] le mot dit les pistes qui restent, celles du planning, sur celles qu il faut', { pistes, lus: motsBowling });
-    // PEU DE PLACE SEULEMENT : une heure qui tient ne dit ce qui reste que s il en reste deux
-    // pistes ou moins ; son nom le dit toujours en entier.
+    // CE QUI RESTE SOUS CHAQUE HEURE (2026-11-08, Ansar : « jaimais bien quand sur les heures
+    // yavais ce qui reste comme dispo ») : une heure qui tient dit « reste N » sur la touche,
+    // et son nom dit le meme nombre en entier (« reste N pistes »).
     const tiennent = bowling.filter((x) => sb[x.heure] && sb[x.heure].statut !== 'ko');
-    ok(tiennent.length > 0 && tiennent.every((x) => /reste \d+ pistes?/.test(x.nom) && (x.mot === '' || /^reste [0-2]$/.test(x.mot))), '[S10] une heure qui tient : ce qui reste dans son nom, sur la touche seulement quand il en reste peu', tiennent.map((x) => ({ heure: x.heure, mot: x.mot, nom: x.nom })));
+    const resteLu = (x) => (x.mot.match(/^reste (\d+)$/) || [])[1];
+    ok(tiennent.length > 0 && tiennent.every((x) => resteLu(x) !== undefined && x.nom.includes(`reste ${resteLu(x)} piste`)), '[S10] une heure qui tient : ce qui reste sur la touche, le meme nombre en entier dans son nom', tiennent.map((x) => ({ heure: x.heure, mot: x.mot, nom: x.nom })));
     // « Autres » : toute la journee du bowling, chacune comme le serveur la juge.
     await page.locator('.rs-h-autres[data-activite="bowling"]').click();
     await page.waitForSelector('.rs-heures .rs-h.is-coince', { timeout: 8000 }).catch(() => {});

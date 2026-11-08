@@ -23,6 +23,9 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
   // La table des gestes de l ecran (2026-11-07) : ce bac a tous les droits,
   // comme quand ces fonctions lisaient canUseStaffPermission absent.
   peutGeste: () => true,
+  // Les pistes de la visite suivent ses joueurs (2026-11-08, reconcileQuickLaneSelection) :
+  // ce bac ne pose aucune piste, il n y a rien a suivre.
+  reconcileQuickLaneSelection: () => {},
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;

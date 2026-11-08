@@ -2183,9 +2183,16 @@ async function main() {
     // blocs Bowling et Laser portent leurs touches Joueurs et Pistes, six de plus : le
     // lancement mesure 51 sur la machine GitHub, son plafond passe a 54. Les autres cas
     // restent sous le leur.
-    const PLAFOND_GENERIQUE = 55;
-    const PLAFOND_CASE = 55;
-    const PLAFOND_LASER = 55;
+    // Le 2026-11-08 (Ansar : « ça propose des horaires chiants »), la rangee d une seance
+    // montre toute la journee, de la seance en cours a la derniere heure qui tient avant la
+    // fermeture : 27 heures un samedi au lieu de la fenetre de six, et le laser a plusieurs
+    // parties ajoute la rangee de chaque partie. L activite pas encore au ticket se replie
+    // en un bouton. Mesure du jour, meme vitrine : generique 66, case 66, laser 72 (ses
+    // 27 heures et les six de la partie 2), lancement 41, formule 38. Les trois premiers
+    // passent a la mesure plus trois ; les deux autres restent sous le leur.
+    const PLAFOND_GENERIQUE = 69;
+    const PLAFOND_CASE = 69;
+    const PLAFOND_LASER = 75;
     const PLAFOND_LANCEMENT = 54;
     const PLAFOND_FORMULE = 42;
     // Une condition qui tient : au delai, relue une fois (un gel de la machine

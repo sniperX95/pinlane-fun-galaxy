@@ -181,10 +181,10 @@ async function lesDeuxOuverts(page) {
   if (await page.locator('#rsAjout-laser_game').count()) { await page.locator('#rsAjout-laser_game').click(); await C.pret(page); }
   await verifie(page, 'laser_game');
 }
-// Ce que la touche ecrit : rien quand il reste de la place, « reste 2 » quand il en reste peu
-// (2 pistes, 6 armes) ; son nom dit toujours tout (« reste 5 pistes »).
-const RESTE_PEU = { piste: 2, arme: 6 };
-const ecritSurLaTouche = (n, unite) => (n <= RESTE_PEU[unite] ? `reste ${n}` : '');
+// Ce que la touche ecrit : ce qui reste, toujours (2026-11-08, Ansar : « jaimais bien quand
+// sur les heures yavais ce qui reste comme dispo »), en court (« reste 5 ») ; son nom dit
+// tout (« reste 5 pistes »).
+const ecritSurLaTouche = (n) => `reste ${n}`;
 const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(`#rsZ-${i} .rs-h[data-heure]`)].map((b) => ({
   heure: b.dataset.heure,
   coince: b.classList.contains('is-coince') || b.classList.contains('is-ko'),
@@ -265,15 +265,15 @@ async function scenarioA(browser) {
     const lireB = async (joueursParPiste, minutes, pistes) => (await heures(page, 'bowling')).filter((x) => !x.coince && !x.efface).map((x) => {
       const n = Math.max(0, 8 - pistesPrises(enMin(x.heure), minutes).size - pistes);
       const attendu = `reste ${n} piste${n > 1 ? 's' : ''}`;
-      return { heure: x.heure, lu: x.mot, attendu, ecrit: ecritSurLaTouche(n, 'piste'), juste: x.mot === ecritSurLaTouche(n, 'piste') && x.nom.includes(attendu), garde: x.garde, nom: x.nom };
+      return { heure: x.heure, lu: x.mot, attendu, ecrit: ecritSurLaTouche(n), juste: x.mot === ecritSurLaTouche(n) && x.nom.includes(attendu), garde: x.garde, nom: x.nom };
     });
     const b7 = await lireB(6, 60, 2);
-    ok(b7.length > 0 && b7.every((x) => x.juste), '[A] chaque heure du bowling dit ce qui reste apres le groupe : son nom en entier, la touche quand il en reste peu', b7);
+    ok(b7.length > 0 && b7.every((x) => x.juste), '[A] chaque heure du bowling dit ce qui reste apres le groupe : sur la touche, et son nom en entier', b7);
     ok(b7.every((x) => x.garde === ''), '[A] sans client sur internet, aucune touche ne dit « en attente »', b7.map((x) => x.garde));
     const lireL = async (joueurs) => (await heures(page, 'laser_game')).filter((x) => !x.coince && !x.efface).map((x) => {
       const reste = Math.max(0, 30 - armesPrises(enMin(x.heure)) - joueurs);
       const attendu = `reste ${reste} arme${reste > 1 ? 's' : ''}`;
-      return { heure: x.heure, lu: x.mot, attendu, juste: x.mot === ecritSurLaTouche(reste, 'arme') && x.nom.includes(attendu) };
+      return { heure: x.heure, lu: x.mot, attendu, juste: x.mot === ecritSurLaTouche(reste) && x.nom.includes(attendu) };
     });
     const l7 = await lireL(7);
     ok(l7.length > 0 && l7.every((x) => x.juste), '[A] chaque heure du laser dit ce qui reste apres le groupe', l7);

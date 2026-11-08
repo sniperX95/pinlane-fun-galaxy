@@ -868,6 +868,19 @@ async function scenarioD8(browser, v) {
     v('D8', visee === 'h:18:30' && heure === '18:30' && /^(#rvHeure-bowling|h):\d{2}:\d{2}$/.test(apres) && nouvelles.length === 0, 'Entree sur une heure atteinte au clavier la pose (sans creer), le focus reste sur les seances (pas sur la fenetre)', `${visee} > ${heure}, focus ${apres}, ${nouvelles.length} cree(s)`);
     v('D8', apres === '#rvHeure-bowling:18:30', 'apres Entree, le focus est sur l heure choisie', `focus ${apres}`);
     await capture(page, 'D8-clavier', '#rvHeure-bowling');
+    // LA RANGEE QUI BOUGE SOUS LE FOCUS. Toute la journee est a l ecran (2026-11-08) : la
+    // rangee ne glisse plus quand l heure change. Elle bouge encore quand son debut change
+    // (le jour, la seance en cours qui passe) : chaque touche gardee dit alors une autre
+    // heure, et le focus suit l heure, pas la place.
+    const premiere = () => page.evaluate(() => { const b = document.querySelector('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]'); return b ? b.dataset.heure : ''; });
+    const debutAvant = await premiere();
+    const lendemain = await page.evaluate((jour) => { const d = new Date(`${jour}T12:00:00`); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }, JOUR);
+    await page.evaluate((jour) => rsJour(jour), lendemain);
+    await planPose(page).catch(() => {});
+    await page.waitForTimeout(400);
+    const debutApres = await premiere();
+    const suivi = await focus();
+    v('D8', debutApres !== debutAvant && /:18:30$/.test(suivi), 'le jour change sous le focus, la rangee commence ailleurs : le focus reste sur 18:30', `${debutAvant} > ${debutApres}, focus ${suivi}`);
     v('*', erreurs.length === 0, 'zero erreur JS ni console [D8]', erreurs.slice(0, 2).join(' | '));
   } finally { await context.close(); }
 }
@@ -982,7 +995,7 @@ async function lirePistes(page) {
   return page.evaluate(() => ({
     touches: [...document.querySelectorAll('#quickBookOverlay [data-pistes]')].map((b) => ({ n: Number(b.dataset.pistes), texte: ((b.querySelector('b') || {}).textContent || '').trim(), on: b.getAttribute('aria-pressed') === 'true', sous: ((b.querySelector('small') || {}).textContent || '').trim() })),
     tete: ((document.querySelector('#quickBookOverlay .rs-seance.is-page .rs-s-n small') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
-    heures: [...document.querySelectorAll('#quickBookOverlay [data-heure-l]')].map((b) => ({ h: b.dataset.heureL, mot: ((b.querySelector('small') || {}).textContent || '').trim() })),
+    heures: [...document.querySelectorAll('#quickBookOverlay [data-heure-l]')].map((b) => ({ h: b.dataset.heureL, mot: ((b.querySelector('small') || {}).textContent || '').trim(), nom: b.getAttribute('aria-label') || '' })),
   }));
 }
 
@@ -1041,10 +1054,14 @@ async function scenarioD10(browser, v) {
     const conseillee5 = (p5.touches.find((t) => t.sous === 'conseillé') || {}).n || 0;
     v('D10', prise5 > 0 && prise5 === conseillee5 && prise5 === new Set(plan5).size, 'les pistes conseillees sont celles que le plan pose', `${JSON.stringify(p5.touches.map((t) => `${t.texte}${t.on ? '*' : ''}${t.sous ? ` (${t.sous})` : ''}`))} | plan ${JSON.stringify(plan5)}`);
     const libresTete = (p5.tete.match(/(\d+) pistes? libres?/) || [])[1];
-    const motDix8 = (p5.heures.find((x) => x.h === '18:00') || {}).mot || '';
-    // Ce qui RESTERA apres ce groupe (2026-11-05) : 8 pistes, une pour lui, il en reste 7.
-    const libresHeure = (motDix8.match(/^reste (\d+) pistes?$/) || [])[1];
-    v('D10', Boolean(libresHeure) && libresHeure === '7' && (!libresTete || libresTete === '8'), 'sur une journee vide, la ligne dit ce qui restera apres le groupe : 7 pistes sur 8', `tete « ${p5.tete} » | 18:00 « ${motDix8} »`);
+    const dix8 = p5.heures.find((x) => x.h === '18:00') || {};
+    const motDix8 = dix8.mot || '';
+    // Ce qui RESTERA apres ce groupe (2026-11-05) : 8 pistes, une pour lui, il en reste 7. La
+    // touche le dit en court (« reste 7 », 2026-11-08 : toute la journee tient dans des
+    // touches plus petites), son nom en entier (« reste 7 pistes »).
+    const libresHeure = (motDix8.match(/^reste (\d+)$/) || [])[1];
+    const libresNom = ((dix8.nom || '').match(/reste (\d+) pistes?/) || [])[1];
+    v('D10', libresHeure === '7' && libresNom === '7' && (!libresTete || libresTete === '8'), 'sur une journee vide, la ligne dit ce qui restera apres le groupe : 7 pistes sur 8', `tete « ${p5.tete} » | 18:00 « ${motDix8} » nom « ${dix8.nom || ''} »`);
     // 4. Le haut et le bas du ticket disent le meme etat.
     const c1 = await memeEtat(page);
     v('D10', c1.meme, 'le verdict et le pied ont la meme couleur (bowling 5)', JSON.stringify(c1));

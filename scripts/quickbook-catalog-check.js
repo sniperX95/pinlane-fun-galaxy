@@ -157,7 +157,10 @@ async function main() {
     };
     const ajouter = async (id) => {
       await activites();
-      await page.click(['bowling', 'laser_game'].includes(id) ? `#rsZ-${id} .rs-h[data-heure] >> nth=0` : `#rsT-${id}`);
+      // Une seance pas encore au ticket est repliee (2026-11-08) : son bouton l ajoute.
+      const seance = ['bowling', 'laser_game'].includes(id);
+      const repliee = seance && (await page.locator(`#rsAjout-${id}`).count()) > 0;
+      await page.click(repliee ? `#rsAjout-${id}` : seance ? `#rsZ-${id} .rs-h[data-heure] >> nth=0` : `#rsT-${id}`);
       await page.waitForSelector(`#rsL-a-${id}`, { timeout: 3000 }).catch(() => {});
       await page.waitForTimeout(300);
     };

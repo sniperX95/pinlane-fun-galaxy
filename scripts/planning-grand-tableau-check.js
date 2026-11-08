@@ -239,6 +239,10 @@ async function densite(browser) {
     const v0 = await vue(page);
     ok(v0.total === GROUPES_DU_PIC, `[A] le grand tableau est monte : ${GROUPES_DU_PIC} groupes sur ${GROUPES_DU_PIC}`, v0.total);
     ok(v0.defile <= 0, '[A] pas de defilement de cote', v0.defile);
+    // L equipe a choisi le menu ouvert (il est replie par defaut depuis le 2026-11-08) : le
+    // grand tableau le replie quand meme, sans toucher a ce choix.
+    await page.evaluate(() => setStaffMenuCollapsed(false));
+    await FX.repos(page, 300);
     const g = await page.evaluate(() => {
       const tout = (s) => Array.from(document.querySelectorAll(s));
       const r = {};
@@ -246,7 +250,7 @@ async function densite(browser) {
       const rail = document.querySelector('.ops-sidebar').getBoundingClientRect();
       r.bord = { gauche: Math.round(t.left - rail.right), droite: Math.round(document.body.getBoundingClientRect().right - t.right), rail: Math.round(rail.width) };
       r.collapsed = document.body.classList.contains('staff-menu-collapsed');
-      r.pref = Boolean(state.staffMenuCollapsed);
+      r.ouvert = state.staffMenuOuvert === true;
       r.lignesDEnTete = tout('.gf-demi').length;
       r.cases = tout('tr:not(.gf-libre) > td.gf-bloc[data-gf-bloc]').length;
       r.demiHeures = new Set(tout('.gf-r td.gf-h').map((td) => { const h = (td.querySelector('b') || {}).textContent || td.getAttribute('data-gf-heure'); const [a, b] = h.split(':').map(Number); return a * 2 + (b >= 30 ? 1 : 0); })).size;
@@ -269,7 +273,7 @@ async function densite(browser) {
     ok(g.bord.gauche >= 0 && g.bord.gauche <= 8 && g.bord.droite >= 0 && g.bord.droite <= 8, '[A] le tableau va bord a bord, du menu au bord de l ecran', g.bord);
     ok(g.lignesDEnTete === 0 && g.cases === g.demiHeures && g.cases > 0, '[A] plus de rangee d en-tete : une grande case par demi-heure', { lignes: g.lignesDEnTete, cases: g.cases, demiHeures: g.demiHeures });
     ok(g.premier.length === 1 && g.nbAutres > 0 && g.fondsAutres.length === 1 && g.fondsAutres[0] !== g.fondPremier, '[A] un seul bouton plein, le premier « Arrivé » a faire', { premier: g.premier, plein: g.fondPremier, autres: g.fondsAutres });
-    ok(g.collapsed && g.bord.rail <= 80 && g.pref === false, '[A] le menu est une barre d icones, le choix de l equipe n a pas bouge', { rail: g.bord.rail, pref: g.pref });
+    ok(g.collapsed && g.bord.rail <= 80 && g.ouvert === true, '[A] le menu est une barre d icones, le choix de l equipe n a pas bouge', { rail: g.bord.rail, ouvert: g.ouvert });
     ok(g.tailleMin >= 12, '[A] rien sous 12 px', g.tailleMin);
     // (une ligne reste legere : sur ce plafond, 46 groupes tiennent en moins de 1 500
     // elements. Mesure 2026-11-02 : 29 par ligne, huit colonnes d activite comprises.)
@@ -465,9 +469,13 @@ async function plein(browser) {
 // ---------------------------------------------------------------------------
 async function menu(browser) {
   await avec(browser, { lettre: 'G' }, async (page) => {
-    const lire = () => page.evaluate(() => ({ collapsed: document.body.classList.contains('staff-menu-collapsed'), large: document.body.classList.contains('gf-large'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), vue: state.staffResourceView, pref: Boolean(state.staffMenuCollapsed), barre: getComputedStyle(document.getElementById('planningBarre')).display, champ: getComputedStyle(document.getElementById('gfRecherche')).display }));
+    const lire = () => page.evaluate(() => ({ collapsed: document.body.classList.contains('staff-menu-collapsed'), large: document.body.classList.contains('gf-large'), rail: Math.round(document.querySelector('.ops-sidebar').getBoundingClientRect().width), vue: state.staffResourceView, ouvert: state.staffMenuOuvert === true, barre: getComputedStyle(document.getElementById('planningBarre')).display, champ: getComputedStyle(document.getElementById('gfRecherche')).display }));
+    // L equipe a choisi le menu ouvert (replie par defaut depuis le 2026-11-08) : le grand
+    // tableau le replie quand meme, sans toucher a ce choix.
+    await page.evaluate(() => setStaffMenuCollapsed(false));
+    await FX.repos(page, 300);
     const barre = await lire();
-    ok(barre.collapsed && barre.large && barre.rail <= 80, '[G] le montage : le grand tableau, le menu en barre', barre);
+    ok(barre.collapsed && barre.large && barre.rail <= 80 && barre.ouvert, '[G] le montage : le grand tableau, le menu en barre', barre);
     await page.locator('[data-fgx-menu-toggle="planning"]').first().click();
     await FX.repos(page, 200);
     const pop = await page.evaluate(() => { const p = document.querySelector('.fgx-menu-popover.planning'); return p ? p.textContent.replace(/\s+/g, ' ') : ''; });
@@ -475,18 +483,18 @@ async function menu(browser) {
     await page.locator('.fgx-menu-popover.planning [data-ops-resource="bowling"]').click();
     await FX.repos(page, 400);
     const bowling = await lire();
-    ok(bowling.vue === 'bowling' && bowling.collapsed && bowling.large && bowling.rail <= 80 && !bowling.pref && bowling.champ !== 'none' && bowling.barre !== 'none', '[G] Bowling : la meme barre, le meme menu replie, le choix de l equipe n a pas bouge', bowling);
+    ok(bowling.vue === 'bowling' && bowling.collapsed && bowling.large && bowling.rail <= 80 && bowling.ouvert && bowling.champ !== 'none' && bowling.barre !== 'none', '[G] Bowling : la meme barre, le meme menu replie, le choix de l equipe n a pas bouge', bowling);
     await page.locator('[data-fgx-menu-toggle="planning"]').first().click();
     await FX.repos(page, 200);
     await page.locator('.fgx-menu-popover.planning [data-ops-resource="all"]').click();
     await FX.repos(page, 400);
     const rev = await lire();
-    ok(rev.collapsed && rev.large && rev.rail <= 80 && !rev.pref, '[G] Complet : la barre reste', rev);
+    ok(rev.collapsed && rev.large && rev.rail <= 80 && rev.ouvert, '[G] Complet : la barre reste', rev);
     await page.locator('[data-fgx-menu-collapse]').click();
     await FX.repos(page, 400);
     const ouvert = await lire();
     const cote = await page.evaluate(() => { const d = document.querySelector('.gf-defile'); return d.scrollWidth - d.clientWidth; });
-    ok(ouvert.rail > 200 && !ouvert.pref && ouvert.large, '[G] « Ouvrir le menu » rouvre ici, sans toucher au choix de l equipe', ouvert);
+    ok(ouvert.rail > 200 && ouvert.ouvert && ouvert.large, '[G] « Ouvrir le menu » rouvre ici, sans toucher au choix de l equipe', ouvert);
     ok(cote <= 0, '[G] menu rouvert : le tableau tient sans defiler de cote', cote);
     await page.locator('[data-fgx-menu-collapse]').click();
     await FX.repos(page, 300);

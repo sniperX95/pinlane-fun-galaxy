@@ -706,6 +706,8 @@ body.staff-menu-collapsed .fgx-menu-popover {
 }
 
 body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; }
+/* Un rayon ouvre ses pages a cote de la barre (2026-11-08), etroit comme Planning. */
+body.staff-menu-collapsed .fgx-menu-popover.activities { width: 200px; }
 
 .fgx-menu-popover-title {
   padding: 6px 8px 4px;

@@ -3732,7 +3732,7 @@ function loadState() {
     staffEmailQuery: '',
     staffEmailTemplateFilter: 'all',
     staffEmailSelectedId: '',
-    staffMenuCollapsed: false,
+    staffMenuOuvert: false,
     staffMenuPage: 'planning'
   };
 }
@@ -3906,7 +3906,11 @@ state.staffEmailSelectedId = state.staffEmailSelectedId || '';
 // dur sur l'identite du premier client) a ete supprime avec ses etats
 // staffCampaign* : la page Marketing vivante est renderStaffCampaignsPage
 // (staff-pages-v2.js), qui lit le moteur marketing-agents par l'API.
-state.staffMenuCollapsed = !!state.staffMenuCollapsed;
+// Le menu de gauche est replie par defaut depuis le 2026-11-08 (staff-menu.js,
+// readPreference) : seul un menu ouvert PAR CHOIX se garde. L ancienne cle valait false
+// sur chaque poste, le defaut d avant ; elle ne dit plus rien.
+state.staffMenuOuvert = state.staffMenuOuvert === true;
+delete state.staffMenuCollapsed;
 state.booking = state.booking || {};
 state.booking.preference = createDefaultFormulaPreference(state.booking.preference || {});
 state.booking.pauseMinutes = Number(state.booking.pauseMinutes || 0);
@@ -35818,22 +35822,16 @@ function rsResteDit(place) {
   return place && !place.manque ? `reste ${rvPluriel(place.libre, place.unite)}` : '';
 }
 
-// PEU DE PLACE : la touche ne le dit que la (2 pistes ou moins, 6 armes ou moins). Sous
-// chacune des vingt heures d un samedi, « reste 7 pistes » ne se lisait plus ; ce qui
-// restera a l heure choisie, le ticket le dit (« il restera 5 pistes »), et le nom de
-// chaque touche le garde pour le lecteur d ecran.
-const RS_PEU = { piste: 2, arme: 6 };
-function rsPeuDePlace(place) {
-  return Boolean(place && !place.manque && place.libre <= (RS_PEU[place.unite] ?? 0));
-}
-
 // Une heure se remplit quand on la voit : ce qui restera, et le petit mot qui l accompagne.
 function rsRemplirHeure(id, x) {
   const s = quickBookState;
   x.place = rsPlaceDeLHeure(id, x.heure);
   x.reste = rsResteDit(x.place);
-  // (« reste 2 » : l unite est celle du bloc, le nom de la touche la dit en entier)
-  x.mot = rsPeuDePlace(x.place) ? `reste ${x.place.libre}` : '';
+  // CE QUI RESTE SOUS CHAQUE HEURE (2026-11-08, Ansar : « jaimais bien quand sur les heures
+  // yavais ce qui reste comme dispo »). Toute la journee tient dans des touches plus petites :
+  // « reste 7 », l unite est celle du bloc (les pistes du bowling, les armes du laser), et le
+  // nom de la touche le dit en entier (« reste 7 pistes »).
+  x.mot = x.place && !x.place.manque ? `reste ${x.place.libre}` : '';
   if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';
 }
 

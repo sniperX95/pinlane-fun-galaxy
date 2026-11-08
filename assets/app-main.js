@@ -27826,7 +27826,6 @@ function ficheEtat(r, moment, droits) {
   const suivant = ficheGesteSuivant(r, moment);
   const ton = isReservationAwaitingReview(r) ? 'is-verifier' : groupeEnRetardAuPlanning(r, moment) ? 'is-retard' : '';
   const phrase = fichePhraseMoment(r, moment, droits);
-  const jamaisPointe = !ton && moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r);
   const boutons = [];
   if (isReservationAwaitingReview(r) ? droits.valider : droits.statut) {
     boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
@@ -27851,7 +27850,6 @@ function ficheEtat(r, moment, droits) {
         <p class="fx-moment${ton ? ` ${ton}` : ''}"${ton ? ' role="status"' : ''}>${phrase ? `<span>${escapeHtml(phrase)}</span>` : ''}${ton ? ficheAppeler(r) : ''}</p>
         ${argent ? `<span class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</span>` : ''}
       </div>` : ''}
-      ${jamaisPointe ? '<p class="fx-moment-suite">Jamais pointé arrivé : le groupe n’est peut-être pas venu.</p>' : ''}
       ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
       ${renderGroupeEncaisseAbsence(r)}
       ${droits.annuler && r.status !== 'cancelled' ? `<div class="fx-annuler-rang"><button type="button" class="fx-annuler" onclick="cancelRes(${r.id}, event)">Annuler la réservation</button></div>` : ''}
@@ -27942,7 +27940,7 @@ function renderPosDetails(r) {
         ${renderGroupeNotes(r)}
         ${renderGroupeAddition(r)}
         ${ficheClient(r, droits)}
-        ${aTrancher ? '' : pli + pasVenu}
+        ${(enRetard ? '' : pli) + (aTrancher ? '' : pasVenu)}
         ${renderGroupeHistorique(r)}
       </aside>
     </div>

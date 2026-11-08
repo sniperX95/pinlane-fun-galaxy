@@ -98,6 +98,8 @@ function journee() {
     d(9606, 'Kevin', [1], '19:00', 0.5, 2, { notes: 'Gâteau à sortir à 19h', program: programme(2, 1), opsPlan: plan(2, [laser('19:30', 2)], 1) }),
     // 2 heures sans laser.
     d(9607, 'Soirée Sarah', [6], '19:00', 2, 6),
+    // Une carte passee d un groupe servi (2026-11-08) : le gris. Les groupes jamais pointes sont en retard.
+    d(9612, 'Club Ardenne', [6], '14:00', 1, 8, { status: 'paid' }),
     // Anniversaire, deux parties dont une posee.
     d(9608, 'Anniv. Noah', [7], '16:30', 1, 10, { occasion: 'anniversaire', program: programme(10, 2), opsPlan: plan(10, [laser('18:30', 10)], 2) }),
     // Cas b sur 1h30 (l offre a sa ligne), 34 joueurs.
@@ -342,7 +344,7 @@ async function scenarios(browser, mutation = null) {
             .map(([nom, e]) => ({ nom, encre: getComputedStyle(e).color, ratio: ratio(getComputedStyle(e).color, getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)' ? getComputedStyle(e).backgroundColor : fond) }));
           const badge = c.querySelector('.bk-laser:not(.is-compact)');
           if (badge && getComputedStyle(badge).display !== 'none') paires.push({ nom: 'badge', encre: getComputedStyle(badge).color, ratio: ratio(getComputedStyle(badge).color, getComputedStyle(badge).backgroundColor) });
-          return { id: Number(c.dataset.bookingResId), etat: (c.className.match(/\b(conf|arr|paid)\b/) || [])[1], passee: c.classList.contains('is-passee'), fond, fondLisible: lisible(fond), barre: getComputedStyle(c).borderLeftColor, paires };
+          return { id: Number(c.dataset.bookingResId), etat: (c.className.match(/\b(conf|arr|paid)\b/) || [])[1], passee: c.classList.contains('is-passee'), enRetard: c.classList.contains('is-en-retard'), fond, fondLisible: lisible(fond), barre: getComputedStyle(c).borderLeftColor, paires };
         });
       });
       const sous = m.flatMap(c => c.paires.filter(p => !(p.ratio >= 4.5)).map(p => `${c.id} ${p.nom} ${p.ratio}`));
@@ -350,10 +352,11 @@ async function scenarios(browser, mutation = null) {
       ok(sous.length === 0, `[A] ${theme} : chaque texte de carte fait 4,5:1 sur son fond (nom, effectif, duree, offre, badge)`, sous.slice(0, 4).join(' | ') || `${m.reduce((s, c) => s + c.paires.length, 0)} paires`);
       // (une carte passee passe au gris, 2026-10-27 : elle sort du compte des
       // etats et porte sa propre barre, la meme pour toutes)
-      const barres = Object.fromEntries(['conf', 'arr', 'paid'].map(e => [e, [...new Set(m.filter(c => c.etat === e && !c.passee).map(c => c.barre))]]));
+      const barres = Object.fromEntries(['conf', 'arr', 'paid'].map(e => [e, [...new Set(m.filter(c => c.etat === e && !c.passee && !c.enRetard).map(c => c.barre))]]));
       ok(barres.conf.length === 1 && barres.arr.length === 1 && barres.paid.length === 1 && new Set([barres.conf[0], barres.arr[0], barres.paid[0]]).size === 3,
         `[A] ${theme} : une barre par etat, confirme / arrive / paye distincts`, JSON.stringify(barres));
-      const passees = [...new Set(m.filter(c => c.passee).map(c => c.barre))];
+      // (2026-11-08 : une carte en retard, meme passee, porte le rouge du retard ; le gris est celle d un groupe servi)
+      const passees = [...new Set(m.filter(c => c.passee && !c.enRetard).map(c => c.barre))];
       ok(passees.length === 1 && ![barres.conf[0], barres.arr[0], barres.paid[0]].includes(passees[0]),
         `[A] ${theme} : une carte passee porte la barre grise, une seule, hors des trois etats`, JSON.stringify({ passees, cartes: m.filter(c => c.passee).length }));
     } finally { await ctx.close(); }

@@ -307,7 +307,7 @@ async function main() {
     // CE QUI NE DOIT PAS BOUGER, C EST LA CASE SOUS LE DOIGT (2026-10-13).
     // Comparer le defilement au pixel rougissait le soir : sur un groupe
     // jamais pointe dont la visite est finie, cocher retire a juste titre le
-    // bandeau « Jamais pointé arrivé » au-dessus, et le defilement doit alors
+    // choix « Pas venu » au-dessus, et le defilement doit alors
     // baisser d autant pour que la case reste ou elle est.
     const cleCase = caseAct ? await caseAct.getAttribute('data-pl-focus') : '';
     const hautCase = (cle) => page.evaluate((c) => {

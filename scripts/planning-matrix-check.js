@@ -966,8 +966,11 @@ async function main() {
       // autres rangs occupent au meme instant. En muter un deuxieme, dont la
       // largeur est fixe (la duree), rend la contre-epreuve independante de cette
       // negociation : si le detecteur voit l un OU l autre, il n est pas muet.
+      // (la puce du retard, posee depuis le 2026-11-08 sur les groupes jamais pointes,
+      // est retiree ici : elle prend la place que la contre-epreuve veut laisser libre)
       style.textContent = '#planningGridWrap .booking.dens-xs .b-tag .b-tag-text{display:none !important;}'
-        + '#planningGridWrap .booking.dens-xs .bk-dur{display:none !important;}';
+        + '#planningGridWrap .booking.dens-xs .bk-dur{display:none !important;}'
+        + '#planningGridWrap .booking .delay-indicator.is-retard{display:none !important;}';
       document.head.appendChild(style);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const card = document.querySelector('#planningGridWrap .booking.dens-xs');

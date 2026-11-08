@@ -286,7 +286,6 @@ const MUTATIONS = [
   { nom: 'libre-redit', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step.is-libre .gc-step-state { display: none; }', vers: '.fx-modal .gc-step.is-libre .gc-step-state { }' }] },
   { nom: 'deborde-au-telephone', lettre: 'L1', scenarios: [{ appareil: 'telephone' }], editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap;', vers: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap; display: inline-block; min-width: 520px;' }] },
   { nom: 'fin-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 13px; }', vers: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 11px; }' }] },
-  { nom: 'detail-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-moment-suite { margin: -4px 0 12px; font-size: 13px;', vers: '.fx-modal .fx-moment-suite { margin: -4px 0 12px; font-size: 11px;' }] },
 ];
 
 async function main() {

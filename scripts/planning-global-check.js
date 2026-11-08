@@ -673,14 +673,15 @@ async function nuit(page, s, label) {
   const f = await page.evaluate(lireFeuille);
   const groupes = f.lignes.filter((l) => l.id);
   const idx = f.lignes.findIndex((l) => l.now);
-  const n = FX.lireFixture(s.fixture).staffState.reservations.length;
+  // (un groupe note pas venu n est plus sur la feuille)
+  const n = FX.lireFixture(s.fixture).staffState.reservations.filter((r) => !(r.absentAt && r.status !== 'arrived' && r.status !== 'paid')).length;
   const nocturne = groupes.find((l) => /Nocturne des étudiants/.test(l.nom));
   const minuit = groupes.find((l) => /Laser de minuit/.test(l.nom));
   const soir = groupes.find((l) => l.h === '21:00' && (l.cases.bowling || []).length);
   ok(groupes.length === n && idx === f.lignes.length - 1 && f.lignes[idx].h === '00:20', `[N2] ${label} : la soiree de la veille reste, la barre de 00:20 sous sa derniere ligne`, { groupes: groupes.length, n, idx, h: idx >= 0 ? f.lignes[idx].h : null });
   ok(nocturne && /\bis-retard\b/.test(nocturne.cls) && nocturne.retard === '+50 min' && nocturne.cases.bowling[0].etat === 'retard', `[N2] ${label} : la nocturne de 23:30 est en retard de 50 min, son bowling n est pas fini`, nocturne && { retard: nocturne.retard, bowling: nocturne.cases.bowling });
-  ok(minuit && minuit.cases.laser.map((x) => `${x.t}:${x.etat}`).join() === '23:30:fini,00:00:retard', `[N2] ${label} : le laser de minuit, 23:30 fini, 00:00 en retard`, minuit && minuit.cases.laser);
-  ok(soir && soir.cases.bowling.every((x) => x.etat === 'fini'), `[N2] ${label} : le bowling de 21:00 est fini`, soir && soir.cases.bowling);
+  ok(minuit && minuit.cases.laser.map((x) => `${x.t}:${x.etat}`).join() === '23:30:retard,00:00:retard', `[N2] ${label} : le laser de minuit jamais pointe : ses deux parties restent en retard`, minuit && minuit.cases.laser);
+  ok(soir && soir.cases.bowling.every((x) => x.etat === 'retard'), `[N2] ${label} : le bowling de 21:00, jamais pointe, reste en retard`, soir && soir.cases.bowling);
 }
 
 // [J1] centre ferme, journee vide

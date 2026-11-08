@@ -1156,7 +1156,7 @@ async function mots(browser) {
       };
     });
     ok(cases.pistes > 0 && cases.tailles >= 13 && cases.noires, '[L] « Pistes 1-2 » : le mot entier, 13 px au moins, en noir', cases);
-    ok(cases.vers.length > 0 && cases.vers.every((t) => /^(Libre|\d\d:\d\d)/.test(t)), '[L] « Libre », plus « vers 15:30 »', cases.vers);
+    ok(cases.vers.length > 0 && cases.vers.every((t) => /^(Libre|Illimité|\d\d:\d\d)/.test(t)), '[L] « Libre » ou « Illimité », plus « vers 15:30 »', cases.vers);
     ok(cases.credits.length > 0 && cases.credits.every((t) => /crédits/.test(t)), '[L] « 8 crédits », pas « cr. »', cases.credits);
     ok(cases.joueurs > 0, '[L] « joueurs », dans la case d heure', cases);
     // Les accompagnants et le nombre reserve, en toutes lettres.
@@ -1876,7 +1876,7 @@ const MUTATIONS = [
   { nom: 'lignes-trop-hautes', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-t { --gf-l: 46px;', '.gf-t { --gf-l: 170px;') },
   { nom: 'dossier-sur-tout-l-ecran', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }', '.gf-i > span { display: block; margin-bottom: 40px; font-size: 12px; color: var(--muted); white-space: nowrap; }') },
   { nom: 'bloc-trop-etroit', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '  .gf-t, .gf-t.is-dense, .gf-t.is-serre { --c-bloc: 64px; --c-nom: 166px;', '  .gf-t, .gf-t.is-dense, .gf-t.is-serre { --c-bloc: 52px; --c-nom: 166px;') },
-  { nom: 'lignes-sous-46', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-t { --gf-l: 46px;', '.gf-t { --gf-l: 30px;') .concat(SEUL(PGC, '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 34px;', '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 22px;')) },
+  { nom: 'lignes-sous-46', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-t { --gf-l: 46px;', '.gf-t { --gf-l: 30px;') .concat(SEUL(PGC, '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 34px;', '.gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 22px;')).concat(SEUL(PGC, '.gf-x__d { font-size: 13px; font-weight: 500; line-height: 16px; color: var(--text); white-space: normal; }', '.gf-x__d { display: none; font-size: 13px; font-weight: 500; line-height: 16px; color: var(--text); white-space: normal; }')) },
   { nom: 'libelle-trop-petit', lettre: 'O', scenarios: ['lisibilite'], editions: SEUL(PGC, '.gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }', '.gf-i > span { font-size: 10px; color: var(--muted); white-space: nowrap; }') },
   // [P] le contraste
   { nom: 'libelle-pale', lettre: 'P', scenarios: ['contraste'], editions: SEUL(PGC, '.gf-c__l { color: color-mix(in srgb, var(--muted) 55%, var(--text)); font-weight: 500; }', '.gf-c__l { color: color-mix(in srgb, var(--muted) 35%, var(--surface)); font-weight: 500; }') },

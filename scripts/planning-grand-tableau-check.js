@@ -281,7 +281,8 @@ async function densite(browser) {
     ok(g.tailleMin >= 12, '[A] rien sous 12 px', g.tailleMin);
     // (une ligne reste legere : sur ce plafond, 46 groupes tiennent en moins de 1 500
     // elements. Mesure 2026-11-02 : 29 par ligne, huit colonnes d activite comprises.)
-    ok(g.surface / g.lignes <= 33, '[A] une ligne reste legere (33 elements au plus)', { surface: g.surface, lignes: g.lignes });
+    // (34 depuis le 2026-11-08 : la duree et les joueurs hors habitude ont leur pastille)
+    ok(g.surface / g.lignes <= 34, '[A] une ligne reste legere (34 elements au plus)', { surface: g.surface, lignes: g.lignes });
     ok(g.geste.length === 1, '[A] le geste : meme place, meme largeur, sur chaque ligne', g.geste);
     ok(g.statuts.length >= 3 && g.statuts.every((x) => x[1] === 1) && g.distinctes === g.statuts.length, '[A] la barre de gauche dit le statut, une couleur par statut', g.statuts);
   });

@@ -464,10 +464,9 @@
     const seaux = new Map();
     for (let h = debut; h < fin; h += 1) seaux.set(h, { count: 0, pax: 0, revenue: 0, collected: 0, online: 0, cancelled: 0, absents: 0, laneHours: 0, capacity: m.laneCount });
     const seau = (res) => seaux.get(Math.min(Math.max(Math.floor(getStaffTerrainSpan(res).start), debut), fin - 1));
+    // (activeReservations ne porte pas les pas venus, tientSesPlaces : ils se comptent juste
+    // apres, dans `absents` et rien d autre, et le taux ne les divise pas deux fois.)
     m.activeReservations.forEach((res) => {
-      // Un groupe pas venu se compte juste apres, dans `absents` et rien d autre : c est la ligne
-      // d un jour du serveur, et le taux ne le divise pas deux fois.
-      if (res.absentAt) return;
       const s = seau(res);
       if (!s) return;
       const prix = Number(res.price) || 0;

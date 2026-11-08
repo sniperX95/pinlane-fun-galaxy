@@ -168,7 +168,7 @@ const {
 const { listCentersForSession } = require('../lib/center-scope');
 const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
@@ -215,6 +215,41 @@ function createHttpError(message, statusCode = 400, expose = true) {
   error.statusCode = statusCode;
   error.expose = expose; // message sûr à montrer au client (français, contrôlé)
   return error;
+}
+
+// LE CATALOGUE GARDE SES PRIX (passe securite du 2026-11-08). Une session sans « Voir
+// les montants » recoit ses reponses sans montants (lib/montants-role.js) ; les prix des
+// formules, des activites et des grilles ne sont pas des montants de la caisse : le
+// formulaire public les montre a tout le monde, et la page Tarifs en vit.
+const ACTIONS_DU_CATALOGUE = new Set([
+  'centerConfig', 'saveCenterConfig', 'clientCatalog', 'founderCatalog', 'knowledge',
+  'surMesureCatalogue', 'surMesureGestion', 'saveSurMesure', 'saveGrillesTarif',
+  'saveFormuleOverride', 'resetFormuleOverride', 'saveClientFormuleOverride', 'resetClientFormuleOverride',
+  'garderFormuleSurMesure', 'afficherFormuleSurMesure', 'modifierFormuleSurMesure', 'retirerFormuleSurMesure',
+  'createFormula', 'updateFormula', 'setFormulaSteps', 'deleteFormula', 'createActivity', 'updateActivity', 'deleteActivity',
+]);
+
+// UN FICHIER QUI EMPORTE LES CLIENTS SE TRACE (passe securite du 2026-11-08). Les
+// lectures ne s ecrivent pas au journal : un export complet, le fichier des clients ou
+// la liste entiere des destinataires partaient sans laisser une ligne. Ils passent
+// maintenant au journal, donc dans Modifications sur Telegram, avec le nom de qui les a
+// pris. La trace ne retient jamais le fichier.
+async function noterExport(session, centerId, action, details = {}) {
+  try {
+    await writeAuditLog({
+      centerId: centerId || 'libramont',
+      ...actorFromSession(session || {}),
+      surface: 'api/ops.js',
+      action,
+      method: 'GET',
+      entityType: 'export',
+      entityId: action,
+      outcome: 'success',
+      context: details,
+    });
+  } catch (error) {
+    // La trace ne retient jamais le fichier de qui a le droit de le prendre.
+  }
 }
 
 // Message affichable au client : seulement si l'erreur est intentionnelle
@@ -698,9 +733,14 @@ async function handleGet(req, res, options = {}) {
   if (action === 'exportComplet') {
     const scoped = centerScope(centerId);
     if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    // Le fichier porte les prix et l encaisse : sans « Voir les montants », pas de
+    // fichier. Et l equipe et son journal ne partent qu avec « Équipe & accès » (passe
+    // securite du 2026-11-08).
+    if (!sessionHasPermission(options.session, 'payments.view')) throw createHttpError('Le fichier complet contient les montants : votre rôle ne les voit pas.', 403, true);
     const { exporterTout } = require('../lib/export-complet');
     const maintenant = new Date();
-    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant });
+    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant, sansEquipe: !sessionHasPermission(options.session, 'users.manage') });
+    await noterExport(options.session, scoped, 'exportComplet', { tables: doc.tables, lignes: doc.lignes });
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="pinlane-export-complet-${scoped}-${maintenant.toISOString().slice(0, 16).replace(/[:T]/g, '-')}.xlsx"`);
@@ -714,6 +754,8 @@ async function handleGet(req, res, options = {}) {
   if (action === 'donneesClients' || action === 'exportDonnees') {
     const scoped = centerScope(centerId);
     if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    // Le classeur part par res.end, pas par sendJson : le filtre des montants ne le voit pas.
+    if (action === 'exportDonnees' && res.__sansMontants) throw createHttpError('Le fichier contient les montants : votre rôle ne les voit pas.', 403, true);
     const { lireDonnees, classeurDonnees } = require('../lib/donnees-api');
     const maintenant = new Date();
     const donnees = await lireDonnees(getPool(), { centerId: scoped, startDate: url.searchParams.get('startDate'), endDate: url.searchParams.get('endDate'), maintenant });
@@ -725,6 +767,7 @@ async function handleGet(req, res, options = {}) {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="pinlane-donnees-clients-${scoped}-${donnees.startDate}-${donnees.endDate}.xlsx"`);
     res.setHeader('Cache-Control', 'no-store');
+    await noterExport(options.session, scoped, 'exportDonnees', { du: donnees.startDate, au: donnees.endDate });
     res.end(classeurDonnees(donnees, { centerId: scoped, maintenant }));
     return;
   }
@@ -742,6 +785,7 @@ async function handleGet(req, res, options = {}) {
       date: String(url.searchParams.get('date') || ''),
       kind: action === 'classeurJour' ? 'excel' : 'feuille',
       vierge: url.searchParams.get('vierge') === '1',
+      sansMontants: Boolean(res.__sansMontants),
     });
     res.statusCode = 200;
     res.setHeader('Content-Type', doc.type);
@@ -1040,6 +1084,7 @@ async function handleGet(req, res, options = {}) {
     // La liste entiere (noms, emails, chiffre d affaires) part dans un fichier :
     // c est un export, il demande en plus le droit de telecharger (2026-11-07).
     if (full && !(await requireStaffPermission(req, res, 'exports.download', { centerId }))) return;
+    if (full) await noterExport(options.session, centerId, 'exportAudience', { segment, destinataires: recipients.length });
     sendJson(res, 200, {
       ok: true,
       centerId,
@@ -1463,7 +1508,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   }
 
   if (action === 'saveCenter') {
-    const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId: 'all' });
+    const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId: 'all', porteeAllVoulue: true });
     if (!session) return;
     // La CIBLE de cette action ne voyage pas dans body.centerId mais dans
     // body.center.id, et l'appel se fait en portee 'all' : la garde
@@ -2332,6 +2377,15 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // UN PRIX NE CHANGE QU AVEC « Tarifs » (passe securite du 2026-11-08). Le catalogue se
+  // regle avec « Réglages », et ses formules et activites portent leur prix : le role
+  // Technique changeait ainsi le prix servi au public sans le droit des tarifs. Le reste
+  // de la fiche (nom, jours, heures) suit toujours « Réglages ».
+  if (['createFormula', 'updateFormula', 'createActivity', 'updateActivity'].includes(action)) {
+    const champs = action === 'createFormula' ? body.formula : action === 'createActivity' ? body.activity : body.patch;
+    const touchePrix = Boolean(champs && typeof champs === 'object' && ['priceValue', 'priceOld', 'priceType', 'priceUnit'].some((k) => champs[k] !== undefined));
+    if (touchePrix && !sessionHasPermission(options.session, 'pricing.manage')) throw createHttpError('Changer un prix demande le droit « Tarifs ».', 403, true);
+  }
   if (action === 'createFormula') {
     const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
@@ -2775,7 +2829,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'marketingAsk') {
     const { answerMarketingQuestion } = require('../lib/marketing-ask');
     const concreteCenterId = requireConcreteCenter('agent marketing');
-    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || '') });
+    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || ''), sansMontants: Boolean(res.__sansMontants) });
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
@@ -3808,8 +3862,11 @@ function getRequiredOpsPermission(method, action) {
     // La feuille de secours se lit a l accueil : celui qui voit les reservations
     // la voit, la meme que le planning du jour, en papier.
     if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') return 'reservations.view';
-    // Tout le centre, contacts compris : la direction ou qui peut deja exporter.
-    if (action === 'exportComplet') return ['exports.download', 'settings.manage', 'direction.view'];
+    // Tout le centre, contacts compris : qui peut exporter, et lui seul (passe securite du
+    // 2026-11-08). « Réglages » et « Direction » l ouvraient aussi : le role Technique
+    // emportait toutes les tables du centre, journal et equipe compris. Le handler
+    // demande en plus « Voir les montants » (le fichier les contient).
+    if (action === 'exportComplet') return 'exports.download';
     if (action === 'donneesClients' || action === 'exportDonnees') return 'direction.view';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
@@ -4014,7 +4071,8 @@ function auditEntityFor(action, body = {}) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -4031,7 +4089,11 @@ module.exports = async (req, res) => {
         centerId: requestedCenterId,
       });
       if (!session) return;
+      // La portee RETENUE, pas seulement celle demandee (passe securite du 2026-11-08) :
+      // un 'all' venu d ailleurs que du parametre lu ici est refuse aussi.
       if (refuserPorteePlateforme(res, session, requestedCenterId)) return;
+      if (refuserPorteePlateforme(res, session, resolveEffectiveCenterId(session, requestedCenterId))) return;
+      if (ACTIONS_DU_CATALOGUE.has(action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
       await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId), session });
       return;
     }
@@ -4045,6 +4107,10 @@ module.exports = async (req, res) => {
       if (!session) return;
       if (refuserPorteePlateforme(res, session, requestedCenterId)) return;
       const effectiveCenterId = resolveEffectiveCenterId(session, requestedCenterId);
+      // Le corps sans centerId laissait passer `?centerId=all` de l adresse (passe
+      // securite du 2026-11-08) : la portee retenue est controlee elle aussi.
+      if (refuserPorteePlateforme(res, session, effectiveCenterId)) return;
+      if (ACTIONS_DU_CATALOGUE.has(action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
 
       const audited = !NON_MUTATING_POST_ACTIONS.has(action);
       const requestId = newRequestId();

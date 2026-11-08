@@ -78,7 +78,7 @@ async function main() {
   equal(laserMoved.opsPlan.resourceBlocks.filter(b=>b.resourceType==='bowling_lane'),bowlingBefore,'laser move preserves multiservice lane mapping through DB');
   // API + real DB assembled: only auth / outbound communications are doubles.
   const authPath=require.resolve('../lib/staff-auth');const auth=require(authPath);
-  require.cache[authPath].exports={...auth,getStaffSessionFromRequest:async()=>({centerId:'libramont',member:{id:1}}),requireStaffPermission:async()=>({centerId:'libramont',member:{id:1}})};
+  require.cache[authPath].exports={...auth,getStaffSessionFromRequest:async()=>({centerId:'libramont',member:{id:1}}),requireStaffPermission:async()=>({centerId:'libramont',member:{id:1},permissions:['planning.drag','planning.bowling','planning.laser']})};
   const handler=require('../api/staff-reservations');
   async function patch(activityMove) { const row=await db.getReservationById(777);const req=Readable.from([Buffer.from(JSON.stringify({id:777,centerId:'libramont',baseUpdatedAt:new Date(row.updatedAt).toISOString(),activityMove}))]);req.method='PATCH';req.url='/api/staff-reservations';req.headers={'content-type':'application/json'};const res={statusCode:200,setHeader(){},end(value){this.body=JSON.parse(value);}};await handler(req,res);return res; }
   bench.semer([fixture()]);

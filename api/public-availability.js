@@ -24,7 +24,7 @@ const {
   BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
 const { allocateLanes, getPool, readAvailabilitySnapshot } = require('../lib/database');
-const { sendError, sendJson, setCors } = require('../lib/http');
+const { sendError, sendJson: envoyerJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const {
@@ -259,6 +259,28 @@ function ligneDesArriveesDuJour({ centerId, model, pax, snapshot, anchorMeta, sc
   });
 }
 
+// LE PLAN INTERNE NE PART PAS AU VISITEUR (passe securite du 2026-11-08). Chaque creneau portait
+// le score de risque et les consignes de l equipe, lisibles par n importe qui. La console du
+// personnel passe par la meme route et s en sert : une vraie session garde tout.
+const CHAMPS_INTERNES = new Set(require('../lib/availability-slots').CHAMPS_INTERNES_DU_PLAN);
+function sansChampsInternes(valeur, profondeur = 0) {
+  if (profondeur > 14 || valeur === null || typeof valeur !== 'object') return valeur;
+  if (Array.isArray(valeur)) return valeur.map((v) => sansChampsInternes(v, profondeur + 1));
+  const copie = {};
+  for (const [cle, v] of Object.entries(valeur)) {
+    if (!CHAMPS_INTERNES.has(cle)) copie[cle] = sansChampsInternes(v, profondeur + 1);
+  }
+  return copie;
+}
+function sendJson(res, statut, corps) {
+  envoyerJson(res, statut, res.__visiteurAnonyme === false ? corps : sansChampsInternes(corps));
+}
+async function sessionDuPersonnel(req) {
+  const h = req.headers || {};
+  if (!h.cookie && !h['x-staff-session'] && !h['x-fgx-session'] && !h['x-fun-galaxy-session']) return null;
+  try { return await require('../lib/staff-auth').getStaffSessionFromRequest(req); } catch (error) { return null; }
+}
+
 module.exports = async (req, res) => {
   setCors(res, 'GET,OPTIONS');
 
@@ -272,6 +294,8 @@ module.exports = async (req, res) => {
     sendError(res, 405, 'Méthode non autorisée.');
     return;
   }
+
+  res.__visiteurAnonyme = !(await sessionDuPersonnel(req));
 
   if (enforceRateLimit(req, res, { scope: 'public-availability', limit: 60, windowMs: 60_000 })) {
     return;

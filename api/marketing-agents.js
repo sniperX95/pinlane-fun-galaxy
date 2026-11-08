@@ -4,7 +4,7 @@ const {
   runMarketingAgentCycle,
 } = require('../lib/marketing-agents');
 const { centresExploites } = require('../lib/ops-knowledge');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
 
 function getAction(req, body = {}) {
@@ -53,7 +53,8 @@ async function runForCenters(body = {}) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;

@@ -38,6 +38,7 @@ function purger() {
 }
 // Le handler, avec un faux pool : il garde chaque requete et rend les
 // reservations qu on lui donne pour « reelles ».
+let dernierChargement = null;
 function charger(reelles = [], { panne = false, sansBase = false } = {}) {
   purger();
   const database = require(path.join(ROOT, 'lib/database.js'));
@@ -51,7 +52,8 @@ function charger(reelles = [], { panne = false, sansBase = false } = {}) {
     },
   });
   const api = require(path.join(ROOT, 'api/public-booking-meta.js'));
-  return { api, requetes };
+  dernierChargement = { api, requetes };
+  return dernierChargement;
 }
 function poster(api, body, ip = '203.0.113.7') {
   return new Promise((resolve, reject) => {
@@ -102,7 +104,11 @@ async function main() {
     const { api, requetes } = charger([4201]);
     const r = await poster(api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue'), geste('reservee', { reservation: 4201 }), geste('reservee', { reservation: 9999 })] });
     const insert = requetes.find((q) => /insert into upsell_events/i.test(q.sql));
-    ok(r.status === 201 && r.json && r.json.enregistres === 2, 'deux gestes ecrits : la vue, et la « reservee » dont la reservation existe ; l autre est jetee', JSON.stringify(r));
+    ok(r.status === 202 && r.json && r.json.ok === true && Boolean(insert) && insert.valeurs.length === 26, 'deux gestes ecrits : la vue, et la « reservee » dont la reservation existe ; l autre est jetee', JSON.stringify(r));
+    const seule = charger([4201]);
+    const existe = await poster(seule.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 4201 })] }, '192.0.2.61');
+    const absente = await poster(seule.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 9999 })] }, '192.0.2.62');
+    ok(existe.status === absente.status && JSON.stringify(existe.json) === JSON.stringify(absente.json), 'la reponse est la meme que le numero existe ou non : un inconnu n apprend rien', JSON.stringify({ existe, absente }));
     ok(Boolean(insert) && !insert.sql.includes(VISITE) && !insert.sql.includes('laser_game') && insert.valeurs.length === 26 && insert.valeurs.includes(4201) && !insert.valeurs.includes(9999),
       'une seule requete, parametree : rien du client dans le texte SQL', insert ? insert.sql.slice(0, 120) : 'aucune insertion');
     const verif = requetes.find((q) => /from reservations/i.test(q.sql));
@@ -110,7 +116,7 @@ async function main() {
       'la reservation annoncee se verifie dans CE centre, creee dans l heure, et jamais une reservation de simulation', verif ? verif.sql : 'aucune verification');
     const sansBase = charger([], { sansBase: true });
     const r2 = await poster(sansBase.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue')] });
-    ok(r2.status === 202 && r2.json && r2.json.enregistres === 0, 'sans base : rien ne s ecrit, la reponse le dit (202)', JSON.stringify(r2));
+    ok(r2.status === 202 && r2.json && r2.json.ok === true && !sansBase.requetes.length, 'sans base : rien ne s ecrit (202)', JSON.stringify(r2));
     const enPanne = charger([], { panne: true });
     const r3 = await poster(enPanne.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue')] });
     ok(r3.status === 202 && r3.json && r3.json.ok === true, 'une base en panne ne casse pas le formulaire (202, la trace reste dans les journaux)', JSON.stringify(r3));
@@ -119,7 +125,7 @@ async function main() {
     for (let k = 0; k < 125; k += 1) dernier = await poster(autre.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue')] }, '198.51.100.9');
     ok(dernier && dernier.status === 429, 'au-dela de 120 envois en 10 minutes, une adresse est freinee (429)', JSON.stringify(dernier && dernier.status));
     const lead = await poster(autre.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue')] }, '198.51.100.10');
-    ok(lead.status === 201 && autre.requetes.every((q) => !/pilot_leads|custom_requests/i.test(q.sql)), 'un envoi « vitrine » ne tombe jamais dans les prospects ni les demandes sur mesure', JSON.stringify(lead.status));
+    ok(lead.status === 202 && autre.requetes.every((q) => !/pilot_leads|custom_requests/i.test(q.sql)), 'un envoi « vitrine » ne tombe jamais dans les prospects ni les demandes sur mesure', JSON.stringify(lead.status));
   }
 
   section('[C] LA TABLE ET LA ROUTE DISENT LA MEME CHOSE');
@@ -159,9 +165,17 @@ async function main() {
   ok(sansListe === true, 'sans la liste des gestes, un geste inconnu entre : ce gate ROUGIRAIT', JSON.stringify(sansListe));
   const sansVerif = await muter("    const gardees = envoi.lignes.filter((l) => l.evenement !== 'reservee' || reelles.has(l.reservationId));\n", '    const gardees = envoi.lignes;\n', async () => {
     const { api } = charger([]);
-    const r = await poster(api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 9999 })] }, '192.0.2.44');
-    return r.status === 201;
+    const { requetes } = dernierChargement;
+    await poster(api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 9999 })] }, '192.0.2.44');
+    return requetes.some((q) => /insert into upsell_events/i.test(q.sql));
   });
+  const reponseBavarde = await muter("    // La meme reponse dans tous les cas (passe securite du 2026-11-08) : personne ne la lit\n    // (sendBeacon), et un compte disait a un inconnu si un numero de reservation existe.\n    sendJson(res, 202, { ok: true });\n", '    sendJson(res, 201, { ok: true, enregistres: gardees.length });\n', async () => {
+    const { api } = charger([4201]);
+    const existe = await poster(api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 4201 })] }, '192.0.2.63');
+    const absente = await poster(api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('reservee', { reservation: 9999 })] }, '192.0.2.64');
+    return existe.status !== absente.status;
+  });
+  ok(reponseBavarde === true, 'avec une reponse qui compte, un inconnu verifie un numero : ce gate ROUGIRAIT', JSON.stringify(reponseBavarde));
   ok(sansVerif === true, 'sans la verification de la reservation, un navigateur fabrique un client : ce gate ROUGIRAIT', JSON.stringify(sansVerif));
 
   console.log(`\n${echecs === 0 ? 'vitrine-gestes-check: ALL OK' : `vitrine-gestes-check: ${echecs} echec(s)`}`);

@@ -3147,13 +3147,23 @@ function getActiveOpsCenterId() {
 // le chiffre le plus regarde de la ligne se relisait deux fois. U+202F est
 // l espace fine INSECABLE : meme typographie francaise, coupure impossible.
 // Un montant au centime (« 9,33 € »), entier quand il l est (« 26 € »).
+// UN ROLE SANS « VOIR LES MONTANTS » (passe securite du 2026-11-08). Le serveur ne lui envoie
+// plus aucun montant (lib/montants-role.js) : sans cette regle, chaque ecran dessinerait
+// « 0 € », ce qui est faux. Les formateurs sont le point par ou tous les ecrans passent,
+// ceux d aujourd hui et ceux qui viendront.
+function montantsMasques() {
+  return typeof canUseStaffPermission === 'function' && Boolean(state.staffAuthSession) && !canUseStaffPermission('payments.view');
+}
+
 function formatMoneyCentimes(value) {
+  if (montantsMasques()) return '···';
   const amount = Math.round((Number(value) || 0) * 100) / 100;
   const entier = Number.isInteger(amount);
   return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: entier ? 0 : 2, maximumFractionDigits: 2 }).format(amount)} €`;
 }
 
 function formatMoney(value) {
+  if (montantsMasques()) return '···';
   const amount = Math.round(Number(value) || 0);
   return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} €`;
 }
@@ -4395,9 +4405,9 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261107acces';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261108securite';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261108retard';
-const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261107acces';
+const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261108securite';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20261107acces';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
 // seul endroit. Aucun de ces modules n'est demande pour la vue publique.
@@ -11415,6 +11425,7 @@ function niceRevenueScale(rawMax) {
 }
 
 function formatMoneyShort(value) {
+  if (montantsMasques()) return '···';
   const amount = Math.round(Number(value) || 0);
   if (Math.abs(amount) >= 1000) {
     const k = amount / 1000;
@@ -14947,9 +14958,9 @@ function renderStaffUtilitySecours() {
         <label class="sec-date"><span>Journée</span><input type="date" id="secours-date" value="${escapeHtml(jour)}"></label>
         <div class="sec-boutons">
           <button type="button" class="btn btn-primary" data-secours-dl="feuille" onclick="telechargerSecours('feuille')">Feuille du jour (PDF)</button>
-          <button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours('excel')">Excel du jour</button>
+          ${canUseStaffPermission('payments.view') ? '<button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours(\'excel\')">Excel du jour</button>' : ''}
           <button type="button" class="btn btn-secondary" data-secours-dl="vierge" onclick="telechargerSecours('vierge')">Feuille vierge</button>
-          ${canUseStaffPermission(['exports.download', 'settings.manage', 'direction.view']) ? '<button type="button" class="btn btn-secondary" data-secours-dl="tout" onclick="telechargerSecours(\'tout\')" title="Toute la base du centre, lue à la seconde">Tout exporter</button>' : ''}
+          ${canUseStaffPermission('exports.download') && canUseStaffPermission('payments.view') ? '<button type="button" class="btn btn-secondary" data-secours-dl="tout" onclick="telechargerSecours(\'tout\')" title="Toute la base du centre, lue à la seconde">Tout exporter</button>' : ''}
         </div>
       </div>
     </section>
@@ -19337,6 +19348,7 @@ const STAFF_REQUEST_ICONS = {
 
 // ── LES MOTS DE LA PAGE : montants, dates, durees ──────────────────────────
 function staffRequestEuro(value) {
+  if (montantsMasques()) return '···';
   const v = Math.round(Number(value) * 100) / 100;
   if (!Number.isFinite(v)) return '';
   return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v)} €`;
@@ -26488,6 +26500,8 @@ function getMoyenPaiementLabel(valeur) {
 }
 
 function prixDossierConnu(r) {
+  // Masque, le prix n est pas inconnu : l ecran dit « ··· », pas « Prix sur place ».
+  if (r && montantsMasques()) return true;
   if (!r || r.price == null || String(r.price).trim() === '') return false;
   const montant = Number(r.price);
   if (!Number.isFinite(montant) || montant < 0) return false;
@@ -29905,6 +29919,8 @@ function textePrixEdition(r, estime = getEditPrixEstime()) {
 
 // LE PRIX DE LA VISITE, A DROITE COMME DANS LA FICHE (2026-10-27).
 function renderEditPrix(r) {
+  // Sans « Voir les montants », rien a lire et rien que le serveur ecrirait.
+  if (montantsMasques()) return '';
   // Le montant ecrit sous le champ : ce qui sera facture, et ce que ca fait
   // par personne. C est le chiffre que le comptoir annonce au telephone.
   const estime = getEditPrixEstime();
@@ -34879,6 +34895,7 @@ function rsNomCourt(id) {
 // centre. Le serveur a le dernier mot sur le ticket des que son plan est la.
 // Un tarif que le centre n a pas saisi se regle sur place : les deux le disent.
 function rsEuros(montant) {
+  if (montantsMasques()) return '···';
   const valeur = Number(montant) || 0;
   if (!Number.isInteger(valeur)) return formatMoneyCentimes(valeur);
   if (!rsEurosMemo.has(valeur)) rsEurosMemo.set(valeur, formatMoney(valeur));

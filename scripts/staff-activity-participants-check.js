@@ -147,7 +147,7 @@ for(const name of ['prixDossierConnu','getMoyenPaiementLabel','renderGroupePrix'
   const from=app.indexOf('function '+name+'(');
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
-ctx.formatMoney=value=>value+'€';ctx.formatMoneyCentimes=value=>value+'€';ctx.isReservationAwaitingReview=()=>false;
+ctx.montantsMasques=()=>false;ctx.formatMoney=value=>value+'€';ctx.formatMoneyCentimes=value=>value+'€';ctx.isReservationAwaitingReview=()=>false;
 ctx.GROUPE_MOYENS=[{valeur:'cash',mot:'Espèces'}];
 ctx.freePrice={id:1,pax:18,status:'arrived',price:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};
 ctx.unknownPrice={id:2,pax:18,status:'arrived',price:0,program:{priceComplete:false,items:[{activityId:'arcade_time',participants:5,price:0,priceKnown:false}]}};

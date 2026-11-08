@@ -391,9 +391,10 @@ function buildAdminExcelXml(payload) {
     excelRow(['Indicateur', 'Valeur', 'Lecture'], 'Header'),
     excelRow(['Réservations', metrics.reservations, `${metrics.pendingCount} à venir / ${metrics.arrivedCount} sur place / ${metrics.paidCount} payées`]),
     excelRow(['Joueurs', metrics.players, `${metrics.formulaCount} réservation(s) formule`]),
-    excelRow(['Chiffre prévu', metrics.revenue, 'Montant total estimé sur la période'], 'Money'),
-    excelRow(['Encaissé', metrics.collected, 'Réservations marquées payées'], 'Money'),
-    excelRow(['Ticket moyen', metrics.avgTicket, 'CA / réservations actives'], 'Money'),
+    // Sans « Voir les montants », le fichier dit « ··· », pas un faux zéro.
+    excelRow(['Chiffre prévu', montantDuRapport(metrics.revenue), 'Montant total estimé sur la période'], 'Money'),
+    excelRow(['Encaissé', montantDuRapport(metrics.collected), 'Réservations marquées payées'], 'Money'),
+    excelRow(['Ticket moyen', montantDuRapport(metrics.avgTicket), 'CA / réservations actives'], 'Money'),
     // Une ressource que le centre n a pas n a pas de ligne : « 0 » y serait
     // lu comme une arene vide.
     ...(metrics.hasBowling !== false ? [excelRow(['Occupation bowling', Math.round(metrics.bowlingOccupancy), `${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité`])] : []),
@@ -531,6 +532,10 @@ function buildAdminExcelXml(payload) {
  ${excelSheet('Mails', communicationsRows, [90, 120, 120, 190, 260, 150, 80, 260])}
  ${excelSheet('Agents', agentsRows, [90, 80, 120, 90, 150, 420])}
 </Workbook>`;
+}
+
+function montantDuRapport(valeur) {
+  return typeof montantsMasques === 'function' && montantsMasques() ? '···' : valeur;
 }
 
 function exportAdminExcel() {

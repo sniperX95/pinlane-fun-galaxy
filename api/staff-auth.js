@@ -2,6 +2,7 @@ const {
   createMember,
   createEmergencyAccessControl,
   createEmergencyOwnerSession,
+  requeteDUnAutreSite,
   createRole,
   renameRole,
   deleteRole,
@@ -34,8 +35,11 @@ const {
   updateMemberRole,
   updateRolePermissions,
   publicStorageErrorMessage,
+  DROITS_NIVEAUX,
+  niveauEffectif,
+  STAFF_ROLE_PRESETS,
 } = require('../lib/staff-auth');
-const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson } = require('../lib/http');
 const {
   writeAuditLog,
   writeAuditLogOrThrow,
@@ -74,14 +78,41 @@ function getCenterId(req, body = {}) {
   return normalizeStaffCenterId(body.centerId || requestUrl.searchParams.get('centerId') || 'libramont');
 }
 
+// L ADRESSE QUE VERCEL A VUE D ABORD (passe securite du 2026-11-08) : x-vercel-forwarded-for
+// et x-real-ip sont poses par la plateforme, alors que x-forwarded-for peut arriver du
+// client derriere un autre relais. Le limiteur de connexion compte par cette adresse.
 function getRequestFingerprint(req) {
   return String(
-    req.headers['x-forwarded-for']
+    req.headers['x-vercel-forwarded-for']
     || req.headers['x-real-ip']
+    || req.headers['x-forwarded-for']
     || req.socket?.remoteAddress
     || req.headers['user-agent']
     || 'unknown',
   ).split(',')[0].trim();
+}
+
+// CE QU UN ROLE QUI GERE L EQUIPE PEUT DONNER (passe securite du 2026-11-08). La Direction
+// et le proprietaire de la plateforme donnent tout. Les autres porteurs de « Équipe &
+// accès » ne donnent que ce qu ils ont eux-memes : sans cette regle, un rôle « Chef
+// d equipe » ajoutait a son PROPRE role « Codes d accès » et « Changer de centre », puis
+// lisait le code de la Directrice. Rend la liste des droits refuses, vide si tout passe.
+function droitsQueLaSessionNaPas(session, permissions = []) {
+  if (!session || session.role?.locked || sessionHasPermission(session, 'platform.admin')) return [];
+  const manquants = [];
+  for (const brut of Array.isArray(permissions) ? permissions : []) {
+    const droit = String(brut || '');
+    const niveau = /^niveau:([^:]+):(.+)$/.exec(droit);
+    if (niveau) {
+      const definition = DROITS_NIVEAUX.find((d) => d.cle === niveau[1]);
+      if (!definition) continue;
+      const rang = (option) => definition.options.findIndex(([valeur]) => valeur === option);
+      if (rang(niveau[2]) > rang(niveauEffectif(session, niveau[1]))) manquants.push(droit);
+      continue;
+    }
+    if (!sessionHasPermission(session, droit)) manquants.push(droit);
+  }
+  return manquants;
 }
 
 // La session telle que la console la range. `centerId` est le centre ou la
@@ -157,8 +188,8 @@ function peutDonnerLeRole(session, role) {
 }
 
 module.exports = async (req, res) => {
-  setCors(res, 'GET,POST,OPTIONS');
-
+  // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
+  // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
@@ -185,6 +216,11 @@ module.exports = async (req, res) => {
       return;
     }
 
+    if (requeteDUnAutreSite(req)) {
+      sendError(res, 403, 'Cette action doit venir de la console.');
+      return;
+    }
+
     const body = await readJson(req);
     const action = body.action || 'login';
     const centerId = getCenterId(req, body);
@@ -199,11 +235,14 @@ module.exports = async (req, res) => {
           centerId,
           code: loginCode,
           fingerprint: getRequestFingerprint(req),
+          appareil: String(req.headers['user-agent'] || ''),
         });
       } catch (error) {
         if (!isStaffAuthStorageError(error)) throw error;
-        payload = createEmergencyOwnerSession({ centerId, code: loginCode });
+        payload = createEmergencyOwnerSession({ centerId, code: loginCode, fingerprint: getRequestFingerprint(req), appareil: String(req.headers['user-agent'] || '') });
         if (!payload) throw error;
+        // La cle maitresse vient de s ouvrir pendant une panne : Ansar le sait tout de suite.
+        await require('../lib/garde-securite').signalerSessionDeSecours().catch(() => null);
       }
       setStaffSessionCookie(req, res, payload.session?.token, payload.session?.expiresAt);
 
@@ -338,6 +377,47 @@ module.exports = async (req, res) => {
         return;
       }
     }
+    // LES ESCALADES D UN ROLE QUI GERE L EQUIPE SANS ETRE LA DIRECTION (passe securite du
+    // 2026-11-08) : il ne change pas les droits de son propre role, ne donne pas un droit
+    // qu il n a pas, ne transforme aucun role en Direction, et ne lit ni ne change le code
+    // d un role verrouille ou d une personne qui en porte un.
+    const estDirection = peutDonnerLeRole(session, { locked: true });
+    const refuserEscalade = async (raison, message, entityType = 'staff_role', entityId = targetRoleId) => {
+      await writeAuditLog({ centerId, ...actorFromSession(session), surface: 'api/staff-auth.js', action, method: 'POST', entityType, entityId: String(entityId || ''), outcome: 'denied', context: { raison } });
+      sendError(res, 403, message);
+    };
+    if (!estDirection && ['updateRolePermissions', 'setRolePreset'].includes(action) && targetRoleId && targetRoleId === String((session.role && session.role.id) || '')) {
+      await refuserEscalade('son propre role', 'Votre rôle ne change pas ses propres droits : demandez à la direction.');
+      return;
+    }
+    const presetVise = ['setRolePreset', 'createRole'].includes(action) ? STAFF_ROLE_PRESETS.find((p) => p.id === String(body.presetId || '')) : null;
+    if (presetVise && presetVise.locked && !sessionHasPermission(session, 'platform.admin')) {
+      await refuserEscalade('modele verrouille', 'Ce modèle ne s’applique pas : la direction est un rôle unique.');
+      return;
+    }
+    const droitsDemandes = [
+      ...(['updateRolePermissions', 'createRole'].includes(action) && Array.isArray(body.permissions) ? body.permissions : []),
+      ...(presetVise ? presetVise.permissions : []),
+    ];
+    // Seul ce qui S AJOUTE se juge : la console renvoie la liste entiere, et decocher une case
+    // sur un role qui porte un droit qu on n a pas ne donne rien.
+    const droitsDejaLa = new Set(auditBefore && Array.isArray(auditBefore.permissions) ? auditBefore.permissions.map(String) : []);
+    const manquants = droitsQueLaSessionNaPas(session, droitsDemandes.filter((droit) => !droitsDejaLa.has(String(droit))));
+    if (manquants.length) {
+      await refuserEscalade(`droit que la session n a pas : ${manquants.slice(0, 5).join(', ')}`, 'Vous ne pouvez pas donner un droit que votre rôle n’a pas.');
+      return;
+    }
+    if (!estDirection && ['revealRoleCode', 'regenerateRoleCode'].includes(action) && auditBefore && auditBefore.locked) {
+      await refuserEscalade('code d un role verrouille', 'Seule la direction lit ou change ce code.');
+      return;
+    }
+    if (!estDirection && ['revealMemberCode', 'regenerateMemberCode'].includes(action) && auditBefore && auditBefore.roleId) {
+      const roleDeLaCible = await getRole(centerId, String(auditBefore.roleId));
+      if (roleDeLaCible && roleDeLaCible.locked) {
+        await refuserEscalade('code d une personne de la direction', 'Seule la direction lit ou change ce code.', 'staff_member', targetMemberId);
+        return;
+      }
+    }
     // DONNER UN AUTRE CENTRE : il faut gerer l equipe la-bas aussi. Marius,
     // Manager, n ouvre pas Gembloux a Flavy ; la Direction des deux centres,
     // oui.
@@ -465,6 +545,8 @@ module.exports = async (req, res) => {
       const result = await regenerateRoleCode({
         centerId,
         actorMemberId: session.member.id,
+        sessionMemberId,
+        sessionToken: session.token || '',
         roleId: body.roleId,
       });
       extra = { updatedRole: result.role, newAccessCode: result.accessCode };

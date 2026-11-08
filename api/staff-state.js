@@ -11,7 +11,6 @@ function buildOfflineStaffState(date, centerId, error) {
     degraded: true,
     storageUnavailable: true,
     storageMessage: 'Données temps réel temporairement indisponibles. Mode secours actif.',
-    storageError: error?.message || 'Base indisponible.',
     date,
     centerId,
     reservations: [],
@@ -65,6 +64,13 @@ module.exports = async (req, res) => {
     // attente, ils ne se melangent ni aux listes ni aux chiffres du jour.
     // (les groupes « Pas venu » aussi : la console les montre barres, leurs places rendues)
     const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true });
+    // Une reponse sans montants n est pas la meme reponse (passe securite du 2026-11-08), et
+    // la revision du jour recopie chaque dossier, prix et moyen de paiement compris : sans
+    // « Voir les montants », elle part en EMPREINTE (elle change quand le jour change, elle
+    // ne dit plus rien), dans l en-tete comme dans le corps.
+    if (res.__sansMontants && snapshot.revision) {
+      snapshot.revision = `sm-${require('crypto').createHash('sha256').update(String(snapshot.revision)).digest('hex').slice(0, 32)}:sans-montants`;
+    }
     const requestRevision = req.headers['if-none-match'];
     if (requestRevision && requestRevision === snapshot.revision) {
       res.statusCode = 304;

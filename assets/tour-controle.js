@@ -37,7 +37,7 @@
     const d = new Date(`${date}T12:00:00Z`);
     return new Intl.DateTimeFormat('fr-BE', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' }).format(d);
   };
-  const euros = (n) => new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Number(n) % 1 ? 2 : 0 }).format(Number(n) || 0);
+  const euros = (n) => (typeof montantsMasques === 'function' && montantsMasques()) ? '···' : new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Number(n) % 1 ? 2 : 0 }).format(Number(n) || 0);
   function ilYA(iso) {
     if (!iso) return 'jamais';
     const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);

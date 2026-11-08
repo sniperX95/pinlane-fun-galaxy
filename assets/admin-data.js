@@ -44,10 +44,12 @@ function dhEsc(value) {
 }
 
 function dhEuro(n) {
+  if (typeof montantsMasques === 'function' && montantsMasques()) return '···';
   return `${Number(n || 0).toLocaleString('fr-BE', { maximumFractionDigits: 0 })} €`;
 }
 
 function dhEuroFull(n) {
+  if (typeof montantsMasques === 'function' && montantsMasques()) return '···';
   return `${Number(n || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
 

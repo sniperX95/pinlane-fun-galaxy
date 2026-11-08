@@ -188,10 +188,21 @@ async function recupererContenuParDefaut(emailId) {
   return reponse.json();
 }
 
+// Comparaison en temps constant (passe securite du 2026-11-08, point L3 du pentest) : `===`
+// s arrete au premier caractere different, et le temps de reponse renseignait sur le
+// secret. Les deux cotes sont haches d abord : la duree ne depend plus ni du contenu ni
+// de la longueur, comme pour /api/cron.
+function memeSecret(recu, attendu) {
+  const a = crypto.createHash('sha256').update(String(recu), 'utf8').digest();
+  const b = crypto.createHash('sha256').update(String(attendu), 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
 function parSecretMaison(req) {
   const entetes = (req && req.headers) || {};
   const attendu = process.env.INBOUND_EMAIL_SECRET;
-  return Boolean(attendu) && entetes['x-inbound-secret'] === attendu;
+  const recu = entetes['x-inbound-secret'];
+  return Boolean(attendu) && typeof recu === 'string' && memeSecret(recu, attendu);
 }
 
 function autorise(brut, req) {
@@ -294,6 +305,14 @@ function createHandler({
     }
 
     if (!autorise(brut, req)) {
+      // Un refus ne passait nulle part, pas meme dans les journaux (passe securite du
+      // 2026-11-08). Il part maintenant sur Telegram, une fois par heure au plus : soit
+      // quelqu un fabrique de faux mails de clients, soit le secret du webhook ne
+      // correspond plus et AUCUN mail de client ne rentre.
+      const entetes = (req && req.headers) || {};
+      const signeParLeFournisseur = Boolean(entetes['svix-signature'] || entetes['webhook-signature']);
+      console.warn('[inbound-email] envoi refuse', signeParLeFournisseur ? 'signature du fournisseur fausse ou perimee' : 'sans signature valide');
+      await require('../lib/garde-securite').signalerWebhookRefuse({ signeParLeFournisseur }).catch(() => null);
       sendError(res, 401, 'Webhook non autorisé.');
       return;
     }

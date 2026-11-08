@@ -33,6 +33,12 @@
 //       le dossier cree la porte. Une visite bowling et laser, piste 3 choisie a la main : a 7
 //       joueurs elle prend une deuxieme piste et garde la 3, a 6 la piste ajoutee s en va, et
 //       le dossier cree a 7 a ses deux pistes.
+//   [I] UNE FORMULE N EST PAS UN TICKET VIDE (Ansar, le 8 novembre, Kids Fun Day a Gembloux :
+//       360 € au ticket, « Créer » grise, aucun message, un clic qui ne fait rien). Sa carte
+//       ne nomme aucune activite : la fenetre n a rien a composer, le serveur a ses etapes.
+//       La simulation part, le bouton dit « Créer à 14:00 », le dossier nait en base. Un
+//       centre qui ferme tot garde ses arrivees (la demi-heure d arrivee, pas les 5 h
+//       annoncees), un refus se lit, un ticket vraiment vide reste bloque.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en
@@ -132,6 +138,15 @@ MUTATIONS.push(
   { nom: 'pistes-ajoutees-gardees', lettre: 'H', cible: '[H] le groupe redescend a 6 : la piste ajoutee s en va, la 3 reste', fichier: APP, de: '  if (current.length > besoin) {', vers: '  if (false) {' },
   { nom: 'parties-cachees', lettre: 'H', cible: '[H] deux parties : la rangee « Partie 2 » sur le bloc, « à la suite » cochee', fichier: APP, de: "  if (departs.length < 2) return '';", vers: "  if (departs.length < 99) return '';" },
   { nom: 'partie-immobile', lettre: 'H', cible: '[H] une heure de la partie 2 touchee sur le bloc : le ticket la dit', fichier: APP, de: "    rvChoisirHeure('laser_game', 100 + partie, heure);\n    rsForcerApres(quoi, x, dejaForce);\n  });", vers: '    rsForcerApres(quoi, x, dejaForce);\n  });' },
+);
+// [I] une formule n est pas un ticket vide.
+MUTATIONS.push(
+  { nom: 'formule-vide-au-pied', lettre: 'I', cible: '[I] Kids Fun Day a 14:00 : le bouton dit « Créer à 14:00 », sans is-bloque', fichier: APP, de: 'const vide = rvTicketVide() && !lot;\n  const attente = !b.faits.combien;', vers: 'const vide = !rvActivites().length && !lot;\n  const attente = !b.faits.combien;' },
+  { nom: 'formule-vide-au-clic', lettre: 'I', cible: '[I] le clic cree le dossier en base : la formule, 14:00, 12 joueurs, 360 €', fichier: APP, de: "const vide = rvTicketVide() && !lot;\n  if (vide) { rsOuvrir('activites'); return; }", vers: "const vide = !rvActivites().length && !lot;\n  if (vide) { rsOuvrir('activites'); return; }" },
+  { nom: 'ticket-vide-part', lettre: 'I', cible: '[I] un ticket vraiment vide reste bloque', fichier: APP, de: '  return !rvActivites().length && !rvFormule();', vers: '  return false;' },
+  { nom: 'creneau-sur-la-duree-annoncee', lettre: 'I', cible: '[I] un centre qui ferme a 18:00 : la simulation part quand meme', fichier: APP, de: 'return formule ? getFormuleBookedDuration(formule) : annoncee;', vers: 'return annoncee;' },
+  { nom: 'encaisser-sans-formule', lettre: 'I', cible: '[I] aujourd hui, un mercredi : les deux boutons Payé sont utilisables', fichier: APP, de: 'if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || rvTicketVide()) return false;', vers: 'if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || !rvActivites().length) return false;' },
+  { nom: 'refus-en-recherche-sans-fin', lettre: 'I', cible: '[I] hors de sa fenetre : le refus se lit sur le ticket, le bouton ne cherche pas sans fin', fichier: APP, de: '!s.heureArretee && !s.forcer && rvResas.length < 2 && rvActivites().length);', vers: '!s.heureArretee && !s.forcer && rvResas.length < 2);' },
 );
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -1221,7 +1236,153 @@ async function scenarioH(browser) {
   } finally { await finir(m2, 'H2'); }
 }
 
-const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH };
+// ---------------------------------------------------------------------------
+// [I] UNE FORMULE N EST PAS UN TICKET VIDE
+// ---------------------------------------------------------------------------
+const MERCREDI = '2027-01-20';
+async function scenarioI(browser) {
+  console.log('\n[I] une formule n est pas un ticket vide');
+  const lire = (page) => page.evaluate(() => {
+    const b = document.getElementById('rvCreer');
+    const plan = rvPlanCourant();
+    const t = (id) => ((document.getElementById(id) || {}).textContent || '').replace(/\s+/g, ' ').trim();
+    return {
+      texte: b ? b.textContent.replace(/\s+/g, ' ').trim() : '', bloque: Boolean(b && b.classList.contains('is-bloque')), pret: b ? b.dataset.pret : '',
+      activites: rvActivites(), formule: quickBookState.formuleId, date: quickBookState.date, heure: quickBookState.startTime, pax: Number(quickBookState.pax), q: rsEtat().q,
+      plan: plan ? { disponible: plan.disponible, debut: plan.debut, fin: plan.fin, prix: plan.prix, refus: plan.refus, etapes: (plan.etapes || []).map((e) => e.activite) } : null,
+      erreur: (rvConstruire({ simulation: true }) || {}).erreur || '', avertissement: rvAvertissement(),
+      total: t('rvTotalPied'), ticket: t('rsLignes'), verdict: t('rvVerdict'),
+    };
+  });
+  const posts = (m) => m.journal.filter((j) => j.m === 'POST' && String(j.url).startsWith('/api/staff-reservations') && j.corps);
+  const creations = (m) => posts(m).filter((j) => !j.corps.dryRun);
+  const simulations = (m, heure) => posts(m).filter((j) => j.corps.dryRun === true && j.corps.formuleId === 'kfd' && j.corps.startTime === heure);
+  // (une attente bornee : c est le gate qui doit rougir sur sa cible, pas une attente qui expire)
+  const borne = (p) => p.catch(() => {});
+  const planPret = (page) => borne(page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 6000 }));
+  // La souris du comptoir : la date, les joueurs, la formule, puis son heure dans « Autres ».
+  async function kidsFunDay(page, { heure = '', offres = false } = {}) {
+    await page.locator('.btn-new').click();
+    await page.waitForSelector('#qbDate', { state: 'attached' });
+    await page.locator('#qbDate').fill(MERCREDI);
+    await page.locator('#rsHaut [data-pax="12"]').click();
+    await page.locator('#rsFormules').click();
+    if (offres) await page.locator('#rsOffres').click();
+    await page.locator('#rsF-kfd').click();
+    if (!heure) return;
+    await planPret(page);
+    await page.locator('.rs-h-autres').click();
+    await page.locator(`#rsCorps .rs-h[data-heure="${heure}"]`).click();
+    await planPret(page);
+    await page.waitForTimeout(250);
+  }
+  // Mercredi devient aujourd hui, pour la page ET pour le serveur.
+  async function mercrediAujourdhui(m, heure) {
+    const instant = FX.instant(MERCREDI, heure).getTime();
+    globalThis.__comptoirMaintenant = instant;
+    B.base.horloge = instant;
+    await m.page.clock.setFixedTime(new Date(instant));
+  }
+
+  // Un mercredi a venir, comme au comptoir, jusqu au dossier en base.
+  let corpsDeLaFenetre = null;
+  const m = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m;
+    await kidsFunDay(page, { heure: '14:00' });
+    const e = await lire(page);
+    ok(e.formule === 'kfd' && e.date === MERCREDI && e.pax === 12 && e.heure === '14:00' && e.activites.length === 0 && e.total === '360 €', '[I] MONTAGE : Kids Fun Day un mercredi, 12 joueurs, 14:00, rien a composer, 360 € au ticket', e);
+    const parties = simulations(m, '14:00');
+    corpsDeLaFenetre = parties.length ? parties[parties.length - 1].corps : null;
+    ok(Boolean(corpsDeLaFenetre) && corpsDeLaFenetre.type === 'formule', '[I] la simulation part au serveur, pour la formule a 14:00', posts(m).slice(-3).map((j) => ({ dry: j.corps.dryRun, f: j.corps.formuleId, h: j.corps.startTime })));
+    ok(Boolean(e.plan) && e.plan.disponible === true && e.plan.debut === '14:00' && e.plan.fin === '17:00' && e.plan.prix === 360 && e.plan.etapes.join() === 'playground,arcade_time', '[I] le serveur tient la formule : de 14:00 a 17:00, 360 €, ses etapes a lui', e.plan);
+    ok(/^Créer à 14:00/.test(e.texte) && !e.bloque && e.pret === '1', '[I] Kids Fun Day a 14:00 : le bouton dit « Créer à 14:00 », sans is-bloque', e);
+    await creer(page, 'Banc Kids Fun Day');
+    const [r] = await neufs(page, m.avant);
+    const lu = r ? { formule: r.formule_id, type: r.type, date: String(r.date).slice(0, 10), heure: String(r.start_time).slice(0, 5), pax: Number(r.pax), prix: Number(r.price), pistes: r.lanes } : null;
+    ok(Boolean(lu) && creations(m).length === 1 && lu.formule === 'kfd' && lu.type === 'formule' && lu.date === MERCREDI && lu.heure === '14:00' && lu.pax === 12 && lu.prix === 360, '[I] le clic cree le dossier en base : la formule, 14:00, 12 joueurs, 360 €', { lu, creations: creations(m).length, ecran: await lire(page).catch(() => 'fenetre fermee') });
+  } finally { await finir(m, 'I1'); }
+
+  // Gembloux n a pas de plaine de jeux : la meme formule, ses arcades seules, le corps que la
+  // fenetre vient d envoyer.
+  serveur.changerSession(B.sessionDuRole('direction', { nom: 'Accueil', centre: 'gembloux' }));
+  const corpsGembloux = { ...(corpsDeLaFenetre || {}), centerId: 'gembloux' };
+  delete corpsGembloux.dryRun;
+  const sim = await serveur.appeler('POST', '/api/staff-reservations', { ...corpsGembloux, dryRun: true });
+  const planG = sim.json.plan || {};
+  ok(sim.statut === 200 && planG.disponible === true && planG.debut === '14:00' && planG.fin === '17:00' && planG.prix === 360 && (planG.etapes || []).map((x) => x.activite).join() === 'arcade_time', '[I] Gembloux (sans plaine de jeux) : le serveur tient la formule sur ses arcades, 360 €', { statut: sim.statut, plan: planG, message: sim.json.message || sim.json.error });
+  const cree = await serveur.appeler('POST', '/api/staff-reservations', { ...corpsGembloux, name: 'Banc Gembloux' });
+  const resa = cree.json.reservation || {};
+  ok(cree.statut === 201 && resa.centerId === 'gembloux' && resa.formuleId === 'kfd' && resa.startTime === '14:00' && Number(resa.price) === 360, '[I] Gembloux : le meme corps cree le dossier', { statut: cree.statut, centre: resa.centerId, formule: resa.formuleId, heure: resa.startTime, prix: resa.price, message: cree.json.message || cree.json.error });
+
+  // Un ticket sans formule ni activite reste bloque, comme avant.
+  const m2 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m2;
+    await page.evaluate(() => openQuickBook({ date: state.currentDate, type: 'formule' }));
+    await page.locator('#rsHaut [data-pax="6"]').click();
+    await page.waitForTimeout(500);
+    const e = await lire(page);
+    ok(e.formule === '' && e.activites.length === 0 && e.q === 'formules', '[I] MONTAGE : un ticket sans formule ni activite', e);
+    ok(e.bloque && e.texte === 'Créer' && e.pret === '0', '[I] un ticket vraiment vide reste bloque', e);
+    await page.locator('#rvCreer').click();
+    await page.waitForTimeout(500);
+    const apres = await lire(page);
+    ok(creations(m2).length === 0 && apres.q === 'activites' && apres.bloque, '[I] et son clic ne cree rien, il ramene aux activites', { creations: creations(m2).length, q: apres.q, bloque: apres.bloque });
+  } finally { await finir(m2, 'I2'); }
+
+  // Un centre qui ferme a 18:00 le mercredi : 14:00 + les 5 h annoncees depassaient, la fenetre
+  // ne demandait jamais le plan. Le serveur, lui, tient cette arrivee.
+  const centre = require(path.join(ROOT, 'lib/ops-knowledge.js')).getCenter('libramont');
+  const horaire = centre.defaultSchedule.regular['3'];
+  centre.defaultSchedule.regular['3'] = { open: '12:00', close: '18:00' };
+  const m3 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m3;
+    await page.evaluate(() => { centerScheduleConfig.defaultSchedule.regular[3] = { open: '12:00', close: '18:00' }; });
+    await kidsFunDay(page, { heure: '14:00' });
+    const e = await lire(page);
+    ok(simulations(m3, '14:00').length > 0 && !e.erreur && Boolean(e.plan) && e.plan.disponible === true, '[I] un centre qui ferme a 18:00 : la simulation part quand meme', e);
+    ok(/^Créer à 14:00/.test(e.texte) && !e.bloque && !e.avertissement && !/hors horaires/i.test(e.verdict), '[I] et le bouton dit « Créer à 14:00 », sans faux « hors horaires »', e);
+  } finally { centre.defaultSchedule.regular['3'] = horaire; await finir(m3, 'I3'); }
+
+  // Mercredi, c est aujourd hui : on encaisse en creant, la formule n y fait pas exception.
+  const m4 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m4;
+    await mercrediAujourdhui(m4, '13:10');
+    await page.evaluate((jour) => { state.currentDate = jour; }, MERCREDI);
+    await kidsFunDay(page, { heure: '14:00' });
+    const boutons = await page.evaluate(() => [...document.querySelectorAll('#rvPied .rs-payer')].map((b) => ({ mot: b.textContent.trim(), actif: !b.disabled, visible: b.getClientRects().length > 0 })));
+    ok(boutons.length === 2 && boutons.every((b) => b.actif && b.visible), '[I] aujourd hui, un mercredi : les deux boutons Payé sont utilisables', { boutons, ...(await lire(page)) });
+    await page.locator('#qbQui').fill('Banc Mercredi');
+    await page.waitForTimeout(200);
+    await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
+    const [neuve] = await neufs(page, m4.avant);
+    // (ce banc ne simule pas l UPDATE du paiement : le PATCH part au vrai handler et la chaine
+    // complete, jusqu au statut en base, est tenue par comptoir-reserver-check [R4])
+    const paiement = () => m4.journal.filter((j) => j.m === 'PATCH' && j.corps && j.corps.status === 'paid');
+    await attendreBase(page, () => paiement().length > 0);
+    const demande = paiement()[0] ? paiement()[0].corps : null;
+    ok(Boolean(neuve) && neuve.formule_id === 'kfd' && Number(neuve.price) === 360 && Boolean(demande) && Number(demande.id) === Number(neuve.id) && demande.paymentMethod === 'Carte Bancaire', '[I] Payé carte cree le dossier de la formule et demande son encaissement', { dossier: neuve && { id: neuve.id, formule: neuve.formule_id, prix: neuve.price }, demande });
+  } finally { await finir(m4, 'I4'); }
+
+  // Hors de sa fenetre : le serveur refuse, la fenetre n a aucune activite ou chercher une autre
+  // heure. Le refus se dit, le bouton ne reste pas sur « Recherche… ».
+  const m5 = await ouvrir(browser, { reservations: () => [] });
+  try {
+    const { page } = m5;
+    await mercrediAujourdhui(m5, '17:10');
+    await kidsFunDay(page, { offres: true });
+    await borne(page.waitForFunction(() => { const p = rvPlanCourant(); return p && !p.disponible; }, null, { timeout: 6000 }));
+    await page.waitForTimeout(400);
+    const e = await lire(page);
+    ok(Boolean(e.plan) && e.plan.disponible === false, '[I] MONTAGE : a 17:10, le serveur refuse la formule', e);
+    ok(e.bloque && !/Recherche/.test(e.texte) && !/cherche/.test(e.verdict) && Boolean(e.plan && e.plan.refus) && e.ticket.includes(e.plan.refus.replace(/\s:\s/g, ', ')), '[I] hors de sa fenetre : le refus se lit sur le ticket, le bouton ne cherche pas sans fin', e);
+  } finally { await finir(m5, 'I5'); }
+}
+
+const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI };
 
 function verifierLesAncres() {
   let mortes = 0;

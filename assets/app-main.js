@@ -32410,7 +32410,8 @@ function rvProposerHeure() {
 // refus s affiche, avec ses sorties.
 function rvRefusATraiter(s = quickBookState) {
   const plan = rvPlanCourant();
-  return Boolean(plan && !plan.disponible && rvPropositionActive(s) && !s.heureArretee && !s.forcer && rvResas.length < 2);
+  // (une formule sans activite a composer n a pas d heures a essayer : son refus se dit)
+  return Boolean(plan && !plan.disponible && rvPropositionActive(s) && !s.heureArretee && !s.forcer && rvResas.length < 2 && rvActivites().length);
 }
 
 function rvHeureEnRecherche() {
@@ -32656,6 +32657,14 @@ function rvActivites() {
   const ordre = quickBookState.ordre || (quickBookState.ordre = []);
   ids.forEach((id) => { if (!ordre.includes(id)) ordre.push(id); });
   return ordre.filter((id) => ids.includes(id));
+}
+
+// UNE FORMULE CHOISIE N EST PAS UN TICKET VIDE (2026-11-08, Kids Fun Day a Gembloux : 360 € au
+// ticket, « Créer » grise, aucun message, un clic qui ne fait rien). Sa carte ne nomme aucune
+// activite : la fenetre n a pas de ligne a composer, ses etapes sont au serveur (formula.steps).
+// Seul un ticket sans activite ET sans formule est vide.
+function rvTicketVide() {
+  return !rvActivites().length && !rvFormule();
 }
 
 function rvNomActivite(id) {
@@ -33037,6 +33046,15 @@ function rvResumeFormule(f) {
   return rvIdsDeComposition(prog).map((id) => (id === 'laser_game' ? rvPluriel(Number(prog.laser_game && prog.laser_game.games) || 1, 'laser') : rvNomBref(id))).join(', ');
 }
 
+// LE CRENEAU A VERIFIER : ce que la visite occupe vraiment, comme au serveur. Une formule a
+// fenetre ouverte ne reserve que sa demi-heure d arrivee (getFormuleBookedDuration, jumelle de
+// lib/booking-config) : 14:00 plus ses 5 h annoncees depassait la fermeture d un centre qui
+// ferme a 18:00, et la fenetre ne demandait jamais le plan d une heure que le serveur tient.
+function rvDureeDuCreneau(annoncee) {
+  const formule = rvFormule();
+  return formule ? getFormuleBookedDuration(formule) : annoncee;
+}
+
 // CE QUI COINCE AVANT MEME LE PLAN : un jour ferme, une heure hors horaires,
 // une formule hors regles (possible au comptoir, la raison part en note).
 function rvAvertissement() {
@@ -33045,7 +33063,7 @@ function rvAvertissement() {
   if (!schedule) return 'Centre fermé à cette date.';
   if (!s.startTime) return 'Choisissez une heure.';
   syncQuickBookDuration();
-  const slotCheck = validateSlotWindow(s.date, s.startTime, s.totalDuration, { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok) return slotCheck.message;
   const formule = rvFormule();
   if (formule) {
@@ -33330,7 +33348,7 @@ function rvPiedHtml() {
   const lot = rvResas.length > 1;
   const refuse = Boolean(plan && !plan.disponible);
   const cherche = rvHeureEnRecherche();
-  const vide = !rvActivites().length && !lot;
+  const vide = rvTicketVide() && !lot;
   const attente = !b.faits.combien;
   const proche = refuse && !s.forcer && !lot ? rsHeureProche() : '';
   const prixBloque = lot ? '' : rsPrixBloque();
@@ -33367,7 +33385,7 @@ function rvPiedHtml() {
 // pas). Ils sont au-dessus de « Créer » : s ils s en vont, « Créer » ne bouge pas.
 function rvPeutEncaisserEnCreant() {
   const s = quickBookState;
-  if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || !rvActivites().length) return false;
+  if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || rvTicketVide()) return false;
   if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.markPaid')) return false;
   const plan = rvPlanCourant();
   if (plan && !plan.disponible) return false;
@@ -34244,7 +34262,7 @@ function rvConstruire({ simulation = false } = {}) {
   const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);
   const duration = Number(s.duration);
   const totalDuration = Number(s.totalDuration || duration);
-  const slotCheck = validateSlotWindow(s.date, s.startTime, totalDuration, { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok && !forcer) return { erreur: slotCheck.message };
   // Une formule hors regles part quand meme (choix du comptoir) : la raison
   // s ecrit dans la note du dossier, pour que la caisse la comprenne.
@@ -37156,7 +37174,7 @@ function rsCreer() {
   rvProposerHeure();
   const plan = rvPlanCourant();
   const lot = rvResas.length > 1;
-  const vide = !rvActivites().length && !lot;
+  const vide = rvTicketVide() && !lot;
   if (vide) { rsOuvrir('activites'); return; }
   if (!lot && rsPrixBloque()) { rsOuvrir('total'); return; }
   if (lot) {

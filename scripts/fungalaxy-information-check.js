@@ -150,6 +150,18 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
 // les deux controles globaux sur l union de leurs releves, comme avant.
 const CONTEXTES=[];for(const width of [1440,390,320,844])for(const embedded of [false,true])CONTEXTES.push(width+'/'+(embedded?'embed':'standalone'));
 const estFils=eclats.estFils();let resultatDuFils=null;
+// LE COMPTEUR D ECRANS N EST PAS UNE ECRITURE (2026-11-09). Le formulaire dit a quel ecran il se
+// trouve (POST public-booking-meta, kind « etapes », lib/formulaire-etapes.js) : le centre, une
+// visite tiree au hasard, des ecrans, rien d autre. Tout autre envoi reste interdit pendant la
+// lecture des informations : ni heure retenue, ni reservation, ni demande, ni geste des offres.
+// Un envoi « etapes » qui porterait un champ de plus compte comme une ecriture.
+function compteurDEcrans(request){
+ try{
+  if(request.method()!=='POST'||new URL(request.url()).pathname!=='/api/public-booking-meta')return false;
+  const b=JSON.parse(request.postData()||'null');
+  return Boolean(b)&&b.kind==='etapes'&&Object.keys(b).sort().join(',')==='centerId,etapes,kind,visite'&&Array.isArray(b.etapes)&&b.etapes.length>0&&b.etapes.every(e=>e&&Object.keys(e).sort().join(',')==='etape,parcours');
+ }catch(error){return false;}
+}
 async function enFils() {
  const {resultats,sorties}=await eclats.eclater({fichier:__filename,rangs:CONTEXTES.map((_,rang)=>rang),nombre:CONTEXTES.length,ports:{PINLANE_INFORMATION_PORT:port}});
  const errors=[];let blockedWrites=0,manque=0;
@@ -177,7 +189,7 @@ async function run() {
    const context=await browser.newContext({viewport,reducedMotion:'reduce'});
    await context.addInitScript(()=>window.addEventListener('message',event=>{if(event.data?.type==='pinlane:vue')window.__qaVue=event.data;}));
    let metadata;
-   await context.route('**/*',async route=>{const request=route.request();if(!request.url().startsWith(origin+'/'))return route.abort();if(!['GET','HEAD'].includes(request.method())){blockedWrites++;return route.abort();}
+   await context.route('**/*',async route=>{const request=route.request();if(!request.url().startsWith(origin+'/'))return route.abort();if(!['GET','HEAD'].includes(request.method())){if(compteurDEcrans(request))return route.fulfill({status:202,contentType:'application/json',body:'{"ok":true}'});blockedWrites++;return route.abort();}
     if(new URL(request.url()).pathname==='/api/public-booking-meta') {
       const response=await route.fetch();const body=await response.json();
       const arcade=body.activities?.find(activity=>activity.id==='arcade_time');

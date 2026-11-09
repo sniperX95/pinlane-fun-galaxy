@@ -23,6 +23,7 @@ const VER = 'lib/assistant-verite.js';
 const API = 'api/assistant.js';
 const MEM = 'lib/assistant-memoire.js';
 const ECRAN = 'assets/pinlane-assistant.js';
+const STYLE = 'assets/pinlane-assistant.css';
 
 const MUTATIONS = {
   'garde-du-site-ferme': { section: 'P', fichier: 'middleware.ts', de: "    '/api/assistant',\n", vers: "", rouge: "[P] la route passe le garde du site" },
@@ -97,7 +98,25 @@ const MUTATIONS = {
   'pas-d-extraits': { section: 'R', fichier: OUT, de: "extraits: dedans.slice(0, 10).map(extraitLigne)", vers: "extraits: []", rouge: "[R] les extraits sont de vraies lignes" },
   'phrase-sans-periode': { section: 'R', fichier: OUT, de: "return `Je lis les réservations ${m.periode} à ${m.centre}${axes.length", vers: "return `Je lis les réservations à ${m.centre}${axes.length", rouge: "[R] la phrase dit la periode et le centre" },
   'source-non-annoncee': { section: 'R', fichier: AGENT, de: "      emettre('etape', { id: appel.id, etat: 'cours', ...outils.annonce(ctx, appel.name, appel.input) });", vers: "      emettre('etape', { id: appel.id, etat: 'cours' });", rouge: "[R] chaque lecture annonce sa source" },
-  'total-invente': { section: 'E', fichier: ECRAN, de: "textContent = total > lues ? `sur", vers: "textContent = true ? `sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
+  'total-invente': { section: 'E', fichier: ECRAN, de: "(total > affiche ? `${nombreEntier(affiche)} sur", vers: "(true ? `${nombreEntier(affiche)} sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
+  'texte-coupe-le-dessin': { section: 'E', fichier: ECRAN, de: "    if (haut.querySelector('[data-pliage]') || sceneRetient(haut, m)) return;", vers: "    if (haut.querySelector('[data-pliage]')) return;", rouge: "[E] un dessin reste a l ecran le temps d etre vu" },
+  'attente-sans-fin': { section: 'E', fichier: ECRAN, de: "  const ATTENTE_TEXTE = 1600;", vers: "  const ATTENTE_TEXTE = 400000;", rouge: "[E] la reponse ne tarde jamais plus de deux secondes apres le dessin" },
+  'bonjour-qui-cherche': { section: 'E', fichier: ECRAN, de: "aria-label=\"Réponse en préparation\">${SIGNE}</p>", vers: "aria-label=\"Réponse en préparation\">Je regarde votre question</p>", rouge: "[E] un bonjour n annonce aucune recherche" },
+  'compteur-qui-defile': { section: 'E', fichier: ECRAN, de: "(e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '')", vers: "(e.lues ? compteLu(Math.round(Number(e.lues) * Math.min(1, (now - S.t0) / 1500)), Number(e.total) || 0) : '')", rouge: "[E] aucun compteur ne defile" },
+  'dessin-sans-ordre': { section: 'E', fichier: ECRAN, de: "      vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));\n", vers: "", rouge: "[E] un dessin se pose dans l ordre de ses donnees" },
+  'scene-qui-saute': { section: 'E', fichier: ECRAN, de: "      if (hauteur > S.hauteur) { S.hauteur = hauteur; scene.style.height = `${hauteur}px`; }", vers: "      scene.style.height = `${hauteur}px`;", rouge: "[E] la scene garde sa hauteur d un dessin a l autre" },
+  'saut-au-pli': { section: 'E', fichier: ECRAN, de: "    article.style.minHeight = `${article.offsetHeight}px`;\n", vers: "", rouge: "[E] le texte prend la place du dessin sans faire sauter la page" },
+  'dessin-qui-traine': { section: 'E', fichier: STYLE, de: "  --d-feuille: 300ms;", vers: "  --d-feuille: 3000ms;", rouge: "[E] chaque piece entre vite, une seule fois" },
+  'bulle-qui-rebondit': { section: 'E', fichier: STYLE, de: ".ast-q.is-neuf .ast-q-bulle { animation: astArrive var(--d-base) var(--c-sortie) both; }", vers: ".ast-q.is-neuf .ast-q-bulle { animation: astArrive var(--d-base) cubic-bezier(.34, 1.3, .64, 1) both; }", rouge: "[E] rien ne rebondit" },
+  'mouvement-sans-fin': { section: 'E', fichier: STYLE, de: ".lu-scene { position: relative;", vers: ".lu-scene { animation: astFondu 1s linear infinite; position: relative;", rouge: "[E] rien ne bouge sans fin, sauf le signe de travail" },
+  'reduit-ignore': { section: 'E', fichier: STYLE, de: "@media (prefers-reduced-motion: no-preference) {", vers: "@media all {", rouge: "[E] mouvement reduit : la recherche ne bouge plus" },
+  'dessin-unique': { section: 'E', fichier: ECRAN, de: "      try { html = (DESSINS[source.outil] ? DESSINS[source.outil](source) : dessinGenerique(source)) || ''; } catch (erreur) { html = ''; }", vers: "      try { html = dessinGenerique(source) || ''; } catch (erreur) { html = ''; }", rouge: "[E] chaque outil a le dessin de sa donnee" },
+  'place-libre-fausse': { section: 'V', fichier: OUT, de: "heures_de_piste_libres_par_jour: offertes ? r1(Math.max(0, offertes - prises) / n) : null", vers: "heures_de_piste_libres_par_jour: offertes ? r1(offertes / n) : null", rouge: "[V] la semaine type dit la place libre de chaque jour" },
+  'jour-ignore': { section: 'V', fichier: OUT, de: "(!jourVoulu || NOMS_JOURS[weekdayIndex(r.date)] === jourVoulu)", vers: "true", rouge: "[V] les clients d un jour ne comptent que ses visites" },
+  'methode-du-creux-retiree': { section: 'R', fichier: AGENT, de: "Votre réponse est alors un plan, pas un constat.", vers: "", rouge: "[R] le prompt donne la methode pour remplir un jour creux" },
+  'phrase-toute-faite': { section: 'R', fichier: OUT, de: "  phrase = gommer(e.pourquoi, 100) || phrase;", vers: "", rouge: "[R] la phrase vient de la question" },
+  'phrase-non-gommee': { section: 'R', fichier: OUT, de: "  phrase = gommer(e.pourquoi, 100) || phrase;", vers: "  phrase = String(e.pourquoi || '') || phrase;", rouge: "[R] la phrase du modele ne montre ni numero ni adresse" },
+  'pourquoi-facultatif': { section: 'R', fichier: OUT, de: "required: ['pourquoi', ...(o.definition.input_schema.required || [])]", vers: "required: [...(o.definition.input_schema.required || [])]", rouge: "[R] chaque outil demande sa phrase" },
   'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);", vers: "    if (m.statut === 'cours' && !m.texte) { haut.innerHTML = htmlRecherche(m); majRecherche(haut, m); }", rouge: "[E] la scene ne se reconstruit pas a chaque lecture" },
   'correction-perdue': { section: 'E', fichier: ECRAN, de: "retenirFait(champ.value, 'correction', String(m.texte || '').slice(0, 280))", vers: "Promise.resolve()", rouge: "[E] une correction devient un fait appris" },
   'reprise-sans-envoi': { section: 'E', fichier: ECRAN, de: "        const reponse = await appeler('reprendre', { conversations: nouvelles });", vers: "        const reponse = { reprises: [] };", rouge: "[E] les conversations de l appareil remontent sans perte" },
@@ -105,7 +124,17 @@ const MUTATIONS = {
   'cle-sans-centre': { section: 'E', fichier: ECRAN, de: "const clePortee = () => `${VERSION_STOCKAGE}:${centreId()}:${membreId()}`;", vers: "const clePortee = () => `${VERSION_STOCKAGE}:${membreId()}`;", rouge: "[E] chaque centre a ses conversations" },
   'arret-sans-effet': { section: 'E', fichier: ECRAN, de: "      if (A.flux) { A.flux.abort(); return; }\n", vers: "      if (A.flux) { return; }\n", rouge: "[E] arreter coupe la reponse" },
   'renvoi-sans-source': { section: 'E', fichier: ECRAN, de: "      if (!source) return '';\n", vers: "      if (!source) return tout;\n", rouge: "[E] un renvoi sans source ne s affiche pas" },
-  'suit-le-texte': { section: 'E', fichier: ECRAN, de: "    dessinerGraphiques(article, m);\n    majDescendre();\n", vers: "    dessinerGraphiques(article, m);\n    { const fil = dom('[data-ast-fil]'); fil.scrollTop = fil.scrollHeight; }\n    majDescendre();\n", rouge: "[E] la question reste en haut pendant que le texte pousse" },
+  'question-calee-en-haut': { section: 'E', fichier: ECRAN, de: "    versLeBas(!commence);\n    poser(c, reponse);", vers: "    { A.suivi = false; const f = dom('[data-ast-fil]'); const q = [...f.querySelectorAll('.ast-q')].pop(); q.nextElementSibling.style.minHeight = `${f.clientHeight}px`; f.scrollTop += q.getBoundingClientRect().top - f.getBoundingClientRect().top - 16; }\n    poser(c, reponse);", rouge: "[E] un message envoye reste en bas et ne saute pas en haut" },
+  'ne-suit-plus': { section: 'E', fichier: ECRAN, de: "      if (A.suivi && !A.glisse) fil.scrollTop = fil.scrollHeight;\n", vers: "", rouge: "[E] le fil suit le texte pendant qu il pousse" },
+  'decroche-sans-geste': { section: 'E', fichier: ECRAN, de: "performance.now() - A.dernierGeste < GESTE_RECENT", vers: "true", rouge: "[E] un defilement sans geste ne decroche pas" },
+  'ne-decroche-jamais': { section: 'E', fichier: ECRAN, de: "else if (monte && !retreci && performance.now() - A.dernierGeste < GESTE_RECENT) { A.suivi = false; arreterGlisse(); }", vers: "", rouge: "[E] remonter arrete le suivi" },
+  'fleche-morte': { section: 'E', fichier: ECRAN, de: "    if ((n = v('[data-ast-descendre]'))) { versLeBas(true); return; }\n", vers: "", rouge: "[E] la fleche ramene a la fin" },
+  'fil-fige': { section: 'E', fichier: ECRAN, de: "          while (S.rang < voulu) {", vers: "          while (S.rang < Math.min(voulu, 0)) {", rouge: "[E] les vraies lignes passent sous le dessin" },
+  'ligne-ecrasee': { section: 'E', fichier: ECRAN, de: "      liste.appendChild(li);\n", vers: "      liste.replaceChildren(li);\n", rouge: "[E] une deuxieme source ajoute sa ligne, la premiere garde son resultat" },
+  'dessin-d-un-coup': { section: 'E', fichier: ECRAN, de: "      vue.style.setProperty('--etale', `${etale}ms`);", vers: "      vue.style.setProperty('--etale', '0ms');", rouge: "[E] le dessin se remplit au fil de la lecture" },
+  'une-seule-couleur': { section: 'E', fichier: ECRAN, de: '`<div class="fr-l" data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(r.n, 34))}', vers: '`<div class="fr-l" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(r.n, 34))}', rouge: "[E] chaque piece a la couleur de sa donnee" },
+  'extraits-sur-l-appareil': { section: 'E', fichier: ECRAN, de: "etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined })) : m.etapes, ", vers: "", rouge: "[E] le fil et ses sources reviennent" },
+  'bilan-non-plie': { section: 'E', fichier: ECRAN, de: "    const ouvert = enCours || Boolean(m.etapesOuvertes);", vers: "    const ouvert = true;", rouge: "[E] une fois finie, la recherche se replie et dit ce qu elle a lu" },
   'no-show-hors-prompt': { section: 'A', fichier: AGENT, de: "Un no-show, un groupe pas venu et un absent sont la même chose, un groupe que l'équipe a noté Pas venu. Il ne compte ni dans", vers: "Il ne compte ni dans", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
   'no-show-hors-outil': { section: 'A', fichier: OUT, de: "absents (les no-show, ces groupes notés Pas venu, avec leur nombre, leurs joueurs, leur taux et le montant des réservations perdues), remplissage", vers: "absents, remplissage", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
   'perdu-non-compte': { section: 'A', fichier: OUT, de: "g.joueursAbsents += r.joueurs; g.perdu += r.prix; return;", vers: "g.joueursAbsents += r.joueurs; return;", rouge: "[A] les no-show se comptent en groupes, joueurs et euros" },
@@ -538,6 +567,16 @@ async function sectionV() {
   etat.script = [pas([outilP('s', 'provenance_et_site', OCT)], 'tool_use'), fin('Rien.')];
   await poser(question());
   const provenance = contenu(resultatsOutils(etat.appels[1])[0]);
+  // La place a vendre : octobre 2026 a cinq samedis ouverts de 10 h a 24 h sur 8 pistes, et quatre
+  // groupes de deux pistes pendant une heure. 560 heures offertes, 8 prises.
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v11') });
+  etat.script = [pas([outilP('c', 'creneaux', OCT), outilP('k', 'clients', { jour_semaine: 'mardi' }), outilP('n', 'clients', { jour_semaine: 'samedi' })], 'tool_use'), fin('Rien.')];
+  await poser(question());
+  const [semaine, duMardi, duSamedi] = resultatsOutils(etat.appels[1]);
+  const parJour = (contenu(semaine).par_jour || []);
+  const samedi = parJour.find((j) => j.jour === 'samedi') || {};
+  ok('[V] la semaine type dit la place libre de chaque jour', samedi.ouvert === '10:00 à 24:00' && samedi.jours_ouverts === 5 && samedi.groupes === 4 && samedi.groupes_par_jour === 0.8 && samedi.remplissage_pistes_pct === 1.4 && samedi.heures_de_piste_libres_par_jour === 110.4 && !parJour.some((j) => j.jour === 'lundi'), JSON.stringify(parJour));
+  ok('[V] les clients d un jour ne comptent que ses visites', !duMardi.is_error && !duSamedi.is_error && contenu(duMardi).jour_semaine === 'mardi' && contenu(duMardi).clients_connus === 0 && contenu(duSamedi).clients_connus === 2, JSON.stringify([contenu(duMardi).clients_connus, contenu(duSamedi).clients_connus]));
   ok('[V] l entonnoir donne son total', provenance.entonnoir_total && provenance.entonnoir_total.creneauxRetenus === 80 && provenance.entonnoir_total.confirmes === 29 && provenance.entonnoir_total.abandons === 51 && provenance.entonnoir_total.tauxConfirmation === 36.3, JSON.stringify(provenance.entonnoir_total));
 
   const { preuves: relier } = require('../lib/assistant-verite');
@@ -944,51 +983,78 @@ async function sectionR() {
   etat.script = [fin('Bonjour.')];
   const limite = await poser(question());
   ok('[R] la carte ne montre que les sources permises', !limite.un('debut').donnees.sources.some((s) => s.cle === 'clients') && !limite.un('debut').donnees.sources.some((s) => s.cle === 'mails'), JSON.stringify(limite.un('debut').donnees.sources));
+
+  // La phrase de la lecture : c est le modele qui l ecrit, pour cette question-la.
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-r4') });
+  etat.script = [pas([outilP('a', 'lister_reservations', { ...OCT, pourquoi: 'Je regarde qui vient le mardi après-midi' })], 'tool_use'), fin('Ok.')];
+  const parle = await poser(question());
+  const phraseEcrite = parle.tous('etape').find((e) => e.donnees.etat === 'cours').donnees.phrase;
+  ok('[R] la phrase vient de la question', phraseEcrite === 'Je regarde qui vient le mardi après-midi', phraseEcrite);
+  ok('[R] chaque outil demande sa phrase', etat.appels[0].corps.tools.every((t) => t.input_schema.properties.pourquoi && t.input_schema.required.includes('pourquoi')), JSON.stringify(etat.appels[0].corps.tools.filter((t) => !(t.input_schema.required || []).includes('pourquoi')).map((t) => t.name)));
+  ok('[R] le prompt demande une phrase pour la question', /champ pourquoi/.test(etat.appels[0].corps.system[0].text) && /jamais « Analysons »/.test(etat.appels[0].corps.system[0].text));
+  ok('[R] le prompt donne la methode pour remplir un jour creux', /Pour remplir un jour, un créneau ou une période creuse/.test(etat.appels[0].corps.system[0].text) && /Votre réponse est alors un plan, pas un constat\./.test(etat.appels[0].corps.system[0].text) && /clients filtré sur ce jour/.test(etat.appels[0].corps.system[0].text));
+  ok('[R] un simple bonjour ne cherche rien', /n'appelle aucune donnée/.test(etat.appels[0].corps.system[0].text) && /sans outil, sans chiffre/.test(etat.appels[0].corps.system[0].text));
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-r5') });
+  etat.script = [pas([outilP('a', 'lister_reservations', { ...OCT, pourquoi: 'Je cherche le 0470 12 34 56 chez marius@exemple.be' })], 'tool_use'), fin('Ok.')];
+  const gomme = await poser(question());
+  const phraseGommee = gomme.tous('etape').find((e) => e.donnees.etat === 'cours').donnees.phrase;
+  ok('[R] la phrase du modele ne montre ni numero ni adresse', !/0470|marius@/.test(phraseGommee), phraseGommee);
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-r6') });
+  etat.script = [pas([outilP('a', 'lister_reservations', OCT)], 'tool_use'), fin('Ok.')];
+  const sansPhrase = await poser(question());
+  ok('[R] sans phrase du modele, la lecture garde une phrase', /^Je /.test(sansPhrase.tous('etape').find((e) => e.donnees.etat === 'cours').donnees.phrase));
 }
 
 // La page : la recherche en direct, ce que l IA a appris, les conversations sur le serveur.
 async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   const debut = ['debut', { modele: 'Haiku 5.5', centres: [], sources: [{ cle: 'reservations', nom: 'Réservations' }, { cle: 'clients', nom: 'Clients' }, { cle: 'mails', nom: 'Mails' }] }];
   const etape = (id, cle, nom, phrase) => ['etape', { id, etat: 'cours', cleSource: cle, nomSource: nom, phrase, libelle: phrase, periode: '', centre: 'Fun Galaxy Libramont', unite: 'lignes' }];
-  flux.scenario = { evenements: [debut, etape('x1', 'reservations', 'Réservations', 'Je lis les réservations de novembre à Libramont'), ['lecture', { id: 'x1', lues: 300, total: 1200, trouvees: 40, extraits: [{ t: '03/11', d: 'Kids Fun Day, 12 joueurs, Zoé Témoin' }] }], { attendre: true }, ['lecture', { id: 'x1', lues: 1200, total: 1200, trouvees: 412, extraits: [{ t: '09/11', d: 'Bowling, 6 joueurs, Quartzite' }] }], etape('x2', 'clients', 'Clients', 'Je cherche qui revient'), ['lecture', { id: 'x2', lues: 87, extraits: [] }], { attendre: true }, ['source', { ...SRC, id: 'S1' }], ['etape', { id: 'x1', etat: 'fini', source: 'S1', trouve: '412 réservations, 7 230 joueurs', lues: 1200, duree: 2400 }], ['etape', { id: 'x2', etat: 'fini', source: '', trouve: '87 clients', lues: 87, duree: 900 }], ['proposition', { texte: 'Le KFD est complet le mercredi' }], ['texte', { delta: 'Voilà [S1].' }], finDe('Voilà [S1].')] };
+  flux.scenario = { evenements: [debut, etape('x1', 'reservations', 'Réservations', 'Je lis les réservations de novembre à Libramont'), ['lecture', { id: 'x1', lues: 300, total: 1200, trouvees: 40, extraits: [{ t: '03/11', d: 'Kids Fun Day, 12 joueurs, Zoé Témoin' }, { t: '04/11', d: 'Bowling, 6 joueurs, Marc Témoin' }, { t: '05/11', d: 'Laser Game, 10 joueurs, Léa Témoin' }, { t: '06/11', d: 'Minigolf, 4 joueurs, Paul Témoin' }] }], { attendre: true }, ['lecture', { id: 'x1', lues: 1200, total: 1200, trouvees: 412, extraits: [{ t: '09/11', d: 'Bowling, 6 joueurs, Quartzite' }] }], etape('x2', 'clients', 'Clients', 'Je cherche qui revient'), ['lecture', { id: 'x2', lues: 87, extraits: [] }], { attendre: true }, ['source', { ...SRC, id: 'S1' }], ['etape', { id: 'x1', etat: 'fini', source: 'S1', trouve: '412 réservations, 7 230 joueurs', lues: 1200, duree: 2400 }], ['etape', { id: 'x2', etat: 'fini', source: '', trouve: '87 clients', lues: 87, duree: 900 }], ['proposition', { texte: 'Le KFD est complet le mercredi' }], ['texte', { delta: 'Voilà [S1].' }], finDe('Voilà [S1].')] };
+  // Ce que la ligne du direct affiche, image par image : un nombre qui defile se verrait ici. Et la
+  // derniere ligne lue du fil, pour voir les vraies lignes passer une a une.
+  await page.evaluate(() => { window.__res = []; window.__fil = []; window.__resFin = false; (function suivre() { const r = document.querySelector('.ast-rech.est-cours [data-lu-res]'); const t = r ? r.textContent : ''; if (t && window.__res[window.__res.length - 1] !== t) window.__res.push(t); const f = document.querySelector('.ast-rech.est-cours .lu-fil p.est-lue span'); const l = f ? f.textContent : ''; if (l && window.__fil[window.__fil.length - 1] !== l) window.__fil.push(l); if (!window.__resFin) requestAnimationFrame(suivre); }()); });
   await page.locator(champ).fill('Une question pour regarder la recherche');
   await page.locator(champ).press('Enter');
-  await page.waitForFunction(() => /Je lis les réservations/.test((document.querySelector('[data-scn-phrase]') || {}).textContent || '') && /300/.test((document.querySelector('.scn-m[data-cle="reservations"] [data-compte]') || {}).textContent || ''), null, { timeout: 9000 });
+  await page.waitForFunction(() => /Je lis les réservations/.test((document.querySelector('.ast-rech.est-cours [data-lu-phrase]') || {}).textContent || '') && /300/.test((document.querySelector('.ast-rech.est-cours [data-lu-res]') || {}).textContent || ''), null, { timeout: 9000 }).catch(() => {});
   await FX_repos(page, 3000);
-  const au300 = await page.evaluate(() => {
-    const scene = document.querySelector('[data-scn]');
-    scene.dataset.temoin = '1';
-    const mot = document.querySelector('.scn-m[data-cle="reservations"]');
-    const rect = (e) => e.getBoundingClientRect();
-    const curseur = rect(document.querySelector('[data-scn-curseur]'));
-    const barre = /scaleX\(([\d.]+)\)/.exec(document.querySelector('[data-scn-barre]').style.transform);
-    return { phrase: document.querySelector('[data-scn-phrase]').textContent, sur: document.querySelector('[data-scn-sur]').textContent, barre: barre ? Number(barre[1]) : -1, extrait: document.querySelector('.scn-fil').textContent, actif: mot.classList.contains('est-actif'), compte: mot.querySelector('[data-compte]').textContent, curseurSurMot: Math.abs(curseur.left - rect(mot).left) <= 2 && Math.abs(curseur.width - rect(mot).width) <= 2, dit: document.querySelector('[data-scn-dit]').textContent };
+  const enDirect = () => page.evaluate(() => {
+    const b = document.querySelector('.ast-rech.est-cours');
+    const q = [...document.querySelectorAll('.ast-q')].pop();
+    if (!b || !q) return {};
+    const scene = b.querySelector('[data-lu-scene]');
+    const lis = [...b.querySelectorAll('.ast-rech-liste > li.lu')];
+    return { lignes: lis.length, premiere: lis.length ? lis[0].textContent.replace(/\s+/g, ' ').trim() : '', l1: lis.length ? Math.round(lis[0].getBoundingClientRect().top - q.getBoundingClientRect().top) : null, hLigne: lis.length ? Math.round(lis[lis.length - 1].getBoundingClientRect().height) + 1 : 0, temoin: b.dataset.temoin || '', source: b.querySelector('[data-lu-source]').textContent, phrase: b.querySelector('[data-lu-phrase]').textContent, compte: b.querySelector('[data-lu-res]').textContent.replace(/ /g, ' '), extrait: scene.textContent, hauteurScene: Math.round(scene.getBoundingClientRect().height), dit: b.querySelector('[data-lect-dit]').textContent, hautBloc: Math.round(b.getBoundingClientRect().height), hautQuestion: Math.round(q.getBoundingClientRect().top) };
   });
-  ok('[E] la recherche dit ou elle cherche', /Je lis les réservations de novembre/.test(au300.phrase) && au300.actif && au300.curseurSurMot && /Je lis les réservations/.test(au300.dit), JSON.stringify(au300));
-  ok('[E] les lignes lues et le total viennent du flux', /sur 1\s?200 lignes/.test(au300.sur.replace(/\u202f/g, ' ')) && Math.abs(au300.barre - 0.25) < 0.01 && /300/.test(au300.compte), JSON.stringify(au300));
-  ok('[E] un extrait reel s affiche', /Zoé Témoin/.test(au300.extrait), au300.extrait);
+  await page.evaluate(() => { const b = document.querySelector('.ast-rech.est-cours'); if (b) b.dataset.temoin = '1'; });
+  const au300 = await enDirect();
+  const vus300 = await page.evaluate(() => window.__res.map((t) => t.replace(/ /g, ' ')));
+  ok('[E] la recherche dit ou elle cherche', au300.source === 'Réservations' && /Je lis les réservations de novembre/.test(au300.phrase || '') && /Je lis les réservations/.test(au300.dit || ''), JSON.stringify(au300));
+  ok('[E] les lignes lues et le total viennent du flux', /^300 sur 1\s?200 lignes$/.test(au300.compte || ''), JSON.stringify(au300));
+  ok('[E] aucun compteur ne defile', vus300.length === 1 && /^300 sur 1\s?200 lignes$/.test(vus300[0]), JSON.stringify(vus300));
+  ok('[E] un extrait reel s affiche', /Zoé Témoin/.test(au300.extrait || '') && au300.hauteurScene > 16, JSON.stringify(au300));
+  const filVu = await page.evaluate(() => window.__fil.slice());
+  const ordreFil = ['Kids Fun Day', 'Bowling', 'Laser Game', 'Minigolf'].map((x) => filVu.findIndex((l) => l.startsWith(x)));
+  ok('[E] les vraies lignes passent sous le dessin', ordreFil.filter((x) => x >= 0).length >= 3 && ordreFil.filter((x) => x >= 0).every((x, i, l) => !i || x > l[i - 1]), JSON.stringify(filVu));
   await relacher(flux);
-  await page.waitForFunction(() => /Je cherche qui revient/.test((document.querySelector('[data-scn-phrase]') || {}).textContent || ''), null, { timeout: 9000 });
+  await page.waitForFunction(() => /Je cherche qui revient/.test((document.querySelector('.ast-rech.est-cours [data-lu-phrase]') || {}).textContent || ''), null, { timeout: 9000 }).catch(() => {});
   await FX_repos(page, 2500);
-  const au1200 = await page.evaluate(() => {
-    const scene = document.querySelector('[data-scn]');
-    return { temoin: scene.dataset.temoin, compte1: document.querySelector('.scn-m[data-cle="reservations"] [data-compte]').textContent, lu1: document.querySelector('.scn-m[data-cle="reservations"]').classList.contains('est-lu'), sur: document.querySelector('[data-scn-sur]').textContent, compte2: document.querySelector('.scn-m[data-cle="clients"] [data-compte]').textContent, clients: document.querySelector('.scn-m[data-cle="clients"]').classList.contains('est-actif') };
-  });
+  const au1200 = await enDirect();
+  await page.evaluate(() => { window.__resFin = true; });
   ok('[E] la scene ne se reconstruit pas a chaque lecture', au1200.temoin === '1', JSON.stringify(au1200));
-  ok('[E] le compteur de la premiere source va au bout', /1\s?200/.test(au1200.compte1.replace(/\u202f/g, ' ')) && au1200.lu1, JSON.stringify(au1200));
-  ok('[E] une deuxieme source s allume', au1200.clients && /87/.test(au1200.compte2), JSON.stringify(au1200));
-  ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(au1200.sur) && !/sur/.test(au1200.sur), JSON.stringify(au1200));
+  ok('[E] une deuxieme source ajoute sa ligne, la premiere garde son resultat', au300.lignes === 1 && au1200.lignes === 2 && /^Réservations/.test(au1200.premiere) && /1\s?200/.test(au1200.premiere) && au1200.source === 'Clients' && /Je cherche qui revient/.test(au1200.phrase || '') && /87/.test(au1200.compte || ''), JSON.stringify(au1200));
+  ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(au1200.compte || '') && !/sur/.test(au1200.compte || ''), JSON.stringify(au1200));
+  ok('[E] la liste grandit d une ligne et rien au-dessus ne bouge', au1200.l1 !== null && au1200.l1 === au300.l1 && Math.abs(au1200.hautBloc - au300.hautBloc - au1200.hLigne) <= 1, JSON.stringify([au300.l1, au1200.l1, au300.hautBloc, au1200.hautBloc, au1200.hLigne]));
   await relacher(flux);
   await finie(page, 3);
-  await FX_repos(page, 250);
-  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return { titre: b.querySelector('.ast-rech-titre').textContent, liste: !b.classList.contains('est-ouvert'), carte: Boolean(b.querySelector('[data-scn]')), prop: document.querySelectorAll('.ast-prop').length }; });
-  ok('[E] une fois finie, la recherche se replie et dit ce qu elle a lu', /2 lectures de vos données/.test(replie.titre) && /1\s?287 lignes/.test(replie.titre.replace(/\u202f/g, ' ')) && replie.liste === true && !replie.carte, JSON.stringify(replie));
+  await FX_repos(page, 700);
+  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); const titre = b.querySelector('.ast-rech-titre'); return { titre: titre ? titre.textContent : '', liste: !b.classList.contains('est-ouvert'), scene: Boolean(b.querySelector('[data-lu-scene]')), prop: document.querySelectorAll('.ast-prop').length }; });
+  ok('[E] une fois finie, la recherche se replie et dit ce qu elle a lu', /Lu dans Réservations et Clients/.test(replie.titre) && /1\s?287 lignes/.test(replie.titre.replace(/ /g, ' ')) && replie.liste === true && !replie.scene, JSON.stringify(replie));
   await page.locator('[data-ast-recherche] [data-ast-etapes]').last().click();
   await FX_repos(page, 200);
   await page.locator('[data-ast-etape-ouvrir="x1"]').last().click();
   await FX_repos(page, 200);
   const ouverte = await page.evaluate(() => { const li = [...document.querySelectorAll('[data-etape="x1"]')].pop(); return { detail: li.textContent, extraits: li.querySelectorAll('.lu-lignes p').length, visible: Boolean(li.querySelector('.lu-lignes') && li.querySelector('.lu-lignes').getBoundingClientRect().height > 10), bouton: Boolean(li.querySelector('.lu-actions [data-ast-source]')) }; });
-  ok('[E] une etape finie s ouvre et montre ce qu elle a lu', /412 réservations/.test(ouverte.detail) && ouverte.extraits === 2 && ouverte.visible && ouverte.bouton, JSON.stringify(ouverte));
+  ok('[E] une etape finie s ouvre et montre ce qu elle a lu', /412 réservations/.test(ouverte.detail) && ouverte.extraits === 5 && ouverte.visible && ouverte.bouton, JSON.stringify(ouverte));
   await page.locator('.lu.est-ouvert .lu-actions [data-ast-source]').last().click();
   await FX_repos(page, 250);
   ok('[E] une etape mene a sa donnee', (await page.evaluate(() => (document.querySelector('[data-ast-panneau] h2') || {}).textContent || '')) === SRC.titre);
@@ -1035,6 +1101,155 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   await page.keyboard.press('Escape');
   await FX_repos(page, 100);
 }
+// Chaque lecture a le dessin de sa donnee, la reponse le laisse finir, et un bonjour ne fait semblant de rien.
+const DESSINS_ATTENDUS = (() => {
+  const t = (cle) => ({ cle, nom: cle, type: 'texte' });
+  const n = (cle) => ({ cle, nom: cle, type: 'entier' });
+  const croise = (colonnes, lignes) => ({ outil: 'croiser_reservations', colonnes, lignes });
+  return [
+    ['f-grille', { outil: 'creneaux', colonnes: [t('jour'), n('heure'), n('groupes')], lignes: ['lundi', 'mardi'].flatMap((j) => [14, 15].map((h) => ({ jour: j, heure: h, groupes: h - 13 }))) }],
+    ['f-matrice', croise([t('activite'), t('canal'), n('reservations')], ['Bowling', 'Laser'].flatMap((a, i) => ['en ligne', 'comptoir'].map((c, j) => ({ activite: a, canal: c, reservations: i + j + 1 }))))],
+    ['f-col', croise([t('heure'), n('reservations')], [{ heure: 14, reservations: 3 }, { heure: 15, reservations: 8 }, { heure: 16, reservations: 5 }])],
+    ['f-evolution', croise([t('mois'), n('reservations')], [{ mois: '2026-09', reservations: 3 }, { mois: '2026-10', reservations: 8 }])],
+    ['f-parts', croise([t('occasion'), n('reservations')], [{ occasion: 'École', reservations: 3 }, { occasion: 'Anniversaire', reservations: 8 }])],
+    ['f-rang', croise([t('activite'), n('reservations')], ['a', 'b', 'c', 'd', 'e', 'f'].map((activite, i) => ({ activite, reservations: i + 1 })))],
+    ['f-duel', { outil: 'comparer_centres', colonnes: [t('centre'), n('reservations')], lignes: [{ centre: 'Fun Galaxy Libramont', reservations: 4 }, { centre: 'Fun Galaxy Gembloux', reservations: 1 }] }],
+    ['f-aa', { outil: 'chiffres_periode', colonnes: [t('nom'), n('periode'), n('avant')], lignes: [{ nom: 'Réservations', periode: 5, avant: 3, type: 'entier' }] }],
+    ['f-chiffres', { outil: 'chiffres_periode', colonnes: [t('nom'), n('periode')], lignes: [{ nom: 'Réservations', periode: 5, type: 'entier' }] }],
+    ['f-ann', { outil: 'supplements', colonnes: [t('article'), n('part_reservations')], lignes: [{ article: 'Boissons', part_reservations: 75 }] }],
+    ['f-chaine', { outil: 'combinaisons_activites', colonnes: [t('combinaison'), n('reservations')], lignes: [{ combinaison: 'Bowling + Laser', reservations: 4 }] }],
+    ['f-vis', { outil: 'equipe_et_activite', colonnes: [t('nom'), n('actions')], lignes: [{ nom: 'Marius Lambert', actions: 7 }] }],
+    ['f-couche', { outil: 'communications_envoyees', colonnes: [t('modele')], lignes: [], sections: [{ titre: 'Par modele', colonnes: [t('modele'), n('envoyes'), n('ouverts')], lignes: [{ modele: 'Rappel', envoyes: 4, ouverts: 1 }] }] }],
+    ['f-cartes', { outil: 'mails_clients', colonnes: [t('objet'), n('messages')], lignes: [{ objet: 'Réservation pour samedi', messages: 3 }] }],
+    ['f-bulles', { outil: 'demandes_sur_mesure', colonnes: [t('recue_le'), n('personnes')], lignes: [{ recue_le: '2026-10-20', date_souhaitee: '2026-12-12', personnes: 40 }] }],
+    ['f-visites', { outil: 'fiche_client', colonnes: [t('date'), t('statut')], lignes: [{ date: '2026-10-05', statut: 'venu' }, { date: '2026-05-10', statut: 'annulée' }] }],
+    ['f-prev', { outil: 'prevision_et_plan', colonnes: [t('date'), n('attendus')], lignes: [{ date: '2026-11-10', niveau: 'fort', attendus: 40 }, { date: '2026-11-11', niveau: 'creux', attendus: 5 }] }],
+    ['f-meteo', { outil: 'meteo_et_calendrier', colonnes: [t('date'), n('visiteurs')], lignes: [{ date: '2026-10-01', visiteurs: 40, temperature: 12 }, { date: '2026-10-02', visiteurs: 5, temperature: 15 }] }],
+    ['f-semaine', { outil: 'horaires_et_fermetures', colonnes: [t('ligne')], lignes: [], sections: [{ titre: 'Horaires', colonnes: [t('jour'), t('ouvert')], lignes: [{ jour: 'lundi', ouvert: 'fermé' }, { jour: 'mardi', ouvert: '14:00 à 22:00' }] }] }],
+    ['f-prix', { outil: 'catalogue_et_tarifs', colonnes: [t('ligne')], lignes: [], sections: [{ titre: 'Formules', colonnes: [t('nom'), n('prix')], lignes: [{ nom: 'A', prix: 18 }, { nom: 'B', prix: 55 }] }] }],
+    ['f-notes', { outil: 'concurrents_et_avis', colonnes: [t('nom'), n('note_google')], lignes: [{ nom: 'Bowl City', note_google: 4.3 }] }],
+    ['f-calcul', { outil: 'calculer', detail: '440 + 176 = 616', colonnes: [t('nom')], lignes: [] }],
+    ['f-conv', { outil: 'lire_fil_mail', colonnes: [t('sens'), t('texte')], lignes: [{ sens: 'reçu', texte: 'Bonjour' }, { sens: 'envoyé', texte: 'Merci' }] }],
+    ['f-ent', { outil: 'campagnes', colonnes: [t('nom'), n('destinataires')], lignes: [{ nom: 'Relance', destinataires: 84, envoyes: 40, ouvertures: 18, clics: 5 }] }],
+    ['f-frise', { outil: 'journal_du_centre', colonnes: [t('quand'), t('quoi')], lignes: [{ quand: '2026-10-05 10:00', quoi: 'a' }, { quand: '2026-10-08 12:00', quoi: 'b' }] }],
+  ];
+})();
+
+async function ecransDessins(page, flux, finDe, champ, finie) {
+  const debut = ['debut', { modele: 'Haiku 5.5', centres: [] }];
+  const lecture = (id, source, phrase = 'Je regarde') => [['etape', { id, etat: 'cours', cleSource: 'reservations', nomSource: 'Réservations', phrase }], ['lecture', { id, lues: 3, extraits: [] }], ['source', { ...source, id: `S${id}`, titre: 'T', detail: source.detail || '' }], ['etape', { id, etat: 'fini', source: `S${id}`, lues: 3, trouve: '3 lignes', duree: 10 }]];
+  const dessinsVus = await (async () => {
+    const avant = await page.evaluate(() => document.querySelectorAll('.ast-pied').length);
+    flux.scenario = { evenements: [debut, ...DESSINS_ATTENDUS.flatMap(([, s], i) => lecture(`d${i}`, s)), ['texte', { delta: 'Voilà.' }], finDe('Voilà.')] };
+    await page.locator(champ).fill('Tous les dessins');
+    await page.locator(champ).press('Enter');
+    await page.waitForFunction((x) => document.querySelectorAll('.ast-pied').length > x, avant, { timeout: 12000 }).catch(() => {});
+    await FX_repos(page, 700);
+    return page.evaluate((n) => { const bloc = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return Array.from({ length: n }, (_, i) => { const d = bloc && bloc.querySelector(`[data-etape="d${i}"] .lu-dessin`); return d ? d.className : ''; }); }, DESSINS_ATTENDUS.length);
+  })();
+  const faux = DESSINS_ATTENDUS.map(([c], i) => [c, dessinsVus[i]]).filter(([c, v]) => !v.split(/\s+/).includes(c));
+  ok('[E] chaque outil a le dessin de sa donnee', faux.length === 0, JSON.stringify(faux));
+  ok('[E] deux formes de donnees ne se dessinent pas pareil', new Set(dessinsVus).size === DESSINS_ATTENDUS.length, JSON.stringify(dessinsVus));
+  const couleurs = await page.evaluate((i) => { const bloc = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return [...bloc.querySelectorAll(`[data-etape="d${i}"] .fr-p i`)].map((x) => getComputedStyle(x).backgroundColor); }, DESSINS_ATTENDUS.findIndex(([c]) => c === 'f-rang'));
+  ok('[E] chaque piece a la couleur de sa donnee', couleurs.length >= 5 && new Set(couleurs).size >= 3, JSON.stringify(couleurs));
+
+  // En direct : une premiere lecture haute, une seconde plus basse, puis la reponse aussitot.
+  const grille = DESSINS_ATTENDUS.find(([c]) => c === 'f-grille')[1];
+  const duel = DESSINS_ATTENDUS.find(([c]) => c === 'f-duel')[1];
+  const large = { ...duel, colonnes: [...duel.colonnes, { cle: 'joueurs', nom: 'Joueurs', type: 'entier' }, { cle: 'chiffre', nom: 'Chiffre', type: 'euro' }], lignes: duel.lignes.map((l, i) => ({ ...l, joueurs: 30 - i, chiffre: 600 - i * 100 })) };
+  flux.scenario = { evenements: [debut, ...lecture('l1', grille, 'Je regarde les heures creuses'), { attendre: true }, ...lecture('l2', large, 'Je mets vos deux centres côte à côte'), { attendre: true }, ['texte', { delta: 'Réponse complète.' }], finDe('Réponse complète.')] };
+  // Tout ce qui bouge dans la page est releve image par image, de l envoi a la reponse.
+  await page.evaluate(() => {
+    const R = { rebond: [], sansFin: [] };
+    window.__live = R;
+    const depasse = (c) => { const v = /cubic-bezier\(([^)]+)\)/.exec(c || ''); return Boolean(v) && v[1].split(',').map(Number).some((x, i) => i % 2 === 1 && (x > 1 || x < 0)); };
+    const nom = (a) => { const c = a.effect.target; const cl = c.className && c.className.baseVal !== undefined ? c.className.baseVal : c.className; return `${cl} ${a.animationName || a.transitionProperty || 'script'}`.trim(); };
+    const t0 = performance.now();
+    (function suivre() {
+      const now = performance.now();
+      document.getAnimations().forEach((a) => {
+        const cible = a.effect && a.effect.target;
+        if (!cible || !cible.closest || !cible.closest('.ast')) return;
+        const t = a.effect.getTiming();
+        if (t.iterations === Infinity && !cible.matches('.ast-tourne, .ast-travail')) R.sansFin.push(nom(a));
+        if ([t.easing, ...a.effect.getKeyframes().map((k) => k.easing)].some(depasse)) R.rebond.push(nom(a));
+      });
+      const bloc = document.querySelector('.ast-rech.est-cours');
+      const q = [...document.querySelectorAll('.ast-q')].pop();
+      const vue = bloc && bloc.querySelector('[data-lu-scene] .lu-vue:not(.est-sortie)');
+      if (!R.duel && vue && vue.querySelector('.f-duel')) {
+        R.duel = now;
+        const anims = vue.getAnimations({ subtree: true });
+        R.pieces = anims.length;
+        R.delais = anims.map((a) => Math.round(a.effect.getTiming().delay));
+        R.fins = anims.map((a) => Math.round(a.effect.getComputedTiming().endTime));
+        R.durees = anims.map((a) => Math.round(Number(a.effect.getTiming().duration) || 0));
+        R.tours = anims.map((a) => a.effect.getTiming().iterations);
+        R.phrase = bloc.querySelector('[data-lu-phrase]').textContent;
+      }
+      // La hauteur se lit une fois le dessin pose : une scene qui retrecit met 200 ms a le faire.
+      if (R.duel && R.h2 === undefined && now - R.duel >= 300 && bloc) {
+        R.h2 = Math.round(bloc.getBoundingClientRect().height);
+        R.q2 = Math.round(q.getBoundingClientRect().top);
+        R.s2 = Math.round(bloc.querySelector('[data-lu-scene]').getBoundingClientRect().height);
+        const premiere = bloc.querySelector('.ast-rech-liste > li.lu');
+        R.l1b = premiere ? Math.round(premiere.getBoundingClientRect().top - q.getBoundingClientRect().top) : null;
+      }
+      if (R.duel && R.encore === undefined && R.fins && now - R.duel >= Math.max(0, ...R.fins) + 60) {
+        const encore = document.querySelector('[data-lu-scene] .lu-vue:not(.est-sortie) .f-duel');
+        R.encore = encore ? encore.closest('.lu-vue').getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length : -1;
+      }
+      const r = [...document.querySelectorAll('.ast-r')].pop();
+      if (R.duel && !R.texte && r && /Réponse complète/.test(r.querySelector('[data-ast-texte]').textContent)) { R.texte = now; R.q3 = Math.round(q.getBoundingClientRect().top); }
+      if (!R.texte && now - t0 < 15000) requestAnimationFrame(suivre); else R.fini = true;
+    }());
+  });
+  await page.locator(champ).fill('En direct');
+  await page.locator(champ).press('Enter');
+  const premiere = await page.waitForFunction(() => document.querySelector('.ast-rech.est-cours [data-lu-scene] .f-grille'), null, { timeout: 6000 }).then(() => true, () => false);
+  await FX_repos(page, 900);
+  const l1 = await page.evaluate(() => { const b = document.querySelector('.ast-rech.est-cours'); const q = [...document.querySelectorAll('.ast-q')].pop(); const premiere = b && b.querySelector('.ast-rech-liste > li.lu'); return b ? { h: Math.round(b.getBoundingClientRect().height), q: Math.round(q.getBoundingClientRect().top), scene: Math.round(b.querySelector('[data-lu-scene]').getBoundingClientRect().height), l1: premiere ? Math.round(premiere.getBoundingClientRect().top - q.getBoundingClientRect().top) : null } : {}; });
+  await relacher(flux);
+  await page.waitForFunction(() => window.__live.duel, null, { timeout: 6000 }).catch(() => {});
+  await relacher(flux);
+  await page.waitForFunction(() => window.__live.fini, null, { timeout: 17000 }).catch(() => {});
+  const live = await page.evaluate(() => window.__live);
+  const attente = live.texte && live.duel ? Math.round(live.texte - live.duel) : null;
+  ok('[E] la phrase ecrite pour la question s affiche', live.phrase === 'Je mets vos deux centres côte à côte', String(live.phrase));
+  ok('[E] un dessin se pose dans l ordre de ses donnees', premiere && live.pieces >= 6 && new Set(live.delais).size >= 3, JSON.stringify(live.delais));
+  ok('[E] chaque piece entre vite, une seule fois', live.pieces >= 6 && (live.durees || []).every((d) => d <= 350) && (live.tours || []).every((t) => t === 1) && live.encore === 0, JSON.stringify({ durees: live.durees, tours: live.tours, encore: live.encore }));
+  ok('[E] le dessin se remplit au fil de la lecture', live.pieces >= 6 && Math.max(...live.delais) - Math.min(...live.delais) >= 450, JSON.stringify(live.delais));
+  ok('[E] la scene garde sa hauteur d un dessin a l autre', l1.scene > 0 && live.s2 === l1.scene && live.l1b !== null && live.l1b === l1.l1, JSON.stringify({ l1, s2: live.s2, l1b: live.l1b }));
+  ok('[E] un dessin reste a l ecran le temps d etre vu', attente !== null && attente >= 550, String(attente));
+  ok('[E] la reponse ne tarde jamais plus de deux secondes apres le dessin', attente !== null && attente <= 2000, String(attente));
+  ok('[E] le texte prend la place du dessin sans faire sauter la page', attente !== null && Math.abs(live.q3 - live.q2) <= 2, JSON.stringify({ q2: live.q2, q3: live.q3 }));
+  ok('[E] rien ne rebondit', live.rebond.length === 0, JSON.stringify([...new Set(live.rebond)]));
+  ok('[E] rien ne bouge sans fin, sauf le signe de travail', live.sansFin.length === 0, JSON.stringify([...new Set(live.sansFin)]));
+  await FX_repos(page, 600);
+
+  // Une lecture qui ne finit pas ne retient pas la reponse.
+  flux.scenario = { evenements: [debut, ['etape', { id: 'sans-fin', etat: 'cours', cleSource: 'reservations', nomSource: 'Réservations', phrase: 'Je cherche longtemps' }], ['texte', { delta: 'Réponse sans attendre.' }], { attendre: true }, finDe('Réponse sans attendre.')] };
+  await page.locator(champ).fill('Sans fin');
+  await page.locator(champ).press('Enter');
+  const t0 = Date.now();
+  const arrivee = await page.waitForFunction(() => /Réponse sans attendre/.test([...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]').textContent), null, { timeout: 7000 }).then(() => Date.now() - t0, () => null);
+  ok('[E] une lecture sans fin ne retient pas la reponse', arrivee !== null && arrivee < 2500, String(arrivee));
+  await relacher(flux);
+  await FX_repos(page, 500);
+
+  // Un bonjour : rien n est lu, donc rien ne se dit. Seul le petit cercle dit que ca travaille.
+  flux.scenario = { evenements: [debut, { attendre: true }, ['texte', { delta: 'Oui, ça va, merci.' }], finDe('Oui, ça va, merci.')] };
+  await page.locator(champ).fill('ça va ?');
+  await page.locator(champ).press('Enter');
+  await page.waitForFunction(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return a && a.querySelector('.ast-pense'); }, null, { timeout: 5000 }).catch(() => {});
+  const bonjour = await page.evaluate(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return { texte: a.textContent.trim(), recherche: Boolean(a.querySelector('[data-ast-recherche]')), signe: a.querySelectorAll('.ast-pense .ast-tourne').length }; });
+  ok('[E] un bonjour n annonce aucune recherche', bonjour.texte === '' && !bonjour.recherche && bonjour.signe === 1, JSON.stringify(bonjour));
+  await relacher(flux);
+  const repondu = await page.waitForFunction(() => /Oui, ça va/.test([...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]').textContent), null, { timeout: 5000 }).then(() => true, () => false);
+  ok('[E] un bonjour recoit sa reponse tout de suite', repondu);
+  await FX_repos(page, 500);
+}
+
 const FX_repos = (page, ms) => page.waitForTimeout(ms);
 
 async function sectionEcran() {
@@ -1123,9 +1338,9 @@ async function sectionEcran() {
     ok('[E] maj + entree ajoute une ligne', (await page.locator(champ).inputValue()) === 'Ligne une\n');
     await page.locator(champ).press('Enter');
     await page.waitForFunction(() => /Début de la réponse/.test(document.querySelector('.ast-r-texte') ? document.querySelector('.ast-r-texte').textContent : ''), null, { timeout: 8000 });
-    const pendant = await page.evaluate(() => ({ libelle: (document.querySelector('.lu-q span') || {}).textContent || '', arret: document.querySelector('[data-ast-envoi]').getAttribute('aria-label'), question: document.querySelector('.ast-q-bulle').textContent, haut: document.querySelector('.ast-q').getBoundingClientRect().top - document.querySelector('[data-ast-fil]').getBoundingClientRect().top }));
+    const pendant = await page.evaluate(() => ({ libelle: (document.querySelector('.lu-phrase') || {}).textContent || '', arret: document.querySelector('[data-ast-envoi]').getAttribute('aria-label'), question: document.querySelector('.ast-q-bulle').textContent, haut: document.querySelector('.ast-q').getBoundingClientRect().top - document.querySelector('[data-ast-fil]').getBoundingClientRect().top }));
     ok('[E] le texte arrive pendant que le serveur ecrit', true);
-    ok('[E] la lecture en cours se lit', /Je croise/.test(pendant.libelle), pendant.libelle);
+    ok('[E] la lecture en cours se lit', /réservations/i.test(pendant.libelle), pendant.libelle);
     ok('[E] le bouton devient Arreter', pendant.arret === 'Arrêter', pendant.arret);
     ok('[E] la question part sans ses blancs', pendant.question === 'Ligne une', JSON.stringify(pendant.question));
     const haut1 = pendant.haut;
@@ -1198,6 +1413,7 @@ async function sectionEcran() {
     const stocke = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pinlane-assistant')).map((k) => localStorage.getItem(k)).join(''));
     ok('[E] aucun nom de client n est ecrit sur l appareil', stocke.length > 100 && !stocke.includes('Témoin') && stocke.includes('A0001'), String(stocke.length));
     await ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC);
+    await ecransDessins(page, flux, finDe, champ, finie);
 
     // Une erreur se dit et se rejoue.
     flux.scenario = { erreur: { statut: 429, message: "Le plafond mensuel de l'assistant est atteint." } };
@@ -1220,21 +1436,47 @@ async function sectionEcran() {
     const envoyes = flux.corps[flux.corps.length - 1].messages;
     ok('[E] le fil envoye reprend la conversation', envoyes[envoyes.length - 1].content === 'Avec Sonnet' && envoyes.some((m) => m.role === 'assistant' && /Rejouée/.test(m.content)) && envoyes.every((m) => m.content), JSON.stringify(envoyes).slice(0, 200));
 
-    // Un long texte ne deplace pas la lecture : la question reste en haut.
+    // Comme Claude Code : le message reste en bas, la vue suit le texte, et seule une personne qui
+    // remonte arrete le suivi. Demande d Ansar le 2026-11-09, qui remplace la regle de ChatGPT.
     const long = Array.from({ length: 60 }, (_, i) => `Paragraphe ${i + 1}, assez long pour remplir une ligne entière de la colonne de lecture.`).join('\n\n');
-    flux.scenario = { evenements: [['debut', { modele: 'Haiku 5.5', centres: [] }], ['texte', { delta: 'Premier mot.' }], { attendre: true }, ['texte', { delta: `\n\n${long}` }], finDe(`Premier mot.\n\n${long}`)] };
+    const fin1 = 'Encore une phrase après le long texte.';
+    flux.scenario = { evenements: [['debut', { modele: 'Haiku 5.5', centres: [] }], ['texte', { delta: 'Premier mot.' }], { attendre: true }, ['texte', { delta: `\n\n${long}` }], { attendre: true }, ['texte', { delta: `\n\n${fin1}` }], { attendre: true }, ['texte', { delta: `\n\nDernière.` }], finDe(`Premier mot.\n\n${long}\n\n${fin1}\n\nDernière.`)] };
     await page.locator(champ).fill('Une longue');
     await page.locator(champ).press('Enter');
     await page.waitForFunction(() => /Premier mot/.test(document.body.textContent), null, { timeout: 5000 });
+    await FX.repos(page, 350);
+    const position = () => page.evaluate(() => { const q = [...document.querySelectorAll('.ast-q')].pop(); const f = document.querySelector('[data-ast-fil]'); const r = f.getBoundingClientRect(); const b = q.getBoundingClientRect(); return { reste: Math.round(f.scrollHeight - f.scrollTop - f.clientHeight), haut: f.scrollTop, hautDeLaQuestion: Math.round(b.top - r.top), hauteur: f.clientHeight, vide: Math.round(parseFloat(q.nextElementSibling.style.minHeight || '0')), fleche: document.querySelector('[data-ast-descendre]').classList.contains('est-visible') }; });
+    const envoye = await position();
+    ok('[E] un message envoye reste en bas et ne saute pas en haut', envoye.reste <= 1 && envoye.hautDeLaQuestion > envoye.hauteur / 2 && envoye.vide === 0, JSON.stringify(envoye));
+    await relacher(flux);
+    await page.waitForFunction(() => /Paragraphe 60/.test(document.body.textContent), null, { timeout: 5000 });
     await FX.repos(page, 200);
-    const position = () => page.evaluate(() => { const q = [...document.querySelectorAll('.ast-q')].pop(); const f = document.querySelector('[data-ast-fil]'); return { haut: Math.round(q.getBoundingClientRect().top - f.getBoundingClientRect().top), descendre: !document.querySelector('[data-ast-descendre]').hidden }; });
-    const avantTexte = await position();
+    const pousse = await position();
+    ok('[E] le fil suit le texte pendant qu il pousse', pousse.reste <= 1 && pousse.hautDeLaQuestion < envoye.hautDeLaQuestion && !pousse.fleche, JSON.stringify(pousse));
+    // Un defilement sans geste (un programme, un contenu qui change) ne decroche pas.
+    await page.evaluate(() => { document.querySelector('[data-ast-fil]').scrollTop -= 500; });
+    await FX.repos(page, 120);
+    await relacher(flux);
+    await page.waitForFunction(() => /Encore une phrase/.test(document.body.textContent), null, { timeout: 5000 });
+    await FX.repos(page, 200);
+    const sansGeste = await position();
+    ok('[E] un defilement sans geste ne decroche pas', sansGeste.reste <= 1, JSON.stringify(sansGeste));
+    // Une personne qui remonte garde sa place, meme si le texte continue.
+    const boite = await page.locator('[data-ast-fil]').boundingBox();
+    await page.mouse.move(boite.x + boite.width / 2, boite.y + boite.height / 2);
+    await page.mouse.wheel(0, -900);
+    await FX.repos(page, 250);
+    const remonte = await position();
     await relacher(flux);
     await finie(page, 7);
     await FX.repos(page, 300);
-    const apresTexte = await position();
-    ok('[E] la question reste en haut pendant que le texte pousse', Math.abs(avantTexte.haut - 16) <= 2 && avantTexte.haut === apresTexte.haut, JSON.stringify({ avantTexte, apresTexte }));
-    ok('[E] une fleche mene a la fin', apresTexte.descendre === true);
+    const apresRemonte = await position();
+    ok('[E] remonter arrete le suivi', remonte.reste > 200 && apresRemonte.haut === remonte.haut && apresRemonte.reste > remonte.reste, JSON.stringify({ remonte, apresRemonte }));
+    ok('[E] une fleche apparait quand on a remonte', remonte.fleche === true, JSON.stringify(remonte));
+    await page.locator('[data-ast-descendre]').click();
+    await FX.repos(page, 400);
+    const revenu = await position();
+    ok('[E] la fleche ramene a la fin', revenu.reste <= 1 && revenu.fleche === false, JSON.stringify(revenu));
 
     // Recharger : les conversations reviennent, les noms non.
     await page.reload();
@@ -1319,8 +1561,8 @@ async function sectionEcran() {
     flux.stockage = 'appareil';
     const lent = await monter();
     await lent.page.emulateMedia({ reducedMotion: 'reduce' });
-    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="scn" data-t="1"><p class="scn-source"><i></i></p></div>'; document.body.appendChild(d); const v = getComputedStyle(d.querySelector('i')).animationName; d.remove(); return v; });
-    ok('[E] mouvement reduit : plus d animation sur la recherche', reduit === 'none', reduit);
+    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="lu-scene"><div class="lu-vue" data-t="1"><div class="lu-dessin"><div class="lu-barres"><i style="--h:1;--rang:.5"></i></div></div></div></div><p class="ast-pense"><span class="ast-tourne"></span></p>'; document.body.appendChild(d); const v = ['.lu-barres i', '.lu-vue', '.ast-tourne'].map((s) => getComputedStyle(d.querySelector(s)).animationName).join(','); d.remove(); return v; });
+    ok('[E] mouvement reduit : la recherche ne bouge plus', reduit === 'none,none,none', reduit);
     await lent.ctx.close();
 
     {

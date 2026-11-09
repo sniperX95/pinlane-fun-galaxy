@@ -64,6 +64,7 @@
   const A = {
     root: null, cle: '', conversations: [], actuelle: '', modele: 'haiku', flux: null, panneau: null,
     menuModele: false, aSupprimer: '', identites: Object.create(null), peintureDemandee: false, ouvreur: null,
+    suivi: true, dernierGeste: 0, glisse: 0, vuHaut: 0, vuHauteur: 0, observateur: null,
     stockage: 'inconnu', carte: [], savoir: { charge: false, disponible: true, faits: [], edition: 0, aRetirer: 0, envoi: false, erreur: '' },
   };
 
@@ -111,7 +112,8 @@
     return valeur;
   }
 
-  const messagePourStockage = (m, i, liste) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, sources: (m.sources || []).map((s) => ({ ...s, sections: A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections : undefined, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
+  // Les lignes lues pendant la recherche nomment des clients : elles ne quittent pas la session.
+  const messagePourStockage = (m, i, liste) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined })) : m.etapes, sources: (m.sources || []).map((s) => ({ ...s, sections: A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections : undefined, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
 
   function versStockage(attente) {
     const appareil = A.stockage !== 'serveur';
@@ -240,7 +242,7 @@
     if (!dom('.ast')) return;
     peindreListe();
     peindrePanneauSiSavoir();
-    if (A.actuelle) peindreFil();
+    if (A.actuelle) peindreFil({ garder: true });
   }
 
   // ---- Les chiffres et le texte ----------------------------------------------------
@@ -284,8 +286,7 @@
     return t.replace(/[  ]?\[S(\d+)\]/g, (tout, n) => {
       const source = (m.sources || []).find((s) => s.id === `S${n}`);
       if (!source) return '';
-      const lecture = (m.etapes || []).find((e) => e.source === `S${n}`);
-      return `<button type="button" class="ast-cite" data-t="${lecture ? teinte(lecture.cleSource) : 6}" data-ast-source="S${n}" title="${esc(source.titre)}" aria-label="Source ${n}, ${esc(source.titre)}">${n}</button>`;
+      return `<button type="button" class="ast-cite" data-ast-source="S${n}" title="${esc(source.titre)}" aria-label="Source ${n}, ${esc(source.titre)}">${n}</button>`;
     });
   }
 
@@ -338,37 +339,52 @@
     return (MODELES.find((m) => m.id === t) || MODELES[0]).nom;
   };
 
-  // LA RECHERCHE. Pendant qu elle cherche, on voit la carte des donnees et la ligne qui bouge.
-  // Quand elle a fini, le bloc se replie en une phrase, et chaque etape reste ouvrable.
+  // LA RECHERCHE. Pendant la lecture, une seule ligne dit ou l assistant lit et ce qu il cherche, et
+  // dessous, un seul dessin, celui des vraies donnees de cette lecture, a une place qui ne bouge pas.
+  // Chaque dessin entre une fois, vite, dans l ordre de ses donnees, puis plus rien ne bouge. Quand la
+  // reponse commence, la ligne devient le bilan au passe et le texte prend la place du dessin.
+  // Ansar, 2026-11-09 : « plus pro plus clean plus serieuse », puis « moins IA, moins dérangeant ».
+  // Mouvements et durees : learning/resources/2026-11-09_claude-code-interface.
   const nombreEntier = (n) => Number(n || 0).toLocaleString('fr-BE');
   const mesureDe = (e) => {
     if (!e.lues) return '';
     return e.total && e.total > e.lues ? `${nombreEntier(e.lues)} sur ${nombreEntier(e.total)} lignes` : `${nombreEntier(e.lues)} ${e.lues > 1 ? 'lignes lues' : 'ligne lue'}`;
   };
+  const compteLu = (affiche, total) => (total > affiche ? `${nombreEntier(affiche)} sur ${nombreEntier(total)} lignes` : `${nombreEntier(affiche)} ${affiche > 1 ? 'lignes lues' : 'ligne lue'}`);
   function bilanRecherche(m) {
     const lectures = (m.etapes || []).filter((e) => !e.note);
+    const noms = [...new Set(lectures.filter((e) => e.cleSource !== 'calcul').map((e) => e.nomSource).filter(Boolean))];
+    const calculs = lectures.filter((e) => e.cleSource === 'calcul').length;
     const lues = lectures.reduce((s, e) => s + (Number(e.lues) || 0), 0);
     const duree = lectures.reduce((s, e) => s + (Number(e.duree) || 0), 0);
-    const morceaux = [`${lectures.length} lecture${lectures.length > 1 ? 's' : ''} de vos données`];
-    if (lues) morceaux.push(`${nombreEntier(lues)} lignes`);
+    const morceaux = [];
+    const vus = noms.length > 4 ? [...noms.slice(0, 3), `${noms.length - 3} autres`] : noms;
+    if (vus.length) morceaux.push(`Lu dans ${vus.length > 1 ? `${vus.slice(0, -1).join(', ')} et ${vus[vus.length - 1]}` : vus[0]}`);
+    else if (!calculs) morceaux.push(`${lectures.length} lecture${lectures.length > 1 ? 's' : ''} de vos données`);
+    if (lues) morceaux.push(`${nombreEntier(lues)} ligne${lues > 1 ? 's' : ''}`);
+    if (calculs) morceaux.push(`${calculs} calcul${calculs > 1 ? 's' : ''}`);
     if (duree >= 1000) morceaux.push(`${Math.round(duree / 1000)} s`);
     return morceaux.join(', ');
   }
 
-  // ---- LA LECTURE ----------------------------------------------------------------
-  // Ansar, 2026-11-09 : « les animations de recherche doivent bcp plus styler et explicite, on peut se
-  // rendre et voir ou il cherche ». Pendant que l assistant lit, une scene montre CE qu il lit, avec
-  // les vraies lignes et les vrais chiffres. Une lecture ne dure qu un instant : la scene la joue a une
-  // allure lisible, tant que le modele reflechit, et se replie des que la reponse s ecrit.
   const TEINTE_SOURCE = { reservations: 1, planning: 2, clients: 4, catalogue: 3, mails: 5, communications: 5, campagnes: 4, notes: 3, demandes: 2, equipe: 1, journal: 3, meteo: 5, site: 2, concurrents: 4, savoir: 1, calcul: 6 };
   const teinte = (cle) => TEINTE_SOURCE[cle] || 6;
   const scenes = new WeakMap();
-  const filsDeLecture = new WeakMap();
   const JOUR_MS = 86400000;
   const isoVersMs = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
   const msVersIso = (ms) => new Date(ms).toISOString().slice(0, 10);
-  const phraseFinie = (p) => { const t = String(p || '').replace(/^Je (?:lis|relis|regarde|cherche|compare|parcours|ouvre)\s+/i, ''); return t.charAt(0).toUpperCase() + t.slice(1); };
-
+  const phraseFinie = (p) => { const t = String(p || '').replace(/^(?:Je\s+(?!vous\b|me\b|ne\b|n['’])\S+\s+|J['’]\S+\s+)/i, ''); return t.charAt(0).toUpperCase() + t.slice(1); };
+  // Un dessin reste au moins VUE_MIN a l ecran. Le texte le laisse finir de se remplir, jamais plus
+  // de ATTENTE_TEXTE apres son arrivee.
+  const VUE_MIN = 700;
+  const ATTENTE_TEXTE = 1600;
+  // Le seul signe de travail de la page : un petit cercle qui tourne, sans phrase toute faite.
+  const SIGNE = '<span class="ast-tourne" aria-hidden="true"></span>';
+  // Les vraies lignes lues passent sous le dessin, trois a la fois, huit au plus par lecture.
+  const LIGNES_DU_FIL = 3;
+  const LIGNES_JOUEES = 8;
+  const HAUTEUR_LIGNE = 22;
+  const filsDeLecture = new WeakMap();
   function ajouterAuFil(e, lignes) {
     if (!Array.isArray(lignes) || !lignes.length) return;
     const fil = filsDeLecture.get(e) || [];
@@ -376,321 +392,644 @@
     filsDeLecture.set(e, fil);
   }
 
-  // Un petit dessin de ce qui a ete lu : il reste a cote de chaque lecture une fois finie.
-  function miniDessin(e) {
-    const cle = e.cleSource;
-    if (cle === 'planning' && Array.isArray(e.blocs) && e.blocs.length) {
-      const b = e.blocs.slice(0, 16);
-      const min = Math.min(...b.map((x) => x.debut));
-      const max = Math.max(...b.map((x) => x.fin));
-      const large = Math.max(1, max - min);
-      return `<svg viewBox="0 0 44 44" aria-hidden="true">${b.map((x, i) => `<rect x="${(4 + ((x.debut - min) / large) * 36).toFixed(1)}" y="${(6 + (Number.isFinite(x.rang) ? x.rang % 8 : i % 8) * 4.2).toFixed(1)}" width="${Math.max(3, ((x.fin - x.debut) / large) * 36).toFixed(1)}" height="3.4" rx="1.2"/>`).join('')}</svg>`;
+  // Le mois en barres : une par jour, a la hauteur de ses vraies reservations. Au-dela de deux mois
+  // les jours se regroupent, la periode entiere reste visible.
+  function seauxDeLaPeriode(e) {
+    const debut = isoVersMs(e.plage.debut);
+    const jours = Math.max(1, Math.round((isoVersMs(e.plage.fin) - debut) / JOUR_MS) + 1);
+    const pas = Math.ceil(jours / 62);
+    const seaux = [];
+    for (let i = 0; i < jours; i += pas) {
+      let total = 0;
+      for (let j = i; j < Math.min(i + pas, jours); j += 1) total += Number((e.jours || {})[msVersIso(debut + j * JOUR_MS)]) || 0;
+      seaux.push(total);
     }
-    if (e.jours && e.plage) {
-      const debut = isoVersMs(e.plage.debut);
-      const n = Math.min(35, Math.round((isoVersMs(e.plage.fin) - debut) / JOUR_MS) + 1);
-      const decale = (new Date(debut).getUTCDay() + 6) % 7;
-      const max = Math.max(1, ...Object.values(e.jours));
-      let s = '';
-      for (let i = 0; i < n; i += 1) {
-        const pos = i + decale;
-        const v = (e.jours[msVersIso(debut + i * JOUR_MS)] || 0) / max;
-        s += `<rect x="${(4 + (pos % 7) * 5.3).toFixed(1)}" y="${(7 + Math.floor(pos / 7) * 5.3).toFixed(1)}" width="4.3" height="4.3" rx="1.1" opacity="${v ? (0.28 + 0.72 * v).toFixed(2) : 0.12}"/>`;
-      }
-      return `<svg viewBox="0 0 44 44" aria-hidden="true">${s}</svg>`;
-    }
-    const largeurs = [30, 22, 34, 18, 26];
-    return `<svg viewBox="0 0 44 44" aria-hidden="true">${largeurs.map((l, i) => `<rect x="7" y="${9 + i * 6}" width="${l}" height="3.2" rx="1.6" opacity="${(1 - i * 0.14).toFixed(2)}"/>`).join('')}</svg>`;
+    return seaux;
+  }
+  const jourCourt = (iso) => new Date(isoVersMs(iso)).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+  function htmlPeriode(e) {
+    const seaux = seauxDeLaPeriode(e);
+    const max = Math.max(1, ...seaux);
+    return `<div class="lu-dessin" data-lu-dessin aria-hidden="true"><div class="lu-barres">${seaux.map((v, i) => `<i data-o="${((i / Math.max(1, seaux.length - 1)) * 0.92).toFixed(3)}" style="--h:${(v / max).toFixed(3)}"></i>`).join('')}</div><div class="lu-axe"><span>${esc(jourCourt(e.plage.debut))}</span><span>${esc(jourCourt(e.plage.fin))}</span></div></div>`;
   }
 
+  // La journee : les groupes du planning, a leur heure et sur leur piste.
+  function htmlJournee(e) {
+    const blocs = e.blocs;
+    const de = Math.floor(Math.min(...blocs.map((b) => b.debut)));
+    const a = Math.ceil(Math.max(...blocs.map((b) => b.fin)));
+    const large = Math.max(1, a - de);
+    const rangs = Math.max(...blocs.map((b) => Number(b.rang) || 0)) + 1;
+    const pose = (b) => `<i data-o="${(((b.debut - de) / large) * 0.92).toFixed(4)}" style="left:${(((b.debut - de) / large) * 100).toFixed(2)}%;width:${(((b.fin - b.debut) / large) * 100).toFixed(2)}%;top:calc(${Number(b.rang) || 0} * 100% / var(--rangs))"></i>`;
+    return `<div class="lu-dessin" data-lu-dessin aria-hidden="true"><div class="lu-plan" style="--rangs:${rangs}">${blocs.map(pose).join('')}</div><div class="lu-axe"><span>${de} h</span><span>${Math.round((de + a) / 2)} h</span><span>${a} h</span></div></div>`;
+  }
+
+  // ---- UN DESSIN POUR CHAQUE FORME DE DONNEES -----------------------------------------
+  // Ansar, 2026-11-09 : « faut vrmmmm que ce soit differente pour chaque [...] parfaitement adapté ».
+  // Chaque outil sait quelle table le raconte le mieux, et le dessin se construit sur SES vraies
+  // lignes : deux lectures ne se ressemblent pas, parce que leurs donnees ne se ressemblent pas.
+  // Chaque piece porte data-o, le moment ou elle arrive (de 0 a 1). La CSS dit comment elle arrive.
+  const ordre = (i, n) => (n > 1 ? (i / (n - 1)) * 0.92 : 0).toFixed(3);
+  const enNombre = (v) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    return typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null;
+  };
+  const tableNommee = (s, titre) => (s.sections || []).find((t) => t.titre === titre) || null;
+  const lignesDe = (s, titre) => { const t = tableNommee(s, titre); return t ? t.lignes : []; };
+  const couper = (t, n) => { const s = String(t == null ? '' : t); return s.length > n ? `${s.slice(0, n - 1).trim()}…` : s; };
+  const zone = (classe, contenu, style = '') => `<div class="lu-dessin ${classe}" data-lu-dessin aria-hidden="true"${style ? ` style="${style}"` : ''}>${contenu}</div>`;
+  const somme = (lignes, cle) => lignes.reduce((s, l) => s + (enNombre(l[cle]) || 0), 0);
+  const JOURS_DANS_L_ORDRE = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+  const estIso = (t) => /^\d{4}-\d{2}-\d{2}/.test(String(t || ''));
+
+  // Du plus grand au plus petit, chaque ligne a sa couleur et sa barre.
+  function fClassement(rangees, type, trier = true) {
+    const propres = rangees.map((r) => ({ n: r.n, v: enNombre(r.v) })).filter((r) => r.n && r.v !== null);
+    if (!propres.length) return '';
+    const liste = (trier ? [...propres].sort((a, b) => b.v - a.v) : propres).slice(0, 5);
+    const max = Math.max(1e-9, ...liste.map((r) => Math.abs(r.v)));
+    return zone('f-rang', liste.map((r, i) => `<div class="fr-l" data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(r.n, 34))}</span><span class="fr-p"><i style="--v:${(Math.abs(r.v) / max).toFixed(4)}"></i></span><span class="fr-v">${esc(formater(r.v, type))}</span></div>`).join(''));
+  }
+
+  // Ce que chacun pese dans le tout : une seule bande, partagee.
+  function fParts(rangees, type) {
+    const propres = rangees.map((r) => ({ n: r.n, v: enNombre(r.v) })).filter((r) => r.n && r.v > 0);
+    const total = propres.reduce((s, r) => s + r.v, 0);
+    if (propres.length < 2 || !total) return fClassement(rangees, type);
+    const liste = [...propres].sort((a, b) => b.v - a.v).slice(0, 5);
+    return zone('f-parts', `<div class="fp-b">${liste.map((r, i) => `<i data-t="${i + 1}" data-o="${ordre(i, liste.length)}" style="--p:${(r.v / total).toFixed(4)}"></i>`).join('')}</div><div class="fp-l">${liste.map((r, i) => `<span data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><u></u>${esc(couper(r.n, 26))} <b>${nombre((r.v / total) * 100, 0)} %</b></span>`).join('')}</div>`);
+  }
+
+  // Ceux qui restent a chaque etape.
+  function fEntonnoir(etapes) {
+    const liste = etapes.map((x) => ({ n: x.n, v: enNombre(x.v) })).filter((x) => x.n && x.v !== null).slice(0, 5);
+    if (liste.length < 2 || !liste[0].v) return '';
+    return zone('f-ent', liste.map((x, i) => `<div class="fe" data-o="${ordre(i, liste.length)}" style="--v:${Math.min(1, x.v / liste[0].v).toFixed(4)}"><span class="fe-n">${esc(x.n)}</span><span class="fe-p"><i></i></span><b>${esc(nombreEntier(x.v))}</b></div>`).join(''));
+  }
+
+  // Cette periode contre la precedente.
+  function fComparaison(rangees) {
+    const liste = rangees.map((r) => ({ ...r, a: enNombre(r.a), b: enNombre(r.b) })).filter((r) => r.a !== null && r.b !== null).slice(0, 3);
+    if (!liste.length) return '';
+    return zone('f-aa', liste.map((r, i) => {
+      const max = Math.max(1e-9, Math.abs(r.a), Math.abs(r.b));
+      return `<div class="faa" data-o="${ordre(i, liste.length)}"><span class="faa-n">${esc(r.n)}</span><span class="faa-b"><i style="--v:${(Math.abs(r.a) / max).toFixed(4)}"></i><u style="--v:${(Math.abs(r.b) / max).toFixed(4)}"></u></span><span class="faa-v"><b>${esc(formater(r.a, r.type))}</b><small>${esc(formater(r.b, r.type))}</small></span></div>`;
+    }).join(''));
+  }
+
+  // Quelques chiffres, cote a cote.
+  function fChiffres(rangees) {
+    const liste = rangees.filter((r) => enNombre(r.v) !== null).slice(0, 4);
+    if (!liste.length) return '';
+    return zone('f-chiffres', liste.map((r, i) => `<div data-o="${ordre(i, liste.length)}"><b>${esc(formater(enNombre(r.v), r.type))}</b><span>${esc(couper(r.n, 22))}</span></div>`).join(''));
+  }
+
+  // La semaine type : les jours en lignes, les heures en colonnes, plus c est fonce plus c est plein.
+  function fSemaineType(lignes) {
+    const cases = lignes.filter((l) => JOURS_DANS_L_ORDRE.includes(l.jour) && Number.isFinite(Number(l.heure)));
+    if (cases.length < 3) return '';
+    const heures = cases.map((l) => Number(l.heure));
+    const de = Math.min(...heures);
+    const colonnes = Math.max(...heures) - de + 1;
+    const mesure = (l) => enNombre(l.remplissage_pistes_pct) ?? enNombre(l.groupes) ?? 0;
+    const max = Math.max(1, ...cases.map(mesure));
+    const lire = new Map(cases.map((l) => [`${l.jour}-${l.heure}`, mesure(l) / max]));
+    const rangs = JOURS_DANS_L_ORDRE.map((j) => `<div class="fg-l"><span>${j[0].toUpperCase()}</span>${Array.from({ length: colonnes }, (_, c) => `<i data-o="${ordre(c, colonnes)}" style="--n:${(lire.get(`${j}-${de + c}`) || 0).toFixed(3)}"></i>`).join('')}</div>`).join('');
+    return zone('f-grille', `${rangs}<div class="fg-axe"><span>${de} h</span><span>${de + colonnes} h</span></div>`, `--h:${colonnes}`);
+  }
+
+  // Les heures d ouverture de chaque jour, a leur vraie place dans la journee.
+  function fHoraires(table) {
+    if (!table) return '';
+    const heureDe = (t) => { const m = /(\d{1,2})[:h](\d{2})?/.exec(t || ''); return m ? Number(m[1]) + (Number(m[2]) || 0) / 60 : null; };
+    const jours = JOURS_DANS_L_ORDRE.map((j) => {
+      const l = table.lignes.find((x) => String(x.jour).toLowerCase() === j);
+      if (!l) return null;
+      const [ouvre, ferme] = String(l.ouvert || '').split(/\s+à\s+/);
+      const de = heureDe(ouvre);
+      let a = heureDe(ferme);
+      if (de !== null && a !== null && a <= de) a += 24;
+      return { j, texte: l.ouvert, de, a };
+    }).filter(Boolean);
+    const ouverts = jours.filter((x) => x.de !== null && x.a !== null);
+    if (!ouverts.length) return '';
+    const min = Math.floor(Math.min(...ouverts.map((x) => x.de)));
+    const large = Math.max(1, Math.ceil(Math.max(...ouverts.map((x) => x.a))) - min);
+    return zone('f-semaine', jours.map((x, i) => `<div class="fs-l${x.de === null ? ' est-ferme' : ''}" data-o="${ordre(i, jours.length)}"><span>${esc(x.j.slice(0, 3))}.</span><span class="fs-t">${x.de === null ? '' : `<i style="left:${(((x.de - min) / large) * 100).toFixed(2)}%;width:${(((x.a - x.de) / large) * 100).toFixed(2)}%"></i>`}</span><small>${esc(couper(x.texte, 16))}</small></div>`).join(''));
+  }
+
+  // Tous les prix sur une meme regle, du moins cher au plus cher.
+  function fPrix(rangees) {
+    const liste = rangees.map((r) => ({ n: r.n, v: enNombre(r.v) })).filter((r) => r.n && r.v > 0).sort((a, b) => a.v - b.v);
+    if (liste.length < 2) return '';
+    const min = liste[0].v;
+    const max = liste[liste.length - 1].v;
+    const large = Math.max(1e-9, max - min);
+    return zone('f-prix', `<div class="fx-e">${liste.map((r, i) => `<i data-o="${ordre(i, liste.length)}" style="left:${(((r.v - min) / large) * 100).toFixed(2)}%"></i>`).join('')}</div><div class="lu-axe"><span>${esc(couper(liste[0].n, 26))}, ${esc(formater(min, 'euro'))}</span><span>${esc(couper(liste[liste.length - 1].n, 26))}, ${esc(formater(max, 'euro'))}</span></div>`);
+  }
+
+  // Les notes des concurrents sur une echelle qui finit a 5.
+  function fNotes(lignes) {
+    const liste = lignes.map((l) => ({ n: l.nom, v: enNombre(l.note_google) })).filter((l) => l.n && l.v !== null).sort((a, b) => b.v - a.v).slice(0, 5);
+    if (!liste.length) return '';
+    const bas = Math.min(3, Math.floor(Math.min(...liste.map((x) => x.v))));
+    return zone('f-rang f-notes', liste.map((x, i) => `<div class="fr-l" data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(x.n, 30))}</span><span class="fr-p"><u style="--v:${((x.v - bas) / (5 - bas)).toFixed(4)}"></u></span><span class="fr-v">${esc(x.v.toLocaleString('fr-BE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))}</span></div>`).join(''));
+  }
+
+  // Le calcul se pose terme a terme, le resultat en dernier.
+  function fCalcul(s) {
+    const detail = String(s.detail || '').trim();
+    if (!detail.includes('=')) return '';
+    const morceaux = detail.split(/\s+/);
+    return zone('f-calcul', morceaux.map((m, i) => `<span data-o="${ordre(i, morceaux.length)}"${i === morceaux.length - 1 ? ' class="est-res"' : ''}>${esc(m)}</span>`).join(' '));
+  }
+
+  // Un echange de mails : ce qu on a recu a gauche, ce qu on a envoye a droite.
+  function fConversation(lignes) {
+    const liste = lignes.slice(-4);
+    if (!liste.length) return '';
+    return zone('f-conv sans-fil', liste.map((l, i) => `<p class="${/envoy/i.test(l.sens) ? 'est-envoye' : 'est-recu'}" data-o="${ordre(i, liste.length)}">${esc(couper(l.texte, 120))}</p>`).join(''));
+  }
+
+  const etiquetteTemps = (v) => {
+    const t = String(v);
+    if (/^\d{4}-\d{2}$/.test(t)) return new Date(Date.UTC(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1, 1)).toLocaleDateString('fr-BE', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    return estIso(t) ? jourCourt(t.slice(0, 10)) : t;
+  };
+
+  // Une evolution dans le temps, mois apres mois ou semaine apres semaine.
+  function fEvolution(lignes, cle, mesure) {
+    const liste = lignes.filter((l) => enNombre(l[mesure]) !== null).slice(-62);
+    if (liste.length < 2) return '';
+    const max = Math.max(1e-9, ...liste.map((l) => Math.abs(enNombre(l[mesure]))));
+    return zone('f-evolution', `<div class="lu-barres">${liste.map((l, i) => `<i data-o="${ordre(i, liste.length)}" style="--h:${(Math.abs(enNombre(l[mesure])) / max).toFixed(3)}"></i>`).join('')}</div><div class="lu-axe"><span>${esc(etiquetteTemps(liste[0][cle]))}</span><span>${esc(etiquetteTemps(liste[liste.length - 1][cle]))}</span></div>`);
+  }
+
+  // Des evenements a leur date : plus il y en a le meme jour, plus le trait monte.
+  function fFrise(dates) {
+    const jours = dates.filter(estIso).map((d) => String(d).slice(0, 10)).sort();
+    if (jours.length < 2) return '';
+    const debut = isoVersMs(jours[0]);
+    const large = Math.max(JOUR_MS, isoVersMs(jours[jours.length - 1]) - debut);
+    const parJour = new Map();
+    jours.forEach((d) => parJour.set(d, (parJour.get(d) || 0) + 1));
+    const max = Math.max(...parJour.values());
+    const points = [...parJour.entries()];
+    return zone('f-frise', `<div class="ff-e">${points.map(([d, n], i) => `<i data-o="${ordre(i, points.length)}" style="left:${(((isoVersMs(d) - debut) / large) * 100).toFixed(2)}%;--n:${(n / max).toFixed(3)}"></i>`).join('')}</div><div class="lu-axe"><span>${esc(jourCourt(jours[0]))}</span><span>${esc(jourCourt(jours[jours.length - 1]))}</span></div>`);
+  }
+
+  // Un ordre naturel (les jours, les heures, la taille des groupes) : des colonnes, dans cet ordre-la.
+  function fColonnes(rangees, type) {
+    const liste = rangees.map((r) => ({ n: r.n, v: enNombre(r.v) })).filter((r) => r.n != null && r.v !== null).slice(0, 24);
+    if (liste.length < 2) return '';
+    const max = Math.max(1e-9, ...liste.map((r) => Math.abs(r.v)));
+    const sommet = liste.reduce((g, r, i) => (r.v > liste[g].v ? i : g), 0);
+    return zone(`f-col${liste.length > 8 ? ' est-serre' : ''}`, liste.map((r, i) => `<div class="fc${i === sommet ? ' est-sommet' : ''}" data-o="${ordre(i, liste.length)}"><b>${esc(formater(r.v, type))}</b><i style="--h:${(Math.abs(r.v) / max).toFixed(3)}"></i><span>${esc(couper(r.n, 18))}</span></div>`).join(''), `--n:${liste.length}`);
+  }
+
+  // Deux axes croises : une ligne par valeur du premier, une colonne par valeur du second, et une vague en diagonale.
+  function fMatrice(s, axeL, axeC, mesure) {
+    const valeursDe = (cle) => {
+      const v = [...new Set(s.lignes.map((l) => String(l[cle])))];
+      if (cle === 'jour_semaine') return v.sort((a, b) => JOURS_DANS_L_ORDRE.indexOf(a) - JOURS_DANS_L_ORDRE.indexOf(b));
+      if (cle === 'heure') return v.sort((a, b) => Number(a) - Number(b));
+      return v;
+    };
+    const rangs = valeursDe(axeL.cle);
+    const cols = valeursDe(axeC.cle);
+    if (rangs.length < 2 || cols.length < 2 || rangs.length > 8 || cols.length > 14) return '';
+    const lire = new Map(s.lignes.map((l) => [`${l[axeL.cle]}|${l[axeC.cle]}`, enNombre(l[mesure.cle]) || 0]));
+    const max = Math.max(1e-9, ...lire.values());
+    const vague = rangs.length + cols.length - 1;
+    const etiquette = (v) => (axeL.cle === 'jour_semaine' ? v[0].toUpperCase() : couper(v, 14));
+    const tete = cols.length <= 8 ? `<div class="fm-l"><span></span>${cols.map((c) => `<small>${esc(couper(axeC.cle === 'heure' ? `${c} h` : c, 9))}</small>`).join('')}</div>` : '';
+    const corps = rangs.map((r, i) => `<div class="fm-l"><span>${esc(etiquette(r))}</span>${cols.map((c, j) => `<i data-o="${ordre(i + j, vague)}" style="--n:${((lire.get(`${r}|${c}`) || 0) / max).toFixed(3)}"></i>`).join('')}</div>`).join('');
+    const pied = cols.length > 8 ? `<div class="lu-axe"><span>${esc(cols[0])}</span><span>${esc(cols[cols.length - 1])}</span></div>` : '';
+    return zone('f-matrice', `${tete}${corps}${pied}`, `--h:${cols.length};--g:${axeL.cle === 'jour_semaine' ? 16 : 96}px`);
+  }
+
+  // Deux centres face a face : chaque barre part du milieu et va vers son camp.
+  function fDuel(lignes) {
+    const [a, b] = lignes;
+    const mesures = [['Réservations', 'reservations', 'entier'], ['Joueurs', 'joueurs', 'entier'], ['Chiffre', 'chiffre', 'euro'], ['Panier moyen', 'panier_moyen', 'euro']]
+      .filter(([, c]) => enNombre(a[c]) !== null && enNombre(b[c]) !== null);
+    if (!mesures.length) return '';
+    const nom = (x) => String(x.centre || '').replace(/^Fun Galaxy\s+/i, '');
+    const rangs = mesures.map(([n, c, t], i) => {
+      const x = enNombre(a[c]);
+      const y = enNombre(b[c]);
+      const max = Math.max(1e-9, Math.abs(x), Math.abs(y));
+      return `<div class="fd" data-o="${ordre(i, mesures.length)}"><b>${esc(formater(x, t))}</b><span class="fd-g" data-t="1"><i style="--v:${(Math.abs(x) / max).toFixed(4)}"></i></span><span class="fd-n">${esc(n)}</span><span class="fd-d" data-t="2"><i style="--v:${(Math.abs(y) / max).toFixed(4)}"></i></span><b>${esc(formater(y, t))}</b></div>`;
+    }).join('');
+    return zone('f-duel', `<div class="fd-noms"><span data-t="1"><u></u>${esc(couper(nom(a), 24))}</span><span data-t="2">${esc(couper(nom(b), 24))}<u></u></span></div>${rangs}`);
+  }
+
+  // Combien de reservations prennent ce supplement : un anneau qui se remplit.
+  function fAnneaux(lignes) {
+    const liste = lignes.map((l) => ({ n: l.article, p: enNombre(l.part_reservations) })).filter((x) => x.n && x.p !== null).sort((a, b) => b.p - a.p).slice(0, 4);
+    if (!liste.length) return '';
+    return zone('f-ann', liste.map((x, i) => `<div data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><svg viewBox="0 0 36 36"><circle class="fa-f" cx="18" cy="18" r="15.9"></circle><circle class="fa-v" cx="18" cy="18" r="15.9" pathLength="100" style="--p:${Math.min(100, Math.max(0, x.p)).toFixed(1)}"></circle></svg><b>${esc(nombre(x.p, 0))} %</b><span>${esc(couper(x.n, 20))}</span></div>`).join(''));
+  }
+
+  // Les activites prises ensemble : elles s accrochent l une a l autre, chacune garde sa couleur.
+  function fChaine(lignes) {
+    const liste = lignes.map((l) => ({ morceaux: String(l.combinaison || '').split(/\s*\+\s*/).filter(Boolean), v: enNombre(l.reservations) })).filter((x) => x.morceaux.length && x.v !== null).sort((a, b) => b.v - a.v).slice(0, 4);
+    if (!liste.length) return '';
+    const total = liste.reduce((s, x) => s + x.morceaux.length, 0);
+    let rang = -1;
+    const couleurs = new Map();
+    const couleurDe = (m) => { if (!couleurs.has(m)) couleurs.set(m, (couleurs.size % 6) + 1); return couleurs.get(m); };
+    const piece = () => { rang += 1; return ordre(rang, total); };
+    return zone('f-chaine', liste.map((x) => `<div class="fch">${x.morceaux.map((m, j) => `${j ? '<em>+</em>' : ''}<span data-t="${couleurDe(m)}" data-o="${piece()}">${esc(couper(m, 22))}</span>`).join('')}<b>${esc(nombreEntier(x.v))}</b></div>`).join(''));
+  }
+
+  // Les membres de l equipe : un rond par personne, plus ou moins entoure selon ce qu elle a fait.
+  function fVisages(lignes) {
+    const liste = lignes.map((l) => ({ n: l.nom, a: enNombre(l.actions) })).filter((x) => x.n && x.a !== null).sort((a, b) => b.a - a.a).slice(0, 6);
+    if (!liste.length) return '';
+    const max = Math.max(1, ...liste.map((x) => x.a));
+    const initiales = (t) => String(t).trim().split(/\s+/).filter((m) => /^\p{L}/u.test(m)).slice(0, 2).map((m) => m[0]).join('').toUpperCase();
+    return zone('f-vis', liste.map((x, i) => `<div class="fv" data-t="${i + 1}" data-o="${ordre(i, liste.length)}" style="--v:${(x.a / max).toFixed(3)}"><u>${esc(initiales(x.n))}</u><b>${esc(nombreEntier(x.a))}</b><span>${esc(couper(x.n, 16))}</span></div>`).join(''));
+  }
+
+  // Les messages envoyes, et dedans, ceux qui ont ete ouverts.
+  function fCouches(lignes) {
+    const liste = lignes.map((l) => ({ n: l.modele, e: enNombre(l.envoyes), o: enNombre(l.ouverts) || 0 })).filter((x) => x.n && x.e > 0).sort((a, b) => b.e - a.e).slice(0, 4);
+    if (!liste.length) return '';
+    const max = Math.max(...liste.map((x) => x.e));
+    return zone('f-couche', liste.map((x, i) => `<div class="fk" data-o="${ordre(i, liste.length)}"><span class="fk-n">${esc(couper(x.n, 26))}</span><span class="fk-p" style="--e:${(x.e / max).toFixed(4)};--o:${Math.min(1, x.o / x.e).toFixed(4)}"><u></u><i></i></span><b>${esc(nombreEntier(x.o))} ouverts sur ${esc(nombreEntier(x.e))}</b></div>`).join(''));
+  }
+
+  // Des textes reels (mails, notes, idees) : des cartes qui s empilent.
+  function fCartes(rangees) {
+    const liste = rangees.filter((r) => r.titre).slice(0, 3);
+    if (!liste.length) return '';
+    return zone('f-cartes sans-fil', liste.map((r, i) => `<div class="fb" data-o="${ordre(i, liste.length)}"><p>${esc(couper(r.titre, 110))}</p>${r.droite ? `<span>${esc(r.droite)}</span>` : ''}</div>`).join(''));
+  }
+
+  // Les grandes demandes a leur date : la bulle a la taille du groupe.
+  function fBulles(points) {
+    const liste = points.map((p) => ({ d: String(p.d || '').slice(0, 10), v: enNombre(p.v) })).filter((p) => estIso(p.d) && p.v > 0).sort((a, b) => (a.d < b.d ? -1 : 1)).slice(0, 20);
+    if (!liste.length) return '';
+    const debut = isoVersMs(liste[0].d);
+    const large = Math.max(1, isoVersMs(liste[liste.length - 1].d) - debut);
+    const max = Math.max(...liste.map((x) => x.v));
+    const seule = liste.length === 1;
+    const bulles = liste.map((x, i) => `<i data-o="${ordre(i, liste.length)}" style="left:${seule ? 50 : (((isoVersMs(x.d) - debut) / large) * 100).toFixed(2)}%;--t:${(8 + 24 * Math.sqrt(x.v / max)).toFixed(1)}px"></i>`).join('');
+    return zone('f-bulles', `<div class="fo-e">${bulles}</div><div class="lu-axe"><span>${esc(jourCourt(liste[0].d))}</span><span>${esc(seule ? `${nombreEntier(liste[0].v)} personnes` : jourCourt(liste[liste.length - 1].d))}</span></div>`);
+  }
+
+  // Les visites d un client : venu, annule, pas venu ou a venir, chacun se reconnait.
+  function fVisites(lignes) {
+    const genre = (s) => (/annul/i.test(s) ? 'annule' : /pas venu|absent/i.test(s) ? 'absent' : /venir/i.test(s) ? 'futur' : 'venu');
+    const liste = lignes.filter((l) => estIso(l.date)).map((l) => ({ d: String(l.date).slice(0, 10), g: genre(l.statut) })).sort((a, b) => (a.d < b.d ? -1 : 1));
+    if (liste.length < 2) return '';
+    const debut = isoVersMs(liste[0].d);
+    const large = Math.max(1, isoVersMs(liste[liste.length - 1].d) - debut);
+    const legende = [['venu', 'venue', 'venues'], ['futur', 'à venir', 'à venir'], ['annule', 'annulée', 'annulées'], ['absent', 'absence', 'absences']]
+      .map(([g, un, plusieurs]) => { const n = liste.filter((x) => x.g === g).length; return n ? `<span data-s="${g}"><u></u>${n} ${n > 1 ? plusieurs : un}</span>` : ''; }).join('');
+    return zone('f-visites', `<div class="fi-e">${liste.map((x, i) => `<i data-s="${x.g}" data-o="${ordre(i, liste.length)}" style="left:${(((isoVersMs(x.d) - debut) / large) * 100).toFixed(2)}%"></i>`).join('')}</div><div class="fi-l">${legende}</div><div class="lu-axe"><span>${esc(jourCourt(liste[0].d))}</span><span>${esc(jourCourt(liste[liste.length - 1].d))}</span></div>`);
+  }
+
+  // Les quatorze prochains jours : la lettre du jour, le monde attendu, un point s il pleut.
+  function fPrevision(lignes) {
+    const liste = lignes.filter((l) => estIso(l.date)).slice(0, 14);
+    if (liste.length < 2 || !liste.some((l) => enNombre(l.attendus) > 0)) return '';
+    const max = Math.max(1, ...liste.map((l) => enNombre(l.attendus) || 0));
+    const lettre = (iso) => 'DLMMJVS'[new Date(isoVersMs(iso)).getUTCDay()];
+    return zone('f-col f-prev est-serre', liste.map((l, i) => `<div class="fc${l.niveau === 'fort' ? ' est-fort' : (/creux|calme/.test(l.niveau) ? ' est-creux' : '')}${(enNombre(l.pluie_mm) || 0) >= 1 ? ' a-pluie' : ''}${l.raisons ? ' a-raison' : ''}" data-o="${ordre(i, liste.length)}"><b></b><i style="--h:${((enNombre(l.attendus) || 0) / max).toFixed(3)}"></i><span>${esc(lettre(l.date))}</span></div>`).join(''), `--n:${liste.length}`);
+  }
+
+  // Le monde jour par jour, et la temperature qui se trace par-dessus.
+  function fMeteo(lignes) {
+    const liste = lignes.filter((l) => estIso(l.date)).slice(-62);
+    if (liste.length < 2) return '';
+    const max = Math.max(1, ...liste.map((l) => enNombre(l.visiteurs) || 0));
+    const temperatures = liste.map((l) => enNombre(l.temperature));
+    const connues = temperatures.filter((t) => t !== null);
+    let courbe = '';
+    if (connues.length >= 2) {
+      const bas = Math.min(...connues);
+      const ecart = Math.max(1, Math.max(...connues) - bas);
+      const points = temperatures.map((t, i) => (t === null ? '' : `${(((i + 0.5) / liste.length) * 100).toFixed(2)},${(32 - ((t - bas) / ecart) * 28).toFixed(2)}`)).filter(Boolean).join(' ');
+      courbe = `<svg class="fm-c" data-o="0.04" viewBox="0 0 100 34" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
+    }
+    return zone('f-meteo', `<div class="fm-z"><div class="lu-barres">${liste.map((l, i) => `<i data-o="${ordre(i, liste.length)}" style="--h:${((enNombre(l.visiteurs) || 0) / max).toFixed(3)}"${(enNombre(l.pluie_mm) || 0) >= 1 ? ' class="a-pluie"' : ''}></i>`).join('')}</div>${courbe}</div><div class="lu-axe"><span>${esc(jourCourt(String(liste[0].date).slice(0, 10)))}</span><span>${esc(jourCourt(String(liste[liste.length - 1].date).slice(0, 10)))}</span></div>`);
+  }
+
+  function dessinBilan(s) {
+    const voulues = s.lignes.filter((l) => /^(réservations|joueurs|chiffre)/i.test(String(l.nom)));
+    const base = (voulues.length ? voulues : s.lignes).filter((l) => enNombre(l.periode) !== null);
+    const avecAvant = base.filter((l) => enNombre(l.avant));
+    if (avecAvant.length) return fComparaison(avecAvant.map((l) => ({ n: l.nom, a: l.periode, b: l.avant, type: l.type })));
+    return fChiffres(base.map((l) => ({ n: l.nom, v: l.periode, type: l.type })));
+  }
+
+  function dessinCroise(s) {
+    const [axe, second] = s.colonnes;
+    const mesure = s.colonnes.find((c) => ['entier', 'euro', 'dec', 'pct'].includes(c.type));
+    if (!axe || !mesure) return '';
+    const deuxAxes = second && second !== mesure && second.type === 'texte';
+    if (deuxAxes) {
+      const croise = fMatrice(s, axe, second, mesure);
+      if (croise) return croise;
+      return fClassement(s.lignes.map((l) => ({ n: `${l[axe.cle]}, ${l[second.cle]}`, v: l[mesure.cle] })), mesure.type);
+    }
+    if (/^(jour|semaine|mois|annee)$/.test(axe.cle)) return fEvolution(s.lignes, axe.cle, mesure.cle);
+    const rangees = s.lignes.map((l) => ({ n: l[axe.cle], v: l[mesure.cle] }));
+    if (axe.cle === 'jour_semaine') return fColonnes([...rangees].sort((a, b) => JOURS_DANS_L_ORDRE.indexOf(a.n) - JOURS_DANS_L_ORDRE.indexOf(b.n)).map((r) => ({ n: `${String(r.n).slice(0, 3)}.`, v: r.v })), mesure.type);
+    if (axe.cle === 'heure') return fColonnes(rangees.filter((r) => Number.isFinite(Number(r.n))).sort((a, b) => Number(a.n) - Number(b.n)).map((r) => ({ n: `${r.n} h`, v: r.v })), mesure.type);
+    if (axe.cle === 'taille_groupe' || axe.cle === 'delai_reservation') return fColonnes(rangees, mesure.type);
+    return rangees.length <= 5 ? fParts(rangees, mesure.type) : fClassement(rangees, mesure.type);
+  }
+
+  const DESSINS = {
+    creneaux: (s) => fSemaineType(s.lignes),
+    croiser_reservations: dessinCroise,
+    chiffres_periode: dessinBilan,
+    provenance_et_site: (s) => {
+      const sources = s.lignes.map((l) => ({ n: l.source, v: l.reservations }));
+      if (sources.filter((r) => enNombre(r.v) > 0).length >= 2) return fParts(sources, 'entier');
+      const total = lignesDe(s, 'Entonnoir total');
+      const valeur = (t) => (total.find((l) => l.ligne === t) || {}).valeur;
+      return fEntonnoir(['Créneaux retenus', 'Confirmés'].map((n) => ({ n, v: valeur(n) }))) || fClassement(sources, 'entier');
+    },
+    catalogue_et_tarifs: (s) => fPrix(lignesDe(s, 'Formules').map((l) => ({ n: l.nom, v: l.prix }))),
+    fiche_centre: (s) => fHoraires(tableNommee(s, 'Horaires')),
+    horaires_et_fermetures: (s) => fHoraires(tableNommee(s, 'Horaires')),
+    clients: (s) => fParts(lignesDe(s, 'Repartition des visites').map((l) => ({ n: l.ligne, v: l.valeur })), 'entier'),
+    fiche_client: (s) => fVisites(s.lignes),
+    comparer_centres: (s) => { if (s.lignes.length === 2) { const duel = fDuel(s.lignes); if (duel) return duel; } const argent = s.lignes.some((l) => enNombre(l.chiffre) !== null); return fClassement(s.lignes.map((l) => ({ n: l.centre, v: argent ? l.chiffre : l.reservations })), argent ? 'euro' : 'entier'); },
+    supplements: (s) => fAnneaux(s.lignes) || fClassement(s.lignes.map((l) => ({ n: l.article, v: l.reservations })), 'entier'),
+    combinaisons_activites: (s) => fChaine(s.lignes),
+    offres_et_ventes_additionnelles: (s) => fEntonnoir([['Vues', 'vues'], ['Ajoutées', 'ajouts'], ['Acceptées', 'acceptees'], ['Réservées', 'reservees']].map(([n, c]) => ({ n, v: somme(s.lignes, c) }))),
+    campagnes: (s) => fEntonnoir([['Destinataires', 'destinataires'], ['Envoyés', 'envoyes'], ['Ouvertures', 'ouvertures'], ['Clics', 'clics']].map(([n, c]) => ({ n, v: somme(s.lignes, c) }))),
+    communications_envoyees: (s) => fCouches(lignesDe(s, 'Par modele')),
+    mails_clients: (s) => fCartes(s.lignes.map((l) => ({ titre: l.objet, droite: `${nombreEntier(l.messages)} message${Number(l.messages) > 1 ? 's' : ''}` }))),
+    lire_fil_mail: (s) => fConversation(s.lignes),
+    equipe_et_activite: (s) => fVisages(s.lignes),
+    journal_du_centre: (s) => fFrise(s.lignes.map((l) => l.quand)),
+    notes_equipe: (s) => fCartes(s.lignes.map((l) => ({ titre: l.note, droite: estIso(l.date) ? jourCourt(String(l.date).slice(0, 10)) : '' }))),
+    demandes_sur_mesure: (s) => fBulles(s.lignes.map((l) => ({ d: l.date_souhaitee, v: l.personnes }))),
+    marketing_passe: (s) => fCartes(s.lignes.map((l) => ({ titre: l.idee, droite: l.canal }))) || fClassement(lignesDe(s, 'Campagnes').map((l) => ({ n: l.nom, v: l.envoyes })), 'entier'),
+    concurrents_et_avis: (s) => fNotes(s.lignes),
+    prevision_et_plan: (s) => fPrevision(s.lignes),
+    meteo_et_calendrier: (s) => fMeteo(s.lignes),
+    planning_du_jour: (s) => fColonnes(lignesDe(s, 'Occupation par heure').map((l) => ({ n: `${l.heure} h`, v: l.joueurs })), 'entier'),
+    // Du texte relu : les vraies lignes qui passent le disent mieux qu un dessin.
+    savoir_du_centre: () => '',
+    bilans_direction: () => '',
+    calculer: fCalcul,
+  };
+
+  // Un outil qui n est pas dans la liste a quand meme son dessin, tire de sa premiere table utile.
+  function dessinGenerique(s) {
+    for (const t of [{ colonnes: s.colonnes, lignes: s.lignes }, ...(s.sections || [])]) {
+      const texte = t.colonnes.find((c) => c.type === 'texte');
+      const chiffre = t.colonnes.find((c) => ['entier', 'euro', 'dec', 'pct'].includes(c.type));
+      if (!texte || !chiffre || t.lignes.length < 2) continue;
+      const noms = t.lignes.map((l) => l[texte.cle]);
+      const valeurs = t.lignes.map((l) => enNombre(l[chiffre.cle]));
+      // Des libelles qui se repetent ou des valeurs toutes egales ne racontent rien.
+      if (new Set(noms).size === noms.length && new Set(valeurs).size > 1) return fClassement(t.lignes.map((l) => ({ n: l[texte.cle], v: l[chiffre.cle] })), chiffre.type);
+    }
+    return '';
+  }
+
+  const aUneJournee = (e) => e.cleSource === 'planning' && Array.isArray(e.blocs) && e.blocs.length > 0;
+  function htmlDessin(e, source) {
+    let html = '';
+    if (source && !aUneJournee(e) && source.outil !== 'lister_reservations') {
+      try { html = (DESSINS[source.outil] ? DESSINS[source.outil](source) : dessinGenerique(source)) || ''; } catch (erreur) { html = ''; }
+    }
+    if (html) return html;
+    if (aUneJournee(e)) return htmlJournee(e);
+    return e.plage ? htmlPeriode(e) : '';
+  }
+
+  // Une lecture relue apres coup : sa ligne, et dessous son dessin, ses lignes et le lien vers sa donnee.
   function htmlLigneEtape(e, ouverte, m) {
     if (e.note) return `<li class="lu is-note"><p>${esc(e.libelle)}</p></li>`;
     const etat = e.etat || 'fini';
     const source = e.source ? (m.sources || []).find((s) => s.id === e.source) : null;
     const lien = source && source.lien && PAGES[source.lien.page];
     const lignes = (e.extraits || []).slice(-8).map((x) => `<p><time>${esc(x.t)}</time><span>${esc(x.d)}</span></p>`).join('');
-    const ouvrable = Boolean(lignes || source);
+    const dessin = htmlDessin(e, source);
+    const ouvrable = Boolean(lignes || source || dessin);
     return `<li class="lu is-${esc(etat)}${ouverte ? ' est-ouvert' : ''}" data-etape="${esc(e.id)}" data-t="${teinte(e.cleSource)}">
       <button type="button" class="lu-tete" ${ouvrable ? `data-ast-etape-ouvrir="${esc(e.id)}"` : ''} aria-expanded="${ouverte ? 'true' : 'false'}">
-        <span class="lu-dessin">${miniDessin(e)}</span>
-        <span class="lu-q"><b>${esc(e.nomSource || 'Lecture')}</b><span>${esc(phraseFinie(e.phrase || e.libelle || ''))}${etat === 'echec' ? ', échec' : ''}</span></span>
+        <span class="lu-marque" aria-hidden="true"><i class="lu-point"></i></span>
+        <span class="lu-source">${esc(e.nomSource || 'Lecture')}</span>
+        <span class="lu-phrase">${esc(phraseFinie(e.phrase || e.libelle || ''))}${etat === 'echec' ? ', échec' : ''}</span>
         <span class="lu-res">${esc(e.trouve || mesureDe(e))}</span>
         ${ouvrable ? icone('chevron') : ''}
       </button>
       <div class="lu-plis"><div class="lu-pli">
+        ${dessin}
         ${lignes ? `<div class="lu-lignes">${lignes}</div>` : ''}
         <div class="lu-actions">${source ? `<button type="button" class="ast-pill" data-ast-source="${esc(e.source)}">Voir les données</button>` : ''}${lien ? `<button type="button" class="ast-lien" data-ast-page="${esc(lien.cle)}">Ouvrir ${esc(lien.nom)}</button>` : ''}</div>
       </div></div>
     </li>`;
   }
 
+  // La meme ligne pendant qu elle se lit : le cercle de travail, la source, la phrase au present et
+  // ce que le serveur a deja parcouru.
+  const htmlLigneEnCours = (e) => `<li class="lu is-cours" data-etape="${esc(e.id)}" data-t="${teinte(e.cleSource)}"><div class="lu-tete"><span class="lu-marque" aria-hidden="true">${SIGNE}</span><span class="lu-source" data-lu-source>${esc(e.nomSource || 'Lecture')}</span><span class="lu-phrase" data-lu-phrase>${esc(e.phrase || e.libelle || '')}</span><span class="lu-res" data-lu-res></span></div></li>`;
+
+  const htmlTeteRecherche = (m) => `<span class="ast-rech-titre">${esc(bilanRecherche(m))}</span>${icone('chevron')}`;
+
   function htmlRecherche(m) {
     const etapes = m.etapes || [];
     if (!etapes.length) return '';
-    if (m.statut === 'cours' && !m.texte) return htmlScene(m);
-    const ouvert = Boolean(m.etapesOuvertes);
-    const lectures = etapes.filter((e) => !e.note);
-    return `<section class="ast-rech${ouvert ? ' est-ouvert' : ''}" data-ast-recherche aria-busy="false">
-      <button type="button" class="ast-rech-tete" data-ast-etapes aria-expanded="${ouvert ? 'true' : 'false'}">
-        <span class="lu-pile" aria-hidden="true">${lectures.slice(0, 5).map((e) => `<span class="lu-dessin" data-t="${teinte(e.cleSource)}">${miniDessin(e)}</span>`).join('')}</span>
-        <span class="ast-rech-titre">${esc(bilanRecherche(m))}</span>
-        ${icone('chevron')}
-      </button>
-      <div class="lu-plis"><ol class="ast-rech-liste">${etapes.map((e) => htmlLigneEtape(e, Boolean(e.id && (m.etapesDeroulees || {})[e.id]), m)).join('')}</ol></div>
+    const enCours = m.statut === 'cours' && !m.texte;
+    const ouvert = enCours || Boolean(m.etapesOuvertes);
+    return `<section class="ast-rech${enCours ? ' est-cours' : ''}${ouvert ? ' est-ouvert' : ''}" data-ast-recherche aria-busy="${enCours ? 'true' : 'false'}">
+      <button type="button" class="ast-rech-tete" data-ast-etapes aria-expanded="${ouvert ? 'true' : 'false'}">${enCours ? '' : htmlTeteRecherche(m)}</button>
+      <div class="lu-plis"><ol class="ast-rech-liste">${enCours ? '' : etapes.map((e) => htmlLigneEtape(e, Boolean(e.id && (m.etapesDeroulees || {})[e.id]), m)).join('')}</ol></div>
+      ${enCours ? '<div class="lu-scene" data-lu-scene aria-hidden="true"></div><p class="ast-lu-sr" role="status" data-lect-dit></p>' : ''}
     </section>`;
   }
 
-  function htmlScene(m) {
-    const carte = m.carte || A.carte || [];
-    return `<section class="ast-rech est-cours" data-ast-recherche aria-busy="true">
-      <div class="scn" data-scn>
-        <div class="scn-tete">
-          <div class="scn-titre">
-            <p class="scn-source"><i></i><span data-scn-source></span></p>
-            <p class="scn-phrase" data-scn-phrase></p>
-          </div>
-          <div class="scn-compte"><span class="scn-num" data-scn-num></span><small data-scn-sur></small></div>
-        </div>
-        <div class="scn-stage" data-scn-stage aria-hidden="true"></div>
-        <div class="scn-barre" aria-hidden="true"><i data-scn-barre></i></div>
-        <div class="scn-rail" data-scn-rail aria-hidden="true"><u class="scn-curseur" data-scn-curseur></u>${carte.map((c) => `<span class="scn-m" data-cle="${esc(c.cle)}" data-t="${teinte(c.cle)}"><i></i><span>${esc(c.nom)}</span><b data-compte></b></span>`).join('')}</div>
-      </div>
-      <p class="ast-lu-sr" role="status" data-scn-dit></p>
-    </section>`;
-  }
-
-  const COLONNE = `<span class="scn-r">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<span>${d}</span>`).join('')}</span>`;
-  function poserNombre(hote, n) {
-    const texte = Number(n || 0).toLocaleString('fr-BE').replace(/\s/g, ' ');
-    if (hote.dataset.texte === texte) return;
-    hote.dataset.texte = texte;
-    const car = [...texte];
-    const gabarit = car.map((c) => (/\d/.test(c) ? '0' : c)).join('');
-    if (hote.dataset.gabarit !== gabarit) {
-      hote.dataset.gabarit = gabarit;
-      hote.innerHTML = car.map((c) => (/\d/.test(c) ? `<span class="scn-d">${COLONNE}</span>` : `<span class="scn-s">${esc(c)}</span>`)).join('');
-    }
-    const roues = hote.querySelectorAll('.scn-r');
-    let k = 0;
-    car.forEach((c) => { if (/\d/.test(c)) { roues[k].style.transform = `translateY(${-10 * Number(c)}%)`; k += 1; } });
-  }
-
-  // Le fil : les vraies lignes passent sous un bandeau de lecture, comme sous un doigt.
-  function creerFil(hote, opts = {}) {
-    const H = opts.haut || 30;
-    hote.innerHTML = '<div class="scn-fil-int" data-scn-int></div>';
-    const int = hote.firstChild;
-    const decalage = ((hote.clientHeight || 210) - H) / 2;
-    const garde = Math.ceil(decalage / H) + 2;
+  // Le fil : les vraies lignes lues montent une a une, les trois dernieres restent visibles.
+  function creerFil(hote, apparu) {
+    const int = hote.firstElementChild;
     let n = 0;
     const rangs = [];
     return {
-      pousser(x, tempo) {
+      pousser(x) {
+        if (hote.hidden) { hote.hidden = false; apparu(); }
         const p = document.createElement('p');
-        p.innerHTML = opts.ligne ? opts.ligne(x) : `<time>${esc(x.t)}</time><span>${esc(x.d)}</span>`;
-        p.style.transform = `translateY(${n * H}px)`;
+        p.innerHTML = `<time>${esc(x.t)}</time><span>${esc(x.d)}</span>`;
+        p.style.transform = `translateY(${n * HAUTEUR_LIGNE}px)`;
         int.appendChild(p);
         rangs.push(p);
         n += 1;
-        int.style.transitionDuration = `${Math.max(70, Math.min(320, tempo))}ms`;
-        int.style.transform = `translateY(${decalage - (n - 1) * H}px)`;
+        int.style.transform = `translateY(${-Math.max(0, n - LIGNES_DU_FIL) * HAUTEUR_LIGNE}px)`;
         rangs.forEach((r) => r.classList.remove('est-lue'));
         p.classList.add('est-lue');
-        while (rangs.length > garde * 2) rangs.shift().remove();
+        while (rangs.length > LIGNES_DU_FIL + 2) rangs.shift().remove();
       },
     };
   }
 
-  // Une allure qu on peut suivre des yeux : une trentaine de lignes, prises sur toute la lecture.
-  function cadencer(S, e, p, rang, surLigne) {
-    const lignes = filsDeLecture.get(e) || [];
-    if (!lignes.length) return;
-    const n = Math.min(lignes.length, 30);
-    const voulu = Math.min(n - 1, Math.floor(p * n));
-    let r = rang;
-    while (r < voulu) { r += 1; surLigne(r, lignes[Math.floor((r / n) * lignes.length)], S.duree / n); }
-  }
-
-  // Le mois : chaque jour s allume quand la lecture y passe, a la hauteur de ses vraies reservations.
-  function stageMois(S, e, stage) {
-    const periode = e.plage;
-    if (!periode) return stageFil(S, e, stage);
-    const debut = isoVersMs(periode.debut);
-    const total = Math.min(42, Math.round((isoVersMs(periode.fin) - debut) / JOUR_MS) + 1);
-    const decale = (new Date(debut).getUTCDay() + 6) % 7;
-    const jours = e.jours || {};
-    const max = Math.max(1, ...Object.values(jours));
-    let cases = '';
-    for (let i = 0; i < decale; i += 1) cases += '<span class="scn-c est-vide"></span>';
-    for (let i = 0; i < total; i += 1) {
-      const iso = msVersIso(debut + i * JOUR_MS);
-      cases += `<span class="scn-c" data-i="${i}" style="--n:${Math.max(0.14, (jours[iso] || 0) / max).toFixed(2)}">${Number(iso.slice(8, 10))}</span>`;
-    }
-    stage.innerHTML = `<div class="scn-mois"><div class="scn-sem">${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((j) => `<span>${j}</span>`).join('')}</div><div class="scn-cases">${cases}</div></div><div class="scn-fil" data-scn-fil></div>`;
-    const fil = creerFil(stage.querySelector('[data-scn-fil]'));
-    const liste = [...stage.querySelectorAll('.scn-c[data-i]')];
-    let allumees = -1;
-    let rang = -1;
-    return {
-      maj(p) {
-        const ici = Math.min(total - 1, Math.floor(p * total));
-        while (allumees < ici) {
-          allumees += 1;
-          const c = liste[allumees];
-          c.classList.add('est-lit');
-          if (!sansMouvement()) c.animate([{ transform: 'scale(.62)' }, { transform: 'scale(1.14)', offset: 0.6 }, { transform: 'scale(1)' }], { duration: 300, easing: 'cubic-bezier(.23,1,.32,1)' });
-        }
-        liste.forEach((c, i) => c.classList.toggle('est-tete', i === ici && p < 1));
-        cadencer(S, e, p, rang, (r, x, tempo) => { rang = r; fil.pousser(x, tempo); });
-      },
-    };
-  }
-
-  // La journee : le planning se dessine, de gauche a droite, avec ses vrais groupes.
-  function stageJournee(S, e, stage) {
-    const blocs = Array.isArray(e.blocs) ? e.blocs : [];
-    if (!blocs.length) return stageFil(S, e, stage);
-    const de = Math.floor(Math.min(...blocs.map((b) => b.debut)));
-    const a = Math.ceil(Math.max(...blocs.map((b) => b.fin)));
-    const large = Math.max(1, a - de);
-    const rangs = Math.max(...blocs.map((b) => b.rang)) + 1;
-    const heures = [];
-    for (let h = de; h <= a; h += 2) heures.push(h);
-    stage.classList.add('est-large');
-    stage.innerHTML = `<div class="scn-jour" style="--rangs:${rangs}">
-      <div class="scn-axe">${heures.map((h) => `<span style="left:${(((h - de) / large) * 100).toFixed(2)}%">${h}h</span>`).join('')}</div>
-      <div class="scn-grille">${heures.map((h) => `<u style="left:${(((h - de) / large) * 100).toFixed(2)}%"></u>`).join('')}
-        ${blocs.map((b) => `<span class="scn-b" data-d="${((b.debut - de) / large).toFixed(4)}" style="left:${(((b.debut - de) / large) * 100).toFixed(2)}%;width:${(((b.fin - b.debut) / large) * 100).toFixed(2)}%;top:calc(${b.rang} * 100% / var(--rangs))"><span>${esc(b.nom)}</span></span>`).join('')}
-        <i class="scn-tete-v" data-scn-tete></i>
-      </div>
-    </div>`;
-    const tete = stage.querySelector('[data-scn-tete]');
-    const liste = [...stage.querySelectorAll('.scn-b')];
-    return {
-      maj(p) {
-        tete.style.left = `${(p * 100).toFixed(2)}%`;
-        tete.style.opacity = p >= 1 ? '0' : '1';
-        liste.forEach((b) => { if (!b.classList.contains('est-la') && Number(b.dataset.d) <= p) b.classList.add('est-la'); });
-      },
-    };
-  }
-
-  function stageFil(S, e, stage) {
-    stage.classList.add('est-large');
-    stage.innerHTML = '<div class="scn-fil" data-scn-fil></div>';
-    const fil = creerFil(stage.querySelector('[data-scn-fil]'));
-    let rang = -1;
-    return {
-      maj(p) {
-        cadencer(S, e, p, rang, (r, x, tempo) => { rang = r; fil.pousser(x, tempo); });
-      },
-    };
-  }
-
-
-  function stagePour(S, e, stage) {
-    if (e.cleSource === 'planning') return stageJournee(S, e, stage);
-    if (e.plage) return stageMois(S, e, stage);
-    return stageFil(S, e, stage);
-  }
-
-  function demarrerScene(bloc, m) {
-    const racine = bloc.querySelector('[data-scn]');
-    if (!racine) return null;
-    const q = (s) => racine.querySelector(s);
-    const S = { m, i: -1, e: null, t0: 0, duree: 1800, stage: null, dernierNum: 0, raf: 0, vivant: true, vus: new Map() };
+  // LA LECTURE EN DIRECT. Chaque lecture ajoute sa ligne sous les precedentes, qui gardent leur
+  // resultat. Dessous, une seule scene : le dessin de la lecture du moment s y remplit piece apres
+  // piece, dans l ordre de ses donnees, et ses vraies lignes passent dessous. La scene ne retrecit
+  // jamais pendant la lecture : rien ne remonte, rien ne saute.
+  function demarrerLecture(bloc, m) {
+    const liste = bloc.querySelector('.ast-rech-liste');
+    const scene = bloc.querySelector('[data-lu-scene]');
+    const dit = bloc.querySelector('[data-lect-dit]');
+    if (!liste || !scene || !dit) return null;
+    const S = { i: -1, e: null, li: null, t0: 0, vue: null, fil: null, rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, hauteur: 0, ecrit: '', finies: [], vus: new Map(), vivant: true, minuteur: 0, relance: 0 };
     const lectures = () => (m.etapes || []).filter((e) => !e.note);
+    const pret = (e, now) => { if (!S.vus.has(e)) S.vus.set(e, now); return Boolean(e.lues) || e.etat !== 'cours' || now - S.vus.get(e) > 420; };
+    const champ = (nom) => S.li.querySelector(`[data-lu-${nom}]`);
+    // Plus il reste de lectures a montrer, plus chacune passe vite.
+    const tenueDe = (restent) => (restent >= 4 ? 1300 : (restent === 3 ? 1500 : 1700));
 
-    function curseurSur(cle) {
-      const mot = q(`.scn-m[data-cle="${CSS.escape(cle || '')}"]`);
-      const c = q('[data-scn-curseur]');
-      if (!mot || !c) return;
-      c.style.opacity = '1';
-      c.style.width = `${mot.offsetWidth}px`;
-      c.style.height = `${mot.offsetHeight}px`;
-      c.style.transform = `translate(${mot.offsetLeft}px, ${mot.offsetTop}px)`;
+    // La scene garde la plus grande hauteur vue : un dessin plus court ne la fait pas remonter.
+    function tenir() {
+      const hauteur = S.vue ? S.vue.offsetHeight : 0;
+      if (hauteur > S.hauteur) { S.hauteur = hauteur; scene.style.height = `${hauteur}px`; }
     }
 
+    function finirLigne() {
+      const { li, e } = S;
+      if (!li || !li.classList.contains('is-cours')) return;
+      li.classList.remove('is-cours');
+      li.classList.add(e.etat === 'echec' ? 'is-echec' : 'is-fini');
+      li.querySelector('.lu-marque').innerHTML = '<i class="lu-point"></i>';
+      ['source', 'phrase', 'res'].forEach((nom) => li.querySelector(`[data-lu-${nom}]`).removeAttribute(`data-lu-${nom}`));
+      li.querySelector('.lu-phrase').textContent = `${phraseFinie(e.phrase || e.libelle || '')}${e.etat === 'echec' ? ', échec' : ''}`;
+      li.querySelector('.lu-res').textContent = e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e));
+      S.finies.push({ li, e, fait: e.etat !== 'cours' });
+    }
+
+    // Une nouvelle lecture : sa ligne s ajoute sous les autres, et la scene tourne la page.
     function entrer(e, now) {
-      S.e = e;
-      S.t0 = now;
-      S.duree = e.cleSource === 'reservations' ? 2800 : 2200;
-      racine.setAttribute('data-t', teinte(e.cleSource));
-      q('[data-scn-source]').textContent = e.nomSource || 'Lecture';
-      q('[data-scn-phrase]').textContent = e.phrase || e.libelle || '';
-      bloc.querySelector('[data-scn-dit]').textContent = e.phrase || e.libelle || '';
-      const stage = q('[data-scn-stage]');
-      stage.className = 'scn-stage';
-      if (!sansMouvement()) stage.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.23,1,.32,1)' });
-      S.stage = stagePour(S, e, stage);
-      racine.querySelectorAll('.scn-m').forEach((mot) => mot.classList.toggle('est-actif', mot.dataset.cle === e.cleSource));
-      curseurSur(e.cleSource);
-      poserNombre(q('[data-scn-num]'), 0);
-      S.dernierNum = 0;
+      finirLigne();
+      const moule = document.createElement('ol');
+      moule.innerHTML = htmlLigneEnCours(e);
+      const li = moule.firstElementChild;
+      liste.appendChild(li);
+      if (!sansMouvement()) li.animate([{ height: '0px', opacity: 0 }, { height: `${li.offsetHeight}px`, opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.165, .84, .44, 1)' });
+      const ancienne = S.vue;
+      if (ancienne) { ancienne.classList.add('est-sortie'); setTimeout(() => ancienne.remove(), 200); }
+      const vue = document.createElement('div');
+      vue.className = 'lu-vue';
+      vue.dataset.t = String(teinte(e.cleSource));
+      vue.innerHTML = '<div class="lu-vue-dessin"></div><div class="lu-fil" hidden><div class="lu-fil-int"></div></div>';
+      scene.appendChild(vue);
+      Object.assign(S, { e, li, t0: now, vue, fil: creerFil(vue.querySelector('.lu-fil'), tenir), rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, ecrit: '' });
+      dit.textContent = e.phrase || e.libelle || '';
     }
 
-    function tic(now) {
-      if (!S.vivant) return;
+    // Le dessin de la lecture se pose une fois, et ses pieces arrivent l une apres l autre pendant
+    // la lecture, chacune en un instant, sans rebond.
+    function poser(html, restent) {
+      if (!html || html === S.html) return;
+      S.html = html;
+      const vue = S.vue;
+      const zone = vue.querySelector('.lu-vue-dessin');
+      zone.innerHTML = html;
+      vue.classList.toggle('sans-fil', Boolean(zone.querySelector('.sans-fil')));
+      // L ordre des donnees devient l ordre d arrivee : chaque piece garde le sien.
+      vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));
+      const etale = sansMouvement() ? 0 : Math.max(500, Math.min(1100, tenueDe(restent) - 500));
+      vue.style.setProperty('--etale', `${etale}ms`);
+      S.vueDepuis = performance.now();
+      S.remplie = etale + 450;
+      tenir();
+    }
+
+    function battre() {
+      if (!S.vivant || !bloc.isConnected) return;
+      const now = performance.now();
       const toutes = lectures();
-      const pret = (e) => { if (!S.vus.has(e)) S.vus.set(e, now); return Boolean(e.lues) || e.etat !== 'cours' || now - S.vus.get(e) > 420; };
-      if (S.i < 0 && toutes.length && pret(toutes[0])) { S.i = 0; entrer(toutes[0], now); }
+      if (S.i < 0 && toutes.length && pret(toutes[0], now)) { S.i = 0; entrer(toutes[0], now); }
       const e = S.e;
       if (e) {
-        const ecoule = now - S.t0;
-        const p = sansMouvement() ? 1 : Math.min(1, ecoule / S.duree);
-        const doux = 1 - (1 - p) ** 2.2;
-        const lues = Number(e.lues) || 0;
-        const affiche = Math.round(lues * doux);
-        if (affiche !== S.dernierNum && now - (S.tn || 0) > 70) { S.tn = now; S.dernierNum = affiche; poserNombre(q('[data-scn-num]'), affiche); }
-        const total = Number(e.total) || lues;
-        q('[data-scn-sur]').textContent = total > lues ? `sur ${nombreEntier(total)} lignes` : (lues > 1 ? 'lignes lues' : 'ligne lue');
-        q('[data-scn-barre]').style.transform = `scaleX(${(p * Math.min(1, total ? lues / total : 1)).toFixed(4)})`;
-        if (S.stage) S.stage.maj(doux, now);
-        const mot = q(`.scn-m[data-cle="${CSS.escape(e.cleSource || '')}"]`);
-        if (mot && affiche) { mot.querySelector('[data-compte]').textContent = nombreEntier(affiche); curseurSur(e.cleSource); }
-        if (p >= 1 && toutes[S.i + 1] && pret(toutes[S.i + 1])) {
-          if (mot) { mot.classList.remove('est-actif'); mot.classList.add('est-lu'); }
-          S.i += 1;
-          entrer(toutes[S.i], now);
+        const restent = toutes.length - S.i;
+        // Le resultat s ecrit tel que le serveur le donne : aucun nombre ne defile.
+        const resultat = e.etat === 'cours' ? (e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '') : (e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e)));
+        if (resultat !== S.ecrit) { S.ecrit = resultat; champ('res').textContent = resultat; }
+        S.li.classList.toggle('is-echec', e.etat === 'echec');
+        const source = e.source ? (m.sources || []).find((s) => s.id === e.source) : null;
+        if (!S.pose && (source || e.etat !== 'cours')) { S.pose = true; poser(htmlDessin(e, source), restent); }
+        else if (!S.pose && !S.attendu && now - S.t0 > 1600) { S.attendu = true; poser(htmlDessin(e, null), restent); }
+        // Les vraies lignes passent a un rythme qu on peut suivre, prises sur toute la lecture.
+        const lignes = filsDeLecture.get(e) || [];
+        if (lignes.length && !S.vue.classList.contains('sans-fil')) {
+          const n = Math.min(lignes.length, LIGNES_JOUEES);
+          const avance = sansMouvement() ? 1 : Math.min(1, (now - S.t0) / (tenueDe(restent) - 300));
+          const voulu = Math.min(n - 1, Math.floor(avance * n));
+          while (S.rang < voulu) { S.rang += 1; S.fil.pousser(lignes[Math.floor((S.rang / n) * lignes.length)]); }
         }
+        // Une ligne deja passee prend son resultat final quand le serveur le donne.
+        S.finies.forEach((f) => {
+          if (f.fait || f.e.etat === 'cours') return;
+          f.fait = true;
+          f.li.querySelector('.lu-res').textContent = f.e.etat === 'echec' ? 'échec' : (f.e.trouve || mesureDe(f.e));
+          f.li.classList.toggle('is-echec', f.e.etat === 'echec');
+        });
+        const suivante = toutes[S.i + 1];
+        const vu = !S.vueDepuis || now - S.vueDepuis >= S.remplie;
+        if (suivante && pret(suivante, now) && now - S.t0 >= tenueDe(restent) && vu) { S.i += 1; entrer(suivante, now); }
       }
-      S.raf = requestAnimationFrame(tic);
+      S.minuteur = setTimeout(battre, 60);
     }
-    S.raf = requestAnimationFrame(tic);
-    S.arreter = () => { S.vivant = false; cancelAnimationFrame(S.raf); };
+    battre();
+    S.arreter = () => { S.vivant = false; clearTimeout(S.minuteur); clearTimeout(S.relance); };
     return S;
+  }
+
+  // Le texte laisse le dessin du moment finir de se remplir, au plus ATTENTE_TEXTE apres son arrivee.
+  function sceneRetient(haut, m) {
+    if (m.statut === 'cours' ? !m.texte : m.statut !== 'fini') return false;
+    const bloc = haut.querySelector('[data-ast-recherche]');
+    const S = bloc && scenes.get(bloc);
+    if (!S || !S.vivant || !S.vueDepuis) return false;
+    const reste = Math.min(ATTENTE_TEXTE, Math.max(VUE_MIN, S.remplie)) - (performance.now() - S.vueDepuis);
+    if (reste <= 0) return false;
+    clearTimeout(S.relance);
+    S.relance = setTimeout(() => demanderPeinture(m), reste + 20);
+    return true;
   }
 
   function majRecherche(hote, m) {
     let bloc = hote.querySelector('[data-ast-recherche]');
-    if (!bloc) {
+    // Une recherche deja pliee qui reprend (le texte a ete retire) redevient une lecture en direct.
+    if (!bloc || !bloc.querySelector('[data-lu-scene]')) {
       if (!(m.etapes || []).length) return;
       hote.innerHTML = htmlRecherche(m);
       bloc = hote.querySelector('[data-ast-recherche]');
       if (!bloc) return;
     }
-    if (!scenes.get(bloc)) { const S = demarrerScene(bloc, m); if (S) scenes.set(bloc, S); }
+    if (!scenes.get(bloc)) { const S = demarrerLecture(bloc, m); if (S) scenes.set(bloc, S); }
   }
 
-  // La scene se replie sur sa ligne de bilan, et ce qui est dessous remonte avec elle.
-  function replierScene(hote, m) {
+  // La reponse commence : les lignes et la scene s effacent ensemble, puis le bilan et le texte prennent
+  // leur place. La hauteur de la reponse reste tenue, rien ne redescend au-dessus pendant que le texte
+  // arrive. Renvoie vrai tant que le pli est en cours.
+  function replierLecture(hote, m, article) {
     const bloc = hote.querySelector('[data-ast-recherche]');
     const S = bloc && scenes.get(bloc);
     if (S) S.arreter();
-    if (!S || sansMouvement()) { hote.innerHTML = htmlRecherche(m); return; }
-    const avant = hote.offsetHeight;
-    const ancien = bloc.cloneNode(true);
-    hote.innerHTML = htmlRecherche(m);
-    const apres = hote.offsetHeight;
-    hote.style.position = 'relative';
-    ancien.classList.add('scn-fantome');
-    hote.appendChild(ancien);
-    const sortie = 'cubic-bezier(.23,1,.32,1)';
-    hote.animate([{ height: `${avant}px` }, { height: `${apres}px` }], { duration: 520, easing: sortie });
-    hote.style.overflow = 'hidden';
-    ancien.animate([{ opacity: 1, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: 'scale(.975) translateY(-6px)', filter: 'blur(3px)' }], { duration: 320, easing: sortie, fill: 'forwards' }).finished.finally(() => { ancien.remove(); hote.style.overflow = ''; hote.style.position = ''; });
-    const neuf = hote.querySelector('.ast-rech-tete');
-    if (neuf) neuf.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 90, easing: sortie, fill: 'backwards' });
+    article.style.minHeight = `${article.offsetHeight}px`;
+    if (!S || sansMouvement()) { hote.innerHTML = htmlRecherche(m); return false; }
+    bloc.classList.add('vient-de-plier');
+    bloc.setAttribute('aria-busy', 'false');
+    bloc.dataset.pliage = '1';
+    setTimeout(() => {
+      if (!bloc.isConnected) return;
+      hote.innerHTML = htmlRecherche(m);
+      const neuf = hote.querySelector('[data-ast-recherche]');
+      if (neuf) neuf.classList.add('vient-de-plier');
+      demanderPeinture(m);
+    }, 160);
+    return true;
   }
 
   // Les barres : couleur de l entite, valeur au bout, elles poussent l une apres l autre.
@@ -700,10 +1039,15 @@
     hote.innerHTML = `<div class="gb">${etiquettes.map((l, i) => `<div class="gb-l" data-t="${i < 5 ? i + 1 : 6}" style="--v:${(nums[i] / max).toFixed(4)};--i:${i}"><span class="gb-n">${esc(l)}</span><span class="gb-p"><i></i></span><span class="gb-val">${esc(formater(nums[i], type))}</span></div>`).join('')}</div>`;
   }
 
+  function fermerLeGras(texte) {
+    const t = texte.replace(/(^|[^*])\*$/, '$1');
+    return (t.match(/\*\*/g) || []).length % 2 ? `${t}**` : t;
+  }
+
   function htmlTexte(m) {
-    if (m.statut === 'cours' && !m.texte) return (m.etapes || []).length ? '' : '<p class="ast-pense" role="status">Je regarde votre question<span class="ast-points" aria-hidden="true"></span></p>';
+    if (m.statut === 'cours' && !m.texte) return (m.etapes || []).length ? '' : `<p class="ast-pense" role="status" aria-label="Réponse en préparation">${SIGNE}</p>`;
     // Pendant l ecriture, un renvoi coupe en deux ne s affiche pas a moitie.
-    const texte = m.statut === 'cours' ? m.texte.replace(/\[[SGF]?\d*$/, '') : marquer(m.texte, m.preuves);
+    const texte = m.statut === 'cours' ? fermerLeGras(m.texte.replace(/\[[SGF]?\d*$/, '')) : marquer(m.texte, m.preuves);
     let html = markdown(texte, m);
     // Un graphique demande mais jamais place dans le texte se montre a la fin.
     if (m.statut !== 'cours') (m.graphiques || []).forEach((g) => { if (!html.includes(`data-ast-graph="${g.id}"`)) html += `<figure class="ast-graph" data-ast-graph="${g.id}"></figure>`; });
@@ -740,7 +1084,7 @@
   }
 
   function htmlPied(m, dernier) {
-    if (m.statut === 'cours') return m.verification ? '<p class="ast-verif" role="status">Vérification des chiffres…</p>' : '';
+    if (m.statut === 'cours') return m.verification ? '<p class="ast-verif ast-travail" role="status">Vérification des chiffres</p>' : '';
     if (m.statut === 'erreur') return `<p class="ast-erreur" role="alert">${esc(m.erreur)}</p><div class="ast-pied"><button type="button" class="ast-pill" data-ast-refaire>Réessayer</button></div>`;
     const nb = (m.sources || []).length;
     const sans = (m.preuves || []).length && m.verite && Array.isArray(m.verite.chiffresSansSource) ? m.verite.chiffresSansSource : [];
@@ -811,15 +1155,17 @@
     hote.innerHTML = html;
   }
 
-  function peindreFil({ neuf = 0 } = {}) {
+  function peindreFil({ neuf = 0, garder = false } = {}) {
     const hote = dom('[data-ast-colonne]');
     const racine = dom('.ast');
-    if (!hote || !racine) return;
+    const fil = dom('[data-ast-fil]');
+    if (!hote || !racine || !fil) return;
     const c = courante();
     const messages = c ? (c.messages || []) : [];
+    const position = fil.scrollTop;
     racine.classList.toggle('est-vide', !c || !messages.length);
     if (!messages.length) {
-      hote.innerHTML = c ? '<p class="ast-pense">Lecture de la conversation<span class="ast-points" aria-hidden="true"></span></p>' : `${AFFICHES[centreId()] ? `<div class="ast-affiche"><img src="${AFFICHES[centreId()]}" alt="" decoding="async"></div>` : ''}<h1 class="ast-salut">Que voulez-vous savoir sur ${esc(nomDuCentre())} ?</h1>`;
+      hote.innerHTML = c ? '<p class="ast-pense ast-travail">Lecture de la conversation</p>' : `${AFFICHES[centreId()] ? `<div class="ast-affiche"><img src="${AFFICHES[centreId()]}" alt="" decoding="async"></div>` : ''}<h1 class="ast-salut">Que voulez-vous savoir sur ${esc(nomDuCentre())} ?</h1>`;
     } else {
       hote.innerHTML = messages.map((m, i) => htmlMessage(m, i, messages, i >= messages.length - neuf)).join('');
       hote.querySelectorAll('[data-ast-i]').forEach((a) => dessinerGraphiques(a, messages[Number(a.dataset.astI)]));
@@ -828,7 +1174,18 @@
     if (sugg) sugg.hidden = Boolean(messages.length);
     const titre = dom('[data-ast-tete-titre]');
     if (titre) titre.textContent = (c && c.titre) || 'Marketing';
-    placerDerniereQuestion();
+    if (garder && !A.suivi) { fil.scrollTop = position; majDescendre(); } else versLeBas(false);
+    ajusterHauteur();
+  }
+
+  // Le message envoye se pose a la fin du fil : les autres ne sont pas reconstruits.
+  function poserDerniers(c, n) {
+    const hote = dom('[data-ast-colonne]');
+    const depart = c.messages.length - n;
+    hote.insertAdjacentHTML('beforeend', c.messages.slice(depart).map((m, j) => htmlMessage(m, depart + j, c.messages, true)).join(''));
+    const avant = c.messages[depart - 1];
+    const article = avant && dom(`[data-ast-i="${depart - 1}"] [data-ast-basdepage]`);
+    if (article) article.innerHTML = htmlPied(avant, false);
   }
 
   // Un seul message change pendant l ecriture : le reste de la page ne bouge pas.
@@ -848,32 +1205,98 @@
     const article = dom(`[data-ast-i="${i}"]`);
     if (!article) return;
     const haut = article.querySelector('[data-ast-haut]');
+    // Pendant le pli, ou tant que le dessin du moment n a pas ete vu, rien d autre ne se peint.
+    if (haut.querySelector('[data-pliage]') || sceneRetient(haut, m)) return;
     if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);
-    else if (haut.querySelector('[data-scn]')) replierScene(haut, m);
+    else if (haut.querySelector('[data-lu-scene]')) { if (replierLecture(haut, m, article)) return; }
     else if (m.statut !== 'cours' || !haut.querySelector('[data-ast-recherche]')) haut.innerHTML = htmlRecherche(m);
-    article.classList.toggle('est-ecrit', m.statut === 'cours' && Boolean(m.texte));
     article.querySelector('[data-ast-texte]').innerHTML = htmlTexte(m);
     article.querySelector('[data-ast-basdepage]').innerHTML = htmlPied(m, i === c.messages.length - 1);
     dessinerGraphiques(article, m);
     majDescendre();
   }
 
+  // ---- Suivre le texte, comme Claude Code -------------------------------------------
+  // La vue reste au bas tant que la personne ne remonte pas elle-meme : un geste de moins de 150 ms,
+  // a plus de 8 px du bas, et un contenu qui n a pas retreci. Le reste du temps, c est le programme
+  // ou le texte qui bouge, et on ne decroche pas.
+  const SEUIL_BAS = 8;
+  const SEUIL_FLECHE = 200;
+  const GESTE_RECENT = 150;
+
   function majDescendre() {
     const fil = dom('[data-ast-fil]');
     const bouton = dom('[data-ast-descendre]');
-    if (fil && bouton) bouton.hidden = fil.scrollHeight - fil.scrollTop - fil.clientHeight < 80;
+    const bande = dom('[data-ast-bande]');
+    if (!fil || !bouton) return;
+    const reste = fil.scrollHeight - fil.scrollTop - fil.clientHeight;
+    const visible = !A.suivi && reste > SEUIL_FLECHE;
+    bouton.classList.toggle('est-visible', visible);
+    bouton.classList.toggle('est-flux', Boolean(A.flux));
+    bouton.inert = !visible;
+    if (bande) bande.classList.toggle('est-visible', !A.suivi && reste > SEUIL_BAS);
   }
 
-  function placerDerniereQuestion() {
+  function arreterGlisse() {
+    if (A.glisse) cancelAnimationFrame(A.glisse);
+    A.glisse = 0;
+  }
+
+  // Le glissement dure 200 ms. Son pas de temps est plafonne : une image lente ne fait pas sauter la
+  // vue. Un geste l interrompt. La cible se relit a chaque image, le texte peut pousser entre-temps.
+  function versLeBas(doux) {
     const fil = dom('[data-ast-fil]');
     if (!fil) return;
-    const questions = fil.querySelectorAll('.ast-q');
-    const q = questions[questions.length - 1];
-    if (q && q.nextElementSibling) {
-      q.nextElementSibling.style.minHeight = `${Math.max(0, fil.clientHeight - q.offsetHeight - 68)}px`;
-      fil.scrollTop += q.getBoundingClientRect().top - fil.getBoundingClientRect().top - 16;
-    }
+    A.suivi = true;
+    arreterGlisse();
+    if (!doux || sansMouvement()) { fil.scrollTop = fil.scrollHeight; majDescendre(); return; }
+    const depart = fil.scrollTop;
+    const lance = performance.now();
+    let cumul = 0;
+    let avant = null;
+    const pas = (t) => {
+      if (A.dernierGeste > lance) { A.glisse = 0; return; }
+      cumul += Math.min(avant === null ? 16 : t - avant, 34);
+      avant = t;
+      const p = Math.min(1, cumul / 200);
+      const vise = fil.scrollHeight - fil.clientHeight;
+      fil.scrollTop = depart + (vise - depart) * (1 - (1 - p) ** 3);
+      if (p < 1) { A.glisse = requestAnimationFrame(pas); return; }
+      A.glisse = 0;
+      fil.scrollTop = fil.scrollHeight;
+      majDescendre();
+    };
+    A.glisse = requestAnimationFrame(pas);
+  }
+
+  function arreterDeSuivre() {
+    if (!A.flux) { A.suivi = false; arreterGlisse(); }
+  }
+
+  function surDefilement() {
+    const fil = dom('[data-ast-fil]');
+    if (!fil) return;
+    const haut = fil.scrollTop;
+    const hauteur = fil.scrollHeight;
+    const monte = haut < A.vuHaut;
+    const retreci = hauteur < A.vuHauteur;
+    A.vuHaut = haut;
+    A.vuHauteur = hauteur;
+    const reste = Math.floor(hauteur - haut - fil.clientHeight);
+    if (reste < SEUIL_BAS) A.suivi = true;
+    else if (monte && !retreci && performance.now() - A.dernierGeste < GESTE_RECENT) { A.suivi = false; arreterGlisse(); }
     majDescendre();
+  }
+
+  // Le texte qui pousse, un graphique qui arrive ou la fenetre qui change recalent la vue au bas.
+  function observerLeFil(fil, colonne) {
+    if (A.observateur) A.observateur.disconnect();
+    A.observateur = new ResizeObserver(() => {
+      if (A.suivi && !A.glisse) fil.scrollTop = fil.scrollHeight;
+      majDescendre();
+    });
+    A.observateur.observe(fil);
+    A.observateur.observe(colonne);
   }
 
   function peindreCompo() {
@@ -882,7 +1305,10 @@
     if (!envoi || !champ) return;
     const enCours = Boolean(A.flux);
     envoi.classList.toggle('est-arret', enCours);
-    envoi.innerHTML = enCours ? '<span class="ast-carre" aria-hidden="true"></span>' : icone('fleche');
+    if (envoi.dataset.etat !== (enCours ? 'arret' : 'envoi')) {
+      envoi.dataset.etat = enCours ? 'arret' : 'envoi';
+      envoi.innerHTML = enCours ? '<span class="ast-carre" aria-hidden="true"></span>' : icone('fleche');
+    }
     envoi.setAttribute('aria-label', enCours ? 'Arrêter' : 'Envoyer');
     envoi.disabled = !enCours && !champ.value.trim();
     const bouton = dom('[data-ast-modele]');
@@ -907,6 +1333,8 @@
     if (!racine) return;
     const haut = Math.max(0, Math.round(racine.getBoundingClientRect().top + window.scrollY));
     racine.style.setProperty('--ast-haut', `${haut}px`);
+    const fil = dom('[data-ast-fil]');
+    if (fil) racine.style.setProperty('--ast-goutte', `${fil.offsetWidth - fil.clientWidth}px`);
   }
 
   // ---- Ce que l IA a appris ------------------------------------------------------------
@@ -939,7 +1367,7 @@
     const S = A.savoir;
     const fermer = `<button type="button" class="ast-icone" data-ast-panneau-fermer aria-label="Fermer">${icone('fermer')}</button>`;
     const tete = `<div class="ast-src-tete"><div><h2>Ce que l'IA a appris</h2><p class="ast-src-detail">Ce que votre équipe lui a appris. Elle s'en sert aussitôt, pour toutes les personnes du centre.</p></div>${fermer}</div>`;
-    if (!S.charge) return `${tete}<p class="ast-pense">Lecture<span class="ast-points" aria-hidden="true"></span></p>`;
+    if (!S.charge) return `${tete}<p class="ast-pense ast-travail">Lecture</p>`;
     if (!S.disponible) return `${tete}<p class="ast-vide">Le savoir de l'équipe sera actif après la prochaine mise à jour de la base.</p>`;
     const formulaire = `<form class="ast-savoir-form" data-ast-savoir-form>
       <label class="ast-corriger-titre" for="ast-savoir-texte">Apprendre quelque chose à l'IA</label>
@@ -1084,14 +1512,28 @@
 
   // ---- Poser une question ------------------------------------------------------------
   function nouvelleConversation() {
+    const avant = hautDuChamp();
     A.actuelle = '';
     A.panneau = null;
     peindrePanneau();
     peindreListe();
     peindreFil();
+    glisserLeChamp(avant);
     const champ = dom('[data-ast-champ]');
     if (champ) champ.focus();
     fermerListe();
+  }
+
+  function hautDuChamp() {
+    const compo = dom('[data-ast-compo]');
+    return compo ? compo.getBoundingClientRect().top : 0;
+  }
+  function glisserLeChamp(avant) {
+    const bas = dom('.ast-bas');
+    if (!bas || sansMouvement()) return;
+    const ecart = avant - hautDuChamp();
+    if (Math.abs(ecart) < 2) return;
+    bas.animate([{ transform: `translateY(${ecart}px)` }, { transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.32,.72,0,1)' });
   }
 
   function pourLeServeur(conversation, jusqua) {
@@ -1140,6 +1582,8 @@
       conversation.maj = Date.now();
       sauver(conversation);
       peindreMessage(reponse);
+      const ecrite = courante() === conversation ? dom(`[data-ast-i="${conversation.messages.indexOf(reponse)}"]`) : null;
+      if (ecrite) ecrite.classList.add('vient-d-ecrire');
       peindreCompo();
       peindreListe();
     }
@@ -1220,13 +1664,18 @@
     const question = String(texte || '').trim();
     if (!question || A.flux) return;
     if (question.length > QUESTION_MAX) { if (typeof toast === 'function') toast('Votre message est trop long.'); return; }
+    const avant = hautDuChamp();
     let c = courante();
+    const neuve = !c;
     if (!c) {
       c = { id: uid(), titre: question.slice(0, 60), maj: Date.now(), messages: [], centerId: centreId() };
       A.conversations.unshift(c);
       A.actuelle = c.id;
     }
     if (!Array.isArray(c.messages)) return;
+    // La place gardee sous une reponse courte se rend au message suivant.
+    if (A.root) A.root.querySelectorAll('[data-ast-i]').forEach((a) => { a.style.minHeight = ''; });
+    const commence = !c.messages.length;
     c.messages.push({ role: 'user', texte: question });
     const reponse = { id: uid(), role: 'assistant', texte: '', sources: [], graphiques: [], etapes: [], propositions: [], statut: 'cours' };
     c.messages.push(reponse);
@@ -1235,7 +1684,10 @@
     const champ = dom('[data-ast-champ]');
     if (champ) { champ.value = ''; ajusterChamp(); }
     peindreListe();
-    peindreFil({ neuf: 2 });
+    if (neuve) { const ligne = dom(`[data-ast-conv="${CSS.escape(c.id)}"]`); if (ligne) ligne.closest('.ast-conv').classList.add('is-neuve'); }
+    if (commence) { peindreFil({ neuf: 2 }); glisserLeChamp(avant); }
+    else poserDerniers(c, 2);
+    versLeBas(!commence);
     poser(c, reponse);
   }
 
@@ -1247,7 +1699,10 @@
     Object.assign(derniere, { id: uid(), texte: '', sources: [], graphiques: [], etapes: [], propositions: [], statut: 'cours', verite: null, erreur: '', modele: '', correction: false, corrige: false, faitsCites: [] });
     A.panneau = null;
     peindrePanneau();
-    peindreFil();
+    const i = c.messages.length - 1;
+    const article = dom(`[data-ast-i="${i}"]`);
+    if (article) article.outerHTML = htmlMessage(derniere, i, c.messages, false);
+    versLeBas(true);
     poser(c, derniere);
   }
 
@@ -1310,7 +1765,7 @@
     if ((n = v('[data-ast-suggestion]'))) { envoyer(n.textContent); return; }
     if ((n = v('[data-ast-modele]'))) { A.menuModele = !A.menuModele; peindreCompo(); return; }
     if ((n = v('[data-ast-choix]'))) { A.modele = n.dataset.astChoix; A.menuModele = false; sauverSurAppareil(A.stockage === 'serveur' ? [] : undefined); peindreCompo(); dom('[data-ast-champ]').focus(); return; }
-    if ((n = v('[data-ast-descendre]'))) { const fil = dom('[data-ast-fil]'); fil.scrollTop = fil.scrollHeight; return; }
+    if ((n = v('[data-ast-descendre]'))) { versLeBas(true); return; }
     if ((n = v('[data-ast-panneau-fermer]'))) { fermerPanneau(); return; }
     if ((n = v('[data-ast-page]'))) { if (typeof location !== 'undefined') location.hash = `#/staff/${n.dataset.astPage}`; return; }
     if ((n = v('[data-ast-reservation]'))) { ouvrirReservation(n.dataset.astReservation); return; }
@@ -1338,6 +1793,7 @@
     if ((n = v('[data-ast-etape-ouvrir]'))) {
       const m = messageDe(n);
       if (m && m.statut !== 'cours') {
+        arreterDeSuivre();
         const ouverte = !(m.etapesDeroulees || {})[n.dataset.astEtapeOuvrir];
         m.etapesDeroulees = { ...(m.etapesDeroulees || {}), [n.dataset.astEtapeOuvrir]: ouverte };
         n.closest('.lu').classList.toggle('est-ouvert', ouverte);
@@ -1348,6 +1804,7 @@
     if ((n = v('[data-ast-etapes]'))) {
       const m = messageDe(n);
       if (m) {
+        arreterDeSuivre();
         m.etapesOuvertes = !m.etapesOuvertes;
         n.closest('[data-ast-recherche]').classList.toggle('est-ouvert', m.etapesOuvertes);
         n.setAttribute('aria-expanded', m.etapesOuvertes ? 'true' : 'false');
@@ -1440,9 +1897,11 @@
   }
 
   function surTouche(e) {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key) && !(e.target.matches && e.target.matches('textarea, input'))) A.dernierGeste = performance.now();
     if (e.key === 'Escape') {
       if (A.menuModele) { A.menuModele = false; peindreCompo(); dom('[data-ast-modele]').focus(); return; }
       if (A.panneau) { fermerPanneau(); return; }
+      if (A.flux) A.flux.abort();
     }
     const ligne = e.target.closest && e.target.closest('[data-ast-reservation]');
     if (ligne && e.key === 'Enter') { ouvrirReservation(ligne.dataset.astReservation); return; }
@@ -1472,8 +1931,11 @@
           <button type="button" class="ast-icone" data-ast-nouvelle aria-label="Nouvelle conversation">${icone('plus')}</button>
         </div>
         <div class="ast-fil" data-ast-fil><div class="ast-colonne" data-ast-colonne></div></div>
-        <button type="button" class="ast-descendre ast-icone" data-ast-descendre aria-label="Aller à la fin" hidden>${icone('bas')}</button>
         <div class="ast-bas">
+          <div class="ast-ancre">
+            <div class="ast-bande" data-ast-bande aria-hidden="true"></div>
+            <button type="button" class="ast-descendre ast-icone" data-ast-descendre aria-label="Aller à la fin" inert>${icone('bas')}</button>
+          </div>
           <form class="ast-compo" data-ast-compo>
             <textarea class="ast-champ" data-ast-champ rows="1" maxlength="${QUESTION_MAX}" placeholder="Posez votre question" aria-label="Votre question"></textarea>
             <div class="ast-compo-pied">
@@ -1491,7 +1953,13 @@
       <aside class="ast-sources" data-ast-panneau aria-label="Source" hidden></aside>
     </div>`;
     const fil = dom('[data-ast-fil]');
-    fil.addEventListener('scroll', majDescendre, { passive: true });
+    const geste = () => { A.dernierGeste = performance.now(); };
+    fil.addEventListener('scroll', surDefilement, { passive: true });
+    fil.addEventListener('wheel', (e) => { if (e.deltaY) geste(); }, { passive: true });
+    fil.addEventListener('touchmove', geste, { passive: true });
+    fil.addEventListener('pointerdown', geste, { passive: true });
+    fil.addEventListener('mousemove', (e) => { if (e.buttons) geste(); }, { passive: true });
+    observerLeFil(fil, dom('[data-ast-colonne]'));
     const racine = dom('.ast');
     racine.addEventListener('click', surClic);
     racine.addEventListener('keydown', surTouche);

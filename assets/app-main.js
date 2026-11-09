@@ -11793,7 +11793,8 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   ];
   // Un bouton du pied mene a une page : il ne se montre qu a qui l ouvre
   // (2026-11-07). Sans le droit, l action vaut '' et ne se dessine pas.
-  const openPlanning = canUseStaffPage('planning') ? "closeStaffDashboardDetail(); openStaffDashboardSection('planning');" : '';
+  // (le planning du jour s ouvre en fenetre : on reste sur le tableau de bord, comme depuis une demande)
+  const openPlanning = canUseStaffPage('planning') ? "closeStaffDashboardDetail(); openStaffRequestDay(state.currentDate);" : '';
   const openReservations = canUseStaffPage('reservations') ? "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');" : '';
   const openDirection = canUseStaffPermission('direction.view') ? "closeStaffDashboardDetail(); setView('admin'); openAdminTab('overview');" : '';
   if (type === 'alerts') {

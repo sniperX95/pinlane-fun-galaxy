@@ -121,6 +121,19 @@ async function main() {
     ok(Boolean(buttons) && !buttons.some((label) => /Marquer trait/i.test(label) || /^Fiche$/i.test(label)),
       'les actions dupliquees ont quitte l alerte (elles vivent dans la page)');
 
+    console.log('\n[Ouvrir le planning reste sur place : une fenetre, pas une autre page]');
+    const avant = await page.evaluate(() => state.staffMenuPage);
+    await page.click('#staffDashboardDetailOverlay button:has-text("Ouvrir le planning")');
+    await page.waitForSelector('.sm-fen #smFenPlanning', { timeout: 8000 });
+    const fenetre = await page.evaluate(() => ({ detailFerme: !document.getElementById('staffDashboardDetailOverlay'), page: state.staffMenuPage, texte: (document.querySelector('.sm-fen') || {}).textContent || '' }));
+    ok(/Planning du /.test(fenetre.texte), 'la fenetre dit de quel jour est le planning');
+    ok(fenetre.detailFerme, 'le detail du tableau de bord se ferme derriere');
+    ok(fenetre.page === avant, 'on reste sur la meme page (' + fenetre.page + ')');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.sm-fen'), null, { timeout: 5000 });
+    await page.evaluate(() => window.openStaffDashboardDetail('alerts', 'lead'));
+    await page.waitForSelector('.alert-lead', { timeout: 8000 });
+
     console.log('\n[Le clic mene VRAIMENT a la page dediee]');
     await page.click('.alert-lead .dashboard-detail-row-actions button.primary');
     await page.waitForTimeout(1000);

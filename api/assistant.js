@@ -1,17 +1,19 @@
 // L ASSISTANT DU CENTRE, POUR LE NAVIGATEUR (2026-11-08). Une question entre, la reponse sort au
 // fil de l eau (text/event-stream) : les etapes, les sources, le texte, puis le bilan de verite.
-const { readJson, sendError, setCors } = require('../lib/http');
+const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { listCentersForSession } = require('../lib/center-scope');
 const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
 const { actorFromSession, newRequestId, writeAuditLog } = require('../lib/audit-log');
 const { isBudgetExhausted } = require('../lib/llm-budget');
 const { getPool } = require('../lib/database');
-const { creerContexte, PERMISSIONS_PAGE } = require('../lib/assistant-outils');
+const { creerContexte, PERMISSIONS_PAGE, sourcesDuCompte, voitLesClients } = require('../lib/assistant-outils');
 const { bilan, MODELES, POSTE, repondre } = require('../lib/assistant-agent');
+const memoire = require('../lib/assistant-memoire');
 
 const MESSAGES_MAX = 40;
 const QUESTION_MAX = 6000;
 const CONVERSATION_MAX = 60000;
+const CORPS_MAX_OCTETS = 2 * 1024 * 1024;
 const QUESTIONS_PAR_FENETRE = 30;
 const FENETRE_MS = 10 * 60 * 1000;
 const recentes = new Map();
@@ -37,7 +39,7 @@ function messagesValides(brut) {
     .map((m) => {
       const role = m && m.role === 'assistant' ? 'assistant' : 'user';
       const contenu = String((m && m.content) || '');
-      return { role, content: role === 'assistant' ? contenu.replace(/\s*\[[SG]\d+\]/g, '') : contenu };
+      return { role, content: role === 'assistant' ? contenu.replace(/\s*\[[SGF]\d+\]/g, '') : contenu };
     })
     .filter((m) => m.content.trim());
   if (!propres.length || propres[propres.length - 1].role !== 'user') return null;
@@ -59,8 +61,8 @@ function aujourdhuiBruxelles() {
 
 // Le navigateur ne recoit que les noms des clients qui figurent dans cette reponse.
 function identitesUtiles(ctx, texte) {
-  const vus = new Set(`${texte} ${JSON.stringify(ctx.sources.map((s) => s.lignes))}`.match(/\b[A-Z]\d{4}\b/g) || []);
-  return Object.fromEntries(Object.entries(ctx.identites).filter(([code]) => vus.has(code)));
+  const lu = `${texte} ${JSON.stringify(ctx.sources.map((s) => s.lignes))}`;
+  return Object.fromEntries(Object.entries(ctx.identites).filter(([code, nom]) => lu.includes(code) || lu.includes(nom)));
 }
 
 async function centresDuClient(session, centreOuvert) {
@@ -72,6 +74,130 @@ async function centresDuClient(session, centreOuvert) {
   const centres = memeClient.slice(0, 20).map((c) => ({ id: c.id, name: c.name || c.id }));
   if (!centres.some((c) => c.id === centreOuvert)) centres.unshift({ id: centreOuvert, name: centreOuvert });
   return centres;
+}
+
+// ---- Les conversations de la personne et ce que le centre a appris ------------------------------
+const requeteBase = (texte, parametres) => getPool().query(texte, parametres);
+
+const journal = (session, action, entityId, context = {}) => writeAuditLog({
+  centerId: session.authorizedCenterId,
+  ...actorFromSession(session),
+  surface: 'api/assistant.js',
+  action,
+  method: 'POST',
+  entityType: 'assistant_fait',
+  entityId: String(entityId || ''),
+  outcome: 'success',
+  changes: {},
+  context,
+  requestId: newRequestId(),
+}).catch(() => {});
+
+function centrePrecis(session, res) {
+  const centre = session.authorizedCenterId;
+  if (!centre || centre === 'all') {
+    sendError(res, 422, 'Choisissez un centre.');
+    return '';
+  }
+  return centre;
+}
+
+// Le centre d une conversation reprise de l appareil passe par la meme porte que le reste.
+async function centresPermis(req, centres) {
+  const muet = { statusCode: 200, setHeader() {}, getHeader() {}, end() {}, write() {} };
+  const permis = new Set();
+  for (const centre of [...new Set(centres.filter(Boolean))].slice(0, 12)) {
+    // eslint-disable-next-line no-await-in-loop
+    const s = await requireStaffPermission(req, muet, PERMISSIONS_PAGE, { centerId: centre }).catch(() => null);
+    if (s) permis.add(centre);
+  }
+  return permis;
+}
+
+async function agir(req, res, body, session) {
+  const action = String(body.action);
+  const q = requeteBase;
+  try {
+    switch (action) {
+      case 'conversations': {
+        const ids = await memoire.idsDeLaPersonne(q, session);
+        sendJson(res, 200, { ok: true, stockage: 'serveur', conversations: await memoire.listerConversations(q, ids) });
+        return;
+      }
+      case 'conversation': {
+        const ids = await memoire.idsDeLaPersonne(q, session);
+        sendJson(res, 200, { ok: true, conversation: await memoire.lireConversation(q, ids, body.id) });
+        return;
+      }
+      case 'sauver': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        const ids = await memoire.idsDeLaPersonne(q, session);
+        sendJson(res, 200, { ok: true, conversation: await memoire.sauverConversation(q, ids, session.member.id, centre, body.conversation) });
+        return;
+      }
+      case 'supprimer': {
+        const ids = await memoire.idsDeLaPersonne(q, session);
+        sendJson(res, 200, { ok: true, ...(await memoire.supprimerConversation(q, ids, body.id)) });
+        return;
+      }
+      case 'reprendre': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        const liste = Array.isArray(body.conversations) ? body.conversations : [];
+        const permis = await centresPermis(req, liste.map((c) => c && c.centerId));
+        const ids = await memoire.idsDeLaPersonne(q, session);
+        sendJson(res, 200, { ok: true, reprises: await memoire.reprendreConversations(q, ids, session.member.id, centre, liste.filter((c) => c && (!c.centerId || permis.has(c.centerId)))) });
+        return;
+      }
+      case 'savoir': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        try {
+          sendJson(res, 200, { ok: true, disponible: true, faits: await memoire.listerFaits(q, centre) });
+        } catch (erreur) {
+          if (!memoire.tableAbsente(erreur)) throw erreur;
+          sendJson(res, 200, { ok: true, disponible: false, faits: [] });
+        }
+        return;
+      }
+      case 'savoir.ajouter': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        const fait = await memoire.ajouterFait(q, { centerId: centre, texte: body.texte, origine: body.origine, contexte: body.contexte, session });
+        journal(session, 'assistantFaitAjoute', fait.id, { origine: fait.origine });
+        sendJson(res, 200, { ok: true, fait });
+        return;
+      }
+      case 'savoir.modifier': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        const fait = await memoire.modifierFait(q, { centerId: centre, id: body.id, texte: body.texte, session });
+        journal(session, 'assistantFaitModifie', fait.id);
+        sendJson(res, 200, { ok: true, fait });
+        return;
+      }
+      case 'savoir.retirer': {
+        const centre = centrePrecis(session, res);
+        if (!centre) return;
+        const retire = await memoire.retirerFait(q, { centerId: centre, id: body.id, session });
+        journal(session, 'assistantFaitRetire', retire.id);
+        sendJson(res, 200, { ok: true, ...retire });
+        return;
+      }
+      default:
+        sendError(res, 400, 'Action inconnue.');
+    }
+  } catch (erreur) {
+    // Table absente : le geste attend la migration, la page reste utilisable sur l appareil.
+    if (memoire.tableAbsente(erreur)) {
+      if (action.startsWith('savoir')) sendError(res, 503, "L'apprentissage attend la mise à jour de la base.");
+      else sendJson(res, 200, { ok: true, stockage: 'appareil' });
+      return;
+    }
+    if (erreur && erreur.expose) { sendError(res, erreur.statusCode || 400, erreur.message); return; }
+    throw erreur;
+  }
 }
 
 module.exports = async (req, res) => {
@@ -88,9 +214,10 @@ module.exports = async (req, res) => {
 
   let enFlux = false;
   try {
-    const body = await readJson(req);
+    const body = await readJson(req, { maxBytes: CORPS_MAX_OCTETS });
     const session = await requireStaffPermission(req, res, PERMISSIONS_PAGE, { centerId: body.centerId || '' });
     if (!session) return;
+    if (body.action) { await agir(req, res, body, session); return; }
     const centreOuvert = session.authorizedCenterId;
     if (!centreOuvert || centreOuvert === 'all') {
       sendError(res, 422, "Choisissez un centre pour parler à l'assistant.");
@@ -116,7 +243,11 @@ module.exports = async (req, res) => {
     }
     const modele = Object.prototype.hasOwnProperty.call(MODELES, body.modele) ? body.modele : 'haiku';
     const centres = await centresDuClient(session, centreOuvert);
-    const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles() });
+    const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles(), messagesPersonne: messages.filter((m) => m.role === 'user').map((m) => m.content) });
+    ctx.centreOuvert = centreOuvert;
+    // Lu a chaque question : ce qu un collegue vient d apprendre sert tout de suite.
+    const savoir = await memoire.faitsPourLeModele(requeteBase, centreOuvert);
+    ctx.faits = savoir.faits;
 
     res.statusCode = 200;
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -135,8 +266,8 @@ module.exports = async (req, res) => {
 
     let resultat = null;
     try {
-      emettre('debut', { modele: MODELES[modele].nom, centres });
-      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), emettre, signal: coupure.signal });
+      emettre('debut', { modele: MODELES[modele].nom, centres, sources: sourcesDuCompte(session) });
+      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), clients: voitLesClients(session), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
       emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele });
     } finally {

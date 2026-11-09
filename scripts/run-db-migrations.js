@@ -294,6 +294,11 @@ const MIGRATIONS = [
     file: 'database/departs-epingles-schema.sql',
     description: "Les departs rapides epingles par le gerant dans la fenetre Reserver de la console : une ligne par centre, une liste courte de compositions nommees (type, formule, activites, parties ou duree). Aucune donnee de client. Table additive, lecture fail-soft tant qu elle n existe pas. Rollback : database/rollbacks/0058_departs_epingles.down.sql (la table est renommee, jamais supprimee)",
   },
+  {
+    id: '0059_assistant_conversations',
+    file: 'database/assistant-conversations-schema.sql',
+    description: "Les conversations de chaque personne avec l assistant Marketing (assistant_conversations, lisibles seulement par la personne, ses lignes staff comprises) et ce que l equipe apprend a l IA (assistant_faits, au centre, ecrit seulement par un geste humain). Tables additives ; tant qu elles manquent, le code detecte 42P01 et garde les conversations sur l appareil. Retour : database/rollbacks/0059_assistant_conversations.down.sql (renomme, ne supprime rien).",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

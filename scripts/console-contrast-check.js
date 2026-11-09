@@ -633,7 +633,7 @@ function staticChecks() {
   // la meme regle est le meme angle mort, en plus petit : on collecte donc les
   // selecteurs qui PEIGNENT un fond -soft, puis on regarde tout selecteur qui
   // en DESCEND.
-  const FILES = ['assets/pinlane.css', 'assets/pinlane-staff.css', 'assets/pinlane-charts.css', 'assets/pinlane-daterange.css', 'assets/pinlane-analytics-board.css'];
+  const FILES = ['assets/pinlane.css', 'assets/pinlane-staff.css', 'assets/pinlane-charts.css', 'assets/pinlane-daterange.css', 'assets/pinlane-analytics-board.css', 'assets/pinlane-assistant.css'];
   const regles = [];
   FILES.forEach((f) => {
     const css = fs.readFileSync(path.join(ROOT, f), 'utf8');

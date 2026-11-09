@@ -1,0 +1,182 @@
+/* ==========================================================================
+   L ASSISTANT DU CENTRE (2026-11-09), la page Marketing refaite. Ce fichier
+   passe apres pinlane-staff.css : memes classes .ast, il reprend tout.
+   Sobre pour des gerants de 45 ans : la couleur vient d aplats pleins, le
+   mouvement dit ce que l assistant est en train de lire. Jamais de halo, de
+   degrade ni de verre fumé. La police est celle de la console, les chiffres
+   en tabular-nums.
+   ======================================================================== */
+.ast { grid-template-columns: 276px minmax(0, 1fr); background: var(--surface); font-variant-numeric: tabular-nums; }
+.ast.a-source { grid-template-columns: 276px minmax(0, 1fr) 460px; }
+
+/* --- La liste des conversations --- */
+.ast-liste { gap: 8px; padding: 12px 10px 10px; background: var(--page); }
+.ast-nouvelle { height: 38px; padding: 0 12px; font-size: 13.5px; color: var(--text); background: var(--subtle); border: 0; border-radius: 9px; }
+.ast-nouvelle:hover { background: var(--line); }
+.ast-convs { gap: 1px; padding-right: 2px; }
+.ast-groupe { margin: 14px 10px 4px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; color: var(--faint); }
+.ast-vide { margin: 8px 10px; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.ast-conv { min-height: 36px; border-radius: 8px; }
+.ast-conv:hover { background: var(--subtle); }
+.ast-conv.est-active { background: var(--subtle); }
+.ast-conv-titre { display: flex; align-items: baseline; gap: 8px; padding: 8px 10px; font-size: 13.5px; }
+.ast-conv-titre { overflow: hidden; }
+.ast-conv-nom { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ast-conv-centre { margin-left: auto; flex: none; font-size: 11.5px; font-weight: 400; color: var(--faint); }
+.ast-conv.est-active .ast-conv-titre { font-weight: 500; }
+.ast-liste-pied { display: flex; flex-direction: column; gap: 6px; padding: 6px 2px 2px; }
+.ast-savoir-lien { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; font-size: 13.5px; color: var(--text); background: none; border: 0; border-radius: 8px; cursor: pointer; transition: background-color 120ms ease; }
+.ast-savoir-lien:hover { background: var(--subtle); }
+.ast-savoir-lien b { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--muted); }
+.ast-stockage { margin: 0; padding: 0 10px; font-size: 12px; line-height: 1.45; color: var(--faint); }
+.ast-stockage[hidden] { display: none; }
+
+/* --- Le fil --- */
+.ast-colonne { gap: 26px; max-width: 730px; padding: 30px 24px 28px; }
+.ast.est-vide .ast-colonne { padding: 0 24px 22px; }
+.ast-salut { font-size: 26px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
+.ast-q-bulle { padding: 11px 15px; font-size: 15px; line-height: 1.5; background: var(--subtle); border-radius: 14px; }
+.ast-r-texte { font-size: 15px; line-height: 1.68; }
+.ast-r-texte p { margin: 0 0 13px; }
+.ast-r-texte h3 { font-size: 16px; }
+.ast-r-texte ul, .ast-r-texte ol { margin: 0 0 13px; }
+.ast-pense { margin: 0; font-size: 14px; color: var(--muted); }
+
+.ast-cite { min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; font-weight: 600; color: var(--accent-strong); background: var(--accent-soft); border-radius: 5px; }
+.ast-cite.est-fait { padding: 0 6px; font-weight: 500; color: var(--text); background: var(--subtle); }
+button.ast-cite:hover { color: var(--surface); background: var(--accent); }
+button.ast-cite.est-fait:hover { color: var(--surface); background: var(--text); }
+
+/* Les tableaux n ont pas de filets : les lignes alternent sur un aplat. */
+.ast-table { margin: 14px 0; border: 0; border-radius: 0; }
+.ast-table th { padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--muted); background: none; border: 0; }
+.ast-table td { padding: 7px 10px; border: 0; }
+.ast-table tbody tr:nth-child(odd) td { background: var(--page); }
+.ast-table tbody tr.est-ouvrable:hover td { background: var(--subtle); }
+.ast-graph { padding: 0; margin: 16px 0; border: 0; border-radius: 0; }
+
+/* --- La recherche : la carte des donnees et ce qui se lit --- */
+.ast-rech { margin: 0 0 16px; font-size: 13.5px; }
+.ast-rech-tete { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0; color: var(--muted); background: none; border: 0; cursor: pointer; }
+.ast-rech-tete:hover { color: var(--text); }
+.ast-rech.est-cours .ast-rech-tete { cursor: default; color: var(--text); }
+.ast-rech-titre { font-size: 13.5px; font-weight: 500; }
+.ast-rech-tete svg { transition: transform 180ms cubic-bezier(0.25, 0.1, 0.25, 1); }
+.ast-rech.est-ouvert .ast-rech-tete svg { transform: rotate(180deg); }
+
+.ast-carte { position: relative; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 10px 0 11px; font-size: 12.5px; color: var(--faint); }
+.ast-carte-mot { display: inline-flex; align-items: baseline; gap: 5px; padding-bottom: 3px; white-space: nowrap; transition: color 160ms ease; }
+.ast-carte-mot b { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.ast-carte-mot.est-actif { color: var(--text); font-weight: 500; }
+.ast-carte-mot.est-lu { color: var(--muted); }
+.ast-carte-repere { position: absolute; left: 0; top: -1px; width: 1px; height: 2px; background: var(--accent); transform-origin: 0 0; opacity: 0; transition: transform 240ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 160ms ease; }
+
+.ast-rech-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ast-rech-liste[hidden] { display: none; }
+.ast-rech:not(.est-cours) .ast-rech-liste { margin-top: 8px; }
+.ast-et { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 0 10px; }
+.ast-et-signe { display: grid; place-items: center; height: 20px; color: var(--success); }
+.ast-et.is-echec .ast-et-signe { color: var(--danger); }
+.ast-et-signe svg { width: 14px; height: 14px; }
+.ast-et-pointe { width: 7px; height: 7px; background: var(--accent); border-radius: 2px; animation: ast-pointe 1100ms ease-in-out infinite; }
+@keyframes ast-pointe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.72); opacity: 0.55; } }
+.ast-et.is-note .ast-et-signe { color: var(--line-strong); }
+.ast-et.is-note .ast-et-ligne { margin: 0; color: var(--muted); font-style: italic; }
+
+.ast-et-corps { min-width: 0; }
+.ast-et-tete { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; width: 100%; padding: 0; text-align: left; color: inherit; background: none; border: 0; }
+.ast-et.est-ouvrable .ast-et-tete { cursor: pointer; }
+.ast-et.est-ouvrable .ast-et-tete:hover .ast-et-phrase { color: var(--text); }
+.ast-et-source { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.ast-et-phrase { color: var(--muted); }
+.ast-et-mesure { justify-self: end; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.ast-et.is-cours .ast-et-mesure { color: var(--text); }
+.ast-et.is-fini .ast-et-mesure { color: var(--text); font-weight: 500; }
+.ast-et.is-echec .ast-et-phrase, .ast-et.is-echec .ast-et-mesure { color: var(--danger); }
+
+.ast-et-barre[hidden] { display: none; }
+.ast-et-barre { height: 3px; margin: 8px 0 7px; background: var(--subtle); border-radius: 2px; overflow: hidden; }
+.ast-et-barre i { display: block; height: 100%; background: var(--accent); transform-origin: 0 0; transform: scaleX(0); transition: transform 200ms linear; }
+.ast-et.is-fini .ast-et-barre, .ast-et.is-echec .ast-et-barre { display: none; }
+.ast-et-extraits { height: 58px; overflow: hidden; font-size: 12.5px; line-height: 19px; color: var(--muted); }
+.ast-et-fil p { display: flex; gap: 10px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ast-et-fil time { flex: none; min-width: 42px; color: var(--faint); }
+.ast-et-fil span { overflow: hidden; text-overflow: ellipsis; }
+.ast-et.is-fini .ast-et-extraits, .ast-et.is-echec .ast-et-extraits { display: none; }
+
+.ast-et-detail { margin-top: 8px; }
+.ast-et.is-fini .ast-et-detail .ast-et-extraits, .ast-et-detail .ast-et-extraits { display: block; height: auto; }
+.ast-et-actions { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+
+/* --- Sous la reponse --- */
+.ast-pied { gap: 4px; margin-top: 10px; }
+.ast-icone { color: var(--muted); }
+.ast-pill { height: 30px; padding: 0 12px; font-size: 12.5px; font-weight: 500; color: var(--text); background: var(--subtle); border: 0; border-radius: 8px; }
+.ast-pill:hover { background: var(--line); }
+.ast-alerte { padding: 10px 12px; color: var(--warning); background: var(--warning-soft); border-radius: 9px; }
+.ast-erreur { padding: 10px 12px; border-radius: 9px; }
+
+.ast-prop { margin: 14px 0 0; padding: 13px 15px; background: var(--accent-soft); border-radius: 10px; }
+.ast-prop-quoi { margin: 0 0 3px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.ast-prop-texte { margin: 0 0 11px; font-size: 15px; line-height: 1.5; color: var(--text); }
+.ast-prop-actions { display: flex; align-items: center; gap: 14px; }
+.ast-prop-fait { margin: 12px 0 0; font-size: 13.5px; color: var(--muted); }
+.ast-bouton { height: 34px; padding: 0 14px; font-size: 13.5px; font-weight: 500; border: 0; border-radius: 8px; cursor: pointer; transition: background-color 120ms ease, transform 120ms ease-out; }
+.ast-bouton:active { transform: scale(0.97); }
+.ast-bouton.est-plein { color: var(--surface); background: var(--text); }
+.ast-bouton.est-plein:hover { background: var(--muted); }
+.ast-bouton:disabled { color: var(--faint); background: var(--subtle); cursor: default; }
+.ast-corriger { margin-top: 12px; padding: 13px 15px; background: var(--page); border-radius: 10px; }
+.ast-corriger-titre { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.ast .ast-champ-court { display: block; width: 100%; padding: 9px 11px; margin: 0 0 11px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; resize: vertical; }
+.ast .ast-champ-court:focus { outline: 0; border-color: var(--accent); }
+
+/* --- La saisie --- */
+.ast-bas { padding: 0 24px 14px; }
+.ast-compo { max-width: 682px; padding: 12px 12px 9px; border-radius: 14px; }
+.ast-compo:focus-within { border-color: var(--muted); }
+.ast .ast-champ:focus, .ast .ast-champ:focus-visible { outline: 0; box-shadow: none; }
+.ast-envoi { width: 32px; height: 32px; color: var(--surface); background: var(--text); border-radius: 9px; }
+.ast-envoi:disabled { color: var(--faint); background: var(--subtle); }
+.ast-envoi.est-arret { color: var(--surface); background: var(--text); }
+.ast-suggestions { gap: 6px; max-width: 682px; }
+.ast-suggestion { padding: 7px 12px; font-size: 13px; color: var(--muted); background: var(--page); border: 0; border-radius: 8px; }
+.ast-suggestion:hover { color: var(--text); background: var(--subtle); }
+.ast-modele-bouton { font-size: 13px; }
+.ast-menu { border-radius: 10px; }
+.ast-avis { margin: 8px 0 0; font-size: 12px; }
+
+/* --- Le panneau de droite : sources, ce que l IA a appris --- */
+.ast-sources { padding: 18px 18px 22px; }
+.ast-src-tete h2 { font-size: 16.5px; line-height: 1.3; letter-spacing: -0.005em; }
+.ast-src-detail { margin: 7px 0 0; font-size: 13.5px; line-height: 1.5; }
+.ast-sources .ast-table { margin: 14px -2px; }
+.ast-src-ligne { padding: 9px 8px; }
+.ast-sources > .ast-pill { margin: 6px 12px 4px 0; }
+.ast-savoir-form { margin: 16px 0 6px; }
+.ast-faits { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 16px; }
+.ast-fait p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); }
+.ast-fait-meta { margin: 4px 0 0 !important; font-size: 12.5px !important; color: var(--faint) !important; }
+.ast-fait-actions { display: flex; gap: 14px; margin-top: 6px; }
+
+/* --- Etroit --- */
+@media (max-width: 1200px) {
+  .ast.a-source { grid-template-columns: 276px minmax(0, 1fr); }
+  .ast-sources { width: min(460px, 100%); }
+}
+@media (max-width: 760px) {
+  .ast, .ast.a-source { grid-template-columns: minmax(0, 1fr); }
+  .ast-colonne { padding: 20px 16px 18px; }
+  .ast.est-vide .ast-colonne { padding: 0 16px 18px; }
+  .ast-salut { font-size: 22px; }
+  .ast-bas { padding: 0 12px 10px; }
+  .ast-et-tete { grid-template-columns: auto minmax(0, 1fr); }
+  .ast-et-mesure { grid-column: 1 / -1; justify-self: start; }
+  .ast-sources { width: 100%; }
+  .ast-conv-centre { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ast-et-pointe { animation: none; }
+  .ast-et-barre i, .ast-carte-repere, .ast-rech-tete svg, .ast-carte-mot { transition: none; }
+}

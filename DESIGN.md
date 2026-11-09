@@ -276,6 +276,7 @@ Contraste ≥ 4.5:1 (texte) et 3:1 (UI) dans les **deux** thèmes · focus visib
 | `assets/pinlane-charts.css` | moteur de graphiques `window.PinlaneCharts` (classes `plc-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-daterange.css` | sélecteur de plage de dates `window.PinlaneDateRange` (classes `pdr-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-analytics-board.css` | tableau d'analyse customisable `window.PinlaneAnalyticsBoard` (classes `pab-`, widgets iOS-style) | index.html |
+| `assets/pinlane-assistant.css` | la page Marketing, conversation avec l'assistant (classes `ast-`, ne consomme que les tokens, passe après pinlane-staff.css) | index.html |
 | `assets/pinlane-client.css` | entrée plateforme à la racine + parcours résa client (tunnel de réservation dans index.html) + direction.html | index.html, direction.html |
 | `assets/pinlane-landing.css` | landing marketing (reconstruite sur les tokens) | pro.html |
 

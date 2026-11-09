@@ -21691,3 +21691,302 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .rq-o-photo { left: 8px; right: 8px; top: 8px; bottom: auto; width: auto; height: 94px; }
 }
 @media (prefers-reduced-motion: reduce) { .rq-o, .rq-h, .rq-grand, .rq-d { transition: none; } }
+/* ==========================================================================
+   LA FICHE DU CENTRE (2026-11-09). Etablissement : lire et regler sont la meme
+   page. Une fiche qui se fait defiler, un sommaire a gauche, des phrases vraies,
+   de grandes touches, des horaires dessines. Une barre n apparait en bas que
+   lorsqu il y a quelque chose a enregistrer.
+   Classes prefixees eb-. Les selecteurs portent .establishment-page.eb pour
+   battre les resets de la console (min-height des champs, boutons).
+   ========================================================================== */
+.establishment-page.eb {
+  --eb-touche: color-mix(in srgb, var(--subtle) 62%, var(--surface));
+  --eb-survol: color-mix(in srgb, var(--subtle) 90%, var(--surface));
+  --eb-sortie: cubic-bezier(.23, 1, .32, 1);
+  display: block;
+  max-width: 1160px;
+  padding-bottom: 40px;
+  font-variant-numeric: tabular-nums;
+}
+.eb input[hidden], .eb select[hidden], .eb .eb-dayset[hidden], .eb .eb-bar[hidden] { display: none !important; }
+
+/* En-tete : le centre lui-meme */
+.eb-hero { display: flex; align-items: center; justify-content: space-between; gap: 40px; padding: 8px 0 36px; }
+.eb-hero-t { min-width: 0; display: grid; gap: 0; justify-items: start; }
+.eb .eb-name { margin: 0; font-size: 32px; line-height: 1.1; font-weight: 650; letter-spacing: -0.02em; color: var(--text); overflow-wrap: anywhere; }
+.eb .eb-today { margin: 10px 0 14px; max-width: 46ch; font-size: 18px; line-height: 1.45; color: var(--text); }
+.eb .eb-photo { flex: none; width: 360px; max-width: 42%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 14px; background: var(--eb-touche); }
+.eb .eb-note { margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: var(--muted); max-width: 60ch; }
+
+.eb-switch { position: relative; }
+.eb-switch > summary { list-style: none; }
+.eb-switch > summary::-webkit-details-marker { display: none; }
+.eb .eb-link { display: inline-flex; align-items: center; height: 44px; padding: 0 2px; font-size: 15px; font-weight: 600; color: var(--accent-strong); cursor: pointer; border-radius: 8px; }
+.eb .eb-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.eb-switch-panel { position: absolute; z-index: 30; top: 100%; left: 0; display: grid; gap: 2px; min-width: 300px; max-width: min(380px, 88vw); padding: 8px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 10px 28px rgba(15, 23, 42, .10); }
+.eb-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: 52px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
+.eb-pick small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.eb-pick:hover { background: var(--eb-touche); }
+.eb-pick.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.eb-pick.is-on small { color: var(--accent-strong); }
+.eb-sw-group { padding: 10px 14px 4px; font-size: 13px; color: var(--muted); }
+.eb-switch-panel .establishment-add-slot { padding: 4px 0 0; }
+.eb-switch-panel .establishment-add-card { display: flex; align-items: center; gap: 10px; width: 100%; height: 52px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: var(--accent-strong); font-size: 15px; font-weight: 600; cursor: pointer; }
+.eb-switch-panel .establishment-add-card:hover { background: var(--eb-touche); }
+.eb-switch-panel .establishment-add { display: grid; gap: 8px; padding: 8px 6px 4px; border: 0; background: transparent; }
+.eb-switch-panel .establishment-add input { height: 52px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 16px; }
+.eb-switch-panel .establishment-add .btn { height: 52px; border-radius: 10px; font-size: 15px; font-weight: 600; }
+.eb-switch-panel .establishment-add-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; }
+
+/* Le corps : sommaire fixe + la fiche */
+.eb-body { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 56px; align-items: start; }
+.eb-nav { position: sticky; top: 16px; display: grid; gap: 2px; }
+.eb .eb-nav-i { display: grid; gap: 2px; padding: 11px 14px; border-radius: 10px; color: var(--text); text-decoration: none; transition: background-color 160ms var(--eb-sortie); }
+.eb .eb-nav-i b { font-size: 15px; font-weight: 600; }
+.eb .eb-nav-i small { font-size: 13px; line-height: 1.35; color: var(--muted); }
+.eb .eb-nav-i:hover { background: var(--eb-touche); }
+.eb .eb-nav-i.is-on { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.eb .eb-nav-i.is-on b, .eb .eb-nav-i.is-on small { color: var(--accent-strong); }
+.eb-main { min-width: 0; }
+
+.eb-sec { padding: 40px 0 8px; border-top: 1px solid var(--line); scroll-margin-top: 12px; }
+.eb-sec:first-child { padding-top: 4px; border-top: 0; }
+.eb .eb-h { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 650; letter-spacing: -0.015em; color: var(--text); }
+.eb .eb-phrase { margin: 8px 0 0; max-width: 62ch; font-size: 17px; line-height: 1.5; color: var(--text); }
+.eb-sec > .eb-phrase { font-size: 19px; }
+.eb-blk { padding: 28px 0 0; }
+.eb .eb-bh { margin: 0; font-size: 16px; line-height: 1.3; font-weight: 650; color: var(--text); }
+.eb .eb-blk > .eb-phrase { margin: 4px 0 12px; font-size: 16px; color: var(--muted); }
+.eb .eb-sub { margin: 18px 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); }
+
+/* Une ligne de reglage : le mot a gauche, la touche a droite */
+.eb-line { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 10px 0; border-top: 1px solid var(--line); }
+.eb-blk > .eb-bh + .eb-line, .eb-blk > .eb-line:first-child { border-top: 0; }
+.eb-line-t { display: grid; gap: 2px; min-width: 0; }
+.eb .eb-line-l { font-size: 16px; font-weight: 600; color: var(--text); }
+.eb .eb-line-t small { font-size: 14px; line-height: 1.4; color: var(--muted); max-width: 46ch; }
+.eb-line-field .eb-input { width: min(320px, 46%); }
+
+.eb .eb-input { box-sizing: border-box; height: 52px; min-height: 52px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+.eb .eb-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.eb .eb-btn { flex: none; height: 52px; min-height: 52px; padding: 0 20px; border: 0; border-radius: 10px; background: var(--eb-touche); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--eb-sortie), transform 160ms var(--eb-sortie); }
+.eb .eb-btn:hover { background: var(--eb-survol); }
+.eb .eb-btn:active { transform: scale(.97); }
+
+/* Les touches moins et plus */
+.eb-step { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.eb .eb-step-btn { display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; min-height: 52px; padding: 0; border: 0; border-radius: 10px; background: var(--eb-touche); color: var(--text); cursor: pointer; transition: background-color 160ms var(--eb-sortie), transform 160ms var(--eb-sortie); }
+.eb .eb-step-btn:hover:not(:disabled) { background: var(--eb-survol); }
+.eb .eb-step-btn:active:not(:disabled) { transform: scale(.95); }
+.eb .eb-step-btn:disabled { opacity: .35; cursor: default; }
+.eb .eb-step-val { min-width: 92px; padding: 0 6px; text-align: center; font-size: 20px; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+.eb-step-time .eb-step-val { min-width: 80px; }
+.eb .eb-step-btn:focus-visible, .eb .eb-seg-btn:focus-visible, .eb .eb-btn:focus-visible, .eb .eb-day-btn:focus-visible, .eb .eb-pick:focus-visible, .eb .eb-nav-i:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Les choix en quelques mots */
+.eb-seg { display: inline-flex; flex-wrap: wrap; gap: 6px; flex: none; }
+.eb .eb-seg-btn { height: 52px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--eb-touche); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--eb-sortie); }
+.eb .eb-seg-btn:hover { background: var(--eb-survol); }
+.eb .eb-seg-btn.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+/* Les interrupteurs, avec leur phrase */
+.eb-sw { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 10px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.eb-blk > .eb-bh + .eb-sw, .eb-blk > .eb-sw:first-child { border-top: 0; }
+.eb .eb-sw-input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.eb-sw-copy { display: grid; gap: 2px; min-width: 0; }
+.eb-sw-copy b { font-size: 16px; font-weight: 600; color: var(--text); }
+.eb-sw-copy small { font-size: 14px; line-height: 1.4; color: var(--muted); max-width: 52ch; }
+.eb-sw-input:checked ~ .eb-sw-copy .eb-when-off, .eb-sw-input:not(:checked) ~ .eb-sw-copy .eb-when-on { display: none; }
+.eb-sw-track { position: relative; flex: none; width: 56px; height: 32px; border-radius: 16px; background: color-mix(in srgb, var(--faint) 55%, var(--surface)); transition: background-color 180ms var(--eb-sortie); }
+.eb-sw-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .25); transition: transform 180ms var(--eb-sortie); }
+.eb-sw-input:checked ~ .eb-sw-track { background: var(--accent); }
+.eb-sw-input:checked ~ .eb-sw-track::after { transform: translateX(24px); }
+.eb-sw-input:focus-visible ~ .eb-sw-track { outline: 2px solid var(--accent); outline-offset: 3px; }
+.eb-sw-input:disabled ~ .eb-sw-track { opacity: .5; }
+.eb-sw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+.eb-sw-grid .eb-sw { min-height: 60px; }
+.eb-sw-grid .eb-sw:nth-child(-n+2) { border-top: 0; }
+.eb-family { padding-top: 14px; }
+.eb .eb-family h5, .eb .eb-dayset-col h5 { margin: 0 0 2px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.eb-act { border-top: 1px solid var(--line); }
+.eb-acts > .eb-act:first-child { border-top: 0; }
+.eb-act > .eb-sw { border-top: 0; }
+.eb-act-inst { display: grid; padding: 0 0 8px 24px; }
+.eb-act-inst .eb-line { border-top: 0; min-height: 64px; }
+.eb-act:has(.eb-sw-input:not(:checked)) .eb-act-inst { display: none; }
+
+/* Les horaires dessines */
+.eb-chart { margin-top: 20px; }
+.eb-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.eb-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.eb-legend .eb-legend-aide { margin-left: auto; }
+.eb-legend i { width: 22px; height: 12px; border-radius: 4px; }
+.eb-sw-n { background: var(--accent); }
+.eb-sw-v { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.eb-axis { display: grid; grid-template-columns: 112px minmax(0, 1fr); padding-right: 16px; }
+.eb-axis-t { position: relative; height: 22px; }
+.eb-axis-t em { position: absolute; top: 0; transform: translateX(-50%); font-style: normal; font-size: 12px; color: var(--muted); }
+.eb-day { border-top: 1px solid var(--line); }
+.eb .eb-day-btn { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; width: 100%; min-height: 68px; padding: 6px 16px 6px 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; border-radius: 0; }
+.eb .eb-day-btn:hover .eb-day-name { color: var(--accent-strong); }
+.eb-day-name { font-size: 16px; font-weight: 600; transition: color 160ms var(--eb-sortie); }
+.eb-day.is-open .eb-day-btn .eb-day-name { color: var(--accent-strong); }
+.eb-track { display: grid; gap: 4px; padding: 2px 0; background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: calc(100% / var(--eb-n, 8)) 100%; }
+.eb-trait-line { position: relative; display: block; height: 24px; }
+.eb .eb-trait { position: absolute; top: 0; bottom: 0; box-sizing: border-box; padding: 0 8px; border-radius: 6px; font-size: 12px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: left 200ms var(--eb-sortie), width 200ms var(--eb-sortie); }
+.eb .eb-trait-n { background: var(--accent); color: var(--accent-contrast, #fff); }
+.eb .eb-trait-v { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.eb .eb-closed { display: block; line-height: 24px; font-size: 13px; color: var(--faint); }
+.eb-dayset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; margin: 0 0 16px; padding: 12px 20px 16px; border-radius: 14px; background: var(--eb-touche); }
+.eb-dayset .eb-sw, .eb-dayset .eb-line { border-top-color: color-mix(in srgb, var(--line-strong) 70%, transparent); }
+.eb-dayset .eb-dayset-col h5 { padding-top: 6px; }
+.eb-dayset-col.is-closed .eb-dayset-times { opacity: .4; pointer-events: none; }
+.eb-dayset .eb-line { min-height: 68px; }
+.eb-dayset .eb-step-btn { background: var(--surface); }
+.eb-dayset .eb-step-btn:hover:not(:disabled) { background: var(--eb-survol); }
+
+/* Ce qui est reutilise tel quel (blocages, suggestions, cartes arcades, validation,
+   couleur du formulaire) : mis a plat, dans le meme ton */
+.eb .establishment-card, .eb fieldset { margin: 0; padding: 0; min-width: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.eb legend { padding: 0; margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.eb .estab-card-hint, .eb .ups-note, .eb .avb-hint, .eb .estab-brand-note, .eb .estab-valid-dit, .eb .estab-overrides-empty { font-size: 14px; line-height: 1.5; color: var(--muted); }
+.eb .field { display: grid; gap: 6px; margin: 0; }
+.eb .field label, .eb label.field { font-size: 14px; font-weight: 600; color: var(--text); }
+.eb .field input:not([type='checkbox']):not([type='color']), .eb .field select, .eb .field textarea, .eb .input, .eb .estab-style-select, .eb .estab-brand-pick input[type='text'] { box-sizing: border-box; height: 52px; min-height: 52px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+.eb .field textarea { height: auto; padding: 10px 14px; }
+.eb .estab-brand-field { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
+.eb .estab-brand-field > label { font-size: 16px; font-weight: 600; }
+.eb .estab-brand-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.eb .estab-brand-pick input[type='color'] { width: 52px; height: 52px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); }
+.eb .estab-brand-pick input[type='text'] { width: 220px; }
+.eb .estab-brand-pick .btn, .eb .estab-embed-bouton, .eb .availability-blocks .btn, .eb .ups-settings button, .eb .estab-override-form .btn { height: 52px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--eb-touche); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+.eb .estab-brand-pick .btn:hover, .eb .estab-embed-bouton:hover, .eb .availability-blocks .btn:hover, .eb .ups-settings button:hover { background: var(--eb-survol); }
+.eb .estab-style-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-top: 4px; }
+.eb .estab-embed-etat { display: grid; gap: 2px; padding: 12px 16px; border-radius: 10px; background: var(--eb-touche); font-size: 14px; line-height: 1.45; }
+.eb .estab-embed-etat strong { font-size: 15px; }
+.eb .estab-embed-etat span { color: var(--muted); }
+.eb .estab-embed-off { background: color-mix(in srgb, var(--warning) 12%, var(--surface)); }
+.eb .estab-custom-activities-list, .eb .estab-overrides-list { display: grid; gap: 6px; margin: 6px 0 10px; }
+.eb .estab-custom-activity, .eb .estab-override-chip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 8px 0 16px; border-radius: 10px; background: var(--eb-touche); font-size: 15px; }
+.eb .estab-override-remove { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+.eb .estab-override-remove:hover { background: var(--eb-survol); color: var(--text); }
+.eb .eb-add { display: grid; gap: 4px; padding-top: 6px; }
+.eb .eb-add-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.eb .eb-add-row .eb-input { flex: 1 1 200px; width: auto; }
+.eb .eb-add > .eb-btn { justify-self: start; margin-top: 10px; }
+.eb .estab-cap-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+.eb .estab-subsection { display: grid; gap: 8px; padding: 18px 0 0; }
+.eb .estab-subsection h4 { margin: 0; font-size: 16px; font-weight: 650; }
+.eb .estab-subsection h5 { margin: 8px 0 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+.eb .estab-arcade-toggle, .eb .estab-arcade-offers label:has(input[type='checkbox']) { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.eb .estab-arcade-offers input[type='checkbox'], .eb .estab-situation input[type='checkbox'] { width: 24px; height: 24px; accent-color: var(--accent); }
+.eb .estab-arcade-offers .field { display: inline-grid; margin-right: 10px; }
+.eb .estab-arcade-offers .field input { width: 120px; }
+
+.eb .estab-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.eb .estab-seg-btn { height: 52px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--eb-touche); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+.eb .estab-seg-btn.is-on { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.eb .estab-situations { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.eb .estab-situation { border-top: 1px solid var(--line); padding: 10px 0; }
+.eb .estab-situation .establishment-toggle { display: flex; align-items: flex-start; gap: 14px; cursor: pointer; }
+.eb .estab-situation small { display: block; font-size: 14px; line-height: 1.4; color: var(--muted); }
+.eb .estab-sit-titre b { font-size: 16px; font-weight: 600; }
+.eb .estab-check-box { display: none; }
+
+.eb .availability-blocks { display: grid; gap: 12px; padding: 0; border: 0; background: transparent; }
+.eb .availability-blocks-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.eb .availability-blocks-head h2, .eb .availability-blocks-head .establishment-eyebrow, .eb .availability-blocks-head .avb-head-ico { display: none; }
+.eb .availability-blocks-head p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
+.eb .availability-blocks-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.eb .availability-form { display: grid; gap: 12px; padding: 18px 20px; border-radius: 14px; background: var(--eb-touche); }
+.eb .availability-form legend { display: none; }
+.eb .availability-form .estab-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.eb .availability-form .btn-primary { background: var(--accent); color: var(--accent-contrast, #fff); }
+.eb .availability-form .btn-primary:hover { background: var(--accent-strong); }
+.eb .availability-list-wrap h3 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
+.eb .availability-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.eb .availability-item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 8px 6px 14px; border-radius: 10px; background: var(--eb-touche); font-size: 15px; }
+.eb .availability-item-body { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.eb .availability-del { height: 44px; min-height: 44px; padding: 0 12px; font-size: 14px; }
+.eb .availability-empty { font-size: 15px; color: var(--muted); padding: 8px 0; }
+
+.eb .ups-settings { display: grid; gap: 10px; }
+.eb .ups-switch { display: flex; align-items: center; gap: 12px; min-height: 52px; font-size: 16px; font-weight: 600; }
+.eb .ups-cards { display: grid; gap: 10px; }
+
+/* La barre : seulement quand quelque chose a change */
+.eb-bar { position: sticky; z-index: 20; bottom: 16px; display: flex; align-items: center; gap: 10px; width: min(560px, 100%); margin: 28px auto 0; padding: 10px 10px 10px 22px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface); box-shadow: 0 10px 28px rgba(15, 23, 42, .12); animation: ebBarre 220ms var(--eb-sortie); }
+@keyframes ebBarre { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.eb-bar-n { flex: 1; font-size: 16px; font-weight: 600; color: var(--text); }
+.eb .eb-bar-cancel { height: 52px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+.eb .eb-bar-cancel:hover { background: var(--eb-touche); }
+.eb .eb-bar-save { height: 52px; min-height: 52px; padding: 0 28px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-contrast, #fff); font-size: 16px; font-weight: 600; cursor: pointer; transition: background-color 160ms var(--eb-sortie), transform 160ms var(--eb-sortie); }
+.eb .eb-bar-save:hover:not(:disabled) { background: var(--accent-strong); }
+.eb .eb-bar-save:active:not(:disabled) { transform: scale(.985); }
+.eb .eb-bar-save:disabled { opacity: .6; cursor: default; }
+
+@media (max-width: 1100px) {
+  .eb-body { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .eb-nav { position: sticky; z-index: 15; top: 0; display: flex; gap: 4px; margin: 0 -4px 8px; padding: 8px 4px; overflow-x: auto; background: var(--surface); border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .eb .eb-nav-i { flex: none; padding: 0 16px; height: 48px; align-content: center; }
+  .eb .eb-nav-i small { display: none; }
+  .eb-hero { flex-direction: column-reverse; align-items: stretch; gap: 20px; }
+  .eb .eb-photo { width: 100%; max-width: 100%; aspect-ratio: 16 / 7; max-height: 180px; }
+  .eb-sec { scroll-margin-top: 64px; }
+}
+@media (max-width: 760px) {
+  .eb .eb-name { font-size: 28px; }
+  .eb .eb-today { font-size: 17px; }
+  .eb-line { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .eb-line-field .eb-input { width: 100%; }
+  .eb-sw-grid, .eb .estab-style-grid, .eb .availability-blocks-grid, .eb-dayset { grid-template-columns: minmax(0, 1fr); }
+  .eb-sw-grid .eb-sw:nth-child(2) { border-top: 1px solid var(--line); }
+  .eb-axis, .eb .eb-day-btn { grid-template-columns: 74px minmax(0, 1fr); padding-right: 4px; }
+  .eb-axis { padding-right: 6px; }
+  .eb-day-name { font-size: 15px; }
+  .eb .eb-trait { padding: 0 4px; font-size: 11px; }
+  .eb-dayset { padding: 8px 14px 14px; }
+  .eb-act-inst { padding-left: 0; }
+  .eb .eb-step-val { min-width: 76px; }
+  .eb-bar { bottom: 8px; width: 100%; padding-left: 16px; }
+  .eb .eb-bar-save { padding: 0 20px; }
+  .eb-switch-panel { min-width: 0; width: min(340px, 88vw); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eb-bar { animation: none; }
+  .eb .eb-step-btn, .eb .eb-btn, .eb .eb-bar-save, .eb-sw-track, .eb-sw-track::after, .eb .eb-trait { transition: none; }
+}
+/* La fiche du centre, suite : reglages repris des anciens blocs */
+.eb legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.eb .estab-seg { padding: 0; border: 0; background: transparent; }
+.eb-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+.eb-acts > .eb-act { border-top: 1px solid var(--line); }
+.eb-acts > .eb-act:nth-child(-n+2) { border-top: 0; }
+.eb-acts > .eb-act.has-inst { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+.eb-acts > .eb-act.has-inst:nth-child(-n+2) { border-top: 0; }
+.eb-sw-grid:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+.eb .ups-settings button { justify-self: start; }
+.eb .ups-note { font-size: 16px; color: var(--muted); margin: 0; }
+.eb-arc { border-top: 1px solid var(--line); padding-bottom: 8px; }
+.eb-arc > .eb-sw { border-top: 0; }
+.eb-arc-reglages { display: flex; flex-wrap: wrap; gap: 4px 28px; padding-left: 0; }
+.eb-arc-reglages .eb-line { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; min-height: 0; padding: 4px 0 10px; border-top: 0; }
+.eb-arc-reglages .eb-line-t { gap: 0; }
+.eb-arc-reglages .eb-line-l { font-size: 14px; font-weight: 500; color: var(--muted); }
+.eb-arc:has(.eb-sw-input:not(:checked)) .eb-arc-reglages { display: none; }
+#estabDeclaredResourcesList .estab-overrides-empty { display: none; }
+.eb .estab-embed-bouton { justify-self: start; }
+.eb .estab-seg-btn:hover { background: var(--eb-survol); }
+.eb .estab-valid-dit { margin: 4px 0 8px; }
+.eb .estab-situation { border-top: 0; padding: 0; }
+.eb .estab-situations { margin: 4px 0 0; grid-template-columns: minmax(0, 1fr); }
+.eb-line-wide { flex-direction: column; align-items: stretch; gap: 8px; }
+.eb-line-wide .eb-input { width: 100%; }
+.eb .ups-switch { gap: 12px; }
+@media (max-width: 760px) {
+  .eb-acts { grid-template-columns: minmax(0, 1fr); }
+  .eb-acts > .eb-act:nth-child(2) { border-top: 1px solid var(--line); }
+  .eb-line-wide .eb-input { width: 100%; }
+  .eb-arc-reglages { padding-left: 0; }
+}

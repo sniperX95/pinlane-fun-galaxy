@@ -212,7 +212,7 @@ const MUTATIONS = [
   {
     nom: 'la bascule s affiche cochee quelle que soit la donnee',
     fichier: 'assets/app-main.js',
-    editions: [{ de: "aucun mail ne part pour les tables.', party.limitEnabled === true)}", vers: "aucun mail ne part pour les tables.', true)}" }],
+    editions: [{ de: "{ on: c.party.limitEnabled === true, aide: 'Rien n’est refusé au client", vers: "{ on: true, aide: 'Rien n’est refusé au client" }],
   },
   {
     nom: 'la transition revient dans la fin d une formule',
@@ -1158,18 +1158,18 @@ async function sectionsEcrans() {
       save();
       setView('staff');
     });
-    await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });
+    await page.waitForSelector('[data-estab-page] .eb-m', { state: 'visible', timeout: 20000 });
     return page;
   }
-  // La phrase du bloc, visible meme replie : c est elle qui dit ce qui est regle.
+  // La phrase de la case Tables : c est elle qui dit ce qui est regle.
   const tuileTables = (page) => page.evaluate(() => ((document.querySelector('[data-eb-phrase="tables"]') || {}).textContent || '').replace(/\s+/g, ' ').trim());
   const lireBascule = (page) => page.evaluate(() => {
     const bascule = document.getElementById('estab-tableLimit');
-    const carte = bascule ? bascule.closest('.eb-blk') : null;
+    const carte = bascule ? bascule.closest('.eb-pan') : null;
     return {
       existe: Boolean(bascule),
       cochee: Boolean(bascule && bascule.checked),
-      phrases: carte ? Array.from(carte.querySelectorAll('.eb-sw-copy small')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
+      phrases: carte ? Array.from(carte.querySelectorAll('.eb-k-t small')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
       mises: carte ? Array.from(carte.querySelectorAll('.eb-note')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
       limite: (document.getElementById('estab-tableHard') || {}).value || '',
       conseillee: (document.getElementById('estab-tableSoft') || {}).value || '',
@@ -1199,10 +1199,10 @@ async function sectionsEcrans() {
     let tables = knowledge.getCenter('libramont').resources.partyTables;
     ok(rep.status === 200 && tables.softCapacity === 6 && tables.hardCapacity === 8 && tables.limitEnabled === false, '[F] cote serveur : rien n a change, eteinte', JSON.stringify({ statut: rep.status, tables, message: rep.json && rep.json.message }));
     // L enregistrement referme l edition : on la rouvre, comme le gerant.
-    await page.evaluate(() => ebBasculerPli(document.getElementById('estab-tableLimit').closest('.eb-blk'), true));
-    await page.waitForSelector('label.eb-sw:has(#estab-tableLimit)', { state: 'visible', timeout: 10000 });
+    await page.evaluate(() => ebOuvrir('tables'));
+    await page.waitForSelector('label.eb-k:has(#estab-tableLimit)', { state: 'visible', timeout: 10000 });
     await page.waitForTimeout(450);
-    await page.click('label.eb-sw:has(#estab-tableLimit)');
+    await page.click('label.eb-k:has(#estab-tableLimit)');
     b = await lireBascule(page);
     ok(b.cochee === true, 'MONTAGE un clic sur « Limite de tables » l allume', JSON.stringify(b));
     envoye = await enregistrerLaPage(page);

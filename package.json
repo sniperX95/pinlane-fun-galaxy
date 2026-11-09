@@ -135,6 +135,7 @@
     "test:tunnel-resync-ui": "node scripts/tunnel-resync-ui-check.js",
     "test:scenario-chain": "node scripts/scenario-chain-matrix-check.js",
     "test:establishment-tabs": "node scripts/establishment-tabs-check.js",
+    "test:coordonnees-centre": "node scripts/coordonnees-centre-check.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",

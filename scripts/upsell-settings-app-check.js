@@ -31,6 +31,9 @@ function serveStatic() {
 }
 
 async function installMock(page) {
+  // Changer de centre recharge la console (2026-09-17) : ici le rechargement devient un compteur, pour eprouver
+  // la purge en place qui reste la defense, comme center-switch-reload-check.
+  await page.addInitScript(() => { window.pinlaneRechargerPourCentre = () => { window.__rechargementsDemandes = (window.__rechargementsDemandes || 0) + 1; }; });
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, CENTER_CONFIG }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'settings.manage', 'direction.view', 'centers.switch'];
@@ -64,6 +67,8 @@ async function installMock(page) {
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'centerConfig') return J(CENTER_CONFIG);
+      // Les centres ou la direction entre, comme en ligne : la page Etablissement suit le centre du menu (2026-11-09).
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'menuCenters') return J({ ok: true, owner: false, centers: CENTER_CONFIG.centers.filter(c => c.id === 'libramont' || c.id === 'gembloux').map(c => ({ id: c.id, name: c.name, status: c.status || 'active' })) });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {}, blocks: [] });
       return nativeFetch(input, init);
     };
@@ -85,14 +90,14 @@ async function openEstablishment(page, cacheKey) {
     save();
     setView('staff');
   });
-  await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 15000 });
+  await page.waitForSelector('[data-estab-page] .eb-m', { state: 'visible', timeout: 15000 });
 }
 
  const server=await serveStatic();const browser=await chromium.launch({executablePath:BROWSER_PATH,headless:true});const page=await browser.newPage({viewport:{width:390,height:850}}), errors=[];page.on('pageerror',e=>errors.push(e.message));
  try{
   await page.exposeFunction('__normalizeUpsell',v=>normalizeUpsellOffers(v,{strict:true}));await installMock(page);await openEstablishment(page,'upsell');await page.evaluate(()=>{selectEstablishmentCenter('libramont');setEstablishmentTab('offres')});
 
-  const ouvrirPli=async()=>{await page.waitForSelector('#estab-upsell-settings',{state:'attached'});await page.evaluate(()=>ebBasculerPli(document.getElementById('estab-upsell-settings').closest('.eb-blk'),true));await page.waitForTimeout(450);};await ouvrirPli();
+  const ouvrirPli=async()=>{await page.waitForSelector('#estab-upsell-settings',{state:'attached'});await page.evaluate(()=>ebOuvrir('formules'));await page.waitForTimeout(300);};await ouvrirPli();
   const shotDir=path.join(root,'tests/artifacts/upsell-settings');fs.mkdirSync(shotDir,{recursive:true});
   async function captureSettings(mode){if(mode==='edit'){await page.evaluate(()=>document.querySelector('#estab-upsell-settings .ups-photo').open=true);ok(await page.locator('.ups-card-head').isVisible(),'offerheader visible');ok(await page.locator('.ups-card-head [data-ups-key=enabled]').isVisible(),'offer toggle visible');ok(await page.locator('.ups-card-head [data-ups-action=remove]').isVisible(),'offer remove visible');}for(const theme of ['light','dark']){await page.evaluate(t=>setStaffTheme(t),theme);for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(350);const selector='#estab-upsell-settings';await page.locator(selector).screenshot({path:path.join(shotDir,mode+'-'+theme+'-'+width+'.png')});}}}
   await page.locator('[data-ups-action=configure]').click();await page.locator('[data-ups-action=add]').click();await page.locator('[data-ups-key=activityId]').selectOption('billards');await page.locator('[data-ups-key=title]').fill('Votre billard');await page.locator('[data-ups-key=title]').blur();await page.locator('[data-ups-key="options.units"]').fill('2');await page.locator('[data-ups-key="options.units"]').blur();await page.locator('[data-ups-key="discount.mode"]').selectOption('fixed_per_participant');await page.locator('[data-ups-key="discount.value"]').fill('1.25');await page.locator('[data-ups-key="discount.value"]').blur();
@@ -104,7 +109,7 @@ async function openEstablishment(page, cacheKey) {
   ok(payload.config.upsellOffers.enabled===true&&payload.config.upsellOffers.offers[0].enabled===true,'active configured offer survived globalsave');
   for(const theme of ['light','dark']){
     await page.evaluate(t=>{state.staffTheme=t;document.documentElement.dataset.theme=t;renderStaffUtilityPage();},theme);await ouvrirPli();
-    for(const width of [390,320]){await page.setViewportSize({width,height:850});await page.waitForTimeout(350);ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'fullapp settings fit '+theme+' '+width+' '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('#eb-s-offres *')].filter(e=>e.getBoundingClientRect().right>innerWidth+2).map(e=>({tag:e.tagName,cls:e.className,w:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right})).slice(0,10))));}
+    for(const width of [390,320]){await page.setViewportSize({width,height:850});await page.waitForTimeout(350);ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'fullapp settings fit '+theme+' '+width+' '+JSON.stringify(await page.evaluate(()=>[...document.querySelectorAll('#eb-p-formules *')].filter(e=>e.getBoundingClientRect().right>innerWidth+2).map(e=>({tag:e.tagName,cls:e.className,w:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right})).slice(0,10))));}
     const contrasts=await page.locator('#estab-upsell-settings').evaluate(el=>{
       const rgb=s=>{const v=(s.match(/[\d.]+/g)||[]).slice(0,3).map(Number);return /^color\(/.test(s)?v.map(x=>x*255):v;},lum=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}).reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0);
       return [...el.querySelectorAll('.ups-field span,.ups-note,.ups-switch span,input:not([type=checkbox]):not([type=range]),select,button')].filter(n=>n.getClientRects().length&&!n.disabled).map(n=>{let b=n;while(b&&getComputedStyle(b).backgroundColor==='rgba(0, 0, 0, 0)')b=b.parentElement;const fg=lum(rgb(getComputedStyle(n).color)),bg=lum(rgb(b?getComputedStyle(b).backgroundColor:'rgb(255,255,255)'));return {text:n.textContent.slice(0,50),ratio:(Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05)};});
@@ -114,7 +119,7 @@ await page.locator('.ups-photo summary').click();
   const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=16;c.height=16;return c.toDataURL('image/png').split(',')[1]});
   await page.evaluate(()=>{window.__originalBitmap=createImageBitmap;window.createImageBitmap=async(...args)=>{const image=await __originalBitmap(...args);await new Promise(r=>window.__finishBitmap=r);return image;}});
   await page.locator('[data-ups-upload]').setInputFiles({name:'photo.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await page.waitForFunction(()=>typeof __finishBitmap==='function');const count=await page.evaluate(()=>__QA_SAVED__.length);await page.evaluate(()=>submitCenterConfig('libramont'));ok(await page.evaluate(()=>__QA_SAVED__.length)===count,'pending upload blocks global save');
-  await page.evaluate(()=>{selectEstablishmentCenter('gembloux');setEstablishmentTab('offres');__finishBitmap();createImageBitmap=__originalBitmap;});await page.waitForTimeout(150);await ouvrirPli();ok(await page.locator('[data-ups-action=configure]').count()===1,'old image cannot enter new centre draft');ok(await page.evaluate(()=>PinlaneUpsellSettings.collect(getEstablishmentCenter()))===null,'new centre remains legacy');
+  await page.evaluate(()=>{selectEstablishmentCenter('gembloux');setEstablishmentTab('offres');__finishBitmap();createImageBitmap=__originalBitmap;});await page.waitForSelector('[data-estab-page][data-eb-center="gembloux"]',{timeout:15000});await ouvrirPli();ok(await page.evaluate(()=>window.__rechargementsDemandes)===1,'centre switch asks the console to reload');ok(await page.locator('[data-ups-action=configure]').count()===1,'old image cannot enter new centre draft');ok(await page.evaluate(()=>PinlaneUpsellSettings.collect(getEstablishmentCenter()))===null,'new centre remains legacy');
 
   await page.evaluate(()=>{const c=staffCenterConfigCache.centers.find(c=>c.id==='gembloux');c.activityOffers.arcade_time.timeOffers[0].price=17.35;cancelEstablishmentEdit();setEstablishmentTab('offres');});await ouvrirPli();
   await page.locator('[data-ups-action=configure]').click();await page.locator('[data-ups-action=add]').click();await page.locator('[data-ups-key=activityId]').selectOption('arcade_time');

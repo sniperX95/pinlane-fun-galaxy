@@ -1,21 +1,18 @@
-// Page Etablissement decoupee en 5 onglets : ce gate protege ce qui casserait
-// pour de vrai si la structure bougeait.
-//
-// La page etait un mur : 7 sections empilees en lecture, 9 fieldsets en grille
-// auto-fit en edition (4900 px). Elle est maintenant categorisee (Le centre /
-// Horaires & fermetures / Offres & activites / Clients & groupes / Regles &
-// comptoir).
-//
-// Le vrai risque de cette refonte n'est pas visuel, il est dans la SAISIE :
-//   1. submitCenterConfig lit les champs par getElementById -> si un onglet
-//      ferme n'etait pas dans le DOM, enregistrer depuis un autre onglet
-//      ecraserait sa config par les valeurs de repli. On verifie donc qu'une
-//      valeur tapee dans un onglet part bien dans le payload envoye depuis un
-//      AUTRE onglet.
-//   2. Changer d'onglet ne doit PAS re-rendre la page : un re-render relit la
-//      config serveur et efface ce qui vient d'etre tape.
-//   3. Un champ invalide sous un onglet ferme doit ouvrir son onglet, sinon le
-//      message "corrigez les champs" designe un champ invisible.
+// La page Etablissement (2026-11-09) : une rangee de cases (horaires, formules,
+// clients et comptoir, fiche du centre) et une colonne par salle ; une case
+// s ouvre sous la rangee, les autres restent dans la page, masquees. Ce gate
+// protege ce qui casserait pour de vrai :
+//   1. submitCenterConfig lit les champs par getElementById : un champ d une
+//      case fermee doit rester dans la page, sinon enregistrer depuis une autre
+//      case ecraserait sa config par les valeurs de repli.
+//   2. Changer de case ne re-rend pas la page : un rendu relit la config du
+//      serveur et effacerait ce qui vient d etre tape. Un repeint venu du
+//      reseau ne l efface pas non plus.
+//   3. Un champ invalide dans une case fermee ouvre sa case, sinon le message
+//      « corrigez les champs » designe un champ invisible.
+//   4. Un centre sans grille d horaires (Gembloux suit la grille d origine) se
+//      montre avec les heures que le moteur applique : l afficher ferme, puis
+//      l enregistrer, le fermerait pour de vrai.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -98,22 +95,68 @@ async function installMock(page) {
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
-async function openEstablishment(page, cacheKey) {
+async function openEstablishment(page, cacheKey, centre = 'libramont') {
   // domcontentloaded + attentes explicites : le polling staff empeche le
   // networkidle de se produire une fois l'app demarree.
   await page.goto(`${BASE_URL}/?v=estabtabs-${cacheKey}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function' && typeof window.renderStaffUtilityPage === 'function', null, { timeout: 15000 });
-  await page.evaluate(() => {
+  await page.evaluate((c) => {
     state.currentDate = '2026-07-18';
+    state.adminCenterId = c;
     state.staffMenuPage = 'establishment';
     state.establishmentTab = 'centre';
     state.establishmentEditing = false;
     state.staffTheme = 'dark';
     save();
     setView('staff');
-  });
-  await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 15000 });
+  }, centre);
+  await page.waitForSelector(`[data-estab-page][data-eb-center="${centre}"] .eb-m`, { state: 'visible', timeout: 15000 });
 }
+
+// Un champ fautif dans une case fermee : on part ailleurs, on valide, le clavier doit arriver sur lui.
+const champFautif = (page) => page.evaluate(() => {
+  ebOuvrir('horaires');
+  const champ = document.getElementById('estab-laneCount');
+  champ.value = '999';                        // hors bornes (1-40)
+  ebOuvrir('formules');                       // on part ailleurs
+  const invalid = validateEstablishmentForm();
+  focusEstablishmentField(invalid[0]);
+  const actif = document.activeElement;
+  return {
+    premier: invalid[0] ? invalid[0].id : '',
+    ouverte: !champ.closest('.eb-pan').hidden,
+    actif: actif ? actif.id : '',
+    visible: champ.getClientRects().length > 0,
+  };
+});
+
+const repeindre = (page) => page.evaluate(async () => {
+  const champ = document.getElementById('estab-laneCount');
+  champ.value = '13';
+  champ.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 60));
+  const temoin = document.querySelector('[data-estab-page]');
+  temoin.dataset.temoin = '1';
+  renderStaffUtilityPage();            // une reponse reseau arrive
+  setStaffTheme(state.staffTheme === 'light' ? 'dark' : 'light');
+  await new Promise(r => setTimeout(r, 60));
+  return {
+    valeur: document.getElementById('estab-laneCount').value,
+    barre: !document.getElementById('ebBar').hidden,
+    edition: state.establishmentEditing,
+    meme: document.querySelector('[data-estab-page]').dataset.temoin === '1',
+  };
+});
+
+// Gembloux n a pas de grille : la page montre ce que le moteur applique, et c est ce qui part.
+const horairesSansGrille = (page) => page.evaluate(async () => {
+  const lire = (p, j) => ({ ferme: document.getElementById(`${p}-${j}-closed`).checked, ouvre: document.getElementById(`${p}-${j}-open`).value, fin: document.getElementById(`${p}-${j}-close`).value });
+  const vu = { mardi: lire('estab-day', 2), lundi: lire('estab-day', 1), samediVacances: lire('estab-hday', 6) };
+  window.__QA_SAVED__ = [];
+  await submitCenterConfig('gembloux');
+  const config = (window.__QA_SAVED__.find(body => body.action === 'saveCenterConfig') || {}).config || null;
+  return { vu, mardi: config && config.defaultSchedule.regular['2'], lundi: config && config.defaultSchedule.regular['1'], samediVacances: config && config.defaultSchedule.holiday['6'] };
+});
 
 async function main() {
   const server = await serveStatic();
@@ -130,73 +173,50 @@ async function main() {
     if (/Failed to load resource/i.test(text)) return;
     errs.push(text);
   });
+  page.on('dialog', dialog => { dialog.accept().catch(() => {}); });
   try {
     await installMock(page);
     await openEstablishment(page, 'base');
 
     // =====================================================================
-    console.log('\n[1] Cinq parties, des blocs replies, tous les champs dans la page');
+    console.log('\n[1] Une rangee de cases, une seule ouverte, tous les champs dans la page');
     // =====================================================================
     const structure = await page.evaluate(() => ({
-      nav: Array.from(document.querySelectorAll('.eb-nav-i')).map(el => el.dataset.ebLink),
-      sections: Array.from(document.querySelectorAll('.eb-sec')).map(el => el.id),
-      blocs: document.querySelectorAll('.eb-blk').length,
-      replies: Array.from(document.querySelectorAll('.eb-blk')).filter(b => !b.classList.contains('est-ouvert')).length,
-      champsReplies: document.querySelectorAll('.eb-blk:not(.est-ouvert) input, .eb-blk:not(.est-ouvert) select, .eb-blk:not(.est-ouvert) textarea').length,
-      phrasesVisibles: Array.from(document.querySelectorAll('.eb-blk:not(.est-ouvert) > .eb-bh-b .eb-bh')).filter(t => t.getBoundingClientRect().height > 0).length,
-      secoursVisible: getComputedStyle(document.getElementById('estab-secours-emails')).visibility,
+      menu: Array.from(document.querySelectorAll('.eb-m')).map(el => el.dataset.k),
+      salles: Array.from(document.querySelectorAll('.eb-salles .eb-col')).map(el => el.dataset.k),
+      ouvertes: Array.from(document.querySelectorAll('.eb-pan')).filter(p => !p.hidden).map(p => p.dataset.k),
+      champsFermes: document.querySelectorAll('.eb-pan[hidden] input, .eb-pan[hidden] select, .eb-pan[hidden] textarea').length,
+      secoursAtteignable: document.getElementById('estab-secours-emails').getClientRects().length > 0,
+      fermetures: (document.querySelector('.availability-blocks') && document.querySelector('.availability-blocks').closest('.eb-pan') || {}).dataset?.k || 'hors-case',
+      activitesSansCase: (staffCenterConfigCache.activities || []).filter(a => !document.getElementById(`estab-act-${a.id}`)).map(a => a.id),
     }));
-    ok(structure.nav.join() === 'centre,horaires,offres,clients,regles', `5 entrees dans le sommaire (obtenu ${structure.nav.join(' / ')})`);
-    ok(structure.sections.join() === 'eb-s-centre,eb-s-horaires,eb-s-offres,eb-s-clients,eb-s-regles', `5 parties dans la page (obtenu ${structure.sections.join(' / ')})`);
-    ok(structure.replies >= 3 && structure.replies < structure.blocs, `les blocs longs sont replies, pas tous (obtenu ${structure.replies} sur ${structure.blocs})`);
-    ok(structure.phrasesVisibles === structure.replies, `un bloc replie garde son titre (obtenu ${structure.phrasesVisibles} sur ${structure.replies})`);
-    ok(structure.champsReplies > 20, `les champs des blocs replies restent dans la page (obtenu ${structure.champsReplies})`);
-    ok(structure.secoursVisible === 'hidden', `MONTAGE un champ replie n est pas atteignable au clavier (obtenu ${structure.secoursVisible})`);
-
-    // Les fermetures ne sont plus une section orpheline en bas de page.
-    const blocksTab = await page.evaluate(() => {
-      const partie = document.querySelector('.availability-blocks')?.closest('.eb-sec');
-      return partie ? partie.id : 'hors-partie';
-    });
-    ok(blocksTab === 'eb-s-horaires', `le panneau Blocages vit dans la partie Horaires (obtenu ${blocksTab})`);
+    ok(structure.menu.join() === 'horaires,formules,clients,fiche', `4 cases de reglages (obtenu ${structure.menu.join(' / ')})`);
+    ok(structure.salles.includes('bowling') && structure.salles.includes('laser_game') && structure.salles.includes('tables') && structure.salles[structure.salles.length - 1] === 'plus', `une colonne par salle, les tables, le + (obtenu ${structure.salles.join(' / ')})`);
+    ok(structure.ouvertes.join() === 'horaires', `une seule case ouverte, les horaires (obtenu ${structure.ouvertes.join(' / ')})`);
+    ok(structure.champsFermes > 60, `les champs des cases fermees restent dans la page (obtenu ${structure.champsFermes})`);
+    ok(structure.secoursAtteignable === false, 'MONTAGE un champ d une case fermee n est pas atteignable');
+    ok(structure.fermetures === 'horaires', `les fermetures vivent dans la case Horaires (obtenu ${structure.fermetures})`);
+    ok(structure.activitesSansCase.length === 0, `chaque activite du catalogue a sa case a cocher (sans case : ${structure.activitesSansCase.join(', ') || 'aucune'})`);
 
     // =====================================================================
-    console.log('\n[2] Une saisie survit aux plis et au sommaire');
+    console.log('\n[2] Une saisie survit aux cases');
     // =====================================================================
     const typed = await page.evaluate(() => {
-      const champ = document.getElementById('estab-laneCount');
-      champ.value = '12';
-      const bloc = champ.closest('.eb-blk');
-      ebBasculerPli(bloc, false);
+      ebOuvrir('bowling');
+      document.getElementById('estab-laneCount').value = '12';
+      ebOuvrir('formules');
       setEstablishmentTab('offres');
-      setEstablishmentTab('clients');
-      ebBasculerPli(bloc, true);
-      setEstablishmentTab('centre');
-      return document.getElementById('estab-laneCount').value;
+      ebOuvrir('clients');
+      ebOuvrir('bowling');
+      return { valeur: document.getElementById('estab-laneCount').value, onglet: state.establishmentTab };
     });
-    ok(typed === '12', `la valeur tapee survit au pli et au sommaire (obtenu "${typed}", attendu "12")`);
+    ok(typed.valeur === '12', `la valeur tapee survit aux cases (obtenu "${typed.valeur}", attendu "12")`);
+    ok(typed.onglet === 'bowling', `la case ouverte est retenue (obtenu ${typed.onglet})`);
 
     // =====================================================================
     console.log('\n[2b] Un repeint ne perd pas ce qui n est pas enregistre');
     // =====================================================================
-    const repeindre = () => page.evaluate(async () => {
-      const champ = document.getElementById('estab-laneCount');
-      champ.value = '13';
-      champ.dispatchEvent(new Event('input', { bubbles: true }));
-      await new Promise(r => setTimeout(r, 60));
-      const temoin = document.querySelector('[data-estab-page]');
-      temoin.dataset.temoin = '1';
-      renderStaffUtilityPage();            // une reponse reseau arrive
-      setStaffTheme(state.staffTheme === 'light' ? 'dark' : 'light');
-      await new Promise(r => setTimeout(r, 60));
-      return {
-        valeur: document.getElementById('estab-laneCount').value,
-        barre: !document.getElementById('ebBar').hidden,
-        edition: state.establishmentEditing,
-        meme: document.querySelector('[data-estab-page]').dataset.temoin === '1',
-      };
-    });
-    const repeint = await repeindre();
+    const repeint = await repeindre(page);
     ok(repeint.valeur === '13' && repeint.barre && repeint.edition, `la saisie et le bouton Enregistrer restent (obtenu ${JSON.stringify(repeint)})`);
     ok(repeint.meme, 'la page n a pas ete reconstruite');
     await page.evaluate(() => cancelEstablishmentEdit());
@@ -205,23 +225,22 @@ async function main() {
     ok(annule !== '13', `Annuler repart de ce qui est enregistre (obtenu "${annule}")`);
 
     // =====================================================================
-    console.log('\n[3] Enregistrer depuis une autre partie n efface rien');
+    console.log('\n[3] Enregistrer depuis une autre case n efface rien');
     // =====================================================================
-    // Le piege : submitCenterConfig lit par getElementById. Si un bloc replie
-    // sortait du DOM, sa config partirait aux valeurs de repli.
+    // Le piege : submitCenterConfig lit par getElementById. Si une case fermee
+    // sortait de la page, sa config partirait aux valeurs de repli.
     const saved = await page.evaluate(async () => {
-      document.getElementById('estab-laneCount').value = '11';       // onglet « Le centre »
-      document.getElementById('estab-groupMinPax').value = '7';      // onglet « Clients & groupes »
-      document.getElementById('estab-bar-escort').checked = true;    // onglet « Regles & comptoir »
-      const offer = document.getElementById('estab-offer-f1');
-      offer.checked = false;                                          // onglet « Offres & activites »
-      // Onglet « Regles » : la validation par l equipe (vrais clics : le
-      // niveau re-rend sa carte, l interrupteur se cherche apres) et la boite
-      // de secours.
+      document.getElementById('estab-laneCount').value = '11';       // case Bowling
+      document.getElementById('estab-groupMinPax').value = '7';      // case Clients et comptoir
+      document.getElementById('estab-bar-escort').checked = true;    // case Clients et comptoir
+      document.getElementById('estab-offer-f1').checked = false;     // case Formules
+      document.getElementById('estab-parking').value = 'Gratuit, 80 places'; // case Fiche du centre
+      // La validation par l equipe (vrais clics : le niveau re-rend sa carte,
+      // la case se cherche apres) et la boite de secours.
       document.querySelector('#estab-validation .estab-seg-btn[onclick*="\'normal\'"]').click();
       document.querySelector('#estab-validation input[onchange*="\'laser_partage\'"]').click();
       document.getElementById('estab-secours-emails').value = 'Secours@FunGalaxy.be, direction@fungalaxy.be';
-      setEstablishmentTab('horaires');                                // on enregistre depuis AILLEURS
+      ebOuvrir('horaires');                                           // on enregistre depuis AILLEURS
       window.__QA_SAVED__ = [];
       await submitCenterConfig('libramont');
       const config = (window.__QA_SAVED__.find(body => body.action === 'saveCenterConfig') || {}).config || null;
@@ -233,16 +252,18 @@ async function main() {
         days: Object.keys(config.defaultSchedule?.regular || {}).length,
         validation: JSON.stringify(config.validationEquipe || null),
         secours: JSON.stringify(config.secours || null),
+        parking: config.publicInfo?.parking,
       };
     });
     ok(!!saved, 'un payload saveCenterConfig est bien envoye');
-    ok(saved && Number(saved.lanes) === 11, `onglet Le centre : laneCount = 11 dans le payload (obtenu ${saved && saved.lanes})`);
-    ok(saved && Number(saved.groupMinPax) === 7, `onglet Clients : groupMinPax = 7 (obtenu ${saved && saved.groupMinPax})`);
-    ok(saved && saved.escort === true, `onglet Regles : accompagnement active (obtenu ${saved && saved.escort})`);
-    ok(saved && saved.f1 === false, `onglet Offres : formule f1 decochee (obtenu ${saved && saved.f1})`);
-    ok(saved && saved.days === 7, `onglet Horaires : les 7 jours partent quand meme (obtenu ${saved && saved.days})`);
-    ok(saved && saved.validation === '{"niveau":"normal","situations":{"laser_partage":true}}', `onglet Regles : niveau Normal + laser partage dans le payload (obtenu ${saved && saved.validation})`);
-    ok(saved && saved.secours === '{"emails":["Secours@FunGalaxy.be","direction@fungalaxy.be"]}', `onglet Regles : la boite de secours part (obtenu ${saved && saved.secours})`);
+    ok(saved && Number(saved.lanes) === 11, `case Bowling : laneCount = 11 dans le payload (obtenu ${saved && saved.lanes})`);
+    ok(saved && Number(saved.groupMinPax) === 7, `case Clients : groupMinPax = 7 (obtenu ${saved && saved.groupMinPax})`);
+    ok(saved && saved.escort === true, `case Clients : accompagnement active (obtenu ${saved && saved.escort})`);
+    ok(saved && saved.f1 === false, `case Formules : formule f1 decochee (obtenu ${saved && saved.f1})`);
+    ok(saved && saved.days === 7, `case Horaires : les 7 jours partent quand meme (obtenu ${saved && saved.days})`);
+    ok(saved && saved.validation === '{"niveau":"normal","situations":{"laser_partage":true}}', `case Clients : niveau Normal + laser partage dans le payload (obtenu ${saved && saved.validation})`);
+    ok(saved && saved.secours === '{"emails":["Secours@FunGalaxy.be","direction@fungalaxy.be"]}', `case Clients : la boite de secours part (obtenu ${saved && saved.secours})`);
+    ok(saved && saved.parking === 'Gratuit, 80 places', `case Fiche : le parking part (obtenu ${saved && saved.parking})`);
 
     // =====================================================================
     console.log('\n[3b] Une adresse de secours mal formee bloque l enregistrement, et le dit');
@@ -250,81 +271,69 @@ async function main() {
     await openEstablishment(page, 'secours');
     const bloque = await page.evaluate(async () => {
       document.getElementById('estab-secours-emails').value = 'secours@fungalaxy.be, pas-une-adresse';
-      setEstablishmentTab('horaires');
+      ebOuvrir('horaires');
       window.__QA_SAVED__ = [];
       await submitCenterConfig('libramont');
       const toastEl = document.getElementById('toast') || document.querySelector('.toast');
       return {
         posts: window.__QA_SAVED__.filter(body => body.action === 'saveCenterConfig').length,
-        ouvert: document.getElementById('estab-secours-emails').closest('.eb-blk').classList.contains('est-ouvert'),
+        ouverte: !document.getElementById('estab-secours-emails').closest('.eb-pan').hidden,
         active: document.activeElement ? document.activeElement.id : '',
         message: toastEl ? toastEl.textContent : '',
       };
     });
     ok(bloque.posts === 0, `rien ne part au serveur (obtenu ${bloque.posts} envoi(s))`);
-    ok(bloque.ouvert === true && bloque.active === 'estab-secours-emails', `le bloc replie s ouvre sur le champ (obtenu ${bloque.ouvert} / ${bloque.active})`);
+    ok(bloque.ouverte === true && bloque.active === 'estab-secours-emails', `la case s ouvre sur le champ (obtenu ${bloque.ouverte} / ${bloque.active})`);
     ok(/pas-une-adresse/.test(bloque.message), `le message nomme l adresse fautive (obtenu "${bloque.message}")`);
 
     // =====================================================================
-    console.log('\n[4] Un champ invalide ouvre SON pli');
+    console.log('\n[4] Un champ invalide ouvre SA case');
     // =====================================================================
-    const champFautif = () => page.evaluate(() => {
-      const champ = document.getElementById('estab-laneCount');
-      const bloc = champ.closest('.eb-blk');
-      ebBasculerPli(bloc, false);                 // replie, le champ devient introuvable a l oeil
-      champ.value = '999';                        // hors bornes (1-40)
-      setEstablishmentTab('offres');              // on part ailleurs
-      const invalid = validateEstablishmentForm();
-      focusEstablishmentField(invalid[0]);
-      const actif = document.activeElement;
-      return {
-        premier: invalid[0] ? invalid[0].id : '',
-        ouvert: bloc.classList.contains('est-ouvert'),
-        dansLaLigne: Boolean(actif && actif.closest('.eb-line') && actif.closest('.eb-line').contains(champ)),
-        visible: actif ? getComputedStyle(actif).visibility : '',
-      };
-    });
     await openEstablishment(page, 'invalide');
-    const focused = await champFautif();
+    const focused = await champFautif(page);
     ok(focused.premier === 'estab-laneCount', `MONTAGE le champ hors bornes est refuse (obtenu "${focused.premier}")`);
-    ok(focused.ouvert === true, 'le pli du champ invalide est ouvert');
-    ok(focused.dansLaLigne === true && focused.visible === 'visible', `le clavier arrive sur la ligne fautive (obtenu ${JSON.stringify(focused)})`);
+    ok(focused.ouverte === true && focused.visible === true, 'la case du champ invalide est ouverte');
+    ok(focused.actif === 'estab-laneCount', `le clavier arrive sur le champ fautif (obtenu ${JSON.stringify(focused)})`);
 
     // =====================================================================
-    console.log('\n[5] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
+    console.log('\n[4b] Un centre sans grille montre les heures que le moteur applique');
     // =====================================================================
-    // On remet le comportement d un pli qui ne s ouvre pas : le champ fautif reste invisible.
+    await openEstablishment(page, 'sans-grille', 'gembloux');
+    const sansGrille = await horairesSansGrille(page);
+    ok(sansGrille.vu.mardi.ferme === false && sansGrille.vu.mardi.ouvre === '14:00', `mardi : ouvert a 14:00 comme le moteur (obtenu ${JSON.stringify(sansGrille.vu.mardi)})`);
+    ok(sansGrille.vu.lundi.ferme === true, `lundi : ferme comme le moteur (obtenu ${JSON.stringify(sansGrille.vu.lundi)})`);
+    ok(sansGrille.mardi && sansGrille.mardi.open === '14:00' && sansGrille.mardi.close === '22:00', `enregistrer garde mardi 14:00 a 22:00 (obtenu ${JSON.stringify(sansGrille.mardi)})`);
+    ok(sansGrille.lundi === null && sansGrille.samediVacances && sansGrille.samediVacances.close === '24:00', `lundi reste ferme, samedi de vacances jusqu a minuit (obtenu ${JSON.stringify(sansGrille)})`);
+
+    // =====================================================================
+    console.log('\n[5] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
+    // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
     const toFileEol = (text) => (original.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
-    const anchor = toFileEol("  if (pliDuChamp && typeof ebBasculerPli === 'function') ebBasculerPli(pliDuChamp, true);\n");
-    const occurrences = original.split(anchor).length - 1;
-    if (occurrences !== 1) {
-      ok(false, `ancre de mutation introuvable ou ambigue (${occurrences})`);
-    } else {
-      fs.writeFileSync(APP, original.replace(anchor, ''));
-      let casse = null;
+    const muter = async (nom, avant, apres, epreuve, rougit) => {
+      const ancre = toFileEol(avant);
+      const n = original.split(ancre).length - 1;
+      if (n !== 1) { ok(false, `${nom} : ancre de mutation introuvable ou ambigue (${n})`); return null; }
+      fs.writeFileSync(APP, original.replace(ancre, toFileEol(apres)));
       try {
-        await openEstablishment(page, 'mutation');
-        casse = await champFautif();
+        await epreuve();
+        return await rougit();
       } finally {
         fs.writeFileSync(APP, original); // restauration par edition inverse
       }
-      ok(casse && casse.ouvert === false, `pli qui ne s ouvre plus : le champ reste cache (obtenu ${JSON.stringify(casse)}) -> le gate ROUGIRAIT`);
-      const garde = toFileEol("  if (state.staffMenuPage === 'establishment' && ficheEtablissementEnCours() && root.querySelector('[data-estab-page]')) return;\n");
-      if (original.split(garde).length !== 2) ok(false, 'ancre de la garde de repeint introuvable');
-      fs.writeFileSync(APP, original.replace(garde, ''));
-      let perdu = null;
-      try {
-        await openEstablishment(page, 'mutation-repeint');
-        perdu = await repeindre();
-      } finally {
-        fs.writeFileSync(APP, original);
-      }
-      ok(perdu && perdu.valeur !== '13', `sans la garde, le repeint efface la saisie (obtenu ${JSON.stringify(perdu)}) -> le gate ROUGIRAIT`);
-      await openEstablishment(page, 'restore');
-      const restored = await champFautif();
-      ok(restored.ouvert === true, 'restauration inverse : le pli s ouvre de nouveau');
-    }
+    };
+    // a. Une case qui ne s ouvre pas : le champ fautif reste cache.
+    const casse = await muter('case', '  if (panneau && panneau.hidden) ebOuvrir(panneau.dataset.k);\n', '', () => openEstablishment(page, 'mutation'), () => champFautif(page));
+    ok(casse && casse.ouverte === false, `case qui ne s ouvre plus : le champ reste cache (obtenu ${JSON.stringify(casse)}) -> le gate ROUGIRAIT`);
+    // b. Sans la garde de repeint, la saisie s efface.
+    const perdu = await muter('repeint', "  if (state.staffMenuPage === 'establishment' && ficheEtablissementEnCours() && root.querySelector('[data-estab-page]')) return;\n", '', () => openEstablishment(page, 'mutation-repeint'), () => repeindre(page));
+    ok(perdu && perdu.valeur !== '13', `sans la garde, le repeint efface la saisie (obtenu ${JSON.stringify(perdu)}) -> le gate ROUGIRAIT`);
+    // c. Lire seulement la grille du centre : Gembloux s affiche ferme, et partirait ferme.
+    const ferme = await muter('grille', '  const slot = ebCreneauApplique(c.horaires, bloc, key);\n', '  const slot = (c.horaires[bloc] && c.horaires[bloc][key]) || null;\n', () => openEstablishment(page, 'mutation-grille', 'gembloux'), () => horairesSansGrille(page));
+    ok(ferme && ferme.vu.mardi.ferme === true && ferme.mardi === null, `sans la grille appliquee, Gembloux partirait ferme le mardi (obtenu ${JSON.stringify(ferme && ferme.mardi)}) -> le gate ROUGIRAIT`);
+    await openEstablishment(page, 'restore');
+    const restored = await champFautif(page);
+    ok(restored.ouverte === true, 'restauration inverse : la case s ouvre de nouveau');
 
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' : ' + errs.slice(0, 3).join(' | ') : ''}`);
   } finally {
@@ -336,7 +345,7 @@ async function main() {
     console.error(`\nestablishment-tabs-check: FAIL ${failures} assertion(s)`);
     process.exit(1);
   }
-  console.log('\nestablishment-tabs-check: ALL OK - 5 parties, aucune saisie perdue, aucun champ invalide cache.');
+  console.log('\nestablishment-tabs-check: ALL OK - une case ouverte a la fois, aucune saisie perdue, aucun champ invalide cache, les heures du moteur pour un centre sans grille.');
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

@@ -1246,6 +1246,24 @@ function scheduleFromConfigBlock(block, day) {
   if (!(close > open)) return null;
   return { open, close, label: buildScheduleLabel(open, close) };
 }
+// La grille d origine (celle du site public de Libramont) : le moteur l applique a tout jour qu un centre n a pas
+// declare dans sa propre grille. La page Etablissement la montre telle quelle : enregistrer ne ferme pas ces jours-la.
+function grilleHistorique(day, holidayActive) {
+  if (holidayActive) {
+    if (day === 5 || day === 6) return { open: 10, close: 24, label: '10h - Minuit' };
+    return { open: 10, close: 22, label: '10h - 22h' };
+  }
+  switch (day) {
+    case 1: return null;
+    case 2: return { open: 14, close: 22, label: '14h - 22h' };
+    case 3: return { open: 12, close: 22, label: '12h - 22h' };
+    case 4: return { open: 14, close: 22, label: '14h - 22h' };
+    case 5: return { open: 14, close: 24, label: '14h - Minuit' };
+    case 6: return { open: 10, close: 24, label: '10h - Minuit' };
+    case 0: return { open: 10, close: 22, label: '10h - 22h' };
+    default: return null;
+  }
+}
 function getSchedule(dateStr, manualHolidayOverride = false) {
   // 1. VERDICT SERVEUR pour cette date exacte. Il sait ce que la grille hebdo
   //    ignore : fermeture ponctuelle, coupure posee depuis le cockpit. Quand il
@@ -1271,20 +1289,7 @@ function getSchedule(dateStr, manualHolidayOverride = false) {
     const resolved = holidaySlot !== undefined ? holidaySlot : scheduleFromConfigBlock(blocks.regular, day);
     if (resolved !== undefined) return resolved;
   }
-  if (holidayActive) {
-    if (day === 5 || day === 6) return { open: 10, close: 24, label: '10h - Minuit' };
-    return { open: 10, close: 22, label: '10h - 22h' };
-  }
-  switch (day) {
-    case 1: return null;
-    case 2: return { open: 14, close: 22, label: '14h - 22h' };
-    case 3: return { open: 12, close: 22, label: '12h - 22h' };
-    case 4: return { open: 14, close: 22, label: '14h - 22h' };
-    case 5: return { open: 14, close: 24, label: '14h - Minuit' };
-    case 6: return { open: 10, close: 24, label: '10h - Minuit' };
-    case 0: return { open: 10, close: 22, label: '10h - 22h' };
-    default: return null;
-  }
+  return grilleHistorique(day, holidayActive);
 }
 
 function readBlockHour(block, key, fallback = 0) {

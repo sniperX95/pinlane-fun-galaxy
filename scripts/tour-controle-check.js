@@ -649,15 +649,18 @@ async function jouerConsole(browser) {
     await vue.page.click('[data-tour-secours="gembloux"]');
     await vue.page.waitForFunction(() => document.activeElement && document.activeElement.id === 'estab-secours-emails', null, { timeout: 8000 }).catch(() => {});
     await vue.page.waitForTimeout(800);
-    const lire = () => vue.page.evaluate(() => { const b = document.getElementById('estabSaveBtn'); return { page: state.staffMenuPage, centre: state.establishmentCenterId, onglet: state.establishmentTab, sauve: b ? b.getAttribute('onclick') : '', focus: document.activeElement && document.activeElement.id }; });
+    const lire = () => vue.page.evaluate(() => { const b = document.getElementById('estabSaveBtn'); const pageCentre = document.querySelector('[data-estab-page]'); return { page: state.staffMenuPage, centre: pageCentre ? pageCentre.dataset.ebCenter : '', onglet: state.establishmentTab, sauve: b ? b.getAttribute('onclick') : '', focus: document.activeElement && document.activeElement.id }; });
     const depuisTour = await lire();
-    ok(depuisTour.page === 'establishment' && depuisTour.centre === 'gembloux' && depuisTour.onglet === 'regles' && /gembloux/.test(depuisTour.sauve) && depuisTour.focus === 'estab-secours-emails', '[U] « Ajouter une adresse » ouvre le champ de CE centre, pret a ecrire, et le curseur y reste', depuisTour);
+    ok(depuisTour.page === 'establishment' && depuisTour.centre === 'gembloux' && depuisTour.onglet === 'clients' && /gembloux/.test(depuisTour.sauve) && depuisTour.focus === 'estab-secours-emails', '[U] « Ajouter une adresse » ouvre le champ de CE centre, pret a ecrire, et le curseur y reste', depuisTour);
+    // Une ancienne valeur de la page dit Libramont ; la page Secours montre le centre du menu (Gembloux depuis le
+    // changement) : la case qui s ouvre est celle du centre affiche, jamais l ancienne.
     await vue.page.evaluate(() => { state.establishmentEditing = false; state.establishmentCenterId = 'libramont'; state.staffMenuPage = 'secours'; setView('staff'); if (typeof renderStaff === 'function') renderStaff(); });
     await vue.page.waitForSelector('[data-secours-ajouter]', { timeout: 15000 });
+    const affiche = await vue.page.evaluate(() => getCurrentStaffCenterId());
     await vue.page.click('[data-secours-ajouter]');
     await vue.page.waitForFunction(() => document.activeElement && document.activeElement.id === 'estab-secours-emails', null, { timeout: 8000 }).catch(() => {});
     const depuisSecours = await lire();
-    ok(depuisSecours.page === 'establishment' && depuisSecours.focus === 'estab-secours-emails' && /libramont/.test(depuisSecours.sauve), '[U] la page Secours mene au meme champ, sur le centre affiche', depuisSecours);
+    ok(affiche === 'gembloux' && depuisSecours.page === 'establishment' && depuisSecours.focus === 'estab-secours-emails' && depuisSecours.centre === affiche && depuisSecours.sauve === `submitCenterConfig('${affiche}')`, '[U] la page Secours mene au meme champ, sur le centre affiche', { affiche, ...depuisSecours });
     await vue.ctx.close();
   }
   // Ouverte dans un onglet cache : elle se lit des qu on revient, sans attendre le prochain passage.
@@ -984,6 +987,19 @@ async function contrePreuves(browser, jour) {
   await deux.ctx.close();
   servies = [];
   ok(!garde, '[X] un repeint global qui vide la page : rougit');
+
+  // Changer de centre recharge la console : sans le champ voulu, le curseur n arrive plus dans la case de secours.
+  servies = [{ fichier: 'assets/app-main.js', de: "    ebChampVoulu(cible, 'estab-secours-emails');\n", vers: '' }];
+  const trois = await ouvrirConsole(browser);
+  await ouvrirParLeMenu(trois.page);
+  await trois.page.waitForSelector('[data-tour-secours="gembloux"]', { timeout: 15000 });
+  await trois.page.click('[data-tour-secours="gembloux"]');
+  await trois.page.waitForFunction(() => document.activeElement && document.activeElement.id === 'estab-secours-emails', null, { timeout: 8000 }).catch(() => {});
+  await trois.page.waitForTimeout(800);
+  const pose = await trois.page.evaluate(() => ({ centre: (document.querySelector('[data-estab-page]') || { dataset: {} }).dataset.ebCenter || '', focus: Boolean(document.activeElement && document.activeElement.id === 'estab-secours-emails') }));
+  await trois.ctx.close();
+  servies = [];
+  ok(pose.centre === 'gembloux' && !pose.focus, '[X] le champ voulu oublie au rechargement du centre : rougit', pose);
 }
 
 (async () => {

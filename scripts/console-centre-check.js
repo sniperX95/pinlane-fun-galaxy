@@ -117,8 +117,8 @@ async function jouerConsole(browser) {
       state.staffMenuPage = 'establishment';
       setView('staff');
     }, VISIBLE);
-    await page.waitForSelector('.eb-pli-d .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
-    await page.evaluate(() => ebBasculerPli(document.querySelector('.availability-blocks').closest('.eb-blk'), true));
+    await page.waitForSelector('[data-estab-page] .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
+    await page.evaluate(() => ebOuvrir('horaires'));
     await page.waitForSelector('.availability-blocks #avb-scope', { state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('#avbList .availability-item').length >= 1);
     const envoi = (filtre) => page.evaluate((src) => { const f = eval(src); return window.__envois.filter(f).slice(-1)[0] || null; }, filtre);

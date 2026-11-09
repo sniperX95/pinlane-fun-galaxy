@@ -1622,6 +1622,8 @@
     selectMenuCenter(centerId);
     return true;
   };
+  // Les centres ou cette personne peut aller : la page Etablissement ne montre que ceux-la.
+  window.pinlaneCentresPermis = () => centresPermis().map(item => item.id);
   window.syncStaffMenuState = syncStaffMenuState;
   window.renderStaffMenu = renderMenu;
   window.FGX_STAFF_MENU = menuSections;

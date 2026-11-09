@@ -192,6 +192,7 @@
     "test:capacites-centre",
     "test:openrouter-frontier",
     "test:establishment-tabs",
+    "test:coordonnees-centre",
     "test:availability-blocks-ui",
     "test:console-contrast",
     "test:tunnel-mobile-matrix",

@@ -21655,11 +21655,11 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 /* ── LES DEMANDES AUX COULEURS DU CENTRE (2026-11-09) ──────────────────────────
    Ansar : « pas de chose bien stylee, bien custom ». Les offres prennent les couleurs des
    fanions et leurs vraies photos, le prix passe en affiche. */
-.rq [data-t="1"] { --c: #944292; --c-ink: #7d2478; --c-on: #fff; }
+.rq [data-t="1"] { --c: #8a4ba6; --c-ink: #743a8f; --c-on: #fff; }
 .rq [data-t="2"] { --c: #4fae9e; --c-ink: #1f7d6e; --c-on: #04110f; }
 .rq [data-t="3"] { --c: #e3b341; --c-ink: #94690a; --c-on: #1c1404; }
 .rq [data-t="4"] { --c: #f0648c; --c-ink: #bf2d5c; --c-on: #24060f; }
-:root[data-theme="dark"] .rq [data-t="1"] { --c: #b45fb2; --c-ink: #e3a3df; --c-on: #fff; }
+:root[data-theme="dark"] .rq [data-t="1"] { --c: #9a58ba; --c-ink: #dfbdf0; --c-on: #fff; }
 :root[data-theme="dark"] .rq [data-t="2"] { --c: #67baac; --c-ink: #93dccf; }
 :root[data-theme="dark"] .rq [data-t="3"] { --c-ink: #f0cf7a; }
 :root[data-theme="dark"] .rq [data-t="4"] { --c-ink: #f8a3bb; }

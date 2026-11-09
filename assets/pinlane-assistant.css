@@ -186,17 +186,20 @@ button.ast-cite.est-fait:hover { color: var(--surface); background: var(--text);
    Ansar : « pas de jolie animation, pas de chose bien stylee, bien custom ».
    Chaque source a sa couleur de fanion, la page respire avec elles.
    ======================================================================== */
-@property --c { syntax: '<color>'; inherits: true; initial-value: #944292; }
-@property --c-ink { syntax: '<color>'; inherits: true; initial-value: #7d2478; }
+@property --c { syntax: '<color>'; inherits: true; initial-value: #8a4ba6; }
+@property --c-ink { syntax: '<color>'; inherits: true; initial-value: #743a8f; }
 @property --ast-fondu { syntax: '<length>'; inherits: false; initial-value: 0px; }
 .ast { --sortie: cubic-bezier(.23, 1, .32, 1); --tiroir: cubic-bezier(.32, .72, 0, 1); }
-.ast [data-t="1"] { --c: #944292; --c-ink: #7d2478; }
+.scn-c { --n: 0; }
+.scn-jour { --rangs: 8; }
+.gb-l { --v: 0; }
+.ast [data-t="1"] { --c: #8a4ba6; --c-ink: #743a8f; }
 .ast [data-t="2"] { --c: #4fae9e; --c-ink: #1f7d6e; }
 .ast [data-t="3"] { --c: #e3b341; --c-ink: #94690a; }
 .ast [data-t="4"] { --c: #f0648c; --c-ink: #bf2d5c; }
 .ast [data-t="5"] { --c: #3f7bea; --c-ink: #1f55c2; }
 .ast [data-t="6"] { --c: #8b8b92; --c-ink: #55555c; }
-:root[data-theme="dark"] .ast [data-t="1"] { --c: #b45fb2; --c-ink: #e3a3df; }
+:root[data-theme="dark"] .ast [data-t="1"] { --c: #9a58ba; --c-ink: #dfbdf0; }
 :root[data-theme="dark"] .ast [data-t="2"] { --c: #67baac; --c-ink: #93dccf; }
 :root[data-theme="dark"] .ast [data-t="3"] { --c: #e3b341; --c-ink: #f0cf7a; }
 :root[data-theme="dark"] .ast [data-t="4"] { --c: #f0648c; --c-ink: #f8a3bb; }

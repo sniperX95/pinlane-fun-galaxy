@@ -154,7 +154,7 @@
     "test:plaine-journee": "node scripts/plaine-journee-check.js",
     "test:accueil-vivant": "node scripts/accueil-vivant-check.js && node scripts/accueil-vivant-check.js --contre-preuves",
     "test:pilotage": "node scripts/pilotage-check.js && node scripts/pilotage-check.js --contre-preuves",
-    "test:assistant": "node scripts/assistant-check.js && node scripts/assistant-check.js --contre-preuves",
+    "test:assistant": "node scripts/assistant-check.js && node scripts/assistant-check.js --contre-preuves --tiers=1/3 && node scripts/assistant-check.js --contre-preuves --tiers=2/3 && node scripts/assistant-check.js --contre-preuves --tiers=3/3",
     "test:terrain": "node scripts/terrain-check.js && node scripts/terrain-check.js --contre-preuves",
     "test:voix-pro": "node scripts/voix-pro-check.js && node scripts/voix-pro-check.js --contre-preuves",
     "test:journee-vraie": "node scripts/journee-vraie-check.js && node scripts/journee-vraie-check.js --contre-preuves",

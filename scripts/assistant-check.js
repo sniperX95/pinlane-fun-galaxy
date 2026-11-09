@@ -100,7 +100,7 @@ const MUTATIONS = {
   'source-non-annoncee': { section: 'R', fichier: AGENT, de: "      emettre('etape', { id: appel.id, etat: 'cours', ...outils.annonce(ctx, appel.name, appel.input) });", vers: "      emettre('etape', { id: appel.id, etat: 'cours' });", rouge: "[R] chaque lecture annonce sa source" },
   'total-invente': { section: 'E', fichier: ECRAN, de: "(total > affiche ? `${nombreEntier(affiche)} sur", vers: "(true ? `${nombreEntier(affiche)} sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
   'texte-coupe-le-dessin': { section: 'E', fichier: ECRAN, de: "    if (haut.querySelector('[data-pliage]') || sceneRetient(haut, m)) return;", vers: "    if (haut.querySelector('[data-pliage]')) return;", rouge: "[E] un dessin reste a l ecran le temps d etre vu" },
-  'attente-sans-fin': { section: 'E', fichier: ECRAN, de: "  const ATTENTE_TEXTE = 1600;", vers: "  const ATTENTE_TEXTE = 400000;", rouge: "[E] la reponse ne tarde jamais plus de deux secondes apres le dessin" },
+  'attente-sans-fin': { section: 'E', fichier: ECRAN, de: "const reste = Math.min(ATTENTE_TEXTE, Math.max(VUE_MIN, S.remplie)) - (performance.now() - S.vueDepuis);", vers: "const reste = 2600 - (performance.now() - S.vueDepuis);", rouge: "[E] la reponse ne tarde jamais plus de deux secondes apres le dessin" },
   'bonjour-qui-cherche': { section: 'E', fichier: ECRAN, de: "aria-label=\"Réponse en préparation\">${SIGNE}</p>", vers: "aria-label=\"Réponse en préparation\">Je regarde votre question</p>", rouge: "[E] un bonjour n annonce aucune recherche" },
   'compteur-qui-defile': { section: 'E', fichier: ECRAN, de: "(e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '')", vers: "(e.lues ? compteLu(Math.round(Number(e.lues) * Math.min(1, (now - S.t0) / 1500)), Number(e.total) || 0) : '')", rouge: "[E] aucun compteur ne defile" },
   'dessin-sans-ordre': { section: 'E', fichier: ECRAN, de: "      vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));\n", vers: "", rouge: "[E] un dessin se pose dans l ordre de ses donnees" },
@@ -1659,7 +1659,7 @@ async function sectionEcran() {
 (async () => {
   if (process.argv.includes('--contre-preuves')) {
     const arg = process.argv.find((a) => a.startsWith('--seul='));
-    // 89 contre-preuves depassent les 15 minutes d une unite : le script npm les passe en trois tiers (--tiers=1/3).
+    // 119 contre-preuves depassent les 15 minutes d une unite : le script npm les passe en six tiers (--tiers=1/6).
     const tiers = /^--tiers=(\d+)\/(\d+)$/.exec(process.argv.find((a) => a.startsWith('--tiers=')) || '');
     const toutes = Object.keys(MUTATIONS);
     const noms = arg ? arg.slice(7).split(',') : tiers ? toutes.filter((_, i) => i % Number(tiers[2]) === Number(tiers[1]) - 1) : toutes;

@@ -57,7 +57,7 @@
 @keyframes astDerive1 { to { transform: translate3d(16%, -12%, 0) scale(1.16); } }
 @keyframes astDerive2 { to { transform: translate3d(-18%, -14%, 0) scale(1.24); } }
 @keyframes astDerive3 { to { transform: translate3d(-10%, -8%, 0) scale(.88); } }
-@keyframes luScan { from { left: 0; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } to { left: 100%; opacity: 0; } }
+@keyframes luScan { from { opacity: 0; transform: translateX(0); } 8% { opacity: 1; } 92% { opacity: 1; } to { opacity: 0; transform: translateX(100%); } }
 @keyframes luConfirme { 0% { transform: scaleX(0); opacity: .14; } 62% { transform: scaleX(1); opacity: .14; } 100% { transform: scaleX(1); opacity: 0; } }
 
 /* Le signe de travail : un anneau bleu qui tourne, sans phrase toute faite. */
@@ -540,7 +540,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   .ast-rech.est-cours .lu.is-fini .lu-point { animation: astEclot 260ms var(--c-sortie) backwards; }
   .ast-rech.est-cours .lu.is-fini .lu-res { animation: astFondu var(--d-feuille) ease-out backwards; }
   /* Une ligne fine parcourt le dessin pendant qu il se remplit, une fois, puis s efface. */
-  .lu-vue-dessin:not(:empty)::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: 0; width: 1.5px; background: linear-gradient(to bottom, transparent, var(--azur), transparent); box-shadow: -10px 0 16px 1px color-mix(in srgb, var(--azur) 30%, transparent); pointer-events: none; animation: luScan var(--etale, 1s) linear both; }
+  .lu-vue-dessin:not(:empty)::after { content: ""; position: absolute; top: -6px; right: 100%; bottom: -6px; width: 100%; background: linear-gradient(to bottom, transparent, var(--azur), transparent) 100% 0 / 1.5px 100% no-repeat, radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--azur) 26%, transparent), transparent) 100% 0 / 34px 100% no-repeat; pointer-events: none; animation: luScan var(--etale, 1s) linear both; }
 
   /* Sous la reponse, les gestes arrivent l un apres l autre. */
   .ast-r.vient-d-ecrire .ast-pied > * { animation: astMonte var(--d-base) var(--c-sortie) backwards; }

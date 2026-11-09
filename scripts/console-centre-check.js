@@ -115,9 +115,10 @@ async function jouerConsole(browser) {
       state.currentDate = '2026-09-01';
       state.isHolidayMode = false;
       state.staffMenuPage = 'establishment';
-      state.establishmentTab = 'horaires';
       setView('staff');
     }, VISIBLE);
+    await page.waitForSelector('.eb-pli-d .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
+    await page.evaluate(() => ebBasculerPli(document.querySelector('.availability-blocks').closest('.eb-blk'), true));
     await page.waitForSelector('.availability-blocks #avb-scope', { state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('#avbList .availability-item').length >= 1);
     const envoi = (filtre) => page.evaluate((src) => { const f = eval(src); return window.__envois.filter(f).slice(-1)[0] || null; }, filtre);

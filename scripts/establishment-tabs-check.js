@@ -112,7 +112,7 @@ async function openEstablishment(page, cacheKey) {
     save();
     setView('staff');
   });
-  await page.waitForSelector('.estab-tabs button', { state: 'visible', timeout: 15000 });
+  await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 15000 });
 }
 
 async function main() {
@@ -135,42 +135,79 @@ async function main() {
     await openEstablishment(page, 'base');
 
     // =====================================================================
-    console.log('\n[1] Cinq categories, un seul panneau visible');
+    console.log('\n[1] Cinq parties, des blocs replies, tous les champs dans la page');
     // =====================================================================
     const structure = await page.evaluate(() => ({
-      tabs: Array.from(document.querySelectorAll('.estab-tabs button')).map(el => el.textContent.trim()),
-      panels: Array.from(document.querySelectorAll('.estab-panel')).map(el => el.id),
-      visible: Array.from(document.querySelectorAll('.estab-panel')).filter(el => !el.hidden).map(el => el.id),
+      nav: Array.from(document.querySelectorAll('.eb-nav-i')).map(el => el.dataset.ebLink),
+      sections: Array.from(document.querySelectorAll('.eb-sec')).map(el => el.id),
+      blocs: document.querySelectorAll('.eb-blk').length,
+      replies: Array.from(document.querySelectorAll('.eb-blk')).filter(b => !b.classList.contains('est-ouvert')).length,
+      champsReplies: document.querySelectorAll('.eb-blk:not(.est-ouvert) input, .eb-blk:not(.est-ouvert) select, .eb-blk:not(.est-ouvert) textarea').length,
+      phrasesVisibles: Array.from(document.querySelectorAll('.eb-blk:not(.est-ouvert) > .eb-bh-b .eb-bh')).filter(t => t.getBoundingClientRect().height > 0).length,
+      secoursVisible: getComputedStyle(document.getElementById('estab-secours-emails')).visibility,
     }));
-    ok(structure.tabs.length === 5, `5 onglets (obtenu ${structure.tabs.length} : ${structure.tabs.join(' / ')})`);
-    ok(structure.panels.length === 5, `5 panneaux dans le DOM (obtenu ${structure.panels.length})`);
-    ok(structure.visible.length === 1 && structure.visible[0] === 'estabPanel-centre', `un seul panneau visible (${structure.visible.join(',') || 'aucun'})`);
+    ok(structure.nav.join() === 'centre,horaires,offres,clients,regles', `5 entrees dans le sommaire (obtenu ${structure.nav.join(' / ')})`);
+    ok(structure.sections.join() === 'eb-s-centre,eb-s-horaires,eb-s-offres,eb-s-clients,eb-s-regles', `5 parties dans la page (obtenu ${structure.sections.join(' / ')})`);
+    ok(structure.replies >= 3 && structure.replies < structure.blocs, `les blocs longs sont replies, pas tous (obtenu ${structure.replies} sur ${structure.blocs})`);
+    ok(structure.phrasesVisibles === structure.replies, `un bloc replie garde son titre (obtenu ${structure.phrasesVisibles} sur ${structure.replies})`);
+    ok(structure.champsReplies > 20, `les champs des blocs replies restent dans la page (obtenu ${structure.champsReplies})`);
+    ok(structure.secoursVisible === 'hidden', `MONTAGE un champ replie n est pas atteignable au clavier (obtenu ${structure.secoursVisible})`);
 
     // Les fermetures ne sont plus une section orpheline en bas de page.
     const blocksTab = await page.evaluate(() => {
-      const panel = document.querySelector('.availability-blocks')?.closest('.estab-panel');
-      return panel ? panel.id : 'hors-onglet';
+      const partie = document.querySelector('.availability-blocks')?.closest('.eb-sec');
+      return partie ? partie.id : 'hors-partie';
     });
-    ok(blocksTab === 'estabPanel-horaires', `le panneau Blocages vit dans l'onglet Horaires (obtenu ${blocksTab})`);
+    ok(blocksTab === 'eb-s-horaires', `le panneau Blocages vit dans la partie Horaires (obtenu ${blocksTab})`);
 
     // =====================================================================
-    console.log('\n[2] EDITION : une saisie survit au changement d onglet');
+    console.log('\n[2] Une saisie survit aux plis et au sommaire');
     // =====================================================================
-    await page.evaluate(() => { startEstablishmentEdit(); });
-    await page.waitForTimeout(400);
     const typed = await page.evaluate(() => {
-      document.getElementById('estab-laneCount').value = '12';
+      const champ = document.getElementById('estab-laneCount');
+      champ.value = '12';
+      const bloc = champ.closest('.eb-blk');
+      ebBasculerPli(bloc, false);
       setEstablishmentTab('offres');
       setEstablishmentTab('clients');
+      ebBasculerPli(bloc, true);
       setEstablishmentTab('centre');
       return document.getElementById('estab-laneCount').value;
     });
-    ok(typed === '12', `la valeur tapee survit a 3 changements d'onglet (obtenu "${typed}", attendu "12")`);
+    ok(typed === '12', `la valeur tapee survit au pli et au sommaire (obtenu "${typed}", attendu "12")`);
 
     // =====================================================================
-    console.log('\n[3] EDITION : enregistrer depuis un autre onglet n efface rien');
+    console.log('\n[2b] Un repeint ne perd pas ce qui n est pas enregistre');
     // =====================================================================
-    // Le piege : submitCenterConfig lit par getElementById. Si un onglet ferme
+    const repeindre = () => page.evaluate(async () => {
+      const champ = document.getElementById('estab-laneCount');
+      champ.value = '13';
+      champ.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 60));
+      const temoin = document.querySelector('[data-estab-page]');
+      temoin.dataset.temoin = '1';
+      renderStaffUtilityPage();            // une reponse reseau arrive
+      setStaffTheme(state.staffTheme === 'light' ? 'dark' : 'light');
+      await new Promise(r => setTimeout(r, 60));
+      return {
+        valeur: document.getElementById('estab-laneCount').value,
+        barre: !document.getElementById('ebBar').hidden,
+        edition: state.establishmentEditing,
+        meme: document.querySelector('[data-estab-page]').dataset.temoin === '1',
+      };
+    });
+    const repeint = await repeindre();
+    ok(repeint.valeur === '13' && repeint.barre && repeint.edition, `la saisie et le bouton Enregistrer restent (obtenu ${JSON.stringify(repeint)})`);
+    ok(repeint.meme, 'la page n a pas ete reconstruite');
+    await page.evaluate(() => cancelEstablishmentEdit());
+    await page.waitForFunction(() => !state.establishmentEditing && document.getElementById('estab-laneCount') && document.getElementById('ebBar') && document.getElementById('ebBar').hidden, null, { timeout: 5000 });
+    const annule = await page.evaluate(() => document.getElementById('estab-laneCount').value);
+    ok(annule !== '13', `Annuler repart de ce qui est enregistre (obtenu "${annule}")`);
+
+    // =====================================================================
+    console.log('\n[3] Enregistrer depuis une autre partie n efface rien');
+    // =====================================================================
+    // Le piege : submitCenterConfig lit par getElementById. Si un bloc replie
     // sortait du DOM, sa config partirait aux valeurs de repli.
     const saved = await page.evaluate(async () => {
       document.getElementById('estab-laneCount').value = '11';       // onglet « Le centre »
@@ -212,7 +249,6 @@ async function main() {
     // =====================================================================
     await openEstablishment(page, 'secours');
     const bloque = await page.evaluate(async () => {
-      startEstablishmentEdit();
       document.getElementById('estab-secours-emails').value = 'secours@fungalaxy.be, pas-une-adresse';
       setEstablishmentTab('horaires');
       window.__QA_SAVED__ = [];
@@ -220,71 +256,74 @@ async function main() {
       const toastEl = document.getElementById('toast') || document.querySelector('.toast');
       return {
         posts: window.__QA_SAVED__.filter(body => body.action === 'saveCenterConfig').length,
-        tab: state.establishmentTab,
+        ouvert: document.getElementById('estab-secours-emails').closest('.eb-blk').classList.contains('est-ouvert'),
         active: document.activeElement ? document.activeElement.id : '',
         message: toastEl ? toastEl.textContent : '',
       };
     });
     ok(bloque.posts === 0, `rien ne part au serveur (obtenu ${bloque.posts} envoi(s))`);
-    ok(bloque.tab === 'regles' && bloque.active === 'estab-secours-emails', `l onglet Regles s ouvre sur le champ (obtenu ${bloque.tab} / ${bloque.active})`);
+    ok(bloque.ouvert === true && bloque.active === 'estab-secours-emails', `le bloc replie s ouvre sur le champ (obtenu ${bloque.ouvert} / ${bloque.active})`);
     ok(/pas-une-adresse/.test(bloque.message), `le message nomme l adresse fautive (obtenu "${bloque.message}")`);
 
     // =====================================================================
-    console.log('\n[4] Un champ invalide ouvre SON onglet');
+    console.log('\n[4] Un champ invalide ouvre SON pli');
     // =====================================================================
-    await openEstablishment(page, 'invalide');
-    const focused = await page.evaluate(() => {
-      startEstablishmentEdit();
-      document.getElementById('estab-laneCount').value = '999';  // hors bornes (1-40)
-      setEstablishmentTab('offres');                              // on part ailleurs
+    const champFautif = () => page.evaluate(() => {
+      const champ = document.getElementById('estab-laneCount');
+      const bloc = champ.closest('.eb-blk');
+      ebBasculerPli(bloc, false);                 // replie, le champ devient introuvable a l oeil
+      champ.value = '999';                        // hors bornes (1-40)
+      setEstablishmentTab('offres');              // on part ailleurs
       const invalid = validateEstablishmentForm();
       focusEstablishmentField(invalid[0]);
+      const actif = document.activeElement;
       return {
-        tab: state.establishmentTab,
-        activeId: document.activeElement ? document.activeElement.id : '',
-        panelVisible: !document.getElementById('estabPanel-centre').hidden,
+        premier: invalid[0] ? invalid[0].id : '',
+        ouvert: bloc.classList.contains('est-ouvert'),
+        dansLaLigne: Boolean(actif && actif.closest('.eb-line') && actif.closest('.eb-line').contains(champ)),
+        visible: actif ? getComputedStyle(actif).visibility : '',
       };
     });
-    ok(focused.tab === 'centre', `l'onglet du champ invalide est ouvert (obtenu ${focused.tab})`);
-    ok(focused.panelVisible === true, 'son panneau est bien visible');
-    ok(focused.activeId === 'estab-laneCount', `le focus est sur le champ fautif (obtenu "${focused.activeId}")`);
+    await openEstablishment(page, 'invalide');
+    const focused = await champFautif();
+    ok(focused.premier === 'estab-laneCount', `MONTAGE le champ hors bornes est refuse (obtenu "${focused.premier}")`);
+    ok(focused.ouvert === true, 'le pli du champ invalide est ouvert');
+    ok(focused.dansLaLigne === true && focused.visible === 'visible', `le clavier arrive sur la ligne fautive (obtenu ${JSON.stringify(focused)})`);
 
     // =====================================================================
     console.log('\n[5] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
-    // On remet le comportement d'avant : changer d'onglet re-rend la page. La
-    // saisie non enregistree doit alors disparaitre, et le gate rougir.
+    // On remet le comportement d un pli qui ne s ouvre pas : le champ fautif reste invisible.
     const original = fs.readFileSync(APP, 'utf8');
     const toFileEol = (text) => (original.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
-    const anchor = toFileEol('  const panels = document.querySelectorAll(\'.estab-panel\');\n  if (!panels.length) { renderStaffUtilityPage(); return; }');
+    const anchor = toFileEol("  if (pliDuChamp && typeof ebBasculerPli === 'function') ebBasculerPli(pliDuChamp, true);\n");
     const occurrences = original.split(anchor).length - 1;
     if (occurrences !== 1) {
       ok(false, `ancre de mutation introuvable ou ambigue (${occurrences})`);
     } else {
-      fs.writeFileSync(APP, original.replace(anchor, toFileEol('  const panels = document.querySelectorAll(\'.estab-panel\');\n  { renderStaffUtilityPage(); return; }')));
-      let survived = null;
+      fs.writeFileSync(APP, original.replace(anchor, ''));
+      let casse = null;
       try {
         await openEstablishment(page, 'mutation');
-        survived = await page.evaluate(() => {
-          startEstablishmentEdit();
-          document.getElementById('estab-laneCount').value = '12';
-          setEstablishmentTab('offres');
-          setEstablishmentTab('centre');
-          return document.getElementById('estab-laneCount').value;
-        });
+        casse = await champFautif();
       } finally {
         fs.writeFileSync(APP, original); // restauration par edition inverse
       }
-      ok(survived !== '12', `re-render retabli : la saisie est perdue (obtenu "${survived}") -> le gate ROUGIRAIT`);
+      ok(casse && casse.ouvert === false, `pli qui ne s ouvre plus : le champ reste cache (obtenu ${JSON.stringify(casse)}) -> le gate ROUGIRAIT`);
+      const garde = toFileEol("  if (state.staffMenuPage === 'establishment' && ficheEtablissementEnCours() && root.querySelector('[data-estab-page]')) return;\n");
+      if (original.split(garde).length !== 2) ok(false, 'ancre de la garde de repeint introuvable');
+      fs.writeFileSync(APP, original.replace(garde, ''));
+      let perdu = null;
+      try {
+        await openEstablishment(page, 'mutation-repeint');
+        perdu = await repeindre();
+      } finally {
+        fs.writeFileSync(APP, original);
+      }
+      ok(perdu && perdu.valeur !== '13', `sans la garde, le repeint efface la saisie (obtenu ${JSON.stringify(perdu)}) -> le gate ROUGIRAIT`);
       await openEstablishment(page, 'restore');
-      const restored = await page.evaluate(() => {
-        startEstablishmentEdit();
-        document.getElementById('estab-laneCount').value = '12';
-        setEstablishmentTab('offres');
-        setEstablishmentTab('centre');
-        return document.getElementById('estab-laneCount').value;
-      });
-      ok(restored === '12', 'restauration inverse : la saisie survit de nouveau');
+      const restored = await champFautif();
+      ok(restored.ouvert === true, 'restauration inverse : le pli s ouvre de nouveau');
     }
 
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' : ' + errs.slice(0, 3).join(' | ') : ''}`);
@@ -297,7 +336,7 @@ async function main() {
     console.error(`\nestablishment-tabs-check: FAIL ${failures} assertion(s)`);
     process.exit(1);
   }
-  console.log('\nestablishment-tabs-check: ALL OK - 5 categories, aucune saisie perdue, aucun champ invalide cache.');
+  console.log('\nestablishment-tabs-check: ALL OK - 5 parties, aucune saisie perdue, aucun champ invalide cache.');
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

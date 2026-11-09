@@ -212,7 +212,7 @@ const MUTATIONS = [
   {
     nom: 'la bascule s affiche cochee quelle que soit la donnee',
     fichier: 'assets/app-main.js',
-    editions: [{ de: "id=\"estab-tableLimit\" ${party.limitEnabled === true ? 'checked' : ''}", vers: 'id="estab-tableLimit" checked' }],
+    editions: [{ de: "aucun mail ne part pour les tables.', party.limitEnabled === true)}", vers: "aucun mail ne part pour les tables.', true)}" }],
   },
   {
     nom: 'la transition revient dans la fin d une formule',
@@ -1158,20 +1158,19 @@ async function sectionsEcrans() {
       save();
       setView('staff');
     });
-    await page.waitForSelector('.estab-tabs button', { state: 'visible', timeout: 20000 });
+    await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });
     return page;
   }
-  const tuileTables = (page) => page.evaluate(() => {
-    const tuile = Array.from(document.querySelectorAll('.estab-stat')).find((el) => /Tables/.test((el.querySelector('.estab-stat-top') || {}).textContent || ''));
-    return tuile ? tuile.textContent.replace(/\s+/g, ' ').trim() : '';
-  });
+  // La phrase du bloc, visible meme replie : c est elle qui dit ce qui est regle.
+  const tuileTables = (page) => page.evaluate(() => ((document.querySelector('[data-eb-phrase="tables"]') || {}).textContent || '').replace(/\s+/g, ' ').trim());
   const lireBascule = (page) => page.evaluate(() => {
     const bascule = document.getElementById('estab-tableLimit');
-    const carte = bascule ? bascule.closest('fieldset') : null;
+    const carte = bascule ? bascule.closest('.eb-blk') : null;
     return {
       existe: Boolean(bascule),
       cochee: Boolean(bascule && bascule.checked),
-      phrases: carte ? Array.from(carte.querySelectorAll('.estab-card-hint')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
+      phrases: carte ? Array.from(carte.querySelectorAll('.eb-sw-copy small')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
+      mises: carte ? Array.from(carte.querySelectorAll('.eb-note')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()) : [],
       limite: (document.getElementById('estab-tableHard') || {}).value || '',
       conseillee: (document.getElementById('estab-tableSoft') || {}).value || '',
     };
@@ -1187,13 +1186,12 @@ async function sectionsEcrans() {
     await poserCentreBrut('libramont', configAvantLeLot('libramont', SECOURS_LIBRAMONT));
     let page = await ouvrirEtablissement('defaut');
     const tuileEteinte = await tuileTables(page);
-    ok(/Tables/.test(tuileEteinte) && !/\b8\b/.test(tuileEteinte), '[F] lecture, eteinte : la tuile des tables n annonce aucune limite', tuileEteinte);
-    await page.evaluate(() => startEstablishmentEdit());
+    ok(/tables/i.test(tuileEteinte) && !/\b8\b/.test(tuileEteinte), '[F] eteinte : la phrase des tables n annonce aucune limite', tuileEteinte);
     await page.waitForSelector('#estab-tableLimit', { state: 'attached', timeout: 10000 });
     let b = await lireBascule(page);
     ok(b.existe && b.cochee === false, '[F] eteinte par defaut (donnees d avant ce lot)', JSON.stringify(b));
-    ok(b.phrases.some((p) => /jamais/i.test(p) && /bloqu/i.test(p)), '[F] la phrase de la bascule dit que rien n est jamais bloque', JSON.stringify(b.phrases));
-    ok(!b.phrases.some((p) => /aucun mail/i.test(p)), '[F] avec une adresse de secours, aucune mise en garde d envoi', JSON.stringify(b.phrases));
+    ok(b.phrases.some((p) => /rien n.est refus/i.test(p)), '[F] la phrase de la bascule dit que rien n est jamais refuse au client', JSON.stringify(b.phrases));
+    ok(!b.mises.some((p) => /aucun mail/i.test(p)), '[F] avec une adresse de secours, aucune mise en garde d envoi', JSON.stringify(b.mises));
     ok(b.limite === '8' && b.conseillee === '6', 'MONTAGE les nombres affiches : 6 conseillees, limite 8', JSON.stringify(b));
     let envoye = await enregistrerLaPage(page);
     ok(Boolean(envoye) && JSON.stringify(envoye.resources && envoye.resources.partyTables) === JSON.stringify({ softCapacity: 6, hardCapacity: 8, limitEnabled: false }), '[F] enregistrer sans retouche envoie les memes nombres et la bascule eteinte', JSON.stringify(envoye && envoye.resources && envoye.resources.partyTables));
@@ -1201,9 +1199,10 @@ async function sectionsEcrans() {
     let tables = knowledge.getCenter('libramont').resources.partyTables;
     ok(rep.status === 200 && tables.softCapacity === 6 && tables.hardCapacity === 8 && tables.limitEnabled === false, '[F] cote serveur : rien n a change, eteinte', JSON.stringify({ statut: rep.status, tables, message: rep.json && rep.json.message }));
     // L enregistrement referme l edition : on la rouvre, comme le gerant.
-    await page.evaluate(() => { if (!document.getElementById('estab-tableLimit')) startEstablishmentEdit(); });
-    await page.waitForSelector('label.establishment-toggle:has(#estab-tableLimit)', { state: 'visible', timeout: 10000 });
-    await page.click('label.establishment-toggle:has(#estab-tableLimit)');
+    await page.evaluate(() => ebBasculerPli(document.getElementById('estab-tableLimit').closest('.eb-blk'), true));
+    await page.waitForSelector('label.eb-sw:has(#estab-tableLimit)', { state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(450);
+    await page.click('label.eb-sw:has(#estab-tableLimit)');
     b = await lireBascule(page);
     ok(b.cochee === true, 'MONTAGE un clic sur « Limite de tables » l allume', JSON.stringify(b));
     envoye = await enregistrerLaPage(page);
@@ -1214,8 +1213,7 @@ async function sectionsEcrans() {
 
     page = await ouvrirEtablissement('allumee');
     const tuileAllumee = await tuileTables(page);
-    ok(/\b8\b/.test(tuileAllumee), '[F] lecture, allumee : la tuile dit la limite (8)', tuileAllumee);
-    await page.evaluate(() => startEstablishmentEdit());
+    ok(/\b8\b/.test(tuileAllumee), '[F] allumee : la phrase des tables dit la limite (8)', tuileAllumee);
     await page.waitForSelector('#estab-tableLimit', { state: 'attached', timeout: 10000 });
     b = await lireBascule(page);
     ok(b.cochee === true, '[F] relue du serveur, la bascule est allumee', JSON.stringify(b));
@@ -1227,10 +1225,9 @@ async function sectionsEcrans() {
 
     await centreAvecLimite('libramont', [], { allumee: true });
     page = await ouvrirEtablissement('sans-adresse');
-    await page.evaluate(() => startEstablishmentEdit());
     await page.waitForSelector('#estab-tableLimit', { state: 'attached', timeout: 10000 });
     b = await lireBascule(page);
-    ok(b.phrases.some((p) => /aucun mail/i.test(p)), '[F] sans adresse de secours, la bascule dit qu aucun mail ne partira', JSON.stringify(b.phrases));
+    ok(b.mises.some((p) => /aucun mail/i.test(p)), '[F] sans adresse de secours, la bascule dit qu aucun mail ne partira', JSON.stringify(b.mises));
     await page.close();
 
     section('G. LA CONSOLE FONDATEUR NE L ETEINT PAS');

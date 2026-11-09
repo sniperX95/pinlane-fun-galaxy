@@ -3627,7 +3627,7 @@ function getLiveSyncPages() {
       domaines: [...domaines],
       // Le formulaire d Etablissement garde sa saisie dans ses champs : on ne
       // le reconstruit pas tant qu il est ouvert.
-      brouillon: page === 'establishment' ? () => Boolean(state.establishmentEditing) : undefined,
+      brouillon: page === 'establishment' ? ficheEtablissementEnCours : undefined,
       recharger: (changes) => rechargerLaPagePourLeDirect(page, changes),
     };
   });
@@ -13928,43 +13928,15 @@ async function loadStaffCenterConfig(force = false) {
   }
 }
 
-// Page Etablissement : 5 categories au lieu d'un mur. Chaque onglet repond a UNE
-// question ("qu'est-ce que ce centre ?", "quand est-il ouvert ?"...). Tous les
-// panneaux restent dans le DOM (masques par [hidden]) : submitCenterConfig lit
-// les champs par ID, donc on enregistre depuis n'importe quel onglet sans perdre
-// ce qui est saisi ailleurs.
-const ESTABLISHMENT_TABS = [
-  ['centre', 'Le centre'],
-  ['horaires', 'Horaires & fermetures'],
-  ['offres', 'Offres & activités'],
-  ['clients', 'Clients & groupes'],
-  ['regles', 'Règles & comptoir'],
-];
-
-function getEstablishmentTab() {
-  return ESTABLISHMENT_TABS.some(([key]) => key === state.establishmentTab) ? state.establishmentTab : 'centre';
-}
-
-// Bascule d'onglet SANS re-render : en edition, reconstruire le HTML relirait la
-// config serveur et effacerait ce qui vient d'etre tape dans les autres onglets.
+// Aller a une partie de la fiche SANS re-rendre : le rendu relirait la config du serveur et effacerait ce qui vient d etre tape.
 function setEstablishmentTab(key) {
-  const next = ESTABLISHMENT_TABS.some(([item]) => item === key) ? key : 'centre';
+  const next = EB_SECTIONS.some(([item]) => item === key) ? key : 'centre';
   state.establishmentTab = next;
   save();
   if (typeof ebGo === 'function') ebGo(next);
 }
 
-function establishmentTabsHtml(active) {
-  return `<div class="admin-tabs estab-tabs" role="tablist" aria-label="Sections de configuration du centre">
-    ${ESTABLISHMENT_TABS.map(([key, label]) => `<button type="button" role="tab" id="estabTab-${key}" aria-selected="${key === active ? 'true' : 'false'}" aria-controls="estabPanel-${key}" class="${key === active ? 'active' : ''}" onclick="setEstablishmentTab('${key}')">${escapeHtml(label)}</button>`).join('')}
-  </div>`;
-}
-
-function establishmentPanel(key, active, body) {
-  return `<div class="estab-panel" id="estabPanel-${key}" role="tabpanel" aria-labelledby="estabTab-${key}"${key === active ? '' : ' hidden'}>${body}</div>`;
-}
-
-// Un champ invalide peut se trouver sous un onglet ferme : sans ca, le toast
+// Un champ invalide peut se trouver dans un pli ferme : sans ca, le toast
 // "corrigez les champs" pointerait vers un champ que personne ne voit.
 function focusEstablishmentField(input) {
   if (!input) return;
@@ -13977,7 +13949,10 @@ function focusEstablishmentField(input) {
   }
   const hote = input.hidden ? (input.closest('.eb-line, .eb-dayset-col') || input.parentElement) : input;
   if (hote && hote.scrollIntoView) hote.scrollIntoView({ block: 'center' });
-  if (!input.hidden) input.focus();
+  if (!input.hidden) { input.focus(); return; }
+  // Un compteur n a pas de champ visible : le clavier arrive sur ses boutons.
+  const geste = hote && hote.querySelector('button:not([disabled])');
+  if (geste) geste.focus({ preventScroll: true });
 }
 
 function toggleEstablishmentAddCenter() {
@@ -14013,9 +13988,9 @@ function ouvrirReglageSecours(centerId) {
     if (!center || center.id !== state.establishmentCenterId) { if (essais++ < 40) setTimeout(poser, 100); return; }
     setEstablishmentTab('regles');
     const champ = document.getElementById('estab-secours-emails');
-    if (!champ) { if (essais++ < 40) setTimeout(poser, 100); return; }
-    champ.scrollIntoView({ block: 'center' });
-    champ.focus();
+    // Le champ doit etre dans son pli : ebPlier deplace le bloc juste apres le rendu, et un deplacement perdrait le curseur.
+    if (!champ || !champ.closest('.eb-pli-d')) { if (essais++ < 40) setTimeout(poser, 100); return; }
+    focusEstablishmentField(champ);
   };
   setTimeout(poser, 0);
 }
@@ -14044,36 +14019,6 @@ function groupCentersByClient(centers = []) {
   });
 }
 
-function establishmentCenterChip(c, activeId, statusLabels) {
-  return `<button type="button" class="establishment-center-chip ${c.id === activeId ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
-          <span class="establishment-chip-top">
-            <strong>${escapeHtml(c.name)}</strong>
-            <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
-          </span>
-          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes laser</small>
-        </button>`;
-}
-
-// En-tete de groupe client : element pleine largeur (flex-basis 100%) insere
-// dans le conteneur flex existant (aucune modif CSS requise), qui force un
-// retour a la ligne avant les centres du client.
-function establishmentClientHeader(label) {
-  return `<span class="establishment-center-group-head" style="flex:0 0 100%;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin:6px 2px 0">${escapeHtml(label)}</span>`;
-}
-
-// Rendu des chips de centre : plat pour un client, groupe par client pour le
-// proprietaire (des que la liste couvre plusieurs clients).
-function renderEstablishmentCenterChips(centers, activeId, statusLabels) {
-  const groups = groupCentersByClient(centers);
-  if (groups.length <= 1) {
-    return centers.map(c => establishmentCenterChip(c, activeId, statusLabels)).join('');
-  }
-  return groups.map(group =>
-    establishmentClientHeader(group.clientName || 'Sans client')
-    + group.centers.map(c => establishmentCenterChip(c, activeId, statusLabels)).join('')
-  ).join('');
-}
-
 // Brouillon des overrides ponctuels (jour forcé vacances/normal) pendant
 // l'édition : manipulé en direct dans le DOM pour ne pas perdre les autres
 // champs non sauvegardés à chaque ajout/retrait.
@@ -14093,32 +14038,6 @@ function establishmentUpsellCatalogue() {
     ...(activity.id === 'arcade_time' && selectedCenter?.activityOffers?.arcade_time
       ? { arcadeOffers: selectedCenter.activityOffers.arcade_time } : {})
   }));
-}
-
-function startEstablishmentEdit() {
-  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
-  const center = getEstablishmentCenter();
-  window.PinlaneUpsellSettings?.start(center, establishmentUpsellCatalogue());
-  establishmentHolidayOverridesDraft = (center?.holidaySettings?.overrides || [])
-    .filter(item => item && item.date && (item.mode === 'holiday' || item.mode === 'normal'))
-    .map(item => ({ date: item.date, mode: item.mode }));
-  establishmentCustomActivitiesDraft = (Array.isArray(center?.customActivities) ? center.customActivities : [])
-    .filter(item => item && item.id && item.label)
-    .map(item => ({ id: item.id, label: item.label }));
-  establishmentDeclaredResourcesDraft = (Array.isArray(center?.resources?.declared) ? center.resources.declared : [])
-    .filter(item => item && item.id && item.name)
-    .map(item => ({
-      id: item.id,
-      name: item.name,
-      units: Math.max(1, Number(item.units) || 1),
-      capacityPerUnit: Math.max(1, Number(item.capacityPerUnit) || 1),
-      cleanupMinutes: Math.max(0, Number(item.cleanupMinutes) || 0),
-      allowGroupMixing: item.allowGroupMixing === true
-    }));
-  // Le brouillon de la validation repart du centre affiche a chaque ouverture.
-  establishmentValidationDraft = validationReglageDe(center);
-  state.establishmentEditing = true;
-  renderStaffUtilityPage();
 }
 
 function cancelEstablishmentEdit() {
@@ -14269,14 +14188,6 @@ function establishmentInputValue(id, fallback = '') {
   return el ? el.value : fallback;
 }
 
-function renderEstablishmentArcadeOffers(center) {
-  const offers = center.activityOffers?.arcade_time;
-  if (!offers) return '';
-  const input = (id,label,value,attrs='') => `<label class="field">${label}<input class="input" id="${id}" ${attrs} value="${escapeHtml(String(value ?? ''))}"></label>`;
-  const rows = (mode, list) => (list || []).map((o,i) => `<div class="estab-cap-row" data-arcade-offer="${mode}" data-arcade-id="${escapeHtml(o.id)}" data-arcade-index="${i}"><label class="estab-arcade-toggle"><input type="checkbox" id="estab-arc-${mode}-${i}-enabled" ${o.enabled !== false ? 'checked' : ''}> Active</label><span>${escapeHtml(mode === 'time' ? `Carte ${o.minutes} min` : `Carte ${o.credits} crédits`)}</span>${input(`estab-arc-${mode}-${i}-price`,'Prix / carte (€)',o.price,'type="number" min="0" max="10000" step="0.01"')}${mode === 'time' ? input(`estab-arc-${mode}-${i}-minutes`,'Minutes à volonté',o.minutes,'type="number" min="1" max="1440" step="1"') : input(`estab-arc-${mode}-${i}-credits`,'Crédits',o.credits,'type="number" min="0" max="100000" step="0.01"') + input(`estab-arc-${mode}-${i}-bonusCredits`,'Crédits offerts',o.bonusCredits,'type="number" min="0" max="100000" step="0.01"')}</div>`).join('');
-  return `<div class="estab-subsection estab-arcade-offers"><h4>Cartes Arcades</h4><label class="estab-arcade-toggle"><input id="estab-arc-enabled" type="checkbox" ${offers.enabled !== false ? 'checked' : ''}> Proposer les cartes dans ce centre</label><h5>Au temps · une carte par joueur</h5>${rows('time',offers.timeOffers)}<h5>En crédits · nombre de cartes choisi séparément</h5>${rows('credit',offers.creditOffers)}${input('estab-arc-gameMin','Coût minimum d’un jeu en crédits',offers.creditGameCostMin,'type="number" min="0.01" step="0.01"')}${input('estab-arc-gameMax','Coût maximum d’un jeu en crédits',offers.creditGameCostMax,'type="number" min="0.01" step="0.01"')}${input('estab-arc-timeDescription','Description des cartes au temps',offers.timedDescription,'maxlength="1000"')}${input('estab-arc-creditDescription','Description des cartes en crédits',offers.creditDescription,'maxlength="1000"')}</div>`;
-}
-
 function collectEstablishmentArcadeOffers(center) {
   const previous = center.activityOffers || {};
   if (!document.getElementById('estab-arc-enabled')) return previous;
@@ -14349,19 +14260,6 @@ function installationsActivite(activity, center) {
       : (Number.isFinite(socleCapacite) && socleCapacite > 0 ? Math.trunc(socleCapacite) : null),
     mot,
   };
-}
-
-// « 6 tables », « 2 pistes, 6 joueurs par piste », « 5 joueurs par session ».
-function resumeInstallations(activity, center) {
-  const inst = installationsActivite(activity, center);
-  if (!inst) return '';
-  // Une session se compte en installations : une seule va de soi et ne se dit
-  // pas, deux ou plus se disent.
-  const nombre = inst.mot === 'session'
-    ? (inst.units > 1 ? `${inst.units} installations` : '')
-    : `${inst.units} ${inst.mot}${inst.units > 1 ? 's' : ''}`;
-  const joueurs = inst.capacityPerUnit ? `${inst.capacityPerUnit} joueurs par ${inst.mot}` : '';
-  return [nombre, joueurs].filter(Boolean).join(', ');
 }
 
 function validateEstablishmentForm() {
@@ -14573,8 +14471,8 @@ async function submitCenterConfig(centerId) {
     // Le serveur ecarte une adresse mal formee sans bruit : on le dit avant,
     // sinon « Configuration enregistrée » cacherait une copie qui ne part pas.
     const malFormee = emails.find(x => !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(x));
-    if (malFormee) { toast(`Boîte de secours : « ${malFormee} » n’est pas une adresse e-mail.`); setEstablishmentTab('regles'); champSecours.focus(); return; }
-    if (emails.length > 5) { toast('Boîte de secours : 5 adresses au plus.'); setEstablishmentTab('regles'); champSecours.focus(); return; }
+    if (malFormee) { toast(`Boîte de secours : « ${malFormee} » n’est pas une adresse e-mail.`); setEstablishmentTab('regles'); focusEstablishmentField(champSecours); return; }
+    if (emails.length > 5) { toast('Boîte de secours : 5 adresses au plus.'); setEstablishmentTab('regles'); focusEstablishmentField(champSecours); return; }
     config.secours = { emails };
   }
   // La marque du centre voyage avec le reste de sa config. `undefined` = champ
@@ -14802,14 +14700,6 @@ function collectEstablishmentPayment() {
   return mode === 'onsite' ? { mode } : undefined;
 }
 
-function establishmentAccentReadValue(center) {
-  const api = establishmentBrandApi();
-  const accent = (center && center.branding && center.branding.accent) ? String(center.branding.accent) : '';
-  if (!api || !api.isValidHex(accent)) return '<span class="estab-badge off">accent Pinlane</span>';
-  const safe = api.normalizeHex(accent);
-  return `<span class="estab-brand-read"><span class="estab-brand-dot" style="background:${escapeHtml(safe)}" aria-hidden="true"></span><span class="num">${escapeHtml(safe)}</span></span>`;
-}
-
 // Les deux contrôles portent LA MÊME valeur ; seul celui qui n'a pas la frappe
 // est resynchronisé, sinon le curseur sauterait à chaque caractère.
 function setEstablishmentAccent(value, source) {
@@ -14855,23 +14745,6 @@ function collectEstablishmentBranding() {
   if (!api || !api.isValidHex(raw)) return hasStyle ? style : undefined;
   const colors = api.deriveBranding(raw, establishmentBrandPalette());
   return { ...(colors || {}), ...style };
-}
-
-function renderEstablishmentDayRow(center, key, label, block = 'regular', prefix = 'estab-day') {
-  const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null;
-  const slot = schedule?.[block]?.[key] || null;
-  const closed = !slot;
-  // input[type=time] ne sait pas représenter « 24:00 » (minuit fin de journée) :
-  // on l'affiche 00:00 et submitCenterConfig le re-stocke en 24:00.
-  const closeValue = slot?.close === '24:00' ? '00:00' : (slot?.close || '22:00');
-  const defaultOpen = block === 'holiday' ? '10:00' : '14:00';
-  return `<div class="estab-day-row">
-    <span class="estab-day-label">${escapeHtml(label)}</span>
-    <label class="estab-day-closed"><input type="checkbox" class="estab-check" id="${prefix}-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"><span class="estab-check-box" aria-hidden="true"></span> Fermé</label>
-    <input type="time" id="${prefix}-${key}-open" value="${escapeHtml(slot?.open || defaultOpen)}" ${closed ? 'disabled' : ''} aria-label="Ouverture ${escapeHtml(label)}">
-    <span class="estab-day-sep">→</span>
-    <input type="time" id="${prefix}-${key}-close" value="${escapeHtml(closeValue)}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)} (00:00 = minuit)">
-  </div>`;
 }
 
 // LA PAGE SECOURS (2026-10-05). Movsar : « si Pinlane crash il faut qu on ait
@@ -15598,6 +15471,8 @@ function ebBasculerPli(bloc, ouvert) {
   if (ouvert) ebOuverts.add(nom); else ebOuverts.delete(nom);
 }
 function ebPlier(root) {
+  // Plier deplace les champs : le curseur reste la ou il etait.
+  const actif = document.activeElement;
   // Ce qui identifie le centre passe en dernier, dans son propre pli : les pistes d abord, l archivage a part.
   const centre = root.querySelector('#eb-s-centre');
   if (centre && !centre.querySelector('[data-eb-identite]')) {
@@ -15646,6 +15521,7 @@ function ebPlier(root) {
     bloc.appendChild(pli);
     ebBasculerPli(bloc, ebOuverts.has(nom));
   });
+  if (actif && actif !== document.activeElement && root.contains(actif)) actif.focus({ preventScroll: true });
 }
 
 function ebAfterRender() {
@@ -15902,304 +15778,6 @@ function renderEstablishmentAddCard() {
   </div>`;
 }
 
-// EDITION : memes champs, memes IDs qu'avant (submitCenterConfig lit par ID),
-// regroupes par question plutot qu'empiles. Les chiffres de capacite vivent dans
-// « Le centre », les comportements du moteur dans « Regles & comptoir ».
-function renderEstablishmentEditPanels(center, active) {
-  const bowling = center.resources?.bowling || {};
-  const laser = center.resources?.laser || {};
-  const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
-  const barDesk = center.resources?.barDesk && typeof center.resources.barDesk === 'object' ? center.resources.barDesk : {};
-  const timezone = center.timezone || 'Europe/Brussels';
-  const laserRisk = ['critical', 'managed', 'low'].includes(laser.riskLevel) ? laser.riskLevel : 'managed';
-  const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
-  // Le seuil de retard (Etablissement > Regles), 5 min tant qu il n est pas regle.
-  const seuilRetard = Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT;
-  const birthdayFormulaIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
-  const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
-    ? center.holidaySettings
-    : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
-  const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
-    ? holidaySettings.formulaBlockedPeriods
-    : ['public', 'school_short', 'manual'];
-
-  const formulaGrid = (idPrefix, isOn, labelOf) => `<div class="establishment-activity-grid">
-    ${getConsoleFormuleCatalog().map(formule => {
-      const on = isOn(formule);
-      return `<label class="establishment-activity ${on ? 'on' : ''}">
-        <input type="checkbox" id="${idPrefix}-${escapeHtml(formule.id)}" data-${idPrefix}="${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-        <span>${escapeHtml(labelOf(formule))}</span>
-      </label>`;
-    }).join('')}
-  </div>`;
-
-  const centrePanel = `<div class="estab-edit-grid cols-2">
-    <fieldset class="establishment-card">
-      <legend>Identité</legend>
-      <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
-      ${establishmentAccentFieldHtml(center)}
-      ${establishmentPaymentFieldHtml(center)}
-      ${establishmentEmbedFieldHtml(center)}
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-status">Statut</label>
-          <select id="estab-status">
-            <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
-            <option value="planned" ${center.status === 'planned' ? 'selected' : ''}>Prévu</option>
-            <option value="closed" ${center.status === 'closed' ? 'selected' : ''}>Archivé</option>
-          </select>
-        </div>
-        <div class="field"><label for="estab-timezone">Fuseau horaire</label>
-          <select id="estab-timezone">
-            ${['Europe/Brussels', 'Europe/Paris', 'Europe/Luxembourg', 'Europe/Amsterdam'].map(tz => `<option value="${tz}" ${timezone === tz ? 'selected' : ''}>${tz}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Bowling</legend>
-      <p class="estab-card-hint">Le confort est prioritaire. Le secours autorise davantage de joueurs par piste uniquement lorsque les pistes disponibles ne suffisent pas. Les comportements (pistes adjacentes…) sont dans « Règles &amp; comptoir ».</p>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}"></div>
-        <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}"></div>
-        <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}"></div>
-      </div>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Laser Game</legend>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}"></div>
-        <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}"></div>
-      </div>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Tables anniversaire</legend>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-tableSoft">Capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
-        <div class="field"><label for="estab-tableHard">Limite (tables en même temps)</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
-      </div>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-tableLimit" ${party.limitEnabled === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Limite de tables</span></label>
-      <p class="estab-card-hint">Aucune réservation n’est jamais bloquée pour les tables. Allumée, la limite compte les tables anniversaire occupées en même temps : quand une réservation la dépasse, un mail prévient la boîte de secours du centre.</p>
-      ${center.secours && Array.isArray(center.secours.emails) && center.secours.emails.length ? '' : '<p class="estab-card-hint">La boîte de secours (onglet « Règles &amp; comptoir ») n’a aucune adresse : aucun mail ne partira.</p>'}
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Installations déclarées</legend>
-      <p class="estab-card-hint">Déclare une ressource que le moteur doit compter comme les pistes (court de padel, terrain paintball, salle…). Le planning n'accepte alors que les enchaînements qui tiennent, remise en état comprise.</p>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-res-name">Nom</label><input type="text" id="estab-res-name" placeholder="ex : Court de padel" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentDeclaredResource();}"></div>
-        <div class="field"><label for="estab-res-units">Installations</label><input type="number" id="estab-res-units" min="1" max="50" value="1"></div>
-        <div class="field"><label for="estab-res-capacity">Joueurs / installation</label><input type="number" id="estab-res-capacity" min="1" max="500" value="4"></div>
-        <div class="field"><label for="estab-res-cleanup">Remise en état (min)</label><input type="number" id="estab-res-cleanup" min="0" max="240" value="0"></div>
-      </div>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-res-mixing"><span class="estab-check-box" aria-hidden="true"></span><span>Deux groupes distincts peuvent partager la même session (mixage)</span></label>
-      <div class="estab-override-form">
-        <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentDeclaredResource()">Ajouter l'installation</button>
-      </div>
-      <div id="estabDeclaredResourcesList" class="estab-custom-activities-list">${renderEstablishmentDeclaredResources()}</div>
-    </fieldset>
-  </div>`;
-
-  const horairesPanel = `<div class="estab-edit-stack">
-    <fieldset class="establishment-card establishment-hours">
-      <legend>Horaires normaux</legend>
-      ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label)).join('')}
-    </fieldset>
-
-    <fieldset class="establishment-card establishment-hours establishment-holiday-hours">
-      <legend>Horaires vacances &amp; fériés</legend>
-      <label class="establishment-toggle">
-        <input type="checkbox" id="estab-holiday-enabled" ${holidaySettings.enabled !== false ? 'checked' : ''}>
-        <span class="estab-check-box" aria-hidden="true"></span>
-        <span>Appliquer automatiquement ces horaires les jours fériés belges et pendant les congés scolaires FWB</span>
-      </label>
-      ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label, 'holiday', 'estab-hday')).join('')}
-      <div class="estab-subsection">
-        <h4>Formules « non valables vacances/fériés » bloquées pendant :</h4>
-        <div class="estab-period-grid">
-          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-public" ${blockedPeriods.includes('public') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Jours fériés</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-short" ${blockedPeriods.includes('school_short') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Petits congés (automne, hiver, détente, printemps)</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-summer" ${blockedPeriods.includes('school_summer') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Grandes vacances (juillet-août)</span></label>
-        </div>
-      </div>
-      <div class="estab-subsection">
-        <h4>Exceptions ponctuelles (jour forcé)</h4>
-        <div class="estab-override-form">
-          <input type="date" id="estab-override-date" aria-label="Date de l'exception">
-          <select id="estab-override-mode" aria-label="Type d'exception">
-            <option value="holiday">Traiter comme vacances/férié</option>
-            <option value="normal">Traiter comme jour normal</option>
-          </select>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentHolidayOverride()">Ajouter</button>
-        </div>
-        <div id="estabHolidayOverridesList" class="estab-overrides-list">${renderEstablishmentOverridesList()}</div>
-      </div>
-    </fieldset>
-
-    ${renderAvailabilityBlocksPanel()}
-  </div>`;
-
-  // LE SEUIL DE LA DEMANDE SUR MESURE (Movsar, 2026-09-28 : « tout groupe
-  // superieur a 30 ... sera redirige vers une demande sur mesure »). Vide :
-  // jamais. Le formulaire en ligne le relit avec le catalogue.
-  const seuilSurMesure = Number(center.customRequest && center.customRequest.fromPax) || '';
-  const offresPanel = `<div class="estab-edit-stack">
-    ${window.PinlaneUpsellSettings?.renderEdit(center, establishmentUpsellCatalogue()) || ''}
-    <fieldset class="establishment-card establishment-custom-request">
-      <legend>Grands groupes</legend>
-      <p class="estab-card-hint">À partir de ce nombre de personnes, le formulaire en ligne ne réserve plus : il ouvre une demande sur mesure, que l’équipe traite et à laquelle elle répond sous 24 heures ouvrables. Pas de demande pour le jour même. Laissez vide pour que tous les groupes réservent en ligne.</p>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-customRequestFromPax">Demande sur mesure dès (personnes)</label><input type="number" id="estab-customRequestFromPax" min="2" max="240" step="1" inputmode="numeric" placeholder="Jamais" value="${escapeHtml(String(seuilSurMesure))}"></div>
-      </div>
-    </fieldset>
-
-    <fieldset class="establishment-card establishment-offers">
-      <legend>Offres &amp; formules</legend>
-      <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
-      ${(() => {
-        // Liste VIVE du catalogue (customs comprises, retirees exclues) :
-        // l'ancienne constante figeait la liste au deploiement et une formule
-        // creee dans Tarifs n'apparaissait jamais ici.
-        const families = [];
-        getConsoleFormuleCatalog().forEach(formule => {
-          const familyName = formule.family || 'Formules';
-          let group = families.find(item => item.name === familyName);
-          if (!group) { group = { name: familyName, items: [] }; families.push(group); }
-          group.items.push(formule);
-        });
-        return families.map(group => `
-          <div class="estab-offer-group">
-            <h4>${escapeHtml(group.name)}</h4>
-            <div class="establishment-activity-grid">
-              ${group.items.map(formule => {
-                const enabled = center.offerAvailability?.[formule.id] !== false;
-                return `<label class="establishment-activity ${enabled ? 'on' : ''}">
-                  <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" data-estab-offer="${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-                  <span>${escapeHtml(formule.name)}${formule.price != null ? ` · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}` : ''}</span>
-                </label>`;
-              }).join('')}
-            </div>
-          </div>`).join('');
-      })()}
-    </fieldset>
-
-    <fieldset class="establishment-card establishment-activities">
-      <legend>Activités disponibles</legend>
-      ${renderEstablishmentArcadeOffers(center)}
-      <p class="estab-card-hint">Cochez les activités du catalogue proposées dans ce centre.</p>
-      <div class="establishment-activity-grid">
-        ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
-          <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-          <span>${escapeHtml(activity.label)}</span>
-        </label>`).join('')}
-      </div>
-      ${(() => {
-        // LES INSTALLATIONS (2026-09-28) : combien de tables, de pistes et de
-        // joueurs par piste le centre met en jeu, pour les activites qu il
-        // propose. Le socle donne la valeur de depart ; la saisie prime.
-        const lignes = (staffCenterConfigCache.activities || [])
-          .filter(activity => center.activityAvailability?.[activity.id])
-          .map(activity => ({ activity, inst: installationsActivite(activity, center) }))
-          .filter(ligne => ligne.inst);
-        if (!lignes.length) return '';
-        // Une ligne par activite : son nom une fois, puis ses champs aux
-        // libelles courts (Tables, Pistes, Joueurs par piste). Le groupe porte
-        // le nom pour le lecteur d ecran, le message d erreur le redit.
-        const champ = (id, quoi, nom, max, valeur) => `<div class="field"><label for="${id}">${escapeHtml(quoi.charAt(0).toUpperCase() + quoi.slice(1))}</label><input type="number" class="estab-cap-input" id="${id}" data-cap-max="${max}" data-cap-name="${escapeHtml(nom)}" data-cap-what="${escapeHtml(quoi)}" min="1" max="${max}" step="1" inputmode="numeric" value="${valeur}"></div>`;
-        return `<div class="estab-subsection">
-        <h4>Installations</h4>
-        <p class="estab-card-hint">Combien de tables, de pistes et de joueurs par piste vous mettez en jeu. Le formulaire en ligne et la console s’y tiennent dès l’enregistrement.</p>
-        <div class="estab-cap-list">${lignes.map(({ activity, inst }) => {
-          const id = escapeHtml(activity.id);
-          const nomUnites = inst.mot === 'session' ? 'installations' : `${inst.mot}s`;
-          return `<div class="estab-cap-row" role="group" aria-labelledby="estab-cap-name-${id}"><span class="estab-cap-name" id="estab-cap-name-${id}">${escapeHtml(activity.label)}</span>`
-            + champ(`estab-cap-units-${id}`, nomUnites, activity.label, 50, inst.units)
-            + (inst.capacityPerUnit ? champ(`estab-cap-players-${id}`, `joueurs par ${inst.mot}`, activity.label, 500, inst.capacityPerUnit) : '')
-            + '</div>';
-        }).join('')}</div>
-      </div>`;
-      })()}
-      <div class="estab-subsection">
-        <h4>Activités personnalisées de ce centre</h4>
-        <p class="estab-card-hint">Ajoutez une activité propre au centre (au-delà du catalogue). Retirez-la avec la croix.</p>
-        <div class="estab-override-form">
-          <input type="text" id="estab-new-activity" placeholder="Nom (ex : Réalité Virtuelle)" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
-          <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentCustomActivity()">Ajouter</button>
-        </div>
-        <div id="estabCustomActivitiesList" class="estab-custom-activities-list">${renderEstablishmentCustomActivities()}</div>
-      </div>
-    </fieldset>
-  </div>`;
-
-  const clientsPanel = `<div class="estab-edit-stack">
-    <fieldset class="establishment-card establishment-classification">
-      <legend>Quand une réservation devient un groupe</legend>
-      <p class="estab-card-hint">S'applique en direct à la page Clients.</p>
-      <div class="estab-field-row">
-        <div class="field"><label for="estab-groupMinPax">Groupe dès (joueurs / résa)</label><input type="number" id="estab-groupMinPax" min="2" max="200" value="${Number(classification.groupMinPax || 10)}"></div>
-        <div class="field"><label for="estab-groupMinCumulative">… ou joueurs cumulés</label><input type="number" id="estab-groupMinCumulative" min="2" max="5000" value="${Number(classification.groupMinCumulative || 18)}"></div>
-      </div>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-countFormulaAsGroup" ${classification.countFormulaAsGroup !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec formule compte comme groupe</span></label>
-      <div class="estab-subsection">
-        <h4>Client clé</h4>
-        <p class="estab-card-hint">Le badge « Client clé » signale vos gros budgets sur la page Clients. À 0, le seuil est calculé tout seul : les 20 % qui dépensent le plus.</p>
-        <div class="field"><label for="estab-keyClientMinSpend">Client clé à partir de (€ cumulés)</label><input type="number" id="estab-keyClientMinSpend" min="0" max="100000" step="50" value="${Number(classification.keyClientMinSpend || 0)}"></div>
-      </div>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Formules considérées « anniversaire »</legend>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-birthdayFromFormula" ${classification.birthdayFromFormula !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec une de ces formules est classée anniversaire (même sans le déclarer)</span></label>
-      ${formulaGrid('estab-bday', formule => birthdayFormulaIds.includes(formule.id), formule => formule.name)}
-    </fieldset>
-  </div>`;
-
-  const reglesPanel = `<div class="estab-edit-grid cols-3">
-    <fieldset class="establishment-card">
-      <legend>Moteur : bowling</legend>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-preferAdjacent" ${bowling.preferAdjacentLanes !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Préférer des pistes adjacentes pour un même groupe</span></label>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Moteur : laser</legend>
-      <div class="field"><label for="estab-laserRisk">Niveau de risque</label>
-        <select id="estab-laserRisk">
-          <option value="low" ${laserRisk === 'low' ? 'selected' : ''}>Faible</option>
-          <option value="managed" ${laserRisk === 'managed' ? 'selected' : ''}>Maîtrisé</option>
-          <option value="critical" ${laserRisk === 'critical' ? 'selected' : ''}>Critique</option>
-        </select>
-      </div>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-requiresComplete" ${laser.requiresCompleteGroupBeforeLaunch !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Exiger le groupe complet avant de lancer une partie</span></label>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-canSplit" ${laser.canSplitGroupsCleanly === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Autoriser à scinder proprement les groupes</span></label>
-    </fieldset>
-
-    <fieldset class="establishment-card">
-      <legend>Ce que gère le comptoir</legend>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-booking" ${barDesk.handlesBooking !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Prise de réservation au comptoir</span></label>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-briefing" ${barDesk.handlesBriefing !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Briefing / consignes de jeu</span></label>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-food" ${barDesk.handlesFoodAndDrink !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Boissons &amp; restauration</span></label>
-      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-escort" ${barDesk.activityEscort === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Accompagnement pendant l'activité</span></label>
-      <div class="estab-subsection">
-        <h4>Retard</h4>
-        <p class="estab-card-hint">Un groupe pas encore pointé « Arrivé » passe « En retard » (en rouge, en tête de liste) après ce délai. 0 = dès l'heure pile.</p>
-        <div class="field"><label for="estab-lateThreshold">En retard après (minutes)</label><input type="number" id="estab-lateThreshold" min="0" max="60" step="1" inputmode="numeric" value="${seuilRetard}"></div>
-      </div>
-    </fieldset>
-    ${establishmentValidationHtml(center)}
-    ${establishmentSecoursHtml(center)}
-  </div>`;
-
-  return [
-    establishmentPanel('centre', active, centrePanel),
-    establishmentPanel('horaires', active, horairesPanel),
-    establishmentPanel('offres', active, offresPanel),
-    establishmentPanel('clients', active, clientsPanel),
-    establishmentPanel('regles', active, reglesPanel),
-  ].join('');
-}
-
 // LECTURE : meme decoupage que l'edition, pour qu'on retrouve au meme endroit ce
 // qu'on vient de modifier.
 // LA VALIDATION PAR L EQUIPE, telle que l ecran la montre (2026-10-05). Miroir
@@ -16271,178 +15849,6 @@ function establishmentSecoursHtml(center) {
       <p class="estab-card-hint">Une copie complète de chaque réservation, de chaque demande sur mesure et la feuille du jour à imprimer partent vers ces adresses. Ce ne sont pas des demandes d’action : c’est ce qui permet d’accueillir les groupes si Pinlane est indisponible. Une boîte à part, protégée par une double authentification, plutôt que celle de l’accueil.</p>
       <div class="field"><label for="estab-secours-emails">Adresses (séparées par une virgule, 5 au plus)</label><input type="text" id="estab-secours-emails" inputmode="email" autocomplete="off" value="${escapeHtml(emails.join(', '))}" placeholder="secours@votrecentre.be"></div>
     </fieldset>`;
-}
-
-function renderEstablishmentReadPanels(center, active) {
-  const bowling = center.resources?.bowling || {};
-  const laser = center.resources?.laser || {};
-  const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : {};
-  const regular = schedule.regular || {};
-  const holiday = schedule.holiday || {};
-  const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
-    ? center.holidaySettings
-    : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
-  const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
-    ? holidaySettings.formulaBlockedPeriods
-    : ['public', 'school_short', 'manual'];
-  const periodLabels = { public: 'jours fériés', school_short: 'petits congés', school_summer: 'grandes vacances' };
-  const blockedLabel = ['public', 'school_short', 'school_summer'].filter(key => blockedPeriods.includes(key)).map(key => periodLabels[key]);
-  const overrides = Array.isArray(holidaySettings.overrides) ? holidaySettings.overrides : [];
-  const activities = (staffCenterConfigCache.activities || []);
-  const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
-  const customList = Array.isArray(center.customActivities) ? center.customActivities : [];
-  // Liste VIVE du catalogue : une formule creee dans Tarifs compte ici des sa
-  // creation, une retiree disparait (l'ancienne constante figait ce panneau).
-  const catalogFormuleList = getConsoleFormuleCatalog();
-  const disabledOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] === false);
-  const activeOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] !== false);
-  const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
-  // Le seuil de retard (Etablissement > Regles), 5 min tant qu il n est pas regle.
-  const seuilRetard = Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT;
-  const validation = validationReglageDe(center);
-  const secoursEmails = center.secours && Array.isArray(center.secours.emails) ? center.secours.emails : [];
-  const birthdayIds =Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
-  const birthdayNames = catalogFormuleList.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
-  const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
-  const barDesk = center.resources?.barDesk && typeof center.resources.barDesk === 'object' ? center.resources.barDesk : {};
-  const timezone = center.timezone || 'Europe/Brussels';
-  const softCap = Number(party.softCapacity || 6);
-  const hardCap = Number(party.hardCapacity || Math.max(softCap, 8));
-  const riskLevel = ['critical', 'managed', 'low'].includes(laser.riskLevel) ? laser.riskLevel : 'managed';
-  const riskMeta = { critical: ['danger', 'Critique'], managed: ['warn', 'Maîtrisé'], low: ['on', 'Faible'] };
-
-  const svg = (p) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-  const ICO = {
-    resources: svg('<path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>'),
-    clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
-    rules: svg('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'),
-    desk: svg('<path d="M3 10h18M5 10V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4M6 10v10M18 10v10M9 15h6"/>'),
-    users: svg('<path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>'),
-    pin: svg('<circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="12" cy="13" r="1"/>'),
-    target: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
-    bolt: svg('<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/>'),
-    cake: svg('<path d="M4 21h16M5 21v-7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7M5 15h14M12 12V8M12 5.5V3.5M9 8.5V6"/>'),
-    tag: svg('<path d="M20.6 13.4 12 22l-9-9V4a1 1 0 0 1 1-1h9l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>'),
-    grid: svg('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
-    id: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.4"/><path d="M5.5 17c.7-1.6 2-2.4 3.5-2.4s2.8.8 3.5 2.4M15 9.5h4M15 13h4"/>'),
-    shield: svg('<path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>'),
-  };
-  const stat = (ico, label, value, sub) => `<div class="estab-stat"><div class="estab-stat-top"><span class="estab-stat-ico">${ico}</span>${escapeHtml(label)}</div><div class="estab-stat-value">${escapeHtml(String(value))}</div>${sub ? `<div class="estab-stat-sub">${escapeHtml(sub)}</div>` : ''}</div>`;
-  const section = (ico, title, desc, body, extra = '') => `<section class="estab-section ${extra}"><div class="estab-section-head"><span class="estab-section-ico">${ico}</span><div class="estab-section-copy"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(desc)}</p></div></div>${body}</section>`;
-  const yesNo = (on) => on ? '<span class="estab-badge on">Oui</span>' : '<span class="estab-badge off">Non</span>';
-  const rule = (label, valueHtml, sub) => `<div class="estab-rule"><div class="estab-rule-label">${escapeHtml(label)}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</div><div class="estab-rule-value">${valueHtml}</div></div>`;
-  const hourCell = (slot, cls) => slot && slot.open && slot.close
-    ? `<span class="estab-hour-pill ${cls}">${escapeHtml(slot.open)} → ${escapeHtml(slot.close)}</span>`
-    : '<span class="estab-hour-closed">Fermé</span>';
-  const weekRows = ESTABLISHMENT_DAYS.map(([key, label]) =>
-    `<div class="estab-week-row"><span class="estab-week-day">${escapeHtml(label)}</span>${hourCell(regular[key], '')}${hourCell(holiday[key], 'holiday')}</div>`).join('');
-
-  const centrePanel = `<div class="estab-read-stack">
-    ${section(ICO.resources, 'Ressources & capacité', 'Ce que le moteur utilise pour allouer pistes, armes et tables.', `
-      <div class="estab-stat-grid">
-        ${/* Chaque tuile dit ce que compte son chiffre : « Lancements // »
-             ne se lisait pas, et deux tuiles sans ligne de pied tombaient
-             plus bas que leurs voisines. */''}
-        ${stat(ICO.pin, 'Pistes bowling', Number(bowling.laneCount || 0), 'sur le planning')}
-        ${stat(ICO.users, 'Confort / piste', Number(bowling.normalCapacityPerLane || 0), 'joueurs recommandés')}
-        ${stat(ICO.users, 'Secours / piste', Number(bowling.emergencyCapacityPerLane || 0), 'si les pistes disponibles ne suffisent pas')}
-        ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), 'joueurs en même temps au plus')}
-        ${stat(ICO.bolt, 'Lancements', Number(laser.parallelLaunches || 0), 'en parallèle au plus')}
-        ${stat(ICO.cake, 'Tables', softCap, party.limitEnabled === true ? `anniversaire conseillées, mail au-delà de ${hardCap}` : 'anniversaire conseillées')}
-      </div>`)}
-    ${(Array.isArray(center.resources?.declared) && center.resources.declared.length) ? section(ICO.grid, 'Installations déclarées', 'Les ressources propres au centre : le moteur les compte comme les pistes.', `
-      <div class="estab-rules">
-        ${center.resources.declared.map(item => rule(
-          String(item.name || item.id),
-          `<span class="num">${Number(item.units) || 1} × ${Number(item.capacityPerUnit) || 1} pers.</span>${Number(item.cleanupMinutes) ? ` <span class="estab-badge warn">remise ${Number(item.cleanupMinutes)} min</span>` : ''}${item.allowGroupMixing ? ' <span class="estab-badge on">mixage</span>' : ''}`,
-          '',
-        )).join('')}
-      </div>`) : ''}
-    ${section(ICO.id, 'Identité', 'Ce qui identifie le centre dans la plateforme.', `
-      <div class="estab-rules">
-        ${rule('Nom', `<span>${escapeHtml(center.name)}</span>`)}
-        ${rule('Identifiant technique', `<span class="num">${escapeHtml(center.id)}</span>`, 'utilisé par le moteur et les URL')}
-        ${rule('Fuseau horaire', `<span class="num">${escapeHtml(timezone)}</span>`)}
-        ${rule('Couleur du tunnel', establishmentAccentReadValue(center), 'portée par la page de réservation publique')}
-      </div>`)}
-  </div>`;
-
-  const horairesPanel = `<div class="estab-read-stack">
-    ${section(ICO.clock, "Horaires d'ouverture", 'Horaires normaux et pendant les vacances / jours fériés.', `
-      <div class="estab-week">
-        <div class="estab-week-head"><span>Jour</span><span>Normal</span><span>Vacances / férié</span></div>
-        ${weekRows}
-      </div>
-      <div class="estab-rules">
-        ${rule('Application automatique fériés & congés FWB', holidaySettings.enabled !== false ? '<span class="estab-badge on">Activée</span>' : '<span class="estab-badge off">Manuelle</span>')}
-        ${rule('Formules anniversaires bloquées', blockedLabel.length ? `<span class="estab-badge warn">${escapeHtml(blockedLabel.join(', '))}</span>` : '<span class="estab-badge off">jamais</span>')}
-      </div>
-      ${overrides.length ? `<div class="estab-chip-row">${overrides.map(item => `<span class="estab-tag">${escapeHtml(item.date)} · ${item.mode === 'holiday' ? 'vacances/férié' : 'jour normal'}</span>`).join('')}</div>` : ''}`)}
-    ${renderAvailabilityBlocksPanel()}
-  </div>`;
-
-  const offresPanel = `<div class="estab-read-stack">
-    ${window.PinlaneUpsellSettings?.renderRead(center, establishmentUpsellCatalogue()) || ''}
-    ${section(ICO.tag, 'Offres & formules', 'Formules réservables côté client.', `
-      <div class="estab-rules">
-        ${rule('Formules réservables', `<span class="num">${activeOffers.length}</span> / ${catalogFormuleList.length}`)}
-      </div>
-      ${disabledOffers.length
-        ? `<div><p class="estab-empty" style="margin-bottom:6px">Désactivées côté client :</p><div class="estab-chip-row">${disabledOffers.map(formule => `<span class="estab-tag estab-tag-off">${escapeHtml(formule.name)}</span>`).join('')}</div></div>`
-        : '<p class="estab-empty">Toutes les offres sont actives côté client.</p>'}`)}
-    ${section(ICO.grid, 'Activités disponibles', 'Catalogue proposé sur ce centre + activités personnalisées.', `
-      ${(enabled.length || customList.length)
-        ? `<div class="estab-chip-row">${enabled.map(activity => { const inst = resumeInstallations(activity, center); return `<span class="estab-tag">${escapeHtml(activity.label)}${inst ? ` · ${escapeHtml(inst)}` : ''}</span>`; }).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
-        : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
-  ${center.activityOffers?.arcade_time ? `<section class="estab-section"><h3>Cartes Arcades</h3><p>${center.activityOffers.arcade_time.enabled === false ? 'Cartes désactivées' : 'Cartes proposées dans ce centre'}</p><div class="estab-chip-row">${[...(center.activityOffers.arcade_time.timeOffers || []).map(o => ({...o,mode:'time'})),...(center.activityOffers.arcade_time.creditOffers || []).map(o=>({...o,mode:'credit'}))].map(o=>`<span class="estab-tag ${o.enabled === false ? 'estab-tag-off' : ''}">${escapeHtml(o.mode === 'time' ? `${o.minutes} min à volonté` : `${o.credits} + ${o.bonusCredits} crédits`)} · ${formatMoneyCentimes(o.price)} / carte${o.enabled === false ? ' · désactivée' : ''}</span>`).join('')}</div></section>` : ''}</div>`;
-
-  const clientsPanel = `<div class="estab-read-stack">
-    ${section(ICO.users, 'Classification clients & groupes', 'Seuils groupe et formules « anniversaire ».', `
-      <div class="estab-rules">
-        ${rule('Groupe dès', `<span class="num">${Number(classification.groupMinPax || 10)}</span> joueurs / résa`, `ou ${Number(classification.groupMinCumulative || 18)} cumulés${classification.countFormulaAsGroup !== false ? ' · ou 1 formule' : ''}`)}
-      </div>
-      ${classification.birthdayFromFormula !== false
-        ? `<div><p class="estab-empty" style="margin-bottom:6px">Formules classées « anniversaire » :</p><div class="estab-chip-row">${birthdayNames.length ? birthdayNames.map(name => `<span class="estab-tag">${escapeHtml(name)}</span>`).join('') : '<span class="estab-tag">aucune</span>'}</div></div>`
-        : '<p class="estab-empty">L\'anniversaire n\'est déterminé que par l\'occasion déclarée par le client.</p>'}`)}
-  </div>`;
-
-  const reglesPanel = `<div class="estab-read-stack">
-    <div class="estab-read-duo">
-    ${section(ICO.rules, 'Règles opérationnelles', 'Comportement du moteur pour le laser et le bowling.', `
-      <div class="estab-rules">
-        ${rule('Groupe complet avant lancement laser', yesNo(laser.requiresCompleteGroupBeforeLaunch !== false), 'sinon départ possible en sous-groupe')}
-        ${rule('Peut scinder les groupes proprement', yesNo(laser.canSplitGroupsCleanly === true))}
-        ${rule('Niveau de risque laser', `<span class="estab-badge ${riskMeta[riskLevel][0]}">${riskMeta[riskLevel][1]}</span>`)}
-        ${rule('Pistes bowling adjacentes préférées', yesNo(bowling.preferAdjacentLanes !== false))}
-      </div>`)}
-    ${section(ICO.desk, 'Comptoir & bar', 'Ce que gère le comptoir sur ce centre.', `
-      <div class="estab-rules">
-        ${rule('Prise de réservation', yesNo(barDesk.handlesBooking !== false))}
-        ${rule('Briefing / consignes', yesNo(barDesk.handlesBriefing !== false))}
-        ${rule('Boissons & restauration', yesNo(barDesk.handlesFoodAndDrink !== false))}
-        ${rule('Accompagnement activité', yesNo(barDesk.activityEscort === true))}
-        ${rule('En retard après', seuilRetard ? `${seuilRetard} min` : 'dès l’heure pile', 'sans arrivée pointée')}
-      </div>`)}
-    </div>
-    ${section(ICO.users, 'Validation par l’équipe', VALIDATION_NIVEAUX[validation.niveau].dit, `
-      <div class="estab-rules">
-        ${rule('Niveau', `<span class="estab-badge ${validation.niveau === 'minimal' ? 'on' : 'warn'}">${escapeHtml(VALIDATION_NIVEAUX[validation.niveau].mot)}</span>`)}
-      </div>
-      ${validation.actives.size
-        ? `<div><p class="estab-empty" style="margin-bottom:6px">Vous validez vous-même</p><div class="estab-chip-row">${VALIDATION_SITUATIONS.filter(s => validation.actives.has(s.id)).map(s => `<span class="estab-tag">${escapeHtml(s.mot)}</span>`).join('')}</div></div>`
-        : ''}`)}
-    ${section(ICO.shield, 'Boîte de secours', 'Copie de chaque réservation, des demandes sur mesure et de la feuille du jour.', secoursEmails.length
-      ? `<div class="estab-chip-row">${secoursEmails.map(email => `<span class="estab-tag">${escapeHtml(email)}</span>`).join('')}</div>`
-      : '<p class="estab-empty">Aucune adresse : rien ne part encore en dehors de Pinlane.</p>')}
-  </div>`;
-
-  return [
-    establishmentPanel('centre', active, centrePanel),
-    establishmentPanel('horaires', active, horairesPanel),
-    establishmentPanel('offres', active, offresPanel),
-    establishmentPanel('clients', active, clientsPanel),
-    establishmentPanel('regles', active, reglesPanel),
-  ].join('');
 }
 
 // HIERARCHIE DES PERMISSIONS COTE ECRAN (2026-08-19, demande de Movsar :
@@ -18770,9 +18176,13 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   return base;
 }
 
+// Des changements non enregistres sur la fiche : ni le direct ni un repeint n y touchent, son rendu repart de la config du serveur et les effacerait.
+function ficheEtablissementEnCours() { return Boolean(state.establishmentEditing); }
+
 function renderStaffUtilityPage() {
   const root = document.getElementById('staffUtilityPage');
   if (!root) return;
+  if (state.staffMenuPage === 'establishment' && ficheEtablissementEnCours() && root.querySelector('[data-estab-page]')) return;
   const model = getStaffUtilityPageModel();
   // La date n est plus recopiee sous le titre : le selecteur de date, a cote,
   // l affiche deja avec le jour de la semaine.

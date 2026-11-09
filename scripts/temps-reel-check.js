@@ -84,7 +84,7 @@ const MUTATIONS = {
   // Le catalogue n est plus relu sur la page Tarifs ouverte.
   catalogue: ['staff-pages-v2.js', "if (affiche('prices', 'establishment')) { if (relire) pevReload(); }", "if (affiche('prices', 'establishment')) { }", '[E] le nouveau prix se lit sur la page Tarifs ouverte'],
   // Le brouillon d Etablissement n est plus protege.
-  brouillon: ['app-main.js', "      brouillon: page === 'establishment' ? () => Boolean(state.establishmentEditing) : undefined,", '      brouillon: undefined,', '[F] le formulaire en cours d edition garde sa saisie'],
+  brouillon: ['app-main.js', 'function ficheEtablissementEnCours() { return Boolean(state.establishmentEditing); }', 'function ficheEtablissementEnCours() { return false; }', '[F] le formulaire en cours d edition garde sa saisie'],
   // L equipe n est plus relue.
   equipe: ['app-main.js', '      relire: () => refreshStaffAccessForLiveSync(),', '      relire: () => {},', '[G] un membre ajoute ailleurs apparait sur la page Equipe'],
   // Le planning ne sait plus que le pouls vit : il relit sa journee toutes les 4 s.
@@ -354,19 +354,18 @@ async function run() {
     console.log('\n[F] la configuration changee, et le formulaire en cours');
     // =====================================================================
     await aller(B.page, 'establishment');
-    await attendre(B.page, () => /Fun Galaxy Libramont/.test((document.querySelector('.establishment-editor') || { textContent: '' }).textContent), null, 8000);
+    await attendre(B.page, () => /Fun Galaxy Libramont/.test((document.querySelector('[data-estab-page]') || { textContent: '' }).textContent), null, 8000);
     serveurPartage.centreNom = 'Fun Galaxy Libramont Centre';
     bump('config');
-    const vuNom = await attendre(B.page, () => /Fun Galaxy Libramont Centre/.test((document.querySelector('.establishment-editor h2') || { textContent: '' }).textContent));
+    const vuNom = await attendre(B.page, () => /Fun Galaxy Libramont Centre/.test((document.querySelector('.eb-name') || { textContent: '' }).textContent));
     ok(vuNom, '[F] le nouveau nom du centre se lit sur la page Etablissement', vuNom ? 'lu' : 'ancien nom');
     // En edition : la saisie survit a une modification faite ailleurs.
-    await B.page.evaluate(() => { if (typeof startEstablishmentEdit === 'function') startEstablishmentEdit(); });
-    const champ = await attendre(B.page, () => Boolean(document.querySelector('.establishment-editor input[type="text"], .establishment-editor input:not([type])')), null, 4000);
+    const champ = await attendre(B.page, () => Boolean(document.querySelector('#estab-name')), null, 4000);
     let saisie = '';
     if (champ) {
       saisie = 'Saisie en cours 42';
       await B.page.evaluate((valeur) => {
-        const el = document.querySelector('.establishment-editor input[type="text"], .establishment-editor input:not([type])');
+        const el = document.querySelector('#estab-name');
         el.focus();
         el.value = valeur;
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -377,12 +376,12 @@ async function run() {
     bump('config');
     await new Promise((r) => setTimeout(r, 4500));
     const saisieSurvit = await B.page.evaluate((valeur) => {
-      const el = document.querySelector('.establishment-editor input[type="text"], .establishment-editor input:not([type])');
+      const el = document.querySelector('#estab-name');
       return Boolean(el && el.value === valeur);
     }, saisie);
     ok(champ && saisieSurvit, '[F] le formulaire en cours d edition garde sa saisie', champ ? (saisieSurvit ? 'saisie intacte' : 'saisie effacee') : 'formulaire introuvable');
     await B.page.evaluate(() => { if (typeof cancelEstablishmentEdit === 'function') cancelEstablishmentEdit(); });
-    const apresAnnuler = await attendre(B.page, () => /Fun Galaxy Libramont Nord/.test((document.querySelector('.establishment-editor h2') || { textContent: '' }).textContent));
+    const apresAnnuler = await attendre(B.page, () => /Fun Galaxy Libramont Nord/.test((document.querySelector('.eb-name') || { textContent: '' }).textContent));
     ok(apresAnnuler, '[F] et la modification arrive des que le formulaire est annule', apresAnnuler ? 'arrivee' : 'jamais arrivee');
 
     // =====================================================================

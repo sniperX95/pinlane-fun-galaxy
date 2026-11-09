@@ -1419,9 +1419,7 @@ async function captureConsoleJourney() {
       save();
       setView('staff');
       await ensureStaffConsolesLoaded();
-      await wait(600);
-      startEstablishmentEdit();
-      await wait(300);
+      await wait(900);
       const accentField = document.getElementById('estab-accent');
       const hasField = Boolean(accentField);
       // On RETAPE la couleur dans le champ : si l'ecran ne savait pas la

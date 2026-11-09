@@ -194,13 +194,12 @@ async function bootEstablishment(page) {
     state.currentDate = '2026-09-01'; // mardi normal (hors vacances)
     state.isHolidayMode = false;
     state.staffMenuPage = 'establishment';
-    // La page Etablissement est desormais decoupee en 5 onglets : les fermetures
-    // vivent sous « Horaires & fermetures ». On navigue comme un humain, sinon on
-    // testerait un panneau que personne ne voit.
-    state.establishmentTab = 'horaires';
+    // Les fermetures vivent dans un pli de la partie Horaires, ouvert plus bas comme le ferait un humain.
     setView('staff');
   });
   // Panneau rendu (config chargee) puis blocages charges (liste peuplee).
+  await page.waitForSelector('.eb-pli-d .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
+  await page.evaluate(() => ebBasculerPli(document.querySelector('.availability-blocks').closest('.eb-blk'), true));
   await page.waitForSelector('.availability-blocks #avb-scope', { state: 'visible', timeout: 15000 });
   await page.waitForFunction(
     () => document.querySelectorAll('#avbList .availability-item').length >= 4,

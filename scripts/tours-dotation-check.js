@@ -679,18 +679,18 @@ async function pageEtablissement(browser) {
       save();
       setView('staff');
     }, JOUR);
-    await page.waitForSelector('.estab-tabs button', { state: 'visible', timeout: 20000 });
+    await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });
     await page.evaluate(() => setEstablishmentTab('offres'));
-    const lecture = await page.evaluate(() => Array.from(document.querySelectorAll('#estabPanel-offres .estab-tag')).map((t) => t.textContent.trim()));
-    await page.evaluate(() => { startEstablishmentEdit(); setEstablishmentTab('offres'); });
+    const lecture = await page.evaluate(() => { const vu = (id) => (document.getElementById(`eb-val-${id}`) || {}).textContent || ''; return { billards: vu('estab-cap-units-billards'), pistes: vu('estab-cap-units-duckpin_bowling'), joueurs: vu('estab-cap-players-duckpin_bowling') }; });
+    await page.evaluate(() => { setEstablishmentTab('offres'); });
     await page.waitForSelector('#estab-cap-units-billards', { state: 'attached', timeout: 10000 });
-    const champs = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('.establishment-editor .estab-cap-input')).map((i) => [i.id, i.value])));
+    const champs = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('[data-estab-page] .estab-cap-input')).map((i) => [i.id, i.value])));
     const refus = await page.evaluate(async (centre) => {
       const champ = document.getElementById('estab-cap-units-billards');
       champ.value = '0';
       window.__ENVOIS__ = [];
       await submitCenterConfig(centre);
-      const note = champ.closest('.field') && champ.closest('.field').querySelector('[role="alert"]');
+      const note = champ.closest('.eb-line') && champ.closest('.eb-line').querySelector('[role="alert"]');
       return { envois: window.__ENVOIS__.length, invalide: champ.getAttribute('aria-invalid'), message: note ? note.textContent : '' };
     }, CENTRE);
     const envoye = await page.evaluate(async (centre) => {
@@ -711,8 +711,8 @@ async function pageEtablissement(browser) {
 function verifierEtablissement(r) {
   section('I. LA PAGE ETABLISSEMENT');
   ok(r.erreurs.length === 0, 'MONTAGE la console s ouvre sans erreur', r.erreurs.join(' | '));
-  ok(r.lecture.includes('Billards · 8 tables') && r.lecture.includes('Duckpin Bowling · 2 pistes, 6 joueurs par piste'),
-    'en lecture, la page dit les installations du centre (8 tables reglees, 2 pistes de 6 du socle)', r.lecture.join(' | '));
+  ok(r.lecture.billards === '8' && r.lecture.pistes === '2' && r.lecture.joueurs === '6',
+    'la fiche affiche les installations du centre (8 tables reglees, 2 pistes de 6 du socle)', JSON.stringify(r.lecture));
   ok(r.champs['estab-cap-units-billards'] === '8' && r.champs['estab-cap-units-duckpin_bowling'] === '2' && r.champs['estab-cap-players-duckpin_bowling'] === '6',
     'en edition, les champs partent de ce que le centre a regle', JSON.stringify(r.champs));
   ok(r.refus.envois === 0 && r.refus.invalide === 'true' && /Billards/.test(r.refus.message) && /\b50\b/.test(r.refus.message),

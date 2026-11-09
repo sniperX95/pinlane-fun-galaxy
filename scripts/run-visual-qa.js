@@ -2088,54 +2088,33 @@ async function main() {
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'establishment');
     await page.waitForTimeout(500);
-    // La page est decoupee en 5 onglets : on verifie la barre, puis on ouvre
-    // « Horaires & fermetures » comme le ferait un humain avant d'exiger d'y voir
-    // les horaires de vacances (un panneau masque ne prouve rien).
-    const readViewState = await page.evaluate(() => {
-      const visibleText = () => Array.from(document.querySelectorAll('.estab-panel'))
-        .filter(panel => !panel.hidden).map(panel => panel.textContent).join(' ');
-      const before = visibleText();
-      setEstablishmentTab('horaires');
-      return {
-        tabs: Array.from(document.querySelectorAll('.estab-tabs button')).map(el => el.textContent.trim()),
-        sectionTitles: Array.from(document.querySelectorAll('.estab-section h3')).map(el => el.textContent.trim()),
-        hasHolidayHours: /vacances/i.test(visibleText()),
-        holidayHiddenBeforeTab: !/vacances \/ férié/i.test(before),
-      };
-    });
-    assert(readViewState.tabs.length === 5, 'Vue lecture Établissement : 5 onglets de configuration requis.');
-    assert(readViewState.holidayHiddenBeforeTab, 'Vue lecture Établissement : les horaires ne doivent pas fuir hors de leur onglet.');
-    assert(readViewState.hasHolidayHours, 'Vue lecture Établissement : horaires vacances/fériés requis dans l onglet Horaires.');
-    assert(readViewState.sectionTitles.some(title => /Offres/i.test(title)), 'Vue lecture Établissement : section offres requise.');
-    assert(readViewState.sectionTitles.some(title => /Ressources/i.test(title)), 'Vue lecture Établissement : section ressources requise.');
+    // Une seule fiche en cinq parties, tout y est reglable sans passer en mode edition.
+    const readViewState = await page.evaluate(() => ({
+      parties: Array.from(document.querySelectorAll('.eb-nav-i')).map(el => el.dataset.ebLink),
+      titres: Array.from(document.querySelectorAll('.eb-sec > .eb-h')).map(el => el.textContent.trim()),
+      hasHolidayHours: /vacances/i.test((document.getElementById('eb-s-horaires') || { textContent: '' }).textContent),
+    }));
+    assert(readViewState.parties.length === 5, 'Fiche Établissement : 5 parties requises.');
+    assert(readViewState.hasHolidayHours, 'Fiche Établissement : horaires vacances/fériés requis dans la partie Horaires.');
+    assert(readViewState.titres.some(title => /offres/i.test(title)), 'Fiche Établissement : partie offres requise.');
     await screenshot(page, 'chantier5-establishment-read');
-    const editBtn2 = page.locator('.establishment-editor-actions button', { hasText: 'Modifier' });
-    if (await editBtn2.count()) {
-      await editBtn2.first().click();
-      await page.waitForTimeout(300);
-      const editState = await page.evaluate(() => ({
-        holidayToggle: Boolean(document.getElementById('estab-holiday-enabled')),
-        holidayRows: document.querySelectorAll('[id^="estab-hday-"][id$="-open"]').length,
-        periodChecks: ['estab-fbp-public', 'estab-fbp-short', 'estab-fbp-summer'].every(id => document.getElementById(id)),
-        overrideForm: Boolean(document.getElementById('estab-override-date')),
-        overrideChip: Boolean(document.querySelector('.estab-override-chip')),
-        offerToggles: document.querySelectorAll('[id^="estab-offer-"]').length,
-        f6Off: document.getElementById('estab-offer-f6') && !document.getElementById('estab-offer-f6').checked,
-      }));
-      assert(editState.holidayToggle, 'Éditeur : toggle horaires vacances requis.');
-      assert(editState.holidayRows === 7, 'Éditeur : 7 jours d horaires vacances requis.');
-      assert(editState.periodChecks, 'Éditeur : cases par type de période requises.');
-      assert(editState.overrideForm && editState.overrideChip, 'Éditeur : gestion des exceptions ponctuelles requise.');
-      assert(editState.offerToggles >= 10, 'Éditeur : toggles d offres requis.');
-      assert(editState.f6Off, 'Éditeur : l offre f6 désactivée doit apparaître décochée.');
-      await screenshot(page, 'chantier5-establishment-edit');
-      issues.push(...await collectIssues(page, 'chantier5-establishment-edit'));
-      const cancelBtn2 = page.locator('.establishment-editor-actions button', { hasText: 'Annuler' });
-      if (await cancelBtn2.count()) {
-        await cancelBtn2.first().click();
-        await page.waitForTimeout(250);
-      }
-    }
+    const editState = await page.evaluate(() => ({
+      holidayToggle: Boolean(document.getElementById('estab-holiday-enabled')),
+      holidayRows: document.querySelectorAll('[id^="estab-hday-"][id$="-open"]').length,
+      periodChecks: ['estab-fbp-public', 'estab-fbp-short', 'estab-fbp-summer'].every(id => document.getElementById(id)),
+      overrideForm: Boolean(document.getElementById('estab-override-date')),
+      overrideChip: Boolean(document.querySelector('.estab-override-chip')),
+      offerToggles: document.querySelectorAll('[id^="estab-offer-"]').length,
+      f6Off: document.getElementById('estab-offer-f6') && !document.getElementById('estab-offer-f6').checked,
+    }));
+    assert(editState.holidayToggle, 'Fiche : toggle horaires vacances requis.');
+    assert(editState.holidayRows === 7, 'Fiche : 7 jours d horaires vacances requis.');
+    assert(editState.periodChecks, 'Fiche : cases par type de période requises.');
+    assert(editState.overrideForm && editState.overrideChip, 'Fiche : gestion des exceptions ponctuelles requise.');
+    assert(editState.offerToggles >= 10, 'Fiche : toggles d offres requis.');
+    assert(editState.f6Off, 'Fiche : l offre f6 désactivée doit apparaître décochée.');
+    await screenshot(page, 'chantier5-establishment-edit');
+    issues.push(...await collectIssues(page, 'chantier5-establishment-edit'));
     await page.evaluate(() => setView('client'));
     await page.waitForTimeout(400);
 

@@ -332,7 +332,7 @@ if (!CONTRE) {
   // connues, sinon un « zero tutoiement » ne prouverait rien.
   const temoins = [
     ['assets/pinlane-assistant.js', 'Votre message est trop long.'],
-    ['assets/app-main.js', 'Retirez-la avec la croix.'],
+    ['assets/app-main.js', 'Corrigez-la sur la fiche client'],
     ['lib/marketing-brief.js', 'je garde un œil sur vos réservations'],
     ['assets/app-main.js', 'Rôle supprimé.'],
     ['assets/pinlane-daterange.js', 'Cette année'],
@@ -355,7 +355,7 @@ console.log('voix-pro-check --contre-preuves');
 const MUTATIONS = [
   { nom: 'un toast tutoie de nouveau', fichier: 'assets/pinlane-assistant.js', de: "toast('Votre message est trop long.')", vers: "toast('Ton message est trop long.')" },
   { nom: 'un imperatif singulier revient', fichier: 'assets/staff-pages-v2.js', de: "toast('Collez le texte du mail reçu.')", vers: "toast('Colle le texte du mail reçu.')" },
-  { nom: 'un imperatif a pronom revient', fichier: 'assets/app-main.js', de: 'Retirez-la avec la croix.', vers: 'Retire-la avec la croix.' },
+  { nom: 'un imperatif a pronom revient', fichier: 'assets/app-main.js', de: 'Corrigez-la sur la fiche client', vers: 'Corrige-la sur la fiche client' },
   { nom: 'un possessif dans un gabarit multiligne', fichier: 'assets/pinlane-assistant.js', de: 'assistant lit vos données', vers: 'assistant lit tes données' },
   { nom: 'une phrase du brief serveur tutoie', fichier: 'lib/marketing-brief.js', de: 'je garde un œil sur vos réservations', vers: 'je garde un œil sur tes réservations' },
   { nom: 'une legende client tutoie', fichier: 'lib/marketing-brain.js', de: 'Réservez votre créneau : 30 secondes.', vers: 'Réserve ton créneau : 30 secondes.' },

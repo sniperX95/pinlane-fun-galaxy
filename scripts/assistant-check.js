@@ -2,8 +2,9 @@
 // outils, le vrai SDK Anthropic, contre un faux serveur Claude qui joue un scenario et garde chaque
 // requete recue. La base et la session sont remplacees, tout le reste est le code livre.
 //
-// Ce que ce banc prouve : le perimetre (centre, droit, montants), qu aucun nom de client ne part
-// chez le modele, que les chiffres sont vrais et cites, et que les plafonds tiennent.
+// Ce que ce banc prouve : le perimetre (centre, droit, montants), que les noms ne partent chez le
+// modele que pour un compte qui a le droit, que chacun garde ses conversations, que le savoir ne
+// s ecrit que d un geste humain, que les chiffres de la recherche sont vrais et que les plafonds tiennent.
 //
 // CONTRE-PREUVES : `--contre-preuves [--seul=a,b]` casse le code en memoire, une regle a la fois,
 // et exige que le controle de cette regle rougisse.

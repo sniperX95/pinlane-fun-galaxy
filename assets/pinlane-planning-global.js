@@ -921,7 +921,7 @@
     var plan = r.opsPlan && r.opsPlan.endTime ? timeToNum(r.opsPlan.endTime) : 0;
     var fin = Math.max(debut + (Number(r.duration) || 0), plan);
     if (normal && debut >= normal.open && fin <= normal.close + 0.25) return null;
-    return numToTime(exception.open) + ' à ' + numToTime(exception.close >= 24 ? exception.close - 24 : exception.close) + (exception.motif ? ', ' + exception.motif : '');
+    return numToTime(exception.open) + ' à ' + numToTime(exception.close >= 24 ? exception.close - 24 : exception.close);
   }
   window.pgMarques = function (r) {
     var sortie = [];

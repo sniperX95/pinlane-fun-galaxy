@@ -26966,7 +26966,7 @@ function getGroupeEncadres(r) {
       texte: accompagnants ? `${accompagnants} accompagnant${accompagnants > 1 ? 's' : ''} en plus des joueurs` : '',
     });
   }
-  (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(r) : []).filter((m) => m.cle === 'horaire').forEach((m) => encadres.push({ ton: 'mesure', titre: m.mot, texte: m.detail || '' }));
+  (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(r) : []).filter((m) => m.cle === 'horaire').forEach((m) => encadres.push({ ton: 'occasion', titre: m.mot, texte: m.detail || '' }));
   if (essentiel && essentiel.mesure) encadres.push({ ton: 'mesure', titre: 'Sur mesure', texte: essentiel.mesure });
   // Une seule regle dit si un dossier porte une note (hasReservationNote) :
   // la puce « Avec note », le filtre et ces encadres la lisent tous.

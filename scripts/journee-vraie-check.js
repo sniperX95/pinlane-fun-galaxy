@@ -61,7 +61,7 @@ const MUTATIONS = {
   // du jour meme reste ici)
   demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  const occupation = getStaffBowlingLaneOccupation();', '  const occupation = getStaffBowlingLaneOccupation();', '[A] « Libres » seulement le jour meme'],
   argent: ['app-main.js', "id: 'kpiRes', value: String(res.length), title: `${pax} joueur${pax > 1 ? 's' : ''}` },", "id: 'kpiRes', value: String(res.length), title: `${pax} joueur${pax > 1 ? 's' : ''} · ${formatMoney(99)}` },", '[A] aucun montant ni « aujourd hui » dans le bandeau'],
-  soustitre: ['app-main.js', "const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}`;", "const horaires = `${todaysReservations().length} réservations • ${fenetre.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
+  soustitre: ['app-main.js', "const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}${fenetre.exceptionnelle ? ', ouverture exceptionnelle' : ''}`;", "const horaires = `${todaysReservations().length} réservations • ${fenetre.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
   titrepistes: ['app-main.js', "function pbBulleBowling() {\n  const laneCount = getAvailabilityLaneCount();", "function pbBulleBowling() {\n  const laneCount = 8;", '[B] le titre compte les pistes de la grille'],
   // La configuration arrivee ne redessine plus le planning ouvert : la tete et
   // la grille gardent les valeurs par defaut (la course du 2026-09-25).

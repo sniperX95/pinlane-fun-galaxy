@@ -131,7 +131,7 @@ console.log('\n[4] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
 // ===========================================================================
 const original = fs.readFileSync(APP, 'utf8');
 const toFileEol = (text) => (original.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
-const anchor = toFileEol("const SERVER_OWNED_STATE_KEYS = ['reservations', 'laneStatuses'];");
+const anchor = toFileEol("const SERVER_OWNED_STATE_KEYS = ['reservations', 'laneStatuses', 'staffOuvertures'];");
 if ((original.split(anchor).length - 1) !== 1) {
   ok(false, 'ancre de mutation introuvable ou ambigue');
 } else {

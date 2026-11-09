@@ -53,7 +53,9 @@ declare
     -- Les gestes de la fenetre des offres (0057) : des statistiques de centre.
     'upsell_events',
     -- Les departs epingles de la fenetre Reserver (0058) : un reglage de centre.
-    'reservation_departs_epingles'
+    'reservation_departs_epingles',
+    -- Les ecrans atteints du formulaire public (0060) : des statistiques de centre.
+    'formulaire_etapes'
   ];
 begin
   foreach target in array tenant_tables loop

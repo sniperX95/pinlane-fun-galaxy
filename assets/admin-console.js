@@ -2853,6 +2853,7 @@ function dirDonEtat() {
     demandes: { recues: 0, converties: 0, tauxConversion: 0, ...(d.demandes || {}) },
     activites: liste(d.activites), suites: liste(d.suites), tailles: liste(d.tailles), clients: liste(d.clients),
     sources: liste(d.sources), entonnoir: liste(d.entonnoir), campagnes: liste(d.campagnes), appareils: liste(d.appareils), pages: liste(d.pages),
+    formulaire: liste(d.formulaire).map((p) => ({ nom: '', visites: 0, abouties: 0, ...(p || {}), etapes: liste(p && p.etapes) })),
   } };
 }
 
@@ -2915,6 +2916,20 @@ function dirDonClientsInner() {
   return `${tuiles}<div class="dir-grid">${repartition}${fichier}</div>`;
 }
 
+// OU LES GENS S ARRETENT DANS LE FORMULAIRE (2026-11-09) : un tableau par parcours, ecran par
+// ecran. Le serveur a deja tout compte (lib/formulaire-etapes.js) : ici on ne fait qu ecrire.
+function dirDonFormulaireHtml(parcours) {
+  return parcours.map((p) => {
+    const pire = p.etapes.filter((e) => !e.dernier && e.arretes > 0).sort((a, b) => b.arretes - a.arretes)[0];
+    const note = p.visites
+      ? `Sur ${dirDonNum(p.visites)} visite${p.visites > 1 ? 's' : ''}, ${dirDonNum(p.abouties)} ${p.abouties > 1 ? 'sont allées' : 'est allée'} au bout.${pire ? ` L’écran où l’on part le plus : ${pire.nom} (${dirDonNum(pire.arretes)}).` : ''} Chaque visite compte à l’écran le plus loin qu’elle a atteint, sans nom ni cookie.`
+      : '';
+    return dirDonTable(`Où les gens s’arrêtent : ${p.nom}`, [{ t: 'Écran' }, { t: 'Arrivés', num: 1 }, { t: 'Partis ici', num: 1 }, { t: 'Part du départ', num: 1 }],
+      p.visites ? p.etapes.map((e) => [escapeHtml(e.nom), dirDonNum(e.arrives), e.dernier ? '' : dirDonNum(e.arretes), dirDonPct(e.partDuDepart)]) : [],
+      'Aucune visite comptée sur cette période.', { large: true, note });
+  }).join('');
+}
+
 function dirDonProvenanceInner() {
   const { html, data } = dirDonEtat();
   if (html) return html;
@@ -2927,6 +2942,7 @@ function dirDonProvenanceInner() {
     ${dirDonTable('Entonnoir en ligne', [{ t: 'Source' }, { t: 'Créneaux retenus', num: 1 }, { t: 'Confirmés', num: 1 }, { t: 'Partis sans réserver', num: 1 }, { t: 'Confirmation', num: 1 }],
       data.entonnoir.map((e) => [escapeHtml(e.source), dirDonNum(e.creneauxRetenus), dirDonNum(e.confirmes), dirDonNum(e.abandons), dirDonPct(e.tauxConfirmation)]),
       'Aucun créneau retenu en ligne sur cette période.', { large: true })}
+    ${dirDonFormulaireHtml(data.formulaire)}
     ${dirDonTable('Campagnes', [{ t: 'Campagne' }, { t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
       data.campagnes.map((c) => [escapeHtml(c.campagne), escapeHtml(c.source), dirDonNum(c.reservations), dirDonEur(c.chiffre)]),
       'Aucune réservation venue d’une campagne marquée (utm_campaign).')}
@@ -2950,7 +2966,7 @@ function dirDonSection(id, titre, sous, inner) {
 }
 function dirDonActiviteHtml() { return dirDonSection('dirDonActivite', 'Ce que les groupes réservent', 'Joueurs par activité, enchaînements, taille des groupes.', dirDonActiviteInner()); }
 function dirDonClientsHtml() { return dirDonSection('dirDonClients', 'Fidélité et fichier clients', 'Qui revient, combien de fois, combien ils dépensent.', dirDonClientsInner()); }
-function dirDonProvenanceHtml() { return dirDonSection('dirDonProvenance', 'D’où viennent les réservations', 'Sources, campagnes, entonnoir en ligne, appareils.', dirDonProvenanceInner()); }
+function dirDonProvenanceHtml() { return dirDonSection('dirDonProvenance', 'D’où viennent les réservations', 'Sources, campagnes, entonnoir en ligne, écrans du formulaire, appareils.', dirDonProvenanceInner()); }
 
 function renderDirectionDonnees() {
   const hotes = [['dirDonActivite', dirDonActiviteInner], ['dirDonClients', dirDonClientsInner], ['dirDonProvenance', dirDonProvenanceInner]];

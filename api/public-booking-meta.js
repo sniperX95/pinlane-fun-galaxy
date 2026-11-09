@@ -197,6 +197,32 @@ async function handleVitrine(req, res, body) {
   }
 }
 
+// OU LES GENS S ARRETENT DANS LE FORMULAIRE (2026-11-09, Ansar : « sur le formulaire voir
+// ou les gens s arretent »). Le formulaire envoie chaque ecran atteint, une fois par visite.
+// La regle (ce qui entre, l ecriture) vit dans lib/formulaire-etapes.js. Aucune donnee
+// personnelle. Une statistique perdue ne casse jamais le formulaire : la reponse est la
+// meme, que la ligne soit ecrite ou non, et une table pas encore creee (42P01) se tait.
+async function handleEtapes(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'etapes', limit: 120, windowMs: 600_000 })) return;
+  const { etapesRecues, ecrireEtapes } = require('../lib/formulaire-etapes');
+  const envoi = etapesRecues(body);
+  if (!envoi) { sendError(res, 400, 'Requête invalide.'); return; }
+  try {
+    getCenter(envoi.centerId);
+  } catch (error) {
+    sendError(res, 404, 'Centre inconnu.');
+    return;
+  }
+  const pool = getPool();
+  if (!pool) { sendJson(res, 202, { ok: true }); return; }
+  try {
+    await ecrireEtapes(pool, envoi);
+  } catch (error) {
+    if (!error || error.code !== '42P01') console.error('[public-booking-meta] etapes', error && (error.code || error.message));
+  }
+  sendJson(res, 202, { ok: true });
+}
+
 // LEAD sur mesure : enregistré hors planning (table custom_requests), jamais
 // dans reservations. Renvoie 201 même si l'accusé email échoue (best-effort).
 async function handleCustomRequest(req, res, body) {
@@ -713,6 +739,10 @@ async function routeur(req, res) {
     const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     if (body?.kind === 'vitrine' && url.pathname.endsWith('/public-booking-meta')) {
       await handleVitrine(req, res, body);
+      return;
+    }
+    if (body?.kind === 'etapes' && url.pathname.endsWith('/public-booking-meta')) {
+      await handleEtapes(req, res, body);
       return;
     }
     if (body?.kind === 'erreur-formulaire' && url.pathname.endsWith('/public-booking-meta')) {

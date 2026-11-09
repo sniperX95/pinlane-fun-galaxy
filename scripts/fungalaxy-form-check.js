@@ -467,7 +467,8 @@
 // raison), calendrier (les jours fermes restent cliquables), serre (le
 // formulaire ne demande plus le mode souple : les heures serrees redeviennent
 // des refus), option (la pastille choisie ne part pas dans le programme),
-// parties (la partie de laser non posee n est plus annoncee « sur place »).
+// parties (la partie de laser non posee n est plus annoncee « sur place »),
+// etapes (le formulaire n envoie plus les ecrans atteints).
 // Chacune doit rendre ce gate ROUGE.
 //
 // Usage : node scripts/fungalaxy-form-check.js
@@ -813,6 +814,7 @@ window.addEventListener('message', function (e) { var d = e.data || {}; if (d.ty
 
 // Les contre-preuves : une ligne du JS servie cassee expres.
 const MUTATIONS = {
+  etapes: ['    if (!VISITE || !scene) return;\n', '    return;\n'],
   prix: ["'Dès ' + euros(mini)", "'Dès ' + euros(1 + mini)"],
   total: ['data-total="\' + prix + \'"', 'data-total="\' + (prix + 1) + \'"'],
   raison: ['chip.dataset.reason = e.raison;', "chip.dataset.reason = '';"],
@@ -3024,6 +3026,16 @@ async function main() {
     const reponsePose =page.waitForResponse((r) => r.url().indexOf('/api/public-reservations') >= 0 && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null);
     await page.click('#confirmBtn');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
+    // OU LES GENS S ARRETENT (2026-11-09) : chaque ecran traverse est parti une seule fois,
+    // dans l ordre, sous une seule visite au hasard, sans rien de personnel. Le retour a
+    // l ecran 1 fait plus haut (« Modifier le jour ») ne recompte rien. FG_QA_CASSE=etapes
+    // (le formulaire n envoie plus rien) rougit ces deux controles.
+    for (let k = 0; k < 40 && !mock.dernierePose.etapes.some((e) => e.etape === 'fin'); k += 1) await dormir(100);
+    const finEtape = mock.dernierePose.etapes.filter((e) => e.etape === 'fin').pop() || {};
+    const ecransE = mock.dernierePose.etapes.filter((e) => e.visite === finEtape.visite && e.parcours === 'reservation');
+    ok(ecransE.map((e) => e.etape).join(' ') === 'date activites heures contact recap fin', '[E] chaque ecran traverse est compte une fois, dans l ordre, jusqu a l envoi', ecransE.map((e) => e.etape).join(' ') || 'aucun ecran recu');
+    ok(ecransE.length > 0 && ecransE.every((e) => Object.keys(e).sort().join(',') === 'centerId,etape,parcours,visite' && e.centerId === 'libramont' && /^[a-f0-9]{24}$/.test(e.visite)),
+      '[E] un ecran compte ne porte que le centre, la visite au hasard, le parcours et l ecran', JSON.stringify(ecransE[0] || null));
     const corps = mock.dernierePose.body || {};
     // LES OFFRES PAR E-MAIL (2026-09-30) : la case, laissee vide, part avec la
     // reservation comme un booleen faux, jamais absente (sans elle, le serveur

@@ -299,6 +299,11 @@ const MIGRATIONS = [
     file: 'database/assistant-conversations-schema.sql',
     description: "Les conversations de chaque personne avec l assistant Marketing (assistant_conversations, lisibles seulement par la personne, ses lignes staff comprises) et ce que l equipe apprend a l IA (assistant_faits, au centre, ecrit seulement par un geste humain). Tables additives ; tant qu elles manquent, le code detecte 42P01 et garde les conversations sur l appareil. Retour : database/rollbacks/0059_assistant_conversations.down.sql (renomme, ne supprime rien).",
   },
+  {
+    id: '0060_formulaire_etapes',
+    file: 'database/formulaire-etapes-schema.sql',
+    description: "Ou les gens s arretent dans le formulaire public : une ligne par ecran atteint, une fois par visite (reservation et demande sur mesure). Aucune donnee personnelle (visite = identifiant au hasard, aucun cookie). Table additive ; tant qu elle manque, l envoi est ignore et la console affiche un tableau vide. Retour : database/rollbacks/0060_formulaire_etapes.down.sql.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

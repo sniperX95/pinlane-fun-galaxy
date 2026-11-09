@@ -1356,11 +1356,14 @@
     var de = $('.fg-scene[data-scene="' + sceneCourante + '"]');
     var vers = $('.fg-scene[data-scene="' + cible + '"]');
     if (!vers) return;
+    // L ecran qu on quitte compte lui aussi, avant que le parcours change (suivreEtape).
+    suivreEtape(sceneCourante);
     // Un ecran de la demande ouvre son parcours, un ecran de la reservation le
     // sien ; l ecran final garde celui qui y mene.
     if (/^sm-/.test(cible)) sm.actif = true; else if (cible !== 'fin') sm.actif = false;
     var chemin = parcours();
     sceneCourante = cible;
+    suivreEtape(cible);
     body.dataset.step = String(chemin.indexOf(cible) + 1);
     body.dataset.parcours = sm.actif ? 'sur-mesure' : 'reservation';
     rendreEtapes();
@@ -5533,6 +5536,38 @@
     }
   }
   doc.addEventListener('visibilitychange', function () { if (doc.visibilityState === 'hidden') envoyerGestes(); });
+  // OU LES GENS S ARRETENT (Ansar, 2026-11-09 : « sur le formulaire voir ou les gens
+  // s arretent »). Chaque ecran atteint part une seule fois par visite, avec le meme
+  // identifiant au hasard que les offres : aucun nom, aucun mail, aucun cookie. Le premier
+  // ecran ne compte qu au premier toucher : un formulaire affiche plus bas dans la page du
+  // centre et jamais touche n est pas quelqu un qui s est arrete. Envoi groupe, sans
+  // attente, erreur ignoree : une statistique perdue ne gene jamais le client.
+  var etapesVues = {}, etapesFile = [], etapesMinuteur = 0;
+  function suivreEtape(scene) {
+    if (!VISITE || !scene) return;
+    var chemin = /^sm-/.test(scene) || (scene === 'fin' && sm.actif) ? 'sur-mesure' : 'reservation';
+    if (etapesVues[chemin + ':' + scene]) return;
+    etapesVues[chemin + ':' + scene] = true;
+    etapesFile.push({ parcours: chemin, etape: scene });
+    clearTimeout(etapesMinuteur);
+    etapesMinuteur = setTimeout(envoyerEtapes, 800);
+  }
+  function envoyerEtapes() {
+    clearTimeout(etapesMinuteur);
+    if (!etapesFile.length) return;
+    var corps = JSON.stringify({ kind: 'etapes', centerId: CENTER, visite: VISITE, etapes: etapesFile.splice(0, 12) });
+    var parti = false;
+    try { parti = Boolean(navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))); } catch (e) { parti = false; }
+    if (!parti) fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
+  }
+  doc.addEventListener('visibilitychange', function () { if (doc.visibilityState === 'hidden') envoyerEtapes(); });
+  var premierToucher = function () {
+    doc.removeEventListener('pointerdown', premierToucher, true);
+    doc.removeEventListener('keydown', premierToucher, true);
+    suivreEtape(sceneCourante);
+  };
+  doc.addEventListener('pointerdown', premierToucher, true);
+  doc.addEventListener('keydown', premierToucher, true);
   function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {

@@ -395,6 +395,8 @@ async function sectionOutils(h) {
     ok('[O] campagnes lit les ouvertures sur les mails envoyes', valeurs(cp.c, 'ouvertures')[0] === 18 && valeurs(cp.c, 'clics')[0] === 5 && etat.parametres.some((p) => p[0] === 'libramont'), cp.brut);
     ok("[O] campagnes dit non mesure quand le suivi ne sait pas", valeurs(cp.c, 'ouvertures')[1] === null && valeurs(cp.c, 'clics')[1] === null, cp.brut);
     ok('[O] campagnes lecture porte le vrai nombre', cp.lues === 2, String(cp.lues));
+    const passe = await jouer('marketing_passe', {}, { requete: moteurCampagnes });
+    ok('[O] marketing_passe ne donne pas au modele des ouvertures que personne ne mesure', !passe.erreur && /Relance automne/.test(passe.brut) && !/"ouvertures"|"clics"/.test(passe.brut), passe.brut.slice(0, 400));
 
     // ---- Offres ---------------------------------------------------------------------------------
     const of = await jouer('offres_et_ventes_additionnelles', h.OCT, { requete: moteurOffres });

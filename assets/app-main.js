@@ -14483,6 +14483,10 @@ async function submitCenterConfig(centerId) {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenterConfig', centerId, config }) });
     toast('Configuration du centre enregistrée.');
     state.establishmentEditing = false;
+    // Ce qui est a l ecran est ce qui vient d etre enregistre. Sans cette photo, le comptage differe
+    // du clic (40 ms) recompte contre l ancienne et remet la fiche en cours, et une fiche en cours
+    // refuse de se repeindre : elle restait en modification pour de bon.
+    ebSnap = ebState();
     establishmentHolidayOverridesDraft = [];
     await loadStaffCenterConfig(true);
     // Le catalogue de la console (tables, pistes, activites proposees) se

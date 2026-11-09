@@ -48,7 +48,7 @@ const rouge = (resultats) => resultats.some(([cond]) => !cond);
 
 function viderCache() {
   Object.keys(require.cache).forEach((cle) => {
-    if (/[\\/]lib[\\/](demande-bureau|demande-bureau-centre)\.js$/.test(cle)) delete require.cache[cle];
+    if (/[\\/]lib[\\/](demande-bureau|demande-bureau-centre|email-agent)\.js$/.test(cle)) delete require.cache[cle];
   });
 }
 function charger() {
@@ -462,6 +462,76 @@ async function verifierVraiMoteur({ B, C }) {
     [!v || !v.ok || !v.prixComplet || Math.abs(somme - v.prix) < 0.01, 'le total du programme est la somme de ses lignes', JSON.stringify(v && { prix: v.prix, somme })],
     [!v || !v.ok || v.heuresParActivite.every((a) => a.heures.every(dans)), 'les heures par activite restent dans l apres-midi'],
     [r.brouillon.source === 'code' && B.controlerReponse(r.brouillon, source).ok, 'le brouillon ecrit sur le vrai moteur passe les controles', r.brouillon.corps],
+    [fo.heures.every((h) => fo.plans[h] && /^\d\d:\d\d$/.test(fo.plans[h].fin)), 'chaque heure de la formule a son plan et sa fin', JSON.stringify(fo.plans)],
+    [fo.heures.every((h) => fo.plans[h].blocs.some((b) => b.r === 'bowling_lane' && b.pistes.length === b.n && b.n > 0 && /^\d\d:\d\d$/.test(b.d) && /^\d\d:\d\d$/.test(b.f))), 'le moteur dit quelles pistes prendrait le groupe', JSON.stringify(fo.plans[fo.heures[0]])],
+    [fo.heures.every((h) => { const p = fo.plans[h]; const pistes = p.reste.find((x) => x.unite === 'piste'); return Boolean(pistes) && pistes.n === center.resources.bowling.laneCount - Math.max(...p.blocs.filter((b) => b.r === 'bowling_lane').map((b) => b.n)); }), 'sur une journee vide, il reste les pistes que le groupe ne prend pas', JSON.stringify(fo.plans[fo.heures[0]].reste)],
+    [!v || !v.ok || v.departs.every((d) => Array.isArray(d.blocs) && d.blocs.length > 0 && Array.isArray(d.reste)), 'chaque depart du programme a son plan et ce qui reste', JSON.stringify(v && v.departs && v.departs[0])],
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// [L] LA JOURNEE DEMANDEE
+// ---------------------------------------------------------------------------
+async function verifierJournee({ B, C }) {
+  const occ = { capacites: { pistes: 8, armes: 30 }, blocs: [
+    { r: 'bowling_lane', d: '14:00', f: '15:00', pistes: [1, 2] },
+    { r: 'bowling_lane', d: '16:00', f: '17:00', pistes: [3, 4] },
+    { r: 'laser_arena', d: '15:00', f: '15:20', joueurs: 12 },
+  ] };
+  const piste = (d, f, pistes, n = pistes.length) => ({ r: 'bowling_lane', d, f, pistes, n });
+  const arene = (d, f, joueurs) => ({ r: 'laser_arena', d, f, joueurs });
+  const dit = (plan, o = occ) => JSON.stringify(B.resteDuPlan(plan, o));
+  const socle = { resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30 } } };
+  const deps = (sur = {}) => ({
+    rafraichir: async () => {}, centre: () => socle, fermetures: async () => [], getSchedule: () => ({ open: 10, close: 22 }), isCenterClosedAt: () => false,
+    disponibilite: fauxMoteur([]), aujourdhui: () => AUJOURDHUI, client: async () => null, conversation: async () => [], cerveau: async () => null, llm: null, ...sur,
+  });
+  const reservations = [
+    { status: 'confirmed', pax: 12, label: 'Formule 2', name: 'Monsieur Secret', startTime: '14:00', duration: 1, lanes: [1, 2], opsPlan: { resourceBlocks: [
+      { resourceType: 'bowling_lane', startTime: '14:00', endTime: '15:00', start: 14, end: 15, lanes: [1, 2] },
+      { resourceType: 'laser_arena', label: 'Laser Game', startTime: '15:00', endTime: '15:20', players: 12 },
+      { resourceType: 'party_table', startTime: '14:00', endTime: '17:00' },
+    ] } },
+    { status: 'confirmed', pax: 8, label: 'Bowling', startTime: '16:00', duration: 1, lanes: [3, 4], opsPlan: null },
+    { status: 'cancelled', pax: 50, label: 'Annulee', startTime: '12:00', duration: 3, lanes: [5, 6, 7, 8], opsPlan: null },
+  ];
+  const lue = await C.etudeDeLaDemande(demandeType({ alternativeDate: '' }), deps({ planning: async () => ({ reservations, laneStatuses: {} }) }));
+  const fermee = await C.etudeDeLaDemande(demandeType({ alternativeDate: '' }), deps({ planning: async () => ({ reservations: [], laneStatuses: { 8: 'maintenance' } }), isLaneBlockedAt: (b, d, piste, de) => piste === 7 && de >= 600 && de < 660 }));
+  const o = lue.etude.dates[0].occupation;
+  const f = fermee.etude.dates[0].occupation;
+  const email = require('../lib/email-agent');
+  const lignesCrm = [
+    { name: 'Claire', phone: '0470', email: 'c@x.be', date: '2027-01-10', heure: '14:00', pax: 20, label: 'A venir', price: 999 },
+    { name: 'Claire', phone: '0470', email: 'c@x.be', date: '2026-09-30', heure: '14:00', pax: 28, label: 'Formule 2', price: 540 },
+    { name: 'Claire', phone: '0470', email: 'c@x.be', date: '2026-06-12', heure: '10:00', pax: 22, label: 'Bowling', price: 420.5 },
+  ];
+  const faux = { query: async (sql) => (/count\(\*\)/.test(sql) ? { rows: [{ n: 2 }] } : { rows: lignesCrm }) };
+  const simple = await email.matchClient('c@x.be', 'libramont', faux, '2026-11-09');
+  const riche = await email.matchClient('c@x.be', 'libramont', faux, '2026-11-09', { detail: true });
+  let invite = '';
+  await B.redigerReponse({ item: demandeType({ alternativeDate: '' }), etude: lue.etude, client: { ...riche, venues: [{ date: '2026-09-30', label: 'VENUE-A-NE-PAS-DIRE', prix: 540 }] }, conversation: [], brain: { stable: 'A', context: 'B', signature: 'L equipe', centerName: 'Centre' }, llm: async (options) => { invite = JSON.stringify(options); return { objet: 'x', corps: 'y' }; }, nomDuCentre: 'Centre' }).catch(() => null);
+  return [
+    [dit([piste('14:00', '15:00', [3, 4, 5, 6])]) === '[{"n":2,"unite":"piste"}]', 'ce qui reste compte les pistes deja prises a ce moment-la, et celles du groupe', dit([piste('14:00', '15:00', [3, 4, 5, 6])])],
+    [dit([piste('12:00', '13:00', [1, 2, 3, 4])]) === '[{"n":4,"unite":"piste"}]', 'une reservation a une autre heure ne compte pas', dit([piste('12:00', '13:00', [1, 2, 3, 4])])],
+    [dit([piste('14:00', '15:00', [], 4)]) === '[{"n":2,"unite":"piste"}]', 'sans pistes choisies, le besoin du groupe compte quand meme', dit([piste('14:00', '15:00', [], 4)])],
+    [dit([piste('14:00', '15:00', [3, 4]), piste('16:00', '17:00', [5, 6, 7, 8])]) === '[{"n":2,"unite":"piste"}]', 'le bloc le plus serre decide', dit([piste('14:00', '15:00', [3, 4]), piste('16:00', '17:00', [5, 6, 7, 8])])],
+    [dit([piste('14:00', '15:00', [3, 4, 5, 6, 7, 8]), piste('14:00', '15:00', [])]) === '[{"n":0,"unite":"piste"}]', 'jamais moins que zero', dit([piste('14:00', '15:00', [3, 4, 5, 6, 7, 8]), piste('14:00', '15:00', [])])],
+    [dit([arene('15:00', '15:20', 16), arene('15:20', '15:40', 15)]) === '[{"n":2,"unite":"arme"}]', 'au laser, la vague la plus serree decide, avec les joueurs deja la', dit([arene('15:00', '15:20', 16), arene('15:20', '15:40', 15)])],
+    [dit([piste('14:00', '15:00', [3])], { blocs: [] }) === '[]', 'une capacite inconnue ne se dit pas'],
+    [o.reservations === 2 && o.joueurs === 20, 'une reservation annulee ne compte pas', JSON.stringify(o)],
+    [JSON.stringify(o.capacites) === '{"pistes":8,"armes":30}', 'les pistes et les armes viennent de la fiche du centre', JSON.stringify(o.capacites)],
+    [o.blocs.length === 3 && o.blocs[0].r === 'bowling_lane' && o.blocs[0].d === '14:00' && o.blocs[0].f === '15:00' && JSON.stringify(o.blocs[0].pistes) === '[1,2]', 'le plan de la reservation se dessine', JSON.stringify(o.blocs)],
+    [o.blocs.some((b) => b.r === 'laser_arena' && b.joueurs === 12 && b.d === '15:00'), 'le laser aussi, avec ses joueurs', JSON.stringify(o.blocs)],
+    [o.blocs.some((b) => b.r === 'bowling_lane' && b.d === '16:00' && b.f === '17:00' && JSON.stringify(b.pistes) === '[3,4]'), 'une reservation ancienne sans plan garde ses pistes', JSON.stringify(o.blocs)],
+    [!o.blocs.some((b) => b.r === 'party_table'), 'la table d anniversaire ne se dessine pas'],
+    [!JSON.stringify(o).includes('Monsieur Secret'), 'le nom des clients ne sort pas'],
+    [f.blocs.some((b) => JSON.stringify(b.pistes) === '[8]' && b.d === '10:00' && b.f === '22:00'), 'une piste en maintenance est prise toute la journee', JSON.stringify(f.blocs)],
+    [f.blocs.some((b) => JSON.stringify(b.pistes) === '[7]' && b.d === '10:00' && b.f === '11:00'), 'un blocage de piste se dessine sur ses heures', JSON.stringify(f.blocs)],
+    [!('venues' in simple) && !('depense' in simple) && !('absences' in simple), 'sans l option, la fiche du client ne change pas', JSON.stringify(Object.keys(simple))],
+    [riche.venues.length === 2 && riche.venues[0].label === 'Formule 2' && riche.venues[0].prix === 540, 'seules les venues passees comptent, la plus recente d abord', JSON.stringify(riche.venues)],
+    [riche.depense === 960.5, 'ce qu elles ont represente, sans la reservation a venir', String(riche.depense)],
+    [riche.absences === 2, 'et ses absences', String(riche.absences)],
+    [invite.length > 0 && !invite.includes('VENUE-A-NE-PAS-DIRE'), 'le mail ne recoit pas l historique detaille', invite.slice(0, 80)],
   ];
 }
 
@@ -519,7 +589,7 @@ async function verifierChoix({ B, C }) {
   const corpsF = (mailFormule.brouillon && mailFormule.brouillon.corps) || '';
   const corpsV = (mailVisite.brouillon && mailVisite.brouillon.corps) || '';
   return [
-    [visite && JSON.stringify(visite.departs) === '[{"debut":"14:00","fin":"16:00","prix":544}]', 'chaque depart du programme porte son debut, sa fin et son prix', JSON.stringify(visite && visite.departs)],
+    [visite && JSON.stringify(visite.departs.map(({ debut, fin, prix }) => ({ debut, fin, prix }))) === '[{"debut":"14:00","fin":"16:00","prix":544}]', 'chaque depart du programme porte son debut, sa fin et son prix', JSON.stringify(visite && visite.departs)],
     [fo && JSON.stringify(fo.heures) === '["14:30"]' && fo.heuresAilleurs.length === 0 && f.dates.length === 1 && f.dates[0].visite === null, 'une heure de formule choisie : le mail ne parle que de cette heure-la', JSON.stringify(fo)],
     [vv && vv.prix === 544 && vv.proposition.debut === '14:00' && vv.proposition.fin === '16:00' && v.dates[0].formules.length === 0, 'une heure de programme choisie : son prix, son debut, sa fin, et rien d autre', JSON.stringify(vv && vv.proposition)],
     [vue({ date: D1, type: 'formule', ref: 'f3', heure: '16:00' }) === null, 'une heure qui n est plus libre est refusee'],
@@ -672,6 +742,14 @@ async function verifierSuiviEnBase() {
 // [I] CONTRE-EPREUVES
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
+  { fichier: 'lib/demande-bureau.js', ancre: "    sortie.push({ n: Math.max(0, Math.min(...restes)), unite: 'piste' });", mute: "    sortie.push({ n: Math.max(0, Math.max(...restes)), unite: 'piste' });", label: 'sans le bloc le plus serre, on annoncerait des pistes qui n existent pas', verifier: verifierJournee },
+  { fichier: 'lib/demande-bureau.js', ancre: "      return Number(capacites.pistes) - prises.size - ((b.pistes || []).length ? 0 : Number(b.n) || 0);", mute: "      return Number(capacites.pistes) - prises.size;", label: 'sans le besoin du groupe, ce qui reste serait trop haut', verifier: verifierJournee },
+  { fichier: 'lib/demande-bureau.js', ancre: "      - pris.filter((o) => o.r === 'laser_arena' && seRecoupent(o, b)).reduce((s, o) => s + (Number(o.joueurs) || 0), 0));", mute: "      );", label: 'sans les joueurs deja la, le laser paraitrait vide', verifier: verifierJournee },
+  { fichier: 'lib/demande-bureau.js', ancre: "(({ clientKey, venues, depense, absences, ...reste }) => reste)(client)", mute: "(({ clientKey, ...reste }) => reste)(client)", label: 'sans le filtre, l historique detaille partirait au mail', verifier: verifierJournee },
+  { fichier: 'lib/demande-bureau-centre.js', ancre: "|| b.resourceType === 'party_table' || !b.startTime", mute: "|| !b.startTime", label: 'sans le filtre, la table d anniversaire se dessinerait', verifier: verifierJournee },
+  { fichier: 'lib/demande-bureau-centre.js', ancre: "      const fermee = m < fermeture && ((laneStatuses && laneStatuses[piste] === 'maintenance')", mute: "      const fermee = m < fermeture && (false", label: 'sans la maintenance, une piste fermee paraitrait libre', verifier: verifierJournee },
+  { fichier: 'lib/email-agent.js', ancre: "      venues: passees.slice(0, 5),", mute: "      venues: lignes.slice(0, 5),", label: 'sans le tri, une venue a venir passerait pour passee', verifier: verifierJournee },
+  { fichier: 'lib/email-agent.js', ancre: "    if (!detail) return fiche;", mute: "", label: 'sans l option, le cerveau mail recevrait l historique', verifier: verifierJournee },
   { fichier: 'lib/demande-bureau.js', ancre: '    if (!fo || ![...fo.heures, ...fo.heuresAilleurs].includes(c.heure)) return null;', mute: '    if (!fo) return null;', label: 'sans le garde, une heure prise part au client', verifier: verifierChoix },
   { fichier: 'lib/demande-bureau.js', ancre: 'formules: [{ ...fo, heures: [c.heure], heuresAilleurs: [] }], visite: null }] };', mute: 'formules: [fo], visite: jour.visite }] };', label: 'sans le retrecissement, le mail citerait tous les departs', verifier: verifierChoix },
   { fichier: 'lib/demande-bureau.js', ancre: "  const type = p.type === 'formule' || p.type === 'visite' ? p.type : '';", mute: "  const type = String(p.type || '');", label: 'sans la borne, un type inconnu se garde dans le suivi', verifier: verifierChoix },
@@ -730,6 +808,8 @@ async function main() {
   rapporter(await verifierFile(mods));
   section('F. LE VRAI MOTEUR');
   rapporter(await verifierVraiMoteur(mods));
+  section('L. LA JOURNEE DEMANDEE');
+  rapporter(await verifierJournee(mods));
   section('G. AUCUN ENVOI, UN DROIT PAR ACTION');
   rapporter(verifierAucunEnvoi());
   section('H. LE CERVEAU DU CENTRE');

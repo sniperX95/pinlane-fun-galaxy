@@ -19635,10 +19635,10 @@ function renderSmListe() {
     : ({ atraiter: 'Aucune demande à traiter.', attente: 'Aucune demande n’attend le client.', terminees: 'Aucune demande terminée.' })[segment];
   return `<div class="sm-barre">
       <div class="sm-onglets" role="tablist" aria-label="Demandes">${STAFF_REQUEST_SEGMENTS.map(onglet).join('')}</div>
-      <input id="reqSearchField" type="search" class="input sm-cherche" placeholder="Rechercher" aria-label="Rechercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
+      <input id="reqSearchField" type="search" class="input sm-cherche" placeholder="Rechercher un groupe" aria-label="Rechercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
     </div>
     ${rows.length
-      ? `<table class="sm-table sm-liste"><thead><tr><th scope="col" class="sm-l-g">Groupe</th><th scope="col" class="num sm-l-p">Personnes</th><th scope="col" class="sm-l-d">Date souhaitée</th><th scope="col">Souhaits</th><th scope="col" class="sm-l-r">Réponse</th></tr></thead><tbody>${rows.map(renderSmLigne).join('')}</tbody></table>`
+      ? `<table class="sm-table sm-liste"><colgroup><col class="sm-c-q"><col><col class="sm-c-p"><col><col class="sm-c-r"></colgroup><thead class="sm-cache"><tr><th scope="col">Date souhaitée</th><th scope="col">Groupe</th><th scope="col">Joueurs</th><th scope="col">Souhaits</th><th scope="col">Réponse</th></tr></thead><tbody>${rows.map(renderSmLigne).join('')}</tbody></table>`
       : `<p class="sm-vide">${escapeHtml(vide)}</p>`}`;
 }
 
@@ -19647,14 +19647,15 @@ function renderSmLigne(item) {
   const nom = staffRequestNom(item);
   const sous = [staffRequestTypeDe(item), nom !== item.contactName ? item.contactName : ''].filter(Boolean).join(' · ');
   const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
-  const souhaits = d
-    ? ([...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') || (d.advice ? 'Demande conseil' : ''))
-    : String(item.message || '').replace(/\s+/g, ' ').trim();
+  const moment = d && d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '') : '';
+  const budget = d && Number(d.budgetPerPerson) > 0 ? `${staffRequestEuro(d.budgetPerPerson)} par personne` : '';
+  const precisions = d ? [moment, budget].filter(Boolean).join(' · ') : String(item.requestedDate || '');
+  const souhaits = d ? renderSmSouhaits(d) : `<span class="sm-so-libre">${escapeHtml(String(item.message || '').replace(/\s+/g, ' ').trim())}</span>`;
   return `<tr class="sm-l" data-item-id="${escapeHtml(String(item.id))}" onclick="selectStaffRequest(${staffClientJs(item.id)})">
+    <td class="sm-l-q">${renderSmDate(item)}</td>
     <td class="sm-l-g"><button type="button" class="sm-l-n">${escapeHtml(nom)}</button>${sous ? `<small>${escapeHtml(sous)}</small>` : ''}</td>
-    <td class="num sm-l-p">${joueurs || ''}</td>
-    <td class="sm-l-d">${escapeHtml(staffRequestWhenShort(item))}</td>
-    <td class="sm-l-s"><span>${escapeHtml(souhaits)}</span></td>
+    <td class="sm-l-p">${joueurs ? `<b>${joueurs}</b><small>joueur${joueurs > 1 ? 's' : ''}</small>` : ''}</td>
+    <td class="sm-l-s"><span class="sm-souhaits">${souhaits}</span>${precisions ? `<small>${escapeHtml(precisions)}</small>` : ''}</td>
     <td class="sm-l-r">${renderSmEtatReponse(item)}</td>
   </tr>`;
 }
@@ -19663,14 +19664,297 @@ function renderSmLigne(item) {
 function renderSmEtatReponse(item) {
   const suivi = item.suivi || {};
   const stage = staffRequestStage(item);
+  const prix = suivi.proposition && suivi.proposition.prix != null ? `<small>${escapeHtml(staffRequestEuro(suivi.proposition.prix))} proposés</small>` : '';
   if (stage === 'a-traiter') {
     const due = staffRequestDue(item);
-    const client = suivi.messageClient ? `<small>${suivi.reponses ? 'Le client a répondu' : 'Le client a écrit'}</small>` : '';
+    const client = suivi.messageClient ? `<small class="sm-l-ecrit">${suivi.reponses ? 'Le client a répondu' : 'Le client a écrit'}</small>` : '';
     return `${due ? `<span class="sm-du is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>` : ''}${client}`;
   }
-  if (stage === 'en-attente') return `Envoyée${suivi.derniereReponse ? ` ${escapeHtml(staffRequestMoment(suivi.derniereReponse.le))}` : ''}`;
-  if (stage === 'traitee') return suivi.reservationId ? 'Réservée' : 'Terminée';
-  return 'Sans suite';
+  if (stage === 'en-attente') return `<span class="sm-du">Envoyée${suivi.derniereReponse ? ` ${escapeHtml(staffRequestMoment(suivi.derniereReponse.le))}` : ''}</span>${prix}`;
+  if (stage === 'traitee') return `<span class="sm-du is-fait">${suivi.reservationId ? 'Réservée' : 'Terminée'}</span>${prix}`;
+  return '<span class="sm-du">Sans suite</span>';
+}
+
+// Le moment ou chaque journee a commence a se dessiner. Les mails et l etude arrivent juste apres
+// et repeignent la fiche : le dessin reprend alors ou il en etait, au lieu de se couper net ou de
+// repartir de zero (memoire animation-conteneur-reconstruit).
+const smJourDessine = new Map();
+
+function smTeinte(cle) {
+  const id = String(cle || '').toLowerCase();
+  if (/bowling|duckpin/.test(id)) return 1;
+  if (/laser/.test(id)) return 2;
+  if (/golf/.test(id)) return 3;
+  if (/pixel|fun.?run/.test(id)) return 4;
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 4;
+  return h + 1;
+}
+
+function renderSmSouhaits(d) {
+  const formules = (Array.isArray(d.formulas) ? d.formulas : []).filter(f => f && f.name).map(f => `<span class="sm-so">${escapeHtml(f.name)}</span>`);
+  const activites = (Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => `<span class="sm-so" data-t="${smTeinte(a.id || a.name)}">${escapeHtml(a.name)}</span>`);
+  return [...formules, ...activites, d.advice ? '<span class="sm-so">Demande conseil</span>' : ''].join('');
+}
+
+function renderSmDate(item, classe = '') {
+  const d = crDemande(item);
+  const jour = d && !d.flexible ? staffRequestDateOf(d.date) : null;
+  if (!jour) return `<span class="sm-date is-libre ${classe}"><b>${d && d.flexible ? 'Date à fixer' : 'Sans date'}</b></span>`;
+  const mot = (options) => jour.toLocaleDateString('fr-BE', options).replace('.', '');
+  return `<span class="sm-date ${classe}" aria-label="${escapeHtml(staffRequestLongDate(d.date))}"><i>${escapeHtml(mot({ weekday: 'short' }))}</i><b>${jour.getDate()}</b><i>${escapeHtml(mot({ month: 'short' }))}</i></span>`;
+}
+
+function renderSmBande(item) {
+  const due = staffRequestDue(item);
+  if (due) return `<p class="sm-promis is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" data-req-due-long>${escapeHtml(due.long)}</p>`;
+  const stage = staffRequestStage(item);
+  const suivi = item.suivi || {};
+  if (stage === 'en-attente') {
+    const r = suivi.derniereReponse;
+    return `<p class="sm-promis is-attente">${r ? `Réponse envoyée ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}. ` : ''}Le client n’a pas encore répondu.</p>`;
+  }
+  if (stage === 'traitee') return `<p class="sm-promis is-fait">${suivi.reservationId ? 'Réservation créée.' : 'Demande terminée.'}</p>`;
+  if (stage === 'archivee') return '<p class="sm-promis is-attente">Demande classée sans suite.</p>';
+  return '';
+}
+
+function renderSmPhrase(item) {
+  const d = crDemande(item);
+  const sous = `<p class="sm-tete-s">${escapeHtml([staffRequestTypeDe(item), item.createdAt ? `reçue ${staffRequestStamp(item.createdAt)}` : ''].filter(Boolean).join(' · '))}</p>`;
+  if (!d) return `${Number(item.pax) || item.requestedDate ? `<p class="sm-tete-l">${Number(item.pax) ? `<b>${Number(item.pax)} personnes</b>` : ''}${item.requestedDate ? `${Number(item.pax) ? ', ' : ''}${escapeHtml(item.requestedDate)}` : ''}.</p>` : ''}${sous}`;
+  const joueurs = Number(d.participants) || 0;
+  const accompagnants = Number(d.companions) || 0;
+  const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => String(CR_AGE_LABELS[cle] || '').toLowerCase()).filter(Boolean).join(', ');
+  const moment = ({ matin: 'le matin', 'apres-midi': 'l’après-midi', soiree: 'en soirée', journee: 'toute la journée' })[d.moment] || '';
+  const quand = d.flexible
+    ? `date à fixer${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}`
+    : `<b>${escapeHtml(String(staffRequestLongDate(d.date) || d.date || '').toLowerCase())}</b>${moment ? ` ${moment}` : ''}${d.alternativeDate ? `, ou ${escapeHtml(staffRequestLongDate(d.alternativeDate).toLowerCase())}` : ''}`;
+  const qui = `<b>${joueurs} joueur${joueurs > 1 ? 's' : ''}</b>${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}${ages ? `, ${escapeHtml(ages)}` : ''}`;
+  return `<p class="sm-tete-l">${qui}, ${quand}.</p>${sous}`;
+}
+
+function renderSmClient(item) {
+  const d = crDemande(item);
+  const key = String(item.id);
+  const study = staffRequestStudies[key];
+  const c = study && study.client;
+  const tel = String(item.phone || '').replace(/\s+/g, '');
+  const organisation = (d && d.organisation) || item.company || '';
+  const facture = d && d.invoice ? `<p class="sm-c-l">Facture${organisation ? ` au nom de ${escapeHtml(organisation)}` : ' demandée'}${d.vatNumber ? `, TVA ${escapeHtml(d.vatNumber)}` : ''}.</p>` : '';
+  let passe = '';
+  if (study && study.loaded && item.email) {
+    if (!c) passe = '<p class="sm-c-h">Aucune réservation avec cette adresse e-mail.</p>';
+    else {
+      const texte = staffRequestDejaVenu(c);
+      const somme = Number(c.depense) > 0 ? ` Pour ${staffRequestEuro(c.depense)} au total.` : '';
+      const absences = Number(c.absences) > 0 ? `<span class="sm-c-abs">${Number(c.absences)} absence${Number(c.absences) > 1 ? 's' : ''}</span>` : '';
+      const venues = (Array.isArray(c.venues) ? c.venues : []).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
+      passe = `<div class="sm-c-h"><p>${escapeHtml(texte)}${escapeHtml(somme)}${absences}</p>${venues ? `<ol class="sm-venues">${venues}</ol>` : ''}<button type="button" class="sm-lien" onclick="openStaffRequestClient(${staffClientJs(item.id)})">Voir sa fiche client</button></div>`;
+    }
+  }
+  return `<section class="sm-s sm-client"><h3>Le client</h3>
+    <p class="sm-c-n"><b>${escapeHtml(item.contactName || organisation || 'Contact')}</b>${d && d.contactRole ? `, ${escapeHtml(d.contactRole)}` : ''}</p>
+    ${tel ? `<p class="sm-c-l"><a href="tel:${escapeHtml(tel)}">${escapeHtml(item.phone)}</a></p>` : ''}
+    ${item.email ? `<p class="sm-c-l"><a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></p>` : ''}
+    ${facture}
+    ${passe}
+  </section>`;
+}
+
+function openStaffRequestClient(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  state.staffClientQuery = String(item.email || item.phone || item.contactName || '');
+  openStaffMenuPage('clients');
+}
+
+function renderSmJourDeLaProposition(item) {
+  if (staffRequestStage(item) !== 'en-attente') return '';
+  const p = item.suivi && item.suivi.proposition;
+  const study = staffRequestStudies[String(item.id)];
+  const etude = study && study.etude;
+  const jour = p && etude ? (etude.dates || []).find(j => j.date === p.date) : null;
+  if (!jour || !jour.ouvert || jour.passee) return '';
+  const dessin = renderSmJournee(item, jour, etude, true);
+  if (!dessin) return '';
+  return `<section class="sm-s sm-planning-jour">
+    <div class="sm-jour-t">
+      <div>
+        <h3>${escapeHtml(staffRequestLongDate(jour.date) || jour.libelle)}</h3>
+        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}</p>
+      </div>
+      <button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button>
+    </div>
+    ${dessin}
+  </section>`;
+}
+
+function smOccupationHtml(jour) {
+  const o = jour.occupation;
+  if (!o) return '';
+  const texte = o.reservations
+    ? `Déjà ${o.reservations} réservation${o.reservations > 1 ? 's' : ''} et ${o.joueurs} joueur${o.joueurs > 1 ? 's' : ''} ce jour-là.`
+    : 'Aucune réservation ce jour-là pour le moment.';
+  return `<p class="sm-jour-b">${escapeHtml(texte)}</p>`;
+}
+
+function smMinutes(h) {
+  const [heures, minutes] = String(h || '').split(':').map(Number);
+  return Number.isFinite(heures) ? heures * 60 + (Number(minutes) || 0) : NaN;
+}
+
+function smPlanDe(jour, c) {
+  if (!jour || !c) return null;
+  if (c.type === 'formule') {
+    const fo = (jour.formules || []).find(f => String(f.id) === String(c.ref));
+    return (fo && fo.plans && fo.plans[c.heure]) || null;
+  }
+  return ((jour.visite && jour.visite.departs) || []).find(x => x.debut === c.heure) || null;
+}
+
+function smRangees(jour) {
+  const occ = jour.occupation || {};
+  const pistes = Number(occ.capacites && occ.capacites.pistes) || 0;
+  const proposes = [
+    ...(jour.formules || []).flatMap(f => Object.values(f.plans || {}).flatMap(p => p.blocs || [])),
+    ...((jour.visite && jour.visite.departs) || []).flatMap(p => p.blocs || []),
+  ];
+  const tous = [...(occ.blocs || []), ...proposes];
+  const groupes = [];
+  if (pistes > 0 && tous.some(b => b.r === 'bowling_lane')) groupes.push({ r: 'bowling_lane', nom: 'Bowling', sous: `${pistes} piste${pistes > 1 ? 's' : ''}`, pistes });
+  const autres = new Map();
+  tous.filter(b => b.r !== 'bowling_lane').forEach(b => { if (!autres.has(b.r)) autres.set(b.r, b.nom || b.r); });
+  autres.forEach((nom, r) => groupes.push({ r, nom: r === 'laser_arena' ? 'Laser Game' : nom, sous: '' }));
+  return groupes;
+}
+
+function smPistesDuBloc(bloc, occ) {
+  if (Array.isArray(bloc.pistes) && bloc.pistes.length) return bloc.pistes;
+  const total = Number(occ.capacites && occ.capacites.pistes) || 0;
+  const prises = new Set();
+  (occ.blocs || []).filter(o => o.r === 'bowling_lane' && smMinutes(o.d) < smMinutes(bloc.f) && smMinutes(bloc.d) < smMinutes(o.f)).forEach(o => (o.pistes || []).forEach(n => prises.add(n)));
+  const libres = [];
+  for (let n = 1; n <= total && libres.length < (Number(bloc.n) || 0); n += 1) if (!prises.has(n)) libres.push(n);
+  return libres;
+}
+
+function smBlocHtml(bloc, cadre, classe, titre) {
+  const de = Math.max(smMinutes(bloc.d), cadre.de);
+  const a = Math.min(smMinutes(bloc.f), cadre.a);
+  if (!(a > de)) return '';
+  const x = ((de - cadre.de) / (cadre.a - cadre.de)) * 100;
+  const w = ((a - de) / (cadre.a - cadre.de)) * 100;
+  return `<span class="sm-j-b${classe}" style="left:${x.toFixed(2)}%;width:${w.toFixed(2)}%;--x:${x.toFixed(0)}" title="${escapeHtml(titre)}"></span>`;
+}
+
+function smBlocsDuGroupe(jour, plan, cadre, apercu = false) {
+  const occ = jour.occupation || {};
+  const sortie = {};
+  const poser = (rangee, html) => { sortie[rangee] = `${sortie[rangee] || ''}${html}`; };
+  ((plan && plan.blocs) || []).forEach((b) => {
+    const titre = `Ce groupe, ${b.nom ? `${b.nom}, ` : ''}${b.d} à ${b.f}`;
+    const classe = ` is-groupe${apercu ? ' is-apercu' : ''}`;
+    if (b.r === 'bowling_lane') smPistesDuBloc(b, occ).forEach(n => poser(`bowling_lane:${n}`, smBlocHtml(b, cadre, classe, titre)));
+    else poser(`${b.r}:0`, smBlocHtml(b, cadre, classe, titre));
+  });
+  return sortie;
+}
+
+function smPhraseDuPlan(plan) {
+  const blocs = ((plan && plan.blocs) || []).slice().sort((a, b) => smMinutes(a.d) - smMinutes(b.d));
+  if (!blocs.length) return '';
+  const unis = [];
+  blocs.forEach((b) => {
+    const avant = unis[unis.length - 1];
+    if (avant && avant.r === b.r && smMinutes(b.d) <= smMinutes(avant.f)) { avant.f = smMinutes(b.f) > smMinutes(avant.f) ? b.f : avant.f; avant.n = Math.max(avant.n || 0, b.n || 0); }
+    else unis.push({ ...b });
+  });
+  const dire = (b) => (b.r === 'bowling_lane' ? `${b.nom || 'Bowling'}, ${b.n} piste${b.n > 1 ? 's' : ''} de ${b.d} à ${b.f}` : `${b.nom || b.r} de ${b.d} à ${b.f}`);
+  return `${unis.map(dire).join(', puis ')}.`;
+}
+
+const SM_DUREE_DU_DESSIN = 800;
+
+function renderSmJournee(item, jour, etude, lecture = false) {
+  const occ = jour.occupation;
+  if (!occ || !jour.horaires) return '';
+  const groupes = smRangees(jour);
+  if (!groupes.length) return '';
+  const cadre = { de: smMinutes(jour.horaires.de), a: smMinutes(jour.horaires.a) };
+  if (!(cadre.a > cadre.de)) return '';
+  const choix = staffRequestChoixDe(item);
+  const plan = choix && choix.date === jour.date ? smPlanDe(jour, choix) : null;
+  const duGroupe = smBlocsDuGroupe(jour, plan, cadre);
+  const cle = `${item.id}|${jour.date}`;
+  const maintenant = performance.now();
+  if (!smJourDessine.has(cle)) smJourDessine.set(cle, maintenant);
+  const ecoule = maintenant - smJourDessine.get(cle);
+  const arrivee = ecoule < SM_DUREE_DU_DESSIN;
+  const titreDe = (b) => `${b.d} à ${b.f}${b.libelle ? `, ${b.libelle}` : ''}${b.joueurs ? `, ${b.joueurs} joueur${b.joueurs > 1 ? 's' : ''}` : ''}`;
+  const ligne = (r, n, classe) => {
+    const id = `${r}:${n}`;
+    const pris = (occ.blocs || []).filter(b => b.r === r && (r !== 'bowling_lane' || (b.pistes || []).map(Number).includes(n)));
+    return `<div class="sm-j-t${classe}" data-sm-rangee="${escapeHtml(id)}">${pris.map(b => smBlocHtml(b, cadre, '', titreDe(b))).join('')}${duGroupe[id] || ''}</div>`;
+  };
+  const rangees = groupes.map((g) => {
+    const pistes = g.r === 'bowling_lane' ? Array.from({ length: g.pistes }, (_, i) => ligne(g.r, i + 1, ' is-piste')) : [ligne(g.r, 0, '')];
+    return `<div class="sm-j-g" data-t="${smTeinte(g.r === 'laser_arena' ? 'laser' : g.r)}" style="--pistes:${pistes.length}">
+      <div class="sm-j-n"><b>${escapeHtml(g.nom)}</b>${g.sous ? `<small>${escapeHtml(g.sous)}</small>` : ''}</div>
+      <div class="sm-j-ts">${pistes.join('')}</div>
+    </div>`;
+  }).join('');
+  const heures = [];
+  for (let m = Math.ceil(cadre.de / 60) * 60; m < cadre.a; m += 60) heures.push(m);
+  const f = jour.fenetre;
+  const avecMoment = etude.moment !== 'indifferent' && f && f.existe;
+  const axe = heures.map(m => `<span${avecMoment && m >= f.de && m < f.a ? ' class="is-mo"' : ''} style="left:${(((m - cadre.de) / (cadre.a - cadre.de)) * 100).toFixed(2)}%">${String(Math.floor(m / 60)).padStart(2, '0')}:00</span>`).join('');
+  const moment = avecMoment
+    ? `<i class="sm-j-mo" style="left:${(((Math.max(f.de, cadre.de) - cadre.de) / (cadre.a - cadre.de)) * 100).toFixed(2)}%;width:${(((Math.min(f.a, cadre.a) - Math.max(f.de, cadre.de)) / (cadre.a - cadre.de)) * 100).toFixed(2)}%"></i>`
+    : '';
+  const aide = !lecture && rqEtudeADesHeures(etude) ? 'En gris, ce qui est déjà réservé. Choisissez une heure pour y placer le groupe.' : 'En gris, ce qui est déjà réservé.';
+  return `<div class="sm-j${arrivee ? ' is-arrivee' : ''}" style="--ecoule:${Math.round(ecoule)}ms" aria-hidden="true">
+    <div class="sm-j-axe"><div>${axe}${moment}</div></div>
+    <div class="sm-j-corps">${rangees}</div>
+  </div>
+  <div class="sm-j-pied"><p class="sm-j-dit" data-sm-aide="${escapeHtml(aide)}">${escapeHtml(plan ? smPhraseDuPlan(plan) || aide : aide)}</p>${smOccupationHtml(jour)}</div>`;
+}
+
+function smToucheJour(el) {
+  const key = String(el.getAttribute('data-sm-id') || '');
+  const etude = staffRequestStudies[key] && staffRequestStudies[key].etude;
+  const date = el.getAttribute('data-sm-date');
+  const jour = etude && (etude.dates || []).find(j => j.date === date);
+  const zone = el.closest('[data-sm-jour]');
+  return jour && zone ? { key, jour, zone } : null;
+}
+
+function rqApercu(el) {
+  if (el.classList.contains('is-on')) return;
+  const t = smToucheJour(el);
+  if (!t || !t.jour.horaires) return;
+  const plan = smPlanDe(t.jour, { type: el.getAttribute('data-sm-type'), ref: el.getAttribute('data-sm-ref'), heure: el.getAttribute('data-sm-heure') });
+  smReposer(t, plan, true);
+}
+
+function rqApercuFin(el) {
+  const t = smToucheJour(el);
+  if (!t) return;
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === t.key);
+  const choix = item ? staffRequestChoixDe(item) : null;
+  smReposer(t, choix && choix.date === t.jour.date ? smPlanDe(t.jour, choix) : null, false);
+}
+
+function smReposer(t, plan, apercu) {
+  const cadre = { de: smMinutes(t.jour.horaires.de), a: smMinutes(t.jour.horaires.a) };
+  t.zone.querySelectorAll('.sm-j-b.is-groupe').forEach(n => n.remove());
+  const blocs = smBlocsDuGroupe(t.jour, plan, cadre, apercu);
+  Object.keys(blocs).forEach((rangee) => {
+    const piste = t.zone.querySelector(`[data-sm-rangee="${CSS.escape(rangee)}"]`);
+    if (piste) piste.insertAdjacentHTML('beforeend', blocs[rangee]);
+  });
+  const dit = t.zone.querySelector('.sm-j-dit');
+  if (dit) dit.textContent = plan ? smPhraseDuPlan(plan) || dit.getAttribute('data-sm-aide') : dit.getAttribute('data-sm-aide');
 }
 
 // Les disponibilites se montrent tant qu il reste quelque chose a proposer.
@@ -19688,69 +19972,67 @@ function staffRequestAutreProposition(id) {
   }, 60);
 }
 window.staffRequestAutreProposition = staffRequestAutreProposition;
+window.rqApercu = rqApercu;
+window.rqApercuFin = rqApercuFin;
+window.openStaffRequestClient = openStaffRequestClient;
 
 function renderSmFiche(item) {
   const jid = staffClientJs(item.id);
   const stage = staffRequestStage(item);
   const finie = stage === 'traitee' || stage === 'archivee';
-  const entete = [staffRequestTypeDe(item), item.createdAt ? `Reçue ${staffRequestStamp(item.createdAt)}` : ''].filter(Boolean).join(' · ');
-  const due = staffRequestDue(item);
-  const etat = stage === 'en-attente' ? 'En attente du client' : stage === 'traitee' ? (item.suivi && item.suivi.reservationId ? 'Réservée' : 'Terminée') : stage === 'archivee' ? 'Sans suite' : '';
+  const tel = String(item.phone || '').replace(/\s+/g, '');
   const dispos = staffRequestMontreDispos(item) ? renderSmDispos(item) : '';
   const reponse = renderSmReponse(item);
   return `<button type="button" class="sm-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
     <article class="sm-fiche" data-request-id="${escapeHtml(String(item.id))}">
       <div class="sm-tete">
-        <div>
+        ${renderSmDate(item, 'is-grande')}
+        <div class="sm-tete-t">
           <h2>${escapeHtml(staffRequestNom(item))}</h2>
-          <p>${escapeHtml(entete)}${etat ? ` · <b>${escapeHtml(etat)}</b>` : ''}</p>
+          ${renderSmPhrase(item)}
         </div>
-        <button type="button" class="sm-b" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
+        <div class="sm-tete-a">
+          ${tel ? `<a class="sm-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}
+          <button type="button" class="sm-b" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
+        </div>
       </div>
-      ${due ? `<p class="sm-promis is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" data-req-due-long>${escapeHtml(due.long)}</p>` : ''}
+      ${renderSmBande(item)}
       <div class="sm-colonnes">
-        <div class="sm-c1">${renderSmDemande(item)}${renderSmHistorique(item)}</div>
-        <div class="sm-c2">${stage === 'a-traiter' ? `${dispos}${reponse}` : `${reponse}${dispos}`}</div>
+        <div class="sm-c1">${renderSmDemande(item)}${renderSmClient(item)}${renderSmHistorique(item)}</div>
+        <div class="sm-c2">${stage === 'a-traiter' ? `${dispos}${reponse}` : `${reponse}${dispos || renderSmJourDeLaProposition(item)}`}</div>
       </div>
     </article>`;
 }
 
 // Ce que le client a rempli, ligne par ligne, avec ses mots a lui.
+const SM_PHOTOS = {
+  libramont: [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/pixel|fun.?run/i, 'fun-run'], [/simulateur/i, 'simulateurs'], [/plaine/i, 'plaine'], [/formule|kids|anniv/i, 'salle-bowling']],
+  gembloux: [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']],
+};
+function smPhotoDe(nom, centerId) {
+  const trouve = (SM_PHOTOS[String(centerId || '')] || []).find(([motif]) => motif.test(String(nom || '')));
+  return trouve ? `<img class="sm-photo" src="/assets/fungalaxy/${trouve[1]}-carte.webp" alt="" loading="lazy" decoding="async" width="84" height="56" />` : '';
+}
+
 function renderSmDemande(item) {
   const d = crDemande(item);
-  const study = staffRequestStudies[String(item.id)];
-  const ligne = (label, valeur) => (valeur ? `<div><dt>${escapeHtml(label)}</dt><dd>${valeur}</dd></div>` : '');
-  const texte = (valeur) => escapeHtml(String(valeur || ''));
-  const lignes = [];
-  if (d) {
-    const joueurs = Number(d.participants) || 0;
-    const accompagnants = Number(d.companions) || 0;
-    const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean).join(', ');
-    const moment = d.moment && d.moment !== 'indifferent' ? `, ${String(d.momentLabel || '').toLowerCase()}` : '';
-    const date = d.flexible ? `À fixer${d.period ? `, plutôt ${d.period}` : ''}` : `${staffRequestLongDate(d.date) || d.date || ''}${moment}`;
-    const souhaits = [...crNoms(d.formulas), ...crActivites(d), d.advice ? 'Demande conseil' : ''].filter(Boolean).join(', ');
-    lignes.push(
-      ligne('Personnes', texte(`${joueurs} joueur${joueurs > 1 ? 's' : ''}${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}`)),
-      ligne('Âges', texte(ages)),
-      ligne('Date', texte(date)),
-      ligne('Autre date', texte(d.alternativeDate ? staffRequestLongDate(d.alternativeDate) : '')),
-      ligne('Souhaits', texte(souhaits)),
-      ligne('Budget', Number(d.budgetPerPerson) > 0 ? `${texte(staffRequestEuro(d.budgetPerPerson))} par personne` : ''),
-    );
-  } else {
-    lignes.push(ligne('Personnes', Number(item.pax) ? texte(item.pax) : ''), ligne('Date', texte(item.requestedDate)));
-  }
-  const tel = String(item.phone || '').replace(/\s+/g, '');
-  const organisation = (d && d.organisation) || item.company || '';
-  lignes.push(
-    ligne('Message', item.message ? `<span class="sm-message">${texte(String(item.message).trim())}</span>` : ''),
-    ligne('Contact', texte([organisation ? item.contactName : '', d && d.contactRole].filter(Boolean).join(', '))),
-    ligne('Téléphone', tel ? `<a href="tel:${escapeHtml(tel)}">${texte(item.phone)}</a>` : ''),
-    ligne('E-mail', item.email ? `<a href="mailto:${escapeHtml(item.email)}">${texte(item.email)}</a>` : ''),
-    ligne('Facture', d && d.invoice ? texte(`Oui${organisation ? `, au nom de ${organisation}` : ''}${d.vatNumber ? `, TVA ${d.vatNumber}` : ''}`) : ''),
-    ligne('Déjà venu', study && study.client ? texte(staffRequestDejaVenu(study.client)) : ''),
-  );
-  return `<section class="sm-s"><h3>La demande</h3><dl class="sm-dl">${lignes.join('')}</dl></section>`;
+  const message = String(item.message || '').trim();
+  const mot = message ? `<p class="sm-message">${escapeHtml(message)}</p>` : '';
+  if (!d) return mot ? `<section class="sm-s"><h3>Le message</h3>${mot}</section>` : '';
+  const centre = item.centerId || getActiveOpsCenterId();
+  const formules = crNoms(d.formulas).map(nom => `<li>${smPhotoDe(nom, centre)}<div class="sm-so"><b>${escapeHtml(nom)}</b></div></li>`);
+  const activites = (Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map((a, rang) => {
+    const ligne = crActivites(d)[rang] || '';
+    const detail = ligne.slice(`${a.name} : `.length);
+    return `<li>${smPhotoDe(a.name, centre)}<div class="sm-so" data-t="${smTeinte(a.id || a.name)}"><b>${escapeHtml(a.name)}</b>${detail ? `<span>${escapeHtml(detail)}</span>` : ''}</div></li>`;
+  });
+  const budget = Number(d.budgetPerPerson) > 0 ? `<p class="sm-budget">Budget de <b>${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne</b></p>` : '';
+  return `<section class="sm-s"><h3>Ce qu’ils aimeraient</h3>
+    ${formules.length || activites.length ? `<ul class="sm-envies">${[...formules, ...activites].join('')}</ul>` : ''}
+    ${d.advice ? '<p class="sm-budget">Ils demandent aussi conseil.</p>' : ''}
+    ${budget}
+    ${mot}
+  </section>`;
 }
 
 // Le client connu du centre (lib/email-agent matchClient). La lecture est
@@ -19777,14 +20059,13 @@ function renderSmDispos(item) {
   if (!d) return '';
   const jid = staffClientJs(item.id);
   const study = staffRequestStudies[String(item.id)];
-  const joueurs = Number(d.participants) || 0;
-  const bloc = (corps) => `<section class="sm-s" id="reqDispos-${escapeHtml(String(item.id))}"><h3>Disponibilités${joueurs ? ` pour ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : ''}</h3>${corps}</section>`;
+  const bloc = (corps) => `<section class="sm-s sm-dispos" id="reqDispos-${escapeHtml(String(item.id))}">${corps}</section>`;
   if (!study || (study.loading && !study.loaded)) return bloc('<p class="sm-note" aria-busy="true">Recherche des disponibilités…</p>');
   if (study.error && !study.loaded) return bloc(`<p class="sm-note">${escapeHtml(study.error)} <button type="button" class="sm-lien" onclick="loadStaffRequestStudy(${jid}, true)">Réessayer</button></p>`);
   const etude = study.etude || { dates: [], sansDate: '' };
-  if (etude.sansDate || !etude.dates.length) return bloc(`<p class="sm-note">${escapeHtml(etude.sansDate || 'Aucune date à étudier.')}</p>`);
-  const consigne = rqEtudeADesHeures(etude) && Boolean(item.email) && peutGeste('ecrire') ? '<p class="sm-note">Choisissez une heure pour préparer la réponse.</p>' : '';
-  return bloc(`${consigne}${etude.dates.map(jour => renderRqJour(item, jour, etude, d)).join('')}`);
+  if (etude.sansDate || !etude.dates.length) return bloc(`<p class="sm-note">${escapeHtml(etude.sansDate || 'Aucune heure à proposer pour cette demande.')}</p>`);
+  const sansHeure = rqEtudeADesHeures(etude) ? '' : '<p class="sm-note sm-sans-heure">Aucune heure à proposer pour cette demande.</p>';
+  return bloc(`${etude.dates.map(jour => renderRqJour(item, jour, etude, d)).join('')}${sansHeure}`);
 }
 
 // Le budget ne se signale que s il est depasse : ce qui rentre n a rien a dire.
@@ -19802,7 +20083,7 @@ function renderStaffRequestStudyLines(visite) {
     const hasCount = detail.startsWith(players + ' joueur') || detail.startsWith(players + ' enfant');
     const count = players > 0 && !hasCount ? `${players} joueur${players > 1 ? 's' : ''}` : '';
     const description = [count, detail].filter(Boolean).join(', ');
-    return `<span>${escapeHtml(ligne.nom)}${description ? `, ${escapeHtml(description)}` : ''}, ${ligne.prix != null ? escapeHtml(staffRequestEuro(ligne.prix)) : 'prix à confirmer'}</span>`;
+    return `<span class="sm-so" data-t="${smTeinte(ligne.nom)}">${escapeHtml(ligne.nom)}${description ? `, ${escapeHtml(description)}` : ''}, ${ligne.prix != null ? escapeHtml(staffRequestEuro(ligne.prix)) : 'prix à confirmer'}</span>`;
   }).join('');
 }
 
@@ -19810,26 +20091,28 @@ function renderStaffRequestStudyLines(visite) {
 function renderRqOffre(item, jour, o, d) {
   const jid = staffClientJs(item.id);
   const choix = staffRequestChoixDe(item);
-  const nom = `<span class="sm-o-n">${escapeHtml(o.nom)}</span>`;
-  const lignes = o.lignes ? `<div class="sm-o-l">${o.lignes}</div>` : '';
   const euro = (valeur) => escapeHtml(staffRequestEuro(valeur));
+  const lignes = o.lignes ? `<div class="sm-o-l">${o.lignes}</div>` : '';
+  const prix = (total, parJoueur, tag = '') => `<div class="sm-o-p">${total != null ? `<b>${euro(total)}</b>` : '<em>À confirmer</em>'}${parJoueur != null ? `<small>${euro(parJoueur)} par joueur</small>` : ''}${tag}</div>`;
   if (o.panne || !o.ok) {
     // Un programme que le moteur ne sait pas placer garde son prix et ses lignes : c est ce que l equipe repond au client.
     const programme = !o.panne && o.type === 'visite';
     const pourquoi = o.panne ? 'Pas de réponse pour le moment. Réessayez dans un instant.' : programme ? (o.raison || 'Aucun départ possible ce jour-là.') : `Impossible ce jour-là. ${o.raison || ''}`.trim();
-    return `<tr class="sm-o is-off"><td>${nom}${lignes}</td><td class="num">${programme && o.parJoueur != null ? euro(o.parJoueur) : ''}</td><td class="num">${programme && o.prix != null ? euro(o.prix) : ''}</td><td class="sm-o-h">${escapeHtml(pourquoi)}</td></tr>`;
+    return `<div class="sm-o is-off"><div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}</div>${programme ? prix(o.prix, o.parJoueur) : ''}</div><p class="sm-o-non">${escapeHtml(pourquoi)}</p></div>`;
   }
   const choisie = Boolean(choix) && choix.date === jour.date && choix.type === o.type && String(choix.ref) === String(o.ref);
   const touche = (depart) => {
     const on = choisie && choix.heure === depart.debut;
-    return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="sm-h${on ? ' is-on' : ''}" aria-pressed="${on}" title="${depart.fin ? `Fin vers ${escapeHtml(depart.fin)}` : ''}" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')">${escapeHtml(depart.debut)}</button>`;
+    const restes = (depart.reste || []).map(r => `reste ${r.n} ${r.unite}${r.n > 1 ? 's' : ''}`);
+    const dit = [depart.debut, depart.fin ? `fin vers ${depart.fin}` : '', ...restes].filter(Boolean).join(', ');
+    const donnees = `data-sm-id="${escapeHtml(String(item.id))}" data-sm-date="${escapeHtml(jour.date)}" data-sm-type="${o.type}" data-sm-ref="${escapeHtml(String(o.ref))}" data-sm-heure="${escapeHtml(depart.debut)}"`;
+    return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="sm-h${on ? ' is-on' : ''}" aria-pressed="${on}" aria-label="${escapeHtml(dit)}" title="${depart.fin ? `Fin vers ${escapeHtml(depart.fin)}` : ''}" ${donnees} onmouseenter="rqApercu(this)" onmouseleave="rqApercuFin(this)" onfocus="rqApercu(this)" onblur="rqApercuFin(this)" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')"><b>${escapeHtml(depart.debut)}</b>${restes.map(r => `<small>${escapeHtml(r)}</small>`).join('')}</button>`;
   };
-  return `<tr class="sm-o${choisie ? ' is-on' : ''}">
-    <td>${nom}${lignes}${o.alerte || ''}</td>
-    <td class="num">${o.parJoueur != null ? euro(o.parJoueur) : ''}${renderStaffRequestBudgetTag(o.parJoueur, d)}</td>
-    <td class="num">${o.prix != null ? euro(o.prix) : 'À confirmer'}</td>
-    <td class="sm-o-h">${o.ailleurs ? '<small>Rien dans ce moment de la journée. Possible à ces heures.</small>' : ''}${o.departs.length ? `<div class="sm-heures">${o.departs.map(touche).join('')}</div>` : ''}</td>
-  </tr>`;
+  return `<div class="sm-o${choisie ? ' is-on' : ''}">
+    <div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}${o.alerte || ''}</div>${prix(o.prix, o.parJoueur, renderStaffRequestBudgetTag(o.parJoueur, d))}</div>
+    ${o.ailleurs ? '<small class="sm-o-ail">Rien dans ce moment de la journée. Possible à ces heures.</small>' : ''}
+    ${o.departs.length ? `<div class="sm-heures">${o.departs.map(touche).join('')}</div>` : ''}
+  </div>`;
 }
 
 function renderRqJour(item, jour, etude, d) {
@@ -19843,7 +20126,7 @@ function renderRqJour(item, jour, etude, d) {
     : '';
   const offres = (jour.formules || []).map((fo, rang) => renderRqOffre(item, jour, {
     rang, type: 'formule', ref: fo.id, nom: fo.nom, ok: fo.ok, panne: fo.panne, raison: fo.raison, prix: fo.prix, parJoueur: fo.parJoueur,
-    departs: (fo.heures.length ? fo.heures : fo.heuresAilleurs).map(h => ({ debut: h })),
+    departs: (fo.heures.length ? fo.heures : fo.heuresAilleurs).map(h => ({ debut: h, ...((fo.plans && fo.plans[h]) || {}) })),
     ailleurs: !fo.heures.length && fo.heuresAilleurs.length > 0,
   }, d));
   const v = jour.visite;
@@ -19859,15 +20142,18 @@ function renderRqJour(item, jour, etude, d) {
       ].join(''),
     }, d));
   }
-  const occupation = jour.occupation
-    ? `Déjà ${jour.occupation.reservations} réservation${jour.occupation.reservations > 1 ? 's' : ''} et ${jour.occupation.joueurs} joueur${jour.occupation.joueurs > 1 ? 's' : ''} ce jour-là.`
-    : '';
-  return `<div class="sm-jour">
-    <h4>${titre}<span>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${plage ? ` · ${plage}` : ''}</span></h4>
+  return `<div class="sm-jour" data-sm-jour="${escapeHtml(jour.date)}">
+    <div class="sm-jour-t">
+      <div>
+        <h3>${titre}</h3>
+        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${plage ? ` · ${plage}` : ''}</p>
+      </div>
+      <button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button>
+    </div>
+    ${renderSmJournee(item, jour, etude) || smOccupationHtml(jour)}
     ${offres.length
-      ? `<table class="sm-table sm-offres"><thead><tr><th scope="col">Offre</th><th scope="col" class="num">Par joueur</th><th scope="col" class="num">Total</th><th scope="col">Heures</th></tr></thead><tbody>${offres.join('')}</tbody></table>`
+      ? `<h4 class="sm-o-titre">Ce que vous pouvez proposer à ${Number(etude.participants) || ''} joueur${Number(etude.participants) > 1 ? 's' : ''}</h4><div class="sm-offres">${offres.join('')}</div>`
       : '<p class="sm-note">Aucune formule ni activité choisie. Le programme est à composer avec le client.</p>'}
-    <p class="sm-jour-b">${occupation ? `${escapeHtml(occupation)} ` : ''}<button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button></p>
   </div>`;
 }
 
@@ -19889,7 +20175,7 @@ function rqChoisir(id, date, type, ref, heure) {
   let offre = null;
   if (type === 'formule') {
     const fo = (jour.formules || []).find(f => String(f.id) === String(ref));
-    if (fo && [...fo.heures, ...fo.heuresAilleurs].includes(heure)) offre = { nom: fo.nom, prix: fo.prix, parJoueur: fo.parJoueur, fin: '' };
+    if (fo && [...fo.heures, ...fo.heuresAilleurs].includes(heure)) offre = { nom: fo.nom, prix: fo.prix, parJoueur: fo.parJoueur, fin: (fo.plans && fo.plans[heure] && fo.plans[heure].fin) || '' };
   } else if (jour.visite) {
     const v = jour.visite;
     const depart = (Array.isArray(v.departs) && v.departs.length ? v.departs : [v.proposition]).find(x => x && x.debut === heure);
@@ -19913,11 +20199,10 @@ window.rqChoisir = rqChoisir;
 function renderSmResume(p) {
   const jour = staffRequestShortDate(p.date);
   const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}`;
-  return `<dl class="sm-dl sm-resume">
-    <div><dt>Offre</dt><dd>${escapeHtml(p.nom)}</dd></div>
-    <div><dt>Quand</dt><dd>${escapeHtml(quand)}</dd></div>
-    <div><dt>Prix</dt><dd>${p.prix != null ? escapeHtml(staffRequestEuro(p.prix)) : 'À confirmer'}${p.parJoueur != null ? `, soit ${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur` : ''}</dd></div>
-  </dl>`;
+  return `<div class="sm-resume">
+    <div><b>${escapeHtml(p.nom)}</b><span>${escapeHtml(quand)}</span></div>
+    <div class="sm-o-p">${p.prix != null ? `<b>${escapeHtml(staffRequestEuro(p.prix))}</b>` : '<em>À confirmer</em>'}${p.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur</small>` : ''}</div>
+  </div>`;
 }
 
 // Une heure a toucher au moins : sans elle, inviter a en toucher une serait mentir.
@@ -19953,16 +20238,15 @@ function renderSmReponse(item) {
     return bloc('Réponse au client', renderSmCourrier(item, reply, local, reserve));
   }
   if (envoyee || stage === 'en-attente') {
-    const r = suivi.derniereReponse;
     return bloc(envoyee ? 'Proposition envoyée' : 'Réponse envoyée', `${envoyee ? renderSmResume(envoyee) : ''}
-      ${r ? `<p class="sm-note">Envoyée ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}.</p>` : ''}
       <div class="sm-actions">
         ${creer('sm-p', 'Le client accepte, créer la réservation')}
         ${crDemande(item) && !staffRequestMontreDispos(item) ? bouton('sm-b', 'Autre proposition', `staffRequestAutreProposition(${jid})`) : ''}
         ${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}
       </div>`);
   }
-  return `<div class="sm-actions">${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}${creer('sm-b', 'Créer la réservation')}</div>`;
+  if (!ecrit && !reserve) return '';
+  return `<section class="sm-s sm-autre"><p>${crDemande(item) ? 'Aucune heure ne convient ? Écrivez au client, ou créez la réservation directement.' : 'Répondez au client, ou créez la réservation directement.'}</p><div class="sm-actions">${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}${creer('sm-b', 'Créer la réservation')}</div></section>`;
 }
 
 // Le mail : objet et message, envoyes par le meme canal trace que le studio mails
@@ -20035,10 +20319,11 @@ function renderSmHistorique(item) {
     ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
     ...mails.map(message => ({ le: quandMail(message), mail: message })),
   ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
+  const dernierRecu = mails.filter(message => (message.direction || 'outbound') === 'inbound').pop() || null;
   const ligneMail = (message) => {
     const recu = (message.direction || 'outbound') === 'inbound';
     const mid = String(message.id || `${message.recipient || ''}-${quandMail(message)}`);
-    const ouvert = Boolean(staffRequestOpenMessages[mid]);
+    const ouvert = Boolean(staffRequestOpenMessages[mid]) || (recu && !staffRequestFermes[mid] && staffRequestStage(item) === 'a-traiter' && message === dernierRecu);
     const brut = String(message.status || '');
     const etat = recu || brut === 'sent' || brut === 'delivered' ? '' : (STAFF_MAIL_STATUS[brut] || [brut || 'inconnu'])[0];
     const auteur = recu ? '' : auteurDe(message);
@@ -20055,7 +20340,7 @@ function renderSmHistorique(item) {
     <ol class="sm-hi">${lignes.map(e => `<li><time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time><div>${e.mail ? ligneMail(e.mail) : `${escapeHtml(e.titre)}${e.texte ? `<span class="sm-hi-o">${escapeHtml(e.texte)}</span>` : ''}`}</div></li>`).join('')}</ol>
     ${attente}
     <label class="sm-e" for="reqNote-${sid}">Note pour l’équipe</label>
-    <textarea id="reqNote-${sid}" class="input" rows="2" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
+    <textarea id="reqNote-${sid}" class="input" rows="1" placeholder="Ajouter une note" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
     <div class="sm-actions"><button type="button" class="sm-b" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button></div>
   </section>`;
 }
@@ -20101,10 +20386,12 @@ function ensureStaffRequestThread() {
   loadStaffRequestThread(item.id);
 }
 
+const staffRequestFermes = {};
 function toggleStaffRequestMessage(messageId) {
   const key = String(messageId);
-  if (staffRequestOpenMessages[key]) delete staffRequestOpenMessages[key];
-  else staffRequestOpenMessages[key] = Date.now();
+  const bouton = [...document.querySelectorAll('.sm-hi-m')].find(n => n.getAttribute('onclick') === `toggleStaffRequestMessage(${staffClientJs(messageId)})`);
+  if (bouton && bouton.getAttribute('aria-expanded') === 'true') { delete staffRequestOpenMessages[key]; staffRequestFermes[key] = true; }
+  else { staffRequestOpenMessages[key] = Date.now(); delete staffRequestFermes[key]; }
   renderStaffUtilityPage();
 }
 window.toggleStaffRequestMessage = toggleStaffRequestMessage;
@@ -20447,7 +20734,7 @@ window.loadStaffRequestStudy = loadStaffRequestStudy;
 // compte ses appels). Une erreur attend le clic « Reessayer ».
 function ensureStaffRequestStudy() {
   const item = getStaffRequestSelectedItem();
-  if (!item || !crDemande(item) || !staffRequestMontreDispos(item)) return;
+  if (!item || !crDemande(item)) return;
   const study = staffRequestStudies[String(item.id)];
   if (study && (study.loading || (study.error && !study.loaded))) return;
   if (study && study.loaded && (!study.stale || Date.now() - Number(study.at || 0) < 20000)) return;

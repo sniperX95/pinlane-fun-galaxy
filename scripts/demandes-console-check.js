@@ -84,7 +84,7 @@ function installer(expiresAt) {
   const leads = [
     { id: 801, centerId: 'libramont', contactName: 'Ansar Bisultanov', company: 'Athénée de Libramont', email: 'ansar@example.org', phone: '+32 470 11 22 33', requestedDate: 'demande de 31 joueurs', pax: 31, occasion: 'ecole', message: 'Nous aimerions pique-niquer sur place à midi.', status: 'new', createdAt: iso(now - 3 * H), updatedAt: iso(now - 3 * H), payload: { demande: demande() }, echeance: echeance(2 * H), suivi: suivi('a-traiter') },
     { id: 802, centerId: 'libramont', contactName: 'Claire Dumont', company: 'Pharma SA', email: 'claire@example.org', phone: '+32 471 00 00 02', requestedDate: '', pax: 45, occasion: 'entreprise', message: '', status: 'in_progress', createdAt: iso(now - 30 * H), updatedAt: iso(now - 20 * H), payload: { demande: demande({ groupType: 'entreprise', groupTypeLabel: 'Entreprise, team building', organisation: 'Pharma SA', participants: 45, companions: 0, ages: ['adultes'], moment: 'soiree', momentLabel: 'Soirée', formulas: [], budgetPerPerson: 0, contactRole: 'Office manager' }) }, echeance: echeance(-1 * H), suivi: suivi('a-traiter', { priseEnCharge: prise, historique: [prise] }) },
-    { id: 803, centerId: 'libramont', contactName: 'Marc Lambert', company: '', email: 'marc@example.org', phone: '', requestedDate: '', pax: 24, occasion: 'anniversaire', message: '', status: 'in_progress', createdAt: iso(now - 50 * H), updatedAt: iso(now - 20 * H), payload: { demande: demande({ groupType: 'amis', groupTypeLabel: 'Amis, famille', organisation: '', participants: 24, companions: 0, invoice: false, vatNumber: '', contactRole: '' }) }, echeance: null, suivi: suivi('en-attente', { priseEnCharge: prise, reponses: 1, derniereReponse: reponse(iso(now - 20 * H)), historique: [prise, reponse(iso(now - 20 * H))] }) },
+    { id: 803, centerId: 'libramont', contactName: 'Marc Lambert', company: '', email: 'marc@example.org', phone: '', requestedDate: '', pax: 24, occasion: 'anniversaire', message: '', status: 'in_progress', createdAt: iso(now - 50 * H), updatedAt: iso(now - 20 * H), payload: { demande: demande({ groupType: 'amis', groupTypeLabel: 'Amis, famille', organisation: '', participants: 24, companions: 0, invoice: false, vatNumber: '', contactRole: '' }) }, echeance: null, suivi: suivi('en-attente', { priseEnCharge: prise, reponses: 1, derniereReponse: reponse(iso(now - 20 * H)), proposition: { date: D1, type: 'visite', ref: 'programme', heure: '14:00', nom: 'Bowling + Laser Game', prix: 544, parJoueur: 17.55, fin: '16:00' }, historique: [prise, reponse(iso(now - 20 * H))] }) },
     { id: 804, centerId: 'libramont', contactName: 'Sophie Martin', company: 'Scouts de Libramont', email: 'sophie@example.org', phone: '+32 472 00 00 04', requestedDate: '', pax: 36, occasion: 'ecole', message: '', status: 'in_progress', createdAt: iso(now - 60 * H), updatedAt: iso(now - 1 * H), payload: { demande: demande({ organisation: 'Scouts de Libramont', participants: 36 }) }, echeance: echeance(23 * H), suivi: suivi('a-traiter', { priseEnCharge: prise, reponses: 1, derniereReponse: reponse(iso(now - 26 * H)), messageClient: iso(now - 1 * H), historique: [prise, reponse(iso(now - 26 * H))] }) },
     { id: 805, centerId: 'libramont', contactName: 'Julien Petit', company: 'Club de foot', email: 'julien@example.org', phone: '', requestedDate: '', pax: 32, occasion: 'groupe', message: '', status: 'handled', createdAt: iso(now - 90 * H), updatedAt: iso(now - 40 * H), payload: { demande: demande({ organisation: 'Club de foot', participants: 32 }) }, echeance: null, suivi: suivi('traitee', { reservationId: 912, historique: [prise, { type: 'reservation', le: iso(now - 40 * H), par: 'Rachel', reservationId: 912, date: D1 }, { type: 'statut', le: iso(now - 40 * H), par: 'Rachel', statut: 'handled' }] }) },
     { id: 806, centerId: 'libramont', contactName: 'Comité des fêtes', company: '', email: 'comite@example.org', phone: '', requestedDate: '', pax: 40, occasion: 'groupe', message: '', status: 'archived', createdAt: iso(now - 200 * H), updatedAt: iso(now - 150 * H), payload: { demande: demande({ organisation: 'Comité des fêtes', participants: 40 }) }, echeance: null, suivi: suivi('archivee') },
@@ -95,14 +95,23 @@ function installer(expiresAt) {
     { id: 72, direction: 'outbound', recipient: 'ansar@example.org', subject: 'Rappel : votre venue demain', body: 'Petit rappel de votre venue de demain.', status: 'sent', createdAt: iso(now - 39 * 24 * H), sentAt: iso(now - 39 * 24 * H), payload: {} },
     { id: 73, direction: 'inbound', recipient: 'ansar@example.org', subject: 'Question pique-nique', body: 'Bonjour, pouvons-nous apporter nos sandwichs ?', status: 'received', createdAt: iso(now - 3 * H + 5 * 60000), sentAt: iso(now - 3 * H + 5 * 60000), payload: {} },
   ];
+  const pistes = (d, f, liste) => ({ r: 'bowling_lane', nom: 'Bowling', d, f, joueurs: 31, pistes: liste, n: liste.length });
+  const arene = (d, f, joueurs) => ({ r: 'laser_arena', nom: 'Laser Game', d, f, joueurs });
   const etude = {
     participants: 31, moment: 'apres-midi', momentLabel: 'Après-midi', sansDate: '',
     dates: [
       { date: D1, libelle: D1, principale: true, passee: false, ouvert: true, horaires: { de: '10:00', a: '22:00' }, fenetre: { de: 720, a: 1080, existe: true, raison: '' },
-        formules: [{ id: 'f3', nom: 'Formule 3', panne: false, ok: true, prix: 868, parJoueur: 28, heures: ['12:00', '14:30'], heuresAilleurs: [], raison: '' }],
-        visite: { panne: false, ok: true, prix: 544, parJoueur: 17.55, prixComplet: true, depasse: 0, raison: '', proposition: { debut: '14:00', fin: '16:00' }, departs: [{ debut: '14:00', fin: '16:00', prix: 544 }, { debut: '15:00', fin: '17:00', prix: 544 }],
+        formules: [{ id: 'f3', nom: 'Formule 3', panne: false, ok: true, prix: 868, parJoueur: 28, heures: ['12:00', '14:30'], heuresAilleurs: [], raison: '',
+          plans: { '12:00': { fin: '15:30', blocs: [pistes('12:00', '13:00', [3, 4, 5, 6, 7, 8]), arene('13:00', '13:20', 16), arene('13:20', '13:40', 15)], reste: [{ n: 2, unite: 'piste' }, { n: 14, unite: 'arme' }] },
+            '14:30': { fin: '18:00', blocs: [pistes('14:30', '15:30', [1, 2, 3, 4, 7, 8]), arene('15:30', '15:50', 16), arene('15:50', '16:10', 15)], reste: [{ n: 0, unite: 'piste' }, { n: 14, unite: 'arme' }] } } }],
+        visite: { panne: false, ok: true, prix: 544, parJoueur: 17.55, prixComplet: true, depasse: 0, raison: '', proposition: { debut: '14:00', fin: '16:00' }, departs: [{ debut: '14:00', fin: '16:00', prix: 544, blocs: [pistes('14:00', '15:00', [3, 4, 5, 6, 7, 8]), arene('15:00', '15:20', 16), arene('15:20', '15:40', 15)], reste: [{ n: 2, unite: 'piste' }, { n: 14, unite: 'arme' }] },
+          { debut: '15:00', fin: '17:00', prix: 544, blocs: [pistes('15:00', '16:00', [1, 2, 3, 4, 7, 8]), arene('16:00', '16:20', 16), arene('16:20', '16:40', 15)], reste: [{ n: 0, unite: 'piste' }, { n: 14, unite: 'arme' }] }],
           lignes: [{ nom: 'Bowling', prix: 234, detail: '1 h, 6 pistes' }, { nom: 'Laser Game', prix: 310, detail: '1 partie, en 2 vagues' }], heuresParActivite: [{ nom: 'Bowling', heures: ['14:00'] }] },
-        occupation: { reservations: 2, joueurs: 20 } },
+        occupation: { reservations: 2, joueurs: 20, capacites: { pistes: 8, armes: 30 }, blocs: [
+          { r: 'bowling_lane', d: '10:30', f: '12:00', pistes: [1, 2, 3], libelle: 'Formule 2', joueurs: 12 },
+          { r: 'laser_arena', nom: 'Laser Game', d: '12:00', f: '12:20', libelle: 'Formule 2', joueurs: 12 },
+          { r: 'bowling_lane', d: '15:00', f: '16:00', pistes: [5, 6], libelle: 'Bowling', joueurs: 8 },
+        ] } },
       { date: D2, libelle: D2, principale: false, passee: false, ouvert: false, horaires: null, fenetre: null, formules: [], visite: null, occupation: null },
     ],
   };
@@ -168,7 +177,8 @@ function installer(expiresAt) {
       const action = u.searchParams.get('action') || '';
       window.__QA__.appels.push({ methode, action, id: u.searchParams.get('id') || '' });
       if (action === 'customRequests') return J({ ok: true, centerId: 'libramont', customRequests: JSON.parse(JSON.stringify(leads)) });
-      if (action === 'customRequestStudy') return J({ ok: true, id: Number(u.searchParams.get('id')), etude, client: { clientName: 'Ansar', visits: 3, lastVisit: ymd(now - 40 * 24 * H), reservationsAVenir: 0, prochaineReservation: null } });
+      if (action === 'customRequestStudy') return J({ ok: true, id: Number(u.searchParams.get('id')), etude, client: { clientName: 'Ansar', visits: 3, lastVisit: ymd(now - 40 * 24 * H), reservationsAVenir: 0, prochaineReservation: null, depense: 1240, absences: 1,
+        venues: [{ date: ymd(now - 40 * 24 * H), heure: '14:00', pax: 28, label: 'Formule 2', prix: 540 }, { date: ymd(now - 150 * 24 * H), heure: '10:00', pax: 22, label: 'Bowling + Laser Game', prix: 420 }, { date: ymd(now - 300 * 24 * H), heure: '16:00', pax: 16, label: 'Formule 1', prix: 280 }] } });
       if (action === 'communications') {
         const qui = (u.searchParams.get('recipient') || '').toLowerCase();
         return J({ ok: true, communications: comms.filter((c) => c.recipient.toLowerCase() === qui) });
@@ -209,6 +219,21 @@ const ordreDeLaListe = (page) => page.evaluate(() => [...document.querySelectorA
 const attendreEtude = (page) => page.waitForSelector('.sm-jour', { timeout: 8000 });
 const ligne = (id) => `.sm-l[data-item-id="${id}"]`;
 const ouvrirFiche = (page, id) => page.click(`${ligne(id)} .sm-l-n`);
+// Ce que la journee montre : la position de chaque bloc, en pourcentage de la journee d ouverture.
+const lireJournee = () => {
+  const j = document.querySelector('.sm-j');
+  if (!j) return null;
+  const blocs = (id) => [...document.querySelectorAll(`[data-sm-rangee="${id}"] .sm-j-b`)].map((b) => ({ x: parseFloat(b.style.left), w: parseFloat(b.style.width), groupe: b.classList.contains('is-groupe'), apercu: b.classList.contains('is-apercu'), fond: getComputedStyle(b).backgroundColor }));
+  return {
+    arrivee: j.classList.contains('is-arrivee'),
+    pistes: document.querySelectorAll('.sm-j-t.is-piste').length,
+    p1: blocs('bowling_lane:1'), p5: blocs('bowling_lane:5'), p7: blocs('bowling_lane:7'), p8: blocs('bowling_lane:8'), arene: blocs('laser_arena:0'),
+    heures: [...document.querySelectorAll('.sm-j-axe span')].map((s) => s.textContent),
+    moment: [...document.querySelectorAll('.sm-j-axe .is-mo')].map((s) => s.textContent),
+    dit: (document.querySelector('.sm-j-dit') || {}).textContent || '',
+  };
+};
+const pres = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
 const lignesMail = (page) => page.evaluate(() => [...document.querySelectorAll('.sm-hi-m')].map((b) => b.closest('div').innerText.replace(/\s+/g, ' ').trim()));
 
 async function parcours(browser, { captures = true } = {}) {
@@ -233,19 +258,28 @@ async function parcours(browser, { captures = true } = {}) {
 
     // [B] la fiche
     await ouvrirFiche(page, 801);
+    await page.waitForSelector('.sm-j-b', { timeout: 8000 });
+    r.dessin = await page.evaluate(() => { const j = document.querySelector('.sm-j'); const b = j && j.querySelector('.sm-j-b'); return j ? { arrivee: j.classList.contains('is-arrivee'), anime: b ? getComputedStyle(b).animationName : '' } : null; });
     await attendreEtude(page);
     await page.waitForTimeout(300);
     r.entete = await page.evaluate(() => ({
       nom: (document.querySelector('.sm-tete h2') || {}).textContent || '',
-      sous: ((document.querySelector('.sm-tete p') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      sous: ((document.querySelector('.sm-tete-t') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      liens: [...document.querySelectorAll('.sm-tete a')].map((a) => ({ t: a.textContent.trim(), href: a.getAttribute('href') })),
       retour: (document.querySelector('.sm-retour') || {}).textContent || '',
       boutons: [...document.querySelectorAll('.sm-tete button')].map((b) => b.textContent.trim()),
       liste: document.querySelectorAll('.sm-l').length,
     }));
     r.bandeau = await page.evaluate(() => { const b = document.querySelector('.sm-promis'); return b ? { t: b.innerText.replace(/\s+/g, ' ').trim(), cls: b.className } : null; });
-    r.faits = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.sm-s .sm-dl > div')].map((l) => [l.querySelector('dt').textContent, l.querySelector('dd').innerText.replace(/\s+/g, ' ').trim()])));
+    await page.waitForFunction(() => [...document.querySelectorAll('.sm-photo')].every((i) => i.complete), null, { timeout: 8000 });
+    r.envies = await page.evaluate(() => [...document.querySelectorAll('.sm-envies li')].map((l) => l.innerText.replace(/\s+/g, ' ').trim()));
+    r.photos = await page.evaluate(() => [...document.querySelectorAll('.sm-photo')].map((i) => ({ n: i.naturalWidth, src: i.getAttribute('src') })));
+    r.photoAilleurs = await page.evaluate(() => smPhotoDe('Bowling', 'un-autre-centre'));
+    r.demandeTexte = await texte(page, '.sm-c1 .sm-s');
+    r.clientTexte = await texte(page, '.sm-client');
+    r.venues = await page.evaluate(() => document.querySelectorAll('.sm-venues li').length);
     r.mots = await page.evaluate(() => document.querySelector('.sm-fiche').innerText);
-    r.vide = await texte(page, '.sm-c2 > .sm-actions');
+    r.vide = await texte(page, '.sm-autre');
 
     // [C] les disponibilites
     r.jours = await page.evaluate(() => [...document.querySelectorAll('.sm-jour, .sm-jour-off')].map((d) => d.innerText.replace(/\s+/g, ' ').trim()));
@@ -253,12 +287,22 @@ async function parcours(browser, { captures = true } = {}) {
     await capture('fiche-sombre.png');
     await capture('fiche-sombre-page.png', { fullPage: true });
 
+    // [T] la journee dessinee
+    r.journee = await page.evaluate(lireJournee);
+    r.touches = await page.evaluate(() => [...document.querySelectorAll('.sm-h')].map((b) => ({ t: b.innerText.replace(/\s+/g, ' ').trim(), a: b.getAttribute('aria-label') })));
+
     // [F] les mails d avant la demande
     r.filAvant = await lignesMail(page);
 
     // [D] choisir une heure
     r.envoisAvant = await page.evaluate(() => window.__QA__.envois.length);
     const heure = page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '14:00' });
+    await heure.hover();
+    await page.waitForTimeout(60);
+    r.apercu = await page.evaluate(lireJournee);
+    await page.mouse.move(3, 3);
+    await page.waitForTimeout(60);
+    r.apresApercu = await page.evaluate(lireJournee);
     await heure.click();
     await page.waitForSelector('.sm-courrier textarea', { timeout: 8000 });
     await page.waitForFunction(() => /868 €/.test((document.querySelector('.sm-courrier textarea') || {}).value || ''), null, { timeout: 8000 });
@@ -284,6 +328,16 @@ async function parcours(browser, { captures = true } = {}) {
         mots: document.querySelector('.sm-courrier').innerText,
       };
     });
+    r.place = await page.evaluate(lireJournee);
+    await page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '14:00' }).hover();
+    await page.waitForTimeout(60);
+    r.surChoisie = await page.evaluate(lireJournee);
+    await page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '15:00' }).hover();
+    await page.waitForTimeout(60);
+    r.apercuSurChoix = await page.evaluate(lireJournee);
+    await page.mouse.move(3, 3);
+    await page.waitForTimeout(60);
+    r.retourAuChoix = await page.evaluate(lireJournee);
     await capture('reponse-sombre.png', { fullPage: true });
     // Un message qui ne se prepare pas laisse le texte tel quel.
     r.garde = r.redaction.corps;
@@ -310,8 +364,10 @@ async function parcours(browser, { captures = true } = {}) {
       statut: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
       segment: state.staffRequestSegment,
       ouvert: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
-      entete: ((document.querySelector('.sm-tete p') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      entete: ((document.querySelector('.sm-promis') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
       reponse: ((document.querySelector('.sm-c2') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      jourPropose: document.querySelectorAll('.sm-planning-jour .sm-j-b.is-groupe').length,
+      motsJour: ((document.querySelector('.sm-planning-jour') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
       historique: (document.querySelector('.sm-hi') || {}).innerText || '',
       composeur: Boolean(document.querySelector('.sm-courrier')),
       principal: (document.querySelector('.sm-c2 .sm-p') || {}).textContent || '',
@@ -332,6 +388,15 @@ async function parcours(browser, { captures = true } = {}) {
     await page.click('.sm-retour');
     await page.waitForSelector('.sm-l', { timeout: 5000 });
     r.apresRetour = await page.evaluate(() => document.querySelectorAll('.sm-fiche').length);
+    await page.locator('.sm-onglet', { hasText: 'En attente' }).click();
+    await page.waitForSelector(ligne(803), { timeout: 5000 });
+    await ouvrirFiche(page, 803);
+    await page.waitForSelector('.sm-planning-jour .sm-j-b.is-groupe', { timeout: 8000 }).catch(() => null);
+    r.attente = await page.evaluate(() => ({ groupe: document.querySelectorAll('.sm-planning-jour .sm-j-b.is-groupe').length, client: ((document.querySelector('.sm-client') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
+    await page.click('.sm-retour');
+    await page.waitForSelector('.sm-l', { timeout: 5000 });
+    await page.locator('.sm-onglet', { hasText: 'À traiter' }).click();
+    await page.waitForSelector(ligne(807), { timeout: 5000 });
     await page.evaluate(() => setStaffRequestSegment('atraiter'));
     await page.waitForTimeout(300);
     await ouvrirFiche(page, 807);
@@ -392,6 +457,8 @@ async function heurePerimee(browser) {
     await page.locator('.sm-o', { hasText: 'Formule 3' }).locator('.sm-h').first().click();
     await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestDraft'), null, { timeout: 8000 });
     await page.waitForTimeout(500);
+    await page.mouse.move(3, 3);
+    await page.waitForTimeout(60);
     r.lu = await page.evaluate(() => ({ choisies: document.querySelectorAll('.sm-h.is-on').length, mail: Boolean(document.querySelector('.sm-courrier')), consigne: ((document.querySelector('.sm-c2') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
   } catch (error) {
     r.panne = String((error && error.message) || error).split('\n')[0];
@@ -506,15 +573,15 @@ async function sansSuite(browser) {
     r.apres = await page.evaluate(() => ({
       statuts: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
       ouvert: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
-      entete: ((document.querySelector('.sm-tete p') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
-      bouton: (document.querySelector('.sm-tete .sm-b') || {}).textContent || '',
+      entete: ((document.querySelector('.sm-promis') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      bouton: (document.querySelector('.sm-tete button.sm-b') || {}).textContent || '',
       dispos: document.querySelectorAll('.sm-jour').length,
     }));
     await page.locator('.sm-tete .sm-b', { hasText: 'Rouvrir' }).click();
     await page.waitForTimeout(600);
     r.rouverte = await page.evaluate(() => ({
       statuts: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
-      bouton: (document.querySelector('.sm-tete .sm-b') || {}).textContent || '',
+      bouton: (document.querySelector('.sm-tete button.sm-b') || {}).textContent || '',
     }));
   } catch (error) {
     r.panne = String((error && error.message) || error).split('\n')[0];
@@ -567,7 +634,7 @@ function verifierSansSuite(s) {
   section('S. SANS SUITE, ET ROUVRIR');
   if (!ok(!s.panne && s.apres, 'MONTAGE le parcours va au bout', s.panne || '')) return;
   ok(s.erreurs.length === 0, 'MONTAGE zero erreur', s.erreurs.join(' | '));
-  ok(JSON.stringify(s.apres.statuts) === '["archived"]' && s.apres.ouvert === '804' && /Sans suite/.test(s.apres.entete), 'sans suite : la demande est classee, la fiche reste ouverte et le dit', JSON.stringify(s.apres));
+  ok(JSON.stringify(s.apres.statuts) === '["archived"]' && s.apres.ouvert === '804' && /classée sans suite/.test(s.apres.entete), 'sans suite : la demande est classee, la fiche reste ouverte et le dit', JSON.stringify(s.apres));
   ok(s.apres.bouton === 'Rouvrir' && s.apres.dispos === 0, 'une demande sans suite ne propose plus rien, elle se rouvre', JSON.stringify(s.apres));
   ok(JSON.stringify(s.rouverte.statuts) === '["archived","in_progress"]' && s.rouverte.bouton === 'Sans suite', 'rouvrir la remet au travail', JSON.stringify(s.rouverte));
 }
@@ -585,20 +652,24 @@ function verifier(r) {
   ok(r.puce801 && /^Reste (1 h|2 h)/.test(r.puce801.t) && /is-soon/.test(r.puce801.cls), 'la demande a deux heures de l echeance dit ce qu il reste', JSON.stringify(r.puce801));
   ok(r.signal804 === 'Le client a répondu', 'le client qui a repondu se voit dans la liste', r.signal804);
   ok(r.titre801 === 'Athénée de Libramont', 'la ligne porte le nom de l organisation', r.titre801);
-  ok(/31/.test(r.ligne801) && /après-midi/.test(r.ligne801) && /Formule 3, Bowling, Laser Game/.test(r.ligne801) && /Ansar Bisultanov/.test(r.ligne801), 'la ligne dit qui, combien, quand et quoi', r.ligne801);
+  ok(/31/.test(r.ligne801) && /Après-midi/.test(r.ligne801) && /Formule 3 Bowling Laser Game/.test(r.ligne801) && /^(LUN|MAR|MER|JEU|VEN|SAM|DIM) \d{1,2} /.test(r.ligne801) && /Ansar Bisultanov/.test(r.ligne801), 'la ligne dit qui, combien, quand et quoi', r.ligne801);
 
   section('B. LA FICHE DIT TOUT CE QUE LE CLIENT A REMPLI');
-  ok(/Athénée de Libramont/.test(r.entete.nom) && /École, jeunesse/.test(r.entete.sous) && /Reçue/.test(r.entete.sous), 'le groupe, son type, quand la demande est arrivee', JSON.stringify(r.entete));
+  ok(/Athénée de Libramont/.test(r.entete.nom) && /École, jeunesse/.test(r.entete.sous) && /reçue/.test(r.entete.sous), 'le groupe, son type, quand la demande est arrivee', JSON.stringify(r.entete));
   ok(/Toutes les demandes/.test(r.entete.retour) && r.entete.liste === 0, 'la fiche prend la page, un lien ramene a la liste', JSON.stringify(r.entete));
   ok(JSON.stringify(r.entete.boutons) === '["Sans suite"]', 'un seul geste de classement', JSON.stringify(r.entete.boutons));
+  ok(r.entete.liens.length === 1 && r.entete.liens[0].t === 'Appeler' && r.entete.liens[0].href === 'tel:+32470112233', 'appeler le client est a un toucher', JSON.stringify(r.entete.liens));
   ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client est en tete de la fiche', JSON.stringify(r.bandeau));
-  const f = r.faits;
-  ok(f.Personnes === '31 joueurs et 3 accompagnateurs' && f['Âges'] === '7 à 12 ans' && /après-midi/.test(f.Date) && /autre/i.test('autre') && Boolean(f['Autre date']), 'combien, quel age, quand, et l autre date', JSON.stringify(f));
-  ok(/Formule 3/.test(f.Souhaits) && /Bowling/.test(f.Souhaits) && /Laser Game/.test(f.Souhaits) && f.Budget === '25 € par personne', 'ce qu ils veulent et leur budget', JSON.stringify(f));
-  ok(/pique-niquer sur place/.test(f.Message), 'le message du client est lu en entier', f.Message);
-  ok(/Ansar Bisultanov, Enseignant/.test(f.Contact) && /\+32 470 11 22 33/.test(f['Téléphone']) && f['E-mail'] === 'ansar@example.org', 'qui appeler ou ecrire', JSON.stringify(f));
-  ok(/Athénée de Libramont/.test(f.Facture) && /TVA BE0123456789/.test(f.Facture), 'la facture et sa TVA', f.Facture);
-  ok(/^3 venues/.test(f['Déjà venu']), 'le client deja venu est reconnu', f['Déjà venu']);
+  ok(/31 joueurs et 3 accompagnateurs, 7 à 12 ans/.test(r.entete.sous) && /dimanche \d{1,2} \S+ \d{4} l’après-midi, ou \S+ \d{1,2} \S+ \d{4}\./.test(r.entete.sous), 'combien, quel age, quand, et l autre date', r.entete.sous);
+  ok(JSON.stringify(r.envies) === '["Formule 3","Bowling 31 joueurs","Laser Game 31 joueurs"]' && /Budget de 25 € par personne/.test(r.demandeTexte), 'ce qu ils veulent et leur budget', JSON.stringify(r.envies));
+  ok(/pique-niquer sur place/.test(r.demandeTexte), 'le message du client est lu en entier', r.demandeTexte);
+  ok(/Ansar Bisultanov, Enseignant/.test(r.clientTexte) && /\+32 470 11 22 33/.test(r.clientTexte) && /ansar@example\.org/.test(r.clientTexte), 'qui appeler ou ecrire', r.clientTexte);
+  ok(/Facture au nom de Athénée de Libramont, TVA BE0123456789/.test(r.clientTexte), 'la facture et sa TVA', r.clientTexte);
+  ok(/^Le client .*3 venues, la dernière le/.test(r.clientTexte) && /Pour 1 240 € au total/.test(r.clientTexte.replace(/\u202f|\u00a0/g, ' ')), 'le client deja venu est reconnu, avec ce qu il a represente', r.clientTexte);
+  ok(/1 absence/.test(r.clientTexte), 'ses absences se voient', r.clientTexte);
+  ok(r.venues === 3 && /Formule 2, 28 joueurs/.test(r.clientTexte) && /540 €/.test(r.clientTexte), 'ses dernieres venues se lisent, avec leur prix', r.clientTexte);
+  ok(r.photos.length === 3 && r.photos.every((i) => i.n > 0), 'les vraies photos du centre se chargent', JSON.stringify(r.photos));
+  ok(r.photoAilleurs === '', 'un autre client ne recoit pas les photos de ce centre', r.photoAilleurs);
   ok(!/\bIA\b|Touchez|moteur/.test(r.mots), 'la fiche ne parle ni d IA ni de moteur', (r.mots.match(/.{0,40}(\bIA\b|Touchez|moteur).{0,40}/) || [''])[0]);
   ok(/Écrire au client/.test(r.vide) && /Créer la réservation/.test(r.vide), 'sans heure choisie : ecrire, ou reserver', r.vide);
 
@@ -611,6 +682,31 @@ function verifier(r) {
   ok(/544 €/.test(j1) && /17,55 €/.test(j1) && !/Dans le budget/.test(j1) && /6 pistes/.test(j1) && /2 vagues/.test(j1) && /14:00/.test(j1) && /15:00/.test(j1), 'le programme des activites, son detail, et tous ses departs ; ce qui tient le budget n a rien a dire', j1);
   ok(/2 réservations et 20 joueurs/.test(j1) && /Voir le planning de ce jour/.test(j1), 'ce qui est deja prevu ce jour-la, et le planning a un clic', j1.slice(-160));
   ok(/autre date du client/.test(j2) && /fermé/.test(j2), 'l autre date du client : fermee, dit comme tel', j2);
+
+  section('T. LA JOURNEE DEMANDEE, DESSINEE');
+  const J = r.journee;
+  if (ok(Boolean(J), 'MONTAGE la journee se dessine')) {
+    ok(J.pistes === 8, 'une rangee par piste du centre', String(J.pistes));
+    ok(J.heures[0] === '10:00' && J.heures[J.heures.length - 1] === '21:00', 'l axe suit les heures d ouverture', J.heures.join(' '));
+    ok(J.moment.join(' ') === '12:00 13:00 14:00 15:00 16:00 17:00', 'le moment demande se voit sur l axe', J.moment.join(' '));
+    ok(J.p1.length === 1 && pres(J.p1[0].x, 4.17) && pres(J.p1[0].w, 12.5) && !J.p1[0].groupe, 'une reservation de 10:30 a 12:00 tombe a sa place', JSON.stringify(J.p1));
+    ok(J.p5.length === 1 && pres(J.p5[0].x, 41.67) && pres(J.p5[0].w, 8.33), 'celle de 15:00 a 16:00 aussi, sur ses pistes a elle', JSON.stringify(J.p5));
+    ok(J.p7.length === 0, 'une piste libre reste vide', JSON.stringify(J.p7));
+    ok(J.arene.length === 1 && pres(J.arene[0].x, 16.67) && pres(J.arene[0].w, 2.78), 'le laser a sa rangee', JSON.stringify(J.arene));
+    ok(r.dessin && r.dessin.arrivee === true && r.dessin.anime === 'sm-trace', 'la journee se dessine a l ouverture', JSON.stringify(r.dessin));
+    ok(/Choisissez une heure/.test(J.dit), 'elle dit quoi faire', J.dit);
+    ok(r.touches.some((t) => t.t === '14:00 reste 2 pistes reste 14 armes' && /fin vers 16:00/.test(t.a) && /reste 2 pistes/.test(t.a)), 'chaque heure dit ce qui resterait, et sa fin', JSON.stringify(r.touches));
+    ok(r.touches.some((t) => t.t === '15:00 reste 0 piste reste 14 armes') , 'meme quand il ne reste plus rien', JSON.stringify(r.touches));
+    ok(r.apercu && r.apercu.p7.length === 1 && r.apercu.p7[0].apercu && pres(r.apercu.p7[0].x, 33.33) && /^Bowling, 6 pistes de 14:00 à 15:00, puis Laser Game de 15:00 à 15:40\.$/.test(r.apercu.dit), 'passer sur une heure montre le groupe, en contour, et dit ce qu il prendrait', JSON.stringify(r.apercu && { p: r.apercu.p7, d: r.apercu.dit }));
+    ok(r.apresApercu && r.apresApercu.p7.length === 0 && /Choisissez une heure/.test(r.apresApercu.dit), 'la souris partie, la journee revient', JSON.stringify(r.apresApercu && r.apresApercu.p7));
+    ok(r.place && r.place.p7.length === 1 && r.place.p7[0].groupe && !r.place.p7[0].apercu && r.place.p8.length === 1, 'l heure choisie pose le groupe sur ses pistes', JSON.stringify(r.place && r.place.p7));
+    ok(r.place && r.place.p7[0] && r.place.p7[0].fond === 'rgb(181, 131, 207)', 'le bowling garde sa couleur', r.place && r.place.p7[0] && r.place.p7[0].fond);
+    ok(r.place && r.place.arene.length === 3 && r.place.arene.filter((b) => b.groupe).every((b) => b.fond === 'rgb(103, 186, 172)'), 'le laser garde la sienne, ses deux vagues posees', JSON.stringify(r.place && r.place.arene));
+    ok(r.place && r.place.arrivee === false, 'le dessin ne se rejoue pas a chaque repeint');
+    ok(r.surChoisie && !r.surChoisie.p7[0].apercu, 'passer sur l heure choisie ne la remet pas en contour', JSON.stringify(r.surChoisie && r.surChoisie.p7));
+    ok(r.apercuSurChoix && r.apercuSurChoix.p7.length === 1 && r.apercuSurChoix.p7[0].apercu && pres(r.apercuSurChoix.p7[0].x, 41.67), 'une autre heure s essaie sans perdre le choix', JSON.stringify(r.apercuSurChoix && r.apercuSurChoix.p7));
+    ok(r.retourAuChoix && r.retourAuChoix.p7.length === 1 && !r.retourAuChoix.p7[0].apercu && pres(r.retourAuChoix.p7[0].x, 33.33), 'la souris partie, le choix est toujours la', JSON.stringify(r.retourAuChoix && r.retourAuChoix.p7));
+  }
 
   section('D. CHOISIR UNE HEURE : LE MAIL SE PREPARE, RIEN NE PART');
   ok(r.touche.pressee === 'true' && /14:00/.test(r.touche.heure), 'l heure choisie est marquee', JSON.stringify(r.touche));
@@ -636,10 +732,11 @@ function verifier(r) {
   ok(r.envoi.corps && r.envoi.corps.action === 'sendDirectEmail' && r.envoi.corps.customRequestId === 801 && r.envoi.corps.to === 'ansar@example.org' && r.envoi.corps.draftSource === 'code',
     'un envoi, a ce client, rattache a sa demande', JSON.stringify(r.envoi.corps && { a: r.envoi.corps.action, id: r.envoi.corps.customRequestId, s: r.envoi.corps.draftSource }));
   ok(JSON.stringify(r.envoi.statut) === '["in_progress"]', 'une demande nouvelle a laquelle on repond est prise en charge', JSON.stringify(r.envoi.statut));
-  ok(r.envoi.segment === 'attente' && r.envoi.ouvert === '801' && /En attente du client/.test(r.envoi.entete), 'la fiche reste ouverte et dit ou elle en est', JSON.stringify({ s: r.envoi.segment, id: r.envoi.ouvert, e: r.envoi.entete }));
+  ok(r.envoi.segment === 'attente' && r.envoi.ouvert === '801' && /par Rachel\. Le client n’a pas encore répondu\./.test(r.envoi.entete), 'la fiche reste ouverte et dit ou elle en est', JSON.stringify({ s: r.envoi.segment, id: r.envoi.ouvert, e: r.envoi.entete }));
   ok(/E-mail envoyé par Rachel/.test(r.envoi.historique) && !r.envoi.composeur, 'l historique dit qui a repondu ; le courrier est referme', r.envoi.historique.slice(-200));
   ok(r.envoi.principal === 'Le client accepte, créer la réservation' && /Proposition envoyée/.test(r.envoi.reponse) && /544 €/.test(r.envoi.reponse) && /14:00/.test(r.envoi.reponse), 'la proposition partie reste lisible, et son oui est le geste suivant', JSON.stringify({ p: r.envoi.principal, t: r.envoi.reponse }));
   ok(r.envoi.dispos === 0 && r.autre.dispos === 1 && /14:00/.test(r.autre.gardee), 'les disponibilites se rangent ; « Autre proposition » les rend, l heure partie marquee', JSON.stringify({ avant: r.envoi.dispos, apres: r.autre }));
+  ok(r.envoi.jourPropose >= 6 && /Bowling, 6 pistes de 14:00/.test(r.envoi.motsJour) && !/Choisissez/.test(r.envoi.motsJour), 'la proposition partie reste posee sur sa journee', JSON.stringify({ n: r.envoi.jourPropose, t: r.envoi.motsJour.slice(0, 200) }));
   ok(r.envoi.corps && r.envoi.corps.proposition && r.envoi.corps.proposition.heure === '14:00' && r.envoi.corps.proposition.prix === 544 && r.envoi.corps.proposition.date === r.D1, 'la proposition part avec le mail, pour que tout poste la retrouve', JSON.stringify(r.envoi.corps && r.envoi.corps.proposition));
 
   section('I. CREER LA RESERVATION, PREREMPLIE');
@@ -648,6 +745,8 @@ function verifier(r) {
   ok(r.resa && r.resa.pax === 31 && r.resa.date === r.D1 && r.resa.source === 801 && /Ansar/.test(r.resa.nom) && /Demande sur mesure/.test(r.resa.notes) && /Athénée de Libramont/.test(r.resa.notes) && /3 accompagnateurs/.test(r.resa.notes),
     'les 31 joueurs, la date voulue, le client et la demande en note', JSON.stringify(r.resa));
   ok(r.apresRetour === 0, 'le lien ramene a la liste', String(r.apresRetour));
+
+  ok(r.attente && r.attente.groupe >= 6 && /3 venues/.test(r.attente.client), 'une demande en attente rouverte retrouve son client et sa journee', JSON.stringify(r.attente));
 
   section('H. UNE DEMANDE SANS FORMULAIRE');
   ok(/5 novembre/.test(r.libre.texte) && /Sortie de fin de trimestre/.test(r.libre.texte) && /Écrire au client/.test(r.libre.texte) && !/Disponibilités/.test(r.libre.texte) && r.libre.etudes === 0, 'la demande libre dit ce qu elle a, et n interroge pas le moteur', r.libre.texte.slice(0, 300));
@@ -710,6 +809,14 @@ async function main() {
       { de: "  const wanted = String(state.staffRequestSelectedId || '');\n  if (!wanted) return null;\n", vers: "  const wanted = String(state.staffRequestSelectedId || '');\n  if (!wanted) return getStaffRequestRows()[0] || null;\n", label: 'sans la liste d abord, une demande s ouvrirait toute seule', rouge: (r) => Boolean(r.panne) || r.ficheAuDepart !== 0 },
       { de: "  return staffRequestStage(item) === 'a-traiter' || Boolean(staffRequestAutre[key]) || Boolean(staffRequestChoix[key]);", vers: "  return true;", label: 'sans le rangement, les disponibilites resteraient apres l envoi', rouge: (r) => Boolean(r.envoi) && r.envoi.dispos !== 0 },
       { de: "    ...mails.map(message => ({ le: quandMail(message), mail: message })),\n", vers: "", label: 'sans les mails dans l historique, le client qui ecrit ne se verrait pas', rouge: (r) => Array.isArray(r.filAvant) && r.filAvant.length !== 1 },
+      { de: "  const x = ((de - cadre.de) / (cadre.a - cadre.de)) * 100;", vers: "  const x = 0;", label: 'sans la position, chaque bloc serait colle au matin', rouge: (r) => Boolean(r.journee) && !(r.journee.p5[0] && pres(r.journee.p5[0].x, 41.67)) },
+      { de: "  smReposer(t, choix && choix.date === t.jour.date ? smPlanDe(t.jour, choix) : null, false);", vers: "", label: 'sans le retour, l apercu resterait sur la journee', rouge: (r) => Boolean(r.apresApercu) && r.apresApercu.p7.length !== 0 },
+      { de: "  const arrivee = ecoule < SM_DUREE_DU_DESSIN;", vers: "  const arrivee = true;", label: 'sans la memoire, la journee se redessinerait a chaque repeint', rouge: (r) => Boolean(r.place) && r.place.arrivee !== false },
+      { de: "  if (Array.isArray(bloc.pistes) && bloc.pistes.length) return bloc.pistes;\n", vers: "", label: 'sans les pistes du moteur, le groupe serait pose ailleurs', rouge: (r) => Boolean(r.place) && r.place.p7.length !== 1 },
+      { de: "  if (el.classList.contains('is-on')) return;\n", vers: "", label: 'sans la garde, l heure choisie repasserait en contour sous la souris', rouge: (r) => Boolean(r.surChoisie) && r.surChoisie.p7[0].apercu },
+      { de: "${restes.map(r => `<small>${escapeHtml(r)}</small>`).join('')}</button>`;", vers: "</button>`;", label: 'sans ce qui reste, l heure ne le dirait plus', rouge: (r) => Array.isArray(r.touches) && !r.touches.some((t) => /reste 2 pistes reste 14 armes/.test(t.t)) },
+      { de: "  if (!item || !crDemande(item)) return;\n  const study", vers: "  if (!item || !crDemande(item) || !staffRequestMontreDispos(item)) return;\n  const study", label: 'sans l etude a l ouverture, la demande en attente perdrait son client et sa journee', rouge: (r) => Boolean(r.attente) && !(r.attente.groupe >= 6 && /3 venues/.test(r.attente.client)) },
+      { de: "(SM_PHOTOS[String(centerId || '')] || [])", vers: "(SM_PHOTOS[String(centerId || '')] || SM_PHOTOS.libramont)", label: 'sans la garde, un autre client recevrait les photos de ce centre', rouge: (r) => typeof r.photoAilleurs === 'string' && r.photoAilleurs !== '' },
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
     ];
     for (const e of essais) {

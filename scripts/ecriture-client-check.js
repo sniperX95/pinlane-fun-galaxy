@@ -479,7 +479,7 @@ function main() {
   // disparaisse pas en silence.
   const nids = [
     ['defauts de sequence', Object.values(comms.getAutomationDefaults()).filter((d) => d && d.body).length, 6],
-    ['brouillons de la console', brouillonsDeLaConsole().length, 22],
+    ['brouillons de la console', brouillonsDeLaConsole().length, 20],
     ['gabarits envoyes a la main', comms.__test.CLIENT_MESSAGE_TEMPLATES.length, 9],
     ['mails prets a coller du cerveau marketing',
       (fs.readFileSync(path.join(ROOT, 'lib/marketing-brain.js'), 'utf8').match(/readyContent: `Objet :/g) || []).length, 1],

@@ -21741,12 +21741,12 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 /* ── LA FICHE AUX COULEURS DU CENTRE (2026-11-09) ─────────────────────────────── */
 .eb { --eb-c: #8a4ba6; --eb-c2: #4fae9e; --eb-c-doux: color-mix(in srgb, var(--eb-c) 9%, var(--surface)); }
 :root[data-theme="dark"] .eb { --eb-c: #9a58ba; --eb-c2: #67baac; }
-.eb-hero h2, .eb-hero h1 { font-size: 40px; letter-spacing: -.028em; }
+@media (min-width: 761px) { .eb .eb-name { font-size: 40px; letter-spacing: -.028em; } }
 .eb-photo, .eb-hero img { border-radius: 24px; box-shadow: 0 26px 50px -30px rgba(40, 10, 60, .55); }
 .eb section { animation: ebMonte 520ms var(--eb-sortie) both; }
 @keyframes ebMonte { from { opacity: 0; transform: translateY(16px); } }
-.eb-step-val { font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 27px; font-weight: 400; letter-spacing: .01em; color: var(--eb-c); }
-.eb-step-time .eb-step-val { font-size: 24px; }
+.eb .eb-step-val { font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 27px; font-weight: 400; letter-spacing: .01em; color: var(--eb-c); }
+.eb .eb-step-time .eb-step-val { font-size: 24px; }
 .eb .eb-step-btn { border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--eb-c) 16%, transparent), 0 1px 2px rgba(0, 0, 0, .05); transition: transform 150ms var(--eb-sortie), box-shadow 150ms ease, color 150ms ease; }
 .eb .eb-step-btn:hover { color: var(--eb-c); transform: translateY(-1px); box-shadow: 0 0 0 1px color-mix(in srgb, var(--eb-c) 40%, transparent), 0 8px 16px -10px var(--eb-c); }
 .eb .eb-step-btn:active { transform: scale(.93); }

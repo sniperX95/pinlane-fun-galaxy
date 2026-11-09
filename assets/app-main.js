@@ -15738,6 +15738,11 @@ function ebPhraseDesChangements(n) {
       });
     });
   });
+  document.querySelectorAll('[data-estab-offer]').forEach((c) => {
+    if (now[c.id] === ebSnap[c.id]) return;
+    const nom = c.closest('.eb-sw').querySelector('b').textContent.split(' · ')[0].trim();
+    phrases.push(`${nom} ${c.checked ? 'remise au formulaire' : 'retirée du formulaire'}`);
+  });
   if (!phrases.length) return n === 1 ? '1 changement' : `${n} changements`;
   const reste = n - phrases.length;
   return `${phrases.slice(0, 2).join(', ')}${phrases.length > 2 || reste > 0 ? ` et ${phrases.length - Math.min(2, phrases.length) + Math.max(0, reste)} autre${phrases.length - Math.min(2, phrases.length) + Math.max(0, reste) > 1 ? 's' : ''}` : ''}`;

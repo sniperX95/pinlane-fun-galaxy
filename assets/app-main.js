@@ -19779,7 +19779,7 @@ function renderStaffRequestStudyLines(visite) {
 // Une offre et ses heures, comme les seances de Reserver : un toucher choisit l heure,
 // et avec elle le prix, le jour et le programme qui partiront au client.
 // Chaque offre garde sa couleur de fanion et sa vraie photo, comme au formulaire.
-const RQ_PHOTOS = [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billard'], [/formule|kids|anniv/i, 'pistes-neon']];
+const RQ_PHOTOS = [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/formule|kids|anniv/i, 'pistes-neon']];
 const RQ_PHOTOS_GEMBLOUX = [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']];
 function rqPhotoDe(nom, centerId) {
   const trouve = (String(centerId || '') === 'gembloux' ? RQ_PHOTOS_GEMBLOUX : RQ_PHOTOS).find(([motif]) => motif.test(String(nom || '')));

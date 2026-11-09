@@ -121,13 +121,18 @@ function installer(expiresAt) {
     if (lead.status === 'handled') return 'traitee';
     return lead.suivi.reponses && !lead.suivi.messageClient ? 'en-attente' : 'a-traiter';
   };
-  const J = (payload) => new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
+  const J = (payload, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
   const natif = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
     const u = new URL(typeof input === 'string' ? input : (input && input.url) || '', window.location.origin);
     const methode = String(init.method || 'GET').toUpperCase();
-    if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [], events: [], permissions: perms } });
-    if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: {}, centerId: 'libramont' });
+    if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: window.__QA__.sansForcer ? { ...session, role: { id: 'accueil', name: 'Accueil', locked: false }, permissions: [...perms, 'niveau:forcer:non'] } : session, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [], events: [], permissions: perms } });
+    if (u.pathname === '/api/staff-state') {
+      const jourDemande = u.searchParams.get('date');
+      const ouv = window.__QA__.ouvertures || [];
+      const resas = (window.__QA__.resasDuJour || []).filter((r) => r.date === jourDemande);
+      return J({ ok: true, revision: `qa:${JSON.stringify(ouv)}:${resas.length}`, reservations: resas, laneStatuses: {}, centerId: 'libramont', ouvertures: ouv });
+    }
     if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], laneStatuses: {}, centerId: 'libramont', revision: 'qa', syncedAt: new Date().toISOString() });
     if (u.pathname === '/api/ops' && methode === 'POST') {
       const corps = JSON.parse(init.body || '{}');
@@ -155,6 +160,13 @@ function installer(expiresAt) {
           lead.echeance = null;
         }
         return J({ ok: true, communication: { id: 5001, status: 'queued' }, ...(lead ? { customRequest: JSON.parse(JSON.stringify(lead)) } : {}) });
+      }
+      if (corps.action === 'ouvertureExceptionnelle') {
+        if (window.__QA__.refusOuverture) return J({ ok: false, message: window.__QA__.refusOuverture }, 409);
+        const autres = (window.__QA__.ouvertures || []).filter((o) => o.date !== corps.date);
+        const ligne = corps.retirer ? null : { date: corps.date, open: corps.open, close: corps.close, motif: corps.motif || '' };
+        window.__QA__.ouvertures = ligne ? [...autres, ligne] : autres;
+        return J({ ok: true, action: corps.action, centerId: 'libramont', ouverture: ligne, ouvertures: window.__QA__.ouvertures });
       }
       if (corps.action === 'customRequestStatus' && lead) {
         lead.status = corps.status;
@@ -591,6 +603,145 @@ async function sansSuite(browser) {
   return r;
 }
 
+// [O] LES HORAIRES D UN JOUR, LE SUR MESURE, LES FENETRES (2026-11-09, Ansar : « on puet ouvirr
+// le centre a 10 h ou fermer a minuit [...] ça créé resa direct [...] ça doit le montrer sous
+// forme de pop up pas nous redirigé »). Le jour de la demande a deux groupes, dont un team
+// building a 08:00, avant toute ouverture habituelle. `sansForcer` : un role qui ne passe pas
+// outre les regles du centre.
+async function horairesEtFenetres(browser, { sansForcer = false } = {}) {
+  const { ctx, page, erreurs } = await ouvrir(browser);
+  const r = { erreurs };
+  const ouvertures = () => page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'ouvertureExceptionnelle').map((a) => a.corps));
+  const ou = () => page.evaluate(() => ({ hash: location.hash, page: typeof getStaffMenuPage === 'function' ? getStaffMenuPage() : state.staffMenuPage }));
+  const etudes = () => page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').length);
+  try {
+    r.D1 = await page.evaluate(() => window.__QA__.D1);
+    await page.evaluate(({ d, sans }) => {
+      const base = { date: d, centerId: 'libramont', duration: 1, type: 'bowling', status: 'confirmed', label: 'Bowling', email: '', extras: [], notes: '' };
+      window.__QA__.resasDuJour = [
+        { ...base, id: 9101, name: 'Proximus', pax: 24, startTime: '08:00', lanes: [1, 2, 3, 4], occasion: 'teambuilding', price: 720, phone: '+32470000001' },
+        { ...base, id: 9102, name: 'Famille Lemaire', pax: 8, startTime: '15:00', lanes: [5, 6], occasion: '', price: 96, phone: '+32470000002' },
+      ];
+      if (sans) {
+        window.__QA__.sansForcer = true;
+        const s = state.staffAuthSession;
+        const moins = { ...s, role: { id: 'accueil', name: 'Accueil', locked: false }, permissions: [...(s.permissions || []), 'niveau:forcer:non'] };
+        state.staffAuthSession = moins;
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const cle = localStorage.key(i);
+          try { const v = JSON.parse(localStorage.getItem(cle)); if (v && v.token === 'qa' && v.role) localStorage.setItem(cle, JSON.stringify({ ...v, role: moins.role, permissions: moins.permissions })); } catch (e) { /* pas une session */ }
+        }
+      }
+    }, { d: r.D1, sans: sansForcer });
+    await ouvrirFiche(page, 801);
+    await attendreEtude(page);
+    await page.waitForTimeout(300);
+    r.liensJour = await page.evaluate(() => [...document.querySelectorAll('.sm-jour .sm-jour-a .sm-lien')].map((b) => b.textContent.trim()));
+    r.compose = await texte(page, '.sm-compose');
+    if (!sansForcer) {
+      // 1. Les horaires du jour : fermer a minuit.
+      await page.locator('.sm-jour .sm-jour-a .sm-lien', { hasText: 'Changer les horaires' }).first().click();
+      await page.waitForSelector('.sm-fen #smHfFerme', { timeout: 5000 });
+      await page.fill('#smHfFerme', '00:00');
+      r.minuit = await texte(page, '#smHfDit');
+      r.etudesAvant = await etudes();
+      await page.click('#smHfOk');
+      await page.waitForSelector('.sm-fen', { state: 'detached', timeout: 5000 });
+      r.pose = (await ouvertures())[0] || null;
+      await page.waitForFunction((n) => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').length > n, r.etudesAvant, { timeout: 5000 }).catch(() => {});
+      r.etudesApres = await etudes();
+    }
+    // 2. Composer a 08:00, avant l ouverture.
+    await page.fill('.sm-compose input[type=date]', r.D1);
+    await page.fill('.sm-compose input[type=time]', '08:00');
+    await page.waitForTimeout(150);
+    r.composeHeure = await page.evaluate(() => {
+      const b = document.querySelector('.sm-compose .sm-p');
+      return { bouton: b ? b.textContent.trim() : '', off: Boolean(b && b.disabled), dit: ((document.querySelector('.sm-compose-dit') || {}).textContent || '').trim() };
+    });
+    if (!sansForcer) {
+      await page.click('.sm-compose .sm-p');
+      await page.waitForSelector('.qb-modal', { timeout: 8000 });
+      await page.waitForTimeout(900);
+      r.ouvertures = await ouvertures();
+      r.reserver = await page.evaluate(() => ({
+        date: quickBookState && quickBookState.date,
+        heure: quickBookState && quickBookState.startTime,
+        occasion: quickBookState && quickBookState.occasion,
+        source: quickBookState && String(quickBookState.sourceRequestId),
+        horaires: ((document.querySelector('.rs-horaires') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+        huit: [...document.querySelectorAll('.rs-h')].some((b) => /^08:00/.test(b.textContent.trim())),
+      }));
+      await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+      await page.waitForTimeout(300);
+    }
+    // 3. Le planning du jour, en fenetre.
+    const avant = await ou();
+    await page.locator('.sm-jour .sm-jour-a .sm-lien', { hasText: 'Voir le planning de ce jour' }).first().click();
+    await page.waitForSelector('.sm-fen .sm-fen-planning .gf', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    r.planning = await page.evaluate(() => {
+      const f = document.querySelector('.sm-fen');
+      return f ? {
+        titre: (f.querySelector('#smFenT') || {}).textContent || '',
+        groupes: [...f.querySelectorAll('.gf-nom__t')].map((n) => n.textContent),
+        marques: [...f.querySelectorAll('.gf-nom__m')].map((n) => n.textContent),
+        bandeau: (f.querySelector('.gf-bandeau') || {}).textContent || '',
+      } : null;
+    });
+    r.pagePlanning = { avant, apres: await ou() };
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+    r.planningFerme = await page.evaluate(() => ({ ouverte: Boolean(document.querySelector('.sm-fen')), focus: ((document.activeElement && document.activeElement.textContent) || '').trim() }));
+    // 4. Le client, en fenetre.
+    const lien = page.locator('.sm-client .sm-lien', { hasText: 'Voir sa fiche client' });
+    if (await lien.count()) {
+      await lien.click();
+      await page.waitForSelector('.sm-fen', { timeout: 4000 }).catch(() => {});
+      r.client = await texte(page, '.sm-fen');
+      r.pageClient = await ou();
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+    }
+  } catch (error) {
+    r.panne = String((error && error.message) || error).split('\n')[0];
+  } finally {
+    await ctx.close();
+  }
+  return r;
+}
+
+function verifierHoraires(h) {
+  section('O. LES HORAIRES D UN JOUR, LE SUR MESURE, LES FENETRES');
+  ok(!h.panne, 'le parcours va au bout', h.panne || '');
+  ok(Array.isArray(h.liensJour) && h.liensJour.includes('Changer les horaires') && h.liensJour.includes('Voir le planning de ce jour'), 'le jour etudie se change et se regarde', JSON.stringify(h.liensJour));
+  ok(/Sur mesure/.test(h.compose || '') && /Composer la réservation/.test(h.compose || ''), 'la fiche compose une reservation sur mesure', h.compose);
+  ok(/minuit/.test(h.minuit || ''), 'fermer a 00:00 se dit « minuit »', h.minuit);
+  ok(Boolean(h.pose) && h.pose.date === h.D1 && /^\d{2}:\d{2}$/.test(h.pose.open) && h.pose.close === '24:00', 'minuit part au serveur en 24:00, pour le jour de la demande', JSON.stringify(h.pose));
+  ok(h.etudesApres > h.etudesAvant, 'la fiche relit son etude avec les nouveaux horaires', `${h.etudesAvant} -> ${h.etudesApres}`);
+  ok(Boolean(h.composeHeure) && /Ouvrir à 08:00 et composer/.test(h.composeHeure.bouton) && /ouvrira à 08:00/.test(h.composeHeure.dit) && !h.composeHeure.off, 'une heure avant l ouverture se dit sur le bouton, avant de toucher', JSON.stringify(h.composeHeure));
+  const huit = (h.ouvertures || []).find((o) => o.open === '08:00');
+  ok(Boolean(huit) && huit.date === h.D1, 'composer a 08:00 ouvre le centre a 08:00 ce jour-la, avant Reserver', JSON.stringify(h.ouvertures));
+  ok(Boolean(h.reserver) && h.reserver.date === h.D1 && h.reserver.heure === '08:00' && h.reserver.source === '801', 'Reserver s ouvre sur le jour et l heure composes, lie a la demande', JSON.stringify(h.reserver));
+  ok(Boolean(h.reserver) && h.reserver.occasion === 'ecole', 'l occasion du groupe est deja choisie', JSON.stringify(h.reserver));
+  ok(Boolean(h.reserver) && /Ouvert de 08:00/.test(h.reserver.horaires) && /Ouverture exceptionnelle/.test(h.reserver.horaires) && h.reserver.huit, 'Reserver propose 08:00 et dit l ouverture exceptionnelle', JSON.stringify(h.reserver));
+  ok(Boolean(h.planning) && /^Planning du /.test(h.planning.titre) && h.planning.groupes.includes('Proximus'), 'le planning du jour s ouvre en fenetre, avec ses groupes', JSON.stringify(h.planning));
+  ok(Boolean(h.planning) && h.planning.marques.includes('Team building') && h.planning.marques.includes('Hors horaires'), 'le team building et l heure hors horaires sont marques', JSON.stringify(h.planning && h.planning.marques));
+  ok(Boolean(h.pagePlanning) && h.pagePlanning.avant.hash === h.pagePlanning.apres.hash && h.pagePlanning.apres.page === 'requests', 'la page ne change pas', JSON.stringify(h.pagePlanning));
+  ok(Boolean(h.planningFerme) && !h.planningFerme.ouverte && /Voir le planning de ce jour/.test(h.planningFerme.focus), 'Echap ferme la fenetre et rend la main au lien', JSON.stringify(h.planningFerme));
+  ok(/Venues/.test(h.client || '') && /Absences/.test(h.client || '') && Boolean(h.pageClient) && h.pageClient.page === 'requests', 'le client s ouvre en fenetre, sans quitter la demande', JSON.stringify({ client: h.client, page: h.pageClient }));
+  ok(h.erreurs.length === 0, 'aucune erreur JavaScript', JSON.stringify(h.erreurs));
+}
+
+function verifierSansForcer(h) {
+  section('O2. UN ROLE QUI NE PASSE PAS OUTRE LES REGLES');
+  ok(!h.panne, 'le parcours va au bout', h.panne || '');
+  ok(Array.isArray(h.liensJour) && !h.liensJour.includes('Changer les horaires') && h.liensJour.includes('Voir le planning de ce jour'), 'les horaires ne se changent pas, le planning se regarde', JSON.stringify(h.liensJour));
+  ok(Boolean(h.composeHeure) && h.composeHeure.off === true && /Seul un responsable/.test(h.composeHeure.dit), 'une heure hors des horaires ne se compose pas, et la fiche dit pourquoi', JSON.stringify(h.composeHeure));
+  ok(Boolean(h.planning) && h.planning.groupes.length >= 1, 'le planning du jour s ouvre quand meme', JSON.stringify(h.planning));
+  ok(h.erreurs.length === 0, 'aucune erreur JavaScript', JSON.stringify(h.erreurs));
+}
+
 function verifierPerimee(h) {
   section('P. LE PLANNING A BOUGE : L HEURE N EST PLUS POSSIBLE');
   if (!ok(!h.panne && h.lu, 'MONTAGE le parcours va au bout', h.panne || '')) return;
@@ -671,7 +822,7 @@ function verifier(r) {
   ok(r.photos.length === 3 && r.photos.every((i) => i.n > 0), 'les vraies photos du centre se chargent', JSON.stringify(r.photos));
   ok(r.photoAilleurs === '', 'un autre client ne recoit pas les photos de ce centre', r.photoAilleurs);
   ok(!/\bIA\b|Touchez|moteur/.test(r.mots), 'la fiche ne parle ni d IA ni de moteur', (r.mots.match(/.{0,40}(\bIA\b|Touchez|moteur).{0,40}/) || [''])[0]);
-  ok(/Écrire au client/.test(r.vide) && /Créer la réservation/.test(r.vide), 'sans heure choisie : ecrire, ou reserver', r.vide);
+  ok(/Écrire au client/.test(r.vide) && /Composer la réservation/.test(r.vide) && /Sur mesure/.test(r.vide), 'sans heure choisie : ecrire, ou composer une reservation sur mesure', r.vide);
 
   section('C. LES DISPONIBILITES : CE QUE LE MOTEUR DIT DE LA DATE');
   const [j1 = '', j2 = ''] = r.jours;
@@ -776,6 +927,8 @@ async function main() {
     verifierHorloge(await horlogeDuBureau(browser));
     verifierAlerte(await alerteDuTableau(browser));
     verifierSansSuite(await sansSuite(browser));
+    verifierHoraires(await horairesEtFenetres(browser));
+    verifierSansForcer(await horairesEtFenetres(browser, { sansForcer: true }));
 
     section('J. UN STATUT QUE LA BASE ACCEPTE');
     // Le fichier tel que sur le disque (verifie intact a la fin), et sa forme
@@ -796,7 +949,7 @@ async function main() {
       { de: '        ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),\n', vers: '', label: 'sans la proposition au mail, le oui du client ne retrouverait rien', rouge: (r) => Boolean(r.envoi && r.envoi.corps) && !r.envoi.corps.proposition },
       { de: "...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),", vers: '}),', label: 'sans l heure dans la demande, le mail parlerait de tout', rouge: (r) => Boolean(r.panne) || (Boolean(r.redaction) && !r.redaction.choix) },
       { de: 'centerId: getActiveOpsCenterId(), sansIA: true, ...(choix', vers: 'centerId: getActiveOpsCenterId(), ...(choix', label: 'sans la consigne, l IA ecrirait le mail', rouge: (r) => Boolean(r.redaction) && r.redaction.sansIA !== true },
-      { de: '    ...(choix ? { startTime: choix.heure, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '14:00' },
+      { de: '    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '14:00' },
       { de: '  if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);', vers: '', label: 'sans le programme, la reservation serait vide', rouge: (r) => Boolean(r.resa) && !(r.resa.bowling && r.resa.laser) },
       { de: '    if (payload && payload.choixPerime) {', vers: '    if (false) {', label: 'sans le refus, une heure prise serait ecrite au client', run: heurePerimee, rouge: (r) => Boolean(r.lu) && r.lu.choisies !== 0 },
       { fichier: 'assets/pinlane-staff.css', de: '.sm .sm-courrier textarea.input { min-height: 280px; }', vers: '.sm .sm-courrier textarea.input { min-height: 44px; height: 44px; }', label: 'la case du mail ramenee a une ligne', rouge: (r) => Boolean(r.redaction) && r.redaction.hautMessage < 200 },
@@ -817,6 +970,14 @@ async function main() {
       { de: "${restes.map(r => `<small>${escapeHtml(r)}</small>`).join('')}</button>`;", vers: "</button>`;", label: 'sans ce qui reste, l heure ne le dirait plus', rouge: (r) => Array.isArray(r.touches) && !r.touches.some((t) => /reste 2 pistes reste 14 armes/.test(t.t)) },
       { de: "  if (!item || !crDemande(item)) return;\n  const study", vers: "  if (!item || !crDemande(item) || !staffRequestMontreDispos(item)) return;\n  const study", label: 'sans l etude a l ouverture, la demande en attente perdrait son client et sa journee', rouge: (r) => Boolean(r.attente) && !(r.attente.groupe >= 6 && /3 venues/.test(r.attente.client)) },
       { de: "(SM_PHOTOS[String(centerId || '')] || [])", vers: "(SM_PHOTOS[String(centerId || '')] || SM_PHOTOS.libramont)", label: 'sans la garde, un autre client recevrait les photos de ce centre', rouge: (r) => typeof r.photoAilleurs === 'string' && r.photoAilleurs !== '' },
+      { de: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n", vers: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n  state.currentDate = iso; openStaffPlanningResource('all'); return;\n", label: 'sans la fenetre, le planning du jour ferait quitter la demande', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.pagePlanning) && (r.pagePlanning.apres.page !== 'requests' || !r.planning) },
+      { de: "function openStaffRequestClient(id) {\n", vers: "function openStaffRequestClient(id) {\n  state.staffClientQuery = String(id); openStaffMenuPage('clients'); return;\n", label: 'sans la fenetre, la fiche client ferait quitter la demande', run: (b) => horairesEtFenetres(b), rouge: (r) => !r.client || !r.pageClient || r.pageClient.page !== 'requests' },
+      { de: "  return f > o ? ferme : numToTime(f + 24);", vers: "  return ferme;", label: 'sans le lendemain, minuit partirait en 00:00 et fermerait avant l ouverture', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.pose) && r.pose.close !== '24:00' },
+      { de: "  if (lu.ouvrir) {", vers: "  if (false) {", label: 'sans l ouverture d abord, Reserver refuserait 08:00', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.reserver) && !(r.ouvertures || []).some((o) => o.open === '08:00') },
+      { de: "canUseStaffPermission('reservations.create') && niveauStaff('forcer') === 'oui';", vers: "canUseStaffPermission('reservations.create');", label: 'sans le niveau, tout role changerait les horaires', run: (b) => horairesEtFenetres(b, { sansForcer: true }), rouge: (r) => Array.isArray(r.liensJour) && r.liensJour.includes('Changer les horaires') },
+      { fichier: 'assets/booking-core.js', de: "    if (exception) return exception;\n  }\n  // 1. VERDICT SERVEUR", vers: "  }\n  // 1. VERDICT SERVEUR", label: 'sans l exception dans la console, Reserver ne proposerait pas 08:00', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.reserver) && (!r.reserver.huit || !/Ouverture exceptionnelle/.test(r.reserver.horaires)) },
+      { fichier: 'assets/pinlane-planning-global.js', de: "    if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });", vers: "", label: 'sans la marque, le team building ne se verrait pas au planning', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Team building') },
+      { fichier: 'assets/pinlane-planning-global.js', de: "    if (hors) sortie.push(", vers: "    if (false) sortie.push(", label: 'sans la marque, une heure hors horaires ne se verrait pas', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Hors horaires') },
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
     ];
     for (const e of essais) {

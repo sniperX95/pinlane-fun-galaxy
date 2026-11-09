@@ -365,6 +365,9 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-nom__tel:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .gf-nom__tel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .gf-nom__valide { flex: none; font-size: 12px; font-weight: 600; color: var(--warning); }
+.gf-nom__m { flex: none; padding: 1px 6px; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--text); background: var(--subtle); border-radius: 3px; }
+.gf-nom__m--horaire { color: var(--warning); background: var(--warning-soft); }
+.gf-bandeau.is-ouverture { color: var(--text); background: var(--warning-soft); }
 .gf-nom__caisse { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
 .gf-nom__caisse.is-retard { color: var(--gf-rouge); font-weight: 700; }
 /* LES RUBRIQUES : le libelle en toutes lettres, le texte sur deux lignes au plus. */

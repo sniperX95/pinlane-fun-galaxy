@@ -3349,6 +3349,8 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.classification) state.staffClassification = payload.classification;
     // Le seuil de retard du centre (Etablissement > Regles), meme chemin.
     if (payload.accueil) state.staffAccueil = payload.accueil;
+    // Les jours ouverts autrement pour un groupe (lib/booking-config), toute la liste.
+    if (!payload.degraded) smPoserOuvertures(payload.ouvertures);
     hydrateSelectedReservation();
     save();
     // LA REVISION SE RETIENT APRES LE RENDU, ET SEULEMENT SI L ECRAN MONTRE LA
@@ -3935,7 +3937,7 @@ state.booking.opsPlan = state.booking.opsPlan || null;
 // Tant qu'elle existe, la classe de bug revient. Le poll re-demande la journee
 // toutes les 4 s et au retour sur l'onglet : la reprise apres un rechargement se
 // compte en centaines de millisecondes.
-const SERVER_OWNED_STATE_KEYS = ['reservations', 'laneStatuses'];
+const SERVER_OWNED_STATE_KEYS = ['reservations', 'laneStatuses', 'staffOuvertures'];
 
 function statePersistablePayload() {
   const payload = { ...state };
@@ -13280,6 +13282,8 @@ function staffGroupToday() {
 const STAFF_OCCASION_LABELS = {
   anniversaire: 'Anniversaire',
   entreprise: 'Entreprise / team building',
+  teambuilding: 'Team building',
+  prive: 'Groupe privé',
   groupe: 'Sortie groupe',
   ecole: 'École / jeunesse',
   evg: 'EVG / EVJF',
@@ -19749,7 +19753,7 @@ function renderSmClient(item) {
       const texte = staffRequestDejaVenu(c);
       const somme = Number(c.depense) > 0 ? ` Pour ${staffRequestEuro(c.depense)} au total.` : '';
       const absences = Number(c.absences) > 0 ? `<span class="sm-c-abs">${Number(c.absences)} absence${Number(c.absences) > 1 ? 's' : ''}</span>` : '';
-      const venues = (Array.isArray(c.venues) ? c.venues : []).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
+      const venues = (Array.isArray(c.venues) ? c.venues : []).slice(0, 5).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
       passe = `<div class="sm-c-h"><p>${escapeHtml(texte)}${escapeHtml(somme)}${absences}</p>${venues ? `<ol class="sm-venues">${venues}</ol>` : ''}<button type="button" class="sm-lien" onclick="openStaffRequestClient(${staffClientJs(item.id)})">Voir sa fiche client</button></div>`;
     }
   }
@@ -19760,13 +19764,6 @@ function renderSmClient(item) {
     ${facture}
     ${passe}
   </section>`;
-}
-
-function openStaffRequestClient(id) {
-  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
-  if (!item) return;
-  state.staffClientQuery = String(item.email || item.phone || item.contactName || '');
-  openStaffMenuPage('clients');
 }
 
 function renderSmJourDeLaProposition(item) {
@@ -20054,6 +20051,339 @@ function staffRequestDejaVenu(client) {
 // retenu : c est une lecture.
 let staffRequestStudies = {};
 
+// ── UNE FENETRE, SANS QUITTER LA PAGE (2026-11-09, Ansar : « ça doit le montrer sous forme de
+// pop up pas nous redirigé c chiant de fou »). Une seule a la fois ; Echap, le fond et la croix
+// la ferment ; le focus suit la regle des autres fenetres (containStaffDialog).
+let smFenetre = null;
+const SM_CROIX = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function smFenetreOuvrir({ titre, sous = '', corps, classe = '', quandFermee = null }) {
+  smFenetreFermer();
+  const fond = document.createElement('div');
+  fond.className = 'overlay-backdrop sm-fen-fond';
+  fond.innerHTML = `<div class="modal-surface sm sm-fen${classe ? ` ${classe}` : ''}" role="dialog" aria-modal="true" aria-labelledby="smFenT">
+    <div class="sm-fen-t"><div><h3 id="smFenT">${titre}</h3>${sous ? `<p>${sous}</p>` : ''}</div><button type="button" class="sm-fen-x" id="smFenX" aria-label="Fermer" onclick="smFenetreFermer()">${SM_CROIX}</button></div>
+    <div class="sm-fen-c" id="smFenC">${corps}</div>
+  </div>`;
+  fond.addEventListener('pointerdown', (event) => { if (event.target === fond) smFenetreFermer(); });
+  document.body.appendChild(fond);
+  // (le fond ne devient pas inert : tout le planning se recalculerait, a l ouverture et a la fermeture)
+  const liberer = containStaffDialog(fond, '.sm-fen', 'input:not([type="hidden"]), textarea, #smFenX', smFenetreFermer, { fondInerte: false });
+  smFenetre = { fond, liberer, quandFermee };
+}
+
+function smFenetreFermer() {
+  if (!smFenetre) return;
+  const { fond, liberer, quandFermee } = smFenetre;
+  smFenetre = null;
+  fond.remove();
+  liberer();
+  if (typeof quandFermee === 'function') quandFermee();
+}
+
+// ── LE PLANNING D UN JOUR, EN FENETRE ─────────────────────────────────────
+// Le vrai planning complet, epingle a ce jour (data-gf-jour), en lecture : toucher un groupe
+// ouvre son dossier a la place de la fenetre, le reste ne s y joue pas, la page dessous ne bouge
+// pas. Le meme element resert a chaque ouverture : le planning branche ses ecouteurs une fois.
+let smJourEnveloppe = null;
+let smJourMinuteur = 0;
+
+function smJourEpingle() {
+  if (smJourEnveloppe) return smJourEnveloppe;
+  const wrap = document.createElement('div');
+  wrap.className = 'sm-fen-planning';
+  wrap.addEventListener('click', (event) => {
+    if (!event.target.closest) return;
+    event.stopPropagation();
+    if (event.target.closest('a[href]')) return;
+    const ligne = event.target.closest('[data-gf-id]');
+    if (!ligne) return;
+    smFenetreFermer();
+    openStaffReservationDetail(Number(ligne.getAttribute('data-gf-id')));
+  }, true);
+  smJourEnveloppe = wrap;
+  return wrap;
+}
+
+function smPeindreJour() {
+  if (!smJourEnveloppe || !smJourEnveloppe.isConnected) return;
+  if (typeof renderGlobalPlanning === 'function') renderGlobalPlanning(smJourEnveloppe);
+}
+
+async function openStaffRequestDay(iso) {
+  if (!staffRequestDateOf(iso)) return;
+  const wrap = smJourEpingle();
+  wrap.dataset.gfJour = iso;
+  const plage = getSchedule(iso, state.isHolidayMode);
+  smFenetreOuvrir({
+    titre: `Planning du ${escapeHtml(smDateDansLaPhrase(iso))}`,
+    sous: plage ? escapeHtml(`Ouvert de ${numToTime(plage.open)} à ${smHeureVue(plage.close)}${plage.exceptionnelle ? ', ouverture exceptionnelle' : ''}`) : 'Centre fermé ce jour-là',
+    classe: 'is-large',
+    corps: '<div class="planning-box" id="smFenPlanning"><p class="sm-note" id="smFenAttente" aria-busy="true">Chargement du planning…</p></div>',
+    quandFermee: () => { clearInterval(smJourMinuteur); smJourMinuteur = 0; },
+  });
+  try {
+    await syncDateReservations(iso, { silent: true, skipRender: true });
+  } catch (error) {
+    // (la journee deja chargee sur ce poste s affiche quand meme)
+  }
+  const hote = document.getElementById('smFenPlanning');
+  if (!hote || wrap.dataset.gfJour !== iso) return;
+  const attente = document.getElementById('smFenAttente');
+  if (attente) attente.remove();
+  hote.appendChild(wrap);
+  smPeindreJour();
+  clearInterval(smJourMinuteur);
+  smJourMinuteur = setInterval(() => {
+    syncDateReservations(iso, { silent: true, skipRender: true }).then(smPeindreJour).catch(() => {});
+  }, 20000);
+}
+window.openStaffRequestDay = openStaffRequestDay;
+
+// ── LE CLIENT, EN FENETRE ──────────────────────────────────────────────────
+function openStaffRequestClient(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  const study = item && staffRequestStudies[String(item.id)];
+  const c = study && study.client;
+  if (!item || !c) return;
+  const venues = (Array.isArray(c.venues) ? c.venues : []).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix != null ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
+  const chiffres = [
+    ['Venues', String(Number(c.visits) || (Array.isArray(c.venues) ? c.venues.length : 0))],
+    ...(Number(c.depense) > 0 ? [['Dépensé', staffRequestEuro(c.depense)]] : []),
+    ['Absences', String(Number(c.absences) || 0)],
+  ];
+  const tel = String(item.phone || '').replace(/\s+/g, '');
+  smFenetreOuvrir({
+    titre: escapeHtml(item.contactName || staffRequestNom(item) || 'Client'),
+    sous: escapeHtml(staffRequestDejaVenu(c)),
+    corps: `<dl class="sm-fen-chiffres">${chiffres.map(([mot, n]) => `<div><dt>${escapeHtml(mot)}</dt><dd>${escapeHtml(n)}</dd></div>`).join('')}</dl>
+      ${venues ? `<ol class="sm-venues">${venues}</ol>` : '<p class="sm-note">Aucune venue enregistrée.</p>'}
+      <div class="sm-actions">${tel ? `<a class="sm-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}${item.email ? `<a class="sm-b" href="mailto:${escapeHtml(item.email)}">Écrire</a>` : ''}</div>`,
+  });
+}
+
+// ── LES HORAIRES D UN JOUR ─────────────────────────────────────────────────
+function smPoserOuvertures(liste) {
+  const index = {};
+  (Array.isArray(liste) ? liste : []).forEach((o) => { if (o && o.date) index[o.date] = o; });
+  state.staffOuvertures = index;
+}
+
+function smPeutOuvrir() {
+  return typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.create') && niveauStaff('forcer') === 'oui';
+}
+
+function smDateDansLaPhrase(iso) {
+  const texte = staffRequestLongDate(iso);
+  return texte.charAt(0).toLowerCase() + texte.slice(1);
+}
+
+// Une nuit qui deborde s ecrit 25:00 ; elle se lit 01:00.
+function smHeureVue(valeur) {
+  const n = Number(valeur);
+  return numToTime(n >= 24 ? n - 24 : n);
+}
+
+// La fermeture d un champ : au matin ou a l heure de l ouverture, c est le lendemain.
+function smFermetureServeur(ouvre, ferme) {
+  const o = timeToNum(ouvre);
+  const f = timeToNum(ferme);
+  return f > o ? ferme : numToTime(f + 24);
+}
+
+function smHorairesFenetre(date, { open = '', close = '', motif = '', apres = null } = {}) {
+  if (!smPeutOuvrir()) { toast('Votre rôle ne permet pas de changer les horaires d’un jour. Demandez à un responsable.'); return; }
+  const normal = getSchedule(date, state.isHolidayMode, { normal: true });
+  const exception = ouvertureExceptionnelleDu(date);
+  const plage = exception || normal;
+  const ouvre = open || (plage ? numToTime(plage.open) : '10:00');
+  const ferme = close || (plage ? smHeureVue(plage.close) : '22:00');
+  const raison = motif || (exception && exception.motif) || '';
+  const sd = escapeJsString(date);
+  smFenetreOuvrir({
+    titre: `Horaires du ${escapeHtml(smDateDansLaPhrase(date))}`,
+    sous: normal ? `Habituellement de ${escapeHtml(numToTime(normal.open))} à ${escapeHtml(smHeureVue(normal.close))}` : 'Habituellement fermé ce jour-là',
+    classe: 'is-petite',
+    corps: `<form class="sm-hf" onsubmit="smHorairesEnregistrer(event, '${sd}')" novalidate>
+      <div class="sm-hf-l">
+        <label class="sm-champ"><span>Ouverture</span><input class="input" id="smHfOuvre" type="time" step="900" required value="${escapeHtml(ouvre)}" oninput="smHorairesDit()"></label>
+        <label class="sm-champ"><span>Fermeture</span><input class="input" id="smHfFerme" type="time" step="900" required value="${escapeHtml(ferme)}" oninput="smHorairesDit()"></label>
+      </div>
+      <p class="sm-hf-dit" id="smHfDit"></p>
+      <label class="sm-champ"><span>Pour qui, pour quoi</span><input class="input" id="smHfMotif" maxlength="120" autocomplete="off" value="${escapeHtml(raison)}" placeholder="Facultatif"></label>
+      <p class="sm-note">Seule l’équipe peut réserver dans ces horaires. Les clients en ligne gardent les horaires habituels.</p>
+      <p class="sm-hf-err" id="smHfErr" role="alert" hidden></p>
+      <div class="sm-actions">
+        <button type="submit" class="sm-p" id="smHfOk">Enregistrer</button>
+        <button type="button" class="sm-b" onclick="smFenetreFermer()">Annuler</button>
+        ${exception ? `<button type="button" class="sm-lien" id="smHfRetirer" onclick="smHorairesRetirer('${sd}')">Revenir aux horaires habituels</button>` : ''}
+      </div>
+    </form>`,
+  });
+  smFenetre.apres = apres;
+  smHorairesDit();
+}
+
+function smHorairesDit() {
+  const zone = document.getElementById('smHfDit');
+  if (!zone) return;
+  const ouvre = document.getElementById('smHfOuvre').value;
+  const ferme = document.getElementById('smHfFerme').value;
+  zone.textContent = ouvre && ferme && timeToNum(ferme) <= timeToNum(ouvre)
+    ? (ferme === '00:00' ? 'Le centre fermera à minuit.' : `Le centre fermera le lendemain à ${ferme}.`)
+    : '';
+}
+
+function smHorairesErreur(message) {
+  const zone = document.getElementById('smHfErr');
+  if (!zone) { toast(message); return; }
+  zone.textContent = message;
+  zone.hidden = false;
+}
+
+// Tout ce qui lit les horaires de ce jour se relit : l etude de la fiche ouverte, la journee, Reserver.
+async function smApresHoraires(date) {
+  Object.keys(staffRequestStudies).forEach((key) => { staffRequestStudies[key] = { ...staffRequestStudies[key], stale: true }; });
+  try {
+    await syncDateReservations(date, { silent: true, skipRender: true });
+  } catch (error) {
+    // (les horaires sont poses : la prochaine lecture reprendra la journee)
+  }
+  if (state.staffRequestSelectedId) loadStaffRequestStudy(state.staffRequestSelectedId, true);
+  renderStaffRequestsIfOpen();
+  if (quickBookState) renderQuickBook();
+}
+
+async function smHorairesPoser(date, corps) {
+  const payload = await apiRequest(API_ENDPOINTS.ops, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'ouvertureExceptionnelle', centerId: getActiveOpsCenterId(), date, ...corps }),
+  });
+  smPoserOuvertures(payload && payload.ouvertures);
+  await smApresHoraires(date);
+  return payload;
+}
+
+async function smHorairesEnregistrer(event, date) {
+  event.preventDefault();
+  const ouvre = document.getElementById('smHfOuvre').value;
+  const ferme = document.getElementById('smHfFerme').value;
+  if (!ouvre || !ferme) { smHorairesErreur('Indiquez l’heure d’ouverture et l’heure de fermeture.'); return; }
+  const bouton = document.getElementById('smHfOk');
+  bouton.disabled = true;
+  const apres = smFenetre && smFenetre.apres;
+  try {
+    await smHorairesPoser(date, { open: ouvre, close: smFermetureServeur(ouvre, ferme), motif: document.getElementById('smHfMotif').value });
+    smFenetreFermer();
+    toast('Horaires enregistrés pour ce jour.');
+    if (typeof apres === 'function') apres();
+  } catch (error) {
+    bouton.disabled = false;
+    smHorairesErreur(error.message || 'Horaires non enregistrés. Réessayez.');
+  }
+}
+
+async function smHorairesRetirer(date) {
+  const bouton = document.getElementById('smHfRetirer');
+  if (bouton) bouton.disabled = true;
+  try {
+    await smHorairesPoser(date, { retirer: true });
+    smFenetreFermer();
+    toast('Horaires habituels rétablis.');
+  } catch (error) {
+    if (bouton) bouton.disabled = false;
+    smHorairesErreur(error.message || 'Horaires non enregistrés. Réessayez.');
+  }
+}
+
+// ── COMPOSER UNE RESERVATION SUR MESURE ───────────────────────────────────
+// (2026-11-09, Ansar : « on peut vrm n importe quelle heure [...] on peut ajouter nimporte quoi
+// comme activité nimporte quoi comme boissons [...] et ça créé resa direct ») Un jour, une heure
+// d arrivee, et la fenetre Reserver s ouvre remplie : c est la seule porte de creation, avec ses
+// droits, ses prix et ses articles libres. Une heure hors des horaires ouvre le centre pour ce
+// jour-la, le bouton le dit avant.
+const staffRequestComposition = {};
+function smComposition(item) {
+  const key = String(item.id);
+  if (!staffRequestComposition[key]) {
+    const d = crDemande(item);
+    const choix = staffRequestChoixDe(item);
+    const date = choix ? choix.date : (d && !d.flexible && staffRequestDateOf(d.date) && d.date >= todayStr() ? d.date : '');
+    staffRequestComposition[key] = { date: date || '', heure: '' };
+  }
+  return staffRequestComposition[key];
+}
+
+// Ce qu il faut dire et faire pour ce jour et cette heure. Une seule lecture : l affichage et le geste.
+function smCompositionLue(item) {
+  const { date, heure } = smComposition(item);
+  const base = { bouton: 'Composer la réservation', dit: '', bloque: false, ouvrir: null, choisir: false };
+  if (!date) return base;
+  const plage = getSchedule(date, state.isHolidayMode);
+  const horaires = plage ? `Ouvert de ${numToTime(plage.open)} à ${smHeureVue(plage.close)} ce jour-là.` : 'Centre fermé ce jour-là.';
+  const h = /^\d{2}:\d{2}$/.test(heure) ? timeToNum(heure) : null;
+  if (h === null || (plage && h >= plage.open && h < plage.close)) return { ...base, dit: horaires };
+  if (!smPeutOuvrir()) return { ...base, bloque: true, dit: `${horaires} Seul un responsable peut réserver hors des horaires.` };
+  if (!plage) return { ...base, bouton: 'Ouvrir ce jour-là et composer', choisir: true, dit: 'Centre fermé ce jour-là. Vous choisirez ses horaires, seule l’équipe les verra.' };
+  if (h < plage.open) return { ...base, bouton: `Ouvrir à ${heure} et composer`, ouvrir: { open: heure, close: numToTime(plage.close) }, dit: `${horaires} Il ouvrira à ${heure} pour ce groupe, seule l’équipe le voit.` };
+  const fermeture = numToTime(h + 2);
+  return { ...base, bouton: `Fermer à ${smHeureVue(h + 2)} et composer`, ouvrir: { open: numToTime(plage.open), close: fermeture }, dit: `${horaires} Il fermera à ${smHeureVue(h + 2)} pour ce groupe, seule l’équipe le voit.` };
+}
+
+function renderSmComposer(item, ecrire) {
+  const jid = staffClientJs(item.id);
+  const id = escapeHtml(String(item.id));
+  const c = smComposition(item);
+  const lu = smCompositionLue(item);
+  return `<section class="sm-s sm-autre sm-compose">
+    <h3>Sur mesure</h3>
+    <p>Aucune heure ne convient ? Une autre heure, n’importe quelle activité ou boisson, au prix que vous fixez.</p>
+    <div class="sm-compose-l">
+      <label class="sm-champ"><span>Jour</span><input class="input" type="date" id="smCoDate-${id}" min="${todayStr()}" value="${escapeHtml(c.date)}" oninput="smCompositionChamp(${jid}, 'date', this.value)"></label>
+      <label class="sm-champ"><span>Arrivée</span><input class="input" type="time" step="900" id="smCoHeure-${id}" value="${escapeHtml(c.heure)}" oninput="smCompositionChamp(${jid}, 'heure', this.value)"></label>
+      <button type="button" class="sm-p" id="smCoGo-${id}" onclick="smComposer(${jid})"${lu.bloque ? ' disabled' : ''}>${escapeHtml(lu.bouton)}</button>
+      ${ecrire}
+    </div>
+    <p class="sm-compose-dit" id="smCoDit-${id}">${escapeHtml(lu.dit)}</p>
+  </section>`;
+}
+
+function smCompositionChamp(id, cle, valeur) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  smComposition(item)[cle] = String(valeur || '');
+  const lu = smCompositionLue(item);
+  const bouton = document.getElementById(`smCoGo-${id}`);
+  const dit = document.getElementById(`smCoDit-${id}`);
+  if (bouton) { bouton.textContent = lu.bouton; bouton.disabled = lu.bloque; }
+  if (dit) dit.textContent = lu.dit;
+}
+
+async function smComposer(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  const c = smComposition(item);
+  const lu = smCompositionLue(item);
+  if (lu.bloque) return;
+  const composer = () => staffRequestToBooking(id, { date: c.date, heure: c.heure });
+  if (lu.choisir) {
+    smHorairesFenetre(c.date, { open: c.heure, motif: staffRequestNom(item), apres: composer });
+    return;
+  }
+  if (lu.ouvrir) {
+    const bouton = document.getElementById(`smCoGo-${id}`);
+    if (bouton) bouton.disabled = true;
+    try {
+      await smHorairesPoser(c.date, { ...lu.ouvrir, motif: staffRequestNom(item) });
+    } catch (error) {
+      if (bouton) bouton.disabled = false;
+      toast(error.message || 'Horaires non enregistrés. Réessayez.');
+      return;
+    }
+  }
+  composer();
+}
+
 function renderSmDispos(item) {
   const d = crDemande(item);
   if (!d) return '';
@@ -20119,7 +20449,8 @@ function renderRqJour(item, jour, etude, d) {
   const nomDuJour = staffRequestLongDate(jour.date) || jour.libelle;
   const titre = `${escapeHtml(nomDuJour)}${jour.principale ? '' : ', autre date du client'}`;
   if (jour.passee) return `<p class="sm-jour-off">${titre}, date passée</p>`;
-  if (!jour.ouvert) return `<p class="sm-jour-off">${titre}, fermé</p>`;
+  const changer = (mot) => (smPeutOuvrir() ? `<button type="button" class="sm-lien" onclick="smHorairesFenetre('${escapeJsString(jour.date)}')">${mot}</button>` : '');
+  if (!jour.ouvert) return `<p class="sm-jour-off">${titre}, fermé ${changer('Ouvrir ce jour-là')}</p>`;
   const f = jour.fenetre;
   const plage = etude.moment !== 'indifferent' && f
     ? `${escapeHtml(etude.momentLabel)} de ${staffRequestClock(f.de)} à ${staffRequestClock(f.a)}${f.existe ? '' : ` (${escapeHtml(f.raison || 'hors des horaires ce jour-là')})`}`
@@ -20146,9 +20477,9 @@ function renderRqJour(item, jour, etude, d) {
     <div class="sm-jour-t">
       <div>
         <h3>${titre}</h3>
-        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${plage ? ` · ${plage}` : ''}</p>
+        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${jour.horaires.exceptionnelle ? ' <b class="sm-ex">Ouverture exceptionnelle</b>' : ''}${plage ? ` · ${plage}` : ''}</p>
       </div>
-      <button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button>
+      <div class="sm-jour-a">${changer('Changer les horaires')}<button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button></div>
     </div>
     ${renderSmJournee(item, jour, etude) || smOccupationHtml(jour)}
     ${offres.length
@@ -20246,6 +20577,7 @@ function renderSmReponse(item) {
       </div>`);
   }
   if (!ecrit && !reserve) return '';
+  if (reserve && crDemande(item)) return renderSmComposer(item, ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : '');
   return `<section class="sm-s sm-autre"><p>${crDemande(item) ? 'Aucune heure ne convient ? Écrivez au client, ou créez la réservation directement.' : 'Répondez au client, ou créez la réservation directement.'}</p><div class="sm-actions">${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}${creer('sm-b', 'Créer la réservation')}</div></section>`;
 }
 
@@ -20615,7 +20947,7 @@ async function staffRequestSendReply(id) {
 // fixee et a venir, la formule quand il n en a choisi qu une que ce centre
 // connait. Le reste part en note pour le comptoir ; l heure reste a choisir
 // avec le client.
-function staffRequestToBooking(id) {
+function staffRequestToBooking(id, options = {}) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
   if (!item) return;
   const d = crDemande(item);
@@ -20637,7 +20969,8 @@ function staffRequestToBooking(id) {
   ].filter(Boolean);
   // Une proposition choisie fait foi ; sans elle, ce que le client a demande.
   const formuleRetenue = choix ? (choix.type === 'formule' && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
-  const dateRetenue = choix ? choix.date : date;
+  const dateRetenue = options.date || (choix ? choix.date : date);
+  const heureRetenue = options.heure || (choix && (!options.date || options.date === choix.date) ? choix.heure : '');
   openQuickBook({
     name: item.contactName || '',
     email: item.email || '',
@@ -20645,7 +20978,8 @@ function staffRequestToBooking(id) {
     pax: joueurs > 0 ? joueurs : 4,
     notes: noteParts.join(' · '),
     ...(dateRetenue ? { date: dateRetenue } : {}),
-    ...(choix ? { startTime: choix.heure, heureSouhaitee: true } : {}),
+    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),
+    ...(STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] ? { occasion: String(item.occasion).toLowerCase() } : {}),
     ...(formuleRetenue ? { type: 'formule', formuleId: formuleRetenue } : {}),
     // D ou vient cette reservation : sert UNIQUEMENT a classer la demande
     // en « Traitee » une fois la creation reussie, reservation liee.
@@ -20667,16 +21001,6 @@ function openStaffRequestReservation(id) {
   toast('Réservation introuvable sur ce poste : ouvrez le planning à sa date.');
 }
 window.openStaffRequestReservation = openStaffRequestReservation;
-
-// Le planning du jour etudie, pour voir ce qui est deja pose.
-function openStaffRequestDay(iso) {
-  if (!staffRequestDateOf(iso)) return;
-  state.currentDate = iso;
-  state.staffStatusFilter = 'all';
-  openStaffPlanningResource('all');
-  syncDateReservations(iso, { silent: true });
-}
-window.openStaffRequestDay = openStaffRequestDay;
 
 // ── LES NOTES DE L EQUIPE ───────────────────────────────────────────────────
 function staffRequestNoteDraft(id, value) {
@@ -22204,6 +22528,7 @@ function planningDisplayWindow(view) {
 }
 
 function planningClosedNotice(config) {
+  if (config.exceptionnelle) return `<div class="planning-closed-notice" role="status">Ouverture exceptionnelle, de ${escapeHtml(numToTime(config.open))} à ${escapeHtml(smHeureVue(config.close))}${config.motif ? `, ${escapeHtml(config.motif)}` : ''}. Seule l’équipe peut réserver dans ces horaires.</div>`;
   return config.closed && config.showExisting ? '<div class="planning-closed-notice" role="status">Centre fermé ce jour · réservations existantes à contrôler. Aucun nouveau créneau disponible.</div>' : '';
 }
 
@@ -22401,7 +22726,7 @@ const PB_LEGENDE_CASES = '<span><i class="gf-leg is-encours" aria-hidden="true">
 function togglePlanningActionsMenu(event) {
   const vue = getStaffResourceView();
   const fenetre = getPlanningWindow(state.currentDate);
-  const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}`;
+  const horaires = fenetre.closed ? 'Centre fermé ce jour-là' : `Ouvert ${fenetre.label}${fenetre.exceptionnelle ? ', ouverture exceptionnelle' : ''}`;
   const agrandi = pbVueAgrandie();
   const laser = vue === 'laser' ? lpSousTitre(lpModele()) : '';
   const depart = vue === 'all' && typeof window.gfDepartDuMenu === 'function' ? window.gfDepartDuMenu() : '';
@@ -23750,11 +24075,12 @@ function renderLigneRubriquesDossier(reservation) {
   const e = essentielDuDossier(reservation);
   if (!e) return '';
   const morceaux = [];
+  (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(reservation) : []).forEach((m) => morceaux.push([m.cle, m.mot, m.detail || '']));
   if (e.mesure || e.adaptee) morceaux.push(['mesure', 'Sur mesure', [e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', ')]);
   if (e.derniere) morceaux.push(['equipe', 'Équipe', `${e.derniere.t}${e.derniere.par ? ` (${e.derniere.par})` : ''}`]);
   if (e.prix) morceaux.push(['prix', 'Prix', e.prix]);
   if (!morceaux.length) return '';
-  const texte = morceaux.map(([, mot, t]) => `${mot} : ${t}`).join(' · ');
+  const texte = morceaux.map(([, mot, t]) => (t ? `${mot} : ${t}` : mot)).join(' · ');
   return `<span class="res-rub-line" title="${escapeHtml(texte)}">${morceaux.map(([cle, mot, t]) => `<span class="res-rub res-rub--${cle}"><b>${mot}</b> ${escapeHtml(t)}</span>`).join('')}</span>`;
 }
 
@@ -23834,6 +24160,15 @@ function renderCardFlags(reservation, options = {}) {
       cls: 'flag-mesure',
       label: escapeHtml(`Sur mesure : ${[e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', ')}`),
       path: '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 8v8M8 12h8"/>',
+    });
+  }
+  // Team building, groupe prive, hors horaires : ce qui change la maniere d accueillir (pgMarques).
+  const marquesDossier = typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(reservation) : [];
+  if (marquesDossier.length) {
+    marques.push({
+      cls: 'flag-mesure',
+      label: escapeHtml(marquesDossier.map((m) => m.bulle || m.mot).join(', ')),
+      path: '<path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/>',
     });
   }
   // La derniere modification (2026-11-03, opsPlan.derniereModif, texteDerniereModif, le
@@ -23965,6 +24300,7 @@ function renderReservationTags(reservation, options = {}) {
   // réservation qui porte une demande particulière.
   const occasion = getReservationOccasion(reservation);
   if (occasion) tags.push({ cls: 'occasion', label: (STAFF_OCCASION_LABELS[occasion] || '').split(' / ')[0] });
+  (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(reservation) : []).filter((m) => m.cle === 'horaire').forEach((m) => tags.push({ cls: 'occasion', label: m.mot }));
   if (hasReservationNote(reservation)) tags.push({ cls: 'note', label: 'Note à lire' });
   if (!tags.length) return '';
   return `<div class="reservation-tags">${tags.map(tag => `<span class="reservation-tag ${tag.cls}">${escapeHtml(tag.label)}</span>`).join('')}</div>`;
@@ -26630,6 +26966,7 @@ function getGroupeEncadres(r) {
       texte: accompagnants ? `${accompagnants} accompagnant${accompagnants > 1 ? 's' : ''} en plus des joueurs` : '',
     });
   }
+  (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(r) : []).filter((m) => m.cle === 'horaire').forEach((m) => encadres.push({ ton: 'mesure', titre: m.mot, texte: m.detail || '' }));
   if (essentiel && essentiel.mesure) encadres.push({ ton: 'mesure', titre: 'Sur mesure', texte: essentiel.mesure });
   // Une seule regle dit si un dossier porte une note (hasReservationNote) :
   // la puce « Avec note », le filtre et ces encadres la lisent tous.
@@ -32778,7 +33115,7 @@ const RV_ANCRABLES = ['bowling', 'laser_game'];
 // bowling = la borne staff du serveur. Le tunnel public garde ses options.
 const RV_PARTIES_MAX = 12;
 const RV_BOWLING_MAX = 6;
-const RV_OCCASIONS = [['anniversaire', 'Anniversaire'], ['entreprise', 'Entreprise'], ['ecole', 'École'], ['famille', 'Famille'], ['amis', 'Entre amis'], ['evg', 'EVG / EVJF'], ['autre', 'Autre']];
+const RV_OCCASIONS = [['anniversaire', 'Anniversaire'], ['entreprise', 'Entreprise'], ['teambuilding', 'Team building'], ['prive', 'Groupe privé'], ['ecole', 'École'], ['famille', 'Famille'], ['amis', 'Entre amis'], ['evg', 'EVG / EVJF'], ['autre', 'Autre']];
 const RV_RAISONS_PRIX = ['Geste commercial', 'Client fidèle', 'Groupe', 'Erreur de tarif'];
 const RV_DUREES_BOWLING = [0.5, 1, 1.5, 2, 2.5, 3];
 const rvSvg = (trace, epaisseur = 2.2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${epaisseur}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${trace}</svg>`;
@@ -35194,7 +35531,15 @@ function rsHautHtml() {
   const jours = rsJours();
   const hors = !jours.some(([iso]) => iso === s.date);
   return `<div class="rs-rangee${b.faits.combien ? '' : ' is-manque'}"><span class="rs-lbl" id="rsJoueursT">Joueurs</span><div class="rs-ns" role="group" aria-labelledby="rsJoueursT">${RS_NOMBRES.map(cle).join('')}<label class="rs-n rs-autre${autre ? ' is-on' : ''}"><input id="qbPax" type="number" min="1" max="240" inputmode="numeric" value="${escapeHtml(autre)}" placeholder="Autre" aria-label="Autre nombre de joueurs" onfocus="rvSelectionnerAuFocus(this)" onchange="rsNombre(this.value)"></label></div></div>
-    <div class="rs-rangee"><span class="rs-lbl" id="rsJourT">Jour</span><div class="rs-seg" role="group" aria-labelledby="rsJourT">${jours.map(([iso, mot]) => `<button type="button" class="${s.date === iso ? 'is-on' : ''}" id="rsJour-${iso}" data-jour="${iso}" aria-pressed="${s.date === iso}" onclick="rsJour(this.dataset.jour)">${escapeHtml(mot)}</button>`).join('')}<label class="rs-seg-date${hors ? ' is-on' : ''}"><span>${hors ? escapeHtml(rsDateCourte(s.date)) : 'Autre date'}</span><input id="qbDate" type="date" value="${escapeHtml(s.date)}" aria-label="Autre date" onclick="try { this.showPicker(); } catch (e) {}" onchange="rsJour(this.value)"></label></div></div>`;
+    <div class="rs-rangee"><span class="rs-lbl" id="rsJourT">Jour</span><div class="rs-seg" role="group" aria-labelledby="rsJourT">${jours.map(([iso, mot]) => `<button type="button" class="${s.date === iso ? 'is-on' : ''}" id="rsJour-${iso}" data-jour="${iso}" aria-pressed="${s.date === iso}" onclick="rsJour(this.dataset.jour)">${escapeHtml(mot)}</button>`).join('')}<label class="rs-seg-date${hors ? ' is-on' : ''}"><span>${hors ? escapeHtml(rsDateCourte(s.date)) : 'Autre date'}</span><input id="qbDate" type="date" value="${escapeHtml(s.date)}" aria-label="Autre date" onclick="try { this.showPicker(); } catch (e) {}" onchange="rsJour(this.value)"></label></div></div>${rsHorairesHtml()}`;
+}
+
+function rsHorairesHtml() {
+  const s = quickBookState;
+  const plage = getSchedule(s.date, state.isHolidayMode);
+  const texte = plage ? `Ouvert de ${numToTime(plage.open)} à ${smHeureVue(plage.close)}` : 'Centre fermé ce jour-là';
+  const lien = smPeutOuvrir() ? `<button type="button" class="rs-lien" id="rsHoraires" onclick="smHorairesFenetre('${escapeJsString(s.date)}')">${plage ? 'Changer les horaires' : 'Ouvrir ce jour-là'}</button>` : '';
+  return `<div class="rs-rangee rs-horaires"><span aria-hidden="true"></span><p>${escapeHtml(texte)}${plage && plage.exceptionnelle ? ' <b>Ouverture exceptionnelle</b>' : ''}${lien}</p></div>`;
 }
 
 function rsActivitesHtml() {
@@ -37334,6 +37679,7 @@ function rsLignesHtml() {
   return `<p class="rs-tk-l">${escapeHtml(`${qui}, ${quand}`)}</p>
     <div class="rs-tk-sep"></div>
     ${rsLignesActivites()}${rsLignesExtras()}
+    ${rsNiveau('surmesure') === 'non' ? '' : '<button type="button" class="rs-lien is-fort" id="rsTkMesure" onclick="rsOuvrir(\'mesure\')">+ Ajouter une activité ou une boisson</button>'}
     <div class="rs-tk-sep"></div>`;
 }
 
@@ -37944,14 +38290,14 @@ function rsMesureHtml() {
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
   const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'article')}, ${rsEuros(somme)}`)}</span>` : '';
   const tabs = onglets.length ? `<div class="rs-seg rs-tabs" role="group" aria-label="Catégories">${onglets.map(([id, nom]) => `<button type="button" class="${id === courante ? 'is-on' : ''}" id="rsOnglet-${escapeHtml(id)}" data-onglet="${escapeHtml(id)}" aria-pressed="${id === courante}" onclick="rsOnglet(this.dataset.onglet)">${escapeHtml(nom)}</button>`).join('')}</div>` : '';
-  const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Article libre</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Nom" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en euros" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
+  const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en euros" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
   if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {
     const lu = catalogueSurMesureConsole.centre === getCurrentStaffCenterId() && Array.isArray(catalogueSurMesureConsole.articles);
     const texte = lu ? 'Le catalogue sur mesure du centre n’a aucun article à proposer.'
       : rsCatalogueEnCours ? 'Le catalogue sur mesure du centre arrive.' : 'Le catalogue sur mesure du centre ne s’est pas chargé. Rouvrez la réservation pour le relire.';
-    return `${rsRetourHtml(droite)}<p class="rs-texte" id="rsCatalogueVide">${texte}</p>${rsBandeHtml()}`;
+    return `${rsRetourHtml(droite)}${libre}<p class="rs-texte" id="rsCatalogueVide">${texte}</p>${rsBandeHtml()}`;
   }
   const rayon = articles.filter((a) => a.categorie === courante);
   const cles = rayon.map((a) => {
@@ -37959,7 +38305,7 @@ function rsMesureHtml() {
     const prix = a.prix == null ? (niveau === 'libre' ? 'prix à saisir' : 'sur place') : `${formatMoneyCentimes(a.prix)}${a.unite === 'joueur' ? ' par joueur' : ''}`;
     return `<button type="button" class="rs-art${ligne ? ' is-on' : ''}" id="rsArt-${escapeHtml(a.id)}" data-article="${escapeHtml(a.id)}" aria-pressed="${Boolean(ligne)}" onclick="rsArticle(this.dataset.article)"><b>${escapeHtml(a.nom)}</b><small>${escapeHtml(prix)}${ligne ? ` <em>× ${rsQte(ligne)}</em>` : ''}</small></button>`;
   }).join('');
-  return `${rsRetourHtml(droite)}${tabs}<div class="rs-arts" style="--rs-r:${Math.max(1, Math.ceil(rayon.length / 4))}" role="group" aria-label="Articles">${cles}</div>${rsBandeHtml()}${libre}`;
+  return `${rsRetourHtml(droite)}${libre}${tabs}<div class="rs-arts" style="--rs-r:${Math.max(1, Math.ceil(rayon.length / 4))}" role="group" aria-label="Articles">${cles}</div>${rsBandeHtml()}`;
 }
 
 function rsPoser(id, html, { memeSousLeChamp = false } = {}) {

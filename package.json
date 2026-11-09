@@ -208,6 +208,7 @@
     "test:sur-mesure": "node scripts/sur-mesure-check.js",
     "test:demande-bureau": "node scripts/demande-bureau-check.js",
     "test:demandes-console": "node scripts/demandes-console-check.js",
+    "test:ouverture-exceptionnelle": "node scripts/ouverture-exceptionnelle-check.js",
     "test:fungalaxy-plus": "node scripts/fungalaxy-plus-check.js",
     "test:vitrine-gestes": "node scripts/vitrine-gestes-check.js",
     "test:reservation-alternatives": "node scripts/reservation-alternatives-check.js",

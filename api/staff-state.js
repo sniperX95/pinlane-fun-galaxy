@@ -20,7 +20,7 @@ function buildOfflineStaffState(date, centerId, error) {
   };
 }
 
-module.exports = async (req, res) => {
+const traiter = async (req, res) => {
   if (req.method !== 'GET') {
     sendError(res, 405, 'Méthode non autorisée.');
     return;
@@ -68,6 +68,18 @@ module.exports = async (req, res) => {
     // la revision du jour recopie chaque dossier, prix et moyen de paiement compris : sans
     // « Voir les montants », elle part en EMPREINTE (elle change quand le jour change, elle
     // ne dit plus rien), dans l en-tete comme dans le corps.
+    // Les ouvertures exceptionnelles du centre, toute la liste : la fenetre Reserver et les
+    // plannings parlent de n importe quel jour. Elle entre dans la revision : changer une heure
+    // ne touche aucun dossier, les autres postes doivent quand meme le voir.
+    let ouvertures = [];
+    try {
+      ouvertures = (getCenter(centerId).ouverturesExceptionnelles || []).map(({ date: jour, open, close, motif }) => ({ date: jour, open, close, motif }));
+    } catch (error) {
+      ouvertures = [];
+    }
+    if (ouvertures.length && snapshot.revision) {
+      snapshot.revision = `${snapshot.revision}:o${require('crypto').createHash('sha256').update(JSON.stringify(ouvertures)).digest('hex').slice(0, 12)}`;
+    }
     if (res.__sansMontants && snapshot.revision) {
       snapshot.revision = `sm-${require('crypto').createHash('sha256').update(String(snapshot.revision)).digest('hex').slice(0, 32)}:sans-montants`;
     }
@@ -87,7 +99,7 @@ module.exports = async (req, res) => {
     // l equipe, comme la classification.
     let accueil;
     try { accueil = normalizeAccueil(getCenter(centerId)?.accueil); } catch (error) { accueil = undefined; }
-    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil });
+    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil, ouvertures });
   } catch (error) {
     require('../lib/garde-serveur').signalerPanneServeur('api/staff-state', error);
     if (isStaffAuthStorageError(error)) {
@@ -105,3 +117,6 @@ module.exports = async (req, res) => {
     sendError(res, 500, require('../lib/http').publicErrorMessage(error, 'Impossible de charger les donnees staff.'));
   }
 };
+
+// Les portes du comptoir voient les ouvertures exceptionnelles du centre (lib/booking-config).
+module.exports = (req, res) => require('../lib/booking-config').pourLEquipe(() => traiter(req, res));

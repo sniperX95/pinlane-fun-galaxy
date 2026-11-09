@@ -829,7 +829,7 @@ function getBasePriceForReservation(res) {
 function getPlanningWindow(dateStr) {
   const schedule = getSchedule(dateStr, state.isHolidayMode);
   if (!schedule) return { open: 10, close: 22, closed: true, label: 'Fermé' };
-  return { open: schedule.open, close: schedule.close, closed: false, label: schedule.label };
+  return { open: schedule.open, close: schedule.close, closed: false, label: schedule.label, ...(schedule.exceptionnelle ? { exceptionnelle: true, motif: schedule.motif } : {}) };
 }
 
 function normalizeActivityText(text = '') {
@@ -1246,7 +1246,25 @@ function scheduleFromConfigBlock(block, day) {
   if (!(close > open)) return null;
   return { open, close, label: buildScheduleLabel(open, close) };
 }
-function getSchedule(dateStr, manualHolidayOverride = false) {
+// L OUVERTURE EXCEPTIONNELLE D UN JOUR (2026-11-09) : posee par l equipe et servie a la
+// console seule (api/staff-state). Le formulaire public ne la recoit jamais : il garde ses
+// horaires, la meme regle que lib/booking-config.
+function ouvertureExceptionnelleDu(dateStr) {
+  // (le parcours client, meme ouvert sur un poste de l equipe, garde les horaires habituels)
+  if (typeof state === 'undefined' || !state || (state.view !== 'staff' && state.view !== 'admin')) return null;
+  const ligne = state.staffOuvertures ? state.staffOuvertures[dateStr] : null;
+  if (!ligne) return null;
+  const open = timeToNum(ligne.open);
+  const close = timeToNum(ligne.close);
+  if (!(close > open)) return null;
+  return { open, close, label: buildScheduleLabel(open, close), exceptionnelle: true, motif: ligne.motif || '' };
+}
+function getSchedule(dateStr, manualHolidayOverride = false, { normal = false } = {}) {
+  // 0. Un jour ouvert autrement pour un groupe passe avant tout (`normal` : l horaire habituel).
+  if (!normal) {
+    const exception = ouvertureExceptionnelleDu(dateStr);
+    if (exception) return exception;
+  }
   // 1. VERDICT SERVEUR pour cette date exacte. Il sait ce que la grille hebdo
   //    ignore : fermeture ponctuelle, coupure posee depuis le cockpit. Quand il
   //    dit ferme, aucune grille locale ne peut le contredire - c'est la regle

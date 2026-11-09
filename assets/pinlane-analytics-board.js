@@ -77,6 +77,8 @@
     evg: 'EVG / EVJF',
     amis: 'Entre amis',
     famille: 'Sortie famille',
+    teambuilding: 'Team building',
+    prive: 'Groupe privé',
     autre: 'Autre',
   };
   // Mini-glyphes 20x20 (currentColor) pour donner un apercu de chaque forme.

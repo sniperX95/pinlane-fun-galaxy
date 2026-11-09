@@ -2,7 +2,7 @@ const { getOpsHealth, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
 
-module.exports = async (req, res) => {
+const traiter = async (req, res) => {
   if (req.method !== 'GET') {
     sendError(res, 405, 'Méthode non autorisée.');
     return;
@@ -83,3 +83,6 @@ module.exports = async (req, res) => {
     sendError(res, 503, 'Données direction momentanément indisponibles. Réessayez dans un instant.');
   }
 };
+
+// Les portes du comptoir voient les ouvertures exceptionnelles du centre (lib/booking-config).
+module.exports = (req, res) => require('../lib/booking-config').pourLEquipe(() => traiter(req, res));

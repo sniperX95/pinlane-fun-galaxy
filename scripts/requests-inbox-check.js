@@ -164,7 +164,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.waitForTimeout(420);
   const opened = await pg.evaluate(() => {
     // Le dernier mot du client est deja ouvert : on lit celui qu on vient de deplier.
-    const bouton = [...document.querySelectorAll('.sm-hi-m')].find((n) => /'92'|"92"|92/.test(n.getAttribute('onclick') || ''));
+    const bouton = [...document.querySelectorAll('.sm-hi-m')].find((n) => /'92'|"92"|\b92\b/.test(n.getAttribute('onclick') || ''));
     const corps = bouton ? bouton.parentElement.querySelector('.sm-hi-c') : null;
     return { body: corps ? corps.textContent : '', height: corps ? corps.getBoundingClientRect().height : 0 };
   });

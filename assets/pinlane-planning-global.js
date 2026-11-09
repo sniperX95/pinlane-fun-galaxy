@@ -907,6 +907,31 @@
     e.adaptee = Boolean(f && f.adaptee);
     return e;
   };
+  // CE QUI SORT DE L ORDINAIRE, EN UN MOT, PARTOUT LE MEME (2026-11-09, Ansar : « marqué en
+  // evidence tout les choses que ce soit prix custom activité heure personne team building
+  // groupe privé »). Le type de groupe et l heure hors des horaires habituels ; le prix et le
+  // sur mesure ont deja leurs rubriques. Aucun ecran ne les relit a sa maniere.
+  var GF_GROUPES = { teambuilding: 'Team building', prive: 'Groupe privé', entreprise: 'Entreprise', ecole: 'École', evg: 'EVG / EVJF' };
+  function gfHorsHoraires(r) {
+    if (!r || !r.startTime || !r.date || typeof ouvertureExceptionnelleDu !== 'function') return null;
+    var exception = ouvertureExceptionnelleDu(r.date);
+    if (!exception) return null;
+    var normal = getSchedule(r.date, state.isHolidayMode, { normal: true });
+    var debut = timeToNum(r.startTime);
+    var plan = r.opsPlan && r.opsPlan.endTime ? timeToNum(r.opsPlan.endTime) : 0;
+    var fin = Math.max(debut + (Number(r.duration) || 0), plan);
+    if (normal && debut >= normal.open && fin <= normal.close + 0.25) return null;
+    return numToTime(exception.open) + ' à ' + numToTime(exception.close >= 24 ? exception.close - 24 : exception.close) + (exception.motif ? ', ' + exception.motif : '');
+  }
+  window.pgMarques = function (r) {
+    var sortie = [];
+    if (!r) return sortie;
+    var occasion = typeof getReservationOccasion === 'function' ? getReservationOccasion(r) : '';
+    if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });
+    var hors = gfHorsHoraires(r);
+    if (hors) sortie.push({ cle: 'horaire', mot: 'Hors horaires', detail: 'ouverture exceptionnelle, ' + hors, bulle: 'Hors horaires, ouverture exceptionnelle, ' + hors });
+    return sortie;
+  };
   // Les seules notes ecrites par l equipe, sans lire le reste du dossier : la liste sous
   // le planning et la regle « Avec note » les comptent comme la ligne du Complet.
   window.pgNotesEquipe = function (r) { return gfNotesEquipe(r || {}).equipe; };
@@ -918,6 +943,7 @@
     var r = g.r;
     var tete = gfPile(g) ? '' : '<b class="gf-nom__h">' + gpEsc(gpHeure(g.heure)) + '</b>';
     tete += '<span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>';
+    window.pgMarques(r).forEach(function (x) { tete += '<span class="gf-nom__m gf-nom__m--' + x.cle + '"' + (x.bulle ? ' title="' + gpEsc(x.bulle) + '"' : '') + '>' + gpEsc(x.mot) + '</span>'; });
     // (sans le droit de gerer un retard, le retard se lit sans se toucher, 2026-11-07)
     if (g.retard && m.maintenant != null) {
       tete += gfPeut('retard')
@@ -1836,6 +1862,18 @@
   var gfStats = window.__gfStats = { rendus: 0, ecritures: 0 };
   function renderGlobalPlanning(wrap) {
     if (!wrap) return;
+    // EPINGLE A UN JOUR (la fenetre « planning de ce jour » d une demande sur mesure) : le
+    // modele lit le jour de la page. Le temps du rendu, ce jour-la, sans filtre ni recherche ;
+    // le redessin au redimensionnement passe aussi par ici.
+    var epingle = wrap.dataset && wrap.dataset.gfJour;
+    if (epingle && (state.currentDate !== epingle || state.staffStatusFilter !== 'all' || state.searchTerm)) {
+      var avant = { d: state.currentDate, f: state.staffStatusFilter, s: state.searchTerm };
+      state.currentDate = epingle;
+      state.staffStatusFilter = 'all';
+      state.searchTerm = '';
+      try { renderGlobalPlanning(wrap); } finally { state.currentDate = avant.d; state.staffStatusFilter = avant.f; state.searchTerm = avant.s; }
+      return;
+    }
     var m = gpModele();
     var q = gfCle(state.searchTerm || '');
     var racine = wrap._gfRacine && wrap._gfRacine.isConnected ? wrap._gfRacine : null;
@@ -1855,12 +1893,12 @@
     // (sous 1060 px, la case d heure n a plus la largeur de « 2 pistes libres » : « 2 pistes »)
     m.blocCourt = largeur < 1060;
     wrap._gfCourt = m.blocCourt;
-    pbPoser(gfBandeauHtml(m), m);
+    if (!epingle) pbPoser(gfBandeauHtml(m), m);
     var bandeau = racine.querySelector('.gf-bandeau');
     var ferme = Boolean(m.fenetre && m.fenetre.closed);
-    var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : !m.groupes.length && !m.retenues.length ? 'Aucune réservation ce jour-là' : '';
+    var texte = ferme ? 'Centre fermé ce jour-là' + (m.groupes.length ? ' · réservations existantes à contrôler' : '') : m.fenetre && m.fenetre.exceptionnelle ? 'Ouverture exceptionnelle, de ' + gpHeure(m.fenetre.open) + ' à ' + (m.fenetre.close >= 24 ? gpHeure(m.fenetre.close - 24) : gpHeure(m.fenetre.close)) + (m.fenetre.motif ? ', ' + m.fenetre.motif : '') : !m.groupes.length && !m.retenues.length ? 'Aucune réservation ce jour-là' : '';
     bandeau.hidden = !texte;
-    bandeau.className = 'gf-bandeau' + (ferme ? ' is-ferme' : '');
+    bandeau.className = 'gf-bandeau' + (ferme ? ' is-ferme' : m.fenetre && m.fenetre.exceptionnelle ? ' is-ouverture' : '');
     if (bandeau.textContent !== texte) bandeau.textContent = texte;
     var defile = racine.querySelector('.gf-defile');
     wrap._gfModele = m;

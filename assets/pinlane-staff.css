@@ -21095,3 +21095,54 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .sm-hi li { grid-template-columns: 1fr; gap: 0; }
   .sm-venues li { grid-template-columns: 82px minmax(0, 1fr) auto; }
 }
+
+
+/* Une fenetre, sans quitter la page : au-dessus de Reserver quand elle en vient. */
+.sm-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
+.sm-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: sm-fen-entre 200ms cubic-bezier(.23, 1, .32, 1) both; }
+.sm-fen.is-petite { max-width: 440px; }
+.sm-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
+@keyframes sm-fen-entre { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+.sm-fen-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+.sm-fen-t h3 { font-size: 18px; font-weight: 650; }
+.sm-fen-t p { margin-top: 2px; color: var(--muted); }
+.sm-fen-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--muted); background: none; border: 0; border-radius: 6px; cursor: pointer; }
+.sm-fen-x:hover { color: var(--text); background: var(--subtle); }
+.sm-fen-c { flex: 1 1 auto; min-height: 0; padding: 16px 20px 20px; overflow-y: auto; }
+.sm-fen.is-large .sm-fen-c { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.sm-fen.is-large .planning-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; }
+.sm-fen.is-large .sm-note { padding: 18px 20px; }
+.sm-fen-planning, .sm-fen-planning .gf { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.sm-fen-planning .gf-defile { flex: 1 1 auto; min-height: 0; height: auto !important; }
+.sm-fen-planning .gf-t { --c-etat: 0px; }
+.sm-fen-planning :is(.gf-th--etat, td.gf-etat) { display: none; }
+.sm-fen-planning .gf-t td[data-gf-reserver] { cursor: default; }
+.sm-fen-chiffres { display: flex; gap: 28px; margin-bottom: 14px; }
+.sm-fen-chiffres dt { font-size: 12.5px; color: var(--muted); }
+.sm-fen-chiffres dd { font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 26px; line-height: 1.2; }
+.sm-champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.sm-hf { display: flex; flex-direction: column; gap: 12px; }
+.sm-hf-l { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sm-hf-dit { min-height: 19px; font-weight: 550; }
+.sm-hf-err { color: var(--danger); font-weight: 550; }
+.sm-hf .sm-actions { margin-top: 0; }
+.sm-hf .sm-lien { margin-left: auto; }
+.sm-jour-a { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 16px; margin-top: 3px; }
+.sm-jour-a .sm-lien { font-size: 13px; }
+.sm-ex { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }
+.sm-compose h3 { margin-bottom: 2px; }
+.sm-compose-l { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; }
+.sm-compose-l .sm-champ { flex: 0 1 150px; }
+.sm-compose-l .sm-champ:nth-child(2) { flex-basis: 112px; }
+.sm-compose-dit { min-height: 21px; margin-top: 8px; }
+.qb-modal.rv.rs .rs-horaires { margin-top: -6px; }
+.qb-modal.rv.rs .rs-horaires p { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: 0; font-size: 13px; color: var(--muted); }
+.qb-modal.rv.rs .rs-horaires b { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }
+.qb-modal.rv.rs .rs-horaires .rs-lien { min-height: 24px; text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 640px) {
+  .sm-fen-fond { padding: 0; }
+  .sm-fen, .sm-fen.is-large { max-width: none; max-height: none; height: 100%; border-radius: 0; }
+  .sm-compose-l .sm-champ { flex: 1 1 130px; }
+  .sm-compose-l .sm-p, .sm-compose-l .sm-b { flex: 1 1 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .sm-fen { animation: none; } }

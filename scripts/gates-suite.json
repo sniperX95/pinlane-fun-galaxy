@@ -329,6 +329,7 @@
     "test:sur-mesure",
     "test:demande-bureau",
     "test:demandes-console",
+    "test:ouverture-exceptionnelle",
     "test:fungalaxy-plus",
     "test:vitrine-gestes",
     "test:reservation-alternatives",

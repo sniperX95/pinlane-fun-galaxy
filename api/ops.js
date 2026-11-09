@@ -162,6 +162,7 @@ const {
   catalogueSurMesure,
   sansCatalogueSurMesure,
   sansGrillesTarif,
+  sansOuvertures,
   saveGrillesTarif,
   surMesureChoisissable,
 } = require('../lib/center-config');
@@ -1133,7 +1134,8 @@ async function handleGet(req, res, options = {}) {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(url.searchParams.get('id'), { centerId: centerScope(centerId) });
     const { etudeDeLaDemande } = require('../lib/demande-bureau-centre');
-    const { etude, client } = await etudeDeLaDemande(item);
+    // (la porte du comptoir : l etude voit les ouvertures exceptionnelles du centre)
+    const { etude, client } = await require('../lib/booking-config').pourLEquipe(() => etudeDeLaDemande(item));
     sendJson(res, 200, {
       ok: true,
       id: item.id,
@@ -1400,6 +1402,11 @@ async function reanalyserLeMail(mail, centre, analyzeEmail, faitDuMail = null) {
 async function handlePost(req, res, providedBody = null, options = {}) {
   const body = providedBody || (await readJson(req));
   const action = getAction(req, body);
+  // Un retard se calcule et s applique avec les horaires de l equipe (lib/booking-config,
+  // pourLEquipe) : un jour ouvert jusqu a minuit pour un groupe ne refuse pas un decalage a 22:30.
+  if ((action === 'delayImpact' || action === 'delayApply') && !options.horairesEquipe) {
+    return require('../lib/booking-config').pourLEquipe(() => handlePost(req, res, body, { ...options, horairesEquipe: true }));
+  }
   const centerId = options.centerId || normalizeCenterId(body.centerId || body.center_id || '') || 'libramont';
   const scopedCenterId = centerScope(centerId);
   const requireConcreteCenter = (label = action) => {
@@ -1454,6 +1461,51 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // OUVRIR UN JOUR AUTREMENT : pour un groupe, plus tot, plus tard, ou un jour ferme. L equipe
+  // seulement, au niveau « forcer ». La date et le centre viennent de la requete bornee ; le
+  // planning du jour dit ce qu il ne faut pas cacher.
+  if (action === 'ouvertureExceptionnelle') {
+    const session = await requireStaffPermission(req, res, ['reservations.create'], { centerId });
+    if (!session) return;
+    const targetCenter = requireConcreteCenter('horaires du jour');
+    const pool = getPool();
+    const { poserOuverture } = require('../lib/ouverture-exceptionnelle');
+    const { readStaffState } = require('../lib/database');
+    const { jourDuCentre } = require('../lib/center-facts');
+    const { getCenter } = require('../lib/ops-knowledge');
+    const jour = jourDuCentre();
+    let resultat;
+    try {
+      resultat = await poserOuverture({
+        pool,
+        centerId: targetCenter,
+        session,
+        date: String(body.date || ''),
+        open: body.open,
+        close: body.close,
+        motif: body.motif,
+        retirer: body.retirer === true,
+        aujourdhui: jour ? jour.date : new Date().toISOString().slice(0, 10),
+        lireLeJour: (date) => readStaffState(date, targetCenter, {}),
+        centre: () => getCenter(targetCenter),
+        rafraichir: () => refreshCenterOverrides(pool, { force: true }),
+      });
+    } catch (error) {
+      if (error && error.droit === true) {
+        sendError(res, error.statusCode || 403, error.message, { code: error.code });
+        return;
+      }
+      throw createHttpError(safeUserMessage(error, 'Horaires non enregistrés pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    noterAudit(options, {
+      entityType: 'centre',
+      entityId: targetCenter,
+      changes: { ouverture: { before: null, after: resultat.ouverture ? `${String(body.date)} ${resultat.ouverture.open}-${resultat.ouverture.close}` : `${String(body.date)} horaires habituels` } },
+    });
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, ouverture: resultat.ouverture, ouvertures: resultat.ouvertures.map(({ date, open, close, motif }) => ({ date, open, close, motif })) });
+    return;
+  }
+
   if (action === 'saveCenterConfig') {
     const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId });
     if (!session) return;
@@ -1461,7 +1513,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const pool = getPool();
     let config;
     try {
-      config = await saveCenterConfigOverride(pool, targetCenter, sansGrillesTarif(sansCatalogueSurMesure(body.config || {})));
+      config = await saveCenterConfigOverride(pool, targetCenter, sansOuvertures(sansGrillesTarif(sansCatalogueSurMesure(body.config || {}))));
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -2738,7 +2790,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
     const { brouillonDeLaDemande } = require('../lib/demande-bureau-centre');
     const choix = body.choix && typeof body.choix === 'object' ? body.choix : null;
-    const { brouillon, etude, choixPerime } = await brouillonDeLaDemande(item, undefined, { choix, sansIA: body.sansIA === true });
+    const { brouillon, etude, choixPerime } = await require('../lib/booking-config').pourLEquipe(() => brouillonDeLaDemande(item, undefined, { choix, sansIA: body.sansIA === true }));
     sendJson(res, 200, { ok: true, id: item.id, brouillon, etude, ...(choixPerime ? { choixPerime: true } : {}) });
     return;
   }
@@ -3908,6 +3960,9 @@ function getRequiredOpsPermission(method, action) {
   // Les ecritures de la configuration du centre : le droit de changer les
   // reglages, comme leurs handlers, sans ai.ops en plus (2026-11-07).
   if (['saveCenterConfig', 'saveCenter', 'setCenterStatus'].includes(action)) return 'settings.manage';
+  // Changer les horaires d un jour se fait depuis le comptoir : le droit de reserver, puis le
+  // niveau « forcer », relu dans le handler.
+  if (action === 'ouvertureExceptionnelle') return 'reservations.create';
   // Edition tarifaire CLIENT (cockpit centre) : permission de CENTRE
   // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
   // est forcee au centre de session (withCenter) et l'override global 'all' est

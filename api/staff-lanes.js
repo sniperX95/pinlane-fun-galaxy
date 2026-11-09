@@ -3,7 +3,7 @@ const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, newRequestId } = require('../lib/audit-log');
 
-module.exports = async (req, res) => {
+const traiter = async (req, res) => {
   if (req.method !== 'PATCH') {
     sendError(res, 405, 'Méthode non autorisée.');
     return;
@@ -57,3 +57,6 @@ module.exports = async (req, res) => {
     sendError(res, error.statusCode || 400, require('../lib/http').publicErrorMessage(error, 'Impossible de mettre a jour la piste.'));
   }
 };
+
+// Les portes du comptoir voient les ouvertures exceptionnelles du centre (lib/booking-config).
+module.exports = (req, res) => require('../lib/booking-config').pourLEquipe(() => traiter(req, res));

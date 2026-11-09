@@ -182,7 +182,7 @@ assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,min
 assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
 assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
 assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
-for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag']) {
+for(const name of ['smTeinte','crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
@@ -218,6 +218,8 @@ assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
 run("setQuickVisitActivityDuration('duckpin_bowling',2)");
 assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);
 assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
+// (la journee dessinee et les horaires du jour sont des gestes d ecran, pas des prix)
+ctx.renderSmJournee=()=>'';ctx.smOccupationHtml=()=>'';ctx.smPeutOuvrir=()=>true;
 ctx.staffRequestEuro=n=>n+' €';ctx.staffRequestLongDate=()=>'';ctx.staffRequestClock=()=>'';ctx.STAFF_REQUEST_ICONS={calendar:''};ctx.staffClientJs=v=>String(v);ctx.staffRequestChoixDe=()=>null;ctx.rqPhotoDe=()=>'';ctx.getActiveOpsCenterId=()=>'libramont';
 ctx.manualStudy={date:'2026-10-06',ouvert:true,horaires:{de:'10:00',a:'22:00'},formules:[],visite:{ok:false,raison:'Horaires à étudier manuellement',prix:1170,lignes:[{nom:'Bowling',participants:300,detail:'3 services de1h',prix:1170}]}};
 assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/300 joueurs.*3 services de1h.*1170 €/);

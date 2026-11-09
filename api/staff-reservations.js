@@ -479,7 +479,7 @@ async function creerLeLot(body, session) {
   return { statut, corps: { ok: !echecs.length, reservations, echecs: echecs.map(({ index, message, code }) => ({ index, message, ...(code ? { code } : {}) })) } };
 }
 
-module.exports = async (req, res) => {
+const traiter = async (req, res) => {
   try {
     if (req.method === 'GET') {
       const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
@@ -1158,3 +1158,6 @@ module.exports = async (req, res) => {
     sendError(res, (error && error.statusCode) || 400, raw, extra);
   }
 };
+
+// Les portes du comptoir voient les ouvertures exceptionnelles du centre (lib/booking-config).
+module.exports = (req, res) => require('../lib/booking-config').pourLEquipe(() => traiter(req, res));

@@ -313,7 +313,7 @@ async function run() {
     // =====================================================================
     // La page Demandes est visitee une premiere fois : son cache existe.
     await aller(B.page, 'requests');
-    await attendre(B.page, () => document.querySelector('[data-request-id="501"]') !== null, null, 8000);
+    await attendre(B.page, () => document.querySelector('.sm-l[data-item-id="501"], [data-request-id="501"]') !== null, null, 8000);
     await aller(B.page, 'planning');
     await attendre(B.page, () => (document.getElementById('planningGridWrap') || { textContent: '' }).textContent.includes('Famille Lambert'), null, 6000);
     const badgeAvant = await B.page.evaluate(() => typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : -1);
@@ -322,7 +322,7 @@ async function run() {
     const badgeMonte = await attendre(B.page, (avant) => typeof getStaffNewCustomRequestCount === 'function' && getStaffNewCustomRequestCount() === avant + 1, badgeAvant);
     ok(badgeMonte, '[D] le compteur de la barre laterale monte, depuis le planning', `${badgeAvant} -> ${await B.page.evaluate(() => getStaffNewCustomRequestCount())}`);
     await aller(B.page, 'requests');
-    const vuDemande = await attendre(B.page, () => document.querySelector('[data-request-id="502"]') !== null, null, 4000);
+    const vuDemande = await attendre(B.page, () => document.querySelector('.sm-l[data-item-id="502"], [data-request-id="502"]') !== null, null, 4000);
     ok(vuDemande, '[D] la page Demandes ouverte ensuite montre la demande arrivee', vuDemande ? 'listee' : 'absente');
 
     await aller(B.page, 'reservations');

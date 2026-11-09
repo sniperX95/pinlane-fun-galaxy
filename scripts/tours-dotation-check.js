@@ -679,9 +679,9 @@ async function pageEtablissement(browser) {
       save();
       setView('staff');
     }, JOUR);
-    await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });
+    await page.waitForSelector('[data-estab-page] .eb-m', { state: 'visible', timeout: 20000 });
     await page.evaluate(() => setEstablishmentTab('offres'));
-    const lecture = await page.evaluate(() => { const vu = (id) => (document.getElementById(`eb-val-${id}`) || {}).textContent || ''; return { billards: vu('estab-cap-units-billards'), pistes: vu('estab-cap-units-duckpin_bowling'), joueurs: vu('estab-cap-players-duckpin_bowling') }; });
+    const lecture = await page.evaluate(() => { const vu = (id) => { const tuile = document.querySelector(`[data-eb-miroir="${id}"]`); return tuile ? tuile.textContent : ((document.getElementById(id) || {}).value || ''); }; return { billards: vu('estab-cap-units-billards'), pistes: vu('estab-cap-units-duckpin_bowling'), joueurs: vu('estab-cap-players-duckpin_bowling') }; });
     await page.evaluate(() => { setEstablishmentTab('offres'); });
     await page.waitForSelector('#estab-cap-units-billards', { state: 'attached', timeout: 10000 });
     const champs = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('[data-estab-page] .estab-cap-input')).map((i) => [i.id, i.value])));
@@ -690,7 +690,7 @@ async function pageEtablissement(browser) {
       champ.value = '0';
       window.__ENVOIS__ = [];
       await submitCenterConfig(centre);
-      const note = champ.closest('.eb-line') && champ.closest('.eb-line').querySelector('[role="alert"]');
+      const note = champ.closest('.eb-met') && champ.closest('.eb-met').querySelector('[role="alert"]');
       return { envois: window.__ENVOIS__.length, invalide: champ.getAttribute('aria-invalid'), message: note ? note.textContent : '' };
     }, CENTRE);
     const envoye = await page.evaluate(async (centre) => {

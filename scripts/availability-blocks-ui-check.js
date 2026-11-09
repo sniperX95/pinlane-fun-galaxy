@@ -194,12 +194,12 @@ async function bootEstablishment(page) {
     state.currentDate = '2026-09-01'; // mardi normal (hors vacances)
     state.isHolidayMode = false;
     state.staffMenuPage = 'establishment';
-    // Les fermetures vivent dans un pli de la partie Horaires, ouvert plus bas comme le ferait un humain.
+    // Les fermetures vivent dans la case Horaires, ouverte plus bas comme le ferait un humain.
     setView('staff');
   });
   // Panneau rendu (config chargee) puis blocages charges (liste peuplee).
-  await page.waitForSelector('.eb-pli-d .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
-  await page.evaluate(() => ebBasculerPli(document.querySelector('.availability-blocks').closest('.eb-blk'), true));
+  await page.waitForSelector('[data-estab-page] .availability-blocks #avb-scope', { state: 'attached', timeout: 15000 });
+  await page.evaluate(() => ebOuvrir('horaires'));
   await page.waitForSelector('.availability-blocks #avb-scope', { state: 'visible', timeout: 15000 });
   await page.waitForFunction(
     () => document.querySelectorAll('#avbList .availability-item').length >= 4,
@@ -230,13 +230,13 @@ async function runSuite(browser, quiet) {
 
     // ---- 1. Libelles humains (center/lane/activity/formula, once/weekly, plage/jour) ----
     const t1a = await itemText(page, 1);
-    ok(/Centre fermé/.test(t1a) && /2026-08-15/.test(t1a) && /toute la journée/.test(t1a), 'label-center-once-fullday', JSON.stringify(t1a));
+    ok(/Centre fermé/.test(t1a) && /15 août/.test(t1a) && /toute la journée/.test(t1a), 'label-center-once-fullday', JSON.stringify(t1a));
     const t1b = await itemText(page, 2);
-    ok(/Piste 3 bloquée/.test(t1b) && /tous les mardis/.test(t1b) && /14:00-16:00/.test(t1b), 'label-lane-weekly-range', JSON.stringify(t1b));
+    ok(/Piste 3 bloquée/.test(t1b) && /tous les mardis/.test(t1b) && /de 14:00 à 16:00/.test(t1b), 'label-lane-weekly-range', JSON.stringify(t1b));
     const t1c = await itemText(page, 3);
     ok(/tous les dimanches/.test(t1c) && /FORMULE 1/.test(t1c) && /bloquée/.test(t1c), 'label-formula-weekly', JSON.stringify(t1c));
     const t1d = await itemText(page, 4);
-    ok(/Laser Game/.test(t1d) && /2026-08-16/.test(t1d) && /bloqué/.test(t1d), 'label-activity-once', JSON.stringify(t1d));
+    ok(/Laser Game/.test(t1d) && /16 août/.test(t1d) && /bloqué/.test(t1d), 'label-activity-once', JSON.stringify(t1d));
 
     // ---- 2. Creer "piste 3, mardi, 14:00-16:00" ----------------------------
     await page.selectOption('#avb-scope', 'lane');

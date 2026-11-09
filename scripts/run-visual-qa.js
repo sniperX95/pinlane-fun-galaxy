@@ -2088,15 +2088,15 @@ async function main() {
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'establishment');
     await page.waitForTimeout(500);
-    // Une seule fiche en cinq parties, tout y est reglable sans passer en mode edition.
+    // Une rangee de cases et une colonne par salle, tout y est reglable sans passer en mode edition.
     const readViewState = await page.evaluate(() => ({
-      parties: Array.from(document.querySelectorAll('.eb-nav-i')).map(el => el.dataset.ebLink),
-      titres: Array.from(document.querySelectorAll('.eb-sec > .eb-h')).map(el => el.textContent.trim()),
-      hasHolidayHours: /vacances/i.test((document.getElementById('eb-s-horaires') || { textContent: '' }).textContent),
+      cases: Array.from(document.querySelectorAll('.eb-m')).map(el => el.dataset.k),
+      salles: document.querySelectorAll('.eb-salles .eb-col').length,
+      hasHolidayHours: /vacances/i.test((document.getElementById('eb-p-horaires') || { textContent: '' }).textContent),
     }));
-    assert(readViewState.parties.length === 5, 'Fiche Établissement : 5 parties requises.');
-    assert(readViewState.hasHolidayHours, 'Fiche Établissement : horaires vacances/fériés requis dans la partie Horaires.');
-    assert(readViewState.titres.some(title => /offres/i.test(title)), 'Fiche Établissement : partie offres requise.');
+    assert(readViewState.cases.join() === 'horaires,formules,clients,fiche', 'Page Établissement : 4 cases de réglages requises.');
+    assert(readViewState.salles >= 3, 'Page Établissement : une colonne par salle requise.');
+    assert(readViewState.hasHolidayHours, 'Page Établissement : horaires vacances/fériés requis dans la case Horaires.');
     await screenshot(page, 'chantier5-establishment-read');
     const editState = await page.evaluate(() => ({
       holidayToggle: Boolean(document.getElementById('estab-holiday-enabled')),

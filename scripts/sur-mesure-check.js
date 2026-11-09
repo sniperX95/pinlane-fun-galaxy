@@ -1064,7 +1064,7 @@ async function console_(browser) {
     const fiche = await page.evaluate(() => document.querySelector('.sm-fiche[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
     // Etablissement : le seuil se lit et se regle.
     await page.evaluate(() => { state.staffMenuPage = 'establishment'; state.establishmentTab = 'offres'; state.establishmentEditing = false; save(); setView('staff'); });
-    await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });
+    await page.waitForSelector('[data-estab-page] .eb-m', { state: 'visible', timeout: 20000 });
     await page.evaluate(() => { setEstablishmentTab('offres'); });
     await page.waitForSelector('#estab-customRequestFromPax', { state: 'attached', timeout: 10000 });
     const champ = await page.inputValue('#estab-customRequestFromPax');

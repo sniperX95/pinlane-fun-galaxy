@@ -38,7 +38,39 @@ const MUTATIONS = {
   'lecture-par-outil': { section: 'A', fichier: OUT, de: "  if (!lecture) {", vers: "  if (true) {", rouge: "[A] une seule lecture des reservations par question" },
   'date-en-tete': { section: 'A', fichier: AGENT, de: "{ type: 'text', text: SYSTEME, cache_control: { type: 'ephemeral' } },", vers: "{ type: 'text', text: ctx.aujourdhui + centreOuvert + SYSTEME, cache_control: { type: 'ephemeral' } },", rouge: "[A] le debut du prompt ne change pas d un centre a l autre" },
   'renvoi-invente': { section: 'V', fichier: VER, de: "`${genre}${n}`) ? tout : ''));", vers: "`${genre}${n}`) ? tout : tout));", rouge: "[V] un renvoi vers rien est retire" },
-  'chiffre-non-signale': { section: 'V', fichier: VER, de: "const nonTraces = chiffres.filter((c) => !connus.has(c.valeur));", vers: "const nonTraces = [];", rouge: "[V] un chiffre invente est signale" },
+  'chiffre-non-signale': { section: 'V', fichier: VER, de: "    return { ...base, e: 'inconnu' };\n", vers: "    return { ...base, e: 'lu' };\n", rouge: "[V] un chiffre invente est signale" },
+  'taux-sur-un-compte': { section: 'V', fichier: VER, de: "const admis = (l) => c.unite !== '%' || l.calcul || l.pct || TAUX.test(l.cle || '');", vers: "const admis = () => true;", rouge: "[V] un pourcentage ne se rattache pas a un simple compte" },
+  'montant-sur-un-compte': { section: 'V', fichier: VER, de: "classes(lieux.filter((l) => !enEuros || l.calcul || MONTANT.test(l.cle || '')))[0] || classes(lieux)[0]", vers: "classes(lieux)[0]", rouge: "[V] un montant se relie a une colonne de montants" },
+  'date-prise-pour-un-compte': { section: 'V', fichier: VER, de: "const sansDates = x.replace(/\\d{4}-\\d{2}-\\d{2}(?:T[\\d:.]+Z?)?|\\b\\d{1,2}[:h]\\d{2}\\b/g, ' ');", vers: "const sansDates = x;", rouge: "[V] une date ne prouve pas un montant" },
+  'preuve-sans-case': { section: 'V', fichier: VER, de: "...(lieu.z ? { z: lieu.z } : {}), ", vers: "", rouge: "[V] la preuve pointe la case exacte" },
+  'calcul-illisible': { section: 'V', fichier: OUT, de: "detail: calculEnClair(entree.expression, valeurs, resultat),", vers: "detail: `${entree.expression} = ${resultat}`,", rouge: "[V] un calcul s ecrit avec ses vrais nombres" },
+  'arrondi-trop-bas': { section: 'V', fichier: VER, de: "Math.round(a[0] * p + 1e-9) / p", vers: "Math.round(a[0] * p) / p", rouge: "[V] un arrondi tombe juste" },
+  'entree-sans-nom': { section: 'V', fichier: OUT, de: "nom: venues[i] && venues[i].z ? gommer(venues[i].libelle, 70) : motDe(gommer(v.nom, 30)),", vers: "nom: gommer(v.nom, 30),", rouge: "[V] une entree de calcul dit ce qu elle est" },
+  'hasard-devient-preuve': { section: 'V', fichier: VER, de: "    if (lieu && !c.unite && !cites.includes(lieu.source) && !lieu.calcul && !parle(lieu)) return null;\n", vers: "", rouge: "[V] un nombre qui tombe juste par hasard ne devient pas une preuve" },
+  'seuil-compte-comme-chiffre': { section: 'V', fichier: VER, de: "      if (AVANT_NON_COMPTE.test(propre.slice(Math.max(0, m.index - 14), m.index))) continue;\n", vers: "", rouge: "[V] un seuil ou une periode n est pas un chiffre a prouver" },
+  'case-sans-les-mots': { section: 'V', fichier: VER, de: " + (parle(l) * 10)", vers: "", rouge: "[V] une valeur a plusieurs cases prend celle dont parlent les mots" },
+  'autres-cases-tues': { section: 'V', fichier: VER, de: "...(autres.length ? { a: autres } : {})", vers: "", rouge: "[V] une valeur a plusieurs cases prend celle dont parlent les mots" },
+  'litteral-sans-provenance': { section: 'V', fichier: OUT, de: "'hypothese' })), ...litteraux, {", vers: "'hypothese' })), {", rouge: "[V] un nombre ecrit dans le calcul dit d ou il vient" },
+  'renvois-groupes': { section: 'V', fichier: AGENT, de: "  const texte = normaliserRenvois(brut);\n", vers: "  const texte = brut;\n", rouge: "[V] des renvois groupes se separent" },
+  'renvois-groupes-ecran': { section: 'E', fichier: ECRAN, de: "    t = t.replace(/\\[((?:[SGF]\\d+\\s*[,;]\\s*)+[SGF]\\d+)\\]/g,", vers: "    t.replace(/\\[((?:[SGF]\\d+\\s*[,;]\\s*)+[SGF]\\d+)\\]/g,", rouge: "[E] des renvois groupes deviennent des pastilles" },
+  'detail-sans-limite': { section: 'E', fichier: ECRAN, de: "A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections", vers: "A.stockage === 'serveur' ? s.sections", rouge: "[E] seules les dernieres reponses gardent le detail lu" },
+  'operande-non-verifie': { section: 'V', fichier: OUT, de: "if (!lue) throw refus(", vers: "if (false) throw refus(", rouge: "[V] une valeur annoncee comme lue doit se lire" },
+  'operande-sans-provenance': { section: 'V', fichier: OUT, de: "source: (venues[i] && venues[i].source) || 'hypothese' })", vers: "source: '' })", rouge: "[V] un calcul dit d ou vient chaque entree" },
+  'sans-controle-des-preuves': { section: 'V', fichier: AGENT, de: "        if (aProuver.length) {\n", vers: "        if (false) {\n", rouge: "[V] un total fait de tete est refait en silence" },
+  'controle-qui-reecrit': { section: 'V', fichier: AGENT, de: "            await executerLesPreuves(controle, ctx, emettre);\n", vers: "            await executerLesPreuves(controle, ctx, emettre);\n            texte += controle.content.filter((b) => b.type === 'text').map((b) => b.text).join('');\n", rouge: "[V] le controle ne touche pas au texte" },
+  'controle-a-chaque-fois': { section: 'V', fichier: AGENT, de: "        if (aProuver.length) {\n", vers: "        if (true) {\n", rouge: "[V] pas de controle quand tout se lit" },
+  'total-entonnoir-absent': { section: 'V', fichier: OUT, de: "entonnoir_total: entonnoirTotal, ", vers: "", rouge: "[V] l entonnoir donne son total" },
+  'noms-dans-le-detail': { section: 'A', fichier: VER, de: "const interdite = (cle) => CLE_PERSONNELLE.test(cle) || (personnes && /(^|_)nom($|_)/i.test(cle));", vers: "const interdite = () => false;", rouge: "[A] le detail affiche ne nomme personne" },
+  'preuves-perdues-en-base': { section: 'M', fichier: MEM, de: "    preuves: preuvesPropres(m.preuves),\n", vers: "", rouge: "[M] les preuves d une reponse sont gardees" },
+  'detail-perdu-en-base': { section: 'M', fichier: MEM, de: "    sections: sectionsPropres(s.sections),\n", vers: "", rouge: "[M] le detail d une source est garde" },
+  'chiffre-sans-bouton': { section: 'E', fichier: ECRAN, de: ": marquer(m.texte, m.preuves);", vers: ": m.texte;", rouge: "[E] chaque chiffre de la reponse est un bouton" },
+  'preuve-sans-clic': { section: 'E', fichier: ECRAN, de: "    if ((n = v('[data-ast-preuve]'))) {\n", vers: "    if (false) {\n", rouge: "[E] un chiffre ouvre sa preuve" },
+  'case-non-eclairee': { section: 'E', fichier: ECRAN, de: "const lue = eclairer(preuve.z, 'est-preuve');", vers: "const lue = eclairer(preuve.z, 'autre');", rouge: "[E] la case du chiffre est eclairee" },
+  'tableau-repete': { section: 'E', fichier: ECRAN, de: "si === sectionDuTableau ? '' : ", vers: "", rouge: "[E] un tableau deja affiche ne se repete pas" },
+  'graphique-sur-un-calcul': { section: 'E', fichier: ECRAN, de: "reste.some((c) => c.type === 'texte' || c.type === 'source')", vers: "reste.some((c) => c.type === 'texte')", rouge: "[E] un calcul n a pas de graphique" },
+  'detail-non-affiche': { section: 'E', fichier: ECRAN, de: "      ${sections}\n", vers: "\n", rouge: "[E] tout ce qui a ete lu se relit" },
+  'alerte-sur-les-anciennes': { section: 'E', fichier: ECRAN, de: "const sans = (m.preuves || []).length && m.verite", vers: "const sans = m.verite", rouge: "[E] une ancienne reponse ne porte plus l alerte" },
+  'verification-muette': { section: 'E', fichier: ECRAN, de: "      case 'verification': m.verification = true; break;\n", vers: "", rouge: "[E] la verification des chiffres se dit" },
   'plafond-ignore': { section: 'L', fichier: API, de: "if (isBudgetExhausted(POSTE)) {", vers: "if (false) {", rouge: "[L] plafond mensuel atteint" },
   'sans-limite-de-questions': { section: 'L', fichier: API, de: "if (gardees.length >= QUESTIONS_PAR_FENETRE) {", vers: "if (false) {", rouge: "[L] la question de trop est refusee" },
   'ecoute-la-requete': { section: 'L', fichier: API, de: "res.on('close', () => {", vers: "req.on('close', () => {", rouge: "[L] le navigateur part, Claude est coupe" },
@@ -84,6 +116,14 @@ const MUTATIONS = {
 };
 
 Object.assign(MUTATIONS, require('./assistant-check-outils').MUTATIONS_OUTILS);
+
+// Le serveur pose son attente 15 ms apres le dernier evenement : relacher trop tot appellerait celle d avant.
+async function relacher(flux) {
+  for (let i = 0; i < 400 && !flux.relacher; i += 1) await new Promise((r) => setTimeout(r, 10));
+  const f = flux.relacher;
+  flux.relacher = null;
+  if (f) f();
+}
 
 const CASSE = process.env.ASSISTANT_CASSE || '';
 const mutation = CASSE ? MUTATIONS[CASSE] : null;
@@ -168,7 +208,7 @@ scope.listCentersForSession = async () => [{ id: 'libramont', name: 'Fun Galaxy 
 const audit = require('../lib/audit-log');
 audit.writeAuditLog = async (entree) => { etat.audits.push(entree); };
 require('../lib/email-threads').listerFils = async () => ({ total: 1, threads: [{ subject: 'Réservation de Verhaegen pour samedi', contactName: 'Zoéline Verhaegen', status: 'open', messageCount: 3, lastMessageAt: new Date('2026-10-20T10:00:00Z') }] });
-require('../lib/donnees-api').lireDonnees = async () => ({ sources: [{ source: 'google', reservations: 2, joueurs: 5, chiffre: 123.45, encaisse: 100, panierMoyen: 61.7 }], campagnes: [], appareils: [], pages: [], entonnoir: [], fidelite: { clientsConnus: 2, partChiffreFideles: 50, depenseMoyenneParClient: 20 } });
+require('../lib/donnees-api').lireDonnees = async () => ({ sources: [{ source: 'google', reservations: 2, joueurs: 5, chiffre: 123.45, encaisse: 100, panierMoyen: 61.7 }], campagnes: [], appareils: [], pages: [], entonnoir: [{ source: 'google', creneauxRetenus: 50, confirmes: 20, abandons: 30, tauxConfirmation: 40 }, { source: 'direct', creneauxRetenus: 30, confirmes: 9, abandons: 21, tauxConfirmation: 30 }], fidelite: { clientsConnus: 2, partChiffreFideles: 50, depenseMoyenneParClient: 20 } });
 const budget = require('../lib/llm-budget');
 
 // ---- Le faux Claude --------------------------------------------------------------
@@ -295,6 +335,9 @@ async function sectionA() {
   const p = await poser(question());
   const partAvecDroit = etat.appels.map((a) => a.brut).join('\n');
   ok('[A] avec le droit clients, noms, telephones et mails partent au modele', ['Zoéline Verhaegen', '0470123456', 'zoeline@exemple.be', 'Marjolaine Dubuisson', '0471 22 33 44', 'marjolaine@exemple.be'].every((n) => partAvecDroit.includes(n)), ['Zoéline Verhaegen', '0470123456', 'zoeline@exemple.be', 'Marjolaine Dubuisson', '0471 22 33 44', 'marjolaine@exemple.be'].filter((n) => !partAvecDroit.includes(n)).join());
+  const detailEcran = JSON.stringify(p.tous('source').map((s) => s.donnees.sections));
+  const nomsDetail = NOMS_INTERDITS.filter((n) => detailEcran.includes(n));
+  ok('[A] le detail affiche ne nomme personne', nomsDetail.length === 0 && p.tous('source').some((s) => s.donnees.sections.length > 0), nomsDetail.join());
   const r2 = resultatsOutils(etat.appels[1]);
   ok('[A] tous les outils ont repondu', r2.length === 7 && !r2.some((x) => x.is_error), JSON.stringify(r2.filter((x) => x.is_error)));
   const demande = contenu(r2[2]);
@@ -431,14 +474,86 @@ async function sectionV() {
 
   reinitialiser({ session: sessionDe(DIRECTION, 'm-v2') });
   etat.script = [
-    pas([outilP('a', 'calculer', { libelle: 'Écart', expression: '(a - b) / b * 100', valeurs: [{ nom: 'a', valeur: 150, source: 'S1' }, { nom: 'b', valeur: 100, source: 'S1' }] }), outilP('b', 'calculer', { libelle: 'Piège', expression: 'process.exit(1)' })], 'tool_use'),
-    fin('Cela fait 50 % [S1].'),
+    pas([outilP('l', 'croiser_reservations', { ...OCT, grouper_par: ['activite'], mesures: ['chiffre'] })], 'tool_use'),
+    pas([outilP('a', 'calculer', { libelle: 'Écart', expression: '(a - b) / b * 100', valeurs: [{ nom: 'a', valeur: 440, source: 'S1' }, { nom: 'b', valeur: 176, source: 'S1' }] }), outilP('b', 'calculer', { libelle: 'Piège', expression: 'process.exit(1)' })], 'tool_use'),
+    fin('Cela fait 150 % [S2].'),
   ];
   const c = await poser(question());
-  const calc = resultatsOutils(etat.appels[1]);
-  ok('[V] calculer donne le bon resultat', contenu(calc[0]).resultat === 50, calc[0].content);
+  const calc = resultatsOutils(etat.appels[2]);
+  ok('[V] calculer donne le bon resultat', contenu(calc[0]).resultat === 150, calc[0].content);
   ok('[V] une expression dangereuse est refusee', calc[1].is_error === true);
   ok('[V] un resultat de calcul est trace', c.un('fin').donnees.verite.chiffresSansSource.length === 0, JSON.stringify(c.un('fin').donnees.verite));
+
+  // Un total fait de tete : le modele le refait avec l outil, la personne ne voit rien bouger.
+  const LECTURE = () => pas([outilP('l', 'croiser_reservations', { ...OCT, grouper_par: ['activite'], mesures: ['chiffre'] })], 'tool_use');
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v6') });
+  const phraseTotal = 'Ensemble, 616 € [S1], dont 440 € et 176 € [S1].';
+  etat.script = [
+    LECTURE(),
+    fin(phraseTotal),
+    pas([texteP('Voici ma correction, 999 €.'), outilP('p', 'calculer', { libelle: 'Total des deux', expression: 'a + b', valeurs: [{ nom: 'a', valeur: 440, source: 'S1' }, { nom: 'b', valeur: 176, source: 'S1' }] })], 'tool_use'),
+  ];
+  const pr = await poser(question());
+  const fp = pr.un('fin').donnees;
+  const dernierMessage = etat.appels[2] ? JSON.stringify(etat.appels[2].corps.messages.slice(-1)[0]) : '';
+  ok('[V] un total fait de tete est refait en silence', etat.appels.length === 3 && /Contrôle avant affichage/.test(dernierMessage) && /616 €/.test(dernierMessage) && !/440 €/.test(dernierMessage) && Boolean(pr.un('verification')), `${etat.appels.length} ${dernierMessage}`);
+  ok('[V] le controle ne touche pas au texte', fp.texte === phraseTotal && pr.tous('texte').map((e) => e.donnees.delta).join('') === phraseTotal, fp.texte);
+  const calcul = (pr.tous('source').find((s) => s.donnees.outil === 'calculer') || { donnees: { lignes: [] } }).donnees;
+  ok('[V] un calcul s ecrit avec ses vrais nombres', calcul.detail === '440 + 176 = 616', calcul.detail);
+  ok('[V] une entree de calcul dit ce qu elle est', /Multi-activités/.test(calcul.lignes[0].nom) && /Chiffre/.test(calcul.lignes[0].nom), calcul.lignes[0].nom);
+  ok('[V] un arrondi tombe juste', require('../lib/assistant-verite').evaluer('arrondi(51 / 80 * 100, 1)', {}) === 63.8);
+  ok('[V] un calcul dit d ou vient chaque entree', calcul.lignes.length === 3 && calcul.lignes[0].source === 'S1' && calcul.lignes[1].source === 'S1' && calcul.colonnes[2].type === 'source', JSON.stringify(calcul));
+  const prouve = (t) => (fp.preuves || []).find((x) => x.t === t) || {};
+  ok('[V] le chiffre refait est relie a son calcul', prouve('616 €').e === 'calcule' && prouve('616 €').s === 'S2' && fp.verite.chiffresSansSource.length === 0, JSON.stringify(fp.preuves));
+  const lu440 = prouve('440 €');
+  const s440 = pr.tous('source')[0].donnees;
+  const case440 = lu440.z && s440.sections[lu440.z[0]] && s440.sections[lu440.z[0]].lignes[lu440.z[1]];
+  ok('[V] la preuve pointe la case exacte', lu440.e === 'lu' && lu440.s === 'S1' && case440 && case440[lu440.z[2]] === 440 && /Multi-activités/.test(lu440.l), JSON.stringify({ lu440, case440 }));
+  ok('[V] les positions tombent sur le chiffre', (fp.preuves || []).every((x) => fp.texte.slice(x.d, x.f) === x.t) && fp.preuves.length === 3, JSON.stringify(fp.preuves));
+
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v7') });
+  etat.script = [LECTURE(), fin('Le premier fait 440 € [S1].')];
+  const tranquille = await poser(question());
+  ok('[V] pas de controle quand tout se lit', etat.appels.length === 2 && !tranquille.un('verification'), String(etat.appels.length));
+
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v8') });
+  etat.script = [
+    LECTURE(),
+    pas([outilP('x', 'calculer', { libelle: 'Faux', expression: 'a * 2', valeurs: [{ nom: 'a', valeur: 999, source: 'S1' }] }), outilP('y', 'calculer', { libelle: 'Si', expression: 'a * 2', valeurs: [{ nom: 'a', valeur: 999 }] })], 'tool_use'),
+    fin('Rien.'),
+  ];
+  const hyp = await poser(question());
+  const [refusOp, accepteOp] = resultatsOutils(etat.appels[2]);
+  ok('[V] une valeur annoncee comme lue doit se lire', refusOp.is_error === true && /aucune source lue/.test(refusOp.content), refusOp.content);
+  const calcHyp = (hyp.tous('source').find((s) => s.donnees.outil === 'calculer') || { donnees: { lignes: [] } }).donnees;
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v10') });
+  etat.script = [LECTURE(), pas([outilP('z', 'calculer', { libelle: 'Moitié', expression: '440 / 2' })], 'tool_use'), fin('Soit 220 € [S1, S2].')];
+  const lit = await poser(question());
+  const calcLit = (lit.tous('source').find((s) => s.donnees.outil === 'calculer') || { donnees: { lignes: [] } }).donnees;
+  ok('[V] un nombre ecrit dans le calcul dit d ou il vient', calcLit.lignes.length === 2 && /Multi-activités/.test(calcLit.lignes[0].nom) && calcLit.lignes[0].valeur === 440 && calcLit.lignes[0].source === 'S1', JSON.stringify(calcLit.lignes));
+  ok('[V] des renvois groupes se separent', lit.un('fin').donnees.texte === 'Soit 220 € [S1][S2].', lit.un('fin').donnees.texte);
+  ok('[V] une hypothese reste possible et se dit', !accepteOp.is_error && calcHyp.lignes[0] && calcHyp.lignes[0].source === 'hypothese', JSON.stringify(calcHyp));
+
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-v9') });
+  etat.script = [pas([outilP('s', 'provenance_et_site', OCT)], 'tool_use'), fin('Rien.')];
+  await poser(question());
+  const provenance = contenu(resultatsOutils(etat.appels[1])[0]);
+  ok('[V] l entonnoir donne son total', provenance.entonnoir_total && provenance.entonnoir_total.creneauxRetenus === 80 && provenance.entonnoir_total.confirmes === 29 && provenance.entonnoir_total.abandons === 51 && provenance.entonnoir_total.tauxConfirmation === 36.3, JSON.stringify(provenance.entonnoir_total));
+
+  const { preuves: relier } = require('../lib/assistant-verite');
+  const compte = [{ id: 'S1', outil: 'x', titre: 'T', modele: { joueurs: 64 } }];
+  ok('[V] un pourcentage ne se rattache pas a un simple compte', relier('Cela fait 64 % [S1].', compte)[0].e === 'inconnu' && relier('Cela fait 64 joueurs [S1].', compte)[0].e === 'lu', JSON.stringify(relier('Cela fait 64 % [S1].', compte)));
+  ok('[V] un taux se rattache a sa colonne', relier('Soit 64 % [S1].', [{ id: 'S1', outil: 'x', titre: 'T', modele: { entonnoir: [{ source: 'a', tauxAbandon: 63.8 }] } }])[0].e === 'lu');
+  const deux = [{ id: 'S1', outil: 'x', titre: 'T', modele: { offres: [{ offre: 'a', joueurs: 64, chiffre: 12 }, { offre: 'b', joueurs: 5, chiffre: 64 }] } }];
+  const enEuros = relier('Soit 64 € [S1].', deux)[0];
+  ok('[V] un montant se relie a une colonne de montants', enEuros.e === 'lu' && enEuros.z && enEuros.z[1] === 1 && enEuros.z[2] === 'chiffre', JSON.stringify(enEuros));
+  const lignesAmbigues = [{ id: 'S1', outil: 'x', titre: 'T', modele: { entonnoir: [{ source: 'Google', creneauxRetenus: 50, abandons: 30 }, { source: 'Direct', creneauxRetenus: 30, abandons: 21 }] } }];
+  const ambigu = relier('En direct, 30 retenus [S1].', lignesAmbigues)[0];
+  ok('[V] une valeur a plusieurs cases prend celle dont parlent les mots', ambigu.z && ambigu.z[1] === 1 && ambigu.z[2] === 'creneauxRetenus' && (ambigu.a || []).length === 1 && ambigu.a[0].z[1] === 0 && ambigu.a[0].z[2] === 'abandons', JSON.stringify(ambigu));
+  const hasard = relier('Vous avez 6 réservations [S1], comptez 25 clients.', [{ id: 'S1', outil: 'x', titre: 'T', modele: { reservations: 6 } }, { id: 'S2', outil: 'y', titre: 'U', modele: { themes: [{ theme: 'a', gameMinutes: 25 }] } }]);
+  ok('[V] un nombre qui tombe juste par hasard ne devient pas une preuve', hasard.every((x) => x.t !== '25'), JSON.stringify(hasard));
+  ok('[V] un seuil ou une periode n est pas un chiffre a prouver', relier('Il faudrait au moins 30 réservations, moins de 20 ne suffit pas, sur les 15 derniers jours, au 12/10.', []).length === 0, JSON.stringify(relier('Il faudrait au moins 30 réservations, moins de 20 ne suffit pas, sur les 15 derniers jours, au 12/10.', [])));
+  ok('[V] une date ne prouve pas un montant', relier('Soit 10 € [S1].', [{ id: 'S1', outil: 'x', titre: 'T', modele: { date: '2026-10-03' } }])[0].e === 'inconnu');
 
   reinitialiser({ session: sessionDe(DIRECTION, 'm-v3') });
   etat.script = [
@@ -625,6 +740,15 @@ const agir = (action, sur = {}) => poser({ centerId: 'libramont', action, ...sur
 
 async function sectionM() {
   const unePersonne = (membre, permissions = DIRECTION, centre = 'libramont') => ({ ...sessionDe(permissions, membre), centerId: centre });
+  // ---- Une reponse rechargee garde ses preuves ----
+  const basePreuves = fausseMemoire();
+  reinitialiser({ session: unePersonne('lib:m9'), requete: basePreuves.requete });
+  await agir('sauver', { conversation: CONV('conversationpreuves', [{ role: 'user', texte: 'Combien ?' }, { role: 'assistant', id: 'a2', texte: 'Soit 440 €.', statut: 'fini', graphiques: [], etapes: [], preuves: [{ d: 5, f: 10, t: '440 €', e: 'lu', s: 'S1', l: 'Réservations', z: [0, 1, 'chiffre'], piege: '<script>' }, { d: 'x', f: 2 }], sources: [{ id: 'S1', outil: 'croiser_reservations', titre: 'T', colonnes: [], lignes: [], sections: [{ titre: 'Lignes', colonnes: [{ cle: 'chiffre', nom: 'Chiffre', type: 'euro' }], lignes: [{ chiffre: 440 }] }] }] }]) });
+  const relue = await agir('conversation', { id: 'conversationpreuves' });
+  const messageRelu = relue.json.conversation ? relue.json.conversation.messages[1] : { preuves: [], sources: [] };
+  ok('[M] les preuves d une reponse sont gardees', (messageRelu.preuves || []).length === 1 && messageRelu.preuves[0].t === '440 €' && messageRelu.preuves[0].z[2] === 'chiffre' && !('piege' in messageRelu.preuves[0]), JSON.stringify(messageRelu.preuves));
+  ok('[M] le detail d une source est garde', Boolean(messageRelu.sources[0] && messageRelu.sources[0].sections && messageRelu.sources[0].sections[0] && messageRelu.sources[0].sections[0].lignes[0].chiffre === 440), JSON.stringify(messageRelu.sources));
+
   // ---- A chacun ses conversations ----
   let base = fausseMemoire();
   reinitialiser({ session: unePersonne('lib:m1'), requete: base.requete });
@@ -843,7 +967,7 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   ok('[E] la recherche dit ou elle cherche', /Je lis les réservations de novembre/.test(au300.phrase) && au300.actif && au300.curseurSurMot && /Je lis les réservations/.test(au300.dit), JSON.stringify(au300));
   ok('[E] les lignes lues et le total viennent du flux', /sur 1\s?200 lignes/.test(au300.sur.replace(/\u202f/g, ' ')) && Math.abs(au300.barre - 0.25) < 0.01 && /300/.test(au300.compte), JSON.stringify(au300));
   ok('[E] un extrait reel s affiche', /Zoé Témoin/.test(au300.extrait), au300.extrait);
-  flux.relacher();
+  await relacher(flux);
   await page.waitForFunction(() => /Je cherche qui revient/.test((document.querySelector('[data-scn-phrase]') || {}).textContent || ''), null, { timeout: 9000 });
   await FX_repos(page, 2500);
   const au1200 = await page.evaluate(() => {
@@ -854,7 +978,7 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   ok('[E] le compteur de la premiere source va au bout', /1\s?200/.test(au1200.compte1.replace(/\u202f/g, ' ')) && au1200.lu1, JSON.stringify(au1200));
   ok('[E] une deuxieme source s allume', au1200.clients && /87/.test(au1200.compte2), JSON.stringify(au1200));
   ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(au1200.sur) && !/sur/.test(au1200.sur), JSON.stringify(au1200));
-  flux.relacher();
+  await relacher(flux);
   await finie(page, 3);
   await FX_repos(page, 250);
   const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return { titre: b.querySelector('.ast-rech-titre').textContent, liste: !b.classList.contains('est-ouvert'), carte: Boolean(b.querySelector('[data-scn]')), prop: document.querySelectorAll('.ast-prop').length }; });
@@ -1009,7 +1133,7 @@ async function sectionEcran() {
     const rafraichi = await page.evaluate(() => { const r = document.querySelector('.ast'); r.dataset.marque = '1'; document.querySelector('[data-ast-champ]').focus(); window.renderStaffCampaignsPage(); return { marque: document.querySelector('.ast').dataset.marque, valeur: document.querySelector('[data-ast-champ]').value, focus: document.activeElement === document.querySelector('[data-ast-champ]') }; });
     ok('[E] le rafraichissement de la console ne touche pas la page', rafraichi.marque === '1' && rafraichi.valeur === 'brouillon' && rafraichi.focus, JSON.stringify(rafraichi));
     await page.locator(champ).fill('');
-    flux.relacher();
+    await relacher(flux);
     await finie(page);
     await FX.repos(page, 200);
     const apres = await page.evaluate(() => ({ puce: document.querySelectorAll('.ast-r-texte .ast-cite').length, envoi: document.querySelector('[data-ast-envoi]').getAttribute('aria-label') }));
@@ -1105,7 +1229,7 @@ async function sectionEcran() {
     await FX.repos(page, 200);
     const position = () => page.evaluate(() => { const q = [...document.querySelectorAll('.ast-q')].pop(); const f = document.querySelector('[data-ast-fil]'); return { haut: Math.round(q.getBoundingClientRect().top - f.getBoundingClientRect().top), descendre: !document.querySelector('[data-ast-descendre]').hidden }; });
     const avantTexte = await position();
-    flux.relacher();
+    await relacher(flux);
     await finie(page, 7);
     await FX.repos(page, 300);
     const apresTexte = await position();
@@ -1150,6 +1274,9 @@ async function sectionEcran() {
     flux.savoirDispo = true;
     flux.faits = [];
     flux.surServeur = [{ id: 'serveur1', titre: 'Une conversation du téléphone', maj: Date.now() - 3600e3, centerId: 'libramont', modele: 'haiku', messages: 2, contenu: [{ role: 'user', texte: 'Depuis mon téléphone' }, { id: 'r1', role: 'assistant', statut: 'fini', texte: 'Réponse gardée.', sources: [], graphiques: [], etapes: [], modele: 'claude-haiku-5-5' }] }, { id: 'serveur2', titre: 'Une conversation de Gembloux', maj: Date.now() - 7200e3, centerId: 'gembloux', modele: 'haiku', messages: 0, contenu: [{ role: 'user', texte: 'Autre centre' }, { id: 'r2', role: 'assistant', statut: 'fini', texte: 'Ailleurs.', sources: [], graphiques: [], etapes: [], modele: 'claude-haiku-5-5' }] }];
+    const longue = [];
+    for (let i = 0; i < 20; i += 1) longue.push({ role: 'user', texte: `Question ${i}` }, { id: `rl${i}`, role: 'assistant', statut: 'fini', texte: `Réponse longue ${i}.`, sources: [{ id: 'S1', outil: 'x', titre: 'T', detail: '', colonnes: [], lignes: [], sections: [{ titre: 'Lignes', colonnes: [], lignes: [] }] }], graphiques: [], etapes: [], modele: 'claude-haiku-5-5' });
+    flux.surServeur.push({ id: 'serveurlong', titre: 'Une longue conversation', maj: Date.now() - 9000e3, centerId: 'libramont', modele: 'haiku', messages: longue.length, contenu: longue });
     const srv = await monter();
     flux.actions.length = 0;
     await srv.page.evaluate(() => { localStorage.setItem(`pinlane-assistant:v1:gembloux:${(typeof getStaffSessionMemberId === 'function' && getStaffSessionMemberId()) || 'poste'}`, JSON.stringify({ modele: 'haiku', conversations: [{ id: 'localeA', titre: 'Sur cet appareil', maj: Date.now(), messages: [{ role: 'user', texte: 'Ma question' }, { id: 'm1', role: 'assistant', statut: 'fini', texte: 'Gardée.', sources: [], graphiques: [], etapes: [] }] }] })); document.getElementById('staffCampaignsPage').innerHTML = ''; window.renderStaffCampaignsPage(); });
@@ -1175,6 +1302,16 @@ async function sectionEcran() {
     await srv.page.locator('[data-ast-suppr-oui]').click();
     await FX.repos(srv.page, 200);
     ok('[E] supprimer part au serveur et retire la conversation', flux.actions.some((a) => a.action === 'supprimer' && a.id === 'serveur1') && (await srv.page.evaluate(() => [...document.querySelectorAll('.ast-conv-titre')].every((b) => !/téléphone/.test(b.textContent)))));
+    await srv.page.locator('[data-ast-conv="serveurlong"]').click();
+    await srv.page.waitForFunction(() => /Réponse longue 19/.test(document.body.textContent), null, { timeout: 5000 });
+    flux.scenario = reponse('Encore une.');
+    await srv.page.locator(champ).fill('Et ensuite');
+    await srv.page.locator(champ).press('Enter');
+    await srv.page.waitForFunction(() => /Encore une/.test(document.body.textContent), null, { timeout: 8000 });
+    await FX.repos(srv.page, 300);
+    const envoyesLongs = flux.actions.filter((a) => a.action === 'sauver').pop().conversation.messages;
+    const avecDetail = envoyesLongs.map((x, i) => (x.role === 'assistant' && (x.sources || []).some((s) => Array.isArray(s.sections)) ? i : -1)).filter((i) => i >= 0);
+    ok('[E] seules les dernieres reponses gardent le detail lu', envoyesLongs.length === 42 && avecDetail.length === 5 && avecDetail[0] >= envoyesLongs.length - 12, JSON.stringify({ n: envoyesLongs.length, avecDetail }));
     ok('[E] sur le serveur : aucune erreur JavaScript', srv.erreurs.length === 0, srv.erreurs.slice(0, 3).join(' | '));
     await srv.ctx.close();
 
@@ -1186,6 +1323,58 @@ async function sectionEcran() {
     ok('[E] mouvement reduit : plus d animation sur la recherche', reduit === 'none', reduit);
     await lent.ctx.close();
 
+    {
+      const prv = await monter();
+      const texte = 'En octobre, 2 000 € [S1], soit 64 % de mieux [S3], et 777 € on ne sait pas.';
+      const lieu = (t) => ({ d: texte.indexOf(t), f: texte.indexOf(t) + t.length, t });
+      const COL = [{ cle: 'mois', nom: 'Mois', type: 'texte' }, { cle: 'chiffre', nom: 'Chiffre', type: 'euro' }];
+      const AVEC_DETAIL = { ...SRC, sections: [{ titre: 'Par mois', colonnes: COL, lignes: [{ mois: '2026-09', chiffre: 1200.5 }, { mois: '2026-10', chiffre: 2000 }] }, { titre: 'Total', colonnes: COL, lignes: [{ mois: 'Ensemble', chiffre: 3200.5 }] }] };
+      const CALCUL = { id: 'S3', outil: 'calculer', titre: 'Hausse', detail: '(a - b) / b * 100 = 64', colonnes: [{ cle: 'nom', nom: 'Valeur', type: 'texte' }, { cle: 'valeur', nom: 'Nombre', type: 'dec' }, { cle: 'source', nom: 'Vient de', type: 'source' }], lignes: [{ nom: 'a', valeur: 2000, source: 'S1' }, { nom: 'b', valeur: 1219.5, source: 'hypothese' }, { nom: 'Résultat', valeur: 64, source: '' }], ouvrables: false, lien: null, sections: [] };
+      const PREUVES = [{ ...lieu('2 000 €'), e: 'lu', s: 'S1', l: 'Par mois, 2026-10, Chiffre', z: [0, 1, 'chiffre'], a: [{ l: 'Total, Ensemble', z: [1, 0, 'chiffre'] }] }, { ...lieu('64 %'), e: 'calcule', s: 'S3', l: 'Hausse' }, { ...lieu('777 €'), e: 'inconnu' }];
+      flux.scenario = { evenements: [['debut', { modele: 'Haiku 5.5', centres: [] }], ['source', AVEC_DETAIL], ['texte', { delta: texte }], ['verification', {}], { attendre: true }, ['source', CALCUL], finDe(texte, { preuves: PREUVES, verite: { sourcesCitees: ['S1', 'S3'], sourcesInconnues: [], chiffres: 3, chiffresSansSource: ['777 €'] } })] };
+      await prv.page.locator(champ).fill('Combien ?');
+      await prv.page.locator(champ).press('Enter');
+      await prv.page.waitForFunction(() => Boolean(document.querySelector('.ast-verif')), null, { timeout: 6000 }).catch(() => {});
+      ok('[E] la verification des chiffres se dit', await prv.page.evaluate(() => /Vérification des chiffres/.test((document.querySelector('.ast-verif') || {}).textContent || '')));
+      await relacher(flux);
+      await finie(prv.page, 1);
+      await FX.repos(prv.page, 200);
+      const vu = await prv.page.evaluate(() => { const r = document.querySelector('.ast-r-texte'); return { boutons: [...r.querySelectorAll('.ast-chiffre')].map((b) => b.textContent), douteux: r.querySelectorAll('.ast-chiffre.est-douteux').length, texte: r.textContent, alerte: (document.querySelector('.ast-alerte') || {}).textContent || '', verif: Boolean(document.querySelector('.ast-verif')) }; });
+      ok('[E] chaque chiffre de la reponse est un bouton', vu.boutons.join('|') === '2 000 €|64 %|777 €', JSON.stringify(vu));
+      ok('[E] le chiffre non retrouve se voit a sa place', vu.douteux === 1 && /777 €/.test(vu.alerte) && !/ne vien/.test(vu.alerte) && !vu.verif, JSON.stringify(vu));
+      await prv.page.locator('.ast-chiffre').nth(0).click();
+      await FX.repos(prv.page, 300);
+      const p1 = await prv.page.evaluate(() => { const p = document.querySelector('[data-ast-panneau]'); return { ouvert: !p.hidden, titre: (p.querySelector('h2') || {}).textContent || '', fort: (p.querySelector('.ast-preuve b') || {}).textContent || '', dit: (p.querySelector('.ast-preuve span') || {}).textContent || '', cases: [...p.querySelectorAll('td.est-preuve')].map((c) => c.textContent), lignesPrincipales: p.querySelector('.ast-table tbody') ? p.querySelector('.ast-table tbody').children.length : 0, aussi: p.querySelectorAll('td.est-preuve-aussi').length, ditAussi: (p.querySelector('.ast-preuve-aussi') || {}).textContent || '', sections: [...p.querySelectorAll('.ast-src-sec')].map((h) => h.textContent) }; });
+      ok('[E] un chiffre ouvre sa preuve', p1.ouvert && p1.titre === SRC.titre && p1.fort === '2 000 €' && /2026-10/.test(p1.dit), JSON.stringify(p1));
+      ok('[E] la case du chiffre est eclairee', p1.cases.length === 1 && /2\s?000/.test(p1.cases[0].replace(/\u202f/g, ' ')), JSON.stringify(p1.cases));
+      ok('[E] la meme valeur ailleurs se voit aussi', p1.aussi === 1 && /Total, Ensemble/.test(p1.ditAussi), JSON.stringify(p1));
+      ok('[E] tout ce qui a ete lu se relit', p1.sections.join('|') === 'Total', JSON.stringify(p1.sections));
+      ok('[E] un tableau deja affiche ne se repete pas', !p1.sections.includes('Par mois') && p1.lignesPrincipales === 2, JSON.stringify(p1));
+      await prv.page.keyboard.press('Escape');
+      await FX.repos(prv.page, 120);
+      await prv.page.locator('.ast-chiffre').nth(1).click();
+      await FX.repos(prv.page, 300);
+      const p2 = await prv.page.evaluate(() => { const p = document.querySelector('[data-ast-panneau]'); return { titre: (p.querySelector('h2') || {}).textContent || '', formule: (p.querySelector('.ast-src-detail') || {}).textContent || '', vers: Boolean(p.querySelector('tbody [data-ast-source="S1"]')), hypothese: /Hypothèse/.test(p.textContent), graphique: p.querySelectorAll('[data-ast-src-graph] svg, [data-ast-src-graph] .plc-bars, [data-ast-src-graph] *').length }; });
+      ok('[E] un calcul n a pas de graphique', p2.graphique === 0, String(p2.graphique));
+      ok('[E] un calcul montre ses entrees et d ou elles viennent', p2.titre === 'Hausse' && /= 64/.test(p2.formule) && p2.vers && p2.hypothese, JSON.stringify(p2));
+      await prv.page.keyboard.press('Escape');
+      await FX.repos(prv.page, 120);
+      await prv.page.locator('.ast-chiffre').nth(2).click();
+      await FX.repos(prv.page, 300);
+      const p3 = await prv.page.evaluate(() => { const p = document.querySelector('[data-ast-panneau]'); return { douteux: Boolean(p.querySelector('.ast-preuve.est-douteux')), dit: (p.querySelector('.ast-preuve span') || {}).textContent || '' }; });
+      ok('[E] un chiffre introuvable le dit', p3.douteux && /pas été retrouvé/.test(p3.dit), JSON.stringify(p3));
+      await prv.page.keyboard.press('Escape');
+      await FX.repos(prv.page, 120);
+      flux.scenario = reponse('Ancienne réponse, 12 345 €.', [], { verite: { sourcesCitees: [], sourcesInconnues: [], chiffres: 1, chiffresSansSource: ['12 345 €'] } });
+      await poser(prv.page, 'Encore ?', 2);
+      const anciennes = await prv.page.evaluate(() => { const r = [...document.querySelectorAll('.ast-r')].pop(); return { alerte: Boolean(r.querySelector('.ast-alerte')), boutons: r.querySelectorAll('.ast-chiffre').length }; });
+      ok('[E] une ancienne reponse ne porte plus l alerte', !anciennes.alerte && anciennes.boutons === 0, JSON.stringify(anciennes));
+      flux.scenario = reponse('Groupés [S1, S3].', [['source', SRC], ['source', CALCUL]]);
+      await poser(prv.page, 'Encore une ?', 3);
+      ok('[E] des renvois groupes deviennent des pastilles', (await prv.page.evaluate(() => [...document.querySelectorAll('.ast-r')].pop().querySelectorAll('.ast-r-texte .ast-cite').length)) === 2);
+      ok('[E] les preuves ne levent aucune erreur', prv.erreurs.length === 0, prv.erreurs.slice(0, 3).join(' | '));
+      await prv.ctx.close();
+    }
     const tel = await monter('telephone');
     const t0 = await tel.page.evaluate(() => { const r = document.querySelector('.ast').getBoundingClientRect(); return { debordX: document.documentElement.scrollWidth - innerWidth, debordY: document.documentElement.scrollHeight - innerHeight, bas: Math.round(r.bottom - innerHeight), tete: getComputedStyle(document.querySelector('.ast-tete')).display, liste: Math.round(document.querySelector('.ast-liste').getBoundingClientRect().right) }; });
     ok('[E] telephone : la page tient dans l ecran', t0.debordX <= 0 && t0.debordY <= 1 && Math.abs(t0.bas) <= 1, JSON.stringify(t0));

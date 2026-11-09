@@ -15,6 +15,8 @@
   const CONVERSATIONS_MAX = 30;
   const MESSAGES_MAX = 60;
   const LIGNES_GARDEES = 60;
+  // Le detail lu pese : seules les dernieres reponses le gardent, une longue conversation doit tenir.
+  const DETAILS_GARDES = 12;
   const QUESTION_MAX = 6000;
   const FAIT_MAX = 500;
   const MODELES = [
@@ -109,7 +111,7 @@
     return valeur;
   }
 
-  const messagePourStockage = (m) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, sources: (m.sources || []).map((s) => ({ ...s, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
+  const messagePourStockage = (m, i, liste) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, sources: (m.sources || []).map((s) => ({ ...s, sections: A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections : undefined, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
 
   function versStockage(attente) {
     const appareil = A.stockage !== 'serveur';
@@ -253,12 +255,31 @@
     return nombre(valeur, 2);
   }
 
+  // Chaque chiffre de la reponse devient un bouton qui mene a sa preuve. La position vient du serveur.
+  function marquer(texte, preuves) {
+    let sortie = texte;
+    (preuves || []).map((p, i) => ({ p, i })).sort((a, b) => b.p.d - a.p.d).forEach(({ p, i }) => {
+      if (sortie.slice(p.d, p.f) === p.t) sortie = `${sortie.slice(0, p.d)}\u27E6${i}:${p.t}\u27E7${sortie.slice(p.f)}`;
+    });
+    return sortie;
+  }
+  function titreDePreuve(p) {
+    if (p.e === 'inconnu') return "Ce chiffre n'a pas été retrouvé dans les données lues";
+    if (p.e === 'appris') return "Appris par l'équipe du centre";
+    return p.e === 'calcule' ? `Calculé, ${p.l}` : p.l;
+  }
+
   function enLigne(brut, m) {
     let t = esc(brut);
     t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     t = t.replace(/\b[A-Z]\d{4}\b/g, (code) => (A.identites[code] ? esc(A.identites[code]) : code));
+    t = t.replace(/\[((?:[SGF]\d+\s*[,;]\s*)+[SGF]\d+)\]/g, (tout, liste) => liste.split(/\s*[,;]\s*/).map((r) => `[${r}]`).join(''));
+    t = t.replace(/\u27E6(\d+):([^\u27E7]*)\u27E7/g, (tout, i, chiffre) => {
+      const p = (m.preuves || [])[Number(i)];
+      return p ? `<button type="button" class="ast-chiffre${p.e === 'inconnu' ? ' est-douteux' : ''}" data-ast-preuve="${Number(i)}" title="${esc(titreDePreuve(p))}">${chiffre}</button>` : chiffre;
+    });
     t = t.replace(/[  ]?\[F(\d+)\]/g, (tout, n) => ((m.faitsCites || []).some((f) => String(f.id) === n) ? `<button type="button" class="ast-cite est-fait" data-ast-fait="${n}" title="${esc(((m.faitsCites || []).find((f) => String(f.id) === n) || {}).texte || '')}" aria-label="Fait appris par l'équipe">appris</button>` : ''));
     return t.replace(/[  ]?\[S(\d+)\]/g, (tout, n) => {
       const source = (m.sources || []).find((s) => s.id === `S${n}`);
@@ -682,7 +703,7 @@
   function htmlTexte(m) {
     if (m.statut === 'cours' && !m.texte) return (m.etapes || []).length ? '' : '<p class="ast-pense" role="status">Je regarde votre question<span class="ast-points" aria-hidden="true"></span></p>';
     // Pendant l ecriture, un renvoi coupe en deux ne s affiche pas a moitie.
-    const texte = m.statut === 'cours' ? m.texte.replace(/\[[SGF]?\d*$/, '') : m.texte;
+    const texte = m.statut === 'cours' ? m.texte.replace(/\[[SGF]?\d*$/, '') : marquer(m.texte, m.preuves);
     let html = markdown(texte, m);
     // Un graphique demande mais jamais place dans le texte se montre a la fin.
     if (m.statut !== 'cours') (m.graphiques || []).forEach((g) => { if (!html.includes(`data-ast-graph="${g.id}"`)) html += `<figure class="ast-graph" data-ast-graph="${g.id}"></figure>`; });
@@ -719,12 +740,12 @@
   }
 
   function htmlPied(m, dernier) {
-    if (m.statut === 'cours') return '';
+    if (m.statut === 'cours') return m.verification ? '<p class="ast-verif" role="status">Vérification des chiffres…</p>' : '';
     if (m.statut === 'erreur') return `<p class="ast-erreur" role="alert">${esc(m.erreur)}</p><div class="ast-pied"><button type="button" class="ast-pill" data-ast-refaire>Réessayer</button></div>`;
     const nb = (m.sources || []).length;
-    const sans = m.verite && Array.isArray(m.verite.chiffresSansSource) ? m.verite.chiffresSansSource : [];
+    const sans = (m.preuves || []).length && m.verite && Array.isArray(m.verite.chiffresSansSource) ? m.verite.chiffresSansSource : [];
     const alerte = sans.length
-      ? `<p class="ast-alerte">${sans.length > 1 ? `${sans.length} chiffres de cette réponse ne viennent pas de vos données` : 'Un chiffre de cette réponse ne vient pas de vos données'}, ${esc(sans.join(', '))}. Vérifiez avant de vous en servir.</p>`
+      ? `<p class="ast-alerte">${sans.length > 1 ? `${sans.length} chiffres n'ont pas été retrouvés dans les données lues` : "Un chiffre n'a pas été retrouvé dans les données lues"}, ${esc(sans.join(', '))}. Vérifiez-les avant de vous en servir.</p>`
       : '';
     return `${m.statut === 'arrete' ? '<p class="ast-arrete">Réponse arrêtée.</p>' : ''}${alerte}${htmlPropositions(m)}
     <div class="ast-pied">
@@ -966,8 +987,8 @@
   }
 
   // ---- Le panneau des sources et du savoir ---------------------------------------------
-  function ouvrirPanneau(m, id, ouvreur) {
-    A.panneau = { message: m, id };
+  function ouvrirPanneau(m, id, ouvreur, preuve = null) {
+    A.panneau = { message: m, id, preuve };
     if (ouvreur) A.ouvreur = ouvreur;
     peindrePanneau();
   }
@@ -1005,31 +1026,45 @@
       if (repere) { const retrouve = hote.querySelector(repere); if (retrouve) retrouve.focus({ preventScroll: true }); }
       return;
     }
-    const { message: m, id } = A.panneau;
+    const { message: m, id, preuve } = A.panneau;
+    const blocPreuve = !preuve ? '' : `<div class="ast-preuve${preuve.e === 'inconnu' ? ' est-douteux' : ''}"><b>${esc(preuve.t)}</b><span>${esc(preuve.e === 'inconnu' ? "Ce chiffre n'a pas été retrouvé dans les données lues pour cette réponse. Vérifiez-le avant de vous en servir." : preuve.l || '')}</span>${(preuve.a || []).length ? `<span class="ast-preuve-aussi">Même valeur ici aussi, ${esc(preuve.a.map((x) => x.l).join(' · '))}</span>` : ''}</div>`;
     const sources = m.sources || [];
     const source = id ? sources.find((s) => s.id === id) : null;
     const fermer = `<button type="button" class="ast-icone" data-ast-panneau-fermer aria-label="Fermer">${icone('fermer')}</button>`;
     if (!source) {
-      hote.innerHTML = `<div class="ast-src-tete"><h2>Sources de cette réponse</h2>${fermer}</div>
+      hote.innerHTML = `<div class="ast-src-tete"><h2>Sources de cette réponse</h2>${fermer}</div>${blocPreuve}
       <ol class="ast-src-liste">${sources.map((s) => `<li><button type="button" class="ast-src-ligne" data-ast-source="${esc(s.id)}"><span class="ast-cite">${esc(s.id.slice(1))}</span><span>${esc(s.titre)}</span></button></li>`).join('')}</ol>`;
     } else {
       const lien = source.lien && PAGES[source.lien.page];
       const tete = source.colonnes.map((c) => `<th scope="col"${c.type && c.type !== 'texte' ? ' class="est-chiffre"' : ''}>${esc(c.nom)}</th>`).join('');
-      const corps = source.lignes.map((l) => {
+      const pareilQueLeTableau = (t) => source.lignes.length > 0 && t.lignes.length === source.lignes.length && t.colonnes.every((c) => source.colonnes.some((x) => x.cle === c.cle)) && t.lignes.every((l, i) => t.colonnes.every((c) => l[c.cle] === source.lignes[i][c.cle]));
+      const sectionDuTableau = (source.sections || []).findIndex(pareilQueLeTableau);
+      const corps = source.lignes.map((l, ri) => {
+        const repere = (c) => (sectionDuTableau >= 0 ? ` data-ast-case="${sectionDuTableau}:${ri}:${esc(c.cle)}"` : '');
         const cellules = source.colonnes.map((c) => {
           const type = c.type === 'auto' ? l.type : c.type;
-          return `<td${type && type !== 'texte' && type !== 'client' ? ' class="est-chiffre"' : ''}>${esc(formater(l[c.cle], type))}</td>`;
+          if (type === 'source') return `<td>${!l[c.cle] ? '' : l[c.cle] === 'hypothese' ? 'Hypothèse' : `<button type="button" class="ast-cite" data-ast-source="${esc(l[c.cle])}">${esc(String(l[c.cle]).slice(1))}</button>`}</td>`;
+          return `<td${repere(c)}${type && type !== 'texte' && type !== 'client' ? ' class="est-chiffre"' : ''}>${esc(formater(l[c.cle], type))}</td>`;
         }).join('');
         return source.ouvrables && l.reservation ? `<tr class="est-ouvrable" data-ast-reservation="${esc(l.reservation)}" tabindex="0" title="Ouvrir la réservation">${cellules}</tr>` : `<tr>${cellules}</tr>`;
       }).join('');
-      hote.innerHTML = `<div class="ast-src-tete"><div><p class="ast-src-no">Source ${esc(source.id.slice(1))}</p><h2>${esc(source.titre)}</h2></div>${fermer}</div>
+      const sections = (source.sections || []).map((t, si) => si === sectionDuTableau ? '' : `<h3 class="ast-src-sec">${esc(t.titre)}</h3><div class="ast-table"><table><thead><tr>${t.colonnes.map((c) => `<th scope="col"${c.type !== 'texte' ? ' class="est-chiffre"' : ''}>${esc(c.nom)}</th>`).join('')}</tr></thead><tbody>${t.lignes.map((l, ri) => `<tr>${t.colonnes.map((c) => `<td data-ast-case="${si}:${ri}:${esc(c.cle)}"${typeof l[c.cle] === 'number' ? ' class="est-chiffre"' : ''}>${esc(formater(l[c.cle], c.type))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`).join('');
+      hote.innerHTML = `<div class="ast-src-tete"><div><p class="ast-src-no">Source ${esc(source.id.slice(1))}</p><h2>${esc(source.titre)}</h2></div>${fermer}</div>${blocPreuve}
       ${source.detail ? `<p class="ast-src-detail">${esc(source.detail)}</p>` : ''}
       <div class="ast-src-graph" data-ast-src-graph></div>
-      ${source.lignes.length ? `<div class="ast-table"><table><thead><tr>${tete}</tr></thead><tbody>${corps}</tbody></table></div>` : '<p class="ast-src-detail">Aucune ligne.</p>'}
+      ${source.lignes.length ? `<div class="ast-table"><table><thead><tr>${tete}</tr></thead><tbody>${corps}</tbody></table></div>` : (sections ? '' : '<p class="ast-src-detail">Aucune ligne.</p>')}
+      ${sections}
       ${source.coupe ? `<p class="ast-src-detail">Seules les ${LIGNES_GARDEES} premières lignes sont gardées avec la conversation.</p>` : ''}
       ${lien ? `<button type="button" class="ast-pill" data-ast-page="${esc(lien.cle)}">Ouvrir ${esc(lien.nom)}</button>` : ''}
       ${sources.length > 1 ? '<button type="button" class="ast-lien" data-ast-sources>Toutes les sources</button>' : ''}`;
       graphiqueDeSource(hote.querySelector('[data-ast-src-graph]'), source);
+      if (preuve && preuve.z) {
+        const cases = new Map([...hote.querySelectorAll('[data-ast-case]')].map((n) => [n.dataset.astCase, n]));
+        const eclairer = (z, classe) => { const n = cases.get(z.join(':')); if (n) n.classList.add(classe); return n; };
+        (preuve.a || []).forEach((x) => eclairer(x.z, 'est-preuve-aussi'));
+        const lue = eclairer(preuve.z, 'est-preuve');
+        if (lue) lue.scrollIntoView({ block: 'center' });
+      }
     }
     const premier = hote.querySelector('[data-ast-panneau-fermer]');
     if (premier) premier.focus({ preventScroll: true });
@@ -1040,7 +1075,7 @@
     if (!hote || !window.PinlaneCharts || source.lignes.length < 2 || source.lignes.length > 40) return;
     const [axe, ...reste] = source.colonnes;
     const mesure = reste.find((c) => ['entier', 'euro', 'pct', 'dec'].includes(c.type));
-    if (!axe || !mesure || axe.type !== 'texte' || reste.some((c) => c.type === 'texte')) return;
+    if (!axe || !mesure || axe.type !== 'texte' || reste.some((c) => c.type === 'texte' || c.type === 'source')) return;
     const points = source.lignes.filter((l) => typeof l[mesure.cle] === 'number');
     if (points.length < 2) return;
     const temps = /^(jour|semaine|mois|annee)$/.test(axe.cle);
@@ -1161,12 +1196,15 @@
         break;
       }
       case 'source': m.sources.push(d); break;
+      case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
       case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '' }]; break;
       case 'annule': m.texte = ''; break;
       case 'fin':
         m.texte = d.texte;
         m.verite = d.verite || null;
+        m.preuves = d.preuves || [];
+        m.verification = false;
         m.modele = d.modele || '';
         m.faitsCites = d.faitsCites || [];
         m.statut = 'fini';
@@ -1278,6 +1316,13 @@
     if ((n = v('[data-ast-reservation]'))) { ouvrirReservation(n.dataset.astReservation); return; }
     if ((n = v('[data-ast-savoir]'))) { fermerListe(); ouvrirSavoir(n); return; }
     if ((n = v('[data-ast-fait]'))) { ouvrirSavoir(n); return; }
+    if ((n = v('[data-ast-preuve]'))) {
+      const m = messageDe(n);
+      const p = m && (m.preuves || [])[Number(n.dataset.astPreuve)];
+      if (p && p.e === 'appris') ouvrirSavoir(n);
+      else if (p) ouvrirPanneau(m, p.s || null, n, p);
+      return;
+    }
     if ((n = v('[data-ast-source]'))) {
       const dans = n.closest('[data-ast-panneau]');
       const m = dans && A.panneau ? A.panneau.message : messageDe(n);

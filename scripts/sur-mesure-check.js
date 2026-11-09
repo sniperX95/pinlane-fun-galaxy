@@ -1060,8 +1060,8 @@ async function console_(browser) {
     // en surimpression est retiree le 2026-09-29 : deux rendus, et une reponse
     // envoyee depuis la fiche ne se rangeait pas dans le suivi).
     await page.evaluate(() => openStaffCustomRequest(77));
-    await page.waitForSelector('.req-detail[data-request-id="77"]', { timeout: 8000 });
-    const fiche = await page.evaluate(() => document.querySelector('.req-detail[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
+    await page.waitForSelector('.sm-fiche[data-request-id="77"]', { timeout: 8000 });
+    const fiche = await page.evaluate(() => document.querySelector('.sm-fiche[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
     // Etablissement : le seuil se lit et se regle.
     await page.evaluate(() => { state.staffMenuPage = 'establishment'; state.establishmentTab = 'offres'; state.establishmentEditing = false; save(); setView('staff'); });
     await page.waitForSelector('[data-estab-page] .eb-bh-b', { state: 'visible', timeout: 20000 });

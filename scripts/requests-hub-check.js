@@ -1,11 +1,6 @@
-// LA PAGE « DEMANDES SUR MESURE » SE SUFFIT A ELLE-MEME (2026-08-19).
-// Movsar : « on peut voir direct sur cette page si ya eu des mails envoye des
-// mails recu, tout gerer ici, ya deja des preset et aussi un bouton ia plug
-// avec notre kimi qui ameliore le contenu de ce quon a ecrit ».
-// Ce gate pilote de VRAIS clics : il ouvre le composeur, charge le fil du
-// contact, applique un modele, lance l amelioration IA, revient en arriere, et
-// verifie le repli honnete quand le modele ne repond pas (le texte du staff ne
-// doit JAMAIS etre perdu ni remplace par du vide).
+// LA PAGE « DEMANDES SUR MESURE » SE SUFFIT A ELLE-MEME.
+// La fiche montre les mails recus et envoyes, un modele prepare la reponse et laisse les blancs.
+// Ce gate pilote la vraie page sur un fil qui a les trois cas.
 const PORT_ENV = Number(process.env.PINLANE_REQUESTS_PORT || 4227);
 const http = require('http');
 const fs = require('fs');
@@ -54,13 +49,6 @@ srv.listen(PORT, '127.0.0.1', async () => {
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: {}, centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], laneStatuses: {}, centerId: 'libramont', revision: 'qa', syncedAt: new Date().toISOString() });
       if (u.pathname === '/api/ops' && String(init.method || 'GET').toUpperCase() === 'POST') {
-        const body = JSON.parse(init.body || '{}');
-        if (body.action === 'improveEmailDraft') {
-          // Interrupteur de contre-preuve : quand l'IA ne repond pas, le
-          // serveur rend le texte d'ORIGINE avec improved:false.
-          if (window.__QA_AI_DOWN__) return J({ ok: true, improved: false, reason: 'unavailable', subject: body.subject, body: body.body });
-          return J({ ok: true, improved: true, provider: 'kimi', model: 'kimi-k2.6', subject: 'Votre anniversaire du 29 aout chez Fun Galaxy Libramont', body: 'Bonjour,\n\nMerci pour votre demande pour 14 enfants le 29 aout.\n\nNous pouvons vous accueillir a 10h. Dites-nous si cela vous convient et nous bloquons le creneau.\n\nA tres vite,\nFun Galaxy Libramont' });
-        }
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops') {
@@ -87,63 +75,45 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.evaluate(() => window.openStaffMenuPage('requests'));
   await pg.waitForTimeout(1600);
 
-  // Ouvre le composeur, charge le fil, applique un modele.
-  console.log('' ); console.log('[Le fil de discussion du contact]');
+  // Ouvre la fiche, charge le fil, applique un modele.
+  console.log('' ); console.log('[Les mails du contact]');
+  await pg.evaluate(() => window.selectStaffRequest(501));
+  await pg.waitForTimeout(900);
   await pg.evaluate(() => window.toggleStaffRequestReply(501));
   await pg.waitForTimeout(500);
-  await pg.evaluate(() => window.loadStaffRequestThread(501));
-  await pg.waitForTimeout(900);
   const thread = await pg.evaluate(() => {
-    const zone = document.querySelector('.req-thread');
-    return {
-      present: !!zone,
-      text: zone ? zone.textContent : '',
-      sent: document.querySelectorAll('.req-msg.is-out').length,
-      received: document.querySelectorAll('.req-msg.is-in').length,
-    };
+    const zone = document.querySelector('.sm-hi');
+    const mails = [...document.querySelectorAll('.sm-hi-m')].map((b) => b.textContent.trim());
+    return { present: !!zone, text: zone ? zone.textContent : '', sent: mails.filter((m) => /E-mail envoyé/.test(m)).length, received: mails.filter((m) => /Le client a écrit/.test(m)).length };
   });
-  ok(thread.present, 'le fil des mails est sur la page, sans changer d ecran');
+  ok(thread.present, 'les mails sont sur la fiche, sans changer d ecran');
   ok(thread.received === 1, `les mails RECUS y sont (${thread.received})`);
   ok(thread.sent === 2, `les mails ENVOYES y sont (${thread.sent})`);
   ok(/en file/i.test(thread.text), 'un mail non parti est dit « en file », jamais presente comme envoye');
 
   console.log('' ); console.log('[Les modeles de reponse]');
-  const presets = await pg.evaluate(() => [...document.querySelectorAll('.req-preset')].map((b) => b.textContent.trim()));
-  ok(presets.length >= 4, `des modeles sont proposes (${presets.join(' | ')})`);
-  await pg.evaluate(() => window.applyStaffRequestPreset(501, 'dispo'));
+  const presets = await pg.evaluate(() => [...document.querySelectorAll('.sm-modeles button')].map((b) => b.textContent.trim()));
+  ok(presets.join() === 'Demander des précisions,Proposer un autre jour', `deux modeles, pas plus (${presets.join(' | ')})`);
+  await pg.click('.sm-modeles button:last-child');
   await pg.waitForTimeout(500);
   const filled = await pg.evaluate(() => ({
-    subject: (document.querySelector('.req-composer input') || {}).value || '',
-    body: (document.querySelector('.req-composer textarea') || {}).value || '',
+    subject: (document.querySelector('.sm-courrier input') || {}).value || '',
+    body: (document.querySelector('.sm-courrier textarea') || {}).value || '',
   }));
   ok(filled.subject.length > 0 && filled.body.length > 0, 'un modele remplit objet et message');
-  ok(/\[DATE\]|\[HEURE\]/.test(filled.body), 'le modele LAISSE les blancs a completer au lieu d inventer un creneau');
+  ok(/\[ALTERNATIVE\]/.test(filled.body), 'le modele LAISSE les blancs a completer au lieu d inventer un creneau');
+  const motsIA = await pg.evaluate(() => /\bIA\b|Améliorer|Réécrire/.test(document.querySelector('.sm-fiche').innerText));
+  ok(!motsIA, 'la reponse ne propose ni IA ni reecriture');
 
-  console.log('' ); console.log('[L amelioration par l IA]');
-  const before = await pg.evaluate(() => (document.querySelector('.req-composer textarea') || {}).value || '');
-  await pg.evaluate(() => window.improveStaffRequestDraft(501));
-  await pg.waitForTimeout(1100);
-  const after = await pg.evaluate(() => (document.querySelector('.req-composer textarea') || {}).value || '');
-  ok(after !== before && after.length > 0, 'le message est reecrit par l IA');
-  const revert = await pg.evaluate(() => !!document.querySelector('.req-revert'));
-  ok(revert, 'un retour a la version du staff est propose');
-  await pg.evaluate(() => window.revertStaffRequestDraft(501));
-  await pg.waitForTimeout(500);
-  const reverted = await pg.evaluate(() => (document.querySelector('.req-composer textarea') || {}).value || '');
-  ok(reverted === before, 'le retour arriere rend EXACTEMENT le texte du staff');
-
-  console.log('' ); console.log('[Contre-epreuve : quand l IA ne repond pas, rien n est perdu]');
-  await pg.evaluate(() => { window.__QA_AI_DOWN__ = true; });
-  const keep = await pg.evaluate(() => (document.querySelector('.req-composer textarea') || {}).value || '');
-  await pg.evaluate(() => window.improveStaffRequestDraft(501));
-  await pg.waitForTimeout(1100);
-  const afterDown = await pg.evaluate(() => (document.querySelector('.req-composer textarea') || {}).value || '');
-  ok(afterDown === keep && afterDown.length > 0, 'IA indisponible : le texte du staff est intact, ni vide ni tronque');
+  console.log('' ); console.log('[Annuler]');
+  await pg.locator('.sm-courrier .sm-b', { hasText: 'Annuler' }).click();
+  await pg.waitForTimeout(400);
+  ok(await pg.evaluate(() => !document.querySelector('.sm-courrier')), 'annuler referme la reponse');
 
   console.log('' ); console.log('[Contre-epreuve : ce gate sait-il rougir ?]');
   const blind = await pg.evaluate(() => {
-    document.querySelectorAll('.req-msg').forEach((el) => el.remove());
-    return document.querySelectorAll('.req-msg.is-in').length === 0;
+    document.querySelectorAll('.sm-hi-m').forEach((el) => el.remove());
+    return document.querySelectorAll('.sm-hi-m').length === 0;
   });
   ok(blind === true, 'fil vide expres : la sonde ne trouve plus les mails -> le gate ROUGIRAIT');
 

@@ -128,44 +128,40 @@ async function main() {
       // Mesure par le DOM : ce que l ecran MONTRE, pas une variable interne
       // (state n est pas expose sur window, une sonde qui l interroge rend
       // undefined et croit a une regression).
-      onRequestsPage: !!document.querySelector('#staffUtilityPage .req-board'),
+      onRequestsPage: !!document.querySelector('#staffUtilityPage .sm'),
       pageTitle: ((document.querySelector('#staffUtilityPage h1, #staffUtilityPage .util-title') || {}).textContent || '').trim(),
-      activeSegment: ((document.querySelector('.req-seg.active') || {}).textContent || '').trim(),
       overlayGone: !document.getElementById('staffDashboardDetailOverlay'),
-      cardVisible: !!document.querySelector('.req-card[data-request-id="501"]'),
-      called: !!document.querySelector('.req-card[data-request-id="501"].is-called'),
-      boardText: (document.querySelector('.req-board') || {}).textContent || '',
+      cardVisible: !!document.querySelector('.sm-fiche[data-request-id="501"]'),
+      lignes: document.querySelectorAll('.sm-l').length,
+      boardText: (document.querySelector('.sm') || {}).textContent || '',
     }));
     ok(landed.onRequestsPage, 'on atterrit sur la page Demandes sur mesure (titre : ' + landed.pageTitle + ')');
     ok(landed.overlayGone, 'le panneau d alertes se referme derriere nous');
-    ok(/traiter/i.test(landed.activeSegment), 'le segment ouvert contient la demande (' + landed.activeSegment + ')');
-    ok(landed.cardVisible, 'la carte de LA demande cliquee est a l ecran');
-    ok(landed.called, 'elle est designee (repere is-called) : on ne cherche pas laquelle');
+    ok(landed.cardVisible, 'la fiche de LA demande cliquee est ouverte');
+    ok(landed.lignes === 0, 'elle prend la page : on ne cherche pas laquelle dans une liste');
     ok(/Asso Les Lucioles/.test(landed.boardText), 'la page porte bien le contact attendu');
-    // La REGLE, pas le libelle : la page porte l action de repondre et celle de
-    // reserver (« Repondre par email » est devenu « Rediger la reponse » le
-    // 2026-09-29, quand l IA s est mise a rediger a partir de l etude).
-    ok(/Rédiger la réponse/.test(landed.boardText) && /Créer la réservation/.test(landed.boardText), 'et les actions de traitement, la ou elles vivent');
+    // La REGLE, pas le libelle : la fiche porte l action de repondre et celle de reserver.
+    ok(/Écrire au client/.test(landed.boardText) && /Créer la réservation/.test(landed.boardText), 'et les actions de traitement, la ou elles vivent');
 
     console.log('\n[Contre-epreuve : une demande DEJA TRAITEE ouvre SON segment]');
     await page.evaluate(() => window.openStaffRequestsPage(502));
     await page.waitForTimeout(1000);
-    const handled = await page.evaluate(() => ({
-      activeSegment: ((document.querySelector('.req-seg.active') || {}).textContent || '').trim(),
-      cardVisible: !!document.querySelector('.req-card[data-request-id="502"]'),
-      // L etat vide se lit a son element, pas a une phrase : la sonde sur les
-      // anciennes phrases ne pouvait plus rougir apres la refonte.
-      emptyShown: Boolean(document.querySelector('.req-detail-empty')),
-    }));
-    ok(/traitées/i.test(handled.activeSegment), 'segment Traitees ouvert pour une demande traitee (' + handled.activeSegment + ')');
-    ok(handled.cardVisible && !handled.emptyShown, 'sa carte est visible : la page n est pas vide sur un clic valide');
+    const handled = await page.evaluate(() => ({ cardVisible: !!document.querySelector('.sm-fiche[data-request-id="502"]') }));
+    await page.click('.sm-retour');
+    await page.waitForTimeout(500);
+    handled.activeSegment = await page.evaluate(() => ((document.querySelector('.sm-onglet[aria-selected="true"]') || {}).textContent || '').trim());
+    handled.ligne = await page.evaluate(() => !!document.querySelector('.sm-l[data-item-id="502"]'));
+    ok(handled.cardVisible, 'sa fiche s ouvre : la page n est pas vide sur un clic valide');
+    ok(/Terminées/.test(handled.activeSegment) && handled.ligne, 'et le retour a la liste tombe dans le bon onglet (' + handled.activeSegment + ')');
+    await page.evaluate(() => window.openStaffRequestsPage(502));
+    await page.waitForTimeout(500);
 
     console.log('\n[Contre-epreuve : ce gate sait-il rougir ?]');
     const blinded = await page.evaluate(() => {
-      const card = document.querySelector('.req-card[data-request-id="502"]');
+      const card = document.querySelector('.sm-fiche[data-request-id="502"]');
       if (!card) return null;
       card.setAttribute('data-request-id', 'casse');
-      return !document.querySelector('.req-card[data-request-id="502"]');
+      return !document.querySelector('.sm-fiche[data-request-id="502"]');
     });
     ok(blinded === true, 'cible retiree expres : la sonde ne trouve plus la carte -> le gate ROUGIRAIT');
 

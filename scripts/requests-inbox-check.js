@@ -8,8 +8,8 @@
 // du message.
 //
 // Ce gate charge un fil qui contient un VRAI gabarit Pinlane et verifie que la
-// page rend le TEXTE. Il verifie aussi la forme de la refonte : une file a
-// gauche, une seule demande ouverte a droite, un seul fil a l ecran.
+// page rend le TEXTE. Il verifie aussi la forme de la page : une liste, ou une fiche, jamais
+// les deux, et un seul historique a l ecran.
 // Il produit enfin les captures dans artifacts/requests-inbox/.
 const PORT_ENV = Number(process.env.PINLANE_REQUESTS_INBOX_PORT || 4231);
 const http = require('http');
@@ -129,105 +129,74 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.waitForTimeout(1800);
 
   console.log('');
-  console.log('[La forme : une boite de reception, pas une pile de cartes]');
+  console.log('[La forme : une fiche qui prend la page]');
   const shape = await pg.evaluate(() => ({
-    rail: !!document.querySelector('.req-rail'),
-    items: document.querySelectorAll('.req-item').length,
-    details: document.querySelectorAll('.req-detail').length,
-    threads: document.querySelectorAll('.req-thread').length,
-    openId: (document.querySelector('.req-card[data-request-id]') || {}).dataset ? document.querySelector('.req-card[data-request-id]').dataset.requestId : '',
-    activeItems: document.querySelectorAll('.req-item.is-active').length,
+    lignes: document.querySelectorAll('.sm-l').length,
+    fiches: document.querySelectorAll('.sm-fiche').length,
+    historiques: document.querySelectorAll('.sm-hi').length,
+    openId: (document.querySelector('.sm-fiche') || { dataset: {} }).dataset.requestId || '',
     head: (() => {
-      const h = document.querySelector('.rq-tete');
+      const h = document.querySelector('.sm-tete');
       if (!h) return null;
       const r = h.getBoundingClientRect();
-      return { h: Math.round(r.height), name: ((h.querySelector('h3') || {}).textContent || '').trim(), contact: ((h.querySelector('.rq-contact') || {}).textContent || '').trim(), badge: !!h.querySelector('.cr-badge') };
+      return { h: Math.round(r.height), name: ((h.querySelector('h2') || {}).textContent || '').trim() };
     })(),
-    searchBox: (() => {
-      const f = document.querySelector('.req-search-field');
-      if (!f) return null;
-      const style = window.getComputedStyle(f);
-      return { height: Math.round(f.getBoundingClientRect().height), padLeft: style.paddingLeft };
-    })(),
+    contact: (document.querySelector('.sm-fiche') || {}).innerText || '',
   }));
-  ok(shape.rail && shape.items === 2, `la file liste les demandes actives (${shape.items} lignes)`);
-  ok(shape.details === 1 && shape.threads === 1, `une seule demande ouverte et UN seul fil a l ecran (${shape.details} detail, ${shape.threads} fil)`);
+  ok(shape.fiches === 1 && shape.historiques === 1 && shape.lignes === 0, `une seule demande ouverte et UN seul historique a l ecran (${shape.fiches} fiche, ${shape.historiques} historique)`);
   ok(shape.openId === '701', `c est bien la demande demandee qui est ouverte (${shape.openId})`);
-  ok(shape.activeItems === 1, 'exactement une ligne de la file est designee comme active');
-  // L en-tete porte le NOM du client et son statut. Il a disparu une fois
-  // pendant la refonte sans qu aucune assertion ne bronche : la page restait
-  // « jolie » et ne disait plus a qui on repond.
-  ok(shape.head && shape.head.h >= 40 && /Test SPRL/.test(shape.head.name) && /Ansar/.test(shape.head.contact) && shape.head.badge,
-    `l en-tete nomme le client et son statut (${shape.head ? shape.head.name + ', ' + shape.head.h + 'px' : 'absent'})`);
-  ok(shape.searchBox && shape.searchBox.height <= 36 && parseInt(shape.searchBox.padLeft, 10) >= 26,
-    `le champ de recherche garde sa place pour la loupe (${shape.searchBox ? shape.searchBox.height + 'px, padding ' + shape.searchBox.padLeft : 'absent'})`);
+  // L en-tete porte le NOM du client. Il a disparu une fois pendant la refonte sans qu aucune
+  // assertion ne bronche : la page restait « jolie » et ne disait plus a qui on repond.
+  ok(shape.head && shape.head.h >= 40 && /Test SPRL/.test(shape.head.name) && /Ansar/.test(shape.contact),
+    `l en-tete nomme le client (${shape.head ? shape.head.name + ', ' + shape.head.h + 'px' : 'absent'})`);
 
   console.log('');
   console.log('[Le mail se LIT : zero balise a l ecran]');
-  const board = await pg.evaluate(() => (document.querySelector('.req-board') || {}).innerText || '');
+  const board = await pg.evaluate(() => (document.querySelector('.sm') || {}).innerText || '');
   ok(!/<meta|<html|<head|doctype|charset=utf-8|font-size:|role="presentation"/i.test(board),
     'aucune balise ni style ne traine dans le texte visible');
-  ok(!/\u200b|&#8203;|&nbsp;/.test(board), 'le bourrage invisible du preheader ne fuit pas dans l apercu');
-  ok(/Nous confirmons votre venue jeudi 20 aout/.test(board) || /Bonjour Ansar/.test(board),
-    'la PHRASE du mail est lisible dans l apercu');
+  ok(!/\u200b|&#8203;|&nbsp;/.test(board), 'le bourrage invisible du preheader ne fuit pas');
+  ok(/C'est confirme : on vous attend jeudi 20 aout/.test(board), 'l objet du mail se lit dans l historique');
 
   console.log('');
   console.log('[Le detail du mail deplie]');
   await pg.evaluate(() => window.toggleStaffRequestMessage('92'));
   await pg.waitForTimeout(420);
   const opened = await pg.evaluate(() => {
-    const msg = document.querySelector('.req-msg[data-msg-id="92"]');
-    const body = msg ? (msg.querySelector('.req-msg-body') || {}).textContent || '' : '';
-    return {
-      open: !!(msg && msg.classList.contains('is-open')),
-      body,
-      height: msg ? msg.querySelector('.req-msg-panel-clip').getBoundingClientRect().height : 0,
-      hasHtmlToggle: !!(msg && msg.querySelector('.req-msg-view')),
-    };
+    const corps = document.querySelector('.sm-hi-c');
+    return { body: corps ? corps.textContent : '', height: corps ? corps.getBoundingClientRect().height : 0 };
   });
-  ok(opened.open && opened.height > 20, `le mail se deplie vraiment (hauteur ${Math.round(opened.height)}px)`);
+  ok(opened.height > 20, `le mail se deplie vraiment (hauteur ${Math.round(opened.height)}px)`);
   ok(/Nous confirmons votre venue jeudi 20 aout a 14:00 pour 4 personnes\./.test(opened.body),
     'le corps deplie rend le texte du mail, pas son gabarit');
   ok(!/<|style=|charset/i.test(opened.body), 'et rien du HTML ne subsiste dans ce corps');
-  ok(opened.hasHtmlToggle, 'le rendu original reste consultable (bascule Texte / Mail recu)');
-
-  console.log('');
-  console.log('[Le rendu original s ouvre dans un cadre ISOLE]');
-  await pg.evaluate(() => window.setStaffRequestMessageView('92', 'rendu'));
-  await pg.waitForTimeout(600);
-  const frame = await pg.evaluate(() => {
-    const el = document.querySelector('.req-msg[data-msg-id="92"] .req-msg-frame');
-    return el ? { present: true, sandbox: el.getAttribute('sandbox'), hasSrc: !!el.getAttribute('srcdoc') } : { present: false };
-  });
-  ok(frame.present && frame.hasSrc, 'le mail original est rendu dans un cadre');
-  ok(frame.sandbox === '', 'ce cadre est en bac a sable total : ni script, ni acces a la console');
-  await pg.evaluate(() => window.setStaffRequestMessageView('92', 'texte'));
-  await pg.waitForTimeout(300);
 
   console.log('');
   console.log('[Un mail en file n est pas un mail parti]');
-  const statuses = await pg.evaluate(() => [...document.querySelectorAll('.req-msg-status')].map((s) => s.textContent.trim()));
-  ok(statuses.includes('en file'), `le statut se dit (${statuses.join(' | ')})`);
-  ok(statuses.includes('envoyé') && statuses.includes('reçu'), 'envoye et recu se distinguent');
+  const statuses = await pg.evaluate(() => [...document.querySelectorAll('.sm-hi-m')].map((s) => s.textContent.trim()));
+  ok(statuses.some((s) => /E-mail envoyé.*\(en file\)/.test(s)), `le statut se dit (${statuses.join(' | ')})`);
+  ok(statuses.some((s) => /^E-mail envoyé$/.test(s)) && statuses.some((s) => /Le client a écrit/.test(s)), 'envoye et recu se distinguent');
 
   console.log('');
   console.log('[Changer de demande change le detail, et lui seul]');
   await pg.evaluate(() => window.selectStaffRequest(702));
   await pg.waitForTimeout(1200);
   const switched = await pg.evaluate(() => ({
-    openId: (document.querySelector('.req-card[data-request-id]') || {}).getAttribute('data-request-id'),
-    name: ((document.querySelector('.rq-titre h3') || {}).textContent || '').trim(),
-    details: document.querySelectorAll('.req-detail').length,
+    openId: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
+    name: ((document.querySelector('.sm-tete h2') || {}).textContent || '').trim(),
+    details: document.querySelectorAll('.sm-fiche').length,
   }));
   ok(switched.openId === '702' && /Saint-Roch/.test(switched.name), `la demande ouverte a change (${switched.name})`);
   ok(switched.details === 1, 'toujours un seul detail : rien ne s empile');
 
   console.log('');
-  console.log('[La recherche filtre la file]');
+  console.log('[La recherche filtre la liste]');
+  await pg.evaluate(() => window.closeStaffRequest());
+  await pg.waitForTimeout(400);
   await pg.evaluate(() => window.staffRequestSearchInput('roch'));
   await pg.waitForTimeout(500);
-  const filtered = await pg.evaluate(() => document.querySelectorAll('.req-item').length);
-  ok(filtered === 1, `la recherche ramene la file a la seule demande qui correspond (${filtered})`);
+  const filtered = await pg.evaluate(() => document.querySelectorAll('.sm-l').length);
+  ok(filtered === 1, `la recherche ramene la liste a la seule demande qui correspond (${filtered})`);
   await pg.evaluate(() => window.staffRequestSearchInput(''));
   await pg.waitForTimeout(400);
 
@@ -256,7 +225,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.evaluate(() => window.toggleStaffRequestReply(701));
   await pg.waitForTimeout(400);
   // Un mail DEPLIE sur la capture : c est la preuve visuelle du correctif.
-  const stillOpen = await pg.evaluate(() => !!document.querySelector('.req-msg[data-msg-id="92"].is-open'));
+  const stillOpen = await pg.evaluate(() => !!document.querySelector('.sm-hi-c'));
   if (!stillOpen) await pg.evaluate(() => window.toggleStaffRequestMessage('92'));
   await pg.waitForTimeout(600);
   await pg.screenshot({ path: p.join(SHOTS, 'inbox-dark.png'), fullPage: false });
@@ -276,14 +245,12 @@ srv.listen(PORT, '127.0.0.1', async () => {
 
   console.log('');
   console.log('[Contre-epreuve : ce gate sait-il rougir ?]');
-  // On reinjecte le gabarit LA OU il fuyait : dans la ligne d apercu, qui est
-  // toujours visible. Un corps replie est masque pour de vrai (visibility),
-  // donc innerText ne le lit pas : la sonde y serait aveugle sans le dire.
+  // On reinjecte le gabarit LA OU il fuirait : dans la ligne de l objet, toujours visible.
   const blind = await pg.evaluate(() => {
-    const node = document.querySelector('.req-msg-preview');
+    const node = document.querySelector('.sm-hi-o');
     if (!node) return null;
     node.textContent = '<!doctype html><meta charset="utf-8">';
-    return /<meta|doctype/i.test(document.querySelector('.req-board').innerText);
+    return /<meta|doctype/i.test(document.querySelector('.sm').innerText);
   });
   ok(blind === true, 'gabarit reinjecte expres : la sonde le voit -> le gate ROUGIRAIT');
   ok(errs.length === 0, 'zero erreur console (' + errs.length + (errs.length ? ' : ' + errs[0] : '') + ')');

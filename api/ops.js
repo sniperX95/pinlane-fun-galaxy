@@ -2738,7 +2738,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
     const { brouillonDeLaDemande } = require('../lib/demande-bureau-centre');
     const choix = body.choix && typeof body.choix === 'object' ? body.choix : null;
-    const { brouillon, etude, choixPerime } = await brouillonDeLaDemande(item, undefined, { choix });
+    const { brouillon, etude, choixPerime } = await brouillonDeLaDemande(item, undefined, { choix, sansIA: body.sansIA === true });
     sendJson(res, 200, { ok: true, id: item.id, brouillon, etude, ...(choixPerime ? { choixPerime: true } : {}) });
     return;
   }

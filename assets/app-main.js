@@ -12113,31 +12113,12 @@ function openStaffRequestsPage(id, ev) {
   // L onglet ou vit la demande (son etape) : une demande en attente du client
   // s ouvrait dans « A traiter », ou elle n est pas.
   state.staffRequestSegment = item ? staffRequestSegmentOf(item) : 'atraiter';
-  // La page est une boite de reception : ouvrir le bon onglet ne suffit plus,
-  // il faut DESIGNER la demande, sinon c'est la premiere de la file qui
-  // s'affiche a droite et le clic mene a cote.
-  if (id != null) state.staffRequestSelectedId = String(id);
+  // L alerte parle d une demande : c est sa fiche qui s ouvre.
+  state.staffRequestSelectedId = id != null ? String(id) : null;
   save();
   openStaffMenuPage('requests');
-  if (id == null) return;
-  highlightStaffRequestCard(id, 2);
 }
 window.openStaffRequestsPage = openStaffRequestsPage;
-
-// Amene la carte sous les yeux et la signale une fois. `tries` couvre le cas ou
-// la liste arrive du reseau juste apres l'ouverture de la page.
-function highlightStaffRequestCard(id, tries = 1) {
-  window.setTimeout(() => {
-    const card = document.querySelector(`.req-card[data-request-id="${CSS.escape(String(id))}"]`);
-    if (!card) {
-      if (tries > 1) highlightStaffRequestCard(id, tries - 1);
-      return;
-    }
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    card.classList.add('is-called');
-    window.setTimeout(() => card.classList.remove('is-called'), 1600);
-  }, 120);
-}
 
 // Change le statut d'une demande depuis le panneau d'alertes, puis re-rend :
 // le compteur et la liste se mettent a jour sans quitter la surface.
@@ -18035,32 +18016,21 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   // Clients+Groupes), tous ses chemins d'accès sont aliasés vers Clients /
   // segment « À venir » (openStaffMenuPage, renderStaffData, renderStaffUtilityPage).
   if (page === 'requests') {
-    // LA PAGE DEDIEE AUX DEMANDES SUR MESURE (2026-08-18, refaite le
-    // 2026-09-29). Le sous-titre dit ce qui attend l equipe en une ligne :
-    // combien a traiter, combien ont depasse l heure promise au client,
-    // combien attendent sa reponse. Les onglets de la file portent les memes
-    // comptes : une seule definition (getStaffRequestSegments).
-    const buckets = getStaffRequestSegments();
-    const aTraiter = buckets.atraiter.length;
-    const enRetard = buckets.atraiter.filter((item) => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
-    const enAttente = buckets.attente.length;
-    const resume = [
-      aTraiter ? `${aTraiter} à traiter${enRetard ? `, dont ${enRetard} en retard` : ''}` : 'Rien à traiter',
-      enAttente ? `${enAttente} en attente du client` : '',
-      'réponse promise au client sous 24 heures ouvrables',
-    ].filter(Boolean).join(' · ');
+    // LA PAGE DES DEMANDES SUR MESURE. Les onglets portent les comptes ; le sous-titre ne dit
+    // que ce qu ils ne disent pas, un retard.
+    const enRetard = getStaffRequestSegments().atraiter.filter((item) => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
     return {
       ...base,
       layout: 'requests',
       eyebrow: 'Clients & marketing',
       title: 'Demandes sur mesure',
-      subtitle: `${resume}.`,
+      subtitle: enRetard ? `${enRetard} en retard` : '',
       hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: '',
       primaryAction: '',
-      secondaryLabel: 'Actualiser',
-      secondaryAction: 'loadStaffCustomRequests(true)',
+      secondaryLabel: '',
+      secondaryAction: '',
       body: renderStaffRequestsBoard()
     };
   }
@@ -18218,7 +18188,7 @@ function renderStaffUtilityPage() {
   const caretStart = focused && typeof focused.selectionStart === 'number' ? focused.selectionStart : null;
   const caretEnd = focused && typeof focused.selectionEnd === 'number' ? focused.selectionEnd : null;
   const keptScroll = [];
-  root.querySelectorAll('#reqRailList, [data-keep-scroll]').forEach((node) => {
+  root.querySelectorAll('[data-keep-scroll]').forEach((node) => {
     if (node.id && node.scrollTop) keptScroll.push([node.id, node.scrollTop]);
   });
   root.innerHTML = `
@@ -19267,45 +19237,25 @@ function replaceStaffCustomRequest(fresh, fallback = {}) {
 // Composeur par demande : id -> { open, subject, body, busy, drafting, ... }.
 let staffRequestReplyState = {};
 
-// ════════════════════════════════════════════════════════════════════════════
-//  REFONTE (2026-08-20). Movsar, capture a l appui : « c est super moche
-//  comment sont affiches les mails, tout est moche et mal designe et mal
-//  anime sur cette categorie ». Trois fautes, corrigees a la racine :
-//  1. LE MAIL S AFFICHAIT EN CODE : on lit `payload.textBody`, ou le HTML
-//     deshabille (staffHtmlToPlainText) ; le rendu d origine reste
-//     consultable dans un cadre isole.
-//  2. LA PAGE N AVAIT PAS DE FORME : une boite de reception, la file a
-//     gauche, la demande ouverte a droite, un seul fil a l ecran.
-//  3. L ANIMATION REJOUAIT A CHAQUE RENDU : les entrees ne jouent que sur un
-//     vrai changement de vue (staffRequestViewKey), et le focus, le caret et
-//     le defilement de la file survivent au repaint.
-// ════════════════════════════════════════════════════════════════════════════
-
 // Recherche dans la file : volontairement HORS de `state`, donc non persistee.
 // Un filtre garde d une session a l autre fait croire a une file vide.
 let staffRequestSearch = '';
 // Messages du fil deplies, et vue choisie par message ('texte' | 'rendu').
 let staffRequestOpenMessages = {};
-let staffRequestMessageView = {};
-// Signature de la vue au dernier rendu : sert UNIQUEMENT a decider si une
-// entree doit etre animee. Sans elle, chaque repaint rejoue les animations.
-let staffRequestViewKey = '';
 
-// LES ONGLETS DE LA FILE, dans l ordre ou l equipe les traite. L etape vient
-// du serveur (suivi.etape, lib/demande-bureau) ; les archives restent a part,
-// au pied de la file : ce n est pas du travail.
+// LES ONGLETS DE LA LISTE. L etape vient du serveur (suivi.etape, lib/demande-bureau).
+const STAFF_REQUEST_ETAPES = ['a-traiter', 'en-attente', 'traitee', 'archivee'];
 const STAFF_REQUEST_SEGMENTS = [
-  { key: 'atraiter', etape: 'a-traiter', label: 'À traiter' },
-  { key: 'attente', etape: 'en-attente', label: 'En attente' },
-  { key: 'traitees', etape: 'traitee', label: 'Traitées' },
-  { key: 'archivees', etape: 'archivee', label: 'Archivées' },
+  { key: 'atraiter', etapes: ['a-traiter'], label: 'À traiter' },
+  { key: 'attente', etapes: ['en-attente'], label: 'En attente du client' },
+  { key: 'terminees', etapes: ['traitee', 'archivee'], label: 'Terminées' },
 ];
 
 // L etape d une demande. Une liste servie sans suivi (serveur d avant,
-// lecture en panne) se lit sur le statut : la file reste juste, en moins fin.
+// lecture en panne) se lit sur le statut : la liste reste juste, en moins fin.
 function staffRequestStage(item) {
   const etape = item && item.suivi && item.suivi.etape;
-  if (STAFF_REQUEST_SEGMENTS.some(segment => segment.etape === etape)) return etape;
+  if (STAFF_REQUEST_ETAPES.includes(etape)) return etape;
   if (item && item.status === 'archived') return 'archivee';
   if (item && item.status === 'handled') return 'traitee';
   return 'a-traiter';
@@ -19313,23 +19263,19 @@ function staffRequestStage(item) {
 
 function staffRequestSegmentOf(item) {
   const etape = staffRequestStage(item);
-  return (STAFF_REQUEST_SEGMENTS.find(segment => segment.etape === etape) || STAFF_REQUEST_SEGMENTS[0]).key;
+  return (STAFF_REQUEST_SEGMENTS.find(segment => segment.etapes.includes(etape)) || STAFF_REQUEST_SEGMENTS[0]).key;
 }
 
-// « actives » : le nom de l onglet avant la refonte, encore dans les postes.
+// Les noms d avant, encore gardes par les postes : « actives », « traitees », « archivees ».
 function getStaffRequestSegment() {
-  const key = state.staffRequestSegment === 'actives' ? 'atraiter' : state.staffRequestSegment;
+  const brut = state.staffRequestSegment;
+  const key = brut === 'actives' ? 'atraiter' : (brut === 'traitees' || brut === 'archivees') ? 'terminees' : brut;
   return STAFF_REQUEST_SEGMENTS.some(segment => segment.key === key) ? key : 'atraiter';
 }
 
 function setStaffRequestSegment(segment) {
-  const next = STAFF_REQUEST_SEGMENTS.some(entry => entry.key === segment) ? segment : 'atraiter';
-  if (next !== getStaffRequestSegment()) {
-    // Changer d onglet, c est changer de file : la selection de l ancienne
-    // n a plus de sens et la premiere ligne de la nouvelle prend la main.
-    state.staffRequestSelectedId = null;
-  }
-  state.staffRequestSegment = next;
+  state.staffRequestSegment = STAFF_REQUEST_SEGMENTS.some(entry => entry.key === segment) ? segment : 'atraiter';
+  state.staffRequestSelectedId = null;
   save();
   renderStaffUtilityPage();
 }
@@ -19344,19 +19290,24 @@ function followStaffRequest(id) {
   save();
 }
 
+function staffRequestHautDePage() {
+  const page = document.getElementById('staffUtilityPage');
+  if (page) page.scrollIntoView({ block: 'start' });
+}
+
 function selectStaffRequest(id) {
   state.staffRequestSelectedId = String(id || '');
   save();
   renderStaffUtilityPage();
-  // Sur telephone la file est AU-DESSUS du detail : sans ce rappel, un clic
-  // sur une demande ne montre rien, le detail est hors ecran.
-  if (window.matchMedia && window.matchMedia('(max-width: 980px)').matches) {
-    window.setTimeout(() => {
-      const detail = document.querySelector('.req-detail');
-      if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
-  }
+  staffRequestHautDePage();
 }
+function closeStaffRequest() {
+  state.staffRequestSelectedId = null;
+  save();
+  renderStaffUtilityPage();
+  staffRequestHautDePage();
+}
+window.closeStaffRequest = closeStaffRequest;
 window.selectStaffRequest = selectStaffRequest;
 
 function staffRequestSearchInput(value) {
@@ -19421,11 +19372,12 @@ function getStaffRequestRows() {
   return filtered.sort(staffRequestCompare(segment));
 }
 
+// La fiche ouverte. Rien d ouvert : la liste.
+
 function getStaffRequestSelectedItem() {
-  const rows = getStaffRequestRows();
-  if (!rows.length) return null;
   const wanted = String(state.staffRequestSelectedId || '');
-  return rows.find(item => String(item.id) === wanted) || rows[0];
+  if (!wanted) return null;
+  return getStaffCustomRequestItems().find(item => String(item.id) === wanted) || null;
 }
 
 // ── LIRE UN MAIL, PAS SON GABARIT ──────────────────────────────────────────
@@ -19505,16 +19457,6 @@ function staffMailPlainText(message) {
   return staffHtmlToPlainText(message && message.body);
 }
 
-function staffMailHtmlSource(message) {
-  const body = message ? String(message.body || '') : '';
-  return staffLooksLikeHtml(body) ? body : '';
-}
-
-function staffMailSnippet(message, size = 130) {
-  const text = staffMailPlainText(message).replace(/\s+/g, ' ').trim();
-  return text.length > size ? `${text.slice(0, size - 1)}…` : text;
-}
-
 // ── TEMPS LISIBLE ──────────────────────────────────────────────────────────
 function staffRequestMoment(value) {
   const time = value ? new Date(value).getTime() : NaN;
@@ -19535,35 +19477,6 @@ function staffRequestFullMoment(value) {
   if (!Number.isFinite(time)) return '';
   return new Date(time).toLocaleString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-
-function staffRequestDayLabel(value) {
-  const time = value ? new Date(value).getTime() : NaN;
-  if (!Number.isFinite(time)) return 'Date inconnue';
-  const day = new Date(time); day.setHours(0, 0, 0, 0);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const gap = Math.round((today.getTime() - day.getTime()) / 86400000);
-  if (gap === 0) return 'Aujourd’hui';
-  if (gap === 1) return 'Hier';
-  const label = new Date(time).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-
-const STAFF_REQUEST_ICONS = {
-  search: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>',
-  out: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M6 4h6v6"/></svg>',
-  in: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 4 4 12M10 12H4V6"/></svg>',
-  chevron: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m5 6.5 3 3 3-3"/></svg>',
-  phone: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4.5c0 4.4 4.1 8.5 8.5 8.5.8 0 1.5-.7 1.5-1.5v-1L11 9.5l-1.5 1C8.2 9.8 6.2 7.8 5.5 6.5l1-1.5L4.5 3h-1C2.7 3 2 3.7 2 4.5"/></svg>',
-  mail: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.5 5 5.5 4 5.5-4"/></svg>',
-  inbox: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13h4l1.5 3h7L17 13h4"/><path d="M3 13 5.5 5.5A2 2 0 0 1 7.4 4h9.2a2 2 0 0 1 1.9 1.5L21 13v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
-  clock: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/></svg>',
-  spark: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 9.2 6.8 13.5 8 9.2 9.2 8 13.5 6.8 9.2 2.5 8l4.3-1.2z"/></svg>',
-  calendar: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/></svg>',
-  check: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg>',
-  alert: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.2v.3"/></svg>',
-  note: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9z"/><path d="M9.5 2.5v3h3M5.5 8.5h5M5.5 11h3.5"/></svg>',
-};
 
 // ── LES MOTS DE LA PAGE : montants, dates, durees ──────────────────────────
 function staffRequestEuro(value) {
@@ -19657,7 +19570,7 @@ function staffRequestDueToneKey() {
 }
 function tickStaffRequestDues() {
   if (!isStaffUtilityActive() || getStaffMenuPage() !== 'requests') return;
-  const board = document.querySelector('#staffUtilityPage .req-board[data-due-tones]');
+  const board = document.querySelector('#staffUtilityPage .sm[data-due-tones]');
   if (!board) return;
   if (board.getAttribute('data-due-tones') !== staffRequestDueToneKey()) { renderStaffUtilityPage(); return; }
   board.querySelectorAll('[data-req-due]').forEach(node => {
@@ -19679,20 +19592,6 @@ function staffRequestWhenShort(item) {
   return [staffRequestShortDate(d.date), moment].filter(Boolean).join(', ');
 }
 
-// Ce qui a bouge sur la demande, en une ligne de file.
-function staffRequestSignal(item) {
-  const suivi = item.suivi || {};
-  const stage = staffRequestStage(item);
-  if (stage === 'a-traiter' && suivi.messageClient) return { tone: 'accent', text: suivi.reponses ? 'Le client a répondu' : 'Le client a écrit' };
-  if (stage === 'a-traiter' && item.status === 'new') return { tone: 'accent', text: 'Nouvelle, personne ne l’a prise' };
-  if (stage === 'a-traiter' && suivi.priseEnCharge && suivi.priseEnCharge.par) return { tone: '', text: `Prise en charge par ${suivi.priseEnCharge.par}` };
-  if (stage === 'en-attente' && suivi.derniereReponse) return { tone: '', text: `Réponse envoyée ${staffRequestMoment(suivi.derniereReponse.le)}` };
-  if (stage === 'traitee') return { tone: 'ok', text: suivi.reservationId ? 'Réservation créée' : 'Traitée' };
-  const d = crDemande(item);
-  const envies = d ? [...crNoms(d.formulas), ...crActivites(d)].join(', ') : '';
-  return { tone: '', text: envies || String(item.message || '').replace(/\s+/g, ' ').trim() };
-}
-
 // L etat de la demande en un badge, dans les mots de l equipe.
 function renderStaffRequestStageBadge(item) {
   const stage = staffRequestStage(item);
@@ -19701,253 +19600,170 @@ function renderStaffRequestStageBadge(item) {
 }
 
 // ── LE TABLEAU : file a gauche, demande ouverte a droite ────────────────────
+// ── DEMANDES SUR MESURE ─────────────────────────────────────────────────────
+// Refaite le 2026-11-09 (Ansar : « plus logique, moins IA, plus serieux, beaucoup plus simple »).
+// Une liste, puis une fiche : ce que le client demande, ce qu on peut lui proposer, ce qu on lui
+// repond, ce qui s est passe. Toucher une heure prepare le mail ; rien ne part sans le clic.
 function renderStaffRequestsBoard() {
   const cache = staffCustomRequestsCache;
   const items = getStaffCustomRequestItems();
-  if (cache.loading && !items.length) return renderStaffRequestsSkeleton();
+  if (cache.loading && !items.length) return '<div class="sm"><p class="sm-vide" aria-busy="true">Chargement des demandes…</p></div>';
   if (cache.error && !items.length) {
-    return `<div class="req-board req-board-flat"><div class="req-empty req-empty-error">
-      <span class="req-empty-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.inbox}</span>
-      <strong>Les demandes ne sont pas arrivées</strong>
-      <p>${escapeHtml(cache.error)}</p>
-      <button type="button" class="req-retry" onclick="loadStaffCustomRequests(true)">Réessayer</button>
-    </div></div>`;
+    return `<div class="sm"><p class="sm-vide">${escapeHtml(cache.error)}</p><p class="sm-vide"><button type="button" class="sm-b" onclick="loadStaffCustomRequests(true)">Réessayer</button></p></div>`;
   }
+  const ouverte = getStaffRequestSelectedItem();
+  return `<div class="sm" data-due-tones="${escapeHtml(staffRequestDueToneKey())}">${ouverte ? renderSmFiche(ouverte) : renderSmListe()}</div>`;
+}
 
+function staffRequestNom(item) {
+  const d = crDemande(item);
+  return (d && d.organisation) || item.company || item.contactName || 'Contact';
+}
+function staffRequestTypeDe(item) {
+  const d = crDemande(item);
+  return (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
+}
+
+function renderSmListe() {
   const segment = getStaffRequestSegment();
   const buckets = getStaffRequestSegments();
   const rows = getStaffRequestRows();
-  const selected = getStaffRequestSelectedItem();
   const query = String(staffRequestSearch || '').trim();
-
-  // UNE entree par changement REEL, et chaque partie a son propre declencheur.
-  // La file ne bouge que si l onglet change, le detail que si la demande
-  // ouverte change : une frappe dans la recherche ne rejoue rien.
-  const [previousSegment = '', previousSelected = ''] = staffRequestViewKey.split('|');
-  const selectedId = selected ? String(selected.id) : '';
-  const changed = previousSelected !== selectedId;
-  const listChanged = previousSegment !== segment;
-  staffRequestViewKey = `${segment}|${selectedId}`;
-
-  const enRetard = buckets.atraiter.filter(item => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
-  const seg = ({ key, label }) => `<button type="button" role="tab" aria-selected="${segment === key ? 'true' : 'false'}" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em class="${key === 'atraiter' && enRetard ? 'is-late' : ''}">${(buckets[key] || []).length}</em></button>`;
-
-  // UN ETAT VIDE SE DIT UNE FOIS : la file vide se tait (l onglet affiche
-  // deja 0), le panneau de lecture dit pourquoi elle est vide.
-  const empty = query
-    ? { title: `Aucune demande ne correspond à « ${query} ».`, text: 'Cherchez un nom, une organisation ou une adresse email.' }
-    : ({
-      atraiter: { title: 'Rien à traiter : chaque demande a sa réponse.', text: 'Les nouvelles demandes du formulaire arrivent ici, avec l’heure de réponse promise au client.' },
-      attente: { title: 'Aucune demande n’attend le client.', text: 'Une demande passe ici dès que la réponse est partie, et revient à traiter quand le client écrit.' },
-      traitees: { title: 'Aucune demande traitée pour le moment.', text: 'Une demande traitée a reçu sa réponse ou sa réservation.' },
-      archivees: { title: 'Aucune demande archivée.', text: 'Les demandes sans suite se rangent ici.' },
-    })[segment];
-
-  const archives = buckets.archivees.length;
-  return `<div class="req-board" data-segment="${escapeHtml(segment)}" data-due-tones="${escapeHtml(staffRequestDueToneKey())}">
-    <aside class="req-rail" aria-label="File des demandes">
-      <div class="req-rail-head">
-        <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">${STAFF_REQUEST_SEGMENTS.filter(entry => entry.key !== 'archivees').map(seg).join('')}</div>
-        <div class="req-search">
-          <span class="req-search-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.search}</span>
-          <input id="reqSearchField" type="search" class="req-search-field" placeholder="Nom, organisation, email…" aria-label="Chercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
-          ${query ? '<button type="button" class="req-search-clear" aria-label="Effacer la recherche" onclick="staffRequestSearchInput(\'\')">×</button>' : ''}
-        </div>
-        ${segment === 'archivees' ? '<p class="req-rail-caption">Archivées</p>' : ''}
-      </div>
-      <div class="req-rail-list" id="reqRailList" ${listChanged ? 'data-anim="1"' : ''}>
-        ${rows.map((item, index) => renderStaffRequestRailItem(item, selected && String(selected.id) === String(item.id), index)).join('')}
-      </div>
-      <div class="req-rail-foot">
-        ${segment === 'archivees'
-          ? '<button type="button" class="req-rail-link" onclick="setStaffRequestSegment(\'atraiter\')">Revenir à la file</button>'
-          : `<button type="button" class="req-rail-link" onclick="setStaffRequestSegment('archivees')" ${archives ? '' : 'disabled'}>Archivées (${archives})</button>`}
-      </div>
-    </aside>
-    ${selected
-      ? renderStaffRequestDetail(selected, changed)
-      : `<section class="req-detail req-detail-empty">
-          <span class="req-empty-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.inbox}</span>
-          <strong>${escapeHtml(empty.title)}</strong>
-          <p>${escapeHtml(empty.text)}</p>
-        </section>`}
-  </div>`;
+  const onglet = ({ key, label }) => `<button type="button" role="tab" aria-selected="${segment === key}" class="sm-onglet" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<b>${(buckets[key] || []).length}</b></button>`;
+  const vide = query
+    ? `Aucune demande ne correspond à « ${query} ».`
+    : ({ atraiter: 'Aucune demande à traiter.', attente: 'Aucune demande n’attend le client.', terminees: 'Aucune demande terminée.' })[segment];
+  return `<div class="sm-barre">
+      <div class="sm-onglets" role="tablist" aria-label="Demandes">${STAFF_REQUEST_SEGMENTS.map(onglet).join('')}</div>
+      <input id="reqSearchField" type="search" class="input sm-cherche" placeholder="Rechercher" aria-label="Rechercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
+    </div>
+    ${rows.length
+      ? `<table class="sm-table sm-liste"><thead><tr><th scope="col" class="sm-l-g">Groupe</th><th scope="col" class="num sm-l-p">Personnes</th><th scope="col" class="sm-l-d">Date souhaitée</th><th scope="col">Souhaits</th><th scope="col" class="sm-l-r">Réponse</th></tr></thead><tbody>${rows.map(renderSmLigne).join('')}</tbody></table>`
+      : `<p class="sm-vide">${escapeHtml(vide)}</p>`}`;
 }
 
-function renderStaffRequestsSkeleton() {
-  const line = '<span class="req-skel-line"></span>';
-  const card = `<div class="req-skel-item">${line}${line}</div>`;
-  return `<div class="req-board req-board-skeleton" aria-busy="true">
-    <aside class="req-rail"><div class="req-rail-list">${card.repeat(4)}</div></aside>
-    <section class="req-detail"><div class="req-skel-detail">${line}${line}${line}</div></section>
-  </div>`;
-}
-
-function renderStaffRequestRailItem(item, active, index) {
-  const jid = staffClientJs(item.id);
+function renderSmLigne(item) {
   const d = crDemande(item);
-  const titre = (d && d.organisation) || item.company || item.contactName || 'Contact';
-  const type = (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
+  const nom = staffRequestNom(item);
+  const sous = [staffRequestTypeDe(item), nom !== item.contactName ? item.contactName : ''].filter(Boolean).join(' · ');
   const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
-  const meta = [type, joueurs ? `${joueurs} pers.` : '', staffRequestWhenShort(item)].filter(Boolean).join(' · ');
-  const signal = staffRequestSignal(item);
-  const due = staffRequestDue(item);
-  const cote = due
-    ? `<span class="req-due is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>`
-    : `<time datetime="${escapeHtml(String(item.createdAt || ''))}">${escapeHtml(staffRequestMoment(item.createdAt))}</time>`;
-  return `<button type="button" class="req-item req-item-${escapeHtml(item.status)} ${active ? 'is-active' : ''}"
-      style="--i:${Math.min(index, 9)}" data-item-id="${escapeHtml(String(item.id))}"
-      aria-current="${active ? 'true' : 'false'}" onclick="selectStaffRequest(${jid})">
-    <span class="req-item-main">
-      <span class="req-item-top">
-        <span class="req-item-dot" aria-hidden="true"></span>
-        <strong>${escapeHtml(titre)}</strong>
-        ${cote}
-      </span>
-      ${meta ? `<span class="req-item-meta">${escapeHtml(meta)}</span>` : ''}
-      ${signal.text ? `<span class="req-item-snip${signal.tone ? ` is-${signal.tone}` : ''}">${escapeHtml(signal.text)}</span>` : ''}
-    </span>
-  </button>`;
+  const souhaits = d
+    ? ([...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') || (d.advice ? 'Demande conseil' : ''))
+    : String(item.message || '').replace(/\s+/g, ' ').trim();
+  return `<tr class="sm-l" data-item-id="${escapeHtml(String(item.id))}" onclick="selectStaffRequest(${staffClientJs(item.id)})">
+    <td class="sm-l-g"><button type="button" class="sm-l-n">${escapeHtml(nom)}</button>${sous ? `<small>${escapeHtml(sous)}</small>` : ''}</td>
+    <td class="num sm-l-p">${joueurs || ''}</td>
+    <td class="sm-l-d">${escapeHtml(staffRequestWhenShort(item))}</td>
+    <td class="sm-l-s"><span>${escapeHtml(souhaits)}</span></td>
+    <td class="sm-l-r">${renderSmEtatReponse(item)}</td>
+  </tr>`;
 }
 
-// ── LE DOSSIER ──────────────────────────────────────────────────────────────
-// LA DEMANDE EN TROIS GESTES (2026-11-09, Ansar : « super nul a mort »). On la lit en une
-// phrase, on touche une proposition que le moteur a deja chiffree, le mail s ecrit et part.
-// Quand le client dit oui, la reservation reprend exactement cette proposition. A gauche ce
-// qu on peut proposer, a droite ce qui part au client, comme le ticket de Reserver.
-function renderStaffRequestDetail(item, animate) {
-  const d = crDemande(item);
-  const occKey = String(item.occasion || '').toLowerCase();
-  const type = (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[occKey] || '';
-  const organisation = (d && d.organisation) || item.company || '';
-  const titre = organisation || item.contactName || 'Contact';
-  const qui = [organisation ? item.contactName : '', d && d.contactRole].filter(Boolean).join(', ');
-  const tel = String(item.phone || '').replace(/\s+/g, '');
-  const study = staffRequestStudies[String(item.id)];
-  const connu = study && study.client ? staffRequestKnownClient(study.client) : '';
-  const contact = [
-    qui ? escapeHtml(qui) : '',
-    tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(item.phone)}</a>` : '',
-    item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : '',
-    connu,
-  ].filter(Boolean).join('<span class="rq-sep" aria-hidden="true"> · </span>');
-  return `<section class="req-card req-detail rq req-status-${escapeHtml(item.status)}" data-request-id="${escapeHtml(String(item.id))}" ${animate ? 'data-anim="1"' : ''}>
-    <div class="rq-tete">
-      <div class="rq-qui">
-        <div class="rq-titre">
-          <h3>${escapeHtml(titre)}</h3>
-          ${renderStaffRequestStageBadge(item)}
-          ${type ? `<span class="rq-type">${escapeHtml(type)}</span>` : ''}
-          ${item.createdAt ? `<span class="rq-type" title="${escapeHtml(staffRequestFullMoment(item.createdAt))}">reçue ${escapeHtml(staffRequestMoment(item.createdAt))}</span>` : ''}
-        </div>
-        ${contact ? `<p class="rq-contact">${contact}</p>` : ''}
-      </div>
-      ${renderRqClasser(item)}
-    </div>
-    ${renderStaffRequestBanner(item)}
-    ${renderRqLecture(item)}
-    <div class="rq-colonnes">
-      <div class="rq-g">${renderRqPropositions(item)}</div>
-      <aside class="rq-d" data-t="${(() => { const c = staffRequestChoixDe(item); return c ? rqTeinteDe(item, c) : ''; })()}" aria-label="Ce qui part au client">${renderRqTicket(item)}</aside>
-    </div>
-    <div class="rq-fil">
-      ${renderStaffRequestFollowUp(item)}
-      ${renderStaffRequestThread(item)}
-    </div>
-  </section>`;
-}
-
-// Ou en est la demande, en une phrase, et ce que le client attend.
-function renderStaffRequestBanner(item) {
+// La colonne « Reponse » : ce qui reste a faire, ou ce qui a ete fait.
+function renderSmEtatReponse(item) {
   const suivi = item.suivi || {};
   const stage = staffRequestStage(item);
-  // Pas de role="status" : le bandeau se repeint avec la page (et son heure
-  // chaque minute), une region annoncee relirait tout a chaque fois.
-  const bandeau = (tone, icone, titre, texte = '', attrsTitre = '') => `<div class="req-banner is-${tone}">
-      <span class="req-banner-icon" aria-hidden="true">${icone}</span>
-      <p><strong${attrsTitre}>${escapeHtml(titre)}</strong>${texte ? ` <span>${escapeHtml(texte)}</span>` : ''}</p>
-    </div>`;
   if (stage === 'a-traiter') {
     const due = staffRequestDue(item);
-    const client = suivi.messageClient ? `Le client a écrit ${staffRequestMoment(suivi.messageClient)} : son mail est dans les échanges, plus bas.` : '';
-    if (due) return bandeau(due.tone, due.tone === 'ok' ? STAFF_REQUEST_ICONS.clock : STAFF_REQUEST_ICONS.alert, due.long, client, ` data-req-due="${escapeHtml(String(item.id))}" data-req-due-long`);
-    return client ? bandeau('ok', STAFF_REQUEST_ICONS.mail, 'Le client attend une réponse.', client) : '';
+    const client = suivi.messageClient ? `<small>${suivi.reponses ? 'Le client a répondu' : 'Le client a écrit'}</small>` : '';
+    return `${due ? `<span class="sm-du is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>` : ''}${client}`;
   }
-  if (stage === 'en-attente') {
-    const r = suivi.derniereReponse;
-    return bandeau('wait', STAFF_REQUEST_ICONS.clock, 'En attente du client.', r ? `Réponse envoyée ${staffRequestMoment(r.le)}${r.par ? ` par ${r.par}` : ''}. La demande revient à traiter dès qu’il écrit.` : '');
-  }
-  if (stage === 'traitee') return bandeau('done', STAFF_REQUEST_ICONS.check, suivi.reservationId ? 'Traitée : la réservation est créée.' : 'Traitée.');
-  return bandeau('muted', STAFF_REQUEST_ICONS.inbox, 'Archivée.', 'Réactivez-la pour la traiter de nouveau.');
+  if (stage === 'en-attente') return `Envoyée${suivi.derniereReponse ? ` ${escapeHtml(staffRequestMoment(suivi.derniereReponse.le))}` : ''}`;
+  if (stage === 'traitee') return suivi.reservationId ? 'Réservée' : 'Terminée';
+  return 'Sans suite';
 }
 
-// Ce qui ne fait pas avancer la demande reste discret : la prendre, la classer, l archiver.
-function renderRqClasser(item) {
+// Les disponibilites se montrent tant qu il reste quelque chose a proposer.
+const staffRequestAutre = {};
+function staffRequestMontreDispos(item) {
+  const key = String(item.id);
+  return staffRequestStage(item) === 'a-traiter' || Boolean(staffRequestAutre[key]) || Boolean(staffRequestChoix[key]);
+}
+function staffRequestAutreProposition(id) {
+  staffRequestAutre[String(id)] = true;
+  renderStaffRequestsIfOpen();
+  window.setTimeout(() => {
+    const zone = document.getElementById(`reqDispos-${String(id)}`);
+    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 60);
+}
+window.staffRequestAutreProposition = staffRequestAutreProposition;
+
+function renderSmFiche(item) {
   const jid = staffClientJs(item.id);
   const stage = staffRequestStage(item);
-  const geste = (label, action) => `<button type="button" class="rq-dis" onclick="${action}">${escapeHtml(label)}</button>`;
-  const gestes = [];
-  if (stage === 'a-traiter' && item.status === 'new') gestes.push(geste('Je m’en occupe', `setStaffCustomRequestStatus(${jid}, 'in_progress')`));
-  if (stage === 'a-traiter' || stage === 'en-attente') gestes.push(geste('Marquer traitée', `setStaffCustomRequestStatus(${jid}, 'handled')`));
-  if (stage === 'traitee') gestes.push(geste('Rouvrir', `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })`));
-  if (stage === 'archivee') gestes.push(geste('Réactiver', `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })`));
-  else gestes.push(geste('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`));
-  return `<div class="rq-classer">${gestes.join('')}</div>`;
+  const finie = stage === 'traitee' || stage === 'archivee';
+  const entete = [staffRequestTypeDe(item), item.createdAt ? `Reçue ${staffRequestStamp(item.createdAt)}` : ''].filter(Boolean).join(' · ');
+  const due = staffRequestDue(item);
+  const etat = stage === 'en-attente' ? 'En attente du client' : stage === 'traitee' ? (item.suivi && item.suivi.reservationId ? 'Réservée' : 'Terminée') : stage === 'archivee' ? 'Sans suite' : '';
+  const dispos = staffRequestMontreDispos(item) ? renderSmDispos(item) : '';
+  const reponse = renderSmReponse(item);
+  return `<button type="button" class="sm-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
+    <article class="sm-fiche" data-request-id="${escapeHtml(String(item.id))}">
+      <div class="sm-tete">
+        <div>
+          <h2>${escapeHtml(staffRequestNom(item))}</h2>
+          <p>${escapeHtml(entete)}${etat ? ` · <b>${escapeHtml(etat)}</b>` : ''}</p>
+        </div>
+        <button type="button" class="sm-b" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
+      </div>
+      ${due ? `<p class="sm-promis is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" data-req-due-long>${escapeHtml(due.long)}</p>` : ''}
+      <div class="sm-colonnes">
+        <div class="sm-c1">${renderSmDemande(item)}${renderSmHistorique(item)}</div>
+        <div class="sm-c2">${stage === 'a-traiter' ? `${dispos}${reponse}` : `${reponse}${dispos}`}</div>
+      </div>
+    </article>`;
 }
 
-// ── LA DEMANDE, EN UNE PHRASE : tout ce que le client a rempli, comme on le dirait ──────
-const RQ_MOMENT_EN_PHRASE = { matin: 'le matin', 'apres-midi': 'l’après-midi', soiree: 'en soirée', journee: 'toute la journée' };
-function rqJoindre(liste) {
-  if (liste.length < 2) return liste.join('');
-  return `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}`;
-}
-// La date comme on la dit : sans l annee quand c est cette annee.
-function rqDateDite(iso) {
-  const longue = staffRequestLongDate(iso) || String(iso || '');
-  const sansAnnee = String(iso || '').slice(0, 4) === todayStr().slice(0, 4) ? longue.replace(/\s\d{4}$/, '') : longue;
-  return sansAnnee.charAt(0).toLowerCase() + sansAnnee.slice(1);
-}
-function renderRqLecture(item) {
+// Ce que le client a rempli, ligne par ligne, avec ses mots a lui.
+function renderSmDemande(item) {
   const d = crDemande(item);
-  const message = String(item.message || '').trim();
-  const mot = message ? `<blockquote class="rq-mot">${escapeHtml(message)}</blockquote>` : '';
-  if (!d) {
-    const pax = Number(item.pax) || 0;
-    const morceaux = [
-      pax ? `<b>${pax} personne${pax > 1 ? 's' : ''}</b>` : '',
-      item.requestedDate ? `souhait pour le <b>${escapeHtml(String(item.requestedDate))}</b>` : '',
-    ].filter(Boolean);
-    return `<div class="rq-lecture">${morceaux.length ? `<p class="rq-phrase">${morceaux.join(', ')}.</p>` : ''}${mot}</div>`;
+  const study = staffRequestStudies[String(item.id)];
+  const ligne = (label, valeur) => (valeur ? `<div><dt>${escapeHtml(label)}</dt><dd>${valeur}</dd></div>` : '');
+  const texte = (valeur) => escapeHtml(String(valeur || ''));
+  const lignes = [];
+  if (d) {
+    const joueurs = Number(d.participants) || 0;
+    const accompagnants = Number(d.companions) || 0;
+    const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean).join(', ');
+    const moment = d.moment && d.moment !== 'indifferent' ? `, ${String(d.momentLabel || '').toLowerCase()}` : '';
+    const date = d.flexible ? `À fixer${d.period ? `, plutôt ${d.period}` : ''}` : `${staffRequestLongDate(d.date) || d.date || ''}${moment}`;
+    const souhaits = [...crNoms(d.formulas), ...crActivites(d), d.advice ? 'Demande conseil' : ''].filter(Boolean).join(', ');
+    lignes.push(
+      ligne('Personnes', texte(`${joueurs} joueur${joueurs > 1 ? 's' : ''}${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}`)),
+      ligne('Âges', texte(ages)),
+      ligne('Date', texte(date)),
+      ligne('Autre date', texte(d.alternativeDate ? staffRequestLongDate(d.alternativeDate) : '')),
+      ligne('Souhaits', texte(souhaits)),
+      ligne('Budget', Number(d.budgetPerPerson) > 0 ? `${texte(staffRequestEuro(d.budgetPerPerson))} par personne` : ''),
+    );
+  } else {
+    lignes.push(ligne('Personnes', Number(item.pax) ? texte(item.pax) : ''), ligne('Date', texte(item.requestedDate)));
   }
-  const joueurs = Number(d.participants) || 0;
-  const accompagnants = Number(d.companions) || 0;
-  const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean);
-  const qui = `<b>${joueurs} joueur${joueurs > 1 ? 's' : ''}</b>${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}${ages.length ? ` (${escapeHtml(ages.join(', ').toLowerCase())})` : ''}`;
-  const quand = d.flexible
-    ? `date à fixer${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}`
-    : `<b>${escapeHtml(rqDateDite(d.date))}</b>${RQ_MOMENT_EN_PHRASE[d.moment] ? ` ${RQ_MOMENT_EN_PHRASE[d.moment]}` : ''}${d.alternativeDate ? `, ou ${escapeHtml(rqDateDite(d.alternativeDate))}` : ''}`;
-  const noms = [...crNoms(d.formulas), ...crNoms(d.activities)].map(escapeHtml);
-  const envies = noms.length ? `Ils aimeraient ${rqJoindre(noms)}` : (d.advice ? 'Ils demandent conseil sur les activités' : 'Les activités sont à proposer');
-  const budget = Number(d.budgetPerPerson) > 0 ? `, pour <b>${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne</b>` : '';
-  const conseil = noms.length && d.advice ? ' Ils demandent aussi conseil.' : '';
-  const facture = d.invoice ? `Facture au nom de ${escapeHtml(d.organisation || 'l’organisation')}${d.vatNumber ? `, TVA ${escapeHtml(d.vatNumber)}` : ''}.` : '';
-  return `<div class="rq-lecture">
-    <p class="rq-phrase">${qui}, ${quand}. ${envies}${budget}.${conseil}</p>
-    ${mot}
-    ${facture ? `<p class="rq-facture">${facture}</p>` : ''}
-  </div>`;
+  const tel = String(item.phone || '').replace(/\s+/g, '');
+  const organisation = (d && d.organisation) || item.company || '';
+  lignes.push(
+    ligne('Message', item.message ? `<span class="sm-message">${texte(String(item.message).trim())}</span>` : ''),
+    ligne('Contact', texte([organisation ? item.contactName : '', d && d.contactRole].filter(Boolean).join(', '))),
+    ligne('Téléphone', tel ? `<a href="tel:${escapeHtml(tel)}">${texte(item.phone)}</a>` : ''),
+    ligne('E-mail', item.email ? `<a href="mailto:${escapeHtml(item.email)}">${texte(item.email)}</a>` : ''),
+    ligne('Facture', d && d.invoice ? texte(`Oui${organisation ? `, au nom de ${organisation}` : ''}${d.vatNumber ? `, TVA ${d.vatNumber}` : ''}`) : ''),
+    ligne('Déjà venu', study && study.client ? texte(staffRequestDejaVenu(study.client)) : ''),
+  );
+  return `<section class="sm-s"><h3>La demande</h3><dl class="sm-dl">${lignes.join('')}</dl></section>`;
 }
 
 // Le client connu du centre (lib/email-agent matchClient). La lecture est
 // bornee a vingt reservations : au-dela, on dit « au moins vingt ».
-function staffRequestKnownClient(client) {
+function staffRequestDejaVenu(client) {
   const venues = Number(client.visits) || 0;
   const aVenir = Number(client.reservationsAVenir) || 0;
   const plafond = venues + aVenir >= 20;
   const morceaux = [];
   if (venues) morceaux.push(`${plafond ? 'au moins ' : ''}${venues} venue${venues > 1 ? 's' : ''}${client.lastVisit ? `, la dernière le ${staffRequestShortDate(client.lastVisit)}` : ''}`);
   if (client.prochaineReservation) morceaux.push(`déjà réservé le ${staffRequestShortDate(client.prochaineReservation.date)}${client.prochaineReservation.heure ? ` à ${client.prochaineReservation.heure}` : ''}`);
-  return morceaux.length ? `<span class="req-known">Client connu : ${escapeHtml(morceaux.join(' ; '))}</span>` : '';
+  const texte = morceaux.join(' ; ');
+  return texte ? `${texte.charAt(0).toUpperCase()}${texte.slice(1)}` : '';
 }
 
 // ── CE JOUR-LA : ce que le moteur de reservation dit de la demande ──────────
@@ -19956,38 +19772,27 @@ function staffRequestKnownClient(client) {
 // retenu : c est une lecture.
 let staffRequestStudies = {};
 
-function renderRqPropositions(item) {
+function renderSmDispos(item) {
   const d = crDemande(item);
+  if (!d) return '';
   const jid = staffClientJs(item.id);
   const study = staffRequestStudies[String(item.id)];
-  const joueurs = d ? Number(d.participants) || 0 : 0;
-  const relancer = study && (study.loaded || study.error) && !study.loading
-    ? `<button type="button" class="rq-lien" onclick="loadStaffRequestStudy(${jid}, true)">Relancer l’étude</button>` : '';
-  const entete = (sous = '') => `<div class="rq-q"><h4>Que leur proposer&nbsp;?</h4>${sous ? `<span>${escapeHtml(sous)}</span>` : ''}${relancer}</div>`;
-  if (!d) return `${entete()}<p class="rq-note">Demande envoyée sans le formulaire détaillé. La date et les activités sont à fixer avec le client.</p>`;
-  if (!study || (study.loading && !study.loaded)) {
-    return `<div class="rq-etude" aria-busy="true">${entete()}
-      <div class="rq-attente"><span class="req-thread-spin" aria-hidden="true"></span><span>Le moteur de réservation étudie la date pour ce groupe…</span></div>
-      <div class="req-skel-detail"><span class="req-skel-line"></span><span class="req-skel-line"></span></div>
-    </div>`;
-  }
-  if (study.error && !study.loaded) {
-    return `${entete()}<div class="rq-attente is-error"><span>${escapeHtml(study.error)}</span><button type="button" class="rq-lien" onclick="loadStaffRequestStudy(${jid}, true)">Réessayer</button></div>`;
-  }
+  const joueurs = Number(d.participants) || 0;
+  const bloc = (corps) => `<section class="sm-s" id="reqDispos-${escapeHtml(String(item.id))}"><h3>Disponibilités${joueurs ? ` pour ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : ''}</h3>${corps}</section>`;
+  if (!study || (study.loading && !study.loaded)) return bloc('<p class="sm-note" aria-busy="true">Recherche des disponibilités…</p>');
+  if (study.error && !study.loaded) return bloc(`<p class="sm-note">${escapeHtml(study.error)} <button type="button" class="sm-lien" onclick="loadStaffRequestStudy(${jid}, true)">Réessayer</button></p>`);
   const etude = study.etude || { dates: [], sansDate: '' };
-  const perime = study.stale ? '<p class="rq-perime">Le planning a bougé depuis cette étude. Relancez-la avant de répondre.</p>' : '';
-  if (etude.sansDate || !etude.dates.length) return `${entete()}${perime}<p class="rq-note">${escapeHtml(etude.sansDate || 'Aucune date à étudier.')}</p>`;
-  return `${entete(joueurs ? `Prix et heures réels pour ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '')}${perime}
-    ${etude.dates.map(jour => renderRqJour(item, jour, etude, d)).join('')}`;
+  if (etude.sansDate || !etude.dates.length) return bloc(`<p class="sm-note">${escapeHtml(etude.sansDate || 'Aucune date à étudier.')}</p>`);
+  const consigne = rqEtudeADesHeures(etude) && Boolean(item.email) && peutGeste('ecrire') ? '<p class="sm-note">Choisissez une heure pour préparer la réponse.</p>' : '';
+  return bloc(`${consigne}${etude.dates.map(jour => renderRqJour(item, jour, etude, d)).join('')}`);
 }
 
+// Le budget ne se signale que s il est depasse : ce qui rentre n a rien a dire.
 function renderStaffRequestBudgetTag(parJoueur, d) {
   const budget = d ? Number(d.budgetPerPerson) || 0 : 0;
   if (!budget || !Number(parJoueur)) return '';
   const ecart = Math.round((Number(parJoueur) - budget) * 100) / 100;
-  return ecart <= 0
-    ? '<span class="req-tag is-ok">Dans le budget</span>'
-    : `<span class="req-tag is-warn">${escapeHtml(staffRequestEuro(ecart))} de plus par joueur que le budget</span>`;
+  return ecart > 0 ? `<small class="sm-depasse">${escapeHtml(staffRequestEuro(ecart))} au-dessus du budget</small>` : '';
 }
 
 function renderStaffRequestStudyLines(visite) {
@@ -20001,63 +19806,37 @@ function renderStaffRequestStudyLines(visite) {
   }).join('');
 }
 
-// Une offre et ses heures, comme les seances de Reserver : un toucher choisit l heure,
-// et avec elle le prix, le jour et le programme qui partiront au client.
-// Chaque offre garde sa couleur de fanion et sa vraie photo, comme au formulaire.
-const RQ_PHOTOS = [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/formule|kids|anniv/i, 'pistes-neon']];
-const RQ_PHOTOS_GEMBLOUX = [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']];
-function rqPhotoDe(nom, centerId) {
-  const trouve = (String(centerId || '') === 'gembloux' ? RQ_PHOTOS_GEMBLOUX : RQ_PHOTOS).find(([motif]) => motif.test(String(nom || '')));
-  return trouve ? `/assets/fungalaxy/${trouve[1]}-carte.webp` : '';
-}
-function rqTeinteDe(item, choix) {
-  const etude = staffRequestStudies[String(item.id)] && staffRequestStudies[String(item.id)].etude;
-  const jour = etude && (etude.dates || []).find(j => j.date === choix.date);
-  if (!jour) return 1;
-  const formules = jour.formules || [];
-  if (choix.type !== 'formule') return (formules.length % 4) + 1;
-  const i = formules.findIndex(f => String(f.id) === String(choix.ref));
-  return (Math.max(0, i) % 4) + 1;
-}
-function rqJouer(selecteur, images, options) {
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const n = document.querySelector(selecteur);
-  if (n && n.animate) n.animate(images, { easing: 'cubic-bezier(.23,1,.32,1)', ...options });
-}
-
+// Une ligne par offre : ce qu elle coute et les heures possibles. Toucher une heure, c est la choisir.
 function renderRqOffre(item, jour, o, d) {
   const jid = staffClientJs(item.id);
   const choix = staffRequestChoixDe(item);
-  const nom = `<span class="rq-o-n">${escapeHtml(o.nom)}</span>`;
+  const nom = `<span class="sm-o-n">${escapeHtml(o.nom)}</span>`;
+  const lignes = o.lignes ? `<div class="sm-o-l">${o.lignes}</div>` : '';
+  const euro = (valeur) => escapeHtml(staffRequestEuro(valeur));
   if (o.panne || !o.ok) {
     // Un programme que le moteur ne sait pas placer garde son prix et ses lignes : c est ce que l equipe repond au client.
     const programme = !o.panne && o.type === 'visite';
-    const pourquoi = o.panne ? 'Le moteur n’a pas répondu. Relancez l’étude.' : programme ? (o.raison || 'Aucun départ possible ce jour-là.') : `Impossible ce jour-là. ${o.raison || ''}`.trim();
-    return `<article class="rq-o ${o.panne ? 'is-wait' : 'is-off'}">${programme && o.prix != null ? `<div class="rq-o-t">${nom}<span class="rq-o-p">${escapeHtml(staffRequestEuro(o.prix))}</span></div>` : nom}${programme && o.lignes ? `<div class="rq-o-l">${o.lignes}</div>` : ''}<p class="rq-o-why">${escapeHtml(pourquoi)}</p></article>`;
+    const pourquoi = o.panne ? 'Pas de réponse pour le moment. Réessayez dans un instant.' : programme ? (o.raison || 'Aucun départ possible ce jour-là.') : `Impossible ce jour-là. ${o.raison || ''}`.trim();
+    return `<tr class="sm-o is-off"><td>${nom}${lignes}</td><td class="num">${programme && o.parJoueur != null ? euro(o.parJoueur) : ''}</td><td class="num">${programme && o.prix != null ? euro(o.prix) : ''}</td><td class="sm-o-h">${escapeHtml(pourquoi)}</td></tr>`;
   }
   const choisie = Boolean(choix) && choix.date === jour.date && choix.type === o.type && String(choix.ref) === String(o.ref);
   const touche = (depart) => {
     const on = choisie && choix.heure === depart.debut;
-    return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="rq-h${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')"><b>${escapeHtml(depart.debut)}</b>${depart.fin ? `<small>fin ${escapeHtml(depart.fin)}</small>` : ''}</button>`;
+    return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="sm-h${on ? ' is-on' : ''}" aria-pressed="${on}" title="${depart.fin ? `Fin vers ${escapeHtml(depart.fin)}` : ''}" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')">${escapeHtml(depart.debut)}</button>`;
   };
-  const prix = o.prix != null ? escapeHtml(staffRequestEuro(o.prix)) : 'Prix à confirmer';
-  const photo = rqPhotoDe(o.nom, item.centerId || getActiveOpsCenterId());
-  return `<article class="rq-o${choisie ? ' is-on' : ''}${photo ? ' a-photo' : ''}" data-t="${((o.rang || 0) % 4) + 1}">
-    ${photo ? `<span class="rq-o-photo" style="background-image:url('${escapeHtml(photo)}')" aria-hidden="true"></span>` : ''}
-    <div class="rq-o-t">${nom}<span class="rq-o-p">${prix}</span></div>
-    <div class="rq-o-s">${o.parJoueur != null ? `<span>${escapeHtml(staffRequestEuro(o.parJoueur))} par joueur</span>` : ''}${renderStaffRequestBudgetTag(o.parJoueur, d)}</div>
-    ${o.lignes ? `<div class="rq-o-l">${o.lignes}</div>` : ''}
-    ${o.ailleurs ? '<p class="rq-o-why">Rien dans ce moment de la journée. Possible à ces heures-là.</p>' : ''}
-    ${o.departs.length ? `<div class="rq-heures">${o.departs.map(touche).join('')}</div>` : ''}
-    ${o.alerte || ''}
-  </article>`;
+  return `<tr class="sm-o${choisie ? ' is-on' : ''}">
+    <td>${nom}${lignes}${o.alerte || ''}</td>
+    <td class="num">${o.parJoueur != null ? euro(o.parJoueur) : ''}${renderStaffRequestBudgetTag(o.parJoueur, d)}</td>
+    <td class="num">${o.prix != null ? euro(o.prix) : 'À confirmer'}</td>
+    <td class="sm-o-h">${o.ailleurs ? '<small>Rien dans ce moment de la journée. Possible à ces heures.</small>' : ''}${o.departs.length ? `<div class="sm-heures">${o.departs.map(touche).join('')}</div>` : ''}</td>
+  </tr>`;
 }
 
 function renderRqJour(item, jour, etude, d) {
   const nomDuJour = staffRequestLongDate(jour.date) || jour.libelle;
-  const titre = `<b>${escapeHtml(nomDuJour)}</b>${jour.principale ? '' : '<span>autre date du client</span>'}`;
-  if (jour.passee) return `<p class="rq-jour-off">${titre}<span class="req-pill is-muted">Date passée</span></p>`;
-  if (!jour.ouvert) return `<p class="rq-jour-off">${titre}<span class="req-pill is-closed">Fermé</span></p>`;
+  const titre = `${escapeHtml(nomDuJour)}${jour.principale ? '' : ', autre date du client'}`;
+  if (jour.passee) return `<p class="sm-jour-off">${titre}, date passée</p>`;
+  if (!jour.ouvert) return `<p class="sm-jour-off">${titre}, fermé</p>`;
   const f = jour.fenetre;
   const plage = etude.moment !== 'indifferent' && f
     ? `${escapeHtml(etude.momentLabel)} de ${staffRequestClock(f.de)} à ${staffRequestClock(f.a)}${f.existe ? '' : ` (${escapeHtml(f.raison || 'hors des horaires ce jour-là')})`}`
@@ -20075,22 +19854,21 @@ function renderRqJour(item, jour, etude, d) {
       ok: v.ok, panne: v.panne, raison: v.raison, prix: v.prix, parJoueur: v.parJoueur,
       lignes: renderStaffRequestStudyLines(v), departs,
       alerte: [
-        Number(v.depasse) > 0 ? `<p class="rq-o-why is-warn">Ce programme dépasse la fermeture de ${Math.round(Number(v.depasse))} minutes. Il ne tient pas en entier ce jour-là.</p>` : '',
-        !v.prixComplet && v.prix ? '<p class="rq-o-why">Une partie du programme a un prix à confirmer sur place.</p>' : '',
+        Number(v.depasse) > 0 ? `<small class="sm-depasse">Ce programme dépasse la fermeture de ${Math.round(Number(v.depasse))} minutes.</small>` : '',
+        !v.prixComplet && v.prix ? '<small>Une partie du programme a un prix à confirmer sur place.</small>' : '',
       ].join(''),
     }, d));
   }
   const occupation = jour.occupation
-    ? `Déjà ${jour.occupation.reservations} réservation${jour.occupation.reservations > 1 ? 's' : ''} et ${jour.occupation.joueurs} joueur${jour.occupation.joueurs > 1 ? 's' : ''} ce jour-là`
+    ? `Déjà ${jour.occupation.reservations} réservation${jour.occupation.reservations > 1 ? 's' : ''} et ${jour.occupation.joueurs} joueur${jour.occupation.joueurs > 1 ? 's' : ''} ce jour-là.`
     : '';
-  return `<section class="rq-jour">
-    <div class="rq-jour-t">${titre}<span>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}</span>${plage ? `<span>${plage}</span>` : ''}</div>
-    ${offres.length ? offres.join('') : '<p class="rq-note">Aucune formule ni activité choisie. Le programme est à composer avec le client.</p>'}
-    <div class="rq-jour-b">
-      ${occupation ? `<span>${escapeHtml(occupation)}</span>` : ''}
-      <button type="button" class="rq-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button>
-    </div>
-  </section>`;
+  return `<div class="sm-jour">
+    <h4>${titre}<span>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${plage ? ` · ${plage}` : ''}</span></h4>
+    ${offres.length
+      ? `<table class="sm-table sm-offres"><thead><tr><th scope="col">Offre</th><th scope="col" class="num">Par joueur</th><th scope="col" class="num">Total</th><th scope="col">Heures</th></tr></thead><tbody>${offres.join('')}</tbody></table>`
+      : '<p class="sm-note">Aucune formule ni activité choisie. Le programme est à composer avec le client.</p>'}
+    <p class="sm-jour-b">${occupation ? `${escapeHtml(occupation)} ` : ''}<button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button></p>
+  </div>`;
 }
 
 // Le choix de cette demande : celui qu on est en train de faire, ou celui qui est parti.
@@ -20124,9 +19902,6 @@ function rqChoisir(id, date, type, ref, heure) {
   // La demande est prise : la file le dit aux collegues, sans message de plus.
   if (item.status === 'new' && peutGeste('reserver')) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });
   renderStaffRequestsIfOpen();
-  rqJouer('.rq-h.is-on', [{ transform: 'scale(.86)' }, { transform: 'scale(1.06)', offset: .6 }, { transform: 'none' }], { duration: 300 });
-  rqJouer('.rq-res-p', [{ opacity: 0, transform: 'translateY(10px) scale(.92)' }, { opacity: 1, transform: 'none' }], { duration: 340 });
-  rqJouer('.rq-res', [{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
   if (item.email && peutGeste('ecrire')) {
     window.clearTimeout(rqMinuteurMail);
     rqMinuteurMail = window.setTimeout(() => startStaffRequestDraft(id), 350);
@@ -20134,15 +19909,15 @@ function rqChoisir(id, date, type, ref, heure) {
 }
 window.rqChoisir = rqChoisir;
 
-// CE QUI PART AU CLIENT, a droite. Vide tant qu on n a rien touche ; la proposition et son
-// mail une fois l heure choisie ; le oui du client une fois la proposition envoyee.
-function renderRqResume(p) {
+// La proposition en trois lignes : ce qui part au client, ou ce qui est parti.
+function renderSmResume(p) {
   const jour = staffRequestShortDate(p.date);
-  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}`;
-  return `<div class="rq-res">
-    <div class="rq-res-l"><span class="rq-res-n">${escapeHtml(p.nom)}</span><span class="rq-res-p">${p.prix != null ? escapeHtml(staffRequestEuro(p.prix)) : 'Prix à confirmer'}</span></div>
-    <p class="rq-res-q"><span>${escapeHtml(quand)}${p.fin ? `, fin vers ${escapeHtml(p.fin)}` : ''}</span>${p.parJoueur != null ? `<span>${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur</span>` : ''}</p>
-  </div>`;
+  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}`;
+  return `<dl class="sm-dl sm-resume">
+    <div><dt>Offre</dt><dd>${escapeHtml(p.nom)}</dd></div>
+    <div><dt>Quand</dt><dd>${escapeHtml(quand)}</dd></div>
+    <div><dt>Prix</dt><dd>${p.prix != null ? escapeHtml(staffRequestEuro(p.prix)) : 'À confirmer'}${p.parJoueur != null ? `, soit ${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur` : ''}</dd></div>
+  </dl>`;
 }
 
 // Une heure a toucher au moins : sans elle, inviter a en toucher une serait mentir.
@@ -20153,10 +19928,9 @@ function rqEtudeADesHeures(etude) {
   ));
 }
 
-function renderRqTicket(item) {
+function renderSmReponse(item) {
   const jid = staffClientJs(item.id);
   const key = String(item.id);
-  const d = crDemande(item);
   const stage = staffRequestStage(item);
   const ecrit = Boolean(item.email) && peutGeste('ecrire');
   const reserve = peutGeste('reserver');
@@ -20164,128 +19938,125 @@ function renderRqTicket(item) {
   const suivi = item.suivi || {};
   const local = staffRequestChoix[key] || null;
   const envoyee = suivi.proposition || null;
-  const titre = (texte) => `<h4 class="rq-t-titre">${escapeHtml(texte)}</h4>`;
-  const creer = (label, cls) => (reserve ? `<button type="button" class="${cls}" onclick="staffRequestToBooking(${jid})">${escapeHtml(label)}</button>` : '');
-  const lien = (label, action) => `<button type="button" class="rq-lien" onclick="${action}">${escapeHtml(label)}</button>`;
+  const bloc = (titre, corps) => `<section class="sm-s"><h3>${escapeHtml(titre)}</h3>${corps}</section>`;
+  const bouton = (cls, label, action) => `<button type="button" class="${cls}" onclick="${action}">${escapeHtml(label)}</button>`;
+  const creer = (cls, label) => (reserve ? bouton(cls, label, `staffRequestToBooking(${jid})`) : '');
 
+  if (stage === 'archivee') return '';
   if (stage === 'traitee') {
-    return `${titre(suivi.reservationId ? 'Réservation créée' : 'Traitée')}
-      ${envoyee ? renderRqResume(envoyee) : ''}
-      ${suivi.reservationId ? `<button type="button" class="rq-grand" onclick="openStaffRequestReservation(${jid})">Voir la réservation</button>` : ''}`;
+    return bloc(suivi.reservationId ? 'Réservation créée' : 'Demande terminée', `${envoyee ? renderSmResume(envoyee) : ''}${suivi.reservationId ? `<div class="sm-actions">${bouton('sm-p', 'Voir la réservation', `openStaffRequestReservation(${jid})`)}</div>` : ''}`);
   }
-  if (stage === 'archivee') return `${titre('Archivée')}<p class="rq-note">Réactivez-la pour la traiter de nouveau.</p>`;
-
-  // Une proposition est partie et rien de neuf n est en cours : on attend le oui.
-  if (!local && !reply.open && (envoyee || stage === 'en-attente')) {
+  if (local || reply.open) {
+    if (!ecrit) {
+      return bloc('Réponse au client', `${local ? renderSmResume(local) : ''}<p class="sm-note">${item.email ? 'Votre rôle ne permet pas d’écrire au client.' : `Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}`}</p><div class="sm-actions">${creer('sm-p', 'Créer la réservation')}${bouton('sm-b', 'Annuler', `staffRequestAnnulerReponse(${jid})`)}</div>`);
+    }
+    return bloc('Réponse au client', renderSmCourrier(item, reply, local, reserve));
+  }
+  if (envoyee || stage === 'en-attente') {
     const r = suivi.derniereReponse;
-    return `${titre(envoyee ? 'Proposition envoyée' : 'Réponse envoyée')}
-      ${envoyee ? renderRqResume(envoyee) : ''}
-      ${r ? `<p class="rq-note">Partie ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}.</p>` : ''}
-      ${creer('Le client dit oui, créer la réservation', 'rq-grand')}
-      ${ecrit ? `<div class="rq-t-liens">${lien('Écrire au client', `toggleStaffRequestReply(${jid})`)}</div>` : ''}`;
+    return bloc(envoyee ? 'Proposition envoyée' : 'Réponse envoyée', `${envoyee ? renderSmResume(envoyee) : ''}
+      ${r ? `<p class="sm-note">Envoyée ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}.</p>` : ''}
+      <div class="sm-actions">
+        ${creer('sm-p', 'Le client accepte, créer la réservation')}
+        ${crDemande(item) && !staffRequestMontreDispos(item) ? bouton('sm-b', 'Autre proposition', `staffRequestAutreProposition(${jid})`) : ''}
+        ${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}
+      </div>`);
   }
-
-  if (local) {
-    return `${titre('Votre proposition')}
-      ${renderRqResume(local)}
-      ${ecrit ? renderRqMail(item, reply, local) : `<p class="rq-note">${item.email ? 'Votre rôle ne permet pas d’écrire au client.' : `Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}`}</p>`}
-      ${creer(ecrit ? 'Déjà d’accord au téléphone ? Créer la réservation' : 'Créer la réservation', ecrit ? 'rq-lien' : 'rq-grand')}`;
-  }
-
-  if (reply.open && ecrit) return `${titre('Votre message')}${renderRqMail(item, reply, null)}`;
-
-  if (!d) {
-    return `${titre('Votre réponse')}
-      <p class="rq-vide">Cette demande n’a pas de détail à étudier. Répondez au client, ou créez la réservation avec lui.</p>
-      ${ecrit ? `<button type="button" class="rq-grand" onclick="startStaffRequestDraft(${jid})">Rédiger la réponse</button>` : ''}
-      <div class="rq-t-liens">${creer('Créer la réservation', 'rq-lien')}</div>`;
-  }
-  const etudiee = staffRequestStudies[key];
-  if (etudiee && etudiee.loaded && !etudiee.loading && !rqEtudeADesHeures(etudiee.etude)) {
-    return `${titre('Votre réponse')}
-      <p class="rq-vide">Aucune heure à proposer sur ces dates. Écrivez au client pour trouver un autre jour.</p>
-      ${ecrit ? `<button type="button" class="rq-grand" onclick="startStaffRequestDraft(${jid})">Écrire au client</button>` : ''}
-      <div class="rq-t-liens">${creer('Créer la réservation', 'rq-lien')}</div>`;
-  }
-  return `${titre('Votre proposition')}
-    <p class="rq-vide">Touchez une heure. Le mail au client s’écrit tout seul, vous le relisez et il part.</p>
-    <div class="rq-t-liens">
-      ${ecrit ? lien('Répondre sans proposition', `startStaffRequestDraft(${jid})`) : ''}
-      ${creer('Créer la réservation', 'rq-lien')}
-    </div>`;
+  return `<div class="sm-actions">${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}${creer('sm-b', 'Créer la réservation')}</div>`;
 }
 
 // Le mail : objet et message, envoyes par le meme canal trace que le studio mails
-// (sendDirectEmail). L IA redige a partir de la proposition choisie ; ce qu elle ne sait pas
-// trancher part en « a verifier ». Rien ne part sans le clic de l equipe.
-function renderRqMail(item, reply, choix) {
+// (sendDirectEmail). Rien ne part sans le clic de l equipe.
+function renderSmCourrier(item, reply, choix, reserve) {
   const jid = staffClientJs(item.id);
   const sid = escapeHtml(String(item.id));
-  const occupe = reply.busy || reply.improving || reply.drafting;
-  const origine = reply.draftSource === 'ia'
-    ? 'Écrit par l’IA à partir de la demande et des disponibilités réelles. À relire.'
-    : reply.draftSource === 'code'
-      ? (reply.draftReason === 'ia-refusee'
-        ? 'Le texte de l’IA citait un élément absent des faits. Voici le mail écrit à partir de l’étude. À relire.'
-        : 'L’IA n’a pas répondu. Voici le mail écrit à partir de l’étude. À relire.')
-      : '';
+  const occupe = reply.busy || reply.drafting;
   const points = Array.isArray(reply.points) ? reply.points.filter(Boolean) : [];
   const sansTexte = reply.drafting && !String(reply.body || '').trim();
-  const presets = choix ? '' : `<div class="req-presets">${STAFF_REQUEST_PRESETS.map(preset => `<button type="button" class="req-preset" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('')}</div>`;
-  return `<div class="req-composer rq-mail" id="reqComposer-${sid}" ${reply.drafting ? 'aria-busy="true"' : ''}>
-    <p class="rq-a">À <b>${escapeHtml(item.email || '')}</b></p>
-    ${reply.drafting ? '<div class="req-drafting rq-ecrit" role="status"><span class="req-thread-spin" aria-hidden="true"></span><span>L’IA écrit le mail…</span></div>' : ''}
-    ${!reply.drafting && points.length ? `<div class="req-checks" role="note"><strong>À vérifier avant d’envoyer</strong><ul>${points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>` : ''}
-    ${presets}
-    ${sansTexte ? '<div class="rq-mail-attente" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>' : `
-    <label class="lbl" for="reqSubject-${sid}">Objet</label>
+  const modeles = choix ? '' : `<p class="sm-modeles">${STAFF_REQUEST_PRESETS.map(preset => `<button type="button" class="sm-lien" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('')}</p>`;
+  return `<div class="sm-courrier" id="reqComposer-${sid}" ${reply.drafting ? 'aria-busy="true"' : ''}>
+    ${choix ? renderSmResume(choix) : ''}
+    <p class="sm-a">À <b>${escapeHtml(item.email || '')}</b></p>
+    ${modeles}
+    ${sansTexte ? '<p class="sm-note" role="status">Préparation du message…</p>' : `
+    <label class="sm-e" for="reqSubject-${sid}">Objet</label>
     <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
-    <label class="lbl" for="reqBody-${sid}">Message</label>
-    <textarea id="reqBody-${sid}" class="input rq-corps" rows="12" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>`}
-    ${!reply.drafting && origine ? `<p class="req-draft-origin is-${escapeHtml(reply.draftSource)}">${escapeHtml(origine)}</p>` : ''}
-    <div class="rq-outils">
-      ${reply.previous ? `<button type="button" class="req-revert rq-lien" ${occupe ? 'disabled' : ''} onclick="revertStaffRequestDraft(${jid})">Revenir à ma version</button>` : ''}
-      <button type="button" class="req-draft-btn rq-lien" ${occupe ? 'disabled' : ''} onclick="startStaffRequestDraft(${jid})">${reply.drafting ? 'Rédaction…' : reply.draftSource ? 'Réécrire' : 'Rédiger avec l’IA'}</button>
-      <button type="button" class="rq-lien" ${occupe ? 'disabled' : ''} onclick="improveStaffRequestDraft(${jid})">${reply.improving ? 'Amélioration…' : 'Améliorer mon texte'}</button>
+    <label class="sm-e" for="reqBody-${sid}">Message</label>
+    <textarea id="reqBody-${sid}" class="input" rows="12" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>`}
+    ${!reply.drafting && points.length ? `<div class="sm-verif" role="note"><b>À vérifier avant d’envoyer</b>${points.map(p => `<span>${escapeHtml(p)}</span>`).join('')}</div>` : ''}
+    <div class="sm-actions">
+      <button type="button" class="sm-p" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : choix ? 'Envoyer la proposition' : 'Envoyer la réponse'}</button>
+      <button type="button" class="sm-b" onclick="staffRequestAnnulerReponse(${jid})">Annuler</button>
+      ${choix && reserve ? `<button type="button" class="sm-lien" onclick="staffRequestToBooking(${jid})">Créer la réservation sans e-mail</button>` : ''}
     </div>
-    <button type="button" class="rq-grand" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : choix ? 'Envoyer la proposition' : 'Envoyer la réponse'}</button>
   </div>`;
 }
+
+function staffRequestAnnulerReponse(id) {
+  const key = String(id);
+  delete staffRequestChoix[key];
+  delete staffRequestAutre[key];
+  staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1;
+  staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
+  renderStaffRequestsIfOpen();
+}
+window.staffRequestAnnulerReponse = staffRequestAnnulerReponse;
 
 // ── LE SUIVI : ce qui s est passe, et les notes de l equipe ─────────────────
 let staffRequestNotes = {};
 
-const STAFF_REQUEST_STATUS_WORDS = { handled: 'Classée traitée', archived: 'Archivée', new: 'Remise en nouvelle', in_progress: 'Réactivée' };
+const STAFF_REQUEST_STATUS_WORDS = { handled: 'Terminée', archived: 'Classée sans suite', new: 'Remise en nouvelle', in_progress: 'Rouverte' };
 
-function renderStaffRequestFollowUp(item) {
+function renderSmHistorique(item) {
   const jid = staffClientJs(item.id);
+  const key = String(item.id);
+  const sid = escapeHtml(key);
   const suivi = item.suivi || {};
-  const evenements = [
-    { le: item.createdAt, type: 'recue', titre: 'Demande reçue par le formulaire' },
-    ...(Array.isArray(suivi.historique) ? suivi.historique : []).map((e) => {
+  const thread = staffRequestThreads[key];
+  const quandMail = (message) => message.sentAt || message.createdAt || message.scheduledAt || '';
+  // Deux heures de marge : un mail envoye juste avant le formulaire fait partie de la demande.
+  const debut = staffRequestTime(item.createdAt) ? staffRequestTime(item.createdAt) - 2 * 3600000 : 0;
+  const mails = thread && thread.loaded ? (thread.messages || []).filter(message => !debut || staffRequestTime(quandMail(message)) >= debut) : [];
+  const evenements = Array.isArray(suivi.historique) ? suivi.historique : [];
+  // Un e-mail envoye depuis la fiche est a la fois un evenement du suivi et un mail du fil : une seule ligne.
+  const auteurDe = (message) => {
+    const r = evenements.find(e => e.type === 'reponse' && e.objet === message.subject && Math.abs(staffRequestTime(e.le) - staffRequestTime(quandMail(message))) < 600000);
+    return r && r.par ? r.par : '';
+  };
+  const lignes = [
+    { le: item.createdAt, titre: 'Demande reçue par le formulaire' },
+    ...evenements.map((e) => {
       const par = e.par ? ` par ${e.par}` : '';
-      if (e.type === 'prise-en-charge') return { le: e.le, type: 'prise', titre: `Prise en charge${par}` };
-      if (e.type === 'reponse') return { le: e.le, type: 'reponse', titre: `Réponse envoyée${par}`, texte: [e.objet ? `« ${e.objet} »` : '', e.source === 'ia' ? 'rédigée avec l’IA' : ''].filter(Boolean).join(' · ') };
-      if (e.type === 'reservation') return { le: e.le, type: 'resa', titre: `Réservation créée${par}` };
-      if (e.type === 'statut') return { le: e.le, type: 'statut', titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
+      if (e.type === 'reponse') return mails.length ? null : { le: e.le, titre: `Réponse envoyée${par}`, texte: e.objet ? `« ${e.objet} »` : '' };
+      if (e.type === 'reservation') return { le: e.le, titre: `Réservation créée${par}` };
+      if (e.type === 'statut') return { le: e.le, titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
       return null;
-    }).filter(Boolean),
-    ...(suivi.messageClient ? [{ le: suivi.messageClient, type: 'client', titre: 'Le client a écrit', texte: 'Son mail est dans les échanges, plus bas.' }] : []),
-    ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, type: 'note', titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
+    }),
+    ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
+    ...mails.map(message => ({ le: quandMail(message), mail: message })),
   ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
-  const note = staffRequestNotes[String(item.id)] || {};
-  const sid = escapeHtml(String(item.id));
-  return `<section class="req-section req-follow">
-    <div class="req-section-head"><h4>Suivi</h4></div>
-    <ol class="req-timeline">${evenements.map(e => `<li class="is-${escapeHtml(e.type)}">
-        <span class="req-timeline-dot" aria-hidden="true"></span>
-        <div><p><strong>${escapeHtml(e.titre)}</strong> <time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time></p>${e.texte ? `<p class="req-timeline-text">${escapeHtml(e.texte)}</p>` : ''}</div>
-      </li>`).join('')}</ol>
-    <div class="req-note-form">
-      <label class="req-sr" for="reqNote-${sid}">Note pour l’équipe</label>
-      <textarea id="reqNote-${sid}" class="input" rows="2" placeholder="Une note pour l’équipe : rappel, décision, détail donné au téléphone…" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
-      <button type="button" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button>
-    </div>
+  const ligneMail = (message) => {
+    const recu = (message.direction || 'outbound') === 'inbound';
+    const mid = String(message.id || `${message.recipient || ''}-${quandMail(message)}`);
+    const ouvert = Boolean(staffRequestOpenMessages[mid]);
+    const brut = String(message.status || '');
+    const etat = recu || brut === 'sent' || brut === 'delivered' ? '' : (STAFF_MAIL_STATUS[brut] || [brut || 'inconnu'])[0];
+    const auteur = recu ? '' : auteurDe(message);
+    return `<button type="button" class="sm-hi-m" aria-expanded="${ouvert}" onclick="toggleStaffRequestMessage(${staffClientJs(mid)})">${recu ? 'Le client a écrit' : `E-mail envoyé${auteur ? ` par ${escapeHtml(auteur)}` : ''}`}${etat ? ` (${escapeHtml(etat)})` : ''}</button>
+      <span class="sm-hi-o">${escapeHtml(message.subject || '(sans objet)')}</span>
+      ${ouvert ? `<span class="sm-hi-c">${escapeHtml(staffMailPlainText(message) || 'Message vide.')}</span>` : ''}
+      ${message.lastError ? `<span class="sm-depasse">${escapeHtml(message.lastError)}</span>` : ''}`;
+  };
+  const note = staffRequestNotes[key] || {};
+  const attente = item.email && (!thread || (thread.loading && !thread.loaded))
+    ? '<p class="sm-note" aria-busy="true">Chargement des e-mails…</p>'
+    : (thread && thread.error && !thread.loaded ? `<p class="sm-note">${escapeHtml(thread.error)} <button type="button" class="sm-lien" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></p>` : '');
+  return `<section class="sm-s sm-historique"><h3>Historique</h3>
+    <ol class="sm-hi">${lignes.map(e => `<li><time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time><div>${e.mail ? ligneMail(e.mail) : `${escapeHtml(e.titre)}${e.texte ? `<span class="sm-hi-o">${escapeHtml(e.texte)}</span>` : ''}`}</div></li>`).join('')}</ol>
+    ${attente}
+    <label class="sm-e" for="reqNote-${sid}">Note pour l’équipe</label>
+    <textarea id="reqNote-${sid}" class="input" rows="2" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
+    <div class="sm-actions"><button type="button" class="sm-b" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button></div>
   </section>`;
 }
 
@@ -20338,13 +20109,6 @@ function toggleStaffRequestMessage(messageId) {
 }
 window.toggleStaffRequestMessage = toggleStaffRequestMessage;
 
-function setStaffRequestMessageView(messageId, view) {
-  staffRequestMessageView[String(messageId)] = view === 'rendu' ? 'rendu' : 'texte';
-  staffRequestOpenMessages[String(messageId)] = staffRequestOpenMessages[String(messageId)] || Date.now();
-  renderStaffUtilityPage();
-}
-window.setStaffRequestMessageView = setStaffRequestMessageView;
-
 const STAFF_MAIL_STATUS = {
   sent: ['envoyé', 'ok'],
   delivered: ['remis', 'ok'],
@@ -20355,168 +20119,19 @@ const STAFF_MAIL_STATUS = {
   cancelled: ['annulé', 'bad'],
 };
 
-// LES MAILS DE LA DEMANDE. Le fil lit tous les mails de l adresse ; ceux
-// d avant la demande (confirmations de vieilles reservations, relances
-// automatiques) noyaient l echange en cours : Movsar voyait « 12 envoyes »
-// sur une demande a laquelle personne n avait encore repondu. Le fil montre
-// ce qui date de la demande (deux heures de marge : un mail envoye juste
-// avant le formulaire en fait partie) ; le reste se deplie a la demande.
-let staffRequestShowOlder = {};
-
-function toggleStaffRequestOlder(id) {
-  const key = String(id);
-  if (staffRequestShowOlder[key]) delete staffRequestShowOlder[key];
-  else staffRequestShowOlder[key] = true;
-  renderStaffRequestsIfOpen();
-}
-window.toggleStaffRequestOlder = toggleStaffRequestOlder;
-
-function renderStaffRequestThread(item) {
-  const key = String(item.id);
-  const jid = staffClientJs(item.id);
-  if (!item.email) {
-    return `<div class="req-thread req-thread-idle"><span>Cette demande n’a pas d’adresse email : rien à échanger ici.</span></div>`;
-  }
-  const thread = staffRequestThreads[key];
-  if (!thread || (thread.loading && !thread.loaded)) {
-    return `<div class="req-thread req-thread-idle"><span class="req-thread-spin" aria-hidden="true"></span><span>Chargement des mails…</span></div>`;
-  }
-  if (thread.error && !thread.loaded) {
-    return `<div class="req-thread req-thread-idle"><span>${escapeHtml(thread.error)}</span>
-      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></div>`;
-  }
-  const quand = (message) => staffRequestTime(message.sentAt || message.createdAt || message.scheduledAt);
-  const messages = (thread.messages || []).slice().sort((a, b) => quand(a) - quand(b));
-  const debut = staffRequestTime(item.createdAt) ? staffRequestTime(item.createdAt) - 2 * 3600000 : 0;
-  const lies = messages.filter(message => !debut || quand(message) >= debut);
-  const anciens = messages.filter(message => debut && quand(message) < debut);
-  const avecAnciens = Boolean(staffRequestShowOlder[key]) && anciens.length > 0;
-  const visibles = avecAnciens ? messages : lies;
-  const sent = lies.filter(message => (message.direction || 'outbound') !== 'inbound').length;
-  const received = lies.length - sent;
-
-  const head = `<div class="req-thread-head">
-    <strong>Mails de cette demande</strong>
-    <span class="req-thread-count">${lies.length ? `${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}` : 'aucun échange'}</span>
-    <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button>
-  </div>`;
-  const plusAnciens = anciens.length
-    ? `<button type="button" class="req-thread-older" onclick="toggleStaffRequestOlder(${jid})">${avecAnciens
-      ? 'Masquer les mails d’avant la demande'
-      : `Voir ${anciens.length > 1 ? `les ${anciens.length} mails` : 'le mail'} d’avant la demande avec ce contact`}</button>`
-    : '';
-
-  if (!visibles.length) {
-    return `<div class="req-thread">${head}
-      <p class="req-thread-void">Aucun mail échangé sur cette demande pour l’instant. La réponse envoyée depuis cette page apparaîtra ici.</p>
-      ${plusAnciens}
-    </div>`;
-  }
-
-  // Les plus recents en bas, comme une conversation. Au-dela de 12 messages on
-  // ne garde que les 12 derniers et on le DIT.
-  const shown = visibles.slice(-12);
-  const hidden = visibles.length - shown.length;
-  let lastDay = '';
-  let franchi = !avecAnciens;
-  const rows = shown.map((message) => {
-    const when = message.sentAt || message.createdAt || message.scheduledAt || '';
-    let marque = '';
-    if (!franchi && (!debut || quand(message) >= debut)) {
-      franchi = true;
-      lastDay = '';
-      marque = '<div class="req-day req-day-mark"><span>Début de la demande</span></div>';
-    }
-    const day = staffRequestDayLabel(when);
-    const separator = day !== lastDay ? `<div class="req-day"><span>${escapeHtml(day)}</span></div>` : '';
-    lastDay = day;
-    return marque + separator + renderStaffRequestMessage(message, when);
-  }).join('');
-
-  return `<div class="req-thread">
-    ${head}
-    ${plusAnciens}
-    ${hidden > 0 ? `<span class="req-thread-more">${hidden} message${hidden > 1 ? 's' : ''} plus ancien${hidden > 1 ? 's' : ''} non affiché${hidden > 1 ? 's' : ''}</span>` : ''}
-    <div class="req-thread-list">${rows}</div>
-  </div>`;
-}
-
-function renderStaffRequestMessage(message, when) {
-  const inbound = (message.direction || 'outbound') === 'inbound';
-  const mid = String(message.id || `${message.recipient || ''}-${when}`);
-  const jmid = staffClientJs(mid);
-  const open = Boolean(staffRequestOpenMessages[mid]);
-  const view = staffRequestMessageView[mid] === 'rendu' ? 'rendu' : 'texte';
-  let clock = '';
-  try { clock = when ? new Date(when).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) : ''; } catch (error) { clock = ''; }
-
-  // Le statut se DIT : un mail en file n'est pas un mail parti, et laisser
-  // croire l'inverse est la faute qui coute un client.
-  const raw = String(message.status || '');
-  const known = STAFF_MAIL_STATUS[raw];
-  const status = inbound ? ['reçu', 'in'] : (known || [raw || 'inconnu', 'wait']);
-  const text = staffMailPlainText(message);
-  const html = staffMailHtmlSource(message);
-  const snippet = staffMailSnippet(message);
-
-  return `<article class="req-msg ${inbound ? 'is-in' : 'is-out'} ${raw === 'failed' ? 'is-failed' : ''} ${open ? 'is-open' : ''}" data-msg-id="${escapeHtml(mid)}">
-    <button type="button" class="req-msg-row" aria-expanded="${open ? 'true' : 'false'}" onclick="toggleStaffRequestMessage(${jmid})">
-      <span class="req-msg-dir" aria-hidden="true">${inbound ? STAFF_REQUEST_ICONS.in : STAFF_REQUEST_ICONS.out}</span>
-      <span class="req-msg-main">
-        <span class="req-msg-line">
-          <span class="req-msg-sr">${inbound ? 'Reçu' : 'Envoyé'}</span>
-          <span class="req-msg-subject">${escapeHtml(message.subject || '(sans objet)')}</span>
-          <span class="req-msg-status s-${escapeHtml(status[1])}">${escapeHtml(status[0])}</span>
-        </span>
-        <span class="req-msg-preview">${escapeHtml(snippet || 'Message vide.')}</span>
-      </span>
-      <span class="req-msg-side">
-        <time datetime="${escapeHtml(String(when || ''))}" title="${escapeHtml(staffRequestFullMoment(when))}">${escapeHtml(clock)}</time>
-        <span class="req-msg-chevron" aria-hidden="true">${STAFF_REQUEST_ICONS.chevron}</span>
-      </span>
-    </button>
-    <div class="req-msg-panel">
-      <div class="req-msg-panel-clip">
-        <div class="req-msg-panel-in">
-          ${html ? `<div class="req-msg-views" role="group" aria-label="Affichage du mail">
-            <button type="button" class="req-msg-view ${view === 'texte' ? 'active' : ''}" onclick="setStaffRequestMessageView(${jmid}, 'texte')">Texte</button>
-            <button type="button" class="req-msg-view ${view === 'rendu' ? 'active' : ''}" onclick="setStaffRequestMessageView(${jmid}, 'rendu')">Mail reçu</button>
-          </div>` : ''}
-          ${open && html && view === 'rendu'
-            ? `<iframe class="req-msg-frame" sandbox="" loading="lazy" title="Aperçu du mail tel qu’il a été envoyé" srcdoc="${escapeHtml(html)}"></iframe>`
-            : `<p class="req-msg-body">${escapeHtml(text || 'Message vide.')}</p>`}
-          ${message.lastError ? `<p class="req-msg-error">${escapeHtml(message.lastError)}</p>` : ''}
-        </div>
-      </div>
-    </div>
-  </article>`;
-}
-
 // MODELES DE REPONSE. Ce sont des DEPARTS de message, pas des promesses : ils
 // laissent les blancs a completer (creneau, prix, conditions) plutot que
 // d'inventer une disponibilite que le planning n'a pas.
 const STAFF_REQUEST_PRESETS = [
   {
-    id: 'dispo',
-    label: 'Proposer un créneau',
-    subject: (ctx) => `Votre demande chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nLe créneau du [DATE] à [HEURE] est disponible. Dites si cela vous convient, et il sera retenu à votre nom dès votre réponse.\n\nBien à vous,\n${ctx.centre}`,
-  },
-  {
-    id: 'devis',
-    label: 'Envoyer une proposition',
-    subject: (ctx) => `Proposition pour votre venue chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici la proposition de l’équipe.\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n’est pas confirmée. Dites si cela vous convient.\n\nBien à vous,\n${ctx.centre}`,
-  },
-  {
     id: 'infos',
     label: 'Demander des précisions',
-    subject: (ctx) => `Quelques précisions pour votre demande`,
+    subject: () => 'Quelques précisions pour votre demande',
     body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, quelques précisions sont nécessaires.\n- la date et l’heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, une proposition vous sera envoyée.\n\nBien à vous,\n${ctx.centre}`,
   },
   {
     id: 'complet',
-    label: 'Répondre complet',
+    label: 'Proposer un autre jour',
     subject: (ctx) => `Votre demande chez ${ctx.centre}`,
     body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.quand}. Ce créneau est malheureusement complet.\n\nL’équipe peut vous proposer [ALTERNATIVE]. Dites si cela vous arrange, la place reste disponible le temps de votre réponse.\n\nBien à vous,\n${ctx.centre}`,
   },
@@ -20571,11 +20186,8 @@ function focusStaffRequestComposer(id) {
 }
 window.focusStaffRequestComposer = focusStaffRequestComposer;
 
-// REDIGER LA REPONSE AVEC L IA (serveur : lib/demande-bureau). Le serveur
-// relance l etude, redige a partir d elle et du cerveau du centre, puis
-// controle : un chiffre, un avantage ou une promesse hors des faits font
-// rediger le brouillon du code a la place. Le texte deja ecrit par l equipe
-// est garde : « Revenir a ma version » le rend.
+// PREPARER LE MAIL (serveur : lib/demande-bureau). Le serveur relit les disponibilites et remplit
+// le modele : les prix, les heures et les noms viennent de l etude, le texte ne s invente pas.
 async function startStaffRequestDraft(id) {
   if (!peutGeste('ecrire')) return;
   const key = String(id);
@@ -20587,7 +20199,6 @@ async function startStaffRequestDraft(id) {
   const quoi = choix ? [choix.date, choix.type, choix.ref, choix.heure].join('|') : '';
   // Une autre heure touchee pendant la redaction relance le mail : il doit parler de la derniere.
   if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;
-  const avant = { subject: current.subject || '', body: current.body || '', draftSource: current.draftSource || '', draftReason: current.draftReason || '', points: current.points || [] };
   const rang = (staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1);
   staffRequestReplyState[key] = { ...current, open: true, openedAt: current.open ? current.openedAt : Date.now(), drafting: true, draftQuoi: quoi };
   renderStaffRequestsIfOpen();
@@ -20595,7 +20206,7 @@ async function startStaffRequestDraft(id) {
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
-      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), ...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),
+      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), sansIA: true, ...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),
     });
     // Une autre heure a ete touchee entre-temps : ce mail parlerait de la precedente.
     if (rang !== staffRequestDraftRang[key]) return;
@@ -20609,12 +20220,11 @@ async function startStaffRequestDraft(id) {
       return;
     }
     const brouillon = payload && payload.brouillon;
-    if (!brouillon || !String(brouillon.corps || '').trim()) throw new Error('Rédaction impossible pour le moment : votre texte est inchangé.');
+    if (!brouillon || !String(brouillon.corps || '').trim()) throw new Error('Le message n’a pas pu être préparé : votre texte est inchangé.');
     const after = staffRequestReplyState[key] || {};
     staffRequestReplyState[key] = {
       ...after,
       drafting: false,
-      previous: String(avant.body || '').trim() ? avant : (after.previous || null),
       subject: String(brouillon.objet || after.subject || ''),
       body: String(brouillon.corps),
       draftSource: brouillon.source === 'ia' ? 'ia' : 'code',
@@ -20625,86 +20235,15 @@ async function startStaffRequestDraft(id) {
     if (payload.etude) {
       staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
     }
-    toast(brouillon.source === 'ia' ? 'Réponse rédigée : relisez-la avant d’envoyer.' : 'Brouillon préparé à partir de l’étude : relisez-le avant d’envoyer.');
-    window.setTimeout(() => rqJouer('.rq-d .rq-mail textarea', [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 420 }), 0);
   } catch (error) {
     if (rang !== staffRequestDraftRang[key]) return;
     staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false };
-    toast(error.message || 'Rédaction impossible pour le moment : votre texte est inchangé.');
+    toast(error.message || 'Le message n’a pas pu être préparé : votre texte est inchangé.');
   }
   renderStaffRequestsIfOpen();
 }
 const staffRequestDraftRang = {};
 window.startStaffRequestDraft = startStaffRequestDraft;
-
-// AMELIORER LE BROUILLON AVEC L'IA (Kimi, cote serveur). Le modele reecrit la
-// FORME de ce que le staff a ecrit : il n'invente ni prix, ni horaire, ni
-// disponibilite (le moteur deterministe reste la source de verite). Si le
-// modele ne repond pas, le texte d'origine est rendu tel quel et on le DIT.
-async function improveStaffRequestDraft(id) {
-  if (!peutGeste('ecrire')) return;
-  const key = String(id);
-  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
-  const reply = staffRequestReplyState[key];
-  if (!item || !reply) return;
-  if (!String(reply.body || '').trim()) { toast('Écrivez d’abord votre message : l’IA améliore, elle n’invente pas.'); return; }
-  staffRequestReplyState[key] = { ...reply, improving: true };
-  renderStaffUtilityPage();
-  try {
-    const payload = await apiRequest(API_ENDPOINTS.ops, {
-      method: 'POST',
-      body: JSON.stringify({
-        action: 'improveEmailDraft',
-        centerId: getActiveOpsCenterId(),
-        subject: reply.subject || '',
-        body: reply.body || '',
-        centerName: getCurrentStaffCenterName() || getCurrentStaffCenterId(),
-        contactName: item.contactName || '',
-        context: String(item.message || '').slice(0, 500),
-      }),
-    });
-    const after = staffRequestReplyState[key] || {};
-    if (payload && payload.improved) {
-      staffRequestReplyState[key] = {
-        ...after,
-        improving: false,
-        // Le texte d'AVANT est garde : une reecriture qui ne plait pas doit
-        // pouvoir etre annulee, sinon le staff perd ce qu'il avait ecrit.
-        previous: { subject: reply.subject || '', body: reply.body || '' },
-        subject: payload.subject || after.subject,
-        body: payload.body || after.body,
-      };
-      toast('Message amélioré. « Revenir à ma version » si ça ne vous va pas.');
-    } else {
-      staffRequestReplyState[key] = { ...after, improving: false };
-      toast(payload && payload.reason === 'unavailable'
-        ? 'IA indisponible pour le moment : votre texte est inchangé.'
-        : 'Amélioration impossible : votre texte est inchangé.');
-    }
-  } catch (error) {
-    const after = staffRequestReplyState[key] || {};
-    staffRequestReplyState[key] = { ...after, improving: false };
-    toast(error.message || 'Amélioration impossible.');
-  }
-  renderStaffUtilityPage();
-}
-
-function revertStaffRequestDraft(id) {
-  const key = String(id);
-  const reply = staffRequestReplyState[key];
-  if (!reply || !reply.previous) return;
-  // Le texte d avant revient avec ce qui le decrivait : son origine et ses
-  // points a verifier (un brouillon de l IA reste un brouillon de l IA).
-  const avant = reply.previous;
-  staffRequestReplyState[key] = {
-    ...reply,
-    subject: avant.subject,
-    body: avant.body,
-    ...('draftSource' in avant ? { draftSource: avant.draftSource, draftReason: avant.draftReason || '', points: avant.points || [] } : {}),
-    previous: null,
-  };
-  renderStaffUtilityPage();
-}
 
 function toggleStaffRequestReply(id) {
   if (!peutGeste('ecrire')) return;
@@ -20721,9 +20260,6 @@ function toggleStaffRequestReply(id) {
       ...current,
       open: true,
       busy: !!(current && current.busy),
-      // Horodatage de l ouverture : c est lui, et lui seul, qui autorise
-      // l animation d entree du composeur (voir renderRqMail).
-      openedAt: Date.now(),
       subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${ctx.centre}`,
       body: (current && current.body) || `Bonjour${ctx.prenom ? ` ${ctx.prenom}` : ''},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\n\n\nBien à vous,\n${ctx.centre}`,
     };
@@ -20768,7 +20304,8 @@ async function staffRequestSendReply(id) {
     });
     replaceStaffCustomRequest(payload && payload.customRequest, { id: item.id });
     delete staffRequestChoix[key];
-    toast('Réponse enregistrée : son état d’envoi se lit dans les mails de la demande.');
+    delete staffRequestAutre[key];
+    toast('Réponse enregistrée : son état d’envoi se lit dans l’historique.');
     // Le fil se recharge : le mail qui vient de partir doit apparaitre ici,
     // sinon le staff doute de l'envoi et le renvoie une seconde fois.
     loadStaffRequestThread(id, true);
@@ -20910,7 +20447,7 @@ window.loadStaffRequestStudy = loadStaffRequestStudy;
 // compte ses appels). Une erreur attend le clic « Reessayer ».
 function ensureStaffRequestStudy() {
   const item = getStaffRequestSelectedItem();
-  if (!item || !crDemande(item)) return;
+  if (!item || !crDemande(item) || !staffRequestMontreDispos(item)) return;
   const study = staffRequestStudies[String(item.id)];
   if (study && (study.loading || (study.error && !study.loaded))) return;
   if (study && study.loaded && (!study.stale || Date.now() - Number(study.at || 0) < 20000)) return;

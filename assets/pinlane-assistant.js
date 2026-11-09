@@ -343,7 +343,6 @@
   const teinte = (cle) => TEINTE_SOURCE[cle] || 6;
   const scenes = new WeakMap();
   const filsDeLecture = new WeakMap();
-  const genreDeScene = () => { try { return localStorage.getItem('ast-scene') || 'dessin'; } catch (e) { return 'dessin'; } };
   const JOUR_MS = 86400000;
   const isoVersMs = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
   const msVersIso = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -366,9 +365,9 @@
       const large = Math.max(1, max - min);
       return `<svg viewBox="0 0 44 44" aria-hidden="true">${b.map((x, i) => `<rect x="${(4 + ((x.debut - min) / large) * 36).toFixed(1)}" y="${(6 + (Number.isFinite(x.rang) ? x.rang % 8 : i % 8) * 4.2).toFixed(1)}" width="${Math.max(3, ((x.fin - x.debut) / large) * 36).toFixed(1)}" height="3.4" rx="1.2"/>`).join('')}</svg>`;
     }
-    if (e.jours && e.periode) {
-      const debut = isoVersMs(e.periode.debut);
-      const n = Math.min(35, Math.round((isoVersMs(e.periode.fin) - debut) / JOUR_MS) + 1);
+    if (e.jours && e.plage) {
+      const debut = isoVersMs(e.plage.debut);
+      const n = Math.min(35, Math.round((isoVersMs(e.plage.fin) - debut) / JOUR_MS) + 1);
       const decale = (new Date(debut).getUTCDay() + 6) % 7;
       const max = Math.max(1, ...Object.values(e.jours));
       let s = '';
@@ -423,7 +422,7 @@
   function htmlScene(m) {
     const carte = m.carte || A.carte || [];
     return `<section class="ast-rech est-cours" data-ast-recherche aria-busy="true">
-      <div class="scn" data-scn data-genre="${esc(genreDeScene())}">
+      <div class="scn" data-scn>
         <div class="scn-tete">
           <div class="scn-titre">
             <p class="scn-source"><i></i><span data-scn-source></span></p>
@@ -493,7 +492,7 @@
 
   // Le mois : chaque jour s allume quand la lecture y passe, a la hauteur de ses vraies reservations.
   function stageMois(S, e, stage) {
-    const periode = e.periode;
+    const periode = e.plage;
     if (!periode) return stageFil(S, e, stage);
     const debut = isoVersMs(periode.debut);
     const total = Math.min(42, Math.round((isoVersMs(periode.fin) - debut) / JOUR_MS) + 1);
@@ -568,195 +567,11 @@
   }
 
 
-  // Le tableau d affichage : chaque lettre est une palette qui bascule, comme dans une gare.
-  const COULEUR_TABLEAU = { 1: '#d58fd2', 2: '#7fd0c1', 3: '#f0c65a', 4: '#f783a6', 5: '#7fb0fa', 6: '#c2c2c8' };
-  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  function stageTableau(S, e, stage) {
-    stage.classList.add('est-large');
-    stage.innerHTML = '<canvas class="scn-cv"></canvas>';
-    const cv = stage.firstChild;
-    const W = stage.clientWidth || 630;
-    const H = stage.clientHeight || 222;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.width = Math.round(W * dpr);
-    cv.height = Math.round(H * dpr);
-    cv.style.width = W + 'px';
-    cv.style.height = H + 'px';
-    const c = cv.getContext('2d');
-    c.scale(dpr, dpr);
-    const cw = 13.6;
-    const ch = 39;
-    const gx = 1.6;
-    const gy = 6;
-    const cols = Math.floor((W + gx) / (cw + gx));
-    const rows = Math.floor((H + gy) / (ch + gy));
-    const coul = COULEUR_TABLEAU[teinte(e.cleSource)] || '#fff';
-    const cases = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ a: ' ', file: [], t0: 0 })));
-    const vifs = Array.from({ length: rows }, () => 0);
-    const DUREE = 74;
-    function rr(x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
-    function demi(ch1, x, y, w, h, haut, echelle, ton, fond) {
-      c.save();
-      c.translate(0, y + h / 2);
-      c.scale(1, Math.max(0.001, echelle));
-      c.translate(0, -(y + h / 2));
-      c.beginPath();
-      c.rect(x, haut ? y : y + h / 2, w, h / 2);
-      c.clip();
-      c.fillStyle = fond;
-      rr(x, y, w, h, 3);
-      c.fill();
-      c.fillStyle = ton;
-      c.fillText(ch1, x + w / 2, y + h / 2 + 1);
-      c.restore();
-    }
-    function dessiner(now) {
-      c.clearRect(0, 0, W, H);
-      c.font = '600 20px "Geist Mono", ui-monospace, Menlo, monospace';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      for (let r = 0; r < rows; r += 1) {
-        const y = r * (ch + gy);
-        const age = Math.min(1, (now - vifs[r]) / 1400);
-        for (let k = 0; k < cols; k += 1) {
-          const x = k * (cw + gx);
-          const q = cases[r][k];
-          const debut = k < 6 ? coul : `rgba(255,255,255,${(0.98 - age * 0.34).toFixed(3)})`;
-          let f = -1;
-          if (q.file.length && now >= q.t0) {
-            f = (now - q.t0) / DUREE;
-            if (f >= 1) { q.a = q.file.shift(); q.t0 = now; f = q.file.length ? 0 : -1; }
-          }
-          const hautF = '#2b2b32';
-          const basF = '#222228';
-          if (f < 0) {
-            demi(q.a, x, y, cw, ch, true, 1, debut, hautF);
-            demi(q.a, x, y, cw, ch, false, 1, debut, basF);
-          } else {
-            const b = q.file[0];
-            demi(b, x, y, cw, ch, true, 1, debut, hautF);
-            demi(q.a, x, y, cw, ch, false, 1, debut, basF);
-            if (f < 0.5) demi(q.a, x, y, cw, ch, true, 1 - f * 2, debut, '#35353d');
-            else demi(b, x, y, cw, ch, false, (f - 0.5) * 2, debut, '#2a2a31');
-          }
-          c.fillStyle = 'rgba(0,0,0,.42)';
-          c.fillRect(x, y + ch / 2 - 0.25, cw, 0.5);
-          c.fillStyle = 'rgba(255,255,255,.06)';
-          c.fillRect(x + 1, y + 0.5, cw - 2, 1);
-        }
-      }
-    }
-    function poser(r, texte, now) {
-      vifs[r] = now;
-      for (let k = 0; k < cols; k += 1) {
-        const q = cases[r][k];
-        const cible = texte[k] || ' ';
-        if (q.a === cible && !q.file.length) continue;
-        const tours = 2 + Math.floor(Math.random() * 3);
-        q.file = [...Array.from({ length: tours }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]), cible];
-        q.t0 = now + k * 8 + Math.random() * 18;
-      }
-    }
-    let rang = -1;
-    return {
-      maj(p, now) {
-        const lignes = filsDeLecture.get(e) || [];
-        const n = Math.min(lignes.length, 22);
-        const voulu = n ? Math.min(n - 1, Math.floor(p * n)) : -1;
-        while (rang < voulu) {
-          rang += 1;
-          const x = lignes[Math.floor((rang / n) * lignes.length)];
-          poser(rang % rows, `${String(x.t).toUpperCase().padEnd(6).slice(0, 6)}${String(x.d).toUpperCase()}`, now);
-        }
-        dessiner(now);
-      },
-    };
+  function stagePour(S, e, stage) {
+    if (e.cleSource === 'planning') return stageJournee(S, e, stage);
+    if (e.plage) return stageMois(S, e, stage);
+    return stageFil(S, e, stage);
   }
-
-  // L agent a l ecran : on le voit aller dans la bonne page de la console et la parcourir.
-  const ICONES_AGENT = {
-    reservations: '<path d="M4 4.5h8M4 8h8M4 11.5h8"/>',
-    planning: '<rect x="3" y="3.5" width="10" height="9.5" rx="1.5"/><path d="M3 6.8h10M6 2.5v2M10 2.5v2"/>',
-    clients: '<circle cx="8" cy="5.6" r="2.4"/><path d="M3.6 13c.6-2.4 2.3-3.6 4.4-3.6s3.8 1.2 4.4 3.6"/>',
-    catalogue: '<path d="M8.5 2.8H13v4.5l-5.8 5.9-4.5-4.5z"/><circle cx="10.8" cy="5.2" r=".7"/>',
-    mails: '<rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="m3 5 5 3.8L13 5"/>',
-    campagnes: '<path d="M3 7v2.5l8 3v-8.5zM11 5.5c1.3.3 2 1.2 2 2.5s-.7 2.2-2 2.5"/>',
-    notes: '<path d="M4 2.8h8v10.4H4zM6 6h4M6 8.5h4"/>',
-  };
-  function stageAgent(S, e, stage) {
-    stage.classList.add('est-large');
-    let ag = stage.querySelector('.ag');
-    const nav = Object.keys(ICONES_AGENT);
-    const cle = nav.includes(e.cleSource) ? e.cleSource : 'notes';
-    if (!ag) {
-      stage.innerHTML = `<div class="ag">
-        <div class="ag-nav">${nav.map((k) => `<span class="ag-i" data-cle="${k}" data-t="${teinte(k)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${ICONES_AGENT[k]}</svg></span>`).join('')}</div>
-        <div class="ag-page" data-ag-page></div>
-        <div class="ag-curseur" data-ag-curseur style="transform:translate(240px,120px)"><svg viewBox="0 0 16 20" width="17" height="21"><path d="M1.5 1.2 14 11.1l-5.6.7-3.3 5.2z" fill="var(--c-ink)" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg><b>IA</b></div>
-      </div>`;
-      ag = stage.querySelector('.ag');
-    }
-    const curseur = ag.querySelector('[data-ag-curseur]');
-    const page = ag.querySelector('[data-ag-page]');
-    const icone2 = ag.querySelector(`.ag-i[data-cle="${cle}"]`);
-    const LARG = 54;
-    const allerA = (x, y, tempo) => { curseur.style.transitionDuration = tempo + 'ms'; curseur.style.transform = `translate(${x}px,${y}px)`; };
-    let phase = 0;
-    allerA(icone2.offsetLeft + 15, icone2.offsetTop + 14, 620);
-    const lignes = () => (filsDeLecture.get(e) || []).slice(0, 60);
-    const planning = e.cleSource === 'planning' && Array.isArray(e.blocs) && e.blocs.length;
-    let liste = [];
-    let rangVu = -1;
-    let sous = null;
-    const ouvrir = () => {
-      ag.querySelectorAll('.ag-i').forEach((n) => n.classList.toggle('est-active', n === icone2));
-      if (!sansMouvement()) icone2.animate([{ transform: 'scale(1)' }, { transform: 'scale(.82)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 240, easing: 'ease-out' });
-      if (planning) {
-        page.innerHTML = `<p class="ag-t">${esc(e.nomSource)}</p><div class="ag-corps" data-ag-corps></div>`;
-        sous = stageJournee(S, e, Object.assign(page.querySelector('[data-ag-corps]'), { classList: page.querySelector('[data-ag-corps]').classList }));
-      } else {
-        page.innerHTML = `<p class="ag-t">${esc(e.nomSource)}</p><div class="ag-fen" data-ag-fen><div class="ag-lignes" data-ag-lignes>${lignes().map((x) => `<p><time>${esc(x.t)}</time><span>${esc(x.d)}</span></p>`).join('')}</div></div>`;
-        liste = [...page.querySelectorAll('[data-ag-lignes] p')];
-      }
-      if (!sansMouvement()) page.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.23,1,.32,1)' });
-    };
-    return {
-      maj(p) {
-        if (phase === 0 && p > 0.34) { phase = 1; ouvrir(); }
-        if (phase === 1 && p > 0.42) {
-          const q = Math.min(1, (p - 0.42) / 0.58);
-          if (sous) {
-            sous.maj(q);
-            const large = page.clientWidth - 24;
-            allerA(LARG + 12 + q * large, 60 + Math.sin(q * 18) * 26 + 40, 90);
-          } else if (liste.length) {
-            const n = Math.min(liste.length - 1, Math.floor(q * liste.length));
-            if (n !== rangVu) {
-              rangVu = n;
-              liste.forEach((r, i) => { r.classList.toggle('est-sous', i === n); if (i < n && i % 3 === 0) r.classList.add('est-gardee'); });
-              const r = liste[n];
-              const corps = page.querySelector('[data-ag-lignes]');
-              const fen = page.querySelector('[data-ag-fen]');
-              const rel = r.offsetTop - fen.offsetTop;
-              const defile = Math.max(0, rel - fen.clientHeight * 0.55);
-              corps.style.transform = `translateY(${-defile}px)`;
-              allerA(LARG + 220 + (n % 5) * 34, fen.offsetTop + rel - defile + 9, 130);
-            }
-          }
-        }
-      },
-    };
-  }
-
-  const STAGES = {
-    tableau: stageTableau,
-    agent: stageAgent,
-    dessin: (S, e, stage) => {
-      if (e.cleSource === 'planning') return stageJournee(S, e, stage);
-      if (e.periode) return stageMois(S, e, stage);
-      return stageFil(S, e, stage);
-    },
-  };
 
   function demarrerScene(bloc, m) {
     const racine = bloc.querySelector('[data-scn]');
@@ -764,7 +579,6 @@
     const q = (s) => racine.querySelector(s);
     const S = { m, i: -1, e: null, t0: 0, duree: 1800, stage: null, dernierNum: 0, raf: 0, vivant: true, vus: new Map() };
     const lectures = () => (m.etapes || []).filter((e) => !e.note);
-    const genre = racine.dataset.genre || 'dessin';
 
     function curseurSur(cle) {
       const mot = q(`.scn-m[data-cle="${CSS.escape(cle || '')}"]`);
@@ -779,15 +593,15 @@
     function entrer(e, now) {
       S.e = e;
       S.t0 = now;
-      S.duree = genre === 'agent' ? 3400 : (genre === 'tableau' ? 3200 : (e.cleSource === 'reservations' ? 2800 : 2200));
+      S.duree = e.cleSource === 'reservations' ? 2800 : 2200;
       racine.setAttribute('data-t', teinte(e.cleSource));
       q('[data-scn-source]').textContent = e.nomSource || 'Lecture';
       q('[data-scn-phrase]').textContent = e.phrase || e.libelle || '';
       bloc.querySelector('[data-scn-dit]').textContent = e.phrase || e.libelle || '';
       const stage = q('[data-scn-stage]');
       stage.className = 'scn-stage';
-      if (genre === 'dessin' && !sansMouvement()) stage.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.23,1,.32,1)' });
-      S.stage = (STAGES[genre] || STAGES.dessin)(S, e, stage);
+      if (!sansMouvement()) stage.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.23,1,.32,1)' });
+      S.stage = stagePour(S, e, stage);
       racine.querySelectorAll('.scn-m').forEach((mot) => mot.classList.toggle('est-actif', mot.dataset.cle === e.cleSource));
       curseurSur(e.cleSource);
       poserNombre(q('[data-scn-num]'), 0);
@@ -813,7 +627,7 @@
         if (S.stage) S.stage.maj(doux, now);
         const mot = q(`.scn-m[data-cle="${CSS.escape(e.cleSource || '')}"]`);
         if (mot && affiche) { mot.querySelector('[data-compte]').textContent = nombreEntier(affiche); curseurSur(e.cleSource); }
-        if (p >= 1 && e.etat !== 'cours' && toutes[S.i + 1] && pret(toutes[S.i + 1])) {
+        if (p >= 1 && toutes[S.i + 1] && pret(toutes[S.i + 1])) {
           if (mot) { mot.classList.remove('est-actif'); mot.classList.add('est-lu'); }
           S.i += 1;
           entrer(toutes[S.i], now);
@@ -1336,7 +1150,7 @@
           e.total = d.total || e.total;
           e.trouvees = d.trouvees || e.trouvees;
           if (d.jours) e.jours = d.jours;
-          if (d.periode) e.periode = d.periode;
+          if (d.plage) e.plage = d.plage;
           if (d.blocs) e.blocs = d.blocs;
           if (Array.isArray(d.extraits) && d.extraits.length) {
             e.extraits = [...(e.extraits || []), ...d.extraits].slice(-8);
@@ -1479,9 +1293,10 @@
     if ((n = v('[data-ast-etape-ouvrir]'))) {
       const m = messageDe(n);
       if (m && m.statut !== 'cours') {
-        m.etapesDeroulees = { ...(m.etapesDeroulees || {}), [n.dataset.astEtapeOuvrir]: !(m.etapesDeroulees || {})[n.dataset.astEtapeOuvrir] };
-        const hote = n.closest('[data-ast-haut]');
-        hote.innerHTML = htmlRecherche(m);
+        const ouverte = !(m.etapesDeroulees || {})[n.dataset.astEtapeOuvrir];
+        m.etapesDeroulees = { ...(m.etapesDeroulees || {}), [n.dataset.astEtapeOuvrir]: ouverte };
+        n.closest('.lu').classList.toggle('est-ouvert', ouverte);
+        n.setAttribute('aria-expanded', ouverte ? 'true' : 'false');
       }
       return;
     }

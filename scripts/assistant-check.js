@@ -65,8 +65,8 @@ const MUTATIONS = {
   'pas-d-extraits': { section: 'R', fichier: OUT, de: "extraits: dedans.slice(0, 3).map(extraitLigne)", vers: "extraits: []", rouge: "[R] les extraits sont de vraies lignes" },
   'phrase-sans-periode': { section: 'R', fichier: OUT, de: "return `Je lis les réservations ${m.periode} à ${m.centre}${axes.length", vers: "return `Je lis les réservations à ${m.centre}${axes.length", rouge: "[R] la phrase dit la periode et le centre" },
   'source-non-annoncee': { section: 'R', fichier: AGENT, de: "      emettre('etape', { id: appel.id, etat: 'cours', ...outils.annonce(ctx, appel.name, appel.input) });", vers: "      emettre('etape', { id: appel.id, etat: 'cours' });", rouge: "[R] chaque lecture annonce sa source" },
-  'barre-sans-total': { section: 'E', fichier: ECRAN, de: "barre.parentElement.hidden = !e.total;", vers: "barre.parentElement.hidden = false;", rouge: "[E] sans total connu, pas de barre" },
-  'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours') majRecherche(haut, m); else haut.innerHTML = htmlRecherche(m);", vers: "    haut.innerHTML = htmlRecherche(m);", rouge: "[E] la ligne en cours ne se reconstruit pas a chaque lecture" },
+  'total-invente': { section: 'E', fichier: ECRAN, de: "textContent = total > lues ? `sur", vers: "textContent = true ? `sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
+  'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);", vers: "    if (m.statut === 'cours' && !m.texte) { haut.innerHTML = htmlRecherche(m); majRecherche(haut, m); }", rouge: "[E] la scene ne se reconstruit pas a chaque lecture" },
   'correction-perdue': { section: 'E', fichier: ECRAN, de: "retenirFait(champ.value, 'correction', String(m.texte || '').slice(0, 280))", vers: "Promise.resolve()", rouge: "[E] une correction devient un fait appris" },
   'reprise-sans-envoi': { section: 'E', fichier: ECRAN, de: "        const reponse = await appeler('reprendre', { conversations: nouvelles });", vers: "        const reponse = { reprises: [] };", rouge: "[E] les conversations de l appareil remontent sans perte" },
   'repeint-au-rafraichissement': { section: 'E', fichier: ECRAN, de: "if (A.root !== root || A.cle !== cle || !root.querySelector('.ast')) {", vers: "if (true) {", rouge: "[E] le rafraichissement de la console ne touche pas la page" },
@@ -829,44 +829,43 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   flux.scenario = { evenements: [debut, etape('x1', 'reservations', 'Réservations', 'Je lis les réservations de novembre à Libramont'), ['lecture', { id: 'x1', lues: 300, total: 1200, trouvees: 40, extraits: [{ t: '03/11', d: 'Kids Fun Day, 12 joueurs, Zoé Témoin' }] }], { attendre: true }, ['lecture', { id: 'x1', lues: 1200, total: 1200, trouvees: 412, extraits: [{ t: '09/11', d: 'Bowling, 6 joueurs, Quartzite' }] }], etape('x2', 'clients', 'Clients', 'Je cherche qui revient'), ['lecture', { id: 'x2', lues: 87, extraits: [] }], { attendre: true }, ['source', { ...SRC, id: 'S1' }], ['etape', { id: 'x1', etat: 'fini', source: 'S1', trouve: '412 réservations, 7 230 joueurs', lues: 1200, duree: 2400 }], ['etape', { id: 'x2', etat: 'fini', source: '', trouve: '87 clients', lues: 87, duree: 900 }], ['proposition', { texte: 'Le KFD est complet le mercredi' }], ['texte', { delta: 'Voilà [S1].' }], finDe('Voilà [S1].')] };
   await page.locator(champ).fill('Une question pour regarder la recherche');
   await page.locator(champ).press('Enter');
-  await page.waitForFunction(() => document.querySelector('[data-etape="x1"] [data-et-mesure]') && /300 sur/.test(document.querySelector('[data-etape="x1"] [data-et-mesure]').textContent), null, { timeout: 8000 });
-  await FX_repos(page, 300);
+  await page.waitForFunction(() => /Je lis les réservations/.test((document.querySelector('[data-scn-phrase]') || {}).textContent || '') && /300/.test((document.querySelector('.scn-m[data-cle="reservations"] [data-compte]') || {}).textContent || ''), null, { timeout: 9000 });
+  await FX_repos(page, 3000);
   const au300 = await page.evaluate(() => {
-    const li = document.querySelector('[data-etape="x1"]');
-    li.dataset.temoin = '1';
-    const mot = document.querySelector('[data-cle="reservations"]');
+    const scene = document.querySelector('[data-scn]');
+    scene.dataset.temoin = '1';
+    const mot = document.querySelector('.scn-m[data-cle="reservations"]');
     const rect = (e) => e.getBoundingClientRect();
-    const repere = rect(document.querySelector('[data-ast-repere]'));
-    return { phrase: li.querySelector('[data-et-phrase]').textContent, mesure: li.querySelector('[data-et-mesure]').textContent, barre: li.querySelector('[data-et-barre]').style.transform, extrait: li.querySelector('.ast-et-fil').textContent, actif: mot.classList.contains('est-actif'), compte: mot.querySelector('[data-carte-compte]').textContent, repereSousMot: Math.abs(repere.left - rect(mot).left) <= 2 && Math.abs(repere.width - rect(mot).width) <= 2 && repere.top >= rect(mot).top };
+    const curseur = rect(document.querySelector('[data-scn-curseur]'));
+    const barre = /scaleX\(([\d.]+)\)/.exec(document.querySelector('[data-scn-barre]').style.transform);
+    return { phrase: document.querySelector('[data-scn-phrase]').textContent, sur: document.querySelector('[data-scn-sur]').textContent, barre: barre ? Number(barre[1]) : -1, extrait: document.querySelector('.scn-fil').textContent, actif: mot.classList.contains('est-actif'), compte: mot.querySelector('[data-compte]').textContent, curseurSurMot: Math.abs(curseur.left - rect(mot).left) <= 2 && Math.abs(curseur.width - rect(mot).width) <= 2, dit: document.querySelector('[data-scn-dit]').textContent };
   });
-  ok('[E] la recherche dit ou elle cherche', /Je lis les réservations de novembre/.test(au300.phrase) && au300.actif && au300.repereSousMot, JSON.stringify(au300));
-  ok('[E] les lignes lues et le total viennent du flux', /300 sur 1\s?200 lignes/.test(au300.mesure.replace(/\u202f/g, ' ')) && au300.barre === 'scaleX(0.25)' && /300/.test(au300.compte), JSON.stringify(au300));
+  ok('[E] la recherche dit ou elle cherche', /Je lis les réservations de novembre/.test(au300.phrase) && au300.actif && au300.curseurSurMot && /Je lis les réservations/.test(au300.dit), JSON.stringify(au300));
+  ok('[E] les lignes lues et le total viennent du flux', /sur 1\s?200 lignes/.test(au300.sur.replace(/\u202f/g, ' ')) && Math.abs(au300.barre - 0.25) < 0.01 && /300/.test(au300.compte), JSON.stringify(au300));
   ok('[E] un extrait reel s affiche', /Zoé Témoin/.test(au300.extrait), au300.extrait);
   flux.relacher();
-  await page.waitForFunction(() => /1\s?200 sur/.test(document.querySelector('[data-etape="x1"] [data-et-mesure]').textContent.replace(/\u202f/g, ' ')) || document.querySelector('[data-etape="x2"]'), null, { timeout: 5000 });
-  await page.waitForFunction(() => document.querySelector('[data-etape="x2"]'), null, { timeout: 5000 });
-  await FX_repos(page, 250);
+  await page.waitForFunction(() => /Je cherche qui revient/.test((document.querySelector('[data-scn-phrase]') || {}).textContent || ''), null, { timeout: 9000 });
+  await FX_repos(page, 2500);
   const au1200 = await page.evaluate(() => {
-    const li = document.querySelector('[data-etape="x1"]');
-    const li2 = document.querySelector('[data-etape="x2"]');
-    return { temoin: li.dataset.temoin, mesure: li.querySelector('[data-et-mesure]').textContent, extrait: li.querySelector('.ast-et-fil').textContent, deuxieme: Boolean(li2), barre2Masquee: li2.querySelector('.ast-et-barre').hidden, compte2: li2.querySelector('[data-et-mesure]').textContent, clients: document.querySelector('[data-cle="clients"]').classList.contains('est-actif') };
+    const scene = document.querySelector('[data-scn]');
+    return { temoin: scene.dataset.temoin, compte1: document.querySelector('.scn-m[data-cle="reservations"] [data-compte]').textContent, lu1: document.querySelector('.scn-m[data-cle="reservations"]').classList.contains('est-lu'), sur: document.querySelector('[data-scn-sur]').textContent, compte2: document.querySelector('.scn-m[data-cle="clients"] [data-compte]').textContent, clients: document.querySelector('.scn-m[data-cle="clients"]').classList.contains('est-actif') };
   });
-  ok('[E] la ligne en cours ne se reconstruit pas a chaque lecture', au1200.temoin === '1' && /1\s?200/.test(au1200.mesure.replace(/\u202f/g, ' ')), JSON.stringify(au1200));
-  ok('[E] les extraits avancent avec le flux', /Quartzite/.test(au1200.extrait), au1200.extrait);
-  ok('[E] une deuxieme source s allume', au1200.deuxieme && au1200.clients && /87/.test(au1200.compte2), JSON.stringify(au1200));
-  ok('[E] sans total connu, pas de barre', au1200.barre2Masquee === true, JSON.stringify(au1200));
+  ok('[E] la scene ne se reconstruit pas a chaque lecture', au1200.temoin === '1', JSON.stringify(au1200));
+  ok('[E] le compteur de la premiere source va au bout', /1\s?200/.test(au1200.compte1.replace(/\u202f/g, ' ')) && au1200.lu1, JSON.stringify(au1200));
+  ok('[E] une deuxieme source s allume', au1200.clients && /87/.test(au1200.compte2), JSON.stringify(au1200));
+  ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(au1200.sur) && !/sur/.test(au1200.sur), JSON.stringify(au1200));
   flux.relacher();
   await finie(page, 3);
   await FX_repos(page, 250);
-  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return { titre: b.querySelector('.ast-rech-titre').textContent, liste: b.querySelector('.ast-rech-liste').hidden, carte: Boolean(b.querySelector('[data-ast-carte]')), prop: document.querySelectorAll('.ast-prop').length }; });
+  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return { titre: b.querySelector('.ast-rech-titre').textContent, liste: !b.classList.contains('est-ouvert'), carte: Boolean(b.querySelector('[data-scn]')), prop: document.querySelectorAll('.ast-prop').length }; });
   ok('[E] une fois finie, la recherche se replie et dit ce qu elle a lu', /2 lectures de vos données/.test(replie.titre) && /1\s?287 lignes/.test(replie.titre.replace(/\u202f/g, ' ')) && replie.liste === true && !replie.carte, JSON.stringify(replie));
   await page.locator('[data-ast-recherche] [data-ast-etapes]').last().click();
   await FX_repos(page, 200);
   await page.locator('[data-ast-etape-ouvrir="x1"]').last().click();
   await FX_repos(page, 200);
-  const ouverte = await page.evaluate(() => { const li = [...document.querySelectorAll('[data-etape="x1"]')].pop(); return { detail: li.textContent, extraits: li.querySelectorAll('.ast-et-detail .ast-et-fil p').length, visible: Boolean(li.querySelector('.ast-et-detail .ast-et-extraits') && li.querySelector('.ast-et-detail .ast-et-extraits').getBoundingClientRect().height > 10), bouton: Boolean(li.querySelector('.ast-et-detail [data-ast-source]')) }; });
+  const ouverte = await page.evaluate(() => { const li = [...document.querySelectorAll('[data-etape="x1"]')].pop(); return { detail: li.textContent, extraits: li.querySelectorAll('.lu-lignes p').length, visible: Boolean(li.querySelector('.lu-lignes') && li.querySelector('.lu-lignes').getBoundingClientRect().height > 10), bouton: Boolean(li.querySelector('.lu-actions [data-ast-source]')) }; });
   ok('[E] une etape finie s ouvre et montre ce qu elle a lu', /412 réservations/.test(ouverte.detail) && ouverte.extraits === 2 && ouverte.visible && ouverte.bouton, JSON.stringify(ouverte));
-  await page.locator('.ast-et-detail [data-ast-source]').last().click();
+  await page.locator('.lu.est-ouvert .lu-actions [data-ast-source]').last().click();
   await FX_repos(page, 250);
   ok('[E] une etape mene a sa donnee', (await page.evaluate(() => (document.querySelector('[data-ast-panneau] h2') || {}).textContent || '')) === SRC.titre);
   await page.keyboard.press('Escape');
@@ -1000,7 +999,7 @@ async function sectionEcran() {
     ok('[E] maj + entree ajoute une ligne', (await page.locator(champ).inputValue()) === 'Ligne une\n');
     await page.locator(champ).press('Enter');
     await page.waitForFunction(() => /Début de la réponse/.test(document.querySelector('.ast-r-texte') ? document.querySelector('.ast-r-texte').textContent : ''), null, { timeout: 8000 });
-    const pendant = await page.evaluate(() => ({ libelle: (document.querySelector('.ast-et-phrase') || {}).textContent || '', arret: document.querySelector('[data-ast-envoi]').getAttribute('aria-label'), question: document.querySelector('.ast-q-bulle').textContent, haut: document.querySelector('.ast-q').getBoundingClientRect().top - document.querySelector('[data-ast-fil]').getBoundingClientRect().top }));
+    const pendant = await page.evaluate(() => ({ libelle: (document.querySelector('.lu-q span') || {}).textContent || '', arret: document.querySelector('[data-ast-envoi]').getAttribute('aria-label'), question: document.querySelector('.ast-q-bulle').textContent, haut: document.querySelector('.ast-q').getBoundingClientRect().top - document.querySelector('[data-ast-fil]').getBoundingClientRect().top }));
     ok('[E] le texte arrive pendant que le serveur ecrit', true);
     ok('[E] la lecture en cours se lit', /Je croise/.test(pendant.libelle), pendant.libelle);
     ok('[E] le bouton devient Arreter', pendant.arret === 'Arrêter', pendant.arret);
@@ -1183,7 +1182,7 @@ async function sectionEcran() {
     flux.stockage = 'appareil';
     const lent = await monter();
     await lent.page.emulateMedia({ reducedMotion: 'reduce' });
-    const reduit = await lent.page.evaluate(() => { const d = document.createElement('i'); d.className = 'ast-et-pointe'; document.body.appendChild(d); const v = getComputedStyle(d).animationName; d.remove(); return v; });
+    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="scn" data-t="1"><p class="scn-source"><i></i></p></div>'; document.body.appendChild(d); const v = getComputedStyle(d.querySelector('i')).animationName; d.remove(); return v; });
     ok('[E] mouvement reduit : plus d animation sur la recherche', reduit === 'none', reduit);
     await lent.ctx.close();
 

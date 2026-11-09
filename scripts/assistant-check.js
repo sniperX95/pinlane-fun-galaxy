@@ -107,9 +107,12 @@ const MUTATIONS = {
   'scene-qui-saute': { section: 'E', fichier: ECRAN, de: "      if (hauteur > S.hauteur) { S.hauteur = hauteur; scene.style.height = `${hauteur}px`; }", vers: "      scene.style.height = `${hauteur}px`;", rouge: "[E] la scene garde sa hauteur d un dessin a l autre" },
   'saut-au-pli': { section: 'E', fichier: ECRAN, de: "    article.style.minHeight = `${article.offsetHeight}px`;\n", vers: "", rouge: "[E] le texte prend la place du dessin sans faire sauter la page" },
   'dessin-qui-traine': { section: 'E', fichier: STYLE, de: "  --d-feuille: 300ms;", vers: "  --d-feuille: 3000ms;", rouge: "[E] chaque piece entre vite, une seule fois" },
-  'bulle-qui-rebondit': { section: 'E', fichier: STYLE, de: ".ast-q.is-neuf .ast-q-bulle { animation: astArrive var(--d-base) var(--c-sortie) both; }", vers: ".ast-q.is-neuf .ast-q-bulle { animation: astArrive var(--d-base) cubic-bezier(.34, 1.3, .64, 1) both; }", rouge: "[E] rien ne rebondit" },
+  'bulle-qui-rebondit': { section: 'E', fichier: STYLE, de: ".ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms var(--c-sortie) both; }", vers: ".ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms cubic-bezier(.34, 1.3, .64, 1) both; }", rouge: "[E] rien ne rebondit" },
   'mouvement-sans-fin': { section: 'E', fichier: STYLE, de: ".lu-scene { position: relative;", vers: ".lu-scene { animation: astFondu 1s linear infinite; position: relative;", rouge: "[E] rien ne bouge sans fin, sauf le signe de travail" },
   'reduit-ignore': { section: 'E', fichier: STYLE, de: "@media (prefers-reduced-motion: no-preference) {", vers: "@media all {", rouge: "[E] mouvement reduit : la recherche ne bouge plus" },
+  'accueil-sans-sortie': { section: 'E', fichier: ECRAN, de: "sortirAccueil(); peindreFil({ neuf: 2 });", vers: "peindreFil({ neuf: 2 });", rouge: "[E] au premier envoi l accueil sort, et sa copie ne reste pas" },
+  'fond-fige': { section: 'E', fichier: STYLE, de: "  .ast-fond i:nth-child(1) { animation: astDerive1 19s ease-in-out infinite alternate; }", vers: "  .ast-fond i:nth-child(1) { animation: none; }", rouge: "[E] le fond derive tout seul, derriere tout, sans filtre" },
+  'occupe-reste': { section: 'E', fichier: ECRAN, de: "dom('.ast').classList.toggle('est-occupe', enCours);", vers: "dom('.ast').classList.add('est-occupe');", rouge: "[E] le champ travaille pendant la reponse, et s arrete apres" },
   'dessin-unique': { section: 'E', fichier: ECRAN, de: "      try { html = (DESSINS[source.outil] ? DESSINS[source.outil](source) : dessinGenerique(source)) || ''; } catch (erreur) { html = ''; }", vers: "      try { html = dessinGenerique(source) || ''; } catch (erreur) { html = ''; }", rouge: "[E] chaque outil a le dessin de sa donnee" },
   'place-libre-fausse': { section: 'V', fichier: OUT, de: "heures_de_piste_libres_par_jour: offertes ? r1(Math.max(0, offertes - prises) / n) : null", vers: "heures_de_piste_libres_par_jour: offertes ? r1(offertes / n) : null", rouge: "[V] la semaine type dit la place libre de chaque jour" },
   'jour-ignore': { section: 'V', fichier: OUT, de: "(!jourVoulu || NOMS_JOURS[weekdayIndex(r.date)] === jourVoulu)", vers: "true", rouge: "[V] les clients d un jour ne comptent que ses visites" },
@@ -1119,7 +1122,7 @@ const DESSINS_ATTENDUS = (() => {
     ['f-ann', { outil: 'supplements', colonnes: [t('article'), n('part_reservations')], lignes: [{ article: 'Boissons', part_reservations: 75 }] }],
     ['f-chaine', { outil: 'combinaisons_activites', colonnes: [t('combinaison'), n('reservations')], lignes: [{ combinaison: 'Bowling + Laser', reservations: 4 }] }],
     ['f-vis', { outil: 'equipe_et_activite', colonnes: [t('nom'), n('actions')], lignes: [{ nom: 'Marius Lambert', actions: 7 }] }],
-    ['f-couche', { outil: 'communications_envoyees', colonnes: [t('modele')], lignes: [], sections: [{ titre: 'Par modele', colonnes: [t('modele'), n('envoyes'), n('ouverts')], lignes: [{ modele: 'Rappel', envoyes: 4, ouverts: 1 }] }] }],
+    ['f-couche', { outil: 'communications_envoyees', colonnes: [t('modele')], lignes: [], sections: [{ titre: 'Par modèle', colonnes: [t('modele'), n('envoyes'), n('ouverts')], lignes: [{ modele: 'Rappel', envoyes: 4, ouverts: 1 }] }] }],
     ['f-cartes', { outil: 'mails_clients', colonnes: [t('objet'), n('messages')], lignes: [{ objet: 'Réservation pour samedi', messages: 3 }] }],
     ['f-bulles', { outil: 'demandes_sur_mesure', colonnes: [t('recue_le'), n('personnes')], lignes: [{ recue_le: '2026-10-20', date_souhaitee: '2026-12-12', personnes: 40 }] }],
     ['f-visites', { outil: 'fiche_client', colonnes: [t('date'), t('statut')], lignes: [{ date: '2026-10-05', statut: 'venu' }, { date: '2026-05-10', statut: 'annulée' }] }],
@@ -1167,11 +1170,12 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
     const t0 = performance.now();
     (function suivre() {
       const now = performance.now();
+      if (document.querySelector('.ast.est-occupe')) R.occupe = true;
       document.getAnimations().forEach((a) => {
         const cible = a.effect && a.effect.target;
         if (!cible || !cible.closest || !cible.closest('.ast')) return;
         const t = a.effect.getTiming();
-        if (t.iterations === Infinity && !cible.matches('.ast-tourne, .ast-travail')) R.sansFin.push(nom(a));
+        if (t.iterations === Infinity && !cible.closest('.ast-tourne, .ast-travail, .ast-fond, .ast-compo, .lu.is-cours .lu-phrase')) R.sansFin.push(nom(a));
         if ([t.easing, ...a.effect.getKeyframes().map((k) => k.easing)].some(depasse)) R.rebond.push(nom(a));
       });
       const bloc = document.querySelector('.ast-rech.est-cours');
@@ -1179,7 +1183,7 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
       const vue = bloc && bloc.querySelector('[data-lu-scene] .lu-vue:not(.est-sortie)');
       if (!R.duel && vue && vue.querySelector('.f-duel')) {
         R.duel = now;
-        const anims = vue.getAnimations({ subtree: true });
+        const anims = vue.getAnimations({ subtree: true }).filter((a) => !a.effect.pseudoElement);
         R.pieces = anims.length;
         R.delais = anims.map((a) => Math.round(a.effect.getTiming().delay));
         R.fins = anims.map((a) => Math.round(a.effect.getComputedTiming().endTime));
@@ -1226,6 +1230,7 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
   ok('[E] rien ne rebondit', live.rebond.length === 0, JSON.stringify([...new Set(live.rebond)]));
   ok('[E] rien ne bouge sans fin, sauf le signe de travail', live.sansFin.length === 0, JSON.stringify([...new Set(live.sansFin)]));
   await FX_repos(page, 600);
+  ok('[E] le champ travaille pendant la reponse, et s arrete apres', live.occupe === true && await page.evaluate(() => !document.querySelector('.ast.est-occupe')), String(live.occupe));
 
   // Une lecture qui ne finit pas ne retient pas la reponse.
   flux.scenario = { evenements: [debut, ['etape', { id: 'sans-fin', etat: 'cours', cleSource: 'reservations', nomSource: 'Réservations', phrase: 'Je cherche longtemps' }], ['texte', { delta: 'Réponse sans attendre.' }], { attendre: true }, finDe('Réponse sans attendre.')] };
@@ -1336,8 +1341,14 @@ async function sectionEcran() {
     await page.locator(champ).fill('Ligne une');
     await page.locator(champ).press('Shift+Enter');
     ok('[E] maj + entree ajoute une ligne', (await page.locator(champ).inputValue()) === 'Ligne une\n');
+    const fond = await page.evaluate(() => { const f = document.querySelector('.ast-fond'); if (!f) return null; const i = [...f.children]; return { clic: getComputedStyle(f).pointerEvents, z: getComputedStyle(f).zIndex, tours: i.map((x) => { const a = x.getAnimations()[0]; return a ? String(a.effect.getTiming().iterations) : '0'; }), filtre: i.map((x) => getComputedStyle(x).filter) }; });
+    ok('[E] le fond derive tout seul, derriere tout, sans filtre', Boolean(fond) && fond.clic === 'none' && fond.z === '-1' && fond.tours.length === 3 && fond.tours.every((t) => t === 'Infinity') && fond.filtre.every((x) => x === 'none'), JSON.stringify(fond));
+    await page.evaluate(() => { const vus = []; window.__fantomes = vus; new MutationObserver((liste) => liste.forEach((m) => m.addedNodes.forEach((n) => { if (n.classList && n.classList.contains('ast-fantome')) vus.push(n.className); }))).observe(document.querySelector('.ast'), { childList: true }); });
     await page.locator(champ).press('Enter');
     await page.waitForFunction(() => /Début de la réponse/.test(document.querySelector('.ast-r-texte') ? document.querySelector('.ast-r-texte').textContent : ''), null, { timeout: 8000 });
+    await page.waitForFunction(() => !document.querySelector('.ast-fantome'), null, { timeout: 2000 }).catch(() => {});
+    const sorties = await page.evaluate(() => ({ vus: window.__fantomes, restent: document.querySelectorAll('.ast-fantome').length }));
+    ok('[E] au premier envoi l accueil sort, et sa copie ne reste pas', sorties.vus.some((c) => /ast-salut/.test(c)) && sorties.restent === 0, JSON.stringify(sorties));
     const pendant = await page.evaluate(() => ({ libelle: (document.querySelector('.lu-phrase') || {}).textContent || '', arret: document.querySelector('[data-ast-envoi]').getAttribute('aria-label'), question: document.querySelector('.ast-q-bulle').textContent, haut: document.querySelector('.ast-q').getBoundingClientRect().top - document.querySelector('[data-ast-fil]').getBoundingClientRect().top }));
     ok('[E] le texte arrive pendant que le serveur ecrit', true);
     ok('[E] la lecture en cours se lit', /réservations/i.test(pendant.libelle), pendant.libelle);
@@ -1561,8 +1572,8 @@ async function sectionEcran() {
     flux.stockage = 'appareil';
     const lent = await monter();
     await lent.page.emulateMedia({ reducedMotion: 'reduce' });
-    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="lu-scene"><div class="lu-vue" data-t="1"><div class="lu-dessin"><div class="lu-barres"><i style="--h:1;--rang:.5"></i></div></div></div></div><p class="ast-pense"><span class="ast-tourne"></span></p>'; document.body.appendChild(d); const v = ['.lu-barres i', '.lu-vue', '.ast-tourne'].map((s) => getComputedStyle(d.querySelector(s)).animationName).join(','); d.remove(); return v; });
-    ok('[E] mouvement reduit : la recherche ne bouge plus', reduit === 'none,none,none', reduit);
+    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="lu-scene"><div class="lu-vue" data-t="1"><div class="lu-dessin"><div class="lu-barres"><i style="--h:1;--rang:.5"></i></div></div></div></div><p class="ast-pense"><span class="ast-tourne"></span></p><div class="ast-fond"><i></i></div>'; document.body.appendChild(d); const v = ['.lu-barres i', '.lu-vue', '.ast-tourne', '.ast-fond i'].map((s) => getComputedStyle(d.querySelector(s)).animationName).join(','); d.remove(); return v; });
+    ok('[E] mouvement reduit : la recherche ne bouge plus', reduit === 'none,none,none,none', reduit);
     await lent.ctx.close();
 
     {

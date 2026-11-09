@@ -4,12 +4,12 @@
    pro plus clean plus serieuse », puis « moins IA, moins dérangeant », puis
    le juste milieu entre les deux.
    Valeurs et raisons : learning/resources/2026-11-09_claude-code-interface/masterclass.md.
-   Cinq durees, deux courbes, rien qui rebondit. Un seul mouvement sans fin,
-   le petit cercle de travail. Les lectures s empilent, chacune avec son
-   resultat. Le dessin du moment se remplit pendant sa lecture, piece apres
-   piece dans l ordre de ses donnees, chaque piece en un instant, puis se tait.
-   La page est sans couleur : les fanions du centre vivent dans les donnees
-   lues, une couleur par piece.
+   Cinq durees, deux courbes, rien qui rebondit. Les lectures s empilent,
+   chacune avec son resultat. Le dessin du moment se remplit pendant sa lecture,
+   piece apres piece dans l ordre de ses donnees, puis se tait.
+   Derniere demande d Ansar : un fond tres simple qui bouge, un peu comme
+   Gemini, plein de petites animations d entree, de sortie et pendant, et plus
+   d arc-en-ciel. Une seule famille de bleus, de la page aux donnees.
    ======================================================================== */
 .ast {
   --d-vif: 60ms;
@@ -22,11 +22,16 @@
   --voile-1: color-mix(in srgb, var(--text) 5%, transparent);
   --voile-2: color-mix(in srgb, var(--text) 10%, transparent);
   --voile-3: color-mix(in srgb, var(--text) 20%, transparent);
+  --azur: #3f6fff;
+  --lueur-1: rgba(63, 111, 255, .24);
+  --lueur-2: rgba(124, 92, 255, .19);
+  --lueur-3: rgba(46, 156, 255, .18);
   grid-template-columns: 272px minmax(0, 1fr);
   background: var(--surface);
   font-variant-numeric: tabular-nums;
 }
 .ast.a-source { grid-template-columns: 272px minmax(0, 1fr) 460px; }
+:root[data-theme="dark"] .ast { --azur: #7aa0ff; --lueur-1: rgba(70, 118, 255, .38); --lueur-2: rgba(125, 100, 255, .33); --lueur-3: rgba(60, 150, 255, .28); }
 
 @keyframes astFondu { from { opacity: 0; } }
 @keyframes astArrive { from { opacity: 0; transform: translateY(4px); } }
@@ -39,25 +44,54 @@
 @keyframes luPoint { from { opacity: 0; transform: scale(.6); } }
 @keyframes luTrace { from { stroke-dasharray: 0 100; } }
 @keyframes luBalaie { from { clip-path: inset(-4px 100% -4px 0); } }
+@property --ast-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --ast-voile-bas { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes astMonte { from { opacity: 0; transform: translateY(10px); } }
+@keyframes astEnvoi { from { opacity: 0; transform: translateY(20px) scale(.97); } }
+@keyframes astGlisse { from { opacity: 0; transform: translateX(-8px); } }
+@keyframes astEclot { from { opacity: 0; transform: scale(.4); } }
+@keyframes astMenu { from { opacity: 0; transform: translateY(6px) scale(.96); } }
+@keyframes astTour { to { --ast-angle: 360deg; } }
+@keyframes astLueur { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes astSouffle { 50% { opacity: .72; } }
+@keyframes astDerive1 { to { transform: translate3d(16%, -12%, 0) scale(1.16); } }
+@keyframes astDerive2 { to { transform: translate3d(-18%, -14%, 0) scale(1.24); } }
+@keyframes astDerive3 { to { transform: translate3d(-10%, -8%, 0) scale(.88); } }
+@keyframes luScan { from { left: 0; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } to { left: 100%; opacity: 0; } }
+@keyframes luConfirme { 0% { transform: scaleX(0); opacity: .14; } 62% { transform: scaleX(1); opacity: .14; } 100% { transform: scaleX(1); opacity: 0; } }
 
-/* Le seul signe de travail : un petit cercle gris qui tourne, sans phrase toute faite. */
-.ast .ast-tourne { flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--voile-2); border-top-color: var(--muted); border-radius: 50%; animation: astTourne 800ms linear infinite; }
+/* Le signe de travail : un anneau bleu qui tourne, sans phrase toute faite. */
+.ast .ast-tourne { flex: none; width: 13px; height: 13px; background: conic-gradient(from 0deg, transparent 12%, var(--azur)); border-radius: 50%; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); animation: astTourne 800ms linear infinite; }
 .ast-travail { display: flex; align-items: center; gap: 10px; color: var(--muted); }
-.ast-travail::before { content: ""; flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--voile-2); border-top-color: var(--muted); border-radius: 50%; animation: astTourne 800ms linear infinite; }
+.ast-travail::before { content: ""; flex: none; width: 13px; height: 13px; background: conic-gradient(from 0deg, transparent 12%, var(--azur)); border-radius: 50%; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); animation: astTourne 800ms linear infinite; }
 
-/* Les couleurs des fanions : seulement sur ce qui vient des donnees. */
-.ast [data-t="1"] { --c: #944292; }
-.ast [data-t="2"] { --c: #4fae9e; }
-.ast [data-t="3"] { --c: #e3b341; }
-.ast [data-t="4"] { --c: #f0648c; }
-.ast [data-t="5"] { --c: #3f7bea; }
+/* Une couleur par donnee, toutes de la meme famille froide : jamais d arc-en-ciel. */
+.ast [data-t="1"] { --c: #4c7dff; }
+.ast [data-t="2"] { --c: #38b6c9; }
+.ast [data-t="3"] { --c: #7a6cf0; }
+.ast [data-t="4"] { --c: #a35bd6; }
+.ast [data-t="5"] { --c: #2f9e8f; }
 .ast [data-t="6"] { --c: #8b8b92; }
-:root[data-theme="dark"] .ast [data-t="1"] { --c: #b05fae; }
-:root[data-theme="dark"] .ast [data-t="2"] { --c: #67baac; }
-:root[data-theme="dark"] .ast [data-t="3"] { --c: #e3b341; }
-:root[data-theme="dark"] .ast [data-t="4"] { --c: #f0648c; }
-:root[data-theme="dark"] .ast [data-t="5"] { --c: #5f97f5; }
+:root[data-theme="dark"] .ast [data-t="1"] { --c: #6f96ff; }
+:root[data-theme="dark"] .ast [data-t="2"] { --c: #4fc6d8; }
+:root[data-theme="dark"] .ast [data-t="3"] { --c: #9388f5; }
+:root[data-theme="dark"] .ast [data-t="4"] { --c: #bb7ce6; }
+:root[data-theme="dark"] .ast [data-t="5"] { --c: #48b8a8; }
 :root[data-theme="dark"] .ast [data-t="6"] { --c: #8b8b92; }
+
+/* Le fond, un peu comme Gemini : trois lueurs tres douces en bas de la page. Pas de flou, pas de photo. */
+.ast-chat { isolation: isolate; }
+.ast-fond { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; opacity: .6; transition: opacity 700ms ease; }
+.ast.est-vide .ast-fond, .ast.est-occupe .ast-fond { opacity: 1; }
+.ast-fond i { position: absolute; display: block; background: radial-gradient(closest-side, var(--l), color-mix(in srgb, var(--l) 52%, transparent) 42%, color-mix(in srgb, var(--l) 16%, transparent) 74%, transparent); border-radius: 50%; will-change: transform; }
+.ast-fond i:nth-child(1) { left: -16%; bottom: -46%; width: 70%; height: 84%; --l: var(--lueur-1); }
+.ast-fond i:nth-child(2) { left: 20%; bottom: -58%; width: 66%; height: 96%; --l: var(--lueur-2); }
+.ast-fond i:nth-child(3) { right: -18%; bottom: -50%; width: 68%; height: 82%; --l: var(--lueur-3); }
+
+/* Ce qui s en va est retire tout de suite : sa copie joue la sortie au-dessus de la page. */
+.ast .ast-fantome { position: absolute; z-index: 6; margin: 0; max-width: none; pointer-events: none; }
+.ast-chat > .ast-fantome { z-index: 1; }
+.ast-bas { position: relative; z-index: 2; }
 
 .ast-lu-sr { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -91,14 +125,12 @@
 .ast-colonne { gap: 24px; max-width: 768px; padding: 28px 24px 30px; }
 .ast.est-vide .ast-colonne { padding: 0 24px 22px; }
 
-/* L accueil : une phrase, sa vraie salle, rien qui bouge. */
-.ast-salut { font-size: 24px; font-weight: 500; letter-spacing: -.01em; line-height: 1.3; text-wrap: balance; animation: astFondu 350ms ease-in-out both; }
-.ast-affiche { width: 100%; max-width: 720px; height: 168px; margin: 0 auto 24px; overflow: hidden; border-radius: 14px; background: var(--subtle); animation: astFondu 350ms ease-in-out both; }
-.ast-affiche img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 62%; }
+/* L accueil : une phrase, et le fond qui respire derriere. */
+.ast-salut { font-size: 30px; font-weight: 500; letter-spacing: -.02em; line-height: 1.25; text-wrap: balance; animation: astFondu 350ms ease-in-out both; }
 
 .ast-q.is-neuf, .ast-r.is-neuf { animation: none; }
-.ast-q-bulle { max-width: 85%; padding: 10px 14px; font-size: 15px; line-height: 1.5; background: var(--subtle); border-radius: 14px; transform-origin: right center; }
-.ast-q.is-neuf .ast-q-bulle { animation: astArrive var(--d-base) var(--c-sortie) both; }
+.ast-q-bulle { max-width: 85%; padding: 10px 15px; font-size: 15px; line-height: 1.5; background: var(--subtle); border-radius: 18px; transform-origin: right bottom; }
+.ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms var(--c-sortie) both; }
 
 .ast-r-texte { font-size: 15px; line-height: 1.6; }
 .ast-r-texte p { margin: 0 0 12px; }
@@ -144,11 +176,12 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 /* Le direct : la lecture du moment au bout de la liste, puis la scene. */
 .ast-rech.est-cours .lu { overflow: clip; }
 .lu.is-cours .lu-phrase { color: var(--text); }
-.lu-scene { position: relative; height: 0; overflow: hidden; transition: height var(--d-base) var(--c-sortie); }
-.lu-vue { padding: 6px 8px 6px 30px; }
-.lu-vue.est-sortie { position: absolute; top: 0; right: 0; left: 0; opacity: 0; transition: opacity var(--d-net) ease-out; }
+.lu-scene { position: relative; height: 0; margin: 6px 0 2px 30px; overflow: hidden; transition: height var(--d-base) var(--c-sortie); }
+.lu-vue.est-pleine { padding: 12px 14px; background: var(--voile-1); border-radius: 12px; }
+.lu-vue-dessin { position: relative; max-width: 560px; }
+.lu-vue.est-sortie { position: absolute; top: 0; right: 0; left: 0; opacity: 0; transform: translateY(-8px); transition: opacity var(--d-net) ease-out, transform var(--d-base) var(--c-sortie); }
 .lu-vue .lu-dessin { margin: 0; }
-.ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-rech.vient-de-plier .lu-scene { opacity: 0; transition: opacity 150ms ease-out; }
+.ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-rech.vient-de-plier .lu-scene { opacity: 0; transform: translateY(-8px); transition: opacity 150ms ease-out, transform 200ms var(--c-sortie); }
 
 /* Le fil : les vraies lignes lues montent une a une sous le dessin, trois visibles. */
 .lu-fil { position: relative; height: 66px; margin-top: 4px; overflow: hidden; }
@@ -345,22 +378,6 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .fm-c { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .fm-c polyline { fill: none; stroke: var(--text); stroke-width: 1.4; stroke-linejoin: round; opacity: .6; vector-effect: non-scaling-stroke; }
 
-/* Le dessin se remplit pendant sa lecture : les pieces arrivent dans l ordre de leurs donnees, etalees
-   sur --etale (posee par la lecture), chacune en un instant, sans rebond. Ensuite il ne bouge plus ;
-   rouvert apres coup, il est deja la. */
-@media (prefers-reduced-motion: no-preference) {
-  .lu-vue { animation: astFondu var(--d-base) ease-out backwards; }
-  .lu-scene .lu-barres i, .lu-scene .fx-e i, .lu-scene .ff-e i, .lu-scene .fc i { animation: luMonte var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .lu-plan i, .lu-scene .fr-p i, .lu-scene .fp-b i, .lu-scene .fe-p i, .lu-scene .faa-b i, .lu-scene .faa-b u, .lu-scene .fs-t i, .lu-scene .fd i, .lu-scene .fk-p u { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fk-p i { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms) + 120ms) backwards; }
-  .lu-scene .fr-n, .lu-scene .fr-v, .lu-scene .fp-l span, .lu-scene .fe-n, .lu-scene .fe b, .lu-scene .faa-v, .lu-scene .fs-l small, .lu-scene .fc b, .lu-scene .fc span, .lu-scene .fd b, .lu-scene .fg-l i, .lu-scene .fm-l i, .lu-scene .fch span, .lu-scene .fk b, .lu-scene .f-ann b, .lu-scene .f-ann span, .lu-scene .f-lignes p { animation: astFondu var(--d-base) ease-out calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .f-chiffres div, .lu-scene .f-conv p, .lu-scene .fv, .lu-scene .fb { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .f-calcul span { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 320ms)) backwards; }
-  .lu-scene .fo-e i, .lu-scene .fi-e i, .lu-scene .f-notes .fr-p u { animation: luPoint var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fa-v { animation: luTrace var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fm-c { animation: luBalaie 500ms var(--c-sortie) backwards; }
-}
-
 /* --- Sous la reponse --- */
 .ast-pied { gap: 2px; min-height: 28px; margin-top: 6px; }
 .ast-r.vient-d-ecrire .ast-pied { animation: astFondu var(--d-base) ease-out both; }
@@ -408,28 +425,28 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-ancre { position: relative; z-index: 4; max-width: 720px; height: 0; margin: 0 auto; }
 .ast-bande { position: absolute; right: -24px; bottom: 0; left: -24px; height: 48px; background: linear-gradient(to top, var(--surface), transparent); pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 150ms ease-out, visibility 150ms ease-out; }
 .ast-bande.est-visible { opacity: 1; visibility: visible; }
-.ast-descendre { position: absolute; right: auto; bottom: 18px; left: 50%; width: 32px; height: 32px; margin-left: -16px; color: var(--text); background: var(--raised); border: 0; border-radius: 50%; box-shadow: 0 0 0 1px var(--voile-3), 0 2px 8px color-mix(in srgb, #000 10%, transparent); pointer-events: none; opacity: 0; transition: opacity var(--d-base) ease-out, box-shadow var(--d-base) ease-out; }
-.ast-descendre.est-visible { pointer-events: auto; opacity: 1; }
+.ast-descendre { position: absolute; right: auto; bottom: 18px; left: 50%; width: 32px; height: 32px; margin-left: -16px; color: var(--text); background: var(--raised); border: 0; border-radius: 50%; box-shadow: 0 0 0 1px var(--voile-3), 0 2px 8px color-mix(in srgb, #000 10%, transparent); pointer-events: none; opacity: 0; transform: translateY(6px) scale(.9); transition: opacity var(--d-base) ease-out, box-shadow var(--d-base) ease-out, transform var(--d-base) var(--c-sortie); }
+.ast-descendre.est-visible { pointer-events: auto; opacity: 1; transform: none; }
 .ast-descendre.est-flux { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 8px color-mix(in srgb, #000 10%, transparent); }
 .ast-descendre:hover { background: var(--raised); }
-.ast-compo { max-width: 720px; padding: 11px 12px 9px; background: var(--surface); border: 0; border-radius: 14px; box-shadow: 0 4px 20px color-mix(in srgb, #000 3.5%, transparent), inset 0 0 0 1px var(--voile-3); transition: box-shadow var(--d-net) ease; }
-.ast-compo:focus-within { border: 0; box-shadow: 0 4px 20px color-mix(in srgb, #000 7.5%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent); }
+.ast-compo { position: relative; max-width: 720px; padding: 12px 12px 9px 14px; background: var(--surface); border: 0; border-radius: 22px; box-shadow: 0 12px 44px -16px color-mix(in srgb, var(--azur) 38%, transparent), inset 0 0 0 1px var(--voile-2); transition: box-shadow var(--d-base) ease; }
+.ast-compo:focus-within { border: 0; box-shadow: 0 14px 48px -14px color-mix(in srgb, var(--azur) 55%, transparent), 0 0 0 3px color-mix(in srgb, var(--azur) 13%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--azur) 55%, transparent); }
 .ast .ast-champ { padding: 0 3px; font-size: 15px; line-height: 22px; }
 .ast .ast-champ:focus, .ast .ast-champ:focus-visible { outline: 0; box-shadow: none; }
 .ast-compo-pied { margin-top: 6px; }
-.ast-envoi { width: 32px; height: 32px; color: var(--surface); background: var(--text); border-radius: 9px; transition: background-color var(--d-net) ease, color var(--d-net) ease, transform var(--d-vif) ease; }
-.ast-envoi > * { animation: astFondu var(--d-net) ease-out 30ms backwards; }
+.ast-envoi { width: 34px; height: 34px; color: var(--surface); background: var(--text); border-radius: 50%; transition: background-color var(--d-net) ease, color var(--d-net) ease, transform var(--d-vif) ease, scale var(--d-net) var(--c-sortie); }
+.ast-envoi > * { animation: astEclot var(--d-base) var(--c-sortie) 30ms backwards; }
 .ast-envoi:not(:disabled):active { transform: scale(.96); }
 .ast-envoi:disabled { color: var(--faint); background: var(--subtle); }
 .ast-envoi.est-arret { color: var(--surface); background: var(--text); }
 .ast-modele-bouton { font-size: 13px; }
 .ast-modele-bouton:hover, .ast-modele-bouton[aria-expanded="true"] { background: var(--voile-1); }
 .ast-menu { background: var(--raised); border: 0; border-radius: 12px; box-shadow: 0 0 0 1px var(--voile-2), 0 8px 28px color-mix(in srgb, #000 14%, transparent); }
-.ast-menu:not([hidden]) { animation: astArrive var(--d-net) var(--c-sortie) both; }
+.ast-menu:not([hidden]) { transform-origin: 0 100%; animation: astMenu 160ms var(--c-sortie) both; }
 .ast-option:hover { background: var(--voile-1); }
 .ast-suggestions { gap: 6px; max-width: 720px; margin-top: 12px; }
-.ast-suggestion { padding: 7px 12px; font-size: 13.5px; color: var(--muted); background: none; border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-2); transition: background-color var(--d-net) ease, color var(--d-net) ease; animation: astFondu 500ms linear both; }
-.ast-suggestion:hover { color: var(--text); background: var(--voile-1); }
+.ast-suggestion { padding: 7px 13px; font-size: 13.5px; color: var(--muted); background: color-mix(in srgb, var(--surface) 62%, transparent); border: 0; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--voile-2); transition: background-color var(--d-net) ease, color var(--d-net) ease; animation: astFondu 500ms linear both; }
+.ast-suggestion:hover { color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azur) 45%, transparent); }
 .ast-avis { margin: 8px 0 0; font-size: 12px; }
 
 /* --- Le panneau de droite : sources, ce que l IA a appris --- */
@@ -462,6 +479,77 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast .ast-table td.est-preuve { font-weight: 650; background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
 .ast .ast-table td.est-preuve-aussi { background: var(--accent-soft); }
 
+/* Le dessin se remplit pendant sa lecture : les pieces arrivent dans l ordre de leurs donnees, etalees
+   sur --etale (posee par la lecture), chacune en un instant, sans rebond. Ensuite il ne bouge plus ;
+   rouvert apres coup, il est deja la. */
+@media (prefers-reduced-motion: no-preference) {
+  .lu-vue { animation: astMonte 240ms var(--c-sortie) backwards; }
+  .lu-scene .lu-barres i, .lu-scene .fx-e i, .lu-scene .ff-e i, .lu-scene .fc i { animation: luMonte var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .lu-plan i, .lu-scene .fr-p i, .lu-scene .fp-b i, .lu-scene .fe-p i, .lu-scene .faa-b i, .lu-scene .faa-b u, .lu-scene .fs-t i, .lu-scene .fd i, .lu-scene .fk-p u { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .fk-p i { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms) + 120ms) backwards; }
+  .lu-scene .fr-n, .lu-scene .fr-v, .lu-scene .fp-l span, .lu-scene .fe-n, .lu-scene .fe b, .lu-scene .faa-v, .lu-scene .fs-l small, .lu-scene .fc b, .lu-scene .fc span, .lu-scene .fd b, .lu-scene .fg-l i, .lu-scene .fm-l i, .lu-scene .fch span, .lu-scene .fk b, .lu-scene .f-ann b, .lu-scene .f-ann span, .lu-scene .f-lignes p { animation: astFondu var(--d-base) ease-out calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .f-chiffres div, .lu-scene .f-conv p, .lu-scene .fv, .lu-scene .fb { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .f-calcul span { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 320ms)) backwards; }
+  .lu-scene .fo-e i, .lu-scene .fi-e i, .lu-scene .f-notes .fr-p u { animation: luPoint var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .fa-v { animation: luTrace var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
+  .lu-scene .fm-c { animation: luBalaie 500ms var(--c-sortie) backwards; }
+
+  /* Le fond : trois lueurs qui derivent tres lentement, des transformations seulement. */
+  .ast-fond { animation: astFondu 900ms ease-out backwards; }
+  .ast-fond i:nth-child(1) { animation: astDerive1 19s ease-in-out infinite alternate; }
+  .ast-fond i:nth-child(2) { animation: astDerive2 24s ease-in-out infinite alternate; }
+  .ast-fond i:nth-child(3) { animation: astDerive3 15s ease-in-out infinite alternate; }
+  .ast.est-occupe .ast-fond { animation: astFondu 900ms ease-out backwards, astSouffle 2600ms ease-in-out infinite; }
+
+  /* L arrivee : la liste glisse, la phrase monte et une lueur la traverse une fois, le champ suit. */
+  .ast-salut { color: transparent; background: linear-gradient(100deg, var(--text) 42%, var(--azur) 50%, var(--text) 58%) 0 0 / 260% 100% no-repeat; -webkit-background-clip: text; background-clip: text; animation: astMonte 520ms var(--c-sortie) 60ms backwards, astLueur 1300ms ease-out 220ms backwards; }
+  .ast-bas { animation: astMonte 460ms var(--c-sortie) 40ms backwards; }
+  .ast-avis { animation: astFondu 600ms ease-out 420ms backwards; }
+  .ast-suggestion { animation: astMonte 380ms var(--c-sortie) calc(200ms + var(--i, 0) * 50ms) backwards; }
+  .ast-suggestion:nth-child(2) { --i: 1; }
+  .ast-suggestion:nth-child(3) { --i: 2; }
+  .ast-suggestion:nth-child(4) { --i: 3; }
+  .ast-suggestion:nth-child(5) { --i: 4; }
+  .ast-conv.is-neuve { animation: astGlisse 280ms var(--c-sortie) both; }
+  @media (min-width: 761px) { .ast-liste { animation: astGlisse 380ms var(--c-sortie) backwards; } }
+
+  /* Ce qu on touche repond. */
+  .ast-nouvelle, .ast-savoir-lien, .ast-icone:not(.ast-descendre), .ast-pill, .ast-suggestion, .ast-modele-bouton, .ast-option, .ast-cite { transition: background-color var(--d-net) ease, color var(--d-net) ease, box-shadow var(--d-net) ease, scale var(--d-net) var(--c-sortie), translate var(--d-net) var(--c-sortie); }
+  .ast-nouvelle:active, .ast-savoir-lien:active, .ast-icone:not(.ast-descendre):active, .ast-pill:active, .ast-suggestion:active, .ast-modele-bouton:active, .ast-option:active { scale: .97; }
+  .ast-suggestion:hover, button.ast-cite:hover { translate: 0 -1px; }
+  .ast-conv-nom { transition: translate var(--d-net) var(--c-sortie); }
+  .ast-conv:hover .ast-conv-nom { translate: 2px 0; }
+  .ast-nouvelle svg, .ast-modele-bouton svg, .ast-envoi svg { transition: rotate var(--d-base) var(--c-sortie), translate var(--d-net) var(--c-sortie); }
+  .ast-nouvelle:hover svg { rotate: 90deg; }
+  .ast-modele-bouton[aria-expanded="true"] svg { rotate: 180deg; }
+  .ast-envoi:not(:disabled):hover { scale: 1.06; }
+  .ast-envoi:not(:disabled):hover svg { translate: 0 -1.5px; }
+
+  /* Pendant le travail : une lueur fait le tour du champ et le fond respire. */
+  .ast-compo::before { content: ""; position: absolute; inset: 0; padding: 1.5px; background: conic-gradient(from var(--ast-angle, 0deg), transparent 0 52%, var(--azur) 76%, #9a8cff 90%, transparent); border-radius: inherit; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; pointer-events: none; opacity: 0; transition: opacity 360ms ease; }
+  .ast.est-occupe .ast-compo::before { opacity: 1; animation: astTour 2400ms linear infinite; }
+
+  /* Le texte qui arrive se fond vers le bas. */
+  .ast-r-texte.est-flux { --ast-voile-bas: 44px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); animation: astFondu 260ms ease-out backwards; }
+
+  /* Une lecture : elle glisse a sa place, sa phrase brille tant qu elle travaille, une lueur la confirme. */
+  .lu.is-cours .lu-source { animation: astGlisse 260ms var(--c-sortie) backwards; }
+  .lu.is-cours .lu-phrase { color: transparent; background: linear-gradient(90deg, var(--text) 38%, var(--azur) 50%, var(--text) 62%) 0 0 / 240% 100%; -webkit-background-clip: text; background-clip: text; animation: astGlisse 260ms var(--c-sortie) 40ms backwards, astLueur 1500ms linear infinite; }
+  .ast-rech.est-cours .lu { position: relative; isolation: isolate; }
+  .ast-rech.est-cours .lu.is-fini::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--c, var(--azur)); border-radius: 8px; opacity: 0; transform-origin: 0 50%; animation: luConfirme 560ms var(--c-sortie); }
+  .ast-rech.est-cours .lu.is-fini .lu-point { animation: astEclot 260ms var(--c-sortie) backwards; }
+  .ast-rech.est-cours .lu.is-fini .lu-res { animation: astFondu var(--d-feuille) ease-out backwards; }
+  /* Une ligne fine parcourt le dessin pendant qu il se remplit, une fois, puis s efface. */
+  .lu-vue-dessin:not(:empty)::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: 0; width: 1.5px; background: linear-gradient(to bottom, transparent, var(--azur), transparent); box-shadow: -10px 0 16px 1px color-mix(in srgb, var(--azur) 30%, transparent); pointer-events: none; animation: luScan var(--etale, 1s) linear both; }
+
+  /* Sous la reponse, les gestes arrivent l un apres l autre. */
+  .ast-r.vient-d-ecrire .ast-pied > * { animation: astMonte var(--d-base) var(--c-sortie) backwards; }
+  .ast-r.vient-d-ecrire .ast-pied > :nth-child(2) { animation-delay: 40ms; }
+  .ast-r.vient-d-ecrire .ast-pied > :nth-child(3) { animation-delay: 80ms; }
+  .ast-r.vient-d-ecrire .ast-pied > :nth-child(4) { animation-delay: 120ms; }
+  .ast-r.vient-d-ecrire .ast-pied > :nth-child(5) { animation-delay: 160ms; }
+}
+
 /* --- Etroit --- */
 @media (max-width: 1200px) {
   .ast.a-source { grid-template-columns: 272px minmax(0, 1fr); }
@@ -471,8 +559,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   .ast, .ast.a-source { grid-template-columns: minmax(0, 1fr); }
   .ast-colonne { padding: 18px 16px 20px; }
   .ast.est-vide .ast-colonne { padding: 0 16px 18px; }
-  .ast-salut { font-size: 22px; }
-  .ast-affiche { height: 132px; }
+  .ast-salut { font-size: 25px; }
   .ast-bas { padding: 0 12px max(10px, env(safe-area-inset-bottom)); }
   .ast .ast-champ { font-size: 16px; }
   .ast-ancre { margin: 0; }
@@ -485,7 +572,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   .lu-tete .lu-res { grid-column: 3; grid-row: 1; justify-self: end; }
   .lu-tete .lu-phrase { grid-column: 2 / 4; grid-row: 2; white-space: normal; }
   .lu-tete > svg { grid-column: 4; grid-row: 1; opacity: 1; }
-  .lu-vue { padding-left: 30px; }
+  .lu-scene { margin-left: 0; }
   .lu-dessin, .f-grille, .f-semaine, .f-prix, .f-conv { max-width: none; }
   .fr-l { grid-template-columns: minmax(74px, 110px) minmax(0, 1fr) auto; }
   .faa { grid-template-columns: 84px minmax(0, 1fr) 124px; }
@@ -502,6 +589,6 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 /* --- Moins de mouvement : rien n entre, rien ne tourne, les plis s ouvrent d un coup --- */
 @media (prefers-reduced-motion: reduce) {
   .ast .ast-tourne, .ast-travail::before { animation: none; }
-  .ast-salut, .ast-affiche, .ast-q.is-neuf .ast-q-bulle, .ast-conv.is-neuve, .ast-rech.vient-de-plier > .ast-rech-tete, .ast-r.vient-d-ecrire .gb-p i, .ast-r.vient-d-ecrire .gb-val, .ast-r.vient-d-ecrire .ast-pied, .ast-suggestion, .ast-menu:not([hidden]), .ast-sources:not([hidden]), .ast-envoi > * { animation: none; }
+  .ast-salut, .ast-q.is-neuf .ast-q-bulle, .ast-conv.is-neuve, .ast-rech.vient-de-plier > .ast-rech-tete, .ast-r.vient-d-ecrire .gb-p i, .ast-r.vient-d-ecrire .gb-val, .ast-r.vient-d-ecrire .ast-pied, .ast-suggestion, .ast-menu:not([hidden]), .ast-sources:not([hidden]), .ast-envoi > * { animation: none; }
   .lu-plis, .ast-rech > .lu-plis, .lu-scene, .lu-vue.est-sortie, .ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-rech.vient-de-plier .lu-scene, .lu-fil-int, .lu-fil p, .ast-bande, .ast-descendre, .ast-compo, .ast-rech-tete > svg, .lu-tete > svg { transition: none; }
 }

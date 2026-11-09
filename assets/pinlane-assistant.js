@@ -39,7 +39,6 @@
     formules: { nom: 'Formules', cle: 'formules' },
     demandes: { nom: 'Demandes', cle: 'requests' },
   };
-  const AFFICHES = { libramont: '/assets/fungalaxy/pistes-neon-1600.webp' };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -765,7 +764,7 @@
     combinaisons_activites: (s) => fChaine(s.lignes),
     offres_et_ventes_additionnelles: (s) => fEntonnoir([['Vues', 'vues'], ['Ajoutées', 'ajouts'], ['Acceptées', 'acceptees'], ['Réservées', 'reservees']].map(([n, c]) => ({ n, v: somme(s.lignes, c) }))),
     campagnes: (s) => fEntonnoir([['Destinataires', 'destinataires'], ['Envoyés', 'envoyes'], ['Ouvertures', 'ouvertures'], ['Clics', 'clics']].map(([n, c]) => ({ n, v: somme(s.lignes, c) }))),
-    communications_envoyees: (s) => fCouches(lignesDe(s, 'Par modele')),
+    communications_envoyees: (s) => fCouches(lignesDe(s, 'Par modèle')),
     mails_clients: (s) => fCartes(s.lignes.map((l) => ({ titre: l.objet, droite: `${nombreEntier(l.messages)} message${Number(l.messages) > 1 ? 's' : ''}` }))),
     lire_fil_mail: (s) => fConversation(s.lignes),
     equipe_et_activite: (s) => fVisages(s.lignes),
@@ -922,7 +921,7 @@
       vue.dataset.t = String(teinte(e.cleSource));
       vue.innerHTML = '<div class="lu-vue-dessin"></div><div class="lu-fil" hidden><div class="lu-fil-int"></div></div>';
       scene.appendChild(vue);
-      Object.assign(S, { e, li, t0: now, vue, fil: creerFil(vue.querySelector('.lu-fil'), tenir), rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, ecrit: '' });
+      Object.assign(S, { e, li, t0: now, vue, fil: creerFil(vue.querySelector('.lu-fil'), () => { vue.classList.add('est-pleine'); tenir(); }), rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, ecrit: '' });
       dit.textContent = e.phrase || e.libelle || '';
     }
 
@@ -934,6 +933,7 @@
       const vue = S.vue;
       const zone = vue.querySelector('.lu-vue-dessin');
       zone.innerHTML = html;
+      vue.classList.add('est-pleine');
       vue.classList.toggle('sans-fil', Boolean(zone.querySelector('.sans-fil')));
       // L ordre des donnees devient l ordre d arrivee : chaque piece garde le sien.
       vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));
@@ -1138,6 +1138,7 @@
     const hote = dom('[data-ast-convs]');
     if (!hote) return;
     majPied();
+    const premiere = !hote.querySelector('.ast-conv');
     if (!A.conversations.length) { hote.innerHTML = `<p class="ast-vide">${A.stockage === 'appareil' ? 'Vos conversations resteront ici, sur cet appareil.' : 'Vos conversations resteront ici, sur tous vos appareils.'}</p>`; return; }
     const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
     const groupes = [["Aujourd'hui", (t) => t >= debutJour.getTime()], ['Cette semaine', (t) => t >= debutJour.getTime() - 6 * 864e5], ['Plus ancien', () => true]];
@@ -1153,6 +1154,8 @@
         : `<div class="ast-conv${c.id === A.actuelle ? ' est-active' : ''}"><button type="button" class="ast-conv-titre" data-ast-conv="${esc(c.id)}"${c.id === A.actuelle ? ' aria-current="true"' : ''}><span class="ast-conv-nom">${esc(c.titre || 'Nouvelle conversation')}</span>${c.centerId && c.centerId !== centreId() ? `<span class="ast-conv-centre">${esc(nomDUnCentre(c.centerId).split(/s+/).pop())}</span>` : ''}</button><button type="button" class="ast-conv-suppr" data-ast-suppr="${esc(c.id)}" aria-label="Supprimer la conversation">${icone('corbeille')}</button></div>`)).join('');
     });
     hote.innerHTML = html;
+    // La premiere fois que la liste se remplit, ses lignes arrivent l une apres l autre.
+    if (premiere && !sansMouvement()) [...hote.children].slice(0, 14).forEach((x, i) => x.animate([{ opacity: 0, transform: 'translateX(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: i * 20, easing: 'cubic-bezier(.165,.84,.44,1)', fill: 'backwards' }));
   }
 
   function peindreFil({ neuf = 0, garder = false } = {}) {
@@ -1165,7 +1168,11 @@
     const position = fil.scrollTop;
     racine.classList.toggle('est-vide', !c || !messages.length);
     if (!messages.length) {
-      hote.innerHTML = c ? '<p class="ast-pense ast-travail">Lecture de la conversation</p>' : `${AFFICHES[centreId()] ? `<div class="ast-affiche"><img src="${AFFICHES[centreId()]}" alt="" decoding="async"></div>` : ''}<h1 class="ast-salut">Que voulez-vous savoir sur ${esc(nomDuCentre())} ?</h1>`;
+      const phrase = `Que voulez-vous savoir sur ${nomDuCentre()} ?`;
+      const salut = hote.querySelector('.ast-salut');
+      // L accueil deja la ne rejoue pas son entree.
+      if (c) hote.innerHTML = '<p class="ast-pense ast-travail">Lecture de la conversation</p>';
+      else if (!salut || salut.textContent !== phrase) hote.innerHTML = `<h1 class="ast-salut">${esc(phrase)}</h1>`;
     } else {
       hote.innerHTML = messages.map((m, i) => htmlMessage(m, i, messages, i >= messages.length - neuf)).join('');
       hote.querySelectorAll('[data-ast-i]').forEach((a) => dessinerGraphiques(a, messages[Number(a.dataset.astI)]));
@@ -1189,6 +1196,15 @@
   }
 
   // Un seul message change pendant l ecriture : le reste de la page ne bouge pas.
+  // Le texte qui arrive se fond vers le bas. A la fin, le fondu se retire au lieu de disparaitre d un coup.
+  const VOILE_DU_TEXTE = 'linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent)';
+  function marquerFlux(zone, enCours) {
+    if (zone.classList.contains('est-flux') && !enCours && !sansMouvement()) {
+      zone.animate([{ maskImage: VOILE_DU_TEXTE, '--ast-voile-bas': '44px' }, { maskImage: VOILE_DU_TEXTE, '--ast-voile-bas': '0px' }], { duration: 320, easing: 'ease-out' });
+    }
+    zone.classList.toggle('est-flux', enCours);
+  }
+
   function demanderPeinture(m) {
     if (A.peintureDemandee) return;
     A.peintureDemandee = true;
@@ -1210,7 +1226,9 @@
     if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);
     else if (haut.querySelector('[data-lu-scene]')) { if (replierLecture(haut, m, article)) return; }
     else if (m.statut !== 'cours' || !haut.querySelector('[data-ast-recherche]')) haut.innerHTML = htmlRecherche(m);
-    article.querySelector('[data-ast-texte]').innerHTML = htmlTexte(m);
+    const zone = article.querySelector('[data-ast-texte]');
+    zone.innerHTML = htmlTexte(m);
+    marquerFlux(zone, m.statut === 'cours' && Boolean(m.texte));
     article.querySelector('[data-ast-basdepage]').innerHTML = htmlPied(m, i === c.messages.length - 1);
     dessinerGraphiques(article, m);
     majDescendre();
@@ -1305,7 +1323,9 @@
     if (!envoi || !champ) return;
     const enCours = Boolean(A.flux);
     envoi.classList.toggle('est-arret', enCours);
+    dom('.ast').classList.toggle('est-occupe', enCours);
     if (envoi.dataset.etat !== (enCours ? 'arret' : 'envoi')) {
+      if (enCours) fantome(envoi.firstElementChild, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-16px)' }], { duree: 200 });
       envoi.dataset.etat = enCours ? 'arret' : 'envoi';
       envoi.innerHTML = enCours ? '<span class="ast-carre" aria-hidden="true"></span>' : icone('fleche');
     }
@@ -1315,6 +1335,7 @@
     bouton.querySelector('span').textContent = nomModele(A.modele);
     bouton.setAttribute('aria-expanded', A.menuModele ? 'true' : 'false');
     const menu = dom('[data-ast-menu]');
+    if (!A.menuModele && !menu.hidden) fantome(menu, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(6px) scale(.97)' }], { duree: 140 });
     menu.hidden = !A.menuModele;
     menu.innerHTML = MODELES.map((m) => `<button type="button" role="menuitemradio" aria-checked="${m.id === A.modele ? 'true' : 'false'}" class="ast-option" data-ast-choix="${m.id}"><span class="ast-option-nom">${m.nom}</span><span class="ast-option-phrase">${m.phrase}</span>${m.id === A.modele ? icone('coche') : ''}</button>`).join('');
   }
@@ -1439,6 +1460,8 @@
     const hote = dom('[data-ast-panneau]');
     const racine = dom('.ast');
     if (!hote || !racine) return;
+    if (!A.panneau && !hote.hidden) fantome(hote, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(24px)' }], { duree: 200 });
+    if (A.panneau && hote.hidden && !sansMouvement()) requestAnimationFrame(() => [...hote.children].slice(0, 8).forEach((x, i) => x.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, delay: 50 + i * 35, easing: 'cubic-bezier(.165,.84,.44,1)', fill: 'backwards' })));
     racine.classList.toggle('a-source', Boolean(A.panneau));
     hote.hidden = !A.panneau;
     if (!A.panneau) { hote.innerHTML = ''; return; }
@@ -1510,9 +1533,62 @@
     dessiner(hote, temps ? 'courbe' : 'barres', points.map((l) => String(l[axe.cle])), points.map((l) => l[mesure.cle]), mesure.type, `src-${source.id}-${points.length}`);
   }
 
+  // ---- Les sorties ---------------------------------------------------------------------
+  // Rien n attend une animation : ce qui s en va est retire tout de suite, et sa copie joue la sortie
+  // au-dessus de la page, sans aucun attribut que le code pourrait retrouver.
+  function fantome(el, images, { duree = 220, delai = 0, dans = dom('.ast') } = {}) {
+    const racine = dans;
+    if (!racine || !el || sansMouvement() || !el.getClientRects().length) return null;
+    const r = el.getBoundingClientRect();
+    const base = racine.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const copie = el.cloneNode(true);
+    [copie, ...copie.querySelectorAll('*')].forEach((n) => {
+      [...n.attributes].forEach((a) => { if (a.name === 'id' || a.name === 'for' || /^data-(ast|lu)/.test(a.name)) n.removeAttribute(a.name); });
+      n.style.animation = 'none';
+    });
+    copie.classList.add('ast-fantome');
+    copie.setAttribute('aria-hidden', 'true');
+    copie.inert = true;
+    Object.assign(copie.style, { left: `${r.left - base.left}px`, top: `${r.top - base.top}px`, width: `${r.width}px`, height: `${r.height}px`, color: style.color, textAlign: style.textAlign });
+    racine.appendChild(copie);
+    if (el.scrollTop) copie.scrollTop = el.scrollTop;
+    const anim = copie.animate(images, { duration: duree, delay: delai, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'both' });
+    anim.onfinish = () => copie.remove();
+    anim.oncancel = () => copie.remove();
+    return copie;
+  }
+
+  // Le premier envoi : la phrase d accueil monte et s efface, les suggestions descendent une a une.
+  function sortirAccueil() {
+    fantome(dom('.ast-salut'), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-14px) scale(.985)' }], { duree: 260 });
+    const puces = dom('[data-ast-suggestions]');
+    if (puces) [...puces.children].forEach((x, i) => fantome(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(8px)' }], { duree: 180, delai: i * 26, dans: dom('.ast-chat') }));
+  }
+
+  // Changer de conversation : seuls les messages visibles jouent la sortie, coupes au bord du fil.
+  function sortirFil() {
+    const fil = dom('[data-ast-fil]');
+    const hote = dom('[data-ast-colonne]');
+    if (!fil || !hote || sansMouvement()) return;
+    const vue = fil.getBoundingClientRect();
+    [...hote.children].forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom <= vue.top || r.top >= vue.bottom) return;
+      const copie = fantome(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-8px)' }], { duree: 180 });
+      if (copie) copie.style.clipPath = `inset(${Math.max(0, vue.top - r.top)}px 0 ${Math.max(0, r.bottom - vue.bottom)}px 0)`;
+    });
+  }
+
+  function entrerFil() {
+    const hote = dom('[data-ast-colonne]');
+    if (hote && !sansMouvement()) hote.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, delay: 60, easing: 'cubic-bezier(.165,.84,.44,1)', fill: 'backwards' });
+  }
+
   // ---- Poser une question ------------------------------------------------------------
   function nouvelleConversation() {
     const avant = hautDuChamp();
+    if (courante()) sortirFil();
     A.actuelle = '';
     A.panneau = null;
     peindrePanneau();
@@ -1685,7 +1761,7 @@
     if (champ) { champ.value = ''; ajusterChamp(); }
     peindreListe();
     if (neuve) { const ligne = dom(`[data-ast-conv="${CSS.escape(c.id)}"]`); if (ligne) ligne.closest('.ast-conv').classList.add('is-neuve'); }
-    if (commence) { peindreFil({ neuf: 2 }); glisserLeChamp(avant); }
+    if (commence) { sortirAccueil(); peindreFil({ neuf: 2 }); glisserLeChamp(avant); }
     else poserDerniers(c, 2);
     versLeBas(!commence);
     poser(c, reponse);
@@ -1722,6 +1798,9 @@
   }
 
   function supprimer(id) {
+    const ligne = dom(`[data-ast-suppr-oui="${CSS.escape(id)}"]`);
+    if (ligne) fantome(ligne.closest('.ast-conv'), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(-12px)' }], { duree: 180 });
+    if (A.actuelle === id) sortirFil();
     A.conversations = A.conversations.filter((c) => c.id !== id);
     if (A.actuelle === id) { A.actuelle = ''; A.panneau = null; peindrePanneau(); peindreFil(); }
     A.aSupprimer = '';
@@ -1731,10 +1810,14 @@
   }
 
   async function ouvrir(id) {
+    const autre = id !== A.actuelle;
+    const avant = hautDuChamp();
+    if (autre) { if (courante()) sortirFil(); else sortirAccueil(); }
     A.actuelle = id;
     A.aSupprimer = '';
     A.panneau = null;
     peindrePanneau(); peindreListe(); peindreFil(); fermerListe();
+    if (autre) { glisserLeChamp(avant); entrerFil(); }
     const c = courante();
     if (c && c.messages === null) {
       try {
@@ -1925,6 +2008,7 @@
         </div>
       </aside>
       <section class="ast-chat" aria-label="Assistant du centre">
+        <div class="ast-fond" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="ast-tete">
           <button type="button" class="ast-icone" data-ast-ouvrir-liste aria-label="Vos conversations">${icone('menu')}</button>
           <span class="ast-tete-titre" data-ast-tete-titre>Marketing</span>

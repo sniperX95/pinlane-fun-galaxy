@@ -901,7 +901,11 @@ const ANCRE = {
   console.log('\n[U] le plan interne ne part pas a un visiteur anonyme');
   // =========================================================================
   const INTERNES = ['risk', 'staffSummary', 'marketIntelligence', 'entitlements', 'operationsChecklist'];
-  const FUTUR = jourBelge(Date.now() + 14 * 86400000);
+  // Un samedi a deux semaines au moins : le centre y est toujours ouvert (le lundi, il est ferme
+  // et le visiteur ne recoit aucun creneau, ce qui n a rien a voir avec ce que ce gate prouve).
+  const samedi = new Date(Date.now() + 14 * 86400000);
+  while (samedi.getUTCDay() !== 6) samedi.setUTCDate(samedi.getUTCDate() + 1);
+  const FUTUR = jourBelge(samedi.getTime());
   const creneaux = async (token) => {
     const r = await appeler(F.dispo, { url: `/api/public-availability?date=${FUTUR}&type=laser&pax=8&centerId=libramont`, token });
     return { statut: r.statusCode, slots: (JSON.parse(r.body || '{}').slots || []), corps: r.body };

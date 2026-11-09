@@ -427,7 +427,8 @@ async function doublure(u, rs, rq) {
   if (u.pathname === '/api/ops' && (action === 'menuCenters' || action === 'centerConfig')) {
     return J({ ok: true, owner: true, centers: db.centers.map(fiche), activities: [{ id: 'bowling', label: 'Bowling' }, { id: 'laser_game', label: 'Laser Game' }] });
   }
-  if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], durationOptions: [], center: null });
+  // La fiche du centre avec ses horaires : sans elle, la page prend la grille en dur, et le lundi est ferme.
+  if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], durationOptions: [], center: fiche(db.centers.find((c) => c.id === (u.searchParams.get('centerId') || 'libramont')) || db.centers[0]) });
   const centre = u.searchParams.get('centerId') || 'libramont';
   const reservations = u.pathname === '/api/staff-state' ? RESAS.filter((r) => r.centerId === centre) : [];
   const jour = { ok: true, reservations, laneStatuses: {}, communications: [], blocks: [], events: [], clients: [], suggestions: [], samples: [], centers: [], revision: 'gate' };

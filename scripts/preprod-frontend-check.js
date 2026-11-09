@@ -132,7 +132,10 @@ async function main({ capture = false, seulement = null, tailles = null, rapport
       // de minute reconstruit sa grille et detache la case ou la carte qui a ouvert
       // la fenetre (le focus va alors a sa copie). Ce rendu, F1 et F4 le provoquent
       // expres, au meme moment a chaque passage : ticFenetreOuverte.
-      await page.clock.setFixedTime(new Date());
+      // Et sur un jour ouvert : le lundi, la grille du centre ferme n a rien a redessiner.
+      const figee = new Date();
+      if (figee.getDay() === 1) figee.setDate(figee.getDate() - 1);
+      await page.clock.setFixedTime(figee);
       await page.goto(BASE_URL, { waitUntil: 'networkidle' });
       await page.waitForFunction(() => typeof setView === 'function');
       await seedStressDay(page);

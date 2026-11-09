@@ -15369,6 +15369,7 @@ function renderStaffUtilityEstablishment() {
     <h4 class="eb-bh">Bowling</h4>
     ${ebPhrase('bowling', EB_PHRASES.bowling(ebReader(false)))}
     ${ebStepper('estab-laneCount', 'Pistes de bowling', { min: 1, max: 40, value: Number(bowling.laneCount || 8) })}
+    <div class="eb-pistes" data-eb-pistes aria-hidden="true"></div>
     ${ebStepper('estab-normalCap', 'Joueurs par piste', { min: 1, max: 12, value: Number(bowling.normalCapacityPerLane || 6), hint: 'Le confort passe avant tout.' })}
     ${ebStepper('estab-emergencyCap', 'Joueurs par piste si besoin', { min: 1, max: 15, value: Number(bowling.emergencyCapacityPerLane || 7), minFrom: 'estab-normalCap', hint: 'Seulement quand les pistes libres ne suffisent plus.' })}
     ${ebSwitch('estab-preferAdjacent', 'Préférer des pistes voisines', 'Un même groupe est placé sur des pistes côte à côte quand c’est possible.', 'Un groupe peut être réparti sur des pistes éloignées.', bowling.preferAdjacentLanes !== false)}
@@ -15694,9 +15695,26 @@ function ebPaintDay(key) {
   track.innerHTML = ligne('estab-day', 'eb-trait-n') + ligne('estab-hday', 'eb-trait-v');
 }
 
+function ebDessinerPistes(root) {
+  const hote = root.querySelector('[data-eb-pistes]');
+  const champ = document.getElementById('estab-laneCount');
+  if (!hote || !champ) return;
+  const voulu = Math.max(1, Math.min(40, Number(champ.value) || 1));
+  while (hote.children.length < voulu) {
+    const piste = document.createElement('span');
+    piste.className = 'eb-piste';
+    piste.innerHTML = `<b>${hote.children.length + 1}</b><i></i>`;
+    hote.appendChild(piste);
+    if (hote.dataset.pret && piste.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) piste.animate([{ opacity: 0, transform: 'translateX(-22px) scaleY(.5)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.23,1,.32,1)' });
+  }
+  while (hote.children.length > voulu) hote.lastChild.remove();
+  hote.dataset.pret = '1';
+}
+
 function ebRefresh() {
   const root = document.querySelector('[data-estab-page]');
   if (!root) return;
+  ebDessinerPistes(root);
   root.querySelectorAll('input[type="number"][id], input[type="time"][id]').forEach(input => {
     const sortie = document.getElementById(`eb-val-${input.id}`);
     if (!sortie) return;
@@ -15763,12 +15781,35 @@ function ebCountChanges() {
   return cles.size;
 }
 
+function ebPhraseDesChangements(n) {
+  if (!ebSnap) return '';
+  const now = ebState();
+  const phrases = [];
+  const nombre = (cle, un, plusieurs) => { if (now[cle] !== ebSnap[cle] && now[cle] !== undefined) phrases.push(`${now[cle]} ${Number(now[cle]) > 1 ? plusieurs : un} au lieu de ${ebSnap[cle]}`); };
+  nombre('estab-laneCount', 'piste', 'pistes');
+  nombre('estab-weaponCount', 'arme', 'armes');
+  ESTABLISHMENT_DAYS.forEach(([cle, label]) => {
+    ['estab-day', 'estab-hday'].forEach((prefixe) => {
+      const suffixe = prefixe === 'estab-hday' ? ' en vacances' : '';
+      const ferme = `${prefixe}-${cle}-closed`;
+      if (now[ferme] !== ebSnap[ferme]) { phrases.push(`${label}${suffixe} ${now[ferme] ? 'fermé' : 'ouvert'}`); return; }
+      ['open', 'close'].forEach((quoi) => {
+        const k = `${prefixe}-${cle}-${quoi}`;
+        if (now[k] !== ebSnap[k] && now[k] !== undefined) phrases.push(`${label}${suffixe}, ${quoi === 'open' ? 'ouvre' : 'ferme'} à ${ebHeure(now[k], quoi === 'close')} au lieu de ${ebHeure(ebSnap[k], quoi === 'close')}`);
+      });
+    });
+  });
+  if (!phrases.length) return n === 1 ? '1 changement' : `${n} changements`;
+  const reste = n - phrases.length;
+  return `${phrases.slice(0, 2).join(', ')}${phrases.length > 2 || reste > 0 ? ` et ${phrases.length - Math.min(2, phrases.length) + Math.max(0, reste)} autre${phrases.length - Math.min(2, phrases.length) + Math.max(0, reste) > 1 ? 's' : ''}` : ''}`;
+}
+
 function ebTouch() {
   const n = ebCountChanges();
   state.establishmentEditing = n > 0;
   const bar = document.getElementById('ebBar');
   if (!bar) return;
-  document.getElementById('ebBarN').textContent = n === 1 ? '1 changement' : `${n} changements`;
+  document.getElementById('ebBarN').textContent = ebPhraseDesChangements(n);
   bar.hidden = n === 0;
 }
 

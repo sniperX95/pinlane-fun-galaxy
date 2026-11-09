@@ -21990,3 +21990,24 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .eb-line-wide .eb-input { width: 100%; }
   .eb-arc-reglages { padding-left: 0; }
 }
+
+/* ── LA FICHE AUX COULEURS DU CENTRE (2026-11-09) ─────────────────────────────── */
+.eb { --eb-c: #944292; --eb-c2: #4fae9e; --eb-c-doux: color-mix(in srgb, var(--eb-c) 9%, var(--surface)); }
+:root[data-theme="dark"] .eb { --eb-c: #b45fb2; --eb-c2: #67baac; }
+.eb-hero h2, .eb-hero h1 { font-size: 40px; letter-spacing: -.028em; }
+.eb-photo, .eb-hero img { border-radius: 24px; box-shadow: 0 26px 50px -30px rgba(40, 10, 60, .55); }
+.eb section { animation: ebMonte 520ms var(--eb-sortie) both; }
+@keyframes ebMonte { from { opacity: 0; transform: translateY(16px); } }
+.eb-step-val { font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 27px; font-weight: 400; letter-spacing: .01em; color: var(--eb-c); }
+.eb-step-time .eb-step-val { font-size: 24px; }
+.eb .eb-step-btn { border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--eb-c) 16%, transparent), 0 1px 2px rgba(0, 0, 0, .05); transition: transform 150ms var(--eb-sortie), box-shadow 150ms ease, color 150ms ease; }
+.eb .eb-step-btn:hover { color: var(--eb-c); transform: translateY(-1px); box-shadow: 0 0 0 1px color-mix(in srgb, var(--eb-c) 40%, transparent), 0 8px 16px -10px var(--eb-c); }
+.eb .eb-step-btn:active { transform: scale(.93); }
+.eb-pistes { display: grid; gap: 4px; padding: 12px 14px; margin: 2px 0 10px; border-radius: 16px; background: var(--eb-c-doux); }
+.eb-piste { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; }
+.eb-piste b { font-size: 12px; font-weight: 600; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.eb-piste i { position: relative; display: block; height: 11px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--eb-c) 42%, var(--surface)) 0 91%, var(--eb-c) 91% 100%); }
+.eb .eb-day-btn:hover .eb-day-name, .eb-day.is-open .eb-day-btn .eb-day-name { color: var(--eb-c); }
+.eb-bar { width: min(760px, 100%); border: 0; border-radius: 20px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent), 0 22px 44px -18px rgba(15, 23, 42, .32); }
+.eb-bar-n { font-size: 15px; line-height: 1.3; }
+@media (prefers-reduced-motion: reduce) { .eb section { animation: none; } .eb .eb-step-btn { transition: none; } }

@@ -19623,7 +19623,7 @@ function renderStaffRequestDetail(item, animate) {
     ${renderRqLecture(item)}
     <div class="rq-colonnes">
       <div class="rq-g">${renderRqPropositions(item)}</div>
-      <aside class="rq-d" aria-label="Ce qui part au client">${renderRqTicket(item)}</aside>
+      <aside class="rq-d" data-t="${(() => { const c = staffRequestChoixDe(item); return c ? rqTeinteDe(item, c) : ''; })()}" aria-label="Ce qui part au client">${renderRqTicket(item)}</aside>
     </div>
     <div class="rq-fil">
       ${renderStaffRequestFollowUp(item)}
@@ -19778,6 +19778,28 @@ function renderStaffRequestStudyLines(visite) {
 
 // Une offre et ses heures, comme les seances de Reserver : un toucher choisit l heure,
 // et avec elle le prix, le jour et le programme qui partiront au client.
+// Chaque offre garde sa couleur de fanion et sa vraie photo, comme au formulaire.
+const RQ_PHOTOS = [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billard'], [/formule|kids|anniv/i, 'pistes-neon']];
+const RQ_PHOTOS_GEMBLOUX = [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']];
+function rqPhotoDe(nom, centerId) {
+  const trouve = (String(centerId || '') === 'gembloux' ? RQ_PHOTOS_GEMBLOUX : RQ_PHOTOS).find(([motif]) => motif.test(String(nom || '')));
+  return trouve ? `/assets/fungalaxy/${trouve[1]}-carte.webp` : '';
+}
+function rqTeinteDe(item, choix) {
+  const etude = staffRequestStudies[String(item.id)] && staffRequestStudies[String(item.id)].etude;
+  const jour = etude && (etude.dates || []).find(j => j.date === choix.date);
+  if (!jour) return 1;
+  const formules = jour.formules || [];
+  if (choix.type !== 'formule') return (formules.length % 4) + 1;
+  const i = formules.findIndex(f => String(f.id) === String(choix.ref));
+  return (Math.max(0, i) % 4) + 1;
+}
+function rqJouer(selecteur, images, options) {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const n = document.querySelector(selecteur);
+  if (n && n.animate) n.animate(images, { easing: 'cubic-bezier(.23,1,.32,1)', ...options });
+}
+
 function renderRqOffre(item, jour, o, d) {
   const jid = staffClientJs(item.id);
   const choix = staffRequestChoixDe(item);
@@ -19791,7 +19813,9 @@ function renderRqOffre(item, jour, o, d) {
     return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="rq-h${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')"><b>${escapeHtml(depart.debut)}</b>${depart.fin ? `<small>fin ${escapeHtml(depart.fin)}</small>` : ''}</button>`;
   };
   const prix = o.prix != null ? escapeHtml(staffRequestEuro(o.prix)) : 'Prix à confirmer';
-  return `<article class="rq-o${choisie ? ' is-on' : ''}">
+  const photo = rqPhotoDe(o.nom, item.centerId || getActiveOpsCenterId());
+  return `<article class="rq-o${choisie ? ' is-on' : ''}${photo ? ' a-photo' : ''}" data-t="${((o.rang || 0) % 4) + 1}">
+    ${photo ? `<span class="rq-o-photo" style="background-image:url('${escapeHtml(photo)}')" aria-hidden="true"></span>` : ''}
     <div class="rq-o-t">${nom}<span class="rq-o-p">${prix}</span></div>
     <div class="rq-o-s">${o.parJoueur != null ? `<span>${escapeHtml(staffRequestEuro(o.parJoueur))} par joueur</span>` : ''}${renderStaffRequestBudgetTag(o.parJoueur, d)}</div>
     ${o.lignes ? `<div class="rq-o-l">${o.lignes}</div>` : ''}
@@ -19810,8 +19834,8 @@ function renderRqJour(item, jour, etude, d) {
   const plage = etude.moment !== 'indifferent' && f
     ? `${escapeHtml(etude.momentLabel)} de ${staffRequestClock(f.de)} à ${staffRequestClock(f.a)}${f.existe ? '' : ` (${escapeHtml(f.raison || 'hors des horaires ce jour-là')})`}`
     : '';
-  const offres = (jour.formules || []).map(fo => renderRqOffre(item, jour, {
-    type: 'formule', ref: fo.id, nom: fo.nom, ok: fo.ok, panne: fo.panne, raison: fo.raison, prix: fo.prix, parJoueur: fo.parJoueur,
+  const offres = (jour.formules || []).map((fo, rang) => renderRqOffre(item, jour, {
+    rang, type: 'formule', ref: fo.id, nom: fo.nom, ok: fo.ok, panne: fo.panne, raison: fo.raison, prix: fo.prix, parJoueur: fo.parJoueur,
     departs: (fo.heures.length ? fo.heures : fo.heuresAilleurs).map(h => ({ debut: h })),
     ailleurs: !fo.heures.length && fo.heuresAilleurs.length > 0,
   }, d));
@@ -19819,7 +19843,7 @@ function renderRqJour(item, jour, etude, d) {
   if (v) {
     const departs = Array.isArray(v.departs) && v.departs.length ? v.departs : (v.proposition ? [v.proposition] : []);
     offres.push(renderRqOffre(item, jour, {
-      type: 'visite', ref: 'programme', nom: (v.lignes || []).map(l => l.nom).join(' + ') || 'Les activités choisies',
+      rang: (jour.formules || []).length, type: 'visite', ref: 'programme', nom: (v.lignes || []).map(l => l.nom).join(' + ') || 'Les activités choisies',
       ok: v.ok, panne: v.panne, raison: v.raison, prix: v.prix, parJoueur: v.parJoueur,
       lignes: renderStaffRequestStudyLines(v), departs,
       alerte: [
@@ -19872,6 +19896,9 @@ function rqChoisir(id, date, type, ref, heure) {
   // La demande est prise : la file le dit aux collegues, sans message de plus.
   if (item.status === 'new' && peutGeste('reserver')) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });
   renderStaffRequestsIfOpen();
+  rqJouer('.rq-h.is-on', [{ transform: 'scale(.86)' }, { transform: 'scale(1.06)', offset: .6 }, { transform: 'none' }], { duration: 300 });
+  rqJouer('.rq-res-p', [{ opacity: 0, transform: 'translateY(10px) scale(.92)' }, { opacity: 1, transform: 'none' }], { duration: 340 });
+  rqJouer('.rq-res', [{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
   if (item.email && peutGeste('ecrire')) {
     window.clearTimeout(rqMinuteurMail);
     rqMinuteurMail = window.setTimeout(() => startStaffRequestDraft(id), 350);
@@ -20371,6 +20398,7 @@ async function startStaffRequestDraft(id) {
       staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
     }
     toast(brouillon.source === 'ia' ? 'Réponse rédigée : relisez-la avant d’envoyer.' : 'Brouillon préparé à partir de l’étude : relisez-le avant d’envoyer.');
+    window.setTimeout(() => rqJouer('.rq-d .rq-mail textarea', [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 420 }), 0);
   } catch (error) {
     if (rang !== staffRequestDraftRang[key]) return;
     staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false };

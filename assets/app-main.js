@@ -19805,7 +19805,10 @@ function renderRqOffre(item, jour, o, d) {
   const choix = staffRequestChoixDe(item);
   const nom = `<span class="rq-o-n">${escapeHtml(o.nom)}</span>`;
   if (o.panne || !o.ok) {
-    return `<article class="rq-o ${o.panne ? 'is-wait' : 'is-off'}">${nom}<p class="rq-o-why">${escapeHtml(o.panne ? 'Le moteur n’a pas répondu. Relancez l’étude.' : `Impossible ce jour-là. ${o.raison || ''}`.trim())}</p></article>`;
+    // Un programme que le moteur ne sait pas placer garde son prix et ses lignes : c est ce que l equipe repond au client.
+    const programme = !o.panne && o.type === 'visite';
+    const pourquoi = o.panne ? 'Le moteur n’a pas répondu. Relancez l’étude.' : programme ? (o.raison || 'Aucun départ possible ce jour-là.') : `Impossible ce jour-là. ${o.raison || ''}`.trim();
+    return `<article class="rq-o ${o.panne ? 'is-wait' : 'is-off'}">${programme && o.prix != null ? `<div class="rq-o-t">${nom}<span class="rq-o-p">${escapeHtml(staffRequestEuro(o.prix))}</span></div>` : nom}${programme && o.lignes ? `<div class="rq-o-l">${o.lignes}</div>` : ''}<p class="rq-o-why">${escapeHtml(pourquoi)}</p></article>`;
   }
   const choisie = Boolean(choix) && choix.date === jour.date && choix.type === o.type && String(choix.ref) === String(o.ref);
   const touche = (depart) => {

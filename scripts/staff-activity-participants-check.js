@@ -182,7 +182,7 @@ assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,min
 assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
 assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
 assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
-for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderStaffRequestStudyDay','renderStaffRequestTimes','renderStaffRequestBudgetTag']) {
+for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
@@ -218,13 +218,13 @@ assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
 run("setQuickVisitActivityDuration('duckpin_bowling',2)");
 assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);
 assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
-ctx.staffRequestEuro=n=>n+' €';ctx.staffRequestLongDate=()=>'';ctx.staffRequestClock=()=>'';ctx.STAFF_REQUEST_ICONS={calendar:''};
+ctx.staffRequestEuro=n=>n+' €';ctx.staffRequestLongDate=()=>'';ctx.staffRequestClock=()=>'';ctx.STAFF_REQUEST_ICONS={calendar:''};ctx.staffClientJs=v=>String(v);ctx.staffRequestChoixDe=()=>null;ctx.rqPhotoDe=()=>'';ctx.getActiveOpsCenterId=()=>'libramont';
 ctx.manualStudy={date:'2026-10-06',ouvert:true,horaires:{de:'10:00',a:'22:00'},formules:[],visite:{ok:false,raison:'Horaires à étudier manuellement',prix:1170,lignes:[{nom:'Bowling',participants:300,detail:'3 services de1h',prix:1170}]}};
-assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/300 joueurs.*3 services de1h.*1170 €/);
-assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/Horaires à étudier manuellement/);
+assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/300 joueurs.*3 services de1h.*1170 €/);
+assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/Horaires à étudier manuellement/);
 ctx.manualStudy.visite.ok=true;ctx.manualStudy.visite.prix=0;ctx.manualStudy.visite.parJoueur=0;ctx.manualStudy.visite.lignes=[{nom:'Minigolf',participants:3,prix:0}];
-assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/3 joueurs.*0 €/);
-assert.doesNotMatch(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/Prix à confirmer/);
+assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/3 joueurs.*0 €/);
+assert.doesNotMatch(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/Prix à confirmer/);
 // per lane, group80 incorrectly produces60min for one game; the6 bowlers
 // need30min, which fits the45min left before closing.
 {

@@ -45,7 +45,7 @@ async function requestReply() {
   const draft = () => ({ open: true, busy: false, subject: 'Réponse QA', body: 'Contenu QA' });
   const item = { id: 73, email: 'qa@example.test', status: 'in_progress' };
   const s = sandbox({
-    API_ENDPOINTS: { ops: '/api/ops' }, staffRequestReplyState: { 73: draft() },
+    API_ENDPOINTS: { ops: '/api/ops' }, staffRequestReplyState: { 73: draft() }, staffRequestChoix: {},
     getStaffCustomRequestItems: () => [item], getActiveOpsCenterId: () => 'libramont',
     getCurrentStaffCenterName: () => 'Centre QA', getCurrentStaffCenterId: () => 'libramont', STAFF_OCCASION_LABELS: {},
     renderStaffUtilityPage() {}, loadStaffRequestThread() {}, setStaffCustomRequestStatus() {},

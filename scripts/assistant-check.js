@@ -62,7 +62,7 @@ const MUTATIONS = {
   'savoir-tous-centres': { section: 'M', fichier: MEM, de: "       where center_id = $1 and retire_le is null\n       order by created_at desc", vers: "       where retire_le is null\n       order by created_at desc", rouge: "[M] un centre ne voit pas le savoir d un autre" },
   'retire-pas-efface': { section: 'M', fichier: MEM, de: "         set retire_le = now(), retire_par_nom = $3\n", vers: "         set retire_le = null, retire_par_nom = $3\n", rouge: "[M] un fait retire ne sert plus" },
   'lignes-gonflees': { section: 'R', fichier: OUT, de: "lecture.abonnes.forEach((s) => s.point({ lues: lignes.length, extraits }));", vers: "lecture.abonnes.forEach((s) => s.point({ lues: lignes.length * 3, extraits }));", rouge: "[R] les lignes comptees sont celles vraiment lues" },
-  'pas-d-extraits': { section: 'R', fichier: OUT, de: "extraits: dedans.slice(0, 3).map(extraitLigne)", vers: "extraits: []", rouge: "[R] les extraits sont de vraies lignes" },
+  'pas-d-extraits': { section: 'R', fichier: OUT, de: "extraits: dedans.slice(0, 10).map(extraitLigne)", vers: "extraits: []", rouge: "[R] les extraits sont de vraies lignes" },
   'phrase-sans-periode': { section: 'R', fichier: OUT, de: "return `Je lis les réservations ${m.periode} à ${m.centre}${axes.length", vers: "return `Je lis les réservations à ${m.centre}${axes.length", rouge: "[R] la phrase dit la periode et le centre" },
   'source-non-annoncee': { section: 'R', fichier: AGENT, de: "      emettre('etape', { id: appel.id, etat: 'cours', ...outils.annonce(ctx, appel.name, appel.input) });", vers: "      emettre('etape', { id: appel.id, etat: 'cours' });", rouge: "[R] chaque lecture annonce sa source" },
   'total-invente': { section: 'E', fichier: ECRAN, de: "textContent = total > lues ? `sur", vers: "textContent = true ? `sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
@@ -1217,7 +1217,10 @@ async function sectionEcran() {
 (async () => {
   if (process.argv.includes('--contre-preuves')) {
     const arg = process.argv.find((a) => a.startsWith('--seul='));
-    const noms = arg ? arg.slice(7).split(',') : Object.keys(MUTATIONS);
+    // 89 contre-preuves depassent les 15 minutes d une unite : le script npm les passe en trois tiers (--tiers=1/3).
+    const tiers = /^--tiers=(\d+)\/(\d+)$/.exec(process.argv.find((a) => a.startsWith('--tiers=')) || '');
+    const toutes = Object.keys(MUTATIONS);
+    const noms = arg ? arg.slice(7).split(',') : tiers ? toutes.filter((_, i) => i % Number(tiers[2]) === Number(tiers[1]) - 1) : toutes;
     let manquees = 0;
     for (const nom of noms) {
       const m = MUTATIONS[nom];

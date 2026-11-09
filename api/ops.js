@@ -2737,8 +2737,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
     const { brouillonDeLaDemande } = require('../lib/demande-bureau-centre');
-    const { brouillon, etude } = await brouillonDeLaDemande(item);
-    sendJson(res, 200, { ok: true, id: item.id, brouillon, etude });
+    const choix = body.choix && typeof body.choix === 'object' ? body.choix : null;
+    const { brouillon, etude, choixPerime } = await brouillonDeLaDemande(item, undefined, { choix });
+    sendJson(res, 200, { ok: true, id: item.id, brouillon, etude, ...(choixPerime ? { choixPerime: true } : {}) });
     return;
   }
 
@@ -3271,6 +3272,7 @@ ${draftBody}`,
           objet: body.subject,
           communicationId: result.communication.id,
           source: body.draftSource,
+          proposition: body.proposition,
         }, { centerId: studioCenterId });
         // LE REGISTRE : la reponse entree au suivi de la demande, dans la ligne
         // d audit de l envoi (la demande, son evenement ; jamais le corps du mail).

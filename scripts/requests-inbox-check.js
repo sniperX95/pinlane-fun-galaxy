@@ -138,10 +138,10 @@ srv.listen(PORT, '127.0.0.1', async () => {
     openId: (document.querySelector('.req-card[data-request-id]') || {}).dataset ? document.querySelector('.req-card[data-request-id]').dataset.requestId : '',
     activeItems: document.querySelectorAll('.req-item.is-active').length,
     head: (() => {
-      const h = document.querySelector('.req-detail-head');
+      const h = document.querySelector('.rq-tete');
       if (!h) return null;
       const r = h.getBoundingClientRect();
-      return { h: Math.round(r.height), name: ((h.querySelector('h3') || {}).textContent || '').trim(), badge: !!h.querySelector('.cr-badge') };
+      return { h: Math.round(r.height), name: ((h.querySelector('h3') || {}).textContent || '').trim(), contact: ((h.querySelector('.rq-contact') || {}).textContent || '').trim(), badge: !!h.querySelector('.cr-badge') };
     })(),
     searchBox: (() => {
       const f = document.querySelector('.req-search-field');
@@ -157,7 +157,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   // L en-tete porte le NOM du client et son statut. Il a disparu une fois
   // pendant la refonte sans qu aucune assertion ne bronche : la page restait
   // « jolie » et ne disait plus a qui on repond.
-  ok(shape.head && shape.head.h >= 40 && /Ansar/.test(shape.head.name) && shape.head.badge,
+  ok(shape.head && shape.head.h >= 40 && /Test SPRL/.test(shape.head.name) && /Ansar/.test(shape.head.contact) && shape.head.badge,
     `l en-tete nomme le client et son statut (${shape.head ? shape.head.name + ', ' + shape.head.h + 'px' : 'absent'})`);
   ok(shape.searchBox && shape.searchBox.height <= 36 && parseInt(shape.searchBox.padLeft, 10) >= 26,
     `le champ de recherche garde sa place pour la loupe (${shape.searchBox ? shape.searchBox.height + 'px, padding ' + shape.searchBox.padLeft : 'absent'})`);
@@ -216,7 +216,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.waitForTimeout(1200);
   const switched = await pg.evaluate(() => ({
     openId: (document.querySelector('.req-card[data-request-id]') || {}).getAttribute('data-request-id'),
-    name: ((document.querySelector('.req-detail-ident h3') || {}).textContent || '').trim(),
+    name: ((document.querySelector('.rq-titre h3') || {}).textContent || '').trim(),
     details: document.querySelectorAll('.req-detail').length,
   }));
   ok(switched.openId === '702' && /Saint-Roch/.test(switched.name), `la demande ouverte a change (${switched.name})`);

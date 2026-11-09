@@ -1087,10 +1087,11 @@ function verifierConsole(r) {
   section('F. LA CONSOLE');
   ok(r.erreurs.length === 0, 'MONTAGE la console s ouvre sans erreur', r.erreurs.join(' | '));
   ok(/École communale du gate/.test(r.carte) && /31 joueurs \+ 2 accompagnateurs/.test(r.carte) && /2 activités, 1 formule, conseil demandé/.test(r.carte), 'la carte de la liste dit le groupe et les envies', r.carte);
-  ok(/La demande/.test(r.fiche) && /31 joueurs \+ 2 accompagnateurs/.test(r.fiche) && /Moins de 7 ans, 7 à 12 ans/.test(r.fiche) && /Soirée/.test(r.fiche)
-    && /Bowling/.test(r.fiche) && /Laser Game/.test(r.fiche) && /FORMULE 4/.test(r.fiche) && /Conseil demandé/.test(r.fiche)
-    && /22 € par personne/.test(r.fiche) && /Au nom de École communale du gate/.test(r.fiche) && /BE 0123\.456\.789/.test(r.fiche) && /Institutrice/.test(r.fiche) && /Pique-nique/.test(r.fiche),
+  ok(/31 joueurs et 2 accompagnateurs/.test(r.fiche) && /moins de 7 ans, 7 à 12 ans/.test(r.fiche) && /en soirée/.test(r.fiche)
+    && /Bowling/.test(r.fiche) && /Laser Game/.test(r.fiche) && /FORMULE 4/.test(r.fiche) && /demandent aussi conseil/.test(r.fiche)
+    && /22 € par personne/.test(r.fiche) && /Facture au nom de École communale du gate/.test(r.fiche) && /BE 0123\.456\.789/.test(r.fiche) && /Institutrice/.test(r.fiche) && /Pique-nique/.test(r.fiche),
   'le dossier dit tout : groupe, ages, moment, envies, budget, facture, fonction, le mot du client', r.fiche.slice(0, 260));
+  ok(/Aucune heure à proposer/.test(r.fiche) && !/Touchez une heure/.test(r.fiche), 'sans heure possible, la page ne dit pas d en toucher une', r.fiche.slice(0, 700));
   ok(r.champ === '31', 'Etablissement montre le seuil du centre (31)', r.champ);
   ok(r.envoye && r.envoye.a && r.envoye.a.fromPax === 25 && r.envoye.b && r.envoye.b.fromPax === null, 'le seuil se regle (25), et se retire (vide = jamais)', JSON.stringify(r.envoye));
   if (r.envoye && r.envoye.b) {

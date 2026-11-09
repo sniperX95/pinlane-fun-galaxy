@@ -466,6 +466,80 @@ async function verifierVraiMoteur({ B, C }) {
 }
 
 // ---------------------------------------------------------------------------
+// [K] L HEURE TOUCHEE PAR L EQUIPE
+// ---------------------------------------------------------------------------
+async function verifierChoix({ B, C }) {
+  const { getCenter } = require('../lib/ops-knowledge');
+  const { getSchedule } = require('../lib/booking-config');
+  const { isCenterClosedAt } = require('../lib/availability-blocks');
+  const { etude } = await etudeType(B);
+  const vue = (choix) => B.etudeDuChoix(etude, choix);
+  const visite = etude.dates[0].visite;
+  const f = vue({ date: D1, type: 'formule', ref: 'f3', heure: '14:30' });
+  const fo = f && f.dates[0].formules[0];
+  const v = vue({ date: D1, type: 'visite', ref: 'programme', heure: '14:00' });
+  const vv = v && v.dates[0].visite;
+  const propre = B.propositionPropre({ date: D1, heure: '14:00', type: 'visite', ref: 'programme', nom: 'x'.repeat(400), fin: '16:00', prix: '544', parJoueur: 17.55, intrus: 'non' });
+  const refus = [
+    B.propositionPropre({ date: '2030-5-15', heure: '14:00', type: 'visite' }),
+    B.propositionPropre({ date: D1, heure: '14h', type: 'visite' }),
+    B.propositionPropre({ date: D1, heure: '14:00', type: 'autre' }),
+    B.propositionPropre('texte'),
+  ];
+  const T1 = '2030-04-30T15:00:00.000Z';
+  const premiere = { date: D1, heure: '14:00', type: 'visite', ref: 'programme', nom: 'Bowling + Laser Game', fin: '16:00', prix: 544, parJoueur: 17.55 };
+  const seconde = { ...premiere, heure: '15:00', fin: '17:00' };
+  let p = B.ajouterAuSuivi({}, { type: 'reponse', par: 'Rachel', objet: 'Votre venue', communicationId: 42, le: T1, proposition: premiere });
+  const unSeul = B.resumeDuSuivi({ status: 'in_progress', createdAt: T1, payload: p });
+  p = B.ajouterAuSuivi(p, { type: 'reponse', par: 'Rachel', objet: 'Autre heure', communicationId: 43, le: T1, proposition: seconde });
+  p = B.ajouterAuSuivi(p, { type: 'reponse', par: 'Rachel', objet: 'Une question', communicationId: 44, le: T1 });
+  const derniere = B.resumeDuSuivi({ status: 'in_progress', createdAt: T1, payload: p });
+  const salie = B.ajouterAuSuivi({}, { type: 'reponse', par: 'Rachel', objet: 'x', communicationId: 45, le: T1, proposition: { date: D1, heure: 'pas une heure', type: 'visite' } });
+
+  const llm = modele([new Error('pas de modele ici')]);
+  const deps = {
+    rafraichir: async () => {},
+    centre: () => getCenter('libramont'),
+    fermetures: async () => [],
+    getSchedule,
+    isCenterClosedAt,
+    disponibilite: fauxMoteur([]),
+    planning: async () => ({ reservations: [] }),
+    aujourdhui: () => AUJOURDHUI,
+    client: async () => null,
+    conversation: async () => [],
+    cerveau: async () => null,
+    llm,
+  };
+  const item = demandeType({ alternativeDate: '' });
+  const mailFormule = await C.brouillonDeLaDemande(item, deps, { choix: { date: D1, type: 'formule', ref: 'f3', heure: '14:30' } });
+  const mailVisite = await C.brouillonDeLaDemande(item, deps, { choix: { date: D1, type: 'visite', ref: 'programme', heure: '14:00' } });
+  const avant = llm.appels.length;
+  const perime = await C.brouillonDeLaDemande(item, deps, { choix: { date: D1, type: 'formule', ref: 'f3', heure: '16:00' } });
+  const corpsF = (mailFormule.brouillon && mailFormule.brouillon.corps) || '';
+  const corpsV = (mailVisite.brouillon && mailVisite.brouillon.corps) || '';
+  return [
+    [visite && JSON.stringify(visite.departs) === '[{"debut":"14:00","fin":"16:00","prix":544}]', 'chaque depart du programme porte son debut, sa fin et son prix', JSON.stringify(visite && visite.departs)],
+    [fo && JSON.stringify(fo.heures) === '["14:30"]' && fo.heuresAilleurs.length === 0 && f.dates.length === 1 && f.dates[0].visite === null, 'une heure de formule choisie : le mail ne parle que de cette heure-la', JSON.stringify(fo)],
+    [vv && vv.prix === 544 && vv.proposition.debut === '14:00' && vv.proposition.fin === '16:00' && v.dates[0].formules.length === 0, 'une heure de programme choisie : son prix, son debut, sa fin, et rien d autre', JSON.stringify(vv && vv.proposition)],
+    [vue({ date: D1, type: 'formule', ref: 'f3', heure: '16:00' }) === null, 'une heure qui n est plus libre est refusee'],
+    [vue({ date: D1, type: 'formule', ref: 'f9', heure: '12:00' }) === null, 'une formule que le moteur refuse ce jour-la est refusee'],
+    [vue({ date: D2, type: 'formule', ref: 'f3', heure: '12:00' }) === null, 'un jour ferme est refuse'],
+    [vue({ date: D1, type: 'visite', ref: 'programme', heure: '15:00' }) === null, 'un depart absent de l etude est refuse'],
+    [vue({ date: D1, type: 'bidon', ref: 'f3', heure: '14:30' }) === null && vue(null) === null && vue('texte') === null, 'un choix mal forme est refuse'],
+    [propre && propre.nom.length === 160 && propre.prix === 544 && propre.parJoueur === 17.55 && !('intrus' in propre), 'la proposition gardee : des champs bornes, jamais l objet recu', JSON.stringify(propre).slice(0, 200)],
+    [refus.every((x) => x === null), 'une proposition mal formee n est pas gardee', JSON.stringify(refus)],
+    [unSeul.proposition && unSeul.proposition.heure === '14:00', 'la proposition partie se relit dans le suivi', JSON.stringify(unSeul.proposition)],
+    [derniere.proposition && derniere.proposition.heure === '15:00', 'c est la DERNIERE proposition partie qui compte, meme apres un mail sans proposition', JSON.stringify(derniere.proposition)],
+    [!salie.suivi.historique[0].proposition, 'une proposition invalide ne s ecrit pas dans le suivi'],
+    [/14:30/.test(corpsF) && !/12:00/.test(corpsF) && /868/.test(corpsF), 'le mail d une formule cite l heure touchee et son prix, pas l autre depart', corpsF],
+    [/14:00/.test(corpsV) && /544/.test(corpsV) && !/868/.test(corpsV), 'le mail d un programme cite son heure et son prix, pas la formule', corpsV],
+    [perime.choixPerime === true && perime.brouillon === null && llm.appels.length === avant, 'une heure perimee : rien ne s ecrit, le modele n est pas appele', JSON.stringify({ c: perime.choixPerime, n: llm.appels.length - avant })],
+    [Boolean(perime.etude && perime.etude.dates && perime.etude.dates.length), 'l etude a jour revient quand meme, pour montrer ce qui reste possible'],
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // [G] REDIGER N ENVOIE RIEN, ET CHAQUE ACTION A SON DROIT
 // ---------------------------------------------------------------------------
 function verifierAucunEnvoi() {
@@ -598,6 +672,11 @@ async function verifierSuiviEnBase() {
 // [I] CONTRE-EPREUVES
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
+  { fichier: 'lib/demande-bureau.js', ancre: '    if (!fo || ![...fo.heures, ...fo.heuresAilleurs].includes(c.heure)) return null;', mute: '    if (!fo) return null;', label: 'sans le garde, une heure prise part au client', verifier: verifierChoix },
+  { fichier: 'lib/demande-bureau.js', ancre: 'formules: [{ ...fo, heures: [c.heure], heuresAilleurs: [] }], visite: null }] };', mute: 'formules: [fo], visite: jour.visite }] };', label: 'sans le retrecissement, le mail citerait tous les departs', verifier: verifierChoix },
+  { fichier: 'lib/demande-bureau.js', ancre: "  const type = p.type === 'formule' || p.type === 'visite' ? p.type : '';", mute: "  const type = String(p.type || '');", label: 'sans la borne, un type inconnu se garde dans le suivi', verifier: verifierChoix },
+  { fichier: 'lib/demande-bureau.js', ancre: "  const proposition = [...reponses].reverse().map((e) => e.proposition).find(Boolean) || null;", mute: "  const proposition = reponses.map((e) => e.proposition).find(Boolean) || null;", label: 'avec la premiere au lieu de la derniere, le oui du client reserverait la mauvaise heure', verifier: verifierChoix },
+  { fichier: 'lib/demande-bureau-centre.js', ancre: '  if (choix && !etudeDuMail) return { brouillon: null, etude, client, choixPerime: true };', mute: '  if (choix && !etudeDuMail) return { brouillon: await bureau.redigerReponse({ item, etude, client, conversation: [], brain: null, llm: deps.llm, nomDuCentre }), etude, client };', label: 'sans le refus, une heure perimee s ecrirait quand meme', verifier: verifierChoix },
   { fichier: 'lib/demande-bureau.js', ancre: '    if (jourOuvre(date)) {', mute: '    if (true) {', label: 'sans le calendrier, le lundi ferme compte dans les 24 heures', verifier: verifierEcheance },
   { fichier: 'lib/demande-bureau.js', ancre: '    const dedans = heures.filter((t) => dansLaFenetre(t, jour.fenetre));', mute: '    const dedans = heures;', label: 'sans la plage du moment, un depart de 18:30 est propose pour l apres-midi', verifier: verifierEtude },
   { fichier: 'lib/demande-bureau.js', ancre: '  return !r || !r.json || r.status === 429 || Number(r.status) >= 500;', mute: '  return false;', label: 'sans la panne, un moteur sature se lit « impossible »', verifier: verifierEtude },
@@ -643,6 +722,8 @@ async function main() {
   rapporter(await verifierDebord(mods));
   section('C. LA REPONSE DE L IA, CONTROLEE');
   rapporter(await verifierReponse(mods));
+  section('K. L HEURE TOUCHEE PAR L EQUIPE');
+  rapporter(await verifierChoix(mods));
   section('D. LE SUIVI');
   rapporter(verifierSuivi(mods));
   section('E. LA FILE');

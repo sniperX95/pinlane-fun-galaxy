@@ -13951,14 +13951,7 @@ function setEstablishmentTab(key) {
   const next = ESTABLISHMENT_TABS.some(([item]) => item === key) ? key : 'centre';
   state.establishmentTab = next;
   save();
-  const panels = document.querySelectorAll('.estab-panel');
-  if (!panels.length) { renderStaffUtilityPage(); return; }
-  panels.forEach(panel => { panel.hidden = panel.id !== `estabPanel-${next}`; });
-  document.querySelectorAll('.estab-tabs button').forEach(button => {
-    const on = button.id === `estabTab-${next}`;
-    button.classList.toggle('active', on);
-    button.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
+  if (typeof ebGo === 'function') ebGo(next);
 }
 
 function establishmentTabsHtml(active) {
@@ -13975,14 +13968,14 @@ function establishmentPanel(key, active, body) {
 // "corrigez les champs" pointerait vers un champ que personne ne voit.
 function focusEstablishmentField(input) {
   if (!input) return;
-  const panel = input.closest('.estab-panel');
-  const key = panel ? String(panel.id || '').replace('estabPanel-', '') : '';
-  if (key && key !== getEstablishmentTab()) {
-    setEstablishmentTab(key);
-    const again = document.getElementById(input.id);
-    if (again) { again.focus(); return; }
+  const jour = /^estab-h?day-(\d)-/.exec(input.id || '');
+  if (jour && typeof ebOpenDay === 'function') {
+    const ouvert = document.getElementById(`eb-dayset-${jour[1]}`);
+    if (ouvert && ouvert.hidden) ebOpenDay(jour[1]);
   }
-  input.focus();
+  const hote = input.hidden ? (input.closest('.eb-line, .eb-dayset-col') || input.parentElement) : input;
+  if (hote && hote.scrollIntoView) hote.scrollIntoView({ block: 'center' });
+  if (!input.hidden) input.focus();
 }
 
 function toggleEstablishmentAddCenter() {
@@ -14016,7 +14009,6 @@ function ouvrirReglageSecours(centerId) {
     if (state.staffMenuPage !== 'establishment') { if (essais++ < 40) setTimeout(poser, 100); return; }
     const center = getEstablishmentCenter();
     if (!center || center.id !== state.establishmentCenterId) { if (essais++ < 40) setTimeout(poser, 100); return; }
-    if (!state.establishmentEditing) startEstablishmentEdit();
     setEstablishmentTab('regles');
     const champ = document.getElementById('estab-secours-emails');
     if (!champ) { if (essais++ < 40) setTimeout(poser, 100); return; }
@@ -14319,8 +14311,8 @@ const ESTABLISHMENT_NUMBER_RULES = [
 ];
 
 function clearEstablishmentFieldErrors() {
-  document.querySelectorAll('.establishment-editor .field-error-message').forEach(el => el.remove());
-  document.querySelectorAll('.establishment-editor [aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
+  document.querySelectorAll('[data-estab-page] .field-error-message').forEach(el => el.remove());
+  document.querySelectorAll('[data-estab-page] [aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
 }
 
 function markEstablishmentFieldError(input, message) {
@@ -14395,7 +14387,7 @@ function validateEstablishmentForm() {
   });
   // Les installations des activites : un entier, au moins 1. Une saisie
   // refusee revient au gerant avec sa raison, jamais jetee en silence.
-  document.querySelectorAll('.establishment-editor .estab-cap-input').forEach((input) => {
+  document.querySelectorAll('[data-estab-page] .estab-cap-input').forEach((input) => {
     const max = Number(input.dataset.capMax) || 50;
     const value = Number(input.value);
     if (!Number.isInteger(value) || value < 1 || value > max) {
@@ -14997,15 +14989,337 @@ function renderStaffUtilitySecours() {
   </div>`;
 }
 
+// ── LA FICHE DU CENTRE ───────────────────────────────────────────────────────
+//
+// Lire et regler sont la meme page : une seule fiche qui se fait defiler. Chaque
+// partie s ouvre sur une phrase construite avec les vraies valeurs, puis ses
+// reglages, touchables sur place. Les nombres se reglent avec de grandes touches
+// moins et plus : le champ `estab-...` reste dans le DOM (cache), les touches le
+// pilotent, et submitCenterConfig le lit par son id comme avant.
+//
+// Rien n est re-rendu quand on change quelque chose : la page relirait la config
+// du serveur et effacerait la saisie. Une barre apparait en bas, seulement quand
+// il y a quelque chose a enregistrer.
+const EB_SECTIONS = [
+  ['centre', 'Le centre'],
+  ['horaires', 'Horaires'],
+  ['offres', 'Activités et offres'],
+  ['clients', 'Clients'],
+  ['regles', 'Règles'],
+];
+let ebDict = {};
+let ebSnap = null;
+let ebObserver = null;
+let ebDraftCenterId = '';
+
+const EB_ICO_MOINS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+const EB_ICO_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>';
+const EB_JOURS_MINUSCULES = { 1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi', 6: 'samedi', 0: 'dimanche' };
+
+function ebReg(id, value) { ebDict[id] = value; return value; }
+
+function ebN(n, un, plusieurs) { return `${n} ${n > 1 ? plusieurs : un}`; }
+
+function ebHeure(valeur, fermeture) {
+  const v = String(valeur || '');
+  if (!v) return '';
+  if (v === '24:00' || (fermeture && v === '00:00')) return 'minuit';
+  return v;
+}
+
+// Les rangees de reglage : un libelle a gauche, la touche a droite.
+function ebLine(label, control, hint) {
+  return `<div class="eb-line"><div class="eb-line-t"><span class="eb-line-l">${label}</span>${hint ? `<small>${hint}</small>` : ''}</div>${control}</div>`;
+}
+
+// Un nombre : grandes touches moins et plus, le champ reste dans le DOM.
+function ebStepper(id, label, o) {
+  const value = o.value === '' || o.value == null ? '' : Number(o.value);
+  ebReg(id, value);
+  const attrs = [
+    `min="${o.min}"`, `max="${o.max}"`, `value="${escapeHtml(String(value))}"`,
+    o.step ? `data-eb-step="${o.step}"` : '',
+    o.htmlStep ? `step="${o.htmlStep}"` : '',
+    o.unit ? `data-eb-unit="${escapeHtml(o.unit)}"` : '',
+    o.zero ? `data-eb-zero="${escapeHtml(o.zero)}"` : '',
+    o.vide ? `data-eb-vide="${escapeHtml(o.vide)}"` : '',
+    o.start ? `data-eb-start="${o.start}"` : '',
+    o.minFrom ? `data-eb-min-from="${o.minFrom}"` : '',
+    o.cls ? `class="${o.cls}" data-cap-max="${o.max}" data-cap-name="${escapeHtml(o.capName || '')}" data-cap-what="${escapeHtml(o.capWhat || '')}"` : '',
+  ].filter(Boolean).join(' ');
+  const quoi = escapeHtml(label);
+  const control = `<span class="eb-step" role="group" aria-label="${quoi}">
+      <button type="button" class="eb-step-btn" aria-label="Moins, ${quoi}" onclick="ebStep('${id}',-1)">${EB_ICO_MOINS}</button>
+      <output class="eb-step-val" id="eb-val-${id}" for="${id}">${escapeHtml(ebFormatValue({ type: 'number', id, value: String(value), dataset: { ebUnit: o.unit || '', ebZero: o.zero || '', ebVide: o.vide || '' } }))}</output>
+      <button type="button" class="eb-step-btn" aria-label="Plus, ${quoi}" onclick="ebStep('${id}',1)">${EB_ICO_PLUS}</button>
+    </span><input type="number" id="${id}" ${attrs} hidden>`;
+  return o.bare ? control : ebLine(quoi, control, o.hint ? escapeHtml(o.hint) : '');
+}
+
+function ebFormatValue(i) {
+  const v = i.value;
+  if (i.type === 'time') return ebHeure(v, /-close$/.test(i.id));
+  const d = i.dataset || {};
+  if (v === '' && d.ebVide) return d.ebVide;
+  if (Number(v) === 0 && d.ebZero) return d.ebZero;
+  return `${String(v).replace('.', ',')}${d.ebUnit || ''}`;
+}
+
+// Un interrupteur clair, avec la phrase de ce que ca change.
+function ebSwitch(id, title, onText, offText, checked, extra) {
+  ebReg(id, !!checked);
+  return `<label class="eb-sw"><input type="checkbox" class="eb-sw-input" id="${id}" ${extra || ''} ${checked ? 'checked' : ''}><span class="eb-sw-copy"><b>${title}</b>${onText ? `<small class="eb-when-on">${onText}</small>` : ''}${offText ? `<small class="eb-when-off">${offText}</small>` : ''}</span><span class="eb-sw-track" aria-hidden="true"></span></label>`;
+}
+
+// Un choix parmi quelques mots : touches, le select reste dans le DOM.
+function ebSeg(id, label, options, current) {
+  ebReg(id, current);
+  return `<div class="eb-seg" role="radiogroup" aria-label="${escapeHtml(label)}" data-eb-seg="${id}">${options.map(([value, text]) => `<button type="button" role="radio" class="eb-seg-btn${value === current ? ' is-on' : ''}" aria-checked="${value === current ? 'true' : 'false'}" onclick="ebPick('${id}','${value}')">${escapeHtml(text)}</button>`).join('')}</div>
+    <select id="${id}" hidden>${options.map(([value, text]) => `<option value="${value}" ${value === current ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select>`;
+}
+
+function ebPhrase(name, text) { return `<p class="eb-phrase" data-eb-phrase="${name}">${escapeHtml(text)}</p>`; }
+
+// Lit les valeurs : depuis ce qui a ete rendu (premier affichage) ou depuis la
+// page vivante (apres chaque touche).
+function ebReader(live) {
+  if (!live) {
+    return {
+      num: id => Number(ebDict[id]), str: id => String(ebDict[id] == null ? '' : ebDict[id]),
+      chk: id => !!ebDict[id], ids: prefix => Object.keys(ebDict).filter(k => k.startsWith(prefix)),
+    };
+  }
+  const q = id => document.getElementById(id);
+  return {
+    num: id => Number(q(id)?.value), str: id => String(q(id)?.value ?? ''),
+    chk: id => !!q(id)?.checked,
+    ids: prefix => [...document.querySelectorAll(`[data-estab-page] [id^="${prefix}"]`)].map(el => el.id),
+  };
+}
+
+function ebListe(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
+}
+
+const EB_PHRASES = {
+  centre: r => {
+    const nom = r.str('estab-name') || 'Ce centre';
+    const statut = r.str('estab-status');
+    const quand = statut === 'planned' ? 'est prévu et n’ouvre pas encore aux réservations en ligne'
+      : statut === 'closed' ? 'est archivé, ses réservations en ligne sont coupées'
+        : 'prend les réservations en ligne';
+    return `${nom} ${quand}, avec ${ebN(r.num('estab-laneCount'), 'piste de bowling', 'pistes de bowling')} et ${ebN(r.num('estab-weaponCount'), 'arme de laser', 'armes de laser')}.`;
+  },
+  bowling: r => {
+    const n = r.num('estab-normalCap'), s = r.num('estab-emergencyCap');
+    return `${ebN(r.num('estab-laneCount'), 'piste de bowling', 'pistes de bowling')}, ${n} joueurs par piste, ${s > n ? `${s} si besoin` : 'pas davantage'}.`;
+  },
+  laser: r => {
+    const armes = r.num('estab-weaponCount'), parties = r.num('estab-launches');
+    if (!armes) return 'Aucune arme de laser n’est déclarée dans ce centre.';
+    return `${ebN(armes, 'arme de laser', 'armes de laser')}, ${ebN(parties, 'partie', 'parties')} en même temps.`;
+  },
+  tables: r => {
+    const soft = r.num('estab-tableSoft'), hard = r.num('estab-tableHard');
+    return `${ebN(soft, 'table d’anniversaire conseillée', 'tables d’anniversaire conseillées')} en même temps, ${r.chk('estab-tableLimit') ? `et un mail vous prévient au-delà de ${ebN(hard, 'table', 'tables')}` : 'sans limite qui vous prévienne'}.`;
+  },
+  horaires: r => {
+    const ouverts = [], fermes = [];
+    [1, 2, 3, 4, 5, 6, 0].forEach(k => (r.chk(`estab-day-${k}-closed`) ? fermes : ouverts).push(k));
+    let debut = ouverts.length === 7 ? 'Ouvert 7 jours sur 7.'
+      : !ouverts.length ? 'Fermé toute la semaine.'
+        : `Ouvert ${ouverts.length} jour${ouverts.length > 1 ? 's' : ''} sur 7, fermé ${fermes.length > 1 ? 'les' : 'le'} ${ebListe(fermes.map(k => EB_JOURS_MINUSCULES[k]))}.`;
+    const vac = r.chk('estab-holiday-enabled')
+      ? ' Les jours fériés et pendant les congés scolaires, les horaires de vacances prennent le relais.'
+      : ' Les horaires de vacances ne servent que les jours que vous forcez vous-même.';
+    return debut + vac;
+  },
+  offres: r => {
+    const act = r.ids('estab-act-').filter(id => r.chk(id)).length;
+    const toutes = r.ids('estab-offer-');
+    const ok = toutes.filter(id => r.chk(id)).length;
+    const seuil = r.num('estab-customRequestFromPax');
+    return `${ebN(act, 'activité proposée', 'activités proposées')} et ${ebN(ok, 'formule réservable', 'formules réservables')} sur ${toutes.length}. ${seuil >= 2 ? `Dès ${seuil} personnes, le client fait une demande sur mesure.` : 'Tous les groupes réservent en ligne.'}`;
+  },
+  clients: r => {
+    const cle = r.num('estab-keyClientMinSpend');
+    return `Une réservation devient un groupe dès ${r.num('estab-groupMinPax')} joueurs, ou quand un client en cumule ${r.num('estab-groupMinCumulative')}. ${r.chk('estab-countFormulaAsGroup') ? 'Une réservation avec formule compte aussi comme groupe.' : 'Une réservation avec formule ne compte pas comme groupe à elle seule.'} ${cle > 0 ? `Un client devient client clé dès ${cle} €.` : 'Les clients clés sont les 20 % qui dépensent le plus.'}`;
+  },
+  regles: r => {
+    const fait = [];
+    if (r.chk('estab-bar-booking')) fait.push('prend les réservations');
+    if (r.chk('estab-bar-briefing')) fait.push('donne les consignes de jeu');
+    if (r.chk('estab-bar-food')) fait.push('sert les boissons et la restauration');
+    if (r.chk('estab-bar-escort')) fait.push('accompagne pendant l’activité');
+    const niveau = (establishmentValidationDraft && VALIDATION_NIVEAUX[establishmentValidationDraft.niveau]) || VALIDATION_NIVEAUX.minimal;
+    const retard = r.num('estab-lateThreshold');
+    return `${fait.length ? `Le comptoir ${ebListe(fait)}.` : 'Le comptoir ne gère rien de tout cela.'} Un groupe est en retard ${retard === 0 ? 'dès l’heure pile' : `après ${ebN(retard, 'minute', 'minutes')}`}. Côté validation, vous êtes au niveau ${niveau.mot.toLowerCase()}.`;
+  },
+};
+
+const EB_NAV = {
+  centre: r => `${ebN(r.num('estab-laneCount'), 'piste', 'pistes')}, ${ebN(r.num('estab-weaponCount'), 'arme', 'armes')}`,
+  horaires: r => {
+    const n = [1, 2, 3, 4, 5, 6, 0].filter(k => !r.chk(`estab-day-${k}-closed`)).length;
+    return n === 7 ? 'Ouvert tous les jours' : `Ouvert ${n} jour${n > 1 ? 's' : ''} sur 7`;
+  },
+  offres: r => `${ebN(r.ids('estab-act-').filter(id => r.chk(id)).length, 'activité', 'activités')}, ${ebN(r.ids('estab-offer-').filter(id => r.chk(id)).length, 'formule', 'formules')}`,
+  clients: r => `Groupe dès ${r.num('estab-groupMinPax')} joueurs`,
+  regles: r => `Niveau ${((establishmentValidationDraft && VALIDATION_NIVEAUX[establishmentValidationDraft.niveau]) || VALIDATION_NIVEAUX.minimal).mot.toLowerCase()}`,
+};
+
+// Ce que le centre fait aujourd hui, calcule avec l heure du centre.
+function ebTodaySentence(center) {
+  if (center.status === 'planned') return 'Ce centre est prévu, il n’ouvre pas encore aux réservations en ligne.';
+  if (center.status === 'closed') return 'Ce centre est archivé, ses réservations en ligne sont coupées.';
+  const regular = (center.defaultSchedule && center.defaultSchedule.regular) || {};
+  let dow = new Date().getDay(), minutes = 0;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: center.timezone || 'Europe/Brussels', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const get = type => (parts.find(p => p.type === type) || {}).value;
+    dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[get('weekday')];
+    minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  } catch (error) { /* heure locale */ }
+  const toMin = (v, c) => { const [h, m] = String(v).split(':').map(Number); const x = h * 60 + m; return c && x === 0 ? 1440 : x; };
+  const demain = () => {
+    for (let i = 1; i <= 7; i += 1) {
+      const slot = regular[(dow + i) % 7];
+      if (slot && slot.open) return `${i === 1 ? 'demain' : EB_JOURS_MINUSCULES[(dow + i) % 7]} à ${slot.open}`;
+    }
+    return '';
+  };
+  const slot = regular[dow];
+  if (!slot || !slot.open) { const d = demain(); return d ? `Fermé aujourd’hui, réouverture ${d}.` : 'Fermé aujourd’hui.'; }
+  const o = toMin(slot.open), c = toMin(slot.close, true);
+  if (minutes < o) return `Ouvre aujourd’hui à ${slot.open} et ferme à ${ebHeure(slot.close, true)}.`;
+  if (minutes < c) return `Ouvert maintenant, jusqu’à ${ebHeure(slot.close, true)}.`;
+  const d = demain();
+  return d ? `Fermé pour ce soir, réouverture ${d}.` : 'Fermé pour ce soir.';
+}
+
+function ebPhoto(center) {
+  // Une photo ne sert que si elle est du centre : Libramont a la sienne, les
+  // autres centres n en ont pas encore de verifiee.
+  if (!/libramont/i.test(`${center.id} ${center.name}`)) return '';
+  return `<img class="eb-photo" src="assets/fungalaxy/salle-bowling-800.webp" srcset="assets/fungalaxy/salle-bowling-800.webp 800w, assets/fungalaxy/salle-bowling-1600.webp 1600w" sizes="360px" width="360" height="203" alt="Les pistes de bowling du centre, éclairées en bleu" decoding="async">`;
+};
+
+// ── Les horaires dessines ────────────────────────────────────────────────────
+function ebDayChart(center, canEdit) {
+  const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : {};
+  const toMin = (v, c) => { const [h, m] = String(v).split(':').map(Number); const x = h * 60 + m; return c && x === 0 ? 1440 : x; };
+  let debut = 8 * 60;
+  ['regular', 'holiday'].forEach(b => ESTABLISHMENT_DAYS.forEach(([k]) => {
+    const s = schedule[b] && schedule[b][k];
+    if (s && s.open) debut = Math.min(debut, Math.floor(toMin(s.open) / 120) * 120);
+  }));
+  const fin = 24 * 60, ticks = [];
+  for (let m = debut; m <= fin; m += 120) ticks.push(m);
+  const dayEditor = (prefix, key, label, block, titre) => {
+    const slot = (schedule[block] && schedule[block][key]) || null;
+    const closed = !slot;
+    const close = slot && slot.close === '24:00' ? '00:00' : (slot && slot.close) || '22:00';
+    const open = (slot && slot.open) || (block === 'holiday' ? '10:00' : '14:00');
+    const time = (suffix, value, nom) => {
+      const id = `${prefix}-${key}-${suffix}`;
+      ebReg(id, value);
+      return ebLine(nom, `<span class="eb-step eb-step-time" role="group" aria-label="${escapeHtml(nom)} ${escapeHtml(label)}, ${escapeHtml(titre)}">
+        <button type="button" class="eb-step-btn" aria-label="Plus tôt, ${escapeHtml(nom)} ${escapeHtml(label)}" onclick="ebTimeStep('${id}',-1)">${EB_ICO_MOINS}</button>
+        <output class="eb-step-val" id="eb-val-${id}" for="${id}">${escapeHtml(ebHeure(value, suffix === 'close'))}</output>
+        <button type="button" class="eb-step-btn" aria-label="Plus tard, ${escapeHtml(nom)} ${escapeHtml(label)}" onclick="ebTimeStep('${id}',1)">${EB_ICO_PLUS}</button>
+      </span><input type="time" id="${id}" value="${escapeHtml(value)}" hidden>`);
+    };
+    ebReg(`${prefix}-${key}-closed`, closed);
+    return `<div class="eb-dayset-col${closed ? ' is-closed' : ''}" data-eb-col="${prefix}-${key}">
+      <h5>${escapeHtml(titre)}</h5>
+      <label class="eb-sw"><input type="checkbox" class="eb-sw-input eb-dayopen" id="eb-open-${prefix}-${key}" data-eb-for="${prefix}-${key}" ${closed ? '' : 'checked'}><span class="eb-sw-copy"><b>Ouvert ce jour</b><small class="eb-when-on">Les clients peuvent réserver ce jour-là.</small><small class="eb-when-off">Fermé, aucune réservation ce jour-là.</small></span><span class="eb-sw-track" aria-hidden="true"></span></label>
+      <input type="checkbox" id="${prefix}-${key}-closed" ${closed ? 'checked' : ''} hidden>
+      <div class="eb-dayset-times">${time('open', open, 'Ouvre à')}${time('close', close, 'Ferme à')}</div>
+    </div>`;
+  };
+  const rows = ESTABLISHMENT_DAYS.map(([key, label]) => `<div class="eb-day" data-eb-day="${key}">
+      <button type="button" class="eb-day-btn" id="eb-daybtn-${key}" aria-expanded="false" aria-controls="eb-dayset-${key}" onclick="ebOpenDay('${key}')">
+        <span class="eb-day-name">${escapeHtml(label)}</span>
+        <span class="eb-track" data-eb-track="${key}"></span>
+      </button>
+      <div class="eb-dayset" id="eb-dayset-${key}" role="group" aria-label="Horaires du ${escapeHtml(label.toLowerCase())}" hidden>
+        ${dayEditor('estab-day', key, label, 'regular', 'Horaires normaux')}
+        ${dayEditor('estab-hday', key, label, 'holiday', 'Vacances et jours fériés')}
+      </div>
+    </div>`).join('');
+  return `<div class="eb-chart" style="--eb-n:${(fin - debut) / 120}" data-eb-axis="${debut}" data-eb-axis-end="${fin}">
+    <div class="eb-legend"><span><i class="eb-sw-n"></i>Horaires normaux</span><span><i class="eb-sw-v"></i>Vacances et jours fériés</span><span class="eb-legend-aide">Touchez un jour pour régler ses horaires.</span></div>
+    <div class="eb-axis" aria-hidden="true"><span></span><span class="eb-axis-t">${ticks.map((m, i) => `<em style="left:${((m - debut) / (fin - debut)) * 100}%">${m / 60}h</em>`).join('')}</span></div>
+    ${rows}
+  </div>`;
+}
+
+// ── La page ──────────────────────────────────────────────────────────────────
+function ebInitDrafts(center) {
+  window.PinlaneUpsellSettings?.start(center, establishmentUpsellCatalogue());
+  establishmentHolidayOverridesDraft = (center?.holidaySettings?.overrides || [])
+    .filter(item => item && item.date && (item.mode === 'holiday' || item.mode === 'normal'))
+    .map(item => ({ date: item.date, mode: item.mode }));
+  establishmentCustomActivitiesDraft = (Array.isArray(center?.customActivities) ? center.customActivities : [])
+    .filter(item => item && item.id && item.label)
+    .map(item => ({ id: item.id, label: item.label }));
+  establishmentDeclaredResourcesDraft = (Array.isArray(center?.resources?.declared) ? center.resources.declared : [])
+    .filter(item => item && item.id && item.name)
+    .map(item => ({
+      id: item.id, name: item.name,
+      units: Math.max(1, Number(item.units) || 1),
+      capacityPerUnit: Math.max(1, Number(item.capacityPerUnit) || 1),
+      cleanupMinutes: Math.max(0, Number(item.cleanupMinutes) || 0),
+      allowGroupMixing: item.allowGroupMixing === true,
+    }));
+  establishmentValidationDraft = validationReglageDe(center);
+  ebDraftCenterId = center ? center.id : '';
+}
+
+// Les cartes Arcades, avec les memes ids que l ancien rendu : la collecte
+// (collectEstablishmentArcadeOffers) et la validation les lisent par id.
+function ebArcade(center) {
+  const offers = center.activityOffers?.arcade_time;
+  if (!offers) return '';
+  const champ = (id, nom, valeur, attrs) => `<div class="eb-line eb-line-field"><div class="eb-line-t"><label class="eb-line-l" for="${id}">${nom}</label></div><input class="eb-input" id="${id}" ${attrs} value="${escapeHtml(String(valeur ?? ''))}"></div>`;
+  const carte = (mode, o, i) => {
+    const base = `estab-arc-${mode}-${i}`;
+    const titre = mode === 'time' ? `Carte ${o.minutes} min` : `Carte ${o.credits} crédits`;
+    const regl = mode === 'time'
+      ? ebStepper(`${base}-price`, 'Prix de la carte', { min: 0, max: 10000, value: Number(o.price), step: 1, unit: ' €' })
+        + ebStepper(`${base}-minutes`, 'Minutes à volonté', { min: 1, max: 1440, value: Number(o.minutes), step: 5, unit: ' min', htmlStep: 1 })
+      : ebStepper(`${base}-price`, 'Prix de la carte', { min: 0, max: 10000, value: Number(o.price), step: 1, unit: ' €' })
+        + ebStepper(`${base}-credits`, 'Crédits', { min: 0, max: 100000, value: Number(o.credits), step: 5 })
+        + ebStepper(`${base}-bonusCredits`, 'Crédits offerts', { min: 0, max: 100000, value: Number(o.bonusCredits), step: 5 });
+    return `<div class="eb-arc" data-arcade-offer="${mode}" data-arcade-id="${escapeHtml(o.id)}" data-arcade-index="${i}">
+      ${ebSwitch(`${base}-enabled`, titre, 'Les clients peuvent la choisir.', 'Cachée du formulaire en ligne.', o.enabled !== false)}
+      <div class="eb-arc-reglages">${regl}</div>
+    </div>`;
+  };
+  return `<div class="eb-blk eb-arcade">
+    <h4 class="eb-bh">Les cartes Arcades</h4>
+    <p class="eb-phrase">Ce que le client peut acheter pour jouer aux arcades.</p>
+    ${ebSwitch('estab-arc-enabled', 'Proposer les cartes dans ce centre', 'Les cartes apparaissent dans le formulaire en ligne.', 'Aucune carte n’est proposée.', offers.enabled !== false)}
+    <p class="eb-sub">Cartes au temps, une carte par joueur</p>
+    ${(offers.timeOffers || []).map((o, i) => carte('time', o, i)).join('')}
+    <p class="eb-sub">Cartes en crédits, le nombre de cartes se choisit séparément</p>
+    ${(offers.creditOffers || []).map((o, i) => carte('credit', o, i)).join('')}
+    <p class="eb-sub">Ce que coûte un jeu, en crédits</p>
+    ${champ('estab-arc-gameMin', 'Coût minimum', offers.creditGameCostMin, 'type="number" min="0.01" step="0.01"')}
+    ${champ('estab-arc-gameMax', 'Coût maximum', offers.creditGameCostMax, 'type="number" min="0.01" step="0.01"')}
+    <p class="eb-sub">Ce que lit le client</p>
+    <div class="eb-line eb-line-wide"><div class="eb-line-t"><label class="eb-line-l" for="estab-arc-timeDescription">Cartes au temps</label></div><input class="eb-input" id="estab-arc-timeDescription" maxlength="1000" value="${escapeHtml(String(offers.timedDescription ?? ''))}"></div>
+    <div class="eb-line eb-line-wide"><div class="eb-line-t"><label class="eb-line-l" for="estab-arc-creditDescription">Cartes en crédits</label></div><input class="eb-input" id="estab-arc-creditDescription" maxlength="1000" value="${escapeHtml(String(offers.creditDescription ?? ''))}"></div>
+  </div>`;
+}
+
 function renderStaffUtilityEstablishment() {
   if (!staffCenterConfigCache.loaded && !staffCenterConfigCache.loading) {
     setTimeout(() => loadStaffCenterConfig(false), 0);
   }
   // Le panneau Offres consomme la liste VIVE du catalogue : son chargement se
-  // declenche d'ici aussi (pas seulement depuis la page Tarifs). Une fois la
-  // liste arrivee, pevLoad repeint cette page en mode lecture.
-  // (le catalogue vif se lit avec « Tarifs & formules » : sans ce droit, la
-  // liste fournie suffit, sans un refus du serveur a chaque ouverture)
+  // declenche d'ici aussi (pas seulement depuis la page Tarifs).
   if (typeof window.pevEnsureCatalogLoaded === 'function' && canUseStaffPermission('pricing.manage')) window.pevEnsureCatalogLoaded();
   if (!staffCenterConfigCache.loaded || staffCenterConfigCache.loading) {
     return `<div class="establishment-page"><div class="establishment-loading">Lecture de la configuration des centres…</div></div>`;
@@ -15017,7 +15331,11 @@ function renderStaffUtilityEstablishment() {
   const center = getEstablishmentCenter();
   if (!center) return `<div class="establishment-page"><div class="establishment-loading">Aucun centre.</div></div>`;
   const canEdit = canUseStaffPermission('settings.manage');
-  const editing = canEdit && !!state.establishmentEditing;
+  // Chaque rendu repart de la config du serveur : rien n est en cours.
+  state.establishmentEditing = false;
+  ebInitDrafts(center);
+  ebDict = {};
+
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
   const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
@@ -15025,6 +15343,7 @@ function renderStaffUtilityEstablishment() {
   const timezone = center.timezone || 'Europe/Brussels';
   const laserRisk = ['critical', 'managed', 'low'].includes(laser.riskLevel) ? laser.riskLevel : 'managed';
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  const seuilRetard = Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT;
   const birthdayFormulaIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
   const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
     ? center.holidaySettings
@@ -15032,46 +15351,433 @@ function renderStaffUtilityEstablishment() {
   const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
     ? holidaySettings.formulaBlockedPeriods
     : ['public', 'school_short', 'manual'];
-  const statusLabels = { active: 'Actif', planned: 'Prévu', closed: 'Archivé' };
-  const tab = getEstablishmentTab();
-  return `<div class="establishment-page">
-    <section class="establishment-selector">
-      <div class="establishment-selector-head">
-        <div><h2>Centres</h2><p>${centers.length} centre${centers.length > 1 ? 's' : ''} · sélectionne un centre pour voir ou modifier sa configuration</p></div>
-      </div>
-      <div class="establishment-center-list">
-        ${renderEstablishmentCenterChips(centers, center.id, statusLabels)}
-        ${canEdit ? `<div id="estabAddSlot" class="establishment-add-slot">${renderEstablishmentAddCard()}</div>` : ''}
-      </div>
-    </section>
+  const statusLabels = { active: 'ouvert', planned: 'prévu', closed: 'archivé' };
+  const formulas = getConsoleFormuleCatalog();
 
-    <section class="establishment-editor" aria-label="Configuration ${escapeHtml(center.name)}">
-      <div class="establishment-editor-head">
-        <div>
-          <span class="establishment-eyebrow">Configuration centre</span>
-          <h2>${escapeHtml(center.name)} <span class="establishment-status establishment-status-${escapeHtml(center.status)}">${escapeHtml(statusLabels[center.status] || center.status)}</span></h2>
-        </div>
-        <div class="establishment-editor-actions">
-          ${editing
-            ? `<button type="button" id="estabSaveBtn" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
-               <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEstablishmentEdit()">Annuler</button>`
-            : canEdit
-              ? `<button type="button" class="btn btn-primary" onclick="startEstablishmentEdit()">Modifier</button>
-                 ${center.status !== 'closed'
-                   ? `<button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`
-                   : `<button type="button" class="btn btn-secondary btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`}`
-              : `<span class="establishment-readonly">Lecture seule, édition réservée à la direction.</span>`}
-        </div>
-      </div>
+  // ── Le centre
+  ebReg('estab-name', center.name);
+  const nomChamp = `<div class="eb-line eb-line-field"><div class="eb-line-t"><label class="eb-line-l" for="estab-name">Nom du centre</label></div><input type="text" id="estab-name" class="eb-input" value="${escapeHtml(center.name)}"></div>`;
+  const statutLigne = ebLine('Ce centre est', ebSeg('estab-status', 'Statut du centre', [['active', 'Actif'], ['planned', 'Prévu'], ['closed', 'Archivé']], center.status), 'Prévu ou archivé coupe les réservations en ligne.');
+  const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Amsterdam', 'Pays-Bas']];
+  const heureLigne = `<div class="eb-line eb-line-field"><div class="eb-line-t"><label class="eb-line-l" for="estab-timezone">Heure du centre</label><small>Les horaires et les réservations suivent cette heure.</small></div><select id="estab-timezone" class="eb-input">${fuseaux.map(([tz, nom]) => `<option value="${tz}" ${timezone === tz ? 'selected' : ''}>${nom}</option>`).join('')}${fuseaux.some(([tz]) => tz === timezone) ? '' : `<option value="${escapeHtml(timezone)}" selected>${escapeHtml(timezone)}</option>`}</select></div>`;
+  ebReg('estab-timezone', timezone);
+  const archive = canEdit ? `<div class="eb-line"><div class="eb-line-t"><span class="eb-line-l">${center.status === 'closed' ? 'Remettre ce centre en service' : 'Archiver ce centre'}</span><small>${center.status === 'closed' ? 'Les réservations en ligne repartent tout de suite.' : 'Les réservations en ligne sont coupées tout de suite, sans passer par Enregistrer.'}</small></div>${center.status === 'closed'
+    ? `<button type="button" class="eb-btn" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`
+    : `<button type="button" class="eb-btn" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`}</div>` : '';
 
-      ${establishmentTabsHtml(tab)}
-      ${editing ? '<p class="estab-edit-hint">Vous modifiez la configuration. « Enregistrer » enregistre les cinq sections d\'un coup, pas seulement celle affichée.</p>' : ''}
-
-      <div class="estab-panels">
-        ${editing ? renderEstablishmentEditPanels(center, tab) : renderEstablishmentReadPanels(center, tab)}
-      </div>
-    </section>
+  const bowlingBloc = `<div class="eb-blk">
+    <h4 class="eb-bh">Bowling</h4>
+    ${ebPhrase('bowling', EB_PHRASES.bowling(ebReader(false)))}
+    ${ebStepper('estab-laneCount', 'Pistes de bowling', { min: 1, max: 40, value: Number(bowling.laneCount || 8) })}
+    ${ebStepper('estab-normalCap', 'Joueurs par piste', { min: 1, max: 12, value: Number(bowling.normalCapacityPerLane || 6), hint: 'Le confort passe avant tout.' })}
+    ${ebStepper('estab-emergencyCap', 'Joueurs par piste si besoin', { min: 1, max: 15, value: Number(bowling.emergencyCapacityPerLane || 7), minFrom: 'estab-normalCap', hint: 'Seulement quand les pistes libres ne suffisent plus.' })}
+    ${ebSwitch('estab-preferAdjacent', 'Préférer des pistes voisines', 'Un même groupe est placé sur des pistes côte à côte quand c’est possible.', 'Un groupe peut être réparti sur des pistes éloignées.', bowling.preferAdjacentLanes !== false)}
   </div>`;
+  const laserBloc = `<div class="eb-blk">
+    <h4 class="eb-bh">Laser game</h4>
+    ${ebPhrase('laser', EB_PHRASES.laser(ebReader(false)))}
+    ${ebStepper('estab-weaponCount', 'Armes de laser', { min: 0, max: 200, value: Number(laser.weaponCount || 0), step: 1 })}
+    ${ebStepper('estab-launches', 'Parties de laser en même temps', { min: 1, max: 20, value: Number(laser.parallelLaunches || 1) })}
+    ${ebLine('Niveau de risque', ebSeg('estab-laserRisk', 'Niveau de risque du laser', [['low', 'Faible'], ['managed', 'Maîtrisé'], ['critical', 'Critique']], laserRisk), 'Plus il est haut, plus le planning se montre prudent.')}
+    ${ebSwitch('estab-requiresComplete', 'Groupe complet avant le départ', 'La partie ne part que quand tout le groupe est là.', 'La partie peut partir avec un groupe incomplet.', laser.requiresCompleteGroupBeforeLaunch !== false)}
+    ${ebSwitch('estab-canSplit', 'Scinder les groupes', 'Un grand groupe peut être coupé en deux parties.', 'Un groupe reste toujours dans la même partie.', laser.canSplitGroupsCleanly === true)}
+  </div>`;
+  const tablesBloc = `<div class="eb-blk">
+    <h4 class="eb-bh">Tables d’anniversaire</h4>
+    ${ebPhrase('tables', EB_PHRASES.tables(ebReader(false)))}
+    ${ebStepper('estab-tableSoft', 'Tables conseillées', { min: 1, max: 100, value: Number(party.softCapacity || 6) })}
+    ${ebStepper('estab-tableHard', 'Nombre de tables au plus', { min: 1, max: 120, value: Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8)), minFrom: 'estab-tableSoft' })}
+    ${ebSwitch('estab-tableLimit', 'Me prévenir au-delà de cette limite', 'Quand une réservation dépasse la limite, un mail prévient la boîte de secours. Rien n’est refusé au client.', 'Pas de limite, aucun mail ne part pour les tables.', party.limitEnabled === true)}
+    ${center.secours && Array.isArray(center.secours.emails) && center.secours.emails.length ? '' : '<p class="eb-note">La boîte de secours n’a aucune adresse, aucun mail ne partira (voir Règles).</p>'}
+  </div>`;
+  const installBloc = `<div class="eb-blk">
+    <h4 class="eb-bh">Autres installations</h4>
+    <p class="eb-phrase">${establishmentDeclaredResourcesDraft.length ? `${ebN(establishmentDeclaredResourcesDraft.length, 'installation déclarée', 'installations déclarées')}, comptées comme les pistes.` : 'Aucune autre installation. Déclarez un court de padel, un terrain ou une salle pour que le planning la compte comme les pistes.'}</p>
+    <div id="estabDeclaredResourcesList" class="estab-custom-activities-list" data-eb-watch="installations">${renderEstablishmentDeclaredResources()}</div>
+    <p class="eb-sub">Ajouter une installation</p>
+    <div class="eb-add">
+      <div class="eb-line eb-line-field"><div class="eb-line-t"><label class="eb-line-l" for="estab-res-name">Nom</label></div><input type="text" id="estab-res-name" class="eb-input" placeholder="Court de padel" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentDeclaredResource();}"></div>
+      ${ebStepper('estab-res-units', 'Installations', { min: 1, max: 50, value: 1 })}
+      ${ebStepper('estab-res-capacity', 'Joueurs par installation', { min: 1, max: 500, value: 4, step: 1 })}
+      ${ebStepper('estab-res-cleanup', 'Remise en état', { min: 0, max: 240, value: 0, step: 5, unit: ' min', zero: 'aucune' })}
+      ${ebSwitch('estab-res-mixing', 'Deux groupes dans la même session', 'Deux groupes différents peuvent se partager la session.', 'Une session n’accueille qu’un seul groupe.', false)}
+      <button type="button" class="eb-btn" onclick="addEstablishmentDeclaredResource()">Ajouter l’installation</button>
+    </div>
+  </div>`;
+  const formulaireBloc = `<div class="eb-blk">
+    <h4 class="eb-bh">Le formulaire en ligne</h4>
+    <p class="eb-phrase">La couleur, le paiement et le site du client se règlent ici.</p>
+    ${establishmentAccentFieldHtml(center)}
+    ${establishmentPaymentFieldHtml(center)}
+    ${establishmentEmbedFieldHtml(center)}
+  </div>`;
+  const centreSection = `<div class="eb-blk">
+      ${nomChamp}${statutLigne}${heureLigne}${archive}
+    </div>${bowlingBloc}${laserBloc}${tablesBloc}${installBloc}${formulaireBloc}`;
+
+  // ── Horaires
+  const blocagesPanel = renderAvailabilityBlocksPanel();
+  ebReg('estab-holiday-enabled', holidaySettings.enabled !== false);
+  const horairesSection = `${ebDayChart(center, canEdit)}
+    <div class="eb-blk">
+      <h4 class="eb-bh">Les vacances et les jours fériés</h4>
+      ${ebSwitch('estab-holiday-enabled', 'Appliquer les horaires de vacances automatiquement', 'Les jours fériés belges et pendant les congés scolaires de la Fédération Wallonie-Bruxelles, les horaires de vacances remplacent les horaires normaux.', 'Les horaires de vacances ne servent que les jours que vous forcez plus bas.', holidaySettings.enabled !== false)}
+      <p class="eb-sub">Les formules « pas valables en vacances » sont bloquées pendant</p>
+      ${ebSwitch('estab-fbp-public', 'Les jours fériés', '', 'Elles restent réservables les jours fériés.', blockedPeriods.includes('public'))}
+      ${ebSwitch('estab-fbp-short', 'Les petits congés', 'Automne, hiver, détente et printemps.', 'Elles restent réservables pendant les petits congés.', blockedPeriods.includes('school_short'))}
+      ${ebSwitch('estab-fbp-summer', 'Les grandes vacances', 'Juillet et août.', 'Elles restent réservables en juillet et août.', blockedPeriods.includes('school_summer'))}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Un jour à part</h4>
+      <p class="eb-phrase">Forcez un jour en vacances ou en jour normal, quelle que soit la règle automatique.</p>
+      <div id="estabHolidayOverridesList" class="estab-overrides-list" data-eb-watch="exceptions">${renderEstablishmentOverridesList()}</div>
+      <div class="eb-add eb-add-row">
+        <input type="date" id="estab-override-date" class="eb-input" aria-label="Date de l’exception">
+        <select id="estab-override-mode" class="eb-input" aria-label="Type d’exception"><option value="holiday">Horaires de vacances</option><option value="normal">Horaires normaux</option></select>
+        <button type="button" class="eb-btn" onclick="addEstablishmentHolidayOverride()">Ajouter ce jour</button>
+      </div>
+    </div>
+    <div class="eb-blk eb-avb">
+      <h4 class="eb-bh">Fermetures et blocages</h4>
+      ${blocagesPanel}
+    </div>`;
+
+  // ── Activités et offres
+  const seuilSurMesure = Number(center.customRequest && center.customRequest.fromPax) || '';
+  const activites = (staffCenterConfigCache.activities || []);
+  const actLignes = activites.map(activity => {
+    const on = !!center.activityAvailability?.[activity.id];
+    const inst = on ? installationsActivite(activity, center) : null;
+    const idA = escapeHtml(activity.id);
+    let reglages = '';
+    if (inst) {
+      const nomUnites = inst.mot === 'session' ? 'installations' : `${inst.mot}s`;
+      reglages = `<div class="eb-act-inst">
+        ${ebStepper(`estab-cap-units-${idA}`, nomUnites.charAt(0).toUpperCase() + nomUnites.slice(1), { min: 1, max: 50, value: inst.units, cls: 'estab-cap-input', capName: activity.label, capWhat: nomUnites })}
+        ${inst.capacityPerUnit ? ebStepper(`estab-cap-players-${idA}`, `Joueurs par ${inst.mot}`, { min: 1, max: 500, value: inst.capacityPerUnit, cls: 'estab-cap-input', capName: activity.label, capWhat: `joueurs par ${inst.mot}` }) : ''}
+      </div>`;
+    }
+    return `<div class="eb-act${inst ? ' has-inst' : ''}">${ebSwitch(`estab-act-${idA}`, escapeHtml(activity.label), '', 'Pas proposée dans ce centre.', on)}${reglages}</div>`;
+  }).join('');
+  const familles = [];
+  formulas.forEach(formule => {
+    const nomFamille = formule.family || 'Formules';
+    let groupe = familles.find(item => item.name === nomFamille);
+    if (!groupe) { groupe = { name: nomFamille, items: [] }; familles.push(groupe); }
+    groupe.items.push(formule);
+  });
+  const formulesHtml = familles.map(groupe => `<div class="eb-family"><h5>${escapeHtml(groupe.name)}</h5><div class="eb-sw-grid">${groupe.items.map(formule => {
+    const enabled = center.offerAvailability?.[formule.id] !== false;
+    const prix = formule.price != null ? ` · ${Number(formule.price)} €/${formule.type === 'per_lane' ? 'piste' : 'pers.'}` : '';
+    return ebSwitch(`estab-offer-${escapeHtml(formule.id)}`, `${escapeHtml(formule.name)}${prix}`, '', 'Cachée du formulaire en ligne.', enabled, `data-estab-offer="${escapeHtml(formule.id)}"`);
+  }).join('')}</div></div>`).join('');
+  const offresSection = `<div class="eb-blk">
+      <h4 class="eb-bh">Les activités du centre</h4>
+      <p class="eb-phrase">Ce que les clients peuvent réserver ici, avec les installations qui vont avec.</p>
+      <div class="eb-acts">${actLignes}</div>
+    </div>
+    ${ebArcade(center)}
+    <div class="eb-blk">
+      <h5 class="eb-sub">Une activité propre au centre</h5>
+      <div id="estabCustomActivitiesList" class="estab-custom-activities-list" data-eb-watch="activites-perso">${renderEstablishmentCustomActivities()}</div>
+      <div class="eb-add eb-add-row">
+        <input type="text" id="estab-new-activity" class="eb-input" placeholder="Réalité virtuelle" maxlength="60" autocomplete="off" aria-label="Nom de l’activité" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
+        <button type="button" class="eb-btn" onclick="addEstablishmentCustomActivity()">Ajouter l’activité</button>
+      </div>
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Les formules</h4>
+      <p class="eb-phrase">Une formule désactivée disparaît du formulaire en ligne et ne peut plus être réservée.</p>
+      ${formulesHtml}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Les grands groupes</h4>
+      <p class="eb-phrase">${seuilSurMesure ? `À partir de ${seuilSurMesure} personnes, le formulaire ne réserve plus, il ouvre une demande sur mesure que l’équipe traite sous 24 heures ouvrables.` : 'Tous les groupes réservent en ligne, quelle que soit leur taille.'}</p>
+      ${ebStepper('estab-customRequestFromPax', 'Demande sur mesure dès', { min: 2, max: 240, value: seuilSurMesure, step: 1, start: 30, vide: 'Jamais', unit: ' personnes', hint: 'Enlevez jusqu’à « Jamais » pour que tous les groupes réservent en ligne.' })}
+    </div>
+    <div class="eb-blk eb-ups" data-eb-watch="suggestions">
+      <h4 class="eb-bh">Les suggestions avant de confirmer</h4>
+      ${window.PinlaneUpsellSettings?.renderEdit(center, establishmentUpsellCatalogue()) || ''}
+    </div>`;
+
+  // ── Clients
+  const bdayGrid = `<div class="eb-sw-grid">${formulas.map(formule => ebSwitch(`estab-bday-${escapeHtml(formule.id)}`, escapeHtml(formule.name), '', 'Ne classe pas la réservation en anniversaire.', birthdayFormulaIds.includes(formule.id), `data-estab-bday="${escapeHtml(formule.id)}"`)).join('')}</div>`;
+  const clientsSection = `<div class="eb-blk">
+      <h4 class="eb-bh">Quand une réservation devient un groupe</h4>
+      ${ebStepper('estab-groupMinPax', 'Joueurs dans une réservation', { min: 2, max: 200, value: Number(classification.groupMinPax || 10), step: 1 })}
+      ${ebStepper('estab-groupMinCumulative', 'Ou joueurs cumulés par un client', { min: 2, max: 5000, value: Number(classification.groupMinCumulative || 18), step: 1 })}
+      ${ebSwitch('estab-countFormulaAsGroup', 'Une formule compte comme un groupe', 'Toute réservation avec une formule est classée groupe.', 'Seul le nombre de joueurs décide.', classification.countFormulaAsGroup !== false)}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Les clients clés</h4>
+      <p class="eb-phrase">${Number(classification.keyClientMinSpend || 0) > 0 ? `Un client est signalé dès ${Number(classification.keyClientMinSpend)} € dépensés.` : 'Les 20 % de clients qui dépensent le plus sont signalés, le seuil se calcule tout seul.'}</p>
+      ${ebStepper('estab-keyClientMinSpend', 'Client clé à partir de', { min: 0, max: 100000, value: Number(classification.keyClientMinSpend || 0), step: 50, unit: ' €', zero: 'Calculé tout seul' })}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Les formules d’anniversaire</h4>
+      ${ebSwitch('estab-birthdayFromFormula', 'Classer en anniversaire d’après la formule', 'Une réservation avec une de ces formules est classée anniversaire, même sans le déclarer.', 'Seul ce que le client déclare compte.', classification.birthdayFromFormula !== false)}
+      ${bdayGrid}
+    </div>`;
+
+  // ── Règles
+  const reglesSection = `<div class="eb-blk">
+      <h4 class="eb-bh">Ce que gère le comptoir</h4>
+      ${ebSwitch('estab-bar-booking', 'Les réservations', 'Le comptoir prend les réservations.', 'Le comptoir ne prend pas de réservation.', barDesk.handlesBooking !== false)}
+      ${ebSwitch('estab-bar-briefing', 'Les consignes de jeu', 'Le comptoir fait le briefing des groupes.', 'Le briefing se fait ailleurs.', barDesk.handlesBriefing !== false)}
+      ${ebSwitch('estab-bar-food', 'Les boissons et la restauration', 'Le comptoir sert les boissons et la restauration.', 'Le comptoir ne sert pas.', barDesk.handlesFoodAndDrink !== false)}
+      ${ebSwitch('estab-bar-escort', 'L’accompagnement', 'Quelqu’un accompagne le groupe pendant l’activité.', 'Le groupe est autonome pendant l’activité.', barDesk.activityEscort === true)}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">Le retard</h4>
+      <p class="eb-phrase">Un groupe pas encore pointé arrivé passe en retard, en rouge et en tête de liste, après ce délai.</p>
+      ${ebStepper('estab-lateThreshold', 'En retard après', { min: 0, max: 60, value: seuilRetard, step: 1, unit: ' min', zero: 'L’heure pile' })}
+    </div>
+    <div class="eb-blk eb-valid" data-eb-watch="validation">
+      <h4 class="eb-bh">La validation par l’équipe</h4>
+      ${establishmentValidationHtml(center)}
+    </div>
+    <div class="eb-blk">
+      <h4 class="eb-bh">La boîte de secours</h4>
+      ${establishmentSecoursHtml(center)}
+    </div>`;
+
+  const corps = { centre: centreSection, horaires: horairesSection, offres: offresSection, clients: clientsSection, regles: reglesSection };
+  const r = ebReader(false);
+  const sectionPhrase = k => k === 'centre' ? EB_PHRASES.centre(r) : EB_PHRASES[k](r);
+
+  // Changer de centre : un geste leger, pas un bloc de cartes.
+  const groupes = groupCentersByClient(centers);
+  const liste = groupes.map(g => (groupes.length > 1 ? `<span class="eb-sw-group">${escapeHtml(g.clientName || 'Sans client')}</span>` : '')
+    + g.centers.map(c => `<button type="button" class="eb-pick${c.id === center.id ? ' is-on' : ''}" onclick="ebSelectCenter('${escapeJsString(c.id)}')"><span>${escapeHtml(c.name)}</span><small>${escapeHtml(statusLabels[c.status] || c.status)}</small></button>`).join('')).join('');
+  const changer = `<details class="eb-switch"><summary class="eb-link">${centers.length > 1 ? 'Changer de centre' : 'Ajouter un centre'}</summary><div class="eb-switch-panel">${liste}${canEdit ? `<div id="estabAddSlot" class="establishment-add-slot">${renderEstablishmentAddCard()}</div>` : ''}</div></details>`;
+  const photo = ebPhoto(center);
+  setTimeout(ebAfterRender, 0);
+
+  return `<div class="establishment-page eb${canEdit ? '' : ' eb-ro'}" data-estab-page data-eb-center="${escapeHtml(center.id)}" oninput="ebOnChange(event)" onchange="ebOnChange(event)" onclick="ebOnClick(event)">
+    <div class="eb-hero${photo ? ' has-photo' : ''}">
+      <div class="eb-hero-t">
+        <h2 class="eb-name">${escapeHtml(center.name)}</h2>
+        <p class="eb-today">${escapeHtml(ebTodaySentence(center))}</p>
+        ${changer}
+        ${canEdit ? '' : '<p class="eb-note">Lecture seule, la direction règle cette fiche.</p>'}
+      </div>
+      ${photo}
+    </div>
+    <div class="eb-body">
+      <nav class="eb-nav" aria-label="Les parties de la fiche">
+        ${EB_SECTIONS.map(([k, l], i) => `<a class="eb-nav-i${i === 0 ? ' is-on' : ''}" href="#eb-s-${k}" data-eb-link="${k}" onclick="ebGo('${k}');return false"><b>${escapeHtml(l)}</b><small data-eb-nav="${k}">${escapeHtml(EB_NAV[k](r))}</small></a>`).join('')}
+      </nav>
+      <div class="eb-main">
+        ${EB_SECTIONS.map(([k, l]) => `<section class="eb-sec" id="eb-s-${k}" data-eb-sec="${k}" aria-labelledby="eb-h-${k}">
+          <h3 class="eb-h" id="eb-h-${k}">${escapeHtml(l)}</h3>
+          ${ebPhrase(`sec-${k}`, sectionPhrase(k))}
+          ${corps[k]}
+        </section>`).join('')}
+      </div>
+    </div>
+    <div class="eb-bar" id="ebBar" role="region" aria-label="Changements à enregistrer" hidden>
+      <span class="eb-bar-n" id="ebBarN" aria-live="polite"></span>
+      <button type="button" class="eb-bar-cancel" onclick="cancelEstablishmentEdit()">Annuler</button>
+      <button type="button" id="estabSaveBtn" class="eb-bar-save" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
+    </div>
+  </div>`;
+}
+
+// Apres chaque rendu : on prend la photo de la page telle que le serveur la
+// donne, c est elle qui sert a compter les changements.
+function ebAfterRender() {
+  const root = document.querySelector('[data-estab-page]');
+  if (!root) return;
+  if (root.classList.contains('eb-ro')) {
+    root.querySelectorAll('input, select, textarea, .eb-step-btn, .eb-seg-btn, .eb-btn').forEach(el => { el.disabled = true; });
+    return;
+  }
+  ebRefresh();
+  ebSnap = ebState();
+  const bar = document.getElementById('ebBar');
+  if (bar) bar.hidden = true;
+  if (ebObserver) ebObserver.disconnect();
+  if (typeof IntersectionObserver === 'function') {
+    ebObserver = new IntersectionObserver(entries => {
+      const vus = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (vus[0]) ebMarkNav(vus[0].target.dataset.ebSec);
+    }, { rootMargin: '-12% 0px -70% 0px' });
+    root.querySelectorAll('[data-eb-sec]').forEach(el => ebObserver.observe(el));
+  }
+}
+
+function ebMarkNav(key) {
+  document.querySelectorAll('.eb-nav-i').forEach(a => a.classList.toggle('is-on', a.dataset.ebLink === key));
+}
+
+function ebGo(key) {
+  const el = document.getElementById(`eb-s-${key}`);
+  if (!el) return;
+  const calme = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView({ block: 'start', behavior: calme ? 'auto' : 'smooth' });
+  ebMarkNav(key);
+}
+
+function ebSelectCenter(id) {
+  if (state.establishmentEditing && !window.confirm('Des changements ne sont pas enregistrés. Changer de centre les efface. Continuer ?')) return;
+  selectEstablishmentCenter(id);
+}
+
+function ebOpenDay(key) {
+  document.querySelectorAll('.eb-day').forEach(day => {
+    const on = day.dataset.ebDay === key && day.querySelector('.eb-dayset').hidden;
+    day.querySelector('.eb-dayset').hidden = !on;
+    day.classList.toggle('is-open', on);
+    day.querySelector('.eb-day-btn').setAttribute('aria-expanded', on ? 'true' : 'false');
+  });
+}
+
+function ebStep(id, dir) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const step = Number(input.dataset.ebStep) || 1;
+  const base = input.dataset.ebMinFrom ? Number(document.getElementById(input.dataset.ebMinFrom)?.value) : NaN;
+  const min = Number.isFinite(base) ? Math.max(Number(input.min), base) : Number(input.min);
+  const max = Number(input.max);
+  const peutEtreVide = Boolean(input.dataset.ebVide);
+  let v = input.value === '' ? null : Number(input.value);
+  if (v === null) {
+    if (dir < 0) return;
+    v = Number(input.dataset.ebStart) || min;
+  } else {
+    v += dir * step;
+    if (v < min) v = peutEtreVide ? null : min;
+    if (v !== null && v > max) v = max;
+  }
+  input.value = v === null ? '' : String(v);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function ebTimeStep(id, dir) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  const fermeture = /-close$/.test(id);
+  const racine = id.replace(/-(open|close)$/, '');
+  const toMin = (v, c) => { const [h, m] = String(v || '0:0').split(':').map(Number); const x = h * 60 + m; return c && x === 0 ? 1440 : x; };
+  const o = toMin(document.getElementById(`${racine}-open`)?.value, false);
+  const c = toMin(document.getElementById(`${racine}-close`)?.value, true);
+  let v = (fermeture ? c : o) + dir * 30;
+  v = fermeture ? Math.max(o + 30, Math.min(1440, v)) : Math.max(0, Math.min(c - 30, v));
+  const deux = n => String(n).padStart(2, '0');
+  input.value = v === 1440 ? '00:00' : `${deux(Math.floor(v / 60))}:${deux(v % 60)}`;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function ebPick(id, value) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+// Les barres des jours, dessinees depuis les champs.
+function ebPaintDay(key) {
+  const track = document.querySelector(`[data-eb-track="${key}"]`);
+  const chart = document.querySelector('.eb-chart');
+  if (!track || !chart) return;
+  const debut = Number(chart.dataset.ebAxis), fin = Number(chart.dataset.ebAxisEnd);
+  const toMin = (v, c) => { const [h, m] = String(v || '0:0').split(':').map(Number); const x = h * 60 + m; return c && x === 0 ? 1440 : x; };
+  const ligne = (prefix, cls) => {
+    const ferme = document.getElementById(`${prefix}-${key}-closed`)?.checked;
+    if (ferme) return `<span class="eb-trait-line"><span class="eb-closed">Fermé</span></span>`;
+    const o = document.getElementById(`${prefix}-${key}-open`)?.value || '10:00';
+    const c = document.getElementById(`${prefix}-${key}-close`)?.value || '22:00';
+    const a = Math.max(toMin(o), debut), b = toMin(c, true);
+    const gauche = ((a - debut) / (fin - debut)) * 100, largeur = Math.max(0, ((b - a) / (fin - debut)) * 100);
+    return `<span class="eb-trait-line"><span class="eb-trait ${cls}" style="left:${gauche}%;width:${largeur}%">${o} à ${ebHeure(c, true)}</span></span>`;
+  };
+  track.innerHTML = ligne('estab-day', 'eb-trait-n') + ligne('estab-hday', 'eb-trait-v');
+}
+
+function ebRefresh() {
+  const root = document.querySelector('[data-estab-page]');
+  if (!root) return;
+  root.querySelectorAll('input[type="number"][id], input[type="time"][id]').forEach(input => {
+    const sortie = document.getElementById(`eb-val-${input.id}`);
+    if (!sortie) return;
+    sortie.textContent = ebFormatValue(input);
+    const boutons = sortie.parentElement.querySelectorAll('.eb-step-btn');
+    if (input.type === 'number' && boutons.length === 2) {
+      const base = input.dataset.ebMinFrom ? Number(document.getElementById(input.dataset.ebMinFrom)?.value) : NaN;
+      const min = Number.isFinite(base) ? Math.max(Number(input.min), base) : Number(input.min);
+      const v = input.value === '' ? null : Number(input.value);
+      boutons[0].disabled = v === null || (v <= min && !input.dataset.ebVide);
+      boutons[1].disabled = v !== null && v >= Number(input.max);
+    }
+  });
+  // Un minimum qui suit un autre champ (secours au moins egal au confort).
+  root.querySelectorAll('input[data-eb-min-from]').forEach(input => {
+    const base = Number(document.getElementById(input.dataset.ebMinFrom)?.value);
+    if (Number.isFinite(base) && Number(input.value) < base) {
+      input.value = String(base);
+      const sortie = document.getElementById(`eb-val-${input.id}`);
+      if (sortie) sortie.textContent = ebFormatValue(input);
+    }
+  });
+  root.querySelectorAll('[data-eb-seg]').forEach(seg => {
+    const valeur = document.getElementById(seg.dataset.ebSeg)?.value;
+    const options = [...seg.querySelectorAll('.eb-seg-btn')];
+    const ids = options.map(b => b.getAttribute('onclick').match(/'([^']*)'\)$/)[1]);
+    options.forEach((b, i) => { const on = ids[i] === valeur; b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  });
+  root.querySelectorAll('.eb-dayopen').forEach(sw => {
+    const ferme = document.getElementById(`${sw.dataset.ebFor}-closed`);
+    if (ferme) ferme.checked = !sw.checked;
+    sw.closest('.eb-dayset-col').classList.toggle('is-closed', !sw.checked);
+  });
+  ESTABLISHMENT_DAYS.forEach(([k]) => ebPaintDay(k));
+  const r = ebReader(true);
+  root.querySelectorAll('[data-eb-phrase]').forEach(el => {
+    const nom = el.dataset.ebPhrase.replace(/^sec-/, '');
+    if (EB_PHRASES[nom]) el.textContent = EB_PHRASES[nom](r);
+  });
+  root.querySelectorAll('[data-eb-nav]').forEach(el => { if (EB_NAV[el.dataset.ebNav]) el.textContent = EB_NAV[el.dataset.ebNav](r); });
+}
+
+function ebState() {
+  const root = document.querySelector('[data-estab-page]');
+  const out = {};
+  if (!root) return out;
+  root.querySelectorAll('input[id],select[id],textarea[id]').forEach(el => {
+    if (/^(eb-|avb-|estab-new-|estab-override-|estab-res-)/.test(el.id) || el.closest('[data-eb-watch]')) return;
+    out[el.id] = el.type === 'checkbox' || el.type === 'radio' ? String(el.checked) : el.value;
+  });
+  root.querySelectorAll('[data-eb-watch]').forEach(el => {
+    out[`w:${el.dataset.ebWatch}`] = `${el.innerHTML.replace(/ style="[^"]*"/g, '')}|${[...el.querySelectorAll('input,select,textarea')].map(x => (x.type === 'checkbox' ? x.checked : x.value)).join(',')}`;
+  });
+  return out;
+}
+
+function ebCountChanges() {
+  if (!ebSnap) return 0;
+  const now = ebState();
+  const cles = new Set();
+  new Set([...Object.keys(now), ...Object.keys(ebSnap)]).forEach(k => {
+    if (now[k] !== ebSnap[k]) cles.add(k.replace(/^(estab-h?day-\d)-.*$/, '$1').replace('estab-accent-picker', 'estab-accent'));
+  });
+  return cles.size;
+}
+
+function ebTouch() {
+  const n = ebCountChanges();
+  state.establishmentEditing = n > 0;
+  const bar = document.getElementById('ebBar');
+  if (!bar) return;
+  document.getElementById('ebBarN').textContent = n === 1 ? '1 changement' : `${n} changements`;
+  bar.hidden = n === 0;
+}
+
+function ebOnChange() { ebRefresh(); ebTouch(); }
+
+function ebOnClick(event) {
+  // Les gestes qui changent la page sans passer par un champ (ajouter, retirer,
+  // suggestions, validation) sont comptes apres coup.
+  setTimeout(() => { ebRefresh(); ebTouch(); }, 40);
 }
 
 // Ajouter un centre etait une 4e carte au milieu des centres : on croyait lire un
@@ -15427,7 +16133,7 @@ function establishmentValidationHtml(center) {
       <ul class="estab-situations">${VALIDATION_SITUATIONS.map(s => {
         const on = r.actives.has(s.id);
         return `<li class="estab-situation${on ? ' is-on' : ''}">
-          <label class="establishment-toggle"><input type="checkbox" ${on ? 'checked' : ''} ${s.toujours ? 'disabled' : ''} onchange="toggleEstablishmentValidationSituation('${s.id}', this.checked)"><span class="estab-check-box" aria-hidden="true"></span><span><span class="estab-sit-titre"><b>${escapeHtml(s.mot)}</b>${s.toujours ? '<em>toujours</em>' : ''}</span><small>${escapeHtml(s.explication)}</small><small class="estab-sit-ex">Exemple : ${escapeHtml(s.exemple)}</small></span></label>
+          <label class="eb-sw"><input type="checkbox" class="eb-sw-input" ${on ? 'checked' : ''} ${s.toujours ? 'disabled' : ''} onchange="toggleEstablishmentValidationSituation('${s.id}', this.checked)"><span class="eb-sw-copy"><b>${escapeHtml(s.mot)}</b><small>${escapeHtml(s.explication)}</small><small class="estab-sit-ex">Exemple : ${escapeHtml(s.exemple)}</small></span><span class="eb-sw-track" aria-hidden="true"></span></label>
         </li>`;
       }).join('')}</ul>
     </fieldset>`;

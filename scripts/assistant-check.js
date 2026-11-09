@@ -176,9 +176,13 @@ if (mutation && /^(lib|api)\//.test(mutation.fichier)) {
   };
 }
 
+// Le lanceur donne a ce gate une plage de 20 ports (gates-lancer.js) : tout ce qu il ecoute y tient, fils
+// compris. Le faux Claude a +100 et les contre-preuves a +200 tombaient dans la plage de la place voisine.
 const PORT = Number(process.env.PINLANE_ASSISTANT_PORT || 5343);
+const PORT_CLAUDE = PORT + 1;
+const PORT_DES_FILS = PORT + 10;
 process.env.ANTHROPIC_API_KEY = 'cle-de-banc';
-process.env.ASSISTANT_BASE_URL = `http://127.0.0.1:${PORT + 100}`;
+process.env.ASSISTANT_BASE_URL = `http://127.0.0.1:${PORT_CLAUDE}`;
 
 let reussis = 0;
 let echecs = 0;
@@ -1667,7 +1671,7 @@ async function sectionEcran() {
     for (const nom of noms) {
       const m = MUTATIONS[nom];
       if (!m) { console.log(`FAIL  contre-preuve inconnue ${nom}`); manquees += 1; continue; }
-      const r = spawnSync(process.execPath, [__filename], { env: { ...process.env, ASSISTANT_CASSE: nom, PINLANE_ASSISTANT_PORT: String(PORT + 200) }, encoding: 'utf8', timeout: 180000 });
+      const r = spawnSync(process.execPath, [__filename], { env: { ...process.env, ASSISTANT_CASSE: nom, PINLANE_ASSISTANT_PORT: String(PORT_DES_FILS) }, encoding: 'utf8', timeout: 180000 });
       const sortie = `${r.stdout || ''}${r.stderr || ''}`;
       const cibleRouge = sortie.split('\n').some((l) => l.startsWith('FAIL') && l.indexOf(m.rouge) >= 0);
       const mord = r.status === 1 && cibleRouge;
@@ -1678,7 +1682,7 @@ async function sectionEcran() {
     console.log(`assistant-check --contre-preuves: ${noms.length - manquees}/${noms.length} mordent`);
     process.exit(manquees ? 1 : 0);
   }
-  await new Promise((r) => fauxClaude.listen(PORT + 100, '127.0.0.1', r));
+  await new Promise((r) => fauxClaude.listen(PORT_CLAUDE, '127.0.0.1', r));
   await new Promise((r) => serveur.listen(PORT, '127.0.0.1', r));
   const SEUL = mutation ? mutation.section : (process.env.ASSISTANT_SEUL || '');
   const joue = (s) => !SEUL || SEUL.includes(s);

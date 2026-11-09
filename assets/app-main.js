@@ -15614,8 +15614,17 @@ function ebPlier(root) {
   }
   root.querySelectorAll('.eb-blk').forEach(bloc => {
     if (bloc.dataset.ebPlie) return;
-    const titre = bloc.querySelector(':scope > .eb-bh');
-    if (!titre) return;
+    let titre = bloc.querySelector(':scope > .eb-bh');
+    if (!titre) {
+      // Un bloc sans titre en recoit un ; celui qui identifie le centre passe apres les autres.
+      const sous = bloc.querySelector(':scope > .eb-sub');
+      titre = document.createElement('h4');
+      titre.className = 'eb-bh';
+      titre.textContent = sous ? sous.textContent : 'Nom, statut et archivage';
+      if (sous) sous.remove();
+      bloc.prepend(titre);
+      if (!sous && bloc.parentElement) bloc.parentElement.appendChild(bloc);
+    }
     bloc.dataset.ebPlie = '1';
     const nom = titre.textContent.trim();
     bloc.dataset.ebNom = nom;

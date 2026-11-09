@@ -22028,3 +22028,5 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .eb-blk.est-ouvert > .eb-pli > .eb-pli-d { padding-bottom: 14px; visibility: visible; transition-delay: 0s; }
 .eb-pli-d > .eb-line:first-child, .eb-pli-d > .eb-sw:first-child { border-top: 0; }
 @media (prefers-reduced-motion: reduce) { .eb-pli, .eb-pli-d, .eb .eb-bh-b > svg { transition: none; } }
+
+.eb .eb-bh-b { align-content: center; }

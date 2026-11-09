@@ -482,7 +482,7 @@ async function preuvesBilan() {
 // ---------------------------------------------------------------------------
 // [G] La garde entiere.
 // ---------------------------------------------------------------------------
-function routesDeLaTour({ mailEchoue = false, suivis = false } = {}) {
+function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false } = {}) {
   route(/from centers/, () => [
     { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
     { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
@@ -498,6 +498,17 @@ function routesDeLaTour({ mailEchoue = false, suivis = false } = {}) {
     // une requete qui oublie le canal les compte.
     route(/validation_status = 'staff_review' and status = 'pending'/, (s) => [{ center_id: 'gembloux', n: 2 }, ...(/channel = 'public'/.test(s) ? [] : [{ center_id: 'libramont', n: 6 }])]);
     route(/from custom_requests where status = 'new'/, () => [{ center_id: 'libramont', n: 1 }]);
+  }
+  if (integrite) {
+    // Un defaut enregistre par chasseur. A Gembloux, cinq reservations sans mail parce que
+    // le gerant a coupe ses confirmations : seule une requete qui oublie le reglage les
+    // compte. Avec 'panne', la requete des mails leve comme Postgres sur une faute de frappe.
+    route(/and price <= 0 and created_at/, () => [{ center_id: 'gembloux', n: 1 }]);
+    route(/not exists \(select 1 from communications c where c\.reservation_id = r\.id/, (s) => {
+      if (integrite === 'panne') throw new Error('syntax error at or near "x"');
+      return [{ center_id: 'libramont', n: 2 }, ...(/from center_automation_settings s/.test(s) ? [] : [{ center_id: 'gembloux', n: 5 }])];
+    });
+    route(/b\.lanes && a\.lanes/, () => [{ center_id: 'libramont', n: 1 }]);
   }
 }
 const INSTANT = { valeur: new Date('2026-11-14T12:00:00Z') };
@@ -550,6 +561,25 @@ async function preuvesGarde() {
   const p6 = await passe();
   ok(p6.messages.length === 1 && /^À regarder, Pinlane\n/.test(p6.messages[0].text) && p6.messages[0].text.includes('2 réservations en ligne attendent la validation de l’équipe à Gembloux') && p6.messages[0].text.includes('1 demande de groupe attend une réponse à Libramont') && p6.messages[0].disable_notification === true, '[G] les suivis : a valider depuis 2 h, demande sans reponse depuis 24 h, dits sans sonnerie', p6.messages.map((m) => m.text));
   ok(!/la validation de l’équipe à Libramont/.test(p6.messages[0].text), '[G] les « a verifier » du comptoir ne passent pas pour un client qui attend', p6.messages[0].text);
+
+  // Les chasseurs d integrite : trois defauts enregistres en base, dits ensemble, sans sonnerie.
+  const etatApresSuivis = BD.etatGarde;
+  BD.routes = [];
+  BD.etatGarde = { ...BD.etatGarde, dits: {} };
+  routesDeLaTour({ integrite: true });
+  const p6b = await passe();
+  const t6b = p6b.messages.length === 1 ? p6b.messages[0].text : '';
+  ok(/^À regarder, Pinlane\n/.test(t6b) && p6b.messages[0].disable_notification === true && t6b.includes('1 réservation en ligne est enregistrée à 0 € à Gembloux') && t6b.includes('2 réservations en ligne n’ont reçu aucun mail à Libramont') && t6b.includes('1 double réservation de bowling sur la même piste à Libramont'), '[G] integrite : prix a 0, reservation sans mail, double piste, dits sans sonnerie', p6b.messages.map((m) => m.text));
+  ok(t6b !== '' && !/reçu aucun mail à Gembloux/.test(t6b), '[G] integrite : un centre qui a coupe ses confirmations ne passe pas pour un mail perdu', t6b);
+
+  BD.routes = [];
+  BD.etatGarde = { ...BD.etatGarde, dits: {} };
+  routesDeLaTour({ integrite: 'panne' });
+  const p6c = await passe();
+  const t6c = p6c.messages.map((m) => m.text).join('\n');
+  ok(p6c.messages.length === 1 && /^À regarder, Pinlane\n/.test(t6c) && p6c.messages[0].disable_notification === true && !/URGENT/.test(t6c) && t6c.includes('Un contrôle des réservations ne se lit pas (sans mail)'), '[G] integrite : une requete qui echoue se dit calmement, jamais en URGENT', p6c.messages.map((m) => m.text));
+  ok(t6c.includes('enregistrée à 0 € à Gembloux') && t6c.includes('double réservation de bowling sur la même piste à Libramont'), '[G] integrite : un controle illisible n arrete pas les deux autres', t6c);
+  BD.etatGarde = etatApresSuivis;
 
   BD.routes = [];
   routesDeLaTour();
@@ -737,6 +767,36 @@ async function contrePreuves() {
     routesDeLaTour({ suivis: true });
     const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
     return problemes.some((p) => p.cle === 'suivi:a-valider:gembloux');
+  });
+  await rouge('une reservation en ligne a 0 euro ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: '    out.push({ cle: `integrite:prix-zero:${l.center_id}`,', vers: '    if (false) out.push({ cle: `integrite:prix-zero:${l.center_id}`,' }], async () => {
+    remettre();
+    routesDeLaTour({ integrite: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'integrite:prix-zero:gembloux' && p.gravite === 'attention');
+  });
+  await rouge('une reservation en ligne sans mail ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: '    out.push({ cle: `integrite:sans-mail:${l.center_id}`,', vers: '    if (false) out.push({ cle: `integrite:sans-mail:${l.center_id}`,' }], async () => {
+    remettre();
+    routesDeLaTour({ integrite: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'integrite:sans-mail:libramont' && p.gravite === 'attention');
+  });
+  await rouge('un centre qui a coupe ses confirmations passe pour un mail perdu', [{ fichier: 'lib/tour-controle.js', de: " and not exists (select 1 from center_automation_settings s where s.center_id = r.center_id and (s.settings->'confirmation'->>'enabled' = 'false' or s.settings->'request_received'->>'enabled' = 'false'))", vers: '' }], async () => {
+    remettre();
+    routesDeLaTour({ integrite: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'integrite:sans-mail:libramont') && !problemes.some((p) => p.cle === 'integrite:sans-mail:gembloux');
+  });
+  await rouge('une double reservation de piste ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: '    out.push({ cle: `integrite:doublon:${l.center_id}`,', vers: '    if (false) out.push({ cle: `integrite:doublon:${l.center_id}`,' }], async () => {
+    remettre();
+    routesDeLaTour({ integrite: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'integrite:doublon:libramont' && p.gravite === 'attention');
+  });
+  await rouge('une requete d integrite qui echoue sonne en URGENT', [{ fichier: 'lib/tour-controle.js', de: '      illisibles.push(nom);', vers: '      throw error;' }], async () => {
+    remettre();
+    routesDeLaTour({ integrite: 'panne' });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'integrite:illisible' && p.gravite === 'attention') && !problemes.some((p) => String(p.cle).startsWith('lecture:'));
   });
   await rouge('la caisse du chef de garde se confond avec la commune', [{ fichier: 'lib/llm-budget.js', de: "  return p === 'commun' ? month : `${month}:${p}`;", vers: '  return month;' }], async () => {
     remettre();

@@ -58,7 +58,7 @@ function lireSchema() {
   return tables;
 }
 const SCHEMA = lireSchema();
-const MOTS_SQL = new Set('offset select distinct on from where and or not in is null as group by order desc asc limit count max min sum coalesce filter over int integer text date bigint any interval now at time zone like exists insert into values update set begin rollback commit array_agg lower true false minutes hours days hour minute day hours hours2 nullif cast case when then else end'.split(' '));
+const MOTS_SQL = new Set('offset select distinct on from where and or not in is null as group by order desc asc limit count max min sum coalesce filter over int integer text date bigint any interval now at time zone like exists insert into values update set begin rollback commit array_agg lower true false minutes hours days hour minute day hours hours2 nullif cast case when then else end join'.split(' '));
 const fautes = new Set();
 function verifierColonnes(sql) {
   const propre = sql.replace(/'[^']*'/g, ' ').replace(/\$\d+/g, ' ').replace(/::\s*\w+(\[\])?/g, ' ');
@@ -124,6 +124,9 @@ function repondre(sql, p = []) {
   if (/max\(finished_at\) as dernier_ok/.test(s)) return rows(groupe(BD.runs.filter((r) => p[0].includes(r.task_name) && r.status === 'ok'), (r) => r.task_name).map((l) => ({ task_name: l[0].task_name, dernier_ok: dernier(l, 'finished_at') })));
   if (/select result from ops_worker_runs/.test(s)) return rows(BD.runs.filter((r) => r.task_name === 'garde' && r.status === 'ok').slice(0, 1));
   if (/max\(finished_at\) as le/.test(s)) return rows([{ le: new Date() }]);
+  // Les chasseurs d integrite (lib/tour-controle.js, constatsDIntegrite). Ce gate relit leurs colonnes
+  // contre database/*.sql ; leur comportement se prouve dans garde-postes-check. Ici la base est saine.
+  if (/and price <= 0 and created_at/.test(s) || /not exists \(select 1 from communications c where c\.reservation_id = r\.id/.test(s) || /b\.lanes && a\.lanes/.test(s)) return rows([]);
   if (/from communications c/.test(s)) return rows(BD.mails.filter((m) => m.reservation_id === p[0]).map((m) => ({ ...m, evenements: BD.evenements.filter((e) => e.communication_id === m.id).map((e) => e.event_type) })));
   if (/reservation_id = any/.test(s)) return rows(groupe(BD.mails.filter((m) => p[0].includes(m.reservation_id)), (m) => `${m.reservation_id}:${m.status}`).map((l) => ({ reservation_id: l[0].reservation_id, status: l[0].status, n: l.length })));
   if (/status = 'failed' and channel = 'email'/.test(s)) return rows(groupe(BD.mails.filter((m) => m.status === 'failed' && !(/not like 'Adresse en erreur%'/.test(s) && /^Adresse en erreur/.test(m.last_error || ''))), (m) => m.center_id).map((l) => ({ center_id: l[0].center_id, n: l.length, dernier: dernier(l, 'created_at') })));

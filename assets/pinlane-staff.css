@@ -22011,3 +22011,20 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .eb-bar { width: min(760px, 100%); border: 0; border-radius: 20px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent), 0 22px 44px -18px rgba(15, 23, 42, .32); }
 .eb-bar-n { font-size: 15px; line-height: 1.3; }
 @media (prefers-reduced-motion: reduce) { .eb section { animation: none; } .eb .eb-step-btn { transition: none; } }
+
+/* Les plis de la fiche : le titre et sa phrase restent, le reste s ouvre. */
+.eb { --accent: #944292; --accent-strong: #7d2478; --accent-soft: #f7ebf6; }
+:root[data-theme="dark"] .eb { --accent: #b45fb2; --accent-strong: #e3a3df; --accent-soft: #2a1228; }
+.eb-blk { padding: 0; margin-top: 10px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent); transition: box-shadow 220ms ease; }
+.eb-blk.est-ouvert { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--eb-c) 34%, transparent), 0 18px 34px -28px var(--eb-c); }
+.eb .eb-bh-b { position: relative; display: grid; gap: 3px; width: 100%; min-height: 64px; padding: 14px 52px 14px 20px; text-align: left; color: inherit; background: none; border: 0; border-radius: 18px; cursor: pointer; transition: background-color 160ms ease; }
+.eb .eb-bh-b:hover { background: color-mix(in srgb, var(--eb-c) 6%, transparent); }
+.eb .eb-bh-b > svg { position: absolute; right: 20px; top: 22px; color: var(--muted); transition: transform 300ms var(--eb-sortie); }
+.eb-blk.est-ouvert > .eb-bh-b > svg { transform: rotate(180deg); }
+.eb .eb-bh-b .eb-phrase { margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+.eb-pli { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 420ms cubic-bezier(.32, .72, 0, 1); }
+.eb-blk.est-ouvert > .eb-pli { grid-template-rows: 1fr; }
+.eb-pli-d { min-height: 0; overflow: hidden; padding: 0 20px; visibility: hidden; transition: visibility 0s linear 420ms; }
+.eb-blk.est-ouvert > .eb-pli > .eb-pli-d { padding-bottom: 14px; visibility: visible; transition-delay: 0s; }
+.eb-pli-d > .eb-line:first-child, .eb-pli-d > .eb-sw:first-child { border-top: 0; }
+@media (prefers-reduced-motion: reduce) { .eb-pli, .eb-pli-d, .eb .eb-bh-b > svg { transition: none; } }

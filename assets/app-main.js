@@ -13968,6 +13968,8 @@ function establishmentPanel(key, active, body) {
 // "corrigez les champs" pointerait vers un champ que personne ne voit.
 function focusEstablishmentField(input) {
   if (!input) return;
+  const pliDuChamp = input.closest('.eb-blk');
+  if (pliDuChamp && typeof ebBasculerPli === 'function') ebBasculerPli(pliDuChamp, true);
   const jour = /^estab-h?day-(\d)-/.exec(input.id || '');
   if (jour && typeof ebOpenDay === 'function') {
     const ouvert = document.getElementById(`eb-dayset-${jour[1]}`);
@@ -15586,9 +15588,61 @@ function renderStaffUtilityEstablishment() {
 
 // Apres chaque rendu : on prend la photo de la page telle que le serveur la
 // donne, c est elle qui sert a compter les changements.
+// Les champs restent dans la page, seulement replies : Enregistrer les lit tous par leur id.
+const ebOuverts = new Set(['Bowling']);
+function ebBasculerPli(bloc, ouvert) {
+  bloc.classList.toggle('est-ouvert', ouvert);
+  const bouton = bloc.querySelector(':scope > .eb-bh-b');
+  if (bouton) bouton.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+  const nom = bloc.dataset.ebNom || '';
+  if (ouvert) ebOuverts.add(nom); else ebOuverts.delete(nom);
+}
+function ebPlier(root) {
+  // Ce qui identifie le centre passe en dernier, dans son propre pli : les pistes d abord, l archivage a part.
+  const centre = root.querySelector('#eb-s-centre');
+  if (centre && !centre.querySelector('[data-eb-identite]')) {
+    const lignes = [...centre.querySelectorAll(':scope > .eb-line, :scope > .eb-sw')];
+    if (lignes.length) {
+      const bloc = document.createElement('div');
+      bloc.className = 'eb-blk';
+      bloc.dataset.ebIdentite = '1';
+      bloc.innerHTML = '<h4 class="eb-bh">Nom, statut et archivage</h4>';
+      lignes.forEach(l => bloc.appendChild(l));
+      const dernier = [...centre.querySelectorAll(':scope > .eb-blk')].pop();
+      if (dernier) dernier.after(bloc); else centre.appendChild(bloc);
+    }
+  }
+  root.querySelectorAll('.eb-blk').forEach(bloc => {
+    if (bloc.dataset.ebPlie) return;
+    const titre = bloc.querySelector(':scope > .eb-bh');
+    if (!titre) return;
+    bloc.dataset.ebPlie = '1';
+    const nom = titre.textContent.trim();
+    bloc.dataset.ebNom = nom;
+    const phrase = bloc.querySelector(':scope > .eb-phrase');
+    const dedans = document.createElement('div');
+    dedans.className = 'eb-pli-d';
+    [...bloc.children].filter(n => n !== titre && n !== phrase).forEach(n => dedans.appendChild(n));
+    const pli = document.createElement('div');
+    pli.className = 'eb-pli';
+    pli.appendChild(dedans);
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.className = 'eb-bh-b';
+    bouton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>';
+    titre.before(bouton);
+    bouton.prepend(titre);
+    if (phrase) bouton.appendChild(phrase);
+    bouton.addEventListener('click', () => ebBasculerPli(bloc, !bloc.classList.contains('est-ouvert')));
+    bloc.appendChild(pli);
+    ebBasculerPli(bloc, ebOuverts.has(nom));
+  });
+}
+
 function ebAfterRender() {
   const root = document.querySelector('[data-estab-page]');
   if (!root) return;
+  ebPlier(root);
   if (root.classList.contains('eb-ro')) {
     root.querySelectorAll('input, select, textarea, .eb-step-btn, .eb-seg-btn, .eb-btn').forEach(el => { el.disabled = true; });
     return;

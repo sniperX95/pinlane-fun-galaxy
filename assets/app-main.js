@@ -20328,11 +20328,13 @@ async function startStaffRequestDraft(id) {
   if (!item) return;
   if (!item.email) { toast('Cette demande n’a pas d’adresse email : répondez par téléphone.'); return; }
   const current = staffRequestReplyState[key] || {};
-  if (current.drafting || current.busy) return;
-  const avant = { subject: current.subject || '', body: current.body || '', draftSource: current.draftSource || '', draftReason: current.draftReason || '', points: current.points || [] };
   const choix = staffRequestChoix[key] || null;
+  const quoi = choix ? [choix.date, choix.type, choix.ref, choix.heure].join('|') : '';
+  // Une autre heure touchee pendant la redaction relance le mail : il doit parler de la derniere.
+  if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;
+  const avant = { subject: current.subject || '', body: current.body || '', draftSource: current.draftSource || '', draftReason: current.draftReason || '', points: current.points || [] };
   const rang = (staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1);
-  staffRequestReplyState[key] = { ...current, open: true, openedAt: current.open ? current.openedAt : Date.now(), drafting: true };
+  staffRequestReplyState[key] = { ...current, open: true, openedAt: current.open ? current.openedAt : Date.now(), drafting: true, draftQuoi: quoi };
   renderStaffRequestsIfOpen();
   focusStaffRequestComposer(id);
   try {

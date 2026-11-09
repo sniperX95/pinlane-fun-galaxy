@@ -135,9 +135,11 @@ function installer(expiresAt) {
         if (window.__QA__.brouillon === 'vide') return J({ ok: true });
         if (window.__QA__.brouillon === 'perime') return J({ ok: true, id: corps.id, etude, brouillon: null, choixPerime: true });
         const code = window.__QA__.brouillon === 'code';
+        // La premiere reponse traine : la seconde arrive avant elle.
+        if (window.__QA__.lent && window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').length === 1) await new Promise((r) => setTimeout(r, 1200));
         return J({ ok: true, id: corps.id, etude, brouillon: {
           source: code ? 'code' : 'ia', raison: code ? 'ia-refusee' : '',
-          objet: 'Votre venue pour 31 personnes chez Fun Galaxy Libramont', corps: code ? CORPS_CODE : CORPS_IA,
+          objet: 'Votre venue pour 31 personnes chez Fun Galaxy Libramont', corps: `${code ? CORPS_CODE : CORPS_IA}${window.__QA__.lent && corps.choix ? ` Depart ${corps.choix.heure}.` : ''}`,
           pointsAVerifier: ['3 accompagnateurs non comptés dans les prix : à préciser au client si le centre leur facture quelque chose.'], controle: { ok: true },
         } });
       }
@@ -396,6 +398,34 @@ async function heurePerimee(browser) {
   return r;
 }
 
+// [Q] DEUX HEURES TOUCHEES VITE : la reponse la plus lente ne remplace pas la derniere.
+async function deuxHeures(browser) {
+  const { ctx, page, erreurs } = await ouvrir(browser);
+  const r = { erreurs };
+  try {
+    await page.evaluate(() => { window.__QA__.lent = 1; });
+    await page.click('.req-item[data-item-id="801"]');
+    await attendreEtude(page);
+    const programme = page.locator('.rq-o', { hasText: 'Bowling + Laser Game' });
+    const appels = (n) => page.waitForFunction((k) => window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').length === k, n, { timeout: 8000 });
+    await programme.locator('.rq-h', { hasText: '14:00' }).click();
+    await appels(1);
+    await programme.locator('.rq-h', { hasText: '15:00' }).click();
+    await appels(2);
+    await page.waitForTimeout(1800);
+    r.lu = await page.evaluate(() => ({
+      heures: window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').map((a) => a.corps.choix && a.corps.choix.heure),
+      corps: (document.querySelector('.rq-mail textarea') || {}).value || '',
+      choisie: ((document.querySelector('.rq-h.is-on') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+    }));
+  } catch (error) {
+    r.panne = String((error && error.message) || error).split('\n')[0];
+  } finally {
+    await ctx.close();
+  }
+  return r;
+}
+
 // [M] L ECHEANCE SUIT L HEURE. Un repere pose sur le tableau survit a une
 // mise a jour sur place, pas a un repeint : dix minutes plus tard il doit
 // etre la (les mails ouverts ne se sont pas recharges).
@@ -456,6 +486,13 @@ function verifierPerimee(h) {
   section('P. LE PLANNING A BOUGE : L HEURE N EST PLUS POSSIBLE');
   if (!ok(!h.panne && h.lu, 'MONTAGE le parcours va au bout', h.panne || '')) return;
   ok(h.lu.choisies === 0 && !h.lu.mail && /Touchez une heure/.test(h.lu.ticket), 'l heure refusee se retire, aucun mail ne s ecrit dessus', JSON.stringify(h.lu));
+}
+
+function verifierDeuxHeures(h) {
+  section('Q. DEUX HEURES TOUCHEES VITE');
+  if (!ok(!h.panne && h.lu, 'MONTAGE les deux heures sont touchees', h.panne || '')) return;
+  ok(JSON.stringify(h.lu.heures) === '["14:00","15:00"]', 'chaque heure touchee demande son mail', JSON.stringify(h.lu.heures));
+  ok(/Depart 15:00\./.test(h.lu.corps) && !/Depart 14:00\./.test(h.lu.corps) && /15:00/.test(h.lu.choisie), 'le mail affiche est celui de la derniere heure touchee', JSON.stringify(h.lu));
 }
 
 function verifierHorloge(h) {
@@ -578,6 +615,7 @@ async function main() {
     const t = await telephone(browser);
     ok(t.erreurs.length === 0 && t.mesure.large <= t.mesure.vue, `rien ne deborde a 390 px (${t.mesure.large} pour ${t.mesure.vue})`);
     verifierPerimee(await heurePerimee(browser));
+    verifierDeuxHeures(await deuxHeures(browser));
     verifierHorloge(await horlogeDuBureau(browser));
     verifierAlerte(await alerteDuTableau(browser));
 
@@ -595,6 +633,8 @@ async function main() {
     const lireLf = (rel) => fs.readFileSync(p.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
     const montable = (de, fichier) => ok((fichier ? lireLf(fichier) : source).split(de).length === 2, `contre-epreuve montable : « ${de.trim().slice(0, 70)} »`);
     const essais = [
+      { de: "    if (rang !== staffRequestDraftRang[key]) return;\n    // Le planning a bouge", vers: "    // Le planning a bouge", label: 'sans le rang, la reponse lente remplacerait la derniere', run: deuxHeures, rouge: (r) => Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps) },
+      { de: "if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;", vers: "if (current.busy || current.drafting) return;", label: 'sans la relance, la seconde heure n aurait pas son mail', run: deuxHeures, rouge: (r) => Boolean(r.panne) || (Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps)) },
       { de: '        ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),\n', vers: '', label: 'sans la proposition au mail, le oui du client ne retrouverait rien', rouge: (r) => Boolean(r.envoi && r.envoi.corps) && !r.envoi.corps.proposition },
       { de: "...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),", vers: '}),', label: 'sans l heure dans la demande, le mail parlerait de tout', rouge: (r) => Boolean(r.redaction) && !r.redaction.choix },
       { de: '    ...(choix ? { startTime: choix.heure, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '14:00' },

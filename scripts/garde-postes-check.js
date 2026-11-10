@@ -517,6 +517,16 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false,
       ops_plan: { resourceBlocks: [{ resourceType: 'laser_arena', activityId: 'laser_game', start: debut, end: debut + 20, players: joueurs, countIndex: 1 }] } });
     route(/ops_plan::text like '%laser_arena%'/, () => [arene(501, 'libramont', '2026-11-15', 900, 20), arene(502, 'libramont', '2026-11-15', 900, 15), arene(503, 'libramont', '2026-11-16', 900, 8), arene(504, 'libramont', '2026-11-16', 910, 8),
       arene(601, 'gembloux', '2026-11-15', 900, 6), arene(602, 'gembloux', '2026-11-15', 905, 6), arene(603, 'gembloux', '2026-11-15', 910, 6)]);
+    // Les fermetures de Libramont : une soiree privatisee le 15/11 de 18:00 a 24:00, la piste 3
+    // le 16/11 toute la journee, le bowling le 17/11 de 14:00 a 16:00. Gembloux n en a aucune.
+    const bloc = (id, scope_type, scope_ref, date, start_time, end_time) => ({ id, center_id: 'libramont', scope_type, scope_ref, recurrence: 'once', date, day_of_week: null, date_from: null, date_until: null, start_time, end_time, reason: 'banc', created_by: 'banc' });
+    route(/from availability_blocks where center_id = any/, () => [bloc(1, 'center', null, '2026-11-15', '18:00', '24:00'), bloc(2, 'lane', '3', '2026-11-16', null, null), bloc(3, 'activity', 'bowling', '2026-11-17', '14:00', '16:00')]);
+    // En ligne : 17:00 pour deux heures traverse la privatisation ; 16:00 pour deux heures finit
+    // pile a 18:00 et passe ; la piste 3 ; le bowling bloque ; Gembloux a 17:00, sans fermeture.
+    // Le groupe privatise, inscrit au comptoir, n est rendu qu a une requete qui oublie le canal.
+    const enLigne = (id, center_id, date, heure, duree, lanes) => ({ id, center_id, date, start_time: `${heure}:00`, duration: duree, total_duration: duree, type: 'bowling', formule_id: null, lanes });
+    route(/total_duration, type, formule_id, lanes from reservations/, (s) => [enLigne(701, 'libramont', '2026-11-15', '17:00', 2, [1]), enLigne(702, 'libramont', '2026-11-15', '16:00', 2, [2]), enLigne(703, 'libramont', '2026-11-16', '10:00', 1, [3]),
+      enLigne(704, 'libramont', '2026-11-17', '15:00', 1, [5]), enLigne(705, 'gembloux', '2026-11-15', '17:00', 2, [1]), ...(/channel = 'public'/.test(s) ? [] : [enLigne(706, 'libramont', '2026-11-15', '18:00', 4, [4])])]);
   }
   if (formulaire) {
     // Le suivi des ecrans, sur 24 heures. Libramont : 64 visites (14 un jour d 'essais'), 11 arrivees a la validation,
@@ -600,6 +610,12 @@ async function preuvesGarde() {
     ok(l.detail === 'Dans les 14 prochains jours, le 15/11 à 15:00, 35 joueurs pour 30 armes ; le 16/11 à 15:00, 2 parties en même temps pour 1 ; le 16/11 à 15:10, 2 parties en même temps pour 1. À vérifier dans le planning, un groupe est peut-être à déplacer.',
       '[G] integrite : le laser compte les armes ET les parties en meme temps, depart par depart', l.detail);
     ok(!problemes.some((p) => p.cle === 'integrite:laser:gembloux'), '[G] integrite : trois parties separees de six tiennent a Gembloux (20 armes, trois parties) : chaque centre garde son arene', problemes.map((p) => p.cle).join(', '));
+    // LA RESERVATION EN LIGNE SUR UNE FERMETURE (2026-11-10).
+    const f = problemes.find((p) => p.cle === 'integrite:fermeture:libramont') || {};
+    ok(t6b.includes('3 réservations en ligne tombent sur une fermeture à Libramont') && f.gravite === 'attention', '[G] integrite : une reservation en ligne sur une fermeture se dit, sans sonnerie', `${f.gravite} | ${t6b}`);
+    ok(f.detail === 'Dans les 14 prochains jours, le 15/11 à 17:00, centre fermé ; le 16/11 à 10:00, piste 3 bloquée ; le 17/11 à 15:00, bowling bloqué. Le client n’en sait rien, il est à appeler ou à déplacer.',
+      '[G] integrite : la fermeture compte toute la visite (17:00 pour deux heures), une piste et une activite bloquees, et laisse passer la visite qui finit pile a la fermeture', f.detail);
+    ok(!problemes.some((p) => p.cle === 'integrite:fermeture:gembloux'), '[G] integrite : les fermetures de Libramont ne touchent pas Gembloux', problemes.map((p) => p.cle).join(', '));
   }
 
   BD.routes = [];
@@ -860,6 +876,12 @@ async function contrePreuves() {
   await rouge('les armes de l arene ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (parties <= max) return;" }], async () => /35 joueurs pour 30 armes/.test((await laserDeLibramont()).detail || ''));
   await rouge('les parties en meme temps ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (joueurs <= armes) return;" }], async () => /^3 départs/.test((await laserDeLibramont()).titre || ''));
   await rouge('chaque centre ne garde plus son arene', [{ fichier: 'lib/tour-controle.js', de: "surchargesLaser(liste, getCenter(centre))", vers: "surchargesLaser(liste, getCenter('libramont'))" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:laser:gembloux'));
+  const fermetureDeLibramont = async () => (await problemesLaser()).find((p) => p.cle === 'integrite:fermeture:libramont') || {};
+  await rouge('une reservation en ligne sur une fermeture ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "      out.push({ cle: `integrite:fermeture:${centre}`,", vers: "      if (false) out.push({ cle: `integrite:fermeture:${centre}`," }], async () => (await fermetureDeLibramont()).gravite === 'attention');
+  await rouge('la fermeture ne regarde plus que l heure de depart', [{ fichier: 'lib/tour-controle.js', de: "AB.isCenterClosedDuring(blocs, r.date, s, e)", vers: "AB.isCenterClosedAt(blocs, r.date, s)" }], async () => /le 15\/11 à 17:00, centre fermé/.test((await fermetureDeLibramont()).detail || ''));
+  await rouge('les fermetures d un centre touchent l autre', [{ fichier: 'lib/tour-controle.js', de: "      const blocs = blocsDe.get(r.centerId) || [];", vers: "      const blocs = [...blocsDe.values()].flat();" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:fermeture:gembloux'));
+  await rouge('une piste bloquee ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "      for (const piste of r.lanes) if", vers: "      for (const piste of []) if" }], async () => /piste 3 bloquée/.test((await fermetureDeLibramont()).detail || ''));
+  await rouge('une privatisation inscrite au comptoir passe pour un client perdu', [{ fichier: 'lib/tour-controle.js', de: "from reservations where channel = 'public' and status <> 'cancelled' and date >= $1::date and date < $1::date + 14", vers: "from reservations where status <> 'cancelled' and date >= $1::date and date < $1::date + 14" }], async () => /^3 réservations/.test((await fermetureDeLibramont()).titre || ''));
   await rouge('un formulaire qui ne laisse plus reserver ne sonne plus', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'attention'," }], async () => {
     remettre();
     routesDeLaTour({ formulaire: true });

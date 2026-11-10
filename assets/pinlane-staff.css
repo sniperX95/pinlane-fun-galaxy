@@ -21081,9 +21081,19 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .sm .sm-b, .sm .sm-p, .sm .sm-h { transition: none; }
 }
 
-/* Sur un grand ecran : le client a gauche, le travail a droite. */
+/* Le sur mesure : ce qu on met dedans se touche. */
+.sm-co-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sm .sm-co-a { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 4px 12px 4px 4px; font: inherit; font-weight: 550; color: var(--text); background: var(--subtle); border: 0; border-radius: 6px; box-shadow: inset 0 0 0 2px transparent; cursor: pointer; transition: background-color 120ms ease, box-shadow 120ms ease; }
+.sm .sm-co-a:hover { background: var(--line); }
+.sm .sm-co-a[aria-pressed="true"] { background: var(--surface); box-shadow: inset 0 0 0 2px var(--console-selected); }
+.sm-co-a .sm-photo { width: 54px; height: 36px; }
+.sm-co-v { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 36px; font-style: normal; font-size: 18px; color: var(--muted); background: var(--c); border-radius: 4px; }
+.sm-compose .sm-compose-l { margin-top: 14px; }
+.sm-c-abs { white-space: nowrap; }
+
+/* Sur un grand ecran : le travail a gauche, la reponse et le client dans une colonne etroite a droite. */
 @media (min-width: 1180px) {
-  .sm-colonnes { display: grid; grid-template-columns: minmax(330px, 4fr) minmax(0, 8fr); gap: 12px; align-items: start; }
+  .sm-colonnes { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; align-items: start; }
   .sm-c1, .sm-c2 { display: block; }
 }
 

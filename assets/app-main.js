@@ -20104,13 +20104,17 @@ window.rqApercu = rqApercu;
 window.rqApercuFin = rqApercuFin;
 window.openStaffRequestClient = openStaffRequestClient;
 
+// LA FICHE (refaite le 2026-11-10, Ansar : « trop compliqué on comprend rien », « trop de texte
+// partout tout plein de truc de tout les cotés », « pas complet »). Le travail tient à gauche,
+// de haut en bas : ce qu ils demandent, le jour, les heures à toucher, le sur mesure. À droite,
+// une seule colonne étroite : la réponse en cours, puis le client et ce qui s est passé.
 function renderSmFiche(item) {
   const jid = staffClientJs(item.id);
   const stage = staffRequestStage(item);
   const finie = stage === 'traitee' || stage === 'archivee';
   const tel = String(item.phone || '').replace(/\s+/g, '');
+  const ecrit = !finie && Boolean(item.email) && peutGeste('ecrire');
   const dispos = staffRequestMontreDispos(item) ? renderSmDispos(item) : '';
-  const reponse = renderSmReponse(item);
   return `<button type="button" class="sm-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
     <article class="sm-fiche" data-request-id="${escapeHtml(String(item.id))}">
       <div class="sm-tete">
@@ -20121,13 +20125,14 @@ function renderSmFiche(item) {
         </div>
         <div class="sm-tete-a">
           ${tel ? `<a class="sm-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}
-          <button type="button" class="sm-b" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
+          ${ecrit ? `<button type="button" class="sm-b" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : ''}
+          <button type="button" class="sm-b sm-b-classer" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
         </div>
       </div>
       ${renderSmBande(item)}
       <div class="sm-colonnes">
-        <div class="sm-c1">${renderSmDemande(item)}${renderSmClient(item)}${renderSmHistorique(item)}</div>
-        <div class="sm-c2">${stage === 'a-traiter' ? `${dispos}${reponse}` : `${reponse}${dispos || renderSmJourDeLaProposition(item)}`}</div>
+        <div class="sm-c1">${renderSmDemande(item)}${dispos || renderSmJourDeLaProposition(item)}${renderSmComposer(item)}</div>
+        <div class="sm-c2">${renderSmReponse(item)}${renderSmClient(item)}${renderSmHistorique(item)}</div>
       </div>
     </article>`;
 }
@@ -20440,10 +20445,46 @@ function smComposition(item) {
     const d = crDemande(item);
     const choix = staffRequestChoixDe(item);
     const date = choix ? choix.date : (d && !d.flexible && staffRequestDateOf(d.date) && d.date >= todayStr() ? d.date : '');
-    staffRequestComposition[key] = { date: date || '', heure: '' };
+    // Ce que le client a demande est deja pose : sa formule s il n en veut qu une, sinon ses activites.
+    const formules = d && Array.isArray(d.formulas) ? d.formulas : [];
+    const formule = formules.length === 1 && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(formules[0].id) ? String(formules[0].id) : '';
+    const activites = formule ? [] : (d && Array.isArray(d.activities) ? d.activities : []).filter(a => a && getCenterActivity(a.id)).map(a => String(a.id));
+    staffRequestComposition[key] = { date: date || '', heure: '', formule, activites, plus: false };
   }
   return staffRequestComposition[key];
 }
+
+// Les touches du sur mesure : la formule demandee, chaque activite du centre, et « autre chose »
+// (repas, boissons, ligne libre). Une formule ou des activites, pas les deux : c est ce que la
+// fenetre Reserver sait composer.
+function smCompositionTouches(item) {
+  const d = crDemande(item);
+  const centre = item.centerId || getActiveOpsCenterId();
+  const formules = (d && Array.isArray(d.formulas) ? d.formulas : []).filter(f => f && f.id && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(f.id));
+  const activites = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices() : [];
+  return [
+    ...formules.map(f => ({ sorte: 'formule', id: String(f.id), nom: String(f.name || f.id), photo: smPhotoDe('formule', centre) })),
+    ...activites.map(a => ({ sorte: 'activite', id: String(a.id), nom: String(a.label || a.id), photo: smPhotoDe(a.label || a.id, centre) })),
+  ];
+}
+
+function smCompositionToucher(el, id, sorte, cle) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  const c = smComposition(item);
+  if (sorte === 'plus') c.plus = !c.plus;
+  else if (sorte === 'formule') { c.formule = c.formule === cle ? '' : cle; if (c.formule) c.activites = []; }
+  else { c.activites = c.activites.includes(cle) ? c.activites.filter(a => a !== cle) : [...c.activites, cle]; if (c.activites.length) c.formule = ''; }
+  // Sur place, sans repeindre : la saisie du jour et de l heure reste, le focus aussi.
+  const zone = el && el.closest('.sm-co-acts');
+  if (!zone) return;
+  zone.querySelectorAll('.sm-co-a').forEach((b) => {
+    const s = b.getAttribute('data-sorte');
+    const k = b.getAttribute('data-cle');
+    b.setAttribute('aria-pressed', String(s === 'plus' ? c.plus : s === 'formule' ? c.formule === k : c.activites.includes(k)));
+  });
+}
+window.smCompositionToucher = smCompositionToucher;
 
 // Ce qu il faut dire et faire pour ce jour et cette heure. Une seule lecture : l affichage et le geste.
 function smCompositionLue(item) {
@@ -20453,7 +20494,10 @@ function smCompositionLue(item) {
   const plage = getSchedule(date, state.isHolidayMode);
   const horaires = plage ? `Ouvert de ${numToTime(plage.open)} à ${smHeureVue(plage.close)} ce jour-là.` : 'Centre fermé ce jour-là.';
   const h = /^\d{2}:\d{2}$/.test(heure) ? timeToNum(heure) : null;
-  if (h === null || (plage && h >= plage.open && h < plage.close)) return { ...base, dit: horaires };
+  // Les horaires d un jour deja dessine au-dessus ne se redisent pas ; ceux d un autre jour, si.
+  const etude = staffRequestStudies[String(item.id)] && staffRequestStudies[String(item.id)].etude;
+  const dessine = Boolean(plage) && Boolean(etude) && (etude.dates || []).some(j => j.date === date && j.ouvert && !j.passee);
+  if (h === null || (plage && h >= plage.open && h < plage.close)) return { ...base, dit: dessine ? '' : horaires };
   if (!smPeutOuvrir()) return { ...base, bloque: true, dit: `${horaires} Seul un responsable peut réserver hors des horaires.` };
   if (!plage) return { ...base, bouton: 'Ouvrir ce jour-là et composer', choisir: true, dit: 'Centre fermé ce jour-là. Vous choisirez ses horaires, seule l’équipe les verra.' };
   if (h < plage.open) return { ...base, bouton: `Ouvrir à ${heure} et composer`, ouvrir: { open: heure, close: numToTime(plage.close) }, dit: `${horaires} Il ouvrira à ${heure} pour ce groupe, seule l’équipe le voit.` };
@@ -20461,21 +20505,30 @@ function smCompositionLue(item) {
   return { ...base, bouton: `Fermer à ${smHeureVue(h + 2)} et composer`, ouvrir: { open: numToTime(plage.open), close: fermeture }, dit: `${horaires} Il fermera à ${smHeureVue(h + 2)} pour ce groupe, seule l’équipe le voit.` };
 }
 
-function renderSmComposer(item, ecrire) {
+// LE SUR MESURE, EN PREMIERE LIGNE : ce qu on met dedans se touche (la formule, n importe quelle
+// activite du centre, repas et boissons), puis le jour et l heure d arrivee, n importe laquelle.
+// « Composer » ouvre la fenetre Reserver deja remplie : les prix, les droits et les articles
+// libres restent les siens.
+function renderSmComposer(item) {
+  if (!peutGeste('reserver') || !staffRequestMontreDispos(item)) return '';
+  const stage = staffRequestStage(item);
+  if (stage === 'traitee' || stage === 'archivee') return '';
   const jid = staffClientJs(item.id);
   const id = escapeHtml(String(item.id));
   const c = smComposition(item);
   const lu = smCompositionLue(item);
+  const touche = (sorte, cle, nom, photo, on) => `<button type="button" class="sm-co-a${sorte === 'plus' ? ' is-plus' : ''}" data-sorte="${sorte}" data-cle="${escapeHtml(cle)}" aria-pressed="${on}" onclick="smCompositionToucher(this, ${jid}, '${sorte}', '${escapeJsString(cle)}')">${photo || `<i class="sm-co-v" style="--c:${sorte === 'plus' ? 'var(--subtle)' : rvCouleur(cle)}" aria-hidden="true">${sorte === 'plus' ? '+' : ''}</i>`}<span>${escapeHtml(nom)}</span></button>`;
+  const touches = smCompositionTouches(item).map(t => touche(t.sorte, t.id, t.nom, t.photo, t.sorte === 'formule' ? c.formule === t.id : c.activites.includes(t.id)));
+  touches.push(touche('plus', 'plus', 'Repas, boissons, autre', '', c.plus));
   return `<section class="sm-s sm-autre sm-compose">
     <h3>Sur mesure</h3>
-    <p>Aucune heure ne convient ? Une autre heure, n’importe quelle activité ou boisson, au prix que vous fixez.</p>
+    <div class="sm-co-acts" role="group" aria-label="Ce que vous mettez dans la réservation">${touches.join('')}</div>
     <div class="sm-compose-l">
       <label class="sm-champ"><span>Jour</span><input class="input" type="date" id="smCoDate-${id}" min="${todayStr()}" value="${escapeHtml(c.date)}" oninput="smCompositionChamp(${jid}, 'date', this.value)"></label>
       <label class="sm-champ"><span>Arrivée</span><input class="input" type="time" step="900" id="smCoHeure-${id}" value="${escapeHtml(c.heure)}" oninput="smCompositionChamp(${jid}, 'heure', this.value)"></label>
-      <button type="button" class="sm-p" id="smCoGo-${id}" onclick="smComposer(${jid})"${lu.bloque ? ' disabled' : ''}>${escapeHtml(lu.bouton)}</button>
-      ${ecrire}
+      <button type="button" class="sm-p" id="smCoGo-${id}" onclick="smComposer(${jid})"${lu.bloque ? ' disabled' : ''}>${escapeHtml(crDemande(item) ? lu.bouton : lu.bouton.replace('Composer la réservation', 'Créer la réservation'))}</button>
     </div>
-    <p class="sm-compose-dit" id="smCoDit-${id}">${escapeHtml(lu.dit)}</p>
+    <p class="sm-compose-dit" id="smCoDit-${id}"${lu.dit ? '' : ' hidden'}>${escapeHtml(lu.dit)}</p>
   </section>`;
 }
 
@@ -20486,8 +20539,8 @@ function smCompositionChamp(id, cle, valeur) {
   const lu = smCompositionLue(item);
   const bouton = document.getElementById(`smCoGo-${id}`);
   const dit = document.getElementById(`smCoDit-${id}`);
-  if (bouton) { bouton.textContent = lu.bouton; bouton.disabled = lu.bloque; }
-  if (dit) dit.textContent = lu.dit;
+  if (bouton) { bouton.textContent = crDemande(item) ? lu.bouton : lu.bouton.replace('Composer la réservation', 'Créer la réservation'); bouton.disabled = lu.bloque; }
+  if (dit) { dit.textContent = lu.dit; dit.hidden = !lu.dit; }
 }
 
 async function smComposer(id) {
@@ -20496,7 +20549,7 @@ async function smComposer(id) {
   const c = smComposition(item);
   const lu = smCompositionLue(item);
   if (lu.bloque) return;
-  const composer = () => staffRequestToBooking(id, { date: c.date, heure: c.heure });
+  const composer = () => staffRequestToBooking(id, { date: c.date, heure: c.heure, formule: c.formule, activites: c.activites, plus: c.plus });
   if (lu.choisir) {
     smHorairesFenetre(c.date, { open: c.heure, motif: staffRequestNom(item), apres: composer });
     return;
@@ -20685,7 +20738,7 @@ function renderSmReponse(item) {
   const suivi = item.suivi || {};
   const local = staffRequestChoix[key] || null;
   const envoyee = suivi.proposition || null;
-  const bloc = (titre, corps) => `<section class="sm-s"><h3>${escapeHtml(titre)}</h3>${corps}</section>`;
+  const bloc = (titre, corps) => `<section class="sm-s sm-reponse"><h3>${escapeHtml(titre)}</h3>${corps}</section>`;
   const bouton = (cls, label, action) => `<button type="button" class="${cls}" onclick="${action}">${escapeHtml(label)}</button>`;
   const creer = (cls, label) => (reserve ? bouton(cls, label, `staffRequestToBooking(${jid})`) : '');
 
@@ -20704,12 +20757,10 @@ function renderSmReponse(item) {
       <div class="sm-actions">
         ${creer('sm-p', 'Le client accepte, créer la réservation')}
         ${crDemande(item) && !staffRequestMontreDispos(item) ? bouton('sm-b', 'Autre proposition', `staffRequestAutreProposition(${jid})`) : ''}
-        ${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}
       </div>`);
   }
-  if (!ecrit && !reserve) return '';
-  if (reserve && crDemande(item)) return renderSmComposer(item, ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : '');
-  return `<section class="sm-s sm-autre"><p>${crDemande(item) ? 'Aucune heure ne convient ? Écrivez au client, ou créez la réservation directement.' : 'Répondez au client, ou créez la réservation directement.'}</p><div class="sm-actions">${ecrit ? bouton('sm-b', 'Écrire au client', `toggleStaffRequestReply(${jid})`) : ''}${creer('sm-b', 'Créer la réservation')}</div></section>`;
+  // Rien a montrer tant que rien n est choisi : ecrire est en tete de fiche, composer dans le sur mesure.
+  return '';
 }
 
 // Le mail : objet et message, envoyes par le meme canal trace que le studio mails
@@ -21098,8 +21149,13 @@ function staffRequestToBooking(id, options = {}) {
     item.message ? String(item.message).slice(0, 160) : '',
     choix ? `proposition : ${choix.nom}, ${choix.heure}${choix.prix != null ? `, ${staffRequestEuro(choix.prix)}` : ''}` : '',
   ].filter(Boolean);
-  // Une proposition choisie fait foi ; sans elle, ce que le client a demande.
-  const formuleRetenue = choix ? (choix.type === 'formule' && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
+  // Le sur mesure compose sur la fiche fait foi : sa formule, ou ses activites (jamais les deux).
+  const compose = Array.isArray(options.activites);
+  const activitesComposees = compose ? options.activites.filter(a => getCenterActivity(a)) : [];
+  // Sinon une proposition choisie ; sans elle, ce que le client a demande.
+  const formuleRetenue = compose
+    ? (!activitesComposees.length && options.formule && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(options.formule) ? options.formule : '')
+    : choix ? (choix.type === 'formule' && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
   const dateRetenue = options.date || (choix ? choix.date : date);
   const heureRetenue = options.heure || (choix && (!options.date || options.date === choix.date) ? choix.heure : '');
   openQuickBook({
@@ -21116,6 +21172,13 @@ function staffRequestToBooking(id, options = {}) {
     // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
   });
+  if (compose) {
+    // Une activite que le client avait demandee garde ses reglages (duree, parties) ; une ajoutee part avec les defauts.
+    const demandees = d && Array.isArray(d.activities) ? d.activities : [];
+    if (activitesComposees.length) applyStaffRequestActivitiesToQuickBook({ participants: joueurs, activities: activitesComposees.map(aid => demandees.find(a => a && String(a.id) === String(aid)) || { id: aid }) });
+    if (options.plus && typeof setQuickSurMesure === 'function') setQuickSurMesure(true);
+    return;
+  }
   if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);
 }
 

@@ -2932,7 +2932,8 @@ function dirDonFormulaireHtml(parcours) {
 }
 
 // LES HEURES COMPLETES QUE LES GENS VOULAIENT (2026-11-10) : une ligne par jour de la semaine,
-// heure et activite, la plus demandee en premier. Le serveur a deja compte et nomme
+// heure et activite, la plus demandee en premier. Le jour et l heure se lisent d un trait
+// (« samedi 15:00 »), une colonne de moins sur un telephone. Le serveur a deja compte et nomme
 // (lib/formulaire-heures.js) : ici on ne fait qu ecrire. Vingt lignes, l Excel donne tout.
 function dirDonHeuresPleinesHtml(heures) {
   const total = heures.reduce((a, h) => a + (Number(h.demandes) || 0), 0);
@@ -2940,8 +2941,8 @@ function dirDonHeuresPleinesHtml(heures) {
   const note = total
     ? `${dirDonNum(total)} fois sur cette période, quelqu’un a touché une heure marquée « complet » dans le formulaire. La plus voulue : ${tete.jour} ${tete.heure}, ${tete.quoi} (${dirDonNum(tete.demandes)}). C’est un minimum : une heure complète que personne ne touche n’est pas comptée. Sans nom ni cookie.`
     : '';
-  return dirDonTable('Heures complètes que les gens voulaient', [{ t: 'Jour' }, { t: 'Heure' }, { t: 'Pour' }, { t: 'Demandes', num: 1 }, { t: 'Sur combien de dates', num: 1 }, { t: 'Groupe moyen', num: 1 }],
-    heures.slice(0, 20).map((h) => [escapeHtml(h.jour), escapeHtml(h.heure), escapeHtml(h.quoi), dirDonNum(h.demandes), dirDonNum(h.dates), h.joueursMoyens == null ? '' : dirDonNum(h.joueursMoyens)]),
+  return dirDonTable('Heures complètes que les gens voulaient', [{ t: 'Quand' }, { t: 'Pour' }, { t: 'Demandes', num: 1 }, { t: 'Sur combien de dates', num: 1 }, { t: 'Groupe moyen', num: 1 }],
+    heures.slice(0, 20).map((h) => [escapeHtml(`${h.jour} ${h.heure}`), escapeHtml(h.quoi), dirDonNum(h.demandes), dirDonNum(h.dates), h.joueursMoyens == null ? '' : dirDonNum(h.joueursMoyens)]),
     'Personne n’a touché une heure complète sur cette période.', { large: true, note });
 }
 

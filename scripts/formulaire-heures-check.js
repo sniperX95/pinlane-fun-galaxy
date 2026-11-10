@@ -377,9 +377,9 @@ async function main() {
       const classe = regle.heuresDemandees(LIGNES, NOMS);
       bac.dirDonHeuresPleinesHtml(JSON.parse(JSON.stringify(classe)));
       const [t] = bac.tables;
-      ok(bac.tables.length === 1 && t.titre === 'Heures complètes que les gens voulaient' && t.colonnes.length === 6 && t.lignes.length === 5
-        && t.lignes[0].join('|') === 'samedi|15:00|Bowling|40|3|6' && t.lignes[2].join('|') === 'dimanche|16:30|Laser game|12|2|',
-      'une ligne par jour, heure et activite, avec les nombres du serveur ; un groupe moyen inconnu reste vide', JSON.stringify(t && t.lignes));
+      ok(bac.tables.length === 1 && t.titre === 'Heures complètes que les gens voulaient' && t.colonnes.length === 5 && t.colonnes[0].t === 'Quand' && t.lignes.length === 5
+        && t.lignes[0].join('|') === 'samedi 15:00|Bowling|40|3|6' && t.lignes[2].join('|') === 'dimanche 16:30|Laser game|12|2|',
+      'une ligne par jour, heure et activite (« samedi 15:00 » d un trait), avec les nombres du serveur ; un groupe moyen inconnu reste vide', JSON.stringify(t && t.lignes));
       ok(/^67 fois sur cette période, quelqu’un a touché une heure marquée « complet » dans le formulaire\. La plus voulue : samedi 15:00, Bowling \(40\)\. C’est un minimum/.test(t.options.note), 'la note dit le total, l heure la plus voulue, et que c est un minimum', t.options.note);
       bac.tables.length = 0;
       bac.dirDonHeuresPleinesHtml(Array.from({ length: 30 }, (_, k) => ({ jour: 'samedi', heure: '15:00', quoi: `Activité ${k}`, demandes: 30 - k, dates: 1, joueursMoyens: null })));
@@ -389,7 +389,7 @@ async function main() {
       ok(bac.tables.length === 1 && bac.tables[0].lignes.length === 0 && bac.tables[0].options.note === '' && bac.tables[0].vide === 'Personne n’a touché une heure complète sur cette période.', 'sans aucune heure touchee, le tableau le dit au lieu d afficher du vide');
       bac.tables.length = 0;
       bac.dirDonHeuresPleinesHtml([{ jour: 'samedi', heure: '15:00', quoi: '<img src=x onerror=alert(1)>', demandes: 1, dates: 1, joueursMoyens: 2 }]);
-      ok(bac.tables[0].lignes[0][2] === '&lt;img src=x onerror=alert(1)>', 'un nom d activite ne s ecrit jamais comme du HTML', bac.tables[0].lignes[0][2]);
+      ok(bac.tables[0].lignes[0][1] === '&lt;img src=x onerror=alert(1)>', 'un nom d activite ne s ecrit jamais comme du HTML', bac.tables[0].lignes[0][1]);
     }
     ok(/heuresPleines: liste\(d\.heuresPleines\)\.map\(/.test(consoleJs) && /\$\{dirDonHeuresPleinesHtml\(data\.heuresPleines\)\}/.test(consoleJs), 'une reponse sans ces heures (ancien serveur) ne casse pas la page, et la page affiche le tableau');
   }

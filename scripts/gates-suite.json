@@ -337,6 +337,7 @@
     "test:formulaire-heures",
     "test:regles-reservation",
     "test:calendrier-regles",
+    "test:email-assist",
     "test:reservation-alternatives",
     "test:slot-holds",
     "test:fungalaxy-hold",

@@ -754,6 +754,11 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
       }
       case 'forgetAgentFact': etat.appris = etat.appris.filter((f) => (Number(body.id) > 0 ? Number(f.id) !== Number(body.id) : f.question !== body.question)); return { appris: clone(etat.appris) };
       case 'improveEmailWithAi': return { mode: 'regles', tips: ['Objet un peu court : visez 30 à 60 caractères.', 'Terminez par une question : elle appelle une réponse.'], subject: body.subject, body: body.body };
+      // Les aides d ecriture de la page Emails : la vraie reponse sans IA (lib/email-assist), jamais un faux texte.
+      case 'emailAssist': {
+        const r = require('../lib/email-assist').aideSansIa({ ...body, center: { name: 'Fun Galaxy Libramont', publicInfo: { phone: '0491/30.16.67' } } });
+        return r.ok ? r : { status: 400, payload: { ok: false, error: r.message } };
+      }
       case 'createCampaign': {
         const c = { id: etat.prochaineCampagne++, name: body.name, objective: body.objective || '', segment: body.segment, subject: body.subject, body: body.body, status: body.mode === 'draft' ? 'draft' : body.mode === 'schedule' ? 'scheduled' : 'sending', scheduledAt: body.scheduledAt || null, recipientCount: 34, sent: 0, failed: 0, queued: body.mode === 'draft' ? 0 : 34, opens: 0, clicks: 0, createdAt: new Date().toISOString() };
         etat.campaigns.unshift(c);

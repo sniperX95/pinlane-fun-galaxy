@@ -3825,6 +3825,25 @@ ${draftBody}`,
     return;
   }
 
+  // LES AIDES D ECRITURE DE LA PAGE EMAILS (2026-11-10) : ecrire, ameliorer, raccourcir, changer le ton, traduire,
+  // proposer des objets, depuis n importe quel editeur. Lecture seule : rien ne part, rien ne s ecrit en base.
+  if (action === 'emailAssist') {
+    const { getCenter } = require('../lib/ops-knowledge');
+    const { aiderAEcrire } = require('../lib/email-assist');
+    const result = await aiderAEcrire({
+      intention: body.intention,
+      contexte: body.contexte,
+      subject: body.subject,
+      body: body.body,
+      brief: body.brief,
+      recu: body.recu,
+      center: getCenter(centerId),
+    });
+    if (!result.ok) { sendError(res, 400, result.message); return; }
+    sendJson(res, 200, { ...result, action });
+    return;
+  }
+
   sendError(res, 400, 'Action Ops POST inconnue.');
 }
 
@@ -4043,6 +4062,7 @@ function getRequiredOpsPermission(method, action) {
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return 'campaigns.manage';
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return 'settings.manage';
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
+  if (action === 'emailAssist') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'directEmailPreview') return ['emails.view', 'emails.send'];
   // Traiter une demande se fait depuis sa page (clients.view) ; la Vue
   // d ensemble seule ne suffit plus (2026-11-07).

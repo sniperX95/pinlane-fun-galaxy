@@ -97,6 +97,7 @@
     "test:criteria-learning": "node scripts/criteria-learning-check.js",
     "test:llm-client": "node scripts/llm-client-check.js",
     "test:email-agent": "node scripts/email-agent-check.js",
+    "test:email-assist": "node scripts/email-assist-check.js && node scripts/email-assist-check.js --mutate",
     "test:email-verifications": "node scripts/email-verifications-check.js",
     "test:agent-tunnel": "node scripts/agent-tunnel-check.js",
     "llm:smoke": "node scripts/llm-smoke.js",

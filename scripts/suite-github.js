@@ -8,7 +8,19 @@
 // paralleles, ce script attend le verdict, rapatrie le bilan rassemble,
 // l affiche et retire l etiquette.
 //
-// Usage : node scripts/suite-github.js [REF] [--tout]   (defaut HEAD, la suite d impact)
+// SANS LES CONTRE-PREUVES (2026-11-10). La suite d impact comme la suite
+// entiere (--tout) ne jouent que les controles du produit : les contre-preuves
+// (un gate casse le produit expres pour prouver qu il rougit) pesaient 64 % du
+// calcul et se rejouaient avant chaque mise en ligne (gates-lancer.js,
+// sansContrePreuves). Elles se jouent toutes chaque nuit sur main ; ce script
+// dit a chaque passage ou en est la derniere nuit, pour qu un rouge de nuit
+// soit lu par la premiere session qui met en ligne. --preuves les rejoue
+// toutes sur un commit (apres un gros chantier sur les gates eux-memes).
+//
+// Usage : node scripts/suite-github.js [REF] [--tout | --preuves]
+//   (defaut HEAD, la suite d impact ; --tout la suite entiere ; --preuves la
+//   suite entiere avec ses contre-preuves, 14 machines, a ne pas lancer avant
+//   chaque mise en ligne)
 // Sortie 0 : vert (instables compris) ; 1 : un rouge ou une part sans bilan ;
 // 2 : la suite n a pas pu se jouer (etiquette refusee, aucun passage, pas de bilan).
 'use strict';
@@ -19,7 +31,8 @@ const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const ARGS = process.argv.slice(2);
-const TOUT = ARGS.includes('--tout');
+const PREUVES = ARGS.includes('--preuves');
+const TOUT = PREUVES || ARGS.includes('--tout');
 const REF = ARGS.find((a) => !a.startsWith('--')) || 'HEAD';
 const WORKFLOW = 'quality-gates.yml';
 const attendre = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,10 +86,27 @@ async function attendreLaFin(repo, id) {
   return null;
 }
 
+// Ou en sont les contre-preuves : le dernier passage fini qui les a jouees
+// (la nuit sur main, ou une etiquette suite-preuves-*). Une ligne, jamais un
+// code de sortie : un rouge de nuit se lit et se repare, il ne bloque pas la
+// mise en ligne d un autre lot. Sans reponse de GitHub, rien n est dit.
+function laNuit(repo) {
+  const lire = (args) => { const r = gh(['run', 'list', '--repo', repo, '--workflow', WORKFLOW, '--json', 'databaseId,headBranch,event,status,conclusion,createdAt', ...args]); try { return r.status === 0 ? JSON.parse(r.stdout || '[]') : []; } catch (error) { return []; } };
+  const finis = [...lire(['--event', 'schedule', '--limit', '5']), ...lire(['--limit', '40']).filter((x) => /^suite-preuves-/.test(x.headBranch || ''))]
+    .filter((x) => x.status === 'completed' && x.conclusion !== 'cancelled')
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  if (!finis.length) { console.log('[suite-github] contre-preuves : aucun passage de nuit retrouve. Les rejouer : npm run suite:github -- --preuves'); return; }
+  const dernier = finis[0];
+  const heures = Math.round((Date.now() - Date.parse(dernier.createdAt)) / 3600000);
+  const vieux = heures > 36 ? ` La nuit n a pas tourne depuis ${heures} h : npm run suite:github -- --preuves.` : '';
+  if (dernier.conclusion === 'success') console.log(`[suite-github] contre-preuves : VERTES au passage ${dernier.databaseId}, il y a ${heures} h.${vieux}`);
+  else console.log(`[suite-github] contre-preuves : ROUGES au passage ${dernier.databaseId}, il y a ${heures} h. A lire et a reparer : gh run download ${dernier.databaseId} --repo ${repo} --name bilan.${vieux}`);
+}
+
 async function main() {
   const sha = git('rev-parse', '--verify', `${REF}^{commit}`);
   const repo = depot();
-  const etiquette = `suite-${TOUT ? 'tout-' : ''}${sha.slice(0, 12)}`;
+  const etiquette = `suite-${PREUVES ? 'preuves-' : TOUT ? 'tout-' : ''}${sha.slice(0, 12)}`;
   // Un commit se rejoue (deux suites de suite avant un deploiement) : le passage
   // attendu est celui de CETTE poussee, pas le precedent du meme commit, deja fini
   // et relu comme s il etait neuf. Une etiquette deja la ne declenche rien : on se
@@ -84,7 +114,8 @@ async function main() {
   const anciens = passagesDuCommit(repo, sha, etiquette).map((x) => x.databaseId);
   const pousse = spawnSync('git', ['-C', ROOT, 'push', 'origin', `${sha}:refs/tags/${etiquette}`], { encoding: 'utf8', windowsHide: true });
   if (pousse.status !== 0 && !/already exists/.test(pousse.stderr)) { console.error(pousse.stderr); return 2; }
-  console.log(`[suite-github] ${etiquette} poussee : ${TOUT ? 'la suite entiere' : 'la suite d impact'} de ${sha.slice(0, 10)}`);
+  console.log(`[suite-github] ${etiquette} poussee : ${PREUVES ? 'la suite entiere avec ses contre-preuves' : TOUT ? 'la suite entiere, sans les contre-preuves' : 'la suite d impact, sans les contre-preuves'} de ${sha.slice(0, 10)}`);
+  if (!PREUVES) laNuit(repo);
   try {
     const dejaLa = /already exists|up-to-date/.test(`${pousse.stdout}${pousse.stderr}`);
     const passage = await trouverPassage(repo, sha, etiquette, new Set(dejaLa ? [] : anciens));

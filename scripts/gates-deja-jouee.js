@@ -9,7 +9,8 @@
 // entiere durait 51 minutes en mediane, attente comprise.
 //
 // Ce script dit si CE commit a deja un passage VERT de la suite ENTIERE. Seul
-// compte un passage termine en succes sous une etiquette suite-tout-* : ni la
+// compte un passage termine en succes sous une etiquette suite-tout-* (ou
+// suite-preuves-*, la meme suite avec ses contre-preuves en plus) : ni la
 // suite d impact (suite-<sha>), ni un passage sur main, ni un passage rouge,
 // annule ou encore en cours, ni celui d un autre commit. Un commit repose
 // apres sa suite change de sha : il est rejoue. Dans le doute (reponse
@@ -26,7 +27,7 @@ function passageVert(passages, sha) {
     && p.event === 'push'
     && p.status === 'completed'
     && p.conclusion === 'success'
-    && /^suite-tout-/.test(String(p.head_branch || '')));
+    && /^suite-(?:tout|preuves)-/.test(String(p.head_branch || '')));
   return vert ? vert.id : null;
 }
 

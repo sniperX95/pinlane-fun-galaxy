@@ -28,6 +28,8 @@
 //   extraite a part, jouee par ce lanceur : le avant/apres d un changement),
 //   --tracer (chaque gate note ce qu il lit, la preuve de la selection :
 //   node scripts/gates-impactes.js --verifier-traces <dossier du passage>),
+//   --sans-contre-preuves (la suite d avant mise en ligne : les controles du
+//   produit seuls, voir sansContrePreuves plus bas),
 //   --liste (le plan, sans rien jouer), --nettoyer (retire les copies du pool),
 //   --partie K/N (la part K de la suite coupee en N parts egales : le workflow
 //   GitHub joue les N parts en meme temps sur N machines, chacune refait le
@@ -177,6 +179,28 @@ function plan(noms, config) {
     }
   }
   return toutes;
+}
+
+// --- Sans les contre-preuves (2026-11-10) ------------------------------------
+// Une contre-preuve (`--contre-preuves`, `--mutate`) casse le produit expres
+// et verifie que son gate rougit : elle eprouve le GATE, pas le produit. Le
+// 2026-11-10, elles pesaient 240 des 374 minutes de calcul d une suite entiere
+// (104 unites sur 511) et se rejouaient avant chaque mise en ligne, dans
+// chaque session : 14 machines par suite sur les 20 que GitHub prete, donc une
+// file d attente, 51 minutes en mediane pour une suite de 16. Ansar : « mes
+// sessions prennent 100 ans [...] plein qui sont inutiles ».
+// Avec --sans-contre-preuves, la suite ne joue que les controles du produit :
+// 145 minutes de calcul, 6 machines, trois suites a la fois. Une contre-preuve
+// reste jouee quand le diff touche le fichier de son gate (--impact) : un gate
+// ecrit ou change dans le lot prouve encore qu il mord. Toutes se rejouent
+// chaque nuit (workflow Quality gates, schedule) et sur demande
+// (scripts/suite-github.js --preuves).
+// scripts/gates-parties-check.js [G] exige que chaque gate garde une unite
+// simple : aucun ne sort de la suite avec ses contre-preuves.
+const estContrePreuve = (u) => u.args.includes('--contre-preuves') || u.args.includes('--mutate');
+function sansContrePreuves(unites, fichiersTouches = []) {
+  const touches = new Set(fichiersTouches);
+  return unites.filter((u) => !estContrePreuve(u) || touches.has(u.fichier));
 }
 
 // --- Les parts (le workflow GitHub) ------------------------------------------
@@ -387,6 +411,8 @@ function configDeLaSource() {
   }
 }
 
+// Les fichiers du diff, en --impact : ce que --sans-contre-preuves epargne.
+let FICHIERS_DU_DIFF = [];
 function choisirNoms(config) {
   const noms = ARGS.filter((a) => /^test:/.test(a) || /^node scripts\//.test(a));
   if (drapeau('--tout')) return [...config.suite];
@@ -395,6 +421,7 @@ function choisirNoms(config) {
     // --fichiers a,b : la selection d un diff donne (sans git), pour mesurer.
     const fichiers = option('--fichiers') ? option('--fichiers').split(',').map((x) => x.trim()).filter(Boolean) : undefined;
     const r = gatesImpactes({ base: option('--base'), fichiers });
+    FICHIERS_DU_DIFF = r.fichiers;
     console.log(`[gates] impact : ${r.fichiers.length} fichier(s) modifie(s) depuis ${r.depart} -> ${r.gates.length} script(s)${r.sansProprietaire.length ? ` ; aucun gate ne charge ${r.sansProprietaire.join(', ')}` : ''}`);
     return r.gates;
   }
@@ -414,7 +441,7 @@ async function main() {
   }
   const config = configDeLaSource();
   const tousLesNoms = choisirNoms(config);
-  const toutes = plan(tousLesNoms, config);
+  const toutes = drapeau('--sans-contre-preuves') ? sansContrePreuves(plan(tousLesNoms, config), FICHIERS_DU_DIFF) : plan(tousLesNoms, config);
   // Par defaut : 3/4 des coeurs, mais jamais plus de places que la memoire
   // libre n en porte (environ 700 Mo par gate navigateur et son serveur).
   const parMemoire = Math.floor(os.freemem() / (700 * 1024 * 1024));
@@ -525,4 +552,4 @@ if (require.main === module) {
   main().then((code) => process.exit(code), (error) => { console.error(error); process.exit(1); });
 }
 
-module.exports = { retirerPlaces, repartir, partDuPlan };
+module.exports = { retirerPlaces, repartir, partDuPlan, estContrePreuve, sansContrePreuves };

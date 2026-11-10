@@ -13,6 +13,9 @@
 //   [D] le vrai lanceur : deux parts d une petite suite, jouees, rendent a
 //       elles deux chaque unite une fois, chacune signee de sa part, et
 //       l assembleur rend leurs rouges, ni plus ni moins.
+//   [G] sans les contre-preuves (la suite d avant mise en ligne) : chaque
+//       controle du produit reste, aucun gate ne disparait, et un gate que le
+//       diff touche garde ses contre-preuves.
 // --contre-preuves : chaque regle cassee (en memoire, le disque n est jamais
 // ecrit) fait rougir sa lettre.
 //
@@ -183,6 +186,7 @@ function verifierDejaJouee(deja) {
   const autre = 'b'.repeat(40);
   const p = (sur = {}) => ({ id: 7, head_sha: sha, event: 'push', status: 'completed', conclusion: 'success', head_branch: `suite-tout-${sha.slice(0, 12)}`, ...sur });
   ok(deja.passageVert([p({ id: 1, head_branch: 'main' }), p({ id: 42 })], sha) === 42, '[F] un passage vert de la suite entiere de ce commit est reconnu');
+  ok(deja.passageVert([p({ id: 43, head_branch: `suite-preuves-${sha.slice(0, 12)}` })], sha) === 43, '[F] un passage vert de la suite entiere avec ses contre-preuves compte aussi');
   const refus = [
     ['la suite d impact', p({ head_branch: `suite-${sha.slice(0, 12)}` })],
     ['un passage sur main', p({ head_branch: 'main' })],
@@ -196,9 +200,35 @@ function verifierDejaJouee(deja) {
   ok(deja.passageVert([], sha) === null && deja.passageVert(null, sha) === null && deja.passageVert([null, {}], sha) === null, '[F] sans passage lisible, rien n est saute');
 }
 
+// [G] SANS LES CONTRE-PREUVES (gates-lancer.js --sans-contre-preuves, 2026-11-10) : la suite d avant mise en ligne
+// ne joue que les controles du produit. Elle ne doit perdre aucun gate au passage, et un gate que le diff touche
+// garde ses contre-preuves (il vient d etre ecrit ou change : il prouve encore qu il mord).
+function verifierSansContrePreuves(lanceur) {
+  const u = (script, rang, fichier, ...args) => ({ script, rang, fichier, args });
+  const plan = [
+    u('test:a', 0, 'scripts/a.js'), u('test:a', 1, 'scripts/a.js', '--contre-preuves'),
+    u('test:b', 0, 'scripts/b.js'), u('test:b', 1, 'scripts/b.js', '--mutate', '--tranche=1/2'), u('test:b', 2, 'scripts/b.js', '--mutate', '--tranche=2/2'),
+    u('test:c', 0, 'scripts/c.js', '--tranche=1/2'), u('test:c', 1, 'scripts/c.js', '--tranche=2/2'),
+  ];
+  const cles = (liste) => liste.map(cle).join(' ');
+  const court = cles(lanceur.sansContrePreuves(plan));
+  ok(court === 'test:a#0 test:b#0 test:c#0 test:c#1', '[G] sans les contre-preuves, il reste chaque controle du produit et rien d autre, tranches comprises', court);
+  const touche = cles(lanceur.sansContrePreuves(plan, ['scripts/b.js', 'assets/app-main.js']));
+  ok(touche === 'test:a#0 test:b#0 test:b#1 test:b#2 test:c#0 test:c#1', '[G] un gate que le diff touche garde ses contre-preuves, les autres non', touche);
+  const reel = planReel();
+  const rapide = lanceur.sansContrePreuves(reel);
+  const gardes = new Set(rapide.map((x) => x.fichier));
+  const disparus = [...new Set(reel.map((x) => x.fichier))].filter((f) => !gardes.has(f));
+  ok(disparus.length === 0, '[G] dans la suite, aucun gate ne disparait avec ses contre-preuves : chacun a une unite simple dans package.json', disparus.join(', '));
+  const restees = rapide.filter(lanceur.estContrePreuve).length;
+  ok(rapide.length < reel.length && restees === 0, '[G] la suite d avant mise en ligne ne joue aucune contre-preuve', `${rapide.length} unites sur ${reel.length}, ${restees} contre-preuve(s) restee(s)`);
+}
+
 function scenarios(mutation = null) {
   if (!mutation || mutation.partie === 'F') verifierDejaJouee(charger('scripts/gates-deja-jouee.js', mutation));
   if (mutation && mutation.partie === 'F') return;
+  if (!mutation || mutation.partie === 'G') verifierSansContrePreuves(charger('scripts/gates-lancer.js', mutation));
+  if (mutation && mutation.partie === 'G') return;
   const lanceur = charger('scripts/gates-lancer.js', mutation);
   const assembleur = charger('scripts/gates-assembler.js', mutation);
   if (!mutation || mutation.partie === 'E') verifierTranches(charger('scripts/gates-tranche.js', mutation));
@@ -234,8 +264,14 @@ const MUTATIONS = [
     de: "  if (!part.length) throw new Error(`tranche ${t.k}/${t.n} vide : la liste n a que ${liste.length} element(s)`);\n",
     vers: '' },
   { nom: 'impact-pris-pour-tout', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
-    de: "    && /^suite-tout-/.test(String(p.head_branch || '')));",
+    de: "    && /^suite-(?:tout|preuves)-/.test(String(p.head_branch || '')));",
     vers: "    && /^suite-/.test(String(p.head_branch || '')));" },
+  { nom: 'contre-preuve-gardee', partie: 'G', lettre: 'il reste chaque controle du produit', fichier: 'scripts/gates-lancer.js',
+    de: "const estContrePreuve = (u) => u.args.includes('--contre-preuves') || u.args.includes('--mutate');",
+    vers: "const estContrePreuve = (u) => u.args.includes('--contre-preuves');" },
+  { nom: 'gate-touche-oublie', partie: 'G', lettre: 'un gate que le diff touche', fichier: 'scripts/gates-lancer.js',
+    de: '  return unites.filter((u) => !estContrePreuve(u) || touches.has(u.fichier));',
+    vers: '  return unites.filter((u) => !estContrePreuve(u));' },
   { nom: 'rouge-pris-pour-vert', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
     de: "    && p.conclusion === 'success'\n",
     vers: '' },

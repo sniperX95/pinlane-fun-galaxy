@@ -21,6 +21,16 @@ name: Quality gates
 #   - une pull request : l impact depuis sa base ;
 #   - chaque nuit : la suite entiere, pour les gates qui derivent du produit ;
 #   - a la main : impact ou tout, depart au choix.
+#
+# SANS LES CONTRE-PREUVES AVANT UNE MISE EN LIGNE (2026-11-10). Une
+# contre-preuve casse le produit expres pour verifier que son gate rougit : elle
+# eprouve le gate, pas le produit. Elles pesaient 240 des 374 minutes de calcul
+# d une suite entiere et se rejouaient a chaque mise en ligne de chaque session
+# (14 machines par suite sur les 20 pretees : une file d attente). Tout ce qui
+# precede une mise en ligne (suite-<sha>, suite-tout-<sha>, main, pull request)
+# joue donc les controles du produit seuls. Les contre-preuves se rejouent
+# toutes chaque nuit, sous l etiquette suite-preuves-<sha> (suite-github.js
+# --preuves), a la main (mode preuves), et pour le gate que le diff touche.
 
 on:
   push:
@@ -32,9 +42,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: impact (les gates que le diff touche) ou tout
+        description: impact (les gates que le diff touche), tout, ou preuves (tout avec les contre-preuves)
         type: choice
-        options: [impact, tout]
+        options: [impact, tout, preuves]
         default: impact
       base:
         description: depart de l impact (vide = le depart sur origin/main)
@@ -97,14 +107,19 @@ jobs:
         run: |
           depart() { git merge-base HEAD "$1" 2>/dev/null || echo ""; }
           sel=""
+          # Les contre-preuves ne se jouent que la nuit et sur demande
+          # (suite-preuves-<sha>, mode preuves) : gates-lancer.js, sansContrePreuves.
+          preuves="non"
           case "$EVENEMENT" in
-            schedule) sel="--tout" ;;
+            schedule) sel="--tout"; preuves="oui" ;;
             workflow_dispatch)
-              if [ "$MODE" = "tout" ]; then sel="--tout"
+              if [ "$MODE" = "preuves" ]; then sel="--tout"; preuves="oui"
+              elif [ "$MODE" = "tout" ]; then sel="--tout"
               else b="${BASE_MAIN:-$(depart origin/main)}"; sel="--impact --base $b"; fi ;;
             pull_request) sel="--impact --base $(depart "$BASE_PR")" ;;
             push)
               case "$GITHUB_REF" in
+                refs/tags/suite-preuves-*) sel="--tout"; preuves="oui" ;;
                 refs/tags/suite-tout-*) sel="--tout" ;;
                 refs/tags/suite-*) sel="--impact --base $(depart origin/main)" ;;
                 *)
@@ -114,6 +129,7 @@ jobs:
           esac
           # Un depart introuvable joue tout plutot que rien.
           case "$sel" in *"--base ") sel="--tout" ;; esac
+          if [ "$preuves" = "non" ]; then sel="$sel --sans-contre-preuves"; fi
           echo "selection=$sel" >> "$GITHUB_OUTPUT"
           echo "Selection : $sel"
       - name: Le plan, coupe en parts

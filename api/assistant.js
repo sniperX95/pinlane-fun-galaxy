@@ -55,6 +55,26 @@ function messagesValides(brut) {
   return gardes.length ? gardes : null;
 }
 
+// Les lectures deja faites dans la conversation : le navigateur ne renvoie que l outil et ses
+// reglages. Rien de ce qu il envoie n est cru sur parole : le serveur refait chaque lecture avec les
+// droits de la session (lib/assistant-agent.js), un outil que ce compte n a pas est ecarte la-bas.
+const DOSSIER_LECTURES_MAX = 24;
+function dossierValide(brut) {
+  if (!Array.isArray(brut)) return [];
+  const vues = new Set();
+  const gardees = [];
+  for (const l of brut.slice(-DOSSIER_LECTURES_MAX * 2)) {
+    if (!l || typeof l !== 'object' || typeof l.outil !== 'string' || !/^[a-z_]{2,40}$/.test(l.outil)) continue;
+    const entree = l.entree && typeof l.entree === 'object' && !Array.isArray(l.entree) ? l.entree : {};
+    let cle = '';
+    try { cle = `${l.outil} ${JSON.stringify(entree)}`; } catch (erreur) { continue; }
+    if (cle.length > 2100 || vues.has(cle)) continue;
+    vues.add(cle);
+    gardees.push({ outil: l.outil, entree, empreinte: typeof l.empreinte === 'string' ? l.empreinte.slice(0, 16) : '' });
+  }
+  return gardees.slice(-DOSSIER_LECTURES_MAX);
+}
+
 function aujourdhuiBruxelles() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
@@ -267,9 +287,10 @@ module.exports = async (req, res) => {
     let resultat = null;
     try {
       emettre('debut', { modele: MODELES[modele].nom, centres, sources: sourcesDuCompte(session) });
-      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), clients: voitLesClients(session), savoir, emettre, signal: coupure.signal });
+      const personne = { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '' };
+      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
-      emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele });
+      emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele, ...(resultat.corrige ? { corrige: resultat.corrige } : {}) });
     } finally {
       clearInterval(pouls);
     }

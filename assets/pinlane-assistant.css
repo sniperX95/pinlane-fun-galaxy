@@ -36,7 +36,6 @@
 @keyframes astFondu { from { opacity: 0; } }
 @keyframes astArrive { from { opacity: 0; transform: translateY(4px); } }
 @keyframes astPanneau { from { opacity: 0; transform: translateX(24px); } }
-@keyframes astTourne { to { transform: rotate(360deg); } }
 @keyframes gbPousse { from { transform: scaleX(0); } }
 @keyframes luMonte { from { transform: scaleY(0); } }
 @keyframes luPousse { from { transform: scaleX(0); } }
@@ -57,13 +56,22 @@
 @keyframes astDerive1 { to { transform: translate3d(16%, -12%, 0) scale(1.16); } }
 @keyframes astDerive2 { to { transform: translate3d(-18%, -14%, 0) scale(1.24); } }
 @keyframes astDerive3 { to { transform: translate3d(-10%, -8%, 0) scale(.88); } }
-@keyframes luScan { from { opacity: 0; transform: translateX(0); } 8% { opacity: 1; } 92% { opacity: 1; } to { opacity: 0; transform: translateX(100%); } }
-@keyframes luConfirme { 0% { transform: scaleX(0); opacity: .14; } 62% { transform: scaleX(1); opacity: .14; } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes astOrbeTourne { to { rotate: 360deg; } }
+@keyframes astOrbeForme { 0%, 100% { border-radius: 50%; scale: 1; } 33% { border-radius: 44% 56% 53% 47% / 55% 45% 55% 45%; scale: 1.07 .95; } 66% { border-radius: 56% 44% 46% 54% / 45% 56% 44% 55%; scale: .94 1.06; } }
+@keyframes astOrbeHalo { 50% { opacity: 1; scale: 1.2; } }
+@keyframes astOrbeReflet { 50% { translate: 7% 6%; opacity: .75; } }
 
-/* Le signe de travail : un anneau bleu qui tourne, sans phrase toute faite. */
-.ast .ast-tourne { flex: none; width: 13px; height: 13px; background: conic-gradient(from 0deg, transparent 12%, var(--azur)); border-radius: 50%; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); animation: astTourne 800ms linear infinite; }
+/* Le signe de travail : une goutte de lumiere bleue. Un halo qui respire, un corps aux bleus de la
+   page qui tourne sur lui-meme en changeant doucement de forme, un reflet. Trois couches de
+   transformations, aucun filtre. Ansar, 2026-11-10 : « les rond qui tourne [...] trop moche ». */
+.ast .ast-orbe { --t: 16px; position: relative; display: inline-block; flex: none; width: var(--t); height: var(--t); isolation: isolate; }
+.ast-orbe i { position: absolute; inset: 0; border-radius: 50%; }
+.ast-orbe i:nth-child(1) { inset: -55%; z-index: -1; background: radial-gradient(closest-side, color-mix(in srgb, var(--azur) 38%, transparent), transparent); opacity: .6; }
+.ast-orbe i:nth-child(2) { background: conic-gradient(from 20deg, #3f6fff, #9cc4ff 26%, #5a4bea 52%, #37a6ff 78%, #3f6fff); box-shadow: inset 0 0 0 .5px color-mix(in srgb, #fff 34%, transparent); }
+.ast-orbe i:nth-child(3) { background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .95) 0, rgba(255, 255, 255, .34) 26%, transparent 56%); }
+.ast-pense .ast-orbe { --t: 20px; }
+.ast-travail .ast-orbe { --t: 13px; margin: 0 2px; }
 .ast-travail { display: flex; align-items: center; gap: 10px; color: var(--muted); }
-.ast-travail::before { content: ""; flex: none; width: 13px; height: 13px; background: conic-gradient(from 0deg, transparent 12%, var(--azur)); border-radius: 50%; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); animation: astTourne 800ms linear infinite; }
 
 /* Une couleur par donnee, toutes de la meme famille froide : jamais d arc-en-ciel. */
 .ast [data-t="1"] { --c: #4c7dff; }
@@ -137,7 +145,9 @@
 .ast-r-texte h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
 .ast-r-texte ul, .ast-r-texte ol { margin: 0 0 12px; }
 .ast-r-texte li { margin: 3px 0; }
-.ast-pense { display: flex; align-items: center; gap: 10px; min-height: 28px; margin: 0; font-size: 14px; }
+.ast-pense { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0; padding-left: 7px; font-size: 14px; }
+.ast-pense.est-sous-la-liste { min-height: 34px; padding-left: 4px; }
+.ast-pense.ast-travail { padding-left: 7px; }
 
 .ast-cite { min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; font-weight: 500; color: var(--muted); background: var(--voile-2); border-radius: 5px; transition: background-color var(--d-net) ease, color var(--d-net) ease; }
 .ast-cite.est-fait { padding: 0 6px; }
@@ -153,9 +163,9 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 .ast-graph figcaption { margin-bottom: 10px; font-size: 14px; font-weight: 500; }
 
 /* --- La recherche -----------------------------------------------------------
-   Pendant la lecture : les lignes s empilent, la derniere avec son cercle de
-   travail, et dessous une scene a hauteur tenue ou le dessin de la lecture du
-   moment se remplit, ses vraies lignes passant dessous. Ensuite : une phrase au
+   Pendant la lecture : les lignes s empilent, chacune avec un anneau a la couleur de sa source
+   qui se remplit quand elle a fini, son resultat et une puce dessinee avec ses propres nombres.
+   Sous la liste, le signe de travail. Rien ne se remplace, la liste ne fait que grandir. Ensuite : une phrase au
    passe, et chaque lecture se rouvre avec son dessin, immobile. */
 .ast-rech { margin: 0 0 14px; font-size: 14px; }
 .ast-rech-tete { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; padding: 0; font-size: 14px; color: var(--muted); background: none; border: 0; border-radius: 6px; cursor: pointer; transition: color var(--d-net) ease; }
@@ -173,34 +183,50 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 .ast-rech-liste { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
 .ast-rech.est-ouvert:not(.est-cours) .ast-rech-liste { padding-top: 6px; }
 
-/* Le direct : la lecture du moment au bout de la liste, puis la scene. */
+/* Le direct : chaque lecture a sa ligne, qui ne bouge plus une fois finie. */
 .ast-rech.est-cours .lu { overflow: clip; }
 .lu.is-cours .lu-phrase { color: var(--text); }
-.lu-scene { position: relative; height: 0; margin: 6px 0 2px 30px; overflow: hidden; transition: height var(--d-base) var(--c-sortie); }
-.lu-vue.est-pleine { padding: 12px 14px; background: var(--voile-1); border-radius: 12px; }
-.lu-vue-dessin { position: relative; max-width: 560px; }
-.lu-vue.est-sortie { position: absolute; top: 0; right: 0; left: 0; opacity: 0; transform: translateY(-8px); transition: opacity var(--d-net) ease-out, transform var(--d-base) var(--c-sortie); }
-.lu-vue .lu-dessin { margin: 0; }
-.ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-rech.vient-de-plier .lu-scene { opacity: 0; transform: translateY(-8px); transition: opacity 150ms ease-out, transform 200ms var(--c-sortie); }
+.ast-rech.est-cours.vient-de-plier .ast-rech-liste { opacity: 0; transform: translateY(-8px); transition: opacity 150ms ease-out, transform 200ms var(--c-sortie); }
 
-/* Le fil : les vraies lignes lues montent une a une sous le dessin, trois visibles. */
-.lu-fil { position: relative; height: 66px; margin-top: 4px; overflow: hidden; }
-.lu-fil[hidden], .lu-vue.sans-fil .lu-fil { display: none; }
-.lu-vue-dessin:not(:empty) + .lu-fil { margin-top: 8px; }
-.lu-fil-int { position: relative; transition: transform 260ms var(--c-sortie); }
-.lu-fil p { position: absolute; top: 0; right: 0; left: 0; display: flex; gap: 10px; height: 22px; margin: 0; font-size: 12.5px; line-height: 22px; color: var(--faint); white-space: nowrap; transition: color 260ms ease-out; }
-.lu-fil p.est-lue { color: var(--muted); }
-.lu-fil time { flex: none; min-width: 42px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.lu-fil span { overflow: hidden; text-overflow: ellipsis; }
 
 /* Une lecture relue. */
 .lu { border-radius: 8px; }
 .lu.is-note p { margin: 3px 0 3px 8px; font-style: italic; color: var(--muted); }
-.lu-tete { display: grid; grid-template-columns: 12px max-content minmax(0, 1fr) auto 14px; align-items: center; gap: 10px; width: 100%; min-height: 30px; padding: 5px 8px; font-size: 14px; line-height: 20px; text-align: left; color: inherit; background: none; border: 0; border-radius: 8px; }
+.lu-tete { display: grid; grid-template-columns: 12px max-content minmax(0, 1fr) auto 76px 14px; align-items: center; gap: 10px; width: 100%; min-height: 30px; padding: 5px 8px; font-size: 14px; line-height: 20px; text-align: left; color: inherit; background: none; border: 0; border-radius: 8px; }
 button.lu-tete { cursor: pointer; transition: background-color var(--d-net) ease; }
 button.lu-tete:hover { background: var(--voile-1); }
 .lu-marque { display: grid; place-items: center; width: 12px; height: 20px; }
 .lu-point { width: 6px; height: 6px; background: var(--c); border-radius: 50%; }
+.lu-point.est-creux { background: none; box-shadow: inset 0 0 0 1.5px var(--c); }
+
+/* La puce d une lecture : un tout petit dessin fait de ses propres nombres, a la couleur de sa source. */
+/* Les puces se rangent en colonne au bout des lignes, apres le resultat. */
+.lu-tete > .lu-marque { grid-column: 1; grid-row: 1; }
+.lu-tete > .lu-source { grid-column: 2; grid-row: 1; }
+.lu-tete > .lu-phrase { grid-column: 3; grid-row: 1; }
+.lu-tete > .lu-res { grid-column: 4; grid-row: 1; }
+.lu-tete > .lu-dessine { grid-column: 5; grid-row: 1; }
+.lu-tete > svg { grid-column: 6; grid-row: 1; }
+.lu-dessine { display: flex; align-items: center; justify-content: flex-start; min-width: 0; height: 20px; overflow: hidden; }
+.lu-puce { display: inline-flex; flex: none; }
+.lu-puce.est-barres { align-items: flex-end; gap: 2px; height: 16px; }
+.lu-puce.est-barres i { width: 3px; height: max(2px, calc(var(--h, 0) * 100%)); background: var(--c); border-radius: 1px; transform-origin: 50% 100%; }
+.lu-puce.est-parts { gap: 1.5px; width: 56px; height: 6px; }
+.lu-puce.est-parts i { flex: var(--p, 0) 1 0; min-width: 2px; background: var(--c); border-radius: 1.5px; transform-origin: 0 50%; }
+.lu-puce.est-parts i:nth-child(2) { opacity: .7; }
+.lu-puce.est-parts i:nth-child(3) { opacity: .5; }
+.lu-puce.est-parts i:nth-child(4) { opacity: .36; }
+.lu-puce.est-parts i:nth-child(n + 5) { opacity: .24; }
+.lu-puce.est-points { align-items: center; gap: 3px; height: 16px; }
+.lu-puce.est-points i { width: 4px; height: 4px; background: var(--c); border-radius: 50%; }
+svg.lu-puce.est-courbe { display: block; overflow: visible; }
+.lu-puce-trait { fill: none; stroke: var(--c); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100 100; }
+.lu-puce-aire { fill: var(--c); stroke: none; opacity: .15; }
+
+/* Ce qui a deja ete lu plus tot dans la conversation : une phrase, pas de recherche rejouee. */
+.ast-repris { display: flex; align-items: center; gap: 10px; min-height: 28px; margin: 0 0 10px; padding-left: 8px; font-size: 14px; color: var(--muted); }
+.ast-repris .lu-point { --c: var(--azur); flex: none; margin: 0 3px; }
+.ast-retire { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); }
 .lu-source { font-weight: 500; color: var(--text); white-space: nowrap; }
 .lu-phrase { overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 .lu.is-echec .lu-phrase, .lu.is-echec .lu-res { color: var(--danger); }
@@ -479,20 +505,15 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast .ast-table td.est-preuve { font-weight: 650; background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
 .ast .ast-table td.est-preuve-aussi { background: var(--accent-soft); }
 
-/* Le dessin se remplit pendant sa lecture : les pieces arrivent dans l ordre de leurs donnees, etalees
-   sur --etale (posee par la lecture), chacune en un instant, sans rebond. Ensuite il ne bouge plus ;
-   rouvert apres coup, il est deja la. */
+/* Ce qui bouge. Rien ne rebondit, rien ne saute, et le mouvement sans fin reste au fond, au champ
+   et au signe de travail. Une puce se dessine une fois, quand sa lecture finit ; relue apres coup,
+   elle est deja la. */
 @media (prefers-reduced-motion: no-preference) {
-  .lu-vue { animation: astMonte 240ms var(--c-sortie) backwards; }
-  .lu-scene .lu-barres i, .lu-scene .fx-e i, .lu-scene .ff-e i, .lu-scene .fc i { animation: luMonte var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .lu-plan i, .lu-scene .fr-p i, .lu-scene .fp-b i, .lu-scene .fe-p i, .lu-scene .faa-b i, .lu-scene .faa-b u, .lu-scene .fs-t i, .lu-scene .fd i, .lu-scene .fk-p u { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fk-p i { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms) + 120ms) backwards; }
-  .lu-scene .fr-n, .lu-scene .fr-v, .lu-scene .fp-l span, .lu-scene .fe-n, .lu-scene .fe b, .lu-scene .faa-v, .lu-scene .fs-l small, .lu-scene .fc b, .lu-scene .fc span, .lu-scene .fd b, .lu-scene .fg-l i, .lu-scene .fm-l i, .lu-scene .fch span, .lu-scene .fk b, .lu-scene .f-ann b, .lu-scene .f-ann span, .lu-scene .f-lignes p { animation: astFondu var(--d-base) ease-out calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .f-chiffres div, .lu-scene .f-conv p, .lu-scene .fv, .lu-scene .fb { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .f-calcul span { animation: luPose var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 320ms)) backwards; }
-  .lu-scene .fo-e i, .lu-scene .fi-e i, .lu-scene .f-notes .fr-p u { animation: luPoint var(--d-base) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fa-v { animation: luTrace var(--d-feuille) var(--c-sortie) calc(var(--rang, 0) * var(--etale, 160ms)) backwards; }
-  .lu-scene .fm-c { animation: luBalaie 500ms var(--c-sortie) backwards; }
+  /* Le signe de travail : il eclot, puis tourne, respire et change doucement de forme. */
+  .ast .ast-orbe { animation: astEclot 260ms var(--c-sortie) backwards; }
+  .ast-orbe i:nth-child(1) { animation: astOrbeHalo 2400ms ease-in-out infinite; }
+  .ast-orbe i:nth-child(2) { animation: astOrbeTourne 2600ms linear infinite, astOrbeForme 3400ms ease-in-out infinite; }
+  .ast-orbe i:nth-child(3) { animation: astOrbeReflet 3400ms ease-in-out infinite; }
 
   /* Le fond : trois lueurs qui derivent tres lentement, des transformations seulement. */
   .ast-fond { animation: astFondu 900ms ease-out backwards; }
@@ -532,15 +553,19 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   /* Le texte qui arrive se fond vers le bas. */
   .ast-r-texte.est-flux { --ast-voile-bas: 44px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); animation: astFondu 260ms ease-out backwards; }
 
-  /* Une lecture : elle glisse a sa place, sa phrase brille tant qu elle travaille, une lueur la confirme. */
+  /* Une lecture : elle glisse a sa place, sa phrase brille tant qu elle travaille, puis son anneau se
+     remplit, son resultat se pose et sa puce se dessine. */
   .lu.is-cours .lu-source { animation: astGlisse 260ms var(--c-sortie) backwards; }
   .lu.is-cours .lu-phrase { color: transparent; background: linear-gradient(90deg, var(--text) 38%, var(--azur) 50%, var(--text) 62%) 0 0 / 240% 100%; -webkit-background-clip: text; background-clip: text; animation: astGlisse 260ms var(--c-sortie) 40ms backwards, astLueur 1500ms linear infinite; }
   .ast-rech.est-cours .lu { position: relative; isolation: isolate; }
-  .ast-rech.est-cours .lu.is-fini::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--c, var(--azur)); border-radius: 8px; opacity: 0; transform-origin: 0 50%; animation: luConfirme 560ms var(--c-sortie); }
   .ast-rech.est-cours .lu.is-fini .lu-point { animation: astEclot 260ms var(--c-sortie) backwards; }
   .ast-rech.est-cours .lu.is-fini .lu-res { animation: astFondu var(--d-feuille) ease-out backwards; }
-  /* Une ligne fine parcourt le dessin pendant qu il se remplit, une fois, puis s efface. */
-  .lu-vue-dessin:not(:empty)::after { content: ""; position: absolute; top: -6px; right: 100%; bottom: -6px; width: 100%; background: linear-gradient(to bottom, transparent, var(--azur), transparent) 100% 0 / 1.5px 100% no-repeat, radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--azur) 26%, transparent), transparent) 100% 0 / 34px 100% no-repeat; pointer-events: none; animation: luScan var(--etale, 1s) linear both; }
+  .ast-rech.est-cours .lu-puce.est-barres i { animation: luMonte var(--d-feuille) var(--c-sortie) calc(var(--i, 0) * 22ms) backwards; }
+  .ast-rech.est-cours .lu-puce.est-parts i { animation: luPousse var(--d-feuille) var(--c-sortie) calc(var(--i, 0) * 50ms) backwards; }
+  .ast-rech.est-cours .lu-puce.est-points i { animation: luPoint var(--d-base) var(--c-sortie) calc(var(--i, 0) * 28ms) backwards; }
+  .ast-rech.est-cours .lu-puce-trait { animation: luTrace 520ms var(--c-sortie) backwards; }
+  .ast-rech.est-cours .lu-puce-aire { animation: astFondu 400ms ease-out 240ms backwards; }
+  .ast-r.is-neuf .ast-repris { animation: astMonte 300ms var(--c-sortie) backwards; }
 
   /* Sous la reponse, les gestes arrivent l un apres l autre. */
   .ast-r.vient-d-ecrire .ast-pied > * { animation: astMonte var(--d-base) var(--c-sortie) backwards; }
@@ -566,13 +591,15 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   .ast-bande { right: -12px; left: -12px; }
   .ast-sources { width: 100%; }
   .ast-conv-centre { display: none; }
-  .lu-tete { grid-template-columns: 12px max-content minmax(0, 1fr) 14px; gap: 2px 10px; }
+  /* Au telephone un resultat long (« 8 réservations, 71 joueurs, 1 098 €, 13 à venir ») passe a la ligne
+     dans sa colonne : sans cela il s ecrivait par-dessus le nom de sa source. */
+  .lu-tete { grid-template-columns: 12px max-content minmax(0, 1fr) 14px; gap: 2px 10px; align-items: start; }
+  .lu-tete .lu-dessine { display: none; }
   .lu-tete .lu-marque { grid-column: 1; grid-row: 1; }
   .lu-tete .lu-source { grid-column: 2; grid-row: 1; }
-  .lu-tete .lu-res { grid-column: 3; grid-row: 1; justify-self: end; }
+  .lu-tete .lu-res { grid-column: 3; grid-row: 1; justify-self: end; min-width: 0; text-align: right; white-space: normal; }
   .lu-tete .lu-phrase { grid-column: 2 / 4; grid-row: 2; white-space: normal; }
-  .lu-tete > svg { grid-column: 4; grid-row: 1; opacity: 1; }
-  .lu-scene { margin-left: 0; }
+  .lu-tete > svg { grid-column: 4; grid-row: 1; align-self: start; margin-top: 3px; opacity: 1; }
   .lu-dessin, .f-grille, .f-semaine, .f-prix, .f-conv { max-width: none; }
   .fr-l { grid-template-columns: minmax(74px, 110px) minmax(0, 1fr) auto; }
   .faa { grid-template-columns: 84px minmax(0, 1fr) 124px; }
@@ -588,7 +615,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 
 /* --- Moins de mouvement : rien n entre, rien ne tourne, les plis s ouvrent d un coup --- */
 @media (prefers-reduced-motion: reduce) {
-  .ast .ast-tourne, .ast-travail::before { animation: none; }
+  .ast .ast-orbe, .ast-orbe i { animation: none; }
   .ast-salut, .ast-q.is-neuf .ast-q-bulle, .ast-conv.is-neuve, .ast-rech.vient-de-plier > .ast-rech-tete, .ast-r.vient-d-ecrire .gb-p i, .ast-r.vient-d-ecrire .gb-val, .ast-r.vient-d-ecrire .ast-pied, .ast-suggestion, .ast-menu:not([hidden]), .ast-sources:not([hidden]), .ast-envoi > * { animation: none; }
-  .lu-plis, .ast-rech > .lu-plis, .lu-scene, .lu-vue.est-sortie, .ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-rech.vient-de-plier .lu-scene, .lu-fil-int, .lu-fil p, .ast-bande, .ast-descendre, .ast-compo, .ast-rech-tete > svg, .lu-tete > svg { transition: none; }
+  .lu-plis, .ast-rech > .lu-plis, .ast-rech.est-cours.vient-de-plier .ast-rech-liste, .ast-bande, .ast-descendre, .ast-compo, .ast-rech-tete > svg, .lu-tete > svg { transition: none; }
 }

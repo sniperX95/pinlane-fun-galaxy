@@ -105,16 +105,12 @@ const MUTATIONS = {
   'phrase-sans-periode': { section: 'R', fichier: OUT, de: "return `Je lis les réservations ${m.periode} à ${m.centre}${axes.length", vers: "return `Je lis les réservations à ${m.centre}${axes.length", rouge: "[R] la phrase dit la periode et le centre" },
   'source-non-annoncee': { section: 'R', fichier: AGENT, de: "      emettre('etape', { id: appel.id, etat: 'cours', ...outils.annonce(ctx, appel.name, appel.input) });", vers: "      emettre('etape', { id: appel.id, etat: 'cours' });", rouge: "[R] chaque lecture annonce sa source" },
   'total-invente': { section: 'E', fichier: ECRAN, de: "(total > affiche ? `${nombreEntier(affiche)} sur", vers: "(true ? `${nombreEntier(affiche)} sur", rouge: "[E] sans total connu, on ne dit pas sur combien" },
-  'texte-coupe-le-dessin': { section: 'E', fichier: ECRAN, de: "    if (haut.querySelector('[data-pliage]') || sceneRetient(haut, m)) return;", vers: "    if (haut.querySelector('[data-pliage]')) return;", rouge: "[E] un dessin reste a l ecran le temps d etre vu" },
-  'attente-sans-fin': { section: 'E', fichier: ECRAN, de: "const reste = Math.min(ATTENTE_TEXTE, Math.max(VUE_MIN, S.remplie)) - (performance.now() - S.vueDepuis);", vers: "const reste = 2600 - (performance.now() - S.vueDepuis);", rouge: "[E] la reponse ne tarde jamais plus de deux secondes apres le dessin" },
   'bonjour-qui-cherche': { section: 'E', fichier: ECRAN, de: "aria-label=\"Réponse en préparation\">${SIGNE}</p>", vers: "aria-label=\"Réponse en préparation\">Je regarde votre question</p>", rouge: "[E] un bonjour n annonce aucune recherche" },
-  'compteur-qui-defile': { section: 'E', fichier: ECRAN, de: "(e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '')", vers: "(e.lues ? compteLu(Math.round(Number(e.lues) * Math.min(1, (now - S.t0) / 1500)), Number(e.total) || 0) : '')", rouge: "[E] aucun compteur ne defile" },
-  'dessin-sans-ordre': { section: 'E', fichier: ECRAN, de: "      vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));\n", vers: "", rouge: "[E] un dessin se pose dans l ordre de ses donnees" },
-  'scene-qui-saute': { section: 'E', fichier: ECRAN, de: "      if (hauteur > S.hauteur) { S.hauteur = hauteur; scene.style.height = `${hauteur}px`; }", vers: "      scene.style.height = `${hauteur}px`;", rouge: "[E] la scene garde sa hauteur d un dessin a l autre" },
+  'compteur-qui-defile': { section: 'E', fichier: ECRAN, de: "const compte = e.etat === 'cours' && e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '';", vers: "const compte = e.etat === 'cours' && e.lues ? compteLu(Math.round(Number(e.lues) * Math.min(1, (now - L.vue) / 1500)), Number(e.total) || 0) : '';", rouge: "[E] aucun compteur ne defile" },
   'saut-au-pli': { section: 'E', fichier: ECRAN, de: "    article.style.minHeight = `${article.offsetHeight}px`;\n", vers: "", rouge: "[E] le texte prend la place du dessin sans faire sauter la page" },
   'dessin-qui-traine': { section: 'E', fichier: STYLE, de: "  --d-feuille: 300ms;", vers: "  --d-feuille: 3000ms;", rouge: "[E] chaque piece entre vite, une seule fois" },
   'bulle-qui-rebondit': { section: 'E', fichier: STYLE, de: ".ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms var(--c-sortie) both; }", vers: ".ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms cubic-bezier(.34, 1.3, .64, 1) both; }", rouge: "[E] rien ne rebondit" },
-  'mouvement-sans-fin': { section: 'E', fichier: STYLE, de: ".lu-scene { position: relative;", vers: ".lu-scene { animation: astFondu 1s linear infinite; position: relative;", rouge: "[E] rien ne bouge sans fin, sauf le signe de travail" },
+  'mouvement-sans-fin': { section: 'E', fichier: STYLE, de: ".ast-rech-liste { display: grid;", vers: ".ast-rech-liste { animation: astFondu 1s linear infinite; display: grid;", rouge: "[E] rien ne bouge sans fin, sauf le signe de travail" },
   'reduit-ignore': { section: 'E', fichier: STYLE, de: "@media (prefers-reduced-motion: no-preference) {", vers: "@media all {", rouge: "[E] mouvement reduit : la recherche ne bouge plus" },
   'accueil-sans-sortie': { section: 'E', fichier: ECRAN, de: "sortirAccueil(); peindreFil({ neuf: 2 });", vers: "peindreFil({ neuf: 2 });", rouge: "[E] au premier envoi l accueil sort, et sa copie ne reste pas" },
   'fond-fige': { section: 'E', fichier: STYLE, de: "  .ast-fond i:nth-child(1) { animation: astDerive1 19s ease-in-out infinite alternate; }", vers: "  .ast-fond i:nth-child(1) { animation: none; }", rouge: "[E] le fond derive tout seul, derriere tout, sans filtre" },
@@ -126,7 +122,7 @@ const MUTATIONS = {
   'phrase-toute-faite': { section: 'R', fichier: OUT, de: "  phrase = gommer(e.pourquoi, 100) || phrase;", vers: "", rouge: "[R] la phrase vient de la question" },
   'phrase-non-gommee': { section: 'R', fichier: OUT, de: "  phrase = gommer(e.pourquoi, 100) || phrase;", vers: "  phrase = String(e.pourquoi || '') || phrase;", rouge: "[R] la phrase du modele ne montre ni numero ni adresse" },
   'pourquoi-facultatif': { section: 'R', fichier: OUT, de: "required: ['pourquoi', ...(o.definition.input_schema.required || [])]", vers: "required: [...(o.definition.input_schema.required || [])]", rouge: "[R] chaque outil demande sa phrase" },
-  'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);", vers: "    if (m.statut === 'cours' && !m.texte) { haut.innerHTML = htmlRecherche(m); majRecherche(haut, m); }", rouge: "[E] la scene ne se reconstruit pas a chaque lecture" },
+  'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);", vers: "    if (m.statut === 'cours' && !m.texte) { haut.innerHTML = htmlRecherche(m); majRecherche(haut, m); }", rouge: "[E] la liste ne se reconstruit pas a chaque lecture" },
   'correction-perdue': { section: 'E', fichier: ECRAN, de: "retenirFait(champ.value, 'correction', String(m.texte || '').slice(0, 280))", vers: "Promise.resolve()", rouge: "[E] une correction devient un fait appris" },
   'reprise-sans-envoi': { section: 'E', fichier: ECRAN, de: "        const reponse = await appeler('reprendre', { conversations: nouvelles });", vers: "        const reponse = { reprises: [] };", rouge: "[E] les conversations de l appareil remontent sans perte" },
   'repeint-au-rafraichissement': { section: 'E', fichier: ECRAN, de: "if (A.root !== root || A.cle !== cle || !root.querySelector('.ast')) {", vers: "if (true) {", rouge: "[E] le rafraichissement de la console ne touche pas la page" },
@@ -138,11 +134,9 @@ const MUTATIONS = {
   'decroche-sans-geste': { section: 'E', fichier: ECRAN, de: "performance.now() - A.dernierGeste < GESTE_RECENT", vers: "true", rouge: "[E] un defilement sans geste ne decroche pas" },
   'ne-decroche-jamais': { section: 'E', fichier: ECRAN, de: "else if (monte && !retreci && performance.now() - A.dernierGeste < GESTE_RECENT) { A.suivi = false; arreterGlisse(); }", vers: "", rouge: "[E] remonter arrete le suivi" },
   'fleche-morte': { section: 'E', fichier: ECRAN, de: "    if ((n = v('[data-ast-descendre]'))) { versLeBas(true); return; }\n", vers: "", rouge: "[E] la fleche ramene a la fin" },
-  'fil-fige': { section: 'E', fichier: ECRAN, de: "          while (S.rang < voulu) {", vers: "          while (S.rang < Math.min(voulu, 0)) {", rouge: "[E] les vraies lignes passent sous le dessin" },
   'ligne-ecrasee': { section: 'E', fichier: ECRAN, de: "      liste.appendChild(li);\n", vers: "      liste.replaceChildren(li);\n", rouge: "[E] une deuxieme source ajoute sa ligne, la premiere garde son resultat" },
-  'dessin-d-un-coup': { section: 'E', fichier: ECRAN, de: "      vue.style.setProperty('--etale', `${etale}ms`);", vers: "      vue.style.setProperty('--etale', '0ms');", rouge: "[E] le dessin se remplit au fil de la lecture" },
   'une-seule-couleur': { section: 'E', fichier: ECRAN, de: '`<div class="fr-l" data-t="${i + 1}" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(r.n, 34))}', vers: '`<div class="fr-l" data-o="${ordre(i, liste.length)}"><span class="fr-n">${esc(couper(r.n, 34))}', rouge: "[E] chaque piece a la couleur de sa donnee" },
-  'extraits-sur-l-appareil': { section: 'E', fichier: ECRAN, de: "etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined })) : m.etapes, ", vers: "", rouge: "[E] le fil et ses sources reviennent" },
+  'extraits-sur-l-appareil': { section: 'E', fichier: ECRAN, de: "etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined, lecture: A.stockage === 'serveur' ? e.lecture : undefined })) : m.etapes, ", vers: "", rouge: "[E] le fil et ses sources reviennent" },
   'bilan-non-plie': { section: 'E', fichier: ECRAN, de: "    const ouvert = enCours || Boolean(m.etapesOuvertes);", vers: "    const ouvert = true;", rouge: "[E] une fois finie, la recherche se replie et dit ce qu elle a lu" },
   'no-show-hors-prompt': { section: 'A', fichier: AGENT, de: "Un no-show, un groupe pas venu et un absent sont la même chose, un groupe que l'équipe a noté Pas venu. Il ne compte ni dans", vers: "Il ne compte ni dans", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
   'no-show-hors-outil': { section: 'A', fichier: OUT, de: "absents (les no-show, ces groupes notés Pas venu, avec leur nombre, leurs joueurs, leur taux et le montant des réservations perdues), remplissage", vers: "absents, remplissage", rouge: "[A] no-show et pas venu sont le meme mot pour l assistant" },
@@ -154,6 +148,7 @@ const MUTATIONS = {
 };
 
 Object.assign(MUTATIONS, require('./assistant-check-outils').MUTATIONS_OUTILS);
+Object.assign(MUTATIONS, require('./assistant-check-dossier').MUTATIONS_DOSSIER);
 
 // Le serveur pose son attente 15 ms apres le dernier evenement : relacher trop tot appellerait celle d avant.
 async function relacher(flux) {
@@ -822,6 +817,15 @@ async function sectionM() {
   const messageRelu = relue.json.conversation ? relue.json.conversation.messages[1] : { preuves: [], sources: [] };
   ok('[M] les preuves d une reponse sont gardees', (messageRelu.preuves || []).length === 1 && messageRelu.preuves[0].t === '440 €' && messageRelu.preuves[0].z[2] === 'chiffre' && !('piege' in messageRelu.preuves[0]), JSON.stringify(messageRelu.preuves));
   ok('[M] le detail d une source est garde', Boolean(messageRelu.sources[0] && messageRelu.sources[0].sections && messageRelu.sources[0].sections[0] && messageRelu.sources[0].sections[0].lignes[0].chiffre === 440), JSON.stringify(messageRelu.sources));
+  // ---- Une lecture gardee se refait a la question suivante ----
+  const baseLecture = fausseMemoire();
+  reinitialiser({ session: unePersonne('lib:m9'), requete: baseLecture.requete });
+  const LECT = { outil: 'croiser_reservations', entree: { debut: '2026-10-01', fin: '2026-10-31' }, empreinte: 'abc123abc123' };
+  await agir('sauver', { conversation: CONV('conversationlecture', [{ role: 'user', texte: 'Combien ?' }, { role: 'assistant', id: 'a3', texte: 'Vu.', statut: 'fini', graphiques: [], sources: [], preuves: [], etapes: [{ id: 'e1', etat: 'fini', lecture: LECT }, { id: 'e2', etat: 'fini', lecture: { outil: '<script>', entree: {} } }, { id: 'e3', etat: 'fini', lecture: { outil: 'clients', entree: { recherche: 'x'.repeat(3000) } } }], repris: [{ source: 'S1', nomSource: 'Réservations', cleSource: 'reservations', change: false, lecture: LECT, piege: 1 }] }]) });
+  const relueLecture = await agir('conversation', { id: 'conversationlecture' });
+  const mLecture = relueLecture.json.conversation ? relueLecture.json.conversation.messages[1] : { etapes: [], repris: [] };
+  ok('[M] les reglages d une lecture sont gardes', JSON.stringify(((mLecture.etapes || [])[0] || {}).lecture) === JSON.stringify(LECT) && !((mLecture.etapes || [])[1] || {}).lecture && !((mLecture.etapes || [])[2] || {}).lecture, JSON.stringify(mLecture.etapes));
+  ok('[M] ce qui a ete repris est garde', (mLecture.repris || []).length === 1 && mLecture.repris[0].nomSource === 'Réservations' && mLecture.repris[0].change === false && JSON.stringify(mLecture.repris[0].lecture) === JSON.stringify(LECT) && !('piege' in mLecture.repris[0]), JSON.stringify(mLecture.repris));
 
   // ---- A chacun ses conversations ----
   let base = fausseMemoire();
@@ -1045,44 +1049,57 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   const debut = ['debut', { modele: 'Haiku 5.5', centres: [], sources: [{ cle: 'reservations', nom: 'Réservations' }, { cle: 'clients', nom: 'Clients' }, { cle: 'mails', nom: 'Mails' }] }];
   const etape = (id, cle, nom, phrase) => ['etape', { id, etat: 'cours', cleSource: cle, nomSource: nom, phrase, libelle: phrase, periode: '', centre: 'Fun Galaxy Libramont', unite: 'lignes' }];
   flux.scenario = { evenements: [debut, etape('x1', 'reservations', 'Réservations', 'Je lis les réservations de novembre à Libramont'), ['lecture', { id: 'x1', lues: 300, total: 1200, trouvees: 40, extraits: [{ t: '03/11', d: 'Kids Fun Day, 12 joueurs, Zoé Témoin' }, { t: '04/11', d: 'Bowling, 6 joueurs, Marc Témoin' }, { t: '05/11', d: 'Laser Game, 10 joueurs, Léa Témoin' }, { t: '06/11', d: 'Minigolf, 4 joueurs, Paul Témoin' }] }], { attendre: true }, ['lecture', { id: 'x1', lues: 1200, total: 1200, trouvees: 412, extraits: [{ t: '09/11', d: 'Bowling, 6 joueurs, Quartzite' }] }], etape('x2', 'clients', 'Clients', 'Je cherche qui revient'), ['lecture', { id: 'x2', lues: 87, extraits: [] }], { attendre: true }, ['source', { ...SRC, id: 'S1' }], ['etape', { id: 'x1', etat: 'fini', source: 'S1', trouve: '412 réservations, 7 230 joueurs', lues: 1200, duree: 2400 }], ['etape', { id: 'x2', etat: 'fini', source: '', trouve: '87 clients', lues: 87, duree: 900 }], ['proposition', { texte: 'Le KFD est complet le mercredi' }], ['texte', { delta: 'Voilà [S1].' }], finDe('Voilà [S1].')] };
-  // Ce que la ligne du direct affiche, image par image : un nombre qui defile se verrait ici. Et la
-  // derniere ligne lue du fil, pour voir les vraies lignes passer une a une.
-  await page.evaluate(() => { window.__res = []; window.__fil = []; window.__resFin = false; (function suivre() { const r = document.querySelector('.ast-rech.est-cours [data-lu-res]'); const t = r ? r.textContent : ''; if (t && window.__res[window.__res.length - 1] !== t) window.__res.push(t); const f = document.querySelector('.ast-rech.est-cours .lu-fil p.est-lue span'); const l = f ? f.textContent : ''; if (l && window.__fil[window.__fil.length - 1] !== l) window.__fil.push(l); if (!window.__resFin) requestAnimationFrame(suivre); }()); });
+  // Ce que la premiere ligne du direct affiche, image par image : un nombre qui defile se verrait ici.
+  await page.evaluate(() => { window.__res = []; window.__resFin = false; (function suivre() { const r = document.querySelector('.ast-rech.est-cours .ast-rech-liste > li.lu .lu-res'); const t = r ? r.textContent : ''; if (t && window.__res[window.__res.length - 1] !== t) window.__res.push(t); if (!window.__resFin) requestAnimationFrame(suivre); }()); });
   await page.locator(champ).fill('Une question pour regarder la recherche');
   await page.locator(champ).press('Enter');
   await page.waitForFunction(() => /Je lis les réservations/.test((document.querySelector('.ast-rech.est-cours [data-lu-phrase]') || {}).textContent || '') && /300/.test((document.querySelector('.ast-rech.est-cours [data-lu-res]') || {}).textContent || ''), null, { timeout: 9000 }).catch(() => {});
-  await FX_repos(page, 3000);
+  await FX_repos(page, 1200);
   const enDirect = () => page.evaluate(() => {
     const b = document.querySelector('.ast-rech.est-cours');
     const q = [...document.querySelectorAll('.ast-q')].pop();
-    if (!b || !q) return {};
-    const scene = b.querySelector('[data-lu-scene]');
+    const article = [...document.querySelectorAll('.ast-r')].pop();
+    if (!b || !q || !article) return {};
     const lis = [...b.querySelectorAll('.ast-rech-liste > li.lu')];
-    return { lignes: lis.length, premiere: lis.length ? lis[0].textContent.replace(/\s+/g, ' ').trim() : '', l1: lis.length ? Math.round(lis[0].getBoundingClientRect().top - q.getBoundingClientRect().top) : null, hLigne: lis.length ? Math.round(lis[lis.length - 1].getBoundingClientRect().height) + 1 : 0, temoin: b.dataset.temoin || '', source: b.querySelector('[data-lu-source]').textContent, phrase: b.querySelector('[data-lu-phrase]').textContent, compte: b.querySelector('[data-lu-res]').textContent.replace(/ /g, ' '), extrait: scene.textContent, hauteurScene: Math.round(scene.getBoundingClientRect().height), dit: b.querySelector('[data-lect-dit]').textContent, hautBloc: Math.round(b.getBoundingClientRect().height), hautQuestion: Math.round(q.getBoundingClientRect().top) };
+    const signes = [...article.querySelectorAll('.ast-orbe')];
+    const bas = lis.length ? lis[lis.length - 1].getBoundingClientRect().bottom : 0;
+    return {
+      lignes: lis.map((li) => ({ source: li.querySelector('.lu-source').textContent, phrase: li.querySelector('.lu-phrase').textContent, compte: li.querySelector('.lu-res').textContent.replace(/\s/g, ' '), cours: li.classList.contains('is-cours') })),
+      l1: lis.length ? Math.round(lis[0].getBoundingClientRect().top - q.getBoundingClientRect().top) : null,
+      hLigne: lis.length ? Math.round(lis[lis.length - 1].getBoundingClientRect().height) + 1 : 0,
+      temoin: b.dataset.temoin || '',
+      dit: b.querySelector('[data-lect-dit]').textContent,
+      hautBloc: Math.round(b.getBoundingClientRect().height),
+      signes: signes.length,
+      signeSousLaListe: signes.length === 1 && signes[0].getBoundingClientRect().top >= bas - 1,
+      boite: document.querySelectorAll('.lu-scene, .lu-vue, .lu-fil, [data-lu-scene]').length,
+      signeTemoin: (signes[0] && signes[0].dataset.temoin) || '',
+      vu: article.textContent,
+    };
   });
-  await page.evaluate(() => { const b = document.querySelector('.ast-rech.est-cours'); if (b) b.dataset.temoin = '1'; });
+  const L = (r, i) => ((r.lignes || [])[i] || {});
+  await page.evaluate(() => { const b = document.querySelector('.ast-rech.est-cours'); if (b) b.dataset.temoin = '1'; const s = [...document.querySelectorAll('.ast-r')].pop().querySelector('.ast-orbe'); if (s) s.dataset.temoin = '1'; });
   const au300 = await enDirect();
-  const vus300 = await page.evaluate(() => window.__res.map((t) => t.replace(/ /g, ' ')));
-  ok('[E] la recherche dit ou elle cherche', au300.source === 'Réservations' && /Je lis les réservations de novembre/.test(au300.phrase || '') && /Je lis les réservations/.test(au300.dit || ''), JSON.stringify(au300));
-  ok('[E] les lignes lues et le total viennent du flux', /^300 sur 1\s?200 lignes$/.test(au300.compte || ''), JSON.stringify(au300));
-  ok('[E] aucun compteur ne defile', vus300.length === 1 && /^300 sur 1\s?200 lignes$/.test(vus300[0]), JSON.stringify(vus300));
-  ok('[E] un extrait reel s affiche', /Zoé Témoin/.test(au300.extrait || '') && au300.hauteurScene > 16, JSON.stringify(au300));
-  const filVu = await page.evaluate(() => window.__fil.slice());
-  const ordreFil = ['Kids Fun Day', 'Bowling', 'Laser Game', 'Minigolf'].map((x) => filVu.findIndex((l) => l.startsWith(x)));
-  ok('[E] les vraies lignes passent sous le dessin', ordreFil.filter((x) => x >= 0).length >= 3 && ordreFil.filter((x) => x >= 0).every((x, i, l) => !i || x > l[i - 1]), JSON.stringify(filVu));
+  const vus300 = await page.evaluate(() => window.__res.map((t) => t.replace(/\s/g, ' ')));
+  ok('[E] la recherche dit ou elle cherche', L(au300, 0).source === 'Réservations' && /Je lis les réservations de novembre/.test(L(au300, 0).phrase || '') && /Je lis les réservations/.test(au300.dit || ''), JSON.stringify(au300));
+  ok('[E] les lignes lues et le total viennent du flux', /^300 sur 1 200 lignes$/.test(L(au300, 0).compte || ''), JSON.stringify(au300));
+  ok('[E] aucun compteur ne defile', vus300.length === 1 && /^300 sur 1 200 lignes$/.test(vus300[0]), JSON.stringify(vus300));
+  ok('[E] un seul signe de travail, sous la liste', au300.signes === 1 && au300.signeSousLaListe === true, JSON.stringify({ signes: au300.signes, sous: au300.signeSousLaListe }));
+  ok('[E] la boite a dessins n existe plus, et aucun nom ne passe pendant la lecture', au300.boite === 0 && !/Témoin/.test(au300.vu || 'Témoin'), JSON.stringify({ boite: au300.boite, vu: (au300.vu || '').slice(0, 160) }));
   await relacher(flux);
-  await page.waitForFunction(() => /Je cherche qui revient/.test((document.querySelector('.ast-rech.est-cours [data-lu-phrase]') || {}).textContent || ''), null, { timeout: 9000 }).catch(() => {});
-  await FX_repos(page, 2500);
+  await page.waitForFunction(() => { const lis = document.querySelectorAll('.ast-rech.est-cours .ast-rech-liste > li.lu'); return lis.length === 2 && /87/.test(lis[1].querySelector('.lu-res').textContent); }, null, { timeout: 9000 }).catch(() => {});
+  await FX_repos(page, 600);
   const au1200 = await enDirect();
   await page.evaluate(() => { window.__resFin = true; });
-  ok('[E] la scene ne se reconstruit pas a chaque lecture', au1200.temoin === '1', JSON.stringify(au1200));
-  ok('[E] une deuxieme source ajoute sa ligne, la premiere garde son resultat', au300.lignes === 1 && au1200.lignes === 2 && /^Réservations/.test(au1200.premiere) && /1\s?200/.test(au1200.premiere) && au1200.source === 'Clients' && /Je cherche qui revient/.test(au1200.phrase || '') && /87/.test(au1200.compte || ''), JSON.stringify(au1200));
-  ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(au1200.compte || '') && !/sur/.test(au1200.compte || ''), JSON.stringify(au1200));
+  ok('[E] la liste ne se reconstruit pas a chaque lecture', au1200.temoin === '1', JSON.stringify(au1200));
+  ok('[E] le signe de travail ne recommence pas a chaque lecture', au1200.signeTemoin === '1' && au1200.signes === 1, JSON.stringify({ temoin: au1200.signeTemoin, signes: au1200.signes }));
+  ok('[E] une deuxieme source ajoute sa ligne, la premiere garde son resultat', (au300.lignes || []).length === 1 && (au1200.lignes || []).length === 2 && L(au1200, 0).source === 'Réservations' && /1 200/.test(L(au1200, 0).compte || '') && L(au1200, 1).source === 'Clients' && /Je cherche qui revient/.test(L(au1200, 1).phrase || '') && /87/.test(L(au1200, 1).compte || ''), JSON.stringify(au1200));
+  ok('[E] sans total connu, on ne dit pas sur combien', /lignes lues/.test(L(au1200, 1).compte || '') && !/sur/.test(L(au1200, 1).compte || ''), JSON.stringify(au1200));
   ok('[E] la liste grandit d une ligne et rien au-dessus ne bouge', au1200.l1 !== null && au1200.l1 === au300.l1 && Math.abs(au1200.hautBloc - au300.hautBloc - au1200.hLigne) <= 1, JSON.stringify([au300.l1, au1200.l1, au300.hautBloc, au1200.hautBloc, au1200.hLigne]));
   await relacher(flux);
   await finie(page, 3);
   await FX_repos(page, 700);
-  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); const titre = b.querySelector('.ast-rech-titre'); return { titre: titre ? titre.textContent : '', liste: !b.classList.contains('est-ouvert'), scene: Boolean(b.querySelector('[data-lu-scene]')), prop: document.querySelectorAll('.ast-prop').length }; });
+  const replie = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ast-recherche]')].pop(); const titre = b.querySelector('.ast-rech-titre'); return { titre: titre ? titre.textContent : '', liste: !b.classList.contains('est-ouvert'), scene: Boolean(b.querySelector('[data-lu-direct]')), prop: document.querySelectorAll('.ast-prop').length }; });
   ok('[E] une fois finie, la recherche se replie et dit ce qu elle a lu', /Lu dans Réservations et Clients/.test(replie.titre) && /1\s?287 lignes/.test(replie.titre.replace(/ /g, ' ')) && replie.liste === true && !replie.scene, JSON.stringify(replie));
   await page.locator('[data-ast-recherche] [data-ast-etapes]').last().click();
   await FX_repos(page, 200);
@@ -1188,14 +1205,15 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
   const couleurs = await page.evaluate((i) => { const bloc = [...document.querySelectorAll('[data-ast-recherche]')].pop(); return [...bloc.querySelectorAll(`[data-etape="d${i}"] .fr-p i`)].map((x) => getComputedStyle(x).backgroundColor); }, DESSINS_ATTENDUS.findIndex(([c]) => c === 'f-rang'));
   ok('[E] chaque piece a la couleur de sa donnee', couleurs.length >= 5 && new Set(couleurs).size >= 3, JSON.stringify(couleurs));
 
-  // En direct : une premiere lecture haute, une seconde plus basse, puis la reponse aussitot.
+  // En direct : trois lectures lancees ensemble, puis la reponse aussitot. Chaque lecture garde sa
+  // ligne, rend son resultat et sa puce a son tour, et plus rien ne bouge ensuite.
   const grille = DESSINS_ATTENDUS.find(([c]) => c === 'f-grille')[1];
   const duel = DESSINS_ATTENDUS.find(([c]) => c === 'f-duel')[1];
-  const large = { ...duel, colonnes: [...duel.colonnes, { cle: 'joueurs', nom: 'Joueurs', type: 'entier' }, { cle: 'chiffre', nom: 'Chiffre', type: 'euro' }], lignes: duel.lignes.map((l, i) => ({ ...l, joueurs: 30 - i, chiffre: 600 - i * 100 })) };
-  flux.scenario = { evenements: [debut, ...lecture('l1', grille, 'Je regarde les heures creuses'), { attendre: true }, ...lecture('l2', large, 'Je mets vos deux centres côte à côte'), { attendre: true }, ['texte', { delta: 'Réponse complète.' }], finDe('Réponse complète.')] };
+  const longue = { outil: 'croiser_reservations', colonnes: [{ cle: 'mois', nom: 'mois', type: 'texte' }, { cle: 'reservations', nom: 'reservations', type: 'entier' }], lignes: Array.from({ length: 10 }, (_, i) => ({ mois: `2026-${String(i + 1).padStart(2, '0')}`, reservations: 3 + ((i * 7) % 11) })) };
+  flux.scenario = { evenements: [debut, ...lecture('l1', grille, 'Je regarde les heures creuses'), ...lecture('l2', duel, 'Je mets vos deux centres côte à côte'), ...lecture('l3', longue, 'Je regarde les dix derniers mois'), { attendre: true }, ['texte', { delta: 'Réponse complète.' }], finDe('Réponse complète.')] };
   // Tout ce qui bouge dans la page est releve image par image, de l envoi a la reponse.
   await page.evaluate(() => {
-    const R = { rebond: [], sansFin: [] };
+    const R = { rebond: [], sansFin: [], vues: {}, fins: {}, phrases: {}, durees: [], tours: [], pieces: 0, puces: {} };
     window.__live = R;
     const depasse = (c) => { const v = /cubic-bezier\(([^)]+)\)/.exec(c || ''); return Boolean(v) && v[1].split(',').map(Number).some((x, i) => i % 2 === 1 && (x > 1 || x < 0)); };
     const nom = (a) => { const c = a.effect.target; const cl = c.className && c.className.baseVal !== undefined ? c.className.baseVal : c.className; return `${cl} ${a.animationName || a.transitionProperty || 'script'}`.trim(); };
@@ -1207,58 +1225,51 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
         const cible = a.effect && a.effect.target;
         if (!cible || !cible.closest || !cible.closest('.ast')) return;
         const t = a.effect.getTiming();
-        if (t.iterations === Infinity && !cible.closest('.ast-tourne, .ast-travail, .ast-fond, .ast-compo, .lu.is-cours .lu-phrase')) R.sansFin.push(nom(a));
+        if (t.iterations === Infinity && !cible.closest('.ast-orbe, .ast-fond, .ast-compo, .lu.is-cours .lu-phrase')) R.sansFin.push(nom(a));
         if ([t.easing, ...a.effect.getKeyframes().map((k) => k.easing)].some(depasse)) R.rebond.push(nom(a));
       });
       const bloc = document.querySelector('.ast-rech.est-cours');
       const q = [...document.querySelectorAll('.ast-q')].pop();
-      const vue = bloc && bloc.querySelector('[data-lu-scene] .lu-vue:not(.est-sortie)');
-      if (!R.duel && vue && vue.querySelector('.f-duel')) {
-        R.duel = now;
-        const anims = vue.getAnimations({ subtree: true }).filter((a) => !a.effect.pseudoElement);
-        R.pieces = anims.length;
-        R.delais = anims.map((a) => Math.round(a.effect.getTiming().delay));
-        R.fins = anims.map((a) => Math.round(a.effect.getComputedTiming().endTime));
-        R.durees = anims.map((a) => Math.round(Number(a.effect.getTiming().duration) || 0));
-        R.tours = anims.map((a) => a.effect.getTiming().iterations);
-        R.phrase = bloc.querySelector('[data-lu-phrase]').textContent;
-      }
-      // La hauteur se lit une fois le dessin pose : une scene qui retrecit met 200 ms a le faire.
-      if (R.duel && R.h2 === undefined && now - R.duel >= 300 && bloc) {
-        R.h2 = Math.round(bloc.getBoundingClientRect().height);
-        R.q2 = Math.round(q.getBoundingClientRect().top);
-        R.s2 = Math.round(bloc.querySelector('[data-lu-scene]').getBoundingClientRect().height);
-        const premiere = bloc.querySelector('.ast-rech-liste > li.lu');
-        R.l1b = premiere ? Math.round(premiere.getBoundingClientRect().top - q.getBoundingClientRect().top) : null;
-      }
-      if (R.duel && R.encore === undefined && R.fins && now - R.duel >= Math.max(0, ...R.fins) + 60) {
-        const encore = document.querySelector('[data-lu-scene] .lu-vue:not(.est-sortie) .f-duel');
-        R.encore = encore ? encore.closest('.lu-vue').getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length : -1;
+      if (bloc) {
+        bloc.querySelectorAll('.ast-rech-liste > li.lu').forEach((li) => {
+          const id = li.dataset.etape;
+          if (!R.vues[id]) { R.vues[id] = now; R.phrases[id] = li.querySelector('.lu-phrase').textContent; }
+          if (!R.fins[id] && li.classList.contains('is-fini')) R.fins[id] = now;
+          const puce = li.querySelector('.lu-puce');
+          if (puce && !R.puces[id]) {
+            R.puces[id] = puce.className.baseVal !== undefined ? puce.className.baseVal : puce.className;
+            const anims = puce.getAnimations({ subtree: true });
+            R.pieces += anims.length;
+            anims.forEach((a) => { R.durees.push(Math.round(Number(a.effect.getTiming().duration) || 0)); R.tours.push(a.effect.getTiming().iterations); });
+          }
+        });
+        if (q) R.q2 = Math.round(q.getBoundingClientRect().top);
+        const finies = Object.values(R.fins);
+        if (finies.length === 3 && R.encore === undefined && now - Math.max(...finies) >= 900) R.encore = [...bloc.querySelectorAll('.lu-puce')].reduce((n, p) => n + p.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length, 0);
       }
       const r = [...document.querySelectorAll('.ast-r')].pop();
-      if (R.duel && !R.texte && r && /Réponse complète/.test(r.querySelector('[data-ast-texte]').textContent)) { R.texte = now; R.q3 = Math.round(q.getBoundingClientRect().top); }
+      if (!R.texte && r && /Réponse complète/.test(r.querySelector('[data-ast-texte]').textContent)) { R.texte = now; R.q3 = Math.round(q.getBoundingClientRect().top); }
       if (!R.texte && now - t0 < 15000) requestAnimationFrame(suivre); else R.fini = true;
     }());
   });
   await page.locator(champ).fill('En direct');
   await page.locator(champ).press('Enter');
-  const premiere = await page.waitForFunction(() => document.querySelector('.ast-rech.est-cours [data-lu-scene] .f-grille'), null, { timeout: 6000 }).then(() => true, () => false);
-  await FX_repos(page, 900);
-  const l1 = await page.evaluate(() => { const b = document.querySelector('.ast-rech.est-cours'); const q = [...document.querySelectorAll('.ast-q')].pop(); const premiere = b && b.querySelector('.ast-rech-liste > li.lu'); return b ? { h: Math.round(b.getBoundingClientRect().height), q: Math.round(q.getBoundingClientRect().top), scene: Math.round(b.querySelector('[data-lu-scene]').getBoundingClientRect().height), l1: premiere ? Math.round(premiere.getBoundingClientRect().top - q.getBoundingClientRect().top) : null } : {}; });
+  await page.waitForFunction(() => window.__live.encore !== undefined, null, { timeout: 9000 }).catch(() => {});
+  const rendues = await page.evaluate(() => [...document.querySelectorAll('.ast-rech.est-cours .ast-rech-liste > li.lu')].map((li) => ({ res: li.querySelector('.lu-res').textContent, puce: Boolean(li.querySelector('.lu-puce')), fini: li.classList.contains('is-fini'), creux: Boolean(li.querySelector('.lu-point.est-creux')) })));
+  const tRelache = Date.now();
   await relacher(flux);
-  await page.waitForFunction(() => window.__live.duel, null, { timeout: 6000 }).catch(() => {});
-  await relacher(flux);
+  const arriveeTexte = await page.waitForFunction(() => /Réponse complète/.test([...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]').textContent), null, { timeout: 9000 }).then(() => Date.now() - tRelache, () => null);
   await page.waitForFunction(() => window.__live.fini, null, { timeout: 17000 }).catch(() => {});
   const live = await page.evaluate(() => window.__live);
-  const attente = live.texte && live.duel ? Math.round(live.texte - live.duel) : null;
-  ok('[E] la phrase ecrite pour la question s affiche', live.phrase === 'Je mets vos deux centres côte à côte', String(live.phrase));
-  ok('[E] un dessin se pose dans l ordre de ses donnees', premiere && live.pieces >= 6 && new Set(live.delais).size >= 3, JSON.stringify(live.delais));
-  ok('[E] chaque piece entre vite, une seule fois', live.pieces >= 6 && (live.durees || []).every((d) => d <= 350) && (live.tours || []).every((t) => t === 1) && live.encore === 0, JSON.stringify({ durees: live.durees, tours: live.tours, encore: live.encore }));
-  ok('[E] le dessin se remplit au fil de la lecture', live.pieces >= 6 && Math.max(...live.delais) - Math.min(...live.delais) >= 450, JSON.stringify(live.delais));
-  ok('[E] la scene garde sa hauteur d un dessin a l autre', l1.scene > 0 && live.s2 === l1.scene && live.l1b !== null && live.l1b === l1.l1, JSON.stringify({ l1, s2: live.s2, l1b: live.l1b }));
-  ok('[E] un dessin reste a l ecran le temps d etre vu', attente !== null && attente >= 550, String(attente));
-  ok('[E] la reponse ne tarde jamais plus de deux secondes apres le dessin', attente !== null && attente <= 2000, String(attente));
-  ok('[E] le texte prend la place du dessin sans faire sauter la page', attente !== null && Math.abs(live.q3 - live.q2) <= 2, JSON.stringify({ q2: live.q2, q3: live.q3 }));
+  const fins = live.fins || {};
+  const puces = ['l1', 'l2', 'l3'].map((id) => (live.puces || {})[id] || '');
+  ok('[E] la phrase ecrite pour la question s affiche', (live.phrases || {}).l2 === 'Je mets vos deux centres côte à côte', JSON.stringify(live.phrases));
+  ok('[E] les lectures lancees ensemble finissent l une apres l autre', Boolean(fins.l1 && fins.l2 && fins.l3) && fins.l2 - fins.l1 >= 60 && fins.l3 - fins.l2 >= 60 && fins.l1 - live.vues.l1 >= 300, JSON.stringify({ vues: live.vues, fins }));
+  ok('[E] une lecture finie rend son resultat et sa puce', rendues.length === 3 && rendues.every((l) => l.fini && !l.creux && l.res === '3 lignes' && l.puce), JSON.stringify(rendues));
+  ok('[E] deux formes de donnees n ont pas la meme puce', /est-barres/.test(puces[0]) && /est-parts/.test(puces[1]) && /est-courbe/.test(puces[2]), JSON.stringify(puces));
+  ok('[E] chaque piece entre vite, une seule fois', live.pieces >= 6 && (live.durees || []).every((d) => d <= 550) && (live.tours || []).every((t) => t === 1) && live.encore === 0, JSON.stringify({ pieces: live.pieces, durees: live.durees, tours: live.tours, encore: live.encore }));
+  ok('[E] le texte prend la place de la liste sans faire sauter la page', arriveeTexte !== null && Math.abs(live.q3 - live.q2) <= 2, JSON.stringify({ q2: live.q2, q3: live.q3 }));
+  ok('[E] la reponse n attend aucune animation', arriveeTexte !== null && arriveeTexte < 1200, String(arriveeTexte));
   ok('[E] rien ne rebondit', live.rebond.length === 0, JSON.stringify([...new Set(live.rebond)]));
   ok('[E] rien ne bouge sans fin, sauf le signe de travail', live.sansFin.length === 0, JSON.stringify([...new Set(live.sansFin)]));
   await FX_repos(page, 600);
@@ -1279,7 +1290,7 @@ async function ecransDessins(page, flux, finDe, champ, finie) {
   await page.locator(champ).fill('ça va ?');
   await page.locator(champ).press('Enter');
   await page.waitForFunction(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return a && a.querySelector('.ast-pense'); }, null, { timeout: 5000 }).catch(() => {});
-  const bonjour = await page.evaluate(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return { texte: a.textContent.trim(), recherche: Boolean(a.querySelector('[data-ast-recherche]')), signe: a.querySelectorAll('.ast-pense .ast-tourne').length }; });
+  const bonjour = await page.evaluate(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return { texte: a.textContent.trim(), recherche: Boolean(a.querySelector('[data-ast-recherche]')), signe: a.querySelectorAll('.ast-pense .ast-orbe').length }; });
   ok('[E] un bonjour n annonce aucune recherche', bonjour.texte === '' && !bonjour.recherche && bonjour.signe === 1, JSON.stringify(bonjour));
   await relacher(flux);
   const repondu = await page.waitForFunction(() => /Oui, ça va/.test([...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]').textContent), null, { timeout: 5000 }).then(() => true, () => false);
@@ -1457,6 +1468,13 @@ async function sectionEcran() {
     ok('[E] aucun nom de client n est ecrit sur l appareil', stocke.length > 100 && !stocke.includes('Témoin') && stocke.includes('A0001'), String(stocke.length));
     await ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC);
     await ecransDessins(page, flux, finDe, champ, finie);
+    {
+      // Le dossier : une page neuve, pour que ses conversations ne se melent pas aux autres.
+      const dos = await monter();
+      await require('./assistant-check-dossier').ecransDuDossier({ page: dos.page, flux, finDe, champ, finie, relacher, repos: FX.repos, ok });
+      ok('[E] le dossier ne leve aucune erreur JavaScript', dos.erreurs.length === 0, dos.erreurs.slice(0, 3).join(' | '));
+      await dos.ctx.close();
+    }
 
     // Une erreur se dit et se rejoue.
     flux.scenario = { erreur: { statut: 429, message: "Le plafond mensuel de l'assistant est atteint." } };
@@ -1604,7 +1622,7 @@ async function sectionEcran() {
     flux.stockage = 'appareil';
     const lent = await monter();
     await lent.page.emulateMedia({ reducedMotion: 'reduce' });
-    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="lu-scene"><div class="lu-vue" data-t="1"><div class="lu-dessin"><div class="lu-barres"><i style="--h:1;--rang:.5"></i></div></div></div></div><p class="ast-pense"><span class="ast-tourne"></span></p><div class="ast-fond"><i></i></div>'; document.body.appendChild(d); const v = ['.lu-barres i', '.lu-vue', '.ast-tourne', '.ast-fond i'].map((s) => getComputedStyle(d.querySelector(s)).animationName).join(','); d.remove(); return v; });
+    const reduit = await lent.page.evaluate(() => { const d = document.createElement('div'); d.className = 'ast'; d.innerHTML = '<div class="ast-rech est-cours"><ol class="ast-rech-liste"><li class="lu is-fini" data-t="1"><span class="lu-puce est-barres"><i style="--h:1;--i:1"></i></span></li></ol></div><p class="ast-pense"><span class="ast-orbe"><i></i><i></i><i></i></span></p><div class="ast-fond"><i></i></div>'; document.body.appendChild(d); const v = ['.lu-puce i', '.ast-orbe', '.ast-orbe i', '.ast-fond i'].map((s) => getComputedStyle(d.querySelector(s)).animationName).join(','); d.remove(); return v; });
     ok('[E] mouvement reduit : la recherche ne bouge plus', reduit === 'none,none,none,none', reduit);
     await lent.ctx.close();
 
@@ -1678,6 +1696,17 @@ async function sectionEcran() {
     await tel.page.locator('[data-ast-voile]').click({ position: { x: 370, y: 300 } });
     await FX.repos(tel.page, 320);
     ok('[E] telephone : le voile la referme', (await tel.page.evaluate(() => document.querySelector('.ast-liste').getBoundingClientRect().right)) <= 0);
+    // Un resultat long passe a la ligne dans sa colonne : il ne s ecrit pas sur le nom de sa source
+    // (vu le 10/11 sur « 8 réservations, 71 joueurs, 1 098 €, 13 à venir »).
+    flux.scenario = { evenements: [['debut', { modele: 'Haiku 5.5', centres: [] }], ['etape', { id: 'long', etat: 'cours', cleSource: 'reservations', nomSource: 'Réservations', phrase: 'Je regarde le bilan des trois derniers mois' }], ['source', SRC], ['etape', { id: 'long', etat: 'fini', source: 'S1', trouve: '8 réservations, 71 joueurs, 1 098 €, 13 à venir', lues: 21, duree: 20 }], { attendre: true }, ['texte', { delta: 'Vu [S1].' }], finDe('Vu [S1].')] };
+    await tel.page.locator(champ).fill('Un bilan ?');
+    await tel.page.locator(champ).press('Enter');
+    await tel.page.waitForFunction(() => { const a = [...document.querySelectorAll('.ast-r')].pop(); return a && a.querySelector('.lu.is-fini .lu-res'); }, null, { timeout: 5000 }).catch(() => {});
+    await FX.repos(tel.page, 300);
+    const t3 = await tel.page.evaluate(() => { const l = [...document.querySelectorAll('.ast-r')].pop().querySelector('.lu.is-fini'); if (!l) return null; const s = l.querySelector('.lu-source').getBoundingClientRect(); const r = l.querySelector('.lu-res').getBoundingClientRect(); return { source: [Math.round(s.left), Math.round(s.right)], resultat: [Math.round(r.left), Math.round(r.right)], memeLigne: r.top < s.bottom && r.bottom > s.top, texte: l.querySelector('.lu-res').textContent.trim(), debordX: document.documentElement.scrollWidth - innerWidth }; });
+    ok('[E] telephone : un resultat long ne s ecrit pas sur le nom de sa source', Boolean(t3) && /13 à venir/.test(t3.texte) && (!t3.memeLigne || t3.resultat[0] >= t3.source[1]) && t3.debordX <= 0, JSON.stringify(t3));
+    await relacher(flux);
+    await finie(tel.page, 2);
     ok('[E] telephone : aucune erreur JavaScript', tel.erreurs.length === 0, tel.erreurs.slice(0, 3).join(' | '));
     await tel.ctx.close();
   } finally {
@@ -1723,6 +1752,7 @@ async function sectionEcran() {
     if (joue('M')) await sectionM();
     if (joue('R')) await sectionR();
     if (joue('O')) await require('./assistant-check-outils').sectionOutils({ ok, poser, question, pas, fin, outilP, resultatsOutils, contenu, etat, reinitialiser, sessionDe, DIRECTION, SANS_ARGENT, MARKETING_SEUL, OCT, db, staffAuth });
+    if (joue('D')) await require('./assistant-check-dossier').sectionDossier({ ok, poser, question, pas, fin, outilP, resultatsOutils, contenu, etat, reinitialiser, sessionDe, DIRECTION, SANS_CLIENTS, OCT, P, db });
     if (joue('E')) await sectionEcran();
   } finally {
     serveur.close();

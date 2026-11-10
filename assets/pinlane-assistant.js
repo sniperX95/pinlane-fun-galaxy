@@ -112,7 +112,7 @@
   }
 
   // Les lignes lues pendant la recherche nomment des clients : elles ne quittent pas la session.
-  const messagePourStockage = (m, i, liste) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined })) : m.etapes, sources: (m.sources || []).map((s) => ({ ...s, sections: A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections : undefined, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
+  const messagePourStockage = (m, i, liste) => (m.role === 'user' ? { role: 'user', texte: m.texte } : { ...m, correction: undefined, etapes: Array.isArray(m.etapes) ? m.etapes.map((e) => ({ ...e, extraits: undefined, lecture: A.stockage === 'serveur' ? e.lecture : undefined })) : m.etapes, repris: Array.isArray(m.repris) ? m.repris.map((r) => ({ ...r, lecture: A.stockage === 'serveur' ? r.lecture : undefined })) : [], sources: (m.sources || []).map((s) => ({ ...s, sections: A.stockage === 'serveur' && i >= liste.length - DETAILS_GARDES ? s.sections : undefined, lignes: s.lignes.slice(0, LIGNES_GARDEES), coupe: s.coupe || s.lignes.length > LIGNES_GARDEES })) });
 
   function versStockage(attente) {
     const appareil = A.stockage !== 'serveur';
@@ -318,8 +318,10 @@
         const motif = puce.test(l) ? puce : numero;
         const balise = motif === puce ? 'ul' : 'ol';
         const items = [];
-        while (i < lignes.length && motif.test(lignes[i])) { items.push(lignes[i].replace(motif, '')); i += 1; }
-        html += `<${balise}>${items.map((x) => `<li>${enLigne(x, m)}</li>`).join('')}</${balise}>`;
+        // Une liste numerotee coupee par une ligne vide ou par des puces garde ses numeros : chaque
+        // point porte celui que le modele a ecrit, au lieu de repartir de 1.
+        while (i < lignes.length && motif.test(lignes[i])) { items.push({ texte: lignes[i].replace(motif, ''), rang: motif === numero ? Number(/\d+/.exec(lignes[i])[0]) : 0 }); i += 1; }
+        html += `<${balise}>${items.map((x) => `<li${x.rang ? ` value="${x.rang}"` : ''}>${enLigne(x.texte, m)}</li>`).join('')}</${balise}>`;
         continue;
       }
       const paragraphe = [l];
@@ -373,23 +375,14 @@
   const isoVersMs = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
   const msVersIso = (ms) => new Date(ms).toISOString().slice(0, 10);
   const phraseFinie = (p) => { const t = String(p || '').replace(/^(?:Je\s+(?!vous\b|me\b|ne\b|n['’])\S+\s+|J['’]\S+\s+)/i, ''); return t.charAt(0).toUpperCase() + t.slice(1); };
-  // Un dessin reste au moins VUE_MIN a l ecran. Le texte le laisse finir de se remplir, jamais plus
-  // de ATTENTE_TEXTE apres son arrivee.
-  const VUE_MIN = 700;
-  const ATTENTE_TEXTE = 1600;
-  // Le seul signe de travail de la page : un petit cercle qui tourne, sans phrase toute faite.
-  const SIGNE = '<span class="ast-tourne" aria-hidden="true"></span>';
-  // Les vraies lignes lues passent sous le dessin, trois a la fois, huit au plus par lecture.
-  const LIGNES_DU_FIL = 3;
-  const LIGNES_JOUEES = 8;
-  const HAUTEUR_LIGNE = 22;
-  const filsDeLecture = new WeakMap();
-  function ajouterAuFil(e, lignes) {
-    if (!Array.isArray(lignes) || !lignes.length) return;
-    const fil = filsDeLecture.get(e) || [];
-    lignes.forEach((l) => { if (fil.length < 240) fil.push(l); });
-    filsDeLecture.set(e, fil);
-  }
+  // LE SEUL SIGNE DE TRAVAIL DE LA PAGE : une goutte de lumiere bleue qui tourne sur elle-meme et
+  // respire, sans phrase toute faite. Ansar, 2026-11-10 : « les rond qui tourne pour attednre une
+  // reponse trop moche ». Elle remplace le cercle de chargement partout, a trois tailles.
+  const SIGNE = '<span class="ast-orbe" aria-hidden="true"><i></i><i></i><i></i></span>';
+  // Une lecture reste « en cours » au moins ce temps a l ecran, puis rend son resultat : les lectures
+  // lancees ensemble finissent l une apres l autre, dans l ordre, au lieu de toutes d un coup.
+  const LECTURE_VUE_MIN = 420;
+  const LECTURE_DECALAGE = 110;
 
   // Le mois en barres : une par jour, a la hauteur de ses vraies reservations. Au-dela de deux mois
   // les jours se regroupent, la periode entiere reste visible.
@@ -807,6 +800,91 @@
     return e.plage ? htmlPeriode(e) : '';
   }
 
+  // ---- LA PUCE D UNE LECTURE -------------------------------------------------------
+  // Ansar, 2026-11-10 : « les animations la pour chaque recherche cest tout le temps les meme et
+  // elles sont super cheap [...] surtout que ça change danimation c terrible [...] surtout le scan ».
+  // La boite grise ou les dessins se remplacaient toutes les secondes et demie n existe plus. Chaque
+  // lecture garde sa ligne, et au bout de la ligne un tout petit dessin fait de SES nombres : une
+  // courbe pour une suite de dates, des barres pour une semaine ou un classement, une barre en parts
+  // pour une repartition, des points pour une liste. Deux lectures ne se ressemblent que si leurs
+  // donnees se ressemblent. Aucun texte dans la puce, donc aucun nom.
+  const PUCE_BARRES = 14;
+  const PUCE_POINTS = 28;
+  function serieDeSource(s) {
+    const tables = [...(s.sections || []), { colonnes: s.colonnes || [], lignes: s.lignes || [] }];
+    for (const t of tables) {
+      const lignes = t.lignes || [];
+      const colonnes = t.colonnes || [];
+      if (lignes.length < 2) continue;
+      const cles = colonnes.map((c) => c.cle);
+      // Une fiche « ligne, valeur » range cote a cote des nombres sans rapport : pas de dessin.
+      if (cles.includes('ligne') && cles.includes('valeur')) continue;
+      const numeriques = colonnes.filter((c) => !['texte', 'client', 'source'].includes(c.type) && lignes.filter((l) => typeof l[c.cle] === 'number').length >= 2);
+      if (!numeriques.length) continue;
+      const mesure = numeriques.find((c) => /^(reservations|groupes|joueurs|visites|clients|nombre|n|chiffre)$/.test(c.cle)) || numeriques[0];
+      const nom = colonnes.find((c) => lignes.every((l) => typeof l[c.cle] === 'string' && l[c.cle]));
+      return { noms: lignes.map((l) => (nom ? String(l[nom.cle]) : '')), valeurs: lignes.map((l) => Math.max(0, enNombre(l[mesure.cle]) || 0)) };
+    }
+    return null;
+  }
+  // Trop de valeurs pour la place : on les regroupe par paquets voisins, l allure reste.
+  function resserrer(valeurs, max) {
+    if (valeurs.length <= max) return valeurs;
+    const pas = valeurs.length / max;
+    return Array.from({ length: max }, (_, i) => { const lot = valeurs.slice(Math.floor(i * pas), Math.max(Math.floor(i * pas) + 1, Math.floor((i + 1) * pas))); return lot.reduce((a, b) => a + b, 0) / lot.length; });
+  }
+  function puceDe(s) {
+    if (!s || s.outil === 'calculer') return '';
+    const serie = serieDeSource(s);
+    if (!serie) {
+      const n = Math.min(10, (s.lignes || []).length);
+      return n >= 2 ? `<span class="lu-puce est-points" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</span>` : '';
+    }
+    const { noms } = serie;
+    let { valeurs } = serie;
+    if (!valeurs.some((v) => v > 0)) return '';
+    const dans = (v, max) => (max > 0 ? v / max : 0).toFixed(3);
+    const temps = noms.every((n) => estIso(n) || /^\d{4}-\d{2}$/.test(n) || /^\d{1,2}\s?[:h]/.test(n));
+    const semaine = noms.every((n) => JOURS_DANS_L_ORDRE.includes(n.toLowerCase()));
+    if (temps && valeurs.length >= 8) {
+      const v = resserrer(valeurs, PUCE_POINTS);
+      const max = Math.max(...v);
+      const x = (i) => ((i / (v.length - 1)) * 56).toFixed(1);
+      const y = (val) => (15 - (max > 0 ? val / max : 0) * 13).toFixed(1);
+      const trait = v.map((val, i) => `${i ? 'L' : 'M'}${x(i)} ${y(val)}`).join(' ');
+      return `<svg class="lu-puce est-courbe" viewBox="0 0 56 16" width="56" height="16" aria-hidden="true"><path class="lu-puce-aire" d="${trait} L56 16 L0 16 Z"/><path class="lu-puce-trait" d="${trait}" pathLength="100"/></svg>`;
+    }
+    if (semaine) {
+      const parJour = new Map(noms.map((n, i) => [n.toLowerCase(), valeurs[i]]));
+      valeurs = JOURS_DANS_L_ORDRE.map((j) => parJour.get(j) || 0);
+    } else if (!temps) valeurs = [...valeurs].sort((a, b) => b - a);
+    if (!temps && !semaine && valeurs.length <= 6) {
+      const total = valeurs.reduce((a, b) => a + b, 0);
+      return `<span class="lu-puce est-parts" aria-hidden="true">${valeurs.filter((v) => v > 0).slice(0, 6).map((v, i) => `<i style="--p:${dans(v, total)};--i:${i}"></i>`).join('')}</span>`;
+    }
+    const v = resserrer(valeurs, PUCE_BARRES);
+    const max = Math.max(...v);
+    return `<span class="lu-puce est-barres" aria-hidden="true">${v.map((val, i) => `<i style="--h:${dans(val, max)};--i:${i}"></i>`).join('')}</span>`;
+  }
+
+  // Ce qui a deja ete lu plus tot dans la conversation et vient d etre refait en silence par le
+  // serveur : une phrase, pas de recherche rejouee. Ansar, 2026-11-10 : « quand c deja analysé pas
+  // besoin de reanalysé sauf si ya eu changement ».
+  const enListe = (noms) => (noms.length > 1 ? `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}` : noms[0] || '');
+  function htmlRepris(m) {
+    // Seulement une fois la reponse finie, et seulement pour ce qu elle cite : un bonjour ou une
+    // question sur l assistant n annonce aucune lecture, meme reprise.
+    if (m.statut === 'cours') return '';
+    const cites = new Set((String(m.texte || '').match(/\[S\d+\]/g) || []).map((c) => c.slice(1, -1)));
+    const repris = (m.repris || []).filter((r) => cites.has(r.source));
+    if (!repris.length) return '';
+    const noms = [...new Set(repris.map((r) => r.nomSource).filter(Boolean))];
+    const bouges = [...new Set(repris.filter((r) => r.change === true).map((r) => r.nomSource).filter(Boolean))];
+    const connus = repris.every((r) => r.change === true || r.change === false);
+    const suite = bouges.length ? ` ${enListe(bouges)} ${bouges.length > 1 ? 'ont' : 'a'} changé depuis, je prends les nouveaux chiffres.` : (connus ? " Rien n'a changé depuis." : '');
+    return `<p class="ast-repris" data-ast-repris><i class="lu-point" aria-hidden="true"></i><span>Je repars de ce que j'ai déjà lu dans ${esc(enListe(noms) || 'vos données')}.${esc(suite)}</span></p>`;
+  }
+
   // Une lecture relue apres coup : sa ligne, et dessous son dessin, ses lignes et le lien vers sa donnee.
   function htmlLigneEtape(e, ouverte, m) {
     if (e.note) return `<li class="lu is-note"><p>${esc(e.libelle)}</p></li>`;
@@ -821,6 +899,7 @@
         <span class="lu-marque" aria-hidden="true"><i class="lu-point"></i></span>
         <span class="lu-source">${esc(e.nomSource || 'Lecture')}</span>
         <span class="lu-phrase">${esc(phraseFinie(e.phrase || e.libelle || ''))}${etat === 'echec' ? ', échec' : ''}</span>
+        <span class="lu-dessine">${puceDe(source)}</span>
         <span class="lu-res">${esc(e.trouve || mesureDe(e))}</span>
         ${ouvrable ? icone('chevron') : ''}
       </button>
@@ -832,177 +911,89 @@
     </li>`;
   }
 
-  // La meme ligne pendant qu elle se lit : le cercle de travail, la source, la phrase au present et
-  // ce que le serveur a deja parcouru.
-  const htmlLigneEnCours = (e) => `<li class="lu is-cours" data-etape="${esc(e.id)}" data-t="${teinte(e.cleSource)}"><div class="lu-tete"><span class="lu-marque" aria-hidden="true">${SIGNE}</span><span class="lu-source" data-lu-source>${esc(e.nomSource || 'Lecture')}</span><span class="lu-phrase" data-lu-phrase>${esc(e.phrase || e.libelle || '')}</span><span class="lu-res" data-lu-res></span></div></li>`;
+  // La meme ligne pendant qu elle se lit : un anneau a la couleur de sa source, la source, la phrase
+  // au present et ce que le serveur a deja parcouru. Le signe de travail, lui, est sous la liste.
+  const htmlLigneEnCours = (e) => `<li class="lu is-cours" data-etape="${esc(e.id)}" data-t="${teinte(e.cleSource)}"><div class="lu-tete"><span class="lu-marque" aria-hidden="true"><i class="lu-point est-creux"></i></span><span class="lu-source" data-lu-source>${esc(e.nomSource || 'Lecture')}</span><span class="lu-phrase" data-lu-phrase>${esc(e.phrase || e.libelle || '')}</span><span class="lu-dessine" data-lu-dessine></span><span class="lu-res" data-lu-res></span></div></li>`;
 
   const htmlTeteRecherche = (m) => `<span class="ast-rech-titre">${esc(bilanRecherche(m))}</span>${icone('chevron')}`;
 
   function htmlRecherche(m) {
     const etapes = m.etapes || [];
-    if (!etapes.length) return '';
+    const repris = htmlRepris(m);
+    if (!etapes.length) return repris;
     const enCours = m.statut === 'cours' && !m.texte;
     const ouvert = enCours || Boolean(m.etapesOuvertes);
-    return `<section class="ast-rech${enCours ? ' est-cours' : ''}${ouvert ? ' est-ouvert' : ''}" data-ast-recherche aria-busy="${enCours ? 'true' : 'false'}">
+    return `${repris}<section class="ast-rech${enCours ? ' est-cours' : ''}${ouvert ? ' est-ouvert' : ''}" data-ast-recherche aria-busy="${enCours ? 'true' : 'false'}">
       <button type="button" class="ast-rech-tete" data-ast-etapes aria-expanded="${ouvert ? 'true' : 'false'}">${enCours ? '' : htmlTeteRecherche(m)}</button>
-      <div class="lu-plis"><ol class="ast-rech-liste">${enCours ? '' : etapes.map((e) => htmlLigneEtape(e, Boolean(e.id && (m.etapesDeroulees || {})[e.id]), m)).join('')}</ol></div>
-      ${enCours ? '<div class="lu-scene" data-lu-scene aria-hidden="true"></div><p class="ast-lu-sr" role="status" data-lect-dit></p>' : ''}
+      <div class="lu-plis"><ol class="ast-rech-liste"${enCours ? ' data-lu-direct' : ''}>${enCours ? '' : etapes.map((e) => htmlLigneEtape(e, Boolean(e.id && (m.etapesDeroulees || {})[e.id]), m)).join('')}</ol></div>
+      ${enCours ? '<p class="ast-lu-sr" role="status" data-lect-dit></p>' : ''}
     </section>`;
   }
 
-  // Le fil : les vraies lignes lues montent une a une, les trois dernieres restent visibles.
-  function creerFil(hote, apparu) {
-    const int = hote.firstElementChild;
-    let n = 0;
-    const rangs = [];
-    return {
-      pousser(x) {
-        if (hote.hidden) { hote.hidden = false; apparu(); }
-        const p = document.createElement('p');
-        p.innerHTML = `<time>${esc(x.t)}</time><span>${esc(x.d)}</span>`;
-        p.style.transform = `translateY(${n * HAUTEUR_LIGNE}px)`;
-        int.appendChild(p);
-        rangs.push(p);
-        n += 1;
-        int.style.transform = `translateY(${-Math.max(0, n - LIGNES_DU_FIL) * HAUTEUR_LIGNE}px)`;
-        rangs.forEach((r) => r.classList.remove('est-lue'));
-        p.classList.add('est-lue');
-        while (rangs.length > LIGNES_DU_FIL + 2) rangs.shift().remove();
-      },
-    };
-  }
-
-  // LA LECTURE EN DIRECT. Chaque lecture ajoute sa ligne sous les precedentes, qui gardent leur
-  // resultat. Dessous, une seule scene : le dessin de la lecture du moment s y remplit piece apres
-  // piece, dans l ordre de ses donnees, et ses vraies lignes passent dessous. La scene ne retrecit
-  // jamais pendant la lecture : rien ne remonte, rien ne saute.
+  // LA LECTURE EN DIRECT. Chaque lecture ajoute sa ligne sous les precedentes des que le serveur
+  // l annonce. Elle montre ce qui est deja parcouru, puis rend son resultat et sa puce, et ne bouge
+  // plus. Rien ne se remplace, rien ne remonte : la liste ne fait que grandir. Le signe de travail
+  // reste sous la liste tant que la reponse n a pas commence.
   function demarrerLecture(bloc, m) {
     const liste = bloc.querySelector('.ast-rech-liste');
-    const scene = bloc.querySelector('[data-lu-scene]');
     const dit = bloc.querySelector('[data-lect-dit]');
-    if (!liste || !scene || !dit) return null;
-    const S = { i: -1, e: null, li: null, t0: 0, vue: null, fil: null, rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, hauteur: 0, ecrit: '', finies: [], vus: new Map(), vivant: true, minuteur: 0, relance: 0 };
+    if (!liste || !dit) return null;
+    const S = { lignes: new Map(), vivant: true, minuteur: 0 };
     const lectures = () => (m.etapes || []).filter((e) => !e.note);
-    const pret = (e, now) => { if (!S.vus.has(e)) S.vus.set(e, now); return Boolean(e.lues) || e.etat !== 'cours' || now - S.vus.get(e) > 420; };
-    const champ = (nom) => S.li.querySelector(`[data-lu-${nom}]`);
-    // Plus il reste de lectures a montrer, plus chacune passe vite.
-    const tenueDe = (restent) => (restent >= 4 ? 1300 : (restent === 3 ? 1500 : 1700));
+    const resultatDe = (e) => (e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e)));
 
-    // La scene garde la plus grande hauteur vue : un dessin plus court ne la fait pas remonter.
-    function tenir() {
-      const hauteur = S.vue ? S.vue.offsetHeight : 0;
-      if (hauteur > S.hauteur) { S.hauteur = hauteur; scene.style.height = `${hauteur}px`; }
-    }
-
-    function finirLigne() {
-      const { li, e } = S;
-      if (!li || !li.classList.contains('is-cours')) return;
-      li.classList.remove('is-cours');
-      li.classList.add(e.etat === 'echec' ? 'is-echec' : 'is-fini');
-      li.querySelector('.lu-marque').innerHTML = '<i class="lu-point"></i>';
-      ['source', 'phrase', 'res'].forEach((nom) => li.querySelector(`[data-lu-${nom}]`).removeAttribute(`data-lu-${nom}`));
-      li.querySelector('.lu-phrase').textContent = `${phraseFinie(e.phrase || e.libelle || '')}${e.etat === 'echec' ? ', échec' : ''}`;
-      li.querySelector('.lu-res').textContent = e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e));
-      S.finies.push({ li, e, fait: e.etat !== 'cours' });
-    }
-
-    // Une nouvelle lecture : sa ligne s ajoute sous les autres, et la scene tourne la page.
-    function entrer(e, now) {
-      finirLigne();
+    // Une nouvelle lecture : sa ligne s ajoute sous les autres.
+    function entrer(e, now, rang) {
       const moule = document.createElement('ol');
       moule.innerHTML = htmlLigneEnCours(e);
       const li = moule.firstElementChild;
       liste.appendChild(li);
       if (!sansMouvement()) li.animate([{ height: '0px', opacity: 0 }, { height: `${li.offsetHeight}px`, opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.165, .84, .44, 1)' });
-      const ancienne = S.vue;
-      if (ancienne) { ancienne.classList.add('est-sortie'); setTimeout(() => ancienne.remove(), 200); }
-      const vue = document.createElement('div');
-      vue.className = 'lu-vue';
-      vue.dataset.t = String(teinte(e.cleSource));
-      vue.innerHTML = '<div class="lu-vue-dessin"></div><div class="lu-fil" hidden><div class="lu-fil-int"></div></div>';
-      scene.appendChild(vue);
-      Object.assign(S, { e, li, t0: now, vue, fil: creerFil(vue.querySelector('.lu-fil'), () => { vue.classList.add('est-pleine'); tenir(); }), rang: -1, html: '', vueDepuis: 0, remplie: 0, pose: false, attendu: false, ecrit: '' });
+      // Les lectures arrivees ensemble rendent leur resultat l une apres l autre.
+      S.lignes.set(e, { li, vue: now, finDes: now + LECTURE_VUE_MIN + rang * LECTURE_DECALAGE, ecrit: '', fini: false });
       dit.textContent = e.phrase || e.libelle || '';
     }
 
-    // Le dessin de la lecture se pose une fois, et ses pieces arrivent l une apres l autre pendant
-    // la lecture, chacune en un instant, sans rebond.
-    function poser(html, restent) {
-      if (!html || html === S.html) return;
-      S.html = html;
-      const vue = S.vue;
-      const zone = vue.querySelector('.lu-vue-dessin');
-      zone.innerHTML = html;
-      vue.classList.add('est-pleine');
-      vue.classList.toggle('sans-fil', Boolean(zone.querySelector('.sans-fil')));
-      // L ordre des donnees devient l ordre d arrivee : chaque piece garde le sien.
-      vue.querySelectorAll('[data-o]').forEach((x) => x.style.setProperty('--rang', x.dataset.o));
-      const etale = sansMouvement() ? 0 : Math.max(500, Math.min(1100, tenueDe(restent) - 500));
-      vue.style.setProperty('--etale', `${etale}ms`);
-      S.vueDepuis = performance.now();
-      S.remplie = etale + 450;
-      tenir();
+    // La lecture est finie : l anneau se remplit, la phrase passe au passe, le resultat et la puce
+    // se posent. La ligne ne changera plus.
+    function finir(e, L) {
+      const { li } = L;
+      L.fini = true;
+      li.classList.remove('is-cours');
+      li.classList.add(e.etat === 'echec' ? 'is-echec' : 'is-fini');
+      li.querySelector('.lu-point').classList.remove('est-creux');
+      ['source', 'phrase', 'res', 'dessine'].forEach((nom) => li.querySelector(`[data-lu-${nom}]`).removeAttribute(`data-lu-${nom}`));
+      li.querySelector('.lu-phrase').textContent = `${phraseFinie(e.phrase || e.libelle || '')}${e.etat === 'echec' ? ', échec' : ''}`;
+      li.querySelector('.lu-res').textContent = resultatDe(e);
+      const source = e.source ? (m.sources || []).find((s) => s.id === e.source) : null;
+      li.querySelector('.lu-dessine').innerHTML = puceDe(source);
     }
 
     function battre() {
       if (!S.vivant || !bloc.isConnected) return;
       const now = performance.now();
-      const toutes = lectures();
-      if (S.i < 0 && toutes.length && pret(toutes[0], now)) { S.i = 0; entrer(toutes[0], now); }
-      const e = S.e;
-      if (e) {
-        const restent = toutes.length - S.i;
-        // Le resultat s ecrit tel que le serveur le donne : aucun nombre ne defile.
-        const resultat = e.etat === 'cours' ? (e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '') : (e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e)));
-        if (resultat !== S.ecrit) { S.ecrit = resultat; champ('res').textContent = resultat; }
-        S.li.classList.toggle('is-echec', e.etat === 'echec');
-        const source = e.source ? (m.sources || []).find((s) => s.id === e.source) : null;
-        if (!S.pose && (source || e.etat !== 'cours')) { S.pose = true; poser(htmlDessin(e, source), restent); }
-        else if (!S.pose && !S.attendu && now - S.t0 > 1600) { S.attendu = true; poser(htmlDessin(e, null), restent); }
-        // Les vraies lignes passent a un rythme qu on peut suivre, prises sur toute la lecture.
-        const lignes = filsDeLecture.get(e) || [];
-        if (lignes.length && !S.vue.classList.contains('sans-fil')) {
-          const n = Math.min(lignes.length, LIGNES_JOUEES);
-          const avance = sansMouvement() ? 1 : Math.min(1, (now - S.t0) / (tenueDe(restent) - 300));
-          const voulu = Math.min(n - 1, Math.floor(avance * n));
-          while (S.rang < voulu) { S.rang += 1; S.fil.pousser(lignes[Math.floor((S.rang / n) * lignes.length)]); }
-        }
-        // Une ligne deja passee prend son resultat final quand le serveur le donne.
-        S.finies.forEach((f) => {
-          if (f.fait || f.e.etat === 'cours') return;
-          f.fait = true;
-          f.li.querySelector('.lu-res').textContent = f.e.etat === 'echec' ? 'échec' : (f.e.trouve || mesureDe(f.e));
-          f.li.classList.toggle('is-echec', f.e.etat === 'echec');
-        });
-        const suivante = toutes[S.i + 1];
-        const vu = !S.vueDepuis || now - S.vueDepuis >= S.remplie;
-        if (suivante && pret(suivante, now) && now - S.t0 >= tenueDe(restent) && vu) { S.i += 1; entrer(suivante, now); }
-      }
+      let nouvelles = 0;
+      lectures().forEach((e) => {
+        let L = S.lignes.get(e);
+        if (!L) { entrer(e, now, nouvelles); nouvelles += 1; L = S.lignes.get(e); }
+        if (L.fini) return;
+        if (e.etat !== 'cours' && (sansMouvement() || now >= L.finDes)) { finir(e, L); return; }
+        // Le compte s ecrit tel que le serveur le donne : aucun nombre ne defile.
+        const compte = e.etat === 'cours' && e.lues ? compteLu(Number(e.lues), Number(e.total) || 0) : '';
+        if (compte !== L.ecrit) { L.ecrit = compte; L.li.querySelector('.lu-res').textContent = compte; }
+      });
       S.minuteur = setTimeout(battre, 60);
     }
     battre();
-    S.arreter = () => { S.vivant = false; clearTimeout(S.minuteur); clearTimeout(S.relance); };
+    S.arreter = () => { S.vivant = false; clearTimeout(S.minuteur); };
     return S;
-  }
-
-  // Le texte laisse le dessin du moment finir de se remplir, au plus ATTENTE_TEXTE apres son arrivee.
-  function sceneRetient(haut, m) {
-    if (m.statut === 'cours' ? !m.texte : m.statut !== 'fini') return false;
-    const bloc = haut.querySelector('[data-ast-recherche]');
-    const S = bloc && scenes.get(bloc);
-    if (!S || !S.vivant || !S.vueDepuis) return false;
-    const reste = Math.min(ATTENTE_TEXTE, Math.max(VUE_MIN, S.remplie)) - (performance.now() - S.vueDepuis);
-    if (reste <= 0) return false;
-    clearTimeout(S.relance);
-    S.relance = setTimeout(() => demanderPeinture(m), reste + 20);
-    return true;
   }
 
   function majRecherche(hote, m) {
     let bloc = hote.querySelector('[data-ast-recherche]');
     // Une recherche deja pliee qui reprend (le texte a ete retire) redevient une lecture en direct.
-    if (!bloc || !bloc.querySelector('[data-lu-scene]')) {
-      if (!(m.etapes || []).length) return;
+    if (!bloc || !bloc.querySelector('[data-lu-direct]')) {
+      if (!(m.etapes || []).length) { const repris = htmlRepris(m); if (repris && !hote.querySelector('[data-ast-repris]')) hote.innerHTML = repris; return; }
       hote.innerHTML = htmlRecherche(m);
       bloc = hote.querySelector('[data-ast-recherche]');
       if (!bloc) return;
@@ -1010,9 +1001,9 @@
     if (!scenes.get(bloc)) { const S = demarrerLecture(bloc, m); if (S) scenes.set(bloc, S); }
   }
 
-  // La reponse commence : les lignes et la scene s effacent ensemble, puis le bilan et le texte prennent
-  // leur place. La hauteur de la reponse reste tenue, rien ne redescend au-dessus pendant que le texte
-  // arrive. Renvoie vrai tant que le pli est en cours.
+  // La reponse commence : la liste s efface, puis le bilan et le texte prennent sa place. La hauteur
+  // de la reponse reste tenue, rien ne redescend au-dessus pendant que le texte arrive. Renvoie vrai
+  // tant que le pli est en cours.
   function replierLecture(hote, m, article) {
     const bloc = hote.querySelector('[data-ast-recherche]');
     const S = bloc && scenes.get(bloc);
@@ -1045,7 +1036,7 @@
   }
 
   function htmlTexte(m) {
-    if (m.statut === 'cours' && !m.texte) return (m.etapes || []).length ? '' : `<p class="ast-pense" role="status" aria-label="Réponse en préparation">${SIGNE}</p>`;
+    if (m.statut === 'cours' && !m.texte) return `<p class="ast-pense${(m.etapes || []).length ? ' est-sous-la-liste' : ''}" role="status" aria-label="Réponse en préparation">${SIGNE}</p>`;
     // Pendant l ecriture, un renvoi coupe en deux ne s affiche pas a moitie.
     const texte = m.statut === 'cours' ? fermerLeGras(m.texte.replace(/\[[SGF]?\d*$/, '')) : marquer(m.texte, m.preuves);
     let html = markdown(texte, m);
@@ -1084,14 +1075,15 @@
   }
 
   function htmlPied(m, dernier) {
-    if (m.statut === 'cours') return m.verification ? '<p class="ast-verif ast-travail" role="status">Vérification des chiffres</p>' : '';
+    if (m.statut === 'cours') return m.verification ? `<p class="ast-verif ast-travail" role="status">${SIGNE}Vérification des chiffres</p>` : '';
     if (m.statut === 'erreur') return `<p class="ast-erreur" role="alert">${esc(m.erreur)}</p><div class="ast-pied"><button type="button" class="ast-pill" data-ast-refaire>Réessayer</button></div>`;
     const nb = (m.sources || []).length;
     const sans = (m.preuves || []).length && m.verite && Array.isArray(m.verite.chiffresSansSource) ? m.verite.chiffresSansSource : [];
     const alerte = sans.length
-      ? `<p class="ast-alerte">${sans.length > 1 ? `${sans.length} chiffres n'ont pas été retrouvés dans les données lues` : "Un chiffre n'a pas été retrouvé dans les données lues"}, ${esc(sans.join(', '))}. Vérifiez-les avant de vous en servir.</p>`
+      ? `<p class="ast-alerte">${sans.length > 1 ? `Je n'ai pas retrouvé ${sans.length} chiffres dans vos données (${esc(sans.join(', '))}). Ils sont soulignés en orange, ne vous en servez pas sans les vérifier.` : `Je n'ai pas retrouvé un chiffre dans vos données (${esc(sans[0])}). Il est souligné en orange, ne vous en servez pas sans le vérifier.`}</p>`
       : '';
-    return `${m.statut === 'arrete' ? '<p class="ast-arrete">Réponse arrêtée.</p>' : ''}${alerte}${htmlPropositions(m)}
+    const retire = m.retires ? `<p class="ast-retire">${m.retires > 1 ? `J'ai repris ${m.retires} chiffres que je ne retrouvais pas dans vos données avant de vous répondre.` : "J'ai repris un chiffre que je ne retrouvais pas dans vos données avant de vous répondre."}</p>` : '';
+    return `${m.statut === 'arrete' ? '<p class="ast-arrete">Réponse arrêtée.</p>' : ''}${alerte}${retire}${htmlPropositions(m)}
     <div class="ast-pied">
       <button type="button" class="ast-icone" data-ast-copier title="Copier" aria-label="Copier la réponse">${icone('copier')}</button>
       ${dernier ? `<button type="button" class="ast-icone" data-ast-refaire title="Refaire" aria-label="Refaire la réponse">${icone('refaire')}</button>` : ''}
@@ -1171,7 +1163,7 @@
       const phrase = `Que voulez-vous savoir sur ${nomDuCentre()} ?`;
       const salut = hote.querySelector('.ast-salut');
       // L accueil deja la ne rejoue pas son entree.
-      if (c) hote.innerHTML = '<p class="ast-pense ast-travail">Lecture de la conversation</p>';
+      if (c) hote.innerHTML = `<p class="ast-pense ast-travail">${SIGNE}Lecture de la conversation</p>`;
       else if (!salut || salut.textContent !== phrase) hote.innerHTML = `<h1 class="ast-salut">${esc(phrase)}</h1>`;
     } else {
       hote.innerHTML = messages.map((m, i) => htmlMessage(m, i, messages, i >= messages.length - neuf)).join('');
@@ -1205,6 +1197,13 @@
     zone.classList.toggle('est-flux', enCours);
   }
 
+  const dernierHtml = new WeakMap();
+  function poserSiChange(hote, html) {
+    if (dernierHtml.get(hote) === html && hote.firstChild) return;
+    dernierHtml.set(hote, html);
+    hote.innerHTML = html;
+  }
+
   function demanderPeinture(m) {
     if (A.peintureDemandee) return;
     A.peintureDemandee = true;
@@ -1221,15 +1220,15 @@
     const article = dom(`[data-ast-i="${i}"]`);
     if (!article) return;
     const haut = article.querySelector('[data-ast-haut]');
-    // Pendant le pli, ou tant que le dessin du moment n a pas ete vu, rien d autre ne se peint.
-    if (haut.querySelector('[data-pliage]') || sceneRetient(haut, m)) return;
+    // Pendant le pli, rien d autre ne se peint.
+    if (haut.querySelector('[data-pliage]')) return;
     if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);
-    else if (haut.querySelector('[data-lu-scene]')) { if (replierLecture(haut, m, article)) return; }
+    else if (haut.querySelector('[data-lu-direct]')) { if (replierLecture(haut, m, article)) return; }
     else if (m.statut !== 'cours' || !haut.querySelector('[data-ast-recherche]')) haut.innerHTML = htmlRecherche(m);
     const zone = article.querySelector('[data-ast-texte]');
-    zone.innerHTML = htmlTexte(m);
+    poserSiChange(zone, htmlTexte(m));
     marquerFlux(zone, m.statut === 'cours' && Boolean(m.texte));
-    article.querySelector('[data-ast-basdepage]').innerHTML = htmlPied(m, i === c.messages.length - 1);
+    poserSiChange(article.querySelector('[data-ast-basdepage]'), htmlPied(m, i === c.messages.length - 1));
     dessinerGraphiques(article, m);
     majDescendre();
   }
@@ -1388,7 +1387,7 @@
     const S = A.savoir;
     const fermer = `<button type="button" class="ast-icone" data-ast-panneau-fermer aria-label="Fermer">${icone('fermer')}</button>`;
     const tete = `<div class="ast-src-tete"><div><h2>Ce que l'IA a appris</h2><p class="ast-src-detail">Ce que votre équipe lui a appris. Elle s'en sert aussitôt, pour toutes les personnes du centre.</p></div>${fermer}</div>`;
-    if (!S.charge) return `${tete}<p class="ast-pense ast-travail">Lecture</p>`;
+    if (!S.charge) return `${tete}<p class="ast-pense ast-travail">${SIGNE}Lecture</p>`;
     if (!S.disponible) return `${tete}<p class="ast-vide">Le savoir de l'équipe sera actif après la prochaine mise à jour de la base.</p>`;
     const formulaire = `<form class="ast-savoir-form" data-ast-savoir-form>
       <label class="ast-corriger-titre" for="ast-savoir-texte">Apprendre quelque chose à l'IA</label>
@@ -1619,6 +1618,20 @@
       .map((m) => ({ role: m.role, content: m.texte }));
   }
 
+  // Les lectures deja faites avant cette question : l outil et ses reglages, une fois chacune. Le
+  // serveur les refait lui-meme, rien de ce qui est envoye ici n est cru sur parole.
+  function dossierDe(conversation, jusqua) {
+    const vues = new Map();
+    conversation.messages.slice(0, conversation.messages.indexOf(jusqua)).forEach((m) => {
+      if (m.role !== 'assistant' || m.statut === 'erreur') return;
+      [...(m.etapes || []), ...(m.repris || [])].forEach((e) => {
+        if (!e || !e.lecture || !e.lecture.outil) return;
+        vues.set(`${e.lecture.outil} ${JSON.stringify(e.lecture.entree || {})}`, e.lecture);
+      });
+    });
+    return [...vues.values()].slice(-24);
+  }
+
   async function poser(conversation, reponse) {
     const coupure = new AbortController();
     A.flux = coupure;
@@ -1635,7 +1648,7 @@
         credentials: 'same-origin',
         signal: coupure.signal,
         headers: staffAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ centerId: conversation.centerId || centreId(), modele: A.modele, messages: pourLeServeur(conversation, reponse) }),
+        body: JSON.stringify({ centerId: conversation.centerId || centreId(), modele: A.modele, messages: pourLeServeur(conversation, reponse), dossier: dossierDe(conversation, reponse) }),
       });
       if (!/event-stream/.test(envoi.headers.get('content-type') || '')) {
         const corps = await envoi.json().catch(() => ({}));
@@ -1709,13 +1722,13 @@
           if (d.blocs) e.blocs = d.blocs;
           if (Array.isArray(d.extraits) && d.extraits.length) {
             e.extraits = [...(e.extraits || []), ...d.extraits].slice(-8);
-            ajouterAuFil(e, d.extraits);
             e.extraitsVus = (e.extraitsVus || 0) + d.extraits.length;
           }
         }
         break;
       }
       case 'source': m.sources.push(d); break;
+      case 'repris': m.repris = Array.isArray(d.lectures) ? d.lectures.slice(0, 24) : []; break;
       case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
       case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '' }]; break;
@@ -1727,6 +1740,7 @@
         m.verification = false;
         m.modele = d.modele || '';
         m.faitsCites = d.faitsCites || [];
+        m.retires = Number(d.corrige) || 0;
         m.statut = 'fini';
         Object.assign(A.identites, d.identites || {});
         break;
@@ -1753,7 +1767,7 @@
     if (A.root) A.root.querySelectorAll('[data-ast-i]').forEach((a) => { a.style.minHeight = ''; });
     const commence = !c.messages.length;
     c.messages.push({ role: 'user', texte: question });
-    const reponse = { id: uid(), role: 'assistant', texte: '', sources: [], graphiques: [], etapes: [], propositions: [], statut: 'cours' };
+    const reponse = { id: uid(), role: 'assistant', texte: '', sources: [], graphiques: [], etapes: [], repris: [], propositions: [], statut: 'cours' };
     c.messages.push(reponse);
     c.maj = Date.now();
     A.conversations = [c, ...A.conversations.filter((x) => x !== c)];
@@ -1772,7 +1786,7 @@
     if (!c || A.flux) return;
     const derniere = c.messages[c.messages.length - 1];
     if (!derniere || derniere.role !== 'assistant') return;
-    Object.assign(derniere, { id: uid(), texte: '', sources: [], graphiques: [], etapes: [], propositions: [], statut: 'cours', verite: null, erreur: '', modele: '', correction: false, corrige: false, faitsCites: [] });
+    Object.assign(derniere, { id: uid(), texte: '', sources: [], graphiques: [], etapes: [], repris: [], retires: 0, propositions: [], statut: 'cours', verite: null, erreur: '', modele: '', correction: false, corrige: false, faitsCites: [] });
     A.panneau = null;
     peindrePanneau();
     const i = c.messages.length - 1;

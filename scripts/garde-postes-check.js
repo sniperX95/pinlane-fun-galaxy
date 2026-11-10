@@ -516,7 +516,7 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false,
     // de six en parties separees, ce qui tient la-bas et ne tiendrait pas a Libramont.
     const arene = (id, centre, date, debut, joueurs) => ({ id, center_id: centre, date, start_time: `${String(Math.floor(debut / 60)).padStart(2, '0')}:${String(debut % 60).padStart(2, '0')}:00`, duration: 1, type: 'laser', pax: joueurs, formule_id: null, lanes: [], status: 'confirmed',
       ops_plan: { resourceBlocks: [{ resourceType: 'laser_arena', activityId: 'laser_game', start: debut, end: debut + 20, players: joueurs, countIndex: 1 }] } });
-    route(/ops_plan::text like '%laser_arena%'/, () => [arene(501, 'libramont', '2026-11-15', 900, 20), arene(502, 'libramont', '2026-11-15', 900, 15), arene(503, 'libramont', '2026-11-16', 900, 8), arene(504, 'libramont', '2026-11-16', 910, 8),
+    route(/ops_plan::text like '%laser_arena%'/, () => [...(integrite === 'laserCasse' ? [{ id: 599, center_id: 'libramont', date: '2026-11-15', start_time: '15:00:00', duration: 1, type: 'laser', pax: 4, formule_id: null, lanes: [], status: 'confirmed', ops_plan: { resourceBlocks: [null] } }] : []),arene(501, 'libramont', '2026-11-15', 900, 20), arene(502, 'libramont', '2026-11-15', 900, 15), arene(503, 'libramont', '2026-11-16', 900, 8), arene(504, 'libramont', '2026-11-16', 910, 8),
       arene(601, 'gembloux', '2026-11-15', 900, 6), arene(602, 'gembloux', '2026-11-15', 905, 6), arene(603, 'gembloux', '2026-11-15', 910, 6)]);
     // Les fermetures de Libramont : une soiree privatisee le 15/11 de 18:00 a 24:00, la piste 3
     // le 16/11 toute la journee, le bowling le 17/11 de 14:00 a 16:00. Gembloux n en a aucune.
@@ -619,6 +619,14 @@ async function preuvesGarde() {
     BD.routes = [];
     routesDeLaTour({ integrite: true });
     await charger('lib/tour-controle.js').lireProblemes(pool);
+    // UN CALCUL QUI LEVE NE COUCHE PAS LA SECTION (2026-11-10) : un plan au bloc vide fait lever le laser.
+    BD.routes = [];
+    routesDeLaTour({ integrite: 'laserCasse' });
+    const casse = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes;
+    ok(casse.some((p) => p.cle === 'integrite:prix-zero:gembloux') && casse.some((p) => p.cle === 'integrite:fermeture:libramont') && casse.some((p) => p.cle === 'integrite:illisible' && /laser, calcul/.test(p.titre)) && !casse.some((p) => p.cle === 'integrite:laser:libramont'),
+      '[G] integrite : un calcul laser qui leve se dit, et les autres chasseurs parlent quand meme', casse.map((p) => `${p.cle} ${p.titre}`).join(' | '));
+    BD.routes = [];
+    routesDeLaTour({ integrite: true });
     // LA RESERVATION EN LIGNE SUR UNE FERMETURE (2026-11-10).
     const f = problemes.find((p) => p.cle === 'integrite:fermeture:libramont') || {};
     ok(t6b.includes('3 réservations en ligne tombent sur une fermeture à Libramont') && f.gravite === 'attention', '[G] integrite : une reservation en ligne sur une fermeture se dit, sans sonnerie', `${f.gravite} | ${t6b}`);
@@ -881,16 +889,17 @@ async function contrePreuves() {
   });
   const problemesLaser = async () => { remettre(); routesDeLaTour({ integrite: true }); return (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; };
   const laserDeLibramont = async () => (await problemesLaser()).find((p) => p.cle === 'integrite:laser:libramont') || {};
-  await rouge('un laser trop plein ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "      out.push({ cle: `integrite:laser:${centre}`,", vers: "      if (false) out.push({ cle: `integrite:laser:${centre}`," }], async () => (await laserDeLibramont()).gravite === 'attention');
+  await rouge('un laser trop plein ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "        out.push({ cle: `integrite:laser:${centre}`,", vers: "        if (false) out.push({ cle: `integrite:laser:${centre}`," }], async () => (await laserDeLibramont()).gravite === 'attention');
   await rouge('les armes de l arene ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (parties <= max) return;" }], async () => /35 joueurs pour 30 armes/.test((await laserDeLibramont()).detail || ''));
   await rouge('les parties en meme temps ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (joueurs <= armes) return;" }], async () => /^3 départs/.test((await laserDeLibramont()).titre || ''));
   await rouge('chaque centre ne garde plus son arene', [{ fichier: 'lib/tour-controle.js', de: "surchargesLaser(liste, getCenter(centre))", vers: "surchargesLaser(liste, getCenter('libramont'))" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:laser:gembloux'));
-  await rouge('le laser compte avec le fichier, pas avec la console', [{ fichier: 'lib/tour-controle.js', de: "    try { await refreshCenterOverrides(pool, { force: true }); } catch (error) { /* socle fichier */ }\n", vers: '' }], async () => { remettre(); routesDeLaTour({ integrite: true, arene: 40 }); const l = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'integrite:laser:libramont') || {}; const tient = /^2 départs laser/.test(l.titre || ''); remettre(); routesDeLaTour({ integrite: true }); await charger('lib/tour-controle.js').lireProblemes(pool); return tient; });
+  await rouge('le laser compte avec le fichier, pas avec la console', [{ fichier: 'lib/tour-controle.js', de: "      try { await refreshCenterOverrides(pool, { force: true }); } catch (error) { /* socle fichier */ }\n", vers: '' }], async () => { remettre(); routesDeLaTour({ integrite: true, arene: 40 }); const l = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'integrite:laser:libramont') || {}; const tient = /^2 départs laser/.test(l.titre || ''); remettre(); routesDeLaTour({ integrite: true }); await charger('lib/tour-controle.js').lireProblemes(pool); return tient; });
+  await rouge('un calcul laser qui leve couche toute la section integrite', [{ fichier: 'lib/tour-controle.js', de: "    illisibles.push('laser, calcul');", vers: '    throw error;' }], async () => { remettre(); routesDeLaTour({ integrite: 'laserCasse' }); const p = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; return p.some((x) => x.cle === 'integrite:prix-zero:gembloux'); });
   const fermetureDeLibramont = async () => (await problemesLaser()).find((p) => p.cle === 'integrite:fermeture:libramont') || {};
-  await rouge('une reservation en ligne sur une fermeture ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "      out.push({ cle: `integrite:fermeture:${centre}`,", vers: "      if (false) out.push({ cle: `integrite:fermeture:${centre}`," }], async () => (await fermetureDeLibramont()).gravite === 'attention');
+  await rouge('une reservation en ligne sur une fermeture ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "        out.push({ cle: `integrite:fermeture:${centre}`,", vers: "        if (false) out.push({ cle: `integrite:fermeture:${centre}`," }], async () => (await fermetureDeLibramont()).gravite === 'attention');
   await rouge('la fermeture ne regarde plus que l heure de depart', [{ fichier: 'lib/tour-controle.js', de: "AB.isCenterClosedDuring(blocs, r.date, s, e)", vers: "AB.isCenterClosedAt(blocs, r.date, s)" }], async () => /le 15\/11 à 17:00, centre fermé/.test((await fermetureDeLibramont()).detail || ''));
-  await rouge('les fermetures d un centre touchent l autre', [{ fichier: 'lib/tour-controle.js', de: "      const blocs = blocsDe.get(r.centerId) || [];", vers: "      const blocs = [...blocsDe.values()].flat();" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:fermeture:gembloux'));
-  await rouge('une piste bloquee ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "      for (const piste of r.lanes) if", vers: "      for (const piste of []) if" }], async () => /piste 3 bloquée/.test((await fermetureDeLibramont()).detail || ''));
+  await rouge('les fermetures d un centre touchent l autre', [{ fichier: 'lib/tour-controle.js', de: "        const blocs = blocsDe.get(r.centerId) || [];", vers: "        const blocs = [...blocsDe.values()].flat();" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:fermeture:gembloux'));
+  await rouge('une piste bloquee ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "        for (const piste of r.lanes) if", vers: "        for (const piste of []) if" }], async () => /piste 3 bloquée/.test((await fermetureDeLibramont()).detail || ''));
   await rouge('une privatisation inscrite au comptoir passe pour un client perdu', [{ fichier: 'lib/tour-controle.js', de: "from reservations where channel = 'public' and status <> 'cancelled' and date >= $1::date and date < $1::date + 14", vers: "from reservations where status <> 'cancelled' and date >= $1::date and date < $1::date + 14" }], async () => /^3 réservations/.test((await fermetureDeLibramont()).titre || ''));
   await rouge('un formulaire qui ne laisse plus reserver ne sonne plus', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'attention'," }], async () => {
     remettre();

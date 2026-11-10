@@ -7,6 +7,7 @@ const http = require('node:http');
 const {chromium} = require('playwright-core');
 const mock = require('./dev-tunnel-server');
 const eclats = require('./gates-eclats');
+const {trancher} = require('./gates-tranche');
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PINLANE_INFORMATION_PORT || 4598);
 const origin = 'http://127.0.0.1:' + port;
@@ -163,9 +164,13 @@ function compteurDEcrans(request){
  }catch(error){return false;}
 }
 async function enFils() {
- const {resultats,sorties}=await eclats.eclater({fichier:__filename,rangs:CONTEXTES.map((_,rang)=>rang),nombre:CONTEXTES.length,ports:{PINLANE_INFORMATION_PORT:port}});
+ // --tranche=K/N : seuls les contextes de cette tranche se jouent, chacun sous son rang d origine ; les deux
+ // controles globaux portent alors sur leur union, et les tranches a elles toutes sur les huit.
+ const rangs=trancher(CONTEXTES.map((_,rang)=>rang));
+ const {resultats,sorties}=await eclats.eclater({fichier:__filename,rangs,nombre:rangs.length,ports:{PINLANE_INFORMATION_PORT:port}});
  const errors=[];let blockedWrites=0,manque=0;
  CONTEXTES.forEach((label,rang)=>{
+  if(!rangs.includes(rang))return;
   const sortie=sorties.find(x=>x&&x.part.includes(rang));
   const texte=sortie?sortie.texte.split(/\r?\n/).filter(l=>l&&!l.startsWith('ECLAT-RESULTAT ')).join('\n'):'';
   if(texte)console.log(texte);

@@ -55,7 +55,9 @@ declare
     -- Les departs epingles de la fenetre Reserver (0058) : un reglage de centre.
     'reservation_departs_epingles',
     -- Les ecrans atteints du formulaire public (0060) : des statistiques de centre.
-    'formulaire_etapes'
+    'formulaire_etapes',
+    -- Les heures completes touchees dans le formulaire public (0061) : des statistiques de centre.
+    'formulaire_heures_pleines'
   ];
 begin
   foreach target in array tenant_tables loop

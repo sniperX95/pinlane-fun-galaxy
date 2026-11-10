@@ -223,6 +223,54 @@ async function handleEtapes(req, res, body) {
   sendJson(res, 202, { ok: true });
 }
 
+// LES HEURES COMPLETES QUE LES GENS VOULAIENT (2026-11-10, Ansar : « samedi 15 h demandé
+// 40 fois, complet »). Le formulaire envoie chaque heure marquee « complet » que la personne
+// touche, une fois par visite. La regle (ce qui entre, l ecriture) vit dans
+// lib/formulaire-heures.js ; ici, elle recoit ce que CE centre vend : une activite ou une
+// formule d un autre centre, ou inventee, n entre pas. Aucune donnee personnelle.
+function heuresPleinesDuCentre(body, { aujourdHui = todayStr() } = {}) {
+  const { enveloppeRecue, heuresRecues } = require('../lib/formulaire-heures');
+  const enveloppe = enveloppeRecue(body);
+  if (!enveloppe) return null;
+  const { listCenterActivities } = require('../lib/activity-catalog');
+  return heuresRecues(body, {
+    activites: listCenterActivities(enveloppe.centerId).map((a) => a.id),
+    formules: getEffectiveFormules(enveloppe.centerId).map((f) => f.id),
+    aujourdHui,
+  });
+}
+// Une statistique perdue ne casse jamais le formulaire : la reponse est la meme, que la ligne
+// soit ecrite ou non, et une table pas encore creee (42P01) se tait.
+async function handleHeuresPleines(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'heures-pleines', limit: 60, windowMs: 600_000 })) return;
+  const { enveloppeRecue, ecrireHeures } = require('../lib/formulaire-heures');
+  const enveloppe = enveloppeRecue(body);
+  if (!enveloppe) { sendError(res, 400, 'Requête invalide.'); return; }
+  try {
+    getCenter(enveloppe.centerId);
+  } catch (error) {
+    sendError(res, 404, 'Centre inconnu.');
+    return;
+  }
+  const pool = getPool();
+  if (!pool) { sendJson(res, 202, { ok: true }); return; }
+  try {
+    // Le catalogue du moment (une activite ajoutee par le centre existe aussi) : memes
+    // lectures en cache que le reste de la route, et le socle du code si elles echouent.
+    try {
+      await refreshCenterOverrides(pool);
+      await refreshFormuleOverrides(pool);
+      await refreshCatalog(pool);
+    } catch (error) {
+      // Socle fichier.
+    }
+    await ecrireHeures(pool, heuresPleinesDuCentre(body));
+  } catch (error) {
+    if (!error || error.code !== '42P01') console.error('[public-booking-meta] heures-pleines', error && (error.code || error.message));
+  }
+  sendJson(res, 202, { ok: true });
+}
+
 // LEAD sur mesure : enregistré hors planning (table custom_requests), jamais
 // dans reservations. Renvoie 201 même si l'accusé email échoue (best-effort).
 async function handleCustomRequest(req, res, body) {
@@ -745,6 +793,10 @@ async function routeur(req, res) {
       await handleEtapes(req, res, body);
       return;
     }
+    if (body?.kind === 'heures-pleines' && url.pathname.endsWith('/public-booking-meta')) {
+      await handleHeuresPleines(req, res, body);
+      return;
+    }
     if (body?.kind === 'erreur-formulaire' && url.pathname.endsWith('/public-booking-meta')) {
       await handleErreurFormulaire(req, res, body);
       return;
@@ -1130,4 +1182,4 @@ module.exports = async (req, res) => {
     if (!res.headersSent) sendError(res, 503, 'Service momentanément indisponible. Réessayez dans un instant.');
   }
 };
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre };

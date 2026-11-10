@@ -112,7 +112,7 @@ function prixChangeDev(corps, dossier) {
 // sont poses AVANT le premier chargement de l API : elle les lit a son
 // chargement.
 const communications = require('../lib/ops-communications');
-const dernierePose = { body: null, demande: null, accuses: 0, blocages: [], gestes: [], etapes: [] };
+const dernierePose = { body: null, demande: null, accuses: 0, blocages: [], gestes: [], etapes: [], heures: [] };
 database.createCustomRequest = async (input) => {
   dernierePose.demande = JSON.parse(JSON.stringify(input));
   return {
@@ -327,8 +327,13 @@ function createServer(options = {}) {
         // (lib/formulaire-etapes), gardes pour les gates, jamais en base.
         const etapes = body && body.kind === 'etapes' ? require('../lib/formulaire-etapes').etapesRecues(body) : null;
         if (etapes) dernierePose.etapes.push(...etapes.lignes.map((l) => ({ ...l, visite: etapes.visite, centerId: etapes.centerId })));
-        const envoi = etapes || (body && body.kind === 'vitrine' ? bookingMeta.__test.gestesVitrine(body) : null);
-        if (envoi && !etapes) dernierePose.gestes.push(...envoi.lignes.map((l) => ({ ...l, visite: envoi.visite, centerId: envoi.centerId })));
+        // Les heures completes touchees (kind « heures-pleines », 2026-11-10) : jugees par le vrai
+        // lecteur de la route, avec le catalogue du centre, gardees pour les gates, jamais en base.
+        let heures = null;
+        try { heures = body && body.kind === 'heures-pleines' ? bookingMeta.__test.heuresPleinesDuCentre(body) : null; } catch (error) { heures = null; }
+        if (heures) dernierePose.heures.push(...heures.lignes.map((l) => ({ ...l, visite: heures.visite, centerId: heures.centerId })));
+        const envoi = etapes || heures || (body && body.kind === 'vitrine' ? bookingMeta.__test.gestesVitrine(body) : null);
+        if (envoi && !etapes && !heures) dernierePose.gestes.push(...envoi.lignes.map((l) => ({ ...l, visite: envoi.visite, centerId: envoi.centerId })));
         res.writeHead(envoi ? 202 : 400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify(envoi ? { ok: true, enregistres: 0 } : { ok: false }));
       });

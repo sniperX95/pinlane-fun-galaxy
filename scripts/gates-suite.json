@@ -334,6 +334,7 @@
     "test:fungalaxy-plus",
     "test:vitrine-gestes",
     "test:formulaire-etapes",
+    "test:formulaire-heures",
     "test:reservation-alternatives",
     "test:slot-holds",
     "test:fungalaxy-hold",

@@ -304,6 +304,11 @@ const MIGRATIONS = [
     file: 'database/formulaire-etapes-schema.sql',
     description: "Ou les gens s arretent dans le formulaire public : une ligne par ecran atteint, une fois par visite (reservation et demande sur mesure). Aucune donnee personnelle (visite = identifiant au hasard, aucun cookie). Table additive ; tant qu elle manque, l envoi est ignore et la console affiche un tableau vide. Retour : database/rollbacks/0060_formulaire_etapes.down.sql.",
   },
+  {
+    id: '0061_formulaire_heures_pleines',
+    file: 'database/formulaire-heures-pleines-schema.sql',
+    description: "Les heures completes que les gens voulaient dans le formulaire public : une ligne par heure marquee complet et touchee, une fois par visite (jour voulu, heure, activite ou formule, taille du groupe). Aucune donnee personnelle (visite = identifiant au hasard, aucun cookie, aucun texte libre). Table additive, lue par la page Donnees seulement ; tant qu elle manque, l envoi est ignore et la console affiche un tableau vide. Retour : database/rollbacks/0061_formulaire_heures_pleines.down.sql.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

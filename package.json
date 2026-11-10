@@ -213,6 +213,7 @@
     "test:fungalaxy-plus": "node scripts/fungalaxy-plus-check.js",
     "test:vitrine-gestes": "node scripts/vitrine-gestes-check.js",
     "test:formulaire-etapes": "node scripts/formulaire-etapes-check.js",
+    "test:formulaire-heures": "node scripts/formulaire-heures-check.js",
     "test:reservation-alternatives": "node scripts/reservation-alternatives-check.js",
     "test:slot-holds": "node scripts/slot-holds-check.js",
     "test:fungalaxy-hold": "node scripts/fungalaxy-hold-check.js",

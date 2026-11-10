@@ -2854,6 +2854,7 @@ function dirDonEtat() {
     activites: liste(d.activites), suites: liste(d.suites), tailles: liste(d.tailles), clients: liste(d.clients),
     sources: liste(d.sources), entonnoir: liste(d.entonnoir), campagnes: liste(d.campagnes), appareils: liste(d.appareils), pages: liste(d.pages),
     formulaire: liste(d.formulaire).map((p) => ({ nom: '', visites: 0, abouties: 0, ...(p || {}), etapes: liste(p && p.etapes) })),
+    heuresPleines: liste(d.heuresPleines).map((h) => ({ jour: '', heure: '', quoi: '', demandes: 0, dates: 0, joueursMoyens: null, ...(h || {}) })),
   } };
 }
 
@@ -2930,6 +2931,20 @@ function dirDonFormulaireHtml(parcours) {
   }).join('');
 }
 
+// LES HEURES COMPLETES QUE LES GENS VOULAIENT (2026-11-10) : une ligne par jour de la semaine,
+// heure et activite, la plus demandee en premier. Le serveur a deja compte et nomme
+// (lib/formulaire-heures.js) : ici on ne fait qu ecrire. Vingt lignes, l Excel donne tout.
+function dirDonHeuresPleinesHtml(heures) {
+  const total = heures.reduce((a, h) => a + (Number(h.demandes) || 0), 0);
+  const tete = heures[0];
+  const note = total
+    ? `${dirDonNum(total)} fois sur cette période, quelqu’un a touché une heure marquée « complet » dans le formulaire. La plus voulue : ${tete.jour} ${tete.heure}, ${tete.quoi} (${dirDonNum(tete.demandes)}). C’est un minimum : une heure complète que personne ne touche n’est pas comptée. Sans nom ni cookie.`
+    : '';
+  return dirDonTable('Heures complètes que les gens voulaient', [{ t: 'Jour' }, { t: 'Heure' }, { t: 'Pour' }, { t: 'Demandes', num: 1 }, { t: 'Sur combien de dates', num: 1 }, { t: 'Groupe moyen', num: 1 }],
+    heures.slice(0, 20).map((h) => [escapeHtml(h.jour), escapeHtml(h.heure), escapeHtml(h.quoi), dirDonNum(h.demandes), dirDonNum(h.dates), h.joueursMoyens == null ? '' : dirDonNum(h.joueursMoyens)]),
+    'Personne n’a touché une heure complète sur cette période.', { large: true, note });
+}
+
 function dirDonProvenanceInner() {
   const { html, data } = dirDonEtat();
   if (html) return html;
@@ -2943,6 +2958,7 @@ function dirDonProvenanceInner() {
       data.entonnoir.map((e) => [escapeHtml(e.source), dirDonNum(e.creneauxRetenus), dirDonNum(e.confirmes), dirDonNum(e.abandons), dirDonPct(e.tauxConfirmation)]),
       'Aucun créneau retenu en ligne sur cette période.', { large: true })}
     ${dirDonFormulaireHtml(data.formulaire)}
+    ${dirDonHeuresPleinesHtml(data.heuresPleines)}
     ${dirDonTable('Campagnes', [{ t: 'Campagne' }, { t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
       data.campagnes.map((c) => [escapeHtml(c.campagne), escapeHtml(c.source), dirDonNum(c.reservations), dirDonEur(c.chiffre)]),
       'Aucune réservation venue d’une campagne marquée (utm_campaign).')}
@@ -2966,7 +2982,7 @@ function dirDonSection(id, titre, sous, inner) {
 }
 function dirDonActiviteHtml() { return dirDonSection('dirDonActivite', 'Ce que les groupes réservent', 'Joueurs par activité, enchaînements, taille des groupes.', dirDonActiviteInner()); }
 function dirDonClientsHtml() { return dirDonSection('dirDonClients', 'Fidélité et fichier clients', 'Qui revient, combien de fois, combien ils dépensent.', dirDonClientsInner()); }
-function dirDonProvenanceHtml() { return dirDonSection('dirDonProvenance', 'D’où viennent les réservations', 'Sources, campagnes, entonnoir en ligne, écrans du formulaire, appareils.', dirDonProvenanceInner()); }
+function dirDonProvenanceHtml() { return dirDonSection('dirDonProvenance', 'D’où viennent les réservations', 'Sources, campagnes, entonnoir en ligne, écrans du formulaire, heures complètes voulues, appareils.', dirDonProvenanceInner()); }
 
 function renderDirectionDonnees() {
   const hotes = [['dirDonActivite', dirDonActiviteInner], ['dirDonClients', dirDonClientsInner], ['dirDonProvenance', dirDonProvenanceInner]];

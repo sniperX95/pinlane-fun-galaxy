@@ -5132,6 +5132,7 @@
       // pour l heure d une de SES parties, dans le cadre des parties ou la note
       // des groupes, que la voix redit.
       chip.classList.add('is-asked');
+      suivreHeurePleine(chip, track);
       var cible = null;
       if (chip.dataset.state === 'wave') {
         cible = chip.dataset.partie ? $('.fg-etape[data-cle="laser_game#' + chip.dataset.partie + '"]', hourZone) : $('.fg-track__waves', track);
@@ -5568,6 +5569,35 @@
   };
   doc.addEventListener('pointerdown', premierToucher, true);
   doc.addEventListener('keydown', premierToucher, true);
+  // LES HEURES COMPLETES QUE LES GENS VOULAIENT (Ansar, 2026-11-10 : « samedi 15 h demandé
+  // 40 fois, complet »). Toucher une heure ou l on lit « complet » est une demande que le
+  // centre n a pas pu servir : elle part une seule fois par visite pour ce jour, cette heure
+  // et cette piste, avec le meme identifiant au hasard que les ecrans. Rien de personnel :
+  // le jour voulu, l heure, l activite ou la formule, la taille du groupe. Une heure fermee,
+  // passee ou trop tardive ne part pas, ni l heure d une de SES parties. Envoi groupe, sans
+  // attente, erreur ignoree : une statistique perdue ne gene jamais le client.
+  var heuresPleinesVues = {}, heuresPleinesFile = [], heuresPleinesMinuteur = 0;
+  function suivreHeurePleine(chip, track) {
+    if (!VISITE || !chip || chip.dataset.state !== 'hard' || chip.dataset.mot !== 'complet') return;
+    var formule = state.onglet === 'formules' ? String(state.formuleId || '') : '';
+    var quoi = (track && track.dataset.activity) || (formule ? 'formule' : 'arrivee');
+    var cle = [state.date, chip.dataset.time, quoi, formule].join('|');
+    if (!state.date || !chip.dataset.time || heuresPleinesVues[cle]) return;
+    heuresPleinesVues[cle] = true;
+    heuresPleinesFile.push({ jour: state.date, heure: chip.dataset.time, activite: quoi, formule: formule, joueurs: joueursDemandes() });
+    clearTimeout(heuresPleinesMinuteur);
+    heuresPleinesMinuteur = setTimeout(envoyerHeuresPleines, 800);
+  }
+  function envoyerHeuresPleines() {
+    clearTimeout(heuresPleinesMinuteur);
+    while (heuresPleinesFile.length) {
+      var corps = JSON.stringify({ kind: 'heures-pleines', centerId: CENTER, visite: VISITE, heures: heuresPleinesFile.splice(0, 8) });
+      var parti = false;
+      try { parti = Boolean(navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))); } catch (e) { parti = false; }
+      if (!parti) fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
+    }
+  }
+  doc.addEventListener('visibilitychange', function () { if (doc.visibilityState === 'hidden') envoyerHeuresPleines(); });
   function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {

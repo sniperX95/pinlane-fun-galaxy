@@ -156,10 +156,14 @@ const estFils=eclats.estFils();let resultatDuFils=null;
 // visite tiree au hasard, des ecrans, rien d autre. Tout autre envoi reste interdit pendant la
 // lecture des informations : ni heure retenue, ni reservation, ni demande, ni geste des offres.
 // Un envoi « etapes » qui porterait un champ de plus compte comme une ecriture.
+// De meme l heure marquee « complet » qu une personne touche (kind « heures-pleines »,
+// lib/formulaire-heures.js, 2026-11-10) : le jour, l heure, l activite ou la formule, la taille
+// du groupe, rien d autre.
 function compteurDEcrans(request){
  try{
   if(request.method()!=='POST'||new URL(request.url()).pathname!=='/api/public-booking-meta')return false;
   const b=JSON.parse(request.postData()||'null');
+  if(Boolean(b)&&b.kind==='heures-pleines')return Object.keys(b).sort().join(',')==='centerId,heures,kind,visite'&&Array.isArray(b.heures)&&b.heures.length>0&&b.heures.every(h=>h&&Object.keys(h).sort().join(',')==='activite,formule,heure,joueurs,jour');
   return Boolean(b)&&b.kind==='etapes'&&Object.keys(b).sort().join(',')==='centerId,etapes,kind,visite'&&Array.isArray(b.etapes)&&b.etapes.length>0&&b.etapes.every(e=>e&&Object.keys(e).sort().join(',')==='etape,parcours');
  }catch(error){return false;}
 }

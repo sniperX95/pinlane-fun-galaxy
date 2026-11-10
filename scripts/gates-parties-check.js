@@ -176,7 +176,29 @@ function verifierTranches(tranche) {
   ok(reels.length === 0, '[E] dans package.json, chaque jeu de contre-preuves coupe joue toutes ses tranches', reels.join(' | '));
 }
 
+// [F] LE DOUBLON D APRES MISE EN LIGNE (scripts/gates-deja-jouee.js) : le push sur main ne saute sa suite que si CE
+// commit a un passage termine en succes de la suite ENTIERE. Tout autre passage laisse la suite se jouer.
+function verifierDejaJouee(deja) {
+  const sha = 'a'.repeat(40);
+  const autre = 'b'.repeat(40);
+  const p = (sur = {}) => ({ id: 7, head_sha: sha, event: 'push', status: 'completed', conclusion: 'success', head_branch: `suite-tout-${sha.slice(0, 12)}`, ...sur });
+  ok(deja.passageVert([p({ id: 1, head_branch: 'main' }), p({ id: 42 })], sha) === 42, '[F] un passage vert de la suite entiere de ce commit est reconnu');
+  const refus = [
+    ['la suite d impact', p({ head_branch: `suite-${sha.slice(0, 12)}` })],
+    ['un passage sur main', p({ head_branch: 'main' })],
+    ['un passage rouge', p({ conclusion: 'failure' })],
+    ['un passage annule', p({ conclusion: 'cancelled' })],
+    ['un passage en cours', p({ status: 'in_progress', conclusion: null })],
+    ['un autre commit', p({ head_sha: autre })],
+    ['un lancement a la main', p({ event: 'workflow_dispatch' })],
+  ].filter(([, passage]) => deja.passageVert([passage], sha) !== null).map(([nom]) => nom);
+  ok(refus.length === 0, '[F] ni la suite d impact, ni main, ni un passage rouge, annule, en cours ou d un autre commit ne comptent', refus.join(', '));
+  ok(deja.passageVert([], sha) === null && deja.passageVert(null, sha) === null && deja.passageVert([null, {}], sha) === null, '[F] sans passage lisible, rien n est saute');
+}
+
 function scenarios(mutation = null) {
+  if (!mutation || mutation.partie === 'F') verifierDejaJouee(charger('scripts/gates-deja-jouee.js', mutation));
+  if (mutation && mutation.partie === 'F') return;
   const lanceur = charger('scripts/gates-lancer.js', mutation);
   const assembleur = charger('scripts/gates-assembler.js', mutation);
   if (!mutation || mutation.partie === 'E') verifierTranches(charger('scripts/gates-tranche.js', mutation));
@@ -210,6 +232,15 @@ const MUTATIONS = [
     vers: '  const part = liste.filter((_, i) => i % t.n === 0);' },
   { nom: 'tranche-vide-jouee', partie: 'E', lettre: 'hors de 1..N', fichier: 'scripts/gates-tranche.js',
     de: "  if (!part.length) throw new Error(`tranche ${t.k}/${t.n} vide : la liste n a que ${liste.length} element(s)`);\n",
+    vers: '' },
+  { nom: 'impact-pris-pour-tout', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
+    de: "    && /^suite-tout-/.test(String(p.head_branch || '')));",
+    vers: "    && /^suite-/.test(String(p.head_branch || '')));" },
+  { nom: 'rouge-pris-pour-vert', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
+    de: "    && p.conclusion === 'success'\n",
+    vers: '' },
+  { nom: 'autre-commit-accepte', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
+    de: '    && p.head_sha === sha\n',
     vers: '' },
   { nom: 'tranche-oubliee', partie: 'E', lettre: 'une tranche manque', fichier: 'scripts/gates-tranche.js',
     de: '      if (!n || vues.some((v) => v.n !== n) || jouees !== attendues) defauts.push(',

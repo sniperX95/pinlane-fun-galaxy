@@ -14,7 +14,10 @@ name: Quality gates
 #   - une etiquette suite-<sha> (scripts/suite-github.js) : la suite d impact
 #     d un commit avant de le deployer, depuis son depart sur origin/main ;
 #     suite-tout-<sha> : la suite entiere de ce commit ;
-#   - un push sur main : l impact de ce qui vient d arriver ;
+#   - un push sur main : l impact de ce qui vient d arriver, sauf si ce commit
+#     a deja un passage vert de sa suite entiere (suite-tout-<sha>) : rejouer
+#     la meme suite sur le meme commit prenait un quart des machines pour rien
+#     (scripts/gates-deja-jouee.js, 2026-11-10) ;
 #   - une pull request : l impact depuis sa base ;
 #   - chaque nuit : la suite entiere, pour les gates qui derivent du produit ;
 #   - a la main : impact ou tout, depart au choix.
@@ -53,6 +56,10 @@ env:
 jobs:
   plan:
     runs-on: ubuntu-latest
+    # actions: read : relire les passages de ce commit (Deja jouee ?).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       selection: ${{ steps.selection.outputs.selection }}
       parts: ${{ steps.plan.outputs.parts }}
@@ -64,6 +71,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # Un appel en echec ou une reponse illisible ne rendent rien : la suite se joue.
+      - name: Deja jouee ?
+        id: deja
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPOT: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          passage=$(gh api "repos/$DEPOT/actions/workflows/quality-gates.yml/runs?head_sha=$COMMIT&per_page=50" 2>/dev/null | node scripts/gates-deja-jouee.js "$COMMIT" || true)
+          echo "passage=$passage" >> "$GITHUB_OUTPUT"
+          if [ -n "$passage" ]; then echo "La suite entiere de $COMMIT est deja verte (passage $passage) : rien a rejouer."
+          else echo "Aucun passage vert de la suite entiere pour $COMMIT : la suite se joue."; fi
       - name: Ce que la suite joue
         id: selection
         shell: bash
@@ -98,7 +119,14 @@ jobs:
       - name: Le plan, coupe en parts
         id: plan
         shell: bash
+        env:
+          DEJA: ${{ steps.deja.outputs.passage }}
         run: |
+          if [ -n "$DEJA" ]; then
+            { echo "parts=0"; echo "matrice=[]"; } >> "$GITHUB_OUTPUT"
+            echo "Suite entiere deja verte sur ce commit (passage $DEJA) : aucune part a jouer." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           node scripts/gates-lancer.js ${{ steps.selection.outputs.selection }} --parts-ci "$PARTS_MAX" --jobs "$PLACES" | tee plan.txt
           grep -E '^(parts|matrice|unites|estimee)=' plan.txt >> "$GITHUB_OUTPUT"
 

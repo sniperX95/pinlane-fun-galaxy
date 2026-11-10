@@ -120,7 +120,8 @@ jobs:
             push)
               case "$GITHUB_REF" in
                 refs/tags/suite-preuves-*) sel="--tout"; preuves="oui" ;;
-                refs/tags/suite-tout-*) sel="--tout" ;;
+                # (--base : les gates que le lot touche gardent leurs contre-preuves)
+                refs/tags/suite-tout-*) sel="--tout --base $(depart origin/main)" ;;
                 refs/tags/suite-*) sel="--impact --base $(depart origin/main)" ;;
                 *)
                   if [ -z "$AVANT" ] || [ "$AVANT" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$AVANT^{commit}" 2>/dev/null; then sel="--tout"

@@ -471,8 +471,13 @@ async function main() {
     // Diagnostic seulement : la base sans les contre-preuves. Le gate de la
     // suite ne pose jamais cette variable.
     if (process.env.CAPACITES_BASE_SEULE === '1') throw new Error('contre-preuves sautees (CAPACITES_BASE_SEULE)');
-    console.log('\n[contre-preuves] chaque regle cassee doit rougir');
-    for (const m of MUTATIONS) {
+    // PINLANE_SANS_CONTRE_PREUVES=1 (la suite d avant mise en ligne, gates-lancer.js
+    // --sans-contre-preuves) : la base seule, dite par GATE-SAUTE-PARTIE. Les
+    // mutations se rejouent la nuit, ou quand le diff touche ce gate.
+    const sansContrePreuves = process.env.PINLANE_SANS_CONTRE_PREUVES === '1';
+    if (sansContrePreuves) console.log(`GATE-SAUTE-PARTIE contre-preuves : ${MUTATIONS.length + 1} mutations pas rejouees (la nuit, ou quand le diff touche ce gate)`);
+    else console.log('\n[contre-preuves] chaque regle cassee doit rougir');
+    for (const m of sansContrePreuves ? [] : MUTATIONS) {
       mutation = { ...m };
       const echecs = [];
       await scenarios(browser, echecs);
@@ -481,11 +486,13 @@ async function main() {
       if (!mord) rouges += 1;
     }
     mutation = null;
-    const echecsServeur = [];
-    await serveur(echecsServeur, MUTATION_SERVEUR);
-    const mordServeur = echecsServeur.some((label) => label.startsWith('S1 '));
-    console.log(`${mordServeur ? 'ok  ' : 'FAIL'}  mutation S1 (api/public-booking-meta.js) ${mordServeur ? 'rougit' : 'NE ROUGIT PAS'}`);
-    if (!mordServeur) rouges += 1;
+    if (!sansContrePreuves) {
+      const echecsServeur = [];
+      await serveur(echecsServeur, MUTATION_SERVEUR);
+      const mordServeur = echecsServeur.some((label) => label.startsWith('S1 '));
+      console.log(`${mordServeur ? 'ok  ' : 'FAIL'}  mutation S1 (api/public-booking-meta.js) ${mordServeur ? 'rougit' : 'NE ROUGIT PAS'}`);
+      if (!mordServeur) rouges += 1;
+    }
   } catch (error) {
     console.error('\ncapacites-centre-check FAIL:', error.stack || error.message);
     rouges += 1;

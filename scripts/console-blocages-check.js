@@ -386,11 +386,18 @@ async function main() {
     verdict(await parcours(browser, centres));
 
     console.log('\n--- contre-epreuves');
+    // PINLANE_SANS_CONTRE_PREUVES=1 (gates-lancer.js --sans-contre-preuves) :
+    // chaque ancre reste verifiee, les rejeux passent la nuit ou quand le diff
+    // touche ce gate.
+    const SANS_CONTRE_PREUVES = process.env.PINLANE_SANS_CONTRE_PREUVES === '1';
+    if (SANS_CONTRE_PREUVES) console.log(`GATE-SAUTE-PARTIE contre-epreuves : ${MUTATIONS.length} coupures montables mais pas rejouees (la nuit, ou quand le diff touche ce gate)`);
     const sources = {};
     for (const m of MUTATIONS) {
       const fichier = fichierDe(m);
       if (!sources[fichier]) sources[fichier] = fs.readFileSync(path.join(ROOT, fichier), 'utf8').split(String.fromCharCode(13) + LF).join(LF);
       if (sources[fichier].split(m.de).length !== 2) { ok(false, 'ancre', `contre-epreuve montable : ancre introuvable (${m.de.trim().slice(0, 60)})`); continue; }
+      // La suite d avant mise en ligne : l ancre est verifiee, le parcours n est pas rejoue.
+      if (SANS_CONTRE_PREUVES) continue;
       casse = m;
       Object.keys(verdicts).forEach((k) => { delete verdicts[k]; });
       bavard = false;

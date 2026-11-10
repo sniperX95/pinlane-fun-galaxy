@@ -20,6 +20,11 @@
 //   [S] sans suite et rouvrir ;
 //   [L] contre-epreuves : le code casse expres fait rougir le gate.
 // Les captures vont dans artifacts/demandes-console/.
+// PINLANE_SANS_CONTRE_PREUVES=1 (la suite d avant mise en ligne, gates-lancer.js
+// --sans-contre-preuves) : [L] verifie seulement que chaque coupure se monte
+// encore, sans rejouer le parcours 35 fois (6 des 7 minutes de ce gate). Les
+// coupures se rejouent la nuit et quand le diff touche ce fichier.
+const SANS_CONTRE_PREUVES = process.env.PINLANE_SANS_CONTRE_PREUVES === '1';
 const PORT = Number(process.env.PINLANE_DEMANDES_CONSOLE_PORT || 4419);
 const http = require('http');
 const fs = require('fs');
@@ -988,8 +993,10 @@ async function main() {
       { fichier: 'assets/pinlane-planning-global.js', de: "    if (hors) sortie.push(", vers: "    if (false) sortie.push(", label: 'sans la marque, une heure hors horaires ne se verrait pas', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Hors horaires') },
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
     ];
+    if (SANS_CONTRE_PREUVES) console.log(`GATE-SAUTE-PARTIE contre-epreuves : ${essais.length} coupures montables mais pas rejouees (la nuit, ou quand le diff touche ce gate)`);
     for (const e of essais) {
       if (!montable(e.de, e.fichier) || (e.aussi && !montable(e.aussi.de))) continue;
+      if (SANS_CONTRE_PREUVES) continue;
       mutation = { de: e.de, vers: e.vers, fichier: e.fichier };
       let r = null;
       try {

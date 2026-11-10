@@ -386,6 +386,15 @@ const MUTATIONS = [
     process.exit(1);
   }
 
+  // PINLANE_SANS_CONTRE_PREUVES=1 (la suite d avant mise en ligne, gates-lancer.js
+  // --sans-contre-preuves) : la passe nominale seule. Les mutations rejouent
+  // toute la matrice une fois chacune : la nuit, ou quand le diff touche ce gate.
+  if (process.env.PINLANE_SANS_CONTRE_PREUVES === '1') {
+    console.log(`GATE-SAUTE-PARTIE contre-preuves : ${MUTATIONS.length} mutations pas rejouees (la nuit, ou quand le diff touche ce gate)`);
+    console.log('\ntunnel-mobile-matrix-check: ALL OK (passe nominale, sans les contre-preuves)');
+    return;
+  }
+
   for (const m of MUTATIONS) {
     console.log(`--- contre-preuve par mutation : ${m.name} ---`);
     const original = fs.readFileSync(m.file, 'utf8');

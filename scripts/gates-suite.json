@@ -1,5 +1,5 @@
 {
-  "_lisezmoi": "La suite que jouent test:ops:all, test:tout et la CI (scripts/gates-lancer.js). suite : chaque script npm, dans l ordre historique (le lanceur ordonne lui-meme, du plus long au plus court). seuls : les gates sensibles au temps, joues un par un a la fin, la machine pour eux seuls. toujours : ce que test:impact joue a chaque diff. test:audit-perf mesure un p95 en millisecondes (il rougit sous la charge d une autre suite).",
+  "_lisezmoi": "La suite que jouent test:ops:all, test:tout et la CI (scripts/gates-lancer.js). suite : chaque script npm, dans l ordre historique (le lanceur ordonne lui-meme, du plus long au plus court). seuls : les gates sensibles au temps, joues un par un a la fin, la machine pour eux seuls. toujours : ce que test:impact joue a chaque diff. test:audit-perf mesure un p95 en millisecondes (il rougit sous la charge d une autre suite). nuit : les gates qui dependent du monde exterieur, joues la nuit et sur demande seulement, jamais avant une mise en ligne (gates-lancer.js --sans-contre-preuves) ; test:fungalaxy-host lit la vraie page fungalaxy.be/contact et a rougi ou flanche 12 fois sur 58 passages sans que le produit ait bouge.",
   "suite": [
     "test:ancres",
     "test:gates-parties",
@@ -412,5 +412,8 @@
     "test:public-leak",
     "test:constants-drift",
     "test:ancres"
+  ],
+  "nuit": [
+    "test:fungalaxy-host"
   ]
 }

@@ -16,6 +16,14 @@
 // sautee garde sa duree d avant : son temps de ce passage ne dit rien. Rien
 // n est jamais retire de la graine.
 //
+// D OU REFAIRE LA GRAINE (2026-11-10). La suite d avant mise en ligne ne joue
+// pas les contre-preuves, et un gate qui lit PINLANE_SANS_CONTRE_PREUVES y est
+// plus court que la nuit (demandes-console : 75 s au lieu de 440). La graine
+// sert d abord cette suite-la, celle que les sessions attendent : la refaire
+// depuis un passage suite-tout-<sha>. Un passage de nuit ou suite-preuves-<sha>
+// ne sert qu a mesurer les unites de contre-preuves ; ecrit tel quel, il
+// rallongerait dans la graine les gates que la suite courte abrege.
+//
 // Usage : node scripts/gates-graine.js <bilan-assemble.json ou son dossier> [--ecrire]
 //   sans --ecrire : dit ce qui changerait, n ecrit rien.
 'use strict';

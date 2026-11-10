@@ -215,6 +215,13 @@ function verifierSansContrePreuves(lanceur) {
   ok(court === 'test:a#0 test:b#0 test:c#0 test:c#1', '[G] sans les contre-preuves, il reste chaque controle du produit et rien d autre, tranches comprises', court);
   const touche = cles(lanceur.sansContrePreuves(plan, ['scripts/b.js', 'assets/app-main.js']));
   ok(touche === 'test:a#0 test:b#0 test:b#1 test:b#2 test:c#0 test:c#1', '[G] un gate que le diff touche garde ses contre-preuves, les autres non', touche);
+  // Un gate de nuit (il depend du monde exterieur) sort de la suite d avant mise en ligne, sauf si le lot le touche.
+  const sansNuit = cles(lanceur.sansContrePreuves(plan, [], ['test:c']));
+  const nuitTouchee = cles(lanceur.sansContrePreuves(plan, ['scripts/c.js'], ['test:c']));
+  ok(sansNuit === 'test:a#0 test:b#0' && nuitTouchee === 'test:a#0 test:b#0 test:c#0 test:c#1', '[G] un gate de nuit ne se joue pas avant une mise en ligne, sauf si le lot touche son fichier', `${sansNuit} | ${nuitTouchee}`);
+  const config = commun.configSuite(ROOT);
+  const inconnus = (config.nuit || []).filter((nom) => !config.suite.includes(nom));
+  ok(inconnus.length === 0 && (config.nuit || []).length <= 3, '[G] la liste de nuit ne nomme que des scripts de la suite, trois au plus', `${(config.nuit || []).join(', ')}${inconnus.length ? ` ; hors suite : ${inconnus.join(', ')}` : ''}`);
   const reel = planReel();
   const rapide = lanceur.sansContrePreuves(reel);
   const gardes = new Set(rapide.map((x) => x.fichier));
@@ -270,8 +277,11 @@ const MUTATIONS = [
     de: "const estContrePreuve = (u) => u.args.includes('--contre-preuves') || u.args.includes('--mutate');",
     vers: "const estContrePreuve = (u) => u.args.includes('--contre-preuves');" },
   { nom: 'gate-touche-oublie', partie: 'G', lettre: 'un gate que le diff touche', fichier: 'scripts/gates-lancer.js',
-    de: '  return unites.filter((u) => !estContrePreuve(u) || touches.has(u.fichier));',
-    vers: '  return unites.filter((u) => !estContrePreuve(u));' },
+    de: '  return unites.filter((u) => (!estContrePreuve(u) && !nuit.has(u.script)) || touches.has(u.fichier));',
+    vers: '  return unites.filter((u) => !estContrePreuve(u) && !nuit.has(u.script));' },
+  { nom: 'gate-de-nuit-joue', partie: 'G', lettre: 'un gate de nuit', fichier: 'scripts/gates-lancer.js',
+    de: '  return unites.filter((u) => (!estContrePreuve(u) && !nuit.has(u.script)) || touches.has(u.fichier));',
+    vers: '  return unites.filter((u) => !estContrePreuve(u) || touches.has(u.fichier));' },
   { nom: 'rouge-pris-pour-vert', partie: 'F', lettre: 'ni la suite d impact', fichier: 'scripts/gates-deja-jouee.js',
     de: "    && p.conclusion === 'success'\n",
     vers: '' },

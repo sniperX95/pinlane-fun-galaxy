@@ -198,9 +198,14 @@ function plan(noms, config) {
 // scripts/gates-parties-check.js [G] exige que chaque gate garde une unite
 // simple : aucun ne sort de la suite avec ses contre-preuves.
 const estContrePreuve = (u) => u.args.includes('--contre-preuves') || u.args.includes('--mutate');
-function sansContrePreuves(unites, fichiersTouches = []) {
+// Les scripts de la nuit (scripts/gates-suite.json, `nuit`) dependent du monde
+// exterieur (la vraie page du client) : un rouge chez eux ne dit rien du lot,
+// et coutait une suite a rejouer. Hors de la suite d avant mise en ligne eux
+// aussi, sauf si le lot touche leur fichier.
+function sansContrePreuves(unites, fichiersTouches = [], scriptsDeNuit = []) {
   const touches = new Set(fichiersTouches);
-  return unites.filter((u) => !estContrePreuve(u) || touches.has(u.fichier));
+  const nuit = new Set(scriptsDeNuit);
+  return unites.filter((u) => (!estContrePreuve(u) && !nuit.has(u.script)) || touches.has(u.fichier));
 }
 
 // --- Les parts (le workflow GitHub) ------------------------------------------
@@ -284,6 +289,11 @@ function environnement(place, u, gitDir, contexte = {}) {
   // navigateurs epuisent la memoire et les gates de rendu rougissent de
   // lenteur (mesure du 2026-10-20 : 0,7 Go libres, des unites a 15 min).
   if (!u.seul && !process.env.PINLANE_ECLATS) env.PINLANE_ECLATS = '2';
+  // --sans-contre-preuves : un gate qui rejoue ses contre-preuves DANS son
+  // passage simple (pas d unite a part) les saute s il lit cette variable, et
+  // le dit par GATE-SAUTE-PARTIE. Jamais pour un gate que le diff touche.
+  delete env.PINLANE_SANS_CONTRE_PREUVES;
+  if (contexte.sansContrePreuves && !contexte.fichiersDuDiff.has(u.fichier)) env.PINLANE_SANS_CONTRE_PREUVES = '1';
   return env;
 }
 
@@ -415,7 +425,16 @@ function configDeLaSource() {
 let FICHIERS_DU_DIFF = [];
 function choisirNoms(config) {
   const noms = ARGS.filter((a) => /^test:/.test(a) || /^node scripts\//.test(a));
-  if (drapeau('--tout')) return [...config.suite];
+  if (drapeau('--tout')) {
+    // --tout --sans-contre-preuves --base REF (l etiquette suite-tout-<sha>) :
+    // la suite entiere, et les contre-preuves des gates que le lot a touches
+    // depuis REF. Sans depart lisible, aucune : la nuit les rejoue.
+    if (drapeau('--sans-contre-preuves') && option('--base')) {
+      try { FICHIERS_DU_DIFF = require('./gates-impactes').gatesImpactes({ base: option('--base') }).fichiers; } catch (error) { FICHIERS_DU_DIFF = []; }
+      console.log(`[gates] tout : ${FICHIERS_DU_DIFF.length} fichier(s) modifie(s) depuis ${option('--base')}, leurs gates gardent leurs contre-preuves`);
+    }
+    return [...config.suite];
+  }
   if (drapeau('--impact')) {
     const { gatesImpactes } = require('./gates-impactes');
     // --fichiers a,b : la selection d un diff donne (sans git), pour mesurer.
@@ -441,7 +460,7 @@ async function main() {
   }
   const config = configDeLaSource();
   const tousLesNoms = choisirNoms(config);
-  const toutes = drapeau('--sans-contre-preuves') ? sansContrePreuves(plan(tousLesNoms, config), FICHIERS_DU_DIFF) : plan(tousLesNoms, config);
+  const toutes = drapeau('--sans-contre-preuves') ? sansContrePreuves(plan(tousLesNoms, config), FICHIERS_DU_DIFF, config.nuit || []) : plan(tousLesNoms, config);
   // Par defaut : 3/4 des coeurs, mais jamais plus de places que la memoire
   // libre n en porte (environ 700 Mo par gate navigateur et son serveur).
   const parMemoire = Math.floor(os.freemem() / (700 * 1024 * 1024));
@@ -470,7 +489,7 @@ async function main() {
   const debutCopie = Date.now();
   for (let rang = 0; rang < nbPlaces; rang += 1) places.push(preparerPlace(rang, fichiers));
   console.log(`[gates] ${noms.length} scripts, ${unitesDuPlan.length} unites : ${enPool.length} en pool de ${nbPlaces}, ${seuls.length} seules a la fin. Journaux : ${dossierRun}`);
-  const contexte = { dossierRun, gitDir, tracer: drapeau('--tracer') };
+  const contexte = { dossierRun, gitDir, tracer: drapeau('--tracer'), sansContrePreuves: drapeau('--sans-contre-preuves'), fichiersDuDiff: new Set(FICHIERS_DU_DIFF) };
   if (contexte.tracer) fs.mkdirSync(path.join(dossierRun, 'traces'), { recursive: true });
   const progres = path.join(dossierRun, 'progres.log');
   let faits = 0;

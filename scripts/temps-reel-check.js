@@ -53,6 +53,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { chromium } = require('playwright-core');
 const dev = require('./dev-console-server.js');
+const { trancher } = require('./gates-tranche');
 
 const ROOT = path.join(__dirname, '..');
 // 4306 : aucun autre gate ne le prend.
@@ -500,7 +501,7 @@ async function run() {
 
 function contrePreuves() {
   let mordent = 0;
-  const noms = Object.keys(MUTATIONS);
+  const noms = trancher(Object.keys(MUTATIONS));
   for (const nom of noms) {
     const cible = MUTATIONS[nom][3];
     const r = spawnSync(process.execPath, [__filename], { env: { ...process.env, TEMPS_REEL_CASSE: nom }, encoding: 'utf8', timeout: 240000 });

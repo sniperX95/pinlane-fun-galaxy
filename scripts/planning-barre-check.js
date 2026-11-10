@@ -53,6 +53,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 const FX = require('./planning-v3-fixtures');
+const { trancher } = require('./gates-tranche');
 
 const ROOT = path.resolve(__dirname, '..');
 // 5211 : aucun autre gate ne le prend.
@@ -1954,7 +1955,7 @@ async function main() {
       await jouer(browser, liste(process.env.PB_SCENARIOS) || Object.keys(SCENARIOS));
     } else {
       console.log('[CP] contre-preuves : chaque regle retiree fait rougir sa lettre');
-      for (const m of MUTATIONS.filter((x) => !process.env.PB_MUTATIONS || liste(process.env.PB_MUTATIONS).includes(x.nom))) {
+      for (const m of trancher(MUTATIONS.filter((x) => !process.env.PB_MUTATIONS || liste(process.env.PB_MUTATIONS).includes(x.nom)))) {
         const ancres = m.editions.map((ed) => fs.readFileSync(path.join(ROOT, ed.fichier), 'utf8').replace(/\r\n/g, '\n').split(ed.de).length - 1);
         if (!ok(ancres.every((n) => n === 1), `[CP] mutation ${m.nom} : chaque ancre existe une fois et une seule`, ancres)) continue;
         if (process.env.PB_ANCRES) continue;

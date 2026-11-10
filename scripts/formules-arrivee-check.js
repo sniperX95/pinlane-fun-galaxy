@@ -92,6 +92,7 @@ const Module = require('module');
 const { Readable } = require('stream');
 const { execFileSync } = require('child_process');
 const eclats = require('./gates-eclats');
+const { trancher } = require('./gates-tranche');
 
 for (const cle of Object.keys(process.env)) {
   if (/(^PG|DATABASE|POSTGRES|RESEND|SECRET|TOKEN|API_KEY|PASSWORD|PASSPHRASE)/i.test(cle)) delete process.env[cle];
@@ -2439,7 +2440,10 @@ async function jouerContreEpreuve(mutation) {
 async function contreEpreuves(fils, avant) {
   let rougies = 0;
   const { resultats, sorties } = await fils;
+  // --tranche=K/N : seules les mutations de cette tranche ont ete jouees, chacune sous son rang d origine.
+  const joues = new Set(trancher(MUTATIONS.map((_, rang) => rang)));
   MUTATIONS.forEach((mutation, rang) => {
+    if (!joues.has(rang)) return;
     const r = resultats.get(rang);
     if (!r) { ok(false, `contre-epreuve montable : ${mutation.nom} (${mutation.fichier})`, `fils : ${eclats.pourquoiManque(sorties, rang)}`); return; }
     const montable = r.trouvee === 1 && r.appliquee >= 1;
@@ -2453,7 +2457,7 @@ async function contreEpreuves(fils, avant) {
   const retour = [...await jouer(H, 'B'), ...await jouer(H, 'C')];
   ok(retour.every((item) => item.ok), 'le code d origine recharge : B et C sont verts de nouveau', retour.filter((item) => !item.ok).map((item) => item.label).join(' | '));
   ok(empreinteDisque() === avant, 'aucun fichier de lib/, api/, ops-knowledge/ ni scripts/ n a ete ecrit par les contre-epreuves');
-  console.log(`\n[contre-epreuves] ${rougies}/${MUTATIONS.length} mutations font rougir ce gate`);
+  console.log(`\n[contre-epreuves] ${rougies}/${joues.size} mutations font rougir ce gate (${MUTATIONS.length} en tout)`);
 }
 
 async function main() {
@@ -2474,7 +2478,7 @@ async function main() {
   }
   const avant = MUTATE ? empreinteDisque() : '';
   const filsBase = eclats.eclater({ fichier: __filename, args: ['--eclats-base'], rangs: cles.map((_, rang) => rang), nombre: cles.length });
-  const fils = MUTATE ? eclats.eclater({ fichier: __filename, rangs: MUTATIONS.map((_, rang) => rang) }) : null;
+  const fils = MUTATE ? eclats.eclater({ fichier: __filename, rangs: trancher(MUTATIONS.map((_, rang) => rang)) }) : null;
   console.log(`[date] samedi ${DATE}, Fun Galaxy Libramont, groupe de ${PAX}`);
   const { resultats: verdictsBase, sorties: sortiesBase } = await filsBase;
   cles.forEach((cle, rang) => {

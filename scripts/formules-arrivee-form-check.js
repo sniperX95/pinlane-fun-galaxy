@@ -99,6 +99,7 @@ const path = require('path');
 const Module = require('module');
 const { spawn, spawnSync } = require('child_process');
 const { Readable } = require('stream');
+const { trancher } = require('./gates-tranche');
 
 // Aucune base, aucun envoi : seuls les NOMS des variables sont lus.
 for (const cle of Object.keys(process.env)) {
@@ -1673,17 +1674,20 @@ async function contreEpreuves() {
   const fichiers = [...new Set([JS, CSS, 'fungalaxy.html', ...MUTATIONS.map((m) => m.fichier)])];
   const empreintes = new Map(fichiers.map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]));
   let defauts = 0;
-  const parallele = Math.max(1, Math.min(MUTATIONS.length, Number(process.env.PINLANE_ECLATS || 6) || 6));
+  // --tranche=K/N : seules les mutations de cette tranche se jouent, chacune sous son rang d origine.
+  const rangs = trancher(MUTATIONS.map((_, index) => index));
+  const parallele = Math.max(1, Math.min(rangs.length, Number(process.env.PINLANE_ECLATS || 6) || 6));
   const runs = new Array(MUTATIONS.length);
   let suivante = 0;
   await Promise.all(Array.from({ length: parallele }, async (_, fil) => {
-    while (suivante < MUTATIONS.length) {
-      const index = suivante;
+    while (suivante < rangs.length) {
+      const index = rangs[suivante];
       suivante += 1;
       runs[index] = await jouerMutation(index, PORT + 1 + fil);
     }
   }));
-  MUTATIONS.forEach((mutation, index) => {
+  rangs.forEach((index) => {
+    const mutation = MUTATIONS[index];
     const r = runs[index];
     const sortie = `${r.stdout || ''}${r.stderr || ''}`;
     const servie = sortie.includes(`${MUTATION_PREUVE} ${mutation.nom}`);
@@ -1710,7 +1714,7 @@ async function contreEpreuves() {
     console.error(`\nformules-arrivee-form-check --mutate: ${defauts} defaut(s).`);
     process.exit(1);
   }
-  console.log(`contre-epreuve OK : ${MUTATIONS.length} mutations, et aucun fichier n a ete ecrit.`);
+  console.log(`contre-epreuve OK : ${rangs.length} mutations sur ${MUTATIONS.length}, et aucun fichier n a ete ecrit.`);
 }
 
 if (process.argv.includes('--mutate')) {

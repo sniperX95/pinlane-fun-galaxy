@@ -48,6 +48,7 @@
 const fs = require('fs');
 const path = require('path');
 const eclats = require('./gates-eclats.js');
+const { trancher } = require('./gates-tranche');
 const C = require('./comptoir-banc.js');
 const { chromium } = require('playwright-core');
 
@@ -1394,7 +1395,7 @@ function verifierLesAncres() {
 async function contrePreuves() {
   if (verifierLesAncres()) process.exit(1);
   const voulues = typeof argument('contre-preuves') === 'string' ? argument('contre-preuves').split(',') : null;
-  const liste = voulues ? MUTATIONS.filter((m) => voulues.includes(m.nom)) : MUTATIONS;
+  const liste = trancher(voulues ? MUTATIONS.filter((m) => voulues.includes(m.nom)) : MUTATIONS);
   const runs = await eclats.enPool(liste, eclats.nombreDeFils(liste.length), (m, fil) => eclats.lancer(__filename, [`--seul=${m.lettre}`], {
     env: { ...process.env, COMPTOIR_CASSE: m.nom, PINLANE_COMPTOIR_PORT: String(PORT + 1 + fil) },
     timeout: 300000,

@@ -154,9 +154,33 @@ function verifierLanceurReel(assembleur) {
   }
 }
 
+// [E] LES TRANCHES (scripts/gates-tranche.js) : une liste de contre-preuves coupee en N se rejoue entiere, et un
+// package.json ou une tranche manque est refuse.
+function verifierTranches(tranche) {
+  const liste = Array.from({ length: 17 }, (_, i) => `m${i}`);
+  for (const n of [1, 2, 3, 12]) {
+    const parts = Array.from({ length: n }, (_, i) => tranche.trancher(liste, ['node', 'x', `--tranche=${i + 1}/${n}`]));
+    const jouees = parts.flat();
+    ok(jouees.length === liste.length && new Set(jouees).size === liste.length && liste.every((x) => jouees.includes(x)), `[E] les ${n} tranche(s) se partagent la liste : chaque contre-preuve une fois`, `${jouees.length} jouees, ${new Set(jouees).size} distinctes, pour ${liste.length}`);
+  }
+  ok(tranche.trancher(liste, ['node', 'x']).length === liste.length && tranche.trancher(liste, ['node', 'x', '--tiers=2/3']).length === 6, '[E] sans drapeau la liste est entiere, et --tiers vaut --tranche');
+  let refusees = 0;
+  for (const [l, arg] of [[liste, '--tranche=0/3'], [liste, '--tranche=4/3'], [liste, '--tranche=x'], [liste.slice(0, 2), '--tranche=3/3']]) {
+    try { tranche.trancher(l, ['node', 'x', arg]); } catch (error) { refusees += 1; }
+  }
+  ok(refusees === 4, '[E] une tranche hors de 1..N, mal ecrite ou vide est refusee, pas jouee a vide', `${refusees}/4 refusees`);
+  const coupe = (...k) => ({ 'test:x': `node x.js && ${k.map((v) => `node x.js --contre-preuves --tranche=${v}`).join(' && ')}` });
+  const vus = [coupe('1/3', '3/3'), coupe('1/2', '1/2'), coupe('1/2', '2/3'), coupe('1/2', '2/2', '3/2')].map((s) => tranche.incompletes(s).length);
+  ok(tranche.incompletes(coupe('1/3', '2/3', '3/3')).length === 0 && vus.every((n) => n === 1), '[E] un script npm ou une tranche manque, se repete ou change de total est dit', JSON.stringify(vus));
+  const reels = tranche.incompletes(commun.scriptsNpm(ROOT));
+  ok(reels.length === 0, '[E] dans package.json, chaque jeu de contre-preuves coupe joue toutes ses tranches', reels.join(' | '));
+}
+
 function scenarios(mutation = null) {
   const lanceur = charger('scripts/gates-lancer.js', mutation);
   const assembleur = charger('scripts/gates-assembler.js', mutation);
+  if (!mutation || mutation.partie === 'E') verifierTranches(charger('scripts/gates-tranche.js', mutation));
+  if (mutation && mutation.partie === 'E') return;
   if (!mutation || mutation.partie !== 'C') {
     verifierRepartition(lanceur, 'plan synthetique', planSynthetique());
     verifierRepartition(lanceur, 'suite entiere', planReel());
@@ -181,6 +205,15 @@ const MUTATIONS = [
   { nom: 'manquante', partie: 'C', lettre: 'une part sans bilan', fichier: 'scripts/gates-assembler.js',
     de: '  for (let k = 1; k <= attendues; k += 1) if (!vues.has(`${k}/${attendues}`)) manquantes.push(`${k}/${attendues}`);',
     vers: '' },
+  { nom: 'tranches-qui-se-recouvrent', partie: 'E', lettre: 'se partagent la liste', fichier: 'scripts/gates-tranche.js',
+    de: '  const part = liste.filter((_, i) => i % t.n === t.k - 1);',
+    vers: '  const part = liste.filter((_, i) => i % t.n === 0);' },
+  { nom: 'tranche-vide-jouee', partie: 'E', lettre: 'hors de 1..N', fichier: 'scripts/gates-tranche.js',
+    de: "  if (!part.length) throw new Error(`tranche ${t.k}/${t.n} vide : la liste n a que ${liste.length} element(s)`);\n",
+    vers: '' },
+  { nom: 'tranche-oubliee', partie: 'E', lettre: 'une tranche manque', fichier: 'scripts/gates-tranche.js',
+    de: '      if (!n || vues.some((v) => v.n !== n) || jouees !== attendues) defauts.push(',
+    vers: '      if (!n) defauts.push(' },
 ];
 
 function main() {

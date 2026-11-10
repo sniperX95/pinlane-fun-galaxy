@@ -15,6 +15,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
+const { trancher } = require('./gates-tranche');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = 'lib/assistant-outils.js';
@@ -1663,10 +1664,10 @@ async function sectionEcran() {
 (async () => {
   if (process.argv.includes('--contre-preuves')) {
     const arg = process.argv.find((a) => a.startsWith('--seul='));
-    // 119 contre-preuves depassent les 15 minutes d une unite : le script npm les passe en six tiers (--tiers=1/6).
-    const tiers = /^--tiers=(\d+)\/(\d+)$/.exec(process.argv.find((a) => a.startsWith('--tiers=')) || '');
+    // 119 contre-preuves depassent les 15 minutes d une unite : le script npm les passe en douze tranches
+    // (--tiers=1/12, scripts/gates-tranche.js), cinq minutes chacune sur GitHub.
     const toutes = Object.keys(MUTATIONS);
-    const noms = arg ? arg.slice(7).split(',') : tiers ? toutes.filter((_, i) => i % Number(tiers[2]) === Number(tiers[1]) - 1) : toutes;
+    const noms = arg ? arg.slice(7).split(',') : trancher(toutes);
     let manquees = 0;
     for (const nom of noms) {
       const m = MUTATIONS[nom];

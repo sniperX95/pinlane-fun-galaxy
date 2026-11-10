@@ -32,7 +32,7 @@ const MUTATIONS = [
   {
     nom: 'le calendrier du jour oublie le « au moins 7 jours avant »',
     fichier: 'assets/fungalaxy-booking.js',
-    de: "    min: function () { var r = reglesEnLigne(); return r.jours ? plusJours(r.jours) : aujourdhui(); },\n",
+    de: "    min: function () { var n = reglesEnLigne().jours; return n ? plusJours(n) : aujourdhui(); },\n",
     vers: "    min: function () { return aujourdhui(); },\n",
     attendu: ['[F1]'],
   },

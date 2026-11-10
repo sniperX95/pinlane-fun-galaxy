@@ -1546,12 +1546,13 @@
   var CIBLE_JOUR = {
     btn: dayBtn,
     valeur: function () { return state.date; },
-    // Le premier et le dernier jour que le centre accepte EN LIGNE (ses regles, page Etablissement).
-    min: function () { var r = reglesEnLigne(); return r.jours ? plusJours(r.jours) : aujourdhui(); },
+    // Le premier et le dernier jour que le centre accepte EN LIGNE (ses regles, page Etablissement), et pourquoi
+    // un jour hors de ces bornes est grise.
+    min: function () { var n = reglesEnLigne().jours; return n ? plusJours(n) : aujourdhui(); },
     fin: function () { return finEnLigne(); },
     poser: function (d) { choisirJour(d); rejouer(dayLabel, 'is-maj'); rejouer(dayHint, 'is-maj'); },
-    avantMin: function () { var r = reglesEnLigne(); return r.jours ? phraseAuPlusTard(r.jours) : ''; },
-    apresFin: function () { var r = reglesEnLigne(); return r.horizon && plusJours(r.horizon) < horizon() ? phraseHorizon(r.horizon) : ''; },
+    get avantMin() { var n = reglesEnLigne().jours; return n ? phraseRegle(n) : ''; },
+    get apresFin() { var n = reglesEnLigne().horizon; return n && plusJours(n) < horizon() ? phraseRegle(n, 1) : ''; },
   };
   var calCible = null;
   function cible() { return calCible || CIBLE_JOUR; }
@@ -1598,23 +1599,19 @@
   // raison ; la demande sur mesure, que l equipe relit, n en depend pas.
   function reglesEnLigne() {
     var r = (meta && meta.bookingRules) || {};
-    var jours = Math.trunc(Number(r.minDaysAhead)) || 0, loin = Math.trunc(Number(r.horizonDays)) || 0;
-    return { jours: jours > 0 ? jours : 0, horizon: loin > 0 ? loin : 0 };
+    return { jours: Math.max(0, Math.trunc(r.minDaysAhead) || 0), horizon: Math.max(0, Math.trunc(r.horizonDays) || 0) };
   }
   function plusJours(n) { var t = deIso(aujourdhui()); return iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n)); }
-  function finEnLigne() { var r = reglesEnLigne(), h = horizon(); if (!r.horizon) return h; var f = plusJours(r.horizon); return f < h ? f : h; }
+  function finEnLigne() { var n = reglesEnLigne().horizon, h = horizon(), f = n && plusJours(n); return f && f < h ? f : h; }
   function reservableEnLigne(s) { return s >= CIBLE_JOUR.min() && s <= finEnLigne(); }
-  function phraseAuPlusTard(n) { return n === 1 ? 'En ligne, ce centre se réserve au plus tard la veille' : 'En ligne, ce centre se réserve au moins ' + n + ' jours à l’avance'; }
-  function phraseHorizon(n) { return 'En ligne, ce centre se réserve jusqu’à ' + n + ' jours à l’avance'; }
+  var EN_LIGNE = 'En ligne, ce centre se réserve ';
+  function phraseRegle(n, loin) { return EN_LIGNE + (loin ? 'jusqu’à ' + n + ' jours à l’avance' : n === 1 ? 'au plus tard la veille' : 'au moins ' + n + ' jours à l’avance'); }
   // La regle dite sous le calendrier du jour, lisible sans survoler une case : au doigt, un title ne se voit pas.
   function regleEnClair() {
     if (cible() !== CIBLE_JOUR) return '';
-    var r = reglesEnLigne(), morceaux = [];
-    if (r.jours) morceaux.push(phraseAuPlusTard(r.jours));
-    if (r.horizon && plusJours(r.horizon) < horizon()) morceaux.push(r.jours ? 'jusqu’à ' + r.horizon + ' jours à l’avance' : phraseHorizon(r.horizon));
-    return morceaux.join(' et ');
+    var a = CIBLE_JOUR.avantMin, b = CIBLE_JOUR.apresFin;
+    return a && b ? a + ' et ' + b.slice(EN_LIGNE.length) : a || b;
   }
-  function texteCible(c, cle) { var v = c[cle]; return typeof v === 'function' ? v() : (v || ''); }
   function finCible() { var c = cible(); return c.fin ? c.fin() : horizon(); }
   function infoCalendrier(s) { var t = infoTexte(jours[s]) || 'Choisissez un jour.', r = regleEnClair(); return r ? t.replace(/\.$/, '') + '. ' + r + '.' : t; }
   // L ENTREE GARDE LE VERDICT DU JOUR que le serveur a calcule : le jour de
@@ -1716,8 +1713,7 @@
       var fini = journeeFinie(s);
       var off = passe || loin || avant || !j || !j.ouvert || fini;
       var cls = 'fg-cal__day' + (off ? ' is-off' : '') + (passe || avant ? ' is-past' : '') + (s === today ? ' is-today' : '') + (s === choisi ? ' is-selected' : '') + (j && j.periode ? (j.periode.type === 'public' ? ' is-ferie' : ' is-vacances') : '') + (!j && !passe && !loin ? ' is-loading' : '');
-      var raison = (avant && texteCible(cible(), 'avantMin')) || (loin && texteCible(cible(), 'apresFin')) || '';
-      var titre = raison ? raison : fini ? 'Aujourd’hui : fermé, la journée est finie' : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
+      var titre = avant && cible().avantMin ? cible().avantMin : loin && cible().apresFin ? cible().apresFin : fini ? 'Aujourd’hui : fermé, la journée est finie' : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
       if (!off && !focusable) focusable = s;
       html += '<button type="button" class="' + cls + '" data-date="' + s + '" role="gridcell" aria-selected="' + (s === choisi) + '" aria-label="' + esc(titre) + '" title="' + esc(titre) + '" ' + (off ? 'disabled' : '') + ' tabindex="-1">' + d + (j && j.periode ? '<i></i>' : '') + '</button>';
     }
@@ -1732,8 +1728,8 @@
     if (navFocus && navFocus.disabled) (navFocus === calNext ? calPrev : calNext).focus({ preventScroll: true });
     calInfo.textContent = infoCalendrier(choisi);
     // La legende dit aussi le jour grise par la regle du centre : il n est pas ferme, il ne se prend pas en ligne.
-    var legende = $('.fg-cal__legend span');
-    if (legende) legende.textContent = regleEnClair() ? '· jours grisés : fermé, ou pas réservable en ligne' : '· jours grisés : fermé';
+    var leg = $('.fg-cal__legend span');
+    if (leg) leg.textContent = '· jours grisés : fermé' + (regleEnClair() ? ', ou pas réservable en ligne' : '');
     setTimeout(posterHauteur, 50);
   }
   function montrerMois(y, m, focusAu) {
@@ -1901,7 +1897,7 @@
     ouvrirJours(false);
     c.btn.focus();
   });
-  calGrid.addEventListener('mouseover', function (e) { var b = e.target.closest('.fg-cal__day'); if (!b || !jours[b.dataset.date]) return; var info = infoTexte(jours[b.dataset.date]); calInfo.textContent = b.disabled && b.title && b.title !== info ? b.title : info; });
+  calGrid.addEventListener('mouseover', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
   calGrid.addEventListener('mouseleave', function () { calInfo.textContent = infoCalendrier(cible().valeur()); });
   calGrid.addEventListener('focusin', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
   // Le clavier : fleches d un jour ou d une semaine, en changeant de mois au

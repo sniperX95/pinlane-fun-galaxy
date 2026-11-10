@@ -27,6 +27,11 @@ const ECRAN = 'assets/pinlane-assistant.js';
 const STYLE = 'assets/pinlane-assistant.css';
 
 const MUTATIONS = {
+  'formulaire-ecrans-oublies': { section: 'V', fichier: OUT, de: "ecrans_du_formulaire: ecransDuFormulaire.length ? ecransDuFormulaire : 'aucune visite comptée sur la période',", vers: "ecrans_du_formulaire: 'aucune visite comptée sur la période',", rouge: "[V] la provenance dit ou les visiteurs du formulaire s arretent, ecran par ecran" },
+  'formulaire-arrivee-comptee-partie': { section: 'V', fichier: OUT, de: "...(e.dernier ? {} : { partis_ici: e.arretes }), pourcentage_du_depart", vers: "partis_ici: e.arrives, pourcentage_du_depart", rouge: "[V] la provenance dit ou les visiteurs du formulaire s arretent, ecran par ecran" },
+  'heures-completes-oubliees': { section: 'V', fichier: OUT, de: "heures_completes_voulues: heuresCompletes.length ? heuresCompletes : 'aucune heure complète touchée sur la période',", vers: "heures_completes_voulues: 'aucune heure complète touchée sur la période',", rouge: "[V] et les heures completes que des visiteurs voulaient, la plus demandee d abord" },
+  'minimum-pas-dit': { section: 'V', fichier: OUT, de: " Un minimum : une heure que personne ne touche ne compte pas.\"", vers: "\"", rouge: "[V] ces chiffres partent avec leur regle de lecture et leur date de debut (un minimum, pas un total)" },
+  'preuves-du-formulaire-illisibles': { section: 'V', fichier: OUT, de: "ecrans_du_formulaire: ecransDuFormulaire.length ? ecransDuFormulaire :", vers: "ecrans_du_formulaire: ecransDuFormulaire.length ? { parcours: ecransDuFormulaire } :", rouge: "[V] la personne relit ces deux tableaux dans ses preuves, en francais" },
   'garde-du-site-ferme': { section: 'P', fichier: 'middleware.ts', de: "    '/api/assistant',\n", vers: "", rouge: "[P] la route passe le garde du site" },
   'porte-grande-ouverte': { section: 'P', fichier: OUT, de: "  if (!session) throw refus(`Le centre", vers: "  if (!session) return { id, session: ctx.session };\n  if (!session) throw refus(`Le centre", rouge: "[P] le centre d un autre client est refuse" },
   'droit-non-controle': { section: 'P', fichier: OUT, de: "      if (outil.droits) exiger(ouverte.session, outil.droits, outil.ce);\n", vers: "", rouge: "[P] un outil force sans le droit est refuse" },
@@ -245,7 +250,9 @@ scope.listCentersForSession = async () => [{ id: 'libramont', name: 'Fun Galaxy 
 const audit = require('../lib/audit-log');
 audit.writeAuditLog = async (entree) => { etat.audits.push(entree); };
 require('../lib/email-threads').listerFils = async () => ({ total: 1, threads: [{ subject: 'Réservation de Verhaegen pour samedi', contactName: 'Zoéline Verhaegen', status: 'open', messageCount: 3, lastMessageAt: new Date('2026-10-20T10:00:00Z') }] });
-require('../lib/donnees-api').lireDonnees = async () => ({ sources: [{ source: 'google', reservations: 2, joueurs: 5, chiffre: 123.45, encaisse: 100, panierMoyen: 61.7 }], campagnes: [], appareils: [], pages: [], entonnoir: [{ source: 'google', creneauxRetenus: 50, confirmes: 20, abandons: 30, tauxConfirmation: 40 }, { source: 'direct', creneauxRetenus: 30, confirmes: 9, abandons: 21, tauxConfirmation: 30 }], fidelite: { clientsConnus: 2, partChiffreFideles: 50, depenseMoyenneParClient: 20 } });
+require('../lib/donnees-api').lireDonnees = async () => ({ sources: [{ source: 'google', reservations: 2, joueurs: 5, chiffre: 123.45, encaisse: 100, panierMoyen: 61.7 }], campagnes: [], appareils: [], pages: [], entonnoir: [{ source: 'google', creneauxRetenus: 50, confirmes: 20, abandons: 30, tauxConfirmation: 40 }, { source: 'direct', creneauxRetenus: 30, confirmes: 9, abandons: 21, tauxConfirmation: 30 }], fidelite: { clientsConnus: 2, partChiffreFideles: 50, depenseMoyenneParClient: 20 },
+  formulaire: require('../lib/formulaire-etapes').entonnoirFormulaire([{ parcours: 'reservation', loin: 1, visites: 50 }, { parcours: 'reservation', loin: 3, visites: 30 }, { parcours: 'reservation', loin: 6, visites: 20 }]),
+  heuresPleines: require('../lib/formulaire-heures').heuresDemandees([{ jour_semaine: 6, heure: '15:00', activite: 'bowling', formule: '', demandes: 40, dates: 3, joueurs_moyens: 6 }, { jour_semaine: 7, heure: '16:30', activite: 'laser_game', formule: '', demandes: 12, dates: 2, joueurs_moyens: null }], { nomActivite: (id) => ({ bowling: 'Bowling', laser_game: 'Laser game' }[id] || ''), nomFormule: () => '' }) });
 const budget = require('../lib/llm-budget');
 
 // ---- Le faux Claude --------------------------------------------------------------
@@ -573,7 +580,7 @@ async function sectionV() {
 
   reinitialiser({ session: sessionDe(DIRECTION, 'm-v9') });
   etat.script = [pas([outilP('s', 'provenance_et_site', OCT)], 'tool_use'), fin('Rien.')];
-  await poser(question());
+  const litProvenance = await poser(question());
   const provenance = contenu(resultatsOutils(etat.appels[1])[0]);
   // La place a vendre : octobre 2026 a cinq samedis ouverts de 10 h a 24 h sur 8 pistes, et quatre
   // groupes de deux pistes pendant une heure. 560 heures offertes, 8 prises.
@@ -585,6 +592,26 @@ async function sectionV() {
   const samedi = parJour.find((j) => j.jour === 'samedi') || {};
   ok('[V] la semaine type dit la place libre de chaque jour', samedi.ouvert === '10:00 à 24:00' && samedi.jours_ouverts === 5 && samedi.groupes === 4 && samedi.groupes_par_jour === 0.8 && samedi.remplissage_pistes_pct === 1.4 && samedi.heures_de_piste_libres_par_jour === 110.4 && !parJour.some((j) => j.jour === 'lundi'), JSON.stringify(parJour));
   ok('[V] les clients d un jour ne comptent que ses visites', !duMardi.is_error && !duSamedi.is_error && contenu(duMardi).jour_semaine === 'mardi' && contenu(duMardi).clients_connus === 0 && contenu(duSamedi).clients_connus === 2, JSON.stringify([contenu(duMardi).clients_connus, contenu(duSamedi).clients_connus]));
+  {
+    // OU LES GENS S ARRETENT ET CE QU ILS VOULAIENT (2026-11-10) : ce que le modele recoit, puis
+    // ce que la personne peut relire dans ses preuves.
+    const ef = Array.isArray(provenance.ecrans_du_formulaire) ? provenance.ecrans_du_formulaire : [];
+    ok('[V] la provenance dit ou les visiteurs du formulaire s arretent, ecran par ecran', ef.length === 6 && ef.every((e) => e.parcours === 'Réservation')
+      && JSON.stringify(ef[0]) === JSON.stringify({ parcours: 'Réservation', ecran: 'Date et groupe', arrives: 100, partis_ici: 50, pourcentage_du_depart: 100 })
+      && ef[2].ecran === 'Horaires' && ef[2].arrives === 50 && ef[2].partis_ici === 30
+      && JSON.stringify(ef[5]) === JSON.stringify({ parcours: 'Réservation', ecran: 'Réservation envoyée', arrives: 20, pourcentage_du_depart: 20 }), JSON.stringify(provenance.ecrans_du_formulaire).slice(0, 400));
+    const hc = Array.isArray(provenance.heures_completes_voulues) ? provenance.heures_completes_voulues : [];
+    ok('[V] et les heures completes que des visiteurs voulaient, la plus demandee d abord', hc.length === 2 && JSON.stringify(hc[0]) === JSON.stringify({ jour: 'samedi', heure: '15:00', pour: 'Bowling', demandes: 40, dates: 3, groupe_moyen: 6 }) && hc[1].pour === 'Laser game' && hc[1].groupe_moyen === null, JSON.stringify(provenance.heures_completes_voulues).slice(0, 400));
+    const lec = provenance.lecture_du_formulaire || {};
+    ok('[V] ces chiffres partent avec leur regle de lecture et leur date de debut (un minimum, pas un total)', lec.compte_depuis === '2026-11-10' && /le plus loin/.test(String(lec.ecrans)) && /minimum/.test(String(lec.heures_completes)) && [lec.ecrans, lec.heures_completes].every((t) => String(t).length <= 120), JSON.stringify(lec));
+    const brutP = JSON.stringify([ef, hc, lec]);
+    ok('[V] ces blocs ne portent ni argent ni identite', !/chiffre|montant|€|email|telephone/i.test(brutP) && !/[a-f0-9]{24}/.test(brutP), brutP.slice(0, 200));
+    const vues = ((litProvenance.tous('source').find((s) => s.donnees.outil === 'provenance_et_site') || { donnees: {} }).donnees.sections || []);
+    const tEcrans = vues.find((t) => t.titre === 'Écrans du formulaire') || { colonnes: [], lignes: [] };
+    const tHeures = vues.find((t) => t.titre === 'Heures complètes voulues') || { colonnes: [], lignes: [] };
+    ok('[V] la personne relit ces deux tableaux dans ses preuves, en francais', tEcrans.lignes.length === 6 && tEcrans.colonnes.map((c) => c.nom).join('|') === 'Parcours|Écran|Arrivés|Partis ici|Pourcentage du départ' && (tEcrans.colonnes[4] || {}).type === 'pct'
+      && tHeures.lignes.length === 2 && tHeures.colonnes.map((c) => c.nom).join('|') === 'Jour|Heure|Pour|Demandes|Dates|Groupe moyen' && vues.some((t) => t.titre === 'Lecture du formulaire'), JSON.stringify(vues.map((t) => [t.titre, t.colonnes.map((c) => c.nom)])).slice(0, 600));
+  }
   ok('[V] l entonnoir donne son total', provenance.entonnoir_total && provenance.entonnoir_total.creneauxRetenus === 80 && provenance.entonnoir_total.confirmes === 29 && provenance.entonnoir_total.abandons === 51 && provenance.entonnoir_total.tauxConfirmation === 36.3, JSON.stringify(provenance.entonnoir_total));
 
   const { preuves: relier } = require('../lib/assistant-verite');

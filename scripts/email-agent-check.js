@@ -547,6 +547,29 @@ const anthropicOk = (object) => ({
   const faitsPartiels = String(require('../lib/email-agent').buildCenterFacts('__partiel'));
   moduleOps.getCenter = vraiGetCenter;
   delete require.cache[require.resolve('../lib/email-agent')];
+  // LE MINIMUM DES FORMULES ANNIVERSAIRE SUIT LE CATALOGUE (2026-11-10). La phrase etait ecrite
+  // en dur. Le catalogue se remplace ici le temps d une lecture : email-agent le lit a l appel.
+  {
+    const moteur = require('../lib/booking-config');
+    const vraiCatalogue = moteur.getEffectiveFormules;
+    const faitsAvec = (formules) => {
+      moteur.getEffectiveFormules = () => formules;
+      try { return String(require('../lib/email-agent').buildCenterFacts('libramont')); } finally { moteur.getEffectiveFormules = vraiCatalogue; }
+    };
+    const ligne = (texte) => texte.split('\n').find((l) => l.startsWith('Formules anniversaire')) || '(aucune ligne)';
+    const anniv = (id, minPax) => ({ id, name: id.toUpperCase(), family: 'Formules anniversaires', minPax });
+    ok(ligne(String(require('../lib/email-agent').buildCenterFacts('libramont'))) === 'Formules anniversaire : à partir de 6 enfants.',
+      'formules anniversaire : avec le catalogue reel, la phrase est celle d avant, au caractere pres', ligne(String(require('../lib/email-agent').buildCenterFacts('libramont'))));
+    ok(ligne(faitsAvec([anniv('f1', 8), anniv('f2', 8), { id: 'bts', name: 'BACK TO SCHOOL', family: 'Formules speciales', minPax: 2 }])) === 'Formules anniversaire : à partir de 8 enfants.',
+      'formules anniversaire : un gerant qui passe le minimum a 8 est suivi, et une formule d une autre famille ne compte pas', ligne(faitsAvec([anniv('f1', 8), anniv('f2', 8)])));
+    ok(ligne(faitsAvec([anniv('f1', 6), anniv('f6', 10), anniv('f2', 6)])) === 'Formules anniversaire, minimum d’enfants selon la formule : 6 (F1, F2) · 10 (F6).',
+      'formules anniversaire : deux minimums differents se disent par formule', ligne(faitsAvec([anniv('f1', 6), anniv('f6', 10), anniv('f2', 6)])));
+    ok(ligne(faitsAvec([{ id: 'bts', name: 'BACK TO SCHOOL', family: 'Formules speciales', minPax: 2 }])) === '(aucune ligne)' && ligne(faitsAvec([])) === '(aucune ligne)',
+      'formules anniversaire : un centre sans formule anniversaire n en parle pas', ligne(faitsAvec([])));
+    // Contre-epreuve : la phrase d avant, ecrite en dur, ne suit pas le catalogue.
+    const enDur = (formules) => (formules.length >= 0 ? 'Formules anniversaire : à partir de 6 enfants.' : '');
+    ok(enDur([anniv('f1', 8)]) !== ligne(faitsAvec([anniv('f1', 8)])), 'formules anniversaire : la phrase en dur aurait promis 6 enfants a un centre qui en demande 8 : ce gate ROUGIRAIT');
+  }
   ok(/^Horaires habituels : Samedi 10h à 18h\.$/m.test(faitsPartiels),
     'grille PARTIELLE : seul le jour declare est annonce',
     faitsPartiels.split('\n').find((l) => l.startsWith('Horaires')) || '(aucune ligne)');

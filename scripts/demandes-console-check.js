@@ -256,6 +256,7 @@ const lireJournee = () => {
     heures: [...document.querySelectorAll('.sm-j-axe span')].map((s) => s.textContent),
     moment: [...document.querySelectorAll('.sm-j-axe .is-mo')].map((s) => s.textContent),
     dit: (document.querySelector('.sm-j-dit') || {}).textContent || '',
+    titre: (document.querySelector('.sm-o-titre') || {}).textContent || '',
   };
 };
 const pres = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
@@ -298,9 +299,10 @@ async function parcours(browser, { captures = true } = {}) {
     r.bandeau = await page.evaluate(() => { const b = document.querySelector('.sm-promis'); return b ? { t: b.innerText.replace(/\s+/g, ' ').trim(), cls: b.className } : null; });
     await page.waitForFunction(() => [...document.querySelectorAll('.sm-photo')].every((i) => i.complete), null, { timeout: 8000 });
     r.envies = await page.evaluate(() => [...document.querySelectorAll('.sm-envies li')].map((l) => l.innerText.replace(/\s+/g, ' ').trim()));
-    r.photos = await page.evaluate(() => [...document.querySelectorAll('.sm-photo')].map((i) => ({ n: i.naturalWidth, src: i.getAttribute('src') })));
+    r.photos = await page.evaluate(() => [...document.querySelectorAll('.sm-envies .sm-photo')].map((i) => ({ n: i.naturalWidth, src: i.getAttribute('src') })));
+    r.photosOffres = await page.evaluate(() => [...document.querySelectorAll('.sm-o .sm-o-photo')].map((i) => i.getAttribute('src')));
     r.photoAilleurs = await page.evaluate(() => smPhotoDe('Bowling', 'un-autre-centre'));
-    r.demandeTexte = await texte(page, '.sm-c1 .sm-s');
+    r.demandeTexte = await texte(page, '.sm-tete .sm-demande');
     r.clientTexte = await texte(page, '.sm-client');
     r.venues = await page.evaluate(() => document.querySelectorAll('.sm-venues li').length);
     r.mots = await page.evaluate(() => document.querySelector('.sm-fiche').innerText);
@@ -308,6 +310,9 @@ async function parcours(browser, { captures = true } = {}) {
 
     // [C] les disponibilites
     r.jours = await page.evaluate(() => [...document.querySelectorAll('.sm-jour, .sm-jour-off')].map((d) => d.innerText.replace(/\s+/g, ' ').trim()));
+    r.momentSurLAxe = await page.evaluate(() => Boolean(document.querySelector('.sm-jour .sm-j-mo')));
+    r.ordreDuJour = await page.evaluate(() => { const j = document.querySelector('.sm-jour'); const o = j && j.querySelector('.sm-offres'); const p = j && j.querySelector('.sm-j'); return Boolean(o && p && (o.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)); });
+    r.tete = await page.evaluate(() => { const t = document.querySelector('.sm-tete'); return { date: Boolean(t.querySelector('.sm-date')), promis: Boolean(t.querySelector(':scope > .sm-promis')), demande: Boolean(t.querySelector(':scope > .sm-demande')), haut: Math.round(t.getBoundingClientRect().height) }; });
     r.etudeDemandee = await page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').map((a) => a.id));
     await capture('fiche-sombre.png');
     await capture('fiche-sombre-page.png', { fullPage: true });
@@ -484,7 +489,7 @@ async function heurePerimee(browser) {
     await page.waitForTimeout(500);
     await page.mouse.move(3, 3);
     await page.waitForTimeout(60);
-    r.lu = await page.evaluate(() => ({ choisies: document.querySelectorAll('.sm-h.is-on').length, mail: Boolean(document.querySelector('.sm-courrier')), consigne: ((document.querySelector('.sm-c2') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
+    r.lu = await page.evaluate(() => ({ choisies: document.querySelectorAll('.sm-h.is-on').length, mail: Boolean(document.querySelector('.sm-courrier')), consigne: ((document.querySelector('.sm-o-titre') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
   } catch (error) {
     r.panne = String((error && error.message) || error).split('\n')[0];
   } finally {
@@ -599,14 +604,14 @@ async function sansSuite(browser) {
       statuts: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
       ouvert: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
       entete: ((document.querySelector('.sm-promis') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
-      bouton: (document.querySelector('.sm-tete button.sm-b') || {}).textContent || '',
+      bouton: (document.querySelector('.sm-tete button.sm-b-classer') || {}).textContent || '',
       dispos: document.querySelectorAll('.sm-jour').length,
     }));
     await page.locator('.sm-tete .sm-b', { hasText: 'Rouvrir' }).click();
     await page.waitForTimeout(600);
     r.rouverte = await page.evaluate(() => ({
       statuts: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
-      bouton: (document.querySelector('.sm-tete button.sm-b') || {}).textContent || '',
+      bouton: (document.querySelector('.sm-tete button.sm-b-classer') || {}).textContent || '',
     }));
   } catch (error) {
     r.panne = String((error && error.message) || error).split('\n')[0];
@@ -821,7 +826,8 @@ function verifier(r) {
   section('B. LA FICHE DIT TOUT CE QUE LE CLIENT A REMPLI');
   ok(/Athénée de Libramont/.test(r.entete.nom) && /École, jeunesse/.test(r.entete.sous) && /reçue/.test(r.entete.sous), 'le groupe, son type, quand la demande est arrivee', JSON.stringify(r.entete));
   ok(/Toutes les demandes/.test(r.entete.retour) && r.entete.liste === 0, 'la fiche prend la page, un lien ramene a la liste', JSON.stringify(r.entete));
-  ok(JSON.stringify(r.entete.boutons) === '["Sans suite"]', 'un seul geste de classement', JSON.stringify(r.entete.boutons));
+  ok(JSON.stringify(r.entete.boutons) === '["Écrire au client","Sans suite"]', 'en tete : ecrire au client, et un seul geste de classement', JSON.stringify(r.entete.boutons));
+  ok(!r.tete.date && r.tete.promis && r.tete.demande && r.tete.haut <= 260, 'toute la demande tient dans l en-tete : sans tuile de date, avec l etat de la reponse et les envies, en 260 px au plus', JSON.stringify(r.tete));
   ok(r.entete.liens.length === 1 && r.entete.liens[0].t === 'Appeler' && r.entete.liens[0].href === 'tel:+32470112233', 'appeler le client est a un toucher', JSON.stringify(r.entete.liens));
   ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client est en tete de la fiche', JSON.stringify(r.bandeau));
   ok(/31 joueurs et 3 accompagnateurs, 7 à 12 ans/.test(r.entete.sous) && /dimanche \d{1,2} \S+ \d{4} l’après-midi, ou \S+ \d{1,2} \S+ \d{4}\./.test(r.entete.sous), 'combien, quel age, quand, et l autre date', r.entete.sous);
@@ -833,14 +839,16 @@ function verifier(r) {
   ok(/1 absence/.test(r.clientTexte), 'ses absences se voient', r.clientTexte);
   ok(r.venues === 3 && /Formule 2, 28 joueurs/.test(r.clientTexte) && /540 €/.test(r.clientTexte), 'ses dernieres venues se lisent, avec leur prix', r.clientTexte);
   ok(r.photos.length === 3 && r.photos.every((i) => i.n > 0), 'les vraies photos du centre se chargent', JSON.stringify(r.photos));
+  ok(r.photosOffres.length === 2 && r.photosOffres.every((s) => /^\/assets\/fungalaxy\/[a-z-]+-carte\.webp$/.test(String(s))), 'chaque offre porte une vraie photo du centre', JSON.stringify(r.photosOffres));
   ok(r.photoAilleurs === '', 'un autre client ne recoit pas les photos de ce centre', r.photoAilleurs);
   ok(!/\bIA\b|Touchez|moteur/.test(r.mots), 'la fiche ne parle ni d IA ni de moteur', (r.mots.match(/.{0,40}(\bIA\b|Touchez|moteur).{0,40}/) || [''])[0]);
-  ok(/Écrire au client/.test(r.vide) && /Composer la réservation/.test(r.vide) && /Sur mesure/.test(r.vide), 'sans heure choisie : ecrire, ou composer une reservation sur mesure', r.vide);
+  ok(r.entete.boutons.includes('Écrire au client') && /Composer la réservation/.test(r.vide) && /Sur mesure/.test(r.vide), 'sans heure choisie : ecrire (en tete), ou composer une reservation sur mesure', r.vide);
 
   section('C. LES DISPONIBILITES : CE QUE LE MOTEUR DIT DE LA DATE');
   const [j1 = '', j2 = ''] = r.jours;
   ok(r.etudeDemandee.filter((id) => id === '801').length === 1, 'l etude est demandee pour la fiche ouverte, une fois', JSON.stringify(r.etudeDemandee));
-  ok(/Ouvert de 10:00 à 22:00/.test(j1) && /Après-midi de 12:00 à 18:00/.test(j1), 'le jour voulu : ouvert, et la plage de l apres-midi', j1.slice(0, 200));
+  ok(/Ouvert de 10:00 à 22:00/.test(j1) && !/Après-midi de/.test(j1) && r.momentSurLAxe, 'le jour voulu : ouvert, et l apres-midi marque sur l axe sans une phrase de plus', j1.slice(0, 200));
+  ok(r.ordreDuJour, 'les offres et leurs heures passent avant le planning du jour', String(r.ordreDuJour));
   ok(/Formule 3/.test(j1) && /868 €/.test(j1) && /28 €/.test(j1) && /12:00/.test(j1) && /14:30/.test(j1), 'la formule : prix du groupe, prix par joueur, departs libres', j1);
   ok(/3 € au-dessus du budget/.test(j1), 'au-dessus du budget, l ecart par joueur est dit', j1);
   ok(/544 €/.test(j1) && /17,55 €/.test(j1) && !/Dans le budget/.test(j1) && /6 pistes/.test(j1) && /2 vagues/.test(j1) && /14:00/.test(j1) && /15:00/.test(j1), 'le programme des activites, son detail, et tous ses departs ; ce qui tient le budget n a rien a dire', j1);
@@ -858,11 +866,11 @@ function verifier(r) {
     ok(J.p7.length === 0, 'une piste libre reste vide', JSON.stringify(J.p7));
     ok(J.arene.length === 1 && pres(J.arene[0].x, 16.67) && pres(J.arene[0].w, 2.78), 'le laser a sa rangee', JSON.stringify(J.arene));
     ok(r.dessin && r.dessin.arrivee === true && r.dessin.anime === 'sm-trace', 'la journee se dessine a l ouverture', JSON.stringify(r.dessin));
-    ok(/Choisissez une heure/.test(J.dit), 'elle dit quoi faire', J.dit);
+    ok(/^Choisissez une heure pour 31 joueurs$/.test(J.titre.trim()) && /^En gris, ce qui est déjà réservé\.$/.test(J.dit.trim()), 'la consigne se lit au-dessus des heures, la legende sous le planning', `${J.titre} | ${J.dit}`);
     ok(r.touches.some((t) => t.t === '14:00 reste 2 pistes reste 14 armes' && /fin vers 16:00/.test(t.a) && /reste 2 pistes/.test(t.a)), 'chaque heure dit ce qui resterait, et sa fin', JSON.stringify(r.touches));
     ok(r.touches.some((t) => t.t === '15:00 reste 0 piste reste 14 armes') , 'meme quand il ne reste plus rien', JSON.stringify(r.touches));
     ok(r.apercu && r.apercu.p7.length === 1 && r.apercu.p7[0].apercu && pres(r.apercu.p7[0].x, 33.33) && /^Bowling, 6 pistes de 14:00 à 15:00, puis Laser Game de 15:00 à 15:40\.$/.test(r.apercu.dit), 'passer sur une heure montre le groupe, en contour, et dit ce qu il prendrait', JSON.stringify(r.apercu && { p: r.apercu.p7, d: r.apercu.dit }));
-    ok(r.apresApercu && r.apresApercu.p7.length === 0 && /Choisissez une heure/.test(r.apresApercu.dit), 'la souris partie, la journee revient', JSON.stringify(r.apresApercu && r.apresApercu.p7));
+    ok(r.apresApercu && r.apresApercu.p7.length === 0 && /^En gris, ce qui est déjà réservé\.$/.test(r.apresApercu.dit.trim()), 'la souris partie, la journee revient', JSON.stringify(r.apresApercu && r.apresApercu.p7));
     ok(r.place && r.place.p7.length === 1 && r.place.p7[0].groupe && !r.place.p7[0].apercu && r.place.p8.length === 1, 'l heure choisie pose le groupe sur ses pistes', JSON.stringify(r.place && r.place.p7));
     ok(r.place && r.place.p7[0] && r.place.p7[0].fond === 'rgb(181, 131, 207)', 'le bowling garde sa couleur', r.place && r.place.p7[0] && r.place.p7[0].fond);
     ok(r.place && r.place.arene.length === 3 && r.place.arene.filter((b) => b.groupe).every((b) => b.fond === 'rgb(103, 186, 172)'), 'le laser garde la sienne, ses deux vagues posees', JSON.stringify(r.place && r.place.arene));

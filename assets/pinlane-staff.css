@@ -21129,6 +21129,47 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 
 /* Une fenetre, sans quitter la page : au-dessus de Reserver quand elle en vient. */
 .sm-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
+/* LA FICHE CLAIRE (2026-11-10, Ansar : « on comprend rien », « du texte de tout les cotes »).
+   Toute la demande tient dans l en-tete : qui, quand, combien, l etat de la reponse et les envies
+   en vignettes. Dessous, le travail (les offres et leurs heures) a gauche ; la reponse et le
+   client a droite, toujours a l ecran. Blocs plats, vraies photos, pas de filet. */
+.sm-tete { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "titre etat actions" "phrase phrase phrase" "sous sous sous" "demande demande demande"; align-items: start; gap: 3px 14px; }
+.sm-tete-t { display: contents; }
+.sm-tete-t > h2 { grid-area: titre; align-self: center; }
+.sm-tete-t > .sm-tete-l { grid-area: phrase; margin-top: 4px; }
+.sm-tete-t > .sm-tete-s { grid-area: sous; }
+.sm-tete-a { grid-area: actions; }
+.sm-tete > .sm-promis { grid-area: etat; margin: 1px 0 0; padding: 8px 12px; font-size: 13.5px; line-height: 1.3; white-space: nowrap; border-radius: 6px; }
+.sm-tete > .sm-demande { grid-area: demande; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; margin: 14px 0 0; padding: 0; background: none; border-radius: 0; }
+.sm-demande h3 { margin: 0; font-size: 14px; }
+.sm-demande .sm-envies { display: flex; flex-wrap: wrap; gap: 8px; }
+.sm-demande .sm-envies li { gap: 11px; padding-right: 14px; overflow: hidden; background: var(--subtle); border-radius: 6px; }
+.sm-demande .sm-photo { width: 76px; height: 52px; border-radius: 0; }
+.sm-demande .sm-envies .sm-so { display: inline-grid; grid-template-columns: auto auto; column-gap: 7px; align-items: baseline; font-size: 14.5px; line-height: 1.25; }
+.sm-demande .sm-envies .sm-so span { grid-column: 2; font-size: 12.5px; }
+.sm-demande-d { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; }
+.sm-demande .sm-budget { margin: 0; }
+.sm-demande .sm-message { margin: 0; padding: 8px 12px; }
+.sm-jour-t + .sm-o-titre { margin-top: 14px; }
+.sm-offres + .sm-j { margin-top: 20px; }
+.sm-o { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; align-items: start; }
+.sm-o > .sm-o-photo { grid-row: 1 / span 4; width: 112px; height: 80px; object-fit: cover; border-radius: 4px; background: var(--surface); }
+.sm-o > :not(.sm-o-photo) { grid-column: 2; min-width: 0; }
+@media (min-width: 1180px) {
+  .sm-colonnes { grid-template-columns: minmax(0, 1fr) 380px; }
+  .sm-c2 { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: thin; }
+}
+@media (max-width: 900px) {
+  .sm-tete { grid-template-columns: minmax(0, 1fr); grid-template-areas: "titre" "phrase" "sous" "etat" "actions" "demande"; gap: 6px; }
+  .sm-tete > .sm-promis { justify-self: start; white-space: normal; }
+  .sm-tete > .sm-demande { margin-top: 4px; }
+  .sm-o > .sm-o-photo { width: 84px; height: 60px; }
+}
+@media (max-width: 720px) {
+  .sm-o { grid-template-columns: minmax(0, 1fr); }
+  .sm-o > .sm-o-photo { display: none; }
+  .sm-o > :not(.sm-o-photo) { grid-column: 1; }
+}
 .sm-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: sm-fen-entre 200ms cubic-bezier(.23, 1, .32, 1) both; }
 .sm-fen.is-petite { max-width: 440px; }
 .sm-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }

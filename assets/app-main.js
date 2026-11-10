@@ -20040,7 +20040,7 @@ function renderSmJournee(item, jour, etude, lecture = false) {
   const moment = avecMoment
     ? `<i class="sm-j-mo" style="left:${(((Math.max(f.de, cadre.de) - cadre.de) / (cadre.a - cadre.de)) * 100).toFixed(2)}%;width:${(((Math.min(f.a, cadre.a) - Math.max(f.de, cadre.de)) / (cadre.a - cadre.de)) * 100).toFixed(2)}%"></i>`
     : '';
-  const aide = !lecture && rqEtudeADesHeures(etude) ? 'En gris, ce qui est déjà réservé. Choisissez une heure pour y placer le groupe.' : 'En gris, ce qui est déjà réservé.';
+  const aide = 'En gris, ce qui est déjà réservé.';
   return `<div class="sm-j${arrivee ? ' is-arrivee' : ''}" style="--ecoule:${Math.round(ecoule)}ms" aria-hidden="true">
     <div class="sm-j-axe"><div>${axe}${moment}</div></div>
     <div class="sm-j-corps">${rangees}</div>
@@ -20118,7 +20118,6 @@ function renderSmFiche(item) {
   return `<button type="button" class="sm-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
     <article class="sm-fiche" data-request-id="${escapeHtml(String(item.id))}">
       <div class="sm-tete">
-        ${renderSmDate(item, 'is-grande')}
         <div class="sm-tete-t">
           <h2>${escapeHtml(staffRequestNom(item))}</h2>
           ${renderSmPhrase(item)}
@@ -20128,10 +20127,11 @@ function renderSmFiche(item) {
           ${ecrit ? `<button type="button" class="sm-b" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : ''}
           <button type="button" class="sm-b sm-b-classer" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
         </div>
+        ${renderSmBande(item)}
+        ${renderSmDemande(item)}
       </div>
-      ${renderSmBande(item)}
       <div class="sm-colonnes">
-        <div class="sm-c1">${renderSmDemande(item)}${dispos || renderSmJourDeLaProposition(item)}${renderSmComposer(item)}</div>
+        <div class="sm-c1">${dispos || renderSmJourDeLaProposition(item)}${renderSmComposer(item)}</div>
         <div class="sm-c2">${renderSmReponse(item)}${renderSmClient(item)}${renderSmHistorique(item)}</div>
       </div>
     </article>`;
@@ -20142,16 +20142,16 @@ const SM_PHOTOS = {
   libramont: [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/pixel|fun.?run/i, 'fun-run'], [/simulateur/i, 'simulateurs'], [/plaine/i, 'plaine'], [/formule|kids|anniv/i, 'salle-bowling']],
   gembloux: [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']],
 };
-function smPhotoDe(nom, centerId) {
+function smPhotoDe(nom, centerId, classe = 'sm-photo') {
   const trouve = (SM_PHOTOS[String(centerId || '')] || []).find(([motif]) => motif.test(String(nom || '')));
-  return trouve ? `<img class="sm-photo" src="/assets/fungalaxy/${trouve[1]}-carte.webp" alt="" loading="lazy" decoding="async" width="84" height="56" />` : '';
+  return trouve ? `<img class="${classe}" src="/assets/fungalaxy/${trouve[1]}-carte.webp" alt="" loading="lazy" decoding="async" width="84" height="56" />` : '';
 }
 
 function renderSmDemande(item) {
   const d = crDemande(item);
   const message = String(item.message || '').trim();
   const mot = message ? `<p class="sm-message">${escapeHtml(message)}</p>` : '';
-  if (!d) return mot ? `<section class="sm-s"><h3>Le message</h3>${mot}</section>` : '';
+  if (!d) return mot ? `<section class="sm-s sm-demande"><h3>Le message</h3>${mot}</section>` : '';
   const centre = item.centerId || getActiveOpsCenterId();
   const formules = crNoms(d.formulas).map(nom => `<li>${smPhotoDe(nom, centre)}<div class="sm-so"><b>${escapeHtml(nom)}</b></div></li>`);
   const activites = (Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map((a, rang) => {
@@ -20160,11 +20160,9 @@ function renderSmDemande(item) {
     return `<li>${smPhotoDe(a.name, centre)}<div class="sm-so" data-t="${smTeinte(a.id || a.name)}"><b>${escapeHtml(a.name)}</b>${detail ? `<span>${escapeHtml(detail)}</span>` : ''}</div></li>`;
   });
   const budget = Number(d.budgetPerPerson) > 0 ? `<p class="sm-budget">Budget de <b>${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne</b></p>` : '';
-  return `<section class="sm-s"><h3>Ce qu’ils aimeraient</h3>
+  return `<section class="sm-s sm-demande">
     ${formules.length || activites.length ? `<ul class="sm-envies">${[...formules, ...activites].join('')}</ul>` : ''}
-    ${d.advice ? '<p class="sm-budget">Ils demandent aussi conseil.</p>' : ''}
-    ${budget}
-    ${mot}
+    <div class="sm-demande-d">${budget}${d.advice ? '<p class="sm-budget">Ils demandent aussi conseil.</p>' : ''}${mot}</div>
   </section>`;
 }
 
@@ -20623,6 +20621,7 @@ function renderRqOffre(item, jour, o, d) {
     return `<button type="button" id="rqH-${escapeHtml(`${item.id}-${jour.date}-${o.type}-${o.ref}-${depart.debut}`.replace(/[^\w-]/g, '_'))}" class="sm-h${on ? ' is-on' : ''}" aria-pressed="${on}" aria-label="${escapeHtml(dit)}" title="${depart.fin ? `Fin vers ${escapeHtml(depart.fin)}` : ''}" ${donnees} onmouseenter="rqApercu(this)" onmouseleave="rqApercuFin(this)" onfocus="rqApercu(this)" onblur="rqApercuFin(this)" onclick="rqChoisir(${jid}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}', '${escapeJsString(depart.debut)}')"><b>${escapeHtml(depart.debut)}</b>${restes.map(r => `<small>${escapeHtml(r)}</small>`).join('')}</button>`;
   };
   return `<div class="sm-o${choisie ? ' is-on' : ''}">
+    ${smPhotoDe(o.nom, item.centerId || getActiveOpsCenterId(), 'sm-o-photo')}
     <div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}${o.alerte || ''}</div>${prix(o.prix, o.parJoueur, renderStaffRequestBudgetTag(o.parJoueur, d))}</div>
     ${o.ailleurs ? '<small class="sm-o-ail">Rien dans ce moment de la journée. Possible à ces heures.</small>' : ''}
     ${o.departs.length ? `<div class="sm-heures">${o.departs.map(touche).join('')}</div>` : ''}
@@ -20661,14 +20660,14 @@ function renderRqJour(item, jour, etude, d) {
     <div class="sm-jour-t">
       <div>
         <h3>${titre}</h3>
-        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${jour.horaires.exceptionnelle ? ' <b class="sm-ex">Ouverture exceptionnelle</b>' : ''}${plage ? ` · ${plage}` : ''}</p>
+        <p>Ouvert de ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}${jour.horaires.exceptionnelle ? ' <b class="sm-ex">Ouverture exceptionnelle</b>' : ''}${plage && f && !f.existe ? ` · ${plage}` : ''}</p>
       </div>
       <div class="sm-jour-a">${changer('Changer les horaires')}<button type="button" class="sm-lien" onclick="openStaffRequestDay('${escapeJsString(jour.date)}')">Voir le planning de ce jour</button></div>
     </div>
-    ${renderSmJournee(item, jour, etude) || smOccupationHtml(jour)}
     ${offres.length
-      ? `<h4 class="sm-o-titre">Ce que vous pouvez proposer à ${Number(etude.participants) || ''} joueur${Number(etude.participants) > 1 ? 's' : ''}</h4><div class="sm-offres">${offres.join('')}</div>`
+      ? `<h4 class="sm-o-titre">${rqEtudeADesHeures(etude) ? 'Choisissez une heure pour' : 'Pour'} ${Number(etude.participants) || ''} joueur${Number(etude.participants) > 1 ? 's' : ''}</h4><div class="sm-offres">${offres.join('')}</div>`
       : '<p class="sm-note">Aucune formule ni activité choisie. Le programme est à composer avec le client.</p>'}
+    ${renderSmJournee(item, jour, etude) || smOccupationHtml(jour)}
   </div>`;
 }
 

@@ -69,8 +69,16 @@ function installer(expiresAt) {
   const ymd = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const hm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   const echeance = (ms) => ({ date: ymd(now + ms), heure: hm(now + ms), instant: iso(now + ms) });
-  const D1 = ymd(now + 20 * 24 * H);
-  const D2 = ymd(now + 18 * 24 * H);
+  // UN DIMANCHE, TOUJOURS (2026-11-10). La date etait « dans vingt jours » et ce gate lit
+  // « dimanche » dans la fiche : il n etait vert que le jour ou vingt jours plus tard tombait
+  // un dimanche. Ecrit le 09/11, il a rougi des le 10/11 : la demande tombait un lundi, jour
+  // ferme, et le parcours de 08:00 s arretait. Le premier dimanche a vingt jours ou plus, pris
+  // a midi pour qu un changement d heure ne decale pas le jour ; l autre date deux jours avant.
+  const dimanche = new Date(now + 20 * 24 * H);
+  dimanche.setHours(12, 0, 0, 0);
+  dimanche.setDate(dimanche.getDate() + ((7 - dimanche.getDay()) % 7));
+  const D1 = ymd(dimanche.getTime());
+  const D2 = ymd(dimanche.getTime() - 2 * 24 * H);
   window.__QA__ = { D1, D2, appels: [], envois: [], brouillon: 'ia' };
   const suivi = (etape, sur = {}) => ({ etape, priseEnCharge: null, reponses: 0, derniereReponse: null, messageClient: null, reservationId: null, notes: [], historique: [], ...sur });
   const demande = (sur = {}) => ({

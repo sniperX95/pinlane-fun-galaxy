@@ -600,6 +600,8 @@ async function preuvesGarde() {
   // Une seule annonce porte tout : la panne sonne, et ce qui est « a regarder » la suit dans le meme message.
   const urgent6d = p6d.messages.find((m) => /^URGENT Pinlane\n/.test(m.text)) || { text: '', disable_notification: true };
   ok(p6d.messages.length === 1 && urgent6d.text.includes('Le formulaire de Libramont ne laisse sans doute plus réserver : 11 visites à la validation, aucun envoi') && urgent6d.disable_notification !== true && !/Gembloux ne laisse/.test(urgent6d.text), '[G] formulaire : onze visites a la validation et aucun envoi, ca sonne pour ce centre et pour lui seul', p6d.messages.map((m) => m.text).join(' // '));
+  ok(Array.isArray(p6d.r.critiques) && p6d.r.critiques.length === 1 && p6d.r.critiques[0].cle === 'formulaire:bloque:libramont' && p6d.r.critiques[0].centre === 'libramont' && /ne laisse sans doute plus réserver/.test(p6d.r.critiques[0].titre) && /Depuis 24 heures/.test(p6d.r.critiques[0].detail) && Object.keys(p6d.r.critiques[0]).sort().join(',') === 'centre,cle,detail,titre',
+    '[G] la garde range en clair l alerte qui sonne (cle, centre, titre, detail), pour le veilleur de reparation', JSON.stringify(p6d.r.critiques));
   // Libramont vend en ligne : il ne reste que les trente-cinq visites de Gembloux, sans sonnerie.
   BD.routes = [];
   BD.etatGarde = { ...BD.etatGarde, dits: {} };
@@ -607,6 +609,7 @@ async function preuvesGarde() {
   const p6e = await passe();
   const calme6e = p6e.messages.length === 1 ? p6e.messages[0] : { text: p6e.messages.map((m) => m.text).join(' // ') };
   ok(/^À regarder, Pinlane\n/.test(calme6e.text) && calme6e.text.includes('35 visites ont commencé le formulaire de Gembloux, aucune n’est allée au bout') && calme6e.disable_notification === true && !/Libramont/.test(calme6e.text), '[G] formulaire : trente-cinq visites commencees sans un envoi se disent sans sonnerie', calme6e.text);
+  ok(Array.isArray(p6e.r.critiques) && p6e.r.critiques.length === 0, '[G] une alerte « a regarder » n entre pas dans les alertes qui sonnent', JSON.stringify(p6e.r.critiques));
   const lireAvec = async (formulaire) => { BD.routes = []; routesDeLaTour({ formulaire }); return (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; };
   const vendu = await lireAvec('vendu');
   ok(!vendu.some((p) => /^formulaire:.*:libramont$/.test(p.cle)) && vendu.some((p) => p.cle === 'formulaire:personne-au-bout:gembloux' && p.gravite === 'attention'), '[G] formulaire : une reservation en ligne arrivee dans la fenetre prouve qu il marche, rien ne se dit pour ce centre', vendu.map((p) => p.cle).join(' '));
@@ -837,6 +840,12 @@ async function contrePreuves() {
     routesDeLaTour({ formulaire: true });
     const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
     return problemes.some((p) => p.cle === 'formulaire:bloque:libramont' && p.gravite === 'critique');
+  });
+  await rouge('une alerte « a regarder » lance une reparation', [{ fichier: 'lib/tour-controle.js', de: "critiques: problemesGarde.filter((p) => p.gravite === 'critique').map(", vers: 'critiques: problemesGarde.map(' }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: 'vendu' });
+    const p = await passe();
+    return Array.isArray(p.r.critiques) && p.r.critiques.length === 0;
   });
   await rouge('un jour d essais fait sonner le formulaire', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'critique'," }], async () => {
     remettre();

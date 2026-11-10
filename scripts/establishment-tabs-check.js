@@ -185,6 +185,24 @@ const prixEtAjout = (page) => page.evaluate(async () => {
   return out;
 });
 
+// Les regles de la reservation en ligne : deux listes dans Reservations, envoyees telles que choisies.
+const reglesEnLigne = (page) => page.evaluate(async () => {
+  ebOuvrir('reservations');
+  const min = document.getElementById('estab-book-min');
+  const horizon = document.getElementById('estab-book-horizon');
+  const out = { vus: Boolean(min && horizon && min.getClientRects().length && horizon.getClientRects().length), depart: min && horizon ? `${min.value}|${horizon.value}` : '' };
+  if (!min || !horizon) return out;
+  min.value = '1'; min.dispatchEvent(new Event('change', { bubbles: true }));
+  horizon.value = '60'; horizon.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 40));
+  out.barre = (document.getElementById('ebBarN') || {}).textContent || '';
+  window.__QA_SAVED__ = [];
+  await submitCenterConfig('libramont');
+  const config = (window.__QA_SAVED__.find(body => body.action === 'saveCenterConfig') || {}).config || null;
+  out.envoye = (config && config.bookingRules) || null;
+  return out;
+});
+
 // Le vendredi ferme a 01:30 : le lendemain se dit, et part en 25:30. 07:00 avant 14:00 reste une faute.
 const apresMinuit = (page) => page.evaluate(async () => {
   const ouvert = document.getElementById('eb-open-estab-day-5');
@@ -389,6 +407,15 @@ async function main() {
     ok(prix.page === 'prices', `« Changer » ouvre Tarifs (obtenu ${prix.page})`);
 
     // =====================================================================
+    console.log('\n[4e] Les regles de la reservation en ligne');
+    // =====================================================================
+    await openEstablishment(page, 'regles');
+    const regles = await reglesEnLigne(page);
+    ok(regles.vus && regles.depart === '0|', `les deux listes sont dans Reservations, sur « dernier moment » et « un an » (obtenu ${regles.depart})`);
+    ok(/au plus tard/.test(regles.barre || '') && /au plus tôt/.test(regles.barre || ''), `la barre dit les deux changements (obtenu "${regles.barre}")`);
+    ok(regles.envoye && regles.envoye.minDaysAhead === 1 && regles.envoye.horizonDays === 60, `« la veille » et « deux mois » partent tels quels (obtenu ${JSON.stringify(regles.envoye)})`);
+
+    // =====================================================================
     console.log('\n[5] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
@@ -417,6 +444,9 @@ async function main() {
     // d. Sans la nuit qui deborde, 01:30 partirait tel quel : le vendredi fermerait avant d ouvrir.
     const sansNuit = await muter('nuit', '    // Une fermeture avant l ouverture, jusqu a 06:00, est celle du lendemain : 00:00 devient 24:00, 01:30 devient 25:30.\n    if (ebApresMinuit(open, close)) close = ebLendemain(close);\n', '', () => openEstablishment(page, 'mutation-nuit'), () => apresMinuit(page));
     ok(sansNuit && !(sansNuit.vendredi && sansNuit.vendredi.close === '25:30'), `sans la nuit qui deborde, 01:30 part tel quel (obtenu ${JSON.stringify(sansNuit && sansNuit.vendredi)}) -> le gate ROUGIRAIT`);
+    // g. Sans la ligne d envoi, les regles choisies ne partent pas.
+    const sansRegles = await muter('regles', "    bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },\n", '', () => openEstablishment(page, 'mutation-regles'), () => reglesEnLigne(page));
+    ok(sansRegles && !sansRegles.envoye, `sans la ligne d envoi, les regles ne partent pas (obtenu ${JSON.stringify(sansRegles && sansRegles.envoye)}) -> le gate ROUGIRAIT`);
     // f. Sans la ligne des prix, le bowling ne montre plus ce que paie le client.
     const sansPrix = await muter('prix', "  if (id !== 'arcade_time') lignes = ebPrixRang(c, id) + lignes;\n", '', () => openEstablishment(page, 'mutation-prix'), () => prixEtAjout(page));
     ok(sansPrix && sansPrix.bowling.length === 0, `sans la ligne des prix, le bowling ne montre aucun prix (obtenu ${JSON.stringify(sansPrix && sansPrix.bowling)}) -> le gate ROUGIRAIT`);

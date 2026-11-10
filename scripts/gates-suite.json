@@ -335,6 +335,7 @@
     "test:vitrine-gestes",
     "test:formulaire-etapes",
     "test:formulaire-heures",
+    "test:regles-reservation",
     "test:reservation-alternatives",
     "test:slot-holds",
     "test:fungalaxy-hold",

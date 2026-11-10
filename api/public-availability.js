@@ -22,6 +22,10 @@ const {
   TOTAL_LANES,
   bookingDateOutOfRange,
   BOOKING_HORIZON_DAYS,
+  reglesDeReservation,
+  bookingDateTooSoon,
+  messageDateTropProche,
+  messageDateTropLoin,
 } = require('../lib/booking-config');
 const { allocateLanes, getPool, readAvailabilitySnapshot } = require('../lib/database');
 const { sendError, sendJson: envoyerJson, setCors } = require('../lib/http');
@@ -345,6 +349,19 @@ module.exports = async (req, res) => {
       centerDoc = getCenter(centerId) || null;
     } catch (error) {
       centerDoc = null;
+    }
+    // LES REGLES DE RESERVATION EN LIGNE DU CENTRE (2026-11-10, page Etablissement) : son horizon et son « au plus
+    // tard ». Pour le visiteur seulement : le personnel, reconnu a sa session, garde toutes les heures.
+    if (res.__visiteurAnonyme) {
+      const reglesEnLigne = reglesDeReservation(centerDoc);
+      if (bookingDateOutOfRange(date, reglesEnLigne.horizonDays) === 'far') {
+        sendJson(res, 200, { ok: true, date, slots: [], message: messageDateTropLoin(reglesEnLigne.horizonDays) });
+        return;
+      }
+      if (bookingDateTooSoon(date, reglesEnLigne.minDaysAhead)) {
+        sendJson(res, 200, { ok: true, date, slots: [], message: messageDateTropProche(reglesEnLigne.minDaysAhead) });
+        return;
+      }
     }
     // CENTRE INCONNU : la meme reponse que public-booking-meta depuis le
     // 2026-08-20. Jusqu'au 2026-09-14, un identifiant invente recevait ici le

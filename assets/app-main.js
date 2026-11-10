@@ -14493,6 +14493,7 @@ async function submitCenterConfig(centerId) {
     })(),
     classification,
     accueil: { lateThresholdMinutes: Number(establishmentInputValue('estab-lateThreshold', STAFF_LATE_THRESHOLD_DEFAUT)) },
+    bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
   // Les coordonnees que lisent les clients : une case videe efface la valeur du fichier socle.
@@ -14901,7 +14902,7 @@ const EB_RUBRIQUES = [
   ['horaires', 'Horaires', 'Quand les clients peuvent réserver, et les jours qui font exception.'],
   ['activites', 'Activités', 'Ce que le centre propose, et ce que le planning sait de chaque activité.'],
   ['formules', 'Formules', 'Ce que le client peut choisir sur le formulaire.'],
-  ['reservations', 'Réservations', 'Comment la console classe les réservations, les grands groupes et ce que l’équipe valide.'],
+  ['reservations', 'Réservations', 'Quand un client peut réserver en ligne, comment la console classe les réservations, et ce que l’équipe valide.'],
   ['accueil', 'Accueil et secours', 'Quand un groupe passe en retard, et où part une copie de chaque réservation si Pinlane ne répond plus.'],
   ['formulaire', 'Formulaire en ligne', 'Le lien de réservation, son apparence et l’encaissement.'],
 ];
@@ -15329,9 +15330,20 @@ function ebFormulesPanHtml(c) {
 }
 
 // ── Réservations ─────────────────────────────────────────────────────────────
+// Les regles de la reservation EN LIGNE (lot 3, 10/11) : jusqu a quand et combien de temps a l avance le formulaire
+// accepte une date. Le serveur les pose a ses deux portes publiques ; le comptoir n est jamais concerne.
+function ebReglesEnLigneHtml(c) {
+  const r = c.center.bookingRules || {};
+  const min = Math.max(0, Math.trunc(Number(r.minDaysAhead) || 0));
+  const horizon = r.horizonDays == null ? '' : String(Math.trunc(Number(r.horizonDays)));
+  const liste = (id, label, choix, valeur, autre) => `<select id="${id}" class="eb-f" aria-label="${ebE(label)}">${choix.map(([v, n]) => `<option value="${v}" ${String(v) === String(valeur) ? 'selected' : ''}>${n}</option>`).join('')}${choix.some(([v]) => String(v) === String(valeur)) ? '' : `<option value="${ebE(valeur)}" selected>${ebE(autre)}</option>`}</select>`;
+  return ebG('Réserver en ligne', 'Ces deux règles valent pour le formulaire en ligne. Au comptoir, l’équipe réserve quand elle veut.',
+    ebR('Au plus tard', 'Jusqu’à quand un client peut réserver en ligne pour un jour donné. Trop tard, il lit qu’il doit choisir un autre jour ou appeler.', liste('estab-book-min', 'Réserver en ligne au plus tard', [[0, 'Jusqu’au dernier moment'], [1, 'La veille'], [2, 'Deux jours avant'], [3, 'Trois jours avant'], [7, 'Une semaine avant']], min, `${min} jours avant`))
+    + ebR('Au plus tôt', 'Combien de temps à l’avance un client peut réserver en ligne.', liste('estab-book-horizon', 'Réserver en ligne au plus tôt', [['', 'Un an à l’avance'], [180, 'Six mois à l’avance'], [90, 'Trois mois à l’avance'], [60, 'Deux mois à l’avance'], [30, 'Un mois à l’avance']], horizon, `${horizon} jours à l’avance`)));
+}
 function ebReservationsHtml(c) {
   const k = c.classification;
-  return ebG('Groupes et clients', 'Comment la console classe les réservations et les clients.',
+  return ebReglesEnLigneHtml(c) + ebG('Groupes et clients', 'Comment la console classe les réservations et les clients.',
       ebR('Un groupe à partir de', 'Une réservation de ce nombre de joueurs ou plus est un groupe.', ebNum('estab-groupMinPax', 'Un groupe à partir de combien de joueurs', { min: 2, max: 200, value: Number(k.groupMinPax || 10) }))
       + ebR('Ou un client qui cumule', 'Un client qui a réservé pour ce nombre de joueurs au total compte aussi comme groupe.', ebNum('estab-groupMinCumulative', 'Joueurs cumulés par un client', { min: 2, max: 5000, value: Number(k.groupMinCumulative || 18) }))
       + ebR('Client clé à partir de', 'Le montant dépensé au total, en euros. À 0, les 20 % qui dépensent le plus.', ebNum('estab-keyClientMinSpend', 'Client clé à partir de combien d’euros', { min: 0, max: 100000, value: Number(k.keyClientMinSpend || 0), step: 50 }))
@@ -15869,6 +15881,7 @@ const EB_CASES_DITES = {
 };
 const EB_TEXTES_DITS = {
   'estab-name': 'Nom du centre changé', 'estab-address': 'Adresse changée', 'estab-phone': 'Téléphone changé', 'estab-parking': 'Parking changé',
+  'estab-book-min': 'Réservation en ligne : « au plus tard » changé', 'estab-book-horizon': 'Réservation en ligne : « au plus tôt » changé',
   'estab-timezone': 'Fuseau horaire changé', 'estab-secours-emails': 'Boîte de secours changée', 'estab-accent': 'Couleur du formulaire changée',
   'estab-payment-mode': 'Encaissement changé',
 };

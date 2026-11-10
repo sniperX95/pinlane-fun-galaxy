@@ -20879,7 +20879,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
    Etablissement mais en beaucoup mieux, beau, style »). A gauche les etapes, comme ses rubriques ; a
    droite la file en tableau, ou la demande ouverte en cartes : ce qu ils veulent et ce qu on peut leur
    proposer, avec la suite et le client sur le cote. Les vraies photos du centre, l etat en aplat
-   plein, une activite garde sa couleur partout. Aucune animation d entree : la page se repeint a
+   plein (jamais la couleur d un client en dur : test:second-client), une activite garde sa couleur partout. Aucune animation d entree : la page se repeint a
    chaque nouvelle du reseau, une entree rejouerait a chaque fois. */
 .sm { --sm-1: #8a4ba6; --sm-2: #3fa796; --sm-3: #e3b341; --sm-4: #f0648c; --sm-pris: #a3a9b7; --sm-ease: cubic-bezier(.23, 1, .32, 1); --sm-r: 12px; font-size: 14px; line-height: 1.5; color: var(--text); font-variant-numeric: tabular-nums; }
 :root[data-theme="dark"] .sm { --sm-1: #b583cf; --sm-2: #67baac; --sm-pris: #5d6474; }
@@ -20914,7 +20914,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-du.is-ok { box-shadow: inset 0 0 0 1px var(--line); }
 .sm-du.is-soon { color: #2a2008; background: #e3b341; }
 .sm-du.is-late { color: #fff; background: #c9372c; }
-.sm-du.is-attente { color: #fff; background: #944292; }
+.sm-du.is-attente { color: #fff; background: #8a4ba6; }
 .sm-du.is-fait { color: #fff; background: #1f7a5c; }
 .sm-du.is-sans { color: var(--muted); }
 .sm .sm-l-ecrit { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 6px; font-weight: 550; color: var(--accent-strong); }
@@ -21083,7 +21083,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-promis.is-soon::before { background: #e3b341; }
 .sm-promis.is-late { color: #c9372c; }
 .sm-promis.is-late::before { background: #c9372c; }
-.sm-promis.is-attente::before { background: #944292; }
+.sm-promis.is-attente::before { background: #8a4ba6; }
 .sm-promis.is-fait::before { background: #1f7a5c; }
 .sm-promis:last-child { margin-bottom: 0; }
 .sm-suivi-dit { color: var(--muted); }

@@ -91,7 +91,7 @@ body.pb-agrandi .ops-sidebar .fgx-menu-logo-frame { visibility: visible; }
 .pb-seg__b:hover { color: var(--text); }
 .pb-seg__b.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .pb-seg__b.active span { color: var(--accent-strong); font-weight: 600; }
-.pb-seg__b:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pb-seg__b:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 
 /* LA DATE. (le libelle a sa largeur : « Mer. 28 sept. » ne pousse pas la recherche) */
 .pb .pb-date { flex: none; height: var(--pb-l1); border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); }
@@ -106,19 +106,19 @@ body.pb-agrandi .ops-sidebar .fgx-menu-logo-frame { visibility: visible; }
 .gf-recherche input { box-sizing: border-box; width: 100%; height: 100%; padding: 0 12px 0 34px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font-family: var(--font-ui); font-size: 14px; }
 .gf-recherche input:not(:placeholder-shown) { padding-right: 40px; }
 .gf-recherche input::placeholder { color: var(--muted); }
-.gf-recherche input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-recherche input:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 /* LA CROIX DE LA RECHERCHE, sur le bout du champ tant qu un nom est tape. */
 .gf-efface { position: absolute; right: 3px; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: var(--surface); color: var(--muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
 .gf-efface[hidden] { display: none; }
 .gf-efface:hover { background: var(--subtle); color: var(--text); }
-.gf-efface:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gf-efface:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 
 /* + RÉSERVATION, AGRANDIR, ⋯. (#planningBarre : la famille des boutons pleins de la
    console pose ses propres hauteurs et rayons) */
 #planningBarre .pb-res { flex: none; box-sizing: border-box; gap: 0; height: var(--pb-l1); min-height: var(--pb-l1); padding: 0 14px; border-radius: 10px; font-size: 14px; font-weight: 600; white-space: pre; }
 .pb-ic { appearance: none; flex: none; box-sizing: border-box; display: grid; place-items: center; width: var(--pb-l1); height: var(--pb-l1); padding: 0; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
 .pb-ic:hover { background: var(--subtle); color: var(--text); }
-.pb-ic:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pb-ic:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .pb-ic__moins { display: none; }
 body.pb-agrandi .pb-ic__plus { display: none; }
 body.pb-agrandi .pb-ic__moins { display: block; }
@@ -142,7 +142,7 @@ body.pb-agrandi .pb-ic__moins { display: block; }
 .gf-c__v { font-size: 17px; font-weight: 700; }
 button.gf-c { appearance: none; cursor: pointer; transition: background-color 120ms ease; }
 button.gf-c:hover { background: var(--subtle); }
-button.gf-c:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+button.gf-c:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 .gf-c.is-alerte .gf-c__v { color: color-mix(in srgb, var(--danger) 78%, var(--text)); }
 .gf-c.is-zero .gf-c__v { color: var(--muted); font-weight: 600; }
 button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var(--surface); }
@@ -152,7 +152,7 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
    se serre jusqu a son libelle et sa valeur, pas plus : seule la colonne du detail se coupe. */
 .gf-e { flex: 0 1 auto; min-width: min-content; display: inline-grid; grid-auto-flow: column; grid-auto-columns: auto minmax(0, max-content); align-items: center; gap: 5px; height: 100%; margin-right: 10px; overflow: hidden; }
 .gf-e__h { appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer; }
-.gf-e__h:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gf-e__h:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 .gf-e__h:hover .gf-e__v { text-decoration: underline; text-underline-offset: 2px; }
 .gf-e__l { color: var(--muted); }
 .gf-e__v { font-weight: 600; }
@@ -161,13 +161,13 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 /* (les groupes du prochain depart : qui n est pas la pese plus lourd) */
 .gf-e__g { appearance: none; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .gf-e__g:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-.gf-e__g:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-e__g:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .gf-e__g.is-attendu { color: var(--text); font-weight: 650; }
 .pb-info { flex: none; color: var(--muted); }
 /* (la recherche en cours, devant son « Tout afficher » : pbRechercheHtml) */
 .pb-recherche { flex: none; margin-right: 6px; color: var(--text); font-weight: 600; white-space: nowrap; }
 .pb-filtre { appearance: none; flex: none; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: var(--text); color: var(--surface); font: inherit; font-weight: 600; cursor: pointer; }
-.pb-filtre:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pb-filtre:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 /* LA LEGENDE : les couleurs des barres de statut, a leur place. */
 .pb-leg { flex: none; display: inline-flex; align-items: center; gap: 12px; margin-left: auto; color: var(--muted); }
 .pb-leg > span { display: inline-flex; align-items: center; gap: 6px; }
@@ -309,7 +309,7 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 .gf-x.is-retenue .gf-x__t { background: repeating-linear-gradient(135deg, var(--line), var(--line) 2px, var(--surface) 2px, var(--surface) 5px); box-shadow: inset 0 0 0 1px var(--line); color: var(--text); font-weight: 600; }
 .gf-x.is-retenue .gf-x__d { color: var(--muted); }
 .gf-retenue .gf-gb--etat:not(.gf-compte) { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
-.gf-r:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gf-r:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 @media (hover: hover) {
   .gf-r:not(.gf-retenue):hover > td:not(.gf-bloc, .gf-h) { background: var(--gf-survol); }
 }
@@ -328,7 +328,7 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
   .gf-t td.gf-bloc[data-gf-reserver]:hover { background: var(--gf-survol); }
 }
 button.gf-bloc__in { appearance: none; box-sizing: border-box; width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 .gf-bloc__in { position: sticky; top: var(--gf-tete); display: flex; flex-direction: column; padding: 7px 4px 4px 10px; }
 /* (l heure en grand dans la hauteur d avant : la case ne grandit jamais ses lignes) */
 .gf-bloc__in b { font-size: 19px; line-height: 20px; font-weight: 700; letter-spacing: -0.015em; }
@@ -355,15 +355,15 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-h__retard { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; padding: 0; border: 0; background: transparent; color: var(--gf-rouge); font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; white-space: nowrap; cursor: pointer; }
 .gf-h__retard span { padding: 0 5px; border-radius: 6px; background: var(--gf-rouge-pale); }
 .gf-h__retard:hover span { text-decoration: underline; text-underline-offset: 2px; }
-.gf-h__retard:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-h__retard:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 /* La piste reprise apres un groupe en retard (2026-11-06) : la suite du retard, en mots,
    sans fond ; le meme toucher. */
 .gf-h__reprise { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; padding: 0; border: 0; background: transparent; color: var(--gf-rouge); font: inherit; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; cursor: pointer; }
 .gf-h__reprise:hover { text-decoration: underline; text-underline-offset: 2px; }
-.gf-h__reprise:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-h__reprise:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .gf-nom__tel { flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .gf-nom__tel:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-.gf-nom__tel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-nom__tel:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .gf-nom__valide { flex: none; font-size: 12px; font-weight: 600; color: var(--warning); }
 .gf-nom__m { flex: none; padding: 1px 6px; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--text); background: var(--subtle); border-radius: 3px; }
 .gf-nom__m--horaire { color: var(--warning); background: var(--warning-soft); }
@@ -474,11 +474,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 /* (le montant d un groupe sur place se touche : il ouvre Carte et Espèces) */
 .gf-du--b { appearance: none; box-sizing: border-box; width: calc(100% + 12px); min-height: 32px; margin: -7px -8px 0 -4px; padding: 0 8px 0 0; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 18px; text-align: right; cursor: pointer; }
 .gf-du--b:hover { text-decoration: underline; text-underline-offset: 2px; }
-.gf-du--b:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gf-du--b:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 /* « PAS VENU » : sous le montant, loin de « Arrivé ». */
 .gf-pv { appearance: none; display: block; min-height: 32px; margin: -2px -4px -2px auto; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .gf-pv:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-.gf-pv:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gf-pv:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 /* (sans survol, c est le souligne qui dit qu il se touche) */
 @media (hover: none) {
   .gf-pv { text-decoration: underline; text-underline-offset: 2px; }
@@ -488,7 +488,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-t td.gf-etat { position: sticky; right: 0; z-index: 2; padding: 5px 6px; border-left: 1px solid var(--line); }
 .gf-g { display: flex; gap: 3px; }
 .gf-gb { appearance: none; flex: 1 1 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 34px; padding: 0 2px; border: 0; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color 120ms ease; }
-.gf-gb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gf-gb:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .gf-gb[aria-busy="true"] { font-size: 12px; font-weight: 600; color: var(--muted); }
 @media (hover: hover) {
   .gf-gb:hover { background: var(--subtle); }
@@ -558,7 +558,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-retour { position: absolute; left: 50%; bottom: 16px; z-index: 6; translate: -50% 0; height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--text); color: var(--surface); font: inherit; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-overlay); cursor: pointer; }
 .gf-retour.is-haut { top: 38px; bottom: auto; }
 .gf-retour[hidden] { display: none; }
-.gf-retour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gf-retour:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 
 /* UN NOM TAPE : ce qu il trouve, et ce que fait Entrée. */
 .gf-t tr.gf-resultats > td { height: 30px; padding: 0 14px; background: var(--subtle); color: var(--muted); font-size: 13px; line-height: 30px; }
@@ -577,7 +577,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
 .gf-rien__l:hover { background: var(--subtle); }
 .gf-rien__q, .gf-rien__p { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 .gf-rien__n { min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-.gf-rien__reserver:focus-visible, .gf-rien__l:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gf-rien__reserver:focus-visible, .gf-rien__l:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 
 /* LA LEGENDE DES CASES (dans le menu « ⋯ ») ; celle du statut est sur la barre.
    (le fond pale d une case comme pastille de statut tenait 1,1:1 sur la page, sous les
@@ -729,7 +729,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--accent); outline-off
    y defile, une journee ne tient pas en cartes. */
 .gf-t tr.gf-plis > td { height: 44px; padding: 0 14px; background: var(--subtle); }
 .gf-plis__b { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
-.gf-plis__b:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gf-plis__b:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 @media (max-width: 768px) {
   body.gf-large #staffView .staff-wrap { --pb-g: 6px; padding: 0 8px 24px; }
 }

@@ -354,7 +354,7 @@ module.exports = async (req, res) => {
     // tard ». Pour le visiteur seulement : le personnel, reconnu a sa session, garde toutes les heures.
     if (res.__visiteurAnonyme) {
       const reglesEnLigne = reglesDeReservation(centerDoc);
-      if (bookingDateOutOfRange(date, reglesEnLigne.horizonDays) === 'far') {
+      if (reglesEnLigne.horizonDays < BOOKING_HORIZON_DAYS && bookingDateOutOfRange(date, reglesEnLigne.horizonDays) === 'far') {
         sendJson(res, 200, { ok: true, date, slots: [], message: messageDateTropLoin(reglesEnLigne.horizonDays) });
         return;
       }

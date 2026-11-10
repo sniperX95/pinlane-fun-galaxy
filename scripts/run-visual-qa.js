@@ -1646,15 +1646,18 @@ async function main() {
     await page.evaluate(() => setView('staff'));
     await page.waitForTimeout(500);
 
-    // Navigation staff → client via le popover du compte (regression: on doit
-    // toujours pouvoir quitter la console pour revenir au site de réservation).
+    // Le popover du compte ouvre le site de reservation public : le VRAI formulaire du centre, dans un
+    // onglet a cote de la console. Il ne ramene plus a l ancien tunnel (2026-11-10).
     await renderStaffPage(page, 'dashboard');
+    await page.evaluate(() => { window.__ouvert = []; window.open = (adresse, cible) => { window.__ouvert.push([String(adresse), String(cible)]); return null; }; });
     await page.locator('[data-fgx-account-menu]').first().click();
     await page.waitForTimeout(250);
     await page.locator('[data-fgx-menu-action="client"]').first().click();
     await page.waitForTimeout(400);
+    const ouvert = await page.evaluate(() => window.__ouvert);
     const backToClient = await page.locator('#clientView:not(.hidden)').count();
-    assert(backToClient === 1, 'Le popover compte staff doit permettre de revenir à l espace client.');
+    assert(ouvert.length === 1 && /^\/reserver(\/[a-z0-9-]+)?$/.test(ouvert[0][0]) && ouvert[0][1] === '_blank' && backToClient === 0,
+      `Le popover compte staff doit ouvrir le vrai formulaire du centre dans un onglet, sans quitter la console. Vu : ${JSON.stringify(ouvert)}, ancien tunnel visible : ${backToClient}`);
 
     // Vue client (desktop) : parcours de réservation
     await page.evaluate(() => setView('client'));

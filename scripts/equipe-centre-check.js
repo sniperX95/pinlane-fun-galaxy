@@ -453,10 +453,19 @@ async function seConnecter(page, code) {
   await page.locator('#authOverlay button[type="submit"]').click();
   await prete(page);
 }
+// Ce que la page montre juste apres chaque deconnexion (2026-11-10 : la page d accueil, jamais l ancien tunnel).
+const DECONNEXIONS = [];
 async function seDeconnecter(page) {
   await page.locator('[data-fgx-account-menu]').click();
   await page.locator('[data-fgx-menu-action="logout"]').click();
   await page.waitForFunction(() => !state.staffAuthSession, null, { timeout: 15000 });
+  await page.waitForFunction(() => document.body.classList.contains('entry-mode') || !document.getElementById('clientView').classList.contains('hidden'), null, { timeout: 15000 });
+  DECONNEXIONS.push(await page.evaluate(() => ({
+    accueil: !document.getElementById('entryView').classList.contains('hidden'),
+    ancien: !document.getElementById('clientView').classList.contains('hidden'),
+    connexion: !document.getElementById('authOverlay').classList.contains('hidden'),
+    adresse: window.location.pathname + window.location.search + window.location.hash,
+  })));
   await page.goto(`${BASE}/?v=equipe-${Date.now()}`, { waitUntil: 'load' });
 }
 async function attendreCopie(page, avant) {
@@ -574,6 +583,8 @@ async function main() {
     ok(e.premierCopieGembloux, 'montage : la premiere copie n est pas le code de Libramont');
     for (const [cle, regle] of Object.entries(REGLES_ECRAN)) ok(regle(e), LIBELLES_ECRAN[cle], { apres: e.apresGestes, copie: e.avecCodeCopie, libramont: e.avecCodeLibramont, rev: e.revelations });
     ok(e.erreurs.length === 0, 'aucune erreur JavaScript dans la console', e.erreurs.slice(0, 3));
+    ok(DECONNEXIONS.length > 0 && DECONNEXIONS.every((d) => d.accueil && !d.ancien && !d.connexion && d.adresse === '/'),
+      'apres une deconnexion : la page d accueil a l adresse /, sans fenetre de connexion par-dessus, jamais l ancien tunnel', DECONNEXIONS[0]);
 
     console.log('\n[C] les contre-preuves');
     ecranServi = ECRAN_AVANT;

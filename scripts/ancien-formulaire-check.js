@@ -7,7 +7,7 @@
 //   1. une adresse /reserver qui servirait index.html (vercel.json, et le serveur local qui le suit) ;
 //   2. le vrai formulaire qui ne saurait pas lire son centre dans /reserver/<centre> : il vendrait
 //      Libramont a un client de Gembloux ;
-//   3. la deconnexion, qui ramenait l equipe sur l ancien tunnel ;
+//   3. la deconnexion, qui ramenait l equipe sur l ancien tunnel (elle rend la page d accueil) ;
 //   4. le menu « Site de reservation public », qui l ouvrait dans la console.
 // Chaque lecture est une fonction du texte du fichier : la meme sert a la preuve et a sa
 // contre-preuve, jouee en memoire sur le texte remis dans son ancien etat. Aucun fichier n est ecrit.
@@ -60,7 +60,12 @@ function corpsDe(texte, entete) {
 }
 function deconnexionSansAncien(appTexte) {
   const corps = corpsDe(appTexte, 'async function logout() {');
-  return Boolean(corps) && !corps.includes("setView('client')") && corps.includes("setView('staff')");
+  const sortie = corpsDe(appTexte, 'function quitterLaConsoleVersLAccueil() {');
+  const iVue = sortie.indexOf("setView('client')");
+  const iAccueil = sortie.indexOf('showPublicEntry()');
+  // La console se quitte, puis la page d accueil recouvre : dans cet ordre, et a l adresse /.
+  return Boolean(corps) && !corps.includes('setView(') && corps.includes('quitterLaConsoleVersLAccueil()')
+    && iVue >= 0 && iAccueil > iVue && sortie.includes("replaceState(window.history.state, '', '/')");
 }
 function menuSansAncien(menuTexte) {
   const corps = corpsDe(menuTexte, "if (action === 'client') {");
@@ -116,9 +121,11 @@ function servir(serveur, chemin) {
   ok(formulaireAncien !== null && centreLu(formulaireAncien, '/reserver/gembloux') === 'libramont', 'contre-preuve : sans la lecture de /reserver/<centre>, Gembloux recevrait le formulaire de Libramont', formulaireAncien === null ? 'ancre absente' : centreLu(formulaireAncien, '/reserver/gembloux'));
 
   // 3. La deconnexion.
-  ok(deconnexionSansAncien(app), 'la deconnexion rend l ecran de connexion de l equipe, pas l ancien tunnel');
-  const appAncien = ancien(app, "  setView('staff');\n  applyAuthState();\n}\n\nfunction syncOpsSidebar", "  setView('client');\n  applyAuthState();\n}\n\nfunction syncOpsSidebar");
+  ok(deconnexionSansAncien(app), 'la deconnexion rend la page d accueil a l adresse /, jamais l ancien tunnel');
+  const appAncien = ancien(app, "  quitterLaConsoleVersLAccueil();\n  applyAuthState();\n}", "  setView('client');\n  applyAuthState();\n}");
   ok(appAncien !== null && !deconnexionSansAncien(appAncien), 'contre-preuve : une deconnexion vers la vue client rougit');
+  const appSansAccueil = ancien(app, "  showPublicEntry();\n}\n\nasync function logout() {", "}\n\nasync function logout() {");
+  ok(appSansAccueil !== null && !deconnexionSansAncien(appSansAccueil), 'contre-preuve : quitter la console sans afficher la page d accueil rougit');
 
   // 4. Le menu.
   ok(menuSansAncien(menu), 'le menu « Site de reservation public » ouvre /reserver/<centre> a cote de la console');

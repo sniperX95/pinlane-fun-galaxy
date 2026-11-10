@@ -4364,6 +4364,16 @@ async function submitLogin(ev) {
   }
 }
 
+// L ANCIEN TUNNEL N EST PLUS UNE DESTINATION (2026-11-10). La deconnexion quitte la console comme
+// avant : la vue memorisee redevient neutre, sinon la fenetre de connexion recouvrirait la page
+// d accueil au chargement suivant. Mais c est la page d accueil qui s affiche, a l adresse /, avec
+// « Connexion équipe » : jamais l ancien tunnel.
+function quitterLaConsoleVersLAccueil() {
+  setView('client');
+  try { window.history.replaceState(window.history.state, '', '/'); } catch (error) { /* adresse inchangee */ }
+  showPublicEntry();
+}
+
 async function logout() {
   try {
     await apiRequest(API_ENDPOINTS.staffAuth, {
@@ -4374,9 +4384,7 @@ async function logout() {
   } catch (error) {}
   clearStaffAuthSession();
   closePos();
-  // L ancien tunnel n est plus une destination (2026-11-10) : la deconnexion rend l ecran de
-  // connexion de l equipe.
-  setView('staff');
+  quitterLaConsoleVersLAccueil();
   applyAuthState();
 }
 

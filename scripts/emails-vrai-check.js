@@ -134,8 +134,10 @@ async function run() {
     ok(vueA && vueA.etat === 'domaine' && vueA.titre === 'Domaine d\'envoi pas encore vérifié' && vueA.note.startsWith(attenduA),
       '[A] la carte du fournisseur dit que le domaine bloque l envoi', vueA ? `${vueA.etat} · « ${vueA.titre} » · « ${vueA.note.slice(0, 80)} »` : 'carte absente');
     await a.page.evaluate(() => pv2EmailsGo('apercu'));
-    await attendre(a.page, () => document.querySelector('#staffEmailsPage .pv2-alert'));
-    const alerte = await a.page.evaluate(() => ((document.querySelector('#staffEmailsPage .pv2-alert') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+    // 2026-11-10 : le bandeau d echec de l Apercu est devenu la ligne « echecs »
+    // de « À faire maintenant » ; elle doit nommer la meme cause.
+    await attendre(a.page, () => document.querySelector('#staffEmailsPage .em-todo[data-em-todo="echecs"]'));
+    const alerte = await a.page.evaluate(() => ((document.querySelector('#staffEmailsPage .em-todo[data-em-todo="echecs"]') || {}).textContent || '').replace(/\s+/g, ' ').trim());
     ok(/Domaine d'envoi pas encore vérifié/.test(alerte), '[A] le bandeau de l Apercu nomme la meme cause', `« ${alerte.slice(0, 90)} »`);
     ok(a.erreurs.length === 0, '[A] aucune erreur JavaScript', a.erreurs.slice(0, 3).join(' | '));
     await a.ctx.close();
@@ -156,7 +158,7 @@ async function run() {
     ok(vueB && vueB.etat === 'ok' && vueB.titre === 'Envoi configuré', '[B] sans echec, la carte dit que l envoi est configure', vueB ? `${vueB.etat} · « ${vueB.titre} »` : 'carte absente');
     await b.page.evaluate(() => pv2EmailsGo('apercu'));
     await b.page.waitForTimeout(600);
-    const alerteB = await b.page.evaluate(() => Boolean(document.querySelector('#staffEmailsPage .pv2-alert')));
+    const alerteB = await b.page.evaluate(() => Boolean(document.querySelector('#staffEmailsPage .em-todo[data-em-todo="echecs"]')));
     ok(!alerteB, '[B] et l Apercu n affiche aucun bandeau d echec');
     ok(b.erreurs.length === 0, '[B] aucune erreur JavaScript', b.erreurs.slice(0, 3).join(' | '));
     await b.ctx.close();

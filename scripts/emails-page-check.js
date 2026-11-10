@@ -355,7 +355,9 @@ async function main() {
     const load = { ...loadApercu, ...loadSeq, ...loadEnv, pageText: [loadApercu.pageText, loadSeq.pageText, loadEnv.pageText].join(' ') };
     if (missed.size) console.log('URLs 404 :', [...missed].slice(0, 5).join(' · '));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(loadApercu.section === 'apercu' && loadApercu.tabs.join(',') === 'apercu,recus,envoyes,sequences,modeles,apparence,expediteurs,agent,exclusions,campagnes',
+    // 2026-11-10 : la navigation suit ses quatre groupes (Boîte, Automatique,
+    // Contenu, Réglages) : les campagnes viennent apres les sequences.
+    ok(loadApercu.section === 'apercu' && loadApercu.tabs.join(',') === 'apercu,recus,envoyes,sequences,campagnes,modeles,apparence,expediteurs,agent,exclusions',
       `la page s'ouvre sur l'Aperçu et sa sous-navigation porte les dix sections (obtenu ${loadApercu.tabs.join(' · ')})`);
     ok(loadApercu.tiles === 4, `quatre tuiles chiffrées sur l'Aperçu (obtenu ${loadApercu.tiles})`);
     ok(load.cards === 6, `6 cartes séquences, Demande recue incluse (obtenu ${load.cards})`);
@@ -419,16 +421,18 @@ async function main() {
         review: out.filter((r) => r.templateId === 'staff_review_request').length,
       };
     });
+    // 2026-11-10 : la file s ouvre sur le DESTINATAIRE, et la colonne Statut
+    // dit l etat le plus avance de l envoi (Remis, Ouvert, Cliqué...) au lieu
+    // du seul « Envoyé » suivi d un mini-parcours de quatre points. Chaque
+    // segment admet donc une liste d etats, lue ligne par ligne.
     const segCases = [
-      { key: 'all', status: null, head: 'Message' },
-      { key: 'failed', status: 'Échec', head: 'Message' },
-      { key: 'sent', status: 'Envoyé', head: 'Message' },
-      { key: 'queued', status: 'En attente', head: 'Message' },
-      // « Remis » et « Ouverts » se lisent sur le mini-parcours de chaque
-      // ligne (2e et 3e point pleins), le statut restant « Envoyé ».
-      { key: 'delivered', status: null, head: 'Message', dot: 1, dotLabel: 'Remis' },
-      { key: 'opened', status: null, head: 'Message', dot: 2, dotLabel: 'Ouvert' },
-      { key: 'review', status: null, head: 'Message' },
+      { key: 'all', status: null, head: 'Destinataire' },
+      { key: 'failed', statusIn: ['Échec'], head: 'Destinataire' },
+      { key: 'sent', statusIn: ['Envoyé', 'Remis', 'Ouvert', 'Cliqué', 'Rebond', 'Signalé'], head: 'Destinataire' },
+      { key: 'queued', statusIn: ['En attente'], head: 'Destinataire' },
+      { key: 'delivered', statusIn: ['Remis', 'Ouvert', 'Cliqué', 'Signalé'], head: 'Destinataire' },
+      { key: 'opened', statusIn: ['Ouvert', 'Cliqué', 'Signalé'], head: 'Destinataire' },
+      { key: 'review', status: null, head: 'Destinataire' },
     ];
     // Un jeu de donnees ou tous les segments seraient vides validerait tout et
     // ne prouverait rien : on exige au moins un segment non vide avant de lire.
@@ -439,7 +443,7 @@ async function main() {
     for (const c of segCases) {
       const seen = await page.evaluate(async (key) => {
         const btn = document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="' + key + '"]');
-        if (!btn) return { missing: true, rows: -1, head: '', statuses: [], dots: [], activeKey: '' };
+        if (!btn) return { missing: true, rows: -1, head: '', statuses: [], activeKey: '' };
         btn.click();
         await new Promise((r) => setTimeout(r, 250));
         const body = [...document.querySelectorAll('#staffEmailsPage .pv2-mail-list .pv2-table tbody tr')];
@@ -451,21 +455,16 @@ async function main() {
           rows: dataRows.length,
           head: ((document.querySelector('#staffEmailsPage .pv2-mail-list thead th') || {}).textContent || '').trim(),
           // Le statut se lit dans SA colonne (data-col), plus par position :
-          // la table porte desormais Message / Origine / Statut / Parcours / Date.
+          // la table porte Destinataire / Objet / Origine / Statut / Date.
           statuses: dataRows.map((tr) => ((tr.querySelector('td[data-col="statut"] .pv2-chip') || {}).textContent || '').trim()),
-          dots: dataRows.map((tr) => [...tr.querySelectorAll('.pl-journey-dot')].map((d) => d.classList.contains('is-done'))),
         };
       }, c.key);
       ok(!seen.missing && seen.activeKey === c.key, 'segment « ' + c.key + ' » : c\'est bien lui qui devient actif (obtenu ' + (seen.activeKey || 'aucun') + ')');
       ok(seen.rows === expected[c.key], 'segment « ' + c.key + ' » : la file affichee correspond au segment (' + expected[c.key] + ' attendue(s), ' + seen.rows + ' affichee(s))');
       ok(seen.head === c.head, 'segment « ' + c.key + ' » : colonne de tete « ' + c.head + ' » (obtenu « ' + seen.head + ' »)');
-      if (c.status) {
-        ok(seen.statuses.length > 0 && seen.statuses.every((t) => t.includes(c.status)),
-          'segment « ' + c.key + ' » : chaque ligne affichee porte le statut « ' + c.status + ' » (obtenu ' + JSON.stringify(seen.statuses) + ')');
-      }
-      if (c.dot !== undefined) {
-        ok(seen.dots.length > 0 && seen.dots.every((d) => d[c.dot] === true),
-          'segment « ' + c.key + ' » : chaque ligne affichee porte le point « ' + c.dotLabel + ' » plein sur son parcours (obtenu ' + JSON.stringify(seen.dots) + ')');
+      if (c.statusIn) {
+        ok(seen.statuses.length > 0 && seen.statuses.every((t) => c.statusIn.includes(t)),
+          'segment « ' + c.key + ' » : chaque ligne affichee porte un statut du segment (' + c.statusIn.join(', ') + ') (obtenu ' + JSON.stringify(seen.statuses) + ')');
       }
     }
     // Le segment « Reçus » de l'ancienne file est devenu la section Reçus :

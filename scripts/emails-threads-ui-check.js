@@ -32,7 +32,9 @@ const PORT = Number(process.env.PINLANE_THREADS_UI_PORT || 4237);
 const HOST = '127.0.0.1';
 const BASE = `http://${HOST}:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const SECTIONS = ['apercu', 'recus', 'envoyes', 'sequences', 'modeles', 'apparence', 'expediteurs', 'agent', 'exclusions', 'campagnes'];
+// 2026-11-10 : l ordre des quatre groupes de la navigation (Boîte,
+// Automatique, Contenu, Réglages) : les campagnes suivent les sequences.
+const SECTIONS = ['apercu', 'recus', 'envoyes', 'sequences', 'campagnes', 'modeles', 'apparence', 'expediteurs', 'agent', 'exclusions'];
 // index.html reference un script d analyse Vercel : le gate le neutralise (il
 // ne doit rien charger hors du serveur local) et refuse toute AUTRE sortie.
 const EXTERNES_TOLERES = [/^https:\/\/cdn\.vercel-insights\.com\//];
@@ -207,7 +209,7 @@ async function main() {
     await page.keyboard.press('End');
     await dormir(300);
     const nav2 = await lireNav();
-    ok(nav2.section === 'campagnes' && nav2.focus === 'pv2EmailsTab-campagnes' && nav2.hash === '#/staff/emails/campagnes', 'End : derniere section (Campagnes)', nav2.section);
+    ok(nav2.section === 'exclusions' && nav2.focus === 'pv2EmailsTab-exclusions' && nav2.hash === '#/staff/emails/exclusions', 'End : derniere section (Exclusions)', nav2.section);
     await page.keyboard.press('Home');
     await dormir(300);
     const nav3 = await lireNav();
@@ -215,7 +217,7 @@ async function main() {
     await page.keyboard.press('ArrowLeft');
     await dormir(300);
     const nav4 = await lireNav();
-    ok(nav4.section === 'campagnes', 'Fleche gauche depuis la premiere boucle sur la derniere', nav4.section);
+    ok(nav4.section === 'exclusions', 'Fleche gauche depuis la premiere boucle sur la derniere', nav4.section);
     await page.click('#pv2EmailsTab-envoyes');
     await dormir(300);
     const nav5 = await lireNav();
@@ -246,7 +248,11 @@ async function main() {
         const nav = document.querySelector('#staffEmailsPage .pl-subnav');
         const ind = nav.querySelector('.pl-subnav-indicator');
         const actif = nav.querySelector('.pl-subnav-item.is-active');
-        return { moved: ind.getAttribute('data-moved'), x: parseFloat(nav.style.getPropertyValue('--pl-subnav-x')), k: parseFloat(nav.style.getPropertyValue('--pl-subnav-k')), left: actif.offsetLeft, w: actif.offsetWidth, key: actif.getAttribute('data-section') };
+        // 2026-11-10 : la navigation est une COLONNE sur un ecran large (axe y)
+        // et une rangee sur un telephone (axe x) : la position et la taille se
+        // lisent sur l axe qu elle declare.
+        const axe = nav.getAttribute('data-axis') === 'y' ? 'y' : 'x';
+        return { moved: ind.getAttribute('data-moved'), axe, x: parseFloat(nav.style.getPropertyValue(axe === 'y' ? '--pl-subnav-y' : '--pl-subnav-x')), k: parseFloat(nav.style.getPropertyValue('--pl-subnav-k')), left: axe === 'y' ? actif.offsetTop : actif.offsetLeft, w: axe === 'y' ? actif.offsetHeight : actif.offsetWidth, key: actif.getAttribute('data-section') };
       };
       const tab = document.getElementById('pv2EmailsTab-agent');
       tab.focus();
@@ -257,7 +263,7 @@ async function main() {
       return { apresGeste, apresRerendu };
     });
     ok(indicateur.apresGeste.key === 'exclusions' && indicateur.apresGeste.moved === '1', 'l indicateur GLISSE quand la section change au clavier (data-moved=1)', JSON.stringify(indicateur.apresGeste));
-    ok(Math.abs(indicateur.apresGeste.x - indicateur.apresGeste.left) <= 1 && Math.abs(indicateur.apresGeste.k * 100 - indicateur.apresGeste.w) <= 1, 'et il est pose sur l onglet actif (position et largeur)', `x ${indicateur.apresGeste.x}/${indicateur.apresGeste.left}, largeur ${indicateur.apresGeste.k * 100}/${indicateur.apresGeste.w}`);
+    ok(Math.abs(indicateur.apresGeste.x - indicateur.apresGeste.left) <= 1 && Math.abs(indicateur.apresGeste.k * 100 - indicateur.apresGeste.w) <= 1, 'et il est pose sur l onglet actif (position et taille, sur l axe de la navigation)', `axe ${indicateur.apresGeste.axe}, position ${indicateur.apresGeste.x}/${indicateur.apresGeste.left}, taille ${indicateur.apresGeste.k * 100}/${indicateur.apresGeste.w}`);
     ok(indicateur.apresRerendu.moved === '0' && indicateur.apresRerendu.key === 'exclusions', 'un simple re-rendu ne le fait pas bouger (data-moved=0)');
 
     // =====================================================================
@@ -319,7 +325,9 @@ async function main() {
         traces: msgs.map(trace),
         corps42: (msgs[1].querySelector('.pv2-mail-corps') || {}).textContent || '',
         citation: !!msgs[1].querySelector('.pv2-mail-plus'),
-        analyse: (msgs[1].querySelector('.pv2-inbox-summary p') || {}).textContent || '',
+        // 2026-11-10 : ce que l agent a compris du dernier message du client
+        // (ici 42) se lit dans le volet Assistant, a cote du fil.
+        analyse: (document.querySelector('#staffEmailsPage .em-assistant .pv2-inbox-summary p') || {}).textContent || '',
         question: (msgs[1].querySelector('.pv2-thread-question') || {}).textContent || '',
         statut: (document.querySelector('#staffEmailsPage .pv2-thread-head .pv2-chip') || {}).textContent || '',
         tete: (document.querySelector('#staffEmailsPage .pv2-thread-title') || {}).textContent || '',
@@ -340,7 +348,7 @@ async function main() {
     ok(t42.some((s) => /is-done/.test(s.cls) && /^Reçu/.test(s.txt)) && t42.some((s) => /is-done/.test(s.cls) && /^Lu par Sophie Martin/.test(s.txt)) && t42.some((s) => /is-off/.test(s.cls) && /^Sans réponse/.test(s.txt)),
       'parcours ENTRANT du 42 : Recu, Lu par Sophie Martin, Sans reponse (point creux)', t42.map((s) => s.txt).join(' | '));
     ok(/propre gâteau/.test(fil.corps42) && fil.citation, 'le message recu est lisible, sa citation repliee derriere un bouton');
-    ok(/gâteau/.test(fil.analyse), 'ce que l agent a compris est affiche sous le message', fil.analyse.slice(0, 60));
+    ok(/gâteau/.test(fil.analyse), 'ce que l agent a compris du message 42 est affiche dans l Assistant', fil.analyse.slice(0, 60));
     ok(/L'agent ne sait pas/.test(fil.question), 'la question de l agent est rattachee au message qui l a posee');
     ok(fil.statut === 'À répondre' && /Ansar Bis/.test(fil.tete) && /ansarbis2\.0@gmail\.com/.test(fil.tete), 'en tete : le contact, son adresse, l etat « A repondre »', fil.statut);
     ok(/^Commencée par le centre/.test(fil.origineTete) && !fil.avatarTete && fil.sujetTete.trim().length > 0 && !/Ansar Bis/.test(fil.sujetTete),
@@ -609,13 +617,14 @@ async function main() {
     const erreursAvantSombre = desktop.journal.console.length + desktop.journal.pageErrors.length;
     await page.evaluate(() => setStaffTheme('dark'));
     await dormir(200);
-    const sombre = await page.evaluate(async () => {
+    // 2026-11-10 : la traversee suit l ordre de la navigation (SECTIONS).
+    const sombre = await page.evaluate(async (liste) => {
       const fond = () => getComputedStyle(document.body).backgroundColor;
       const sombreFond = fond();
       const theme = document.documentElement.getAttribute('data-theme');
       const page = getComputedStyle(document.documentElement).getPropertyValue('--page').trim();
       const sections = [];
-      for (const s of ['apercu', 'recus', 'envoyes', 'sequences', 'modeles', 'apparence', 'expediteurs', 'agent', 'exclusions', 'campagnes']) {
+      for (const s of liste) {
         pv2EmailsGo(s);
         await new Promise((r) => setTimeout(r, 350));
         sections.push(document.querySelector('#pv2EmailsPanel').getAttribute('data-section'));
@@ -623,7 +632,7 @@ async function main() {
       setStaffTheme('light');
       await new Promise((r) => setTimeout(r, 150));
       return { theme, page, sombreFond, clairFond: fond(), sections };
-    });
+    }, SECTIONS);
     ok(sombre.theme === 'dark' && sombre.sombreFond !== sombre.clairFond, 'le theme sombre s applique (data-theme=dark, fond different du clair)', `${sombre.sombreFond} vs ${sombre.clairFond}`);
     ok(sombre.sections.join(',') === SECTIONS.join(','), 'les dix sections se rendent en sombre');
     ok(desktop.journal.console.length + desktop.journal.pageErrors.length === erreursAvantSombre, 'aucune erreur console pendant la traversee en sombre');

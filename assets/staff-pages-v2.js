@@ -2605,9 +2605,11 @@
     return [...(messages || [])].reverse().find((m) => m.direction === 'inbound') || null;
   }
 
-  // Le brouillon d une conversation : objet « Re: », corps propose par l agent
-  // s il en a un, signature selon la portee reglee dans Apparence, signataire
-  // = la personne connectee (modifiable : c est elle qui signe, pas le role).
+  // Le brouillon d une conversation : objet « Re: », corps VIDE, signature
+  // selon la portee reglee dans Apparence, signataire = la personne connectee
+  // (modifiable : c est elle qui signe, pas le role). La reponse proposee par
+  // l agent se lit dans l Assistant et passe dans le brouillon d un clic
+  // (« Utiliser cette réponse », 2026-11-10) : c est la gerante qui la prend.
   function pv2SignataireTechnique(membre) {
     const nom = String((membre && membre.name) || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
     return nom === 'proprietaire plateforme' || /platform-owner/.test(String((membre && membre.id) || '')) || Boolean(membre && membre.emergency);
@@ -2636,7 +2638,7 @@
       const identite = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0] || null;
       pv2Threads.reply[cle] = {
         subject: sujet,
-        body: String((analysis && analysis.reply && analysis.reply.body) || ''),
+        body: '',
         identityId: pv2Mail.draft.identityId || (identite ? String(identite.id) : ''),
         signature: portee,
         // Le compte « Proprietaire plateforme » ne signe pas : champ vide,
@@ -2668,9 +2670,19 @@
     const reply = entrant && entrant.analysis && entrant.analysis.reply;
     if (!reply) { toast('L\'agent n\'a pas de réponse proposée pour cette conversation.'); return; }
     const draft = pv2ThreadReplyDraft(threadId);
-    draft.subject = String(reply.subject || draft.subject || '');
+    // Seul le texte est repris : l objet reste celui de la conversation
+    // (regle du 2026-09-17), celui de l agent ne sert que s il n y en a aucun.
+    if (!String(draft.subject || '').trim()) draft.subject = String(reply.subject || '');
     draft.body = String(reply.body || '');
+    // Prendre la reponse de l agent, c est commencer a repondre : meme prise
+    // de main que la premiere lettre tapee.
+    if (entrant && entrant.id) pv2PrendreLaMain(entrant.id);
     renderStaffEmailsPage();
+    const champ = document.getElementById('pv2ThreadReplyBody');
+    if (champ) {
+      champ.focus();
+      if (typeof champ.scrollIntoView === 'function') champ.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
+    }
   };
 
   // Le mail FINAL tel qu il partira : meme chemin serveur que l envoi
@@ -2794,12 +2806,10 @@
         }),
       });
       if (payload.analysis) {
+        // Le brouillon n est pas touche : ce que la gerante a deja ecrit reste.
+        // La nouvelle lecture s affiche dans l Assistant, et sa reponse se
+        // prend d un clic.
         entrant.analysis = payload.analysis;
-        pv2Threads.reply[threadId] = undefined;
-        delete pv2Threads.reply[threadId];
-        const draft = pv2ThreadReplyDraft(threadId);
-        draft.subject = String((payload.analysis.reply && payload.analysis.reply.subject) || draft.subject || '');
-        draft.body = String((payload.analysis.reply && payload.analysis.reply.body) || '');
         toast('Analyse actualisée.');
       }
     } catch (error) {
@@ -4724,7 +4734,7 @@
     return `<div class="pv2-savoir-suivi">
         <div class="pv2-savoir-jauge" role="img" aria-label="${esc(libelle)}"><span style="width:${part}%"></span></div>
         <p class="pv2-savoir-jauge-texte">${esc(libelle)}</p>
-        ${Number(suivi.corrections) > 0 ? `<p class="pv2-savoir-jauge-texte pv2-savoir-corrections">Il retient aussi vos corrections : ${pv2Pluriel(Number(suivi.corrections), 'réponse corrigée avant envoi', 'réponses corrigées avant envoi')}.</p>` : ''}
+        ${Number(suivi.corrections) > 0 ? `<p class="pv2-savoir-jauge-texte pv2-savoir-corrections">Il retient aussi vos corrections, ${pv2Pluriel(Number(suivi.corrections), 'réponse corrigée avant envoi', 'réponses corrigées avant envoi')}.</p>` : ''}
         <dl class="pv2-savoir-chiffres">
           <div><dt>Faits appris</dt><dd>${Number(suivi.faits) || 0}</dd></div>
           <div><dt>En attente</dt><dd>${Number(suivi.questions) || 0}</dd></div>
@@ -5225,17 +5235,26 @@
     // scrollTop repartait a zero. On memorise LES DEUX (page + cadres
     // defilants internes) et on les repose apres le paint.
     const scrollY = window.scrollY;
-    const innerScrolls = [...root.querySelectorAll('.pv2-mail-list, .pv2-mail-detail, .pv2-thread-list')]
-      .map((el) => ({ cls: el.className, top: el.scrollTop }))
+    // Les cadres de l espace de travail (liste des fils, fil ouvert, assistant,
+    // file des envoyes) portent une CLE (`data-em-scroll`) : la premiere classe
+    // ne suffit plus a les retrouver, et la cle du fil ouvert change avec lui,
+    // si bien qu un autre fil s ouvre en haut au lieu d heriter du defilement.
+    const innerScrolls = [...root.querySelectorAll('[data-em-scroll], .pv2-mail-list, .pv2-mail-detail, .pv2-thread-list')]
+      .map((el) => ({ cle: el.getAttribute('data-em-scroll'), cls: String(el.className), top: el.scrollTop }))
       .filter((s) => s.top > 0);
     const paint = () => renderStaffEmailsPaint(root, errorMessage);
     if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
     else paint();
     if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
     for (const saved of innerScrolls) {
-      const fresh = root.querySelector(`.${saved.cls.split(' ')[0]}`);
+      const fresh = saved.cle
+        ? root.querySelector(`[data-em-scroll="${saved.cle}"]`)
+        : root.querySelector(`.${saved.cls.split(' ')[0]}`);
       if (fresh) fresh.scrollTop = saved.top;
     }
+    // La selection glisse APRES la restitution du defilement : sa position se
+    // lit dans le cadre tel que la gerante le voit.
+    emPoserSelections(root);
     // La liste ouverte du sélecteur de destinataire est repeinte après le
     // rendu : le DOM neuf naît avec une liste vide et cachée, l'état, lui, vit
     // hors DOM (pv2Combo) et survit.
@@ -5254,32 +5273,30 @@
      customSequencePreview, sendCustomSequenceTest).
      ======================================================================== */
 
+  // L ESPACE DE TRAVAIL (2026-11-10) : une navigation verticale en quatre
+  // groupes, dans l ordre ou l on s en sert. La boite d abord (ce qui arrive,
+  // ce qui part), puis ce qui part tout seul, puis le contenu, puis les
+  // reglages qu on ouvre rarement.
+  const PV2_EMAILS_GROUPS = [
+    { key: 'boite', label: 'Boîte' },
+    { key: 'auto', label: 'Automatique' },
+    { key: 'contenu', label: 'Contenu' },
+    { key: 'reglages', label: 'Réglages' },
+  ];
   const PV2_EMAILS_TABS = [
-    { key: 'apercu', label: 'Aperçu' },
-    { key: 'recus', label: 'Reçus' },
-    { key: 'envoyes', label: 'Envoyés' },
-    { key: 'sequences', label: 'Séquences' },
-    { key: 'modeles', label: 'Modèles' },
-    { key: 'apparence', label: 'Apparence' },
-    { key: 'expediteurs', label: 'Expéditeurs' },
-    { key: 'agent', label: 'L’agent' },
-    { key: 'exclusions', label: 'Exclusions' },
+    { key: 'apercu', label: 'Aperçu', group: 'boite' },
+    { key: 'recus', label: 'Reçus', group: 'boite' },
+    { key: 'envoyes', label: 'Envoyés', group: 'boite' },
+    { key: 'sequences', label: 'Séquences', group: 'auto' },
     // Les campagnes exigent leur permission : sans elle, l onglet n existe pas
     // (regle DESIGN.md 9 : un bouton mene a une action reelle, ou il n existe pas).
-    { key: 'campagnes', label: 'Campagnes', permission: 'campaigns.manage' },
+    { key: 'campagnes', label: 'Campagnes', group: 'auto', permission: 'campaigns.manage' },
+    { key: 'modeles', label: 'Modèles', group: 'contenu' },
+    { key: 'apparence', label: 'Apparence', group: 'contenu' },
+    { key: 'expediteurs', label: 'Expéditeurs', group: 'reglages' },
+    { key: 'agent', label: 'L’agent', group: 'reglages' },
+    { key: 'exclusions', label: 'Exclusions', group: 'reglages' },
   ];
-  const PV2_SECTION_SUB = {
-    apercu: 'Ce qui arrive, ce qui part, ce qui n\'est pas parti',
-    recus: 'Les conversations avec vos clients, message par message',
-    envoyes: 'Chaque mail parti du centre, avec son suivi',
-    sequences: 'Les mails qui partent tout seuls, au bon moment',
-    modeles: 'Des textes prêts à envoyer, les nôtres et les vôtres',
-    apparence: 'Le gabarit et la signature de tous vos mails',
-    expediteurs: 'Les adresses avec lesquelles vos mails partent',
-    agent: 'Ce que l\'agent sait, et ce qu\'il vous demande',
-    exclusions: 'Qui ne veut plus recevoir de marketing',
-    campagnes: 'Un mail à un groupe de clients, ciblé depuis votre base',
-  };
 
   function pv2PeutVoirSection(key) {
     const tab = PV2_EMAILS_TABS.find((t) => t.key === key);
@@ -5315,9 +5332,11 @@
 
   // Clavier sur la sous-navigation (motif tablist) : fleches, Home, End
   // deplacent ET activent. `event.currentTarget` est le bouton porteur de
-  // l attribut onkeydown, jamais un enfant.
+  // l attribut onkeydown, jamais un enfant. La navigation est verticale sur un
+  // ecran large et horizontale sur un telephone : les quatre fleches marchent
+  // dans les deux cas.
   window.pv2EmailsTabKey = function (event) {
-    const touches = { ArrowLeft: -1, ArrowRight: 1, Home: 'home', End: 'end' };
+    const touches = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -1, ArrowDown: 1, Home: 'home', End: 'end' };
     const mouvement = touches[event.key];
     if (mouvement === undefined) return;
     const tabs = [...document.querySelectorAll('#staffEmailsPage .pl-subnav-item')];
@@ -5472,21 +5491,151 @@
     });
   }
 
-  /* ── SOUS-NAVIGATION : l indicateur glisse entre deux sections ──────────
-     Meme discipline que le rail du segmente : la position precedente vit hors
-     du DOM, on repose l indicateur dessus sans transition, reflow, puis il
-     glisse. Un simple re-rendu (poll) ne le fait pas bouger d un pixel. ── */
-  function pv2SubnavHtml(section) {
+  /* ── LE MOUVEMENT DE L ESPACE DE TRAVAIL (2026-11-10) ────────────────────
+     La page se reconstruit par innerHTML a chaque donnee qui arrive. Une
+     entree posee naivement rejouerait a chaque poll, ou serait coupee net par
+     le rendu suivant. Chaque entree garde donc son HEURE DE DEPART hors du
+     DOM : un rendu pendant l entree la reprend la ou elle en etait (delai
+     negatif), un rendu apres elle ne pose plus rien. Une section qui s ouvre
+     efface cette memoire : ses listes arrivent alors en cascade, huit rangs au
+     plus, 20 ms d ecart. Seuls transform et opacity bougent, et rien ne bouge
+     sous prefers-reduced-motion. */
+  const EM_MOTION = { departs: {}, sel: {}, fil: '', envoi: '' };
+  const EM_DUREE = 160;
+  const EM_CASCADE_MAX = 8;
+  const EM_CASCADE_PAS = 20;
+
+  // `cascade` est partage par une liste : seules ses lignes NOUVELLES prennent
+  // un rang, si bien qu une ligne arrivee par un poll entre seule, sans delai.
+  function emEntree(cle, cascade) {
+    if (reducedMotion) return '';
+    const maintenant = performance.now();
+    let e = EM_MOTION.departs[cle];
+    if (!e) {
+      const rang = cascade ? cascade.n++ : 0;
+      e = { t0: maintenant, delai: Math.min(rang, EM_CASCADE_MAX - 1) * EM_CASCADE_PAS };
+      EM_MOTION.departs[cle] = e;
+    }
+    const ecoule = maintenant - e.t0;
+    if (ecoule >= e.delai + EM_DUREE) return '';
+    return ` data-em-in style="--em-d:${Math.round(e.delai - ecoule)}ms"`;
+  }
+  // Ce qui est deja a l ecran a la premiere peinture n a pas a entrer une
+  // seconde fois au rendu suivant.
+  function emDejaLa(cle) {
+    EM_MOTION.departs[cle] = { t0: -Infinity, delai: 0 };
+  }
+
+  // LA SELECTION GLISSE d une ligne a l autre : un seul marqueur par liste,
+  // repose sur l ancienne ligne sans transition, puis lache vers la nouvelle
+  // (translateY + scaleY sur une base de 100 px, rien qui declenche un
+  // layout par image). Un rendu qui ne change pas la selection le repose au
+  // meme pixel. La position se lit en offsetTop : la geometrie de mise en
+  // page, que l entree en cours (translateY de 4 px) ne fausse pas.
+  function emHautDans(el, cadre) {
+    let y = 0;
+    let n = el;
+    while (n && n !== cadre) { y += n.offsetTop; n = n.offsetParent; }
+    return n === cadre ? y : null;
+  }
+  function emPoserSelections(root) {
+    root.querySelectorAll('[data-em-sel]').forEach((cadre) => {
+      const cle = cadre.getAttribute('data-em-sel');
+      const marque = cadre.querySelector(':scope > .em-sel');
+      if (!marque) return;
+      const choisi = cadre.querySelector('[data-em-cur]');
+      const y = choisi && document.contains(cadre) && choisi.offsetHeight ? emHautDans(choisi, cadre) : null;
+      if (y === null) {
+        marque.classList.remove('is-on');
+        // Une ligne choisie sortie de la liste (filtre, recherche) : la
+        // prochaine selection se pose sans glisser depuis une ligne absente.
+        if (!choisi) EM_MOTION.sel[cle] = null;
+        return;
+      }
+      const place = (p) => { marque.style.transform = `translateY(${p.y}px) scaleY(${p.h / 100})`; };
+      const to = { id: choisi.getAttribute('data-em-id'), y, h: choisi.offsetHeight };
+      const from = EM_MOTION.sel[cle];
+      const glisse = !reducedMotion && !!(from && from.id !== to.id);
+      marque.style.transition = 'none';
+      place(glisse ? from : to);
+      marque.classList.add('is-on');
+      void marque.offsetWidth;
+      marque.style.transition = '';
+      if (glisse) place(to);
+      EM_MOTION.sel[cle] = to;
+    });
+  }
+
+  // LA PHRASE D ETAT DE L EN-TETE : ce qui attend, en une phrase, depuis les
+  // memes chiffres que la navigation et l apercu.
+  function emListeFr(morceaux) {
+    if (morceaux.length < 2) return morceaux.join('');
+    return `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1]}`;
+  }
+  function emStatutDuJour() {
     const o = pv2Overview.data;
-    const aRepondre = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : null;
-    return `<nav class="pv2-emails-nav" aria-label="Sections de la page Emails">
-      <div class="pl-subnav" role="tablist" aria-label="Sections">
-        <span class="pl-subnav-indicator" aria-hidden="true"></span>
-        ${PV2_EMAILS_TABS.filter((t) => pv2PeutVoirSection(t.key)).map((t) => {
-          const active = t.key === section;
-          const badge = t.key === 'recus' && aRepondre ? `<span class="pl-subnav-badge" aria-label="${aRepondre} à répondre">${aRepondre}</span>` : '';
-          return `<button type="button" class="pl-subnav-item${active ? ' is-active' : ''}" role="tab" id="pv2EmailsTab-${t.key}" aria-selected="${active}" aria-controls="pv2EmailsPanel" tabindex="${active ? '0' : '-1'}" data-section="${t.key}" data-pl-focus="emails.subnav.${t.key}" onclick="pv2EmailsGo('${t.key}')" onkeydown="pv2EmailsTabKey(event)">${esc(t.label)}${badge}</button>`;
-        }).join('')}
+    if (!o) return pv2Overview.error ? 'Le résumé de vos mails est indisponible pour le moment.' : 'Lecture de vos mails…';
+    const aRepondre = pv2Nombre(o.aRepondre) || 0;
+    const echecs = getStaffEmailRows().filter((r) => !pv2IsInbound(r) && r.statusKind === 'failed').length;
+    const prevus = pv2Nombre(o.programmes24h) || 0;
+    const morceaux = [aRepondre ? `${aRepondre} conversation${aRepondre > 1 ? 's' : ''} à répondre` : 'aucune conversation à répondre'];
+    if (echecs) morceaux.push(`${echecs} envoi${echecs > 1 ? 's' : ''} en échec`);
+    if (prevus) morceaux.push(`${prevus} mail${prevus > 1 ? 's' : ''} prévu${prevus > 1 ? 's' : ''} dans les 24 h`);
+    const phrase = emListeFr(morceaux);
+    return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}.`;
+  }
+  function emHeureDeMaj() {
+    const v = opsAdminCache.lastLoadedAt;
+    const d = v ? new Date(v) : null;
+    if (!d || Number.isNaN(d.getTime())) return 'Pas encore chargé';
+    const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString()
+      ? `À jour à ${heure}`
+      : `À jour le ${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })} à ${heure}`;
+  }
+
+  /* ── LA NAVIGATION : quatre groupes, une colonne qui reste a l ecran ──────
+     Meme discipline que le rail du segmente : la position precedente de
+     l indicateur vit hors du DOM, on le repose dessus sans transition, reflow,
+     puis il glisse. Un simple re-rendu (poll) ne le fait pas bouger d un
+     pixel. Un compteur ne s affiche que s il y a quelque chose a traiter : des
+     conversations a repondre, des envois en echec, des questions de l agent. */
+  function pv2NavCompte(key) {
+    if (key === 'recus') {
+      const o = pv2Overview.data;
+      const n = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : 0;
+      return n > 0 ? { n, ton: 'is-blue', dit: `${n} à répondre` } : null;
+    }
+    if (key === 'envoyes') {
+      const n = getStaffEmailRows().filter((r) => !pv2IsInbound(r) && r.statusKind === 'failed').length;
+      return n > 0 ? { n, ton: 'is-red', dit: `${n} en échec` } : null;
+    }
+    if (key === 'agent') {
+      const n = ((typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || []).length;
+      return n > 0 ? { n, ton: 'is-blue', dit: `${n} question${n > 1 ? 's' : ''} en attente` } : null;
+    }
+    return null;
+  }
+
+  function pv2SubnavHtml(section) {
+    const visibles = PV2_EMAILS_TABS.filter((t) => pv2PeutVoirSection(t.key));
+    const groupes = PV2_EMAILS_GROUPS.map((g) => {
+      const tabs = visibles.filter((t) => t.group === g.key);
+      if (!tabs.length) return '';
+      return `<div class="em-nav-group" role="none">
+          <span class="em-nav-label" aria-hidden="true">${esc(g.label)}</span>
+          ${tabs.map((t) => {
+            const active = t.key === section;
+            const compte = pv2NavCompte(t.key);
+            const badge = compte ? `<span class="em-nav-count pl-subnav-badge ${compte.ton}" aria-label="${esc(compte.dit)}">${compte.n}</span>` : '';
+            return `<button type="button" class="em-nav-item pl-subnav-item${active ? ' is-active' : ''}" role="tab" id="pv2EmailsTab-${t.key}" aria-selected="${active}" aria-controls="pv2EmailsPanel" tabindex="${active ? '0' : '-1'}" data-section="${t.key}" data-pl-focus="emails.subnav.${t.key}" onclick="pv2EmailsGo('${t.key}')" onkeydown="pv2EmailsTabKey(event)"><span class="em-nav-text">${esc(t.label)}</span>${badge}</button>`;
+          }).join('')}
+        </div>`;
+    }).join('');
+    return `<nav class="em-nav pv2-emails-nav" aria-label="Sections de la page Emails">
+      <div class="em-nav-list pl-subnav" role="tablist" aria-label="Sections" aria-orientation="vertical">
+        <span class="em-nav-ind pl-subnav-indicator" aria-hidden="true"></span>
+        ${groupes}
       </div>
     </nav>`;
   }
@@ -5498,7 +5647,14 @@
     const active = nav.querySelector('.pl-subnav-item.is-active');
     if (!ind || !active) return;
     const from = PV2_EMAILS_MOTION.subnav;
-    const place = (p) => { nav.style.setProperty('--pl-subnav-x', `${p.x}px`); nav.style.setProperty('--pl-subnav-k', String(p.w / 100)); };
+    // `k` est l echelle sur l axe de la navigation : la hauteur de l onglet en
+    // colonne, sa largeur en rangee (base 100 px dans les deux cas).
+    const place = (p) => {
+      nav.style.setProperty('--pl-subnav-x', `${p.x}px`);
+      nav.style.setProperty('--pl-subnav-y', `${p.y}px`);
+      nav.style.setProperty('--pl-subnav-k', String((p.axe === 'y' ? p.h : p.w) / 100));
+      nav.setAttribute('data-axis', p.axe);
+    };
     // Noeud detache ou page cachee : aucune geometrie lisible, on repose la
     // derniere connue et on ne touche pas a la memoire.
     if (!document.contains(nav) || !active.offsetWidth) {
@@ -5506,8 +5662,15 @@
       ind.setAttribute('data-moved', '0');
       return;
     }
-    const to = { key: active.getAttribute('data-section'), x: active.offsetLeft, w: active.offsetWidth };
-    const moved = !instant && !!(from && from.key && from.key !== to.key) && !reducedMotion;
+    // L AXE SE LIT SUR LA PAGE : une colonne sur un ecran large, une rangee qui
+    // defile sur un telephone. Le dernier onglet plus bas que le premier, c est
+    // une colonne.
+    const tabs = nav.querySelectorAll('.pl-subnav-item');
+    const axe = tabs.length > 1 && tabs[tabs.length - 1].offsetTop > tabs[0].offsetTop + 2 ? 'y' : 'x';
+    nav.setAttribute('aria-orientation', axe === 'y' ? 'vertical' : 'horizontal');
+    const to = { key: active.getAttribute('data-section'), x: active.offsetLeft, y: active.offsetTop, w: active.offsetWidth, h: active.offsetHeight, axe };
+    // Changer d axe (rotation de tablette) n est pas un geste : on repose sec.
+    const moved = !instant && !!(from && from.key && from.key !== to.key && from.axe === to.axe) && !reducedMotion;
     ind.style.transition = 'none';
     place(moved ? from : to);
     void ind.offsetWidth;
@@ -5515,8 +5678,8 @@
     if (moved) place(to);
     PV2_EMAILS_MOTION.subnav = to;
     ind.setAttribute('data-moved', moved ? '1' : '0');
-    // Sous 768 px la barre defile : l onglet actif se centre dans la fenetre.
-    if (nav.scrollWidth > nav.clientWidth + 2) {
+    // En rangee la barre defile : l onglet actif se centre dans la fenetre.
+    if (axe === 'x' && nav.scrollWidth > nav.clientWidth + 2) {
       nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
     }
     if (!PV2_EMAILS_MOTION.subnavResizeBound) {
@@ -6098,15 +6261,15 @@
   const PV2_EVENT_LABELS = { sent: 'Envoyé', delivered: 'Remis', delivery_delayed: 'Remise retardée', opened: 'Ouvert', clicked: 'Cliqué', bounced: 'Rebond', complained: 'Signalé comme indésirable', failed: 'Échec' };
 
   /* ── APERCU ───────────────────────────────────────────────────────────── */
+  // UNE BANDE DE QUATRE CHIFFRES (2026-11-10) : le nombre tel quel, sans
+  // compteur qui defile ni grand chiffre decoratif. Chaque chiffre mene a la
+  // liste qu il resume.
   function pv2TuileHtml({ label, value, foot, go, danger = false }) {
     const n = pv2Nombre(value);
-    const cle = `stat.${String(label).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-    return `<button type="button" class="pv2-stat${danger && n > 0 ? ' is-danger' : ''}" onclick="${go}">
-      <div class="pv2-stat-label"><span>${esc(label)}</span></div>
-      <div class="pv2-stat-value">${n === null
-        ? '<span class="pv2-stat-value is-empty">indisponible</span>'
-        : `<span ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''} data-pl-num="${cle}">${n.toLocaleString('fr-BE')}</span>`}</div>
-      <div class="pv2-stat-foot">${esc(foot || '')}</div>
+    return `<button type="button" class="em-kpi pv2-stat${danger && n > 0 ? ' is-danger' : ''}" onclick="${go}">
+      <span class="em-kpi-label pv2-stat-label">${esc(label)}</span>
+      <span class="em-kpi-value pv2-stat-value${n === null ? ' is-empty' : ''}">${n === null ? 'indisponible' : esc(n.toLocaleString('fr-BE'))}</span>
+      <span class="em-kpi-foot pv2-stat-foot">${esc(foot || '')}</span>
     </button>`;
   }
 
@@ -6138,86 +6301,162 @@
     </div>`;
   }
 
+  // Une ligne par sequence : son nom, ce qu elle a envoye sur 30 jours, son
+  // interrupteur. Les interrupteurs ecrivent (automationSettings,
+  // customSequences : settings.manage ou emails.send) ; sans ce droit, l etat
+  // se lit en texte.
   function pv2SeqMiniHtml() {
-    if (!mkAuto.loaded && !mkAuto.error) return `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
-    if (mkAuto.error) return `<div class="pv2-empty"><strong>${esc(mkAuto.error)}</strong></div>`;
-    // Les interrupteurs ecrivent (automationSettings, customSequences :
-    // settings.manage ou emails.send). Sans ce droit, l etat se lit en texte.
+    if (!mkAuto.loaded && !mkAuto.error) return `<div class="em-attente" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
+    if (mkAuto.error) return `<p class="em-calme">${esc(mkAuto.error)}</p>`;
     const regler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['settings.manage', 'emails.send']);
-    const etat = (on) => (regler ? '' : `${on ? 'Activée' : 'Désactivée'} · `);
     const NB = ' ';
+    const ligne = (nom, detail, on, interrupteur) => `<li class="em-seq${on ? ' is-on' : ''}">
+        <span class="em-seq-main"><strong>${esc(nom)}</strong><small>${detail}</small></span>
+        ${regler ? interrupteur : `<span class="em-seq-etat">${on ? 'Activée' : 'Désactivée'}</span>`}
+      </li>`;
     const items = AUTOMATION_META.map((meta) => {
       const setting = mkAuto.settings ? mkAuto.settings[meta.key] : null;
       const enabled = !!(setting && setting.enabled);
       const stats = mkAuto.stats[meta.key] || {};
       const sent30 = Number(stats.sent30d) || 0;
       const failed30 = Number(stats.failed30d) || 0;
-      return `<div class="pv2-seq-mini-item${enabled ? ' is-on' : ''}">
-        <strong>${esc(meta.label)}</strong>
-        <span>${etat(enabled)}${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · ${failed30}${NB}échec${failed30 > 1 ? 's' : ''}` : ''} · 30${NB}j</span>
-        ${regler ? `<button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${mkAuto.busyKey === meta.key || !mkAuto.settings ? 'disabled' : ''}><span></span></button>` : ''}
-      </div>`;
+      const detail = `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · <span class="em-seq-echec">${failed30}${NB}échec${failed30 > 1 ? 's' : ''}</span>` : ''} · 30${NB}j`;
+      return ligne(meta.label, detail, enabled, `<button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${mkAuto.busyKey === meta.key || !mkAuto.settings ? 'disabled' : ''}><span></span></button>`);
     });
     pv2Seq.sequences.forEach((sequence) => {
       const stats = pv2SeqStats30j(sequence);
       const sent30 = stats ? Number(stats.sent30d) || 0 : null;
-      items.push(`<div class="pv2-seq-mini-item${sequence.enabled ? ' is-on' : ''}">
-        <strong>${esc(sequence.name)}</strong>
-        <span>${etat(sequence.enabled)}${sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`}</span>
-        ${regler ? `<button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>` : ''}
-      </div>`);
+      const detail = sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`;
+      items.push(ligne(sequence.name, detail, sequence.enabled, `<button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>`));
     });
-    return `<div class="pv2-seq-mini">${items.join('')}</div>`;
+    return `<ul class="em-seq-list pv2-seq-mini">${items.join('')}</ul>`;
+  }
+
+  // CE QUI ATTEND LA GERANTE (2026-11-10), en faits : un nombre, sa cause, le
+  // bouton qui mene au geste. Une ligne n existe que si la donnee qui la porte
+  // existe : rien ne s affiche « par defaut ».
+  function emAFaire() {
+    const o = pv2Overview.data;
+    const rows = getStaffEmailRows().filter((r) => !pv2IsInbound(r));
+    const metrics = getStaffEmailMetrics(rows);
+    const items = [];
+    if (metrics.failed > 0) {
+      const causes = getStaffEmailFailureGroups(rows);
+      const top = causes[0];
+      const autres = causes.length - 1;
+      items.push({
+        cle: 'echecs', ton: 'red',
+        titre: `${metrics.failed} mail${metrics.failed > 1 ? 's ne sont jamais partis' : ' n’est jamais parti'}`,
+        detail: top ? `${top.label}${autres > 0 ? `, et ${autres} autre${autres > 1 ? 's' : ''} cause${autres > 1 ? 's' : ''}` : ''}.` : '',
+        bouton: metrics.failed > 1 ? 'Voir les échecs' : 'Voir l’échec',
+        go: "pv2EmailFilter('failed')",
+      });
+    }
+    const canal = pv2Mail.channel;
+    if (canal && canal.resendConfigured === false) {
+      items.push({ cle: 'canal', ton: 'red', titre: 'L’envoi des mails n’est pas configuré', detail: 'Aucun mail ne part tant que l’adresse d’envoi n’est pas reliée.', bouton: 'Voir les expéditeurs', go: "pv2EmailsGo('expediteurs')" });
+    }
+    const aRepondre = o ? pv2Nombre(o.aRepondre) : null;
+    if (aRepondre > 0) {
+      const depuis = o.plusAncienneAttenteAt ? pv2Depuis(o.plusAncienneAttenteAt) : '';
+      items.push({ cle: 'repondre', ton: 'blue', titre: `${aRepondre} conversation${aRepondre > 1 ? 's attendent' : ' attend'} une réponse`, detail: depuis ? `La plus ancienne attend depuis ${depuis}.` : '', bouton: 'Répondre', go: "pv2ThreadsFilter('a-repondre'); pv2EmailsGo('recus')" });
+    }
+    const questions = pv2SavoirDonnees().questions;
+    if (questions.length) {
+      items.push({ cle: 'agent', ton: 'blue', titre: questions.length > 1 ? `L’agent a ${questions.length} questions sur votre centre` : 'L’agent a une question sur votre centre', detail: 'Ce que vous lui répondez, il le retient pour les mails suivants.', bouton: 'Voir les questions', go: "pv2EmailsGo('agent')" });
+    }
+    if (metrics.due > 0) {
+      items.push({ cle: 'file', ton: 'amber', titre: `${metrics.due} mail${metrics.due > 1 ? 's prêts à partir sont' : ' prêt à partir est'} encore dans la file`, detail: '', bouton: 'Voir la file', go: "pv2EmailFilter('queued')" });
+    }
+    return items;
+  }
+
+  function emAFaireHtml() {
+    const o = pv2Overview.data;
+    const items = emAFaire();
+    const cascade = { n: 0 };
+    let corps;
+    if (items.length) {
+      corps = `<ul class="em-todo-list">${items.map((it) => `<li class="em-todo is-${it.ton}" data-em-todo="${it.cle}"${emEntree(`apercu:todo:${it.cle}`, cascade)}>
+          <span class="em-todo-dot" aria-hidden="true"></span>
+          <span class="em-todo-text"><strong>${esc(it.titre)}</strong>${it.detail ? `<small>${esc(it.detail)}</small>` : ''}</span>
+          <button type="button" class="pv2-btn sm" onclick="${it.go}">${esc(it.bouton)}</button>
+        </li>`).join('')}</ul>`;
+    } else if (!o) {
+      corps = `<p class="em-calme">${pv2Overview.error ? 'Le résumé de vos mails est indisponible pour le moment.' : 'Lecture de vos mails…'}</p>`;
+    } else {
+      const sansEchec = Number(o.echecs7j) === 0 ? ' Aucun envoi n’a échoué sur 7 jours.' : '';
+      corps = `<p class="em-calme"><strong>Rien à faire pour l’instant.</strong> Aucune conversation n’attend de réponse.${sansEchec}</p>`;
+    }
+    return `<section class="em-block em-todo-block" aria-labelledby="emTodoTitre">
+        <h2 class="em-h2" id="emTodoTitre">À faire maintenant</h2>
+        ${corps}
+      </section>`;
+  }
+
+  // La phrase de l agent sur le dernier message de chaque fil, quand il l a
+  // lu. Elle vient de la file des communications (l analyse y est stockee) :
+  // la liste des fils ne la porte pas. Lue une fois par rendu.
+  function emResumes() {
+    const out = new Map();
+    getStaffEmailRows().forEach((r) => {
+      if (!pv2IsInbound(r)) return;
+      const p = r.payload && typeof r.payload === 'object' ? r.payload : null;
+      const a = p && p.analysis && typeof p.analysis === 'object' ? p.analysis : null;
+      const resume = a ? String(a.summary || '').trim() : '';
+      if (resume) out.set(Number(r.id), resume);
+    });
+    return out;
   }
 
   function pv2EmailsSectionApercu() {
     const o = pv2Overview.data;
-    const rows = getStaffEmailRows().filter((r) => !pv2IsInbound(r));
-    const metrics = getStaffEmailMetrics(rows);
     const plusAncienne = o && o.plusAncienneAttenteAt ? pv2Depuis(o.plusAncienneAttenteAt) : '';
     const evenements = o && o.suivi ? Boolean(o.suivi.evenementsRecus30j) : false;
     const remis7 = o ? pv2Nombre(o.remis7j) : null;
     const enAttente = o ? pv2Nombre(o.enAttente) : null;
     const apercu = pv2Threads.apercu;
     const convos = apercu.threads.slice(0, 5);
-    return `${pv2AlerteEchecsHtml(rows, metrics)}
-      <section class="pv2-stats" aria-label="Les chiffres du jour">
-        ${pv2TuileHtml({ label: 'À répondre', value: o ? o.aRepondre : null, foot: plusAncienne ? `la plus ancienne attend depuis ${plusAncienne}` : (o && Number(o.aRepondre) === 0 ? 'aucune conversation en attente' : ''), go: "pv2ThreadsFilter('a-repondre'); pv2EmailsGo('recus')" })}
-        ${pv2TuileHtml({ label: 'Envoyés sur 7 jours', value: o ? o.envoyes7j : null, foot: evenements && remis7 !== null ? `remis : ${remis7}` : 'remise non confirmée', go: "pv2EmailFilter('sent')" })}
+    const resumes = emResumes();
+    const cascade = { n: 0 };
+    return `<div class="em-apercu">
+      ${emAFaireHtml()}
+      <section class="em-kpis" aria-label="Les chiffres du jour">
+        ${pv2TuileHtml({ label: 'À répondre', value: o ? o.aRepondre : null, foot: plusAncienne ? `la plus ancienne depuis ${plusAncienne}` : (o && Number(o.aRepondre) === 0 ? 'rien en attente' : ''), go: "pv2ThreadsFilter('a-repondre'); pv2EmailsGo('recus')" })}
+        ${pv2TuileHtml({ label: 'Envoyés sur 7 jours', value: o ? o.envoyes7j : null, foot: evenements && remis7 !== null ? `${remis7} remis au client` : 'remise non confirmée', go: "pv2EmailFilter('sent')" })}
         ${pv2TuileHtml({ label: 'Échecs sur 7 jours', value: o ? o.echecs7j : null, foot: o && Number(o.echecs7j) > 0 ? 'à corriger dans Envoyés' : 'aucun échec récent', go: "pv2EmailFilter('failed')", danger: true })}
         ${pv2TuileHtml({ label: 'Programmés sur 24 h', value: o ? o.programmes24h : null, foot: enAttente !== null ? `${enAttente} en attente au total` : '', go: "pv2EmailFilter('queued')" })}
       </section>
-      <div class="pv2-overview-grid">
-        <div class="pv2-overview-col">
-          <section class="pv2-panel" aria-label="Conversations à répondre">
-            <div class="pv2-panel-head pv2-list-head">
-              <h2>Conversations à répondre</h2>
+      <div class="em-cols">
+        <div class="em-col">
+          <section class="em-block em-convos" aria-labelledby="emConvTitre">
+            <div class="em-block-head">
+              <h2 class="em-h2" id="emConvTitre">Conversations à répondre</h2>
               <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('recus')">Toutes les conversations</button>
             </div>
-            <div class="pv2-panel-body is-flush">
-              ${!apercu.loaded
-                ? `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
-                : convos.length
-                  ? `<div class="pv2-convo-mini">${convos.map((t) => pv2ThreadRowHtml(t, { compact: true })).join('')}</div>`
-                  : '<div class="pv2-empty"><strong>Rien à répondre</strong>Chaque conversation reçue a sa réponse.</div>'}
+            ${!apercu.loaded
+              ? `<div class="em-attente" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
+              : convos.length
+                ? `<div class="em-rows pv2-convo-mini">${convos.map((t) => pv2ThreadRowHtml(t, { compact: true, cascade, cle: `apercu:fil:${t.id}`, resume: resumes.get(Number(t.lastInboundId)) || '' })).join('')}</div>`
+                : '<p class="em-calme"><strong>Rien à répondre.</strong> Chaque conversation reçue a sa réponse.</p>'}
+          </section>
+          <section class="em-block" aria-labelledby="emSuiviTitre">
+            <h2 class="em-h2" id="emSuiviTitre">Suivi des envois</h2>
+            ${pv2SuiviHtml(o)}
+          </section>
+        </div>
+        <div class="em-col">
+          <section class="em-block" aria-labelledby="emSeqTitre">
+            <div class="em-block-head">
+              <h2 class="em-h2" id="emSeqTitre">Séquences</h2>
+              <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('sequences')">Gérer</button>
             </div>
+            ${pv2SeqMiniHtml()}
           </section>
           ${pv2SectionApprentissage({ apercu: true })}
         </div>
-        <div class="pv2-overview-col">
-          <section class="pv2-panel" aria-label="Suivi des envois">
-            <div class="pv2-panel-head"><h2>Suivi des envois</h2></div>
-            <div class="pv2-panel-body">${pv2SuiviHtml(o)}</div>
-          </section>
-          <section class="pv2-panel" aria-label="Séquences">
-            <div class="pv2-panel-head pv2-list-head">
-              <h2>Séquences</h2>
-              <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('sequences')">Gérer</button>
-            </div>
-            <div class="pv2-panel-body">${pv2SeqMiniHtml()}</div>
-          </section>
-        </div>
-      </div>`;
+      </div>
+    </div>`;
   }
 
   /* Un mail qui ne part pas ne se voyait NULLE PART : le pipe « Échecs »
@@ -6257,7 +6496,12 @@
     return noms.length > 2 ? `${noms.slice(0, 2).join(', ')} +${noms.length - 2}` : noms.join(' et ');
   }
 
-  function pv2ThreadRowHtml(t, { compact = false } = {}) {
+  // UNE LIGNE DENSE (2026-11-10) : qui, quand, l objet, une ligne de texte,
+  // puis les etats. Pas d avatar ni de filet entre les lignes : la selection
+  // est un fond qui glisse (emPoserSelections), le non lu est en gras.
+  // `compact` (Apercu) : la phrase de l agent remplace l extrait, et l age se
+  // lit en duree (« 3 h »).
+  function pv2ThreadRowHtml(t, { compact = false, cascade = null, cle = '', resume = '' } = {}) {
     const selected = String(t.id) === String(pv2Threads.selectedId) && !compact;
     // NOUVEAU = PERSONNE n a ouvert le dernier message du client (2026-09-17).
     // Des qu un membre l ouvre, la pastille disparait pour tout le monde et la
@@ -6268,22 +6512,20 @@
     const [statusLabel, statusTone] = PV2_THREAD_STATUS[t.status] || PV2_THREAD_STATUS.open;
     const priseAutre = pv2PriseDunAutreSurLeFil({ id: t.lastInboundId, prise: t.prise }, t);
     const chips = [];
-    if (unread) chips.push('<span class="pv2-chip is-new">Nouveau</span>');
+    if (unread) chips.push('<span class="pv2-chip blue is-new">Nouveau</span>');
     else if (t.status === 'open') chips.push(`<span class="pv2-chip is-opened">Ouvert par ${esc(pv2NomsLecteurs(lecteurs))}</span>`);
     if (priseAutre) chips.push(`<span class="pv2-chip amber">${esc(String(priseAutre.memberName || 'Un collègue'))} répond…</span>`);
     if (!compact && pv2Threads.filtre !== 'a-repondre') chips.push(`<span class="pv2-chip ${statusTone}">${statusLabel}${t.status === 'answered' && t.reponduPar && t.reponduPar.memberName ? ` par ${esc(t.reponduPar.memberName)}` : ''}</span>`);
     else if (t.status === 'answered' && t.reponduPar && t.reponduPar.memberName) chips.push(`<span class="pv2-chip green">Répondu par ${esc(t.reponduPar.memberName)}</span>`);
-    if (Number(t.messageCount) > 1) chips.push(`<span class="pv2-chip is-count">${Number(t.messageCount)} messages</span>`);
-    if (t.intention) chips.push(`<span class="pv2-inbox-intent">${esc(PV2_INTENT_LABELS[t.intention] || t.intention)}</span>`);
-    if (t.question) chips.push('<span class="pv2-inbox-urgent">Question</span>');
-    return `<button type="button" class="pv2-thread-row${selected ? ' is-selected' : ''}${unread ? ' is-unread' : ''}" data-thread-id="${esc(String(t.id))}" aria-current="${selected ? 'true' : 'false'}" onclick="pv2ThreadOpen('${escJs(String(t.id))}')">
-      <span class="pv2-thread-avatar" aria-hidden="true">${esc(pv2InitialeDe(t.contactName, t.contactEmail))}</span>
-      <span class="pv2-thread-main">
-        <span class="pv2-thread-line"><strong>${esc(nom)}</strong><span class="pv2-thread-when">${esc(pv2Relatif(t.lastMessageAt))}</span></span>
-        <span class="pv2-thread-subject">${esc(t.subject || '(sans objet)')}</span>
-        ${compact ? '' : `<span class="pv2-thread-snippet">${esc(t.snippet || '')}</span>`}
-        ${chips.length ? `<span class="pv2-thread-chips">${chips.join('')}</span>` : ''}
-      </span>
+    if (!compact && Number(t.messageCount) > 1) chips.push(`<span class="pv2-chip is-count">${Number(t.messageCount)} messages</span>`);
+    if (t.intention) chips.push(`<span class="pv2-chip pv2-inbox-intent">${esc(PV2_INTENT_LABELS[t.intention] || t.intention)}</span>`);
+    if (t.question) chips.push('<span class="pv2-chip amber pv2-inbox-urgent">Question</span>');
+    const texte = compact ? resume : String(t.snippet || '');
+    return `<button type="button" class="em-row pv2-thread-row${selected ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${compact ? ' is-compact' : ''}" data-thread-id="${esc(String(t.id))}" data-em-id="${esc(String(t.id))}"${selected ? ' data-em-cur' : ''} aria-current="${selected ? 'true' : 'false'}" onclick="pv2ThreadOpen('${escJs(String(t.id))}')"${cle ? emEntree(cle, cascade) : ''}>
+      <span class="em-row-top"><strong class="em-row-name">${esc(nom)}</strong><span class="em-row-when">${esc(compact ? pv2Depuis(t.lastMessageAt) : pv2Relatif(t.lastMessageAt))}</span></span>
+      <span class="em-row-subject">${esc(t.subject || '(sans objet)')}</span>
+      ${texte ? `<span class="em-row-snippet">${esc(texte)}</span>` : ''}
+      ${chips.length ? `<span class="em-row-chips">${chips.join('')}</span>` : ''}
     </button>`;
   }
 
@@ -6356,6 +6598,10 @@
     return `<details class="pv2-thread-events"><summary>${liste.length} événement${liste.length > 1 ? 's' : ''} du fournisseur</summary><ul>${liste.map(ligne).join('')}</ul></details>`;
   }
 
+  // UN MESSAGE DU FIL (2026-11-10) : une surface pleine largeur, l en-tete du
+  // mail (qui, par quelle voie, quand), le texte, puis son parcours. Pas de
+  // bulle : le message du client sur un fond neutre, celui du centre sur un
+  // bleu tres clair. Ce que l agent en a compris vit dans l Assistant, a cote.
   function pv2ThreadMessageHtml(m, messages, fil, contact) {
     const inbound = m.direction === 'inbound';
     const uid = `msg:${m.id}`;
@@ -6369,8 +6615,6 @@
       : (m.recipient ? `à ${m.recipient}` : '');
     const voie = inbound ? 'Reçu' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`);
     const quand = pv2Quand(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
-    const analysis = inbound && m.analysis && typeof m.analysis === 'object' ? m.analysis : null;
-    const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
     const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
     const question = inbound ? questions.find((q) => Number(q.communicationId) === Number(m.id)) : null;
     const trace = inbound ? pv2TraceEntrantHtml(m, messages, fil) : pv2TraceSortantHtml(m);
@@ -6380,9 +6624,9 @@
     } else if (m.body) {
       corps = `<div class="pv2-thread-outbound-html">${pv2FrameHtml(uid, m.body, 'pv2-mail-frame', 'Mail tel qu\'envoyé')}</div>`;
     } else {
-      corps = '<div class="pv2-mail-corps"><p class="pv2-mail-vide">Ce message n a pas de contenu.</p></div>';
+      corps = '<div class="pv2-mail-corps"><p class="pv2-mail-vide">Ce message n’a pas de contenu.</p></div>';
     }
-    return `<article class="pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}" data-message-id="${esc(String(m.id))}">
+    return `<article class="em-msg pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}" data-message-id="${esc(String(m.id))}">
       <div class="pv2-mail-entete">
         <div class="pv2-mail-pastille${inbound ? '' : ' is-nous'}" aria-hidden="true">${esc(pv2InitialeDe(nom, adresse))}</div>
         <div class="pv2-mail-identite">
@@ -6396,20 +6640,9 @@
       </div>
       ${corps}
       ${!inbound && m.body && (m.textBody || m.message) ? `<button type="button" class="pv2-link-btn" onclick="pv2ThreadVoirMail('${escJs(String(m.id))}')">Voir le mail tel qu'envoyé</button>` : ''}
-      ${analysis ? `
-      <div class="pv2-inbox-analysis pv2-thread-analyse">
-        <div class="pv2-mail-preview-title">Ce que l'agent a compris</div>
-        <div class="pv2-inbox-summary">
-          <span class="pv2-inbox-intent">${esc(intentLabel)}</span>
-          ${analysis.urgency === 'haute' ? '<span class="pv2-inbox-urgent">Urgent</span>' : ''}
-          <p>${esc(analysis.summary || '')}</p>
-        </div>
-        ${analysis.alerte ? `<p class="pv2-thread-alerte"><b>À vérifier avant d'envoyer :</b> ${esc(analysis.alerte)}</p>` : ''}
-        ${analysis.repli ? `<p class="pv2-thread-alerte"><b>Réponse type de secours :</b> ${esc(({ 'modele-muet': 'l agent n a pas répondu à temps', 'reponse-invalide': 'la réponse de l agent était incomplète', 'nombres-non-sources': 'un chiffre de sa réponse ne figurait dans aucun fait' })[analysis.repli] || 'l agent n a pas pu écrire')}, relisez avant d'envoyer.</p>` : ''}
-      </div>` : ''}
       <div class="pl-timeline-trace" aria-label="Parcours du message">
         ${trace.join('')}
-        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas :</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
+        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas.</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
         ${pv2EvenementsHtml(m)}
       </div>
     </article>`;
@@ -6423,19 +6656,13 @@
     if (!maySend) return '<p class="pv2-thread-reply-locked">Votre rôle lit les mails, il n’y répond pas.</p>';
     const busy = pv2Threads.replyBusy === cle;
     const entrant = pv2ThreadDernierEntrant(messages);
-    const proposition = entrant && entrant.analysis && entrant.analysis.reply && (entrant.analysis.reply.body || entrant.analysis.reply.subject);
+    const proposition = Boolean(entrant && entrant.analysis && entrant.analysis.reply && entrant.analysis.reply.body);
     const identityOptions = pv2Mail.identities.length
       ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(r.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
       : `<option value="">${pv2Mail.metaLoading ? 'Chargement des adresses…' : 'Expéditeur par défaut'}</option>`;
     const nom = String((contact && contact.name) || fil.contactName || (contact && contact.email) || fil.contactEmail || 'ce client');
-    return `<section class="pv2-thread-reply" data-pv2-mount="threadReply" aria-label="Répondre">
-      <div class="pv2-thread-reply-head">
-        <h3>Répondre à ${esc(nom)}</h3>
-        <div class="pv2-thread-actions">
-          ${proposition ? `<button type="button" class="pv2-btn sm" onclick="pv2ThreadUtiliserProposition('${escJs(cle)}')">${ci('sparkles')}Utiliser la réponse proposée</button>` : ''}
-          ${entrant ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('refresh')}Ré-analyser</button>` : ''}
-        </div>
-      </div>
+    return `<section class="em-reply pv2-thread-reply" data-pv2-mount="threadReply" aria-label="Répondre">
+      <div class="pv2-thread-reply-head"><h3>Répondre à ${esc(nom)}</h3></div>
       ${pv2BandeauPriseHtml(pv2PriseDunAutreSurLeFil(entrant, fil))}
       <div class="pv2-thread-reply-grid">
         <label class="pv2-composer-field"><span>Expéditeur</span>
@@ -6446,7 +6673,7 @@
         </label>
       </div>
       <div class="pv2-composer-field"><span>Réponse</span>
-        ${pv2TokeditHtml({ id: 'pv2ThreadReplyBody', sink: 'threadReplyBody', value: r.body, plFocus: 'emails.reponse.message', placeholder: 'Bonjour…', classe: 'pv2-inbox-reply-body' })}
+        ${pv2TokeditHtml({ id: 'pv2ThreadReplyBody', sink: 'threadReplyBody', value: r.body, plFocus: 'emails.reponse.message', placeholder: proposition && !r.body ? 'Écrivez votre réponse, ou prenez celle de l’assistant.' : 'Bonjour…', classe: 'pv2-inbox-reply-body' })}
       </div>
       <div class="pv2-thread-reply-sign${r.signature ? '' : ' is-off'}">
         <label class="pv2-check"><input type="checkbox" ${r.signature ? 'checked' : ''} onchange="pv2InboxReplyField('${escJs(cle)}', 'signature', this.checked)"> Ajouter la signature du centre</label>
@@ -6489,7 +6716,7 @@
     const premierEntrant = Boolean(premier) && premier.direction === 'inbound';
     const quandPremier = premier ? pv2Quand(premierEntrant ? (premier.receivedAt || premier.createdAt) : (premier.sentAt || premier.createdAt)) : '';
     const origineTete = premier ? `${premierEntrant ? 'Commencée par le client' : 'Commencée par le centre'}${quandPremier ? ` · ${quandPremier}` : ''}` : '';
-    return `<div class="pv2-thread-detail pv2-mail-detail">
+    return `<div class="em-conv pv2-thread-detail pv2-mail-detail">
       <div class="pv2-thread-head">
         <div class="pv2-thread-title">
           <strong class="pv2-thread-subject">${esc(fil.subject || '(sans objet)')}</strong>
@@ -6515,6 +6742,93 @@
     </div>`;
   }
 
+  /* ── L ASSISTANT (2026-11-10) ─────────────────────────────────────────────
+     A cote de la conversation, ce que l agent a lu dans le DERNIER message du
+     client : la demande, son urgence, en une phrase ; ce qui lui a servi (les
+     faits appris, les places verifiees par le moteur, les reservations
+     trouvees) ; la reponse qu il propose, qui passe dans la reponse d un clic.
+     Il ne montre que ce que l analyse contient. Sans analyse, une phrase, et
+     le bouton qui la lance (le meme appel que la relecture). */
+  const EM_REPLI = {
+    'modele-muet': 'l’agent n’a pas répondu à temps',
+    'reponse-invalide': 'la réponse de l’agent était incomplète',
+    'nombres-non-sources': 'un chiffre de sa réponse ne figurait dans aucun fait',
+  };
+  function emHeureDite(h) {
+    const [hh, mm] = String(h || '').split(':');
+    if (!hh) return '';
+    return !mm || mm === '00' ? `${Number(hh)} h` : `${Number(hh)} h ${mm}`;
+  }
+  function emJourDit(date) {
+    const d = new Date(`${String(date || '').slice(0, 10)}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? String(date || '') : d.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  function emCeQuiAServi(a) {
+    const out = [];
+    const appris = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.appris) || [];
+    (Array.isArray(a.faitsUtilises) ? a.faitsUtilises : []).forEach((ref) => {
+      const f = appris.find((x) => `F${Number(x.id)}` === String(ref).toUpperCase());
+      if (f) out.push({ titre: String(f.question || ''), texte: String(f.reponse || '') });
+    });
+    const v = a.verifications && typeof a.verifications === 'object' ? a.verifications : {};
+    (Array.isArray(v.disponibilites) ? v.disponibilites : []).forEach((d) => {
+      const heures = (Array.isArray(d.heures) ? d.heures : []).map(emHeureDite).filter(Boolean);
+      const quoi = String(d.quoi || '').trim();
+      const prix = d.prix !== null && d.prix !== undefined && Number.isFinite(Number(d.prix)) ? ` · ${Number(d.prix).toLocaleString('fr-BE')} € pour le groupe` : '';
+      const texte = d.possible && heures.length
+        ? `${quoi ? `${quoi}, ` : ''}départs libres à ${heures.join(', ')}${prix}`
+        : `${quoi ? `${quoi}, ` : ''}aucun départ libre vérifié`;
+      out.push({ titre: `Places du ${emJourDit(d.date)}`, texte });
+    });
+    (Array.isArray(v.reservations) ? v.reservations : []).forEach((n) => {
+      out.push({ titre: `Réservation n° ${n}`, texte: 'trouvée à l’adresse de ce client' });
+    });
+    return out;
+  }
+
+  function pv2AssistantHtml() {
+    const d = pv2Threads.detail;
+    const tete = (etat) => `<div class="em-assist-head"><h2 class="em-h2">Assistant</h2>${etat ? `<span class="em-assist-etat">${esc(etat)}</span>` : ''}</div>`;
+    if (!pv2Threads.selectedId) return `${tete('')}<p class="em-assist-vide">Ouvrez une conversation. L’assistant résume la demande du client et prépare une réponse.</p>`;
+    if (!d.loaded || !d.thread) return `${tete('')}<p class="em-assist-vide">${d.error ? 'Conversation indisponible.' : 'Lecture de la conversation…'}</p>`;
+    const cle = String(d.thread.id);
+    const maySend = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
+    const busy = pv2Threads.replyBusy === cle;
+    const entrant = pv2ThreadDernierEntrant(d.messages);
+    if (!entrant) return `${tete('')}<p class="em-assist-vide">Le client n’a pas encore écrit dans cette conversation.</p>`;
+    const a = entrant.analysis && typeof entrant.analysis === 'object' ? entrant.analysis : null;
+    if (!a) {
+      return `${tete('')}<p class="em-assist-vide">L’assistant n’a pas encore lu ce message.</p>
+        ${maySend ? `<button type="button" class="pv2-btn sm" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('sparkles')}${busy ? 'Lecture…' : 'Analyser avec l’IA'}</button>` : ''}`;
+    }
+    const intentLabel = a.intentLabel || PV2_INTENT_LABELS[a.intent] || a.intent || '';
+    const lu = a.analyzedAt ? pv2Quand(a.analyzedAt) : '';
+    const faits = emCeQuiAServi(a);
+    const reponse = a.reply && String(a.reply.body || '').trim() ? String(a.reply.body) : '';
+    return `${tete(lu ? `Lu le ${lu}` : '')}
+      <div class="pv2-inbox-analysis em-assist-lu">
+        ${intentLabel || a.urgency === 'haute' ? `<div class="em-assist-tags">${intentLabel ? `<span class="pv2-chip pv2-inbox-intent">${esc(intentLabel)}</span>` : ''}${a.urgency === 'haute' ? '<span class="pv2-chip amber pv2-inbox-urgent">Urgent</span>' : ''}</div>` : ''}
+        <div class="pv2-inbox-summary"><p>${esc(a.summary || 'Pas de résumé pour ce message.')}</p></div>
+      </div>
+      ${a.alerte ? `<div class="em-assist-alerte" role="note"><strong>À vérifier avant d’envoyer</strong><p>${esc(a.alerte)}</p></div>` : ''}
+      ${a.repli ? `<p class="em-assist-repli">Réponse type de secours, ${esc(EM_REPLI[a.repli] || 'l’agent n’a pas pu écrire')}. Relisez-la avant d’envoyer.</p>` : ''}
+      ${faits.length ? `<div class="em-assist-bloc">
+        <h3 class="em-h3">Ce qui a servi</h3>
+        <ul class="em-assist-faits">${faits.map((f) => `<li><strong>${esc(f.titre)}</strong><span>${esc(f.texte)}</span></li>`).join('')}</ul>
+      </div>` : ''}
+      ${reponse ? `<div class="em-assist-bloc">
+        <h3 class="em-h3">Réponse proposée</h3>
+        <div class="em-assist-reply">${esc(reponse)}</div>
+        ${maySend ? `<button type="button" class="pv2-btn sm em-assist-use" onclick="pv2ThreadUtiliserProposition('${escJs(cle)}')">${ci('sparkles')}Utiliser cette réponse</button>` : ''}
+      </div>` : ''}
+      ${maySend ? `<button type="button" class="pv2-link-btn em-assist-relire" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${busy ? 'Lecture…' : 'Relire ce message avec l’IA'}</button>` : ''}`;
+  }
+
+  /* ── RECUS : trois volets ─────────────────────────────────────────────────
+     La liste des conversations, la conversation ouverte, l Assistant. Chaque
+     volet defile dans son cadre, et son defilement survit au rendu (cle
+     data-em-scroll : celle de la conversation change avec elle, si bien qu un
+     autre fil s ouvre en haut). */
   function pv2EmailsSectionRecus() {
     const o = pv2Overview.data;
     const aRepondre = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : undefined;
@@ -6524,24 +6838,37 @@
       { key: 'termines', label: 'Terminés' },
       { key: 'tous', label: 'Tous' },
     ].map((f) => ({ ...f, active: pv2Threads.filtre === f.key }));
+    const cascade = { n: 0 };
     const liste = pv2Threads.error
       ? `<div class="pv2-thread-empty"><strong>${esc(pv2Threads.error)}</strong><button type="button" class="pv2-btn sm" onclick="loadPv2Threads(true)">Réessayer</button></div>`
       : !pv2Threads.loaded
         ? `<div class="pv2-thread-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
         : pv2Threads.threads.length
-          ? pv2Threads.threads.map((t) => pv2ThreadRowHtml(t)).join('')
-          : `<div class="pv2-thread-empty"><strong>${pv2Threads.q ? 'Aucune conversation ne correspond' : { 'a-repondre': 'Rien à répondre', repondus: 'Aucune conversation répondue', termines: 'Aucune conversation terminée', tous: 'Aucune conversation' }[pv2Threads.filtre]}</strong><span>${pv2Threads.q ? 'Essayez un autre nom ou une autre adresse.' : 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.'}</span></div>`;
+          ? pv2Threads.threads.map((t) => pv2ThreadRowHtml(t, { cascade, cle: `recus:fil:${t.id}` })).join('')
+          : `<div class="pv2-thread-empty"><strong>${pv2Threads.q ? 'Aucune conversation ne correspond' : { 'a-repondre': 'Rien à répondre', repondus: 'Aucune conversation répondue', termines: 'Aucune conversation terminée', tous: 'Aucune conversation' }[pv2Threads.filtre]}</strong><span>${pv2Threads.q ? 'Essayez un autre nom ou une autre adresse.' : 'Collez un mail avec « Coller un mail reçu », l\'agent prépare la réponse.'}</span></div>`;
     const reste = pv2Threads.loaded && pv2Threads.total > pv2Threads.threads.length ? pv2Threads.total - pv2Threads.threads.length : 0;
-    return `<section class="pv2-thread-split">
-      <article class="pv2-panel pv2-thread-panel">
-        <div class="pv2-thread-tools">
+    const id = String(pv2Threads.selectedId || '');
+    // Changer de conversation rejoue l entree des deux volets de droite, meme
+    // vers un fil deja ouvert plus tot dans la visite.
+    if (EM_MOTION.fil !== id) {
+      delete EM_MOTION.departs[`recus:conv:${id}`];
+      delete EM_MOTION.departs[`recus:assist:${id}`];
+      EM_MOTION.fil = id;
+    }
+    return `<section class="em-inbox${id ? ' has-fil' : ''}" aria-label="Conversations">
+      <div class="em-pane em-pane-list">
+        <div class="em-pane-tools pv2-thread-tools">
           ${seg(filtres, 'pv2ThreadsFilter')}
-          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recus.recherche" value="${esc(pv2Threads.q || '')}" placeholder="Client, adresse, objet…" aria-label="Rechercher une conversation" oninput="pv2ThreadsSearch(this.value)"></label>
+          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recus.recherche" value="${esc(pv2Threads.q || '')}" placeholder="Client, adresse, objet…" aria-label="Rechercher une conversation" oninput="pv2ThreadsSearch(this.value)"></label>
         </div>
-        <div class="pv2-thread-list" aria-live="polite" aria-busy="${pv2Threads.loading ? 'true' : 'false'}">${liste}</div>
-        ${reste ? `<p class="pv2-note" style="padding:10px 14px;border-top:1px solid var(--line)">${reste} autre${reste > 1 ? 's' : ''} conversation${reste > 1 ? 's' : ''} : affinez la recherche pour les voir.</p>` : ''}
-      </article>
-      <article class="pv2-panel">${pv2ThreadDetailHtml()}</article>
+        <div class="em-list pv2-thread-list" data-em-scroll="fils" data-em-sel="fils" aria-live="polite" aria-busy="${pv2Threads.loading ? 'true' : 'false'}">
+          <span class="em-sel" aria-hidden="true"></span>
+          ${liste}
+        </div>
+        ${reste ? `<p class="em-pane-foot">${reste} autre${reste > 1 ? 's' : ''} conversation${reste > 1 ? 's ne sont pas affichées' : ' n’est pas affichée'}. Affinez la recherche pour ${reste > 1 ? 'les' : 'la'} voir.</p>` : ''}
+      </div>
+      <div class="em-pane em-pane-conv" data-em-scroll="conv:${esc(id)}"${id ? emEntree(`recus:conv:${id}`) : ''}>${pv2ThreadDetailHtml()}</div>
+      <aside class="em-pane em-pane-assist em-assistant" aria-label="Assistant" data-em-scroll="assist:${esc(id)}"${id ? emEntree(`recus:assist:${id}`) : ''}>${pv2AssistantHtml()}</aside>
     </section>`;
   }
 
@@ -6579,35 +6906,37 @@
     return { every, scoped, rows, origin, filter, query };
   }
 
-  // Le mini-parcours a quatre points : plein = fait, vide = pas encore,
-  // tiret = suivi inactif, rouge = echec.
-  function pv2JourneyHtml(row) {
-    const echec = row.statusKind === 'failed';
-    const envoye = row.statusKind === 'sent' || pv2SentRemis(row) || pv2SentOuvert(row);
-    const remis = pv2SentRemis(row);
-    const ouvert = pv2SentOuvert(row);
-    const clique = pv2SentClique(row);
-    const ouvertures = pv2OuverturesObservees();
-    const dot = (etat) => `<span class="pl-journey-dot ${etat}" aria-hidden="true"></span>`;
-    const titre = [
-      echec ? 'Échec' : envoye ? 'Envoyé' : 'Pas encore envoyé',
-      remis ? 'Remis' : 'Remise non confirmée',
-      ouvert ? 'Ouvert' : ouvertures === false ? 'Ouverture : suivi inactif' : 'Pas encore ouvert',
-      clique ? 'Cliqué' : 'Pas de clic',
-    ].join(' · ');
-    return `<span class="pl-journey" role="img" aria-label="${esc(titre)}" title="${esc(titre)}">
-      ${dot(echec ? 'is-fail' : envoye ? 'is-done' : '')}${dot(remis ? 'is-done' : '')}${dot(ouvert ? 'is-done' : ouvertures === false ? 'is-off' : '')}${dot(clique ? 'is-done' : '')}
-    </span>`;
+  // L ETAT LE PLUS AVANCE D UN ENVOI, en une etiquette (2026-11-10) : la
+  // colonne Statut dit ou le mail en est vraiment (remis, ouvert, clique), pas
+  // seulement qu il est parti. Le rouge est reserve a ce qui a echoue ;
+  // « En attente » reste ambre, l etat d attente de toute la console. Le
+  // parcours complet, etape par etape, se lit dans le detail.
+  function emEtatEnvoi(row) {
+    if (row.statusKind === 'failed') return { label: 'Échec', tone: 'red' };
+    if (row.bouncedAt) return { label: 'Rebond', tone: 'red' };
+    if (row.complainedAt) return { label: 'Signalé', tone: 'red' };
+    if (row.statusKind === 'queued') return { label: 'En attente', tone: 'amber' };
+    if (row.statusKind === 'draft') return { label: 'Brouillon', tone: '' };
+    if (row.statusKind === 'cancelled') return { label: 'Annulé', tone: '' };
+    if (pv2SentClique(row)) return { label: 'Cliqué', tone: 'blue' };
+    if (pv2SentOuvert(row)) return { label: 'Ouvert', tone: 'blue' };
+    if (pv2SentRemis(row)) return { label: 'Remis', tone: 'green' };
+    if (row.statusKind === 'sent') return { label: 'Envoyé', tone: '' };
+    return { label: String(row.status || 'Inconnu'), tone: '' };
   }
 
-  function pv2SentDetailHtml(selected, KIND_META) {
-    if (!selected) return '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>';
+  function pv2SentDetailHtml(selected) {
+    if (!selected) return '<p class="em-calme">Choisissez un envoi dans la liste. Son parcours et le mail s’affichent ici.</p>';
     const payload = selected.payload || {};
     const origine = pv2SentOrigin(selected);
     const sentBy = payload.sentBy && typeof payload.sentBy === 'object' ? payload.sentBy : null;
     const origineTxt = origine === 'auto'
       ? `Automatique · ${selected.templateLabel || selected.templateId || 'séquence'}`
       : `${PV2_ORIGINE_LABELS[origine]}${sentBy && sentBy.memberName ? ` · ${sentBy.memberName}` : (payload.staffMember ? ` · ${payload.staffMember}` : '')}`;
+    // Le modele ne se montre que s il a un nom lisible, ou pour un envoi
+    // automatique. Un mail ecrit a la main n en a pas : l identifiant
+    // technique (« direct_reply ») n apprend rien a la gerante.
+    const modele = selected.templateLabel || (origine === 'auto' ? selected.templateId : '') || '';
     // « Voir la conversation » : seulement si le client a repondu apres cet
     // envoi. Un fil qui n a que ce mail n apporterait rien de plus.
     const reponse = selected.threadId
@@ -6617,22 +6946,7 @@
       status: selected.status, sentAt: selected.sentAt, createdAt: selected.createdAt, scheduledAt: selected.scheduledAt, errorReason: selected.lastError,
       suivi: { deliveredAt: selected.deliveredAt, openedAt: selected.openedAt, openCount: selected.openCount, clickedAt: selected.clickedAt, clickCount: selected.clickCount, bouncedAt: selected.bouncedAt, complainedAt: selected.complainedAt, lastError: selected.lastError },
     });
-    return `<div class="pv2-panel-body pv2-mail-detail pv2-sent-detail">
-        <div class="pv2-kv">
-          <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '-')}</dd></div>
-          <div><dt>Origine</dt><dd>${esc(origineTxt)}</dd></div>
-          <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '-')}</dd></div>
-          <div><dt>Canal</dt><dd>${esc({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' }[selected.channel] || selected.channel || 'Email')}</dd></div>
-          <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '-')}</dd></div>
-          <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '-')}</dd></div>
-          ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
-          ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
-        </div>
-        <div>
-          <div class="pv2-mail-preview-title">Parcours</div>
-          <div class="pv2-sent-trace">${traceVertical}</div>
-        </div>
-        ${reponse ? `<div class="pv2-sent-actions"><button type="button" class="pv2-btn sm" onclick="pv2ThreadOpen('${escJs(String(selected.threadId))}')">${ci('message')}Voir la conversation : le client a répondu</button></div>` : ''}
+    return `<div class="em-sent-body pv2-mail-detail pv2-sent-detail">
         ${selected.statusKind === 'failed' ? (() => {
           const failure = getStaffEmailFailureReason(selected);
           // Le renvoi n'est proposé que si le mail garde un sens aujourd'hui :
@@ -6654,9 +6968,23 @@
             </div>` : ''}
           </div>`;
         })() : ''}
-        <div>
-          <div class="pv2-mail-preview-head">
-            <span class="pv2-mail-preview-title">Le mail</span>
+        <dl class="em-kv pv2-kv">
+          <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '-')}</dd></div>
+          <div><dt>Origine</dt><dd>${esc(origineTxt)}</dd></div>
+          ${modele ? `<div><dt>Modèle</dt><dd>${esc(modele)}</dd></div>` : ''}
+          <div><dt>Canal</dt><dd>${esc({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' }[selected.channel] || selected.channel || 'Email')}</dd></div>
+          ${selected.scheduledAt ? `<div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt))}</dd></div>` : ''}
+          ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
+          ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
+        </dl>
+        <div class="em-detail-part">
+          <h3 class="em-h3">Parcours</h3>
+          <div class="pv2-sent-trace">${traceVertical}</div>
+        </div>
+        ${reponse ? `<div class="pv2-sent-actions"><button type="button" class="pv2-btn sm" onclick="pv2ThreadOpen('${escJs(String(selected.threadId))}')">${ci('message')}Voir la conversation, le client a répondu</button></div>` : ''}
+        <div class="em-detail-part">
+          <div class="em-detail-part-head">
+            <h3 class="em-h3">Le mail</h3>
             ${selected.body ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ViewStoredMail('${escJs(selected.uid)}')">Plein écran</button>` : ''}
           </div>
           ${selected.body
@@ -6666,6 +6994,10 @@
       </div>`;
   }
 
+  /* ── ENVOYES : un tableau dense et son detail (2026-11-10) ───────────────
+     Destinataire, objet, origine, etat, date : une ligne par mail. Les
+     filtres restent les memes (l etat de la file, puis l origine), en
+     controles segmentes ; le detail de la ligne choisie se lit a droite. */
   function pv2EmailsSectionEnvoyes() {
     const { every, scoped, rows, origin, filter } = pv2SentRows();
     const inboundCount = getStaffEmailRows().filter(pv2IsInbound).length;
@@ -6678,34 +7010,20 @@
     const originCounts = { auto: 0, manual: 0, campagne: 0, test: 0 };
     every.forEach((row) => { originCounts[pv2SentOrigin(row)] += 1; });
 
-    /* « En file » était BLEU, c'est-à-dire de la couleur réservée à
-       l'information, alors qu'un mail programmé pas encore parti est un état
-       d'ATTENTE : sa couleur est l'ambre. */
-    const KIND_META = {
-      queued: { label: 'En attente', tone: 'amber' },
-      sent: { label: 'Envoyé', tone: 'green' },
-      failed: { label: 'Échec', tone: 'red' },
-      draft: { label: 'Brouillon', tone: '' },
-      cancelled: { label: 'Annulé', tone: '' },
-    };
-
     /* Les segments sont des FILTRES : chiffre puis libellé sur une ligne,
        <button> pour le clavier. ACCORDS : le libellé s'accorde au compteur, et
-       « Tout », invariable, s'écrit « Tout (3) ». */
+       « Tout », invariable, s'écrit « Tout (3) ». Ce que le segment ne dit pas
+       en un mot (taux de réussite, suivi inactif) passe dans son infobulle. */
     const pipe = (key, one, many, value, hint, opts = {}) => {
       const n = Number(value) || 0;
       const label = esc(n > 1 ? many : one);
-      const valueHtml = opts.paren
-        ? `<span class="pv2-pipe-value">(${n})</span>`
-        : `<span class="pv2-pipe-value" ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''}>${n}</span>`;
-      return `<button type="button" class="pv2-pipe ${filter === key ? 'active' : ''}" data-pipe="${key}" onclick="pv2EmailFilter('${key}')" aria-pressed="${filter === key}">
-      ${opts.paren ? `<span class="pv2-pipe-label">${label}</span>${valueHtml}` : `${valueHtml}<span class="pv2-pipe-label">${label}</span>`}
-      ${hint ? `<span class="pv2-pipe-hint">${esc(hint)}</span>` : ''}
-    </button>`;
+      const valueHtml = opts.paren ? `<span class="pv2-pipe-value">(${n})</span>` : `<span class="pv2-pipe-value">${n}</span>`;
+      return `<button type="button" class="pv2-pipe ${filter === key ? 'active' : ''}" data-pipe="${key}" onclick="pv2EmailFilter('${key}')" aria-pressed="${filter === key}"${hint ? ` title="${esc(hint)}"` : ''}>${opts.paren ? `<span class="pv2-pipe-label">${label}</span>${valueHtml}` : `${valueHtml}<span class="pv2-pipe-label">${label}</span>`}</button>`;
     };
 
+    const cascade = { n: 0 };
     const tableRows = rows.slice(0, 80).map((row) => {
-      const meta = KIND_META[row.statusKind] || KIND_META.draft;
+      const etat = emEtatEnvoi(row);
       // La cause de l'échec se lit dans la LISTE, pas seulement après avoir
       // sélectionné la ligne : c'est ce qui rend un échec impossible à rater.
       const failure = row.statusKind === 'failed' ? getStaffEmailFailureReason(row) : null;
@@ -6713,56 +7031,69 @@
       const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
       const sentBy = p.sentBy && typeof p.sentBy === 'object' ? p.sentBy : null;
       const origineTxt = rowOrigin === 'auto'
-        ? (row.templateLabel || row.templateId || 'Auto')
+        ? (row.templateLabel || row.templateId || 'Automatique')
         : `${PV2_ORIGINE_LABELS[rowOrigin]}${sentBy && sentBy.memberName ? ` · ${sentBy.memberName}` : ''}`;
       const selectedRow = selected && row.uid === selected.uid;
-      return `<tr class="${selectedRow ? 'selected' : ''}${failure ? ' is-failed' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')" aria-selected="${selectedRow ? 'true' : 'false'}">
-        <td data-col="message"><button type="button" class="pv2-row-btn" onclick="event.stopPropagation(); pv2SelectEmail('${escJs(row.uid)}')"><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></button></td>
-        <td data-col="origine"><span class="pv2-chip pv2-origin-badge pv2-origin-chip" data-origin="${rowOrigin}">${esc(origineTxt)}</span></td>
-        <td data-col="statut"><span class="pv2-chip ${meta.tone}">${meta.label}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
-        <td data-col="parcours" class="pv2-col-parcours">${pv2JourneyHtml(row)}</td>
+      const sujet = row.subject || row.templateLabel || 'Message';
+      return `<tr class="${selectedRow ? 'selected' : ''}${failure ? ' is-failed' : ''}" data-em-id="${esc(row.uid)}"${selectedRow ? ' data-em-cur' : ''} onclick="pv2SelectEmail('${escJs(row.uid)}')" aria-selected="${selectedRow ? 'true' : 'false'}"${emEntree(`envoyes:${row.uid}`, cascade)}>
+        <td data-col="destinataire"><button type="button" class="pv2-row-btn em-cell-main" onclick="event.stopPropagation(); pv2SelectEmail('${escJs(row.uid)}')"><strong>${esc(row.recipient || '-')}</strong><small class="em-cell-sub">${esc(sujet)}</small></button></td>
+        <td data-col="objet" class="em-cell-objet">${esc(sujet)}</td>
+        <td data-col="origine" class="em-cell-muted" data-origin="${rowOrigin}">${esc(origineTxt)}</td>
+        <td data-col="statut"><span class="pv2-chip ${etat.tone}">${esc(etat.label)}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
         <td data-col="date" class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
       </tr>`;
     }).join('');
+    const vide = origin === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : origin === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : origin === 'campagne' ? 'Aucun mail de campagne ne correspond à ce filtre.' : origin === 'test' ? 'Aucun mail de test ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.';
+    const uid = selected ? String(selected.uid) : '';
+    // Choisir une autre ligne rejoue l entree du detail, meme vers une ligne
+    // deja ouverte plus tot dans la visite.
+    if (EM_MOTION.envoi !== uid) {
+      delete EM_MOTION.departs[`envoyes:detail:${uid}`];
+      EM_MOTION.envoi = uid;
+    }
+    const etatChoisi = selected ? emEtatEnvoi(selected) : null;
+    const ORIGIN_HINTS = { auto: 'Partis tout seuls, séquences et rappels', manual: 'Écrits par vous ou l’équipe', campagne: 'Envoyés à un groupe de clients', test: 'Les mails d’essai' };
 
     return `${pv2AlerteEchecsHtml(scoped, metrics)}
-      <section class="pv2-origins" role="group" aria-label="Origine des messages">
-        <span class="pv2-origins-label">Origine</span>
-        ${PV2_SENT_ORIGINS.map(([key, label]) => `<button type="button" class="pv2-chip-btn pv2-origin-seg${origin === key ? ' active' : ''}" onclick="pv2EmailOriginFilter('${key}')" aria-pressed="${origin === key}">${esc(label)}${key === 'all' ? '' : `<span class="pv2-origin-count">(${originCounts[key]})</span>`}</button>`).join('')}
-        <span class="pv2-origins-hint">Automatiques : partis tout seuls (séquences, rappels). Envois manuels : écrits par vous ou l'équipe. Campagnes et tests : à part.</span>
-      </section>
-
-      <section class="pv2-pipeline" role="group" aria-label="Filtrer la file">
-        <span class="pv2-pipe-rail" aria-hidden="true"></span>
-        ${pipe('all', 'Tout', 'Tout', scoped.length, '', { paren: true })}
-        ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
-        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
-        ${pipe('delivered', 'Remis', 'Remis', remisCount, remisCount ? '' : 'aucune remise confirmée')}
-        ${pipe('opened', 'Ouvert', 'Ouverts', ouvertsCount, ouvertsCount ? '' : ouvertures === false ? 'suivi inactif' : 'aucune ouverture')}
-        ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
-        ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
-      </section>
-      <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Remis, Ouverts, Échecs et À valider portent sur les ${scoped.length} messages de la file ci-dessous. Les ${inboundCount} mails reçus se lisent dans <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('recus')">Reçus</button>.</p>
-
-      <section class="pv2-split">
-        <article class="pv2-panel pv2-mail-list">
-          <div class="pv2-panel-head pv2-list-head">
-            <h2>La file</h2>
-            <div class="pv2-panel-head-actions pv2-sent-tools">
-              <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" aria-label="Rechercher dans la file" oninput="setStaffEmailQuery(this.value)"></label>
-              ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn sm ghost" onclick="pv2ExporterEnvoyes()">Exporter</button>' : ''}
-              ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? '<button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>' : ''}
-            </div>
+      <div class="em-sent-filters">
+        <section class="pv2-pipeline" role="group" aria-label="Filtrer la file">
+          <span class="pv2-pipe-rail" aria-hidden="true"></span>
+          ${pipe('all', 'Tout', 'Tout', scoped.length, '', { paren: true })}
+          ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
+          ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
+          ${pipe('delivered', 'Remis', 'Remis', remisCount, remisCount ? '' : 'aucune remise confirmée')}
+          ${pipe('opened', 'Ouvert', 'Ouverts', ouvertsCount, ouvertsCount ? '' : ouvertures === false ? 'suivi des ouvertures inactif' : 'aucune ouverture')}
+          ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
+          ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
+        </section>
+        <section class="em-origins pv2-origins" role="group" aria-label="Origine des messages">
+          ${PV2_SENT_ORIGINS.map(([key, label]) => `<button type="button" class="em-origin pv2-origin-seg${origin === key ? ' active' : ''}" onclick="pv2EmailOriginFilter('${key}')" aria-pressed="${origin === key}"${ORIGIN_HINTS[key] ? ` title="${esc(ORIGIN_HINTS[key])}"` : ''}>${esc(label)}${key === 'all' ? '' : `<span class="em-origin-n">${originCounts[key]}</span>`}</button>`).join('')}
+        </section>
+      </div>
+      <section class="em-sent">
+        <div class="em-sent-main">
+          <div class="em-sent-tools pv2-sent-tools">
+            <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" aria-label="Rechercher dans la file" oninput="setStaffEmailQuery(this.value)"></label>
+            <span class="em-tools-spacer"></span>
+            ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn sm ghost" onclick="pv2ExporterEnvoyes()">Exporter</button>' : ''}
+            ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? '<button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>' : ''}
           </div>
-          <table class="pv2-table">
-            <thead><tr><th>Message</th><th>Origine</th><th>Statut</th><th>Parcours</th><th class="num">Date</th></tr></thead>
-            <tbody data-pl-stagger="comms.file">${tableRows || `<tr class="pv2-vide"><td colspan="5"><div class="pv2-empty"><strong>File vide</strong>${origin === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : origin === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : origin === 'campagne' ? 'Aucun mail de campagne ne correspond à ce filtre.' : origin === 'test' ? 'Aucun mail de test ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
-          </table>
-        </article>
-        <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>${esc(selected ? (selected.subject || 'Détail') : 'Détail')}</h2></div>
-          ${pv2SentDetailHtml(selected, KIND_META)}
-        </article>
+          <div class="em-sent-list pv2-mail-list" data-em-scroll="envoyes" data-em-sel="envoyes">
+            <span class="em-sel" aria-hidden="true"></span>
+            <table class="em-table pv2-table">
+              <thead><tr><th>Destinataire</th><th class="em-cell-objet">Objet</th><th class="em-cell-muted">Origine</th><th>Statut</th><th class="num">Date</th></tr></thead>
+              <tbody>${tableRows || `<tr class="pv2-vide"><td colspan="5"><div class="pv2-empty"><strong>File vide</strong>${vide}</div></td></tr>`}</tbody>
+            </table>
+          </div>
+          <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Remis, Ouverts, Échecs et À valider portent sur les ${scoped.length} messages de la file ci-dessus. Les ${inboundCount} mails reçus se lisent dans <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('recus')">Reçus</button>.</p>
+        </div>
+        <aside class="em-sent-detail" aria-label="Détail de l’envoi"${uid ? emEntree(`envoyes:detail:${uid}`) : ''}>
+          <div class="em-detail-head">
+            <h2 class="em-h2">${esc(selected ? (selected.subject || 'Détail') : 'Détail')}</h2>
+            ${etatChoisi ? `<span class="pv2-chip ${etatChoisi.tone}">${esc(etatChoisi.label)}</span>` : ''}
+          </div>
+          ${pv2SentDetailHtml(selected)}
+        </aside>
       </section>`;
   }
 
@@ -6994,7 +7325,6 @@
     const mayCampaigns = pv2PeutVoirSection('campagnes');
     if (section === 'campagnes' && mayCampaigns && typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
 
-    const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'non chargé';
     const renderers = {
       apercu: pv2EmailsSectionApercu,
       recus: pv2EmailsSectionRecus,
@@ -7007,28 +7337,44 @@
       exclusions: pv2EmailsSectionExclusions,
       campagnes: pv2EmailsSectionCampagnes,
     };
-    const sectionHtml = (renderers[section] || renderers.apercu)();
     const sectionChanged = PV2_EMAILS_MOTION.section !== section;
     const premierePeinture = !PV2_EMAILS_MOTION.section;
     PV2_EMAILS_MOTION.section = section;
+    // UNE SECTION QUI S OUVRE REJOUE SES ENTREES : le panneau monte de 4 px,
+    // ses listes arrivent en cascade. Un simple rendu (poll, frappe) ne rejoue
+    // rien. A la premiere peinture, la page entiere entre deja (mount) : le
+    // panneau ne double pas ce mouvement.
+    if (sectionChanged) EM_MOTION.departs = {};
+    if (premierePeinture) emDejaLa(`panneau:${section}`);
+    const entreePanneau = emEntree(`panneau:${section}`);
+    const sectionHtml = (renderers[section] || renderers.apercu)();
 
-    root.innerHTML = `<div class="pv2-shell">
-      ${bar({
-        crumb: 'Clients & marketing',
-        title: 'Emails & relances',
-        sub: `${esc(PV2_SECTION_SUB[section] || '')} <span class="pv2-bar-stamp">· à jour à ${esc(updatedAt)}</span>${errorMessage ? ` · <span style="color:var(--danger)">${esc(errorMessage)}</span>` : ''}`,
-        /* Trois niveaux : une seule action primaire (Nouveau message), une
-           secondaire (Coller un mail reçu), le reste en discret. */
-        actions: `
-          <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsActualiser()" title="Recharger les données">${ci('refresh')}Actualiser</button>
+    /* L EN-TETE (2026-11-10) : le titre, une phrase qui dit ce qui attend, et
+       deux actions. Une seule primaire (Nouveau message), une secondaire
+       (Coller un mail reçu) ; l actualisation est un bouton discret a cote de
+       l heure des donnees. Un <div> et pas un <header> : en console, la regle
+       globale « body.staff-mode header » replie tout <header> a zero (c est
+       celui de l application qu elle vise). */
+    root.innerHTML = `<div class="pv2-shell em-shell">
+      <div class="em-head">
+        <div class="em-head-main">
+          <h1 class="em-title">Emails &amp; relances</h1>
+          <p class="em-status">${esc(emStatutDuJour())}${errorMessage ? ` <span class="em-status-err">${esc(errorMessage)}</span>` : ''}</p>
+        </div>
+        <div class="em-head-actions pv2-bar-actions">
+          <span class="em-stamp">${esc(emHeureDeMaj())}</span>
+          <button type="button" class="pv2-btn sm ghost em-icon-btn" onclick="pv2EmailsActualiser()" title="Recharger les données" aria-label="Actualiser">${ci('refresh')}</button>
           <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
-          ${typeof peutGeste !== 'function' || peutGeste('ecrire') ? `<button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>` : ''}`,
-      })}
+          ${typeof peutGeste !== 'function' || peutGeste('ecrire') ? `<button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>` : ''}
+        </div>
+      </div>
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
-      ${pv2SubnavHtml(section)}
-      <section class="pv2-emails-section${sectionChanged && !premierePeinture && !reducedMotion ? ' pv2-mount' : ''}" id="pv2EmailsPanel" role="tabpanel" aria-labelledby="pv2EmailsTab-${section}" data-section="${section}">
-        ${sectionHtml}
-      </section>
+      <div class="em-body">
+        ${pv2SubnavHtml(section)}
+        <section class="em-main pv2-emails-section" id="pv2EmailsPanel" role="tabpanel" aria-labelledby="pv2EmailsTab-${section}" data-section="${section}"${entreePanneau}>
+          ${sectionHtml}
+        </section>
+      </div>
     </div>`;
     mount(root, 'emails');
     // Le mouvement se recale APRES la reconstruction, jamais pendant : ces

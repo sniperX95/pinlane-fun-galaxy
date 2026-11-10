@@ -21181,3 +21181,367 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   
 }
 @media (prefers-reduced-motion: reduce) { .sm-fen { animation: none; } }
+/* ============================================================================
+   EMAILS & RELANCES : L ESPACE DE TRAVAIL (2026-11-10, lot 1a)
+   Ansar : « un truc bcp plus pro beau », « en logiciel pro, comme Shopify ou
+   Stripe ». Une navigation verticale en quatre groupes, des surfaces plates
+   separees par le fond (pas de carte cernee d un filet), des listes denses
+   sans filet entre les lignes. La couleur ne vit que dans les donnees d etat,
+   et le rouge seulement pour un vrai echec. Tout est borne a
+   #staffEmailsPage .em-shell : les sept autres onglets gardent leur style.
+   Le mouvement : une entree de 4 px en 160 ms (attribut data-em-in, pose par
+   emEntree depuis une memoire hors DOM), une selection qui glisse, rien sous
+   prefers-reduced-motion. Tout survol est derriere (hover: hover).
+   ========================================================================= */
+#staffEmailsPage .em-shell {
+  --em-panel: var(--surface);
+  --em-well: color-mix(in srgb, var(--text) 3.5%, var(--surface));
+  --em-hover: color-mix(in srgb, var(--text) 4%, var(--surface));
+  --em-nav-hover: color-mix(in srgb, var(--text) 5%, var(--page));
+  --em-track: color-mix(in srgb, var(--text) 6%, var(--surface));
+  --em-pill: var(--surface);
+  --em-pill-shadow: 0 1px 2px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.04);
+  --em-sel: var(--accent-soft);
+  --em-sel-bar: var(--accent);
+  --em-out: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  --em-badge-blue: var(--console-selected);
+  --em-badge-red: #cb2a2f;
+  --em-badge-text: #ffffff;
+  --em-radius: var(--radius-md);
+  --em-radius-sm: var(--radius-sm);
+  --em-nav-w: 184px;
+  --em-item-h: 32px;
+  --em-dur: 160ms;
+  --em-d: 0ms;
+  --em-pane-h: calc(100vh - 180px);
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+[data-theme='dark'] #staffEmailsPage .em-shell {
+  --em-panel: var(--raised);
+  --em-well: color-mix(in srgb, var(--text) 5%, var(--raised));
+  --em-hover: color-mix(in srgb, var(--text) 6%, var(--raised));
+  --em-nav-hover: color-mix(in srgb, var(--text) 7%, var(--page));
+  --em-track: color-mix(in srgb, var(--text) 5%, var(--raised));
+  --em-pill: color-mix(in srgb, var(--text) 14%, var(--raised));
+  --em-pill-shadow: none;
+  --em-out: color-mix(in srgb, var(--accent) 9%, var(--raised));
+}
+
+/* --- L entree : 4 px, 160 ms, une fois ---------------------------------- */
+@keyframes em-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+#staffEmailsPage .em-shell [data-em-in] { animation: em-rise var(--em-dur) var(--ease-out-strong) backwards; animation-delay: var(--em-d, 0ms); }
+/* L arrivee sur la page (mount pose .pv2-enter) : la meme montee, sans le
+   transform qui restait pose apres l animation (fill forwards). */
+#staffEmailsPage .em-shell.pv2-enter > * { opacity: 1; transform: none; animation: em-rise 200ms var(--ease-out-strong) backwards; }
+#staffEmailsPage .em-shell.pv2-enter > *:nth-child(2) { animation-delay: 30ms; }
+#staffEmailsPage .em-shell.pv2-enter > *:nth-child(n+3) { animation-delay: 60ms; }
+
+/* --- L en-tete ------------------------------------------------------------ */
+#staffEmailsPage .em-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; min-width: 0; }
+#staffEmailsPage .em-head-main { display: grid; gap: 4px; min-width: 0; }
+#staffEmailsPage .em-title { margin: 0; font-size: 20px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; text-transform: none; color: var(--text); }
+#staffEmailsPage .em-status { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+#staffEmailsPage .em-status-err { font-weight: 500; color: var(--danger); }
+#staffEmailsPage .em-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#staffEmailsPage .em-stamp { margin-right: 2px; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#staffEmailsPage .em-head-actions .em-icon-btn { aspect-ratio: 1; padding: 0; justify-content: center; }
+#staffEmailsPage .em-head-actions .em-icon-btn .pv2-ico { margin: 0; }
+#staffEmailsPage .em-shell > .pv2-analyze { border: 0; border-radius: var(--em-radius); background: var(--em-panel); box-shadow: none; }
+#staffEmailsPage .em-shell > .pv2-analyze .pv2-panel-head { border-bottom: 0; padding: 16px 18px 4px; }
+
+/* --- Le corps : la navigation, puis la section ----------------------------- */
+#staffEmailsPage .em-body { display: grid; grid-template-columns: var(--em-nav-w) minmax(0, 1fr); align-items: start; gap: 20px; min-width: 0; }
+#staffEmailsPage .em-shell .em-nav { position: sticky; top: 16px; display: block; min-width: 0; }
+#staffEmailsPage .em-shell .em-nav .em-nav-list { flex-direction: column; align-items: stretch; gap: 16px; max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; scroll-snap-type: none; }
+#staffEmailsPage .em-shell .em-nav-group { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#staffEmailsPage .em-shell .em-nav-label { padding: 0 10px 5px; font-size: 11px; line-height: 1.2; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); }
+#staffEmailsPage .em-shell .em-nav .em-nav-item { justify-content: space-between; gap: 8px; width: 100%; height: var(--em-item-h); min-height: 0; padding: 0 10px; border-radius: var(--em-radius-sm); font-size: 13.5px; font-weight: 500; text-align: left; color: var(--muted); scroll-snap-align: none; transition: color var(--dur) var(--ease-out-strong), background-color var(--dur) var(--ease-out-strong); }
+#staffEmailsPage .em-shell .em-nav .em-nav-item.is-active { color: var(--text); font-weight: 600; }
+#staffEmailsPage .em-shell .em-nav-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#staffEmailsPage .em-shell .em-nav .em-nav-count { min-width: 20px; height: 18px; padding: 0 6px; border: 0; border-radius: 9px; background: var(--em-badge-blue); color: var(--em-badge-text); font-family: var(--font-ui); font-size: 11px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-nav .em-nav-count.is-red { background: var(--em-badge-red); }
+#staffEmailsPage .em-shell .em-nav .em-nav-item.is-active .em-nav-count { color: var(--em-badge-text); }
+/* L indicateur : invisible tant que l axe n est pas lu, puis une surface
+   blanche qui glisse. En colonne, translateY seul : tous les onglets ont la
+   meme hauteur, posee depuis --pl-subnav-k (hauteur / 100) sans transition. */
+#staffEmailsPage .em-shell .em-nav .em-nav-ind { opacity: 0; border-radius: var(--em-radius-sm); background: var(--em-pill); box-shadow: var(--em-pill-shadow); }
+#staffEmailsPage .em-shell .em-nav .em-nav-list[data-axis] .em-nav-ind { opacity: 1; }
+#staffEmailsPage .em-shell .em-nav .em-nav-list[data-axis='y'] .em-nav-ind {
+  top: 0; right: 0; bottom: auto; left: 0; width: auto;
+  height: calc(var(--pl-subnav-k, 0.32) * 100px);
+  transform-origin: 0 0;
+  transform: translateY(var(--pl-subnav-y, 0px));
+}
+
+/* --- La section ------------------------------------------------------------ */
+#staffEmailsPage .em-shell .em-main { display: grid; gap: 16px; min-width: 0; container-type: inline-size; container-name: em-main; }
+#staffEmailsPage .em-shell .em-block { min-width: 0; padding: 16px 18px; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+#staffEmailsPage .em-shell .em-h2 { margin: 0; font-size: 14px; line-height: 1.35; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+#staffEmailsPage .em-shell .em-block > .em-h2 { margin-bottom: 10px; }
+#staffEmailsPage .em-shell .em-h3 { margin: 0 0 6px; font-size: 12px; line-height: 1.3; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+#staffEmailsPage .em-shell .em-calme { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+#staffEmailsPage .em-shell .em-calme strong { font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-attente { padding: 10px 0; }
+/* Les etiquettes : petites, rayon de 4 px. Bornees aux trois sections de ce lot (les autres gardent leur hierarchie, l inventaire des mails compris). */
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip { height: 20px; padding: 0 7px; border: 0; border-radius: 4px; font-size: 11.5px; font-weight: 500; }
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip.is-new { background: var(--em-badge-blue); color: var(--em-badge-text); font-weight: 600; }
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip.pv2-inbox-intent { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); }
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip.pv2-inbox-urgent { border: 0; }
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip.is-opened { background: var(--em-well); color: var(--muted); }
+
+/* --- Apercu ---------------------------------------------------------------- */
+#staffEmailsPage .em-shell .em-apercu { display: grid; gap: 16px; min-width: 0; }
+#staffEmailsPage .em-shell .em-todo-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#staffEmailsPage .em-shell .em-todo { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--em-radius-sm); background: var(--em-well); }
+#staffEmailsPage .em-shell .em-todo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+#staffEmailsPage .em-shell .em-todo.is-blue .em-todo-dot { background: var(--accent); }
+#staffEmailsPage .em-shell .em-todo.is-red .em-todo-dot { background: var(--danger); }
+#staffEmailsPage .em-shell .em-todo.is-amber .em-todo-dot { background: var(--warning); }
+#staffEmailsPage .em-shell .em-todo-text { display: grid; gap: 2px; min-width: 0; }
+#staffEmailsPage .em-shell .em-todo-text strong { font-size: 13.5px; line-height: 1.4; font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-todo-text small { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+#staffEmailsPage .em-shell .em-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-kpi { display: grid; align-content: start; gap: 3px; min-width: 0; min-height: 0; margin: 0; padding: 10px 12px; border: 0; border-radius: var(--em-radius-sm); background: transparent; box-shadow: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; transition: background-color var(--dur) var(--ease-out-strong); }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-label { margin: 0; font-size: 12.5px; line-height: 1.3; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-value { margin: 0; padding: 0; font-family: var(--font-ui); font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--text); }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-value.is-empty { font-size: 13.5px; line-height: 1.6; font-weight: 500; letter-spacing: 0; color: var(--faint); }
+#staffEmailsPage .em-shell .em-kpi.is-danger .em-kpi-value { color: var(--danger); }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-foot { min-height: 0; margin: 0; overflow: hidden; font-size: 12px; line-height: 1.4; color: var(--faint); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-kpi:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
+#staffEmailsPage .em-shell .em-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; gap: 16px; }
+#staffEmailsPage .em-shell .em-col { display: grid; gap: 16px; min-width: 0; }
+#staffEmailsPage .em-shell .em-seq-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0 -8px; padding: 0; list-style: none; }
+#staffEmailsPage .em-shell .em-seq { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 7px 8px; border-radius: var(--em-radius-sm); }
+#staffEmailsPage .em-shell .em-seq-main { display: grid; flex: 1 1 auto; gap: 1px; min-width: 0; }
+#staffEmailsPage .em-shell .em-seq-main strong { overflow: hidden; font-size: 13px; font-weight: 500; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-seq:not(.is-on) .em-seq-main strong { color: var(--muted); }
+#staffEmailsPage .em-shell .em-seq-main small { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+#staffEmailsPage .em-shell .em-seq-echec { color: var(--danger); }
+#staffEmailsPage .em-shell .em-seq-etat { flex: none; font-size: 12px; color: var(--muted); }
+#staffEmailsPage .em-shell .em-seq .mk-switch { flex: none; }
+#staffEmailsPage .em-shell .pv2-suivi { gap: 12px; }
+#staffEmailsPage .em-shell .pv2-suivi-ligne { padding: 0; border-top: 0; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu { border: 0; border-radius: var(--em-radius); background: var(--em-panel); box-shadow: none; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-panel-head { padding: 16px 18px 0; border-bottom: 0; background: transparent; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-panel-body { padding: 10px 18px 16px; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-savoir-chiffres { gap: 4px; border: 0; border-radius: 0; background: transparent; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-savoir-chiffres > div { border-radius: var(--em-radius-sm); background: var(--em-well); }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-savoir-question { margin-top: 12px; }
+
+/* --- Les lignes de conversation (Apercu et Recus) ------------------------- */
+#staffEmailsPage .em-shell .em-rows { display: grid; gap: 2px; margin: 0 -10px; }
+#staffEmailsPage .em-shell .em-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; width: 100%; min-width: 0; margin: 0; padding: 10px 14px 11px; border: 0; border-radius: 0; background: transparent; box-shadow: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; transition: background-color var(--dur) var(--ease-out-strong); }
+#staffEmailsPage .em-shell .em-rows .em-row { padding: 9px 10px; border-radius: var(--em-radius-sm); }
+#staffEmailsPage .em-shell .em-row.is-selected { background: transparent; box-shadow: none; }
+#staffEmailsPage .em-shell .em-row:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
+#staffEmailsPage .em-shell .em-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#staffEmailsPage .em-shell .em-row-name { min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 500; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-row.is-unread .em-row-name { font-weight: 700; }
+#staffEmailsPage .em-shell .em-row-when { flex: none; margin-left: auto; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-row-subject { min-width: 0; overflow: hidden; font-size: 13px; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-row.is-unread .em-row-subject { font-weight: 600; }
+#staffEmailsPage .em-shell .em-row-snippet { min-width: 0; overflow: hidden; font-size: 12.5px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-row-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+#staffEmailsPage .em-shell .em-row-chips .pv2-chip { height: 18px; padding: 0 6px; font-size: 11px; }
+
+/* La selection : un fond bleu clair et un trait de 2 px qui GLISSENT d une
+   ligne a l autre (emPoserSelections). Sous les lignes (z-index -1 dans une
+   liste isolee), jamais par-dessus leur texte. */
+#staffEmailsPage .em-shell .em-sel { position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: 100px; background: var(--em-sel); opacity: 0; pointer-events: none; transform-origin: 0 0; transform: scaleY(0); transition: transform var(--dur-move) var(--ease-in-out-strong); }
+#staffEmailsPage .em-shell .em-sel.is-on { opacity: 1; }
+#staffEmailsPage .em-shell .em-sel::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--em-sel-bar); }
+
+/* --- Recus : trois volets -------------------------------------------------- */
+#staffEmailsPage .em-shell .em-inbox { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(260px, 300px); align-items: stretch; gap: 12px; height: var(--em-pane-h); min-height: 560px; min-width: 0; }
+#staffEmailsPage .em-shell .em-pane { min-width: 0; min-height: 0; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-pane-list { display: flex; flex-direction: column; overflow: hidden; }
+#staffEmailsPage .em-shell .em-pane-tools { display: grid; gap: 8px; padding: 12px; border: 0; }
+#staffEmailsPage .em-shell .em-pane-tools .pv2-seg { display: flex; width: 100%; max-width: 100%; overflow-x: auto; scrollbar-width: none; background: var(--em-track); }
+#staffEmailsPage .em-shell .em-pane-tools .pv2-seg button { flex: 1 1 auto; justify-content: center; gap: 5px; padding: 0 7px; font-size: 12px; }
+#staffEmailsPage .em-shell .em-pane-tools .pv2-seg button em { padding: 0 5px; }
+#staffEmailsPage .em-shell .em-pane-tools .pv2-search { width: 100%; min-width: 0; height: 34px; }
+#staffEmailsPage .em-shell .em-list { position: relative; isolation: isolate; display: block; flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; overscroll-behavior: contain; }
+#staffEmailsPage .em-shell .em-pane-foot { margin: 0; padding: 10px 14px 12px; font-size: 12px; line-height: 1.45; color: var(--faint); }
+#staffEmailsPage .em-shell .em-pane-conv { overflow: auto; overscroll-behavior: contain; }
+#staffEmailsPage .em-shell .em-pane-assist { display: block; padding: 16px; overflow: auto; overscroll-behavior: contain; }
+#staffEmailsPage .em-shell .em-pane .pv2-thread-empty { padding: 40px 16px; }
+
+/* La conversation ouverte : des messages pleine largeur, sans bulle. */
+#staffEmailsPage .em-shell .em-conv { display: grid; gap: 14px; padding: 18px 20px 20px; }
+/* Le titre et les actions sur une ligne quand le volet est large ; sur un volet etroit, les actions passent dessous au lieu d ecraser le titre. */
+#staffEmailsPage .em-shell .em-conv .pv2-thread-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; }
+#staffEmailsPage .em-shell .em-conv .pv2-thread-title { flex: 1 1 260px; }
+#staffEmailsPage .em-shell .em-conv .pv2-thread-title .pv2-thread-subject { overflow: visible; white-space: normal; text-overflow: clip; text-wrap: pretty; }
+#staffEmailsPage .em-shell .em-conv .pv2-thread-actions { flex: 0 0 auto; margin-left: auto; justify-content: flex-end; gap: 6px; }
+#staffEmailsPage .em-shell .em-conv .pv2-thread-others { flex: 1 1 100%; }
+#staffEmailsPage .em-shell .em-conv .pl-timeline { gap: 10px; }
+#staffEmailsPage .em-shell .em-msg { padding: 14px 16px; border: 0; border-radius: var(--em-radius); background: var(--em-well); }
+#staffEmailsPage .em-shell .em-msg.is-outbound { background: var(--em-out); }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-entete { align-items: center; gap: 10px; margin: 0 0 10px; padding: 0; border-bottom: 0; }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-pastille { width: 28px; height: 28px; border: 0; background: var(--em-panel); font-size: 12px; }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-pastille.is-nous { background: var(--text); color: var(--surface); }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-ligne strong { font-size: 13.5px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-voie { padding: 1px 6px; border: 0; border-radius: 4px; background: var(--em-panel); font-size: 11px; }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-quand { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+#staffEmailsPage .em-shell .em-msg .pv2-mail-corps { font-size: 14px; line-height: 1.6; }
+#staffEmailsPage .em-shell .em-msg .pl-timeline-trace { gap: 4px 16px; margin-top: 12px; padding-top: 0; border-top: 0; }
+/* Chaque etape porte son point (plein = fait, creux = pas encore) au lieu d un « · » qui ouvrait la ligne suivante. */
+#staffEmailsPage .em-shell .em-msg .pl-timeline-trace > span::before,
+#staffEmailsPage .em-shell .em-msg .pl-timeline-trace > span + span::before { content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 6px 0 0; border-radius: 50%; background: currentColor; color: inherit; vertical-align: 1px; }
+#staffEmailsPage .em-shell .em-msg .pl-timeline-trace > span.is-off::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+#staffEmailsPage .em-shell .em-reply { gap: 12px; padding: 16px; border: 0; border-radius: var(--em-radius); background: var(--em-well); }
+[data-theme='dark'] #staffEmailsPage .em-shell .em-reply { background: var(--em-well); }
+#staffEmailsPage .em-shell .em-reply .pv2-thread-reply-sign { border: 0; background: var(--em-panel); }
+/* Le nom et le role du signataire : les memes champs que l objet. */
+#staffEmailsPage .em-shell .em-reply .pv2-thread-reply-sign input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--control-border); border-radius: var(--radius-md); }
+#staffEmailsPage .em-shell .em-reply .pv2-thread-reply-sign input:not([type="checkbox"]):focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-color: var(--line-strong); box-shadow: none; }
+
+/* L Assistant : la demande en une phrase, ce qui a servi, la reponse. */
+#staffEmailsPage .em-shell .em-assist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+#staffEmailsPage .em-shell .em-assist-etat { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-assist-vide { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+#staffEmailsPage .em-shell .em-assist-lu { margin: 0; padding: 0; border: 0; background: transparent; }
+#staffEmailsPage .em-shell .em-assist-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#staffEmailsPage .em-shell .em-assist-lu .pv2-inbox-summary { display: block; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+#staffEmailsPage .em-shell .em-assist-lu .pv2-inbox-summary p { margin: 0; font-size: 14px; line-height: 1.5; font-weight: 500; color: var(--text); }
+#staffEmailsPage .em-shell .em-assist-alerte { margin-top: 12px; padding: 10px 12px; border-radius: var(--em-radius-sm); background: var(--warning-soft); }
+#staffEmailsPage .em-shell .em-assist-alerte strong { display: block; font-size: 12.5px; font-weight: 600; color: var(--warning); }
+#staffEmailsPage .em-shell .em-assist-alerte p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+#staffEmailsPage .em-shell .em-assist-repli { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+#staffEmailsPage .em-shell .em-assist-bloc { margin-top: 18px; }
+#staffEmailsPage .em-shell .em-assist-faits { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#staffEmailsPage .em-shell .em-assist-faits li { display: grid; gap: 1px; padding: 8px 10px; border-radius: var(--em-radius-sm); background: var(--em-well); font-size: 12.5px; line-height: 1.45; }
+#staffEmailsPage .em-shell .em-assist-faits strong { font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-assist-faits span { color: var(--muted); }
+/* La reponse se lit en entier : c est le volet qui defile, pas une boite
+   dans la boite (une ligne coupee a mi-hauteur faisait croire a un bug). */
+#staffEmailsPage .em-shell .em-assist-reply { padding: 10px 12px; border-radius: var(--em-radius-sm); background: var(--em-well); font-size: 13px; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+#staffEmailsPage .em-shell .em-assist-use { width: 100%; margin-top: 10px; justify-content: center; }
+#staffEmailsPage .em-shell .em-assist-relire { display: inline-block; margin-top: 14px; font-size: 12.5px; }
+
+/* --- Envoyes : un tableau dense, le detail a droite ------------------------ */
+#staffEmailsPage .em-shell .pv2-alert { border: 0; border-radius: var(--em-radius); background: var(--em-panel); box-shadow: inset 3px 0 0 var(--danger); padding: 12px 16px; }
+#staffEmailsPage .em-shell .em-sent { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); align-items: start; gap: 12px; min-width: 0; }
+#staffEmailsPage .em-shell .em-sent-main { display: grid; gap: 10px; min-width: 0; padding: 12px; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-sent-filters { display: grid; gap: 8px; min-width: 0; padding: 8px; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .pv2-pipeline { position: relative; isolation: isolate; display: flex; flex-wrap: nowrap; gap: 0; min-width: 0; padding: 3px; border: 0; border-radius: var(--em-radius); background: var(--em-track); overflow-x: auto; scrollbar-width: none; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe { position: relative; z-index: 1; display: inline-flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 6px; min-width: max-content; height: 30px; padding: 0 12px; border: 0; border-radius: var(--em-radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe.active { background: transparent; color: var(--text); }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe .pv2-pipe-value { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: inherit; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe .pv2-pipe-label { margin: 0; font-size: 13px; font-weight: 500; color: inherit; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe-rail { top: 3px; bottom: 3px; z-index: 0; height: auto; border-radius: var(--em-radius-sm); background: var(--em-pill); box-shadow: var(--em-pill-shadow); }
+#staffEmailsPage .em-shell .em-origins { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; }
+#staffEmailsPage .em-shell .em-origin { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: var(--em-radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: background-color var(--dur) var(--ease-out-strong), color var(--dur) var(--ease-out-strong); }
+#staffEmailsPage .em-shell .em-origin.active { background: var(--em-sel); color: var(--accent-strong); }
+#staffEmailsPage .em-shell .em-origin-n { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+#staffEmailsPage .em-shell .em-origin.active .em-origin-n { color: inherit; }
+#staffEmailsPage .em-shell .em-origin:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
+#staffEmailsPage .em-shell .em-sent-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#staffEmailsPage .em-shell .em-sent-tools .pv2-search { flex: 1 1 220px; min-width: 0; max-width: 340px; height: 34px; }
+#staffEmailsPage .em-shell .em-tools-spacer { flex: 1 1 auto; }
+#staffEmailsPage .em-shell .em-sent-list { position: relative; isolation: isolate; max-height: 560px; margin: 0 -12px; padding: 0; overflow: auto; overscroll-behavior: contain; }
+#staffEmailsPage .em-shell .em-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+#staffEmailsPage .em-shell .em-table th { position: sticky; top: 0; z-index: 2; height: 34px; padding: 0 12px; border: 0; background: var(--em-panel); color: var(--faint); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-table th:nth-child(1) { width: 27%; }
+#staffEmailsPage .em-shell .em-table th:nth-child(3) { width: 18%; }
+#staffEmailsPage .em-shell .em-table th:nth-child(4) { width: 132px; }
+#staffEmailsPage .em-shell .em-table th:nth-child(5) { width: 96px; }
+#staffEmailsPage .em-shell .em-table td { height: 44px; padding: 6px 12px; border: 0; color: var(--muted); vertical-align: middle; }
+#staffEmailsPage .em-shell .em-table th:first-child,
+#staffEmailsPage .em-shell .em-table td:first-child { padding-left: 16px; }
+#staffEmailsPage .em-shell .em-table tbody tr,
+#staffEmailsPage .em-shell .em-table tbody tr.selected { background: transparent; box-shadow: none; }
+#staffEmailsPage .em-shell .em-table tbody tr.is-failed td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+#staffEmailsPage .em-shell .em-cell-main { display: grid; gap: 1px; max-width: 100%; padding: 0; border: 0; background: transparent; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+#staffEmailsPage .em-shell .em-cell-main strong { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-cell-main:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-radius: 2px; }
+#staffEmailsPage .em-shell .em-cell-sub { display: none; overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-table td.em-cell-objet { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-table td.em-cell-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-table td.num { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-table .pv2-cell-fail { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.35; color: var(--danger); white-space: normal; }
+#staffEmailsPage .em-shell .em-table .pv2-vide td { height: auto; }
+#staffEmailsPage .em-shell .em-sent-main .pv2-pipeline-scope { margin: 0 4px; }
+#staffEmailsPage .em-shell .em-sent-detail { display: grid; gap: 14px; min-width: 0; padding: 16px 18px 18px; border-radius: var(--em-radius); background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+#staffEmailsPage .em-shell .em-detail-head .em-h2 { font-size: 15px; overflow-wrap: anywhere; }
+#staffEmailsPage .em-shell .em-sent-body { display: grid; gap: 16px; padding: 0; }
+#staffEmailsPage .em-shell .em-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
+#staffEmailsPage .em-shell .em-kv > div { display: grid; gap: 2px; min-width: 0; }
+#staffEmailsPage .em-shell .em-kv dt { font-size: 11.5px; color: var(--faint); }
+#staffEmailsPage .em-shell .em-kv dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 500; color: var(--text); text-align: left; }
+#staffEmailsPage .em-shell .em-detail-part-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+#staffEmailsPage .em-shell .em-detail-part-head .em-h3 { margin: 0; }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-mail-error { border: 0; border-radius: var(--em-radius-sm); }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-mail-frame { height: 460px; border: 0; border-radius: var(--em-radius-sm); }
+
+/* --- Survol : seulement avec une souris ----------------------------------- */
+@media (hover: hover) {
+  #staffEmailsPage .em-shell .em-nav .em-nav-item:not(.is-active):hover { color: var(--text); background: var(--em-nav-hover); }
+  #staffEmailsPage .em-shell .em-kpi:hover { background: var(--em-hover); }
+  #staffEmailsPage .em-shell .em-row:not(.is-selected):hover { background: var(--em-hover); }
+  #staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe:not(.active):hover { background: transparent; color: var(--text); }
+  #staffEmailsPage .em-shell .em-origin:not(.active):hover { background: var(--em-hover); color: var(--text); }
+}
+
+/* --- Largeurs intermediaires : la section se lit a sa propre largeur ------- */
+@container em-main (max-width: 1100px) {
+  #staffEmailsPage .em-shell .em-inbox { grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); grid-template-rows: auto auto; align-items: start; height: auto; min-height: 0; }
+  #staffEmailsPage .em-shell .em-pane-list { position: sticky; top: 12px; grid-row: 1 / span 2; max-height: var(--em-pane-h); }
+  #staffEmailsPage .em-shell .em-pane-conv,
+  #staffEmailsPage .em-shell .em-pane-assist { overflow: visible; }
+  #staffEmailsPage .em-shell .em-pane-assist { grid-column: 2; }
+}
+@container em-main (max-width: 900px) {
+  #staffEmailsPage .em-shell .em-cols,
+  #staffEmailsPage .em-shell .em-sent { grid-template-columns: minmax(0, 1fr); }
+}
+@container em-main (max-width: 700px) {
+  #staffEmailsPage .em-shell .em-inbox { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-pane-list { position: static; grid-row: auto; max-height: 52vh; }
+  #staffEmailsPage .em-shell .em-pane-assist { grid-column: auto; }
+  #staffEmailsPage .em-shell .em-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #staffEmailsPage .em-shell .em-table th:nth-child(2),
+  #staffEmailsPage .em-shell .em-table td[data-col='objet'],
+  #staffEmailsPage .em-shell .em-table th:nth-child(3),
+  #staffEmailsPage .em-shell .em-table td[data-col='origine'] { display: none; }
+  #staffEmailsPage .em-shell .em-table th:nth-child(4),
+  #staffEmailsPage .em-shell .em-table td[data-col='statut'] { display: table-cell; }
+  #staffEmailsPage .em-shell .em-table th:nth-child(1) { width: auto; }
+  #staffEmailsPage .em-shell .em-cell-sub { display: block; }
+}
+
+/* --- Telephone : la navigation passe en rangee qui defile ------------------ */
+@media (max-width: 760px) {
+  #staffEmailsPage .em-head { align-items: stretch; }
+  #staffEmailsPage .em-head-actions { width: 100%; }
+  #staffEmailsPage .em-head-actions .pv2-btn:not(.em-icon-btn) { flex: 1 1 auto; justify-content: center; }
+  #staffEmailsPage .em-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #staffEmailsPage .em-shell .em-nav { position: static; }
+  #staffEmailsPage .em-shell .em-nav .em-nav-list { flex-direction: row; align-items: center; gap: 2px; padding: 3px 0; border-radius: 0; background: transparent; overflow-x: auto; scroll-snap-type: x proximity; }
+  #staffEmailsPage .em-shell .em-nav-group { display: contents; }
+  #staffEmailsPage .em-shell .em-nav-label { display: none; }
+  #staffEmailsPage .em-shell .em-nav .em-nav-item { flex: 0 0 auto; width: auto; padding: 0 12px; scroll-snap-align: start; }
+  #staffEmailsPage .em-shell .em-nav .em-nav-list[data-axis='x'] .em-nav-ind { top: 3px; bottom: 3px; }
+  #staffEmailsPage .em-shell .em-block { padding: 14px; }
+  #staffEmailsPage .em-shell .em-todo { grid-template-columns: 8px minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-todo .pv2-btn { grid-column: 2; justify-self: start; }
+  #staffEmailsPage .em-shell .em-conv { padding: 14px; }
+  #staffEmailsPage .em-shell .em-kv { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-sent-tools .pv2-search { flex-basis: 100%; max-width: none; }
+  #staffEmailsPage .em-shell .em-tools-spacer { display: none; }
+  #staffEmailsPage .em-shell .em-sent-detail .pv2-mail-frame { height: 400px; }
+}
+
+/* --- Mouvement reduit : rien ne monte, rien ne glisse ---------------------- */
+@media (prefers-reduced-motion: reduce) {
+  #staffEmailsPage .em-shell [data-em-in],
+  #staffEmailsPage .em-shell.pv2-enter > * { animation: none; }
+  #staffEmailsPage .em-shell .em-sel,
+  #staffEmailsPage .em-shell .em-nav .em-nav-ind,
+  #staffEmailsPage .em-shell .em-row,
+  #staffEmailsPage .em-shell .em-kpi { transition: none; }
+}

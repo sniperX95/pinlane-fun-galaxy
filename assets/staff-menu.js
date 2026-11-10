@@ -134,14 +134,16 @@
             { key: 'emails-recus', label: 'Reçus', section: 'recus' },
             { key: 'emails-envoyes', label: 'Envoyés', section: 'envoyes' },
             { key: 'emails-sequences', label: 'Séquences', section: 'sequences' },
+            // Les campagnes exigent leur propre droit : le serveur refuse sans
+            // lui, l'entree ne se propose donc pas (DESIGN.md §9). Elles suivent
+            // les sequences : le meme ordre que la navigation de la page
+            // (Boîte, Automatique, Contenu, Réglages), 2026-11-10.
+            { key: 'emails-campagnes', label: 'Campagnes', section: 'campagnes', permission: 'campaigns.manage' },
             { key: 'emails-modeles', label: 'Modèles', section: 'modeles' },
             { key: 'emails-apparence', label: 'Apparence', section: 'apparence' },
             { key: 'emails-expediteurs', label: 'Expéditeurs', section: 'expediteurs' },
             { key: 'emails-agent', label: 'L’agent', section: 'agent' },
-            { key: 'emails-exclusions', label: 'Exclusions', section: 'exclusions' },
-            // Les campagnes exigent leur propre droit : le serveur refuse sans
-            // lui, l'entree ne se propose donc pas (DESIGN.md §9).
-            { key: 'emails-campagnes', label: 'Campagnes', section: 'campagnes', permission: 'campaigns.manage' }
+            { key: 'emails-exclusions', label: 'Exclusions', section: 'exclusions' }
           ]
         },
         { key: 'campaigns', label: 'Marketing', icon: 'campaigns' }

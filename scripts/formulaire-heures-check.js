@@ -25,8 +25,8 @@
 //       du depot n est modifie, un autre gate ne lit jamais une regle cassee.
 // AUCUNE BASE : un faux pool garde les requetes. Le toucher reel dans un
 // navigateur (une heure complete part une fois, une heure fermee jamais) est
-// tenu par test:fungalaxy-form [C] et ses contre-preuves FG_QA_CASSE=heures
-// et FG_QA_CASSE=heurestoutes.
+// tenu par test:complet-explique [B], le banc ou des heures sont vraiment
+// completes, et ses trois contre-preuves (--mutate).
 // LES DATES : la regle se juge avec un « aujourd hui » fixe (aucun rouge de
 // calendrier) ; seule la route, qui lit la vraie date, recoit un jour calcule.
 // =============================================================================

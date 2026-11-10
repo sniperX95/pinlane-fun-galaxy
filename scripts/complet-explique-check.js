@@ -36,6 +36,10 @@
 //     est COURTE : ce qu il faut et ce qui est libre, sans redire « complet »
 //     (la case le dit) ; le « 6 joueurs par piste » se lit dans la note des
 //     pistes, juste dessous, et la taille de l arene dans la note du partage.
+//     Depuis le 2026-11-10 (Ansar : « samedi 15 h demandé 40 fois, complet »),
+//     toucher une heure « complet » l envoie UNE fois au serveur, sans rien de
+//     personnel (lib/formulaire-heures.js) ; une heure refusee pour une autre
+//     raison ne part pas.
 //
 // CONTRE-EPREUVE (--mutate) : chaque correctif est retire EN MEMOIRE, le
 // moteur au chargement de son module, le formulaire au moment ou il est
@@ -101,6 +105,24 @@ const MUTATIONS = [
     fichier: 'assets/fungalaxy-booking.js',
     de: "          + (laser ? notePartage() : '')",
     vers: "          + ''",
+  },
+  {
+    nom: 'le formulaire n envoie plus les heures completes touchees',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: "    if (!VISITE || !chip || chip.dataset.state !== 'hard' || chip.dataset.mot !== 'complet') return;\n",
+    vers: '    return;\n',
+  },
+  {
+    nom: 'le formulaire envoie toute heure refusee, pas seulement les completes',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: "    if (!VISITE || !chip || chip.dataset.state !== 'hard' || chip.dataset.mot !== 'complet') return;\n",
+    vers: '    if (!VISITE || !chip) return;\n',
+  },
+  {
+    nom: 'une heure complete retouchee repart a chaque toucher',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: '    heuresPleinesVues[cle] = true;\n',
+    vers: '',
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -335,6 +357,39 @@ async function verifierFormulaire(browser) {
     ok(lu.partage === 'Partie de 20 min, + 5 à 10 min de règles. Partie partagée (jusqu’à 30 joueurs) : d’autres groupes peuvent jouer avec vous.',
       '[B] la piste du laser dit que la partie se partage, avec les places du centre', lu.partage);
     ok(!lu.partageBowling, '[B] la phrase du partage ne parle que du laser');
+    // LES HEURES COMPLETES QUE LES GENS VOULAIENT (2026-11-10, Ansar : « samedi 15 h demandé
+    // 40 fois, complet »). Toucher une heure ou l on lit « complet » l envoie UNE fois, meme
+    // retouchee plus tard ; une heure refusee pour une autre raison ne part pas. Ce qui part
+    // est juge par le vrai lecteur de la route, avec le catalogue du centre (mock). Le clic va
+    // a la case elle-meme : sa plage peut etre repliee, et c est l envoi qu on prouve ici.
+    mock.dernierePose.heures.length = 0;
+    const cases = await page.evaluate(() => Array.from(document.querySelectorAll('#hourZone .fg-track .fg-chip')).map((c) => ({ id: c.closest('.fg-track').dataset.activity, h: c.dataset.time, etat: c.dataset.state, mot: c.dataset.mot || '' })));
+    const pleineB = cases.find((c) => c.id === 'bowling' && c.h === '13:00');
+    const pleineL = cases.find((c) => c.id === 'laser_game' && c.h === '15:30');
+    const autre = cases.find((c) => c.etat === 'hard' && c.mot !== 'complet' && !/^partie /.test(c.mot));
+    ok(Boolean(pleineB) && pleineB.etat === 'hard' && pleineB.mot === 'complet' && Boolean(pleineL) && pleineL.etat === 'hard' && pleineL.mot === 'complet' && Boolean(autre),
+      'MONTAGE le bowling de 13:00 et le laser de 15:30 se lisent « complet », et une heure est refusee pour une autre raison', JSON.stringify({ pleineB, pleineL, autre }));
+    if (pleineB && pleineL && autre) {
+      const toucher = (c) => page.evaluate(({ id, h }) => document.querySelector(`#hourZone .fg-track[data-activity="${id}"] .fg-chip[data-time="${h}"]`).click(), c);
+      const recues = () => mock.dernierePose.heures;
+      await toucher(pleineB);
+      await toucher(autre);
+      // Le premier envoi part (800 ms d attente groupee) AVANT le second toucher de la meme
+      // heure : sinon les deux iraient dans le meme envoi, que le serveur dedoublonne seul.
+      for (let k = 0; k < 40 && recues().length < 1; k += 1) await dormir(100);
+      await dormir(300);
+      await toucher(pleineB);
+      await toucher(pleineL);
+      for (let k = 0; k < 40 && recues().length < 2; k += 1) await dormir(100);
+      await dormir(1300);
+      const deB = recues().filter((x) => x.activite === 'bowling' && x.heure === '13:00');
+      ok(deB.length === 1 && Object.keys(deB[0]).sort().join(',') === 'activite,centerId,formule,heure,joueurs,jour,visite' && deB[0].centerId === 'libramont' && /^[a-f0-9]{24}$/.test(deB[0].visite)
+        && deB[0].jour === mock.DATE && deB[0].formule === '' && deB[0].joueurs === 10,
+      '[B] une heure complete touchee deux fois part UNE fois : le jour voulu, l heure, l activite, les 10 joueurs, la visite au hasard, rien d autre', JSON.stringify(deB));
+      ok(recues().length === 2 && recues().some((x) => x.activite === 'laser_game' && x.heure === '15:30') && new Set(recues().map((x) => x.visite)).size === 1,
+        '[B] le laser complet de 15:30 part aussi, sous la meme visite, et rien d autre n est parti', recues().map((x) => `${x.activite} ${x.heure}`).join(', ') || 'rien recu');
+      ok(!recues().some((x) => x.activite === autre.id && x.heure === autre.h), `[B] une heure refusee pour une autre raison (« ${autre.mot} ») ne part pas`, `${autre.id} ${autre.h}`);
+    }
   } finally {
     await page.close();
   }

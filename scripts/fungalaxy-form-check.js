@@ -468,8 +468,7 @@
 // formulaire ne demande plus le mode souple : les heures serrees redeviennent
 // des refus), option (la pastille choisie ne part pas dans le programme),
 // parties (la partie de laser non posee n est plus annoncee « sur place »),
-// etapes (le formulaire n envoie plus les ecrans atteints),
-// heures (plus aucune heure complete touchee ne part), heurestoutes (toute heure refusee part).
+// etapes (le formulaire n envoie plus les ecrans atteints).
 // Chacune doit rendre ce gate ROUGE.
 //
 // Usage : node scripts/fungalaxy-form-check.js
@@ -816,8 +815,6 @@ window.addEventListener('message', function (e) { var d = e.data || {}; if (d.ty
 // Les contre-preuves : une ligne du JS servie cassee expres.
 const MUTATIONS = {
   etapes: ['    if (!VISITE || !scene) return;\n', '    return;\n'],
-  heures: ["    if (!VISITE || !chip || chip.dataset.state !== 'hard' || chip.dataset.mot !== 'complet') return;\n", '    return;\n'],
-  heurestoutes: ["    if (!VISITE || !chip || chip.dataset.state !== 'hard' || chip.dataset.mot !== 'complet') return;\n", '    if (!VISITE || !chip) return;\n'],
   prix: ["'Dès ' + euros(mini)", "'Dès ' + euros(1 + mini)"],
   total: ['data-total="\' + prix + \'"', 'data-total="\' + (prix + 1) + \'"'],
   raison: ['chip.dataset.reason = e.raison;', "chip.dataset.reason = '';"],
@@ -2730,40 +2727,6 @@ async function main() {
       ok(lecturesNeuves(demandes, avantDure).length === 0 && await page.evaluate((s) => document.querySelector(s).classList.contains('is-on'), selB), '[C] et ne demande rien, ne change rien a l heure posee');
     } else {
       ok(false, '[C] une heure impossible existe apres la pose (sinon la lecture de la raison n est pas exercee)');
-    }
-    // 2 bis. LES HEURES COMPLETES QUE LES GENS VOULAIENT (2026-11-10). Toucher une heure ou
-    //    l on lit « complet » l envoie une seule fois, meme touchee deux fois : le jour voulu,
-    //    l heure, l activite, la taille du groupe, sous la visite au hasard. Une heure fermee
-    //    ou trop tardive ne part pas. Jugee par le vrai lecteur de la route (mock).
-    //    FG_QA_CASSE=heures (plus rien ne part) et FG_QA_CASSE=heurestoutes (toute heure
-    //    refusee part) rougissent chacun un de ces controles.
-    {
-      const dures = ancresDe(d1).flatMap((a) => a.times.filter((t) => t.ok === false && !t.move && t.code !== 'anchor_overlap').map((t) => ({ id: a.activityId, t })));
-      const pleine = dures.find((x) => MOTS_DURS[x.t.code] === 'complet');
-      const autre = dures.find((x) => MOTS_DURS[x.t.code] !== 'complet');
-      ok(Boolean(pleine) && Boolean(autre), '[C] le banc offre une heure complete et une heure refusee pour une autre raison (sinon l envoi des heures completes n est pas exerce)', dures.map((x) => `${x.id} ${x.t.time} ${x.t.code}`).slice(0, 12).join(', '));
-      if (pleine && autre) {
-        const motDe = (x) => page.evaluate(({ id, h }) => { const c = document.querySelector(`#hourZone .fg-track[data-activity="${id}"] .fg-chip[data-time="${h}"]`); return c ? `${c.dataset.state}/${c.dataset.mot}` : ''; }, { id: x.id, h: x.t.time });
-        await toucherHeure(page, pleine.id, pleine.t.time);
-        await toucherHeure(page, autre.id, autre.t.time);
-        await toucherHeure(page, pleine.id, pleine.t.time);
-        const mots = [await motDe(pleine), await motDe(autre)];
-        const duBanc = (x) => mock.dernierePose.heures.filter((h) => h.activite === x.id && h.heure === x.t.time);
-        for (let k = 0; k < 40 && !duBanc(pleine).length; k += 1) await dormir(100);
-        await dormir(1200);
-        const parties = duBanc(pleine);
-        // Le jour et la taille du groupe attendus : ceux de la derniere lecture des heures.
-        const lueC = demandes.filter((u) => u.indexOf('/api/public-availability?') >= 0).map((u) => new URL(u).searchParams).pop();
-        ok(mots[0] === 'hard/complet' && parties.length === 1 && Object.keys(parties[0]).sort().join(',') === 'activite,centerId,formule,heure,joueurs,jour,visite'
-          && parties[0].centerId === 'libramont' && /^[a-f0-9]{24}$/.test(parties[0].visite) && Boolean(lueC) && parties[0].jour === lueC.get('date') && parties[0].formule === '' && parties[0].joueurs === Number(lueC.get('pax')) && parties[0].joueurs > 0,
-          '[C] une heure complete touchee deux fois part UNE fois : le jour voulu, l heure, l activite, la taille du groupe, la visite au hasard, rien d autre', `${pleine.id} ${pleine.t.time} (${mots[0]}) : ${JSON.stringify(parties)}`);
-        ok(mots[1].indexOf('hard/') === 0 && mots[1] !== 'hard/complet' && duBanc(autre).length === 0,
-          '[C] une heure refusee pour une autre raison (fermee, trop tard) ne part pas', `${autre.id} ${autre.t.time} (${mots[1]}) : ${duBanc(autre).length} envoi(s)`);
-        ok(await page.evaluate((s) => document.querySelector(s).classList.contains('is-on'), selB), '[C] et ces touchers ne changent rien a l heure posee');
-        // La proposition « quand meme » d une heure complete lit le serveur : on la laisse finir
-        // avant le scenario suivant, qui compte les demandes.
-        for (let k = 0, stable = 0, vu = demandes.length; k < 30 && stable < 4; k += 1) { await dormir(150); if (demandes.length === vu) stable += 1; else { stable = 0; vu = demandes.length; } }
-      }
     }
     // 3. UNE HEURE SUR UNE ACTIVITE TOUCHEE (Ansar, 2026-11-04) : rien ne bouge tout
     //    seul. Le conseil le dit, et un seul toucher regle : c est l AUTRE qui bouge.

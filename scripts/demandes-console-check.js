@@ -675,11 +675,11 @@ async function horairesEtFenetres(browser, { sansForcer = false } = {}) {
     await page.fill('.sm-compose input[type=time]', '08:00');
     await page.waitForTimeout(150);
     r.composeHeure = await page.evaluate(() => {
-      const b = document.querySelector('.sm-compose .sm-p');
+      const b = document.querySelector('.sm-compose .sm-co-go');
       return { bouton: b ? b.textContent.trim() : '', off: Boolean(b && b.disabled), dit: ((document.querySelector('.sm-compose-dit') || {}).textContent || '').trim() };
     });
     if (!sansForcer) {
-      await page.click('.sm-compose .sm-p');
+      await page.click('.sm-compose .sm-co-go');
       await page.waitForSelector('.qb-modal', { timeout: 8000 });
       await page.waitForTimeout(900);
       r.ouvertures = await ouvertures();
@@ -935,6 +935,54 @@ function statutsInvalides(source) {
   return [...source.matchAll(/setStaffCustomRequestStatus\(\s*[^,()]+,\s*(['"])([^'"]*)\1/g)].map((m) => m[2]).filter((s) => !valides.has(s));
 }
 
+// [S] LA PROPOSITION LIBRE (2026-11-10) : un jour, une heure hors de la grille du moteur, une fin, les
+// joueurs et le prix poses par l equipe. Le mail se prepare sur elle, part avec elle, et le oui du
+// client ouvre la reservation a ce jour, cette heure, ces joueurs et ce prix.
+async function propositionLibre(browser) {
+  const { ctx, page, erreurs } = await ouvrir(browser);
+  const r = { erreurs };
+  try {
+    r.D1 = await page.evaluate(() => window.__QA__.D1);
+    await ouvrirFiche(page, 801);
+    await attendreEtude(page);
+    await page.fill('#smCoDate-801', r.D1);
+    await page.fill('#smCoHeure-801', '15:10');
+    await page.fill('#smCoFin-801', '17:40');
+    await page.fill('#smCoJoueurs-801', '25');
+    await page.fill('#smCoPrix-801', '500');
+    r.calc = await texte(page, '#smCoCalc-801');
+    await page.click('#smCoProp-801');
+    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestDraft'), null, { timeout: 8000 });
+    await page.waitForSelector('.sm-courrier', { timeout: 8000 });
+    await page.waitForTimeout(400);
+    r.appel = await page.evaluate(() => (window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').slice(-1)[0] || { corps: {} }).corps.choix || null);
+    r.resume = await texte(page, '.sm-courrier .sm-resume');
+    await page.click('.sm-courrier .sm-p');
+    await page.waitForFunction(() => window.__QA__.envois.length === 1, null, { timeout: 5000 });
+    await page.waitForTimeout(800);
+    r.proposition = await page.evaluate(() => window.__QA__.envois[0].proposition || null);
+    await page.locator('.sm-c2 .sm-p', { hasText: 'Le client accepte' }).click();
+    await page.waitForTimeout(600);
+    r.resa = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState ? { date: quickBookState.date, heure: quickBookState.startTime, pax: quickBookState.pax, type: quickBookState.type, prix: typeof getQuickBookCustomPrice === 'function' ? getQuickBookCustomPrice() : null } : null));
+    await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+  } catch (error) {
+    r.panne = String((error && error.message) || error).split('\n')[0];
+  } finally {
+    await ctx.close();
+  }
+  return r;
+}
+
+function verifierLibre(h) {
+  section('S. LA PROPOSITION LIBRE');
+  ok(!h.panne && h.erreurs.length === 0, 'la proposition libre va au bout, sans erreur dans la page', h.panne || JSON.stringify(h.erreurs));
+  ok(/Prix posé à la main : 500 € pour le groupe, soit 20 € par joueur/.test(h.calc || ''), 'le prix tape se dit, avec ce qu il fait par joueur', h.calc);
+  ok(Boolean(h.appel) && h.appel.type === 'libre' && h.appel.date === h.D1 && h.appel.heure === '15:10' && h.appel.fin === '17:40' && h.appel.joueurs === 25 && h.appel.prix === 500 && h.appel.prixLibre === true, 'le mail se prepare sur la proposition de l equipe : son jour, son heure, sa fin, ses joueurs, son prix', JSON.stringify(h.appel));
+  ok(/15:10/.test(h.resume || '') && /17:40/.test(h.resume || '') && /500/.test(h.resume || '') && /25 joueurs/.test(h.resume || ''), 'le courrier rappelle la proposition qui part', h.resume);
+  ok(Boolean(h.proposition) && h.proposition.type === 'libre' && h.proposition.heure === '15:10' && h.proposition.prix === 500 && h.proposition.joueurs === 25, 'le mail parti garde la proposition libre', JSON.stringify(h.proposition));
+  ok(Boolean(h.resa) && h.resa.date === h.D1 && h.resa.heure === '15:10' && Number(h.resa.pax) === 25 && Number(h.resa.prix) === 500, 'le oui du client ouvre la reservation a ce jour, cette heure, ces joueurs et ce prix', JSON.stringify(h.resa));
+}
+
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   await new Promise((resolve) => srv.listen(PORT, '127.0.0.1', resolve));
@@ -951,6 +999,7 @@ async function main() {
     verifierSansSuite(await sansSuite(browser));
     verifierHoraires(await horairesEtFenetres(browser));
     verifierSansForcer(await horairesEtFenetres(browser, { sansForcer: true }));
+    verifierLibre(await propositionLibre(browser));
 
     section('J. UN STATUT QUE LA BASE ACCEPTE');
     // Le fichier tel que sur le disque (verifie intact a la fin), et sa forme
@@ -966,10 +1015,12 @@ async function main() {
     const lireLf = (rel) => fs.readFileSync(p.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
     const montable = (de, fichier) => ok((fichier ? lireLf(fichier) : source).split(de).length === 2, `contre-epreuve montable : « ${de.trim().slice(0, 70)} »`);
     const essais = [
+      { de: "  if (choix.type !== 'libre') return base;\n", vers: '  return base;\n', label: 'sans les champs de la proposition libre, le mail ne connaitrait ni ses joueurs ni son prix', run: (b) => propositionLibre(b), rouge: (r) => !r.appel || r.appel.prix !== 500 },
+      { de: "    if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);\n", vers: '', label: 'sans le prix pose, la reservation reprendrait le prix du catalogue', run: (b) => propositionLibre(b), rouge: (r) => Boolean(r.resa) && Number(r.resa.prix) !== 500 },
       { de: "    if (rang !== staffRequestDraftRang[key]) return;\n    // Le planning a bouge", vers: "    // Le planning a bouge", label: 'sans le rang, la reponse lente remplacerait la derniere', run: deuxHeures, rouge: (r) => Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps) },
       { de: "if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;", vers: "if (current.busy || current.drafting) return;", label: 'sans la relance, la seconde heure n aurait pas son mail', run: deuxHeures, rouge: (r) => Boolean(r.panne) || (Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps)) },
       { de: '        ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),\n', vers: '', label: 'sans la proposition au mail, le oui du client ne retrouverait rien', rouge: (r) => Boolean(r.envoi && r.envoi.corps) && !r.envoi.corps.proposition },
-      { de: "...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),", vers: '}),', label: 'sans l heure dans la demande, le mail parlerait de tout', rouge: (r) => Boolean(r.panne) || (Boolean(r.redaction) && !r.redaction.choix) },
+      { de: "...(choix ? { choix: rqChoixPourLeServeur(choix) } : {}) }),", vers: '}),', label: 'sans l heure dans la demande, le mail parlerait de tout', rouge: (r) => Boolean(r.panne) || (Boolean(r.redaction) && !r.redaction.choix) },
       { de: 'centerId: getActiveOpsCenterId(), sansIA: true, ...(choix', vers: 'centerId: getActiveOpsCenterId(), ...(choix', label: 'sans la consigne, l IA ecrirait le mail', rouge: (r) => Boolean(r.redaction) && r.redaction.sansIA !== true },
       { de: '    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '14:00' },
       { de: '  if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);', vers: '', label: 'sans le programme, la reservation serait vide', rouge: (r) => Boolean(r.resa) && !(r.resa.bowling && r.resa.laser) },

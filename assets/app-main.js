@@ -20536,7 +20536,12 @@ function smComposition(item) {
     const formules = d && Array.isArray(d.formulas) ? d.formulas : [];
     const formule = formules.length === 1 && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(formules[0].id) ? String(formules[0].id) : '';
     const activites = formule ? [] : (d && Array.isArray(d.activities) ? d.activities : []).filter(a => a && getCenterActivity(a.id)).map(a => String(a.id));
-    staffRequestComposition[key] = { date: date || '', heure: '', formule, activites, plus: false };
+    // Une proposition libre deja faite se rouvre telle quelle : on la retouche, on ne la refait pas.
+    const libre = choix && choix.type === 'libre' ? choix : null;
+    const fLibre = libre && libre.formule && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(libre.formule) ? String(libre.formule) : '';
+    staffRequestComposition[key] = libre
+      ? { date: libre.date, heure: libre.heure, fin: libre.fin || '', formule: fLibre, activites: fLibre ? [] : (libre.activites || []).map(a => String(a && a.id)).filter(a => getCenterActivity(a)), plus: Boolean(libre.plus), joueurs: String(Number(libre.joueurs) || smJoueursDe(item) || ''), prix: libre.prixLibre && libre.prix != null ? String(libre.prix) : '' }
+      : { date: date || '', heure: '', fin: '', formule, activites, plus: false, joueurs: String(smJoueursDe(item) || ''), prix: '' };
   }
   return staffRequestComposition[key];
 }
@@ -20570,6 +20575,7 @@ function smCompositionToucher(el, id, sorte, cle) {
     const k = b.getAttribute('data-cle');
     b.setAttribute('aria-pressed', String(s === 'plus' ? c.plus : s === 'formule' ? c.formule === k : c.activites.includes(k)));
   });
+  smCompositionMaj(item);
 }
 window.smCompositionToucher = smCompositionToucher;
 
@@ -20593,9 +20599,11 @@ function smCompositionLue(item) {
 }
 
 // LE SUR MESURE, EN PREMIERE LIGNE : ce qu on met dedans se touche (la formule, n importe quelle
-// activite du centre, repas et boissons), puis le jour et l heure d arrivee, n importe laquelle.
-// « Composer » ouvre la fenetre Reserver deja remplie : les prix, les droits et les articles
-// libres restent les siens.
+// activite du centre, repas et boissons), puis le jour, l arrivee, la fin, les joueurs et le prix,
+// tous libres (Ansar, 2026-11-10 : « full flexible, on doit vraiment pouvoir tout faire de A a Z »).
+// « Proposer au client » en fait la proposition du mail, meme hors de ce que le moteur propose ;
+// « Composer » ouvre la fenetre Reserver deja remplie, avec ces joueurs et ce prix. Les horaires et
+// le planning se disent, ils ne bloquent pas la proposition : c est l equipe qui decide.
 function renderSmComposer(item) {
   if (!peutGeste('reserver') || !staffRequestMontreDispos(item)) return '';
   const stage = staffRequestStage(item);
@@ -20607,15 +20615,28 @@ function renderSmComposer(item) {
   const touche = (sorte, cle, nom, photo, on) => `<button type="button" class="sm-co-a${sorte === 'plus' ? ' is-plus' : ''}" data-sorte="${sorte}" data-cle="${escapeHtml(cle)}" aria-pressed="${on}" onclick="smCompositionToucher(this, ${jid}, '${sorte}', '${escapeJsString(cle)}')">${photo || `<i class="sm-co-v" style="--c:${sorte === 'plus' ? 'var(--subtle)' : rvCouleur(cle)}" aria-hidden="true">${sorte === 'plus' ? '+' : ''}</i>`}<span>${escapeHtml(nom)}</span></button>`;
   const touches = smCompositionTouches(item).map(t => touche(t.sorte, t.id, t.nom, t.photo, t.sorte === 'formule' ? c.formule === t.id : c.activites.includes(t.id)));
   touches.push(touche('plus', 'plus', 'Repas, boissons, autre', '', c.plus));
+  const estime = smPrixEstime(item);
+  const calc = smPrixDit(item, estime);
+  const proposer = Boolean(item.email) && peutGeste('ecrire');
+  const champ = (cle, libelle, attributs) => `<label class="sm-champ"><span>${libelle}</span><input class="input" id="smCo${cle.charAt(0).toUpperCase()}${cle.slice(1)}-${id}" ${attributs} value="${escapeHtml(c[cle])}" oninput="smCompositionChamp(${jid}, '${cle}', this.value)"></label>`;
   return `<section class="sm-s sm-autre sm-compose">
     <h3>Sur mesure</h3>
-    <div class="sm-co-acts" role="group" aria-label="Ce que vous mettez dans la réservation">${touches.join('')}</div>
+    <p class="sm-compose-intro">Tout se règle ici, même ce qui n’est pas dans les propositions : le jour, l’heure, ce qu’ils font, les joueurs et le prix.</p>
+    <div class="sm-co-acts" role="group" aria-label="Ce que vous mettez dans la proposition">${touches.join('')}</div>
     <div class="sm-compose-l">
-      <label class="sm-champ"><span>Jour</span><input class="input" type="date" id="smCoDate-${id}" min="${todayStr()}" value="${escapeHtml(c.date)}" oninput="smCompositionChamp(${jid}, 'date', this.value)"></label>
-      <label class="sm-champ"><span>Arrivée</span><input class="input" type="time" step="900" id="smCoHeure-${id}" value="${escapeHtml(c.heure)}" oninput="smCompositionChamp(${jid}, 'heure', this.value)"></label>
-      <button type="button" class="sm-p" id="smCoGo-${id}" onclick="smComposer(${jid})"${lu.bloque ? ' disabled' : ''}>${escapeHtml(crDemande(item) ? lu.bouton : lu.bouton.replace('Composer la réservation', 'Créer la réservation'))}</button>
+      ${champ('date', 'Jour', `type="date" min="${todayStr()}"`)}
+      ${champ('heure', 'Arrivée', 'type="time" step="60"')}
+      ${champ('fin', 'Fin, si connue', 'type="time" step="60"')}
+      ${champ('joueurs', 'Joueurs', 'type="number" min="1" max="999" step="1" inputmode="numeric"')}
+      <label class="sm-champ"><span>Prix du groupe</span><span class="sm-champ-e"><input class="input" id="smCoPrix-${id}" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(c.prix)}" placeholder="${estime != null ? escapeHtml(String(estime)) : ''}" oninput="smCompositionChamp(${jid}, 'prix', this.value)"><i aria-hidden="true">€</i></span></label>
     </div>
+    <p class="sm-compose-calc" id="smCoCalc-${id}"${calc ? '' : ' hidden'}>${escapeHtml(calc)}</p>
     <p class="sm-compose-dit" id="smCoDit-${id}"${lu.dit ? '' : ' hidden'}>${escapeHtml(lu.dit)}</p>
+    <div class="sm-compose-b">
+      <button type="button" class="sm-lien" onclick="smVoirLeJour(${jid})">Voir le planning de ce jour</button>
+      <button type="button" class="${proposer ? 'sm-b' : 'sm-p'} sm-co-go" id="smCoGo-${id}" onclick="smComposer(${jid})"${lu.bloque ? ' disabled' : ''}>${escapeHtml(crDemande(item) ? lu.bouton : lu.bouton.replace('Composer la réservation', 'Créer la réservation'))}</button>
+      ${proposer ? `<button type="button" class="sm-p sm-co-prop" id="smCoProp-${id}" onclick="smProposer(${jid})">Proposer au client</button>` : ''}
+    </div>
   </section>`;
 }
 
@@ -20623,12 +20644,144 @@ function smCompositionChamp(id, cle, valeur) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
   if (!item) return;
   smComposition(item)[cle] = String(valeur || '');
+  smCompositionMaj(item);
+}
+
+// Sur place, sans repeindre : le bouton, ce que disent les horaires, et le prix calcule. La saisie en
+// cours et le focus restent.
+function smCompositionMaj(item) {
+  const id = String(item.id);
   const lu = smCompositionLue(item);
   const bouton = document.getElementById(`smCoGo-${id}`);
   const dit = document.getElementById(`smCoDit-${id}`);
   if (bouton) { bouton.textContent = crDemande(item) ? lu.bouton : lu.bouton.replace('Composer la réservation', 'Créer la réservation'); bouton.disabled = lu.bloque; }
   if (dit) { dit.textContent = lu.dit; dit.hidden = !lu.dit; }
+  const estime = smPrixEstime(item);
+  const prix = document.getElementById(`smCoPrix-${id}`);
+  if (prix) prix.placeholder = estime != null ? String(estime) : '';
+  const calc = document.getElementById(`smCoCalc-${id}`);
+  if (calc) { const t = smPrixDit(item, estime); calc.textContent = t; calc.hidden = !t; }
 }
+
+function smJoueursDe(item) {
+  const d = crDemande(item);
+  return Math.trunc(Number(d ? d.participants : item.pax) || 0);
+}
+
+// Le prix du catalogue pour ce qui est compose : la formule a son prix (par joueur ou par piste), les
+// activites le leur, le meme calcul que Reserver. null : rien a chiffrer, ou un tarif qui manque (un
+// total partiel ne se propose pas comme un prix).
+function smPrixEstime(item) {
+  const c = smComposition(item);
+  const joueurs = Math.max(1, Math.trunc(Number(c.joueurs)) || smJoueursDe(item) || 1);
+  const jour = staffRequestDateOf(c.date) ? c.date : todayStr();
+  try {
+    if (c.formule) {
+      const f = typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(c.formule) : null;
+      if (!f || !(Number(f.price) > 0)) return null;
+      const total = Number(getBasePrice('formule', 1, getRequiredLaneCount('formule', joueurs, c.formule), joueurs, c.formule, jour)) || 0;
+      return total > 0 ? Math.round(total * 100) / 100 : null;
+    }
+    if (c.activites.length) {
+      const e = estimerPrixProgramme(c.activites.map(a => ({ activityId: a })), joueurs, jour, c.heure);
+      return e && e.utilisable && e.complet ? e.total : null;
+    }
+  } catch (error) { return null; }
+  return null;
+}
+
+// Ce que dit le prix sous les champs : celui du catalogue ou celui pose a la main, et par joueur.
+function smPrixDit(item, estime) {
+  const c = smComposition(item);
+  const joueurs = Math.trunc(Number(c.joueurs)) || 0;
+  const brut = String(c.prix || '').trim().replace(',', '.');
+  const tape = brut !== '' && Number.isFinite(Number(brut)) && Number(brut) >= 0 ? Math.round(Number(brut) * 100) / 100 : null;
+  if (tape == null && estime == null) return c.formule || c.activites.length ? 'Prix à saisir : le catalogue ne le calcule pas pour ce choix. Sans prix, le mail dira « prix à confirmer ».' : '';
+  const montant = tape != null ? tape : estime;
+  const parJoueur = joueurs > 0 ? Math.round((montant / joueurs) * 100) / 100 : null;
+  const d = crDemande(item);
+  const budget = d ? Number(d.budgetPerPerson) || 0 : 0;
+  const ecart = budget && parJoueur != null ? Math.round((parJoueur - budget) * 100) / 100 : 0;
+  const parTete = parJoueur != null ? `, soit ${staffRequestEuro(parJoueur)} par joueur` : '';
+  const auDessus = ecart > 0 ? ` C’est ${staffRequestEuro(ecart)} au-dessus de leur budget.` : '';
+  return tape != null
+    ? `Prix posé à la main : ${staffRequestEuro(tape)} pour le groupe${parTete}.${estime != null && estime !== tape ? ` Le catalogue dirait ${staffRequestEuro(estime)}.` : ''}${auDessus}`
+    : `Prix du catalogue pour ${joueurs || 'ces'} joueur${joueurs > 1 ? 's' : ''} : ${staffRequestEuro(estime)}${parTete}. Tapez un autre montant pour le changer.${auDessus}`;
+}
+
+// La proposition libre, lue dans le sur mesure : ce qui part au serveur pour ecrire le mail, et ce
+// que le suivi garde. Une erreur dit quoi completer, et rien ne part.
+function smPropositionLibre(item) {
+  const c = smComposition(item);
+  if (!staffRequestDateOf(c.date) || c.date < todayStr()) return { erreur: 'Choisissez un jour à venir.' };
+  if (!/^\d{2}:\d{2}$/.test(c.heure)) return { erreur: 'Choisissez l’heure d’arrivée.' };
+  if (c.fin && !(/^\d{2}:\d{2}$/.test(c.fin) && c.fin > c.heure)) return { erreur: 'La fin doit venir après l’arrivée.' };
+  const formule = c.formule && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(c.formule) : null;
+  const noms = new Map(smCompositionTouches(item).filter(t => t.sorte === 'activite').map(t => [t.id, t.nom]));
+  const activites = formule ? [] : c.activites.filter(a => noms.has(a)).map(a => ({ id: a, nom: noms.get(a) }));
+  if (!formule && !activites.length) return { erreur: 'Choisissez une formule ou au moins une activité.' };
+  const joueurs = Math.trunc(Number(c.joueurs));
+  if (!(joueurs >= 1 && joueurs <= 999)) return { erreur: 'Indiquez le nombre de joueurs.' };
+  const brut = String(c.prix || '').trim().replace(',', '.');
+  const tape = brut === '' ? null : Number(brut);
+  if (tape != null && !(Number.isFinite(tape) && tape >= 0 && tape <= 100000)) return { erreur: 'Le prix n’est pas un montant.' };
+  const prix = tape != null ? Math.round(tape * 100) / 100 : smPrixEstime(item);
+  return { choix: {
+    date: c.date, type: 'libre', ref: formule ? String(c.formule) : 'programme', heure: c.heure, fin: c.fin || '',
+    nom: formule ? String(formule.name || c.formule) : activites.map(a => a.nom).join(' + '),
+    prix: prix != null ? prix : null, parJoueur: prix != null ? Math.round((prix / joueurs) * 100) / 100 : null,
+    joueurs, formule: formule ? String(c.formule) : '', activites, plus: Boolean(c.plus), prixLibre: tape != null,
+  } };
+}
+
+// « Proposer au client » : la proposition composee devient celle du mail, comme une heure touchee.
+function smProposer(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item || !item.email || !peutGeste('ecrire')) return;
+  const { choix, erreur } = smPropositionLibre(item);
+  if (erreur) { toast(erreur); return; }
+  staffRequestChoix[key] = choix;
+  // La demande est prise : la file le dit aux collegues, sans message de plus.
+  if (item.status === 'new' && peutGeste('reserver')) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });
+  renderStaffRequestsIfOpen();
+  startStaffRequestDraft(id);
+}
+window.smProposer = smProposer;
+
+// Le planning du jour compose, en fenetre : ce qui est deja pris se voit avant de proposer.
+function smVoirLeJour(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  const { date } = smComposition(item);
+  if (!staffRequestDateOf(date)) { toast('Choisissez d’abord le jour.'); return; }
+  openStaffRequestDay(date);
+}
+window.smVoirLeJour = smVoirLeJour;
+
+// Sur une offre du moteur : la reprendre dans le sur mesure (son jour, sa formule ou les activites
+// demandees), le curseur sur l heure. Une offre impossible se propose quand meme, si l equipe le veut.
+function rqAutreHeure(item, jour, o) {
+  if (!peutGeste('reserver')) return '';
+  const stage = staffRequestStage(item);
+  if (stage === 'traitee' || stage === 'archivee') return '';
+  return `<button type="button" class="sm-lien sm-o-autre" onclick="smAutreHeure(${staffClientJs(item.id)}, '${escapeJsString(jour.date)}', '${o.type}', '${escapeJsString(String(o.ref))}')">${o.ok ? 'Autre heure ou autre prix' : 'Le proposer quand même'}</button>`;
+}
+
+function smAutreHeure(id, date, type, ref) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  const c = smComposition(item);
+  const d = crDemande(item);
+  c.date = date;
+  c.heure = '';
+  if (type === 'formule' && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(ref)) { c.formule = String(ref); c.activites = []; }
+  else { c.formule = ''; c.activites = (d && Array.isArray(d.activities) ? d.activities : []).filter(a => a && getCenterActivity(a.id)).map(a => String(a.id)); }
+  renderStaffRequestsIfOpen();
+  const champ = document.getElementById(`smCoHeure-${id}`);
+  if (champ) { champ.scrollIntoView({ block: 'center' }); champ.focus({ preventScroll: true }); }
+}
+window.smAutreHeure = smAutreHeure;
 
 async function smComposer(id) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
@@ -20636,7 +20789,7 @@ async function smComposer(id) {
   const c = smComposition(item);
   const lu = smCompositionLue(item);
   if (lu.bloque) return;
-  const composer = () => staffRequestToBooking(id, { date: c.date, heure: c.heure, formule: c.formule, activites: c.activites, plus: c.plus });
+  const composer = () => staffRequestToBooking(id, { date: c.date, heure: c.heure, formule: c.formule, activites: c.activites, plus: c.plus, joueurs: c.joueurs, prix: c.prix });
   if (lu.choisir) {
     smHorairesFenetre(c.date, { open: c.heure, motif: staffRequestNom(item), apres: composer });
     return;
@@ -20699,7 +20852,7 @@ function renderRqOffre(item, jour, o, d) {
     // Un programme que le moteur ne sait pas placer garde son prix et ses lignes : c est ce que l equipe repond au client.
     const programme = !o.panne && o.type === 'visite';
     const pourquoi = o.panne ? 'Pas de réponse pour le moment. Réessayez dans un instant.' : programme ? (o.raison || 'Aucun départ possible ce jour-là.') : `Impossible ce jour-là. ${o.raison || ''}`.trim();
-    return `<div class="sm-o is-off"><div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}</div>${programme ? prix(o.prix, o.parJoueur) : ''}</div><p class="sm-o-non">${escapeHtml(pourquoi)}</p></div>`;
+    return `<div class="sm-o is-off"><div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}</div>${programme ? prix(o.prix, o.parJoueur) : ''}</div><p class="sm-o-non">${escapeHtml(pourquoi)}</p>${o.panne ? '' : rqAutreHeure(item, jour, o)}</div>`;
   }
   const choisie = Boolean(choix) && choix.date === jour.date && choix.type === o.type && String(choix.ref) === String(o.ref);
   const touche = (depart) => {
@@ -20714,6 +20867,7 @@ function renderRqOffre(item, jour, o, d) {
     <div class="sm-o-t"><div><span class="sm-o-n">${escapeHtml(o.nom)}</span>${lignes}${o.alerte || ''}</div>${prix(o.prix, o.parJoueur, renderStaffRequestBudgetTag(o.parJoueur, d))}</div>
     ${o.ailleurs ? '<small class="sm-o-ail">Rien dans ce moment de la journée. Possible à ces heures.</small>' : ''}
     ${o.departs.length ? `<div class="sm-heures">${o.departs.map(touche).join('')}</div>` : ''}
+    ${rqAutreHeure(item, jour, o)}
   </div>`;
 }
 
@@ -20801,7 +20955,7 @@ window.rqChoisir = rqChoisir;
 // La proposition en trois lignes : ce qui part au client, ou ce qui est parti.
 function renderSmResume(p) {
   const jour = staffRequestShortDate(p.date);
-  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}`;
+  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}${p.type === 'libre' && p.joueurs ? `, ${p.joueurs} joueurs` : ''}`;
   return `<div class="sm-resume">
     <div><b>${escapeHtml(p.nom)}</b><span>${escapeHtml(quand)}</span></div>
     <div class="sm-o-p">${p.prix != null ? `<b>${escapeHtml(staffRequestEuro(p.prix))}</b>` : '<em>À confirmer</em>'}${p.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur</small>` : ''}</div>
@@ -20825,7 +20979,7 @@ function renderSmSuivi(item) {
   let conseil = '';
   if (staffRequestStage(item) === 'a-traiter' && staffRequestMontreDispos(item)) {
     conseil = item.email && peutGeste('ecrire')
-      ? '<p class="sm-suivi-dit">Choisissez une heure parmi les propositions. Le mail au client se prépare tout seul, et rien ne part sans votre clic.</p>'
+      ? '<p class="sm-suivi-dit">Choisissez une heure parmi les propositions, ou composez la vôtre dans Sur mesure. Le mail au client se prépare tout seul, et rien ne part sans votre clic.</p>'
       : '<p class="sm-suivi-dit">Choisissez une heure parmi les propositions, puis donnez la réponse au client par téléphone.</p>';
   }
   if (!bande && !conseil) return '';
@@ -21093,6 +21247,14 @@ window.focusStaffRequestComposer = focusStaffRequestComposer;
 
 // PREPARER LE MAIL (serveur : lib/demande-bureau). Le serveur relit les disponibilites et remplit
 // le modele : les prix, les heures et les noms viennent de l etude, le texte ne s invente pas.
+// Ce qui part au serveur pour ecrire le mail : l heure touchee sur une offre, ou toute la proposition
+// libre (le serveur la borne, il ne la croit pas sur parole).
+function rqChoixPourLeServeur(choix) {
+  const base = { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure };
+  if (choix.type !== 'libre') return base;
+  return { ...base, fin: choix.fin, nom: choix.nom, prix: choix.prix, joueurs: choix.joueurs, formule: choix.formule, activites: choix.activites, plus: choix.plus, prixLibre: choix.prixLibre };
+}
+
 async function startStaffRequestDraft(id) {
   if (!peutGeste('ecrire')) return;
   const key = String(id);
@@ -21101,7 +21263,7 @@ async function startStaffRequestDraft(id) {
   if (!item.email) { toast('Cette demande n’a pas d’adresse email : répondez par téléphone.'); return; }
   const current = staffRequestReplyState[key] || {};
   const choix = staffRequestChoix[key] || null;
-  const quoi = choix ? [choix.date, choix.type, choix.ref, choix.heure].join('|') : '';
+  const quoi = choix ? JSON.stringify(rqChoixPourLeServeur(choix)) : '';
   // Une autre heure touchee pendant la redaction relance le mail : il doit parler de la derniere.
   if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;
   const rang = (staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1);
@@ -21111,7 +21273,7 @@ async function startStaffRequestDraft(id) {
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
-      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), sansIA: true, ...(choix ? { choix: { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure } } : {}) }),
+      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), sansIA: true, ...(choix ? { choix: rqChoixPourLeServeur(choix) } : {}) }),
     });
     // Une autre heure a ete touchee entre-temps : ce mail parlerait de la precedente.
     if (rang !== staffRequestDraftRang[key]) return;
@@ -21120,7 +21282,7 @@ async function startStaffRequestDraft(id) {
       delete staffRequestChoix[key];
       staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false, open: false };
       if (payload.etude) staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
-      toast('Cette heure n’est plus possible : le planning a bougé. Choisissez-en une autre.');
+      toast(choix && choix.type === 'libre' ? 'Cette proposition ne tient pas : choisissez un jour à venir et une heure valable.' : 'Cette heure n’est plus possible : le planning a bougé. Choisissez-en une autre.');
       renderStaffRequestsIfOpen();
       return;
     }
@@ -21255,18 +21417,23 @@ function staffRequestToBooking(id, options = {}) {
   ].filter(Boolean);
   // Le sur mesure compose sur la fiche fait foi : sa formule, ou ses activites (jamais les deux).
   const compose = Array.isArray(options.activites);
-  const activitesComposees = compose ? options.activites.filter(a => getCenterActivity(a)) : [];
+  // Une proposition libre faite au client compose a son tour : ses activites, ses joueurs, son prix.
+  const libre = !compose && choix && choix.type === 'libre' ? choix : null;
+  const activitesComposees = compose ? options.activites.filter(a => getCenterActivity(a)) : libre ? (libre.activites || []).map(a => String(a && a.id)).filter(a => getCenterActivity(a)) : [];
+  const paxRetenu = compose && Math.trunc(Number(options.joueurs)) > 0 ? Math.trunc(Number(options.joueurs)) : libre && Number(libre.joueurs) > 0 ? Number(libre.joueurs) : joueurs;
+  const prixPose = compose ? String(options.prix ?? '').trim().replace(',', '.') : libre && libre.prixLibre && libre.prix != null ? String(libre.prix) : '';
+  const prixRetenu = prixPose !== '' && Number.isFinite(Number(prixPose)) && Number(prixPose) >= 0 ? prixPose : '';
   // Sinon une proposition choisie ; sans elle, ce que le client a demande.
   const formuleRetenue = compose
     ? (!activitesComposees.length && options.formule && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(options.formule) ? options.formule : '')
-    : choix ? (choix.type === 'formule' && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
+    : choix ? ((choix.type === 'formule' || (libre && !activitesComposees.length)) && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
   const dateRetenue = options.date || (choix ? choix.date : date);
   const heureRetenue = options.heure || (choix && (!options.date || options.date === choix.date) ? choix.heure : '');
   openQuickBook({
     name: item.contactName || '',
     email: item.email || '',
     phone: item.phone || '',
-    pax: joueurs > 0 ? joueurs : 4,
+    pax: paxRetenu > 0 ? paxRetenu : 4,
     notes: noteParts.join(' · '),
     ...(dateRetenue ? { date: dateRetenue } : {}),
     ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),
@@ -21276,11 +21443,13 @@ function staffRequestToBooking(id, options = {}) {
     // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
   });
-  if (compose) {
+  if (compose || libre) {
     // Une activite que le client avait demandee garde ses reglages (duree, parties) ; une ajoutee part avec les defauts.
     const demandees = d && Array.isArray(d.activities) ? d.activities : [];
-    if (activitesComposees.length) applyStaffRequestActivitiesToQuickBook({ participants: joueurs, activities: activitesComposees.map(aid => demandees.find(a => a && String(a.id) === String(aid)) || { id: aid }) });
-    if (options.plus && typeof setQuickSurMesure === 'function') setQuickSurMesure(true);
+    if (activitesComposees.length) applyStaffRequestActivitiesToQuickBook({ participants: paxRetenu, activities: activitesComposees.map(aid => demandees.find(a => a && String(a.id) === String(aid)) || { id: aid }) });
+    if ((compose ? options.plus : libre.plus) && typeof setQuickSurMesure === 'function') setQuickSurMesure(true);
+    // Le prix pose a la main, dans le sur mesure ou dans la proposition partie, reste le sien.
+    if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);
     return;
   }
   if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);

@@ -565,6 +565,19 @@ async function verifierChoix({ B, C }) {
   p = B.ajouterAuSuivi(p, { type: 'reponse', par: 'Rachel', objet: 'Une question', communicationId: 44, le: T1 });
   const derniere = B.resumeDuSuivi({ status: 'in_progress', createdAt: T1, payload: p });
   const salie = B.ajouterAuSuivi({}, { type: 'reponse', par: 'Rachel', objet: 'x', communicationId: 45, le: T1, proposition: { date: D1, heure: 'pas une heure', type: 'visite' } });
+  // La proposition libre (2026-11-10) : l equipe pose le jour, l heure, la fin, les joueurs, le prix.
+  const libre = { date: D1, type: 'libre', ref: 'programme', heure: '15:10', fin: '17:40', nom: 'Bowling + Laser Game', prix: 500, joueurs: 25, activites: [{ id: 'bowling', nom: 'Bowling' }, { id: 'laser_game', nom: 'Laser Game' }], prixLibre: true, intrus: 'non' };
+  const vl = vue(libre);
+  const jl = vl && vl.dates[0];
+  const loin = vue({ ...libre, date: '2030-09-02' });
+  const libreFerme = vue({ date: D2, type: 'libre', ref: 'f3', heure: '09:30', nom: 'Formule 3', formule: 'f3', joueurs: 12, prix: null });
+  const refusLibre = [
+    B.etudeDuChoix(etude, { ...libre, date: '2030-04-20' }, { aujourdhui: AUJOURDHUI }),
+    vue({ ...libre, heure: '25:00' }),
+    vue({ ...libre, date: '2030-02-31' }),
+    vue({ ...libre, activites: [], formule: '' }),
+  ];
+  const propreLibre = B.propositionPropre({ ...libre, nom: 'y'.repeat(300), activites: Array.from({ length: 20 }, (_, i) => ({ id: `a${i}`, nom: `Activite ${i}` })) });
 
   const llm = modele([new Error('pas de modele ici')]);
   const deps = {
@@ -588,6 +601,10 @@ async function verifierChoix({ B, C }) {
   const perime = await C.brouillonDeLaDemande(item, deps, { choix: { date: D1, type: 'formule', ref: 'f3', heure: '16:00' } });
   const corpsF = (mailFormule.brouillon && mailFormule.brouillon.corps) || '';
   const corpsV = (mailVisite.brouillon && mailVisite.brouillon.corps) || '';
+  const mailLibre = await C.brouillonDeLaDemande(item, deps, { choix: libre });
+  const corpsL = (mailLibre.brouillon && mailLibre.brouillon.corps) || '';
+  const pointsL = (mailLibre.brouillon && mailLibre.brouillon.pointsAVerifier) || [];
+  const libreHier = await C.brouillonDeLaDemande(item, deps, { choix: { ...libre, date: '2030-04-20' } });
   return [
     [visite && JSON.stringify(visite.departs.map(({ debut, fin, prix }) => ({ debut, fin, prix }))) === '[{"debut":"14:00","fin":"16:00","prix":544}]', 'chaque depart du programme porte son debut, sa fin et son prix', JSON.stringify(visite && visite.departs)],
     [fo && JSON.stringify(fo.heures) === '["14:30"]' && fo.heuresAilleurs.length === 0 && f.dates.length === 1 && f.dates[0].visite === null, 'une heure de formule choisie : le mail ne parle que de cette heure-la', JSON.stringify(fo)],
@@ -606,6 +623,14 @@ async function verifierChoix({ B, C }) {
     [/14:00/.test(corpsV) && /544/.test(corpsV) && !/868/.test(corpsV), 'le mail d un programme cite son heure et son prix, pas la formule', corpsV],
     [perime.choixPerime === true && perime.brouillon === null && llm.appels.length === avant, 'une heure perimee : rien ne s ecrit, le modele n est pas appele', JSON.stringify({ c: perime.choixPerime, n: llm.appels.length - avant })],
     [Boolean(perime.etude && perime.etude.dates && perime.etude.dates.length), 'l etude a jour revient quand meme, pour montrer ce qui reste possible'],
+    [jl && jl.principale && jl.ouvert && jl.libre && vl.dates.length === 1 && jl.formules.length === 0 && jl.visite.proposition.debut === '15:10' && jl.visite.proposition.fin === '17:40' && jl.visite.prix === 500 && jl.visite.parJoueur === 20 && jl.visite.joueurs === 25, 'une proposition libre : le jour, l heure, la fin, le prix et les joueurs poses par l equipe, rien d autre', JSON.stringify(jl && jl.visite)],
+    [Boolean(loin) && loin.dates[0].date === '2030-09-02' && /septembre/.test(loin.dates[0].libelle), 'un jour que le client n a pas demande se propose aussi', JSON.stringify(loin && loin.dates[0].libelle)],
+    [Boolean(libreFerme) && libreFerme.dates[0].formules[0].heures[0] === '09:30' && libreFerme.dates[0].libre.ferme === true, 'meme un jour ferme, a l heure voulue : la fiche le signale, elle ne bloque pas', JSON.stringify(libreFerme && libreFerme.dates[0].libre)],
+    [refusLibre.every((x) => x === null), 'une proposition libre passee, a une heure ou une date impossible, ou vide, est refusee', JSON.stringify(refusLibre)],
+    [Boolean(propreLibre) && propreLibre.type === 'libre' && propreLibre.nom.length === 160 && propreLibre.activites.length === 12 && propreLibre.joueurs === 25 && propreLibre.prix === 500 && propreLibre.prixLibre === true && !('intrus' in propreLibre), 'la proposition libre gardee : des champs bornes, jamais l objet recu', JSON.stringify(propreLibre).slice(0, 200)],
+    [/15:10/.test(corpsL) && /17:40/.test(corpsL) && /500/.test(corpsL) && /pour 25 joueurs/.test(corpsL) && !/868/.test(corpsL) && !/14:00/.test(corpsL), 'le mail d une proposition libre cite son heure, sa fin, son prix et ses joueurs, rien du moteur', corpsL],
+    [pointsL.some((p) => /composée à la main/.test(p)), 'et l equipe est prevenue que le moteur ne l a pas verifiee', JSON.stringify(pointsL)],
+    [libreHier.choixPerime === true && libreHier.brouillon === null, 'une proposition libre a une date passee ne s ecrit pas', JSON.stringify({ c: libreHier.choixPerime })],
   ];
 }
 

@@ -21230,6 +21230,23 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-compose-l .sm-champ { flex: 0 1 150px; }
 .sm-compose-l .sm-champ:nth-child(2) { flex-basis: 112px; }
 .sm-compose-dit { min-height: 21px; margin-top: 8px; }
+/* LA PROPOSITION LIBRE (2026-11-10) : cinq champs en grille, le prix calcule dessous, les gestes a droite. */
+.sm-compose-intro { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.sm-compose .sm-co-acts { margin-top: 12px; }
+.sm-compose .sm-compose-l { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); align-items: end; gap: 10px; }
+.sm-compose .sm-champ .input { width: 100%; min-width: 0; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+.sm-champ-e { position: relative; display: block; }
+.sm-champ-e .input { padding-right: 28px; }
+.sm-champ-e i { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
+.sm-compose-calc { margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sm-compose-b { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-top: 12px; }
+.sm-compose-b .sm-lien { margin-right: auto; font-size: 13px; }
+.sm-o-autre { justify-self: start; margin-top: 8px; font-size: 13px; }
+@media (max-width: 720px) {
+  .sm-compose .sm-compose-l { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sm-compose .sm-compose-l .sm-champ:first-child { grid-column: 1 / -1; }
+  .sm-compose-b .sm-p, .sm-compose-b .sm-b { flex: 1 1 100%; justify-content: center; }
+}
 .qb-modal.rv.rs .rs-horaires { margin-top: -6px; }
 .qb-modal.rv.rs .rs-horaires p { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: 0; font-size: 13px; color: var(--muted); }
 .qb-modal.rv.rs .rs-horaires b { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }

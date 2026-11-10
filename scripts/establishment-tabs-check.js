@@ -1,7 +1,8 @@
-// La page Etablissement (2026-11-09) : une rangee de cases (horaires, formules,
-// clients et comptoir, fiche du centre) et une colonne par salle ; une case
-// s ouvre sous la rangee, les autres restent dans la page, masquees. Ce gate
-// protege ce qui casserait pour de vrai :
+// La page Etablissement (2026-11-10) : un logiciel pro, les rubriques a gauche
+// (le centre, horaires, activites, formules, reservations, accueil et secours,
+// formulaire en ligne), tous les champs de la rubrique a droite ; les autres
+// rubriques restent dans la page, masquees. Ce gate protege ce qui casserait
+// pour de vrai :
 //   1. submitCenterConfig lit les champs par getElementById : un champ d une
 //      case fermee doit rester dans la page, sinon enregistrer depuis une autre
 //      case ecraserait sa config par les valeurs de repli.
@@ -13,6 +14,12 @@
 //   4. Un centre sans grille d horaires (Gembloux suit la grille d origine) se
 //      montre avec les heures que le moteur applique : l afficher ferme, puis
 //      l enregistrer, le fermerait pour de vrai.
+//   5. Ansar, « reglages caches » : dans une rubrique ouverte, chaque reglage se
+//      voit sans rien ouvrir d autre. Les reglages que rien n applique encore
+//      (le comptoir, la prudence et le partage du laser) restent hors de
+//      l ecran, leur valeur gardee.
+//   6. Une fermeture apres minuit (01:30) part comme le moteur l ecrit (25:30),
+//      une fermeture avant l ouverture au-dela de 06:00 reste une faute.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -148,6 +155,38 @@ const repeindre = (page) => page.evaluate(async () => {
   };
 });
 
+// Dans chaque rubrique ouverte, les reglages qui ne se voient pas (sans les miroirs caches, les jours fermes et les
+// champs d ajout).
+const reglagesCaches = (page) => page.evaluate(() => EB_RUBRIQUES.map(([k]) => {
+  ebOuvrir(k);
+  const pan = document.getElementById(`eb-p-${k}`);
+  const caches = [...pan.querySelectorAll('input[id^="estab-"], select[id^="estab-"], textarea[id^="estab-"]')]
+    .filter(el => !el.hidden && el.type !== 'hidden' && !el.closest('.eb-d.is-closed') && !/^estab-(new|override|res)-/.test(el.id))
+    .filter(el => el.getClientRects().length === 0)
+    .map(el => el.id);
+  return [k, caches];
+}).filter(([, caches]) => caches.length));
+
+// Le vendredi ferme a 01:30 : le lendemain se dit, et part en 25:30. 07:00 avant 14:00 reste une faute.
+const apresMinuit = (page) => page.evaluate(async () => {
+  const ouvert = document.getElementById('eb-open-estab-day-5');
+  if (!ouvert.checked) { ouvert.checked = true; ouvert.dispatchEvent(new Event('change', { bubbles: true })); }
+  document.getElementById('estab-day-5-open').value = '14:00';
+  const ferme = document.getElementById('estab-day-5-close');
+  ferme.value = '01:30';
+  ferme.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 40));
+  const indice = document.querySelector('[data-eb-lendemain="estab-day-5"]');
+  const dit = indice && !indice.hidden ? indice.textContent : '';
+  window.__QA_SAVED__ = [];
+  await submitCenterConfig('libramont');
+  const config = (window.__QA_SAVED__.find(body => body.action === 'saveCenterConfig') || {}).config || null;
+  document.getElementById('estab-day-5-open').value = '14:00';
+  document.getElementById('estab-day-5-close').value = '07:00';
+  const fautifs = validateEstablishmentForm().map(el => el.id);
+  return { dit, vendredi: config && config.defaultSchedule.regular['5'], fautifs };
+});
+
 // Gembloux n a pas de grille : la page montre ce que le moteur applique, et c est ce qui part.
 const horairesSansGrille = (page) => page.evaluate(async () => {
   const lire = (p, j) => ({ ferme: document.getElementById(`${p}-${j}-closed`).checked, ouvre: document.getElementById(`${p}-${j}-open`).value, fin: document.getElementById(`${p}-${j}-close`).value });
@@ -179,23 +218,29 @@ async function main() {
     await openEstablishment(page, 'base');
 
     // =====================================================================
-    console.log('\n[1] Une rangee de cases, une seule ouverte, tous les champs dans la page');
+    console.log('\n[1] Les rubriques a gauche, une seule ouverte, tous les champs dans la page');
     // =====================================================================
     const structure = await page.evaluate(() => ({
       menu: Array.from(document.querySelectorAll('.eb-m')).map(el => el.dataset.k),
-      salles: Array.from(document.querySelectorAll('.eb-salles .eb-col')).map(el => el.dataset.k),
+      activites: Array.from(document.querySelectorAll('.eb-act[data-act]')).map(el => el.dataset.act),
+      sous: Array.from(document.querySelectorAll('.eb-s')).map(el => el.dataset.k),
+      sansEffet: ['estab-bar-escort', 'estab-bar-booking', 'estab-canSplit', 'estab-laserRisk'].map((id) => { const el = document.getElementById(id); return el ? (el.closest('.eb-gardes') ? 'garde' : 'visible') : 'absent'; }),
       ouvertes: Array.from(document.querySelectorAll('.eb-pan')).filter(p => !p.hidden).map(p => p.dataset.k),
       champsFermes: document.querySelectorAll('.eb-pan[hidden] input, .eb-pan[hidden] select, .eb-pan[hidden] textarea').length,
       secoursAtteignable: document.getElementById('estab-secours-emails').getClientRects().length > 0,
-      fermetures: (document.querySelector('.availability-blocks') && document.querySelector('.availability-blocks').closest('.eb-pan') || {}).dataset?.k || 'hors-case',
+      fermetures: (document.querySelector('.availability-blocks') && document.querySelector('.availability-blocks').closest('.eb-pan') || {}).dataset?.k || 'hors-rubrique',
       activitesSansCase: (staffCenterConfigCache.activities || []).filter(a => !document.getElementById(`estab-act-${a.id}`)).map(a => a.id),
     }));
-    ok(structure.menu.join() === 'horaires,formules,clients,fiche', `4 cases de reglages (obtenu ${structure.menu.join(' / ')})`);
-    ok(structure.salles.includes('bowling') && structure.salles.includes('laser_game') && structure.salles.includes('tables') && structure.salles[structure.salles.length - 1] === 'plus', `une colonne par salle, les tables, le + (obtenu ${structure.salles.join(' / ')})`);
-    ok(structure.ouvertes.join() === 'horaires', `une seule case ouverte, les horaires (obtenu ${structure.ouvertes.join(' / ')})`);
+    ok(structure.menu.join() === 'centre,horaires,activites,formules,reservations,accueil,formulaire', `7 rubriques (obtenu ${structure.menu.join(' / ')})`);
+    ok(['bowling', 'laser_game', 'tables'].every(k => structure.activites.includes(k)) && ['bowling', 'tables'].every(k => structure.sous.includes(k)), `chaque activite a son bloc et son lien sous Activites (obtenu ${structure.activites.join(' / ')})`);
+    ok(structure.sansEffet.every(x => x === 'garde'), `les reglages que rien n applique restent hors de l ecran, leur valeur gardee (obtenu ${structure.sansEffet.join(' / ')})`);
+    ok(structure.ouvertes.join() === 'centre', `une seule rubrique ouverte, Le centre (obtenu ${structure.ouvertes.join(' / ')})`);
     ok(structure.champsFermes > 60, `les champs des cases fermees restent dans la page (obtenu ${structure.champsFermes})`);
-    ok(structure.secoursAtteignable === false, 'MONTAGE un champ d une case fermee n est pas atteignable');
-    ok(structure.fermetures === 'horaires', `les fermetures vivent dans la case Horaires (obtenu ${structure.fermetures})`);
+    ok(structure.secoursAtteignable === false, 'MONTAGE un champ d une rubrique fermee n est pas atteignable');
+    const caches = await reglagesCaches(page);
+    ok(caches.length === 0, `dans chaque rubrique ouverte, tout reglage se voit (caches : ${JSON.stringify(caches)})`);
+    await page.evaluate(() => ebOuvrir('centre'));
+    ok(structure.fermetures === 'horaires', `les fermetures vivent dans la rubrique Horaires (obtenu ${structure.fermetures})`);
     ok(structure.activitesSansCase.length === 0, `chaque activite du catalogue a sa case a cocher (sans case : ${structure.activitesSansCase.join(', ') || 'aucune'})`);
 
     // =====================================================================
@@ -231,8 +276,8 @@ async function main() {
     // sortait de la page, sa config partirait aux valeurs de repli.
     const saved = await page.evaluate(async () => {
       document.getElementById('estab-laneCount').value = '11';       // case Bowling
-      document.getElementById('estab-groupMinPax').value = '7';      // case Clients et comptoir
-      document.getElementById('estab-bar-escort').checked = true;    // case Clients et comptoir
+      document.getElementById('estab-groupMinPax').value = '7';      // rubrique Reservations
+      document.getElementById('estab-bar-escort').checked = true;    // reglage garde hors de l ecran
       document.getElementById('estab-offer-f1').checked = false;     // case Formules
       document.getElementById('estab-parking').value = 'Gratuit, 80 places'; // case Fiche du centre
       // La validation par l equipe (vrais clics : le niveau re-rend sa carte,
@@ -306,6 +351,15 @@ async function main() {
     ok(sansGrille.lundi === null && sansGrille.samediVacances && sansGrille.samediVacances.close === '24:00', `lundi reste ferme, samedi de vacances jusqu a minuit (obtenu ${JSON.stringify(sansGrille)})`);
 
     // =====================================================================
+    console.log('\n[4c] Une fermeture apres minuit');
+    // =====================================================================
+    await openEstablishment(page, 'apres-minuit');
+    const nuit = await apresMinuit(page);
+    ok(nuit.dit === 'le lendemain', `la page dit « le lendemain » sous 01:30 (obtenu "${nuit.dit}")`);
+    ok(nuit.vendredi && nuit.vendredi.open === '14:00' && nuit.vendredi.close === '25:30', `vendredi part de 14:00 a 25:30, comme le moteur l ecrit (obtenu ${JSON.stringify(nuit.vendredi)})`);
+    ok(nuit.fautifs.includes('estab-day-5-close'), `07:00 avant une ouverture a 14:00 reste une faute (obtenu ${JSON.stringify(nuit.fautifs)})`);
+
+    // =====================================================================
     console.log('\n[5] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
@@ -331,6 +385,13 @@ async function main() {
     // c. Lire seulement la grille du centre : Gembloux s affiche ferme, et partirait ferme.
     const ferme = await muter('grille', '  const slot = ebCreneauApplique(c.horaires, bloc, key);\n', '  const slot = (c.horaires[bloc] && c.horaires[bloc][key]) || null;\n', () => openEstablishment(page, 'mutation-grille', 'gembloux'), () => horairesSansGrille(page));
     ok(ferme && ferme.vu.mardi.ferme === true && ferme.mardi === null, `sans la grille appliquee, Gembloux partirait ferme le mardi (obtenu ${JSON.stringify(ferme && ferme.mardi)}) -> le gate ROUGIRAIT`);
+    // d. Sans la nuit qui deborde, 01:30 partirait tel quel : le vendredi fermerait avant d ouvrir.
+    const sansNuit = await muter('nuit', '    // Une fermeture avant l ouverture, jusqu a 06:00, est celle du lendemain : 00:00 devient 24:00, 01:30 devient 25:30.\n    if (ebApresMinuit(open, close)) close = ebLendemain(close);\n', '', () => openEstablishment(page, 'mutation-nuit'), () => apresMinuit(page));
+    ok(sansNuit && !(sansNuit.vendredi && sansNuit.vendredi.close === '25:30'), `sans la nuit qui deborde, 01:30 part tel quel (obtenu ${JSON.stringify(sansNuit && sansNuit.vendredi)}) -> le gate ROUGIRAIT`);
+    // e. Une ligne de reglage cachee dans sa rubrique : le controle des reglages caches le voit.
+    // (display:none et pas l attribut hidden : la feuille pose display:grid sur .eb-r, hidden n y cacherait rien.)
+    const cache = await muter('ligne', "function ebR(titre, aide, controle, cls = '') {\n  return `<div class=\"eb-r", "function ebR(titre, aide, controle, cls = '') {\n  return `<div style=\"display:none\" class=\"eb-r", () => openEstablishment(page, 'mutation-ligne'), () => reglagesCaches(page));
+    ok(cache && cache.length > 0, `une ligne cachee dans sa rubrique se voit (obtenu ${JSON.stringify(cache && cache.slice(0, 2))}) -> le gate ROUGIRAIT`);
     await openEstablishment(page, 'restore');
     const restored = await champFautif(page);
     ok(restored.ouverte === true, 'restauration inverse : la case s ouvre de nouveau');

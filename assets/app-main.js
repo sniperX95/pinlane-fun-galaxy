@@ -13916,7 +13916,7 @@ async function loadStaffCenterConfig(force = false) {
 
 // Aller a une case de la page SANS re-rendre : le rendu relirait la config du serveur et effacerait ce qui vient d etre tape.
 function setEstablishmentTab(key) {
-  state.establishmentTab = EB_ANCIENS_ONGLETS[key] || key || 'horaires';
+  state.establishmentTab = EB_ANCIENS_ONGLETS[key] || key || 'centre';
   save();
   if (document.querySelector('[data-estab-page]')) ebGo(state.establishmentTab);
 }
@@ -13965,7 +13965,7 @@ function ebChampVouluLu() {
 function ouvrirReglageSecours(centerId) {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
   const cible = centerId || getCurrentStaffCenterId();
-  state.establishmentTab = 'clients';
+  state.establishmentTab = 'accueil';
   state.establishmentEditing = false;
   save();
   if (cible !== getCurrentStaffCenterId()) {
@@ -14196,8 +14196,8 @@ function collectEstablishmentScheduleBlock(prefix) {
   ESTABLISHMENT_DAYS.forEach(([key]) => {
     const open = establishmentInputValue(`${prefix}-${key}-open`);
     let close = establishmentInputValue(`${prefix}-${key}-close`);
-    // 00:00 saisi comme heure de fermeture = minuit → stocké 24:00 (format moteur).
-    if (close === '00:00') close = '24:00';
+    // Une fermeture avant l ouverture, jusqu a 06:00, est celle du lendemain : 00:00 devient 24:00, 01:30 devient 25:30.
+    if (ebApresMinuit(open, close)) close = ebLendemain(close);
     const closed = document.getElementById(`${prefix}-${key}-closed`)?.checked;
     block[key] = closed || !open || !close ? null : { open, close };
   });
@@ -14237,9 +14237,10 @@ function markEstablishmentFieldError(input, message) {
   // Une heure fautive se dit sous la semaine type, pas dans sa case etroite.
   const host = /^estab-h?day-/.test(input.id || '')
     ? document.getElementById('ebSemErreurs')
-    : (input.closest('.field') || input.closest('.eb-met') || input.closest('.eb-ch'));
+    : (input.closest('.eb-r') || input.closest('.field') || input.closest('.eb-met') || input.closest('.eb-ch'));
   if (host) host.appendChild(note);
   else input.insertAdjacentElement('afterend', note);
+  if (typeof ebMarquerRubriques === 'function') ebMarquerRubriques();
 }
 
 // LES INSTALLATIONS D UNE ACTIVITE (2026-09-28), telles que le centre les a
@@ -14261,6 +14262,8 @@ function installationsActivite(activity, center) {
       ? Math.trunc(Number(reglage.capacityPerUnit))
       : (Number.isFinite(socleCapacite) && socleCapacite > 0 ? Math.trunc(socleCapacite) : null),
     mot,
+    // Le plus grand nombre qu une seule reservation peut prendre : celui du centre, sinon celui du catalogue.
+    plafond: Number(reglage.maxPerBooking) > 0 ? Math.trunc(Number(reglage.maxPerBooking)) : (Number(activity.maxPerBooking) > 0 ? Math.trunc(Number(activity.maxPerBooking)) : null),
   };
 }
 
@@ -14339,9 +14342,9 @@ function validateEstablishmentForm() {
       const open = establishmentInputValue(`${prefix}-${key}-open`);
       let close = establishmentInputValue(`${prefix}-${key}-close`);
       if (!open || !close) return; // champ vide = jour stocké fermé (comportement existant)
-      if (close === '00:00') close = '24:00';
+      if (ebApresMinuit(open, close)) close = ebLendemain(close);
       if (toMinutes(close) <= toMinutes(open)) {
-        markEstablishmentFieldError(closeInput, `${blockLabel}, ${dayLabel} : la fermeture doit être après l'ouverture (00:00 = minuit).`);
+        markEstablishmentFieldError(closeInput, `${blockLabel}, ${dayLabel} : la fermeture doit être après l’ouverture. Après minuit, mettez l’heure du lendemain, jusqu’à 06:00.`);
         invalid.push(closeInput);
       }
     });
@@ -14396,6 +14399,8 @@ async function submitCenterConfig(centerId) {
     const joueurs = Number(document.getElementById(`estab-cap-players-${activity.id}`)?.value);
     if (Number.isInteger(units) && units >= 1) entree.units = Math.min(50, units);
     if (Number.isInteger(joueurs) && joueurs >= 1) entree.capacityPerUnit = Math.min(500, joueurs);
+    const plafond = Number(document.getElementById(`estab-cap-max-${activity.id}`)?.value);
+    if (Number.isInteger(plafond) && plafond >= 1) entree.maxPerBooking = Math.min(50, plafond);
     if (Object.keys(entree).length) activityCapacity[activity.id] = entree;
   });
   // Panneau « Offres & formules » : map générique offerId -> booléen,
@@ -14883,23 +14888,25 @@ function renderStaffUtilitySecours() {
   </div>`;
 }
 
-// ── LA PAGE DU CENTRE (2026-11-09) ───────────────────────────────────────────
+// ── LA PAGE DU CENTRE (2026-11-10) ───────────────────────────────────────────
 //
-// Ansar : « le truc le plus simple et complet, les salles j aime bien ». Tout ce que le centre regle tient dans une
-// rangee de cases : quatre pour ce qui n est pas un lieu (horaires, formules, clients et comptoir, fiche du centre),
-// une colonne par salle avec sa vraie photo. On touche une case, on regle juste en dessous, une case ouverte a la
-// fois. Le calendrier de l annee vit dans la case Horaires : il dit ce qui s applique chaque jour, et un jour touche
-// se ferme ou se rouvre sur place.
-//
-// Tous les champs restent dans la page, les cases fermees sont masquees (attribut hidden) : submitCenterConfig les lit
-// par leur id. Rien n est re-rendu quand on change quelque chose (le rendu relirait la config du serveur et effacerait
-// la saisie) ; la barre du bas dit ce qui change.
-const EB_PHOTOS = {
-  libramont: { bowling: 'pistes-neon', laser_game: 'laser-couloir', minigolf_blacklight: 'minigolf', arcade_time: 'arcades', playground: 'plaine', duckpin_bowling: 'duckpin', billards: 'billards-libramont', fun_run: 'fun-run' },
-  gembloux: { bowling: 'gembloux-bowling', laser_game: 'gembloux-laser', minigolf_blacklight: 'gembloux-minigolf', arcade_time: 'gembloux-arcades', billards: 'gembloux-billard', golf_oclock: 'gembloux-golf-salle' },
-};
-// Les pages d avant parlaient d onglets : ils menent a la bonne case.
-const EB_ANCIENS_ONGLETS = { centre: 'horaires', offres: 'formules', regles: 'clients' };
+// Ansar, devant la page « salles » en ligne : « pas assez complet », « ça fait site vitrine », réglages cachés, place
+// perdue, mots pas clairs. Il a choisi un logiciel pro : les rubriques à gauche, tous les champs de la rubrique à
+// droite, chacun avec ce qu il change en une ligne. Une rubrique s affiche à la fois ; les autres restent dans la page
+// (attribut hidden) parce que submitCenterConfig lit chaque champ par son id. Rien n est re-rendu quand on change
+// quelque chose (le rendu relirait la config du serveur et effacerait la saisie) ; la barre du bas dit ce qui change et
+// la rubrique qui attend un enregistrement porte un point.
+const EB_RUBRIQUES = [
+  ['centre', 'Le centre', 'Son nom, son état et ce que les clients lisent.'],
+  ['horaires', 'Horaires', 'Quand les clients peuvent réserver, et les jours qui font exception.'],
+  ['activites', 'Activités', 'Ce que le centre propose, et ce que le planning sait de chaque activité.'],
+  ['formules', 'Formules', 'Ce que le client peut choisir sur le formulaire.'],
+  ['reservations', 'Réservations', 'Comment la console classe les réservations, les grands groupes et ce que l’équipe valide.'],
+  ['accueil', 'Accueil et secours', 'Quand un groupe passe en retard, et où part une copie de chaque réservation si Pinlane ne répond plus.'],
+  ['formulaire', 'Formulaire en ligne', 'Le lien de réservation, son apparence et l’encaissement.'],
+];
+// Les pages d avant parlaient d onglets ou de cases : ils menent a la bonne rubrique.
+const EB_ANCIENS_ONGLETS = { offres: 'formules', regles: 'reservations', clients: 'reservations', fiche: 'centre', plus: 'activites', comptoir: 'accueil' };
 // Ce que le catalogue range parmi les activites sans que le client les choisisse comme telles : la table, la boisson,
 // le credit d arcade. Leur case reste dans la page, cachee, pour repartir telle quelle a l enregistrement.
 const EB_PAS_DES_SALLES = ['party_table', 'service_drinks', 'arcade_credit'];
@@ -14922,16 +14929,11 @@ function ebHeure(valeur, fermeture) {
   const v = String(valeur || '');
   if (!v) return '';
   if (v === '24:00' || (fermeture && v === '00:00')) return 'minuit';
+  const m = /^(\d{2}):(\d{2})$/.exec(v);
+  if (m && Number(m[1]) > 24) return `${String(Number(m[1]) - 24).padStart(2, '0')}:${m[2]}`;
   return v;
 }
 function ebDateDite(iso) { return new Date(`${iso}T12:00:00`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }); }
-function ebPhotoDe(activiteId, center) {
-  const nom = (EB_PHOTOS[center.id] || {})[activiteId];
-  if (nom) return `/assets/fungalaxy/${nom}-carte.webp`;
-  const declaree = center.branding && center.branding.activityImages && center.branding.activityImages[activiteId];
-  return declaree ? String(declaree) : '';
-}
-
 // Un nombre : il se tape, et les touches moins et plus sont a cote.
 function ebNum(id, label, o) {
   const value = o.value === '' || o.value == null ? '' : Number(o.value);
@@ -15049,21 +15051,43 @@ function ebCreneauApplique(horaires, bloc, key) {
   const heure = n => `${String(Math.floor(n)).padStart(2, '0')}:${String(Math.round((n % 1) * 60)).padStart(2, '0')}`;
   return origine ? { open: heure(origine.open), close: heure(origine.close) } : null;
 }
+// Une heure de fermeture telle que le champ la montre : 24:00 et au-dela redeviennent l heure du lendemain.
+function ebHeureDuChamp(v) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || ''));
+  if (!m) return String(v || '');
+  const h = Number(m[1]);
+  return `${String(h >= 24 ? h - 24 : h).padStart(2, '0')}:${m[2]}`;
+}
+// Une fermeture plus tot que l ouverture, jusqu a 06:00, est celle du lendemain.
+function ebApresMinuit(open, close) {
+  const mn = (v) => { const [h, m] = String(v || '').split(':').map(Number); return h * 60 + m; };
+  return Boolean(open && close) && mn(close) <= mn(open) && mn(close) <= 360;
+}
+// Le moteur ecrit la nuit qui deborde au-dela de 24:00 : 01:30 le lendemain devient 25:30.
+function ebLendemain(v) {
+  const [h, m] = String(v).split(':').map(Number);
+  return `${String(h + 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function ebFermeDit(open, close) {
+  if (!close) return '';
+  if (close === '00:00') return 'minuit';
+  return ebApresMinuit(open, close) ? `${close} le lendemain` : close;
+}
 function ebJourHoraire(c, prefix, key, label, bloc) {
   const slot = ebCreneauApplique(c.horaires, bloc, key);
   const closed = !slot;
-  const close = slot && slot.close === '24:00' ? '00:00' : (slot && slot.close) || '22:00';
+  const close = slot ? ebHeureDuChamp(slot.close) : '22:00';
   const open = (slot && slot.open) || (bloc === 'holiday' ? '10:00' : '14:00');
-  return `<div class="eb-d${closed ? ' is-closed' : ''}">
-    <div class="eb-d-h"><input type="time" class="eb-heure" id="${prefix}-${key}-open" value="${open}" aria-label="${ebE(label)}, ouvre à"><input type="time" class="eb-heure" id="${prefix}-${key}-close" value="${close}" aria-label="${ebE(label)}, ferme à"></div>
-    <div class="eb-d-f">Fermé</div>
-    <label class="eb-d-o"><input type="checkbox" class="eb-dayopen" id="eb-open-${prefix}-${key}" data-eb-for="${prefix}-${key}" ${closed ? '' : 'checked'}><span>${ebE(label)}, ouvert</span></label>
+  return `<div class="eb-d${closed ? ' is-closed' : ''}" role="cell" data-quand="${bloc === 'holiday' ? 'Vacances' : 'Semaine normale'}">
+    <label class="eb-d-o"><input type="checkbox" class="eb-dayopen" id="eb-open-${prefix}-${key}" data-eb-for="${prefix}-${key}" ${closed ? '' : 'checked'} aria-label="${ebE(label)}, ouvert"><span class="eb-k-b" aria-hidden="true"></span></label>
+    <span class="eb-d-h"><input type="time" class="eb-heure" id="${prefix}-${key}-open" value="${open}" aria-label="${ebE(label)}, ouvre à"><span class="eb-d-a" aria-hidden="true">à</span><input type="time" class="eb-heure" id="${prefix}-${key}-close" value="${close}" aria-label="${ebE(label)}, ferme à"><small class="eb-d-l" data-eb-lendemain="${prefix}-${key}" hidden>le lendemain</small></span>
+    <span class="eb-d-f">Fermé</span>
     <input type="checkbox" id="${prefix}-${key}-closed" ${closed ? 'checked' : ''} hidden>
   </div>`;
 }
 function ebSemaineHtml(c) {
-  const ligne = (titre, prefix, bloc, t) => `<div class="eb-sem-l" data-t="${t}"><div class="eb-sem-q">${titre}</div>${ESTABLISHMENT_DAYS.map(([k, l]) => ebJourHoraire(c, prefix, k, l, bloc)).join('')}</div>`;
-  return `<div class="eb-sem-defil"><div class="eb-sem"><div class="eb-sem-l eb-sem-tete"><div class="eb-sem-q"></div>${ESTABLISHMENT_DAYS.map(([, l]) => `<div class="eb-sem-j">${ebE(l)}</div>`).join('')}</div>${ligne('Semaine normale', 'estab-day', 'regular', 1)}${ligne('Vacances et jours fériés', 'estab-hday', 'holiday', 3)}</div></div><div id="ebSemErreurs" class="eb-sem-err"></div>`;
+  const lignes = ESTABLISHMENT_DAYS.map(([k, l]) => `<div class="eb-sem-r" role="row"><span class="eb-sem-j" role="rowheader">${ebE(l)}</span>${ebJourHoraire(c, 'estab-day', k, l, 'regular')}${ebJourHoraire(c, 'estab-hday', k, `${l} en vacances`, 'holiday')}</div>`).join('');
+  return `<div class="eb-sem" role="table" aria-label="La semaine type"><div class="eb-sem-r eb-sem-tete" role="row"><span role="columnheader">Jour</span><span role="columnheader">Semaine normale</span><span role="columnheader">Vacances et jours fériés</span></div>${lignes}</div><div id="ebSemErreurs" class="eb-sem-err"></div>`;
 }
 function ebCalendrierHtml() {
   const auj = new Date();
@@ -15084,15 +15108,15 @@ function ebCalendrierHtml() {
   return `<div class="eb-cal"><div class="eb-an"><div class="eb-leg"><span class="k-n">Ouvert</span><span class="k-v">Vacances scolaires</span><span class="k-f">Jour férié</span><span class="k-x">Fermé chaque semaine</span><span class="k-b">Fermeture décidée</span><span class="k-p">Fermé une partie du jour</span><span class="k-a">Piste ou activité fermée</span></div><div class="eb-ent" aria-hidden="true"><b></b><div>${lettres}</div></div>${lignes.join('')}</div><aside class="eb-jour" id="ebJour" aria-live="polite" aria-label="Le jour choisi"></aside></div>`;
 }
 function ebVacancesHtml(c) {
-  return `${ebCase('estab-holiday-enabled', 'Passer tout seul aux horaires de vacances', { on: c.holidaySettings.enabled !== false, aide: 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.' })}
-    <div class="eb-grp"><div class="eb-grp-t">Les formules « pas valables en vacances » sont bloquées</div>
-    ${ebCase('estab-fbp-public', 'Les jours fériés', { on: c.bloquees.includes('public') })}
-    ${ebCase('estab-fbp-short', 'Les petits congés', { on: c.bloquees.includes('school_short'), aide: 'Automne, hiver, détente, printemps.' })}
-    ${ebCase('estab-fbp-summer', 'Les grandes vacances', { on: c.bloquees.includes('school_summer'), aide: 'Juillet et août.' })}</div>`;
+  return `${ebCase('estab-holiday-enabled', 'Passer tout seul aux horaires de vacances', { on: c.holidaySettings.enabled !== false, aide: 'Pendant les congés scolaires et les jours fériés, la colonne « Vacances » de la semaine s’applique.' })}
+    <div class="eb-sous-t">Les formules marquées « pas en vacances »</div>
+    ${ebCase('estab-fbp-public', 'Bloquées les jours fériés', { on: c.bloquees.includes('public') })}
+    ${ebCase('estab-fbp-short', 'Bloquées aux petits congés', { on: c.bloquees.includes('school_short'), aide: 'Automne, hiver, détente et printemps.' })}
+    ${ebCase('estab-fbp-summer', 'Bloquées aux grandes vacances', { on: c.bloquees.includes('school_summer'), aide: 'Juillet et août.' })}`;
 }
 function ebJoursAPartHtml() {
   return `<div id="estabHolidayOverridesList" class="eb-liste" data-eb-watch="exceptions">${renderEstablishmentOverridesList()}</div>
-    <div class="eb-ligne"><label class="eb-ch"><span>Date</span><input type="date" id="estab-override-date" class="eb-f"></label><label class="eb-ch"><span>Ce jour-là</span><select id="estab-override-mode" class="eb-f"><option value="holiday">Horaires de vacances</option><option value="normal">Horaires normaux</option></select></label><button type="button" class="eb-b" onclick="addEstablishmentHolidayOverride()">Ajouter ce jour</button></div>`;
+    <div class="eb-ajout"><label class="eb-ch"><span>Date</span><input type="date" id="estab-override-date" class="eb-f"></label><label class="eb-ch"><span>Ce jour-là</span><select id="estab-override-mode" class="eb-f"><option value="holiday">Horaires de vacances</option><option value="normal">Horaires normaux</option></select></label><button type="button" class="eb-b" onclick="addEstablishmentHolidayOverride()">Ajouter ce jour</button></div>`;
 }
 // Programmer une fermeture : memes ids que le panneau d origine, que submitAvailabilityBlock lit.
 function ebFermetureFormHtml() {
@@ -15118,47 +15142,103 @@ function ebFermetureFormHtml() {
   </div>`;
 }
 
-// ── Les salles ───────────────────────────────────────────────────────────────
-function ebSalleColonne(id, nom, photo, n, mot, miroir, i, dessin = '') {
-  const on = ebOuverte === id;
-  return `<button type="button" class="eb-t eb-col${on ? ' is-on' : ''}" data-k="${ebE(id)}" data-t="${(i % 4) + 1}" aria-expanded="${on}" aria-controls="eb-p-${ebE(id)}" onclick="ebOuvrir('${ebJs(id)}')"><span class="eb-ph">${photo ? `<img src="${ebE(photo)}" alt="" loading="lazy" decoding="async">` : dessin}</span><span class="eb-pied"><b>${ebE(nom)}</b>${n !== '' ? `<em${miroir ? ` data-eb-miroir="${ebE(miroir)}"` : ''}>${ebE(n)}</em><small>${ebE(mot)}</small>` : ''}</span></button>`;
+// ── Les briques ──────────────────────────────────────────────────────────────
+// Une ligne de reglage : ce que c est et ce que ca change a gauche, le controle a droite.
+function ebR(titre, aide, controle, cls = '') {
+  return `<div class="eb-r${cls ? ` ${cls}` : ''}"><div class="eb-r-l"><b>${titre}</b>${aide ? `<small>${aide}</small>` : ''}</div><div class="eb-r-c">${controle}</div></div>`;
 }
+// Un groupe de reglages sous son titre ; « droite » se pose en face du titre (une bascule, un lien).
+function ebG(titre, aide, corps, o = {}) {
+  return `<section class="eb-g${o.cls ? ` ${o.cls}` : ''}"${o.id ? ` id="${o.id}"` : ''}${o.attrs ? ` ${o.attrs}` : ''}><div class="eb-g-h"><div class="eb-g-t"><h3>${titre}</h3>${aide ? `<p>${aide}</p>` : ''}</div>${o.droite ? `<div class="eb-g-d">${o.droite}</div>` : ''}</div>${corps ? `<div class="eb-g-c">${corps}</div>` : ''}</section>`;
+}
+function ebTexte(id, valeur, o = {}) {
+  return `<input type="${o.type || 'text'}" id="${id}" class="eb-f${o.cls ? ` ${o.cls}` : ''}"${o.max ? ` maxlength="${o.max}"` : ''} autocomplete="off" value="${ebE(valeur)}"${o.ph ? ` placeholder="${ebE(o.ph)}"` : ''}${o.attrs ? ` ${o.attrs}` : ''}>`;
+}
+// La rubrique d un ancien onglet, d une case ou d une activite.
+function ebSectionDe(k, salles) {
+  const v = EB_ANCIENS_ONGLETS[k] || k;
+  if (EB_RUBRIQUES.some(([id]) => id === v)) return v;
+  return v === 'tables' || salles.some(a => a.id === v) ? 'activites' : 'centre';
+}
+
+// ── Le centre ────────────────────────────────────────────────────────────────
+function ebCentreHtml(c) {
+  const center = c.center;
+  const tz = center.timezone || 'Europe/Brussels';
+  const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Amsterdam', 'Pays-Bas']];
+  const info = center.publicInfo && typeof center.publicInfo === 'object' ? center.publicInfo : {};
+  const fuseau = `<select id="estab-timezone" class="eb-f">${fuseaux.map(([z, n]) => `<option value="${z}" ${tz === z ? 'selected' : ''}>${n}</option>`).join('')}${fuseaux.some(([z]) => z === tz) ? '' : `<option value="${ebE(tz)}" selected>${ebE(tz)}</option>`}</select>`;
+  return ebG('Nom et état', '', ebR('Nom du centre', 'Il s’affiche sur le formulaire, dans les mails et dans la console.', ebTexte('estab-name', center.name, { max: 80 }))
+      + ebR('État', 'Prévu : visible ici, pas encore réservable. Archivé : plus aucune réservation en ligne.', ebSeg('estab-status', 'État du centre', [['active', 'Ouvert à la réservation'], ['planned', 'Prévu'], ['closed', 'Archivé']], center.status))
+      + ebR('Fuseau horaire', 'Les heures du planning, du formulaire et des mails suivent ce pays.', fuseau))
+    + ebG('Ce que lisent les clients', 'Dans les mails de confirmation, sur le formulaire et chez l’assistant.',
+      ebR('Adresse', '', ebTexte('estab-address', info.address || '', { max: 200, ph: 'Rue, numéro, code postal, ville', cls: 'eb-f-l' }))
+      + ebR('Téléphone', 'Le numéro que les clients appellent.', ebTexte('estab-phone', info.phone || '', { type: 'tel', max: 40 }))
+      + ebR('Parking', 'Une ligne, par exemple « Gratuit, 80 places ».', ebTexte('estab-parking', info.parking || '', { max: 60, ph: 'Gratuit' }))
+      + ebR('Mail du centre', 'Les réponses des clients arrivent ici. Il se change avec l’équipe Pinlane.', `<b class="eb-ro-v">${ebE(center.publicEmail || 'Pas encore renseigné')}</b>`))
+    + (c.canEdit ? ebG('Ajouter un centre', 'Il arrive en « prévu » : rien ne s’ouvre aux clients avant que vous le décidiez.',
+      ebR('Nom du nouveau centre', '', ebTexte('estab-new-name', '', { max: 80, attrs: 'oninput="ebIdentifiantDuNom(this.value)"' }))
+      + ebR('Identifiant', 'Sans espace. Il se lit dans le lien de réservation.', ebTexte('estab-new-id', '', { max: 40, ph: 'namur', attrs: 'oninput="this.dataset.touche=\'1\'"' }))
+      + '<div class="eb-g-pied"><button type="button" class="eb-b" onclick="submitNewCenter()">Ajouter ce centre</button></div>') : '');
+}
+
+// ── Horaires ─────────────────────────────────────────────────────────────────
+function ebHorairesHtml(c) {
+  return ebG('La semaine', 'Les heures où les clients peuvent réserver. Une fermeture après minuit se met à l’heure du lendemain, jusqu’à 06:00.', ebSemaineHtml(c), { cls: 'eb-g-sem' })
+    + ebG('Vacances et jours fériés', 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.', ebVacancesHtml(c))
+    + ebG('Jours à part', 'Un jour précis qui suit les horaires de vacances ou les horaires normaux. Il part avec Enregistrer.', ebJoursAPartHtml())
+    + ebG('Fermetures programmées', 'Tout le centre, une piste, une activité ou une formule. La fermeture part tout de suite, sans Enregistrer.', `${ebFermetureFormHtml()}<div id="avbList" class="eb-liste">${renderAvailabilityBlocksList()}</div>`)
+    + ebG('L’année', 'Touchez un jour pour voir ses heures, le fermer ou le rouvrir.', ebCalendrierHtml(), { cls: 'eb-g-an' });
+}
+
+// ── Activités ────────────────────────────────────────────────────────────────
 function ebFermerSalleHtml(a) {
   const idA = ebE(a.id);
   const pistes = a.id === 'bowling' ? `<select class="eb-f" id="eb-f-piste-${idA}" aria-label="Quoi fermer"><option value="">Tout le bowling</option>${Array.from({ length: getAvailabilityLaneCount() }, (u, i) => `<option value="${i + 1}">Piste ${i + 1}</option>`).join('')}</select>` : '';
-  return `<div class="eb-ferm"><span>Fermer un jour</span>${pistes}<input type="date" class="eb-f" id="eb-f-date-${idA}" min="${ebIso(new Date())}" aria-label="Date à fermer"><button type="button" class="eb-b" onclick="ebFermerSalle('${ebJs(a.id)}')">Fermer</button></div>`;
+  return `${pistes}<input type="date" class="eb-f eb-f-date" id="eb-f-date-${idA}" min="${ebIso(new Date())}" aria-label="Date à fermer, ${ebE(a.label)}"><button type="button" class="eb-b" onclick="ebFermerSalle('${ebJs(a.id)}')">Fermer</button>`;
 }
-function ebSallePanneau(c, a, i) {
-  const idA = ebE(a.id);
-  let corps = '';
-  if (a.id === 'bowling') {
-    corps = `${ebMet('Pistes', ebNum('estab-laneCount', 'Pistes de bowling', { min: 1, max: 40, value: Number(c.bowling.laneCount || 8) }), 'eb-gros')}<div class="eb-pistes" data-eb-pistes aria-hidden="true"></div>
-      <div class="eb-rang">${ebMet('Joueurs par piste', ebNum('estab-normalCap', 'Joueurs par piste', { min: 1, max: 12, value: Number(c.bowling.normalCapacityPerLane || 6) }))}${ebMet('Si besoin', ebNum('estab-emergencyCap', 'Joueurs par piste si besoin', { min: 1, max: 15, value: Number(c.bowling.emergencyCapacityPerLane || 7), minFrom: 'estab-normalCap' }))}<div class="eb-pts eb-pts-j" data-eb-points="estab-normalCap,estab-emergencyCap" aria-hidden="true"></div></div>
-      ${ebCase('estab-preferAdjacent', 'Mettre un groupe sur des pistes voisines', { on: c.bowling.preferAdjacentLanes !== false })}`;
-  } else if (a.id === 'laser_game') {
-    const risque = ['critical', 'managed', 'low'].includes(c.laser.riskLevel) ? c.laser.riskLevel : 'managed';
-    corps = `${ebMet('Armes', ebNum('estab-weaponCount', 'Armes de laser', { min: 0, max: 200, value: Number(c.laser.weaponCount || 0) }), 'eb-gros')}<div class="eb-pts eb-pts-a" data-eb-points="estab-weaponCount" aria-hidden="true"></div>
-      <div class="eb-rang">${ebMet('Parties en même temps', ebNum('estab-launches', 'Parties en même temps', { min: 1, max: 20, value: Number(c.laser.parallelLaunches || 1) }))}${ebMet('Prudence du planning', ebSeg('estab-laserRisk', 'Prudence du planning au laser', [['low', 'Souple'], ['managed', 'Normal'], ['critical', 'Prudent']], risque))}</div>
-      ${ebCase('estab-requiresComplete', 'Attendre tout le groupe avant de lancer', { on: c.laser.requiresCompleteGroupBeforeLaunch !== false })}${ebCase('estab-canSplit', 'Couper un grand groupe en deux parties', { on: c.laser.canSplitGroupsCleanly === true })}`;
+function ebActiviteHtml(c, a) {
+  const id = a.id;
+  const propose = Boolean(c.center.activityAvailability && c.center.activityAvailability[id]);
+  let lignes = '';
+  if (id === 'bowling') {
+    lignes = ebR('Pistes', 'Le planning et le formulaire en ligne comptent sur ce nombre.', ebNum('estab-laneCount', 'Pistes de bowling', { min: 1, max: 40, value: Number(c.bowling.laneCount || 8) }))
+      + ebR('Joueurs par piste', 'Au-delà, un groupe est réparti sur plusieurs pistes.', ebNum('estab-normalCap', 'Joueurs par piste', { min: 1, max: 12, value: Number(c.bowling.normalCapacityPerLane || 6) }))
+      + ebR('Joueurs par piste quand c’est plein', 'Si aucune piste n’est libre, le planning peut monter jusqu’à ce nombre.', ebNum('estab-emergencyCap', 'Joueurs par piste quand c’est plein', { min: 1, max: 15, value: Number(c.bowling.emergencyCapacityPerLane || 7), minFrom: 'estab-normalCap' }))
+      + ebCase('estab-preferAdjacent', 'Un groupe sur des pistes voisines', { on: c.bowling.preferAdjacentLanes !== false, aide: 'Un groupe qui prend plusieurs pistes les reçoit côte à côte.' });
+  } else if (id === 'laser_game') {
+    lignes = ebR('Armes', 'Le nombre de joueurs qui peuvent jouer en même temps.', ebNum('estab-weaponCount', 'Armes de laser', { min: 0, max: 200, value: Number(c.laser.weaponCount || 0) }))
+      + ebR('Parties en même temps', 'Au-delà, le créneau est complet.', ebNum('estab-launches', 'Parties en même temps', { min: 1, max: 20, value: Number(c.laser.parallelLaunches || 1) }))
+      + ebCase('estab-requiresComplete', 'Lancer une partie avec le groupe complet', { on: c.laser.requiresCompleteGroupBeforeLaunch !== false, aide: 'Les retardataires attendent la partie suivante. Les mails aux clients le disent.' });
   } else {
     const inst = installationsActivite(a, c.center);
     if (inst) {
       const unites = inst.mot === 'session' ? 'installations' : `${inst.mot}s`;
-      corps = `<div class="eb-rang">${ebMet(unites.charAt(0).toUpperCase() + unites.slice(1), ebNum(`estab-cap-units-${a.id}`, `${a.label}, ${unites}`, { min: 1, max: 50, value: inst.units, cls: 'estab-cap-input', capName: a.label, capWhat: unites }), 'eb-gros')}${inst.capacityPerUnit ? ebMet(`Joueurs par ${inst.mot}`, ebNum(`estab-cap-players-${a.id}`, `${a.label}, joueurs par ${inst.mot}`, { min: 1, max: 500, value: inst.capacityPerUnit, cls: 'estab-cap-input', capName: a.label, capWhat: `joueurs par ${inst.mot}` })) : ''}</div>`;
+      const titre = unites.charAt(0).toUpperCase() + unites.slice(1);
+      lignes = ebR(titre, `Combien de ${unites} le formulaire peut vendre en même temps.`, ebNum(`estab-cap-units-${id}`, `${a.label}, ${unites}`, { min: 1, max: 50, value: inst.units, cls: 'estab-cap-input', capName: a.label, capWhat: unites }))
+        + (inst.capacityPerUnit ? ebR(`Joueurs par ${inst.mot}`, `Au-delà, un groupe est réparti sur plusieurs ${unites}.`, ebNum(`estab-cap-players-${id}`, `${a.label}, joueurs par ${inst.mot}`, { min: 1, max: 500, value: inst.capacityPerUnit, cls: 'estab-cap-input', capName: a.label, capWhat: `joueurs par ${inst.mot}` })) : '')
+        + (inst.plafond ? ebR('Au plus par réservation', `Une seule réservation ne prend pas plus de ${unites} que ce nombre.`, ebNum(`estab-cap-max-${id}`, `${a.label}, au plus par réservation`, { min: 1, max: 50, value: inst.plafond, cls: 'estab-cap-input', capName: a.label, capWhat: `${unites} au plus par réservation` })) : '');
     }
-    if (a.id === 'arcade_time') corps += `<div class="eb-large">${ebArcadesHtml(c.center)}</div>`;
+    if (id === 'arcade_time') lignes += `<div class="eb-arcades">${ebArcadesHtml(c.center)}</div>`;
   }
-  const propose = Boolean(c.center.activityAvailability && c.center.activityAvailability[a.id]);
-  const prix = canUseStaffPermission('pricing.manage') ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'prices\');return false">Voir ses prix</a>' : '';
-  const etat = a.id === 'bowling' ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'lanes\');return false">Voir l’état des pistes</a>' : '';
-  return `<section class="eb-pan eb-pan-salle" id="eb-p-${idA}" data-k="${idA}" data-t="${(i % 4) + 1}" aria-label="${ebE(a.label)}" ${ebOuverte === a.id ? '' : 'hidden'}><h3>${ebE(a.label)}</h3><div class="eb-corps">${corps}</div><div class="eb-cote">${ebCase(`estab-act-${a.id}`, 'Proposer aux clients', { on: propose, aide: propose ? '' : 'Pas encore proposée dans ce centre.' })}${ebFermerSalleHtml(a)}${prix}${etat}</div></section>`;
+  lignes += ebR('Fermer un jour', 'La fermeture part tout de suite, sans Enregistrer.', ebFermerSalleHtml(a), 'eb-r-ferm');
+  const liens = `${canUseStaffPermission('pricing.manage') ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'prices\');return false">Prix</a>' : ''}${id === 'bowling' ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'lanes\');return false">État des pistes</a>' : ''}`;
+  return ebG(ebE(a.label), propose ? '' : 'Pas réservable dans ce centre pour l’instant.', lignes, { id: `eb-a-${ebE(id)}`, cls: `eb-act${propose ? '' : ' est-off'}`, attrs: `data-act="${ebE(id)}"`, droite: `${liens}${ebCase(`estab-act-${id}`, 'Réservable en ligne', { on: propose, cls: 'eb-k-tete' })}` });
 }
-function ebAutresHtml(c, off) {
-  const aProposer = off.filter(a => !EB_PAS_DES_SALLES.includes(a.id));
-  const caches = (c.activites || []).filter(a => EB_PAS_DES_SALLES.includes(a.id)).map(a => `<input type="checkbox" id="estab-act-${ebE(a.id)}" ${c.center.activityAvailability && c.center.activityAvailability[a.id] ? 'checked' : ''} hidden>`).join('');
-  return `<div class="eb-autres"><div><h4>Activités à proposer</h4>${aProposer.length ? `<div class="eb-a-liste">${aProposer.map(a => `<button type="button" class="eb-b" onclick="ebOuvrir('${ebJs(a.id)}')">${ebE(a.label)}</button>`).join('')}</div><p class="eb-note">Touchez une activité pour la proposer et la régler.</p>` : '<p class="eb-note">Toutes les activités du catalogue sont proposées.</p>'}${caches}</div>
-    <div><h4>Une activité à vous</h4><div id="estabCustomActivitiesList" class="eb-liste estab-custom-activities-list" data-eb-watch="activites-perso">${renderEstablishmentCustomActivities()}</div><div class="eb-ligne"><label class="eb-ch eb-ch-m"><span>Nom de l’activité</span><input type="text" id="estab-new-activity" class="eb-f" placeholder="Réalité virtuelle" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}"></label><button type="button" class="eb-b" onclick="addEstablishmentCustomActivity()">Ajouter</button></div></div>
-    <div><h4>Autres installations</h4><div id="estabDeclaredResourcesList" class="eb-liste estab-custom-activities-list" data-eb-watch="installations">${renderEstablishmentDeclaredResources()}</div><div class="eb-ligne"><label class="eb-ch eb-ch-m"><span>Installation</span><input type="text" id="estab-res-name" class="eb-f" placeholder="Court de padel" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentDeclaredResource();}"></label></div><div class="eb-ligne">${ebMet('Combien', ebNum('estab-res-units', 'Combien', { min: 1, max: 50, value: 1 }))}${ebMet('Joueurs chacune', ebNum('estab-res-capacity', 'Joueurs chacune', { min: 1, max: 500, value: 4 }))}${ebMet('Remise en état (min)', ebNum('estab-res-cleanup', 'Minutes de remise en état', { min: 0, max: 240, value: 0, step: 5 }))}</div><div class="eb-ligne">${ebCase('estab-res-mixing', 'Deux groupes ensemble', { on: false })}<button type="button" class="eb-b" onclick="addEstablishmentDeclaredResource()">Ajouter</button></div></div></div>`;
+function ebTablesHtml(c, secoursVide) {
+  const soft = Number(c.party.softCapacity || 6);
+  const hard = Number(c.party.hardCapacity || Math.max(soft, 8));
+  return ebG('Tables d’anniversaire', '', ebR('Tables', 'Le nombre de tables d’anniversaire du centre.', ebNum('estab-tableSoft', 'Tables d’anniversaire', { min: 1, max: 100, value: soft }))
+      + ebR('Limite de tables', 'Au-delà de ce nombre en même temps, un mail peut vous prévenir.', ebNum('estab-tableHard', 'Limite de tables', { min: 1, max: 120, value: hard, minFrom: 'estab-tableSoft' }))
+      + ebCase('estab-tableLimit', 'Me prévenir par mail au-delà de la limite', { on: c.party.limitEnabled === true, aide: 'Rien n’est refusé au client : la réservation passe, un mail part vers la boîte de secours.' })
+      + `<p class="eb-dit" data-eb-phrase="tables">${ebE(ebPhraseTables(soft, hard, c.party.limitEnabled === true))}</p>`
+      + (secoursVide ? '<p class="eb-note">La boîte de secours n’a aucune adresse : aucun mail ne partira. Elle se règle dans Accueil et secours.</p>' : ''),
+    { id: 'eb-a-tables', cls: 'eb-act', attrs: 'data-act="tables"' });
+}
+function ebAutresHtml() {
+  const entree = (fn) => `onkeydown="if(event.key==='Enter'){event.preventDefault();${fn}();}"`;
+  return ebG('Vos activités', 'Une activité propre au centre, en plus de la liste.', `<div id="estabCustomActivitiesList" class="eb-liste estab-custom-activities-list" data-eb-watch="activites-perso">${renderEstablishmentCustomActivities()}</div><div class="eb-ajout"><label class="eb-ch eb-ch-m"><span>Nom de l’activité</span><input type="text" id="estab-new-activity" class="eb-f" placeholder="Réalité virtuelle" maxlength="60" autocomplete="off" ${entree('addEstablishmentCustomActivity')}></label><button type="button" class="eb-b" onclick="addEstablishmentCustomActivity()">Ajouter</button></div>`)
+    + ebG('Autres installations', 'Un équipement du centre qui n’est pas dans la liste : un court, une salle, un simulateur.', `<div id="estabDeclaredResourcesList" class="eb-liste estab-custom-activities-list" data-eb-watch="installations">${renderEstablishmentDeclaredResources()}</div><div class="eb-ajout"><label class="eb-ch eb-ch-m"><span>Installation</span><input type="text" id="estab-res-name" class="eb-f" placeholder="Court de padel" maxlength="60" autocomplete="off" ${entree('addEstablishmentDeclaredResource')}></label>${ebMet('Combien', ebNum('estab-res-units', 'Combien', { min: 1, max: 50, value: 1 }))}${ebMet('Joueurs chacune', ebNum('estab-res-capacity', 'Joueurs chacune', { min: 1, max: 500, value: 4 }))}${ebMet('Remise en état (min)', ebNum('estab-res-cleanup', 'Minutes de remise en état', { min: 0, max: 240, value: 0, step: 5 }))}${ebCase('estab-res-mixing', 'Deux groupes ensemble', { on: false, cls: 'eb-k-tete' })}<button type="button" class="eb-b" onclick="addEstablishmentDeclaredResource()">Ajouter</button></div>`);
 }
 
 // ── Formules ─────────────────────────────────────────────────────────────────
@@ -15176,24 +15256,44 @@ function ebFormulesHtml(c) {
     const id = ebE(f.id);
     const on = c.center.offerAvailability?.[f.id] !== false;
     const fete = anniv.includes(f.id);
-    return `<div class="eb-tr${on ? '' : ' est-off'}" role="row" data-eb-nom="${ebE(f.name)}"><span role="cell" class="eb-f-n"><b>${ebE(f.name)}</b>${Array.isArray(f.desc) ? `<small>${ebE(f.desc.slice(0, 3).join(', '))}</small>` : ''}</span><span role="cell" class="eb-f-p">${f.price != null ? `${prix(f.price)}<small>${f.type === 'per_lane' ? 'la piste' : 'par joueur'}</small>` : ''}</span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-offer-${id}" data-estab-offer="${id}" ${on ? 'checked' : ''} aria-label="${ebE(f.name)} au formulaire"><span class="eb-k-b" aria-hidden="true"></span></label></span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-bday-${id}" data-estab-bday="${id}" ${fete ? 'checked' : ''} aria-label="${ebE(f.name)} compte en anniversaire"><span class="eb-k-b" aria-hidden="true"></span></label></span></div>`;
+    return `<div class="eb-tr${on ? '' : ' est-off'}" role="row" data-eb-nom="${ebE(f.name)}"><span role="cell" class="eb-f-n"><b>${ebE(f.name)}</b>${Array.isArray(f.desc) ? `<small>${ebE(f.desc.slice(0, 3).join(', '))}</small>` : ''}</span><span role="cell" class="eb-f-p">${f.price != null ? `${prix(f.price)}<small>${f.type === 'per_lane' ? 'la piste' : 'par joueur'}</small>` : ''}</span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-offer-${id}" data-estab-offer="${id}" ${on ? 'checked' : ''} aria-label="${ebE(f.name)} réservable en ligne"><span class="eb-k-b" aria-hidden="true"></span></label></span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-bday-${id}" data-estab-bday="${id}" ${fete ? 'checked' : ''} aria-label="${ebE(f.name)} compte en anniversaire"><span class="eb-k-b" aria-hidden="true"></span></label></span></div>`;
   };
-  return `<div class="eb-tab" role="table" aria-label="Les formules"><div class="eb-tr eb-th" role="row"><span role="columnheader">Formule</span><span role="columnheader">Prix</span><span role="columnheader">Au formulaire</span><span role="columnheader">Compte en anniversaire</span></div>${familles.map(g => `<div class="eb-tr eb-fam" role="row"><span role="cell">${ebE(String(g.nom).replace(/speciales/i, 'spéciales'))}</span></div>${g.items.map(ligne).join('')}`).join('')}</div>`;
+  return `<div class="eb-tab" role="table" aria-label="Les formules"><div class="eb-tr eb-th" role="row"><span role="columnheader">Formule</span><span role="columnheader">Prix</span><span role="columnheader">Réservable en ligne</span><span role="columnheader">Anniversaire</span></div>${familles.map(g => `<div class="eb-tr eb-fam" role="row"><span role="cell">${ebE(String(g.nom).replace(/speciales/i, 'spéciales'))}</span></div>${g.items.map(ligne).join('')}`).join('')}</div>`;
+}
+function ebFormulesPanHtml(c) {
+  return ebG('Les formules', 'Décochez une formule pour la retirer du formulaire. « Anniversaire » classe la réservation en anniversaire.', ebFormulesHtml(c), { cls: 'eb-g-tab' })
+    + ebG('Suggestions avant de confirmer', 'Ce que le formulaire propose en plus, juste avant la confirmation.', `<div class="eb-g-bloc" data-eb-watch="suggestions">${window.PinlaneUpsellSettings?.renderEdit(c.center, establishmentUpsellCatalogue()) || ''}</div>`);
 }
 
-// ── La fiche du centre ───────────────────────────────────────────────────────
-function ebFicheHtml(c) {
+// ── Réservations ─────────────────────────────────────────────────────────────
+function ebReservationsHtml(c) {
+  const k = c.classification;
+  return ebG('Groupes et clients', 'Comment la console classe les réservations et les clients.',
+      ebR('Un groupe à partir de', 'Une réservation de ce nombre de joueurs ou plus est un groupe.', ebNum('estab-groupMinPax', 'Un groupe à partir de combien de joueurs', { min: 2, max: 200, value: Number(k.groupMinPax || 10) }))
+      + ebR('Ou un client qui cumule', 'Un client qui a réservé pour ce nombre de joueurs au total compte aussi comme groupe.', ebNum('estab-groupMinCumulative', 'Joueurs cumulés par un client', { min: 2, max: 5000, value: Number(k.groupMinCumulative || 18) }))
+      + ebR('Client clé à partir de', 'Le montant dépensé au total, en euros. À 0, les 20 % qui dépensent le plus.', ebNum('estab-keyClientMinSpend', 'Client clé à partir de combien d’euros', { min: 0, max: 100000, value: Number(k.keyClientMinSpend || 0), step: 50 }))
+      + ebCase('estab-countFormulaAsGroup', 'Une formule compte comme un groupe', { on: k.countFormulaAsGroup !== false, aide: 'Même avec moins de joueurs qu’un groupe.' })
+      + ebCase('estab-birthdayFromFormula', 'Anniversaire d’après la formule', { on: k.birthdayFromFormula !== false, aide: 'Une formule marquée « Anniversaire » classe la réservation en anniversaire.' }))
+    + ebG('Grands groupes', '', ebR('Demande sur mesure à partir de', 'Au-delà de ce nombre de joueurs, le client envoie une demande au lieu de réserver. Vide : jamais.', ebNum('estab-customRequestFromPax', 'Demande sur mesure dès', { min: 2, max: 240, value: Number(c.center.customRequest && c.center.customRequest.fromPax) || '', start: 30, vide: 'Jamais' })))
+    + ebG('Validation par l’équipe', '', `<div class="eb-g-bloc" data-eb-watch="validation">${establishmentValidationHtml(c.center)}</div>`);
+}
+
+// ── Accueil et secours ───────────────────────────────────────────────────────
+function ebAccueilHtml(c) {
+  const emails = c.center.secours && Array.isArray(c.center.secours.emails) ? c.center.secours.emails : [];
+  return ebG('Accueil', '', ebR('En retard après', 'Un groupe pas encore arrivé après ce nombre de minutes passe « en retard » dans le planning.', ebNum('estab-lateThreshold', 'En retard après combien de minutes', { min: 0, max: 60, value: c.retard })))
+    + ebG('Boîte de secours', 'Une copie complète de chaque réservation, de chaque demande sur mesure et la feuille du jour partent vers ces adresses. C’est ce qui permet d’accueillir les groupes si Pinlane est indisponible.',
+      ebR('Adresses', 'Séparées par une virgule, 5 au plus. De préférence une boîte à part, protégée par une double authentification.', `<input type="text" id="estab-secours-emails" class="eb-f eb-f-l" inputmode="email" autocomplete="off" value="${ebE(emails.join(', '))}" placeholder="secours@votrecentre.be" aria-label="Adresses de secours">`));
+}
+
+// ── Formulaire en ligne ──────────────────────────────────────────────────────
+function ebFormulaireHtml(c) {
   const center = c.center;
-  const tz = center.timezone || 'Europe/Brussels';
-  const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Amsterdam', 'Pays-Bas']];
-  const info = center.publicInfo && typeof center.publicInfo === 'object' ? center.publicInfo : {};
   const lien = `/reserver/${encodeURIComponent(center.id)}`;
-  return `<div class="eb-rang eb-rang-fiche"><label class="eb-ch eb-ch-m"><span>Nom du centre</span><input type="text" id="estab-name" class="eb-f" maxlength="80" value="${ebE(center.name)}"></label><div class="eb-ch"><span>Le centre est</span>${ebSeg('estab-status', 'Statut du centre', [['active', 'Ouvert à la réservation'], ['planned', 'Prévu'], ['closed', 'Archivé']], center.status)}</div><label class="eb-ch"><span>Heure du centre</span><select id="estab-timezone" class="eb-f">${fuseaux.map(([z, n]) => `<option value="${z}" ${tz === z ? 'selected' : ''}>${n}</option>`).join('')}${fuseaux.some(([z]) => z === tz) ? '' : `<option value="${ebE(tz)}" selected>${ebE(tz)}</option>`}</select></label></div>
-    <h3 class="eb-h3">Ce que lisent les clients</h3>
-    <div class="eb-coord"><label class="eb-ch eb-ch-m"><span>Adresse</span><input type="text" id="estab-address" class="eb-f" maxlength="200" autocomplete="off" value="${ebE(info.address || '')}" placeholder="Rue, numéro, code postal, ville"></label><label class="eb-ch"><span>Téléphone</span><input type="tel" id="estab-phone" class="eb-f" maxlength="40" autocomplete="off" value="${ebE(info.phone || '')}"></label><label class="eb-ch"><span>Parking</span><input type="text" id="estab-parking" class="eb-f" maxlength="60" autocomplete="off" value="${ebE(info.parking || '')}" placeholder="Gratuit"></label><div class="eb-ch"><span>Mail du centre</span><b class="eb-ro-v">${ebE(center.publicEmail || 'Pas encore renseigné')}</b></div></div>
-    <div class="eb-ch eb-lienresa-c"><span>Lien de réservation</span><div class="eb-lienresa"><a href="${lien}" target="_blank" rel="noopener">${ebE(`${location.host}${lien}`)}</a><button type="button" class="eb-b" onclick="ebCopierLien('${ebJs(lien)}')">Copier</button></div></div>
-    <div class="eb-2"><div><h3 class="eb-h3">Le formulaire en ligne</h3>${establishmentAccentFieldHtml(center)}</div><div><h3 class="eb-h3">Encaissement et site</h3>${establishmentPaymentFieldHtml(center)}${establishmentEmbedFieldHtml(center)}</div></div>
-    ${c.canEdit ? `<h3 class="eb-h3">Un autre centre</h3><div class="eb-ligne"><label class="eb-ch eb-ch-m"><span>Nom du nouveau centre</span><input type="text" id="estab-new-name" class="eb-f" autocomplete="off" maxlength="80" oninput="ebIdentifiantDuNom(this.value)"></label><label class="eb-ch"><span>Identifiant, sans espace</span><input type="text" id="estab-new-id" class="eb-f" autocomplete="off" maxlength="40" placeholder="namur" oninput="this.dataset.touche='1'"></label><button type="button" class="eb-b" onclick="submitNewCenter()">Ajouter ce centre</button></div><p class="eb-note">Il arrive en « prévu » : rien ne s’ouvre aux clients avant que vous le décidiez.</p>` : ''}`;
+  return ebG('Lien de réservation', 'Le lien à partager, ou à mettre sur votre site et vos réseaux.', `<div class="eb-lienresa"><a href="${lien}" target="_blank" rel="noopener">${ebE(`${location.host}${lien}`)}</a><button type="button" class="eb-b" onclick="ebCopierLien('${ebJs(lien)}')">Copier</button></div>`)
+    + ebG('Apparence', 'La couleur et le style du formulaire de réservation.', `<div class="eb-g-bloc">${establishmentAccentFieldHtml(center)}</div>`)
+    + ebG('Encaissement', '', `<div class="eb-g-bloc">${establishmentPaymentFieldHtml(center)}</div>`)
+    + ebG('Sur votre site', '', `<div class="eb-g-bloc">${establishmentEmbedFieldHtml(center)}</div>`);
 }
 
 // ── La page ──────────────────────────────────────────────────────────────────
@@ -15223,40 +15323,37 @@ function renderStaffUtilityEstablishment() {
   const salles = c.activites.filter(a => !EB_PAS_DES_SALLES.includes(a.id));
   const sur = salles.filter(estProposee);
   const off = salles.filter(a => !estProposee(a));
-  // La case ouverte tient d un rendu a l autre ; une case qui n existe plus renvoie aux horaires.
-  const voulue = EB_ANCIENS_ONGLETS[state.establishmentTab] || state.establishmentTab || 'horaires';
-  ebOuverte = ['horaires', 'formules', 'clients', 'fiche', 'tables', 'plus', ...salles.map(a => a.id)].includes(voulue) ? voulue : 'horaires';
-
-  const chiffreDe = (a) => {
-    if (a.id === 'bowling') return [Number(c.bowling.laneCount || 8), 'pistes', 'estab-laneCount'];
-    if (a.id === 'laser_game') return [Number(c.laser.weaponCount || 0), 'armes', 'estab-weaponCount'];
-    const inst = installationsActivite(a, center);
-    return inst ? [inst.units, inst.mot === 'session' ? 'session' : `${inst.mot}${inst.units > 1 ? 's' : ''}`, `estab-cap-units-${a.id}`] : ['', '', ''];
-  };
-  const menu = (k, titre) => `<button type="button" class="eb-t eb-m${k === ebOuverte ? ' is-on' : ''}" data-k="${k}" aria-expanded="${k === ebOuverte}" aria-controls="eb-p-${k}" onclick="ebOuvrir('${k}')"><b>${titre}</b><small data-eb-dit="${k}"></small></button>`;
-  const colonnes = sur.map((a, i) => { const [n, mot, miroir] = chiffreDe(a); return ebSalleColonne(a.id, a.label, ebPhotoDe(a.id, center), n, mot, miroir, i); }).join('')
-    + ebSalleColonne('tables', 'Tables', '', Number(c.party.softCapacity || 6), 'conseillées', 'estab-tableSoft', sur.length, '<span class="eb-pts eb-pts-t" data-eb-points="estab-tableSoft,estab-tableHard" aria-hidden="true"></span>');
-  const plusOuvert = ebOuverte === 'plus' || off.some(a => a.id === ebOuverte);
+  // La rubrique ouverte tient d un rendu a l autre ; un rendu ne fait jamais defiler la page.
+  ebOuverte = ebSectionDe(state.establishmentTab, salles);
   const secoursVide = !(center.secours && Array.isArray(center.secours.emails) && center.secours.emails.length);
-  const k = c.classification;
-  const pan = (id, titre, html) => `<section class="eb-pan" id="eb-p-${id}" data-k="${id}" aria-label="${titre}" ${ebOuverte === id ? '' : 'hidden'}>${html}</section>`;
+  // Des reglages que rien n applique encore (le comptoir, la prudence et le partage du laser) : hors de l ecran,
+  // leur valeur repart telle quelle a l enregistrement.
+  const risque = ['critical', 'managed', 'low'].includes(c.laser.riskLevel) ? c.laser.riskLevel : 'managed';
+  const garde = (id, on) => `<input type="checkbox" id="${id}" ${on ? 'checked' : ''}>`;
+  const gardes = `<select id="estab-laserRisk"><option value="${ebE(risque)}" selected>${ebE(risque)}</option></select>${garde('estab-canSplit', c.laser.canSplitGroupsCleanly === true)}${garde('estab-bar-booking', c.barDesk.handlesBooking !== false)}${garde('estab-bar-briefing', c.barDesk.handlesBriefing !== false)}${garde('estab-bar-food', c.barDesk.handlesFoodAndDrink !== false)}${garde('estab-bar-escort', c.barDesk.activityEscort === true)}${(c.activites || []).filter(a => EB_PAS_DES_SALLES.includes(a.id)).map(a => garde(`estab-act-${ebE(a.id)}`, estProposee(a))).join('')}`;
+  const sous = [...sur, { id: 'tables', label: 'Tables d’anniversaire' }];
+  const nav = EB_RUBRIQUES.map(([k, titre]) => `<button type="button" class="eb-t eb-m${k === ebOuverte ? ' is-on' : ''}" data-k="${k}"${k === ebOuverte ? ' aria-current="true"' : ''} aria-controls="eb-p-${k}" onclick="ebOuvrir('${k}')"><span>${titre}</span><i class="eb-pt" aria-hidden="true"></i></button>${k === 'activites' ? `<div class="eb-sous">${sous.map(a => `<button type="button" class="eb-s" data-k="${ebE(a.id)}" onclick="ebOuvrir('${ebJs(a.id)}')">${ebE(a.label)}</button>`).join('')}</div>` : ''}`).join('');
+  const pan = (k, corps) => {
+    const [, titre, aide] = EB_RUBRIQUES.find(([id]) => id === k);
+    return `<section class="eb-pan" id="eb-p-${k}" data-k="${k}" aria-labelledby="eb-h-${k}" ${ebOuverte === k ? '' : 'hidden'}><div class="eb-pan-h"><h2 id="eb-h-${k}">${titre}</h2><p>${aide}</p></div>${corps}</section>`;
+  };
   setTimeout(ebAfterRender, 0);
   return `<div class="establishment-page eb${canEdit ? '' : ' eb-ro'}" data-estab-page data-eb-center="${ebE(center.id)}" oninput="ebOnChange(event)" onchange="ebOnChange(event)" onclick="ebOnClick(event)">
-    <div class="eb-haut"><div class="eb-haut-g"><h1 class="eb-name">${ebE(center.name)}</h1><p class="eb-auj" data-eb-auj></p>${canEdit ? '' : '<p class="eb-note">Lecture seule : la direction règle cette page.</p>'}</div>${ebCentresHtml(c)}<a class="eb-voir" href="/reserver/${encodeURIComponent(center.id)}" target="_blank" rel="noopener">Voir mon formulaire</a></div>
-    <div class="eb-tuiles">
-      <div class="eb-menu">${menu('horaires', 'Horaires')}${menu('formules', 'Formules')}${menu('clients', 'Clients et comptoir')}${menu('fiche', 'Fiche du centre')}</div>
-      <div class="eb-salles">${colonnes}<button type="button" class="eb-t eb-col eb-plus${plusOuvert ? ' is-on' : ''}" data-k="plus" aria-expanded="${plusOuvert}" aria-controls="eb-p-plus" aria-label="Autres activités et installations" onclick="ebOuvrir('plus')"><span aria-hidden="true">+</span></button></div>
+    <div class="eb-haut"><div class="eb-haut-g"><h1 class="eb-name">${ebE(center.name)}</h1><p class="eb-auj" data-eb-auj></p>${canEdit ? '' : '<p class="eb-note">Lecture seule : la direction règle cette page.</p>'}</div><div class="eb-haut-d">${ebCentresHtml(c)}<a class="eb-voir" href="/reserver/${encodeURIComponent(center.id)}" target="_blank" rel="noopener">Voir le formulaire</a></div></div>
+    <div class="eb-cadre">
+      <nav class="eb-nav" aria-label="Rubriques de l’établissement">${nav}</nav>
+      <div class="eb-det">
+        ${pan('centre', ebCentreHtml(c))}
+        ${pan('horaires', ebHorairesHtml(c))}
+        ${pan('activites', `${sur.map(a => ebActiviteHtml(c, a)).join('')}${ebTablesHtml(c, secoursVide)}${off.length ? `<h3 class="eb-pan-sous">Pas encore réservables dans ce centre</h3>${off.map(a => ebActiviteHtml(c, a)).join('')}` : ''}${ebAutresHtml()}`)}
+        ${pan('formules', ebFormulesPanHtml(c))}
+        ${pan('reservations', ebReservationsHtml(c))}
+        ${pan('accueil', ebAccueilHtml(c))}
+        ${pan('formulaire', ebFormulaireHtml(c))}
+        <div class="eb-gardes" hidden>${gardes}</div>
+        <div class="eb-bar" id="ebBar" role="region" aria-label="Changements à enregistrer" hidden><span class="eb-bar-n" id="ebBarN" aria-live="polite"></span><button type="button" class="eb-bar-cancel" onclick="cancelEstablishmentEdit()">Annuler</button><button type="button" id="estabSaveBtn" class="eb-bar-save" onclick="submitCenterConfig('${ebJs(center.id)}')">Enregistrer</button></div>
+      </div>
     </div>
-    <div class="eb-det">
-      ${pan('horaires', 'Horaires', `${ebCalendrierHtml()}<h3 class="eb-h3">La semaine type</h3>${ebSemaineHtml(c)}<div class="eb-2"><div><h3 class="eb-h3">Vacances</h3>${ebVacancesHtml(c)}</div><div><h3 class="eb-h3">Jours à part</h3>${ebJoursAPartHtml()}</div></div><h3 class="eb-h3">Programmer une fermeture</h3>${ebFermetureFormHtml()}<div id="avbList" class="eb-liste">${renderAvailabilityBlocksList()}</div>`)}
-      ${salles.map((a, i) => ebSallePanneau(c, a, sur.includes(a) ? sur.indexOf(a) : sur.length + 1 + i)).join('')}
-      <section class="eb-pan eb-pan-salle" id="eb-p-tables" data-k="tables" data-t="${(sur.length % 4) + 1}" aria-label="Tables d’anniversaire" ${ebOuverte === 'tables' ? '' : 'hidden'}><h3>Tables d’anniversaire</h3><div class="eb-corps"><div class="eb-rang">${ebMet('Conseillées', ebNum('estab-tableSoft', 'Tables conseillées', { min: 1, max: 100, value: Number(c.party.softCapacity || 6) }), 'eb-gros')}${ebMet('Limite', ebNum('estab-tableHard', 'Limite de tables', { min: 1, max: 120, value: Number(c.party.hardCapacity || Math.max(Number(c.party.softCapacity || 6), 8)), minFrom: 'estab-tableSoft' }))}</div><p class="eb-dit" data-eb-phrase="tables">${ebE(ebPhraseTables(Number(c.party.softCapacity || 6), Number(c.party.hardCapacity || Math.max(Number(c.party.softCapacity || 6), 8)), c.party.limitEnabled === true))}</p>${ebCase('estab-tableLimit', 'Me prévenir par mail au-delà de la limite', { on: c.party.limitEnabled === true, aide: 'Rien n’est refusé au client : la réservation passe, un mail part vers la boîte de secours.' })}${secoursVide ? '<p class="eb-note">La boîte de secours n’a aucune adresse : aucun mail ne partira. Elle se règle dans Clients et comptoir.</p>' : ''}</div><div class="eb-cote"></div></section>
-      <section class="eb-pan eb-pan-plus" id="eb-p-plus" data-k="plus" aria-label="Autres activités et installations" ${ebOuverte === 'plus' ? '' : 'hidden'}>${ebAutresHtml(c, off)}</section>
-      ${pan('formules', 'Formules', `${ebFormulesHtml(c)}<div class="eb-2 eb-e"><div><h3 class="eb-h3">Grands groupes</h3>${ebMet('Demande sur mesure dès (joueurs)', ebNum('estab-customRequestFromPax', 'Demande sur mesure dès', { min: 2, max: 240, value: Number(center.customRequest && center.customRequest.fromPax) || '', start: 30, vide: 'Jamais' }))}<p class="eb-note">Au-delà, le client envoie une demande au lieu de réserver. Vide : jamais.</p></div><div><h3 class="eb-h3">Suggestions avant de confirmer</h3><div data-eb-watch="suggestions">${window.PinlaneUpsellSettings?.renderEdit(center, establishmentUpsellCatalogue()) || ''}</div></div></div>`)}
-      ${pan('clients', 'Clients et comptoir', `<div class="eb-2"><div><h3 class="eb-h3">Les clients</h3><div class="eb-rang">${ebMet('Un groupe dès (joueurs)', ebNum('estab-groupMinPax', 'Un groupe à partir de combien de joueurs', { min: 2, max: 200, value: Number(k.groupMinPax || 10) }))}${ebMet('Ou cumulés par un client', ebNum('estab-groupMinCumulative', 'Joueurs cumulés par un client', { min: 2, max: 5000, value: Number(k.groupMinCumulative || 18) }))}${ebMet('Client clé dès (€)', ebNum('estab-keyClientMinSpend', 'Client clé à partir de combien d’euros', { min: 0, max: 100000, value: Number(k.keyClientMinSpend || 0), step: 50 }))}</div>${ebCase('estab-countFormulaAsGroup', 'Une formule compte comme un groupe', { on: k.countFormulaAsGroup !== false })}${ebCase('estab-birthdayFromFormula', 'Classer en anniversaire d’après la formule', { on: k.birthdayFromFormula !== false })}</div><div><h3 class="eb-h3">Le comptoir</h3>${ebCase('estab-bar-booking', 'Prend les réservations', { on: c.barDesk.handlesBooking !== false })}${ebCase('estab-bar-briefing', 'Explique les consignes de jeu', { on: c.barDesk.handlesBriefing !== false })}${ebCase('estab-bar-food', 'Sert les boissons et la restauration', { on: c.barDesk.handlesFoodAndDrink !== false })}${ebCase('estab-bar-escort', 'Accompagne le groupe pendant l’activité', { on: c.barDesk.activityEscort === true })}<div class="eb-e">${ebMet('En retard après (minutes)', ebNum('estab-lateThreshold', 'En retard après combien de minutes', { min: 0, max: 60, value: c.retard }))}</div></div></div><h3 class="eb-h3">Ce que vous validez vous-même</h3><div data-eb-watch="validation">${establishmentValidationHtml(center)}</div><h3 class="eb-h3">Boîte de secours</h3>${establishmentSecoursHtml(center)}`)}
-      ${pan('fiche', 'Fiche du centre', ebFicheHtml(c))}
-    </div>
-    <div class="eb-bar" id="ebBar" role="region" aria-label="Changements à enregistrer" hidden><span class="eb-bar-n" id="ebBarN" aria-live="polite"></span><button type="button" class="eb-bar-cancel" onclick="cancelEstablishmentEdit()">Annuler</button><button type="button" id="estabSaveBtn" class="eb-bar-save" onclick="submitCenterConfig('${ebJs(center.id)}')">Enregistrer</button></div>
   </div>`;
 }
 
@@ -15279,20 +15376,24 @@ function ebAfterRender() {
   if (champ) setTimeout(() => { if (champ.isConnected) focusEstablishmentField(champ); }, 0);
 }
 
-// Ouvre une case : les autres se ferment, leurs champs restent dans la page. Une activite pas encore proposee n a pas
-// de colonne : sa case s ouvre sous le +.
+// Ouvre une rubrique : les autres se cachent, leurs champs restent dans la page. Une activite ouvre la rubrique
+// Activites et vient en haut de l ecran.
 function ebOuvrir(k) {
-  const cible = document.getElementById(`eb-p-${k}`) ? k : 'horaires';
+  const voulu = EB_ANCIENS_ONGLETS[k] || k || 'centre';
+  const bloc = document.getElementById(`eb-a-${voulu}`);
+  const cible = document.getElementById(`eb-p-${voulu}`) ? voulu : (bloc ? 'activites' : 'centre');
   ebOuverte = cible;
-  state.establishmentTab = cible;
-  const aSaTuile = Boolean(document.querySelector(`[data-estab-page] .eb-t[data-k="${CSS.escape(cible)}"]`));
-  document.querySelectorAll('[data-estab-page] .eb-t').forEach((t) => {
-    const on = t.dataset.k === cible || (!aSaTuile && t.dataset.k === 'plus');
+  state.establishmentTab = bloc ? voulu : cible;
+  document.querySelectorAll('[data-estab-page] .eb-m').forEach((t) => {
+    const on = t.dataset.k === cible;
     t.classList.toggle('is-on', on);
-    t.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) t.setAttribute('aria-current', 'true'); else t.removeAttribute('aria-current');
   });
+  document.querySelectorAll('[data-estab-page] .eb-s').forEach((s) => { s.classList.toggle('is-on', Boolean(bloc) && s.dataset.k === voulu); });
   document.querySelectorAll('[data-estab-page] .eb-pan').forEach((p) => { p.hidden = p.dataset.k !== cible; });
   if (cible === 'horaires') ebPeindreCalendrier();
+  const haut = bloc || document.getElementById(`eb-p-${cible}`);
+  if (haut && haut.scrollIntoView && (bloc || haut.getBoundingClientRect().top < 0)) haut.scrollIntoView({ block: 'start' });
 }
 function ebGo(key) { ebOuvrir(EB_ANCIENS_ONGLETS[key] || key); }
 
@@ -15433,13 +15534,14 @@ function ebStatutDuJour(iso) {
   const q = s => document.getElementById(`${prefixe}-${dow}-${s}`);
   const ferme = q('closed') ? q('closed').checked : true;
   const open = q('open') ? q('open').value : '';
-  const close = q('close') ? q('close').value : '';
+  const closeChamp = q('close') ? q('close').value : '';
+  const close = ebApresMinuit(open, closeChamp) ? ebLendemain(closeChamp) : closeChamp;
   const blocs = getAvailabilityBlocksForDate(iso);
   const centre = blocs.filter(b => b.scopeType === 'center');
   const totale = centre.some(b => !b.startTime);
   const partielle = centre.find(b => b.startTime);
   const pv = s => document.getElementById(`estab-hday-${dow}-${s}`);
-  const vacOuvert = pv('closed') && !pv('closed').checked ? `${pv('open').value} à ${ebHeure(pv('close').value, true)}` : '';
+  const vacOuvert = pv('closed') && !pv('closed').checked ? `${pv('open').value} à ${ebFermeDit(pv('open').value, pv('close').value)}` : '';
   return { date, ferie, conge, force, vacances, ferme, open, close, blocs, centre, totale, partielle, vacOuvert, autres: blocs.filter(b => b.scopeType !== 'center') };
 }
 function ebBlocPhrase(b) {
@@ -15557,7 +15659,7 @@ function ebDessinerPoints(root) {
 }
 // Ce que les tables font vraiment : le mail part au-dela de la limite, jamais un refus.
 function ebPhraseTables(conseillees, limite, mail) {
-  return `${conseillees} table${conseillees > 1 ? 's' : ''} d’anniversaire conseillée${conseillees > 1 ? 's' : ''} en même temps, ${mail ? `un mail vous prévient au-delà de ${limite}` : 'sans mail au-delà de la limite'}.`;
+  return `${conseillees} table${conseillees > 1 ? 's' : ''} d’anniversaire, ${mail ? `un mail vous prévient au-delà de ${limite} en même temps` : 'sans mail au-delà de la limite'}.`;
 }
 // Ce qui se lit sur les cases et sous le nom du centre.
 function ebResumes(root) {
@@ -15640,7 +15742,14 @@ function ebRefresh() {
   ebDessinerPistes(root);
   ebDessinerPoints(root);
   root.querySelectorAll('[data-eb-miroir]').forEach((e) => { const champ = document.getElementById(e.dataset.ebMiroir); if (champ && e.textContent !== champ.value) e.textContent = champ.value; });
-  root.querySelectorAll('.eb-col[data-k]').forEach((x) => { const champ = document.getElementById(`estab-act-${x.dataset.k}`); if (champ) x.classList.toggle('est-off', !champ.checked); });
+  root.querySelectorAll('.eb-act[data-act]').forEach((x) => { const champ = document.getElementById(`estab-act-${x.dataset.act}`); if (champ) x.classList.toggle('est-off', !champ.checked); });
+  root.querySelectorAll('[data-eb-lendemain]').forEach((n) => {
+    const p = n.dataset.ebLendemain;
+    const f = document.getElementById(`${p}-close`)?.value;
+    const mot = f === '00:00' ? 'minuit' : (ebApresMinuit(document.getElementById(`${p}-open`)?.value, f) ? 'le lendemain' : '');
+    if (n.textContent !== mot) n.textContent = mot;
+    if (n.hidden !== !mot) n.hidden = !mot;
+  });
   root.querySelectorAll('.eb-tr[data-eb-nom]').forEach((l) => { const champ = l.querySelector('[data-estab-offer]'); if (champ) l.classList.toggle('est-off', !champ.checked); });
   ebResumes(root);
   if (ebOuverte === 'horaires') ebPeindreCalendrier();
@@ -15680,7 +15789,7 @@ const EB_NOMBRES_DITS = {
 };
 const EB_CASES_DITES = {
   'estab-preferAdjacent': ['Groupes sur des pistes voisines', 'Groupes plus forcément sur des pistes voisines'],
-  'estab-requiresComplete': ['Le laser attend tout le groupe', 'Le laser n’attend plus tout le groupe'],
+  'estab-requiresComplete': ['Le laser part avec le groupe complet', 'Le laser n’attend plus le groupe complet'],
   'estab-canSplit': ['Grands groupes coupés en deux au laser', 'Grands groupes plus coupés au laser'],
   'estab-tableLimit': ['Mail au-delà de la limite de tables', 'Plus de mail pour les tables'],
   'estab-holiday-enabled': ['Horaires de vacances tout seuls', 'Horaires de vacances à la main'],
@@ -15697,8 +15806,8 @@ const EB_CASES_DITES = {
 };
 const EB_TEXTES_DITS = {
   'estab-name': 'Nom du centre changé', 'estab-address': 'Adresse changée', 'estab-phone': 'Téléphone changé', 'estab-parking': 'Parking changé',
-  'estab-timezone': 'Heure du centre changée', 'estab-secours-emails': 'Boîte de secours changée', 'estab-accent': 'Couleur du formulaire changée',
-  'estab-payment-mode': 'Encaissement changé', 'estab-laserRisk': 'Prudence du laser changée',
+  'estab-timezone': 'Fuseau horaire changé', 'estab-secours-emails': 'Boîte de secours changée', 'estab-accent': 'Couleur du formulaire changée',
+  'estab-payment-mode': 'Encaissement changé',
 };
 const EB_ZONES_DITES = { 'w:exceptions': 'Jours à part modifiés', 'w:installations': 'Autres installations modifiées', 'w:activites-perso': 'Activités à vous modifiées', 'w:suggestions': 'Suggestions modifiées', 'w:validation': 'Validation modifiée' };
 function ebDireUnChangement(cle, v, avant) {
@@ -15716,7 +15825,7 @@ function ebDireUnChangement(cle, v, avant) {
   if (champ && champ.dataset.estabBday) return `${champ.closest('[data-eb-nom]')?.dataset.ebNom || 'Une formule'} ${champ.checked ? 'compte en anniversaire' : 'ne compte plus en anniversaire'}`;
   if (/^estab-act-/.test(cle)) {
     const nom = (staffCenterConfigCache.activities || []).find(a => `estab-act-${a.id}` === cle)?.label || 'Activité';
-    return `${nom} ${v === 'true' ? 'proposée aux clients' : 'retirée du formulaire'}`;
+    return `${nom} ${v === 'true' ? 'réservable en ligne' : 'plus réservable en ligne'}`;
   }
   return '';
 }
@@ -15724,10 +15833,10 @@ function ebDireUnJour(prefixe, jour, now) {
   const label = (ESTABLISHMENT_DAYS.find(([k]) => k === jour) || [])[1] || '';
   const suffixe = prefixe === 'estab-hday' ? ' en vacances' : '';
   const k = s => `${prefixe}-${jour}-${s}`;
-  if (now[k('closed')] !== ebSnap[k('closed')]) return now[k('closed')] === 'true' ? `${label}${suffixe} fermé` : `${label}${suffixe} ouvert, ${now[k('open')]} à ${ebHeure(now[k('close')], true)}`;
+  if (now[k('closed')] !== ebSnap[k('closed')]) return now[k('closed')] === 'true' ? `${label}${suffixe} fermé` : `${label}${suffixe} ouvert, ${now[k('open')]} à ${ebFermeDit(now[k('open')], now[k('close')])}`;
   const morceaux = [];
   if (now[k('open')] !== ebSnap[k('open')]) morceaux.push(`ouvre à ${now[k('open')]} au lieu de ${ebSnap[k('open')]}`);
-  if (now[k('close')] !== ebSnap[k('close')]) morceaux.push(`ferme à ${ebHeure(now[k('close')], true)} au lieu de ${ebHeure(ebSnap[k('close')], true)}`);
+  if (now[k('close')] !== ebSnap[k('close')]) morceaux.push(`ferme à ${ebFermeDit(now[k('open')], now[k('close')])} au lieu de ${ebFermeDit(ebSnap[k('open')], ebSnap[k('close')])}`);
   return morceaux.length ? `${label}${suffixe} ${morceaux.join(', ')}` : '';
 }
 function ebPhraseDesChangements(n) {
@@ -15747,9 +15856,31 @@ function ebPhraseDesChangements(n) {
   return `${phrases.slice(0, 2).join(' · ')}${autres > 0 ? ` et ${autres} autre${autres > 1 ? 's' : ''}` : ''}`;
 }
 
+function ebMarquerRubriques() {
+  const root = document.querySelector('[data-estab-page]');
+  if (!root) return;
+  const changees = new Set();
+  const fautives = new Set();
+  if (ebSnap) {
+    const now = ebState();
+    Object.keys(now).forEach((cle) => {
+      if (now[cle] === ebSnap[cle]) return;
+      const el = cle.startsWith('w:') ? root.querySelector(`[data-eb-watch="${cle.slice(2)}"]`) : document.getElementById(cle);
+      const pan = el && el.closest('.eb-pan');
+      if (pan) changees.add(pan.dataset.k);
+    });
+  }
+  root.querySelectorAll('[aria-invalid="true"]').forEach((el) => { const pan = el.closest('.eb-pan'); if (pan) fautives.add(pan.dataset.k); });
+  root.querySelectorAll('.eb-m[data-k]').forEach((m) => {
+    m.classList.toggle('has-change', changees.has(m.dataset.k));
+    m.classList.toggle('has-error', fautives.has(m.dataset.k));
+  });
+}
+
 function ebTouch() {
   const n = ebCountChanges();
   state.establishmentEditing = n > 0;
+  ebMarquerRubriques();
   const bar = document.getElementById('ebBar');
   if (!bar) return;
   document.getElementById('ebBarN').textContent = ebPhraseDesChangements(n);

@@ -2088,15 +2088,15 @@ async function main() {
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'establishment');
     await page.waitForTimeout(500);
-    // Une rangee de cases et une colonne par salle, tout y est reglable sans passer en mode edition.
+    // Les rubriques a gauche et un bloc par activite, tout y est reglable sans passer en mode edition.
     const readViewState = await page.evaluate(() => ({
       cases: Array.from(document.querySelectorAll('.eb-m')).map(el => el.dataset.k),
-      salles: document.querySelectorAll('.eb-salles .eb-col').length,
+      salles: document.querySelectorAll('.eb-act[data-act]').length,
       hasHolidayHours: /vacances/i.test((document.getElementById('eb-p-horaires') || { textContent: '' }).textContent),
     }));
-    assert(readViewState.cases.join() === 'horaires,formules,clients,fiche', 'Page Établissement : 4 cases de réglages requises.');
-    assert(readViewState.salles >= 3, 'Page Établissement : une colonne par salle requise.');
-    assert(readViewState.hasHolidayHours, 'Page Établissement : horaires vacances/fériés requis dans la case Horaires.');
+    assert(readViewState.cases.join() === 'centre,horaires,activites,formules,reservations,accueil,formulaire', 'Page Établissement : 7 rubriques requises.');
+    assert(readViewState.salles >= 3, 'Page Établissement : un bloc par activité requis.');
+    assert(readViewState.hasHolidayHours, 'Page Établissement : horaires vacances/fériés requis dans la rubrique Horaires.');
     await screenshot(page, 'chantier5-establishment-read');
     const editState = await page.evaluate(() => ({
       holidayToggle: Boolean(document.getElementById('estab-holiday-enabled')),

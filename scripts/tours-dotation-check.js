@@ -690,7 +690,8 @@ async function pageEtablissement(browser) {
       champ.value = '0';
       window.__ENVOIS__ = [];
       await submitCenterConfig(centre);
-      const note = champ.closest('.eb-met') && champ.closest('.eb-met').querySelector('[role="alert"]');
+      const ligne = champ.closest('.eb-r') || champ.closest('.eb-met');
+      const note = ligne && ligne.querySelector('[role="alert"]');
       return { envois: window.__ENVOIS__.length, invalide: champ.getAttribute('aria-invalid'), message: note ? note.textContent : '' };
     }, CENTRE);
     const envoye = await page.evaluate(async (centre) => {

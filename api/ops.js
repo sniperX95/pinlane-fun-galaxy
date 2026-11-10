@@ -358,6 +358,7 @@ function activitesDuSocle(knowledge) {
       label: activity.label || activity.name || activity.id,
       units: booking.units == null ? null : Number(booking.units),
       capacityPerUnit: booking.capacityPerUnit == null ? null : Number(booking.capacityPerUnit),
+      maxPerBooking: booking.maxPerBooking == null ? null : Number(booking.maxPerBooking),
       unitLabel: booking.unitLabel || '',
       priceType: booking.priceType || '',
     };

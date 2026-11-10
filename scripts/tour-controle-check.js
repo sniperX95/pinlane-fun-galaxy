@@ -654,7 +654,7 @@ async function jouerConsole(browser) {
     await vue.page.waitForTimeout(800);
     const lire = () => vue.page.evaluate(() => { const b = document.getElementById('estabSaveBtn'); const pageCentre = document.querySelector('[data-estab-page]'); return { page: state.staffMenuPage, centre: pageCentre ? pageCentre.dataset.ebCenter : '', onglet: state.establishmentTab, sauve: b ? b.getAttribute('onclick') : '', focus: document.activeElement && document.activeElement.id }; });
     const depuisTour = await lire();
-    ok(depuisTour.page === 'establishment' && depuisTour.centre === 'gembloux' && depuisTour.onglet === 'clients' && /gembloux/.test(depuisTour.sauve) && depuisTour.focus === 'estab-secours-emails', '[U] « Ajouter une adresse » ouvre le champ de CE centre, pret a ecrire, et le curseur y reste', depuisTour);
+    ok(depuisTour.page === 'establishment' && depuisTour.centre === 'gembloux' && depuisTour.onglet === 'accueil' && /gembloux/.test(depuisTour.sauve) && depuisTour.focus === 'estab-secours-emails', '[U] « Ajouter une adresse » ouvre le champ de CE centre, pret a ecrire, et le curseur y reste', depuisTour);
     // Une ancienne valeur de la page dit Libramont ; la page Secours montre le centre du menu (Gembloux depuis le
     // changement) : la case qui s ouvre est celle du centre affiche, jamais l ancienne.
     await vue.page.evaluate(() => { state.establishmentEditing = false; state.establishmentCenterId = 'libramont'; state.staffMenuPage = 'secours'; setView('staff'); if (typeof renderStaff === 'function') renderStaff(); });

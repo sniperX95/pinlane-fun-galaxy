@@ -59,7 +59,7 @@ Module.prototype._compile = function (contenu, nom) {
   }
   return compileAvant.call(this, mute, nom);
 };
-const MODULES_DE_GARDE = ['lib/garde-alertes.js', 'lib/garde-annonces.js', 'lib/garde-journal.js', 'lib/garde-serveur.js', 'lib/garde-mails.js', 'lib/garde-bilan.js', 'lib/tour-controle.js', 'lib/cron-tasks.js', 'lib/llm-budget.js', 'lib/llm-client.js', 'lib/client-errors.js', 'api/inbound-email.js', 'api/ops.js'];
+const MODULES_DE_GARDE = ['lib/garde-alertes.js', 'lib/garde-annonces.js', 'lib/garde-journal.js', 'lib/garde-serveur.js', 'lib/garde-mails.js', 'lib/garde-bilan.js', 'lib/tour-controle.js', 'lib/ops-engine.js', 'lib/cron-tasks.js', 'lib/llm-budget.js', 'lib/llm-client.js', 'lib/client-errors.js', 'api/inbound-email.js', 'api/ops.js'];
 function purger() {
   for (const rel of MODULES_DE_GARDE) delete require.cache[require.resolve(path.join(ROOT, rel))];
 }
@@ -509,6 +509,14 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false,
       return [{ center_id: 'libramont', n: 2 }, ...(/from center_automation_settings s/.test(s) ? [] : [{ center_id: 'gembloux', n: 5 }])];
     });
     route(/b\.lanes && a\.lanes/, () => [{ center_id: 'libramont', n: 1 }]);
+    // Le laser, avec le reglage de chaque centre. Libramont (30 armes, une partie a la fois) : le
+    // 15/11 deux groupes dans la meme partie de 15:00, 35 joueurs ; le 16/11 deux parties qui se
+    // chevauchent, 15:00 et 15:10. Gembloux (20 armes, trois parties a la fois) : trois groupes
+    // de six en parties separees, ce qui tient la-bas et ne tiendrait pas a Libramont.
+    const arene = (id, centre, date, debut, joueurs) => ({ id, center_id: centre, date, start_time: `${String(Math.floor(debut / 60)).padStart(2, '0')}:${String(debut % 60).padStart(2, '0')}:00`, duration: 1, type: 'laser', pax: joueurs, formule_id: null, lanes: [], status: 'confirmed',
+      ops_plan: { resourceBlocks: [{ resourceType: 'laser_arena', activityId: 'laser_game', start: debut, end: debut + 20, players: joueurs, countIndex: 1 }] } });
+    route(/ops_plan::text like '%laser_arena%'/, () => [arene(501, 'libramont', '2026-11-15', 900, 20), arene(502, 'libramont', '2026-11-15', 900, 15), arene(503, 'libramont', '2026-11-16', 900, 8), arene(504, 'libramont', '2026-11-16', 910, 8),
+      arene(601, 'gembloux', '2026-11-15', 900, 6), arene(602, 'gembloux', '2026-11-15', 905, 6), arene(603, 'gembloux', '2026-11-15', 910, 6)]);
   }
   if (formulaire) {
     // Le suivi des ecrans, sur 24 heures. Libramont : 64 visites (14 un jour d 'essais'), 11 arrivees a la validation,
@@ -582,6 +590,17 @@ async function preuvesGarde() {
   const t6b = p6b.messages.length === 1 ? p6b.messages[0].text : '';
   ok(/^À regarder, Pinlane\n/.test(t6b) && p6b.messages[0].disable_notification === true && t6b.includes('1 réservation en ligne est enregistrée à 0 € à Gembloux') && t6b.includes('2 réservations en ligne n’ont reçu aucun mail à Libramont') && t6b.includes('1 double réservation de bowling sur la même piste à Libramont'), '[G] integrite : prix a 0, reservation sans mail, double piste, dits sans sonnerie', p6b.messages.map((m) => m.text));
   ok(t6b !== '' && !/reçu aucun mail à Gembloux/.test(t6b), '[G] integrite : un centre qui a coupe ses confirmations ne passe pas pour un mail perdu', t6b);
+  {
+    // LE LASER TROP PLEIN (2026-11-10) : la meme regle que le refus, avec le reglage de chaque centre.
+    BD.routes = [];
+    routesDeLaTour({ integrite: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    const l = problemes.find((p) => p.cle === 'integrite:laser:libramont') || {};
+    ok(t6b.includes('3 départs laser dépassent ce que l’arène peut prendre à Libramont') && l.gravite === 'attention', '[G] integrite : un laser trop plein se dit, sans sonnerie', `${l.gravite} | ${t6b}`);
+    ok(l.detail === 'Dans les 14 prochains jours, le 15/11 à 15:00, 35 joueurs pour 30 armes ; le 16/11 à 15:00, 2 parties en même temps pour 1 ; le 16/11 à 15:10, 2 parties en même temps pour 1. À vérifier dans le planning, un groupe est peut-être à déplacer.',
+      '[G] integrite : le laser compte les armes ET les parties en meme temps, depart par depart', l.detail);
+    ok(!problemes.some((p) => p.cle === 'integrite:laser:gembloux'), '[G] integrite : trois parties separees de six tiennent a Gembloux (20 armes, trois parties) : chaque centre garde son arene', problemes.map((p) => p.cle).join(', '));
+  }
 
   BD.routes = [];
   BD.etatGarde = { ...BD.etatGarde, dits: {} };
@@ -835,6 +854,12 @@ async function contrePreuves() {
     const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
     return problemes.some((p) => p.cle === 'integrite:doublon:libramont' && p.gravite === 'attention');
   });
+  const problemesLaser = async () => { remettre(); routesDeLaTour({ integrite: true }); return (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; };
+  const laserDeLibramont = async () => (await problemesLaser()).find((p) => p.cle === 'integrite:laser:libramont') || {};
+  await rouge('un laser trop plein ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "      out.push({ cle: `integrite:laser:${centre}`,", vers: "      if (false) out.push({ cle: `integrite:laser:${centre}`," }], async () => (await laserDeLibramont()).gravite === 'attention');
+  await rouge('les armes de l arene ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (parties <= max) return;" }], async () => /35 joueurs pour 30 armes/.test((await laserDeLibramont()).detail || ''));
+  await rouge('les parties en meme temps ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (joueurs <= armes) return;" }], async () => /^3 départs/.test((await laserDeLibramont()).titre || ''));
+  await rouge('chaque centre ne garde plus son arene', [{ fichier: 'lib/tour-controle.js', de: "surchargesLaser(liste, getCenter(centre))", vers: "surchargesLaser(liste, getCenter('libramont'))" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:laser:gembloux'));
   await rouge('un formulaire qui ne laisse plus reserver ne sonne plus', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'attention'," }], async () => {
     remettre();
     routesDeLaTour({ formulaire: true });

@@ -4477,7 +4477,6 @@ button.dash-state:focus-visible { outline: 2px solid var(--console-focus); outli
   justify-content: flex-start;
 }
 
-
 @keyframes reqSpin { to { transform: rotate(360deg); } }
 
 /* L heure promise, sur la ligne de la file. */
@@ -20538,7 +20537,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .ast-liste { transition: none; }
 }
 
-
 /* ==========================================================================
    LA PAGE DU CENTRE (2026-11-10). Etablissement en logiciel pro : les
    rubriques a gauche, tous les champs de la rubrique a droite, chaque reglage
@@ -20894,7 +20892,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm .input { width: 100%; box-sizing: border-box; }
 .sm textarea.input { height: auto; min-height: 44px; padding: 10px 12px; resize: vertical; line-height: 1.55; font-family: inherit; }
 .sm .sm-courrier textarea.input { min-height: 280px; }
-.sm-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Les boutons : le geste principal plein, les autres a contour, comme sur Etablissement. */
 .sm .sm-b, .sm .sm-p { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; font: inherit; font-size: 13.5px; font-weight: 550; text-decoration: none; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease; }
@@ -20902,7 +20899,8 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm .sm-b:hover { background: var(--subtle); }
 .sm .sm-p { color: #fff; background: var(--console-selected); border: 1px solid var(--console-selected); }
 .sm .sm-p:hover { filter: brightness(.93); }
-.sm .sm-b:active, .sm .sm-p:active, .sm .sm-h:active { transform: scale(.975); }
+.sm .sm-b:active,
+.sm .sm-p:active { transform: scale(.975); }
 .sm .sm-p:disabled, .sm .sm-b:disabled { opacity: .55; cursor: default; }
 .sm .sm-lien { padding: 0; font: inherit; color: var(--accent-strong); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .sm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
@@ -20983,8 +20981,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-tete h2 { font-size: 24px; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; }
 .sm-tete-s { margin-top: 5px; font-size: 14px; color: var(--muted); }
 .sm-tete-a { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.sm-colonnes { display: grid; gap: 20px; align-items: start; }
-.sm-c1, .sm-c2 { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
 /* Une carte, comme un groupe de reglages d Etablissement : son titre sur un filet, puis son contenu. */
 .sm-s { padding: 0 20px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--sm-r); }
@@ -20993,88 +20989,28 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-s h4 { font-size: 13px; font-weight: 600; color: var(--muted); }
 
 /* La demande : les trois chiffres qui decident, bord a bord sous le titre. */
-.sm-faits { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, .8fr); margin: -18px -20px 0; border-bottom: 1px solid var(--line); }
-.sm-faits.is-deux { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.sm-fait { min-width: 0; padding: 15px 20px 16px; }
-.sm-fait + .sm-fait { border-left: 1px solid var(--line); }
-.sm-fait dt { font-size: 12.5px; color: var(--muted); }
-.sm-fait dd b { display: block; margin-top: 3px; font-size: 18px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
-.sm-fait dd small { margin-top: 3px; font-size: 13px; line-height: 1.4; }
-.sm-fait.is-vide dd b { font-weight: 500; color: var(--muted); }
-.sm-demande > .sm-faits:last-child { margin-bottom: -20px; border-bottom: 0; }
-.sm-envies-b { margin-top: 18px; }
-.sm-envies-b h4 { margin-bottom: 12px; }
+
 .sm-envies { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 20px; }
 .sm-envies li { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.sm-photo, .sm-ph-vide { flex: none; width: 64px; height: 48px; object-fit: cover; border-radius: 8px; background: var(--t, var(--subtle)); }
+.sm-photo { flex: none; width: 64px; height: 48px; object-fit: cover; border-radius: 8px; background: var(--t, var(--subtle)); }
 .sm-envies .sm-so { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
 .sm-envies .sm-so::before { display: none; }
 .sm-envies .sm-so b { font-size: 14px; font-weight: 600; }
 .sm-envies .sm-so span { font-size: 13px; color: var(--muted); }
-.sm-mot { margin-top: 20px; }
-.sm-mot figcaption { margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.sm-message { padding: 12px 14px; white-space: pre-wrap; background: var(--subtle); border-radius: 8px; }
 
 /* Ce qu on peut proposer : un jour, ses offres en lignes avec leur photo et leurs heures a toucher,
    puis la journee dessinee avec ce qui est deja pris. */
-.sm-jour + .sm-jour, .sm-jour-off + .sm-jour, .sm-jour + .sm-jour-off { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
-.sm-jour-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px 20px; flex-wrap: wrap; }
-.sm-jour-t h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-.sm-jour-t p { margin-top: 1px; font-size: 13px; color: var(--muted); }
-.sm-jour-t .sm-lien { flex: none; font-size: 13px; }
-.sm-jour-off { color: var(--muted); }
-.sm-jour-b { margin-top: 12px; color: var(--muted); }
-.sm-o-titre { margin: 18px 0 4px; }
-.sm-offres { display: flex; flex-direction: column; }
-.sm-o { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
-.sm-o:first-child { border-top: 0; }
-.sm-o > .sm-o-photo { grid-row: 1 / span 4; width: 72px; height: 72px; object-fit: cover; border-radius: 10px; background: var(--subtle); }
-.sm-o > :not(.sm-o-photo) { grid-column: 2; min-width: 0; }
-.sm-o.is-off { display: block; }
-.sm-o-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.sm-o-n { font-size: 14.5px; font-weight: 600; }
-.sm-o-l { margin-top: 2px; }
-.sm-o-l .sm-so { display: flex; font-size: 12.5px; color: var(--muted); }
-.sm-o-l .sm-so::before { width: 7px; height: 7px; }
+
 .sm-o-p { flex: none; text-align: right; }
 .sm-o-p b { display: block; font-size: 17px; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; }
 .sm-o-p em { display: block; font-style: normal; font-weight: 600; }
-.sm-o-non { margin-top: 4px; font-size: 13px; color: var(--muted); }
-.sm-o.is-off .sm-o-n { color: var(--muted); }
-.sm-o-ail { margin-top: 6px; }
-.sm-heures { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.sm .sm-h { min-width: 78px; padding: 6px 12px 7px; font: inherit; text-align: center; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease; }
-.sm .sm-h b { display: block; font-size: 14.5px; font-weight: 650; line-height: 1.25; }
-.sm .sm-h small { font-size: 11px; line-height: 1.3; }
-.sm .sm-h:hover { border-color: var(--text); }
-.sm .sm-h.is-on { color: #fff; background: var(--console-selected); border-color: var(--console-selected); }
-.sm .sm-h.is-on small { color: #fff; opacity: .85; }
+
 .sm-depasse { display: block; font-size: 12.5px; font-weight: 550; color: var(--danger); }
 
 /* La journee dessinee : ce qui est deja pris en gris, le groupe a sa couleur quand une heure est choisie. */
-.sm-j { margin-top: 18px; padding: 14px 16px 12px; background: var(--subtle); border-radius: 10px; }
-.sm-planning-jour .sm-j-pied { margin-bottom: 0; }
-.sm-j-axe { padding-left: 96px; }
-.sm-j-axe > div { position: relative; height: 24px; font-size: 11.5px; color: var(--muted); }
-.sm-j-axe span { position: absolute; top: 0; transform: translateX(-50%); }
-.sm-j-axe span.is-mo { font-weight: 650; color: var(--text); }
-.sm-j-mo { position: absolute; bottom: 3px; height: 2px; background: var(--text); }
-.sm-j-corps { display: grid; gap: 8px; }
-.sm-j-g { --pistes: 1; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; align-items: center; }
-.sm-j-n b { display: block; font-size: 13px; font-weight: 600; line-height: 1.2; }
-.sm-j-n small { font-size: 11.5px; }
-.sm-j-ts { display: grid; gap: 2px; }
-.sm-j-t { position: relative; height: 20px; overflow: hidden; background: var(--surface); border-radius: 2px; }
-.sm-j-t.is-piste { height: clamp(4px, calc(112px / var(--pistes)), 8px); border-radius: 1px; }
-.sm-j-b { --x: 0; position: absolute; top: 0; bottom: 0; background: var(--sm-pris); }
-.sm-j-t.is-piste .sm-j-b { border-radius: 1px; }
-.sm-j-b.is-groupe { background: var(--t); animation: sm-pose 200ms var(--sm-ease) both; }
-.sm-j-b.is-apercu { background: none; box-shadow: inset 0 0 0 1.5px var(--t); animation: none; }
-.sm-j.is-arrivee .sm-j-b { animation: sm-trace 440ms var(--sm-ease) both; animation-delay: calc(var(--x) * 3.2ms - var(--ecoule, 0ms)); transform-origin: left center; }
+
 @keyframes sm-trace { from { opacity: 0; transform: scaleX(.25); } to { opacity: 1; transform: none; } }
 @keyframes sm-pose { from { opacity: 0; transform: scaleX(.8); } to { opacity: 1; transform: none; } }
-.sm-j-pied { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 20px; margin-top: 10px; font-size: 13px; }
-.sm-j-dit { font-weight: 550; }
 
 /* La suite : la phrase de suivi, puis ce qui part ou ce qui est parti. */
 .sm-promis { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; font-weight: 550; line-height: 1.45; }
@@ -21086,7 +21022,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-promis.is-attente::before { background: #8a4ba6; }
 .sm-promis.is-fait::before { background: #1f7a5c; }
 .sm-promis:last-child { margin-bottom: 0; }
-.sm-suivi-dit { color: var(--muted); }
+
 .sm-resume { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding: 12px 14px; background: var(--subtle); border-radius: 8px; }
 .sm-resume > div:first-child b { font-size: 14.5px; font-weight: 600; }
 .sm-resume span { display: block; color: var(--muted); }
@@ -21106,9 +21042,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-venues { display: grid; gap: 4px; margin: 10px 0; font-size: 13px; }
 .sm-venues li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; }
 .sm-venues time, .sm-venues .num { color: var(--muted); }
-.sm-sans-heure { margin-top: 12px; }
-.sm-autre p { color: var(--muted); }
-.sm-autre .sm-actions { margin-top: 10px; }
 
 /* L historique */
 .sm-hi li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 6px 0; }
@@ -21121,14 +21054,9 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-historique .sm-actions { margin-top: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sm-j.is-arrivee .sm-j-b, .sm-j-b.is-groupe { animation: none; }
-  .sm .sm-b, .sm .sm-p, .sm .sm-h { transition: none; }
-}
-
-/* Sur un grand ecran : le travail a gauche, la suite et le client a droite, toujours a l ecran. */
-@media (min-width: 1300px) {
-  .sm-colonnes { grid-template-columns: minmax(0, 1fr) 360px; }
-  .sm-c2 { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
+  
+  .sm .sm-b,
+.sm .sm-p { transition: none; }
 }
 
 /* Plus etroit : les etapes passent en haut, en une rangee ; une demande ouverte prend toute la place. */
@@ -21165,35 +21093,52 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   .sm-s { padding: 0 16px 16px; }
   .sm-s > h3 { margin: 0 -16px 16px; padding: 13px 16px; }
   .sm-s > :first-child:not(h3) { margin-top: 16px; }
-  .sm-faits, .sm-faits.is-deux { grid-template-columns: minmax(0, 1fr); margin: -16px -16px 0; }
-  .sm-fait { padding: 12px 16px; }
-  .sm-fait + .sm-fait { border-top: 1px solid var(--line); border-left: 0; }
-  .sm-demande > .sm-faits:last-child { margin-bottom: -16px; }
+  
+  
+  
+  
   .sm-envies { grid-template-columns: minmax(0, 1fr); }
-  .sm-o { grid-template-columns: 52px minmax(0, 1fr); column-gap: 12px; }
-  .sm-o > .sm-o-photo { width: 52px; height: 52px; }
-  .sm-o-t { gap: 12px; }
-  .sm-jour-t { flex-direction: column; gap: 4px; }
-  .sm-j { padding: 12px; }
-  .sm-j-axe { padding-left: 68px; }
-  .sm-j-axe span:nth-child(even) { display: none; }
-  .sm-j-g { grid-template-columns: 62px minmax(0, 1fr); gap: 6px; }
-  .sm-j-n b { font-size: 12px; }
+  
+  
+  
+  
+  
+  
+  
+  
+  
   .sm-hi li { grid-template-columns: 1fr; gap: 0; }
   .sm-venues li { grid-template-columns: 82px minmax(0, 1fr) auto; }
 }
 
-/* Le sur mesure : ce qu on met dedans se touche. */
-.sm-co-acts { display: flex; flex-wrap: wrap; gap: 6px; }
-.sm .sm-co-a { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 4px 12px 4px 4px; font: inherit; font-weight: 550; color: var(--text); background: var(--subtle); border: 0; border-radius: 6px; box-shadow: inset 0 0 0 2px transparent; cursor: pointer; transition: background-color 120ms ease, box-shadow 120ms ease; }
-.sm .sm-co-a:hover { background: var(--line); }
-.sm .sm-co-a[aria-pressed="true"] { background: var(--surface); box-shadow: inset 0 0 0 2px var(--console-selected); }
-.sm-co-a .sm-photo { width: 54px; height: 36px; }
-.sm-co-v { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 36px; font-style: normal; font-size: 18px; color: var(--muted); background: var(--c); border-radius: 4px; }
-.sm-compose .sm-compose-l { margin-top: 14px; }
-
 /* Une fenetre, sans quitter la page : au-dessus de Reserver quand elle en vient. */
 .sm-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
+/* LA FICHE SIMPLE (2026-11-10, Ansar : « super simple, pas de graphique, tout booster avec IA ») :
+   une colonne, la demande en trois lignes, ce que Pinlane propose en aplat, sa consigne, le mail. */
+.sm .sm-une { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
+.sm-dem-l { margin: 0; font-size: 15px; line-height: 1.5; }
+.sm-dem-l + .sm-dem-l { margin-top: 2px; }
+.sm-dem-mot { margin: 12px 0 0; padding: 10px 14px; font-size: 14px; color: var(--text); background: var(--subtle); border-radius: 8px; }
+.sm-dem-mot span { display: block; margin-bottom: 2px; font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.sm-ia-p, .sm-ia-lit { margin: 0; padding: 18px 20px; background: var(--subtle); border-radius: 10px; }
+.sm-ia-lit { color: var(--muted); }
+.sm-ia-quand { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.sm-ia-quoi { margin: 4px 0 0; font-size: 16px; }
+.sm-ia-prix { margin: 10px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+.sm-ia-prix b { font-size: 20px; font-weight: 650; }
+.sm-ia-plan { display: inline-block; margin-top: 10px; font-size: 13px; }
+.sm-ia-pq { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.sm-ia-c { margin-top: 16px; }
+.sm-ia-l { display: flex; gap: 8px; margin-top: 6px; }
+.sm-ia-l .input { flex: 1 1 auto; min-width: 0; }
+.sm-ia-s { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.sm .sm-ia-sg { min-height: 36px; padding: 6px 14px; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; background: var(--subtle); border: 0; border-radius: 999px; cursor: pointer; }
+.sm .sm-ia-sg:hover { background: var(--line); }
+@media (max-width: 720px) {
+  .sm-ia-l { flex-direction: column; }
+  .sm-ia-quand { font-size: 19px; }
+}
+
 .sm-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: sm-fen-entre 200ms cubic-bezier(.23, 1, .32, 1) both; }
 .sm-fen.is-petite { max-width: 440px; }
 .sm-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
@@ -21222,31 +21167,9 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-hf-err { color: var(--danger); font-weight: 550; }
 .sm-hf .sm-actions { margin-top: 0; }
 .sm-hf .sm-lien { margin-left: auto; }
-.sm-jour-a { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 16px; margin-top: 3px; }
-.sm-jour-a .sm-lien { font-size: 13px; }
-.sm-ex { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }
-.sm-compose h3 { margin-bottom: 2px; }
-.sm-compose-l { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 12px; }
-.sm-compose-l .sm-champ { flex: 0 1 150px; }
-.sm-compose-l .sm-champ:nth-child(2) { flex-basis: 112px; }
-.sm-compose-dit { min-height: 21px; margin-top: 8px; }
+
 /* LA PROPOSITION LIBRE (2026-11-10) : cinq champs en grille, le prix calcule dessous, les gestes a droite. */
-.sm-compose-intro { margin-top: 2px; font-size: 13px; color: var(--muted); }
-.sm-compose .sm-co-acts { margin-top: 12px; }
-.sm-compose .sm-compose-l { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr)) minmax(0, .75fr) minmax(0, 1.1fr); align-items: end; gap: 10px; }
-.sm-compose .sm-champ .input { width: 100%; min-width: 0; box-sizing: border-box; font-variant-numeric: tabular-nums; }
-.sm-champ-e { position: relative; display: block; }
-.sm-champ-e .input { padding-right: 28px; }
-.sm-champ-e i { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
-.sm-compose-calc { margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.sm-compose-b { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-top: 12px; }
-.sm-compose-b .sm-lien { margin-right: auto; font-size: 13px; }
-.sm-o-autre { justify-self: start; margin-top: 8px; font-size: 13px; }
-@media (max-width: 720px) {
-  .sm-compose .sm-compose-l { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .sm-compose .sm-compose-l .sm-champ:first-child { grid-column: 1 / -1; }
-  .sm-compose-b .sm-p, .sm-compose-b .sm-b { flex: 1 1 100%; justify-content: center; }
-}
+
 .qb-modal.rv.rs .rs-horaires { margin-top: -6px; }
 .qb-modal.rv.rs .rs-horaires p { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: 0; font-size: 13px; color: var(--muted); }
 .qb-modal.rv.rs .rs-horaires b { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }
@@ -21254,7 +21177,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 @media (max-width: 640px) {
   .sm-fen-fond { padding: 0; }
   .sm-fen, .sm-fen.is-large { max-width: none; max-height: none; height: 100%; border-radius: 0; }
-  .sm-compose-l .sm-champ { flex: 1 1 130px; }
-  .sm-compose-l .sm-p, .sm-compose-l .sm-b { flex: 1 1 100%; justify-content: center; }
+  
+  
 }
 @media (prefers-reduced-motion: reduce) { .sm-fen { animation: none; } }

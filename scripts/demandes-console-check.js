@@ -134,6 +134,8 @@ function installer(expiresAt) {
     if (lead.status === 'handled') return 'traitee';
     return lead.suivi.reponses && !lead.suivi.messageClient ? 'en-attente' : 'a-traiter';
   };
+  const clientDuBanc = () => ({ clientName: 'Ansar', visits: 3, lastVisit: ymd(now - 40 * 24 * H), reservationsAVenir: 0, prochaineReservation: null, depense: 1240, absences: 1,
+        venues: [{ date: ymd(now - 40 * 24 * H), heure: '14:00', pax: 28, label: 'Formule 2', prix: 540 }, { date: ymd(now - 150 * 24 * H), heure: '10:00', pax: 22, label: 'Bowling + Laser Game', prix: 420 }, { date: ymd(now - 300 * 24 * H), heure: '16:00', pax: 16, label: 'Formule 1', prix: 280 }] });
   const J = (payload, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
   const natif = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
@@ -151,6 +153,27 @@ function installer(expiresAt) {
       const corps = JSON.parse(init.body || '{}');
       window.__QA__.appels.push({ methode, action: corps.action, corps });
       const lead = leads.find((l) => String(l.id) === String(corps.id || corps.customRequestId));
+      // L assistant de la fiche (2026-11-10) : une proposition et son mail, la consigne suivie a la lettre.
+      if (corps.action === 'customRequestAssist') {
+        if (window.__QA__.assist === 'panne') return J({ ok: false, error: 'Pinlane ne répond pas pour le moment.' }, 503);
+        const c = String(corps.consigne || '');
+        const plusTard = /15/.test(c);
+        const prixImpose = /20 ?€/.test(c);
+        const prix = prixImpose ? 620 : 544;
+        const heure = plusTard ? '15:00' : '14:00';
+        const fin = plusTard ? '17:00' : '16:00';
+        const sans = window.__QA__.assist === 'rien';
+        const proposition = sans ? null : { date: D1, type: 'libre', ref: 'programme', heure, fin, nom: 'Bowling + Laser Game', prix, parJoueur: Math.round((prix / 31) * 100) / 100, joueurs: 31, formule: '', activites: [{ id: 'bowling', nom: 'Bowling' }, { id: 'laser_game', nom: 'Laser Game' }], plus: false, prixLibre: prixImpose, verifiee: !plusTard };
+        if (window.__QA__.assistLent && window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').length === 1) await new Promise((r) => setTimeout(r, 1200));
+        // Le temps que le test lise l ecran d attente : sans lui, la reponse revient avant la lecture.
+        if (window.__QA__.assistAttente) await new Promise((r) => setTimeout(r, window.__QA__.assistAttente));
+        return J({ ok: true, id: corps.id, proposition, consigneSuivie: true, source: 'ia', etude, client: clientDuBanc(),
+          pourquoi: 'C’est l’après-midi demandé, et le programme tient dans leur budget.',
+          suggestions: ['Plutôt 15:00', 'Proposer la Formule 3 à 14:30', 'Le vendredi 4 décembre'],
+          brouillon: { source: 'ia', raison: '', objet: 'Votre venue pour 31 personnes chez Fun Galaxy Libramont',
+            corps: `Bonjour Ansar,\n\nMerci pour votre demande pour un groupe de 31 personnes.\n\nL’équipe vous propose le bowling et le laser game à ${heure}, avec une fin vers ${fin}, pour ${prix} € pour le groupe.\n\nBien à vous,\nL’équipe de Fun Galaxy Libramont`,
+            pointsAVerifier: [...(plusTard ? ['D’après le planning, 15:00 n’est pas libre pour ce groupe : regardez-le avant d’envoyer.'] : []), '3 accompagnateurs non comptés dans les prix : à préciser au client si le centre leur facture quelque chose.'] } });
+      }
       if (corps.action === 'customRequestDraft') {
         if (window.__QA__.brouillon === 'vide') return J({ ok: true });
         if (window.__QA__.brouillon === 'perime') return J({ ok: true, id: corps.id, etude, brouillon: null, choixPerime: true });
@@ -202,8 +225,7 @@ function installer(expiresAt) {
       const action = u.searchParams.get('action') || '';
       window.__QA__.appels.push({ methode, action, id: u.searchParams.get('id') || '' });
       if (action === 'customRequests') return J({ ok: true, centerId: 'libramont', customRequests: JSON.parse(JSON.stringify(leads)) });
-      if (action === 'customRequestStudy') return J({ ok: true, id: Number(u.searchParams.get('id')), etude, client: { clientName: 'Ansar', visits: 3, lastVisit: ymd(now - 40 * 24 * H), reservationsAVenir: 0, prochaineReservation: null, depense: 1240, absences: 1,
-        venues: [{ date: ymd(now - 40 * 24 * H), heure: '14:00', pax: 28, label: 'Formule 2', prix: 540 }, { date: ymd(now - 150 * 24 * H), heure: '10:00', pax: 22, label: 'Bowling + Laser Game', prix: 420 }, { date: ymd(now - 300 * 24 * H), heure: '16:00', pax: 16, label: 'Formule 1', prix: 280 }] } });
+      if (action === 'customRequestStudy') return J({ ok: true, id: Number(u.searchParams.get('id')), etude, client: clientDuBanc() });
       if (action === 'communications') {
         const qui = (u.searchParams.get('recipient') || '').toLowerCase();
         return J({ ok: true, communications: comms.filter((c) => c.recipient.toLowerCase() === qui) });
@@ -241,25 +263,10 @@ async function ouvrir(browser, { largeur = 1500, hauteur = 1150, theme = 'dark',
 
 const texte = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); return el ? el.innerText.replace(/\s+/g, ' ').trim() : ''; }, sel);
 const ordreDeLaListe = (page) => page.evaluate(() => [...document.querySelectorAll('.sm-l')].map((b) => b.dataset.itemId));
-const attendreEtude = (page) => page.waitForSelector('.sm-jour', { timeout: 8000 });
+// La fiche est prete quand Pinlane a propose (ou quand la suite d une reponse partie s affiche).
+const attendreEtude = (page) => page.waitForSelector('.sm-ia-p, .sm-reponse, .sm-ia .sm-note', { timeout: 8000 });
 const ligne = (id) => `.sm-l[data-item-id="${id}"]`;
 const ouvrirFiche = (page, id) => page.click(`${ligne(id)} .sm-l-n`);
-// Ce que la journee montre : la position de chaque bloc, en pourcentage de la journee d ouverture.
-const lireJournee = () => {
-  const j = document.querySelector('.sm-j');
-  if (!j) return null;
-  const blocs = (id) => [...document.querySelectorAll(`[data-sm-rangee="${id}"] .sm-j-b`)].map((b) => ({ x: parseFloat(b.style.left), w: parseFloat(b.style.width), groupe: b.classList.contains('is-groupe'), apercu: b.classList.contains('is-apercu'), fond: getComputedStyle(b).backgroundColor }));
-  return {
-    arrivee: j.classList.contains('is-arrivee'),
-    pistes: document.querySelectorAll('.sm-j-t.is-piste').length,
-    p1: blocs('bowling_lane:1'), p5: blocs('bowling_lane:5'), p7: blocs('bowling_lane:7'), p8: blocs('bowling_lane:8'), arene: blocs('laser_arena:0'),
-    heures: [...document.querySelectorAll('.sm-j-axe span')].map((s) => s.textContent),
-    moment: [...document.querySelectorAll('.sm-j-axe .is-mo')].map((s) => s.textContent),
-    dit: (document.querySelector('.sm-j-dit') || {}).textContent || '',
-    titre: (document.querySelector('.sm-o-titre') || {}).textContent || '',
-  };
-};
-const pres = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
 const lignesMail = (page) => page.evaluate(() => [...document.querySelectorAll('.sm-hi-m')].map((b) => b.closest('div').innerText.replace(/\s+/g, ' ').trim()));
 
 async function parcours(browser, { captures = true } = {}) {
@@ -282,10 +289,8 @@ async function parcours(browser, { captures = true } = {}) {
     r.ligne801 = await texte(page, ligne(801));
     await capture('liste-sombre.png');
 
-    // [B] la fiche
+    // [B] la fiche : ce qu ils demandent, puis ce que Pinlane propose
     await ouvrirFiche(page, 801);
-    await page.waitForSelector('.sm-j-b', { timeout: 8000 });
-    r.dessin = await page.evaluate(() => { const j = document.querySelector('.sm-j'); const b = j && j.querySelector('.sm-j-b'); return j ? { arrivee: j.classList.contains('is-arrivee'), anime: b ? getComputedStyle(b).animationName : '' } : null; });
     await attendreEtude(page);
     await page.waitForTimeout(300);
     r.entete = await page.evaluate(() => ({
@@ -297,58 +302,27 @@ async function parcours(browser, { captures = true } = {}) {
       liste: document.querySelectorAll('.sm-l').length,
     }));
     r.bandeau = await page.evaluate(() => { const b = document.querySelector('.sm-promis'); return b ? { t: b.innerText.replace(/\s+/g, ' ').trim(), cls: b.className } : null; });
-    await page.waitForFunction(() => [...document.querySelectorAll('.sm-photo')].every((i) => i.complete), null, { timeout: 8000 });
-    r.envies = await page.evaluate(() => [...document.querySelectorAll('.sm-envies li')].map((l) => l.innerText.replace(/\s+/g, ' ').trim()));
-    r.photos = await page.evaluate(() => [...document.querySelectorAll('.sm-envies .sm-photo')].map((i) => ({ n: i.naturalWidth, src: i.getAttribute('src') })));
-    r.photosOffres = await page.evaluate(() => [...document.querySelectorAll('.sm-o .sm-o-photo')].map((i) => i.getAttribute('src')));
     r.photoAilleurs = await page.evaluate(() => smPhotoDe('Bowling', 'un-autre-centre'));
-    r.demandeTexte = await texte(page, '.sm-c1 .sm-demande');
-    r.faits = await texte(page, '.sm-c1 .sm-faits');
+    r.demandeTexte = await texte(page, '.sm-demande');
     r.clientTexte = await texte(page, '.sm-client');
     r.venues = await page.evaluate(() => document.querySelectorAll('.sm-venues li').length);
     r.mots = await page.evaluate(() => document.querySelector('.sm-fiche').innerText);
-    r.vide = await texte(page, '.sm-autre');
-
-    // [C] les disponibilites
-    r.jours = await page.evaluate(() => [...document.querySelectorAll('.sm-jour, .sm-jour-off')].map((d) => d.innerText.replace(/\s+/g, ' ').trim()));
-    r.momentSurLAxe = await page.evaluate(() => Boolean(document.querySelector('.sm-jour .sm-j-mo')));
-    r.ordreDuJour = await page.evaluate(() => { const j = document.querySelector('.sm-jour'); const o = j && j.querySelector('.sm-offres'); const p = j && j.querySelector('.sm-j'); return Boolean(o && p && (o.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)); });
     r.tete = await page.evaluate(() => { const t = document.querySelector('.sm-tete'); const e = t.querySelector('.sm-tete-n .sm-du'); return { date: Boolean(t.querySelector('.sm-date')), demande: Boolean(t.querySelector('.sm-demande')), etat: e ? { t: e.textContent.trim(), cls: e.className } : null, principal: (t.querySelector('.sm-p') || {}).textContent || '', haut: Math.round(t.getBoundingClientRect().height) }; });
-    r.etudeDemandee = await page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').map((a) => a.id));
-    await capture('fiche-sombre.png');
-    await capture('fiche-sombre-page.png', { fullPage: true });
-
-    // [T] la journee dessinee
-    r.journee = await page.evaluate(lireJournee);
-    r.touches = await page.evaluate(() => [...document.querySelectorAll('.sm-h')].map((b) => ({ t: b.innerText.replace(/\s+/g, ' ').trim(), a: b.getAttribute('aria-label') })));
-
-    // [F] les mails d avant la demande
-    r.filAvant = await lignesMail(page);
-
-    // [D] choisir une heure
-    r.envoisAvant = await page.evaluate(() => window.__QA__.envois.length);
-    const heure = page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '14:00' });
-    await heure.hover();
-    await page.waitForTimeout(60);
-    r.apercu = await page.evaluate(lireJournee);
-    await page.mouse.move(3, 3);
-    await page.waitForTimeout(60);
-    r.apresApercu = await page.evaluate(lireJournee);
-    await heure.click();
-    await page.waitForSelector('.sm-courrier textarea', { timeout: 8000 });
-    await page.waitForFunction(() => /868 €/.test((document.querySelector('.sm-courrier textarea') || {}).value || ''), null, { timeout: 8000 });
-    await page.waitForTimeout(400);
-    r.touche = await page.evaluate(() => {
-      const on = document.querySelector('.sm-h.is-on');
-      return { pressee: on ? on.getAttribute('aria-pressed') : '', heure: on ? on.innerText.replace(/\s+/g, ' ').trim() : '', resume: ((document.querySelector('.sm-courrier .sm-resume') || {}).innerText || '').replace(/\s+/g, ' ').trim() };
+    r.ia = await page.evaluate(() => {
+      const t = (s) => ((document.querySelector(s) || {}).innerText || '').replace(/\s+/g, ' ').trim();
+      return {
+        quand: t('.sm-ia-quand'), quoi: t('.sm-ia-quoi'), prix: t('.sm-ia-prix'), pourquoi: t('.sm-ia-pq'),
+        idees: [...document.querySelectorAll('.sm-ia-sg')].map((b) => b.textContent.trim()),
+        appels: window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').map((a) => ({ id: a.corps.id, consigne: a.corps.consigne, actuelle: a.corps.actuelle || null })),
+        etudes: window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').length,
+        brouillons: window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').length,
+        ancien: Boolean(document.querySelector('.sm-j, .sm-jour, .sm-h, .sm-compose, .sm-envies')),
+        ordre: [...document.querySelectorAll('.sm-une > section > h3')].map((h) => h.textContent.trim()),
+      };
     });
     r.redaction = await page.evaluate(() => {
       const zone = document.querySelector('.sm-courrier textarea');
-      const appel = window.__QA__.appels.filter((a) => a.action === 'customRequestDraft')[0] || { corps: {} };
       return {
-        appel: window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').map((a) => a.corps.id),
-        choix: appel.corps.choix || null,
-        sansIA: appel.corps.sansIA,
         points: [...document.querySelectorAll('.sm-verif span')].map((s) => s.textContent.trim()),
         objet: (document.querySelector('.sm-courrier input') || {}).value || '',
         corps: zone ? zone.value : '',
@@ -356,29 +330,45 @@ async function parcours(browser, { captures = true } = {}) {
         hautMessage: zone ? Math.round(zone.getBoundingClientRect().height) : 0,
         cache: zone ? zone.scrollHeight - zone.clientHeight : -1,
         statut: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps.status),
-        mots: document.querySelector('.sm-courrier').innerText,
+        mots: (document.querySelector('.sm-courrier') || {}).innerText || '',
+        resume: Boolean(document.querySelector('.sm-courrier .sm-resume')),
+        boutons: [...document.querySelectorAll('.sm-courrier .sm-actions button')].map((b) => b.textContent.trim()),
       };
     });
-    r.place = await page.evaluate(lireJournee);
-    await page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '14:00' }).hover();
-    await page.waitForTimeout(60);
-    r.surChoisie = await page.evaluate(lireJournee);
-    await page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '15:00' }).hover();
-    await page.waitForTimeout(60);
-    r.apercuSurChoix = await page.evaluate(lireJournee);
-    await page.mouse.move(3, 3);
-    await page.waitForTimeout(60);
-    r.retourAuChoix = await page.evaluate(lireJournee);
+    await capture('fiche-sombre.png');
+    await capture('fiche-sombre-page.png', { fullPage: true });
+
+    // [F] les mails d avant la demande
+    r.filAvant = await lignesMail(page);
+
+    // [D] parler a Pinlane : la frappe qui tient, une idee touchee, une panne, une consigne
+    r.envoisAvant = await page.evaluate(() => window.__QA__.envois.length);
+    await page.fill('#smIaC-801', 'plutôt');
+    await page.evaluate(() => renderStaffUtilityPage());
+    r.frappe = await page.evaluate(() => (document.getElementById('smIaC-801') || {}).value || '');
+    await page.locator('.sm-ia-sg', { hasText: 'Proposer la Formule 3' }).click();
+    await page.waitForFunction(() => window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').length === 2 && !document.querySelector('#smIa-801 .sm-ia-lit'), null, { timeout: 8000 });
+    await page.waitForTimeout(200);
+    r.idee = await page.evaluate(() => { const a = window.__QA__.appels.filter((x) => x.action === 'customRequestAssist')[1]; return { consigne: a.corps.consigne, actuelle: a.corps.actuelle || null, statut: window.__QA__.appels.filter((x) => x.action === 'customRequestStatus').map((x) => x.corps.status) }; });
+    r.garde = await page.evaluate(() => (document.querySelector('.sm-courrier textarea') || {}).value || '');
+    await page.evaluate(() => { window.__QA__.assist = 'panne'; });
+    await page.fill('#smIaC-801', 'plutôt 15 h');
+    await page.click('#smIa-801 .sm-ia-c button[type=submit]');
+    await page.waitForFunction(() => /Réessayez/.test((document.querySelector('#smIa-801') || {}).innerText || ''), null, { timeout: 8000 });
+    r.panneIa = await page.evaluate(() => ({ texte: ((document.querySelector('#smIa-801') || {}).innerText || '').replace(/\s+/g, ' '), corps: (document.querySelector('.sm-courrier textarea') || {}).value || '', quand: ((document.querySelector('.sm-ia-quand') || {}).textContent || '').trim() }));
+    await page.evaluate(() => { window.__QA__.assist = ''; window.__QA__.assistAttente = 900; });
+    await page.fill('#smIaC-801', 'plutôt 15 h et fais 20 € par personne');
+    await page.click('#smIa-801 .sm-ia-c button[type=submit]');
+    await page.waitForSelector('#smIa-801 .sm-ia-lit', { timeout: 3000 }).catch(() => {});
+    r.pendant = await page.evaluate(() => { window.__QA__.assistAttente = 0; return { lit: ((document.querySelector('#smIa-801 .sm-ia-lit') || {}).textContent || '').trim(), off: Boolean((document.querySelector('#smIa-801 .sm-ia-c button') || {}).disabled), lecture: Boolean((document.querySelector('.sm-courrier textarea') || {}).readOnly) }; });
+    await page.waitForFunction(() => /15:00/.test((document.querySelector('.sm-ia-quand') || {}).textContent || ''), null, { timeout: 8000 });
+    await page.waitForTimeout(300);
+    r.apres = await page.evaluate(() => {
+      const t = (s) => ((document.querySelector(s) || {}).innerText || '').replace(/\s+/g, ' ').trim();
+      const a = window.__QA__.appels.filter((x) => x.action === 'customRequestAssist').slice(-1)[0];
+      return { quand: t('.sm-ia-quand'), prix: t('.sm-ia-prix'), consigne: a.corps.consigne, actuelle: a.corps.actuelle || null, corps: (document.querySelector('.sm-courrier textarea') || {}).value || '', points: [...document.querySelectorAll('.sm-verif span')].map((s) => s.textContent.trim()), saisie: (document.getElementById('smIaC-801') || {}).value || '' };
+    });
     await capture('reponse-sombre.png', { fullPage: true });
-    // Un message qui ne se prepare pas laisse le texte tel quel.
-    r.garde = r.redaction.corps;
-    await page.evaluate(() => { window.__QA__.brouillon = 'vide'; });
-    await page.locator('.sm-o', { hasText: 'Bowling + Laser Game' }).locator('.sm-h', { hasText: '15:00' }).click();
-    await page.waitForTimeout(800);
-    r.apresVide = await page.evaluate(() => (document.querySelector('.sm-courrier textarea') || {}).value || '');
-    await page.evaluate(() => { window.__QA__.brouillon = 'ia'; });
-    await heure.click();
-    await page.waitForTimeout(800);
 
     // [G] une note d equipe
     await page.fill('#reqNote-801', 'Rappeler le directeur mardi pour le pique-nique.');
@@ -396,34 +386,34 @@ async function parcours(browser, { captures = true } = {}) {
       segment: state.staffRequestSegment,
       ouvert: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
       entete: ((document.querySelector('.sm-promis') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
-      reponse: ((document.querySelector('.sm-c2') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
-      jourPropose: document.querySelectorAll('.sm-planning-jour .sm-j-b.is-groupe').length,
-      motsJour: ((document.querySelector('.sm-planning-jour') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      reponse: ((document.querySelector('.sm-reponse') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
       historique: (document.querySelector('.sm-hi') || {}).innerText || '',
       composeur: Boolean(document.querySelector('.sm-courrier')),
-      principal: (document.querySelector('.sm-c2 .sm-p') || {}).textContent || '',
-      dispos: document.querySelectorAll('.sm-jour').length,
+      principal: (document.querySelector('.sm-reponse .sm-p') || {}).textContent || '',
+      ia: Boolean(document.querySelector('.sm-ia')),
     }));
-    await page.locator('.sm-c2 .sm-b', { hasText: 'Autre proposition' }).click();
-    await attendreEtude(page);
-    await page.waitForTimeout(200);
-    r.autre = await page.evaluate(() => ({ dispos: document.querySelectorAll('.sm-jour').length, gardee: (document.querySelector('.sm-h.is-on') || {}).innerText || '' }));
 
     // [I] la reservation preremplie
-    await page.locator('.sm-c2 .sm-p', { hasText: 'Le client accepte' }).click();
+    await page.locator('.sm-reponse .sm-p', { hasText: 'Le client accepte' }).click();
     await page.waitForTimeout(500);
-    r.resa = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState ? { type: quickBookState.type, heure: quickBookState.startTime, bowling: Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on), laser: Boolean(quickBookState.visit && quickBookState.visit.laser_game && quickBookState.visit.laser_game.on), pax: quickBookState.pax, date: quickBookState.date, notes: quickBookState.notes, source: quickBookState.sourceRequestId, nom: quickBookState.name } : null));
+    r.resa = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState ? { type: quickBookState.type, heure: quickBookState.startTime, bowling: Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on), laser: Boolean(quickBookState.visit && quickBookState.visit.laser_game && quickBookState.visit.laser_game.on), pax: quickBookState.pax, date: quickBookState.date, notes: quickBookState.notes, source: quickBookState.sourceRequestId, nom: quickBookState.name, prix: typeof getQuickBookCustomPrice === 'function' ? getQuickBookCustomPrice() : null } : null));
     await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+    await page.waitForTimeout(200);
+    // « Autre proposition » : Pinlane revient, la consigne attend, sans nouvel appel.
+    await page.locator('.sm-reponse .sm-b', { hasText: 'Autre proposition' }).click();
+    await page.waitForTimeout(300);
+    r.autre = await page.evaluate(() => ({ ia: Boolean(document.querySelector('#smIa-801')), focus: (document.activeElement || {}).id || '', quand: ((document.querySelector('.sm-ia-quand') || {}).textContent || '').trim(), appels: window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').length }));
 
-    // [H] une demande sans formulaire
+    // [H] une demande en attente, puis une demande sans formulaire
     await page.click('.sm-retour');
     await page.waitForSelector('.sm-l', { timeout: 5000 });
     r.apresRetour = await page.evaluate(() => document.querySelectorAll('.sm-fiche').length);
     await page.locator('.sm-onglet', { hasText: 'En attente' }).click();
     await page.waitForSelector(ligne(803), { timeout: 5000 });
     await ouvrirFiche(page, 803);
-    await page.waitForSelector('.sm-planning-jour .sm-j-b.is-groupe', { timeout: 8000 }).catch(() => null);
-    r.attente = await page.evaluate(() => ({ groupe: document.querySelectorAll('.sm-planning-jour .sm-j-b.is-groupe').length, client: ((document.querySelector('.sm-client') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
+    await attendreEtude(page).catch(() => null);
+    await page.waitForTimeout(300);
+    r.attente = await page.evaluate(() => ({ reponse: ((document.querySelector('.sm-reponse') || {}).innerText || '').replace(/\s+/g, ' ').trim(), client: ((document.querySelector('.sm-client') || {}).innerText || '').replace(/\s+/g, ' ').trim(), ia: Boolean(document.querySelector('.sm-ia')), appels: window.__QA__.appels.filter((a) => a.action === 'customRequestAssist' && String(a.corps.id) === '803').length }));
     await page.click('.sm-retour');
     await page.waitForSelector('.sm-l', { timeout: 5000 });
     await page.locator('.sm-onglet', { hasText: 'À traiter' }).click();
@@ -432,7 +422,7 @@ async function parcours(browser, { captures = true } = {}) {
     await page.waitForTimeout(300);
     await ouvrirFiche(page, 807);
     await page.waitForTimeout(600);
-    r.libre = { texte: await texte(page, '.sm-fiche'), etudes: await page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy' && a.id === '807').length) };
+    r.libre = { texte: await texte(page, '.sm-fiche'), ia: await page.evaluate(() => Boolean(document.querySelector('#smIa-807 .sm-ia-c'))), appels: await page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestAssist' && String(a.corps.id) === '807').length) };
 
     // Terminees : la reservee et la sans suite, cote a cote
     await page.click('.sm-retour');
@@ -477,47 +467,19 @@ async function telephone(browser) {
   } finally { await ctx.close(); }
 }
 
-// [P] LE PLANNING A BOUGE PENDANT QU ON ECRIVAIT : le serveur refuse l heure, rien ne s ecrit.
-async function heurePerimee(browser) {
+// [Q] DEUX CONSIGNES VITE : la reponse la plus lente ne remplace pas la derniere.
+async function deuxConsignes(browser) {
   const { ctx, page, erreurs } = await ouvrir(browser);
   const r = { erreurs };
   try {
-    await page.evaluate(() => { window.__QA__.brouillon = 'perime'; });
-    await ouvrirFiche(page, 804);
-    await attendreEtude(page);
-    await page.locator('.sm-o', { hasText: 'Formule 3' }).locator('.sm-h').first().click();
-    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestDraft'), null, { timeout: 8000 });
-    await page.waitForTimeout(500);
-    await page.mouse.move(3, 3);
-    await page.waitForTimeout(60);
-    r.lu = await page.evaluate(() => ({ choisies: document.querySelectorAll('.sm-h.is-on').length, mail: Boolean(document.querySelector('.sm-courrier')), consigne: ((document.querySelector('.sm-o-titre') || {}).innerText || '').replace(/\s+/g, ' ').trim() }));
-  } catch (error) {
-    r.panne = String((error && error.message) || error).split('\n')[0];
-  } finally {
-    await ctx.close();
-  }
-  return r;
-}
-
-// [Q] DEUX HEURES TOUCHEES VITE : la reponse la plus lente ne remplace pas la derniere.
-async function deuxHeures(browser) {
-  const { ctx, page, erreurs } = await ouvrir(browser);
-  const r = { erreurs };
-  try {
-    await page.evaluate(() => { window.__QA__.lent = 1; });
     await ouvrirFiche(page, 801);
     await attendreEtude(page);
-    const programme = page.locator('.sm-o', { hasText: 'Bowling + Laser Game' });
-    const appels = (n) => page.waitForFunction((k) => window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').length === k, n, { timeout: 8000 });
-    await programme.locator('.sm-h', { hasText: '14:00' }).click();
-    await appels(1);
-    await programme.locator('.sm-h', { hasText: '15:00' }).click();
-    await appels(2);
+    await page.evaluate(() => { window.__QA__.appels.length = 0; window.__QA__.assistLent = true; smIaLancer(801, 'plutôt 15 h'); smIaLancer(801, 'Proposer la Formule 3 à 14:30'); });
     await page.waitForTimeout(1800);
-    r.lu = await page.evaluate(() => ({
-      heures: window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').map((a) => a.corps.choix && a.corps.choix.heure),
+    r.final = await page.evaluate(() => ({
+      quand: ((document.querySelector('.sm-ia-quand') || {}).textContent || '').trim(),
       corps: (document.querySelector('.sm-courrier textarea') || {}).value || '',
-      choisie: ((document.querySelector('.sm-h.is-on') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      appels: window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').map((a) => a.corps.consigne),
     }));
   } catch (error) {
     r.panne = String((error && error.message) || error).split('\n')[0];
@@ -606,7 +568,7 @@ async function sansSuite(browser) {
       ouvert: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
       entete: ((document.querySelector('.sm-promis') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
       bouton: (document.querySelector('.sm-tete button.sm-b-classer') || {}).textContent || '',
-      dispos: document.querySelectorAll('.sm-jour').length,
+      dispos: document.querySelectorAll('.sm-ia').length,
     }));
     await page.locator('.sm-tete .sm-b', { hasText: 'Rouvrir' }).click();
     await page.waitForTimeout(600);
@@ -622,81 +584,26 @@ async function sansSuite(browser) {
   return r;
 }
 
-// [O] LES HORAIRES D UN JOUR, LE SUR MESURE, LES FENETRES (2026-11-09, Ansar : « on puet ouvirr
-// le centre a 10 h ou fermer a minuit [...] ça créé resa direct [...] ça doit le montrer sous
-// forme de pop up pas nous redirigé »). Le jour de la demande a deux groupes, dont un team
-// building a 08:00, avant toute ouverture habituelle. `sansForcer` : un role qui ne passe pas
-// outre les regles du centre.
-async function horairesEtFenetres(browser, { sansForcer = false } = {}) {
+// [O] LES FENETRES (2026-11-09, refaites le 2026-11-10 pour la fiche simple) : le planning du jour
+// propose et la fiche du client s ouvrent par-dessus la demande, sans la quitter.
+async function fenetres(browser) {
   const { ctx, page, erreurs } = await ouvrir(browser);
   const r = { erreurs };
-  const ouvertures = () => page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'ouvertureExceptionnelle').map((a) => a.corps));
   const ou = () => page.evaluate(() => ({ hash: location.hash, page: typeof getStaffMenuPage === 'function' ? getStaffMenuPage() : state.staffMenuPage }));
-  const etudes = () => page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').length);
   try {
     r.D1 = await page.evaluate(() => window.__QA__.D1);
-    await page.evaluate(({ d, sans }) => {
+    await page.evaluate(({ d }) => {
       const base = { date: d, centerId: 'libramont', duration: 1, type: 'bowling', status: 'confirmed', label: 'Bowling', email: '', extras: [], notes: '' };
       window.__QA__.resasDuJour = [
         { ...base, id: 9101, name: 'Proximus', pax: 24, startTime: '08:00', lanes: [1, 2, 3, 4], occasion: 'teambuilding', price: 720, phone: '+32470000001' },
         { ...base, id: 9102, name: 'Famille Lemaire', pax: 8, startTime: '15:00', lanes: [5, 6], occasion: '', price: 96, phone: '+32470000002' },
       ];
-      if (sans) {
-        window.__QA__.sansForcer = true;
-        const s = state.staffAuthSession;
-        const moins = { ...s, role: { id: 'accueil', name: 'Accueil', locked: false }, permissions: [...(s.permissions || []), 'niveau:forcer:non'] };
-        state.staffAuthSession = moins;
-        for (let i = 0; i < localStorage.length; i += 1) {
-          const cle = localStorage.key(i);
-          try { const v = JSON.parse(localStorage.getItem(cle)); if (v && v.token === 'qa' && v.role) localStorage.setItem(cle, JSON.stringify({ ...v, role: moins.role, permissions: moins.permissions })); } catch (e) { /* pas une session */ }
-        }
-      }
-    }, { d: r.D1, sans: sansForcer });
+    }, { d: r.D1 });
     await ouvrirFiche(page, 801);
     await attendreEtude(page);
     await page.waitForTimeout(300);
-    r.liensJour = await page.evaluate(() => [...document.querySelectorAll('.sm-jour .sm-jour-a .sm-lien')].map((b) => b.textContent.trim()));
-    r.compose = await texte(page, '.sm-compose');
-    if (!sansForcer) {
-      // 1. Les horaires du jour : fermer a minuit.
-      await page.locator('.sm-jour .sm-jour-a .sm-lien', { hasText: 'Changer les horaires' }).first().click();
-      await page.waitForSelector('.sm-fen #smHfFerme', { timeout: 5000 });
-      await page.fill('#smHfFerme', '00:00');
-      r.minuit = await texte(page, '#smHfDit');
-      r.etudesAvant = await etudes();
-      await page.click('#smHfOk');
-      await page.waitForSelector('.sm-fen', { state: 'detached', timeout: 5000 });
-      r.pose = (await ouvertures())[0] || null;
-      await page.waitForFunction((n) => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').length > n, r.etudesAvant, { timeout: 5000 }).catch(() => {});
-      r.etudesApres = await etudes();
-    }
-    // 2. Composer a 08:00, avant l ouverture.
-    await page.fill('.sm-compose input[type=date]', r.D1);
-    await page.fill('.sm-compose input[type=time]', '08:00');
-    await page.waitForTimeout(150);
-    r.composeHeure = await page.evaluate(() => {
-      const b = document.querySelector('.sm-compose .sm-co-go');
-      return { bouton: b ? b.textContent.trim() : '', off: Boolean(b && b.disabled), dit: ((document.querySelector('.sm-compose-dit') || {}).textContent || '').trim() };
-    });
-    if (!sansForcer) {
-      await page.click('.sm-compose .sm-co-go');
-      await page.waitForSelector('.qb-modal', { timeout: 8000 });
-      await page.waitForTimeout(900);
-      r.ouvertures = await ouvertures();
-      r.reserver = await page.evaluate(() => ({
-        date: quickBookState && quickBookState.date,
-        heure: quickBookState && quickBookState.startTime,
-        occasion: quickBookState && quickBookState.occasion,
-        source: quickBookState && String(quickBookState.sourceRequestId),
-        horaires: ((document.querySelector('.rs-horaires') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
-        huit: [...document.querySelectorAll('.rs-h')].some((b) => /^08:00/.test(b.textContent.trim())),
-      }));
-      await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
-      await page.waitForTimeout(300);
-    }
-    // 3. Le planning du jour, en fenetre.
     const avant = await ou();
-    await page.locator('.sm-jour .sm-jour-a .sm-lien', { hasText: 'Voir le planning de ce jour' }).first().click();
+    await page.locator('.sm-ia-plan', { hasText: 'Voir le planning de ce jour' }).click();
     await page.waitForSelector('.sm-fen .sm-fen-planning .gf', { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(600);
     r.planning = await page.evaluate(() => {
@@ -705,14 +612,12 @@ async function horairesEtFenetres(browser, { sansForcer = false } = {}) {
         titre: (f.querySelector('#smFenT') || {}).textContent || '',
         groupes: [...f.querySelectorAll('.gf-nom__t')].map((n) => n.textContent),
         marques: [...f.querySelectorAll('.gf-nom__m')].map((n) => n.textContent),
-        bandeau: (f.querySelector('.gf-bandeau') || {}).textContent || '',
       } : null;
     });
     r.pagePlanning = { avant, apres: await ou() };
     await page.keyboard.press('Escape');
     await page.waitForTimeout(250);
     r.planningFerme = await page.evaluate(() => ({ ouverte: Boolean(document.querySelector('.sm-fen')), focus: ((document.activeElement && document.activeElement.textContent) || '').trim() }));
-    // 4. Le client, en fenetre.
     const lien = page.locator('.sm-client .sm-lien', { hasText: 'Voir sa fiche client' });
     if (await lien.count()) {
       await lien.click();
@@ -730,48 +635,22 @@ async function horairesEtFenetres(browser, { sansForcer = false } = {}) {
   return r;
 }
 
-function verifierHoraires(h) {
-  section('O. LES HORAIRES D UN JOUR, LE SUR MESURE, LES FENETRES');
-  ok(!h.panne, 'le parcours va au bout', h.panne || '');
-  ok(Array.isArray(h.liensJour) && h.liensJour.includes('Changer les horaires') && h.liensJour.includes('Voir le planning de ce jour'), 'le jour etudie se change et se regarde', JSON.stringify(h.liensJour));
-  ok(/Sur mesure/.test(h.compose || '') && /Composer la réservation/.test(h.compose || ''), 'la fiche compose une reservation sur mesure', h.compose);
-  ok(/minuit/.test(h.minuit || ''), 'fermer a 00:00 se dit « minuit »', h.minuit);
-  ok(Boolean(h.pose) && h.pose.date === h.D1 && /^\d{2}:\d{2}$/.test(h.pose.open) && h.pose.close === '24:00', 'minuit part au serveur en 24:00, pour le jour de la demande', JSON.stringify(h.pose));
-  ok(h.etudesApres > h.etudesAvant, 'la fiche relit son etude avec les nouveaux horaires', `${h.etudesAvant} -> ${h.etudesApres}`);
-  ok(Boolean(h.composeHeure) && /Ouvrir à 08:00 et composer/.test(h.composeHeure.bouton) && /ouvrira à 08:00/.test(h.composeHeure.dit) && !h.composeHeure.off, 'une heure avant l ouverture se dit sur le bouton, avant de toucher', JSON.stringify(h.composeHeure));
-  const huit = (h.ouvertures || []).find((o) => o.open === '08:00');
-  ok(Boolean(huit) && huit.date === h.D1, 'composer a 08:00 ouvre le centre a 08:00 ce jour-la, avant Reserver', JSON.stringify(h.ouvertures));
-  ok(Boolean(h.reserver) && h.reserver.date === h.D1 && h.reserver.heure === '08:00' && h.reserver.source === '801', 'Reserver s ouvre sur le jour et l heure composes, lie a la demande', JSON.stringify(h.reserver));
-  ok(Boolean(h.reserver) && h.reserver.occasion === 'ecole', 'l occasion du groupe est deja choisie', JSON.stringify(h.reserver));
-  ok(Boolean(h.reserver) && /Ouvert de 08:00/.test(h.reserver.horaires) && /Ouverture exceptionnelle/.test(h.reserver.horaires) && h.reserver.huit, 'Reserver propose 08:00 et dit l ouverture exceptionnelle', JSON.stringify(h.reserver));
-  ok(Boolean(h.planning) && /^Planning du /.test(h.planning.titre) && h.planning.groupes.includes('Proximus'), 'le planning du jour s ouvre en fenetre, avec ses groupes', JSON.stringify(h.planning));
-  ok(Boolean(h.planning) && h.planning.marques.includes('Team building') && h.planning.marques.includes('Hors horaires'), 'le team building et l heure hors horaires sont marques', JSON.stringify(h.planning && h.planning.marques));
-  ok(Boolean(h.pagePlanning) && h.pagePlanning.avant.hash === h.pagePlanning.apres.hash && h.pagePlanning.apres.page === 'requests', 'la page ne change pas', JSON.stringify(h.pagePlanning));
+function verifierFenetres(h) {
+  section('O. LES FENETRES : LE PLANNING DU JOUR ET LE CLIENT, SANS QUITTER LA DEMANDE');
+  if (!ok(!h.panne, 'MONTAGE le parcours va au bout', h.panne || '')) return;
+  ok(h.erreurs.length === 0, 'MONTAGE zero erreur', h.erreurs.join(' | '));
+  ok(Boolean(h.planning) && /^Planning du /.test(h.planning.titre) && h.planning.groupes.includes('Proximus'), 'le planning du jour propose s ouvre en fenetre, avec ses groupes', JSON.stringify(h.planning));
+  ok(Boolean(h.planning) && h.planning.marques.includes('Team building'), 'le team building est marque au planning', JSON.stringify(h.planning && h.planning.marques));
+  ok(Boolean(h.pagePlanning) && h.pagePlanning.apres.page === 'requests', 'la demande reste ouverte dessous', JSON.stringify(h.pagePlanning));
   ok(Boolean(h.planningFerme) && !h.planningFerme.ouverte && /Voir le planning de ce jour/.test(h.planningFerme.focus), 'Echap ferme la fenetre et rend la main au lien', JSON.stringify(h.planningFerme));
   ok(/Venues/.test(h.client || '') && /Absences/.test(h.client || '') && Boolean(h.pageClient) && h.pageClient.page === 'requests', 'le client s ouvre en fenetre, sans quitter la demande', JSON.stringify({ client: h.client, page: h.pageClient }));
-  ok(h.erreurs.length === 0, 'aucune erreur JavaScript', JSON.stringify(h.erreurs));
 }
 
-function verifierSansForcer(h) {
-  section('O2. UN ROLE QUI NE PASSE PAS OUTRE LES REGLES');
-  ok(!h.panne, 'le parcours va au bout', h.panne || '');
-  ok(Array.isArray(h.liensJour) && !h.liensJour.includes('Changer les horaires') && h.liensJour.includes('Voir le planning de ce jour'), 'les horaires ne se changent pas, le planning se regarde', JSON.stringify(h.liensJour));
-  ok(Boolean(h.composeHeure) && h.composeHeure.off === true && /Seul un responsable/.test(h.composeHeure.dit), 'une heure hors des horaires ne se compose pas, et la fiche dit pourquoi', JSON.stringify(h.composeHeure));
-  ok(Boolean(h.planning) && h.planning.groupes.length >= 1, 'le planning du jour s ouvre quand meme', JSON.stringify(h.planning));
-  ok(h.erreurs.length === 0, 'aucune erreur JavaScript', JSON.stringify(h.erreurs));
-}
-
-function verifierPerimee(h) {
-  section('P. LE PLANNING A BOUGE : L HEURE N EST PLUS POSSIBLE');
-  if (!ok(!h.panne && h.lu, 'MONTAGE le parcours va au bout', h.panne || '')) return;
-  ok(h.lu.choisies === 0 && !h.lu.mail && /Choisissez une heure/.test(h.lu.consigne), 'l heure refusee se retire, aucun mail ne s ecrit dessus', JSON.stringify(h.lu));
-}
-
-function verifierDeuxHeures(h) {
-  section('Q. DEUX HEURES TOUCHEES VITE');
-  if (!ok(!h.panne && h.lu, 'MONTAGE les deux heures sont touchees', h.panne || '')) return;
-  ok(JSON.stringify(h.lu.heures) === '["14:00","15:00"]', 'chaque heure touchee demande son mail', JSON.stringify(h.lu.heures));
-  ok(/Depart 15:00\./.test(h.lu.corps) && !/Depart 14:00\./.test(h.lu.corps) && /15:00/.test(h.lu.choisie), 'le mail affiche est celui de la derniere heure touchee', JSON.stringify(h.lu));
+function verifierDeuxConsignes(h) {
+  section('Q. DEUX CONSIGNES VITE');
+  if (!ok(!h.panne && h.final, 'MONTAGE le parcours va au bout', h.panne || '')) return;
+  ok(JSON.stringify(h.final.appels) === '["plutôt 15 h","Proposer la Formule 3 à 14:30"]', 'deux consignes, deux appels, dans l ordre', JSON.stringify(h.final.appels));
+  ok(/14:00/.test(h.final.quand) && /14:00/.test(h.final.corps) && !/15:00/.test(h.final.corps), 'la reponse lente de la premiere ne remplace pas la seconde', JSON.stringify(h.final).slice(0, 240));
 }
 
 function verifierHorloge(h) {
@@ -824,76 +703,46 @@ function verifier(r) {
   ok(r.titre801 === 'Athénée de Libramont', 'la ligne porte le nom de l organisation', r.titre801);
   ok(/^Athénée de Libramont .*Ansar Bisultanov (Lun|Mar|Mer|Jeu|Ven|Sam|Dim)\. \d{1,2} \S+ Après-midi 31 Formule 3 Bowling Laser Game/.test(r.ligne801), 'la ligne dit qui, quand, combien et quoi, dans cet ordre', r.ligne801);
 
-  section('B. LA FICHE DIT TOUT CE QUE LE CLIENT A REMPLI');
+  section('B. LA FICHE, EN TRES SIMPLE : CE QU ILS DEMANDENT EN TROIS PHRASES');
   ok(/Athénée de Libramont/.test(r.entete.nom) && /École, jeunesse/.test(r.entete.sous) && /reçue/.test(r.entete.sous), 'le groupe, son type, quand la demande est arrivee', JSON.stringify(r.entete));
   ok(/Toutes les demandes/.test(r.entete.retour) && r.entete.liste === 0, 'la fiche prend la page, un lien ramene a la liste', JSON.stringify(r.entete));
-  ok(JSON.stringify(r.entete.boutons) === '["Sans suite","Écrire au client"]' && r.tete.principal === 'Écrire au client', 'en tete : un seul geste de classement, puis ecrire au client en geste principal', JSON.stringify([r.entete.boutons, r.tete.principal]));
-  ok(!r.tete.date && !r.tete.demande && r.tete.etat && /is-soon/.test(r.tete.etat.cls) && /^Reste (1|2) h/.test(r.tete.etat.t) && r.tete.haut <= 120, 'l en-tete tient en une bande : le nom et son etat en aplat, la ligne du groupe, les gestes, en 120 px au plus', JSON.stringify(r.tete));
+  ok(JSON.stringify(r.entete.boutons) === '["Sans suite"]' && !r.tete.principal, 'en tete : appeler et classer, rien d autre, le mail est deja pret plus bas', JSON.stringify([r.entete.boutons, r.tete.principal]));
+  ok(!r.tete.date && !r.tete.demande && r.tete.etat && /is-soon/.test(r.tete.etat.cls) && /^Reste (1|2) h/.test(r.tete.etat.t) && r.tete.haut <= 120, 'l en-tete tient en une bande : le nom et son etat en aplat, la ligne du groupe, les gestes', JSON.stringify(r.tete));
   ok(r.entete.liens.length === 1 && r.entete.liens[0].t === 'Appeler' && r.entete.liens[0].href === 'tel:+32470112233', 'appeler le client est a un toucher', JSON.stringify(r.entete.liens));
-  ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client est en tete de la fiche', JSON.stringify(r.bandeau));
-  ok(/Joueurs 31 joueurs et 3 accompagnateurs, 7 à 12 ans/.test(r.faits) && /Date voulue Dimanche \d{1,2} \S+ l’après-midi, ou (lun|mar|mer|jeu|ven|sam|dim)\. \d{1,2} \S+/.test(r.faits), 'combien, quel age, quand, et l autre date, dans les chiffres de la demande', r.faits);
-  ok(JSON.stringify(r.envies) === '["Formule 3","Bowling 31 joueurs","Laser Game 31 joueurs"]' && /Budget 25 € par personne/.test(r.faits), 'ce qu ils veulent et leur budget', JSON.stringify(r.envies));
+  ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client se lit au-dessus de la proposition', JSON.stringify(r.bandeau));
+  ok(/31 joueurs de 7 à 12 ans et 3 accompagnateurs\./.test(r.demandeTexte) && /Dimanche \d{1,2} \S+ l’après-midi, ou le (lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) \d{1,2} \S+\./.test(r.demandeTexte) && /Formule 3, Bowling et Laser Game, pour 25 € par personne\./.test(r.demandeTexte),
+    'combien, quel age, quand, l autre date, ce qu ils veulent et leur budget, en trois phrases', r.demandeTexte);
   ok(/pique-niquer sur place/.test(r.demandeTexte), 'le message du client est lu en entier', r.demandeTexte);
   ok(/Ansar Bisultanov, Enseignant/.test(r.clientTexte) && /\+32 470 11 22 33/.test(r.clientTexte) && /ansar@example\.org/.test(r.clientTexte), 'qui appeler ou ecrire', r.clientTexte);
   ok(/Facture au nom de Athénée de Libramont, TVA BE0123456789/.test(r.clientTexte), 'la facture et sa TVA', r.clientTexte);
-  ok(/^Le client .*3 venues, la dernière le/.test(r.clientTexte) && /Pour 1 240 € au total/.test(r.clientTexte.replace(/\u202f|\u00a0/g, ' ')), 'le client deja venu est reconnu, avec ce qu il a represente', r.clientTexte);
+  ok(/^Le client .*3 venues, la dernière le/.test(r.clientTexte) && /Pour 1 240 € au total/.test(r.clientTexte.replace(/ | /g, ' ')), 'le client deja venu est reconnu, avec ce qu il a represente', r.clientTexte);
   ok(/1 absence/.test(r.clientTexte), 'ses absences se voient', r.clientTexte);
   ok(r.venues === 3 && /Formule 2, 28 joueurs/.test(r.clientTexte) && /540 €/.test(r.clientTexte), 'ses dernieres venues se lisent, avec leur prix', r.clientTexte);
-  ok(r.photos.length === 3 && r.photos.every((i) => i.n > 0), 'les vraies photos du centre se chargent', JSON.stringify(r.photos));
-  ok(r.photosOffres.length === 2 && r.photosOffres.every((s) => /^\/assets\/fungalaxy\/[a-z-]+-carte\.webp$/.test(String(s))), 'chaque offre porte une vraie photo du centre', JSON.stringify(r.photosOffres));
   ok(r.photoAilleurs === '', 'un autre client ne recoit pas les photos de ce centre', r.photoAilleurs);
   ok(!/\bIA\b|Touchez|moteur/.test(r.mots), 'la fiche ne parle ni d IA ni de moteur', (r.mots.match(/.{0,40}(\bIA\b|Touchez|moteur).{0,40}/) || [''])[0]);
-  ok(r.entete.boutons.includes('Écrire au client') && /Composer la réservation/.test(r.vide) && /Sur mesure/.test(r.vide), 'sans heure choisie : ecrire (en tete), ou composer une reservation sur mesure', r.vide);
+  ok(!r.ia.ancien, 'plus de journee dessinee, ni de grille d heures, ni de composeur : une seule proposition', String(r.ia.ancien));
+  ok(JSON.stringify(r.ia.ordre) === '["Ce qu’ils demandent","Pinlane propose","Le mail au client","Le client","Historique"]', 'de haut en bas : la demande, ce que Pinlane propose, le mail, le client, l historique', JSON.stringify(r.ia.ordre));
 
-  section('C. LES DISPONIBILITES : CE QUE LE MOTEUR DIT DE LA DATE');
-  const [j1 = '', j2 = ''] = r.jours;
-  ok(r.etudeDemandee.filter((id) => id === '801').length === 1, 'l etude est demandee pour la fiche ouverte, une fois', JSON.stringify(r.etudeDemandee));
-  ok(/Ouvert de 10:00 à 22:00/.test(j1) && !/Après-midi de/.test(j1) && r.momentSurLAxe, 'le jour voulu : ouvert, et l apres-midi marque sur l axe sans une phrase de plus', j1.slice(0, 200));
-  ok(r.ordreDuJour, 'les offres et leurs heures passent avant le planning du jour', String(r.ordreDuJour));
-  ok(/Formule 3/.test(j1) && /868 €/.test(j1) && /28 €/.test(j1) && /12:00/.test(j1) && /14:30/.test(j1), 'la formule : prix du groupe, prix par joueur, departs libres', j1);
-  ok(/3 € au-dessus du budget/.test(j1), 'au-dessus du budget, l ecart par joueur est dit', j1);
-  ok(/544 €/.test(j1) && /17,55 €/.test(j1) && !/Dans le budget/.test(j1) && /6 pistes/.test(j1) && /2 vagues/.test(j1) && /14:00/.test(j1) && /15:00/.test(j1), 'le programme des activites, son detail, et tous ses departs ; ce qui tient le budget n a rien a dire', j1);
-  ok(/2 réservations et 20 joueurs/.test(j1) && /Voir le planning de ce jour/.test(j1), 'ce qui est deja prevu ce jour-la, et le planning a un clic', j1.slice(-160));
-  ok(/autre date du client/.test(j2) && /fermé/.test(j2), 'l autre date du client : fermee, dit comme tel', j2);
-
-  section('T. LA JOURNEE DEMANDEE, DESSINEE');
-  const J = r.journee;
-  if (ok(Boolean(J), 'MONTAGE la journee se dessine')) {
-    ok(J.pistes === 8, 'une rangee par piste du centre', String(J.pistes));
-    ok(J.heures[0] === '10:00' && J.heures[J.heures.length - 1] === '21:00', 'l axe suit les heures d ouverture', J.heures.join(' '));
-    ok(J.moment.join(' ') === '12:00 13:00 14:00 15:00 16:00 17:00', 'le moment demande se voit sur l axe', J.moment.join(' '));
-    ok(J.p1.length === 1 && pres(J.p1[0].x, 4.17) && pres(J.p1[0].w, 12.5) && !J.p1[0].groupe, 'une reservation de 10:30 a 12:00 tombe a sa place', JSON.stringify(J.p1));
-    ok(J.p5.length === 1 && pres(J.p5[0].x, 41.67) && pres(J.p5[0].w, 8.33), 'celle de 15:00 a 16:00 aussi, sur ses pistes a elle', JSON.stringify(J.p5));
-    ok(J.p7.length === 0, 'une piste libre reste vide', JSON.stringify(J.p7));
-    ok(J.arene.length === 1 && pres(J.arene[0].x, 16.67) && pres(J.arene[0].w, 2.78), 'le laser a sa rangee', JSON.stringify(J.arene));
-    ok(r.dessin && r.dessin.arrivee === true && r.dessin.anime === 'sm-trace', 'la journee se dessine a l ouverture', JSON.stringify(r.dessin));
-    ok(/^Choisissez une heure pour 31 joueurs$/.test(J.titre.trim()) && /^En gris, ce qui est déjà réservé\.$/.test(J.dit.trim()), 'la consigne se lit au-dessus des heures, la legende sous le planning', `${J.titre} | ${J.dit}`);
-    ok(r.touches.some((t) => t.t === '14:00 reste 2 pistes reste 14 armes' && /fin vers 16:00/.test(t.a) && /reste 2 pistes/.test(t.a)), 'chaque heure dit ce qui resterait, et sa fin', JSON.stringify(r.touches));
-    ok(r.touches.some((t) => t.t === '15:00 reste 0 piste reste 14 armes') , 'meme quand il ne reste plus rien', JSON.stringify(r.touches));
-    ok(r.apercu && r.apercu.p7.length === 1 && r.apercu.p7[0].apercu && pres(r.apercu.p7[0].x, 33.33) && /^Bowling, 6 pistes de 14:00 à 15:00, puis Laser Game de 15:00 à 15:40\.$/.test(r.apercu.dit), 'passer sur une heure montre le groupe, en contour, et dit ce qu il prendrait', JSON.stringify(r.apercu && { p: r.apercu.p7, d: r.apercu.dit }));
-    ok(r.apresApercu && r.apresApercu.p7.length === 0 && /^En gris, ce qui est déjà réservé\.$/.test(r.apresApercu.dit.trim()), 'la souris partie, la journee revient', JSON.stringify(r.apresApercu && r.apresApercu.p7));
-    ok(r.place && r.place.p7.length === 1 && r.place.p7[0].groupe && !r.place.p7[0].apercu && r.place.p8.length === 1, 'l heure choisie pose le groupe sur ses pistes', JSON.stringify(r.place && r.place.p7));
-    ok(r.place && r.place.p7[0] && r.place.p7[0].fond === 'rgb(181, 131, 207)', 'le bowling garde sa couleur', r.place && r.place.p7[0] && r.place.p7[0].fond);
-    ok(r.place && r.place.arene.length === 3 && r.place.arene.filter((b) => b.groupe).every((b) => b.fond === 'rgb(103, 186, 172)'), 'le laser garde la sienne, ses deux vagues posees', JSON.stringify(r.place && r.place.arene));
-    ok(r.place && r.place.arrivee === false, 'le dessin ne se rejoue pas a chaque repeint');
-    ok(r.surChoisie && !r.surChoisie.p7[0].apercu, 'passer sur l heure choisie ne la remet pas en contour', JSON.stringify(r.surChoisie && r.surChoisie.p7));
-    ok(r.apercuSurChoix && r.apercuSurChoix.p7.length === 1 && r.apercuSurChoix.p7[0].apercu && pres(r.apercuSurChoix.p7[0].x, 41.67), 'une autre heure s essaie sans perdre le choix', JSON.stringify(r.apercuSurChoix && r.apercuSurChoix.p7));
-    ok(r.retourAuChoix && r.retourAuChoix.p7.length === 1 && !r.retourAuChoix.p7[0].apercu && pres(r.retourAuChoix.p7[0].x, 33.33), 'la souris partie, le choix est toujours la', JSON.stringify(r.retourAuChoix && r.retourAuChoix.p7));
-  }
-
-  section('D. CHOISIR UNE HEURE : LE MAIL SE PREPARE, RIEN NE PART');
-  ok(r.touche.pressee === 'true' && /14:00/.test(r.touche.heure), 'l heure choisie est marquee', JSON.stringify(r.touche));
-  ok(/Bowling \+ Laser Game/.test(r.touche.resume) && /544 €/.test(r.touche.resume) && /à 14:00/.test(r.touche.resume) && /fin vers 16:00/.test(r.touche.resume) && /17,55 € par joueur/.test(r.touche.resume), 'le programme, le prix, le jour et l heure', r.touche.resume);
-  ok(r.redaction.choix && r.redaction.choix.date === r.D1 && r.redaction.choix.type === 'visite' && r.redaction.choix.ref === 'programme' && r.redaction.choix.heure === '14:00', 'le mail est demande pour CETTE proposition', JSON.stringify(r.redaction.choix));
-  ok(r.redaction.sansIA === true, 'le mail vient du modele, pas de l IA', String(r.redaction.sansIA));
+  section('C. PINLANE PROPOSE, DES L OUVERTURE');
+  ok(r.ia.appels.length === 1 && r.ia.appels[0].id === 801 && r.ia.appels[0].consigne === '' && r.ia.etudes === 0 && r.ia.brouillons === 0, 'a l ouverture, une seule question a Pinlane pour cette demande, et aucun autre appel', JSON.stringify(r.ia));
+  ok(/^Dimanche \d{1,2} \S+, de 14:00 à 16:00$/.test(r.ia.quand) && r.ia.quoi === 'Bowling et Laser Game pour 31 joueurs' && /^544 €, soit 17,55 € par joueur\. C’est dans leur budget\./.test(r.ia.prix), 'la proposition en trois lignes : quand, quoi pour combien, son prix par joueur face au budget', JSON.stringify(r.ia));
+  ok(/après-midi demandé/.test(r.ia.pourquoi), 'pourquoi ce choix, en une phrase', r.ia.pourquoi);
+  ok(JSON.stringify(r.ia.idees) === '["Plutôt 15:00","Proposer la Formule 3 à 14:30","Le vendredi 4 décembre"]', 'trois idees a toucher', JSON.stringify(r.ia.idees));
+  ok(/14:00/.test(r.redaction.corps) && /544 €/.test(r.redaction.corps) && r.redaction.objet.length > 0 && !r.redaction.resume && !r.redaction.boutons.includes('Annuler'), 'le mail est deja ecrit sur cette proposition, sans la redire au-dessus', JSON.stringify({ c: r.redaction.corps.slice(0, 120), b: r.redaction.boutons }));
   ok(r.redaction.hautMessage >= 200 && r.redaction.cache <= 2, 'le mail se lit en entier, pas une ligne sur dix', JSON.stringify({ h: r.redaction.hautMessage, c: r.redaction.cache }));
-  ok(JSON.stringify(r.redaction.statut) === '["in_progress"]', 'choisir une heure prend la demande en charge', JSON.stringify(r.redaction.statut));
-  ok(JSON.stringify(r.redaction.appel) === '[801]', 'un clic, un mail demande pour cette demande', JSON.stringify(r.redaction.appel));
   ok(r.redaction.points.length === 1 && /accompagnateurs non comptés/.test(r.redaction.points[0]), 'ce qu il faut verifier avant d envoyer est affiche', JSON.stringify(r.redaction.points));
-  ok(/868 €/.test(r.redaction.corps) && /Formule 3/.test(r.redaction.corps) && r.redaction.objet.length > 0, 'objet et message sont remplis');
+  ok(JSON.stringify(r.redaction.statut) === '[]', 'ouvrir la fiche ne prend pas la demande en charge', JSON.stringify(r.redaction.statut));
   ok(!/\bIA\b/.test(r.redaction.mots), 'la reponse ne parle pas d IA', r.redaction.mots.slice(0, 200));
   ok(r.envoisAvant === 0 && r.redaction.envois === 0, 'AUCUN envoi : preparer ne fait partir aucun mail');
-  ok(r.apresVide === r.garde, 'un message qui ne se prepare pas laisse le texte tel quel');
+
+  section('D. PARLER A PINLANE');
+  ok(r.frappe === 'plutôt', 'une consigne en cours de frappe tient au repeint de la page', r.frappe);
+  ok(r.idee.consigne === 'Proposer la Formule 3 à 14:30' && r.idee.actuelle && r.idee.actuelle.type === 'libre' && r.idee.actuelle.heure === '14:00', 'une idee touchee part comme consigne, avec la proposition a l ecran', JSON.stringify(r.idee));
+  ok(JSON.stringify(r.idee.statut) === '["in_progress"]', 'la premiere consigne prend la demande en charge', JSON.stringify(r.idee.statut));
+  ok(/Réessayez/.test(r.panneIa.texte) && r.panneIa.corps === r.garde && /14:00/.test(r.panneIa.quand), 'Pinlane en panne le dit : la proposition et le mail restent', JSON.stringify(r.panneIa).slice(0, 240));
+  ok(r.pendant.lit === 'Pinlane refait la proposition avec « plutôt 15 h et fais 20 € par personne ».' && r.pendant.off && r.pendant.lecture, 'pendant qu il travaille, Pinlane dit ce qu il fait, sans roue qui tourne, et le mail ne se touche pas', JSON.stringify(r.pendant));
+  ok(/de 15:00 à 17:00/.test(r.apres.quand) && /^620 €, soit 20 € par joueur/.test(r.apres.prix) && r.apres.consigne === 'plutôt 15 h et fais 20 € par personne' && r.apres.actuelle && r.apres.actuelle.heure === '14:00', 'la consigne suivie, depuis la proposition a l ecran : la nouvelle heure et le prix par personne', JSON.stringify(r.apres).slice(0, 300));
+  ok(/15:00/.test(r.apres.corps) && /620 €/.test(r.apres.corps) && r.apres.points.some((x) => /15:00 n’est pas libre/.test(x)) && r.apres.saisie === '', 'le mail suit, ce qui n est pas libre se signale, la case se vide', JSON.stringify(r.apres).slice(0, 300));
 
   section('F. LES MAILS D AVANT LA DEMANDE');
   ok(r.filAvant.length === 1 && /Le client a écrit/.test(r.filAvant[0]) && /Question pique-nique/.test(r.filAvant[0]), 'seuls les mails de la demande sont dans l historique', JSON.stringify(r.filAvant));
@@ -902,27 +751,27 @@ function verifier(r) {
   ok(JSON.stringify(r.note.appel) === '["Rappeler le directeur mardi pour le pique-nique."]' && /Note de Rachel/.test(r.note.fil), 'la note part au serveur et s affiche dans l historique', r.note.fil.slice(-160));
 
   section('E. L ENVOI : PAR LE CLIC DE L EQUIPE, RANGE DANS L HISTORIQUE');
-  ok(r.envoi.corps && r.envoi.corps.action === 'sendDirectEmail' && r.envoi.corps.customRequestId === 801 && r.envoi.corps.to === 'ansar@example.org' && r.envoi.corps.draftSource === 'code',
+  ok(r.envoi.corps && r.envoi.corps.action === 'sendDirectEmail' && r.envoi.corps.customRequestId === 801 && r.envoi.corps.to === 'ansar@example.org' && r.envoi.corps.draftSource === 'ia',
     'un envoi, a ce client, rattache a sa demande', JSON.stringify(r.envoi.corps && { a: r.envoi.corps.action, id: r.envoi.corps.customRequestId, s: r.envoi.corps.draftSource }));
-  ok(JSON.stringify(r.envoi.statut) === '["in_progress"]', 'une demande nouvelle a laquelle on repond est prise en charge', JSON.stringify(r.envoi.statut));
+  ok(JSON.stringify(r.envoi.statut) === '["in_progress"]', 'une demande deja prise en charge ne l est pas deux fois', JSON.stringify(r.envoi.statut));
   ok(r.envoi.segment === 'attente' && r.envoi.ouvert === '801' && /par Rachel\. Le client n’a pas encore répondu\./.test(r.envoi.entete), 'la fiche reste ouverte et dit ou elle en est', JSON.stringify({ s: r.envoi.segment, id: r.envoi.ouvert, e: r.envoi.entete }));
   ok(/E-mail envoyé par Rachel/.test(r.envoi.historique) && !r.envoi.composeur, 'l historique dit qui a repondu ; le courrier est referme', r.envoi.historique.slice(-200));
-  ok(r.envoi.principal === 'Le client accepte, créer la réservation' && /Proposition envoyée/.test(r.envoi.reponse) && /544 €/.test(r.envoi.reponse) && /14:00/.test(r.envoi.reponse), 'la proposition partie reste lisible, et son oui est le geste suivant', JSON.stringify({ p: r.envoi.principal, t: r.envoi.reponse }));
-  ok(r.envoi.dispos === 0 && r.autre.dispos === 1 && /14:00/.test(r.autre.gardee), 'les disponibilites se rangent ; « Autre proposition » les rend, l heure partie marquee', JSON.stringify({ avant: r.envoi.dispos, apres: r.autre }));
-  ok(r.envoi.jourPropose >= 6 && /Bowling, 6 pistes de 14:00/.test(r.envoi.motsJour) && !/Choisissez/.test(r.envoi.motsJour), 'la proposition partie reste posee sur sa journee', JSON.stringify({ n: r.envoi.jourPropose, t: r.envoi.motsJour.slice(0, 200) }));
-  ok(r.envoi.corps && r.envoi.corps.proposition && r.envoi.corps.proposition.heure === '14:00' && r.envoi.corps.proposition.prix === 544 && r.envoi.corps.proposition.date === r.D1, 'la proposition part avec le mail, pour que tout poste la retrouve', JSON.stringify(r.envoi.corps && r.envoi.corps.proposition));
+  ok(r.envoi.principal === 'Le client accepte, créer la réservation' && /Proposition envoyée/.test(r.envoi.reponse) && /620 €/.test(r.envoi.reponse) && /15:00/.test(r.envoi.reponse), 'la proposition partie reste lisible, et son oui est le geste principal', r.envoi.reponse.slice(0, 240));
+  ok(!r.envoi.ia && r.autre.ia && r.autre.focus === 'smIaC-801' && /15:00/.test(r.autre.quand) && r.autre.appels === 4, 'Pinlane se range apres l envoi ; « Autre proposition » le rend, la consigne attend, sans nouvel appel', JSON.stringify({ avant: r.envoi.ia, apres: r.autre }));
+  ok(r.envoi.corps && r.envoi.corps.proposition && r.envoi.corps.proposition.type === 'libre' && r.envoi.corps.proposition.heure === '15:00' && r.envoi.corps.proposition.prix === 620 && r.envoi.corps.proposition.joueurs === 31 && r.envoi.corps.proposition.date === r.D1,
+    'la proposition part avec le mail, pour que tout poste la retrouve', JSON.stringify(r.envoi.corps && r.envoi.corps.proposition));
 
   section('I. CREER LA RESERVATION, PREREMPLIE');
-  ok(r.resa && r.resa.heure === '14:00' && r.resa.type === 'visite' && r.resa.bowling && r.resa.laser, 'la reservation reprend l heure et le programme proposes', JSON.stringify(r.resa));
-  ok(r.resa && /proposition : Bowling \+ Laser Game, 14:00, 544 €/.test(r.resa.notes), 'la proposition est dans la note de la reservation', r.resa && r.resa.notes);
+  ok(r.resa && r.resa.heure === '15:00' && r.resa.type === 'visite' && r.resa.bowling && r.resa.laser, 'la reservation reprend l heure et le programme proposes', JSON.stringify(r.resa));
+  ok(r.resa && Number(r.resa.prix) === 620, 'et le prix pose par la consigne', JSON.stringify(r.resa && r.resa.prix));
+  ok(r.resa && /proposition : Bowling \+ Laser Game, 15:00, 620 €/.test(r.resa.notes), 'la proposition est dans la note de la reservation', r.resa && r.resa.notes);
   ok(r.resa && r.resa.pax === 31 && r.resa.date === r.D1 && r.resa.source === 801 && /Ansar/.test(r.resa.nom) && /Demande sur mesure/.test(r.resa.notes) && /Athénée de Libramont/.test(r.resa.notes) && /3 accompagnateurs/.test(r.resa.notes),
-    'les 31 joueurs, la date voulue, le client et la demande en note', JSON.stringify(r.resa));
+    'les 31 joueurs, la date, le client et la demande en note', JSON.stringify(r.resa));
   ok(r.apresRetour === 0, 'le lien ramene a la liste', String(r.apresRetour));
-
-  ok(r.attente && r.attente.groupe >= 6 && /3 venues/.test(r.attente.client), 'une demande en attente rouverte retrouve son client et sa journee', JSON.stringify(r.attente));
+  ok(r.attente && /envoyée/.test(r.attente.reponse) && /3 venues/.test(r.attente.client) && !r.attente.ia && r.attente.appels === 0, 'une demande en attente rouverte retrouve sa reponse et son client, sans relancer Pinlane', JSON.stringify(r.attente));
 
   section('H. UNE DEMANDE SANS FORMULAIRE');
-  ok(/5 novembre/.test(r.libre.texte) && /Sortie de fin de trimestre/.test(r.libre.texte) && /Écrire au client/.test(r.libre.texte) && !/Disponibilités/.test(r.libre.texte) && r.libre.etudes === 0, 'la demande libre dit ce qu elle a, et n interroge pas le moteur', r.libre.texte.slice(0, 300));
+  ok(/5 novembre/.test(r.libre.texte) && /Sortie de fin de trimestre/.test(r.libre.texte) && /pas de formulaire détaillé/.test(r.libre.texte) && r.libre.ia && r.libre.appels === 0, 'la demande sans formulaire dit ce qu elle a, et Pinlane attend qu on lui dise quoi proposer', JSON.stringify(r.libre).slice(0, 300));
   ok(JSON.stringify([...r.terminees].sort()) === '["805","806"]' && r.terminees805 === 'Réservée' && r.terminees806 === 'Sans suite', 'les terminees disent comment elles ont fini', JSON.stringify([r.terminees, r.terminees805, r.terminees806]));
   ok(r.erreursConsole.length === 0, 'zero erreur dans la page sur tout le parcours', r.erreursConsole.join(' | '));
 }
@@ -935,54 +784,6 @@ function statutsInvalides(source) {
   return [...source.matchAll(/setStaffCustomRequestStatus\(\s*[^,()]+,\s*(['"])([^'"]*)\1/g)].map((m) => m[2]).filter((s) => !valides.has(s));
 }
 
-// [S] LA PROPOSITION LIBRE (2026-11-10) : un jour, une heure hors de la grille du moteur, une fin, les
-// joueurs et le prix poses par l equipe. Le mail se prepare sur elle, part avec elle, et le oui du
-// client ouvre la reservation a ce jour, cette heure, ces joueurs et ce prix.
-async function propositionLibre(browser) {
-  const { ctx, page, erreurs } = await ouvrir(browser);
-  const r = { erreurs };
-  try {
-    r.D1 = await page.evaluate(() => window.__QA__.D1);
-    await ouvrirFiche(page, 801);
-    await attendreEtude(page);
-    await page.fill('#smCoDate-801', r.D1);
-    await page.fill('#smCoHeure-801', '15:10');
-    await page.fill('#smCoFin-801', '17:40');
-    await page.fill('#smCoJoueurs-801', '25');
-    await page.fill('#smCoPrix-801', '500');
-    r.calc = await texte(page, '#smCoCalc-801');
-    await page.click('#smCoProp-801');
-    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestDraft'), null, { timeout: 8000 });
-    await page.waitForSelector('.sm-courrier', { timeout: 8000 });
-    await page.waitForTimeout(400);
-    r.appel = await page.evaluate(() => (window.__QA__.appels.filter((a) => a.action === 'customRequestDraft').slice(-1)[0] || { corps: {} }).corps.choix || null);
-    r.resume = await texte(page, '.sm-courrier .sm-resume');
-    await page.click('.sm-courrier .sm-p');
-    await page.waitForFunction(() => window.__QA__.envois.length === 1, null, { timeout: 5000 });
-    await page.waitForTimeout(800);
-    r.proposition = await page.evaluate(() => window.__QA__.envois[0].proposition || null);
-    await page.locator('.sm-c2 .sm-p', { hasText: 'Le client accepte' }).click();
-    await page.waitForTimeout(600);
-    r.resa = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState ? { date: quickBookState.date, heure: quickBookState.startTime, pax: quickBookState.pax, type: quickBookState.type, prix: typeof getQuickBookCustomPrice === 'function' ? getQuickBookCustomPrice() : null } : null));
-    await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
-  } catch (error) {
-    r.panne = String((error && error.message) || error).split('\n')[0];
-  } finally {
-    await ctx.close();
-  }
-  return r;
-}
-
-function verifierLibre(h) {
-  section('S. LA PROPOSITION LIBRE');
-  ok(!h.panne && h.erreurs.length === 0, 'la proposition libre va au bout, sans erreur dans la page', h.panne || JSON.stringify(h.erreurs));
-  ok(/Prix posé à la main : 500 € pour le groupe, soit 20 € par joueur/.test(h.calc || ''), 'le prix tape se dit, avec ce qu il fait par joueur', h.calc);
-  ok(Boolean(h.appel) && h.appel.type === 'libre' && h.appel.date === h.D1 && h.appel.heure === '15:10' && h.appel.fin === '17:40' && h.appel.joueurs === 25 && h.appel.prix === 500 && h.appel.prixLibre === true, 'le mail se prepare sur la proposition de l equipe : son jour, son heure, sa fin, ses joueurs, son prix', JSON.stringify(h.appel));
-  ok(/15:10/.test(h.resume || '') && /17:40/.test(h.resume || '') && /500/.test(h.resume || '') && /25 joueurs/.test(h.resume || ''), 'le courrier rappelle la proposition qui part', h.resume);
-  ok(Boolean(h.proposition) && h.proposition.type === 'libre' && h.proposition.heure === '15:10' && h.proposition.prix === 500 && h.proposition.joueurs === 25, 'le mail parti garde la proposition libre', JSON.stringify(h.proposition));
-  ok(Boolean(h.resa) && h.resa.date === h.D1 && h.resa.heure === '15:10' && Number(h.resa.pax) === 25 && Number(h.resa.prix) === 500, 'le oui du client ouvre la reservation a ce jour, cette heure, ces joueurs et ce prix', JSON.stringify(h.resa));
-}
-
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   await new Promise((resolve) => srv.listen(PORT, '127.0.0.1', resolve));
@@ -992,14 +793,11 @@ async function main() {
     section('K. TELEPHONE');
     const t = await telephone(browser);
     ok(t.erreurs.length === 0 && t.liste.large <= t.liste.vue && t.mesure.large <= t.mesure.vue, `rien ne deborde a 390 px (liste ${t.liste.large}, fiche ${t.mesure.large}, pour ${t.mesure.vue})`);
-    verifierPerimee(await heurePerimee(browser));
-    verifierDeuxHeures(await deuxHeures(browser));
+    verifierDeuxConsignes(await deuxConsignes(browser));
     verifierHorloge(await horlogeDuBureau(browser));
     verifierAlerte(await alerteDuTableau(browser));
     verifierSansSuite(await sansSuite(browser));
-    verifierHoraires(await horairesEtFenetres(browser));
-    verifierSansForcer(await horairesEtFenetres(browser, { sansForcer: true }));
-    verifierLibre(await propositionLibre(browser));
+    verifierFenetres(await fenetres(browser));
 
     section('J. UN STATUT QUE LA BASE ACCEPTE');
     // Le fichier tel que sur le disque (verifie intact a la fin), et sa forme
@@ -1015,16 +813,14 @@ async function main() {
     const lireLf = (rel) => fs.readFileSync(p.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
     const montable = (de, fichier) => ok((fichier ? lireLf(fichier) : source).split(de).length === 2, `contre-epreuve montable : « ${de.trim().slice(0, 70)} »`);
     const essais = [
-      { de: "  if (choix.type !== 'libre') return base;\n", vers: '  return base;\n', label: 'sans les champs de la proposition libre, le mail ne connaitrait ni ses joueurs ni son prix', run: (b) => propositionLibre(b), rouge: (r) => !r.appel || r.appel.prix !== 500 },
-      { de: "    if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);\n", vers: '', label: 'sans le prix pose, la reservation reprendrait le prix du catalogue', run: (b) => propositionLibre(b), rouge: (r) => Boolean(r.resa) && Number(r.resa.prix) !== 500 },
-      { de: "    if (rang !== staffRequestDraftRang[key]) return;\n    // Le planning a bouge", vers: "    // Le planning a bouge", label: 'sans le rang, la reponse lente remplacerait la derniere', run: deuxHeures, rouge: (r) => Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps) },
-      { de: "if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;", vers: "if (current.busy || current.drafting) return;", label: 'sans la relance, la seconde heure n aurait pas son mail', run: deuxHeures, rouge: (r) => Boolean(r.panne) || (Boolean(r.lu) && !/Depart 15:00\./.test(r.lu.corps)) },
+      { de: "    if ((staffRequestIa[key] || {}).rang !== rang) return;\n    const p = payload", vers: "    const p = payload", label: 'sans le rang, la reponse lente de Pinlane remplacerait la derniere consigne', run: deuxConsignes, rouge: (r) => Boolean(r.final) && /15:00/.test(r.final.quand) },
+      { de: "    if (p) staffRequestChoix[key] = p; else delete staffRequestChoix[key];\n", vers: '', label: 'sans la proposition retenue, le mail partirait sans elle', rouge: (r) => Boolean(r.envoi && r.envoi.corps) && !r.envoi.corps.proposition },
+      { de: "  if (texte && item.status === 'new' && peutGeste('reserver')) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });\n", vers: '', label: 'sans la prise en charge, une consigne laisserait la demande nouvelle', rouge: (r) => Boolean(r.idee) && JSON.stringify(r.idee.statut) === '[]' },
+      { de: "  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), saisie: String(valeur || '') };\n", vers: '', label: 'sans la frappe gardee, un repeint effacerait la consigne en cours', rouge: (r) => typeof r.frappe === 'string' && r.frappe !== 'plutôt' },
+      { de: "...(actuelle ? { actuelle: rqChoixPourLeServeur(actuelle) } : {}) }),", vers: '}),', label: 'sans la proposition a l ecran, Pinlane repartirait de zero a chaque consigne', rouge: (r) => Boolean(r.apres) && !r.apres.actuelle },
+      { de: "    if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);\n", vers: '', label: 'sans le prix pose, la reservation reprendrait le prix du catalogue', rouge: (r) => Boolean(r.resa) && Number(r.resa.prix) !== 620 },
       { de: '        ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),\n', vers: '', label: 'sans la proposition au mail, le oui du client ne retrouverait rien', rouge: (r) => Boolean(r.envoi && r.envoi.corps) && !r.envoi.corps.proposition },
-      { de: "...(choix ? { choix: rqChoixPourLeServeur(choix) } : {}) }),", vers: '}),', label: 'sans l heure dans la demande, le mail parlerait de tout', rouge: (r) => Boolean(r.panne) || (Boolean(r.redaction) && !r.redaction.choix) },
-      { de: 'centerId: getActiveOpsCenterId(), sansIA: true, ...(choix', vers: 'centerId: getActiveOpsCenterId(), ...(choix', label: 'sans la consigne, l IA ecrirait le mail', rouge: (r) => Boolean(r.redaction) && r.redaction.sansIA !== true },
-      { de: '    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '14:00' },
-      { de: '  if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);', vers: '', label: 'sans le programme, la reservation serait vide', rouge: (r) => Boolean(r.resa) && !(r.resa.bowling && r.resa.laser) },
-      { de: '    if (payload && payload.choixPerime) {', vers: '    if (false) {', label: 'sans le refus, une heure prise serait ecrite au client', run: heurePerimee, rouge: (r) => Boolean(r.lu) && r.lu.choisies !== 0 },
+      { de: '    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, la reservation ne reprend pas la proposition', rouge: (r) => Boolean(r.resa) && r.resa.heure !== '15:00' },
       { fichier: 'assets/pinlane-staff.css', de: '.sm .sm-courrier textarea.input { min-height: 280px; }', vers: '.sm .sm-courrier textarea.input { min-height: 44px; height: 44px; }', label: 'la case du mail ramenee a une ligne', rouge: (r) => Boolean(r.redaction) && r.redaction.hautMessage < 200 },
       { de: '      if (da && db && da.t !== db.t) return da.t - db.t;', vers: '      if (da && db && da.t !== db.t) return 0;', label: 'sans l ordre de l echeance, le retard n est plus en tete', rouge: (r) => Array.isArray(r.ordre) && r.ordre[0] !== '802' },
       { de: "(thread.messages || []).filter(message => !debut || staffRequestTime(quandMail(message)) >= debut) : [];", vers: "(thread.messages || []) : [];", label: 'sans la coupe, les vieux mails reviennent dans l historique', rouge: (r) => Array.isArray(r.filAvant) && r.filAvant.length !== 1 },
@@ -1033,24 +829,12 @@ async function main() {
       { de: "  if (board.getAttribute('data-due-tones') !== staffRequestDueToneKey()) { renderStaffUtilityPage(); return; }\n", vers: '', label: 'sans le repeint au changement de ton, le sous-titre ne compte pas le nouveau retard', run: horlogeDuBureau, rouge: (r) => Boolean(r.ficheEchue) && Boolean(r.ficheEchue.marque) },
       { de: "getStaffCustomRequestItems().filter(item => staffRequestStage(item) === 'a-traiter').sort(staffRequestCompare('atraiter'));", vers: "getStaffCustomRequestItems().filter(item => item.status === 'new' || item.status === 'in_progress');", label: 'sans le filtre de l etape, l alerte liste une demande qui attend le client', run: alerteDuTableau, rouge: (r) => Array.isArray(r.lignes) && r.lignes.some((l) => l.id === '803') },
       { de: "  const wanted = String(state.staffRequestSelectedId || '');\n  if (!wanted) return null;\n", vers: "  const wanted = String(state.staffRequestSelectedId || '');\n  if (!wanted) return getStaffRequestRows()[0] || null;\n", label: 'sans la liste d abord, une demande s ouvrirait toute seule', rouge: (r) => Boolean(r.panne) || r.ficheAuDepart !== 0 },
-      { de: "  return staffRequestStage(item) === 'a-traiter' || Boolean(staffRequestAutre[key]) || Boolean(staffRequestChoix[key]);", vers: "  return true;", label: 'sans le rangement, les disponibilites resteraient apres l envoi', rouge: (r) => Boolean(r.envoi) && r.envoi.dispos !== 0 },
+      { de: "  return staffRequestStage(item) === 'a-traiter' || Boolean(staffRequestAutre[key]) || Boolean(staffRequestChoix[key]);", vers: "  return true;", label: 'sans le rangement, Pinlane resterait ouvert apres l envoi', rouge: (r) => Boolean(r.envoi) && r.envoi.ia === true },
       { de: "    ...mails.map(message => ({ le: quandMail(message), mail: message })),\n", vers: "", label: 'sans les mails dans l historique, le client qui ecrit ne se verrait pas', rouge: (r) => Array.isArray(r.filAvant) && r.filAvant.length !== 1 },
-      { de: "  const x = ((de - cadre.de) / (cadre.a - cadre.de)) * 100;", vers: "  const x = 0;", label: 'sans la position, chaque bloc serait colle au matin', rouge: (r) => Boolean(r.journee) && !(r.journee.p5[0] && pres(r.journee.p5[0].x, 41.67)) },
-      { de: "  smReposer(t, choix && choix.date === t.jour.date ? smPlanDe(t.jour, choix) : null, false);", vers: "", label: 'sans le retour, l apercu resterait sur la journee', rouge: (r) => Boolean(r.apresApercu) && r.apresApercu.p7.length !== 0 },
-      { de: "  const arrivee = ecoule < SM_DUREE_DU_DESSIN;", vers: "  const arrivee = true;", label: 'sans la memoire, la journee se redessinerait a chaque repeint', rouge: (r) => Boolean(r.place) && r.place.arrivee !== false },
-      { de: "  if (Array.isArray(bloc.pistes) && bloc.pistes.length) return bloc.pistes;\n", vers: "", label: 'sans les pistes du moteur, le groupe serait pose ailleurs', rouge: (r) => Boolean(r.place) && r.place.p7.length !== 1 },
-      { de: "  if (el.classList.contains('is-on')) return;\n", vers: "", label: 'sans la garde, l heure choisie repasserait en contour sous la souris', rouge: (r) => Boolean(r.surChoisie) && r.surChoisie.p7[0].apercu },
-      { de: "${restes.map(r => `<small>${escapeHtml(r)}</small>`).join('')}</button>`;", vers: "</button>`;", label: 'sans ce qui reste, l heure ne le dirait plus', rouge: (r) => Array.isArray(r.touches) && !r.touches.some((t) => /reste 2 pistes reste 14 armes/.test(t.t)) },
-      { de: "  if (!item || !crDemande(item)) return;\n  const study", vers: "  if (!item || !crDemande(item) || !staffRequestMontreDispos(item)) return;\n  const study", label: 'sans l etude a l ouverture, la demande en attente perdrait son client et sa journee', rouge: (r) => Boolean(r.attente) && !(r.attente.groupe >= 6 && /3 venues/.test(r.attente.client)) },
       { de: "(SM_PHOTOS[String(centerId || '')] || [])", vers: "(SM_PHOTOS[String(centerId || '')] || SM_PHOTOS.libramont)", label: 'sans la garde, un autre client recevrait les photos de ce centre', rouge: (r) => typeof r.photoAilleurs === 'string' && r.photoAilleurs !== '' },
-      { de: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n", vers: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n  state.currentDate = iso; openStaffPlanningResource('all'); return;\n", label: 'sans la fenetre, le planning du jour ferait quitter la demande', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.pagePlanning) && (r.pagePlanning.apres.page !== 'requests' || !r.planning) },
-      { de: "function openStaffRequestClient(id) {\n", vers: "function openStaffRequestClient(id) {\n  state.staffClientQuery = String(id); openStaffMenuPage('clients'); return;\n", label: 'sans la fenetre, la fiche client ferait quitter la demande', run: (b) => horairesEtFenetres(b), rouge: (r) => !r.client || !r.pageClient || r.pageClient.page !== 'requests' },
-      { de: "  return f > o ? ferme : numToTime(f + 24);", vers: "  return ferme;", label: 'sans le lendemain, minuit partirait en 00:00 et fermerait avant l ouverture', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.pose) && r.pose.close !== '24:00' },
-      { de: "  if (lu.ouvrir) {", vers: "  if (false) {", label: 'sans l ouverture d abord, Reserver refuserait 08:00', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.reserver) && !(r.ouvertures || []).some((o) => o.open === '08:00') },
-      { de: "canUseStaffPermission('reservations.create') && niveauStaff('forcer') === 'oui';", vers: "canUseStaffPermission('reservations.create');", label: 'sans le niveau, tout role changerait les horaires', run: (b) => horairesEtFenetres(b, { sansForcer: true }), rouge: (r) => Array.isArray(r.liensJour) && r.liensJour.includes('Changer les horaires') },
-      { fichier: 'assets/booking-core.js', de: "    if (exception) return exception;\n  }\n  // 1. VERDICT SERVEUR", vers: "  }\n  // 1. VERDICT SERVEUR", label: 'sans l exception dans la console, Reserver ne proposerait pas 08:00', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.reserver) && (!r.reserver.huit || !/Ouverture exceptionnelle/.test(r.reserver.horaires)) },
-      { fichier: 'assets/pinlane-planning-global.js', de: "    if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });", vers: "", label: 'sans la marque, le team building ne se verrait pas au planning', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Team building') },
-      { fichier: 'assets/pinlane-planning-global.js', de: "    if (hors) sortie.push(", vers: "    if (false) sortie.push(", label: 'sans la marque, une heure hors horaires ne se verrait pas', run: (b) => horairesEtFenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Hors horaires') },
+      { de: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n", vers: "async function openStaffRequestDay(iso) {\n  if (!staffRequestDateOf(iso)) return;\n  state.currentDate = iso; openStaffPlanningResource('all'); return;\n", label: 'sans la fenetre, le planning du jour ferait quitter la demande', run: (b) => fenetres(b), rouge: (r) => Boolean(r.pagePlanning) && (r.pagePlanning.apres.page !== 'requests' || !r.planning) },
+      { de: "function openStaffRequestClient(id) {\n", vers: "function openStaffRequestClient(id) {\n  state.staffClientQuery = String(id); openStaffMenuPage('clients'); return;\n", label: 'sans la fenetre, la fiche client ferait quitter la demande', run: (b) => fenetres(b), rouge: (r) => !r.client || !r.pageClient || r.pageClient.page !== 'requests' },
+      { fichier: 'assets/pinlane-planning-global.js', de: "    if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });", vers: "", label: 'sans la marque, le team building ne se verrait pas au planning', run: (b) => fenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Team building') },
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
     ];
     if (SANS_CONTRE_PREUVES) console.log(`GATE-SAUTE-PARTIE contre-epreuves : ${essais.length} coupures montables mais pas rejouees (la nuit, ou quand le diff touche ce gate)`);

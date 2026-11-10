@@ -2786,6 +2786,19 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // elle, controlee (chiffres, promesses) ; sinon le brouillon ecrit par le
   // code a partir des memes faits. RIEN N EST ENVOYE ICI : l equipe relit et
   // envoie par sendDirectEmail.
+  // L assistant de la fiche : la proposition et le mail, sur la demande ou sur la consigne de
+  // l equipe. RIEN N EST ENVOYE ICI, comme pour le brouillon.
+  if (action === 'customRequestAssist') {
+    const { getCustomRequest } = require('../lib/database');
+    const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
+    const { assisterLaDemande } = require('../lib/demande-bureau-centre');
+    const consigne = typeof body.consigne === 'string' ? body.consigne : '';
+    const actuelle = body.actuelle && typeof body.actuelle === 'object' ? body.actuelle : null;
+    const { client, ...aide } = await require('../lib/booking-config').pourLEquipe(() => assisterLaDemande(item, undefined, { consigne, actuelle }));
+    // Le client connu, comme l etude le montre : tout sauf la cle CRM, qui vaut son numero de telephone.
+    sendJson(res, 200, { ok: true, id: item.id, ...aide, client: client ? (({ clientKey, ...reste }) => reste)(client) : null });
+    return;
+  }
   if (action === 'customRequestDraft') {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
@@ -4037,6 +4050,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'customRequestNote') return ['clients.view', 'reservations.edit'];
   // Rediger le brouillon, c est preparer un envoi : meme droit que l envoi.
   if (action === 'customRequestDraft') return 'emails.send';
+  if (action === 'customRequestAssist') return 'emails.send';
   // Restaurer une reservation supprimee : le droit qui permet de la supprimer
   // (reservations.cancel, celui de DELETE /api/staff-reservations), sur le
   // centre de l archive.

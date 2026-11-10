@@ -635,6 +635,63 @@ async function verifierChoix({ B, C }) {
 }
 
 // ---------------------------------------------------------------------------
+// [M] L ASSISTANT DE LA FICHE (2026-11-10) : le modele choisit, le moteur verifie, le mail suit.
+// ---------------------------------------------------------------------------
+async function verifierAssistant({ C }) {
+  const { getCenter } = require('../lib/ops-knowledge');
+  const { getSchedule } = require('../lib/booking-config');
+  const { isCenterClosedAt } = require('../lib/availability-blocks');
+  const journal = [];
+  const deps = (llm) => ({
+    rafraichir: async () => {},
+    centre: () => getCenter('libramont'),
+    fermetures: async () => [],
+    getSchedule,
+    isCenterClosedAt,
+    disponibilite: fauxMoteur(journal),
+    planning: async () => ({ reservations: [] }),
+    aujourdhui: () => AUJOURDHUI,
+    client: async () => null,
+    conversation: async () => [],
+    cerveau: async () => null,
+    catalogue: () => ({ formules: [{ id: 'f3', name: 'Formule 3' }, { id: 'f9', name: 'Happy Laser' }], activites: [{ id: 'bowling', name: 'Bowling' }, { id: 'laser_game', name: 'Laser Game' }] }),
+    llm,
+  });
+  const item = demandeType({ alternativeDate: '' });
+  const choix = (sur) => ({ aucune: false, date: D1, heure: '14:00', formule: '', activites: ['bowling', 'laser_game'], joueurs: 31, prixImpose: 0, prixParJoueurImpose: 0, pourquoi: 'C’est l’après-midi demandé, et le programme tient dans leur budget de 25 € par personne.', suggestions: ['Plutôt la Formule 3 à 14:30', 'Proposer 18:30 avec la Formule 3', 'Offrir 99 € de remise'], ...sur });
+
+  const premier = await C.assisterLaDemande(item, deps(modele([choix()])));
+  const p1 = premier.proposition || {};
+  const consigne = await C.assisterLaDemande(item, deps(modele([choix({ heure: '18:30', formule: 'f3', activites: [], prixParJoueurImpose: 20 })])), { consigne: 'mets 18:30 avec la Formule 3 et fais 20 € par personne', actuelle: p1 });
+  const p2 = consigne.proposition || {};
+  const invente = await C.assisterLaDemande(item, deps(modele([choix({ prixImpose: 400 })])));
+  const occupee = await C.assisterLaDemande(item, deps(modele([choix({ heure: '15:00' })])));
+  const inconnue = await C.assisterLaDemande(item, deps(modele([choix({ formule: 'f99', activites: ['karting'] })])));
+  const passee = await C.assisterLaDemande(item, deps(modele([choix({ date: '2030-04-20' })])));
+  const muet = await C.assisterLaDemande(item, deps(modele([new Error('pas de modele ici')])), { consigne: 'mets 15 h', actuelle: p2 });
+  const rien = await C.assisterLaDemande(item, deps(modele([choix({ aucune: true, date: '', heure: '', activites: [] })])), { consigne: 'demande-leur juste s ils ont des allergies' });
+  const appelChoix = modele([choix()]);
+  await C.assisterLaDemande(item, deps(appelChoix), { consigne: 'propose plutôt le soir' });
+  const demande = JSON.parse(appelChoix.appels[0].user);
+  const corps = (r) => (r.brouillon && r.brouillon.corps) || '';
+  const points = (r) => (r.brouillon && r.brouillon.pointsAVerifier) || [];
+  return [
+    [p1.type === 'libre' && p1.heure === '14:00' && p1.fin === '16:00' && p1.prix === 544 && p1.joueurs === 31 && p1.verifiee === true && p1.activites.length === 2, 'sans consigne, la proposition choisie par le modele, a l heure, la fin et le prix du moteur', JSON.stringify(p1)],
+    [premier.pourquoi.length > 0 && premier.suggestions.length === 2 && !premier.suggestions.some((s) => /99/.test(s)), 'son pourquoi et ses idees s affichent, sauf l idee au chiffre invente', JSON.stringify([premier.pourquoi, premier.suggestions])],
+    [/14:00/.test(corps(premier)) && /544/.test(corps(premier)) && !/868/.test(corps(premier)), 'le mail parle de cette proposition, a son prix', corps(premier)],
+    [p2.formule === 'f3' && p2.heure === '18:30' && p2.prix === 620 && p2.parJoueur === 20 && p2.prixLibre === true && p2.verifiee === true, 'une consigne change l heure, la formule et le prix par personne, que le moteur verifie', JSON.stringify(p2)],
+    [/18:30/.test(corps(consigne)) && /620/.test(corps(consigne)), 'et le mail suit la consigne', corps(consigne)],
+    [(invente.proposition || {}).prix === 544 && (invente.proposition || {}).prixLibre === false, 'un prix que la consigne n a pas ecrit ne passe pas : c est celui du moteur', JSON.stringify(invente.proposition)],
+    [(occupee.proposition || {}).heure === '15:00' && (occupee.proposition || {}).verifiee === false && points(occupee).some((t) => /15:00 n’est pas libre/.test(t)), 'une heure que le moteur ne trouve pas libre reste proposee, et se signale a l equipe', JSON.stringify([occupee.proposition, points(occupee)])],
+    [(inconnue.proposition || {}).heure === '14:00' && (inconnue.proposition || {}).activites.length === 2, 'une formule ou une activite hors du catalogue ne passe pas : la meilleure offre de l etude la remplace', JSON.stringify(inconnue.proposition)],
+    [(passee.proposition || {}).date === D1, 'une date passee ne passe pas', JSON.stringify(passee.proposition)],
+    [muet.consigneSuivie === false && (muet.proposition || {}).heure === '18:30' && muet.source === 'code', 'sans modele, la consigne se dit non suivie et la proposition a l ecran reste', JSON.stringify([muet.consigneSuivie, muet.proposition])],
+    [rien.proposition === null && Boolean(rien.brouillon && rien.brouillon.corps), 'rien a proposer : pas de proposition, le mail quand meme', JSON.stringify(rien.proposition)],
+    [demande.CONSIGNE === 'propose plutôt le soir' && demande.CATALOGUE.formules.length === 2 && /Formule 3/.test(demande.ETUDE) && demande.AUJOURDHUI === AUJOURDHUI, 'le modele recoit la consigne, le catalogue, l etude et la date du jour', JSON.stringify(Object.keys(demande))],
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // [G] REDIGER N ENVOIE RIEN, ET CHAQUE ACTION A SON DROIT
 // ---------------------------------------------------------------------------
 function verifierAucunEnvoi() {
@@ -648,6 +705,12 @@ function verifierAucunEnvoi() {
     [/getCustomRequest\(body\.id, \{ centerId: scopedCenterId \}\)/.test(bloc), 'le brouillon ne lit que les demandes du centre de la session'],
     [/getCustomRequest\(url\.searchParams\.get\('id'\), \{ centerId: centerScope\(centerId\) \}\)/.test(etude), 'l etude ne lit que les demandes du centre de la session'],
     [/if \(action === 'customRequestDraft'\) return 'emails\.send';/.test(ops), 'rediger une reponse demande le droit d envoyer des mails'],
+    [(() => {
+      const debutA = ops.indexOf("if (action === 'customRequestAssist') {");
+      const blocA = debutA >= 0 ? ops.slice(debutA, ops.indexOf('return;', debutA)) : '';
+      return blocA.length > 0 && !/sendDirectEmail|sendEmail|sendMail|enqueue|createCommunication|resend|appendCustomRequestSuivi|updateCustomRequestStatus/i.test(blocA) && /getCustomRequest\(body\.id, \{ centerId: scopedCenterId \}\)/.test(blocA);
+    })(), 'l assistant n envoie rien, n ecrit rien, et ne lit que les demandes du centre de la session'],
+    [/if \(action === 'customRequestAssist'\) return 'emails\.send';/.test(ops), 'l assistant demande le droit d envoyer des mails'],
     [/if \(action === 'customRequestStudy'\) return \['clients\.view', 'reservations\.view', 'dashboard\.view'\];/.test(ops), 'l etude demande le meme droit que la file'],
     // La regle, pas sa formulation (2026-11-07 : la Vue d ensemble seule
     // n ecrit plus sur une demande) : la note suit le droit du statut.
@@ -827,6 +890,8 @@ async function main() {
   rapporter(await verifierReponse(mods));
   section('K. L HEURE TOUCHEE PAR L EQUIPE');
   rapporter(await verifierChoix(mods));
+  section('M. L ASSISTANT DE LA FICHE');
+  rapporter(await verifierAssistant(mods));
   section('D. LE SUIVI');
   rapporter(verifierSuivi(mods));
   section('E. LA FILE');

@@ -187,7 +187,7 @@ assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).un
   const from=app.indexOf('const SM_PHOTOS = {');assert.ok(from>=0,'SM_PHOTOS');
   vm.runInContext(app.slice(from,app.indexOf('\n};',from)+3).replace('const SM_PHOTOS','var SM_PHOTOS'),ctx);
 }
-for(const name of ['smTeinte','crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','rqEtudeADesHeures','smPhotoDe','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag','rqAutreHeure']) {
+for(const name of ['smTeinte','crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','smPhotoDe']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
@@ -223,15 +223,6 @@ assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
 run("setQuickVisitActivityDuration('duckpin_bowling',2)");
 assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);
 assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
-// (la journee dessinee et les horaires du jour sont des gestes d ecran, pas des prix)
-ctx.renderSmJournee=()=>'';ctx.smOccupationHtml=()=>'';ctx.smPeutOuvrir=()=>true;
-ctx.staffRequestEuro=n=>n+' €';ctx.staffRequestLongDate=()=>'';ctx.staffRequestClock=()=>'';ctx.STAFF_REQUEST_ICONS={calendar:''};ctx.staffClientJs=v=>String(v);ctx.staffRequestChoixDe=()=>null;ctx.staffRequestStage=()=>'a-traiter';ctx.rqPhotoDe=()=>'';ctx.getActiveOpsCenterId=()=>'libramont';
-ctx.manualStudy={date:'2026-10-06',ouvert:true,horaires:{de:'10:00',a:'22:00'},formules:[],visite:{ok:false,raison:'Horaires à étudier manuellement',prix:1170,lignes:[{nom:'Bowling',participants:300,detail:'3 services de1h',prix:1170}]}};
-assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/300 joueurs.*3 services de1h.*1170 €/);
-assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/Horaires à étudier manuellement/);
-ctx.manualStudy.visite.ok=true;ctx.manualStudy.visite.prix=0;ctx.manualStudy.visite.parJoueur=0;ctx.manualStudy.visite.lignes=[{nom:'Minigolf',participants:3,prix:0}];
-assert.match(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/3 joueurs.*0 €/);
-assert.doesNotMatch(run('renderRqJour({id:1},manualStudy,{moment:"indifferent"},customChoice)'),/Prix à confirmer/);
 // per lane, group80 incorrectly produces60min for one game; the6 bowlers
 // need30min, which fits the45min left before closing.
 {

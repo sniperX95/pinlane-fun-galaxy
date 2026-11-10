@@ -182,7 +182,12 @@ assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,min
 assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
 assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
 assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
-for(const name of ['smTeinte','crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag']) {
+{
+  // La table des photos du centre, lue dans le code : smPhotoDe la consulte.
+  const from=app.indexOf('const SM_PHOTOS = {');assert.ok(from>=0,'SM_PHOTOS');
+  vm.runInContext(app.slice(from,app.indexOf('\n};',from)+3).replace('const SM_PHOTOS','var SM_PHOTOS'),ctx);
+}
+for(const name of ['smTeinte','crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','renderStaffRequestStudyLines','rqEtudeADesHeures','smPhotoDe','renderRqOffre','renderRqJour','renderStaffRequestBudgetTag']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }

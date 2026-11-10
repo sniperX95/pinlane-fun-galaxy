@@ -14349,6 +14349,17 @@ function validateEstablishmentForm() {
       }
     });
   });
+  // Le logo et le site : le serveur ecarte en silence une adresse qu il ne sait pas servir, la page le dit avant.
+  const logo = document.getElementById('estab-logo');
+  if (logo && String(logo.value || '').trim() && !/^(?:https:\/\/[^\s"'<>]+|\.?\/?assets\/[a-z0-9_/.-]+)$/i.test(String(logo.value).trim())) {
+    markEstablishmentFieldError(logo, 'Logo : l’adresse d’une image, qui commence par https://.');
+    invalid.push(logo);
+  }
+  const site = document.getElementById('estab-site');
+  if (site && String(site.value || '').trim() && !/^https:\/\/[^\s"'<>]+$/i.test(String(site.value).trim())) {
+    markEstablishmentFieldError(site, 'Site : une adresse qui commence par https://.');
+    invalid.push(site);
+  }
   const telephone = document.getElementById('estab-phone');
   if (telephone && !/^[0-9+()./\s-]*$/.test(String(telephone.value || '').trim())) {
     markEstablishmentFieldError(telephone, 'Téléphone : uniquement des chiffres, des espaces et + ( ) . / -.');
@@ -14502,6 +14513,14 @@ async function submitCenterConfig(centerId) {
       address: establishmentInputValue('estab-address').trim(),
       phone: establishmentInputValue('estab-phone').trim(),
       parking: establishmentInputValue('estab-parking').trim(),
+    };
+  }
+  // Le logo et le site : seules ces cles partent, les liens du site (siteLinks) restent ceux du centre.
+  if (document.getElementById('estab-logo')) {
+    config.identity = {
+      logoUrl: establishmentInputValue('estab-logo').trim(),
+      logoOnDark: Boolean(document.getElementById('estab-logoDark') && document.getElementById('estab-logoDark').checked),
+      siteUrl: establishmentInputValue('estab-site').trim(),
     };
   }
   const validationEquipe = collectEstablishmentValidation();
@@ -15165,6 +15184,7 @@ function ebSectionDe(k, salles) {
 // ── Le centre ────────────────────────────────────────────────────────────────
 function ebCentreHtml(c) {
   const center = c.center;
+  const ident = center.identity && typeof center.identity === 'object' ? center.identity : {};
   const tz = center.timezone || 'Europe/Brussels';
   const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Amsterdam', 'Pays-Bas']];
   const info = center.publicInfo && typeof center.publicInfo === 'object' ? center.publicInfo : {};
@@ -15176,6 +15196,10 @@ function ebCentreHtml(c) {
       ebR('Adresse', '', ebTexte('estab-address', info.address || '', { max: 200, ph: 'Rue, numéro, code postal, ville', cls: 'eb-f-l' }))
       + ebR('Téléphone', 'Le numéro que les clients appellent.', ebTexte('estab-phone', info.phone || '', { type: 'tel', max: 40 }))
       + ebR('Parking', 'Une ligne, par exemple « Gratuit, 80 places ».', ebTexte('estab-parking', info.parking || '', { max: 60, ph: 'Gratuit' }))
+      + ebR('Logo', 'L’adresse de l’image en ligne. Il s’affiche en haut du formulaire.', ebTexte('estab-logo', ident.logoUrl || '', { max: 300, ph: 'https://…/logo.png' }))
+      + ebCase('estab-logoDark', 'Logo clair, pour un fond sombre', { on: ident.logoOnDark === true, aide: 'À cocher si le logo est blanc ou très clair : le formulaire le pose sur un fond foncé.' })
+      + ebR('Site du centre', 'Le formulaire, les mails et l’assistant y renvoient.', ebTexte('estab-site', ident.siteUrl || '', { max: 300, ph: 'https://…' }))
+      + ebR('Mails aux clients', 'L’expéditeur, les modèles et les relances se règlent dans Emails & relances.', '<button type="button" class="eb-b" onclick="openStaffMenuPage(\'emails\')">Ouvrir</button>')
       + ebR('Mail du centre', 'Les réponses des clients arrivent ici. Il se change avec l’équipe Pinlane.', `<b class="eb-ro-v">${ebE(center.publicEmail || 'Pas encore renseigné')}</b>`))
     + (c.canEdit ? ebG('Ajouter un centre', 'Il arrive en « prévu » : rien ne s’ouvre aux clients avant que vous le décidiez.',
       ebR('Nom du nouveau centre', '', ebTexte('estab-new-name', '', { max: 80, attrs: 'oninput="ebIdentifiantDuNom(this.value)"' }))
@@ -15880,6 +15904,7 @@ const EB_CASES_DITES = {
   'estab-arc-enabled': ['Cartes Arcades proposées', 'Cartes Arcades retirées'],
 };
 const EB_TEXTES_DITS = {
+  'estab-logo': 'Logo changé', 'estab-logoDark': 'Fond du logo changé', 'estab-site': 'Site du centre changé',
   'estab-name': 'Nom du centre changé', 'estab-address': 'Adresse changée', 'estab-phone': 'Téléphone changé', 'estab-parking': 'Parking changé',
   'estab-book-min': 'Réservation en ligne : « au plus tard » changé', 'estab-book-horizon': 'Réservation en ligne : « au plus tôt » changé',
   'estab-timezone': 'Fuseau horaire changé', 'estab-secours-emails': 'Boîte de secours changée', 'estab-accent': 'Couleur du formulaire changée',

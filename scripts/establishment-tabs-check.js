@@ -185,6 +185,24 @@ const prixEtAjout = (page) => page.evaluate(async () => {
   return out;
 });
 
+// Le logo et le site du centre : une adresse illisible est une faute dite, une bonne part, sans toucher aux liens.
+const logoEtSite = (page) => page.evaluate(async () => {
+  ebOuvrir('centre');
+  const logo = document.getElementById('estab-logo');
+  const site = document.getElementById('estab-site');
+  const out = { vus: Boolean(logo && site && logo.getClientRects().length && site.getClientRects().length) };
+  if (!logo || !site) return out;
+  logo.value = 'pas une adresse'; logo.dispatchEvent(new Event('input', { bubbles: true }));
+  out.fautifs = validateEstablishmentForm().map(el => el.id);
+  logo.value = 'https://exemple.test/logo.png'; logo.dispatchEvent(new Event('input', { bubbles: true }));
+  site.value = 'https://exemple.test'; site.dispatchEvent(new Event('input', { bubbles: true }));
+  window.__QA_SAVED__ = [];
+  await submitCenterConfig('libramont');
+  const config = (window.__QA_SAVED__.find(body => body.action === 'saveCenterConfig') || {}).config || null;
+  out.envoye = (config && config.identity) || null;
+  return out;
+});
+
 // Les regles de la reservation en ligne : deux listes dans Reservations, envoyees telles que choisies.
 const reglesEnLigne = (page) => page.evaluate(async () => {
   ebOuvrir('reservations');
@@ -416,6 +434,15 @@ async function main() {
     ok(regles.envoye && regles.envoye.minDaysAhead === 1 && regles.envoye.horizonDays === 60, `« la veille » et « deux mois » partent tels quels (obtenu ${JSON.stringify(regles.envoye)})`);
 
     // =====================================================================
+    console.log('\n[4f] Le logo et le site du centre');
+    // =====================================================================
+    await openEstablishment(page, 'logo');
+    const logo = await logoEtSite(page);
+    ok(logo.vus, 'le logo et le site se reglent dans Le centre');
+    ok((logo.fautifs || []).includes('estab-logo'), `un logo qui n est pas une adresse est une faute dite (obtenu ${JSON.stringify(logo.fautifs)})`);
+    ok(logo.envoye && logo.envoye.logoUrl === 'https://exemple.test/logo.png' && logo.envoye.siteUrl === 'https://exemple.test' && !('siteLinks' in logo.envoye), `le logo et le site partent, les liens du site ne sont pas ecrases (obtenu ${JSON.stringify(logo.envoye)})`);
+
+    // =====================================================================
     console.log('\n[5] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
@@ -444,6 +471,9 @@ async function main() {
     // d. Sans la nuit qui deborde, 01:30 partirait tel quel : le vendredi fermerait avant d ouvrir.
     const sansNuit = await muter('nuit', '    // Une fermeture avant l ouverture, jusqu a 06:00, est celle du lendemain : 00:00 devient 24:00, 01:30 devient 25:30.\n    if (ebApresMinuit(open, close)) close = ebLendemain(close);\n', '', () => openEstablishment(page, 'mutation-nuit'), () => apresMinuit(page));
     ok(sansNuit && !(sansNuit.vendredi && sansNuit.vendredi.close === '25:30'), `sans la nuit qui deborde, 01:30 part tel quel (obtenu ${JSON.stringify(sansNuit && sansNuit.vendredi)}) -> le gate ROUGIRAIT`);
+    // h. Sans le controle du logo, une adresse illisible partirait, et le serveur l ecarterait en silence.
+    const sansLogo = await muter('logo', "    markEstablishmentFieldError(logo, 'Logo : l’adresse d’une image, qui commence par https://.');\n    invalid.push(logo);\n", '', () => openEstablishment(page, 'mutation-logo'), () => logoEtSite(page));
+    ok(sansLogo && !(sansLogo.fautifs || []).includes('estab-logo'), `sans le controle, le logo illisible n est plus une faute (obtenu ${JSON.stringify(sansLogo && sansLogo.fautifs)}) -> le gate ROUGIRAIT`);
     // g. Sans la ligne d envoi, les regles choisies ne partent pas.
     const sansRegles = await muter('regles', "    bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },\n", '', () => openEstablishment(page, 'mutation-regles'), () => reglesEnLigne(page));
     ok(sansRegles && !sansRegles.envoye, `sans la ligne d envoi, les regles ne partent pas (obtenu ${JSON.stringify(sansRegles && sansRegles.envoye)}) -> le gate ROUGIRAIT`);

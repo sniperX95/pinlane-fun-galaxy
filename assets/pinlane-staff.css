@@ -17688,16 +17688,20 @@ body:is(.staff-mode, .admin-mode) {
 }
 body:is(.staff-mode, .admin-mode) ::selection { background: var(--accent-soft); color: var(--text); }
 body:is(.staff-mode, .admin-mode) .lane-header .num { color: var(--text); }
-body:is(.staff-mode, .admin-mode) :is(button, a, input, select, textarea):focus-visible {
+/* Le trait au clavier va aux boutons, aux liens et aux cases ; un champ texte se montre par son bord (regle suivante). */
+body:is(.staff-mode, .admin-mode) :is(button, a, input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"])):focus-visible {
   outline: 2px solid var(--console-focus);
   outline-offset: 3px;
 }
 /* Un champ se montre au focus par son bord, fonce, et un halo leger : plus de double anneau bleu a chaque clic
-   (Ansar, 10/11 : « les contours bleus [...] c'est super moche »). Les :not() montent la priorite au-dessus des
-   regles de composant, qui posaient chacune leur anneau. Cases, curseurs et pastilles de couleur gardent le trait. */
+   (Ansar, 10/11 : « les contours bleus [...] c'est super moche »). Priorite basse expres (:where) : elle passe
+   devant la regle de base (pinlane.css, meme poids, chargee avant), et un composant qui eteint son champ nu parce
+   que son cadre s allume (la recherche des Clients) garde le dernier mot. Cases et curseurs gardent le trait. */
 /* Tout ce qui prend le focus dans la console, sans regle a lui (un resume, une ligne a tabindex), garde le trait sobre. */
 body:is(.staff-mode, .admin-mode) :focus-visible { outline-color: var(--console-focus); }
-body:is(.staff-mode, .admin-mode) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea):focus {
+:where(body:is(.staff-mode, .admin-mode)) input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])):focus,
+:where(body:is(.staff-mode, .admin-mode)) select:focus,
+:where(body:is(.staff-mode, .admin-mode)) textarea:focus {
   outline: none;
   border-color: var(--console-focus);
   box-shadow: 0 0 0 3px var(--console-halo);

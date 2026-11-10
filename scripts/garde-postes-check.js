@@ -482,7 +482,7 @@ async function preuvesBilan() {
 // ---------------------------------------------------------------------------
 // [G] La garde entiere.
 // ---------------------------------------------------------------------------
-function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false } = {}) {
+function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false, formulaire = false } = {}) {
   route(/from centers/, () => [
     { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
     { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
@@ -509,6 +509,17 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false 
       return [{ center_id: 'libramont', n: 2 }, ...(/from center_automation_settings s/.test(s) ? [] : [{ center_id: 'gembloux', n: 5 }])];
     });
     route(/b\.lanes && a\.lanes/, () => [{ center_id: 'libramont', n: 1 }]);
+  }
+  if (formulaire) {
+    // Le suivi des ecrans, sur 24 heures. Libramont : 64 visites (14 un jour d 'essais'), 11 arrivees a la validation,
+    // aucun envoi. Gembloux : 35 visites commencees, 4 a la validation, aucun envoi. 'envoye' :
+    // un envoi compte a Libramont. 'vendu' : une reservation en ligne y est arrivee dans la meme
+    // fenetre. 'panne' : la lecture des reservations du jour leve, on ne sait donc pas.
+    route(/from formulaire_etapes where parcours = 'reservation'/, () => [{ center_id: 'libramont', n: formulaire === 'essais' ? 14 : 64, valides: 11, finis: formulaire === 'envoye' ? 1 : 0 }, { center_id: 'gembloux', n: 35, valides: 4, finis: 0 }]);
+    route(/from reservations where channel = 'public' and created_at > now\(\) - interval '24 hours'/, () => {
+      if (formulaire === 'panne') throw new Error('syntax error at or near "x"');
+      return formulaire === 'vendu' ? [{ center_id: 'libramont', n: 2 }] : [];
+    });
   }
 }
 const INSTANT = { valeur: new Date('2026-11-14T12:00:00Z') };
@@ -579,6 +590,35 @@ async function preuvesGarde() {
   const t6c = p6c.messages.map((m) => m.text).join('\n');
   ok(p6c.messages.length === 1 && /^À regarder, Pinlane\n/.test(t6c) && p6c.messages[0].disable_notification === true && !/URGENT/.test(t6c) && t6c.includes('Un contrôle des réservations ne se lit pas (sans mail)'), '[G] integrite : une requete qui echoue se dit calmement, jamais en URGENT', p6c.messages.map((m) => m.text));
   ok(t6c.includes('enregistrée à 0 € à Gembloux') && t6c.includes('double réservation de bowling sur la même piste à Libramont'), '[G] integrite : un controle illisible n arrete pas les deux autres', t6c);
+
+  // Le formulaire qui ne laisse plus reserver (2026-11-10) : onze visites a la validation sans un
+  // envoi sonnent, trente-cinq visites commencees sans un envoi se disent sans sonnerie.
+  BD.routes = [];
+  BD.etatGarde = { ...BD.etatGarde, dits: {} };
+  routesDeLaTour({ formulaire: true });
+  const p6d = await passe();
+  // Une seule annonce porte tout : la panne sonne, et ce qui est « a regarder » la suit dans le meme message.
+  const urgent6d = p6d.messages.find((m) => /^URGENT Pinlane\n/.test(m.text)) || { text: '', disable_notification: true };
+  ok(p6d.messages.length === 1 && urgent6d.text.includes('Le formulaire de Libramont ne laisse sans doute plus réserver : 11 visites à la validation, aucun envoi') && urgent6d.disable_notification !== true && !/Gembloux ne laisse/.test(urgent6d.text), '[G] formulaire : onze visites a la validation et aucun envoi, ca sonne pour ce centre et pour lui seul', p6d.messages.map((m) => m.text).join(' // '));
+  // Libramont vend en ligne : il ne reste que les trente-cinq visites de Gembloux, sans sonnerie.
+  BD.routes = [];
+  BD.etatGarde = { ...BD.etatGarde, dits: {} };
+  routesDeLaTour({ formulaire: 'vendu' });
+  const p6e = await passe();
+  const calme6e = p6e.messages.length === 1 ? p6e.messages[0] : { text: p6e.messages.map((m) => m.text).join(' // ') };
+  ok(/^À regarder, Pinlane\n/.test(calme6e.text) && calme6e.text.includes('35 visites ont commencé le formulaire de Gembloux, aucune n’est allée au bout') && calme6e.disable_notification === true && !/Libramont/.test(calme6e.text), '[G] formulaire : trente-cinq visites commencees sans un envoi se disent sans sonnerie', calme6e.text);
+  const lireAvec = async (formulaire) => { BD.routes = []; routesDeLaTour({ formulaire }); return (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; };
+  const vendu = await lireAvec('vendu');
+  ok(!vendu.some((p) => /^formulaire:.*:libramont$/.test(p.cle)) && vendu.some((p) => p.cle === 'formulaire:personne-au-bout:gembloux' && p.gravite === 'attention'), '[G] formulaire : une reservation en ligne arrivee dans la fenetre prouve qu il marche, rien ne se dit pour ce centre', vendu.map((p) => p.cle).join(' '));
+  const envoye = await lireAvec('envoye');
+  ok(!envoye.some((p) => /^formulaire:.*:libramont$/.test(p.cle)), '[G] formulaire : un seul envoi compte suffit a le dire vivant', envoye.map((p) => p.cle).join(' '));
+  const sansLecture = await lireAvec('panne');
+  ok(!sansLecture.some((p) => /^formulaire:/.test(p.cle)) && sansLecture.some((p) => p.cle === 'integrite:illisible' && p.gravite === 'attention' && /réservations en ligne du jour/.test(p.titre)) && !sansLecture.some((p) => String(p.cle).startsWith('lecture:')),
+    '[G] formulaire : si les reservations du jour ne se lisent pas, rien ne se dit du formulaire, et le controle illisible se dit calmement', sansLecture.map((p) => `${p.cle}=${p.gravite}`).join(' '));
+  const essais = await lireAvec('essais');
+  ok(essais.some((p) => p.cle === 'formulaire:bloque:libramont' && p.gravite === 'attention') && !essais.some((p) => /^formulaire:/.test(p.cle) && p.gravite === 'critique'), '[G] formulaire : un jour d essais (14 visites dont 11 a la validation) se dit sans sonnerie', essais.map((p) => `${p.cle}=${p.gravite}`).join(' '));
+  const calmeAussi = await lireAvec(false);
+  ok(!calmeAussi.some((p) => /^formulaire:/.test(p.cle)), '[G] formulaire : sans visite comptee, aucune alerte', calmeAussi.map((p) => p.cle).join(' '));
   BD.etatGarde = etatApresSuivis;
 
   BD.routes = [];
@@ -791,6 +831,42 @@ async function contrePreuves() {
     routesDeLaTour({ integrite: true });
     const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
     return problemes.some((p) => p.cle === 'integrite:doublon:libramont' && p.gravite === 'attention');
+  });
+  await rouge('un formulaire qui ne laisse plus reserver ne sonne plus', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'attention'," }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'formulaire:bloque:libramont' && p.gravite === 'critique');
+  });
+  await rouge('un jour d essais fait sonner le formulaire', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'critique'," }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: 'essais' });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'formulaire:bloque:libramont' && p.gravite === 'attention');
+  });
+  await rouge('trente visites sans un envoi ne se disent plus', [{ fichier: 'lib/tour-controle.js', de: '    else if (Number(v.n) >= SEUIL_VISITES_SANS_ENVOI) out.push(', vers: '    else if (false) out.push(' }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: true });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return problemes.some((p) => p.cle === 'formulaire:personne-au-bout:gembloux' && p.gravite === 'attention');
+  });
+  await rouge('une reservation arrivee ne fait plus taire l alerte du formulaire', [{ fichier: 'lib/tour-controle.js', de: ' || arrivees.some((a) => a.center_id === v.center_id)) continue;', vers: ') continue;' }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: 'vendu' });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return !problemes.some((p) => p.cle === 'formulaire:bloque:libramont');
+  });
+  await rouge('un envoi compte ne fait plus taire l alerte du formulaire', [{ fichier: 'lib/tour-controle.js', de: '    if (Number(v.finis) > 0 || arrivees.some(', vers: '    if (arrivees.some(' }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: 'envoye' });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return !problemes.some((p) => p.cle === 'formulaire:bloque:libramont');
+  });
+  await rouge('des reservations du jour illisibles laissent sonner le formulaire', [{ fichier: 'lib/tour-controle.js', de: '  for (const v of onSait ? visites : []) {', vers: '  for (const v of visites) {' }], async () => {
+    remettre();
+    routesDeLaTour({ formulaire: 'panne' });
+    const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+    return !problemes.some((p) => /^formulaire:/.test(p.cle));
   });
   await rouge('une requete d integrite qui echoue sonne en URGENT', [{ fichier: 'lib/tour-controle.js', de: '      illisibles.push(nom);', vers: '      throw error;' }], async () => {
     remettre();

@@ -8359,9 +8359,9 @@
     const grid = f.priceType === 'grid_bowling' || f.priceType === 'grid_laser';
     return `${activityEditor.error ? `<div class="pev-modal-error" role="alert">${esc(activityEditor.error)}</div>` : ''}
       <div class="field pev-field">
-        <label for="aevName">Nom de l activité</label>
+        <label for="aevName">Nom de l’activité</label>
         <input id="aevName" type="text" maxlength="60" value="${esc(f.name || '')}" data-autofocus placeholder="Ex : Boissons soft" oninput="aevSet('name', this.value)">
-        <span class="field-hint">C est ce nom que le client lit dans le tunnel et dans les formules.</span>
+        <span class="field-hint">C’est ce nom que le client lit sur le formulaire et dans les formules.</span>
       </div>
       <div class="field pev-field">
         <label for="aevPriceType">Comment ça se facture</label>
@@ -8381,7 +8381,7 @@
         </div>
       </div>
       <label class="pev-toggle-row">
-        <span class="pev-toggle-label">Réservable seule dans le tunnel<small>Décochée, l activité ne sert qu à composer les formules (comme la table anniversaire).</small></span>
+        <span class="pev-toggle-label">Réservable seule sur le formulaire<small>Décochée, l’activité ne sert qu’à composer les formules (comme la table d’anniversaire).</small></span>
         <button type="button" class="mk-switch ${f.bookable ? 'is-on' : ''}" role="switch" aria-checked="${f.bookable ? 'true' : 'false'}" aria-label="Réservable seule" onclick="aevSet('bookable', !${Boolean(f.bookable)}); aevRefresh();"><span></span></button>
       </label>`;
   }
@@ -11098,6 +11098,20 @@
   // comme le bouton « Publier ». Rend une promesse { publies, refuses } :
   // publies = nombre de champs publies, refuses = [{ type, id, champs, message }].
   window.tarifsPublier = function () { return tfPublier(); };
+  // La page Etablissement (10/11) montre les prix et renvoie ici pour les changer : la planche de
+  // l activite ou de la formule s ouvre, le prix pret a taper. Un seul editeur ecrit les prix.
+  window.tarifsOuvrirPrix = function (type, id) {
+    const cle = type === 'activite' ? 'activites' : 'formules';
+    tarifs.ouvert[cle] = '';
+    if (typeof openStaffMenuPage === 'function') openStaffMenuPage('prices');
+    setTimeout(() => tfOuvrir(type === 'activite' ? 'activite' : 'formule', String(id || ''), { prix: true }), 0);
+  };
+  // Ce que l entreprise a ajoute au catalogue (activite, boisson, service), lu par la page Etablissement.
+  window.catalogueActivitesAjoutees = function () {
+    if (pricingEditor.error) return { etat: 'erreur', liste: [] };
+    if (!pricingEditor.loaded) return { etat: 'charge', liste: [] };
+    return { etat: 'ok', liste: (pricingEditor.activities || []).filter((a) => a && a.source === 'custom') };
+  };
 
   /* ==========================================================================
      GROUPES & ANNIVERSAIRES : la page n'existe plus (fusion du 2026-07-13).

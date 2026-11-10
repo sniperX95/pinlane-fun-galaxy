@@ -20650,6 +20650,21 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .establishment-page.eb .eb-b-p:hover:not(:disabled) { background: var(--text); opacity: .9; }
 .establishment-page.eb .eb-lien { color: var(--text); font-size: 13px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 .establishment-page.eb .eb-lien:hover { text-decoration-color: currentColor; }
+/* Les prix (lot 2) : des puces lisibles, le montant en chiffres alignes. Un bouton-lien garde l allure d un lien. */
+.establishment-page.eb .eb-lien-b { padding: 0; border: 0; background: none; cursor: pointer; font-family: inherit; }
+.establishment-page.eb .eb-r-prix .eb-r-c { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.establishment-page.eb .eb-prix { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.establishment-page.eb .eb-prix-i { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; white-space: nowrap; }
+.establishment-page.eb .eb-prix-i b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.establishment-page.eb .eb-prix-l { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; }
+.establishment-page.eb .eb-prix-l small, .establishment-page.eb .eb-prix-qui { color: var(--muted); font-size: 12px; }
+.establishment-page.eb .eb-f-p .eb-lien-b { margin-left: 10px; }
+.establishment-page.eb .eb-aj { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.establishment-page.eb .eb-aj:first-child { border-top: 0; }
+.establishment-page.eb .eb-aj-n { display: grid; gap: 2px; min-width: 0; }
+.establishment-page.eb .eb-aj-n small { color: var(--muted); font-size: 12px; }
+.establishment-page.eb .eb-aj-b { display: inline-flex; flex: none; gap: 14px; }
+.establishment-page.eb .eb-vide { margin: 0; padding: 12px 0; color: var(--muted); font-size: 13px; }
 .eb-ch { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .eb-ch > span { color: var(--muted); font-size: 12px; font-weight: 500; }
 .eb-met { display: flex; flex-direction: column; gap: 6px; }

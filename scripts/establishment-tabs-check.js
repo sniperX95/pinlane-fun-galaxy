@@ -167,6 +167,24 @@ const reglagesCaches = (page) => page.evaluate(() => EB_RUBRIQUES.map(([k]) => {
   return [k, caches];
 }).filter(([, caches]) => caches.length));
 
+// Les prix que le client paie se lisent dans chaque activite ; « Changer » ouvre Tarifs, « Ajouter » la fenetre
+// du catalogue (nom, prix, unite). Un seul editeur ecrit les prix : la page ne fait que les montrer.
+const prixEtAjout = (page) => page.evaluate(async () => {
+  const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+  ebOuvrir('activites');
+  const puces = (id) => Array.from(document.querySelectorAll(`#eb-a-${id} .eb-r-prix .eb-prix-i b`)).map((el) => el.textContent.trim());
+  const out = { bowling: puces('bowling'), laser: puces('laser_game'), changerFormule: document.querySelectorAll('#eb-p-formules .eb-f-p button').length };
+  const ajout = document.querySelector('#eb-a-ajout .eb-ajout button');
+  if (ajout) { ajout.click(); await attendre(200); }
+  const ov = document.getElementById('aevOverlay');
+  out.fenetre = ov ? ['aevName', 'aevPrice', 'aevUnit'].every((id) => ov.querySelector(`#${id}`)) : false;
+  if (typeof aevCloseModal === 'function') aevCloseModal();
+  const changer = document.querySelector('#eb-a-bowling .eb-r-prix button');
+  if (changer) { changer.click(); await attendre(300); }
+  out.page = getStaffMenuPage();
+  return out;
+});
+
 // Le vendredi ferme a 01:30 : le lendemain se dit, et part en 25:30. 07:00 avant 14:00 reste une faute.
 const apresMinuit = (page) => page.evaluate(async () => {
   const ouvert = document.getElementById('eb-open-estab-day-5');
@@ -360,6 +378,17 @@ async function main() {
     ok(nuit.fautifs.includes('estab-day-5-close'), `07:00 avant une ouverture a 14:00 reste une faute (obtenu ${JSON.stringify(nuit.fautifs)})`);
 
     // =====================================================================
+    console.log('\n[4d] Les prix et l ajout');
+    // =====================================================================
+    await openEstablishment(page, 'prix');
+    const prix = await prixEtAjout(page);
+    ok(prix.bowling.join('|') === '20 €|39 €|59 €|78 €', `le bowling montre le prix de chaque duree, celui du formulaire (obtenu ${prix.bowling.join(' / ')})`);
+    ok(prix.laser.join('|') === '10 €|18 €|25 €', `le laser montre le prix de chaque nombre de parties (obtenu ${prix.laser.join(' / ')})`);
+    ok(prix.changerFormule > 0, `chaque formule a son bouton Changer (obtenu ${prix.changerFormule})`);
+    ok(prix.fenetre, '« Ajouter » ouvre la fenetre du catalogue : nom, prix, unite');
+    ok(prix.page === 'prices', `« Changer » ouvre Tarifs (obtenu ${prix.page})`);
+
+    // =====================================================================
     console.log('\n[5] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
@@ -388,6 +417,9 @@ async function main() {
     // d. Sans la nuit qui deborde, 01:30 partirait tel quel : le vendredi fermerait avant d ouvrir.
     const sansNuit = await muter('nuit', '    // Une fermeture avant l ouverture, jusqu a 06:00, est celle du lendemain : 00:00 devient 24:00, 01:30 devient 25:30.\n    if (ebApresMinuit(open, close)) close = ebLendemain(close);\n', '', () => openEstablishment(page, 'mutation-nuit'), () => apresMinuit(page));
     ok(sansNuit && !(sansNuit.vendredi && sansNuit.vendredi.close === '25:30'), `sans la nuit qui deborde, 01:30 part tel quel (obtenu ${JSON.stringify(sansNuit && sansNuit.vendredi)}) -> le gate ROUGIRAIT`);
+    // f. Sans la ligne des prix, le bowling ne montre plus ce que paie le client.
+    const sansPrix = await muter('prix', "  if (id !== 'arcade_time') lignes = ebPrixRang(c, id) + lignes;\n", '', () => openEstablishment(page, 'mutation-prix'), () => prixEtAjout(page));
+    ok(sansPrix && sansPrix.bowling.length === 0, `sans la ligne des prix, le bowling ne montre aucun prix (obtenu ${JSON.stringify(sansPrix && sansPrix.bowling)}) -> le gate ROUGIRAIT`);
     // e. Une ligne de reglage cachee dans sa rubrique : le controle des reglages caches le voit.
     // (display:none et pas l attribut hidden : la feuille pose display:grid sur .eb-r, hidden n y cacherait rien.)
     const cache = await muter('ligne', "function ebR(titre, aide, controle, cls = '') {\n  return `<div class=\"eb-r", "function ebR(titre, aide, controle, cls = '') {\n  return `<div style=\"display:none\" class=\"eb-r", () => openEstablishment(page, 'mutation-ligne'), () => reglagesCaches(page));

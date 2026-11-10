@@ -15197,6 +15197,68 @@ function ebFermerSalleHtml(a) {
   const pistes = a.id === 'bowling' ? `<select class="eb-f" id="eb-f-piste-${idA}" aria-label="Quoi fermer"><option value="">Tout le bowling</option>${Array.from({ length: getAvailabilityLaneCount() }, (u, i) => `<option value="${i + 1}">Piste ${i + 1}</option>`).join('')}</select>` : '';
   return `${pistes}<input type="date" class="eb-f eb-f-date" id="eb-f-date-${idA}" min="${ebIso(new Date())}" aria-label="Date à fermer, ${ebE(a.label)}"><button type="button" class="eb-b" onclick="ebFermerSalle('${ebJs(a.id)}')">Fermer</button>`;
 }
+// ── Les prix (lot 2, 10/11) ──────────────────────────────────────────────────
+// La page MONTRE ce que le client paie chez CE centre, lu par les memes accesseurs que le formulaire
+// (booking-core). Un seul endroit l ECRIT : la planche de Tarifs, ouverte sur la bonne case, le prix pret
+// a taper. Deux editeurs d un meme prix finiraient par dire deux montants.
+function ebPeutPrix() { return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage'); }
+function ebChangerPrix(type, id) {
+  if (typeof window.tarifsOuvrirPrix === 'function') window.tarifsOuvrirPrix(type, id);
+  else openStaffMenuPage('prices');
+}
+function ebEuros(v) { return `${typeof formatPrixCourt === 'function' ? formatPrixCourt(v) : String(v)} €`; }
+function ebPrixPuces(items) {
+  return `<span class="eb-prix">${items.map(([l, p]) => `<span class="eb-prix-i"><span>${ebE(l)}</span><b>${p == null ? 'sur place' : ebEuros(p)}</b></span>`).join('')}</span>`;
+}
+// Les prix publies de CE centre, ou null tant que la configuration chargee est celle d un autre centre.
+function ebPrixActivite(c, id) {
+  const cfg = typeof getCenterScheduleConfig === 'function' ? getCenterScheduleConfig() : null;
+  if (!cfg || cfg.id !== c.center.id) return null;
+  if (id === 'bowling') {
+    const parties = typeof getBowlingPricing === 'function' ? getBowlingPricing() : null;
+    if (parties && Array.isArray(parties.tiers) && parties.tiers.length) {
+      const jours = (t) => (typeof describePricingDays === 'function' ? `<small>${ebE(describePricingDays(t.days))}</small>` : '');
+      return { aide: 'Par joueur, selon le jour et le nombre de parties.', html: parties.tiers.map((t) => `<span class="eb-prix-l">${jours(t)}${ebPrixPuces((t.prices || []).map((p, i) => [`${i + 1} partie${i ? 's' : ''}`, p]))}</span>`).join('') };
+    }
+    return { aide: 'Par piste, selon la durée.', html: ebPrixPuces(getDurationOptionsCatalog().map((o) => [o.label, o.price])) };
+  }
+  if (id === 'laser_game') return { aide: 'Par joueur, selon le nombre de parties.', html: ebPrixPuces(getLaserOptionsCatalog().map((o) => [o.label, o.price])) };
+  if (id === 'fun_run') return { aide: 'Selon la durée de la session.', html: ebPrixPuces(getFunRunOptionsCatalog().map((o) => [o.label, o.price])) };
+  const act = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  if (!act) return null;
+  if (act.priceType === 'on_site' || act.priceValue == null) return { aide: 'Le client paie à l’accueil : le formulaire ne chiffre rien.', html: '<span class="eb-prix"><span class="eb-prix-i"><b>Réglé sur place</b></span></span>' };
+  const paliers = act.pricing && Array.isArray(act.pricing.tiers) && act.pricing.tiers.length;
+  return { aide: paliers ? 'Prix de base : il change selon le jour ou l’heure.' : '', html: ebPrixPuces([[act.unitLabel || 'Prix', act.priceValue]]) };
+}
+function ebPrixRang(c, id) {
+  const p = ebPrixActivite(c, id);
+  const bouton = ebPeutPrix() ? `<button type="button" class="eb-b" onclick="ebChangerPrix('activite','${ebJs(id)}')">Changer</button>` : '<small class="eb-prix-qui">Changer un prix demande le droit Tarifs.</small>';
+  if (!p) return ebR('Prix', 'Les prix de ce centre se lisent dans Tarifs.', bouton, 'eb-r-prix');
+  return ebR('Prix', p.aide, `${p.html}${bouton}`, 'eb-r-prix');
+}
+// Ajouter une activite, une boisson ou un service : la fenetre du catalogue (celle de Tarifs), ouverte ici.
+// Ce qui s y ajoute existe pour tous les centres de l entreprise, et pour eux seuls.
+function ebPrixDuCatalogue(a) {
+  if (a.priceType === 'on_site' || a.priceValue == null) return 'réglé sur place';
+  return `${ebEuros(a.priceValue)}${a.priceUnit ? ` ${a.priceUnit}` : ''}`;
+}
+function ebAjoutHtml() {
+  const peut = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('settings.manage');
+  const cat = typeof window.catalogueActivitesAjoutees === 'function' ? window.catalogueActivitesAjoutees() : { etat: 'ok', liste: [] };
+  let lignes;
+  if (cat.etat === 'ok' && cat.liste.length) {
+    lignes = cat.liste.map((a) => `<div class="eb-aj"><span class="eb-aj-n"><b>${ebE(a.name)}</b><small>${ebE(ebPrixDuCatalogue(a))} · ${a.bookable ? 'réservable en ligne' : 'seulement dans les formules'}</small></span>${peut ? `<span class="eb-aj-b"><button type="button" class="eb-lien eb-lien-b" onclick="aevOpenEdit('${ebJs(a.id)}')" aria-label="Modifier ${ebE(a.name)}">Modifier</button><button type="button" class="eb-lien eb-lien-b" onclick="aevDelete('${ebJs(a.id)}')" aria-label="Retirer ${ebE(a.name)}">Retirer</button></span>` : ''}</div>`).join('');
+  } else if (cat.etat === 'ok') {
+    lignes = '<p class="eb-vide">Rien d’ajouté pour l’instant : une boisson, un goûter, une réalité virtuelle…</p>';
+  } else if (cat.etat === 'erreur' || !ebPeutPrix()) {
+    lignes = '<p class="eb-vide">La liste se lit avec le droit Tarifs.</p>';
+  } else {
+    lignes = '<p class="eb-vide">Lecture du catalogue…</p>';
+  }
+  // Les anciens noms sans prix (« Vos activites ») ne se vendaient nulle part : montres tant qu il en reste.
+  const anciens = establishmentCustomActivitiesDraft.length ? `<div id="estabCustomActivitiesList" class="eb-liste" data-eb-watch="activites-perso">${renderEstablishmentCustomActivities()}</div><p class="eb-note">Ces noms n’ont pas de prix : ils ne se vendent nulle part. Ajoutez-les avec leur prix.</p>` : '';
+  return ebG('Ajouter une activité, une boisson ou un service', 'Son nom, son prix, et s’il se réserve en ligne. Il existe pour tous vos centres.', `<div class="eb-liste" data-eb-watch="catalogue">${lignes}</div>${anciens}${peut ? '<div class="eb-ajout"><button type="button" class="eb-b" onclick="aevOpenCreate()">Ajouter</button></div>' : ''}`, { id: 'eb-a-ajout' });
+}
 function ebActiviteHtml(c, a) {
   const id = a.id;
   const propose = Boolean(c.center.activityAvailability && c.center.activityAvailability[id]);
@@ -15221,8 +15283,9 @@ function ebActiviteHtml(c, a) {
     }
     if (id === 'arcade_time') lignes += `<div class="eb-arcades">${ebArcadesHtml(c.center)}</div>`;
   }
+  if (id !== 'arcade_time') lignes = ebPrixRang(c, id) + lignes;
   lignes += ebR('Fermer un jour', 'La fermeture part tout de suite, sans Enregistrer.', ebFermerSalleHtml(a), 'eb-r-ferm');
-  const liens = `${canUseStaffPermission('pricing.manage') ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'prices\');return false">Prix</a>' : ''}${id === 'bowling' ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'lanes\');return false">État des pistes</a>' : ''}`;
+  const liens = `${id === 'bowling' ? '<a class="eb-lien" href="#" onclick="openStaffMenuPage(\'lanes\');return false">État des pistes</a>' : ''}`;
   return ebG(ebE(a.label), propose ? '' : 'Pas réservable dans ce centre pour l’instant.', lignes, { id: `eb-a-${ebE(id)}`, cls: `eb-act${propose ? '' : ' est-off'}`, attrs: `data-act="${ebE(id)}"`, droite: `${liens}${ebCase(`estab-act-${id}`, 'Réservable en ligne', { on: propose, cls: 'eb-k-tete' })}` });
 }
 function ebTablesHtml(c, secoursVide) {
@@ -15237,7 +15300,7 @@ function ebTablesHtml(c, secoursVide) {
 }
 function ebAutresHtml() {
   const entree = (fn) => `onkeydown="if(event.key==='Enter'){event.preventDefault();${fn}();}"`;
-  return ebG('Vos activités', 'Une activité propre au centre, en plus de la liste.', `<div id="estabCustomActivitiesList" class="eb-liste estab-custom-activities-list" data-eb-watch="activites-perso">${renderEstablishmentCustomActivities()}</div><div class="eb-ajout"><label class="eb-ch eb-ch-m"><span>Nom de l’activité</span><input type="text" id="estab-new-activity" class="eb-f" placeholder="Réalité virtuelle" maxlength="60" autocomplete="off" ${entree('addEstablishmentCustomActivity')}></label><button type="button" class="eb-b" onclick="addEstablishmentCustomActivity()">Ajouter</button></div>`)
+  return ebAjoutHtml()
     + ebG('Autres installations', 'Un équipement du centre qui n’est pas dans la liste : un court, une salle, un simulateur.', `<div id="estabDeclaredResourcesList" class="eb-liste estab-custom-activities-list" data-eb-watch="installations">${renderEstablishmentDeclaredResources()}</div><div class="eb-ajout"><label class="eb-ch eb-ch-m"><span>Installation</span><input type="text" id="estab-res-name" class="eb-f" placeholder="Court de padel" maxlength="60" autocomplete="off" ${entree('addEstablishmentDeclaredResource')}></label>${ebMet('Combien', ebNum('estab-res-units', 'Combien', { min: 1, max: 50, value: 1 }))}${ebMet('Joueurs chacune', ebNum('estab-res-capacity', 'Joueurs chacune', { min: 1, max: 500, value: 4 }))}${ebMet('Remise en état (min)', ebNum('estab-res-cleanup', 'Minutes de remise en état', { min: 0, max: 240, value: 0, step: 5 }))}${ebCase('estab-res-mixing', 'Deux groupes ensemble', { on: false, cls: 'eb-k-tete' })}<button type="button" class="eb-b" onclick="addEstablishmentDeclaredResource()">Ajouter</button></div>`);
 }
 
@@ -15256,7 +15319,7 @@ function ebFormulesHtml(c) {
     const id = ebE(f.id);
     const on = c.center.offerAvailability?.[f.id] !== false;
     const fete = anniv.includes(f.id);
-    return `<div class="eb-tr${on ? '' : ' est-off'}" role="row" data-eb-nom="${ebE(f.name)}"><span role="cell" class="eb-f-n"><b>${ebE(f.name)}</b>${Array.isArray(f.desc) ? `<small>${ebE(f.desc.slice(0, 3).join(', '))}</small>` : ''}</span><span role="cell" class="eb-f-p">${f.price != null ? `${prix(f.price)}<small>${f.type === 'per_lane' ? 'la piste' : 'par joueur'}</small>` : ''}</span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-offer-${id}" data-estab-offer="${id}" ${on ? 'checked' : ''} aria-label="${ebE(f.name)} réservable en ligne"><span class="eb-k-b" aria-hidden="true"></span></label></span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-bday-${id}" data-estab-bday="${id}" ${fete ? 'checked' : ''} aria-label="${ebE(f.name)} compte en anniversaire"><span class="eb-k-b" aria-hidden="true"></span></label></span></div>`;
+    return `<div class="eb-tr${on ? '' : ' est-off'}" role="row" data-eb-nom="${ebE(f.name)}"><span role="cell" class="eb-f-n"><b>${ebE(f.name)}</b>${Array.isArray(f.desc) ? `<small>${ebE(f.desc.slice(0, 3).join(', '))}</small>` : ''}</span><span role="cell" class="eb-f-p">${f.price != null ? `${prix(f.price)}<small>${f.type === 'per_lane' ? 'la piste' : 'par joueur'}</small>` : ''}${ebPeutPrix() ? `<button type="button" class="eb-lien eb-lien-b" onclick="ebChangerPrix('formule','${ebJs(id)}')" aria-label="Changer le prix de ${ebE(f.name)}">Changer</button>` : ''}</span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-offer-${id}" data-estab-offer="${id}" ${on ? 'checked' : ''} aria-label="${ebE(f.name)} réservable en ligne"><span class="eb-k-b" aria-hidden="true"></span></label></span><span role="cell"><label class="eb-k eb-k-seule"><input type="checkbox" id="estab-bday-${id}" data-estab-bday="${id}" ${fete ? 'checked' : ''} aria-label="${ebE(f.name)} compte en anniversaire"><span class="eb-k-b" aria-hidden="true"></span></label></span></div>`;
   };
   return `<div class="eb-tab" role="table" aria-label="Les formules"><div class="eb-tr eb-th" role="row"><span role="columnheader">Formule</span><span role="columnheader">Prix</span><span role="columnheader">Réservable en ligne</span><span role="columnheader">Anniversaire</span></div>${familles.map(g => `<div class="eb-tr eb-fam" role="row"><span role="cell">${ebE(String(g.nom).replace(/speciales/i, 'spéciales'))}</span></div>${g.items.map(ligne).join('')}`).join('')}</div>`;
 }
@@ -15331,7 +15394,7 @@ function renderStaffUtilityEstablishment() {
   const risque = ['critical', 'managed', 'low'].includes(c.laser.riskLevel) ? c.laser.riskLevel : 'managed';
   const garde = (id, on) => `<input type="checkbox" id="${id}" ${on ? 'checked' : ''}>`;
   const gardes = `<select id="estab-laserRisk"><option value="${ebE(risque)}" selected>${ebE(risque)}</option></select>${garde('estab-canSplit', c.laser.canSplitGroupsCleanly === true)}${garde('estab-bar-booking', c.barDesk.handlesBooking !== false)}${garde('estab-bar-briefing', c.barDesk.handlesBriefing !== false)}${garde('estab-bar-food', c.barDesk.handlesFoodAndDrink !== false)}${garde('estab-bar-escort', c.barDesk.activityEscort === true)}${(c.activites || []).filter(a => EB_PAS_DES_SALLES.includes(a.id)).map(a => garde(`estab-act-${ebE(a.id)}`, estProposee(a))).join('')}`;
-  const sous = [...sur, { id: 'tables', label: 'Tables d’anniversaire' }];
+  const sous = [...sur, { id: 'tables', label: 'Tables d’anniversaire' }, { id: 'ajout', label: 'Ajouter' }];
   const nav = EB_RUBRIQUES.map(([k, titre]) => `<button type="button" class="eb-t eb-m${k === ebOuverte ? ' is-on' : ''}" data-k="${k}"${k === ebOuverte ? ' aria-current="true"' : ''} aria-controls="eb-p-${k}" onclick="ebOuvrir('${k}')"><span>${titre}</span><i class="eb-pt" aria-hidden="true"></i></button>${k === 'activites' ? `<div class="eb-sous">${sous.map(a => `<button type="button" class="eb-s" data-k="${ebE(a.id)}" onclick="ebOuvrir('${ebJs(a.id)}')">${ebE(a.label)}</button>`).join('')}</div>` : ''}`).join('');
   const pan = (k, corps) => {
     const [, titre, aide] = EB_RUBRIQUES.find(([id]) => id === k);

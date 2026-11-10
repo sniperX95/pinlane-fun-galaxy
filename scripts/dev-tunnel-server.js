@@ -6,7 +6,7 @@
 //
 // Lancement : node scripts/dev-tunnel-server.js  (port 4230)
 //
-//   http://127.0.0.1:4230/reserver                 le tunnel actuel
+//   http://127.0.0.1:4230/reserver                 le vrai formulaire (Libramont), comme en prod
 //   http://127.0.0.1:4230/fungalaxy/libramont      le formulaire Fun Galaxy (v3)
 //   http://127.0.0.1:4230/reserver/libramont       le meme, tel qu il serait
 //       pose sur le site de Fun Galaxy (fungalaxy-site.html, comme en prod)
@@ -418,8 +418,13 @@ function createServer(options = {}) {
       return;
     }
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
-    if (url.pathname === '/' || url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'index.html');
-    if (url.pathname === '/fungalaxy' || /^\/fungalaxy\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'fungalaxy.html');
+    // L ANCIEN TUNNEL N A PLUS D ADRESSE (2026-11-10), comme en production (vercel.json) : /reserver et
+    // /reserver/<centre> servent le vrai formulaire. Seul un test qui eprouve encore l ancien ecran le
+    // redemande, par PINLANE_ANCIEN_TUNNEL=1.
+    const ancienTunnel = process.env.PINLANE_ANCIEN_TUNNEL === '1';
+    const adresseReserver = url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname);
+    if (url.pathname === '/' || (ancienTunnel && adresseReserver)) filePath = path.join(ROOT, 'index.html');
+    if (url.pathname === '/fungalaxy' || /^\/fungalaxy\/[a-z0-9-]+\/?$/.test(url.pathname) || (!ancienTunnel && adresseReserver)) filePath = path.join(ROOT, 'fungalaxy.html');
     // Comme en production (vercel.json) : /reserver/libramont sert le
     // formulaire Fun Galaxy tel qu il serait pose sur leur site.
     if (/^\/reserver\/libramont\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'fungalaxy-site.html');

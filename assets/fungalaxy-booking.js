@@ -31,7 +31,9 @@
   var params = new URLSearchParams(window.location.search);
   var SLUG_RX = /^[a-z][a-z0-9-]{1,40}$/;
   function centreDepuisAdresse() {
-    var m = window.location.pathname.match(/^\/fungalaxy\/([^/]+)\/?$/i);
+    // /reserver/<centre> sert ce formulaire depuis le 2026-11-10 (l ancien tunnel n a plus d adresse) : le
+    // centre se lit dans les deux adresses, jamais devine.
+    var m = window.location.pathname.match(/^\/(?:fungalaxy|reserver)\/([^/]+)\/?$/i);
     var brut = (m && m[1]) || params.get('center') || params.get('centerId') || '';
     try { brut = decodeURIComponent(brut); } catch (e) { /* adresse illisible : refusee plus bas */ }
     brut = String(brut).trim().toLowerCase();

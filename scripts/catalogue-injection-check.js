@@ -37,6 +37,9 @@ const fs = require('fs');
 const path = require('path');
 const Module = require('module');
 const { chromium } = require('playwright-core');
+// Ce gate eprouve encore l ancien ecran (index.html) : il le redemande au serveur local, qui ne le
+// sert plus par defaut depuis le 2026-11-10.
+process.env.PINLANE_ANCIEN_TUNNEL = '1';
 const mock = require('./dev-tunnel-server');
 const { defaults } = require('../lib/arcade-offers');
 

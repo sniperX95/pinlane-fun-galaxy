@@ -54,7 +54,7 @@
     },
     {
       "source": "/reserver",
-      "destination": "/index.html"
+      "destination": "/fungalaxy.html"
     },
     {
       "source": "/reserver/libramont",
@@ -62,7 +62,7 @@
     },
     {
       "source": "/reserver/:center",
-      "destination": "/index.html"
+      "destination": "/fungalaxy.html"
     },
     {
       "source": "/fungalaxy",

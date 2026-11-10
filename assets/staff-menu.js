@@ -1181,7 +1181,10 @@
       return;
     }
     if (action === 'client') {
-      if (typeof setView === 'function') setView('client');
+      // L ancien tunnel n est plus une destination (2026-11-10) : le site de reservation public est le
+      // vrai formulaire du centre, ouvert a cote de la console.
+      const centre = typeof getActiveOpsCenterId === 'function' ? String(getActiveOpsCenterId() || '') : '';
+      window.open(centre && centre !== 'all' ? `/reserver/${encodeURIComponent(centre)}` : '/reserver', '_blank', 'noopener');
       return;
     }
     if (action === 'users' || action === 'settings' || action === 'establishment') {

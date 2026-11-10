@@ -21,7 +21,7 @@
     "test:marketing-ask": "node scripts/marketing-ask-check.js",
     "test:marketing-variety": "node scripts/marketing-variety-check.js",
     "test:simulation": "node scripts/run-simulation-tests.js",
-    "test:reserver-sans-centre": "node scripts/reserver-sans-centre-check.js",
+    "test:reserver-sans-centre": "node scripts/reserver-sans-centre-check.js && node scripts/ancien-formulaire-check.js",
     "test:quality": "node scripts/run-quality-audit.js",
     "test:center-config": "node scripts/run-center-config-tests.js",
     "test:visual": "node scripts/run-visual-qa.js",

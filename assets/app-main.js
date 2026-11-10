@@ -4374,7 +4374,9 @@ async function logout() {
   } catch (error) {}
   clearStaffAuthSession();
   closePos();
-  setView('client');
+  // L ancien tunnel n est plus une destination (2026-11-10) : la deconnexion rend l ecran de
+  // connexion de l equipe.
+  setView('staff');
   applyAuthState();
 }
 

@@ -302,7 +302,8 @@ async function parcours(browser, { captures = true } = {}) {
     r.photos = await page.evaluate(() => [...document.querySelectorAll('.sm-envies .sm-photo')].map((i) => ({ n: i.naturalWidth, src: i.getAttribute('src') })));
     r.photosOffres = await page.evaluate(() => [...document.querySelectorAll('.sm-o .sm-o-photo')].map((i) => i.getAttribute('src')));
     r.photoAilleurs = await page.evaluate(() => smPhotoDe('Bowling', 'un-autre-centre'));
-    r.demandeTexte = await texte(page, '.sm-tete .sm-demande');
+    r.demandeTexte = await texte(page, '.sm-c1 .sm-demande');
+    r.faits = await texte(page, '.sm-c1 .sm-faits');
     r.clientTexte = await texte(page, '.sm-client');
     r.venues = await page.evaluate(() => document.querySelectorAll('.sm-venues li').length);
     r.mots = await page.evaluate(() => document.querySelector('.sm-fiche').innerText);
@@ -312,7 +313,7 @@ async function parcours(browser, { captures = true } = {}) {
     r.jours = await page.evaluate(() => [...document.querySelectorAll('.sm-jour, .sm-jour-off')].map((d) => d.innerText.replace(/\s+/g, ' ').trim()));
     r.momentSurLAxe = await page.evaluate(() => Boolean(document.querySelector('.sm-jour .sm-j-mo')));
     r.ordreDuJour = await page.evaluate(() => { const j = document.querySelector('.sm-jour'); const o = j && j.querySelector('.sm-offres'); const p = j && j.querySelector('.sm-j'); return Boolean(o && p && (o.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)); });
-    r.tete = await page.evaluate(() => { const t = document.querySelector('.sm-tete'); return { date: Boolean(t.querySelector('.sm-date')), promis: Boolean(t.querySelector(':scope > .sm-promis')), demande: Boolean(t.querySelector(':scope > .sm-demande')), haut: Math.round(t.getBoundingClientRect().height) }; });
+    r.tete = await page.evaluate(() => { const t = document.querySelector('.sm-tete'); const e = t.querySelector('.sm-tete-n .sm-du'); return { date: Boolean(t.querySelector('.sm-date')), demande: Boolean(t.querySelector('.sm-demande')), etat: e ? { t: e.textContent.trim(), cls: e.className } : null, principal: (t.querySelector('.sm-p') || {}).textContent || '', haut: Math.round(t.getBoundingClientRect().height) }; });
     r.etudeDemandee = await page.evaluate(() => window.__QA__.appels.filter((a) => a.action === 'customRequestStudy').map((a) => a.id));
     await capture('fiche-sombre.png');
     await capture('fiche-sombre-page.png', { fullPage: true });
@@ -821,17 +822,17 @@ function verifier(r) {
   ok(r.puce801 && /^Reste (1 h|2 h)/.test(r.puce801.t) && /is-soon/.test(r.puce801.cls), 'la demande a deux heures de l echeance dit ce qu il reste', JSON.stringify(r.puce801));
   ok(r.signal804 === 'Le client a répondu', 'le client qui a repondu se voit dans la liste', r.signal804);
   ok(r.titre801 === 'Athénée de Libramont', 'la ligne porte le nom de l organisation', r.titre801);
-  ok(/31/.test(r.ligne801) && /Après-midi/.test(r.ligne801) && /Formule 3 Bowling Laser Game/.test(r.ligne801) && /^(LUN|MAR|MER|JEU|VEN|SAM|DIM) \d{1,2} /.test(r.ligne801) && /Ansar Bisultanov/.test(r.ligne801), 'la ligne dit qui, combien, quand et quoi', r.ligne801);
+  ok(/^Athénée de Libramont .*Ansar Bisultanov (Lun|Mar|Mer|Jeu|Ven|Sam|Dim)\. \d{1,2} \S+ Après-midi 31 Formule 3 Bowling Laser Game/.test(r.ligne801), 'la ligne dit qui, quand, combien et quoi, dans cet ordre', r.ligne801);
 
   section('B. LA FICHE DIT TOUT CE QUE LE CLIENT A REMPLI');
   ok(/Athénée de Libramont/.test(r.entete.nom) && /École, jeunesse/.test(r.entete.sous) && /reçue/.test(r.entete.sous), 'le groupe, son type, quand la demande est arrivee', JSON.stringify(r.entete));
   ok(/Toutes les demandes/.test(r.entete.retour) && r.entete.liste === 0, 'la fiche prend la page, un lien ramene a la liste', JSON.stringify(r.entete));
-  ok(JSON.stringify(r.entete.boutons) === '["Écrire au client","Sans suite"]', 'en tete : ecrire au client, et un seul geste de classement', JSON.stringify(r.entete.boutons));
-  ok(!r.tete.date && r.tete.promis && r.tete.demande && r.tete.haut <= 260, 'toute la demande tient dans l en-tete : sans tuile de date, avec l etat de la reponse et les envies, en 260 px au plus', JSON.stringify(r.tete));
+  ok(JSON.stringify(r.entete.boutons) === '["Sans suite","Écrire au client"]' && r.tete.principal === 'Écrire au client', 'en tete : un seul geste de classement, puis ecrire au client en geste principal', JSON.stringify([r.entete.boutons, r.tete.principal]));
+  ok(!r.tete.date && !r.tete.demande && r.tete.etat && /is-soon/.test(r.tete.etat.cls) && /^Reste (1|2) h/.test(r.tete.etat.t) && r.tete.haut <= 120, 'l en-tete tient en une bande : le nom et son etat en aplat, la ligne du groupe, les gestes, en 120 px au plus', JSON.stringify(r.tete));
   ok(r.entete.liens.length === 1 && r.entete.liens[0].t === 'Appeler' && r.entete.liens[0].href === 'tel:+32470112233', 'appeler le client est a un toucher', JSON.stringify(r.entete.liens));
   ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client est en tete de la fiche', JSON.stringify(r.bandeau));
-  ok(/31 joueurs et 3 accompagnateurs, 7 à 12 ans/.test(r.entete.sous) && /dimanche \d{1,2} \S+ \d{4} l’après-midi, ou \S+ \d{1,2} \S+ \d{4}\./.test(r.entete.sous), 'combien, quel age, quand, et l autre date', r.entete.sous);
-  ok(JSON.stringify(r.envies) === '["Formule 3","Bowling 31 joueurs","Laser Game 31 joueurs"]' && /Budget de 25 € par personne/.test(r.demandeTexte), 'ce qu ils veulent et leur budget', JSON.stringify(r.envies));
+  ok(/Joueurs 31 joueurs et 3 accompagnateurs, 7 à 12 ans/.test(r.faits) && /Date voulue Dimanche \d{1,2} \S+ l’après-midi, ou (lun|mar|mer|jeu|ven|sam|dim)\. \d{1,2} \S+/.test(r.faits), 'combien, quel age, quand, et l autre date, dans les chiffres de la demande', r.faits);
+  ok(JSON.stringify(r.envies) === '["Formule 3","Bowling 31 joueurs","Laser Game 31 joueurs"]' && /Budget 25 € par personne/.test(r.faits), 'ce qu ils veulent et leur budget', JSON.stringify(r.envies));
   ok(/pique-niquer sur place/.test(r.demandeTexte), 'le message du client est lu en entier', r.demandeTexte);
   ok(/Ansar Bisultanov, Enseignant/.test(r.clientTexte) && /\+32 470 11 22 33/.test(r.clientTexte) && /ansar@example\.org/.test(r.clientTexte), 'qui appeler ou ecrire', r.clientTexte);
   ok(/Facture au nom de Athénée de Libramont, TVA BE0123456789/.test(r.clientTexte), 'la facture et sa TVA', r.clientTexte);

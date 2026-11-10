@@ -482,10 +482,12 @@ async function preuvesBilan() {
 // ---------------------------------------------------------------------------
 // [G] La garde entiere.
 // ---------------------------------------------------------------------------
-function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false, formulaire = false, arene = 0 } = {}) {
+function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false, formulaire = false, arene = 0, horaires = false } = {}) {
   route(/from centers/, () => [
     // `arene` : le nombre d armes que le gerant a regle dans la console pour le laser de Libramont.
-    { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, ...(arene ? { resources: { laser: { weaponCount: arene, parallelLaunches: 1 } } } : {}) } } },
+    { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, ...(arene ? { resources: { laser: { weaponCount: arene, parallelLaunches: 1 } } } : {}),
+      // `horaires` : le gerant de Libramont a regle le mardi a 12:00 et ouvre exceptionnellement le lundi 16/11.
+      ...(horaires ? { defaultSchedule: { regular: { 2: { open: '12:00', close: '22:00' } } }, ouverturesExceptionnelles: [{ date: '2026-11-16', open: '10:00', close: '18:00' }] } : {}) } } },
     { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
   ]);
   // Les taches sont saines a l heure du passage joue, pas a l heure du banc.
@@ -527,7 +529,7 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false,
     // Le groupe privatise, inscrit au comptoir, n est rendu qu a une requete qui oublie le canal.
     const enLigne = (id, center_id, date, heure, duree, lanes) => ({ id, center_id, date, start_time: `${heure}:00`, duration: duree, total_duration: duree, type: 'bowling', formule_id: null, lanes });
     route(/total_duration, type, formule_id, lanes from reservations/, (s) => [enLigne(701, 'libramont', '2026-11-15', '17:00', 2, [1]), enLigne(702, 'libramont', '2026-11-15', '16:00', 2, [2]), enLigne(703, 'libramont', '2026-11-16', '10:00', 1, [3]),
-      enLigne(704, 'libramont', '2026-11-17', '15:00', 1, [5]), enLigne(705, 'gembloux', '2026-11-15', '17:00', 2, [1]), ...(/channel = 'public'/.test(s) ? [] : [enLigne(706, 'libramont', '2026-11-15', '18:00', 4, [4])])]);
+      enLigne(704, 'libramont', '2026-11-17', '15:00', 1, [5]), enLigne(707, 'libramont', '2026-11-17', '13:00', 1, [6]), enLigne(708, 'libramont', '2026-11-19', '22:00', 1, [6]), enLigne(705, 'gembloux', '2026-11-15', '17:00', 2, [1]), ...(/channel = 'public'/.test(s) ? [] : [enLigne(706, 'libramont', '2026-11-15', '18:00', 4, [4])])]);
   }
   if (formulaire) {
     // Le suivi des ecrans, sur 24 heures. Libramont : 64 visites (14 un jour d 'essais'), 11 arrivees a la validation,
@@ -633,6 +635,19 @@ async function preuvesGarde() {
     ok(f.detail === 'Dans les 14 prochains jours, le 15/11 à 17:00, centre fermé ; le 16/11 à 10:00, piste 3 bloquée ; le 17/11 à 15:00, bowling bloqué. Le client n’en sait rien, il est à appeler ou à déplacer.',
       '[G] integrite : la fermeture compte toute la visite (17:00 pour deux heures), une piste et une activite bloquees, et laisse passer la visite qui finit pile a la fermeture', f.detail);
     ok(!problemes.some((p) => p.cle === 'integrite:fermeture:gembloux'), '[G] integrite : les fermetures de Libramont ne touchent pas Gembloux', problemes.map((p) => p.cle).join(', '));
+    // LA RESERVATION EN LIGNE HORS DES HORAIRES (2026-11-10). Libramont : ferme le lundi, mardi et jeudi de 14:00 a 22:00.
+    const h = problemes.find((p) => p.cle === 'integrite:horaires:libramont') || {};
+    ok(t6b.includes('3 réservations en ligne tombent hors des horaires à Libramont') && h.gravite === 'attention', '[G] integrite : une reservation en ligne hors des horaires se dit, sans sonnerie', `${h.gravite} | ${t6b}`);
+    ok(h.detail === 'Dans les 14 prochains jours, le 16/11 à 10:00, le centre est fermé ce jour-là ; le 17/11 à 13:00, le centre ouvre à 14:00 ; le 19/11 à 22:00, le centre ferme à 22:00. Les horaires ont sans doute changé après la réservation, le client est à appeler ou à déplacer.',
+      '[G] integrite : jour ferme, arrivee avant l ouverture, arrivee a la fermeture ; une arrivee dans les horaires ne se dit pas', h.detail);
+    ok(!problemes.some((p) => p.cle === 'integrite:horaires:gembloux'), '[G] integrite : Gembloux, dans ses horaires, ne se dit pas', problemes.map((p) => p.cle).join(', '));
+    BD.routes = [];
+    routesDeLaTour({ integrite: true, horaires: true });
+    const regles = ((await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'integrite:horaires:libramont')) || {};
+    ok(/^1 réservation en ligne tombe hors des horaires/.test(regles.titre || '') && /le 19\/11 à 22:00/.test(regles.detail || ''), '[G] integrite : les horaires regles dans la console et une ouverture exceptionnelle comptent (mardi 12:00, lundi 16/11 ouvert)', `${regles.titre} | ${regles.detail}`);
+    BD.routes = [];
+    routesDeLaTour({ integrite: true });
+    await charger('lib/tour-controle.js').lireProblemes(pool);
   }
 
   BD.routes = [];
@@ -893,7 +908,7 @@ async function contrePreuves() {
   await rouge('les armes de l arene ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (parties <= max) return;" }], async () => /35 joueurs pour 30 armes/.test((await laserDeLibramont()).detail || ''));
   await rouge('les parties en meme temps ne comptent plus', [{ fichier: 'lib/ops-engine.js', de: "    if (joueurs <= armes && parties <= max) return;", vers: "    if (joueurs <= armes) return;" }], async () => /^3 départs/.test((await laserDeLibramont()).titre || ''));
   await rouge('chaque centre ne garde plus son arene', [{ fichier: 'lib/tour-controle.js', de: "surchargesLaser(liste, getCenter(centre))", vers: "surchargesLaser(liste, getCenter('libramont'))" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:laser:gembloux'));
-  await rouge('le laser compte avec le fichier, pas avec la console', [{ fichier: 'lib/tour-controle.js', de: "      try { await refreshCenterOverrides(pool, { force: true }); } catch (error) { /* socle fichier */ }\n", vers: '' }], async () => { remettre(); routesDeLaTour({ integrite: true, arene: 40 }); const l = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'integrite:laser:libramont') || {}; const tient = /^2 départs laser/.test(l.titre || ''); remettre(); routesDeLaTour({ integrite: true }); await charger('lib/tour-controle.js').lireProblemes(pool); return tient; });
+  await rouge('le laser compte avec le fichier, pas avec la console', [{ fichier: 'lib/tour-controle.js', de: "    try { await require('./ops-knowledge').refreshCenterOverrides(pool, { force: true }); } catch (error) { /* socle fichier */ }\n", vers: '' }], async () => { remettre(); routesDeLaTour({ integrite: true, arene: 40 }); const l = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'integrite:laser:libramont') || {}; const tient = /^2 départs laser/.test(l.titre || ''); remettre(); routesDeLaTour({ integrite: true }); await charger('lib/tour-controle.js').lireProblemes(pool); return tient; });
   await rouge('un calcul laser qui leve couche toute la section integrite', [{ fichier: 'lib/tour-controle.js', de: "    illisibles.push('laser, calcul');", vers: '    throw error;' }], async () => { remettre(); routesDeLaTour({ integrite: 'laserCasse' }); const p = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes; return p.some((x) => x.cle === 'integrite:prix-zero:gembloux'); });
   const fermetureDeLibramont = async () => (await problemesLaser()).find((p) => p.cle === 'integrite:fermeture:libramont') || {};
   await rouge('une reservation en ligne sur une fermeture ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "        out.push({ cle: `integrite:fermeture:${centre}`,", vers: "        if (false) out.push({ cle: `integrite:fermeture:${centre}`," }], async () => (await fermetureDeLibramont()).gravite === 'attention');
@@ -901,6 +916,13 @@ async function contrePreuves() {
   await rouge('les fermetures d un centre touchent l autre', [{ fichier: 'lib/tour-controle.js', de: "        const blocs = blocsDe.get(r.centerId) || [];", vers: "        const blocs = [...blocsDe.values()].flat();" }], async () => !(await problemesLaser()).some((p) => p.cle === 'integrite:fermeture:gembloux'));
   await rouge('une piste bloquee ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "        for (const piste of r.lanes) if", vers: "        for (const piste of []) if" }], async () => /piste 3 bloquée/.test((await fermetureDeLibramont()).detail || ''));
   await rouge('une privatisation inscrite au comptoir passe pour un client perdu', [{ fichier: 'lib/tour-controle.js', de: "from reservations where channel = 'public' and status <> 'cancelled' and date >= $1::date and date < $1::date + 14", vers: "from reservations where status <> 'cancelled' and date >= $1::date and date < $1::date + 14" }], async () => /^3 réservations/.test((await fermetureDeLibramont()).titre || ''));
+  const horairesDeLibramont = async (options = {}) => { remettre(); routesDeLaTour({ integrite: true, ...options }); const p = (await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((x) => x.cle === 'integrite:horaires:libramont') || {}; if (options.horaires) { remettre(); routesDeLaTour({ integrite: true }); await charger('lib/tour-controle.js').lireProblemes(pool); } return p; };
+  await rouge('une reservation en ligne hors des horaires ne se dit plus', [{ fichier: 'lib/tour-controle.js', de: "        out.push({ cle: `integrite:horaires:${centre}`,", vers: "        if (false) out.push({ cle: `integrite:horaires:${centre}`," }], async () => (await horairesDeLibramont()).gravite === 'attention');
+  await rouge('un jour ferme ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "        if (!h) pourquoi = 'le centre est fermé ce jour-là';", vers: '        if (!h) continue;' }], async () => /fermé ce jour-là/.test((await horairesDeLibramont()).detail || ''));
+  await rouge('une arrivee avant l ouverture ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "        else if (s < Math.round(Number(h.open) * 60)) pourquoi = `le centre ouvre à ${hh(h.open)}`;", vers: '        else if (false) pourquoi = String(hh(h.open));' }], async () => /ouvre à 14:00/.test((await horairesDeLibramont()).detail || ''));
+  await rouge('une arrivee pile a la fermeture ne compte plus', [{ fichier: 'lib/tour-controle.js', de: "        else if (s >= Math.round(Number(h.close) * 60)) pourquoi = `le centre ferme à ${hh(h.close)}`;", vers: "        else if (s > Math.round(Number(h.close) * 60)) pourquoi = `le centre ferme à ${hh(h.close)}`;" }], async () => /ferme à 22:00/.test((await horairesDeLibramont()).detail || ''));
+  await rouge('une ouverture exceptionnelle passe pour un jour ferme', [{ fichier: 'lib/tour-controle.js', de: "        const h = pourLEquipe(() => getSchedule(r.date, getCenter(r.centerId)));", vers: '        const h = getSchedule(r.date, getCenter(r.centerId));' }], async () => /^1 réservation /.test((await horairesDeLibramont({ horaires: true })).titre || ''));
+  await rouge('les horaires se lisent au fichier, pas a la console', [{ fichier: 'lib/tour-controle.js', de: "    try { await require('./ops-knowledge').refreshCenterOverrides(pool, { force: true }); } catch (error) { /* socle fichier */ }\n", vers: '' }], async () => /^1 réservation /.test((await horairesDeLibramont({ horaires: true })).titre || ''));
   await rouge('un formulaire qui ne laisse plus reserver ne sonne plus', [{ fichier: 'lib/tour-controle.js', de: "gravite: Number(v.n) >= SEUIL_VISITES_POUR_SONNER ? 'critique' : 'attention',", vers: "gravite: 'attention'," }], async () => {
     remettre();
     routesDeLaTour({ formulaire: true });

@@ -1546,9 +1546,12 @@
   var CIBLE_JOUR = {
     btn: dayBtn,
     valeur: function () { return state.date; },
-    min: function () { return aujourdhui(); },
+    // Le premier et le dernier jour que le centre accepte EN LIGNE (ses regles, page Etablissement).
+    min: function () { var r = reglesEnLigne(); return r.jours ? plusJours(r.jours) : aujourdhui(); },
+    fin: function () { return finEnLigne(); },
     poser: function (d) { choisirJour(d); rejouer(dayLabel, 'is-maj'); rejouer(dayHint, 'is-maj'); },
-    avantMin: '',
+    avantMin: function () { var r = reglesEnLigne(); return r.jours ? phraseAuPlusTard(r.jours) : ''; },
+    apresFin: function () { var r = reglesEnLigne(); return r.horizon && plusJours(r.horizon) < horizon() ? phraseHorizon(r.horizon) : ''; },
   };
   var calCible = null;
   function cible() { return calCible || CIBLE_JOUR; }
@@ -1589,6 +1592,31 @@
     var t = deIso(aujourdhui());
     return iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
   }
+  // LES REGLES DE RESERVATION EN LIGNE DU CENTRE (page Etablissement, 2026-11-10) : le serveur ne les envoie qu au
+  // visiteur (meta.bookingRules), les memes qu il pose a l affichage des heures et a l envoi. Le jour de la
+  // reservation (calendrier, raccourcis, premier jour choisi d office) grise d avance ce qu elles refusent, avec la
+  // raison ; la demande sur mesure, que l equipe relit, n en depend pas.
+  function reglesEnLigne() {
+    var r = (meta && meta.bookingRules) || {};
+    var jours = Math.trunc(Number(r.minDaysAhead)) || 0, loin = Math.trunc(Number(r.horizonDays)) || 0;
+    return { jours: jours > 0 ? jours : 0, horizon: loin > 0 ? loin : 0 };
+  }
+  function plusJours(n) { var t = deIso(aujourdhui()); return iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n)); }
+  function finEnLigne() { var r = reglesEnLigne(), h = horizon(); if (!r.horizon) return h; var f = plusJours(r.horizon); return f < h ? f : h; }
+  function reservableEnLigne(s) { return s >= CIBLE_JOUR.min() && s <= finEnLigne(); }
+  function phraseAuPlusTard(n) { return n === 1 ? 'En ligne, ce centre se réserve au plus tard la veille' : 'En ligne, ce centre se réserve au moins ' + n + ' jours à l’avance'; }
+  function phraseHorizon(n) { return 'En ligne, ce centre se réserve jusqu’à ' + n + ' jours à l’avance'; }
+  // La regle dite sous le calendrier du jour, lisible sans survoler une case : au doigt, un title ne se voit pas.
+  function regleEnClair() {
+    if (cible() !== CIBLE_JOUR) return '';
+    var r = reglesEnLigne(), morceaux = [];
+    if (r.jours) morceaux.push(phraseAuPlusTard(r.jours));
+    if (r.horizon && plusJours(r.horizon) < horizon()) morceaux.push(r.jours ? 'jusqu’à ' + r.horizon + ' jours à l’avance' : phraseHorizon(r.horizon));
+    return morceaux.join(' et ');
+  }
+  function texteCible(c, cle) { var v = c[cle]; return typeof v === 'function' ? v() : (v || ''); }
+  function finCible() { var c = cible(); return c.fin ? c.fin() : horizon(); }
+  function infoCalendrier(s) { var t = infoTexte(jours[s]) || 'Choisissez un jour.', r = regleEnClair(); return r ? t.replace(/\.$/, '') + '. ' + r + '.' : t; }
   // L ENTREE GARDE LE VERDICT DU JOUR que le serveur a calcule : le jour de
   // la semaine, les vacances qui bloquent les formules, les formules et les
   // activites indisponibles ce jour-la, les horaires bruts. Jusqu au
@@ -1674,7 +1702,7 @@
     // second rendu (fin du chargement du mois) jetait le focus du clavier.
     var avaitFocus = calGrid.contains(doc.activeElement);
     var y = moisVu.y, m = moisVu.m;
-    var today = aujourdhui(), fin = horizon(), mini = cible().min(), choisi = cible().valeur();
+    var today = aujourdhui(), fin = finCible(), mini = cible().min(), choisi = cible().valeur();
     calTitle.textContent = cap(MOIS[m]) + ' ' + y;
     var decalage = (new Date(y, m, 1).getDay() + 6) % 7; // lundi en tete
     var n = joursDuMois(y, m);
@@ -1688,7 +1716,8 @@
       var fini = journeeFinie(s);
       var off = passe || loin || avant || !j || !j.ouvert || fini;
       var cls = 'fg-cal__day' + (off ? ' is-off' : '') + (passe || avant ? ' is-past' : '') + (s === today ? ' is-today' : '') + (s === choisi ? ' is-selected' : '') + (j && j.periode ? (j.periode.type === 'public' ? ' is-ferie' : ' is-vacances') : '') + (!j && !passe && !loin ? ' is-loading' : '');
-      var titre = avant && cible().avantMin ? cible().avantMin : fini ? 'Aujourd’hui : fermé, la journée est finie' : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
+      var raison = (avant && texteCible(cible(), 'avantMin')) || (loin && texteCible(cible(), 'apresFin')) || '';
+      var titre = raison ? raison : fini ? 'Aujourd’hui : fermé, la journée est finie' : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
       if (!off && !focusable) focusable = s;
       html += '<button type="button" class="' + cls + '" data-date="' + s + '" role="gridcell" aria-selected="' + (s === choisi) + '" aria-label="' + esc(titre) + '" title="' + esc(titre) + '" ' + (off ? 'disabled' : '') + ' tabindex="-1">' + d + (j && j.periode ? '<i></i>' : '') + '</button>';
     }
@@ -1701,7 +1730,10 @@
     // Une fleche qui s eteint sous le focus le passe a l autre, active par
     // construction (le mois affiche reste entre aujourd hui et l horizon).
     if (navFocus && navFocus.disabled) (navFocus === calNext ? calPrev : calNext).focus({ preventScroll: true });
-    calInfo.textContent = infoTexte(jours[choisi]) || 'Choisissez un jour.';
+    calInfo.textContent = infoCalendrier(choisi);
+    // La legende dit aussi le jour grise par la regle du centre : il n est pas ferme, il ne se prend pas en ligne.
+    var legende = $('.fg-cal__legend span');
+    if (legende) legende.textContent = regleEnClair() ? '· jours grisés : fermé, ou pas réservable en ligne' : '· jours grisés : fermé';
     setTimeout(posterHauteur, 50);
   }
   function montrerMois(y, m, focusAu) {
@@ -1732,7 +1764,7 @@
   var joursVite = $('#joursVite'), dayAutre = $('#dayAutre'), dayAutreMot = $('#dayAutreMot');
   function rendreJoursVite() {
     if (!joursVite) return;
-    var liste = Object.keys(jours).sort().filter(function (s) { return s >= aujourdhui() && ouvertCeJour(s); }).slice(0, 3);
+    var liste = Object.keys(jours).sort().filter(function (s) { return s >= aujourdhui() && ouvertCeJour(s) && reservableEnLigne(s); }).slice(0, 3);
     var html = liste.map(function (s) {
       var d = deIso(s), on = s === state.date;
       var mot = s === aujourdhui() ? 'Aujourd’hui' : s === demain() ? 'Demain' : cap(JOURS[d.getDay()]);
@@ -1869,14 +1901,14 @@
     ouvrirJours(false);
     c.btn.focus();
   });
-  calGrid.addEventListener('mouseover', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
-  calGrid.addEventListener('mouseleave', function () { calInfo.textContent = infoTexte(jours[cible().valeur()]) || 'Choisissez un jour.'; });
+  calGrid.addEventListener('mouseover', function (e) { var b = e.target.closest('.fg-cal__day'); if (!b || !jours[b.dataset.date]) return; var info = infoTexte(jours[b.dataset.date]); calInfo.textContent = b.disabled && b.title && b.title !== info ? b.title : info; });
+  calGrid.addEventListener('mouseleave', function () { calInfo.textContent = infoCalendrier(cible().valeur()); });
   calGrid.addEventListener('focusin', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
   // Le clavier : fleches d un jour ou d une semaine, en changeant de mois au
   // bord ; Entree ou Espace choisit ; Echap ferme.
   function deplacerFocus(delta) {
     var depart = deIso(jourFocus || cible().valeur() || cible().min());
-    var today = cible().min(), fin = horizon();
+    var today = cible().min(), fin = finCible();
     for (var k = 1; k <= 62; k += 1) {
       var d = new Date(depart.getFullYear(), depart.getMonth(), depart.getDate() + delta * k);
       var s = iso(d);
@@ -7976,7 +8008,7 @@
         // jour avant l arrivee du catalogue, qui le remplacait par le premier
         // jour ouvert (sonde : samedi choisi, mardi affiche). Ouvert, le
         // calendrier se redessine avec les jours arrives.
-        var premier = Object.keys(jours).sort().filter(function (s) { return ouvertCeJour(s); })[0];
+        var premier = Object.keys(jours).sort().filter(function (s) { return ouvertCeJour(s) && reservableEnLigne(s); })[0];
         if (state.date) direJour(state.date);
         else if (premier) choisirJour(premier);
         rendreJoursVite();

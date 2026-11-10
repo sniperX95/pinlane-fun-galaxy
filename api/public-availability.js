@@ -279,11 +279,8 @@ function sansChampsInternes(valeur, profondeur = 0) {
 function sendJson(res, statut, corps) {
   envoyerJson(res, statut, res.__visiteurAnonyme === false ? corps : sansChampsInternes(corps));
 }
-async function sessionDuPersonnel(req) {
-  const h = req.headers || {};
-  if (!h.cookie && !h['x-staff-session'] && !h['x-fgx-session'] && !h['x-fun-galaxy-session']) return null;
-  try { return await require('../lib/staff-auth').getStaffSessionFromRequest(req); } catch (error) { return null; }
-}
+// La session du personnel se lit dans lib/session-du-personnel, comme a la page de reservation (public-booking-meta).
+const { sessionDuPersonnel } = require('../lib/session-du-personnel');
 
 module.exports = async (req, res) => {
   setCors(res, 'GET,OPTIONS');

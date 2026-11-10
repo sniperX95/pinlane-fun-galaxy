@@ -12,11 +12,13 @@ const {
   todayStr,
   currentTimeDecimal,
   BOOKING_HORIZON_DAYS,
+  reglesDeReservation,
   LASER_GAME_ARENA_MINUTES,
 } = require('../lib/booking-config');
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { cleDeLAdresse, enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+const { sessionDuPersonnel } = require('../lib/session-du-personnel');
 
 // Les visiteurs distincts qui ont vu le meme plantage dans l heure (passe securite du
 // 2026-11-08). En memoire, par instance : il ne s agit que de choisir entre sonner et ne
@@ -1006,12 +1008,23 @@ async function routeur(req, res) {
   // (lib/booking-config grillesDuCentre).
   const grilles = grillesEffectives(center && center.grillesTarif);
 
+  // LES REGLES DE RESERVATION EN LIGNE DU CENTRE (page Etablissement, 2026-11-10) : le calendrier du formulaire
+  // grise d avance les jours que l affichage des heures et l envoi refuseraient. Pour le visiteur seulement, comme
+  // a ces deux portes : le personnel garde tous les jours. Cle ADDITIVE, posee seulement quand le centre a regle
+  // quelque chose ; bookingHorizonDays reste la borne de l an, que la demande sur mesure garde.
+  let reglesEnLigne = null;
+  if (center) {
+    const regles = reglesDeReservation(center);
+    if ((regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) && !(await sessionDuPersonnel(req))) reglesEnLigne = regles;
+  }
+
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
     // Le tunnel borne son champ date avec CE nombre : la limite n'est ecrite
     // qu'ici, le navigateur ne la redevine pas.
     bookingHorizonDays: BOOKING_HORIZON_DAYS,
+    ...(reglesEnLigne ? { bookingRules: reglesEnLigne } : {}),
     durationOptions: grilles.durationOptions,
     // Formules avec overrides catalogue appliques (prix/nom/retrait) pour ce
     // centre ; sans override, strictement identique a FORMULES.

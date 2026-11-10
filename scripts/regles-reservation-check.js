@@ -9,7 +9,8 @@
 //   [B] l affichage des heures : le visiteur lit le refus et sa raison, le personnel garde ses heures
 //   [C] l envoi : la meme date est refusee, avec le meme message
 //   [D] sans reglage, rien ne change ; le moteur ne lit pas la regle
-//   --mutate : une porte retiree, ou la regle etendue au personnel, fait rougir
+//   [E] la page de reservation donne la regle au visiteur (son calendrier grise d avance), jamais au personnel
+//   --mutate : une porte retiree, la regle etendue au personnel, ou tue par la page de reservation, fait rougir
 //
 // Les dates se comptent depuis aujourd hui (aucune horloge figee, aucun jour d ouverture suppose) : un refus se
 // reconnait a son message, un passage au fait que ce message n y est pas.
@@ -44,6 +45,20 @@ const MUTATIONS = [
     de: "    if (res.__visiteurAnonyme) {\n      const reglesEnLigne = reglesDeReservation(centerDoc);\n",
     vers: "    if (res) {\n      const reglesEnLigne = reglesDeReservation(centerDoc);\n",
     attendu: ['[B]'],
+  },
+  {
+    nom: 'la page de reservation tait la regle du centre au visiteur',
+    fichier: 'api/public-booking-meta.js',
+    de: "    ...(reglesEnLigne ? { bookingRules: reglesEnLigne } : {}),\n",
+    vers: '',
+    attendu: ['[E]'],
+  },
+  {
+    nom: 'la page de reservation donne la regle au personnel',
+    fichier: 'api/public-booking-meta.js',
+    de: "    if ((regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) && !(await sessionDuPersonnel(req))) reglesEnLigne = regles;\n",
+    vers: "    if (regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) reglesEnLigne = regles;\n",
+    attendu: ['[E]'],
   },
 ];
 
@@ -118,6 +133,24 @@ async function main() {
     await dispo(req, res);
     try { return JSON.parse(res.body || '{}'); } catch (error) { return {}; }
   };
+  const pageResa = require('../api/public-booking-meta');
+  const meta = async ({ personnel = false } = {}) => {
+    ip += 1;
+    const adresse = `10.8.${ip % 250}.${1 + (ip % 200)}`;
+    const req = {
+      method: 'GET',
+      url: '/api/public-booking-meta?centerId=libramont',
+      headers: { host: 'localhost', 'x-forwarded-for': adresse, ...(personnel ? { 'x-staff-session': 'qa' } : {}) },
+      socket: { remoteAddress: adresse },
+    };
+    const res = { statusCode: 200, headers: {}, body: '' };
+    res.setHeader = (k, v) => { res.headers[k] = v; };
+    res.getHeader = (k) => res.headers[k];
+    res.writeHead = (code) => { res.statusCode = code; };
+    res.end = (b) => { res.body = b === undefined ? '' : String(b); };
+    await pageResa(req, res);
+    try { return JSON.parse(res.body || '{}'); } catch (error) { return {}; }
+  };
   const envoi = async (date) => {
     try { return await ouvrirDemandePublique({ centerId: 'libramont', date, pax: 6 }); } catch (error) { return { ok: false, message: `(la porte a laisse passer, la suite demande la base : ${String(error.message).slice(0, 60)})` }; }
   };
@@ -151,11 +184,20 @@ async function main() {
   const eDemain = await envoi(dans(1));
   ok(eDemain.message !== VEILLE && eDemain.message !== LOIN, '[C] envoyer pour demain : la regle ne refuse pas', `« ${eDemain.message || ''} »`);
 
+  section('[E] La page de reservation, que lit le calendrier du formulaire');
+  const mVisiteur = await meta();
+  ok(mVisiteur.ok === true && Boolean(mVisiteur.bookingRules) && mVisiteur.bookingRules.minDaysAhead === 1 && mVisiteur.bookingRules.horizonDays === 30,'[E] le visiteur recoit la regle du centre : son calendrier grise ce que les portes refusent', JSON.stringify(mVisiteur.bookingRules));
+  ok(mVisiteur.bookingHorizonDays === 365, '[E] la borne de l an reste a 365 : la demande sur mesure, que l equipe relit, la garde', String(mVisiteur.bookingHorizonDays));
+  const mPersonnel = await meta({ personnel: true });
+  ok(mPersonnel.ok === true && !('bookingRules' in mPersonnel), '[E] le personnel ne recoit pas la regle : son calendrier garde tous les jours', JSON.stringify(mPersonnel.bookingRules));
+
   section('[D] Sans reglage, rien ne change');
   poser(null);
   const sJour = await heures(aujourdhui);
   const sLoin = await heures(dans(31));
   const sEnvoi = await envoi(aujourdhui);
+  const sMeta = await meta();
+  ok(sMeta.ok === true && !('bookingRules' in sMeta), '[D] sans reglage, la page de reservation ne dit aucune regle', JSON.stringify(sMeta.bookingRules));
   ok(sJour.message !== VEILLE && sLoin.message !== LOIN && sEnvoi.message !== VEILLE, '[D] un centre qui n a rien regle : aujourd hui et dans 31 jours passent les deux portes', `« ${sJour.message || ''} » ; « ${sLoin.message || ''} » ; « ${sEnvoi.message || ''} »`);
   const moteur = fs.readFileSync(path.join(ROOT, 'lib/ops-engine.js'), 'utf8');
   ok(!/bookingRules|minDaysAhead|reglesDeReservation/.test(moteur), '[D] le moteur ne lit pas la regle : le comptoir, qui passe par lui, n est pas touche');
@@ -167,7 +209,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  console.log('\nregles-reservation-check: ALL OK (la regle du centre tient les deux portes publiques, le personnel et le moteur n en savent rien)');
+  console.log('\nregles-reservation-check: ALL OK (la regle du centre tient les deux portes publiques et la page de reservation, le personnel et le moteur n en savent rien)');
 }
 
 if (process.argv.includes('--mutate')) {

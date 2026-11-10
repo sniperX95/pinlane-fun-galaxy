@@ -199,6 +199,7 @@
     "test:arene-seuls-planning": "node scripts/arene-seuls-planning-check.js",
     "test:heures-passees": "node scripts/heures-passees-check.js && node scripts/heures-passees-check.js --mutate",
     "test:regles-reservation": "node scripts/regles-reservation-check.js && node scripts/regles-reservation-check.js --mutate",
+    "test:calendrier-regles": "node scripts/calendrier-regles-check.js && node scripts/calendrier-regles-check.js --mutate",
     "test:formules-visite": "node scripts/formules-visite-check.js",
     "test:formules-fete": "node scripts/formules-fete-check.js",
     "test:parties-dans-la-foulee": "node scripts/parties-dans-la-foulee-check.js",

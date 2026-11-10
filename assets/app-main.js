@@ -23230,6 +23230,7 @@ function getStaffCalendarValue() {
 function renderStaffCalendar(dateISO) {
   const selected = dateISO || getStaffCalendarValue();
   const min = staffCalContext && staffCalContext.min ? String(staffCalContext.min) : '';
+  const max = staffCalContext && staffCalContext.max ? String(staffCalContext.max) : '';
   const view = staffCalMonth || getMonthKey(selected);
   const [vy, vm] = view.split('-').map(Number);
   const today = todayStr();
@@ -23251,7 +23252,7 @@ function renderStaffCalendar(dateISO) {
     // Un jour hors bornes se DESACTIVE au lieu de disparaitre : le mois garde
     // sa forme, et le refus est lisible avant le clic (le tunnel n'accepte pas
     // une date passee, la console n'a pas de borne).
-    const blocked = Boolean(min) && iso < min;
+    const blocked = (Boolean(min) && iso < min) || (Boolean(max) && iso > max);
     if (blocked) classes.push('is-blocked');
     const current = iso === selected ? ' aria-current="date"' : '';
     const guard = blocked ? ' disabled aria-disabled="true"' : '';
@@ -23400,6 +23401,7 @@ function openClientDateCalendar(ev) {
   openStaffCalendar(ev, {
     value: input.value || floor,
     min: floor,
+    max: input.max || '',
     onPick: (iso) => {
       input.value = iso;
       // Meme evenement que la saisie clavier : tout ce qui ecoute la date
@@ -40238,12 +40240,15 @@ function applyCenterIdentity(center, centerId = '') {
 // date n'avait aucune borne haute et acceptait 2028. 365 jours n'est qu'un
 // repli tant que la reponse n est pas arrivee.
 let bookingHorizonDays = 365;
+// Les jours « au plus tard » du centre (bookingRules, page Etablissement) : le serveur ne les envoie qu au visiteur.
+let bookingMinDaysAhead = 0;
 function applyBookingDateHorizon() {
   const field = document.getElementById('fDate');
   if (!field) return;
   const [year, month, day] = todayStr().split('-').map(Number);
   const limit = new Date(Date.UTC(year, month - 1, day + bookingHorizonDays));
   field.max = limit.toISOString().slice(0, 10);
+  if (bookingMinDaysAhead > 0) field.min = new Date(Date.UTC(year, month - 1, day + bookingMinDaysAhead)).toISOString().slice(0, 10);
 }
 
 async function loadCenterScheduleConfig(dateOverride = '') {
@@ -40266,6 +40271,21 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     if (Number.isFinite(Number(payload?.bookingHorizonDays)) && Number(payload.bookingHorizonDays) > 0) {
       bookingHorizonDays = Number(payload.bookingHorizonDays);
       applyBookingDateHorizon();
+    }
+    // LES REGLES DE RESERVATION EN LIGNE DU CENTRE (page Etablissement, 2026-11-10) : le serveur ne les envoie qu au
+    // visiteur, les memes qu a l affichage des heures. Le champ date et sa fenetre refusent d avance ce que la porte
+    // refuserait, et le jour pose d office (aujourd hui) passe au premier jour accepte.
+    const reglesDuCentre = payload && payload.bookingRules;
+    if (reglesDuCentre) {
+      bookingMinDaysAhead = Math.max(0, Math.trunc(Number(reglesDuCentre.minDaysAhead) || 0));
+      if (Number(reglesDuCentre.horizonDays) > 0) bookingHorizonDays = Math.min(bookingHorizonDays, Math.trunc(Number(reglesDuCentre.horizonDays)));
+      applyBookingDateHorizon();
+      const champDate = document.getElementById('fDate');
+      if (champDate && champDate.min && state.view === 'client' && /^\d{4}-\d{2}-\d{2}$/.test(String(state.booking.date || '')) && state.booking.date < champDate.min) {
+        state.booking.date = champDate.min;
+        champDate.value = champDate.min;
+        champDate.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
     if (Array.isArray(payload?.formules)) {
       window.__pinlaneDisplayFormules = payload.formules;

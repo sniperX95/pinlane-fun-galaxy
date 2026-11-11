@@ -288,6 +288,7 @@
     "test:accueil-vivant",
     "test:pilotage",
     "test:assistant",
+    "test:assistant-gestes",
     "test:terrain",
     "test:voix-pro",
     "test:journee-vraie",

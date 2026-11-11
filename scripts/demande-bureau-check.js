@@ -692,6 +692,116 @@ async function verifierAssistant({ C }) {
 }
 
 // ---------------------------------------------------------------------------
+// [N] LES EXTRAS CHOISIS ET LA RESERVATION EN UN CLIC (2026-11-11, Ansar : « qu elle choisisse les
+// meilleures activites et truc comme soft », « faut que il fasse la resa, on doit confirmer »)
+// ---------------------------------------------------------------------------
+async function verifierExtrasEtReservation({ C, B }) {
+  const { getCenter } = require('../lib/ops-knowledge');
+  const { getSchedule } = require('../lib/booking-config');
+  const { isCenterClosedAt } = require('../lib/availability-blocks');
+  const journal = [];
+  const planifies = [];
+  const crees = [];
+  const lies = [];
+  let conflits = [];
+  const deps = (llm) => ({
+    rafraichir: async () => {},
+    centre: () => getCenter('libramont'),
+    fermetures: async () => [],
+    getSchedule,
+    isCenterClosedAt,
+    disponibilite: fauxMoteur(journal),
+    planning: async () => ({ reservations: [] }),
+    aujourdhui: () => AUJOURDHUI,
+    client: async () => null,
+    conversation: async () => [],
+    cerveau: async () => null,
+    catalogue: () => ({
+      formules: [{ id: 'f3', name: 'Formule 3' }],
+      activites: [{ id: 'bowling', name: 'Bowling' }, { id: 'laser_game', name: 'Laser Game' }],
+      extras: [
+        { id: 'soft', nom: 'Soft', categorie: 'boissons', prix: 2.5, unite: 'joueur' },
+        { id: 'gateau', nom: 'Gâteau', categorie: 'gateaux', prix: 25, unite: 'piece' },
+        { id: 'a-saisir', nom: 'Traiteur', categorie: 'nourriture', prix: 0, unite: 'piece' },
+      ],
+    }),
+    planifier: async (corps, session) => {
+      planifies.push({ corps, session });
+      return { plan: { fin: '16:00', blocs: [{ pistes: [3, 4] }, { pistes: [4] }] }, conflits: conflits.map((message) => ({ message })), dossier: { price: 671.5 }, droits: { refus: null } };
+    },
+    creer: async (prepare, session, contexte) => {
+      crees.push({ prepare, session, contexte });
+      return { reservation: { id: 501, date: D1, startTime: '14:00', pax: 31, price: 671.5, email: 'ansar@example.org' } };
+    },
+    lier: async (item, reservation, par) => { lies.push({ id: item.id, reservation: reservation.id, par }); return { ...item, status: 'handled' }; },
+    llm,
+  });
+  const item = demandeType({ alternativeDate: '' });
+  const choix = (sur) => ({
+    aucune: false, date: D1, heure: '14:00', formule: '', activites: ['bowling', 'laser_game'], joueurs: 31, prixImpose: 0, prixParJoueurImpose: 0,
+    pourquoi: 'C’est l’après-midi demandé.', suggestions: [],
+    extras: [{ id: 'soft', quantite: 5 }, { id: 'gateau', quantite: 2 }, { id: 'pizza', quantite: 3 }, { id: 'a-saisir', quantite: 1 }, { id: 'soft', quantite: 9 }],
+    ...sur,
+  });
+  const appel = modele([choix()]);
+  const r = await C.assisterLaDemande(item, deps(appel));
+  const p = r.proposition || {};
+  const recu = JSON.parse(appel.appels[0].user);
+  const vue = B.etudeDuChoix(r.etude, p, { aujourdhui: AUJOURDHUI });
+  const texte = vue ? B.etudeEnTexte(vue) : '';
+  const forge = B.propositionPropre({ ...p, extras: [{ id: 'soft', nom: 'Soft', quantite: 31, prixUnitaire: 2.5, total: 1 }, { id: 'x', nom: 'X', quantite: 0, prixUnitaire: 3 }] });
+  const session = { member: { id: 'm1', name: 'Rachel' }, authorizedCenterId: 'libramont' };
+  const simu = await C.reserverLaDemande(item, deps(null), { proposition: p, session, simuler: true });
+  const apresSimu = crees.length;
+  const vrai = await C.reserverLaDemande(item, deps(null), { proposition: p, session, simuler: false });
+  conflits = ['Piste 4 déjà prise à 14:00'];
+  let refus = '';
+  try { await C.reserverLaDemande(item, deps(null), { proposition: p, session, simuler: false }); } catch (error) { refus = `${error.statusCode} ${error.message}`; }
+  conflits = [];
+  let incomplete = '';
+  try { await C.reserverLaDemande(item, deps(null), { proposition: null, session, simuler: true }); } catch (error) { incomplete = `${error.statusCode} ${error.message}`; }
+  await C.reserverLaDemande(item, deps(null), { proposition: { ...p, prix: 600, prixLibre: true }, session, simuler: true });
+  // Une regle dite par l equipe se propose a retenir ; ses chiffres viennent de la consigne.
+  const avecRegle = await C.assisterLaDemande(item, deps(modele([choix({ regle: 'Toujours un soft par enfant aux anniversaires.' })])), { consigne: 'mets un soft pour chaque enfant, comme toujours aux anniversaires' });
+  const regleInventee = await C.assisterLaDemande(item, deps(modele([choix({ regle: 'Toujours 15 € par enfant aux anniversaires.' })])), { consigne: 'mets un soft pour chaque enfant' });
+  const sansConsigne = await C.assisterLaDemande(item, deps(modele([choix({ regle: 'Toujours un soft.' })])));
+  const surUnMot = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'reserver' })])), { consigne: 'c est bon, on reserve' });
+  const rienAReserver = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'reserver', aucune: true, date: '', heure: '' })])), { consigne: 'reserve' });
+  const opsSource = fs.readFileSync(path.join(ROOT, 'api', 'ops.js'), 'utf8').replace(/\r\n/g, '\n');
+  const dejaReservee = { ...item, payload: { ...(item.payload || {}), suivi: { historique: [{ type: 'reservation', reservationId: 77, date: D1 }] } } };
+  const avantDeuxFois = crees.length;
+  const planifiesAvant = planifies.length;
+  let deuxFois = '';
+  try { await C.reserverLaDemande(dejaReservee, deps(null), { proposition: p, session, simuler: false }); } catch (error) { deuxFois = `${error.statusCode} ${error.message}`; }
+  const corps = (planifies[0] || {}).corps || {};
+  const corpsLibre = (planifies[planifies.length - 1] || {}).corps || {};
+  let programme = [];
+  try { programme = JSON.parse(corps.program || '[]'); } catch (error) { programme = []; }
+  const extrasDuCorps = Array.isArray(corps.extras) ? corps.extras : [];
+  return [
+    [Array.isArray(recu.CATALOGUE.extras) && recu.CATALOGUE.extras.length === 2 && !recu.CATALOGUE.extras.some((x) => x.id === 'a-saisir'), 'le modele recoit les extras du centre a prix connu, pas ceux au prix a saisir', JSON.stringify(recu.CATALOGUE.extras)],
+    [Array.isArray(p.extras) && p.extras.length === 2 && p.extras[0].id === 'soft' && p.extras[0].quantite === 31 && p.extras[0].total === 77.5 && p.extras[1].id === 'gateau' && p.extras[1].quantite === 2 && p.extras[1].total === 50, 'les extras choisis viennent du catalogue, un soft par joueur, un article repete ne compte qu une fois', JSON.stringify(p.extras)],
+    [p.prix === 671.5 && p.verifiee === true, 'le prix de la proposition est celui du moteur plus les extras', JSON.stringify([p.prix, p.verifiee])],
+    [/Soft × 31 à 2,50 €.*77,50 €/.test(texte) && /Gâteau × 2/.test(texte) && /127,50 € d’extras/.test(texte), 'le mail lit les extras et leur total dans l etude', texte.split('\n').filter((l) => /extras/.test(l)).join(' | ')],
+    [Boolean(forge) && forge.extras.length === 1 && forge.extras[0].total === 77.5, 'une ligne d extra se recalcule, une ligne sans quantite tombe', JSON.stringify(forge && forge.extras)],
+    [simu.simulation === true && apresSimu === 0 && simu.resume.prix === 671.5 && simu.resume.fin === '16:00' && JSON.stringify(simu.resume.pistes) === '[3,4]' && simu.resume.email === 'ansar@example.org', 'la simulation montre la reservation sans rien creer', JSON.stringify([simu.resume, apresSimu])],
+    [/^409 /.test(deuxFois) && crees.length === avantDeuxFois && planifies.length === planifiesAvant, 'une demande deja reservee ne se reserve pas deux fois', deuxFois],
+    [avecRegle.aRetenir === 'Toujours un soft par enfant aux anniversaires.', 'une regle dite dans la consigne se propose a retenir pour les prochaines demandes', JSON.stringify(avecRegle.aRetenir)],
+    [surUnMot.geste === 'reserver' && Boolean(surUnMot.proposition) && surUnMot.proposition.joueurs === 31, 'sur un mot de l equipe, la fiche ouvre la reservation a confirmer', JSON.stringify([surUnMot.geste, surUnMot.proposition && surUnMot.proposition.joueurs])],
+    [rienAReserver.geste === '' && sansConsigne.geste === '', 'sans proposition complete, ou sans le demander, aucun geste', JSON.stringify([rienAReserver.geste, sansConsigne.geste])],
+    [regleInventee.aRetenir === '' && sansConsigne.aRetenir === '', 'une regle au montant absent de la consigne, ou sans consigne, ne se propose pas', JSON.stringify([regleInventee.aRetenir, sansConsigne.aRetenir])],
+    [/if \(original && body\.draftSource === 'ia'\) \{\n\s*const \{ recordAgentLesson \} = require\('\.\.\/lib\/email-agent'\);/.test(opsSource) && /sent: \{ subject: body\.subject, body: body\.body \}/.test(opsSource), 'un mail de Pinlane repris par l equipe avant l envoi devient une lecon du centre', ''],
+    [corps.centerId === 'libramont' && corps.type === 'visite' && corps.pax === 31 && corps.date === D1 && corps.startTime === '14:00' && corps.name === 'Ansar Bisultanov' && corps.email === 'ansar@example.org' && !('price' in corps), 'le corps de la reservation reprend la demande et la proposition, le prix reste celui du calcul', JSON.stringify(corps).slice(0, 300)],
+    [programme.length === 2 && programme.every((x) => x.participants > 0) && extrasDuCorps.length === 2 && extrasDuCorps[0].articleId === 'soft' && extrasDuCorps[0].qte === 31 && extrasDuCorps[0].prixUnitaire === 2.5, 'le programme et les extras partent en lignes du catalogue', JSON.stringify([programme, extrasDuCorps])],
+    [/Demande sur mesure/.test(corps.notes) && /Athénée de Libramont/.test(corps.notes) && /3 accompagnateurs/.test(corps.notes) && /Soft × 31/.test(corps.notes), 'la note de la reservation dit la demande, le groupe et les extras', corps.notes],
+    [vrai.simulation === false && crees.length === 1 && vrai.reservation.id === 501 && vrai.confirmation === true && lies.length === 1 && lies[0].reservation === 501 && lies[0].par === 'Rachel' && crees[0].session === session, 'au clic, la reservation se cree avec la session de l equipe et la demande se lie a elle', JSON.stringify([vrai.reservation, lies])],
+    [/^409 /.test(refus) && /plus libre/.test(refus) && crees.length === 1, 'un creneau pris entre-temps refuse la creation', refus],
+    [/^400 /.test(incomplete), 'sans proposition, rien ne se reserve', incomplete],
+    [corpsLibre.price === 600 && /convenu/.test(corpsLibre.prixRaison || ''), 'un prix tape par l equipe part comme prix de la reservation, avec sa raison', JSON.stringify([corpsLibre.price, corpsLibre.prixRaison])],
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // [G] REDIGER N ENVOIE RIEN, ET CHAQUE ACTION A SON DROIT
 // ---------------------------------------------------------------------------
 function verifierAucunEnvoi() {
@@ -711,6 +821,12 @@ function verifierAucunEnvoi() {
       return blocA.length > 0 && !/sendDirectEmail|sendEmail|sendMail|enqueue|createCommunication|resend|appendCustomRequestSuivi|updateCustomRequestStatus/i.test(blocA) && /getCustomRequest\(body\.id, \{ centerId: scopedCenterId \}\)/.test(blocA);
     })(), 'l assistant n envoie rien, n ecrit rien, et ne lit que les demandes du centre de la session'],
     [/if \(action === 'customRequestAssist'\) return 'emails\.send';/.test(ops), 'l assistant demande le droit d envoyer des mails'],
+    [(() => {
+      const debutB = ops.indexOf("if (action === 'customRequestBook') {");
+      const blocB = debutB >= 0 ? ops.slice(debutB, ops.indexOf('return;', debutB)) : '';
+      return blocB.length > 0 && /getCustomRequest\(body\.id, \{ centerId: scopedCenterId \}\)/.test(blocB) && /const confirme = body\.confirme === true;/.test(blocB) && /simuler: !confirme/.test(blocB) && /session: options\.session/.test(blocB) && !/sendDirectEmail|sendEmail|sendMail/.test(blocB);
+    })(), 'la reservation en un clic relit la demande dans le centre de la session, ne cree qu au clic confirme, avec la session, et n envoie aucun mail elle-meme'],
+    [/if \(action === 'customRequestBook'\) return 'reservations\.create';/.test(ops), 'reserver une demande demande le droit de creer une reservation'],
     [/if \(action === 'customRequestStudy'\) return \['clients\.view', 'reservations\.view', 'dashboard\.view'\];/.test(ops), 'l etude demande le meme droit que la file'],
     // La regle, pas sa formulation (2026-11-07 : la Vue d ensemble seule
     // n ecrit plus sur une demande) : la note suit le droit du statut.
@@ -892,6 +1008,8 @@ async function main() {
   rapporter(await verifierChoix(mods));
   section('M. L ASSISTANT DE LA FICHE');
   rapporter(await verifierAssistant(mods));
+  section('N. LES EXTRAS ET LA RESERVATION EN UN CLIC');
+  rapporter(await verifierExtrasEtReservation(mods));
   section('D. LE SUIVI');
   rapporter(verifierSuivi(mods));
   section('E. LA FILE');

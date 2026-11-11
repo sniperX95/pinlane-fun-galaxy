@@ -163,11 +163,14 @@ function installer(expiresAt) {
         const heure = plusTard ? '15:00' : '14:00';
         const fin = plusTard ? '17:00' : '16:00';
         const sans = window.__QA__.assist === 'rien';
-        const proposition = sans ? null : { date: D1, type: 'libre', ref: 'programme', heure, fin, nom: 'Bowling + Laser Game', prix, parJoueur: Math.round((prix / 31) * 100) / 100, joueurs: 31, formule: '', activites: [{ id: 'bowling', nom: 'Bowling' }, { id: 'laser_game', nom: 'Laser Game' }], plus: false, prixLibre: prixImpose, verifiee: !plusTard };
+        const proposition = sans ? null : { date: D1, type: 'libre', ref: 'programme', heure, fin, nom: 'Bowling + Laser Game', prix, parJoueur: Math.round((prix / 31) * 100) / 100, joueurs: 31, formule: '', activites: [{ id: 'bowling', nom: 'Bowling' }, { id: 'laser_game', nom: 'Laser Game' }], plus: false, prixLibre: prixImpose, verifiee: !plusTard, extras: [{ id: 'soft', nom: 'Soft', categorie: 'boissons', quantite: 31, prixUnitaire: 2.5, total: 77.5 }] };
         if (window.__QA__.assistLent && window.__QA__.appels.filter((a) => a.action === 'customRequestAssist').length === 1) await new Promise((r) => setTimeout(r, 1200));
         // Le temps que le test lise l ecran d attente : sans lui, la reponse revient avant la lecture.
         if (window.__QA__.assistAttente) await new Promise((r) => setTimeout(r, window.__QA__.assistAttente));
-        return J({ ok: true, id: corps.id, proposition, consigneSuivie: true, source: 'ia', etude, client: clientDuBanc(),
+        // Une regle dite (« toujours… ») se propose a retenir ; « réserve » ouvre la carte de confirmation.
+        const aRetenir = /toujours un soft/i.test(c) ? 'Toujours un soft par enfant aux anniversaires.' : '';
+        const geste = proposition && /r[ée]serve/i.test(c) ? 'reserver' : '';
+        return J({ ok: true, id: corps.id, proposition, consigneSuivie: true, source: 'ia', etude, client: clientDuBanc(), aRetenir, geste,
           pourquoi: 'C’est l’après-midi demandé, et le programme tient dans leur budget.',
           suggestions: ['Plutôt 15:00', 'Proposer la Formule 3 à 14:30', 'Le vendredi 4 décembre'],
           brouillon: { source: 'ia', raison: '', objet: 'Votre venue pour 31 personnes chez Fun Galaxy Libramont',
@@ -218,6 +221,17 @@ function installer(expiresAt) {
       if (corps.action === 'customRequestNote' && lead) {
         lead.suivi = { ...lead.suivi, notes: [...lead.suivi.notes, { type: 'note', le: new Date().toISOString(), par: 'Rachel', texte: corps.texte }] };
         return J({ ok: true, action: corps.action, customRequest: JSON.parse(JSON.stringify(lead)) });
+      }
+      // La reservation en un clic (2026-11-11) : d abord ce qu elle donnerait, la creation au seul clic confirme.
+      if (corps.action === 'customRequestBook' && lead) {
+        const p = corps.proposition || {};
+        const resume = { date: p.date, heure: p.heure, fin: p.fin || '', nom: p.nom, joueurs: p.joueurs, extras: p.extras || [], prix: p.prix, libre: true, conflits: [], refus: '', pistes: [3, 4], email: lead.email || '' };
+        if (corps.confirme !== true) return J({ ok: true, id: lead.id, simulation: true, resume });
+        const le = new Date().toISOString();
+        lead.status = 'handled';
+        lead.suivi = { ...lead.suivi, reservationId: 9001, historique: [...lead.suivi.historique, { type: 'statut', le, par: 'Rachel', statut: 'handled' }, { type: 'reservation', le, par: 'Rachel', reservationId: 9001, date: p.date }] };
+        lead.suivi.etape = etapeDe(lead);
+        return J({ ok: true, id: lead.id, simulation: false, resume, reservation: { id: 9001, date: p.date, startTime: p.heure, pax: p.joueurs, price: p.prix, email: lead.email || '' }, confirmation: Boolean(lead.email), demande: JSON.parse(JSON.stringify(lead)) });
       }
       return J({ ok: true });
     }
@@ -304,6 +318,7 @@ async function parcours(browser, { captures = true } = {}) {
     r.bandeau = await page.evaluate(() => { const b = document.querySelector('.sm-promis'); return b ? { t: b.innerText.replace(/\s+/g, ' ').trim(), cls: b.className } : null; });
     r.photoAilleurs = await page.evaluate(() => smPhotoDe('Bowling', 'un-autre-centre'));
     r.demandeTexte = await texte(page, '.sm-demande');
+    r.envies = await page.evaluate(() => [...document.querySelectorAll('.sm-demande .sm-dem-envie')].map((e) => e.textContent.trim()));
     r.clientTexte = await texte(page, '.sm-client');
     r.venues = await page.evaluate(() => document.querySelectorAll('.sm-venues li').length);
     r.mots = await page.evaluate(() => document.querySelector('.sm-fiche').innerText);
@@ -393,12 +408,25 @@ async function parcours(browser, { captures = true } = {}) {
       ia: Boolean(document.querySelector('.sm-ia')),
     }));
 
-    // [I] la reservation preremplie
-    await page.locator('.sm-reponse .sm-p', { hasText: 'Le client accepte' }).click();
+    // [I] le oui du client : une carte relit la reservation, la fenetre Reserver reste a un clic
+    await page.locator('.sm-reponse .sm-p', { hasText: 'Le client accepte' }).click({ timeout: 5000 });
+    await page.waitForSelector('.sm-resa .sm-resa-l', { timeout: 5000 });
+    r.carte = await page.evaluate(() => {
+      const c = document.querySelector('.sm-resa');
+      return {
+        texte: (c.innerText || '').replace(/\s+/g, ' ').trim(),
+        boutons: [...c.querySelectorAll('button')].map((x) => ({ t: x.textContent.trim(), off: x.disabled })),
+        appels: window.__QA__.appels.filter((a) => a.action === 'customRequestBook').map((a) => ({ confirme: a.corps.confirme, centre: a.corps.centerId, heure: a.corps.proposition && a.corps.proposition.heure, prix: a.corps.proposition && a.corps.proposition.prix })),
+      };
+    });
+    await page.locator('.sm-resa .sm-b', { hasText: 'Ouvrir dans Réserver' }).click({ timeout: 5000 });
     await page.waitForTimeout(500);
     r.resa = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState ? { type: quickBookState.type, heure: quickBookState.startTime, bowling: Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on), laser: Boolean(quickBookState.visit && quickBookState.visit.laser_game && quickBookState.visit.laser_game.on), pax: quickBookState.pax, date: quickBookState.date, notes: quickBookState.notes, source: quickBookState.sourceRequestId, nom: quickBookState.name, prix: typeof getQuickBookCustomPrice === 'function' ? getQuickBookCustomPrice() : null } : null));
     await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
     await page.waitForTimeout(200);
+    await page.locator('.sm-resa .sm-lien', { hasText: 'Annuler' }).click({ timeout: 5000 });
+    await page.waitForTimeout(200);
+    r.carteFermee = await page.evaluate(() => !document.querySelector('.sm-resa'));
     // « Autre proposition » : Pinlane revient, la consigne attend, sans nouvel appel.
     await page.locator('.sm-reponse .sm-b', { hasText: 'Autre proposition' }).click();
     await page.waitForTimeout(300);
@@ -435,6 +463,25 @@ async function parcours(browser, { captures = true } = {}) {
     await page.evaluate(() => setStaffRequestSegment('atraiter'));
     await page.waitForTimeout(300);
 
+    // [I bis] la proposition a l ecran se reserve : la carte, puis le seul clic qui cree
+    await page.evaluate(() => window.openStaffRequestsPage(801));
+    await page.waitForSelector('#smIa-801 .sm-ia-p', { timeout: 8000 });
+    r.extrasIa = await texte(page, '#smIa-801 .sm-ia-extras');
+    await page.locator('#smIa-801 .sm-ia-g .sm-p', { hasText: 'Créer la réservation' }).click({ timeout: 5000 });
+    await page.waitForSelector('.sm-resa .sm-resa-l', { timeout: 5000 });
+    await page.locator('.sm-resa .sm-p', { hasText: 'Confirmer la réservation' }).click({ timeout: 5000 });
+    await page.waitForSelector('.sm-resa-faite', { timeout: 5000 });
+    r.faite = await page.evaluate(() => ({
+      texte: ((document.querySelector('.sm-resa-faite') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      voir: [...document.querySelectorAll('.sm-resa-faite button')].some((b) => /Voir la réservation/.test(b.textContent)),
+      appels: window.__QA__.appels.filter((a) => a.action === 'customRequestBook').map((a) => a.corps.confirme === true),
+      ia: Boolean(document.querySelector('#smIa-801')),
+    }));
+    await page.click('.sm-retour');
+    await page.waitForSelector('.sm-l', { timeout: 5000 });
+    await page.evaluate(() => setStaffRequestSegment('atraiter'));
+    await page.waitForTimeout(300);
+
     // En clair : le client qui a repondu
     if (captures) {
       await page.evaluate(() => { if (typeof setStaffTheme === 'function') setStaffTheme('light'); });
@@ -468,6 +515,49 @@ async function telephone(browser) {
 }
 
 // [Q] DEUX CONSIGNES VITE : la reponse la plus lente ne remplace pas la derniere.
+// [R] UN MOT SUFFIT (2026-11-11) : « réserve » ouvre la carte de confirmation ; une regle dite se
+// propose a retenir, et ne s apprend qu au clic.
+async function unMotSuffit(browser) {
+  const { ctx, page, erreurs } = await ouvrir(browser);
+  const r = { erreurs };
+  try {
+    await ouvrirFiche(page, 801);
+    await attendreEtude(page);
+    await page.waitForSelector('#smIaC-801:not([readonly])', { timeout: 8000 });
+    await page.fill('#smIaC-801', 'toujours un soft par enfant, et réserve');
+    await page.locator('#smIa-801 .sm-ia-c .sm-p', { hasText: 'Changer' }).click({ timeout: 5000 });
+    await page.waitForSelector('.sm-resa .sm-resa-l', { timeout: 8000 });
+    r.carte = await page.evaluate(() => ({
+      texte: ((document.querySelector('.sm-resa') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      appels: window.__QA__.appels.filter((a) => a.action === 'customRequestBook').map((a) => a.corps.confirme === true),
+      retenir: ((document.querySelector('#smIa-801 .sm-ia-ret') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+    }));
+    await page.locator('#smIa-801 .sm-ia-ret .sm-b', { hasText: 'Retenir' }).click({ timeout: 5000 });
+    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'teachAgentFact'), null, { timeout: 5000 });
+    await page.waitForTimeout(200);
+    r.retenu = await page.evaluate(() => ({
+      appel: (window.__QA__.appels.filter((a) => a.action === 'teachAgentFact')[0] || {}).corps || null,
+      texte: ((document.querySelector('#smIa-801') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+      bloc: Boolean(document.querySelector('#smIa-801 .sm-ia-ret')),
+    }));
+  } catch (error) {
+    r.panne = String((error && error.message) || error).split('\n')[0];
+  } finally {
+    await ctx.close();
+  }
+  return r;
+}
+
+function verifierUnMot(h) {
+  section('R. UN MOT SUFFIT : RESERVER, RETENIR');
+  ok(!h.panne, 'MONTAGE le parcours va au bout', h.panne || '');
+  ok(Boolean(h.carte) && /Réserver pour ce groupe/.test(h.carte.texte) && JSON.stringify(h.carte.appels) === '[false]', '« réserve » ouvre la carte de confirmation, sans rien creer', JSON.stringify(h.carte));
+  ok(Boolean(h.carte) && /À retenir pour les prochaines demandes : « Toujours un soft par enfant aux anniversaires\. »/.test(h.carte.retenir), 'la regle dite se propose a retenir', h.carte && h.carte.retenir);
+  ok(Boolean(h.retenu && h.retenu.appel) && h.retenu.appel.reponse === 'Toujours un soft par enfant aux anniversaires.' && h.retenu.appel.centerId === 'libramont' && /demandes de groupe/.test(h.retenu.appel.question), 'retenir l apprend au centre ouvert, au seul clic', JSON.stringify(h.retenu && h.retenu.appel));
+  ok(Boolean(h.retenu) && !h.retenu.bloc && /Pinlane s’en souviendra pour les prochaines demandes\./.test(h.retenu.texte), 'la fiche dit qu elle s en souviendra', h.retenu && h.retenu.texte.slice(0, 200));
+  ok(!h.erreurs || h.erreurs.length === 0, 'MONTAGE zero erreur', JSON.stringify(h.erreurs || []));
+}
+
 async function deuxConsignes(browser) {
   const { ctx, page, erreurs } = await ouvrir(browser);
   const r = { erreurs };
@@ -710,8 +800,9 @@ function verifier(r) {
   ok(!r.tete.date && !r.tete.demande && r.tete.etat && /is-soon/.test(r.tete.etat.cls) && /^Reste (1|2) h/.test(r.tete.etat.t) && r.tete.haut <= 120, 'l en-tete tient en une bande : le nom et son etat en aplat, la ligne du groupe, les gestes', JSON.stringify(r.tete));
   ok(r.entete.liens.length === 1 && r.entete.liens[0].t === 'Appeler' && r.entete.liens[0].href === 'tel:+32470112233', 'appeler le client est a un toucher', JSON.stringify(r.entete.liens));
   ok(r.bandeau && /is-soon/.test(r.bandeau.cls) && /Réponse promise avant/.test(r.bandeau.t), 'l heure promise au client se lit au-dessus de la proposition', JSON.stringify(r.bandeau));
-  ok(/31 joueurs de 7 à 12 ans et 3 accompagnateurs\./.test(r.demandeTexte) && /Dimanche \d{1,2} \S+ l’après-midi, ou le (lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) \d{1,2} \S+\./.test(r.demandeTexte) && /Formule 3, Bowling et Laser Game, pour 25 € par personne\./.test(r.demandeTexte),
-    'combien, quel age, quand, l autre date, ce qu ils veulent et leur budget, en trois phrases', r.demandeTexte);
+  ok(/31 joueurs de 7 à 12 ans et 3 accompagnateurs/.test(r.demandeTexte) && /Dimanche \d{1,2} \S+ l’après-midi\s*ou le (lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) \d{1,2} \S+/.test(r.demandeTexte) && /25 € par personne\s*soit 775 € pour 31 joueurs/.test(r.demandeTexte),
+    'combien, quel age, quand, l autre date et leur budget, chacun a sa ligne', r.demandeTexte);
+  ok(JSON.stringify(r.envies) === '["Formule 3","Bowling","Laser Game"]', 'ce qu ils veulent faire, en pastilles bien visibles', JSON.stringify(r.envies));
   ok(/pique-niquer sur place/.test(r.demandeTexte), 'le message du client est lu en entier', r.demandeTexte);
   ok(/Ansar Bisultanov, Enseignant/.test(r.clientTexte) && /\+32 470 11 22 33/.test(r.clientTexte) && /ansar@example\.org/.test(r.clientTexte), 'qui appeler ou ecrire', r.clientTexte);
   ok(/Facture au nom de Athénée de Libramont, TVA BE0123456789/.test(r.clientTexte), 'la facture et sa TVA', r.clientTexte);
@@ -761,7 +852,18 @@ function verifier(r) {
   ok(r.envoi.corps && r.envoi.corps.proposition && r.envoi.corps.proposition.type === 'libre' && r.envoi.corps.proposition.heure === '15:00' && r.envoi.corps.proposition.prix === 620 && r.envoi.corps.proposition.joueurs === 31 && r.envoi.corps.proposition.date === r.D1,
     'la proposition part avec le mail, pour que tout poste la retrouve', JSON.stringify(r.envoi.corps && r.envoi.corps.proposition));
 
-  section('I. CREER LA RESERVATION, PREREMPLIE');
+  section('I. RESERVER EN UN CLIC, OU PREREMPLIE');
+  ok(Boolean(r.carte) && /Réserver pour ce groupe/.test(r.carte.texte) && /de 15:00 à 17:00/.test(r.carte.texte) && /31 joueurs/.test(r.carte.texte) && /620 €/.test(r.carte.texte) && /ansar@example\.org/.test(r.carte.texte),
+    'le oui du client ouvre une carte qui relit la reservation : quand, combien, le prix, l e-mail de la confirmation', r.carte && r.carte.texte);
+  ok(Boolean(r.carte) && r.carte.appels.length === 1 && r.carte.appels[0].confirme === false && r.carte.appels[0].centre === 'libramont' && r.carte.appels[0].heure === '15:00' && r.carte.appels[0].prix === 620,
+    'la carte ne cree rien : une seule demande au serveur, sans confirmation, pour la proposition partie', JSON.stringify(r.carte && r.carte.appels));
+  ok(Boolean(r.carte) && /Avec Soft × 31 \(77,50 €, compris dans le prix\)/.test(r.carte.texte), 'les extras choisis sont sur la carte, compris dans le prix', r.carte && r.carte.texte);
+  ok(Boolean(r.carte) && r.carte.boutons.map((b) => b.t).join('|') === 'Confirmer la réservation|Ouvrir dans Réserver|Annuler' && r.carte.boutons.every((b) => !b.off), 'trois gestes : confirmer, tout regler dans Reserver, annuler', JSON.stringify(r.carte && r.carte.boutons));
+  ok(r.carteFermee === true, 'annuler referme la carte sans rien creer', String(r.carteFermee));
+  ok(/Avec Soft × 31 \(77,50 €, compris dans le prix\)\./.test(r.extrasIa || ''), 'la proposition de Pinlane dit ses extras', r.extrasIa);
+  ok(Boolean(r.faite) && /Réservation créée/.test(r.faite.texte) && /La confirmation part au client par e-mail, à ansar@example\.org/.test(r.faite.texte) && r.faite.voir && !r.faite.ia,
+    'confirmer cree la reservation : la carte le dit, la confirmation part, la proposition se range', JSON.stringify(r.faite));
+  ok(Boolean(r.faite) && JSON.stringify(r.faite.appels.slice(-2)) === '[false,true]', 'la proposition a l ecran se relit, puis se cree au seul clic de confirmation', JSON.stringify(r.faite && r.faite.appels));
   ok(r.resa && r.resa.heure === '15:00' && r.resa.type === 'visite' && r.resa.bowling && r.resa.laser, 'la reservation reprend l heure et le programme proposes', JSON.stringify(r.resa));
   ok(r.resa && Number(r.resa.prix) === 620, 'et le prix pose par la consigne', JSON.stringify(r.resa && r.resa.prix));
   ok(r.resa && /proposition : Bowling \+ Laser Game, 15:00, 620 €/.test(r.resa.notes), 'la proposition est dans la note de la reservation', r.resa && r.resa.notes);
@@ -794,6 +896,7 @@ async function main() {
     const t = await telephone(browser);
     ok(t.erreurs.length === 0 && t.liste.large <= t.liste.vue && t.mesure.large <= t.mesure.vue, `rien ne deborde a 390 px (liste ${t.liste.large}, fiche ${t.mesure.large}, pour ${t.mesure.vue})`);
     verifierDeuxConsignes(await deuxConsignes(browser));
+    verifierUnMot(await unMotSuffit(browser));
     verifierHorloge(await horlogeDuBureau(browser));
     verifierAlerte(await alerteDuTableau(browser));
     verifierSansSuite(await sansSuite(browser));
@@ -836,6 +939,10 @@ async function main() {
       { de: "function openStaffRequestClient(id) {\n", vers: "function openStaffRequestClient(id) {\n  state.staffClientQuery = String(id); openStaffMenuPage('clients'); return;\n", label: 'sans la fenetre, la fiche client ferait quitter la demande', run: (b) => fenetres(b), rouge: (r) => !r.client || !r.pageClient || r.pageClient.page !== 'requests' },
       { fichier: 'assets/pinlane-planning-global.js', de: "    if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });", vers: "", label: 'sans la marque, le team building ne se verrait pas au planning', run: (b) => fenetres(b), rouge: (r) => Boolean(r.planning) && !r.planning.marques.includes('Team building') },
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
+      { de: "centerId: getActiveOpsCenterId(), proposition, confirme }),", vers: "centerId: getActiveOpsCenterId(), proposition, confirme: true }),", label: 'sans la carte, le premier clic creerait la reservation sans la relire', rouge: (r) => Boolean(r.panne) || (Boolean(r.carte) && r.carte.appels.some((a) => a.confirme === true)) },
+      { de: "    ${extras ? `<p>${escapeHtml(extras)}</p>` : ''}\n", vers: '', label: 'sans la ligne des extras, la carte tairait le soft et le gateau', rouge: (r) => Boolean(r.carte) && !/Avec Soft/.test(r.carte.texte) },
+      { de: "  if (texte && fin.rang === rang && fin.geste === 'reserver' && fin.proposition && peutGeste('reserver')) smReserver(id);\n", vers: '', label: 'sans le geste, « réserve » laisserait la carte fermee', run: unMotSuffit, rouge: (r) => Boolean(r.panne) || !r.carte },
+      { de: "      body: JSON.stringify({ action: 'teachAgentFact',", vers: "      body: JSON.stringify({ action: 'oublierAgentFact',", label: 'sans l apprentissage, retenir ne retiendrait rien', run: unMotSuffit, rouge: (r) => Boolean(r.panne) || !(r.retenu && r.retenu.appel) },
     ];
     if (SANS_CONTRE_PREUVES) console.log(`GATE-SAUTE-PARTIE contre-epreuves : ${essais.length} coupures montables mais pas rejouees (la nuit, ou quand le diff touche ce gate)`);
     for (const e of essais) {

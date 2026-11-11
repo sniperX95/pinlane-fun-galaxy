@@ -2788,6 +2788,21 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // envoie par sendDirectEmail.
   // L assistant de la fiche : la proposition et le mail, sur la demande ou sur la consigne de
   // l equipe. RIEN N EST ENVOYE ICI, comme pour le brouillon.
+  // LA RESERVATION EN UN CLIC d une demande (lib/demande-bureau-centre.js, reserverLaDemande) : une
+  // simulation d abord, la creation seulement quand l equipe confirme (confirme: true). La demande se
+  // relit dans le centre de la session, la session porte les droits de la fenetre Reserver.
+  if (action === 'customRequestBook') {
+    requireConcreteCenter();
+    const { getCustomRequest } = require('../lib/database');
+    const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
+    if (!item) throw createHttpError('Demande introuvable.', 404, true);
+    const { reserverLaDemande, enrichirDemandes } = require('../lib/demande-bureau-centre');
+    const confirme = body.confirme === true;
+    const r = await require('../lib/booking-config').pourLEquipe(() => reserverLaDemande(item, undefined, { proposition: body.proposition, session: options.session, simuler: !confirme }));
+    const demande = r.demande ? (await enrichirDemandes([r.demande]).catch(() => [r.demande]))[0] : null;
+    sendJson(res, 200, { ok: true, id: item.id, ...r, demande });
+    return;
+  }
   if (action === 'customRequestAssist') {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
@@ -3343,6 +3358,21 @@ ${draftBody}`,
         // LE REGISTRE : la reponse entree au suivi de la demande, dans la ligne
         // d audit de l envoi (la demande, son evenement ; jamais le corps du mail).
         noterAudit(options, { context: { customRequestId: Number(body.customRequestId), suivi: suiviAjoute(avant, request) } });
+        // L EQUIPE CORRIGE, PINLANE APPREND (2026-11-11, Ansar : « elle doit s ameliorer en fonction des
+        // reponses de nos membres staff ») : le mail de Pinlane repris avant l envoi devient une lecon du
+        // centre, que la prochaine demande proche relit (recordAgentLesson, puis choisirLecons).
+        const original = body.draftOriginal && typeof body.draftOriginal === 'object' ? body.draftOriginal : null;
+        if (original && body.draftSource === 'ia') {
+          const { recordAgentLesson } = require('../lib/email-agent');
+          const { demandeEnTexte } = require('../lib/demande-bureau');
+          await recordAgentLesson({
+            centerId: studioCenterId,
+            intent: 'reservation',
+            questionExcerpt: demandeEnTexte(avant).split('\n').slice(1).join(' ').slice(0, 300),
+            original: { subject: String(original.subject || '').slice(0, 300), body: String(original.body || '').slice(0, 6000) },
+            sent: { subject: body.subject, body: body.body },
+          }).catch(() => {});
+        }
         const { enrichirDemandes } = require('../lib/demande-bureau-centre');
         [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
       } catch (error) { customRequest = null; }
@@ -4071,6 +4101,7 @@ function getRequiredOpsPermission(method, action) {
   // Rediger le brouillon, c est preparer un envoi : meme droit que l envoi.
   if (action === 'customRequestDraft') return 'emails.send';
   if (action === 'customRequestAssist') return 'emails.send';
+  if (action === 'customRequestBook') return 'reservations.create';
   // Restaurer une reservation supprimee : le droit qui permet de la supprimer
   // (reservations.cancel, celui de DELETE /api/staff-reservations), sur le
   // centre de l archive.

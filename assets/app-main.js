@@ -20035,11 +20035,15 @@ async function smIaLancer(id, consigne = '') {
       pourquoi: String((payload && payload.pourquoi) || ''),
       suggestions: Array.isArray(payload && payload.suggestions) ? payload.suggestions.slice(0, 3).map(String) : [],
       suivie: !(payload && payload.consigneSuivie === false),
+      aRetenir: String((payload && payload.aRetenir) || ''),
+      geste: payload && payload.geste === 'reserver' && p ? 'reserver' : '',
     };
     if (p) staffRequestChoix[key] = p; else delete staffRequestChoix[key];
     const b = payload && payload.brouillon;
     if (b && String(b.corps || '').trim()) {
+      // Le mail tel que Pinlane l a ecrit : repris par l equipe avant l envoi, il devient une lecon du centre.
       staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), open: true, openedAt: Date.now(), drafting: false, busy: false,
+        draftOriginal: b.source === 'ia' ? { subject: String(b.objet || ''), body: String(b.corps) } : null,
         subject: String(b.objet || ''), body: String(b.corps), draftSource: b.source === 'ia' ? 'ia' : 'code', draftReason: String(b.raison || ''),
         points: Array.isArray(b.pointsAVerifier) ? b.pointsAVerifier : [] };
     } else if (staffRequestReplyState[key]) staffRequestReplyState[key] = { ...staffRequestReplyState[key], drafting: false };
@@ -20050,8 +20054,40 @@ async function smIaLancer(id, consigne = '') {
     if (staffRequestReplyState[key]) staffRequestReplyState[key] = { ...staffRequestReplyState[key], drafting: false };
   }
   renderStaffRequestsIfOpen();
+  // « Réserve » dit a Pinlane : la carte de confirmation s ouvre d elle-meme, rien ne se cree sans le clic.
+  const fin = staffRequestIa[key] || {};
+  if (texte && fin.rang === rang && fin.geste === 'reserver' && fin.proposition && peutGeste('reserver')) smReserver(id);
 }
 window.smIaLancer = smIaLancer;
+
+// RETENIR UNE REGLE (2026-11-11) : elle rejoint ce que le centre a appris (teachAgentFact), que Pinlane
+// relit pour les demandes et les mails suivants. Rien ne s apprend sans ce clic.
+async function smRetenir(id) {
+  const key = String(id);
+  const etat = staffRequestIa[key] || {};
+  const regle = String(etat.aRetenir || '').trim();
+  if (!regle || etat.retient || !peutGeste('ecrire')) return;
+  staffRequestIa[key] = { ...etat, retient: true };
+  renderStaffRequestsIfOpen();
+  try {
+    await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'teachAgentFact', centerId: getActiveOpsCenterId(), question: `Règle de l’équipe pour les demandes de groupe : ${regle}`.slice(0, 300), reponse: regle }),
+    });
+    staffRequestIa[key] = { ...(staffRequestIa[key] || {}), retient: false, aRetenir: '', retenu: true };
+  } catch (error) {
+    staffRequestIa[key] = { ...(staffRequestIa[key] || {}), retient: false };
+    toast((error && error.message) || 'Pinlane n’a pas pu retenir cette règle.');
+  }
+  renderStaffRequestsIfOpen();
+}
+window.smRetenir = smRetenir;
+function smPasRetenir(id) {
+  const key = String(id);
+  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), aRetenir: '' };
+  renderStaffRequestsIfOpen();
+}
+window.smPasRetenir = smPasRetenir;
 
 function smIaConsigne(event, id) {
   if (event) event.preventDefault();
@@ -20097,6 +20133,7 @@ function renderSmPropositionIa(item, p) {
   return `<div class="sm-ia-p">
     <p class="sm-ia-quand">${escapeHtml(quand)}</p>
     <p class="sm-ia-quoi">${escapeHtml(quoi)}</p>
+    ${smExtrasTexte(p) ? `<p class="sm-ia-extras">${escapeHtml(smExtrasTexte(p))}</p>` : ''}
     <p class="sm-ia-prix">${prix}</p>
     <button type="button" class="sm-lien sm-ia-plan" onclick="openStaffRequestDay('${escapeJsString(p.date)}')">Voir le planning de ce jour</button>
   </div>`;
@@ -20116,9 +20153,11 @@ function smIaAttente(item, etat) {
 // la demande telle qu elle etait.
 function renderSmPinlane(item) {
   const jid = staffClientJs(item.id);
+  // La reservation faite depuis cette fiche : sa carte prend la place de la suite.
+  if (staffRequestResa[String(item.id)] && staffRequestResa[String(item.id)].faite) return renderSmResa(item);
   if (!smIaActif(item)) {
     const suite = renderSmReponse(item);
-    if (suite) return suite;
+    if (suite) return `${suite}${renderSmResa(item)}`;
     const bande = renderSmBande(item);
     const creer = staffRequestStage(item) === 'a-traiter' && peutGeste('reserver') ? `<div class="sm-actions"><button type="button" class="sm-p" onclick="staffRequestToBooking(${jid})">Créer la réservation</button></div>` : '';
     return bande || creer ? `<section class="sm-s sm-reponse sm-suivi"><h3>Suivi</h3>${bande}${creer}</section>` : '';
@@ -20134,6 +20173,9 @@ function renderSmPinlane(item) {
   else if (!etat.pret) corps = '<p class="sm-ia-lit">Cette demande n’a pas de formulaire détaillé. Dites à Pinlane ce qu’il faut proposer, il prépare la proposition et le mail.</p>';
   else corps = `${p ? renderSmPropositionIa(item, p) : '<p class="sm-ia-lit">Pinlane n’a rien à proposer sans autre précision. Dites-lui ce qu’il faut proposer, ou lisez le mail ci-dessous.</p>'}
     ${etat.pourquoi ? `<p class="sm-ia-pq">${escapeHtml(etat.pourquoi)}</p>` : ''}
+    ${etat.geste === 'reserver' && !etat.derniere ? '<p class="sm-ia-oui">Le client est d’accord dans son dernier mail : il reste à réserver.</p>' : ''}
+    ${etat.aRetenir ? `<div class="sm-ia-ret"><p>À retenir pour les prochaines demandes : « ${escapeHtml(etat.aRetenir)} »</p><div class="sm-ia-ret-g"><button type="button" class="sm-b" onclick="smRetenir(${jid})"${etat.retient ? ' disabled' : ''}>Retenir</button><button type="button" class="sm-lien" onclick="smPasRetenir(${jid})">Non</button></div></div>` : ''}
+    ${etat.retenu ? '<p class="sm-ia-pq">Pinlane s’en souviendra pour les prochaines demandes.</p>' : ''}
     ${etat.derniere && etat.suivie === false ? `<p class="sm-note">Pinlane n’a pas pu suivre « ${escapeHtml(etat.derniere)} ». Réessayez dans un instant.</p>` : ''}
     ${etat.erreur ? `<p class="sm-note">${escapeHtml(etat.erreur)}</p>` : ''}`;
   const idees = !etat.lit && Array.isArray(etat.suggestions) && etat.suggestions.length
@@ -20151,12 +20193,15 @@ function renderSmPinlane(item) {
   // Sans proposition prete (pas de formulaire, panne, rien a proposer) ou sans son mail, l equipe garde
   // ses deux gestes : ecrire elle-meme, reserver. Quand le mail de la proposition est la, il les porte.
   const ecrire = item.email && !reply.open && !etat.lit ? `<button type="button" class="sm-b" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : '';
-  const reserver = reserve && !etat.lit && !(p && (reply.open || !item.email)) ? `<button type="button" class="sm-b" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>` : '';
+  // Avec une proposition, « Créer la réservation » la reserve telle quelle (carte de confirmation) ;
+  // sans elle, la fenetre Reserver s ouvre preremplie.
+  const carte = renderSmResa(item);
+  const reserver = reserve && !etat.lit && !carte && !(p && (reply.open || !item.email)) ? `<button type="button" class="${p ? 'sm-p' : 'sm-b'}" onclick="${p ? 'smReserver' : 'staffRequestToBooking'}(${jid})">Créer la réservation</button>` : '';
   const gestes = ecrire || reserver ? `<div class="sm-actions sm-ia-g">${ecrire}${reserver}</div>` : '';
   const mail = item.email
-    ? (reply.open ? `<section class="sm-s sm-mail"><h3>Le mail au client</h3>${renderSmCourrier(item, reply, p, reserve, { resume: false, annuler: !p })}</section>` : '')
-    : `<section class="sm-s sm-mail"><h3>Le client</h3><p class="sm-note">Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}</p>${p && reserve ? `<div class="sm-actions"><button type="button" class="sm-p" onclick="staffRequestToBooking(${jid})">Le client accepte, créer la réservation</button></div>` : ''}</section>`;
-  return `<section class="sm-s sm-ia" id="smIa-${sid}"><h3>Pinlane propose</h3>${renderSmBande(item)}${corps}${consigne}${gestes}</section>${mail}`;
+    ? (reply.open ? `<section class="sm-s sm-mail"><h3>Le mail au client</h3>${renderSmCourrier(item, reply, p, reserve && !carte, { resume: false, annuler: !p })}</section>` : '')
+    : `<section class="sm-s sm-mail"><h3>Le client</h3><p class="sm-note">Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}</p>${p && reserve && !carte ? `<div class="sm-actions"><button type="button" class="sm-p" onclick="smReserver(${jid})">Le client accepte, créer la réservation</button></div>` : ''}</section>`;
+  return `<section class="sm-s sm-ia" id="smIa-${sid}"><h3>Pinlane propose</h3>${renderSmBande(item)}${corps}${consigne}${gestes}</section>${carte}${mail}`;
 }
 
 // Ce que le client a rempli, ligne par ligne, avec ses mots a lui.
@@ -20175,12 +20220,16 @@ function renderSmDemande(item) {
   const d = crDemande(item);
   const message = String(item.message || '').trim();
   const mot = message ? `<blockquote class="sm-dem-mot"><span>Leur message</span>${escapeHtml(message)}</blockquote>` : '';
-  const ligne = (texte) => `<p class="sm-dem-l">${texte}</p>`;
+  // LEURS ENVIES EN EVIDENCE (2026-11-11, Ansar : « mettre en evidence bien visible les choses qu ils
+  // veulent ») : une etiquette, la valeur en grand ; ce qu ils veulent faire en pastilles.
+  const rangee = (etiquette, valeur, classe = '') => (valeur ? `<div class="sm-dem-r${classe ? ` ${classe}` : ''}"><dt>${etiquette}</dt><dd>${valeur}</dd></div>` : '');
   if (!d) {
     const pax = Number(item.pax) || 0;
     return `<section class="sm-s sm-demande"><h3>Ce qu’ils demandent</h3>
-      ${ligne(pax ? `${pax} personne${pax > 1 ? 's' : ''}.` : 'Nombre de personnes pas indiqué.')}
-      ${ligne(item.requestedDate ? `Date souhaitée ${escapeHtml(item.requestedDate)}.` : 'Date pas indiquée.')}
+      <dl class="sm-dem">
+        ${rangee('Quand', item.requestedDate ? escapeHtml(item.requestedDate) : '<span class="sm-dem-vide">Date pas indiquée</span>', 'is-fort')}
+        ${rangee('Qui', pax ? `${pax} personne${pax > 1 ? 's' : ''}` : '<span class="sm-dem-vide">Nombre pas indiqué</span>', 'is-fort')}
+      </dl>
       ${mot}
     </section>`;
   }
@@ -20190,15 +20239,25 @@ function renderSmDemande(item) {
   const moment = ({ matin: 'le matin', 'apres-midi': 'l’après-midi', soiree: 'en soirée', journee: 'toute la journée' })[d.moment] || '';
   const qui = `${joueurs} joueur${joueurs > 1 ? 's' : ''}${ages ? ` de ${escapeHtml(ages)}` : ''}${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}.`;
   const quand = d.flexible
-    ? `Date à fixer${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}.`
-    : `${escapeHtml(smJourLong(d.date))}${moment ? ` ${moment}` : ''}${d.alternativeDate ? `, ou le ${escapeHtml(smJourLong(d.alternativeDate).toLowerCase())}` : ''}.`;
+    ? `Date à fixer${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}`
+    : `${escapeHtml(smJourLong(d.date))}${moment ? ` ${moment}` : ''}`;
+  const autre = !d.flexible && d.alternativeDate ? ` <small>ou le ${escapeHtml(smJourLong(d.alternativeDate).toLowerCase())}</small>` : '';
   const envies = [...crNoms(d.formulas), ...(Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => a.name)];
-  const budget = Number(d.budgetPerPerson) > 0 ? `pour ${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne` : '';
-  const quoi = envies.length
-    ? `${escapeHtml(smEnPhrase(envies.join(' + ')))}${budget ? `, ${budget}` : ''}.${d.advice ? ' Ils demandent conseil.' : ''}`
-    : `${d.advice ? 'Ils demandent conseil pour le programme' : 'Programme à composer avec eux'}${budget ? `, ${budget}` : ''}.`;
+  const pastilles = [
+    ...envies.map(nom => `<span class="sm-dem-envie">${escapeHtml(nom)}</span>`),
+    d.advice ? '<span class="sm-dem-envie is-conseil">Ils demandent conseil</span>' : '',
+  ].filter(Boolean).join(' ');
+  const parPersonne = Number(d.budgetPerPerson) || 0;
+  const budget = parPersonne > 0 ? `${escapeHtml(staffRequestEuro(parPersonne))} par personne${joueurs ? ` <small>soit ${escapeHtml(staffRequestEuro(Math.round(parPersonne * joueurs * 100) / 100))} pour ${joueurs} joueurs</small>` : ''}` : '';
+  const groupe = [d.groupTypeLabel, d.organisation].map(x => String(x || '').trim()).filter(Boolean).map(escapeHtml).join(' · ');
   return `<section class="sm-s sm-demande"><h3>Ce qu’ils demandent</h3>
-    ${ligne(qui)}${ligne(quand)}${ligne(quoi)}
+    <dl class="sm-dem">
+      ${rangee('Quand', `${quand}${autre}`, 'is-fort')}
+      ${rangee('Qui', qui.replace(/\.$/, ''), 'is-fort')}
+      ${rangee('Envies', pastilles ? `<span class="sm-dem-envies">${pastilles}</span>` : 'Programme à composer avec eux')}
+      ${rangee('Budget', budget)}
+      ${rangee('Groupe', `${groupe}${d.invoice ? (groupe ? ' <small>Facture demandée</small>' : 'Facture demandée') : ''}`)}
+    </dl>
     ${mot}
   </section>`;
 }
@@ -20478,7 +20537,7 @@ function renderSmResume(p) {
   const jour = staffRequestShortDate(p.date);
   const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}${p.type === 'libre' && p.joueurs ? `, ${p.joueurs} joueurs` : ''}`;
   return `<div class="sm-resume">
-    <div><b>${escapeHtml(p.nom)}</b><span>${escapeHtml(quand)}</span></div>
+    <div><b>${escapeHtml(p.nom)}</b><span>${escapeHtml(quand)}</span>${smExtrasTexte(p) ? `<span>${escapeHtml(smExtrasTexte(p))}</span>` : ''}</div>
     <div class="sm-o-p">${p.prix != null ? `<b>${escapeHtml(staffRequestEuro(p.prix))}</b>` : '<em>À confirmer</em>'}${p.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur</small>` : ''}</div>
   </div>`;
 }
@@ -20496,6 +20555,8 @@ function renderSmReponse(item) {
   const bloc = (titre, corps) => `<section class="sm-s sm-reponse"><h3>${escapeHtml(titre)}</h3>${stage === 'traitee' ? '' : renderSmBande(item)}${corps}</section>`;
   const bouton = (cls, label, action) => `<button type="button" class="${cls}" onclick="${action}">${escapeHtml(label)}</button>`;
   const creer = (cls, label) => (reserve ? bouton(cls, label, `staffRequestToBooking(${jid})`) : '');
+  // Le oui du client sur la proposition partie : elle se reserve telle quelle, apres la carte qui la relit.
+  const reserverEnvoyee = (cls, label) => (reserve && !staffRequestResa[key] ? bouton(cls, label, `smReserver(${jid}, false, 'envoyee')`) : '');
 
   if (stage === 'archivee') return '';
   if (stage === 'traitee') {
@@ -20510,7 +20571,7 @@ function renderSmReponse(item) {
   if (envoyee || stage === 'en-attente') {
     return bloc(envoyee ? 'Proposition envoyée' : 'Réponse envoyée', `${envoyee ? renderSmResume(envoyee) : ''}
       <div class="sm-actions">
-        ${creer('sm-p', 'Le client accepte, créer la réservation')}
+        ${reserverEnvoyee('sm-p', 'Le client accepte, créer la réservation')}
         ${crDemande(item) && !staffRequestMontreDispos(item) ? bouton('sm-b', 'Autre proposition', `staffRequestAutreProposition(${jid})`) : ''}
       </div>`);
   }
@@ -20540,7 +20601,7 @@ function renderSmCourrier(item, reply, choix, reserve, opts = {}) {
     <div class="sm-actions">
       <button type="button" class="sm-p" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : choix ? 'Envoyer la proposition' : 'Envoyer la réponse'}</button>
       ${opts.annuler === false ? '' : `<button type="button" class="sm-b" onclick="staffRequestAnnulerReponse(${jid})">Annuler</button>`}
-      ${choix && reserve ? `<button type="button" class="sm-lien" onclick="staffRequestToBooking(${jid})">Créer la réservation sans e-mail</button>` : ''}
+      ${choix && reserve ? `<button type="button" class="sm-lien" onclick="smReserver(${jid})">Réserver directement</button>` : ''}
     </div>
   </div>`;
 }
@@ -20554,6 +20615,125 @@ function staffRequestAnnulerReponse(id) {
   renderStaffRequestsIfOpen();
 }
 window.staffRequestAnnulerReponse = staffRequestAnnulerReponse;
+
+// Ce que Pinlane ajoute pour le groupe (soft, gateau…), deja compris dans le prix.
+function smExtrasTexte(p) {
+  const x = p && Array.isArray(p.extras) ? p.extras.filter(e => e && e.nom && Number(e.quantite) > 0) : [];
+  if (!x.length) return '';
+  const noms = x.map(e => `${e.nom} × ${e.quantite}`);
+  const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}` : noms[0];
+  const total = Math.round(x.reduce((t, e) => t + (Number(e.total) || 0), 0) * 100) / 100;
+  return `Avec ${liste}${total > 0 ? ` (${staffRequestEuro(total)}, compris dans le prix)` : ''}.`;
+}
+
+// RESERVER EN UN CLIC (2026-11-11, Ansar : « faut que il fasse la resa, on doit confirmer »). Le premier
+// toucher demande au serveur ce que la reservation donnerait, sans rien creer ; la carte le relit et
+// seul « Confirmer la réservation » la cree, avec la confirmation que la creation envoie au client.
+const staffRequestResa = {};
+// La proposition a reserver : celle qui est a l ecran, ou, sur le oui du client, celle qui lui est partie.
+function smPropositionDe(item, depuis = '') {
+  const key = String(item.id);
+  const ia = staffRequestIa[key];
+  const envoyee = (item.suivi && item.suivi.proposition) || null;
+  if (depuis === 'envoyee' && envoyee) return envoyee;
+  return staffRequestChoix[key] || (ia && ia.proposition) || envoyee;
+}
+async function smReserver(id, confirme = false, depuis = '') {
+  if (!peutGeste('reserver')) return;
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item) return;
+  const avant = staffRequestResa[key] || {};
+  if (avant.cours || avant.faite) return;
+  // La confirmation cree exactement ce que la carte a relu.
+  const p = confirme && avant.proposition ? avant.proposition : smPropositionDe(item, depuis);
+  // Une offre touchee dans les disponibilites, ou rien de propose : la fenetre Reserver garde la main.
+  if (!p || p.type !== 'libre' || !(Number(p.joueurs) > 0)) { staffRequestToBooking(id, p ? { proposition: p } : {}); return; }
+  const proposition = rqChoixPourLeServeur(p);
+  const garde = { depuis: confirme ? avant.depuis : depuis, quoi: JSON.stringify(proposition), proposition: p };
+  staffRequestResa[key] = { ...avant, ...garde, cours: true, confirme, erreur: '' };
+  renderStaffRequestsIfOpen();
+  try {
+    const r = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'customRequestBook', id: item.id, centerId: getActiveOpsCenterId(), proposition, confirme }),
+    });
+    if (r && r.simulation === false && r.reservation) {
+      staffRequestResa[key] = { ...garde, faite: true, resume: r.resume || avant.resume || null, reservation: r.reservation, confirmation: Boolean(r.confirmation) };
+      replaceStaffCustomRequest(r.demande, { id: item.id, status: 'handled' });
+    } else {
+      staffRequestResa[key] = { ...garde, resume: (r && r.resume) || null };
+    }
+  } catch (error) {
+    staffRequestResa[key] = { ...avant, ...garde, cours: false, erreur: (error && error.message) || 'La réservation n’a pas pu se faire. Réessayez.' };
+  }
+  renderStaffRequestsIfOpen();
+}
+window.smReserver = smReserver;
+function smReserverFermer(id) {
+  delete staffRequestResa[String(id)];
+  renderStaffRequestsIfOpen();
+}
+window.smReserverFermer = smReserverFermer;
+// Tout regler a la main : la fenetre Reserver s ouvre avec la proposition de la carte.
+function smOuvrirDansReserver(id) {
+  const e = staffRequestResa[String(id)] || {};
+  staffRequestToBooking(id, e.proposition ? { proposition: e.proposition } : {});
+}
+window.smOuvrirDansReserver = smOuvrirDansReserver;
+
+function smResaLignes(r) {
+  const jour = staffRequestShortDate(r.date);
+  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)}, ${r.fin ? `de ${r.heure} à ${r.fin}` : `à ${r.heure}`}`;
+  const pistes = Array.isArray(r.pistes) && r.pistes.length ? `, piste${r.pistes.length > 1 ? 's' : ''} ${r.pistes.join(', ')}` : '';
+  const qui = `${smEnPhrase(r.nom || 'Le programme')}${r.joueurs ? ` pour ${r.joueurs} joueur${r.joueurs > 1 ? 's' : ''}` : ''}${pistes}`;
+  const extras = smExtrasTexte(r);
+  return `<div class="sm-resa-l">
+    <p class="sm-ia-quand">${escapeHtml(quand)}</p>
+    <p>${escapeHtml(qui)}</p>
+    ${extras ? `<p>${escapeHtml(extras)}</p>` : ''}
+    <p class="sm-resa-prix">${r.prix != null ? `<b>${escapeHtml(staffRequestEuro(r.prix))}</b>` : 'Prix à confirmer'}</p>
+  </div>`;
+}
+
+// La carte : ce qui sera cree, ce qui l empeche, et le seul bouton qui cree.
+function renderSmResa(item) {
+  const key = String(item.id);
+  const e = staffRequestResa[key];
+  if (!e) return '';
+  const jid = staffClientJs(item.id);
+  const bouton = (cls, label, action, off) => `<button type="button" class="${cls}"${off ? ' disabled' : ''} onclick="${action}">${escapeHtml(label)}</button>`;
+  if (e.faite) {
+    const v = e.reservation || {};
+    const mot = e.confirmation && v.email ? `La confirmation part au client par e-mail, à ${v.email}.` : `Pas d’e-mail pour ce client : prévenez-le${item.phone ? ` au ${item.phone}` : ''}.`;
+    return `<section class="sm-s sm-resa sm-resa-faite" role="status"><h3>Réservation créée</h3>
+      ${e.resume ? smResaLignes(e.resume) : ''}
+      <p class="sm-resa-x">${escapeHtml(mot)}</p>
+      ${v.id != null ? `<div class="sm-actions">${bouton('sm-p', 'Voir la réservation', `ouvrirReservationNumero(${staffClientJs(v.id)})`)}</div>` : ''}
+    </section>`;
+  }
+  // Une demande reservee ailleurs, ou une proposition changee depuis : la carte n a plus d objet.
+  const stage = staffRequestStage(item);
+  const p = smPropositionDe(item, e.depuis);
+  if (stage === 'traitee' || stage === 'archivee' || !p || (e.quoi && JSON.stringify(rqChoixPourLeServeur(p)) !== e.quoi)) return '';
+  const r = e.resume || null;
+  const pris = r && Array.isArray(r.conflits) && r.conflits.length ? r.conflits[0] : '';
+  const bloque = !r || e.cours || Boolean(r.refus) || Boolean(pris);
+  const mot = r ? (r.email ? `Le client recevra la confirmation par e-mail, à ${r.email}.` : 'Pas d’e-mail pour ce client : la confirmation ne partira pas.') : '';
+  return `<section class="sm-s sm-resa"${e.cours ? ' aria-busy="true"' : ''}><h3>Réserver pour ce groupe</h3>
+    ${e.cours ? `<p class="sm-ia-lit" role="status">${e.confirme ? 'Pinlane crée la réservation.' : 'Pinlane prépare la réservation.'}</p>` : ''}
+    ${r ? smResaLignes(r) : ''}
+    ${pris ? `<p class="sm-note">Ce créneau n’est plus libre (${escapeHtml(pris)}). Changez l’heure avec Pinlane, ou ouvrez la réservation pour la régler.</p>` : ''}
+    ${r && r.refus ? `<p class="sm-note">${escapeHtml(r.refus)}</p>` : ''}
+    ${e.erreur ? `<p class="sm-note">${escapeHtml(e.erreur)}</p>` : ''}
+    ${mot && !pris && !(r && r.refus) ? `<p class="sm-resa-x">${escapeHtml(mot)}</p>` : ''}
+    <div class="sm-actions">
+      ${bouton('sm-p', 'Confirmer la réservation', `smReserver(${jid}, true)`, bloque)}
+      ${bouton('sm-b', 'Ouvrir dans Réserver', `smOuvrirDansReserver(${jid})`, e.cours)}
+      ${bouton('sm-lien', 'Annuler', `smReserverFermer(${jid})`, e.cours)}
+    </div>
+  </section>`;
+}
 
 // ── LE SUIVI : ce qui s est passe, et les notes de l equipe ─────────────────
 let staffRequestNotes = {};
@@ -20749,7 +20929,7 @@ window.focusStaffRequestComposer = focusStaffRequestComposer;
 function rqChoixPourLeServeur(choix) {
   const base = { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure };
   if (choix.type !== 'libre') return base;
-  return { ...base, fin: choix.fin, nom: choix.nom, prix: choix.prix, joueurs: choix.joueurs, formule: choix.formule, activites: choix.activites, plus: choix.plus, prixLibre: choix.prixLibre };
+  return { ...base, fin: choix.fin, nom: choix.nom, prix: choix.prix, joueurs: choix.joueurs, formule: choix.formule, activites: choix.activites, plus: choix.plus, prixLibre: choix.prixLibre, extras: Array.isArray(choix.extras) ? choix.extras : [] };
 }
 
 async function startStaffRequestDraft(id) {
@@ -20863,6 +21043,7 @@ async function staffRequestSendReply(id) {
         // « en attente du client » et l historique dit qui l a envoyee.
         customRequestId: item.id,
         ...(reply.draftSource ? { draftSource: reply.draftSource } : {}),
+        ...(reply.draftSource === 'ia' && reply.draftOriginal ? { draftOriginal: reply.draftOriginal } : {}),
         ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),
       })),
     });
@@ -20900,7 +21081,7 @@ function staffRequestToBooking(id, options = {}) {
   const formules = d && Array.isArray(d.formulas) ? d.formulas : [];
   const formule = formules.length === 1 && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(formules[0].id) ? formules[0].id : '';
   const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
-  const choix = staffRequestChoixDe(item);
+  const choix = options.proposition || staffRequestChoixDe(item);
   const noteParts = [
     'Demande sur mesure',
     d && d.organisation ? d.organisation : '',
@@ -20911,6 +21092,7 @@ function staffRequestToBooking(id, options = {}) {
     !d && item.requestedDate ? `souhait : ${item.requestedDate}` : '',
     item.message ? String(item.message).slice(0, 160) : '',
     choix ? `proposition : ${choix.nom}, ${choix.heure}${choix.prix != null ? `, ${staffRequestEuro(choix.prix)}` : ''}` : '',
+    choix && smExtrasTexte(choix) ? smExtrasTexte(choix).replace(/\.$/, '') : '',
   ].filter(Boolean);
   // Le sur mesure compose sur la fiche fait foi : sa formule, ou ses activites (jamais les deux).
   const compose = Array.isArray(options.activites);

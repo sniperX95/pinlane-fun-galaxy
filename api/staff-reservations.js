@@ -46,6 +46,9 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+// La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
+// sur mesure (api/ops.js customRequestBook) prend le meme chemin.
+const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
 const { baseDuServeur, estRefusDeDroit, exigerAdaptationDeFormule, exigerFormuleDuCentre, exigerRetraitDeNote, jugerPrixDeModification, nomDeSession, notesDuPatch, patchAdapteLaFormule, prixQuiSuit, resoudreExtras } = require('../lib/droits-reservation');
 const { exigerHistorique, exigerPistesALaMain, jugerEncaisse, pistesALaMainDuPlan } = require('../lib/droits-reservation');
 const { lireHistoriqueDossier } = require('../lib/historique-dossier');
@@ -370,51 +373,6 @@ function aujourdhuiABruxelles() {
 // Creer un dossier deja prepare, le tracer, et rendre ce que la fenetre lit.
 // Le journal s ecrit APRES le COMMIT, hors du verrou de la journee (T5) ; son
 // echec remonte dans `warnings` (T4 point c), jamais en silence.
-async function creerDepuisLaFenetre(prepare, session, contexte = {}) {
-  const { ops, conflits, aPlacer } = prepare;
-  exigerLesDroits(prepare);
-  const reservation = await createReservation(prepare.dossier);
-  const [postCreate, annonce] = await Promise.all([
-    afterReservationCreated(reservation, prepare.request),
-    require('../lib/garde-annonces').annoncerReservation(reservation, { par: actorFromSession(session).actorLabel }),
-  ]);
-  const auditCreate = await writeAuditLog({
-    centerId: reservation.centerId || 'libramont',
-    ...actorFromSession(session),
-    surface: 'api/staff-reservations.js',
-    action: 'createReservation',
-    method: 'POST',
-    entityType: 'reservation',
-    entityId: reservation.id,
-    outcome: 'success',
-    changes: buildReservationAuditChanges({}, reservation),
-    context: {
-      canal: reservation.channel || 'staff',
-      validationStatus: reservation.validationStatus || '',
-      ...(aPlacer ? { aPlacer: true, conflits: conflits.map((conflit) => conflit.message) } : {}),
-      ...contexte,
-      annonce,
-    },
-    requestId: newRequestId(),
-  });
-  return {
-    reservation,
-    ops: {
-      riskLevel: reservation.riskLevel,
-      riskScore: reservation.riskScore,
-      validationStatus: reservation.validationStatus,
-      planWarning: ops.planWarning,
-      autoDecision: ops.requiresHumanReview || aPlacer ? 'human_review_required' : 'auto_confirmed',
-    },
-    communications: postCreate.communications,
-    warnings: auditCreate.warning
-      ? [...(postCreate.warnings || []), auditCreate.warning]
-      : postCreate.warnings,
-    aPlacer,
-    conflits,
-  };
-}
-
 // LA SIMULATION (dryRun). UNE lecture de la journee, partagee par le dossier,
 // les autres dossiers du meme envoi et chaque heure de l horloge : deux
 // heures ne se comparent pas sur deux etats differents de la base.

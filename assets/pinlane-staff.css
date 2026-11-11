@@ -21116,8 +21116,17 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 /* LA FICHE SIMPLE (2026-11-10, Ansar : « super simple, pas de graphique, tout booster avec IA ») :
    une colonne, la demande en trois lignes, ce que Pinlane propose en aplat, sa consigne, le mail. */
 .sm .sm-une { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
-.sm-dem-l { margin: 0; font-size: 15px; line-height: 1.5; }
-.sm-dem-l + .sm-dem-l { margin-top: 2px; }
+/* Leurs envies en evidence (2026-11-11) : l etiquette a gauche, la valeur en grand, les envies en pastilles. */
+.sm-dem { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px 16px; margin: 0; }
+.sm-dem-r { display: contents; }
+.sm-dem dt { padding-top: 3px; font-size: 13px; font-weight: 550; color: var(--muted); }
+.sm-dem dd { margin: 0; font-size: 15px; line-height: 1.45; }
+.sm-dem .is-fort dd { font-size: 17px; font-weight: 600; letter-spacing: -0.005em; }
+.sm-dem dd small { display: block; margin-top: 1px; font-size: 13.5px; font-weight: 400; color: var(--muted); }
+.sm-dem-envies { display: flex; flex-wrap: wrap; gap: 6px; }
+.sm-dem-envie { display: inline-flex; align-items: center; min-height: 30px; padding: 3px 12px; font-size: 14.5px; font-weight: 550; background: var(--subtle); border: 1px solid var(--line); border-radius: 999px; }
+.sm-dem-envie.is-conseil { border-style: dashed; }
+.sm-dem-vide { font-weight: 400; color: var(--muted); }
 .sm-dem-mot { margin: 12px 0 0; padding: 10px 14px; font-size: 14px; color: var(--text); background: var(--subtle); border-radius: 8px; }
 .sm-dem-mot span { display: block; margin-bottom: 2px; font-size: 12.5px; font-weight: 550; color: var(--muted); }
 .sm-ia-p, .sm-ia-lit { margin: 0; padding: 18px 20px; background: var(--subtle); border-radius: 10px; }
@@ -21134,7 +21143,23 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .sm-ia-s { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .sm .sm-ia-sg { min-height: 36px; padding: 6px 14px; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; background: var(--subtle); border: 0; border-radius: 999px; cursor: pointer; }
 .sm .sm-ia-sg:hover { background: var(--line); }
+.sm-ia-extras { margin: 4px 0 0; font-size: 14.5px; color: var(--muted); }
+.sm-ia-oui { margin: 10px 0 0; font-size: 14.5px; font-weight: 600; }
+.sm-ia-ret { margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 10px; }
+.sm-ia-ret p { margin: 0; font-size: 14px; }
+.sm-ia-ret-g { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* RESERVER EN UN CLIC (2026-11-11) : la carte relit ce qui sera cree, avant le seul clic qui le cree. */
+.sm-resa-l { padding: 16px 20px; background: var(--subtle); border-radius: 10px; }
+.sm-resa-l p { margin: 0; font-size: 15px; }
+.sm-resa-l p + p { margin-top: 2px; }
+.sm-resa-l .sm-ia-quand { margin-bottom: 4px; }
+.sm-resa-l .sm-resa-prix { margin-top: 8px; font-variant-numeric: tabular-nums; }
+.sm-resa-prix b { font-size: 18px; font-weight: 650; }
+.sm-resa-x { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.sm-resa .sm-actions { margin-top: 14px; }
 @media (max-width: 720px) {
+  .sm-dem { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .sm-dem dd { margin-bottom: 10px; }
   .sm-ia-l { flex-direction: column; }
   .sm-ia-quand { font-size: 19px; }
 }

@@ -161,6 +161,7 @@
     "test:assistant-gestes": "node scripts/assistant-gestes-check.js && node scripts/assistant-gestes-check.js --contre-preuves",
     "test:assistant-reservation": "node scripts/assistant-reservation-check.js && node scripts/assistant-reservation-check.js --contre-preuves",
     "test:assistant-tout-faire": "node scripts/assistant-tout-faire-check.js && node scripts/assistant-tout-faire-check.js --contre-preuves",
+    "test:assistant-gestes-centre": "node scripts/assistant-gestes-centre-check.js && node scripts/assistant-gestes-centre-check.js --contre-preuves",
     "test:terrain": "node scripts/terrain-check.js && node scripts/terrain-check.js --contre-preuves",
     "test:assistant-gestes-reservations": "node scripts/assistant-gestes-reservations-check.js && node scripts/assistant-gestes-reservations-check.js --contre-preuves",
     "test:voix-pro": "node scripts/voix-pro-check.js && node scripts/voix-pro-check.js --contre-preuves",

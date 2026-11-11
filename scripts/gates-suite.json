@@ -292,6 +292,7 @@
     "test:assistant-gestes",
     "test:assistant-reservation",
     "test:assistant-tout-faire",
+    "test:assistant-gestes-centre",
     "test:terrain",
     "test:assistant-gestes-reservations",
     "test:voix-pro",

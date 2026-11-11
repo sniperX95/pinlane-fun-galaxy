@@ -160,7 +160,18 @@ const barre = (page, cle) => page.evaluate((c) => {
     goutte: Boolean(el.querySelector('.em-ia-travail .em-ia-point') && !el.querySelector('.em-ia-travail canvas')),
   };
 }, cle);
+// 2026-11-11 (lot S) : la barre montre trois gestes, « Traduire » et « Plus »
+// rangent les autres dans un menu. Comme la gerante, on ouvre le menu qui
+// porte le geste avant de cliquer dessus.
+async function ouvrirMenuDe(page, cle, intention) {
+  await page.evaluate(([c, i]) => {
+    const b = document.querySelector(`[data-em-ia="${c}"] [data-em-ia-intention="${i}"]`);
+    const menu = b && b.closest('details.em-ia-menu');
+    if (menu && !menu.open) menu.querySelector('summary').click();
+  }, [cle, intention]);
+}
 async function geste(page, cle, intention) {
+  await ouvrirMenuDe(page, cle, intention);
   await page.click(`[data-em-ia="${cle}"] [data-em-ia-intention="${intention}"]`);
   await attendre(page, (c) => { const el = document.querySelector(`[data-em-ia="${c}"]`); return el && el.getAttribute('aria-busy') !== 'true'; }, cle);
   await dormir(120);

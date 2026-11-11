@@ -1833,8 +1833,8 @@
   function pv2Humanize(text) {
     return String(text || '').replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, k) => PV2_VAR_LABELS_ALL[k.toLowerCase()] || k);
   }
-  function pv2TokeditHtml({ id, sink, value, single = false, plFocus = '', placeholder = '', classe = '' }) {
-    return `<div class="pv2-tokedit${single ? ' is-single' : ''}${classe ? ` ${classe}` : ''}" id="${esc(id)}" data-sink="${esc(sink)}"${single ? ' data-single="1"' : ''}${plFocus ? ` data-pl-focus="${esc(plFocus)}"` : ''} contenteditable="true" role="textbox" aria-multiline="${single ? 'false' : 'true'}" data-placeholder="${esc(pv2Humanize(placeholder))}" spellcheck="false" oninput="pv2TokeditInput(this)" onkeydown="pv2TokeditKey(event)" onpaste="pv2TokeditPaste(event)">${pv2TokeditRender(value)}</div>`;
+  function pv2TokeditHtml({ id, sink, value, single = false, plFocus = '', placeholder = '', classe = '', labelledby = '' }) {
+    return `<div class="pv2-tokedit${single ? ' is-single' : ''}${classe ? ` ${classe}` : ''}" id="${esc(id)}" data-sink="${esc(sink)}"${single ? ' data-single="1"' : ''}${plFocus ? ` data-pl-focus="${esc(plFocus)}"` : ''}${labelledby ? ` aria-labelledby="${esc(labelledby)}"` : ''} contenteditable="true" role="textbox" aria-multiline="${single ? 'false' : 'true'}" data-placeholder="${esc(pv2Humanize(placeholder))}" spellcheck="false" oninput="pv2TokeditInput(this)" onkeydown="pv2TokeditKey(event)" onpaste="pv2TokeditPaste(event)">${pv2TokeditRender(value)}</div>`;
   }
 
   // Insertion d'une variable au CURSEUR d'un éditeur identifié. Grâce aux
@@ -2582,23 +2582,42 @@
     return [...(messages || [])].reverse().find((m) => m.direction === 'inbound') || null;
   }
 
-  // Le brouillon d une conversation : objet « Re: », corps VIDE, signature
-  // selon la portee reglee dans Apparence, signataire = la personne connectee
-  // (modifiable : c est elle qui signe, pas le role). La reponse proposee par
-  // l agent se lit dans l Assistant et passe dans le brouillon d un clic
-  // (« Utiliser cette réponse », 2026-11-10) : c est la gerante qui la prend.
+  // Le brouillon d une conversation : objet « Re: », signature selon la portee
+  // reglee dans Apparence, signataire = la personne connectee (modifiable :
+  // c est elle qui signe, pas le role). LE TEXTE PART DE CE QUE L AGENT
+  // PROPOSE (2026-11-11, lot S) : tant que le dernier message est celui du
+  // client, la case contient deja sa reponse, a relire et a corriger.
+  // iaBody retient ce texte : tant que la case n a pas bouge, une nouvelle
+  // lecture de l agent le remplace ; des qu elle est touchee, plus rien ne
+  // l ecrase.
   function pv2SignataireTechnique(membre) {
     const nom = String((membre && membre.name) || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
     return nom === 'proprietaire plateforme' || /platform-owner/.test(String((membre && membre.id) || '')) || Boolean(membre && membre.emergency);
   }
 
+  function pv2ThreadPropositionDe(cle) {
+    const d = pv2Threads.detail;
+    if (!d.thread || String(d.thread.id) !== String(cle)) return '';
+    const messages = d.messages || [];
+    const dernier = messages[messages.length - 1];
+    if (!dernier || dernier.direction !== 'inbound') return '';
+    const reply = dernier.analysis && dernier.analysis.reply;
+    return reply ? String(reply.body || '') : '';
+  }
+
   function pv2ThreadReplyDraft(threadId) {
     const cle = String(threadId);
+    const brouillon = pv2Threads.reply[cle];
+    if (brouillon && brouillon.body === brouillon.iaBody) {
+      const propose = pv2ThreadPropositionDe(cle);
+      if (propose && propose !== brouillon.iaBody) { brouillon.body = propose; brouillon.iaBody = propose; }
+    }
     if (!pv2Threads.reply[cle]) {
       const d = pv2Threads.detail;
       const fil = d.thread && String(d.thread.id) === cle ? d.thread : null;
       const entrant = fil ? pv2ThreadDernierEntrant(d.messages) : null;
       const analysis = entrant && entrant.analysis ? entrant.analysis : null;
+      const propose = pv2ThreadPropositionDe(cle);
       // UNE REPONSE GARDE L OBJET DE LA CONVERSATION (2026-09-17). L objet
       // propose par l agent la sortait de la conversation chez le client : Gmail
       // regroupe aussi par objet. « Re: » + l objet, sans doubler le « Re: » ;
@@ -2615,7 +2634,8 @@
       const identite = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0] || null;
       pv2Threads.reply[cle] = {
         subject: sujet,
-        body: '',
+        body: propose,
+        iaBody: propose,
         identityId: pv2Mail.draft.identityId || (identite ? String(identite.id) : ''),
         signature: portee,
         // Le compte « Proprietaire plateforme » ne signe pas : champ vide,
@@ -2651,6 +2671,7 @@
     // (regle du 2026-09-17), celui de l agent ne sert que s il n y en a aucun.
     if (!String(draft.subject || '').trim()) draft.subject = String(reply.subject || '');
     draft.body = String(reply.body || '');
+    draft.iaBody = draft.body;
     // Prendre la reponse de l agent, c est commencer a repondre : meme prise
     // de main que la premiere lettre tapee.
     if (entrant && entrant.id) pv2PrendreLaMain(entrant.id);
@@ -2783,9 +2804,9 @@
         }),
       });
       if (payload.analysis) {
-        // Le brouillon n est pas touche : ce que la gerante a deja ecrit reste.
-        // La nouvelle lecture s affiche dans l Assistant, et sa reponse se
-        // prend d un clic.
+        // Ce que la gerante a deja ecrit reste. Une case encore telle que
+        // l agent l avait remplie prend sa nouvelle reponse au rendu suivant
+        // (pv2ThreadReplyDraft).
         entrant.analysis = payload.analysis;
         toast('Analyse actualisée.');
       }
@@ -4581,13 +4602,17 @@
     const identity = pv2Mail.identities.find((i) => String(i.id) === String(d.identityId)) || pv2Mail.identities[0] || null;
     const fromLine = identity ? `${identity.label || identity.email} <${identity.email}>` : 'expéditeur par défaut';
     const toLine = d.to ? `${d.name ? `${d.name} ` : ''}<${d.to}>` : 'choisissez un client';
+    // TROIS CHAMPS, UNE CASE OU ECRIRE, UN BOUTON (2026-11-11, lot S) : a qui,
+    // l objet, puis le message en grand avec l aide juste dessous. L expediteur,
+    // l envoi programme et l apercu en direct ont un bon defaut : ils attendent
+    // dans « Plus d options ». Un modele se choisit depuis le titre du message.
     return `<section class="pv2-panel pv2-composer" role="dialog" aria-modal="true" aria-label="Nouveau message" data-em-ia-editeur="message">
-      <div class="pv2-panel-head has-sub">
-        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client et un modèle si vous voulez, puis écrivez. L'aperçu montre le mail que le client recevra.</p></div>
-        <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
+      <div class="pv2-panel-head">
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2></div>
+        <button type="button" class="em-lien" onclick="pv2CloseComposer()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
-        <div class="pv2-composer-field pv2-composer-to"><span id="pv2ComboLabel">À</span>
+        <div class="pv2-composer-field pv2-composer-to pv2-composer-wide"><span id="pv2ComboLabel">À qui écrivez-vous ?</span>
           <div class="pv2-combo">
             <input id="pv2ComposerTo" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="pv2ComboList" aria-labelledby="pv2ComboLabel"
               data-pl-focus="emails.composer.to" value="${esc(d.to)}" placeholder="Nom, téléphone ou début d'adresse…"
@@ -4596,30 +4621,17 @@
             <div class="pv2-combo-list" id="pv2ComboList" role="listbox" aria-label="Clients correspondants" hidden></div>
           </div>
         </div>
-        <label class="pv2-composer-field"><span>Expéditeur</span>
-          <select onchange="pv2ComposerField('identityId', this.value); pv2ComposerSyncHints();" aria-label="Adresse d'envoi">${identityOptions}</select>
-        </label>
-        <div class="pv2-composer-field"><span>Modèle</span>
-          <button type="button" class="pv2-tpl-toggle${pv2Mail.pickerOpen ? ' is-open' : ''}" aria-expanded="${pv2Mail.pickerOpen}" aria-controls="pv2TplPicker" onclick="pv2TogglePicker()">
-            <span>${currentTpl ? esc(currentTpl) : 'Choisir un modèle…'}</span>${ci('chevronDown')}
-          </button>
-        </div>
-        <div class="pv2-composer-field pv2-composer-when"><span>Envoi</span>
-          <div class="pv2-composer-when-row">
-            <select onchange="pv2ComposerField('when', this.value); pv2RenderComposer();" aria-label="Moment d'envoi">
-              <option value="now"${d.when !== 'later' ? ' selected' : ''}>Maintenant</option>
-              <option value="later"${d.when === 'later' ? ' selected' : ''}>Programmer</option>
-            </select>
-            ${d.when === 'later' ? `<input type="datetime-local" value="${esc(d.scheduledAt)}" aria-label="Date et heure d'envoi" onchange="pv2ComposerField('scheduledAt', this.value)">` : ''}
-          </div>
-        </div>
-        ${pv2Mail.pickerOpen ? `<div class="pv2-composer-wide">${pv2TplPickerPanel(d, ctx)}</div>` : ''}
-        <div class="pv2-composer-wide">${emIaBarHtml('message')}</div>
         <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          ${pv2TokeditHtml({ id: 'pv2ComposerSubject', sink: 'composerSubject', value: d.subject, single: true, plFocus: 'emails.composer.objet', placeholder: 'Objet du message' })}
+          ${pv2TokeditHtml({ id: 'pv2ComposerSubject', sink: 'composerSubject', value: d.subject, single: true, plFocus: 'emails.composer.objet', placeholder: 'Ce que le client lit en premier' })}
         </div>
-        <div class="pv2-composer-field pv2-composer-wide">
-          <span>Message</span>
+        <div class="pv2-composer-field pv2-composer-wide em-message">
+          <div class="em-message-tete">
+            <span id="pv2ComposerMessageTitre">${d.name ? `Votre message à ${esc(d.name)}` : 'Votre message'}</span>
+            <button type="button" class="pv2-tpl-toggle em-lien${pv2Mail.pickerOpen ? ' is-open' : ''}" aria-expanded="${pv2Mail.pickerOpen}" aria-controls="pv2TplPicker" onclick="pv2TogglePicker()">
+              <span>${currentTpl ? `Modèle ${esc(currentTpl)}` : 'Partir d’un modèle'}</span>${ci('chevronDown')}
+            </button>
+          </div>
+          ${pv2Mail.pickerOpen ? pv2TplPickerPanel(d, ctx) : ''}
           <div class="pv2-toolbar" role="toolbar" aria-label="Mise en forme">
             <button type="button" class="pv2-tool" title="Gras" aria-label="Gras" onclick="pv2ApplyMarker('bold')"><strong>G</strong></button>
             <button type="button" class="pv2-tool" title="Italique" aria-label="Italique" onclick="pv2ApplyMarker('italic')"><em>I</em></button>
@@ -4629,20 +4641,41 @@
             <span class="pv2-toolbar-sep" aria-hidden="true"></span>
             ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVarAt('pv2ComposerBody', '${key}')">${esc(label)}</button>`).join('')}
           </div>
-          ${pv2TokeditHtml({ id: 'pv2ComposerBody', sink: 'composerBody', value: d.body, plFocus: 'emails.composer.message', placeholder: 'Bonjour…' })}
+          ${pv2TokeditHtml({ id: 'pv2ComposerBody', sink: 'composerBody', value: d.body, plFocus: 'emails.composer.message', placeholder: 'Écrivez votre message ici, ou dites à l’assistant juste dessous ce qu’il doit écrire.', labelledby: 'pv2ComposerMessageTitre' })}
           <p class="pv2-vars-hint" id="pv2ComposerVarsHint" ${unresolved.length ? '' : 'hidden'}>${unresolved.length ? `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}` : ''}</p>
-          <div class="pv2-mail-paper">
-            <div class="pv2-mail-paper-subject" id="pv2PreviewSubject">${pv2RenderEmailPreview(d.subject, ctx).replace(/^<p>|<\/p>$/g, '') || '<span class="pv2-preview-empty">Objet du message</span>'}</div>
-            <div class="pv2-mail-paper-meta" id="pv2PreviewMeta"><span><b>De</b> ${esc(fromLine)}</span><span><b>À</b> ${esc(toLine)}</span></div>
-            <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
-          </div>
         </div>
-        <div class="pv2-composer-actions pv2-composer-wide">
-          <button type="button" class="pv2-btn" onclick="pv2ComposerServerPreview()">Voir le mail final</button>
-          ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage') ? '<button type="button" class="pv2-btn" onclick="pv2ComposerSaveAsTemplate()">Garder en modèle</button>' : ''}
+        <div class="pv2-composer-wide">${emIaBarHtml('message')}</div>
+        <details class="em-options pv2-composer-wide"${pv2Mail.optionsOuvertes ? ' open' : ''} ontoggle="pv2Mail.optionsOuvertes = this.open">
+          <summary>Plus d’options<span>expéditeur, envoi programmé, aperçu</span></summary>
+          <div class="em-options-corps pv2-composer-grid">
+            <label class="pv2-composer-field"><span>Expéditeur</span>
+              <select onchange="pv2ComposerField('identityId', this.value); pv2ComposerSyncHints();" aria-label="Adresse d'envoi">${identityOptions}</select>
+            </label>
+            <div class="pv2-composer-field pv2-composer-when"><span>Envoi</span>
+              <div class="pv2-composer-when-row">
+                <select onchange="pv2ComposerField('when', this.value); pv2RenderComposer();" aria-label="Moment d'envoi">
+                  <option value="now"${d.when !== 'later' ? ' selected' : ''}>Maintenant</option>
+                  <option value="later"${d.when === 'later' ? ' selected' : ''}>Programmer</option>
+                </select>
+                ${d.when === 'later' ? `<input type="datetime-local" value="${esc(d.scheduledAt)}" aria-label="Date et heure d'envoi" onchange="pv2ComposerField('scheduledAt', this.value)">` : ''}
+              </div>
+            </div>
+            <div class="pv2-composer-wide">
+              <p class="em-options-titre">Aperçu en direct</p>
+              <div class="pv2-mail-paper">
+                <div class="pv2-mail-paper-subject" id="pv2PreviewSubject">${pv2RenderEmailPreview(d.subject, ctx).replace(/^<p>|<\/p>$/g, '') || '<span class="pv2-preview-empty">Objet du message</span>'}</div>
+                <div class="pv2-mail-paper-meta" id="pv2PreviewMeta"><span><b>De</b> ${esc(fromLine)}</span><span><b>À</b> ${esc(toLine)}</span></div>
+                <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
+              </div>
+            </div>
+          </div>
+        </details>
+        <div class="pv2-composer-actions pv2-composer-wide em-actions">
+          <button type="button" class="em-lien" onclick="pv2ComposerServerPreview()">Voir le mail final</button>
+          ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage') ? '<button type="button" class="em-lien" onclick="pv2ComposerSaveAsTemplate()">Garder en modèle</button>' : ''}
           <span class="pv2-composer-spacer"></span>
-          <button type="button" class="pv2-btn" onclick="pv2CloseComposer()">Annuler</button>
-          <button type="button" class="pv2-btn primary" onclick="pv2ComposerSend()" ${pv2Mail.busy ? 'disabled' : ''}>${ci('send')}${pv2Mail.busy ? 'Envoi…' : 'Envoyer'}</button>
+          <button type="button" class="em-lien" onclick="pv2CloseComposer()">Annuler</button>
+          <button type="button" class="pv2-btn primary em-principal" onclick="pv2ComposerSend()" ${pv2Mail.busy ? 'disabled' : ''}>${ci('send')}${pv2Mail.busy ? 'Envoi…' : 'Envoyer'}</button>
         </div>
       </div>
     </section>`;
@@ -5717,6 +5750,13 @@
     const phrase = emListeFr(morceaux);
     return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}.`;
   }
+  // UN SEUL BOUTON PLEIN PAR ECRAN (2026-11-11, lot S) : quand la section a
+  // le sien (Envoyer dans une conversation ouverte), « Nouveau message » de
+  // l en-tete passe en bouton simple.
+  function emSectionAUnPrincipal(section) {
+    if (section === 'recus') return Boolean(pv2Threads.selectedId);
+    return false;
+  }
   function emHeureDeMaj() {
     const v = opsAdminCache.lastLoadedAt;
     const d = v ? new Date(v) : null;
@@ -5743,12 +5783,12 @@
     ['formel', 'Plus pro'], ['nl', 'En néerlandais'], ['en', 'En anglais'], ['objets', '3 objets'],
   ];
   const EM_IA_TRAVAIL = {
-    ecrire: 'J’écris votre mail.', ameliorer: 'J’améliore votre texte.', raccourcir: 'Je raccourcis votre texte.',
+    ecrire: 'J’écris votre mail.', changer: 'Je réécris votre réponse.', ameliorer: 'J’améliore votre texte.', raccourcir: 'Je raccourcis votre texte.',
     chaleureux: 'Je rends le ton plus chaleureux.', formel: 'Je rends le ton plus professionnel.',
     nl: 'Je traduis votre texte en néerlandais.', en: 'Je traduis votre texte en anglais.', objets: 'Je cherche trois objets.',
   };
   const EM_IA_FAIT = {
-    ecrire: 'Mail écrit par l’IA.', ameliorer: 'Texte amélioré par l’IA.', raccourcir: 'Texte raccourci par l’IA.',
+    ecrire: 'Mail écrit par l’IA.', changer: 'Réponse réécrite par l’IA.', ameliorer: 'Texte amélioré par l’IA.', raccourcir: 'Texte raccourci par l’IA.',
     chaleureux: 'Texte rendu plus chaleureux par l’IA.', formel: 'Texte rendu plus professionnel par l’IA.',
     nl: 'Texte traduit en néerlandais par l’IA.', en: 'Texte traduit en anglais par l’IA.', objet: 'Objet remplacé.',
   };
@@ -5817,7 +5857,7 @@
     const cible = EM_IA_CIBLES[cle];
     const ident = cible ? cible.ident() : '';
     if (!EM_IA[cle] || EM_IA[cle].ident !== ident) {
-      EM_IA[cle] = { ident, brief: '', busy: '', avant: null, objets: [], note: '', conseils: [], erreur: '', mode: '', fait: '', fondu: 0 };
+      EM_IA[cle] = { ident, brief: '', busy: '', avant: null, objets: [], note: '', conseils: [], erreur: '', mode: '', fait: '', fondu: 0, menu: '' };
     }
     return EM_IA[cle];
   }
@@ -5850,17 +5890,51 @@
     const regles = !occupe && e.mode === 'regles' && (e.note || e.conseils.length)
       ? `<div class="em-ia-regles">${e.note ? `<p class="em-ia-note">${esc(e.note)}</p>` : ''}${e.conseils.length ? `<ul class="em-ia-conseils">${e.conseils.map((c) => `<li class="em-ia-conseil">${esc(c)}</li>`).join('')}</ul>` : ''}</div>`
       : '';
+    // TROIS GESTES EN VUE (2026-11-11, lot S) : Ameliorer, Plus court et
+    // Traduire. Les autres attendent dans « Plus ». Dans une reponse que
+    // l agent a deja ecrite, le champ dit ce qu il faut changer, et l aide
+    // reecrit la reponse au lieu d en ecrire une autre.
+    const changer = emIaChanger(cle);
+    const libelle = (k) => (EM_IA_GESTES.find(([x]) => x === k) || [k, k])[1];
+    const geste = (k) => `<button type="button" class="em-ia-geste${e.busy === k ? ' is-busy' : ''}" data-em-ia-intention="${k}" onclick="emIaLancer('${cle}', '${k}')"${verrou}>${esc(libelle(k))}</button>`;
+    const menu = (nom, titre, cles) => `<details class="em-ia-menu" name="em-ia-${cle}" data-em-ia-menu="${nom}"${e.menu === nom && !occupe ? ' open' : ''} ontoggle="emIaMenu('${cle}', '${nom}', this.open)"><summary class="em-ia-geste"${occupe ? ' aria-disabled="true"' : ''}>${esc(titre)}${ci('chevronDown')}</summary><div class="em-ia-menu-liste" role="group" aria-label="${esc(titre)}">${cles.map(geste).join('')}</div></details>`;
+    const autres = ['chaleureux', 'formel', ...(cible.garderObjet ? [] : ['objets'])];
     return `<div class="em-ia" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''}>
       <div class="em-ia-demande">
-        <input class="em-ia-brief" type="text" value="${esc(e.brief)}" placeholder="Dites ce que vous voulez écrire…" aria-label="Ce que le mail doit dire" data-pl-focus="emails.ia.${cle}" oninput="emIaBrief('${cle}', this.value)" onkeydown="if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); emIaLancer('${cle}', 'ecrire'); }"${verrou}>
-        <button type="button" class="pv2-btn sm em-ia-envoyer" data-em-ia-intention="ecrire" onclick="emIaLancer('${cle}', 'ecrire')"${verrou}>${ci('send')}Écrire</button>
+        <input class="em-ia-brief" type="text" value="${esc(e.brief)}" placeholder="${changer ? 'Dites ce qu’il faut changer' : 'Dites ce que vous voulez écrire…'}" aria-label="${changer ? 'Ce qu’il faut changer dans la réponse' : 'Ce que le mail doit dire'}" data-pl-focus="emails.ia.${cle}" oninput="emIaBrief('${cle}', this.value)" onkeydown="if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); emIaLancer('${cle}', 'ecrire'); }"${verrou}>
+        <button type="button" class="pv2-btn sm em-ia-envoyer" data-em-ia-intention="ecrire" onclick="emIaLancer('${cle}', 'ecrire')"${verrou}>${ci('send')}${changer ? 'Réécrire' : 'Écrire'}</button>
       </div>
-      <div class="em-ia-gestes" role="group" aria-label="Aides à l’écriture">${EM_IA_GESTES.filter(([k]) => !(cible.garderObjet && k === 'objets')).map(([k, l]) => `<button type="button" class="em-ia-geste${e.busy === k ? ' is-busy' : ''}" data-em-ia-intention="${k}" onclick="emIaLancer('${cle}', '${k}')"${verrou}>${esc(l)}</button>`).join('')}</div>
+      <div class="em-ia-gestes" role="group" aria-label="Aides à l’écriture">${geste('ameliorer')}${geste('raccourcir')}${menu('traduire', 'Traduire', ['nl', 'en'])}${menu('plus', 'Plus', autres)}</div>
       ${travail}${erreur}${fait}${objets}${regles}
     </div>`;
   }
 
+  // Une reponse deja ecrite se corrige en une phrase, quand l IA est reliee.
+  // Sans IA, la regle ne sait qu ecrire un mail a partir de la phrase : le
+  // champ garde alors son libelle d ecriture.
+  function emIaChanger(cle) {
+    const cible = EM_IA_CIBLES[cle];
+    return cle === 'reponse' && Boolean(pv2Mail.channel && pv2Mail.channel.aiConfigured) && Boolean(cible && cible.lire().body.trim());
+  }
+
   window.emIaBrief = function (cle, valeur) { emIaEtat(cle).brief = String(valeur || ''); };
+  window.emIaMenu = function (cle, nom, ouvert) {
+    const e = emIaEtat(cle);
+    if (ouvert) e.menu = nom;
+    else if (e.menu === nom) e.menu = '';
+  };
+  // Un menu de la barre se referme quand on clique ailleurs ou sur Echap.
+  document.addEventListener('click', (ev) => {
+    document.querySelectorAll('.em-ia-menu[open]').forEach((m) => { if (!m.contains(ev.target)) m.open = false; });
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    document.querySelectorAll('.em-ia-menu[open]').forEach((m) => {
+      const dedans = m.contains(document.activeElement);
+      m.open = false;
+      if (dedans) { const s = m.querySelector('summary'); if (s) s.focus(); }
+    });
+  });
 
   // Pendant l appel, les champs de l editeur ne se touchent plus : un rendu
   // qui arrive entre-temps (donnees qui se rafraichissent) reverrouille aussi.
@@ -5892,16 +5966,21 @@
     if (e.busy) return;
     const actuel = cible.lire();
     const brief = intention === 'ecrire' ? String(e.brief || '').trim() : '';
+    const changer = intention === 'ecrire' && emIaChanger(cle);
     e.erreur = '';
-    if (intention === 'ecrire' && !brief) { e.erreur = 'Dites en quelques mots ce que le mail doit dire.'; cible.peindre(); return; }
+    e.menu = '';
+    if (intention === 'ecrire' && !brief) { e.erreur = changer ? 'Dites en quelques mots ce qu’il faut changer.' : 'Dites en quelques mots ce que le mail doit dire.'; cible.peindre(); return; }
     if (intention !== 'ecrire' && !actuel.subject.trim() && !actuel.body.trim()) { e.erreur = 'Écrivez d’abord un objet ou un texte.'; cible.peindre(); return; }
-    e.busy = intention;
+    e.busy = changer ? 'changer' : intention;
     e.note = '';
     e.conseils = [];
     e.objets = [];
     cible.peindre();
     emIaVerrouiller();
-    const corps = { action: 'emailAssist', centerId: state.adminCenterId || 'libramont', intention, contexte: cible.contexte, subject: actuel.subject, body: actuel.body, brief };
+    // Corriger une reponse deja ecrite : la phrase de la gerante devient une
+    // consigne de reecriture du texte envoye avec elle, rien d autre.
+    const consigne = changer ? `Reprends la réponse déjà écrite (texte) et change seulement ceci, en gardant tout le reste : ${brief}` : brief;
+    const corps = { action: 'emailAssist', centerId: state.adminCenterId || 'libramont', intention, contexte: cible.contexte, subject: actuel.subject, body: actuel.body, brief: consigne };
     if (cible.recu) corps.recu = cible.recu();
     let payload = null;
     let erreur = '';
@@ -5951,8 +6030,10 @@
       if (!e.objets.length && !e.note) e.erreur = 'Aucun objet proposé cette fois. Réessayez dans un instant.';
     } else if (nouveau.subject !== actuel.subject || nouveau.body !== actuel.body) {
       e.avant = { ...actuel };
-      e.fait = intention;
+      e.fait = changer ? 'changer' : intention;
       cible.poser(nouveau);
+      // La consigne est appliquee : le champ se vide pour la suivante.
+      if (changer) e.brief = '';
       e.fondu = Date.now();
     } else if (!e.note && !e.conseils.length) {
       e.erreur = 'L’aide n’a rien changé à ce texte.';
@@ -7060,35 +7141,45 @@
     if (!maySend) return '<p class="pv2-thread-reply-locked">Votre rôle lit les mails, il n’y répond pas.</p>';
     const busy = pv2Threads.replyBusy === cle;
     const entrant = pv2ThreadDernierEntrant(messages);
-    const proposition = Boolean(entrant && entrant.analysis && entrant.analysis.reply && entrant.analysis.reply.body);
     const identityOptions = pv2Mail.identities.length
       ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(r.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
       : `<option value="">${pv2Mail.metaLoading ? 'Chargement des adresses…' : 'Expéditeur par défaut'}</option>`;
     const nom = String((contact && contact.name) || fil.contactName || (contact && contact.email) || fil.contactEmail || 'ce client');
+    // UNE SEULE CASE OU ECRIRE, UN SEUL BOUTON (2026-11-11, lot S) : la case
+    // porte deja la reponse de l agent, l aide dessous la corrige en une
+    // phrase, et Envoyer est le seul bouton plein. L expediteur, l objet et
+    // la signature ont un bon defaut : ils attendent dans « Plus d options ».
+    const propose = pv2ThreadPropositionDe(cle);
+    const deLAgent = Boolean(r.body) && r.body === r.iaBody;
     return `<section class="em-reply pv2-thread-reply" data-pv2-mount="threadReply" aria-label="Répondre" data-em-ia-editeur="reponse">
-      <div class="pv2-thread-reply-head"><h3>Répondre à ${esc(nom)}</h3></div>
+      <h3 class="em-reply-titre" id="pv2ReplyTitre">Votre réponse à ${esc(nom)}</h3>
       ${pv2BandeauPriseHtml(pv2PriseDunAutreSurLeFil(entrant, fil))}
+      ${pv2TokeditHtml({ id: 'pv2ThreadReplyBody', sink: 'threadReplyBody', value: r.body, plFocus: 'emails.reponse.message', placeholder: 'Écrivez ici votre réponse au client.', classe: 'pv2-inbox-reply-body', labelledby: 'pv2ReplyTitre' })}
+      ${deLAgent ? '<p class="em-reply-note">Réponse préparée par l’assistant. Relisez-la, corrigez ce qui ne va pas, puis envoyez.</p>' : ''}
       ${emIaBarHtml('reponse')}
-      <div class="pv2-thread-reply-grid">
-        <label class="pv2-composer-field"><span>Expéditeur</span>
-          <select onchange="pv2InboxReplyField('${escJs(cle)}', 'identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
-        </label>
-        <label class="pv2-composer-field"><span>Objet</span>
-          <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(r.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(cle)}', 'subject', this.value)">
-        </label>
-      </div>
-      <div class="pv2-composer-field"><span>Réponse</span>
-        ${pv2TokeditHtml({ id: 'pv2ThreadReplyBody', sink: 'threadReplyBody', value: r.body, plFocus: 'emails.reponse.message', placeholder: proposition && !r.body ? 'Écrivez votre réponse, ou prenez celle de l’assistant.' : 'Bonjour…', classe: 'pv2-inbox-reply-body' })}
-      </div>
-      <div class="pv2-thread-reply-sign${r.signature ? '' : ' is-off'}">
-        <label class="pv2-check"><input type="checkbox" ${r.signature ? 'checked' : ''} onchange="pv2InboxReplyField('${escJs(cle)}', 'signature', this.checked)"> Ajouter la signature du centre</label>
-        <input value="${esc(r.signatoryName)}" placeholder="Votre nom" aria-label="Nom du signataire" data-pl-focus="emails.reponse.signataire" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryName', this.value)" ${r.signature ? '' : 'disabled'}>
-        <input value="${esc(r.signatoryRole)}" placeholder="Votre rôle" aria-label="Rôle du signataire" data-pl-focus="emails.reponse.role" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryRole', this.value)" ${r.signature ? '' : 'disabled'}>
-      </div>
-      <div class="pv2-composer-actions">
-        <button type="button" class="pv2-btn" onclick="pv2ThreadReplyPreview('${escJs(cle)}')">Voir le mail final</button>
+      <details class="em-options"${pv2Threads.optionsOuvertes ? ' open' : ''} ontoggle="pv2Threads.optionsOuvertes = this.open">
+        <summary>Plus d’options<span>expéditeur, objet, signature</span></summary>
+        <div class="em-options-corps">
+          <div class="pv2-thread-reply-grid">
+            <label class="pv2-composer-field"><span>Expéditeur</span>
+              <select onchange="pv2InboxReplyField('${escJs(cle)}', 'identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
+            </label>
+            <label class="pv2-composer-field"><span>Objet</span>
+              <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(r.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(cle)}', 'subject', this.value)">
+            </label>
+          </div>
+          <div class="pv2-thread-reply-sign${r.signature ? '' : ' is-off'}">
+            <label class="pv2-check"><input type="checkbox" ${r.signature ? 'checked' : ''} onchange="pv2InboxReplyField('${escJs(cle)}', 'signature', this.checked)"> Ajouter la signature du centre</label>
+            <input value="${esc(r.signatoryName)}" placeholder="Votre nom" aria-label="Nom du signataire" data-pl-focus="emails.reponse.signataire" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryName', this.value)" ${r.signature ? '' : 'disabled'}>
+            <input value="${esc(r.signatoryRole)}" placeholder="Votre rôle" aria-label="Rôle du signataire" data-pl-focus="emails.reponse.role" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryRole', this.value)" ${r.signature ? '' : 'disabled'}>
+          </div>
+        </div>
+      </details>
+      <div class="pv2-composer-actions em-actions">
+        <button type="button" class="em-lien" onclick="pv2ThreadReplyPreview('${escJs(cle)}')">Voir le mail final</button>
+        ${propose && !deLAgent ? `<button type="button" class="em-lien" onclick="pv2ThreadUtiliserProposition('${escJs(cle)}')">Reprendre la réponse de l’assistant</button>` : ''}
         <span class="pv2-composer-spacer"></span>
-        <button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer'}</button>
+        <button type="button" class="pv2-btn primary em-principal" onclick="pv2InboxReply('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer'}</button>
       </div>
     </section>`;
   }
@@ -7098,7 +7189,7 @@
   function pv2ThreadDetailHtml(avant = '') {
     const d = pv2Threads.detail;
     if (!pv2Threads.selectedId) {
-      return '<div class="pv2-thread-empty"><strong>Choisissez une conversation</strong><span>Elle s\'affiche ici, message par message, avec qui l\'a lue et qui a répondu.</span></div>';
+      return '<div class="pv2-thread-empty"><strong>Choisissez une conversation</strong><span>Elle s\'ouvre ici, avec la réponse que l\'assistant a préparée. Vous la relisez, puis vous l\'envoyez.</span></div>';
     }
     if (!d.loaded) {
       return `<div class="pv2-thread-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
@@ -7133,9 +7224,9 @@
         <div class="pv2-thread-actions">
           <span class="pv2-chip ${statusTone}">${statusLabel}</span>
           ${maySend ? (fil.status === 'closed'
-            ? `<button type="button" class="pv2-btn sm" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'open')" ${busyStatut ? 'disabled' : ''}>Rouvrir</button>`
-            : `<button type="button" class="pv2-btn sm" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'closed')" ${busyStatut ? 'disabled' : ''}>Terminer</button>`) : ''}
-          ${email ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ThreadVoirClient('${escJs(email)}')">Client</button>` : ''}
+            ? `<button type="button" class="em-lien" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'open')" ${busyStatut ? 'disabled' : ''}>Rouvrir</button>`
+            : `<button type="button" class="em-lien" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'closed')" ${busyStatut ? 'disabled' : ''}>Terminer</button>`) : ''}
+          ${email ? `<button type="button" class="em-lien" onclick="pv2ThreadVoirClient('${escJs(email)}')">Fiche client</button>` : ''}
         </div>
         ${autres.length ? `<details class="pv2-thread-others">
           <summary>${ci('chevronDown')}Autres conversations (${autres.length})</summary>
@@ -7193,9 +7284,12 @@
     return out;
   }
 
+  // LOT S (2026-11-11) : l Assistant n est plus un volet. Sa lecture se pose
+  // juste au-dessus de la reponse, sa reponse est deja dans la case, et ce
+  // qui lui a servi tient sur une ligne qui s ouvre.
   function pv2AssistantHtml() {
     const d = pv2Threads.detail;
-    const tete = (etat) => `<div class="em-assist-head"><h2 class="em-h2">Assistant</h2>${etat ? `<span class="em-assist-etat">${esc(etat)}</span>` : ''}</div>`;
+    const tete = (etat) => `<div class="em-assist-head"><h2 class="em-h2">Ce que l’assistant a compris</h2>${etat ? `<span class="em-assist-etat">${esc(etat)}</span>` : ''}</div>`;
     if (!pv2Threads.selectedId) return `${tete('')}<p class="em-assist-vide">Ouvrez une conversation. L’assistant résume la demande du client et prépare une réponse.</p>`;
     if (!d.loaded || !d.thread) return `${tete('')}<p class="em-assist-vide">${d.error ? 'Conversation indisponible.' : 'Lecture de la conversation…'}</p>`;
     const cle = String(d.thread.id);
@@ -7211,7 +7305,6 @@
     const intentLabel = a.intentLabel || PV2_INTENT_LABELS[a.intent] || a.intent || '';
     const lu = a.analyzedAt ? pv2Quand(a.analyzedAt) : '';
     const faits = emCeQuiAServi(a);
-    const reponse = a.reply && String(a.reply.body || '').trim() ? String(a.reply.body) : '';
     return `${tete(lu ? `Lu le ${lu}` : '')}
       <div class="pv2-inbox-analysis em-assist-lu">
         ${intentLabel || a.urgency === 'haute' ? `<div class="em-assist-tags">${intentLabel ? `<span class="pv2-chip pv2-inbox-intent">${esc(intentLabel)}</span>` : ''}${a.urgency === 'haute' ? '<span class="pv2-chip amber pv2-inbox-urgent">Urgent</span>' : ''}</div>` : ''}
@@ -7219,42 +7312,67 @@
       </div>
       ${a.alerte ? `<div class="em-assist-alerte" role="note"><strong>À vérifier avant d’envoyer</strong><p>${esc(a.alerte)}</p></div>` : ''}
       ${a.repli ? `<p class="em-assist-repli">Réponse type de secours, ${esc(EM_REPLI[a.repli] || 'l’agent n’a pas pu écrire')}. Relisez-la avant d’envoyer.</p>` : ''}
-      ${faits.length ? `<div class="em-assist-bloc">
-        <h3 class="em-h3">Ce qui a servi</h3>
+      ${faits.length ? `<details class="em-assist-servi"${pv2Threads.serviOuvert ? ' open' : ''} ontoggle="pv2Threads.serviOuvert = this.open">
+        <summary>Il s’est appuyé sur ${faits.length} info${faits.length > 1 ? 's' : ''} du centre</summary>
         <ul class="em-assist-faits">${faits.map((f) => `<li><strong>${esc(f.titre)}</strong><span>${esc(f.texte)}</span></li>`).join('')}</ul>
-      </div>` : ''}
-      ${reponse ? `<div class="em-assist-bloc">
-        <h3 class="em-h3">Réponse proposée</h3>
-        <div class="em-assist-reply">${esc(reponse)}</div>
-        ${maySend ? `<button type="button" class="pv2-btn sm em-assist-use" onclick="pv2ThreadUtiliserProposition('${escJs(cle)}')">${ci('sparkles')}Utiliser cette réponse</button>` : ''}
-      </div>` : ''}
-      ${maySend ? `<button type="button" class="pv2-link-btn em-assist-relire" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${busy ? 'Lecture…' : 'Relire ce message avec l’IA'}</button>` : ''}`;
+      </details>` : ''}
+      ${maySend ? `<button type="button" class="em-lien em-assist-relire" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${busy ? 'Lecture…' : 'Relire ce message avec l’IA'}</button>` : ''}`;
   }
 
-  /* ── RECUS : trois volets ─────────────────────────────────────────────────
-     La liste des conversations, la conversation ouverte, l Assistant. Chaque
-     volet defile dans son cadre, et son defilement survit au rendu (cle
+  // LA REPONSE PRETE, HORS DE VUE (2026-11-11, lot S) : a l ouverture d une
+  // conversation, la reponse et Envoyer tombent sous le bord. Tant que la case
+  // n est pas en vue, une barre fine le dit et y mene, curseur dans la case.
+  // Elle n envoie jamais rien : la reponse se relit avant de partir. Son etat
+  // survit aux rendus de la meme conversation (pas de clignement) ; une autre
+  // conversation repart cachee, et l observateur la montre s il le faut.
+  const EM_REPONSE = { fil: '', vue: true, obs: null };
+  function emReponsePreteHtml() {
+    const d = pv2Threads.detail;
+    if (!d.loaded || !d.thread) return '';
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('emails.send')) return '';
+    const cle = String(d.thread.id);
+    const r = pv2Threads.reply[cle];
+    if (!r || !r.body || r.body !== r.iaBody) return '';
+    const cachee = EM_REPONSE.fil === cle ? EM_REPONSE.vue : true;
+    return `<div class="em-reponse-ancre"><div class="em-reponse-prete" data-em-reponse-prete${cachee ? ' hidden' : ''}><span>La réponse de l’assistant est prête.</span><button type="button" class="pv2-btn primary" onclick="emVoirLaReponse()">Voir la réponse</button></div></div>`;
+  }
+  function emSuivreLaReponse() {
+    if (EM_REPONSE.obs) { EM_REPONSE.obs.disconnect(); EM_REPONSE.obs = null; }
+    const fil = String(pv2Threads.selectedId || '');
+    if (EM_REPONSE.fil !== fil) { EM_REPONSE.fil = fil; EM_REPONSE.vue = true; }
+    const barre = document.querySelector('#staffEmailsPage [data-em-reponse-prete]');
+    const champ = document.getElementById('pv2ThreadReplyBody');
+    if (!barre || !champ || typeof IntersectionObserver !== 'function') return;
+    // En vue : la moitie de la case, ou au moins 160 px d une longue reponse.
+    EM_REPONSE.obs = new IntersectionObserver((entrees) => {
+      const e = entrees[entrees.length - 1];
+      EM_REPONSE.vue = e.isIntersecting && (e.intersectionRatio >= 0.5 || e.intersectionRect.height >= 160);
+      barre.hidden = EM_REPONSE.vue;
+    }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+    EM_REPONSE.obs.observe(champ);
+  }
+  window.emVoirLaReponse = function () {
+    const section = document.querySelector('#staffEmailsPage .em-reply');
+    const champ = document.getElementById('pv2ThreadReplyBody');
+    if (!section || !champ) return;
+    section.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
+    champ.focus({ preventScroll: true });
+    const sel = window.getSelection();
+    if (sel) {
+      const debut = document.createRange();
+      debut.selectNodeContents(champ);
+      debut.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(debut);
+    }
+  };
+
+  /* ── RECUS : deux volets (lot S, 2026-11-11) ─────────────────────────────
+     La liste des conversations, puis la conversation ouverte : ses messages,
+     ce que l assistant a compris, et la reponse deja ecrite. Chaque volet
+     defile dans son cadre, et son defilement survit au rendu (cle
      data-em-scroll : celle de la conversation change avec elle, si bien qu un
      autre fil s ouvre en haut). */
-  // QUAND LA BOITE TIENT SUR UNE COLONNE (telephone, petite tablette), l Assistant
-  // passe DANS la conversation, juste avant la reponse : on lit ce que l agent
-  // propose avant le champ a remplir, sans defiler au-dela d une boite vide.
-  // Meme seuil que la mise en page (@container em-main, 700 px).
-  function emAssistantDansLeFil() {
-    const main = document.querySelector('#staffEmailsPage .em-main');
-    const largeur = main && main.clientWidth ? main.clientWidth : window.innerWidth - 120;
-    return largeur <= 700;
-  }
-  let emAssistantMode = null;
-  let emAssistantMinuteur = 0;
-  window.addEventListener('resize', () => {
-    clearTimeout(emAssistantMinuteur);
-    emAssistantMinuteur = setTimeout(() => {
-      if (!document.querySelector('#staffEmailsPage .em-inbox')) return;
-      if (emAssistantMode !== null && emAssistantDansLeFil() !== emAssistantMode) renderStaffEmailsPage();
-    }, 150);
-  });
-
   function pv2EmailsSectionRecus() {
     const o = pv2Overview.data;
     const aRepondre = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : undefined;
@@ -7274,16 +7392,13 @@
           : `<div class="pv2-thread-empty"><strong>${pv2Threads.q ? 'Aucune conversation ne correspond' : { 'a-repondre': 'Rien à répondre', repondus: 'Aucune conversation répondue', termines: 'Aucune conversation terminée', tous: 'Aucune conversation' }[pv2Threads.filtre]}</strong><span>${pv2Threads.q ? 'Essayez un autre nom ou une autre adresse.' : 'Collez un mail avec « Coller un mail reçu », l\'agent prépare la réponse.'}</span></div>`;
     const reste = pv2Threads.loaded && pv2Threads.total > pv2Threads.threads.length ? pv2Threads.total - pv2Threads.threads.length : 0;
     const id = String(pv2Threads.selectedId || '');
-    // Changer de conversation rejoue l entree des deux volets de droite, meme
-    // vers un fil deja ouvert plus tot dans la visite.
+    // Changer de conversation rejoue l entree du volet de droite, meme vers
+    // un fil deja ouvert plus tot dans la visite.
     if (EM_MOTION.fil !== id) {
       delete EM_MOTION.departs[`recus:conv:${id}`];
-      delete EM_MOTION.departs[`recus:assist:${id}`];
       EM_MOTION.fil = id;
     }
-    const dansLeFil = emAssistantDansLeFil();
-    emAssistantMode = dansLeFil;
-    return `<section class="em-inbox${id ? ' has-fil' : ''}${dansLeFil ? ' is-une-colonne' : ''}" aria-label="Conversations">
+    return `<section class="em-inbox${id ? ' has-fil' : ''}" aria-label="Conversations">
       <div class="em-pane em-pane-list">
         <div class="em-pane-tools pv2-thread-tools">
           ${seg(filtres, 'pv2ThreadsFilter')}
@@ -7295,8 +7410,7 @@
         </div>
         ${reste ? `<p class="em-pane-foot">${reste} autre${reste > 1 ? 's' : ''} conversation${reste > 1 ? 's ne sont pas affichées' : ' n’est pas affichée'}. Affinez la recherche pour ${reste > 1 ? 'les' : 'la'} voir.</p>` : ''}
       </div>
-      <div class="em-pane em-pane-conv" data-em-scroll="conv:${esc(id)}"${id ? emEntree(`recus:conv:${id}`) : ''}>${pv2ThreadDetailHtml(dansLeFil && id ? `<aside class="em-assistant em-assistant-fil" aria-label="Assistant">${pv2AssistantHtml()}</aside>` : '')}</div>
-      ${dansLeFil ? '' : `<aside class="em-pane em-pane-assist em-assistant" aria-label="Assistant" data-em-scroll="assist:${esc(id)}"${id ? emEntree(`recus:assist:${id}`) : ''}>${pv2AssistantHtml()}</aside>`}
+      <div class="em-pane em-pane-conv" data-em-scroll="conv:${esc(id)}"${id ? emEntree(`recus:conv:${id}`) : ''}>${pv2ThreadDetailHtml(id ? `<aside class="em-assistant em-assistant-fil" aria-label="Assistant">${pv2AssistantHtml()}</aside>` : '')}${id ? emReponsePreteHtml() : ''}</div>
     </section>`;
   }
 
@@ -7846,7 +7960,7 @@
           <span class="em-stamp">${esc(emHeureDeMaj())}</span>
           <button type="button" class="pv2-btn sm ghost em-icon-btn" onclick="pv2EmailsActualiser()" title="Recharger les données" aria-label="Actualiser">${ci('refresh')}</button>
           <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
-          ${typeof peutGeste !== 'function' || peutGeste('ecrire') ? `<button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>` : ''}
+          ${typeof peutGeste !== 'function' || peutGeste('ecrire') ? `<button type="button" class="pv2-btn${emSectionAUnPrincipal(section) ? '' : ' primary'}" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>` : ''}
         </div>
       </div>
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
@@ -7876,6 +7990,7 @@
       threadReply: pv2Threads.selectedId && pv2Threads.detail.loaded && pv2Threads.detail.thread,
     });
     pv2FillFrames(root);
+    emSuivreLaReponse();
   }
 
   /* ==========================================================================

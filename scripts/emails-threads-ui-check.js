@@ -404,6 +404,64 @@ async function main() {
       'changer de fil relache la main sur l ancien message et la prend sur le nouveau', `prises ${prises2.map((p) => p.body.communicationId).join(',')} / relaches ${relaches2.map((r) => r.body.communicationId).join(',')}`);
 
     // =====================================================================
+    console.log('\n[BARRE] la reponse de l agent, quand elle est hors de vue');
+    // =====================================================================
+    // 2026-11-11 (lot S) : a l ouverture d une conversation, la reponse et
+    // Envoyer tombent sous le bord. Une barre fine en bas du volet le dit et
+    // y mene ; elle s efface quand la reponse est en vue, et elle n envoie
+    // jamais rien (la reponse se relit avant de partir).
+    const barre = await page.evaluate(async () => {
+      const d = pv2Threads.detail;
+      const cle = String(d.thread.id);
+      const entrant = [...d.messages].reverse().find((m) => m.direction === 'inbound');
+      const avant = { brouillon: pv2Threads.reply[cle], analyse: entrant ? entrant.analysis : null };
+      delete pv2Threads.reply[cle];
+      entrant.analysis = { ...(entrant.analysis || {}), reply: { subject: 'Re: gate', body: 'Bonjour,\n\nOui, vous pouvez apporter votre gâteau.\n\nL’équipe' } };
+      renderStaffEmailsPage();
+      // Selon la largeur, c est le volet ou la page qui defile : on remonte
+      // les deux, et « en vue » se mesure a ce que l ecran montre vraiment.
+      const pane = document.querySelector('#staffEmailsPage .em-pane-conv');
+      const enHaut = () => { pane.scrollTop = 0; window.scrollTo(0, 0); };
+      const vu = () => {
+        const c = document.getElementById('pv2ThreadReplyBody').getBoundingClientRect();
+        const p = pane.getBoundingClientRect();
+        const haut = Math.max(c.top, p.top, 0);
+        const bas = Math.min(c.bottom, p.bottom, innerHeight);
+        return { px: Math.max(0, bas - haut), h: c.height };
+      };
+      const enVue = () => { const v = vu(); return v.px >= 160 || v.px >= v.h / 2; };
+      enHaut();
+      await new Promise((r) => setTimeout(r, 450));
+      const lire = () => document.querySelector('#staffEmailsPage [data-em-reponse-prete]');
+      const visible = (el) => Boolean(el) && !el.hidden && el.getClientRects().length > 0;
+      const res = {
+        hors: !enVue(),
+        montre: visible(lire()),
+        texte: ((lire() || {}).textContent || '').trim(),
+        boutons: lire() ? [...lire().querySelectorAll('button')].map((x) => x.getAttribute('onclick') || '') : [],
+      };
+      const envoisAvant = window.__APPELS__.filter((e) => e.action === 'sendDirectEmail').length;
+      if (lire()) lire().querySelector('button').click();
+      await new Promise((r) => setTimeout(r, 1300));
+      res.enVue = enVue();
+      res.focus = document.activeElement ? document.activeElement.id : '';
+      res.cachee = !visible(lire());
+      res.envois = window.__APPELS__.filter((e) => e.action === 'sendDirectEmail').length - envoisAvant;
+      enHaut();
+      await new Promise((r) => setTimeout(r, 450));
+      res.revient = visible(lire());
+      pv2Threads.reply[cle] = avant.brouillon;
+      entrant.analysis = avant.analyse;
+      renderStaffEmailsPage();
+      return res;
+    });
+    ok(barre.hors && barre.montre && /La réponse de l’assistant est prête/.test(barre.texte), 'la reponse hors de vue : la barre le dit, en bas du volet', JSON.stringify({ hors: barre.hors, montre: barre.montre, texte: barre.texte }));
+    ok(barre.boutons.length === 1 && !/pv2InboxReply/.test(barre.boutons[0]), 'la barre n a qu un bouton, et il n envoie pas', barre.boutons.join(' | '));
+    ok(barre.enVue && barre.focus === 'pv2ThreadReplyBody' && barre.cachee, '« Voir la réponse » amene la reponse a l ecran, y pose le curseur, et la barre s efface', JSON.stringify({ enVue: barre.enVue, focus: barre.focus, cachee: barre.cachee }));
+    ok(barre.envois === 0, 'la barre n a rien envoye', String(barre.envois));
+    ok(barre.revient, 'la reponse repasse hors de vue : la barre revient');
+
+    // =====================================================================
     console.log('\n[REPONSE] dans le fil : replyTo + threadId + signature');
     // =====================================================================
     await page.click('#pv2ThreadReplyBody');
@@ -652,6 +710,41 @@ async function main() {
         await pm.evaluate(() => { const r = document.querySelector('#staffEmailsPage .pv2-thread-row'); if (r) r.click(); });
         await attendre(pm, () => pv2Threads.detail.loaded && document.querySelector('#staffEmailsPage .pl-timeline-msg'), null, 'mobile : un fil est ouvert');
         await dormir(300);
+        // La barre au telephone : la page defile, la barre reste en bas de
+        // l ecran tant que la reponse est hors de vue, et n envoie rien.
+        const barreMobile = await pm.evaluate(async () => {
+          const d = pv2Threads.detail;
+          const cle = String(d.thread.id);
+          const dernier = d.messages[d.messages.length - 1];
+          if (!dernier || dernier.direction !== 'inbound') return { monte: false };
+          const avant = { brouillon: pv2Threads.reply[cle], analyse: dernier.analysis };
+          delete pv2Threads.reply[cle];
+          dernier.analysis = { ...(dernier.analysis || {}), reply: { subject: 'Re: gate', body: 'Bonjour,\n\nNous avons de la place mercredi.\n\nL’équipe' } };
+          renderStaffEmailsPage();
+          window.scrollTo(0, 0);
+          await new Promise((r) => setTimeout(r, 450));
+          const b = document.querySelector('#staffEmailsPage [data-em-reponse-prete]');
+          const montre = Boolean(b) && !b.hidden && b.getClientRects().length > 0;
+          const r = montre ? b.getBoundingClientRect() : null;
+          const envoisAvant = window.__APPELS__.filter((e) => e.action === 'sendDirectEmail').length;
+          if (montre) b.querySelector('button').click();
+          await new Promise((q) => setTimeout(q, 1300));
+          const c = document.getElementById('pv2ThreadReplyBody').getBoundingClientRect();
+          const res = {
+            monte: true, montre, enBas: r ? r.bottom <= innerHeight + 1 && r.bottom >= innerHeight - 90 : false,
+            enVue: c.top >= -1 && c.top < innerHeight - 100,
+            focus: document.activeElement ? document.activeElement.id : '',
+            cachee: !b || b.hidden || !document.querySelector('#staffEmailsPage [data-em-reponse-prete]:not([hidden])'),
+            envois: window.__APPELS__.filter((e) => e.action === 'sendDirectEmail').length - envoisAvant,
+          };
+          pv2Threads.reply[cle] = avant.brouillon;
+          dernier.analysis = avant.analyse;
+          renderStaffEmailsPage();
+          window.scrollTo(0, 0);
+          return res;
+        });
+        ok(barreMobile.monte && barreMobile.montre && barreMobile.enBas, 'mobile : la reponse hors de vue, la barre est en bas de l ecran', JSON.stringify(barreMobile));
+        ok(barreMobile.enVue && barreMobile.focus === 'pv2ThreadReplyBody' && barreMobile.cachee && barreMobile.envois === 0, 'mobile : « Voir la réponse » mene a la case, curseur dedans, sans rien envoyer', JSON.stringify(barreMobile));
       }
       if (section === 'sequences') {
         await attendre(pm, () => document.querySelector('#staffEmailsPage .mk-auto-edit-btn'), null, 'mobile : les sequences sont chargees');

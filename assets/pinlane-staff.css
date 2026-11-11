@@ -21379,7 +21379,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-conv .pv2-thread-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 16px; }
 #staffEmailsPage .em-shell .em-conv .pv2-thread-title { min-width: 0; }
 #staffEmailsPage .em-shell .em-conv .pv2-thread-title .pv2-thread-subject { overflow: visible; white-space: normal; text-overflow: clip; text-wrap: pretty; }
-#staffEmailsPage .em-shell .em-conv .pv2-thread-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 6px; margin: 0; }
+#staffEmailsPage .em-shell .em-conv .pv2-thread-actions { grid-column: 2; grid-row: 1; display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 6px; margin: 0; }
 #staffEmailsPage .em-shell .em-conv .pv2-thread-others { grid-column: 1 / -1; }
 #staffEmailsPage .em-shell .em-conv .pl-timeline { gap: 10px; }
 #staffEmailsPage .em-shell .em-msg { padding: 14px 16px; border: 0; border-radius: var(--em-radius); background: var(--em-well); }
@@ -21535,7 +21535,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .em-todo .pv2-btn { grid-column: 2; justify-self: start; }
   #staffEmailsPage .em-shell .em-conv { padding: 14px; }
   #staffEmailsPage .em-shell .em-conv .pv2-thread-head { grid-template-columns: minmax(0, 1fr); }
-  #staffEmailsPage .em-shell .em-conv .pv2-thread-actions { justify-content: flex-start; }
+  #staffEmailsPage .em-shell .em-conv .pv2-thread-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
   #staffEmailsPage .em-shell .em-kv { grid-template-columns: minmax(0, 1fr); }
   #staffEmailsPage .em-shell .em-sent-tools .pv2-search { flex-basis: 100%; max-width: none; }
   #staffEmailsPage .em-shell .em-tools-spacer { display: none; }

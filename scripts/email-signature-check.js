@@ -300,6 +300,14 @@ async function controles(m) {
   const hEquipeSeule = signe(`${ouverture}\nL'équipe Fun Galaxy Libramont`);
   ok(!hEquipeSeule.includes(FORMULE_FG) && equipes(hEquipeSeule) === 1 && coordonnees(hEquipeSeule),
     '[H] corps signe « L équipe X » sans formule (modeles du composeur) : ni formule apres le nom, ni deuxieme equipe');
+  // « L’équipe » sans nom, comme un brouillon de Reçus (emails-threads-ui) :
+  // elle ne dit pas qui ecrit, la signature le dit.
+  const hEquipeSansNom = m.comms.emailShell({
+    title: 'Re: gâteau', body: 'Bonjour,\n\nOui, vous pouvez apporter votre gâteau.\n\nL’équipe', preheader: 'Re: gâteau', center: LIBRAMONT,
+    design: defautsFG, signature: { enabled: true, person: KEVIN, portee: 'manual' },
+  });
+  ok(hEquipeSansNom.includes(FORMULE_FG) && /<strong>Kevin Dupont<\/strong>/.test(hEquipeSansNom),
+    '[H] « L’équipe » seule, sans nom : la signature reste entiere et dit qui ecrit');
   const entier = (corps, html) => corps.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => html.includes(echapper(l)));
   ok(entier(corpsBienAVous, hBienAVous) && entier(corpsEquipe, hEquipe) && entier(corpsSansFormule, hSansFormule) && entier(corpsFormuleAuMilieu, hAuMilieu),
     '[H] le texte de l auteur part entier : aucune ligne retiree ni reecrite');
@@ -373,7 +381,9 @@ async function controles(m) {
     { nom: 'tout le corps est lu', cible: '[H] une formule au milieu du corps ne compte pas : la signature reste entiere',
       fichier: 'lib/ops-communications.js', de: '  const derniere = lignes[lignes.length - 1];', vers: '  const derniere = lignes.find((l) => estFormule(l)) || lignes[lignes.length - 1];' },
     { nom: 'l equipe seule ignoree', cible: '[H] corps signe « L équipe X » sans formule (modeles du composeur) : ni formule apres le nom, ni deuxieme equipe',
-      fichier: 'lib/ops-communications.js', de: '  if (estSignataire(derniere) || (estPrenom(derniere) && estFormule(avant)))', vers: '  if (estPrenom(derniere) && estFormule(avant))' },
+      fichier: 'lib/ops-communications.js', de: "  if (signe === 'nomme') return { formule: true, signataire: true };\n", vers: '' },
+    { nom: 'l equipe sans nom vaut un nom', cible: '[H] « L’équipe » seule, sans nom : la signature reste entiere et dit qui ecrit',
+      fichier: 'lib/ops-communications.js', de: "    if (!reste || /^centre$/iu.test(reste)) return 'anonyme';", vers: "    if (!reste || /^centre$/iu.test(reste)) return 'nomme';" },
     { nom: 'le corps retouche', cible: '[H] le texte de l auteur part entier : aucune ligne retiree ni reecrite',
       fichier: 'lib/ops-communications.js', de: '  const corps = body;\n', vers: "  const corps = String(body).replace(/\\n[^\\n]*$/, '');\n" },
     { nom: 'version texte sans le corps', cible: '[H] la version texte suit la meme regle (formule, equipe, coordonnees)',

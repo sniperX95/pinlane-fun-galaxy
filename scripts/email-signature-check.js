@@ -20,6 +20,13 @@
 //       domaine est refusee.
 //   [F] l ancienne formule enregistree retombe sur celle du centre.
 //   [G] la formule en couleur se lit (3:1 au moins), sinon elle passe a l encre.
+//   [H] le corps signe deja (lot 2b) : un corps fini par une formule (« Bien à
+//       vous, »), suivie ou non de qui signe (« L'équipe X »), garde son texte
+//       entier ; la signature retire sa formule, et son equipe quand le corps
+//       l a ecrite, et garde la photo, les coordonnees et le trait. Une
+//       formule au milieu du corps ne compte pas. Meme regle pour la version
+//       texte et sur chaque chemin : composeur, reponse Reçus, sequence,
+//       campagne, Apercu.
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -49,6 +56,10 @@ async function requete(texte, params = []) {
   const p = params || [];
   if (/^select settings from center_automation_settings where center_id = \$1/i.test(sql)) {
     return { rows: REGLAGES.has(p[0]) ? [{ settings: JSON.parse(JSON.stringify(REGLAGES.get(p[0]))) }] : [], rowCount: 0 };
+  }
+  // Le message recu auquel la reponse Reçus repond (section [H]).
+  if (/^select payload, message_id, references_ids, thread_id, subject from communications where id = \$1/i.test(sql)) {
+    return { rows: p[0] === 77 ? [{ payload: {}, message_id: '<question-77@exemple.be>', references_ids: '', thread_id: null, subject: 'Une piste samedi ?' }] : [], rowCount: 0 };
   }
   return { rows: [], rowCount: 0 };
 }
@@ -248,6 +259,83 @@ async function controles(m) {
   const fClair = couleurFormule(htmlClair, designClair.signature.closing);
   ok(fFG === ACCENT_FG && contraste(fFG, '#ffffff') >= 3 && fClair && fClair !== '#e3d341' && contraste(fClair, '#ffffff') >= 3,
     '[G] la formule prend la couleur du centre quand elle tient 3:1, sinon l encre', JSON.stringify({ fFG, fClair }));
+
+  // =====================================================================
+  console.log('\n[H] le corps signe deja : la signature ne se repete pas');
+  // =====================================================================
+  // Le brouillon de l agent dans Reçus finit par « Bien à vous, », les modeles
+  // par « À bientôt, / L'équipe {{centre}} ». La signature retire alors sa
+  // formule, et son equipe quand le corps l a ecrite ; le texte part entier.
+  const FORMULE_FG = echapper(defautsFG.signature.closing);
+  const equipes = (html) => (String(html).match(/L&#39;équipe Fun Galaxy Libramont/g) || []).length;
+  const fois = (html, texte) => String(html).split(echapper(texte)).length - 1;
+  const trait = (html) => String(html).includes(`<td height="4" bgcolor="${ACCENT_FG}"`);
+  const coordonnees = (html) => /0491\/30\.16\.67/.test(html) && /libramont@fungalaxy\.be/.test(html);
+  const signe = (body, { layout = 'carte' } = {}) => m.comms.emailShell({
+    title: 'Votre piste samedi', body, preheader: 'Votre piste', center: LIBRAMONT,
+    design: { ...defautsFG, signature: { ...defautsFG.signature, layout } }, signature: { enabled: true, person: null, portee: 'sequences' },
+  });
+  const ouverture = 'Bonjour Marie,\n\nVotre piste est réservée samedi à 15 h.';
+  const corpsBienAVous = `${ouverture}\n\nBien à vous,`;
+  const corpsEquipe = `${ouverture}\n\nÀ bientôt,\nL'équipe Fun Galaxy Libramont`;
+  const corpsSansFormule = `${ouverture}\nPensez à venir 10 minutes avant.`;
+  const corpsFormuleAuMilieu = 'Bonjour Marie,\n\nVous nous écriviez :\nBien à vous,\nMarie\n\nVotre piste est bien réservée samedi à 15 h.';
+  const hBienAVous = signe(corpsBienAVous);
+  ok(fois(hBienAVous, 'Bien à vous,') === 1 && !hBienAVous.includes(FORMULE_FG) && equipes(hBienAVous) === 1
+    && hBienAVous.includes(`src="${photoFG}"`) && coordonnees(hBienAVous) && trait(hBienAVous),
+    '[H] corps fini par « Bien à vous, » : la signature retire sa formule, garde l equipe, la photo, les coordonnees et le trait');
+  const hEquipe = signe(corpsEquipe);
+  ok(fois(hEquipe, 'À bientôt,') === 1 && equipes(hEquipe) === 1 && !hEquipe.includes(FORMULE_FG)
+    && hEquipe.includes(`src="${photoFG}"`) && coordonnees(hEquipe) && trait(hEquipe),
+    '[H] corps fini par « À bientôt, / L équipe X » : la signature retire sa formule et son equipe, garde la photo, les coordonnees et le trait');
+  const autresFormes = ['bandeau', 'ligne'].map((layout) => signe(corpsEquipe, { layout }));
+  ok(autresFormes.every((h) => equipes(h) === 1 && !h.includes(FORMULE_FG) && coordonnees(h)) && autresFormes[0].includes(`<td bgcolor="${ACCENT_FG}"`),
+    '[H] bandeau et une ligne : la meme regle, l aplat reste');
+  const hSansFormule = signe(corpsSansFormule);
+  ok(hSansFormule.includes(FORMULE_FG) && equipes(hSansFormule) === 1 && hSansFormule.includes(`src="${photoFG}"`),
+    '[H] corps sans formule de fin : la signature entiere, avec « Funement vôtre, » et l equipe');
+  const hAuMilieu = signe(corpsFormuleAuMilieu);
+  ok(hAuMilieu.includes(FORMULE_FG) && equipes(hAuMilieu) === 1 && fois(hAuMilieu, 'Bien à vous,') === 1,
+    '[H] une formule au milieu du corps ne compte pas : la signature reste entiere');
+  const hEquipeSeule = signe(`${ouverture}\nL'équipe Fun Galaxy Libramont`);
+  ok(!hEquipeSeule.includes(FORMULE_FG) && equipes(hEquipeSeule) === 1 && coordonnees(hEquipeSeule),
+    '[H] corps signe « L équipe X » sans formule (modeles du composeur) : ni formule apres le nom, ni deuxieme equipe');
+  const entier = (corps, html) => corps.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => html.includes(echapper(l)));
+  ok(entier(corpsBienAVous, hBienAVous) && entier(corpsEquipe, hEquipe) && entier(corpsSansFormule, hSansFormule) && entier(corpsFormuleAuMilieu, hAuMilieu),
+    '[H] le texte de l auteur part entier : aucune ligne retiree ni reecrite');
+  const texte = (corps) => m.comms.renderSignatureText({ design: defautsFG, center: LIBRAMONT, corps });
+  const tBienAVous = texte(corpsBienAVous);
+  const tEquipe = texte(corpsEquipe);
+  const tSansFormule = texte(corpsSansFormule);
+  ok(!tBienAVous.includes(defautsFG.signature.closing) && tBienAVous.startsWith('L\'équipe Fun Galaxy Libramont')
+    && !tEquipe.includes(defautsFG.signature.closing) && !tEquipe.includes('L\'équipe') && tEquipe.includes('0491/30.16.67')
+    && tSansFormule.startsWith(`${defautsFG.signature.closing}\nL'équipe Fun Galaxy Libramont`),
+    '[H] la version texte suit la meme regle (formule, equipe, coordonnees)', JSON.stringify({ tBienAVous, tEquipe }));
+
+  // Chaque chemin d envoi passe par ce rendu : composeur, reponse Reçus,
+  // sequence, campagne, et l Apercu de la page Apparence.
+  const kevin = (html) => /<strong>Kevin Dupont<\/strong>/.test(String(html));
+  const composeur = await m.comms.buildDirectEmailPreview({ centerId: 'libramont', subject: 'Votre question', body: corpsBienAVous, member: KEVIN }, deps);
+  ok(!composeur.html.includes(FORMULE_FG) && kevin(composeur.html) && fois(composeur.html, 'Bien à vous,') === 1,
+    '[H] composeur : un texte fini par « Bien à vous, » signe de la personne, sans seconde formule');
+  const envoyes = [];
+  await m.comms.sendDirectEmail({ centerId: 'libramont', to: 'marie@exemple.be', subject: '', body: corpsBienAVous, replyToCommunicationId: 77, attemptId: 'gate-signature-recus', member: KEVIN },
+    { query: requete, enqueue: async (row) => { envoyes.push(row); return { id: 0 }; } });
+  const reponse = envoyes[0] || {};
+  ok(Boolean(reponse.payload && reponse.payload.inReplyTo) && !String(reponse.body).includes(FORMULE_FG) && kevin(reponse.body) && fois(reponse.body, 'Bien à vous,') === 1,
+    '[H] reponse Reçus (sendDirectEmail, en reponse a un message recu) : une seule formule, celle du brouillon');
+  const anniversaire = await m.comms.buildAutomationPreview('libramont', 'birthday_j30', {}, deps);
+  ok(!anniversaire.html.includes(FORMULE_FG) && equipes(anniversaire.html) === 1 && fois(anniversaire.html, 'Bien à vous,') === 1,
+    '[H] sequence anniversaire (« Bien à vous, / L équipe X ») : une formule, une equipe');
+  REGLAGES.set('libramont', { email_design: m.design.validateEmailDesign({ ...defautsFG, signatureScope: { manual: true, sequences: true, campaigns: true } }, LIBRAMONT) });
+  const campagnes = [];
+  await m.comms.enqueueCampaign({ centerId: 'libramont', campaignId: 9, recipients: [{ email: 'c@exemple.be', name: 'C' }], subject: 'Une soirée bowling ?', body: corpsEquipe, scheduledAt: new Date(Date.now() + 86400000).toISOString(), personalize: (t) => t, deps, enqueue: async (row) => { campagnes.push(row); return { id: 1 }; } });
+  REGLAGES.clear();
+  ok(campagnes.length === 1 && !String(campagnes[0].body).includes(FORMULE_FG) && equipes(campagnes[0].body) === 1 && fois(campagnes[0].body, 'À bientôt,') === 1,
+    '[H] campagne signee : une formule, une equipe');
+  const apercuApparence = await m.comms.buildDesignPreview({ centerId: 'libramont', design: defautsFG, sample: 'reponse', member: KEVIN }, deps);
+  ok(apercuApparence.html.includes(FORMULE_FG) && kevin(apercuApparence.html),
+    '[H] Apercu de la page Apparence : son exemple ne finit pas par une formule, la signature s y montre entiere');
 }
 
 (async () => {
@@ -263,7 +351,7 @@ async function controles(m) {
     { nom: 'budget d image retire', cible: '[C] avec un logo d en-tete : la photo de signature n est pas posee',
       fichier: 'lib/ops-communications.js', de: '  if (photoChoisie && imagesRestantes > 0) {', vers: '  if (photoChoisie) {' },
     { nom: 'formule oubliee', cible: '[B] carte avec photo : la formule, l equipe et les reseaux nommes en texte',
-      fichier: 'lib/ops-communications.js', de: "  const closing = String(sig.closing || '').trim();\n  const disposition", vers: "  const closing = '';\n  const disposition" },
+      fichier: 'lib/ops-communications.js', de: "  const closing = deja.formule ? '' : String(sig.closing || '').trim();\n  const disposition", vers: "  const closing = '';\n  const disposition" },
     { nom: 'photos du premier centre pour tous', cible: '[E] un autre centre : sa couleur, jamais celle ni les photos de Fun Galaxy',
       fichier: 'lib/email-design.js', de: '  const liste = center && center.branding && Array.isArray(center.branding.emailPhotos) ? center.branding.emailPhotos : [];',
       vers: "  const liste = require('./ops-knowledge').getCenter('libramont').branding.emailPhotos;" },
@@ -275,6 +363,23 @@ async function controles(m) {
       fichier: 'lib/email-design.js', de: '    closing: closingBrut === ANCIENNE_FORMULE ? sigDefauts.closing : closingBrut,', vers: '    closing: closingBrut,' },
     { nom: 'formule claire illisible', cible: '[G] la formule prend la couleur du centre quand elle tient 3:1, sinon l encre',
       fichier: 'lib/ops-communications.js', de: 'color:${sobre ? EMAIL_THEME.ink : encreLisible(couleur, 3)};">${escapeHtml(closing)}</p>', vers: 'color:${couleur};">${escapeHtml(closing)}</p>' },
+    // Lot 2b : la signature s efface devant la fin que le corps a deja ecrite.
+    { nom: 'liste des formules ignoree', cible: '[H] corps fini par « Bien à vous, » : la signature retire sa formule, garde l equipe, la photo, les coordonnees et le trait',
+      fichier: 'lib/ops-communications.js', de: '    ...FORMULES_DE_FIN_DU_CORPS,\n', vers: '' },
+    { nom: 'qui signe redit', cible: '[H] corps fini par « À bientôt, / L équipe X » : la signature retire sa formule et son equipe, garde la photo, les coordonnees et le trait',
+      fichier: 'lib/ops-communications.js', de: '  if (deja.signataire) identite.length = 0;\n', vers: '' },
+    { nom: 'toute fin vaut une formule', cible: '[H] corps sans formule de fin : la signature entiere, avec « Funement vôtre, » et l equipe',
+      fichier: 'lib/ops-communications.js', de: '  if (estFormule(derniere)) return { formule: true, signataire: false };', vers: '  return { formule: true, signataire: false };' },
+    { nom: 'tout le corps est lu', cible: '[H] une formule au milieu du corps ne compte pas : la signature reste entiere',
+      fichier: 'lib/ops-communications.js', de: '  const derniere = lignes[lignes.length - 1];', vers: '  const derniere = lignes.find((l) => estFormule(l)) || lignes[lignes.length - 1];' },
+    { nom: 'l equipe seule ignoree', cible: '[H] corps signe « L équipe X » sans formule (modeles du composeur) : ni formule apres le nom, ni deuxieme equipe',
+      fichier: 'lib/ops-communications.js', de: '  if (estSignataire(derniere) || (estPrenom(derniere) && estFormule(avant)))', vers: '  if (estPrenom(derniere) && estFormule(avant))' },
+    { nom: 'le corps retouche', cible: '[H] le texte de l auteur part entier : aucune ligne retiree ni reecrite',
+      fichier: 'lib/ops-communications.js', de: '  const corps = body;\n', vers: "  const corps = String(body).replace(/\\n[^\\n]*$/, '');\n" },
+    { nom: 'version texte sans le corps', cible: '[H] la version texte suit la meme regle (formule, equipe, coordonnees)',
+      fichier: 'lib/ops-communications.js', de: '  const deja = finDejaEcrite(corps, { center, design, person });\n  const lignes = [];', vers: "  const deja = finDejaEcrite('', { center, design, person });\n  const lignes = [];" },
+    { nom: 'le mail ne passe pas son corps a la signature', cible: '[H] reponse Reçus (sendDirectEmail, en reponse a un message recu) : une seule formule, celle du brouillon',
+      fichier: 'lib/ops-communications.js', de: 'largeur: largeurDuCorps(preset), corps });', vers: "largeur: largeurDuCorps(preset), corps: '' });" },
   ];
   const survivantes = [];
   for (const c of CAS) {

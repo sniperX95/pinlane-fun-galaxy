@@ -24,7 +24,8 @@
 //   [I] enregistrer le design n ecrase ni les sequences personnalisees ni le
 //       cerveau de l agent (une cle du jsonb, pas le blob) ;
 //   [J] la cloture textuelle « À très vite, L'équipe X » n est pas signee deux
-//       fois, et le pied ne repete pas une coordonnee que la signature porte.
+//       fois : le texte la garde, la signature ne la redit pas (lot 2b) ; et
+//       le pied ne repete pas une coordonnee que la signature porte.
 //
 // CONTRE-EPREUVES par mutation compilee en memoire (disque jamais touche).
 //
@@ -358,17 +359,21 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   // affirmait « À très vite, » en dur : le jour ou la formule de politesse a
   // change (regles d ecriture client, 2026-09-18), il a rougi sur un texte
   // parfaitement sain, alors que la regle qu il defend (ne pas signer deux
-  // fois) n avait pas bouge. La cloture est desormais DERIVEE du gabarit, et
-  // c est son retrait qui est verifie, pas son libelle.
+  // fois) n avait pas bouge. La cloture est desormais DERIVEE du gabarit.
+  // 2026-11-11 (lot 2b) : le texte de l auteur n est plus retouche. La
+  // cloture reste dans le corps, c est la signature qui retire sa formule et
+  // son equipe ; ce controle verifie donc la cloture GARDEE et la signature
+  // sans formule (il verifiait la cloture retiree du corps).
   const modeleAnniv = m.comms.buildBirthdayJ30Message({ name: 'Lucie', partyDateFr: '12 octobre 2025', centerName: 'Fun Galaxy Libramont' });
   const lignesAnniv = String(modeleAnniv.body).split('\n').map((ligne) => ligne.trim()).filter(Boolean);
   const cloture = lignesAnniv[lignesAnniv.length - 2] || '';
   ok(/,$/.test(cloture) && cloture.length <= 60,
     `[J] montage : le gabarit anniversaire finit bien par une cloture textuelle (« ${cloture} »)`);
+  const clotureHtml = cloture.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;');
   ok(sweep.length === 1 && equipe(anniversaire.body) === 1
     && String(anniversaire.payload.textBody).includes(cloture)
-    && !String(anniversaire.body).includes(`${cloture}</p>`),
-    `[J] anniversaire : UNE seule « L équipe Fun Galaxy Libramont » dans le HTML (la signature), la cloture « ${cloture} » retiree ; l alternative texte reste entiere`);
+    && String(anniversaire.body).split(clotureHtml).length === 2 && !sig(anniversaire.body),
+    `[J] anniversaire : le texte garde sa cloture « ${cloture} » et son equipe, la signature ne les redit pas (UNE « L équipe Fun Galaxy Libramont », aucune formule de signature) ; l alternative texte reste entiere`);
   ok(/\/api\/u\?k=[0-9a-f]{32}/.test(anniversaire.body) && anniversaire.payload.unsubToken, '[J] contraste : le lien de retrait marketing est toujours la');
   // Le pied de marque n existe que hors Mail simple : ces deux regles se testent sur Classique.
   const dedup = await rendu(m, { design: { ...defautsLibramont, preset: 'classique' }, portee: 'manual' });
@@ -453,8 +458,8 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'la cloture textuelle est signee deux fois',
       fichier: 'lib/ops-communications.js',
-      de: '  const corps = avecSignature ? retirerClotureEnDouble(body, center) : body;',
-      vers: '  const corps = body;',
+      de: '  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurDuCorps(preset), corps });',
+      vers: "  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurDuCorps(preset), corps: '' });",
       rejouer: async (mm) => { const captes = []; await mm.comms.runBirthdayJ30Sweep('libramont', { query: requete, enqueue: async (row) => { captes.push(row); return { id: 1 }; } }, { today: iso(0) }); return captes[0].body; },
       rouge: (html) => equipe(html) !== 1,
     },

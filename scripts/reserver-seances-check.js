@@ -366,79 +366,83 @@ async function barre(t, texteTape) {
   await t.taper('#rsBarre', texteTape);
 }
 
+// Le telephone du client est obligatoire (2026-11-11) : il se tape au ticket (un geste
+// de plus), ou dans la barre avec le reste.
+const TEL_COMPTOIR = '0470 12 34 56';
 const TACHES = [
-  { id: 'T1', budget: 3, consigne: '6 personnes, une piste de bowling, tout de suite, sans nom',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 6); await pret(t.page); await t.clic('#rvCreer'); },
+  { id: 'T1', budget: 4, consigne: '6 personnes, une piste de bowling, tout de suite, sans nom',
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 6); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 6 && r.type === 'bowling' && r.status === 'arrived' },
-  { id: 'T2', budget: 3, consigne: 'le meme client paie par carte en commandant',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 6); await pret(t.page); await t.clic('#rvCreerPaye0'); },
+  { id: 'T2', budget: 4, consigne: 'le meme client paie par carte en commandant',
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 6); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreerPaye0'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 6 && r.status === 'paid' && /card|carte/i.test(String(r.payment_method)),
     fini: (lignes) => lignes.length > 0 && lignes[0].status === 'paid' },
   { id: 'T3', budget: 3, consigne: 'au telephone : Renard, 8, bowling demain 14:00, 0471 23 45 67',
     jouer: async (t) => { await t.ouvrir(); await barre(t, '8 bowling demain 14h famille renard 0471 23 45 67'); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 8 && heureDe(r) === '14:00' && /Renard/i.test(r.name) && String(r.phone).replace(/\D/g, '').includes('471234567') && r.status === 'pending' },
-  { id: 'T4', budget: 5, consigne: 'laser pour 12, deux parties, au prochain depart',
+  { id: 'T4', budget: 6, consigne: 'laser pour 12, deux parties, au prochain depart',
     // (le laser replie se prend d un toucher sur « Choisir » : le bowling propose lui cede sa
     // place, a l heure qui tient la plus proche, le prochain depart)
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 12); await t.clic('[data-quoi="laser_game"][data-var="2"]'); await t.clic('#rsAjout-laser_game'); await t.page.waitForSelector(`${seanceDe('laser_game')}.is-on`); await pret(t.page); await t.clic('#rvCreer'); },
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 12); await t.clic('[data-quoi="laser_game"][data-var="2"]'); await t.clic('#rsAjout-laser_game'); await t.page.waitForSelector(`${seanceDe('laser_game')}.is-on`); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 12 && a(r, 'laser') && heureDe(r) >= '15:30' },
   { id: 'T5', budget: 3, consigne: 'anniversaire, formule F3, 10 enfants, samedi 23 a 14:00, Lea',
-    jouer: async (t) => { await t.ouvrir(); await barre(t, '10 f3 sam 14h Léa'); await t.touche('Enter'); },
+    jouer: async (t) => { await t.ouvrir(); await barre(t, `10 f3 sam 14h Léa ${TEL_COMPTOIR}`); await t.touche('Enter'); },
     attendu: ([r]) => r.date === '2027-01-23' && r.pax === 10 && r.formule_id && heureDe(r) === '14:00' && /L[eé]a/i.test(r.name) },
   // (le laser replie s ajoute d un toucher sur « Ajouter », a la suite du bowling choisi)
-  { id: 'T6', budget: 6, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
+  { id: 'T6', budget: 7, consigne: 'bowling puis laser pour 8, aujourd hui a 18:00',
     jouer: async (t) => {
       await t.ouvrir(); await nombre(t, 8); await heureProche(t, 'bowling', '18:00');
       await t.clic('#rsAjout-laser_game'); await t.page.waitForSelector('#rsL-a-laser_game');
-      await pret(t.page); await t.clic('#rvCreer');
+      await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === JOUR && r.pax === 8 && a(r, 'bowling') && a(r, 'laser') },
-  { id: 'T7', budget: 6, consigne: 'groupe de 20 au bowling, 1 h 30, a 19:00',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 20); await t.clic('[data-quoi="bowling"][data-var="1.5"]'); await heureProche(t, 'bowling', '19:00'); await pret(t.page); await t.clic('#rvCreer'); },
+  { id: 'T7', budget: 7, consigne: 'groupe de 20 au bowling, 1 h 30, a 19:00',
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 20); await t.clic('[data-quoi="bowling"][data-var="1.5"]'); await heureProche(t, 'bowling', '19:00'); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 20 && (r.lanes || []).length >= 3 && Number(r.duration) === 1.5 },
-  { id: 'T8', budget: 8, consigne: 'quatre personnes, la piste 8, demain a 17:00',
+  { id: 'T8', budget: 9, consigne: 'quatre personnes, la piste 8, demain a 17:00',
     jouer: async (t) => {
       await t.ouvrir(); await nombre(t, 4); await jour(t, '2027-01-17'); await heureProche(t, 'bowling', '17:00');
       await t.clic('#rsL-a-bowling'); await t.page.waitForSelector('[data-piste="8"]'); await t.clic('[data-piste="8"]');
-      await t.page.waitForSelector('[data-piste="8"].is-on'); await pret(t.page); await t.clic('#rvCreer');
+      await t.page.waitForSelector('[data-piste="8"].is-on'); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 4 && JSON.stringify((r.lanes || []).map(Number)) === '[8]' && heureDe(r) === '17:00' },
   { id: 'T9', budget: 5, consigne: 'Noel, 5, bowling demain 11:00, e-mail et note pour l equipe',
     jouer: async (t) => {
-      await t.ouvrir(); await barre(t, '5 bowling demain 11h famille noel noel@exemple.be');
+      await t.ouvrir(); await barre(t, `5 bowling demain 11h famille noel noel@exemple.be ${TEL_COMPTOIR}`);
       await t.clic('#rsL-client'); await t.page.waitForSelector('#qbNotes'); await t.taper('#qbNotes', 'gâteau à 12 h');
       await pret(t.page); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 5 && /noel@exemple\.be/i.test(r.email) && /g[aâ]teau/i.test(r.notes) },
   { id: 'T10', budget: 5, consigne: 'deux reservations d un coup pour le meme client, demain',
     jouer: async (t) => {
-      await t.ouvrir(); await barre(t, '4 bowling demain 16h'); await t.clic('#rvEncore');
+      await t.ouvrir(); await barre(t, `4 bowling demain 16h ${TEL_COMPTOIR}`); await t.clic('#rvEncore');
       await t.page.waitForSelector('.rv-resa:nth-child(2)'); await barre(t, '6 laser demain 16h30'); await t.touche('Enter');
     },
     attendu: (rs) => rs.length >= 2 && rs.some((r) => r.pax === 4 && a(r, 'bowling')) && rs.some((r) => r.pax === 6 && a(r, 'laser')) && rs.every((r) => r.date === '2027-01-17'),
     fini: (lignes) => lignes.length >= 2 },
   { id: 'T11', budget: 6, consigne: '6, bowling demain 15:00, le gerant fait 30 euros',
     jouer: async (t) => {
-      await t.ouvrir(); await barre(t, '6 bowling demain 15h'); await t.clic('#rsL-total');
+      await t.ouvrir(); await barre(t, `6 bowling demain 15h ${TEL_COMPTOIR}`); await t.clic('#rsL-total');
       await t.page.waitForSelector('#qbCustomPrice'); await t.taper('#qbCustomPrice', '30'); await t.clic('#rsRaison-0'); await t.clic('#rvCreer');
     },
     attendu: ([r]) => r.date === '2027-01-17' && r.pax === 6 && Number(r.price) === 30 },
   // (la tuile ajoute sans quitter les activites : son heure se regle sur sa ligne du ticket)
-  { id: 'T12', budget: 6, consigne: 'minigolf seul pour 5, aujourd hui a 16:00',
-    jouer: async (t) => { await t.ouvrir(); await nombre(t, 5); await t.clic('#rsT-minigolf_blacklight'); await t.page.waitForSelector('#rsL-a-minigolf_blacklight'); await t.clic('#rsL-a-minigolf_blacklight'); await t.page.waitForSelector('[data-heure-l="16:00"]'); await t.clic('[data-heure-l="16:00"]'); await pret(t.page); await t.clic('#rvCreer'); },
+  { id: 'T12', budget: 7, consigne: 'minigolf seul pour 5, aujourd hui a 16:00',
+    jouer: async (t) => { await t.ouvrir(); await nombre(t, 5); await t.clic('#rsT-minigolf_blacklight'); await t.page.waitForSelector('#rsL-a-minigolf_blacklight'); await t.clic('#rsL-a-minigolf_blacklight'); await t.page.waitForSelector('[data-heure-l="16:00"]'); await t.clic('[data-heure-l="16:00"]'); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer'); },
     attendu: ([r]) => r.date === JOUR && r.pax === 5 && a(r, 'minigolf') },
   // LA TACHE CLAVIER : rien que le clavier une fois la fenetre ouverte. La premiere touche
   // ouvre la barre sans se perdre, Entree cree.
-  { id: 'TC', budget: 3, consigne: 'au clavier : 8 laser 17h dupont, Entree',
+  { id: 'TC', budget: 3, consigne: 'au clavier : 8 laser 17h dupont 0470 12 34 56, Entree',
     jouer: async (t) => {
       await t.ouvrir(); await t.page.waitForSelector('#rsHaut [data-pax]');
-      t.compte.gestes += 1; t.compte.frappes += 18; await t.page.keyboard.type('8 laser 17h dupont', { delay: 25 });
+      t.compte.gestes += 1; t.compte.frappes += 32; await t.page.keyboard.type(`8 laser 17h dupont ${TEL_COMPTOIR}`, { delay: 25 });
       await t.page.waitForFunction(() => /Laser/.test(document.querySelector('#rsLignes').textContent));
       await t.touche('Enter');
     },
     attendu: ([r]) => r.date === JOUR && r.pax === 8 && a(r, 'laser') && a(r, '17:00') && /^dupont$/i.test(r.name) },
 ];
-const BUDGET_DOUZE = 59;
+// 59 avant le telephone obligatoire : sept commandes au toucher prennent un geste de plus.
+const BUDGET_DOUZE = 66;
 
 async function scenarioS1(browser) {
   console.log('\n[S1] les douze commandes du comptoir et la tache clavier');

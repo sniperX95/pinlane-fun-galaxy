@@ -174,7 +174,7 @@ async function main() {
     // Les gestes du comptoir. « Créer » ne part qu une fois le nombre de
     // joueurs choisi (« Combien de joueurs ? ») : le gate le choisit d abord.
     const ouvrir = async (prefill) => {
-      await page.evaluate((p) => window.openQuickBook(p), { date: demain, startTime: '14:00', ...prefill });
+      await page.evaluate((p) => window.openQuickBook(p), { date: demain, startTime: '14:00', phone: '0470 12 34 56', ...prefill });
       await page.waitForSelector('#quickBookOverlay .qb-modal.rv #rsLignes .rs-tk-a', { timeout: 8000 });
       await page.click('#rsHaut [data-pax="4"]');
       await page.waitForSelector('#rsHaut [data-pax="4"].is-on', { timeout: 3000 });

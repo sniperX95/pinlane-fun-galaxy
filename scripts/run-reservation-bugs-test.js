@@ -207,9 +207,8 @@ async function main() {
     assert(b3b.okEmpty === true && b3b.remEmpty === 20, 'créneau vide : 10 joueurs OK, 20 places restantes');
 
     // ================= BUG 1 : double-clic / anti double-submit =================
-    // Les seances (2026-11-03) : le telephone se tape dans le champ du ticket (#qbQui,
-    // nom OU telephone) ou sur la page Client (#qbPhone) ; le blur de chacun normalise
-    // le numero et repeint. Créer ne cree qu une fois le nombre de joueurs choisi (une
+    // Le telephone se tape au ticket (#qbPhone, obligatoire depuis le 2026-11-11), avec
+    // le nom et la note ; son blur normalise le numero sans repeindre. Créer ne cree qu une fois le nombre de joueurs choisi (une
     // entree qui donne pax le pose) et porte data-pret="1" quand le plan du serveur est la.
     console.log('\n[BUG 1] Un seul clic crée la réservation + anti double-submit');
     const creerPret = () => page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 8000 }).catch(() => {});
@@ -233,27 +232,26 @@ async function main() {
     await creerPret();
     // focus le champ téléphone : son blur déclenchait un re-render qui détruisait
     // le bouton avant l'arrivée du clic (le fameux « cliquer 2 fois »).
-    await page.focus('#qbQui');
+    await page.focus('#qbPhone');
     const montageTicket = await montage();
-    assert(montageTicket.focus === 'qbQui' && montageTicket.valeur.replace(/\D/g, '') === '32470111222' && montageTicket.pret === '1', `montage : le téléphone tapé dans le ticket (#qbQui) a le focus, Créer est prêt (${JSON.stringify(montageTicket)})`);
+    assert(montageTicket.focus === 'qbPhone' && montageTicket.valeur.replace(/\D/g, '') === '32470111222' && montageTicket.pret === '1', `montage : le téléphone du ticket (#qbPhone) a le focus, Créer est prêt (${JSON.stringify(montageTicket)})`);
     const postsAfterOneClick = await unClic();
     assert(postsAfterOneClick === 1, `1 clic (champ tél. focus) → exactement 1 POST (obtenu ${postsAfterOneClick})`);
 
-    // Le meme, le telephone tape sur la page Client (« E-mail, note, occasion »).
+    // Le meme, le telephone puis le nom tapes au ticket : le focus dans le nom.
     await seed([]);
     await page.evaluate(({ date }) => {
       window.__RES_POSTS__ = [];
       openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true, pax: 4 });
-      quickBookState.name = 'Client Page';
       renderQuickBook();
     }, { date: TEST_DATE });
-    await page.click('#rsL-client');
     await page.fill('#qbPhone', '0470 11 12 22');
+    await page.fill('#qbName', 'Client Page');
     await creerPret();
     const montageClient = await montage();
-    assert(montageClient.focus === 'qbPhone' && montageClient.valeur === '0470 11 12 22' && montageClient.pret === '1', `montage : le téléphone tapé sur la page Client (#qbPhone) a le focus, Créer est prêt (${JSON.stringify(montageClient)})`);
+    assert(montageClient.focus === 'qbName' && montageClient.valeur === 'Client Page' && montageClient.pret === '1', `montage : le nom du ticket (#qbName) a le focus, le telephone est tape, Créer est prêt (${JSON.stringify(montageClient)})`);
     const postsPageClient = await unClic();
-    assert(postsPageClient === 1, `1 clic (téléphone de la page Client focus) → exactement 1 POST (obtenu ${postsPageClient})`);
+    assert(postsPageClient === 1, `1 clic (nom du ticket focus) → exactement 1 POST (obtenu ${postsPageClient})`);
 
     // Anti double-submit : 2 appels concurrents → 1 seul POST
     const doubleSubmit = await page.evaluate(({ date }) => {
@@ -361,29 +359,34 @@ async function main() {
       };
       // Sans email : ACCEPTÉ côté staff (contact libre).
       const noEmail = await attempt({ name: 'Client Sans Mail', phone: '+32470444444', email: '' });
-      // Sans nom NI email NI téléphone : ACCEPTÉ, avec fallback nom « Client ».
+      // Sans téléphone : REFUSÉ, rien ne part (obligatoire depuis le 2026-11-11).
       const emptyAll = await attempt({ name: '', phone: '+32 ', email: '' });
+      // Sans nom ni e-mail, avec un téléphone : ACCEPTÉ, avec le nom de repli « Client ».
+      const sansNom = await attempt({ name: '', phone: '+32470444444', email: '' });
       // Email présent mais mal formé : refusé (garde-fou format uniquement).
       const badEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'pas-un-email' });
       // Email valide : part normalement.
       const goodEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'client@test.com' });
       // Badges « obligatoire » (qb-req) absents dans la modale staff. Les seances : le
-      // champ e-mail vit sur la page Client (« E-mail, note, occasion »), lue aussi.
+      // champ e-mail vit sur la page Client (« E-mail, occasion »), lue aussi.
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       renderQuickBook();
       const accueil = document.querySelector('#quickBookOverlay').innerHTML;
       document.getElementById('rsL-client').click();
       const champEmail = Boolean(document.querySelector('#quickBookOverlay input[type="email"]'));
       const modalHtml = accueil + document.querySelector('#quickBookOverlay').innerHTML;
-      const hasReqBadge = /qb-req|>obligatoire</i.test(modalHtml);
+      const hasReqBadge = /qb-req/i.test(modalHtml);
+      // Le seul « obligatoire » de la fenetre est celui du telephone (2026-11-11).
+      const obligatoires = [...document.querySelectorAll('#quickBookOverlay .rs-tk-lbl em')].filter((e) => /obligatoire/i.test(e.textContent)).map((e) => { const l = e.closest('label'); const c = l ? l.querySelector('input, textarea') : null; return c ? c.id : ''; });
       const emailRequiredAttr = /type="email"[^>]*\brequired\b/i.test(modalHtml);
-      return { noEmail, emptyAll, badEmail, goodEmail, hasReqBadge, emailRequiredAttr, champEmail };
+      return { noEmail, emptyAll, sansNom, badEmail, goodEmail, hasReqBadge, obligatoires, emailRequiredAttr, champEmail };
     }, { date: TEST_DATE });
     assert(emailFront.noEmail.posts === 1, `staff sans email : la réservation part quand même (1 POST, obtenu ${emailFront.noEmail.posts})`);
-    assert(emailFront.emptyAll.posts === 1 && emailFront.emptyAll.last && emailFront.emptyAll.last.name === 'Client', `staff nom/tél/email vides : accepté avec fallback nom « Client » (obtenu "${emailFront.emptyAll.last && emailFront.emptyAll.last.name}")`);
+    assert(emailFront.emptyAll.posts === 0, `staff sans téléphone : rien ne part, le téléphone est obligatoire (obtenu ${emailFront.emptyAll.posts} POST)`);
+    assert(emailFront.sansNom.posts === 1 && emailFront.sansNom.last && emailFront.sansNom.last.name === 'Client', `staff sans nom ni e-mail, avec téléphone : accepté avec le nom « Client » (obtenu "${emailFront.sansNom.last && emailFront.sansNom.last.name}")`);
     assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé saisi : refusé + message ("${emailFront.badEmail.error}")`);
     assert(emailFront.goodEmail.posts === 1, `email valide : la réservation part (1 POST, obtenu ${emailFront.goodEmail.posts})`);
-    assert(!emailFront.hasReqBadge, 'aucun badge « OBLIGATOIRE » (qb-req) dans la modale staff');
+    assert(!emailFront.hasReqBadge && emailFront.obligatoires.join() === 'qbPhone', `aucun ancien badge (qb-req), le seul « obligatoire » est le téléphone (${emailFront.obligatoires.join() || 'aucun'})`);
     assert(emailFront.champEmail && !emailFront.emailRequiredAttr, `le champ email staff n'a plus l'attribut HTML required (champ lu sur la page Client : ${emailFront.champEmail})`);
 
     // ============ CHANTIER 3b : champ Joueurs : saisie sans perte de focus ============
@@ -443,8 +446,8 @@ async function main() {
     // illogique ») : ce qui ouvre les reglages dit ce qu il ouvre, chaque section porte
     // son titre, l e-mail n est jamais noye dans les reglages d une ligne. Les seances
     // (2026-11-03) n ont plus de repli ni de chevrons : chaque ligne du ticket ouvre sa
-    // page a gauche (Durée, Pistes, Laquelle, Heure) ; « E-mail, note, occasion », dans
-    // le ticket, ouvre la page Client (e-mail, note pour l equipe).
+    // page a gauche (Durée, Pistes, Laquelle, Heure) ; « E-mail, occasion », dans
+    // le ticket, ouvre la page de l e-mail ; la note pour l equipe est au ticket.
     console.log('\n[CHANTIER 4] Chaque ligne ouvre ses réglages, l\'e-mail reste à un geste');
     const options = await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true, pax: 4 });
@@ -470,14 +473,14 @@ async function main() {
       const noteLabel = notes ? ((notes.closest('label') || {}).textContent || '').trim() : '';
       return { emailUnGeste, emailClient: Boolean(email && email.getClientRects().length), ligneLabel, titre, blockLabels, departLabel, ligneHasEmail, hasNotesTextarea: Boolean(notes && notes.tagName === 'TEXTAREA' && notes.getClientRects().length), noteLabel };
     }, { date: TEST_DATE });
-    assert(options.emailUnGeste && options.emailClient && !options.ligneHasEmail, `l'e-mail reste à un geste dans le billet (« E-mail, note, occasion »), jamais dans le détail d'une ligne (lien ${options.emailUnGeste}, page Client ${options.emailClient}, ligne ${options.ligneHasEmail})`);
+    assert(options.emailUnGeste && options.emailClient && !options.ligneHasEmail, `l'e-mail reste à un geste dans le billet (« E-mail, occasion »), jamais dans le détail d'une ligne (lien ${options.emailUnGeste}, page Client ${options.emailClient}, ligne ${options.ligneHasEmail})`);
     assert(!/mail/i.test(options.ligneLabel), `le libellé de ce qui ouvre les réglages ne mentionne pas « email » ("${options.ligneLabel}")`);
     assert(/^Bowling .*, changer$/.test(options.ligneLabel) && options.titre === 'Bowling', `la ligne dit ce qu elle ouvre, sa page porte son nom ("${options.ligneLabel}" -> "${options.titre}")`);
     assert(options.departLabel === 'Heure 16:00', `le départ précis se règle sur la ligne, à sa rangée Heure ("${options.departLabel}")`);
     assert(options.blockLabels.includes('Pistes'), `section des pistes présente et étiquetée (${options.blockLabels.join(', ')})`);
     assert(/Note pour l’équipe/.test(options.noteLabel), `la note pour l équipe est présente et étiquetée ("${options.noteLabel}")`);
     assert(!options.ligneHasEmail, 'l\'email n\'est pas noyé dans les réglages d\'une ligne');
-    assert(options.hasNotesTextarea, 'les notes internes sont saisissables (page Client)');
+    assert(options.hasNotesTextarea, 'les notes internes sont saisissables (au ticket)');
 
     assert(pageErrors.length === 0, `aucune erreur JS pendant le test (${pageErrors.join(' | ') || 'RAS'})`);
     console.log('\nreservation-bugs-test-ok');

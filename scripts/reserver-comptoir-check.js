@@ -323,7 +323,7 @@ const texteDe = (page, sel) => page.evaluate((sel) => { const el = document.quer
 // LA FENETRE « LES SEANCES » (2026-11-03, assets/app-main.js, bloc RESERVER, LES
 // SEANCES). A gauche les joueurs, le jour et les seances de chaque activite ; a
 // droite le ticket : ses lignes (#rsLignes, un refus en rouge sur sa ligne :
-// #rvRefus), le champ client unique #qbQui, la ligne d etat #rvVerdict et le pied,
+// #rvRefus), le client au ticket (#qbPhone obligatoire, #qbName, #qbNotes), la ligne d etat #rvVerdict et le pied,
 // dont le seul bouton plein est #rvCreer (data-pret="1" quand le plan du serveur
 // tient ; « Prendre 17:00 », data-proche, quand le planning refuse).
 async function ouvrirReserver(page) {
@@ -450,15 +450,20 @@ async function scenarioD1(browser, v) {
       // (« Combien de joueurs ? ») : un toucher, rien de tape.
       await choisirJoueurs(page, 4);
       const pose = await planPose(page, true);
-      // Le comptoir : le ticket porte le champ unique du client, vide et facultatif.
-      const qui = await page.evaluate(() => { const c = document.getElementById('qbQui'); return c ? { valeur: c.value, aria: c.getAttribute('aria-label') || '' } : null; });
-      v('D1', pose && Boolean(qui) && qui.valeur === '' && /facultatif/i.test(qui.aria), 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, champ client ${JSON.stringify(qui)}`);
+      // Le comptoir : le ticket porte le telephone du client, vide et obligatoire.
+      const qui = await page.evaluate(() => { const c = document.getElementById('qbPhone'); return c ? { valeur: c.value, aria: c.getAttribute('aria-label') || '', exige: c.getAttribute('aria-required') === 'true' } : null; });
+      v('D1', pose && Boolean(qui) && qui.valeur === '' && qui.exige && /obligatoire/i.test(qui.aria), 'MONTAGE : « + Réservation » a 15:12 ouvre la fenetre au comptoir, plan pose', `plan ${pose}, champ client ${JSON.stringify(qui)}`);
       await capture(page, 'D1-comptoir-ouvert');
+      await page.click('#rvCreer');
+      await page.waitForTimeout(400);
+      const sansTel = await page.evaluate(() => ({ ouverte: quickBookState !== null, focus: document.activeElement ? document.activeElement.id : '' }));
+      v('D1', sansTel.ouverte && sansTel.focus === 'qbPhone' && creees(avant).length === 0, 'au comptoir, rien tape : « Créer » ne cree rien et mene au telephone', JSON.stringify({ ...sansTel, creees: creees(avant).length }));
+      await page.fill('#qbPhone', '0470 12 34 56');
       await page.click('#rvCreer');
       const ferme = await fenetreFermee(page);
       const nouvelles = creees(avant);
       const erreur = ferme ? '' : await texteDe(page, '#quickBookOverlay #rvVerdict');
-      v('D1', ferme && nouvelles.length === 1 && nouvelles[0].tel === '' && nouvelles[0].nom === 'Client', 'au comptoir, rien tape : « Créer » cree le dossier (telephone vide, nom « Client »)', ferme ? JSON.stringify(nouvelles.map((r) => ({ nom: r.nom, tel: r.tel, debut: r.debut }))) : `refus : « ${erreur} »`);
+      v('D1', ferme && nouvelles.length === 1 && String(nouvelles[0].tel || '').replace(/\D/g, '').endsWith('470123456') && nouvelles[0].nom === 'Client', 'au comptoir, le telephone seul tape : « Créer » cree le dossier (son numero, nom « Client »)', ferme ? JSON.stringify(nouvelles.map((r) => ({ nom: r.nom, tel: r.tel, debut: r.debut }))) : `refus : « ${erreur} »`);
       if (!ferme) await capture(page, 'D1-refus');
       id = nouvelles[0] ? nouvelles[0].id : null;
       // Le CRM de la console : aucun client « Client » fabrique.
@@ -689,8 +694,7 @@ async function scenarioD4(browser, v) {
   const { context, page, erreurs } = await ouvrirConsole(browser);
   try {
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '18:00', pax: 6 }), JOUR);
-    // Le nom et le telephone ont chacun leur champ sur la page Client du ticket.
-    await page.click('#quickBookOverlay #rsL-client');
+    // Le telephone et le nom ont chacun leur champ, au ticket (2026-11-11).
     await page.waitForSelector('#qbPhone', { timeout: 8000 });
     await page.click('#qbPhone');
     await page.keyboard.press('Control+A');
@@ -930,7 +934,7 @@ async function scenarioD9(browser, v) {
         // La rangee Jour finit par « Autre date » ; la rangee Joueurs va de 1 a 20.
         const autre = [...document.querySelectorAll('#quickBookOverlay #rsHaut .rs-seg > *')].pop();
         const tailles = [...document.querySelectorAll('#quickBookOverlay #rsHaut [data-pax]')].map((b) => ({ t: b.textContent.trim(), c: coupe(b) }));
-        const champ = document.getElementById('qbQui');
+        const champ = document.getElementById('qbPhone');
         let placeholder = champ ? '' : 'absent';
         if (champ) {
           const ctx = document.createElement('canvas').getContext('2d');
@@ -975,15 +979,15 @@ async function scenarioD9(browser, v) {
       await page.click('#quickBookOverlay #rsResume');
       await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs.is-ticket', { timeout: 6000 });
       await page.waitForTimeout(300);
-      const ticket = await sousLeDoigt(['#qbQui', '#rsL-client']);
-      // « E-mail, note, occasion » ouvre la page Client : l e-mail et la note s y touchent.
+      const ticket = await sousLeDoigt(['#qbPhone', '#qbName', '#qbNotes', '#rsL-client']);
+      // « E-mail, occasion » ouvre la page de l e-mail.
       await page.click('#quickBookOverlay #rsL-client');
-      await page.waitForSelector('#quickBookOverlay #qbNotes', { timeout: 6000 });
+      await page.waitForSelector('#quickBookOverlay #qbEmail', { timeout: 6000 });
       await page.waitForTimeout(300);
-      const client = await sousLeDoigt(['#qbName', '#qbPhone', '#qbEmail', '#qbNotes']);
+      const client = await sousLeDoigt(['#qbEmail']);
       const sous = [...ticket, ...client];
-      v('D9', sous.length === 6 && sous.every((x) => x.ok), '390 : le client, l e-mail et la note se touchent, rien du pied par-dessus', JSON.stringify(sous.filter((x) => !x.ok)));
-      await capture(page, 'D9-390', '#qbNotes');
+      v('D9', sous.length === 5 && sous.every((x) => x.ok), '390 : le telephone, le nom, la note et l e-mail se touchent, rien du pied par-dessus', JSON.stringify(sous.filter((x) => !x.ok)));
+      await capture(page, 'D9-390', '#qbEmail');
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D9 390]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
   }
@@ -1193,7 +1197,7 @@ const MUTATIONS = [
   { nom: 'vacances-bloquees', cote: 'serveur', vise: ['D3'], edits: [e('lib/ops-engine.js', "  if (String(input.channel || '').toLowerCase() !== 'staff') return planFormulaSelonRegles(input, context);", '  if (true) return planFormulaSelonRegles(input, context);')] },
   { nom: 'avertissement-perdu', cote: 'serveur', vise: ['D3'], edits: [e('lib/reservation-ops.js', '!noSafePlan && planResult?.plan?.avertissementComptoir', 'false')] },
   // D4
-  { nom: 'nom-reconnu-ajoute', cote: 'front', vise: ['D4'], edits: [e(APP, '  rvSelectionnerAuFocus(champ);\n}\n\nfunction rvSaisieComptoirFinie', '  void champ;\n}\n\nfunction rvSaisieComptoirFinie')] },
+  { nom: 'nom-reconnu-ajoute', cote: 'front', vise: ['D4'], edits: [e(APP, '  rvSelectionnerAuFocus(champ);\n}\n\n// LE PRIX DE REFERENCE', '  void champ;\n}\n\n// LE PRIX DE REFERENCE')] },
   // D5
   { nom: 'heure-vue-qui-bouge', cote: 'front', vise: ['D5'], edits: [e(APP, '  if (plan && plan.disponible) quickBookState.heureArretee = true;\n', '')] },
   { nom: 'cle-sans-journee', cote: 'front', vise: ['D5'], edits: [e(APP, "  return corps ? `${JSON.stringify(corps)}|${rvRevisionDuJour(corps.date)}` : '';", "  return corps ? JSON.stringify(corps) : '';")] },

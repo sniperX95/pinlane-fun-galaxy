@@ -2230,10 +2230,10 @@ async function main() {
         hasPhoneInput: Boolean(modal.querySelector('#qbPhone')),
         hasNameInput: Boolean(modal.querySelector('#qbName')),
         hasEmailInput: Boolean(modal.querySelector('#qbEmail')),
-        // Le client : un champ unique « Nom ou téléphone » au ticket, a toute
-        // heure ; nom, telephone, e-mail et note sur la page Client, a un
-        // toucher (« E-mail, note, occasion », #rsL-client).
-        clientSaisissable: Boolean(modal.querySelector('#rsClient #qbQui') && modal.querySelector('#rsL-client')),
+        // Le client au ticket, a toute heure (2026-11-11) : le telephone
+        // (obligatoire), le nom et la note ; l e-mail et l occasion a un
+        // toucher (« E-mail, occasion », #rsL-client).
+        clientSaisissable: Boolean(modal.querySelector('#rsClient #qbPhone') && modal.querySelector('#rsClient #qbName') && modal.querySelector('#rsClient #qbNotes') && modal.querySelector('#rsL-client')),
         emailAtteignable: Boolean(modal.querySelector('#qbEmail') || modal.querySelector('#rsL-client')),
         hasNotesTextarea: Boolean(modal.querySelector('#qbNotes')),
         hasLaneGrid: Array.from(modal.querySelectorAll('[data-piste]')).some(visible),
@@ -2278,8 +2278,8 @@ async function main() {
     await screenshot(page, 'quickbook-generic');
     issues.push(...await collectIssues(page, 'quickbook-generic'));
     // Zéro perte de capacité : la ligne du ticket ouvre sa page (la grille des
-    // pistes, les durées), « E-mail, note, occasion » la page Client (nom,
-    // téléphone, e-mail, note). La v5 les dépliait sur place.
+    // pistes, les durées), « E-mail, occasion » la page de l e-mail et de
+    // l occasion. La v5 les dépliait sur place.
     await page.click('#rsL-a-bowling');
     await attendreFenetre('Générique, page du bowling');
     const qbGenericMore = await readQuickBook();

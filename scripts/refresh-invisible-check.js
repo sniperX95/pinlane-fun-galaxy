@@ -477,8 +477,8 @@ async function main() {
     ok(colonne.course > 80, `la modale a de quoi defiler (${colonne.course} px, #rsCol, la colonne des pages)`);
     ok(colonne.bas && colonne.presse === 'true' && colonne.avant > 0 && colonne.meme && colonne.apres === colonne.avant,
       `cliquer un bouton EN BAS ne remonte pas la modale (${colonne.avant} -> ${colonne.apres}, #rsCol, « Servir à ${colonne.cible} » ${colonne.presse === 'true' ? 'pose' : 'SANS EFFET'}${colonne.bas ? '' : ', bouton pas en bas'})`);
-    // Au bas du ticket : « E-mail, note, occasion », sous les dix articles ; il
-    // ouvre la page Client a gauche, le ticket reste ou il etait.
+    // Au bas du ticket : « E-mail, occasion », sous les dix articles ; il
+    // ouvre la page de l e-mail a gauche, le ticket reste ou il etait.
     const ticket = await enBas('.rs-tk-c', '#rsLignes [id^="rsL-x-"], #rsClient #rsL-client');
     ok(ticket.course > 80, `la modale a de quoi defiler (${ticket.course} px, .rs-tk-c, le ticket)`);
     ok(ticket.bas && /\bis-q-client\b/.test(ticket.page) && ticket.avant > 0 && ticket.meme && ticket.apres === ticket.avant,

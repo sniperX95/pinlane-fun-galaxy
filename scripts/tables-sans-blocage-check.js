@@ -849,7 +849,7 @@ async function sectionMails() {
   viderLesMails();
   viderLaJournee();
   poserDossiers(fetes(engine, 8, 'f6', '14:00'));
-  const comptoir = await appeler(staffReservations, 'POST', '/api/staff-reservations', { ...(await corpsPublic('f6', '14:00', 'Client Comptoir')), phone: '', email: '', status: 'pending' });
+  const comptoir = await appeler(staffReservations, 'POST', '/api/staff-reservations', { ...(await corpsPublic('f6', '14:00', 'Client Comptoir')), phone: '+32 470 12 34 56', email: '', status: 'pending' });
   ok(comptoir.status === 201 && comptoir.json.aPlacer !== true, 'MONTAGE comptoir : la neuvieme fete est creee (201), rien « à placer »', JSON.stringify(comptoir.json).slice(0, 300));
   const e4 = mailsDesTables();
   ok(e4.length === SECOURS_LIBRAMONT.length && memesAdresses(e4, SECOURS_LIBRAMONT) && aucuneInterdite(e4), '[E] comptoir, allumee et depassee : un mail par adresse du centre', JSON.stringify(e4.map((m) => m.a)));

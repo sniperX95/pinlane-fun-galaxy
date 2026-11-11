@@ -213,7 +213,9 @@ const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(
   reste: (/reste \d+ (?:pistes?|armes?)/.exec(b.getAttribute('aria-label') || '') || [''])[0],
   garde: ((b.querySelector('.rs-h-garde') || {}).textContent || '').trim(),
 })), id);
-// Le telephone est obligatoire a la fenetre (2026-11-11) : il se tape avec le nom.
+// Le telephone est obligatoire a la creation (2026-11-11) : il se tape avec le nom, et
+// chaque corps envoye au vrai handler le porte.
+const TEL = '+32 470 12 34 56';
 const creer = async (page, nom, tel = '0470 12 34 56') => {
   await page.locator('#qbPhone').fill(tel);
   await page.locator('#qbName').fill(nom);
@@ -384,7 +386,7 @@ async function scenarioB(browser) {
     // Le serveur compte la retenue : 50 joueurs tiennent sur 7 pistes (8 par piste au plus),
     // pas sur les 6 qui restent, et une piste retenue demandee n est jamais donnee.
     const avantServeur = new Set(B.base.reservations.keys());
-    const corpsBase = { centerId: 'libramont', date: JOUR, startTime: '16:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc', phone: '', email: '', channel: 'staff', requiresLanes: true };
+    const corpsBase = { centerId: 'libramont', date: JOUR, startTime: '16:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc', phone: TEL, email: '', channel: 'staff', requiresLanes: true };
     const trop = await serveur.appeler('POST', '/api/staff-reservations', { ...corpsBase, pax: 50, laneCount: 7, lanes: [] });
     ok(trop.statut >= 400 && [...B.base.reservations.keys()].every((k) => avantServeur.has(k)), '[B] le serveur refuse une place que la retenue tient', { statut: trop.statut, message: trop.json.message, pistes: trop.json.reservation && trop.json.reservation.lanes });
     const sur6 = await serveur.appeler('POST', '/api/staff-reservations', { ...corpsBase, pax: 2, laneCount: 1, lanes: [6] });
@@ -586,9 +588,9 @@ async function scenarioD(browser) {
     const bouton = await page3.evaluate(() => { const b = document.querySelector('#rsZ-bowling [data-pistes-pas]'); return { desactive: b.disabled, plus: !b.parentElement.querySelectorAll('button')[1].disabled }; });
     ok(bouton.desactive && bouton.plus, '[D] sans le niveau forcer, pas de moins sous le conseil, le plus reste', bouton);
     const avantRefus = new Set(B.base.reservations.keys());
-    const refus = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Forge', pax: 7, laneCount: 1, lanes: [], requiresLanes: true, channel: 'staff', pistesALaMain: 1 });
+    const refus = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Forge', pax: 7, laneCount: 1, lanes: [], requiresLanes: true, channel: 'staff', pistesALaMain: 1 });
     ok(refus.statut === 403 && refus.json.code === 'pistes_a_la_main_refuse' && [...B.base.reservations.keys()].every((k) => avantRefus.has(k)), '[D] sans le niveau forcer, le serveur refuse', { statut: refus.statut, code: refus.json.code, message: refus.json.message });
-    const plusDePistes = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Trois', pax: 7, laneCount: 3, lanes: [], requiresLanes: true, channel: 'staff', pistesALaMain: 3 });
+    const plusDePistes = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Trois', pax: 7, laneCount: 3, lanes: [], requiresLanes: true, channel: 'staff', pistesALaMain: 3 });
     ok(plusDePistes.statut === 201 && plusDePistes.json.reservation.lanes.length === 3, '[D] plus de pistes que le conseil reste ouvert a qui reserve', { statut: plusDePistes.statut, message: plusDePistes.json.message });
     const { normalizeReservationRequest } = require(path.join(ROOT, 'lib/reservation-request.js'));
     const publique = normalizeReservationRequest({ centerId: 'libramont', date: JOUR, startTime: '19:00', duration: 1, pax: 7, type: 'bowling', name: 'X', phone: '+32470000000', email: 'x@example.test', pistesALaMain: 1 }, { channel: 'public', centerId: 'libramont' });
@@ -599,7 +601,7 @@ async function scenarioD(browser) {
   const m6 = await ouvrir(browser, { role: 'sans-forcer', reservations: () => [] });
   try {
     const page6 = m6.page;
-    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, startTime: '17:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Sans Droit', pax: 7, laneCount: 2, lanes: [2, 3], requiresLanes: true, channel: 'staff' });
+    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '17:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Sans Droit', pax: 7, laneCount: 2, lanes: [2, 3], requiresLanes: true, channel: 'staff' });
     const id = cree.json.reservation && cree.json.reservation.id;
     ok(cree.statut === 201, '[D] MONTAGE : 7 joueurs sur 2 pistes, sans le niveau forcer', { statut: cree.statut, message: cree.json.message });
     await poserDansLaPage(page6, cree.json.reservation);
@@ -614,7 +616,7 @@ async function scenarioD(browser) {
   const m4 = await ouvrir(browser, { reservations: () => [] });
   try {
     const page4 = m4.page;
-    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, startTime: '18:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Glisser', pax: 7, laneCount: 1, lanes: [2], requiresLanes: true, channel: 'staff', pistesALaMain: 1 });
+    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '18:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Glisser', pax: 7, laneCount: 1, lanes: [2], requiresLanes: true, channel: 'staff', pistesALaMain: 1 });
     const id = cree.json.reservation && cree.json.reservation.id;
     ok(cree.statut === 201 && id, '[D] MONTAGE : un dossier sur une piste', { statut: cree.statut, message: cree.json.message });
     await page4.evaluate((res) => { window.__FIXTURE__.jours[window.__FIXTURE__.jour].push(res); state.reservations.push(res); }, cree.json.reservation);
@@ -635,7 +637,7 @@ async function scenarioD(browser) {
   const m5 = await ouvrir(browser, { reservations: () => [] });
   try {
     const page5 = m5.page;
-    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, startTime: '17:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Fiche', pax: 7, laneCount: 2, lanes: [2, 3], requiresLanes: true, channel: 'staff' });
+    const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '17:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Fiche', pax: 7, laneCount: 2, lanes: [2, 3], requiresLanes: true, channel: 'staff' });
     const id = cree.json.reservation && cree.json.reservation.id;
     ok(cree.statut === 201 && B.base.reservations.get(id).lanes.join() === '2,3', '[D] MONTAGE : 7 joueurs sur 2 pistes', { statut: cree.statut, message: cree.json.message });
     await poserDansLaPage(page5, cree.json.reservation);
@@ -835,7 +837,7 @@ const chiffres = (page) => page.evaluate(() => ({
 }));
 const programmeEntier = (r) => (r && (typeof r.program === 'string' ? JSON.parse(r.program) : r.program)) || {};
 const extrasDe = (r) => (r && (typeof r.extras === 'string' ? JSON.parse(r.extras) : r.extras)) || [];
-const CORPS_BOWLING = { centerId: 'libramont', date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Forge', pax: 12, laneCount: 2, lanes: [], requiresLanes: true, channel: 'staff' };
+const CORPS_BOWLING = { centerId: 'libramont', phone: TEL, date: JOUR, startTime: '19:00', duration: 1, totalDuration: 1, status: 'pending', type: 'bowling', name: 'Banc Forge', pax: 12, laneCount: 2, lanes: [], requiresLanes: true, channel: 'staff' };
 const FORMULE_FORGEE = { nom: 'Forgee', prixParPersonne: 10, minPax: 2, activites: [{ id: 'bowling', minutes: 60, nom: 'Bowling 1 h' }], lignes: [] };
 
 async function scenarioG(browser) {
@@ -921,7 +923,7 @@ async function scenarioG(browser) {
     c = await chiffres(page);
     ok(c.bloque === 'plafond', '[G] une grande offre est au-dessus du plafond du role', c.bloque);
     const forge = await page.evaluate(() => rvConstruire().reservation);
-    const refus = await serveur.appeler('POST', '/api/staff-reservations', { ...forge, centerId: 'libramont', name: 'Banc Offre', channel: 'staff' });
+    const refus = await serveur.appeler('POST', '/api/staff-reservations', { ...forge, phone: TEL, centerId: 'libramont', name: 'Banc Offre', channel: 'staff' });
     ok(refus.statut === 403 && refus.json.code === 'prix_niveau_insuffisant', '[G] une offre au-dessus du plafond est refusee au serveur', { statut: refus.statut, code: refus.json.code, message: refus.json.message });
   } finally { await finir(m2, 'G2'); }
 
@@ -1309,7 +1311,7 @@ async function scenarioI(browser) {
   // Gembloux n a pas de plaine de jeux : la meme formule, ses arcades seules, le corps que la
   // fenetre vient d envoyer.
   serveur.changerSession(B.sessionDuRole('direction', { nom: 'Accueil', centre: 'gembloux' }));
-  const corpsGembloux = { ...(corpsDeLaFenetre || {}), centerId: 'gembloux' };
+  const corpsGembloux = { ...(corpsDeLaFenetre || {}), centerId: 'gembloux', phone: TEL };
   delete corpsGembloux.dryRun;
   const sim = await serveur.appeler('POST', '/api/staff-reservations', { ...corpsGembloux, dryRun: true });
   const planG = sim.json.plan || {};

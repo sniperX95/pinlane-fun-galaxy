@@ -228,7 +228,7 @@ const checks = `
   ok(emergency.normal.requiredCount===3&&!emergency.normal.bowlingCapacity.emergency,'actual stock3 own13 retains normal comfort6');
   const refused=await pg.evaluate(async()=>{
     let posts=0;const previous=window.fetch;window.fetch=async(input,init)=>{if(String(init?.method||'').toUpperCase()==='POST'&&!JSON.parse(String(init?.body||'{}')).dryRun)posts++;return previous(input,init);};
-    try {quickBookState.pax=1000;renderQuickBook();await saveQuickBook();return {pax:quickBookState.pax,options:quickBookState.visit.options,posts,error:quickBookState.error,visible:document.querySelector('#quickBookOverlay').textContent};}finally{window.fetch=previous;}
+    try {quickBookState.pax=1000;quickBookState.phone='+32470111222';renderQuickBook();await saveQuickBook();return {pax:quickBookState.pax,options:quickBookState.visit.options,posts,error:quickBookState.error,visible:document.querySelector('#quickBookOverlay').textContent};}finally{window.fetch=previous;}
   });
   ok(refused.pax===1000&&refused.options.bowling.participants===6&&refused.options.billards.units===2&&refused.posts===0,'group1000 refusal preserves count/options and sends no POST');
   ok(refused.error.includes('240 personnes')&&refused.visible.includes('planifiée manuellement'),'group1000 real dialog clearly explains manual planning');

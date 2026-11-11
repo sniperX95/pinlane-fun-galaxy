@@ -723,15 +723,20 @@ async function scenarioR6(browser) {
   const { page } = m;
   await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 6 }));
   await planPose(page);
-  // (Les seances : le champ dit « Nom ou téléphone » ; « facultatif » est dans son nom
-  // accessible, ce que lit un lecteur d ecran, plus dans le texte qu on voit)
-  const invite = await page.locator('#qbQui').getAttribute('aria-label');
-  ok(/facultatif/.test(invite), '[R6] la fenetre dit que le nom est facultatif', `${invite} | ${await page.locator('#qbQui').getAttribute('placeholder')}`);
+  // (2026-11-11, Ansar : le telephone est obligatoire, le nom reste facultatif : sans
+  // nom, le dossier part au nom de « Client ».)
+  const exige = await page.evaluate(() => { const t = document.getElementById('qbPhone'); const n = document.getElementById('qbName'); return { tel: Boolean(t && t.required && t.getAttribute('aria-required') === 'true' && /obligatoire/.test((t.closest('label') || {}).textContent || '')), nom: Boolean(n && !n.required && n.getAttribute('aria-required') !== 'true') }; });
+  ok(exige.tel && exige.nom, '[R6] la fenetre dit que le telephone est obligatoire, et le nom non', exige);
+  await page.locator('#rvCreer').click();
+  await page.waitForTimeout(400);
+  const sansTel = await page.evaluate(() => ({ ouverte: quickBookState !== null, focus: document.activeElement ? document.activeElement.id : '' }));
+  ok(sansTel.ouverte && sansTel.focus === 'qbPhone', '[R6] sans telephone, Créer ne cree rien et mene au telephone', sansTel);
+  await page.locator('#qbPhone').fill('0470 12 34 56');
   await page.locator('#rvCreer').click();
   await fenetreFermee(page);
   const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
   const base = enBase(id);
-  ok(base.nom === 'Client' && base.tel === '', '[R6] rien tape : « Client », sans contact, et Créer passe', base);
+  ok(base.nom === 'Client' && String(base.tel || '').replace(/\D/g, '').endsWith('470123456'), '[R6] le telephone seul tape : « Client », son numero, et Créer passe', base);
   await page.waitForTimeout(150);
   ok(/Client/.test(await ligneDe(page, id)), '[R6] la ligne se lit', await ligneDe(page, id));
   const { cleClient } = require(path.join(ROOT, 'lib/donnees-clients.js'));
@@ -819,12 +824,15 @@ async function scenarioR8(browser) {
   const n = { n: 0 };
   ok(/Réserver pour Dupont/.test(await texte(page, '.gf-rien__reserver')), '[R8] le bouton nomme le client', await texte(page, '.gf-rien__reserver'));
   await clic(n, page.locator('.gf-rien__reserver'));
-  await page.waitForSelector('#qbQui').catch(() => {});
-  ok(await page.locator('#qbQui').inputValue() === 'Dupont', '[R8] « Réserver pour Dupont » ouvre Réserver avec le nom tape', await page.locator('#qbQui').inputValue().catch(() => 'pas de champ'));
+  await page.waitForSelector('#qbName').catch(() => {});
+  ok(await page.locator('#qbName').inputValue() === 'Dupont', '[R8] « Réserver pour Dupont » ouvre Réserver avec le nom tape', await page.locator('#qbName').inputValue().catch(() => 'pas de champ'));
   // (Les seances demandent le nombre de joueurs avant Créer : 4, comme avant)
   await clic(n, joueurs(page, 4));
   await page.waitForTimeout(350);
   await planPose(page);
+  // Le telephone, obligatoire (2026-11-11) : un geste de plus.
+  n.n += 1;
+  await page.locator('#qbPhone').fill('0470 12 34 56');
   const lecturesAvant = await page.evaluate(() => window.__lecturesAutresDates);
   await clic(n, page.locator('#rvCreer'));
   await fenetreFermee(page);
@@ -833,7 +841,7 @@ async function scenarioR8(browser) {
   ok(recherche.trouvee && recherche.lectures === lecturesAvant, '[R8] une reservation creee se trouve tout de suite, sans relire toutes les dates', { ...recherche, lecturesAvant });
   const creee = creationsDe(journal)[0];
   ok(creee && creee.corps.name === 'Dupont' && (await nomsDe(page)).join() === 'Dupont', '[R8] le groupe cree se lit sur le tableau, sous son nom', `${creee && creee.corps.name} ${await nomsDe(page)}`);
-  gestes('Nom pas trouve, client a creer', '15 gestes', `${n.n + 1} gestes (le nom, le bouton, les joueurs, Créer)`);
+  gestes('Nom pas trouve, client a creer', '15 gestes', `${n.n + 1} gestes (le nom, le bouton, les joueurs, le téléphone, Créer)`);
   await chercher(page, '');
   // UN GROUPE CACHE PAR UN FILTRE N EST PAS ABSENT : pas de doublon propose.
   await page.locator('button[data-gf-filtre="late"]').click();
@@ -852,8 +860,8 @@ async function scenarioR8(browser) {
   const injecte = await page.evaluate(() => ({ img: document.querySelectorAll('.gf-rien img').length, piege: window.__piege || 0 }));
   ok(injecte.img === 0 && injecte.piege === 0, '[R8] un nom piege reste du texte', injecte);
   await page.locator('.gf-rien__reserver').click();
-  await page.waitForSelector('#qbQui').catch(() => {});
-  ok(await page.locator('#qbQui').inputValue() === piege, '[R8] et arrive tel quel dans le champ', await page.locator('#qbQui').inputValue().catch(() => 'pas de champ'));
+  await page.waitForSelector('#qbName').catch(() => {});
+  ok(await page.locator('#qbName').inputValue() === piege, '[R8] et arrive tel quel dans le champ', await page.locator('#qbName').inputValue().catch(() => 'pas de champ'));
   await page.evaluate(() => closeQuickBook());
   await chercher(page, '');
   // UN AUTRE CENTRE NE VOIT PAS CES LIGNES.

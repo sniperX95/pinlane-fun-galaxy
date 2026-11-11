@@ -222,9 +222,8 @@ async function main({ capture = false, seulement = null, tailles = null, rapport
         // Le jour vient du scenario, jamais de l heure du gate : une fenetre
         // ouverte pour la demi-heure qui vient est « au comptoir », une autre heure
         // est une reservation ordinaire. Les seances (2026-11-03) ont la meme forme a
-        // toute heure : le champ unique « Nom ou téléphone » au ticket (#qbQui), sans
-        // champ de nom a part sur l ecran, et le formulaire complet sur la page
-        // Client, a un toucher du ticket (#rsL-client).
+        // toute heure : au ticket, le telephone (obligatoire depuis le 2026-11-11), le nom
+        // et la note ; l e-mail sur la page a un toucher du ticket (#rsL-client).
         const champs = (auComptoir) => page.evaluate((auComptoir) => {
           let date = todayStr(), startTime = numToTime(Math.min(23.5, Math.ceil(currentTimeDecimal() * 2) / 2));
           if (!auComptoir) {
@@ -245,7 +244,7 @@ async function main({ capture = false, seulement = null, tailles = null, rapport
         // note, chaque champ nomme.
         ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => full.lus.some((f) => f.id === id)) && full.lus.every(f => f.name), 'F1-full-fields', full.lus);
         const comptoir = await champs(true);
-        ok(['qbDate', 'qbPax', 'qbQui', 'qbPhone', 'qbEmail', 'qbNotes'].every((id) => comptoir.lus.some((f) => f.id === id)) && comptoir.ecran.some((f) => f.id === 'qbQui') && !comptoir.ecran.some((f) => f.id === 'qbName') && comptoir.lus.every(f => f.name), 'F1-full-fields-comptoir', comptoir);
+        ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => comptoir.lus.some((f) => f.id === id)) && ['qbPhone', 'qbName', 'qbNotes'].every((id) => comptoir.ecran.some((f) => f.id === id)) && !comptoir.ecran.some((f) => f.id === 'qbEmail') && !comptoir.lus.some((f) => f.id === 'qbQui') && comptoir.lus.every(f => f.name), 'F1-full-fields-comptoir', comptoir);
         await page.evaluate(() => { openQuickBook(); });
         const focusCases = await page.evaluate(() => {
           const root = document.querySelector('.qb-modal'), fixture = document.createElement('div');

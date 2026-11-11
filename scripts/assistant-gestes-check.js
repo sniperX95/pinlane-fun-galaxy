@@ -17,6 +17,8 @@ const ROOT = path.join(__dirname, '..');
 
 // CONTRE-PREUVES : chaque garde retiree en memoire (le disque n est jamais touche) doit rougir sa ligne.
 const MUTATIONS = {
+  // Les roles et leurs droits ne se lisent qu avec le droit Equipe (users.manage) ou Direction.
+  'roles-ouverts-a-tous': { fichier: 'lib/assistant-outils-centre.js', de: "droits: ['users.manage', 'direction.view'],\n      ce: \"les rôles de l'équipe\",", vers: "droits: null,\n      ce: \"les rôles de l'équipe\",", rouge: 'les roles restent fermes a un autre centre et a un role sans le droit equipe' },
   'ecran-hors-role': { fichier: 'lib/assistant-outils.js', de: '      if (!carte.ouvrable(ouverte.session, d)) throw refus(', vers: '      if (false) throw refus(', rouge: 'un ecran que le role n ouvre pas ne se propose pas' },
   'date-impossible': { fichier: 'lib/assistant-outils.js', de: "        if (!jour || jour.toISOString().slice(0, 10) !== date) throw refus('La date est invalide.');", vers: "        if (!jour) throw refus('La date est invalide.');", rouge: 'une date impossible ou passee ne se propose pas' },
   'demande-d-un-autre-centre': { fichier: 'lib/assistant-outils.js', de: 'getCustomRequest(Number(entree.demande), { centerId: ouverte.id })', vers: 'getCustomRequest(Number(entree.demande), {})', rouge: 'une demande d un autre centre ne se classe pas' },

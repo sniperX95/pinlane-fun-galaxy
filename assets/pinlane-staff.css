@@ -22231,3 +22231,345 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 @container em-main (max-width: 700px) {
   #staffEmailsPage .em-shell .em-reponse-prete { right: 12px; bottom: 12px; left: 12px; padding-left: 16px; }
 }
+/* ── LOT S, SUITE (2026-11-11) : les huit autres onglets et leurs editeurs ───
+   La meme regle que Recus et le nouveau message : texte courant 15 px,
+   secondaire 14 px, des lignes plus hautes, un seul bouton plein par ecran,
+   les gestes calmes en texte, les gestes rares sous « Plus », ce qui a un
+   bon defaut sous « Plus d options ». Les libelles des champs sont des
+   phrases, a la taille du texte. */
+#staffEmailsPage .em-shell :is(.pv2-composer-field, .mk-auto-edit-field) > span { color: var(--text); font-size: 15px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-transform: none; }
+#staffEmailsPage .em-shell :is(.pv2-composer-field, .mk-auto-edit-field) { gap: 8px; }
+#staffEmailsPage .em-shell .mk-auto-edit-hint,
+#staffEmailsPage .em-shell label small { font-size: 14px; font-weight: 400; color: var(--muted); }
+#staffEmailsPage .em-shell .mk-auto-edit-field .pv2-tokedit { font-size: 15px; }
+#staffEmailsPage .em-shell .mk-auto-edit-field .pv2-tokedit.is-single { padding: 0 14px; }
+#staffEmailsPage :is(#mkAutoBody, #pv2SeqBody, #pv2TplBody, #pv2CampBody) { min-height: 240px; }
+#staffEmailsPage .em-shell .mk-auto-edit-warn { font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .pv2-check { gap: 10px; font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-check input { width: 18px; height: 18px; }
+#staffEmailsPage .em-shell .em-note { font-size: 14px; }
+#staffEmailsPage .em-shell .em-vide p { font-size: 15px; }
+#staffEmailsPage .em-shell .em-label { font-size: 13px; }
+
+/* Les rangees de gestes des editeurs : le bouton plein au bout, les autres en
+   texte, et rien qui se colle. */
+#staffEmailsPage .em-shell .pv2-composer-actions.em-actions,
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-edit-actions { gap: 8px 12px; align-items: center; margin-top: 8px; }
+
+/* Le menu « Plus » : des lignes de 44 px, a la taille du texte. */
+#staffEmailsPage .em-shell .em-plus-menu { min-width: 220px; padding: 6px; border-radius: 12px; }
+#staffEmailsPage .em-shell .em-plus-menu button { min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 15px; }
+#staffEmailsPage .em-shell .em-plus-menu button:disabled { cursor: default; opacity: 0.5; }
+
+/* « Plus d options » d une section : sa ligne, puis ce qu elle ouvre. */
+#staffEmailsPage .em-shell .em-options-champ { max-width: 360px; }
+
+/* --- Apercu : ce qui attend, les chiffres, puis les listes ---------------- */
+#staffEmailsPage .em-shell .em-apercu { gap: 24px; }
+#staffEmailsPage .em-shell .em-cols,
+#staffEmailsPage .em-shell .em-col { gap: 24px; }
+#staffEmailsPage .em-shell .em-todo-list { gap: 4px; margin: 0 -16px; }
+#staffEmailsPage .em-shell .em-todo-list .em-todo { grid-template-columns: 10px minmax(0, 1fr) auto; gap: 16px; padding: 14px 16px; background: transparent; }
+#staffEmailsPage .em-shell .em-todo-dot { width: 10px; height: 10px; }
+#staffEmailsPage .em-shell .em-todo-text { gap: 4px; }
+#staffEmailsPage .em-shell .em-todo-text strong { font-size: 16px; line-height: 1.4; }
+#staffEmailsPage .em-shell .em-todo-text small { font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .em-todo-geste { color: var(--accent-strong); }
+#staffEmailsPage .em-shell .em-kpis { gap: 8px; padding: 8px; }
+#staffEmailsPage .em-shell .em-kpi { gap: 6px; padding: 16px 20px; }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-label { font-size: 14px; }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-value { font-size: 32px; line-height: 1.15; }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-value.is-empty { font-size: 15px; line-height: 1.6; }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-foot { font-size: 14px; white-space: normal; }
+#staffEmailsPage .em-shell .em-convos .em-rows { gap: 4px; margin: 0 -16px; }
+#staffEmailsPage .em-shell .em-convos .em-rows .em-row { gap: 4px; padding: 14px 16px; }
+#staffEmailsPage .em-shell .em-convos .em-row-name,
+#staffEmailsPage .em-shell .em-convos .em-row-subject { font-size: 15px; }
+#staffEmailsPage .em-shell .em-convos .em-row-when { font-size: 13px; }
+#staffEmailsPage .em-shell .em-convos .em-row-snippet { font-size: 14px; }
+#staffEmailsPage .em-shell .em-convos .em-row-chips { gap: 6px; margin-top: 6px; }
+#staffEmailsPage .em-shell .em-convos .em-row-chips .pv2-chip { height: 24px; padding: 0 8px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-seq-list { gap: 4px; }
+#staffEmailsPage .em-shell .em-seq { gap: 16px; padding: 10px 8px; }
+#staffEmailsPage .em-shell .em-seq-main { gap: 2px; }
+#staffEmailsPage .em-shell .em-seq-main strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-seq-main small,
+#staffEmailsPage .em-shell .em-seq-etat { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-suivi { gap: 16px; }
+#staffEmailsPage .em-shell .pv2-suivi-ligne { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-suivi-ligne strong { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-suivi-etat { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-suivi-ligne small { font-size: 14px; }
+
+/* --- L agent qui apprend (Apercu et L agent) ------------------------------ */
+#staffEmailsPage .em-shell .pv2-savoir .pv2-panel-body { display: grid; gap: 16px; }
+#staffEmailsPage .em-shell .pv2-savoir-corps { gap: 20px; }
+#staffEmailsPage .em-shell :is(.pv2-savoir-compte, .pv2-savoir-sous, .pv2-savoir-jauge-texte, .pv2-savoir-rang, .pv2-savoir-origine, .pv2-savoir-relit, .pv2-savoir-utilise, .pv2-savoir-toutes, .pv2-savoir-sujet) { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-savoir-vide { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-question { font-size: 17px; line-height: 1.4; }
+#staffEmailsPage .em-shell .pv2-savoir.is-apercu .pv2-savoir-question { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-extrait { padding: 12px 16px; font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-libelle { margin: 4px 0 0; color: var(--text); font-size: 15px; font-weight: 600; }
+#staffEmailsPage .em-shell .pv2-savoir-reponse { min-height: 132px; padding: 12px 14px; font-size: 15px; line-height: 1.55; }
+#staffEmailsPage .em-shell :is(.pv2-savoir-compteur, .pv2-savoir-astuce) { font-size: 13px; }
+#staffEmailsPage .em-shell .pv2-savoir-actions { gap: 12px; }
+#staffEmailsPage .em-shell .pv2-savoir-appris { font-size: 15px; }
+#staffEmailsPage .em-shell :is(.pv2-savoir-fait-retenu strong, .pv2-savoir-fait-retenu span, .pv2-savoir-avap p) { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-etiquette { font-size: 13px; }
+#staffEmailsPage .em-shell .pv2-savoir-proches li b { font-size: 12px; }
+#staffEmailsPage .em-shell .pv2-savoir-bloc { padding-top: 16px; }
+#staffEmailsPage .em-shell .pv2-savoir-bloc > summary { min-height: 44px; font-size: 15px; }
+#staffEmailsPage .em-shell :is(.pv2-savoir-sujet input, .pv2-savoir-recherche) { height: 44px; padding: 0 14px; font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-recherche { margin-bottom: 12px; }
+#staffEmailsPage .em-shell .pv2-savoir-memoire { gap: 4px; }
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-fait { gap: 16px; padding: 14px 12px; }
+#staffEmailsPage .em-shell .pv2-savoir-fait > div:first-child { gap: 4px; }
+#staffEmailsPage .em-shell :is(.pv2-savoir-fait strong, .pv2-savoir-fait span) { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-savoir-fait small { font-size: 13px; }
+#staffEmailsPage .em-shell .pv2-savoir-fait-actions { align-items: center; gap: 4px; }
+/* La question du moment se lit a plat dans son bloc : la question, qui la
+   pose, le mot du client, puis la grande case et Apprendre. */
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-carte { gap: 12px; padding: 0; border: 0; background: transparent; }
+/* Un aplat franc (--subtle) et pas un melange : la mesure de contraste du
+   gate lit la couleur calculee, et un color-mix revient en color(srgb ...). */
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-extrait { background: var(--subtle); }
+#staffEmailsPage .em-shell .em-savoir-sait { margin-top: 8px; }
+#staffEmailsPage .em-shell .em-savoir-sait > .em-h3 { font-size: 18px; }
+
+/* --- Envoyes : la file en trois colonnes, son detail ----------------------- */
+#staffEmailsPage .em-shell .pv2-alert { padding: 16px 20px; }
+#staffEmailsPage .em-shell .pv2-alert strong { font-size: 16px; }
+#staffEmailsPage .em-shell .pv2-alert p { font-size: 15px; line-height: 1.5; }
+#staffEmailsPage .em-shell .pv2-alert-other { font-size: 14px !important; }
+#staffEmailsPage .em-shell .pv2-pipeline { padding: 4px; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe { gap: 8px; height: 40px; padding: 0 16px; font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe .pv2-pipe-label { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe .pv2-pipe-value { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-pipeline .pv2-pipe-rail { top: 4px; bottom: 4px; }
+#staffEmailsPage .em-shell .em-sent { gap: 20px; }
+#staffEmailsPage .em-shell .em-sent-main { gap: 12px; padding: 20px 20px 16px; }
+#staffEmailsPage .em-shell .em-sent-tools { display: grid; gap: 4px; }
+#staffEmailsPage .em-shell .em-sent-tools .pv2-search { width: 100%; max-width: 560px; height: 44px; }
+#staffEmailsPage .em-shell .em-sent-tools .em-options-corps { padding: 8px 0 12px; }
+#staffEmailsPage .em-shell .em-origins { gap: 8px; }
+#staffEmailsPage .em-shell .em-origin { gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 15px; }
+#staffEmailsPage .em-shell .em-origin.active { box-shadow: none; }
+#staffEmailsPage .em-shell .em-origin-n { font-size: 13px; }
+#staffEmailsPage .em-shell .em-sent-list { max-height: 640px; margin: 0 -20px; }
+#staffEmailsPage .em-shell .em-sent .em-table { font-size: 15px; }
+#staffEmailsPage .em-shell .em-sent .em-table th { height: 40px; padding: 0 16px; font-size: 14px; }
+#staffEmailsPage .em-shell .em-sent .em-table th:nth-child(n) { width: auto; }
+#staffEmailsPage .em-shell .em-sent .em-table th:nth-child(2) { width: 150px; }
+#staffEmailsPage .em-shell .em-sent .em-table th:nth-child(3) { width: 112px; }
+#staffEmailsPage .em-shell .em-sent .em-table td { height: 68px; padding: 10px 16px; }
+#staffEmailsPage .em-shell .em-sent .em-table :is(th, td):first-child { padding-left: 20px; }
+#staffEmailsPage .em-shell .em-sent .em-cell-main { gap: 4px; }
+#staffEmailsPage .em-shell .em-sent .em-cell-main strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-sent .em-cell-sub { display: block; font-size: 14px; }
+#staffEmailsPage .em-shell .em-sent .em-table .pv2-chip { height: 26px; padding: 0 10px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-sent .em-table .pv2-cell-fail { font-size: 13px; }
+#staffEmailsPage .em-shell .em-sent .em-table td.num { font-size: 14px; }
+/* Une file vide ne garde pas des titres de colonnes sur rien. */
+#staffEmailsPage .em-shell .em-sent .em-table:has(> tbody > tr.pv2-vide) > thead { display: none; }
+#staffEmailsPage .em-shell .em-sent-main .pv2-pipeline-scope { margin: 4px 0 0; font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .em-sent-detail { gap: 20px; padding: 24px; }
+#staffEmailsPage .em-shell .em-detail-head .em-h2 { font-size: 18px; }
+#staffEmailsPage .em-shell .em-detail-head .pv2-chip { height: 26px; padding: 0 10px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-kv { gap: 16px 20px; }
+#staffEmailsPage .em-shell .em-kv dt { font-size: 13px; }
+#staffEmailsPage .em-shell .em-kv dd { font-size: 15px; }
+#staffEmailsPage .em-shell .em-sent-detail .em-h3 { font-size: 15px; }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-sent-trace { font-size: 14px; }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-mail-error { padding: 14px 16px; }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-mail-error p { font-size: 15px; }
+
+/* --- Sequences : une ligne par sequence, plus haute ---------------------- */
+#staffEmailsPage .em-shell .em-seqs { gap: 24px; }
+#staffEmailsPage .em-shell .em-seqrows { gap: 4px; margin-top: 4px; }
+#staffEmailsPage .em-shell .em-seqrow-ligne { grid-template-columns: minmax(0, 1fr) auto auto 44px; gap: 16px; padding: 16px; }
+#staffEmailsPage .em-shell .em-seqrow-nom { gap: 4px; }
+#staffEmailsPage .em-shell .em-seqrow-nom strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-desc { font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-stats { font-size: 14px; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-actions { gap: 4px; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-mod { height: 22px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-edit,
+#staffEmailsPage .em-shell .em-seqrow .pv2-seq-editor { gap: 24px; padding: 8px 16px 24px; }
+#staffEmailsPage .em-shell .em-seqrow .mk-auto-edit-fields { gap: 20px; }
+#staffEmailsPage .em-shell .em-seqrow .pv2-seq-editor .pv2-composer-grid { gap: 20px 16px; }
+#staffEmailsPage .em-shell .em-seqs > .pv2-panel.mail-inv > .pv2-panel-head { padding: 24px 28px; }
+#staffEmailsPage .em-shell .em-seqs > .pv2-panel.mail-inv .pv2-panel-sub { font-size: 14px; }
+
+/* --- Campagnes ----------------------------------------------------------- */
+#staffEmailsPage .em-shell .em-camp-table { font-size: 15px; }
+#staffEmailsPage .em-shell .em-camp-table th { height: 40px; font-size: 14px; }
+#staffEmailsPage .em-shell .em-camp-table td { height: 72px; padding: 14px 12px; }
+#staffEmailsPage .em-shell .em-camp-table td[data-col='campagne'] .em-cell-main { font-size: 15px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-camp-table .em-cell-sub { margin-top: 2px; font-size: 14px; }
+#staffEmailsPage .em-shell .em-camp-table .pv2-chip { height: 26px; padding: 0 10px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-camp-table td.num { font-size: 15px; }
+#staffEmailsPage .em-shell .em-camp-table td.num .em-cell-sub { color: var(--muted); }
+#staffEmailsPage .em-shell .em-camp-actions { align-items: center; gap: 4px; }
+#staffEmailsPage .em-shell .em-camp-editeur { gap: 24px; margin: 8px 0 24px; padding: 24px; }
+#staffEmailsPage .em-shell .em-camp-champs { gap: 20px; }
+#staffEmailsPage .em-shell .em-camp-audience { font-size: 15px; }
+#staffEmailsPage .em-shell .em-camp-quand { max-width: 320px; }
+#staffEmailsPage .em-shell .em-camp-apercu-titre { font-size: 14px; }
+
+/* --- Modeles ------------------------------------------------------------- */
+#staffEmailsPage .em-shell .em-tpl { gap: 20px; }
+#staffEmailsPage .em-shell .em-tpl-groupe { margin-top: 20px; }
+#staffEmailsPage .em-shell .em-tpl-rows { gap: 4px; }
+#staffEmailsPage .em-shell .em-tpl-ouvrir { gap: 4px; padding: 12px; }
+#staffEmailsPage .em-shell .em-tpl-nom { font-size: 15px; }
+#staffEmailsPage .em-shell .em-tpl-origine { font-size: 13px; }
+#staffEmailsPage .em-shell .em-tpl-sujet { font-size: 14px; }
+#staffEmailsPage .em-shell .em-tpl-actions { gap: 4px; padding: 0 6px 10px 4px; }
+#staffEmailsPage .em-shell .em-tpl-droite .pv2-seq-editor-cols { gap: 24px; padding: 8px 0 0; }
+#staffEmailsPage .em-shell .em-tpl-droite .pv2-composer-grid { gap: 20px 16px; }
+
+/* --- Apparence : trois choix, puis « Plus d options » --------------------- */
+#staffEmailsPage .em-shell .pv2-design-layout { gap: 24px; }
+#staffEmailsPage .em-shell .pv2-design-form { gap: 16px; }
+#staffEmailsPage .em-shell .pv2-design-block { gap: 12px; padding: 24px 28px; }
+#staffEmailsPage .em-shell .pv2-design-block h3,
+#staffEmailsPage .em-shell .em-design-groupe > h3 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+#staffEmailsPage .em-shell .pv2-design-block > h3 + .pv2-design-hint,
+#staffEmailsPage .em-shell .pv2-design-hint { margin: 0; font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .pv2-design-presets { gap: 4px; margin-top: 8px; }
+#staffEmailsPage .em-shell .pv2-design-preset.em-choix { grid-template-columns: 18px minmax(0, 1fr); gap: 12px; padding: 12px; }
+#staffEmailsPage .em-shell .em-choix-point { width: 18px; height: 18px; margin-top: 1px; }
+#staffEmailsPage .em-shell .em-choix.is-active .em-choix-point { box-shadow: inset 0 0 0 5px var(--accent); }
+#staffEmailsPage .em-shell .em-choix-texte { gap: 2px; }
+#staffEmailsPage .em-shell .em-choix-texte strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-choix-texte small { font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .pv2-design-radios { gap: 12px 24px; }
+#staffEmailsPage .em-shell .pv2-design-fields { gap: 16px; }
+#staffEmailsPage .em-shell .pv2-design-scope-row { gap: 4px 16px; padding: 12px 0; }
+#staffEmailsPage .em-shell .pv2-design-scope-row strong { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-design-scope-row small { font-size: 14px; line-height: 1.5; }
+#staffEmailsPage .em-shell .em-design-plus { padding-top: 12px; padding-bottom: 12px; }
+#staffEmailsPage .em-shell .em-design-plus > .em-options > .em-options-corps { gap: 32px; padding: 16px 0 12px; }
+#staffEmailsPage .em-shell .em-design-groupe { display: grid; gap: 12px; min-width: 0; }
+#staffEmailsPage .em-shell .pv2-design-preview { gap: 14px; padding: 20px; }
+#staffEmailsPage .em-shell .pv2-design-preview .pv2-note { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-design-actions { gap: 8px 12px; }
+
+/* --- Expediteurs --------------------------------------------------------- */
+#staffEmailsPage .em-shell .em-exp { gap: 24px; }
+#staffEmailsPage .em-shell .em-exp-bas { gap: 24px; }
+#staffEmailsPage .em-shell .em-exp-rows { gap: 4px; margin-top: 12px; }
+#staffEmailsPage .em-shell .em-exp-row { align-items: center; gap: 16px; padding: 16px 12px; }
+#staffEmailsPage .em-shell .em-exp-qui { gap: 4px; }
+#staffEmailsPage .em-shell .em-exp-qui strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-exp-qui span { font-size: 14px; }
+#staffEmailsPage .em-shell .em-exp-etat p { font-size: 15px; }
+#staffEmailsPage .em-shell .em-exp-etat p:first-child::before { top: 8px; width: 8px; height: 8px; }
+#staffEmailsPage .em-shell .em-exp-actions { gap: 4px; }
+#staffEmailsPage .em-shell .em-exp-actions .pv2-chip { height: 26px; padding: 0 10px; font-size: 13px; }
+#staffEmailsPage .em-shell .em-exp-alerte { gap: 14px; padding: 14px 16px; }
+#staffEmailsPage .em-shell .em-exp-alerte .em-todo-dot { margin-top: 7px; }
+#staffEmailsPage .em-shell .em-exp-form { gap: 20px 16px; padding: 24px; }
+#staffEmailsPage .em-shell .pv2-reply-address { gap: 8px; }
+#staffEmailsPage .em-shell .pv2-reply-address strong { font-size: 15px; }
+#staffEmailsPage .em-shell .pv2-reply-address .pv2-note { font-size: 14px; line-height: 1.5; }
+
+/* --- L agent : ses textes ------------------------------------------------- */
+#staffEmailsPage .em-shell .em-agent { gap: 24px; }
+#staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-head { padding: 24px 28px 0; }
+#staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-body { padding: 16px 28px 28px; }
+#staffEmailsPage .em-shell .em-agent .pv2-panel-head h2 { font-size: 18px; }
+#staffEmailsPage .em-shell .em-agent .pv2-panel-sub { font-size: 14px; }
+#staffEmailsPage .em-shell .em-agent-reglages .pv2-composer-grid { gap: 20px 16px; }
+#staffEmailsPage .em-shell .em-brain-titre { margin: 8px 0 6px; color: var(--text); font-size: 15px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-brain-types { gap: 4px; }
+#staffEmailsPage .em-shell .em-brain-type > summary { gap: 4px; padding: 14px 12px 14px 36px; }
+#staffEmailsPage .em-shell .em-brain-type > summary::before { top: 21px; left: 15px; }
+#staffEmailsPage .em-shell .em-brain-nom { font-size: 15px; }
+#staffEmailsPage .em-shell .em-brain-ligne { font-size: 14px; }
+#staffEmailsPage .em-shell .em-brain-champ { padding: 0 12px 14px 36px; }
+#staffEmailsPage .em-shell .em-brain-type > .em-texte-lu { padding: 0 12px 14px 36px; }
+#staffEmailsPage .em-shell .em-texte-lu { font-size: 15px; }
+
+/* --- Exclusions : une ligne pour exclure, puis la liste qui se cherche ---- */
+#staffEmailsPage .em-shell .em-exclu-ajout { display: grid; gap: 10px; margin: 8px 0 28px; }
+#staffEmailsPage .em-shell .em-exclu-titre { margin: 0; color: var(--text); font-size: 15px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-exclu-champs { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+#staffEmailsPage .em-shell .em-exclu-champs input { flex: 1 1 260px; width: auto; min-width: 0; height: 44px; padding: 0 14px; font-size: 15px; }
+#staffEmailsPage .em-shell .em-exclu-champs input[type='text'] { flex-basis: 200px; }
+#staffEmailsPage .em-shell .em-exclu-outils { margin: 0 0 12px; }
+#staffEmailsPage .em-shell .em-exclu-recherche { flex: 1 1 320px; max-width: 480px; height: 44px; }
+#staffEmailsPage .em-shell .em-exclu-rows { gap: 4px; }
+#staffEmailsPage .em-shell .em-exclu-row { gap: 16px; padding: 14px 12px; }
+#staffEmailsPage .em-shell .em-exclu-qui { gap: 4px; }
+#staffEmailsPage .em-shell .em-exclu-qui strong { font-size: 15px; }
+#staffEmailsPage .em-shell .em-exclu-qui span { font-size: 14px; }
+#staffEmailsPage .em-shell .em-exclu-meta { font-size: 14px; }
+
+/* --- Coller un mail recu : l adresse, le mail en grand, Analyser ---------- */
+#staffEmailsPage .pv2-analyze { border: 0; border-radius: var(--em-radius); background: var(--em-panel); box-shadow: none; }
+#staffEmailsPage .pv2-analyze > .pv2-panel-head { align-items: center; padding: 24px 28px 4px; border-bottom: 0; background: transparent; }
+#staffEmailsPage .pv2-analyze > .pv2-panel-head h2 { font-size: 20px; }
+#staffEmailsPage .pv2-analyze > .pv2-panel-head .pv2-panel-sub { font-size: 14px; }
+#staffEmailsPage .pv2-analyze > .pv2-panel-body { gap: 20px; padding: 16px 28px 28px; }
+#staffEmailsPage .pv2-analyze .pv2-composer-field > span { color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+#staffEmailsPage .pv2-analyze .pv2-analyze-texte { min-height: 220px; }
+
+/* --- Largeurs moyennes et telephone --------------------------------------- */
+@container em-main (max-width: 700px) {
+  /* La file garde ses trois colonnes (les regles d avant en cachaient deux). */
+  #staffEmailsPage .em-shell .em-sent .em-table th:nth-child(n) { display: table-cell; }
+  #staffEmailsPage .em-shell .em-sent .em-table th:nth-child(2) { width: 112px; }
+  #staffEmailsPage .em-shell .em-sent .em-table th:nth-child(3) { width: 92px; }
+  #staffEmailsPage .em-shell .em-sent .em-table th,
+  #staffEmailsPage .em-shell .em-sent .em-table td { padding-right: 10px; padding-left: 10px; }
+  #staffEmailsPage .em-shell .em-sent .em-table :is(th, td):first-child { padding-left: 16px; }
+  #staffEmailsPage .em-shell .em-sent-main { padding: 16px 16px 12px; }
+  #staffEmailsPage .em-shell .em-sent-list { margin: 0 -16px; }
+  #staffEmailsPage .em-shell .em-sent-detail { padding: 20px 18px; }
+  #staffEmailsPage .em-shell .em-seqrow-ligne { grid-template-columns: minmax(0, 1fr) 44px; gap: 8px 12px; padding: 16px 12px; }
+  #staffEmailsPage .em-shell .em-seqrow .mk-auto-edit,
+  #staffEmailsPage .em-shell .em-seqrow .pv2-seq-editor { padding: 8px 12px 20px; }
+  #staffEmailsPage .em-shell .em-camp-table tr { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 16px 4px; }
+  #staffEmailsPage .em-shell .em-camp-table td[data-label]::before { font-size: 13px; }
+  #staffEmailsPage .em-shell .em-camp-editeur { padding: 18px; }
+  #staffEmailsPage .em-shell .pv2-design-block { padding: 20px 18px; }
+  #staffEmailsPage .em-shell .em-exp-form { padding: 18px; }
+  #staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-head { padding: 20px 18px 0; }
+  #staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-body { padding: 14px 18px 20px; }
+  #staffEmailsPage .em-shell .em-kpi { padding: 14px 16px; }
+  #staffEmailsPage .em-shell .em-kpi .em-kpi-value { font-size: 28px; }
+  #staffEmailsPage .em-shell .em-todo-list { margin: 0 -12px; }
+  #staffEmailsPage .em-shell .em-todo-list .em-todo { padding: 14px 12px; }
+  #staffEmailsPage .em-shell .em-convos .em-rows { margin: 0 -12px; }
+  #staffEmailsPage .em-shell .em-convos .em-rows .em-row { padding: 14px 12px; }
+}
+@container em-main (max-width: 520px) {
+  /* Au telephone, le bouton plein d un editeur prend toute la largeur, en
+     dernier, la ou le pouce l attend. */
+  #staffEmailsPage .em-shell .em-actions .em-principal { flex: 1 1 100%; }
+  #staffEmailsPage .em-shell .em-actions .pv2-composer-spacer { display: none; }
+  #staffEmailsPage .em-shell .em-todo-list .em-todo { grid-template-columns: 10px minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-todo-list .em-todo .em-todo-geste { grid-column: 2; justify-self: start; margin-left: -12px; }
+  #staffEmailsPage .em-shell .em-exclu-champs .em-principal { flex: 1 1 100%; }
+  #staffEmailsPage .em-shell .pv2-design-block { padding: 18px 16px; }
+}
+/* LOT S, FIN (2026-11-11) : les derniers ecarts vus sur les photos.
+   Les editeurs de campagne et de modele ne posent plus de fond gris dans
+   leur panneau, comme celui des sequences : une seule surface, les champs
+   gardent leur bord, un trait les separe de la liste. */
+#staffEmailsPage .em-shell .em-camp-editeur,
+#staffEmailsPage .em-shell .em-tpl-droite .em-editeur { border-radius: 0; background: transparent; }
+#staffEmailsPage .em-shell .em-camp-editeur { margin: 8px 0 24px; padding: 8px 0 28px; border-bottom: 1px solid var(--line); }
+/* Les choix de l apercu (Ordinateur, Telephone, Clair, Sombre) se lisent et
+   se touchent comme des boutons, pas comme des etiquettes. */
+#staffEmailsPage .em-shell .pv2-seq-preview-head,
+#staffEmailsPage .em-shell .pv2-seq-preview-head .pv2-live-state { font-size: 14px; }
+#staffEmailsPage .em-shell .pv2-theme-choix { gap: 2px; padding: 3px; border-radius: 10px; }
+#staffEmailsPage .em-shell .pv2-theme-btn { min-height: 34px; padding: 4px 12px; border-radius: 7px; font-size: 14px; }
+/* Apparence : « Disposition » est la question du choix, pas une note. */
+#staffEmailsPage .em-shell .pv2-design-radios .pv2-note { flex-basis: 100%; color: var(--text); font-size: 15px; font-weight: 600; }
+/* Envoyes : le parcours du mail se lit a la taille du texte, les heures
+   alignees d une etape a l autre. */
+#staffEmailsPage .em-shell .em-sent-detail .pv2-sent-trace { grid-template-columns: fit-content(60%) minmax(0, 1fr); gap: 10px 16px; font-size: 14px; }
+#staffEmailsPage .em-shell .em-sent-detail .pv2-sent-trace > div { display: contents; font-size: 14px; }

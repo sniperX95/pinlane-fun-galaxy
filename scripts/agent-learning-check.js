@@ -576,7 +576,11 @@ async function main() {
       '[H] la correction part pour CE fait (son identifiant), avec le nouveau texte', JSON.stringify(corrige));
     ok(/tenus en laisse/.test(h3.faits[1].texte) && /corrigé 3 fois/.test(h3.faits[1].texte), '[H] la memoire montre le fait corrige', h3.faits[1].texte.slice(0, 90));
     await page.evaluate(() => { window.confirm = () => true; });
-    await page.click('#staffEmailsPage .pv2-savoir-fait:nth-child(3) .pv2-btn >> text=Oublier');
+    // 2026-11-11 (lot S) : « Oublier » vit dans le menu « Plus » du fait, comme
+    // tout geste qui efface. Comme la gerante, on ouvre le menu de CE fait,
+    // puis on choisit Oublier.
+    await page.click('#staffEmailsPage .pv2-savoir-fait:nth-child(3) .em-plus');
+    await page.click('#staffEmailsPage .pv2-savoir-fait:nth-child(3) .em-plus-menu >> text=Oublier');
     await page.waitForFunction(() => window.__QA_APPELS__.oublier.length === 1, null, { timeout: 5000 });
     await page.waitForTimeout(250);
     const oublis = await page.evaluate(() => window.__QA_APPELS__.oublier);

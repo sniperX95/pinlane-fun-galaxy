@@ -21,6 +21,7 @@ const ROOT = path.resolve(__dirname, '..');
 const GESTES = 'lib/assistant-gestes.js';
 const LOT = 'lib/assistant-gestes-reservations.js';
 const OPS = 'api/ops.js';
+const PROGRAMME = 'lib/programme-a-cocher.js';
 
 // Chaque garde retiree en memoire (le disque n est jamais touche) doit rougir sa ligne.
 const MUTATIONS = [
@@ -54,6 +55,21 @@ const MUTATIONS = [
   { nom: 'retard-texte-change-accepte', rouge: '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', editions: [{ fichier: LOT, de: '        if (rempli(p.envoi_vu) && String(p.envoi_vu) !== empreinte) throw erreur(', vers: '        if (false) throw erreur(' }] },
   { nom: 'retard-autre-incident-accepte', rouge: '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', editions: [{ fichier: LOT, de: '        if (rempli(p.incident) && Number(p.incident) !== Number(incident.id)) throw erreur(', vers: '        if (false) throw erreur(' }] },
   { nom: 'retard-texte-pas-transmis', rouge: '[S] les clients du retard sont prevenus par l action du logiciel, avec les textes de la carte', editions: [{ fichier: LOT, de: 'messages: envois.map((e) => ({ reservationId: e.reservationId, subject: e.subject, body: e.body }))', vers: 'messages: []' }] },
+  // Cocher une activite (2026-11-12) : la cle vient du programme lu comme la fiche, jamais du modele.
+  { nom: 'coche-avec-version', rouge: '[I] la coche de la carte prend le chemin de la case : une cle sur ce qui est en base, sans reecrire le dossier', editions: [{ fichier: LOT, de: 'corps: { id: r.id, activityToggle: { key: e.cle,', vers: 'corps: { id: r.id, baseUpdatedAt: r.version, activityToggle: { key: e.cle,' }] },
+  { nom: 'cle-du-modele-acceptee', rouge: '[G] une cle dite par le modele ou changee depuis la carte ne coche rien', editions: [{ fichier: LOT, de: '        if (rempli(p.cle)) {', vers: '        if (false) {' }] },
+  { nom: 'premiere-activite-prise', rouge: '[G] une activite qui revient plusieurs fois demande sa partie', editions: [{ fichier: LOT, de: '        if (cles.length > 1) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'deja-cochee-recochee', rouge: '[G] cocher ce qui est deja coche se refuse, decocher retire la coche, une activite hors programme se refuse', editions: [{ fichier: LOT, de: '        if (e.fait === voulu) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'annulee-cochee', rouge: '[G] un dossier annule ne se coche plus, un role sans le droit de changer un statut non plus', editions: [{ fichier: LOT, de: "        if (r.status === 'cancelled') throw erreur(`La réservation n° ${r.id} est annulée : son programme ne se coche plus.`);", vers: '' }] },
+  { nom: 'coche-au-nom-du-modele', rouge: '[G] une activite se coche par la cle que la fiche lui donne, sans version, au nom de la session', editions: [{ fichier: LOT, de: "const par = nomDeSession(ctx.session) || 'Staff';", vers: "const par = String(p.par || 'Staff');" }] },
+  { nom: 'bowling-un-seul-groupe', rouge: '[P] le bowling : un bloc, deux services, ou les pistes sans plan, comme la fiche', editions: [{ fichier: PROGRAMME, de: "    const cle = bowling.length === 1 ? 'bowling-1' : `bowling-g${i + 1}`;", vers: '    const cle = `bowling-g${i + 1}`;' }] },
+  { nom: 'bowling-sans-pistes-oublie', rouge: '[P] le bowling : un bloc, deux services, ou les pistes sans plan, comme la fiche', editions: [{ fichier: PROGRAMME, de: "  if (type === 'bowling_lane' && (r.lanes || []).length) {", vers: '  if (false) {' }] },
+  { nom: 'laser-vague-oubliee', rouge: '[P] le laser pose, en parties et en vagues, et les parties a placer, comme la fiche', editions: [{ fichier: PROGRAMME, de: '    const cle = vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${vague}`;', vers: '    const cle = `laser_game-${partie}`;' }] },
+  { nom: 'premiere-partie-pas-ancree', rouge: '[P] le laser pose, en parties et en vagues, et les parties a placer, comme la fiche', editions: [{ fichier: PROGRAMME, de: "  const ancre = r.opsPlan && r.opsPlan.laserPassPlan ? false : (!manuel && r.type !== 'laser');", vers: '  const ancre = false;' }] },
+  { nom: 'estimation-de-formule-oubliee', rouge: '[P] le laser que la console estime faute de plan porte les memes cles', editions: [{ fichier: PROGRAMME, de: "  if (type === 'laser_arena' && (r.type === 'formule' || r.formuleId || partiesDuProgramme(r) > 0)) return sessionsDeFormuleEstimees(r, reglages);", vers: '' }] },
+  { nom: 'variante-de-formule-ignoree', rouge: '[P] une formule coche ses etapes, dans la variante achetee ou d apres son plan', editions: [{ fichier: PROGRAMME, de: '  if (!Array.isArray(etapes) || !etapes.some((s) => remplacees.has(s.a))) return etapes;', vers: '  if (true) return etapes;' }] },
+  { nom: 'attente-comptee-libre', rouge: '[P] les activites libres d une visite, celles d avant le reste comprises', editions: [{ fichier: PROGRAMME, de: '  items.filter((item) => item && !item.planned && !item.waitOffer).forEach((item) => {', vers: '  items.filter((item) => item && !item.planned).forEach((item) => {' }] },
+  { nom: 'postes-du-centre-ignores', rouge: '[P] les postes de l arene du centre decoupent les vagues comme la console', editions: [{ fichier: PROGRAMME, de: 'postes: Number.isFinite(postesLus) && postesLus > 0 ? Math.trunc(postesLus) : POSTES_PAR_DEFAUT', vers: 'postes: POSTES_PAR_DEFAUT' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -159,6 +175,13 @@ function banc() {
       resa({ id: 111, date: J, name: 'Groupe Poussé', startTime: '19:15', email: 'pousse@exemple.be', lanes: [2] }),
       resa({ id: 112, date: J, name: 'Groupe Sans Mail', startTime: '20:15', email: '', lanes: [2] }),
       resa({ id: 113, date: J, name: 'Groupe Bougé', startTime: '21:00', email: 'bouge@exemple.be', lanes: [2] }),
+      // Un programme a cocher : une FORMULE 1 (bowling fait, laser, arcades a heure, boissons) et un
+      // laser de trois parties dont deux attendent leur heure.
+      resa({ id: 114, date: J, name: 'Anniversaire Zoé', type: 'formule', formuleId: 'f1', startTime: '14:00', lanes: [1], activityProgress: { 'bowling-1': { done: true, doneAt: '2026-11-12T13:10:00.000Z', by: 'Inès' } },
+        opsPlan: { resourceBlocks: [{ activityId: 'bowling', resourceType: 'bowling_lane', startTime: '14:00', endTime: '15:00', lanes: [1] }, { activityId: 'laser_game', resourceType: 'laser_arena', startTime: '15:30', endTime: '15:55', countIndex: 1 }],
+          timeline: [{ type: 'activity', activityId: 'bowling', startTime: '14:00', endTime: '15:00' }, { type: 'activity', activityId: 'laser_game', startTime: '15:30', endTime: '15:55' }, { type: 'activity', activityId: 'arcade_time', startTime: '16:00', endTime: '16:30' }, { type: 'activity', activityId: 'service_drinks', startTime: '14:00', endTime: '23:00', flexible: true }] } }),
+      resa({ id: 115, date: J, name: 'Laser Tom', type: 'laser', startTime: '17:00', lanes: [], program: { items: [{ activityId: 'laser_game', games: 3, participants: 8, planned: true }] },
+        opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }], pendingPasses: [{ countIndex: 2 }, { countIndex: 3 }] }, resourceBlocks: [{ activityId: 'laser_game', resourceType: 'laser_arena', startTime: '17:00', endTime: '17:25', countIndex: 1 }] } }),
       resa({ id: 201, centerId: 'gembloux', date: demain, name: 'Ailleurs', email: 'ailleurs@exemple.be' }),
     ],
     demandes: [
@@ -222,6 +245,7 @@ function lecteursDu(b) {
     impactDuRetard: async (c, n, minutes) => impactDu(b, minutes),
     retardApplique: async (c, n) => b.incidents.filter((i) => i.reservationId === Number(n)).slice(-1)[0] || null,
     prevenusDuRetard: async (c, id) => b.prevenus.filter((x) => x.incident === Number(id)),
+    reglagesDuProgramme: async () => ({ postes: 30, formules: require(path.join(ROOT, 'lib/booking-config.js')).FORMULES }),
   };
 }
 
@@ -517,6 +541,50 @@ async function verifier(editions = []) {
     ok(texteChange.e && texteChange.e.statusCode === 409 && /a changé depuis la carte/.test(texteChange.e.message) && autreRetard.e && autreRetard.e.statusCode === 409 && /Un autre retard/.test(autreRetard.e.message),
       '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', JSON.stringify([texteChange.e && texteChange.e.message, autreRetard.e && autreRetard.e.message]));
 
+    // La case d une activite : la cle que la fiche lui donne, sans version, au nom de la session.
+    const cocheLaser = await carte('cocher_activite_faite', { reservation: 114, activite: 'laser' }, ['Le laser de Zoé est fini']);
+    const clicCoche = await clic('cocher_activite_faite', cocheLaser.p ? cocheLaser.p.action.params : {});
+    const toggle = (clicCoche.r && clicCoche.r.corps && clicCoche.r.corps.activityToggle) || {};
+    ok(cocheLaser.p && cocheLaser.p.risque === false && ligne(cocheLaser, 'Activité').valeur === 'Laser Game (partie 1), à 15:30' && ligne(cocheLaser, 'État').avant === 'à faire' && ligne(cocheLaser, 'État').apres === 'faite, par Seb'
+      && clicCoche.r && clicCoche.r.endpoint === 'staff-reservations' && clicCoche.r.methode === 'PATCH' && JSON.stringify(Object.keys(clicCoche.r.corps)) === '["id","activityToggle"]' && clicCoche.r.corps.id === 114
+      && JSON.stringify(Object.keys(toggle)) === '["key","done","doneAt","by"]' && toggle.key === 'laser_game-1' && toggle.done === true && toggle.by === 'Seb' && Math.abs(Date.parse(toggle.doneAt) - Date.now()) < 60000,
+      '[G] une activite se coche par la cle que la fiche lui donne, sans version, au nom de la session', JSON.stringify([vu(cocheLaser), vu(clicCoche)]));
+    const dejaCoche = await carte('cocher_activite_faite', { reservation: 114, activite: 'bowling' }, ['Coche le bowling']);
+    const decocher = await carte('cocher_activite_faite', { reservation: 114, activite: 'Bowling', fait: 'non' }, ['Décoche le bowling']);
+    const clicDecoche = await clic('cocher_activite_faite', decocher.p ? decocher.p.action.params : {});
+    const cruches = await carte('cocher_activite_faite', { reservation: 114, activite: 'les cruches' }, ['Les cruches sont servies']);
+    const horsProgramme = await carte('cocher_activite_faite', { reservation: 114, activite: 'karting' }, ['Coche le karting']);
+    ok(dejaCoche.e && /déjà cochée/.test(dejaCoche.e.message) && clicDecoche.r && JSON.stringify(clicDecoche.r.corps.activityToggle) === '{"key":"bowling-1","done":false,"doneAt":"","by":""}' && ligne(decocher, 'État').apres === 'à faire'
+      && cruches.p && /^Boissons, à leur rythme$/.test(ligne(cruches, 'Activité').valeur) && cruches.p.action.params.cle === 'service_drinks-1'
+      && horsProgramme.e && /n’est pas au programme/.test(horsProgramme.e.message) && /Arcades, à 16:00/.test(horsProgramme.e.message),
+      '[G] cocher ce qui est deja coche se refuse, decocher retire la coche, une activite hors programme se refuse', JSON.stringify([dejaCoche.e && dejaCoche.e.message, vu(clicDecoche), vu(cruches), horsProgramme.e && horsProgramme.e.message]));
+    const laserSansPartie = await carte('cocher_activite_faite', { reservation: 115, activite: 'laser' }, ['Le laser de Tom est fini']);
+    const partieDeux = await carte('cocher_activite_faite', { reservation: 115, activite: 'laser', partie: 2 }, ['La partie 2 de Tom est finie']);
+    ok(laserSansPartie.e && /revient 3 fois/.test(laserSansPartie.e.message) && /partie 2\), heure à placer/.test(laserSansPartie.e.message) && partieDeux.p && partieDeux.p.action.params.cle === 'laser_game-2' && ligne(partieDeux, 'Activité').valeur === 'Laser Game (partie 2), heure à placer',
+      '[G] une activite qui revient plusieurs fois demande sa partie', JSON.stringify([laserSansPartie.e && laserSansPartie.e.message, vu(partieDeux)]));
+    const cleDuModele = await carte('cocher_activite_faite', { reservation: 114, activite: 'laser', cle: 'bowling-1' }, ['Coche le laser']);
+    const cleInventee = await carte('cocher_activite_faite', { reservation: 114, activite: 'arcades', cle: 'arcade_time-9' }, ['Coche les arcades']);
+    const tom = b.reservations.find((r) => r.id === 115);
+    const planAvant = JSON.stringify(tom.opsPlan);
+    tom.pax = 40;
+    tom.program.items[0].participants = 40;
+    tom.opsPlan.resourceBlocks.push(...[1, 2].map((v) => ({ activityId: 'laser_game', resourceType: 'laser_arena', startTime: v === 1 ? '18:00' : '18:30', endTime: v === 1 ? '18:25' : '18:55', countIndex: 2, groupWaveIndex: v, groupWaveCount: 2 })));
+    tom.opsPlan.laserPassPlan.scheduledPasses.push({ countIndex: 2 });
+    const programmeChange = await clic('cocher_activite_faite', partieDeux.p ? partieDeux.p.action.params : {});
+    tom.opsPlan = JSON.parse(planAvant);
+    tom.pax = 8;
+    tom.program.items[0].participants = 8;
+    ok(cleDuModele.e && cleDuModele.e.statusCode === 409 && cleInventee.e && cleInventee.e.statusCode === 409 && programmeChange.e && programmeChange.e.statusCode === 409 && /a changé depuis la carte/.test(programmeChange.e.message),
+      '[G] une cle dite par le modele ou changee depuis la carte ne coche rien', JSON.stringify([cleDuModele.e && cleDuModele.e.message, cleInventee.e && cleInventee.e.message, vu(programmeChange)]));
+    const cocheAnnulee = await carte('cocher_activite_faite', { reservation: 104, activite: 'bowling' }, ['Coche le bowling']);
+    const cocheAccueil = await carte('cocher_activite_faite', { reservation: 114, activite: 'laser' }, ['Coche le laser'], ACCUEIL);
+    ok(cocheAnnulee.e && /annulée/.test(cocheAnnulee.e.message) && cocheAccueil.e && cocheAccueil.e.statusCode === 403,
+      '[G] un dossier annule ne se coche plus, un role sans le droit de changer un statut non plus', JSON.stringify([cocheAnnulee.e && cocheAnnulee.e.message, cocheAccueil.e && cocheAccueil.e.message]));
+
+    // ── P. LE PROGRAMME A COCHER : la jumelle du serveur contre la fiche ──
+    if (!editions.length) console.log('\n[P] le programme a cocher : la fiche et le serveur, cle par cle');
+    verifierProgramme(ok);
+
     // ── S. LE CLIC : api/ops.js ──
     if (!editions.length) console.log('\n[S] le clic : la requete exacte, la meme session, rien hors du centre');
     purger();
@@ -615,6 +683,14 @@ async function verifier(editions = []) {
       } finally {
         Object.entries(twilioAvantS).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
       }
+      const carteCoche = await Gs.proposer('cocher_activite_faite', { reservation: 114, activite: 'laser' }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Le laser de Zoé est fini'] }));
+      journal.fiche.length = 0;
+      const co = await cliquer('cocher_activite_faite', carteCoche.action.params);
+      const vuCoche = journal.fiche[0] || {};
+      ok(co.statut === 200 && journal.fiche.length === 1 && vuCoche.methode === 'PATCH' && vuCoche.url === '/api/staff-reservations' && vuCoche.auth === 'Bearer jeton-du-poste'
+        && JSON.stringify(Object.keys(vuCoche.corps)) === '["id","activityToggle","centerId"]' && vuCoche.corps.id === 114 && vuCoche.corps.centerId === 'libramont' && vuCoche.corps.activityToggle.key === 'laser_game-1' && vuCoche.corps.activityToggle.done === true && vuCoche.corps.activityToggle.by === 'Seb',
+        '[S] la coche part a la fiche, une cle sans version, avec la session', JSON.stringify([co.statut, journal.fiche]).slice(0, 300));
+      journal.fiche.length = 0;
       const carteRetard = await Gs.proposer('prevenir_clients_du_retard', { reservation: 110 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Préviens les clients du retard'] }));
       const pr = await cliquer('prevenir_clients_du_retard', carteRetard.action.params);
       const prevenus = journal.ecrit.filter((e) => e[0] === 'enqueueDelayChangeCommunications').map((e) => e[1]);
@@ -652,11 +728,125 @@ async function verifier(editions = []) {
     // ── I. UNE TENTATIVE NE PART QU UNE FOIS : la vraie lib, une base synthetique (pg double) ──
     if (!editions.length) console.log('\n[I] la relance et le message de la fiche : une cle, un seul envoi');
     await verifierTentatives(ok);
+    if (!editions.length) console.log('\n[I] la coche, recue par la vraie fiche (api/staff-reservations.js)');
+    await verifierLaCoche(ok, clicCoche.r ? clicCoche.r.corps : null);
   } finally {
     restaurer();
     purger();
   }
   return echecs;
+}
+
+// LA COCHE DE LA CARTE, RECUE PAR LA VRAIE FICHE : le corps que l assistant envoie (avec le centre
+// qu api/ops.js ajoute) prend le chemin de la case (setReservationActivityDone, une cle sur ce qui est
+// en base) et ne reecrit pas le dossier. Une version dans ce corps l enverrait au chemin « Modifier ».
+async function verifierLaCoche(ok, corps) {
+  purger();
+  const ecrit = [];
+  const dossier = { id: 114, centerId: 'libramont', date: '2026-11-20', startTime: '14:00', status: 'pending', pax: 8, lanes: [1], type: 'formule', formuleId: 'f1', updatedAt: '2026-11-10T10:00:00.000Z', activityProgress: {}, opsPlan: {} };
+  remplacer('lib/database.js', {
+    getPool: () => ({ query: async () => ({ rows: [], rowCount: 0 }) }),
+    getReservationById: async () => JSON.parse(JSON.stringify(dossier)),
+    setReservationActivityDone: async (...args) => { ecrit.push(['setReservationActivityDone', args]); return { ...dossier, activityProgress: { [args[2]]: { done: true, ...args[4] } } }; },
+    updateReservation: async (x) => { ecrit.push(['updateReservation', x]); return dossier; },
+    setReservationActivityProgress: async (...args) => { ecrit.push(['setReservationActivityProgress', args]); return dossier; },
+  });
+  const session = { centerId: 'libramont', authorizedCenterId: 'libramont', member: { id: 'm-dir', name: 'Seb' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: [] };
+  remplacer('lib/staff-auth.js', { getStaffSessionFromRequest: async () => session, requireStaffPermission: async () => session });
+  remplacer('lib/audit-log.js', { writeAuditLog: async () => ({}), actorFromSession: () => ({}), buildChanges: () => ({}), newRequestId: () => 'banc' });
+  [['lib/ops-knowledge.js', 'refreshCenterOverrides'], ['lib/booking-config.js', 'refreshFormuleOverrides'], ['lib/catalog-store.js', 'refreshCatalog']].forEach(([f, k]) => remplacer(f, { [k]: async () => {} }));
+  const fiche = require(path.join(ROOT, 'api/staff-reservations.js'));
+  const req = Readable.from([Buffer.from(JSON.stringify({ ...(corps || {}), centerId: 'libramont' }))]);
+  Object.assign(req, { method: 'PATCH', url: '/api/staff-reservations', headers: { host: 'localhost', 'content-type': 'application/json' } });
+  const res = { statusCode: 200, corps: '', headersSent: false, setHeader() {}, getHeader() {}, writeHead(s) { this.statusCode = s; return this; }, end(b) { this.corps = String(b || ''); this.headersSent = true; } };
+  try { await fiche(req, res); } catch (e) { res.statusCode = 599; res.corps = e.message; }
+  const [nom, args] = ecrit[0] || [];
+  ok(res.statusCode === 200 && ecrit.length === 1 && nom === 'setReservationActivityDone' && args[0] === 114 && args[1] === 'libramont' && args[2] === (corps && corps.activityToggle && corps.activityToggle.key) && args[3] === true && args[4].by === 'Seb',
+    '[I] la coche de la carte prend le chemin de la case : une cle sur ce qui est en base, sans reecrire le dossier', JSON.stringify([res.statusCode, res.corps.slice(0, 120), ecrit.map((e) => e[0])]));
+  purger();
+}
+
+// ── P. LE PROGRAMME A COCHER : la vraie console (assets/booking-core.js et getGroupeProgramme
+// d assets/app-main.js, dans une vm) et la jumelle du serveur (lib/programme-a-cocher.js), sur la meme
+// matrice de dossiers. Seuls les mots de la fiche sont doubles (noms, details, capacite affichee) :
+// ils ne changent aucune cle.
+let consoleDuProgramme = null;
+function laConsole() {
+  if (consoleDuProgramme) return consoleDuProgramme;
+  const vm = require('vm');
+  const c = vm.createContext({ console, state: { booking: {}, reservations: [] }, document: { getElementById: () => null } });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'assets/booking-core.js'), 'utf8'), c);
+  const source = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8').replace(/\r\n/g, '\n');
+  ['getGroupeProgramme', 'getStaffResourceWindows', 'getLaserGameCountForReservation', 'getFormulaLaserGameCount', 'getStaffFormulaTimedItems', 'getEtapeAvant', 'participantsLigneProgramme', 'joindrePistes'].forEach((nom) => {
+    const debut = source.indexOf(`\nfunction ${nom}(`);
+    if (debut < 0) throw new Error(`console : ${nom} introuvable dans assets/app-main.js`);
+    vm.runInContext(source.slice(debut, source.indexOf('\n}', debut + 1) + 2), c);
+  });
+  vm.runInContext("function nomActivite(item) { return item && item.activityId; } function detailLigneProgramme() { return ''; } function bowlingCapacityMessage() { return ''; }", c);
+  consoleDuProgramme = { c, vm };
+  return consoleDuProgramme;
+}
+
+function dossiersDuProgramme() {
+  const bloc = (activityId, startTime, endTime, x = {}) => ({ activityId, resourceType: activityId === 'bowling' ? 'bowling_lane' : 'laser_arena', startTime, endTime, ...x });
+  const pas = (activityId, startTime, endTime, x = {}) => ({ type: 'activity', activityId, startTime, endTime, ...x });
+  const d = (famille, x) => ({ famille, r: { id: 900, centerId: 'libramont', date: '2026-11-20', startTime: '14:00', duration: 1, status: 'pending', pax: 8, lanes: [], type: 'bowling', formuleId: '', program: { items: [] }, opsPlan: {}, activityProgress: {}, ...x } });
+  const laser3 = { items: [{ activityId: 'laser_game', games: 3, participants: 8 }] };
+  return [
+    d('bowling', { lanes: [2], program: { items: [{ activityId: 'bowling', participants: 8 }] }, opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [2] })] }, activityProgress: { 'bowling-1': { done: true } } }),
+    d('bowling', { pax: 60, lanes: [1, 2, 3, 4, 5, 6, 7, 8], opsPlan: { resourceBlocks: [bloc('bowling', '16:00', '17:00', { lanes: [1, 2, 3, 4] }), bloc('bowling', '14:00', '15:00', { lanes: [5, 6, 7, 8] })] }, activityProgress: { 'bowling-g2': { done: true } } }),
+    d('bowling', { lanes: [3], duration: 2 }),
+    d('laser', { type: 'laser', program: laser3, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }, { countIndex: 2 }, { countIndex: 3 }] }, resourceBlocks: [1, 2, 3].map((n) => bloc('laser_game', `1${4 + n}:00`, `1${4 + n}:25`, { countIndex: n, groupWaveIndex: 1, groupWaveCount: 1 })) }, activityProgress: { 'laser_game-2': { done: true } } }),
+    d('laser', { type: 'laser', program: laser3, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }], pendingPasses: [{ countIndex: 2 }, { countIndex: 3 }] }, resourceBlocks: [1, 2, 3].map((n) => bloc('laser_game', `1${4 + n}:00`, `1${4 + n}:25`, { countIndex: n })) } }),
+    d('laser', { type: 'laser', pax: 40, program: { items: [{ activityId: 'laser_game', games: 1, participants: 40 }] }, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }] }, resourceBlocks: [1, 2].map((v) => bloc('laser_game', `1${4 + v}:00`, `1${4 + v}:25`, { countIndex: 1, groupWaveIndex: v, groupWaveCount: 2, players: 20 })) }, activityProgress: { 'laser_game-1-g2': { done: true } } }),
+    d('laser', { type: 'laser', pax: 40, program: { items: [{ activityId: 'laser_game', games: 1, participants: 40 }] }, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }] }, resourceBlocks: [bloc('laser_game', '15:00', '15:25', { countIndex: 1, groupWaveIndex: 1, groupWaveCount: 2, players: 20 })] } }),
+    d('laser', { type: 'formule', formuleId: 'f2', pax: 10, opsPlan: { laserManual: true, timeline: [pas('minigolf_blacklight', '14:00', '14:45')] } }),
+    d('laser', { type: 'bowling', lanes: [1], program: { items: [{ activityId: 'bowling', participants: 8, planned: true }, { activityId: 'laser_game', games: 2, participants: 8, planned: true }] }, opsPlan: { laserPassPlan: { pendingPasses: [{ countIndex: 1 }, { countIndex: 2 }] }, resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [1] })] } }),
+    d('laser', { type: 'bowling', lanes: [1], program: { items: [{ activityId: 'bowling', participants: 8, planned: true }, { activityId: 'laser_game', games: 2, participants: 8, planned: true, extraLaser: { games: 3, participants: 2 } }] }, opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [1] }), bloc('laser_game', '15:30', '15:55', { countIndex: 1 }), bloc('laser_game', '16:00', '16:25', { countIndex: 2 })] } }),
+    d('laser', { type: 'formule', formuleId: 'f2', pax: 10, program: { items: [{ activityId: 'laser_game', games: 2, participants: 10, planned: true }] }, opsPlan: { resourceBlocks: [bloc('laser_game', '16:00', '16:25', { countIndex: 2 })] } }),
+    d('laser', { status: 'cancelled', type: 'laser', program: laser3, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }] }, resourceBlocks: [bloc('laser_game', '15:00', '15:25', { countIndex: 1 })] } }),
+    d('estime', { type: 'laser', duration: 1, startTime: '14:10' }),
+    d('estime', { type: 'laser', duration: 0.5, pax: 45, startTime: '18:00' }),
+    d('estime', { type: 'formule', formuleId: 'f1', lanes: [1], startTime: '14:00', duration: 1 }),
+    d('estime', { type: 'bowling', lanes: [2], program: { items: [{ activityId: 'bowling', participants: 8, planned: true }, { activityId: 'laser_game', games: 2, participants: 8, planned: true }] }, preference: { preferredLaserTime: '17:30' }, opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [2] })] } }),
+    d('formule', { type: 'formule', formuleId: 'f1', lanes: [1], opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [1] }), bloc('laser_game', '15:30', '15:55', { countIndex: 1 })], timeline: [pas('bowling', '14:00', '15:00'), pas('laser_game', '15:30', '15:55'), pas('arcade_time', '16:00', '16:30'), pas('service_drinks', '14:00', '23:00', { flexible: true })] }, activityProgress: { 'arcade_time-1': { done: true } } }),
+    d('formule', { type: 'formule', formuleId: 'f4', lanes: [1], pax: 10, program: { items: [{ activityId: 'laser_game', games: 2, participants: 10 }] }, opsPlan: { resourceBlocks: [bloc('bowling', '15:00', '16:00', { lanes: [1] }), bloc('laser_game', '16:30', '16:55', { countIndex: 1 })], timeline: [pas('minigolf_blacklight', '14:00', '14:45'), pas('bowling', '15:00', '16:00')] } }),
+    d('formule', { type: 'formule', formuleId: 'f4', lanes: [1], pax: 10, opsPlan: { formulaChoice: { id: 'f4-arcades', replaces: ['laser_game'], steps: [{ activityId: 'arcade_time', count: 1, label: '60 min d’arcades' }], desc: ['Minigolf', '1h de Bowling', '60 min arcades'] }, resourceBlocks: [bloc('bowling', '15:00', '16:00', { lanes: [1] })], timeline: [pas('arcade_time', '16:00', '17:00')] } }),
+    d('formule', { type: 'formule', formuleId: 'zz', opsPlan: { timeline: [pas('minigolf_blacklight', '14:00', '14:45'), pas('arcade_time', '15:00', '15:30'), pas('arcade_time', '16:00', '16:30', { countIndex: 2 })] }, activityProgress: { 'arcade_time-2': { done: true } } }),
+    d('libre', { type: 'bowling', lanes: [4], program: { items: [{ activityId: 'bowling', participants: 8, planned: true }, { activityId: 'minigolf_blacklight', participants: 8, planned: false }, { activityId: 'arcade_time', participants: 8, planned: false, waitOffer: true }, { activityId: 'billards', participants: 4, planned: false, avant: true, name: 'Billard' }] }, opsPlan: { resourceBlocks: [bloc('bowling', '15:00', '16:00', { lanes: [4] })], timeline: [pas('billards', '14:00', '14:45', { flexible: false })] }, activityProgress: { 'libre-minigolf_blacklight': { done: true } } }),
+    d('postes', { type: 'laser', pax: 25, program: { items: [{ activityId: 'laser_game', games: 2, participants: 25 }] }, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }] }, resourceBlocks: [bloc('laser_game', '15:00', '15:25', { countIndex: 1, groupWaveIndex: 1, groupWaveCount: 2 }), bloc('laser_game', '15:30', '15:55', { countIndex: 1, groupWaveIndex: 2, groupWaveCount: 2 })] }, postes: 20 }),
+    d('postes', { type: 'laser', duration: 0.5, pax: 25, startTime: '18:00', postes: 20 }),
+  ];
+}
+
+function verifierProgramme(ok) {
+  const T = require(path.join(ROOT, 'lib/programme-a-cocher.js'));
+  const { c, vm } = laConsole();
+  const lu = (e) => [e.coche === undefined ? e.cle : e.coche, e.activityId, Boolean(e.fait), e.start == null ? null : Math.round(e.start * 60), e.end == null ? null : Math.round(e.end * 60), Boolean(e.aPlacer), Boolean(e.libre)].join('|');
+  const ecarts = {};
+  const vus = {};
+  dossiersDuProgramme().forEach(({ famille, r }, i) => {
+    const { postes, ...dossier } = r;
+    c.dossier = JSON.parse(JSON.stringify(dossier));
+    vm.runInContext(`setCenterScheduleConfig(${postes ? JSON.stringify({ resources: { laser: { weaponCount: postes } } }) : 'null'})`, c);
+    const laFiche = JSON.parse(JSON.stringify(vm.runInContext('getGroupeProgramme(dossier)', c))).map(lu);
+    const leServeur = T.etapesACocher(JSON.parse(JSON.stringify(dossier)), { postes, formules: vm.runInContext('FORMULES', c) }).map(lu);
+    vus[famille] = (vus[famille] || 0) + laFiche.length;
+    if (JSON.stringify(laFiche) !== JSON.stringify(leServeur)) (ecarts[famille] = ecarts[famille] || []).push({ dossier: i, fiche: laFiche, serveur: leServeur });
+  });
+  vm.runInContext('setCenterScheduleConfig(null)', c);
+  const ligneP = (famille, nom) => ok(vus[famille] > 0 && !ecarts[famille], nom, JSON.stringify(ecarts[famille] || 'aucune etape lue').slice(0, 600));
+  ligneP('bowling', '[P] le bowling : un bloc, deux services, ou les pistes sans plan, comme la fiche');
+  ligneP('laser', '[P] le laser pose, en parties et en vagues, et les parties a placer, comme la fiche');
+  ligneP('estime', '[P] le laser que la console estime faute de plan porte les memes cles');
+  ligneP('formule', '[P] une formule coche ses etapes, dans la variante achetee ou d apres son plan');
+  ligneP('libre', '[P] les activites libres d une visite, celles d avant le reste comprises');
+  ligneP('postes', '[P] les postes de l arene du centre decoupent les vagues comme la console');
+  const memes = JSON.stringify(T.__test.NOMS) === JSON.stringify(vm.runInContext('FORMULA_ACTIVITY_LABELS', c))
+    && JSON.stringify(Object.entries(T.__test.ETAPES).map(([id, l]) => [id, l.map((x) => [x.a, x.c])])) === JSON.stringify(Object.entries(vm.runInContext('FORMULA_ACTIVITY_STEPS', c)).map(([id, l]) => [id, l.map((x) => [x.a, x.c])]))
+    && vm.runInContext('LASER_GAME_ARENA_MINUTES', c) === require(path.join(ROOT, 'lib/booking-config.js')).LASER_GAME_ARENA_MINUTES
+    && JSON.stringify(vm.runInContext('FORMULES.map((f) => [f.id, f.desc])', c)) === JSON.stringify(require(path.join(ROOT, 'lib/booking-config.js')).FORMULES.map((f) => [f.id, f.desc]));
+  ok(memes, '[P] la jumelle lit les memes noms, etapes, formules et durees que la console');
 }
 
 // La table communications, telle que l insertion la traite : la cle unique, « do nothing » ou

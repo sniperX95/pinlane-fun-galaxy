@@ -5843,8 +5843,12 @@
       body: typeof payload.body === 'string' ? payload.body : actuel.body,
     };
     if (EM_IA_TRANSFORME.has(intention)) {
-      const apres = emIaVariables(`${nouveau.subject}\n${nouveau.body}`);
-      const perdues = [...emIaVariables(`${actuel.subject}\n${actuel.body}`)].filter((v) => !apres.has(v));
+      // Chaque champ garde SES variables : un objet qui garde {{prenom}} ne
+      // couvre pas un texte qui l a perdu (meme regle que le serveur).
+      const perdues = [...new Set(['subject', 'body'].flatMap((k) => {
+        const apres = emIaVariables(nouveau[k]);
+        return [...emIaVariables(actuel[k])].filter((v) => !apres.has(v));
+      }))];
       if (perdues.length) {
         e.erreur = `L’aide a perdu ${perdues.join(', ')}. Votre texte reste tel quel.`;
         cible.peindre();

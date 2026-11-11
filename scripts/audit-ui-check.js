@@ -202,8 +202,10 @@ async function main() {
     console.log('[1] la page Emails ne porte PLUS le Journal des modifications');
     const emailsState = await page.evaluate(() => ({
       rendered: (document.getElementById('staffEmailsPage')?.innerHTML.length || 0) > 500,
-      panelTitles: [...document.querySelectorAll('#staffEmailsPage .pv2-panel h2')].map((h) => h.textContent),
-      journalPresent: [...document.querySelectorAll('#staffEmailsPage .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
+      // Depuis le 2026-11-10, l Apercu range ses blocs en .em-block (lot 1a
+      // d Emails & relances) : les deux sortes de panneaux comptent.
+      panelTitles: [...document.querySelectorAll('#staffEmailsPage :is(.pv2-panel, .em-block) h2')].map((h) => h.textContent),
+      journalPresent: [...document.querySelectorAll('#staffEmailsPage :is(.pv2-panel, .em-block) h2')].some((h) => h.textContent.includes('Journal des modifications')),
       auditBody: Boolean(document.querySelector('#staffEmailsPage [data-pv2-mount="audit"]')),
       calls: window.__AUDIT_CALLS__.length,
     }));
@@ -219,7 +221,7 @@ async function main() {
       // Marqueur pose sur un ENFANT de la page Emails : si une interaction du
       // journal re-rendait la page Emails, son innerHTML serait reconstruit et
       // le marqueur disparaitrait. Un innerHTML fige garde son marqueur.
-      const child = document.querySelector('#staffEmailsPage .pv2-panel');
+      const child = document.querySelector('#staffEmailsPage :is(.pv2-panel, .em-block)');
       if (child) child.setAttribute('data-qa-marker', '1');
       state.staffMenuPage = 'cockpit-journal';
       save();
@@ -298,7 +300,7 @@ async function main() {
     const afterDetail = await page.evaluate(() => ({
       text: document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText,
       // Le hook pv2AuditRerender doit re-rendre Direction, PAS la page Emails.
-      emailsMarker: Boolean(document.querySelector('#staffEmailsPage .pv2-panel[data-qa-marker="1"]')),
+      emailsMarker: Boolean(document.querySelector('#staffEmailsPage :is(.pv2-panel, .em-block)[data-qa-marker="1"]')),
     }));
     ok(afterHeads.includes('Avant') && afterHeads.includes('Après'),
       `le detail montre les colonnes Avant et Après (obtenu ${afterHeads.join(' / ') || 'aucune'})`);

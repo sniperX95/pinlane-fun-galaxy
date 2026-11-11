@@ -232,7 +232,10 @@ async function testerEditeur(page, appels, file, ed) {
   await geste(page, cle, 'nl');
   const b3 = await barre(page, cle);
   const regles = await lireChamps(page, champs);
-  ok(b3.note === NOTE && b3.conseils.includes(CONSEIL) && !/IA\b/.test(b3.texte.replace(/Dites ce que vous voulez écrire…/, '')) && regles.body === CORPS,
+  // La note du serveur peut dire « Sans IA » : c est le reste de la barre qui
+  // ne doit jamais presenter le resultat comme de l IA.
+  const horsNote = b3.texte.replace(/Dites ce que vous voulez écrire…/, '').replace(NOTE, '').replace(CONSEIL, '');
+  ok(b3.note === NOTE && b3.conseils.includes(CONSEIL) && !/\bIA\b/.test(horsNote) && regles.body === CORPS,
     `[${cle}] le mode regles montre sa note et ses conseils, sans se dire IA`, b3.texte.slice(0, 120));
 
   // Trois objets : trois lignes, le choix remplit l objet, le texte reste.

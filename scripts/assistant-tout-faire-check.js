@@ -25,6 +25,8 @@ const MUTATIONS = [
   { nom: 'droit-du-geste-ignore', rouge: '[G] sans le droit du geste, aucune carte', editions: [{ fichier: GESTES, de: '  if (!sessionHasPermission(session, g.permission)) throw erreur(', vers: '  if (false) throw erreur(' }] },
   { nom: 'sequence-nee-allumee', rouge: '[G] une sequence creee nait coupee', editions: [{ fichier: GESTES, de: '        corps: { sequence: { ...sequence, enabled: false } },', vers: '        corps: { sequence: { ...sequence, enabled: true } },' }] },
   { nom: 'volume-recalcule-au-clic', rouge: '[G] le volume d une campagne vu sur la carte repart au clic', editions: [{ fichier: GESTES, de: '    prep.corps.expectedRecipients = Math.trunc(Number(p.destinataires));', vers: '' }] },
+  // Vu par le lot 3 le 2026-11-11 : l heure dite partait sans fuseau, et le serveur la lisait en UTC.
+  { nom: 'heure-lue-en-utc', rouge: '[G] une campagne programmee part a l heure de Bruxelles, hiver comme ete', editions: [{ fichier: GESTES, de: '        envoiLe = new Date(t).toISOString();', vers: '        envoiLe = quand;' }] },
   { nom: 'sans-controle-total-au-clic', rouge: '[S] un role sans le controle total ne fait aucun geste (403)', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
   // Vu au gate le 2026-11-11 : « beaucoup », vide de ses lettres, devenait un prix de 0 €.
   { nom: 'mot-devient-zero', rouge: '[S] un parametre faux ou un geste inconnu ne touche a rien', editions: [
@@ -111,7 +113,8 @@ function banc() {
     modeles: [{ id: 3, name: 'Promo été', category: 'promotion', subject: 'L’été est là', body: 'Bonjour {{prenom}}, profitez de l’été.' }],
     campagnes: [
       { id: 11, name: 'Rentrée', segment: 'dormant', subject: 'Revenez nous voir', body: 'Bonjour {{prenom}}, on vous attend.', storedStatus: 'draft', status: 'draft' },
-      { id: 12, name: 'Noël', segment: 'all', subject: 'Joyeux Noël', body: 'Bonjour {{prenom}}', storedStatus: 'scheduled', status: 'scheduled', scheduledAt: '2026-12-20T10:00' },
+      // La base rend scheduled_at en Date (timestamptz), pas en texte.
+      { id: 12, name: 'Noël', segment: 'all', subject: 'Joyeux Noël', body: 'Bonjour {{prenom}}', storedStatus: 'scheduled', status: 'scheduled', scheduledAt: new Date('2026-12-20T09:00:00.000Z') },
     ],
     audience: 42,
   };
@@ -176,6 +179,23 @@ async function verifier(editions = []) {
     const dejaPartie = await carte('campagne_envoyer', { campagne: 'Noël' }, { mots: ['Envoie Noël'] });
     const heure = await carte('campagne_envoyer', { campagne: 'Rentrée', quand: 'demain matin' }, { mots: ['Programme la campagne de rentrée'] });
     ok(dejaPartie.e && /pas un brouillon/.test(dejaPartie.e.message) && heure.e && /AAAA-MM-JJTHH:MM/.test(heure.e.message), '[G] une campagne deja programmee ou une heure floue se refuse', JSON.stringify([dejaPartie.e && dejaPartie.e.message, heure.e && heure.e.message]));
+    // L heure dite est celle de Bruxelles : l an prochain en hiver (UTC+1) et en ete (UTC+2). Le matin
+    // du passage a l heure d ete, 2 h 30 n existe pas ; le 31 fevrier non plus.
+    const an = new Date().getUTCFullYear() + 1;
+    const finMars = new Date(Date.UTC(an, 2, 31));
+    finMars.setUTCDate(31 - finMars.getUTCDay());
+    const programmer = (quand) => carte('campagne_envoyer', { campagne: 'Rentrée', quand }, { mots: ['Programme la campagne de rentrée'] });
+    const refaireLaCarte = (vue) => (vue.p ? G.refaire('campagne_envoyer', vue.p.action.params, G.contexte({ centre: 'libramont', session: DIRECTION, lecteurs: lecteursDu(b) })) : null);
+    const hiver = await programmer(`${an}-01-15T10:00`);
+    const ete = await programmer(`${an}-07-01T10:00`);
+    const trou = await programmer(`${finMars.toISOString().slice(0, 10)}T02:30`);
+    const fevrier = await programmer(`${an}-02-31T10:00`);
+    const envoiHiver = await refaireLaCarte(hiver);
+    const envoiEte = await refaireLaCarte(ete);
+    ok(envoiHiver && envoiHiver.corps.mode === 'schedule' && envoiHiver.corps.scheduledAt === `${an}-01-15T09:00:00.000Z` && envoiEte && envoiEte.corps.scheduledAt === `${an}-07-01T08:00:00.000Z` && /15 janvier/.test(hiver.p.texte) && /à 10 h/.test(hiver.p.texte) && trou.e && /heure de Bruxelles/.test(trou.e.message) && fevrier.e,
+      '[G] une campagne programmee part a l heure de Bruxelles, hiver comme ete', JSON.stringify([envoiHiver && envoiHiver.corps, envoiEte && envoiEte.corps, hiver.p ? hiver.p.texte : hiver.e.message, trou.e && trou.e.message, fevrier.e ? fevrier.e.message : 'carte rendue']).slice(0, 400));
+    const annuler = await carte('campagne_annuler', { campagne: 'Noël' }, { mots: ['Annule la campagne de Noël'] });
+    ok(annuler.p && annuler.p.resume.lignes.some((l) => l.libelle === 'Prévue' && l.valeur === 'dimanche 20 décembre à 10 h'), '[G] une campagne programmee se relit a l heure de Bruxelles', JSON.stringify(annuler.p ? annuler.p.resume.lignes : annuler.e.message));
     b.audience = 40;
     const auClic = await G.refaire('campagne_envoyer', envoi.p ? envoi.p.action.params : {}, G.contexte({ centre: 'libramont', session: DIRECTION, lecteurs: lecteursDu(b) }));
     ok(auClic.action === 'sendCampaign' && auClic.corps.expectedRecipients === 42 && auClic.corps.id === 11, '[G] le volume d une campagne vu sur la carte repart au clic', JSON.stringify(auClic.corps));

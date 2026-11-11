@@ -353,29 +353,12 @@ const LOT_MAX = 12;
 
 // LE TELEPHONE DU CLIENT EST OBLIGATOIRE A LA CREATION (Ansar, 2026-11-11 : « on doit
 // obligatoirement mettre numéro de téléphone »). La fenetre Reserver l exige avant
-// Créer (rvTelephoneValide, assets/app-main.js) ; le serveur redit la meme regle pour
-// un poste reste sur une ancienne page. Les chiffres se lisent comme la fenetre les
-// met en forme (normalizePhoneInput) : « 0... » est belge, « 00 » ou « + » ouvre un
-// indicatif. Au moins 8 chiffres apres l indicatif belge, au plus 15 en tout (E.164).
-// La simulation n en a pas besoin ; une demande sur mesure reservee (customRequestBook)
+// Créer (rvTelephoneValide, assets/app-main.js) ; le serveur redit la meme regle
+// (lib/telephone-du-client.js) pour un poste reste sur une ancienne page. La
+// simulation n en a pas besoin ; une demande sur mesure reservee (customRequestBook)
 // garde le numero de sa demande.
-function chiffresDuTelephone(valeur) {
-  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
-  if (!brut) return '';
-  const chiffres = brut.replace(/\D/g, '');
-  if (brut.startsWith('+')) return chiffres;
-  if (brut.startsWith('00')) return chiffres.slice(2);
-  if (brut.startsWith('0')) return `32${chiffres.slice(1)}`;
-  return `32${chiffres}`;
-}
-
-function telephoneDuComptoirValide(valeur) {
-  const chiffres = chiffresDuTelephone(valeur);
-  return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
-}
-
 function exigerLeTelephone(corps) {
-  if (telephoneDuComptoirValide(corps && corps.phone)) return;
+  if (require('../lib/telephone-du-client').telephoneValide(corps && corps.phone)) return;
   throw createHttpError('Le téléphone du client est obligatoire.', 422);
 }
 

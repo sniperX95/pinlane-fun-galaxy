@@ -7,7 +7,7 @@ const { actorFromSession, newRequestId, writeAuditLog } = require('../lib/audit-
 const { isBudgetExhausted } = require('../lib/llm-budget');
 const { getPool } = require('../lib/database');
 const { creerContexte, PERMISSIONS_PAGE, sourcesDuCompte, voitLesClients } = require('../lib/assistant-outils');
-const { bilan, MODELES, POSTE, repondre } = require('../lib/assistant-agent');
+const { bilan, MODELES, MODELE_PAR_DEFAUT, POSTE, repondre } = require('../lib/assistant-agent');
 const memoire = require('../lib/assistant-memoire');
 
 const MESSAGES_MAX = 40;
@@ -261,7 +261,7 @@ module.exports = async (req, res) => {
       sendError(res, 429, "Trop de questions d'un coup. Réessayez dans quelques minutes.");
       return;
     }
-    const modele = Object.prototype.hasOwnProperty.call(MODELES, body.modele) ? body.modele : 'haiku';
+    const modele = Object.prototype.hasOwnProperty.call(MODELES, body.modele) ? body.modele : MODELE_PAR_DEFAUT;
     const centres = await centresDuClient(session, centreOuvert);
     const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles(), messagesPersonne: messages.filter((m) => m.role === 'user').map((m) => m.content) });
     ctx.centreOuvert = centreOuvert;

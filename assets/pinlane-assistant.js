@@ -19,10 +19,17 @@
   const DETAILS_GARDES = 12;
   const QUESTION_MAX = 6000;
   const FAIT_MAX = 500;
+  // LE MODELE QUI REFLECHIT (Ansar, 2026-11-11 : « l'IA n'est pas du tout assez smart, elle réfléchit pas
+  // assez »). Sonnet par defaut : au banc, il a lu « 2 parties de laser à 3 » comme 3 joueurs sur 5, la ou
+  // Haiku demandait ce que voulait dire « à 3 ». Opus pour les decisions qui comptent, Haiku pour une
+  // question simple. Un choix garde d avant ce menu (MODELE_VERSION) etait le defaut d alors : il ne se
+  // reprend pas.
   const MODELES = [
-    { id: 'haiku', nom: 'Haiku 5.5', phrase: 'Rapide, pour les questions courantes.' },
-    { id: 'sonnet', nom: 'Sonnet 5.5', phrase: 'Plus poussé, pour les décisions qui comptent.' },
+    { id: 'sonnet', nom: 'Sonnet 5.5', phrase: 'Réfléchi, pour la plupart des questions.' },
+    { id: 'opus', nom: 'Opus 5.5', phrase: 'Le plus poussé, pour les décisions qui comptent.' },
+    { id: 'haiku', nom: 'Haiku 5.5', phrase: 'Rapide, pour une question simple.' },
   ];
+  const MODELE_VERSION = 2;
   const SUGGESTIONS = [
     'Faut-il changer une formule ou en ajouter une ?',
     'Quelles heures restent vides et comment les remplir ?',
@@ -45,7 +52,9 @@
   // Les gestes que la personne peut faire faire, et les seules cles qui partent avec chacun.
   // ouvrirReserver ne part pas au serveur : il ouvre la fenetre Reserver preremplie, la personne confirme.
   // noteClient passe par la porte des notes du client (api/staff-customer-notes), qui revoit le droit et le centre.
-  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'] };
+  // assistantReservation part a api/ops.js, qui revoit tout (lib/assistant-reservation.js) : le programme,
+  // le telephone du client tape sur la carte, le plan sur la journee lue au clic, les droits.
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'], assistantReservation: ['date', 'startTime', 'pax', 'programme', 'name', 'phone'], annulerReservation: ['reservationId', 'date'], effacerConversations: ['portee', 'jours'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -68,7 +77,7 @@
   const sansMouvement = () => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const A = {
-    root: null, cle: '', conversations: [], actuelle: '', modele: 'haiku', flux: null, panneau: null,
+    root: null, cle: '', conversations: [], actuelle: '', modele: 'sonnet', flux: null, panneau: null,
     menuModele: false, aSupprimer: '', identites: Object.create(null), peintureDemandee: false, ouvreur: null,
     suivi: true, dernierGeste: 0, glisse: 0, vuHaut: 0, vuHauteur: 0, observateur: null,
     stockage: 'inconnu', carte: [], savoir: { charge: false, disponible: true, faits: [], edition: 0, aRetirer: 0, envoi: false, erreur: '' },
@@ -98,7 +107,7 @@
     try {
       const lu = JSON.parse(localStorage.getItem(A.cle) || 'null');
       if (lu && Array.isArray(lu.conversations)) A.conversations = lu.conversations.filter((c) => c && c.id && Array.isArray(c.messages));
-      if (lu && MODELES.some((m) => m.id === lu.modele)) A.modele = lu.modele;
+      if (lu && lu.modeleV === MODELE_VERSION && MODELES.some((m) => m.id === lu.modele)) A.modele = lu.modele;
     } catch (erreur) { /* appareil sans stockage : la conversation vit le temps de la page */ }
     // Une reponse coupee par une fermeture de page n est plus en cours.
     A.conversations.forEach((c) => c.messages.forEach((m) => { if (m.statut === 'cours') m.statut = 'arrete'; }));
@@ -125,6 +134,7 @@
     const appareil = A.stockage !== 'serveur';
     return {
       modele: A.modele,
+      modeleV: MODELE_VERSION,
       conversations: (appareil ? A.conversations : attente || []).filter((c) => Array.isArray(c.messages) && c.messages.length).slice(0, CONVERSATIONS_MAX).map((c) => masquer({
         id: c.id,
         titre: c.titre,
@@ -1076,10 +1086,54 @@
 
   // FAIRE LE GESTE PROPOSE (2026-11-11) : seul ce clic l envoie, avec les droits de la personne, et le
   // serveur revoit tout (api/ops.js). Une action hors de cette liste ne part pas.
-  async function faireGeste(m, p) {
+  async function faireGeste(m, p, { confirme = false } = {}) {
     const a = p.action || {};
     const cles = GESTES[a.action];
     if (!cles || p.etat === 'cours') return;
+    // UN GESTE RISQUE SE CONFIRME DEUX FOIS (Ansar, 2026-11-11 : « double vérification à la personne qui
+    // demande ») : le premier clic dit ce qui va se passer et ce qui ne se rattrape pas, le second fait.
+    if (p.risque && !confirme) {
+      p.confirmer = true;
+      p.erreur = '';
+      peindreMessage(m);
+      const i = (m.propositions || []).indexOf(p);
+      const bouton = A.root && A.root.querySelector(`[data-ast-geste-oui="${i}"][data-ast-confirme="1"]`);
+      if (bouton) bouton.focus();
+      return;
+    }
+    p.confirmer = false;
+    if (a.action === 'effacerConversations') {
+      const liste = conversationsAEffacer(a);
+      liste.forEach((c) => supprimer(c.id));
+      p.efface = liste.length;
+      p.etat = 'fait';
+      sauver(courante());
+      peindreMessage(m);
+      return;
+    }
+    if (a.action === 'annulerReservation') {
+      if (p.centre && p.centre !== centreId()) { p.erreur = `Cette réservation est dans ${nomDUnCentre(p.centre)} : ouvrez ce centre dans la console, puis redemandez.`; peindreMessage(m); return; }
+      if (typeof envoyerModificationReservation !== 'function' || typeof apiRequest !== 'function') { p.erreur = 'L’annulation n’est pas disponible ici.'; peindreMessage(m); return; }
+      p.etat = 'cours';
+      p.erreur = '';
+      peindreMessage(m);
+      try {
+        // Le dossier relu au clic : c est sa version du moment qui part, avec les droits de la personne.
+        const lu = await apiRequest(`${API_ENDPOINTS.staffReservations}?numero=${encodeURIComponent(a.reservationId)}&centerId=${encodeURIComponent(centreId())}`);
+        const dossier = lu && lu.reservation;
+        if (!dossier || String(dossier.id) !== String(a.reservationId) || (lu.centre && lu.centre !== centreId())) throw new Error('Cette réservation n’est plus dans ce centre.');
+        if (dossier.status === 'cancelled') throw new Error('Cette réservation est déjà annulée.');
+        const fait = await envoyerModificationReservation(dossier, (d) => ({ ...d, status: 'cancelled' }));
+        if (fait && fait.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(fait.reservation, { preserveEditState: true });
+        p.etat = 'fait';
+      } catch (erreur) {
+        p.etat = '';
+        p.erreur = (erreur && erreur.message) || 'L’annulation n’a pas pu se faire.';
+      }
+      sauver(courante());
+      peindreMessage(m);
+      return;
+    }
     const corps = { action: a.action, centerId: p.centre || centreId() };
     cles.forEach((k) => { if (a[k] != null) corps[k] = a[k]; });
     if (a.action === 'ouvrirReserver') {
@@ -1088,6 +1142,44 @@
       if (typeof openQuickBook !== 'function') { p.erreur = 'La fenêtre Réserver n’est pas disponible ici.'; peindreMessage(m); return; }
       openQuickBook({ date: corps.date, startTime: corps.startTime, heureSouhaitee: true, pax: corps.pax, ...(corps.name ? { name: corps.name } : {}) });
       p.etat = 'fait';
+      sauver(courante());
+      peindreMessage(m);
+      return;
+    }
+    if (a.action === 'assistantReservation') {
+      if (p.centre && p.centre !== centreId()) { p.erreur = `Cette réservation est pour ${nomDUnCentre(p.centre)} : ouvrez ce centre dans la console, puis redemandez.`; peindreMessage(m); return; }
+      const i = (m.propositions || []).indexOf(p);
+      const champTel = A.root && A.root.querySelector(`[data-ast-tel="${i}"]`);
+      const champNom = A.root && A.root.querySelector(`[data-ast-nom="${i}"]`);
+      const tel = champTel ? champTel.value.trim() : String(a.phone || '');
+      const nom = champNom ? champNom.value.trim() : String(a.name || '');
+      p.saisie = { tel, nom };
+      if (!telephoneValide(tel)) {
+        p.erreur = tel.replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Tapez le téléphone du client : il est obligatoire pour créer la réservation.';
+        p.manqueTel = true;
+        peindreMessage(m);
+        const champ = A.root && A.root.querySelector(`[data-ast-tel="${i}"]`);
+        if (champ) champ.focus();
+        return;
+      }
+      corps.phone = tel;
+      corps.name = nom;
+      corps.programme = Array.isArray(a.programme) ? a.programme : [];
+      p.etat = 'cours';
+      p.erreur = '';
+      p.manqueTel = false;
+      peindreMessage(m);
+      try {
+        const r = typeof apiRequest === 'function' && typeof API_ENDPOINTS !== 'undefined'
+          ? await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(corps) })
+          : await fetch('/api/ops', { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: staffAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(corps) }).then(async (x) => { const d = await x.json().catch(() => ({})); if (!x.ok || d.ok === false) throw new Error(d.message || 'La réservation n’a pas pu se créer.'); return d; });
+        p.reservation = r && r.reservation ? { id: r.reservation.id, date: r.reservation.date || a.date, startTime: r.reservation.startTime || a.startTime, pax: r.reservation.pax || a.pax } : null;
+        p.etat = 'fait';
+        if (typeof syncDateReservations === 'function') syncDateReservations(a.date, { silent: true }).catch(() => {});
+      } catch (erreur) {
+        p.etat = '';
+        p.erreur = (erreur && erreur.message) || 'La réservation n’a pas pu se créer.';
+      }
       sauver(courante());
       peindreMessage(m);
       return;
@@ -1121,20 +1213,142 @@
     peindreMessage(m);
   }
 
+  // LES CARTES D ACTION (Ansar, 2026-11-11 : « il envoie un bouton moche ... c'est pas un truc vraiment
+  // beau et déjà tout complété, on a juste à analyser et déployer »). Chaque geste a sa carte : ce qu il
+  // fera, en lignes deja remplies, et UN bouton qui dit son verbe. Une reservation se cree depuis sa
+  // carte une fois le telephone du client tape, obligatoire comme dans Reserver.
+  const GESTE_VUE = {
+    assistantReservation: { type: 'Réservation', verbe: 'Créer la réservation', cours: 'Création…' },
+    ouvrirReserver: { type: 'Réservation', verbe: 'Ouvrir dans Réserver', cours: 'Ouverture…' },
+    ouvertureExceptionnelle: { type: 'Horaires d’un jour', verbe: 'Changer les horaires', cours: 'Enregistrement…' },
+    customRequestStatus: { type: 'Demande sur mesure', verbe: 'Classer la demande', cours: 'Enregistrement…' },
+    noteClient: { type: 'Fiche du client', verbe: 'Ajouter la note', cours: 'Enregistrement…' },
+    annulerReservation: { type: 'Annulation', verbe: 'Annuler la réservation', cours: 'Annulation…', confirmer: 'Oui, annuler', suite: 'Le créneau se libère et le dossier reste au journal. Pensez à prévenir le client.' },
+    effacerConversations: { type: 'Conversations', verbe: 'Effacer', cours: 'Effacement…', confirmer: 'Oui, effacer', suite: 'Elles s’effacent pour de bon, sur tous vos appareils.' },
+  };
+  // Les conversations qu un effacement prendrait : jamais celle ou la personne ecrit.
+  function conversationsAEffacer(a) {
+    const age = a.portee === 'anciennes' ? Math.max(1, Number(a.jours) || 0) * 86400000 : 0;
+    return (A.conversations || []).filter((c) => c && c.id !== A.actuelle && (!age || Date.now() - (Number(c.maj) || 0) > age));
+  }
+  const STATUTS_DITS = { in_progress: 'En cours', handled: 'Terminée', archived: 'Sans suite' };
+  // La regle de la fenetre Reserver (rvTelephoneValide, assets/app-main.js ; lib/telephone-du-client.js).
+  function telephoneValide(valeur) {
+    const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+    if (!brut) return false;
+    const c = brut.replace(/\D/g, '');
+    const chiffres = brut.startsWith('+') ? c : brut.startsWith('00') ? c.slice(2) : brut.startsWith('0') ? `32${c.slice(1)}` : `32${c}`;
+    return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
+  }
+  function jourDit(iso) {
+    try { return new Date(`${iso}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }); } catch (erreur) { return String(iso || ''); }
+  }
+  function eurosDits(v) {
+    try { return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Number(v) % 1 ? 2 : 0 }).format(Number(v)); } catch (erreur) { return `${v} €`; }
+  }
+  function lignesDuGeste(p) {
+    const a = p.action || {};
+    const r = p.resume || {};
+    if (a.action === 'assistantReservation') {
+      return [
+        ['Quand', `${r.quand || jourDit(a.date)}, ${a.startTime}${r.fin ? ` à ${r.fin}` : ''}`],
+        ['Joueurs', String(a.pax)],
+        ...(Array.isArray(r.lignes) ? r.lignes : []).map((l) => [l.nom, [l.debut ? (l.fin ? `${l.debut} à ${l.fin}` : l.debut) : '', l.detail].filter(Boolean).join(' · ')]),
+        ...(r.prix != null ? [['Prix', eurosDits(r.prix)]] : []),
+      ];
+    }
+    if (a.action === 'ouvrirReserver') return [['Quand', `${jourDit(a.date)}, ${a.startTime}`], ['Joueurs', String(a.pax)], ...(a.name ? [['Client', a.name]] : [])];
+    if (a.action === 'ouvertureExceptionnelle') return [['Jour', jourDit(a.date)], ['Horaires', `${a.open} à ${a.close}`], ...(a.motif ? [['Motif', a.motif]] : [])];
+    if (a.action === 'customRequestStatus') return [['Ce qui change', p.texte], ['Nouveau statut', STATUTS_DITS[a.status] || a.status]];
+    if (a.action === 'noteClient') return [['Ce qui s’ajoute', p.texte]];
+    if (a.action === 'annulerReservation') {
+      return [
+        ['Réservation', `n° ${a.reservationId}${r.client ? `, ${r.client}` : ''}`],
+        ['Quand', `${r.quand || jourDit(a.date)}${r.heure ? `, ${r.heure}` : ''}`],
+        ['Joueurs', r.joueurs ? String(r.joueurs) : ''],
+        ['Activités', Array.isArray(r.activites) ? r.activites.join(', ') : ''],
+        ...(r.prix != null ? [['Prix', eurosDits(r.prix)]] : []),
+        ['Paiement', r.payee ? 'Déjà payée : le remboursement se fait à part' : 'Pas encore payée'],
+      ];
+    }
+    if (a.action === 'effacerConversations') {
+      const liste = conversationsAEffacer(a);
+      return [
+        ['Lesquelles', a.portee === 'anciennes' ? `Plus de ${a.jours} jours, sauf celle-ci` : 'Toutes les autres, sauf celle-ci'],
+        ['Combien', liste.length ? `${liste.length} : ${liste.slice(0, 3).map((c) => c.titre || 'Sans titre').join(', ')}${liste.length > 3 ? '…' : ''}` : 'Aucune'],
+      ];
+    }
+    return [['Ce qui change', p.texte]];
+  }
+  function htmlCarteGeste(p, i) {
+    const a = p.action || {};
+    const vue = GESTE_VUE[a.action] || { type: 'Geste', verbe: 'Faire', cours: 'En cours…' };
+    if (p.etat === 'fait') {
+      const dit = a.action === 'assistantReservation' && p.reservation
+        ? `Réservation n° ${esc(p.reservation.id)} créée : ${esc(jourDit(p.reservation.date))} à ${esc(p.reservation.startTime)}, ${esc(p.reservation.pax)} joueurs.`
+        : a.action === 'annulerReservation' ? `Réservation n° ${esc(a.reservationId)} annulée. Le créneau est libre.`
+          : a.action === 'effacerConversations' ? (p.efface ? `${esc(p.efface)} conversation${p.efface > 1 ? 's effacées' : ' effacée'}.` : 'Aucune conversation à effacer.')
+            : a.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.' : `C’est fait. ${esc(p.texte)}`;
+      const voir = a.action === 'assistantReservation' && p.reservation ? `<button type="button" class="ast-lien" data-ast-geste-voir="${i}">Voir au planning</button>` : '';
+      return `<div class="ast-carte est-faite" data-ast-prop="${i}"><p class="ast-carte-fait"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg><span>${dit}</span></p>${voir}</div>`;
+    }
+    const enCours = p.etat === 'cours';
+    const lignes = lignesDuGeste(p).filter(([, v]) => v !== '' && v != null);
+    const centre = p.centre && A.centres && A.centres.length > 1 ? `<span class="ast-carte-centre">${esc(nomDUnCentre(p.centre))}</span>` : '';
+    const saisie = p.saisie || {};
+    const champs = a.action === 'assistantReservation' ? `<div class="ast-carte-champs">
+        <label class="ast-carte-champ${p.manqueTel ? ' est-manque' : ''}"><span>Téléphone du client<em>obligatoire</em></span><input type="tel" inputmode="tel" data-ast-tel="${i}" value="${esc(saisie.tel != null ? saisie.tel : (a.phone || ''))}" placeholder="Ex. 0470 12 34 56" autocomplete="off" aria-required="true"${enCours ? ' disabled' : ''}></label>
+        <label class="ast-carte-champ"><span>Nom</span><input data-ast-nom="${i}" value="${esc(saisie.nom != null ? saisie.nom : (a.name || ''))}" placeholder="Nom du client" autocomplete="off"${enCours ? ' disabled' : ''}></label>
+      </div>` : '';
+    const garde = a.action === 'assistantReservation' ? '<p class="ast-carte-garde">Vérifiée sur le planning à l’instant. Rien ne se crée avant votre clic, et le planning se revérifie à ce moment-là.</p>' : p.risque ? '<p class="ast-carte-garde">Rien ne change avant votre clic, et vous confirmerez une seconde fois.</p>' : '<p class="ast-carte-garde">Rien ne change avant votre clic.</p>';
+    const alerte = p.alerte ? `<p class="ast-carte-alerte">${esc(p.alerte)}</p>` : '';
+    const rien = a.action === 'effacerConversations' && !conversationsAEffacer(a).length;
+    const modifier = a.action === 'assistantReservation' ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-reserver="${i}"${enCours ? ' disabled' : ''}>Modifier dans Réserver</button>` : '';
+    const actions = p.confirmer
+      ? `<div class="ast-carte-confirmer" role="alert"><p><b>Vous confirmez ?</b> ${esc(vue.suite || p.alerte || 'Ce geste ne se rattrape pas d’un clic.')}</p>
+        <div class="ast-carte-actions">
+          <button type="button" class="ast-bouton est-danger" data-ast-geste-oui="${i}" data-ast-confirme="1"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : (vue.confirmer || `Oui, ${vue.verbe.toLowerCase()}`))}</button>
+          <button type="button" class="ast-lien" data-ast-geste-retour="${i}"${enCours ? ' disabled' : ''}>Retour</button>
+        </div></div>`
+      : `<div class="ast-carte-actions">
+        ${rien ? '' : `<button type="button" class="ast-bouton est-plein${p.risque ? ' est-risque' : ''}" data-ast-geste-oui="${i}"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : vue.verbe)}</button>`}
+        ${modifier}
+        <button type="button" class="ast-lien" data-ast-prop-non="${i}"${enCours ? ' disabled' : ''}>Non merci</button>
+      </div>`;
+    return `<div class="ast-carte${p.risque ? ' est-risque' : ''}${p.confirmer ? ' est-a-confirmer' : ''}" data-ast-prop="${i}">
+      <div class="ast-carte-tete"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}</div>
+      <dl class="ast-carte-lignes">${lignes.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+      ${champs}
+      ${alerte}
+      ${p.erreur ? `<p class="ast-carte-erreur" role="alert">${esc(p.erreur)}</p>` : ''}
+      ${p.confirmer || rien ? '' : garde}
+      ${actions}
+    </div>`;
+  }
+
+  // MODIFIER DANS RESERVER : la fenetre s ouvre avec tout le programme de la carte (activites, durees,
+  // parties, participants), le nom et le telephone tapes ; la personne y change ce qu elle veut.
+  function ouvrirDansReserver(m, p) {
+    const a = p.action || {};
+    if (p.centre && p.centre !== centreId()) { p.erreur = `Cette réservation est pour ${nomDUnCentre(p.centre)} : ouvrez ce centre dans la console, puis redemandez.`; peindreMessage(m); return; }
+    if (typeof openQuickBook !== 'function') { p.erreur = 'La fenêtre Réserver n’est pas disponible ici.'; peindreMessage(m); return; }
+    const i = (m.propositions || []).indexOf(p);
+    const champTel = A.root && A.root.querySelector(`[data-ast-tel="${i}"]`);
+    const champNom = A.root && A.root.querySelector(`[data-ast-nom="${i}"]`);
+    const tel = champTel ? champTel.value.trim() : String(a.phone || '');
+    const nom = champNom ? champNom.value.trim() : String(a.name || '');
+    openQuickBook({ date: a.date, startTime: a.startTime, heureSouhaitee: true, pax: a.pax, ...(nom ? { name: nom } : {}), ...(tel ? { phone: tel } : {}) });
+    const programme = Array.isArray(a.programme) ? a.programme : [];
+    if (programme.length && typeof applyStaffRequestActivitiesToQuickBook === 'function') {
+      applyStaffRequestActivitiesToQuickBook({ participants: a.pax, activities: programme.map((x) => ({ id: x.activityId, participants: x.participants, ...(x.duration != null ? { duration: x.duration } : {}), ...(x.games != null ? { games: x.games } : {}) })) });
+    }
+  }
+
   function htmlPropositions(m) {
     return (m.propositions || []).map((p, i) => {
       if (p.type === 'geste') {
-        if (p.etat === 'fait') return `<p class="ast-prop-fait">${p.action && p.action.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.' : `C’est fait. ${esc(p.texte)}`}</p>`;
         if (p.etat === 'ecarte') return '';
-        return `<div class="ast-prop" data-ast-prop="${i}">
-        <p class="ast-prop-quoi">Je le fais pour vous ?</p>
-        <p class="ast-prop-texte">${esc(p.texte)}</p>
-        ${p.erreur ? `<p class="ast-prop-erreur">${esc(p.erreur)}</p>` : ''}
-        <div class="ast-prop-actions">
-          <button type="button" class="ast-bouton est-plein" data-ast-geste-oui="${i}"${p.etat === 'cours' ? ' disabled' : ''}>${p.etat === 'cours' ? 'En cours…' : 'Faire'}</button>
-          <button type="button" class="ast-lien" data-ast-prop-non="${i}">Non merci</button>
-        </div>
-      </div>`;
+        return htmlCarteGeste(p, i);
       }
       if (p.etat === 'retenu') return `<p class="ast-prop-fait">Retenu pour tout le centre. <button type="button" class="ast-lien" data-ast-savoir>Voir ce que l'IA a appris</button></p>`;
       if (p.etat === 'ecarte') return '';
@@ -1820,7 +2034,7 @@
       case 'repris': m.repris = Array.isArray(d.lectures) ? d.lectures.slice(0, 24) : []; break;
       case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
-      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', centre: d.centre, action: d.action } : {}) }]; break;
+      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
       case 'aller': if (PAGES_OUVRABLES.includes(d.page) && !(m.allers || []).some((a) => a.id === d.id)) m.allers = [...(m.allers || []), { id: d.id, page: d.page, rubrique: d.rubrique || '', chemin: d.chemin }]; break;
       case 'annule': m.texte = ''; break;
       case 'fin':
@@ -2018,7 +2232,28 @@
     if ((n = v('[data-ast-geste-oui]'))) {
       const m = messageDe(n);
       const p = m && m.propositions[Number(n.dataset.astGesteOui)];
-      if (p && p.type === 'geste') faireGeste(m, p);
+      if (p && p.type === 'geste') faireGeste(m, p, { confirme: n.dataset.astConfirme === '1' });
+      return;
+    }
+    if ((n = v('[data-ast-geste-retour]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astGesteRetour)];
+      if (p) { p.confirmer = false; peindreMessage(m); }
+      return;
+    }
+    if ((n = v('[data-ast-geste-reserver]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astGesteReserver)];
+      if (p && p.type === 'geste') ouvrirDansReserver(m, p);
+      return;
+    }
+    if ((n = v('[data-ast-geste-voir]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astGesteVoir)];
+      if (p && p.reservation) {
+        if (typeof location !== 'undefined') location.hash = '#/staff/planning';
+        if (typeof setStaffDateFromPicker === 'function') setStaffDateFromPicker(p.reservation.date);
+      }
       return;
     }
     if ((n = v('[data-ast-prop-oui]'))) {
@@ -2150,11 +2385,15 @@
             </div>
           </form>
           <div class="ast-suggestions" data-ast-suggestions>${suggestions}</div>
-          <p class="ast-avis">L'assistant lit vos données et ne modifie rien.</p>
+          <p class="ast-avis" data-ast-avis>L'assistant lit vos données et ne modifie rien.</p>
         </div>
       </section>
       <aside class="ast-sources" data-ast-panneau aria-label="Source" hidden></aside>
     </div>`;
+    // La Direction et le proprietaire font agir l assistant (2026-11-11) : la phrase sous le champ le dit.
+    // Les droits se jugent au serveur ; ici, seulement ce que la personne lit.
+    const session = (typeof normalizeStaffSession === 'function' && typeof state !== 'undefined' && normalizeStaffSession(state.staffAuthSession)) || (typeof readStoredStaffSession === 'function' && readStoredStaffSession()) || null;
+    if (session && session.role && session.role.locked === true) dom('[data-ast-avis]').textContent = 'L’assistant prépare, rien ne se fait sans votre clic.';
     const fil = dom('[data-ast-fil]');
     const geste = () => { A.dernierGeste = performance.now(); };
     fil.addEventListener('scroll', surDefilement, { passive: true });

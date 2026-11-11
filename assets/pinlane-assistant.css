@@ -429,6 +429,45 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-prop-actions { display: flex; align-items: center; gap: 14px; }
 .ast-prop-fait { margin: 10px 0 0; font-size: 13.5px; color: var(--muted); }
 .ast-prop-erreur { margin: 0 0 10px; font-size: 13.5px; color: var(--danger, var(--text)); }
+/* LA CARTE D UN GESTE (2026-11-11) : ce que l assistant fera, deja rempli, ligne par ligne, et un
+   bouton qui dit son verbe. Neutre : jamais les couleurs du centre, la carte se lit comme un ticket. */
+.ast-carte { margin: 14px 0 0; padding: 14px 16px 12px; background: var(--surface); border-radius: 14px; box-shadow: inset 0 0 0 1px var(--voile-2), 0 1px 2px color-mix(in srgb, var(--text) 6%, transparent); }
+.ast-carte-tete { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.ast-carte-type { font-size: 13px; font-weight: 600; color: var(--text); }
+.ast-carte-centre { padding: 1px 8px; font-size: 12.5px; color: var(--muted); background: var(--voile-1); border-radius: 999px; }
+.ast-carte-lignes { margin: 0; }
+.ast-carte-ligne { display: grid; grid-template-columns: minmax(84px, 7.5rem) minmax(0, 1fr); gap: 12px; padding: 7px 0; border-top: 1px solid var(--voile-1); }
+.ast-carte-ligne:first-child { border-top: 0; }
+.ast-carte-ligne dt { font-size: 13.5px; color: var(--muted); }
+.ast-carte-ligne dd { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+.ast-carte-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 0; }
+.ast-carte-champ { display: grid; gap: 4px; }
+.ast-carte-champ span { font-size: 13px; font-weight: 500; color: var(--text); }
+.ast-carte-champ em { margin-left: 6px; font-size: 12px; font-style: normal; font-weight: 400; color: var(--muted); }
+.ast .ast-carte-champ input { width: 100%; height: 40px; padding: 0 11px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-3); font-variant-numeric: tabular-nums; transition: box-shadow var(--d-net) ease; }
+.ast .ast-carte-champ input:focus { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 55%, transparent); }
+.ast .ast-carte-champ.est-manque input { box-shadow: inset 0 0 0 1.5px var(--danger, var(--text)); }
+.ast-carte-champ.est-manque em { color: var(--danger, var(--text)); }
+.ast-carte-erreur { margin: 10px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--danger, var(--text)); }
+.ast-carte-garde { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.ast-carte-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0 0; }
+/* Un geste risque se confirme deux fois : la carte le dit, le second bouton est rouge. */
+.ast-carte-alerte { margin: 10px 0 0; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; color: var(--warning, var(--text)); background: var(--warning-soft, var(--voile-1)); border-radius: 9px; }
+.ast-carte.est-a-confirmer { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger, var(--text)) 55%, transparent); }
+.ast-carte-confirmer { margin: 12px 0 0; }
+.ast-carte-confirmer p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text); }
+.ast-carte-confirmer b { font-weight: 600; }
+.ast-bouton.est-danger { color: var(--surface); background: var(--danger, var(--text)); }
+.ast-bouton.est-danger:hover { background: color-mix(in srgb, var(--danger, var(--text)) 82%, var(--text)); }
+.ast-bouton.est-contour { color: var(--text); background: transparent; box-shadow: inset 0 0 0 1px var(--voile-3); }
+.ast-bouton.est-contour:hover { background: var(--voile-1); }
+.ast-carte.est-faite { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 12px 16px; }
+.ast-carte-fait { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--text); }
+.ast-carte-fait svg { flex: none; width: 20px; height: 20px; padding: 3px; fill: none; stroke: var(--success, var(--text)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; background: var(--success-soft, var(--voile-1)); border-radius: 999px; }
+@media (max-width: 560px) {
+  .ast-carte-champs { grid-template-columns: minmax(0, 1fr); }
+  .ast-carte-ligne { grid-template-columns: minmax(0, 1fr); gap: 1px; }
+}
 /* M'Y EMMENER (2026-11-11) : le chemin des menus, et le bouton qui y mene. */
 .ast-allers { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
 .ast-aller { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; min-height: 44px; padding: 7px 14px; font: inherit; text-align: left; color: var(--text); background: var(--voile-1); border: 0; border-radius: 10px; cursor: pointer; transition: background-color var(--d-net) ease, transform var(--d-vif) ease; }

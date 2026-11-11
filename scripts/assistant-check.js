@@ -419,7 +419,15 @@ async function sectionS() {
   reinitialiser({ session: sessionDe(DIRECTION, 'm-son2') });
   etat.script = [fin('Bonjour.')];
   await poser(question('Salut', { modele: '__proto__' }));
-  ok('[S] un modele inconnu retombe sur Haiku', etat.appels[0] && etat.appels[0].corps.model === 'claude-haiku-5-5');
+  // Le defaut est Sonnet depuis le 2026-11-11 (Ansar : « elle réfléchit pas assez »).
+  ok('[S] un modele inconnu retombe sur Sonnet, qui reflechit', etat.appels[0] && etat.appels[0].corps.model === 'claude-sonnet-5-5' && etat.appels[0].corps.output_config.effort === 'high', etat.appels[0] && JSON.stringify([etat.appels[0].corps.model, etat.appels[0].corps.output_config]));
+  reinitialiser({ session: sessionDe(DIRECTION, 'm-son3') });
+  etat.script = [fin('Bonjour.')];
+  await poser(question('Salut', { modele: 'opus' }));
+  const o = etat.appels[0];
+  // Opus 5.5 : pas de repli vers un autre modele (ses pensees ne s y relisent pas), aucun choix d outil
+  // force (400), et la place de penser dans max_tokens.
+  ok('[S] Opus 5.5 est appele sans repli, sans outil force, avec de quoi penser', o && o.corps.model === 'claude-opus-5-5' && !o.corps.fallbacks && !/server-side-fallback/.test(o.entetes['anthropic-beta'] || '') && o.corps.tool_choice.type === 'auto' && o.corps.thinking.type === 'adaptive' && o.corps.max_tokens >= 16000, o && JSON.stringify([o.corps.model, o.corps.fallbacks, o.corps.tool_choice, o.corps.max_tokens]));
 }
 
 async function sectionP() {

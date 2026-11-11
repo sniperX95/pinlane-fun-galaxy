@@ -2803,6 +2803,31 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, id: item.id, ...r, demande });
     return;
   }
+  // LA RESERVATION QUE L ASSISTANT A PREPAREE (2026-11-11, lib/assistant-reservation.js) : seul le
+  // clic de sa carte l envoie, et tout se revoit ici. Le controle total de l assistant (la Direction
+  // ou le proprietaire, agitAvecLAssistant), le programme contre le catalogue de CE centre, le
+  // telephone du client (obligatoire), le plan sur la journee lue maintenant, les droits de la
+  // fenetre Reserver. Le dossier dit qu il a ete prepare avec l assistant (note signee de l equipe).
+  if (action === 'assistantReservation') {
+    requireConcreteCenter();
+    const { agitAvecLAssistant } = require('../lib/assistant-outils');
+    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);
+    const R = require('../lib/assistant-reservation');
+    const date = String(body.date || '');
+    const heure = String(body.startTime || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(heure)) throw createHttpError('La date ou l’heure de la réservation est invalide.', 422, true);
+    const aujourdhui = (require('../lib/center-facts').jourDuCentre() || {}).date || '';
+    if (aujourdhui && date < aujourdhui) throw createHttpError('Cette date est passée.', 409, true);
+    const joueurs = Math.trunc(Number(body.pax));
+    if (!(joueurs >= 1 && joueurs <= 240)) throw createHttpError('Le nombre de joueurs est invalide.', 422, true);
+    const lu = (Array.isArray(body.programme) ? body.programme : []).map((p) => ({ activite: p && p.activityId, duree_heures: p && p.duration, parties: p && p.games, participants: p && p.participants }));
+    const programme = R.programmeDe(lu, joueurs, scopedCenterId);
+    const corps = R.corpsDe({ centreId: scopedCenterId, date, heure, joueurs, programme, nom: body.name, telephone: body.phone, notes: 'Préparée avec l’assistant.' });
+    const cree = await require('../lib/booking-config').pourLEquipe(() => R.creer(corps, options.session));
+    const reservation = cree.reservation || {};
+    sendJson(res, 201, { ok: true, reservation: { id: reservation.id, date: reservation.date, startTime: reservation.startTime, pax: reservation.pax, price: reservation.price, name: reservation.name }, ...(Array.isArray(cree.warnings) && cree.warnings.length ? { warnings: cree.warnings } : {}) });
+    return;
+  }
   if (action === 'customRequestAssist') {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
@@ -4102,6 +4127,9 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'customRequestDraft') return 'emails.send';
   if (action === 'customRequestAssist') return 'emails.send';
   if (action === 'customRequestBook') return 'reservations.create';
+  // La reservation preparee par l assistant : le droit de creer, et le controle total de
+  // l assistant revu dans l action (agitAvecLAssistant).
+  if (action === 'assistantReservation') return 'reservations.create';
   // Restaurer une reservation supprimee : le droit qui permet de la supprimer
   // (reservations.cancel, celui de DELETE /api/staff-reservations), sur le
   // centre de l archive.

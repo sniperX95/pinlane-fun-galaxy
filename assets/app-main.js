@@ -20036,7 +20036,9 @@ async function smIaLancer(id, consigne = '') {
       suggestions: Array.isArray(payload && payload.suggestions) ? payload.suggestions.slice(0, 3).map(String) : [],
       suivie: !(payload && payload.consigneSuivie === false),
       aRetenir: String((payload && payload.aRetenir) || ''),
-      geste: payload && payload.geste === 'reserver' && p ? 'reserver' : '',
+      geste: payload && payload.geste === 'reserver' && p ? 'reserver'
+        : (payload && (payload.geste === 'sans_suite' || (payload.geste === 'noter' && String(payload.note || '').trim())) ? payload.geste : ''),
+      note: payload && payload.geste === 'noter' ? String(payload.note || '').trim().slice(0, 300) : '',
     };
     if (p) staffRequestChoix[key] = p; else delete staffRequestChoix[key];
     const b = payload && payload.brouillon;
@@ -20088,6 +20090,41 @@ function smPasRetenir(id) {
   renderStaffRequestsIfOpen();
 }
 window.smPasRetenir = smPasRetenir;
+
+// CLASSER OU NOTER SUR UN MOT (2026-11-11) : « laisse tomber » ou « note que… » se propose sur la fiche.
+// Rien ne se fait sans ce clic, et le serveur revoit les droits et le centre (api/ops.js).
+async function smGesteDit(id) {
+  const key = String(id);
+  const etat = staffRequestIa[key] || {};
+  const noter = etat.geste === 'noter' && Boolean(etat.note);
+  if (etat.gesteEnCours || (etat.geste !== 'sans_suite' && !noter)) return;
+  staffRequestIa[key] = { ...etat, gesteEnCours: true };
+  renderStaffRequestsIfOpen();
+  let fait = '';
+  if (!noter) {
+    if (await setStaffCustomRequestStatus(id, 'archived', { suivre: true })) fait = 'Demande classée sans suite.';
+  } else {
+    try {
+      const payload = await apiRequest(API_ENDPOINTS.ops, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'customRequestNote', id, texte: etat.note, centerId: getActiveOpsCenterId() }),
+      });
+      replaceStaffCustomRequest(payload && payload.customRequest, { id });
+      fait = 'Note ajoutée au suivi.';
+    } catch (error) {
+      toast((error && error.message) || 'Note non enregistrée.');
+    }
+  }
+  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), gesteEnCours: false, ...(fait ? { geste: '', note: '', gesteFait: fait } : {}) };
+  renderStaffRequestsIfOpen();
+}
+window.smGesteDit = smGesteDit;
+function smGesteNon(id) {
+  const key = String(id);
+  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), geste: '', note: '' };
+  renderStaffRequestsIfOpen();
+}
+window.smGesteNon = smGesteNon;
 
 function smIaConsigne(event, id) {
   if (event) event.preventDefault();
@@ -20176,6 +20213,8 @@ function renderSmPinlane(item) {
     ${etat.geste === 'reserver' && !etat.derniere ? '<p class="sm-ia-oui">Le client est d’accord dans son dernier mail : il reste à réserver.</p>' : ''}
     ${etat.aRetenir ? `<div class="sm-ia-ret"><p>À retenir pour les prochaines demandes : « ${escapeHtml(etat.aRetenir)} »</p><div class="sm-ia-ret-g"><button type="button" class="sm-b" onclick="smRetenir(${jid})"${etat.retient ? ' disabled' : ''}>Retenir</button><button type="button" class="sm-lien" onclick="smPasRetenir(${jid})">Non</button></div></div>` : ''}
     ${etat.retenu ? '<p class="sm-ia-pq">Pinlane s’en souviendra pour les prochaines demandes.</p>' : ''}
+    ${etat.geste === 'sans_suite' || (etat.geste === 'noter' && etat.note) ? `<div class="sm-ia-ret sm-ia-geste"><p>${etat.geste === 'noter' ? `Noter dans le suivi : « ${escapeHtml(etat.note)} »` : `${etat.derniere ? '' : 'Le client renonce dans son dernier mail. '}Classer cette demande sans suite ?`}</p><div class="sm-ia-ret-g"><button type="button" class="sm-b" onclick="smGesteDit(${jid})"${etat.gesteEnCours ? ' disabled' : ''}>${etat.geste === 'noter' ? 'Noter' : 'Classer sans suite'}</button><button type="button" class="sm-lien" onclick="smGesteNon(${jid})">Non</button></div></div>` : ''}
+    ${etat.gesteFait ? `<p class="sm-ia-pq">${escapeHtml(etat.gesteFait)}</p>` : ''}
     ${etat.derniere && etat.suivie === false ? `<p class="sm-note">Pinlane n’a pas pu suivre « ${escapeHtml(etat.derniere)} ». Réessayez dans un instant.</p>` : ''}
     ${etat.erreur ? `<p class="sm-note">${escapeHtml(etat.erreur)}</p>` : ''}`;
   const idees = !etat.lit && Array.isArray(etat.suggestions) && etat.suggestions.length

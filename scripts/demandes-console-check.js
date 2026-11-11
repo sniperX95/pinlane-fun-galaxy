@@ -25,6 +25,8 @@
 // encore, sans rejouer le parcours 35 fois (6 des 7 minutes de ce gate). Les
 // coupures se rejouent la nuit et quand le diff touche ce fichier.
 const SANS_CONTRE_PREUVES = process.env.PINLANE_SANS_CONTRE_PREUVES === '1';
+// Rejouer seulement quelques coupures en local : des morceaux de leur nom, separes par « | ».
+const SEULES = String(process.env.PINLANE_CONTRE_PREUVES_SEULES || '').split('|').filter(Boolean);
 const PORT = Number(process.env.PINLANE_DEMANDES_CONSOLE_PORT || 4419);
 const http = require('http');
 const fs = require('fs');
@@ -169,8 +171,10 @@ function installer(expiresAt) {
         if (window.__QA__.assistAttente) await new Promise((r) => setTimeout(r, window.__QA__.assistAttente));
         // Une regle dite (« toujours… ») se propose a retenir ; « réserve » ouvre la carte de confirmation.
         const aRetenir = /toujours un soft/i.test(c) ? 'Toujours un soft par enfant aux anniversaires.' : '';
-        const geste = proposition && /r[ée]serve/i.test(c) ? 'reserver' : '';
-        return J({ ok: true, id: corps.id, proposition, consigneSuivie: true, source: 'ia', etude, client: clientDuBanc(), aRetenir, geste,
+        // « laisse tomber » propose de classer sans suite ; « note que… » propose la note, rien ne se fait sans le clic.
+        const geste = proposition && /r[ée]serve/i.test(c) ? 'reserver' : (/laisse tomber/i.test(c) ? 'sans_suite' : (/^note /i.test(c) ? 'noter' : ''));
+        const note = geste === 'noter' ? 'Un enfant est allergique aux arachides.' : '';
+        return J({ ok: true, id: corps.id, proposition, consigneSuivie: true, source: 'ia', etude, client: clientDuBanc(), aRetenir, geste, note,
           pourquoi: 'C’est l’après-midi demandé, et le programme tient dans leur budget.',
           suggestions: ['Plutôt 15:00', 'Proposer la Formule 3 à 14:30', 'Le vendredi 4 décembre'],
           brouillon: { source: 'ia', raison: '', objet: 'Votre venue pour 31 personnes chez Fun Galaxy Libramont',
@@ -548,6 +552,58 @@ async function unMotSuffit(browser) {
   return r;
 }
 
+// NOTER ET CLASSER SUR UN MOT (2026-11-11) : la carte se propose, le clic seul ecrit, dans le centre ouvert.
+async function noterEtClasser(browser) {
+  const { ctx, page, erreurs } = await ouvrir(browser);
+  const r = { erreurs };
+  const dire = async (consigne) => {
+    await page.waitForSelector('#smIaC-801:not([readonly])', { timeout: 8000 });
+    await page.fill('#smIaC-801', consigne);
+    await page.locator('#smIa-801 .sm-ia-c .sm-p', { hasText: 'Changer' }).click({ timeout: 5000 });
+    await page.waitForSelector('#smIa-801 .sm-ia-geste', { timeout: 8000 });
+  };
+  const lire = () => page.evaluate(() => ({
+    carte: ((document.querySelector('#smIa-801 .sm-ia-geste') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+    notes: window.__QA__.appels.filter((a) => a.action === 'customRequestNote').map((a) => a.corps),
+    statuts: window.__QA__.appels.filter((a) => a.action === 'customRequestStatus').map((a) => a.corps),
+  }));
+  try {
+    await ouvrirFiche(page, 801);
+    await attendreEtude(page);
+    await dire('note qu un enfant est allergique aux arachides');
+    r.avantNote = await lire();
+    await page.locator('#smIa-801 .sm-ia-geste .sm-b', { hasText: 'Noter' }).click({ timeout: 5000 });
+    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestNote'), null, { timeout: 5000 });
+    await page.waitForTimeout(200);
+    r.apresNote = await lire();
+    r.apresNote.fiche = await page.evaluate(() => (((document.querySelector('#smIa-801') || {}).innerText || '') + ' || ' + ((document.querySelector('.sm-hi') || {}).innerText || '')).replace(/\s+/g, ' ').trim());
+    await dire('laisse tomber, ils ont trouve ailleurs');
+    r.avantClasser = await lire();
+    await page.locator('#smIa-801 .sm-ia-geste .sm-b', { hasText: 'Classer sans suite' }).click({ timeout: 5000 });
+    await page.waitForFunction(() => window.__QA__.appels.some((a) => a.action === 'customRequestStatus' && a.corps.status === 'archived'), null, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    r.apresClasser = { ...(await lire()), rouvrir: await page.evaluate(() => [...document.querySelectorAll('.sm-tete-a button')].some((b) => b.textContent.trim() === 'Rouvrir')) };
+  } catch (error) {
+    r.panne = String((error && error.message) || error).split('\n')[0];
+  } finally {
+    await ctx.close();
+  }
+  return r;
+}
+
+function verifierNoterEtClasser(h) {
+  section('R bis. NOTER ET CLASSER SUR UN MOT');
+  ok(!h.panne, 'MONTAGE le parcours va au bout', h.panne || '');
+  ok(Boolean(h.avantNote) && /Noter dans le suivi : « Un enfant est allergique aux arachides\. »/.test(h.avantNote.carte) && h.avantNote.notes.length === 0, '« note que… » propose la note, sans rien ecrire', JSON.stringify(h.avantNote));
+  const n = (h.apresNote && h.apresNote.notes[0]) || {};
+  ok(Boolean(h.apresNote) && h.apresNote.notes.length === 1 && n.texte === 'Un enfant est allergique aux arachides.' && Number(n.id) === 801 && n.centerId === 'libramont' && /Note ajoutée au suivi\./.test(h.apresNote.fiche) && /allergique aux arachides/.test(h.apresNote.fiche.split(' || ')[1] || ''),
+    'au clic, la note part une fois, dans le centre ouvert, et se lit dans l historique', JSON.stringify(h.apresNote));
+  ok(Boolean(h.avantClasser) && /Classer cette demande sans suite \?/.test(h.avantClasser.carte) && !/renonce/.test(h.avantClasser.carte) && !h.avantClasser.statuts.some((s) => s.status === 'archived'), '« laisse tomber » propose de classer sans suite, sans rien classer', JSON.stringify(h.avantClasser));
+  const a = ((h.apresClasser && h.apresClasser.statuts) || []).filter((s) => s.status === 'archived');
+  ok(a.length === 1 && Number(a[0].id) === 801 && a[0].centerId === 'libramont' && h.apresClasser.rouvrir === true, 'au clic, la demande se classe sans suite, et la fiche propose de la rouvrir', JSON.stringify(h.apresClasser));
+  ok(!h.erreurs || h.erreurs.length === 0, 'MONTAGE zero erreur', JSON.stringify(h.erreurs || []));
+}
+
 function verifierUnMot(h) {
   section('R. UN MOT SUFFIT : RESERVER, RETENIR');
   ok(!h.panne, 'MONTAGE le parcours va au bout', h.panne || '');
@@ -897,6 +953,7 @@ async function main() {
     ok(t.erreurs.length === 0 && t.liste.large <= t.liste.vue && t.mesure.large <= t.mesure.vue, `rien ne deborde a 390 px (liste ${t.liste.large}, fiche ${t.mesure.large}, pour ${t.mesure.vue})`);
     verifierDeuxConsignes(await deuxConsignes(browser));
     verifierUnMot(await unMotSuffit(browser));
+    verifierNoterEtClasser(await noterEtClasser(browser));
     verifierHorloge(await horlogeDuBureau(browser));
     verifierAlerte(await alerteDuTableau(browser));
     verifierSansSuite(await sansSuite(browser));
@@ -941,6 +998,9 @@ async function main() {
       { de: "setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })", vers: "setStaffCustomRequestStatus(${jid}, 'handled', { suivre: true })", label: 'sans suite ne doit pas classer la demande en terminee', run: sansSuite, rouge: (r) => Boolean(r.apres) && JSON.stringify(r.apres.statuts) !== '["archived"]' },
       { de: "centerId: getActiveOpsCenterId(), proposition, confirme }),", vers: "centerId: getActiveOpsCenterId(), proposition, confirme: true }),", label: 'sans la carte, le premier clic creerait la reservation sans la relire', rouge: (r) => Boolean(r.panne) || (Boolean(r.carte) && r.carte.appels.some((a) => a.confirme === true)) },
       { de: "    ${extras ? `<p>${escapeHtml(extras)}</p>` : ''}\n", vers: '', label: 'sans la ligne des extras, la carte tairait le soft et le gateau', rouge: (r) => Boolean(r.carte) && !/Avec Soft/.test(r.carte.texte) },
+      { de: 'onclick="smGesteDit(${jid})"', vers: 'onclick="smGesteNon(${jid})"', label: 'sans le geste au clic, la note dite ne partirait pas', run: noterEtClasser, rouge: (r) => Boolean(r.panne) || !(r.apresNote && r.apresNote.notes.length === 1) },
+      { de: "        body: JSON.stringify({ action: 'customRequestNote', id, texte: etat.note, centerId: getActiveOpsCenterId() }),", vers: "        body: JSON.stringify({ action: 'customRequestNote', id, texte: etat.note }),", label: 'sans le centre ouvert, la note partirait sans son centre', run: noterEtClasser, rouge: (r) => Boolean(r.panne) || !(r.apresNote && r.apresNote.notes[0] && r.apresNote.notes[0].centerId === 'libramont') },
+      { de: "    if (await setStaffCustomRequestStatus(id, 'archived', { suivre: true })) fait = 'Demande classée sans suite.';", vers: "    if (await setStaffCustomRequestStatus(id, 'handled', { suivre: true })) fait = 'Demande classée sans suite.';", label: 'laisser tomber ne doit pas classer la demande en terminee', run: noterEtClasser, rouge: (r) => Boolean(r.panne) || !(r.apresClasser && r.apresClasser.statuts.some((s) => s.status === 'archived')) },
       { de: "  if (texte && fin.rang === rang && fin.geste === 'reserver' && fin.proposition && peutGeste('reserver')) smReserver(id);\n", vers: '', label: 'sans le geste, « réserve » laisserait la carte fermee', run: unMotSuffit, rouge: (r) => Boolean(r.panne) || !r.carte },
       { de: "      body: JSON.stringify({ action: 'teachAgentFact',", vers: "      body: JSON.stringify({ action: 'oublierAgentFact',", label: 'sans l apprentissage, retenir ne retiendrait rien', run: unMotSuffit, rouge: (r) => Boolean(r.panne) || !(r.retenu && r.retenu.appel) },
     ];
@@ -948,6 +1008,7 @@ async function main() {
     for (const e of essais) {
       if (!montable(e.de, e.fichier) || (e.aussi && !montable(e.aussi.de))) continue;
       if (SANS_CONTRE_PREUVES) continue;
+      if (SEULES.length && !SEULES.some((s) => e.label.includes(s))) continue;
       mutation = { de: e.de, vers: e.vers, fichier: e.fichier };
       let r = null;
       try {

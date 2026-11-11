@@ -767,6 +767,11 @@ async function verifierExtrasEtReservation({ C, B }) {
   const sansConsigne = await C.assisterLaDemande(item, deps(modele([choix({ regle: 'Toujours un soft.' })])));
   const surUnMot = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'reserver' })])), { consigne: 'c est bon, on reserve' });
   const rienAReserver = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'reserver', aucune: true, date: '', heure: '' })])), { consigne: 'reserve' });
+  // Classer sans suite et noter, sur un mot : la fiche propose, le clic fait. Une note ne vient que de l equipe.
+  const laisseTomber = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'sans_suite' })])), { consigne: 'laisse tomber, ils ont trouve ailleurs' });
+  const noter = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'noter', note: 'Un enfant est allergique aux arachides.' })])), { consigne: 'note qu un enfant est allergique aux arachides' });
+  const noteInventee = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'noter', note: 'Remise de 15 % promise au client.' })])), { consigne: 'note qu il veut une remise' });
+  const noteSansConsigne = await C.assisterLaDemande(item, deps(modele([choix({ geste: 'noter', note: 'Le client est pressé.' })])));
   const opsSource = fs.readFileSync(path.join(ROOT, 'api', 'ops.js'), 'utf8').replace(/\r\n/g, '\n');
   const dejaReservee = { ...item, payload: { ...(item.payload || {}), suivi: { historique: [{ type: 'reservation', reservationId: 77, date: D1 }] } } };
   const avantDeuxFois = crees.length;
@@ -789,6 +794,8 @@ async function verifierExtrasEtReservation({ C, B }) {
     [avecRegle.aRetenir === 'Toujours un soft par enfant aux anniversaires.', 'une regle dite dans la consigne se propose a retenir pour les prochaines demandes', JSON.stringify(avecRegle.aRetenir)],
     [surUnMot.geste === 'reserver' && Boolean(surUnMot.proposition) && surUnMot.proposition.joueurs === 31, 'sur un mot de l equipe, la fiche ouvre la reservation a confirmer', JSON.stringify([surUnMot.geste, surUnMot.proposition && surUnMot.proposition.joueurs])],
     [rienAReserver.geste === '' && sansConsigne.geste === '', 'sans proposition complete, ou sans le demander, aucun geste', JSON.stringify([rienAReserver.geste, sansConsigne.geste])],
+    [laisseTomber.geste === 'sans_suite' && laisseTomber.note === '' && noter.geste === 'noter' && noter.note === 'Un enfant est allergique aux arachides.', 'sur un mot de l equipe, la fiche propose de classer sans suite ou de noter', JSON.stringify([laisseTomber.geste, noter.geste, noter.note])],
+    [noteInventee.geste === '' && noteInventee.note === '' && noteSansConsigne.geste === '' && noteSansConsigne.note === '', 'une note aux chiffres absents de la consigne, ou sans consigne, ne se propose pas', JSON.stringify([noteInventee.geste, noteInventee.note, noteSansConsigne.geste, noteSansConsigne.note])],
     [regleInventee.aRetenir === '' && sansConsigne.aRetenir === '', 'une regle au montant absent de la consigne, ou sans consigne, ne se propose pas', JSON.stringify([regleInventee.aRetenir, sansConsigne.aRetenir])],
     [/if \(original && body\.draftSource === 'ia'\) \{\n\s*const \{ recordAgentLesson \} = require\('\.\.\/lib\/email-agent'\);/.test(opsSource) && /sent: \{ subject: body\.subject, body: body\.body \}/.test(opsSource), 'un mail de Pinlane repris par l equipe avant l envoi devient une lecon du centre', ''],
     [corps.centerId === 'libramont' && corps.type === 'visite' && corps.pax === 31 && corps.date === D1 && corps.startTime === '14:00' && corps.name === 'Ansar Bisultanov' && corps.email === 'ansar@example.org' && !('price' in corps), 'le corps de la reservation reprend la demande et la proposition, le prix reste celui du calcul', JSON.stringify(corps).slice(0, 300)],
@@ -970,6 +977,8 @@ const MUTATIONS = [
   { fichier: 'lib/demande-bureau.js', ancre: "  else if (reponses.length && !messageClient) etape = 'en-attente';", mute: "  else if (reponses.length) etape = 'en-attente';", label: 'sans le retour, la reponse du client dort dans l attente', verifier: verifierSuivi },
   { fichier: 'lib/demande-bureau-centre.js', ancre: '? bureau.echeanceDeReponse(suivi.messageClient || item.createdAt, { jourOuvre: cal.jourOuvre })', mute: '? bureau.echeanceDeReponse(item.createdAt, { jourOuvre: cal.jourOuvre })', label: 'sans le mail du client, l echeance court depuis la vieille demande', verifier: verifierFile },
   { fichier: 'lib/database.js', ancre: `"select payload from custom_requests where id = $1 and ($2 = '' or center_id = $2) for update;",`, mute: '"select payload from custom_requests where id = $1 for update;",', label: 'sans le centre dans la lecture, une note s ecrit chez un autre centre', verifier: verifierSuiviEnBase },
+  { fichier: 'lib/demande-bureau-centre.js', ancre: '  else if (note && regleFidele(note)) geste = \'noter\';', mute: '  else if (note) geste = \'noter\';', label: 'sans le controle des chiffres, une note inventee se proposerait', verifier: verifierExtrasEtReservation },
+  { fichier: 'lib/demande-bureau-centre.js', ancre: "  const note = lu && texteConsigne && lu.geste === 'noter' ? propre(lu.note, 300) : '';", mute: "  const note = lu && lu.geste === 'noter' ? propre(lu.note, 300) : '';", label: 'sans la consigne exigee, le modele noterait de lui-meme', verifier: verifierExtrasEtReservation },
   { fichier: 'lib/database.js', ancre: `"select payload from custom_requests where id = $1 and ($2 = '' or center_id = $2) for update;",`, mute: `"select payload from custom_requests where id = $1 and ($2 = '' or center_id = $2);",`, label: 'sans le verrou, deux postes qui ecrivent en meme temps s ecrasent', verifier: verifierSuiviEnBase },
 ];
 

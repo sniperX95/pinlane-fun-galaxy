@@ -268,6 +268,12 @@
         "note": "Aucune note publiee pour Libramont : ne jamais utiliser celle de Gembloux."
       },
       "branding": {
+        "emailPhotos": [
+          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling" },
+          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" },
+          { "url": "/assets/mail/signature-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "label": "Le Fun Run" }
+        ],
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte", "photo": "/assets/mail/signature-quilles.jpg" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",
@@ -511,6 +517,12 @@
         "source": "widget Google Reviews du site (Gembloux)"
       },
       "branding": {
+        "emailPhotos": [
+          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling" },
+          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" },
+          { "url": "/assets/mail/signature-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "label": "Le Fun Run" }
+        ],
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte", "photo": "/assets/mail/signature-quilles.jpg" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",
@@ -564,6 +576,7 @@
       },
       "activityAvailability": {},
       "branding": {
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",

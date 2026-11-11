@@ -235,6 +235,7 @@
     "test:email-threads": "node scripts/email-threads-check.js",
     "test:email-events": "node scripts/email-events-check.js",
     "test:email-design": "node scripts/email-design-check.js",
+    "test:email-signature": "node scripts/email-signature-check.js",
     "test:email-contact": "node scripts/email-contact-check.js",
     "test:email-signataire": "node scripts/email-signataire-check.js",
     "test:member-role-escalation": "node scripts/member-role-escalation-check.js",

@@ -171,7 +171,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(presets.join(',') === 'simple,classique,epure,carte,contraste', '[B] montage : cinq gabarits declares, Mail simple en tete', presets.join(','));
   const rendus = {};
   for (const preset of presets) {
-    const design = { ...defautsLibramont, preset, header: { ...defautsLibramont.header, mode: 'logo' } };
+    // 2026-11-11 (lot 2) : Fun Galaxy est a sa couleur par defaut ; les formes
+    // se comparent a l encre, comme avant.
+    const design = { ...defautsLibramont, preset, accent: { mode: 'encre', hex: '' }, header: { ...defautsLibramont.header, mode: 'logo' } };
     const html = await rendu(m, { design, portee: 'manual', person: KEVIN });
     rendus[preset] = html;
     ok(/^<!doctype html>/i.test(html) && (preset === 'simple' ? /<table role="presentation" width="100%"/.test(html) && /font-size:14px;line-height:1.5;/.test(html) && !/font-size:16px/.test(html) : /<table role="presentation" width="600"/.test(html)) && !/<script/i.test(html) && /style="/.test(html) && /Voici la reponse/.test(html)
@@ -187,7 +189,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   const contrasteSansLogoBlanc = m.comms.emailShell({ title: 'T', body: 'B', preheader: 'p', center: { ...CENTRE_NU, name: 'Sans Logo' }, design: { ...defautsNus, preset: 'contraste', header: { mode: 'logo', logoUrl: '', logoWidth: 140 } }, signature: { enabled: false } });
   ok(/bgcolor="#17151F"/.test(contrasteSansLogoBlanc) && /Sans Logo/.test(contrasteSansLogoBlanc) && images(contrasteSansLogoBlanc) === 0,
     '[B] contraste sans logo blanc declare : le nom en blanc, aucune image inventee');
-  const enTeteAucun = await rendu(m, { design: { ...defautsLibramont, header: { ...defautsLibramont.header, mode: 'aucun' }, signature: { ...defautsLibramont.signature, logoUrl: '' } } });
+  // 2026-11-11 (lot 2) : la signature de Fun Galaxy porte une photo par defaut ;
+  // sans logo ni photo, aucune image ne reste.
+  const enTeteAucun = await rendu(m, { design: { ...defautsLibramont, header: { ...defautsLibramont.header, mode: 'aucun' }, signature: { ...defautsLibramont.signature, logoUrl: '', photo: { enabled: false, url: '' } } } });
   ok(images(enTeteAucun) === 0 && !/padding:18px 28px;border-bottom:1px solid #EFEFF3/.test(enTeteAucun), '[B] en-tete « aucun » : ni nom ni logo en tete de carte');
 
   // =====================================================================
@@ -208,7 +212,11 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   // =====================================================================
   console.log('\n[D][E] la portee de la signature, et qui signe');
   // =====================================================================
-  const sig = (html) => /À très bientôt,/.test(html);
+  // 2026-11-11 (lot 2) : la signature se reconnait a la formule du centre, lue
+  // dans ses defauts (Fun Galaxy signe « Funement vôtre, »), plus a « À très
+  // bientôt, » que la maison ne propose plus.
+  const CLOTURE = defautsLibramont.signature.closing.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;');
+  const sig = (html) => String(html).includes(CLOTURE);
   const scope = { manual: true, sequences: false, campaigns: false };
   ok(sig(await rendu(m, { design: { ...defautsLibramont, signatureScope: scope }, portee: 'manual' })) && !sig(await rendu(m, { design: { ...defautsLibramont, signatureScope: scope }, portee: 'sequences' })) && !sig(await rendu(m, { design: { ...defautsLibramont, signatureScope: scope }, portee: 'campaigns' })),
     '[D] portee { manual: true, sequences: false, campaigns: false } : signe le manuel seulement');
@@ -389,8 +397,8 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'la portee de signature n est plus respectee',
       fichier: 'lib/ops-communications.js',
-      de: '  return { design, signature: { enabled: scope[portee] === true, person: person || null } };',
-      vers: '  return { design, signature: { enabled: true, person: person || null } };',
+      de: '  return { design, signature: { enabled: scope[portee] === true, person: person || null, portee } };',
+      vers: '  return { design, signature: { enabled: true, person: person || null, portee } };',
       rejouer: async (mm) => { const captes = []; await mm.comms.enqueueCampaign({ centerId: 'libramont', campaignId: 9, recipients: [{ email: 'c@exemple.be', name: 'C' }], subject: 's', body: 'b', scheduledAt: iso(1), personalize: (t) => t, deps: { query: requete }, enqueue: async (row) => { captes.push(row); return { id: 1 }; } }); return captes[0].body; },
       rouge: (html) => sig(html),
     },
@@ -445,7 +453,7 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'la cloture textuelle est signee deux fois',
       fichier: 'lib/ops-communications.js',
-      de: '  const corps = signatureHtml ? retirerClotureEnDouble(body, center) : body;',
+      de: '  const corps = avecSignature ? retirerClotureEnDouble(body, center) : body;',
       vers: '  const corps = body;',
       rejouer: async (mm) => { const captes = []; await mm.comms.runBirthdayJ30Sweep('libramont', { query: requete, enqueue: async (row) => { captes.push(row); return { id: 1 }; } }, { today: iso(0) }); return captes[0].body; },
       rouge: (html) => equipe(html) !== 1,

@@ -22584,3 +22584,93 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
    alignees d une etape a l autre. */
 #staffEmailsPage .em-shell .em-sent-detail .pv2-sent-trace { grid-template-columns: fit-content(60%) minmax(0, 1fr); gap: 10px 16px; font-size: 14px; }
 #staffEmailsPage .em-shell .em-sent-detail .pv2-sent-trace > div { display: contents; font-size: 14px; }
+/* =========================================================================
+   LOT 2 (2026-11-11) : l anneau de l assistant, les couleurs du centre en
+   petites touches, la signature a l image du centre.
+   ========================================================================= */
+
+/* L ANNEAU DE L ASSISTANT. Ce que l IA ecrit porte un trait bleu qui tourne
+   lentement (6 s le tour). Seule une transformation anime : une rotation d un
+   carre en degrade conique, vu a travers un masque en anneau. Aucun calcul de
+   style ni de mise en page par image, aucun halo, aucune barre qui balaie.
+   La rotation est une animation Web posee par emIaCaler (staff-pages-v2.js),
+   calee sur le zero de l horloge du document : un repeint reprend le trait
+   ou il en etait. Sous prefers-reduced-motion, rien ne tourne et le trait
+   reste, immobile. */
+:is(#staffEmailsPage, #pv2MailOverlay) {
+  --em-ia-repos: color-mix(in srgb, var(--accent) 26%, var(--line));
+  --em-ia-trait-doux: color-mix(in srgb, var(--accent) 30%, transparent);
+  --em-ia-trait: var(--accent);
+  --em-ia-trait-clair: color-mix(in srgb, var(--accent) 50%, #ffffff);
+}
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia { position: relative; isolation: isolate; padding: 14px 16px 16px; border-radius: 16px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-anneau {
+  position: absolute; inset: 0; z-index: -1; padding: 1.5px; overflow: hidden;
+  border-radius: inherit; background: var(--em-ia-repos); pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-anneau::before {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: max(calc(100% + 160px), 680px); aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(from 0turn, transparent 0turn 0.56turn, var(--em-ia-trait-doux) 0.68turn, var(--em-ia-trait) 0.8turn, var(--em-ia-trait-clair) 0.88turn, transparent 0.97turn);
+  transform: rotate(0.12turn);
+  will-change: transform;
+}
+/* Dans L agent, le panneau des questions porte l anneau a la place de son bord. */
+#staffEmailsPage .em-shell .em-agent > .em-savoir { position: relative; isolation: isolate; border-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-anneau::before { will-change: auto; }
+}
+
+/* LES COULEURS DU CENTRE, en petites touches qui disent ou l on est : le point
+   et le nom du centre au-dessus du titre, les chiffres de l Apercu en Anton.
+   Une seule famille, celle du centre ouvert (les quatre jetons --centre-*
+   poses par staff-menu.js) ; sans centre ouvert, l encre. */
+#staffEmailsPage .em-shell .em-centre { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--centre-texte-clair, var(--muted)); }
+[data-theme='dark'] #staffEmailsPage .em-shell .em-centre { color: var(--centre-texte, var(--muted)); }
+#staffEmailsPage .em-shell .em-centre-point { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--centre-fond, var(--line-strong)); }
+#staffEmailsPage .em-shell .em-centre:empty,
+#staffEmailsPage .em-shell .em-centre:not(:has([data-centre-nom]:not(:empty))) { display: none; }
+#staffEmailsPage .em-shell .em-kpi .em-kpi-value:not(.is-empty) {
+  font-family: Anton, Impact, "Arial Narrow", sans-serif; font-weight: 400; letter-spacing: 0.015em;
+  font-variant-numeric: tabular-nums; color: var(--centre-texte-clair, var(--text));
+}
+[data-theme='dark'] #staffEmailsPage .em-shell .em-kpi .em-kpi-value:not(.is-empty) { color: var(--centre-texte, var(--text)); }
+#staffEmailsPage .em-shell .em-kpi.is-danger .em-kpi-value:not(.is-empty) { color: var(--danger); }
+
+/* APPARENCE : la signature se regle a vue (sa forme, sa photo, sa formule,
+   ce qu elle affiche) ; la couleur se choisit dans celles du centre. */
+#staffEmailsPage .em-shell .em-design-ligne { display: grid; gap: 10px; margin-top: 20px; }
+#staffEmailsPage .em-shell .em-design-question { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text); }
+#staffEmailsPage .em-shell .em-dispositions { display: grid; gap: 4px; }
+#staffEmailsPage .em-shell .em-disposition.em-choix { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 12px; padding: 12px; border: 0; border-radius: var(--em-radius-sm); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#staffEmailsPage .em-shell .em-disposition.em-choix.is-active { background: var(--em-sel); }
+#staffEmailsPage .em-shell .em-disposition.em-choix:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
+#staffEmailsPage .em-shell .em-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+#staffEmailsPage .em-shell .em-photo { display: grid; gap: 6px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+#staffEmailsPage .em-shell .em-photo img { display: block; width: 100%; aspect-ratio: 3 / 1; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); }
+#staffEmailsPage .em-shell .em-photo.is-active img { box-shadow: 0 0 0 3px var(--accent); }
+#staffEmailsPage .em-shell .em-photo:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 3px; border-radius: 10px; }
+#staffEmailsPage .em-shell .em-formules { display: flex; flex-wrap: wrap; gap: 8px; }
+#staffEmailsPage .em-shell .em-formule { min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--em-panel); color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+#staffEmailsPage .em-shell .em-formule.is-active { border-color: var(--accent); background: var(--accent-soft); }
+#staffEmailsPage .em-shell .em-formule:focus-visible,
+#staffEmailsPage .em-shell .em-teinte:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+#staffEmailsPage .em-shell .em-teintes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+#staffEmailsPage .em-shell .em-teinte { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--em-panel); color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+#staffEmailsPage .em-shell .em-teinte.is-active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+#staffEmailsPage .em-shell .em-teinte-point { flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent); }
+#staffEmailsPage .em-shell .em-teinte-point.is-encre { background: var(--text); }
+#staffEmailsPage .em-shell .em-teinte-point.is-perso { background: conic-gradient(var(--line-strong) 0 25%, transparent 0 50%, var(--line-strong) 0 75%, transparent 0); }
+@media (hover: hover) {
+  #staffEmailsPage .em-shell .em-formule:hover:not(:disabled),
+  #staffEmailsPage .em-shell .em-teinte:hover:not(:disabled) { border-color: var(--line-strong); }
+  #staffEmailsPage .em-shell .em-disposition.em-choix:hover:not(:disabled):not(.is-active) { background: var(--em-hover); }
+}
+@container em-main (max-width: 520px) {
+  #staffEmailsPage .em-shell .em-photos { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-teinte { flex: 1 1 100%; }
+}

@@ -273,8 +273,12 @@ function makeDeps(state = {}) {
     for (const cle of TRANSACTIONNELS) {
       const rendu = await buildAutomationPreview('libramont', cle, {}, makeDeps({ settings: designComplet }));
       const liens = (rendu.html.match(/<a\s/gi) || []).length;
-      ok(liens >= 4 && /facebook\.com\/fungalaxy/.test(rendu.html) && /<img\s/.test(rendu.html),
-        `${cle} avec design complet : la signature porte bien ses liens et son logo (obtenu ${liens} liens), le cas mesure quelque chose`);
+      // 2026-11-11 (lot 2) : un mail automatique garde 2 liens au plus, tout
+      // compris ; ses reseaux s y nomment en clair. Le cas mesure toujours
+      // quelque chose : la signature du design complet est la (ses reseaux, son
+      // image), et elle tient dans le budget.
+      ok(liens <= 2 && /Facebook/.test(rendu.html) && /Instagram/.test(rendu.html) && /<img\s/.test(rendu.html),
+        `${cle} avec design complet : la signature porte ses reseaux nommes et son image, dans le budget de 2 liens (obtenu ${liens} liens), le cas mesure quelque chose`);
       ok(!UNSUB_LINK.test(rendu.html) && !DESAB.test(rendu.html), `${cle} avec design complet : aucun lien /api/u, aucun signal de desabonnement`);
     }
     const deps = makeDeps({ settings: designComplet });

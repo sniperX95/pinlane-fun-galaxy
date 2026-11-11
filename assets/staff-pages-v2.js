@@ -5029,7 +5029,7 @@
           <ol class="pv2-savoir-toutes">${questions.map((x) => `<li><button type="button" class="pv2-link-btn${x === q ? ' is-courante' : ''}" ${x === q ? 'aria-current="true"' : ''} onclick="pv2SavoirChoisir('${escJs(String(x.communicationId))}')">${esc(x.question)}</button></li>`).join('')}</ol>
         </details>` : '';
     return `
-      <section class="pv2-panel pv2-savoir em-savoir" aria-label="Apprentissage de l’agent">
+      <section class="pv2-panel pv2-savoir em-savoir" aria-label="Apprentissage de l’agent">${emIaAnneau()}
         <div class="pv2-panel-head has-sub">
           <div><h2>Ses questions</h2><p class="pv2-panel-sub">Ce qu’il ne sait pas, il le demande. Ce que vous répondez, il le retient pour tous les messages suivants.</p></div>
           <span class="pv2-savoir-compte">${esc(attente)}</span>
@@ -5905,6 +5905,43 @@
     return new Set((String(texte || '').match(/\{\{\s*[a-z_][a-z0-9_]*\s*\}\}/gi) || []).map((v) => v.replace(/\s+/g, '').toLowerCase()));
   }
 
+  // L ANNEAU DE L ASSISTANT (lot 2) : un trait bleu qui tourne autour de ce
+  // que l IA ecrit. Sa phase suit l horloge, pas le rendu : un repeint ne le
+  // relance pas du debut.
+  // La rotation est une animation Web posee juste apres l insertion, calee sur
+  // le zero de l horloge du document (startTime = 0) : chaque anneau, neuf ou
+  // repeint, visible tout de suite ou seulement en defilant, en est au meme
+  // angle. Une animation CSS partait de l instant ou l anneau etait peint, et
+  // un repeint le faisait sauter. Sous prefers-reduced-motion, rien ne tourne :
+  // la feuille pose le trait immobile.
+  let emIaCalagePrevu = false;
+  const emIaMouvementReduit = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function emIaCaler() {
+    emIaCalagePrevu = false;
+    const reduit = Boolean(emIaMouvementReduit && emIaMouvementReduit.matches);
+    document.querySelectorAll('.em-ia-anneau:not([data-em-ia-cale])').forEach((anneau) => {
+      anneau.setAttribute('data-em-ia-cale', '');
+      if (reduit || typeof anneau.animate !== 'function') return;
+      const tour = anneau.animate([{ transform: 'rotate(0turn)' }, { transform: 'rotate(1turn)' }], { duration: 6000, iterations: Infinity, pseudoElement: '::before' });
+      tour.startTime = 0;
+    });
+  }
+  if (emIaMouvementReduit && typeof emIaMouvementReduit.addEventListener === 'function') {
+    emIaMouvementReduit.addEventListener('change', () => {
+      document.querySelectorAll('.em-ia-anneau').forEach((anneau) => {
+        anneau.getAnimations({ subtree: true }).forEach((a) => a.cancel());
+        anneau.removeAttribute('data-em-ia-cale');
+      });
+      emIaCaler();
+    });
+  }
+  function emIaAnneau() {
+    if (!emIaCalagePrevu) {
+      emIaCalagePrevu = true;
+      requestAnimationFrame(emIaCaler);
+    }
+    return '<span class="em-ia-anneau" aria-hidden="true"></span>';
+  }
   function emIaBarHtml(cle) {
     const cible = EM_IA_CIBLES[cle];
     if (!cible || !emIaPermise()) return '';
@@ -5936,7 +5973,7 @@
     const geste = (k) => `<button type="button" class="em-ia-geste${e.busy === k ? ' is-busy' : ''}" data-em-ia-intention="${k}" onclick="emIaLancer('${cle}', '${k}')"${verrou}>${esc(libelle(k))}</button>`;
     const menu = (nom, titre, cles) => `<details class="em-ia-menu" name="em-ia-${cle}" data-em-ia-menu="${nom}"${e.menu === nom && !occupe ? ' open' : ''} ontoggle="emIaMenu('${cle}', '${nom}', this.open)"><summary class="em-ia-geste"${occupe ? ' aria-disabled="true"' : ''}>${esc(titre)}${ci('chevronDown')}</summary><div class="em-ia-menu-liste" role="group" aria-label="${esc(titre)}">${cles.map(geste).join('')}</div></details>`;
     const autres = ['chaleureux', 'formel', ...(cible.garderObjet ? [] : ['objets'])];
-    return `<div class="em-ia" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''}>
+    return `<div class="em-ia" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''}>${emIaAnneau()}
       <div class="em-ia-demande">
         <input class="em-ia-brief" type="text" value="${esc(e.brief)}" placeholder="${changer ? 'Dites ce qu’il faut changer' : 'Dites ce que vous voulez écrire…'}" aria-label="${changer ? 'Ce qu’il faut changer dans la réponse' : 'Ce que le mail doit dire'}" data-pl-focus="emails.ia.${cle}" oninput="emIaBrief('${cle}', this.value)" onkeydown="if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); emIaLancer('${cle}', 'ecrire'); }"${verrou}>
         <button type="button" class="pv2-btn sm em-ia-envoyer" data-em-ia-intention="ecrire" onclick="emIaLancer('${cle}', 'ecrire')"${verrou}>${ci('send')}${changer ? 'Réécrire' : 'Écrire'}</button>
@@ -6228,6 +6265,7 @@
   const pv2Design = {
     loaded: false, loading: false, error: '', centre: '',
     design: null, stored: null, defaults: null, presets: [], center: null, logos: [],
+    photos: [], formules: [], couleurs: [],
     sample: 'confirmation', dirty: false, busy: '', erreurServeur: '',
   };
   window.pv2Design = pv2Design;
@@ -6550,6 +6588,9 @@
       pv2Design.presets = Array.isArray(payload && payload.presets) && payload.presets.length ? payload.presets : PV2_DESIGN_PRESETS;
       pv2Design.center = payload && payload.center && typeof payload.center === 'object' ? payload.center : null;
       pv2Design.logos = Array.isArray(payload && payload.logos) ? payload.logos : [];
+      pv2Design.photos = Array.isArray(payload && payload.photos) ? payload.photos : [];
+      pv2Design.formules = Array.isArray(payload && payload.formules) ? payload.formules : [];
+      pv2Design.couleurs = Array.isArray(payload && payload.couleurs) ? payload.couleurs : [];
       pv2Design.reponse = payload && payload.reponse && typeof payload.reponse === 'object' ? payload.reponse : null;
       pv2Design.loaded = true;
       pv2ApercuDesign(0);
@@ -6570,6 +6611,9 @@
     { id: 'carte', label: 'Carte', description: 'La carte classique avec une barre de couleur en haut.' },
     { id: 'contraste', label: 'Contraste', description: 'Bandeau d\'en-tête sombre avec le nom ou le logo blanc du centre.' },
   ];
+  // Les formules de fin quand le serveur n en envoie pas (meme liste que
+  // lib/email-design.js). Jamais « À très bientôt » : la plus plate.
+  const PV2_FORMULES = ['Funement vôtre,', 'À très vite pour une nouvelle partie !', 'On vous garde une piste !', 'Rendez-vous sur les pistes !', 'Au plaisir de vous revoir,'];
   // Le nom et la phrase d un gabarit sont ceux de la console quand elle le
   // connait : le catalogue du serveur (lib/email-design.js) les ecrit sans
   // accents. Un gabarit qu elle ne connait pas garde ceux du serveur.
@@ -6587,8 +6631,9 @@
       header: { mode: 'nom', logoUrl: '', logoWidth: 140 },
       footer: { adresse: true, telephone: true, email: true, mention: '' },
       signature: {
-        enabled: true, closing: 'À très bientôt,', teamLabel: '', role: '', phone: '', email: '', website: '', address: '',
+        enabled: true, closing: PV2_FORMULES[PV2_FORMULES.length - 1], teamLabel: '', role: '', phone: '', email: '', website: '', address: '',
         logoUrl: '', logoWidth: 120, socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: 'carte',
+        photo: { enabled: false, url: '' }, afficher: { telephone: true, email: true, site: true, adresse: true, reseaux: true },
       },
       signatureScope: { manual: true, sequences: true, campaigns: false },
       updatedAt: null, updatedBy: '',
@@ -6604,7 +6649,12 @@
       accent: objet(base.accent, s.accent),
       header: objet(base.header, s.header),
       footer: objet(base.footer, s.footer),
-      signature: { ...objet(base.signature, s.signature), socials: objet(base.signature.socials, s.signature && s.signature.socials) },
+      signature: {
+        ...objet(base.signature, s.signature),
+        socials: objet(base.signature.socials, s.signature && s.signature.socials),
+        photo: objet(base.signature.photo, s.signature && s.signature.photo),
+        afficher: objet(base.signature.afficher, s.signature && s.signature.afficher),
+      },
       signatureScope: objet(base.signatureScope, s.signatureScope),
     };
   }
@@ -6650,6 +6700,41 @@
     let o = pv2Design.design || pv2DesignVide();
     for (let i = 0; i < parts.length - 1; i += 1) o = o[parts[i]] || {};
     pv2DesignChoix(path, !o[parts[parts.length - 1]]);
+  };
+  window.pv2DesignFormule = function (texte) {
+    pv2DesignChoix('signature.closing', String(texte || ''));
+  };
+  // Allumer la photo choisit la premiere du centre si aucune ne l est encore :
+  // jamais une signature qui attend une photo.
+  window.pv2DesignPhotoBascule = function () {
+    const s = (pv2Design.design || pv2DesignVide()).signature;
+    const allumee = Boolean(s.photo && s.photo.enabled);
+    const premiere = (pv2Design.photos || [])[0];
+    if (!allumee && !(s.photo && s.photo.url) && premiere) pv2DesignPoser('signature.photo.url', premiere.url);
+    pv2DesignChoix('signature.photo.enabled', !allumee);
+  };
+  window.pv2DesignPhoto = function (url) {
+    pv2DesignPoser('signature.photo.enabled', true);
+    pv2DesignChoix('signature.photo.url', String(url || ''));
+  };
+  // La couleur du mail : l encre, une couleur du centre (la premiere est « la
+  // couleur du centre », les autres deviennent une couleur personnalisee), ou
+  // une couleur a soi.
+  window.pv2DesignTeinte = function (valeur) {
+    const v = String(valeur || '');
+    if (v === 'encre' || v === 'centre') {
+      pv2DesignPoser('accent.hex', '');
+      pv2DesignChoix('accent.mode', v);
+      return;
+    }
+    if (/^#[0-9a-f]{6}$/i.test(v)) {
+      pv2DesignPoser('accent.hex', v.toLowerCase());
+      pv2DesignChoix('accent.mode', 'perso');
+      return;
+    }
+    const d = pv2Design.design || pv2DesignVide();
+    if (!/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || ''))) pv2DesignPoser('accent.hex', '#0a0a0a');
+    pv2DesignChoix('accent.mode', 'perso');
   };
   window.pv2DesignSample = function (key) {
     pv2Design.sample = ['confirmation', 'reponse', 'campagne'].includes(key) ? key : 'confirmation';
@@ -7730,20 +7815,87 @@
   }
 
   /* ── APPARENCE & SIGNATURE ─────────────────────────────────────────────── */
+  // Une adresse d image du domaine Pinlane se montre dans la console par son
+  // chemin : la console tourne aussi en local et en preproduction, ou l adresse
+  // absolue pointerait vers la production.
+  function pv2CheminLocal(url) {
+    try { return new URL(String(url || '')).pathname; } catch (error) { return String(url || ''); }
+  }
+  // Les couleurs du centre : celles que le serveur envoie, sinon celles de sa
+  // fiche, dans le meme ordre (lib/email-design.js, couleursDuCentre).
+  function pv2CouleursDuCentre() {
+    if (Array.isArray(pv2Design.couleurs) && pv2Design.couleurs.length) return pv2Design.couleurs;
+    const b = (pv2Design.center && pv2Design.center.branding) || {};
+    const vues = new Set();
+    return [['accent', 'La couleur du centre'], ['glow', 'Sa deuxième couleur'], ['accentStrong', 'Sa couleur foncée']]
+      .map(([cle, label]) => ({ cle, label, hex: String(b[cle] || '').trim().toLowerCase() }))
+      .filter((c) => /^#[0-9a-f]{6}$/.test(c.hex) && !vues.has(c.hex) && vues.add(c.hex));
+  }
+  const PV2_RESEAUX = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn' };
+  const PV2_DISPOSITIONS = { carte: 'Carte', bandeau: 'Bandeau', ligne: 'Une ligne' };
+
   function pv2DesignFormHtml(d, mayEdit) {
     const dis = mayEdit ? '' : ' disabled';
     const presets = pv2DesignGabarits();
     const centre = pv2Design.center || {};
-    const branding = centre.branding && typeof centre.branding === 'object' ? centre.branding : {};
     const info = centre.publicInfo && typeof centre.publicInfo === 'object' ? centre.publicInfo : {};
-    const accentCentre = /^#[0-9a-f]{6}$/i.test(String(branding.accent || '')) ? String(branding.accent) : '';
     const logos = pv2Design.logos || [];
+    const photos = Array.isArray(pv2Design.photos) ? pv2Design.photos : [];
+    const formules = Array.isArray(pv2Design.formules) && pv2Design.formules.length ? pv2Design.formules : PV2_FORMULES;
+    const couleurs = pv2CouleursDuCentre();
     const logoOptions = (valeur) => `<option value="">Aucun logo</option>${logos.map((l) => `<option value="${esc(l.url)}"${l.url === valeur ? ' selected' : ''}>${esc(l.label)}</option>`).join('')}${valeur && !logos.some((l) => l.url === valeur) ? `<option value="${esc(valeur)}" selected>Adresse personnalisée</option>` : ''}`;
     const champ = (path, label, valeur, { type = 'text', placeholder = '', hint = '', wide = false } = {}) => `<label class="pv2-composer-field${wide ? ' pv2-composer-wide' : ''}"><span>${esc(label)}${hint ? ` <small class="mk-auto-edit-hint">${esc(hint)}</small>` : ''}</span><input type="${type}" value="${esc(valeur === undefined || valeur === null ? '' : valeur)}" placeholder="${esc(placeholder)}" data-pl-focus="emails.design.${esc(path)}" oninput="pv2DesignField('${escJs(path)}', this.value)"${dis}></label>`;
-    const interrupteur = (path, on, label) => `<button type="button" class="mk-switch${on ? ' is-on' : ''}" data-switch-key="design:${esc(path)}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" onclick="pv2DesignBascule('${escJs(path)}')"${dis}><span></span></button>`;
-    const radio = (name, path, valeur, courant, label, extra = '') => `<label class="pv2-check"><input type="radio" name="${name}" value="${esc(valeur)}" ${courant === valeur ? 'checked' : ''} onchange="pv2DesignChoix('${escJs(path)}', '${escJs(valeur)}')"${dis}${extra}> ${label}</label>`;
+    const interrupteur = (path, on, label, geste = '') => `<button type="button" class="mk-switch${on ? ' is-on' : ''}" data-switch-key="design:${esc(path)}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" onclick="${geste || `pv2DesignBascule('${escJs(path)}')`}"${dis}><span></span></button>`;
     const headerLogo = d.header.mode === 'logo' || d.header.mode === 'logo-nom';
     const nomCentre = String(centre.name || (typeof pv2CenterName === 'function' ? pv2CenterName() : '') || 'votre centre');
+    const s = d.signature;
+    const afficher = { telephone: true, email: true, site: true, adresse: true, reseaux: true, ...(s.afficher || {}) };
+    const photoAllumee = Boolean(s.photo && s.photo.enabled);
+
+    // La couleur du mail : l encre, les couleurs du centre, ou une a soi.
+    const couleurPerso = d.accent.mode === 'perso' && !couleurs.some((c) => c.hex === String(d.accent.hex || '').toLowerCase());
+    const teinte = (valeur, label, hex, actif, classe = '') => `<button type="button" class="em-teinte${actif ? ' is-active' : ''}" role="radio" aria-checked="${actif}" onclick="pv2DesignTeinte('${escJs(valeur)}')"${dis}><span class="em-teinte-point${classe}"${hex ? ` style="background:${esc(hex)}"` : ''} aria-hidden="true"></span>${esc(label)}</button>`;
+    const teintes = [
+      teinte('encre', 'Encre, sobre', '', d.accent.mode === 'encre', ' is-encre'),
+      ...couleurs.map((c, i) => (i === 0
+        ? teinte('centre', c.label, c.hex, d.accent.mode === 'centre')
+        : teinte(c.hex, c.label, c.hex, d.accent.mode === 'perso' && String(d.accent.hex || '').toLowerCase() === c.hex))),
+      teinte('perso', 'Personnalisée', '', couleurPerso, ' is-perso'),
+    ].join('');
+
+    // La signature a vue : sa forme, sa photo, sa formule, ce qu elle affiche.
+    const dispositions = [
+      ['carte', 'Carte', photos.length ? 'Une photo du centre en tête, ou son logo à gauche du texte.' : 'Le logo du centre à gauche, le texte à droite.'],
+      ['bandeau', 'Bandeau', 'Un aplat de la couleur du mail, avec le nom du centre en grand.'],
+      ['ligne', 'Une ligne', 'La plus discrète, la formule puis une ligne de texte.'],
+    ].map(([v, l, t]) => `<button type="button" class="em-disposition em-choix${s.layout === v ? ' is-active' : ''}" role="radio" aria-checked="${s.layout === v}" onclick="pv2DesignChoix('signature.layout', '${v}')"${dis}><span class="em-choix-point" aria-hidden="true"></span><span class="em-choix-texte"><strong>${esc(l)}</strong><small>${esc(t)}</small></span></button>`).join('');
+    let blocPhoto = '';
+    if (s.layout === 'carte') {
+      blocPhoto = photos.length
+        ? `<div class="em-design-ligne">
+          <div class="pv2-design-scope"><div class="pv2-design-scope-row"><strong>Mettre une photo du centre</strong><small>En tête de la signature, à la place du logo.</small>${interrupteur('signature.photo.enabled', photoAllumee, 'Mettre une photo du centre', 'pv2DesignPhotoBascule()')}</div></div>
+          ${photoAllumee ? `<div class="em-photos" role="radiogroup" aria-label="La photo de la signature">${photos.map((p) => `<button type="button" class="em-photo${s.photo.url === p.url ? ' is-active' : ''}" role="radio" aria-checked="${s.photo.url === p.url}" onclick="pv2DesignPhoto('${escJs(p.url)}')"${dis}><img src="${esc(pv2CheminLocal(p.url))}" alt="" loading="lazy" decoding="async"><span>${esc(p.label)}</span></button>`).join('')}</div>` : ''}
+        </div>`
+        : '<p class="pv2-design-hint">Aucune photo déclarée pour ce centre. La signature porte son logo.</p>';
+    }
+    const blocFormule = `<div class="em-design-ligne">
+        <p class="em-design-question" id="emFormuleTitre">La formule de fin</p>
+        <div class="em-formules" role="group" aria-labelledby="emFormuleTitre">${formules.map((f) => `<button type="button" class="em-formule${s.closing === f ? ' is-active' : ''}" aria-pressed="${s.closing === f}" onclick="pv2DesignFormule('${escJs(f)}')"${dis}>${esc(f)}</button>`).join('')}</div>
+        <label class="pv2-composer-field"><span>Ou écrivez la vôtre <small class="mk-auto-edit-hint">vide = pas de formule</small></span><input type="text" value="${esc(s.closing || '')}" maxlength="80" placeholder="${esc(formules[0] || '')}" data-pl-focus="emails.design.signature.closing" oninput="pv2DesignField('signature.closing', this.value)"${dis}></label>
+      </div>`;
+    const reseauxNommes = Object.entries(PV2_RESEAUX).filter(([k]) => String((s.socials || {})[k] || '').trim()).map(([, l]) => l).join(' · ');
+    const contacts = [
+      ['telephone', 'Téléphone', s.phone],
+      ['email', 'Adresse mail', s.email],
+      ['site', 'Site internet', s.website],
+      ['adresse', 'Adresse', s.address],
+      ['reseaux', 'Réseaux', reseauxNommes],
+    ];
+    const blocContacts = `<div class="em-design-ligne">
+        <p class="em-design-question">Ce que la signature affiche</p>
+        <div class="pv2-design-scope">${contacts.map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${esc(l)}</strong><small>${v ? esc(String(v)) : 'pas encore écrit, à compléter dans Plus d’options'}</small>${interrupteur(`signature.afficher.${k}`, afficher[k] !== false, `${l} dans la signature`)}</div>`).join('')}</div>
+      </div>`;
+
     return `<div class="pv2-design-form">
       <section class="pv2-design-block" aria-label="Gabarit">
         <h3>Gabarit</h3>
@@ -7752,25 +7904,25 @@
           ${presets.map((p) => `<button type="button" class="pv2-design-preset em-choix${d.preset === p.id ? ' is-active' : ''}" role="radio" aria-checked="${d.preset === p.id}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><span class="em-choix-point" aria-hidden="true"></span><span class="em-choix-texte"><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small></span></button>`).join('')}
         </div>
       </section>
-      <section class="pv2-design-block" aria-label="Couleur d'accent">
-        <h3>Couleur d'accent</h3>
-        <p class="pv2-design-hint">Les titres, les boutons et la barre du gabarit Carte. Le texte courant reste en encre.</p>
-        <div class="pv2-design-radios">
-          ${radio('pv2DesignAccent', 'accent.mode', 'encre', d.accent.mode, 'Encre <small>(sobre)</small>')}
-          ${accentCentre
-            ? radio('pv2DesignAccent', 'accent.mode', 'centre', d.accent.mode, `<span class="pv2-design-swatch" style="background:${accentCentre}"></span> Couleurs du centre`)
-            : radio('pv2DesignAccent', 'accent.mode', 'centre', d.accent.mode, 'Couleurs du centre <small>(aucune couleur dans la fiche du centre)</small>', ' disabled')}
-          ${radio('pv2DesignAccent', 'accent.mode', 'perso', d.accent.mode, 'Personnalisée')}
-          ${d.accent.mode === 'perso' ? `<span class="pv2-design-inline"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || '')) ? esc(d.accent.hex) : '#0a0a0a'}" aria-label="Choisir la couleur" oninput="pv2DesignField('accent.hex', this.value)"${dis}><input type="text" value="${esc(d.accent.hex || '')}" placeholder="#0a0a0a" maxlength="7" aria-label="Code couleur" data-pl-focus="emails.design.accent.hex" oninput="pv2DesignField('accent.hex', this.value)"${dis}></span>` : ''}
-        </div>
+      <section class="pv2-design-block" aria-label="Couleur du mail">
+        <h3>Couleur</h3>
+        <p class="pv2-design-hint">Elle colore les boutons, la barre du gabarit Carte et la signature. Le texte reste en encre.${couleurs.length ? '' : ' Aucune couleur dans la fiche du centre.'}</p>
+        <div class="em-teintes" role="radiogroup" aria-label="Couleur du mail">${teintes}</div>
+        ${couleurPerso ? `<span class="pv2-design-inline"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || '')) ? esc(d.accent.hex) : '#0a0a0a'}" aria-label="Choisir la couleur" oninput="pv2DesignField('accent.hex', this.value)"${dis}><input type="text" value="${esc(d.accent.hex || '')}" placeholder="#0a0a0a" maxlength="7" aria-label="Code couleur" data-pl-focus="emails.design.accent.hex" oninput="pv2DesignField('accent.hex', this.value)"${dis}></span>` : ''}
       </section>
       <section class="pv2-design-block" aria-label="Signature">
+        <h3>Signature</h3>
         <div class="pv2-design-scope">
-          <div class="pv2-design-scope-row"><strong>Signer les mails</strong><small>Une signature pro en fin de mail, avec la formule, l’équipe ou la personne, les coordonnées et les réseaux. Son texte se règle plus bas, dans Plus d’options.</small>${interrupteur('signature.enabled', Boolean(d.signature.enabled), 'Signer les mails')}</div>
+          <div class="pv2-design-scope-row"><strong>Signer les mails</strong><small>Une signature à l’image du centre en fin de mail, avec la formule, l’équipe ou la personne, les coordonnées et les réseaux.</small>${interrupteur('signature.enabled', Boolean(s.enabled), 'Signer les mails')}</div>
         </div>
+        ${s.enabled ? `<div class="em-design-ligne">
+          <p class="em-design-question" id="emDispositionTitre">Sa forme</p>
+          <div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>
+        </div>
+        ${blocPhoto}${blocFormule}${blocContacts}` : ''}
       </section>
       <section class="pv2-design-block em-design-plus" aria-label="Plus d’options">
-      ${emOptionsHtml('apparence', 'en-tête, pied de page, texte de la signature', `
+      ${emOptionsHtml('apparence', 'en-tête, pied de page, textes de la signature', `
       <div class="em-design-groupe" role="group" aria-label="En-tête">
         <h3>En-tête</h3>
         <div class="pv2-design-fields">
@@ -7793,30 +7945,24 @@
         </div>
         <label class="pv2-composer-field"><span>Mention libre <small class="mk-auto-edit-hint">laissée vide = absente du mail</small></span><textarea rows="2" maxlength="300" placeholder="Ex. Fermé le lundi hors vacances scolaires." data-pl-focus="emails.design.footer.mention" oninput="pv2DesignField('footer.mention', this.value)"${dis}>${esc(d.footer.mention || '')}</textarea></label>
       </div>
-      ${d.signature.enabled ? `<div class="em-design-groupe" role="group" aria-label="Texte de la signature">
-        <h3>Texte de la signature</h3>
-        <div class="pv2-design-radios">
-          <span class="pv2-note">Disposition</span>
-          ${radio('pv2DesignLayout', 'signature.layout', 'carte', d.signature.layout, 'Carte <small>(logo à gauche, texte à droite)</small>')}
-          ${radio('pv2DesignLayout', 'signature.layout', 'ligne', d.signature.layout, 'Une ligne')}
-        </div>
+      ${s.enabled ? `<div class="em-design-groupe" role="group" aria-label="Textes de la signature">
+        <h3>Textes de la signature</h3>
         <div class="pv2-design-fields">
-          ${champ('signature.closing', 'Formule de fin', d.signature.closing, { placeholder: 'À très bientôt,', hint: 'vide = absente' })}
-          ${champ('signature.teamLabel', 'Nom d\'équipe', d.signature.teamLabel, { placeholder: `L'équipe ${nomCentre}`, hint: 'vide = « L\'équipe » + nom du centre' })}
-          ${champ('signature.role', 'Rôle affiché', d.signature.role, { placeholder: 'Ex. Direction', hint: 'sur les mails manuels, le rôle de la personne prime' })}
-          ${champ('signature.phone', 'Téléphone', d.signature.phone, { type: 'tel', placeholder: 'vide = absent du mail' })}
-          ${champ('signature.email', 'Email', d.signature.email, { type: 'email', placeholder: 'vide = absent du mail' })}
-          ${champ('signature.website', 'Site web (https)', d.signature.website, { type: 'url', placeholder: 'vide = absent du mail' })}
-          ${champ('signature.address', 'Adresse', d.signature.address, { placeholder: 'vide = absente du mail', wide: true })}
-          <label class="pv2-composer-field"><span>Logo de signature</span><select onchange="pv2DesignChoix('signature.logoUrl', this.value)"${dis}>${logoOptions(d.signature.logoUrl)}</select></label>
-          ${champ('signature.logoWidth', 'Largeur du logo (px, 60 à 300)', d.signature.logoWidth, { type: 'number' })}
-          ${champ('signature.logoUrl', 'Adresse de l\'image (https)', d.signature.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
-          ${champ('signature.socials.facebook', 'Facebook', d.signature.socials.facebook, { type: 'url', placeholder: 'https://facebook.com/…' })}
-          ${champ('signature.socials.instagram', 'Instagram', d.signature.socials.instagram, { type: 'url', placeholder: 'https://instagram.com/…' })}
-          ${champ('signature.socials.tiktok', 'TikTok', d.signature.socials.tiktok, { type: 'url', placeholder: 'https://tiktok.com/@…' })}
-          ${champ('signature.socials.linkedin', 'LinkedIn', d.signature.socials.linkedin, { type: 'url', placeholder: 'https://linkedin.com/company/…' })}
+          ${champ('signature.teamLabel', 'Nom d\'équipe', s.teamLabel, { placeholder: `L'équipe ${nomCentre}`, hint: 'vide = « L\'équipe » + nom du centre' })}
+          ${champ('signature.role', 'Rôle affiché', s.role, { placeholder: 'Ex. Direction', hint: 'sur les mails manuels, le rôle de la personne prime' })}
+          ${champ('signature.phone', 'Téléphone', s.phone, { type: 'tel', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.email', 'Email', s.email, { type: 'email', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.website', 'Site web (https)', s.website, { type: 'url', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.address', 'Adresse', s.address, { placeholder: 'vide = absente du mail', wide: true })}
+          <label class="pv2-composer-field"><span>Logo de signature</span><select onchange="pv2DesignChoix('signature.logoUrl', this.value)"${dis}>${logoOptions(s.logoUrl)}</select></label>
+          ${champ('signature.logoWidth', 'Largeur du logo (px, 60 à 300)', s.logoWidth, { type: 'number' })}
+          ${champ('signature.logoUrl', 'Adresse de l\'image (https)', s.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
+          ${champ('signature.socials.facebook', 'Facebook', s.socials.facebook, { type: 'url', placeholder: 'https://facebook.com/…' })}
+          ${champ('signature.socials.instagram', 'Instagram', s.socials.instagram, { type: 'url', placeholder: 'https://instagram.com/…' })}
+          ${champ('signature.socials.tiktok', 'TikTok', s.socials.tiktok, { type: 'url', placeholder: 'https://tiktok.com/@…' })}
+          ${champ('signature.socials.linkedin', 'LinkedIn', s.socials.linkedin, { type: 'url', placeholder: 'https://linkedin.com/company/…' })}
         </div>
-        ${!logos.length ? '<p class="pv2-design-hint">Aucun logo déclaré pour ce centre. Les réseaux s\'affichent en liens texte, jamais en icônes inventées.</p>' : ''}
+        <p class="pv2-design-hint">Les réseaux s'écrivent en toutes lettres dans la signature, jamais en icônes d'une autre marque. Un mail automatique garde deux liens au plus. Le téléphone et l'adresse mail se lient d'abord, le reste s'écrit en clair.</p>
       </div>` : ''}
       <div class="em-design-groupe" role="group" aria-label="Où l'appliquer">
         <h3>Où appliquer la signature</h3>
@@ -7835,12 +7981,14 @@
   function pv2DesignLectureHtml(d) {
     const presets = pv2DesignGabarits();
     const preset = presets.find((p) => p.id === d.preset);
-    const accent = d.accent.mode === 'perso' ? `Personnalisée ${d.accent.hex || ''}` : d.accent.mode === 'centre' ? 'Couleurs du centre' : 'Encre';
+    const couleur = pv2CouleursDuCentre().find((c) => c.hex === String(d.accent.hex || '').toLowerCase());
+    const accent = d.accent.mode === 'perso' ? (couleur ? couleur.label : `Personnalisée ${d.accent.hex || ''}`) : d.accent.mode === 'centre' ? 'La couleur du centre' : 'Encre';
     const entete = { nom: 'Le nom du centre', logo: 'Le logo', 'logo-nom': 'Le logo et le nom', aucun: 'Rien' }[d.header.mode] || '';
     const liste = (paires) => paires.filter(([, on]) => on).map(([label]) => label).join(', ');
     const s = d.signature;
+    const photo = s.layout === 'carte' && s.photo && s.photo.enabled ? ((pv2Design.photos || []).find((p) => p.url === s.photo.url) || {}).label || 'une photo du centre' : '';
     const signature = s.enabled
-      ? [s.layout === 'ligne' ? 'Une ligne' : 'Carte', s.closing, s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
+      ? [PV2_DISPOSITIONS[s.layout] || 'Carte', photo ? `avec ${photo}` : '', s.closing, s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
       : 'Non';
     const ligne = (label, valeur) => `<div class="pv2-design-scope-row"><strong>${esc(label)}</strong><small>${esc(valeur)}</small></div>`;
     return `<div class="pv2-design-form">
@@ -7848,7 +7996,7 @@
         <h3>Réglages</h3>
         <div class="pv2-design-scope">
           ${ligne('Gabarit', preset ? preset.label : d.preset)}
-          ${ligne('Couleur d’accent', accent)}
+          ${ligne('Couleur', accent)}
           ${ligne('En-tête', entete)}
           ${ligne('Pied de page', liste([['Adresse', d.footer.adresse], ['Téléphone', d.footer.telephone], ['Adresse email', d.footer.email]]) || 'Rien')}
           ${ligne('Mention libre', d.footer.mention || 'Aucune')}
@@ -8014,6 +8162,7 @@
     root.innerHTML = `<div class="pv2-shell em-shell">
       <div class="em-head">
         <div class="em-head-main">
+          <p class="em-centre"><span class="em-centre-point" aria-hidden="true"></span><span data-centre-nom>${esc(typeof window.staffCenterShortName === 'function' ? window.staffCenterShortName() : '')}</span></p>
           <h1 class="em-title">Emails &amp; relances</h1>
           <p class="em-status">${esc(emStatutDuJour())}${errorMessage ? ` <span class="em-status-err">${esc(errorMessage)}</span>` : ''}</p>
         </div>

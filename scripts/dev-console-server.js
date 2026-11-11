@@ -111,6 +111,15 @@ const CENTRE = {
 let ORIGINE_APP = `http://${HOST}:${PORT}`;
 const logoAbsolu = (chemin) => (chemin ? `${ORIGINE_APP}${chemin}` : '');
 
+// Lot 2 (2026-11-11) : les photos, les formules et les couleurs de la
+// signature viennent du vrai catalogue et du vrai module (lib/email-design.js),
+// comme en production ; seules les adresses suivent l origine servie.
+const emailDesignReel = require('../lib/email-design');
+const CATALOGUE_CENTRE = require('../ops-knowledge/centers.json').centers.find((c) => c.id === 'libramont') || {};
+const SIGNATURE_CATALOGUE = (CATALOGUE_CENTRE.branding && CATALOGUE_CENTRE.branding.emailDesign && CATALOGUE_CENTRE.branding.emailDesign.signature) || {};
+function photosSignature() {
+  return emailDesignReel.photosDisponibles(CATALOGUE_CENTRE).map((p) => ({ ...p, url: logoAbsolu(new URL(p.url).pathname) }));
+}
 const DESIGN_PRESETS = [
   { id: 'classique', label: 'Classique', description: 'Carte blanche à filet fin sur fond gris, nom du centre en tête. Le gabarit historique.' },
   { id: 'epure', label: 'Épuré', description: 'Pas de carte : fond blanc, grandes marges, un filet fin sous le titre.' },
@@ -124,10 +133,12 @@ function designParDefaut() {
     header: { mode: 'nom', logoUrl: '', logoWidth: 140 },
     footer: { adresse: true, telephone: true, email: true, mention: '' },
     signature: {
-      enabled: true, closing: 'À très bientôt,', teamLabel: '', role: '',
+      enabled: true, closing: SIGNATURE_CATALOGUE.closing || 'Au plaisir de vous revoir,', teamLabel: '', role: '',
       phone: CENTRE.publicInfo.phone, email: CENTRE.publicInfo.email, website: '', address: CENTRE.publicInfo.address,
       logoUrl: logoAbsolu(CENTRE.branding.emailLogo), logoWidth: 120,
-      socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: 'carte',
+      socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: SIGNATURE_CATALOGUE.layout || 'carte',
+      photo: { enabled: Boolean(photosSignature()[0]), url: (photosSignature()[0] || {}).url || '' },
+      afficher: { telephone: true, email: true, site: true, adresse: true, reseaux: true },
     },
     signatureScope: { manual: true, sequences: true, campaigns: false },
     updatedAt: null, updatedBy: '',
@@ -579,7 +590,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
         return fil;
       }
       case 'emailSent': return listerEnvoyes({ origine: params.get('origine') || 'tous', statut: params.get('statut') || 'tous', q: params.get('q') || '', limit: Number(params.get('limit') || 100) });
-      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }] };
+      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }], photos: photosSignature(), formules: emailDesignReel.FORMULES_DE_FIN.slice(), couleurs: emailDesignReel.couleursDuCentre(CATALOGUE_CENTRE) };
       default: return { ok: true };
     }
   }

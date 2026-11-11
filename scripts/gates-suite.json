@@ -32,6 +32,7 @@
     "test:email-threads",
     "test:email-events",
     "test:email-design",
+    "test:email-signature",
     "test:email-contact",
     "test:email-signataire",
     "test:member-role-escalation",

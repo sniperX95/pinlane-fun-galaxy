@@ -2172,9 +2172,12 @@ async function main() {
     // en un bouton. Mesure du jour, meme vitrine : generique 66, case 66, laser 72 (ses
     // 27 heures et les six de la partie 2), lancement 41, formule 38. Les trois premiers
     // passent a la mesure plus trois ; les deux autres restent sous le leur.
-    const PLAFOND_GENERIQUE = 69;
-    const PLAFOND_CASE = 69;
-    const PLAFOND_LASER = 75;
+    // Le 2026-11-11, le client passe au ticket (Ansar : « numéro de téléphone obligatoire, une note
+    // optionnelle, tout doit être mis direct sur le côté droit ») : telephone, nom et note y sont des
+    // champs, quatre controles de plus. Mesure : generique 70, case 70 ; plafonds a la mesure plus trois.
+    const PLAFOND_GENERIQUE = 73;
+    const PLAFOND_CASE = 73;
+    const PLAFOND_LASER = 79;
     const PLAFOND_LANCEMENT = 54;
     const PLAFOND_FORMULE = 42;
     // Une condition qui tient : au delai, relue une fois (un gel de la machine
@@ -2229,6 +2232,8 @@ async function main() {
         hasPaxInput: Boolean(modal.querySelector('#qbPax')),
         hasPhoneInput: Boolean(modal.querySelector('#qbPhone')),
         hasNameInput: Boolean(modal.querySelector('#qbName')),
+        nomPrerempli: (modal.querySelector('#qbName') || {}).value || '',
+        telPrerempli: String((modal.querySelector('#qbPhone') || {}).value || '').replace(/\D/g, ''),
         hasEmailInput: Boolean(modal.querySelector('#qbEmail')),
         // Le client au ticket, a toute heure (2026-11-11) : le telephone
         // (obligatoire), le nom et la note ; l e-mail et l occasion a un
@@ -2273,7 +2278,9 @@ async function main() {
     // Le client a la meme forme a toute heure (la v5 en avait deux, au comptoir
     // et hors comptoir) : le champ unique au ticket, la page Client a un toucher.
     assert(qbGeneric.hasDateInput && qbGeneric.hasPaxInput && qbGeneric.clientSaisissable && qbGeneric.emailAtteignable, 'Générique : les essentiels (jour, joueurs, client, e-mail à un geste) sont à l écran.');
-    assert(!qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea && !qbGeneric.lignesOuvertes.length, `Générique : le détail des lignes (grille des pistes) et la note sont repliés à l ouverture (ouvertes : ${qbGeneric.lignesOuvertes.join(',') || 'aucune'}).`);
+    // La note pour l equipe est au ticket, a cote du telephone et du nom (Ansar, 2026-11-11 : « une
+    // note optionnelle, tout doit etre mis direct sur le cote droit ») ; le detail des lignes reste replie.
+    assert(!qbGeneric.hasLaneGrid && qbGeneric.hasNotesTextarea && !qbGeneric.lignesOuvertes.length, `Générique : le détail des lignes (grille des pistes) est replié à l ouverture, la note est au ticket (ouvertes : ${qbGeneric.lignesOuvertes.join(',') || 'aucune'}, note ${qbGeneric.hasNotesTextarea ? 'au ticket' : 'absente'}).`);
     assert(qbGeneric.interactive <= PLAFOND_GENERIQUE, `Générique : au plus ${PLAFOND_GENERIQUE} contrôles visibles (reçu ${qbGeneric.interactive} : ${qbGeneric.interactiveListe}).`);
     await screenshot(page, 'quickbook-generic');
     issues.push(...await collectIssues(page, 'quickbook-generic'));
@@ -2387,13 +2394,13 @@ async function main() {
     issues.push(...await collectIssues(page, 'quickbook-groupe'));
     await page.evaluate(() => closeQuickBook());
 
-    // 6) Fiche client : coordonnées acquises, jamais resaisies. Le ticket dit le
-    // client ; aucun champ de nom n est a retaper sur l ecran.
+    // 6) Fiche client : coordonnées acquises, jamais resaisies. Depuis le 2026-11-11 le
+    // ticket porte le telephone et le nom en champs : ils arrivent deja remplis.
     await page.evaluate(() => openQuickBook({ name: 'Marie Dupont', phone: '+32 470 00 00 01', email: 'marie@example.test', date: state.currentDate, type: 'bowling' }));
     await attendreFenetre('Fiche client');
     const qbClient = await readQuickBook();
     await screenshot(page, 'quickbook-client');
-    assert(/Marie Dupont/.test(qbClient.clientAcquis) && !qbClient.hasNameInput, `Fiche client : le client acquis est rappelé, pas resaisi (reçu « ${qbClient.clientAcquis} »).`);
+    assert(qbClient.nomPrerempli === 'Marie Dupont' && qbClient.telPrerempli.endsWith('470000001'), `Fiche client : le client acquis arrive rempli au ticket, rien à retaper (reçu nom « ${qbClient.nomPrerempli} », téléphone « ${qbClient.telPrerempli} »).`);
     assert(qbClient.heureBowling && !qbClient.heureBowling.fermee && qbClient.hasPaxInput, 'Fiche client : il reste l heure et les joueurs.');
     issues.push(...await collectIssues(page, 'quickbook-client'));
     // Thème clair : la fenêtre est bi-thème.

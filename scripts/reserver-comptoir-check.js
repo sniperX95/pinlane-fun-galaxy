@@ -401,19 +401,30 @@ async function clic(compteur, locator, quoi) {
 // LES SCENARIOS. `v(lettre, cond, label, detail)` note un verdict.
 // ---------------------------------------------------------------------------
 
-// [D1] serveur : la creation staff sans telephone, la fiche, le tunnel, le CRM.
+const TEL_COMPTOIR = '0470 12 34 56';
+
+// LE TELEPHONE AVANT LE CLIC QUI CREE (2026-11-11) : la creation l exige ; un parcours qui ne le tape
+// pas encore le tape ici, juste avant « Créer », sans rien changer au reste de son geste.
+async function avecTelephone(page) {
+  const vide = await page.evaluate(() => { const c = document.getElementById('qbPhone'); return Boolean(c) && !c.value.trim(); });
+  if (vide) await page.fill('#qbPhone', TEL_COMPTOIR);
+}
+
+// [D1] serveur : la creation staff exige le telephone (2026-11-11), la fiche, le tunnel, le CRM.
 async function scenarioD1Serveur(v) {
   B.semer([]);
   monter({ role: 'staff-bar' });
   const m = banc.monte;
   const corps = B.corpsStaff({ type: 'bowling', pax: 4, startTime: '18:00', duration: 1, totalDuration: 1, lanes: [], laneCount: 1, name: 'Client', phone: '', email: '' });
-  const r = await m.appeler('POST', '/api/staff-reservations', corps);
+  const sansTel = await m.appeler('POST', '/api/staff-reservations', corps);
+  v('D1', sansTel.statut === 422 && /t[ée]l[ée]phone/i.test(String(sansTel.json.message || '')) && !sansTel.json.reservation, 'le comptoir refuse de creer sans telephone, et le refus le nomme', `${sansTel.statut} ${sansTel.json.message || ''}`);
+  const r = await m.appeler('POST', '/api/staff-reservations', { ...corps, phone: '+32 470 12 34 56' });
   const cree = r.json.reservation || {};
-  v('D1', r.statut === 201 && cree.id && cree.phone === '' && cree.name === 'Client', 'le comptoir cree sans telephone : 201, telephone vide, nom lisible « Client »', `${r.statut} ${r.json.message || ''} ${cree.id ? `#${cree.id} « ${cree.name} » tel « ${cree.phone} »` : ''}`);
-  const sansNom = await m.appeler('POST', '/api/staff-reservations', { ...corps, name: '', phone: '' });
+  v('D1', r.statut === 201 && cree.id && /470123456$/.test(String(cree.phone || '').replace(/\D/g, '')) && cree.name === 'Client', 'avec le telephone seul, le comptoir cree : 201, nom lisible « Client »', `${r.statut} ${r.json.message || ''} ${cree.id ? `#${cree.id} « ${cree.name} » tel « ${cree.phone} »` : ''}`);
+  const sansNom = await m.appeler('POST', '/api/staff-reservations', { ...corps, name: '', phone: '+32 470 12 34 56' });
   v('D1', sansNom.statut >= 400 && /nom/i.test(String(sansNom.json.message || '')), 'un champ qui manque vraiment se nomme (nom absent d un appel direct)', `${sansNom.statut} ${sansNom.json.message || ''}`);
   if (cree.id) {
-    // La fiche : un PATCH du dossier entier, telephone vide compris.
+    // La fiche : un PATCH du dossier entier, telephone vide compris (un dossier d avant la regle).
     monter({ role: 'manager' });
     const patch = await banc.monte.appeler('PATCH', '/api/staff-reservations', { ...cree, pax: 5, phone: '', allowPastStart: true, baseUpdatedAt: cree.updatedAt });
     v('D1', patch.statut === 200 && patch.json.reservation && Number(patch.json.reservation.pax) === 5 && patch.json.reservation.phone === '', 'le dossier sans telephone reste modifiable (PATCH du dossier entier)', `${patch.statut} ${patch.json.message || ''}`);
@@ -474,13 +485,14 @@ async function scenarioD1(browser, v) {
         const r = (state.reservations || []).find((x) => Number(x.id) === Number(id));
         if (!r || typeof buildStaffClientRowsFromReservations !== 'function') return null;
         const noms = (lignes) => lignes.map((x) => x.name);
-        return { anonyme: noms(buildStaffClientRowsFromReservations([r, { ...r, id: -1 }])), nomme: noms(buildStaffClientRowsFromReservations([{ ...r, name: 'Famille Durand' }])) };
+        const sansContact = { ...r, phone: '', email: '', clientKey: '' };
+        return { anonyme: noms(buildStaffClientRowsFromReservations([sansContact, { ...sansContact, id: -1 }])), nomme: noms(buildStaffClientRowsFromReservations([{ ...sansContact, name: 'Famille Durand' }])) };
       }, id);
       v('D1', Boolean(crm) && crm.anonyme.length === 0 && crm.nomme.includes('Famille Durand'), 'les clients de la console : deux dossiers anonymes ne font pas un client « Client », un nom tape en fait un', JSON.stringify(crm));
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D1 comptoir]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
   }
-  if (!id) { v('D1', false, 'la fiche du dossier sans telephone se modifie', 'aucun dossier cree au comptoir'); return; }
+  if (!id) { v('D1', false, 'la fiche du dossier se modifie', 'aucun dossier cree au comptoir'); return; }
   // La fiche, par un role qui modifie : le telephone n y est pas exige, et
   // l enregistrement passe (le formulaire se soumet, le PATCH aussi).
   monter({ role: 'manager' });
@@ -506,7 +518,7 @@ async function scenarioD1(browser, v) {
       const enregistre = await attendreNode(() => Number((lireBase().find((r) => r.id === id) || {}).pax) === 5, 9000);
       const ligne = lireBase().find((r) => r.id === id) || {};
       const erreurFiche = await texteDe(page, '.edit-form .edit-error, .edit-form [role="alert"], #posOverlay .pos-error');
-      v('D1', enregistre && Number(ligne.pax) === 5 && ligne.tel === '', 'la fiche enregistre le dossier sans telephone (5 joueurs)', `base pax ${ligne.pax} tel « ${ligne.tel} » ${erreurFiche ? `erreur « ${erreurFiche} »` : ''}`);
+      v('D1', enregistre && Number(ligne.pax) === 5 && /470123456$/.test(String(ligne.tel || '').replace(/\D/g, '')), 'la fiche enregistre le dossier (5 joueurs), son telephone garde', `base pax ${ligne.pax} tel « ${ligne.tel} » ${erreurFiche ? `erreur « ${erreurFiche} »` : ''}`);
       v('*', erreurs.length === 0, 'zero erreur JS ni console [D1 fiche]', erreurs.slice(0, 2).join(' | '));
     } finally { await context.close(); }
   }
@@ -604,6 +616,7 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
     await page.click('#rvCreer');
     await planPose(page, true);
     await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); }, null, { timeout: 6000 }).catch(() => {});
+    await avecTelephone(page);
     await page.click('#rvCreer');
     await fenetreFermee(page);
     const nouvelles = creees(avant);
@@ -670,6 +683,7 @@ async function scenarioD3(browser, v) {
     const couleurs = await memeEtat(page);
     v('D3', couleurs.meme && couleurs.verdict === 'att' && couleurs.pied === 'pret', 'c est un avertissement : le verdict le dit en orange, Créer reste pret', JSON.stringify(couleurs));
     await capture(page, 'D3-formule-vacances', '#rvVerdict');
+    await avecTelephone(page);
     await page.click('#rvCreer');
     const ferme = await fenetreFermee(page);
     const nouvelles = creees(avant);
@@ -779,6 +793,7 @@ async function scenarioD6(browser, v) {
     v('D6', JSON.stringify(compo) === '["laser_game"]', '« Choisir » sur le laser compose un laser seul (le bowling de depart n etait qu une proposition)', JSON.stringify(compo));
     await planPose(page, true);
     await capture(page, 'D6-laser-12-1630');
+    await avecTelephone(page);
     await clic(clics, page.locator('#rvCreer'), 'Créer');
     const ferme = await fenetreFermee(page);
     const nouvelles = creees(avant);
@@ -828,6 +843,7 @@ async function scenarioD7(browser, v) {
     await planPose(page);
     await page.waitForTimeout(300);
     const avant = new Set(lireBase().map((r) => r.id));
+    await avecTelephone(page);
     await page.click('#rvCreer');
     await fenetreFermee(page);
     const nouvelles = creees(avant);

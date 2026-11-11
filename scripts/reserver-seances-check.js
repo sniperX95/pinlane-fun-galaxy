@@ -369,6 +369,19 @@ async function barre(t, texteTape) {
 // Le telephone du client est obligatoire (2026-11-11) : il se tape au ticket (un geste
 // de plus), ou dans la barre avec le reste.
 const TEL_COMPTOIR = '0470 12 34 56';
+
+// LE TELEPHONE AVANT LE CLIC QUI CREE (2026-11-11) : la creation l exige ; un parcours qui ne le tape
+// pas encore le tape ici, juste avant « Créer », sans rien changer au reste de son geste.
+async function avecTelephone(page) {
+  const etat = await page.evaluate(() => { const c = document.getElementById('qbPhone'); return c ? { vide: !c.value.trim(), vu: c.getClientRects().length > 0 } : null; });
+  if (!etat || !etat.vide) return;
+  // Au telephone, le ticket est replie : il s ouvre d abord (#rsResume), comme au doigt.
+  if (!etat.vu && await page.locator('#rsResume').isVisible().catch(() => false)) {
+    await page.locator('#rsResume').click();
+    await page.waitForSelector('#qbPhone', { state: 'visible', timeout: 4000 }).catch(() => {});
+  }
+  await page.fill('#qbPhone', TEL_COMPTOIR);
+}
 const TACHES = [
   { id: 'T1', budget: 4, consigne: '6 personnes, une piste de bowling, tout de suite, sans nom',
     jouer: async (t) => { await t.ouvrir(); await nombre(t, 6); await pret(t.page); await t.taper('#qbPhone', TEL_COMPTOIR); await t.clic('#rvCreer'); },
@@ -504,6 +517,7 @@ async function scenarioS2(browser) {
     }));
     ok(avant && bouton === 'Choisir' && apres.laser && !apres.bowling && apres.choisie === heure && apres.ligne.includes(heure), '[S2] « Choisir » prend le laser a la place du bowling propose, un toucher sur son heure la choisit, au ticket', { bouton, heure, ...apres });
     await pret(page).catch(() => {});
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && a(r, 'laser') && !a(r, 'bowling') && a(r, heure), '[S2] « Choisir » puis une heure : le laser a cette heure, au dossier', resume(r));
@@ -572,6 +586,7 @@ async function scenarioS3(browser) {
     } catch (e) { /* dit ci-dessous */ }
     ok(pris && creations(journal).length === 0, '[S3] « Prendre » prend l heure qui tient d un toucher, sans rien creer', await texte(page, '#rvCreer'));
     if (pris) {
+      await avecTelephone(page);
       await page.locator('#rvCreer').click();
       const [r] = await nouveaux(page, m.avant);
       ok(Boolean(r) && r.pax === 20 && a(r, 'bowling') && heureDe(r) === proche, '[S3] le dossier nait a l heure proposee', { proche, dossier: resume(r) });
@@ -634,6 +649,7 @@ async function scenarioS4(browser) {
     const ticket = await texte(page, '#rsLignes');
     ok(ticket.includes(boisson.nom) && ticket.includes(plat.nom) && ticket.includes(`à ${service}`), '[S4] chaque article devient une ligne du ticket, l heure de service dite', ticket);
     await pret(page).catch(() => {});
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     const extras = (r && r.extras) || [];
@@ -662,6 +678,7 @@ async function scenarioS4(browser) {
     await premier.click().catch(() => {});
     await page.waitForSelector('[id^="rsL-x-"]', { state: 'attached' }).catch(() => {});
     await pret(page).catch(() => {});
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     const ligne = ((r && r.extras) || []).find((x) => String(x.name || '').startsWith(nom));
@@ -703,6 +720,7 @@ async function scenarioS5(browser) {
   const raison = await page.locator('#rsRaison-0').getAttribute('data-raison');
   await page.locator('#rsRaison-0').click();
   await page.waitForFunction(() => /^Créer à 15:00/.test(document.querySelector('#rvCreer').textContent.trim()), null, { timeout: 8000 }).catch(() => {});
+  await avecTelephone(page);
   await page.locator('#rvCreer').click();
   const [r] = await nouveaux(page, m.avant);
   const note = notePrix(r);
@@ -785,6 +803,7 @@ async function scenarioS6(browser) {
     await page.waitForSelector('.is-q-ligne');
     ok(await visible(page, '#rvAdapter') && !(await visible(page, '#rsFormuleMesure')), '[S6] sans sur mesure, une formule s adapte sans sur mesure');
     await pret(page);
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     const corps = (creations(journal)[0] || {}).corps || {};
@@ -813,6 +832,7 @@ async function scenarioS6(browser) {
     await prixTape(page, juste);
     await page.locator('#rsRaison-0').click();
     await page.waitForFunction(() => /^Créer à/.test(document.querySelector('#rvCreer').textContent.trim()), null, { timeout: 8000 }).catch(() => {});
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && Number(r.price) === juste, '[S6] 20 % : ce qui passe a l ecran passe au serveur', { juste, dossier: resume(r) });
@@ -896,7 +916,8 @@ async function scenarioS7(browser) {
       ['ligne bowling', async () => { await ticket(); await page.locator('#rsL-a-bowling').click(); await page.waitForSelector('.is-q-ligne #rvHeure-bowling'); }],
       ['sur mesure', async () => { await page.locator('#rsMesure').click(); await page.waitForSelector('.rs-arts'); await page.locator('.rs-arts [id^="rsArt-"]').first().click(); await page.waitForSelector('.rs-bande [data-service], .rs-bande .rs-pas'); }],
       ['total', async () => { await ticket(); await page.locator('#rsL-total').click(); await page.waitForSelector('#qbCustomPrice'); }],
-      ['client', async () => { await ticket(); await page.locator('#rsL-client').click(); await page.waitForSelector('#qbNotes'); }],
+      // La page client porte l e-mail et l occasion ; le telephone, le nom et la note sont au ticket (2026-11-11).
+      ['client', async () => { await ticket(); await page.locator('#rsL-client').click(); await page.waitForSelector('#qbEmail'); }],
       ['formules', async () => { await page.locator('#rsFormules').click(); await page.waitForSelector('.rs-fs-g'); }],
       // Trois activites prises : les tuiles cochees, les lignes du ticket et leurs croix.
       ['plusieurs', async () => {
@@ -930,6 +951,7 @@ async function scenarioS7(browser) {
     ok(bilan.cibles.length === 0, `[S7] cibles de 44 px au doigt (${lieu})`, bilan.cibles);
     // Et une commande s y cree, au doigt : la fenetre repart de zero.
     await depart();
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && r.pax === 6 && r.date === JOUR && a(r, 'bowling'), `[S7] une commande se cree au doigt (${lieu})`, resume(r));
@@ -961,6 +983,7 @@ async function scenarioS8(browser) {
       return rendre.apply(this, args);
     };
   });
+  await avecTelephone(page);
   await page.locator('#rvCreer').click();
   const [r] = await nouveaux(page, m.avant);
   await page.waitForFunction(() => { const t = window.__trace; const i = t.findIndex((x) => x.quoi === 'ferme'); return i >= 0 && t.slice(i + 1).some((x) => x.quoi === 'rend'); }, null, { timeout: 4000 }).catch(() => {});
@@ -1112,6 +1135,7 @@ async function scenarioS9(browser) {
     await page.waitForSelector('#rsL-a-arcade_time', { state: 'attached', timeout: 4000 }).catch(() => {});
     await pret(page).catch(() => {});
     const final = await lireTicket(page);
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && r.pax === 8 && a(r, 'minigolf_blacklight') && a(r, 'arcade_time') && !a(r, 'billards') && Number(r.price) === final.prixServeur, '[S9] le dossier cree porte les activites du ticket, au prix du ticket', { ticket: final.lignes.map((l) => `${l.id} ${l.prix}`), total: final.total, dossier: resume(r) });
@@ -1161,6 +1185,7 @@ async function scenarioS9(browser) {
     const retire = await lireSeances(page);
     const repli = await page.evaluate(() => Boolean(document.querySelector('#rsZ-laser_game .rs-seance.is-replie')));
     ok(JSON.stringify(retire.ids) === '["bowling"]' && retire.bowling === hb && repli, '[S9] la meme seance touchee deux fois retire l activite, son bloc se replie', { ...retire, repli });
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && r.type === 'bowling' && heureDe(r) === hb && r.pax === 8, '[S9] le dossier cree est le bowling a son heure, sans le laser retire', resume(r));
@@ -1187,6 +1212,7 @@ async function scenarioS9(browser) {
       billard: Boolean(document.querySelector('#rsL-a-billards')),
     }));
     ok(/adaptée/.test(adaptee.formule) && adaptee.billard && adaptee.ids.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant, '[S9] direction : une activite touchee adapte la formule, au meme prix', { prixAvant, ...adaptee });
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     ok(Boolean(r) && r.formule_id === 'f3' && a(r, 'billards') && r.pax === 10, '[S9] le dossier cree est la formule adaptee, billard compris', resume(r));
@@ -1325,6 +1351,7 @@ async function scenarioS10(browser) {
     const pourquoi = verdict ? phrase(verdict.raison).slice(1) : '?';
     ok(Boolean(heure) && pris.heure === heure && /à placer/i.test(pris.ligne) && phrase(pris.ligne).includes(pourquoi) && pris.aPlacer && pris.creer.includes(heure), '[S10] direction : toucher une heure qui coince la prend, le ticket dit « à placer » et pourquoi', { heure, verdict, pris });
     const depuis = journal.length;
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
     const corps = (creations(journal.slice(depuis))[0] || {}).corps || {};
@@ -1346,6 +1373,7 @@ async function scenarioS10(browser) {
     await page.waitForSelector('#rsZ-bowling .rs-s-l[data-verifie="1"]', { timeout: 8000 }).catch(() => {});
     await page.locator(`#rsZ-bowling .rs-h[data-heure]:not(.is-on)${QUI_TIENT}`).first().click();
     await pret(page).catch(() => {});
+    await avecTelephone(page);
     const depuis = journal.length;
     await page.locator('#rvCreer').click();
     const crees = await nouveaux(page, m.avant, (lignes) => lignes.length >= 2);
@@ -1378,6 +1406,8 @@ async function scenarioS10(browser) {
       const p = rvPlanCourant();
       if (!p || p.disponible) return { erreur: 'le plan a blanc ne refuse pas cette heure' };
       quickBookState.forcer = true;
+      // Le telephone, obligatoire depuis le 2026-11-11 : c est forcer que le serveur doit refuser ici.
+      quickBookState.phone = '+32 470 12 34 56';
       const c = rvConstruire();
       if (c.erreur) return { erreur: c.erreur };
       const corps = buildReservationApiPayload(c.reservation, { channel: 'staff', laneCount: c.requiredCount, requiresLanes: c.needsLanes });

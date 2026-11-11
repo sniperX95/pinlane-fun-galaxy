@@ -288,6 +288,14 @@ const planPose = (page) => page.waitForFunction(() => {
   return b.dataset.pret === '1' || Boolean(b.dataset.proche) || Boolean(document.getElementById('rvRefus'));
 }, null, { timeout: 8000 }).catch(() => {});
 const pret = (page) => page.evaluate(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); });
+// LE TELEPHONE AVANT LE CLIC QUI CREE (2026-11-11) : la creation l exige ; un parcours qui ne le tape
+// pas encore le tape ici, juste avant « Créer » ou « Payé », sans rien changer au reste de son geste.
+// [R6] seul cree sans lui, pour prouver le refus.
+const TEL_COMPTOIR = '0470 12 34 56';
+async function avecTelephone(page) {
+  const vide = await page.evaluate(() => { const c = document.getElementById('qbPhone'); return Boolean(c) && !c.value.trim(); });
+  if (vide) await page.fill('#qbPhone', TEL_COMPTOIR);
+}
 // Les joueurs se choisissent sur leur touche ; celle qui est choisie est pressee.
 const joueurs = (page, n) => page.locator(`#rsHaut [data-pax="${n}"]`);
 const joueursPris = (page) => page.evaluate(() => { const k = document.querySelector('#rsHaut [data-pax][aria-pressed="true"]'); const autre = document.getElementById('qbPax'); return k ? k.dataset.pax : (autre ? autre.value : ''); });
@@ -509,6 +517,7 @@ async function scenarioR3(browser) {
     await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
+    await avecTelephone(page);
     await clic(n, page.locator('#rvCreer'));
     await fenetreFermee(page);
     const cree = creationsDe(journal)[0];
@@ -516,7 +525,8 @@ async function scenarioR3(browser) {
     const id = (await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id)))));
     await page.waitForTimeout(200);
     const ligne = await ligneDe(page, id);
-    ok(enBase(id).status === 'arrived' && /Ils sont 6/.test(ligne) && !/\+\d/.test(ligne), '[R3] la ligne dit « Ils sont 6 », jamais « +10 min »', `${JSON.stringify(enBase(id))} ${ligne}`);
+    // Le numero du client s affiche sur la ligne (« +32 470… ») : seul un retard « +10 min » est interdit.
+    ok(enBase(id).status === 'arrived' && /Ils sont 6/.test(ligne) && !/\+\d+\s*min/.test(ligne), '[R3] la ligne dit « Ils sont 6 », jamais « +10 min »', `${JSON.stringify(enBase(id))} ${ligne}`);
     ok(await compteur(page, 'late') === late, '[R3] En retard ne bouge pas', `${late} -> ${await compteur(page, 'late')}`);
     ok(await compteur(page, 'onsite') === onsite + 1, '[R3] Sur place compte le groupe', `${onsite} -> ${await compteur(page, 'onsite')}`);
     gestes('Client sans reservation, piste pour 6', '5 gestes', `${n.n} gestes`);
@@ -528,6 +538,7 @@ async function scenarioR3(browser) {
     const { page } = m;
     await page.evaluate(() => reserverAuComptoir({ type: 'laser', startTime: '15:30', pax: 4 }));
     await planPose(page);
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     await fenetreFermee(page);
     const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
@@ -540,6 +551,7 @@ async function scenarioR3(browser) {
     const { page } = m;
     await page.evaluate(() => reserverAuComptoir({ type: 'bowling', startTime: '17:30', pax: 4 }));
     await planPose(page);
+    await avecTelephone(page);
     await page.locator('#rvCreer').click();
     await fenetreFermee(page);
     const id = await page.evaluate(() => Math.max(...state.reservations.map((r) => Number(r.id))));
@@ -565,6 +577,7 @@ async function scenarioR4(browser) {
     await clic(n, joueurs(page, 6));
     await page.waitForTimeout(350);
     await planPose(page);
+    await avecTelephone(page);
     await clic(n, page.locator('#rvPied .rs-payer', { hasText: valeur }));
     await fenetreFermee(page);
     await page.waitForFunction(() => /pay/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
@@ -572,7 +585,7 @@ async function scenarioR4(browser) {
     const base = enBase(id);
     ok(base && base.status === 'paid' && base.moyen === moyenBase && creationsDe(journal).length === 1 && journal.filter((j) => j.m === 'PATCH').length === 1, `[R4] ${valeur} cree et encaisse d un coup`, `${JSON.stringify(base)} ${journal.map((j) => j.m + (j.corps && j.corps.dryRun ? ':dry' : '')).join(',')}`);
     await page.waitForTimeout(150);
-    ok(/Payé/.test(await ligneDe(page, id)) && !/\+\d/.test(await ligneDe(page, id)), `[R4] la ligne dit Payé (${mot})`, await ligneDe(page, id));
+    ok(/Payé/.test(await ligneDe(page, id)) && !/\+\d+\s*min/.test(await ligneDe(page, id)), `[R4] la ligne dit Payé (${mot})`, await ligneDe(page, id));
     ok(await compteur(page, 'late') === late && await compteur(page, 'onsite') === onsite + 1, `[R4] paye veut dire arrive : En retard ne bouge pas, Sur place compte le groupe (${mot})`, `retard ${late} -> ${await compteur(page, 'late')}, sur place ${onsite} -> ${await compteur(page, 'onsite')}`);
     const toast = await texte(page, '#toast');
     ok(/Annuler/.test(toast), `[R4] le toast garde son « Annuler » (${mot})`, toast);
@@ -592,6 +605,7 @@ async function scenarioR4(browser) {
     const upcoming = await compteur(page, 'upcoming');
     await page.evaluate(() => reserverAuComptoir({ type: 'bowling', startTime: '17:30', pax: 4 }));
     await planPose(page);
+    await avecTelephone(page);
     await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await fenetreFermee(page);
     await page.waitForFunction(() => /pay/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
@@ -610,6 +624,7 @@ async function scenarioR4(browser) {
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
+    await avecTelephone(page);
     await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await fenetreFermee(page);
     await page.waitForFunction(() => /(permission|droit|insuffisant)/i.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 6000 }).catch(() => {});
@@ -627,6 +642,7 @@ async function scenarioR4(browser) {
     await page.waitForTimeout(350);
     await planPose(page);
     await page.evaluate(() => { window.__refuserCreation = true; });
+    await avecTelephone(page);
     await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     await page.waitForFunction(() => /Refus du gate/.test((document.getElementById('rvVerdict') || {}).textContent || ''), null, { timeout: 6000 });
     await page.evaluate(() => { window.__refuserCreation = false; });
@@ -645,6 +661,7 @@ async function scenarioR4(browser) {
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
+    await avecTelephone(page);
     await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).dblclick();
     await fenetreFermee(page);
     await page.waitForTimeout(400);
@@ -701,7 +718,7 @@ async function scenarioR5() {
   globalThis.__comptoirMaintenant = FX.instant(fx.staffState.date, '15:10').getTime();
   B.semer([]);
   const jour = fx.staffState.date;
-  const corps = (heure, status) => B.corpsStaff({ date: jour, type: 'bowling', pax: 4, startTime: heure, duration: 1, totalDuration: 1, lanes: [], laneCount: 1, name: 'Client', phone: '', email: '', status, requiresLanes: true, channel: 'staff', allowPastStart: true });
+  const corps = (heure, status) => B.corpsStaff({ date: jour, type: 'bowling', pax: 4, startTime: heure, duration: 1, totalDuration: 1, lanes: [], laneCount: 1, name: 'Client', phone: TEL_COMPTOIR, email: '', status, requiresLanes: true, channel: 'staff', allowPastStart: true });
   serveur.changerSession(B.sessionDuRole('staff-bar', { nom: 'Accueil' }));
   const paye = await serveur.appeler('POST', '/api/staff-reservations', corps('15:30', 'paid'));
   ok(paye.statut === 201 && enBase(paye.json.reservation.id).status === 'pending', '[R5] le corps ne cree pas un dossier paye : encaisser passe par le PATCH', `${paye.statut} ${JSON.stringify(paye.json.reservation ? enBase(paye.json.reservation.id) : paye.json)}`);
@@ -774,6 +791,7 @@ async function scenarioR7(browser) {
   // UN NOM JUSTE NE RAMENE PAS SES VOISINS : un groupe « Mason » de plus.
   await page.evaluate(() => reserverAuComptoir({ type: 'bowling', startTime: '17:30', pax: 2, name: 'Famille Mason' }));
   await planPose(page);
+  await avecTelephone(page);
   await page.locator('#rvCreer').click();
   await fenetreFermee(page);
   await page.waitForTimeout(150);

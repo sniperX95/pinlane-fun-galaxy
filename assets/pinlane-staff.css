@@ -9817,7 +9817,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-champ textarea { display: block; height: auto; min-height: 64px; padding: 10px 12px; line-height: 1.4; resize: none; }
 .qb-modal.rv.rs .rs-tk-champ input:focus, .qb-modal.rv.rs .rs-tk-champ textarea:focus { border-color: var(--console-focus); box-shadow: inset 0 0 0 .5px var(--console-focus); }
 .qb-modal.rv.rs .rs-tk-champ input::placeholder, .qb-modal.rv.rs .rs-tk-champ textarea::placeholder { color: var(--faint); opacity: 1; }
-.qb-modal.rv.rs .rs-tk-champ.is-tel input { padding-right: 88px; font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-tk-champ.is-tel input { font-variant-numeric: tabular-nums; }
+/* La place de « reconnu » seulement quand il s affiche : sinon l invite se coupait a 1024 px (D9). */
+.qb-modal.rv.rs .rs-tk-champ.is-tel.a-tag input { padding-right: 88px; }
 .qb-modal.rv.rs .rs-tk-champ.is-tel .rv-tag { position: absolute; right: 8px; bottom: 10px; height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 6px; background: var(--accent-soft); font-size: 12px; font-weight: 600; line-height: 1; color: var(--accent-strong); pointer-events: none; }
 .qb-modal.rv.rs .rs-tk-champ.is-manque .rs-tk-lbl, .qb-modal.rv.rs .rs-tk-champ.is-manque .rs-tk-lbl em { color: var(--danger); }
 .qb-modal.rv.rs .rs-tk-champ.is-manque input, .qb-modal.rv.rs .rs-tk-champ.is-manque input:focus { border-color: var(--danger); box-shadow: inset 0 0 0 .5px var(--danger); }

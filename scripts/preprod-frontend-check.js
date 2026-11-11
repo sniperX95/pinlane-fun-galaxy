@@ -334,7 +334,8 @@ async function main({ capture = false, seulement = null, tailles = null, rapport
           setView('staff'); state.staffMenuPage = 'planning'; renderStaff();
           const d = parseLocalDate(state.currentDate); d.setDate(d.getDate() + 7);
           const date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-          openQuickBook({ date, startTime: '16:00', type: 'bowling', name: 'QA', email: 'invalid', pax: 4 });
+          // Le telephone, obligatoire depuis le 2026-11-11, est la : c est l e-mail faux qui doit arreter Créer.
+          openQuickBook({ date, startTime: '16:00', type: 'bowling', name: 'QA', phone: '0470 12 34 56', email: 'invalid', pax: 4 });
           window.__PINLANE_QA_RES_POSTS__ = [];
         });
         await page.locator('#rvCreer').click();

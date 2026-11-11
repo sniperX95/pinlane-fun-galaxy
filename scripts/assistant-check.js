@@ -124,6 +124,8 @@ const MUTATIONS = {
   'pourquoi-facultatif': { section: 'R', fichier: OUT, de: "required: ['pourquoi', ...(o.definition.input_schema.required || [])]", vers: "required: [...(o.definition.input_schema.required || [])]", rouge: "[R] chaque outil demande sa phrase" },
   'recherche-tout-repeinte': { section: 'E', fichier: ECRAN, de: "    if (m.statut === 'cours' && !m.texte) majRecherche(haut, m);", vers: "    if (m.statut === 'cours' && !m.texte) { haut.innerHTML = htmlRecherche(m); majRecherche(haut, m); }", rouge: "[E] la liste ne se reconstruit pas a chaque lecture" },
   'correction-perdue': { section: 'E', fichier: ECRAN, de: "retenirFait(champ.value, 'correction', String(m.texte || '').slice(0, 280))", vers: "Promise.resolve()", rouge: "[E] une correction devient un fait appris" },
+  // Une carte qui plante a son rendu (vu au banc le 2026-11-11) : la page n en montre aucune.
+  'carte-qui-plante': { section: 'E', fichier: ECRAN, de: "    const rien = a.action === 'effacerConversations' && !conversationsAEffacer(a).length;", vers: '    const rien = carteQuiPlante;', rouge: '[E] une carte de reservation se rend, remplie, avec le telephone a taper' },
   'reprise-sans-envoi': { section: 'E', fichier: ECRAN, de: "        const reponse = await appeler('reprendre', { conversations: nouvelles });", vers: "        const reponse = { reprises: [] };", rouge: "[E] les conversations de l appareil remontent sans perte" },
   'repeint-au-rafraichissement': { section: 'E', fichier: ECRAN, de: "if (A.root !== root || A.cle !== cle || !root.querySelector('.ast')) {", vers: "if (true) {", rouge: "[E] le rafraichissement de la console ne touche pas la page" },
   'cle-sans-centre': { section: 'E', fichier: ECRAN, de: "const clePortee = () => `${VERSION_STOCKAGE}:${centreId()}:${membreId()}`;", vers: "const clePortee = () => `${VERSION_STOCKAGE}:${membreId()}`;", rouge: "[E] chaque centre a ses conversations" },
@@ -1717,6 +1719,55 @@ async function sectionEcran() {
     await finie(tel.page, 2);
     ok('[E] telephone : aucune erreur JavaScript', tel.erreurs.length === 0, tel.erreurs.slice(0, 3).join(' | '));
     await tel.ctx.close();
+
+    // LES CARTES D ACTION (2026-11-11) : une carte se rend dans la vraie page, remplie, le telephone
+    // a taper ; un clic cree ; un geste risque se confirme deux fois. Une carte qui plantait a son
+    // rendu passait tous les controles qui lisent le code (banc du 11/11) : celui-ci la regarde.
+    {
+      const m = await monter();
+      const RESA = { type: 'geste', geste: 'reservation', centre: 'libramont', texte: 'Réserver le samedi 5 décembre à 14:00 pour 5 joueurs.', resume: { quand: 'samedi 5 décembre', heure: '14:00', joueurs: 5, disponible: true, debut: '14:00', fin: '15:55', lignes: [{ activite: 'bowling', nom: 'Bowling', debut: '14:00', fin: '15:00', detail: '1 h, 5 joueurs, piste 1' }, { activite: 'laser_game', nom: 'Laser Game', debut: '15:00', fin: '15:55', detail: '2 parties, 3 joueurs' }], prix: 93, conflits: [] }, action: { action: 'assistantReservation', date: '2026-12-05', startTime: '14:00', pax: 5, programme: [{ activityId: 'bowling', participants: 5, duration: 1 }, { activityId: 'laser_game', participants: 3, games: 2 }], name: '', phone: '' } };
+      const ANNULER = { type: 'geste', geste: 'annuler_reservation', centre: 'libramont', risque: true, texte: 'Annuler la réservation n° 777.', resume: { numero: 777, quand: 'samedi 5 décembre', heure: '15:00', joueurs: 6, client: 'Zoéline', activites: ['Bowling'], prix: 60, payee: false }, action: { action: 'annulerReservation', reservationId: 777, date: '2026-12-05' } };
+      flux.scenario = reponse('Voici la carte.', [['proposition', RESA], ['proposition', ANNULER]]);
+      // La fixture repond deja a /api/ops DANS la page (scripts/planning-v3-fixtures.js remplace fetch) :
+      // une route reseau ne verrait jamais le clic. La creation se capte donc dans la page, devant elle.
+      await m.page.evaluate(() => {
+        const avant = window.fetch;
+        window.__envoisOps = [];
+        window.fetch = async (entree, init = {}) => {
+          const u = new URL(typeof entree === 'string' ? entree : entree.url, location.origin);
+          const corps = String(init.method || 'GET').toUpperCase() === 'POST' && u.pathname === '/api/ops' ? JSON.parse(init.body || '{}') : null;
+          if (!corps || corps.action !== 'assistantReservation') return avant(entree, init);
+          window.__envoisOps.push(corps);
+          return new Response(JSON.stringify({ ok: true, reservation: { id: 4242, date: corps.date, startTime: corps.startTime, pax: corps.pax } }), { status: 201, headers: { 'content-type': 'application/json' } });
+        };
+      });
+      const envoisOps = () => m.page.evaluate(() => window.__envoisOps || []);
+      // Une carte qui plante a son rendu ne laisse pas de pied au message : la ligne qui suit le dit en rouge.
+      await poser(m.page, 'Réserve pour 5 samedi').catch(() => {});
+      const carte = await m.page.evaluate(() => { const c = document.querySelectorAll('.ast-carte'); return { n: c.length, lignes: c[0] ? [...c[0].querySelectorAll('.ast-carte-ligne')].map((l) => l.textContent.replace(/\s+/g, ' ').trim()) : [], tel: Boolean(c[0] && c[0].querySelector('[data-ast-tel][aria-required="true"]')), verbe: c[0] ? ((c[0].querySelector('[data-ast-geste-oui]') || {}).textContent || '') : '' }; });
+      ok('[E] une carte de reservation se rend, remplie, avec le telephone a taper', carte.n === 2 && carte.lignes.some((l) => /Bowling ?14:00 à 15:00/.test(l)) && carte.lignes.some((l) => /Laser Game ?15:00 à 15:55 · 2 parties, 3 joueurs/.test(l)) && carte.tel && /Créer la réservation/.test(carte.verbe), JSON.stringify(carte));
+      await m.page.locator('.ast-carte').first().locator('[data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await FX.repos(m.page, 200);
+      const sansTel = await m.page.evaluate(() => ({ focus: Boolean(document.activeElement && document.activeElement.hasAttribute('data-ast-tel')), dit: (document.querySelector('.ast-carte-erreur') || {}).textContent || '' }));
+      const avantTel = await envoisOps();
+      ok('[E] sans telephone, la carte ne cree rien et mene au champ', avantTel.length === 0 && sansTel.focus && /obligatoire/.test(sansTel.dit), JSON.stringify({ ...sansTel, envois: avantTel.length }));
+      await m.page.locator('.ast-carte [data-ast-tel]').first().fill('0470 12 34 56', { timeout: 4000 }).catch(() => {});
+      await m.page.locator('.ast-carte').first().locator('[data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await m.page.waitForFunction(() => /Réservation n° 4242 créée/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
+      const cree = await m.page.evaluate(() => /Réservation n° 4242 créée/.test(document.body.textContent));
+      const envois = await envoisOps();
+      ok('[E] avec le telephone, un clic cree la reservation et la carte le dit', cree && envois.length === 1 && envois[0].action === 'assistantReservation' && envois[0].phone === '0470 12 34 56' && Array.isArray(envois[0].programme) && envois[0].programme.length === 2, JSON.stringify({ cree, envois }));
+      // Le geste risque : le premier clic demande, seul le second fait.
+      await m.page.locator('.ast-carte.est-risque [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await FX.repos(m.page, 200);
+      const demande = await m.page.evaluate(() => { const c = document.querySelector('.ast-carte.est-a-confirmer'); return { la: Boolean(c), boutons: c ? [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) : [], focus: document.activeElement ? document.activeElement.textContent.trim() : '' }; });
+      ok('[E] un geste risque demande une seconde fois avant de faire', demande.la && demande.boutons.join('|') === 'Oui, annuler|Retour' && demande.focus === 'Oui, annuler', JSON.stringify(demande));
+      await m.page.locator('[data-ast-geste-retour]').click({ timeout: 4000 }).catch(() => {});
+      await FX.repos(m.page, 150);
+      ok('[E] « Retour » rend la carte sans rien faire', !(await m.page.evaluate(() => Boolean(document.querySelector('.ast-carte.est-a-confirmer')))) && (await envoisOps()).length === 1);
+      ok('[E] les cartes ne levent aucune erreur JavaScript', m.erreurs.length === 0, m.erreurs.slice(0, 3).join(' | '));
+      await m.ctx.close();
+    }
   } finally {
     await browser.close();
     serveur.close();

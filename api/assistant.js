@@ -267,6 +267,12 @@ module.exports = async (req, res) => {
     ctx.centreOuvert = centreOuvert;
     // Lu a chaque question : ce qu un collegue vient d apprendre sert tout de suite.
     const savoir = await memoire.faitsPourLeModele(requeteBase, centreOuvert);
+    // CE QUE LE CENTRE A APPRIS AILLEURS (2026-11-11, Ansar : « qu elles connaissent tout du centre ») : les
+    // faits appris a l agent des mails et les regles retenues dans les demandes sur mesure. Le centre
+    // ouvert seulement ; leur numero ne croise jamais celui d un fait de l assistant.
+    const appris = centreOuvert && centreOuvert !== 'all' ? await require('../lib/email-agent').getFaitsAppris(centreOuvert).catch(() => []) : [];
+    savoir.faits = [...savoir.faits, ...appris.filter((f) => f && f.question && f.reponse).slice(0, 30)
+      .map((f) => ({ id: 900000 + Number(f.id || 0), texte: `${String(f.question).slice(0, 160)} : ${String(f.reponse).slice(0, 400)}`, origine: 'equipe' }))];
     ctx.faits = savoir.faits;
 
     res.statusCode = 200;

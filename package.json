@@ -158,6 +158,7 @@
     "test:accueil-vivant": "node scripts/accueil-vivant-check.js && node scripts/accueil-vivant-check.js --contre-preuves",
     "test:pilotage": "node scripts/pilotage-check.js && node scripts/pilotage-check.js --contre-preuves",
     "test:assistant": "node scripts/assistant-check.js && node scripts/assistant-check.js --contre-preuves --tiers=1/12 && node scripts/assistant-check.js --contre-preuves --tiers=2/12 && node scripts/assistant-check.js --contre-preuves --tiers=3/12 && node scripts/assistant-check.js --contre-preuves --tiers=4/12 && node scripts/assistant-check.js --contre-preuves --tiers=5/12 && node scripts/assistant-check.js --contre-preuves --tiers=6/12 && node scripts/assistant-check.js --contre-preuves --tiers=7/12 && node scripts/assistant-check.js --contre-preuves --tiers=8/12 && node scripts/assistant-check.js --contre-preuves --tiers=9/12 && node scripts/assistant-check.js --contre-preuves --tiers=10/12 && node scripts/assistant-check.js --contre-preuves --tiers=11/12 && node scripts/assistant-check.js --contre-preuves --tiers=12/12",
+    "test:assistant-gestes": "node scripts/assistant-gestes-check.js && node scripts/assistant-gestes-check.js --contre-preuves",
     "test:terrain": "node scripts/terrain-check.js && node scripts/terrain-check.js --contre-preuves",
     "test:voix-pro": "node scripts/voix-pro-check.js && node scripts/voix-pro-check.js --contre-preuves",
     "test:journee-vraie": "node scripts/journee-vraie-check.js && node scripts/journee-vraie-check.js --contre-preuves",

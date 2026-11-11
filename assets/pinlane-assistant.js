@@ -39,6 +39,11 @@
     formules: { nom: 'Formules', cle: 'formules' },
     demandes: { nom: 'Demandes', cle: 'requests' },
   };
+  // Les pages ou « M’y emmener » peut mener, et les rubriques d Etablissement (lib/carte-logiciel.js).
+  const PAGES_OUVRABLES = ['dashboard', 'planning', 'reservations', 'formules', 'arrivals', 'clients', 'requests', 'emails', 'campaigns', 'prices', 'lanes', 'laserGame', 'users', 'establishment', 'secours', 'settings'];
+  const RUBRIQUES = ['centre', 'horaires', 'activites', 'formules', 'reservations', 'accueil', 'formulaire'];
+  // Les gestes que la personne peut faire faire, et les seules cles qui partent avec chacun.
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -1045,8 +1050,53 @@
     return html;
   }
 
+  // OU ALLER (2026-11-11) : le chemin des menus et le bouton qui y mene (lib/carte-logiciel.js). Seules
+  // les pages de la console connues ici s ouvrent, quel que soit ce que le flux apporte.
+  function htmlAllers(m) {
+    const allers = (m.allers || []).filter((a) => PAGES_OUVRABLES.includes(a.page));
+    return allers.length ? `<div class="ast-allers">${allers.map((a) => `<button type="button" class="ast-aller" data-ast-aller="${esc(a.id)}"><b>M’y emmener</b><span>${esc(a.chemin)}</span></button>`).join('')}</div>` : '';
+  }
+
+  // FAIRE LE GESTE PROPOSE (2026-11-11) : seul ce clic l envoie, avec les droits de la personne, et le
+  // serveur revoit tout (api/ops.js). Une action hors de cette liste ne part pas.
+  async function faireGeste(m, p) {
+    const a = p.action || {};
+    const cles = GESTES[a.action];
+    if (!cles || p.etat === 'cours') return;
+    const corps = { action: a.action, centerId: p.centre || centreId() };
+    cles.forEach((k) => { if (a[k] != null) corps[k] = a[k]; });
+    p.etat = 'cours';
+    p.erreur = '';
+    peindreMessage(m);
+    try {
+      const r = typeof apiRequest === 'function' && typeof API_ENDPOINTS !== 'undefined'
+        ? await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(corps) })
+        : await fetch('/api/ops', { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: staffAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(corps) }).then(async (x) => { const d = await x.json().catch(() => ({})); if (!x.ok || d.ok === false) throw new Error(d.message || d.error || ''); return d; });
+      if (r && r.customRequest && typeof replaceStaffCustomRequest === 'function') replaceStaffCustomRequest(r.customRequest);
+      p.etat = 'fait';
+    } catch (erreur) {
+      p.etat = '';
+      p.erreur = (erreur && erreur.message) || 'Le geste n’a pas pu se faire.';
+    }
+    sauver(courante());
+    peindreMessage(m);
+  }
+
   function htmlPropositions(m) {
     return (m.propositions || []).map((p, i) => {
+      if (p.type === 'geste') {
+        if (p.etat === 'fait') return `<p class="ast-prop-fait">C’est fait. ${esc(p.texte)}</p>`;
+        if (p.etat === 'ecarte') return '';
+        return `<div class="ast-prop" data-ast-prop="${i}">
+        <p class="ast-prop-quoi">Je le fais pour vous ?</p>
+        <p class="ast-prop-texte">${esc(p.texte)}</p>
+        ${p.erreur ? `<p class="ast-prop-erreur">${esc(p.erreur)}</p>` : ''}
+        <div class="ast-prop-actions">
+          <button type="button" class="ast-bouton est-plein" data-ast-geste-oui="${i}"${p.etat === 'cours' ? ' disabled' : ''}>${p.etat === 'cours' ? 'En cours…' : 'Faire'}</button>
+          <button type="button" class="ast-lien" data-ast-prop-non="${i}">Non merci</button>
+        </div>
+      </div>`;
+      }
       if (p.etat === 'retenu') return `<p class="ast-prop-fait">Retenu pour tout le centre. <button type="button" class="ast-lien" data-ast-savoir>Voir ce que l'IA a appris</button></p>`;
       if (p.etat === 'ecarte') return '';
       return `<div class="ast-prop" data-ast-prop="${i}">
@@ -1083,7 +1133,7 @@
       ? `<p class="ast-alerte">${sans.length > 1 ? `Je n'ai pas retrouvé ${sans.length} chiffres dans vos données (${esc(sans.join(', '))}). Ils sont soulignés en orange, ne vous en servez pas sans les vérifier.` : `Je n'ai pas retrouvé un chiffre dans vos données (${esc(sans[0])}). Il est souligné en orange, ne vous en servez pas sans le vérifier.`}</p>`
       : '';
     const retire = m.retires ? `<p class="ast-retire">${m.retires > 1 ? `J'ai repris ${m.retires} chiffres que je ne retrouvais pas dans vos données avant de vous répondre.` : "J'ai repris un chiffre que je ne retrouvais pas dans vos données avant de vous répondre."}</p>` : '';
-    return `${m.statut === 'arrete' ? '<p class="ast-arrete">Réponse arrêtée.</p>' : ''}${alerte}${retire}${htmlPropositions(m)}
+    return `${m.statut === 'arrete' ? '<p class="ast-arrete">Réponse arrêtée.</p>' : ''}${alerte}${retire}${htmlAllers(m)}${htmlPropositions(m)}
     <div class="ast-pied">
       <button type="button" class="ast-icone" data-ast-copier title="Copier" aria-label="Copier la réponse">${icone('copier')}</button>
       ${dernier ? `<button type="button" class="ast-icone" data-ast-refaire title="Refaire" aria-label="Refaire la réponse">${icone('refaire')}</button>` : ''}
@@ -1731,7 +1781,8 @@
       case 'repris': m.repris = Array.isArray(d.lectures) ? d.lectures.slice(0, 24) : []; break;
       case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
-      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '' }]; break;
+      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', centre: d.centre, action: d.action } : {}) }]; break;
+      case 'aller': if (PAGES_OUVRABLES.includes(d.page) && !(m.allers || []).some((a) => a.id === d.id)) m.allers = [...(m.allers || []), { id: d.id, page: d.page, rubrique: d.rubrique || '', chemin: d.chemin }]; break;
       case 'annule': m.texte = ''; break;
       case 'fin':
         m.texte = d.texte;
@@ -1916,6 +1967,21 @@
       return;
     }
     if ((n = v('[data-ast-corriger-fermer]'))) { const m = messageDe(n); if (m) { m.correction = false; m.correctionErreur = ''; peindreMessage(m); } return; }
+    if ((n = v('[data-ast-aller]'))) {
+      const m = messageDe(n);
+      const a = m && (m.allers || []).find((x) => x.id === n.dataset.astAller);
+      if (a && PAGES_OUVRABLES.includes(a.page)) {
+        if (a.page === 'establishment' && RUBRIQUES.includes(a.rubrique) && typeof setEstablishmentTab === 'function') setEstablishmentTab(a.rubrique);
+        if (typeof location !== 'undefined') location.hash = `#/staff/${a.page}`;
+      }
+      return;
+    }
+    if ((n = v('[data-ast-geste-oui]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astGesteOui)];
+      if (p && p.type === 'geste') faireGeste(m, p);
+      return;
+    }
     if ((n = v('[data-ast-prop-oui]'))) {
       const m = messageDe(n);
       const p = m && m.propositions[Number(n.dataset.astPropOui)];

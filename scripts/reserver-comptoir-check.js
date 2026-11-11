@@ -1195,6 +1195,8 @@ const e = (fichier, de, vers) => ({ fichier, de, vers });
 const MUTATIONS = [
   // D1
   { nom: 'telephone-exige', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', "{ required: channel === 'public', champ: 'téléphone' }", "{ required: true, champ: 'téléphone' }")] },
+  // Le serveur exige le telephone a la creation (2026-11-11) : sans sa garde, le comptoir creerait sans.
+  { nom: 'telephone-libre-au-serveur', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('api/staff-reservations.js', "  if (require('../lib/telephone-du-client').telephoneValide(corps && corps.phone)) return;", '  return;')] },
   { nom: 'champ-sans-nom', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    const error = new Error(`Champ requis manquant : ${champ}.`);', "    const error = new Error('Champ requis manquant.');")] },
   { nom: 'refus-masque-en-ligne', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    error.statusCode = 422;\n    error.expose = true;\n    throw error;\n  }\n  return normalized;', '    error.expose = true;\n    throw error;\n  }\n  return normalized;')] },
   { nom: 'anonyme-client', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/donnees-clients.js', "  return String(nom || '').trim().toLowerCase() === NOM_ANONYME;", '  return false;')] },

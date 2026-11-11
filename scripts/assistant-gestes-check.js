@@ -23,6 +23,8 @@ const MUTATIONS = {
   'heures-a-l-envers': { fichier: 'lib/assistant-outils.js', de: ' || ouverture >= fermeture) throw refus(', vers: ') throw refus(', rouge: 'des heures a l envers ou hors du cadran ne se proposent pas' },
   'reservation-sans-droit': { fichier: 'lib/assistant-outils.js', de: "        if (!sessionHasPermission(session, ['reservations.create', 'reservations.quick'])) throw refus(", vers: '        if (false) throw refus(', rouge: 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur' },
   'reservation-date-impossible': { fichier: 'lib/assistant-outils.js', de: "        if (!jour || jour.toISOString().slice(0, 10) !== date) throw refus('La date de la réservation est invalide.');", vers: "        if (!jour) throw refus('La date de la réservation est invalide.');", rouge: 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur' },
+  'note-sans-droit': { fichier: 'lib/assistant-outils.js', de: "        if (!sessionHasPermission(session, 'clients.edit') || !sessionHasPermission(session, 'reservations.view')) throw refus(", vers: '        if (false) throw refus(', rouge: 'noter sur une fiche : refuse sans le droit, hors du centre, sans texte ou sans telephone ni e-mail' },
+  'note-hors-centre': { fichier: 'lib/assistant-outils.js', de: '(await lignes(ctx, ouverte.id, session)).find((x) => Number(x.id) === numero)', vers: '(await lignes(ctx, ouverte.id, session)).find(() => true)', rouge: 'noter sur une fiche : refuse sans le droit, hors du centre, sans texte ou sans telephone ni e-mail' },
   'roles-d-un-autre-centre': { fichier: 'lib/assistant-outils-centre.js', de: "from staff_roles where center_id = $1 order by locked desc, name asc;', [id]);", vers: "from staff_roles where center_id = $1 order by locked desc, name asc;', ['gembloux']);", rouge: 'les roles se lisent dans le centre ouvert, avec les mots de la page Equipe' },
 };
 const CASSE = process.env.GESTES_CASSE || '';
@@ -58,7 +60,7 @@ database.getCustomRequest = async (id, { centerId = '' } = {}) => {
 const outils = require('../lib/assistant-outils');
 const carte = require('../lib/carte-logiciel');
 
-const GERANT = { permissions: ['campaigns.manage', 'settings.manage', 'reservations.create', 'reservations.edit', 'reservations.view', 'clients.view', 'dashboard.view', 'planning.view', 'emails.view', 'users.manage', 'pricing.manage'], role: {}, authorizedCenterId: 'libramont' };
+const GERANT = { permissions: ['campaigns.manage', 'settings.manage', 'reservations.create', 'reservations.edit', 'reservations.view', 'clients.view', 'clients.edit','dashboard.view', 'planning.view', 'emails.view', 'users.manage', 'pricing.manage'], role: {}, authorizedCenterId: 'libramont' };
 const MARKETEUR = { permissions: ['campaigns.manage'], role: {}, authorizedCenterId: 'libramont' };
 // Le compte ouvre Libramont ; Gembloux lui reste ferme (la porte du centre rend null).
 function contexte(session) {
@@ -92,8 +94,16 @@ async function verifier() {
   const liste = (nom) => [...((((page.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`)) || [])[1]) || '').matchAll(/'([^']+)'/g))].map((m) => m[1]).sort();
   ok(JSON.stringify(liste('PAGES_OUVRABLES')) === JSON.stringify([...pagesCarte].sort()) && JSON.stringify(liste('RUBRIQUES')) === JSON.stringify([...rubriques].sort()),
     'la page ne mene qu aux ecrans de la carte', JSON.stringify(liste('PAGES_OUVRABLES')));
-  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
-    'la page ne connait que trois gestes, avec leurs seules cles');
+  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\], noteClient: \['reservationId', 'texte'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
+    'la page ne connait que quatre gestes, avec leurs seules cles');
+  // Une note de client s ajoute a la sienne par la porte des notes, avec sa version : rien ne s efface.
+  const iNote = page.indexOf('  async function ajouterNoteClient(centre, reservationId, texte) {');
+  const corpsNote = iNote > 0 ? page.slice(iNote, page.indexOf('\n  }\n', iNote)) : '';
+  ok(/const porte = '\/api\/staff-customer-notes';/.test(corpsNote) && /\$\{porte\}\?centerId=\$\{encodeURIComponent\(centre\)\}&reservationId=\$\{encodeURIComponent\(reservationId\)\}/.test(corpsNote)
+    && /const body = \[avant, String\(texte \|\| ''\)\.trim\(\)\]\.filter\(Boolean\)\.join\('\\n\\n'\);/.test(corpsNote)
+    && /method: 'PATCH', body: JSON\.stringify\(\{ centerId: centre, reservationId: Number\(reservationId\), body, clientKey: lue\.clientKey, baseUpdatedAt: \(lue\.note && lue\.note\.updatedAt\) \|\| null \}\)/.test(corpsNote)
+    && /await ajouterNoteClient\(corps\.centerId, corps\.reservationId, corps\.texte\);/.test(page),
+    'une note de client s ajoute a la sienne, avec sa version, par la porte des notes', corpsNote.slice(0, 160));
   // Preparer une reservation n ecrit rien : la fenetre Reserver s ouvre preremplie, dans le centre affiche.
   const iResa = page.indexOf("if (a.action === 'ouvrirReserver') {");
   const brancheResa = iResa > 0 ? page.slice(iResa, page.indexOf('\n    }\n', iResa)) : '';
@@ -148,6 +158,19 @@ async function verifier() {
   const essaiResa = async (session, sur) => Boolean((await outils.executer(contexte(session), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:30', joueurs: 12, ...sur })).proposition);
   const refusResa = [await essaiResa(MARKETEUR, {}), await essaiResa(GERANT, { date: '2027-02-31' }), await essaiResa(GERANT, { date: '2026-11-10' }), await essaiResa(GERANT, { joueurs: 0 }), await essaiResa(GERANT, { heure: '24:10' })];
   ok(refusResa.every((x) => !x), 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur', JSON.stringify(refusResa));
+  // Noter sur la fiche d un client : l historique du centre ouvert est remplace par deux reservations.
+  const avecHistorique = (session) => {
+    const c = contexte(session);
+    c.projections.set('libramont', Promise.resolve([{ id: 501, code: 'L0001', client: 'Zoéline Verhaegen' }, { id: 502, code: '', client: '' }]));
+    return c;
+  };
+  const noter = await outils.executer(avecHistorique(GERANT), 'proposer_un_geste', { geste: 'note_client', reservation: 501, texte: 'Préfère être appelée le matin.' });
+  const pn = noter.proposition || {};
+  ok(pn.type === 'geste' && pn.centre === 'libramont' && JSON.stringify(pn.action) === '{"action":"noteClient","reservationId":501,"texte":"Préfère être appelée le matin."}' && pn.texte === 'Ajouter à la note de Zoéline Verhaegen : « Préfère être appelée le matin. ».',
+    'noter sur la fiche d un client : la note a ajouter, dans le centre ouvert', JSON.stringify(pn.action ? pn : noter.contenu));
+  const essaiNote = async (session, sur) => Boolean((await outils.executer(avecHistorique(session), 'proposer_un_geste', { geste: 'note_client', reservation: 501, texte: 'Préfère être appelée le matin.', ...sur })).proposition);
+  const refusNote = [await essaiNote({ ...GERANT, permissions: GERANT.permissions.filter((x) => x !== 'clients.edit') }, {}), await essaiNote(GERANT, { reservation: 999 }), await essaiNote(GERANT, { texte: ' ' }), await essaiNote(GERANT, { reservation: 502 })];
+  ok(refusNote.every((x) => !x), 'noter sur une fiche : refuse sans le droit, hors du centre, sans texte ou sans telephone ni e-mail', JSON.stringify(refusNote));
   const sources = lire('lib/assistant-outils.js');
   const debut = sources.indexOf('  proposer_un_geste: {');
   const corpsGeste = debut > 0 ? sources.slice(debut, sources.indexOf('\n  },\n', debut)) : '';

@@ -44,7 +44,8 @@
   const RUBRIQUES = ['centre', 'horaires', 'activites', 'formules', 'reservations', 'accueil', 'formulaire'];
   // Les gestes que la personne peut faire faire, et les seules cles qui partent avec chacun.
   // ouvrirReserver ne part pas au serveur : il ouvre la fenetre Reserver preremplie, la personne confirme.
-  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'] };
+  // noteClient passe par la porte des notes du client (api/staff-customer-notes), qui revoit le droit et le centre.
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -1058,6 +1059,21 @@
     return allers.length ? `<div class="ast-allers">${allers.map((a) => `<button type="button" class="ast-aller" data-ast-aller="${esc(a.id)}"><b>M’y emmener</b><span>${esc(a.chemin)}</span></button>`).join('')}</div>` : '';
   }
 
+  // La note s ajoute a celle du client, comme « Ajouter » sur sa fiche : la note lue d abord, puis le tout
+  // renvoye avec sa version, pour ne rien effacer de ce qu un collegue vient d ecrire (409 sinon).
+  async function ajouterNoteClient(centre, reservationId, texte) {
+    const appel = (url, options = {}) => (typeof apiRequest === 'function' ? apiRequest(url, options)
+      : fetch(url, { cache: 'no-store', credentials: 'same-origin', ...options, headers: staffAuthHeaders({ 'Content-Type': 'application/json' }) }).then(async (x) => { const d = await x.json().catch(() => ({})); if (!x.ok || d.ok === false) throw new Error(d.message || d.error || ''); return d; }));
+    const porte = '/api/staff-customer-notes';
+    const lue = await appel(`${porte}?centerId=${encodeURIComponent(centre)}&reservationId=${encodeURIComponent(reservationId)}`);
+    if (!lue || !lue.eligible) throw new Error('Ce client n’a ni téléphone ni e-mail : la note ne peut pas se garder sur sa fiche.');
+    const avant = String((lue.note && lue.note.body) || '').trim();
+    const body = [avant, String(texte || '').trim()].filter(Boolean).join('\n\n');
+    const faite = await appel(porte, { method: 'PATCH', body: JSON.stringify({ centerId: centre, reservationId: Number(reservationId), body, clientKey: lue.clientKey, baseUpdatedAt: (lue.note && lue.note.updatedAt) || null }) });
+    if (!faite || !faite.note) throw new Error('La note n’a pas été confirmée. Réessayez.');
+    if (window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.invalidate === 'function') window.PinlaneStaffNotes.invalidate();
+  }
+
   // FAIRE LE GESTE PROPOSE (2026-11-11) : seul ce clic l envoie, avec les droits de la personne, et le
   // serveur revoit tout (api/ops.js). Une action hors de cette liste ne part pas.
   async function faireGeste(m, p) {
@@ -1079,6 +1095,18 @@
     p.etat = 'cours';
     p.erreur = '';
     peindreMessage(m);
+    if (a.action === 'noteClient') {
+      try {
+        await ajouterNoteClient(corps.centerId, corps.reservationId, corps.texte);
+        p.etat = 'fait';
+      } catch (erreur) {
+        p.etat = '';
+        p.erreur = (erreur && erreur.message) || 'La note n’a pas pu s’enregistrer.';
+      }
+      sauver(courante());
+      peindreMessage(m);
+      return;
+    }
     try {
       const r = typeof apiRequest === 'function' && typeof API_ENDPOINTS !== 'undefined'
         ? await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(corps) })

@@ -47,6 +47,13 @@ const MUTATIONS = [
   { nom: 'relance-sans-cle', rouge: '[I] une relance a la meme cle ne repart pas, meme apres un echec, et la meme cle sur un autre texte se refuse', editions: [{ fichier: 'lib/ops-communications.js', de: '    ...(tentative ? { idempotencyKey: `relance:${centerId}:${tentative}` } : {}),', vers: '' }] },
   { nom: 'message-sans-cle', rouge: '[I] un message de la fiche a la meme cle ne repart pas, sans cle il part comme avant', editions: [{ fichier: 'lib/ops-communications.js', de: '    ...(tentative ? { idempotencyKey: `client:${resolvedCenterId}:${tentative}` } : {}),', vers: '' }] },
   { nom: 'cle-ignoree-par-le-serveur', rouge: '[S] deux clics sur une relance partent par l action du logiciel avec la meme cle, au client du dossier', editions: [{ fichier: OPS, de: "        // Facultative : la carte de l assistant la fige, un clic rejoue ne relance pas deux fois.\n        attemptId: body.attemptId || '',", vers: '' }] },
+  // Prevenir les clients d un retard (2026-11-12) : le mail dit vrai au moment ou il part.
+  { nom: 'retard-heure-changee-prevenue', rouge: '[G] prevenir les clients d un retard montre qui recoit quel texte, en entier, et qui ne recoit rien', editions: [{ fichier: LOT, de: '          if (c.newStartTime && heureDe(d) !== String(c.newStartTime).slice(0, 5)) {', vers: '          if (false) {' }] },
+  { nom: 'retard-deja-prevenu-renvoye', rouge: '[G] un client deja prevenu de ce retard ou hors du retard ne recoit rien de plus', editions: [{ fichier: LOT, de: "          if (['queued', 'processing', 'sent', 'delivered'].includes(deja.get(id))) {", vers: '          if (false) {' }] },
+  { nom: 'retard-hors-du-retard', rouge: '[G] un client deja prevenu de ce retard ou hors du retard ne recoit rien de plus', editions: [{ fichier: LOT, de: '          if (horsDuRetard.length) throw erreur(', vers: '          if (false) throw erreur(' }] },
+  { nom: 'retard-texte-change-accepte', rouge: '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', editions: [{ fichier: LOT, de: '        if (rempli(p.envoi_vu) && String(p.envoi_vu) !== empreinte) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'retard-autre-incident-accepte', rouge: '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', editions: [{ fichier: LOT, de: '        if (rempli(p.incident) && Number(p.incident) !== Number(incident.id)) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'retard-texte-pas-transmis', rouge: '[S] les clients du retard sont prevenus par l action du logiciel, avec les textes de la carte', editions: [{ fichier: LOT, de: 'messages: envois.map((e) => ({ reservationId: e.reservationId, subject: e.subject, body: e.body }))', vers: 'messages: []' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -146,6 +153,12 @@ function banc() {
       resa({ id: 106, date: J, name: 'Groupe Retardé', startTime: '18:10', opsPlan: { delayFlag: { minutes: 10, from: '18:00', to: '18:10', origin: { startTime: '18:00', opsPlan: {}, lanes: [2] }, cleared: false } } }),
       resa({ id: 107, date: J, name: 'Groupe A', lanes: [1] }),
       resa({ id: 109, date: hier, name: 'Paul Parti', email: 'parti@exemple.be', status: 'paid' }),
+      // Une journee apres un retard applique (incident 77) : le groupe retarde, celui qu il a pousse,
+      // un sans adresse, et un dont l heure a bouge depuis.
+      resa({ id: 110, date: J, name: 'Groupe Retard', startTime: '18:15', email: 'retard@exemple.be', lanes: [2] }),
+      resa({ id: 111, date: J, name: 'Groupe Poussé', startTime: '19:15', email: 'pousse@exemple.be', lanes: [2] }),
+      resa({ id: 112, date: J, name: 'Groupe Sans Mail', startTime: '20:15', email: '', lanes: [2] }),
+      resa({ id: 113, date: J, name: 'Groupe Bougé', startTime: '21:00', email: 'bouge@exemple.be', lanes: [2] }),
       resa({ id: 201, centerId: 'gembloux', date: demain, name: 'Ailleurs', email: 'ailleurs@exemple.be' }),
     ],
     demandes: [
@@ -167,7 +180,18 @@ function banc() {
     ],
     pistes: { nombre: 8, statuts: { 5: 'maintenance' }, maintenance: { 5: { from: '', until: '', note: 'huilage' } }, reservations: [{ id: 107, lanes: [3], startTime: '18:00', status: 'pending' }] },
     retardB: '19:15',
+    incidents: [{ id: 77, centerId: 'libramont', reservationId: 110, delayMinutes: 15, reason: 'Client en retard', status: 'applied', previousStartTime: '18:00', proposedStartTime: '18:15', impact: { strategyId: 'cascade', changes: [
+      changement(110, 'Groupe Retard', 'delayed', '18:00', '18:15'),
+      changement(111, 'Groupe Poussé', 'shifted', '19:00', '19:15'),
+      changement(112, 'Groupe Sans Mail', 'shifted', '20:00', '20:15'),
+      changement(113, 'Groupe Bougé', 'shifted', '20:30', '20:45'),
+    ] } }],
+    prevenus: [],
   };
+}
+
+function changement(reservationId, name, kind, de, a) {
+  return { reservationId, name, kind, previousStartTime: de, newStartTime: a, shiftMinutes: 15, previousLanes: [2], newLanes: [2], laneChanged: false, moves: [], hasEmail: true, summary: `${de} vers ${a}` };
 }
 
 function impactDu(b, minutes) {
@@ -196,6 +220,8 @@ function lecteursDu(b) {
     registreSuppressions: async () => b.registre,
     etatDesPistes: async () => b.pistes,
     impactDuRetard: async (c, n, minutes) => impactDu(b, minutes),
+    retardApplique: async (c, n) => b.incidents.filter((i) => i.reservationId === Number(n)).slice(-1)[0] || null,
+    prevenusDuRetard: async (c, id) => b.prevenus.filter((x) => x.incident === Number(id)),
   };
 }
 
@@ -240,6 +266,7 @@ async function verifier(editions = []) {
       reponse_type_agent: 'Change la réponse type sur les prix', expediteur_mails: 'Mets l’adresse anniversaires par défaut', supprimer_expediteur_mails: 'Supprime l’adresse anniversaires', piste_en_maintenance: 'La piste 3 est en panne, mets-la en maintenance',
       decaler_pour_retard: 'Le groupe A a 15 minutes de retard', retirer_retard: 'Annule le retard, remets-les à 18 h',
       relancer_client: 'Relance Léa, elle ne vient plus', sms_client: 'Envoie-lui un SMS pour dire que la piste est prête',
+      prevenir_clients_du_retard: 'Préviens les clients du retard',
     };
     const risques = LOT_NOMS.filter((n) => G.GESTES[n].risque);
     const ouvertes = risques.flatMap((n) => LECTURES.filter((t) => G.GESTES[n].demande.test(t)).map((t) => `${n} : ${t}`));
@@ -460,6 +487,36 @@ async function verifier(editions = []) {
     ok(remettre.p && remettre.p.risque === true && ligne(remettre, 'Heure').apres === '18:00' && badge.p && badge.p.risque === false && sansRetard.e && /pas de retard en cours/.test(sansRetard.e.message) && clicRemettre.r && clicRemettre.r.action === 'delayRevert' && clicBadge.r && clicBadge.r.action === 'delayClear',
       '[G] retirer un retard : le badge seul, ou l heure d origine (risque)', JSON.stringify([vu(remettre), vu(badge), clicRemettre.r && clicRemettre.r.action]));
 
+    // Prevenir les clients d un retard : l incident du decalage, qui recoit quel texte.
+    const OCm = require(path.join(ROOT, 'lib/ops-communications.js'));
+    const texteDe = (id) => { const c = b.incidents[0].impact.changes.find((x) => x.reservationId === id); return OCm.buildDelayChangeMessage({ reservation: b.reservations.find((r) => r.id === id), change: c, channel: 'email' }); };
+    const prevenir = await carte('prevenir_clients_du_retard', { reservation: 110 }, ['Préviens les clients du retard']);
+    const prevenirSansMots = await carte('prevenir_clients_du_retard', { reservation: 110 }, ['Combien de groupes ce soir ?']);
+    const sansRetardApplique = await carte('prevenir_clients_du_retard', { reservation: 101 }, ['Préviens-les']);
+    const lp = ligne(prevenir, 'Groupe Retard');
+    ok(prevenir.p && prevenir.p.risque === true && prevenir.p.vue.danger === true && lp.valeur === `retard@exemple.be : « ${texteDe(110).subject} »` && lp.long === `${texteDe(110).subject}\n\n${texteDe(110).body}` && /Bonjour Groupe Retard/.test(lp.long) && /pousse@exemple\.be/.test(ligne(prevenir, 'Groupe Poussé').valeur)
+      && /Groupe Sans Mail, sans adresse mail/.test(prevenir.p.resume.alerte || '') && /Groupe Bougé, son heure a changé depuis le retard \(21:00\)/.test(prevenir.p.resume.alerte || '') && /Ces 2 clients reçoivent/.test(prevenir.p.resume.clients)
+      && prevenirSansMots.e && prevenirSansMots.e.statusCode === 403 && sansRetardApplique.e && sansRetardApplique.e.statusCode === 404,
+      '[G] prevenir les clients d un retard montre qui recoit quel texte, en entier, et qui ne recoit rien', JSON.stringify([vu(prevenir), sansRetardApplique.e && sansRetardApplique.e.message]));
+    const clicPrevenir = await clic('prevenir_clients_du_retard', prevenir.p ? prevenir.p.action.params : {});
+    ok(clicPrevenir.r && clicPrevenir.r.action === 'delayNotify' && clicPrevenir.r.corps.incidentId === 77 && JSON.stringify(clicPrevenir.r.corps.reservationIds) === '[110,111]' && JSON.stringify(clicPrevenir.r.corps.channels) === '["email"]'
+      && clicPrevenir.r.corps.messages.length === 2 && clicPrevenir.r.corps.messages[1].body === texteDe(111).body && clicPrevenir.r.corps.messages[1].subject === texteDe(111).subject,
+      '[G] au clic, les clients du retard partent avec l incident et les textes de la carte', vu(clicPrevenir));
+    b.prevenus.push({ incident: 77, reservationId: 111, statut: 'sent' });
+    const dejaPrevenu = await carte('prevenir_clients_du_retard', { reservation: 110 }, ['Préviens les clients du retard']);
+    const horsDuRetard = await carte('prevenir_clients_du_retard', { reservation: 110, clients: '999' }, ['Préviens les clients du retard']);
+    b.prevenus.length = 0;
+    ok(dejaPrevenu.p && !ligne(dejaPrevenu, 'Groupe Poussé').valeur && /Groupe Poussé, déjà prévenu de ce retard/.test(dejaPrevenu.p.resume.alerte || '') && /Ce client reçoit/.test(dejaPrevenu.p.resume.clients) && horsDuRetard.e && /n’a pas été déplacée par ce retard/.test(horsDuRetard.e.message),
+      '[G] un client deja prevenu de ce retard ou hors du retard ne recoit rien de plus', JSON.stringify([vu(dejaPrevenu), horsDuRetard.e && horsDuRetard.e.message]));
+    b.reservations.find((r) => r.id === 110).name = 'Groupe Retard Renommé';
+    const texteChange = await clic('prevenir_clients_du_retard', prevenir.p ? prevenir.p.action.params : {});
+    b.reservations.find((r) => r.id === 110).name = 'Groupe Retard';
+    b.incidents.push({ ...b.incidents[0], id: 78 });
+    const autreRetard = await clic('prevenir_clients_du_retard', prevenir.p ? prevenir.p.action.params : {});
+    b.incidents.pop();
+    ok(texteChange.e && texteChange.e.statusCode === 409 && /a changé depuis la carte/.test(texteChange.e.message) && autreRetard.e && autreRetard.e.statusCode === 409 && /Un autre retard/.test(autreRetard.e.message),
+      '[G] un texte ou un retard qui a change depuis la carte arrete l envoi', JSON.stringify([texteChange.e && texteChange.e.message, autreRetard.e && autreRetard.e.message]));
+
     // ── S. LE CLIC : api/ops.js ──
     if (!editions.length) console.log('\n[S] le clic : la requete exacte, la meme session, rien hors du centre');
     purger();
@@ -479,9 +536,15 @@ async function verifier(editions = []) {
     });
     remplacer('lib/audit-log.js', { writeAuditLog: async (e) => { journal.audits.push(e); return {}; }, writeAuditLogOrThrow: async (e) => { journal.audits.push(e); return {}; } });
     const b2 = banc();
-    const faussePool = { query: async () => ({ rows: [], rowCount: 0 }) };
+    // La seule requete brute qui repond : le dernier retard applique a un dossier (lecteur retardApplique).
+    const faussePool = { query: async (q, p = []) => {
+      const i = /from ops_delay_incidents/.test(String(q)) ? b2.incidents.filter((x) => x.centerId === p[0] && x.reservationId === Number(p[1])).slice(-1)[0] : null;
+      return i ? { rows: [{ id: i.id }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    } };
     remplacer('lib/database.js', {
       getPool: () => faussePool,
+      getDelayIncidentById: async (id) => b2.incidents.find((x) => x.id === Number(id)) || null,
+      createOpsEvent: async (x) => { journal.ecrit.push(['createOpsEvent', x]); return {}; },
       getReservationById: async (id) => b2.reservations.find((r) => r.id === Number(id)) || null,
       getCustomRequest: async (id, { centerId = '' } = {}) => {
         const d = b2.demandes.find((x) => x.id === Number(id) && (!centerId || x.centerId === centerId));
@@ -496,6 +559,8 @@ async function verifier(editions = []) {
       sendDirectEmail: async (x) => { journal.ecrit.push(['sendDirectEmail', x]); return { communication: { id: 5000, status: 'queued' }, attemptId: x.attemptId }; },
       sendClientRelance: async (x) => { journal.ecrit.push(['sendClientRelance', x]); return { communication: { id: 5001, status: 'queued' } }; },
       sendClientMessage: async (x) => { journal.ecrit.push(['sendClientMessage', x]); return { communication: { id: 5002, status: 'queued', channel: x.channel }, dispatched: null }; },
+      enqueueDelayChangeCommunications: async (x) => { journal.ecrit.push(['enqueueDelayChangeCommunications', x]); return [{ id: 6000 + x.reservation.id, channel: 'email', status: 'queued' }]; },
+      dispatchDueCommunications: async () => ({ sent: 0 }),
     });
     remplacer('lib/marketing-suppression.js', { listSuppressions: async () => ({ entries: b2.suppressions }), suppressEmail: async (x) => { journal.ecrit.push(['suppressEmail', x]); return { suppressed: true }; }, removeSuppression: async (x) => { journal.ecrit.push(['removeSuppression', x]); return { removed: true }; } });
     remplacer('lib/demande-bureau-centre.js', {
@@ -550,6 +615,12 @@ async function verifier(editions = []) {
       } finally {
         Object.entries(twilioAvantS).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
       }
+      const carteRetard = await Gs.proposer('prevenir_clients_du_retard', { reservation: 110 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Préviens les clients du retard'] }));
+      const pr = await cliquer('prevenir_clients_du_retard', carteRetard.action.params);
+      const prevenus = journal.ecrit.filter((e) => e[0] === 'enqueueDelayChangeCommunications').map((e) => e[1]);
+      const texteVu = (id) => { const l = carteRetard.resume.lignes.find((x) => x.libelle === b2.reservations.find((r) => r.id === id).name) || {}; return String(l.long || ''); };
+      ok(pr.statut === 200 && pr.json.incidentId === 77 && prevenus.length === 2 && prevenus.map((x) => x.reservation.id).join(',') === '110,111' && prevenus.every((x) => x.incidentId === 77 && JSON.stringify(x.channels) === '["email"]' && x.override && `${x.override.subject}\n\n${x.override.body}` === texteVu(x.reservation.id) && x.change && x.change.reservationId === x.reservation.id),
+        '[S] les clients du retard sont prevenus par l action du logiciel, avec les textes de la carte', JSON.stringify([pr.statut, pr.json, prevenus.map((x) => [x.reservation.id, x.incidentId, x.override])]).slice(0, 300));
       const carteDemande = await Gs.proposer('reserver_la_demande', { demande: 31 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Elle a dit oui, réserve'] }));
       const resa = await cliquer('reserver_la_demande', carteDemande.action.params);
       const creations = journal.ecrit.filter((e) => e[0] === 'reserverLaDemande' && e[1].simuler === false);

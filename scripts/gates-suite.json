@@ -291,6 +291,7 @@
     "test:assistant",
     "test:assistant-gestes",
     "test:assistant-reservation",
+    "test:assistant-tout-faire",
     "test:terrain",
     "test:voix-pro",
     "test:journee-vraie",

@@ -1727,7 +1727,9 @@ async function sectionEcran() {
       const m = await monter();
       const RESA = { type: 'geste', geste: 'reservation', centre: 'libramont', texte: 'Réserver le samedi 5 décembre à 14:00 pour 5 joueurs.', resume: { quand: 'samedi 5 décembre', heure: '14:00', joueurs: 5, disponible: true, debut: '14:00', fin: '15:55', lignes: [{ activite: 'bowling', nom: 'Bowling', debut: '14:00', fin: '15:00', detail: '1 h, 5 joueurs, piste 1' }, { activite: 'laser_game', nom: 'Laser Game', debut: '15:00', fin: '15:55', detail: '2 parties, 3 joueurs' }], prix: 93, conflits: [] }, action: { action: 'assistantReservation', date: '2026-12-05', startTime: '14:00', pax: 5, programme: [{ activityId: 'bowling', participants: 5, duration: 1 }, { activityId: 'laser_game', participants: 3, games: 2 }], name: '', phone: '' } };
       const ANNULER = { type: 'geste', geste: 'annuler_reservation', centre: 'libramont', risque: true, texte: 'Annuler la réservation n° 777.', resume: { numero: 777, quand: 'samedi 5 décembre', heure: '15:00', joueurs: 6, client: 'Zoéline', activites: ['Bowling'], prix: 60, payee: false }, action: { action: 'annulerReservation', reservationId: 777, date: '2026-12-05' } };
-      flux.scenario = reponse('Voici la carte.', [['proposition', RESA], ['proposition', ANNULER]]);
+      // Un geste du registre (lib/assistant-gestes.js) : ses mots, ses lignes avant et apres, ce que voient les clients.
+      const PRIX = { type: 'geste', geste: 'prix_formule', centre: 'libramont', risque: true, texte: 'Passer « Anniversaire » à 20 € par personne.', vue: { type: 'Prix d’une formule', verbe: 'Publier le nouveau prix', cours: 'Publication…', confirmer: 'Oui, publier ce prix', danger: false }, resume: { lignes: [{ libelle: 'Formule', valeur: 'Anniversaire' }, { libelle: 'Prix par personne', avant: '18,50 €', apres: '20 €' }], clients: 'Le nouveau prix se voit tout de suite sur le formulaire en ligne. Les réservations déjà prises gardent leur prix.', alerte: null, fait: '« Anniversaire » est maintenant à 20 €.' }, action: { action: 'assistantGeste', geste: 'prix_formule', params: { formule: 'Anniversaire', prix: 20 } } };
+      flux.scenario = reponse('Voici les cartes.', [['proposition', RESA], ['proposition', ANNULER], ['proposition', PRIX]]);
       // La fixture repond deja a /api/ops DANS la page (scripts/planning-v3-fixtures.js remplace fetch) :
       // une route reseau ne verrait jamais le clic. La creation se capte donc dans la page, devant elle.
       await m.page.evaluate(() => {
@@ -1736,8 +1738,9 @@ async function sectionEcran() {
         window.fetch = async (entree, init = {}) => {
           const u = new URL(typeof entree === 'string' ? entree : entree.url, location.origin);
           const corps = String(init.method || 'GET').toUpperCase() === 'POST' && u.pathname === '/api/ops' ? JSON.parse(init.body || '{}') : null;
-          if (!corps || corps.action !== 'assistantReservation') return avant(entree, init);
+          if (!corps || !['assistantReservation', 'assistantGeste'].includes(corps.action)) return avant(entree, init);
           window.__envoisOps.push(corps);
+          if (corps.action === 'assistantGeste') return new Response(JSON.stringify({ ok: true, action: 'saveClientFormuleOverride', override: { formuleId: 'f-anniv' } }), { status: 200, headers: { 'content-type': 'application/json' } });
           return new Response(JSON.stringify({ ok: true, reservation: { id: 4242, date: corps.date, startTime: corps.startTime, pax: corps.pax } }), { status: 201, headers: { 'content-type': 'application/json' } });
         };
       });
@@ -1745,7 +1748,7 @@ async function sectionEcran() {
       // Une carte qui plante a son rendu ne laisse pas de pied au message : la ligne qui suit le dit en rouge.
       await poser(m.page, 'Réserve pour 5 samedi').catch(() => {});
       const carte = await m.page.evaluate(() => { const c = document.querySelectorAll('.ast-carte'); return { n: c.length, lignes: c[0] ? [...c[0].querySelectorAll('.ast-carte-ligne')].map((l) => l.textContent.replace(/\s+/g, ' ').trim()) : [], tel: Boolean(c[0] && c[0].querySelector('[data-ast-tel][aria-required="true"]')), verbe: c[0] ? ((c[0].querySelector('[data-ast-geste-oui]') || {}).textContent || '') : '' }; });
-      ok('[E] une carte de reservation se rend, remplie, avec le telephone a taper', carte.n === 2 && carte.lignes.some((l) => /Bowling ?14:00 à 15:00/.test(l)) && carte.lignes.some((l) => /Laser Game ?15:00 à 15:55 · 2 parties, 3 joueurs/.test(l)) && carte.tel && /Créer la réservation/.test(carte.verbe), JSON.stringify(carte));
+      ok('[E] une carte de reservation se rend, remplie, avec le telephone a taper', carte.n === 3 && carte.lignes.some((l) => /Bowling ?14:00 à 15:00/.test(l)) && carte.lignes.some((l) => /Laser Game ?15:00 à 15:55 · 2 parties, 3 joueurs/.test(l)) && carte.tel && /Créer la réservation/.test(carte.verbe), JSON.stringify(carte));
       await m.page.locator('.ast-carte').first().locator('[data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 200);
       const sansTel = await m.page.evaluate(() => ({ focus: Boolean(document.activeElement && document.activeElement.hasAttribute('data-ast-tel')), dit: (document.querySelector('.ast-carte-erreur') || {}).textContent || '' }));
@@ -1758,13 +1761,25 @@ async function sectionEcran() {
       const envois = await envoisOps();
       ok('[E] avec le telephone, un clic cree la reservation et la carte le dit', cree && envois.length === 1 && envois[0].action === 'assistantReservation' && envois[0].phone === '0470 12 34 56' && Array.isArray(envois[0].programme) && envois[0].programme.length === 2, JSON.stringify({ cree, envois }));
       // Le geste risque : le premier clic demande, seul le second fait.
-      await m.page.locator('.ast-carte.est-risque [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await m.page.locator('[data-ast-prop="1"] [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 200);
       const demande = await m.page.evaluate(() => { const c = document.querySelector('.ast-carte.est-a-confirmer'); return { la: Boolean(c), boutons: c ? [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) : [], focus: document.activeElement ? document.activeElement.textContent.trim() : '' }; });
       ok('[E] un geste risque demande une seconde fois avant de faire', demande.la && demande.boutons.join('|') === 'Oui, annuler|Retour' && demande.focus === 'Oui, annuler', JSON.stringify(demande));
       await m.page.locator('[data-ast-geste-retour]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 150);
       ok('[E] « Retour » rend la carte sans rien faire', !(await m.page.evaluate(() => Boolean(document.querySelector('.ast-carte.est-a-confirmer')))) && (await envoisOps()).length === 1);
+      // TOUT FAIRE : la carte d un prix dit l ancien et le nouveau, et ce que voient les clients ; elle
+      // redemande de confirmer, puis ne renvoie que son geste et ses parametres (le serveur refait le reste).
+      const prix = await m.page.evaluate(() => { const c = document.querySelector('[data-ast-prop="2"]'); return c ? { type: (c.querySelector('.ast-carte-type') || {}).textContent || '', avant: (c.querySelector('.ast-avant') || {}).textContent || '', apres: (c.querySelector('.ast-apres') || {}).textContent || '', clients: (c.querySelector('.ast-carte-clients') || {}).textContent || '', verbe: (c.querySelector('[data-ast-geste-oui]') || {}).textContent || '' } : null; });
+      ok('[E] une carte du registre dit l ancien prix, le nouveau et ce que voient les clients', Boolean(prix) && prix.type === 'Prix d’une formule' && prix.avant === '18,50 €' && prix.apres === '20 €' && /formulaire en ligne/.test(prix.clients) && /Publier le nouveau prix/.test(prix.verbe), JSON.stringify(prix));
+      await m.page.locator('[data-ast-prop="2"] [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await FX.repos(m.page, 200);
+      const confirmePrix = await m.page.evaluate(() => { const c = document.querySelector('[data-ast-prop="2"].est-a-confirmer'); return c ? { boutons: [...c.querySelectorAll('button')].map((b) => b.textContent.trim()), dit: (c.querySelector('.ast-carte-confirmer p') || {}).textContent || '' } : null; });
+      ok('[E] un prix se confirme une seconde fois, avec ce que voient les clients', Boolean(confirmePrix) && confirmePrix.boutons.join('|') === 'Oui, publier ce prix|Retour' && /formulaire en ligne/.test(confirmePrix.dit) && (await envoisOps()).length === 1, JSON.stringify(confirmePrix));
+      await m.page.locator('[data-ast-prop="2"] [data-ast-confirme="1"]').click({ timeout: 4000 }).catch(() => {});
+      await m.page.waitForFunction(() => /« Anniversaire » est maintenant à 20 €/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
+      const envoiPrix = (await envoisOps()).find((x) => x.action === 'assistantGeste');
+      ok('[E] le clic ne renvoie que le geste et ses parametres, et la carte dit ce qui est fait', Boolean(envoiPrix) && envoiPrix.geste === 'prix_formule' && JSON.stringify(Object.keys(envoiPrix).sort()) === JSON.stringify(['action', 'centerId', 'geste', 'params']) && envoiPrix.params.prix === 20 && await m.page.evaluate(() => /« Anniversaire » est maintenant à 20 €/.test(document.body.textContent)), JSON.stringify(envoiPrix));
       ok('[E] les cartes ne levent aucune erreur JavaScript', m.erreurs.length === 0, m.erreurs.slice(0, 3).join(' | '));
       await m.ctx.close();
     }

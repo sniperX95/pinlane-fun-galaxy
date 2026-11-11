@@ -128,8 +128,10 @@ async function verifier() {
   const liste = (nom) => [...((((page.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`)) || [])[1]) || '').matchAll(/'([^']+)'/g))].map((m) => m[1]).sort();
   ok(JSON.stringify(liste('PAGES_OUVRABLES')) === JSON.stringify([...pagesCarte].sort()) && JSON.stringify(liste('RUBRIQUES')) === JSON.stringify([...rubriques].sort()),
     'la page ne mene qu aux ecrans de la carte', JSON.stringify(liste('PAGES_OUVRABLES')));
-  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\], noteClient: \['reservationId', 'texte'\], assistantReservation: \['date', 'startTime', 'pax', 'programme', 'name', 'phone'\], annulerReservation: \['reservationId', 'date'\], effacerConversations: \['portee', 'jours'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
-    'la page ne connait que sept gestes, avec leurs seules cles');
+  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\], noteClient: \['reservationId', 'texte'\], assistantReservation: \['date', 'startTime', 'pax', 'programme', 'name', 'phone'\], annulerReservation: \['reservationId', 'date'\], effacerConversations: \['portee', 'jours'\], assistantGeste: \['geste', 'params'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
+    // Le huitieme porte tous les gestes du registre (lib/assistant-gestes.js) : son geste et ses
+    // parametres seulement, le serveur refait le corps au clic (api/ops.js, assistantGeste).
+    'la page ne connait que huit gestes, avec leurs seules cles');
   // UN GESTE RISQUE SE CONFIRME DEUX FOIS : le premier clic montre la suite, seul le bouton de la
   // confirmation fait ; l effacement ne prend jamais la conversation ouverte ; l annulation relit le
   // dossier au clic, dans le centre affiche, et passe par la fiche (PATCH, les droits de la personne).

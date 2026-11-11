@@ -54,7 +54,7 @@
   // noteClient passe par la porte des notes du client (api/staff-customer-notes), qui revoit le droit et le centre.
   // assistantReservation part a api/ops.js, qui revoit tout (lib/assistant-reservation.js) : le programme,
   // le telephone du client tape sur la carte, le plan sur la journee lue au clic, les droits.
-  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'], assistantReservation: ['date', 'startTime', 'pax', 'programme', 'name', 'phone'], annulerReservation: ['reservationId', 'date'], effacerConversations: ['portee', 'jours'] };
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'], assistantReservation: ['date', 'startTime', 'pax', 'programme', 'name', 'phone'], annulerReservation: ['reservationId', 'date'], effacerConversations: ['portee', 'jours'], assistantGeste: ['geste', 'params'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -1226,6 +1226,20 @@
     annulerReservation: { type: 'Annulation', verbe: 'Annuler la réservation', cours: 'Annulation…', confirmer: 'Oui, annuler', suite: 'Le créneau se libère et le dossier reste au journal. Pensez à prévenir le client.' },
     effacerConversations: { type: 'Conversations', verbe: 'Effacer', cours: 'Effacement…', confirmer: 'Oui, effacer', suite: 'Elles s’effacent pour de bon, sur tous vos appareils.' },
   };
+  // UN GESTE DU REGISTRE (lib/assistant-gestes.js, « tout faire ») porte ses mots : son type, son verbe,
+  // sa confirmation. Ce qui atteint les clients se lit sur la carte et revient dans la confirmation.
+  function vueDuRegistre(p) {
+    const v = p.vue || {};
+    const r = p.resume || {};
+    return { type: v.type || 'Geste', verbe: v.verbe || 'Faire', cours: v.cours || 'En cours…', confirmer: v.confirmer || 'Oui, faire', suite: r.clients || r.alerte || '' };
+  }
+  // Une ligne qui change dit avant puis apres ; un texte long se deplie en entier.
+  function ddDe(v) {
+    if (!v || typeof v !== 'object') return esc(v);
+    const long = v.long ? `<details class="ast-carte-long"><summary>Voir le texte entier</summary><p>${esc(v.long)}</p></details>` : '';
+    if (v.avant === undefined && v.apres === undefined) return `${esc(v.valeur)}${long}`;
+    return `<span class="ast-avant">${esc(v.avant)}</span><span class="ast-fleche" aria-label="devient">→</span><b class="ast-apres">${esc(v.apres)}</b>${long}`;
+  }
   // Les conversations qu un effacement prendrait : jamais celle ou la personne ecrit.
   function conversationsAEffacer(a) {
     const age = a.portee === 'anciennes' ? Math.max(1, Number(a.jours) || 0) * 86400000 : 0;
@@ -1249,6 +1263,9 @@
   function lignesDuGeste(p) {
     const a = p.action || {};
     const r = p.resume || {};
+    if (a.action === 'assistantGeste') {
+      return (Array.isArray(r.lignes) ? r.lignes : []).slice(0, 12).map((l) => [l.libelle, l.avant !== undefined || l.apres !== undefined ? { avant: l.avant, apres: l.apres, long: l.long } : (l.long ? { valeur: l.valeur, long: l.long } : l.valeur)]);
+    }
     if (a.action === 'assistantReservation') {
       return [
         ['Quand', `${r.quand || jourDit(a.date)}, ${a.startTime}${r.fin ? ` à ${r.fin}` : ''}`],
@@ -1282,13 +1299,14 @@
   }
   function htmlCarteGeste(p, i) {
     const a = p.action || {};
-    const vue = GESTE_VUE[a.action] || { type: 'Geste', verbe: 'Faire', cours: 'En cours…' };
+    const vue = a.action === 'assistantGeste' ? vueDuRegistre(p) : (GESTE_VUE[a.action] || { type: 'Geste', verbe: 'Faire', cours: 'En cours…' });
     if (p.etat === 'fait') {
       const dit = a.action === 'assistantReservation' && p.reservation
         ? `Réservation n° ${esc(p.reservation.id)} créée : ${esc(jourDit(p.reservation.date))} à ${esc(p.reservation.startTime)}, ${esc(p.reservation.pax)} joueurs.`
         : a.action === 'annulerReservation' ? `Réservation n° ${esc(a.reservationId)} annulée. Le créneau est libre.`
           : a.action === 'effacerConversations' ? (p.efface ? `${esc(p.efface)} conversation${p.efface > 1 ? 's effacées' : ' effacée'}.` : 'Aucune conversation à effacer.')
-            : a.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.' : `C’est fait. ${esc(p.texte)}`;
+            : a.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.'
+              : a.action === 'assistantGeste' ? esc((p.resume && p.resume.fait) || `C’est fait. ${p.texte}`) : `C’est fait. ${esc(p.texte)}`;
       const voir = a.action === 'assistantReservation' && p.reservation ? `<button type="button" class="ast-lien" data-ast-geste-voir="${i}">Voir au planning</button>` : '';
       return `<div class="ast-carte est-faite" data-ast-prop="${i}"><p class="ast-carte-fait"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg><span>${dit}</span></p>${voir}</div>`;
     }
@@ -1301,7 +1319,9 @@
         <label class="ast-carte-champ"><span>Nom</span><input data-ast-nom="${i}" value="${esc(saisie.nom != null ? saisie.nom : (a.name || ''))}" placeholder="Nom du client" autocomplete="off"${enCours ? ' disabled' : ''}></label>
       </div>` : '';
     const garde = a.action === 'assistantReservation' ? '<p class="ast-carte-garde">Vérifiée sur le planning à l’instant. Rien ne se crée avant votre clic, et le planning se revérifie à ce moment-là.</p>' : p.risque ? '<p class="ast-carte-garde">Rien ne change avant votre clic, et vous confirmerez une seconde fois.</p>' : '<p class="ast-carte-garde">Rien ne change avant votre clic.</p>';
-    const alerte = p.alerte ? `<p class="ast-carte-alerte">${esc(p.alerte)}</p>` : '';
+    const alerteDite = p.alerte || (a.action === 'assistantGeste' && p.resume && p.resume.alerte) || '';
+    const alerte = alerteDite ? `<p class="ast-carte-alerte">${esc(alerteDite)}</p>` : '';
+    const clients = a.action === 'assistantGeste' && p.resume && p.resume.clients ? `<p class="ast-carte-clients">${esc(p.resume.clients)}</p>` : '';
     const rien = a.action === 'effacerConversations' && !conversationsAEffacer(a).length;
     const modifier = a.action === 'assistantReservation' ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-reserver="${i}"${enCours ? ' disabled' : ''}>Modifier dans Réserver</button>` : '';
     const actions = p.confirmer
@@ -1317,7 +1337,8 @@
       </div>`;
     return `<div class="ast-carte${p.risque ? ' est-risque' : ''}${p.confirmer ? ' est-a-confirmer' : ''}" data-ast-prop="${i}">
       <div class="ast-carte-tete"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}</div>
-      <dl class="ast-carte-lignes">${lignes.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+      <dl class="ast-carte-lignes">${lignes.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${ddDe(v)}</dd></div>`).join('')}</dl>
+      ${clients}
       ${champs}
       ${alerte}
       ${p.erreur ? `<p class="ast-carte-erreur" role="alert">${esc(p.erreur)}</p>` : ''}
@@ -2034,7 +2055,7 @@
       case 'repris': m.repris = Array.isArray(d.lectures) ? d.lectures.slice(0, 24) : []; break;
       case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
-      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
+      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(d.vue && typeof d.vue === 'object' ? { vue: { type: String(d.vue.type || '').slice(0, 80), verbe: String(d.vue.verbe || '').slice(0, 60), cours: String(d.vue.cours || '').slice(0, 40), confirmer: String(d.vue.confirmer || '').slice(0, 60), danger: d.vue.danger === true } } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
       case 'aller': if (PAGES_OUVRABLES.includes(d.page) && !(m.allers || []).some((a) => a.id === d.id)) m.allers = [...(m.allers || []), { id: d.id, page: d.page, rubrique: d.rubrique || '', chemin: d.chemin }]; break;
       case 'annule': m.texte = ''; break;
       case 'fin':

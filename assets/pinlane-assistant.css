@@ -450,6 +450,14 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-carte-champ.est-manque em { color: var(--danger, var(--text)); }
 .ast-carte-erreur { margin: 10px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--danger, var(--text)); }
 .ast-carte-garde { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+/* Un geste du registre (tout faire) : ce qui change se lit avant, puis apres ; ce qui atteint les clients est dit. */
+.ast-avant { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.ast-fleche { margin: 0 6px; color: var(--muted); }
+.ast-apres { font-weight: 600; color: var(--text); }
+.ast-carte-clients { margin: 10px 0 0; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; color: var(--text); background: var(--voile-1); border-radius: 9px; }
+.ast-carte-long { margin-top: 4px; }
+.ast-carte-long summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.ast-carte-long p { margin: 6px 0 0; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
 .ast-carte-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0 0; }
 /* Un geste risque se confirme deux fois : la carte le dit, le second bouton est rouge. */
 .ast-carte-alerte { margin: 10px 0 0; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; color: var(--warning, var(--text)); background: var(--warning-soft, var(--voile-1)); border-radius: 9px; }

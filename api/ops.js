@@ -2828,6 +2828,24 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 201, { ok: true, reservation: { id: reservation.id, date: reservation.date, startTime: reservation.startTime, pax: reservation.pax, price: reservation.price, name: reservation.name }, ...(Array.isArray(cree.warnings) && cree.warnings.length ? { warnings: cree.warnings } : {}) });
     return;
   }
+  // UN GESTE DE L ASSISTANT (2026-11-11, Ansar : « il doit vraiment être capable de TOUT FAIRE »). La
+  // carte revient avec son geste et ses parametres, jamais avec un corps tout fait : tout se refait ici
+  // sur l etat d a present (lib/assistant-gestes.js), avec les droits de la session qui clique, puis
+  // l ACTION NORMALE du logiciel ecrit, avec ses regles, ses refus et sa ligne de journal.
+  if (action === 'assistantGeste') {
+    const centre = requireConcreteCenter();
+    const { agitAvecLAssistant } = require('../lib/assistant-outils');
+    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);
+    const G = require('../lib/assistant-gestes');
+    const geste = String(body.geste || '');
+    const refait = await G.refaire(geste, body.params, G.contexte({ centre, session: options.session }));
+    if (refait.action === 'assistantGeste' || refait.action === 'assistantReservation') throw createHttpError('Geste invalide.', 400, true);
+    if (!sessionHasPermission(options.session, getRequiredOpsPermission('POST', refait.action))) throw createHttpError('Votre rôle ne permet pas ce geste dans le logiciel.', 403, true);
+    noterAudit(options, { changes: { assistant: { geste, action: refait.action } } });
+    if (ACTIONS_DU_CATALOGUE.has(refait.action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
+    await handlePost(req, res, withCenter({ ...refait.corps, action: refait.action }, centre), options);
+    return;
+  }
   if (action === 'customRequestAssist') {
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
@@ -4130,6 +4148,10 @@ function getRequiredOpsPermission(method, action) {
   // La reservation preparee par l assistant : le droit de creer, et le controle total de
   // l assistant revu dans l action (agitAvecLAssistant).
   if (action === 'assistantReservation') return 'reservations.create';
+  // Un geste de l assistant (lib/assistant-gestes.js) : la porte laisse entrer un role qui ecrit
+  // quelque chose ; l action revoit le controle total (agitAvecLAssistant), le droit du geste, puis
+  // celui de l action du logiciel qu il rejoue (getRequiredOpsPermission de cette action).
+  if (action === 'assistantGeste') return ['pricing.manage', 'settings.manage', 'emails.send', 'campaigns.manage', 'reservations.edit', 'reservations.create', 'clients.edit'];
   // Restaurer une reservation supprimee : le droit qui permet de la supprimer
   // (reservations.cancel, celui de DELETE /api/staff-reservations), sur le
   // centre de l archive.

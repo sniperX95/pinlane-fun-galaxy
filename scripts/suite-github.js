@@ -125,12 +125,23 @@ async function main() {
     const conclusion = await attendreLaFin(repo, id);
     if (conclusion === null) { console.error('[suite-github] le passage n a pas fini en 90 minutes'); return 2; }
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'suite-github-'));
-    const telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
     const fichier = path.join(dossier, 'bilan-assemble.json');
+    let telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
+    // Une coupure du Wi-Fi au telechargement est passagere : trois essais avant de conclure.
+    for (let essai = 2; essai <= 3 && (telecharge.status !== 0 || !fs.existsSync(fichier)); essai += 1) {
+      await new Promise((r) => setTimeout(r, 20000));
+      telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
+    }
     if (telecharge.status !== 0 || !fs.existsSync(fichier)) {
-      // Aucun gate touche par le diff : le workflow est vert sans bilan.
-      if (conclusion === 'success') { console.log('[suite-github] VERT : aucun gate a jouer pour ce diff'); return 0; }
-      console.error(`[suite-github] pas de bilan rassemble (conclusion du workflow : ${conclusion})`);
+      // Vert sans bilan seulement si le passage n en a publie aucun (aucun gate touche par le diff).
+      // Vu le 2026-11-11 : un telechargement rate sur un passage vert affichait « VERT : aucun gate
+      // a jouer » alors que le bilan existait et n avait pas ete lu.
+      const liste = gh(['api', `repos/${repo}/actions/runs/${id}/artifacts?per_page=100`, '--jq', '[.artifacts[].name]']);
+      let noms = null;
+      try { noms = liste.status === 0 ? JSON.parse(liste.stdout || '[]') : null; } catch (e) { noms = null; }
+      if (conclusion === 'success' && Array.isArray(noms) && !noms.includes('bilan')) { console.log('[suite-github] VERT : aucun gate a jouer pour ce diff'); return 0; }
+      const pourquoi = !Array.isArray(noms) ? 'la liste des bilans ne se lit pas' : noms.includes('bilan') ? 'un bilan existe mais ne se telecharge pas' : 'aucun bilan publie';
+      console.error(`[suite-github] pas de bilan lu (conclusion du workflow : ${conclusion} ; ${pourquoi}). A relire : gh run download ${id} --repo ${repo} --name bilan`);
       return 2;
     }
     console.log(fs.readFileSync(path.join(dossier, 'bilan-assemble.txt'), 'utf8'));

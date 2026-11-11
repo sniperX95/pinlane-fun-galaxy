@@ -43,7 +43,8 @@
   const PAGES_OUVRABLES = ['dashboard', 'planning', 'reservations', 'formules', 'arrivals', 'clients', 'requests', 'emails', 'campaigns', 'prices', 'lanes', 'laserGame', 'users', 'establishment', 'secours', 'settings'];
   const RUBRIQUES = ['centre', 'horaires', 'activites', 'formules', 'reservations', 'accueil', 'formulaire'];
   // Les gestes que la personne peut faire faire, et les seules cles qui partent avec chacun.
-  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'] };
+  // ouvrirReserver ne part pas au serveur : il ouvre la fenetre Reserver preremplie, la personne confirme.
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -1065,6 +1066,16 @@
     if (!cles || p.etat === 'cours') return;
     const corps = { action: a.action, centerId: p.centre || centreId() };
     cles.forEach((k) => { if (a[k] != null) corps[k] = a[k]; });
+    if (a.action === 'ouvrirReserver') {
+      // Reserver cree dans le centre affiche : une reservation preparee pour un autre centre ne s y ouvre pas.
+      if (p.centre && p.centre !== centreId()) { p.erreur = `Cette réservation est pour ${nomDUnCentre(p.centre)} : ouvrez ce centre dans la console, puis redemandez.`; peindreMessage(m); return; }
+      if (typeof openQuickBook !== 'function') { p.erreur = 'La fenêtre Réserver n’est pas disponible ici.'; peindreMessage(m); return; }
+      openQuickBook({ date: corps.date, startTime: corps.startTime, heureSouhaitee: true, pax: corps.pax, ...(corps.name ? { name: corps.name } : {}) });
+      p.etat = 'fait';
+      sauver(courante());
+      peindreMessage(m);
+      return;
+    }
     p.etat = 'cours';
     p.erreur = '';
     peindreMessage(m);
@@ -1085,7 +1096,7 @@
   function htmlPropositions(m) {
     return (m.propositions || []).map((p, i) => {
       if (p.type === 'geste') {
-        if (p.etat === 'fait') return `<p class="ast-prop-fait">C’est fait. ${esc(p.texte)}</p>`;
+        if (p.etat === 'fait') return `<p class="ast-prop-fait">${p.action && p.action.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.' : `C’est fait. ${esc(p.texte)}`}</p>`;
         if (p.etat === 'ecarte') return '';
         return `<div class="ast-prop" data-ast-prop="${i}">
         <p class="ast-prop-quoi">Je le fais pour vous ?</p>

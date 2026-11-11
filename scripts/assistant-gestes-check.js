@@ -21,6 +21,9 @@ const MUTATIONS = {
   'demande-d-un-autre-centre': { fichier: 'lib/assistant-outils.js', de: 'getCustomRequest(Number(entree.demande), { centerId: ouverte.id })', vers: 'getCustomRequest(Number(entree.demande), {})', rouge: 'une demande d un autre centre ne se classe pas' },
   'heures-sans-droit': { fichier: 'lib/assistant-outils.js', de: "        if (!sessionHasPermission(session, 'reservations.create')) throw refus(", vers: '        if (false) throw refus(', rouge: 'sans le droit de creer une reservation, pas de geste sur les heures' },
   'heures-a-l-envers': { fichier: 'lib/assistant-outils.js', de: ' || ouverture >= fermeture) throw refus(', vers: ') throw refus(', rouge: 'des heures a l envers ou hors du cadran ne se proposent pas' },
+  'reservation-sans-droit': { fichier: 'lib/assistant-outils.js', de: "        if (!sessionHasPermission(session, ['reservations.create', 'reservations.quick'])) throw refus(", vers: '        if (false) throw refus(', rouge: 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur' },
+  'reservation-date-impossible': { fichier: 'lib/assistant-outils.js', de: "        if (!jour || jour.toISOString().slice(0, 10) !== date) throw refus('La date de la réservation est invalide.');", vers: "        if (!jour) throw refus('La date de la réservation est invalide.');", rouge: 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur' },
+  'roles-d-un-autre-centre': { fichier: 'lib/assistant-outils-centre.js', de: "from staff_roles where center_id = $1 order by locked desc, name asc;', [id]);", vers: "from staff_roles where center_id = $1 order by locked desc, name asc;', ['gembloux']);", rouge: 'les roles se lisent dans le centre ouvert, avec les mots de la page Equipe' },
 };
 const CASSE = process.env.GESTES_CASSE || '';
 const mutation = CASSE ? MUTATIONS[CASSE] : null;
@@ -89,8 +92,13 @@ async function verifier() {
   const liste = (nom) => [...((((page.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`)) || [])[1]) || '').matchAll(/'([^']+)'/g))].map((m) => m[1]).sort();
   ok(JSON.stringify(liste('PAGES_OUVRABLES')) === JSON.stringify([...pagesCarte].sort()) && JSON.stringify(liste('RUBRIQUES')) === JSON.stringify([...rubriques].sort()),
     'la page ne mene qu aux ecrans de la carte', JSON.stringify(liste('PAGES_OUVRABLES')));
-  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
-    'la page n envoie que deux actions, avec leurs seules cles');
+  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
+    'la page ne connait que trois gestes, avec leurs seules cles');
+  // Preparer une reservation n ecrit rien : la fenetre Reserver s ouvre preremplie, dans le centre affiche.
+  const iResa = page.indexOf("if (a.action === 'ouvrirReserver') {");
+  const brancheResa = iResa > 0 ? page.slice(iResa, page.indexOf('\n    }\n', iResa)) : '';
+  ok(/if \(p\.centre && p\.centre !== centreId\(\)\) \{ p\.erreur = /.test(brancheResa) && /openQuickBook\(\{ date: corps\.date, startTime: corps\.startTime, heureSouhaitee: true, pax: corps\.pax/.test(brancheResa) && /\n      return;$/.test(brancheResa) && !/apiRequest|fetch\(/.test(brancheResa) && !/ouvrirReserver/.test(lire('api/ops.js')),
+    'une reservation preparee ouvre Reserver sans rien envoyer, et seulement dans le centre affiche', brancheResa.slice(0, 200));
 
   console.log('\n[B. M Y EMMENER]');
   const horaires = await outils.executer(contexte(GERANT), 'ou_aller', { destination: 'horaires' });
@@ -131,6 +139,15 @@ async function verifier() {
     if ((await outils.executer(ctx, 'proposer_un_geste', { geste: 'statut_demande', demande: 12, statut: 'en_cours' })).proposition) faites += 1;
   }
   ok(faites === 3, 'trois propositions par question au plus', String(faites));
+  const resa = await outils.executer(contexte(GERANT), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:30', joueurs: 12, nom: 'Zoéline Verhaegen' });
+  const pr = resa.proposition || {};
+  ok(pr.type === 'geste' && pr.centre === 'libramont' && JSON.stringify(pr.action) === '{"action":"ouvrirReserver","date":"2026-12-05","startTime":"14:30","pax":12,"name":"Zoéline Verhaegen"}' && /samedi 5 décembre à 14:30 pour 12 joueurs, au nom de Zoéline Verhaegen/.test(pr.texte || ''),
+    'preparer une reservation : Reserver prerempli, dans le centre ouvert', JSON.stringify(pr.action ? pr : resa.contenu));
+  const sansNom = await outils.executer(contexte({ ...MARKETEUR, permissions: ['campaigns.manage', 'reservations.quick'] }), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:30', joueurs: 4, nom: 'Zoéline Verhaegen' });
+  ok(Boolean(sansNom.proposition) && !('name' in sansNom.proposition.action) && !/Zoéline/.test(sansNom.proposition.texte), 'un role qui ne voit pas les clients prepare la reservation sans nom', JSON.stringify(sansNom.proposition || sansNom.contenu));
+  const essaiResa = async (session, sur) => Boolean((await outils.executer(contexte(session), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:30', joueurs: 12, ...sur })).proposition);
+  const refusResa = [await essaiResa(MARKETEUR, {}), await essaiResa(GERANT, { date: '2027-02-31' }), await essaiResa(GERANT, { date: '2026-11-10' }), await essaiResa(GERANT, { joueurs: 0 }), await essaiResa(GERANT, { heure: '24:10' })];
+  ok(refusResa.every((x) => !x), 'preparer une reservation : refusee sans droit, a une date impossible ou passee, ou sans joueur', JSON.stringify(refusResa));
   const sources = lire('lib/assistant-outils.js');
   const debut = sources.indexOf('  proposer_un_geste: {');
   const corpsGeste = debut > 0 ? sources.slice(debut, sources.indexOf('\n  },\n', debut)) : '';
@@ -142,6 +159,31 @@ async function verifier() {
   // l assistant n ecrit jamais (test:assistant, section O, l a vu sur GitHub le 2026-11-11).
   ok(/requeteBase\('select id, question, reponse from agent_facts where center_id = \$1 and oublie_le is null/.test(api) && /\[centreOuvert\]\)/.test(api) && !/getFaitsAppris/.test(api) && /id: 900000 \+ Number\(f\.id \|\| 0\)/.test(api),
     'les faits appris aux mails et aux demandes arrivent a l assistant, lus sans ecrire, pour le centre ouvert seulement');
+
+  console.log('\n[E. CE QUE CHAQUE ROLE PEUT FAIRE]');
+  // Les mots des droits sont ceux de la page Equipe & acces (CARTE_DES_DROITS), un par un.
+  const debutCarte = app.indexOf('const CARTE_DES_DROITS = [');
+  const blocCarte = debutCarte > 0 ? app.slice(debutCarte, app.indexOf('\n];', debutCarte)) : '';
+  const paires = [...blocCarte.matchAll(/\['([a-z]+\.[a-zA-Z]+)', '([^']+)'/g)].filter((m) => !/^[a-z]+\.[a-zA-Z]+$/.test(m[2])).map((m) => [m[1], m[2]]);
+  const ecarts = paires.filter(([k, v]) => carte.DROITS_EN_MOTS[k] !== v).map(([k]) => k).concat(Object.keys(carte.DROITS_EN_MOTS).filter((k) => !paires.some(([c]) => c === k)));
+  ok(paires.length >= 25 && ecarts.length === 0, 'chaque droit porte le nom que la page Equipe lui donne', JSON.stringify(ecarts));
+  const lues = [];
+  database.getPool = () => ({ query: async (texte, params) => {
+    lues.push({ texte, params });
+    const ROLES = {
+      libramont: [{ id: 'direction', name: 'Direction', locked: true, permissions: [] }, { id: 'accueil', name: 'Accueil', locked: false, permissions: ['reservations.view', 'payments.markPaid', 'reservations.status', 'niveau:surmesure:prix'] }],
+      gembloux: [{ id: 'gembloux-seul', name: 'Rôle de Gembloux', locked: false, permissions: ['users.manage'] }],
+    };
+    return { rows: (params && ROLES[params[0]]) || [] };
+  } });
+  const roles = await outils.executer(contexte(GERANT), 'roles_et_droits', {});
+  const lignesRoles = (roles.source && roles.source.lignes) || [];
+  ok(lignesRoles.length === 2 && lignesRoles[0].role === 'Direction' && lignesRoles[0].peut === 'Tous les droits du centre' && lignesRoles[1].peut === 'Voir les réservations, Encaisser, Changer l’état' && lignesRoles[1].nombre === 3
+    && lues.length === 1 && JSON.stringify(lues[0].params) === '["libramont"]',
+    'les roles se lisent dans le centre ouvert, avec les mots de la page Equipe', JSON.stringify({ lignesRoles, lues: lues.map((l) => l.params), contenu: roles.contenu }));
+  const rolesAilleurs = await outils.executer(contexte(GERANT), 'roles_et_droits', { centre: 'gembloux' });
+  const rolesMarketeur = await outils.executer(contexte(MARKETEUR), 'roles_et_droits', {});
+  ok(rolesAilleurs.erreur === true && rolesMarketeur.erreur === true && lues.length === 1, 'les roles restent fermes a un autre centre et a un role sans le droit equipe', JSON.stringify([rolesAilleurs.contenu, rolesMarketeur.contenu]));
 }
 
 (async () => {

@@ -213,8 +213,10 @@ const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(
   reste: (/reste \d+ (?:pistes?|armes?)/.exec(b.getAttribute('aria-label') || '') || [''])[0],
   garde: ((b.querySelector('.rs-h-garde') || {}).textContent || '').trim(),
 })), id);
-const creer = async (page, nom) => {
-  await page.locator('#qbQui').fill(nom);
+// Le telephone est obligatoire a la fenetre (2026-11-11) : il se tape avec le nom.
+const creer = async (page, nom, tel = '0470 12 34 56') => {
+  await page.locator('#qbPhone').fill(tel);
+  await page.locator('#qbName').fill(nom);
   await page.waitForTimeout(200);
   await page.locator('#rvCreer').click();
 };
@@ -1356,7 +1358,8 @@ async function scenarioI(browser) {
     await kidsFunDay(page, { heure: '14:00' });
     const boutons = await page.evaluate(() => [...document.querySelectorAll('#rvPied .rs-payer')].map((b) => ({ mot: b.textContent.trim(), actif: !b.disabled, visible: b.getClientRects().length > 0 })));
     ok(boutons.length === 2 && boutons.every((b) => b.actif && b.visible), '[I] aujourd hui, un mercredi : les deux boutons Payé sont utilisables', { boutons, ...(await lire(page)) });
-    await page.locator('#qbQui').fill('Banc Mercredi');
+    await page.locator('#qbPhone').fill('0470 12 34 56');
+    await page.locator('#qbName').fill('Banc Mercredi');
     await page.waitForTimeout(200);
     await page.locator('#rvPied .rs-payer', { hasText: 'Payé carte' }).click();
     const [neuve] = await neufs(page, m4.avant);

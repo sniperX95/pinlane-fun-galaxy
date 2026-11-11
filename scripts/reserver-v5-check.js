@@ -47,12 +47,15 @@
 //       une autre fenetre ouverte avant la reponse : la reponse range le
 //       dossier cree au planning et laisse la nouvelle fenetre ouverte (trouve
 //       par ce gate le 2026-10-08 : elle la fermait).
-//   [I] AU COMPTOIR (maquette v5, X4). Un groupe qui joue dans la demi-heure :
-//       UN champ facultatif « Nom ou téléphone » au ticket, qui range des
-//       lettres en nom et des chiffres en telephone ; le reste (e-mail, note,
-//       occasion) est a un toucher ; Entree y cree ; un numero deja venu dit
-//       « reconnu », un autre numero ne garde pas le nom de l ancien ; un nom
-//       tape a part reste.
+//   [I] AU COMPTOIR (Ansar, 2026-11-11 : « on doit obligatoirement mettre
+//       numéro de téléphone, une note optionnelle, tout direct sur le côté
+//       droit »). Un groupe qui joue dans la demi-heure : au ticket, le
+//       telephone (obligatoire), le nom et la note (facultative) ; l e-mail et
+//       l occasion a un toucher. Créer sans numero, ou avec un numero trop
+//       court, n envoie rien : le champ le dit et prend le focus. Entree dans le
+//       telephone cree ; un numero deja venu dit « reconnu » et ecrit son nom,
+//       un autre numero ne garde pas le nom de l ancien ; un nom tape a la main
+//       reste ; Tab passe du telephone au nom.
 //   [J] LES PISTES CHOISIES SE LISENT EN ENTIER. « pistes 7 et 8 » en toutes
 //       lettres sur la ligne du ticket (Movsar, 2026-10-08 : « Pistes 7
 //       et… »), et de 1 a 8 pistes, a 1280 et 1180 px, jamais coupees, mesure
@@ -62,8 +65,8 @@
 //       entier ; rien ne se pose sur son voisin (l ancienne fenetre, en deux
 //       colonnes : « Demain ven… », « pour vous » sous le chevron).
 //   [L] LE NOM RECONNU SE LIT AVANT DE PARTIR. Un numero deja venu met son nom
-//       dans le dossier : le ticket le montre une fois le champ rendu, comme
-//       l ancienne fenetre le montrait sous le numero.
+//       dans le dossier : le champ du nom le montre, aussi une fois le champ
+//       du telephone rendu.
 //   [M] LA LIGNE DIT SES PISTES A QUI NE LA VOIT PAS. Le nom accessible du
 //       bouton de la ligne garde la liste entiere des pistes, comme le libelle
 //       de l ancienne pastille.
@@ -152,12 +155,16 @@ const MUTATIONS = {
   // « Créer » avec. (`auto` ne suffit pas a la casser : la colonne a un
   // min-height nul, sa rangee prend encore le reste de l ecran.)
   pied: { fichier: 'assets/pinlane-staff.css', de: 'grid-template-rows: auto minmax(0, 1fr) auto auto;', vers: 'grid-template-rows: auto max-content auto auto;', vise: ['G'] },
-  // Entree dans le champ unique ne cree plus.
-  comptoirEntree: { fichier: 'assets/app-main.js', de: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes, #qbQui')", vers: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')", vise: ['I'] },
+  // Entree dans le telephone ne cree plus.
+  comptoirEntree: { fichier: 'assets/app-main.js', de: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')", vers: "cible.matches('#qbName, #qbEmail, #qbNotes')", vise: ['I'] },
+  // Le telephone redevient facultatif : un dossier sans numero part.
+  telephoneLibre: { fichier: 'assets/app-main.js', de: "  return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;", vers: '  return true;', vise: ['I'] },
+  // Le telephone rendu repeint le ticket : Tab vers le nom perd le champ vise.
+  tabPerdu: { fichier: 'assets/app-main.js', de: '  s.phone = normalizePhoneInput(champ.value);\n  champ.value = s.phone;\n}', vers: '  s.phone = normalizePhoneInput(champ.value);\n  champ.value = s.phone;\n  rsMajTicket();\n}', vise: ['I'] },
   // Le nom reconnu d un numero reste quand on en tape un autre.
-  nomPerime: { fichier: 'assets/app-main.js', de: "    if (avant === 'nom' || !String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {", vers: "    if (avant === 'nom' || !String(s.name || '').trim()) {", vise: ['I'] },
-  // « reconnu » ne se pose plus que dans le champ du nom, absent du ticket.
-  reconnu: { fichier: 'assets/app-main.js', de: "    const champ = document.getElementById('qbQui') || document.getElementById('qbName');", vers: "    const champ = document.getElementById('qbName');", vise: ['I'] },
+  nomPerime: { fichier: 'assets/app-main.js', de: "  if (!String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {", vers: "  if (!String(s.name || '').trim()) {", vise: ['I'] },
+  // « reconnu » se pose dans un champ absent du ticket.
+  reconnu: { fichier: 'assets/app-main.js', de: "    const champ = document.getElementById('qbPhone');", vers: "    const champ = document.getElementById('qbEmail');", vise: ['I'] },
   // Les pistes se disent en plage, plus en toutes lettres : « pistes 7-8 »,
   // et « pistes 1-5 » pour 1, 3 et 5.
   pastille: { fichier: 'assets/app-main.js', de: "  return liste.length > 2 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : liste.join(' et ');", vers: "  return liste.length > 2 ? `${liste[0]}-${liste[liste.length - 1]}` : liste.join('-');", vise: ['J'] },
@@ -166,9 +173,8 @@ const MUTATIONS = {
   pastilleColonne: { fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); }', vers: '.qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }', vise: ['J'] },
   // La tablette en portrait revient aux deux colonnes serrees.
   portrait: { fichier: 'assets/pinlane-staff.css', de: '@media (max-width: 900px) {\n  .qb-modal.rv.rs { --rs-gouttiere: 16px;', vers: '@media (max-width: 700px) {\n  .qb-modal.rv.rs { --rs-gouttiere: 16px;', vise: ['K'] },
-  // Le nom reconnu reste dans le dossier sans jamais s afficher (rsQuiAutre, sous le
-  // champ unique du ticket).
-  nomCache: { fichier: 'assets/app-main.js', de: "  if (rvRoleComptoir(s) === 'tel') return String(s.name || '').trim();", vers: "  if (rvRoleComptoir(s) === 'tel') return '';", vise: ['L'] },
+  // Le nom reconnu reste dans le dossier sans s afficher dans son champ.
+  nomCache: { fichier: 'assets/app-main.js', de: '<input id="qbName" value="${escapeHtml(s.name)}"', vers: '<input id="qbName" value=""', vise: ['L'] },
   // La ligne ne dit plus que son nom a qui ne la voit pas : « Bowling 1 h, changer ».
   ligneMuette: { fichier: 'assets/app-main.js', de: "  return `${[nom, detail, prix].filter(Boolean).join(', ')}, changer`;", vers: '  return `${nom}, changer`;', vise: ['M'] },
 };
@@ -420,7 +426,7 @@ async function scenarioC(page, verifier) {
   const ouvrirRefuse = () => page.evaluate((jour) => {
     window.__QA_REFUS__ = '20:00';
     closeQuickBook();
-    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
+    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8, phone: '0470 12 34 56' });
   }, JOUR);
   // Le planning a dit ou tout tient : « Créer » porte l heure proche.
   const procheDite = () => page.waitForSelector('#rvCreer[data-proche]', { timeout: 8000 }).then(() => true, () => false);
@@ -500,7 +506,7 @@ async function scenarioC(page, verifier) {
     closeQuickBook();
     window.__niveauReel = window.niveauStaff;
     window.niveauStaff = (cle) => (cle === 'forcer' ? 'non' : window.__niveauReel(cle));
-    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
+    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8, phone: '0470 12 34 56' });
   }, JOUR);
   await planPose(page, false);
   await procheDite();
@@ -524,7 +530,7 @@ async function scenarioC(page, verifier) {
   await page.evaluate((jour) => {
     window.__QA_REFUS_CREATION__ = 'Ce créneau vient de changer : plus aucune place à 20:00.';
     closeQuickBook();
-    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
+    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8, phone: '0470 12 34 56' });
   }, JOUR);
   await page.evaluate((jour) => syncDateReservations(jour, { silent: true }), JOUR);
   await planPose(page, true);
@@ -654,8 +660,7 @@ async function scenarioE(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 6 });
   }, JOUR);
   await planPose(page, true);
-  // Le contact, sur la page Client qu ouvre le ticket : il vaut pour le lot.
-  await page.click('#rsL-client');
+  // Le contact, au ticket : il vaut pour le lot.
   await page.fill('#qbPhone', '0470 11 22 33');
   await page.fill('#qbName', 'Anniversaire Léa');
   await autreResa();
@@ -680,7 +685,7 @@ async function scenarioE(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 6 });
   }, JOUR);
   await planPose(page, true);
-  await page.click('#rsL-client');
+  await page.fill('#qbPhone', '0470 11 22 33');
   await page.fill('#qbName', 'Anniversaire Léa');
   await autreResa();
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
@@ -715,18 +720,18 @@ async function scenarioF(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 });
   }, JOUR);
   await planPose(page, true);
-  // Le champ du client, au ticket : celui qu on tape au comptoir.
-  await page.click('#qbQui');
-  await page.evaluate(() => { document.getElementById('qbQui').__qa = 1; });
+  // Le nom du client, au ticket : un champ qu on tape au comptoir.
+  await page.click('#qbName');
+  await page.evaluate(() => { document.getElementById('qbName').__qa = 1; });
   await page.keyboard.type('Dup', { delay: 15 });
   // Ce que fait la reponse du planning quand elle arrive : tout se repeint.
   await page.evaluate(() => rvRepeindre());
   await page.keyboard.type('ont', { delay: 15 });
-  const pendant = await page.evaluate(() => { const el = document.getElementById('qbQui'); return { meme: Boolean(el && el.__qa === 1), focus: document.activeElement === el, valeur: el ? el.value : '', etat: quickBookState.name }; });
+  const pendant = await page.evaluate(() => { const el = document.getElementById('qbName'); return { meme: Boolean(el && el.__qa === 1), focus: document.activeElement === el, valeur: el ? el.value : '', etat: quickBookState.name }; });
   // Le champ rend la main (on touche ailleurs) : la zone qui attendait se repeint.
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.waitForTimeout(120);
-  const apres = await page.evaluate(() => { const el = document.getElementById('qbQui'); return { neuf: Boolean(el && el.__qa === undefined), valeur: el ? el.value : '' }; });
+  const apres = await page.evaluate(() => { const el = document.getElementById('qbName'); return { neuf: Boolean(el && el.__qa === undefined), valeur: el ? el.value : '' }; });
   verifier('F', pendant.meme && pendant.focus, 'pendant la frappe, le repeint ne remplace pas le champ et garde le focus', JSON.stringify(pendant));
   verifier('F', pendant.valeur === 'Dupont' && pendant.etat === 'Dupont', 'le texte tape est entier, a l ecran et dans le dossier', `${pendant.valeur} / ${pendant.etat}`);
   verifier('F', apres.neuf && apres.valeur === 'Dupont', 'le champ rendu, le repeint attendu se fait, avec le texte tape', JSON.stringify(apres));
@@ -743,7 +748,7 @@ async function scenarioF(page, verifier) {
     const apres = document.getElementById('rsL-client');
     return { remplace: Boolean(apres && apres.__qa === undefined), focus: document.activeElement === apres, actif: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null };
   });
-  verifier('F', bouton.remplace, 'MONTAGE : le repeint a bien remplace le bouton « E-mail, note, occasion »', JSON.stringify(bouton));
+  verifier('F', bouton.remplace, 'MONTAGE : le repeint a bien remplace le bouton « E-mail, occasion »', JSON.stringify(bouton));
   verifier('F', bouton.focus, 'le bouton remplace par le repeint garde le focus (le clavier ne tombe pas derriere la fenetre)', JSON.stringify(bouton));
 }
 
@@ -791,7 +796,8 @@ async function scenarioH(page, verifier) {
     openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: 4 });
   }, JOUR);
   await planPose(page, true);
-  await page.fill('#qbQui', 'Premier client');
+  await page.fill('#qbPhone', '0470 12 34 56');
+  await page.fill('#qbName', 'Premier client');
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
@@ -851,29 +857,35 @@ async function ouvrirAuComptoir(page) {
   });
 }
 
-// Le client tel que la fenetre le montre : le champ unique du ticket, ce qui
-// l entoure, et ce qui partira dans le dossier.
+// Le client tel que la fenetre le montre : le telephone, le nom et la note au
+// ticket, ce qui les entoure, et ce qui partira dans le dossier.
 function lireClient(page) {
   return page.evaluate(() => {
     const m = document.querySelector('#quickBookOverlay .qb-modal.rv');
     const q = (sel) => (m ? m.querySelector(sel) : null);
-    const qui = q('#qbQui');
     const texte = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const tel = q('#qbPhone');
+    const nom = q('#qbName');
+    const note = q('#qbNotes');
+    const dit = q('#rsTelDit');
+    const auTicket = (el) => Boolean(el && el.closest('.rs-tk'));
     return {
       entete: texte(q('.rs-tk-l')),
-      qui: Boolean(qui),
-      auTicket: Boolean(qui && qui.closest('.rs-tk')),
-      valeur: qui ? qui.value : null,
-      invite: qui ? qui.placeholder : '',
-      libelle: qui ? qui.getAttribute('aria-label') || '' : '',
-      tel: Boolean(q('#qbPhone')),
-      nom: Boolean(q('#qbName')),
-      nomValeur: q('#qbName') ? q('#qbName').value : null,
+      telAuTicket: auTicket(tel),
+      telExige: Boolean(tel && tel.required && tel.getAttribute('aria-required') === 'true'),
+      telLibelle: tel ? texte(tel.closest('label')) : '',
+      telValeur: tel ? tel.value : null,
+      telManque: Boolean(tel && tel.closest('.is-manque')),
+      telDit: dit && !dit.hidden ? texte(dit) : '',
+      nomAuTicket: auTicket(nom),
+      nomValeur: nom ? nom.value : null,
+      noteAuTicket: auTicket(note),
+      noteLibelle: note ? texte(note.closest('label')) : '',
+      champUnique: Boolean(q('#qbQui')),
       lien: texte(q('#rsL-client')),
-      reconnu: Boolean(qui && qui.parentElement.querySelector('.rv-tag')),
+      reconnu: Boolean(tel && tel.parentElement.querySelector('.rv-tag')),
       carte: texte(q('#rvClientConnu')),
-      // Ce qui se lit au ticket : le texte rendu, pas celui d un element cache.
-      ticket: q('.rs-tk') ? q('.rs-tk').innerText.replace(/\s+/g, ' ').trim() : '',
+      focus: document.activeElement ? document.activeElement.id : '',
       fenetre: texte(m),
       etat: quickBookState ? { name: quickBookState.name, phone: quickBookState.phone } : null,
     };
@@ -881,58 +893,65 @@ function lireClient(page) {
 }
 
 async function scenarioI(page, verifier) {
-  // 1. L ouverture : un seul champ au ticket, rien d obligatoire.
+  // 1. L ouverture : le telephone (obligatoire), le nom et la note au ticket.
   const ouvert = await ouvrirAuComptoir(page);
   await planPose(page, true);
   const a = await lireClient(page);
   verifier('I', /aujourd’hui/.test(a.entete) && ouvert.dans >= 0 && ouvert.dans <= 30, 'MONTAGE : un groupe qui joue aujourd hui, dans la demi-heure', `${ouvert.date} ${ouvert.heure}, dans ${ouvert.dans} min, ticket « ${a.entete} »`);
-  verifier('I', a.qui && a.auTicket && a.invite === 'Nom ou téléphone' && /facultatif/.test(a.libelle) && !a.tel && !a.nom, 'au comptoir, UN champ « Nom ou téléphone » au ticket, facultatif, ni telephone ni nom a remplir', JSON.stringify({ qui: a.qui, auTicket: a.auTicket, invite: a.invite, libelle: a.libelle, tel: a.tel, nom: a.nom }));
+  verifier('I', a.telAuTicket && a.telExige && /obligatoire/.test(a.telLibelle) && a.nomAuTicket && a.noteAuTicket && /facultative/.test(a.noteLibelle) && !a.champUnique, 'au ticket : le telephone (obligatoire), le nom et la note pour l equipe (facultative), plus de champ unique', JSON.stringify({ tel: a.telAuTicket, exige: a.telExige, libelle: a.telLibelle, nom: a.nomAuTicket, note: a.noteAuTicket, noteLibelle: a.noteLibelle, champUnique: a.champUnique }));
   await page.click('#rsL-client');
   const client = await page.evaluate(() => ['qbName', 'qbPhone', 'qbEmail', 'qbNotes'].filter((id) => document.querySelector(`#rsCorps #${id}`)).concat(document.querySelectorAll('#rsCorps .rs-occasions button').length ? ['occasions'] : []));
   await page.click('#rsRetour');
-  verifier('I', a.lien === 'E-mail, note, occasion' && client.join() === 'qbName,qbPhone,qbEmail,qbNotes,occasions', 'le reste se rajoute d un toucher : « E-mail, note, occasion » ouvre le client entier (nom, telephone, e-mail, note, occasion)', `${a.lien} -> ${client.join(', ')}`);
+  verifier('I', a.lien === 'E-mail, occasion' && client.join() === 'qbEmail,occasions', 'l e-mail et l occasion a un toucher, sans redire les champs du ticket', `${a.lien} -> ${client.join(', ')}`);
 
-  // 2. Des lettres : le nom. Puis des chiffres : le telephone. Le champ ne
-  // bouge pas sous le doigt pendant que le ticket suit la frappe.
-  await page.click('#qbQui');
-  await page.evaluate(() => { document.getElementById('qbQui').__qa = 1; });
-  await page.keyboard.type('Lucas', { delay: 10 });
-  const lettres = await lireClient(page);
-  await page.keyboard.press('Control+A');
-  await page.keyboard.type('0470 99 88 77', { delay: 10 });
-  const chiffres = await page.evaluate(() => { const c = document.getElementById('qbQui'); return { meme: Boolean(c && c.__qa === 1), focus: document.activeElement ? document.activeElement.id : '', name: quickBookState.name, phone: quickBookState.phone }; });
-  verifier('I', lettres.etat.name === 'Lucas' && lettres.etat.phone.replace(/\D/g, '').length <= 2, 'des lettres : c est le nom, le telephone reste vide', JSON.stringify(lettres.etat));
-  verifier('I', chiffres.phone === '0470 99 88 77' && chiffres.name === '', 'des chiffres : c est le telephone, et les lettres d avant ne restent pas en nom', JSON.stringify(chiffres));
-  verifier('I', chiffres.meme && chiffres.focus === 'qbQui', 'pendant la frappe, le champ reste le meme et garde le focus', JSON.stringify(chiffres));
+  // 2. Créer sans telephone : rien ne part, le champ le dit et prend le focus.
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  await page.click('#rvCreer');
+  await page.waitForTimeout(400);
+  const sans = await lireClient(page);
+  const partisSans = await page.evaluate(() => window.__QA_CREES__.length);
+  verifier('I', partisSans === 0 && sans.focus === 'qbPhone' && sans.telManque && /obligatoire/.test(sans.telDit), 'Créer sans telephone : rien ne part, le champ dit pourquoi et prend le focus', JSON.stringify({ partisSans, focus: sans.focus, manque: sans.telManque, dit: sans.telDit }));
 
-  // 3. Entree dans le champ unique cree : numero mis en forme, nom par defaut.
+  // 3. Un numero trop court, Entree dans le champ : rien ne part, le champ le dit
+  // et garde la main.
+  await page.keyboard.type('0470 12', { delay: 10 });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+  const court = await lireClient(page);
+  const partisCourt = await page.evaluate(() => window.__QA_CREES__.length);
+  verifier('I', partisCourt === 0 && court.focus === 'qbPhone' && court.telManque && /incomplet/i.test(court.telDit), 'un numero incomplet ne part pas : le champ le dit et garde le focus', JSON.stringify({ partisCourt, focus: court.focus, manque: court.telManque, dit: court.telDit, valeur: court.telValeur }));
+
+  // 4. Le numero complete : le rouge s en va pendant la frappe. Entree cree le
+  // dossier, numero mis en forme, nom par defaut.
+  await page.keyboard.type(' 34 56', { delay: 10 });
+  const complet = await lireClient(page);
+  verifier('I', !complet.telManque && !complet.telDit, 'le numero complete, le rouge s en va pendant la frappe', JSON.stringify({ manque: complet.telManque, dit: complet.telDit, valeur: complet.telValeur }));
   await page.waitForTimeout(600);
   await planPose(page, true);
-  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
-  await page.focus('#qbQui');
+  await page.focus('#qbPhone');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const cree = await page.evaluate(() => window.__QA_CREES__[0] || null);
   const ferme = await fenetreFermee(page);
-  verifier('I', Boolean(cree) && /^\+32/.test(String(cree.phone || '')) && String(cree.phone).replace(/\D/g, '').endsWith('470998877') && cree.name === 'Client', 'Entree dans le champ unique cree le dossier (numero mis en forme, nom par defaut)', cree ? `${cree.name} / ${cree.phone}` : 'aucun POST');
+  verifier('I', Boolean(cree) && /^\+32/.test(String(cree.phone || '')) && String(cree.phone).replace(/\D/g, '').endsWith('470123456') && cree.name === 'Client', 'Entree dans le telephone cree le dossier (numero mis en forme, nom par defaut)', cree ? `${cree.name} / ${cree.phone}` : 'aucun POST');
   verifier('I', ferme, 'la fenetre se ferme une fois le dossier cree');
 
-  // 4. Un numero deja venu : « reconnu » pendant la frappe, son nom repris ;
-  // le champ rendu, ce nom (celui qui partira) se lit au ticket.
+  // 5. Un numero deja venu : « reconnu » pendant la frappe, son nom ecrit dans le
+  // champ du nom ; le champ rendu, ce nom (celui qui partira) reste lisible.
   await ouvrirAuComptoir(page);
   await planPose(page, true);
-  await page.click('#qbQui');
+  await page.click('#qbPhone');
   await page.keyboard.type('0470 55 66 77', { delay: 10 });
   await page.waitForFunction(() => quickBookState && quickBookState.clientConnu && quickBookState.clientConnu.etat === 'ok', null, { timeout: 5000 }).catch(() => {});
   const pendant = await lireClient(page);
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.waitForTimeout(150);
   const rendu = await lireClient(page);
-  verifier('I', pendant.reconnu && pendant.etat.name === 'Lucas Martin', 'un numero deja venu : « reconnu » dans le champ pendant la frappe, son nom repris', JSON.stringify({ reconnu: pendant.reconnu, etat: pendant.etat }));
-  verifier('L', rendu.etat.name === 'Lucas Martin' && rendu.ticket.includes('Lucas Martin'), 'le champ rendu, le nom reconnu (celui qui partira dans le dossier) se lit au ticket', JSON.stringify({ dossier: rendu.etat.name, champ: rendu.valeur, carte: rendu.carte, ticket: rendu.ticket.slice(0, 220) }));
+  verifier('I', pendant.reconnu && pendant.etat.name === 'Lucas Martin' && pendant.nomValeur === 'Lucas Martin', 'un numero deja venu : « reconnu » dans le champ pendant la frappe, son nom ecrit dans le champ du nom', JSON.stringify({ reconnu: pendant.reconnu, etat: pendant.etat, nom: pendant.nomValeur }));
+  verifier('L', rendu.etat.name === 'Lucas Martin' && rendu.nomValeur === 'Lucas Martin', 'le champ rendu, le nom reconnu (celui qui partira dans le dossier) se lit dans le champ du nom', JSON.stringify({ dossier: rendu.etat.name, champ: rendu.nomValeur, carte: rendu.carte }));
 
-  // 5. Un autre numero : le nom de l ancien ne part pas avec lui.
-  await page.click('#qbQui');
+  // 6. Un autre numero : le nom de l ancien ne part pas avec lui.
+  await page.click('#qbPhone');
   await page.keyboard.press('Control+A');
   await page.keyboard.type('0470 99 88 77', { delay: 10 });
   const change = await lireClient(page);
@@ -946,24 +965,25 @@ async function scenarioI(page, verifier) {
   await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
   const cree2 = await page.evaluate(() => window.__QA_CREES__[0] || null);
   await fenetreFermee(page);
-  verifier('I', change.etat.name === '' && !change.fenetre.includes('Lucas Martin'), 'un autre numero efface le nom reconnu de l ancien, a l ecran comme dans le dossier', JSON.stringify(change.etat));
-  verifier('I', !apresChange.reconnu && !apresChange.carte && !apresChange.fenetre.includes('Lucas Martin'), 'le champ rendu, « reconnu » et la carte de l ancien client s en vont', JSON.stringify({ reconnu: apresChange.reconnu, carte: apresChange.carte }));
+  verifier('I', change.etat.name === '' && change.nomValeur === '', 'un autre numero efface le nom reconnu de l ancien, dans le champ comme dans le dossier', JSON.stringify({ etat: change.etat, nom: change.nomValeur }));
+  verifier('I', !apresChange.reconnu && !apresChange.carte && apresChange.nomValeur === '', 'le champ rendu, « reconnu » et la carte de l ancien client s en vont', JSON.stringify({ reconnu: apresChange.reconnu, carte: apresChange.carte, nom: apresChange.nomValeur }));
   verifier('I', Boolean(cree2) && cree2.name === 'Client' && String(cree2.phone || '').replace(/\D/g, '').endsWith('470998877'), 'le dossier part avec le nouveau numero, sans le nom de l autre client', cree2 ? `${cree2.name} / ${cree2.phone}` : 'aucun POST');
 
-  // 6. Un nom tape a part (page Client) reste quand on corrige le numero au
-  // ticket. Le clic arrive alors que le plan du serveur est en route.
+  // 7. Un nom tape a la main reste quand on corrige le numero, et Tab passe du
+  // telephone au nom sans perdre le champ vise.
   await ouvrirAuComptoir(page);
-  await page.click('#qbQui');
+  await page.click('#qbPhone');
   await page.keyboard.type('0470 99 88 77', { delay: 10 });
-  await page.click('#rsL-client');
-  await page.click('#qbName');
+  await page.keyboard.press('Tab');
+  const tab = await lireClient(page);
   await page.keyboard.type('Dupont', { delay: 10 });
-  await page.click('#qbQui');
+  await page.click('#qbPhone');
   await page.keyboard.press('End');
   await page.keyboard.press('Backspace');
   await page.keyboard.type('8', { delay: 10 });
   const garde = await lireClient(page);
-  verifier('I', garde.etat.name === 'Dupont' && garde.nomValeur === 'Dupont' && garde.etat.phone === '+32 470 99 88 78', 'un nom tape a part reste quand on corrige le numero', JSON.stringify({ etat: garde.etat, nomValeur: garde.nomValeur }));
+  verifier('I', tab.focus === 'qbName', 'Tab passe du telephone au nom, le champ vise garde le focus', JSON.stringify({ focus: tab.focus }));
+  verifier('I', garde.etat.name === 'Dupont' && garde.nomValeur === 'Dupont' && garde.etat.phone === '+32 470 99 88 78', 'un nom tape a la main reste quand on corrige le numero', JSON.stringify({ etat: garde.etat, nomValeur: garde.nomValeur }));
   await page.evaluate(() => closeQuickBook());
 }
 

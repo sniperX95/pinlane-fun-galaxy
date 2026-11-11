@@ -9807,15 +9807,22 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-n small.is-att { font-weight: 500; color: var(--warning); }
 .qb-modal.rv.rs .rs-tk-q { font-size: 14px; font-weight: 600; line-height: 1; }
 .qb-modal.rv.rs .rs-tk-a em { font-style: normal; font-size: 15px; font-weight: 600; white-space: nowrap; }
-.qb-modal.rv.rs .rs-tk-client { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 8px; }
+/* LE CLIENT AU TICKET (2026-11-11) : telephone obligatoire, nom, note pour l equipe. */
+.qb-modal.rv.rs .rs-tk-client { display: flex; flex-direction: column; gap: 10px; padding: 0 10px 8px; }
 .qb-modal.rv.rs .rs-tk-client > .rs-lien { align-self: flex-start; }
-.qb-modal.rv.rs .rs-tk-nom { display: flex; flex-direction: column; gap: 6px; }
-.qb-modal.rv.rs .rs-tk-nom span { font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
-.qb-modal.rv.rs .rs-tk-nom input, .qb-modal.rv.rs .rs-tk-nom input:focus { width: 100%; height: 44px; min-height: 0; padding: 0 12px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); box-shadow: none; outline: none; font-family: inherit; font-size: 15px; color: var(--text); }
-.qb-modal.rv.rs .rs-tk-nom input:focus { border-color: var(--console-focus); box-shadow: inset 0 0 0 .5px var(--console-focus); }
-.qb-modal.rv.rs .rs-tk-nom input::placeholder { color: var(--faint); opacity: 1; }
-.qb-modal.rv.rs .rs-tk-nom .rs-tk-autre { order: 1; font-size: 14px; font-weight: 550; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
-.qb-modal.rv.rs .rs-tk-nom .rv-tag { order: 2; }
+.qb-modal.rv.rs .rs-tk-champ { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: text; }
+.qb-modal.rv.rs .rs-tk-lbl { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
+.qb-modal.rv.rs .rs-tk-lbl em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--faint); }
+.qb-modal.rv.rs .rs-tk-champ input, .qb-modal.rv.rs .rs-tk-champ input:focus, .qb-modal.rv.rs .rs-tk-champ textarea { width: 100%; height: 44px; min-height: 0; padding: 0 12px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); box-shadow: none; outline: none; font-family: inherit; font-size: 15px; color: var(--text); }
+.qb-modal.rv.rs .rs-tk-champ textarea { display: block; height: auto; min-height: 64px; padding: 10px 12px; line-height: 1.4; resize: none; }
+.qb-modal.rv.rs .rs-tk-champ input:focus, .qb-modal.rv.rs .rs-tk-champ textarea:focus { border-color: var(--console-focus); box-shadow: inset 0 0 0 .5px var(--console-focus); }
+.qb-modal.rv.rs .rs-tk-champ input::placeholder, .qb-modal.rv.rs .rs-tk-champ textarea::placeholder { color: var(--faint); opacity: 1; }
+.qb-modal.rv.rs .rs-tk-champ.is-tel input { padding-right: 88px; font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-tk-champ.is-tel .rv-tag { position: absolute; right: 8px; bottom: 10px; height: 24px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 6px; background: var(--accent-soft); font-size: 12px; font-weight: 600; line-height: 1; color: var(--accent-strong); pointer-events: none; }
+.qb-modal.rv.rs .rs-tk-champ.is-manque .rs-tk-lbl, .qb-modal.rv.rs .rs-tk-champ.is-manque .rs-tk-lbl em { color: var(--danger); }
+.qb-modal.rv.rs .rs-tk-champ.is-manque input, .qb-modal.rv.rs .rs-tk-champ.is-manque input:focus { border-color: var(--danger); box-shadow: inset 0 0 0 .5px var(--danger); }
+.qb-modal.rv.rs .rs-tk-dit { margin: -4px 0 0; font-size: 13px; font-weight: 550; line-height: 1.3; color: var(--danger); }
+.qb-modal.rv.rs .rs-tk-dit[hidden] { display: none; }
 .qb-modal.rv.rs .rs-connu { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne); font-size: 13px; color: var(--muted); }
 .qb-modal.rv.rs .rs-connu .rv-av { display: none; }
 .qb-modal.rv.rs .rs-connu b { font-weight: 600; color: var(--text); }
@@ -9948,6 +9955,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-occasions .rs-p { min-height: 52px; }
 .qb-modal.rv.rs .rs-qui { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .qb-modal.rv.rs .rs-qui.is-deux { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.qb-modal.rv.rs .rs-qui.is-un { grid-template-columns: minmax(0, 28rem); }
 .qb-modal.rv.rs .rs-champ { display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: text; }
 .qb-modal.rv.rs .rs-champ > span { font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
 .qb-modal.rv.rs .rs-champ input, .qb-modal.rv.rs .rs-champ input:focus, .qb-modal.rv.rs .rs-champ textarea { width: 100%; height: 44px; min-height: 0; padding: 0 12px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); box-shadow: none; outline: none; font-family: inherit; font-size: 15px; color: var(--text); }
@@ -10073,6 +10081,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-arts { flex: none; grid-template-rows: none; grid-auto-rows: 64px; min-height: 0; max-height: none; }
   .qb-modal.rv.rs .rs-qui { grid-template-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-qui.is-deux { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qb-modal.rv.rs .rs-qui.is-un { grid-template-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-libre { grid-template-columns: minmax(0, 1fr) 96px; }
   .qb-modal.rv.rs .rs-libre .rs-p { grid-column: 1 / -1; }
   .qb-modal.rv.rs .rs-bande-t { flex-wrap: wrap; }

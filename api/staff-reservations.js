@@ -351,6 +351,34 @@ async function requireAnyStaffSession(req, res) {
 // heures, les pistes, les conflits et le prix que la creation posera.
 const LOT_MAX = 12;
 
+// LE TELEPHONE DU CLIENT EST OBLIGATOIRE A LA CREATION (Ansar, 2026-11-11 : « on doit
+// obligatoirement mettre numéro de téléphone »). La fenetre Reserver l exige avant
+// Créer (rvTelephoneValide, assets/app-main.js) ; le serveur redit la meme regle pour
+// un poste reste sur une ancienne page. Les chiffres se lisent comme la fenetre les
+// met en forme (normalizePhoneInput) : « 0... » est belge, « 00 » ou « + » ouvre un
+// indicatif. Au moins 8 chiffres apres l indicatif belge, au plus 15 en tout (E.164).
+// La simulation n en a pas besoin ; une demande sur mesure reservee (customRequestBook)
+// garde le numero de sa demande.
+function chiffresDuTelephone(valeur) {
+  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  if (!brut) return '';
+  const chiffres = brut.replace(/\D/g, '');
+  if (brut.startsWith('+')) return chiffres;
+  if (brut.startsWith('00')) return chiffres.slice(2);
+  if (brut.startsWith('0')) return `32${chiffres.slice(1)}`;
+  return `32${chiffres}`;
+}
+
+function telephoneDuComptoirValide(valeur) {
+  const chiffres = chiffresDuTelephone(valeur);
+  return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
+}
+
+function exigerLeTelephone(corps) {
+  if (telephoneDuComptoirValide(corps && corps.phone)) return;
+  throw createHttpError('Le téléphone du client est obligatoire.', 422);
+}
+
 // Les erreurs d infrastructure (Postgres, Neon, reseau) ne s affichent jamais :
 // elles se journalisent, et le staff lit une phrase qui dit de reessayer.
 function estErreurInfra(error) {
@@ -421,6 +449,7 @@ async function creerLeLot(body, session) {
     const corps = dossiers[index];
     try {
       if (!corps || typeof corps !== 'object' || Array.isArray(corps)) throw createHttpError('Dossier invalide.', 422);
+      exigerLeTelephone(corps);
       const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true });
       const cree = await creerDepuisLaFenetre(prepare, session, { lot: { index, total: dossiers.length } });
       reservations.push({ index, reservation: cree.reservation, ops: cree.ops, aPlacer: cree.aPlacer, conflits: cree.conflits, warnings: cree.warnings });
@@ -565,9 +594,10 @@ const traiter = async (req, res) => {
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
       await warmCenterKnowledge();
-      // Côté STAFF le contact est LIBRE (nom/tél/email non imposés) : le staff
-      // crée souvent une résa au comptoir sans tout saisir. L'email obligatoire
-      // reste réservé au parcours CLIENT PUBLIC (api/public-reservations.js).
+      // Côté STAFF, le TELEPHONE est obligatoire (2026-11-11, exigerLeTelephone) ;
+      // le nom et l'e-mail restent libres (sans nom, le dossier part au nom de
+      // Client). L'email obligatoire reste réservé au parcours CLIENT PUBLIC
+      // (api/public-reservations.js).
       // Le centre de la SESSION voyage avec la requete (meme discipline que
       // withCenter dans api/ops.js) : planifierPourLaFenetre le pose sur chaque
       // dossier, celui d un lot compris.
@@ -581,6 +611,7 @@ const traiter = async (req, res) => {
         return;
       }
       // « Créer quand même » (`forcer`) : un dossier en conflit part à placer.
+      exigerLeTelephone(body);
       const prepare = await planifierPourLaFenetre(body, session, { forcer: body.forcer === true });
       // T5 : le journal s ecrit apres le COMMIT (creerDepuisLaFenetre). T4
       // point (c) : l echec de trace remonte dans `warnings`, jamais en

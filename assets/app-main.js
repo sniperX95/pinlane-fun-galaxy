@@ -32861,11 +32861,6 @@ function normalizePhoneInput(value = '') {
   return `+32 ${raw}`.trim();
 }
 
-function onQuickPhoneInput(value) {
-  if (!quickBookState) return;
-  quickBookState.phone = value;
-}
-
 function getQuickBookFormulaChoices() {
   if (!quickBookState) return [];
   const pax = Number(quickBookState.pax) || 1;
@@ -33987,43 +33982,77 @@ function rvNaitArrive(s = quickBookState) {
   return timeToNum(s.startTime) - currentTimeDecimal() <= RV_ARRIVE_SOUS + 1e-9;
 }
 
-// Ce que tient le champ unique : 'tel' (des chiffres) ou 'nom'. Pose a la
-// frappe ; avant, le telephone deja connu le dit.
-function rvRoleComptoir(s = quickBookState) {
-  if (s.comptoirRole) return s.comptoirRole;
-  return String(s.phone || '').replace(/\D/g, '').length > 2 ? 'tel' : 'nom';
+// LE TELEPHONE DU CLIENT EST OBLIGATOIRE A LA FENETRE (Ansar, 2026-11-11 : « on doit
+// obligatoirement mettre numéro de téléphone, une note optionnelle, tout direct sur
+// le côté droit »). Il remplace le champ unique facultatif « Nom ou téléphone » du
+// 2026-10-12. Un numero tient avec au moins 8 chiffres apres l indicatif belge (un
+// fixe de Bruxelles en a 8, un portable 9) et au plus 15 en tout (la norme E.164) ;
+// un numero etranger compte son indicatif. Le serveur redit la meme regle
+// (telephoneDuComptoirValide, api/staff-reservations.js).
+function rvTelephoneValide(valeur) {
+  const chiffres = String(normalizePhoneInput(valeur || '')).replace(/\D/g, '');
+  return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
 }
 
-function rvSaisieComptoir(valeur) {
+// LE NOM SUIT LE NUMERO (repris du champ unique, 2026-10-12). Changer de numero
+// efface le nom qu un AUTRE numero avait reconnu et ramene celui de CE numero s il
+// est deja cherche ; un nom tape a la main reste. Le nom s ecrit dans son champ du
+// ticket, jamais sous les doigts.
+function rvTelephoneSaisi(valeur) {
   const s = quickBookState;
   if (!s) return;
-  const avant = rvRoleComptoir(s);
-  // Un numero s annonce des son premier chiffre (ou son « + ») : il ne passe
-  // jamais par le nom pendant qu on le tape.
-  const brut = String(valeur || '').trim();
-  const role = brut && /^\+?[\d\s./()-]*$/.test(brut) ? 'tel' : 'nom';
-  s.comptoirRole = role;
-  if (role === 'tel') {
-    s.phone = valeur;
-    // Le nom suit le numero : les lettres d avant ou le nom d un autre numero
-    // reconnu s effacent, celui de CE numero (deja cherche) revient. Un nom
-    // tape dans son propre champ reste.
-    const chiffres = String(valeur || '').replace(/\D/g, '');
-    const connu = s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.cle === chiffres ? s.clientConnu.resultat : null;
-    if (avant === 'nom' || !String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {
-      s.name = connu && connu.nom ? connu.nom : '';
-      s.nomReconnu = connu && connu.nom ? connu.nom : null;
-    }
-  } else {
-    s.name = valeur;
-    if (avant === 'tel') s.phone = '';
+  s.phone = valeur;
+  const chiffres = String(valeur || '').replace(/\D/g, '');
+  const connu = s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.cle === chiffres ? s.clientConnu.resultat : null;
+  if (!String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {
+    s.name = connu && connu.nom ? connu.nom : '';
+    s.nomReconnu = connu && connu.nom ? connu.nom : null;
+    const champNom = document.getElementById('qbName');
+    if (champNom && document.activeElement !== champNom && champNom.value !== s.name) champNom.value = s.name;
   }
   rvPlanifierClientConnu();
-  // Ce qui se voit suit ce qui part : le nom que le numero efface ou ramene
-  // s ecrit dans son champ, et sous le champ unique (rsMajQuiAutre).
-  const champNom = document.getElementById('qbName');
-  if (champNom && document.activeElement !== champNom && champNom.value !== s.name) champNom.value = s.name;
-  rsMajQuiAutre();
+  rsMajTelephoneManque();
+}
+
+// Le rouge s en va des que le numero tient, pendant la frappe : la zone du ticket
+// ne se repeint pas sous les doigts (rvPoser), le champ change donc sur place, et
+// la zone oublie son dernier rendu pour se repeindre au prochain passage.
+function rsMajTelephoneManque() {
+  const s = quickBookState;
+  const champ = document.getElementById('qbPhone');
+  if (!s || !champ || !s.telDemande || !rvTelephoneValide(s.phone)) return;
+  const cadre = champ.closest('.rs-tk-champ');
+  if (cadre) cadre.classList.remove('is-manque');
+  champ.setAttribute('aria-invalid', 'false');
+  const dit = document.getElementById('rsTelDit');
+  if (dit) dit.hidden = true;
+  rvZones.delete('rsClient');
+}
+
+// CREER SANS TELEPHONE MENE AU TELEPHONE. Le champ dit pourquoi (rsClientHtml lit
+// telDemande) ; au telephone, le ticket replie s ouvre d abord. Entree tapee dans le
+// champ lui-meme : il rend la main le temps du repeint (sa mise en forme passe,
+// rsTelFini), puis la reprend, le curseur au bout du numero.
+function rsVersLeTelephone() {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b) return;
+  rsLacherChamp();
+  s.telDemande = true;
+  const visible = () => { const c = document.getElementById('qbPhone'); return c && c.getClientRects().length ? c : null; };
+  rsGeste(() => { if (!visible()) b.ticket = true; }, { focus: false });
+  rvZones.delete('rsClient');
+  rvPoser('rsClient', rsClientHtml());
+  const champ = visible() || document.getElementById('qbPhone');
+  if (!champ) return;
+  champ.focus({ preventScroll: false });
+  const bout = champ.value.length;
+  try { champ.setSelectionRange(bout, bout); } catch (e) { /* un champ sans selection garde son curseur */ }
+}
+
+// Ce que dit le champ du telephone quand il manque : vide, ou trop court.
+function rsTelephoneDit(s = quickBookState) {
+  return String(s.phone || '').replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Le téléphone du client est obligatoire.';
 }
 
 // LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
@@ -34036,13 +34065,6 @@ function rvNomAuFocus(champ) {
   const s = quickBookState;
   if (!s || !champ || !s.nomReconnu || champ.value !== s.nomReconnu) return;
   rvSelectionnerAuFocus(champ);
-}
-
-function rvSaisieComptoirFinie(champ) {
-  const s = quickBookState;
-  if (!s || !champ || rvRoleComptoir(s) !== 'tel') return;
-  s.phone = normalizePhoneInput(s.phone);
-  champ.value = s.phone;
 }
 
 // LE PRIX DE REFERENCE : celui du serveur des que son plan est la (c est lui
@@ -34490,10 +34512,9 @@ function rvApresSaisie() {
 function rvToucheEntree(event) {
   if (!quickBookState || event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
   const cible = event.target;
-  if (!cible || typeof cible.matches !== 'function' || !cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes, #qbQui')) return;
+  if (!cible || typeof cible.matches !== 'function' || !cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')) return;
   event.preventDefault();
   if (cible.id === 'qbPhone') rsTelFini(cible);
-  if (cible.id === 'qbQui') rvSaisieComptoirFinie(cible);
   rsCreer();
 }
 
@@ -35344,8 +35365,8 @@ function rvPlanifierClientConnu() {
 }
 
 // Le numero tape cherche le client deja venu ; la reponse pose sa carte ET
-// l etiquette « reconnu » dans le champ du nom (au comptoir, dans le champ
-// unique), sans redessiner le champ que l on est en train de taper.
+// l etiquette « reconnu » dans le champ du telephone, sans redessiner le champ
+// que l on est en train de taper.
 async function rvChercherClientConnu() {
   const s = quickBookState;
   if (!s) return;
@@ -35353,7 +35374,7 @@ async function rvChercherClientConnu() {
   const chiffres = String(s.phone || '').replace(/\D/g, '');
   const zone = () => document.getElementById('rvClientConnu');
   const etiquette = (reconnu) => {
-    const champ = document.getElementById('qbQui') || document.getElementById('qbName');
+    const champ = document.getElementById('qbPhone');
     const deja = champ && champ.parentElement ? champ.parentElement.querySelector('.rv-tag') : null;
     if (reconnu && champ && !deja) champ.insertAdjacentHTML('afterend', '<span class="rv-tag">reconnu</span>');
     if (!reconnu && deja) deja.remove();
@@ -35373,10 +35394,10 @@ async function rvChercherClientConnu() {
     if (r && r.nom && !String(quickBookState.name || '').trim()) {
       quickBookState.name = r.nom;
       quickBookState.nomReconnu = r.nom;
+      // Le nom reconnu s ecrit tout de suite dans son champ, sous le numero : c est
+      // lui qui partira.
       const champ = document.getElementById('qbName');
       if (champ && document.activeElement !== champ) champ.value = r.nom;
-      // Le nom reconnu se lit sous le numero, tout de suite : c est lui qui partira.
-      rsMajQuiAutre();
     }
   } catch (error) {
     if (!quickBookState || seq !== rvClientSeq) return;
@@ -36837,35 +36858,23 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   return [plage, suite].filter(Boolean).join(', ');
 }
 
+// LE CLIENT AU TICKET (Ansar, 2026-11-11 : « à l endroit où on marque le nom du client
+// on doit obligatoirement mettre numéro de téléphone, une note optionnelle, tout doit
+// être mis direct sur le côté droit »). Le telephone d abord : il reconnait le client
+// deja venu et ecrit son nom. Puis le nom (sans nom, le dossier part au nom de
+// Client), puis la note pour l equipe. L e-mail et l occasion restent a un toucher.
 function rsClientHtml() {
   const s = quickBookState;
-  const valeur = (rvRoleComptoir(s) === 'tel' ? String(s.phone || '').replace(/^\+32\s*$/, '') : s.name) || '';
+  const tel = String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '';
   const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
-  return `<label class="rs-tk-nom"><span>Client</span><input id="qbQui" value="${escapeHtml(valeur)}" placeholder="Nom ou téléphone" autocomplete="off" aria-label="Nom ou téléphone du client, facultatif" oninput="rvSaisieComptoir(this.value); rsMajTicket()" onblur="rvSaisieComptoirFinie(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}${rsQuiAutreHtml(s)}</label>
+  const manque = Boolean(s.telDemande) && !rvTelephoneValide(s.phone);
+  const dit = rsTelephoneDit(s);
+  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="tel" inputmode="tel" value="${escapeHtml(tel)}" placeholder="Ex. 0470 12 34 56" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
+    ${manque ? `<p class="rs-tk-dit" id="rsTelDit" role="alert">${escapeHtml(dit)}</p>` : ''}
     <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>
-    <button type="button" class="rs-lien" id="rsL-client" onclick="rsOuvrir('client')">E-mail, note, occasion</button>`;
-}
-
-// L AUTRE MOITIE DU CLIENT, sous le champ unique : le nom d un numero reconnu ou venu
-// d une fiche, le numero d un nom. Il part dans le dossier : il se lit avant de partir.
-function rsQuiAutre(s = quickBookState) {
-  if (rvRoleComptoir(s) === 'tel') return String(s.name || '').trim();
-  const tel = String(s.phone || '').trim();
-  return tel.replace(/\D/g, '').length > 2 ? tel : '';
-}
-
-function rsQuiAutreHtml(s = quickBookState) {
-  const autre = rsQuiAutre(s);
-  return `<small class="rs-tk-autre" id="rsQuiAutre"${autre ? '' : ' hidden'}>${escapeHtml(autre)}</small>`;
-}
-
-// A la frappe, le champ garde sa zone (rvPoser) : l autre moitie suit sans attendre.
-function rsMajQuiAutre() {
-  const el = document.getElementById('rsQuiAutre');
-  if (!el || !quickBookState) return;
-  const autre = rsQuiAutre();
-  if (el.textContent !== autre) el.textContent = autre;
-  if (el.hidden !== !autre) el.hidden = !autre;
+    <label class="rs-tk-champ"><span class="rs-tk-lbl">Nom</span><input id="qbName" value="${escapeHtml(s.name)}" placeholder="Nom du client" autocomplete="off" aria-label="Nom du client" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; rsMajTicket()"></label>
+    <label class="rs-tk-champ is-note"><span class="rs-tk-lbl">Note pour l’équipe<em>facultative</em></span><textarea id="qbNotes" rows="2" maxlength="500" placeholder="Jamais envoyée au client" aria-label="Note pour l’équipe, facultative, jamais envoyée au client" oninput="quickBookState.notes=this.value">${escapeHtml(s.notes || '')}</textarea></label>
+    <button type="button" class="rs-lien" id="rsL-client" onclick="rsOuvrir('client')">E-mail, occasion</button>`;
 }
 
 function rsOffres() {
@@ -37176,18 +37185,16 @@ function rsPrendreProche() {
 }
 
 // ── POUR QUI ─────────────────────────────────────────────────────────────────
+// L E-MAIL ET L OCCASION, a un toucher du ticket : le telephone, le nom et la note
+// se tapent au ticket (rsClientHtml), jamais deux fois le meme champ dans la fenetre.
 function rsQuiHtml() {
   const s = quickBookState;
-  const tel = String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '';
   return `${rsRetourHtml()}
     <section class="rs-seance is-page" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Client</h2><small>Rien n’est obligatoire, sans nom la réservation part au nom de Client.</small></div></div>
-      <div class="rs-qui">
-        <label class="rs-champ"><span>Nom</span><input id="qbName" value="${escapeHtml(s.name)}" autocomplete="off" aria-label="Nom du client" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; rsMajTicket()"></label>
-        <label class="rs-champ"><span>Téléphone</span><input id="qbPhone" type="tel" value="${escapeHtml(tel)}" autocomplete="off" aria-label="Téléphone du client" oninput="onQuickPhoneInput(this.value); rvPlanifierClientConnu(); rsMajTicket()" onblur="rsTelFini(this)"></label>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">E-mail et occasion</h2><small>L’e-mail reçoit la confirmation et le rappel. Le téléphone, le nom et la note se tapent au ticket.</small></div></div>
+      <div class="rs-qui is-un">
         <label class="rs-champ"><span>E-mail</span><input id="qbEmail" type="email" value="${escapeHtml(s.email)}" autocomplete="off" aria-label="E-mail du client, pour la confirmation et le rappel" oninput="quickBookState.email=this.value"></label>
       </div>
-      <label class="rs-champ is-note"><span>Note pour l’équipe</span><textarea id="qbNotes" maxlength="500" aria-label="Note pour l’équipe, jamais envoyée au client" oninput="quickBookState.notes=this.value">${escapeHtml(s.notes || '')}</textarea></label>
       <div class="rs-occasion"><span class="rs-lbl">Occasion</span><div class="rs-occasions" role="group" aria-label="Occasion">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="rs-p${s.occasion === v ? ' is-on' : ''}" aria-pressed="${s.occasion === v}" onclick="rsOccasion('${v}')"><b>${escapeHtml(mot)}</b></button>`).join('')}</div></div>
     </section>`;
 }
@@ -37222,6 +37229,10 @@ function rsSuivreAppui(overlay) {
   window.addEventListener('pointercancel', relache, true);
 }
 
+// Le numero se met en forme quand le champ rend la main, sur place. Pas de repeint
+// ici : le nom et la note sont dans la meme zone du ticket, et une zone repeinte
+// pendant que le focus passe au nom (Tab) jetterait le champ vise. La zone se
+// repeint apres (rvApresSaisie), si elle a change.
 function rsTelFini(champ) {
   const s = quickBookState;
   if (!s || !champ) return;
@@ -37229,7 +37240,6 @@ function rsTelFini(champ) {
   if (!chiffres) { s.phone = '+32 '; return; }
   s.phone = normalizePhoneInput(champ.value);
   champ.value = s.phone;
-  rsMajTicket();
 }
 
 // ── LES ECRANS DE LIGNE ──────────────────────────────────────────────────────
@@ -37952,6 +37962,8 @@ function rsCreer() {
     else rsOuvrir('activites');
     return;
   }
+  // Le plan tient : reste le telephone du client, obligatoire (rvTelephoneValide).
+  if (!rvTelephoneValide(s.phone)) { rsVersLeTelephone(); return; }
   saveQuickBook();
 }
 
@@ -38893,6 +38905,9 @@ async function saveQuickBook() {
   // Anti double-submit : un seul envoi en vol. Le garde couvre aussi la fenêtre
   // asynchrone (syncDateReservations/POST) : un 2e clic pendant l'envoi est ignoré.
   if (!quickBookState || quickBookState.submitting) return;
+  // Le telephone d abord : rsCreer y mene deja, « Créer · Carte » arrive ici sans
+  // passer par lui. Rien ne part, pas meme « Création… ».
+  if (!rvTelephoneValide(quickBookState.phone)) { quickBookState.payNow = false; rsVersLeTelephone(); return; }
   quickBookState.submitting = true;
   quickBookState.error = '';
   // « Création… » passe par le rendu, comme tout l ecran. Le bouton modifie

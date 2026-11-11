@@ -169,7 +169,7 @@ async function verifier() {
   };
   const noter = await outils.executer(avecHistorique(GERANT), 'proposer_un_geste', { geste: 'note_client', reservation: 501, texte: 'Préfère être appelée le matin.' });
   const pn = noter.proposition || {};
-  ok(pn.type === 'geste' && pn.centre === 'libramont' && JSON.stringify(pn.action) === '{"action":"noteClient","reservationId":501,"texte":"Préfère être appelée le matin."}' && pn.texte === 'Ajouter à la note de Zoéline Verhaegen : « Préfère être appelée le matin. ».',
+  ok(pn.type === 'geste' && pn.centre === 'libramont' && JSON.stringify(pn.action) === '{"action":"noteClient","reservationId":501,"texte":"Préfère être appelée le matin."}' && pn.texte === 'Ajouter à la note de Zoéline Verhaegen : « Préfère être appelée le matin. »',
     'noter sur la fiche d un client : la note a ajouter, dans le centre ouvert', JSON.stringify(pn.action ? pn : noter.contenu));
   const essaiNote = async (session, sur) => Boolean((await outils.executer(avecHistorique(session), 'proposer_un_geste', { geste: 'note_client', reservation: 501, texte: 'Préfère être appelée le matin.', ...sur })).proposition);
   const refusNote = [await essaiNote({ ...GERANT, permissions: GERANT.permissions.filter((x) => x !== 'clients.edit') }, {}), await essaiNote(GERANT, { reservation: 999 }), await essaiNote(GERANT, { texte: ' ' }), await essaiNote(GERANT, { reservation: 502 })];
@@ -204,9 +204,16 @@ async function verifier() {
   } });
   const roles = await outils.executer(contexte(GERANT), 'roles_et_droits', {});
   const lignesRoles = (roles.source && roles.source.lignes) || [];
-  ok(lignesRoles.length === 2 && lignesRoles[0].role === 'Direction' && lignesRoles[0].peut === 'Tous les droits du centre' && lignesRoles[1].peut === 'Voir les réservations, Encaisser, Changer l’état' && lignesRoles[1].nombre === 3
+  ok(lignesRoles.length === 2 && lignesRoles[0].role === 'Direction' && lignesRoles[0].peut === 'Tous les droits du centre' && lignesRoles[1].peut === 'Voir les réservations, Encaisser, Changer l’état'
     && lues.length === 1 && JSON.stringify(lues[0].params) === '["libramont"]',
     'les roles se lisent dans le centre ouvert, avec les mots de la page Equipe', JSON.stringify({ lignesRoles, lues: lues.map((l) => l.params), contenu: roles.contenu }));
+  // Un nombre de droits sans son nom s est lu « Personnes » (banc, 2026-11-11) : le modele ne recoit que le role et ses droits.
+  ok(JSON.stringify(((roles.source && roles.source.colonnes) || []).map((c) => c.cle)) === '["role","peut"]' && !/nombre|combien/.test(roles.contenu || ''),
+    'les roles partent sans nombre a interpreter', JSON.stringify(roles.source && roles.source.colonnes));
+  // Un mot reste entier dans une case de tableau (le texte de la reponse coupe n importe ou).
+  const cssAssistant = lire('assets/pinlane-assistant.css');
+  ok(/\.ast-table th \{[^}]*overflow-wrap: break-word;/.test(cssAssistant) && /\.ast-table td \{[^}]*overflow-wrap: break-word;/.test(cssAssistant),
+    'un mot reste entier dans une case de tableau');
   const rolesAilleurs = await outils.executer(contexte(GERANT), 'roles_et_droits', { centre: 'gembloux' });
   const rolesMarketeur = await outils.executer(contexte(MARKETEUR), 'roles_et_droits', {});
   ok(rolesAilleurs.erreur === true && rolesMarketeur.erreur === true && lues.length === 1, 'les roles restent fermes a un autre centre et a un role sans le droit equipe', JSON.stringify([rolesAilleurs.contenu, rolesMarketeur.contenu]));

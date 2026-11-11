@@ -155,8 +155,10 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 
 /* Les tableaux n ont pas de filets : les lignes alternent sur un aplat. */
 .ast-table { margin: 14px 0; border: 0; border-radius: 0; }
-.ast-table th { padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--muted); background: none; border: 0; }
-.ast-table td { padding: 7px 10px; border: 0; }
+/* Un mot reste entier dans une case : le « anywhere » du texte de la reponse laissait le tableau serrer une
+   colonne a une lettre (« Directi on », 2026-11-11). break-word coupe encore une tres longue adresse. */
+.ast-table th { padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--muted); background: none; border: 0; overflow-wrap: break-word; }
+.ast-table td { padding: 7px 10px; border: 0; overflow-wrap: break-word; }
 .ast-table tbody tr:nth-child(odd) td { background: var(--voile-1); }
 .ast-table tbody tr.est-ouvrable:hover td { background: var(--voile-2); }
 .ast-graph { margin: 16px 0; padding: 0; border: 0; border-radius: 0; }

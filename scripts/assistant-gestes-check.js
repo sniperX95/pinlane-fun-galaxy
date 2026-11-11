@@ -138,8 +138,10 @@ async function verifier() {
 
   console.log('\n[D. CE QUE LE CENTRE A APPRIS AILLEURS]');
   const api = lire('api/assistant.js');
-  ok(/centreOuvert && centreOuvert !== 'all' \? await require\('\.\.\/lib\/email-agent'\)\.getFaitsAppris\(centreOuvert\)/.test(api) && /id: 900000 \+ Number\(f\.id \|\| 0\)/.test(api),
-    'les faits appris aux mails et aux demandes arrivent a l assistant, pour le centre ouvert seulement, sans croiser ses numeros');
+  // Une simple lecture, dans le centre ouvert : getFaitsAppris cree la table et importe un fichier, et
+  // l assistant n ecrit jamais (test:assistant, section O, l a vu sur GitHub le 2026-11-11).
+  ok(/requeteBase\('select id, question, reponse from agent_facts where center_id = \$1 and oublie_le is null/.test(api) && /\[centreOuvert\]\)/.test(api) && !/getFaitsAppris/.test(api) && /id: 900000 \+ Number\(f\.id \|\| 0\)/.test(api),
+    'les faits appris aux mails et aux demandes arrivent a l assistant, lus sans ecrire, pour le centre ouvert seulement');
 }
 
 (async () => {

@@ -31,6 +31,7 @@ const MUTATIONS = [
     { fichier: GESTES, de: "typeof brut === 'boolean' || (typeof brut === 'string' && !/^-?\\d+(\\.\\d+)?$/.test(brut))) throw erreur(", vers: 'false) throw erreur(' },
     { fichier: GESTES, de: '  const v = Number(brut);', vers: "  const v = Number(String(brut).replace(/[^\\d.-]/g, ''));" },
   ] },
+  { nom: 'autre-adresse-sans-session', rouge: '[S] un geste vers une autre adresse part avec la meme session, a son gestionnaire', editions: [{ fichier: OPS, de: "      sousRequete.headers = { ...req.headers, 'content-type': 'application/json' };", vers: "      sousRequete.headers = { 'content-type': 'application/json' };" }] },
   { nom: 'corps-de-la-carte', rouge: '[S] le prix part avec le corps refait par le serveur', editions: [{ fichier: OPS, de: '    await handlePost(req, res, withCenter({ ...refait.corps, action: refait.action }, centre), options);', vers: '    await handlePost(req, res, withCenter({ ...(body.params || {}), action: refait.action }, centre), options);' }] },
 ];
 
@@ -70,11 +71,17 @@ function remplacer(relatif, surcharge) {
   return reel;
 }
 
-async function appeler(handler, corps) {
+async function lireCorps(req) {
+  const morceaux = [];
+  for await (const c of req) morceaux.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(morceaux).toString('utf8');
+}
+
+async function appeler(handler, corps, entetes = {}) {
   const req = Readable.from([Buffer.from(JSON.stringify(corps))]);
   req.method = 'POST';
   req.url = '/api/ops';
-  req.headers = { host: 'localhost', 'content-type': 'application/json' };
+  req.headers = { host: 'localhost', 'content-type': 'application/json', ...entetes };
   const res = {
     statusCode: 200, entetes: {}, corps: '', headersSent: false, writableEnded: false,
     setHeader(k, v) { this.entetes[k.toLowerCase()] = v; },
@@ -242,6 +249,19 @@ async function verifier(editions = []) {
     const brouillon = await cliquer('campagne_brouillon', { nom: 'Halloween', segment: 'all', objet: 'Frissons', texte: 'Bonjour {{prenom}}, venez frissonner.' });
     const ecritCamp = journal.ecrit.find((e) => e[0] === 'createCampaignRow');
     ok(brouillon.statut === 200 && ecritCamp && ecritCamp[1].status === 'draft' && ecritCamp[1].segment === 'all', '[S] un brouillon de campagne s ecrit sans rien envoyer', `${brouillon.statut} ${JSON.stringify(ecritCamp)}`);
+    // Une autre adresse du logiciel (ici une reservation) : la meme requete que la page, avec les memes
+    // en-tetes de session, a son propre gestionnaire, qui revoit lui-meme les droits.
+    const Gs = require(path.join(ROOT, GESTES));
+    const cheminSR = require.resolve(path.join(ROOT, 'api/staff-reservations.js'));
+    const avantSR = require.cache[cheminSR];
+    const vus = [];
+    require.cache[cheminSR] = { id: cheminSR, filename: cheminSR, loaded: true, exports: async (req, res) => { const corps = JSON.parse(await lireCorps(req)); vus.push({ methode: req.method, url: req.url, corps, auth: req.headers.authorization }); res.statusCode = 200; res.end(JSON.stringify({ ok: true, reservation: { id: corps.id } })); } };
+    Gs.GESTES.__essai_note = { titre: 'Essai', verbe: 'Faire', cours: '…', quoi: 'essai', parametres: {}, action: 'aucune', endpoint: 'staff-reservations', methode: 'PATCH', permission: null, risque: false, async preparer() { return { corps: { id: 5, noteEquipe: { ajout: 'essai' } }, texte: 'essai', lignes: [] }; } };
+    const autre = await appeler(ops, { action: 'assistantGeste', centerId: 'libramont', geste: '__essai_note', params: {} }, { authorization: 'Bearer jeton-du-poste' });
+    delete Gs.GESTES.__essai_note;
+    if (avantSR) require.cache[cheminSR] = avantSR; else delete require.cache[cheminSR];
+    ok(autre.statut === 200 && vus.length === 1 && vus[0].methode === 'PATCH' && vus[0].url === '/api/staff-reservations' && vus[0].corps.id === 5 && vus[0].corps.centerId === 'libramont' && vus[0].auth === 'Bearer jeton-du-poste',
+      '[S] un geste vers une autre adresse part avec la meme session, a son gestionnaire', JSON.stringify([autre.statut, vus]).slice(0, 300));
     journal.ecrit.length = 0;
     const faux = await cliquer('prix_formule', { formule: 'Anniversaire', prix: 'beaucoup' });
     const horsRegistre = await cliquer('regenerer_code', {});

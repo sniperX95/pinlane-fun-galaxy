@@ -2839,6 +2839,21 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const G = require('../lib/assistant-gestes');
     const geste = String(body.geste || '');
     const refait = await G.refaire(geste, body.params, G.contexte({ centre, session: options.session }));
+    if (refait.endpoint && refait.endpoint !== 'ops') {
+      // Une autre adresse du logiciel (une reservation, une note, une piste) : la meme requete que la
+      // page enverrait, avec les memes en-tetes de session, a son propre gestionnaire, qui revoit lui-
+      // meme les droits et ecrit son journal.
+      const AUTRES = { 'staff-reservations': () => require('./staff-reservations'), 'staff-customer-notes': () => require('./staff-customer-notes'), 'staff-lanes': () => require('./staff-lanes') };
+      const ouvrir = Object.prototype.hasOwnProperty.call(AUTRES, refait.endpoint) ? AUTRES[refait.endpoint] : null;
+      if (!ouvrir || !['POST', 'PATCH', 'DELETE'].includes(refait.methode)) throw createHttpError('Geste invalide.', 400, true);
+      noterAudit(options, { changes: { assistant: { geste, adresse: refait.endpoint, methode: refait.methode } } });
+      const sousRequete = require('stream').Readable.from([Buffer.from(JSON.stringify(withCenter(refait.corps, centre)))]);
+      sousRequete.method = refait.methode;
+      sousRequete.url = `/api/${refait.endpoint}`;
+      sousRequete.headers = { ...req.headers, 'content-type': 'application/json' };
+      await ouvrir()(sousRequete, res);
+      return;
+    }
     if (refait.action === 'assistantGeste' || refait.action === 'assistantReservation') throw createHttpError('Geste invalide.', 400, true);
     if (!sessionHasPermission(options.session, getRequiredOpsPermission('POST', refait.action))) throw createHttpError('Votre rôle ne permet pas ce geste dans le logiciel.', 403, true);
     noterAudit(options, { changes: { assistant: { geste, action: refait.action } } });

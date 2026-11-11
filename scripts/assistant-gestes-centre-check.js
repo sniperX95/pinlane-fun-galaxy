@@ -40,6 +40,8 @@ const MUTATIONS = [
   { nom: 'renommer-ouvre-le-centre', rouge: '[S] renommer garde le statut et le fuseau du centre', editions: [{ fichier: CENTRE, de: '          corps: { center: { id: r.id, name: nom, status: r.statut, timezone: r.fuseau } },', vers: '          corps: { center: { id: r.id, name: nom } },' }] },
   { nom: 'secours-sans-les-mots', rouge: '[G] une adresse de secours ne nait que des mots de la personne', editions: [{ fichier: CENTRE, de: "          if (dits.length && !dits.some((t) => t.includes(a))) throw erreur('Cette adresse doit être écrite par la personne elle-même dans son message.', 403);", vers: '' }] },
   { nom: 'supplements-un-seul', rouge: '[S] la boite de secours, les supplements et les suggestions repartent entiers, seul le change bouge', editions: [{ fichier: CENTRE, de: '          corps: { surMesure: suite },', vers: '          corps: { surMesure: { ...suite, articles: [a] } },' }] },
+  { nom: 'prix-par-la-page-sans-tarifs', rouge: '[S] sans le droit Tarifs, la page Etablissement s enregistre mais aucun prix n y change (403)', editions: [{ fichier: 'lib/center-config.js', de: '  if (!prixPermis && prixDeLaConfig(precedent) !== prixDeLaConfig(normalized)) {', vers: '  if (false) {' }] },
+  { nom: 'page-sans-le-droit-de-la-session', rouge: '[S] sans le droit Tarifs, la page Etablissement s enregistre mais aucun prix n y change (403)', editions: [{ fichier: OPS, de: ", { prixPermis: sessionHasPermission(session, 'pricing.manage') });", vers: ');' }] },
   { nom: 'manager-agit', rouge: '[S] un Manager (role non verrouille) ne fait aucun geste du centre (403)', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
 ];
 
@@ -106,6 +108,8 @@ const memes = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ── Le centre du banc ──
 const DIRECTION = { centerId: 'libramont', authorizedCenterId: 'libramont', member: { id: 'm-dir', name: 'Seb' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: [] };
+// Le role Technique du logiciel : les reglages du centre, pas les tarifs (lib/staff-auth.js).
+const TECHNIQUE = { centerId: 'libramont', authorizedCenterId: 'libramont', member: { id: 'm-tec', name: 'Théo' }, role: { id: 'technique', name: 'Technique', locked: false }, permissions: ['settings.manage', 'planning.view', 'reservations.view'] };
 const MANAGER = { centerId: 'libramont', authorizedCenterId: 'libramont', member: { id: 'm-man', name: 'Marius' }, role: { id: 'manager', name: 'Manager', locked: false }, permissions: ['pricing.manage', 'settings.manage', 'reservations.create', 'emails.send', 'emails.view', 'campaigns.manage'] };
 const REGLAGES_SEULS = { ...MANAGER, permissions: ['settings.manage'] };
 const AUJOURDHUI = '2026-11-11';
@@ -437,7 +441,7 @@ async function verifier(editions = []) {
     Object.assign(b2, banc(CC2));
     remplacer('lib/center-config.js', {
       loadCenterRecords: async () => [{ id: 'libramont', name: b2.nom, status: b2.statut, timezone: 'Europe/Brussels', config: b2.brut }],
-      saveCenterConfigOverride: async (pool, centre, patch) => { journal.ecrit.push(['saveCenterConfigOverride', { centre, patch }]); return CC2.saveCenterConfigOverride(pool, centre, patch); },
+      saveCenterConfigOverride: async (pool, centre, patch, options) => { journal.ecrit.push(['saveCenterConfigOverride', { centre, patch }]); return CC2.saveCenterConfigOverride(pool, centre, patch, options); },
       saveGrillesTarif: async (pool, centre, demande) => { journal.ecrit.push(['saveGrillesTarif', { centre, demande }]); return CC2.saveGrillesTarif(pool, centre, demande); },
     });
     remplacer('lib/availability-blocks.js', {
@@ -516,6 +520,22 @@ async function verifier(editions = []) {
     const managerPrix = await cliquer('modifier_grilles_prix_centre', { grille: 'bowling', case: '1 heure', prix: 45 });
     courante = DIRECTION;
     ok(manager.statut === 403 && managerPrix.statut === 403 && !journal.ecrit.length, '[S] un Manager (role non verrouille) ne fait aucun geste du centre (403)', `${manager.statut} ${managerPrix.statut} ${JSON.stringify(journal.ecrit).slice(0, 200)}`);
+    // La porte de la configuration elle-meme (la page Etablissement, sans l assistant) : un role avec les
+    // reglages sans les tarifs enregistre la fiche telle quelle, mais aucun prix n y change.
+    journal.ecrit.length = 0;
+    courante = TECHNIQUE;
+    const fiche = CC2.normalizeCenterConfig(b2.brut, 'libramont');
+    const telleQuelle = await appeler(ops2, { action: 'saveCenterConfig', centerId: 'libramont', config: { upsellOffers: fiche.upsellOffers, activityOffers: fiche.activityOffers, accueil: { lateThresholdMinutes: 12 } } });
+    const ecritesTelleQuelle = ecrit('configuration').length;
+    const remiseChangee = JSON.parse(JSON.stringify(fiche.upsellOffers));
+    remiseChangee.offers[0].discount = { mode: 'percent', value: 50 };
+    const remiseSansTarifs = await appeler(ops2, { action: 'saveCenterConfig', centerId: 'libramont', config: { upsellOffers: remiseChangee } });
+    const cartesChangees = JSON.parse(JSON.stringify(fiche.activityOffers));
+    cartesChangees.arcade_time.timeOffers[0].price = 1;
+    const carteChangee = await appeler(ops2, { action: 'saveCenterConfig', centerId: 'libramont', config: { activityOffers: cartesChangees } });
+    courante = DIRECTION;
+    ok(telleQuelle.statut === 200 && ecritesTelleQuelle === 1 && remiseSansTarifs.statut === 403 && carteChangee.statut === 403 && /Tarifs/.test(JSON.stringify(remiseSansTarifs.json)) && ecrit('configuration').length === 1,
+      '[S] sans le droit Tarifs, la page Etablissement s enregistre mais aucun prix n y change (403)', `${telleQuelle.statut} ${ecritesTelleQuelle} ${remiseSansTarifs.statut} ${carteChangee.statut} ${JSON.stringify(remiseSansTarifs.json).slice(0, 160)}`);
   } finally {
     restaurer();
     purger();

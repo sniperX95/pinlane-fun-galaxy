@@ -1514,9 +1514,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const pool = getPool();
     let config;
     try {
-      config = await saveCenterConfigOverride(pool, targetCenter, sansOuvertures(sansGrillesTarif(sansCatalogueSurMesure(body.config || {}))));
+      // Un prix que la fiche porte (remise d une suggestion, carte arcades) demande aussi le droit
+      // Tarifs : la sauvegarde refuse seulement ce qui le change (lib/center-config.js prixDeLaConfig).
+      config = await saveCenterConfigOverride(pool, targetCenter, sansOuvertures(sansGrillesTarif(sansCatalogueSurMesure(body.config || {}))), { prixPermis: sessionHasPermission(session, 'pricing.manage') });
     } catch (error) {
-      throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+      throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? (error.statusCode === 403 ? 403 : 400) : 503, error.expose === true);
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, centerId: targetCenter, config });

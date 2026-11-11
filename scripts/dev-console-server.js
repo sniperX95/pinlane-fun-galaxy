@@ -76,7 +76,6 @@ const ilYA = (ms) => new Date(maintenantFixtures() - ms).toISOString();
 const dans = (ms) => new Date(maintenantFixtures() + ms).toISOString();
 const H = 3600 * 1000;
 const J = 24 * H;
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const sujetSansPrefixe = (sujet) => String(sujet || '').replace(/^\s*(?:(?:re|r[ée]|fwd?|tr)\s*:\s*)+/i, '').trim();
 
@@ -180,75 +179,35 @@ function validerDesign(brut) {
   return d;
 }
 
-/* ── RENDU D UN MAIL (fixture) : tables, styles en ligne, 600 px ─────────
-   Miroir volontairement simple d emailShell : le gabarit, l accent, l en-tete,
-   la signature et le pied changent VRAIMENT avec le design, pour que l apercu
-   vivant montre quelque chose de vrai a l ecran. ── */
-function accentEffectif(design) {
-  if (design.accent.mode === 'centre') return CENTRE.branding.accent;
-  if (design.accent.mode === 'perso' && /^#[0-9a-f]{6}$/i.test(design.accent.hex || '')) return design.accent.hex;
-  return '#111111';
-}
-function paragraphes(texte) {
-  return String(texte || '').replace(/\r\n/g, '\n').split(/\n{2,}/).map((bloc) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1a1a1a">${escapeHtml(bloc).replace(/\n/g, '<br>')}</p>`).join('');
-}
-function signatureHtml(design, person) {
-  const s = design.signature;
-  if (!s.enabled) return '';
-  const lignes = [];
-  const qui = person && person.name ? `${escapeHtml(person.name)}${person.role ? `, ${escapeHtml(person.role)}` : ''}` : escapeHtml(s.teamLabel || `L'équipe ${CENTRE.name}`);
-  lignes.push(`<div style="font-weight:600;color:#111">${qui}</div>`);
-  if (!person && s.role) lignes.push(`<div style="color:#555">${escapeHtml(s.role)}</div>`);
-  if (s.phone) lignes.push(`<div><a href="tel:${escapeHtml(s.phone)}" style="color:#111;text-decoration:none">${escapeHtml(s.phone)}</a></div>`);
-  if (s.email) lignes.push(`<div><a href="mailto:${escapeHtml(s.email)}" style="color:#111">${escapeHtml(s.email)}</a></div>`);
-  if (s.website) lignes.push(`<div><a href="${escapeHtml(s.website)}" style="color:#111">${escapeHtml(s.website.replace(/^https?:\/\//, ''))}</a></div>`);
-  if (s.address) lignes.push(`<div style="color:#555">${escapeHtml(s.address)}</div>`);
-  const reseaux = Object.entries(s.socials || {}).filter(([, v]) => v).map(([k, v]) => `<a href="${escapeHtml(v)}" style="color:#111">${k.charAt(0).toUpperCase() + k.slice(1)}</a>`);
-  if (reseaux.length) lignes.push(`<div style="margin-top:4px">${reseaux.join(' · ')}</div>`);
-  const texte = `<div style="font-size:13px;line-height:1.6">${s.closing ? `<div style="margin-bottom:6px;color:#333">${escapeHtml(s.closing)}</div>` : ''}${lignes.join('')}</div>`;
-  const logo = s.logoUrl ? `<img src="${escapeHtml(s.logoUrl)}" width="${Number(s.logoWidth) || 120}" alt="${escapeHtml(CENTRE.name)}" style="display:block;max-width:100%;height:auto">` : '';
-  if (s.layout === 'ligne' || !logo) {
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;border-top:1px solid #e6e6e6"><tr><td style="padding-top:14px">${logo ? `<div style="margin-bottom:8px">${logo}</div>` : ''}${texte}</td></tr></table>`;
+/* ── RENDU D UN MAIL : le VRAI emailShell (lib/ops-communications.js) ──────
+   2026-11-12 : ce serveur ne dessine plus ses mails lui-meme (son miroir
+   signait deux fois). Le design des fixtures (designParDefaut,
+   fusionnerDesign) passe au rendu de production avec la fiche du centre au
+   catalogue : l apercu local montre ce qui part vraiment, gabarit, budget
+   d un mail automatique, signature et regle de la fin deja ecrite comprises.
+   Les adresses (logos, photos, liens) suivent l origine servie, le temps du
+   rendu. Le commentaire « FIXTURE dev-console-server » reste en tete : les
+   gates d UI y reconnaissent un HTML rendu par ce serveur. ── */
+const commsReel = require('../lib/ops-communications');
+const { UNSUBSCRIBE_SENTENCE, UNSUBSCRIBE_LABEL } = require('../lib/marketing-suppression');
+// `portee` : 'manual' (composeur, reponse), 'sequences' (automatismes, budget
+// de 2 liens et 1 image), 'campaigns'. `retrait` pose la ligne de retrait,
+// inerte, comme l Apercu de production.
+function rendreMail({ design, subject, body, person = null, signature = true, retrait = false, portee = 'manual' }) {
+  const origineAvant = process.env.PUBLIC_APP_ORIGIN;
+  process.env.PUBLIC_APP_ORIGIN = ORIGINE_APP;
+  try {
+    const html = commsReel.emailShell({
+      title: subject, body, preheader: subject, center: CATALOGUE_CENTRE,
+      design: fusionnerDesign(design),
+      signature: { enabled: Boolean(signature), person: person && person.name ? { name: person.name, role: person.role || '' } : null, portee },
+      unsubscribeLine: retrait ? { text: UNSUBSCRIBE_SENTENCE, url: `${ORIGINE_APP}/api/u?k=apercu`, label: UNSUBSCRIBE_LABEL } : '',
+    });
+    return html.replace('<head>', '<head>\n    <!-- FIXTURE dev-console-server : rendu par emailShell (lib/ops-communications.js) -->');
+  } finally {
+    if (origineAvant === undefined) delete process.env.PUBLIC_APP_ORIGIN;
+    else process.env.PUBLIC_APP_ORIGIN = origineAvant;
   }
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;border-top:1px solid #e6e6e6"><tr><td width="${(Number(s.logoWidth) || 120) + 16}" valign="top" style="padding:14px 16px 0 0">${logo}</td><td valign="top" style="padding-top:14px">${texte}</td></tr></table>`;
-}
-function rendreMail({ design, subject, body, person = null, signature = true, retrait = false }) {
-  const d = fusionnerDesign(design);
-  const accent = accentEffectif(d);
-  const logoClair = d.header.logoUrl || logoAbsolu(CENTRE.branding.emailLogo);
-  const logoSombre = logoAbsolu(CENTRE.branding.emailLogoDark) || logoClair;
-  const largeur = Number(d.header.logoWidth) || 140;
-  const nom = escapeHtml(CENTRE.name);
-  const enTete = (sombre) => {
-    const logo = sombre ? logoSombre : logoClair;
-    const couleur = sombre ? '#ffffff' : accent;
-    if (d.header.mode === 'aucun') return '';
-    if (d.header.mode === 'logo' && logo) return `<img src="${escapeHtml(logo)}" width="${largeur}" alt="${nom}" style="display:block;height:auto">`;
-    if (d.header.mode === 'logo-nom' && logo) return `<img src="${escapeHtml(logo)}" width="${largeur}" alt="" style="display:block;height:auto;margin-bottom:8px"><div style="font-size:14px;font-weight:600;color:${couleur}">${nom}</div>`;
-    return `<div style="font-size:18px;font-weight:700;letter-spacing:.01em;color:${couleur}">${nom}</div>`;
-  };
-  const pied = [];
-  if (d.footer.adresse && CENTRE.publicInfo.address) pied.push(escapeHtml(CENTRE.publicInfo.address));
-  if (d.footer.telephone && CENTRE.publicInfo.phone) pied.push(escapeHtml(CENTRE.publicInfo.phone));
-  if (d.footer.email && CENTRE.publicInfo.email) pied.push(escapeHtml(CENTRE.publicInfo.email));
-  const piedHtml = `<div style="font-size:12px;line-height:1.6;color:#777">${pied.join(' · ')}${d.footer.mention ? `<div style="margin-top:6px">${escapeHtml(d.footer.mention)}</div>` : ''}${retrait ? '<div style="margin-top:6px"><span style="color:#777;text-decoration:underline">Ne plus recevoir ces messages</span></div>' : ''}</div>`;
-  const corps = `<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:700;color:${d.preset === 'epure' ? '#111' : accent}">${escapeHtml(subject)}</h1>${paragraphes(body)}${signature ? signatureHtml(d, person) : ''}`;
-  const fond = d.preset === 'epure' ? '#ffffff' : '#f2f2f2';
-  let carte;
-  if (d.preset === 'epure') {
-    carte = `<td style="padding:36px 40px;background:#ffffff"><div style="padding-bottom:16px;margin-bottom:22px;border-bottom:1px solid #e3e3e3">${enTete(false)}</div>${corps}<div style="margin-top:28px">${piedHtml}</div></td>`;
-  } else if (d.preset === 'contraste') {
-    carte = `<td style="background:#ffffff;border:1px solid #e3e3e3;border-radius:12px;overflow:hidden"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="#111111" style="background:#111111;padding:22px 32px">${enTete(true)}</td></tr><tr><td style="padding:28px 32px">${corps}</td></tr><tr><td style="padding:0 32px 24px">${piedHtml}</td></tr></table></td>`;
-  } else {
-    const barre = d.preset === 'carte' ? `<tr><td bgcolor="${accent}" style="background:${accent};height:4px;line-height:4px;font-size:0">&nbsp;</td></tr>` : '';
-    carte = `<td style="background:#ffffff;border:1px solid #e3e3e3;border-radius:12px;overflow:hidden"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${barre}<tr><td style="padding:24px 32px 0">${enTete(false)}</td></tr><tr><td style="padding:22px 32px 8px">${corps}</td></tr><tr><td style="padding:8px 32px 24px">${piedHtml}</td></tr></table></td>`;
-  }
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(subject)}</title></head>
-<body style="margin:0;padding:0;background:${fond};font-family:Helvetica,Arial,sans-serif;color:#1a1a1a"><!-- FIXTURE dev-console-server : rendu de demonstration, pas emailShell -->
-<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(subject)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${fond}" style="background:${fond}"><tr><td align="center" style="padding:${d.preset === 'epure' ? '0' : '28px 12px'}">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%"><tr>${carte}</tr></table>
-</td></tr></table></body></html>`;
 }
 function remplirVariables(texte, vars) {
   return String(texte || '').replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, k) => (vars[k.toLowerCase()] !== undefined ? vars[k.toLowerCase()] : m));
@@ -317,7 +276,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
       ...c, id,
     };
     if (comm.direction === 'outbound' && !comm.body && comm.textBody) {
-      comm.body = rendreMail({ design: designEffectif(), subject: comm.subject, body: comm.textBody, person: comm.payload && comm.payload.sentBy ? { name: comm.payload.sentBy.memberName, role: comm.payload.sentBy.memberRole } : null, signature: !(comm.payload && comm.payload.test) });
+      comm.body = rendreMail({ design: designEffectif(), subject: comm.subject, body: comm.textBody, person: comm.payload && comm.payload.sentBy ? { name: comm.payload.sentBy.memberName, role: comm.payload.sentBy.memberRole } : null, signature: !(comm.payload && comm.payload.test), portee: comm.payload && comm.payload.direct ? 'manual' : 'sequences' });
     }
     if (comm.direction === 'outbound') { comm.payload = { textBody: comm.textBody || '', ...comm.payload }; }
     delete comm.textBody;
@@ -659,26 +618,26 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
         const def = AUTOMATION_DEFAULTS[body.key] || { subject: 'Aperçu', body: '' };
         const reglage = etat.settings[body.key] || {};
         const subject = remplirVariables(body.subject || reglage.subject || def.subject, CLIENT_EXEMPLE);
-        return { subject, html: rendreMail({ design: designEffectif(), subject, body: remplirVariables(body.body || reglage.body || def.body, CLIENT_EXEMPLE), signature: designEffectif().signatureScope.sequences }), textBody: remplirVariables(body.body || reglage.body || def.body, CLIENT_EXEMPLE) };
+        return { subject, html: rendreMail({ design: designEffectif(), subject, body: remplirVariables(body.body || reglage.body || def.body, CLIENT_EXEMPLE), signature: designEffectif().signatureScope.sequences, portee: 'sequences' }), textBody: remplirVariables(body.body || reglage.body || def.body, CLIENT_EXEMPLE) };
       }
       case 'customSequencePreview': {
         const s = body.sequence || {};
         const subject = remplirVariables(s.subject || 'Aperçu de la séquence', CLIENT_EXEMPLE);
-        return { subject, html: rendreMail({ design: designEffectif(), subject, body: remplirVariables(s.body || '', CLIENT_EXEMPLE), signature: designEffectif().signatureScope.sequences }) };
+        return { subject, html: rendreMail({ design: designEffectif(), subject, body: remplirVariables(s.body || '', CLIENT_EXEMPLE), signature: designEffectif().signatureScope.sequences, portee: 'sequences', retrait: true }) };
       }
       case 'emailDesignPreview': {
         const design = body.design ? validerDesign(body.design) : designEffectif();
         const sample = ['confirmation', 'reponse', 'campagne'].includes(body.sample) ? body.sample : 'confirmation';
         if (sample === 'confirmation') {
           const subject = remplirVariables(AUTOMATION_DEFAULTS.confirmation.subject, CLIENT_EXEMPLE);
-          return { sample, subject, html: rendreMail({ design, subject, body: remplirVariables(AUTOMATION_DEFAULTS.confirmation.body, CLIENT_EXEMPLE), signature: design.signatureScope.sequences }) };
+          return { sample, subject, html: rendreMail({ design, subject, body: remplirVariables(AUTOMATION_DEFAULTS.confirmation.body, CLIENT_EXEMPLE), signature: design.signatureScope.sequences, portee: 'sequences' }) };
         }
         if (sample === 'reponse') {
           const subject = 'Re: Votre demande pour samedi';
           return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nMerci pour votre message. Oui, il reste de la place samedi : je vous propose 15 h, le temps de vous installer et de lancer tout le groupe ensemble.\nDites-moi si cela vous convient, et je bloque le créneau à votre nom.', person: personne, signature: design.signatureScope.manual }) };
         }
         const subject = 'Une soirée bowling entre amis ?';
-        return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nLes soirées rallongent : c\'est le moment de réserver une piste entre amis ou en famille. Réservez en ligne, on s\'occupe du reste.', signature: design.signatureScope.campaigns, retrait: true }) };
+        return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nLes soirées rallongent : c\'est le moment de réserver une piste entre amis ou en famille. Réservez en ligne, on s\'occupe du reste.', signature: design.signatureScope.campaigns, retrait: true, portee: 'campaigns' }) };
       }
       case 'emailDesign': {
         const design = validerDesign(body.design || {});

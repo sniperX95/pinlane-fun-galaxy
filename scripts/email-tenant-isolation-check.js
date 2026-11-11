@@ -503,8 +503,8 @@ async function envoiDeTest(m, centerId) {
     {
       nom: 'l envoi de test repart sans l identite du centre',
       fichier: 'lib/ops-communications.js',
-      de: '    payload: { textBody: preview.textBody, test: true, sequence: key, ...sender },',
-      vers: '    payload: { textBody: preview.textBody, test: true, sequence: key },',
+      de: '    payload: { textBody: preview.textBody, ...(preview.texteEnvoye ? { texteEnvoye: preview.texteEnvoye } : {}), test: true, sequence: key, ...sender },',
+      vers: '    payload: { textBody: preview.textBody, ...(preview.texteEnvoye ? { texteEnvoye: preview.texteEnvoye } : {}), test: true, sequence: key },',
       rejouer: async (mm) => envoiDeTest(mm, 'libramont'),
       rouge: (l) => !l || l.payload.fromEmail !== 'libramont@fungalaxy.be',
     },

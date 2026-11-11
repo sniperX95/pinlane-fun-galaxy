@@ -27,6 +27,11 @@
 //       formule au milieu du corps ne compte pas. Meme regle pour la version
 //       texte et sur chaque chemin : composeur, reponse Reçus, sequence,
 //       campagne, Apercu.
+//   [I] la version texte envoyee (2026-11-12) : sendEmail envoie le texte
+//       puis la signature (texteEnvoye) quand le HTML est signe, la ligne de
+//       retrait restant la derniere ; textBody garde le texte de l auteur ; la
+//       formule n est pas doublee ; les interrupteurs (ligne eteinte,
+//       signature coupee, case decochee, portee) sont suivis.
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -344,6 +349,76 @@ async function controles(m) {
   const apercuApparence = await m.comms.buildDesignPreview({ centerId: 'libramont', design: defautsFG, sample: 'reponse', member: KEVIN }, deps);
   ok(apercuApparence.html.includes(FORMULE_FG) && kevin(apercuApparence.html),
     '[H] Apercu de la page Apparence : son exemple ne finit pas par une formule, la signature s y montre entiere');
+
+  // =====================================================================
+  console.log('\n[I] la version texte envoyee porte la signature');
+  // =====================================================================
+  // Le texte de l auteur reste seul dans payload.textBody (fil de Reçus,
+  // apprentissage de l agent) ; payload.texteEnvoye, que sendEmail envoie,
+  // y ajoute la signature, avec les memes interrupteurs et la meme regle.
+  const TEL_FG = '0491/30.16.67';
+  const versionEnvoyee = async (payload) => {
+    const cleAvant = process.env.RESEND_API_KEY;
+    const fetchAvant = global.fetch;
+    process.env.RESEND_API_KEY = 're_gate_signature';
+    let demande = null;
+    global.fetch = async (url, options) => { demande = JSON.parse(options.body); return { ok: true, json: async () => ({ id: 'gate' }) }; };
+    try {
+      await m.comms.__test.sendEmail({ recipient: 'marie@exemple.be', subject: 's', body: '<html></html>', payload });
+    } finally {
+      global.fetch = fetchAvant;
+      if (cleAvant === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = cleAvant;
+    }
+    return demande ? String(demande.text || '') : '';
+  };
+  let tentative = 0;
+  const envoyer = async (extra = {}) => {
+    const lignes = [];
+    tentative += 1;
+    await m.comms.sendDirectEmail({ centerId: 'libramont', to: 'marie@exemple.be', subject: 'Votre question', body: corpsBienAVous, attemptId: `gate-signature-texte-${tentative}`, member: KEVIN, ...extra },
+      { query: requete, enqueue: async (row) => { lignes.push(row); return { id: 0 }; } });
+    return lignes[0] || { payload: {} };
+  };
+  const manuelTexte = await envoyer();
+  const envoiManuel = await versionEnvoyee(manuelTexte.payload);
+  ok(envoiManuel === manuelTexte.payload.texteEnvoye && envoiManuel.startsWith(corpsBienAVous) && envoiManuel.includes('Kevin Dupont') && envoiManuel.includes(TEL_FG) && envoiManuel.includes('libramont@fungalaxy.be'),
+    '[I] envoi manuel : sendEmail envoie le texte puis la signature (Kevin, telephone, adresse mail)');
+  ok(manuelTexte.payload.textBody === corpsBienAVous,
+    '[I] le texte de l auteur reste seul dans textBody (le fil de Reçus et l apprentissage de l agent le relisent tel quel)');
+  ok(envoiManuel.split('Bien à vous,').length === 2 && !envoiManuel.includes(defautsFG.signature.closing),
+    '[I] « Bien à vous, » en fin de texte : la version texte n ajoute pas de seconde formule');
+  const reservationTexte = [];
+  const dansJours = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  await m.comms.enqueueReservationCommunications(
+    { id: 501, centerId: 'libramont', name: 'Client Resa', email: 'resa@exemple.be', phone: '+32470999000', date: dansJours(5), startTime: '14:00', formuleId: 'bowling', pax: 6, validationStatus: 'confirmed' },
+    { enqueue: async (row) => { reservationTexte.push(row); return { id: reservationTexte.length }; }, deps },
+  );
+  const confirmationTexte = reservationTexte.find((row) => row.channel === 'email' && row.payload && row.payload.texteEnvoye) || { payload: {} };
+  const envoiConfirmation = String(confirmationTexte.payload.texteEnvoye || '');
+  ok(envoiConfirmation.startsWith(String(confirmationTexte.payload.textBody || '-')) && envoiConfirmation.includes('Réservation n° 501')
+    && envoiConfirmation.indexOf('Réservation n° 501') < envoiConfirmation.indexOf(defautsFG.signature.closing)
+    && envoiConfirmation.includes('L\'équipe Fun Galaxy Libramont') && envoiConfirmation.includes(TEL_FG),
+    '[I] sequence (confirmation enfilee) : le texte, son numero de reservation, puis la signature');
+  const anniversaireTexte = String(anniversaire.texteEnvoye || '');
+  ok(anniversaireTexte.split('Bien à vous,').length === 2 && anniversaireTexte.split('L\'équipe Fun Galaxy Libramont').length === 2 && !anniversaireTexte.includes(defautsFG.signature.closing) && anniversaireTexte.includes(TEL_FG),
+    '[I] sequence anniversaire : une formule, une equipe, les coordonnees');
+  const campagneTexte = String((campagnes[0] && campagnes[0].payload && campagnes[0].payload.texteEnvoye) || '');
+  const ligneRetrait = String((campagnes[0] && campagnes[0].payload && campagnes[0].payload.textBody) || '').split('\n\n').pop();
+  ok(/\/api\/u\?k=[0-9a-f]{32}/.test(ligneRetrait) && campagneTexte.endsWith(ligneRetrait) && campagneTexte.indexOf(TEL_FG) > 0 && campagneTexte.indexOf(TEL_FG) < campagneTexte.indexOf(ligneRetrait),
+    '[I] campagne : la signature avant la ligne de retrait, qui reste la derniere');
+  REGLAGES.set('libramont', { email_design: m.design.validateEmailDesign({ ...defautsFG, signature: { ...defautsFG.signature, afficher: { ...defautsFG.signature.afficher, telephone: false } } }, LIBRAMONT) });
+  const sansTelephone = await envoyer();
+  REGLAGES.set('libramont', { email_design: m.design.validateEmailDesign({ ...defautsFG, signature: { ...defautsFG.signature, enabled: false } }, LIBRAMONT) });
+  const signatureCoupee = await envoyer();
+  REGLAGES.set('libramont', { email_design: m.design.validateEmailDesign({ ...defautsFG, signatureScope: { manual: true, sequences: false, campaigns: false } }, LIBRAMONT) });
+  const sequenceSansSignature = await m.comms.buildAutomationPreview('libramont', 'birthday_j30', {}, deps);
+  REGLAGES.clear();
+  const caseDecochee = await envoyer({ signature: false });
+  ok(String(sansTelephone.payload.texteEnvoye || '').includes('libramont@fungalaxy.be') && !String(sansTelephone.payload.texteEnvoye || '').includes(TEL_FG),
+    '[I] interrupteurs : la ligne du telephone eteinte ne s ecrit pas dans la version texte');
+  ok(!('texteEnvoye' in signatureCoupee.payload) && (await versionEnvoyee(signatureCoupee.payload)) === corpsBienAVous
+    && !('texteEnvoye' in caseDecochee.payload) && !('texteEnvoye' in sequenceSansSignature),
+    '[I] interrupteurs : signature coupee, case decochee ou portee eteinte, la version texte est le texte seul');
 }
 
 (async () => {
@@ -390,6 +465,21 @@ async function controles(m) {
       fichier: 'lib/ops-communications.js', de: '  const deja = finDejaEcrite(corps, { center, design, person });\n  const lignes = [];', vers: "  const deja = finDejaEcrite('', { center, design, person });\n  const lignes = [];" },
     { nom: 'le mail ne passe pas son corps a la signature', cible: '[H] reponse Reçus (sendDirectEmail, en reponse a un message recu) : une seule formule, celle du brouillon',
       fichier: 'lib/ops-communications.js', de: 'largeur: largeurDuCorps(preset), corps });', vers: "largeur: largeurDuCorps(preset), corps: '' });" },
+    // La version texte envoyee (2026-11-12).
+    { nom: 'sendEmail ignore la version signee', cible: '[I] envoi manuel : sendEmail envoie le texte puis la signature (Kevin, telephone, adresse mail)',
+      fichier: 'lib/ops-communications.js', de: '        ? { text: String(communication.payload.texteEnvoye || communication.payload.textBody) }', vers: '        ? { text: String(communication.payload.textBody) }' },
+    { nom: 'version texte signee sans le corps', cible: '[I] « Bien à vous, » en fin de texte : la version texte n ajoute pas de seconde formule',
+      fichier: 'lib/ops-communications.js', de: '  const bloc = renderSignatureText({ design: gabarit, center, person: signature.person || null, corps });', vers: "  const bloc = renderSignatureText({ design: gabarit, center, person: signature.person || null, corps: '' });" },
+    { nom: 'le numero de reservation perdu en texte', cible: '[I] sequence (confirmation enfilee) : le texte, son numero de reservation, puis la signature',
+      fichier: 'lib/ops-communications.js', de: "texte: Array.isArray(message.details) ? texteAvecNumero(message.body, reservation) : message.body, corps: message.body,", vers: 'texte: message.body, corps: message.body,' },
+    { nom: 'retrait avant la signature', cible: '[I] campagne : la signature avant la ligne de retrait, qui reste la derniere',
+      fichier: 'lib/ops-communications.js', de: "[String(texte || '').replace(/\\s+$/, ''), bloc, retrait]", vers: "[String(texte || '').replace(/\\s+$/, ''), retrait, bloc]" },
+    { nom: 'telephone eteint ecrit en texte', cible: '[I] interrupteurs : la ligne du telephone eteinte ne s ecrit pas dans la version texte',
+      fichier: 'lib/ops-communications.js', de: "  const phone = afficher.telephone !== false ? String(sig.phone || '').trim() : '';\n  if (phone) lignes.push(phone);", vers: "  const phone = String(sig.phone || '').trim();\n  if (phone) lignes.push(phone);" },
+    { nom: 'version signee malgre l interrupteur', cible: '[I] interrupteurs : signature coupee, case decochee ou portee eteinte, la version texte est le texte seul',
+      fichier: 'lib/ops-communications.js', de: '  if (!signatureAllumee(gabarit, signature)) return { textBody };', vers: '  if (!gabarit) return { textBody };' },
+    { nom: 'le texte de l auteur remplace', cible: '[I] le texte de l auteur reste seul dans textBody (le fil de Reçus et l apprentissage de l agent le relisent tel quel)',
+      fichier: 'lib/ops-communications.js', de: '  return { textBody, texteEnvoye };', vers: '  return { textBody: texteEnvoye, texteEnvoye };' },
   ];
   const survivantes = [];
   for (const c of CAS) {

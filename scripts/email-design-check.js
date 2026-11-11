@@ -450,8 +450,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'l interrupteur maitre de la signature est ignore',
       fichier: 'lib/ops-communications.js',
-      de: '  const avecSignature = Boolean(gabarit && signature && signature.enabled && gabarit.signature && gabarit.signature.enabled !== false);',
-      vers: '  const avecSignature = Boolean(gabarit && signature && signature.enabled);',
+      // L interrupteur vit dans signatureAllumee, partage par le HTML et la version texte.
+      de: '  return Boolean(gabarit && signature && signature.enabled && gabarit.signature && gabarit.signature.enabled !== false);',
+      vers: '  return Boolean(gabarit && signature && signature.enabled);',
       rejouer: async (mm) => rendu(mm, { design: maitre, portee: 'manual' }),
       rouge: (html) => sig(html),
     },

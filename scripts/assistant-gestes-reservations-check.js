@@ -37,6 +37,16 @@ const MUTATIONS = [
   { nom: 'manager-agit', rouge: '[S] un Manager ne fait aucun geste de ce lot (403), rien ne s ecrit', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
   // Vu par la revue du lot 2 le 2026-11-12 : « permet » ouvrait « met », « beaucoup » ouvrait « coup ».
   { nom: 'demande-en-milieu-de-mot', rouge: '[G] une phrase de lecture n ouvre aucun geste risque du lot, la demande de chacun l ouvre', editions: [{ fichier: LOT, de: 'const mots = (...racines) => new RegExp(`(?<!\\\\p{L})(?:', vers: 'const mots = (...racines) => new RegExp(`(?:' }] },
+  // La relance et le SMS (2026-11-12) : la cle nait sur la carte, le serveur n envoie qu une fois.
+  { nom: 'cle-de-relance-refaite', rouge: '[G] la cle d une relance posee sur la carte repart a chaque clic', editions: [{ fichier: LOT, de: "const tentativeDe = (p) => (/^assistant-[0-9a-f-]{36}$/.test(String(p.tentative || ''))", vers: 'const tentativeDe = (p) => (false' }] },
+  { nom: 'relance-adresse-changee', rouge: '[G] une adresse changee entre la carte et le clic arrete la relance', editions: [{ fichier: LOT, de: "        if (vue !== to) throw erreur('L’adresse du client a changé depuis la carte : redemandez la relance", vers: "        if (false) throw erreur('L’adresse du client a changé depuis la carte : redemandez la relance" }] },
+  { nom: 'relance-sans-variable', rouge: '[G] une relance montre son destinataire et son texte entier, et dit un client retire des mails marketing', editions: [{ fichier: LOT, de: "        if (/\\{\\{|\\}\\}/.test(`${objet}\\n${texte}`)) throw erreur('Écrivez la relance", vers: "        if (false) throw erreur('Écrivez la relance" }] },
+  { nom: 'sms-sans-compte', rouge: '[G] un SMS se refuse tant que le centre n a pas de compte SMS', editions: [{ fichier: LOT, de: '        if (!canal || !canal.available) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'sms-trop-long', rouge: '[G] un SMS montre le numero et le texte entier, dans la longueur du canal', editions: [{ fichier: LOT, de: '        if (texte.length > max) throw erreur(`Un SMS fait', vers: '        if (false) throw erreur(`Un SMS fait' }] },
+  { nom: 'tentative-reecrite', rouge: '[I] une relance a la meme cle ne repart pas, meme apres un echec, et la meme cle sur un autre texte se refuse', editions: [{ fichier: 'lib/database.js', de: "const empreinteDeTentative = payload.directEmail ? 'directFingerprint' : (payload.attemptFingerprint ? 'attemptFingerprint' : '');", vers: "const empreinteDeTentative = payload.directEmail ? 'directFingerprint' : '';" }] },
+  { nom: 'relance-sans-cle', rouge: '[I] une relance a la meme cle ne repart pas, meme apres un echec, et la meme cle sur un autre texte se refuse', editions: [{ fichier: 'lib/ops-communications.js', de: '    ...(tentative ? { idempotencyKey: `relance:${centerId}:${tentative}` } : {}),', vers: '' }] },
+  { nom: 'message-sans-cle', rouge: '[I] un message de la fiche a la meme cle ne repart pas, sans cle il part comme avant', editions: [{ fichier: 'lib/ops-communications.js', de: '    ...(tentative ? { idempotencyKey: `client:${resolvedCenterId}:${tentative}` } : {}),', vers: '' }] },
+  { nom: 'cle-ignoree-par-le-serveur', rouge: '[S] deux clics sur une relance partent par l action du logiciel avec la meme cle, au client du dossier', editions: [{ fichier: OPS, de: "        // Facultative : la carte de l assistant la fige, un clic rejoue ne relance pas deux fois.\n        attemptId: body.attemptId || '',", vers: '' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -135,6 +145,7 @@ function banc() {
       resa({ id: 105, date: demain, name: 'Demande en ligne', validationStatus: 'staff_review', email: 'web@exemple.be' }),
       resa({ id: 106, date: J, name: 'Groupe Retardé', startTime: '18:10', opsPlan: { delayFlag: { minutes: 10, from: '18:00', to: '18:10', origin: { startTime: '18:00', opsPlan: {}, lanes: [2] }, cleared: false } } }),
       resa({ id: 107, date: J, name: 'Groupe A', lanes: [1] }),
+      resa({ id: 109, date: hier, name: 'Paul Parti', email: 'parti@exemple.be', status: 'paid' }),
       resa({ id: 201, centerId: 'gembloux', date: demain, name: 'Ailleurs', email: 'ailleurs@exemple.be' }),
     ],
     demandes: [
@@ -228,6 +239,7 @@ async function verifier(editions = []) {
       reserver_la_demande: 'Camille a dit oui, réserve', ecrire_ou_repondre_mail: 'Écris à Léa pour lui confirmer sa piste', reinscrire_adresse_mails: 'Il m’a redemandé au téléphone, réinscris-le', apparence_des_mails: 'Change la signature et le gabarit des mails',
       reponse_type_agent: 'Change la réponse type sur les prix', expediteur_mails: 'Mets l’adresse anniversaires par défaut', supprimer_expediteur_mails: 'Supprime l’adresse anniversaires', piste_en_maintenance: 'La piste 3 est en panne, mets-la en maintenance',
       decaler_pour_retard: 'Le groupe A a 15 minutes de retard', retirer_retard: 'Annule le retard, remets-les à 18 h',
+      relancer_client: 'Relance Léa, elle ne vient plus', sms_client: 'Envoie-lui un SMS pour dire que la piste est prête',
     };
     const risques = LOT_NOMS.filter((n) => G.GESTES[n].risque);
     const ouvertes = risques.flatMap((n) => LECTURES.filter((t) => G.GESTES[n].demande.test(t)).map((t) => `${n} : ${t}`));
@@ -344,6 +356,50 @@ async function verifier(editions = []) {
     const adresseChangee = await clic('ecrire_ou_repondre_mail', mail.p ? mail.p.action.params : {});
     b.reservations[0].email = 'lea@exemple.be';
     ok(adresseChangee.e && adresseChangee.e.statusCode === 409 && /adresse du client a changé/.test(adresseChangee.e.message), '[G] une adresse changee entre la carte et le clic arrete l envoi', vu(adresseChangee));
+
+    // La relance de la page Clients et le SMS de la fiche : la cle de la tentative nait sur la carte.
+    const RELANCE = 'Bonjour Léa,\n\nCela fait un moment ! Une piste vous attend cette semaine.\n\nÀ bientôt';
+    const relance = await carte('relancer_client', { reservation: 101, motif: 'dormant', objet: 'Une piste vous attend', texte: RELANCE }, ['Relance Léa, elle ne vient plus']);
+    const relanceSansMots = await carte('relancer_client', { reservation: 101, objet: 'x', texte: 'x' }, ['Combien de clients dormants ?']);
+    const relanceVariable = await carte('relancer_client', { reservation: 101, objet: 'Bonjour', texte: 'Bonjour {{prenom}}' }, ['Relance-la']);
+    const relanceRetire = await carte('relancer_client', { reservation: 109, objet: 'Revenez', texte: 'Bonjour Paul' }, ['Relance Paul']);
+    ok(relance.p && relance.p.risque === true && relance.p.vue.danger === true && ligne(relance, 'À').valeur === 'Léa Martin <lea@exemple.be>' && ligne(relance, 'Texte').long === RELANCE && ligne(relance, 'Motif').valeur === 'Client dormant' && /lea@exemple\.be reçoit cette relance/.test(relance.p.resume.clients)
+      && relanceSansMots.e && relanceSansMots.e.statusCode === 403 && relanceVariable.e && /sans variable/.test(relanceVariable.e.message) && relanceRetire.p && /retiré des mails marketing/.test(relanceRetire.p.resume.alerte || ''),
+      '[G] une relance montre son destinataire et son texte entier, et dit un client retire des mails marketing', JSON.stringify([vu(relance), relanceSansMots.e && relanceSansMots.e.message, vu(relanceRetire)]));
+    const cleRelance = relance.p ? relance.p.action.params.tentative : '';
+    const clicRelance = await clic('relancer_client', relance.p ? relance.p.action.params : {});
+    const clicRelance2 = await clic('relancer_client', relance.p ? relance.p.action.params : {});
+    ok(/^assistant-[0-9a-f-]{36}$/.test(cleRelance) && clicRelance.r && clicRelance.r.action === 'sendClientRelance' && clicRelance.r.corps.attemptId === cleRelance && clicRelance2.r && clicRelance2.r.corps.attemptId === cleRelance && clicRelance.r.corps.email === 'lea@exemple.be' && clicRelance.r.corps.reason === 'dormant' && clicRelance.r.corps.body === RELANCE,
+      '[G] la cle d une relance posee sur la carte repart a chaque clic', JSON.stringify([cleRelance, vu(clicRelance)]));
+    b.reservations[0].email = 'autre@exemple.be';
+    const relanceAdresse = await clic('relancer_client', relance.p ? relance.p.action.params : {});
+    b.reservations[0].email = 'lea@exemple.be';
+    ok(relanceAdresse.e && relanceAdresse.e.statusCode === 409 && /redemandez la relance/.test(relanceAdresse.e.message), '[G] une adresse changee entre la carte et le clic arrete la relance', vu(relanceAdresse));
+    const SMS = 'Bonjour Léa, votre piste est prête pour demain à 18 h. À demain !';
+    const TWILIO = { TWILIO_ACCOUNT_SID: 'banc', TWILIO_AUTH_TOKEN: 'banc', TWILIO_FROM: '+3200000000' };
+    const twilioAvant = Object.fromEntries(Object.keys(TWILIO).map((k) => [k, process.env[k]]));
+    Object.keys(TWILIO).forEach((k) => { delete process.env[k]; });
+    const smsSansCompte = await carte('sms_client', { reservation: 101, texte: SMS }, ['Envoie-lui un SMS']);
+    ok(smsSansCompte.e && smsSansCompte.e.statusCode === 409 && /pas encore activé/.test(smsSansCompte.e.message), '[G] un SMS se refuse tant que le centre n a pas de compte SMS', vu(smsSansCompte));
+    Object.assign(process.env, TWILIO);
+    try {
+      const sms = await carte('sms_client', { reservation: 101, texte: SMS }, ['Envoie-lui un SMS pour dire que la piste est prête']);
+      const smsLong = await carte('sms_client', { reservation: 101, texte: 'x'.repeat(481) }, ['Envoie-lui un SMS']);
+      const smsSansMots = await carte('sms_client', { reservation: 101, texte: SMS }, ['Combien de SMS ce mois-ci ?']);
+      b.reservations[0].phone = '';
+      const smsSansNumero = await carte('sms_client', { reservation: 101, texte: SMS }, ['Envoie-lui un SMS']);
+      b.reservations[0].phone = '+32 470 11 22 33';
+      ok(sms.p && sms.p.risque === true && sms.p.vue.danger === true && ligne(sms, 'À').valeur === 'Léa Martin, +32470112233' && ligne(sms, 'SMS').long === SMS && /\+32470112233 reçoit ce SMS/.test(sms.p.resume.clients)
+        && smsLong.e && /480 caractères au plus/.test(smsLong.e.message) && smsSansMots.e && smsSansMots.e.statusCode === 403 && smsSansNumero.e && /pas de numéro/.test(smsSansNumero.e.message),
+        '[G] un SMS montre le numero et le texte entier, dans la longueur du canal', JSON.stringify([vu(sms), smsLong.e && smsLong.e.message, smsSansNumero.e && smsSansNumero.e.message]));
+      const clicSms = await clic('sms_client', sms.p ? sms.p.action.params : {});
+      const clicSms2 = await clic('sms_client', sms.p ? sms.p.action.params : {});
+      const cleSms = sms.p ? sms.p.action.params.tentative : '';
+      ok(/^assistant-[0-9a-f-]{36}$/.test(cleSms) && clicSms.r && clicSms.r.action === 'clientMessageSend' && JSON.stringify(clicSms.r.corps) === JSON.stringify({ reservationId: 101, channel: 'sms', templateId: 'custom', subject: '', body: SMS, attemptId: cleSms }) && clicSms2.r && clicSms2.r.corps.attemptId === cleSms,
+        '[G] la cle d un SMS posee sur la carte repart a chaque clic', JSON.stringify([cleSms, vu(clicSms)]));
+    } finally {
+      Object.entries(twilioAvant).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+    }
     const terminer = await carte('terminer_rouvrir_conversation', { conversation: 41, statut: 'terminée' }, []);
     const dejaOuverte = await carte('terminer_rouvrir_conversation', { conversation: 41, statut: 'ouverte' }, []);
     ok(terminer.p && terminer.p.risque === false && ligne(terminer, 'État').apres === 'terminée' && JSON.stringify((await clic('terminer_rouvrir_conversation', { conversation: 41, statut: 'terminee' })).r.corps) === JSON.stringify({ threadId: 41, status: 'closed' }) && dejaOuverte.e && /déjà ouverte/.test(dejaOuverte.e.message),
@@ -436,7 +492,11 @@ async function verifier(editions = []) {
       listEmailIdentities: async () => b2.expediteurs,
       readStaffState: async () => ({ reservations: b2.pistes.reservations, laneStatuses: b2.pistes.statuts, laneMaintenance: b2.pistes.maintenance }),
     });
-    remplacer('lib/ops-communications.js', { sendDirectEmail: async (x) => { journal.ecrit.push(['sendDirectEmail', x]); return { communication: { id: 5000, status: 'queued' }, attemptId: x.attemptId }; } });
+    remplacer('lib/ops-communications.js', {
+      sendDirectEmail: async (x) => { journal.ecrit.push(['sendDirectEmail', x]); return { communication: { id: 5000, status: 'queued' }, attemptId: x.attemptId }; },
+      sendClientRelance: async (x) => { journal.ecrit.push(['sendClientRelance', x]); return { communication: { id: 5001, status: 'queued' } }; },
+      sendClientMessage: async (x) => { journal.ecrit.push(['sendClientMessage', x]); return { communication: { id: 5002, status: 'queued', channel: x.channel }, dispatched: null }; },
+    });
     remplacer('lib/marketing-suppression.js', { listSuppressions: async () => ({ entries: b2.suppressions }), suppressEmail: async (x) => { journal.ecrit.push(['suppressEmail', x]); return { suppressed: true }; }, removeSuppression: async (x) => { journal.ecrit.push(['removeSuppression', x]); return { removed: true }; } });
     remplacer('lib/demande-bureau-centre.js', {
       reserverLaDemande: async (item, deps, o) => {
@@ -473,6 +533,23 @@ async function verifier(editions = []) {
       const envois = journal.ecrit.filter((e) => e[0] === 'sendDirectEmail').map((e) => e[1]);
       ok(m1.statut === 200 && m2.statut === 200 && envois.length === 2 && envois.every((x) => x.attemptId === carteMail.action.params.tentative && x.to === 'lea@exemple.be' && x.centerId === 'libramont' && x.body === 'Bonjour Léa, à demain.' && x.identityId === 7),
         '[S] deux clics sur la carte d un mail portent la meme cle de tentative, au destinataire du dossier', JSON.stringify([m1.statut, m2.statut, envois]).slice(0, 300));
+      const carteRelance = await Gs.proposer('relancer_client', { reservation: 101, objet: 'Une piste vous attend', texte: 'Bonjour Léa, revenez nous voir.' }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Relance Léa'] }));
+      const rl1 = await cliquer('relancer_client', carteRelance.action.params);
+      const rl2 = await cliquer('relancer_client', carteRelance.action.params);
+      const relances = journal.ecrit.filter((e) => e[0] === 'sendClientRelance').map((e) => e[1]);
+      ok(rl1.statut === 200 && rl2.statut === 200 && relances.length === 2 && relances.every((x) => x.attemptId === carteRelance.action.params.tentative && x.email === 'lea@exemple.be' && x.centerId === 'libramont' && x.body === 'Bonjour Léa, revenez nous voir.' && x.reason === 'custom' && x.staffMember === 'Seb'),
+        '[S] deux clics sur une relance partent par l action du logiciel avec la meme cle, au client du dossier', JSON.stringify([rl1.statut, rl2.statut, relances]).slice(0, 300));
+      const twilioAvantS = { TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN, TWILIO_FROM: process.env.TWILIO_FROM };
+      Object.assign(process.env, { TWILIO_ACCOUNT_SID: 'banc', TWILIO_AUTH_TOKEN: 'banc', TWILIO_FROM: '+3200000000' });
+      try {
+        const carteSms = await Gs.proposer('sms_client', { reservation: 101, texte: 'Votre piste est prête.' }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Envoie-lui un SMS'] }));
+        const s1 = await cliquer('sms_client', carteSms.action.params);
+        const smsEnvoyes = journal.ecrit.filter((e) => e[0] === 'sendClientMessage').map((e) => e[1]);
+        ok(s1.statut === 200 && smsEnvoyes.length === 1 && smsEnvoyes[0].channel === 'sms' && smsEnvoyes[0].attemptId === carteSms.action.params.tentative && smsEnvoyes[0].reservation.id === 101 && smsEnvoyes[0].body === 'Votre piste est prête.' && smsEnvoyes[0].centerId === 'libramont',
+          '[S] un SMS part par l action du logiciel, sur le canal sms, avec la cle de la carte', JSON.stringify([s1.statut, s1.json, smsEnvoyes]).slice(0, 300));
+      } finally {
+        Object.entries(twilioAvantS).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+      }
       const carteDemande = await Gs.proposer('reserver_la_demande', { demande: 31 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Elle a dit oui, réserve'] }));
       const resa = await cliquer('reserver_la_demande', carteDemande.action.params);
       const creations = journal.ecrit.filter((e) => e[0] === 'reserverLaDemande' && e[1].simuler === false);
@@ -500,11 +577,84 @@ async function verifier(editions = []) {
       retourFiche();
       retourPistes();
     }
+
+    // ── I. UNE TENTATIVE NE PART QU UNE FOIS : la vraie lib, une base synthetique (pg double) ──
+    if (!editions.length) console.log('\n[I] la relance et le message de la fiche : une cle, un seul envoi');
+    await verifierTentatives(ok);
   } finally {
     restaurer();
     purger();
   }
   return echecs;
+}
+
+// La table communications, telle que l insertion la traite : la cle unique, « do nothing » ou
+// « do update », et la relecture de la ligne existante. Rien d autre ne repond.
+async function verifierTentatives(ok) {
+  purger();
+  const lignes = [];
+  class FauxPool {
+    on() { return this; }
+    async connect() { return { query: this.query.bind(this), release() {} }; }
+    async query(texte, p = []) {
+      const q = String(texte).trim();
+      const rend = (rows) => ({ rows: JSON.parse(JSON.stringify(rows)), rowCount: rows.length });
+      if (q.includes('insert into communications')) {
+        const deja = p[11] ? lignes.find((l) => l.idempotency_key === p[11]) : null;
+        if (deja) {
+          if (q.includes('do nothing')) return rend([]);
+          if (!['sent', 'delivered'].includes(deja.status)) Object.assign(deja, { recipient: p[5], subject: p[6], body: p[7], status: p[8], payload: JSON.parse(p[10]) });
+          return rend([deja]);
+        }
+        const ligne = { id: lignes.length + 1, center_id: p[0], reservation_id: p[1], channel: p[2], direction: p[3], template_id: p[4], recipient: p[5], subject: p[6], body: p[7], status: p[8], scheduled_at: p[9], payload: JSON.parse(p[10]), idempotency_key: p[11], attempts: 0, max_attempts: 3, created_at: new Date().toISOString() };
+        lignes.push(ligne);
+        return rend([ligne]);
+      }
+      if (q.startsWith('select * from communications where idempotency_key')) return rend(lignes.filter((l) => l.idempotency_key === p[0]));
+      return rend([]);
+    }
+  }
+  const chargeur = Module._load;
+  Module._load = function charger(demande, parent, principal) { return demande === 'pg' ? { Pool: FauxPool } : chargeur.call(this, demande, parent, principal); };
+  const ENV = { DATABASE_URL: 'postgres://banc:banc@localhost:1/aucune', TWILIO_ACCOUNT_SID: 'banc', TWILIO_AUTH_TOKEN: 'banc', TWILIO_FROM: '+3200000000', RESEND_API_KEY: undefined };
+  const avant = Object.fromEntries(Object.keys(ENV).map((k) => [k, process.env[k]]));
+  Object.entries(ENV).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+  const fetchAvant = global.fetch;
+  global.fetch = async () => { throw new Error('reseau interdit au banc'); };
+  try {
+    const OC = require(path.join(ROOT, 'lib/ops-communications.js'));
+    const relance = (x = {}) => OC.sendClientRelance({ centerId: 'libramont', email: 'lea@exemple.be', name: 'Léa Martin', phone: '+32 470 11 22 33', reason: 'dormant', subject: 'Une piste vous attend', body: 'Bonjour Léa, revenez nous voir.', staffMember: 'Seb', member: { id: 'm-dir', name: 'Seb' }, ...x }).then((r) => ({ r }), (e) => ({ e }));
+    const cle = 'assistant-0b8a1d6e-2f43-4c1a-9d1e-5a7b3c9e1f20';
+    const r1 = await relance({ attemptId: cle });
+    const premiere = lignes[0] || {};
+    premiere.status = 'failed';
+    const r2 = await relance({ attemptId: cle });
+    const autreTexte = await relance({ attemptId: cle, body: 'Un autre texte.' });
+    ok(r1.r && r2.r && lignes.length === 1 && premiere.idempotency_key === `relance:libramont:${cle}` && premiere.payload.attemptId === cle && /^[0-9a-f]{64}$/.test(premiere.payload.attemptFingerprint || '') && premiere.status === 'failed' && r2.r.communication.id === r1.r.communication.id
+      && autreTexte.e && autreTexte.e.statusCode === 409 && lignes.length === 1,
+      '[I] une relance a la meme cle ne repart pas, meme apres un echec, et la meme cle sur un autre texte se refuse', JSON.stringify([lignes.map((l) => [l.idempotency_key, l.status]), r2.e && r2.e.message, autreTexte.e && autreTexte.e.message]).slice(0, 300));
+    const console1 = await relance();
+    const console2 = await relance();
+    const sansCle = lignes.filter((l) => !l.idempotency_key);
+    const cleIllisible = await relance({ attemptId: 'a b' });
+    ok(console1.r && console2.r && sansCle.length === 2 && cleIllisible.e && cleIllisible.e.statusCode === 400, '[I] sans cle, la relance de la console part comme avant, et une cle illisible se refuse', JSON.stringify([sansCle.length, cleIllisible.e && cleIllisible.e.message]));
+    const dossier = { id: 101, centerId: 'libramont', name: 'Léa Martin', phone: '+32 470 11 22 33', email: 'lea@exemple.be', date: '2026-12-01', startTime: '18:00', pax: 8 };
+    const sms = (x = {}) => OC.sendClientMessage({ centerId: 'libramont', reservation: dossier, templateId: 'custom', channel: 'sms', subject: '', body: 'Votre piste est prête.', staffMember: 'Seb', member: { id: 'm-dir', name: 'Seb' }, ...x }).then((r) => ({ r }), (e) => ({ e }));
+    const cleSms = 'assistant-7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f';
+    const n0 = lignes.length;
+    const s1 = await sms({ attemptId: cleSms });
+    const ligneSms = lignes[n0] || {};
+    ligneSms.status = 'failed';
+    const s2 = await sms({ attemptId: cleSms });
+    const s3 = await sms();
+    ok(s1.r && s2.r && lignes.length === n0 + 2 && ligneSms.idempotency_key === `client:libramont:${cleSms}` && ligneSms.channel === 'sms' && ligneSms.recipient === '+32470112233' && ligneSms.status === 'failed' && s2.r.communication.id === s1.r.communication.id && s3.r && !lignes[n0 + 1].idempotency_key,
+      '[I] un message de la fiche a la meme cle ne repart pas, sans cle il part comme avant', JSON.stringify([lignes.slice(n0).map((l) => [l.idempotency_key, l.channel, l.status]), s1.e && s1.e.message, s2.e && s2.e.message]).slice(0, 300));
+  } finally {
+    Module._load = chargeur;
+    global.fetch = fetchAvant;
+    Object.entries(avant).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+    purger();
+  }
 }
 
 (async () => {

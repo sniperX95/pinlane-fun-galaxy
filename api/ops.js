@@ -2202,9 +2202,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         body: body.body || '',
         staffMember,
         member: membreDeSession(sendSession),
+        // Facultative : la carte de l assistant la fige, un clic rejoue n envoie rien de plus.
+        attemptId: body.attemptId || '',
       });
     } catch (error) {
-      throw createHttpError(safeUserMessage(error, 'Envoi du message impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+      throw createHttpError(safeUserMessage(error, 'Envoi du message impossible pour le moment. Réessayez.'), error.expose ? (error.statusCode === 409 ? 409 : 400) : 503, error.expose === true);
     }
     await createOpsEvent({
       centerId: reservation.centerId || centerId,
@@ -3202,9 +3204,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         body: body.body || '',
         staffMember: relanceSession.member?.name || relanceSession.member?.id || 'staff',
         member: membreDeSession(relanceSession),
+        // Facultative : la carte de l assistant la fige, un clic rejoue ne relance pas deux fois.
+        attemptId: body.attemptId || '',
       });
     } catch (error) {
-      throw createHttpError(safeUserMessage(error, 'Relance impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+      throw createHttpError(safeUserMessage(error, 'Relance impossible pour le moment. Réessayez.'), error.expose ? (error.statusCode === 409 ? 409 : 400) : 503, error.expose === true);
     }
     sendJson(res, 200, {
       ok: true,

@@ -42,10 +42,10 @@ function serveStatic() {
 }
 
 // withSession=false : visiteur public, aucune session staff en localStorage.
-async function installMock(page, { withSession }) {
+async function installMock(page, { withSession, perms: permsVoulus = null }) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-  await page.addInitScript(({ expiresAt, withSession }) => {
-    const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'reservations.view', 'reservations.create', 'reservations.status', 'clients.view', 'settings.manage', 'direction.view', 'users.manage'];
+  await page.addInitScript(({ expiresAt, withSession, permsVoulus }) => {
+    const perms = permsVoulus || ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'reservations.view', 'reservations.create', 'reservations.status', 'clients.view', 'settings.manage', 'direction.view', 'users.manage'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE. La console lit
     // l ETag avant payload.revision et re-rend des qu il change : un etag
@@ -74,7 +74,35 @@ async function installMock(page, { withSession }) {
       return nativeFetch(input, init);
     };
     if (withSession) window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
-  }, { expiresAt, withSession });
+  }, { expiresAt, withSession, permsVoulus });
+}
+
+// « M Y EMMENER » (2026-11-11) : le bouton de l assistant fait ces deux gestes (assets/pinlane-assistant.js,
+// que test:assistant-gestes tient a la lettre) : la rubrique d Etablissement, puis l adresse de la page.
+// Un role qui a tous les droits doit arriver sur chaque chemin de la carte du logiciel.
+async function cheminsDeLaCarte(browser) {
+  const { DESTINATIONS, DROITS_EN_MOTS } = require('../lib/carte-logiciel');
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  const rates = [];
+  try {
+    await installMock(page, { withSession: true, perms: Object.keys(DROITS_EN_MOTS) });
+    await boot(page, `${BASE_URL}/`);
+    await page.evaluate(() => { setView('staff'); });
+    for (const d of DESTINATIONS) {
+      // eslint-disable-next-line no-await-in-loop
+      const vu = await page.evaluate(async ({ cible, rubrique }) => {
+        if (cible === 'establishment' && rubrique && typeof setEstablishmentTab === 'function') setEstablishmentTab(rubrique);
+        location.hash = `#/staff/${cible}`;
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+        await new Promise((r) => setTimeout(r, 250));
+        return { view: state.view, page: state.staffMenuPage, onglet: state.establishmentTab };
+      }, { cible: d.page, rubrique: d.rubrique || '' });
+      if (vu.view !== 'staff' || vu.page !== d.page || (d.rubrique && vu.onglet !== d.rubrique)) rates.push({ id: d.id, ...vu });
+    }
+  } finally {
+    await page.close();
+  }
+  return { nombre: DESTINATIONS.length, rates };
 }
 
 let failures = 0;
@@ -135,6 +163,12 @@ async function main() {
       `deep-link #/staff/campaigns toujours honore (view=${deep.view}, page=${deep.page})`);
 
     // =====================================================================
+    console.log('\n[1 bis] Chaque chemin de la carte du logiciel s ouvre');
+    // =====================================================================
+    const chemins = await cheminsDeLaCarte(browser);
+    ok(chemins.nombre >= 20 && chemins.rates.length === 0, `les ${chemins.nombre} chemins de « M'y emmener » ouvrent leur page et leur rubrique${chemins.rates.length ? ` (rates : ${JSON.stringify(chemins.rates)})` : ''}`);
+
+    // =====================================================================
     console.log('\n[2] /reserver : client pour tous, prison pour personne');
     // =====================================================================
     // Membre du staff : il voit le parcours client MAIS garde ses bascules.
@@ -189,6 +223,17 @@ async function main() {
       ok(mutated.hash === '#/staff/users' && mutated.path !== '/reserver',
         `sync retire : le parcours client reaffiche "${mutated.path}${mutated.hash}" -> le gate ROUGIRAIT`);
     }
+    // Une rubrique qui ne s ouvrirait plus : la carte doit le voir.
+    const ancreRubrique = toFileEol("  state.establishmentTab = EB_ANCIENS_ONGLETS[key] || key || 'centre';");
+    if ((original.split(ancreRubrique).length - 1) !== 1) {
+      ok(false, 'ancre de mutation de la rubrique introuvable ou ambigue');
+    } else {
+      fs.writeFileSync(APP, original.replace(ancreRubrique, toFileEol("  state.establishmentTab = 'centre';")));
+      let casse = { rates: [] };
+      try { casse = await cheminsDeLaCarte(browser); } finally { fs.writeFileSync(APP, original); }
+      ok(casse.rates.length > 0, `rubriques coupees : ${casse.rates.length} chemins rates -> le gate ROUGIRAIT`);
+    }
+    ok(fs.readFileSync(APP, 'utf8') === original, 'app-main.js restaure a l identique');
 
     await staffPage.close();
   } finally {

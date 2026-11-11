@@ -121,6 +121,9 @@ async function verifier() {
   const ailleurs = await outils.executer(contexte(GERANT), 'ou_aller', { destination: 'horaires', centre: 'gembloux' });
   ok(!ailleurs.aller && /n'est pas accessible/.test(lu(ailleurs).erreur || ''), 'un centre que ce compte n ouvre pas reste ferme', ailleurs.contenu);
   ok(/if \(sortie\.aller\) emettre\('aller', sortie\.aller\);/.test(lire('lib/assistant-agent.js')), 'le chemin part a la page, sous la reponse');
+  // test:route-url rejoue ces deux gestes pour chaque chemin de la carte, dans une vraie console.
+  ok(/if \(a\.page === 'establishment' && RUBRIQUES\.includes\(a\.rubrique\) && typeof setEstablishmentTab === 'function'\) setEstablishmentTab\(a\.rubrique\);\n\s*if \(typeof location !== 'undefined'\) location\.hash = `#\/staff\/\$\{a\.page\}`;/.test(page),
+    'le bouton fait les deux gestes que test:route-url rejoue pour chaque chemin');
 
   console.log('\n[C. UN GESTE, AU SEUL CLIC DE LA PERSONNE]');
   const ouvrir = await outils.executer(contexte(GERANT), 'proposer_un_geste', { geste: 'horaires_du_jour', date: '2026-12-05', ouverture: '10:00', fermeture: '23:00', motif: 'groupe de 40' });

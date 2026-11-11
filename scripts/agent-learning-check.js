@@ -467,7 +467,8 @@ async function main() {
     ok(e2.proches.length === 2 && e2.proches[0].resolue && /^Résolue/.test(e2.proches[0].texte) && e2.proches[0].texte.indexOf(Q2.question) > 0
       && !e2.proches[1].resolue && /^Encore ouverte/.test(e2.proches[1].texte) && /anniversaire du soir/.test(e2.proches[1].texte),
       '[E] chaque question relue dit ce que le serveur a dit : resolue, ou encore ouverte avec la question qui reste', JSON.stringify(e2.proches));
-    ok(/Questions proches relues avec ce fait : 1 résolue sur 2/.test(e2.texte), '[E] et le compte de la relecture');
+    // 2026-11-10 : la phrase se lit sans deux-points, le compte reste le meme.
+    ok(/1 question proche résolue avec ce fait, sur 2 relues/.test(e2.texte), '[E] et le compte de la relecture');
     ok(e2.chiffres.join('|') === '1|1|2|+1' && /1 question en attente/.test(e2.compte),
       '[E] le suivi bouge : 1 fait appris, 1 question en attente, 2 resolues', JSON.stringify({ chiffres: e2.chiffres, compte: e2.compte }));
     ok(e2.suivante && e2.suivante.actif && e2.suivante.texte === 'Question suivante', '[E] la relecture finie, « Question suivante »', JSON.stringify(e2.suivante));
@@ -504,7 +505,7 @@ async function main() {
     await page.click('#staffEmailsPage .pv2-savoir-carte .pv2-savoir-apprendre');
     await page.waitForFunction(() => document.querySelector('#staffEmailsPage .pv2-savoir-resultat'), null, { timeout: 5000 });
     const f2 = await lire(page);
-    ok(f2.utiliseNon && /n’a pas repris ce fait dans cette réponse : relisez-la avant de l’envoyer/.test(f2.utilise),
+    ok(f2.utiliseNon && /n’a pas repris ce fait dans cette réponse\. Relisez-la avant de l’envoyer/.test(f2.utilise),
       '[F2] la reponse refaite ne se sert pas du fait : l ecran previent de la relire', f2.utilise);
 
     // =====================================================================
@@ -599,7 +600,9 @@ async function main() {
     await poserEtat(page, { questions: [Q1, Q2], appris: faits.slice(0, 1) });
     await aller(page, 'apercu');
     const j1 = await lire(page);
-    ok(j1.presente && j1.apercu && /Le centre autorise-t-il/.test(j1.texte) && j1.chiffres.length === 4 && !j1.champ,
+    // 2026-11-10 : l apercu garde la jauge, sa phrase et la question du moment ;
+    // les quatre chiffres (faits, en attente, resolues, semaine) ne vivent plus que dans L agent.
+    ok(j1.presente && j1.apercu && /Le centre autorise-t-il/.test(j1.texte) && j1.chiffres.length === 0 && !j1.champ,
       '[J] l apercu montre le suivi et la question du moment, sans case a remplir', j1.texte.slice(0, 90));
     await page.click('#staffEmailsPage .pv2-savoir.is-apercu .pv2-btn');
     await page.waitForTimeout(250);

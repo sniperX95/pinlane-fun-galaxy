@@ -338,6 +338,7 @@
     "test:regles-reservation",
     "test:calendrier-regles",
     "test:email-assist",
+    "test:email-assist-ui",
     "test:reservation-alternatives",
     "test:slot-holds",
     "test:fungalaxy-hold",

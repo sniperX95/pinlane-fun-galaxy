@@ -2923,48 +2923,48 @@ const STAFF_EMAIL_FAILURE_RULES = [
   {
     match: /only send testing emails to your own email address|verify a domain/i,
     label: 'Domaine d\'envoi pas encore vérifié',
-    fix: 'Le compte d\'envoi est en mode test : il n\'accepte que l\'adresse du propriétaire du compte. Tant que le domaine du centre n\'est pas vérifié chez le fournisseur, aucun mail ne peut partir vers un client.'
+    fix: 'Le compte d\'envoi est encore en mode test. Il n\'accepte que l\'adresse du propriétaire du compte. Tant que le domaine du centre n\'est pas vérifié chez le fournisseur, aucun mail ne peut partir vers un client.'
   },
   {
     match: /invalid `?to`? field|invalid recipient|no recipients|destinataire manquant/i,
     label: 'Adresse email du client invalide',
-    fix: 'L\'adresse enregistrée sur la réservation n\'est pas une adresse valide (faute de frappe, champ vide). Corrigez-la sur la fiche client, puis renvoyez.'
+    fix: 'L\'adresse enregistrée sur la réservation n\'est pas valide, à cause d\'une faute de frappe ou d\'un champ vide. Corrigez-la sur la fiche client, puis renvoyez le mail.'
   },
   {
     match: /rate limit|too many requests|429/i,
     label: 'Trop d\'envois d\'un coup',
-    fix: 'Le fournisseur a bridé le rythme d\'envoi. Les mails repartent d\'eux-mêmes un peu plus tard ; vous pouvez aussi renvoyer manuellement.'
+    fix: 'Le fournisseur a bridé le rythme d\'envoi. Les mails repartent d\'eux-mêmes un peu plus tard. Vous pouvez aussi les renvoyer à la main.'
   },
   {
     match: /api[_ ]?key|unauthorized|401|403|forbidden/i,
     label: 'Clé d\'envoi refusée',
-    fix: 'La clé du service d\'envoi est absente, expirée ou révoquée. C\'est un réglage technique : rien ne partira tant qu\'elle n\'est pas remise en place.'
+    fix: 'La clé du service d\'envoi est absente, expirée ou révoquée. C\'est un réglage technique, et rien ne partira tant qu\'elle n\'est pas remise en place.'
   },
   {
     match: /bounce|mailbox (not found|unavailable)|does not exist|550/i,
     label: 'Boîte du client inexistante',
-    fix: 'Le serveur du client a refusé le message : l\'adresse n\'existe plus. Demandez la bonne adresse avant de renvoyer.'
+    fix: 'Le serveur du client a refusé le message, car l\'adresse n\'existe plus. Demandez la bonne adresse avant de renvoyer.'
   },
   {
     match: /timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|network|fetch failed/i,
     label: 'Le service d\'envoi n\'a pas répondu',
-    fix: 'Incident réseau passager côté fournisseur. Un renvoi suffit en général.'
+    fix: 'Le fournisseur a eu un incident réseau passager. Un renvoi suffit en général.'
   },
   {
     match: /configuration|manquant|non configur/i,
     label: 'Canal pas configuré',
-    fix: 'Le canal (email ou SMS) n\'a pas de configuration valide sur ce centre.'
+    fix: 'Le canal d\'envoi, email ou SMS, n\'a pas de configuration valide sur ce centre.'
   }
 ];
 
 function getStaffEmailFailureReason(row = {}) {
   const raw = String(row.lastError || '').trim();
   if (!raw) {
-    return { label: 'Cause inconnue', fix: 'Le fournisseur n\'a pas donné de raison. Renvoyez le message : si l\'échec se répète, la cause sera enregistrée.', raw: '' };
+    return { label: 'Cause inconnue', fix: 'Le fournisseur n\'a pas donné de raison. Renvoyez le message. Si l\'échec se répète, la cause sera enregistrée.', raw: '' };
   }
   const rule = STAFF_EMAIL_FAILURE_RULES.find(entry => entry.match.test(raw));
   if (rule) return { label: rule.label, fix: rule.fix, raw };
-  return { label: 'Échec d\'envoi', fix: 'Message renvoyé par le service d\'envoi, texte d\'origine ci-dessous.', raw };
+  return { label: 'Échec d\'envoi', fix: 'Le service d\'envoi a refusé le message. Son texte d\'origine est ci-dessous.', raw };
 }
 
 // Échecs regroupés par cause, la plus fréquente d'abord. Agrégé côté client sur

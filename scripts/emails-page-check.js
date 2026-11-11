@@ -381,7 +381,9 @@ async function main() {
       `pipeline de la file : Tout, En attente, Envoyés, Remis, Ouverts, Échecs, À valider (obtenu ${load.pipeKeys.join(',')})`);
     ok(/^1 Échec$/.test(load.pipeFailed), `accord du libellé au compteur : « ${load.pipeFailed} » et non « 1 Échecs »`);
     ok(/^1 Envoyé$/.test(load.pipeSent), `accord du libellé au compteur : « ${load.pipeSent} »`);
-    ok(/^Tout\s*\(33\)$/.test(load.pipeAll), `total invariable écrit « Tout (33) » et non « 33 Tout » (obtenu « ${load.pipeAll} »)`);
+    // 2026-11-10 : un seul format pour tous les segments, le libelle puis son compte
+    // (« En attente 7 », « Tout 33 »), comme les badges de la navigation.
+    ok(/^Tout\s*33$/.test(load.pipeAll), `total invariable écrit « Tout 33 », le libellé puis le compte, et non « 33 Tout » (obtenu « ${load.pipeAll} »)`);
     ok(load.pipeQueuedTone === 'amber', `« En attente » est un état d'attente, donc ambre et non bleu (obtenu ${load.pipeQueuedTone || 'aucun'})`);
     ok(load.tableRows === 33, `file d'envoi = 33 lignes, reçus exclus (obtenu ${load.tableRows})`);
     ok(load.newMsgBtn && load.analyzeBtn, 'boutons « Nouveau message » + « Coller un mail reçu » dans la bar');

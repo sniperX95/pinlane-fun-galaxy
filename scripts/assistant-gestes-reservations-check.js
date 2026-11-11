@@ -35,6 +35,8 @@ const MUTATIONS = [
   { nom: 'pas-venu-avant-l-heure', rouge: '[G] pas venu : seulement une fois l heure passee, et c est risque', editions: [{ fichier: LOT, de: '          if (!passee) throw erreur(', vers: '          if (false) throw erreur(' }] },
   { nom: 'encaisse-sans-raison', rouge: '[G] un encaisse different du prix demande sa raison', editions: [{ fichier: LOT, de: '        if (!egal && !raison) throw erreur(', vers: '        if (false) throw erreur(' }] },
   { nom: 'manager-agit', rouge: '[S] un Manager ne fait aucun geste de ce lot (403), rien ne s ecrit', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
+  // Vu par la revue du lot 2 le 2026-11-12 : « permet » ouvrait « met », « beaucoup » ouvrait « coup ».
+  { nom: 'demande-en-milieu-de-mot', rouge: '[G] une phrase de lecture n ouvre aucun geste risque du lot, la demande de chacun l ouvre', editions: [{ fichier: LOT, de: 'const mots = (...racines) => new RegExp(`(?<!\\\\p{L})(?:', vers: 'const mots = (...racines) => new RegExp(`(?:' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -216,6 +218,21 @@ async function verifier(editions = []) {
       return !g || !g.permission || !adresse || plateforme || typeof g.preparer !== 'function' || !g.titre || !g.quoi || (g.risque && !(g.demande instanceof RegExp)) || /role|code|platform|founder|membre|member|acces|team/i.test(`${g.action} ${n}`);
     });
     ok(LOT_NOMS.length >= 20 && fautifs.length === 0, '[G] chaque geste du lot porte le contrat entier, aucun ne touche l equipe ni les codes', JSON.stringify({ n: LOT_NOMS.length, fautifs }));
+
+    // UNE DEMANDE SE LIT EN TETE DE MOT (revue du lot 2, 2026-11-12) : une phrase qui lit ou qui
+    // remercie n ouvre aucun geste risque du lot, et la demande ordinaire de chacun l ouvre toujours.
+    const LECTURES = ['Merci beaucoup !', 'Bonsoir', 'Ça permet de voir quoi ?', 'Je cherche les réservations de vendredi', 'Combien de parties ce week-end ?', 'Donne-moi le nombre de joueurs', 'Résume la campagne de Noël', 'Comment marche le logiciel ?', 'Quelle activité marche le mieux ?', 'Plus de détails sur l’anniversaire de samedi', 'À propos du formulaire en ligne'];
+    const DEMANDES = {
+      statut_reservation: 'Elle a payé en espèces', noter_pas_venu: 'Le groupe d’hier n’est pas venu', encaisser: 'Encaisse 90 euros, un joueur en moins', valider_reservation_en_attente: 'Valide la demande en ligne',
+      retablir_reservation_annulee: 'Rétablis la réservation annulée', modifier_reservation: 'Mets-la à 19 h et passe-les à 10', supprimer_reservation: 'Supprime ce doublon', restaurer_reservation_supprimee: 'Restaure la réservation supprimée de Dupont',
+      reserver_la_demande: 'Camille a dit oui, réserve', ecrire_ou_repondre_mail: 'Écris à Léa pour lui confirmer sa piste', reinscrire_adresse_mails: 'Il m’a redemandé au téléphone, réinscris-le', apparence_des_mails: 'Change la signature et le gabarit des mails',
+      reponse_type_agent: 'Change la réponse type sur les prix', expediteur_mails: 'Mets l’adresse anniversaires par défaut', supprimer_expediteur_mails: 'Supprime l’adresse anniversaires', piste_en_maintenance: 'La piste 3 est en panne, mets-la en maintenance',
+      decaler_pour_retard: 'Le groupe A a 15 minutes de retard', retirer_retard: 'Annule le retard, remets-les à 18 h',
+    };
+    const risques = LOT_NOMS.filter((n) => G.GESTES[n].risque);
+    const ouvertes = risques.flatMap((n) => LECTURES.filter((t) => G.GESTES[n].demande.test(t)).map((t) => `${n} : ${t}`));
+    const fermees = risques.filter((n) => !DEMANDES[n] || !G.GESTES[n].demande.test(DEMANDES[n]));
+    ok(risques.length >= 18 && ouvertes.length === 0 && fermees.length === 0, '[G] une phrase de lecture n ouvre aucun geste risque du lot, la demande de chacun l ouvre', JSON.stringify({ ouvertes, fermees }));
 
     // Statut : Arrive, sans risque ; la version relue au clic part avec l ecriture.
     const arrive = await carte('statut_reservation', { reservation: 101, statut: 'arrive' }, ['Pointe Léa arrivée']);

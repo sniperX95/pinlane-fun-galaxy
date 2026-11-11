@@ -7625,7 +7625,7 @@
           <button type="button" class="pv2-btn ghost" onclick="pv2DesignReset()" ${busy ? 'disabled' : ''}>Rétablir les défauts</button>
         </div>` : '<p class="pv2-note">Votre rôle ne permet pas de modifier l\'apparence des mails. Vous pouvez la consulter.</p>'}
         ${pv2Design.erreurServeur ? `<p class="pv2-design-error" role="alert">${esc(pv2Design.erreurServeur)}</p>` : ''}
-        <p class="pv2-note">${pv2Design.dirty ? 'Modifications non enregistrées.' : d.updatedAt ? `Dernière modification ${esc(formatOpsTimestamp(d.updatedAt))}${d.updatedBy ? ` par ${esc(d.updatedBy)}` : ''}.` : 'Apparence par défaut : rien n\'a encore été enregistré pour ce centre.'}</p>
+        <p class="pv2-note">${pv2Design.dirty ? 'Modifications non enregistrées.' : d.updatedAt ? `Dernière modification ${esc(formatOpsTimestamp(d.updatedAt))}${d.updatedBy ? ` par ${esc(d.updatedBy)}` : ''}.` : 'Apparence par défaut. Rien n\'a encore été enregistré pour ce centre.'}</p>
       </div>
     </div>`;
   }
@@ -8108,12 +8108,12 @@
           <td class="num" data-label="Audience">${audience === null ? '<span class="em-cell-muted">à compter</span>' : audience}</td>
           <td class="num" data-label="Envoyés">${partie ? (Number(c.sent) || 0) : '<span class="em-cell-muted">pas encore</span>'}</td>
           <td class="num" data-label="Ouverts">${!partie ? '<span class="em-cell-muted">pas encore</span>' : ouvertures === false ? '<span class="em-cell-muted" title="Le suivi des ouvertures n’est pas actif.">non suivi</span>' : ouvertsDe(c.id)}</td>
-          <td class="em-camp-actions">
+          <td class="em-camp-gestes"><div class="em-camp-actions">
             ${brouillon ? `<button type="button" class="pv2-btn sm" onclick="pv2CampEditDraft(${c.id})">Modifier</button><button type="button" class="pv2-btn sm primary" onclick="pv2CampSendDraft(${c.id})">Envoyer</button>` : ''}
             ${['scheduled', 'sending'].includes(c.status) && c.queued > 0 ? `<button type="button" class="pv2-btn sm" onclick="pv2CampCancel(${c.id})">Annuler l’envoi</button>` : ''}
             <button type="button" class="pv2-btn sm ghost" onclick="pv2CampExportContent(${c.id})">Exporter le texte</button>
             ${brouillon ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2CampCancel(${c.id})">Supprimer</button>` : ''}
-          </td>
+          </div></td>
         </tr>`;
       }).join('')}</tbody>
     </table>` : `<p class="em-calme">${pv2Camp.loading ? 'Lecture des campagnes…' : 'Aucune campagne pour l’instant. Le ciblage se fait sur votre base clients réelle.'}</p>`;

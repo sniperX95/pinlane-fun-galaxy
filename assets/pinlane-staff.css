@@ -21589,6 +21589,9 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-seqrow.is-editing { background: var(--em-well); }
 #staffEmailsPage .em-shell .em-seqrow-ligne { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 40px; align-items: center; gap: 16px; padding: 10px 12px; }
 #staffEmailsPage .em-shell .em-seqrow-ligne > * { grid-area: auto; }
+/* Le nom et sa phrase heritent des zones nommees de l ancienne carte
+   (title, desc) : sans elles annulees, les deux se posaient l un sur l autre. */
+#staffEmailsPage .em-shell .em-seqrow-nom > * { grid-area: auto; }
 #staffEmailsPage .em-shell .em-seqrow-nom { display: grid; gap: 2px; min-width: 0; }
 #staffEmailsPage .em-shell .em-seqrow-nom strong { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text); }
 #staffEmailsPage .em-shell .em-seqrow .mk-auto-desc { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
@@ -21609,6 +21612,10 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-camp-table th:nth-child(n) { width: auto; }
 #staffEmailsPage .em-shell .em-camp-table td { vertical-align: middle; }
 #staffEmailsPage .em-shell .em-camp-table td[data-col='campagne'] { min-width: 240px; }
+#staffEmailsPage .em-shell .em-camp-table .em-cell-sub { display: block; }
+#staffEmailsPage .em-shell .em-camp-table th.num,
+#staffEmailsPage .em-shell .em-camp-table td.num { text-align: right; }
+#staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { min-width: 220px; }
 #staffEmailsPage .em-shell .em-camp-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 #staffEmailsPage .em-shell .em-camp-editeur { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; gap: 16px; margin: 4px 0 16px; padding: 16px; }
 #staffEmailsPage .em-shell .em-camp-champs { display: grid; gap: 12px; min-width: 0; }
@@ -21619,6 +21626,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 
 /* --- Modeles : la liste a gauche, l editeur a droite --------------------- */
 #staffEmailsPage .em-shell .em-tpl { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); align-items: start; gap: 16px; }
+#staffEmailsPage .em-shell .em-tpl-gauche > .em-block-head { flex-direction: column; align-items: flex-start; }
 #staffEmailsPage .em-shell .em-tpl-gauche { position: sticky; top: 12px; max-height: calc(100vh - 120px); overflow: auto; overscroll-behavior: contain; }
 #staffEmailsPage .em-shell .em-tpl-groupe { margin-top: 14px; }
 #staffEmailsPage .em-shell .em-tpl-rows { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
@@ -21663,13 +21671,13 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-exp-qui { display: grid; gap: 2px; min-width: 0; }
 #staffEmailsPage .em-shell .em-exp-qui strong { font-size: 14px; font-weight: 600; color: var(--text); }
 #staffEmailsPage .em-shell .em-exp-qui span { overflow-wrap: anywhere; font-size: 12.5px; color: var(--muted); }
-#staffEmailsPage .em-shell .em-exp-etat { display: grid; gap: 2px; min-width: 0; }
+#staffEmailsPage .em-shell .em-exp-etat { position: relative; display: grid; gap: 2px; min-width: 0; padding-left: 15px; }
 #staffEmailsPage .em-shell .em-exp-etat p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
-#staffEmailsPage .em-shell .em-exp-etat p:first-child::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--faint); vertical-align: 1px; }
+#staffEmailsPage .em-shell .em-exp-etat p:first-child::before { content: ''; position: absolute; top: 7px; left: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 #staffEmailsPage .em-shell .em-exp-etat.is-ok p:first-child::before { background: var(--success); }
 #staffEmailsPage .em-shell .em-exp-etat.is-attente p:first-child::before { background: var(--warning); }
 #staffEmailsPage .em-shell .em-exp-etat.is-off p:first-child::before { background: var(--danger); }
-#staffEmailsPage .em-shell .em-exp-etat .em-exp-etape { padding-left: 15px; font-size: 12.5px; color: var(--muted); }
+#staffEmailsPage .em-shell .em-exp-etat .em-exp-etape { font-size: 12.5px; color: var(--muted); }
 #staffEmailsPage .em-shell .em-exp-actions { display: flex; align-items: center; gap: 6px; }
 #staffEmailsPage .em-shell .em-exp .pv2-reply-address { margin-top: 10px; padding: 0; border: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-exp-form { margin-top: 10px; padding: 16px; border-radius: var(--em-radius); background: var(--em-well); }
@@ -21682,6 +21690,10 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-savoir .pv2-savoir-chiffres { border: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-savoir .pv2-savoir-chiffres > div { padding: 0; border: 0; border-radius: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-savoir-sait { margin-top: 22px; }
+#staffEmailsPage .em-shell .em-agent > .em-agent-reglages { padding: 0; }
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-carte { border: 0; border-radius: var(--em-radius); }
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-bloc { border-top: 0; }
+#staffEmailsPage .em-shell .em-savoir .pv2-savoir-fait { border: 0; border-radius: var(--em-radius-sm); background: transparent; }
 
 /* --- Exclusions ---------------------------------------------------------- */
 #staffEmailsPage .em-shell .em-exclu-outils { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 12px 0; }
@@ -21728,8 +21740,11 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .em-tpl-row:not(.is-selected):hover,
   #staffEmailsPage .em-shell .em-exclu-row:hover,
   #staffEmailsPage .em-shell .pv2-design-preset.em-choix:not(.is-active):hover { background: var(--em-hover); }
-  #staffEmailsPage .em-shell .em-tpl-row .em-tpl-actions { opacity: 0; transition: opacity 160ms ease-out; }
-  #staffEmailsPage .em-shell .em-tpl-row:is(:hover, :focus-within, .is-selected) .em-tpl-actions { opacity: 1; }
+  /* Les gestes d une ligne passent par-dessus au survol : caches, ils ne
+     prennent plus la largeur du nom. La ligne ouverte les garde a sa place. */
+  #staffEmailsPage .em-shell .em-tpl-row:not(.is-selected) { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-tpl-row:not(.is-selected) .em-tpl-actions { position: absolute; top: 50%; right: 0; padding: 0 6px 0 10px; border-radius: var(--em-radius-sm); background: var(--em-hover); opacity: 0; pointer-events: none; transform: translateY(-50%); transition: opacity 160ms ease-out; }
+  #staffEmailsPage .em-shell .em-tpl-row:not(.is-selected):is(:hover, :focus-within) .em-tpl-actions { opacity: 1; pointer-events: auto; }
   :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-geste:not(:disabled):hover { background: color-mix(in srgb, var(--text) 10%, var(--surface)); }
   :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-objet:hover { background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
 }
@@ -21760,10 +21775,12 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .em-exclu-ajout input { flex: 1 1 100%; width: 100%; max-width: none; }
   #staffEmailsPage .em-shell .em-camp-table thead { display: none; }
   #staffEmailsPage .em-shell .em-camp-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; padding: 10px 4px; }
-  #staffEmailsPage .em-shell .em-camp-table td { display: block; padding: 0; text-align: left; }
+  #staffEmailsPage .em-shell .em-camp-table td,
+  #staffEmailsPage .em-shell .em-camp-table td.num { display: block; padding: 0; text-align: left; }
   #staffEmailsPage .em-shell .em-camp-table td[data-col='campagne'] { grid-column: 1 / -1; min-width: 0; }
   #staffEmailsPage .em-shell .em-camp-table td[data-col='statut'] { grid-column: 1 / -1; }
-  #staffEmailsPage .em-shell .em-camp-table .em-camp-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  #staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { grid-column: 1 / -1; min-width: 0; }
+  #staffEmailsPage .em-shell .em-camp-table .em-camp-actions { justify-content: flex-start; }
   #staffEmailsPage .em-shell .em-camp-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
 }
 

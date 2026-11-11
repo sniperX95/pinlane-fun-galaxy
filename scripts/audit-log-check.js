@@ -370,7 +370,10 @@ function reset() {
     'PP3 : aucun champ porteur de code en clair n entre dans le contexte d audit');
 
   const reservationsApi = readProjectFile('api/staff-reservations.js');
-  ok(/action: 'createReservation'/.test(reservationsApi)
+  // La creation de la fenetre Reserver vit dans lib/reserver-creation.js depuis le 2026-11-11 : la meme
+  // sert a la fenetre et a la reservation d une demande sur mesure. Ses regles se lisent la-bas.
+  const creationReservation = readProjectFile('lib/reserver-creation.js');
+  ok(/action: 'createReservation'/.test(creationReservation) && /require\('\.\.\/lib\/reserver-creation'\)/.test(reservationsApi)
     && /action: 'updateReservation'/.test(reservationsApi)
     && /action: 'deleteReservation'/.test(reservationsApi),
     'PP4 : les trois surfaces du chemin chaud sont tracees');
@@ -387,7 +390,7 @@ function reset() {
     ok(['name', 'phone', 'email', 'notes'].every((k) => clefs.includes(k) && k in instantane),
       'PP4 : nom, telephone, e-mail et notes (texte complet) font partie de l instantane journalise');
   }
-  ok(/auditCreate\.warning/.test(reservationsApi),
+  ok(/auditCreate\.warning/.test(creationReservation),
     'PP4 : l echec de trace remonte dans les warnings de la reponse (T4 volet c)');
 
   ok(/action: 'setReservationActivityProgress'/.test(reservationsApi),

@@ -988,7 +988,8 @@ const CONTRE_PREUVES = [
   { nom: 'chevrons dans le nom de session', groupe: 'groupeNiveaux', attendu: /le nom d une session ne porte pas de balise/, fichier: 'lib/droits-reservation.js', de: ".replace(/[<>]/g, '').trim();", vers: '.trim();' },
   { nom: 'session sans nom ni borne', groupe: 'groupeNiveaux', attendu: /une session sans nom signe/, fichier: 'lib/droits-reservation.js', de: "return (nom || 'Équipe').slice(0, 80);", vers: 'return nom;' },
   // La creation.
-  { nom: 'le refus ne tombe plus a l ecriture', groupe: 'groupePrixCreation', attendu: /niveau non : 51 centimes/, fichier: 'api/staff-reservations.js', de: '  exigerLesDroits(prepare);\n', vers: '' },
+  // La creation vit dans lib/reserver-creation.js depuis le 2026-11-11 (la fenetre Reserver et les demandes sur mesure).
+  { nom: 'le refus ne tombe plus a l ecriture', groupe: 'groupePrixCreation', attendu: /niveau non : 51 centimes/, fichier: 'lib/reserver-creation.js', de: '  exigerLesDroits(prepare);\n', vers: '' },
   { nom: 'plafond en pourcentage retire', groupe: 'groupePrixCreation', attendu: /niveau 20 % : un centime/, fichier: 'lib/droits-reservation.js', de: 'if (ecart * 100 > pourcent * centimes(reference)) {', vers: 'if (false) {' },
   { nom: 'niveau non qui laisse passer', groupe: 'groupePrixCreation', attendu: /niveau non : 51 centimes/, fichier: 'lib/droits-reservation.js', de: "if (niveau === 'non') throw refus('prix_niveau_insuffisant', 'Votre rôle ne permet pas d’ajuster un prix.');", vers: '' },
   { nom: 'reference nulle ouverte au pourcentage', groupe: 'groupePrixCreation', attendu: /reference nulle : un plafond/, fichier: 'lib/droits-reservation.js', de: "if (centimes(reference) <= 0) throw refus('prix_niveau_insuffisant', 'Sans prix de référence, seul le niveau « Sans limite » peut fixer ce prix.');", vers: '' },

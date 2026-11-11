@@ -21844,3 +21844,133 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   :is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-geste, .em-ia-objet) { transition: none; }
   #staffEmailsPage .em-shell .em-tpl-row .em-tpl-actions { transition: none; }
 }
+
+/* ── LOT 1C (2026-11-11) : le balayage final de la page Emails ──────────────
+   Jamais de texte sous 12 px (DESIGN.md 4) : etiquettes, compteurs,
+   pastilles, variables, aides et en-tete du mail passent a 12 px, et les
+   pastilles grandissent d autant. Une variable deja remplie (.pl-var.is-ok)
+   garde la taille du texte qui l entoure. ── */
+#staffEmailsPage .em-shell .em-nav-label,
+#staffEmailsPage .em-shell .em-nav .em-nav-count,
+#staffEmailsPage .em-shell .em-label,
+#staffEmailsPage .em-shell .em-label-n,
+#staffEmailsPage .em-shell .em-tpl-origine,
+#staffEmailsPage .em-shell .em-origin-n,
+#staffEmailsPage .em-shell .em-kv dt,
+#staffEmailsPage .em-shell .em-table .pv2-cell-fail,
+#staffEmailsPage .em-shell .em-msg .pv2-mail-voie,
+#staffEmailsPage .em-shell .em-camp-table td[data-label]::before,
+#staffEmailsPage .em-shell :is(.em-apercu, .em-inbox, .em-sent) .pv2-chip,
+#staffEmailsPage .em-shell .em-row-chips .pv2-chip,
+#staffEmailsPage .pv2-thread-chips .pv2-chip,
+#staffEmailsPage .pv2-chip,
+#staffEmailsPage .pv2-mail-voie,
+#staffEmailsPage .pv2-theme-btn,
+#staffEmailsPage .pv2-savoir-compteur,
+#staffEmailsPage .pv2-savoir-astuce,
+#staffEmailsPage .pv2-savoir-fait small,
+#staffEmailsPage .pv2-pipeline-scope,
+#staffEmailsPage .pv2-seq-pill,
+#staffEmailsPage .mk-auto-edit-hint,
+#staffEmailsPage .em-shell label small,
+#staffEmailsPage .pv2-tool-var,
+#pv2MailOverlay .pv2-tool-var,
+#staffEmailsPage .pl-var:not(.is-ok),
+#pv2MailOverlay .pl-var:not(.is-ok),
+#staffEmailsPage .pl-tok,
+#pv2MailOverlay .pl-tok,
+#staffEmailsPage .pv2-mail-paper-meta,
+#pv2MailOverlay .pv2-mail-paper-meta,
+#staffEmailsPage .em-shell .em-pane-tools .pv2-seg button em { font-size: 12px; }
+#staffEmailsPage .pv2-alert-other { font-size: 12px !important; }
+#staffEmailsPage .em-shell .em-row-chips .pv2-chip,
+#staffEmailsPage .pv2-thread-chips .pv2-chip,
+#staffEmailsPage .pv2-seq-pill,
+#staffEmailsPage .pl-var:not(.is-ok),
+#pv2MailOverlay .pl-var:not(.is-ok),
+#staffEmailsPage .pl-tok,
+#pv2MailOverlay .pl-tok { height: 20px; }
+/* La barre des variables et les libelles du nouveau message suivent la
+   regle 21.2 de la page : pas de capitales decoratives, 12 px. */
+#staffEmailsPage .pv2-varbar-label,
+#pv2MailOverlay .pv2-varbar-label,
+#pv2MailOverlay .pv2-composer-field > span,
+#pv2MailOverlay .pv2-mail-preview-title { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+/* Nouveau message : l expediteur a la place de dire son adresse en entier. */
+@media (min-width: 901px) {
+  #pv2MailOverlay .pv2-composer-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 0.9fr); }
+}
+
+/* Modeles : la ligne ouverte pose ses gestes sous son nom, au lieu de lui
+   prendre sa largeur. Sur un ecran tactile (sans survol), toutes les lignes
+   font de meme. */
+#staffEmailsPage .em-shell .em-tpl-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+#staffEmailsPage .em-shell .em-tpl-actions { padding: 0 6px 8px 4px; }
+/* Le nom et « Pinlane » se suivent comme du texte : un nom qui passe a la
+   ligne garde son origine juste apres lui, pas au bord droit de la ligne. */
+#staffEmailsPage .em-shell .em-tpl-nom { display: block; }
+#staffEmailsPage .em-shell .em-tpl-origine { margin-left: 6px; white-space: nowrap; }
+
+/* Les sous-titres des blocs herites (Ses questions, Ce que l agent ecrit,
+   Exclusions) et ceux des blocs d Apparence prennent la taille des autres
+   sous-titres de la page : 13 px, au lieu de 12. Comme eux, ils ne laissent
+   plus un mot seul sur leur derniere ligne, ni ceux des fenetres du nouveau
+   message et du mail colle. */
+#staffEmailsPage .em-shell .pv2-panel-sub,
+#staffEmailsPage .em-shell .pv2-design-block > h3 + .pv2-design-hint { font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+#pv2MailOverlay .pv2-panel-head .pv2-panel-sub { text-wrap: pretty; }
+
+/* Exclusions : la loupe du champ de recherche, comme dans Recus. */
+#staffEmailsPage .em-shell .em-exclu-recherche .pv2-ico { width: 14px; height: 14px; }
+
+/* Recus sans conversation ouverte : l invitation au milieu du volet. */
+#staffEmailsPage .em-shell .em-pane-conv > .pv2-thread-empty { box-sizing: border-box; min-height: 100%; align-content: center; }
+
+/* Les titres des blocs herites (Ses questions, Ce que l agent ecrit, Tous les
+   mails du centre) a la taille des autres titres de bloc, et le bloc « Tous
+   les mails du centre » avec le meme retrait. */
+#staffEmailsPage .em-shell .pv2-panel-head h2 { font-size: 14px; line-height: 1.35; }
+#staffEmailsPage .em-shell .em-seqs > .pv2-panel.mail-inv > .pv2-panel-head { padding: 16px 18px; }
+#staffEmailsPage .em-shell .em-seqs > .pv2-panel.mail-inv .pv2-panel-sub { font-size: 13px; }
+
+/* L editeur d une sequence Pinlane : ses champs a la taille de ceux des
+   autres editeurs (l objet tenait 56 px de haut). */
+#staffEmailsPage .mk-auto-edit-field .pv2-tokedit { font-size: 13px; }
+#staffEmailsPage .mk-auto-edit-field .pv2-tokedit.is-single { padding: 0 10px; }
+
+/* La barre d aide en mode regles : la note, puis les conseils en liste. */
+#staffEmailsPage .em-ia-regles,
+#pv2MailOverlay .em-ia-regles { gap: 4px; }
+#staffEmailsPage .em-ia-conseils,
+#pv2MailOverlay .em-ia-conseils { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+#staffEmailsPage .em-ia-conseil,
+#pv2MailOverlay .em-ia-conseil { position: relative; padding-left: 14px; font-size: 12.5px; line-height: 1.5; color: var(--text); }
+#staffEmailsPage .em-ia-conseil::before,
+#pv2MailOverlay .em-ia-conseil::before { content: ''; position: absolute; top: 0.62em; left: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+/* Campagne : le titre de l apercu, comme celui des autres apercus. */
+#staffEmailsPage .em-shell .em-camp-apercu-titre { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* L agent : les reponses types en lignes qui s ouvrent une a une. */
+#staffEmailsPage .em-shell .em-brain-types { display: grid; gap: 2px; margin-top: 4px; }
+#staffEmailsPage .em-shell .em-brain-titre { margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+#staffEmailsPage .em-shell .em-brain-type { border-radius: var(--em-radius-sm); }
+#staffEmailsPage .em-shell .em-brain-type[open] { background: var(--em-well); }
+#staffEmailsPage .em-shell .em-brain-type > summary { position: relative; display: grid; gap: 2px; padding: 10px 12px 10px 32px; border-radius: var(--em-radius-sm); cursor: pointer; list-style: none; }
+#staffEmailsPage .em-shell .em-brain-type > summary::-webkit-details-marker { display: none; }
+#staffEmailsPage .em-shell .em-brain-type > summary::before { content: ''; position: absolute; top: 15px; left: 13px; width: 6px; height: 6px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform var(--em-dur) ease; }
+#staffEmailsPage .em-shell .em-brain-type[open] > summary::before { transform: rotate(45deg); }
+#staffEmailsPage .em-shell .em-brain-type > summary:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
+#staffEmailsPage .em-shell .em-brain-nom { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-brain-nom .pv2-seq-pill { margin-left: 0; }
+#staffEmailsPage .em-shell .em-brain-ligne { overflow: hidden; font-size: 12.5px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-brain-type[open] .em-brain-ligne { display: none; }
+#staffEmailsPage .em-shell .em-brain-champ { padding: 0 12px 12px 32px; }
+#staffEmailsPage .em-shell .em-brain-champ textarea { min-height: 150px; }
+#staffEmailsPage .em-shell .em-brain-type > .em-texte-lu { margin: 0; padding: 0 12px 12px 32px; }
+@media (hover: hover) {
+  #staffEmailsPage .em-shell .em-brain-type:not([open]) > summary:hover { background: var(--em-hover); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #staffEmailsPage .em-shell .em-brain-type > summary::before { transition: none; }
+}

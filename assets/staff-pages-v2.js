@@ -3053,7 +3053,7 @@
     return `<article class="mk-auto pv2-seq-card em-seqrow${sequence.enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}"${cascade ? emEntree(`sequences:perso:${sequence.id}`, cascade) : ''}>
       <div class="em-seqrow-ligne">
         <div class="mk-auto-head em-seqrow-nom">
-          <strong>${esc(sequence.name)}<span class="pv2-seq-pill">perso</span></strong>
+          <strong>${esc(sequence.name)}</strong>
           <span class="mk-auto-desc">${esc(emSeqPersoPhrase(sequence))}</span>
         </div>
         <span class="mk-auto-stats">${statsTxt}</span>
@@ -3123,7 +3123,7 @@
       </div>
       <div class="pv2-composer-actions">
         <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
-        ${pv2Seq.editId ? `<button type="button" class="pv2-btn" onclick="pv2SeqPreview('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir en grand</button>
+        ${pv2Seq.editId ? `<button type="button" class="pv2-btn" onclick="pv2SeqPreview('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir le mail en grand</button>
         ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? `<button type="button" class="pv2-btn" onclick="pv2SeqSendTest('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}` : ''}
         <span class="pv2-composer-spacer"></span>
         <button type="button" class="pv2-btn primary" onclick="pv2SeqSave()" ${pv2Seq.busy ? 'disabled' : ''}>${pv2Seq.busy ? 'Enregistrement…' : 'Enregistrer la séquence'}</button>
@@ -3611,6 +3611,43 @@
   /* ── SECTION L AGENT (2026-11-10) : ses questions d abord, chacune avec sa
      case de reponse ; puis ce qu il sait du centre, en lignes a corriger ;
      enfin ce qu il ecrit (signature, consignes, reponse type par sujet). ── */
+  // LES REPONSES TYPES EN LIGNES (2026-11-11) : six grandes cases a la suite
+  // faisaient un formulaire sans fin. Chaque sujet est une ligne (son nom,
+  // puis la premiere phrase de sa reponse) qui s ouvre pour se modifier, une
+  // a la fois. La ligne ouverte survit aux rendus (pv2Settings.brainOuvert).
+  // Les cases fermees restent dans la page : ce qui est tape se garde, et
+  // l enregistrement envoie tout, comme avant.
+  function emBrainPremiere(texte) {
+    const lignes = String(texte || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    return lignes.find((l) => !/^(bonjour|bonsoir|madame|monsieur)\b/i.test(l)) || lignes[0] || '';
+  }
+  function pv2BrainTypesHtml(brain, { lecture = false } = {}) {
+    const ouvert = pv2Settings.brainOuvert || '';
+    return `<div class="pv2-composer-wide em-brain-types">
+      <p class="em-brain-titre">Ses réponses types</p>
+      ${Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => {
+        const brouillon = brain.draft.faq[intent] || '';
+        const origine = (brain.defaults.faq[intent] && brain.defaults.faq[intent].body) || '';
+        const ligne = emBrainPremiere(brouillon || origine) || 'Réponse type d’origine';
+        const corps = lecture
+          ? `<p class="em-texte-lu">${esc(brouillon || origine || 'Aucune')}</p>`
+          : `<div class="pv2-composer-field em-brain-champ"><textarea rows="6" aria-label="Réponse « ${esc(label)} »" data-pl-focus="emails.agent.faq.${esc(intent)}" placeholder="${esc(origine || 'Réponse type…')}" oninput="pv2BrainField('faq', '${escJs(intent)}', this.value); emBrainLigne(this)">${esc(brouillon)}</textarea></div>`;
+        return `<details class="em-brain-type" name="em-brain-types"${ouvert === intent ? ' open' : ''} ontoggle="pv2BrainOuvrir('${escJs(intent)}', this.open)">
+        <summary><span class="em-brain-nom">Réponse « ${esc(label)} »${brain.overrides.faq[intent] ? ' <em class="pv2-seq-pill">modifiée</em>' : ''}</span><span class="em-brain-ligne">${esc(ligne)}</span></summary>
+        ${corps}
+      </details>`;
+      }).join('')}
+    </div>`;
+  }
+  window.pv2BrainOuvrir = function (intent, ouvert) {
+    if (ouvert) pv2Settings.brainOuvert = intent;
+    else if (pv2Settings.brainOuvert === intent) pv2Settings.brainOuvert = '';
+  };
+  window.emBrainLigne = function (champ) {
+    const boite = champ.closest('.em-brain-type');
+    const ligne = boite && boite.querySelector('.em-brain-ligne');
+    if (ligne) ligne.textContent = emBrainPremiere(champ.value || champ.placeholder) || 'Réponse type d’origine';
+  };
   function pv2EmailsSectionAgent() {
     const brain = pv2Settings.brain;
     // emailBrain (ecriture) : settings.manage ou emails.send. Sans lui, les
@@ -3623,8 +3660,9 @@
       : !regler
         ? `<div class="pv2-composer-grid">
         <p class="em-sub pv2-composer-wide">L’agent répond aux mails reçus avec ces textes. Votre rôle les lit, il ne les modifie pas.</p>
-        ${[['Signature', brain.draft.signature || brain.defaults.signature], ['Consignes libres', brain.draft.extra], ...Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => [`Réponse « ${label} »`, brain.draft.faq[intent] || brain.defaults.faq[intent]?.body])]
+        ${[['Signature', brain.draft.signature || brain.defaults.signature], ['Consignes libres', brain.draft.extra]]
           .map(([label, texte]) => `<div class="pv2-composer-field pv2-composer-wide"><span>${esc(label)}</span><p class="em-texte-lu">${esc(texte || 'Aucune')}</p></div>`).join('')}
+        ${pv2BrainTypesHtml(brain, { lecture: true })}
       </div>`
       : `<div class="pv2-composer-grid">
         <label class="pv2-composer-field"><span>Signature</span>
@@ -3633,10 +3671,7 @@
         <label class="pv2-composer-field pv2-composer-wide"><span>Ce que l’agent doit toujours savoir</span>
           <textarea rows="3" data-pl-focus="emails.agent.consignes" placeholder="Ex. Le parking est gratuit derrière le bâtiment. On ne prend pas de réservation le lundi." oninput="pv2BrainField('extra', null, this.value)">${esc(brain.draft.extra)}</textarea>
         </label>
-        ${Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => `
-        <label class="pv2-composer-field pv2-composer-wide"><span>Réponse « ${esc(label)} »${brain.overrides.faq[intent] ? ' <em class="pv2-seq-pill">modifiée</em>' : ''}</span>
-          <textarea rows="4" data-pl-focus="emails.agent.faq.${esc(intent)}" placeholder="${esc(brain.defaults.faq[intent]?.body || 'Réponse type…')}" oninput="pv2BrainField('faq', '${escJs(intent)}', this.value)">${esc(brain.draft.faq[intent] || '')}</textarea>
-        </label>`).join('')}
+        ${pv2BrainTypesHtml(brain)}
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn primary" onclick="pv2BrainSave()" ${pv2Settings.busy ? 'disabled' : ''}>${pv2Settings.busy ? 'Enregistrement…' : 'Enregistrer, l\'agent apprend'}</button>
         </div>
@@ -4380,9 +4415,9 @@
           ${pv2TokeditHtml({ id: 'mkAutoSubject', sink: 'autoSubject', value: d.subject, single: true, plFocus: 'emails.auto.objet', placeholder: def.subject || 'Objet par défaut' })}
         </div>
         <div class="mk-auto-edit-field"><span>Message</span>
+          ${variables}
           ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: def.body || 'Message par défaut' })}
         </div>
-        ${variables}
         ${timingSelect}
         ${capSelect}
         ${reviewField}
@@ -4390,11 +4425,12 @@
       </div>
       ${pv2ApercuVivantHtml('auto', { titre: 'Aperçu avec une réservation d\'exemple', telephone: true })}
       <div class="mk-auto-edit-actions">
-        <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoEdit('${meta.key}')">Annuler</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoPreview('${meta.key}')" ${busy ? 'disabled' : ''}>Voir le mail en grand</button>
         ${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? `<button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}
-        <button type="button" class="pv2-btn sm ghost" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
+        <span class="pv2-composer-spacer"></span>
+        <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
       </div>
     </div>`;
   }
@@ -5812,7 +5848,7 @@
       ? `<div class="em-ia-objets" role="group" aria-label="Objets proposés"><p class="em-ia-titre">${e.objets.length > 1 ? 'Choisissez un objet, il remplace le vôtre.' : 'Cet objet peut remplacer le vôtre.'}</p>${e.objets.map((o, i) => `<button type="button" class="em-ia-objet" data-em-ia-objet="${i}" onclick="emIaChoisirObjet('${cle}', ${i})">${esc(o)}</button>`).join('')}</div>`
       : '';
     const regles = !occupe && e.mode === 'regles' && (e.note || e.conseils.length)
-      ? `<div class="em-ia-regles">${e.note ? `<p class="em-ia-note">${esc(e.note)}</p>` : ''}${e.conseils.map((c) => `<p class="em-ia-conseil">${esc(c)}</p>`).join('')}</div>`
+      ? `<div class="em-ia-regles">${e.note ? `<p class="em-ia-note">${esc(e.note)}</p>` : ''}${e.conseils.length ? `<ul class="em-ia-conseils">${e.conseils.map((c) => `<li class="em-ia-conseil">${esc(c)}</li>`).join('')}</ul>` : ''}</div>`
       : '';
     return `<div class="em-ia" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''}>
       <div class="em-ia-demande">
@@ -6694,7 +6730,7 @@
     pv2Seq.sequences.forEach((sequence) => {
       const stats = pv2SeqStats30j(sequence);
       const sent30 = stats ? Number(stats.sent30d) || 0 : null;
-      const detail = sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`;
+      const detail = sent30 === null ? 'Votre séquence · pas encore de chiffres' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · votre séquence`;
       items.push(ligne(sequence.name, detail, sequence.enabled, `<button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>`));
     });
     return `<ul class="em-seq-list pv2-seq-mini">${items.join('')}</ul>`;
@@ -7325,10 +7361,11 @@
     const origineTxt = origine === 'auto'
       ? `Automatique · ${selected.templateLabel || selected.templateId || 'séquence'}`
       : `${PV2_ORIGINE_LABELS[origine]}${sentBy && sentBy.memberName ? ` · ${sentBy.memberName}` : (payload.staffMember ? ` · ${payload.staffMember}` : '')}`;
-    // Le modele ne se montre que s il a un nom lisible, ou pour un envoi
-    // automatique. Un mail ecrit a la main n en a pas : l identifiant
-    // technique (« direct_reply ») n apprend rien a la gerante.
-    const modele = selected.templateLabel || (origine === 'auto' ? selected.templateId : '') || '';
+    // Le modele ne se montre que pour un envoi automatique (2026-11-11). Un
+    // mail ecrit a la main n en a pas : son identifiant (studio_..., ou
+    // direct_reply sur le banc) ne dit rien a la gerante, et l origine dit
+    // deja qui l a ecrit.
+    const modele = origine === 'auto' ? (selected.templateLabel || selected.templateId || '') : '';
     // « Voir la conversation » : seulement si le client a repondu apres cet
     // envoi. Un fil qui n a que ce mail n apporterait rien de plus.
     const reponse = selected.threadId
@@ -7505,7 +7542,7 @@
         ? `<div class="em-seqrows">${AUTOMATION_META.map((m) => mkAutoCard(m, cascade)).join('')}</div>`
         : `<div class="em-attente" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement des séquences…</strong>'}</div>`;
     const creation = pv2Seq.creating
-      ? `<article class="mk-auto pv2-seq-card em-seqrow is-editing"><div class="em-seqrow-ligne"><div class="mk-auto-head em-seqrow-nom"><strong>Nouvelle séquence<span class="pv2-seq-pill">perso</span></strong><span class="mk-auto-desc">Choisissez quand elle part, à qui, et ce qu’elle dit.</span></div></div>${pv2SeqEditor()}</article>`
+      ? `<article class="mk-auto pv2-seq-card em-seqrow is-editing"><div class="em-seqrow-ligne"><div class="mk-auto-head em-seqrow-nom"><strong>Nouvelle séquence</strong><span class="mk-auto-desc">Choisissez quand elle part, à qui, et ce qu’elle dit.</span></div></div>${pv2SeqEditor()}</article>`
       : '';
     const perso = pv2Seq.sequences.length || creation
       ? `<div class="em-seqrows">${creation}${pv2Seq.sequences.map((s) => pv2SeqCard(s, cascade)).join('')}</div>`
@@ -7685,10 +7722,10 @@
      recherche filtre sur place : un rendu a chaque lettre ferait perdre le
      curseur. ── */
   const EM_EXCLU_ORIGINE = {
-    link: 'S’est retiré avec le lien en bas d’un mail.',
-    staff: 'Ajouté à la main par l’équipe.',
-    complaint: 'A signalé un mail comme indésirable.',
-    form: 'A refusé le marketing en réservant.',
+    link: 'S’est retiré avec le lien en bas d’un mail',
+    staff: 'Ajouté à la main par l’équipe',
+    complaint: 'A signalé un mail comme indésirable',
+    form: 'A refusé le marketing en réservant',
   };
   function pv2EmailsSectionExclusions() {
     // suppressionAdd et suppressionRemove : campaigns.manage ou emails.send (api/ops.js).
@@ -7873,6 +7910,7 @@
       chevrons: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
       chevronUp: '<path d="m18 15-6-6-6 6"/>',
       chevronDown: '<path d="m6 9 6 6 6-6"/>',
+      search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/>',
       inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
       sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
       pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="m15 5 4 4"/>',
@@ -8229,7 +8267,7 @@
           </div>
         </div>
         <div class="em-camp-apercu-col">
-          <p class="em-label">Aperçu avec un client de la liste</p>
+          <p class="em-camp-apercu-titre">Aperçu avec un client de la liste</p>
           <div class="pv2-mail-paper em-camp-apercu" data-em-camp-apercu>${emCampApercuHtml()}</div>
         </div>
       </div>`;

@@ -16,6 +16,9 @@ function check(value, label) { assert(value, label); checks++; console.log('OK '
 // telephone ne les coupe plus. Ce gate asserte les montants, les nombres et
 // les phrases, pas l espace qui les tient ensemble.
 const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
+// Attend que la photo de la fenetre d information porte la bonne source et soit
+// decodee (8 s au plus) ; le check qui suit garde toute son exigence.
+const photoPrete = (page, src) => page.waitForFunction((s) => { const i = document.querySelector('.fg-info-photo'); return Boolean(i && !i.hidden && i.getAttribute('src') === s && i.complete && i.naturalWidth > 0); }, src, { timeout: 8000 }).catch(() => {});
 async function number(page, root, key, value) {
   const input = page.locator(`${root} [data-compteur="${key}"] input`);
   await input.fill(String(value)); await input.press('Tab');
@@ -171,8 +174,14 @@ async function gemblouxInformation(browser,errors) {
     const text=await page.locator('.fg-info-text').textContent().then(sansInsecable);check(text.includes('3 joueurs'),'Gembloux popup uses chosen subgroup');
     if(id==='golf_oclock') {
       check(text.includes('12 trous')&&text.includes('12,50 €'),'Gembloux Golf O’Clock preserves exact centre tariff and holes');
+      // UNE PHOTO SE LIT QUAND ELLE EST LA (2026-11-11). La fenetre s ouvre avant que
+      // sa photo ait fini de charger : lue tout de suite, elle rougissait au hasard sur
+      // les machines de GitHub (trois fois le 11/11, verte en local). On attend son
+      // image decodee (naturalWidth), puis l exigence reste la meme.
+      await photoPrete(page,'/assets/fungalaxy/gembloux-golf-salle-800.webp');
       check(await page.locator('.fg-info-photo').evaluate(img=>img.getAttribute('src')==='/assets/fungalaxy/gembloux-golf-salle-800.webp'&&img.complete&&img.naturalWidth>0),'Gembloux Golf O’Clock uses proven Gembloux activity photo');
     } else {
+      await photoPrete(page,'/assets/fungalaxy/gembloux-arcades-800.webp');
       check(await page.locator('.fg-info-photo').evaluate(img=>!img.hidden&&img.getAttribute('src')==='/assets/fungalaxy/gembloux-arcades-800.webp'&&img.complete&&img.naturalWidth>0),'Gembloux Arcades shows its own Gembloux photo after golf popup');
       check(text.includes('45 €')&&/(?:une|1) carte par personne/i.test(text),'Gembloux Arcades preserves centre price and per-person card rule');
     }

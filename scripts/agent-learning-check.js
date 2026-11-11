@@ -323,7 +323,25 @@ async function ouvrirConsole(browser, perms, viewport = { width: 1400, height: 9
 async function contrastes(page) {
   return page.evaluate(() => {
     const s = document.querySelector('#staffEmailsPage .pv2-savoir');
-    const rgb = (c) => { const m = String(c).match(/[\d.]+/g) || []; return { r: +m[0], g: +m[1], b: +m[2], a: m[3] === undefined ? 1 : +m[3] }; };
+    // UNE COULEUR SE LIT DANS SON FORMAT (2026-11-11). Chrome rend un color-mix()
+    // en « color(srgb 0.96 0.96 0.97) » : ses canaux vont de 0 a 1, et l ancienne
+    // lecture les prenait pour du 0 a 255, donc pour du noir (1,11:1 en clair
+    // alors que le vrai contraste tenait). Un format inconnu ne se devine plus :
+    // il s inscrit dans illisibles et le gate le nomme.
+    const illisibles = [];
+    const alpha = (v) => (v === undefined ? 1 : (String(v).endsWith('%') ? parseFloat(v) / 100 : +v));
+    const rgb = (c) => {
+      const t = String(c).trim();
+      let m = t.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
+      if (m) return { r: +m[1], g: +m[2], b: +m[3], a: alpha(m[4]) };
+      m = t.match(/^color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/);
+      if (m) return { r: +m[1] * 255, g: +m[2] * 255, b: +m[3] * 255, a: alpha(m[4]) };
+      illisibles.push(t);
+      return { r: 0, g: 0, b: 0, a: 1 };
+    };
+    // Contre-preuve embarquee : les trois formats connus se relisent a l identique.
+    const auto = [rgb('rgb(255, 255, 255)'), rgb('rgba(0, 0, 0, 0.5)'), rgb('color(srgb 0.96 0.96 0.97)'), rgb('color(srgb 1 1 1 / 50%)')];
+    const lectureJuste = auto[0].r === 255 && auto[1].a === 0.5 && Math.round(auto[2].r) === 245 && Math.round(auto[2].b) === 247 && auto[3].r === 255 && auto[3].a === 0.5;
     const lum = ({ r, g, b }) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
     const fond = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.a >= 0.99) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
     // L opacite des ancetres attenue le texte comme l alpha de sa couleur.
@@ -347,7 +365,7 @@ async function contrastes(page) {
       mesures += 1;
       if (ratio < pire.ratio) { pire.ratio = Math.round(ratio * 100) / 100; pire.texte = n.textContent.trim().slice(0, 40); }
     }
-    return { mesures, ...pire };
+    return { mesures, ...pire, lectureJuste, illisibles: [...new Set(illisibles)].slice(0, 5) };
   });
 }
 
@@ -634,6 +652,7 @@ async function main() {
       await page.evaluate((t) => { setStaffTheme(t); }, theme);
       await page.waitForTimeout(300);
       const c = await contrastes(page);
+      ok(c.lectureJuste && c.illisibles.length === 0, `[L] ${theme} : chaque couleur de la section se lit dans son format (rgb, color(srgb))`, JSON.stringify({ lectureJuste: c.lectureJuste, illisibles: c.illisibles }));
       ok(c.mesures > 20 && c.ratio >= 4.5, `[L] ${theme} : chaque texte de la section a 4,5:1 sur son fond`, JSON.stringify(c));
     }
     await page.click('#staffEmailsPage .pv2-savoir-carte .pv2-savoir-reponse');

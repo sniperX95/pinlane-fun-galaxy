@@ -293,6 +293,7 @@
     "test:assistant-reservation",
     "test:assistant-tout-faire",
     "test:terrain",
+    "test:assistant-gestes-reservations",
     "test:voix-pro",
     "test:journee-vraie",
     "test:emails-vrai",

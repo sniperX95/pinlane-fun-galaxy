@@ -155,7 +155,9 @@ const barre = (page, cle) => page.evaluate((c) => {
     objets: [...el.querySelectorAll('.em-ia-objet')].map((x) => x.textContent.trim()),
     revenir: Boolean(el.querySelector('.em-ia-revenir')),
     travail: ((el.querySelector('.em-ia-travail') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
-    goutte: Boolean(el.querySelector('.em-ia-travail .pl-thinking canvas')),
+    // 2026-11-11 : le signe de travail est un point bleu qui respire, plus un
+    // rond qui tourne (canevas) : on exige le point et l absence de canevas.
+    goutte: Boolean(el.querySelector('.em-ia-travail .em-ia-point') && !el.querySelector('.em-ia-travail canvas')),
   };
 }, cle);
 async function geste(page, cle, intention) {

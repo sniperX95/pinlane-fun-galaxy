@@ -21610,13 +21610,22 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 /* --- Campagnes ----------------------------------------------------------- */
 #staffEmailsPage .em-shell .em-camp-table { table-layout: auto; }
 #staffEmailsPage .em-shell .em-camp-table th:nth-child(n) { width: auto; }
-#staffEmailsPage .em-shell .em-camp-table td { vertical-align: middle; }
+#staffEmailsPage .em-shell .em-camp-table td { vertical-align: baseline; }
 #staffEmailsPage .em-shell .em-camp-table td[data-col='campagne'] { min-width: 240px; }
 #staffEmailsPage .em-shell .em-camp-table .em-cell-sub { display: block; }
 #staffEmailsPage .em-shell .em-camp-table th.num,
 #staffEmailsPage .em-shell .em-camp-table td.num { text-align: right; }
-#staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { min-width: 220px; }
-#staffEmailsPage .em-shell .em-camp-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+#staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { width: 1%; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-camp-actions { display: flex; flex-wrap: nowrap; align-items: baseline; justify-content: flex-end; gap: 6px; }
+/* « Plus » : un chevron dit que le bouton ouvre une liste. Le menu est un
+   popover natif, pose par emPlusPlacer ; ses regles d affichage ne visent
+   que l etat ouvert, sinon elles battraient le display: none du navigateur. */
+#staffEmailsPage .em-shell .em-plus::after { content: ''; flex: none; width: 5px; height: 5px; margin: -3px 0 0 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+#staffEmailsPage .em-shell .em-plus-menu { inset: auto; min-width: 180px; margin: 0; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--raised); color: var(--text); box-shadow: var(--shadow-overlay); }
+#staffEmailsPage .em-shell .em-plus-menu:popover-open { display: grid; gap: 2px; }
+#staffEmailsPage .em-shell .em-plus-menu button { display: flex; align-items: center; width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 500; text-align: left; white-space: nowrap; cursor: pointer; }
+#staffEmailsPage .em-shell .em-plus-menu button.is-danger { color: var(--danger); }
+#staffEmailsPage .em-shell .em-plus-menu button:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 #staffEmailsPage .em-shell .em-camp-editeur { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; gap: 16px; margin: 4px 0 16px; padding: 16px; }
 #staffEmailsPage .em-shell .em-camp-champs { display: grid; gap: 12px; min-width: 0; }
 #staffEmailsPage .em-shell .em-camp-audience { display: flex; align-items: center; min-height: var(--h-md); margin: 0; font-size: 13px; color: var(--text); }
@@ -21660,7 +21669,10 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-choix-texte small { font-size: 12.5px; color: var(--muted); }
 #staffEmailsPage .em-shell .pv2-design-scope { border: 0; background: transparent; }
 #staffEmailsPage .em-shell .pv2-design-scope-row { padding: 10px 0; border: 0; }
-#staffEmailsPage .em-shell .pv2-design-preview { position: sticky; top: 12px; display: grid; gap: 10px; padding: 16px; border: 0; border-radius: var(--em-radius); background: var(--em-panel); }
+/* L apercu reste en vue pendant que les reglages defilent (sticky, 12 px sous
+   le haut, la page n a pas d en-tete collant). Sur un ecran bas, il defile
+   dans son propre cadre au lieu de cacher ses boutons sous le bord. */
+#staffEmailsPage .em-shell .pv2-design-preview { position: sticky; top: 12px; display: grid; gap: 10px; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 16px; border: 0; border-radius: var(--em-radius); background: var(--em-panel); }
 #staffEmailsPage .em-shell .pv2-design-preview .pv2-seq-preview { padding: 0; }
 
 /* --- Expediteurs : une ligne par adresse, l etat du domaine en clair ----- */
@@ -21677,7 +21689,8 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-exp-etat.is-ok p:first-child::before { background: var(--success); }
 #staffEmailsPage .em-shell .em-exp-etat.is-attente p:first-child::before { background: var(--warning); }
 #staffEmailsPage .em-shell .em-exp-etat.is-off p:first-child::before { background: var(--danger); }
-#staffEmailsPage .em-shell .em-exp-etat .em-exp-etape { font-size: 12.5px; color: var(--muted); }
+#staffEmailsPage .em-shell .em-exp-alerte { align-items: start; margin-bottom: 6px; }
+#staffEmailsPage .em-shell .em-exp-alerte .em-todo-dot { margin-top: 6px; }
 #staffEmailsPage .em-shell .em-exp-actions { display: flex; align-items: center; gap: 6px; }
 #staffEmailsPage .em-shell .em-exp .pv2-reply-address { margin-top: 10px; padding: 0; border: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-exp-form { margin-top: 10px; padding: 16px; border-radius: var(--em-radius); background: var(--em-well); }
@@ -21687,8 +21700,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-agent > .pv2-panel { border: 0; border-radius: var(--em-radius); background: var(--em-panel); box-shadow: none; }
 #staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-head { padding: 16px 18px 0; border-bottom: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-agent > .pv2-panel > .pv2-panel-body { padding: 12px 18px 18px; }
-#staffEmailsPage .em-shell .em-savoir .pv2-savoir-chiffres { border: 0; background: transparent; }
-#staffEmailsPage .em-shell .em-savoir .pv2-savoir-chiffres > div { padding: 0; border: 0; border-radius: 0; background: transparent; }
 #staffEmailsPage .em-shell .em-savoir-sait { margin-top: 22px; }
 #staffEmailsPage .em-shell .em-agent > .em-agent-reglages { padding: 0; }
 #staffEmailsPage .em-shell .em-savoir .pv2-savoir-carte { border: 0; border-radius: var(--em-radius); }
@@ -21720,7 +21731,11 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-geste:disabled { cursor: default; opacity: 0.55; }
 #staffEmailsPage .em-ia-geste.is-busy,
 #pv2MailOverlay .em-ia-geste.is-busy { background: var(--accent-soft); color: var(--accent-strong); opacity: 1; }
-:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-travail { display: flex; align-items: center; min-height: 24px; font-size: 13px; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-travail { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; color: var(--muted); }
+/* Le signe de travail : un point de 8 px qui respire (opacite et echelle),
+   jamais un rond qui tourne. Immobile sous reduced-motion. */
+#staffEmailsPage .em-ia-point,
+#pv2MailOverlay .em-ia-point { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: em-ia-souffle 1.4s ease-in-out infinite alternate; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-fait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 12.5px; color: var(--muted); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-revenir { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-revenir:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-radius: 2px; }
@@ -21733,12 +21748,14 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-regles p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 :is(#staffEmailsPage, #pv2MailOverlay) .is-ia-verrou :is(.pv2-tokedit[aria-disabled], [data-em-ia-bloque]) { opacity: 0.55; cursor: progress; }
 @keyframes em-ia-fondu { from { opacity: 0.2; } }
+@keyframes em-ia-souffle { from { opacity: 0.35; transform: scale(0.7); } to { opacity: 1; transform: scale(1); } }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-fondu { animation: em-ia-fondu 160ms ease-out; }
 
 @media (hover: hover) {
   #staffEmailsPage .em-shell .em-seqrow:not(.is-editing):hover,
   #staffEmailsPage .em-shell .em-tpl-row:not(.is-selected):hover,
   #staffEmailsPage .em-shell .em-exclu-row:hover,
+  #staffEmailsPage .em-shell .em-plus-menu button:hover,
   #staffEmailsPage .em-shell .pv2-design-preset.em-choix:not(.is-active):hover { background: var(--em-hover); }
   /* Les gestes d une ligne passent par-dessus au survol : caches, ils ne
      prennent plus la largeur du nom. La ligne ouverte les garde a sa place. */
@@ -21759,6 +21776,9 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell :is(.em-tpl-gauche, .pv2-design-preview, .em-camp-apercu-col) { position: static; max-height: none; }
   #staffEmailsPage .em-shell .em-exp-row { grid-template-columns: minmax(0, 1fr) auto; }
   #staffEmailsPage .em-shell .em-exp-row .em-exp-etat { grid-column: 1 / -1; grid-row: 2; }
+  /* Une colonne : rien n est ouvert d office, la liste suffit. Le bloc vide
+     sous la liste ne ferait que repousser la page. */
+  #staffEmailsPage .em-shell .em-tpl-droite.is-vide { display: none; }
 }
 @container em-main (max-width: 700px) {
   #staffEmailsPage .em-shell .em-seqrow-ligne { grid-template-columns: minmax(0, 1fr) 40px; gap: 6px 12px; }
@@ -21774,18 +21794,28 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .em-exclu-ajout,
   #staffEmailsPage .em-shell .em-exclu-ajout input { flex: 1 1 100%; width: 100%; max-width: none; }
   #staffEmailsPage .em-shell .em-camp-table thead { display: none; }
-  #staffEmailsPage .em-shell .em-camp-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; padding: 10px 4px; }
+  #staffEmailsPage .em-shell .em-camp-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 14px 4px; }
+  /* La carte d une campagne : chaque cellule prend sa hauteur (la ligne du
+     tableau en imposait 44 px, et la date d envoi passait sous l etat), et le
+     nom ne garde pas le retrait de la premiere colonne. */
   #staffEmailsPage .em-shell .em-camp-table td,
-  #staffEmailsPage .em-shell .em-camp-table td.num { display: block; padding: 0; text-align: left; }
+  #staffEmailsPage .em-shell .em-camp-table td.num,
+  #staffEmailsPage .em-shell .em-camp-table td:first-child { display: block; height: auto; padding: 0; text-align: left; }
   #staffEmailsPage .em-shell .em-camp-table td[data-col='campagne'] { grid-column: 1 / -1; min-width: 0; }
   #staffEmailsPage .em-shell .em-camp-table td[data-col='statut'] { grid-column: 1 / -1; }
-  #staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { grid-column: 1 / -1; min-width: 0; }
+  #staffEmailsPage .em-shell .em-camp-table td.em-camp-gestes { grid-column: 1 / -1; width: auto; min-width: 0; }
   #staffEmailsPage .em-shell .em-camp-table .em-camp-actions { justify-content: flex-start; }
   #staffEmailsPage .em-shell .em-camp-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  /* Une adresse d envoi sur un telephone : le nom et l adresse sur toute la
+     largeur (l adresse ne se coupe plus au milieu), l etat, puis les gestes. */
+  #staffEmailsPage .em-shell .em-exp-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  #staffEmailsPage .em-shell .em-exp-row .em-exp-actions { grid-row: 3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-fondu { animation: none; }
+  #staffEmailsPage .em-ia-point,
+  #pv2MailOverlay .em-ia-point { animation: none; }
   :is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-geste, .em-ia-objet) { transition: none; }
   #staffEmailsPage .em-shell .em-tpl-row .em-tpl-actions { transition: none; }
 }

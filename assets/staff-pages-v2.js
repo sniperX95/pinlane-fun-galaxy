@@ -3236,6 +3236,25 @@
 
   /* Modèles : créer / modifier / archiver (serveur email-studio existant).
      L editeur vit dans la section Modeles, avec un apercu serveur vivant. */
+  // MODELES SUR UN ECRAN LARGE (2026-11-11) : la moitie droite n est jamais
+  // vide a l arrivee. Le premier modele s ouvre comme si on le touchait (le
+  // premier du centre, sinon une copie du premier de Pinlane) : l editeur,
+  // l apercu et la barre d aide sont la. Une fois par visite de la section :
+  // apres « Annuler », la droite reste vide. Sur un telephone (une colonne,
+  // em-main de 900 px ou moins, la requete de conteneur), la liste reste.
+  function pv2ModeleOuvrirPremier() {
+    if (pv2Settings.tplVu || pv2SectionCourante() !== 'modeles') return;
+    if (pv2Settings.tplEditing) { pv2Settings.tplVu = true; return; }
+    if (!pv2Mail.metaLoaded) return;
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) return;
+    const main = document.querySelector('#staffEmailsPage .em-main');
+    if (!main || main.clientWidth <= 900) return;
+    pv2Settings.tplVu = true;
+    const premier = pv2Mail.templates[0];
+    if (premier) pv2TplEdit(premier.id);
+    else if (PV2_STARTERS[0]) pv2ModeleCopier(PV2_STARTERS[0].key, { focus: false });
+  }
+
   function pv2ModeleAllerEditer() {
     if (state.staffEmailsSection !== 'modeles') pv2EmailsGo('modeles');
     else renderStaffEmailsPage();
@@ -3279,7 +3298,7 @@
 
   // Un modele fourni qui plait devient un modele A SOI : l editeur s ouvre
   // prerempli, il ne reste qu a le nommer.
-  window.pv2ModeleCopier = function (key) {
+  window.pv2ModeleCopier = function (key, { focus = true } = {}) {
     delete EM_IA.modele;
     if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     const starter = PV2_STARTERS.find((s) => s.key === key);
@@ -3287,7 +3306,7 @@
     pv2Settings.tplEditing = { id: null, name: `${starter.name} (ma version)`, category: 'marketing', subject: starter.subject, body: starter.body };
     pv2ModeleAllerEditer();
     pv2ApercuModele(0);
-    setTimeout(() => { const el = document.getElementById('pv2TplName'); if (el) el.focus(); }, 60);
+    if (focus) setTimeout(() => { const el = document.getElementById('pv2TplName'); if (el) el.focus(); }, 60);
   };
 
   // « Utiliser » : le composeur s ouvre avec ce texte, le client reste a
@@ -3489,15 +3508,15 @@
       </div>`;
     const droite = tpl
       ? `<div class="em-block-head"><div><h2 class="em-h2">${tpl.id ? esc(tpl.name || 'Modèle') : 'Nouveau modèle'}</h2><p class="em-sub">L’aperçu montre le mail avec les variables laissées en clair.</p></div></div>${pv2ModeleEditeur()}`
-      : `<div class="em-tpl-vide"><p class="em-calme">Choisissez un modèle à gauche pour le relire et le modifier. Un modèle de Pinlane se copie d’abord, le vôtre se garde.</p></div>`;
+      : `<div class="em-tpl-vide"><p class="em-calme">Choisissez un modèle dans la liste pour le relire et le modifier. Un modèle de Pinlane se copie d’abord, le vôtre se garde.</p></div>`;
     return `<section class="pv2-settings em-tpl" data-pv2-mount="settings" aria-label="Modèles">
       <div class="em-block em-tpl-gauche">
         <div class="em-block-head"><div><h2 class="em-h2">Modèles</h2><p class="em-sub">Des textes prêts à envoyer. Les vôtres apparaissent aussi dans le nouveau message.</p></div>
-          ${!tpl && gerer ? '<button type="button" class="pv2-btn sm primary" onclick="pv2TplEdit(null)">Nouveau modèle</button>' : ''}
+          ${gerer ? `<button type="button" class="pv2-btn sm${tpl ? '' : ' primary'}" onclick="pv2TplEdit(null)">Nouveau modèle</button>` : ''}
         </div>
         ${liste}
       </div>
-      <div class="em-block em-tpl-droite">${droite}</div>
+      <div class="em-block em-tpl-droite${tpl ? '' : ' is-vide'}">${droite}</div>
     </section>`;
   }
 
@@ -3520,14 +3539,18 @@
     const reponseServeur = pv2Design.reponse && typeof pv2Design.reponse === 'object' ? pv2Design.reponse : null;
     const reponse = reponseServeur ? String(reponseServeur.adresse || '').trim() : (centre && centre.publicInfo ? String(centre.publicInfo.email || '').trim() : '');
     const reponseVersPinlane = Boolean(reponseServeur && reponseServeur.versPinlane);
-    // L etat du domaine d une adresse, et ce qu il reste a faire.
-    const etatDomaine = (i) => {
-      const domaine = String(i.email || '').split('@')[1] || 'du centre';
-      if (!pv2Mail.metaLoaded) return { ton: '', phrase: 'Lecture de l’état de l’envoi…', etape: '' };
-      if (!channel.resendConfigured) return { ton: 'is-off', phrase: 'Aucun service d’envoi n’est relié. Les mails de cette adresse restent en file.', etape: 'Il reste à relier le service d’envoi. Tant que ce n’est pas fait, rien ne part.' };
-      if (domaineNonVerifie) return { ton: 'is-attente', phrase: `Le domaine ${domaine} n’est pas encore vérifié chez le service d’envoi. ${domaineNonVerifie.count > 1 ? `${domaineNonVerifie.count} mails ne sont pas partis` : 'Un mail n’est pas parti'} pour cette raison.`, etape: `Il reste à faire vérifier le domaine ${domaine}. Tant que ce n’est pas fait, aucun mail ne part vers un client.` };
-      return { ton: 'is-ok', phrase: `Les mails partent normalement. Aucun envoi n’a échoué à cause du domaine ${domaine}.`, etape: 'Rien à faire pour l’instant.' };
-    };
+    // L ETAT DE L ENVOI, DIT UNE FOIS (2026-11-11) : sa phrase et ce qu il
+    // reste a faire vivent en haut de la section. Chaque adresse n en garde
+    // que le mot court, et la carte du fournisseur ne la repete pas.
+    const domaines = [...new Set(pv2Mail.identities.map((i) => String(i.email || '').split('@')[1]).filter(Boolean))];
+    const envoi = !pv2Mail.metaLoaded ? { ton: '', court: 'Lecture de l’état…' }
+      : !channel.resendConfigured ? { ton: 'is-off', court: 'Envoi non relié', phrase: 'Aucun service d’envoi n’est relié.', etape: 'Les mails restent en file sans partir. Il reste à relier le service d’envoi.' }
+      : domaineNonVerifie ? { ton: 'is-attente', court: 'Domaine pas encore vérifié', phrase: `${domaines.length === 1 ? `Le domaine ${domaines[0]}` : 'Le domaine d’envoi du centre'} n’est pas encore vérifié chez le service d’envoi.`, etape: `${domaineNonVerifie.count > 1 ? `${domaineNonVerifie.count} mails ne sont pas partis` : 'Un mail n’est pas parti'} pour cette raison. Il reste à faire vérifier ce domaine. Tant que ce n’est pas fait, aucun mail ne part vers un client.` }
+      : { ton: 'is-ok', court: 'Envoi normal' };
+    const alerte = envoi.phrase ? `<div class="em-todo ${envoi.ton === 'is-off' ? 'is-red' : 'is-amber'} em-exp-alerte" role="status">
+          <span class="em-todo-dot" aria-hidden="true"></span>
+          <span class="em-todo-text"><strong>${esc(envoi.phrase)}</strong><small>${esc(envoi.etape)}</small></span>
+        </div>` : '';
     const cascade = { n: 0 };
     const liste = identity ? `<div class="pv2-composer-grid em-exp-form">
         <label class="pv2-composer-field"><span>Nom affiché</span><input data-pl-focus="emails.identite.nom" value="${esc(identity.label)}" placeholder="Ex. le nom de votre centre" oninput="pv2IdField('label', this.value)"></label>
@@ -3541,10 +3564,9 @@
       </div>`
       : pv2Mail.identities.length
         ? `<ul class="em-exp-rows">${pv2Mail.identities.map((i) => {
-          const e = etatDomaine(i);
           return `<li class="em-exp-row"${emEntree(`expediteurs:${i.id}`, cascade)}>
             <div class="em-exp-qui"><strong>${esc(i.label || i.email)}</strong><span>${esc(i.email)}</span></div>
-            <div class="em-exp-etat ${e.ton}"><p>${esc(e.phrase)}</p>${e.etape ? `<p class="em-exp-etape">${esc(e.etape)}</p>` : ''}</div>
+            <div class="em-exp-etat ${envoi.ton}"><p>${esc(envoi.court)}</p></div>
             <div class="em-exp-actions">
               ${i.isDefault ? '<span class="pv2-chip blue">Par défaut</span>' : regler ? `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Mettre par défaut</button>` : ''}
               ${regler ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>` : ''}
@@ -3557,6 +3579,7 @@
         <div class="em-block-head"><div><h2 class="em-h2">Adresses d’envoi</h2><p class="em-sub">Le nom et l’adresse que vos clients voient en tête du mail. Une adresse par défaut, les autres au choix dans le nouveau message.</p></div>
           ${identity || !regler ? '' : '<button type="button" class="pv2-btn sm primary" onclick="pv2IdEdit()">Nouvelle adresse</button>'}
         </div>
+        ${alerte}
         ${liste}
       </section>
       <div class="em-exp-bas">
@@ -3573,9 +3596,9 @@
           <div class="pv2-reply-address">
             ${pv2Mail.metaLoaded
               ? (!channel.resendConfigured
-                ? '<strong data-pv2-envoi="absent">Envoi non configuré</strong><p class="pv2-note">Aucun service d\'envoi n\'est relié. Les mails restent en file sans partir.</p>'
+                ? '<strong data-pv2-envoi="absent">Envoi non configuré</strong>'
                 : domaineNonVerifie
-                  ? `<strong data-pv2-envoi="domaine">Domaine d'envoi pas encore vérifié</strong><p class="pv2-note">${domaineNonVerifie.count > 1 ? `${domaineNonVerifie.count} mails ne sont pas partis` : 'Un mail n\'est pas parti'} pour cette raison. Tant que le domaine du centre n'est pas vérifié chez le service d'envoi, aucun mail ne peut partir vers un client.</p>`
+                  ? '<strong data-pv2-envoi="domaine">Domaine d\'envoi pas encore vérifié</strong><p class="pv2-note">Le service d\'envoi est relié à Pinlane.</p>'
                   : '<strong data-pv2-envoi="ok">Envoi configuré</strong><p class="pv2-note">Les mails partent par le service d\'envoi relié à Pinlane.</p>')
               : '<span class="pv2-live-state" aria-live="polite">Chargement…</span>'}
           </div>
@@ -4746,10 +4769,22 @@
   // emails.send) : sans lui, les cases et les boutons n existent pas
   // (DESIGN.md regle 9), la memoire reste lisible.
   const pv2PeutApprendre = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
+  // CE QU IL A APPRIS, EN UNE PHRASE (2026-11-11) : la rangee de tuiles
+  // (faits appris, en attente, resolues, cette semaine) repetait la phrase du
+  // dessus et le compte de l en-tete. « En attente » reste dans l en-tete, les
+  // questions resolues sous la jauge ; les faits et la semaine passent ici.
+  function pv2SavoirAppris(suivi) {
+    const faits = Number(suivi.faits) || 0;
+    const semaine = Math.min(Number(suivi.semaine) || 0, faits);
+    if (!faits) return 'Il n’a encore rien appris.';
+    const total = pv2Pluriel(faits, 'fait', 'faits');
+    if (!semaine) return `Il a appris ${total}.`;
+    return semaine === faits ? `Il a appris ${total} cette semaine.` : `Il a appris ${total}, dont ${semaine} cette semaine.`;
+  }
   // LE SUIVI : les questions de clients resolues sur toutes celles posees (la
-  // jauge), et les quatre chiffres qui disent que l agent apprend.
-  // apercu : la jauge et sa phrase seulement (2026-11-10). Les quatre chiffres
-  // redisaient la phrase au-dessus.
+  // jauge et sa phrase), puis, dans L agent, ce qu il a appris et les
+  // corrections qu il retient, en phrases.
+  // apercu : la jauge et sa phrase seulement (2026-11-10).
   function pv2SavoirSuivi(suivi, { apercu = false } = {}) {
     const resolues = Number(suivi.resolues) || 0;
     const total = resolues + (Number(suivi.questions) || 0);
@@ -4760,13 +4795,7 @@
     return `<div class="pv2-savoir-suivi">
         <div class="pv2-savoir-jauge" role="img" aria-label="${esc(libelle)}"><span style="width:${part}%"></span></div>
         <p class="pv2-savoir-jauge-texte">${esc(libelle)}</p>
-        ${apercu ? '' : `${Number(suivi.corrections) > 0 ? `<p class="pv2-savoir-jauge-texte pv2-savoir-corrections">Il retient aussi vos corrections, ${pv2Pluriel(Number(suivi.corrections), 'réponse corrigée avant envoi', 'réponses corrigées avant envoi')}.</p>` : ''}
-        <dl class="pv2-savoir-chiffres">
-          <div><dt>Faits appris</dt><dd>${Number(suivi.faits) || 0}</dd></div>
-          <div><dt>En attente</dt><dd>${Number(suivi.questions) || 0}</dd></div>
-          <div><dt>Résolues</dt><dd>${resolues}</dd></div>
-          <div><dt>Cette semaine</dt><dd>+${Number(suivi.semaine) || 0}</dd></div>
-        </dl>`}
+        ${apercu ? '' : `<p class="pv2-savoir-jauge-texte pv2-savoir-faits">${esc(pv2SavoirAppris(suivi))}</p>${Number(suivi.corrections) > 0 ? `<p class="pv2-savoir-jauge-texte pv2-savoir-corrections">Il retient aussi vos corrections, ${pv2Pluriel(Number(suivi.corrections), 'réponse corrigée avant envoi', 'réponses corrigées avant envoi')}.</p>` : ''}`}
       </div>`;
   }
   // LA CASE OU L ON REPOND, son compteur et son bouton. `libelle` : Apprendre
@@ -5288,6 +5317,7 @@
     // rendu : le DOM neuf naît avec une liste vide et cachée, l'état, lui, vit
     // hors DOM (pv2Combo) et survit.
     if (pv2Mail.composerOpen && pv2Combo.open) pv2ComboPaint();
+    pv2ModeleOuvrirPremier();
   };
 
   /* ==========================================================================
@@ -5349,6 +5379,7 @@
     const cible = pv2PeutVoirSection(section) ? section : 'apercu';
     const avant = state.staffEmailsSection;
     state.staffEmailsSection = cible;
+    if (cible !== 'modeles') pv2Settings.tplVu = false;
     save();
     // Quitter les conversations, c est lacher le message qu on lisait : un
     // collegue ne doit pas voir « Marie repond » alors que Marie est partie
@@ -5429,7 +5460,7 @@
   window.pv2ApercuThemeChoisir = function (theme) {
     pv2ApercuTheme = theme === 'sombre' ? 'sombre' : 'clair';
     try { window.localStorage.setItem('pinlane_apercu_mail_theme', pv2ApercuTheme); } catch (e) { /* stockage indisponible */ }
-    document.querySelectorAll('#staffEmailsPage iframe[data-pv2-frame]').forEach((frame) => { frame.srcdoc = pv2HtmlSelonTheme(frame.__pv2Html || ''); });
+    document.querySelectorAll('#staffEmailsPage iframe[data-pv2-frame]').forEach((frame) => pv2ReposerCadre(frame, frame.__pv2Html || ''));
     document.querySelectorAll('#staffEmailsPage [data-pv2-theme-choix]').forEach((b) => {
       const actif = b.getAttribute('data-pv2-theme-choix') === pv2ApercuTheme;
       b.classList.toggle('is-active', actif);
@@ -5440,9 +5471,24 @@
     PV2_FRAMES[cle] = String(html || '');
     return `<iframe class="${esc(classe)}" sandbox="" title="${esc(titre || 'Aperçu du mail')}" data-pv2-frame="${esc(cle)}"></iframe>`;
   }
+  // UN APERCU QUI CHANGE NE S EMPILE PAS DANS L HISTORIQUE (2026-11-11).
+  // Re-poser le srcdoc d un cadre deja charge est une navigation de plus dans
+  // l historique de l onglet : le bouton Retour du navigateur remontait les
+  // versions de l apercu avant de revenir a la section d avant (vu des que
+  // Modeles a ouvert son apercu a l arrivee). Un cadre neuf qui nait avec son
+  // srcdoc remplace son document vierge sans entree d historique : on
+  // remplace donc le cadre au lieu de le renaviguer. Le premier remplissage,
+  // juste apres le rendu, part du document vierge : il ne laisse rien.
+  function pv2ReposerCadre(frame, html) {
+    const neuf = frame.cloneNode(false);
+    neuf.__pv2Html = html;
+    neuf.setAttribute('srcdoc', pv2HtmlSelonTheme(html));
+    frame.replaceWith(neuf);
+  }
   function pv2FillFrames(root) {
     root.querySelectorAll('iframe[data-pv2-frame]').forEach((frame) => {
       const html = PV2_FRAMES[frame.getAttribute('data-pv2-frame')] || '';
+      if (frame.hasAttribute('srcdoc')) { if (frame.__pv2Html !== html) pv2ReposerCadre(frame, html); return; }
       frame.__pv2Html = html;
       frame.srcdoc = pv2HtmlSelonTheme(html);
     });
@@ -5538,7 +5584,7 @@
       const sujet = box.querySelector('[data-pv2-apercu-sujet]');
       if (sujet) sujet.textContent = etat.subject || '';
       const frame = box.querySelector('iframe[data-pv2-frame]');
-      if (frame && frame.__pv2Html !== (etat.html || '')) { frame.__pv2Html = etat.html || ''; frame.srcdoc = pv2HtmlSelonTheme(frame.__pv2Html); }
+      if (frame && frame.__pv2Html !== (etat.html || '')) pv2ReposerCadre(frame, etat.html || '');
     });
   }
 
@@ -5752,8 +5798,11 @@
     const e = emIaEtat(cle);
     const occupe = Boolean(e.busy);
     const verrou = occupe ? ' disabled' : '';
+    // LE SIGNE DE TRAVAIL (2026-11-11) : un point bleu qui respire a cote de la
+    // phrase, jamais un rond qui tourne (Ansar : « les ronds qui tournent… trop
+    // moche »). Sous reduced-motion, le point reste immobile.
     const travail = occupe
-      ? `<div class="em-ia-travail">${typeof renderThinking === 'function' ? renderThinking('composing', { label: EM_IA_TRAVAIL[e.busy] || 'Je travaille sur votre texte.' }) : `<span role="status">${esc(EM_IA_TRAVAIL[e.busy] || '')}</span>`}</div>`
+      ? `<div class="em-ia-travail" role="status"><span class="em-ia-point" aria-hidden="true"></span><span>${esc(EM_IA_TRAVAIL[e.busy] || 'Je travaille sur votre texte.')}</span></div>`
       : '';
     const erreur = !occupe && e.erreur ? `<p class="em-ia-erreur" role="alert">${esc(e.erreur)}</p>` : '';
     const fait = !occupe && e.avant
@@ -8076,6 +8125,32 @@
     cancelled: ['Annulée', ''],
   };
 
+  // LE MENU « PLUS » D UNE LIGNE (2026-11-11) : un popover natif. Il vit dans
+  // la couche du dessus : ni sa ligne ni la suivante ne le coupent. Echap et un
+  // clic dehors le ferment, le focus revient au bouton. Avant de s ouvrir, il
+  // se pose sous son bouton, aligne a droite ; ouvert, il remonte au-dessus si
+  // le bas de l ecran le coupe. Un defilement le ferme.
+  window.emPlusPlacer = function (event) {
+    const menu = event.currentTarget;
+    if (!menu || event.newState !== 'open') return;
+    const bouton = document.querySelector(`[popovertarget="${menu.id}"]`);
+    if (!bouton) return;
+    const r = bouton.getBoundingClientRect();
+    if (event.type === 'beforetoggle') {
+      menu.style.top = `${Math.round(r.bottom + 4)}px`;
+      menu.style.right = `${Math.max(8, Math.round(document.documentElement.clientWidth - r.right))}px`;
+      return;
+    }
+    const h = menu.offsetHeight;
+    if (r.bottom + 4 + h > window.innerHeight - 8) menu.style.top = `${Math.max(8, Math.round(r.top - 4 - h))}px`;
+    const fermer = () => { if (menu.isConnected && menu.matches(':popover-open')) menu.hidePopover(); };
+    window.addEventListener('scroll', fermer, { once: true, capture: true, passive: true });
+  };
+  window.emPlusFermer = function (el) {
+    const menu = el && el.closest('[popover]');
+    if (menu && menu.matches(':popover-open')) menu.hidePopover();
+  };
+
   // LES CAMPAGNES (2026-11-10) : une ligne par campagne, son etat, son
   // audience, ses envois et ses ouvertures ; l editeur a l audience, l objet,
   // le texte, l apercu et la barre d aide.
@@ -8111,8 +8186,11 @@
           <td class="em-camp-gestes"><div class="em-camp-actions">
             ${brouillon ? `<button type="button" class="pv2-btn sm" onclick="pv2CampEditDraft(${c.id})">Modifier</button><button type="button" class="pv2-btn sm primary" onclick="pv2CampSendDraft(${c.id})">Envoyer</button>` : ''}
             ${['scheduled', 'sending'].includes(c.status) && c.queued > 0 ? `<button type="button" class="pv2-btn sm" onclick="pv2CampCancel(${c.id})">Annuler l’envoi</button>` : ''}
-            <button type="button" class="pv2-btn sm ghost" onclick="pv2CampExportContent(${c.id})">Exporter le texte</button>
-            ${brouillon ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2CampCancel(${c.id})">Supprimer</button>` : ''}
+            <button type="button" class="pv2-btn sm ghost em-plus" popovertarget="emCampPlus${esc(String(c.id))}" aria-label="Plus d’actions pour ${esc(c.name)}">Plus</button>
+            <div class="em-plus-menu" id="emCampPlus${esc(String(c.id))}" popover onbeforetoggle="emPlusPlacer(event)" ontoggle="emPlusPlacer(event)">
+              <button type="button" onclick="emPlusFermer(this); pv2CampExportContent(${c.id})">Exporter le texte</button>
+              ${brouillon ? `<button type="button" class="is-danger" onclick="emPlusFermer(this); pv2CampCancel(${c.id})">Supprimer</button>` : ''}
+            </div>
           </div></td>
         </tr>`;
       }).join('')}</tbody>

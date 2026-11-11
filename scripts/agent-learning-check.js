@@ -254,7 +254,19 @@ async function lire(page) {
       apercu: s.classList.contains('is-apercu'),
       texte: s.innerText.replace(/\s+/g, ' ').trim(),
       compte: t('.pv2-savoir-compte'),
-      chiffres: [...s.querySelectorAll('.pv2-savoir-chiffres dd')].map((d) => d.textContent.trim()),
+      // 2026-11-11 : la rangee de tuiles est retiree, ses quatre valeurs vivent
+      // dans les phrases. On les relit la, dans l ordre d avant (faits, en
+      // attente, resolues, semaine) ; l apercu n a pas la phrase des faits.
+      chiffres: (() => {
+        const appris = s.querySelector('.pv2-savoir-faits');
+        if (!appris) return [];
+        const a = appris.textContent.replace(/\s+/g, ' ');
+        const faits = (/appris (\d+) faits?/.exec(a) || [])[1] || '0';
+        const semaine = (/dont (\d+) cette semaine/.exec(a) || [])[1] || (/faits? cette semaine/.test(a) ? faits : '0');
+        const attente = (/(\d+) questions? en attente/.exec(t('.pv2-savoir-compte')) || [])[1] || '0';
+        const resolues = (/(\d+) questions? résolues?/.exec(t('.pv2-savoir-jauge-texte')) || [])[1] || '0';
+        return [faits, attente, resolues, `+${semaine}`];
+      })(),
       jauge: t('.pv2-savoir-jauge-texte'),
       cartes: s.querySelectorAll('.pv2-savoir-carte').length,
       rang: t('.pv2-savoir-rang span'),
@@ -659,10 +671,9 @@ async function main() {
         const s = document.querySelector('#staffEmailsPage .pv2-savoir');
         const r = s.getBoundingClientRect();
         const dehors = [...s.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width && (b.right > r.right + 0.5 || b.left < r.left - 0.5); }).map((e) => e.className || e.tagName).slice(0, 4);
-        return { section: s.scrollWidth <= s.clientWidth, page: document.documentElement.scrollWidth <= window.innerWidth, dehors, colonnes: getComputedStyle(s.querySelector('.pv2-savoir-chiffres')).gridTemplateColumns.split(' ').length };
+        return { section: s.scrollWidth <= s.clientWidth, page: document.documentElement.scrollWidth <= window.innerWidth, dehors };
       });
       ok(deb.section && deb.dehors.length === 0, `[L] ${largeur} px : rien ne deborde de la section`, JSON.stringify(deb));
-      if (largeur === 390) ok(deb.colonnes === 2, '[L] 390 px : les chiffres du suivi passent sur deux colonnes', String(deb.colonnes));
       toutesErreurs.push(...tel.errs);
       await tel.context.close();
     }

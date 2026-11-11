@@ -109,8 +109,10 @@ async function ouvrir(browser, section, { sansEchec = false, modeleDeLangage = n
 const attendre = (page, fn, arg, ms = 8000) => page.waitForFunction(fn, arg, { timeout: ms }).then(() => true).catch(() => false);
 const carte = (page) => page.evaluate(() => {
   const el = document.querySelector('#staffEmailsPage [aria-label="Fournisseur d\'envoi"] [data-pv2-envoi]');
-  const note = el && el.parentElement ? el.parentElement.querySelector('.pv2-note') : null;
-  return el ? { etat: el.getAttribute('data-pv2-envoi'), titre: el.textContent.trim(), note: note ? note.textContent.replace(/\s+/g, ' ').trim() : '' } : null;
+  // 2026-11-11 : la phrase du domaine (combien de mails ne sont pas partis) est
+  // dite une fois, en haut de la section ; la carte n en garde que le titre.
+  const note = document.querySelector('#staffEmailsPage .em-exp-alerte small');
+  return el ? { etat: el.getAttribute('data-pv2-envoi'), titre: el.textContent.trim(), note: note ? note.textContent.replace(/\s+/g, ' ').replace(/’/g, "'").trim() : '' } : null;
 });
 
 async function run() {

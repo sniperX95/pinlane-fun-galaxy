@@ -270,7 +270,7 @@ module.exports = async (req, res) => {
     // CE QUE LE CENTRE A APPRIS AILLEURS (2026-11-11, Ansar : « qu elles connaissent tout du centre ») : les
     // faits appris a l agent des mails et les regles retenues dans les demandes sur mesure. Le centre
     // ouvert seulement ; leur numero ne croise jamais celui d un fait de l assistant.
-    // Une simple lecture : getFaitsAppris cree la table et importe le fichier des faits, l assistant n ecrit jamais.
+    // Une simple lecture : la fonction de l agent des mails cree sa table et importe un fichier, et l assistant n ecrit jamais.
     const appris = centreOuvert && centreOuvert !== 'all'
       ? ((await requeteBase('select id, question, reponse from agent_facts where center_id = $1 and oublie_le is null order by updated_at desc, id desc limit 30;', [centreOuvert]).catch(() => ({ rows: [] }))).rows || [])
       : [];

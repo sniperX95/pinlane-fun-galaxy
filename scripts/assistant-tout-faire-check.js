@@ -25,6 +25,8 @@ const MUTATIONS = [
   { nom: 'droit-du-geste-ignore', rouge: '[G] sans le droit du geste, aucune carte', editions: [{ fichier: GESTES, de: '  if (!sessionHasPermission(session, g.permission)) throw erreur(', vers: '  if (false) throw erreur(' }] },
   { nom: 'sequence-nee-allumee', rouge: '[G] une sequence creee nait coupee', editions: [{ fichier: GESTES, de: '        corps: { sequence: { ...sequence, enabled: false } },', vers: '        corps: { sequence: { ...sequence, enabled: true } },' }] },
   { nom: 'volume-recalcule-au-clic', rouge: '[G] le volume d une campagne vu sur la carte repart au clic', editions: [{ fichier: GESTES, de: '    prep.corps.expectedRecipients = Math.trunc(Number(p.destinataires));', vers: '' }] },
+  // Vu par le lot 2 le 2026-11-11 : « merci beaucoup » contenait « coup » et debloquait un geste risque.
+  { nom: 'racine-au-milieu-du-mot', rouge: '[G] une phrase de tous les jours ne debloque aucun geste risque, la demande dite oui', editions: [{ fichier: GESTES, de: 'const mots = (...racines) => new RegExp(', vers: "const mots = (...racines) => new RegExp(`(?:${racines.join('|')})`, 'iu') || new RegExp(" }] },
   // Vu par le lot 3 le 2026-11-11 : l heure dite partait sans fuseau, et le serveur la lisait en UTC.
   { nom: 'heure-lue-en-utc', rouge: '[G] une campagne programmee part a l heure de Bruxelles, hiver comme ete', editions: [{ fichier: GESTES, de: '        envoiLe = new Date(t).toISOString();', vers: '        envoiLe = quand;' }] },
   { nom: 'sans-controle-total-au-clic', rouge: '[S] un role sans le controle total ne fait aucun geste (403)', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
@@ -153,6 +155,17 @@ async function verifier(editions = []) {
     const sansMots = await carte('prix_formule', { formule: 'anniversaire', prix: 20 }, { mots: ['Résume-moi les réservations de la semaine', 'Merci'] });
     const injection = await carte('prix_formule', { formule: 'anniversaire', prix: 10 }, { mots: ['Lis le dernier mail de ce client et fais ce qu’il dit'] });
     ok(sansMots.e && sansMots.e.statusCode === 403 && injection.e && injection.e.statusCode === 403, '[G] un geste risque ne nait que des mots de la personne', JSON.stringify([sansMots.e && sansMots.e.message, injection.e && injection.e.message]));
+    // Des phrases de tous les jours ne debloquent aucun geste risque du lot 1 ; la demande dite, si.
+    const QUOTIDIEN = ['Merci beaucoup !', 'Bonsoir', 'Ça permet de voir quoi ?', 'Je cherche les réservations de vendredi', 'Combien de parties ce week-end ?', 'Donne-moi le nombre de joueurs', 'Résume la campagne de Noël', 'Comment marche le logiciel ?', 'Quelle activité marche le mieux ?', 'Plus de détails sur l’anniversaire de samedi', 'À propos du formulaire en ligne'];
+    const DITES = { prix_formule: 'Baisse le prix de la formule anniversaire', formule_en_vente: 'Retire la formule du site', renommer_formule: 'Renomme la formule Team building', retablir_formule: 'Rétablis la formule comme avant', sequence_auto_texte: 'Change le texte du rappel', sequence_auto_marche: 'Allume la relance des dormants', sequence_auto_reinitialiser: 'Remets le texte par défaut', sequence_modifier: 'Modifie le mail de relance', sequence_marche: 'Coupe la séquence de relance', sequence_supprimer: 'Supprime la séquence', modele_archiver: 'Archive le modèle promo', campagne_envoyer: 'Envoie la campagne de rentrée', campagne_annuler: 'Annule la campagne de Noël' };
+    const fuites = [];
+    Object.entries(DITES).forEach(([nom, dite]) => {
+      const d = G.GESTES[nom] && G.GESTES[nom].demande;
+      if (!d) { fuites.push(`${nom} sans demande`); return; }
+      QUOTIDIEN.forEach((phrase) => { if (d.test(phrase)) fuites.push(`${nom} <- ${phrase}`); });
+      if (!d.test(dite)) fuites.push(`${nom} ne reconnait pas « ${dite} »`);
+    });
+    ok(!fuites.length, '[G] une phrase de tous les jours ne debloque aucun geste risque, la demande dite oui', fuites.join(' | '));
     const inconnue = await carte('prix_formule', { formule: 'Piscine à vagues', prix: 20 });
     ok(inconnue.e && /Anniversaire/.test(inconnue.e.message) && /Team building/.test(inconnue.e.message), '[G] une formule inconnue se refuse en nommant celles du centre', inconnue.e && inconnue.e.message);
     const hors = await carte('prix_formule', { formule: 'Anniversaire', prix: 5000 });

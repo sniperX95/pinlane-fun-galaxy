@@ -17,7 +17,8 @@ const OPS = 'api/ops.js';
 const RESA = 'lib/assistant-reservation.js';
 // Chaque garde retiree en memoire (le disque n est jamais touche) doit rougir sa ligne.
 const MUTATIONS = [
-  { nom: 'sans-controle-total', rouge: '[B] un role en lecture ne cree rien (403)', editions: [{ fichier: OPS, de: '    if (!agitAvecLAssistant(options.session)) throw createHttpError(', vers: '    if (false) throw createHttpError(' }] },
+  // La meme garde vit aussi dans l action assistantGeste : l ancre prend la ligne qui suit, propre a celle-ci.
+  { nom: 'sans-controle-total', rouge: '[B] un role en lecture ne cree rien (403)', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const R = require('../lib/assistant-reservation');", vers: "    const R = require('../lib/assistant-reservation');" }] },
   { nom: 'sans-telephone', rouge: '[B] sans telephone, rien ne se cree (422)', editions: [{ fichier: RESA, de: "  if (!telephoneValide(corps.phone)) throw erreur('Le téléphone du client est obligatoire.');", vers: '' }] },
   { nom: 'sans-replan', rouge: '[C] un creneau pris depuis la proposition arrete la creation (409)', editions: [
     { fichier: RESA, de: '  if (!plan.disponible) throw erreur(', vers: '  if (false) throw erreur(' },

@@ -22,7 +22,8 @@
 //   suite entiere avec ses contre-preuves, 14 machines, a ne pas lancer avant
 //   chaque mise en ligne)
 // Sortie 0 : vert (instables compris) ; 1 : un rouge ou une part sans bilan ;
-// 2 : la suite n a pas pu se jouer (etiquette refusee, aucun passage, pas de bilan).
+// 2 : la suite n a pas pu se jouer ou se lire (etiquette refusee, aucun passage,
+// bilan publie mais pas rapatrie : voir lireLeBilan).
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -103,6 +104,48 @@ function laNuit(repo) {
   else console.log(`[suite-github] contre-preuves : ROUGES au passage ${dernier.databaseId}, il y a ${heures} h. A lire et a reparer : gh run download ${dernier.databaseId} --repo ${repo} --name bilan.${vieux}`);
 }
 
+// LE BILAN D UN PASSAGE FINI, LU AVANT D ETRE DIT VERT (2026-11-11 et 12,
+// scripts/suite-github-bilan-check.js). Le 2026-11-11, une coupure du Wi-Fi au
+// telechargement faisait ecrire « VERT : aucun gate a jouer » sur un passage de
+// 400 scripts dont le bilan existait et n avait pas ete lu (run 43090621688).
+// Vert sans bilan seulement si le passage n en a publie aucun (aucun gate
+// touche par le diff) : la liste de ses artefacts le dit, et elle se lit des le
+// premier echec, pour ne pas attendre un bilan qui n existe pas.
+// Chaque essai part dans un dossier neuf : `gh run download` refuse d ecrire un
+// fichier deja la, et une extraction coupee en laisse un morceau, qui faisait
+// rater tous les essais suivants dans le meme dossier (vu le 2026-11-12).
+// Cinq essais a 30 s d ecart : les coupures vues duraient de quelques secondes
+// a quelques minutes.
+async function lireLeBilan({ repo, id, conclusion, lancer = gh, patienter = attendre, essais = 5, pause = 30000, racine = os.tmpdir(), dire = console.log, alerter = console.error }) {
+  let dossier = '';
+  let noms = null;
+  for (let essai = 1; essai <= essais; essai += 1) {
+    if (essai > 1) await patienter(pause);
+    if (dossier) fs.rmSync(dossier, { recursive: true, force: true });
+    dossier = fs.mkdtempSync(path.join(racine, 'suite-github-'));
+    const telecharge = lancer(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
+    const fichier = path.join(dossier, 'bilan-assemble.json');
+    if (telecharge.status === 0 && fs.existsSync(fichier)) {
+      dire(fs.readFileSync(path.join(dossier, 'bilan-assemble.txt'), 'utf8'));
+      dire(`[suite-github] bilan et journaux : ${dossier} ; journaux des parts : gh run download ${id} --repo ${repo}`);
+      const bilan = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+      return bilan.rouges || (bilan.manquantes || []).length ? 1 : 0;
+    }
+    const liste = lancer(['api', `repos/${repo}/actions/runs/${id}/artifacts?per_page=100`, '--jq', '[.artifacts[].name]']);
+    try { noms = liste.status === 0 ? JSON.parse(liste.stdout || '[]') : null; } catch (e) { noms = null; }
+    if (Array.isArray(noms) && !noms.includes('bilan')) {
+      fs.rmSync(dossier, { recursive: true, force: true });
+      if (conclusion === 'success') { dire('[suite-github] VERT : aucun gate a jouer pour ce diff'); return 0; }
+      alerter(`[suite-github] pas de bilan lu (conclusion du workflow : ${conclusion} ; aucun bilan publie). Les journaux des parts : gh run download ${id} --repo ${repo}`);
+      return 2;
+    }
+  }
+  if (dossier) fs.rmSync(dossier, { recursive: true, force: true });
+  const pourquoi = Array.isArray(noms) ? 'un bilan existe mais ne se telecharge pas' : 'la liste des bilans ne se lit pas';
+  alerter(`[suite-github] pas de bilan lu apres ${essais} essais (conclusion du workflow : ${conclusion} ; ${pourquoi}). A relire, dans un dossier vide : gh run download ${id} --repo ${repo} --name bilan --dir <dossier vide>`);
+  return 2;
+}
+
 async function main() {
   const sha = git('rev-parse', '--verify', `${REF}^{commit}`);
   const repo = depot();
@@ -124,33 +167,12 @@ async function main() {
     console.log(`[suite-github] https://github.com/${repo}/actions/runs/${id}`);
     const conclusion = await attendreLaFin(repo, id);
     if (conclusion === null) { console.error('[suite-github] le passage n a pas fini en 90 minutes'); return 2; }
-    const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'suite-github-'));
-    const fichier = path.join(dossier, 'bilan-assemble.json');
-    let telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
-    // Une coupure du Wi-Fi au telechargement est passagere : trois essais avant de conclure.
-    for (let essai = 2; essai <= 3 && (telecharge.status !== 0 || !fs.existsSync(fichier)); essai += 1) {
-      await new Promise((r) => setTimeout(r, 20000));
-      telecharge = gh(['run', 'download', id, '--repo', repo, '--name', 'bilan', '--dir', dossier]);
-    }
-    if (telecharge.status !== 0 || !fs.existsSync(fichier)) {
-      // Vert sans bilan seulement si le passage n en a publie aucun (aucun gate touche par le diff).
-      // Vu le 2026-11-11 : un telechargement rate sur un passage vert affichait « VERT : aucun gate
-      // a jouer » alors que le bilan existait et n avait pas ete lu.
-      const liste = gh(['api', `repos/${repo}/actions/runs/${id}/artifacts?per_page=100`, '--jq', '[.artifacts[].name]']);
-      let noms = null;
-      try { noms = liste.status === 0 ? JSON.parse(liste.stdout || '[]') : null; } catch (e) { noms = null; }
-      if (conclusion === 'success' && Array.isArray(noms) && !noms.includes('bilan')) { console.log('[suite-github] VERT : aucun gate a jouer pour ce diff'); return 0; }
-      const pourquoi = !Array.isArray(noms) ? 'la liste des bilans ne se lit pas' : noms.includes('bilan') ? 'un bilan existe mais ne se telecharge pas' : 'aucun bilan publie';
-      console.error(`[suite-github] pas de bilan lu (conclusion du workflow : ${conclusion} ; ${pourquoi}). A relire : gh run download ${id} --repo ${repo} --name bilan`);
-      return 2;
-    }
-    console.log(fs.readFileSync(path.join(dossier, 'bilan-assemble.txt'), 'utf8'));
-    console.log(`[suite-github] bilan et journaux : ${dossier} ; journaux des parts : gh run download ${id} --repo ${repo}`);
-    const bilan = JSON.parse(fs.readFileSync(fichier, 'utf8'));
-    return bilan.rouges || (bilan.manquantes || []).length ? 1 : 0;
+    return await lireLeBilan({ repo, id, conclusion });
   } finally {
     spawnSync('git', ['-C', ROOT, 'push', 'origin', `:refs/tags/${etiquette}`], { encoding: 'utf8', windowsHide: true });
   }
 }
 
-main().then((code) => process.exit(code), (error) => { console.error(error); process.exit(2); });
+if (require.main === module) main().then((code) => process.exit(code), (error) => { console.error(error); process.exit(2); });
+
+module.exports = { lireLeBilan };

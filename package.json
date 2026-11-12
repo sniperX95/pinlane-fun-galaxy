@@ -423,6 +423,7 @@
     "test:ancres": "node scripts/ancres-check.js && node scripts/ancres-check.js --contre-preuves",
     "test:gates-parties": "node scripts/gates-parties-check.js && node scripts/gates-parties-check.js --contre-preuves",
     "test:gates-horloge": "node scripts/gates-horloge-check.js",
+    "test:suite-github-bilan": "node scripts/suite-github-bilan-check.js",
     "suite:github": "node scripts/suite-github.js",
     "site:lignes": "node scripts/site-lignes-verif.js",
     "test:impact": "node scripts/gates-lancer.js --impact",

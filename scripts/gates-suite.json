@@ -4,6 +4,7 @@
     "test:ancres",
     "test:gates-parties",
     "test:gates-horloge",
+    "test:suite-github-bilan",
     "test:no-em-dash",
     "test:caracteres-de-controle",
     "test:no-header-tag",

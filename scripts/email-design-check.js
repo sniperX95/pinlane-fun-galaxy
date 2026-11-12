@@ -153,9 +153,14 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     && Object.values(defautsNus.signature.socials).every((v) => v === '') && defautsNus.header.logoUrl === '',
     '[A] un centre sans catalogue : aucun telephone, email, adresse, logo, site ni reseau');
   const defautsLibramont = m.design.getEmailDesignDefaults(LIBRAMONT);
+  // 2026-11-12 (« avec info et tout », Ansar) : le site par defaut est celui que
+  // l identite du centre declare (identity.siteUrl), rien d autre ; un centre
+  // sans identite reste sans site (le controle du centre nu, juste au-dessus).
   ok(defautsLibramont.signature.phone === LIBRAMONT.publicInfo.phone && defautsLibramont.signature.email === LIBRAMONT.publicInfo.email && /6800 Libramont/.test(defautsLibramont.signature.address)
-    && defautsLibramont.signature.logoUrl === 'https://app.pinlane.be/assets/brand/logo-fun-galaxy-email-clair.png' && defautsLibramont.signature.website === '',
-    '[A] Libramont : ses coordonnees du catalogue, son logo declare rendu absolu, et toujours aucun site ni reseau invente', JSON.stringify({ phone: defautsLibramont.signature.phone, logo: defautsLibramont.signature.logoUrl }));
+    && defautsLibramont.signature.logoUrl === 'https://app.pinlane.be/assets/brand/logo-fun-galaxy-email-clair.png'
+    && defautsLibramont.signature.website === LIBRAMONT.identity.siteUrl && /^https:\/\//.test(defautsLibramont.signature.website)
+    && Object.values(defautsLibramont.signature.socials).every((v) => v === ''),
+    '[A] Libramont : ses coordonnees du catalogue, son logo declare rendu absolu, le site que son identite declare, et toujours aucun reseau invente', JSON.stringify({ phone: defautsLibramont.signature.phone, logo: defautsLibramont.signature.logoUrl, site: defautsLibramont.signature.website }));
   const htmlNu = m.comms.emailShell({ title: 'T', body: 'Bonjour', preheader: 'p', center: CENTRE_NU, design: defautsNus, signature: { enabled: true, person: null } });
   ok(liens(htmlNu) === 0 && images(htmlNu) === 0 && /L&#39;équipe Centre Nu/.test(htmlNu),
     '[A] signe par defaut chez un centre sans catalogue : « L équipe Centre Nu », zero lien, zero image');
@@ -191,8 +196,10 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(/bgcolor="#17151F"/.test(contrasteSansLogoBlanc) && /Sans Logo/.test(contrasteSansLogoBlanc) && images(contrasteSansLogoBlanc) === 0,
     '[B] contraste sans logo blanc declare : le nom en blanc, aucune image inventee');
   // 2026-11-11 (lot 2) : la signature de Fun Galaxy porte une photo par defaut ;
-  // sans logo ni photo, aucune image ne reste.
-  const enTeteAucun = await rendu(m, { design: { ...defautsLibramont, header: { ...defautsLibramont.header, mode: 'aucun' }, signature: { ...defautsLibramont.signature, logoUrl: '', photo: { enabled: false, url: '' } } } });
+  // sans logo ni photo, aucune image ne reste. La forme est posee : depuis le
+  // 12/11, Fun Galaxy signe par defaut en « affiche », dont la banniere est la
+  // forme elle-meme (controle dans email-signature-check, section [J]).
+  const enTeteAucun = await rendu(m, { design: { ...defautsLibramont, header: { ...defautsLibramont.header, mode: 'aucun' }, signature: { ...defautsLibramont.signature, layout: 'carte', logoUrl: '', photo: { enabled: false, url: '' } } } });
   ok(images(enTeteAucun) === 0 && !/padding:18px 28px;border-bottom:1px solid #EFEFF3/.test(enTeteAucun), '[B] en-tete « aucun » : ni nom ni logo en tete de carte');
 
   // =====================================================================
@@ -228,8 +235,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   const apercuSequence = await m.comms.buildAutomationPreview('libramont', 'confirmation', {}, deps);
   ok(sig(apercuSequence.html) && /L&#39;équipe Fun Galaxy Libramont/.test(apercuSequence.html) && !/Kevin/.test(apercuSequence.html),
     '[E] une sequence signe de l equipe, jamais d une personne');
-  ok(/tel:0491301667/.test(manuel) && /mailto:libramont@fungalaxy\.be/.test(manuel) && /6800 Libramont/.test(manuel) && liens(manuel) === 2 && images(manuel) === 1,
-    '[E] la signature porte telephone (tel:), email (mailto:), adresse et le logo : 2 liens, 1 image', `liens=${liens(manuel)} images=${images(manuel)}`);
+  // Un envoi manuel n a pas de budget : le site declare se lie aussi (2026-11-12).
+  ok(/tel:0491301667/.test(manuel) && /mailto:libramont@fungalaxy\.be/.test(manuel) && /href="https:\/\/fungalaxy\.be/.test(manuel) && /6800 Libramont/.test(manuel) && liens(manuel) === 3 && images(manuel) === 1,
+    '[E] la signature porte telephone (tel:), email (mailto:), le site, l adresse et une image : 3 liens, 1 image', `liens=${liens(manuel)} images=${images(manuel)}`);
   const reseaux = { ...defautsLibramont, signature: { ...defautsLibramont.signature, socials: { facebook: 'https://www.facebook.com/fungalaxy', instagram: 'https://instagram.com/fungalaxy', tiktok: '', linkedin: '' }, website: 'https://www.fungalaxy.be' } };
   const avecReseaux = await rendu(m, { design: reseaux, portee: 'manual' });
   ok(/>Facebook<\/a> · <a [^>]+>Instagram<\/a>/.test(avecReseaux) && /fungalaxy\.be<\/a>/.test(avecReseaux) && !/TikTok/.test(avecReseaux) && images(avecReseaux) === 1,

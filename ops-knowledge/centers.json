@@ -269,13 +269,15 @@
       },
       "branding": {
         "emailPhotos": [
-          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling" },
-          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" },
+          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling", "banniere": "/assets/mail/signature-libramont-bowling-logo.jpg", "banniereAlt": "Le logo Fun Galaxy à côté des pistes de bowling de Libramont" },
+          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game", "banniere": "/assets/mail/signature-libramont-laser-logo.jpg", "banniereAlt": "Le logo Fun Galaxy à côté du laser game de Libramont" },
           { "url": "/assets/mail/signature-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "label": "Le Fun Run" }
         ],
-        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte", "photo": "/assets/mail/signature-quilles.jpg" } },
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "accroche": "Bowling · Laser game · Minigolf · Arcades", "layout": "affiche", "photo": "/assets/mail/signature-quilles.jpg" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
+        "emailLogoSansFond": "/assets/brand/logo-fun-galaxy-sans-fond-clair.png",
+        "emailLogoSansFondDark": "/assets/brand/logo-fun-galaxy-sans-fond-sombre.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
@@ -518,13 +520,14 @@
       },
       "branding": {
         "emailPhotos": [
-          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling" },
-          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" },
-          { "url": "/assets/mail/signature-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "label": "Le Fun Run" }
+          { "url": "/assets/mail/signature-quilles.jpg", "alt": "Des quilles qui tombent sur une piste de bowling", "label": "Le bowling", "banniere": "/assets/mail/signature-gembloux-bowling-logo.jpg", "banniereAlt": "Le logo Fun Galaxy à côté des pistes de bowling de Gembloux" },
+          { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" }
         ],
-        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte", "photo": "/assets/mail/signature-quilles.jpg" } },
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "accroche": "Bowling · Laser game · Minigolf · Arcades", "layout": "affiche", "photo": "/assets/mail/signature-quilles.jpg" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
+        "emailLogoSansFond": "/assets/brand/logo-fun-galaxy-sans-fond-clair.png",
+        "emailLogoSansFondDark": "/assets/brand/logo-fun-galaxy-sans-fond-sombre.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
@@ -576,9 +579,11 @@
       },
       "activityAvailability": {},
       "branding": {
-        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "carte" } },
+        "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "layout": "arene" } },
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
+        "emailLogoSansFond": "/assets/brand/logo-fun-galaxy-sans-fond-clair.png",
+        "emailLogoSansFondDark": "/assets/brand/logo-fun-galaxy-sans-fond-sombre.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",

@@ -32,6 +32,11 @@
 //       retrait restant la derniere ; textBody garde le texte de l auteur ; la
 //       formule n est pas doublee ; les interrupteurs (ligne eteinte,
 //       signature coupee, case decochee, portee) sont suivis.
+//   [J] les signatures d enseigne (2026-11-12) : Fun Galaxy signe en affiche
+//       (la banniere de sa photo, son accroche) ; affiche, arene et enseigne
+//       tiennent 2 liens et 1 image, posent le vrai logo sans fond (jamais le
+//       logo a carre), ne posent pas d image quand l en-tete l a prise, et ne
+//       donnent rien de Fun Galaxy a un autre centre.
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -230,7 +235,10 @@ async function controles(m) {
   ok(htmlAutre.includes('#0f6b4f') && !htmlAutre.toLowerCase().includes(ACCENT_FG) && !/\/assets\/mail\//.test(htmlAutre) && !/fun-galaxy/i.test(htmlAutre),
     '[E] un autre centre : sa couleur, jamais celle ni les photos de Fun Galaxy');
   const htmlFG = await transactionnel(defautsFG);
-  ok(htmlFG.toLowerCase().includes(ACCENT_FG) && htmlFG.includes(photoFG), '[E] Fun Galaxy : sa couleur et sa photo, lues dans sa fiche');
+  // Depuis le 12/11, Fun Galaxy signe en affiche : sa photo y vient en banniere
+  // (la meme activite, son logo a cote).
+  const banniereDeFG = (photos.find((p) => p.url === photoFG) || {}).banniere || '';
+  ok(htmlFG.toLowerCase().includes(ACCENT_FG) && Boolean(banniereDeFG) && htmlFG.includes(banniereDeFG), '[E] Fun Galaxy : sa couleur et sa photo, lues dans sa fiche');
   const refus = (fn) => { try { fn(); return null; } catch (error) { return error; } };
   const photoVolee = refus(() => m.design.validateEmailDesign({ ...designAutre, signature: { ...designAutre.signature, photo: { enabled: true, url: photoFG } } }, AUTRE));
   const photoAilleurs = refus(() => m.design.validateEmailDesign({ ...defautsFG, signature: { ...defautsFG.signature, photo: { enabled: true, url: 'https://images.example.com/piste.jpg' } } }, LIBRAMONT));
@@ -419,6 +427,51 @@ async function controles(m) {
   ok(!('texteEnvoye' in signatureCoupee.payload) && (await versionEnvoyee(signatureCoupee.payload)) === corpsBienAVous
     && !('texteEnvoye' in caseDecochee.payload) && !('texteEnvoye' in sequenceSansSignature),
     '[I] interrupteurs : signature coupee, case decochee ou portee eteinte, la version texte est le texte seul');
+
+  // =====================================================================
+  console.log('\n[J] les signatures d enseigne (2026-11-12) : le vrai logo sans fond, une vraie photo, l accroche');
+  // =====================================================================
+  // Ansar : « un truc jolie avec notre logo le vrai [...] design bowling laser
+  // game super beau avec info et tout », puis « logo sans fond ». Jury a
+  // l aveugle du 12/11 : affiche, puis arene, enseigne, la carte d avant.
+  const enseigne = (layout, extra = {}) => ({ ...defautsFG, signature: { ...defautsFG.signature, layout, ...extra } });
+  const banniereFG = (photos.find((p) => p.url === defautsFG.signature.photo.url) || {}).banniere || '';
+  const fichiersEnseigne = [banniereFG, `${origine}/assets/brand/logo-fun-galaxy-sans-fond-sombre.png`, `${origine}/assets/brand/logo-fun-galaxy-sans-fond-clair.png`]
+    .map((u) => (u.startsWith(origine) ? path.join(ROOT, u.slice(origine.length)) : ''));
+  ok(defautsFG.signature.layout === 'affiche' && /^Bowling · Laser game/.test(defautsFG.signature.accroche) && banniereFG.endsWith('/assets/mail/signature-libramont-bowling-logo.jpg')
+    && fichiersEnseigne.every((f) => f && fs.existsSync(f) && fs.statSync(f).size < 100 * 1024) && largeurImage(fichiersEnseigne[0]) === 1200,
+    '[J] Fun Galaxy signe par defaut en affiche : son accroche, la banniere de sa photo (1200 px, moins de 100 Ko) et ses logos sans fond sur notre domaine');
+  const formesEnseigne = {};
+  for (const layout of ['affiche', 'arene', 'enseigne']) {
+    const html = await transactionnel(enseigne(layout));
+    formesEnseigne[layout] = html;
+    ok(liens(html) <= 2 && images(html) === 1 && html.includes(echapper(defautsFG.signature.closing)) && html.includes(echapper(defautsFG.signature.accroche))
+      && /L&#39;équipe Fun Galaxy Libramont/.test(html) && html.includes(`max-width:${600}px`),
+      `[J] ${layout} : 2 liens et 1 image au plus, la formule, l accroche, l equipe, a la largeur du corps`, `liens=${liens(html)} images=${images(html)}`);
+  }
+  ok(formesEnseigne.affiche.includes(`src="${banniereFG}"`) && formesEnseigne.arene.includes('logo-fun-galaxy-sans-fond-sombre.png') && formesEnseigne.enseigne.includes('logo-fun-galaxy-sans-fond-clair.png')
+    && !Object.values(formesEnseigne).some((h) => /logo-fun-galaxy-email(-clair)?\.png/.test(h)),
+    '[J] le vrai logo sans fond : la banniere en affiche, les lettres blanches sur la nuit de l arene, les lettres foncees sur le blanc de l enseigne, jamais le logo a carre');
+  ok(/href="tel:[^"]+" style="color:#ffffff;/.test(formesEnseigne.arene) && formesEnseigne.arene.toLowerCase().includes(LIBRAMONT.branding.dark.accentStrong.toLowerCase()),
+    '[J] arene : les liens en blanc sur la nuit, la formule dans la couleur de nuit du centre (sa fiche)');
+  ok(Object.values(formesEnseigne).every((h) => /white-space:nowrap;">[^<]*<a href="tel:/.test(h) && !/gratuit/i.test(h)),
+    '[J] chaque coordonnee d un seul tenant au telephone, et aucun mot qui range le mail dans Promotions');
+  // Le budget : l en-tete a deja pris l image du mail, la signature n en pose pas.
+  for (const layout of ['affiche', 'arene', 'enseigne']) {
+    const html = await transactionnel({ ...enseigne(layout), preset: 'classique', header: { mode: 'logo', logoUrl: '', logoWidth: 140 } });
+    ok(images(html) === 1 && !html.includes('sans-fond') && !html.includes(banniereFG), `[J] ${layout} avec un logo d en-tete : la signature ne pose pas d image`, `images=${images(html)}`);
+  }
+  // Un autre centre, sans bannieres ni logos sans fond : rien de Fun Galaxy.
+  const designAutreEnseigne = (layout) => ({ ...m.design.getEmailDesignDefaults(AUTRE), signature: { ...m.design.getEmailDesignDefaults(AUTRE).signature, layout } });
+  const autres = await Promise.all(['affiche', 'arene', 'enseigne'].map((layout) => transactionnel(designAutreEnseigne(layout), { center: AUTRE })));
+  ok(autres.every((h) => images(h) === 0 && !/\/assets\/mail\//.test(h) && !/fun-galaxy/i.test(h) && !h.includes('Laser game')),
+    '[J] un autre centre en affiche, arene ou enseigne : ni photo, ni logo, ni accroche de Fun Galaxy');
+  const sansAccroche = await transactionnel(enseigne('enseigne', { accroche: '' }));
+  ok(!sansAccroche.includes('text-transform:uppercase') && sansAccroche.includes(echapper(defautsFG.signature.closing)),
+    '[J] sans accroche, l enseigne n a pas de bande vide');
+  const relueEnseigne = m.design.fusionnerEmailDesign({ ...defautsFG, signature: { ...defautsFG.signature, accroche: 'Bowling · Karting' } }, LIBRAMONT);
+  ok(relueEnseigne.signature.accroche === 'Bowling · Karting' && relueEnseigne.signature.layout === 'affiche',
+    '[J] l accroche et la forme ecrites par le gerant se gardent a l enregistrement');
 }
 
 (async () => {
@@ -480,6 +533,17 @@ async function controles(m) {
       fichier: 'lib/ops-communications.js', de: '  if (!signatureAllumee(gabarit, signature)) return { textBody };', vers: '  if (!gabarit) return { textBody };' },
     { nom: 'le texte de l auteur remplace', cible: '[I] le texte de l auteur reste seul dans textBody (le fil de Reçus et l apprentissage de l agent le relisent tel quel)',
       fichier: 'lib/ops-communications.js', de: '  return { textBody, texteEnvoye };', vers: '  return { textBody: texteEnvoye, texteEnvoye };' },
+    // Les signatures d enseigne (2026-11-12).
+    { nom: 'la banniere oubliee', cible: '[J] le vrai logo sans fond : la banniere en affiche, les lettres blanches sur la nuit de l arene, les lettres foncees sur le blanc de l enseigne, jamais le logo a carre',
+      fichier: 'lib/ops-communications.js', de: '        const url = photoAffiche.banniere || photoAffiche.url;', vers: '        const url = photoAffiche.url;' },
+    { nom: 'le logo a carre sur la nuit', cible: '[J] le vrai logo sans fond : la banniere en affiche, les lettres blanches sur la nuit de l arene, les lettres foncees sur le blanc de l enseigne, jamais le logo a carre',
+      fichier: 'lib/ops-communications.js', de: '      const logoNuit = emailDesign.urlDImage(center?.branding?.emailLogoSansFondDark);', vers: '      const logoNuit = emailDesign.urlDImage(center?.branding?.emailLogoDark);' },
+    { nom: 'l enseigne passe le budget d image', cible: '[J] enseigne avec un logo d en-tete : la signature ne pose pas d image',
+      fichier: 'lib/ops-communications.js', de: '    if (logoJour && imagesRestantes > 0) {', vers: '    if (logoJour) {' },
+    { nom: 'liens sombres sur la nuit', cible: '[J] arene : les liens en blanc sur la nuit, la formule dans la couleur de nuit du centre (sa fiche)',
+      fichier: 'lib/ops-communications.js', de: "  if (disposition === 'arene') couleurLien = '#ffffff';", vers: '' },
+    { nom: 'l accroche perdue a l enregistrement', cible: '[J] l accroche et la forme ecrites par le gerant se gardent a l enregistrement',
+      fichier: 'lib/email-design.js', de: "    accroche: texte(sigSource.accroche, LIMITES.accroche, 'Accroche', sigDefauts.accroche),\n", vers: '' },
   ];
   const survivantes = [];
   for (const c of CAS) {

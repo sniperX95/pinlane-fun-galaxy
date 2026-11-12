@@ -132,8 +132,8 @@ function designParDefaut() {
     header: { mode: 'nom', logoUrl: '', logoWidth: 140 },
     footer: { adresse: true, telephone: true, email: true, mention: '' },
     signature: {
-      enabled: true, closing: SIGNATURE_CATALOGUE.closing || 'Au plaisir de vous revoir,', teamLabel: '', role: '',
-      phone: CENTRE.publicInfo.phone, email: CENTRE.publicInfo.email, website: '', address: CENTRE.publicInfo.address,
+      enabled: true, closing: SIGNATURE_CATALOGUE.closing || 'Au plaisir de vous revoir,', accroche: SIGNATURE_CATALOGUE.accroche || '', teamLabel: '', role: '',
+      phone: CENTRE.publicInfo.phone, email: CENTRE.publicInfo.email, website: (CATALOGUE_CENTRE.identity && CATALOGUE_CENTRE.identity.siteUrl) || '', address: CENTRE.publicInfo.address,
       logoUrl: logoAbsolu(CENTRE.branding.emailLogo), logoWidth: 120,
       socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: SIGNATURE_CATALOGUE.layout || 'carte',
       photo: { enabled: Boolean(photosSignature()[0]), url: (photosSignature()[0] || {}).url || '' },

@@ -6631,7 +6631,7 @@
       header: { mode: 'nom', logoUrl: '', logoWidth: 140 },
       footer: { adresse: true, telephone: true, email: true, mention: '' },
       signature: {
-        enabled: true, closing: PV2_FORMULES[PV2_FORMULES.length - 1], teamLabel: '', role: '', phone: '', email: '', website: '', address: '',
+        enabled: true, closing: PV2_FORMULES[PV2_FORMULES.length - 1], accroche: '', teamLabel: '', role: '', phone: '', email: '', website: '', address: '',
         logoUrl: '', logoWidth: 120, socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: 'carte',
         photo: { enabled: false, url: '' }, afficher: { telephone: true, email: true, site: true, adresse: true, reseaux: true },
       },
@@ -7832,7 +7832,9 @@
       .filter((c) => /^#[0-9a-f]{6}$/.test(c.hex) && !vues.has(c.hex) && vues.add(c.hex));
   }
   const PV2_RESEAUX = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn' };
-  const PV2_DISPOSITIONS = { carte: 'Carte', bandeau: 'Bandeau', ligne: 'Une ligne' };
+  const PV2_DISPOSITIONS = { affiche: 'Affiche', arene: 'Arène', enseigne: 'Enseigne', carte: 'Carte', bandeau: 'Bandeau', ligne: 'Une ligne' };
+  // Les formes qui portent la ligne d activites du centre (signature.accroche).
+  const PV2_AVEC_ACCROCHE = ['affiche', 'arene', 'enseigne'];
 
   function pv2DesignFormHtml(d, mayEdit) {
     const dis = mayEdit ? '' : ' disabled';
@@ -7865,6 +7867,9 @@
 
     // La signature a vue : sa forme, sa photo, sa formule, ce qu elle affiche.
     const dispositions = [
+      ['affiche', 'Affiche', 'Le logo du centre à côté d’une vraie photo, puis vos coordonnées en deux colonnes.'],
+      ['arene', 'Arène', 'Un bloc sombre avec le logo blanc, la formule et vos activités.'],
+      ['enseigne', 'Enseigne', 'Vos activités sur une bande de la couleur du centre, le logo et les coordonnées dessous.'],
       ['carte', 'Carte', photos.length ? 'Une photo du centre en tête, ou son logo à gauche du texte.' : 'Le logo du centre à gauche, le texte à droite.'],
       ['bandeau', 'Bandeau', 'Un aplat de la couleur du mail, avec le nom du centre en grand.'],
       ['ligne', 'Une ligne', 'La plus discrète, la formule puis une ligne de texte.'],
@@ -7877,7 +7882,20 @@
           ${photoAllumee ? `<div class="em-photos" role="radiogroup" aria-label="La photo de la signature">${photos.map((p) => `<button type="button" class="em-photo${s.photo.url === p.url ? ' is-active' : ''}" role="radio" aria-checked="${s.photo.url === p.url}" onclick="pv2DesignPhoto('${escJs(p.url)}')"${dis}><img src="${esc(pv2CheminLocal(p.url))}" alt="" loading="lazy" decoding="async"><span>${esc(p.label)}</span></button>`).join('')}</div>` : ''}
         </div>`
         : '<p class="pv2-design-hint">Aucune photo déclarée pour ce centre. La signature porte son logo.</p>';
+    } else if (s.layout === 'affiche') {
+      // Comme au rendu : la photo choisie si elle a sa bannière, sinon la première.
+      const bannieres = photos.filter((p) => p.banniere);
+      const choisie = photoAllumee && bannieres.some((p) => p.url === s.photo.url) ? s.photo.url : (bannieres[0] || {}).url;
+      blocPhoto = bannieres.length
+        ? `<div class="em-design-ligne">
+          <p class="em-design-question" id="emBanniereTitre">La photo de l’affiche</p>
+          <div class="em-photos" role="radiogroup" aria-labelledby="emBanniereTitre">${bannieres.map((p) => `<button type="button" class="em-photo${choisie === p.url ? ' is-active' : ''}" role="radio" aria-checked="${choisie === p.url}" onclick="pv2DesignPhoto('${escJs(p.url)}')"${dis}><img src="${esc(pv2CheminLocal(p.banniere))}" alt="" loading="lazy" decoding="async"><span>${esc(p.label)}</span></button>`).join('')}</div>
+        </div>`
+        : '<p class="pv2-design-hint">Aucune bannière déclarée pour ce centre. L’affiche prend sa photo, sinon elle s’en passe.</p>';
     }
+    const blocAccroche = PV2_AVEC_ACCROCHE.includes(s.layout) ? `<div class="em-design-ligne">
+        <label class="pv2-composer-field"><span>Vos activités en une ligne <small class="mk-auto-edit-hint">vide = pas de ligne d’activités</small></span><input type="text" value="${esc(s.accroche || '')}" maxlength="90" placeholder="Bowling · Laser game · Minigolf · Arcades" data-pl-focus="emails.design.signature.accroche" oninput="pv2DesignField('signature.accroche', this.value)"${dis}></label>
+      </div>` : '';
     const blocFormule = `<div class="em-design-ligne">
         <p class="em-design-question" id="emFormuleTitre">La formule de fin</p>
         <div class="em-formules" role="group" aria-labelledby="emFormuleTitre">${formules.map((f) => `<button type="button" class="em-formule${s.closing === f ? ' is-active' : ''}" aria-pressed="${s.closing === f}" onclick="pv2DesignFormule('${escJs(f)}')"${dis}>${esc(f)}</button>`).join('')}</div>
@@ -7919,7 +7937,7 @@
           <p class="em-design-question" id="emDispositionTitre">Sa forme</p>
           <div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>
         </div>
-        ${blocPhoto}${blocFormule}${blocContacts}` : ''}
+        ${blocPhoto}${blocAccroche}${blocFormule}${blocContacts}` : ''}
       </section>
       <section class="pv2-design-block em-design-plus" aria-label="Plus d’options">
       ${emOptionsHtml('apparence', 'en-tête, pied de page, textes de la signature', `
@@ -7986,9 +8004,9 @@
     const entete = { nom: 'Le nom du centre', logo: 'Le logo', 'logo-nom': 'Le logo et le nom', aucun: 'Rien' }[d.header.mode] || '';
     const liste = (paires) => paires.filter(([, on]) => on).map(([label]) => label).join(', ');
     const s = d.signature;
-    const photo = s.layout === 'carte' && s.photo && s.photo.enabled ? ((pv2Design.photos || []).find((p) => p.url === s.photo.url) || {}).label || 'une photo du centre' : '';
+    const photo = (s.layout === 'carte' || s.layout === 'affiche') && s.photo && s.photo.enabled ? ((pv2Design.photos || []).find((p) => p.url === s.photo.url) || {}).label || 'une photo du centre' : '';
     const signature = s.enabled
-      ? [PV2_DISPOSITIONS[s.layout] || 'Carte', photo ? `avec ${photo}` : '', s.closing, s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
+      ? [PV2_DISPOSITIONS[s.layout] || 'Carte', photo ? `avec ${photo}` : '', s.closing, PV2_AVEC_ACCROCHE.includes(s.layout) ? s.accroche : '', s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
       : 'Non';
     const ligne = (label, valeur) => `<div class="pv2-design-scope-row"><strong>${esc(label)}</strong><small>${esc(valeur)}</small></div>`;
     return `<div class="pv2-design-form">

@@ -577,7 +577,8 @@ async function contrePreuvesNode() {
   await mail('carte', "  return id ? [{ label: 'Réservation', value: `n° ${id}` }] : [];", '  return [];', 'clients');
   await mail('bouton', "  return id ? `${publicAppUrl()}/?resa=${id}` : `${publicAppUrl()}/`;", '  return `${publicAppUrl()}/`;', 'bouton');
   await mail('texte', "  return id && corps.trim() ? `${corps}\\n\\nRéservation n° ${id}` : corps;", '  return corps;', 'texteConfirmation');
-  await mail('reecrit', 'textBody: Array.isArray(message.details) ? texteAvecNumero(message.body, reservation) : message.body,', 'textBody: texteAvecNumero(message.body, reservation),', 'texteReecrit');
+  // (2026-11-12 : la version texte passe par versionsTexte, qui la signe ; l ancre suit la ligne d aujourd hui)
+  await mail('reecrit', 'texte: Array.isArray(message.details) ? texteAvecNumero(message.body, reservation) : message.body, corps: message.body,', 'texte: texteAvecNumero(message.body, reservation), corps: message.body,', 'texteReecrit');
   await mail('variable', "  numero: 'num[eé]ro',\n", '', 'variable');
 
   const telegram = async (nom, fichier, de, vers, regle) => {

@@ -312,7 +312,9 @@ async function scenarioBlocs(browser, jour) {
       '[B] les activités libres : une ligne « Libre », une puce cochable par activité', ardennes && JSON.stringify({ etapes: ardennes.etapes, libres: ardennes.libres }));
     ok(ardennes && /Prix sur place/.test(ardennes.prix) && !/0\s*€/.test(ardennes.prix), '[B] sans montant connu : « Prix sur place », jamais « 0 € »', ardennes && ardennes.prix);
     const scouts = carte(sections, 81012);
-    ok(scouts && scouts.etapes.filter((e) => /groupe \d\/2 · 20 joueurs/.test(e.quoi)).length === 2, '[B] le laser en deux groupes de 20 se lit sur deux lignes', scouts && scouts.etapes.map((e) => e.quoi).join(' | '));
+    // (2026-11-12 : le nombre de joueurs du groupe se dit une fois, en tete, plus jamais redit derriere
+    // « groupe 1/2 »)
+    ok(scouts && scouts.etapes.filter((e) => /20 joueurs · 1 partie · groupe \d\/2$/.test(e.quoi) && (e.quoi.match(/joueurs/g) || []).length === 1).length === 2, '[B] le laser en deux groupes de 20 se lit sur deux lignes', scouts && scouts.etapes.map((e) => e.quoi).join(' | '));
 
     // [C] LES ENCADRES
     const tons = (c) => (c ? c.encadres.map((e) => e.ton).join(',') : '');

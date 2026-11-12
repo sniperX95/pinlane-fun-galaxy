@@ -27,6 +27,7 @@ const MUTATIONS = [
   { nom: 'volume-recalcule-au-clic', rouge: '[G] le volume d une campagne vu sur la carte repart au clic', editions: [{ fichier: GESTES, de: '    prep.corps.expectedRecipients = Math.trunc(Number(p.destinataires));', vers: '' }] },
   // Vu par le lot 2 le 2026-11-11 : « merci beaucoup » contenait « coup » et debloquait un geste risque.
   { nom: 'racine-au-milieu-du-mot', rouge: '[G] une phrase de tous les jours ne debloque aucun geste risque, la demande dite oui', editions: [{ fichier: GESTES, de: 'const mots = (...racines) => new RegExp(', vers: "const mots = (...racines) => new RegExp(`(?:${racines.join('|')})`, 'iu') || new RegExp(" }] },
+  { nom: 'nom-d-outil-sur-la-carte', rouge: '[G] aucune carte n affiche le nom d un outil ou d un geste', editions: [{ fichier: 'lib/assistant-gestes-reservations.js', de: 'écrivez-lui depuis sa fiche, ou demandez-moi de lui écrire.', vers: 'écrivez-lui avec ecrire_ou_repondre_mail.' }] },
   // Vu par le lot 3 le 2026-11-11 : l heure dite partait sans fuseau, et le serveur la lisait en UTC.
   { nom: 'heure-lue-en-utc', rouge: '[G] une campagne programmee part a l heure de Bruxelles, hiver comme ete', editions: [{ fichier: GESTES, de: '        envoiLe = new Date(t).toISOString();', vers: '        envoiLe = quand;' }] },
   { nom: 'sans-controle-total-au-clic', rouge: '[S] un role sans le controle total ne fait aucun geste (403)', editions: [{ fichier: OPS, de: "    if (!agitAvecLAssistant(options.session)) throw createHttpError('Seules la Direction et le propriétaire font agir l’assistant.', 403, true);\n    const G = require('../lib/assistant-gestes');", vers: "    const G = require('../lib/assistant-gestes');" }] },
@@ -166,6 +167,21 @@ async function verifier(editions = []) {
       if (!d.test(dite)) fuites.push(`${nom} ne reconnait pas « ${dite} »`);
     });
     ok(!fuites.length, '[G] une phrase de tous les jours ne debloque aucun geste risque, la demande dite oui', fuites.join(' | '));
+    // Ce que la carte affiche (clients, alerte, texte, fait) ne nomme jamais un outil ou un geste : vu sur
+    // l image du 12/11, « écrivez-lui avec ecrire_ou_repondre_mail ». Les messages d erreur, eux, sont lus
+    // par le modele. Le texte des fichiers recoit les memes mutations que leur chargement.
+    const NOMS = [...Object.keys(G.GESTES), 'proposer_un_geste', 'faire_dans_le_logiciel', 'lister_reservations', 'planning_du_jour', 'fiche_client', 'catalogue_et_tarifs', 'horaires_et_fermetures', 'sequences_et_modeles', 'mails_clients', 'demandes_sur_mesure', 'offres_et_ventes_additionnelles'].filter((n) => n.includes('_'));
+    const affiches = [];
+    [GESTES, 'lib/assistant-gestes-centre.js', 'lib/assistant-gestes-reservations.js'].forEach((rel) => {
+      let texte = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+      editions.filter((e) => e.fichier === rel).forEach((e) => { texte = texte.split(e.de).join(e.vers); });
+      texte.split('\n').forEach((ligne, i) => {
+        if (!/\b(clients|alerte|fait|texte)\s*[:=]/.test(ligne) || /\berreur\(|\bparametres\s*:|\bquoi\s*:/.test(ligne)) return;
+        const nom = NOMS.find((n) => new RegExp(`(^|[^a-z_])${n}([^a-z_]|$)`).test(ligne));
+        if (nom) affiches.push(`${rel}:${i + 1} ${nom}`);
+      });
+    });
+    ok(!affiches.length, '[G] aucune carte n affiche le nom d un outil ou d un geste', affiches.join(' | '));
     const inconnue = await carte('prix_formule', { formule: 'Piscine à vagues', prix: 20 });
     ok(inconnue.e && /Anniversaire/.test(inconnue.e.message) && /Team building/.test(inconnue.e.message), '[G] une formule inconnue se refuse en nommant celles du centre', inconnue.e && inconnue.e.message);
     const hors = await carte('prix_formule', { formule: 'Anniversaire', prix: 5000 });

@@ -427,7 +427,8 @@ function makeDeps(state = {}) {
     let res = fakeRes();
     await handler(fakeReq('GET', '/api/u?k=' + 'c'.repeat(32)), res);
     ok(calls.length === 0, `jeton inconnu : aucune ecriture declenchee (obtenu ${calls.length})`);
-    ok(/expire ou inconnu/i.test(res.body), 'jeton inconnu : message neutre rendu');
+    // 2026-11-12 : la page de retrait parle avec ses accents (« Lien expiré ou inconnu »).
+    ok(/expir[eé] ou inconnu/i.test(res.body), 'jeton inconnu : message neutre rendu');
     ok(!res.body.includes('route@test.be'), 'jeton inconnu : aucune adresse affichee');
 
     // 6b. Jeton valide : ecriture scopee au centre resolu.

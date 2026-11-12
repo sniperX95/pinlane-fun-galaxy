@@ -324,6 +324,7 @@
     "test:activite-en-tours",
     "test:assistant-fin-des-mails",
     "test:assistant-ecriture",
+    "test:sequences-texte-de-depart",
     "test:complet-explique",
     "test:formulaire-retours",
     "test:heures-passees",

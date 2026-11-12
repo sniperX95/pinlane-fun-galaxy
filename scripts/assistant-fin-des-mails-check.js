@@ -7,7 +7,9 @@
 //   A. la lecture rend la signature du centre et, pour chaque mail automatique, sa fin telle que le client
 //      la lit, signature comprise, tirees du meme apercu que l editeur des mails : la confirmation finit
 //      par « Funement vôtre, » puis l equipe, l anniversaire par son propre « Bien à vous, », que la
-//      signature ne double pas ;
+//      signature ne double pas ; le texte a modifier d une sequence jamais personnalisee est le texte du
+//      logiciel avec ses variables, sa fin comprise (le texte de depart de l editeur, 2026-11-12), et le
+//      merci d un centre qui a donne sa fiche Google part du texte qui demande un avis ;
 //   B. elle lit le design enregistre du centre, pas le catalogue : une autre formule enregistree se lit ;
 //   C. une signature coupee sur les mails automatiques se dit coupee, et la fin n a plus de formule ;
 //   D. les consignes du modele portent la voix du centre (jamais une faute) et le refus de decrire ce
@@ -21,12 +23,14 @@ const ROOT = path.resolve(__dirname, '..');
 const OUTILS = 'lib/assistant-outils-centre.js';
 
 const MUTATIONS = [
-  { nom: 'texte-d-usine', rouge: '[A] la confirmation se lit telle qu elle part, sans le « Bien à vous » de son texte d usine', editions: [{ fichier: OUTILS, de: 'texte_envoye: parti ? texte(nom, parti.texte) : NON_DISPONIBLE,', vers: 'texte_envoye: texte(nom, r.body || d.body),' }] },
+  { nom: 'texte-d-usine', rouge: '[A] la confirmation se lit telle qu elle part, rendue sur la reservation d exemple', editions: [{ fichier: OUTILS, de: 'texte_envoye: parti ? texte(nom, parti.texte) : NON_DISPONIBLE,', vers: 'texte_envoye: texte(nom, depart.body),' }] },
   // (un changement de texte ecrit depuis l exemple enverrait « Marie » et le 20 juin a tous les clients)
-  { nom: 'modifier-depuis-l-exemple', rouge: '[A] le texte a modifier garde ses variables, jamais le nom ni la date de l exemple', editions: [{ fichier: OUTILS, de: 'texte_a_modifier: texte(nom, r.body || d.body),', vers: "texte_a_modifier: texte(nom, parti ? parti.texte : '')," }] },
+  { nom: 'modifier-depuis-l-exemple', rouge: '[A] le texte a modifier garde ses variables, jamais le nom ni la date de l exemple', editions: [{ fichier: OUTILS, de: 'texte_a_modifier: texte(nom, depart.body),', vers: "texte_a_modifier: texte(nom, parti ? parti.texte : '')," }] },
   { nom: 'sans-signature', rouge: '[A] la signature du centre : sa formule, qui signe, sa disposition, ou elle se pose', editions: [{ fichier: OUTILS, de: 'modele: { centre: id, signature: signature || NON_DISPONIBLE, gabarit:', vers: 'modele: { centre: id, gabarit:' }] },
   { nom: 'gabarit-par-son-id', rouge: '[B] le gabarit des mails se lit sous son nom de la galerie', editions: [{ fichier: OUTILS, de: "  return { nom: nom(id), mails_automatiques: nom(auto ? auto.id : id) };", vers: "  return { nom: id, mails_automatiques: auto ? auto.id : id };" }] },
-  { nom: 'depart-pris-pour-l-envoi', rouge: '[A] une sequence jamais personnalisee se dit partie avec le texte du logiciel', editions: [{ fichier: OUTILS, de: "part_avec: r.body ? 'le texte du centre' : 'le texte du logiciel',", vers: "part_avec: 'le texte du centre'," }] },
+  { nom: 'depart-pris-pour-l-envoi', rouge: '[A] une sequence jamais personnalisee part du texte du logiciel, avec ses variables et sa fin', editions: [{ fichier: OUTILS, de: "part_avec: r.body ? 'le texte du centre' : 'le texte du logiciel',", vers: "part_avec: 'le texte du centre'," }] },
+  { nom: 'ancien-texte-de-depart', rouge: '[A] une sequence jamais personnalisee part du texte du logiciel, avec ses variables et sa fin', editions: [{ fichier: 'lib/ops-communications.js', de: "      'Le montant se règle sur place le jour même, aucun paiement n’est demandé à l’avance.',\n      'L’équipe de {{centre}} vous attend.',", vers: "      'Le paiement se fait sur place.',\n      '',\n      'Bien à vous,',\n      '{{centre}}'," }] },
+  { nom: 'avis-oublie', rouge: '[A] le merci d un centre qui a donne sa fiche Google part du texte qui demande un avis', editions: [{ fichier: 'lib/ops-communications.js', de: 'body: String((reglage && reglage.body) || (avecAvis ? content.bodyAvecAvis : content.body) || \'\'),', vers: 'body: String((reglage && reglage.body) || content.body || \'\'),' }] },
   { nom: 'panne-des-modeles', rouge: '[E] sans les modeles, la signature et les sequences se lisent encore', editions: [{ fichier: OUTILS, de: 'ouRien(() => listEmailTemplates({ centerId: id }))', vers: 'listEmailTemplates({ centerId: id })' }] },
   { nom: 'fin-sans-signature', rouge: '[A] la confirmation finit par « Funement vôtre, » puis l equipe', editions: [{ fichier: OUTILS, de: 'return lignesNonVides(mail.envoye || mail.texte)', vers: 'return lignesNonVides(mail.texte)' }] },
   { nom: 'signature-du-catalogue', rouge: '[B] une autre formule enregistree par le centre se lit, et finit ses mails', editions: [{ fichier: OUTILS, de: 'ouRien(() => OC.resolveEmailDesign(id)), mailsTelsQuIlsPartent', vers: "ouRien(() => require('./email-design').getEmailDesignDefaults(require('./ops-knowledge').getCenter(id))), mailsTelsQuIlsPartent" }] },
@@ -84,11 +88,11 @@ async function verifier(editions = []) {
     db.listEmailTemplates = async () => [];
     const OC = require(path.join(ROOT, 'lib/ops-communications.js'));
     const outils = require(path.join(ROOT, 'lib/assistant-outils.js'));
-    const lire = async () => {
+    const lire = async (entree = {}) => {
       OC.__test.invaliderCacheDesign();
       const ctx = outils.creerContexte({ req: {}, session: DIRECTION, centres: [{ id: 'libramont', name: 'Fun Galaxy Libramont' }], aujourdhui: '2026-11-12', messagesPersonne: ['la signature met Funement vôtre, ça se suit bien ?'] });
       ctx.portes.set('libramont', DIRECTION);
-      const r = await outils.executer(ctx, 'sequences_et_modeles', { centre: 'libramont' });
+      const r = await outils.executer(ctx, 'sequences_et_modeles', { centre: 'libramont', ...entree });
       const texte = typeof r.contenu === 'string' ? r.contenu : JSON.stringify(r.contenu || {});
       return JSON.parse(texte.slice(texte.indexOf('{')));
     };
@@ -102,14 +106,22 @@ async function verifier(editions = []) {
       '[A] la signature du centre : sa formule, qui signe, sa disposition, ou elle se pose', JSON.stringify(sig));
     const confirmation = seq(usine, 'Confirmation de réservation');
     ok(confirmation.signee === 'oui' && /Fun Galaxy Libramont/.test(String(confirmation.texte_envoye || '')) && !/Bien à vous/.test(String(confirmation.texte_envoye || '')) && !/Bien à vous/.test(JSON.stringify(confirmation.fin_lue_par_le_client || [])),
-      '[A] la confirmation se lit telle qu elle part, sans le « Bien à vous » de son texte d usine', JSON.stringify({ texte: String(confirmation.texte_envoye || '').slice(-120), fin: confirmation.fin_lue_par_le_client }));
+      '[A] la confirmation se lit telle qu elle part, rendue sur la reservation d exemple', JSON.stringify({ texte: String(confirmation.texte_envoye || '').slice(-120), fin: confirmation.fin_lue_par_le_client }));
     const aModifier = (usine.sequences_automatiques || []).map((s) => String(s.texte_a_modifier || ''));
     ok(aModifier.length === 6 && aModifier.every((t) => /\{\{[a-z_]+\}\}/.test(t) && !/Marie|20 juin/.test(t)) && /exemple/.test(String(usine.exemple || '')),
       '[A] le texte a modifier garde ses variables, jamais le nom ni la date de l exemple', JSON.stringify(aModifier.map((t) => t.slice(0, 60))));
-    // (le texte de depart de l editeur n est pas ce que lit le client ; depuis le 12/11 il finit
-    // comme lui, sans « Bien à vous, » qui faisait tomber la signature : email-signature-check [O])
-    ok(confirmation.part_avec === 'le texte du logiciel' && !/Bien à vous/.test(String(confirmation.texte_a_modifier || '')) &&/texte de départ de l’éditeur/.test(String(usine.exemple || '')),
-      '[A] une sequence jamais personnalisee se dit partie avec le texte du logiciel', JSON.stringify({ part_avec: confirmation.part_avec, exemple: String(usine.exemple || '').slice(-200) }));
+    // (le texte de depart de l editeur EST le texte du logiciel avec ses variables, depuis le 2026-11-12 :
+    // il finit comme le mail qui part, plus par l ancien « Bien à vous, {{centre}} », qui faisait sauter la
+    // formule de la signature, email-signature-check [O] ; le texte entier se lit avec detail, la liste
+    // coupe a 280 signes)
+    const departConfirmation = String(seq(await lire({ detail: 'Confirmation de réservation' }), 'Confirmation de réservation').texte_a_modifier || '');
+    ok(confirmation.part_avec === 'le texte du logiciel' && /\{\{formule\}\}/.test(departConfirmation) && /L’équipe de \{\{centre\}\} vous attend\.$/.test(departConfirmation) && !/Bien à vous/.test(departConfirmation) && /texte du logiciel avec ses variables/.test(String(usine.exemple || '')),
+      '[A] une sequence jamais personnalisee part du texte du logiciel, avec ses variables et sa fin', JSON.stringify({ part_avec: confirmation.part_avec, fin: departConfirmation.slice(-90), exemple: String(usine.exemple || '').slice(-200) }));
+    reglages.set('libramont', { post_visit: { reviewUrl: 'https://g.page/r/exemple-banc' } });
+    const avecAvis = seq(await lire({ detail: 'Merci post-visite' }), 'Merci post-visite');
+    reglages.clear();
+    ok(/Deux choses, et vous serez tranquille\./.test(String(avecAvis.texte_envoye || '')) && /Deux choses, et vous serez tranquille\./.test(String(avecAvis.texte_a_modifier || '')) && /\{\{prenom\}\}/.test(String(avecAvis.texte_a_modifier || '')),
+      '[A] le merci d un centre qui a donne sa fiche Google part du texte qui demande un avis', JSON.stringify({ envoye: String(avecAvis.texte_envoye || '').slice(0, 160), depart: String(avecAvis.texte_a_modifier || '').slice(0, 160) }));
     ok(finit(confirmation, ['Funement vôtre,', 'L\'équipe Fun Galaxy Libramont']),
       '[A] la confirmation finit par « Funement vôtre, » puis l equipe', JSON.stringify(confirmation.fin_lue_par_le_client));
     const anniversaire = seq(usine, '30 jours avant l’anniversaire');

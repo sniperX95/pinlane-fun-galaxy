@@ -4219,8 +4219,20 @@
     pv2ApercuAuto(0);
   };
 
+  // Le texte de depart d une sequence tel que le logiciel l envoie a CE centre
+  // (serveur : texteDeDepartDeLaSequence) : le merci post-visite demande un avis
+  // des que la fiche Google est donnee.
+  function pv2AutoDepart(key, reviewUrl) {
+    const def = mkAuto.defaults[key] || {};
+    return key === 'post_visit' && String(reviewUrl || '').trim() && def.bodyAvecAvis ? String(def.bodyAvecAvis) : String(def.body || '');
+  }
+
   window.pv2AutoEditField = function (field, value) {
     mkAuto.editDraft[field] = field === 'offsetDays' || field === 'cap' ? Number(value) : value;
+    if (field === 'reviewUrl') {
+      const champ = document.getElementById('mkAutoBody');
+      if (champ) champ.setAttribute('data-placeholder', pv2Humanize(pv2AutoDepart(mkAuto.editKey, value)));
+    }
     if (field === 'subject' || field === 'body' || field === 'reviewUrl') pv2ApercuAuto();
   };
 
@@ -4240,7 +4252,7 @@
     const d = mkAuto.editDraft;
     const body = { action: 'automationSettings', key, centerId: state.adminCenterId || 'libramont' };
     if (String(d.subject || '').trim() && d.subject !== def.subject) body.subject = d.subject;
-    if (String(d.body || '').trim() && d.body !== def.body) body.body = d.body;
+    if (String(d.body || '').trim() && d.body !== def.body && d.body !== def.bodyAvecAvis) body.body = d.body;
     if (d.offsetDays !== undefined && Number(d.offsetDays) !== Number(def.offsetDays)) body.offsetDays = Number(d.offsetDays);
     if (d.cap !== undefined && Number(d.cap) !== Number(def.cap)) body.cap = Number(d.cap);
     const currentReviewUrl = (mkAuto.settings && mkAuto.settings[key] && mkAuto.settings[key].reviewUrl) || '';
@@ -4440,7 +4452,7 @@
         </div>
         <div class="mk-auto-edit-field mk-auto-edit-message"><span>Le message que reçoit le client</span>
           ${variables}
-          ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: def.body || 'Message par défaut' })}
+          ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: pv2AutoDepart(meta.key, d.reviewUrl) || 'Message par défaut' })}
         </div>
         ${timingSelect}
         ${capSelect}

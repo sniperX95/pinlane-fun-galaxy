@@ -394,7 +394,11 @@ async function controles(m) {
   });
   ok(hEquipeSansNom.includes(FORMULE_FG) && /<strong>Kevin Dupont<\/strong>/.test(hEquipeSansNom),
     '[H] « L’équipe » seule, sans nom : la signature reste entiere et dit qui ecrit');
-  const entier = (corps, html) => corps.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => html.includes(echapper(l)));
+  // L espace insecable de la typo (avant ? ! : ;, section [L]) n est pas une reecriture.
+  const entier = (corps, html) => {
+    const vu = String(html).split(String.fromCharCode(0xa0)).join(' ');
+    return corps.split('\n').map((l) => l.trim()).filter(Boolean).every((l) => vu.includes(echapper(l)));
+  };
   ok(entier(corpsBienAVous, hBienAVous) && entier(corpsEquipe, hEquipe) && entier(corpsSansFormule, hSansFormule) && entier(corpsFormuleAuMilieu, hAuMilieu),
     '[H] le texte de l auteur part entier : aucune ligne retiree ni reecrite');
   const texte = (corps) => m.comms.renderSignatureText({ design: defautsFG, center: LIBRAMONT, corps });
@@ -616,6 +620,14 @@ async function controles(m) {
   const iNote = apercuConfirmation.html.indexOf('s&#39;adapte');
   const iFormule = apercuConfirmation.html.indexOf(echapper(defautsFG.signature.closing));
   ok(iNote > -1 && iFormule > iNote, '[L] la note du mail se lit avant la signature, qui ferme le mail', `note=${iNote} formule=${iFormule}`);
+  // La typo : « Un retard ? » ne laisse plus son « ? » seul en debut de ligne.
+  const insecable = String.fromCharCode(0xa0);
+  const corpsAvecQuestion = await transactionnel({ ...defautsFG }, {});
+  const htmlQuestion = m.comms.emailShell({ title: 'Une question', body: 'Bonjour Marie,\n\nUne piste samedi ? Oui : 15 h, « Bowling » compris !', preheader: 'x', center: LIBRAMONT, design: defautsFG, signature: { enabled: false } });
+  ok(apercuConfirmation.html.includes(`Un retard${insecable}?`) && !apercuConfirmation.html.includes('Un retard ?')
+    && htmlQuestion.includes(`samedi${insecable}?`) && htmlQuestion.includes(`Oui${insecable}:`) && htmlQuestion.includes(`«${insecable}Bowling${insecable}»`) && htmlQuestion.includes(`compris${insecable}!`)
+    && !new RegExp(`style="[^"]*${insecable}`).test(htmlQuestion) && corpsAvecQuestion.length > 0,
+    '[L] l espace avant ? ! : ; et dans les guillemets est insecable dans le mail, jamais dans une balise');
   // La largeur : une banniere bloquee ou coupee ne garde pas un cadre fixe.
   const styleBanniere = (String(formesEnseigne.affiche).match(new RegExp(`<img src="${banniereFG.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*style="([^"]*)"`)) || [])[1] || '';
   ok(/(^|;)width:100%;max-width:\d+px;/.test(styleBanniere) && !/(^|;)width:\d+px;max-width:100%/.test(styleBanniere),
@@ -715,6 +727,8 @@ async function controles(m) {
       fichier: 'lib/email-design.js', de: "  if (enregistreAvant(COULEUR_DU_CENTRE_DEPUIS) && accent && typeof accent === 'object' && accent.mode === 'encre') {", vers: '  if (false) {' },
     { nom: 'la note sous la signature', cible: '[L] la note du mail se lit avant la signature, qui ferme le mail',
       fichier: 'lib/ops-communications.js', de: '                ${actionButton(action, couleur)}\n', vers: "                ${actionButton(action, couleur)}\n                ${avecSignature ? MARQUE_SIGNATURE : ''}\n" },
+    { nom: 'le ? seul en debut de ligne', cible: '[L] l espace avant ? ! : ; et dans les guillemets est insecable dans le mail, jamais dans une balise',
+      fichier: 'lib/ops-communications.js', de: "    .replace(/ ([?!:;»])/g, `${INSECABLE}$1`)\n", vers: '' },
     { nom: 'la banniere a largeur fixe', cible: '[L] la banniere suit la largeur du mail, meme quand elle ne charge pas',
       fichier: 'lib/ops-communications.js', de: "${image(url, largeur, alt, 'border-radius:12px;', true)}", vers: "${image(url, largeur, alt, 'border-radius:12px;')}" },
   ];

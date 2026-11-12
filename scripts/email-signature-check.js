@@ -57,6 +57,9 @@
 //       chaque image avec sa largeur et sa description, aucun CSS qu Outlook ne
 //       lit pas, aucun mot de promotion dans un mail automatique ; le test
 //       d Apparence part avec la vraie version texte du mail (section [D]).
+//   [O] le texte de depart de l editeur des sequences (2026-11-12), enregistre
+//       tel quel, finit comme le mail du logiciel : la signature garde sa
+//       formule et son equipe.
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -803,6 +806,31 @@ async function controles(m) {
   ok(lus.css.length === 0, '[N] Outlook : ni flex, ni grid, ni position, ni float, ni image de fond, ni SVG', lus.css.slice(0, 4).join(', '));
   ok(lus.promo.length === 0, '[N] aucun mot de promotion dans un mail automatique (objet et texte)', lus.promo.slice(0, 4).join(', '));
   ok(lus.sansLangue.length === 0, '[N] chaque mail dit sa langue (fr) et porte un titre', lus.sansLangue.slice(0, 4).join(', '));
+
+  // =====================================================================
+  console.log('\n[O] le texte de depart de l editeur finit comme le mail du logiciel');
+  // =====================================================================
+  // Journal 543 (session Assistant, 12/11) : le texte de depart de la confirmation
+  // et du rappel finissait par « Bien à vous, {{centre}} », celui de l accuse et du
+  // merci par le nom seul. Enregistre depuis l editeur, ou par l assistant qui part
+  // de lui, il faisait tomber « Funement vôtre, » et l equipe de la signature.
+  // Chaque sequence, son texte de depart enregistre tel quel : la formule (ou la
+  // derniere phrase) et qui signe sont ceux du mail du logiciel.
+  REGLAGES.clear();
+  const lignesDe = (p) => String(p.texteEnvoye || p.textBody || '').replace(/[’']/g, "'").split('\n').map((l) => l.trim()).filter(Boolean);
+  const quiSigne = "L'équipe Fun Galaxy Libramont";
+  const finDuMail = (l) => { const i = l.indexOf(quiSigne); return i > 0 ? `${l[i - 1]} / ${l[i]}` : 'sans l equipe'; };
+  const finsPerdues = [];
+  let sequencesLues = 0;
+  for (const [cle, d] of Object.entries(m.comms.getAutomationDefaults())) {
+    if (!d || !d.body) continue;
+    sequencesLues += 1;
+    const logiciel = finDuMail(lignesDe(await m.comms.buildAutomationPreview('libramont', cle, {}, deps)));
+    const usine = finDuMail(lignesDe(await m.comms.buildAutomationPreview('libramont', cle, { subject: d.subject, body: d.body }, deps)));
+    if (usine !== logiciel) finsPerdues.push(`${cle} : ${usine} au lieu de ${logiciel}`);
+  }
+  ok(sequencesLues === 6 && finsPerdues.length === 0,
+    '[O] chaque texte de depart, enregistre tel quel, garde la fin du mail du logiciel (« Funement vôtre, » puis l equipe)', finsPerdues.join(' | ') || `${sequencesLues} sequences`);
 }
 
 (async () => {
@@ -922,6 +950,10 @@ async function controles(m) {
       fichier: 'lib/email-gabarits.js', de: '<td class="fgx-vitrine-case" width="50%" valign="top" style="padding:', vers: '<td class="fgx-vitrine-case" width="50%" valign="top" style="display:flex;padding:' },
     { nom: 'un mot de promotion', cible: '[N] aucun mot de promotion dans un mail automatique (objet et texte)',
       fichier: 'lib/email-gabarits.js', de: "(Number(valeur(r.joueurs)) > 1 ? 'participants' : 'participant')", vers: "(Number(valeur(r.joueurs)) > 1 ? 'participants, entrée gratuite' : 'participant')" },
+    { nom: 'la confirmation de depart finit par Bien a vous', cible: '[O] chaque texte de depart, enregistre tel quel, garde la fin du mail du logiciel (« Funement vôtre, » puis l equipe)',
+      fichier: 'lib/ops-communications.js',
+      de: ["      'L’équipe de {{centre}} vous attend.',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF),
+      vers: ["      'Bien à vous,',", "      '{{centre}}',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF) },
   ];
   const survivantes = [];
   for (const c of CAS) {

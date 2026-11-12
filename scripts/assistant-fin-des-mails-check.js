@@ -106,8 +106,9 @@ async function verifier(editions = []) {
     const aModifier = (usine.sequences_automatiques || []).map((s) => String(s.texte_a_modifier || ''));
     ok(aModifier.length === 6 && aModifier.every((t) => /\{\{[a-z_]+\}\}/.test(t) && !/Marie|20 juin/.test(t)) && /exemple/.test(String(usine.exemple || '')),
       '[A] le texte a modifier garde ses variables, jamais le nom ni la date de l exemple', JSON.stringify(aModifier.map((t) => t.slice(0, 60))));
-    // (le texte de depart de l editeur finit par « Bien à vous, » : il n est pas ce que lit le client)
-    ok(confirmation.part_avec === 'le texte du logiciel' && /Bien à vous/.test(String(confirmation.texte_a_modifier || '')) && /texte de départ de l’éditeur/.test(String(usine.exemple || '')),
+    // (le texte de depart de l editeur n est pas ce que lit le client ; depuis le 12/11 il finit
+    // comme lui, sans « Bien à vous, » qui faisait tomber la signature : email-signature-check [O])
+    ok(confirmation.part_avec === 'le texte du logiciel' && !/Bien à vous/.test(String(confirmation.texte_a_modifier || '')) &&/texte de départ de l’éditeur/.test(String(usine.exemple || '')),
       '[A] une sequence jamais personnalisee se dit partie avec le texte du logiciel', JSON.stringify({ part_avec: confirmation.part_avec, exemple: String(usine.exemple || '').slice(-200) }));
     ok(finit(confirmation, ['Funement vôtre,', 'L\'équipe Fun Galaxy Libramont']),
       '[A] la confirmation finit par « Funement vôtre, » puis l equipe', JSON.stringify(confirmation.fin_lue_par_le_client));

@@ -1134,7 +1134,7 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   await page.locator('[data-ast-corriger-ouvrir]').last().click();
   await FX_repos(page, 120);
   await page.locator('[data-ast-correction-texte]').last().fill('Le KFD est complet le mercredi, pas le samedi');
-  await page.locator('[data-ast-corriger] .ast-bouton').last().click();
+  await page.locator('[data-ast-corriger] .ast-bouton.est-plein').last().click();
   await FX_repos(page, 250);
   const corrections = flux.actions.filter((a) => a.action === 'savoir.ajouter' && a.origine === 'correction');
   ok('[E] une correction devient un fait appris', corrections.length === 1 && /pas le samedi/.test(corrections[0].texte) && /Correction retenue/.test(await page.locator('.ast-r').last().textContent()), JSON.stringify(corrections));
@@ -1152,7 +1152,7 @@ async function ecransRecherche(page, flux, finDe, reponse, champ, finie, SRC) {
   await page.locator('[data-ast-fait-modifier]').first().click();
   await FX_repos(page, 100);
   await page.locator('[data-ast-fait-texte]').fill('La piste 8 reste libre le dimanche matin');
-  await page.locator('[data-ast-fait-form] .ast-bouton').click();
+  await page.locator('[data-ast-fait-form] .ast-bouton.est-plein').click();
   await FX_repos(page, 200);
   ok('[E] un fait se modifie', (await page.locator('[data-ast-panneau] .ast-fait p').first().textContent()) === 'La piste 8 reste libre le dimanche matin' && flux.actions.some((a) => a.action === 'savoir.modifier'));
   await page.locator('[data-ast-fait-retirer]').first().click();
@@ -1764,7 +1764,7 @@ async function sectionEcran() {
       await m.page.locator('[data-ast-prop="1"] [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 200);
       const demande = await m.page.evaluate(() => { const c = document.querySelector('.ast-carte.est-a-confirmer'); return { la: Boolean(c), boutons: c ? [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) : [], focus: document.activeElement ? document.activeElement.textContent.trim() : '' }; });
-      ok('[E] un geste risque demande une seconde fois avant de faire', demande.la && demande.boutons.join('|') === 'Oui, annuler|Retour' && demande.focus === 'Oui, annuler', JSON.stringify(demande));
+      ok('[E] un geste risque demande une seconde fois avant de faire', demande.la && demande.boutons.join('|') === 'Retour|Oui, annuler' && demande.focus === 'Oui, annuler', JSON.stringify(demande));
       await m.page.locator('[data-ast-geste-retour]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 150);
       ok('[E] « Retour » rend la carte sans rien faire', !(await m.page.evaluate(() => Boolean(document.querySelector('.ast-carte.est-a-confirmer')))) && (await envoisOps()).length === 1);
@@ -1775,7 +1775,7 @@ async function sectionEcran() {
       await m.page.locator('[data-ast-prop="2"] [data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
       await FX.repos(m.page, 200);
       const confirmePrix = await m.page.evaluate(() => { const c = document.querySelector('[data-ast-prop="2"].est-a-confirmer'); return c ? { boutons: [...c.querySelectorAll('button')].map((b) => b.textContent.trim()), dit: (c.querySelector('.ast-carte-confirmer p') || {}).textContent || '' } : null; });
-      ok('[E] un prix se confirme une seconde fois, avec ce que voient les clients', Boolean(confirmePrix) && confirmePrix.boutons.join('|') === 'Oui, publier ce prix|Retour' && /formulaire en ligne/.test(confirmePrix.dit) && (await envoisOps()).length === 1, JSON.stringify(confirmePrix));
+      ok('[E] un prix se confirme une seconde fois, avec ce que voient les clients', Boolean(confirmePrix) && confirmePrix.boutons.join('|') === 'Retour|Oui, publier ce prix' && /formulaire en ligne/.test(confirmePrix.dit) && (await envoisOps()).length === 1, JSON.stringify(confirmePrix));
       await m.page.locator('[data-ast-prop="2"] [data-ast-confirme="1"]').click({ timeout: 4000 }).catch(() => {});
       await m.page.waitForFunction(() => /« Anniversaire » est maintenant à 20 €/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
       const envoiPrix = (await envoisOps()).find((x) => x.action === 'assistantGeste');

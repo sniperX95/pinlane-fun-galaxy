@@ -1307,7 +1307,7 @@
           : a.action === 'effacerConversations' ? (p.efface ? `${esc(p.efface)} conversation${p.efface > 1 ? 's effacées' : ' effacée'}.` : 'Aucune conversation à effacer.')
             : a.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.'
               : a.action === 'assistantGeste' ? esc((p.resume && p.resume.fait) || `C’est fait. ${p.texte}`) : `C’est fait. ${esc(p.texte)}`;
-      const voir = a.action === 'assistantReservation' && p.reservation ? `<button type="button" class="ast-lien" data-ast-geste-voir="${i}">Voir au planning</button>` : '';
+      const voir = a.action === 'assistantReservation' && p.reservation ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-voir="${i}">Voir au planning</button>` : '';
       return `<div class="ast-carte est-faite" data-ast-prop="${i}"><p class="ast-carte-fait"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg><span>${dit}</span></p>${voir}</div>`;
     }
     const enCours = p.etat === 'cours';
@@ -1320,21 +1320,28 @@
       </div>` : '';
     const garde = a.action === 'assistantReservation' ? '<p class="ast-carte-garde">Vérifiée sur le planning à l’instant. Rien ne se crée avant votre clic, et le planning se revérifie à ce moment-là.</p>' : p.risque ? '<p class="ast-carte-garde">Rien ne change avant votre clic, et vous confirmerez une seconde fois.</p>' : '<p class="ast-carte-garde">Rien ne change avant votre clic.</p>';
     const alerteDite = p.alerte || (a.action === 'assistantGeste' && p.resume && p.resume.alerte) || '';
-    const alerte = alerteDite ? `<p class="ast-carte-alerte">${esc(alerteDite)}</p>` : '';
-    const clients = a.action === 'assistantGeste' && p.resume && p.resume.clients ? `<p class="ast-carte-clients">${esc(p.resume.clients)}</p>` : '';
+    // A la confirmation, le pied redit une phrase de la carte : le bloc qui la portait se retire, pour
+    // ne pas la lire deux fois l une sous l autre.
+    const redit = p.confirmer ? (vue.suite || p.alerte || '') : '';
+    const alerte = alerteDite && alerteDite !== redit ? `<p class="ast-carte-alerte">${esc(alerteDite)}</p>` : '';
+    const clients = a.action === 'assistantGeste' && p.resume && p.resume.clients && p.resume.clients !== redit ? `<p class="ast-carte-clients">${esc(p.resume.clients)}</p>` : '';
     const rien = a.action === 'effacerConversations' && !conversationsAEffacer(a).length;
     const modifier = a.action === 'assistantReservation' ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-reserver="${i}"${enCours ? ' disabled' : ''}>Modifier dans Réserver</button>` : '';
-    const actions = p.confirmer
-      ? `<div class="ast-carte-confirmer" role="alert"><p><b>Vous confirmez ?</b> ${esc(vue.suite || p.alerte || 'Ce geste ne se rattrape pas d’un clic.')}</p>
+    // LE PIED DE LA CARTE (2026-11-12, Ansar : « le bouton comme ça, cette couleur, c'est pas pro ») :
+    // une bande sous les lignes, la phrase de garde a gauche, les boutons de la console a droite (le
+    // second encadre, puis le principal bleu plein, comme une fenetre de la console).
+    const pied = p.confirmer
+      ? `<div class="ast-carte-pied ast-carte-confirmer" role="alert"><p class="ast-carte-garde"><b>Vous confirmez ?</b> ${esc(redit || 'Ce geste ne se rattrape pas d’un clic.')}</p>
         <div class="ast-carte-actions">
+          <button type="button" class="ast-bouton est-contour" data-ast-geste-retour="${i}"${enCours ? ' disabled' : ''}>Retour</button>
           <button type="button" class="ast-bouton est-danger" data-ast-geste-oui="${i}" data-ast-confirme="1"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : (vue.confirmer || `Oui, ${vue.verbe.toLowerCase()}`))}</button>
-          <button type="button" class="ast-lien" data-ast-geste-retour="${i}"${enCours ? ' disabled' : ''}>Retour</button>
         </div></div>`
-      : `<div class="ast-carte-actions">
-        ${rien ? '' : `<button type="button" class="ast-bouton est-plein${p.risque ? ' est-risque' : ''}" data-ast-geste-oui="${i}"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : vue.verbe)}</button>`}
-        ${modifier}
-        <button type="button" class="ast-lien" data-ast-prop-non="${i}"${enCours ? ' disabled' : ''}>Non merci</button>
-      </div>`;
+      : `<div class="ast-carte-pied">${rien ? '' : garde}
+        <div class="ast-carte-actions">
+          <button type="button" class="ast-bouton est-contour" data-ast-prop-non="${i}"${enCours ? ' disabled' : ''}>Non merci</button>
+          ${modifier}
+          ${rien ? '' : `<button type="button" class="ast-bouton est-plein${p.risque ? ' est-risque' : ''}" data-ast-geste-oui="${i}"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : vue.verbe)}</button>`}
+        </div></div>`;
     return `<div class="ast-carte${p.risque ? ' est-risque' : ''}${p.confirmer ? ' est-a-confirmer' : ''}" data-ast-prop="${i}">
       <div class="ast-carte-tete"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}</div>
       <dl class="ast-carte-lignes">${lignes.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${ddDe(v)}</dd></div>`).join('')}</dl>
@@ -1342,8 +1349,7 @@
       ${champs}
       ${alerte}
       ${p.erreur ? `<p class="ast-carte-erreur" role="alert">${esc(p.erreur)}</p>` : ''}
-      ${p.confirmer || rien ? '' : garde}
-      ${actions}
+      ${pied}
     </div>`;
   }
 
@@ -1378,7 +1384,7 @@
         <p class="ast-prop-texte">${esc(p.texte)}</p>
         <div class="ast-prop-actions">
           <button type="button" class="ast-bouton est-plein" data-ast-prop-oui="${i}">Retenir</button>
-          <button type="button" class="ast-lien" data-ast-prop-non="${i}">Non merci</button>
+          <button type="button" class="ast-bouton est-contour" data-ast-prop-non="${i}">Non merci</button>
         </div>
       </div>`;
     }).join('');
@@ -1393,7 +1399,7 @@
       ${m.correctionErreur ? `<p class="ast-erreur" role="alert">${esc(m.correctionErreur)}</p>` : ''}
       <div class="ast-prop-actions">
         <button type="submit" class="ast-bouton est-plein">Retenir la correction</button>
-        <button type="button" class="ast-lien" data-ast-corriger-fermer>Annuler</button>
+        <button type="button" class="ast-bouton est-contour" data-ast-corriger-fermer>Annuler</button>
       </div>
     </form>`;
   }
@@ -1722,8 +1728,8 @@
     if (!S.faits.length) return `${tete}${formulaire}<p class="ast-vide">Rien n'a encore été appris. Écrivez ci-dessus, ou dites à l'assistant « retiens que... » dans une conversation.</p>`;
     const lignes = S.faits.map((f) => {
       const meta = `${f.par ? `Appris par ${esc(f.par)}, ` : ''}${esc(quand(f.le))}${ORIGINE_DITE[f.origine] ? `. ${ORIGINE_DITE[f.origine]}` : ''}${f.modifieLe ? `. Modifié par ${esc(f.modifiePar || 'un collègue')}, ${esc(quand(f.modifieLe))}` : ''}`;
-      if (S.aRetirer === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta">Retirer ce fait pour tout le centre ?</p><div class="ast-prop-actions"><button type="button" class="ast-bouton est-plein" data-ast-fait-retirer-oui="${f.id}">Retirer</button><button type="button" class="ast-lien" data-ast-fait-retirer-non>Annuler</button></div></li>`;
-      if (S.edition === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><form data-ast-fait-form="${f.id}"><textarea class="ast-champ-court" data-ast-fait-texte rows="3" maxlength="${FAIT_MAX}" aria-label="Le fait à retenir">${esc(f.texte)}</textarea><div class="ast-prop-actions"><button type="submit" class="ast-bouton est-plein">Enregistrer</button><button type="button" class="ast-lien" data-ast-fait-annuler>Annuler</button></div></form></li>`;
+      if (S.aRetirer === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta">Retirer ce fait pour tout le centre ?</p><div class="ast-prop-actions"><button type="button" class="ast-bouton est-plein" data-ast-fait-retirer-oui="${f.id}">Retirer</button><button type="button" class="ast-bouton est-contour" data-ast-fait-retirer-non>Annuler</button></div></li>`;
+      if (S.edition === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><form data-ast-fait-form="${f.id}"><textarea class="ast-champ-court" data-ast-fait-texte rows="3" maxlength="${FAIT_MAX}" aria-label="Le fait à retenir">${esc(f.texte)}</textarea><div class="ast-prop-actions"><button type="submit" class="ast-bouton est-plein">Enregistrer</button><button type="button" class="ast-bouton est-contour" data-ast-fait-annuler>Annuler</button></div></form></li>`;
       return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta">${meta}</p><div class="ast-fait-actions"><button type="button" class="ast-lien" data-ast-fait-modifier="${f.id}">Modifier</button><button type="button" class="ast-lien" data-ast-fait-retirer="${f.id}">Retirer</button></div></li>`;
     }).join('');
     return `${tete}${formulaire}<ol class="ast-faits">${lignes}</ol>`;

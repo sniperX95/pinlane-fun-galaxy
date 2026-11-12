@@ -49,6 +49,14 @@
 //       la note du mail se lit avant la signature ; la banniere suit la
 //       largeur du mail meme bloquee ; les photos et logos des mails se
 //       laissent afficher hors du site (Cross-Origin-Resource-Policy).
+//   [M] la galerie de gabarits (2026-11-12) : deux liens et une image au plus sur
+//       un mail automatique, les grands formats de campagne jamais dessus, la
+//       photo de l activite prise dans la fiche du centre.
+//   [N] ce que Gmail et Outlook lisent (2026-11-12) : les douze gabarits sur les
+//       vrais mails de la reservation, a Libramont et a Gembloux, sous 60 Ko,
+//       chaque image avec sa largeur et sa description, aucun CSS qu Outlook ne
+//       lit pas, aucun mot de promotion dans un mail automatique ; le test
+//       d Apparence part avec la vraie version texte du mail (section [D]).
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -298,6 +306,30 @@ async function controles(m) {
       `[D] ${nom} : apercu == sequence == test enfile`);
   }
   REGLAGES.clear();
+  // Le test d Apparence part avec la vraie version texte du mail (2026-11-12). Avant,
+  // une ligne (« Test du design (confirmation) : ... ») qui reprenait 6 des 88 mots du
+  // HTML : un texte qui ne dit pas ce que dit le HTML est un signal de spam, et c est
+  // sur ce test que le gerant juge dans quel onglet Gmail le mail arrive.
+  const testsTexte = [];
+  for (const sample of ['confirmation', 'reponse', 'campagne']) {
+    await m.comms.sendDesignTest(
+      { centerId: 'libramont', member: { id: 'libramont:gerante', contact: 'gerante@fungalaxy.be', name: 'Gérante' }, design: null, sample },
+      { deps, enqueue: async (row) => { testsTexte.push(row); return { id: 1 }; }, dispatch: async () => ({ results: [] }) },
+    );
+  }
+  const motsDe = (t) => new Set(String(t).toLowerCase().match(/[a-zà-ÿ0-9]{3,}/g) || []);
+  const visibleDe = (html) => String(html).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<div style="display:none[\s\S]*?<\/div>/i, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ');
+  const partages = testsTexte.map((row) => {
+    const texte = String(row.payload.texteEnvoye || row.payload.textBody || '');
+    const motsHtml = motsDe(visibleDe(row.body));
+    const motsTexte = motsDe(texte);
+    return { sample: row.payload.sample, part: [...motsHtml].filter((w) => motsTexte.has(w)).length / Math.max(1, motsHtml.size), texte };
+  });
+  ok(partages.length === 3 && partages.every((p) => p.part >= 0.6 && /^Bonjour Marie/.test(p.texte))
+    && /Réservation n°\s9001/.test(partages[0].texte) && /Funement vôtre/.test(partages[0].texte),
+  '[D] le test enfile part avec la vraie version texte du mail (le texte, son numero, la signature), pas une ligne de resume',
+  partages.map((p) => `${p.sample}:${Math.round(p.part * 100)}%`).join(' '));
 
   // =====================================================================
   console.log('\n[E] chaque centre ses couleurs et ses photos');
@@ -718,6 +750,59 @@ async function controles(m) {
   }).map((p) => p.url));
   ok(fiches.every((f) => f.liste.length >= 5) && photosMal.length === 0,
     '[M] les photos d activite : des JPG du centre, sur notre domaine, decrits, de moins de 110 Ko', photosMal.join(', ') || fiches.map((f) => `${f.prefixe}${f.liste.length}`).join(' '));
+
+  // =====================================================================
+  console.log('\n[N] ce que Gmail et Outlook lisent, sur les vrais mails automatiques');
+  // =====================================================================
+  // Ansar, 12/11 : « fais gaffe pour qu on soit le plus possible dans la boite
+  // principale ». Les douze gabarits sur les mails que la reservation envoie
+  // (accuse de reception, confirmation, rappel, horaire decale) et sur la campagne
+  // d exemple, a Libramont et a Gembloux. Gmail coupe un mail de plus de 102 Ko
+  // (le bas, signature et retrait compris, passe derriere « Message tronqué »).
+  // Outlook ignore la largeur CSS d une image et prend son attribut width : sans
+  // lui, une photo de 1 200 px deborde. Il ne lit ni flex, ni grid, ni position, ni
+  // float, ni image de fond, ni SVG. Un mot de promotion range un mail automatique
+  // dans Promotions.
+  const reservationN = { id: 9103, name: 'Sophie Leroy', phone: '+32470123458', email: 'client@example.com', date: '2026-12-20', startTime: '14:00', pax: 12, price: 468, type: 'formule', formuleId: 'f4', label: 'FORMULE 4' };
+  const MOTS_PROMO = /gratuit|\bpromo|offre sp[ée]ciale|r[ée]duction|\bremise\b|\d ?%|\bsoldes?\b|urgent|derni[eè]re chance|cliquez ici|exclusi|meilleur prix|!!|ne manquez pas/i;
+  const CSS_OUTLOOK = /display\s*:\s*(inline-)?(flex|grid)|position\s*:\s*(absolute|fixed|relative)|float\s*:|background(-image)?\s*:[^;"]*url\(|<svg/i;
+  const lus = { lourds: [], sansLargeur: [], css: [], promo: [], sansLangue: [] };
+  let nombreDeMails = 0;
+  for (const center of [LIBRAMONT, GEMBLOUX]) {
+    for (const preset of ids) {
+      const design = m.design.validateEmailDesign({ ...m.design.getEmailDesignDefaults(center), preset }, center);
+      const habillage = m.comms.__test.habillageDe(design, 'sequences');
+      const mails = ['request_received', 'confirmation', 'reminder_48h', 'delay_update'].map((templateId) => {
+        const reservation = { ...reservationN, centerId: center.id, ...(templateId === 'delay_update' ? { startTime: '14:10', delayUpdate: { previousStartTime: '14:00', proposedStartTime: '14:10', delayMinutes: 10, reason: 'une partie qui a débordé', nextAction: '' } } : {}) };
+        const message = m.comms.buildMessage({ reservation, templateId, channel: 'email' });
+        const html = m.comms.emailShell({
+          title: message.title || message.subject, body: message.body, preheader: message.preheader, details: message.details, action: message.action,
+          note: message.note, eyebrow: message.eyebrow, replyLine: message.replyLine, accent: message.accent, center,
+          design: habillage.design, signature: habillage.signature, activite: message.activite || '',
+        });
+        return { quoi: templateId, sujet: message.subject, automatique: true, html };
+      });
+      const exemple = await m.comms.buildDesignPreview({ centerId: center.id, design, sample: 'campagne' }, deps);
+      mails.push({ quoi: 'campagne', sujet: exemple.subject, automatique: false, html: exemple.html });
+      for (const mail of mails) {
+        nombreDeMails += 1;
+        const ou = `${center.id}/${preset}/${mail.quoi}`;
+        const imgs = mail.html.match(/<img\s[^>]*>/gi) || [];
+        const lu = `${mail.sujet} ${visibleDe(mail.html).replace(/\s+/g, ' ')}`;
+        if (Buffer.byteLength(mail.html) > 60 * 1024) lus.lourds.push(`${ou} ${Math.round(Buffer.byteLength(mail.html) / 1024)} Ko`);
+        if (imgs.some((i) => !/\swidth="\d+"/.test(i) || !/\salt="[^"]+"/.test(i))) lus.sansLargeur.push(ou);
+        if (CSS_OUTLOOK.test(mail.html)) lus.css.push(`${ou} ${(mail.html.match(CSS_OUTLOOK) || [''])[0]}`);
+        if (mail.automatique && MOTS_PROMO.test(lu)) lus.promo.push(`${ou} « ${(lu.match(MOTS_PROMO) || [''])[0]} »`);
+        if (!/<html[^>]*\slang="fr"/.test(mail.html) || !/<title>[^<]+<\/title>/.test(mail.html)) lus.sansLangue.push(ou);
+      }
+    }
+  }
+  ok(nombreDeMails === 2 * ids.length * 5 && lus.lourds.length === 0,
+    '[N] poids : chaque mail sous 60 Ko, loin des 102 Ko ou Gmail le coupe', lus.lourds.slice(0, 4).join(', ') || `${nombreDeMails} mails`);
+  ok(lus.sansLargeur.length === 0, '[N] Outlook : chaque image porte sa largeur (attribut width) et sa description', lus.sansLargeur.slice(0, 4).join(', '));
+  ok(lus.css.length === 0, '[N] Outlook : ni flex, ni grid, ni position, ni float, ni image de fond, ni SVG', lus.css.slice(0, 4).join(', '));
+  ok(lus.promo.length === 0, '[N] aucun mot de promotion dans un mail automatique (objet et texte)', lus.promo.slice(0, 4).join(', '));
+  ok(lus.sansLangue.length === 0, '[N] chaque mail dit sa langue (fr) et porte un titre', lus.sansLangue.slice(0, 4).join(', '));
 }
 
 (async () => {
@@ -826,6 +911,17 @@ async function controles(m) {
       fichier: 'lib/email-gabarits.js', de: ' && parle(p))', vers: ')' },
     { nom: 'le titre redit la date', cible: '[M] un titre qui redit la date du billet cede sa place au sourcil, un autre titre reste',
       fichier: 'lib/email-gabarits.js', de: "  const titreRedit = Boolean(r.date && String(o.eyebrow || '').trim() && plat(o.title).includes(plat(valeur(r.date))));", vers: '  const titreRedit = false;' },
+    // Ce que Gmail et Outlook lisent (2026-11-12).
+    { nom: 'le test sans sa version texte', cible: '[D] le test enfile part avec la vraie version texte du mail (le texte, son numero, la signature), pas une ligne de resume',
+      fichier: 'lib/ops-communications.js',
+      de: "payload: { textBody: preview.textBody, ...(preview.texteEnvoye ? { texteEnvoye: preview.texteEnvoye } : {}), test: true, sequence: 'design',",
+      vers: "payload: { textBody: `Test du design (${preview.sample}) : ${preview.subject}`, test: true, sequence: 'design'," },
+    { nom: 'une photo sans largeur', cible: '[N] Outlook : chaque image porte sa largeur (attribut width) et sa description',
+      fichier: 'lib/email-gabarits.js', de: '<img src="${escapeHtml(url)}" width="${largeur}" alt=', vers: '<img src="${escapeHtml(url)}" alt=' },
+    { nom: 'une vitrine en flex', cible: '[N] Outlook : ni flex, ni grid, ni position, ni float, ni image de fond, ni SVG',
+      fichier: 'lib/email-gabarits.js', de: '<td class="fgx-vitrine-case" width="50%" valign="top" style="padding:', vers: '<td class="fgx-vitrine-case" width="50%" valign="top" style="display:flex;padding:' },
+    { nom: 'un mot de promotion', cible: '[N] aucun mot de promotion dans un mail automatique (objet et texte)',
+      fichier: 'lib/email-gabarits.js', de: "(Number(valeur(r.joueurs)) > 1 ? 'participants' : 'participant')", vers: "(Number(valeur(r.joueurs)) > 1 ? 'participants, entrée gratuite' : 'participant')" },
   ];
   const survivantes = [];
   for (const c of CAS) {

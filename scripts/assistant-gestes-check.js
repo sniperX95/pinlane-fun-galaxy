@@ -33,6 +33,11 @@ const MUTATIONS = {
   'annuler-deja-annulee': { fichier: 'lib/assistant-outils.js', de: "        if (brute.status === 'cancelled') throw refus('Cette réservation est déjà annulée.');", vers: '', rouge: 'annuler : une reservation deja annulee, passee ou d un autre centre ne s annule pas' },
   'effacer-sans-demande': { fichier: 'lib/assistant-outils.js', de: "        if (!demandeParLaPersonne(/effac|supprim|vide|nettoi|m[ée]nage|enl[eè]v|retir/i)) throw refus(", vers: '        if (false) throw refus(', rouge: 'effacer : seulement si la personne le demande elle-meme' },
   'horaires-sans-alerte': { fichier: 'lib/assistant-outils.js', de: '...(alerte ? { risque: true, alerte } : {}),', vers: '', rouge: 'des horaires qui laissent des reservations dehors deviennent un geste risque, qui le dit' },
+  // Le cas Clement (2026-11-12) : les groupes du laser, le supplement lu au catalogue, le prix habituel en regard.
+  'laser-sans-groupes': { fichier: 'lib/assistant-reservation.js', de: '        ligne.groupes = groupes;', vers: '', rouge: 'le cas Clement : le laser en deux sessions, l assiette du catalogue, le forfait contre le prix habituel' },
+  'supplement-au-nom-du-modele': { fichier: 'lib/assistant-reservation.js', de: '    const lu = articleDuNom(cle, proposes);', vers: "    const lu = { article: { id: cle, nom: cle, prix: 0, categorie: 'autre' } };", rouge: 'le cas Clement : le laser en deux sessions, l assiette du catalogue, le forfait contre le prix habituel' },
+  'prix-habituel-cache': { fichier: 'lib/assistant-reservation.js', de: '...(habituel !== null && habituel !== prix ? { prixHabituel: habituel } : {})', vers: '', rouge: 'le cas Clement : le laser en deux sessions, l assiette du catalogue, le forfait contre le prix habituel' },
+  'forfait-sans-raison': { fichier: 'lib/assistant-reservation.js', de: '  if (texte.length < 3) throw erreur(', vers: '  if (false) throw erreur(', rouge: 'un forfait sans raison ou un supplement hors catalogue ne se propose pas, et le refus nomme le plus proche' },
   'confirmation-sautee': { fichier: 'assets/pinlane-assistant.js', de: '    if (p.risque && !confirme) {', vers: '    if (false) {', rouge: 'un geste risque se confirme deux fois, et l effacement garde la conversation ouverte', page: true },
   'carte-sans-telephone': { fichier: 'assets/pinlane-assistant.js', de: '      if (!telephoneValide(tel)) {', vers: '      if (false) {', rouge: 'la carte ne cree rien sans le telephone du client, et seulement dans le centre affiche', page: true },
   'note-hors-centre': { fichier: 'lib/assistant-outils.js', de: '(await lignes(ctx, ouverte.id, session)).find((x) => Number(x.id) === numero)', vers: '(await lignes(ctx, ouverte.id, session)).find(() => true)', rouge: 'noter sur une fiche : refuse en lecture, hors du centre, sans texte ou sans telephone ni e-mail' },
@@ -128,7 +133,7 @@ async function verifier() {
   const liste = (nom) => [...((((page.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`)) || [])[1]) || '').matchAll(/'([^']+)'/g))].map((m) => m[1]).sort();
   ok(JSON.stringify(liste('PAGES_OUVRABLES')) === JSON.stringify([...pagesCarte].sort()) && JSON.stringify(liste('RUBRIQUES')) === JSON.stringify([...rubriques].sort()),
     'la page ne mene qu aux ecrans de la carte', JSON.stringify(liste('PAGES_OUVRABLES')));
-  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\], noteClient: \['reservationId', 'texte'\], assistantReservation: \['date', 'startTime', 'pax', 'programme', 'name', 'phone'\], annulerReservation: \['reservationId', 'date'\], effacerConversations: \['portee', 'jours'\], assistantGeste: \['geste', 'params'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
+  ok(/const GESTES = \{ ouvertureExceptionnelle: \['date', 'open', 'close', 'motif'\], customRequestStatus: \['id', 'status'\], ouvrirReserver: \['date', 'startTime', 'pax', 'name'\], noteClient: \['reservationId', 'texte'\], assistantReservation: \['date', 'startTime', 'pax', 'programme', 'supplements', 'prix', 'raisonPrix', 'note', 'name', 'phone'\], annulerReservation: \['reservationId', 'date'\], effacerConversations: \['portee', 'jours'\], assistantGeste: \['geste', 'params'\] \};/.test(page) && /cles\.forEach\(\(k\) => \{ if \(a\[k\] != null\) corps\[k\] = a\[k\]; \}\);/.test(page),
     // Le huitieme porte tous les gestes du registre (lib/assistant-gestes.js) : son geste et ses
     // parametres seulement, le serveur refait le corps au clic (api/ops.js, assistantGeste).
     'la page ne connait que huit gestes, avec leurs seules cles');
@@ -235,6 +240,27 @@ async function verifier() {
   const essaiResa = async (sur) => Boolean((await outils.executer(contexte(DIRECTION), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:00', joueurs: 5, activites: PROGRAMME_DEMANDE, ...sur })).proposition);
   const refusResa = [await essaiResa({ date: '2027-02-31' }), await essaiResa({ date: '2026-11-10' }), await essaiResa({ joueurs: 0 }), await essaiResa({ heure: '24:10' }), await essaiResa({ activites: [] }), await essaiResa({ activites: [{ activite: 'laser_game', participants: 9 }] }), await essaiResa({ activites: [{ activite: 'piscine' }] })];
   ok(refusResa.every((x) => !x), 'preparer une reservation : refusee a une date impossible ou passee, ou sans joueur', JSON.stringify(refusResa));
+  // LE CAS CLEMENT (2026-11-12) : « 24 personnes, bowling, 2 parties de laser game, une avec 10 joueurs et une
+  // autre avec 14, ensuite une assiette apéritif, 30 € par personne ». Une seule carte : le laser en deux
+  // sessions a leur heure, l assiette sous son nom du catalogue, le forfait contre le prix habituel.
+  const clement = await outils.executer(contexte(DIRECTION), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:00', joueurs: 24,
+    activites: [{ activite: 'bowling' }, { activite: 'laser_game', parties: 1, groupes: [10, 14] }],
+    supplements: [{ article: 'Assiette apéritif', quantite: 3 }], prix_total: 720, raison_prix: 'forfait 30 € par personne', note: 'Assiette apéro après le bowling.' });
+  const pc = clement.proposition || {};
+  const ac = pc.action || {};
+  const rcl = pc.resume || {};
+  const laserCl = (rcl.lignes || []).find((l) => l.activite === 'laser_game') || {};
+  ok(JSON.stringify(ac.programme) === '[{"activityId":"bowling","participants":24,"duration":1},{"activityId":"laser_game","participants":24,"games":1,"groupes":[10,14]}]'
+    && /24 joueurs en 2 groupes \(10 puis 14\)/.test(laserCl.detail || '') && laserCl.debut === '15:00' && laserCl.fin === '15:55'
+    && JSON.stringify(ac.supplements) === '[{"article":"assiette-apero","quantite":3}]' && JSON.stringify(rcl.supplements) === '[{"nom":"Assiette apéro","qte":3}]'
+    && ac.prix === 720 && ac.raisonPrix === 'forfait 30 € par personne' && ac.note === 'Assiette apéro après le bowling.'
+    && rcl.prix === 720 && rcl.prixNegocie === true && rcl.prixHabituel > 0 && rcl.prixHabituel !== 720 && rcl.prixRaison === 'forfait 30 € par personne'
+    && /Assiette apéro × 3, pour 720 € \(forfait 30 € par personne\)/.test(pc.texte || ''),
+    'le cas Clement : le laser en deux sessions, l assiette du catalogue, le forfait contre le prix habituel', pc.action ? JSON.stringify({ laser: laserCl, sup: [ac.supplements, rcl.supplements], prix: [rcl.prix, rcl.prixHabituel, rcl.prixNegocie, rcl.prixRaison], texte: pc.texte }) : clement.contenu);
+  const sansRaison = await outils.executer(contexte(DIRECTION), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:00', joueurs: 5, activites: PROGRAMME_DEMANDE, prix_total: 50 });
+  const horsCatalogue = await outils.executer(contexte(DIRECTION), 'proposer_un_geste', { geste: 'reservation', date: '2026-12-05', heure: '14:00', joueurs: 5, activites: PROGRAMME_DEMANDE, supplements: [{ article: 'Assiette de fromages' }] });
+  ok(!sansRaison.proposition && /dit sa raison, par exemple « forfait/.test(lu(sansRaison).erreur || '') && !horsCatalogue.proposition && /Le plus proche : [^.]*Assiette apéro/.test(lu(horsCatalogue).erreur || ''),
+    'un forfait sans raison ou un supplement hors catalogue ne se propose pas, et le refus nomme le plus proche', JSON.stringify([sansRaison.contenu, horsCatalogue.contenu]));
   // TRANQUILLE : chaque heure essayee avec le programme entier, et le monde deja la se compte.
   const heuresLues = await outils.executer(contexte(GERANT), 'heures_qui_tiennent', { date: '2026-12-05', joueurs: 5, activites: PROGRAMME_DEMANDE });
   const mh = lu(heuresLues);

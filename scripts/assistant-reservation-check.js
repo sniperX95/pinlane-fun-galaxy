@@ -25,6 +25,13 @@ const MUTATIONS = [
     { fichier: RESA, de: '  if (bloquant) throw erreur(', vers: '  if (false) throw erreur(' },
   ] },
   { nom: 'programme-libre', rouge: '[B] un programme faux ne cree rien (422)', editions: [{ fichier: OPS, de: '    const programme = R.programmeDe(lu, joueurs, scopedCenterId);', vers: '    const programme = lu.map((p) => ({ activityId: p.activite, participants: Number(p.participants) || joueurs, ...(p.duree_heures ? { duration: p.duree_heures } : {}), ...(p.parties ? { games: p.parties } : {}) }));' }] },
+  // Le cas Clement (2026-11-12) : chaque morceau du clic retire a son tour doit rougir sa ligne.
+  { nom: 'groupes-perdus-au-clic', rouge: '[D] le laser en deux sessions, 10 puis 14 joueurs, dans l ordre dit', editions: [{ fichier: OPS, de: ', participants: p && p.participants, groupes: p && p.groupes }));', vers: ', participants: p && p.participants }));' }] },
+  { nom: 'groupes-ignores-du-moteur', rouge: '[D] le laser en deux sessions, 10 puis 14 joueurs, dans l ordre dit', editions: [{ fichier: 'lib/ops-engine.js', de: '  return valides ? groupes.flatMap((n) => splitGroupIntoWaves(Number(n), armes)) : splitGroupIntoWaves(total, armes);', vers: '  return splitGroupIntoWaves(total, armes);' }] },
+  { nom: 'supplements-perdus', rouge: '[D] le supplement relu au catalogue, son prix du catalogue', editions: [{ fichier: OPS, de: '    const supplements = Array.isArray(body.supplements) && body.supplements.length ?', vers: '    const supplements = false ?' }] },
+  { nom: 'prix-convenu-perdu', rouge: '[D] le forfait facture, le prix habituel garde en reference, la raison au dossier', editions: [{ fichier: OPS, de: '    const prixNegocie = R.prixNegocieDe(body.prix, body.raisonPrix);', vers: '    const prixNegocie = null;' }] },
+  { nom: 'groupes-en-ligne', rouge: '[D] les groupes du laser se posent au comptoir, jamais par une demande en ligne', editions: [{ fichier: 'lib/visit-program.js', de: "        if (publicBooking) throw rejectOption('Les groupes du laser se règlent avec le centre.');", vers: '' }] },
+  { nom: 'note-perdue', rouge: '[D] la note pour l equipe au dossier, sous la trace de l assistant', editions: [{ fichier: OPS, de: "notes: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') });", vers: "notes: 'Préparée avec l’assistant.' });" }] },
 ];
 
 const TEL = '0470 12 34 56';
@@ -36,6 +43,7 @@ function lireBase() {
     id: r.id, nom: r.name, tel: String(r.phone || ''), date: String(r.date).slice(0, 10), debut: String(r.start_time).slice(0, 5), pax: r.pax, type: r.type,
     notes: String(r.notes || ''), canal: r.channel, programme: typeof r.program === 'string' ? JSON.parse(r.program || 'null') : r.program,
     blocs: r.ops_plan && Array.isArray(r.ops_plan.resourceBlocks) ? r.ops_plan.resourceBlocks : [],
+    prix: Number(r.price), reference: Number(r.base_price), extras: (typeof r.extras === 'string' ? JSON.parse(r.extras || '[]') : r.extras) || [],
   }));
 }
 
@@ -99,6 +107,52 @@ async function verifier(editions = []) {
   const conflit = await pris.cliquer({});
   const nouvelles = lireBase().filter((x) => x.id < 950 || x.id > 958);
   ok(conflit.statut === 409 && nouvelles.length === 0, '[C] un creneau pris depuis la proposition arrete la creation (409)', `${conflit.statut} ${conflit.json.message || ''} ${nouvelles.length} creee(s)`);
+
+  // LE CAS CLEMENT (2026-11-12, Ansar : « faut ajouter ça prcq c super utile ») : 24 personnes, 1 h de
+  // bowling, le laser en deux sessions (« une partie avec 10 joueurs et une autre avec 14 »), trois
+  // assiettes apéro, 30 € par personne. Le meme clic cree tout : l arene prend les groupes dans l ordre
+  // dit, le supplement est relu au catalogue, le forfait est facture contre la reference du programme.
+  if (!editions.length) console.log('\n[D] le cas Clement : le laser en deux sessions, un supplement, un forfait');
+  B.semer([]);
+  const clement = monter(DIRECTION());
+  const rc = await clement.cliquer({ startTime: '14:00', pax: 24, name: 'Clement',
+    programme: [{ activityId: 'bowling', participants: 24, duration: 1 }, { activityId: 'laser_game', participants: 24, games: 1, groupes: [10, 14] }],
+    supplements: [{ article: 'assiette-apero', quantite: 3 }], prix: 720, raisonPrix: 'forfait 30 € par personne', note: 'Assiette apéro après le bowling.' });
+  const dc = lireBase().find((x) => x.id === (rc.json.reservation || {}).id) || { blocs: [], extras: [] };
+  const itemsC = (dc.programme && (Array.isArray(dc.programme) ? dc.programme : dc.programme.items)) || [];
+  const laserC = itemsC.find((x) => x && x.activityId === 'laser_game') || {};
+  const sessions = dc.blocs.filter((b) => b && b.activityId === 'laser_game').map((b) => [b.startTime, b.players]);
+  ok(rc.statut === 201 && JSON.stringify(laserC.groupes) === '[10,14]' && Number(laserC.participants) === 24 && JSON.stringify(sessions) === '[["15:00",10],["15:30",14]]',
+    '[D] le laser en deux sessions, 10 puis 14 joueurs, dans l ordre dit', `${rc.statut} ${JSON.stringify({ groupes: laserC.groupes, sessions, message: rc.json.message })}`);
+  const assiette = dc.extras.find((x) => x && x.articleId === 'assiette-apero') || {};
+  ok(dc.extras.length === 1 && Number(assiette.qte) === 3 && Number(assiette.prixUnitaire) === 19 && Number(assiette.price) === 57,
+    '[D] le supplement relu au catalogue, son prix du catalogue', JSON.stringify(dc.extras));
+  ok(dc.prix === 720 && dc.reference > 0 && dc.reference !== 720 && /Prix \d+ € → 720 €, forfait 30 € par personne/.test(dc.notes),
+    '[D] le forfait facture, le prix habituel garde en reference, la raison au dossier', JSON.stringify({ prix: dc.prix, reference: dc.reference, notes: dc.notes }));
+  ok(/^Préparée avec l’assistant\. Assiette apéro après le bowling\./.test(dc.notes), '[D] la note pour l equipe au dossier, sous la trace de l assistant', dc.notes);
+  // Sans groupes, le laser d un groupe qui tient dans l arene reste une seule session, comme avant.
+  B.semer([]);
+  const sansGroupes = await monter(DIRECTION()).cliquer({ startTime: '14:00', pax: 24, programme: [{ activityId: 'bowling', participants: 24, duration: 1 }, { activityId: 'laser_game', participants: 24, games: 1 }] });
+  const ds = lireBase().find((x) => x.id === (sansGroupes.json.reservation || {}).id) || { blocs: [] };
+  const seules = ds.blocs.filter((b) => b && b.activityId === 'laser_game').map((b) => [b.startTime, b.players]);
+  ok(sansGroupes.statut === 201 && JSON.stringify(seules) === '[["15:00",24]]', '[D] sans groupes, le laser du groupe reste une seule session', JSON.stringify(seules));
+  // Des groupes qui ne font pas les joueurs de la ligne, un supplement hors catalogue, un forfait sans raison : refuses.
+  B.semer([]);
+  const mauvais = monter(DIRECTION());
+  const refusD = await Promise.all([
+    mauvais.cliquer({ pax: 24, programme: [{ activityId: 'laser_game', participants: 24, games: 1, groupes: [10, 10] }] }),
+    mauvais.cliquer({ pax: 24, programme: [{ activityId: 'bowling', participants: 24, duration: 1, groupes: [10, 14] }] }),
+    mauvais.cliquer({ pax: 5, supplements: [{ article: 'caviar' }] }),
+    mauvais.cliquer({ pax: 5, prix: 50 }),
+  ]);
+  ok(refusD.every((x) => x.statut === 422) && lireBase().length === 0, '[D] des groupes faux, un supplement hors catalogue ou un forfait sans raison ne creent rien (422)', JSON.stringify(refusD.map((x) => [x.statut, x.json.message])));
+  // Les groupes ne passent que par l equipe : une demande en ligne forgee prendrait l arene plusieurs fois pour une partie.
+  const VP = require(path.join(B.ROOT, 'lib/visit-program.js'));
+  const ligneLaser = [{ activityId: 'laser_game', participants: 24, games: 1, groupes: [10, 14] }];
+  let enLigne = '';
+  try { VP.normalizeProgram(ligneLaser, { centerId: 'libramont', pax: 24, publicBooking: true }); enLigne = 'accepte'; } catch (e) { enLigne = e.message; }
+  const auComptoir = VP.normalizeProgram(ligneLaser, { centerId: 'libramont', pax: 24, staff: true }).items[0] || {};
+  ok(/se règlent avec le centre/.test(enLigne) && JSON.stringify(auComptoir.groupes) === '[10,14]', '[D] les groupes du laser se posent au comptoir, jamais par une demande en ligne', JSON.stringify({ enLigne, auComptoir: auComptoir.groupes }));
   return echecs;
 }
 

@@ -1783,6 +1783,50 @@ async function sectionEcran() {
       ok('[E] les cartes ne levent aucune erreur JavaScript', m.erreurs.length === 0, m.erreurs.slice(0, 3).join(' | '));
       await m.ctx.close();
     }
+
+    // LE CAS CLEMENT (2026-11-12) : la carte dit le laser en deux sessions, l assiette du catalogue, le
+    // forfait contre le prix habituel avec sa raison, la note pour l equipe ; le clic renvoie tout cela, rien de plus.
+    {
+      const m = await monter();
+      const CLEMENT = { type: 'geste', geste: 'reservation', centre: 'libramont', texte: 'Réserver le samedi 5 décembre à 14:00 pour 24 joueurs.',
+        resume: { quand: 'samedi 5 décembre', heure: '14:00', joueurs: 24, disponible: true, debut: '14:00', fin: '15:55',
+          lignes: [{ activite: 'bowling', nom: 'Bowling', debut: '14:00', fin: '15:00', detail: '1 h, 24 joueurs, pistes 1, 2, 3, 4' }, { activite: 'laser_game', nom: 'Laser Game', debut: '15:00', fin: '15:55', detail: '1 partie, 24 joueurs en 2 groupes (10 puis 14)' }],
+          supplements: [{ nom: 'Assiette apéro', qte: 3 }], prix: 720, prixNegocie: true, prixHabituel: 453, prixRaison: 'forfait 30 € par personne', conflits: [], note: 'Assiette apéro après le bowling.' },
+        action: { action: 'assistantReservation', date: '2026-12-05', startTime: '14:00', pax: 24, programme: [{ activityId: 'bowling', participants: 24, duration: 1 }, { activityId: 'laser_game', participants: 24, games: 1, groupes: [10, 14] }],
+          note: 'Assiette apéro après le bowling.', supplements: [{ article: 'assiette-apero', quantite: 3 }], prix: 720, raisonPrix: 'forfait 30 € par personne', name: 'Clement', phone: '' } };
+      flux.scenario = reponse('Voici la carte.', [['proposition', CLEMENT]]);
+      await m.page.evaluate(() => {
+        const avant = window.fetch;
+        window.__envoisOps = [];
+        window.fetch = async (entree, init = {}) => {
+          const u = new URL(typeof entree === 'string' ? entree : entree.url, location.origin);
+          const corps = String(init.method || 'GET').toUpperCase() === 'POST' && u.pathname === '/api/ops' ? JSON.parse(init.body || '{}') : null;
+          if (!corps || corps.action !== 'assistantReservation') return avant(entree, init);
+          window.__envoisOps.push(corps);
+          return new Response(JSON.stringify({ ok: true, reservation: { id: 4243, date: corps.date, startTime: corps.startTime, pax: corps.pax } }), { status: 201, headers: { 'content-type': 'application/json' } });
+        };
+      });
+      await poser(m.page, 'Réserve pour Clement samedi').catch(() => {});
+      const net = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+      const vue = await m.page.evaluate(() => { const c = document.querySelector('.ast-carte'); return c ? { lignes: [...c.querySelectorAll('.ast-carte-ligne')].map((l) => l.textContent), avant: (c.querySelector('.ast-avant') || {}).textContent || '', apres: (c.querySelector('.ast-apres') || {}).textContent || '' } : null; });
+      const lignesVues = vue ? vue.lignes.map(net) : [];
+      ok('[E] le cas Clement : la carte dit les deux sessions, l assiette, le forfait contre le prix habituel et la note', Boolean(vue)
+        && lignesVues.some((l) => /Laser Game ?15:00 à 15:55 · 1 partie, 24 joueurs en 2 groupes \(10 puis 14\)/.test(l))
+        && lignesVues.some((l) => /Suppléments ?Assiette apéro × 3$/.test(l))
+        && net(vue.avant) === '453 €' && net(vue.apres) === '720 €, soit 30 € par personne'
+        && lignesVues.some((l) => /Raison du prix ?forfait 30 € par personne$/.test(l))
+        && lignesVues.some((l) => /Note pour l’équipe ?Assiette apéro après le bowling\.$/.test(l)), JSON.stringify(vue ? { lignes: lignesVues, avant: net(vue.avant), apres: net(vue.apres) } : null));
+      await m.page.locator('.ast-carte [data-ast-tel]').first().fill('0470 12 34 56', { timeout: 4000 }).catch(() => {});
+      await m.page.locator('.ast-carte').first().locator('[data-ast-geste-oui]').click({ timeout: 4000 }).catch(() => {});
+      await m.page.waitForFunction(() => /Réservation n° 4243 créée/.test(document.body.textContent), null, { timeout: 5000 }).catch(() => {});
+      const envoi = ((await m.page.evaluate(() => window.__envoisOps || [])) || [])[0] || {};
+      ok('[E] le cas Clement : le clic renvoie les groupes, l assiette, le forfait et la note, rien de plus',
+        JSON.stringify(envoi.programme && envoi.programme[1]) === '{"activityId":"laser_game","participants":24,"games":1,"groupes":[10,14]}' && JSON.stringify(envoi.supplements) === '[{"article":"assiette-apero","quantite":3}]'
+        && envoi.prix === 720 && envoi.raisonPrix === 'forfait 30 € par personne' && envoi.note === 'Assiette apéro après le bowling.'
+        && JSON.stringify(Object.keys(envoi).sort()) === JSON.stringify(['action', 'centerId', 'date', 'name', 'note', 'pax', 'phone', 'prix', 'programme', 'raisonPrix', 'startTime', 'supplements']), JSON.stringify(envoi));
+      ok('[E] la carte Clement ne leve aucune erreur JavaScript', m.erreurs.length === 0, m.erreurs.slice(0, 3).join(' | '));
+      await m.ctx.close();
+    }
   } finally {
     await browser.close();
     serveur.close();

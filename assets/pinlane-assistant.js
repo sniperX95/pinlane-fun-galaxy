@@ -54,7 +54,7 @@
   // noteClient passe par la porte des notes du client (api/staff-customer-notes), qui revoit le droit et le centre.
   // assistantReservation part a api/ops.js, qui revoit tout (lib/assistant-reservation.js) : le programme,
   // le telephone du client tape sur la carte, le plan sur la journee lue au clic, les droits.
-  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'], assistantReservation: ['date', 'startTime', 'pax', 'programme', 'name', 'phone'], annulerReservation: ['reservationId', 'date'], effacerConversations: ['portee', 'jours'], assistantGeste: ['geste', 'params'] };
+  const GESTES = { ouvertureExceptionnelle: ['date', 'open', 'close', 'motif'], customRequestStatus: ['id', 'status'], ouvrirReserver: ['date', 'startTime', 'pax', 'name'], noteClient: ['reservationId', 'texte'], assistantReservation: ['date', 'startTime', 'pax', 'programme', 'supplements', 'prix', 'raisonPrix', 'note', 'name', 'phone'], annulerReservation: ['reservationId', 'date'], effacerConversations: ['portee', 'jours'], assistantGeste: ['geste', 'params'] };
   const FORMATS_GRAPHIQUE = { euro: 'euro', pct: 'percent', dec: 'dec1' };
   const ICONES = {
     plus: '<path d="M8 3v10M3 8h10"/>',
@@ -1263,6 +1263,11 @@
   function eurosDits(v) {
     try { return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Number(v) % 1 ? 2 : 0 }).format(Number(v)); } catch (erreur) { return `${v} €`; }
   }
+  function prixConvenuDit(r, pax) {
+    const joueurs = Math.trunc(Number(pax)) || 0;
+    const convenu = `${eurosDits(r.prix)}${joueurs > 1 ? `, soit ${eurosDits(Math.round((Number(r.prix) / joueurs) * 100) / 100)} par personne` : ''}`;
+    return r.prixHabituel != null ? { avant: eurosDits(r.prixHabituel), apres: convenu } : convenu;
+  }
   function lignesDuGeste(p) {
     const a = p.action || {};
     const r = p.resume || {};
@@ -1274,7 +1279,11 @@
         ['Quand', `${r.quand || jourDit(a.date)}, ${a.startTime}${r.fin ? ` à ${r.fin}` : ''}`],
         ['Joueurs', String(a.pax)],
         ...(Array.isArray(r.lignes) ? r.lignes : []).map((l) => [l.nom, [l.debut ? (l.fin ? `${l.debut} à ${l.fin}` : l.debut) : '', l.detail].filter(Boolean).join(' · ')]),
-        ...(r.prix != null ? [['Prix', eurosDits(r.prix)]] : []),
+        ...(Array.isArray(r.supplements) && r.supplements.length ? [['Suppléments', r.supplements.map((s) => `${s.nom} × ${s.qte}${s.parPersonne ? ', un par joueur' : ''}`).join(' ; ')]] : []),
+        // Un prix convenu se lit contre le prix habituel, et par personne quand le groupe en compte plusieurs.
+        ...(r.prix != null ? [['Prix', r.prixNegocie ? prixConvenuDit(r, a.pax) : eurosDits(r.prix)]] : []),
+        ...(r.prixNegocie && r.prixRaison ? [['Raison du prix', r.prixRaison]] : []),
+        ...(a.note ? [['Note pour l’équipe', a.note]] : []),
       ];
     }
     if (a.action === 'ouvrirReserver') return [['Quand', `${jourDit(a.date)}, ${a.startTime}`], ['Joueurs', String(a.pax)], ...(a.name ? [['Client', a.name]] : [])];

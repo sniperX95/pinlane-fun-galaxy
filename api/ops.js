@@ -2823,9 +2823,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (aujourdhui && date < aujourdhui) throw createHttpError('Cette date est passée.', 409, true);
     const joueurs = Math.trunc(Number(body.pax));
     if (!(joueurs >= 1 && joueurs <= 240)) throw createHttpError('Le nombre de joueurs est invalide.', 422, true);
-    const lu = (Array.isArray(body.programme) ? body.programme : []).map((p) => ({ activite: p && p.activityId, duree_heures: p && p.duration, parties: p && p.games, participants: p && p.participants }));
+    const lu = (Array.isArray(body.programme) ? body.programme : []).map((p) => ({ activite: p && p.activityId, duree_heures: p && p.duration, parties: p && p.games, participants: p && p.participants, groupes: p && p.groupes }));
     const programme = R.programmeDe(lu, joueurs, scopedCenterId);
-    const corps = R.corpsDe({ centreId: scopedCenterId, date, heure, joueurs, programme, nom: body.name, telephone: body.phone, notes: 'Préparée avec l’assistant.' });
+    // Les supplements relus au catalogue du centre par leur identifiant, et le prix convenu avec sa
+    // raison : le planificateur juge l un et l autre avec les droits de la session (R.creer).
+    const supplements = Array.isArray(body.supplements) && body.supplements.length ? R.supplementsDe(body.supplements, joueurs, await R.articlesDuCentre(scopedCenterId)) : [];
+    const prixNegocie = R.prixNegocieDe(body.prix, body.raisonPrix);
+    const note = String(body.note == null ? '' : body.note).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const corps = R.corpsDe({ centreId: scopedCenterId, date, heure, joueurs, programme, supplements, prixNegocie, nom: body.name, telephone: body.phone, notes: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') });
     const cree = await require('../lib/booking-config').pourLEquipe(() => R.creer(corps, options.session));
     const reservation = cree.reservation || {};
     sendJson(res, 201, { ok: true, reservation: { id: reservation.id, date: reservation.date, startTime: reservation.startTime, pax: reservation.pax, price: reservation.price, name: reservation.name }, ...(Array.isArray(cree.warnings) && cree.warnings.length ? { warnings: cree.warnings } : {}) });

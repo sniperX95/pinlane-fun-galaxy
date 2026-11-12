@@ -449,6 +449,145 @@ async function creerLeLot(body, session) {
   return { statut, corps: { ok: !echecs.length, reservations, echecs: echecs.map(({ index, message, code }) => ({ index, message, ...(code ? { code } : {}) })) } };
 }
 
+// CE QUE « MODIFIER » ECRIRA (2026-11-12) : le prix borne, les notes, la formule, les extras, le compte
+// a l arrivee, les pistes a la main, la replanification, la reference et le prix, juges comme le PATCH
+// les ecrit. Le PATCH l appelle puis ecrit ; l assistant l appelle pour montrer sur sa carte le prix et
+// le plan que le clic ecrira (lib/assistant-gestes-reservations.js, apercuDeLaModification). Rien ne
+// s ecrit ici : prepareReservationOps lit la journee et calcule.
+async function calculerLaModification({ body, current, session, requestedCenterId }) {
+  // UN PRIX SE BORNE (2026-10-12) : le comptoir ecrit le montant qu il a
+  // sous les yeux, entre 0 et 100 000 EUR, comme l encaisse
+  // (noterEncaisseOuAbsence). Sans prix envoye (absent, null, vide), le
+  // dossier garde le sien, sauf si son contenu change : le serveur le pose
+  // alors sur sa reference (prixQuiSuit, plus bas).
+  if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
+    const prix = Number(body.price);
+    if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
+  }
+  const patch = {
+    ...body,
+    centerId: requestedCenterId,
+  };
+  // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
+  // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.
+  // Un prix vide ne dit rien (toNumber les lisait 0), des notes nulles non
+  // plus, et des extras qui ne sont pas une liste n effacent pas les lignes
+  // du dossier.
+  if (patch.price === null || patch.price === '') delete patch.price;
+  if (patch.notes === null) delete patch.notes;
+  if (Object.prototype.hasOwnProperty.call(patch, 'extras') && !Array.isArray(patch.extras)) delete patch.extras;
+  if (Object.prototype.hasOwnProperty.call(patch, 'notes')) patch.notes = notesDuPatch({ notes: patch.notes, current, session });
+  if (patchAdapteLaFormule(patch, current) || patch.formuleSurMesure) exigerAdaptationDeFormule(session);
+  // Une formule gardee par un autre centre ne se prend pas ici (lib/formule-comptoir.js).
+  if (patch.formuleId || patch.formulaId) exigerFormuleDuCentre({ formuleId: patch.formuleId || patch.formulaId, centerId: requestedCenterId });
+  if (Object.prototype.hasOwnProperty.call(patch, 'extras')) {
+    const { extras, refus } = resoudreExtras({ extras: patch.extras, avant: current.extras, session, centerId: requestedCenterId, pax: patch.pax ?? current.pax });
+    if (refus) throw refus;
+    patch.extras = extras;
+  }
+  // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33) : le groupe recompte au
+  // comptoir passe par ce chemin, celui de Modifier (meme droit, meme
+  // replanification, le prix que la console a calcule). Le serveur le trace
+  // dans une note d equipe, dans la meme ecriture et a l auteur de la
+  // session, jamais a celui du corps : « 10 → 13 ». Seul un groupe pointe
+  // arrive se compte.
+  const compteArrivee = patch.compteArrivee === true;
+  delete patch.compteArrivee;
+  if (compteArrivee) {
+    if (current.status !== 'arrived') throw createHttpError('Le compte se fait sur un groupe pointé arrivé.', 422);
+    const de = Math.trunc(Number(current.pax) || 0);
+    const a = Number(patch.pax);
+    if (!Number.isInteger(a) || a < 1 || a > 240) throw createHttpError('Nombre de personnes invalide : entre 1 et 240.', 422);
+    const membre = session && session.member ? session.member : null;
+    if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: (membre && (membre.name || membre.displayName)) || 'Équipe' });
+  }
+  if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;
+  const proposedProgram = patch.program ?? current.program;
+  const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
+    : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];
+  if (proposedItems.some((item) => Number(item.participants) > Number(patch.pax ?? current.pax))) {
+    throw createHttpError('Le nombre de joueurs d’une activité dépasse le nombre de personnes du groupe.', 422);
+  }
+  // LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05). Il suit le dossier : une heure ou un
+  // nom change sans qu on le redemande. Le poser, le changer ou le retirer replanifie, et
+  // descendre sous le conseil du centre demande le niveau forcer, juge ici.
+  const poseAvant = pistesALaMainDuPlan(current.opsPlan);
+  const poseEnvoyee = Object.prototype.hasOwnProperty.call(patch, 'pistesALaMain') ? Math.max(0, Math.trunc(Number(patch.pistesALaMain) || 0)) : null;
+  const poseApres = poseEnvoyee !== null ? poseEnvoyee : poseAvant && (Array.isArray(patch.lanes) ? patch.lanes.length : (current.lanes || []).length) || poseAvant;
+  delete patch.pistesALaMain;
+  if (poseApres) patch.pistesALaMain = poseApres;
+  if (poseApres && poseApres !== poseAvant) {
+    const bowling = proposedItems.find((item) => item.activityId === 'bowling');
+    const joueurs = Number(bowling && bowling.participants) || Number(patch.pax ?? current.pax) || 1;
+    const normale = Number(getCenter(requestedCenterId).resources?.bowling?.normalCapacityPerLane) || 6;
+    if (joueurs > poseApres * normale) exigerPistesALaMain(session);
+  }
+  const operationsChanged = patchChangesOperations(patch, current) || poseApres !== poseAvant;
+  const shouldReplan = operationsChanged;
+  if (!operationsChanged) {
+    // Ne jamais adopter les métadonnées/prix/snapshots renvoyés par le client.
+    // Le contrat serveur sauvegardé fait foi lors d'une édition administrative.
+    patch.program = current.program;
+    patch.opsPlan = current.opsPlan;
+    // Ces deux projections UI ne sont pas stockées sur la ligne SQL.
+    // Laisser la DB reprendre ses valeurs normalisées du dossier courant.
+    delete patch.laneCount;
+    delete patch.requiresLanes;
+  }
+  const operationalRequest = { ...current, ...patch };
+  if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
+  const ops = shouldReplan
+    ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
+    : {};
+  if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
+    === JSON.stringify((current.lanes || []).map(Number))) {
+    const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')
+      .flatMap((block) => block.lanes || []);
+    if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];
+  }
+  // LA REFERENCE ET LE PRIX, juges sur ce qui va s ecrire. Le contenu, c est
+  // ce qui se vend : les pistes, l heure et le jour deplacent un dossier sans
+  // rouvrir son prix.
+  const extrasFinales = patch.extras ?? current.extras ?? [];
+  const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current) || poseApres !== poseAvant;
+  const jourChange = String(patch.date ?? current.date) !== String(current.date);
+  const memesPistes = Number(ops.laneCount ?? (patch.lanes ?? current.lanes ?? []).length) === (current.lanes || []).length;
+  const base = operationsChanged
+    ? baseDuServeur({ current, demande: operationalRequest, ops, contenuChange, jourChange, memesPistes })
+    : (Number(current.basePrice) || 0);
+  // UNE HEURE DEPLACEE GARDE SES MONTANTS (2026-11-04). Le moteur rechiffre au tarif du
+  // jour ; rien de ce qui se vend n a bouge, le dossier garde son prix et ses lignes,
+  // meme si un tarif a ete publie depuis.
+  if (operationsChanged && !contenuChange && !jourChange && memesPistes) {
+    if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = Object.prototype.hasOwnProperty.call(patch, 'price') ? Number(patch.price) : Number(current.price) || 0;
+    if (ops.program) ops.program = programmeAuxMontantsDuDossier(ops.program, current.program);
+    if (Object.prototype.hasOwnProperty.call(ops, 'programPrice')) ops.programPrice = base;
+  }
+  patch.basePrice = base;
+  if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
+  // LE PRIX QUI SUIT (2026-11-03) : le contenu change et aucun prix n est
+  // envoye, le serveur le pose sur sa reference, l ajustement en place
+  // garde. Le moteur rend un prix sans ajustement (celui d un programme) ou
+  // aucun (un plan de pistes sans prix demande) : celui-ci remplace les deux.
+  // Personne ne l a decide : rien a juger, aucune trace de prix.
+  const prixSuivi = contenuChange && !Object.prototype.hasOwnProperty.call(patch, 'price');
+  if (prixSuivi) {
+    patch.price = prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax });
+    if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = patch.price;
+  }
+  const prixFinal = ops.price ?? patch.price ?? current.price;
+  const formuleDuComptoir = current.program && current.program.formuleSurMesure;
+  if (!prixSuivi && formuleDuComptoir && formuleDuComptoir.prixParPersonne !== undefined && Math.abs(Number(prixFinal) - prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax })) > 0.5) {
+    const programme = ops.program ?? patch.program;
+    const nom = { nom: formuleDuComptoir.nom };
+    if (ops.program) ops.program = { ...programme, formuleSurMesure: nom };
+    else if (patch.program) patch.program = { ...programme, formuleSurMesure: nom };
+  }
+  const notePrix = prixSuivi ? null : jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
+  if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
+  return { patch, ops, shouldReplan, prixFinal, base, prixSuivi, contenuChange, jourChange };
+}
+
 const traiter = async (req, res) => {
   try {
     if (req.method === 'GET') {
@@ -855,136 +994,7 @@ const traiter = async (req, res) => {
         const sessionEncaisse = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
         if (!sessionEncaisse) return;
       }
-      // UN PRIX SE BORNE (2026-10-12) : le comptoir ecrit le montant qu il a
-      // sous les yeux, entre 0 et 100 000 EUR, comme l encaisse
-      // (noterEncaisseOuAbsence). Sans prix envoye (absent, null, vide), le
-      // dossier garde le sien, sauf si son contenu change : le serveur le pose
-      // alors sur sa reference (prixQuiSuit, plus bas).
-      if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
-        const prix = Number(body.price);
-        if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
-      }
-      const patch = {
-        ...body,
-        centerId: requestedCenterId,
-      };
-      // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
-      // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.
-      // Un prix vide ne dit rien (toNumber les lisait 0), des notes nulles non
-      // plus, et des extras qui ne sont pas une liste n effacent pas les lignes
-      // du dossier.
-      if (patch.price === null || patch.price === '') delete patch.price;
-      if (patch.notes === null) delete patch.notes;
-      if (Object.prototype.hasOwnProperty.call(patch, 'extras') && !Array.isArray(patch.extras)) delete patch.extras;
-      if (Object.prototype.hasOwnProperty.call(patch, 'notes')) patch.notes = notesDuPatch({ notes: patch.notes, current, session });
-      if (patchAdapteLaFormule(patch, current) || patch.formuleSurMesure) exigerAdaptationDeFormule(session);
-      // Une formule gardee par un autre centre ne se prend pas ici (lib/formule-comptoir.js).
-      if (patch.formuleId || patch.formulaId) exigerFormuleDuCentre({ formuleId: patch.formuleId || patch.formulaId, centerId: requestedCenterId });
-      if (Object.prototype.hasOwnProperty.call(patch, 'extras')) {
-        const { extras, refus } = resoudreExtras({ extras: patch.extras, avant: current.extras, session, centerId: requestedCenterId, pax: patch.pax ?? current.pax });
-        if (refus) throw refus;
-        patch.extras = extras;
-      }
-      // LE COMPTE A L ARRIVEE (2026-10-29, lot 2 de R33) : le groupe recompte au
-      // comptoir passe par ce chemin, celui de Modifier (meme droit, meme
-      // replanification, le prix que la console a calcule). Le serveur le trace
-      // dans une note d equipe, dans la meme ecriture et a l auteur de la
-      // session, jamais a celui du corps : « 10 → 13 ». Seul un groupe pointe
-      // arrive se compte.
-      const compteArrivee = patch.compteArrivee === true;
-      delete patch.compteArrivee;
-      if (compteArrivee) {
-        if (current.status !== 'arrived') throw createHttpError('Le compte se fait sur un groupe pointé arrivé.', 422);
-        const de = Math.trunc(Number(current.pax) || 0);
-        const a = Number(patch.pax);
-        if (!Number.isInteger(a) || a < 1 || a > 240) throw createHttpError('Nombre de personnes invalide : entre 1 et 240.', 422);
-        const membre = session && session.member ? session.member : null;
-        if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: (membre && (membre.name || membre.displayName)) || 'Équipe' });
-      }
-      if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;
-      const proposedProgram = patch.program ?? current.program;
-      const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
-        : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];
-      if (proposedItems.some((item) => Number(item.participants) > Number(patch.pax ?? current.pax))) {
-        throw createHttpError('Le nombre de joueurs d’une activité dépasse le nombre de personnes du groupe.', 422);
-      }
-      // LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05). Il suit le dossier : une heure ou un
-      // nom change sans qu on le redemande. Le poser, le changer ou le retirer replanifie, et
-      // descendre sous le conseil du centre demande le niveau forcer, juge ici.
-      const poseAvant = pistesALaMainDuPlan(current.opsPlan);
-      const poseEnvoyee = Object.prototype.hasOwnProperty.call(patch, 'pistesALaMain') ? Math.max(0, Math.trunc(Number(patch.pistesALaMain) || 0)) : null;
-      const poseApres = poseEnvoyee !== null ? poseEnvoyee : poseAvant && (Array.isArray(patch.lanes) ? patch.lanes.length : (current.lanes || []).length) || poseAvant;
-      delete patch.pistesALaMain;
-      if (poseApres) patch.pistesALaMain = poseApres;
-      if (poseApres && poseApres !== poseAvant) {
-        const bowling = proposedItems.find((item) => item.activityId === 'bowling');
-        const joueurs = Number(bowling && bowling.participants) || Number(patch.pax ?? current.pax) || 1;
-        const normale = Number(getCenter(requestedCenterId).resources?.bowling?.normalCapacityPerLane) || 6;
-        if (joueurs > poseApres * normale) exigerPistesALaMain(session);
-      }
-      const operationsChanged = patchChangesOperations(patch, current) || poseApres !== poseAvant;
-      const shouldReplan = operationsChanged;
-      if (!operationsChanged) {
-        // Ne jamais adopter les métadonnées/prix/snapshots renvoyés par le client.
-        // Le contrat serveur sauvegardé fait foi lors d'une édition administrative.
-        patch.program = current.program;
-        patch.opsPlan = current.opsPlan;
-        // Ces deux projections UI ne sont pas stockées sur la ligne SQL.
-        // Laisser la DB reprendre ses valeurs normalisées du dossier courant.
-        delete patch.laneCount;
-        delete patch.requiresLanes;
-      }
-      const operationalRequest = { ...current, ...patch };
-      if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
-      const ops = shouldReplan
-        ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
-        : {};
-      if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
-        === JSON.stringify((current.lanes || []).map(Number))) {
-        const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')
-          .flatMap((block) => block.lanes || []);
-        if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];
-      }
-      // LA REFERENCE ET LE PRIX, juges sur ce qui va s ecrire. Le contenu, c est
-      // ce qui se vend : les pistes, l heure et le jour deplacent un dossier sans
-      // rouvrir son prix.
-      const extrasFinales = patch.extras ?? current.extras ?? [];
-      const contenuChange = contenuDuDossier({ ...current, ...patch, ...ops, extras: extrasFinales }) !== contenuDuDossier(current) || poseApres !== poseAvant;
-      const jourChange = String(patch.date ?? current.date) !== String(current.date);
-      const memesPistes = Number(ops.laneCount ?? (patch.lanes ?? current.lanes ?? []).length) === (current.lanes || []).length;
-      const base = operationsChanged
-        ? baseDuServeur({ current, demande: operationalRequest, ops, contenuChange, jourChange, memesPistes })
-        : (Number(current.basePrice) || 0);
-      // UNE HEURE DEPLACEE GARDE SES MONTANTS (2026-11-04). Le moteur rechiffre au tarif du
-      // jour ; rien de ce qui se vend n a bouge, le dossier garde son prix et ses lignes,
-      // meme si un tarif a ete publie depuis.
-      if (operationsChanged && !contenuChange && !jourChange && memesPistes) {
-        if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = Object.prototype.hasOwnProperty.call(patch, 'price') ? Number(patch.price) : Number(current.price) || 0;
-        if (ops.program) ops.program = programmeAuxMontantsDuDossier(ops.program, current.program);
-        if (Object.prototype.hasOwnProperty.call(ops, 'programPrice')) ops.programPrice = base;
-      }
-      patch.basePrice = base;
-      if (Object.prototype.hasOwnProperty.call(ops, 'basePrice')) ops.basePrice = base;
-      // LE PRIX QUI SUIT (2026-11-03) : le contenu change et aucun prix n est
-      // envoye, le serveur le pose sur sa reference, l ajustement en place
-      // garde. Le moteur rend un prix sans ajustement (celui d un programme) ou
-      // aucun (un plan de pistes sans prix demande) : celui-ci remplace les deux.
-      // Personne ne l a decide : rien a juger, aucune trace de prix.
-      const prixSuivi = contenuChange && !Object.prototype.hasOwnProperty.call(patch, 'price');
-      if (prixSuivi) {
-        patch.price = prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax });
-        if (Object.prototype.hasOwnProperty.call(ops, 'price')) ops.price = patch.price;
-      }
-      const prixFinal = ops.price ?? patch.price ?? current.price;
-      const formuleDuComptoir = current.program && current.program.formuleSurMesure;
-      if (!prixSuivi && formuleDuComptoir && formuleDuComptoir.prixParPersonne !== undefined && Math.abs(Number(prixFinal) - prixQuiSuit({ current, base, extras: extrasFinales, pax: patch.pax ?? current.pax })) > 0.5) {
-        const programme = ops.program ?? patch.program;
-        const nom = { nom: formuleDuComptoir.nom };
-        if (ops.program) ops.program = { ...programme, formuleSurMesure: nom };
-        else if (patch.program) patch.program = { ...programme, formuleSurMesure: nom };
-      }
-      const notePrix = prixSuivi ? null : jugerPrixDeModification({ session, current, prix: prixFinal, base, extras: extrasFinales, contenuChange, raison: patch.prixRaison });
-      if (notePrix) patch.notes = notesAvecPrix(patch.notes ?? current.notes, notePrix);
+      const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
       const reservation = await updateReservation({
         ...patch,
         ...ops,
@@ -1133,3 +1143,4 @@ const traiter = async (req, res) => {
 
 // Les portes du comptoir voient les ouvertures exceptionnelles du centre (lib/booking-config).
 module.exports = (req, res) => require('../lib/booking-config').pourLEquipe(() => traiter(req, res));
+module.exports.calculerLaModification = calculerLaModification;

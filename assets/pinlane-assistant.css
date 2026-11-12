@@ -60,6 +60,9 @@
 @keyframes astOrbeForme { 0%, 100% { border-radius: 50%; scale: 1; } 33% { border-radius: 44% 56% 53% 47% / 55% 45% 55% 45%; scale: 1.07 .95; } 66% { border-radius: 56% 44% 46% 54% / 45% 56% 44% 55%; scale: .94 1.06; } }
 @keyframes astOrbeHalo { 50% { opacity: 1; scale: 1.2; } }
 @keyframes astOrbeReflet { 50% { translate: 7% 6%; opacity: .75; } }
+@keyframes astBloc { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } }
+@keyframes astMot { from { opacity: 0; } }
+@keyframes astTrait { from { background-size: 0% 1px; color: var(--ast-corps); } }
 
 /* Le signe de travail : une goutte de lumiere bleue. Un halo qui respire, un corps aux bleus de la
    page qui tourne sur lui-meme en changeant doucement de forme, un reflet. Trois couches de
@@ -140,16 +143,21 @@
 .ast-q-bulle { max-width: 85%; padding: 10px 15px; font-size: 15px; line-height: 1.5; background: var(--subtle); border-radius: 18px; transform-origin: right bottom; }
 .ast-q.is-neuf .ast-q-bulle { animation: astEnvoi 320ms var(--c-sortie) both; }
 
-.ast-r-texte { font-size: 15px; line-height: 1.6; }
-.ast-r-texte p { margin: 0 0 12px; }
-.ast-r-texte h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
-.ast-r-texte ul, .ast-r-texte ol { margin: 0 0 12px; }
-.ast-r-texte li { margin: 3px 0; }
+/* La reponse (2026-11-12, Ansar : « réponse moche ») : le verdict d abord, un peu plus grand et plus
+   noir, puis le detail dans une encre a peine plus douce, ou les chiffres prouves gardent le noir et un
+   trait bleu qui mene a leur preuve. Des renvois plus discrets, de l air entre les paragraphes. */
+.ast-r-texte { --ast-corps: color-mix(in srgb, var(--text) 86%, var(--surface)); font-size: 15px; line-height: 1.65; color: var(--ast-corps); }
+.ast-r-texte p { margin: 0 0 14px; text-wrap: pretty; }
+.ast-r-texte > p:first-child:not(.ast-pense) { margin-bottom: 16px; font-size: 16.5px; line-height: 1.55; font-weight: 500; letter-spacing: -.008em; color: var(--text); }
+.ast-r-texte h3 { margin: 20px 0 6px; font-size: 15px; font-weight: 600; color: var(--text); }
+.ast-r-texte ul, .ast-r-texte ol { margin: 0 0 14px; padding-left: 22px; }
+.ast-r-texte li { margin: 7px 0; padding-left: 3px; }
+.ast-r-texte li::marker { color: var(--faint); font-weight: 500; }
 .ast-pense { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0; padding-left: 7px; font-size: 14px; }
 .ast-pense.est-sous-la-liste { min-height: 34px; padding-left: 4px; }
 .ast-pense.ast-travail { padding-left: 7px; }
 
-.ast-cite { min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; font-weight: 500; color: var(--muted); background: var(--voile-2); border-radius: 5px; transition: background-color var(--d-net) ease, color var(--d-net) ease; }
+.ast-cite { min-width: 17px; height: 17px; padding: 0 4px; font-size: 10.5px; font-weight: 500; vertical-align: 1px; color: var(--muted); background: var(--voile-1); border-radius: 5px; transition: background-color var(--d-net) ease, color var(--d-net) ease; }
 .ast-cite.est-fait { padding: 0 6px; }
 button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); background: var(--voile-3); }
 
@@ -560,10 +568,10 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-fait-actions { display: flex; gap: 14px; margin-top: 6px; }
 
 /* Chaque chiffre mene a sa preuve. */
-.ast .ast-chiffre { display: inline; width: auto; height: auto; min-height: 0; margin: 0; padding: 0; font: inherit; color: inherit; background: none; border: 0; border-bottom: 1px dotted color-mix(in srgb, var(--text) 45%, transparent); border-radius: 0; cursor: pointer; transition: color var(--d-net) ease, border-color var(--d-net) ease; }
-.ast .ast-chiffre:hover, .ast .ast-chiffre:focus-visible { color: var(--accent-strong); border-bottom-color: currentColor; }
+.ast .ast-chiffre { --ast-trait: color-mix(in srgb, var(--azur) 55%, transparent); display: inline; width: auto; height: auto; min-height: 0; margin: 0; padding: 0; font: inherit; color: var(--text); background: linear-gradient(var(--ast-trait), var(--ast-trait)) 0 calc(100% - 1px) / 100% 1px no-repeat; border: 0; border-radius: 0; cursor: pointer; transition: color var(--d-net) ease; }
+.ast .ast-chiffre:hover, .ast .ast-chiffre:focus-visible { --ast-trait: currentColor; color: var(--accent-strong); background-size: 100% 1.5px; }
 .ast .ast-chiffre:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-radius: 2px; }
-.ast .ast-chiffre.est-douteux { border-bottom: 2px solid var(--warning); }
+.ast .ast-chiffre.est-douteux { --ast-trait: var(--warning); background-size: 100% 2px; }
 .ast-preuve { position: sticky; top: -18px; z-index: 2; display: grid; gap: 2px; margin: 12px 0 0; padding: 12px 14px; background: var(--page); border-radius: 10px; box-shadow: 0 0 0 6px var(--surface); }
 .ast-preuve b { font-size: 22px; font-weight: 650; line-height: 1.2; }
 .ast-preuve span { font-size: 14px; line-height: 1.45; color: var(--muted); }
@@ -618,6 +626,14 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   /* Pendant le travail : une lueur fait le tour du champ et le fond respire. */
   .ast-compo::before { content: ""; position: absolute; inset: 0; padding: 1.5px; background: conic-gradient(from var(--ast-angle, 0deg), transparent 0 52%, var(--azur) 76%, #9a8cff 90%, transparent); border-radius: inherit; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; pointer-events: none; opacity: 0; transition: opacity 360ms ease; }
   .ast.est-occupe .ast-compo::before { opacity: 1; animation: astTour 2400ms linear infinite; }
+
+  /* La reponse qui s ecrit : un bloc neuf entre en montant, les mots arrivent en fondu, au rythme du
+     texte. A la fin, chaque chiffre prouve recoit son trait, dans l ordre de lecture : la verification
+     se voit. Les cartes et les alertes sous la reponse arrivent ensuite. */
+  .ast-r-texte .ast-bloc-neuf { animation: astBloc 380ms var(--c-sortie) backwards; }
+  .ast-r-texte .ast-neuf { animation: astMot 420ms ease-out backwards; }
+  .ast-r.vient-d-ecrire .ast-chiffre { animation: astTrait 460ms var(--c-sortie) calc(140ms + min(var(--n, 0), 24) * 40ms) backwards; }
+  .ast-r.vient-d-ecrire .ast-prop, .ast-r.vient-d-ecrire .ast-allers, .ast-r.vient-d-ecrire .ast-alerte, .ast-r.vient-d-ecrire .ast-retire { animation: astMonte var(--d-feuille) var(--c-sortie) 60ms backwards; }
 
   /* Le texte qui arrive se fond vers le bas. */
   .ast-r-texte.est-flux { --ast-voile-bas: 44px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - min(var(--ast-voile-bas, 0px), 45%)), transparent); animation: astFondu 260ms ease-out backwards; }

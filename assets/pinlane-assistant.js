@@ -296,7 +296,7 @@
     t = t.replace(/\[((?:[SGF]\d+\s*[,;]\s*)+[SGF]\d+)\]/g, (tout, liste) => liste.split(/\s*[,;]\s*/).map((r) => `[${r}]`).join(''));
     t = t.replace(/\u27E6(\d+):([^\u27E7]*)\u27E7/g, (tout, i, chiffre) => {
       const p = (m.preuves || [])[Number(i)];
-      return p ? `<button type="button" class="ast-chiffre${p.e === 'inconnu' ? ' est-douteux' : ''}" data-ast-preuve="${Number(i)}" title="${esc(titreDePreuve(p))}">${chiffre}</button>` : chiffre;
+      return p ? `<button type="button" class="ast-chiffre${p.e === 'inconnu' ? ' est-douteux' : ''}" data-ast-preuve="${Number(i)}" style="--n:${Number(i)}" title="${esc(titreDePreuve(p))}">${chiffre}</button>` : chiffre;
     });
     t = t.replace(/[  ]?\[F(\d+)\]/g, (tout, n) => ((m.faitsCites || []).some((f) => String(f.id) === n) ? `<button type="button" class="ast-cite est-fait" data-ast-fait="${n}" title="${esc(((m.faitsCites || []).find((f) => String(f.id) === n) || {}).texte || '')}" aria-label="Fait appris par l'équipe">appris</button>` : ''));
     return t.replace(/[  ]?\[S(\d+)\]/g, (tout, n) => {
@@ -310,23 +310,25 @@
   const celules = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
 
   // Un rendu fait a la main sur ce que le modele ecrit vraiment. Tout passe par esc d abord.
-  function markdown(brut, m) {
+  // Il rend ses blocs un par un : pendant l ecriture, seul le bloc qui change se touche.
+  function markdown(brut, m) { return blocsMarkdown(brut, m).join(''); }
+  function blocsMarkdown(brut, m) {
     const lignes = String(brut || '').replace(/\r/g, '').split('\n');
-    let html = '';
+    const blocs = [];
     let i = 0;
     while (i < lignes.length) {
       const l = lignes[i];
       if (!l.trim()) { i += 1; continue; }
       const graphique = /^\s*\[(G\d+)\]\s*$/.exec(l);
-      if (graphique) { html += `<figure class="ast-graph" data-ast-graph="${graphique[1]}"></figure>`; i += 1; continue; }
+      if (graphique) { blocs.push(`<figure class="ast-graph" data-ast-graph="${graphique[1]}"></figure>`); i += 1; continue; }
       const titre = /^\s*(#{1,4})\s+(.*)$/.exec(l);
-      if (titre) { html += `<h3>${enLigne(titre[2], m)}</h3>`; i += 1; continue; }
+      if (titre) { blocs.push(`<h3>${enLigne(titre[2], m)}</h3>`); i += 1; continue; }
       if (/\|/.test(l) && i + 1 < lignes.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lignes[i + 1]) && lignes[i + 1].includes('-')) {
         const tete = celules(l);
         i += 2;
         const corps = [];
         while (i < lignes.length && /\|/.test(lignes[i]) && lignes[i].trim()) { corps.push(celules(lignes[i])); i += 1; }
-        html += `<div class="ast-table"><table><thead><tr>${tete.map((c) => `<th scope="col">${enLigne(c, m)}</th>`).join('')}</tr></thead><tbody>${corps.map((r) => `<tr>${tete.map((_, j) => `<td>${enLigne(r[j] || '', m)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        blocs.push(`<div class="ast-table"><table><thead><tr>${tete.map((c) => `<th scope="col">${enLigne(c, m)}</th>`).join('')}</tr></thead><tbody>${corps.map((r) => `<tr>${tete.map((_, j) => `<td>${enLigne(r[j] || '', m)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
         continue;
       }
       const puce = /^\s*[-*•]\s+/;
@@ -338,15 +340,15 @@
         // Une liste numerotee coupee par une ligne vide ou par des puces garde ses numeros : chaque
         // point porte celui que le modele a ecrit, au lieu de repartir de 1.
         while (i < lignes.length && motif.test(lignes[i])) { items.push({ texte: lignes[i].replace(motif, ''), rang: motif === numero ? Number(/\d+/.exec(lignes[i])[0]) : 0 }); i += 1; }
-        html += `<${balise}>${items.map((x) => `<li${x.rang ? ` value="${x.rang}"` : ''}>${enLigne(x.texte, m)}</li>`).join('')}</${balise}>`;
+        blocs.push(`<${balise}>${items.map((x) => `<li${x.rang ? ` value="${x.rang}"` : ''}>${enLigne(x.texte, m)}</li>`).join('')}</${balise}>`);
         continue;
       }
       const paragraphe = [l];
       i += 1;
       while (i < lignes.length && lignes[i].trim() && !estDebutDeBloc(lignes[i])) { paragraphe.push(lignes[i]); i += 1; }
-      html += `<p>${paragraphe.map((x) => enLigne(x, m)).join('<br>')}</p>`;
+      blocs.push(`<p>${paragraphe.map((x) => enLigne(x, m)).join('<br>')}</p>`);
     }
-    return html;
+    return blocs;
   }
 
   // ---- Peindre -----------------------------------------------------------------------
@@ -1055,11 +1057,15 @@
     return (t.match(/\*\*/g) || []).length % 2 ? `${t}**` : t;
   }
 
+  // Le texte a rendre. Pendant l ecriture, un renvoi coupe en deux ne s affiche pas a moitie, et un
+  // blanc final attend le mot qui le suit : chaque image ne fait qu ajouter au texte deja pose.
+  function htmlTexteBrut(m) {
+    return m.statut === 'cours' ? fermerLeGras(m.texte.replace(/\[[SGF]?\d*$/, '').replace(/\s+$/, '')) : marquer(m.texte, m.preuves);
+  }
+
   function htmlTexte(m) {
     if (m.statut === 'cours' && !m.texte) return `<p class="ast-pense${(m.etapes || []).length ? ' est-sous-la-liste' : ''}" role="status" aria-label="Réponse en préparation">${SIGNE}</p>`;
-    // Pendant l ecriture, un renvoi coupe en deux ne s affiche pas a moitie.
-    const texte = m.statut === 'cours' ? fermerLeGras(m.texte.replace(/\[[SGF]?\d*$/, '')) : marquer(m.texte, m.preuves);
-    let html = markdown(texte, m);
+    let html = markdown(htmlTexteBrut(m), m);
     // Un graphique demande mais jamais place dans le texte se montre a la fin.
     if (m.statut !== 'cours') (m.graphiques || []).forEach((g) => { if (!html.includes(`data-ast-graph="${g.id}"`)) html += `<figure class="ast-graph" data-ast-graph="${g.id}"></figure>`; });
     return html;
@@ -1546,6 +1552,83 @@
     hote.innerHTML = html;
   }
 
+  // LE TEXTE QUI S ECRIT (2026-11-12, Ansar : « pas d'effet dans ces messages pas d'animation »).
+  // Pendant l ecriture, la zone n est plus refaite a chaque image. Un bloc deja pose ne bouge plus, un
+  // bloc neuf entre en montant, et ce qui s ajoute au bloc en cours apparait en fondu, mot apres mot.
+  // Un bloc qui change autrement que par un ajout (un tableau qui se forme, une liste qui commence)
+  // se refait seul. A la fin, la reponse se pose une fois, avec ses chiffres relies a leur preuve.
+  const ecritures = new WeakMap();
+  const enNoeud = (html) => { const t = document.createElement('template'); t.innerHTML = html; return t.content.firstElementChild; };
+  // Les classes du fondu ne comptent pas : un element pose en fondu reste le meme element.
+  const attributsDe = (el) => [...el.attributes].map((x) => `${x.name}=${x.name === 'class' ? x.value.replace(/\bast-(?:bloc-)?neuf\b/g, '').trim() : x.value}`).filter((x) => x !== 'class=').sort().join('|');
+  const memeElement = (a, b) => Boolean(a && b) && a.nodeType === 1 && b.nodeType === 1 && a.tagName === b.tagName && attributsDe(a) === attributsDe(b);
+  // Ajoute a l element vivant ce que le rendu neuf a de plus que l ancien, si le neuf ne fait que
+  // prolonger l ancien par la fin. Faux sinon, et rien n est touche.
+  function prolonger(vif, ancien, neuf) {
+    const a = ancien.childNodes;
+    const n = neuf.childNodes;
+    if (n.length < a.length) return false;
+    const k = a.length - 1;
+    for (let i = 0; i < k; i += 1) if (!a[i].isEqualNode(n[i])) return false;
+    const ajouts = [];
+    if (k >= 0 && !a[k].isEqualNode(n[k])) {
+      if (a[k].nodeType === 3 && n[k].nodeType === 3 && n[k].data.startsWith(a[k].data)) ajouts.push(document.createTextNode(n[k].data.slice(a[k].data.length)));
+      else if (!(memeElement(a[k], n[k]) && memeElement(vif.lastElementChild, a[k]) && prolonger(vif.lastElementChild, a[k], n[k]))) return false;
+    }
+    for (let i = a.length; i < n.length; i += 1) ajouts.push(n[i].cloneNode(true));
+    ajouts.forEach((x) => {
+      if (x.nodeType === 1) { x.classList.add('ast-neuf'); vif.appendChild(x); return; }
+      const mot = document.createElement('span');
+      mot.className = 'ast-neuf';
+      mot.appendChild(x);
+      vif.appendChild(mot);
+    });
+    return true;
+  }
+  function poserTexte(zone, m) {
+    if (m.statut !== 'cours' || !m.texte || sansMouvement()) {
+      if (ecritures.has(zone)) { ecritures.delete(zone); dernierHtml.delete(zone); }
+      poserSiChange(zone, htmlTexte(m));
+      return;
+    }
+    const blocs = blocsMarkdown(htmlTexteBrut(m), m);
+    let e = ecritures.get(zone);
+    if (!e || zone.childElementCount !== e.noeuds.length) {
+      // Rien d ecrit encore : les blocs entreront. Un fil repeint en pleine ecriture reprend son texte
+      // tel quel, sans le rejouer.
+      const depart = !zone.querySelector(':scope > :not(.ast-pense)');
+      e = { html: [], noeuds: [] };
+      ecritures.set(zone, e);
+      dernierHtml.delete(zone);
+      if (!depart) {
+        zone.innerHTML = blocs.join('');
+        e.html = blocs.slice();
+        e.noeuds = blocs.map(enNoeud);
+        return;
+      }
+      zone.textContent = '';
+    }
+    blocs.forEach((html, i) => {
+      if (e.html[i] === html) return;
+      const neuf = enNoeud(html);
+      const vif = zone.children[i];
+      if (!vif) {
+        const bloc = neuf.cloneNode(true);
+        bloc.classList.add('ast-bloc-neuf');
+        zone.appendChild(bloc);
+      } else if (!(memeElement(vif, e.noeuds[i]) && memeElement(e.noeuds[i], neuf) && prolonger(vif, e.noeuds[i], neuf))) {
+        const bloc = neuf.cloneNode(true);
+        if (vif.tagName !== bloc.tagName) bloc.classList.add('ast-bloc-neuf');
+        zone.replaceChild(bloc, vif);
+      }
+      e.html[i] = html;
+      e.noeuds[i] = neuf;
+    });
+    while (zone.childElementCount > blocs.length) zone.lastElementChild.remove();
+    e.html.length = blocs.length;
+    e.noeuds.length = blocs.length;
+  }
+
   function demanderPeinture(m) {
     if (A.peintureDemandee) return;
     A.peintureDemandee = true;
@@ -1568,7 +1651,7 @@
     else if (haut.querySelector('[data-lu-direct]')) { if (replierLecture(haut, m, article)) return; }
     else if (m.statut !== 'cours' || !haut.querySelector('[data-ast-recherche]')) haut.innerHTML = htmlRecherche(m);
     const zone = article.querySelector('[data-ast-texte]');
-    poserSiChange(zone, htmlTexte(m));
+    poserTexte(zone, m);
     marquerFlux(zone, m.statut === 'cours' && Boolean(m.texte));
     poserSiChange(article.querySelector('[data-ast-basdepage]'), htmlPied(m, i === c.messages.length - 1));
     dessinerGraphiques(article, m);
@@ -1977,6 +2060,8 @@
   async function poser(conversation, reponse) {
     const coupure = new AbortController();
     A.flux = coupure;
+    // Arreter montre tout de suite le texte deja recu.
+    coupure.signal.addEventListener('abort', () => viderPlume(reponse));
     peindreCompo();
     try {
       if (typeof isDemoRoute === 'function' && isDemoRoute()) {
@@ -2000,7 +2085,7 @@
         }
         throw Object.assign(new Error(corps.message || "L'assistant est indisponible pour le moment."), { lisible: true });
       }
-      await lireLeFlux(envoi, reponse);
+      await lireLeFlux(envoi, reponse, coupure.signal);
       if (reponse.statut === 'cours') throw Object.assign(new Error("La réponse s'est arrêtée avant la fin. Réessayez."), { lisible: true });
     } catch (erreur) {
       if (erreur && erreur.name === 'AbortError') reponse.statut = 'arrete';
@@ -2009,6 +2094,7 @@
         reponse.erreur = erreur && erreur.lisible ? erreur.message : 'La connexion a été coupée. Réessayez.';
       }
     } finally {
+      viderPlume(reponse);
       A.flux = null;
       conversation.maj = Date.now();
       sauver(conversation);
@@ -2020,7 +2106,69 @@
     }
   }
 
-  async function lireLeFlux(envoi, m) {
+  // LE RYTHME DU TEXTE (2026-11-12). Le modele envoie souvent sa reponse entiere en une seconde, et
+  // elle tombait d un bloc. Le texte recu attend ici et s ecrit a un rythme qu on suit des yeux, un
+  // mot entier a la fois, plus vite quand il en reste beaucoup : il n a jamais plus d une seconde
+  // environ de retard. La fin, la verification et une erreur attendent qu il soit ecrit. Sans
+  // mouvement, ou l onglet cache, tout s ecrit d un coup.
+  const RYTHME_MIN = 180;
+  const RYTHME_MAX = 1100;
+  const RATTRAPAGE = 0.9;
+  const plumes = new WeakMap();
+  const plumesActives = new Set();
+  function ecrire(m, morceau) {
+    let p = plumes.get(m);
+    if (!p) { p = { m, reste: '', credit: 0, image: 0, avant: 0, attentes: [] }; plumes.set(m, p); }
+    p.reste += morceau;
+    if (sansMouvement() || document.hidden) { viderPlume(m); return; }
+    plumesActives.add(p);
+    if (!p.image) { p.avant = performance.now(); p.image = requestAnimationFrame((t) => avancer(p, t)); }
+  }
+  function avancer(p, t) {
+    p.image = 0;
+    const dt = Math.min(Math.max(t - p.avant, 0), 50) / 1000;
+    p.avant = t;
+    p.credit += Math.min(RYTHME_MAX, Math.max(RYTHME_MIN, p.reste.length / RATTRAPAGE)) * dt;
+    let n = Math.floor(p.credit);
+    if (n > 0) {
+      const blanc = p.reste.slice(n).search(/\s/);
+      if (blanc >= 0 && blanc < 16) n += blanc;
+      else if (blanc < 0 && p.reste.length - n < 16) n = p.reste.length;
+      p.m.texte += p.reste.slice(0, n);
+      p.reste = p.reste.slice(n);
+      p.credit = Math.max(0, p.credit - n);
+      demanderPeinture(p.m);
+    }
+    if (p.reste) p.image = requestAnimationFrame((x) => avancer(p, x));
+    else finirPlume(p);
+  }
+  function finirPlume(p) {
+    plumesActives.delete(p);
+    p.credit = 0;
+    const attentes = p.attentes;
+    p.attentes = [];
+    attentes.forEach((f) => f());
+  }
+  function viderPlume(m) {
+    const p = plumes.get(m);
+    if (!p) return;
+    if (p.image) cancelAnimationFrame(p.image);
+    p.image = 0;
+    if (p.reste) { m.texte += p.reste; p.reste = ''; demanderPeinture(m); }
+    finirPlume(p);
+  }
+  function oublierPlume(m) {
+    const p = plumes.get(m);
+    if (p) p.reste = '';
+  }
+  const texteEcrit = (m) => {
+    const p = plumes.get(m);
+    return !p || !p.reste ? Promise.resolve() : new Promise((r) => { p.attentes.push(r); });
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) [...plumesActives].forEach((p) => viderPlume(p.m)); });
+  const ATTENDENT_LE_TEXTE = /^event: (fin|verification|erreur)$/m;
+
+  async function lireLeFlux(envoi, m, signal = null) {
     const lecteur = envoi.body.getReader();
     const decodeur = new TextDecoder();
     let tampon = '';
@@ -2030,8 +2178,12 @@
       tampon += decodeur.decode(value, { stream: true });
       let fin = tampon.indexOf('\n\n');
       while (fin >= 0) {
-        traiter(tampon.slice(0, fin), m);
+        const bloc = tampon.slice(0, fin);
         tampon = tampon.slice(fin + 2);
+        // eslint-disable-next-line no-await-in-loop
+        if (ATTENDENT_LE_TEXTE.test(bloc)) await texteEcrit(m);
+        if (signal && signal.aborted) throw Object.assign(new Error('Réponse arrêtée.'), { name: 'AbortError' });
+        traiter(bloc, m);
         fin = tampon.indexOf('\n\n');
       }
     }
@@ -2046,8 +2198,8 @@
     try { d = JSON.parse(data[1]); } catch (erreur) { return; }
     switch (type[1]) {
       case 'debut': if (Array.isArray(d.sources)) { A.carte = d.sources; m.carte = d.sources; } break;
-      case 'texte': m.texte += d.delta; break;
-      case 'note': m.texte = ''; m.etapes.push({ note: true, libelle: String(d.texte).slice(0, 240) }); break;
+      case 'texte': ecrire(m, String(d.delta || '')); return;
+      case 'note': oublierPlume(m); m.texte = ''; m.etapes.push({ note: true, libelle: String(d.texte).slice(0, 240) }); break;
       case 'etape': {
         const e = m.etapes.find((x) => x.id === d.id);
         if (e) Object.assign(e, d); else m.etapes.push({ ...d, lues: 0, total: 0, trouvees: 0, extraits: [], extraitsVus: 0 });
@@ -2075,7 +2227,7 @@
       case 'graphique': m.graphiques.push(d); break;
       case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(d.vue && typeof d.vue === 'object' ? { vue: { type: String(d.vue.type || '').slice(0, 80), verbe: String(d.vue.verbe || '').slice(0, 60), cours: String(d.vue.cours || '').slice(0, 40), confirmer: String(d.vue.confirmer || '').slice(0, 60), danger: d.vue.danger === true } } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
       case 'aller': if (PAGES_OUVRABLES.includes(d.page) && !(m.allers || []).some((a) => a.id === d.id)) m.allers = [...(m.allers || []), { id: d.id, page: d.page, rubrique: d.rubrique || '', chemin: d.chemin }]; break;
-      case 'annule': m.texte = ''; break;
+      case 'annule': oublierPlume(m); m.texte = ''; break;
       case 'fin':
         m.texte = d.texte;
         m.verite = d.verite || null;

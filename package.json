@@ -187,6 +187,8 @@
     "test:demande-a-verifier": "node scripts/demande-a-verifier-check.js",
     "test:tours-dotation": "node scripts/tours-dotation-check.js",
     "test:activite-en-tours": "node scripts/activite-en-tours-check.js && node scripts/activite-en-tours-check.js --contre-preuves",
+    "test:assistant-fin-des-mails": "node scripts/assistant-fin-des-mails-check.js && node scripts/assistant-fin-des-mails-check.js --contre-preuves",
+    "test:assistant-ecriture": "node scripts/assistant-ecriture-check.js && node scripts/assistant-ecriture-check.js --contre-preuves",
     "test:complet-explique": "node scripts/complet-explique-check.js && node scripts/complet-explique-check.js --mutate",
     "test:formulaire-retours": "node scripts/formulaire-retours-check.js && node scripts/formulaire-retours-check.js --mutate",
     "test:bowling-pistes-visibles": "node scripts/bowling-pistes-visibles-check.js",

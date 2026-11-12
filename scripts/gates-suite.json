@@ -322,6 +322,8 @@
     "test:demande-a-verifier",
     "test:tours-dotation",
     "test:activite-en-tours",
+    "test:assistant-fin-des-mails",
+    "test:assistant-ecriture",
     "test:complet-explique",
     "test:formulaire-retours",
     "test:heures-passees",

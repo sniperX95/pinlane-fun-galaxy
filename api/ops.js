@@ -73,8 +73,7 @@ const {
   previousWindow,
   reponseDashboard,
   addDays,
-  mondayOf,
-  endOfMonth,
+  periodeDuBilan,
 } = require('../lib/direction-analytics');
 const { computeDelayImpact } = require('../lib/ops-engine');
 const { tientSesPlaces } = require('../lib/places-tenues');
@@ -3233,21 +3232,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // Génère (ou régénère) le bilan de la dernière semaine/mois complet : ou de
   // la période explicitement demandée. Déterministe d'abord, IA si clé dispo.
   if (action === 'generateDirectionReport') {
-    const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
-    const periodType = body.periodType === 'month' ? 'month' : 'week';
-    const today = new Date().toISOString().slice(0, 10);
-    let periodStart;
-    let periodEnd;
-    if (DATE_RX.test(body.periodStart || '')) {
-      periodStart = periodType === 'week' ? mondayOf(body.periodStart) : `${body.periodStart.slice(0, 7)}-01`;
-      periodEnd = periodType === 'week' ? addDays(periodStart, 6) : endOfMonth(periodStart);
-    } else if (periodType === 'week') {
-      periodStart = addDays(mondayOf(today), -7);
-      periodEnd = addDays(periodStart, 6);
-    } else {
-      periodEnd = addDays(`${today.slice(0, 7)}-01`, -1);
-      periodStart = `${periodEnd.slice(0, 7)}-01`;
-    }
+    const { periodType, periodStart, periodEnd } = periodeDuBilan({ periodType: body.periodType, periodStart: body.periodStart });
     const { getCenter } = require('../lib/ops-knowledge');
     const reportCenterId = requireConcreteCenter('generateDirectionReport');
     const center = getCenter(reportCenterId);
@@ -3269,6 +3254,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       title: `Bilan ${periodLabel}, ${centerName}`,
       bodyMd: aiMd || deterministicMd,
       generatedBy: aiMd ? 'ia' : 'deterministic',
+      // Facultatif : l assistant ne remplace jamais un bilan que la direction a modifie a la main.
+      garderLEdition: body.keepEdited === true,
     });
     sendJson(res, 200, { ok: true, report });
     return;

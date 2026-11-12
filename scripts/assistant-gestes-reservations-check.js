@@ -77,6 +77,14 @@ const MUTATIONS = [
   { nom: 'deplacement-sans-droit-de-ressource', rouge: '[G] deplacer demande les mots de la personne et le droit du planning de la ressource', editions: [{ fichier: LOT, de: "        exigerAussi(ctx, activite === 'laser_game' ? 'planning.laser' : 'planning.bowling',", vers: "        if (false) exigerAussi(ctx, activite === 'laser_game' ? 'planning.laser' : 'planning.bowling'," }] },
   { nom: 'deplacement-deja-bouge-accepte', rouge: '[G] une activite qui a bouge depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        if (rempli(p.avant_vu) && String(p.avant_vu) !== avantVu) throw erreur(', vers: '        if (false) throw erreur(' }] },
   { nom: 'deplacement-hors-forme-du-glisser', rouge: '[S] le deplacement part a la fiche dans la forme du glisser, avec la version et la session', editions: [{ fichier: LOT, de: "          move = { activityId: 'bowling', startTime: heure, lanes: pistes };", vers: "          move = { activityId: 'bowling', startTime: heure, lanes: pistes, sourceLanes: actuelles };" }] },
+  // Les bilans de la direction (2026-11-12) : une edition faite a la main ne s ecrase jamais.
+  { nom: 'bilan-edite-regenere', rouge: '[G] un bilan modifie a la main ne se regenere pas, une periode a venir non plus', editions: [{ fichier: LOT, de: '        if (existant && existant.editedAt) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'bilan-a-venir', rouge: '[G] un bilan modifie a la main ne se regenere pas, une periode a venir non plus', editions: [{ fichier: LOT, de: "        if (per.periodStart > new Date().toISOString().slice(0, 10)) throw erreur(", vers: '        if (false) throw erreur(' }] },
+  { nom: 'bilan-sans-garde-au-clic', rouge: '[S] le bilan se genere sur la periode de la carte sans ecraser une edition, et le texte relu s enregistre au nom de la session', editions: [{ fichier: LOT, de: 'corps: { periodType: per.periodType, periodStart: per.periodStart, keepEdited: true },', vers: 'corps: { periodType: per.periodType, periodStart: per.periodStart },' }] },
+  { nom: 'garde-ignoree-par-l-action', rouge: '[S] le bilan se genere sur la periode de la carte sans ecraser une edition, et le texte relu s enregistre au nom de la session', editions: [{ fichier: OPS, de: '      garderLEdition: body.keepEdited === true,', vers: '' }] },
+  { nom: 'periode-de-la-carte-ignoree', rouge: '[S] le bilan se genere sur la periode de la carte sans ecraser une edition, et le texte relu s enregistre au nom de la session', editions: [{ fichier: OPS, de: 'periodeDuBilan({ periodType: body.periodType, periodStart: body.periodStart })', vers: 'periodeDuBilan({ periodType: body.periodType })' }] },
+  { nom: 'garde-sql-retiree', rouge: '[I] regenerer avec keepEdited ne touche pas un bilan modifie a la main, le bouton de la page remplace comme avant', editions: [{ fichier: 'lib/database.js', de: "     ${garderLEdition ? 'where direction_reports.edited_at is null' : ''}", vers: '' }] },
+  { nom: 'bilan-change-accepte', rouge: '[G] modifier un bilan montre le texte d avant et le nouveau en entier, et s arrete si le bilan a change', editions: [{ fichier: LOT, de: '        if (rempli(p.bilan_vu) && String(p.bilan_vu) !== vu) throw erreur(', vers: '        if (false) throw erreur(' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -225,6 +233,16 @@ function banc() {
       changement(113, 'Groupe Bougé', 'shifted', '20:30', '20:45'),
     ] } }],
     prevenus: [],
+    // Les bilans de la page Direction : la semaine passee generee, le mois passe et la semaine d avant
+    // modifies a la main.
+    bilans: (() => {
+      const DA = require(path.join(ROOT, 'lib/direction-analytics.js'));
+      const semaine = DA.periodeDuBilan({ periodType: 'week' });
+      const mois = DA.periodeDuBilan({ periodType: 'month' });
+      const avant = DA.periodeDuBilan({ periodType: 'week', periodStart: DA.addDays(semaine.periodStart, -7) });
+      const bilan = (id, per, x) => ({ id, centerId: 'libramont', ...per, title: `Bilan ${id}`, bodyMd: `# Bilan ${id}\n\nLe texte du bilan ${id}.`, generatedBy: 'deterministic', generatedAt: '2026-11-03T06:00:00.000Z', editedAt: null, editedBy: '', ...x });
+      return [bilan(51, semaine), bilan(52, mois, { editedAt: '2026-11-05T10:00:00.000Z', editedBy: 'Seb' }), bilan(53, avant, { editedAt: '2026-11-04T09:00:00.000Z', editedBy: 'Inès' })];
+    })(),
   };
 }
 
@@ -261,6 +279,7 @@ function lecteursDu(b) {
     retardApplique: async (c, n) => b.incidents.filter((i) => i.reservationId === Number(n)).slice(-1)[0] || null,
     prevenusDuRetard: async (c, id) => b.prevenus.filter((x) => x.incident === Number(id)),
     reglagesDuProgramme: async () => ({ postes: 30, formules: require(path.join(ROOT, 'lib/booking-config.js')).FORMULES }),
+    bilansDirection: async () => b.bilans,
     // Le vrai jugement de la fiche (buildActivityMove, validateActivityMoveResources) sur la journee du banc.
     apercuDuDeplacement: async (c, n, mouvement) => {
       const r = b.reservations.find((x) => x.id === Number(n));
@@ -640,6 +659,32 @@ async function verifier(editions = []) {
     ok(glisserSansMots.e && glisserSansMots.e.statusCode === 403 && glisserManager.e && glisserManager.e.statusCode === 403 && /planning ne fait pas partie/.test(glisserManager.e.message) && glisserMinigolf.e && /Seuls le bowling et le laser/.test(glisserMinigolf.e.message),
       '[G] deplacer demande les mots de la personne et le droit du planning de la ressource', JSON.stringify([glisserSansMots.e && glisserSansMots.e.message, glisserManager.e && glisserManager.e.message, glisserMinigolf.e && glisserMinigolf.e.message]));
 
+    // Les bilans de la page Direction : la periode de l action, jamais une edition ecrasee.
+    const DA = require(path.join(ROOT, 'lib/direction-analytics.js'));
+    const semainePassee = DA.periodeDuBilan({ periodType: 'week' });
+    const bilanSemaine = await carte('generer_bilan_direction', {}, ['Fais le bilan de la semaine']);
+    const clicBilan = await clic('generer_bilan_direction', bilanSemaine.p ? bilanSemaine.p.action.params : {});
+    ok(bilanSemaine.p && bilanSemaine.p.risque === false && new RegExp(`^de la semaine du .+ au .+$`).test(ligne(bilanSemaine, 'Période').valeur || '') && /^généré le /.test(ligne(bilanSemaine, 'Bilan').avant || '') && /version générée de cette période est remplacée/.test(bilanSemaine.p.resume.alerte || '')
+      && clicBilan.r && clicBilan.r.action === 'generateDirectionReport' && JSON.stringify(clicBilan.r.corps) === JSON.stringify({ periodType: 'week', periodStart: semainePassee.periodStart, keepEdited: true }),
+      '[G] le bilan de la semaine passee se genere sur la periode que l action calculera, sans ecraser une edition', JSON.stringify([vu(bilanSemaine), vu(clicBilan)]));
+    const moisEdite = await carte('generer_bilan_direction', { periode: 'mois' }, ['Refais le bilan du mois']);
+    const semaineEditee = await carte('generer_bilan_direction', { periode: 'semaine', date: b.bilans[2].periodStart }, ['Refais ce bilan']);
+    const aVenir = await carte('generer_bilan_direction', { periode: 'semaine', date: DA.addDays(new Date().toISOString().slice(0, 10), 14) }, ['Fais le bilan']);
+    ok(moisEdite.e && moisEdite.e.statusCode === 409 && /modifié par Seb/.test(moisEdite.e.message) && semaineEditee.e && semaineEditee.e.statusCode === 409 && /modifié par Inès/.test(semaineEditee.e.message) && aVenir.e && /n’a pas commencé/.test(aVenir.e.message),
+      '[G] un bilan modifie a la main ne se regenere pas, une periode a venir non plus', JSON.stringify([moisEdite.e && moisEdite.e.message, semaineEditee.e && semaineEditee.e.message, aVenir.e && aVenir.e.message]));
+    const nouveauTexte = '# Bilan de la semaine\n\n- 12 groupes\n  - dont 3 anniversaires';
+    const editer = await carte('modifier_bilan_direction', { periode: 'semaine', texte: nouveauTexte }, ['Réécris le bilan de la semaine']);
+    const clicEditer = await clic('modifier_bilan_direction', editer.p ? editer.p.action.params : {});
+    const memeTexte = await carte('modifier_bilan_direction', { periode: 'semaine', texte: b.bilans[0].bodyMd }, ['Réécris-le']);
+    const texteVide = await carte('modifier_bilan_direction', { periode: 'semaine', texte: '   ' }, ['Vide-le']);
+    b.bilans[0].bodyMd = '# Bilan 51\n\nModifié sur un autre poste.';
+    b.bilans[0].editedAt = '2026-11-12T08:00:00.000Z';
+    const bilanChange = await clic('modifier_bilan_direction', editer.p ? editer.p.action.params : {});
+    ok(editer.p && ligne(editer, 'Texte d’avant').long === '# Bilan 51\n\nLe texte du bilan 51.' && ligne(editer, 'Nouveau texte').long === nouveauTexte && editer.p.action.params.bilan === 51
+      && clicEditer.r && clicEditer.r.action === 'saveDirectionReport' && JSON.stringify(clicEditer.r.corps) === JSON.stringify({ id: 51, bodyMd: nouveauTexte })
+      && memeTexte.e && /déjà celui du bilan/.test(memeTexte.e.message) && texteVide.e && /ne peut pas être vide/.test(texteVide.e.message) && bilanChange.e && bilanChange.e.statusCode === 409,
+      '[G] modifier un bilan montre le texte d avant et le nouveau en entier, et s arrete si le bilan a change', JSON.stringify([vu(editer), vu(clicEditer), memeTexte.e && memeTexte.e.message, bilanChange.e && bilanChange.e.message]));
+
     // ── P. LE PROGRAMME A COCHER : la jumelle du serveur contre la fiche ──
     if (!editions.length) console.log('\n[P] le programme a cocher : la fiche et le serveur, cle par cle');
     verifierProgramme(ok);
@@ -681,7 +726,13 @@ async function verifier(editions = []) {
       appendCustomRequestSuivi: async (id, evenement, { centerId = '' } = {}) => { journal.ecrit.push(['appendCustomRequestSuivi', { id, evenement, centerId }]); return b2.demandes.find((x) => x.id === Number(id)); },
       listEmailIdentities: async () => b2.expediteurs,
       readStaffState: async () => ({ reservations: b2.pistes.reservations, laneStatuses: b2.pistes.statuts, laneMaintenance: b2.pistes.maintenance }),
+      readAdminRangeState: async () => ({ reservations: [] }),
+      listDirectionReports: async () => b2.bilans,
+      upsertDirectionReport: async (x) => { journal.ecrit.push(['upsertDirectionReport', x]); return { id: 60, ...x }; },
+      updateDirectionReportBody: async (x) => { journal.ecrit.push(['updateDirectionReportBody', x]); return { id: x.id, bodyMd: x.bodyMd }; },
     });
+    // Le bilan s ecrit sans IA au banc : aucune requete ne part.
+    remplacer('lib/direction-analytics.js', { polishReportWithAi: async () => null });
     remplacer('lib/ops-communications.js', {
       sendDirectEmail: async (x) => { journal.ecrit.push(['sendDirectEmail', x]); return { communication: { id: 5000, status: 'queued' }, attemptId: x.attemptId }; },
       sendClientRelance: async (x) => { journal.ecrit.push(['sendClientRelance', x]); return { communication: { id: 5001, status: 'queued' } }; },
@@ -756,6 +807,20 @@ async function verifier(editions = []) {
         && JSON.stringify(journal.fiche[0].corps) === JSON.stringify({ id: 116, baseUpdatedAt: '2026-11-10T10:00:00.000Z', activityMove: { activityId: 'bowling', startTime: '16:30', lanes: [1] }, centerId: 'libramont' }),
         '[S] le deplacement part a la fiche dans la forme du glisser, avec la version et la session', JSON.stringify([gl.statut, gl.json, journal.fiche]).slice(0, 300));
       journal.fiche.length = 0;
+      // Un bilan d il y a quatre semaines, sans version encore : la periode de la carte est celle de l action.
+      const ilYaQuatreSemaines = require(path.join(ROOT, 'lib/direction-analytics.js')).addDays(new Date().toISOString().slice(0, 10), -28);
+      const carteBilan = await Gs.proposer('generer_bilan_direction', { periode: 'semaine', date: ilYaQuatreSemaines }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Fais le bilan de cette semaine-là'] }));
+      const gb = await cliquer('generer_bilan_direction', carteBilan.action.params);
+      const genere = (journal.ecrit.find((e) => e[0] === 'upsertDirectionReport') || [])[1] || {};
+      const carteTexte = await Gs.proposer('modifier_bilan_direction', { periode: 'semaine', texte: '# Bilan\n\nRelu par Seb.' }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Réécris le bilan'] }));
+      const mb = await cliquer('modifier_bilan_direction', carteTexte.action.params);
+      const ecritTexte = (journal.ecrit.find((e) => e[0] === 'updateDirectionReportBody') || [])[1] || {};
+      const attendue = require(path.join(ROOT, 'lib/direction-analytics.js')).periodeDuBilan({ periodType: 'week', periodStart: ilYaQuatreSemaines });
+      const jourLu = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+      ok(gb.statut === 200 && genere.centerId === 'libramont' && genere.periodType === 'week' && genere.periodStart === attendue.periodStart && genere.periodEnd === attendue.periodEnd && genere.garderLEdition === true
+        && (carteBilan.resume.lignes.find((l) => l.libelle === 'Période') || {}).valeur === `de la semaine du ${jourLu(attendue.periodStart)} au ${jourLu(attendue.periodEnd)}`
+        && mb.statut === 200 && ecritTexte.id === 51 && ecritTexte.bodyMd === '# Bilan\n\nRelu par Seb.' && ecritTexte.centerId === 'libramont' && ecritTexte.editedBy === 'Seb',
+        '[S] le bilan se genere sur la periode de la carte sans ecraser une edition, et le texte relu s enregistre au nom de la session', JSON.stringify([gb.statut, gb.json, genere, mb.statut, ecritTexte]).slice(0, 400));
       const carteRetard = await Gs.proposer('prevenir_clients_du_retard', { reservation: 110 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Préviens les clients du retard'] }));
       const pr = await cliquer('prevenir_clients_du_retard', carteRetard.action.params);
       const prevenus = journal.ecrit.filter((e) => e[0] === 'enqueueDelayChangeCommunications').map((e) => e[1]);
@@ -795,6 +860,8 @@ async function verifier(editions = []) {
     await verifierTentatives(ok);
     if (!editions.length) console.log('\n[I] la coche, recue par la vraie fiche (api/staff-reservations.js)');
     await verifierLaCoche(ok, clicCoche.r ? clicCoche.r.corps : null);
+    if (!editions.length) console.log('\n[I] le bilan regenere, dans la vraie ecriture (lib/database.js)');
+    await verifierBilans(ok);
   } finally {
     restaurer();
     purger();
@@ -979,6 +1046,44 @@ async function verifierTentatives(ok) {
     Module._load = chargeur;
     global.fetch = fetchAvant;
     Object.entries(avant).forEach(([k, v]) => { if (v === undefined) delete process.env[k]; else process.env[k] = v; });
+    purger();
+  }
+}
+
+// LA TABLE direction_reports, telle que l ecriture d un bilan la traite : une ligne par centre, genre
+// et debut de periode ; « do update ... where edited_at is null » ne touche pas une ligne modifiee.
+async function verifierBilans(ok) {
+  purger();
+  const lignes = [{ id: 52, center_id: 'libramont', period_type: 'month', period_start: '2026-10-01', period_end: '2026-10-31', title: 'Bilan du mois', body_md: 'Relu par Seb.', generated_by: 'deterministic', generated_at: '2026-11-01T06:00:00.000Z', edited_at: '2026-11-05T10:00:00.000Z', edited_by: 'Seb' }];
+  class FauxPool {
+    on() { return this; }
+    async connect() { return { query: this.query.bind(this), release() {} }; }
+    async query(texte, p = []) {
+      const q = String(texte);
+      if (!q.includes('insert into direction_reports')) return { rows: [], rowCount: 0 };
+      const deja = lignes.find((l) => l.center_id === p[0] && l.period_type === p[1] && l.period_start === p[2]);
+      if (!deja) { const l = { id: 60 + lignes.length, center_id: p[0], period_type: p[1], period_start: p[2], period_end: p[3], title: p[4], body_md: p[5], generated_by: p[6], generated_at: new Date().toISOString(), edited_at: null, edited_by: null }; lignes.push(l); return { rows: [{ ...l }], rowCount: 1 }; }
+      if (/where\s+direction_reports\.edited_at\s+is\s+null/.test(q) && deja.edited_at) return { rows: [], rowCount: 0 };
+      Object.assign(deja, { period_end: p[3], title: p[4], body_md: p[5], generated_by: p[6], edited_at: null, edited_by: null });
+      return { rows: [{ ...deja }], rowCount: 1 };
+    }
+  }
+  const chargeur = Module._load;
+  Module._load = function charger(demande, parent, principal) { return demande === 'pg' ? { Pool: FauxPool } : chargeur.call(this, demande, parent, principal); };
+  const urlAvant = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = 'postgres://banc:banc@localhost:1/aucune';
+  try {
+    const db = require(path.join(ROOT, 'lib/database.js'));
+    const ecrire = (x) => db.upsertDirectionReport({ centerId: 'libramont', periodType: 'month', periodStart: '2026-10-01', periodEnd: '2026-10-31', title: 'Bilan du mois', bodyMd: 'Version regeneree.', generatedBy: 'deterministic', ...x }).then((r) => ({ r }), (e) => ({ e }));
+    const garde = await ecrire({ garderLEdition: true });
+    const gardeIntacte = lignes[0].body_md === 'Relu par Seb.' && lignes[0].edited_by === 'Seb';
+    const neuf = await ecrire({ periodStart: '2026-09-01', periodEnd: '2026-09-30', garderLEdition: true });
+    const bouton = await ecrire({});
+    ok(garde.e && garde.e.statusCode === 409 && gardeIntacte && neuf.r && neuf.r.periodStart === '2026-09-01' && bouton.r && bouton.r.bodyMd === 'Version regeneree.' && !bouton.r.editedAt,
+      '[I] regenerer avec keepEdited ne touche pas un bilan modifie a la main, le bouton de la page remplace comme avant', JSON.stringify([garde.e && garde.e.message, gardeIntacte, neuf.r && neuf.r.periodStart, bouton.r && bouton.r.bodyMd]));
+  } finally {
+    Module._load = chargeur;
+    if (urlAvant === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = urlAvant;
     purger();
   }
 }

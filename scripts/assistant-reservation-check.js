@@ -31,8 +31,15 @@ const MUTATIONS = [
   { nom: 'supplements-perdus', rouge: '[D] le supplement relu au catalogue, son prix du catalogue', editions: [{ fichier: OPS, de: '    const supplements = Array.isArray(body.supplements) && body.supplements.length ?', vers: '    const supplements = false ?' }] },
   { nom: 'prix-convenu-perdu', rouge: '[D] le forfait facture, le prix habituel garde en reference, la raison au dossier', editions: [{ fichier: OPS, de: '    const prixNegocie = R.prixNegocieDe(body.prix, body.raisonPrix);', vers: '    const prixNegocie = null;' }] },
   { nom: 'groupes-en-ligne', rouge: '[D] les groupes du laser se posent au comptoir, jamais par une demande en ligne', editions: [{ fichier: 'lib/visit-program.js', de: "        if (publicBooking) throw rejectOption('Les groupes du laser se règlent avec le centre.');", vers: '' }] },
-  { nom: 'note-perdue', rouge: '[D] la note pour l equipe au dossier, sous la trace de l assistant', editions: [{ fichier: OPS, de: "notes: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') });", vers: "notes: 'Préparée avec l’assistant.' });" }] },
+  { nom: 'note-perdue', rouge: '[D] la note pour l equipe au dossier, sous la trace de l assistant', editions: [{ fichier: OPS, de: "t: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') })}`;", vers: "t: 'Préparée avec l’assistant.' })}`;" }] },
+  // (la note de l assistant retombee dans le mot du client : le planning la disait « Note du client »)
+  { nom: 'note-au-client', rouge: '[D] la note pour l equipe au dossier, sous la trace de l assistant', editions: [{ fichier: OPS, de: 'telephone: body.phone, notes: noteEquipe });', vers: 'telephone: body.phone, notes: JSON.parse(noteEquipe.slice(9)).t });' }] },
 ];
+
+// La colonne `notes` d un dossier : les notes d equipe (lignes « [equipe] {json} », signees par le
+// serveur) et le mot du client (tout le reste), que la console affiche « Note du client ».
+const notesEquipe = (texte) => String(texte || '').split('\n').filter((l) => l.startsWith('[equipe] ')).map((l) => { try { return JSON.parse(l.slice(9)); } catch (e) { return {}; } });
+const motDuClient = (texte) => String(texte || '').split('\n').filter((l) => l.trim() && !l.startsWith('[equipe] ')).join('\n');
 
 const TEL = '0470 12 34 56';
 const PROGRAMME = [{ activityId: 'bowling', participants: 5, duration: 1 }, { activityId: 'laser_game', participants: 3, games: 2 }];
@@ -70,8 +77,8 @@ async function verifier(editions = []) {
     '[A] la reservation nait au clic, au jour et a l heure de la carte', `${r.statut} ${JSON.stringify(r.json).slice(0, 200)}`);
   ok(Number(ligne('bowling').participants) === 5 && Number(ligne('bowling').duration) === 1 && Number(ligne('laser_game').participants) === 3 && Number(ligne('laser_game').games) === 2,
     '[A] tout le programme : le bowling pour les 5, le laser 2 parties pour 3', JSON.stringify(items).slice(0, 300));
-  ok(/470123456$/.test(cree.tel.replace(/\D/g, '')) && cree.nom === 'Famille Assistant' && /Préparée avec l’assistant\./.test(cree.notes) && cree.canal === 'staff',
-    '[A] au telephone et au nom du client, avec la trace de l assistant', JSON.stringify({ tel: cree.tel, nom: cree.nom, notes: cree.notes, canal: cree.canal }));
+  ok(/470123456$/.test(cree.tel.replace(/\D/g, '')) && cree.nom === 'Famille Assistant' && notesEquipe(cree.notes).some((n) => n.t === 'Préparée avec l’assistant.' && n.par && n.le) && motDuClient(cree.notes) === '' && cree.canal === 'staff',
+    '[A] au telephone et au nom du client, la trace de l assistant en note d equipe signee, rien au mot du client', JSON.stringify({ tel: cree.tel, nom: cree.nom, notes: cree.notes, canal: cree.canal }));
   ok(cree.blocs.some((b) => /bowling/i.test(JSON.stringify(b))) && cree.blocs.some((b) => /laser/i.test(JSON.stringify(b))),
     '[A] le dossier est place au planning : pistes et arene', JSON.stringify(cree.blocs).slice(0, 200));
   ok(monte.journal.audits.some((a) => a && a.action === 'createReservation' && a.surface === 'api/ops.js assistantReservation'),
@@ -129,7 +136,8 @@ async function verifier(editions = []) {
     '[D] le supplement relu au catalogue, son prix du catalogue', JSON.stringify(dc.extras));
   ok(dc.prix === 720 && dc.reference > 0 && dc.reference !== 720 && /Prix \d+ € → 720 €, forfait 30 € par personne/.test(dc.notes),
     '[D] le forfait facture, le prix habituel garde en reference, la raison au dossier', JSON.stringify({ prix: dc.prix, reference: dc.reference, notes: dc.notes }));
-  ok(/^Préparée avec l’assistant\. Assiette apéro après le bowling\./.test(dc.notes), '[D] la note pour l equipe au dossier, sous la trace de l assistant', dc.notes);
+  ok(notesEquipe(dc.notes).some((n) => n.t === 'Préparée avec l’assistant. Assiette apéro après le bowling.' && n.par && n.le) && motDuClient(dc.notes) === '',
+    '[D] la note pour l equipe au dossier, sous la trace de l assistant', dc.notes);
   // Sans groupes, le laser d un groupe qui tient dans l arene reste une seule session, comme avant.
   B.semer([]);
   const sansGroupes = await monter(DIRECTION()).cliquer({ startTime: '14:00', pax: 24, programme: [{ activityId: 'bowling', participants: 24, duration: 1 }, { activityId: 'laser_game', participants: 24, games: 1 }] });

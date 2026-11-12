@@ -26873,7 +26873,8 @@ function getGroupeProgramme(r) {
       nom: 'Bowling',
       quoi: `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
       ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : 'pistes à attribuer',
-      groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
+      // (le nombre de joueurs du groupe est deja en tete de la ligne : « 10 joueurs · 1h · groupe 1/2 »)
+      groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}` : '',
       start: f.start,
       end: f.end,
       fait: faite(bowling.length === 1 ? 'bowling-1' : `bowling-g${index + 1}`),
@@ -26890,7 +26891,7 @@ function getGroupeProgramme(r) {
       nom: 'Laser Game',
       quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       ou: '',
-      groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}${f.players ? ` · ${Number(f.joueursReels ?? f.players)} joueurs` : ''}` : '',
+      groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
       start: f.start,
       end: f.end,
       fait: faite(vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`),

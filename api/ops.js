@@ -2854,7 +2854,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const supplements = Array.isArray(body.supplements) && body.supplements.length ? R.supplementsDe(body.supplements, joueurs, await R.articlesDuCentre(scopedCenterId)) : [];
     const prixNegocie = R.prixNegocieDe(body.prix, body.raisonPrix);
     const note = String(body.note == null ? '' : body.note).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
-    const corps = R.corpsDe({ centreId: scopedCenterId, date, heure, joueurs, programme, supplements, prixNegocie, nom: body.name, telephone: body.phone, notes: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') });
+    // LA TRACE DE L ASSISTANT ET SA NOTE VONT AUX NOTES D EQUIPE (2026-11-12) : le reste de la colonne
+    // `notes` est le mot du client, que le planning affiche « Note du client ». La ligne [equipe] est
+    // signee a la creation au nom de la session (signerNotesEquipe, lib/reserver-fenetre.js).
+    const noteEquipe = `[equipe] ${JSON.stringify({ t: ['Préparée avec l’assistant.', note].filter(Boolean).join(' ') })}`;
+    const corps = R.corpsDe({ centreId: scopedCenterId, date, heure, joueurs, programme, supplements, prixNegocie, nom: body.name, telephone: body.phone, notes: noteEquipe });
     const cree = await require('../lib/booking-config').pourLEquipe(() => R.creer(corps, options.session));
     const reservation = cree.reservation || {};
     sendJson(res, 201, { ok: true, reservation: { id: reservation.id, date: reservation.date, startTime: reservation.startTime, pax: reservation.pax, price: reservation.price, name: reservation.name }, ...(Array.isArray(cree.warnings) && cree.warnings.length ? { warnings: cree.warnings } : {}) });

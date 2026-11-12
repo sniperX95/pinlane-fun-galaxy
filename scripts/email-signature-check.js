@@ -37,6 +37,13 @@
 //       tiennent 2 liens et 1 image, posent le vrai logo sans fond (jamais le
 //       logo a carre), ne posent pas d image quand l en-tete l a prise, et ne
 //       donnent rien de Fun Galaxy a un autre centre.
+//   [K] le mode sombre et les designs d avant l affiche (2026-11-12) : les
+//       logos sans fond de l arene et de l enseigne ont un contour de la
+//       couleur du fond qu ils bordent (lisibles quand Gmail sur iPhone
+//       inverse tout, ou quand Outlook et Gmail Android assombrissent le
+//       blanc) ; un design enregistre avant l affiche (carte et site
+//       pre-remplis, celui de Libramont le 03/11) se lit en affiche avec le
+//       site du centre, une carte enregistree depuis reste une carte.
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -136,6 +143,65 @@ function largeurImage(fichier) {
   return 0;
 }
 
+// Les pixels d un PNG RGBA 8 bits non entrelace (le format des logos sans fond),
+// sans dependance. null pour tout autre format : le controle qui le lit rougit.
+function pixelsPng(fichier) {
+  const b = fs.readFileSync(fichier);
+  if (b.length < 33 || b.readUInt32BE(0) !== 0x89504e47) return null;
+  let i = 8; let largeur = 0; let hauteur = 0; let type = -1; let profondeur = 0; let entrelace = 1;
+  const idat = [];
+  while (i + 8 <= b.length) {
+    const n = b.readUInt32BE(i);
+    const nom = b.toString('latin1', i + 4, i + 8);
+    const data = b.subarray(i + 8, i + 8 + n);
+    if (nom === 'IHDR') { largeur = data.readUInt32BE(0); hauteur = data.readUInt32BE(4); profondeur = data[8]; type = data[9]; entrelace = data[12]; }
+    if (nom === 'IDAT') idat.push(data);
+    if (nom === 'IEND') break;
+    i += 12 + n;
+  }
+  if (type !== 6 || profondeur !== 8 || entrelace !== 0) return null;
+  const brut = require('zlib').inflateSync(Buffer.concat(idat));
+  const ligne = largeur * 4;
+  const px = Buffer.alloc(ligne * hauteur);
+  for (let y = 0; y < hauteur; y += 1) {
+    const filtre = brut[y * (ligne + 1)];
+    for (let x = 0; x < ligne; x += 1) {
+      const v = brut[y * (ligne + 1) + 1 + x];
+      const a = x >= 4 ? px[y * ligne + x - 4] : 0;
+      const h = y > 0 ? px[(y - 1) * ligne + x] : 0;
+      const c = x >= 4 && y > 0 ? px[(y - 1) * ligne + x - 4] : 0;
+      let r = v;
+      if (filtre === 1) r = v + a;
+      else if (filtre === 2) r = v + h;
+      else if (filtre === 3) r = v + ((a + h) >> 1);
+      else if (filtre === 4) {
+        const p = a + h - c;
+        const pa = Math.abs(p - a); const pb = Math.abs(p - h); const pc = Math.abs(p - c);
+        r = v + (pa <= pb && pa <= pc ? a : pb <= pc ? h : c);
+      }
+      px[y * ligne + x] = r & 0xff;
+    }
+  }
+  return { largeur, hauteur, px };
+}
+
+// Le contour d un logo sans fond : la part des pixels de son liseré (ni pleins ni
+// vides) qui ont la couleur attendue. Sans contour, le liseré est celui des
+// lettres (blanc ou fonce) et des courbes de couleur : la part tombe pres de 0.
+function partDuLisereEn(fichier, hex) {
+  const image = fichier && fs.existsSync(fichier) ? pixelsPng(fichier) : null;
+  if (!image) return 0;
+  const [r0, g0, b0] = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
+  let lisere = 0; let bon = 0;
+  for (let k = 0; k < image.px.length; k += 4) {
+    const alpha = image.px[k + 3];
+    if (alpha < 8 || alpha > 247) continue;
+    lisere += 1;
+    if (Math.hypot(image.px[k] - r0, image.px[k + 1] - g0, image.px[k + 2] - b0) <= 48) bon += 1;
+  }
+  return lisere ? bon / lisere : 0;
+}
+
 async function controles(m) {
   const defautsFG = m.design.getEmailDesignDefaults(LIBRAMONT);
   const photos = m.design.photosDisponibles(LIBRAMONT);
@@ -213,7 +279,9 @@ async function controles(m) {
   // =====================================================================
   for (const [nom, design] of Object.entries(formes)) {
     const valide = m.design.validateEmailDesign(design, LIBRAMONT);
-    REGLAGES.set('libramont', { email_design: valide });
+    // Comme saveEmailDesign : un design enregistre porte toujours sa date (sans elle,
+    // il se lirait comme un design d avant l affiche, section [K]).
+    REGLAGES.set('libramont', { email_design: { ...valide, updatedAt: new Date().toISOString() } });
     const apercu = await m.comms.buildDesignPreview({ centerId: 'libramont', design: valide, sample: 'confirmation' }, deps);
     const sequence = await m.comms.buildAutomationPreview('libramont', 'confirmation', {}, deps);
     const enfiles = [];
@@ -436,8 +504,10 @@ async function controles(m) {
   // l aveugle du 12/11 : affiche, puis arene, enseigne, la carte d avant.
   const enseigne = (layout, extra = {}) => ({ ...defautsFG, signature: { ...defautsFG.signature, layout, ...extra } });
   const banniereFG = (photos.find((p) => p.url === defautsFG.signature.photo.url) || {}).banniere || '';
-  const fichiersEnseigne = [banniereFG, `${origine}/assets/brand/logo-fun-galaxy-sans-fond-sombre.png`, `${origine}/assets/brand/logo-fun-galaxy-sans-fond-clair.png`]
-    .map((u) => (u.startsWith(origine) ? path.join(ROOT, u.slice(origine.length)) : ''));
+  const logoNuitFG = m.design.urlDImage(LIBRAMONT.branding.emailLogoSansFondDark);
+  const logoJourFG = m.design.urlDImage(LIBRAMONT.branding.emailLogoSansFond);
+  const fichiersEnseigne = [banniereFG, logoNuitFG, logoJourFG]
+    .map((u) => (u && u.startsWith(origine) ? path.join(ROOT, u.slice(origine.length)) : ''));
   ok(defautsFG.signature.layout === 'affiche' && /^Bowling · Laser game/.test(defautsFG.signature.accroche) && banniereFG.endsWith('/assets/mail/signature-libramont-bowling-logo.jpg')
     && fichiersEnseigne.every((f) => f && fs.existsSync(f) && fs.statSync(f).size < 100 * 1024) && largeurImage(fichiersEnseigne[0]) === 1200,
     '[J] Fun Galaxy signe par defaut en affiche : son accroche, la banniere de sa photo (1200 px, moins de 100 Ko) et ses logos sans fond sur notre domaine');
@@ -449,7 +519,8 @@ async function controles(m) {
       && /L&#39;équipe Fun Galaxy Libramont/.test(html) && html.includes(`max-width:${600}px`),
       `[J] ${layout} : 2 liens et 1 image au plus, la formule, l accroche, l equipe, a la largeur du corps`, `liens=${liens(html)} images=${images(html)}`);
   }
-  ok(formesEnseigne.affiche.includes(`src="${banniereFG}"`) && formesEnseigne.arene.includes('logo-fun-galaxy-sans-fond-sombre.png') && formesEnseigne.enseigne.includes('logo-fun-galaxy-sans-fond-clair.png')
+  ok(formesEnseigne.affiche.includes(`src="${banniereFG}"`) && /sans-fond/.test(logoNuitFG) && formesEnseigne.arene.includes(`src="${logoNuitFG}"`)
+    && /sans-fond/.test(logoJourFG) && formesEnseigne.enseigne.includes(`src="${logoJourFG}"`)
     && !Object.values(formesEnseigne).some((h) => /logo-fun-galaxy-email(-clair)?\.png/.test(h)),
     '[J] le vrai logo sans fond : la banniere en affiche, les lettres blanches sur la nuit de l arene, les lettres foncees sur le blanc de l enseigne, jamais le logo a carre');
   ok(/href="tel:[^"]+" style="color:#ffffff;/.test(formesEnseigne.arene) && formesEnseigne.arene.toLowerCase().includes(LIBRAMONT.branding.dark.accentStrong.toLowerCase()),
@@ -472,6 +543,47 @@ async function controles(m) {
   const relueEnseigne = m.design.fusionnerEmailDesign({ ...defautsFG, signature: { ...defautsFG.signature, accroche: 'Bowling · Karting' } }, LIBRAMONT);
   ok(relueEnseigne.signature.accroche === 'Bowling · Karting' && relueEnseigne.signature.layout === 'affiche',
     '[J] l accroche et la forme ecrites par le gerant se gardent a l enregistrement');
+
+  // =====================================================================
+  console.log('\n[K] le mode sombre et les designs d avant l affiche (2026-11-12)');
+  // =====================================================================
+  // Gmail sur iPhone inverse TOUT (la nuit de l arene devient claire), Outlook et
+  // Gmail Android assombrissent le blanc (sous l enseigne) : un logo sans fond y
+  // perdait ses lettres. Son contour a la couleur du fond qu il borde, invisible
+  // en temps normal. On lit le logo que le mail POSE, pas celui de la fiche.
+  const nuit = (fs.readFileSync(path.join(ROOT, 'lib/ops-communications.js'), 'utf8').match(/const NUIT_SIGNATURE = '(#[0-9a-f]{6})'/i) || [])[1] || '';
+  const logoPose = (html) => {
+    const src = (String(html).match(/<img src="([^"]*sans-fond[^"]*)"/) || [])[1] || '';
+    return src.startsWith(origine) ? path.join(ROOT, src.slice(origine.length)) : '';
+  };
+  const lisereArene = nuit ? partDuLisereEn(logoPose(formesEnseigne.arene), nuit) : 0;
+  const lisereEnseigne = partDuLisereEn(logoPose(formesEnseigne.enseigne), '#ffffff');
+  ok(lisereArene >= 0.95, '[K] arene : le logo blanc a un contour de la couleur de la nuit, il reste lisible quand Gmail sur iPhone eclaircit le bloc', `part=${lisereArene.toFixed(3)}`);
+  ok(lisereEnseigne >= 0.95, '[K] enseigne : le logo fonce a un contour blanc, il reste lisible quand Outlook ou Gmail Android assombrit le blanc', `part=${lisereEnseigne.toFixed(3)}`);
+  ok(['gembloux', 'ciney'].every((id) => {
+    const b = getCenter(id).branding || {};
+    return b.emailLogoSansFond === LIBRAMONT.branding.emailLogoSansFond && b.emailLogoSansFondDark === LIBRAMONT.branding.emailLogoSansFondDark;
+  }), '[K] Gembloux et Ciney signent avec les memes logos a contour que Libramont');
+  ok(fichiersEnseigne.slice(1).every((f) => f && fs.statSync(f).size < 100 * 1024), '[K] les logos a contour pesent moins de 100 Ko');
+  // Le design de Libramont, enregistre le 03/11 (forme lue en base le 12/11, en lecture seule) :
+  // la carte et le site vide y etaient pre-remplis.
+  const enregistre0311 = {
+    preset: 'epure', updatedAt: '2026-11-03T22:20:20.481Z', updatedBy: 'Proprietaire plateforme',
+    signature: {
+      role: '', email: 'libramont@fungalaxy.be', phone: '0491/30.16.67', layout: 'carte', address: "L'Alienau, 100, 6800 Libramont",
+      closing: 'À très bientôt,', enabled: true, logoUrl: `${origine}/assets/brand/logo-fun-galaxy-email-clair.png`,
+      socials: { tiktok: '', facebook: '', linkedin: '', instagram: '' }, website: '', logoWidth: 120, teamLabel: '',
+    },
+  };
+  const relu0311 = m.design.fusionnerEmailDesign(enregistre0311, LIBRAMONT);
+  const mail0311 = await transactionnel(relu0311);
+  ok(relu0311.signature.layout === 'affiche' && relu0311.signature.website === LIBRAMONT.identity.siteUrl && relu0311.signature.closing === CATALOGUE_FG.closing
+    && relu0311.preset === 'epure' && mail0311.includes(`src="${banniereFG}"`) && mail0311.includes(echapper(defautsFG.signature.accroche)),
+    '[K] le design enregistre le 03/11 (carte et site pre-remplis) se lit en affiche avec le site du centre, et garde son gabarit',
+    `layout=${relu0311.signature.layout} site=${relu0311.signature.website} preset=${relu0311.preset}`);
+  const choisiDepuis = m.design.fusionnerEmailDesign({ ...enregistre0311, updatedAt: '2026-11-12T09:00:00.000Z' }, LIBRAMONT);
+  ok(choisiDepuis.signature.layout === 'carte' && choisiDepuis.signature.website === '',
+    '[K] enregistree depuis l arrivee de l affiche, la carte est un vrai choix : elle reste, sans site', `layout=${choisiDepuis.signature.layout}`);
 }
 
 (async () => {
@@ -544,6 +656,15 @@ async function controles(m) {
       fichier: 'lib/ops-communications.js', de: "  if (disposition === 'arene') couleurLien = '#ffffff';", vers: '' },
     { nom: 'l accroche perdue a l enregistrement', cible: '[J] l accroche et la forme ecrites par le gerant se gardent a l enregistrement',
       fichier: 'lib/email-design.js', de: "    accroche: texte(sigSource.accroche, LIMITES.accroche, 'Accroche', sigDefauts.accroche),\n", vers: '' },
+    // Le mode sombre et les designs d avant l affiche (2026-11-12).
+    { nom: 'le logo blanc sans contour', cible: '[K] arene : le logo blanc a un contour de la couleur de la nuit, il reste lisible quand Gmail sur iPhone eclaircit le bloc',
+      fichier: 'lib/ops-communications.js', de: '      const logoNuit = emailDesign.urlDImage(center?.branding?.emailLogoSansFondDark);', vers: "      const logoNuit = emailDesign.urlDImage('/assets/brand/logo-fun-galaxy-sans-fond-sombre.png');" },
+    { nom: 'le logo fonce sans contour', cible: '[K] enseigne : le logo fonce a un contour blanc, il reste lisible quand Outlook ou Gmail Android assombrit le blanc',
+      fichier: 'lib/ops-communications.js', de: '    const logoJour = emailDesign.urlDImage(center?.branding?.emailLogoSansFond);', vers: "    const logoJour = emailDesign.urlDImage('/assets/brand/logo-fun-galaxy-sans-fond-clair.png');" },
+    { nom: 'l ancienne carte gardee', cible: '[K] le design enregistre le 03/11 (carte et site pre-remplis) se lit en affiche avec le site du centre, et garde son gabarit',
+      fichier: 'lib/email-design.js', de: '  return normaliserEmailDesign(sansLesAnciensDefauts(stocke), center, { strict: false });', vers: '  return normaliserEmailDesign(stocke, center, { strict: false });' },
+    { nom: 'la carte choisie perdue', cible: '[K] enregistree depuis l arrivee de l affiche, la carte est un vrai choix : elle reste, sans site',
+      fichier: 'lib/email-design.js', de: '  if (Number.isFinite(quand) && quand >= NOUVELLES_DISPOSITIONS_DEPUIS) return stocke;\n', vers: '' },
   ];
   const survivantes = [];
   for (const c of CAS) {

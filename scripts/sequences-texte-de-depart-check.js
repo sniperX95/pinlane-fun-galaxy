@@ -5,10 +5,10 @@
 // remplacait le vrai mail, et sa fin faisait sauter la formule de la signature du centre (« Funement
 // vôtre »). Les textes de depart (AUTOMATION_CONTENT_DEFAULTS) reprennent maintenant la prose des builders.
 // Ce gate les compare au mail que le logiciel envoie, rendu sur la reservation d exemple de l apercu :
-//   A. pour chaque sequence, le texte de depart (rendu comme s il etait enregistre) dit les memes phrases
-//      que le vrai mail, et porte le meme objet, a trois ecarts voulus pres : {{date}} s ecrit en chiffres,
-//      la date et l offre sont ecrites dans le texte, et ce qui depend du dossier (le Laser Game, les blocs
-//      agenda de la confirmation) n y est pas ;
+//   A. pour chaque sequence, le texte de depart (rendu comme s il etait enregistre) porte l objet du vrai
+//      mail, mot pour mot ({{date}} s ecrit « samedi 20 juin », comme le logiciel), et dit les memes
+//      phrases, a deux ecarts voulus pres : la date et l offre sont ecrites dans le texte, et ce qui depend
+//      du dossier (le Laser Game, les blocs agenda de la confirmation) n y est pas ;
 //   B. il finit comme le vrai mail, donc la signature du centre est la meme, formule de fin comprise ;
 //   C. les trois mails de reservation gardent la date, l heure et l offre : un texte du centre remplace le
 //      mail entier, son recapitulatif avec ;
@@ -31,6 +31,7 @@ const MUTATIONS = [
   { nom: 'phrase-en-trop', rouge: '[A] rappel avant la venue : le texte de depart dit les phrases du vrai mail', editions: [{ fichier: LIB, de: "C’est ce qui permet de lancer tout le monde ensemble.',\n", vers: "C’est ce qui permet de lancer tout le monde ensemble.',\n      'Si possible, arrivez 10 minutes avant l’heure prévue.',\n" }] },
   { nom: 'ancien-objet', rouge: '[A] confirmation de reservation : le meme objet que le vrai mail', editions: [{ fichier: LIB, de: "subject: 'Votre réservation du {{date}} est confirmée',", vers: "subject: 'Votre réservation {{centre}} est confirmée'," }] },
   { nom: 'ancienne-fin', rouge: '[B] accuse de reception : il finit comme le vrai mail, la signature du centre est la meme', editions: [{ fichier: LIB, de: "      'Notez déjà une arrivée 10 minutes avant {{heure}}.',\n", vers: "      'Notez déjà une arrivée 10 minutes avant {{heure}}.',\n      '',\n      'Bien à vous,',\n      '{{centre}}',\n" }] },
+  { nom: 'date-en-chiffres', rouge: '[A] rappel avant la venue : le meme objet que le vrai mail', editions: [{ fichier: LIB, de: '    date: formatDateLongFr(reservation.date),\n    heure: vars.startTime,', vers: '    date: vars.date,\n    heure: vars.startTime,' }] },
   { nom: 'recapitulatif-perdu', rouge: '[C] les trois mails de reservation gardent la date, l heure et l offre', editions: [{ fichier: LIB, de: "'Rendez-vous le {{date}} à {{heure}}. Merci d’arriver", vers: "'Rendez-vous à {{heure}}. Merci d’arriver" }] },
   { nom: 'avis-oublie', rouge: '[D] le texte de depart du merci suit la fiche Google, et celui d un centre reste le sien', editions: [{ fichier: LIB, de: "body: String((reglage && reglage.body) || (avecAvis ? content.bodyAvecAvis : content.body) || ''),", vers: "body: String((reglage && reglage.body) || content.body || '')," }] },
   { nom: 'depart-enregistre', rouge: '[E] le texte de depart enregistre sans changement garde le vrai mail', editions: [{ fichier: LIB, de: 'if (!body || body === content.body || body === content.bodyAvecAvis) {', vers: 'if (!body) {' }] },
@@ -154,8 +155,7 @@ async function verifierServeur(editions, ok) {
       const lues = phrases(prose(depart.textBody, faits));
       const ecart = { manquent: attendues.filter((p) => !lues.includes(p)), en_trop: lues.filter((p) => !attendues.includes(p)) };
       ok(attendues.length > 1 && JSON.stringify(attendues) === JSON.stringify(lues), `[A] ${NOMS[cle]} : le texte de depart dit les phrases du vrai mail`, JSON.stringify(ecart));
-      const objet = (s) => jetons(s, faits).replace(/\ble «date»/g, '«date»');
-      ok(objet(depart.subject) === objet(vrai.subject), `[A] ${NOMS[cle]} : le meme objet que le vrai mail`, JSON.stringify({ vrai: vrai.subject, depart: depart.subject }));
+      ok(Boolean(vrai.subject) && depart.subject === vrai.subject, `[A] ${NOMS[cle]} : le meme objet que le vrai mail`, JSON.stringify({ vrai: vrai.subject, depart: depart.subject }));
       const signe = signatureDe(depart);
       ok(Boolean(signe) && signe === signatureDe(vrai) && (!RESERVATION.includes(cle) || (Boolean(formule) && signe.startsWith(formule))),
         `[B] ${NOMS[cle]} : il finit comme le vrai mail, la signature du centre est la meme`, JSON.stringify({ vrai: signatureDe(vrai).slice(0, 80), depart: signe.slice(0, 80), formule }));

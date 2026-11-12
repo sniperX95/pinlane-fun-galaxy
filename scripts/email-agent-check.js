@@ -292,7 +292,8 @@ const anthropicOk = (object) => ({
     overrides: { subject: 'Merci {{prenom}} !', body: 'RDV le {{date}} à {{heure}} pour {{formule}} ({{pax}} pers), {{centre}}' },
   });
   ok(custom.subject === 'Merci Marie !', 'sujet custom : {{prenom}} substitué');
-  ok(custom.body === 'RDV le 20/08/2026 à 15:00 pour FORMULE 4 (12 pers), Fun Galaxy Libramont', `corps custom : toutes variables substituées (obtenu « ${custom.body} »)`);
+  // (la date comme le mail du logiciel l ecrit, « jeudi 20 août », depuis le 2026-11-12)
+  ok(custom.body === 'RDV le jeudi 20 août à 15:00 pour FORMULE 4 (12 pers), Fun Galaxy Libramont', `corps custom : toutes variables substituées (obtenu « ${custom.body} »)`);
   const subjectOnly = buildMessage({ reservation: resa, templateId: 'confirmation', channel: 'email', overrides: { subject: 'Youpi {{prenom}}' } });
   ok(subjectOnly.subject === 'Youpi Marie' && subjectOnly.body === defaultMessage.body, 'override sujet seul : corps par défaut conservé à l\'identique');
   const smsUntouched = buildMessage({ reservation: resa, templateId: 'reminder_day_sms', channel: 'sms', overrides: { subject: 'X', body: 'Y' } });

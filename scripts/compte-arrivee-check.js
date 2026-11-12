@@ -432,7 +432,7 @@ const MUTATIONS = [
   { nom: 'laser-sans-compte', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '        ? (peutCompterArrivee(r)\n', vers: '        ? (false\n' }] },
   { nom: 'fiche-sans-compte', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '    const compter = peutCompterArrivee(r);\n    const pax = Math.trunc(Number(r.pax) || 0);', vers: '    const compter = false;\n    const pax = Math.trunc(Number(r.pax) || 0);' }] },
   { nom: 'bulle-muette', lettre: 'B', scenarios: COMPTOIR, editions: [{ fichier: JS, de: "    <p class=\"compte-pop__ref\">${reserve === compteArrivee().n ? 'Comme à la réservation' : `${reserve} à la réservation`}</p>", vers: '' }] },
-  { nom: 'note-perdue', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: '        if (a !== de) patch.notes = notesAvecCompte(', vers: '        if (false) patch.notes = notesAvecCompte(' }] },
+  { nom: 'note-perdue', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: '    if (a !== de) patch.notes = notesAvecCompte(', vers: '    if (false) patch.notes = notesAvecCompte(' }] },
   { nom: 'drapeau-oublie', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: JS, de: 'allowPastStart: true, compteArrivee: true });', vers: 'allowPastStart: true });' }] },
   { nom: 'auteur-du-corps', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: "par: (membre && (membre.name || membre.displayName)) || 'Équipe' });", vers: "par: String(patch.name || '') });" }] },
   { nom: 'prix-fige', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '    const estime = getEditPrixEstime();\n    e.price = String(prixSuiviEdition(estime));\n', vers: '    const estime = getEditPrixEstime();\n' }] },
@@ -441,7 +441,7 @@ const MUTATIONS = [
   { nom: 'prix-par-tete', lettre: 'E', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '    const estime = getEditPrixEstime();\n    e.price = String(prixSuiviEdition(estime));\n', vers: '    const estime = getEditPrixEstime();\n    e.price = String(Math.round((Number(r.price) || 0) / Math.max(1, Number(r.pax) || 1) * n * 100) / 100);\n' }] },
   { nom: 'sans-piste-envoye', lettre: 'E', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '    if (!suggested || suggested.length < requiredCount) {\n      return { erreur:', vers: '    if (false) {\n      return { erreur:' }] },
   { nom: 'staff-bar-compte', lettre: 'F', scenarios: COMPTOIR, editions: [{ fichier: JS, de: "r.date === todayStr() && peutAdapterFormule();", vers: 'r.date === todayStr();' }] },
-  { nom: 'pas-arrive-compte', lettre: 'F', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: "        if (current.status !== 'arrived') throw createHttpError('Le compte se fait sur un groupe pointé arrivé.', 422);\n", vers: '' }] },
+  { nom: 'pas-arrive-compte', lettre: 'F', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: "    if (current.status !== 'arrived') throw createHttpError('Le compte se fait sur un groupe pointé arrivé.', 422);\n", vers: '' }] },
   { nom: 'bulle-large', lettre: 'H', scenarios: TELEPHONE, editions: [{ fichier: CSS, de: '.compte-pop { position: fixed; z-index: 700; width: min(300px, calc(100vw - 32px));', vers: '.compte-pop { position: fixed; z-index: 700; width: 420px;' }] },
   { nom: 'echap-sourd', lettre: 'H', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); fermerCompteArrivee(); }", vers: '' }] },
 ];

@@ -385,7 +385,7 @@ const MUTATIONS = [
   { nom: 'console-ne-suit-plus', lettre: 'D', groupes: ['D'], editions: [{ fichier: JS, de: '  const prixSuivi = !es.prixFige && Boolean(estimeEcran', vers: '  const prixSuivi = false && Boolean(estimeEcran' }] },
   // Le moteur rend deja un prix a un programme et a un plan de pistes, sans
   // l ajustement : c est le prix d ami qui le voit.
-  { nom: 'serveur-ne-pose-pas', lettre: 'A', groupes: ['A'], editions: [{ fichier: API, serveur: true, de: '      if (prixSuivi) {\n        patch.price = prixQuiSuit(', vers: '      if (false) {\n        patch.price = prixQuiSuit(' }] },
+  { nom: 'serveur-ne-pose-pas', lettre: 'A', groupes: ['A'], editions: [{ fichier: API, serveur: true, de: '  if (prixSuivi) {\n    patch.price = prixQuiSuit(', vers: '  if (false) {\n    patch.price = prixQuiSuit(' }] },
   { nom: 'prix-pose-puis-juge', lettre: 'A', groupes: ['A'], editions: [{ fichier: API, serveur: true, de: 'const notePrix = prixSuivi ? null : jugerPrixDeModification(', vers: 'const notePrix = jugerPrixDeModification(' }] },
   { nom: 'ajustement-perdu-au-serveur', lettre: 'A', groupes: ['A'], editions: [{ fichier: DROITS, serveur: true, de: '(baseAvant > 0 ? prixAvant - baseAvant - extrasAvant : 0)', vers: '0' }] },
   { nom: 'ajustement-perdu-a-l-ecran', lettre: 'A', groupes: ['A'], editions: [{ fichier: JS, de: 'Math.round((estime.total + ajustementGarde(r)) * 100) / 100', vers: 'Math.round(estime.total * 100) / 100' }] },

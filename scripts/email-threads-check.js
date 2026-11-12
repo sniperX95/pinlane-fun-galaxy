@@ -213,6 +213,12 @@ async function requete(texte, params = []) {
   if (/^select id, center_id, direction, recipient, subject, payload, thread_id, created_at from communications where id = \$1 and center_id = \$2/i.test(sql)) {
     return lignes(DB.communications.filter((c) => c.id === Number(p[0]) && c.center_id === p[1]).map(clone));
   }
+  // Les reponses citees hors de Pinlane (lib/email-threads.js) : quels Message-ID
+  // auxquels un client repond sont des envois de Pinlane, dans ce centre.
+  if (/^select message_id from communications where center_id = \$1 and direction <> 'inbound' and message_id = any\(\$2::text\[\]\)/i.test(sql)) {
+    const ids = p[1] || [];
+    return lignes(DB.communications.filter((c) => c.center_id === p[0] && c.direction !== 'inbound' && ids.includes(c.message_id)).map((c) => ({ message_id: c.message_id })));
+  }
   if (/^select payload, message_id, references_ids, thread_id, subject from communications where id = \$1/i.test(sql)) {
     const borne = /center_id = \$2/.test(sql);
     return lignes(DB.communications

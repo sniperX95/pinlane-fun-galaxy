@@ -1629,6 +1629,54 @@
     e.noeuds.length = blocs.length;
   }
 
+  // LA REPONSE GRANDIT EN DOUCEUR (2026-11-13, Ansar : « le texte apparait en bas, c est pas fluide,
+  // ca cree des petits sauts »). Chaque ligne neuve allongeait la reponse d un coup : la verification,
+  // le pied et la vue qui suit le bas sautaient d une ligne a chaque fois. Pendant l ecriture, la zone
+  // du texte rejoint la hauteur de son contenu en glissant (une approche douce, environ 200 ms pour
+  // une ligne), la ligne neuve se decouvre sous le fondu, et tout ce qui suit glisse avec elle. A la
+  // fin, la zone rend sa hauteur au contenu. Sans mouvement, rien de tout ca.
+  const hauteursSuivies = new WeakMap();
+  function hauteurDuContenu(zone) {
+    const dernier = zone.lastElementChild;
+    if (!dernier) return 0;
+    const marge = parseFloat(getComputedStyle(dernier).marginBottom) || 0;
+    return Math.max(0, dernier.getBoundingClientRect().bottom + marge - zone.getBoundingClientRect().top);
+  }
+  function lacherLaHauteur(zone, s) {
+    if (s.image) cancelAnimationFrame(s.image);
+    hauteursSuivies.delete(zone);
+    zone.style.height = '';
+    zone.style.overflow = '';
+  }
+  function pasDeHauteur(zone, s, t) {
+    s.image = 0;
+    if (!zone.isConnected) { hauteursSuivies.delete(zone); return; }
+    const dt = Math.min(Math.max(t - s.avant, 0), 50);
+    s.avant = t;
+    const vise = hauteurDuContenu(zone);
+    s.h += (vise - s.h) * (1 - Math.exp(-dt / 70));
+    if (Math.abs(vise - s.h) < 0.5) s.h = vise;
+    zone.style.height = `${s.h}px`;
+    if (s.h === vise) {
+      if (!s.enCours) lacherLaHauteur(zone, s);
+      return;
+    }
+    s.image = requestAnimationFrame((x) => pasDeHauteur(zone, s, x));
+  }
+  function suivreLaHauteur(zone, enCours) {
+    let s = hauteursSuivies.get(zone);
+    if (sansMouvement()) { if (s) lacherLaHauteur(zone, s); return; }
+    if (!s) {
+      if (!enCours) return;
+      s = { h: zone.getBoundingClientRect().height, image: 0, avant: 0, enCours: true };
+      hauteursSuivies.set(zone, s);
+      zone.style.overflow = 'hidden';
+      zone.style.height = `${s.h}px`;
+    }
+    s.enCours = enCours;
+    if (!s.image) { s.avant = performance.now(); s.image = requestAnimationFrame((t) => pasDeHauteur(zone, s, t)); }
+  }
+
   function demanderPeinture(m) {
     if (A.peintureDemandee) return;
     A.peintureDemandee = true;
@@ -1653,6 +1701,7 @@
     const zone = article.querySelector('[data-ast-texte]');
     poserTexte(zone, m);
     marquerFlux(zone, m.statut === 'cours' && Boolean(m.texte));
+    suivreLaHauteur(zone, m.statut === 'cours' && Boolean(m.texte));
     poserSiChange(article.querySelector('[data-ast-basdepage]'), htmlPied(m, i === c.messages.length - 1));
     dessinerGraphiques(article, m);
     majDescendre();

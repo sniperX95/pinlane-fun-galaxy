@@ -151,6 +151,8 @@ const {
   listerEnvoyes,
   libellesDesSequences,
 } = require('../lib/email-threads');
+// Le mail recu en entier (HTML, images, pieces jointes), lu chez Resend.
+const { lireMailRecuComplet } = require('../lib/mail-recu-complet');
 const { enqueueReservationAutomation, processDueOpsJobs, processOpsJobById } = require('../lib/ops-jobs');
 const { listSuppressions, suppressEmail, removeSuppression } = require('../lib/marketing-suppression');
 const { loadOpsKnowledge, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
@@ -1329,6 +1331,14 @@ async function handleGet(req, res, options = {}) {
     const fil = await chargerFil(query, { centerId, threadId: url.searchParams.get('id') });
     if (!fil) throw createHttpError('Conversation introuvable.', 404);
     sendJson(res, 200, { ok: true, centerId, ...fil });
+    return;
+  }
+
+  if (action === 'mailRecuComplet') {
+    const query = (text, params) => getPool().query(text, params);
+    const complet = await lireMailRecuComplet(query, { centerId, communicationId: url.searchParams.get('id') });
+    if (!complet) throw createHttpError('Mail introuvable.', 404);
+    sendJson(res, 200, { ok: true, centerId, ...complet });
     return;
   }
 
@@ -4037,7 +4047,7 @@ function getRequiredOpsPermission(method, action) {
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
     // Emails v4 : vue globale, fils, envoyes, design : lire la boite suffit.
-    if (['emailOverview', 'emailThreads', 'emailThread', 'emailSent', 'emailDesign'].includes(action)) return 'emails.view';
+    if (['emailOverview', 'emailThreads', 'emailThread', 'emailSent', 'emailDesign', 'mailRecuComplet'].includes(action)) return 'emails.view';
     // `job` = la lecture du poller de progression : mêmes permissions que
     // health (même surface, même sensibilité), plus les rôles marketing qui
     // déclenchent les jobs qu'ils suivent (plan marketing en live).

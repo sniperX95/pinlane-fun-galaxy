@@ -4741,13 +4741,45 @@
     return outil.separerCitation(texte);
   }
 
+  // LES LIENS D UN MAIL SE CLIQUENT (2026-11-12) : une adresse web du texte
+  // devient un lien qui s ouvre dans un autre onglet, sans rien transmettre de
+  // la console. Seuls http et https passent ; le reste reste du texte.
+  const PV2_LIEN_WEB = /https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]}]/g;
+  function pv2TexteAvecLiens(texte) {
+    const brut = String(texte || '');
+    let out = '';
+    let dernier = 0;
+    PV2_LIEN_WEB.lastIndex = 0;
+    let trouve = PV2_LIEN_WEB.exec(brut);
+    while (trouve) {
+      out += esc(brut.slice(dernier, trouve.index));
+      out += `<a href="${esc(trouve[0])}" target="_blank" rel="noopener noreferrer">${esc(trouve[0])}</a>`;
+      dernier = trouve.index + trouve[0].length;
+      trouve = PV2_LIEN_WEB.exec(brut);
+    }
+    return out + esc(brut.slice(dernier));
+  }
+
   function pv2Paragraphes(texte) {
     const propre = String(texte || '').replace(/\r\n/g, '\n').trim();
     if (!propre) return '<p class="pv2-mail-vide">Ce message n a pas de contenu.</p>';
     return propre
       .split(/\n{2,}/)
-      .map((bloc) => `<p>${esc(bloc).split('\n').join('<br>')}</p>`)
+      .map((bloc) => `<p>${bloc.split('\n').map(pv2TexteAvecLiens).join('<br>')}</p>`)
       .join('');
+  }
+
+  // Un mail du formulaire du site : chaque question et sa reponse sur sa ligne
+  // (assets/email-thread.js champsDuFormulaire), au lieu d un bloc de mots.
+  function pv2ChampsDuFormulaire(texte) {
+    const outil = typeof window !== 'undefined' && window.PinlaneEmailThread;
+    if (!outil || typeof outil.champsDuFormulaire !== 'function') return null;
+    return outil.champsDuFormulaire(texte);
+  }
+  function pv2ChampsHtml(form) {
+    return `${form.intro ? pv2Paragraphes(form.intro) : ''}
+      <dl class="pv2-mail-champs">${form.champs.map((c) => `<div class="pv2-mail-champ"><dt>${esc(c.question)}</dt><dd>${String(c.valeur).split('\n').map(pv2TexteAvecLiens).join('<br>')}</dd></div>`).join('')}</dl>
+      ${form.fin ? pv2Paragraphes(form.fin) : ''}`;
   }
 
   function pv2EnteteMail(row) {
@@ -4777,9 +4809,10 @@
     const historiqueLu = historique && outil && typeof outil.historiqueLisible === 'function'
       ? outil.historiqueLisible(historique)
       : historique;
+    const form = pv2ChampsDuFormulaire(message);
     return `
-      <div class="pv2-mail-corps">
-        ${pv2Paragraphes(message)}
+      <div class="pv2-mail-corps${form ? ' est-formulaire' : ''}">
+        ${form ? pv2ChampsHtml(form) : pv2Paragraphes(message)}
         ${historique ? `
           <button type="button" class="pv2-mail-plus${ouvert ? ' est-ouvert' : ''}"
             onclick="pv2BasculerHistorique('${escJs(row.uid)}')"
@@ -7212,7 +7245,7 @@
     const reponse = messages.slice(index + 1).find((x) => x.direction !== 'inbound');
     if (reponse) {
       const par = reponse.sentBy && reponse.sentBy.memberName ? reponse.sentBy.memberName : (reponse.origine === 'auto' ? 'la séquence' : 'l\'équipe');
-      items.push(`<span class="is-done">Répondu par ${esc(par)} <time>${esc(pv2Quand(reponse.sentAt || reponse.createdAt))}</time></span>`);
+      items.push(`<span class="is-done">${reponse.origine === 'boite' ? 'Répondu depuis votre boîte mail' : `Répondu par ${esc(par)}`} <time>${esc(pv2Quand(reponse.sentAt || reponse.createdAt))}</time></span>`);
     } else if (fil && fil.status === 'closed') {
       items.push('<span class="is-off">Terminé sans réponse</span>');
     } else {
@@ -7268,51 +7301,299 @@
     return `<details class="pv2-thread-events"><summary>${liste.length} événement${liste.length > 1 ? 's' : ''} du fournisseur</summary><ul>${liste.map(ligne).join('')}</ul></details>`;
   }
 
-  // UN MESSAGE DU FIL (2026-11-10) : une surface pleine largeur, l en-tete du
-  // mail (qui, par quelle voie, quand), le texte, puis son parcours. Pas de
-  // bulle : le message du client sur un fond neutre, celui du centre sur un
-  // bleu tres clair. Ce que l agent en a compris vit dans l Assistant, a cote.
+  /* ── UN MAIL DE LA CONVERSATION, COMME DANS GMAIL (2026-11-12) ────────────
+     Ansar : « les mails on distingue pas, faut un petit truc stylé qui
+     ressemble à Gmail », puis « on doit pouvoir tout voir, les images, les
+     liens ». Chaque mail est une feuille : la pastille de couleur de qui ecrit
+     (la meme couleur pour la meme adresse, le bleu de la console pour le
+     centre), son nom en gras et son adresse, la date a droite, puis le mail
+     lui-meme. Un mail recu se montre EN ENTIER : sa version HTML (images,
+     liens, mise en forme) dans un cadre isole, ses pieces jointes dessous. Un
+     formulaire du site se lit question par question. Une reponse partie de la
+     boite du centre, que Pinlane n a pas envoyee, a sa feuille quand le client
+     la cite. Ce que l agent en a compris vit dans l Assistant. */
+  const PV2_TEINTES_PASTILLE = 7;
+  function pv2TeinteDe(cle) {
+    const texte = String(cle || '').trim().toLowerCase();
+    let somme = 0;
+    for (let i = 0; i < texte.length; i += 1) somme = (somme * 31 + texte.charCodeAt(i)) >>> 0;
+    return somme % PV2_TEINTES_PASTILLE;
+  }
+  // « 12 nov., 19:39 » et, la premiere semaine, « il y a 40 min ».
+  function pv2QuandDuMail(value) {
+    const d = value ? new Date(value) : null;
+    if (!d || Number.isNaN(d.getTime())) return null;
+    const memeAnnee = d.getFullYear() === new Date().getFullYear();
+    const jour = d.toLocaleDateString('fr-BE', memeAnnee ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+    const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+    const ecart = Date.now() - d.getTime();
+    const depuis = ecart >= 0 && ecart < 7 * 86400000 ? pv2Depuis(value) : '';
+    return { texte: `${jour}, ${heure}`, depuis: depuis ? `il y a ${depuis}` : '', iso: d.toISOString() };
+  }
+  function pv2TailleLisible(octets) {
+    const n = Number(octets) || 0;
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toLocaleString('fr-BE', { maximumFractionDigits: 1 })} Mo`;
+    if (n >= 1024) return `${Math.round(n / 1024)} Ko`;
+    return n ? `${n} octets` : '';
+  }
+  function pv2NomDuCentre() {
+    return typeof window.staffCenterDisplayName === 'function' ? String(window.staffCenterDisplayName() || '') : '';
+  }
+
+  // LE MAIL RECU EN ENTIER, lu une fois par mail (lib/mail-recu-complet.js).
+  // Les liens des pieces jointes ne valent qu une heure : relus apres 50 min.
+  const pv2MailsComplets = {};
+  function pv2MailComplet(id) {
+    const cle = String(id);
+    const connu = pv2MailsComplets[cle];
+    if (connu && (connu.etat === 'attente' || Date.now() - connu.lu < 50 * 60000)) return connu;
+    pv2MailsComplets[cle] = { etat: 'attente', lu: Date.now(), html: connu ? connu.html : '', pieces: connu ? connu.pieces : [] };
+    apiRequest(`/api/ops?action=mailRecuComplet&centerId=${encodeURIComponent(pv2CentreCourant())}&id=${encodeURIComponent(cle)}`)
+      .then((payload) => {
+        pv2MailsComplets[cle] = { etat: 'pret', lu: Date.now(), html: String((payload && payload.html) || ''), pieces: Array.isArray(payload && payload.piecesJointes) ? payload.piecesJointes : [] };
+      })
+      .catch(() => {
+        pv2MailsComplets[cle] = { etat: 'erreur', lu: Date.now(), html: '', pieces: [] };
+      })
+      .finally(() => pv2RenderSiActive());
+    return pv2MailsComplets[cle];
+  }
+
+  // LE HTML D UN MAIL RECU N EST PAS DE CONFIANCE. Trois barrieres : le cadre
+  // est isole (sandbox sans allow-scripts : aucun script ne tourne, aucun
+  // formulaire ne part), une politique de contenu ne laisse entrer que des
+  // images et du style, et le HTML est nettoye avant (scripts, cadres,
+  // formulaires, attributs on*, liens autres que web, mail et telephone). Les
+  // liens s ouvrent dans un autre onglet, sans rien dire de la console ; les
+  // pixels espions (1 x 1) et les images jointes introuvables tombent.
+  const PV2_CITATIONS_HTML = '.gmail_quote, blockquote[type="cite"], .yahoo_quoted, .protonmail_quote, div[id^="mail-editor-reference-message"], [data-marker="__QUOTED_TEXT__"]';
+  const PV2_CITATIONS_SUITE = '#appendonsend, #divRplyFwdMsg, .moz-cite-prefix';
+  const PV2_MAIL_RECU_STYLE = 'html{color-scheme:light}html,body{margin:0;padding:0;background:#fff;color:#1f1f1f;font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow-wrap:anywhere}body{overflow-x:auto}img{max-width:100%;height:auto}table{max-width:100%}a[href]{color:#0b57d0}pre{white-space:pre-wrap}blockquote{margin:0 0 0 .8ex;padding-left:1ex;border-left:2px solid #c6c6c6;color:#5e5e5e}';
+  const PV2_MAILS_SURS = {};
+  function pv2MailHtmlSur(html, pieces, avecHistorique) {
+    if (typeof DOMParser === 'undefined') return null;
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    if (!doc || !doc.body) return null;
+    doc.querySelectorAll('script, iframe, frame, frameset, object, embed, applet, meta, base, link, input, button, select, textarea, audio, video, portal').forEach((n) => n.remove());
+    doc.querySelectorAll('form').forEach((n) => n.replaceWith(...n.childNodes));
+    doc.querySelectorAll('*').forEach((el) => {
+      [...el.attributes].forEach((attribut) => {
+        const nom = attribut.name.toLowerCase();
+        const valeur = String(attribut.value || '').trim().toLowerCase();
+        if (nom.startsWith('on') || ['srcdoc', 'formaction', 'ping', 'srcset'].includes(nom)) { el.removeAttribute(attribut.name); return; }
+        if (['href', 'src', 'background', 'poster', 'xlink:href', 'action', 'lowsrc', 'dynsrc', 'data'].includes(nom)) {
+          const permis = /^(https?:|mailto:|tel:|cid:|#)/.test(valeur) || (nom === 'src' && /^data:image\/(png|jpe?g|gif|webp);/.test(valeur));
+          if (!permis) el.removeAttribute(attribut.name);
+        }
+      });
+    });
+    doc.querySelectorAll('a[href]').forEach((a) => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); });
+    const parCid = new Map((pieces || []).filter((p) => p && p.contentId && p.url).map((p) => [String(p.contentId).toLowerCase(), p.url]));
+    const cidsUtilises = new Set();
+    doc.querySelectorAll('img').forEach((img) => {
+      const src = String(img.getAttribute('src') || '');
+      if (/^cid:/i.test(src)) {
+        const cid = src.slice(4).replace(/^<|>$/g, '').toLowerCase();
+        const url = parCid.get(cid);
+        if (url) { img.setAttribute('src', url); cidsUtilises.add(cid); } else img.remove();
+        return;
+      }
+      const largeur = Number(img.getAttribute('width'));
+      const hauteur = Number(img.getAttribute('height'));
+      if ((largeur && largeur <= 2) || (hauteur && hauteur <= 2) || !src) img.remove();
+    });
+    let aDeLHistorique = Boolean(doc.body.querySelector(`${PV2_CITATIONS_HTML}, ${PV2_CITATIONS_SUITE}`));
+    if (aDeLHistorique && !avecHistorique) {
+      const avant = doc.body.innerHTML;
+      const enlever = [];
+      doc.body.querySelectorAll(PV2_CITATIONS_HTML).forEach((n) => { if (!enlever.some((x) => x.contains(n))) enlever.push(n); });
+      doc.body.querySelectorAll(PV2_CITATIONS_SUITE).forEach((marque) => {
+        for (let n = marque; n; n = n.nextElementSibling) if (!enlever.includes(n)) enlever.push(n);
+      });
+      enlever.forEach((n) => n.remove());
+      // PRUDENCE, comme la citation en texte : un mail qui ne garderait rien
+      // se montre en entier.
+      if (!(doc.body.textContent || '').trim() && !doc.body.querySelector('img')) { doc.body.innerHTML = avant; aDeLHistorique = false; }
+    }
+    const styles = [...doc.querySelectorAll('head style')].map((s) => s.outerHTML).join('');
+    const fond = String(doc.body.getAttribute('style') || '');
+    const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: blob:; style-src 'unsafe-inline'; font-src data:"><meta name="referrer" content="no-referrer"><base target="_blank"><style>${PV2_MAIL_RECU_STYLE}</style>${styles}</head><body><div style="${esc(fond)}">${doc.body.innerHTML}</div></body></html>`;
+    return { srcdoc, riche: Boolean(doc.body.querySelector('img, table, a[href^="http"]')), aDeLHistorique, cidsUtilises };
+  }
+  function pv2MailSurDe(id, complet, avecHistorique) {
+    const cle = `${id}:${avecHistorique ? 'tout' : 'message'}:${complet.lu}`;
+    if (!(cle in PV2_MAILS_SURS)) PV2_MAILS_SURS[cle] = pv2MailHtmlSur(complet.html, complet.pieces, avecHistorique);
+    return PV2_MAILS_SURS[cle];
+  }
+
+  // Le cadre d un mail recu prend la hauteur de son contenu : il est lisible
+  // depuis la console (meme origine) mais ne peut rien y faire, faute de
+  // scripts. Sa derniere hauteur se garde : un nouveau rendu ne le fait pas
+  // sauter.
+  const PV2_MAILS_RECUS_DOCS = {};
+  const PV2_HAUTEURS_MAIL = {};
+  function pv2CadreMailRecuHtml(cle, srcdoc, titre) {
+    PV2_MAILS_RECUS_DOCS[cle] = srcdoc;
+    const hauteur = Number(PV2_HAUTEURS_MAIL[cle]) || 0;
+    return `<div class="pv2-mail-papier"><iframe class="pv2-mail-recu-cadre" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${esc(titre)}" data-pv2-mail-recu="${esc(cle)}"${hauteur ? ` style="height:${hauteur}px"` : ''}></iframe></div>`;
+  }
+  function pv2AjusterCadreMail(frame) {
+    try {
+      const d = frame.contentDocument;
+      if (!d || !d.body) return;
+      const hauteur = Math.max(32, Math.ceil(Math.max(d.body.getBoundingClientRect().height, d.documentElement.offsetHeight)));
+      PV2_HAUTEURS_MAIL[frame.getAttribute('data-pv2-mail-recu')] = hauteur;
+      frame.style.height = `${hauteur}px`;
+    } catch (error) {
+      // Cadre illisible : il garde sa hauteur.
+    }
+  }
+  function pv2RemplirMailsRecus(root) {
+    root.querySelectorAll('iframe[data-pv2-mail-recu]').forEach((frame) => {
+      const doc = PV2_MAILS_RECUS_DOCS[frame.getAttribute('data-pv2-mail-recu')];
+      if (!doc || frame.__pv2Doc === doc) return;
+      frame.__pv2Doc = doc;
+      frame.addEventListener('load', () => pv2AjusterCadreMail(frame));
+      frame.srcdoc = doc;
+    });
+  }
+  let pv2AjustementMails = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(pv2AjustementMails);
+    pv2AjustementMails = requestAnimationFrame(() => document.querySelectorAll('#staffEmailsPage iframe[data-pv2-mail-recu]').forEach(pv2AjusterCadreMail));
+  });
+
+  // Les pieces jointes, comme dans Gmail : la vignette d une image, le type et
+  // le nom d un autre fichier. Une image deja montree dans le mail n y est pas.
+  function pv2PiecesJointesHtml(m, complet, sur) {
+    const dejaDansLeMail = sur ? sur.cidsUtilises : new Set();
+    const liste = (complet.pieces || []).filter((p) => !(p.contentId && dejaDansLeMail.has(String(p.contentId).toLowerCase())));
+    if (!liste.length) return '';
+    return `<div class="pv2-mail-pieces">
+      <p class="pv2-mail-pieces-titre">${liste.length === 1 ? '1 pièce jointe' : `${liste.length} pièces jointes`}</p>
+      <div class="pv2-mail-pieces-liste">${liste.map((p) => {
+        const image = /^image\/(png|jpe?g|gif|webp)$/.test(String(p.type || '')) && p.url;
+        const extension = (String(p.nom || '').includes('.') ? String(p.nom).split('.').pop() : 'fichier').slice(0, 4).toUpperCase();
+        return `<a class="pv2-mail-piece${image ? ' est-image' : ''}" href="${esc(p.url || '#')}" target="_blank" rel="noopener noreferrer" onclick="return pv2OuvrirPieceJointe(event, '${escJs(String(m.id))}', '${escJs(String(p.id))}')">
+          ${image ? `<img src="${esc(p.url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="pv2-mail-piece-type" aria-hidden="true">${esc(extension)}</span>`}
+          <span class="pv2-mail-piece-nom">${esc(p.nom || 'Pièce jointe')}</span>
+          <span class="pv2-mail-piece-taille">${esc(pv2TailleLisible(p.taille))}</span>
+        </a>`;
+      }).join('')}</div>
+    </div>`;
+  }
+  // Un lien de piece jointe perime (plus d une heure) se redemande avant de
+  // s ouvrir.
+  window.pv2OuvrirPieceJointe = function (event, id, pieceId) {
+    const connu = pv2MailsComplets[String(id)];
+    const piece = connu && (connu.pieces || []).find((x) => String(x.id) === String(pieceId));
+    if (piece && piece.url && (!piece.expiresAt || new Date(piece.expiresAt).getTime() - Date.now() > 60000)) return true;
+    if (event && event.preventDefault) event.preventDefault();
+    apiRequest(`/api/ops?action=mailRecuComplet&centerId=${encodeURIComponent(pv2CentreCourant())}&id=${encodeURIComponent(String(id))}`)
+      .then((payload) => {
+        const pieces = Array.isArray(payload && payload.piecesJointes) ? payload.piecesJointes : [];
+        pv2MailsComplets[String(id)] = { etat: 'pret', lu: Date.now(), html: String((payload && payload.html) || ''), pieces };
+        const fraiche = pieces.find((x) => String(x.id) === String(pieceId));
+        if (fraiche && fraiche.url) window.open(fraiche.url, '_blank', 'noopener');
+        else if (typeof toast === 'function') toast('Cette pièce jointe n’est plus disponible.');
+        pv2RenderSiActive();
+      })
+      .catch(() => { if (typeof toast === 'function') toast('Pièce jointe indisponible pour le moment.'); });
+    return false;
+  };
+
+  // Les reponses parties de la boite du centre, retrouvees par le serveur
+  // dans la citation du client (lib/email-threads.js reponsesCiteesHorsPinlane),
+  // prennent leur place juste avant le mail qui les cite.
+  function pv2AvecReponsesDeLaBoite(messages, contact, fil) {
+    const client = String((contact && contact.name) || (fil && fil.contactName) || (contact && contact.email) || (fil && fil.contactEmail) || '');
+    const out = [];
+    (messages || []).forEach((m) => {
+      const cite = m && m.direction === 'inbound' && m.reponseCitee && typeof m.reponseCitee === 'object' ? m.reponseCitee : null;
+      if (cite && String(cite.texte || '').trim()) {
+        out.push({
+          id: `boite-${m.id}`, direction: 'outbound', origine: 'boite', citePar: client,
+          fromLabel: String(cite.auteur || ''), fromEmail: String(cite.adresse || ''),
+          textBody: String(cite.texte), message: String(cite.texte),
+          sentAt: cite.date || null, createdAt: cite.date || m.receivedAt || m.createdAt,
+          recipient: '', evenements: [], lectures: [], suivi: {},
+        });
+      }
+      out.push(m);
+    });
+    return out;
+  }
+
   function pv2ThreadMessageHtml(m, messages, fil, contact) {
     const inbound = m.direction === 'inbound';
+    const boite = m.origine === 'boite';
     const uid = `msg:${m.id}`;
+    const contactEmail = String((contact && contact.email) || (fil && fil.contactEmail) || '');
+    const nomContact = String((contact && contact.name) || (fil && fil.contactName) || contactEmail);
+    const centre = pv2NomDuCentre();
     const nom = inbound
-      ? String(m.fromLabel || (contact && contact.name) || m.fromEmail || (contact && contact.email) || 'Expéditeur inconnu')
-      : String((m.sentBy && m.sentBy.memberName) || (m.origine === 'auto' ? (m.sequenceLabel || 'Séquence') : m.fromLabel || 'Le centre'));
-    // Un mail du formulaire du site montre le client, puis par quelle adresse
-    // il est arrive (2026-09-17).
-    const adresse = inbound
-      ? `${String(m.fromEmail || (contact && contact.email) || '')}${m.via ? ` · via le formulaire (${m.via})` : ''}`
-      : (m.recipient ? `à ${m.recipient}` : '');
-    const voie = inbound ? 'Reçu' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`);
-    const quand = pv2Quand(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
+      ? String(m.fromLabel || (contact && contact.name) || m.fromEmail || contactEmail || 'Expéditeur inconnu')
+      : String((m.sentBy && m.sentBy.memberName) || (boite ? (m.fromLabel || centre) : (m.origine === 'auto' ? (centre || m.sequenceLabel) : (m.fromLabel || centre))) || 'Le centre');
+    const adresse = inbound ? String(m.fromEmail || contactEmail || '') : (boite ? String(m.fromEmail || '') : '');
+    const quand = pv2QuandDuMail(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
+    const voie = inbound
+      ? 'Reçu'
+      : (boite ? 'Envoyé depuis votre boîte mail' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`));
+    // Un mail du formulaire du site montre le client (2026-09-17) ; l adresse
+    // technique du site reste au survol.
+    const destinataire = !inbound ? String(m.recipient && m.recipient !== contactEmail ? m.recipient : nomContact) : '';
+    const dest = inbound ? (m.via ? 'via le formulaire du site' : '') : (destinataire ? `à ${destinataire}` : '');
     const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
     const question = inbound ? questions.find((q) => Number(q.communicationId) === Number(m.id)) : null;
-    const trace = inbound ? pv2TraceEntrantHtml(m, messages, fil) : pv2TraceSortantHtml(m);
+    const trace = inbound ? pv2TraceEntrantHtml(m, messages, fil) : (boite ? [] : pv2TraceSortantHtml(m));
     let corps;
-    if (inbound || m.textBody || m.message) {
+    let pieces = '';
+    if (inbound && m.contenuComplet) {
+      const complet = pv2MailComplet(m.id);
+      const ouvert = Boolean(pv2Mail.historiqueOuvert[uid]);
+      const sur = complet.etat === 'pret' && complet.html ? pv2MailSurDe(m.id, complet, ouvert) : null;
+      if (sur && sur.riche) {
+        corps = `<div class="pv2-mail-corps est-html">
+          ${pv2CadreMailRecuHtml(`${m.id}:${ouvert ? 'tout' : 'message'}`, sur.srcdoc, `Mail de ${nom}`)}
+          ${sur.aDeLHistorique ? `<button type="button" class="pv2-mail-plus${ouvert ? ' est-ouvert' : ''}" onclick="pv2BasculerHistorique('${escJs(uid)}')" aria-expanded="${ouvert}" title="${ouvert ? 'Masquer' : 'Afficher'} le reste de la conversation">•••</button>` : ''}
+        </div>`;
+      } else {
+        corps = pv2CorpsMail({ uid, payload: { textBody: String(m.textBody || m.message || '') }, body: '', subject: m.subject || '' });
+      }
+      if (complet.etat === 'pret') pieces = pv2PiecesJointesHtml(m, complet, sur);
+    } else if (inbound || m.textBody || m.message) {
       corps = pv2CorpsMail({ uid, payload: { textBody: String(m.textBody || m.message || '') }, body: '', subject: m.subject || '' });
     } else if (m.body) {
       corps = `<div class="pv2-thread-outbound-html">${pv2FrameHtml(uid, m.body, 'pv2-mail-frame', 'Mail tel qu\'envoyé')}</div>`;
     } else {
       corps = '<div class="pv2-mail-corps"><p class="pv2-mail-vide">Ce message n’a pas de contenu.</p></div>';
     }
-    return `<article class="em-msg pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}" data-message-id="${esc(String(m.id))}">
+    const lettre = pv2InitialeDe(nom, adresse);
+    const pastille = inbound
+      ? `<div class="pv2-mail-pastille" data-teinte="${pv2TeinteDe(adresse || nom)}" aria-hidden="true">${esc(lettre)}</div>`
+      : `<div class="pv2-mail-pastille is-nous" aria-hidden="true">${esc(lettre)}</div>`;
+    return `<article class="em-msg pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}${boite ? ' is-boite' : ''}" data-message-id="${esc(String(m.id))}">
       <div class="pv2-mail-entete">
-        <div class="pv2-mail-pastille${inbound ? '' : ' is-nous'}" aria-hidden="true">${esc(pv2InitialeDe(nom, adresse))}</div>
+        ${pastille}
         <div class="pv2-mail-identite">
           <div class="pv2-mail-ligne">
             <strong>${esc(nom)}</strong>
-            <span class="pv2-mail-voie">${esc(voie)}</span>
-            <span class="pv2-mail-quand">${esc(quand)}</span>
+            ${adresse && adresse !== nom ? `<span class="pv2-mail-adresse">&lt;${esc(adresse)}&gt;</span>` : ''}
+            ${quand ? `<span class="pv2-mail-quand"><time datetime="${esc(quand.iso)}">${esc(quand.texte)}</time>${quand.depuis ? `<span class="pv2-mail-depuis"> (${esc(quand.depuis)})</span>` : ''}</span>` : ''}
           </div>
-          ${adresse ? `<div class="pv2-mail-adresse">${esc(adresse)}</div>` : ''}
+          <div class="pv2-mail-dest">
+            <span class="pv2-mail-voie">${esc(voie)}</span>
+            ${dest ? `<span class="pv2-mail-a"${m.via ? ` title="${esc(m.via)}"` : ''}>${esc(dest)}</span>` : ''}
+          </div>
         </div>
       </div>
       ${corps}
-      ${!inbound && m.body && (m.textBody || m.message) ? `<button type="button" class="pv2-link-btn" onclick="pv2ThreadVoirMail('${escJs(String(m.id))}')">Voir le mail tel qu'envoyé</button>` : ''}
+      ${pieces}
+      ${!inbound && !boite && m.body && (m.textBody || m.message) ? `<button type="button" class="pv2-link-btn" onclick="pv2ThreadVoirMail('${escJs(String(m.id))}')">Voir le mail tel qu'envoyé</button>` : ''}
       <div class="pl-timeline-trace" aria-label="Parcours du message">
         ${trace.join('')}
-        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas.</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
+        ${boite ? `<span class="is-off">Envoyé hors de Pinlane, retrouvé dans la réponse de ${esc(m.citePar || 'votre client')}</span>` : ''}
+        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas.</b> <span>${esc(question.question)}</span> <button type="button" class="pv2-btn sm" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
         ${pv2EvenementsHtml(m)}
       </div>
     </article>`;
@@ -7385,6 +7666,7 @@
     const fil = d.thread;
     const contact = d.contact || {};
     const messages = d.messages;
+    const affiches = pv2AvecReponsesDeLaBoite(messages, contact, fil);
     const [statusLabel, statusTone] = PV2_THREAD_STATUS[fil.status] || PV2_THREAD_STATUS.open;
     const maySend = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
     const busyStatut = pv2Threads.statusBusy === String(fil.id);
@@ -7419,7 +7701,7 @@
         </details>` : ''}
       </div>
       <div class="pl-timeline">
-        ${messages.length ? messages.map((m) => pv2ThreadMessageHtml(m, messages, fil, contact)).join('') : '<div class="pv2-thread-empty"><strong>Aucun message</strong></div>'}
+        ${messages.length ? affiches.map((m) => pv2ThreadMessageHtml(m, affiches, fil, contact)).join('') : '<div class="pv2-thread-empty"><strong>Aucun message</strong></div>'}
       </div>
       ${avant}${pv2ThreadReplyHtml(fil, contact, messages)}
     </div>`;
@@ -8298,6 +8580,7 @@
       threadReply: pv2Threads.selectedId && pv2Threads.detail.loaded && pv2Threads.detail.thread,
     });
     pv2FillFrames(root);
+    pv2RemplirMailsRecus(root);
     emSuivreLaReponse();
   }
 

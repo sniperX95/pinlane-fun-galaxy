@@ -28,6 +28,8 @@ const MUTATIONS = [
   { nom: 'sans-trait', rouge: '[D] a la fin, chaque chiffre prouve recoit son trait, dans l ordre de lecture', editions: [{ fichier: CSS, de: '.ast-r.vient-d-ecrire .ast-chiffre { animation: astTrait 460ms var(--c-sortie) calc(140ms + min(var(--n, 0), 24) * 40ms) backwards; }', vers: '' }] },
   { nom: 'mouvement-force', rouge: '[E] sans mouvement, la reponse tombe d un coup, sans fondu', editions: [{ fichier: JS, de: '    if (sansMouvement() || document.hidden) { viderPlume(m); return; }', vers: '    if (document.hidden) { viderPlume(m); return; }' }] },
   { nom: 'arret-sans-texte', rouge: '[F] arreter montre tout de suite le texte deja recu', editions: [{ fichier: JS, de: "    coupure.signal.addEventListener('abort', () => viderPlume(reponse));", vers: '' }] },
+  { nom: 'hauteur-d-un-coup', rouge: '[G] la reponse grandit en glissant, sans saut de ligne', editions: [{ fichier: JS, de: "    suivreLaHauteur(zone, m.statut === 'cours' && Boolean(m.texte));\n", vers: '' }] },
+  { nom: 'hauteur-gardee', rouge: '[G] a la fin, la reponse rend sa hauteur a son contenu', editions: [{ fichier: JS, de: '      if (!s.enCours) lacherLaHauteur(zone, s);', vers: '' }] },
 ];
 
 // Une reponse de quatre paragraphes, envoyee d un seul morceau, avec trois chiffres prouves.
@@ -121,6 +123,7 @@ async function verifier(editions = []) {
           neufs: neufs.length,
           fondu: neufs.some((x) => x.getAnimations().some((an) => an.animationName === 'astMot')),
           entree: [...z.querySelectorAll('.ast-bloc-neuf')].some((x) => x.getAnimations().some((an) => an.animationName === 'astBloc')),
+          h: z.getBoundingClientRect().height,
         });
       }
       if (!window.__stop) requestAnimationFrame(tick);
@@ -154,6 +157,15 @@ async function verifier(editions = []) {
     const traits = await page.evaluate(() => [...[...document.querySelectorAll('.ast-r')].pop().querySelectorAll('.ast-chiffre')].map((b) => ({ t: b.textContent, nom: getComputedStyle(b).animationName, delai: parseFloat(getComputedStyle(b).animationDelay) })));
     ok(traits.length === 3 && traits.every((x) => x.nom === 'astTrait') && traits.every((x, i) => i === 0 || x.delai > traits[i - 1].delai),
       '[D] a la fin, chaque chiffre prouve recoit son trait, dans l ordre de lecture', JSON.stringify(traits));
+    // [G] (2026-11-13, Ansar : « le texte apparait en bas, c est pas fluide, ca cree des petits
+    // sauts ») : d une image a l autre, la reponse ne grandit jamais d une ligne entiere d un coup.
+    const hauteurs = ecriture.map((e) => e.h);
+    const sauts = hauteurs.slice(1).map((h, i) => h - hauteurs[i]);
+    const plusGrandSaut = Math.max(0, ...sauts);
+    ok(hauteurs.length > 10 && hauteurs[hauteurs.length - 1] - hauteurs[0] > 60 && plusGrandSaut <= 12,
+      '[G] la reponse grandit en glissant, sans saut de ligne', JSON.stringify({ plusGrandSaut: Math.round(plusGrandSaut * 10) / 10, depart: Math.round(hauteurs[0] || 0), arrivee: Math.round(hauteurs[hauteurs.length - 1] || 0), images: hauteurs.length }));
+    const rendue = await page.evaluate(() => { const z = [...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]'); return { h: z.style.height, o: z.style.overflow }; });
+    ok(rendue.h === '' && rendue.o === '', '[G] a la fin, la reponse rend sa hauteur a son contenu', JSON.stringify(rendue));
     ok(!erreurs.length, '[A-D] aucune erreur JavaScript', erreurs.join(' | '));
     await page.context().close();
 

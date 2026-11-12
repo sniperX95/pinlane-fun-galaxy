@@ -474,6 +474,10 @@ function createHandler({
         inReplyTo,
         references,
         replyTo,
+        // Le mail en entier (2026-11-12) : sa version HTML et la liste de ses
+        // pieces jointes, pour que la console montre les images et les liens.
+        html,
+        attachments: Array.isArray(data.attachments) ? data.attachments : null,
       });
       sendJson(res, 200, {
         ok: true,

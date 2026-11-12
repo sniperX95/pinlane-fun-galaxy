@@ -10,7 +10,10 @@
    variees, les sequences, le design des mails, les identites, les questions
    de l agent. Aucun reseau, aucune base, aucun secret.
 
-   Usage : node scripts/dev-console-server.js [--port=4260] [--reel]
+   Usage : node scripts/dev-console-server.js [--port=4260] [--reel] [--exemples]
+   (--exemples ajoute trois fils : un mail du formulaire du site (905), une
+   reponse partie de la boite du centre (906), un mail recu en HTML avec ses
+   images et ses pieces jointes (907))
    Puis ouvrir http://127.0.0.1:4260/#/staff/emails/apercu
 
    POURQUOI des fixtures et pas la vraie base : la verification visuelle et
@@ -219,7 +222,7 @@ const CLIENT_EXEMPLE = { prenom: 'Marie', nom: 'Marie Dupont', centre: CENTRE.na
 // fixtures sont rendus UNE fois, a la construction, avec des logos en URL
 // absolue : un gate qui monte ce serveur sur un autre port la passe ici,
 // sinon ces mails pointeraient sur le port par defaut.
-function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {}) {
+function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exemples = false } = {}) {
   ORIGINE_APP = origine;
   MAINTENANT_FIXTURES = maintenant === null ? null : Number(maintenant);
   const MEMBRES = {
@@ -367,6 +370,54 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
     analysis: { intent: 'reservation', intentLabel: 'Réservation', summary: 'Demande un vendredi de juin pour 30 élèves en laser game.', urgency: 'normale', provider: 'rules', clientName: 'Lucas', reply: { subject: 'Re: Sortie scolaire de juin', body: 'Bonjour Lucas,\n\nOui, les vendredis de juin sont ouverts aux groupes scolaires : le laser game accueille 30 élèves en deux équipes.' } },
   } });
 
+  // UN MAIL DU FORMULAIRE DU SITE (option `formulaire`, coupee par defaut : les
+  // gates comptent les fils). Il arrive par l adresse du site, le client est
+  // ecrit dans le mail (payload.contactSource), et le texte est celui que le
+  // site envoie : chaque question suivie de trois espaces et de la reponse,
+  // les champs colles les uns aux autres. Donnees inventees.
+  if (exemples) {
+    ajouterFil({ id: 905, contactEmail: 'julie@exemple.be', contactName: 'Julie Exemple', subject: 'Nouvelle demande depuis le site', status: 'open', origin: 'inbound', createdAt: ilYA(40 * 60000) });
+    ajouterComm({ id: 50, threadId: 905, direction: 'inbound', status: 'received', templateId: null, recipient: 'julie@exemple.be', subject: 'Nouvelle demande depuis le site', createdAt: ilYA(40 * 60000), payload: {
+      from: 'site@fungalaxy.be', fromName: 'Fun Galaxy', receivedAt: ilYA(40 * 60000),
+      clientEmail: 'julie@exemple.be', contactName: 'Julie Exemple', contactSource: 'corps', relais: 'site@fungalaxy.be',
+      textBody: 'Pour commencer, quel est votre nom ?   JULIE EXEMPLE Choix du centre   Libramont Quelle activité vous tente ?   Bowling et laser game Nombre de participants ?   15 Date souhaitée   samedi 21 novembre Téléphone   0470 00 00 00\nE-mail   julie@exemple.be [julie@exemple.be]\nVotre message   C\'est pour les 10 ans de ma fille, on aimerait une table pour le gâteau.',
+      analysis: { intent: 'anniversaire', intentLabel: 'Anniversaire', summary: 'Veut fêter les 10 ans de sa fille le samedi 21 novembre, 15 personnes, bowling et laser game, avec une table pour le gâteau.', urgency: 'normale', provider: 'rules', clientName: 'Julie', reply: { subject: 'Re: Nouvelle demande depuis le site', body: 'Bonjour Julie,\n\nMerci pour votre demande. Le samedi 21 novembre est encore ouvert pour 15 personnes, bowling puis laser game, et la table pour le gâteau vous attend.' } },
+    } });
+
+    // UNE REPONSE PARTIE DE LA BOITE DU CENTRE : Sophie a repondu depuis
+    // libramont@ (hors Pinlane), Paul repond a CE mail ; son In-Reply-To ne
+    // designe aucun mail de Pinlane, sa citation est signee du centre.
+    const reponseBoite = new Date(ilYA(20 * H));
+    const attribution = `Le ${reponseBoite.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} à ${reponseBoite.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}, Fun Galaxy Libramont <libramont@fungalaxy.be> a écrit :`;
+    ajouterFil({ id: 906, contactEmail: 'paul.exemple@exemple.be', contactName: 'Paul Exemple', subject: 'Salle anniversaire samedi', status: 'open', origin: 'inbound', createdAt: ilYA(26 * H) });
+    ajouterComm({ id: 61, threadId: 906, direction: 'inbound', status: 'received', templateId: null, recipient: 'paul.exemple@exemple.be', subject: 'Salle anniversaire samedi', createdAt: ilYA(26 * H), messageId: '<paul-1@exemple.be>', payload: {
+      from: 'paul.exemple@exemple.be', fromName: 'Paul Exemple', receivedAt: ilYA(26 * H),
+      textBody: 'Bonjour,\n\nLa salle anniversaire est-elle libre samedi à 15 h ? Nous serions 12 enfants.\n\nMerci,\nPaul',
+    } });
+    ajouterComm({ id: 62, threadId: 906, direction: 'inbound', status: 'received', templateId: null, recipient: 'paul.exemple@exemple.be', subject: 'Re: Salle anniversaire samedi', createdAt: ilYA(2 * H), messageId: '<paul-2@exemple.be>', inReplyTo: '<boite-1@fungalaxy.be>', references: '<paul-1@exemple.be> <boite-1@fungalaxy.be>', payload: {
+      from: 'paul.exemple@exemple.be', fromName: 'Paul Exemple', receivedAt: ilYA(2 * H),
+      textBody: `Super, merci Sophie ! On confirme pour samedi 15 h, 12 enfants.\n\n${attribution}\n> Bonjour Paul,\n>\n> Oui, la salle anniversaire est libre samedi à 15 h. Je vous la garde jusqu'à demain midi.\n>\n> Sophie\n>\n> > Bonjour,\n> > La salle anniversaire est-elle libre samedi à 15 h ?`,
+      analysis: { intent: 'reservation', intentLabel: 'Réservation', summary: 'Confirme la salle anniversaire samedi à 15 h pour 12 enfants.', urgency: 'normale', provider: 'rules', clientName: 'Paul', reply: { subject: 'Re: Salle anniversaire samedi', body: 'Bonjour Paul,\n\nC’est noté, la salle anniversaire est à vous samedi à 15 h pour 12 enfants.' } },
+    } });
+
+    // UN MAIL RECU AVEC SON HTML : une photo collee dans le mail (cid:), un
+    // lien, deux pieces jointes, un pixel espion, un script et un lien javascript: qui doivent
+    // tomber, et la citation Gmail repliee. Resend le rend par mailRecuComplet.
+    const photoFete = `data:image/webp;base64,${fs.readFileSync(path.join(ROOT, 'assets/fungalaxy/duckpin-800.webp')).toString('base64')}`;
+    ajouterFil({ id: 907, contactEmail: 'lea@exemple.be', contactName: 'Léa Exemple', subject: 'Les photos de la fête', status: 'open', origin: 'inbound', createdAt: ilYA(90 * 60000) });
+    ajouterComm({ id: 63, threadId: 907, direction: 'inbound', status: 'received', templateId: null, recipient: 'lea@exemple.be', subject: 'Les photos de la fête', createdAt: ilYA(90 * 60000), payload: {
+      from: 'lea@exemple.be', fromName: 'Léa Exemple', receivedAt: ilYA(90 * 60000), provider: 'resend', providerEmailId: 'fixture-907',
+      textBody: 'Bonjour,\n\nVoici la photo de la fête et le programme. L’album complet est ici : https://photos.exemple.be/album/lea\n\nMerci encore,\nLéa',
+      htmlBody: '<div dir="ltr"><p>Bonjour,</p><p>Voici <b>la photo de la fête</b> et <a href="javascript:alert(1)" onclick="alert(2)">le programme</a>. L’album complet est <a href="https://photos.exemple.be/album/lea">ici</a>.</p><p><img src="cid:photo-fete" alt="La piste pendant la fête" width="480"></p><p>Merci encore,<br>Léa</p><img src="https://pixel.exemple.be/o.gif" width="1" height="1" alt=""><script>window.parent.__mailPirate = true;</script></div><div class="gmail_quote"><div class="gmail_attr">Le mar. 10 nov. 2026, Fun Galaxy Libramont &lt;libramont@fungalaxy.be&gt; a écrit :</div><blockquote class="gmail_quote">Bonjour Léa, à samedi !</blockquote></div>',
+      piecesJointes: [
+        { id: 'pj-1', nom: 'photo-fete.webp', taille: 30702, type: 'image/webp', enLigne: true, contentId: 'photo-fete', url: photoFete, expiresAt: dans(H) },
+        { id: 'pj-2', nom: 'fun-run.webp', taille: 39316, type: 'image/webp', enLigne: false, contentId: '', url: '/assets/fungalaxy/fun-run-800.webp', expiresAt: dans(H) },
+        { id: 'pj-3', nom: 'programme-anniversaire.pdf', taille: 48213, type: 'application/pdf', enLigne: false, contentId: '', url: '', expiresAt: null },
+      ],
+      analysis: { intent: 'autre', intentLabel: 'Autre', summary: 'Envoie la photo de la fête et le programme, avec le lien vers l’album.', urgency: 'basse', provider: 'rules', clientName: 'Léa', reply: { subject: 'Re: Les photos de la fête', body: 'Bonjour Léa,\n\nMerci pour la photo, elle est superbe. À bientôt chez nous !' } },
+    } });
+  }
+
   // La file des envoyes hors conversation : origines et statuts varies.
   ajouterComm({ id: 51, templateId: 'confirmation', recipient: 'claire@exemple.be', subject: 'C\'est confirmé : on vous attend samedi 20 septembre', createdAt: ilYA(6 * H), sentAt: ilYA(6 * H), status: 'delivered', deliveredAt: ilYA(6 * H - 9000), openedAt: ilYA(5 * H), openCount: 1, payload: { reservationId: 5140 }, textBody: 'Bonjour Claire,\n\nVotre réservation Bowling du samedi 20 septembre à 14:00 pour 8 joueurs est confirmée.\n\nL\'équipe Fun Galaxy Libramont' });
   evenement(51, 'delivered', ilYA(6 * H - 9000)); evenement(51, 'opened', ilYA(5 * H), { userAgent: 'Apple Mail' });
@@ -423,11 +474,18 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
     const texte = texteMessage(c);
     const parts = separerLeMessage(texte);
     const origine = origineDe(c);
+    // Comme lib/email-threads.js mapperMessage : un mail relaye par le site
+    // montre le client, l adresse du site reste dans `via`.
+    const relaye = c.direction === 'inbound' && Boolean(p.contactSource) && p.contactSource !== 'expediteur';
     return {
       id: c.id, direction: c.direction === 'inbound' ? 'inbound' : 'outbound', subject: c.subject, body: c.body, textBody: texte,
       message: parts.message, historique: parts.historique, createdAt: c.createdAt, sentAt: c.sentAt, receivedAt: p.receivedAt || null,
       status: c.status, templateId: c.templateId || '', origine, sequenceLabel: origine === 'auto' ? (LIBELLES[c.templateId] || '') : '',
-      sentBy: p.sentBy || null, fromEmail: String(p.fromEmail || p.from || ''), fromLabel: String(p.fromLabel || p.fromName || ''), recipient: c.recipient,
+      sentBy: p.sentBy || null,
+      fromEmail: relaye ? String(c.recipient || '') : String(p.fromEmail || p.from || ''),
+      fromLabel: relaye ? String(p.contactName || '') : String(p.fromLabel || p.fromName || ''),
+      via: relaye ? String(p.relais || p.from || '') : '', recipient: c.recipient,
+      contenuComplet: c.direction === 'inbound' && Boolean(p.htmlBody || (p.provider === 'resend' && p.providerEmailId)),
       providerMessageId: c.providerMessageId || '', messageId: c.messageId, inReplyTo: c.inReplyTo,
       suivi: { deliveredAt: c.deliveredAt, openedAt: c.openedAt, openCount: c.openCount, clickedAt: c.clickedAt, clickCount: c.clickCount, bouncedAt: c.bouncedAt, complainedAt: c.complainedAt, lastError: c.lastError || '' },
       evenements: etat.events[c.id] || [], lectures: etat.reads[c.id] || [], prise: priseSur(c.id),
@@ -445,12 +503,33 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
     const total = fils.length;
     return { threads: fils.slice(offset, offset + limit).map(filDeListe), total };
   }
+  // Comme lib/email-threads.js reponsesCiteesHorsPinlane : une reponse partie
+  // de la boite du centre revient dans la citation du client.
+  function reponsesCitees(bruts, mappes) {
+    const { separerCitation, premiereCitation } = require('../assets/email-thread.js');
+    const nosMails = new Set(etat.comms.filter((c) => c.direction !== 'inbound').map((c) => c.messageId));
+    const adresses = new Set([CENTRE.publicInfo.email, ...etat.identities.map((i) => i.email)].map((a) => String(a || '').toLowerCase()).filter(Boolean));
+    const deja = new Set();
+    bruts.forEach((c, index) => {
+      if (c.direction !== 'inbound') return;
+      const ids = String(c.inReplyTo || '').match(/<[^<>\s]+>/g) || [];
+      if (!ids.length || ids.some((id) => nosMails.has(id))) return;
+      const cite = premiereCitation(separerCitation(texteMessage(c)).historique);
+      if (!cite || !adresses.has(cite.adresse)) return;
+      const cle = cite.texte.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (deja.has(cle)) return;
+      deja.add(cle);
+      mappes[index].reponseCitee = { auteur: cite.auteur, adresse: cite.adresse, date: cite.date, texte: cite.texte };
+    });
+    return mappes;
+  }
   function chargerFil(id) {
     const fil = etat.threads.find((f) => String(f.id) === String(id));
     if (!fil) return null;
     const autres = etat.threads.filter((f) => f.id !== fil.id && f.contactEmail === fil.contactEmail).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+    const bruts = messagesDuFil(fil);
     return {
-      thread: clone(fil), messages: messagesDuFil(fil).map(messageDuFil),
+      thread: clone(fil), messages: reponsesCitees(bruts, bruts.map(messageDuFil)),
       contact: { email: fil.contactEmail, name: fil.contactName, autresFils: autres.map((a) => ({ id: a.id, subject: a.subject, status: a.status, lastMessageAt: a.lastMessageAt, messageCount: a.messageCount })), nbFils: autres.length + 1 },
     };
   }
@@ -547,6 +626,14 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {
         const fil = chargerFil(params.get('id'));
         if (!fil) return { status: 404, payload: { ok: false, message: 'Conversation introuvable.' } };
         return fil;
+      }
+      // Le mail recu en entier (lib/mail-recu-complet.js) : ici, ce que la
+      // fixture porte, a la place de Resend.
+      case 'mailRecuComplet': {
+        const recu = etat.comms.find((c) => String(c.id) === String(params.get('id')) && c.direction === 'inbound');
+        if (!recu) return { status: 404, payload: { ok: false, message: 'Mail introuvable.' } };
+        const p = recu.payload || {};
+        return { html: String(p.htmlBody || ''), piecesJointes: clone(p.piecesJointes || []), raison: '' };
       }
       case 'emailSent': return listerEnvoyes({ origine: params.get('origine') || 'tous', statut: params.get('statut') || 'tous', q: params.get('q') || '', limit: Number(params.get('limit') || 100) });
       case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }], photos: photosSignature(), formules: emailDesignReel.FORMULES_DE_FIN.slice(), couleurs: emailDesignReel.couleursDuCentre(CATALOGUE_CENTRE) };
@@ -825,7 +912,7 @@ function creerServeur(repondeur) {
 }
 
 function demarrer() {
-  const repondeur = MODE === 'reel' ? creerRepondeurReel() : creerRepondeurFixtures({ origine: `http://${HOST}:${PORT}` });
+  const repondeur = MODE === 'reel' ? creerRepondeurReel() : creerRepondeurFixtures({ origine: `http://${HOST}:${PORT}`, exemples: ARGS.includes('--exemples') });
   const serveur = creerServeur(repondeur);
   return new Promise((resolve, reject) => {
     serveur.once('error', reject);

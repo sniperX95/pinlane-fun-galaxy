@@ -24,7 +24,8 @@ const MUTATIONS = [
   { nom: 'texte-d-usine', rouge: '[A] la confirmation se lit telle qu elle part, sans le « Bien à vous » de son texte d usine', editions: [{ fichier: OUTILS, de: 'texte_envoye: parti ? texte(nom, parti.texte) : NON_DISPONIBLE,', vers: 'texte_envoye: texte(nom, r.body || d.body),' }] },
   // (un changement de texte ecrit depuis l exemple enverrait « Marie » et le 20 juin a tous les clients)
   { nom: 'modifier-depuis-l-exemple', rouge: '[A] le texte a modifier garde ses variables, jamais le nom ni la date de l exemple', editions: [{ fichier: OUTILS, de: 'texte_a_modifier: texte(nom, r.body || d.body),', vers: "texte_a_modifier: texte(nom, parti ? parti.texte : '')," }] },
-  { nom: 'sans-signature', rouge: '[A] la signature du centre : sa formule, qui signe, sa disposition, ou elle se pose', editions: [{ fichier: OUTILS, de: 'modele: { centre: id, signature: signature || NON_DISPONIBLE, exemple:', vers: 'modele: { centre: id, exemple:' }] },
+  { nom: 'sans-signature', rouge: '[A] la signature du centre : sa formule, qui signe, sa disposition, ou elle se pose', editions: [{ fichier: OUTILS, de: 'modele: { centre: id, signature: signature || NON_DISPONIBLE, gabarit:', vers: 'modele: { centre: id, gabarit:' }] },
+  { nom: 'gabarit-par-son-id', rouge: '[B] le gabarit des mails se lit sous son nom de la galerie', editions: [{ fichier: OUTILS, de: "  return { nom: nom(id), mails_automatiques: nom(auto ? auto.id : id) };", vers: "  return { nom: id, mails_automatiques: auto ? auto.id : id };" }] },
   { nom: 'depart-pris-pour-l-envoi', rouge: '[A] une sequence jamais personnalisee se dit partie avec le texte du logiciel', editions: [{ fichier: OUTILS, de: "part_avec: r.body ? 'le texte du centre' : 'le texte du logiciel',", vers: "part_avec: 'le texte du centre'," }] },
   { nom: 'panne-des-modeles', rouge: '[E] sans les modeles, la signature et les sequences se lisent encore', editions: [{ fichier: OUTILS, de: 'ouRien(() => listEmailTemplates({ centerId: id }))', vers: 'listEmailTemplates({ centerId: id })' }] },
   { nom: 'fin-sans-signature', rouge: '[A] la confirmation finit par « Funement vôtre, » puis l equipe', editions: [{ fichier: OUTILS, de: 'return lignesNonVides(mail.envoye || mail.texte)', vers: 'return lignesNonVides(mail.texte)' }] },
@@ -119,6 +120,15 @@ async function verifier(editions = []) {
     const autre = await lire();
     ok((autre.signature || {}).formule === 'On vous garde une piste !' && finit(seq(autre, 'Confirmation de réservation'), ['On vous garde une piste !', 'L\'équipe Fun Galaxy Libramont']),
       '[B] une autre formule enregistree par le centre se lit, et finit ses mails', JSON.stringify({ formule: (autre.signature || {}).formule, fin: seq(autre, 'Confirmation de réservation').fin_lue_par_le_client }));
+
+    // (« Grand jour » et pas « Affiche » : la galerie d Apparence, 2026-11-12 ; un grand format de campagne
+    // laisse aux mails automatiques le repli de la boite principale)
+    reglages.set('libramont', { email_design: { preset: 'affiche' } });
+    const grandJour = await lire();
+    reglages.set('libramont', { email_design: { preset: 'vitrine' } });
+    const vitrine = await lire();
+    ok((usine.gabarit || {}).nom === 'Mail simple' && (grandJour.gabarit || {}).nom === 'Grand jour' && (vitrine.gabarit || {}).nom === 'Vitrine' && (vitrine.gabarit || {}).mails_automatiques !== 'Vitrine' && Boolean((vitrine.gabarit || {}).mails_automatiques),
+      '[B] le gabarit des mails se lit sous son nom de la galerie', JSON.stringify({ usine: usine.gabarit, grandJour: grandJour.gabarit, vitrine: vitrine.gabarit }));
 
     if (!editions.length) console.log('\n[C] une signature coupee sur les mails automatiques');
     reglages.set('libramont', { email_design: { signatureScope: { manual: true, sequences: false, campaigns: false } } });

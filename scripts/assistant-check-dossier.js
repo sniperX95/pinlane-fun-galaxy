@@ -45,7 +45,7 @@ const MUTATIONS_DOSSIER = {
   'reprise-muette': { section: 'E', fichier: ECRAN, de: "        m.retires = Number(d.corrige) || 0;\n", vers: "", rouge: "[E] un chiffre repris avant la fin se dit" },
   'resultat-long-au-telephone': { section: 'E', fichier: STYLE, de: "justify-self: end; min-width: 0; text-align: right; white-space: normal; }", vers: "justify-self: end; }", rouge: "[E] telephone : un resultat long ne s ecrit pas sur le nom de sa source" },
   // La lecture en direct, sans la boite a dessins (scripts/assistant-check.js, ecransRecherche et ecransDessins).
-  'ensemble-d-un-coup': { section: 'E', fichier: ECRAN, de: "finDes: now + LECTURE_VUE_MIN + rang * LECTURE_DECALAGE,", vers: "finDes: now,", rouge: "[E] les lectures lancees ensemble finissent l une apres l autre" },
+  'ensemble-d-un-coup': { section: 'E', fichier: ECRAN, de: "finDes: Math.max(now + LECTURE_VUE_MIN, precedente + LECTURE_DECALAGE),", vers: "finDes: now,", rouge: "[E] les lectures lancees ensemble finissent l une apres l autre" },
   'sans-puce': { section: 'E', fichier: ECRAN, de: "      li.querySelector('.lu-dessine').innerHTML = puceDe(source);\n", vers: "", rouge: "[E] une lecture finie rend son resultat et sa puce" },
   'puce-unique': { section: 'E', fichier: ECRAN, de: "    if (!temps && !semaine && valeurs.length <= 6) {", vers: "    if (false) {", rouge: "[E] deux formes de donnees n ont pas la meme puce" },
   'pli-qui-traine': { section: 'E', fichier: ECRAN, de: "      demanderPeinture(m);\n    }, 160);", vers: "      demanderPeinture(m);\n    }, 2600);", rouge: "[E] la reponse n attend aucune animation" },

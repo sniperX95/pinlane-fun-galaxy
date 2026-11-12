@@ -398,8 +398,10 @@
   const SIGNE = '<span class="ast-orbe" aria-hidden="true"><i></i><i></i><i></i></span>';
   // Une lecture reste « en cours » au moins ce temps a l ecran, puis rend son resultat : les lectures
   // lancees ensemble finissent l une apres l autre, dans l ordre, au lieu de toutes d un coup.
+  // Le decalage passe deux battements de 60 ms (2026-11-12) : a 110 ms, l ecart rendu tombait parfois a
+  // un seul battement, 60 ms, a la limite de ce qui se voit.
   const LECTURE_VUE_MIN = 420;
-  const LECTURE_DECALAGE = 110;
+  const LECTURE_DECALAGE = 130;
 
   // Le mois en barres : une par jour, a la hauteur de ses vraies reservations. Au-dela de deux mois
   // les jours se regroupent, la periode entiere reste visible.
@@ -960,14 +962,16 @@
     const resultatDe = (e) => (e.etat === 'echec' ? 'échec' : (e.trouve || mesureDe(e)));
 
     // Une nouvelle lecture : sa ligne s ajoute sous les autres.
-    function entrer(e, now, rang) {
+    function entrer(e, now) {
       const moule = document.createElement('ol');
       moule.innerHTML = htmlLigneEnCours(e);
       const li = moule.firstElementChild;
       liste.appendChild(li);
       if (!sansMouvement()) li.animate([{ height: '0px', opacity: 0 }, { height: `${li.offsetHeight}px`, opacity: 1 }], { duration: 220, easing: 'cubic-bezier(.165, .84, .44, 1)' });
-      // Les lectures arrivees ensemble rendent leur resultat l une apres l autre.
-      S.lignes.set(e, { li, vue: now, finDes: now + LECTURE_VUE_MIN + rang * LECTURE_DECALAGE, ecrit: '', fini: false });
+      // Les lectures arrivees ensemble rendent leur resultat l une apres l autre, meme quand le flux les
+      // pose de part et d autre d un battement : chacune finit au plus tot un decalage apres la precedente.
+      const precedente = Math.max(0, ...[...S.lignes.values()].map((L) => L.finDes));
+      S.lignes.set(e, { li, vue: now, finDes: Math.max(now + LECTURE_VUE_MIN, precedente + LECTURE_DECALAGE), ecrit: '', fini: false });
       dit.textContent = e.phrase || e.libelle || '';
     }
 
@@ -989,10 +993,9 @@
     function battre() {
       if (!S.vivant || !bloc.isConnected) return;
       const now = performance.now();
-      let nouvelles = 0;
       lectures().forEach((e) => {
         let L = S.lignes.get(e);
-        if (!L) { entrer(e, now, nouvelles); nouvelles += 1; L = S.lignes.get(e); }
+        if (!L) { entrer(e, now); L = S.lignes.get(e); }
         if (L.fini) return;
         if (e.etat !== 'cours' && (sansMouvement() || now >= L.finDes)) { finir(e, L); return; }
         // Le compte s ecrit tel que le serveur le donne : aucun nombre ne defile.

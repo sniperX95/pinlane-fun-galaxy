@@ -6586,6 +6586,7 @@
       pv2Design.stored = payload && payload.stored && typeof payload.stored === 'object' ? payload.stored : null;
       pv2Design.defaults = pv2DesignNormaliser(payload && payload.defaults);
       pv2Design.presets = Array.isArray(payload && payload.presets) && payload.presets.length ? payload.presets : PV2_DESIGN_PRESETS;
+      pv2Design.familles = Array.isArray(payload && payload.familles) ? payload.familles : [];
       pv2Design.center = payload && payload.center && typeof payload.center === 'object' ? payload.center : null;
       pv2Design.logos = Array.isArray(payload && payload.logos) ? payload.logos : [];
       pv2Design.photos = Array.isArray(payload && payload.photos) ? payload.photos : [];
@@ -6680,6 +6681,56 @@
       design: JSON.parse(JSON.stringify(pv2Design.design)),
       sample: pv2Design.sample,
     }), delai);
+    pv2GalerieCharger(Math.max(700, delai));
+  }
+
+  /* ── LA GALERIE DES GABARITS (2026-11-12) ────────────────────────────────
+     Chaque gabarit en vignette : le vrai mail du centre, rendu par le serveur
+     avec le brouillon (sa couleur, sa signature), en une requete. Elle suit le
+     grand apercu, un peu plus tard. Les vignettes d un autre centre ne se
+     montrent jamais : elles portent le centre pour lequel elles ont ete faites. */
+  const PV2_GALERIE = { timer: 0, ctrl: null, serie: 0, centre: '', vignettes: {} };
+  function pv2GalerieCharger(delai = 700) {
+    clearTimeout(PV2_GALERIE.timer);
+    PV2_GALERIE.timer = setTimeout(async () => {
+      if (!pv2Design.design) return;
+      if (PV2_GALERIE.ctrl) PV2_GALERIE.ctrl.abort();
+      const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+      PV2_GALERIE.ctrl = ctrl;
+      const serie = ++PV2_GALERIE.serie;
+      const centre = pv2CentreCourant();
+      try {
+        const payload = await apiRequest('/api/ops', { method: 'POST', body: JSON.stringify({ action: 'emailDesignGallery', centerId: centre, design: JSON.parse(JSON.stringify(pv2Design.design)) }), signal: ctrl ? ctrl.signal : undefined });
+        if (serie !== PV2_GALERIE.serie || centre !== pv2CentreCourant()) return;
+        const vignettes = {};
+        (Array.isArray(payload && payload.vignettes) ? payload.vignettes : []).forEach((v) => { if (v && v.id) vignettes[String(v.id)] = String(v.html || ''); });
+        PV2_GALERIE.centre = centre;
+        PV2_GALERIE.vignettes = vignettes;
+        pv2GaleriePeindre();
+      } catch (error) {
+        // Une galerie indisponible garde ses vignettes d avant ; les noms restent cliquables.
+      }
+    }, delai);
+  }
+  function pv2GalerieVignette(id) {
+    return PV2_GALERIE.centre === pv2CentreCourant() ? (PV2_GALERIE.vignettes[id] || '') : '';
+  }
+  function pv2GaleriePeindre() {
+    document.querySelectorAll('#staffEmailsPage iframe[data-pv2-frame^="galerie-"]').forEach((frame) => {
+      const cle = frame.getAttribute('data-pv2-frame');
+      const html = pv2GalerieVignette(cle.slice('galerie-'.length));
+      PV2_FRAMES[cle] = html;
+      if (frame.__pv2Html !== html) pv2ReposerCadre(frame, html);
+    });
+  }
+  // Les familles dans l ordre du serveur ; un gabarit sans famille (serveur plus
+  // ancien que la console) tombe dans la premiere, une liste sans familles reste d un bloc.
+  function pv2DesignFamillesDe(presets) {
+    const connues = Array.isArray(pv2Design.familles) ? pv2Design.familles.filter((f) => f && f.id) : [];
+    if (!connues.length) return [{ id: 'tous', label: '', aide: '', gabarits: presets }];
+    const groupes = connues.map((f) => ({ id: String(f.id), label: String(f.label || ''), aide: String(f.aide || ''), gabarits: [] }));
+    presets.forEach((p) => { (groupes.find((g) => g.id === p.famille) || groupes[0]).gabarits.push(p); });
+    return groupes.filter((g) => g.gabarits.length);
   }
 
   // Un champ texte : pas de rendu (le focus reste), apercu 500 ms apres.
@@ -7914,12 +7965,29 @@
         <div class="pv2-design-scope">${contacts.map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${esc(l)}</strong><small>${v ? esc(String(v)) : 'pas encore écrit, à compléter dans Plus d’options'}</small>${interrupteur(`signature.afficher.${k}`, afficher[k] !== false, `${l} dans la signature`)}</div>`).join('')}</div>
       </div>`;
 
+    // LA GALERIE (2026-11-12) : chaque gabarit en vignette, le vrai mail du centre
+    // avec ce brouillon, range par famille (sa regle de boite de reception). Une
+    // vignette pas encore arrivee laisse son cadre vide ; le nom reste cliquable.
+    const carteGabarit = (p) => {
+      const actif = d.preset === p.id;
+      const cle = `galerie-${p.id}`;
+      PV2_FRAMES[cle] = pv2GalerieVignette(p.id);
+      return `<div class="em-galerie-carte${actif ? ' is-active' : ''}" data-em-gabarit="${esc(p.id)}">
+          <div class="em-galerie-vignette" aria-hidden="true"><iframe class="em-galerie-cadre" sandbox="" tabindex="-1" title="" data-pv2-frame="${esc(cle)}"></iframe></div>
+          <button type="button" class="pv2-design-preset em-galerie-choix${actif ? ' is-active' : ''}" role="radio" aria-checked="${actif}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small></button>
+        </div>`;
+    };
+    const galerie = pv2DesignFamillesDe(presets).map((f) => `<div class="em-galerie-famille" data-em-famille="${esc(f.id)}">
+          ${f.label ? `<p class="em-galerie-titre"><strong>${esc(f.label)}</strong>${f.aide ? `<small>${esc(f.aide)}</small>` : ''}</p>` : ''}
+          <div class="em-galerie-grille">${f.gabarits.map(carteGabarit).join('')}</div>
+        </div>`).join('');
+
     return `<div class="pv2-design-form">
       <section class="pv2-design-block" aria-label="Gabarit">
         <h3>Gabarit</h3>
-        <p class="pv2-design-hint">La forme du mail. Une carte, du papier, une barre de couleur ou un bandeau.</p>
-        <div class="pv2-design-presets" role="radiogroup" aria-label="Gabarit">
-          ${presets.map((p) => `<button type="button" class="pv2-design-preset em-choix${d.preset === p.id ? ' is-active' : ''}" role="radio" aria-checked="${d.preset === p.id}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><span class="em-choix-point" aria-hidden="true"></span><span class="em-choix-texte"><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small></span></button>`).join('')}
+        <p class="pv2-design-hint">La forme du mail. Chaque vignette est votre vrai mail, avec vos couleurs et votre signature.</p>
+        <div class="pv2-design-presets em-galerie" role="radiogroup" aria-label="Gabarit">
+          ${galerie}
         </div>
       </section>
       <section class="pv2-design-block" aria-label="Couleur du mail">

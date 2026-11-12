@@ -22017,6 +22017,22 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-nav .em-nav-item { padding: 0 12px; font-size: 15px; }
 #staffEmailsPage .em-shell .em-nav .em-nav-count { min-width: 24px; height: 22px; padding: 0 7px; border-radius: 11px; font-size: 13px; }
 
+/* LES SECTIONS EN UNE RANGEE (2026-11-12). Ansar : « coupe en 3 sections comme
+   ca, ca reduit drastiquement la visibilite, enleve les raccourcis [...] pense
+   surtout aux ecrans standards des PC moins grands ». La colonne de raccourcis
+   (Boite, Contenu...) prenait 212 px sur un ecran de 1366 : les sections passent
+   en une ligne d onglets sous le titre, sans les titres de groupe, et la page
+   garde toute sa largeur. Un groupe se separe du suivant par un espace. */
+#staffEmailsPage .em-body { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+#staffEmailsPage .em-shell .em-nav { position: static; }
+#staffEmailsPage .em-shell .em-nav .em-nav-list { flex-direction: row; align-items: center; gap: 2px; padding: 4px 0; border-radius: 0; background: transparent; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+#staffEmailsPage .em-shell .em-nav .em-nav-list::-webkit-scrollbar { display: none; }
+#staffEmailsPage .em-shell .em-nav-group { display: contents; }
+#staffEmailsPage .em-shell .em-nav-label { display: none; }
+#staffEmailsPage .em-shell .em-nav .em-nav-item { flex: 0 0 auto; width: auto; padding: 0 14px; scroll-snap-align: start; }
+#staffEmailsPage .em-shell .em-nav-group + .em-nav-group > .em-nav-item:first-of-type { margin-left: 18px; }
+#staffEmailsPage .em-shell .em-nav .em-nav-list[data-axis='x'] .em-nav-ind { top: 4px; bottom: 4px; }
+
 /* Les blocs, les titres, les textes */
 #staffEmailsPage .em-shell .em-main { gap: 24px; }
 #staffEmailsPage .em-shell .em-block { padding: 24px 28px; }
@@ -22454,6 +22470,32 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-shell .em-choix-texte { gap: 2px; }
 #staffEmailsPage .em-shell .em-choix-texte strong { font-size: 15px; }
 #staffEmailsPage .em-shell .em-choix-texte small { font-size: 14px; line-height: 1.5; }
+
+/* LA GALERIE DES GABARITS (2026-11-12) : chaque gabarit en vignette (le vrai mail
+   du centre), range par famille. Une vignette montre le haut du mail rendu a
+   640 px, reduit a la largeur de la carte (196 px, soit 0,30625). Meme langue que
+   le choix des photos : un anneau fin au repos, l anneau d accent sur le gabarit
+   choisi. Le bouton s etend sur toute la carte : la vignette se clique aussi. */
+#staffEmailsPage .em-shell .em-galerie { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 14px; }
+#staffEmailsPage .em-shell .em-galerie-famille { display: grid; gap: 12px; min-width: 0; }
+#staffEmailsPage .em-shell .em-galerie-titre { display: grid; gap: 2px; margin: 0; }
+#staffEmailsPage .em-shell .em-galerie-titre strong { font-size: 15px; font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-galerie-titre small { font-size: 14px; line-height: 1.5; color: var(--muted); }
+#staffEmailsPage .em-shell .em-galerie-grille { display: grid; grid-template-columns: repeat(auto-fill, 196px); gap: 18px 14px; }
+#staffEmailsPage .em-shell .em-galerie-carte { position: relative; display: grid; gap: 8px; align-content: start; min-width: 0; }
+#staffEmailsPage .em-shell .em-galerie-vignette { position: relative; width: 196px; height: 200px; overflow: hidden; border-radius: 10px; background: var(--em-well); box-shadow: 0 0 0 1px var(--line); }
+#staffEmailsPage .em-shell .em-galerie-carte.is-active .em-galerie-vignette { box-shadow: 0 0 0 3px var(--accent); }
+#staffEmailsPage .em-shell .em-galerie-cadre { position: absolute; top: 0; left: 0; width: 640px; height: 660px; border: 0; transform: scale(0.30625); transform-origin: 0 0; pointer-events: none; background: transparent; }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset { display: grid; gap: 2px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset::after { content: ''; position: absolute; inset: 0; border-radius: 10px; }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset strong { font-size: 15px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset small { font-size: 13px; line-height: 1.45; color: var(--muted); }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset:focus-visible { outline: none; }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset:focus-visible::after { box-shadow: 0 0 0 3px var(--console-focus); }
+#staffEmailsPage .em-shell .em-galerie-choix.pv2-design-preset[disabled] { cursor: default; }
+@media (hover: hover) {
+  #staffEmailsPage .em-shell .em-galerie-carte:not(.is-active):hover .em-galerie-vignette { box-shadow: 0 0 0 2px var(--line-strong); }
+}
 #staffEmailsPage .em-shell .pv2-design-radios { gap: 12px 24px; }
 #staffEmailsPage .em-shell .pv2-design-fields { gap: 16px; }
 #staffEmailsPage .em-shell .pv2-design-scope-row { gap: 4px 16px; padding: 12px 0; }

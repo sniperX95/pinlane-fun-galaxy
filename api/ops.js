@@ -135,6 +135,7 @@ const {
   saveEmailDesign,
   getEmailDesignBundle,
   buildDesignPreview,
+  buildDesignGallery,
   sendDesignTest,
   buildCustomSequencePreview,
   sendCustomSequenceTest,
@@ -3857,6 +3858,18 @@ ${draftBody}`,
     return;
   }
 
+  // La galerie d Apparence : chaque gabarit rendu avec le brouillon, sans ecriture.
+  if (action === 'emailDesignGallery') {
+    const galerieCenterId = requireConcreteCenter('galerie des gabarits');
+    const galerie = await buildDesignGallery({
+      centerId: galerieCenterId,
+      design: body.design && typeof body.design === 'object' ? body.design : null,
+      member: membreDeSession(options.session),
+    });
+    sendJson(res, 200, { ok: true, action, ...galerie });
+    return;
+  }
+
   // « M envoyer un test » du design : destinataire = la SESSION, jamais la
   // requete (meme regle que sendAutomationTest).
   if (action === 'sendDesignTest') {
@@ -4145,7 +4158,7 @@ function getRequiredOpsPermission(method, action) {
   // et la reponse dans un fil font partir un vrai mail ; lire un mail et le
   // marquer lu vont ensemble.
   if (action === 'emailDesign') return ['settings.manage', 'emails.send'];
-  if (['emailDesignPreview', 'customSequencePreview', 'markCommunicationRead'].includes(action)) return 'emails.view';
+  if (['emailDesignPreview', 'emailDesignGallery', 'customSequencePreview', 'markCommunicationRead'].includes(action)) return 'emails.view';
   if (['sendDesignTest', 'sendCustomSequenceTest', 'setThreadStatus'].includes(action)) return 'emails.send';
   if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send'];
   if (action === 'sendClientRelance') return 'emails.send';
@@ -4242,6 +4255,7 @@ const NON_MUTATING_POST_ACTIONS = new Set([
   'automationPreview', // previsualisation
   'directEmailPreview', // buildDirectEmailPreview : lecture du design du centre, ne touche ni base en ecriture ni file
   'emailDesignPreview', // buildDesignPreview : rendu d un brouillon, aucune ecriture
+  'emailDesignGallery', // buildDesignGallery : les gabarits rendus avec le brouillon, aucune ecriture
   'customSequencePreview', // buildCustomSequencePreview : rendu d un brouillon, aucune ecriture
   'agentStackAudit',   // audit de lecture
   'logClientError',    // telemetrie plafonnee : le journal d'audit trace les

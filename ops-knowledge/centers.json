@@ -274,6 +274,18 @@
           { "url": "/assets/mail/signature-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "label": "Le Fun Run" }
         ],
         "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "accroche": "Bowling · Laser game · Minigolf · Arcades", "layout": "affiche", "photo": "/assets/mail/signature-quilles.jpg" } },
+        "emailPhotosActivites": [
+          { "activites": ["duck"], "url": "/assets/mail/activites/libramont-duckpin.jpg", "alt": "Les pistes de duckpin bowling", "nom": "Duckpin" },
+          { "activites": ["bowling"], "url": "/assets/mail/activites/libramont-bowling.jpg", "alt": "Une piste de bowling éclairée en bleu", "nom": "Bowling", "parDefaut": true, "enVitrine": true },
+          { "activites": ["laser"], "url": "/assets/mail/activites/libramont-laser.jpg", "alt": "L’arène du laser game", "nom": "Laser game", "enVitrine": true },
+          { "activites": ["golf"], "url": "/assets/mail/activites/libramont-minigolf.jpg", "alt": "Le minigolf fluo", "nom": "Minigolf" },
+          { "activites": ["arcade"], "url": "/assets/mail/activites/libramont-arcades.jpg", "alt": "Les jeux d’arcade", "nom": "Arcades" },
+          { "activites": ["billard"], "url": "/assets/mail/activites/libramont-billard.jpg", "alt": "Une table de billard", "nom": "Billard" },
+          { "activites": ["pixel", "fun run", "fun-run", "fun_run", "funrun"], "url": "/assets/mail/activites/libramont-fun-run.jpg", "alt": "Des joueurs sur le sol lumineux du Fun Run", "nom": "Fun Run" },
+          { "activites": ["simulateur"], "url": "/assets/mail/activites/libramont-simulateurs.jpg", "alt": "Les simulateurs", "nom": "Simulateurs" },
+          { "activites": ["plaine"], "url": "/assets/mail/activites/libramont-plaine.jpg", "alt": "La plaine de jeux", "nom": "Plaine de jeux" },
+          { "activites": ["formule", "kids", "anniv"], "url": "/assets/mail/activites/libramont-salle.jpg", "alt": "La salle de bowling", "nom": "Bowling" }
+        ],
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "emailLogoSansFond": "/assets/brand/logo-fun-galaxy-sans-fond-clair-contour.png",
@@ -524,6 +536,14 @@
           { "url": "/assets/mail/signature-laser.jpg", "alt": "Un joueur vise avec son arme de laser game", "label": "Le laser game" }
         ],
         "emailDesign": { "accent": "centre", "signature": { "closing": "Funement vôtre,", "accroche": "Bowling · Laser game · Minigolf · Arcades", "layout": "affiche", "photo": "/assets/mail/signature-quilles.jpg" } },
+        "emailPhotosActivites": [
+          { "activites": ["bowling"], "url": "/assets/mail/activites/gembloux-bowling.jpg", "alt": "Les pistes de bowling", "nom": "Bowling", "parDefaut": true, "enVitrine": true },
+          { "activites": ["laser"], "url": "/assets/mail/activites/gembloux-laser.jpg", "alt": "Le décor du laser game", "nom": "Laser game", "enVitrine": true },
+          { "activites": ["golf"], "url": "/assets/mail/activites/gembloux-minigolf.jpg", "alt": "Le minigolf fluo", "nom": "Minigolf" },
+          { "activites": ["arcade"], "url": "/assets/mail/activites/gembloux-arcades.jpg", "alt": "Les jeux d’arcade", "nom": "Arcades" },
+          { "activites": ["billard"], "url": "/assets/mail/activites/gembloux-billard.jpg", "alt": "Les tables de billard", "nom": "Billard" },
+          { "activites": ["formule", "kids", "anniv"], "url": "/assets/mail/activites/gembloux-bowling.jpg", "alt": "Les pistes de bowling", "nom": "Bowling" }
+        ],
         "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
         "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "emailLogoSansFond": "/assets/brand/logo-fun-galaxy-sans-fond-clair-contour.png",

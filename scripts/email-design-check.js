@@ -171,10 +171,11 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     '[A] resolveEmailDesign sans design enregistre = les defauts du centre (manuel et sequences signes, campagnes non)');
 
   // =====================================================================
-  console.log('\n[B] les cinq gabarits rendent un mail complet');
+  console.log('\n[B] chaque gabarit rend un mail complet');
   // =====================================================================
   const presets = m.comms.EMAIL_DESIGN_PRESETS.map((x) => x.id);
-  ok(presets.join(',') === 'simple,classique,epure,carte,contraste', '[B] montage : cinq gabarits declares, Mail simple en tete', presets.join(','));
+  // 2026-11-12 : les cinq d avant, puis la galerie de lib/email-gabarits.js.
+  ok(presets.join(',') === 'simple,classique,epure,carte,contraste,billet,affiche,score,lettre,photo,grand-format,vitrine', '[B] montage : les cinq gabarits d avant puis les sept de la galerie, Mail simple en tete', presets.join(','));
   const rendus = {};
   for (const preset of presets) {
     // 2026-11-11 (lot 2) : Fun Galaxy est a sa couleur par defaut ; les formes
@@ -185,7 +186,8 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     ok(/^<!doctype html>/i.test(html) && (preset === 'simple' ? /<table role="presentation" width="100%"/.test(html) && /font-size:14px;line-height:1.5;/.test(html) && !/font-size:16px/.test(html) : /<table role="presentation" width="600"/.test(html)) && !/<script/i.test(html) && /style="/.test(html) && /Voici la reponse/.test(html)
       // Mail simple (2026-09-17) : le sujet reste dans l objet du mail, jamais en
       // titre dans le corps, et pas de pied de marque ; les autres le gardent.
-      && (preset === 'simple' ? !/<h1/i.test(html) && !/Une question \?/.test(html) : /Objet de test/.test(html)),
+      // Un titre d affiche lie ses deux derniers mots par une espace insecable (2026-11-12).
+      && (preset === 'simple' ? !/<h1/i.test(html) && !/Une question \?/.test(html) : /Objet de test/.test(html.split(String.fromCharCode(0xa0)).join(' '))),
       `[B] ${preset} : HTML complet en tables, styles en ligne, sans script${preset === 'simple' ? ', pleine largeur, texte 14 px, sans titre repete ni pied de marque' : ', largeur 600, titre en tete'}`);
   }
   ok(/border-top:4px solid #17151F/.test(rendus.carte) && !/border-top:4px solid/.test(rendus.classique), '[B] carte : une barre de 4 px en haut de carte ; classique : aucune');
@@ -338,8 +340,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   const indulgent = await m.comms.resolveEmailDesign('libramont', deps);
   ok(indulgent.preset === 'simple' && indulgent.signature.logoUrl === defautsLibramont.signature.logoUrl, '[I] un design en base devenu invalide retombe sur les defauts (aucun envoi bloque)');
   const paquet = await m.comms.getEmailDesignBundle('libramont', deps);
-  ok(paquet.presets.length === 5 && paquet.logos.length === 2 && paquet.center.id === 'libramont' && paquet.defaults.signature.phone === LIBRAMONT.publicInfo.phone && paquet.stored && paquet.stored.preset === 'neon',
-    '[I] le paquet de la page Apparence : gabarits, logos declares, centre, defauts, brut enregistre');
+  ok(paquet.presets.length === 12 && paquet.presets.every((p) => p.famille) && Array.isArray(paquet.familles) && paquet.familles.map((f) => f.id).join(',') === 'principale,centre,campagne,avant'
+    && paquet.logos.length === 2 && paquet.center.id === 'libramont' && paquet.defaults.signature.phone === LIBRAMONT.publicInfo.phone && paquet.stored && paquet.stored.preset === 'neon',
+    '[I] le paquet de la page Apparence : gabarits et leurs familles, logos declares, centre, defauts, brut enregistre');
   const paquetNu = await m.comms.getEmailDesignBundle('centre-qui-n-existe-pas', deps);
   ok(paquetNu.logos.length === 0 && paquetNu.center.name === '', '[I] un centre sans logo au catalogue n en propose aucun');
   // L ADRESSE DE REPONSE que la page Expediteurs affiche est celle que les mails
@@ -385,14 +388,14 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(/\/api\/u\?k=[0-9a-f]{32}/.test(anniversaire.body) && anniversaire.payload.unsubToken, '[J] contraste : le lien de retrait marketing est toujours la');
   // Le pied de marque n existe que hors Mail simple : ces deux regles se testent sur Classique.
   const dedup = await rendu(m, { design: { ...defautsLibramont, preset: 'classique' }, portee: 'manual' });
-  ok((dedup.match(/0491\/30\.16\.67/g) || []).length === 1 && !/Tel\. 0491/.test(dedup) && (dedup.match(/6800 Libramont/g) || []).length === 1,
+  ok((dedup.match(/0491\/30\.16\.67/g) || []).length === 1 && !/T[eé]l\. 0491/.test(dedup) && (dedup.match(/6800 Libramont/g) || []).length === 1,
     '[J] le pied ne repete pas le telephone ni l adresse que la signature porte');
   const sansTelSignature = await rendu(m, { design: { ...defautsLibramont, preset: 'classique', signature: { ...defautsLibramont.signature, phone: '' } }, portee: 'manual' });
-  ok(/Tel\. 0491\/30\.16\.67/.test(sansTelSignature), '[J] telephone retire de la signature : le pied le garde (interrupteur de pied allume)');
+  ok(/Tél\. 0491\/30\.16\.67/.test(sansTelSignature), '[J] telephone retire de la signature : le pied le garde (interrupteur de pied allume)');
   const piedCoupe = await rendu(m, { design: { ...defautsLibramont, footer: { adresse: false, telephone: false, email: false, mention: 'TVA BE 0123.456.789' }, signature: { ...defautsLibramont.signature, enabled: false } }, portee: 'manual' });
-  ok(!/6800 Libramont/.test(piedCoupe) && !/Tel\./.test(piedCoupe) && /TVA BE 0123\.456\.789/.test(piedCoupe), '[J] interrupteurs de pied coupes et mention libre : le pied obeit');
+  ok(!/6800 Libramont/.test(piedCoupe) && !/T[eé]l\./.test(piedCoupe) && /TVA BE 0123\.456\.789/.test(piedCoupe), '[J] interrupteurs de pied coupes et mention libre : le pied obeit');
   const sansDesign = m.comms.emailShell({ title: 'T', body: 'Bonjour\n\nÀ très vite,\nL\'équipe Fun Galaxy Libramont', preheader: 'p', center: LIBRAMONT });
-  ok(/À très vite,/.test(sansDesign) && liens(sansDesign) === 0 && images(sansDesign) === 0 && /Tel\. 0491/.test(sansDesign),
+  ok(/À très vite,/.test(sansDesign) && liens(sansDesign) === 0 && images(sansDesign) === 0 && /Tél\. 0491/.test(sansDesign),
     '[J] contraste : sans design, le gabarit historique ne change pas (cloture gardee, pied complet, zero lien)');
 
   // =====================================================================
@@ -467,8 +470,8 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'la cloture textuelle est signee deux fois',
       fichier: 'lib/ops-communications.js',
-      de: '  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurDuCorps(preset), corps });',
-      vers: "  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurDuCorps(preset), corps: '' });",
+      de: '  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurSignature, corps });',
+      vers: "  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurSignature, corps: '' });",
       rejouer: async (mm) => { const captes = []; await mm.comms.runBirthdayJ30Sweep('libramont', { query: requete, enqueue: async (row) => { captes.push(row); return { id: 1 }; } }, { today: iso(0) }); return captes[0].body; },
       rouge: (html) => equipe(html) !== 1,
     },

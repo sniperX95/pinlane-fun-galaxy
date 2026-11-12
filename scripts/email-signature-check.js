@@ -99,7 +99,7 @@ const deps = { query: requete };
 // ---------------------------------------------------------------------------
 // Mutations compilees en memoire (aucun fichier touche).
 // ---------------------------------------------------------------------------
-const MUTABLES = ['lib/email-design.js', 'lib/ops-communications.js'];
+const MUTABLES = ['lib/email-gabarits.js', 'lib/email-design.js', 'lib/ops-communications.js'];
 let mutations = [];
 const compileOrigine = Module.prototype._compile;
 Module.prototype._compile = function compileMute(contenu, nom) {
@@ -641,6 +641,83 @@ async function controles(m) {
   ok(corpDe('/assets/mail/(.*)') === 'cross-origin' && corpDe('/assets/brand/(.*)') === 'cross-origin'
     && imagesFG.every((u) => u.startsWith(`${origine}/assets/mail/`) || u.startsWith(`${origine}/assets/brand/`)),
     '[L] les photos et logos des mails se laissent afficher hors du site (apercu d Apparence, messageries)', `mail=${corpDe('/assets/mail/(.*)')} brand=${corpDe('/assets/brand/(.*)')}`);
+
+  // =====================================================================
+  console.log('\n[M] la galerie : la boite principale tenue, les photos du bon centre');
+  // =====================================================================
+  // Ansar, 12/11 : « plein de versions qu on peut choisir [...] et fais gaffe pour
+  // qu on soit le plus possible dans la boite principale ».
+  const GEMBLOUX = getCenter('gembloux');
+  const CINEY = getCenter('ciney');
+  const ids = m.design.EMAIL_DESIGN_PRESETS.map((p) => p.id);
+  const neufs = ids.slice(5);
+  const recap = [
+    { label: 'Date', value: 'samedi 20 juin' }, { label: 'Heure', value: '15:00' }, { label: 'Participants', value: '12' },
+    { label: 'Offre', value: 'FORMULE 4' }, { label: 'Montant estimé', value: '468 €' }, { label: 'Réservation', value: 'n° 9001' },
+  ];
+  const automatique = (preset, { center = LIBRAMONT, activite = 'FORMULE 4 | formule', title = 'Rendez-vous samedi 20 juin', signer = true } = {}) => m.comms.emailShell({
+    title, eyebrow: 'Réservation confirmée', body: 'Bonjour Marie,\n\nVotre réservation est confirmée.', preheader: 'Votre réservation', center,
+    details: recap, action: { href: 'https://app.pinlane.be/r/abc', label: 'Gérer ma réservation' }, note: 'Un retard ? Un appel suffit.',
+    design: { ...m.design.getEmailDesignDefaults(center), preset }, signature: { enabled: signer, person: null, portee: 'sequences' }, activite,
+  });
+  const horsBudget = ids.filter((id) => { const h = automatique(id); return liens(h) > 2 || images(h) > 1; });
+  ok(ids.length === 12 && horsBudget.length === 0, '[M] les douze gabarits, dans un mail automatique : deux liens et une image au plus', horsBudget.join(', ') || `${ids.length} gabarits`);
+  ok(automatique('grand-format') === automatique('photo') && automatique('vitrine') === automatique('billet'),
+    '[M] un grand format de campagne ne part jamais sur un mail automatique : il prend son repli de la boite principale');
+  const campagne = m.comms.emailShell({
+    title: 'Une soirée bowling entre amis ?', body: 'Bonjour Marie,\n\nRéservez une piste.', preheader: 'Une soirée bowling', center: LIBRAMONT,
+    action: { href: 'https://app.pinlane.be/reserver/libramont', label: 'Réserver une piste' },
+    unsubscribeLine: { text: 'Vous recevez ce message parce que vous avez déjà réservé chez nous.', url: 'https://app.pinlane.be/api/u?k=test', label: 'Ne plus recevoir' },
+    design: { ...defautsFG, preset: 'vitrine' }, signature: { enabled: false },
+  });
+  const photosCampagne = (campagne.match(/\/assets\/mail\/activites\/[a-z-]+\.jpg/g) || []);
+  ok(photosCampagne.length === 2 && photosCampagne.every((u) => u.includes('/libramont-')) && new Set(photosCampagne).size === 2,
+    '[M] une campagne en vitrine pose deux vraies photos du centre', photosCampagne.join(' '));
+  // Le grand format : sa seconde photo est de la meme activite que le titre, ou il n y en a pas.
+  const grandFormat = (title) => m.comms.emailShell({
+    title, body: 'Bonjour Marie,\n\nRéservez une piste.', preheader: title, center: LIBRAMONT,
+    action: { href: 'https://app.pinlane.be/reserver/libramont', label: 'Réserver' },
+    unsubscribeLine: { text: 'Vous recevez ce message parce que vous avez déjà réservé chez nous.', url: 'https://app.pinlane.be/api/u?k=test', label: 'Ne plus recevoir' },
+    design: { ...defautsFG, preset: 'grand-format' }, signature: { enabled: false },
+  });
+  const photosBowling = grandFormat('Une soirée bowling entre amis ?').match(/\/assets\/mail\/activites\/[a-z-]+\.jpg/g) || [];
+  const photosLaser = grandFormat('Une partie de laser entre amis ?').match(/\/assets\/mail\/activites\/[a-z-]+\.jpg/g) || [];
+  ok(photosBowling.length === 2 && photosBowling[0] === '/assets/mail/activites/libramont-bowling.jpg' && !photosBowling.some((u) => u.includes('laser'))
+    && photosLaser.length === 1 && photosLaser[0] === '/assets/mail/activites/libramont-laser.jpg',
+    '[M] le grand format : la seconde photo est de la meme activite que le titre, jamais le laser sous un titre bowling', `${photosBowling.join(' ')} | ${photosLaser.join(' ')}`);
+  const photoDe = (html) => (String(html).match(/\/assets\/mail\/activites\/[a-z-]+\.jpg/) || [''])[0];
+  const laserGembloux = automatique('photo', { center: GEMBLOUX, activite: 'Laser Game | laser' });
+  const duckLibramont = automatique('photo', { activite: 'Duckpin bowling | duckpin' });
+  const formuleLibramont = automatique('photo');
+  const sansPhotoCiney = automatique('photo', { center: CINEY, activite: 'Laser Game | laser' });
+  ok(photoDe(laserGembloux) === '/assets/mail/activites/gembloux-laser.jpg' && !laserGembloux.includes('/activites/libramont-')
+    && photoDe(duckLibramont) === '/assets/mail/activites/libramont-duckpin.jpg' && photoDe(formuleLibramont) === '/assets/mail/activites/libramont-salle.jpg'
+    && photoDe(sansPhotoCiney) === '',
+    '[M] la photo de l activite vient de la fiche du centre : laser a Gembloux, duckpin et formule a Libramont, aucune a Ciney qui n en a pas',
+    [laserGembloux, duckLibramont, formuleLibramont, sansPhotoCiney].map(photoDe).join(' | '));
+  const srcs = (html) => [...String(html).matchAll(/<img\s[^>]*src="([^"]+)"/g)].map((x) => x[1]);
+  ok(srcs(formuleLibramont).length === 1 && srcs(formuleLibramont)[0].includes('/assets/mail/activites/') && /Funement/.test(formuleLibramont),
+    '[M] Photo de l activite : la photo en tete est la seule image, la signature passe en texte', srcs(formuleLibramont).join(' '));
+  const traits = neufs.filter((id) => /border(?:-top|-bottom|-left|-right)?:\s*1px/i.test(automatique(id, { signer: false })));
+  ok(traits.length === 0, '[M] aucun trait fin dans les sept gabarits de la galerie', traits.join(', '));
+  const avantLeTexte = ['billet', 'affiche', 'score', 'photo'].filter((id) => { const h = automatique(id, { signer: false }); return h.indexOf('20 juin') > -1 && h.indexOf('20 juin') < h.indexOf('Bonjour Marie'); });
+  ok(avantLeTexte.length === 4, '[M] billet, score et photo ouvrent sur le rendez-vous, avant le texte', avantLeTexte.join(','));
+  const h1 = (html) => ((String(html).match(/<h1[^>]*>([^<]*)<\/h1>/) || [])[1] || '').trim();
+  const titreDuBillet = h1(automatique('billet', { signer: false }));
+  const autreTitre = h1(automatique('billet', { signer: false, title: 'Votre visite approche' }));
+  ok(titreDuBillet === 'Réservation confirmée' && autreTitre === 'Votre visite approche',
+    '[M] un titre qui redit la date du billet cede sa place au sourcil, un autre titre reste', `${titreDuBillet} / ${autreTitre}`);
+  const galerie = await m.comms.buildDesignGallery({ centerId: 'libramont' }, deps);
+  ok(galerie.vignettes.map((v) => v.id).join(',') === ids.join(',') && galerie.vignettes.every((v) => v.html.startsWith('<!doctype html>') && v.sample === (['grand-format', 'vitrine'].includes(v.id) ? 'campagne' : 'confirmation')),
+    '[M] la galerie d Apparence rend les douze gabarits, les grands formats sur la campagne d exemple', galerie.vignettes.map((v) => `${v.id}:${v.sample}`).join(' '));
+  const fiches = [[LIBRAMONT, 'libramont-'], [GEMBLOUX, 'gembloux-']].map(([c, prefixe]) => ({ prefixe, liste: (c.branding && c.branding.emailPhotosActivites) || [] }));
+  const photosMal = fiches.flatMap(({ prefixe, liste }) => liste.filter((p) => {
+    const f = path.join(ROOT, String(p.url || ''));
+    return !/^\/assets\/mail\/activites\/[a-z-]+\.jpg$/.test(String(p.url || '')) || !String(p.url).includes(`/${prefixe}`) || !fs.existsSync(f)
+      || fs.statSync(f).size > 110 * 1024 || fs.readFileSync(f).readUInt16BE(0) !== 0xffd8 || String(p.alt || '').length < 8 || !Array.isArray(p.activites) || !p.activites.length;
+  }).map((p) => p.url));
+  ok(fiches.every((f) => f.liste.length >= 5) && photosMal.length === 0,
+    '[M] les photos d activite : des JPG du centre, sur notre domaine, decrits, de moins de 110 Ko', photosMal.join(', ') || fiches.map((f) => `${f.prefixe}${f.liste.length}`).join(' '));
 }
 
 (async () => {
@@ -686,7 +763,7 @@ async function controles(m) {
     { nom: 'version texte sans le corps', cible: '[H] la version texte suit la meme regle (formule, equipe, coordonnees)',
       fichier: 'lib/ops-communications.js', de: '  const deja = finDejaEcrite(corps, { center, design, person });\n  const lignes = [];', vers: "  const deja = finDejaEcrite('', { center, design, person });\n  const lignes = [];" },
     { nom: 'le mail ne passe pas son corps a la signature', cible: '[H] reponse Reçus (sendDirectEmail, en reponse a un message recu) : une seule formule, celle du brouillon',
-      fichier: 'lib/ops-communications.js', de: 'largeur: largeurDuCorps(preset), corps });', vers: "largeur: largeurDuCorps(preset), corps: '' });" },
+      fichier: 'lib/ops-communications.js', de: 'largeur: largeurSignature, corps });', vers: "largeur: largeurSignature, corps: '' });" },
     // La version texte envoyee (2026-11-12).
     { nom: 'sendEmail ignore la version signee', cible: '[I] envoi manuel : sendEmail envoie le texte puis la signature (Kevin, telephone, adresse mail)',
       fichier: 'lib/ops-communications.js', de: '        ? { text: String(communication.payload.texteEnvoye || communication.payload.textBody) }', vers: '        ? { text: String(communication.payload.textBody) }' },
@@ -731,6 +808,24 @@ async function controles(m) {
       fichier: 'lib/ops-communications.js', de: "    .replace(/ ([?!:;»])/g, `${INSECABLE}$1`)\n", vers: '' },
     { nom: 'la banniere a largeur fixe', cible: '[L] la banniere suit la largeur du mail, meme quand elle ne charge pas',
       fichier: 'lib/ops-communications.js', de: "${image(url, largeur, alt, 'border-radius:12px;', true)}", vers: "${image(url, largeur, alt, 'border-radius:12px;')}" },
+    { nom: 'le grand format sur un mail automatique', cible: '[M] un grand format de campagne ne part jamais sur un mail automatique : il prend son repli de la boite principale',
+      fichier: 'lib/email-gabarits.js', de: "  if (transactionnel && g.famille === 'campagne') return trouver(g.repli) || trouver('billet');\n", vers: '' },
+    { nom: 'la photo d un autre centre', cible: '[M] la photo de l activite vient de la fiche du centre : laser a Gembloux, duckpin et formule a Libramont, aucune a Ciney qui n en a pas',
+      fichier: 'lib/email-gabarits.js',
+      de: 'function photoDeLActivite(center, activite, origine) {\n  const liste = center && center.branding && Array.isArray(center.branding.emailPhotosActivites) ? center.branding.emailPhotosActivites : [];',
+      vers: "function photoDeLActivite(center, activite, origine) {\n  const liste = require('./ops-knowledge').getCenter('libramont').branding.emailPhotosActivites;" },
+    { nom: 'la photo hors budget', cible: '[M] les douze gabarits, dans un mail automatique : deux liens et une image au plus',
+      fichier: 'lib/ops-communications.js', de: 'images: Math.max(0, 1 - compter(/<img\\s/gi))', vers: 'images: 1' },
+    { nom: 'un trait fin sous le billet', cible: '[M] aucun trait fin dans les sept gabarits de la galerie',
+      fichier: 'lib/email-gabarits.js', de: 'style="background:${fonce};border-radius:0 0 16px 16px;padding:14px 24px 16px;">', vers: 'style="background:${fonce};border-radius:0 0 16px 16px;border-top:1px solid #ffffff;padding:14px 24px 16px;">' },
+    { nom: 'le recapitulatif sous le texte', cible: '[M] billet, score et photo ouvrent sur le rendez-vous, avant le texte',
+      fichier: 'lib/email-gabarits.js',
+      de: ["  if (g.id === 'billet') {", '    corps = `${nomEnTete(p.accentTexte)}${sourcilSiUtile(THEME.inkSoft)}${titreSurRecap()}${p.billet(EN_TETE)}${o.corpsHtml}'].join(LF),
+      vers: ["  if (g.id === 'billet') {", '    corps = `${nomEnTete(p.accentTexte)}${sourcilSiUtile(THEME.inkSoft)}${titreSurRecap()}${o.corpsHtml}${p.billet(EN_TETE)}'].join(LF) },
+    { nom: 'une seconde photo au hasard', cible: '[M] le grand format : la seconde photo est de la meme activite que le titre, jamais le laser sous un titre bowling',
+      fichier: 'lib/email-gabarits.js', de: ' && parle(p))', vers: ')' },
+    { nom: 'le titre redit la date', cible: '[M] un titre qui redit la date du billet cede sa place au sourcil, un autre titre reste',
+      fichier: 'lib/email-gabarits.js', de: "  const titreRedit = Boolean(r.date && String(o.eyebrow || '').trim() && plat(o.title).includes(plat(valeur(r.date))));", vers: '  const titreRedit = false;' },
   ];
   const survivantes = [];
   for (const c of CAS) {

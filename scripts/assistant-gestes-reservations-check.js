@@ -10,7 +10,11 @@
 //      et garde la cle de sa tentative, une proposition ou un plan de retard qui a change s arrete ;
 //   S. le clic : la requete exacte a la fiche, aux pistes ou a l action du logiciel, la meme session,
 //      deux clics sur un mail portent une seule cle, un Manager et une reservation d un autre centre
-//      ne touchent a rien.
+//      ne touchent a rien ; une modification chiffree par le calcul de la fiche elle-meme ;
+//   I. sous l ecriture : une relance ou un SMS a la meme cle ne repart pas, la coche prend le chemin
+//      de la case, un bilan modifie a la main ne se regenere pas ;
+//   P. les etapes a cocher (lib/programme-a-cocher.js) rendent les cles de la fiche
+//      (getGroupeProgramme, assets/app-main.js, jouee en machine virtuelle) sur des dossiers types.
 // Lancement : node scripts/assistant-gestes-reservations-check.js [--contre-preuves]
 const fs = require('fs');
 const path = require('path');
@@ -85,6 +89,18 @@ const MUTATIONS = [
   { nom: 'periode-de-la-carte-ignoree', rouge: '[S] le bilan se genere sur la periode de la carte sans ecraser une edition, et le texte relu s enregistre au nom de la session', editions: [{ fichier: OPS, de: 'periodeDuBilan({ periodType: body.periodType, periodStart: body.periodStart })', vers: 'periodeDuBilan({ periodType: body.periodType })' }] },
   { nom: 'garde-sql-retiree', rouge: '[I] regenerer avec keepEdited ne touche pas un bilan modifie a la main, le bouton de la page remplace comme avant', editions: [{ fichier: 'lib/database.js', de: "     ${garderLEdition ? 'where direction_reports.edited_at is null' : ''}", vers: '' }] },
   { nom: 'bilan-change-accepte', rouge: '[G] modifier un bilan montre le texte d avant et le nouveau en entier, et s arrete si le bilan a change', editions: [{ fichier: LOT, de: '        if (rempli(p.bilan_vu) && String(p.bilan_vu) !== vu) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  // Modifier le groupe, les activites, les extras, le jour et le prix (2026-11-12) : comme l onglet Modifier.
+  { nom: 'groupe-sans-suivre', rouge: '[G] un groupe qui grandit fait suivre ses activites de tout le groupe, et la carte dit le prix que la fiche posera', editions: [{ fichier: LOT, de: '            if (toutLeGroupe) item.participants = pax;', vers: '' }] },
+  { nom: 'prix-de-la-carte-sans-calcul', rouge: '[S] la carte chiffre la modification par le calcul de la fiche, le moteur compris, et le clic lui envoie ce corps', editions: [{ fichier: LOT, de: "          apercu = await ctx.lire('apercuDeLaModification', r.id, JSON.stringify(corps), ctx.session);", vers: '          apercu = { prix: corps.price !== undefined ? corps.price : Number(r.price) };' }] },
+  { nom: 'offre-retiree-en-silence', rouge: '[G] les activites se changent, s ajoutent ou se retirent sur leur catalogue, une offre ou une formule renvoie a la fiche', editions: [{ fichier: LOT, de: '            if (offre) throw erreur(`${nomDuCatalogue(item.activityId)} porte ${offre} calculée pour', vers: '            if (false) throw erreur(`${nomDuCatalogue(item.activityId)} porte ${offre} calculée pour' }] },
+  { nom: 'formule-adaptee-sans-fiche', rouge: '[G] les activites se changent, s ajoutent ou se retirent sur leur catalogue, une offre ou une formule renvoie a la fiche', editions: [{ fichier: LOT, de: "          if (r.formuleId || r.type === 'formule') throw erreur('Les activités d’une formule se changent dans sa fiche", vers: "          if (false) throw erreur('Les activités d’une formule se changent dans sa fiche" }] },
+  { nom: 'extra-hors-forme-de-la-fiche', rouge: '[G] un extra du catalogue s ajoute dans la forme de la fiche, par personne s il se vend au joueur', editions: [{ fichier: LOT, de: 'name: `${article.nom} × ${qte}`, qte,', vers: 'name: article.nom, qte,' }] },
+  { nom: 'prix-tape-ecrase-par-le-jour', rouge: '[G] modifier ne porte que ce qui change, un prix avec sa raison, jamais dans le passe', editions: [{ fichier: LOT, de: '        if (corps.price !== undefined && Math.round(prixFinal * 100) !== Math.round(corps.price * 100)) {', vers: '        if (false) {' }] },
+  { nom: 'prix-change-accepte', rouge: '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        if (rempli(p.prix_vu) && Math.round(Number(p.prix_vu) * 100) !== Math.round(prixFinal * 100)) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'plan-refuse-tu', rouge: '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        if (apercu.planRefuse) alertes.push(', vers: '        if (false) alertes.push(' }] },
+  { nom: 'plan-change-accepte', rouge: '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        if (rempli(p.plan_vu) && String(p.plan_vu) !== plan) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'deux-alertes-contraires', rouge: '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        else if (bouge || corps.pax !== undefined || corps.program) alertes.push(', vers: '        if (bouge || corps.pax !== undefined || corps.program) alertes.push(' }] },
+  { nom: 'fait-sans-l-ancien-plan', rouge: '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '${apercu.planRefuse ? ` Le planning garde l’ancien plan', vers: '${false ? ` Le planning garde l’ancien plan' }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -148,15 +164,17 @@ async function appeler(handler, corps, entetes = {}) {
 }
 
 // Un gestionnaire d une autre adresse (fiche, pistes), double : il note la requete exacte recue.
+// Ses aides restent les vraies (le calcul de « Modifier », calculerLaModification).
 function doublerAdresse(relatif, vus) {
   const chemin = require.resolve(path.join(ROOT, relatif));
   const avant = require.cache[chemin];
-  require.cache[chemin] = { id: chemin, filename: chemin, loaded: true, exports: async (req, res) => {
+  const reel = require(chemin);
+  require.cache[chemin] = { id: chemin, filename: chemin, loaded: true, exports: Object.assign(async (req, res) => {
     const corps = JSON.parse(await lireCorps(req));
     vus.push({ methode: req.method, url: req.url, corps, auth: req.headers.authorization });
     res.statusCode = 200;
     res.end(JSON.stringify({ ok: true }));
-  } };
+  }, reel) };
   return () => { if (avant) require.cache[chemin] = avant; else delete require.cache[chemin]; };
 }
 
@@ -233,6 +251,10 @@ function banc() {
       changement(113, 'Groupe Bougé', 'shifted', '20:30', '20:45'),
     ] } }],
     prevenus: [],
+    // Les extras du catalogue du centre, le tarif d un autre jour et un plan que le moteur refuse.
+    articles: [{ id: 'pizza', nom: 'Pizza', categorie: 'nourriture', prix: 12, unite: 'piece' }, { id: 'cruche', nom: 'Cruche de soft', categorie: 'boissons', prix: 9, unite: 'piece' }, { id: 'gateau', nom: 'Part de gâteau', categorie: 'nourriture', prix: 3, unite: 'joueur' }],
+    tarifDuJour: 130,
+    planRefuse: '',
     // Les bilans de la page Direction : la semaine passee generee, le mois passe et la semaine d avant
     // modifies a la main.
     bilans: (() => {
@@ -280,6 +302,20 @@ function lecteursDu(b) {
     prevenusDuRetard: async (c, id) => b.prevenus.filter((x) => x.incident === Number(id)),
     reglagesDuProgramme: async () => ({ postes: 30, formules: require(path.join(ROOT, 'lib/booking-config.js')).FORMULES }),
     bilansDirection: async () => b.bilans,
+    articlesSurMesure: async () => b.articles,
+    // Le prix que la fiche poserait, en modele : un prix tape reste, un contenu qui change fait suivre le
+    // prix par personne et ses extras, un autre jour se recompte au tarif de ce jour (b.tarifDuJour).
+    apercuDeLaModification: async (c, n, corps) => {
+      const r = b.reservations.find((x) => x.id === Number(n));
+      if (!r) return null;
+      const x = JSON.parse(corps);
+      const somme = (l) => (Array.isArray(l) ? l : []).reduce((t, ligne) => t + (Number(ligne.price) || 0), 0);
+      const contenu = x.pax !== undefined || Boolean(x.program) || Boolean(x.extras);
+      let prix = x.price !== undefined ? x.price : Number(r.price);
+      if (contenu && x.price === undefined) prix = Math.round(((Number(r.price) - somme(r.extras)) / Number(r.pax) * (x.pax !== undefined ? x.pax : Number(r.pax)) + somme(x.extras !== undefined ? x.extras : r.extras)) * 100) / 100;
+      if (x.date) prix = b.tarifDuJour;
+      return { prix, prixSuivi: contenu && x.price === undefined, planRefuse: b.planRefuse || '' };
+    },
     // Le vrai jugement de la fiche (buildActivityMove, validateActivityMoveResources) sur la journee du banc.
     apercuDuDeplacement: async (c, n, mouvement) => {
       const r = b.reservations.find((x) => x.id === Number(n));
@@ -399,9 +435,53 @@ async function verifier(editions = []) {
     const passe = await carte('modifier_reservation', { reservation: 101, date: b.hier }, ['Change la date']);
     const jourEtPrix = await carte('modifier_reservation', { reservation: 101, date: plusJours(b.demain, 1), prix: 90, raison_prix: 'geste' }, ['Mets-la après-demain à 90 euros']);
     const clicModif = await clic('modifier_reservation', { reservation: 101, heure: '19:00', prix: 100, raison_prix: 'geste commercial' });
-    ok(prixSansRaison.e && /pourquoi le prix change/.test(prixSansRaison.e.message) && modif.p && modif.p.risque === true && ligne(modif, 'Heure').apres === '19:00' && ligne(modif, 'Prix').avant === '120 €' && ligne(modif, 'Prix').apres === '100 €' && /se refait au clic/.test(modif.p.resume.alerte) && rien.e && passe.e && /dans le passé/.test(passe.e.message) && jourEtPrix.e && /d’abord le jour/.test(jourEtPrix.e.message)
+    ok(prixSansRaison.e && /pourquoi le prix change/.test(prixSansRaison.e.message) && modif.p && modif.p.risque === true && ligne(modif, 'Heure').apres === '19:00' && ligne(modif, 'Prix').avant === '120 €' && ligne(modif, 'Prix').apres === '100 €' && /se refait au clic/.test(modif.p.resume.alerte) && rien.e && passe.e && /dans le passé/.test(passe.e.message) && jourEtPrix.e && /recompte cette réservation à 130 € \(au tarif du nouveau jour\) : il ne garderait pas 90 €/.test(jourEtPrix.e.message)
       && clicModif.r && clicModif.r.corps.startTime === '19:00' && clicModif.r.corps.price === 100 && clicModif.r.corps.prixRaison === 'geste commercial' && clicModif.r.corps.baseUpdatedAt === '2026-11-11T08:30:00.000Z' && !('name' in clicModif.r.corps),
       '[G] modifier ne porte que ce qui change, un prix avec sa raison, jamais dans le passe', JSON.stringify([prixSansRaison.e && prixSansRaison.e.message, vu(modif), vu(clicModif)]));
+
+    // Le groupe, les activites et les extras, avec le prix que la fiche posera.
+    const plusDeMonde = await carte('modifier_reservation', { reservation: 116, joueurs: 10 }, ['Passe-les à 10']);
+    const clicPlusDeMonde = await clic('modifier_reservation', plusDeMonde.p ? plusDeMonde.p.action.params : {});
+    ok(plusDeMonde.p && ligne(plusDeMonde, 'Personnes').avant === '8 personnes' && ligne(plusDeMonde, 'Personnes').apres === '10 personnes' && ligne(plusDeMonde, 'Activités').apres === 'Bowling, 1 h, 10 personnes' && ligne(plusDeMonde, 'Prix').apres === '150 €, il suit le nouveau contenu' && plusDeMonde.p.action.params.prix_vu === 150
+      && clicPlusDeMonde.r && JSON.stringify(clicPlusDeMonde.r.corps) === JSON.stringify({ id: 116, baseUpdatedAt: '2026-11-10T10:00:00.000Z', pax: 10, program: { items: [{ activityId: 'bowling', participants: 10, duration: 1, planned: true, pax: 10 }] } }),
+      '[G] un groupe qui grandit fait suivre ses activites de tout le groupe, et la carte dit le prix que la fiche posera', JSON.stringify([vu(plusDeMonde), vu(clicPlusDeMonde)]));
+    const laserSamedi = b.reservations.find((r) => r.id === 117);
+    laserSamedi.program.items[0].upsell = { offerId: 'groupe', participants: 8 };
+    const avecOffre = await carte('modifier_reservation', { reservation: 117, joueurs: 12 }, ['Passe-les à 12']);
+    delete laserSamedi.program.items[0].upsell;
+    const ajoutLaser = await carte('modifier_reservation', { reservation: 116, activites: [{ activite: 'laser_game', parties: 2 }] }, ['Ajoute deux parties de laser']);
+    const bowlingPlusLong = await carte('modifier_reservation', { reservation: 116, activites: [{ activite: 'bowling', duree_heures: 2 }] }, ['Passe le bowling à 2 h']);
+    const plusRien = await carte('modifier_reservation', { reservation: 116, activites: [{ activite: 'bowling', retirer: 'oui' }] }, ['Retire le bowling']);
+    const formule = await carte('modifier_reservation', { reservation: 114, activites: [{ activite: 'laser_game', parties: 2 }] }, ['Ajoute une partie de laser']);
+    const activiteInconnue = await carte('modifier_reservation', { reservation: 116, activites: [{ activite: 'karting', participants: 4 }] }, ['Ajoute du karting']);
+    ok(avecOffre.e && /porte une offre du devis calculée pour 8 personnes/.test(avecOffre.e.message)
+      && ajoutLaser.p && ligne(ajoutLaser, 'Activités').apres === 'Bowling, 1 h, 8 personnes ; Laser Game, 2 parties, 8 personnes' && bowlingPlusLong.p && ligne(bowlingPlusLong, 'Activités').apres === 'Bowling, 2 h, 8 personnes'
+      && plusRien.e && /au moins une activité/.test(plusRien.e.message) && formule.e && /formule se changent dans sa fiche/.test(formule.e.message) && activiteInconnue.e && /n’existe pas dans ce centre/.test(activiteInconnue.e.message),
+      '[G] les activites se changent, s ajoutent ou se retirent sur leur catalogue, une offre ou une formule renvoie a la fiche', JSON.stringify([avecOffre.e && avecOffre.e.message, vu(ajoutLaser), plusRien.e && plusRien.e.message, formule.e && formule.e.message, activiteInconnue.e && activiteInconnue.e.message]));
+    const pizzas = await carte('modifier_reservation', { reservation: 116, extras: [{ article: 'pizza', quantite: 3 }] }, ['Ajoute trois pizzas']);
+    const clicPizzas = await clic('modifier_reservation', pizzas.p ? pizzas.p.action.params : {});
+    const gateauParPersonne = await carte('modifier_reservation', { reservation: 116, extras: [{ article: 'part de gateau' }] }, ['Ajoute le gâteau']);
+    const extraAbsent = await carte('modifier_reservation', { reservation: 116, extras: [{ article: 'cruche de soft', retirer: 'oui' }] }, ['Retire la cruche']);
+    const horsCatalogue = await carte('modifier_reservation', { reservation: 116, extras: [{ article: 'champagne', quantite: 1 }] }, ['Ajoute du champagne']);
+    ok(pizzas.p && ligne(pizzas, 'Extras').avant === 'aucun' && ligne(pizzas, 'Extras').apres === 'Pizza × 3' && ligne(pizzas, 'Prix').apres === '156 €, il suit le nouveau contenu'
+      && clicPizzas.r && JSON.stringify(clicPizzas.r.corps.extras) === JSON.stringify([{ id: 'pizza', articleId: 'pizza', categorie: 'nourriture', name: 'Pizza × 3', qte: 3, prixUnitaire: 12, price: 36 }])
+      && gateauParPersonne.p && ligne(gateauParPersonne, 'Extras').apres === 'Part de gâteau × 8' && extraAbsent.e && /n’est pas dans les extras/.test(extraAbsent.e.message) && horsCatalogue.e && /n’est pas au catalogue du centre. Au catalogue : Pizza/.test(horsCatalogue.e.message),
+      '[G] un extra du catalogue s ajoute dans la forme de la fiche, par personne s il se vend au joueur', JSON.stringify([vu(pizzas), vu(clicPizzas), vu(gateauParPersonne), extraAbsent.e && extraAbsent.e.message, horsCatalogue.e && horsCatalogue.e.message]));
+    const autreJour = await carte('modifier_reservation', { reservation: 101, date: plusJours(b.demain, 1) }, ['Mets-la après-demain']);
+    b.planRefuse = 'Plus aucune piste libre ce jour-là.';
+    const planRefuse = await carte('modifier_reservation', { reservation: 101, date: plusJours(b.demain, 1) }, ['Mets-la après-demain']);
+    // La carte disait « le planning suit », le moteur refuse au clic : rien ne s ecrit.
+    const planSuitPlus = await clic('modifier_reservation', autreJour.p ? autreJour.p.action.params : {});
+    b.planRefuse = '';
+    const samediBowling = b.reservations.find((r) => r.id === 116);
+    samediBowling.price = 132;
+    const prixChange = await clic('modifier_reservation', plusDeMonde.p ? plusDeMonde.p.action.params : {});
+    samediBowling.price = 120;
+    ok(autreJour.p && ligne(autreJour, 'Prix').avant === '120 €' && ligne(autreJour, 'Prix').apres === '130 €, au tarif du nouveau jour' && autreJour.p.action.params.plan_vu === 'suit' && /se refait au clic/.test(autreJour.p.resume.alerte || '')
+      && planRefuse.p && /Le planning ne suit pas : Plus aucune piste libre ce jour-là/.test(planRefuse.p.resume.alerte || '') && !/rien ne change/.test(planRefuse.p.resume.alerte || '') && /Le planning garde l’ancien plan : Plus aucune piste libre/.test(planRefuse.p.resume.fait || '')
+      && planSuitPlus.e && planSuitPlus.e.statusCode === 409 && /Le planning a changé depuis la carte : Plus aucune piste libre ce jour-là/.test(planSuitPlus.e.message)
+      && prixChange.e && prixChange.e.statusCode === 409 && /a changé depuis la carte \(150 €, maintenant 165 €\)/.test(prixChange.e.message),
+      '[G] un autre jour dit son nouveau prix et un planning qui ne suit pas, un prix qui a change depuis la carte arrete le clic', JSON.stringify([vu(autreJour), planRefuse.p && planRefuse.p.resume, planSuitPlus.e && planSuitPlus.e.message, prixChange.e && prixChange.e.message]));
     const suppr = await carte('supprimer_reservation', { reservation: 101, raison: 'doublon' }, ['Supprime ce doublon']);
     const supprSansMots = await carte('supprimer_reservation', { reservation: 101 }, ['Qu’est-ce que tu en penses ?']);
     const clicSuppr = await clic('supprimer_reservation', { reservation: 101, raison: 'doublon' });
@@ -733,6 +813,8 @@ async function verifier(editions = []) {
     });
     // Le bilan s ecrit sans IA au banc : aucune requete ne part.
     remplacer('lib/direction-analytics.js', { polishReportWithAi: async () => null });
+    // Le moteur de la fiche, double : il note la demande et rend un plan chiffre.
+    remplacer('lib/reservation-ops.js', { prepareReservationOps: async (demande) => { journal.ecrit.push(['prepareReservationOps', demande]); return { program: demande.program, opsPlan: { resourceBlocks: [] }, price: 175, basePrice: 175, programPrice: 175, planAvailable: true }; } });
     remplacer('lib/ops-communications.js', {
       sendDirectEmail: async (x) => { journal.ecrit.push(['sendDirectEmail', x]); return { communication: { id: 5000, status: 'queued' }, attemptId: x.attemptId }; },
       sendClientRelance: async (x) => { journal.ecrit.push(['sendClientRelance', x]); return { communication: { id: 5001, status: 'queued' } }; },
@@ -806,6 +888,18 @@ async function verifier(editions = []) {
       ok(gl.statut === 200 && journal.fiche.length === 1 && journal.fiche[0].methode === 'PATCH' && journal.fiche[0].auth === 'Bearer jeton-du-poste'
         && JSON.stringify(journal.fiche[0].corps) === JSON.stringify({ id: 116, baseUpdatedAt: '2026-11-10T10:00:00.000Z', activityMove: { activityId: 'bowling', startTime: '16:30', lanes: [1] }, centerId: 'libramont' }),
         '[S] le deplacement part a la fiche dans la forme du glisser, avec la version et la session', JSON.stringify([gl.statut, gl.json, journal.fiche]).slice(0, 300));
+      journal.fiche.length = 0;
+      // Le prix de la carte vient du calcul de la fiche (calculerLaModification), le moteur compris.
+      const carteGroupe = await Gs.proposer('modifier_reservation', { reservation: 116, joueurs: 10 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Passe-les à 10'] }));
+      const moteur = journal.ecrit.filter((e) => e[0] === 'prepareReservationOps').map((e) => e[1]);
+      const mg = await cliquer('modifier_reservation', carteGroupe.action.params);
+      const corpsGroupe = (journal.fiche[0] || {}).corps || {};
+      const dossierGroupe = b2.reservations.find((r) => r.id === 116);
+      const attendu = await require(path.join(ROOT, 'api/staff-reservations.js')).calculerLaModification({ body: { ...corpsGroupe, id: 116 }, current: dossierGroupe, session: DIRECTION, requestedCenterId: 'libramont' });
+      const prixCarte = (carteGroupe.resume.lignes.find((l) => l.libelle === 'Prix') || {}).apres || '';
+      ok(moteur.length >= 1 && moteur[0].pax === 10 && moteur[0].program && moteur[0].program.items[0].participants === 10 && Number(attendu.prixFinal) !== 120 && carteGroupe.action.params.prix_vu === Number(attendu.prixFinal)
+        && prixCarte.startsWith(`${Number(attendu.prixFinal).toLocaleString('fr-BE')}`) && mg.statut === 200 && corpsGroupe.pax === 10 && corpsGroupe.centerId === 'libramont' && corpsGroupe.baseUpdatedAt === '2026-11-10T10:00:00.000Z',
+        '[S] la carte chiffre la modification par le calcul de la fiche, le moteur compris, et le clic lui envoie ce corps', JSON.stringify([moteur.length, attendu.prixFinal, prixCarte, mg.statut, corpsGroupe]).slice(0, 400));
       journal.fiche.length = 0;
       // Un bilan d il y a quatre semaines, sans version encore : la periode de la carte est celle de l action.
       const ilYaQuatreSemaines = require(path.join(ROOT, 'lib/direction-analytics.js')).addDays(new Date().toISOString().slice(0, 10), -28);

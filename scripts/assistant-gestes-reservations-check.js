@@ -70,6 +70,13 @@ const MUTATIONS = [
   { nom: 'variante-de-formule-ignoree', rouge: '[P] une formule coche ses etapes, dans la variante achetee ou d apres son plan', editions: [{ fichier: PROGRAMME, de: '  if (!Array.isArray(etapes) || !etapes.some((s) => remplacees.has(s.a))) return etapes;', vers: '  if (true) return etapes;' }] },
   { nom: 'attente-comptee-libre', rouge: '[P] les activites libres d une visite, celles d avant le reste comprises', editions: [{ fichier: PROGRAMME, de: '  items.filter((item) => item && !item.planned && !item.waitOffer).forEach((item) => {', vers: '  items.filter((item) => item && !item.planned).forEach((item) => {' }] },
   { nom: 'postes-du-centre-ignores', rouge: '[P] les postes de l arene du centre decoupent les vagues comme la console', editions: [{ fichier: PROGRAMME, de: 'postes: Number.isFinite(postesLus) && postesLus > 0 ? Math.trunc(postesLus) : POSTES_PAR_DEFAUT', vers: 'postes: POSTES_PAR_DEFAUT' }] },
+  // Deplacer une activite (2026-11-12) : le corps du glisser, juge sur la carte comme la fiche le jugera.
+  { nom: 'deplacement-sans-version', rouge: '[G] un bowling se deplace dans la forme du glisser du planning, avant et apres sur la carte, avec la version', editions: [{ fichier: LOT, de: 'corps: { id: r.id, baseUpdatedAt: r.version, activityMove: move },', vers: 'corps: { id: r.id, activityMove: move },' }] },
+  { nom: 'deplacement-sans-apercu', rouge: '[G] un creneau pris, une heure hors grille ou des pistes en trop se refusent sur la carte', editions: [{ fichier: LOT, de: "          candidat = await ctx.lire('apercuDuDeplacement', r.id, JSON.stringify(move));", vers: '          candidat = { opsPlan: r.opsPlan || {} };' }] },
+  { nom: 'pistes-en-nombre-libre', rouge: '[G] un creneau pris, une heure hors grille ou des pistes en trop se refusent sur la carte', editions: [{ fichier: LOT, de: '            if (pistes.length !== actuelles.length) throw erreur(', vers: '            if (false) throw erreur(' }] },
+  { nom: 'deplacement-sans-droit-de-ressource', rouge: '[G] deplacer demande les mots de la personne et le droit du planning de la ressource', editions: [{ fichier: LOT, de: "        exigerAussi(ctx, activite === 'laser_game' ? 'planning.laser' : 'planning.bowling',", vers: "        if (false) exigerAussi(ctx, activite === 'laser_game' ? 'planning.laser' : 'planning.bowling'," }] },
+  { nom: 'deplacement-deja-bouge-accepte', rouge: '[G] une activite qui a bouge depuis la carte arrete le clic', editions: [{ fichier: LOT, de: '        if (rempli(p.avant_vu) && String(p.avant_vu) !== avantVu) throw erreur(', vers: '        if (false) throw erreur(' }] },
+  { nom: 'deplacement-hors-forme-du-glisser', rouge: '[S] le deplacement part a la fiche dans la forme du glisser, avec la version et la session', editions: [{ fichier: LOT, de: "          move = { activityId: 'bowling', startTime: heure, lanes: pistes };", vers: "          move = { activityId: 'bowling', startTime: heure, lanes: pistes, sourceLanes: actuelles };" }] },
 ];
 
 // ── Les mutations, appliquees au chargement des fichiers vises ──
@@ -157,9 +164,12 @@ function banc() {
   const J = require(path.join(ROOT, 'lib/center-facts.js')).jourDuCentre().date;
   const demain = plusJours(J, 1);
   const hier = plusJours(J, -1);
+  // Le samedi qui vient : le centre y est ouvert toute la journee, quel que soit le jour du banc.
+  const samedi = plusJours(J, ((6 - new Date(`${J}T12:00:00Z`).getUTCDay() + 7) % 7) || 7);
   const resa = (x) => ({ centerId: 'libramont', startTime: '18:00', pax: 8, status: 'pending', validationStatus: 'confirmed', price: 120, basePrice: 120, email: '', phone: '+32 470 11 22 33', name: '', lanes: [3], notes: '', opsPlan: {}, amountPaid: null, discountReason: '', absentAt: null, updatedAt: '2026-11-10T10:00:00.000Z', ...x });
+  const blocBowling = (startTime, endTime, lanes) => ({ type: 'activity', activityId: 'bowling', resourceType: 'bowling_lane', startTime, endTime, lanes, players: 8 });
   return {
-    J, demain, hier,
+    J, demain, hier, samedi,
     reservations: [
       resa({ id: 101, date: demain, name: 'Léa Martin', email: 'lea@exemple.be' }),
       resa({ id: 102, date: hier, name: 'Groupe Hier', startTime: '15:00' }),
@@ -182,6 +192,11 @@ function banc() {
           timeline: [{ type: 'activity', activityId: 'bowling', startTime: '14:00', endTime: '15:00' }, { type: 'activity', activityId: 'laser_game', startTime: '15:30', endTime: '15:55' }, { type: 'activity', activityId: 'arcade_time', startTime: '16:00', endTime: '16:30' }, { type: 'activity', activityId: 'service_drinks', startTime: '14:00', endTime: '23:00', flexible: true }] } }),
       resa({ id: 115, date: J, name: 'Laser Tom', type: 'laser', startTime: '17:00', lanes: [], program: { items: [{ activityId: 'laser_game', games: 3, participants: 8, planned: true }] },
         opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }], pendingPasses: [{ countIndex: 2 }, { countIndex: 3 }] }, resourceBlocks: [{ activityId: 'laser_game', resourceType: 'laser_arena', startTime: '17:00', endTime: '17:25', countIndex: 1 }] } }),
+      // Le glisser du planning, un samedi : un bowling sur la piste 1, un laser de deux parties dont
+      // la seconde attend son heure, et un groupe qui tient la piste 2 de 16:00 a 17:00.
+      resa({ id: 116, date: samedi, name: 'Bowling Samedi', type: 'bowling', startTime: '14:00', duration: 1, lanes: [1], email: 'samedi@exemple.be', program: { items: [{ activityId: 'bowling', participants: 8, duration: 1, planned: true }] }, opsPlan: { resourceBlocks: [blocBowling('14:00', '15:00', [1])], timeline: [blocBowling('14:00', '15:00', [1])] } }),
+      resa({ id: 117, date: samedi, name: 'Laser Samedi', type: 'laser', startTime: '16:00', duration: 1, lanes: [], program: { items: [{ activityId: 'laser_game', games: 2, participants: 8, planned: true }] }, opsPlan: { laserPassPlan: { scheduledPasses: [{ countIndex: 1 }], pendingPasses: [{ countIndex: 2 }] }, resourceBlocks: [{ type: 'activity', activityId: 'laser_game', resourceType: 'laser_arena', startTime: '16:00', endTime: '16:25', countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1, players: 8 }] } }),
+      resa({ id: 118, date: samedi, name: 'Groupe Piste 2', type: 'bowling', startTime: '16:00', duration: 1, lanes: [2], opsPlan: { resourceBlocks: [blocBowling('16:00', '17:00', [2])] } }),
       resa({ id: 201, centerId: 'gembloux', date: demain, name: 'Ailleurs', email: 'ailleurs@exemple.be' }),
     ],
     demandes: [
@@ -246,6 +261,16 @@ function lecteursDu(b) {
     retardApplique: async (c, n) => b.incidents.filter((i) => i.reservationId === Number(n)).slice(-1)[0] || null,
     prevenusDuRetard: async (c, id) => b.prevenus.filter((x) => x.incident === Number(id)),
     reglagesDuProgramme: async () => ({ postes: 30, formules: require(path.join(ROOT, 'lib/booking-config.js')).FORMULES }),
+    // Le vrai jugement de la fiche (buildActivityMove, validateActivityMoveResources) sur la journee du banc.
+    apercuDuDeplacement: async (c, n, mouvement) => {
+      const r = b.reservations.find((x) => x.id === Number(n));
+      if (!r) return null;
+      const move = JSON.parse(mouvement);
+      const candidat = require(path.join(ROOT, 'lib/reservation-activity-move.js')).buildActivityMove(r, move);
+      const autres = b.reservations.filter((x) => x.date === r.date && x.id !== r.id && x.status !== 'cancelled');
+      try { require(path.join(ROOT, 'lib/database.js')).validateActivityMoveResources(candidat, move, autres, {}, [], r.date); } catch (e) { if (!e.statusCode) e.statusCode = 409; throw e; }
+      return candidat;
+    },
   };
 }
 
@@ -290,7 +315,7 @@ async function verifier(editions = []) {
       reponse_type_agent: 'Change la réponse type sur les prix', expediteur_mails: 'Mets l’adresse anniversaires par défaut', supprimer_expediteur_mails: 'Supprime l’adresse anniversaires', piste_en_maintenance: 'La piste 3 est en panne, mets-la en maintenance',
       decaler_pour_retard: 'Le groupe A a 15 minutes de retard', retirer_retard: 'Annule le retard, remets-les à 18 h',
       relancer_client: 'Relance Léa, elle ne vient plus', sms_client: 'Envoie-lui un SMS pour dire que la piste est prête',
-      prevenir_clients_du_retard: 'Préviens les clients du retard',
+      prevenir_clients_du_retard: 'Préviens les clients du retard', deplacer_activite: 'Déplace le bowling à 16 h 30',
     };
     const risques = LOT_NOMS.filter((n) => G.GESTES[n].risque);
     const ouvertes = risques.flatMap((n) => LECTURES.filter((t) => G.GESTES[n].demande.test(t)).map((t) => `${n} : ${t}`));
@@ -581,6 +606,40 @@ async function verifier(editions = []) {
     ok(cocheAnnulee.e && /annulée/.test(cocheAnnulee.e.message) && cocheAccueil.e && cocheAccueil.e.statusCode === 403,
       '[G] un dossier annule ne se coche plus, un role sans le droit de changer un statut non plus', JSON.stringify([cocheAnnulee.e && cocheAnnulee.e.message, cocheAccueil.e && cocheAccueil.e.message]));
 
+    // Le glisser du planning : le corps de la console, refait ici, juge par la fiche sur la carte.
+    const glisser = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:30' }, ['Déplace le bowling de samedi à 16 h 30']);
+    const clicGlisser = await clic('deplacer_activite', glisser.p ? glisser.p.action.params : {});
+    ok(glisser.p && glisser.p.risque === true && ligne(glisser, 'Bowling').avant === '14:00, piste 1' && ligne(glisser, 'Bowling').apres === '16:30, piste 1' && ligne(glisser, 'Le reste du programme').valeur === 'ne bouge pas' && /Aucun mail ne part au clic/.test(glisser.p.resume.clients || '')
+      && clicGlisser.r && clicGlisser.r.endpoint === 'staff-reservations' && clicGlisser.r.methode === 'PATCH'
+      && JSON.stringify(clicGlisser.r.corps) === JSON.stringify({ id: 116, baseUpdatedAt: '2026-11-10T10:00:00.000Z', activityMove: { activityId: 'bowling', startTime: '16:30', lanes: [1] } }),
+      '[G] un bowling se deplace dans la forme du glisser du planning, avant et apres sur la carte, avec la version', JSON.stringify([vu(glisser), vu(clicGlisser)]));
+    const pistePrise = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:00', pistes: '2' }, ['Mets le bowling sur la piste 2 à 16 h']);
+    const horsGrille = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '14:15' }, ['Décale le bowling à 14 h 15']);
+    const pistesEnTrop = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:30', pistes: '2 et 3' }, ['Passe-les sur les pistes 2 et 3']);
+    ok(pistePrise.e && pistePrise.e.statusCode === 409 && horsGrille.e && /pleine ou demie/.test(horsGrille.e.message) && pistesEnTrop.e && /joue sur 1 piste \(1\) : donnez 1 piste/.test(pistesEnTrop.e.message),
+      '[G] un creneau pris, une heure hors grille ou des pistes en trop se refusent sur la carte', JSON.stringify([pistePrise.e && pistePrise.e.message, horsGrille.e && horsGrille.e.message, pistesEnTrop.e && pistesEnTrop.e.message]));
+    const placer = await carte('deplacer_activite', { reservation: 117, activite: 'laser', partie: 2, heure: '18:00' }, ['Place la partie 2 à 18 h']);
+    const clicPlacer = await clic('deplacer_activite', placer.p ? placer.p.action.params : {});
+    const retrait = await carte('deplacer_activite', { reservation: 117, activite: 'laser', partie: 1, retirer: 'oui' }, ['Retire la partie 1 du planning']);
+    const clicRetrait = await clic('deplacer_activite', retrait.p ? retrait.p.action.params : {});
+    const dejaAPlacer = await carte('deplacer_activite', { reservation: 117, activite: 'laser', partie: 2, retirer: 'oui' }, ['Retire la partie 2']);
+    const partieInconnue = await carte('deplacer_activite', { reservation: 117, activite: 'laser', partie: 5, heure: '18:00' }, ['Place la partie 5 à 18 h']);
+    ok(placer.p && ligne(placer, 'Laser, partie 2').avant === 'à placer' && ligne(placer, 'Laser, partie 2').apres === '18:00 à 18:25' && clicPlacer.r && JSON.stringify(clicPlacer.r.corps.activityMove) === '{"activityId":"laser_game","unitKey":"2.1","startTime":"18:00"}'
+      && retrait.p && ligne(retrait, 'Laser, partie 1').avant === '16:00' && ligne(retrait, 'Laser, partie 1').apres === 'à placer' && clicRetrait.r && JSON.stringify(clicRetrait.r.corps.activityMove) === '{"activityId":"laser_game","unitKey":"1.1","unplace":true}'
+      && dejaAPlacer.e && /déjà à placer/.test(dejaAPlacer.e.message) && partieInconnue.e && /ne fait pas partie du dossier/.test(partieInconnue.e.message),
+      '[G] une partie de laser se place, se deplace ou se retire du planning par sa propre cle', JSON.stringify([vu(placer), vu(clicPlacer), vu(retrait), dejaAPlacer.e && dejaAPlacer.e.message, partieInconnue.e && partieInconnue.e.message]));
+    const bowlingSamedi = b.reservations.find((r) => r.id === 116);
+    const planSamedi = JSON.stringify(bowlingSamedi.opsPlan);
+    bowlingSamedi.opsPlan.resourceBlocks[0] = { ...bowlingSamedi.opsPlan.resourceBlocks[0], startTime: '15:00', endTime: '16:00' };
+    const dejaBouge = await clic('deplacer_activite', glisser.p ? glisser.p.action.params : {});
+    bowlingSamedi.opsPlan = JSON.parse(planSamedi);
+    ok(dejaBouge.e && dejaBouge.e.statusCode === 409 && /déjà bougé depuis la carte/.test(dejaBouge.e.message), '[G] une activite qui a bouge depuis la carte arrete le clic', vu(dejaBouge));
+    const glisserSansMots = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:30' }, ['Combien de groupes samedi ?']);
+    const glisserManager = await carte('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:30' }, ['Déplace le bowling à 16 h 30'], MANAGER);
+    const glisserMinigolf = await carte('deplacer_activite', { reservation: 116, activite: 'minigolf', heure: '16:30' }, ['Déplace le minigolf à 16 h 30']);
+    ok(glisserSansMots.e && glisserSansMots.e.statusCode === 403 && glisserManager.e && glisserManager.e.statusCode === 403 && /planning ne fait pas partie/.test(glisserManager.e.message) && glisserMinigolf.e && /Seuls le bowling et le laser/.test(glisserMinigolf.e.message),
+      '[G] deplacer demande les mots de la personne et le droit du planning de la ressource', JSON.stringify([glisserSansMots.e && glisserSansMots.e.message, glisserManager.e && glisserManager.e.message, glisserMinigolf.e && glisserMinigolf.e.message]));
+
     // ── P. LE PROGRAMME A COCHER : la jumelle du serveur contre la fiche ──
     if (!editions.length) console.log('\n[P] le programme a cocher : la fiche et le serveur, cle par cle');
     verifierProgramme(ok);
@@ -690,6 +749,12 @@ async function verifier(editions = []) {
       ok(co.statut === 200 && journal.fiche.length === 1 && vuCoche.methode === 'PATCH' && vuCoche.url === '/api/staff-reservations' && vuCoche.auth === 'Bearer jeton-du-poste'
         && JSON.stringify(Object.keys(vuCoche.corps)) === '["id","activityToggle","centerId"]' && vuCoche.corps.id === 114 && vuCoche.corps.centerId === 'libramont' && vuCoche.corps.activityToggle.key === 'laser_game-1' && vuCoche.corps.activityToggle.done === true && vuCoche.corps.activityToggle.by === 'Seb',
         '[S] la coche part a la fiche, une cle sans version, avec la session', JSON.stringify([co.statut, journal.fiche]).slice(0, 300));
+      journal.fiche.length = 0;
+      const carteGlisser = await Gs.proposer('deplacer_activite', { reservation: 116, activite: 'bowling', heure: '16:30' }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Déplace le bowling à 16 h 30'] }));
+      const gl = await cliquer('deplacer_activite', carteGlisser.action.params);
+      ok(gl.statut === 200 && journal.fiche.length === 1 && journal.fiche[0].methode === 'PATCH' && journal.fiche[0].auth === 'Bearer jeton-du-poste'
+        && JSON.stringify(journal.fiche[0].corps) === JSON.stringify({ id: 116, baseUpdatedAt: '2026-11-10T10:00:00.000Z', activityMove: { activityId: 'bowling', startTime: '16:30', lanes: [1] }, centerId: 'libramont' }),
+        '[S] le deplacement part a la fiche dans la forme du glisser, avec la version et la session', JSON.stringify([gl.statut, gl.json, journal.fiche]).slice(0, 300));
       journal.fiche.length = 0;
       const carteRetard = await Gs.proposer('prevenir_clients_du_retard', { reservation: 110 }, Gs.contexte({ centre: 'libramont', session: DIRECTION, messagesPersonne: ['Préviens les clients du retard'] }));
       const pr = await cliquer('prevenir_clients_du_retard', carteRetard.action.params);

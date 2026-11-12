@@ -164,6 +164,15 @@
           "value": "cross-origin"
         }
       ]
+    },
+    {
+      "source": "/assets/mail/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
+        }
+      ]
     }
   ]
 }

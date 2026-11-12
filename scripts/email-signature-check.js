@@ -44,6 +44,11 @@
 //       blanc) ; un design enregistre avant l affiche (carte et site
 //       pre-remplis, celui de Libramont le 03/11) se lit en affiche avec le
 //       site du centre, une carte enregistree depuis reste une carte.
+//   [L] l apercu d Apparence de la capture d Ansar (2026-11-12) : le design
+//       enregistre le 03/11 (encre pre-remplie) prend la couleur du centre ;
+//       la note du mail se lit avant la signature ; la banniere suit la
+//       largeur du mail meme bloquee ; les photos et logos des mails se
+//       laissent afficher hors du site (Cross-Origin-Resource-Policy).
 //   [mutation] contre-preuves : chaque garde, retiree, fait rougir ce gate.
 'use strict';
 
@@ -584,6 +589,46 @@ async function controles(m) {
   const choisiDepuis = m.design.fusionnerEmailDesign({ ...enregistre0311, updatedAt: '2026-11-12T09:00:00.000Z' }, LIBRAMONT);
   ok(choisiDepuis.signature.layout === 'carte' && choisiDepuis.signature.website === '',
     '[K] enregistree depuis l arrivee de l affiche, la carte est un vrai choix : elle reste, sans site', `layout=${choisiDepuis.signature.layout}`);
+
+  // =====================================================================
+  console.log('\n[L] l apercu d Apparence de la capture d Ansar (2026-11-12) : couleurs, ordre, largeur, images');
+  // =====================================================================
+  // La capture : la banniere en texte de remplacement (bloquee), la formule et
+  // l accroche en noir, la note du mail sous la signature, l apercu qui deborde.
+  // Le design enregistre de Libramont, ENTIER cette fois (lu en base le 12/11).
+  const enregistre0311Complet = {
+    ...enregistre0311,
+    accent: { hex: '', mode: 'encre' },
+    header: { mode: 'aucun', logoUrl: `${origine}/assets/brand/logo-fun-galaxy-email-clair.png`, logoWidth: 80 },
+    footer: { email: true, adresse: true, mention: '', telephone: true },
+    signatureScope: { manual: true, campaigns: false, sequences: true },
+  };
+  const couleurDeLaFormule = (html) => (String(html).match(new RegExp(`color:(#[0-9a-fA-F]{6});">${echapper(defautsFG.signature.closing)}</p>`)) || [])[1] || '';
+  const reluComplet = m.design.fusionnerEmailDesign(enregistre0311Complet, LIBRAMONT);
+  const mailComplet = await transactionnel(reluComplet);
+  const couleurDefaut = couleurDeLaFormule(formesEnseigne.affiche);
+  ok(reluComplet.accent.mode === defautsFG.accent.mode && couleurDefaut && couleurDeLaFormule(mailComplet) === couleurDefaut && couleurDefaut.toLowerCase() !== '#111827',
+    '[L] le design du 03/11 (encre pre-remplie) prend la couleur du centre, comme le defaut', `accent=${reluComplet.accent.mode} formule=${couleurDeLaFormule(mailComplet)} defaut=${couleurDefaut}`);
+  const encreChoisie = m.design.fusionnerEmailDesign({ ...enregistre0311Complet, updatedAt: '2026-11-12T09:00:00.000Z' }, LIBRAMONT);
+  ok(encreChoisie.accent.mode === 'encre', '[L] l encre choisie depuis le lot 2 reste l encre', `accent=${encreChoisie.accent.mode}`);
+  // L ordre : l apercu de confirmation (celui de la capture) pose sa note avant la signature.
+  const apercuConfirmation = await m.comms.buildDesignPreview({ centerId: 'libramont', design: reluComplet, sample: 'confirmation' }, deps);
+  const iNote = apercuConfirmation.html.indexOf('s&#39;adapte');
+  const iFormule = apercuConfirmation.html.indexOf(echapper(defautsFG.signature.closing));
+  ok(iNote > -1 && iFormule > iNote, '[L] la note du mail se lit avant la signature, qui ferme le mail', `note=${iNote} formule=${iFormule}`);
+  // La largeur : une banniere bloquee ou coupee ne garde pas un cadre fixe.
+  const styleBanniere = (String(formesEnseigne.affiche).match(new RegExp(`<img src="${banniereFG.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*style="([^"]*)"`)) || [])[1] || '';
+  ok(/(^|;)width:100%;max-width:\d+px;/.test(styleBanniere) && !/(^|;)width:\d+px;max-width:100%/.test(styleBanniere),
+    '[L] la banniere suit la largeur du mail, meme quand elle ne charge pas', styleBanniere.slice(0, 90));
+  // Les images : servies avec Cross-Origin-Resource-Policy same-origin, elles etaient
+  // bloquees dans le cadre isole de l apercu (net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin).
+  const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  const corpDe = (source) => (((vercel.headers || []).find((h) => h.source === source) || { headers: [] }).headers
+    .find((h) => String(h.key).toLowerCase() === 'cross-origin-resource-policy') || {}).value;
+  const imagesFG = [...photos.map((p) => p.url), ...photos.map((p) => p.banniere).filter(Boolean), logoNuitFG, logoJourFG];
+  ok(corpDe('/assets/mail/(.*)') === 'cross-origin' && corpDe('/assets/brand/(.*)') === 'cross-origin'
+    && imagesFG.every((u) => u.startsWith(`${origine}/assets/mail/`) || u.startsWith(`${origine}/assets/brand/`)),
+    '[L] les photos et logos des mails se laissent afficher hors du site (apercu d Apparence, messageries)', `mail=${corpDe('/assets/mail/(.*)')} brand=${corpDe('/assets/brand/(.*)')}`);
 }
 
 (async () => {
@@ -664,7 +709,14 @@ async function controles(m) {
     { nom: 'l ancienne carte gardee', cible: '[K] le design enregistre le 03/11 (carte et site pre-remplis) se lit en affiche avec le site du centre, et garde son gabarit',
       fichier: 'lib/email-design.js', de: '  return normaliserEmailDesign(sansLesAnciensDefauts(stocke), center, { strict: false });', vers: '  return normaliserEmailDesign(stocke, center, { strict: false });' },
     { nom: 'la carte choisie perdue', cible: '[K] enregistree depuis l arrivee de l affiche, la carte est un vrai choix : elle reste, sans site',
-      fichier: 'lib/email-design.js', de: '  if (Number.isFinite(quand) && quand >= NOUVELLES_DISPOSITIONS_DEPUIS) return stocke;\n', vers: '' },
+      fichier: 'lib/email-design.js', de: '  const enregistreAvant = (moment) => !Number.isFinite(quand) || quand < moment;', vers: '  const enregistreAvant = () => true;' },
+    // L apercu d Apparence de la capture d Ansar (2026-11-12).
+    { nom: 'l ancienne encre gardee', cible: '[L] le design du 03/11 (encre pre-remplie) prend la couleur du centre, comme le defaut',
+      fichier: 'lib/email-design.js', de: "  if (enregistreAvant(COULEUR_DU_CENTRE_DEPUIS) && accent && typeof accent === 'object' && accent.mode === 'encre') {", vers: '  if (false) {' },
+    { nom: 'la note sous la signature', cible: '[L] la note du mail se lit avant la signature, qui ferme le mail',
+      fichier: 'lib/ops-communications.js', de: '                ${actionButton(action, couleur)}\n', vers: "                ${actionButton(action, couleur)}\n                ${avecSignature ? MARQUE_SIGNATURE : ''}\n" },
+    { nom: 'la banniere a largeur fixe', cible: '[L] la banniere suit la largeur du mail, meme quand elle ne charge pas',
+      fichier: 'lib/ops-communications.js', de: "${image(url, largeur, alt, 'border-radius:12px;', true)}", vers: "${image(url, largeur, alt, 'border-radius:12px;')}" },
   ];
   const survivantes = [];
   for (const c of CAS) {

@@ -34,6 +34,8 @@ const MUTATIONS = [
   { nom: 'jour-a-part-compte-dehors', rouge: '[G] des horaires qui laissent des reservations dehors le disent', editions: [{ fichier: CENTRE, de: ' === vacances && !ouvertureExceptionnelle(x.date, r.config));', vers: ' === vacances);' }] },
   { nom: 'fermeture-sans-reservations', rouge: '[G] une fermeture dit les reservations deja prises', editions: [{ fichier: CENTRE, de: '.filter((x) => (corps.recurrence === \'once\' ? x.date === corps.date : jourDe(x.date) === corps.dayOfWeek) && dossierTouche(x, bloc)) : [];', vers: '.filter(() => false) : [];' }] },
   { nom: 'grille-a-zero', rouge: '[G] une case de grille hors bornes, inconnue ou a 0 euro se refuse', editions: [{ fichier: CENTRE, de: "        if (!(prix > 0)) throw erreur('Un prix de grille est de plus de 0 € : une case à 0 € serait refusée au client.');", vers: '' }] },
+  { nom: 'nouvelle-activite-sans-tarifs', rouge: '[G] une activite neuve se refuse si elle existe, hors bornes ou sans le droit Tarifs', editions: [{ fichier: CENTRE, de: "        exigerTarifs(ctx, 'le prix d’une nouvelle activité');", vers: '' }] },
+  { nom: 'nouvelle-activite-sans-son-centre', rouge: '[S] une activite neuve entre au catalogue, puis ce centre la propose avec ses machines, les autres activites intactes', editions: [{ fichier: OPS, de: "    if (body.centre && typeof body.centre === 'object' && !Array.isArray(body.centre)) {", vers: '    if (false) {' }] },
   { nom: 'activite-sans-tarifs', rouge: '[G] le prix d une activite demande aussi le droit Tarifs', editions: [{ fichier: CENTRE, de: "        exigerTarifs(ctx, 'le prix d’une activité');", vers: '' }] },
   { nom: 'suggestions-sans-tarifs', rouge: '[G] les suggestions demandent aussi le droit Tarifs', editions: [{ fichier: CENTRE, de: "        exigerTarifs(ctx, 'les remises des suggestions');", vers: '' }] },
   { nom: 'statut-deux-fois', rouge: '[G] le statut du centre avertit des reservations a venir et se refuse s il ne change pas', editions: [{ fichier: CENTRE, de: '        if (statut === r.statut) throw erreur(`Le centre est déjà ${STATUTS[statut]}.`);', vers: '' }] },
@@ -114,7 +116,7 @@ const MANAGER = { centerId: 'libramont', authorizedCenterId: 'libramont', member
 const REGLAGES_SEULS = { ...MANAGER, permissions: ['settings.manage'] };
 const AUJOURDHUI = '2026-11-11';
 // Ce que la personne a ecrit, pour les cartes qui ne testent pas ses mots : un mot de chaque domaine.
-const MOTS = 'Change les horaires, ferme, coupe, mets le prix, retire, remise, adresse, nom, statut, vacances, délai, seuil, formule, site, carte, supplément, secours, comptoir';
+const MOTS = 'Change les horaires, ferme, coupe, mets le prix, retire, remise, adresse, nom, statut, vacances, délai, seuil, formule, site, carte, supplément, secours, comptoir, ajoute l’activité';
 
 // La configuration du centre telle que la base la garde (le fichier socle de Libramont dessous).
 function brutDuBanc() {
@@ -221,6 +223,7 @@ async function verifier(editions = []) {
       modifier_offres_suggestions: { offre: 'laser', remise: '5 € par personne' },
       modifier_cartes_arcade: { carte: '30 minutes', prix: 16 },
       modifier_catalogue_supplements: { article: 'Orval', prix: 6 },
+      ajouter_activite: { nom: 'Car racing', prix: 10, minutes: 15, machines: 2 },
     };
     const risques = noms.filter((n) => lot[n].risque);
     const sansLigne = risques.filter((n) => !VALIDES[n]);
@@ -359,6 +362,23 @@ async function verifier(editions = []) {
     ok(bowlingActivite.e && /modifier_grilles_prix_centre/.test(bowlingActivite.e.message) && karaBox.e && /sur place/.test(karaBox.e.message), '[G] une activite a la grille ou reglee sur place renvoie ailleurs', JSON.stringify([bowlingActivite.e && bowlingActivite.e.message, karaBox.e && karaBox.e.message]));
     const sansTarifs = await carte('modifier_prix_activite', { activite: 'Minigolf', prix: 10 }, { session: REGLAGES_SEULS });
     ok(sansTarifs.e && sansTarifs.e.statusCode === 403 && /Tarifs/.test(sansTarifs.e.message), '[G] le prix d une activite demande aussi le droit Tarifs', voir(sansTarifs));
+    // UNE ACTIVITE NEUVE (2026-11-12, Ansar : « car racing, 10 € les 15 minutes, 2 machines, 1 personne par
+    // machine, pour le temps pris ») : la carte dit le prix, les machines et le temps des tours ; le corps
+    // porte l activite par personne et sa session, puis le centre qui la propose avec ses machines.
+    const racing = await carte('ajouter_activite', { nom: 'Car racing', prix: 10, minutes: 15, machines: 2 });
+    const corpsRacing = racing.p ? (await refaire('ajouter_activite', racing.p.action.params)).r.corps : null;
+    ok(racing.p && ligne(racing, 'Prix').valeur === '10 € par personne, la session de 15 min' && ligne(racing, 'Machines').valeur === '2 à Fun Galaxy Libramont, 1 joueur par machine'
+      && ligne(racing, 'Temps pris').valeur === '2 joueurs à la fois : un groupe de 6 fait 3 tours, soit 45 min' && /tous vos centres/.test(ligne(racing, 'Où').valeur || '') && /formulaire en ligne/.test(racing.p.resume.clients)
+      && memes(corpsRacing, { activity: { name: 'Car racing', bookable: true, priceType: 'per_pax', priceValue: 10, priceUnit: 'par personne', durationModel: { defaultMinutes: 15, minMinutes: 15, maxMinutes: 15 } }, centre: { propose: true, units: 2, capacityPerUnit: 1 } }),
+      '[G] une activite neuve dit son prix, ses machines et le temps de ses tours, et part avec le centre qui la propose', voir(racing));
+    const refusRacing = await Promise.all([
+      carte('ajouter_activite', { nom: 'Minigolf', prix: 10, minutes: 15, machines: 2 }),
+      carte('ajouter_activite', { nom: 'Car racing', prix: 10, minutes: 2, machines: 2 }),
+      carte('ajouter_activite', { nom: 'Car racing', prix: 10, minutes: 15, machines: 0 }),
+      carte('ajouter_activite', { nom: 'Car racing', prix: 10, minutes: 15, machines: 2 }, { session: REGLAGES_SEULS }),
+    ]);
+    ok(/déjà au catalogue/.test((refusRacing[0].e || {}).message || '') && refusRacing[1].e && refusRacing[2].e && refusRacing[3].e && refusRacing[3].e.statusCode === 403 && /Tarifs/.test(refusRacing[3].e.message),
+      '[G] une activite neuve se refuse si elle existe, hors bornes ou sans le droit Tarifs', JSON.stringify(refusRacing.map((x) => (x.e ? x.e.message : 'carte'))));
     const decocher = await carte('afficher_masquer_formule_formulaire', { formule: 'Anniversaire', proposee: 'non' });
     const cocherTeam = await carte('afficher_masquer_formule_formulaire', { formule: 'Team building', proposee: 'oui' });
     ok(decocher.p && memes((await refaire('afficher_masquer_formule_formulaire', decocher.p.action.params)).r.corps, { config: { offerAvailability: { 'f-anniv': false } } }) && ligne(decocher, 'Réservable en ligne').apres === 'non' && cocherTeam.p && /remettez-la en vente aussi/.test(cocherTeam.p.resume.alerte || '') && ligne(cocherTeam, 'Réservable en ligne').apres === 'non', '[G] une formule se decoche dans Offres & formules, et dit si l autre interrupteur la cache encore', `${voir(decocher)} ${voir(cocherTeam)}`);
@@ -451,7 +471,7 @@ async function verifier(editions = []) {
       refreshAvailabilityBlocks: async () => {},
     });
     remplacer('lib/catalog-overrides.js', { buildClientCatalog: async () => ({ formulas: b2.catalogue, activities: b2.activites }) });
-    remplacer('lib/catalog-store.js', { refreshCatalog: async () => true, updateActivity: async (pool, x) => { journal.ecrit.push(['updateActivity', x]); return { id: x.id }; } });
+    remplacer('lib/catalog-store.js', { refreshCatalog: async () => true, updateActivity: async (pool, x) => { journal.ecrit.push(['updateActivity', x]); return { id: x.id }; }, createActivity: async (pool, x) => { journal.ecrit.push(['createActivity', x]); return { id: 'car_racing', centerId: 'all', ownerClientId: x.ownerClientId, source: 'custom' }; } });
     const ops2 = require(path.join(ROOT, OPS));
     const aujourdhui = (require(path.join(ROOT, 'lib/center-facts.js')).jourDuCentre() || {}).date || new Date().toISOString().slice(0, 10);
     const cliquer = (geste, params) => appeler(ops2, { action: 'assistantGeste', centerId: 'libramont', geste, params });
@@ -483,6 +503,15 @@ async function verifier(editions = []) {
     const a = await cliquer('modifier_prix_activite', { activite: 'Minigolf', prix: 10 });
     const [activite] = ecrit('updateActivity');
     ok(a.statut === 200 && activite && activite.id === 'minigolf_blacklight' && activite.priceValue === 10 && activite.centerId === 'all' && activite.ownerClientId === 'fungalaxy' && Object.keys(activite).sort().join(',') === 'centerId,id,ownerClientId,priceValue', '[S] le prix d une activite part au catalogue de la societe, et rien d autre', `${a.statut} ${JSON.stringify(a.json).slice(0, 160)} ${JSON.stringify(activite)}`);
+    journal.ecrit.length = 0;
+    const nouvelle = await cliquer('ajouter_activite', { nom: 'Car racing', prix: 10, minutes: 15, machines: 2 });
+    const [creee] = ecrit('createActivity');
+    const [proposee] = ecrit('saveCenterConfigOverride');
+    const configApres = CC2.normalizeCenterConfig(b2.brut, 'libramont');
+    ok(nouvelle.statut === 200 && creee && creee.name === 'Car racing' && creee.priceType === 'per_pax' && creee.priceValue === 10 && creee.centerId === 'all' && creee.ownerClientId === 'fungalaxy' && memes(creee.durationModel, { defaultMinutes: 15, minMinutes: 15, maxMinutes: 15 })
+      && proposee && proposee.centre === 'libramont' && memes(proposee.patch, { activityAvailability: { car_racing: true }, activityCapacity: { car_racing: { units: 2, capacityPerUnit: 1 } } })
+      && configApres.activityAvailability.car_racing === true && memes(configApres.activityCapacity.car_racing, { units: 2, capacityPerUnit: 1 }) && Object.keys(configApres.activityAvailability).length > 1,
+      '[S] une activite neuve entre au catalogue, puis ce centre la propose avec ses machines, les autres activites intactes', `${nouvelle.statut} ${JSON.stringify(nouvelle.json).slice(0, 200)} ${JSON.stringify({ creee, proposee })}`);
     b2.statut = 'planned';
     const n = await cliquer('renommer_centre', { nom: 'Fun Galaxy Ardenne' });
     const [centreEcrit] = ecrit('centre');

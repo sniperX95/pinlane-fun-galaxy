@@ -321,6 +321,7 @@
     "test:laser-minimum",
     "test:demande-a-verifier",
     "test:tours-dotation",
+    "test:activite-en-tours",
     "test:complet-explique",
     "test:formulaire-retours",
     "test:heures-passees",

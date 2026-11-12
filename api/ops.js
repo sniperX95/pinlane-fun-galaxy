@@ -2500,6 +2500,30 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Creation de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
+    // LE CENTRE QUI LA PROPOSE, DANS LE MEME GESTE (2026-11-12, l assistant : « car racing, 2 machines,
+    // 1 personne par machine »). Facultatif : la console n envoie que l activite. La case du centre et
+    // ses machines passent par la fusion de saveCenterConfig (meme droit, settings.manage), cle par cle :
+    // les autres activites du centre ne bougent pas.
+    if (body.centre && typeof body.centre === 'object' && !Array.isArray(body.centre)) {
+      const targetCenter = requireConcreteCenter('activité du centre');
+      const machines = Math.trunc(Number(body.centre.units));
+      const parMachine = Math.trunc(Number(body.centre.capacityPerUnit));
+      const installations = {
+        ...(machines >= 1 && machines <= 50 ? { units: machines } : {}),
+        ...(parMachine >= 1 && parMachine <= 500 ? { capacityPerUnit: parMachine } : {}),
+      };
+      try {
+        await saveCenterConfigOverride(getPool(), targetCenter, {
+          activityAvailability: { [out.id]: body.centre.propose !== false },
+          ...(Object.keys(installations).length ? { activityCapacity: { [out.id]: installations } } : {}),
+        }, { prixPermis: sessionHasPermission(options.session, 'pricing.manage') });
+      } catch (error) {
+        throw createHttpError(`L’activité est au catalogue, mais ${targetCenter} n’a pas pu l’enregistrer : cochez-la dans Établissement.`, 503, true);
+      }
+      await refreshCenterOverrides(getPool(), { force: true });
+      sendJson(res, 200, { ok: true, action, ...out, centre: { id: targetCenter, propose: body.centre.propose !== false, ...installations } });
+      return;
+    }
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }

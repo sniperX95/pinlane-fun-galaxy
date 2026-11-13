@@ -36652,8 +36652,10 @@ function rsJoueursPartie(k, n) {
 function rsRangJoueursDesParties() {
   const liste = rsJoueursDesParties();
   const bornes = activityParticipantsBounds('laser_game', quickBookState.pax);
-  const cles = liste.map((n, k) => rsCompteurHtml(`Partie ${k + 1}`, n, n > bornes.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornes.max ? `rsJoueursPartie(${k},${n + 1})` : '', `data-partie-joueurs="${k + 1}"`, `Joueurs de la partie ${k + 1}`));
-  return rsRang('Par partie', cles.join(''), Math.min(liste.length, 3));
+  // (les touches pleine taille de la page : 44 px au doigt, comme ses autres compteurs)
+  const cles = liste.map((n, k) => `<span class="rs-partie-cpt"><span class="rs-cpt-l">Partie ${k + 1}</span>${rsPasHtml(n > bornes.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornes.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-joueurs="${k + 1}"`)}</span>`);
+  // (une rangee qui passe a la ligne : au telephone, une partie par ligne, rien hors de l ecran)
+  return `<div class="rs-rang"><span class="rs-lbl">Par partie</span><div class="rs-choix rs-parties-joueurs">${cles.join('')}</div></div>`;
 }
 
 function rsFixerPistes(n) {
@@ -37518,7 +37520,7 @@ function rsPartiesHtml() {
     }).join('');
     const n = joueursParPartie[k] || bornesJoueurs.max;
     const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornesJoueurs.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`)}<small>joueurs</small></span>`;
-    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-l">Partie ${k + 1}${joueurs}</span><div class="rs-s-l">${cles}</div></div>`;
+    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span><div class="rs-s-l">${cles}</div></div>`;
   });
   return `<div class="rs-parties">${rangees.join('')}</div>`;
 }

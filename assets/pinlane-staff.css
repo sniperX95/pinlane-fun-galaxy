@@ -9696,10 +9696,13 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-partie { display: grid; grid-template-columns: 138px minmax(0, 1fr); align-items: center; gap: 8px; }
 .qb-modal.rv.rs .rs-partie-l { font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); }
 /* Les joueurs de la partie, sous son nom : un petit compteur, la colonne s elargit d autant. */
-.qb-modal.rv.rs .rs-partie-l { display: grid; gap: 6px; justify-items: start; }
+.qb-modal.rv.rs .rs-partie-tete { display: grid; gap: 6px; justify-items: start; }
 .qb-modal.rv.rs .rs-partie-j { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
-.qb-modal.rv.rs .rs-partie-j .rs-pas { gap: 0; padding: 2px; border-radius: 9px; background: var(--rs-touche); }
-.qb-modal.rv.rs .rs-partie-j .rs-pas button { width: 26px; min-height: 28px; border-radius: 7px; background: transparent; font-size: 16px; }
+.qb-modal.rv.rs .rs-partie-j .rs-pas { gap: 0; padding: 3px; border-radius: 10px; background: var(--rs-touche); }
+.qb-modal.rv.rs .rs-partie-j .rs-pas button { width: 28px; min-height: 32px; border-radius: 8px; background: transparent; font-size: 17px; }
+/* La page du laser : un compteur pleine taille par partie. */
+.qb-modal.rv.rs .rs-partie-cpt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.qb-modal.rv.rs .rs-choix.rs-parties-joueurs { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .qb-modal.rv.rs .rs-partie-j .rs-pas button:disabled { box-shadow: none; }
 .qb-modal.rv.rs .rs-partie-j .rs-pas b { min-width: 24px; align-self: center; text-align: center; font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .qb-modal.rv.rs .rs-partie-j small { font-size: 12px; color: var(--muted); }

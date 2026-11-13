@@ -79,7 +79,7 @@ const MUTATIONS = [
   { nom: 'estimation-pleine', cible: 'F3', fichier: APP, de: '      const parPartie = Array.isArray(item.joueursParPartie) && item.joueursParPartie.length === parties ? item.joueursParPartie.map((n) => Math.min(effectif, Math.max(1, Math.trunc(Number(n) || 1)))) : null;', vers: '      const parPartie = null;' },
   { nom: 'ligne-sans-suite', cible: 'F6', fichier: APP, de: "    if (id === 'laser_game') rsPartiesSuiventLaLigne(getQuickVisitOptions('laser_game'), voulu);\n", vers: '' },
   { nom: 'dossier-perd', cible: 'D', fichier: APP, de: '...(parPartieEditee ? { joueursParPartie: parPartieEditee } : {}), ', vers: '' },
-  { nom: 'bloc-sans-joueurs', cible: 'F7', fichier: APP, de: '<span class="rs-partie-l">Partie ${k + 1}${joueurs}</span>', vers: '<span class="rs-partie-l">Partie ${k + 1}</span>' },
+  { nom: 'bloc-sans-joueurs', cible: 'F7', fichier: APP, de: '<span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span>', vers: '<span class="rs-partie-l">Partie ${k + 1}</span>' },
   { nom: 'touche-pleine', cible: 'F3', fichier: APP, de: '      if (liste.length > 1 && liste.some((n) => n !== item.participants)) item.joueursParPartie = liste;\n', vers: '' },
   // Le serveur qui ne voit pas changer les joueurs d une partie : il gardait le prix d avant.
   { nom: 'serveur-aveugle', cible: 'D', fichier: 'api/staff-reservations.js', de: '    if (Array.isArray(item.joueursParPartie)) choice.joueursParPartie = item.joueursParPartie.map(Number);\n', vers: '' },
@@ -254,8 +254,8 @@ async function geste(page, selecteur) {
   await pret(page);
   await page.waitForTimeout(250);
 }
-const compteurs = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.rs-cpt [data-partie-joueurs]')).filter((b, i, t) => t.findIndex((x) => x.dataset.partieJoueurs === b.dataset.partieJoueurs) === i).map((b) => Number(b.closest('.rs-pas').querySelector('b').textContent)));
-const moins = (k) => `.rs-cpt [data-partie-joueurs="${k}"][aria-label$="un de moins"]`;
+const compteurs = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.rs-partie-cpt [data-partie-joueurs]')).filter((b, i, t) => t.findIndex((x) => x.dataset.partieJoueurs === b.dataset.partieJoueurs) === i).map((b) => Number(b.closest('.rs-pas').querySelector('b').textContent)));
+const moins = (k) => `.rs-partie-cpt [data-partie-joueurs="${k}"][aria-label$="un de moins"]`;
 
 // ---------------------------------------------------------------------------
 // [F] [D] LA FENETRE, PUIS LE DOSSIER

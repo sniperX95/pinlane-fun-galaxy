@@ -946,7 +946,10 @@ async function routeur(req, res) {
       try {
         await refreshCenterOverrides(getPool());
         const centre = demande ? getCenter(demande) : null;
-        const reglage = centre && centre.config && centre.config.embed;
+        // Le reglage enregistre par la console (setEmbedState) est fusionne dans le centre lui-meme : centre.embed.
+        // Lu sous centre.config.embed (qui n existe pas), la coupure ne se voyait jamais (13/11, 5 h 40 : Ansar
+        // coupe, la console dit « coupé », le site garde le formulaire Pinlane).
+        const reglage = centre && centre.embed;
         if (reglage && reglage.actif === false) actif = false;
       } catch (error) {
         // Centre inconnu ou base indisponible : on repond ACTIF. Le pire des

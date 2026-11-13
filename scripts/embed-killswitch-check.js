@@ -58,11 +58,24 @@
 //       visiteur verrait DEUX formulaires. La regle !important tient, et
 //       l interrupteur la retire quand on coupe.
 //
-// Usage : node scripts/embed-killswitch-check.js
+//   [J] LA COUPURE ENREGISTREE PAR LA CONSOLE SE LIT VRAIMENT. Le faux serveur
+//       des proprietes precedentes repond l etat qu on lui dit : il ne prouve
+//       rien de la lecture. Ici le VRAI gestionnaire lit la VRAIE fusion des
+//       centres (lib/ops-knowledge) sur la ligne que la console ecrit
+//       (centers.settings.config.embed). Le 13/11 a 5 h 40, Ansar coupe, la
+//       console dit « coupé », et le site garde le formulaire Pinlane : la
+//       lecture cherchait centre.config.embed, qui n existe pas.
+//
+// Usage : node scripts/embed-killswitch-check.js [--contre-preuves]
+//   --contre-preuves : rejoue [J] avec l ancienne lecture, qui doit rougir.
 'use strict';
+// [J] charge le vrai gestionnaire : aucune cle ne doit lui permettre de toucher la base ou d envoyer quoi que ce soit.
+['DATABASE_URL', 'POSTGRES_URL', 'RESEND_API_KEY', 'TELEGRAM_JETON', 'TELEGRAM_CHAT', 'TELEGRAM_GROUPE'].forEach((cle) => { delete process.env[cle]; });
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const Module = require('module');
+const { Readable } = require('stream');
 const ROOT = path.resolve(__dirname, '..');
 const { chromium } = require('playwright-core');
 const PORT = Number(process.env.PINLANE_SWITCH_PORT || 4237);
@@ -176,7 +189,60 @@ async function charger(page, chemin) {
   return etatPage(page);
 }
 
+// [J] Le vrai gestionnaire de api/public-booking-meta.js, compile depuis sa source (une contre-preuve la change en
+// memoire), sur une base simulee qui rend la ligne que la console ecrit.
+const LECTURE = 'const reglage = centre && centre.embed;';
+async function lectureServeur({ contrePreuve = false } = {}) {
+  const database = require(path.join(ROOT, 'lib/database'));
+  const rateLimit = require(path.join(ROOT, 'lib/rate-limit'));
+  const { SQL_EMPREINTES } = require(path.join(ROOT, 'lib/cache-empreintes'));
+  let lignes = [];
+  let version = 0;
+  // Une base neuve a chaque appel : l empreinte des centres change quand la ligne change, comme en vrai.
+  database.getPool = () => ({ query: async (sql) => {
+    if (sql === SQL_EMPREINTES) return { rows: [{ centres: `v${version}` }], rowCount: 1 };
+    if (/from centers/.test(String(sql))) return { rows: lignes, rowCount: lignes.length };
+    return { rows: [], rowCount: 0 };
+  } });
+  rateLimit.enforceRateLimit = () => false;
+  const fichier = path.join(ROOT, 'api/public-booking-meta.js');
+  let source = fs.readFileSync(fichier, 'utf8');
+  if (source.split(LECTURE).length !== 2) throw new Error('[J] lecture de l interrupteur introuvable dans api/public-booking-meta.js');
+  if (contrePreuve) source = source.split(LECTURE).join('const reglage = centre && centre.config && centre.config.embed;');
+  const m = new Module(fichier, module);
+  m.filename = fichier;
+  m.paths = Module._nodeModulePaths(path.dirname(fichier));
+  m._compile(source, fichier);
+  const handler = m.exports;
+  const lire = async (centre) => {
+    const req = Readable.from([]);
+    Object.assign(req, { method: 'GET', url: `/api/public-booking-meta?embedState=1&center=${centre}`, headers: { host: 'app.pinlane.test' }, socket: { remoteAddress: '203.0.113.7' }, connection: { remoteAddress: '203.0.113.7' } });
+    const res = { statusCode: 200, headers: {}, headersSent: false, setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; }, getHeader(k) { return this.headers[String(k).toLowerCase()]; }, writeHead(s) { this.statusCode = s; return this; }, end(b) { this.corps = String(b || ''); this.headersSent = true; } };
+    await handler(req, res);
+    try { return JSON.parse(res.corps); } catch (error) { return { brut: res.corps }; }
+  };
+  const ligne = (id, embed) => ({ id, name: id, status: 'active', timezone: 'Europe/Brussels', settings: { config: embed ? { embed } : {} } });
+  lignes = [ligne('libramont', { actif: false, bascule: new Date().toISOString(), basculePar: 'Ansar' }), ligne('gembloux', null)];
+  version += 1;
+  const coupe = await lire('libramont');
+  const autre = await lire('gembloux');
+  lignes = [ligne('libramont', { actif: true, bascule: new Date().toISOString(), basculePar: 'Ansar' }), ligne('gembloux', null)];
+  version += 1;
+  const remis = await lire('libramont');
+  return { coupe, autre, remis };
+}
+
 async function main() {
+  if (process.argv.includes('--contre-preuves')) {
+    const r = await lectureServeur({ contrePreuve: true });
+    const mord = r.coupe.actif !== false;
+    console.log(`${mord ? 'mord' : 'NE MORD PAS'}  [J] l ancienne lecture (centre.config.embed) ne voit pas la coupure  ${JSON.stringify(r.coupe)}`);
+    process.exit(mord ? 0 : 1);
+  }
+  const lecture = await lectureServeur();
+  ok(lecture.coupe.ok === true && lecture.coupe.actif === false, '[J] une coupure enregistree par la console se lit : le site rend son ancien formulaire', JSON.stringify(lecture.coupe));
+  ok(lecture.autre.actif === true, '[J] l autre centre, non coupe, garde le formulaire Pinlane', JSON.stringify(lecture.autre));
+  ok(lecture.remis.actif === true, '[J] remis en ligne depuis la console, il se relit en ligne', JSON.stringify(lecture.remis));
   const srv = await serveur();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });

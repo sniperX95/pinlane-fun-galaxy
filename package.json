@@ -211,7 +211,7 @@
     "test:comptoir-reserver": "node scripts/comptoir-reserver-check.js && node scripts/comptoir-reserver-check.js --contre-preuves",
     "test:reserver-seances": "node scripts/reserver-seances-check.js && node scripts/reserver-seances-check.js --contre-preuves",
     "test:fenetre-reserver-defauts": "node scripts/fenetre-reserver-defauts-check.js && node scripts/fenetre-reserver-defauts-check.js --contre-preuves",
-    "test:joueurs-par-partie": "node scripts/joueurs-par-partie-check.js --contre-preuves",
+    "test:joueurs-par-partie": "node scripts/joueurs-par-partie-check.js && node scripts/joueurs-par-partie-check.js --contre-preuves",
     "test:comptoir": "node scripts/comptoir-check.js && node scripts/comptoir-check.js --contre-preuves --tranche=1/2 && node scripts/comptoir-check.js --contre-preuves --tranche=2/2",
     "test:gates-eclats": "node scripts/gates-eclats-check.js && node scripts/gates-eclats-check.js --contre-preuves",
     "test:console-cibles": "node scripts/console-cibles-check.js && node scripts/console-cibles-check.js --contre-preuves",

@@ -371,11 +371,11 @@ async function scenarioFenetre(browser, lettres) {
         if (onglet) onglet.click();
       });
       await page.waitForSelector('.dossier-joueurs-parties', { timeout: 15000 }).catch(() => {});
-      const lire = () => page.evaluate(() => Array.from(document.querySelectorAll('.dossier-joueurs-parties .staff-stepper-value')).map((x) => Number(x.textContent)));
+      const lire = () => page.evaluate(() => Array.from(document.querySelectorAll('.dossier-joueurs-parties .dossier-partie-valeur')).map((x) => Number(x.textContent)));
       const vu = await lire();
       ok(JSON.stringify(vu) === '[12,10,8]', '[D] le dossier relu montre « Joueurs par partie » : 12, 10, 8', vu);
       if (JSON.stringify(vu) === '[12,10,8]') {
-        await page.locator('.dossier-joueurs-parties [aria-label="Partie 3 : retirer un joueur"]').click();
+        await page.locator('.dossier-joueurs-parties [aria-label="Joueurs de la partie 3, un de moins"]').click();
         await page.waitForTimeout(300);
         const vu2 = await lire();
         if (process.env.PARTIES_PHOTOS && !mutation) {
@@ -431,16 +431,18 @@ async function jouer(browser, lettres) {
   const http = await FX.servir({ port: PORT, transformer });
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
-    const toutes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'F1', 'F2', 'F7', 'F3', 'F4', 'F5', 'F6', 'D'];
-    await jouer(browser, toutes);
-    const total = reussis + echecs.length;
-    if (echecs.length) {
-      console.log(`\njoueurs-par-partie-check: ${echecs.length} ECHEC(S) sur ${total}`);
-      process.exitCode = 1;
-      return;
-    }
-    console.log(`\njoueurs-par-partie-check: ALL OK (${total})`);
-    if (argument('contre-preuves')) {
+    // (deux unites dans la suite : le passage simple, puis --contre-preuves seules, comme les autres gates)
+    if (!argument('contre-preuves')) {
+      const toutes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'F1', 'F2', 'F7', 'F3', 'F4', 'F5', 'F6', 'D'];
+      await jouer(browser, toutes);
+      const total = reussis + echecs.length;
+      if (echecs.length) {
+        console.log(`\njoueurs-par-partie-check: ${echecs.length} ECHEC(S) sur ${total}`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`\njoueurs-par-partie-check: ALL OK (${total})`);
+    } else {
       let mordent = 0;
       for (const m of MUTATIONS) {
         mutation = m;

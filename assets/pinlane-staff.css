@@ -17936,7 +17936,7 @@ body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step) { displ
 body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step):hover:not(:disabled) { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step):disabled { color: var(--faint); opacity: .45; background: var(--raised); }
 body:is(.staff-mode, .admin-mode) .staff-stepper-btn svg { width: 16px; height: 16px; stroke-width: 1.7; }
-body:is(.staff-mode, .admin-mode) :is(.staff-stepper-value, .es2 .es-stepper .input) { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; margin: 0; padding: 0 6px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 14px; line-height: 1.4; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) :is(.staff-stepper-value, .dossier-partie-valeur, .es2 .es-stepper .input) { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; margin: 0; padding: 0 6px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 14px; line-height: 1.4; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .staff-stepper-value small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper:focus-within { outline: 2px solid var(--console-focus); outline-offset: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper :focus-visible { outline-offset: -3px; }

@@ -1673,6 +1673,9 @@ function setEditField(field, value, syncLanes = false) {
     document.querySelectorAll('.dossier-activity[data-edit-activity]').forEach(row => {
       const counter = row.querySelector('.dossier-activity-count');
       if (counter) counter.outerHTML = renderActivityParticipantsControl(row.dataset.editActivity, 'edit', 'ecart');
+      // (les joueurs de chaque partie suivent le groupe tape, comme le compteur du laser)
+      const parties = row.querySelector('.dossier-joueurs-parties');
+      if (parties) parties.outerHTML = renderDossierJoueursDesParties(state.editState.programmeEdite.laser_game, state.editState.pax);
     });
   }
 }
@@ -32980,7 +32983,7 @@ function renderDossierJoueursDesParties(options, pax) {
   const bornes = activityParticipantsBounds('laser_game', pax);
   const moins = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
   const plus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>';
-  const pas = liste.map((n, k) => `<span class="dossier-partie-joueurs" data-partie-joueurs="${k + 1}"><span class="dossier-partie-mot">Partie ${k + 1}</span><span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Partie ${k + 1} : retirer un joueur" ${n <= bornes.min ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n - 1})">${moins}</button><span class="qb-step-valeur staff-stepper-value">${n}</span><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Partie ${k + 1} : ajouter un joueur" ${n >= bornes.max ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n + 1})">${plus}</button></span></span>`).join('');
+  const pas = liste.map((n, k) => `<span class="dossier-partie-joueurs" data-partie-joueurs="${k + 1}"><span class="dossier-partie-mot">Partie ${k + 1}</span><span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Joueurs de la partie ${k + 1}, un de moins" ${n <= bornes.min ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n - 1})">${moins}</button><span class="qb-step-valeur dossier-partie-valeur">${n}</span><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Joueurs de la partie ${k + 1}, un de plus" ${n >= bornes.max ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n + 1})">${plus}</button></span></span>`).join('');
   return `<div class="dossier-activity-setting dossier-joueurs-parties"><span class="lbl">Joueurs par partie</span><div class="dossier-options" role="group" aria-label="Joueurs de chaque partie">${pas}</div></div>`;
 }
 

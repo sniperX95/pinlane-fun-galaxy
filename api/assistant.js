@@ -179,7 +179,8 @@ function consigneDeLaDemande(brut) {
 async function enregistrerLaPreparation(D, resultat, session, emettre) {
   const preparation = pinlaneDemande.finir(D, emettre);
   const { resultat: ligne, texte } = pinlaneDemande.phraseDuTour(D, resultat.texte);
-  const par = String((session.member && (session.member.name || session.member.id)) || '');
+  // Le fondateur ne signe pas la preparation : toute l equipe la lit (lib/fondateur-invisible.js).
+  const par = require('../lib/fondateur-invisible').signatureVisible(session);
   try {
     const { appendCustomRequestSuivi } = require('../lib/database');
     const ecrite = await appendCustomRequestSuivi(D.id, { type: 'pinlane', par, consigne: D.consigne || pinlaneDemande.CONSIGNE_IMPLICITE, resultat: ligne, texte, preparation }, { centerId: D.centre });
@@ -344,10 +345,16 @@ module.exports = async (req, res) => {
     // LA DEMANDE ENTRE COMME UNE DONNEE (lib/assistant-demande.js) : son formulaire, ses mails et le client
     // connu dans un bloc marque, le suivi de l equipe, la preparation a l ecran, puis la consigne.
     let messagesDuTour = messages;
+    const F = require('../lib/fondateur-invisible');
     if (enDemande) {
-      const lecture = await require('../lib/demande-bureau-centre').lectureDeLaDemande(ouverte.item);
-      ctx.demande = pinlaneDemande.preparerLeContexte({ item: ouverte.item, lecture, consigne: consigne.consigne, faits: savoir.faits, voit: voitLesClients(session), montants, aujourdhui: ctx.aujourdhui });
-      messagesDuTour = [{ role: 'user', content: pinlaneDemande.messagePourLeModele(ctx.demande, { qui: (session.member && session.member.name) || '' }) }];
+      // LE FONDATEUR N ENTRE PAS DANS CE QUE PINLANE LIT D UNE DEMANDE (2026-11-13, lib/fondateur-invisible.js) :
+      // la reponse s enregistre au suivi, que toute l equipe lit, et un nom que le modele ne lit pas, il ne
+      // l ecrit pas. Pour le fondateur aussi : sa preparation est lue par l equipe.
+      const noms = await F.nomsDuFondateur();
+      const item = F.masquerFondateur(ouverte.item, noms);
+      const lecture = F.masquerFondateur(await require('../lib/demande-bureau-centre').lectureDeLaDemande(ouverte.item), noms);
+      ctx.demande = pinlaneDemande.preparerLeContexte({ item, lecture, consigne: consigne.consigne, faits: savoir.faits, voit: voitLesClients(session), montants, aujourdhui: ctx.aujourdhui });
+      messagesDuTour = [{ role: 'user', content: pinlaneDemande.messagePourLeModele(ctx.demande, { qui: F.signatureVisible(session, { avecId: false }) }) }];
     }
 
     res.statusCode = 200;
@@ -363,10 +370,14 @@ module.exports = async (req, res) => {
       if (!res.writableEnded) res.write(`event: ${type}\ndata: ${JSON.stringify(donnees)}\n\n`);
     };
     // Le flux ne passe pas par sendJson : en mode demande, une carte ou la demande enregistree (que la
-    // preparation d un collegue peut avoir chiffree) perd ses montants pour qui ne les voit pas.
+    // preparation d un collegue peut avoir chiffree) perd ses montants pour qui ne les voit pas. Et pour une
+    // session du centre, aucun evenement ne porte une trace du fondateur (lib/fondateur-invisible.js), comme
+    // sendJson pour une reponse : la demande enregistree porte son suivi.
+    const nomsAMasquer = F.estFondateur(session) ? null : await F.nomsDuFondateur();
+    const sansLeFondateur = (donnees) => (nomsAMasquer ? F.masquerFondateur(donnees, nomsAMasquer) : donnees);
     const emettre = enDemande && !montants
-      ? (type, donnees) => emettreBrut(type, ['proposition', 'fin'].includes(type) ? require('../lib/montants-role').sansMontants(donnees) : donnees)
-      : emettreBrut;
+      ? (type, donnees) => emettreBrut(type, ['proposition', 'fin'].includes(type) ? require('../lib/montants-role').sansMontants(sansLeFondateur(donnees)) : sansLeFondateur(donnees))
+      : (type, donnees) => emettreBrut(type, sansLeFondateur(donnees));
     // Un commentaire toutes les 15 s : un fil muet pendant un long calcul ne se fait pas couper.
     const pouls = setInterval(() => { if (!res.writableEnded) res.write(': pouls\n\n'); }, 15000);
 
@@ -376,7 +387,11 @@ module.exports = async (req, res) => {
       // LE FONDATEUR SE RECONNAIT A SA CONNEXION (Ansar, 2026-11-13 : « il ne sait meme pas que je suis son
       // createur... si jamais qlq un veut se faire passer pour le createur ... cv pas ça ») : le droit de
       // plateforme, qu aucun role d un centre ne donne (lib/staff-auth.js), jamais ce qu un message affirme.
-      const personne = { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '', fondateur: sessionHasPermission(session, 'platform.admin') };
+      // En demande, la reponse s enregistre au suivi que toute l equipe lit : le fondateur y est un membre sans
+      // nom (lib/fondateur-invisible.js), Pinlane ne l y appelle ni par son prenom ni « fondateur ».
+      const personne = enDemande && F.estFondateur(session)
+        ? { nom: '', role: '', fondateur: false }
+        : { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '', fondateur: sessionHasPermission(session, 'platform.admin') };
       resultat = await repondre({ modele, messages: messagesDuTour, ctx, centreOuvert, montants, clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: enDemande ? [] : dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
       // LA PREPARATION S ENREGISTRE SUR LA DEMANDE (suivi, evenement « pinlane ») : toute l equipe la voit, sur

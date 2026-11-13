@@ -2759,7 +2759,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     // reservation en est nee. Le statut fait foi ; l historique est un plus,
     // une panne de son ecriture ne defait pas le statut.
     const { appendCustomRequestSuivi } = require('../lib/database');
-    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    // (le fondateur ne signe pas le suivi d une demande, lib/fondateur-invisible.js : la console dit « l'équipe »)
+    const par = signatureVisible(options.session);
     try {
       request = await appendCustomRequestSuivi(request.id, body.status === 'in_progress'
         ? { type: 'prise-en-charge', par }
@@ -2781,7 +2782,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // le directeur mardi », « veut une facture au nom de l ecole »).
   if (action === 'customRequestNote') {
     const { appendCustomRequestSuivi, getCustomRequest: lireDemande } = require('../lib/database');
-    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    const par = signatureVisible(options.session);
     const avant = await lireDemande(body.id, { centerId: scopedCenterId });
     const request = await appendCustomRequestSuivi(body.id, { type: 'note', par, texte: body.texte }, { centerId: scopedCenterId });
     noterAudit(options, { entityType: 'custom_request', entityId: request.id, changes: customRequestChanges(avant, request) });
@@ -3219,7 +3220,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const activitySession = await requireStaffPermission(req, res, ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'], { centerId: concreteCenterId });
     if (!activitySession) return;
     const activityMemberId = String(activitySession.member?.id || '');
-    if (activityMemberId.endsWith(':platform-owner')) { sendJson(res, 200, { ok: true, saved: 0, skipped: true }); return; }
+    // Sa session de secours non plus (2026-11-13, lib/fondateur-invisible.js) : `<centre>:platform-owner-emergency`.
+    if (estFondateur(activitySession) || activityMemberId.includes(':platform-owner')) { sendJson(res, 200, { ok: true, saved: 0, skipped: true }); return; }
     const activityEvents = normalizeActivityEvents(body.events);
     if (activityEvents.length) {
       await writeAuditLog({
@@ -3453,7 +3455,7 @@ ${draftBody}`,
         const avant = await lireDemande(Number(body.customRequestId), { centerId: studioCenterId });
         const request = await appendCustomRequestSuivi(Number(body.customRequestId), {
           type: 'reponse',
-          par: String(options.session?.member?.name || options.session?.member?.id || ''),
+          par: signatureVisible(options.session),
           objet: body.subject,
           communicationId: result.communication.id,
           source: body.draftSource,

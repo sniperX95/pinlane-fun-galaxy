@@ -39946,7 +39946,9 @@ function staffActivityEligible() {
   if (state.view !== 'staff' && state.view !== 'admin') return false;
   const member = state.staffAuthSession?.member;
   if (!member || !member.id) return false;
-  return !String(member.id).endsWith(':platform-owner');
+  // Le fondateur ne se trace pas, sa session de secours non plus (`<centre>:platform-owner-emergency`, 2026-11-13).
+  if (typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin')) return false;
+  return !String(member.id).includes(':platform-owner');
 }
 
 function recordStaffActivity(kind, label) {

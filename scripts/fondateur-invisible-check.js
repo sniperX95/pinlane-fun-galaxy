@@ -25,6 +25,8 @@
 //   [D] les dossiers (notes, prix, derniere modification, coches, creation, lecture et chemin du retour) :
 //       scripts/fondateur-invisible-dossiers-check.js, sur la base en memoire de la fenetre Reserver, dans
 //       son propre processus, apres le navigateur
+//   [S] les demandes sur mesure (suivi, reservation de la demande, Pinlane en demande) et le parcours :
+//       scripts/fondateur-invisible-demandes-check.js, sur le banc des demandes, dans son propre processus
 //
 // Rien ne part : ni base, ni reseau, ni mail.
 // Lancement : node scripts/fondateur-invisible-check.js [--sans-ecran] [--sans-contre-preuves] [--detail]
@@ -756,6 +758,17 @@ async function journalConsole() {
     const force = await lire(direction.page);
     ok(!force.journal && !force.onglets.includes('eqOnglet-journal'), '[J] console, Direction : un vieil onglet « journal » retenu retombe sur Personnes', force.onglets);
     ok(!traceDuFondateur(force.texte), '[J] console, Direction : aucune trace du fondateur sur la page', force.texte.slice(0, 200));
+    // Le parcours de l equipe (recordStaffActivity) : Marie se trace, une session de secours du fondateur jamais.
+    const parcours = await direction.page.evaluate(() => {
+      const membre = state.staffAuthSession.member;
+      const id = membre.id;
+      const marie = staffActivityEligible();
+      membre.id = 'libramont:platform-owner-emergency';
+      const secours = staffActivityEligible();
+      membre.id = id;
+      return { marie, secours };
+    });
+    ok(parcours.marie === true && parcours.secours === false, '[J] console : le parcours trace Marie, jamais la session de secours du fondateur', parcours);
   } finally {
     await direction.ctx.close();
   }
@@ -767,6 +780,7 @@ async function journalConsole() {
     await lui.page.waitForFunction(() => Boolean(document.querySelector('[data-equipe-page] .eq-journal')), null, { timeout: 10000 });
     const journal = await lire(lui.page);
     ok(/Marie Dumont connecté/.test(journal.texte), '[J] console, fondateur : il y lit les connexions de l equipe', journal.texte.slice(0, 300));
+    ok(await lui.page.evaluate(() => staffActivityEligible()) === false, '[J] console : le parcours ne trace pas le fondateur');
   } finally {
     await lui.ctx.close();
   }
@@ -809,6 +823,8 @@ const CONTRE_PREUVES = [
     de: "const sortie = await require('./fondateur-invisible').pourLaSession(ctx.session, await outil.lire(ctx, donnees, ouverte, suivi));", vers: 'const sortie = await outil.lire(ctx, donnees, ouverte, suivi);' },
   { nom: 'le tableau compact du modele garde son nom', section: 'J', jouer: journauxAssistant, fichier: LIB('fondateur-invisible.js'),
     de: "ligne.map((v, i) => (CLE_D_AUTEUR.test(copie.colonnes[i] || '') && estTraceDuFondateur(v, ensemble) ? '' : v))", vers: 'ligne' },
+  { nom: 'le parcours de la session de secours trace par la console', section: 'J', jouer: journalConsole, ecran: { fichier: 'assets/app-main.js',
+    de: "return !String(member.id).includes(':platform-owner');", vers: "return !String(member.id).endsWith(':platform-owner');" } },
   { nom: 'l onglet Journal rendu a la Direction', section: 'J', jouer: journalConsole, ecran: { fichier: 'assets/app-main.js',
     de: "return equipeEstProprietaire() ? ['personnes', 'roles', 'journal'] : ['personnes', 'roles'];", vers: "return ['personnes', 'roles', 'journal'];" } },
 ];
@@ -872,8 +888,13 @@ async function contrePreuves() {
   // lance une fois le navigateur ferme (une seule tache lourde a la fois).
   section = 'D';
   console.log('\n[D] les dossiers (scripts/fondateur-invisible-dossiers-check.js)');
-  const dossiers = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'fondateur-invisible-dossiers-check.js'), ...process.argv.slice(2).filter((a) => a === '--sans-contre-preuves')], { stdio: 'inherit' });
+  const volet = (fichier) => require('child_process').spawnSync(process.execPath, [path.join(__dirname, fichier), ...process.argv.slice(2).filter((a) => a === '--sans-contre-preuves')], { stdio: 'inherit' });
+  const dossiers = volet('fondateur-invisible-dossiers-check.js');
   ok(dossiers.status === 0, '[D] le volet dossiers est vert', `code ${dossiers.status}${dossiers.error ? `, ${dossiers.error.message}` : ''}`);
+  section = 'S';
+  console.log('\n[S] les demandes et le parcours (scripts/fondateur-invisible-demandes-check.js)');
+  const demandes = volet('fondateur-invisible-demandes-check.js');
+  ok(demandes.status === 0, '[S] le volet demandes est vert', `code ${demandes.status}${demandes.error ? `, ${demandes.error.message}` : ''}`);
   section = 'Z';
   const inconnues = [...new Set(NON_COUVERTES)];
   if (inconnues.length) console.log(`note  requetes non servies par la base en memoire (rendues vides) : ${inconnues.length}\n      ${inconnues.slice(0, 12).join('\n      ')}`);

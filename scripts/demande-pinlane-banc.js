@@ -182,7 +182,8 @@ function installerDoubles({ cerveauReel = false } = {}) {
   const auth = require(path.join(ROOT, 'lib/staff-auth.js'));
   const { sendError } = require(path.join(ROOT, 'lib/http.js'));
   // LA PORTE, CENTRE PAR CENTRE : une session ouvre les centres de son client (etat.session.centres), avec
-  // la vraie regle des droits ; la reponse porte la marque des montants comme la vraie porte la pose.
+  // la vraie regle des droits ; la reponse porte la marque des montants, et celle du fondateur
+  // (lib/fondateur-invisible.js), comme la vraie porte les pose.
   remplacer('lib/staff-auth.js', {
     getStaffSessionFromRequest: async () => etat.session,
     requireStaffPermission: async (req, res, permission, options = {}) => {
@@ -193,6 +194,10 @@ function installerDoubles({ cerveauReel = false } = {}) {
       if (!(s.centres || [s.centerId]).includes(centre) || !auth.sessionHasPermission(s, permission)) { sendError(res, 403, 'Accès refusé.'); return null; }
       const ouverte = { ...s, authorizedCenterId: centre };
       if (res && typeof res === 'object' && res.__montantsDuCatalogue !== true) res.__sansMontants = !auth.sessionHasPermission(ouverte, 'payments.view');
+      if (res && typeof res === 'object') {
+        const F = require(path.join(ROOT, 'lib/fondateur-invisible.js'));
+        res.__nomsDuFondateur = F.estFondateur(ouverte) ? null : await F.nomsDuFondateur();
+      }
       return ouverte;
     },
   });

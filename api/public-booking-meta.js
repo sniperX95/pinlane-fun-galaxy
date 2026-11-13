@@ -132,8 +132,8 @@ async function handleErreurFormulaire(req, res, body) {
     memberId: `public:${centre}`,
     userAgent: req.headers['user-agent'],
   });
-  // L erreur d un essai d Ansar (sa session, la salle d essai) s enregistre, sans alerte.
-  if (inscrit && !inscrit.dropped && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {
+  // Une erreur qu Ansar a vue sur son ecran (sa session, la salle d essai) s enregistre, sans alerte.
+  if (inscrit && !inscrit.dropped && !(await require('../lib/essai-fondateur').vueParLeFondateur(req))) {
     // UNE ALERTE PAR PLANTAGE DISTINCT (2026-11-06, Ansar : « chaque plantage ») : le meme
     // plantage repete ne sonne qu une fois par heure, un autre plantage sonne aussi. Le
     // message ne recopie rien de ce que le navigateur envoie : l etape est filtree a des
@@ -220,7 +220,8 @@ async function handleMiroir(req, res, body) {
     const raisons = raisonsDuMiroir(body.raison);
     const reussie = body.ok === true && !raisons.length;
     console.info('[miroir]', centre, estDemande ? `demande ${numero}` : numero, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
-    // La copie ratee d un essai d Ansar (sa session, la salle d essai) ne lui revient pas.
+    // La copie ratee de la salle d essai ne revient pas. Celle d une reservation faite depuis le
+    // navigateur d Ansar, si (2026-11-14) : l equipe ne la verrait pas non plus.
     if (!reussie && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {
       const { alerter } = require('../lib/garde-alertes');
       const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');

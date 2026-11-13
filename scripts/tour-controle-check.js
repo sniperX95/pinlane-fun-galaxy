@@ -968,7 +968,11 @@ async function contrePreuves(browser, jour) {
   await p1.waitForTimeout(300);
   await c1.close();
   servies = [];
-  ok(vus.length === 1, '[X] le bruit d une extension passerait : rougit', vus.length);
+  // Le code d avant laisse passer tout ce qui leve sur la page, pas seulement l extension : sur une machine lente,
+  // un autre bruit sans fichier est parti avec (deux signaux, vu une fois sur GitHub le 13/11). Seul compte celui
+  // de l extension ; les autres se lisent dans le detail.
+  const deLExtension = vus.filter((v) => v.includes('bruit d une extension'));
+  ok(deLExtension.length === 1, '[X] le bruit d une extension passerait : rougit', { extension: deLExtension.length, autres: vus.filter((v) => !v.includes('bruit d une extension')).map((v) => v.slice(0, 200)) });
 
   servies = [{ fichier: 'assets/app-main.js', de: '    signalerErreurPublique(payload, message);\n', vers: '' }];
   const c2 = await browser.newContext();

@@ -22,6 +22,7 @@
     "test:embed-killswitch",
     "test:embed-miroir",
     "test:embed-question",
+    "test:formulaire-symetrie",
     "test:embed-chrome",
     "test:branding-axes",
     "test:embed-hauteur",

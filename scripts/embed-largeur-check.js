@@ -25,9 +25,12 @@
 //   [C] LE PARCOURS NE PEINT AUCUN FOND en mode embarque : ce qui se voit
 //       derriere lui est le fond du site, donc aucun rectangle.
 //
-//   [D] AU-DELA DE 720 px, LA COLONNE DU SITE EST RESPECTEE : une ligne de
-//       texte pleine largeur ne se lit pas, et sortir du gabarit d un site sur
-//       grand ecran serait une intrusion, pas un service.
+//   [D] AU-DELA DE 720 px AUSSI, LE CADRE PREND LA LARGEUR DE L ECRAN (decision
+//       d Ansar du 2026-11-13, devant la page Pinlane seule : « moi jle voulais
+//       comme ici »). Celle du 2026-09-07 gardait la colonne du site pour qu une
+//       ligne ne s etire pas sur tout l ecran : c est le formulaire qui garde
+//       maintenant sa largeur de lecture (1 280 px au plus, centre dans le
+//       cadre), prouve par scripts/formulaire-symetrie-check.js [C].
 //
 //   [E] LA CONTRE-EPREUVE : on retire la mise en pleine largeur du script
 //       d installation, servi en memoire, et [B] doit rougir.
@@ -206,18 +209,18 @@ async function main() {
     ok(transparent(temoin.dedans.fondVue), "et le parcours lui-meme ne peint rien par-dessus", temoin.dedans.fondVue);
 
     console.log("");
-    console.log("[D] au-dela de 720 px, la colonne du site est respectee");
+    console.log("[D] au-dela de 720 px aussi, le cadre prend toute la largeur de l ecran");
     for (const [nom, w, h] of GRANDS) {
       const m = await mesurer(browser, w, h);
       const c = m.hote.cadre;
-      ok(Boolean(c) && c.x > 1 && c.l < m.hote.vue, nom + " (" + w + "px) : le cadre reste dans la colonne du site", c ? c.l + "px a x=" + c.x + " pour " + m.hote.vue + "px" : "cadre absent");
+      ok(Boolean(c) && c.x <= 1 && c.l >= m.hote.vue - 2 && c.l <= m.hote.vue + 1, nom + " (" + w + "px) : le cadre couvre l ecran", c ? c.l + "px a x=" + c.x + " pour " + m.hote.vue + "px" : "cadre absent");
       ok(m.hote.pageDeborde <= 0, nom + " : la page ne glisse pas de gauche a droite", m.hote.pageDeborde + "px");
     }
 
     console.log("");
     console.log("[E] LE GATE SAIT-IL ROUGIR ?");
     const original = embedServi;
-    const ancre = "if (!frame.parentNode || window.innerWidth > 720) return;";
+    const ancre = "if (!frame.parentNode) return;";
     const present = original.split(ancre).length - 1;
     if (ok(present === 1, "MONTAGE : la mise en pleine largeur est bien la, une seule fois", present + " occurrence(s)")) {
       embedServi = original.split(ancre).join("return;");

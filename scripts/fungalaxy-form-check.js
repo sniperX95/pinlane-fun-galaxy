@@ -167,7 +167,8 @@
 //       PIXEL a la capture de leur page (encre des mots du menu, capitales,
 //       bouton, centre), et monte le formulaire par embed.js, en mode
 //       embarque, dans le bloc de la copie locale de leur page (1440 px au
-//       plus, centre, 32 px au-dessus, 72 en dessous) ; le cadre prend la
+//       plus, centre, 32 px au-dessus, 72 en dessous ; depuis le 2026-11-13
+//       le cadre en sort et prend toute la largeur de l ecran) ; le cadre prend la
 //       hauteur du formulaire, a 1440 px comme sur telephone (ou il grandit
 //       avec lui) ; sur telephone, un menu, rien ne deborde ; une reservation
 //       va jusqu a l ecran final (une demande que l equipe doit verifier ne
@@ -4614,12 +4615,14 @@ async function main() {
       ok(/Un accusé de réception part à site@example\.com\./.test(finM.texte) && finM.texte.indexOf('La confirmation part') < 0 && /vous répond sous 24 heures ouvrables\./.test(finM.texte),
         '[M] une demande a verifier annonce l accuse de reception que la reponse met en file, et le delai ecrit dans cet accuse', finM.texte.slice(0, 240));
     }
-    // A 1920 px : le formulaire garde les 1440 px qu il aurait dans leur page.
+    // A 1920 px : le bloc de leur page garde ses 1440 px, et le cadre prend toute la largeur de l ecran
+    // (embed.js, decision d Ansar du 2026-11-13 : « moi jle voulais comme ici », la page seule) ; le
+    // formulaire garde sa largeur de lecture dans le cadre (scripts/formulaire-symetrie-check.js [C]).
     await pm.setViewportSize({ width: 1920, height: 1080 });
     await dormir(500);
     sm = await lireSite(pm);
-    ok(Boolean(sm.bloc && sm.bloc.w === 1440 && Math.abs(sm.bloc.x - 240) <= 1 && sm.cadre && sm.cadre.w === 1440 && sm.deborde <= 0),
-      '[M] 1920 px : le formulaire garde ses 1440 px, centre, comme dans leur page (pas la pleine largeur de l ecran)', JSON.stringify({ bloc: sm.bloc, cadre: sm.cadre }));
+    ok(Boolean(sm.bloc && sm.bloc.w === 1440 && Math.abs(sm.bloc.x - 240) <= 1 && sm.cadre && sm.cadre.x <= 1 && Math.abs(sm.cadre.w - sm.largeur) <= 1 && sm.deborde <= 0),
+      '[M] 1920 px : le bloc de leur page garde ses 1440 px, le cadre prend toute la largeur de l ecran, rien ne deborde', JSON.stringify({ bloc: sm.bloc, cadre: sm.cadre, largeur: sm.largeur }));
     await pm.setViewportSize({ width: 1024, height: 768 });
     await dormir(500);
     sm = await lireSite(pm);

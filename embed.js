@@ -186,16 +186,21 @@
   var scrollMargin = parseInt(script.getAttribute('data-scroll-margin'), 10);
   frame.style.scrollMarginTop = (Number.isFinite(scrollMargin) && scrollMargin >= 0 ? scrollMargin : 80) + 'px';
 
-  // Sous 720 px, le cadre reprend la largeur de l'écran. Les conteneurs de
-  // contenu portent souvent un rembourrage latéral prévu pour du texte, qui
-  // réduit le formulaire à une colonne étroite. Aucun élément du site n'est
-  // modifié : seules les marges du cadre compensent ce rembourrage.
-  function pleineLargeurTelephone() {
+  // Le cadre prend la largeur de l'écran. Les conteneurs de contenu portent
+  // souvent un rembourrage latéral prévu pour du texte, qui réduit le
+  // formulaire à une colonne étroite. Aucun élément du site n'est modifié :
+  // seules les marges du cadre compensent ce rembourrage.
+  // Sur ordinateur aussi depuis le 13/11 (Ansar, devant la page Pinlane seule :
+  // « moi jle voulais comme ici ») : dans la colonne de 1 100 px de leur page,
+  // le formulaire était serré et sa photo petite. Le formulaire garde sa propre
+  // largeur de lecture (1 280 px au plus, centré dans le cadre), comme sur la
+  // page seule : aucune ligne ne s'étire sur tout l'écran.
+  function pleineLargeur() {
     frame.style.marginLeft = '0px';
     frame.style.marginRight = '0px';
     frame.style.width = '100%';
     frame.style.maxWidth = 'none';
-    if (!frame.parentNode || window.innerWidth > 720) return;
+    if (!frame.parentNode) return;
     var boite = frame.getBoundingClientRect();
     var gauche = Math.round(boite.left);
     var droite = Math.round(document.documentElement.clientWidth - boite.right);
@@ -262,11 +267,11 @@
   window.addEventListener('resize', planifierZoneVisible);
   frame.addEventListener('load', posterZoneVisible);
 
-  pleineLargeurTelephone();
+  pleineLargeur();
   var minuteurLargeur = null;
   window.addEventListener('resize', function () {
     if (minuteurLargeur) clearTimeout(minuteurLargeur);
-    minuteurLargeur = setTimeout(pleineLargeurTelephone, 120);
+    minuteurLargeur = setTimeout(pleineLargeur, 120);
   });
 
   // Le cadre est monté immédiatement ; la lecture du réglage part en parallèle et

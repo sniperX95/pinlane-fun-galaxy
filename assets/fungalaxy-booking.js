@@ -299,6 +299,31 @@
     });
   }
 
+  // LA PHOTO A LA HAUTEUR DU FORMULAIRE (2026-11-13, Ansar : « limage jaimerais bien quelle soit meme hauteur
+  // que [...] le formulaire [...] pour que ce soit symetrique »). Sur ordinateur, un ecran a deux colonnes pose
+  // sa photo a cote du formulaire (la feuille, @media min-width 901px) : son haut et sa hauteur suivent ceux du
+  // formulaire, qui change de taille (un tiroir, une erreur, une autre largeur). La mesure part sur la photo
+  // elle-meme, pas sur la scene : une variable posee haut dans la page ferait recalculer tout ce qu il y a dessous.
+  // Du haut du premier element visible du formulaire au bas du dernier, en positions de mise en page
+  // (offsetTop) : les entrees animees (translate) ne faussent pas la mesure.
+  function caleLaPhoto(corps) {
+    var scene = corps.parentNode;
+    var photo = scene && scene.classList && scene.classList.contains('fg-scene--split') ? $('.fg-art', scene) : null;
+    if (!photo) return;
+    var visibles = Array.prototype.filter.call(corps.children, function (e) { return e.offsetParent !== null && e.offsetHeight > 0; });
+    if (!visibles.length) return;
+    var dernier = visibles[visibles.length - 1];
+    var haut = corps.offsetTop + visibles[0].offsetTop;
+    var hauteur = corps.offsetTop + dernier.offsetTop + dernier.offsetHeight - haut;
+    if (!(hauteur > 0)) return;
+    photo.style.setProperty('--fg-corps-haut', Math.round(haut) + 'px');
+    photo.style.setProperty('--fg-corps-h', Math.round(hauteur) + 'px');
+  }
+  if ('ResizeObserver' in window) {
+    var calePhotos = new ResizeObserver(function (entrees) { entrees.forEach(function (e) { caleLaPhoto(e.target); }); });
+    Array.prototype.forEach.call(doc.querySelectorAll('.fg-scene--split > .fg-scene__body'), function (corps) { calePhotos.observe(corps); });
+  }
+
   /* --- L etat ------------------------------------------------------------------- */
 
   var meta = null;             // la reponse de public-booking-meta

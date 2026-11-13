@@ -103,7 +103,8 @@
    le site du client. Un aplat plein, sa typo d affiche, jamais coupe. */
 .fg-centre { display: block; min-width: 0; margin: 0; padding: 5px 13px 6px; overflow: hidden; border-radius: 6px; background: var(--fg-teal); color: #06201c; font-family: var(--fg-display); font-size: 30px; font-weight: 400; line-height: 1.12; letter-spacing: 0.02em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .fg-centre:empty { display: none; }
-.fg-centre--cadre { display: none; width: max-content; max-width: calc(100% - 2 * var(--fg-gutter)); box-sizing: border-box; margin: 16px var(--fg-gutter) 0; font-size: 26px; }
+/* (sa marge suit le bord gauche du formulaire : le cadre prend toute la largeur de la page du site depuis le 13/11) */
+.fg-centre--cadre { display: none; width: max-content; max-width: calc(100% - 2 * var(--fg-gutter)); box-sizing: border-box; margin: 16px max(var(--fg-gutter), calc(50% - 640px)) 0; font-size: 26px; }
 /* (sa place est gardee avant que le nom n arrive du serveur : le formulaire ne saute pas) */
 .fg.is-embed .fg-centre--cadre { display: block; min-height: calc(1.12em + 11px); }
 .fg.is-embed .fg-centre--cadre:empty { background: transparent; }
@@ -3021,11 +3022,13 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* La photo d un ecran a deux colonnes : un bloc net, a ses proportions. Etiree sur toute la
    hauteur de l ecran, elle grossissait deux fois et devenait floue. */
 @media (min-width: 901px) {
-  /* EMBARQUE SUR LE SITE DU CENTRE (2026-11-13, Ansar sur fungalaxy.be : « trop serre, il prend pas l espace qu il lui
-     faut ») : la page du site encadre deja le formulaire. Sa marge interieure tombe a 24 px et la photo a 36 % du cadre :
-     dans les 1 100 px de leur section, la colonne du formulaire passe de 470 a 640 px. La page seule ne change pas. */
-  .fg.is-embed { --fg-gutter: 24px; --fg-part-photo: 0.36; }
-  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { top: 8px; bottom: auto; right: max(var(--fg-gutter), calc(50% - 640px)); left: auto; width: calc(min(100%, 1280px) * var(--fg-part-photo, 0.46)); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
+  /* EMBARQUE SUR LE SITE DU CENTRE (2026-11-13) : le cadre prend toute la largeur de la page du site (embed.js,
+     pleineLargeur), donc le formulaire s y pose exactement comme sur la page seule (Ansar : « moi jle voulais comme
+     ici »). Le reglage serre de la nuit (marge de 24 px, photo a 36 %) n a plus de raison d etre.
+     LA PHOTO A LA HAUTEUR DU FORMULAIRE (Ansar, meme jour : « limage jaimerais bien quelle soit meme hauteur que
+     [...] le formulaire [...] pour que ce soit symetrique ») : son haut est celui du formulaire, sa hauteur celle
+     du formulaire, mesurees par fungalaxy-booking.js (caleLaPhoto). Sans mesure, la photo garde ses proportions. */
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { top: var(--fg-corps-haut, 8px); bottom: auto; right: max(var(--fg-gutter), calc(50% - 640px)); left: auto; width: calc(min(100%, 1280px) * var(--fg-part-photo, 0.46)); height: var(--fg-corps-h, auto); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
   .fg-scene--split.fg-scene--art-left .fg-art { right: auto; left: max(var(--fg-gutter), calc(50% - 640px)); }
   .fg-scene--split .fg-art::before, .fg-scene--split.fg-scene--art-left .fg-art::before, .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after { display: none; }
   /* Les coordonnees : le rappel de la visite prend la colonne, la photo laisse la place. */

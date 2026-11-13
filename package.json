@@ -84,6 +84,7 @@
     "test:embed-killswitch": "node scripts/embed-killswitch-check.js && node scripts/embed-killswitch-check.js --contre-preuves",
     "test:embed-miroir": "node scripts/embed-miroir-check.js && node scripts/embed-miroir-check.js --contre-preuves",
     "test:embed-question": "node scripts/embed-question-check.js && node scripts/embed-question-check.js --contre-preuves",
+    "test:formulaire-symetrie": "node scripts/formulaire-symetrie-check.js && node scripts/formulaire-symetrie-check.js --contre-preuves",
     "test:embed-chrome": "node scripts/embed-chrome-check.js",
     "test:branding-axes": "node scripts/branding-axes-check.js",
     "test:embed-hauteur": "node scripts/embed-hauteur-stable-check.js",

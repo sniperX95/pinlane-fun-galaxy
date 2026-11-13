@@ -443,13 +443,44 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
    de la console : un panneau a cadre net, les lignes sans trait entre elles, et un pied gris qui porte
    la phrase de garde a gauche et les boutons a droite, le second encadre, le principal bleu plein. */
 .ast-carte { margin: 14px 0 0; padding: 16px 18px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.ast-carte-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin: 0 0 12px; }
-.ast-carte-type { font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); }
-.ast-carte-centre { font-size: 13px; color: var(--muted); }
-.ast-carte-lignes { display: grid; gap: 10px; margin: 0; }
-.ast-carte-ligne { display: grid; grid-template-columns: minmax(84px, 7.5rem) minmax(0, 1fr); gap: 16px; }
-.ast-carte-ligne dt { font-size: 13.5px; line-height: 1.5; color: var(--muted); }
-.ast-carte-ligne dd { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+/* LA CARTE D UN CHANGEMENT (2026-11-13, Ansar : « elle presente les choses qu elle modifie vrm pas assez
+   bien dutout »). En tete, la phrase de ce qui va se passer, en gras, sous le genre du geste en petit.
+   Ce qui change en grand sur un fond doux, l ancien barre a cote ; un etat en pastilles ; le mail comme
+   Gmail le montre. Le detail en petit dessous. Aucun trait entre les lignes : des fonds, pas des filets. */
+.ast-carte-tete { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 14px; }
+.ast-carte-icone { flex: none; display: grid; place-items: center; width: 32px; height: 32px; color: var(--muted); background: var(--subtle); border-radius: 9px; }
+.ast-carte-icone.est-fait { color: var(--success, var(--text)); background: var(--success-soft, var(--subtle)); }
+.ast-carte-titres { flex: 1 1 auto; min-width: 0; }
+.ast-carte-sur { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 0 0 2px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.ast-carte-type { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.ast-carte-centre, .ast-carte-quand { font-size: 12.5px; color: var(--muted); }
+.ast-carte-centre::before, .ast-carte-quand::before { content: "·"; margin-right: 8px; }
+.ast-carte-titre { margin: 0; font-size: 15.5px; font-weight: 600; line-height: 1.4; color: var(--text); text-wrap: pretty; overflow-wrap: anywhere; }
+/* Ce qui change : une tuile par valeur, l ancienne barree en petit, la nouvelle en grand. */
+.ast-carte-changes { display: grid; gap: 8px; margin: 0 0 14px; }
+.ast-carte-ligne.est-change { display: block; padding: 10px 12px 11px; background: var(--subtle); border-radius: 10px; }
+.ast-carte-ligne.est-change dt { margin: 0 0 3px; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.ast-carte-ligne.est-change dd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; overflow-wrap: anywhere; }
+.est-change .ast-avant { font-size: 14px; line-height: 1.45; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; font-variant-numeric: tabular-nums; }
+.est-change .ast-fleche { display: inline-flex; margin: 0; color: var(--faint, var(--muted)); }
+.est-change .ast-apres { font-size: 17px; font-weight: 600; line-height: 1.35; color: var(--text); font-variant-numeric: tabular-nums; }
+.est-change.est-large dd { display: grid; gap: 4px; }
+.est-change.est-large .ast-fleche { display: none; }
+.est-change.est-large .ast-apres { font-size: 15px; line-height: 1.45; }
+.est-change.est-etat .ast-avant, .est-change.est-etat .ast-apres { display: inline-flex; align-items: center; gap: 7px; padding: 3px 11px 3px 9px; font-size: 13.5px; line-height: 1.4; text-decoration: none; background: var(--surface); border-radius: 999px; }
+.est-change.est-etat .ast-avant { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.est-change.est-etat .ast-apres { font-weight: 600; color: var(--text); box-shadow: inset 0 0 0 1px var(--control-border, var(--line-strong)); }
+.est-change [data-etat]::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint, var(--muted)); }
+.est-change [data-etat="on"]::before { background: var(--success, var(--text)); }
+.ast-avant-dit { font-size: 13px; color: var(--muted); }
+.ast-carte-changes.est-fige { margin: 12px 0 0; }
+.ast-carte-changes.est-fige .ast-carte-ligne.est-change { padding: 8px 12px 9px; }
+.ast-carte-changes.est-fige .ast-apres { font-size: 15px; }
+/* Le detail : en petit, deux colonnes, sans trait. */
+.ast-carte-lignes { display: grid; gap: 6px; margin: 0; }
+.ast-carte-ligne { display: grid; grid-template-columns: minmax(84px, 8.5rem) minmax(0, 1fr); gap: 16px; }
+.ast-carte-ligne dt { font-size: 13px; line-height: 1.5; color: var(--muted); }
+.ast-carte-ligne dd { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 .ast-carte-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 0; }
 .ast-carte-champ { display: grid; gap: 4px; }
 .ast-carte-champ span { font-size: 13px; font-weight: 500; color: var(--text); }
@@ -460,30 +491,64 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-carte-champ.est-manque em { color: var(--danger, var(--text)); }
 .ast-carte-erreur { margin: 10px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--danger, var(--text)); }
 .ast-carte-garde { flex: 1 1 15rem; min-width: 0; margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
-/* Un geste du registre (tout faire) : ce qui change se lit avant, puis apres ; ce qui atteint les clients est dit. */
 .ast-avant { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
 .ast-fleche { margin: 0 6px; color: var(--muted); }
 .ast-apres { font-weight: 600; color: var(--text); }
-.ast-carte-clients { margin: 14px 0 0; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; color: var(--text); background: var(--subtle); border-radius: 8px; }
+/* Ce qui atteint les clients, et ce qui alerte : une ligne a icone, sur un fond doux. */
+.ast-carte-clients, .ast-carte-alerte { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 0; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; border-radius: 10px; }
+.ast-carte-clients { color: var(--text); background: color-mix(in srgb, var(--console-selected, var(--accent)) 7%, var(--surface)); }
+.ast-carte-clients svg { flex: none; margin-top: 1px; color: var(--console-selected, var(--accent)); }
+.ast-carte-alerte { color: var(--warning, var(--text)); background: var(--warning-soft, var(--voile-1)); }
+.ast-carte-alerte svg { flex: none; margin-top: 1px; }
 .ast-carte-long { margin-top: 4px; }
 .ast-carte-long summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .ast-carte-long p { margin: 6px 0 0; white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
+/* LE MAIL, comme Gmail le montre a qui le recoit : de qui, pour qui, l objet, le texte entier. Les
+   variables en etiquettes ; ce qui s ajoute surligne, ce qui part barre. */
+.ast-mail { margin: 0 0 14px; padding: 14px 16px 16px; background: var(--surface); border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+.ast-mail-vues { display: inline-flex; gap: 2px; margin: 0 0 14px; padding: 2px; background: var(--subtle); border-radius: 9px; }
+.ast-mail-vues button { min-height: 30px; padding: 0 12px; font: inherit; font-size: 12.5px; font-weight: 500; color: var(--muted); background: transparent; border: 0; border-radius: 7px; cursor: pointer; transition: background-color var(--d-net) ease, color var(--d-net) ease; }
+.ast-mail-vues button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(15, 23, 42, .1); }
+.ast-mail-vues button:focus-visible, .ast-mail-suite:focus-visible { outline: 2px solid var(--console-focus, var(--text)); outline-offset: 1px; }
+.ast-mail-tete { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.ast-mail-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; font-size: 14px; font-weight: 600; color: var(--console-selected-text, #fff); background: var(--console-selected, var(--accent)); border-radius: 50%; }
+.ast-mail-qui { min-width: 0; }
+.ast-mail-qui p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.ast-mail-qui b { font-weight: 600; color: var(--text); }
+.ast-mail-reponse { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); }
+.ast-mail-objet { margin: 0 0 10px; font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.ast-mail-texte { font-size: 14px; line-height: 1.65; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ast-mail.est-replie .ast-mail-texte { max-height: calc(1.65em * 9); overflow: hidden; }
+.ast-mail-suite { margin: 10px 0 0; min-height: 32px; padding: 0 12px; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--control-border, var(--line-strong)); border-radius: 8px; cursor: pointer; }
+.ast-mail-suite:hover { background: var(--subtle); }
+.ast-mail-ancien { margin: 12px 0 0; }
+.ast-mail-ancien summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.ast-mail-ancien .ast-mail-texte { margin: 8px 0 0; color: var(--muted); }
+.ast-var { display: inline-block; padding: 0 6px; font-size: .86em; font-weight: 500; line-height: 1.55; color: var(--console-selected, var(--accent)); background: color-mix(in srgb, var(--console-selected, var(--accent)) 10%, var(--surface)); border-radius: 5px; white-space: nowrap; }
+.ast-ins { color: inherit; text-decoration: none; background: color-mix(in srgb, var(--success, #1e8e3e) 20%, transparent); border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.ast-del { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger, #d93025) 70%, transparent); background: color-mix(in srgb, var(--danger, #d93025) 8%, transparent); border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 /* Le pied : une bande pleine sous la carte, bord a bord, comme le bas d une fenetre de la console. */
 .ast-carte-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 16px -18px 0; padding: 12px 18px; background: color-mix(in srgb, var(--subtle) 55%, var(--surface)); border-top: 1px solid var(--line); border-radius: 0 0 11px 11px; }
 .ast-carte-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 0 0 0 auto; }
 /* Un geste risque se confirme deux fois : le pied passe au rouge pale, le second bouton est rouge plein. */
-.ast-carte-alerte { margin: 14px 0 0; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; color: var(--warning, var(--text)); background: var(--warning-soft, var(--voile-1)); border-radius: 8px; }
 .ast-carte.est-a-confirmer { border-color: color-mix(in srgb, var(--danger, var(--text)) 45%, var(--line)); }
 .ast-carte-pied.ast-carte-confirmer { background: var(--danger-soft, var(--subtle)); border-top-color: color-mix(in srgb, var(--danger, var(--text)) 30%, var(--line)); }
 .ast-carte-confirmer .ast-carte-garde { font-size: 14px; color: var(--text); }
 .ast-carte-confirmer b { font-weight: 600; }
-.ast-carte.est-faite { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 18px; }
-.ast-carte-fait { display: flex; align-items: flex-start; gap: 10px; margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--text); }
-.ast-carte-fait svg { flex: none; width: 20px; height: 20px; padding: 3px; fill: none; stroke: var(--success, var(--text)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; background: var(--success-soft, var(--voile-1)); border-radius: 999px; }
+/* Faite, la carte garde ce qui a change, l heure, et le mail replie. */
+.ast-carte.est-faite { padding: 14px 18px 16px; }
+.ast-carte.est-faite .ast-carte-tete { margin: 0; }
+.ast-carte-fait { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.ast-carte-plie { margin: 12px 0 0; }
+.ast-carte-plie > summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); }
+.ast-carte-plie > .ast-mail { margin: 10px 0 0; }
+.ast-carte-suite { display: flex; margin: 12px 0 0; }
 @media (max-width: 560px) {
   .ast-carte { padding: 14px 14px 0; }
+  .ast-carte.est-faite { padding: 14px; }
   .ast-carte-champs { grid-template-columns: minmax(0, 1fr); }
   .ast-carte-ligne { grid-template-columns: minmax(0, 1fr); gap: 1px; }
+  .ast-mail { padding: 12px 12px 14px; }
   /* Au telephone, les boutons prennent toute la largeur, dans l ordre de lecture, le principal en bas sous le pouce. */
   .ast-carte-pied { margin: 14px -14px 0; padding: 12px 14px; }
   .ast-carte-actions { flex-direction: column; align-items: stretch; width: 100%; margin: 0; }
@@ -566,6 +631,8 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-fait p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); }
 .ast-fait-meta { margin: 4px 0 0 !important; font-size: 12.5px !important; color: var(--faint) !important; }
 .ast-fait-actions { display: flex; gap: 14px; margin-top: 6px; }
+/* Un fait appris dans un autre centre du client (2026-11-13) : l IA s en sert ici, il se change de son centre. */
+.ast-fait-centre { font-weight: 500; color: var(--muted); }
 
 /* Chaque chiffre mene a sa preuve. */
 .ast .ast-chiffre { --ast-trait: color-mix(in srgb, var(--azur) 55%, transparent); display: inline; width: auto; height: auto; min-height: 0; margin: 0; padding: 0; font: inherit; color: var(--text); background: linear-gradient(var(--ast-trait), var(--ast-trait)) 0 calc(100% - 1px) / 100% 1px no-repeat; border: 0; border-radius: 0; cursor: pointer; transition: color var(--d-net) ease; }

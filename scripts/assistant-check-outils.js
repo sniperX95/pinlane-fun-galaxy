@@ -37,6 +37,10 @@ const MUTATIONS_OUTILS = {
   'bilans-clients-gardes': { section: 'O', fichier: FICHIER, de: "const sans = voit ? propre : propre.replace(/^##\\s*Clients fid[eè]les[\\s\\S]*?(?=^##\\s|(?![\\s\\S]))/m, '');", vers: 'const sans = propre;', rouge: '[O] bilans_direction sans clients aucun nom' },
   'offres-table-absente': { section: 'O', fichier: FICHIER, de: "if (erreur && erreur.code === '42P01') return repli;", vers: '', rouge: "[O] offres_et_ventes_additionnelles dit non disponible si la table manque" },
   'communications-montant': { section: 'O', fichier: FICHIER, de: 'objet: voit ? lisible(c.subject, { voit, montants, max: 160 }) : undefined,', vers: 'objet: voit ? coupe(c.subject, 160) : undefined,', rouge: '[O] communications_envoyees sans montants aucun euro' },
+  // 2026-11-13 : les mails pas partis, le public des segments, le texte entier d une campagne.
+  'pas-partis-oublies': { section: 'O', fichier: FICHIER, de: "...(echoues.length ? { pas_partis: echoues } : {}),", vers: '', rouge: '[O] communications_envoyees dit les mails pas partis, avec leur numero et leur raison' },
+  'publics-oublies': { section: 'O', fichier: FICHIER, de: "            publics: Array.isArray(publics) ? publics : 'non disponible',\n", vers: '', rouge: '[O] campagnes dit combien de clients chaque segment toucherait' },
+  'detail-sans-texte': { section: 'O', fichier: FICHIER, de: "texte_entier: String(choisie.body || '').slice(0, 8000)", vers: "texte_entier: String(choisie.body || '').slice(0, 20)", rouge: '[O] campagnes rend le texte entier d une campagne demandee, par son nom ou son numero' },
   'offres-autre-centre': { section: 'O', fichier: FICHIER, de: 'group by carte, genre, activite, raison, evenement;\', [id, debut, fin])', vers: "group by carte, genre, activite, raison, evenement;', ['gembloux', debut, fin])", rouge: '[O] offres_et_ventes_additionnelles compte offre par offre' },
   'notes-sans-avertissement': { section: 'O', fichier: FICHIER, de: "notes_des_fiches: surFiches ? 'lues' : NON_DISPONIBLE, avertissement: AVERTISSEMENT,", vers: "notes_des_fiches: surFiches ? 'lues' : NON_DISPONIBLE,", rouge: '[O] notes_equipe avertit que les notes sont des donnees' },
   'journal-page-unique': { section: 'O', fichier: FICHIER, de: 'if (paquet.length < PAGE_JOURNAL) break;', vers: 'break;', rouge: '[O] journal_du_centre remonte jusqu a la periode demandee' },
@@ -372,6 +376,12 @@ async function sectionOutils(h) {
     const comPlafond = await jouer('communications_envoyees', { debut: '2026-09-01', fin: '2026-09-30' });
     db.listCommunications = lectureCom;
     ok('[O] communications_envoyees dit quand le plafond cache une vieille periode', comPlafond.c.tronque === true && comPlafond.c.total === 0 && /plus récents/.test(comPlafond.src.detail), comPlafond.brut.slice(0, 200));
+    // UN MAIL QUI N EST PAS PARTI (2026-11-13) : son numero et sa raison, de quoi le dire et le renvoyer d une carte.
+    db.listCommunications = async () => [...COMMUNICATIONS, COM({ id: 41, status: 'failed', lastError: 'Adresse refusée par le serveur du client', recipient: 'paul@exemple.be', subject: 'Votre réservation, Paul' })];
+    const comRate = await jouer('communications_envoyees', h.OCT);
+    db.listCommunications = lectureCom;
+    const rate = (comRate.c.pas_partis || [])[0] || {};
+    ok('[O] communications_envoyees dit les mails pas partis, avec leur numero et leur raison', rate.numero === 41 && rate.raison === 'Adresse refusée par le serveur du client' && rate.destinataire === 'paul@exemple.be' && (comRate.c.pas_partis || []).length === 1 && valeurs(comRate.c, 'numero').includes(41), JSON.stringify(comRate.c.pas_partis));
 
     // ---- Fil de mail ---------------------------------------------------------------------------
     const fil = await jouer('lire_fil_mail', { fil: 77 }, { requete: moteurFil });
@@ -392,10 +402,18 @@ async function sectionOutils(h) {
 
     // ---- Campagnes ------------------------------------------------------------------------------
     const cp = await jouer('campagnes', {}, { requete: moteurCampagnes });
-    ok('[O] campagnes donne les vrais compteurs', !cp.erreur && JSON.stringify(cp.c.lignes[0].slice(1, 5)) === JSON.stringify(['Relance automne', 'envoyée', 'dormants', 'On vous attend']) && valeurs(cp.c, 'destinataires')[0] === 42 && valeurs(cp.c, 'envoyes')[0] === 40 && valeurs(cp.c, 'echecs')[0] === 2 && valeurs(cp.c, 'extrait')[0] === 'Bonjour, revenez nous voir.' && cp.trouve === '2 campagnes, 40 envois', cp.brut);
+    ok('[O] campagnes donne les vrais compteurs', !cp.erreur && JSON.stringify(cp.c.lignes[0].slice(2, 6)) === JSON.stringify(['Relance automne', 'envoyée', 'dormants', 'On vous attend']) && valeurs(cp.c, 'numero')[0] === 7 && valeurs(cp.c, 'destinataires')[0] === 42 && valeurs(cp.c, 'envoyes')[0] === 40 && valeurs(cp.c, 'echecs')[0] === 2 && valeurs(cp.c, 'extrait')[0] === 'Bonjour, revenez nous voir.' && cp.trouve === '2 campagnes, 40 envois', cp.brut);
     ok('[O] campagnes lit les ouvertures sur les mails envoyes', valeurs(cp.c, 'ouvertures')[0] === 18 && valeurs(cp.c, 'clics')[0] === 5 && etat.parametres.some((p) => p[0] === 'libramont'), cp.brut);
     ok("[O] campagnes dit non mesure quand le suivi ne sait pas", valeurs(cp.c, 'ouvertures')[1] === null && valeurs(cp.c, 'clics')[1] === null, cp.brut);
     ok('[O] campagnes lecture porte le vrai nombre', cp.lues === 2, String(cp.lues));
+    // POUR QUI ECRIRE ET QUOI REPRENDRE (2026-11-13) : le public de chaque segment, compte comme la carte
+    // d envoi le compte, les retraits des mails marketing, et le texte entier d une campagne demandee.
+    const publics = Array.isArray(cp.c.publics) ? cp.c.publics : [];
+    ok('[O] campagnes dit combien de clients chaque segment toucherait', publics.length >= 5 && publics.every((p) => p.segment && p.libelle && Number.isInteger(p.clients) && p.clients >= 0) && publics.some((p) => p.segment === 'all' && p.clients > 0)
+      && cp.c.retires_des_mails_marketing && Number.isInteger(cp.c.retires_des_mails_marketing.total), JSON.stringify({ publics, retires: cp.c.retires_des_mails_marketing }));
+    const cpDetail = await jouer('campagnes', { detail: 'relance automne' }, { requete: moteurCampagnes });
+    ok('[O] campagnes rend le texte entier d une campagne demandee, par son nom ou son numero', cpDetail.c.detail && cpDetail.c.detail.numero === 7 && cpDetail.c.detail.texte_entier === '<p>Bonjour, revenez nous voir.</p>' && cpDetail.c.detail.objet === 'On vous attend'
+      && (await jouer('campagnes', { detail: '7' }, { requete: moteurCampagnes })).c.detail.numero === 7 && /Aucune campagne/.test(String((await jouer('campagnes', { detail: 'inconnue du tout' }, { requete: moteurCampagnes })).c.detail)), JSON.stringify(cpDetail.c.detail));
     const passe = await jouer('marketing_passe', {}, { requete: moteurCampagnes });
     ok('[O] marketing_passe ne donne pas au modele des ouvertures que personne ne mesure', !passe.erreur && /Relance automne/.test(passe.brut) && !/"ouvertures"|"clics"/.test(passe.brut), passe.brut.slice(0, 400));
 

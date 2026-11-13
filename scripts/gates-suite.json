@@ -326,6 +326,7 @@
     "test:assistant-ecriture",
     "test:sequences-texte-de-depart",
     "test:mails-gmail",
+    "test:assistant-cartes",
     "test:complet-explique",
     "test:formulaire-retours",
     "test:heures-passees",

@@ -98,7 +98,10 @@ const MUTATIONS = {
   'faits-sans-limite': { section: 'M', fichier: MEM, de: "    if (gardes.length >= FAITS_DANS_LE_CONTEXTE) break;\n", vers: "", rouge: "[M] le savoir entre borne dans le contexte" },
   'faits-sans-borne-taille': { section: 'M', fichier: MEM, de: "    if (taille + coute > CONTEXTE_CARACTERES_MAX) break;\n", vers: "", rouge: "[M] le savoir entre borne en taille dans le contexte" },
   'fait-chevron': { section: 'M', fichier: AGENT, de: "String(f.texte).replace(/[<>]/g, ' ')", vers: "String(f.texte)", rouge: "[M] un fait ne ferme pas son bloc" },
-  'savoir-tous-centres': { section: 'M', fichier: MEM, de: "       where center_id = $1 and retire_le is null\n       order by created_at desc", vers: "       where retire_le is null\n       order by created_at desc", rouge: "[M] un centre ne voit pas le savoir d un autre" },
+  'savoir-tous-centres': { section: 'M', fichier: MEM, de: "       where center_id = $1 and retire_le is null\n       order by created_at desc", vers: "       where retire_le is null\n       order by created_at desc", rouge: "[M] un centre lit le savoir des autres centres du client, avec leur nom, jamais celui d un autre client" },
+  // 2026-11-13 : un fait appris dans un autre centre du client sert ici, et dit d ou il vient.
+  'savoir-du-seul-centre': { section: 'M', fichier: MEM, de: "    return faitsBornes(await faitsDesCentres(q, centerId, autres));", vers: "    return faitsBornes(await listerFaits(q, centerId));", rouge: "[M] un centre lit le savoir des autres centres du client, avec leur nom, jamais celui d un autre client" },
+  'savoir-sans-son-centre': { section: 'M', fichier: AGENT, de: "${f.centre ? ` (appris à ${String(f.centre).replace(/[<>\\r\\n()]/g, ' ').trim()})` : ''}", vers: "", rouge: "[M] un centre lit le savoir des autres centres du client, avec leur nom, jamais celui d un autre client" },
   'retire-pas-efface': { section: 'M', fichier: MEM, de: "         set retire_le = now(), retire_par_nom = $3\n", vers: "         set retire_le = null, retire_par_nom = $3\n", rouge: "[M] un fait retire ne sert plus" },
   'lignes-gonflees': { section: 'R', fichier: OUT, de: "lecture.abonnes.forEach((s) => s.point({ lues: lignes.length, extraits }));", vers: "lecture.abonnes.forEach((s) => s.point({ lues: lignes.length * 3, extraits }));", rouge: "[R] les lignes comptees sont celles vraiment lues" },
   'pas-d-extraits': { section: 'R', fichier: OUT, de: "extraits: dedans.slice(0, 10).map(extraitLigne)", vers: "extraits: []", rouge: "[R] les extraits sont de vraies lignes" },
@@ -920,10 +923,19 @@ async function sectionM() {
   ok('[M] ce fait sert tout de suite a tout le centre', /\[F1\] Le KFD est complet le mercredi/.test(bloc) && !/cache_control/.test(JSON.stringify(etat.appels[0].corps.system.find((s) => /savoir_appris_du_centre/.test(s.text)))), bloc.slice(0, 120));
   const faitCite = utilise.un('fin').donnees;
   ok('[M] un fait cite se retrouve dans la reponse', faitCite.texte.includes('[F1]') && faitCite.faitsCites.length === 1 && faitCite.faitsCites[0].id === 1, JSON.stringify(faitCite));
+  // LE SAVOIR DES AUTRES CENTRES DU CLIENT (Ansar, 2026-11-13 : « je viens denvoyer qlq a apprendre a l'ia,
+  // je lui pose dcp direct la question et il sait pas ») : un fait appris a Libramont sert a Gembloux, marque
+  // de son centre ; celui d un autre client, dans la meme base, ne passe jamais.
+  base.faits.push({ id: 77, center_id: 'etranger', texte: 'Le secret d un autre client', origine: 'panneau', contexte: '', appris_par_id: 'x', appris_par_nom: 'X', modifie_par_nom: '', modifie_le: null, retire_le: null, created_at: Date.now() + 77 });
   reinitialiser({ session: unePersonne('gem:m1', DIRECTION, 'gembloux'), requete: base.requete });
-  etat.script = [fin('Rien [F1].')];
+  etat.script = [fin('À Libramont, le KFD est complet le mercredi [F1].')];
   const ailleursCentre = await poser(question('Le KFD ?', { centerId: 'gembloux' }));
-  ok('[M] un centre ne voit pas le savoir d un autre', !/savoir_appris_du_centre/.test(JSON.stringify(etat.appels[0].corps.system)) && ailleursCentre.un('fin').donnees.texte === 'Rien.', ailleursCentre.un('fin').donnees.texte);
+  const blocAilleurs = (etat.appels[0].corps.system.find((s) => /savoir_appris_du_centre/.test(s.text)) || {}).text || '';
+  ok('[M] un centre lit le savoir des autres centres du client, avec leur nom, jamais celui d un autre client', /\[F1\] \(appris à Fun Galaxy Libramont\) Le KFD est complet le mercredi/.test(blocAilleurs)
+    && !/secret d un autre client/.test(JSON.stringify(etat.appels[0].corps.system)) && /\[F1\]/.test(ailleursCentre.un('fin').donnees.texte), blocAilleurs.slice(0, 300));
+  const panneauAilleurs = await agir('savoir', { centerId: 'gembloux' });
+  ok('[M] le panneau de Gembloux montre ce fait de Libramont, avec son centre, sans celui d un autre client', panneauAilleurs.statut === 200 && panneauAilleurs.json.faits.some((f) => f.id === 1 && f.centreId === 'libramont' && f.centre === 'Fun Galaxy Libramont') && !panneauAilleurs.json.faits.some((f) => f.id === 77), JSON.stringify(panneauAilleurs.json).slice(0, 300));
+  base.faits.splice(base.faits.findIndex((f) => f.id === 77), 1);
   reinitialiser({ session: unePersonne('lib:m1'), requete: base.requete });
   const liste = await agir('savoir');
   ok('[M] la liste dit qui et quand', liste.json.faits.length === 1 && liste.json.faits[0].par === 'Gérant' && liste.json.faits[0].le > 0, JSON.stringify(liste.json));

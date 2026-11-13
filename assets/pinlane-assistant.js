@@ -90,6 +90,8 @@
     const c = typeof getAdminCenter === 'function' ? getAdminCenter() : null;
     return (c && c.name) || 'votre centre';
   }
+  // Le client a-t-il plusieurs centres ? Ceux de la console (2026-11-13 : A.centres n etait jamais rempli).
+  function plusieursCentres() { return (typeof getAdminCenters === 'function' ? getAdminCenters() : []).filter((c) => c && c.id && c.id !== 'all').length > 1; }
   function nomDUnCentre(id) {
     const c = (typeof getAdminCenters === 'function' ? getAdminCenters() : []).find((x) => x.id === id);
     return (c && c.name) || id;
@@ -1115,7 +1117,7 @@
       const liste = conversationsAEffacer(a);
       liste.forEach((c) => supprimer(c.id));
       p.efface = liste.length;
-      p.etat = 'fait';
+      p.etat = 'fait'; p.faitA = Date.now();
       sauver(courante());
       peindreMessage(m);
       return;
@@ -1134,7 +1136,7 @@
         if (dossier.status === 'cancelled') throw new Error('Cette réservation est déjà annulée.');
         const fait = await envoyerModificationReservation(dossier, (d) => ({ ...d, status: 'cancelled' }));
         if (fait && fait.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(fait.reservation, { preserveEditState: true });
-        p.etat = 'fait';
+        p.etat = 'fait'; p.faitA = Date.now();
       } catch (erreur) {
         p.etat = '';
         p.erreur = (erreur && erreur.message) || 'L’annulation n’a pas pu se faire.';
@@ -1150,7 +1152,7 @@
       if (p.centre && p.centre !== centreId()) { p.erreur = `Cette réservation est pour ${nomDUnCentre(p.centre)} : ouvrez ce centre dans la console, puis redemandez.`; peindreMessage(m); return; }
       if (typeof openQuickBook !== 'function') { p.erreur = 'La fenêtre Réserver n’est pas disponible ici.'; peindreMessage(m); return; }
       openQuickBook({ date: corps.date, startTime: corps.startTime, heureSouhaitee: true, pax: corps.pax, ...(corps.name ? { name: corps.name } : {}) });
-      p.etat = 'fait';
+      p.etat = 'fait'; p.faitA = Date.now();
       sauver(courante());
       peindreMessage(m);
       return;
@@ -1183,7 +1185,7 @@
           ? await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(corps) })
           : await fetch('/api/ops', { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: staffAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(corps) }).then(async (x) => { const d = await x.json().catch(() => ({})); if (!x.ok || d.ok === false) throw new Error(d.message || 'La réservation n’a pas pu se créer.'); return d; });
         p.reservation = r && r.reservation ? { id: r.reservation.id, date: r.reservation.date || a.date, startTime: r.reservation.startTime || a.startTime, pax: r.reservation.pax || a.pax } : null;
-        p.etat = 'fait';
+        p.etat = 'fait'; p.faitA = Date.now();
         if (typeof syncDateReservations === 'function') syncDateReservations(a.date, { silent: true }).catch(() => {});
       } catch (erreur) {
         p.etat = '';
@@ -1199,7 +1201,7 @@
     if (a.action === 'noteClient') {
       try {
         await ajouterNoteClient(corps.centerId, corps.reservationId, corps.texte);
-        p.etat = 'fait';
+        p.etat = 'fait'; p.faitA = Date.now();
       } catch (erreur) {
         p.etat = '';
         p.erreur = (erreur && erreur.message) || 'La note n’a pas pu s’enregistrer.';
@@ -1213,7 +1215,10 @@
         ? await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(corps) })
         : await fetch('/api/ops', { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: staffAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(corps) }).then(async (x) => { const d = await x.json().catch(() => ({})); if (!x.ok || d.ok === false) throw new Error(d.message || d.error || ''); return d; });
       if (r && r.customRequest && typeof replaceStaffCustomRequest === 'function') replaceStaffCustomRequest(r.customRequest);
-      p.etat = 'fait';
+      // Un mail que l envoi a refuse (l essai, le renvoi) revient sans erreur, avec son statut : la carte
+      // dit qu il n est pas parti, jamais qu il est parti.
+      if (r && r.status === 'failed') throw new Error(`Le mail n’est pas parti${r.error ? ` (${String(r.error).slice(0, 160)})` : ''}. Rien n’est changé.`);
+      p.etat = 'fait'; p.faitA = Date.now();
     } catch (erreur) {
       p.etat = '';
       p.erreur = (erreur && erreur.message) || 'Le geste n’a pas pu se faire.';
@@ -1248,6 +1253,135 @@
     const long = v.long ? `<details class="ast-carte-long"><summary>Voir le texte entier</summary><p>${esc(v.long)}</p></details>` : '';
     if (v.avant === undefined && v.apres === undefined) return `${esc(v.valeur)}${long}`;
     return `<span class="ast-avant">${esc(v.avant)}</span><span class="ast-fleche" aria-label="devient">→</span><b class="ast-apres">${esc(v.apres)}</b>${long}`;
+  }
+
+  // ---- LA CARTE D UN CHANGEMENT (Ansar, 2026-11-13 : « elle presente les choses qu elle modifie vrm pas
+  // assez bien dutout ») ---------------------------------------------------------------------------------
+  // En tete, ce qui va se passer, en une phrase. Dessous, ce qui change en grand, l ancien barre a cote du
+  // nouveau ; un etat (allumee, en vente) en pastilles ; un mail comme Gmail le montre, entier, ses
+  // variables en etiquettes et ses changements marques. Le detail reste en petit. Faite, la carte garde
+  // ce qui a change et l heure ou c est fait.
+  const svgDe = (chemins, taille = 16) => `<svg viewBox="0 0 16 16" width="${taille}" height="${taille}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${chemins}</svg>`;
+  const ICONES_DOMAINE = {
+    Prix: '<path d="M2.5 8.3V3.5a1 1 0 0 1 1-1h4.8l5.2 5.2a1 1 0 0 1 0 1.4l-4.4 4.4a1 1 0 0 1-1.4 0z"/><circle cx="5.6" cy="5.6" r="1"/>',
+    Mails: '<rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.6 4.6 5.4 4 5.4-4"/>',
+    Établissement: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2.2 1.4"/>',
+    Réservations: '<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.8h11M5.5 2v3M10.5 2v3"/>',
+    Planning: '<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.8h11M5.5 2v3M10.5 2v3"/>',
+    Clients: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c.8-2.6 2.8-4 5-4s4.2 1.4 5 4"/>',
+    Demandes: '<path d="M2.5 9.5 4 3.5h8l1.5 6v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/><path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"/>',
+    Direction: '<path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5"/>',
+    Conversations: ICONES.corbeille,
+  };
+  const DOMAINE_DES_ANCIENS = { assistantReservation: 'Réservations', ouvrirReserver: 'Réservations', annulerReservation: 'Réservations', ouvertureExceptionnelle: 'Établissement', customRequestStatus: 'Demandes', noteClient: 'Clients', effacerConversations: 'Conversations' };
+  const CHEMIN_CLIENTS = '<circle cx="6" cy="6" r="2.2"/><path d="M2 13c.5-2.2 2-3.4 4-3.4s3.5 1.2 4 3.4M10.5 4a2 2 0 1 1 0 4M11.6 9.8c1.3.4 2.2 1.5 2.5 3.2"/>';
+  const CHEMIN_ALERTE = '<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.4v.1"/>';
+  const CHEMIN_SUITE = '<path d="M3 8h10M9 4l4 4-4 4"/>';
+  // Deux etats que la personne connait (allume ou coupe, en vente ou retire) se lisent en pastilles.
+  const ETAT_ALLUME = /^(allumée?|en vente|ouverte?|oui|active?|validée?|visible|publiée?|en ligne)$/i;
+  const ETAT_ETEINT = /^(coupée?|retirée?|fermée?|non|inactive?|masquée?|archivée?|hors ligne)$/i;
+  const etatDe = (v) => { const t = String(v == null ? '' : v).trim(); return ETAT_ALLUME.test(t) ? 'on' : (ETAT_ETEINT.test(t) ? 'off' : ''); };
+  // Une variable d un mail se lit en etiquette : le logiciel la remplace pour chaque client a l envoi.
+  const VARIABLES_DITES = { prenom: 'prénom', nom: 'nom', centre: 'nom du centre', date: 'date', heure: 'heure', formule: 'formule', pax: 'joueurs', numero: 'n° de réservation', prix: 'prix', date_fete: 'date de la fête', offre: 'offre', lien_avis: 'lien des avis', date_debut: 'date de début', date_fin: 'date de fin', geste: 'geste' };
+  const avecVariables = (h) => h.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (t, nom) => `<span class="ast-var" title="Remplacé pour chaque client à l’envoi">${esc(VARIABLES_DITES[nom.toLowerCase()] || nom)}</span>`);
+  // CE QUI CHANGE ENTRE DEUX TEXTES, mot a mot (la plus longue suite commune). Un texte trop long pour se
+  // comparer vite rend null : la carte le montre alors sans marques. Garde par objet : une carte se repeint
+  // a chaque morceau de reponse, la comparaison ne se refait pas.
+  const DIFFERENCES = new WeakMap();
+  function difference(avant, apres) {
+    const a = String(avant || '').match(/\S+\s*|\s+/g) || [];
+    const b = String(apres || '').match(/\S+\s*|\s+/g) || [];
+    const n = a.length;
+    const m = b.length;
+    if (n * m > 2500000) return null;
+    const at = a.map((s) => s.trimEnd());
+    const bt = b.map((s) => s.trimEnd());
+    const L = [];
+    for (let i = 0; i <= n; i += 1) L.push(new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i -= 1) for (let j = m - 1; j >= 0; j -= 1) L[i][j] = at[i] === bt[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const morceaux = [];
+    const pousser = (t, s) => { const d = morceaux[morceaux.length - 1]; if (d && d.t === t) d.s += s; else morceaux.push({ t, s }); };
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (at[i] === bt[j]) { pousser('=', b[j]); i += 1; j += 1; } else if (L[i + 1][j] >= L[i][j + 1]) { pousser('-', a[i]); i += 1; } else { pousser('+', b[j]); j += 1; }
+    }
+    for (; i < n; i += 1) pousser('-', a[i]);
+    for (; j < m; j += 1) pousser('+', b[j]);
+    return { morceaux, commun: n + m ? (2 * L[0][0]) / (n + m) : 1 };
+  }
+  function differenceGardee(mail, cle) {
+    if (!DIFFERENCES.has(mail)) DIFFERENCES.set(mail, {});
+    const garde = DIFFERENCES.get(mail);
+    if (!(cle in garde)) garde[cle] = difference(cle === 'objet' ? mail.objetAvant : mail.texteAvant, cle === 'objet' ? mail.objet : mail.texte);
+    return garde[cle];
+  }
+  // L ajoute surligne, le retire barre ; l espace qui suit reste hors de la marque. Un retire suivi de son
+  // remplacant ne garde pas son retour a la ligne : celui du nouveau texte suffit, une espace les separe.
+  const htmlMarques = (morceaux) => morceaux.map((d, k) => {
+    if (d.t === '=') return avecVariables(esc(d.s));
+    const [, mot, blanc] = /^([\s\S]*?)(\s*)$/.exec(d.s);
+    const balise = d.t === '+' ? 'ins' : 'del';
+    const suivi = d.t === '-' && morceaux[k + 1] && morceaux[k + 1].t === '+';
+    return `${mot ? `<${balise} class="ast-${balise}">${avecVariables(esc(mot))}</${balise}>` : ''}${suivi ? (mot ? ' ' : '') : esc(blanc)}`;
+  }).join('');
+  // LE MAIL TEL QUE LE CLIENT LE LIRA : de qui, pour qui, l objet, le texte entier. Avec un avant, deux
+  // vues : ce qui change (marque) et tel qu il partira. Un texte reecrit presque en entier ne se marque
+  // pas mot a mot, l ancien se deplie dessous.
+  function htmlMail(p, i, mail, { fige = false } = {}) {
+    if (!mail || (!mail.objet && !mail.texte)) return '';
+    const aUnAvant = !fige && (mail.texteAvant !== undefined || mail.objetAvant !== undefined);
+    const vue = aUnAvant && p.vueMail !== 'propre' ? 'changements' : 'propre';
+    const dObjet = vue === 'changements' && mail.objetAvant !== undefined ? differenceGardee(mail, 'objet') : null;
+    const dTexte = vue === 'changements' && mail.texteAvant !== undefined ? differenceGardee(mail, 'texte') : null;
+    const reecrit = vue === 'changements' && mail.texteAvant !== undefined && (!dTexte || dTexte.commun < 0.3);
+    const objet = dObjet ? htmlMarques(dObjet.morceaux) : avecVariables(esc(mail.objet || ''));
+    const texte = dTexte && !reecrit ? htmlMarques(dTexte.morceaux) : avecVariables(esc(mail.texte || ''));
+    const de = String(mail.de || '') || nomDUnCentre(p.centre || centreId()) || 'Le centre';
+    const nomDe = de.replace(/\s*<[^>]*>\s*$/, '').trim() || de;
+    const adresseDe = (/<([^>]+)>\s*$/.exec(de) || [])[1] || '';
+    const long = String(mail.texte || '').split('\n').length > 14 || String(mail.texte || '').length > 900;
+    const ouvert = Boolean(p.mailOuvert) || fige;
+    return `<div class="ast-mail${long && !ouvert ? ' est-replie' : ''}" data-ast-mail="${i}">
+      ${aUnAvant ? `<div class="ast-mail-vues" role="group" aria-label="Afficher le mail"><button type="button" data-ast-mail-vue="${i}" data-vue="changements" aria-pressed="${vue === 'changements'}">Ce qui change</button><button type="button" data-ast-mail-vue="${i}" data-vue="propre" aria-pressed="${vue === 'propre'}">Tel qu’il partira</button></div>` : ''}
+      <div class="ast-mail-tete"><span class="ast-mail-avatar" aria-hidden="true">${esc((nomDe[0] || 'P').toUpperCase())}</span><div class="ast-mail-qui"><p><b>${esc(nomDe)}</b>${adresseDe ? ` <span>&lt;${esc(adresseDe)}&gt;</span>` : ''}</p>${mail.a ? `<p>à ${esc(mail.a)}</p>` : ''}</div></div>
+      ${mail.enReponse ? `<p class="ast-mail-reponse">En réponse à « ${esc(mail.enReponse)} »</p>` : ''}
+      <p class="ast-mail-objet">${objet || 'Sans objet'}</p>
+      <div class="ast-mail-texte">${texte}</div>
+      ${long && !fige ? `<button type="button" class="ast-mail-suite" data-ast-mail-suite="${i}" aria-expanded="${ouvert}">${ouvert ? 'Replier le mail' : 'Lire le mail en entier'}</button>` : ''}
+      ${reecrit ? `<details class="ast-mail-ancien"><summary>Le texte est réécrit. Voir l’ancien</summary><div class="ast-mail-texte">${avecVariables(esc(mail.texteAvant || ''))}</div></details>` : ''}
+    </div>`;
+  }
+  function htmlChange(k, v) {
+    const avant = String(v.avant == null ? '' : v.avant);
+    const apres = String(v.apres == null ? '' : v.apres);
+    const etat = etatDe(avant) && etatDe(apres);
+    const large = !etat && (avant.length > 28 || apres.length > 28);
+    const long = v.long ? `<details class="ast-carte-long"><summary>Voir le texte entier</summary><p>${esc(v.long)}</p></details>` : '';
+    return `<div class="ast-carte-ligne est-change${etat ? ' est-etat' : ''}${large ? ' est-large' : ''}"><dt>${esc(k)}</dt><dd><span class="ast-avant"${etat ? ` data-etat="${etatDe(avant)}"` : ''}>${esc(avant)}</span><span class="ast-fleche" role="img" aria-label="devient">${svgDe(CHEMIN_SUITE, 14)}</span><b class="ast-apres"${etat ? ` data-etat="${etatDe(apres)}"` : ''}>${esc(apres)}</b>${long}</dd></div>`;
+  }
+  // Faite, une ligne dit la valeur d a present, et l ancienne en petit.
+  function htmlChangeFait(k, v) {
+    const avant = String(v.avant == null ? '' : v.avant);
+    const apres = String(v.apres == null ? '' : v.apres);
+    const etat = etatDe(avant) && etatDe(apres);
+    return `<div class="ast-carte-ligne est-change${etat ? ' est-etat' : ''}"><dt>${esc(k)}</dt><dd><b class="ast-apres"${etat ? ` data-etat="${etatDe(apres)}"` : ''}>${esc(apres)}</b>${avant && !etat ? `<span class="ast-avant-dit">au lieu de ${esc(avant)}</span>` : ''}</dd></div>`;
+  }
+  function heureFaite(t) {
+    const d = new Date(Number(t));
+    if (!Number(t) || Number.isNaN(d.getTime())) return '';
+    const h = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+    return new Date().toDateString() === d.toDateString() ? `Fait à ${h}` : `Fait le ${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })} à ${h}`;
+  }
+  // Une ligne que l en-tete ou l apercu du mail dit deja ne se repete pas en dessous.
+  const DANS_LE_MAIL = new Set(['Objet', 'Texte', 'Pour qui', 'À', 'De', 'Destinataires', 'Part à', 'En réponse à']);
+  function lignesVues(p, titre, mail) {
+    return lignesDuGeste(p).filter(([k, v]) => {
+      if (v === '' || v == null) return false;
+      if (mail && DANS_LE_MAIL.has(k)) return false;
+      const simple = typeof v === 'string' ? v : (v.avant === undefined && v.apres === undefined ? String(v.valeur == null ? '' : v.valeur) : null);
+      return !(simple && (simple === titre || titre.includes(`« ${simple} »`)));
+    });
   }
   // Les conversations qu un effacement prendrait : jamais celle ou la personne ecrit.
   function conversationsAEffacer(a) {
@@ -1318,6 +1452,13 @@
   function htmlCarteGeste(p, i) {
     const a = p.action || {};
     const vue = a.action === 'assistantGeste' ? vueDuRegistre(p) : (GESTE_VUE[a.action] || { type: 'Geste', verbe: 'Faire', cours: 'En cours…' });
+    const domaine = (p.vue && p.vue.domaine) || DOMAINE_DES_ANCIENS[a.action] || '';
+    const mail = a.action === 'assistantGeste' && p.resume && p.resume.mail && typeof p.resume.mail === 'object' ? p.resume.mail : null;
+    const titre = a.action === 'noteClient' ? 'Ajouter cette note à la fiche du client.' : String(p.texte || '');
+    const lignes = lignesVues(p, titre, mail);
+    const changes = lignes.filter(([, v]) => v && typeof v === 'object' && (v.avant !== undefined || v.apres !== undefined));
+    const faits = lignes.filter((l) => !changes.includes(l));
+    const centre = p.centre && plusieursCentres() ? `<span class="ast-carte-centre">${esc(nomDUnCentre(p.centre))}</span>` : '';
     if (p.etat === 'fait') {
       const dit = a.action === 'assistantReservation' && p.reservation
         ? `Réservation n° ${esc(p.reservation.id)} créée : ${esc(jourDit(p.reservation.date))} à ${esc(p.reservation.startTime)}, ${esc(p.reservation.pax)} joueurs.`
@@ -1326,23 +1467,27 @@
             : a.action === 'ouvrirReserver' ? 'La fenêtre Réserver est ouverte, préremplie : vérifiez-la et confirmez.'
               : a.action === 'assistantGeste' ? esc((p.resume && p.resume.fait) || `C’est fait. ${p.texte}`) : `C’est fait. ${esc(p.texte)}`;
       const voir = a.action === 'assistantReservation' && p.reservation ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-voir="${i}">Voir au planning</button>` : '';
-      return `<div class="ast-carte est-faite" data-ast-prop="${i}"><p class="ast-carte-fait"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg><span>${dit}</span></p>${voir}</div>`;
+      const quand = heureFaite(p.faitA);
+      return `<div class="ast-carte est-faite" data-ast-prop="${i}">
+        <div class="ast-carte-tete"><span class="ast-carte-icone est-fait">${svgDe(ICONES.coche)}</span><div class="ast-carte-titres"><p class="ast-carte-sur"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}${quand ? `<span class="ast-carte-quand">${esc(quand)}</span>` : ''}</p><p class="ast-carte-fait">${dit}</p></div></div>
+        ${changes.length ? `<dl class="ast-carte-changes est-fige">${changes.map(([k, v]) => htmlChangeFait(k, v)).join('')}</dl>` : ''}
+        ${mail ? `<details class="ast-carte-plie"><summary>${p.geste === 'essai_mail' ? 'Voir l’essai envoyé' : 'Voir le mail'}</summary>${htmlMail(p, i, mail, { fige: true })}</details>` : ''}
+        ${voir ? `<div class="ast-carte-suite">${voir}</div>` : ''}
+      </div>`;
     }
     const enCours = p.etat === 'cours';
-    const lignes = lignesDuGeste(p).filter(([, v]) => v !== '' && v != null);
-    const centre = p.centre && A.centres && A.centres.length > 1 ? `<span class="ast-carte-centre">${esc(nomDUnCentre(p.centre))}</span>` : '';
     const saisie = p.saisie || {};
     const champs = a.action === 'assistantReservation' ? `<div class="ast-carte-champs">
         <label class="ast-carte-champ${p.manqueTel ? ' est-manque' : ''}"><span>Téléphone du client<em>obligatoire</em></span><input type="tel" inputmode="tel" data-ast-tel="${i}" value="${esc(saisie.tel != null ? saisie.tel : (a.phone || ''))}" placeholder="Ex. 0470 12 34 56" autocomplete="off" aria-required="true"${enCours ? ' disabled' : ''}></label>
         <label class="ast-carte-champ"><span>Nom</span><input data-ast-nom="${i}" value="${esc(saisie.nom != null ? saisie.nom : (a.name || ''))}" placeholder="Nom du client" autocomplete="off"${enCours ? ' disabled' : ''}></label>
       </div>` : '';
-    const garde = a.action === 'assistantReservation' ? '<p class="ast-carte-garde">Vérifiée sur le planning à l’instant. Rien ne se crée avant votre clic, et le planning se revérifie à ce moment-là.</p>' : p.risque ? '<p class="ast-carte-garde">Rien ne change avant votre clic, et vous confirmerez une seconde fois.</p>' : '<p class="ast-carte-garde">Rien ne change avant votre clic.</p>';
+    const garde = a.action === 'assistantReservation' ? '<p class="ast-carte-garde">Vérifiée sur le planning à l’instant. Rien ne se crée avant votre clic, et le planning se revérifie à ce moment-là.</p>' : p.risque ? '<p class="ast-carte-garde">Rien ne change avant votre clic, et vous confirmerez une seconde fois.</p>' : p.geste === 'essai_mail' ? '<p class="ast-carte-garde">Rien ne part avant votre clic.</p>' : '<p class="ast-carte-garde">Rien ne change avant votre clic.</p>';
     const alerteDite = p.alerte || (a.action === 'assistantGeste' && p.resume && p.resume.alerte) || '';
     // A la confirmation, le pied redit une phrase de la carte : le bloc qui la portait se retire, pour
     // ne pas la lire deux fois l une sous l autre.
     const redit = p.confirmer ? (vue.suite || p.alerte || '') : '';
-    const alerte = alerteDite && alerteDite !== redit ? `<p class="ast-carte-alerte">${esc(alerteDite)}</p>` : '';
-    const clients = a.action === 'assistantGeste' && p.resume && p.resume.clients && p.resume.clients !== redit ? `<p class="ast-carte-clients">${esc(p.resume.clients)}</p>` : '';
+    const alerte = alerteDite && alerteDite !== redit ? `<p class="ast-carte-alerte">${svgDe(CHEMIN_ALERTE)}<span>${esc(alerteDite)}</span></p>` : '';
+    const clients = a.action === 'assistantGeste' && p.resume && p.resume.clients && p.resume.clients !== redit ? `<p class="ast-carte-clients">${svgDe(CHEMIN_CLIENTS)}<span>${esc(p.resume.clients)}</span></p>` : '';
     const rien = a.action === 'effacerConversations' && !conversationsAEffacer(a).length;
     const modifier = a.action === 'assistantReservation' ? `<button type="button" class="ast-bouton est-contour" data-ast-geste-reserver="${i}"${enCours ? ' disabled' : ''}>Modifier dans Réserver</button>` : '';
     // LE PIED DE LA CARTE (2026-11-12, Ansar : « le bouton comme ça, cette couleur, c'est pas pro ») :
@@ -1361,8 +1506,10 @@
           ${rien ? '' : `<button type="button" class="ast-bouton est-plein${p.risque ? ' est-risque' : ''}" data-ast-geste-oui="${i}"${enCours ? ' disabled aria-busy="true"' : ''}>${esc(enCours ? vue.cours : vue.verbe)}</button>`}
         </div></div>`;
     return `<div class="ast-carte${p.risque ? ' est-risque' : ''}${p.confirmer ? ' est-a-confirmer' : ''}" data-ast-prop="${i}">
-      <div class="ast-carte-tete"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}</div>
-      <dl class="ast-carte-lignes">${lignes.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${ddDe(v)}</dd></div>`).join('')}</dl>
+      <div class="ast-carte-tete"><span class="ast-carte-icone">${svgDe(ICONES_DOMAINE[domaine] || ICONES.crayon)}</span><div class="ast-carte-titres"><p class="ast-carte-sur"><span class="ast-carte-type">${esc(vue.type)}</span>${centre}</p>${titre ? `<p class="ast-carte-titre">${esc(titre)}</p>` : ''}</div></div>
+      ${changes.length ? `<dl class="ast-carte-changes">${changes.map(([k, v]) => htmlChange(k, v)).join('')}</dl>` : ''}
+      ${mail ? htmlMail(p, i, mail) : ''}
+      ${faits.length ? `<dl class="ast-carte-lignes">${faits.map(([k, v]) => `<div class="ast-carte-ligne"><dt>${esc(k)}</dt><dd>${ddDe(v)}</dd></div>`).join('')}</dl>` : ''}
       ${clients}
       ${champs}
       ${alerte}
@@ -1860,7 +2007,8 @@
   function htmlSavoir() {
     const S = A.savoir;
     const fermer = `<button type="button" class="ast-icone" data-ast-panneau-fermer aria-label="Fermer">${icone('fermer')}</button>`;
-    const tete = `<div class="ast-src-tete"><div><h2>Ce que l'IA a appris</h2><p class="ast-src-detail">Ce que votre équipe lui a appris. Elle s'en sert aussitôt, pour toutes les personnes du centre.</p></div>${fermer}</div>`;
+    const plusieurs = plusieursCentres();
+    const tete = `<div class="ast-src-tete"><div><h2>Ce que l'IA a appris</h2><p class="ast-src-detail">Ce que votre équipe lui a appris. Elle s'en sert aussitôt, pour toutes les personnes ${plusieurs ? 'de vos centres' : 'du centre'}.</p></div>${fermer}</div>`;
     if (!S.charge) return `${tete}<p class="ast-pense ast-travail">${SIGNE}Lecture</p>`;
     if (!S.disponible) return `${tete}<p class="ast-vide">Le savoir de l'équipe sera actif après la prochaine mise à jour de la base.</p>`;
     const formulaire = `<form class="ast-savoir-form" data-ast-savoir-form>
@@ -1872,6 +2020,8 @@
     if (!S.faits.length) return `${tete}${formulaire}<p class="ast-vide">Rien n'a encore été appris. Écrivez ci-dessus, ou dites à l'assistant « retiens que... » dans une conversation.</p>`;
     const lignes = S.faits.map((f) => {
       const meta = `${f.par ? `Appris par ${esc(f.par)}, ` : ''}${esc(quand(f.le))}${ORIGINE_DITE[f.origine] ? `. ${ORIGINE_DITE[f.origine]}` : ''}${f.modifieLe ? `. Modifié par ${esc(f.modifiePar || 'un collègue')}, ${esc(quand(f.modifieLe))}` : ''}`;
+      // Un fait d un autre centre du client : l IA s en sert ici aussi ; il se change depuis son centre.
+      if (f.centreId && f.centreId !== centreId()) return `<li class="ast-fait est-ailleurs" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta"><span class="ast-fait-centre">Appris à ${esc(f.centre || f.centreId)}</span>. ${meta}</p></li>`;
       if (S.aRetirer === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta">Retirer ce fait pour tout le centre ?</p><div class="ast-prop-actions"><button type="button" class="ast-bouton est-plein" data-ast-fait-retirer-oui="${f.id}">Retirer</button><button type="button" class="ast-bouton est-contour" data-ast-fait-retirer-non>Annuler</button></div></li>`;
       if (S.edition === f.id) return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><form data-ast-fait-form="${f.id}"><textarea class="ast-champ-court" data-ast-fait-texte rows="3" maxlength="${FAIT_MAX}" aria-label="Le fait à retenir">${esc(f.texte)}</textarea><div class="ast-prop-actions"><button type="submit" class="ast-bouton est-plein">Enregistrer</button><button type="button" class="ast-bouton est-contour" data-ast-fait-annuler>Annuler</button></div></form></li>`;
       return `<li class="ast-fait" data-ast-fait-ligne="${f.id}"><p>${esc(f.texte)}</p><p class="ast-fait-meta">${meta}</p><div class="ast-fait-actions"><button type="button" class="ast-lien" data-ast-fait-modifier="${f.id}">Modifier</button><button type="button" class="ast-lien" data-ast-fait-retirer="${f.id}">Retirer</button></div></li>`;
@@ -2274,7 +2424,7 @@
       case 'repris': m.repris = Array.isArray(d.lectures) ? d.lectures.slice(0, 24) : []; break;
       case 'verification': m.verification = true; break;
       case 'graphique': m.graphiques.push(d); break;
-      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(d.vue && typeof d.vue === 'object' ? { vue: { type: String(d.vue.type || '').slice(0, 80), verbe: String(d.vue.verbe || '').slice(0, 60), cours: String(d.vue.cours || '').slice(0, 40), confirmer: String(d.vue.confirmer || '').slice(0, 60), danger: d.vue.danger === true } } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
+      case 'proposition': m.propositions = [...(m.propositions || []), { texte: d.texte, etat: '', ...(d.type === 'geste' ? { type: 'geste', geste: d.geste || '', centre: d.centre, action: d.action, ...(d.resume && typeof d.resume === 'object' ? { resume: d.resume } : {}), ...(d.risque === true ? { risque: true } : {}), ...(d.vue && typeof d.vue === 'object' ? { vue: { type: String(d.vue.type || '').slice(0, 80), verbe: String(d.vue.verbe || '').slice(0, 60), cours: String(d.vue.cours || '').slice(0, 40), confirmer: String(d.vue.confirmer || '').slice(0, 60), danger: d.vue.danger === true, domaine: String(d.vue.domaine || '').slice(0, 40) } } : {}), ...(typeof d.alerte === 'string' && d.alerte ? { alerte: d.alerte.slice(0, 300) } : {}) } : {}) }]; break;
       case 'aller': if (PAGES_OUVRABLES.includes(d.page) && !(m.allers || []).some((a) => a.id === d.id)) m.allers = [...(m.allers || []), { id: d.id, page: d.page, rubrique: d.rubrique || '', chemin: d.chemin }]; break;
       case 'annule': oublierPlume(m); m.texte = ''; break;
       case 'fin':
@@ -2467,6 +2617,19 @@
         if (a.page === 'establishment' && RUBRIQUES.includes(a.rubrique) && typeof setEstablishmentTab === 'function') setEstablishmentTab(a.rubrique);
         if (typeof location !== 'undefined') location.hash = `#/staff/${a.page}`;
       }
+      return;
+    }
+    // L apercu du mail d une carte : ce qui change ou tel qu il partira, et le texte entier deplie.
+    if ((n = v('[data-ast-mail-vue]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astMailVue)];
+      if (p) { p.vueMail = n.dataset.vue === 'propre' ? 'propre' : 'changements'; peindreMessage(m); }
+      return;
+    }
+    if ((n = v('[data-ast-mail-suite]'))) {
+      const m = messageDe(n);
+      const p = m && m.propositions[Number(n.dataset.astMailSuite)];
+      if (p) { p.mailOuvert = !p.mailOuvert; peindreMessage(m); }
       return;
     }
     if ((n = v('[data-ast-geste-oui]'))) {

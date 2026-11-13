@@ -174,7 +174,8 @@ async function agir(req, res, body, session) {
         const centre = centrePrecis(session, res);
         if (!centre) return;
         try {
-          sendJson(res, 200, { ok: true, disponible: true, faits: await memoire.listerFaits(q, centre) });
+          // Ce que l IA sait, comme elle le lit a chaque question : ce centre, puis les autres centres du client.
+          sendJson(res, 200, { ok: true, disponible: true, faits: await memoire.faitsDesCentres(q, centre, await centresDuClient(session, centre)) });
         } catch (erreur) {
           if (!memoire.tableAbsente(erreur)) throw erreur;
           sendJson(res, 200, { ok: true, disponible: false, faits: [] });
@@ -265,8 +266,9 @@ module.exports = async (req, res) => {
     const centres = await centresDuClient(session, centreOuvert);
     const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles(), messagesPersonne: messages.filter((m) => m.role === 'user').map((m) => m.content) });
     ctx.centreOuvert = centreOuvert;
-    // Lu a chaque question : ce qu un collegue vient d apprendre sert tout de suite.
-    const savoir = await memoire.faitsPourLeModele(requeteBase, centreOuvert);
+    // Lu a chaque question : ce qu un collegue vient d apprendre sert tout de suite, dans quelque centre
+    // du client qu il l ait appris (lib/assistant-memoire.js, faitsDesCentres).
+    const savoir = await memoire.faitsPourLeModele(requeteBase, centreOuvert, centres);
     // CE QUE LE CENTRE A APPRIS AILLEURS (2026-11-11, Ansar : « qu elles connaissent tout du centre ») : les
     // faits appris a l agent des mails et les regles retenues dans les demandes sur mesure. Le centre
     // ouvert seulement ; leur numero ne croise jamais celui d un fait de l assistant.
@@ -296,7 +298,10 @@ module.exports = async (req, res) => {
     let resultat = null;
     try {
       emettre('debut', { modele: MODELES[modele].nom, centres, sources: sourcesDuCompte(session) });
-      const personne = { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '' };
+      // LE FONDATEUR SE RECONNAIT A SA CONNEXION (Ansar, 2026-11-13 : « il ne sait meme pas que je suis son
+      // createur... si jamais qlq un veut se faire passer pour le createur ... cv pas ça ») : le droit de
+      // plateforme, qu aucun role d un centre ne donne (lib/staff-auth.js), jamais ce qu un message affirme.
+      const personne = { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '', fondateur: sessionHasPermission(session, 'platform.admin') };
       resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
       emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele, ...(resultat.corrige ? { corrige: resultat.corrige } : {}) });

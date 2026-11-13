@@ -27,6 +27,8 @@
 //       son propre processus, apres le navigateur
 //   [S] les demandes sur mesure (suivi, reservation de la demande, Pinlane en demande) et le parcours :
 //       scripts/fondateur-invisible-demandes-check.js, sur le banc des demandes, dans son propre processus
+//   [G] les autres signatures (note client, faits appris, interrupteur du formulaire, bilan, ouverture) :
+//       scripts/fondateur-invisible-signatures-check.js, dans son propre processus
 //
 // Rien ne part : ni base, ni reseau, ni mail.
 // Lancement : node scripts/fondateur-invisible-check.js [--sans-ecran] [--sans-contre-preuves] [--detail]
@@ -895,6 +897,10 @@ async function contrePreuves() {
   console.log('\n[S] les demandes et le parcours (scripts/fondateur-invisible-demandes-check.js)');
   const demandes = volet('fondateur-invisible-demandes-check.js');
   ok(demandes.status === 0, '[S] le volet demandes est vert', `code ${demandes.status}${demandes.error ? `, ${demandes.error.message}` : ''}`);
+  section = 'G';
+  console.log('\n[G] les autres signatures (scripts/fondateur-invisible-signatures-check.js)');
+  const signatures = volet('fondateur-invisible-signatures-check.js');
+  ok(signatures.status === 0, '[G] le volet signatures est vert', `code ${signatures.status}${signatures.error ? `, ${signatures.error.message}` : ''}`);
   section = 'Z';
   const inconnues = [...new Set(NON_COUVERTES)];
   if (inconnues.length) console.log(`note  requetes non servies par la base en memoire (rendues vides) : ${inconnues.length}\n      ${inconnues.slice(0, 12).join('\n      ')}`);

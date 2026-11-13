@@ -3279,7 +3279,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const concreteCenterId = requireConcreteCenter('note client');
     const clientKey = String(body.clientKey || '').trim();
     if (!clientKey) throw createHttpError('clientKey requis.', 400);
-    const saved = await saveClientNote(concreteCenterId, clientKey, body.body || '', null, { baseUpdatedAt: body.baseUpdatedAt, updatedBy: options.session?.member?.name || '' });
+    // (le fondateur ne signe pas la note d un client, lib/fondateur-invisible.js)
+    const saved = await saveClientNote(concreteCenterId, clientKey, body.body || '', null, { baseUpdatedAt: body.baseUpdatedAt, updatedBy: signatureVisible(options.session, { avecId: false }) });
     sendJson(res, 200, { ok: true, action, note: saved.note, clientKey: saved.clientKey });
     return;
   }
@@ -3327,7 +3328,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       id: body.id,
       bodyMd: body.bodyMd,
       title: body.title,
-      editedBy: options.session?.member?.name || options.session?.member?.id || 'direction',
+      // (le fondateur n y laisse pas son nom : le bilan dit « édité par direction », lib/fondateur-invisible.js)
+      editedBy: signatureVisible(options.session, { repli: 'direction' }),
       centerId: requireConcreteCenter('saveDirectionReport'),
     });
     sendJson(res, 200, { ok: true, report });
@@ -3499,8 +3501,7 @@ ${draftBody}`,
     if (mail.centerId !== centreApprentissage) throw createHttpError('Ce message appartient à un autre centre.', 403);
     const question = String((mail.payload && mail.payload.analysis && mail.payload.analysis.question) || '').trim();
     if (!question) throw createHttpError('Ce message ne porte aucune question ouverte.', 400);
-    const membre = (options.session && options.session.member) || {};
-    const par = String(membre.name || membre.id || '');
+    const par = signatureVisible(options.session);
     const { apprendreUnFait, analyzeEmail, getFaitsAppris, compterResolutions, questionsProches } = require('../lib/email-agent');
     const fait = await apprendreUnFait(centreApprentissage, { question, reponse: body.reponse, par, communicationId: mail.id });
     // La reponse proposee AVANT : l ecran montre ce que le fait a change.
@@ -3531,8 +3532,7 @@ ${draftBody}`,
   // restent ouvertes, leur reponse proposee refaite quand meme.
   if (action === 'agentApplyFact') {
     const centre = requireConcreteCenter('apprentissage de l agent');
-    const membre = (options.session && options.session.member) || {};
-    const par = String(membre.name || membre.id || '');
+    const par = signatureVisible(options.session);
     const { analyzeEmail, compterResolutions, resoluParLeFait } = require('../lib/email-agent');
     const ids = (Array.isArray(body.communicationIds) ? body.communicationIds : [])
       .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 3);
@@ -3568,9 +3568,9 @@ ${draftBody}`,
   // savoir. Les questions ouvertes proches sont rendues pour etre relues.
   if (action === 'teachAgentFact') {
     const centre = requireConcreteCenter('apprentissage de l agent');
-    const membre = (options.session && options.session.member) || {};
     const { apprendreUnFait, getFaitsAppris, questionsProches } = require('../lib/email-agent');
-    const fait = await apprendreUnFait(centre, { question: body.question, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    // « Appris par » ne nomme pas le fondateur (lib/fondateur-invisible.js).
+    const fait = await apprendreUnFait(centre, { question: body.question, reponse: body.reponse, par: signatureVisible(options.session) });
     const ouvertes = await listAgentQuestions({ centerId: centre, limit: 200 }).catch(() => []);
     sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre), proches: fait ? questionsProches(fait, ouvertes, 3) : [] });
     return;
@@ -3579,9 +3579,8 @@ ${draftBody}`,
   // CORRIGER UN FAIT : sa reponse change, l ancienne reste dans son historique.
   if (action === 'editAgentFact') {
     const centre = requireConcreteCenter('correction d un fait');
-    const membre = (options.session && options.session.member) || {};
     const { modifierUnFait, getFaitsAppris } = require('../lib/email-agent');
-    const fait = await modifierUnFait(centre, { id: body.id, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    const fait = await modifierUnFait(centre, { id: body.id, reponse: body.reponse, par: signatureVisible(options.session) });
     if (!fait) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
     sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre) });
     return;
@@ -3593,11 +3592,10 @@ ${draftBody}`,
   if (action === 'forgetAgentFact') {
     const centreOubli = requireConcreteCenter('oubli d un fait');
     if (!(Number(body.id) > 0) && !String(body.question || '').trim()) throw createHttpError('Quel fait faut-il oublier ?', 400);
-    const membre = (options.session && options.session.member) || {};
     const { oublierUnFait, getFaitsAppris } = require('../lib/email-agent');
     // L oubli retire le fait de la memoire ACTIVE ; la ligne reste (qui a
     // oublie, quand), rien n est efface.
-    const oublies = await oublierUnFait(centreOubli, { id: body.id, question: body.question, par: String(membre.name || membre.id || '') });
+    const oublies = await oublierUnFait(centreOubli, { id: body.id, question: body.question, par: signatureVisible(options.session) });
     if (!oublies) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
     sendJson(res, 200, { ok: true, action, appris: await getFaitsAppris(centreOubli) });
     return;
@@ -3615,7 +3613,6 @@ ${draftBody}`,
   // apercoive, des jours plus tard.
   if (action === 'setEmbedState') {
     const centreEmbed = requireConcreteCenter('interrupteur du formulaire');
-    const membre = (options.session && options.session.member) || {};
     const actif = body.actif !== false;
     const pool = getPool();
     // On envoie UNIQUEMENT la cle qui change : la sauvegarde fusionne avec la
@@ -3625,7 +3622,8 @@ ${draftBody}`,
       embed: {
         actif,
         bascule: new Date().toISOString(),
-        basculePar: String(membre.name || membre.id || ''),
+        // (« Coupé le ... par » ne nomme pas le fondateur, lib/fondateur-invisible.js)
+        basculePar: signatureVisible(options.session),
       },
     });
     await refreshCenterOverrides(pool, { force: true });

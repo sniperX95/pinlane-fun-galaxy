@@ -381,7 +381,7 @@ async function preuvesServeur() {
   // Le bilan du matin (2026-11-06, il etait a 22 h) : 08:30 a Bruxelles (09:30 l ete), une fois, et rien l apres-midi.
   const matin = aLaGarde(JOUR_GARDE, '07:30');
   const p7 = await passe({ instant: matin, llm: async () => null });
-  ok(p7.messages.length === 1 && /^Bilan Pinlane du/.test(p7.messages[0]) && /LIBRAMONT/.test(p7.messages[0]) && /GEMBLOUX/.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
+  ok(p7.messages.length === 1 && /^Pinlane : bilan du /.test(p7.messages[0]) && /\nLibramont : /.test(p7.messages[0]) && /\nGembloux : /.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
   ok(!PERSONNEL.test(p7.messages.join(' ')), '[G] le bilan ne cite personne', p7.messages);
   const p8 = await passe({ instant: aLaGarde(JOUR_GARDE, '07:45'), llm: async () => null });
   ok(p8.messages.length === 0, '[G] un seul bilan par matin', p8.messages);

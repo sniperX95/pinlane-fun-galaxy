@@ -503,6 +503,49 @@ async function contrePreuvesSecurite() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// [B] Le bilan du matin : le texte des regles, celui qui part quand l IA se tait ou se trompe.
+// ---------------------------------------------------------------------------
+function faitsDuMatin({ calme = false } = {}) {
+  const vide = { recuesHier: { total: 0, enLigne: 0, auComptoir: 0, montantReserve: 0, dejaAnnulees: 0 }, visitesHier: { reservations: 0, personnes: 0, ca: 0, encaisse: 0, payees: 0, annulees: 0, absentes: 0 }, aujourdhui: { reservations: 0, personnes: 0, ca: 0, aValider: 0 }, demandesDeGroupe: { recuesHier: 0, personnes: 0, enAttente: 0 }, mailsHier: { envoyes: 0, remis: 0, echecs: 0, revenus: 0, indesirables: 0, enAttenteMaintenant: 0 }, plantagesHier: { formulaire: 0, console: 0, serveur: 0 }, essaisRatesHier: { pannes: 0, refus: 0 } };
+  const centre = (nom, x = {}) => ({ centre: nom, recuesHier: { total: 3, enLigne: 1, auComptoir: 2, montantReserve: 220, dejaAnnulees: 1 }, visitesHier: { reservations: 2, personnes: 6, ca: 150, encaisse: 90, payees: 1, annulees: 1, absentes: 1 }, moisEnCours: { reservations: 3, personnes: 14, ca: 350, encaisse: 290 }, aujourdhui: { reservations: 1, personnes: 5, ca: 70, aValider: 1 }, demandesDeGroupe: { recuesHier: 1, personnes: 35, enAttente: 2 }, modificationsHier: {}, mailsHier: { envoyes: 5, remis: 4, echecs: 1, revenus: 1, indesirables: 0, enAttenteMaintenant: 0 }, plantagesHier: { formulaire: 2, console: 0, serveur: 1 }, essaisRatesHier: { pannes: 0, refus: 3 }, ...x });
+  return {
+    bilanDu: 'vendredi 13/11',
+    centres: calme ? [centre('Gembloux', { ...vide, aujourdhui: { reservations: 4, personnes: 30, ca: 600, aValider: 0 } }), centre('Libramont', vide)] : [centre('Gembloux'), centre('Libramont', vide)],
+    agents: calme ? [{ agent: 'L’envoi des mails en attente', passagesHier: 96, echecsHier: 0, derniereErreur: '' }] : [{ agent: 'L’envoi des mails en attente', passagesHier: 7, echecsHier: 1, derniereErreur: 'Un service extérieur n’a pas répondu.' }],
+    sauvegarde: { faiteLe: '14/11 à 02:15', lignes: 20913 },
+    problemes: calme ? { ouvertsEn24h: [], reglesEn24h: [], encoreOuverts: [] } : { ouvertsEn24h: ['1 mail est revenu à Gembloux (13/11 à 15:00)', 'Panne du serveur, api/ops (13/11 à 16:00)'], reglesEn24h: ['Gembloux n’a aucune adresse de secours (13/11 à 18:00)'], encoreOuverts: ['Gembloux : le formulaire en ligne ne s’ouvre plus (urgent)'] },
+    depenseIA: { agentsMarketingDuMois: 0.42, plafondAgents: 5, bilanDuMois: 0.03, plafondBilan: 2 },
+    illisibles: calme ? [] : ['les mails d’hier'],
+  };
+}
+const bilansDuMatin = () => {
+  const b = charger('lib/garde-bilan.js');
+  return { agite: b.bilanEnRegles(faitsDuMatin()), calme: b.bilanEnRegles(faitsDuMatin({ calme: true })) };
+};
+async function preuvesBilanDuMatin() {
+  const { agite, calme } = bilansDuMatin();
+  lisible(agite, 'bilan', '[B] le bilan du matin d un jour charge');
+  lisible(calme, 'bilan', '[B] le bilan du matin d un jour calme');
+  ok(/^Pinlane : bilan du vendredi 13\/11\.\nCe que tu fais : regarde le problème urgent dans la Tour de contrôle\.\n/.test(agite) && /^Pinlane : bilan du vendredi 13\/11\.\nRien à faire : /.test(calme), '[B] la deuxieme ligne dit ce que tu fais, ou qu il n y a rien a faire', [agite.split('\n')[1], calme.split('\n')[1]]);
+  ok(agite.includes('un problème signalé plus tôt') && !/api\/|Panne du serveur/.test(agite), '[B] un titre technique retenu par une version d avant ne se recopie pas', agite.split('\n').filter((l) => /Apparus/.test(l)));
+  ok(agite.split('\n').length <= 20 && calme.split('\n').length <= 12, '[B] court : vingt lignes au plus un jour charge', { agite: agite.split('\n').length, calme: calme.split('\n').length });
+}
+async function contrePreuvesBilanDuMatin() {
+  const rouge = async (nom, edits, rejouer) => {
+    mutations = edits;
+    purger();
+    let tient;
+    try { tient = await rejouer(); } catch (error) { tient = false; }
+    mutations = [];
+    purger();
+    ok(tient === false, `[X] ${nom} : rougit`);
+  };
+  const lisibles = async () => { const { agite, calme } = bilansDuMatin(); return fautesDe(agite, 'bilan').length === 0 && fautesDe(calme, 'bilan').length === 0; };
+  await rouge('un bilan calme sans ligne « Rien à faire »', [{ fichier: 'lib/garde-bilan.js', de: "    : 'Rien à faire : aucun problème urgent ce matin.');", vers: "    : 'Aucun problème urgent ce matin.');" }], lisibles);
+  await rouge('un titre technique recopie dans le bilan', [{ fichier: 'lib/garde-bilan.js', de: "const titreLisible = (titre) => (T.motInterdit(titre) ? 'un problème signalé plus tôt' : titre);", vers: 'const titreLisible = (titre) => titre;' }], lisibles);
+}
+
 (async () => {
   await new Promise((resolve, reject) => { serveur.once('error', reject); serveur.listen(PORT, '127.0.0.1', resolve); });
   brancher();
@@ -515,9 +558,11 @@ async function contrePreuvesSecurite() {
     await preuvesInstant();
     await preuvesAnnonces();
     await preuvesSecurite();
+    await preuvesBilanDuMatin();
     await contrePreuves();
     await contrePreuvesAnnonces();
     await contrePreuvesSecurite();
+    await contrePreuvesBilanDuMatin();
   } finally {
     serveur.close();
   }

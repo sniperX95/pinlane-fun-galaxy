@@ -503,21 +503,14 @@ function routesDuBilan() {
   route(/from llm_spend/, () => [{ month: '2026-11', cout: 0.42, calls: 10 }, { month: '2026-11:garde', cout: 0.03, calls: 2 }]);
 }
 const BON_TEXTE = [
-  'EN BREF',
-  'Gembloux : 3 réservations reçues hier, 2 visites, 150,00 € de chiffre d’affaires.',
+  'Rien à faire : aucun problème urgent ce matin.',
+  'Pour l’équipe de Gembloux : valider 1 réservation, répondre à 2 demandes de groupe, appeler le client dont le mail est revenu.',
+  'Apparu : 1 mail est revenu à Gembloux. Réglé : l’adresse de secours de Gembloux.',
+  'Gembloux : 3 réservations reçues hier, 220,00 €.',
+  'Visites d’hier : 2 réservations, 6 personnes, 150,00 €, encaissé 90,00 €. 1 annulée, 1 absente.',
+  'Le mois : 350,00 €. Aujourd’hui : 1 réservation à valider.',
   'Libramont : rien hier.',
-  'GEMBLOUX',
-  'Hier, 2 visites pour 6 personnes, 150,00 €. Encaissé 90,00 €. 1 annulée, 1 absente.',
-  'Le mois : 3 réservations, 350,00 €. Aujourd’hui : 1 à valider. 2 demandes de groupe attendent.',
-  'Mails : 5 envoyés, 4 remis, 1 revenu. 2 plantages au formulaire, 3 refus.',
-  'LIBRAMONT',
-  'Rien hier.',
-  'LES AGENTS',
-  'La garde : 96 passages. L’envoi des mails : 1 échec, Resend 500. Sauvegarde du 14/11 à 02:15, 20913 lignes. Dépense IA : 0,42 $ sur 5 $, 0,03 $ sur 2 $.',
-  'LES PROBLÈMES',
-  'Ouvert en 24 heures : 1 mail est revenu à Gembloux. Réglé : l’adresse de secours de Gembloux.',
-  'À FAIRE AUJOURD’HUI',
-  'Valider 1 réservation à Gembloux. Appeler le client dont le mail est revenu.',
+  'Tâches de fond : l’envoi des mails en attente a raté 1 fois hier. Dépense IA du mois : 0,42 $ sur 5 $, et 0,03 $ sur 2 $ pour ce bilan.',
 ].join('\n');
 async function preuvesBilan() {
   remettre();
@@ -531,23 +524,27 @@ async function preuvesBilan() {
   ok(g && g.moisEnCours.ca === 350 && g.aujourdhui.aValider === 1 && g.demandesDeGroupe.enAttente === 2, '[B] le mois, aujourd hui, les demandes', g && { mois: g.moisEnCours, aujourdhui: g.aujourdhui, demandes: g.demandesDeGroupe });
   ok(g && JSON.stringify(g.modificationsHier) === JSON.stringify({ annulees: 1, deplacees: 1, prix: 1, reglages: 1, acces: 1, autres: 0, arrivees: 1, encaissements: 0 }), '[B] les modifications d hier, par genre', g && g.modificationsHier);
   const regles = b.bilanEnRegles(f);
-  ok(/^Bilan Pinlane du vendredi 13\/11\n/.test(regles) && /\nGEMBLOUX\n/.test(regles) && /\nLIBRAMONT\n/.test(regles) && regles.includes('150,00 €') && regles.includes('Encaissé 90,00 €') && regles.includes('LES AGENTS') && regles.includes('1 mail est revenu à Gembloux') && regles.includes('Valider 1 réservation à Gembloux.'), '[B] le texte des regles dit tout : les centres, l argent, les agents, les problemes, quoi faire', regles);
+  ok(/^Pinlane : bilan du vendredi 13\/11\.\nRien à faire : aucun problème urgent ce matin\.\nPour les équipes : Gembloux doit valider 1 réservation, répondre à 2 demandes de groupe, appeler 1 client dont le mail est revenu\.\n/.test(regles) && /\nGembloux : 3 réservations reçues hier/.test(regles) && /\nLibramont : rien hier/.test(regles) && regles.includes('150,00 €, encaissé 90,00 €') && regles.includes('1 mail est revenu à Gembloux') && regles.includes('Tâches de fond : '), '[B] le texte des regles, le plus important d abord : quoi faire, les equipes, les problemes, puis chaque centre et le fond', regles);
+  ok(charger('lib/alertes-texte.js').controlerTexte(regles, { genre: 'bilan' }).length === 0 && regles.split('\n').length <= 20, '[B] il passe le gabarit, en vingt lignes au plus', charger('lib/alertes-texte.js').controlerTexte(regles, { genre: 'bilan' }));
+  ok(!/Resend|500|chef de garde|EN BREF|LES AGENTS/.test(regles) && /n’a pas répondu\)/.test(regles), '[B] la tache ratee se dit avec sa cause en mots simples, jamais son message technique', regles.split('\n').filter((l) => /Tâches de fond/.test(l)));
   ok(!/[\u2014\u2013]/.test(regles) && !PERSONNEL.test(regles), '[B] sans tiret long ni donnee personnelle', regles);
 
   const appels = [];
   const llm = (texte) => async (options) => { appels.push(options); return texte === null ? null : { text: texte }; };
   const ia = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE) });
-  ok(ia.par === 'ia' && ia.texte.startsWith('Bilan Pinlane du vendredi 13/11\n\nEN BREF'), '[B] le texte du chef de garde passe quand chaque nombre vient des faits', ia.texte.slice(0, 200));
+  ok(ia.par === 'ia' && ia.texte.startsWith('Pinlane : bilan du vendredi 13/11.\nRien à faire : '), '[B] le texte de l IA passe quand chaque nombre vient des faits et qu il suit le gabarit', ia.texte.slice(0, 200));
   ok(appels[0] && appels[0].budget === 'garde' && appels[0].model === 'claude-sonnet-5-5' && appels[0].effort === 'low' && JSON.parse(appels[0].user).centres.length === 2, '[B] il ecrit sur sa propre caisse, avec Sonnet 5.5 en effort bas, a partir des faits', appels[0] && { budget: appels[0].budget, model: appels[0].model, effort: appels[0].effort });
   ok(!PERSONNEL.test(appels[0] ? appels[0].user : 'Jean'), '[B] aucune donnee personnelle ne part a l IA', appels[0] && appels[0].user.slice(0, 200));
   const invente = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace('150,00 €', '1 950,00 €')) });
-  ok(invente.par === 'regles' && /citait un nombre absent des données/.test(invente.texte) && invente.texte.includes('150,00 €'), '[B] un chiffre invente par l IA : c est le texte des regles qui part, et il le dit', invente.texte.slice(-200));
+  ok(invente.par === 'regles' && invente.raison === 'nombre' && invente.texte.includes('150,00 €') && !/citait|chef de garde|règles ce matin/.test(invente.texte), '[B] un chiffre invente par l IA : c est le texte des regles qui part, sans note pour Ansar', { raison: invente.raison, fin: invente.texte.slice(-120) });
+  const technique = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(`${BON_TEXTE}\nLe serveur des mails a ralenti.`) });
+  ok(technique.par === 'regles' && technique.raison === 'gabarit', '[B] un mot technique dans le texte de l IA : le texte des regles part', { par: technique.par, raison: technique.raison });
   const tiret = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace('Libramont : rien hier.', 'Libramont \u2014 rien hier.')) });
   ok(tiret.par === 'ia' && !/[\u2014\u2013]/.test(tiret.texte) && tiret.texte.includes('Libramont, rien hier.'), '[B] un tiret long de l IA se remplace, il ne part jamais', tiret.texte.slice(0, 300));
   const oubli = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(BON_TEXTE.replace(/Libramont/gi, 'l autre centre')) });
   ok(oubli.par === 'regles', '[B] un centre oublie : le texte des regles', oubli.par);
   const muet = await b.bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: llm(null) });
-  ok(muet.par === 'regles' && /n’a pas répondu/.test(muet.texte), '[B] l IA ne repond pas (cle, budget, panne) : le texte des regles, toujours', muet.texte.slice(-120));
+  ok(muet.par === 'regles' && muet.raison === 'muet' && /^Pinlane : bilan du /.test(muet.texte) && !/chef de garde|règles ce matin/.test(muet.texte), '[B] l IA ne repond pas (cle, budget, panne) : le texte des regles, toujours, sans note', muet.texte.slice(-120));
 }
 
 // ---------------------------------------------------------------------------
@@ -762,7 +759,7 @@ async function preuvesGarde() {
   BD.etatGarde = { ...BD.etatGarde, dits: {}, bilanDu: '2026-11-13' };
   const p7 = await passe({ instant: MATIN, llm: async () => ({ text: BON_TEXTE }) });
   const bilan = p7.messages.filter((m) => m.message_thread_id === 5);
-  ok(bilan.length === 1 && /^Bilan Pinlane du vendredi 13\/11\n\nEN BREF/.test(bilan[0].text) && bilan[0].disable_notification === true && p7.r.bilanPar === 'ia', '[G] a 8 h 30, le bilan du chef de garde dans Bilans, sans sonnerie', p7.messages.map((m) => [m.message_thread_id, m.text.slice(0, 60)]));
+  ok(bilan.length === 1 && /^Pinlane : bilan du vendredi 13\/11\.\nRien à faire : /.test(bilan[0].text) && bilan[0].disable_notification === true && p7.r.bilanPar === 'ia', '[G] a 8 h 30, le bilan du matin dans Bilans, sans sonnerie', p7.messages.map((m) => [m.message_thread_id, m.text.slice(0, 60)]));
   const p8 = await passe({ instant: new Date('2026-11-14T08:00:00Z'), llm: async () => ({ text: BON_TEXTE }) });
   ok(!p8.messages.some((m) => m.message_thread_id === 5), '[G] un seul bilan par matin', p8.messages.length);
   BD.etatGarde = { ...BD.etatGarde, bilanDu: '2026-11-13' };
@@ -936,6 +933,19 @@ async function contrePreuves() {
     tgMode = 'ok';
     return r.curseur === 100;
   });
+  await rouge('un bilan de l IA qui ne passe pas le gabarit part quand meme', [{ fichier: 'lib/garde-bilan.js', de: "  const fautes = T.controlerTexte(texte, { genre: 'bilan' });", vers: '  const fautes = [];' }], async () => {
+    remettre();
+    routesDuBilan();
+    const r = await charger('lib/garde-bilan.js').bilanDuMatin(pool, { tour: { centres: CENTRES, taches: TACHES_SAINES, problemes: [] }, instant: MATIN, llm: async () => ({ text: `${BON_TEXTE}\nLe serveur des mails a ralenti.` }) });
+    return r.par === 'regles';
+  });
+  await rouge('une tache ratee recopie son message technique dans le bilan', [{ fichier: 'lib/garde-bilan.js', de: "      derniereErreur: p.derniere_erreur ? T.causeLisible(String(p.derniere_erreur)) : '',", vers: "      derniereErreur: String(p.derniere_erreur || ''),"  }], async () => {
+    remettre();
+    routesDuBilan();
+    const b = charger('lib/garde-bilan.js');
+    const f = await b.faitsDuBilan(pool, { instant: MATIN, centres: CENTRES, taches: TACHES_SAINES, problemes: [] });
+    return !/Resend|500/.test(b.bilanEnRegles(f));
+  });
   await rouge('une action inconnue disparait en silence', [{ fichier: 'lib/garde-journal.js', de: "  return { ligne: 'autre action dans la console' };", vers: '  return { rien: true };' }], async () => {
     await journalRejoue();
     return TG.some((m) => /14:10 Seb : autre action dans la console/.test(m.text));
@@ -1024,7 +1034,7 @@ async function contrePreuves() {
     routesDeLaTour();
     BD.etatGarde = { dits: {}, bilanDu: '2026-11-13' };
     const p = await passe({ instant: new Date('2026-11-14T13:00:00Z') });
-    return !p.messages.some((m) => /^Bilan Pinlane/.test(m.text));
+    return !p.messages.some((m) => /^Pinlane : bilan du /.test(m.text));
   });
   await rouge('la mise en service se repete', [{ fichier: 'lib/tour-controle.js', de: '  if (signature && miseEnService !== signature) {', vers: '  if (signature) {' }], async () => {
     remettre();

@@ -18,7 +18,7 @@
       "maxDuration": 30
     },
     "api/ops.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "crons": [

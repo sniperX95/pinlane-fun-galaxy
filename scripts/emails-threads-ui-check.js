@@ -556,14 +556,14 @@ async function main() {
         etat: ((document.querySelector('#staffEmailsPage [data-pv2-apercu="design"] [data-pv2-apercu-etat]') || {}).textContent || '').trim(),
         sujet: ((document.querySelector('#staffEmailsPage [data-pv2-apercu="design"] [data-pv2-apercu-sujet]') || {}).textContent || '').trim(),
         enregistrerInactif: (document.querySelector('#staffEmailsPage .pv2-design-actions .pv2-btn.primary') || {}).disabled,
-        note: ((document.querySelector('#staffEmailsPage .pv2-design-preview .pv2-note:last-child') || {}).textContent || '').trim(),
+        note: ((document.querySelector('#staffEmailsPage .em-ap-etat') || {}).textContent || '').trim(),
         dirty: pv2Design.dirty,
       };
     });
     const design0 = await lireDesign();
     ok(design0.preset === 'classique' && /Classique/.test(design0.actif), 'le gabarit en vigueur (Classique) est selectionne', design0.actif);
     ok(design0.sandbox === '' && Boolean(design0.srcdoc) && design0.srcdoc === design0.htmlServeur && /FIXTURE dev-console-server/.test(design0.srcdoc), 'l iframe sandbox affiche EXACTEMENT le HTML rendu par le serveur');
-    ok(design0.etat === 'À jour' && Boolean(design0.sujet), 'etat « A jour » et objet du mail d exemple affiches', `${design0.etat} / ${design0.sujet}`);
+    ok(design0.etat === 'Aperçu à jour' && Boolean(design0.sujet), 'etat « Apercu a jour » et objet du mail d exemple affiches', `${design0.etat} / ${design0.sujet}`);
     ok(design0.enregistrerInactif === true && design0.dirty === false, 'rien a enregistrer tant que rien n a change');
     await page.click('#staffEmailsPage .pv2-design-preset:has-text("Contraste")');
     await attendre(page, (n0) => {
@@ -575,9 +575,10 @@ async function main() {
     ok(design1.n === design0.n + 1 && design1.corps && design1.corps.design && design1.corps.design.preset === 'contraste' && design1.corps.sample === 'confirmation',
       'emailDesignPreview part avec le BROUILLON (preset contraste) et l exemple courant', JSON.stringify({ n: design1.n - design0.n, preset: design1.corps && design1.corps.design && design1.corps.design.preset }));
     ok(design1.srcdoc !== design0.srcdoc && design1.srcdoc === design1.htmlServeur, 'l iframe change et recoit exactement le HTML de la reponse');
-    ok(/Contraste/.test(design1.actif) && design1.preset === 'contraste' && design1.dirty === true && design1.enregistrerInactif === false && /non enregistr/.test(design1.note),
+    ok(/Contraste/.test(design1.actif) && design1.preset === 'contraste' && design1.dirty === true && design1.enregistrerInactif === false && /Pas encore enregistré/.test(design1.note),
       'Contraste est selectionne, le brouillon est marque non enregistre, Enregistrer s active', design1.note);
-    await page.evaluate(() => [...document.querySelectorAll('#staffEmailsPage [data-pv2-apercu="design"] button')].find((b) => /Réponse/.test(b.textContent)).click());
+    // L exemple montre se choisit dans une liste (2026-11-13 : trois boutons a cote des reglages se lisaient comme des reglages).
+    await page.selectOption('#staffEmailsPage .em-ap-exemple select', 'reponse');
     await attendre(page, (n1) => {
       const liste = window.__APPELS__.filter((e) => e.action === 'emailDesignPreview');
       return liste.length === n1 + 1 && liste[liste.length - 1].fini;
@@ -593,7 +594,7 @@ async function main() {
       const p = window.__APPELS__.filter((e) => e.action === 'emailDesign').slice(-1)[0];
       return {
         preset: p.body.design && p.body.design.preset, status: p.status, par: p.payload && p.payload.design && p.payload.design.updatedBy,
-        dirty: pv2Design.dirty, note: ((document.querySelector('#staffEmailsPage .pv2-design-preview .pv2-note:last-child') || {}).textContent || '').trim(),
+        dirty: pv2Design.dirty, note: ((document.querySelector('#staffEmailsPage .em-ap-etat') || {}).textContent || '').trim(),
         enregistrerInactif: (document.querySelector('#staffEmailsPage .pv2-design-actions .pv2-btn.primary') || {}).disabled,
       };
     });
@@ -621,7 +622,7 @@ async function main() {
       srcdoc: (document.querySelector('#staffEmailsPage iframe[data-pv2-frame="auto"]') || {}).srcdoc || '',
       etat: ((document.querySelector('#staffEmailsPage [data-pv2-apercu="auto"] [data-pv2-apercu-etat]') || {}).textContent || '').trim(),
     }));
-    ok(Boolean(seq0.srcdoc) && /FIXTURE dev-console-server/.test(seq0.srcdoc) && seq0.etat === 'À jour', 'l apercu initial de la sequence est rendu par le serveur', seq0.etat);
+    ok(Boolean(seq0.srcdoc) && /FIXTURE dev-console-server/.test(seq0.srcdoc) && seq0.etat === 'Aperçu à jour', 'l apercu initial de la sequence est rendu par le serveur', seq0.etat);
     await page.click('#mkAutoBody');
     await page.keyboard.press('Control+End');
     await page.keyboard.type(' Merci', { delay: 30 });

@@ -35,6 +35,20 @@ const argument = (nom, defaut) => {
 const PORT = Number(argument('port', process.env.PINLANE_DEV_PORT || 4260));
 const HOST = '127.0.0.1';
 const MODE = ARGS.includes('--reel') ? 'reel' : 'fixtures';
+// Les vraies reponses de l assistant d ecriture a rejouer (enregistrees avec le vrai modele), ou rien.
+const REJEU_IA = (() => {
+  const fichier = String(process.env.PINLANE_DEV_IA_REJEU || '').trim();
+  if (!fichier) return null;
+  try { return JSON.parse(fs.readFileSync(fichier, 'utf8')); } catch (error) { console.error(`Rejeu illisible : ${error.message}`); return null; }
+})();
+const attendre = (ms) => new Promise((ok) => setTimeout(ok, ms));
+function reponseRejouee(body) {
+  const nu = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const liste = Array.isArray(REJEU_IA) ? REJEU_IA : [];
+  return liste.find((t) => t && t.intention === body.intention && nu(t.brief) === nu(body.brief))
+    || liste.find((t) => t && t.intention === body.intention && !t.brief && !body.brief)
+    || null;
+}
 const CENTER_ID = 'libramont';
 const AUTH_KEY = 'funGalaxy_auth_v1';
 const MIME = {
@@ -609,7 +623,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
       case 'emailClaims': return { claims: prisesVivantes() };
       case 'pulse': return { empreinte: `fixtures-${etat.comms.length}-${etat.threads.length}` };
       case 'agentQuestions': return { questions: clone(etat.questions), appris: clone(etat.appris), suivi: suiviAgent() };
-      case 'emailStudio': return { templates: clone(etat.templates), identities: clone(etat.identities), channel: { resendConfigured: true, aiConfigured: false } };
+      case 'emailStudio': return { templates: clone(etat.templates), identities: clone(etat.identities), channel: { resendConfigured: true, aiConfigured: Boolean(REJEU_IA) } };
       case 'automationSettings': return { settings: clone(etat.settings), defaults: clone(AUTOMATION_DEFAULTS), stats: clone(AUTOMATION_STATS) };
       case 'customSequences': return { sequences: clone(etat.sequences), limits: { maxSequences: 10, cap: [1, 100], triggers: { after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] }, before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] }, inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] }, weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] }, monthly: { label: 'Chaque mois, un jour fixe', variables: ['prenom', 'centre'] } }, segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' } } };
       case 'emailBrain': return { overrides: clone(etat.brain.overrides), defaults: { intents: { reservation: 'Réservation', annulation: 'Annulation / report', anniversaire: 'Anniversaire', prix: 'Prix & tarifs', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre' }, faq: { horaires: { subject: 'Nos horaires', body: 'Nous sommes ouverts du mercredi au dimanche, de 14 h à 22 h.' }, prix: { subject: 'Nos tarifs', body: 'Une partie de bowling coûte 7 € par personne, chaussures comprises.' } }, signature: 'L\'équipe Fun Galaxy' } };
@@ -813,6 +827,10 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
       case 'improveEmailWithAi': return { mode: 'regles', tips: ['Objet un peu court : visez 30 à 60 caractères.', 'Terminez par une question : elle appelle une réponse.'], subject: body.subject, body: body.body };
       // Les aides d ecriture de la page Emails : la vraie reponse sans IA (lib/email-assist), jamais un faux texte.
       case 'emailAssist': {
+        // REJEU (PINLANE_DEV_IA_REJEU) : la vraie reponse enregistree pour ce geste et cette demande, servie apres
+        // son vrai delai (plafonne a 4 s), jamais un texte ecrit ici. Sans rejeu, la reponse sans IA.
+        const rejouee = REJEU_IA ? reponseRejouee(body) : null;
+        if (rejouee) return attendre(Math.min(4000, Number(rejouee.ms) || 0)).then(() => (rejouee.reponse.ok ? rejouee.reponse : { status: 200, payload: { ...rejouee.reponse } }));
         const r = require('../lib/email-assist').aideSansIa({ ...body, center: { name: 'Fun Galaxy Libramont', publicInfo: { phone: '0491/30.16.67' } } });
         return r.ok ? r : { status: 400, payload: { ok: false, error: r.message } };
       }
@@ -832,8 +850,10 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
     repondre(method, url, body) {
       if (url.pathname !== '/api/ops') return null;
       const reponse = method === 'POST' ? repondrePost(body || {}) : repondreGet(url.searchParams.get('action') || '', url.searchParams);
-      if (reponse && reponse.status && reponse.payload) return reponse;
-      return { status: 200, payload: { ok: true, ...reponse } };
+      // Une reponse peut arriver plus tard (le rejeu de l assistant attend son vrai delai).
+      const normaliser = (r) => (r && r.status && r.payload ? r : { status: 200, payload: { ok: true, ...r } });
+      if (reponse && typeof reponse.then === 'function') return reponse.then(normaliser);
+      return normaliser(reponse);
     },
   };
 }
@@ -902,7 +922,7 @@ function creerServeur(repondeur) {
         envoyerJson(res, 200, { ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: CENTER_ID, name: CENTRE.name, status: 'active', contact: CENTRE.publicInfo, branding: CENTRE.branding, defaultSchedule: { regular: {}, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
         return;
       }
-      const reponse = repondeur.repondre(method, url, body);
+      const reponse = await repondeur.repondre(method, url, body);
       if (reponse) { envoyerJson(res, reponse.status, reponse.payload); return; }
       envoyerJson(res, 200, { ok: true });
     } catch (error) {

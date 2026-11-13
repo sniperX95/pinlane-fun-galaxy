@@ -1626,25 +1626,31 @@
          c'est ce qui empêche un « Cette semaine : {{offre}} » de partir chez un
          client (bug réel constaté le 2026-08-05) ;
        . aucun prix, aucune promo inventée : un modèle propose une structure,
-         jamais un chiffre que le centre n'a pas donné. */
+         jamais un chiffre que le centre n'a pas donné ;
+       . réécrits le 2026-11-13 (Ansar : « les mails sont trop faibles ») : un objet
+         concret sans point d'exclamation, la raison du mail d'abord, une seule action,
+         le centre nommé dans le texte, jamais « nous » ni « on » (lib/client-writing,
+         le gate ecriture-client y veille). Pas de formule ni d'équipe en fin de mail : la
+         signature du centre les ajoute. « Adapter à mon centre » de l'assistant y met
+         ensuite les vraies activités et les vrais prix. */
   const PV2_STARTERS = [
     // Relancer
-    { key: 'relance-client', cat: 'Relancer', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nCela fait un moment sans vous voir au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
-    { key: 'relance-devis', cat: 'Relancer', name: 'Devis resté sans réponse', subject: 'Votre projet chez {{centre}} tient toujours ?', body: 'Bonjour {{prenom}},\n\nUne proposition vous avait été préparée, et elle est restée sans réponse. Si le projet tient toujours, répondez simplement à ce message et la date sera gardée.\n\nEt si vos plans ont changé, dites-le en une ligne, il n\'y aura plus de relance.\n\nL\'équipe {{centre}}' },
+    { key: 'relance-client', cat: 'Relancer', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}}', body: 'Bonjour {{prenom}},\n\nVotre dernière visite chez {{centre}} remonte à un moment, et toute l\'équipe serait contente de vous revoir.\n\nUne partie après le travail, un samedi en famille ou une soirée entre amis, il y a toujours une bonne occasion de revenir. Choisissez votre jour et votre heure sur le site de {{centre}}, ou répondez à ce mail et l\'équipe vous propose un créneau.' },
+    { key: 'relance-devis', cat: 'Relancer', name: 'Devis resté sans réponse', subject: 'Votre projet chez {{centre}} tient toujours ?', body: 'Bonjour {{prenom}},\n\nVous avez reçu une proposition de {{centre}} pour votre venue, et elle est restée sans réponse pour l\'instant.\n\nSi le projet tient toujours, répondez simplement à ce mail avec la date qui vous convient. L\'équipe vérifie le créneau et vous confirme tout par écrit.\n\nSi vos plans ont changé, une ligne suffit, et l\'équipe ne vous relancera plus.' },
     // Anniversaires & groupes
-    { key: 'marketing-anniversaire', cat: 'Anniversaires & groupes', name: 'Pack anniversaire enfant', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et boissons, l\'équipe s\'occupe de tout pendant que vous profitez.\n\nIndiquez la date et le nombre d\'enfants, et la formule adaptée vous sera proposée.\n\nL\'équipe {{centre}}' },
-    { key: 'anniversaire-adulte', cat: 'Anniversaires & groupes', name: 'Anniversaire adulte / EVG-EVJF', subject: 'Un anniversaire qui change des restos', body: 'Bonjour {{prenom}},\n\nPour un anniversaire adulte, un EVG ou un EVJF, bowling, laser game et arcades sont au même endroit, sans organisation de votre côté.\n\nDonnez la date et la taille du groupe, et l\'équipe monte la soirée.\n\nL\'équipe {{centre}}' },
-    { key: 'merci-groupe', cat: 'Anniversaires & groupes', name: 'Merci après un groupe', subject: 'Merci pour votre venue, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nMerci pour votre venue avec votre groupe. L\'équipe espère que tout le monde est reparti avec le sourire.\n\nSi quelque chose peut être amélioré pour la prochaine fois, répondez à ce message, tout est lu.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'marketing-anniversaire', cat: 'Anniversaires & groupes', name: 'Pack anniversaire enfant', subject: 'L\'anniversaire de votre enfant, sans rien préparer', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Chez {{centre}}, les enfants jouent pendant que vous profitez de la fête, sans rien préparer de votre côté.\n\nRépondez à ce mail avec la date, l\'âge des enfants et leur nombre. L\'équipe vous propose la formule qui leur convient, avec son prix exact.' },
+    { key: 'anniversaire-adulte', cat: 'Anniversaires & groupes', name: 'Anniversaire adulte / EVG-EVJF', subject: 'Un anniversaire entre amis qui change du resto', body: 'Bonjour {{prenom}},\n\nPour un anniversaire entre amis, un EVG ou un EVJF, {{centre}} réunit plusieurs activités au même endroit, sans aucune organisation de votre côté.\n\nRépondez à ce mail avec la date et le nombre de personnes. L\'équipe vous propose un programme pour la soirée, avec son prix par personne.' },
+    { key: 'merci-groupe', cat: 'Anniversaires & groupes', name: 'Merci après un groupe', subject: 'Merci pour votre venue, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'être venus avec votre groupe chez {{centre}}. Toute l\'équipe espère que chacun a passé un bon moment.\n\nSi quelque chose peut être mieux la prochaine fois, répondez à ce mail. L\'équipe lit chaque message.' },
     // Entreprises & écoles
-    { key: 'serieux-entreprise', cat: 'Entreprises & écoles', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici la proposition de {{centre}} pour votre événement d\'équipe, avec un créneau réservé, les activités au choix (bowling, laser game) et un espace repas.\n\nL\'équipe reste disponible pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction {{centre}}' },
-    { key: 'devis-groupe-ecole', cat: 'Entreprises & écoles', name: 'Sortie école / mouvement de jeunesse', subject: 'Votre sortie de groupe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nPour une sortie d\'école ou de mouvement de jeunesse, les créneaux en semaine sont les plus calmes, le groupe a de la place et l\'équipe est disponible pour encadrer.\n\nIndiquez la date envisagée, l\'âge et le nombre d\'enfants, et un devis clair vous sera préparé.\n\nLa direction {{centre}}' },
+    { key: 'serieux-entreprise', cat: 'Entreprises & écoles', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nMerci pour votre demande. Pour votre événement d\'équipe, {{centre}} accueille votre groupe avec plusieurs activités au même endroit, sur un créneau dédié à votre groupe.\n\nRépondez à ce mail avec la date, le nombre de participants et votre budget par personne. L\'équipe vous envoie une proposition claire, avec le programme et le prix total.' },
+    { key: 'devis-groupe-ecole', cat: 'Entreprises & écoles', name: 'Sortie école / mouvement de jeunesse', subject: 'Votre sortie de groupe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nPour une sortie d\'école ou de mouvement de jeunesse, les jours de semaine sont les plus calmes chez {{centre}}, et le groupe a toute la place pour jouer.\n\nRépondez à ce mail avec la date envisagée, l\'âge des enfants et leur nombre. L\'équipe vous prépare un devis clair, avec le programme et le prix par enfant.' },
     // Offres & saisons
-    { key: 'promo-semaine', cat: 'Offres & saisons', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}}, {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine chez {{centre}}, {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en une minute.\n\nBien à vous,\nL\'équipe {{centre}}' },
-    { key: 'creux-semaine', cat: 'Offres & saisons', name: 'Jour calme en semaine', subject: 'Envie d\'une piste tranquille cette semaine ?', body: 'Bonjour {{prenom}},\n\nEn semaine, le centre est plus calme, sans attente, avec tout le temps de jouer.\n\nRéservez votre créneau en ligne, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
-    { key: 'vacances-annonce', cat: 'Offres & saisons', name: 'Annonce vacances scolaires', subject: 'Les vacances arrivent, {{prenom}}', body: 'Bonjour {{prenom}},\n\nLes vacances scolaires approchent et les créneaux partent vite, surtout l\'après-midi.\n\nPensez à réserver à l\'avance en ligne, vous choisissez votre heure et c\'est réglé en une minute.\n\nL\'équipe {{centre}}' },
+    { key: 'promo-semaine', cat: 'Offres & saisons', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}}, {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine chez {{centre}}, {{offre}}.\n\nL\'offre vaut du {{date_debut}} au {{date_fin}}. Choisissez votre jour et votre heure sur le site de {{centre}}, ou répondez à ce mail pour réserver.' },
+    { key: 'creux-semaine', cat: 'Offres & saisons', name: 'Jour calme en semaine', subject: 'Une partie tranquille en semaine, {{prenom}} ?', body: 'Bonjour {{prenom}},\n\nEn semaine, {{centre}} est plus calme. Il n\'y a pas d\'attente, et vous avez tout le temps de jouer.\n\nC\'est le bon moment pour une partie après l\'école ou le travail. Choisissez votre créneau sur le site de {{centre}}, ou répondez à ce mail.' },
+    { key: 'vacances-annonce', cat: 'Offres & saisons', name: 'Annonce vacances scolaires', subject: 'Les vacances arrivent, pensez à réserver', body: 'Bonjour {{prenom}},\n\nLes vacances scolaires approchent, et les après-midi se remplissent vite chez {{centre}}.\n\nPour venir au moment qui vous arrange, réservez à l\'avance sur le site de {{centre}}. Vous choisissez votre jour et votre heure, et c\'est réglé.' },
     // Service client
-    { key: 'reponse-reclamation', cat: 'Service client', name: 'Réponse à une réclamation', subject: 'Réponse à votre message, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'avoir pris le temps d\'écrire. Ce que vous décrivez n\'est pas l\'expérience que {{centre}} veut offrir, et l\'équipe vous présente ses excuses.\n\nVoici ce qui vous est proposé, {{geste}}.\n\nL\'équipe espère vous revoir dans de meilleures conditions.\n\nLa direction {{centre}}' },
-    { key: 'avis-google', cat: 'Service client', name: 'Demande d\'avis Google', subject: 'Un mot sur votre visite ?', body: 'Bonjour {{prenom}},\n\nSi vous avez passé un bon moment chez {{centre}}, un avis aide énormément, et ça prend trente secondes.\n\n[[bouton: Laisser un avis | {{lien_avis}}]]\n\nMerci, et à bientôt,\nL\'équipe {{centre}}' },
+    { key: 'reponse-reclamation', cat: 'Service client', name: 'Réponse à une réclamation', subject: 'Réponse à votre message, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'avoir pris le temps d\'écrire à l\'équipe. Ce que vous décrivez n\'est pas ce que {{centre}} veut offrir à ses clients, et toute l\'équipe vous présente ses excuses.\n\nEn dédommagement, l\'équipe vous propose {{geste}}.\n\nL\'équipe espère vous revoir bientôt, dans de meilleures conditions.' },
+    { key: 'avis-google', cat: 'Service client', name: 'Demande d\'avis Google', subject: 'Un mot sur votre visite chez {{centre}} ?', body: 'Bonjour {{prenom}},\n\nMerci pour votre visite chez {{centre}}. Si vous avez passé un bon moment, un avis Google aide beaucoup l\'équipe, et cela prend trente secondes.\n\n[[bouton: Laisser un avis | {{lien_avis}}]]\n\nMerci, et à bientôt.' },
   ];
 
   /* ── LE MOTEUR DE VARIABLES : une seule implémentation ───────────────────
@@ -3294,6 +3300,7 @@
 
   window.pv2TplEdit = function (id) {
     delete EM_IA.modele;
+    pv2Settings.tplVue = 'ecrire';
     if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     if (id === null) { pv2Settings.tplEditing = { id: null, name: '', category: 'marketing', subject: '', body: '' }; }
     else {
@@ -3321,6 +3328,7 @@
   // prerempli, il ne reste qu a le nommer.
   window.pv2ModeleCopier = function (key, { focus = true } = {}) {
     delete EM_IA.modele;
+    pv2Settings.tplVue = 'ecrire';
     if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) { toast('Votre rôle ne permet pas de gérer les modèles.'); return; }
     const starter = PV2_STARTERS.find((s) => s.key === key);
     if (!starter) return;
@@ -3484,29 +3492,49 @@
     </li>`;
   }
 
+  // L ATELIER (2026-11-13, Ansar : « c'est pas très visuel, pas userfriendly du tout »). Le mail s ecrit sur une
+  // feuille qui ressemble a ce que le client lit (l expediteur, l objet, le texte, la place de la signature), et
+  // « Voir le mail envoyé » montre le vrai rendu du serveur, gabarit et signature compris. L assistant est a cote,
+  // en conversation, pas dans une barre au-dessus du texte.
   function pv2ModeleEditeur() {
     const tpl = pv2Settings.tplEditing;
-    return `<div class="pv2-seq-editor-cols em-editeur" data-pv2-mount="tplEditor" data-em-ia-editeur="modele">
-      <div class="pv2-composer-grid">
-        <label class="pv2-composer-field pv2-composer-wide"><span>Le nom du modèle</span><input id="pv2TplName" data-pl-focus="emails.modele.nom" value="${esc(tpl.name)}" placeholder="Ex. Offre rentrée" oninput="pv2TplField('name', this.value)"></label>
-        <div class="pv2-composer-wide">${emIaBarHtml('modele')}</div>
-        <div class="pv2-composer-field pv2-composer-wide"><span>L’objet du mail</span>
-          ${pv2TokeditHtml({ id: 'pv2TplSubject', sink: 'tplSubject', value: tpl.subject, single: true, plFocus: 'emails.modele.objet', placeholder: 'Objet du modèle' })}
-        </div>
-        <div class="pv2-composer-field pv2-composer-wide em-champ-message"><span>Le message</span>
-          ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
-          ${pv2TokeditHtml({ id: 'pv2TplBody', sink: 'tplBody', value: tpl.body, plFocus: 'emails.modele.message', placeholder: 'Bonjour {{prenom}},…' })}
-        </div>
-        <div class="pv2-composer-wide">${emOptionsHtml('modele', `catégorie ${(PV2_TPL_CATEGORY_LABELS[tpl.category] || PV2_TPL_CATEGORIES[0][1]).toLowerCase()}`, `<label class="pv2-composer-field em-options-champ"><span>Dans quelle catégorie le ranger ?</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`)}</div>
-        <div class="pv2-composer-actions pv2-composer-wide em-actions">
-          <button type="button" class="em-lien" onclick="pv2TplCancel()">Annuler</button>
-          <span class="pv2-composer-spacer"></span>
+    const vue = pv2Settings.tplVue === 'apercu' ? 'apercu' : 'ecrire';
+    const centre = (typeof pv2CenterName === 'function' ? pv2CenterName() : '') || 'Votre centre';
+    const categorie = (PV2_TPL_CATEGORY_LABELS[tpl.category] || PV2_TPL_CATEGORIES[0][1]).toLowerCase();
+    const feuille = vue === 'apercu'
+      ? pv2ApercuVivantHtml('modele', { titre: 'Le mail tel que vos clients le reçoivent, variables laissées en clair', classe: 'em-papier-apercu' })
+      : `<div class="em-papier-feuille">
+          <p class="em-papier-de"><span>De</span><strong>${esc(centre)}</strong></p>
+          <div class="em-papier-objet"><span class="em-papier-etiquette" id="emTplObjetTitre">Objet</span>${pv2TokeditHtml({ id: 'pv2TplSubject', sink: 'tplSubject', value: tpl.subject, single: true, plFocus: 'emails.modele.objet', placeholder: 'L’objet du mail', labelledby: 'emTplObjetTitre' })}</div>
+          <div class="em-papier-texte em-champ-message">
+            ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
+            ${pv2TokeditHtml({ id: 'pv2TplBody', sink: 'tplBody', value: tpl.body, plFocus: 'emails.modele.message', placeholder: 'Bonjour {{prenom}},…' })}
+          </div>
+          <p class="em-papier-signature">La signature de ${esc(centre)} s’ajoute ici toute seule, avec la formule de fin et les coordonnées.</p>
+        </div>`;
+    return `<div class="em-atelier" data-pv2-mount="tplEditor" data-em-ia-editeur="modele">
+      <div class="em-atelier-tete">
+        <label class="em-atelier-nom"><span class="em-atelier-nom-titre">${tpl.id ? 'Modèle' : 'Nouveau modèle'}</span><input id="pv2TplName" data-pl-focus="emails.modele.nom" value="${esc(tpl.name)}" placeholder="Son nom, par exemple Offre rentrée" aria-label="Le nom du modèle" oninput="pv2TplField('name', this.value)"></label>
+        <div class="em-atelier-actions em-actions">
+          <button type="button" class="pv2-btn" onclick="pv2TplCancel()">Fermer</button>
           <button type="button" class="pv2-btn primary em-principal" onclick="pv2TplSave()" ${pv2Settings.busy ? 'disabled' : ''}>${tpl.id ? 'Enregistrer le modèle' : 'Créer le modèle'}</button>
         </div>
       </div>
-      ${pv2ApercuVivantHtml('modele', { titre: 'Aperçu du mail (variables non remplies)' })}
+      <div class="em-atelier-corps">
+        <div class="em-papier">
+          <div class="em-papier-vues">${seg([{ key: 'ecrire', label: 'Écrire', active: vue === 'ecrire' }, { key: 'apercu', label: 'Voir le mail envoyé', active: vue === 'apercu' }], 'pv2TplVue')}</div>
+          ${feuille}
+          ${emOptionsHtml('modele', `catégorie ${categorie}`, `<label class="pv2-composer-field em-options-champ"><span>Dans quelle catégorie le ranger ?</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`)}
+        </div>
+        ${emIaBarHtml('modele', { colonne: true })}
+      </div>
     </div>`;
   }
+  window.pv2TplVue = function (vue) {
+    pv2Settings.tplVue = vue === 'apercu' ? 'apercu' : 'ecrire';
+    renderStaffEmailsPage();
+    if (pv2Settings.tplVue === 'apercu') pv2ApercuModele(0);
+  };
 
   // LA LISTE A GAUCHE, L EDITEUR A DROITE (2026-11-10). L editeur garde ses
   // jetons de variables a inserer, son apercu vivant et la barre d aide.
@@ -3528,9 +3556,9 @@
         ${groupes.map((g) => `<div class="em-tpl-groupe"><p class="em-label">${esc(g.label)}</p><ul class="em-tpl-rows">${g.rows.join('')}</ul></div>`).join('')}
       </div>`;
     const droite = tpl
-      ? `<div class="em-block-head"><div><h2 class="em-h2">${tpl.id ? esc(tpl.name || 'Modèle') : 'Nouveau modèle'}</h2><p class="em-sub">L’aperçu montre le mail avec les variables laissées en clair.</p></div></div>${pv2ModeleEditeur()}`
+      ? pv2ModeleEditeur()
       : `<div class="em-tpl-vide"><p class="em-calme">Choisissez un modèle dans la liste pour le relire et le modifier. Un modèle de Pinlane se copie d’abord, le vôtre se garde.</p></div>`;
-    return `<section class="pv2-settings em-tpl" data-pv2-mount="settings" aria-label="Modèles">
+    return `<section class="pv2-settings em-tpl${tpl ? ' is-ouvert' : ''}" data-pv2-mount="settings" aria-label="Modèles">
       <div class="em-block em-tpl-gauche">
         <div class="em-block-head"><div><h2 class="em-h2">Modèles</h2><p class="em-sub">Des textes prêts à envoyer. Les vôtres apparaissent aussi dans le nouveau message.</p></div>
           ${gerer ? `<button type="button" class="pv2-btn sm${tpl ? '' : ' primary'}" onclick="pv2TplEdit(null)">Nouveau modèle</button>` : ''}
@@ -5662,7 +5690,7 @@
     if (!etat || etat.etat === 'vide') return 'Écrivez pour voir le mail';
     if (etat.etat === 'chargement') return 'Mise à jour…';
     if (etat.etat === 'erreur') return etat.message || 'Aperçu indisponible.';
-    return 'À jour';
+    return 'Aperçu à jour';
   }
   // LA LARGEUR DE L APERCU (2026-11-10) : le mail tel qu il s ouvre sur un
   // ordinateur ou sur un telephone. Une sequence se lit d abord au telephone,
@@ -5849,32 +5877,34 @@
       : `À jour le ${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })} à ${heure}`;
   }
 
-  /* ── L AIDE A L ECRITURE (em-ia, 2026-11-10) ─────────────────────────────
-     Une seule barre, la meme dans les cinq editeurs : le nouveau message, la
-     reponse dans Recus, le modele, la sequence et la campagne. Une demande en
-     clair (« Dites ce que vous voulez ecrire… ») ou un geste (Ameliorer, Plus
-     court…). Une seule porte serveur, emailAssist. Ce qu elle rend remplace
-     l objet et le texte d un coup, avec un fondu de 160 ms, et « Revenir a mon
-     texte » remet exactement ce qui etait la. Pendant l appel, les champs sont
-     verrouilles et le seul signe de travail de la console (la goutte bleue)
-     dit ce qui se fait. En mode « regles », la note et les conseils se lisent
-     en phrases, sans jamais se presenter comme de l IA. Une reponse qui perd
-     une variable {{…}} ne remplace rien. */
+  /* ── L ASSISTANT D ECRITURE (em-ia, 2026-11-10, en conversation depuis le 2026-11-13) ──────────
+     Le meme assistant dans les cinq editeurs : le nouveau message, la reponse dans Recus, le modele, la
+     sequence et la campagne. Ansar, 2026-11-12 : « tu vois pas le message de l'IA, tu sais pas corriger
+     direct depuis la conv ». C est donc une CONVERSATION : la demande de l equipe s affiche, la reponse de
+     l assistant aussi (une phrase qui dit ce qu il a fait et avec quels faits), et une correction se tape
+     en dessous, comme une reponse. Chaque reponse garde sa version du mail : « Revenir a cette version »
+     la remet, « Revenir a mon texte » remet le texte d avant le premier changement. Une seule porte
+     serveur, emailAssist, qui recoit la conversation (historique) et le mail actuel. Un refus (variable
+     perdue, chiffre absent des faits, IA muette) s ecrit dans la conversation et ne touche a rien. Pendant
+     l appel, les champs sont verrouilles et le point bleu dit ce qui se fait. */
   const EM_IA_GESTES = [
-    ['ameliorer', 'Améliorer'], ['raccourcir', 'Plus court'], ['chaleureux', 'Plus chaleureux'],
-    ['formel', 'Plus pro'], ['nl', 'En néerlandais'], ['en', 'En anglais'], ['objets', '3 objets'],
+    ['adapter', 'Adapter à mon centre'], ['raccourcir', 'Plus court'], ['chaleureux', 'Plus chaleureux'], ['formel', 'Plus pro'],
+    ['ameliorer', 'Améliorer'], ['nl', 'En néerlandais'], ['en', 'En anglais'], ['objets', '3 objets'],
   ];
   const EM_IA_TRAVAIL = {
-    ecrire: 'J’écris votre mail.', changer: 'Je réécris votre réponse.', ameliorer: 'J’améliore votre texte.', raccourcir: 'Je raccourcis votre texte.',
-    chaleureux: 'Je rends le ton plus chaleureux.', formel: 'Je rends le ton plus professionnel.',
-    nl: 'Je traduis votre texte en néerlandais.', en: 'Je traduis votre texte en anglais.', objets: 'Je cherche trois objets.',
+    ecrire: 'J’écris votre mail…', corriger: 'Je fais le changement…', adapter: 'J’adapte le mail à votre centre…', ameliorer: 'J’améliore le mail…',
+    raccourcir: 'Je raccourcis le mail…', chaleureux: 'Je rends le ton plus chaleureux…', formel: 'Je rends le ton plus professionnel…',
+    nl: 'Je traduis le mail en néerlandais…', en: 'Je traduis le mail en anglais…', objets: 'Je cherche trois objets…',
   };
-  const EM_IA_FAIT = {
-    ecrire: 'Mail écrit par l’IA.', changer: 'Réponse réécrite par l’IA.', ameliorer: 'Texte amélioré par l’IA.', raccourcir: 'Texte raccourci par l’IA.',
-    chaleureux: 'Texte rendu plus chaleureux par l’IA.', formel: 'Texte rendu plus professionnel par l’IA.',
-    nl: 'Texte traduit en néerlandais par l’IA.', en: 'Texte traduit en anglais par l’IA.', objet: 'Objet remplacé.',
+  const EM_IA_TRANSFORME = new Set(['ameliorer', 'raccourcir', 'chaleureux', 'formel', 'nl', 'en', 'adapter']);
+  // Les idees d un mail vide, par editeur : un toucher, et l assistant ecrit.
+  const EM_IA_IDEES = {
+    message: ['Inviter ce client à revenir', 'Proposer une date pour son anniversaire', 'Remercier pour sa visite'],
+    modele: ['Relancer les clients qui ne sont pas revenus', 'Proposer l’anniversaire d’un enfant', 'Proposer une sortie d’équipe en entreprise'],
+    campagne: ['Annoncer les vacances scolaires', 'Remplir un jour calme en semaine', 'Proposer les anniversaires d’enfants'],
+    sequence: ['Remercier après la visite', 'Rappeler la venue la veille'],
+    seqperso: ['Relancer les clients qui ne sont pas revenus', 'Souhaiter un bon anniversaire'],
   };
-  const EM_IA_TRANSFORME = new Set(['ameliorer', 'raccourcir', 'chaleureux', 'formel', 'nl', 'en']);
   // Ou vivent l objet et le texte de chaque editeur, et ce qui le repeint.
   // `ident` dit QUEL brouillon est ouvert : un autre fil, un autre modele, une
   // autre sequence repartent d une barre vierge.
@@ -5939,7 +5969,9 @@
     const cible = EM_IA_CIBLES[cle];
     const ident = cible ? cible.ident() : '';
     if (!EM_IA[cle] || EM_IA[cle].ident !== ident) {
-      EM_IA[cle] = { ident, brief: '', busy: '', avant: null, objets: [], note: '', conseils: [], erreur: '', mode: '', fait: '', fondu: 0, menu: '' };
+      // fil : la conversation, dans l ordre. Un tour est { qui: 'equipe' | 'aide' | 'refus' | 'note', texte,
+      // version?, objets?, conseils? }. depart : le mail d avant le premier changement de l assistant.
+      EM_IA[cle] = { ident, brief: '', busy: '', fil: [], depart: null, menu: '', fondu: 0, saisie: '', tout: false };
     }
     return EM_IA[cle];
   }
@@ -5987,53 +6019,99 @@
     }
     return '<span class="em-ia-anneau" aria-hidden="true"></span>';
   }
-  function emIaBarHtml(cle) {
+  // L IA est-elle branchee pour ce centre ? (emailStudio : channel.aiConfigured). Sans elle, les gestes font ce
+  // qu une regle sait faire, et l en-tete le dit.
+  function emIaBranchee() {
+    return Boolean(pv2Mail.channel && pv2Mail.channel.aiConfigured);
+  }
+  function emIaMemeTexte(a, b) {
+    return Boolean(a && b) && String(a.subject || '') === String(b.subject || '') && String(a.body || '') === String(b.body || '');
+  }
+  function emIaTourHtml(cle, t, i, actuel) {
+    if (t.qui === 'equipe') return `<li class="em-ia-tour is-equipe"><p>${esc(t.texte)}</p></li>`;
+    if (t.qui === 'refus') return `<li class="em-ia-tour is-refus" role="alert"><p>${esc(t.texte)}</p></li>`;
+    if (t.qui === 'note') return `<li class="em-ia-tour is-note"><p>${esc(t.texte)}</p></li>`;
+    const objets = Array.isArray(t.objets) && t.objets.length
+      ? `<div class="em-ia-objets" role="group" aria-label="Objets proposés">${t.objets.map((o, r) => `<button type="button" class="em-ia-objet${t.choisi === r ? ' is-choisi' : ''}" data-em-ia-objet="${r}" onclick="emIaChoisirObjet('${cle}', ${i}, ${r})">${esc(o)}</button>`).join('')}</div>`
+      : '';
+    const conseils = Array.isArray(t.conseils) && t.conseils.length ? `<ul class="em-ia-conseils">${t.conseils.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : '';
+    // La version de ce tour : celle qui est dans l editeur se dit, les autres se remettent d un toucher.
+    const pied = t.version
+      ? (emIaMemeTexte(t.version, actuel)
+        ? '<p class="em-ia-tour-etat">Version dans l’éditeur</p>'
+        : `<button type="button" class="em-ia-tour-geste" onclick="emIaVersion('${cle}', ${i})">Revenir à cette version</button>`)
+      : '';
+    return `<li class="em-ia-tour is-aide"><p class="em-ia-dit">${esc(t.texte)}</p>${objets}${conseils}${pied}</li>`;
+  }
+  function emIaBarHtml(cle, { colonne = false } = {}) {
     const cible = EM_IA_CIBLES[cle];
     if (!cible || !emIaPermise()) return '';
     const e = emIaEtat(cle);
     const occupe = Boolean(e.busy);
     const verrou = occupe ? ' disabled' : '';
-    // LE SIGNE DE TRAVAIL (2026-11-11) : un point bleu qui respire a cote de la
-    // phrase, jamais un rond qui tourne (Ansar : « les ronds qui tournent… trop
-    // moche »). Sous reduced-motion, le point reste immobile.
-    const travail = occupe
-      ? `<div class="em-ia-travail" role="status"><span class="em-ia-point" aria-hidden="true"></span><span>${esc(EM_IA_TRAVAIL[e.busy] || 'Je travaille sur votre texte.')}</span></div>`
+    const actuel = cible.lire();
+    const ecrit = Boolean(actuel.body.trim());
+    const ia = emIaBranchee();
+    const centre = (typeof pv2CenterName === 'function' ? pv2CenterName() : '') || 'votre centre';
+    // L EN-TETE dit qui est la et ce qu il sait faire, sans jamais se presenter comme une IA quand il n y en a pas.
+    const sait = ia
+      ? `Il écrit avec les vraies activités, formules et prix de ${centre}. Demandez-lui un mail, puis corrigez-le en lui répondant.`
+      : 'L’IA n’est pas branchée pour ce centre. Les gestes font ce qu’une règle sait faire, sans rien inventer.';
+    const depart = e.depart && !emIaMemeTexte(e.depart, actuel)
+      ? `<button type="button" class="pv2-btn sm em-ia-depart" onclick="emIaDepart('${cle}')"${verrou}>Revenir à mon texte</button>`
       : '';
-    const erreur = !occupe && e.erreur ? `<p class="em-ia-erreur" role="alert">${esc(e.erreur)}</p>` : '';
-    const fait = !occupe && e.avant
-      ? `<p class="em-ia-fait"><span>${esc(e.mode === 'regles' && e.fait !== 'objet' ? 'Texte remplacé par une règle simple.' : (EM_IA_FAIT[e.fait] || 'Texte remplacé.'))} Relisez-le avant de l’envoyer.</span><button type="button" class="em-ia-revenir" onclick="emIaRevenir('${cle}')">Revenir à mon texte</button></p>`
+    // LA CONVERSATION. Vide : une phrase d accueil et, sur un mail vide, des idees d un toucher.
+    const idees = !ecrit && !e.fil.length ? (EM_IA_IDEES[cle] || []) : [];
+    const accueil = !e.fil.length
+      ? `<li class="em-ia-tour is-aide is-accueil"><p class="em-ia-dit">${ecrit
+        ? (ia ? `Je peux adapter ce texte à ${esc(centre)} avec ses vraies activités et ses prix, le raccourcir ou changer le ton. Écrivez-moi par exemple « plus court » ou « ajoutez le prix du laser game ».` : 'Touchez un geste sous ce message, ou modifiez le texte directement.')
+        : (cle === 'reponse' ? 'Je lis le mail du client et j’écris la réponse. Dites-moi ce qu’elle doit dire, ou touchez « Écrire la réponse ».' : 'Dites-moi ce que le mail doit dire, je l’écris.')}</p>${idees.length || (cle === 'reponse' && !ecrit)
+          ? `<div class="em-ia-idees" role="group" aria-label="Idées de mail">${(cle === 'reponse' ? ['Écrire la réponse'] : idees).map((idee) => `<button type="button" class="em-ia-idee" onclick="emIaIdee('${cle}', '${escJs(idee)}')"${verrou}>${esc(idee)}</button>`).join('')}</div>`
+          : ''}</li>`
       : '';
-    const objets = !occupe && e.objets.length
-      ? `<div class="em-ia-objets" role="group" aria-label="Objets proposés"><p class="em-ia-titre">${e.objets.length > 1 ? 'Choisissez un objet, il remplace le vôtre.' : 'Cet objet peut remplacer le vôtre.'}</p>${e.objets.map((o, i) => `<button type="button" class="em-ia-objet" data-em-ia-objet="${i}" onclick="emIaChoisirObjet('${cle}', ${i})">${esc(o)}</button>`).join('')}</div>`
-      : '';
-    const regles = !occupe && e.mode === 'regles' && (e.note || e.conseils.length)
-      ? `<div class="em-ia-regles">${e.note ? `<p class="em-ia-note">${esc(e.note)}</p>` : ''}${e.conseils.length ? `<ul class="em-ia-conseils">${e.conseils.map((c) => `<li class="em-ia-conseil">${esc(c)}</li>`).join('')}</ul>` : ''}</div>`
-      : '';
-    // TROIS GESTES EN VUE (2026-11-11, lot S) : Ameliorer, Plus court et
-    // Traduire. Les autres attendent dans « Plus ». Dans une reponse que
-    // l agent a deja ecrite, le champ dit ce qu il faut changer, et l aide
-    // reecrit la reponse au lieu d en ecrire une autre.
-    const changer = emIaChanger(cle);
+    const tours = e.fil.map((t, i) => emIaTourHtml(cle, t, i, actuel));
+    // EN BANDE (les editeurs etroits), les deux derniers tours, et le reste sur demande.
+    const caches = !colonne && !e.tout && tours.length > 2 ? tours.length - 2 : 0;
+    const voirTout = caches ? `<li class="em-ia-tour is-plus"><button type="button" class="em-ia-tour-geste" onclick="emIaToutVoir('${cle}')">Voir les ${caches} échange${caches > 1 ? 's' : ''} d’avant</button></li>` : '';
+    const travail = occupe ? `<li class="em-ia-tour is-aide is-travail" role="status"><span class="em-ia-point" aria-hidden="true"></span><span>${esc(EM_IA_TRAVAIL[e.busy] || 'Je travaille sur votre mail…')}</span></li>` : '';
+    const fil = `<ol class="em-ia-fil" aria-live="polite" aria-label="Conversation avec l’assistant">${accueil}${voirTout}${tours.slice(caches).join('')}${travail}</ol>`;
+    // LES GESTES d un toucher, sur un mail deja ecrit. Les rares attendent dans « Plus ».
     const libelle = (k) => (EM_IA_GESTES.find(([x]) => x === k) || [k, k])[1];
     const geste = (k) => `<button type="button" class="em-ia-geste${e.busy === k ? ' is-busy' : ''}" data-em-ia-intention="${k}" onclick="emIaLancer('${cle}', '${k}')"${verrou}>${esc(libelle(k))}</button>`;
     const menu = (nom, titre, cles) => `<details class="em-ia-menu" name="em-ia-${cle}" data-em-ia-menu="${nom}"${e.menu === nom && !occupe ? ' open' : ''} ontoggle="emIaMenu('${cle}', '${nom}', this.open)"><summary class="em-ia-geste"${occupe ? ' aria-disabled="true"' : ''}>${esc(titre)}${ci('chevronDown')}</summary><div class="em-ia-menu-liste" role="group" aria-label="${esc(titre)}">${cles.map(geste).join('')}</div></details>`;
-    const autres = ['chaleureux', 'formel', ...(cible.garderObjet ? [] : ['objets'])];
-    return `<div class="em-ia" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''}>${emIaAnneau()}
-      <div class="em-ia-demande">
-        <input class="em-ia-brief" type="text" value="${esc(e.brief)}" placeholder="${changer ? 'Dites ce qu’il faut changer' : 'Dites ce que vous voulez écrire…'}" aria-label="${changer ? 'Ce qu’il faut changer dans la réponse' : 'Ce que le mail doit dire'}" data-pl-focus="emails.ia.${cle}" oninput="emIaBrief('${cle}', this.value)" onkeydown="if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); emIaLancer('${cle}', 'ecrire'); }"${verrou}>
-        <button type="button" class="pv2-btn sm em-ia-envoyer" data-em-ia-intention="ecrire" onclick="emIaLancer('${cle}', 'ecrire')"${verrou}>${ci('send')}${changer ? 'Réécrire' : 'Écrire'}</button>
-      </div>
-      <div class="em-ia-gestes" role="group" aria-label="Aides à l’écriture">${geste('ameliorer')}${geste('raccourcir')}${menu('traduire', 'Traduire', ['nl', 'en'])}${menu('plus', 'Plus', autres)}</div>
-      ${travail}${erreur}${fait}${objets}${regles}
-    </div>`;
+    const autres = ['formel', 'ameliorer', ...(cible.garderObjet ? [] : ['objets'])];
+    const gestes = ecrit
+      ? `<div class="em-ia-gestes" role="group" aria-label="Gestes de l’assistant">${ia ? geste('adapter') : ''}${geste('raccourcir')}${geste('chaleureux')}${menu('traduire', 'Traduire', ['nl', 'en'])}${menu('plus', 'Plus', autres)}</div>`
+      : '';
+    const placeholder = ecrit ? 'Dites ce qu’il faut changer…' : 'Dites ce que le mail doit dire…';
+    const saisie = `<div class="em-ia-saisie">${emIaAnneau()}
+        <textarea class="em-ia-brief" rows="2" placeholder="${esc(placeholder)}" aria-label="${ecrit ? 'Ce qu’il faut changer dans le mail' : 'Ce que le mail doit dire'}" data-pl-focus="emails.ia.${cle}" oninput="emIaBrief('${cle}', this.value)" onkeydown="emIaTouche(event, '${cle}')"${verrou}>${esc(e.brief)}</textarea>
+        <button type="button" class="pv2-btn em-ia-envoyer" onclick="emIaEnvoyer('${cle}')"${verrou} aria-label="Demander à l’assistant">Demander</button>
+      </div>${e.saisie ? `<p class="em-ia-saisie-aide" role="alert">${esc(e.saisie)}</p>` : ''}`;
+    emIaDefiler();
+    // La phrase d accueil sert avant le premier echange ; « l IA n est pas branchee » se lit tout le temps.
+    const saitVu = !e.fil.length || !ia;
+    return `<section class="em-ia${colonne ? ' em-ia--colonne' : ' em-ia--bande'}${saitVu ? '' : ' em-ia--suite'}" data-em-ia="${cle}"${occupe ? ' aria-busy="true"' : ''} aria-label="Assistant d’écriture">
+      <div class="em-ia-tete"><strong>Assistant</strong>${depart}</div>${saitVu ? `<p class="em-ia-sait">${esc(sait)}</p>` : ''}
+      ${fil}${gestes}${saisie}
+    </section>`;
   }
-
-  // Une reponse deja ecrite se corrige en une phrase, quand l IA est reliee.
-  // Sans IA, la regle ne sait qu ecrire un mail a partir de la phrase : le
-  // champ garde alors son libelle d ecriture.
-  function emIaChanger(cle) {
-    const cible = EM_IA_CIBLES[cle];
-    return cle === 'reponse' && Boolean(pv2Mail.channel && pv2Mail.channel.aiConfigured) && Boolean(cible && cible.lire().body.trim());
+  // Le dernier echange reste en vue : la conversation descend a chaque rendu.
+  let emIaDefilerPrevu = false;
+  function emIaDefiler() {
+    if (emIaDefilerPrevu) return;
+    emIaDefilerPrevu = true;
+    requestAnimationFrame(() => {
+      emIaDefilerPrevu = false;
+      document.querySelectorAll('.em-ia-fil').forEach((f) => { f.scrollTop = f.scrollHeight; });
+    });
+  }
+  // Ce qui part avec la demande : les derniers echanges, l equipe et l assistant, sans les notes ni les refus.
+  function emIaHistorique(e) {
+    return e.fil
+      .filter((t) => t.qui === 'equipe' || t.qui === 'aide')
+      .slice(-10)
+      .map((t) => ({ qui: t.qui, texte: String(t.texte || '').slice(0, 600) }));
   }
 
   window.emIaBrief = function (cle, valeur) { emIaEtat(cle).brief = String(valeur || ''); };
@@ -6078,28 +6156,52 @@
   }
   window.emIaVerrouiller = emIaVerrouiller;
 
-  window.emIaLancer = async function (cle, intention) {
+  // Une demande tapee : ecrire un mail vide, ou corriger celui qui est la.
+  window.emIaEnvoyer = function (cle) {
+    const cible = EM_IA_CIBLES[cle];
+    if (!cible) return;
+    const e = emIaEtat(cle);
+    const brief = String(e.brief || '').trim();
+    if (!brief) { e.saisie = cible.lire().body.trim() ? 'Dites en quelques mots ce qu’il faut changer.' : 'Dites en quelques mots ce que le mail doit dire.'; cible.peindre(); return; }
+    emIaAppeler(cle, cible.lire().body.trim() ? 'corriger' : 'ecrire', brief);
+  };
+  // Entree envoie, Maj + Entree va a la ligne.
+  window.emIaTouche = function (event, cle) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); window.emIaEnvoyer(cle); }
+  };
+  window.emIaLancer = function (cle, intention) { emIaAppeler(cle, intention, ''); };
+  window.emIaIdee = function (cle, idee) {
+    const texte = cle === 'reponse' && idee === 'Écrire la réponse' ? 'Réponds au mail du client.' : String(idee || '');
+    emIaAppeler(cle, 'ecrire', texte, idee);
+  };
+  window.emIaToutVoir = function (cle) {
+    const cible = EM_IA_CIBLES[cle];
+    if (!cible) return;
+    emIaEtat(cle).tout = true;
+    cible.peindre();
+  };
+
+  async function emIaAppeler(cle, intention, brief, vu = '') {
     const cible = EM_IA_CIBLES[cle];
     if (!cible || !emIaPermise()) return;
     const e = emIaEtat(cle);
     if (e.busy) return;
     const actuel = cible.lire();
-    const brief = intention === 'ecrire' ? String(e.brief || '').trim() : '';
-    const changer = intention === 'ecrire' && emIaChanger(cle);
-    e.erreur = '';
+    e.saisie = '';
     e.menu = '';
-    if (intention === 'ecrire' && !brief) { e.erreur = changer ? 'Dites en quelques mots ce qu’il faut changer.' : 'Dites en quelques mots ce que le mail doit dire.'; cible.peindre(); return; }
-    if (intention !== 'ecrire' && !actuel.subject.trim() && !actuel.body.trim()) { e.erreur = 'Écrivez d’abord un objet ou un texte.'; cible.peindre(); return; }
-    e.busy = changer ? 'changer' : intention;
-    e.note = '';
-    e.conseils = [];
-    e.objets = [];
+    if (intention !== 'ecrire' && intention !== 'corriger' && !actuel.body.trim() && !(intention === 'objets' && actuel.subject.trim())) {
+      e.saisie = 'Écrivez d’abord un texte, ou demandez-le à l’assistant.';
+      cible.peindre();
+      return;
+    }
+    const historique = emIaHistorique(e);
+    const libelle = vu || brief || (EM_IA_GESTES.find(([k]) => k === intention) || [intention, intention])[1];
+    e.fil.push({ qui: 'equipe', texte: libelle });
+    e.busy = intention;
+    if (brief) e.brief = '';
     cible.peindre();
     emIaVerrouiller();
-    // Corriger une reponse deja ecrite : la phrase de la gerante devient une
-    // consigne de reecriture du texte envoye avec elle, rien d autre.
-    const consigne = changer ? `Reprends la réponse déjà écrite (texte) et change seulement ceci, en gardant tout le reste : ${brief}` : brief;
-    const corps = { action: 'emailAssist', centerId: state.adminCenterId || 'libramont', intention, contexte: cible.contexte, subject: actuel.subject, body: actuel.body, brief: consigne };
+    const corps = { action: 'emailAssist', centerId: state.adminCenterId || 'libramont', intention, contexte: cible.contexte, subject: actuel.subject, body: actuel.body, brief, historique };
     if (cible.recu) corps.recu = cible.recu();
     let payload = null;
     let erreur = '';
@@ -6110,82 +6212,82 @@
       payload = (err && err.payload) || null;
       erreur = (err && err.message) || '';
     }
+    // Le brouillon a pu changer de main pendant l appel (autre fil, autre modele) : sa conversation est ailleurs.
+    if (emIaEtat(cle) !== e) return;
     e.busy = '';
-    // UN REFUS NE TOUCHE A RIEN : ok:false (200 ou 400), ou pas de reponse,
-    // laisse le brouillon tel quel et dit pourquoi.
-    if (!payload || payload.ok === false || erreur) {
-      e.erreur = erreur || (payload && payload.message) || 'L’aide à l’écriture ne répond pas pour le moment.';
+    // UN REFUS NE TOUCHE A RIEN : il s ecrit dans la conversation, et la demande revient dans la saisie.
+    const refuser = (texte) => {
+      e.fil.push({ qui: 'refus', texte });
+      if (brief && !e.brief) e.brief = brief;
       cible.peindre();
       emIaVerrouiller();
-      return;
-    }
-    // Le brouillon a pu changer de main pendant l appel (autre fil, autre modele).
-    if (emIaEtat(cle) !== e) return;
+    };
+    if (!payload || payload.ok === false || erreur) { refuser((payload && payload.message) || erreur || 'L’assistant ne répond pas pour le moment. Votre texte n’a pas changé.'); return; }
     const nouveau = {
       subject: typeof payload.subject === 'string' && !(cible.garderObjet && actuel.subject.trim()) ? payload.subject : actuel.subject,
       body: typeof payload.body === 'string' ? payload.body : actuel.body,
     };
     if (EM_IA_TRANSFORME.has(intention)) {
-      // Chaque champ garde SES variables : un objet qui garde {{prenom}} ne
-      // couvre pas un texte qui l a perdu (meme regle que le serveur).
+      // Chaque champ garde SES variables : un objet qui garde {{prenom}} ne couvre pas un texte qui l a perdu
+      // (meme regle que le serveur).
       const perdues = [...new Set(['subject', 'body'].flatMap((k) => {
         const apres = emIaVariables(nouveau[k]);
-        return [...emIaVariables(actuel[k])].filter((v) => !apres.has(v));
+        return [...emIaVariables(actuel[k])].filter((v) => v !== '{{centre}}' && !apres.has(v));
       }))];
-      if (perdues.length) {
-        e.erreur = `L’aide a perdu ${perdues.join(', ')}. Votre texte reste tel quel.`;
-        cible.peindre();
-        emIaVerrouiller();
-        return;
-      }
+      if (perdues.length) { refuser(`L’assistant a perdu ${perdues.join(', ')}. Votre texte n’a pas changé.`); return; }
     }
-    e.mode = payload.mode === 'ia' ? 'ia' : 'regles';
-    if (e.mode === 'regles') {
-      e.note = String(payload.note || '').trim();
-      e.conseils = (Array.isArray(payload.conseils) ? payload.conseils : []).map((c) => String(c || '').trim()).filter(Boolean).slice(0, 4);
-    }
+    const dit = String(payload.message || payload.note || '').trim();
+    const conseils = payload.mode === 'regles' ? (Array.isArray(payload.conseils) ? payload.conseils : []).map((c) => String(c || '').trim()).filter(Boolean).slice(0, 4) : [];
     if (intention === 'objets') {
-      e.objets = (Array.isArray(payload.objets) ? payload.objets : []).map((o) => String(o || '').trim()).filter(Boolean).slice(0, 3);
-      if (!e.objets.length && !e.note) e.erreur = 'Aucun objet proposé cette fois. Réessayez dans un instant.';
+      const objets = (Array.isArray(payload.objets) ? payload.objets : []).map((o) => String(o || '').trim()).filter(Boolean).slice(0, 3);
+      e.fil.push({ qui: 'aide', texte: objets.length ? (dit || 'Voici trois objets.') + ' Touchez celui que vous voulez.' : (dit || 'Aucun objet cette fois. Réessayez dans un instant.'), objets });
     } else if (nouveau.subject !== actuel.subject || nouveau.body !== actuel.body) {
-      e.avant = { ...actuel };
-      e.fait = changer ? 'changer' : intention;
+      if (!e.depart) e.depart = { ...actuel };
       cible.poser(nouveau);
-      // La consigne est appliquee : le champ se vide pour la suivante.
-      if (changer) e.brief = '';
+      e.fil.push({ qui: 'aide', texte: dit || 'C’est fait.', version: { ...nouveau }, conseils });
       e.fondu = Date.now();
-    } else if (!e.note && !e.conseils.length) {
-      e.erreur = 'L’aide n’a rien changé à ce texte.';
+    } else {
+      e.fil.push({ qui: 'aide', texte: dit || 'Je n’ai rien changé à ce texte.', conseils });
     }
     cible.peindre();
     emIaVerrouiller();
-  };
+  }
 
-  window.emIaChoisirObjet = function (cle, rang) {
+  window.emIaChoisirObjet = function (cle, tour, rang) {
     const cible = EM_IA_CIBLES[cle];
     const e = emIaEtat(cle);
-    const objet = e.objets[Number(rang)];
-    if (!cible || !objet) return;
+    const t = e.fil[Number(tour)];
+    const objet = t && Array.isArray(t.objets) ? t.objets[Number(rang)] : '';
+    if (!cible || !objet || e.busy) return;
     const actuel = cible.lire();
-    if (!e.avant) e.avant = { ...actuel };
-    e.fait = 'objet';
-    e.objets = [];
-    cible.poser({ subject: objet, body: actuel.body });
+    if (!e.depart) e.depart = { ...actuel };
+    t.choisi = Number(rang);
+    const nouveau = { subject: objet, body: actuel.body };
+    cible.poser(nouveau);
+    e.fil.push({ qui: 'aide', texte: `Objet remplacé par « ${objet} ».`, version: { ...nouveau } });
     e.fondu = Date.now();
     cible.peindre();
     emIaVerrouiller();
   };
-
-  window.emIaRevenir = function (cle) {
+  // Une version de la conversation, remise dans l editeur.
+  window.emIaVersion = function (cle, tour) {
     const cible = EM_IA_CIBLES[cle];
     const e = emIaEtat(cle);
-    if (!cible || !e.avant) return;
-    cible.poser({ subject: e.avant.subject, body: e.avant.body });
-    e.avant = null;
-    e.fait = '';
-    e.objets = [];
-    e.note = '';
-    e.conseils = [];
+    const t = e.fil[Number(tour)];
+    if (!cible || !t || !t.version || e.busy) return;
+    cible.poser({ subject: t.version.subject, body: t.version.body });
+    e.fil.push({ qui: 'note', texte: 'Cette version est revenue dans l’éditeur.' });
+    e.fondu = Date.now();
+    cible.peindre();
+    emIaVerrouiller();
+  };
+  // Le texte d avant le premier changement de l assistant.
+  window.emIaDepart = function (cle) {
+    const cible = EM_IA_CIBLES[cle];
+    const e = emIaEtat(cle);
+    if (!cible || !e.depart || e.busy) return;
+    cible.poser({ subject: e.depart.subject, body: e.depart.body });
+    e.fil.push({ qui: 'note', texte: 'Votre texte de départ est revenu.' });
     e.fondu = Date.now();
     cible.peindre();
     emIaVerrouiller();
@@ -6832,7 +6934,9 @@
     if (!/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || ''))) pv2DesignPoser('accent.hex', '#0a0a0a');
     pv2DesignChoix('accent.mode', 'perso');
   };
+  const PV2_DESIGN_EXEMPLES = { confirmation: 'Confirmation', reponse: 'Réponse à un client', campagne: 'Campagne' };
   window.pv2DesignSample = function (key) {
+    pv2Design.exempleCourt = false;
     pv2Design.sample = ['confirmation', 'reponse', 'campagne'].includes(key) ? key : 'confirmation';
     renderStaffEmailsPage();
     pv2ApercuDesign(0);
@@ -8259,75 +8363,41 @@
         <div class="pv2-design-scope">${contacts.map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${esc(l)}</strong><small>${v ? esc(String(v)) : 'pas encore écrit, à compléter dans Plus d’options'}</small>${interrupteur(`signature.afficher.${k}`, afficher[k] !== false, `${l} dans la signature`)}</div>`).join('')}</div>
       </div>`;
 
-    // LA GALERIE (2026-11-12) : chaque gabarit en vignette, le vrai mail du centre
-    // avec ce brouillon, range par famille (sa regle de boite de reception). Une
-    // vignette pas encore arrivee laisse son cadre vide ; le nom reste cliquable.
+    // LE STYLE (2026-11-12, en liste depuis le 2026-11-13) : chaque gabarit en vignette, le vrai mail du centre
+    // avec ce brouillon, range par famille (sa regle de boite de reception). Ansar, 2026-11-12, devant la grille
+    // de petites vignettes : « je comprends juste rien ». Une ligne par style, la vignette, son nom, ce qu il
+    // fait, et « Choisi » sur le sien ; le grand apercu d a cote montre le mail en vrai.
     const carteGabarit = (p) => {
       const actif = d.preset === p.id;
       const cle = `galerie-${p.id}`;
       PV2_FRAMES[cle] = pv2GalerieVignette(p.id);
-      return `<div class="em-galerie-carte${actif ? ' is-active' : ''}" data-em-gabarit="${esc(p.id)}">
-          <div class="em-galerie-vignette" aria-hidden="true"><iframe class="em-galerie-cadre" sandbox="" tabindex="-1" title="" data-pv2-frame="${esc(cle)}"></iframe></div>
-          <button type="button" class="pv2-design-preset em-galerie-choix${actif ? ' is-active' : ''}" role="radio" aria-checked="${actif}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small></button>
+      return `<div class="em-galerie-carte em-ap-style${actif ? ' is-active' : ''}" data-em-gabarit="${esc(p.id)}">
+          <div class="em-galerie-vignette em-ap-style-vignette" aria-hidden="true"><iframe class="em-galerie-cadre" sandbox="" tabindex="-1" title="" data-pv2-frame="${esc(cle)}"></iframe></div>
+          <button type="button" class="pv2-design-preset em-galerie-choix${actif ? ' is-active' : ''}" role="radio" aria-checked="${actif}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small>${actif ? '<span class="em-ap-choisi">Choisi</span>' : ''}</button>
         </div>`;
     };
-    const galerie = pv2DesignFamillesDe(presets).map((f) => `<div class="em-galerie-famille" data-em-famille="${esc(f.id)}">
-          ${f.label ? `<p class="em-galerie-titre"><strong>${esc(f.label)}</strong>${f.aide ? `<small>${esc(f.aide)}</small>` : ''}</p>` : ''}
-          <div class="em-galerie-grille">${f.gabarits.map(carteGabarit).join('')}</div>
-        </div>`).join('');
-
-    return `<div class="pv2-design-form">
-      <section class="pv2-design-block" aria-label="Gabarit">
-        <h3>Gabarit</h3>
-        <p class="pv2-design-hint">La forme du mail. Chaque vignette est votre vrai mail, avec vos couleurs et votre signature.</p>
-        <div class="pv2-design-presets em-galerie" role="radiogroup" aria-label="Gabarit">
-          ${galerie}
-        </div>
-      </section>
-      <section class="pv2-design-block" aria-label="Couleur du mail">
-        <h3>Couleur</h3>
-        <p class="pv2-design-hint">Elle colore les boutons, la barre du gabarit Carte et la signature. Le texte reste en encre.${couleurs.length ? '' : ' Aucune couleur dans la fiche du centre.'}</p>
-        <div class="em-teintes" role="radiogroup" aria-label="Couleur du mail">${teintes}</div>
-        ${couleurPerso ? `<span class="pv2-design-inline"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || '')) ? esc(d.accent.hex) : '#0a0a0a'}" aria-label="Choisir la couleur" oninput="pv2DesignField('accent.hex', this.value)"${dis}><input type="text" value="${esc(d.accent.hex || '')}" placeholder="#0a0a0a" maxlength="7" aria-label="Code couleur" data-pl-focus="emails.design.accent.hex" oninput="pv2DesignField('accent.hex', this.value)"${dis}></span>` : ''}
-      </section>
-      <section class="pv2-design-block" aria-label="Signature">
-        <h3>Signature</h3>
-        <div class="pv2-design-scope">
-          <div class="pv2-design-scope-row"><strong>Signer les mails</strong><small>Une signature à l’image du centre en fin de mail, avec la formule, l’équipe ou la personne, les coordonnées et les réseaux.</small>${interrupteur('signature.enabled', Boolean(s.enabled), 'Signer les mails')}</div>
-        </div>
-        ${s.enabled ? `<div class="em-design-ligne">
-          <p class="em-design-question" id="emDispositionTitre">Sa forme</p>
-          <div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>
-        </div>
-        ${blocPhoto}${blocAccroche}${blocFormule}${blocContacts}` : ''}
-      </section>
-      <section class="pv2-design-block em-design-plus" aria-label="Plus d’options">
-      ${emOptionsHtml('apparence', 'en-tête, pied de page, textes de la signature', `
-      <div class="em-design-groupe" role="group" aria-label="En-tête">
-        <h3>En-tête</h3>
-        <div class="pv2-design-fields">
-          <label class="pv2-composer-field"><span>Affiche</span>
-            <select onchange="pv2DesignChoix('header.mode', this.value)"${dis}>
-              ${[['nom', 'Le nom du centre'], ['logo', 'Le logo'], ['logo-nom', 'Le logo et le nom'], ['aucun', 'Rien']].map(([v, l]) => `<option value="${v}"${d.header.mode === v ? ' selected' : ''}>${l}</option>`).join('')}
-            </select>
-          </label>
-          ${headerLogo ? `<label class="pv2-composer-field"><span>Logo</span><select onchange="pv2DesignChoix('header.logoUrl', this.value)"${dis}>${logoOptions(d.header.logoUrl)}</select></label>
-          ${champ('header.logoUrl', 'Adresse de l\'image (https)', d.header.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
-          ${champ('header.logoWidth', 'Largeur du logo (px, 60 à 300)', d.header.logoWidth, { type: 'number' })}` : ''}
-        </div>
-        ${headerLogo && !logos.length ? '<p class="pv2-design-hint">Aucun logo déclaré pour ce centre : collez l\'adresse https d\'une image, ou laissez l\'en-tête en texte.</p>' : ''}
+    const blocStyle = `<p class="em-ap-question">À quoi ressemblent vos mails ?</p>${pv2DesignFamillesDe(presets).map((f) => {
+      const [titre, aide] = PV2_FAMILLES_DITES[f.id] || [f.label, f.aide];
+      const grille = `<div class="em-galerie-grille em-ap-styles" role="radiogroup" aria-label="${esc(titre || 'Style du mail')}">${f.gabarits.map(carteGabarit).join('')}</div>`;
+      if (f.id === 'avant') {
+        return `<details class="em-galerie-famille em-ap-famille is-avant" data-em-famille="avant"${f.gabarits.some((p) => p.id === d.preset) ? ' open' : ''}><summary>${esc(titre)}<span>${f.gabarits.length}</span></summary>${grille}</details>`;
+      }
+      return `<div class="em-galerie-famille em-ap-famille" data-em-famille="${esc(f.id)}">${titre ? `<p class="em-galerie-titre"><strong>${esc(titre)}</strong>${aide ? `<small>${esc(aide)}</small>` : ''}</p>` : ''}${grille}</div>`;
+    }).join('')}`;
+    const blocCouleur = `<p class="em-ap-question">La couleur de vos mails</p>
+      <p class="pv2-design-hint">Elle colore les boutons, le bloc du jour et la signature. Le texte reste en noir.${couleurs.length ? '' : ' Aucune couleur dans la fiche du centre.'}</p>
+      <div class="em-teintes" role="radiogroup" aria-label="Couleur du mail">${teintes}</div>
+      ${couleurPerso ? `<span class="pv2-design-inline"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || '')) ? esc(d.accent.hex) : '#0a0a0a'}" aria-label="Choisir la couleur" oninput="pv2DesignField('accent.hex', this.value)"${dis}><input type="text" value="${esc(d.accent.hex || '')}" placeholder="#0a0a0a" maxlength="7" aria-label="Code couleur" data-pl-focus="emails.design.accent.hex" oninput="pv2DesignField('accent.hex', this.value)"${dis}></span>` : ''}`;
+    const blocSignature = `<p class="em-ap-question">La signature en bas de vos mails</p>${pv2Design.exempleCourt && pv2Design.sample === 'reponse' ? '<p class="pv2-design-hint">L’aperçu montre une réponse courte, la signature est juste sous le texte.</p>' : ''}
+      <div class="pv2-design-scope">
+        <div class="pv2-design-scope-row"><strong>Signer les mails</strong><small>La formule de fin, l’équipe ou la personne qui écrit, les coordonnées et les réseaux du centre.</small>${interrupteur('signature.enabled', Boolean(s.enabled), 'Signer les mails')}</div>
       </div>
-      <div class="em-design-groupe" role="group" aria-label="Pied de page">
-        <h3>Pied de page</h3>
-        <p class="pv2-design-hint">Les coordonnées viennent de la fiche du centre. Ce qui n'y est pas renseigné reste absent du mail.</p>
-        <div class="pv2-design-scope">
-          ${[['adresse', 'Adresse', info.address], ['telephone', 'Téléphone', info.phone], ['email', 'Adresse email', info.email]].map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${l}</strong><small>${v ? esc(String(v)) : 'non renseigné dans la fiche du centre'}</small>${interrupteur(`footer.${k}`, Boolean(d.footer[k]), l)}</div>`).join('')}
-        </div>
-        <label class="pv2-composer-field"><span>Mention libre <small class="mk-auto-edit-hint">laissée vide = absente du mail</small></span><textarea rows="2" maxlength="300" placeholder="Ex. Fermé le lundi hors vacances scolaires." data-pl-focus="emails.design.footer.mention" oninput="pv2DesignField('footer.mention', this.value)"${dis}>${esc(d.footer.mention || '')}</textarea></label>
+      ${s.enabled ? `<div class="em-design-ligne">
+        <p class="em-design-question" id="emDispositionTitre">Sa forme</p>
+        <div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>
       </div>
-      ${s.enabled ? `<div class="em-design-groupe" role="group" aria-label="Textes de la signature">
-        <h3>Textes de la signature</h3>
-        <div class="pv2-design-fields">
+      ${blocPhoto}${blocAccroche}${blocFormule}${blocContacts}
+      ${emOptionsHtml('apparence-signature', 'nom d’équipe, coordonnées, réseaux', `<div class="pv2-design-fields">
           ${champ('signature.teamLabel', 'Nom d\'équipe', s.teamLabel, { placeholder: `L'équipe ${nomCentre}`, hint: 'vide = « L\'équipe » + nom du centre' })}
           ${champ('signature.role', 'Rôle affiché', s.role, { placeholder: 'Ex. Direction', hint: 'sur les mails manuels, le rôle de la personne prime' })}
           ${champ('signature.phone', 'Téléphone', s.phone, { type: 'tel', placeholder: 'vide = absent du mail' })}
@@ -8342,19 +8412,84 @@
           ${champ('signature.socials.tiktok', 'TikTok', s.socials.tiktok, { type: 'url', placeholder: 'https://tiktok.com/@…' })}
           ${champ('signature.socials.linkedin', 'LinkedIn', s.socials.linkedin, { type: 'url', placeholder: 'https://linkedin.com/company/…' })}
         </div>
-        <p class="pv2-design-hint">Les réseaux s'écrivent en toutes lettres dans la signature, jamais en icônes d'une autre marque. Un mail automatique garde deux liens au plus. Le téléphone et l'adresse mail se lient d'abord, le reste s'écrit en clair.</p>
-      </div>` : ''}
-      <div class="em-design-groupe" role="group" aria-label="Où l'appliquer">
-        <h3>Où appliquer la signature</h3>
+        <p class="pv2-design-hint">Les réseaux s'écrivent en toutes lettres dans la signature, jamais en icônes d'une autre marque. Un mail automatique garde deux liens au plus.</p>`)}
+      <div class="em-design-ligne">
+        <p class="em-design-question">Sur quels mails</p>
         <div class="pv2-design-scope">
-          <div class="pv2-design-scope-row"><strong>Messages manuels</strong><small>Vos réponses et messages libres, signés par la personne qui écrit.</small>${interrupteur('signatureScope.manual', Boolean(d.signatureScope.manual), 'Messages manuels')}</div>
-          <div class="pv2-design-scope-row"><strong>Séquences</strong><small>Confirmations, rappels et relances automatiques, signés par l'équipe.</small>${interrupteur('signatureScope.sequences', Boolean(d.signatureScope.sequences), 'Séquences')}</div>
-          <div class="pv2-design-scope-row"><strong>Campagnes</strong><small>Les envois groupés gardent leur ligne de retrait quoi qu'il arrive.</small>${interrupteur('signatureScope.campaigns', Boolean(d.signatureScope.campaigns), 'Campagnes')}</div>
+          <div class="pv2-design-scope-row"><strong>Messages écrits à la main</strong><small>Vos réponses et messages libres, signés par la personne qui écrit.</small>${interrupteur('signatureScope.manual', Boolean(d.signatureScope.manual), 'Messages écrits à la main')}</div>
+          <div class="pv2-design-scope-row"><strong>Mails automatiques</strong><small>Confirmations, rappels et relances, signés par l'équipe.</small>${interrupteur('signatureScope.sequences', Boolean(d.signatureScope.sequences), 'Mails automatiques')}</div>
+          <div class="pv2-design-scope-row"><strong>Campagnes</strong><small>Les envois groupés gardent leur ligne de désinscription quoi qu'il arrive.</small>${interrupteur('signatureScope.campaigns', Boolean(d.signatureScope.campaigns), 'Campagnes')}</div>
         </div>
-      </div>`)}
-      </section>
+      </div>` : ''}`;
+    const blocPlus = `<p class="em-ap-question">Le haut et le bas de vos mails</p>
+      <div class="em-design-groupe" role="group" aria-label="En-tête">
+        <p class="em-design-question">En haut du mail</p>
+        <div class="pv2-design-fields">
+          <label class="pv2-composer-field"><span>Afficher</span>
+            <select onchange="pv2DesignChoix('header.mode', this.value)"${dis}>
+              ${[['nom', 'Le nom du centre'], ['logo', 'Le logo'], ['logo-nom', 'Le logo et le nom'], ['aucun', 'Rien']].map(([v, l]) => `<option value="${v}"${d.header.mode === v ? ' selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
+          ${headerLogo ? `<label class="pv2-composer-field"><span>Logo</span><select onchange="pv2DesignChoix('header.logoUrl', this.value)"${dis}>${logoOptions(d.header.logoUrl)}</select></label>
+          ${champ('header.logoUrl', 'Adresse de l\'image (https)', d.header.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
+          ${champ('header.logoWidth', 'Largeur du logo (px, 60 à 300)', d.header.logoWidth, { type: 'number' })}` : ''}
+        </div>
+        ${headerLogo && !logos.length ? '<p class="pv2-design-hint">Aucun logo déclaré pour ce centre. Collez l\'adresse https d\'une image, ou laissez le nom du centre.</p>' : ''}
+      </div>
+      <div class="em-design-groupe" role="group" aria-label="Pied de page">
+        <p class="em-design-question">En bas du mail</p>
+        <p class="pv2-design-hint">Les coordonnées viennent de la fiche du centre. Ce qui n'y est pas renseigné reste absent du mail.</p>
+        <div class="pv2-design-scope">
+          ${[['adresse', 'Adresse', info.address], ['telephone', 'Téléphone', info.phone], ['email', 'Adresse email', info.email]].map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${l}</strong><small>${v ? esc(String(v)) : 'non renseigné dans la fiche du centre'}</small>${interrupteur(`footer.${k}`, Boolean(d.footer[k]), l)}</div>`).join('')}
+        </div>
+        <label class="pv2-composer-field"><span>Une phrase en plus <small class="mk-auto-edit-hint">vide = rien de plus</small></span><textarea rows="2" maxlength="300" placeholder="Par exemple : fermé le lundi hors vacances scolaires." data-pl-focus="emails.design.footer.mention" oninput="pv2DesignField('footer.mention', this.value)"${dis}>${esc(d.footer.mention || '')}</textarea></label>
+      </div>`;
+    const rubrique = PV2_DESIGN_RUBRIQUES.some(([k]) => k === pv2Design.rubrique) ? pv2Design.rubrique : 'style';
+    const resume = pv2DesignResume(d);
+    const panneau = { style: blocStyle, couleur: blocCouleur, signature: blocSignature, plus: blocPlus }[rubrique];
+    return `<div class="pv2-design-form em-ap-reglages">
+      <div class="em-ap-rubriques" role="tablist" aria-label="Réglages de l’apparence">${PV2_DESIGN_RUBRIQUES.map(([k, l]) => `<button type="button" role="tab" id="emAp-${k}" aria-controls="emApPanneau" aria-selected="${rubrique === k}" class="em-ap-rubrique${rubrique === k ? ' is-active' : ''}" onclick="pv2DesignRubrique('${k}')"><strong>${esc(l)}</strong><small>${esc(resume[k] || '')}</small></button>`).join('')}</div>
+      <section class="em-ap-panneau" id="emApPanneau" role="tabpanel" aria-labelledby="emAp-${rubrique}">${panneau}</section>
     </div>`;
   }
+
+  // LES RUBRIQUES DE L APPARENCE (2026-11-13) : ce qu un gerant se demande, dans l ordre, et ce qui est choisi
+  // dessous. Une seule ouverte : la page tient sur un ecran de PC, le mail reste en vue a cote.
+  const PV2_DESIGN_RUBRIQUES = [['style', 'Style'], ['couleur', 'Couleur'], ['signature', 'Signature'], ['plus', 'Haut et bas']];
+  // Les familles dites comme un gerant les comprend : le serveur les nomme pour sa regle de boite de reception.
+  const PV2_FAMILLES_DITES = {
+    principale: ['Pour tous vos mails', 'Peu d’images et de liens, pour que vos confirmations, rappels et réponses arrivent dans la boîte principale de Gmail.'],
+    centre: ['Avec la photo de l’activité', 'Le mail montre la photo de l’activité réservée, pour les centres qui ont leurs photos.'],
+    campagne: ['Pour les campagnes seulement', 'Une grande image pour vos envois groupés. Les confirmations et les rappels gardent un style simple.'],
+    avant: ['Les styles d’avant', ''],
+  };
+  // Ce qui est choisi dans chaque rubrique, en mots.
+  function pv2DesignResume(d) {
+    const preset = pv2DesignGabarits().find((p) => p.id === d.preset);
+    const couleur = pv2CouleursDuCentre().find((c) => c.hex === String(d.accent.hex || '').toLowerCase());
+    const accent = d.accent.mode === 'perso' ? (couleur ? couleur.label : 'À vous') : d.accent.mode === 'centre' ? 'Du centre' : 'Noir';
+    const entete = { nom: 'Le nom', logo: 'Le logo', 'logo-nom': 'Logo et nom', aucun: 'Rien' }[d.header.mode] || '';
+    return {
+      style: preset ? preset.label : String(d.preset || ''),
+      couleur: accent,
+      signature: d.signature && d.signature.enabled ? (PV2_DISPOSITIONS[d.signature.layout] || 'Carte') : 'Aucune',
+      plus: entete,
+    };
+  }
+  window.pv2DesignRubrique = function (rubrique) {
+    pv2Design.rubrique = PV2_DESIGN_RUBRIQUES.some(([k]) => k === rubrique) ? rubrique : 'style';
+    renderStaffEmailsPage();
+    if (pv2Design.rubrique === 'style') pv2GalerieCharger(0);
+    // LA SIGNATURE SE VOIT EN REGLANT LA SIGNATURE : une confirmation la pose sous le billet et l agenda, une
+    // reponse juste sous trois lignes. L exemple passe sur la reponse quand elle est signee, et le panneau le dit.
+    const d = pv2Design.design || pv2DesignVide();
+    if (pv2Design.rubrique === 'signature' && pv2Design.sample === 'confirmation' && d.signatureScope && d.signatureScope.manual) {
+      pv2Design.sample = 'reponse';
+      pv2Design.exempleCourt = true;
+      renderStaffEmailsPage();
+      pv2ApercuDesign(0);
+    }
+  };
 
   // Sans le droit de modifier, le reglage se lit en texte, sans champ grise.
   // L apercu d a cote montre le mail tel qu il part.
@@ -8400,17 +8535,24 @@
     const mayTest = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
     const samples = [['confirmation', 'Confirmation'], ['reponse', 'Réponse'], ['campagne', 'Campagne']].map(([key, label]) => ({ key, label, active: pv2Design.sample === key }));
     const busy = pv2Design.busy;
-    return `<div class="pv2-design-layout">
+    // L EXEMPLE MONTRE se choisit dans une liste qui dit ce que c est : trois boutons a cote de « Ordinateur » et
+    // « Clair » se lisaient comme des reglages du mail (Ansar, 2026-11-12 : « je comprends juste rien »).
+    const exemple = `<label class="em-ap-exemple"><span>Exemple</span><select onchange="pv2DesignSample(this.value)" aria-label="Le mail montré en exemple">${samples.map((x) => `<option value="${x.key}"${x.active ? ' selected' : ''}>${esc(PV2_DESIGN_EXEMPLES[x.key] || x.label)}</option>`).join('')}</select></label>`;
+    const etat = pv2Design.dirty ? 'Pas encore enregistré.' : d.updatedAt ? `Enregistré ${esc(formatOpsTimestamp(d.updatedAt))}${d.updatedBy ? ` par ${esc(d.updatedBy)}` : ''}.` : 'Apparence par défaut, rien n’est encore enregistré pour ce centre.';
+    return `<div class="pv2-design-layout em-ap">
       ${mayEdit ? pv2DesignFormHtml(d, mayEdit) : pv2DesignLectureHtml(d)}
-      <div class="pv2-design-preview">
-        ${pv2ApercuVivantHtml('design', { titre: 'Le mail tel qu\'il partira', tete: seg(samples, 'pv2DesignSample'), cadre: 'pv2-design-frame' })}
-        ${mayEdit ? `<div class="pv2-design-actions em-actions">
-          <button type="button" class="pv2-btn primary em-principal" onclick="pv2DesignSave()" ${busy || !pv2Design.dirty ? 'disabled' : ''}>${busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
-          ${mayTest ? `<button type="button" class="em-lien" onclick="pv2DesignTest()" ${busy ? 'disabled' : ''}>${busy === 'test' ? 'Envoi…' : 'M\'envoyer un test'}</button>` : ''}
-          ${emMenuPlusHtml('emDesignPlus', 'Plus d’actions sur l’apparence', [emGestePlus('Rétablir les défauts', 'pv2DesignReset()', { danger: true, inactif: Boolean(busy) })])}
-        </div>` : '<p class="pv2-note">Votre rôle ne permet pas de modifier l\'apparence des mails. Vous pouvez la consulter.</p>'}
+      <div class="pv2-design-preview em-ap-apercu">
+        <div class="em-ap-barre">
+          <div class="em-ap-barre-texte"><p class="em-ap-titre">Ce que reçoit votre client</p><p class="pv2-note em-ap-etat${pv2Design.dirty ? ' is-dirty' : ''}">${etat}</p></div>
+          ${mayEdit ? `<div class="pv2-design-actions em-actions">
+            ${mayTest ? `<button type="button" class="pv2-btn em-second" onclick="pv2DesignTest()" ${busy ? 'disabled' : ''}>${busy === 'test' ? 'Envoi…' : 'M’envoyer un test'}</button>` : ''}
+            <button type="button" class="pv2-btn primary em-principal" onclick="pv2DesignSave()" ${busy || !pv2Design.dirty ? 'disabled' : ''}>${busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
+            ${emMenuPlusHtml('emDesignPlus', 'Plus d’actions sur l’apparence', [emGestePlus('Rétablir les défauts', 'pv2DesignReset()', { danger: true, inactif: Boolean(busy) })])}
+          </div>` : ''}
+        </div>
+        ${mayEdit ? '' : '<p class="pv2-note">Votre rôle ne permet pas de modifier l\'apparence des mails. Vous pouvez la consulter.</p>'}
         ${pv2Design.erreurServeur ? `<p class="pv2-design-error" role="alert">${esc(pv2Design.erreurServeur)}</p>` : ''}
-        <p class="pv2-note">${pv2Design.dirty ? 'Modifications non enregistrées.' : d.updatedAt ? `Dernière modification ${esc(formatOpsTimestamp(d.updatedAt))}${d.updatedBy ? ` par ${esc(d.updatedBy)}` : ''}.` : 'Apparence par défaut. Rien n\'a encore été enregistré pour ce centre.'}</p>
+        ${pv2ApercuVivantHtml('design', { titre: 'Le mail', tete: exemple, cadre: 'pv2-design-frame' })}
       </div>
     </div>`;
   }

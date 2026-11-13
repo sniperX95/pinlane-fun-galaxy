@@ -3966,7 +3966,30 @@ ${draftBody}`,
   // proposer des objets, depuis n importe quel editeur. Lecture seule : rien ne part, rien ne s ecrit en base.
   if (action === 'emailAssist') {
     const { getCenter } = require('../lib/ops-knowledge');
-    const { aiderAEcrire } = require('../lib/email-assist');
+    const { aiderAEcrire, signatureAjouteePour } = require('../lib/email-assist');
+    const { llmProvider } = require('../lib/llm-client');
+    // LES VRAIS FAITS DU CENTRE (2026-11-13) : ceux de l agent qui repond aux clients (lib/email-agent
+    // buildEmailBrain), lus seulement quand l IA est branchee. Activites, formules et prix valides par le moteur,
+    // jours d ouverture et fermetures, ce que l equipe a appris a l agent. Sans eux, l IA ecrivait « les pistes vous
+    // attendent ». Une lecture ratee laisse l IA avec le nom et les coordonnees du centre, jamais une erreur.
+    let faits = '';
+    let signatureAjoutee = true;
+    if (llmProvider('mails')) {
+      try {
+        const cerveau = await require('../lib/email-agent').buildEmailBrain(centerId, undefined, Date.now(), { texte: `${body.brief || ''}\n${body.body || ''}` });
+        const appris = (Array.isArray(cerveau.appris) ? cerveau.appris : [])
+          .map((f) => `Question : ${String((f && f.question) || '').slice(0, 300)}\nRéponse de l'équipe : ${String((f && f.reponse) || '').slice(0, 600)}`);
+        faits = [cerveau.context, appris.length ? `--- CE QUE L EQUIPE A APPRIS A L AGENT ---\n${appris.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
+      } catch (error) {
+        faits = '';
+      }
+      try {
+        const { getEmailDesignBundle } = require('../lib/ops-communications');
+        signatureAjoutee = signatureAjouteePour((await getEmailDesignBundle(centerId)).design, body.contexte);
+      } catch (error) {
+        signatureAjoutee = true;
+      }
+    }
     const result = await aiderAEcrire({
       intention: body.intention,
       contexte: body.contexte,
@@ -3974,8 +3997,13 @@ ${draftBody}`,
       body: body.body,
       brief: body.brief,
       recu: body.recu,
+      historique: body.historique,
+      faits,
+      signatureAjoutee,
       center: getCenter(centerId),
     });
+    // UN REFUS DE L IA SE DIT EN 200 (ok:false) : la console le montre dans la conversation, le brouillon reste.
+    if (!result.ok && result.refus) { sendJson(res, 200, { ...result, action }); return; }
     if (!result.ok) { sendError(res, 400, result.message); return; }
     sendJson(res, 200, { ...result, action });
     return;

@@ -22788,3 +22788,195 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .pv2-mail-champs { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
   #staffEmailsPage .em-shell .pv2-mail-champ dd { margin-bottom: 10px; }
 }
+
+/* =========================================================================
+   L ATELIER DES MODELES ET L ASSISTANT EN CONVERSATION (2026-11-13)
+   Ansar, 2026-11-12, sur Modeles : « tu vois pas le message de l'IA, tu sais
+   pas corriger direct depuis la conv », « pas très visuel, pas userfriendly ».
+   Trois zones a 1366 px : la liste, la feuille du mail (ce que le client lit),
+   l assistant. La feuille ressemble a un mail : l expediteur et l objet en
+   tete, le texte dans la police des mails, la place de la signature dessous.
+   L assistant est une conversation : la demande de l equipe a droite, sa
+   reponse a gauche, la saisie en bas sous l anneau. Pas de filet entre les
+   lignes, des blocs pleins, les boutons de la console (bleu plein, second
+   encadre).
+   ========================================================================= */
+#staffEmailsPage .em-shell .em-tpl { grid-template-columns: minmax(220px, 264px) minmax(0, 1fr); }
+#staffEmailsPage .em-shell .em-tpl-droite { container-type: inline-size; container-name: em-atelier; }
+#staffEmailsPage .em-shell .em-atelier { display: grid; gap: 14px; min-width: 0; }
+#staffEmailsPage .em-shell .em-atelier-tete { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 16px; }
+#staffEmailsPage .em-shell .em-atelier-nom { display: grid; gap: 2px; flex: 1 1 280px; min-width: 0; }
+#staffEmailsPage .em-shell .em-atelier-nom-titre { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+#staffEmailsPage .em-shell .em-atelier-nom #pv2TplName { width: 100%; min-width: 0; margin-left: -8px; padding: 4px 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text); font: inherit; font-size: 21px; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
+#staffEmailsPage .em-shell .em-atelier-nom #pv2TplName::placeholder { color: var(--faint); font-weight: 500; }
+#staffEmailsPage .em-shell .em-atelier-nom #pv2TplName:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 0; background: var(--em-panel); }
+#staffEmailsPage .em-shell .em-atelier-actions { display: flex; align-items: center; gap: 8px; }
+#staffEmailsPage .em-shell .em-atelier-actions .pv2-btn { height: 40px; padding: 0 16px; font-size: 14px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-atelier-actions .pv2-btn:not(.primary) { border: 1px solid var(--control-border); background: var(--surface); color: var(--text); }
+#staffEmailsPage .em-shell .em-atelier-actions .pv2-btn.primary { border: 0; background: var(--console-selected); color: #ffffff; }
+#staffEmailsPage .em-shell .em-atelier-corps { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); align-items: start; gap: 16px; }
+
+/* --- La feuille du mail -------------------------------------------------- */
+#staffEmailsPage .em-shell .em-papier { display: grid; gap: 10px; min-width: 0; }
+#staffEmailsPage .em-shell .em-papier-vues { display: flex; }
+#staffEmailsPage .em-shell .em-papier-feuille { display: grid; gap: 0; overflow: hidden; border-radius: 12px; background: #ffffff; color: #1d1d1f; box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgb(0 0 0 / 0.06); }
+#staffEmailsPage .em-shell .em-papier-feuille:focus-within { box-shadow: 0 0 0 2px var(--console-focus), 0 1px 3px rgb(0 0 0 / 0.06); }
+#staffEmailsPage .em-shell .em-papier-de { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 14px 22px 0; background: #f4f5f7; font-size: 13px; color: #5f6368; }
+#staffEmailsPage .em-shell .em-papier-de strong { font-weight: 600; color: #1d1d1f; }
+#staffEmailsPage .em-shell .em-papier-objet { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 6px 22px 14px; background: #f4f5f7; }
+#staffEmailsPage .em-shell .em-papier-etiquette { font-size: 13px; color: #5f6368; }
+#staffEmailsPage .em-shell .em-papier-objet .pv2-tokedit { min-height: 0; padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: #1d1d1f; font-size: 17px; font-weight: 600; line-height: 1.35; }
+#staffEmailsPage .em-shell .em-papier-texte { display: grid; gap: 8px; padding: 16px 22px 8px; }
+#staffEmailsPage .em-shell .em-papier-texte .pv2-varbar { margin: 0; background: #f4f5f7; }
+#staffEmailsPage .em-shell .em-papier-texte .pv2-tokedit { min-height: 280px; padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: #1d1d1f; font-family: Arial, Helvetica, sans-serif; font-size: 15.5px; line-height: 1.6; }
+#staffEmailsPage .em-shell .em-papier-feuille .pv2-tokedit:focus-visible { outline: none; }
+#staffEmailsPage .em-shell .em-papier-signature { margin: 0 22px 20px; padding: 12px 14px; border-radius: 8px; background: #f4f5f7; font-size: 13px; line-height: 1.45; color: #5f6368; }
+#staffEmailsPage .em-shell .em-papier-apercu { margin: 0; }
+/* La feuille reste une feuille blanche en sombre : c est le mail tel qu il arrive dans la plupart des boites. */
+[data-theme='dark'] #staffEmailsPage .em-shell .em-papier-feuille { box-shadow: 0 0 0 1px color-mix(in srgb, #ffffff 14%, transparent); }
+
+/* --- L assistant ---------------------------------------------------------- */
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia { display: grid; gap: 12px; padding: 14px; border-radius: 14px; background: var(--em-panel, var(--surface)); box-shadow: 0 0 0 1px var(--line); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia--bande { background: var(--em-well, var(--surface)); box-shadow: none; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tete strong { font-size: 15px; font-weight: 650; color: var(--text); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-sait { margin: -6px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-qui { display: grid; gap: 2px; min-width: 0; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-qui strong { font-size: 15px; font-weight: 650; color: var(--text); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-qui small { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-depart { flex: none; height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-fil { display: grid; align-content: start; gap: 10px; min-height: 0; margin: 0; padding: 0; overflow: auto; overscroll-behavior: contain; list-style: none; scrollbar-gutter: stable; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia--bande .em-ia-fil { max-height: 280px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour { display: grid; gap: 8px; max-width: 94%; min-width: 0; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour p { margin: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-equipe { justify-self: end; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--accent-soft); color: var(--text); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-aide { justify-self: start; padding: 10px 13px; border-radius: 14px 14px 14px 4px; background: var(--em-well, color-mix(in srgb, var(--text) 4%, var(--surface))); color: var(--text); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia--bande .em-ia-tour.is-aide { background: var(--surface); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-accueil { max-width: 100%; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-refus { justify-self: start; padding: 10px 13px; border-radius: 12px; background: color-mix(in srgb, var(--danger) 9%, var(--surface)); color: var(--text); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-note,
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-plus { justify-self: center; max-width: 100%; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-note p { font-size: 12.5px; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-travail { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour-geste { justify-self: start; height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour-etat { font-size: 12.5px !important; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-idees { display: grid; gap: 6px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-idee { padding: 10px 12px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-conseils { display: grid; gap: 4px; margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-objets { display: grid; gap: 6px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-objet { padding: 9px 12px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-objet.is-choisi { border-color: var(--console-selected); box-shadow: inset 0 0 0 1px var(--console-selected); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-gestes { display: flex; flex-wrap: wrap; gap: 6px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-geste { height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); font-size: 13px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; padding: 8px; border-radius: 14px; background: var(--surface); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie .em-ia-brief { width: 100%; height: auto; min-height: 44px; max-height: 160px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; resize: none; field-sizing: content; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie .em-ia-brief:focus-visible { outline: none; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie:focus-within { box-shadow: 0 0 0 2px var(--console-focus); }
+/* « Demander », encadre : le seul bouton plein d un editeur est celui qui envoie ou enregistre le mail. */
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-envoyer { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-envoyer svg { width: 16px; height: 16px; }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie-aide { margin: -4px 0 0; font-size: 13px; color: var(--danger); }
+/* La colonne de l atelier : pleine hauteur, la conversation defile, la saisie reste en bas. */
+#staffEmailsPage .em-shell .em-ia--colonne { position: sticky; top: 12px; grid-template-rows: auto auto minmax(0, 1fr); grid-auto-rows: auto; min-height: 400px; max-height: max(400px, calc(100vh - 310px)); }
+#staffEmailsPage .em-shell .em-ia--colonne.em-ia--suite { grid-template-rows: auto minmax(0, 1fr); }
+:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-saisie-aide:empty { display: none; }
+@media (hover: hover) {
+  :is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-idee, .em-ia-objet, .em-ia-tour-geste, .em-ia-depart, .em-ia-geste, .em-ia-envoyer):not(:disabled):hover { border-color: var(--line-strong); background: var(--em-hover, color-mix(in srgb, var(--text) 4%, var(--surface))); }
+  #staffEmailsPage .em-shell .em-atelier-nom #pv2TplName:hover:not(:focus-visible) { background: var(--em-hover); }
+}
+:is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-idee, .em-ia-objet, .em-ia-tour-geste, .em-ia-depart, .em-ia-envoyer):focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+:is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-idee, .em-ia-objet, .em-ia-tour-geste, .em-ia-depart, .em-ia-envoyer):disabled { cursor: default; opacity: 0.55; }
+
+/* Un petit ecran de PC : la liste s efface quand un modele est ouvert (« Fermer » la rend), l assistant reste a cote. */
+@container em-main (max-width: 1120px) {
+  #staffEmailsPage .em-shell .em-tpl.is-ouvert { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-tpl.is-ouvert .em-tpl-gauche { display: none; }
+}
+@container em-atelier (max-width: 760px) {
+  #staffEmailsPage .em-shell .em-atelier-corps { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-ia--colonne { position: static; min-height: 0; max-height: none; }
+  #staffEmailsPage .em-shell .em-ia--colonne .em-ia-fil { max-height: 360px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(#staffEmailsPage, #pv2MailOverlay) :is(.em-ia-idee, .em-ia-objet, .em-ia-tour-geste, .em-ia-depart) { transition: none; }
+}
+/* =========================================================================
+   APPARENCE EN RUBRIQUES (2026-11-13)
+   Ansar, 2026-11-12, devant la grille de vignettes et ses trois rangees de
+   boutons : « je comprends juste rien ». Quatre rubriques en haut a gauche
+   (Style, Couleur, Signature, En-tete et pied), chacune dit ce qui est
+   choisi ; une seule ouverte. Un style par ligne : sa vignette, son nom, ce
+   qu il fait, « Choisi » sur le sien. A droite, ce que recoit le client, en
+   grand, avec Enregistrer et « M'envoyer un test » au-dessus, pas sous un
+   apercu de 600 px.
+   ========================================================================= */
+#staffEmailsPage .em-shell .pv2-design-layout.em-ap { grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); align-items: start; gap: 20px; }
+#staffEmailsPage .em-shell .em-ap .em-ap-reglages { display: grid; gap: 0; min-width: 0; }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubriques { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--em-track); }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubrique { display: grid; gap: 1px; min-width: 0; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubrique strong { overflow: hidden; font-size: 13.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubrique small { overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubrique.is-active { background: var(--em-pill); box-shadow: var(--em-pill-shadow); }
+#staffEmailsPage .em-shell .em-ap .em-ap-rubrique:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+#staffEmailsPage .em-shell .em-ap .em-ap-panneau { display: grid; gap: 16px; margin-top: 16px; min-width: 0; }
+#staffEmailsPage .em-shell .em-ap .em-ap-question { margin: 0; font-size: 17px; font-weight: 650; line-height: 1.3; color: var(--text); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-famille { display: grid; gap: 8px; margin: 0; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-titre { display: grid; gap: 2px; margin: 0; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-titre strong { font-size: 14.5px; font-weight: 650; color: var(--text); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-titre small { font-size: 13px; line-height: 1.45; color: var(--muted); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-grille.em-ap-styles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-carte.em-ap-style { position: relative; display: grid; grid-template-columns: 124px minmax(0, 1fr); align-items: center; gap: 14px; padding: 8px 12px 8px 8px; border-radius: 12px; background: var(--em-panel); box-shadow: 0 0 0 1px var(--line); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-carte.em-ap-style.is-active { background: color-mix(in srgb, var(--console-selected) 6%, var(--em-panel)); box-shadow: 0 0 0 2px var(--console-selected); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-vignette.em-ap-style-vignette { width: 124px; height: 92px; border-radius: 8px; background: #f4f5f7; box-shadow: 0 0 0 1px var(--line); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-carte.is-active .em-galerie-vignette.em-ap-style-vignette { box-shadow: 0 0 0 1px var(--line); }
+#staffEmailsPage .em-shell .em-ap .em-ap-style-vignette .em-galerie-cadre { width: 640px; height: 480px; transform: scale(0.19375); }
+#staffEmailsPage .em-shell .em-ap .em-galerie-choix.pv2-design-preset { gap: 3px; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-choix.pv2-design-preset::after { border-radius: 12px; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-choix.pv2-design-preset:focus-visible::after { outline: 2px solid var(--console-focus); outline-offset: 3px; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-choix.pv2-design-preset strong { font-size: 15px; font-weight: 650; }
+#staffEmailsPage .em-shell .em-ap .em-galerie-choix.pv2-design-preset small { font-size: 13px; line-height: 1.4; }
+#staffEmailsPage .em-shell .em-ap .em-ap-choisi { justify-self: start; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: var(--console-selected); color: #ffffff; font-size: 12px; font-weight: 600; line-height: 1.5; }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14.5px; font-weight: 650; color: var(--text); cursor: pointer; list-style: none; }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary::-webkit-details-marker { display: none; }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 160ms ease-out; }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant[open] > summary::before { transform: rotate(45deg); }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary span { min-width: 22px; padding: 0 7px; border-radius: 999px; background: var(--em-track); font-size: 12px; font-weight: 600; text-align: center; color: var(--muted); }
+#staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-radius: 6px; }
+
+/* --- Ce que recoit le client --------------------------------------------- */
+#staffEmailsPage .em-shell .em-ap .pv2-design-preview.em-ap-apercu { gap: 12px; padding: 16px; }
+#staffEmailsPage .em-shell .em-ap .em-ap-barre { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+#staffEmailsPage .em-shell .em-ap .em-ap-barre-texte { display: grid; gap: 2px; min-width: 0; }
+#staffEmailsPage .em-shell .em-ap .em-ap-titre { margin: 0; font-size: 17px; font-weight: 650; color: var(--text); }
+#staffEmailsPage .em-shell .em-ap .em-ap-etat { margin: 0; font-size: 13px; color: var(--muted); }
+#staffEmailsPage .em-shell .em-ap .em-ap-etat.is-dirty { font-weight: 600; color: var(--text); }
+#staffEmailsPage .em-shell .em-ap .pv2-design-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; background: none; }
+#staffEmailsPage .em-shell .em-ap .pv2-design-actions .pv2-btn { height: 40px; padding: 0 16px; border-radius: var(--radius-md); font-size: 14px; font-weight: 600; }
+#staffEmailsPage .em-shell .em-ap .pv2-design-actions .pv2-btn.em-second { border: 1px solid var(--control-border); background: var(--surface); color: var(--text); }
+#staffEmailsPage .em-shell .em-ap .pv2-design-actions .pv2-btn.primary { border: 0; background: var(--console-selected); color: #ffffff; }
+#staffEmailsPage .em-shell .em-ap .pv2-design-actions .pv2-btn:disabled { opacity: 0.5; }
+#staffEmailsPage .em-shell .em-ap .em-ap-exemple { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+#staffEmailsPage .em-shell .em-ap .em-ap-exemple select { height: 34px; padding: 0 30px 0 10px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background-color: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; }
+#staffEmailsPage .em-shell .em-ap .em-ap-exemple select:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+#staffEmailsPage .em-shell .em-ap .pv2-design-frame { height: calc(100vh - 300px); min-height: 460px; }
+#staffEmailsPage .em-shell .em-ap .pv2-seq-preview-head { flex-wrap: wrap; gap: 8px 12px; }
+#staffEmailsPage .em-shell .em-ap .pv2-seq-preview-subject::before { content: "Objet"; margin-right: 8px; font-weight: 500; color: var(--muted); }
+@media (hover: hover) {
+  #staffEmailsPage .em-shell .em-ap .em-ap-rubrique:not(.is-active):hover { background: var(--em-nav-hover); }
+  #staffEmailsPage .em-shell .em-ap .em-galerie-carte.em-ap-style:not(.is-active):hover { box-shadow: 0 0 0 1px var(--line-strong); }
+  #staffEmailsPage .em-shell .em-ap .pv2-design-actions .pv2-btn.em-second:not(:disabled):hover { border-color: var(--line-strong); background: var(--em-hover); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #staffEmailsPage .em-shell .em-ap .em-ap-famille.is-avant > summary::before { transition: none; }
+}
+@container em-main (max-width: 980px) {
+  #staffEmailsPage .em-shell .pv2-design-layout.em-ap { grid-template-columns: minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-ap .pv2-design-preview.em-ap-apercu { position: static; max-height: none; }
+  #staffEmailsPage .em-shell .em-ap .pv2-design-frame { height: 560px; }
+}
+@container em-main (max-width: 520px) {
+  #staffEmailsPage .em-shell .em-ap .em-ap-rubriques { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #staffEmailsPage .em-shell .em-ap .em-galerie-carte.em-ap-style { grid-template-columns: 96px minmax(0, 1fr); }
+  #staffEmailsPage .em-shell .em-ap .em-galerie-vignette.em-ap-style-vignette { width: 96px; height: 72px; }
+  #staffEmailsPage .em-shell .em-ap .em-ap-style-vignette .em-galerie-cadre { transform: scale(0.15); }
+}

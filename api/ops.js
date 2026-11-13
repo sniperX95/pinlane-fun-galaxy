@@ -173,7 +173,7 @@ const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
-const { estFondateur } = require('../lib/fondateur-invisible');
+const { estFondateur, signatureVisible } = require('../lib/fondateur-invisible');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
@@ -2204,7 +2204,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     });
     if (!scopedSession) return;
     const channel = body.channel === 'sms' ? 'sms' : 'email';
-    const staffMember = sendSession.member?.name || sendSession.member?.id || 'staff';
+    // L auteur d un envoi, rien pour le fondateur (lib/fondateur-invisible.js).
+    const staffMember = signatureVisible(sendSession, { repli: 'staff' });
     let result;
     try {
       result = await sendClientMessage({
@@ -3253,7 +3254,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         reason: body.reason || 'custom',
         subject: body.subject || '',
         body: body.body || '',
-        staffMember: relanceSession.member?.name || relanceSession.member?.id || 'staff',
+        staffMember: signatureVisible(relanceSession, { repli: 'staff' }),
         member: membreDeSession(relanceSession),
         // Facultative : la carte de l assistant la fige, un clic rejoue ne relance pas deux fois.
         attemptId: body.attemptId || '',
@@ -3427,7 +3428,7 @@ ${draftBody}`,
       fromLabel: identity?.label || '',
       category: body.category || 'direct',
       templateRef: body.templateRef || '',
-      staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
+      staffMember: signatureVisible(options.session, { repli: 'direction' }),
       identityId: body.identityId || null,
       replyToCommunicationId: body.replyToCommunicationId ?? null,
       scheduledAt: body.scheduledAt || null,
@@ -3903,11 +3904,14 @@ ${draftBody}`,
   }
 
   // QUI A LU. Le lecteur est le membre de SESSION, jamais un id fourni par le
-  // client ; une session de secours (fondateur) ne compte pas comme lecture.
+  // client. LE FONDATEUR NE LIT POUR PERSONNE (Ansar, 2026-11-13 : « ça doit pas
+  // afficher que c est ouvert ou lu par fondateur Pinlane ») : sa session, de
+  // secours ou non, ne pose aucune lecture, le mail reste « nouveau » pour
+  // l equipe tant que personne du centre ne l a ouvert.
   if (action === 'markCommunicationRead') {
     const lectureCenterId = requireConcreteCenter('lecture d un mail');
-    if (options.session && options.session.emergency) {
-      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'secours' });
+    if (estFondateur(options.session)) {
+      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'fondateur' });
       return;
     }
     const membre = membreDeSession(options.session);

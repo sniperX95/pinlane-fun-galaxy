@@ -197,12 +197,13 @@ async function requete(texte, params = []) {
   if (/^select 1 from centers where id = \$1/i.test(sql)) return db.centers.some((c) => c.id === params[0]) ? lignes([{ '?column?': 1 }]) : vide();
 
   // Les ecritures.
-  if (/^insert into/i.test(sql)) {
-    const lu = lireInsert(sql, params);
-    if (!lu || !db[lu.table]) { NON_COUVERTES.push(sql.slice(0, 160)); return vide(); }
-    const ligne = { ...lu.row, id: db[lu.table].length + 1, created_at: tic() };
-    if (lu.table === 'audit_log') ligne.occurred_at = ligne.created_at;
-    db[lu.table].push(ligne);
+  // Une insertion par VALUES : la ligne telle que le SQL la pose. Les autres (insert ... select) ont leur
+  // propre lecture plus bas.
+  const insertion = /^insert into/i.test(sql) ? lireInsert(sql, params) : null;
+  if (insertion && db[insertion.table]) {
+    const ligne = { ...insertion.row, id: db[insertion.table].length + 1, created_at: tic() };
+    if (insertion.table === 'audit_log') ligne.occurred_at = ligne.created_at;
+    db[insertion.table].push(ligne);
     return lignes([{ id: ligne.id, occurred_at: ligne.occurred_at || ligne.created_at }]);
   }
 
@@ -218,6 +219,53 @@ async function requete(texte, params = []) {
     return lignes([...comptes].map(([cle, n]) => ({ actor_member_id: cle.split('|')[0], action: cle.split('|')[1], n })));
   }
   if (/^select \* from ops_events/i.test(sql)) return vide();
+
+  // Les mails : les fils, les messages, qui les a lus, qui a la main.
+  const ids = (p) => (Array.isArray(p) ? p.map(Number) : []);
+  if (/^select count\(\*\)::int as n from email_threads where center_id = \$1 and inbound_count > 0/i.test(sql)) {
+    return lignes([{ n: db.email_threads.filter((t) => t.center_id === params[0] && t.inbound_count > 0 && (!/status = \$2/.test(sql) || t.status === params[1])).length }]);
+  }
+  if (/^select \* from email_threads where center_id = \$1 and inbound_count > 0/i.test(sql)) {
+    return lignes(db.email_threads.filter((t) => t.center_id === params[0] && t.inbound_count > 0 && (!/status = \$2/.test(sql) || t.status === params[1])).map((t) => ({ ...t })));
+  }
+  if (/^select \* from email_threads where id = \$1 and center_id = \$2/i.test(sql)) {
+    const t = db.email_threads.find((x) => Number(x.id) === Number(params[0]) && x.center_id === params[1]);
+    return t ? lignes([{ ...t }]) : vide();
+  }
+  const dernierParFil = (filtre) => {
+    const parFil = new Map();
+    db.communications.filter(filtre).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id)
+      .forEach((c) => { if (!parFil.has(c.thread_id)) parFil.set(c.thread_id, c); });
+    return lignes([...parFil.values()].map((c) => ({ ...c })));
+  };
+  if (/^select distinct on \(thread_id\) id, thread_id, direction, body, payload, created_at, sent_at from communications where thread_id = any/i.test(sql)) {
+    return dernierParFil((c) => ids(params[0]).includes(Number(c.thread_id)) && c.center_id === params[1]);
+  }
+  if (/^select distinct on \(thread_id\) id, thread_id, payload, created_at from communications where thread_id = any\(\$1::bigint\[\]\) and center_id = \$2 and direction = 'inbound'/i.test(sql)) {
+    return dernierParFil((c) => ids(params[0]).includes(Number(c.thread_id)) && c.center_id === params[1] && c.direction === 'inbound');
+  }
+  if (/^select distinct on \(thread_id\) thread_id, payload, sent_at, created_at from communications where thread_id = any\(\$1::bigint\[\]\) and center_id = \$2 and direction = 'outbound' and coalesce\(payload->>'sentBy', ''\) <> ''/i.test(sql)) {
+    return dernierParFil((c) => ids(params[0]).includes(Number(c.thread_id)) && c.center_id === params[1] && c.direction === 'outbound' && Boolean(c.payload && c.payload.sentBy));
+  }
+  if (/^select \* from communications where thread_id = \$1 and center_id = \$2 order by created_at asc/i.test(sql)) {
+    return lignes(db.communications.filter((c) => Number(c.thread_id) === Number(params[0]) && c.center_id === params[1]).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map((c) => ({ ...c })));
+  }
+  if (/^select communication_id, member_id, member_name, member_role, (first_read_at, )?last_read_at(, read_count)? from communication_reads where communication_id = any/i.test(sql)) {
+    return lignes(db.communication_reads.filter((r) => ids(params[0]).includes(Number(r.communication_id))).map((r) => ({ ...r })));
+  }
+  if (/^select communication_id, member_id, member_name, member_role, expires_at from ops_email_claims where communication_id = any/i.test(sql)) {
+    return lignes(db.ops_email_claims.filter((r) => ids(params[0]).includes(Number(r.communication_id))).map((r) => ({ ...r })));
+  }
+  if (/^insert into communication_reads \(communication_id, member_id, member_name, member_role, first_read_at, last_read_at, read_count\) select c\.id, \$2, \$3, \$4, now\(\), now\(\), 1 from communications c where c\.id = any\(\$1::bigint\[\]\) and c\.center_id = \$5/i.test(sql)) {
+    const touches = db.communications.filter((c) => ids(params[0]).includes(Number(c.id)) && c.center_id === params[4]);
+    touches.forEach((c) => {
+      const deja = db.communication_reads.find((r) => Number(r.communication_id) === Number(c.id) && r.member_id === params[1]);
+      if (deja) { deja.read_count += 1; deja.last_read_at = tic(); deja.member_name = params[2]; deja.member_role = params[3]; return; }
+      db.communication_reads.push({ communication_id: c.id, member_id: params[1], member_name: params[2], member_role: params[3], first_read_at: tic(), last_read_at: tic(), read_count: 1 });
+    });
+    return lignes(touches.map((c) => ({ communication_id: c.id })));
+  }
+  if (/from email_events|from email_threads where center_id = \$1 and lower\(contact_email\)|from center_automation_settings|from email_identities|from custom_sequences/i.test(sql)) return vide();
   if (/^select client_key, body, updated_by, updated_at from client_notes where center_id = \$1 and updated_at >= \$2::date/i.test(sql)) {
     return lignes(db.client_notes.filter((n) => n.center_id === params[0]).map((n) => ({ client_key: n.client_key, body: n.body, updated_by: n.updated_by, updated_at: n.updated_at })));
   }
@@ -280,6 +328,10 @@ function remplirBase() {
       { id: 9201, center_id: 'libramont', channel: 'staff', name: 'Famille Lambert', phone: '0470123456', email: 'lambert@exemple.be', date: '2026-11-15', start_time: '15:00', duration: 1, type: 'bowling', pax: 6, status: 'pending', price: 60, lanes: [3], notes: '', ops_plan: null, created_at: t0, updated_at: t0 },
     ],
     client_notes: [],
+    email_threads: [],
+    communications: [],
+    communication_reads: [],
+    ops_email_claims: [],
   };
   const journal = (champs) => db.audit_log.push({ id: db.audit_log.length + 1, center_id: 'libramont', actor_kind: 'staff', actor_role_id: null, surface: 'api/staff-reservations.js', method: 'PATCH', entity_type: 'reservation', entity_id: '9201', outcome: 'success', denied_reason: null, context: {}, request_id: '', ...champs });
   journal({ occurred_at: '2026-11-10T10:00:00.000Z', actor_member_id: 'libramont:direction-marie', actor_label: 'Marie Dumont', action: 'updateReservation', changes: { pax: { before: 4, after: 6 } } });
@@ -330,10 +382,24 @@ function doublure(u, res) {
   if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], durationOptions: [], center: fiche(db.centers[0]) });
   return J({ ok: true, reservations: [], laneStatuses: {}, communications: [], blocks: [], events: [], clients: [], suggestions: [], samples: [], centers: [], revision: 'banc' });
 }
+// Ce que la console envoie comme lectures (markCommunicationRead), vu par le banc.
+const lecturesEnvoyees = [];
+const LECTURES_REELLES_DE_LA_CONSOLE = new Set(['emailThreads', 'emailThread']);
+function lireLeCorps(req) {
+  return new Promise((resolve) => { let brut = ''; req.on('data', (m) => { brut += m; }); req.on('end', () => resolve(brut)); });
+}
 const serveur = http.createServer(async (req, res) => {
   const u = new URL(req.url, BASE);
   const route = ROUTES[u.pathname];
-  if (route && (req.headers['x-banc'] === 'reel' || u.pathname === '/api/staff-auth')) {
+  if (u.pathname === '/api/ops' && req.method === 'POST' && req.headers['x-banc'] !== 'reel') {
+    let corps = {};
+    try { corps = JSON.parse(await lireLeCorps(req)); } catch (e) { corps = {}; }
+    if (corps.action === 'markCommunicationRead') lecturesEnvoyees.push(corps.communicationIds);
+    doublure(u, res);
+    return;
+  }
+  const lectureReelle = u.pathname === '/api/ops' && req.method === 'GET' && LECTURES_REELLES_DE_LA_CONSOLE.has(u.searchParams.get('action'));
+  if (route && (req.headers['x-banc'] === 'reel' || u.pathname === '/api/staff-auth' || lectureReelle)) {
     try {
       await require(API(route))(req, res);
     } catch (error) {
@@ -511,6 +577,98 @@ async function reponses() {
 }
 
 // ---------------------------------------------------------------------------
+// [L] LES MAILS : qui a lu, qui a la main, qui a repondu.
+// ---------------------------------------------------------------------------
+function poserLesMails() {
+  const { sentByDuMembre } = require(LIB('ops-communications.js')).__test;
+  const fil = (id, statut) => ({ id, center_id: 'libramont', contact_email: `client${id}@exemple.be`, contact_name: `Client ${id}`, subject: `Demande ${id}`, status: statut, origin: 'inbound', message_count: 2, inbound_count: 1, outbound_count: 1, last_message_at: '2026-11-12T10:00:00.000Z', created_at: '2026-11-10T08:00:00.000Z', updated_at: '2026-11-12T10:00:00.000Z' });
+  const message = (id, threadId, direction, quand, payload = {}) => ({ id, thread_id: threadId, center_id: 'libramont', direction, subject: `Demande ${threadId}`, body: 'Bonjour, une question.', status: direction === 'inbound' ? 'received' : 'sent', created_at: quand, sent_at: direction === 'outbound' ? quand : null, payload, recipient: `client${threadId}@exemple.be`, template_id: '' });
+  const marie = { memberId: 'libramont:direction-marie', memberName: 'Marie Dumont', memberRole: 'Direction' };
+  db.email_threads.push(fil(501, 'open'), fil(502, 'answered'), fil(503, 'answered'));
+  db.communications.push(
+    message(7001, 501, 'inbound', '2026-11-12T09:00:00.000Z', { fromEmail: 'client501@exemple.be' }),
+    message(7002, 502, 'inbound', '2026-11-11T09:00:00.000Z', { fromEmail: 'client502@exemple.be' }),
+    message(7003, 502, 'outbound', '2026-11-11T10:00:00.000Z', { sentBy: marie }),
+    // Une vieille reponse du fondateur, ecrite avant le 13/11 : son nom est en base.
+    message(7004, 502, 'outbound', '2026-11-11T11:00:00.000Z', { sentBy: { memberId: FONDATEUR, memberName: NOM_ACTUEL, memberRole: 'Proprietaire plateforme' } }),
+    message(7005, 503, 'inbound', '2026-11-12T08:00:00.000Z', { fromEmail: 'client503@exemple.be' }),
+    message(7006, 503, 'outbound', '2026-11-12T08:30:00.000Z', { sentBy: marie }),
+    // Une reponse du fondateur ecrite aujourd hui, par la vraie fonction du serveur.
+    message(7007, 503, 'outbound', '2026-11-12T09:30:00.000Z', { sentBy: sentByDuMembre({ id: FONDATEUR, name: NOM_ACTUEL, role: 'Direction' }) }),
+  );
+  const lu = (communicationId, memberId, memberName) => ({ communication_id: communicationId, member_id: memberId, member_name: memberName, member_role: 'Direction', first_read_at: '2026-11-12T09:05:00.000Z', last_read_at: '2026-11-12T09:05:00.000Z', read_count: 1 });
+  db.communication_reads.push(lu(7001, FONDATEUR, NOM_ACTUEL), lu(7002, 'libramont:direction-marie', 'Marie Dumont'), lu(7002, SECOURS, NOM_DE_NAISSANCE));
+  db.ops_email_claims.push({ communication_id: 7001, member_id: FONDATEUR, member_name: NOM_ACTUEL, member_role: 'Direction', expires_at: '2099-01-01T00:00:00.000Z' });
+}
+
+async function mails() {
+  section = 'L';
+  remplirBase();
+  poserLesMails();
+  const { sentByDuMembre } = require(LIB('ops-communications.js')).__test;
+  const repondu = sentByDuMembre({ id: FONDATEUR, name: NOM_ACTUEL, role: 'Direction' });
+  ok(repondu && repondu.memberId === '' && repondu.memberName === '' && sentByDuMembre({ id: SECOURS, name: NOM_DE_NAISSANCE }).memberName === '' && sentByDuMembre({ id: 'libramont:direction-marie', name: 'Marie Dumont', role: 'Direction' }).memberName === 'Marie Dumont', '[L] une reponse du fondateur reste une reponse, sans son nom ; celle de Marie garde le sien', repondu);
+  const s = await sessionsDuBanc();
+  const fils = async (jeton) => appeler('/api/ops?action=emailThreads&centerId=libramont&filtre=tous', { jeton });
+  const parId = (r) => Object.fromEntries((((r.json && r.json.threads) || [])).map((t) => [t.id, t]));
+  const fMarie = await fils(s.marie.jeton);
+  const tM = parId(fMarie);
+  ok(fMarie.statut === 200 && tM[501] && tM[501].lecteurs.length === 0 && tM[501].prise === null, '[L] Direction : le mail que seul le fondateur a ouvert reste nouveau, sans prise', tM[501]);
+  ok(tM[502] && tM[502].lecteurs.length === 1 && tM[502].lecteurs[0].memberName === 'Marie Dumont', '[L] Direction : « Ouvert par » ne garde que Marie (ni le fondateur, ni sa session de secours)', tM[502] && tM[502].lecteurs);
+  ok(tM[502] && tM[502].status === 'answered' && !(tM[502].reponduPar && tM[502].reponduPar.memberName), '[L] Direction : sa vieille reponse reste « Répondu », sans son nom', tM[502] && tM[502].reponduPar);
+  ok(tM[503] && tM[503].reponduPar && tM[503].reponduPar.memberName === '', '[L] Direction : sa nouvelle reponse est la derniere, sans nom (jamais celle de Marie a sa place)', tM[503] && tM[503].reponduPar);
+  ok(!traceDuFondateur(fMarie.texte), '[L] Direction : aucune trace du fondateur dans la liste des mails', fMarie.texte.slice(0, 300));
+  const fLuc = await fils(s.luc.jeton);
+  ok(fLuc.statut === 200 && !traceDuFondateur(fLuc.texte) && parId(fLuc)[501].lecteurs.length === 0, '[L] Manager : pareil', fLuc.texte.slice(0, 200));
+  const fLui = await fils(s.fondateur.jeton);
+  const tF = parId(fLui);
+  ok(tF[501] && tF[501].lecteurs.some((l) => l.memberId === FONDATEUR) && tF[502].reponduPar && tF[502].reponduPar.memberName === NOM_ACTUEL, '[L] fondateur : il voit ses lectures et ses vieilles reponses', [tF[501] && tF[501].lecteurs, tF[502] && tF[502].reponduPar]);
+  const unFil = async (jeton) => appeler('/api/ops?action=emailThread&centerId=libramont&id=502', { jeton });
+  const dMarie = await unFil(s.marie.jeton);
+  const msg = (r, id) => (((r.json && r.json.messages) || []).find((m) => m.id === id) || {});
+  ok(dMarie.statut === 200 && msg(dMarie, 7002).lectures.length === 1 && msg(dMarie, 7004).sentBy === null && msg(dMarie, 7003).sentBy.memberName === 'Marie Dumont', '[L] Direction, le fil : « Lu par » sans lui, sa reponse dite par l equipe, celle de Marie a son nom', [msg(dMarie, 7002).lectures, msg(dMarie, 7004).sentBy]);
+  ok(!traceDuFondateur(dMarie.texte), '[L] Direction, le fil : aucune trace du fondateur', dMarie.texte.slice(0, 300));
+  const dLui = await unFil(s.fondateur.jeton);
+  ok(msg(dLui, 7002).lectures.length === 2 && msg(dLui, 7004).sentBy && msg(dLui, 7004).sentBy.memberName === NOM_ACTUEL, '[L] fondateur, le fil : tout', [msg(dLui, 7002).lectures, msg(dLui, 7004).sentBy]);
+  const lire = async (jeton) => appeler('/api/ops', { methode: 'POST', jeton, corps: { action: 'markCommunicationRead', centerId: 'libramont', communicationIds: [7005] } });
+  const avant = db.communication_reads.length;
+  const rLui = await lire(s.fondateur.jeton);
+  const rSecours = await lire(s.secours.jeton);
+  ok(rLui.statut === 200 && rLui.json.ignore === 'fondateur' && rSecours.json && rSecours.json.ignore === 'fondateur' && db.communication_reads.length === avant, '[L] le fondateur (et sa session de secours) ouvre un mail : aucune lecture posee', [rLui.texte, rSecours.texte]);
+  const rMarie = await lire(s.marie.jeton);
+  ok(rMarie.statut === 200 && db.communication_reads.some((r) => r.communication_id === 7005 && r.member_id === 'libramont:direction-marie'), '[L] Marie ouvre le meme mail : sa lecture est posee', rMarie.texte);
+  const { marquerLu } = require(LIB('email-threads.js'));
+  const direct = await marquerLu(requete, { centerId: 'libramont', communicationIds: [7006], member: { id: FONDATEUR, name: NOM_ACTUEL } });
+  ok(direct.marques === 0 && !db.communication_reads.some((r) => r.communication_id === 7006), '[L] marquerLu appele en direct pour le fondateur : rien', direct);
+}
+
+// Dans la console : le fondateur ouvre un fil, rien ne part ; Marie l ouvre, sa lecture part.
+async function mailsConsole() {
+  section = 'L';
+  remplirBase();
+  poserLesMails();
+  await sessionsDuBanc();
+  const essai = async (code) => {
+    const { ctx, page } = await ouvrirLaConsole(code, 'emails');
+    try {
+      lecturesEnvoyees.length = 0;
+      await page.waitForFunction(() => typeof window.pv2ThreadOpen === 'function', null, { timeout: 20000 });
+      // Le fil 503 : un message du client que ni Marie ni le fondateur n ont encore ouvert.
+      await page.evaluate(() => window.pv2ThreadOpen('503'));
+      await page.waitForFunction(() => Boolean(document.querySelector('.pv2-thread-row, [data-thread-id]')), null, { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(2500);
+      return [...lecturesEnvoyees];
+    } finally {
+      await ctx.close();
+    }
+  };
+  const parLui = await essai(CODES.fondateur);
+  const parMarie = await essai(CODES.marie);
+  ok(parMarie.length >= 1, '[L] console : Marie ouvre le fil, sa lecture part au serveur (le banc voit le geste)', parMarie);
+  ok(parLui.length === 0, '[L] console : le fondateur ouvre le meme fil, aucune lecture ne part', parLui);
+}
+
+// ---------------------------------------------------------------------------
 // [J] LES JOURNAUX SONT AU FONDATEUR SEUL : l assistant (le vrai aiguilleur des outils, lib/assistant-
 // outils.js) et la vraie console (onglet Journal d Equipe & acces).
 // ---------------------------------------------------------------------------
@@ -563,7 +721,7 @@ async function journauxAssistant() {
 // La vraie console, un navigateur a la fois (la RAM du poste est comptee).
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 let navigateur = null;
-async function ouvrirLaConsole(code) {
+async function ouvrirLaConsole(code, ecran = 'users') {
   const ctx = await navigateur.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-BE' });
   const page = await ctx.newPage();
   page.setDefaultTimeout(25000);
@@ -574,8 +732,8 @@ async function ouvrirLaConsole(code) {
   await page.locator('#loginPass').fill(code);
   await page.locator('#authOverlay button[type="submit"]').click();
   await page.waitForFunction(() => typeof window.renderStaffMenu === 'function' && Boolean(state.staffAuthSession) && document.getElementById('authOverlay').classList.contains('hidden'), null, { timeout: 30000 });
-  await page.evaluate(() => window.openStaffMenuPage('users'));
-  await page.waitForFunction(() => Boolean(document.querySelector('[data-equipe-page]')), null, { timeout: 20000 });
+  await page.evaluate((cible) => window.openStaffMenuPage(cible), ecran);
+  if (ecran === 'users') await page.waitForFunction(() => Boolean(document.querySelector('[data-equipe-page]')), null, { timeout: 20000 });
   return { ctx, page };
 }
 async function journalConsole() {
@@ -632,6 +790,14 @@ const CONTRE_PREUVES = [
     de: 'const sansFondateur = res.__nomsDuFondateur ?', vers: 'const sansFondateur = false ?' },
   { nom: 'le nom actuel du fondateur jamais lu', section: 'M', jouer: reponses, fichier: LIB('fondateur-invisible.js'),
     de: "lus = (result && Array.isArray(result.rows) ? result.rows : []).map((row) => row && row.name).filter(Boolean);", vers: 'lus = [];' },
+  { nom: 'la lecture du fondateur acceptee par la route', section: 'L', jouer: mails, fichier: API('ops.js'),
+    de: "    if (estFondateur(options.session)) {\n      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'fondateur' });", vers: "    if (false) {\n      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'fondateur' });" },
+  { nom: 'la lecture du fondateur ecrite par marquerLu', section: 'L', jouer: mails, fichier: LIB('email-threads.js'),
+    de: "if (require('./fondateur-invisible').estMembreFondateur(memberId)) return { marques: 0 };", vers: '' },
+  { nom: 'la reponse du fondateur signee de son nom', section: 'L', jouer: mails, fichier: LIB('ops-communications.js'),
+    de: "if (require('./fondateur-invisible').estMembreFondateur(memberId)) return { memberId: '', memberName: '', memberRole: '' };", vers: '' },
+  { nom: 'la console du fondateur qui marque lu', section: 'L', jouer: mailsConsole, ecran: { fichier: 'assets/staff-pages-v2.js',
+    de: 'if (!fondateur && nonLus.length && !pv2Threads.marquesLus.has(cle)) {', vers: 'if (nonLus.length && !pv2Threads.marquesLus.has(cle)) {' } },
   { nom: 'le journal du centre rendu a la Direction', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
     de: "droits: ['platform.admin'],\n      ce: 'le journal du centre',", vers: "droits: ['direction.view', 'dashboard.view'],\n      ce: 'le journal du centre'," },
   { nom: 'le fondateur compte dans l equipe du centre', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
@@ -683,11 +849,13 @@ async function contrePreuves() {
     await equipe();
     await journalDAudit();
     await reponses();
+    await mails();
     await journauxAssistant();
     if (!process.argv.includes('--sans-ecran')) {
       const { chromium } = require(require.resolve('playwright-core', { paths: [ROOT] }));
       navigateur = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
       await journalConsole();
+      await mailsConsole();
     }
     if (!process.argv.includes('--sans-contre-preuves')) await contrePreuves();
   } catch (error) {

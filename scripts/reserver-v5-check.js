@@ -131,7 +131,7 @@ const MUTATIONS = {
   // pas toute les heures »).
   refusRetire: { fichier: 'assets/app-main.js', de: '  return { suite: brut.suite, lue, liste: brut.liste };', vers: "  return { suite: brut.suite, lue, liste: lue ? brut.liste.filter((x) => !x.verdict || x.verdict.statut !== 'ko') : brut.liste };", vise: ['D'] },
   // L heure refusee se tait : pas de mot sur la touche.
-  refusMuet: { fichier: 'assets/app-main.js', de: '  if (coince) return rsMotCoince(id, coince);\n', vers: '', vise: ['D'] },
+  refusMuet: { fichier: 'assets/app-main.js', de: '  if (coince) return rsMotCoince(id, coince, pendant);\n', vers: '', vise: ['D'] },
   // Le poste invente son mot au lieu de dire celui du serveur.
   motDuPoste: { fichier: 'assets/app-main.js', de: "  const court = String((verdict && verdict.court) || 'impossible');", vers: "  const court = 'impossible';", vise: ['D'] },
   // Le nom de la touche ne dit plus la phrase du serveur.

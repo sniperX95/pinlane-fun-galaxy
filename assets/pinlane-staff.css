@@ -9639,6 +9639,27 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-autre input::-webkit-outer-spin-button, .qb-modal.rv.rs .rs-autre input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .qb-modal.rv.rs .rs-autre input::placeholder { color: var(--muted); opacity: 1; }
 
+/* LA QUESTION DES JOUEURS (rsQuestionJoueursHtml, 2026-11-13) : une carte au-dessus de la
+   colonne, sous le ticket qui reste utilisable. Les touches de la rangee du haut en plus
+   grand ; un voile clair (pas de flou) dit que la colonne attend la reponse. */
+.qb-modal.rv.rs .rs-qj-zone { position: absolute; inset: 0; z-index: 6; display: grid; justify-items: center; align-items: start; padding: 88px var(--rs-gouttiere) 24px; }
+.qb-modal.rv.rs .rs-qj-zone:empty { display: none; }
+.qb-modal.rv.rs .rs-qj-voile { position: absolute; inset: 0; background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.qb-modal.rv.rs .rs-qj { position: relative; width: min(600px, 100%); display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 20px 22px 12px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-overlay), inset 0 0 0 1px var(--rs-ligne); animation: rs-qj-entree var(--rs-duree) var(--rs-sortie); }
+.qb-modal.rv.rs .rs-qj-t { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; color: var(--text); }
+.qb-modal.rv.rs .rs-qj-ns { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.qb-modal.rv.rs .rs-qj-n { min-width: 0; height: 52px; padding: 0; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); font-size: 18px; font-weight: 600; line-height: 1; text-align: center; }
+.qb-modal.rv.rs .rs-qj-autre { display: flex; align-items: stretch; cursor: text; }
+.qb-modal.rv.rs .rs-qj-autre input, .qb-modal.rv.rs .rs-qj-autre input:focus { width: 100%; height: 100%; min-height: 0; padding: 0 4px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; outline: none; text-align: center; font-family: inherit; font-size: 15px; font-weight: 550; color: inherit; -moz-appearance: textfield; appearance: textfield; }
+.qb-modal.rv.rs .rs-qj-autre input:focus { box-shadow: inset 0 0 0 1.5px var(--console-focus); }
+.qb-modal.rv.rs .rs-qj-autre input::-webkit-outer-spin-button, .qb-modal.rv.rs .rs-qj-autre input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qb-modal.rv.rs .rs-qj-autre input::placeholder { color: var(--muted); opacity: 1; }
+.qb-modal.rv.rs .rs-qj-tard { align-self: center; min-height: 36px; padding: 0 12px; }
+@keyframes rs-qj-entree { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (hover: hover) { .qb-modal.rv.rs .rs-qj-n:hover { background: var(--rs-survol); } }
+@media (prefers-reduced-motion: reduce) { .qb-modal.rv.rs .rs-qj { animation: none; } }
+@media (max-width: 900px) { .qb-modal.rv.rs .rs-qj-zone { padding-top: 24px; } .qb-modal.rv.rs .rs-qj { padding: 16px 14px 10px; } .qb-modal.rv.rs .rs-qj-n { height: 48px; } }
+
 /* LE SEGMENT : jour, duree, parties */
 .qb-modal.rv.rs .rs-seg { flex: none; display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--rs-touche); }
 .qb-modal.rv.rs .rs-seg button, .qb-modal.rv.rs .rs-seg-date { position: relative; display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 14px; font-weight: 500; line-height: 1; color: var(--muted); white-space: nowrap; }
@@ -9678,7 +9699,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* LES HEURES */
 .qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 52px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }
 .qb-modal.rv.rs .rs-h b { font-size: 16px; font-weight: 600; line-height: 1.15; }
-.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* LE MOT D UNE HEURE SE LIT EN ENTIER (2026-11-13, Ansar : « super buggé »). Coupe a la largeur
+   de la touche, « manque 1 piste » devenait « manque 1… » et « bowling, groupe occupé »
+   « bowling, … » : la raison du refus ne se lisait plus. Il passe a la ligne ; la touche, haute
+   de ce qu elle dit, donne sa hauteur a la rangee (.rs-s-l:not(.is-formule) .rs-h). */
+.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); max-width: 100%; overflow-wrap: break-word; text-wrap: balance; }
 /* Sur tablette et telephone, l ecart se resserre ; celui des lignes garde la place des etiquettes. */
 @media (max-width: 1100px) {
   .qb-modal.rv.rs .rs-s-l { gap: 12px 4px; }
@@ -9698,6 +9723,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-h.is-coince, .qb-modal.rv.rs .rs-p.is-coince, .qb-modal.rv.rs .rs-p.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-coince b, .qb-modal.rv.rs .rs-p.is-coince b, .qb-modal.rv.rs .rs-p.is-efface b { font-weight: 500; }
 .qb-modal.rv.rs .rs-h.is-coince small, .qb-modal.rv.rs .rs-p.is-coince small { color: var(--danger); }
+/* UNE HEURE PENDANT L AUTRE ACTIVITE DU GROUPE qui la suivra (rsPendant) : elle reste une
+   heure ordinaire, touchable, et son mot dit « pendant le bowling » dans le ton d avis de la
+   fenetre (l orange des « Partagée avec ») ; le toucher la prend, l autre activite passe
+   apres et le ticket le dit. Celle que le serveur refuse garde le rouge de .is-coince. */
+.qb-modal.rv.rs .rs-h.is-pendant small, .qb-modal.rv.rs .rs-p.is-pendant small { font-weight: 500; color: var(--warning); }
 .qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 62px - 6px); max-height: calc(var(--rs-r, 1) * 114px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-heures .rs-h { height: auto; }
 
@@ -9805,6 +9835,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-tk-n small.is-ko { font-weight: 550; color: var(--danger); }
 .qb-modal.rv.rs .rs-tk-n small.is-att { font-weight: 500; color: var(--warning); }
+/* L ACTIVITE QUI A SUIVI LE GESTE (rsNoterDeplacement) : « Déplacé de 18:00 à 19:00 », dans
+   l orange des avis, sur un fond qui s eteint pour que l oeil la trouve. */
+.qb-modal.rv.rs .rs-tk-n small.is-deplace { justify-self: start; margin: 1px 0; padding: 1px 6px; border-radius: 5px; background: var(--warning-soft); font-weight: 600; color: var(--warning); }
+@media (prefers-reduced-motion: no-preference) { .qb-modal.rv.rs .rs-tk-a.is-deplacee { animation: rs-deplacee 1.4s var(--rs-sortie); } }
+@keyframes rs-deplacee { from { background: var(--warning-soft); } }
 .qb-modal.rv.rs .rs-tk-q { font-size: 14px; font-weight: 600; line-height: 1; }
 .qb-modal.rv.rs .rs-tk-a em { font-style: normal; font-size: 15px; font-weight: 600; white-space: nowrap; }
 /* LE CLIENT AU TICKET (2026-11-11) : telephone obligatoire, nom, note pour l equipe. */
@@ -9871,7 +9906,14 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-discret.is-retirer { color: var(--danger); }
 .qb-modal.rv.rs .rs-texte { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
-.qb-modal.rv.rs .rs-rang { flex: 1 1 52px; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; min-height: 44px; max-height: 120px; }
+/* UNE RANGEE N EST JAMAIS PLUS PETITE QUE SES TOUCHES (2026-11-13, Ansar : « les heures partent
+   dans des boutons en dessous »). `flex: 1 1 52px` avec un min-height pose a la main laissait la
+   carte ecraser chaque rangee sous son contenu : les heures de la page Laser passaient sous
+   « Arène » (32 px de trop a 1366 × 768, 120 a 1100 × 700). Elle part de sa hauteur et ne
+   retrecit plus ; la colonne defile si la page est plus haute que la fenetre. La rangee des
+   heures (rsRangHeures) prend toute la sienne, trois lignes de touches comprises. */
+.qb-modal.rv.rs .rs-rang { flex: 1 0 auto; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; min-height: 44px; max-height: 120px; }
+.qb-modal.rv.rs .rs-rang.is-heures { flex: none; max-height: none; }
 .qb-modal.rv.rs .rs-rang.is-texte { flex: none; min-height: 0; }
 .qb-modal.rv.rs .rs-rang.is-contenu { flex-grow: 2; max-height: 176px; }
 .qb-modal.rv.rs .rs-rang.is-raison { flex: none; min-height: 56px; }

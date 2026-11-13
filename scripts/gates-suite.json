@@ -21,6 +21,7 @@
     "test:embed-demande",
     "test:embed-killswitch",
     "test:embed-miroir",
+    "test:embed-question",
     "test:embed-chrome",
     "test:branding-axes",
     "test:embed-hauteur",

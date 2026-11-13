@@ -14691,14 +14691,30 @@ function establishmentAccentFieldHtml(center) {
 // sert, on ne veut pas d une deuxieme etape entre la decision et l effet. Et il
 // dit ce qu il fait AVANT qu on clique, avec le nom du site concerne, parce
 // qu il change ce que voient les visiteurs d un autre site que celui-ci.
+//
+// LA QUESTION SE POSE DANS LE BLOC (13/11) : la fenetre « OK » du navigateur se
+// ratait, le premier clic d Ansar n avait rien envoye (journal 553). Elle vit
+// dans un etat, pour tenir a travers les repeints de la page, et ne vaut que
+// pour le centre ou elle a ete posee.
+let embedQuestion = null; // { centerId, actif } tant que la question attend sa reponse
+let embedEnCours = false;
+let embedDernierCentre = null;
+
 function establishmentEmbedFieldHtml(center) {
+  embedDernierCentre = center || null;
   const reglage = (center && center.embed) || {};
   const actif = reglage.actif !== false;
   const quand = reglage.bascule ? new Date(reglage.bascule) : null;
   const trace = !actif && quand
     ? `Coupé le ${quand.toLocaleDateString('fr-BE')} à ${quand.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}${reglage.basculePar ? ` par ${escapeHtml(reglage.basculePar)}` : ''}.`
     : '';
-  return `<div class="field estab-brand-field">
+  const question = embedQuestion && center && embedQuestion.centerId === center.id ? embedQuestion : null;
+  const geste = question
+    ? establishmentEmbedQuestionHtml(question.actif)
+    : `<button type="button" class="estab-embed-bouton" ${embedEnCours ? 'disabled' : ''} onclick="demanderBasculeFormulaire(${actif ? 'false' : 'true'})">
+      ${embedEnCours ? 'Un instant…' : (actif ? 'Rendre l’ancien formulaire du site' : 'Remettre le formulaire Pinlane')}
+    </button>`;
+  return `<div class="field estab-brand-field" id="estab-embed-champ">
     <label>Formulaire sur le site du client</label>
     <div class="estab-embed-etat estab-embed-${actif ? 'on' : 'off'}">
       <strong>${actif ? 'Le formulaire Pinlane est en ligne' : 'Le formulaire d’origine du site est rendu'}</strong>
@@ -14706,29 +14722,62 @@ function establishmentEmbedFieldHtml(center) {
         ? 'Les visiteurs du site réservent par Pinlane. Leur ancien formulaire est toujours dans la page, masqué.'
         : `Les visiteurs réservent par l’ancien formulaire du site. ${trace}`}</span>
     </div>
-    <button type="button" class="estab-embed-bouton" onclick="basculerFormulaireDuSite(${actif ? 'false' : 'true'})">
-      ${actif ? 'Rendre l’ancien formulaire du site' : 'Remettre le formulaire Pinlane'}
-    </button>
+    ${geste}
     <span class="estab-brand-note">Agit immédiatement, sans passer par Enregistrer. Rien n’est touché sur leur site : leur formulaire d’origine y reste en permanence, ce réglage décide seulement lequel des deux s’affiche.</span>
   </div>`;
 }
 
+// Rendre l ancien formulaire coupe la reservation en ligne : pied rouge pale et
+// bouton rouge, le focus sur « Retour ». Remettre Pinlane : bouton bleu, le focus dessus.
+function establishmentEmbedQuestionHtml(actif) {
+  const texte = actif
+    ? 'Le formulaire Pinlane reprend la place de l’ancien sur le site, en une minute.'
+    : 'En une minute, l’ancien formulaire revient sur le site. Les visiteurs ne réserveront plus par Pinlane tant qu’il n’est pas remis.';
+  return `<div class="estab-embed-question${actif ? '' : ' est-risque'}" role="group" aria-labelledby="estab-embed-question-texte" onkeydown="if (event.key === 'Escape') annulerBasculeFormulaire()">
+      <p id="estab-embed-question-texte">${texte}</p>
+      <div class="estab-embed-question-boutons">
+        <button type="button" class="estab-embed-geste est-contour" data-embed-retour onclick="annulerBasculeFormulaire()">Retour</button>
+        <button type="button" class="estab-embed-geste ${actif ? 'est-plein' : 'est-danger'}" data-embed-confirmer onclick="basculerFormulaireDuSite(${actif ? 'true' : 'false'})">${actif ? 'Remettre le formulaire Pinlane' : 'Rendre l’ancien formulaire'}</button>
+      </div>
+    </div>`;
+}
+
+function repeindreChampEmbed(focus) {
+  const champ = document.getElementById('estab-embed-champ');
+  if (!champ || !embedDernierCentre) return;
+  champ.outerHTML = establishmentEmbedFieldHtml(embedDernierCentre);
+  const cible = focus ? document.querySelector(focus) : null;
+  if (cible) cible.focus();
+}
+
+function demanderBasculeFormulaire(actif) {
+  embedQuestion = { centerId: getCurrentStaffCenterId(), actif: Boolean(actif) };
+  repeindreChampEmbed(actif ? '[data-embed-confirmer]' : '[data-embed-retour]');
+}
+
+function annulerBasculeFormulaire() {
+  embedQuestion = null;
+  repeindreChampEmbed('#estab-embed-champ .estab-embed-bouton');
+}
+
 async function basculerFormulaireDuSite(actif) {
+  if (embedEnCours) return;
   const centerId = getActiveOpsCenterId();
-  const question = actif
-    ? 'Remettre le formulaire Pinlane sur le site du client ?'
-    : 'Rendre l’ancien formulaire du site ? Les visiteurs ne réserveront plus par Pinlane tant qu’il n’est pas remis.';
-  if (typeof confirm === 'function' && !confirm(question)) return;
+  embedQuestion = null;
+  embedEnCours = true;
+  repeindreChampEmbed();
   try {
     await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
       body: JSON.stringify({ action: 'setEmbedState', centerId, actif: Boolean(actif) }),
     });
     toast(actif ? 'Formulaire Pinlane remis en ligne.' : 'Ancien formulaire du site rendu.');
-    await loadStaffCenterConfig(true);
   } catch (error) {
     toast(error?.message || 'Bascule impossible.');
   }
+  embedEnCours = false;
+  await loadStaffCenterConfig(true);
+  repeindreChampEmbed();
 }
 
 function establishmentPaymentFieldHtml(center) {

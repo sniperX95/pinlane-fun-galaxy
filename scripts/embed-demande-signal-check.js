@@ -49,6 +49,7 @@ const path = require('path');
 delete process.env.RESEND_API_KEY;
 delete process.env.DATABASE_URL;
 delete process.env.POSTGRES_URL;
+['TELEGRAM_JETON', 'TELEGRAM_CHAT', 'TELEGRAM_GROUPE', 'TELEGRAM_SUJETS'].forEach((cle) => { delete process.env[cle]; });
 process.env.PINLANE_CALENDAR_SYNC = 'off';
 
 const ROOT = path.resolve(__dirname, '..');

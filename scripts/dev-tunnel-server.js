@@ -21,6 +21,10 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
+// Le profil PowerShell charge les vraies cles : retirees ici, avant tout chargement,
+// pour qu une demande du banc ne touche ni la base, ni un mail, ni le Telegram de
+// l equipe (signale le 13/11 : une demande de groupe du banc s y serait annoncee).
+['DATABASE_URL', 'POSTGRES_URL', 'RESEND_API_KEY', 'TELEGRAM_JETON', 'TELEGRAM_CHAT', 'TELEGRAM_GROUPE', 'TELEGRAM_SUJETS'].forEach((cle) => { delete process.env[cle]; });
 const database = require('../lib/database');
 // Hors reseau : la table statique des conges scolaires fait foi (c est le
 // serveur de prod qui relit le calendrier officiel, pas le mock).

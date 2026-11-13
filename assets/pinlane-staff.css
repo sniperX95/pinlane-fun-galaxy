@@ -12310,6 +12310,26 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .estab-embed-bouton { width: 100%; padding: 8px 12px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); cursor: pointer; }
 .estab-embed-bouton:hover { background: var(--subtle); }
 .estab-embed-bouton:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+.estab-embed-bouton:disabled { color: var(--muted); background: var(--subtle); cursor: default; }
+/* La question posee dans le bloc (13/11), a la place de la fenetre « OK » du navigateur :
+   la phrase, puis « Retour » encadre et le bouton qui agit, comme le pied des cartes de
+   l assistant. Couper la reservation en ligne : fond rouge pale et bouton rouge plein. */
+.estab-embed-question { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: color-mix(in srgb, var(--subtle) 55%, var(--surface)); }
+.estab-embed-question.est-risque { background: var(--danger-soft, var(--subtle)); border-color: color-mix(in srgb, var(--danger, var(--text)) 30%, var(--line)); }
+.estab-embed-question p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
+.estab-embed-question-boutons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.estab-embed-geste { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.2; border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background-color var(--d-net, 120ms) ease, transform var(--d-vif, 100ms) ease; }
+.estab-embed-geste:active { transform: scale(.97); }
+.estab-embed-geste:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+.estab-embed-geste.est-contour { color: var(--text); background: var(--surface); border-color: var(--control-border, var(--line-strong)); }
+.estab-embed-geste.est-contour:hover { background: var(--subtle); }
+.estab-embed-geste.est-plein { color: var(--console-selected-text, #fff); background: var(--console-selected, var(--accent)); border-color: var(--console-selected, var(--accent)); }
+.estab-embed-geste.est-plein:hover { background: color-mix(in srgb, var(--console-selected, var(--accent)) 86%, #000); }
+.estab-embed-geste.est-danger { color: #fff; background: var(--danger, var(--text)); border-color: var(--danger, var(--text)); }
+.estab-embed-geste.est-danger:hover { background: color-mix(in srgb, var(--danger, var(--text)) 86%, #000); }
+@media (max-width: 560px) {
+  .estab-embed-question-boutons { flex-direction: column; align-items: stretch; }
+}
 
 /* ── CE QUE L AGENT NE SAIT PAS ──────────────────────────────────────────
    Une section a part, au-dessus de la boite : ce n est pas un mail a traiter,

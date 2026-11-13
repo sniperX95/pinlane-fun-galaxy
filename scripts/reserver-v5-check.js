@@ -126,7 +126,7 @@ const MUTATIONS = {
   seances: { fichier: 'assets/app-main.js', de: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes })', vers: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: [] })', vise: ['D'] },
   // Seules les 12 premieres heures partent : « Autres » montre des heures que
   // le serveur n a pas lues (le defaut d avant le 2026-11-03).
-  douzeHeures: { fichier: 'assets/app-main.js', de: 'variantes: rvHeuresHorloge(id).slice(0, 48).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;', vers: 'variantes: rvHeuresHorloge(id).slice(0, 12).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;', vise: ['D'] },
+  douzeHeures: { fichier: 'assets/app-main.js', de: 'rvHeuresHorloge(id).slice(0, 48).forEach((heure) => {', vers: 'rvHeuresHorloge(id).slice(0, 12).forEach((heure) => {', vise: ['D'] },
   // L heure refusee sort de la rangee : elle saute sans rien dire (« desfois ya
   // pas toute les heures »).
   refusRetire: { fichier: 'assets/app-main.js', de: '  return { suite: brut.suite, lue, liste: brut.liste };', vers: "  return { suite: brut.suite, lue, liste: lue ? brut.liste.filter((x) => !x.verdict || x.verdict.statut !== 'ko') : brut.liste };", vise: ['D'] },

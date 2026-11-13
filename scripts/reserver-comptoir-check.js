@@ -29,8 +29,9 @@
 //        dit « passée » a qui a le droit « Modifier une date passée » (« Plus
 //        tôt » sur la page Autres), elle n existe pas pour les autres. 15:30
 //        coince : au niveau forcer (Manager), la toucher la prend « à placer » et
-//        « Revenir à l heure proche » rend le refus ; sans lui (Staff bar), la
-//        toucher ne la prend pas, et 15:30 tapee a la barre donne le meme refus.
+//        le lien « Prendre HH:MM à la place » prend l heure proche (jamais avant
+//        15:00) ; sans lui (Staff bar), la toucher ne la prend pas, et 15:30
+//        tapee a la barre donne le refus et ses sorties.
 //   [D3] UNE FORMULE EN VACANCES SE RESERVE AU COMPTOIR. F4 pour 10 un jour de
 //        vacances : un vrai plan (pistes et arene posees), la vraie raison dite
 //        avant le clic et notee sur le dossier, jamais « Pas de plan possible » ;
@@ -579,15 +580,32 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
       v('D2', passeesDuJour.length === 0 && !autres.plusTot, 'sans ce droit, la page « Autres » commence au creneau en cours (pas de « Plus tôt »)', JSON.stringify({ premieres: autres.heures.slice(0, 2).map((x) => x.h), plusTot: autres.plusTot }));
     }
     await capture(page, `D2-autres-${role}`, '.rs-heures');
-    // 15:30 coince (2026-11-03) : au niveau forcer, la toucher la prend « à placer », et
-    // « Revenir à l heure proche » rend le refus et ses sorties ; sans lui, la toucher ne la
-    // prend pas, et l heure tapee a la barre donne le meme refus.
+    // 15:30 coince (2026-11-03) : au niveau forcer, la toucher la prend « à placer », et le
+    // lien du pied dit l heure proche et la prend (« Prendre HH:MM à la place », 2026-11-13) ;
+    // sans lui, la toucher ne la prend pas, et l heure tapee a la barre donne le refus et ses
+    // sorties (« Prendre HH:MM » sur Créer).
     await page.click('#quickBookOverlay .rs-heures .rs-h[data-heure="15:30"]');
+    // Les sorties : l heure proche, et les seances qui tiennent (une heure qui coince reste a
+    // sa place, elle n est pas une sortie).
+    const SEANCES = '#quickBookOverlay #rsZ-bowling .rs-h[data-heure]:not(.is-on):not(.is-coince):not(.is-efface)';
+    let sorties;
     if (role === 'manager') {
       await page.waitForSelector('#rvAPlacer', { timeout: 6000 }).catch(() => {});
       const prise = await page.evaluate(() => ({ heure: quickBookState.startTime, forcer: Boolean(quickBookState.forcer), aPlacer: Boolean(document.getElementById('rvAPlacer')) }));
       v('D2', prise.heure === '15:30' && prise.forcer && prise.aPlacer, 'au niveau forcer, toucher 15:30 qui coince la prend « à placer »', JSON.stringify(prise));
+      await candidatsPoses(page);
+      await page.waitForFunction(() => { const a = document.getElementById('rvForcer'); return Boolean(a && a.dataset.reprise); }, null, { timeout: 6000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      sorties = await page.evaluate((sel) => {
+        const lien = document.getElementById('rvForcer');
+        return { proche: (lien && lien.dataset.reprise) || '', lien: lien ? lien.textContent.trim() : '', seances: [...document.querySelectorAll(sel)].map((b) => b.dataset.heure) };
+      }, SEANCES);
+      v('D2', Boolean(sorties.proche) && sorties.lien === `Prendre ${sorties.proche} à la place`, 'MONTAGE : 15:30 prise quand meme, le lien dit l heure proche (« Prendre HH:MM à la place »)', JSON.stringify(sorties));
+      await capture(page, `D2-sorties-${role}`, '#rvForcer');
       await page.click('#rvForcer');
+      const tient = await planPose(page, true);
+      const reprise = await page.evaluate(() => ({ heure: rvHeureReglee('bowling', 0) || quickBookState.startTime, forcer: Boolean(quickBookState.forcer) }));
+      v('D2', tient && reprise.heure === sorties.proche && !reprise.forcer, 'le lien prend cette heure : le bowling y tient, plus rien de force', JSON.stringify(reprise));
     } else {
       await page.waitForTimeout(300);
       const gardee = await page.evaluate(() => ({ heure: quickBookState.startTime, forcer: Boolean(quickBookState.forcer) }));
@@ -597,24 +615,22 @@ async function scenarioD2(browser, v, { role = 'manager' } = {}) {
       await page.keyboard.press('4');
       await page.locator('#rsBarre').fill('4 bowling 15h30');
       await page.locator('#rsBarre').evaluate((champ) => champ.blur());
+      const refuse = await planPose(page, false);
+      await candidatsPoses(page);
+      await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.proche); }, null, { timeout: 6000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      sorties = await page.evaluate((sel) => ({
+        proche: (document.getElementById('rvCreer') || { dataset: {} }).dataset.proche || '',
+        seances: [...document.querySelectorAll(sel)].map((b) => b.dataset.heure),
+      }), SEANCES);
+      v('D2', refuse && Boolean(sorties.proche), 'MONTAGE : 15:30 refuse (pistes prises), des sorties proposees', `refus ${refuse}, ${JSON.stringify(sorties)}`);
+      await capture(page, `D2-sorties-${role}`, '#rvRefus');
+      // La sortie la plus proche (« Prendre HH:MM »), puis Creer.
+      await page.click('#rvCreer');
+      await planPose(page, true);
     }
-    const refuse = await planPose(page, false);
-    await candidatsPoses(page);
-    await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.proche); }, null, { timeout: 6000 }).catch(() => {});
-    await page.waitForTimeout(300);
-    // Les sorties : « Prendre HH:MM » sur Créer, et les seances qui tiennent (une heure qui
-    // coince reste a sa place, elle n est pas une sortie).
-    const sorties = await page.evaluate(() => ({
-      proche: (document.getElementById('rvCreer') || { dataset: {} }).dataset.proche || '',
-      seances: [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]:not(.is-on):not(.is-coince):not(.is-efface)')].map((b) => b.dataset.heure),
-    }));
     const heuresSorties = [sorties.proche, ...sorties.seances].filter(Boolean);
-    v('D2', refuse && Boolean(sorties.proche) && heuresSorties.length > 0, 'MONTAGE : 15:30 refuse (pistes prises), des sorties proposees', `refus ${refuse}, ${JSON.stringify(sorties)}`);
     v('D2', heuresSorties.every((h) => h >= '15:00'), 'aucune sortie avant le creneau de la demi-heure en cours (15:00)', JSON.stringify(heuresSorties));
-    await capture(page, `D2-sorties-${role}`, '#rvRefus');
-    // La sortie la plus proche (« Prendre HH:MM »), puis Creer.
-    await page.click('#rvCreer');
-    await planPose(page, true);
     await page.waitForFunction(() => { const b = document.getElementById('rvCreer'); return Boolean(b && b.dataset.pret === '1'); }, null, { timeout: 6000 }).catch(() => {});
     await avecTelephone(page);
     await page.click('#rvCreer');

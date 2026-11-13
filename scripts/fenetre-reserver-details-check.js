@@ -35,6 +35,9 @@
    [F1] le refus est sous la ligne du bowling, pas au-dessus du total, et ne se
         redit pas sous chaque heure (« bowling, manque 1 piste ») : le laser a
         15:30 dit son propre manque.
+   [F2] un refus du serveur qui ne parle que du bowling deja en defaut laisse
+        l heure du laser dire son manque (« manque 6 armes », vu muet au
+        telephone a 17:30) ; sans manque, elle ne le redit pas.
    [S1] le ticket qui a une suite sous son bord s estompe ; le telephone se voit
         en entier.
    [E1] « Créer quand même » ne montre pas « Entrée ».
@@ -99,6 +102,7 @@ const MUTATIONS = [
   { nom: 'il-restera-zero', cible: 'L1', fichier: APP, de: "  const liste = (mots || []).filter(Boolean);\n  if (!liste.length) return '';", vers: "  const liste = (mots || []).filter(Boolean);\n  if (liste.length) return `il restera ${liste.join(', ')}`;" },
   { nom: 'refus-sans-activite', cible: 'F1', fichier: APP, de: "  const candidate = nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : parType ? (parType.type === 'bowling_conflict' ? 'bowling' : 'laser_game') : parPhrase || (ids.length === 1 ? ids[0] : '');", vers: "  const candidate = nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : ids.length === 1 ? ids[0] : '';" },
   { nom: 'chevauchement-groupe-occupe', cible: 'C1', fichier: APP, de: "  if (!coince || coince.court !== 'groupe occupé' || pendant || !x) return null;", vers: '  return null;' },
+  { nom: 'refus-deja-muet', cible: 'F2', fichier: APP, de: '  if (!place || !(place.manque > 0)) return null;', vers: '  return null;' },
   { nom: 'ticket-sans-fondu', cible: 'S1', fichier: APP, de: "  const zone = document.querySelector('.qb-modal.rv .rs-tk-c');\n  if (!zone) return;", vers: "  const zone = document.querySelector('.qb-modal.rv .rs-tk-c');\n  return;" },
   { nom: 'entree-affichee', cible: 'E1', fichier: APP, de: '  const entree = !(s.submitting || bloque || attente) && !(refuse && s.forcer && !lot);', vers: '  const entree = !(s.submitting || bloque || attente);' },
   { nom: 'entree-cree-quand-meme', cible: 'E2', fichier: APP, de: '  if (rsEntreeCree()) rsCreer();\n}', vers: '  rsCreer();\n}' },
@@ -109,7 +113,7 @@ const MUTATIONS = [
 ];
 
 // L etape du soir charge ou chaque lettre se juge : une contre-preuve s arrete la.
-const ETAPE = { P1: 1, P2: 1, M: 1, A1: 2, R1: 2, T2: 2, C2: 2, R2: 2, L1: 2, C1: 2, T1: 3, F1: 3, S1: 3, E1: 3, E2: 4, E3: 5 };
+const ETAPE = { P1: 1, P2: 1, M: 1, A1: 2, R1: 2, T2: 2, C2: 2, R2: 2, L1: 2, C1: 2, T1: 3, F1: 3, F2: 3, S1: 3, E1: 3, E2: 4, E3: 5 };
 
 const argument = (nom) => process.argv.includes(`--${nom}`);
 let mutation = null;
@@ -226,7 +230,7 @@ const sousTotal = (page) => page.evaluate(() => ((document.querySelector('#rsL-t
 const motsDesHeures = (page) => page.evaluate(() => [...document.querySelectorAll('.qb-modal.rv .rs-h small, .qb-modal.rv .rs-p small')].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()));
 
 // ---------------------------------------------------------------------------
-// LE SOIR CHARGE : [P1] [P2] [M] [A1] [R1] [T1] [C2] [R2] [L1] [F1] [C1] [S1] [E1] [E2] [E3]
+// LE SOIR CHARGE : [P1] [P2] [M] [A1] [R1] [T1] [C2] [R2] [L1] [F1] [F2] [C1] [S1] [E1] [E2] [E3]
 // ---------------------------------------------------------------------------
 async function scenarioSoir(browser, lettres) {
   const jusqua = Math.max(...lettres.map((x) => ETAPE[x] || 0));
@@ -338,6 +342,19 @@ async function scenarioSoir(browser, lettres) {
     if (voit('F1')) {
       const t = await lire(page, bloc('laser_game', '15:30'));
       ok(Boolean(t) && t.mot === 'manque 1 arme' && t.coince, '[F1] le laser a 15:30 dit son manque (« manque 1 arme »), pas le refus du bowling', t);
+    }
+    if (voit('F2')) {
+      // Le verdict lu au banc en 390 px (2026-11-13) : le serveur replace le bowling pris quand meme
+      // et ne cite que lui ; le laser a 17:30 manque lui-meme de 6 armes, la touche restait muette.
+      const m = await page.evaluate(() => {
+        const plages = rsPlagesDuTicket();
+        const verdict = { statut: 'ko', court: 'groupe occupé', activite: 'bowling', raison: 'Bowling (17:00-18:00) et Laser Game (17:30) se chevauchent : décalez l\'une des deux heures.' };
+        const manque = { heure: '17:30', verdict, place: { libre: 0, manque: 6, unite: 'arme' }, mot: '' };
+        const reste = { heure: '17:30', verdict, place: { libre: 18, manque: 0, unite: 'arme' }, mot: 'reste 18' };
+        return { refus: (rvRefusDuPlan() || {}).activite || '', manque: rsMotDeLHeure('laser_game', manque, plages), coince: Boolean(rsCoince(manque, 'laser_game')), reste: rsMotDeLHeure('laser_game', reste, plages), resteCoince: Boolean(rsCoince(reste, 'laser_game')) };
+      });
+      ok(m.refus === 'bowling' && m.manque === 'manque 6 armes' && m.coince, '[F2] un refus qui ne parle que du bowling laisse l heure dire son manque (« manque 6 armes »), dans le ton du refus', m);
+      ok(m.reste === 'reste 18' && !m.resteCoince, '[F2] sans manque, l heure ne redit pas le refus du bowling (« reste 18 »)', m);
     }
     if (voit('S1')) {
       await page.waitForTimeout(200);

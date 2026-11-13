@@ -37417,7 +37417,14 @@ function rsCoince(x, id) {
   if (!deja) return v;
   const autres = (Array.isArray(v.bloquants) ? v.bloquants : []).filter((b) => b && b.activite !== deja);
   if (autres.length) return { ...v, court: autres[0].court, activite: autres[0].activite, raison: autres[0].raison || v.raison };
-  return v.activite && v.activite !== deja ? v : null;
+  if (v.activite && v.activite !== deja) return v;
+  // (2026-11-13) Le refus ne parle que de l activite deja en defaut, mais CETTE heure manque
+  // elle-meme d armes ou de pistes (le compte du poste) : elle le dit. Sans ce mot, la touche
+  // restait muette au telephone (laser a 17:30, 6 armes de moins, le bowling pris quand meme).
+  const place = x.place;
+  if (!place || !(place.manque > 0)) return null;
+  const manque = rvPluriel(place.manque, place.unite);
+  return { ...v, court: `manque ${manque}`, activite: id, raison: `Il manque ${manque} à ${x.heure}.`, bloquants: [] };
 }
 
 // L heure d un bloc (une rangee, sa page, ses « Autres »), avec son verdict.

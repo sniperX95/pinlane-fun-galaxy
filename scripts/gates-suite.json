@@ -20,6 +20,7 @@
     "test:embed-booking",
     "test:embed-demande",
     "test:embed-killswitch",
+    "test:embed-miroir",
     "test:embed-chrome",
     "test:branding-axes",
     "test:embed-hauteur",

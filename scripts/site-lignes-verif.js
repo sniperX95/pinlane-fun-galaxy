@@ -35,7 +35,10 @@ function ceQuiEstServi(html) {
     return c ? c[1].toLowerCase() : '(sans centre)';
   });
   const formulaires = [...new Set([...html.matchAll(/gform_wrapper_(\d+)/g)].map((m) => Number(m[1])))].filter((n) => FORMULAIRES[n]);
-  return { lignes: [...new Set(lignes)], formulaires };
+  // La copie pendant l essai (data-miroir, 2026-11-13) : le formulaire qu elle remplit doit etre CELUI de la page,
+  // et celui du meme centre (un « #gform_1 » colle dans le formulaire 4 ne recopierait rien).
+  const miroirs = [...new Set([...html.matchAll(/<script[^>]*embed\.js[^>]*>/gi)].map((m) => (m[0].match(/data-miroir\s*=\s*["']?#gform_(\d+)/i) || [])[1]).filter(Boolean).map(Number))];
+  return { lignes: [...new Set(lignes)], formulaires, miroirs };
 }
 
 (async () => {
@@ -48,10 +51,12 @@ function ceQuiEstServi(html) {
       const s = ceQuiEstServi(html);
       const centres = s.lignes.length ? s.lignes : s.formulaires.map((n) => FORMULAIRES[n]);
       if (s.lignes.length) posees += 1;
-      const quoi = s.lignes.length ? `ligne Pinlane ${s.lignes.join('+')}` : (s.formulaires.length ? `Gravity ${s.formulaires.join('+')} (${centres.join('+')})` : 'aucun');
+      const copie = s.miroirs.length ? `, copie dans le formulaire ${s.miroirs.join('+')}` : ', sans copie';
+      const quoi = s.lignes.length ? `ligne Pinlane ${s.lignes.join('+')}${copie}` : (s.formulaires.length ? `Gravity ${s.formulaires.join('+')} (${centres.join('+')})` : 'aucun');
       // Une page d activite appartient a un centre, quel que soit le choix du visiteur ; Contact suit son choix.
       const cible = attendu || (cookie.includes('Gembloux') ? 'gembloux' : cookie.includes('Libramont') ? 'libramont' : null);
-      const faux = statut >= 400 || (cible && centres.length && !(centres.length === 1 && centres[0] === cible));
+      const copieFausse = s.miroirs.some((n) => !s.formulaires.includes(n) || FORMULAIRES[n] !== centres[0]);
+      const faux = statut >= 400 || copieFausse || (cible && centres.length && !(centres.length === 1 && centres[0] === cible));
       if (faux) ecarts += 1;
       dit.push(`${faux ? 'ECART ' : ''}${nom} : ${quoi}`);
       await new Promise((ok) => setTimeout(ok, 150));

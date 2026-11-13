@@ -722,7 +722,12 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // 2026-11-06, l apres-reservation (le mail et ses spams, l agenda Google et .ics, le message pour ceux qui viennent ;
 // Ansar : « une page de confirmation plus styler complet ») : 383,7 et 111 Ko mesures. Rien de mort a retirer depuis
 // le matin ; le fichier agenda se construit dans la page, sans nouvelle route. Plafonds 388 et 113 Ko.
-const BUDGET_SERVI = 388 * 1024;
+// 2026-11-13, la copie de chaque reservation dans l ancien formulaire du site pendant l essai (Ansar, fungalaxy.be) :
+// son module (assets/fungalaxy-miroir.js) ne part que quand la ligne du site la demande ; reste pour tous son
+// chargeur, +0,47 Ko servis et +0,12 Ko transferes (8d94ad5 contre l arbre, memes fichiers passes par le build). La
+// base tenait a 0,15 Ko du plafond : un cliquet. Poids mort cherche avant (mort.cjs) : une seule fonction jamais
+// appelee, teinteBloc, retiree. Plafonds 390 et 113 Ko : une police ou une bibliotheque les font toujours sauter.
+const BUDGET_SERVI = 390 * 1024;
 const BUDGET_TRANSFERE = 113 * 1024;
 
 let failures = 0;

@@ -81,6 +81,9 @@
     signaler({ message: message, source: 'unhandledrejection', stack: r && r.stack });
   });
   var EMBED = params.get('embed') === '1' && window.parent !== window;
+  // LA COPIE DANS L ANCIEN FORMULAIRE DU SITE (2026-11-13) : embed.js la demande (miroir=1) quand la ligne du site
+  // nomme ce formulaire (data-miroir). Voir chargerMiroir et assets/fungalaxy-miroir.js.
+  var MIROIR = EMBED && params.get('miroir') === '1';
   // LE DEPART SUR LA DEMANDE DE GROUPE (2026-11-03). La page Evenements du site
   // du centre ouvre directement la demande sur mesure : embed.js passe
   // start=sur-mesure. Une seule valeur reconnue, toute autre est ignoree.
@@ -5453,10 +5456,6 @@
     return typo(s).replace(/ (\d{1,2}:\d{2}|minuit)(?![\w:])/g, '\u00a0$1')
       .replace(/(parties?) (\d)/g, '$1\u00a0$2').replace(/(\d) sur (\d)/g, '$1\u00a0sur\u00a0$2');
   }
-  // La teinte d un bloc, par famille, comme sur la maquette choisie : les
-  // pistes au violet de la marque, l arene au violet vif, le reste au violet
-  // profond.
-  function teinteBloc(id) { var s = String(id || ''); return /laser/.test(s) ? 'arene' : /bowling|duck/.test(s) ? 'piste' : 'libre'; }
   // La formule choisie, dans les mots de sa variante (desc) quand le client
   // en a choisi une : la visite et le recapitulatif disent son programme.
   function formuleChoisie() {
@@ -7734,6 +7733,7 @@
       reservationId: r.id, center: CENTER, amount: Number(r.price) || 0, currency: 'EUR', pax: paxRes, date: dateRes,
       startTime: heureRes, type: r.type || (state.onglet === 'formules' ? 'formule' : 'visite'), formuleId: r.formuleId || state.formuleId || '', label: r.label || '', status: confirme ? 'confirmed' : 'received',
     } });
+    if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes });
   }
 
   /* --- La demande sur mesure ------------------------------------------------------ */
@@ -7805,6 +7805,19 @@
     });
   }
   function prechargerSurMesure() { chargerSurMesure().catch(function () {}); }
+
+  // LA COPIE DANS L ANCIEN FORMULAIRE DU SITE (2026-11-13) vit dans assets/fungalaxy-miroir.js, chargee des
+  // l ouverture mais seulement quand embed.js la demande (miroir=1) : le parcours de tous les autres n en paie rien.
+  // Un module qui ne vient pas se signale (Tour de controle) : la copie ratee se sait au lieu de se perdre.
+  function chargerMiroir() { return chargerFichier('miroir', 'script', { src: '/assets/fungalaxy-miroir.js?v=20261113miroir', async: true }); }
+  var miroirModule = null;
+  function recopierDansLAncienFormulaire(r, quand) {
+    chargerMiroir().then(function () {
+      miroirModule = miroirModule || window.FGMiroir(interne());
+      miroirModule.recopier(r, quand);
+    }).catch(function () { signaler({ message: 'Copie dans l’ancien formulaire non chargée, réservation ' + r.id, source: 'miroir' }); });
+  }
+  if (MIROIR) chargerMiroir().catch(function () {});
 
   // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un
   // echec se dit en clair, avec le numero du centre. `quandFini(ouverte)` dit
@@ -7884,6 +7897,7 @@
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
       scene: function () { return sceneCourante; },
+      formuleChoisie: formuleChoisie, joueursDe: joueursDe, nomActivite: nomActivite, partiesDuPlan: partiesDuPlan, parentOrigin: parentOrigin,
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });
     return I;

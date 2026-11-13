@@ -146,6 +146,56 @@ place, jamais un autre centre par défaut. Juste après la pose,
 `npm run site:lignes` relit les 15 pages en visiteur et dit quel centre chacune
 réserve.
 
+### 2 ter. Pendant l'essai : chaque réservation part aussi par l'ancien formulaire
+
+Décidé le 2026-11-13 pour le premier client : le temps de vérifier que tout
+coïncide, chaque réservation prise par Pinlane est **aussi** envoyée par
+l'ancien formulaire Gravity Forms, masqué mais toujours dans la page. L'équipe
+reçoit donc ses mails habituels en plus de Pinlane, et compare.
+
+C'est l'attribut `data-miroir`, qui nomme le formulaire à remplir :
+
+```html
+<!-- formulaire 4, Libramont : dans un champ HTML du formulaire 4 -->
+<script src="https://app.pinlane.be/embed.js"
+        data-center="libramont"
+        data-design="fungalaxy"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"
+        data-miroir="#gform_4"></script>
+
+<!-- formulaire 1, Gembloux : dans un champ HTML du formulaire 1 -->
+<script src="https://app.pinlane.be/embed.js"
+        data-center="gembloux"
+        data-design="fungalaxy"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"
+        data-miroir="#gform_1"></script>
+```
+
+Ce que fait la copie, et ce qu'elle ne fait pas :
+
+- **Une entrée par activité**, à son heure et avec son nombre de joueurs (un
+  bowling puis un laser font deux entrées, comme un client qui aurait rempli le
+  formulaire deux fois) ; une formule fait une entrée « Une formule ». Le jour
+  s'écrit « Samedi 21/11/2026 ».
+- Elle part **du navigateur du client**, depuis la page du site, avec les
+  champs cachés du formulaire (anti-spam compris) : pour Gravity Forms, c'est un
+  envoi ordinaire. Les champs visibles de l'ancien formulaire ne sont jamais
+  remplis : rien ne reste dans la page.
+- Une copie ratée (formulaire refusé, site en panne, champ renommé, activité
+  absente de leur liste) **sonne sur Telegram** avec le numéro de la
+  réservation : elle est dans Pinlane, il faut prévenir l'équipe.
+- **Le client peut recevoir deux mails** si le formulaire Gravity Forms envoie
+  lui-même un accusé de réception : à vérifier à la première réservation d'essai.
+
+**Fin de l'essai** : retirer la ligne `data-miroir="..."` des deux champs HTML.
+**Retour à l'ancien formulaire** : le bouton de la fiche du centre (plus bas),
+comme sans copie ; il arrête aussi la copie, puisqu'il retire le formulaire
+Pinlane. Gate : `npm run test:embed-miroir`.
+
 **b. Le champ « Contenu » de la page.** Il fonctionne, mais le thème l'enveloppe
 souvent dans une section à lui : on récupère une bande vide au milieu de la page.
 À n'utiliser que si a. est impossible.

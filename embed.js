@@ -18,6 +18,9 @@
  *                       (même parcours, mêmes réservations) ; absent, le parcours standard
  *   data-start          "sur-mesure" ouvre le formulaire aux couleurs du centre directement
  *                       sur la demande de groupe (page Événements d'un site)
+ *   data-miroir         sélecteur de l'ancien formulaire Gravity Forms (#gform_4) : chaque
+ *                       réservation prise par le formulaire aux couleurs du centre y est aussi
+ *                       envoyée, une entrée par activité, pendant une période d'essai
  *
  * Le cadre s'adapte à la hauteur de son contenu. À chaque réservation confirmée, un
  * événement `pinlane_booking` est poussé dans le dataLayer de la page et un événement
@@ -115,8 +118,14 @@
   // groupe (la page Evenements d un site). Une seule valeur reconnue, toute
   // autre est ignoree ; le parcours /reserver ne la connait pas.
   var depart = (script.getAttribute('data-start') || '').toLowerCase() === 'sur-mesure' ? '&start=sur-mesure' : '';
+  // data-miroir nomme l ancien formulaire (Gravity Forms) dans lequel chaque reservation prise ici est recopiee : voir
+  // « La copie dans l ancien formulaire », plus bas. Meme controle que data-fallback ; le formulaire aux couleurs du
+  // centre est le seul a savoir l envoyer.
+  var miroirSelecteur = script.getAttribute('data-miroir') || '';
+  if (/[{}@<]/.test(miroirSelecteur)) miroirSelecteur = '';
+  var miroirDemande = design === 'fungalaxy' && miroirSelecteur !== '';
   var target = design === 'fungalaxy'
-    ? origin + '/fungalaxy/' + encodeURIComponent(center) + '?embed=1' + depart
+    ? origin + '/fungalaxy/' + encodeURIComponent(center) + '?embed=1' + depart + (miroirDemande ? '&miroir=1' : '')
     : origin + '/reserver?embed=1' + (center ? '&center=' + encodeURIComponent(center) : '');
 
   // Conteneur d'accueil, résolu avant la création du cadre : c'est de là qu'est
@@ -351,6 +360,187 @@
     } catch (error) { /* idem pour l'analytics du site */ }
   }
 
+  // LA COPIE DANS L ANCIEN FORMULAIRE (2026-11-13, Ansar : « quand qlq un fini de reserver avec notre formulaire faut
+  // que ça fasse une resa en meme temps ... exactement comme ils ont deja actuellement ... pour voir si tout coincide »).
+  //
+  // Pendant l essai, chaque reservation prise dans le cadre est aussi envoyee par l ancien formulaire du site, masque
+  // mais toujours dans la page : une entree par activite, comme si le visiteur l avait remplie lui-meme (meme
+  // navigateur, meme page, memes champs caches, anti-spam compris). L equipe recoit donc ses mails habituels et peut
+  // comparer. Trois regles :
+  //   - le formulaire de la page n est jamais touche : les valeurs partent dans une copie (FormData), ses champs
+  //     restent vides et rien ne s ajoute a la page. Le retour a l ancien formulaire ne laisse donc aucune trace ;
+  //   - ces donnees sont personnelles : elles n arrivent que du cadre pose par ce script (origine ET source, verifiees
+  //     plus bas) et ne repartent que vers le site lui-meme (meme origine que la page) ;
+  //   - une reservation n est recopiee qu une fois, et le resultat repart au cadre, qui le signale a Pinlane : une
+  //     copie ratee se sait au lieu de se perdre.
+  function sansAccents(texte) {
+    var s = String(texte == null ? '' : texte).toLowerCase();
+    try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); } catch (error) { /* normalize indisponible */ }
+    return s;
+  }
+  function cleDe(texte) { return sansAccents(texte).replace(/[^a-z0-9]+/g, ''); }
+  function motsDe(texte) { return ' ' + sansAccents(texte).replace(/[^a-z0-9]+/g, ' ').trim() + ' '; }
+
+  // Les champs se reconnaissent a leur intitule, pas a leur numero : le formulaire de Libramont (4) et celui de
+  // Gembloux (1) ne numerotent pas pareil le choix du centre, et un champ ajoute par l agence ne decale rien.
+  function champsDuFormulaire(form) {
+    var champs = {};
+    var blocs = form.querySelectorAll('.gfield');
+    for (var i = 0; i < blocs.length; i += 1) {
+      var bloc = blocs[i];
+      var titre = bloc.querySelector('.gfield_label, legend, label');
+      var mots = motsDe(titre ? titre.textContent : '');
+      var radios = bloc.querySelectorAll('input[type="radio"]');
+      var liste = bloc.querySelector('select');
+      var saisies = bloc.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input:not([type])');
+      if (radios.length) {
+        var choix = { nom: radios[0].name, activite: '', formule: '' };
+        for (var r = 0; r < radios.length; r += 1) {
+          if (cleDe(radios[r].value).indexOf('activite') >= 0) choix.activite = radios[r].value;
+          if (cleDe(radios[r].value).indexOf('formule') >= 0) choix.formule = radios[r].value;
+        }
+        if (choix.activite && choix.formule && !champs.quoi) champs.quoi = choix;
+      } else if (/ heure /.test(mots) && saisies.length === 2 && saisies[0].name === saisies[1].name) {
+        champs.heure = saisies[0].name;
+      } else if (liste) {
+        if (/ centre /.test(mots)) champs.centre = liste;
+        else if (/ formule /.test(mots)) champs.formule = liste;
+        else if (/ activite /.test(mots)) champs.activite = liste;
+      } else if (saisies.length === 1) {
+        var type = (saisies[0].getAttribute('type') || 'text').toLowerCase();
+        if (type === 'email') champs.email = saisies[0].name;
+        else if (type === 'tel') champs.telephone = saisies[0].name;
+        else if (/ (participants?|personnes?) /.test(mots)) champs.participants = saisies[0].name;
+        else if (/ (jour|date) /.test(mots)) champs.jour = saisies[0].name;
+        else if (/ nom /.test(mots)) champs.nom = saisies[0].name;
+      }
+    }
+    return champs;
+  }
+
+  // L option de la liste : celle dont l intitule est le nom envoye, sinon celle dont la valeur commence par
+  // l identifiant (« laser-game-gembloux » pour laser_game), sinon un intitule qui commence par l autre. Rien
+  // d approchant : '' et jamais la premiere option, qui ferait d une partie de laser une entree « Arcades ».
+  function optionDe(liste, nom, identifiant, seuleSiUnique) {
+    var options = [];
+    for (var i = 0; i < liste.options.length; i += 1) if (liste.options[i].value) options.push(liste.options[i]);
+    var cle = cleDe(nom);
+    var id = cleDe(identifiant);
+    function chercher(test) { for (var j = 0; j < options.length; j += 1) if (test(options[j])) return options[j].value; return ''; }
+    return (cle && chercher(function (o) { return cleDe(o.textContent) === cle; }))
+      || (id && chercher(function (o) { return cleDe(o.value).indexOf(id) === 0; }))
+      || (cle.length >= 4 && chercher(function (o) { var t = cleDe(o.textContent); return t.length >= 4 && (t.indexOf(cle) === 0 || cle.indexOf(t) === 0); }))
+      || (seuleSiUnique && options.length === 1 ? options[0].value : '');
+  }
+
+  // Ce que Gravity Forms repond : sa confirmation (un message ou une redirection vers une page de remerciement), ou le
+  // formulaire renvoye avec ses erreurs. Le formulaire porte lui-meme, dans son script, les noms de la confirmation et
+  // de la redirection : seules la BALISE de confirmation et la FONCTION de redirection comptent. Des champs refuses ne
+  // remontent que les numeros, jamais le contenu.
+  function lireReponse(reponse, html, note) {
+    if (!reponse.ok) return { recu: false, raison: 'http-' + reponse.status };
+    if (/id=['"]gform_confirmation_(?:wrapper|message)_\d+['"]/.test(html) || /function\s+gformRedirect\s*\(\s*\)\s*\{\s*document\.location\.href/.test(html)) {
+      return { recu: true, raison: note };
+    }
+    var refuses = [];
+    html.replace(/<[^>]*\bid=['"]field_\d+_(\d+)['"][^>]*>/g, function (balise, numero) {
+      if (/class=['"][^'"]*\bgfield_error\b/.test(balise)) refuses.push(numero);
+      return balise;
+    });
+    if (refuses.length || /id=['"]gform_\d+_validation_container['"]/.test(html)) return { recu: false, raison: 'refuse' + (refuses.length ? ':' + refuses.slice(0, 6).join(',') : '') };
+    return { recu: false, raison: 'reponse-inconnue' };
+  }
+
+  function poser(donnees, nom, valeur) { if (nom) donnees.set(nom, valeur == null ? '' : String(valeur)); }
+  function envoyerUneLigne(form, cible, champs, ligne) {
+    var donnees = new FormData(form);
+    var formule = ligne.type === 'formule';
+    poser(donnees, champs.nom, ligne.nom);
+    if (champs.centre) poser(donnees, champs.centre.name, optionDe(champs.centre, ligne.centre, ligne.centreId, true));
+    poser(donnees, champs.quoi.nom, formule ? champs.quoi.formule : champs.quoi.activite);
+    // La liste que la logique du formulaire cache ne part pas : sa valeur par defaut (sa premiere option) se lirait
+    // dans l entree.
+    var visee = formule ? champs.formule : champs.activite;
+    var cachee = formule ? champs.activite : champs.formule;
+    if (cachee) donnees.delete(cachee.name);
+    var valeur = visee ? optionDe(visee, formule ? ligne.formule : ligne.activite, formule ? ligne.formuleId : ligne.activiteId) : '';
+    if (visee) poser(donnees, visee.name, valeur);
+    // Ce que leur liste ne connait pas se lit quand meme, a cote du jour (le seul champ libre).
+    poser(donnees, champs.jour, ligne.jour + (valeur ? '' : ' · ' + (formule ? ligne.formule : ligne.activite)));
+    if (champs.heure) {
+      var hm = /^(\d{1,2}):(\d{2})$/.exec(ligne.heure);
+      donnees.delete(champs.heure);
+      donnees.append(champs.heure, hm ? String(Number(hm[1])) : '');
+      donnees.append(champs.heure, hm ? hm[2] : '');
+    }
+    poser(donnees, champs.participants, ligne.participants);
+    poser(donnees, champs.telephone, ligne.telephone);
+    poser(donnees, champs.email, ligne.email);
+    var note = valeur ? '' : (formule ? 'formule-inconnue' : 'activite-inconnue');
+    // keepalive : le client qui ferme l onglet sur l ecran de confirmation n emporte pas l envoi avec lui.
+    return fetch(cible, { method: 'POST', body: donnees, credentials: 'same-origin', keepalive: true })
+      .then(function (reponse) { return reponse.text().then(function (html) { return lireReponse(reponse, html, note); }); })
+      .catch(function () { return { recu: false, raison: 'reseau' }; });
+  }
+
+  function texteBorne(valeur, max) { return String(valeur == null ? '' : valeur).slice(0, max); }
+  var recopiees = {};
+  function repondreAuCadre(id, resultat) {
+    if (!frame.contentWindow) return;
+    try {
+      frame.contentWindow.postMessage({
+        type: 'pinlane:miroir-fait', id: id, ok: resultat.ok === true, raison: String(resultat.raison || '').slice(0, 200),
+        lignes: resultat.lignes || 0, envoyees: resultat.envoyees || 0,
+      }, origin);
+    } catch (error) { /* cadre retire */ }
+  }
+  function recopier(data) {
+    var id = String(data.id || '');
+    if (!miroirDemande || !/^\d{1,12}$/.test(id) || recopiees[id]) return;
+    recopiees[id] = true;
+    var lignes = (Array.isArray(data.lignes) ? data.lignes : []).slice(0, 8).map(function (l) {
+      l = l && typeof l === 'object' ? l : {};
+      var personnes = Math.trunc(Number(l.participants) || 0);
+      return {
+        type: l.type === 'formule' ? 'formule' : 'activite',
+        nom: texteBorne(l.nom, 120), telephone: texteBorne(l.telephone, 40), email: texteBorne(l.email, 160),
+        centre: texteBorne(l.centre, 80), centreId: texteBorne(l.centreId, 40),
+        activite: texteBorne(l.activite, 80), activiteId: texteBorne(l.activiteId, 60),
+        formule: texteBorne(l.formule, 80), formuleId: texteBorne(l.formuleId, 40),
+        jour: texteBorne(l.jour, 40), heure: texteBorne(l.heure, 5),
+        participants: personnes > 0 && personnes < 1000 ? String(personnes) : '',
+      };
+    });
+    if (!lignes.length) { repondreAuCadre(id, { ok: false, raison: 'rien-a-copier' }); return; }
+    var form = null;
+    try { form = document.querySelector(miroirSelecteur); } catch (error) { form = null; }
+    if (form && form.tagName !== 'FORM') form = form.querySelector('form');
+    // L adresse d envoi lue dans l attribut (un champ nomme « action » masquerait la propriete), et seulement sur le
+    // site lui-meme.
+    var cible = '';
+    try {
+      var adresse = form ? new URL(form.getAttribute('action') || window.location.href, window.location.href) : null;
+      if (adresse && adresse.origin === window.location.origin) cible = adresse.href;
+    } catch (error) { cible = ''; }
+    if (!cible || typeof FormData !== 'function' || typeof fetch !== 'function') { repondreAuCadre(id, { ok: false, raison: 'formulaire-absent', lignes: lignes.length }); return; }
+    var champs = champsDuFormulaire(form);
+    var manque = ['nom', 'email', 'telephone', 'participants', 'quoi'].filter(function (k) { return !champs[k]; });
+    if (manque.length) { repondreAuCadre(id, { ok: false, raison: 'champ-introuvable:' + manque.join(','), lignes: lignes.length }); return; }
+    // Une entree apres l autre : jamais deux envois du meme visiteur dans la meme seconde.
+    var envoyees = 0;
+    var raisons = [];
+    var suite = Promise.resolve();
+    lignes.forEach(function (ligne) {
+      suite = suite.then(function () { return envoyerUneLigne(form, cible, champs, ligne); }).then(function (r) {
+        if (r.recu) envoyees += 1;
+        if (r.raison) raisons.push(r.raison);
+      });
+    });
+    suite.then(function () {
+      repondreAuCadre(id, { ok: envoyees === lignes.length && !raisons.length, raison: raisons.join(';'), lignes: lignes.length, envoyees: envoyees });
+    });
+  }
+
   window.addEventListener('message', function (event) {
     // Deux contrôles : l'origine dit d'où vient le message, la source dit quel
     // cadre l'a envoyé. Sans le second, une autre iframe de la même origine
@@ -384,6 +574,12 @@
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_demande', pinlane: demande }); } catch (error) { /* dataLayer inaccessible */ }
       try { window.dispatchEvent(new CustomEvent('pinlane:demande', { detail: demande })); } catch (error) { /* CustomEvent indisponible */ }
       declencherDemandeSurLesOutilsDuSite(demande);
+      return;
+    }
+    if (data.type === 'pinlane:miroir') {
+      // Reservation confirmee, avec ce que le visiteur aurait tape dans l ancien formulaire : voir « La copie dans
+      // l ancien formulaire ». Rien ne part si la ligne du site ne l a pas demandee (data-miroir).
+      recopier(data);
       return;
     }
     if (data.type === 'pinlane:voir') {

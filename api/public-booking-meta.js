@@ -158,6 +158,74 @@ async function handleErreurFormulaire(req, res, body) {
   sendJson(res, 202, { ok: true });
 }
 
+// LA COPIE DANS L ANCIEN FORMULAIRE DU SITE (2026-11-13, embed.js data-miroir). Pendant l essai, chaque reservation
+// prise par Pinlane sur le site du centre part aussi par son ancien formulaire, depuis le navigateur du client. Le
+// cadre dit ici si elle est passee, sans rien de personnel. Une copie ratee sonne : l equipe compare les deux, et une
+// reservation absente de leurs mails habituels ne doit pas passer pour un oubli.
+// La route est publique : seul ce qui se rapporte a une VRAIE reservation de ce centre, creee dans l heure, est lu,
+// et le message ne recopie rien que le navigateur ait ecrit (la raison se lit dans une liste fermee).
+const RAISONS_MIROIR = {
+  reseau: 'le réseau du client a coupé pendant l’envoi',
+  'sans-reponse': 'la page du site n’a pas répondu',
+  'formulaire-absent': 'leur formulaire n’est plus dans la page',
+  'champ-introuvable': 'un champ de leur formulaire a changé de nom',
+  refuse: 'leur formulaire a refusé l’envoi',
+  'activite-inconnue': 'une activité n’existe pas dans leur liste (elle est notée à côté du jour)',
+  'formule-inconnue': 'la formule n’existe pas dans leur liste (elle est notée à côté du jour)',
+  'reponse-inconnue': 'leur site a répondu quelque chose de non reconnu',
+  'autre-site': 'le formulaire tourne sur un autre site que celui de la fiche du centre',
+  http: 'leur site a répondu une erreur',
+  'rien-a-copier': 'la réservation n’avait rien à recopier',
+};
+// Une raison est un mot de la liste, eventuellement suivi d un code HTTP (http-500) ou de numeros de champs
+// (refuse:17,38) : tout autre morceau est ignore, meme s il commence comme une raison (« http://... »).
+function raisonsDuMiroir(texte) {
+  const vues = new Set();
+  String(texte || '').slice(0, 400).split(';').forEach((morceau) => {
+    const m = /^([a-z]+(?:-[a-z]+)*)(?:-\d{3})?(?::[a-z0-9,]{1,60})?$/.exec(morceau.trim());
+    if (m && Object.prototype.hasOwnProperty.call(RAISONS_MIROIR, m[1])) vues.add(m[1]);
+  });
+  return [...vues];
+}
+async function handleMiroir(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'miroir', limit: 30, windowMs: 600_000 })) return;
+  const centre = String(body.centerId || '').trim().toLowerCase();
+  const reservationId = Number(body.reservationId);
+  const borne = (v, max) => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= max ? n : 0; };
+  try {
+    getCenter(centre);
+  } catch (error) {
+    sendJson(res, 202, { ok: true });
+    return;
+  }
+  const pool = getPool();
+  if (!pool || !Number.isSafeInteger(reservationId) || reservationId < 1) { sendJson(res, 202, { ok: true }); return; }
+  try {
+    const r = await pool.query(`select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} limit 1`, [centre, reservationId]);
+    if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }
+    const lignes = borne(body.lignes, 8);
+    const envoyees = borne(body.envoyees, 8);
+    const raisons = raisonsDuMiroir(body.raison);
+    const reussie = body.ok === true && !raisons.length;
+    console.info('[miroir]', centre, reservationId, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
+    if (!reussie) {
+      const { alerter } = require('../lib/garde-alertes');
+      const { nomDuCentre } = require('../lib/garde-annonces');
+      const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');
+      const combien = lignes ? ` (${envoyees} entrée${envoyees > 1 ? 's' : ''} recopiée${envoyees > 1 ? 's' : ''} sur ${lignes})` : '';
+      await alerter(
+        `miroir:${centre}:${reservationId}`,
+        `À regarder, Pinlane\nLa réservation n°${reservationId} de ${nomDuCentre(centre)} est bien dans Pinlane, mais sa copie dans l’ancien formulaire du site n’est pas passée entière${combien} : ${pourquoi}. L’équipe ne la trouvera pas, ou pas complète, dans les mails de ce formulaire.`,
+        { fenetreMs: 60 * 60_000, origine: 'public' },
+      );
+    }
+  } catch (error) {
+    // Un signal perdu ne casse jamais le formulaire : il laisse une trace.
+    console.error('[public-booking-meta] miroir', error && (error.code || error.message));
+  }
+  sendJson(res, 202, { ok: true });
+}
+
 async function handleVitrine(req, res, body) {
   if (enforceRateLimit(req, res, { scope: 'vitrine', limit: 120, windowMs: 600_000 })) return;
   const envoi = gestesVitrine(body);
@@ -801,6 +869,10 @@ async function routeur(req, res) {
     }
     if (body?.kind === 'erreur-formulaire' && url.pathname.endsWith('/public-booking-meta')) {
       await handleErreurFormulaire(req, res, body);
+      return;
+    }
+    if (body?.kind === 'miroir' && url.pathname.endsWith('/public-booking-meta')) {
+      await handleMiroir(req, res, body);
       return;
     }
     const isCustomRequest = body?.kind === 'custom-request' || url.pathname.endsWith('/custom-request');

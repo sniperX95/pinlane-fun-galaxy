@@ -130,6 +130,9 @@ function verifier(sources) {
   const fiche = cote.renderGroupeNotes(dossier);
   c(/class="gc-note-client"[\s\S]*Mot du client[\s\S]*Gâteau à mettre au frais/.test(fiche), '[C] la fiche montre le mot du client sous son titre');
   c((fiche.match(/class="gc-note-equipe"/g) || []).length === 2 && /Léa · /.test(fiche) && /Sam · /.test(fiche), '[C] chaque note d equipe porte son auteur et son heure');
+  // Le fondateur ne signe rien chez un centre (2026-11-13, lib/fondateur-invisible.js) : sa note dit « L’équipe ».
+  const sansSignature = cote.renderGroupeNotes({ id: 14, channel: 'staff', status: 'confirmed', notes: '[equipe] {"t":"Prévenir le client","par":"","le":"2026-10-01T19:10:00.000Z"}' });
+  c(/Prévenir le client <span class="gc-note-meta">L’équipe · /.test(sansSignature), '[C] une note signee par personne dit « L’équipe »', sansSignature.slice(0, 240));
   c(/onclick="ouvrirNoteEquipe\(7, event\)"[^>]*>[\s\S]*?Note pour l’équipe<\/button>/.test(fiche) && !/<textarea/.test(fiche), '[C] champ replie : la fiche ne porte qu un bouton « Note pour l’équipe »');
   vm.runInContext('notesEquipeOuvertes.add(7)', bacCote);
   const ouverte = cote.renderGroupeNotes(dossier);
@@ -167,7 +170,8 @@ function verifier(sources) {
   // [D] LE SERVEUR
   const route = (sources.api.match(/if \(patchIsNoteEquipeOnly\(body\)\) \{[\s\S]*?\n      \}\n/) || [''])[0];
   c(Boolean(route), '[D] le PATCH a une route dediee aux notes d equipe');
-  c(/par: \(membre && \(membre\.name/.test(route) && !/geste\.par|body\.par/.test(route), '[D] l auteur vient de la session, jamais du corps de la requete');
+  // (nomDeSession, lib/droits-reservation.js : le nom du membre de session, et rien pour le fondateur, 2026-11-13)
+  c(/par: nomDeSession\(session\)/.test(route) && !/geste\.par|body\.par/.test(route), '[D] l auteur vient de la session, jamais du corps de la requete');
   c(/writeAuditLog\(/.test(route), '[D] ajouter ou retirer une note est journalise');
   const ecriture = extraire(sources.db, 'noterReservationEquipe');
   c(/for update/.test(ecriture) && /withTransaction/.test(ecriture), '[D] la note s ecrit sous verrou, sur ce qui est en base');
@@ -194,9 +198,10 @@ function verifier(sources) {
 const MUTATIONS = [
   { nom: 'le mot du client garde les notes d equipe', cible: 'app', de: ".filter(ligne => !lireNoteEquipeLigne(ligne))\n    .join('\\n')", vers: ".join('\\n')" },
   { nom: 'les traces du moteur restent dans le mot du client', cible: 'app', de: "mot: lignes.filter(ligne => !/^\\s*\\[ops:/.test(ligne))", vers: 'mot: lignes.filter(ligne => true)' },
-  { nom: 'le serveur prend l auteur dans le corps', cible: 'api', de: "par: (membre && (membre.name || membre.displayName)) || 'Équipe',", vers: "par: geste.par || 'Équipe'," },
+  { nom: 'le serveur prend l auteur dans le corps', cible: 'api', de: 'par: nomDeSession(session),', vers: "par: geste.par || 'Équipe'," },
   { nom: 'la note s ecrit sans verrou', cible: 'db', de: "select * from reservations where id = $1 and center_id = $2 for update;", vers: 'select * from reservations where id = $1 and center_id = $2;' },
-  { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: '[n.par, formatNoteEquipeQuand(n.le), n.modifieLe', vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
+  { nom: 'une note signee par personne ne dit plus l equipe', cible: 'app', de: "[n.par || 'L’équipe', formatNoteEquipeQuand(n.le)", vers: '[n.par, formatNoteEquipeQuand(n.le)' },
+  { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: "[n.par || 'L’équipe', formatNoteEquipeQuand(n.le), n.modifieLe", vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
   { nom: 'retirer une note montre sans le droit', cible: 'app', de: "const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));", vers: 'const peutReecrire = peutNoter;' },

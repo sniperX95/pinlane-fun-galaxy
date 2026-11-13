@@ -22,6 +22,9 @@
 //       d Equipe & acces), dans un navigateur, un seul a la fois
 //   [C] les contre-preuves : chaque filtre retire en memoire (le disque n est jamais ecrit, l ecran recoit
 //       son fichier mute par le serveur du banc) fait rougir sa section
+//   [D] les dossiers (notes, prix, derniere modification, coches, creation, lecture et chemin du retour) :
+//       scripts/fondateur-invisible-dossiers-check.js, sur la base en memoire de la fenetre Reserver, dans
+//       son propre processus, apres le navigateur
 //
 // Rien ne part : ni base, ni reseau, ni mail.
 // Lancement : node scripts/fondateur-invisible-check.js [--sans-ecran] [--sans-contre-preuves] [--detail]
@@ -865,6 +868,12 @@ async function contrePreuves() {
     if (navigateur) await navigateur.close().catch(() => {});
     serveur.close();
   }
+  // [D] Les dossiers : une autre base en memoire (celle de la fenetre Reserver), donc un autre processus,
+  // lance une fois le navigateur ferme (une seule tache lourde a la fois).
+  section = 'D';
+  console.log('\n[D] les dossiers (scripts/fondateur-invisible-dossiers-check.js)');
+  const dossiers = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'fondateur-invisible-dossiers-check.js'), ...process.argv.slice(2).filter((a) => a === '--sans-contre-preuves')], { stdio: 'inherit' });
+  ok(dossiers.status === 0, '[D] le volet dossiers est vert', `code ${dossiers.status}${dossiers.error ? `, ${dossiers.error.message}` : ''}`);
   section = 'Z';
   const inconnues = [...new Set(NON_COUVERTES)];
   if (inconnues.length) console.log(`note  requetes non servies par la base en memoire (rendues vides) : ${inconnues.length}\n      ${inconnues.slice(0, 12).join('\n      ')}`);

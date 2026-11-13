@@ -116,9 +116,23 @@ function contexteRegistre(before, after, extra = {}) {
 // arrivee ni un paiement : la feuille renvoyee tous les quarts d heure les
 // porte deja, un mail par clic noierait la boite.
 const CHAMPS_COPIE_SECOURS = ['date', 'startTime', 'pax', 'program', 'formuleId', 'formulaId', 'type', 'name', 'phone', 'email', 'price', 'notes', 'duration', 'totalDuration', 'lanes'];
+async function rendreLeCorpsSansFondateur(body, current, session, res) {
+  const F = require('../lib/fondateur-invisible');
+  const cles = ['activityProgress', 'activity_progress'].filter((cle) => body[cle] && typeof body[cle] === 'object');
+  if (res.__nomsDuFondateur) {
+    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), res.__nomsDuFondateur);
+    cles.forEach((cle) => { body[cle] = F.suiviRendu(body[cle], current.activityProgress, res.__nomsDuFondateur); });
+    return;
+  }
+  if (!F.estFondateur(session) || !cles.length) return;
+  const noms = await F.nomsDuFondateur();
+  cles.forEach((cle) => { body[cle] = F.suiviSansSignature(body[cle], current.activityProgress, noms); });
+}
+
 async function copierAuSecours(reservation, evenement, avant, session) {
   const { copieSecours } = require('../lib/secours-envoi');
-  const par = (session && session.member && session.member.name) || '';
+  // La copie de secours ne nomme pas le fondateur (2026-11-13, lib/fondateur-invisible.js).
+  const par = require('../lib/fondateur-invisible').signatureVisible(session, { avecId: false });
   const r = await copieSecours(reservation, { evenement, avant, par });
   return r && r.erreur ? `secours:${r.erreur}` : '';
 }
@@ -499,8 +513,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const de = Math.trunc(Number(current.pax) || 0);
     const a = Number(patch.pax);
     if (!Number.isInteger(a) || a < 1 || a > 240) throw createHttpError('Nombre de personnes invalide : entre 1 et 240.', 422);
-    const membre = session && session.member ? session.member : null;
-    if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: (membre && (membre.name || membre.displayName)) || 'Équipe' });
+    if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: nomDeSession(session) });
   }
   if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;
   const proposedProgram = patch.program ?? current.program;
@@ -767,6 +780,11 @@ const traiter = async (req, res) => {
       // Sans « Voir les montants », le dossier revient sans ses montants : ils ne s ecrivent
       // pas, chaque ligne garde le sien (lib/montants-role.js, passe securite du 2026-11-08).
       if (res.__sansMontants) require('../lib/montants-role').retirerLesMontantsDuCorps(body, current);
+      // LE CHEMIN DU RETOUR, SANS LE FONDATEUR (2026-11-13, lib/fondateur-invisible.js). Une session du centre
+      // a recu les notes et les coches du fondateur sans son nom : renvoyees telles quelles, elles redeviennent
+      // les lignes en base (sinon elles seraient resignees du nom de l employe, ou le nom effacerait la base).
+      // Le fondateur, lui, coche sans signer.
+      await rendreLeCorpsSansFondateur(body, current, session, res);
       // GLISSER UNE ACTIVITE DEMANDE LE DROIT DE SA RESSOURCE (passe securite du 2026-11-08) :
       // « Gérer les pistes bowling » et « Gérer les sessions Laser Game » ne gardaient que les
       // onglets de la console, un role sans l un des deux deplacait quand meme par l API.
@@ -860,7 +878,6 @@ const traiter = async (req, res) => {
 
       if (patchIsNoteEquipeOnly(body)) {
         const geste = body.noteEquipe;
-        const membre = session && session.member ? session.member : null;
         // Ajouter est un geste d accueil ; retirer ou reecrire touche a ce qui
         // est ecrit, la raison d un prix comprise.
         if (geste.retrait !== undefined || geste.modifier !== undefined) exigerRetraitDeNote(session);
@@ -869,8 +886,8 @@ const traiter = async (req, res) => {
           retrait: typeof geste.retrait === 'string' ? geste.retrait : undefined,
           modifier: geste.modifier,
           // L auteur vient de la session, jamais du corps : une note ne
-          // s ecrit pas au nom d un collegue.
-          par: (membre && (membre.name || membre.displayName)) || 'Équipe',
+          // s ecrit pas au nom d un collegue (ni a celui du fondateur, nomDeSession).
+          par: nomDeSession(session),
         });
         const auditNote = await writeAuditLog({
           centerId: current.centerId || 'libramont',
@@ -900,7 +917,7 @@ const traiter = async (req, res) => {
           current.centerId || 'libramont',
           coche.key,
           coche.done === true,
-          { doneAt: coche.doneAt, by: coche.by },
+          { doneAt: coche.doneAt, by: require('../lib/fondateur-invisible').estFondateur(session) ? '' : coche.by },
         );
         const auditToggle = await writeAuditLog({
           centerId: current.centerId || 'libramont',

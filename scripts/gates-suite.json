@@ -217,6 +217,7 @@
     "test:equipe-acces",
     "test:tour-controle",
     "test:garde-postes",
+    "test:alertes-lisibles",
     "test:securite-passe",
     "test:garde-securite",
     "test:venir-plus-tot",

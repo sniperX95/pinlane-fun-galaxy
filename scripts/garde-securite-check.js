@@ -178,7 +178,7 @@ function quartDHeureAgite() {
     const avant = TELEGRAM.length;
     await alerter('serveur:vraie-panne', 'URGENT Pinlane\nPanne du serveur, api/public-reservations.');
     ok(TELEGRAM.length === avant + 1 && /Panne du serveur/.test(TELEGRAM[TELEGRAM.length - 1].texte), '[K] treize faux plantages publics ne font pas taire une vraie panne du serveur', TELEGRAM.slice(-2));
-    ok(TELEGRAM.some((m) => /Trop de plantages signalés par des navigateurs/.test(m.texte) && !m.sonne), '[K] la rafale publique se dit une fois, sans sonnerie');
+    ok(TELEGRAM.some((m) => /beaucoup d’erreurs signalées d’un coup par des navigateurs/.test(m.texte) && !m.sonne), '[K] la rafale publique se dit une fois, sans sonnerie');
   }
   charger([[F.meta, ANCRE.urgentSiPlusieurs, '    const urgent = true;']]);
   {

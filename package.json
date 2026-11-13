@@ -298,6 +298,7 @@
     "test:equipe-acces": "node scripts/equipe-acces-check.js",
     "test:tour-controle": "node scripts/tour-controle-check.js",
     "test:garde-postes": "node scripts/garde-postes-check.js",
+    "test:alertes-lisibles": "node scripts/alertes-lisibles-check.js",
     "test:securite-passe": "node scripts/securite-passe-check.js",
     "test:garde-securite": "node scripts/garde-securite-check.js",
     "test:venir-plus-tot": "node scripts/venir-plus-tot-check.js",

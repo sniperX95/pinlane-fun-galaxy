@@ -196,7 +196,7 @@ async function preuvesCanal() {
   TG.length = 0;
   const t0 = Date.parse('2026-11-14T12:00:00Z');
   for (let i = 0; i < 14; i += 1) await a.alerter(`cle-${i}`, `panne ${i}`, { maintenant: t0 + i * 1000 });
-  ok(TG.length === 13 && /Trop d’alertes/.test(TG[12].text), '[T] 14 pannes differentes en 10 minutes : 12 messages, puis une ligne qui le dit', TG.map((m) => m.text));
+  ok(TG.length === 13 && /^Pinlane : beaucoup de problèmes signalés d’un coup\./.test(TG[12].text), '[T] 14 pannes differentes en 10 minutes : 12 messages, puis une ligne qui le dit', TG.map((m) => m.text));
   await a.alerter('cle-99', 'panne 99', { maintenant: t0 + 11 * 60_000 });
   ok(TG.length === 14 && TG[13].text === 'panne 99', '[T] la fenetre passee, les alertes repartent', TG.length);
   await a.alerter('cle-99', 'panne 99 encore', { maintenant: t0 + 11 * 60_000 + 5000 });

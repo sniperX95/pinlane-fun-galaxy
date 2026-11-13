@@ -61,7 +61,7 @@ Module.prototype._compile = function (contenu, nom) {
   }
   return compileAvant.call(this, mute, nom);
 };
-const MODULES_DE_GARDE = ['lib/garde-alertes.js', 'lib/garde-annonces.js', 'lib/garde-journal.js', 'lib/garde-serveur.js', 'lib/garde-mails.js', 'lib/garde-bilan.js', 'lib/tour-controle.js', 'lib/ops-engine.js', 'lib/cron-tasks.js', 'lib/llm-budget.js', 'lib/llm-client.js', 'lib/client-errors.js', 'api/inbound-email.js', 'api/ops.js'];
+const MODULES_DE_GARDE = ['lib/garde-alertes.js', 'lib/garde-annonces.js', 'lib/garde-journal.js', 'lib/garde-serveur.js', 'lib/garde-mails.js', 'lib/garde-bilan.js', 'lib/tour-controle.js', 'lib/ops-engine.js', 'lib/cron-tasks.js', 'lib/llm-budget.js', 'lib/llm-client.js', 'lib/garde-veilles.js', 'lib/ops-knowledge.js', 'lib/client-errors.js', 'api/inbound-email.js', 'api/ops.js'];
 function purger() {
   for (const rel of MODULES_DE_GARDE) delete require.cache[require.resolve(path.join(ROOT, rel))];
 }
@@ -550,13 +550,70 @@ async function preuvesBilan() {
 // ---------------------------------------------------------------------------
 // [G] La garde entiere.
 // ---------------------------------------------------------------------------
-function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false, formulaire = false, arene = 0, horaires = false } = {}) {
+// [V] LES VEILLES DU 2026-11-13 (lib/garde-veilles.js) : chacune par son vrai code, sur un samedi a
+// 15:30 a Bruxelles. Les lignes rendues suivent les filtres que la requete porte.
+const SAMEDI_1530 = Date.parse('2026-11-14T14:30:00Z');
+const SEMAINE_MS = 7 * 24 * 3600 * 1000;
+const FERME = { 0: {}, 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {} };
+function routesDesVeilles({ recenteALibramont = true } = {}) {
+  route(/from audit_log where outcome = 'success' and occurred_at > now\(\) - interval '30 minutes'/, (s) => [
+    { center_id: 'gembloux', qui: 'Seb', n: 7 },
+    { center_id: 'libramont', qui: 'Marie', n: 2 },
+    ...(/not like '%:platform-owner%'/.test(s) ? [] : [{ center_id: 'libramont', qui: 'Ansar', n: 9 }]),
+  ]);
+  const resas = [];
+  for (let s = 1; s <= 4; s += 1) {
+    for (let k = 1; k <= 3; k += 1) {
+      resas.push({ center_id: 'gembloux', created_at: new Date(SAMEDI_1530 - s * SEMAINE_MS - k * 40 * 60000) });
+      resas.push({ center_id: 'libramont', created_at: new Date(SAMEDI_1530 - s * SEMAINE_MS - k * 40 * 60000) });
+    }
+  }
+  if (recenteALibramont) resas.push({ center_id: 'libramont', created_at: new Date(SAMEDI_1530 - 3600000) });
+  route(/select center_id, created_at from reservations where channel = 'public' and created_at > now\(\) - interval '29 days'/, () => resas);
+  route(/from llm_spend where month = any/, () => [{ month: '2026-11', cout: 4.2 }, { month: '2026-11:mails', cout: 5.3 }]);
+  route(/from ops_jobs where status = 'failed'/, () => [{ center_id: 'libramont', n: 2 }]);
+  route(/from email_threads where status = 'open'/, () => [{ center_id: 'gembloux', n: 3 }, { center_id: 'namur', n: 1 }, { center_id: 'demo', n: 4 }]);
+}
+async function veillesDuBanc(options = {}) {
+  remettre();
+  routesDeLaTour({ autresCentres: true, ...options });
+  routesDesVeilles(options);
+  const tour = charger('lib/tour-controle.js');
+  const { problemes } = await tour.lireProblemes(pool, { maintenant: SAMEDI_1530 });
+  return { tour, problemes, veilles: problemes.filter((p) => p.cle.startsWith('veille:')) };
+}
+async function preuvesVeilles() {
+  const { tour, problemes, veilles } = await veillesDuBanc();
+  const v = (cle) => veilles.find((p) => p.cle === cle);
+  ok(v('veille:annulations:gembloux:Seb') && v('veille:annulations:gembloux:Seb').quoi === 'Gembloux : Seb a annulé ou supprimé 7 réservations en 30 minutes' && !veilles.some((p) => /annulations:libramont/.test(p.cle)), '[V] sept annulations en 30 minutes par la meme personne se disent, deux non', veilles.map((p) => p.cle));
+  ok(!veilles.some((p) => /Ansar/.test(p.cle)), '[V] les annulations d Ansar lui-meme ne comptent pas', veilles.map((p) => p.cle));
+  ok(v('veille:en-ligne-arretee:gembloux') && /environ 3 sur ces 3 h le même jour de la semaine/.test(v('veille:en-ligne-arretee:gembloux').effet) && !v('veille:en-ligne-arretee:libramont'), '[V] plus de reservation en ligne depuis 3 h a Gembloux, quand il en arrive d habitude ; Libramont en a recu une', veilles.map((p) => p.cle));
+  ok(v('veille:budget-ia:commun') && /approche/.test(v('veille:budget-ia:commun').quoi) && v('veille:budget-ia:mails') && /a atteint/.test(v('veille:budget-ia:mails').quoi) && !v('veille:budget-ia:garde'), '[V] la depense IA : 84 % approche, 106 % atteint, le reste ne dit rien', veilles.filter((p) => /budget/.test(p.cle)).map((p) => p.quoi));
+  ok(v('veille:travaux-rates:libramont') && v('veille:travaux-rates:libramont').n === 2, '[V] des travaux programmes en echec se disent', veilles.map((p) => p.cle));
+  ok(v('veille:mails-sans-reponse:gembloux') && /3 mails de clients attendent une réponse depuis plus de 24 h/.test(v('veille:mails-sans-reponse:gembloux').quoi), '[V] des mails de clients sans reponse depuis 24 h se disent', veilles.map((p) => p.cle));
+  ok(veilles.length > 0 && veilles.every((p) => p.gravite === 'attention'), '[V] aucune veille ne sonne', veilles.map((p) => `${p.cle}=${p.gravite}`));
+  const ouverts = tour.deciderGarde({}, problemes, { instant: SAMEDI_1530 });
+  const passe = tour.deciderGarde(ouverts.dits, problemes.filter((p) => !/^veille:(annulations|en-ligne-arretee)/.test(p.cle)), { instant: SAMEDI_1530 });
+  const regle = (passe.messages.find((m) => m.genre === 'regle') || { texte: '' }).texte;
+  ok(/les réservations en ligne s’étaient arrêtées/.test(regle) && !/annulé/.test(regle), '[V] la reservation en ligne revenue se dit « Réglé » ; des annulations passees, jamais', regle);
+  const plein = tour.deciderGarde({ 'veille:budget-ia:commun': { titre: 'x', passe: 'x', n: 1 } }, [{ ...v('veille:budget-ia:commun'), n: 4, quoi: 'Pinlane : les agents marketing a atteint le plafond de dépense IA du mois' }], { instant: SAMEDI_1530 });
+  ok(plein.nouveaux.length === 1, '[V] le plafond atteint apres les 80 % se redit une fois', plein.nouveaux.map((p) => p.cle));
+  ok(v('veille:mails-sans-reponse:namur') && !v('veille:mails-sans-reponse:demo'), '[V] les centres gardes se lisent en base : un nouveau centre actif est garde, une fiche de demonstration non', veilles.map((p) => p.cle));
+  const fermee = await veillesDuBanc({ semaineFermee: true });
+  ok(fermee.veilles.some((p) => p.cle === 'veille:sans-jour:gembloux') && !fermee.veilles.some((p) => p.cle === 'veille:sans-jour:libramont'), '[V] un centre ouvert en ligne sans aucun jour reservable sur 7 jours se dit', fermee.veilles.map((p) => p.cle));
+  await veillesDuBanc();
+}
+
+function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false, formulaire = false, arene = 0, horaires = false, semaineFermee = false, autresCentres = false } = {}) {
   route(/from centers/, () => [
     // `arene` : le nombre d armes que le gerant a regle dans la console pour le laser de Libramont.
     { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, ...(arene ? { resources: { laser: { weaponCount: arene, parallelLaunches: 1 } } } : {}),
       // `horaires` : le gerant de Libramont a regle le mardi a 12:00 et ouvre exceptionnellement le lundi 16/11.
       ...(horaires ? { defaultSchedule: { regular: { 2: { open: '12:00', close: '22:00' } } }, ouverturesExceptionnelles: [{ date: '2026-11-16', open: '10:00', close: '18:00' }] } : {}) } } },
-    { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
+    { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, ...(semaineFermee ? { defaultSchedule: { regular: FERME, holiday: FERME } } : {}) } } },
+    // Un nouveau client passe actif (garde sans toucher au code) et une fiche de demonstration qui refuse la garde.
+    ...(autresCentres ? [{ id: 'namur', name: 'Fun Galaxy Namur', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] } } } },
+      { id: 'demo', name: 'Centre de démonstration', status: 'active', settings: { garde: false, config: {} } }] : []),
   ]);
   // Les taches sont saines a l heure du passage joue, pas a l heure du banc.
   const sain = (task_name) => { const il = new Date(INSTANT.valeur.getTime() - 600000); return { task_name, status: 'ok', started_at: il, finished_at: il, error: null, dernier_ok: il }; };
@@ -946,6 +1003,21 @@ async function contrePreuves() {
     const f = await b.faitsDuBilan(pool, { instant: MATIN, centres: CENTRES, taches: TACHES_SAINES, problemes: [] });
     return !/Resend|500/.test(b.bilanEnRegles(f));
   });
+  await rouge('les annulations en masse deviennent « Réglé »', [{ fichier: 'lib/tour-controle.js', de: " && !(precedent[cle] && precedent[cle].evenement)", vers: '' }], async () => {
+    const { tour, problemes } = await veillesDuBanc();
+    const ouverts = tour.deciderGarde({}, problemes, { instant: SAMEDI_1530 });
+    const passe = tour.deciderGarde(ouverts.dits, problemes.filter((p) => !/^veille:annulations/.test(p.cle)), { instant: SAMEDI_1530 });
+    return !passe.messages.some((m) => m.genre === 'regle' && /annulé/.test(m.texte));
+  });
+  await rouge('les centres gardes restent ecrits en dur', [{ fichier: 'lib/tour-controle.js', de: '      garde: gardeEnBase(l),', vers: '      garde: CENTRES_GARDES.includes(l.id),' }], async () => (await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:mails-sans-reponse:namur'));
+  await rouge('les annulations d Ansar lui-meme comptent', [{ fichier: 'lib/garde-veilles.js', de: " and coalesce(actor_member_id, '') not like '%:platform-owner%'", vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => /Ansar/.test(p.cle)));
+  await rouge('une reservation en ligne recente ne compte plus', [{ fichier: 'lib/garde-veilles.js', de: '    if (t > maintenant - PLAGE_MS && t <= maintenant) c.recentes += 1;\n', vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:en-ligne-arretee:libramont'));
+  await rouge('le plafond IA atteint ne se redit pas', [{ fichier: 'lib/garde-veilles.js', de: '      n: plein ? 4 : 1,', vers: '      n: 1,' }], async () => {
+    const { tour, veilles } = await veillesDuBanc();
+    const mails = veilles.find((p) => p.cle === 'veille:budget-ia:mails');
+    return Boolean(mails) && tour.deciderGarde({ 'veille:budget-ia:mails': { titre: 'x', passe: 'x', n: 1 } }, [mails], { instant: SAMEDI_1530 }).nouveaux.length === 1;
+  });
+  await rouge('un centre ferme toute la semaine ne se dit pas', [{ fichier: 'lib/garde-veilles.js', de: '    return centre && centre.id === c.id && jours.every((j) => !getSchedule(j, centre));', vers: '    return false;' }], async () => { const r = (await veillesDuBanc({ semaineFermee: true })).veilles.some((p) => p.cle === 'veille:sans-jour:gembloux'); await veillesDuBanc(); return r; });
   await rouge('une action inconnue disparait en silence', [{ fichier: 'lib/garde-journal.js', de: "  return { ligne: 'autre action dans la console' };", vers: '  return { rien: true };' }], async () => {
     await journalRejoue();
     return TG.some((m) => /14:10 Seb : autre action dans la console/.test(m.text));
@@ -1007,7 +1079,7 @@ async function contrePreuves() {
     return d1.messages.length === 0 && deciderGarde(d1.dits, []).messages.length === 0;
   };
   await rouge('un plantage deja dit a l instant se redit au quart d heure', [{ fichier: 'lib/tour-controle.js', de: '  const nouveaux = [...neufs.filter((p) => !p.instant), ...aggraves];', vers: '  const nouveaux = [...neufs, ...aggraves];' }], plantageTient);
-  await rouge('un plantage sorti de la fenetre se dit « Réglé »', [{ fichier: 'lib/tour-controle.js', de: '.filter((cle) => !actuels[cle] && !ditALInstant(cle, precedent[cle]))', vers: '.filter((cle) => !actuels[cle])' }], plantageTient);
+  await rouge('un plantage sorti de la fenetre se dit « Réglé »', [{ fichier: 'lib/tour-controle.js', de: '.filter((cle) => !actuels[cle] && !ditALInstant(cle, precedent[cle]) && !(precedent[cle] && precedent[cle].evenement))', vers: '.filter((cle) => !actuels[cle] && !(precedent[cle] && precedent[cle].evenement))' }], plantageTient);
   await rouge('une partie illisible sonne', [{ fichier: 'lib/tour-controle.js', de: "const constatDeLecture = (nom) => constat({ cle: `lecture:${nom}`, gravite: 'attention',", vers: "const constatDeLecture = (nom) => constat({ cle: `lecture:${nom}`, gravite: 'critique'," }], async () => {
     remettre();
     routesDeLaTour();
@@ -1169,6 +1241,7 @@ async function contrePreuves() {
   await preuvesGarde();
   await preuvesBruit();
   await preuvesCaisse();
+  await preuvesVeilles();
   await contrePreuves();
   console.log(`\ngarde-postes-check: ${echecs ? `${echecs} ECHEC(S) sur ${total}` : `ALL OK (${total})`}`);
   process.exit(echecs ? 1 : 0);

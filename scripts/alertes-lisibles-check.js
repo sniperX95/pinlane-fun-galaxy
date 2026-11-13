@@ -546,6 +546,62 @@ async function contrePreuvesBilanDuMatin() {
   await rouge('un titre technique recopie dans le bilan', [{ fichier: 'lib/garde-bilan.js', de: "const titreLisible = (titre) => (T.motInterdit(titre) ? 'un problème signalé plus tôt' : titre);", vers: 'const titreLisible = (titre) => titre;' }], lisibles);
 }
 
+// ---------------------------------------------------------------------------
+// [V] Les veilles du 2026-11-13 (lib/garde-veilles.js), par leur vrai code, un samedi a 15:30.
+// ---------------------------------------------------------------------------
+const SAMEDI_1530 = Date.parse('2026-11-14T14:30:00Z');
+async function constatsDesVeilles() {
+  ROUTES.length = 0;
+  const FERME = { 0: {}, 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {} };
+  route(/from centers/, () => [
+    { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: {} } },
+    { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: { defaultSchedule: { regular: FERME, holiday: FERME } } } },
+  ]);
+  route(/from audit_log where outcome = 'success' and occurred_at > now\(\) - interval '30 minutes'/, () => [{ center_id: 'gembloux', qui: 'Seb', n: 7 }]);
+  const semaine = 7 * 24 * 3600 * 1000;
+  const resas = [];
+  for (let s = 1; s <= 4; s += 1) for (let k = 1; k <= 3; k += 1) resas.push({ center_id: 'gembloux', created_at: new Date(SAMEDI_1530 - s * semaine - k * 40 * 60000) });
+  route(/select center_id, created_at from reservations where channel = 'public'/, () => resas);
+  route(/from llm_spend where month = any/, () => [{ month: '2026-11', cout: 4.2 }, { month: '2026-11:mails', cout: 5.3 }]);
+  route(/from ops_jobs where status = 'failed'/, () => [{ center_id: 'libramont', n: 2 }]);
+  route(/from email_threads where status = 'open'/, () => [{ center_id: 'gembloux', n: 1 }, { center_id: 'libramont', n: 3 }]);
+  const tour = charger('lib/tour-controle.js');
+  const noms = (id) => ({ gembloux: 'Gembloux', libramont: 'Libramont' })[id] || id;
+  const centres = [{ id: 'gembloux', nom: 'Gembloux', garde: true, enLigne: true }, { id: 'libramont', nom: 'Libramont', garde: true, enLigne: true }];
+  const veilles = await charger('lib/garde-veilles.js').constatsDesVeilles(pool, { noms, estGarde: () => true, centres, constat: tour.constat, maintenant: SAMEDI_1530 });
+  routesDeLaGarde();
+  return { tour, veilles };
+}
+const FAMILLES_DES_VEILLES = ['veille:annulations:gembloux', 'veille:en-ligne-arretee:gembloux', 'veille:budget-ia:commun', 'veille:budget-ia:mails', 'veille:travaux-rates:libramont', 'veille:sans-jour:gembloux', 'veille:mails-sans-reponse:gembloux', 'veille:mails-sans-reponse:libramont'];
+async function preuvesVeilles() {
+  const { tour, veilles } = await constatsDesVeilles();
+  const manquent = FAMILLES_DES_VEILLES.filter((f) => !veilles.some((p) => p.cle.startsWith(f)));
+  ok(!manquent.length, '[V] chaque veille se fabrique par le vrai code', manquent);
+  for (const p of veilles) lisible(tour.blocDuConstat(p, process.env).texte, 'alerte', `[V] ${p.cle}`);
+  const ouverts = tour.deciderGarde({}, veilles, { instant: SAMEDI_1530 });
+  ok(ouverts.messages.length === 1 && ouverts.messages[0].urgent === false, '[V] les veilles neuves partent en un message, sans sonnerie', ouverts.messages.map((m) => m.urgent));
+  lisible(ouverts.messages[0].texte, 'alerte', '[V] le message des veilles');
+  const regles = tour.deciderGarde(ouverts.dits, [], { instant: SAMEDI_1530 });
+  const regle = (regles.messages[0] || { texte: '' }).texte;
+  lisible(regle, 'regle', '[V] le « Réglé » des veilles');
+  ok(!/annulé/.test(regle), '[V] des annulations passees ne se disent jamais « Réglé »', regle);
+}
+async function contrePreuvesVeilles() {
+  const rouge = async (nom, edits, rejouer) => {
+    mutations = edits;
+    purger();
+    let tient;
+    try { tient = await rejouer(); } catch (error) { tient = false; }
+    mutations = [];
+    purger();
+    ok(tient === false, `[X] ${nom} : rougit`);
+  };
+  await rouge('une veille qui parle en code', [{ fichier: 'lib/garde-veilles.js', de: "'travail programmé a échoué', 'travaux programmés ont échoué'", vers: "'ops_job en échec', 'ops_jobs en échec'" }], async () => {
+    const { tour, veilles } = await constatsDesVeilles();
+    return veilles.every((p) => fautesDe(tour.blocDuConstat(p, process.env).texte, 'alerte').length === 0);
+  });
+}
+
 (async () => {
   await new Promise((resolve, reject) => { serveur.once('error', reject); serveur.listen(PORT, '127.0.0.1', resolve); });
   brancher();
@@ -559,10 +615,12 @@ async function contrePreuvesBilanDuMatin() {
     await preuvesAnnonces();
     await preuvesSecurite();
     await preuvesBilanDuMatin();
+    await preuvesVeilles();
     await contrePreuves();
     await contrePreuvesAnnonces();
     await contrePreuvesSecurite();
     await contrePreuvesBilanDuMatin();
+    await contrePreuvesVeilles();
   } finally {
     serveur.close();
   }

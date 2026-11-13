@@ -17238,12 +17238,18 @@ function equipeMembreChoisi(access) {
   return personnes.find(member => member.id === access.selectedMemberId) || personnes.find(member => !member.partage) || personnes[0] || null;
 }
 
+// LE JOURNAL DE L EQUIPE EST AU FONDATEUR SEUL (Ansar, 2026-11-13 : « ça c est un truc que moi seul dois
+// avoir »). Le serveur ne l envoie qu a lui (listAccessControl) ; l onglet ne s ouvre que pour lui.
+function equipeOngletsPermis() {
+  return equipeEstProprietaire() ? ['personnes', 'roles', 'journal'] : ['personnes', 'roles'];
+}
+
 function equipeOnglet() {
-  return ['personnes', 'roles', 'journal'].includes(state.equipeOnglet) ? state.equipeOnglet : 'personnes';
+  return equipeOngletsPermis().includes(state.equipeOnglet) ? state.equipeOnglet : 'personnes';
 }
 
 function equipeChoisirOnglet(onglet) {
-  state.equipeOnglet = ['personnes', 'roles', 'journal'].includes(onglet) ? onglet : 'personnes';
+  state.equipeOnglet = equipeOngletsPermis().includes(onglet) ? onglet : 'personnes';
   state.equipeRenommage = null;
   save();
   renderStaffUtilityPage();
@@ -17683,7 +17689,7 @@ function renderStaffUtilityUsers() {
     <div class="eq-onglets" role="tablist" aria-label="Équipe & accès">
       <button type="button" role="tab" id="eqOnglet-personnes" aria-selected="${onglet === 'personnes'}" data-eq="onglet" data-valeur="personnes">Personnes <em>${personnes.length}</em></button>
       <button type="button" role="tab" id="eqOnglet-roles" aria-selected="${onglet === 'roles'}" data-eq="onglet" data-valeur="roles">Rôles <em>${roles.length}</em></button>
-      <button type="button" role="tab" id="eqOnglet-journal" aria-selected="${onglet === 'journal'}" data-eq="onglet" data-valeur="journal">Journal</button>
+      ${equipeOngletsPermis().includes('journal') ? `<button type="button" role="tab" id="eqOnglet-journal" aria-selected="${onglet === 'journal'}" data-eq="onglet" data-valeur="journal">Journal</button>` : ''}
     </div>
     <div role="tabpanel" aria-labelledby="eqOnglet-${onglet}">${corps}</div>
   </div>`;
@@ -29359,7 +29365,7 @@ function renderGroupeNotes(r) {
       return parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
     })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
-      <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le), n.modifieLe ? `modifiée ${formatNoteEquipeQuand(n.modifieLe)}${n.modifiePar ? ` par ${n.modifiePar}` : ''}` : ''].filter(Boolean).join(' · '))}</span></p>
+      <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par || 'L’équipe', formatNoteEquipeQuand(n.le), n.modifieLe ? `modifiée ${formatNoteEquipeQuand(n.modifieLe)}${n.modifiePar ? ` par ${n.modifiePar}` : ''}` : ''].filter(Boolean).join(' · '))}</span></p>
       ${peutReecrire ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeJsString(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeJsString(n.le)}', event)">Retirer</button></div>` : ''}
     </li>`).join('')}</ul>` : ''}
     ${ouvert ? `<div class="gc-note-ajout">
@@ -40150,7 +40156,9 @@ function staffActivityEligible() {
   if (state.view !== 'staff' && state.view !== 'admin') return false;
   const member = state.staffAuthSession?.member;
   if (!member || !member.id) return false;
-  return !String(member.id).endsWith(':platform-owner');
+  // Le fondateur ne se trace pas, sa session de secours non plus (`<centre>:platform-owner-emergency`, 2026-11-13).
+  if (typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin')) return false;
+  return !String(member.id).includes(':platform-owner');
 }
 
 function recordStaffActivity(kind, label) {

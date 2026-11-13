@@ -6527,13 +6527,17 @@
   // A l ouverture d un fil : les messages recus que JE n ai pas encore lus sont
   // marques lus (une fois par fil et par session), et je prends la main sur le
   // dernier message recu tant que la conversation attend une reponse.
+  // LE FONDATEUR NE LIT POUR PERSONNE (2026-11-13) : il ouvre sans rien marquer,
+  // ni au serveur ni dans « Ouvert par » de son ecran ; le mail reste nouveau
+  // pour l equipe.
   function pv2ThreadApresOuverture(d) {
     const fil = d.thread;
     if (!fil) return;
     const moi = pv2MonIdentifiant();
     const cle = String(fil.id);
+    const fondateur = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
     const nonLus = d.messages.filter((m) => m.direction === 'inbound' && m.id && !(Array.isArray(m.lectures) && moi && m.lectures.some((l) => String(l.memberId) === moi)));
-    if (nonLus.length && !pv2Threads.marquesLus.has(cle)) {
+    if (!fondateur && nonLus.length && !pv2Threads.marquesLus.has(cle)) {
       pv2Threads.marquesLus.add(cle);
       const session = state.staffAuthSession || {};
       const membre = session.member || {};

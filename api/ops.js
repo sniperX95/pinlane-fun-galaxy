@@ -173,6 +173,7 @@ const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
+const { estFondateur, signatureVisible } = require('../lib/fondateur-invisible');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
@@ -598,6 +599,8 @@ async function handleGet(req, res, options = {}) {
   if (action === 'auditLog') {
     const rows = await readAuditLog({
       centerId,
+      // Une action du fondateur (getRequiredOpsPermission) : il lit aussi ses lignes.
+      avecFondateur: estFondateur(options.session),
       limit: Number(url.searchParams.get('limit') || 100),
       offset: Number(url.searchParams.get('offset') || 0),
       actorMemberId: url.searchParams.get('actorMemberId') || '',
@@ -635,6 +638,7 @@ async function handleGet(req, res, options = {}) {
     const auditCenter = /^[a-z0-9-]{1,40}$/.test(rawCenter) ? rawCenter : 'all';
     const rows = await readAuditLog({
       centerId: auditCenter,
+      avecFondateur: estFondateur(options.session),
       limit: Number(url.searchParams.get('limit') || 50),
       offset: Number(url.searchParams.get('offset') || 0),
       actorMemberId: url.searchParams.get('actorMemberId') || '',
@@ -743,7 +747,7 @@ async function handleGet(req, res, options = {}) {
     if (!sessionHasPermission(options.session, 'payments.view')) throw createHttpError('Le fichier complet contient les montants : votre rôle ne les voit pas.', 403, true);
     const { exporterTout } = require('../lib/export-complet');
     const maintenant = new Date();
-    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant, sansEquipe: !sessionHasPermission(options.session, 'users.manage') });
+    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant, sansEquipe: !sessionHasPermission(options.session, 'users.manage'), sansFondateur: res.__nomsDuFondateur || null });
     await noterExport(options.session, scoped, 'exportComplet', { tables: doc.tables, lignes: doc.lignes });
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -790,6 +794,7 @@ async function handleGet(req, res, options = {}) {
       kind: action === 'classeurJour' ? 'excel' : 'feuille',
       vierge: url.searchParams.get('vierge') === '1',
       sansMontants: Boolean(res.__sansMontants),
+      sansFondateur: res.__nomsDuFondateur || null,
     });
     res.statusCode = 200;
     res.setHeader('Content-Type', doc.type);
@@ -2200,7 +2205,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     });
     if (!scopedSession) return;
     const channel = body.channel === 'sms' ? 'sms' : 'email';
-    const staffMember = sendSession.member?.name || sendSession.member?.id || 'staff';
+    // L auteur d un envoi, rien pour le fondateur (lib/fondateur-invisible.js).
+    const staffMember = signatureVisible(sendSession, { repli: 'staff' });
     let result;
     try {
       result = await sendClientMessage({
@@ -2768,7 +2774,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     // reservation en est nee. Le statut fait foi ; l historique est un plus,
     // une panne de son ecriture ne defait pas le statut.
     const { appendCustomRequestSuivi } = require('../lib/database');
-    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    // (le fondateur ne signe pas le suivi d une demande, lib/fondateur-invisible.js : la console dit « l'équipe »)
+    const par = signatureVisible(options.session);
     try {
       request = await appendCustomRequestSuivi(request.id, body.status === 'in_progress'
         ? { type: 'prise-en-charge', par }
@@ -2790,7 +2797,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // le directeur mardi », « veut une facture au nom de l ecole »).
   if (action === 'customRequestNote') {
     const { appendCustomRequestSuivi, getCustomRequest: lireDemande } = require('../lib/database');
-    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    const par = signatureVisible(options.session);
     const avant = await lireDemande(body.id, { centerId: scopedCenterId });
     const request = await appendCustomRequestSuivi(body.id, { type: 'note', par, texte: body.texte }, { centerId: scopedCenterId });
     noterAudit(options, { entityType: 'custom_request', entityId: request.id, changes: customRequestChanges(avant, request) });
@@ -3228,7 +3235,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const activitySession = await requireStaffPermission(req, res, ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'], { centerId: concreteCenterId });
     if (!activitySession) return;
     const activityMemberId = String(activitySession.member?.id || '');
-    if (activityMemberId.endsWith(':platform-owner')) { sendJson(res, 200, { ok: true, saved: 0, skipped: true }); return; }
+    // Sa session de secours non plus (2026-11-13, lib/fondateur-invisible.js) : `<centre>:platform-owner-emergency`.
+    if (estFondateur(activitySession) || activityMemberId.includes(':platform-owner')) { sendJson(res, 200, { ok: true, saved: 0, skipped: true }); return; }
     const activityEvents = normalizeActivityEvents(body.events);
     if (activityEvents.length) {
       await writeAuditLog({
@@ -3263,7 +3271,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         reason: body.reason || 'custom',
         subject: body.subject || '',
         body: body.body || '',
-        staffMember: relanceSession.member?.name || relanceSession.member?.id || 'staff',
+        staffMember: signatureVisible(relanceSession, { repli: 'staff' }),
         member: membreDeSession(relanceSession),
         // Facultative : la carte de l assistant la fige, un clic rejoue ne relance pas deux fois.
         attemptId: body.attemptId || '',
@@ -3286,7 +3294,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const concreteCenterId = requireConcreteCenter('note client');
     const clientKey = String(body.clientKey || '').trim();
     if (!clientKey) throw createHttpError('clientKey requis.', 400);
-    const saved = await saveClientNote(concreteCenterId, clientKey, body.body || '', null, { baseUpdatedAt: body.baseUpdatedAt, updatedBy: options.session?.member?.name || '' });
+    // (le fondateur ne signe pas la note d un client, lib/fondateur-invisible.js)
+    const saved = await saveClientNote(concreteCenterId, clientKey, body.body || '', null, { baseUpdatedAt: body.baseUpdatedAt, updatedBy: signatureVisible(options.session, { avecId: false }) });
     sendJson(res, 200, { ok: true, action, note: saved.note, clientKey: saved.clientKey });
     return;
   }
@@ -3334,7 +3343,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       id: body.id,
       bodyMd: body.bodyMd,
       title: body.title,
-      editedBy: options.session?.member?.name || options.session?.member?.id || 'direction',
+      // (le fondateur n y laisse pas son nom : le bilan dit « édité par direction », lib/fondateur-invisible.js)
+      editedBy: signatureVisible(options.session, { repli: 'direction' }),
       centerId: requireConcreteCenter('saveDirectionReport'),
     });
     sendJson(res, 200, { ok: true, report });
@@ -3437,7 +3447,7 @@ ${draftBody}`,
       fromLabel: identity?.label || '',
       category: body.category || 'direct',
       templateRef: body.templateRef || '',
-      staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
+      staffMember: signatureVisible(options.session, { repli: 'direction' }),
       identityId: body.identityId || null,
       replyToCommunicationId: body.replyToCommunicationId ?? null,
       scheduledAt: body.scheduledAt || null,
@@ -3462,7 +3472,7 @@ ${draftBody}`,
         const avant = await lireDemande(Number(body.customRequestId), { centerId: studioCenterId });
         const request = await appendCustomRequestSuivi(Number(body.customRequestId), {
           type: 'reponse',
-          par: String(options.session?.member?.name || options.session?.member?.id || ''),
+          par: signatureVisible(options.session),
           objet: body.subject,
           communicationId: result.communication.id,
           source: body.draftSource,
@@ -3506,8 +3516,7 @@ ${draftBody}`,
     if (mail.centerId !== centreApprentissage) throw createHttpError('Ce message appartient à un autre centre.', 403);
     const question = String((mail.payload && mail.payload.analysis && mail.payload.analysis.question) || '').trim();
     if (!question) throw createHttpError('Ce message ne porte aucune question ouverte.', 400);
-    const membre = (options.session && options.session.member) || {};
-    const par = String(membre.name || membre.id || '');
+    const par = signatureVisible(options.session);
     const { apprendreUnFait, analyzeEmail, getFaitsAppris, compterResolutions, questionsProches } = require('../lib/email-agent');
     const fait = await apprendreUnFait(centreApprentissage, { question, reponse: body.reponse, par, communicationId: mail.id });
     // La reponse proposee AVANT : l ecran montre ce que le fait a change.
@@ -3538,8 +3547,7 @@ ${draftBody}`,
   // restent ouvertes, leur reponse proposee refaite quand meme.
   if (action === 'agentApplyFact') {
     const centre = requireConcreteCenter('apprentissage de l agent');
-    const membre = (options.session && options.session.member) || {};
-    const par = String(membre.name || membre.id || '');
+    const par = signatureVisible(options.session);
     const { analyzeEmail, compterResolutions, resoluParLeFait } = require('../lib/email-agent');
     const ids = (Array.isArray(body.communicationIds) ? body.communicationIds : [])
       .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 3);
@@ -3575,9 +3583,9 @@ ${draftBody}`,
   // savoir. Les questions ouvertes proches sont rendues pour etre relues.
   if (action === 'teachAgentFact') {
     const centre = requireConcreteCenter('apprentissage de l agent');
-    const membre = (options.session && options.session.member) || {};
     const { apprendreUnFait, getFaitsAppris, questionsProches } = require('../lib/email-agent');
-    const fait = await apprendreUnFait(centre, { question: body.question, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    // « Appris par » ne nomme pas le fondateur (lib/fondateur-invisible.js).
+    const fait = await apprendreUnFait(centre, { question: body.question, reponse: body.reponse, par: signatureVisible(options.session) });
     const ouvertes = await listAgentQuestions({ centerId: centre, limit: 200 }).catch(() => []);
     sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre), proches: fait ? questionsProches(fait, ouvertes, 3) : [] });
     return;
@@ -3586,9 +3594,8 @@ ${draftBody}`,
   // CORRIGER UN FAIT : sa reponse change, l ancienne reste dans son historique.
   if (action === 'editAgentFact') {
     const centre = requireConcreteCenter('correction d un fait');
-    const membre = (options.session && options.session.member) || {};
     const { modifierUnFait, getFaitsAppris } = require('../lib/email-agent');
-    const fait = await modifierUnFait(centre, { id: body.id, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    const fait = await modifierUnFait(centre, { id: body.id, reponse: body.reponse, par: signatureVisible(options.session) });
     if (!fait) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
     sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre) });
     return;
@@ -3600,11 +3607,10 @@ ${draftBody}`,
   if (action === 'forgetAgentFact') {
     const centreOubli = requireConcreteCenter('oubli d un fait');
     if (!(Number(body.id) > 0) && !String(body.question || '').trim()) throw createHttpError('Quel fait faut-il oublier ?', 400);
-    const membre = (options.session && options.session.member) || {};
     const { oublierUnFait, getFaitsAppris } = require('../lib/email-agent');
     // L oubli retire le fait de la memoire ACTIVE ; la ligne reste (qui a
     // oublie, quand), rien n est efface.
-    const oublies = await oublierUnFait(centreOubli, { id: body.id, question: body.question, par: String(membre.name || membre.id || '') });
+    const oublies = await oublierUnFait(centreOubli, { id: body.id, question: body.question, par: signatureVisible(options.session) });
     if (!oublies) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
     sendJson(res, 200, { ok: true, action, appris: await getFaitsAppris(centreOubli) });
     return;
@@ -3622,7 +3628,6 @@ ${draftBody}`,
   // apercoive, des jours plus tard.
   if (action === 'setEmbedState') {
     const centreEmbed = requireConcreteCenter('interrupteur du formulaire');
-    const membre = (options.session && options.session.member) || {};
     const actif = body.actif !== false;
     const pool = getPool();
     // On envoie UNIQUEMENT la cle qui change : la sauvegarde fusionne avec la
@@ -3632,7 +3637,8 @@ ${draftBody}`,
       embed: {
         actif,
         bascule: new Date().toISOString(),
-        basculePar: String(membre.name || membre.id || ''),
+        // (« Coupé le ... par » ne nomme pas le fondateur, lib/fondateur-invisible.js)
+        basculePar: signatureVisible(options.session),
       },
     });
     await refreshCenterOverrides(pool, { force: true });
@@ -3913,11 +3919,14 @@ ${draftBody}`,
   }
 
   // QUI A LU. Le lecteur est le membre de SESSION, jamais un id fourni par le
-  // client ; une session de secours (fondateur) ne compte pas comme lecture.
+  // client. LE FONDATEUR NE LIT POUR PERSONNE (Ansar, 2026-11-13 : « ça doit pas
+  // afficher que c est ouvert ou lu par fondateur Pinlane ») : sa session, de
+  // secours ou non, ne pose aucune lecture, le mail reste « nouveau » pour
+  // l equipe tant que personne du centre ne l a ouvert.
   if (action === 'markCommunicationRead') {
     const lectureCenterId = requireConcreteCenter('lecture d un mail');
-    if (options.session && options.session.emergency) {
-      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'secours' });
+    if (estFondateur(options.session)) {
+      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'fondateur' });
       return;
     }
     const membre = membreDeSession(options.session);

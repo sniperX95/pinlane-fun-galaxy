@@ -26,7 +26,9 @@ const MUTATIONS_OUTILS = {
   'fil-sans-avertissement': { section: 'O', fichier: FICHIER, de: 'messages_total: lu.messages.length, avertissement: AVERTISSEMENT,', vers: 'messages_total: lu.messages.length,', rouge: '[O] lire_fil_mail avertit que le texte est une donnee' },
   'fil-texte-brut': { section: 'O', fichier: FICHIER, de: 'texte: lisible(m.message || m.textBody, { voit, montants, noms, max: 900 })', vers: 'texte: m.message || m.textBody', rouge: '[O] lire_fil_mail sans clients aucun nom' },
   'journal-prix-sans-droit': { section: 'O', fichier: FICHIER, de: "...(montants ? ['price', 'amountPaid'] : [])", vers: "...['price', 'amountPaid']", rouge: '[O] journal_du_centre sans montants aucun euro' },
-  'journal-ouvert-a-tous': { section: 'O', fichier: FICHIER, de: "droits: ['direction.view', 'dashboard.view'],\n      ce: 'le journal du centre',", vers: "droits: null,\n      ce: 'le journal du centre',", rouge: '[O] journal_du_centre refuse sans le droit' },
+  'journal-ouvert-a-tous': { section: 'O', fichier: FICHIER, de: "droits: ['platform.admin'],\n      ce: 'le journal du centre',", vers: "droits: null,\n      ce: 'le journal du centre',", rouge: '[O] journal_du_centre refuse sans le droit' },
+  // 2026-11-13 : le journal est au fondateur seul (Ansar : « ça c est un truc que moi seul dois avoir »).
+  'journal-ouvert-a-la-direction': { section: 'O', fichier: FICHIER, de: "droits: ['platform.admin'],\n      ce: 'le journal du centre',", vers: "droits: ['direction.view', 'dashboard.view'],\n      ce: 'le journal du centre',", rouge: '[O] journal_du_centre est au fondateur seul, la Direction est refusee' },
   'journal-raison-nommee': { section: 'O', fichier: FICHIER, de: "...(montants && voit ? ['discountReason'] : [])", vers: "...['discountReason']", rouge: '[O] journal_du_centre sans clients aucun nom' },
   'equipe-lit-le-code': { section: 'O', fichier: FICHIER, de: 'select m.id, m.center_id, m.name,', vers: 'select m.id, m.center_id, m.access_code_hash, m.name,', rouge: "[O] equipe_et_activite ne lit jamais un code d acces" },
   'equipe-autre-centre': { section: 'O', fichier: FICHIER, de: "order by m.last_seen desc nulls last, m.name asc limit 80;', [id]);", vers: "order by m.last_seen desc nulls last, m.name asc limit 80;', ['gembloux']);", rouge: '[O] equipe_et_activite lit les membres de ce centre' },
@@ -147,6 +149,9 @@ async function sectionOutils(h) {
   const fs = require('fs');
   const SANS_CLIENTS = h.DIRECTION.filter((p) => p !== 'clients.view');
   const SANS_RIEN = ['marketing.agents'];
+  // Le journal du centre est au fondateur seul (2026-11-13) : ses lectures se font avec la permission de plateforme.
+  const avecLaPlateforme = (droits) => [...droits, 'platform.admin'];
+  const FONDATEUR = avecLaPlateforme(h.DIRECTION);
   const vrais = { readAdminRangeState: db.readAdminRangeState, readStaffState: db.readStaffState, listCommunications: db.listCommunications, listCampaigns: db.listCampaigns, listDirectionReports: db.listDirectionReports, listOpsEvents: db.listOpsEvents };
   const vraiFournisseur = llm.llmProvider;
   const vraiLire = fs.readFileSync;
@@ -438,19 +443,22 @@ async function sectionOutils(h) {
     ok('[O] equipe_et_activite dit non disponible si le journal manque', !eqAbs.erreur && eqAbs.c.journal === 'non disponible' && valeurs(eqAbs.c, 'actions')[0] === null, eqAbs.brut.slice(0, 300));
 
     // ---- Journal --------------------------------------------------------------------------------
-    const jo = await jouer('journal_du_centre', h.OCT, { requete: moteurJournal });
+    // Le journal est au fondateur seul (2026-11-13) : la Direction est refusee, avant toute lecture.
+    const joDirection = await jouer('journal_du_centre', h.OCT, { requete: moteurJournal });
+    ok('[O] journal_du_centre est au fondateur seul, la Direction est refusee', joDirection.erreur && /n'a pas le droit/.test(joDirection.brut) && etat.lectures.length === 0, joDirection.brut);
+    const jo = await jouer('journal_du_centre', h.OCT, { droits: FONDATEUR, requete: moteurJournal });
     const quoi = valeurs(jo.c, 'quoi');
     ok('[O] journal_du_centre dit qui a fait quoi', !jo.erreur && jo.c.total === 4 && quoi.some((t) => /réservation n° 13 .*annulée/.test(t)) && quoi.some((t) => /prix de .*55/.test(t)) && quoi.some((t) => /remise \(copain de Liamtor\)/.test(t)) && quoi.includes('réservation n° 17 créée') && JSON.stringify(valeurs(jo.c, 'qui')) === JSON.stringify(['un client', 'Marius', 'Marius', 'Marius']), jo.brut);
     ok('[O] journal_du_centre range les gestes ordinaires et les evenements', jo.c.gestes_ordinaires.length === 1 && /arrivée notée/.test(jo.c.gestes_ordinaires[0]) && jo.c.evenements_du_moteur.length === 1 && jo.c.evenements_du_moteur[0].evenement === 'retard appliqué' && jo.c.evenements_du_moteur[0].nombre === 2, JSON.stringify([jo.c.gestes_ordinaires, jo.c.evenements_du_moteur]));
     ok('[O] journal_du_centre garde la periode et ne dit pas le nom dans les changements', !jo.tout.includes('Zoéline') && !jo.tout.includes('0470123456') && !jo.tout.includes('n° 16') && !jo.tout.includes('Connexion'), jo.brut);
     ok('[O] journal_du_centre lit le centre demande', etat.parametres.some((p) => p[0] === 'libramont' && p[1] === 'staff') && etat.lectures.includes('libramont'), JSON.stringify(etat.parametres));
     ok('[O] journal_du_centre lecture porte le vrai nombre', jo.lues === LIGNES_JOURNAL.length + 1 + 3 && jo.trouve === '4 actions, 2 personnes', `${jo.lues} ${jo.trouve}`);
-    const joMot = await jouer('journal_du_centre', { ...h.OCT, mot: 'annulée' }, { requete: moteurJournal });
+    const joMot = await jouer('journal_du_centre', { ...h.OCT, mot: 'annulée' }, { droits: FONDATEUR, requete: moteurJournal });
     ok('[O] journal_du_centre filtre par mot', joMot.c.total === 1, joMot.brut.slice(0, 200));
     const recentes = Array.from({ length: 500 }, (_, i) => JOURNAL({ id: 2000 + i, occurred_at: '2026-11-08T10:00:00Z', action: 'setReservationStatus', entity_id: '20', changes: { status: { before: 'pending', after: 'cancelled' } } }));
-    const joLoin = await jouer('journal_du_centre', { debut: '2026-09-01', fin: '2026-09-30' }, { requete: base([[/from audit_log/, (p) => (p[1] !== 'staff' ? [] : (p[p.length - 1] === 0 ? recentes : [JOURNAL({ id: 3000, occurred_at: '2026-09-10T10:00:00Z', action: 'setReservationStatus', entity_id: '21', changes: { status: { before: 'pending', after: 'cancelled' } } })]))]]) });
+    const joLoin = await jouer('journal_du_centre', { debut: '2026-09-01', fin: '2026-09-30' }, { droits: FONDATEUR, requete: base([[/from audit_log/, (p) => (p[1] !== 'staff' ? [] : (p[p.length - 1] === 0 ? recentes : [JOURNAL({ id: 3000, occurred_at: '2026-09-10T10:00:00Z', action: 'setReservationStatus', entity_id: '21', changes: { status: { before: 'pending', after: 'cancelled' } } })]))]]) });
     ok('[O] journal_du_centre remonte jusqu a la periode demandee', joLoin.c.total === 1 && valeurs(joLoin.c, 'reservation')[0] === 21 && joLoin.lues === 504, `${joLoin.lues} ${joLoin.brut.slice(0, 240)}`);
-    const joPublic = await jouer('journal_du_centre', { ...h.OCT, mot: 'créée' }, { requete: moteurJournal });
+    const joPublic = await jouer('journal_du_centre', { ...h.OCT, mot: 'créée' }, { droits: FONDATEUR, requete: moteurJournal });
     ok('[O] journal_du_centre dit un client sans recopier son libelle', joPublic.c.total === 1 && valeurs(joPublic.c, 'qui')[0] === 'un client', joPublic.brut.slice(0, 200));
 
     // ---- Concurrents ----------------------------------------------------------------------------
@@ -523,7 +531,7 @@ async function sectionOutils(h) {
       { outil: 'campagnes', entree: {}, requete: moteurCampagnes, noms: IDENTITES, marque: true },
       { outil: 'offres_et_ventes_additionnelles', entree: h.OCT, requete: moteurOffres, argent: ['35.5', 'montant_reserve', '36 €', '"chiffre"', 'Montant'], marque: true },
       { outil: 'equipe_et_activite', entree: h.OCT, requete: moteurEquipe, noms: IDENTITES, marque: true },
-      { outil: 'journal_du_centre', entree: h.OCT, requete: moteurJournal, argent: ['55,55', '55.55', '99,99', '99.99', 'prix de', '€'], noms: IDENTITES, marque: true },
+      { outil: 'journal_du_centre', entree: h.OCT, requete: moteurJournal, fondateur: true, argent: ['55,55', '55.55', '99,99', '99.99', 'prix de', '€'], noms: IDENTITES, marque: true },
       { outil: 'concurrents_et_avis', entree: {}, requete: moteurConcurrents, droitsNuls: true, noms: IDENTITES, marque: true },
       { outil: 'savoir_du_centre', entree: {}, requete: moteurSavoir, droitsNuls: true, argent: ['300 EUR', 'chiffre d affaires', 'panier moyen', 'part du chiffre'], noms: IDENTITES, marque: true },
       { outil: 'prevision_et_plan', entree: {}, requete: moteurPrevision, fige: MARDI_14H, argent: ['333.33', '"chiffre"', 'Déjà réservé'], noms: IDENTITES },
@@ -531,7 +539,9 @@ async function sectionOutils(h) {
     ];
     for (const cas of CAS) {
       const { outil, entree, requete, fige } = cas;
-      const pleine = await jouer(outil, entree, { requete, fige });
+      // Un outil du fondateur (le journal) joue chaque cas avec la permission de plateforme en plus.
+      const droitsDu = (droits) => (cas.fondateur ? avecLaPlateforme(droits) : droits);
+      const pleine = await jouer(outil, entree, { droits: droitsDu(h.DIRECTION), requete, fige });
       ok(`[O] ${outil} tient en quelques Ko`, !pleine.erreur && pleine.brut.length < 14000, `${outil} ${pleine.brut.length}`);
       tailles[outil] = pleine.brut.length;
       if (!cas.droitsNuls) {
@@ -539,21 +549,21 @@ async function sectionOutils(h) {
         const seule = etat.sql.filter((q) => !socle.has(q));
         ok(`[O] ${outil} refuse sans le droit`, ref.erreur && /n'a pas le droit/.test(ref.brut) && etat.lectures.length === 0 && seule.length === 0, `${ref.brut} ${etat.lectures} ${seule.join(' | ').slice(0, 200)}`);
       }
-      const ailleurs = await jouer(outil, { ...entree, centre: 'etranger' }, { requete, fige });
+      const ailleurs = await jouer(outil, { ...entree, centre: 'etranger' }, { droits: droitsDu(h.DIRECTION), requete, fige });
       ok(`[O] ${outil} refuse le centre d un autre client`, ailleurs.erreur && /n'est pas accessible/.test(ailleurs.brut) && etat.portes.includes('etranger') && !etat.lectures.includes('etranger') && !etat.parametres.some((p) => p.includes('etranger')), `${ailleurs.brut} ${JSON.stringify(etat.lectures)}`);
       if (cas.marque) {
-        const autre = await jouer(outil, { ...(cas.entreeAutre || entree), centre: 'gembloux' }, { requete, fige });
+        const autre = await jouer(outil, { ...(cas.entreeAutre || entree), centre: 'gembloux' }, { droits: droitsDu(h.DIRECTION), requete, fige });
         ok(`[O] ${outil} lit le centre demande et lui seul`, !autre.erreur && autre.tout.includes(MARQUE) && fuites(autre.tout, ['Verhaegen', 'Liamtor', 'Marius Lambert', 'Relance automne', 'Bilan semaine 41', 'Laser en plus', 'Bowl City', 'post|facebook|creux', 'Travaux']).length === 0 && !etat.lectures.includes('libramont'), `${fuites(autre.tout, ['Verhaegen', 'Liamtor', 'Marius Lambert', 'Relance automne', 'Bilan semaine 41', 'Laser en plus', 'Bowl City', 'post|facebook|creux', 'Travaux']).join()} ${etat.lectures} ${autre.brut.slice(0, 200)}`);
       }
       if (cas.argent) {
-        const sans = await jouer(outil, entree, { droits: h.SANS_ARGENT, requete, fige });
+        const sans = await jouer(outil, entree, { droits: droitsDu(h.SANS_ARGENT), requete, fige });
         ok(`[O] ${outil} sans montants aucun euro`, !sans.erreur && fuites(sans.tout, cas.argent).length === 0, `${fuites(sans.tout, cas.argent).join()} ${sans.brut.slice(0, 200)}`);
       }
       if (cas.clientsRefuses) {
-        const sans = await jouer(outil, entree, { droits: SANS_CLIENTS, requete, fige });
+        const sans = await jouer(outil, entree, { droits: droitsDu(SANS_CLIENTS), requete, fige });
         ok(`[O] ${outil} sans clients aucun nom`, sans.erreur && /n'a pas le droit/.test(sans.brut) && etat.lectures.length === 0, sans.brut);
       } else if (cas.noms) {
-        const sans = await jouer(outil, entree, { droits: SANS_CLIENTS, requete, fige });
+        const sans = await jouer(outil, entree, { droits: droitsDu(SANS_CLIENTS), requete, fige });
         ok(`[O] ${outil} sans clients aucun nom`, !sans.erreur && fuites(sans.tout, cas.noms).length === 0, `${fuites(sans.tout, cas.noms).join()} ${sans.brut.slice(0, 200)}`);
       }
     }
@@ -565,8 +575,16 @@ async function sectionOutils(h) {
     await h.poser(h.question('Salut'));
     const proposes = etat.appels[0].corps.tools.map((t) => t.name);
     ok('[O] un outil sans le droit n est pas propose au modele', !proposes.includes('fiche_client') && proposes.includes('notes_equipe') && proposes.includes('planning_du_jour'), proposes.join());
+    // Le journal du centre n est propose qu au fondateur (2026-11-13) : la Direction ne le voit pas, ni la source « Journal ».
     numero += 1;
     h.reinitialiser({ session: h.sessionDe(h.DIRECTION, `m-o${numero}`) });
+    etat.script = [h.fin('Rien.')];
+    await h.poser(h.question('Salut'));
+    const proposesDirection = etat.appels[0].corps.tools.map((t) => t.name);
+    const sourcesDirection = require('../lib/assistant-outils').sourcesDuCompte(h.sessionDe(h.DIRECTION, 'm-src')).map((s) => s.nom);
+    ok('[O] le journal du centre n est propose qu au fondateur', !proposesDirection.includes('journal_du_centre') && proposesDirection.includes('equipe_et_activite') && !sourcesDirection.includes('Journal') && sourcesDirection.includes('Bilans'), `${proposesDirection.join()} | ${sourcesDirection.join()}`);
+    numero += 1;
+    h.reinitialiser({ session: h.sessionDe(FONDATEUR, `m-o${numero}`) });
     etat.script = [h.fin('Rien.')];
     await h.poser(h.question('Salut'));
     const definies = etat.appels[0].corps.tools.filter((t) => CAS.some((c) => c.outil === t.name));

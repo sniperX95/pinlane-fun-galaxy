@@ -27,7 +27,8 @@ module.exports = async function handler(req, res) {
     }
     const unexpected = Object.keys(body).filter((key) => !['centerId', 'reservationId', 'clientKey', 'baseUpdatedAt', 'body'].includes(key));
     if (unexpected.length) return sendError(res, 422, 'Champ non autorisé.');
-    const saved = await saveCustomerNote({ ...address, clientKey: body.clientKey, baseUpdatedAt: body.baseUpdatedAt, body: body.body, updatedBy: session.member?.name || '' });
+    // Le fondateur ne signe pas la note d un client (2026-11-13, lib/fondateur-invisible.js).
+    const saved = await saveCustomerNote({ ...address, clientKey: body.clientKey, baseUpdatedAt: body.baseUpdatedAt, body: body.body, updatedBy: require('../lib/fondateur-invisible').signatureVisible(session, { avecId: false }) });
     // Le texte complet de chaque version vit dans client_note_versions (ecrit
     // dans la transaction de l enregistrement, jamais tronque). Le journal
     // d audit garde l acte, les longueurs avant/apres et le pointeur vers la

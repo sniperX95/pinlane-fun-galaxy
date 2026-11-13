@@ -384,7 +384,8 @@ module.exports = async (req, res) => {
     // pour le client, et son sort s ecrit dans le journal (lib/garde-annonces.js).
     const [postCreate, annonce] = await Promise.all([
       afterReservationCreated(reservation, request),
-      annoncerReservation(reservation),
+      // Une reservation d essai d Ansar (sa session, ou la salle d essai) ne lui revient pas (lib/essai-fondateur.js).
+      require('../lib/essai-fondateur').essaiDuFondateur(req).then((essai) => annoncerReservation(reservation, { essai })),
     ]);
     // LE REGISTRE (2026-10-05) : une reservation en ligne n ecrivait AUCUNE
     // ligne d audit, seulement un ops_event sans auteur ni contenu. Elle est

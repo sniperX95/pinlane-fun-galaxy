@@ -280,9 +280,9 @@ const tourReel = () => charger('lib/tour-controle.js');
 
 // Appel direct d un gestionnaire.
 const { Readable } = require('stream');
-async function appeler(handler, methode, url, corps) {
+async function appeler(handler, methode, url, corps, entetes = {}) {
   const req = Readable.from(corps === undefined ? [] : [Buffer.from(JSON.stringify(corps))]);
-  Object.assign(req, { method: methode, url, headers: { host: 'localhost', 'content-type': 'application/json', 'user-agent': 'banc' } });
+  Object.assign(req, { method: methode, url, headers: { host: 'localhost', 'content-type': 'application/json', 'user-agent': 'banc', ...entetes } });
   const res = { statusCode: 200, entetes: {}, corps: '', setHeader(k, v) { this.entetes[k.toLowerCase()] = v; }, getHeader(k) { return this.entetes[k.toLowerCase()]; }, end(b) { this.corps = String(b || ''); } };
   await handler(req, res);
   let json = {};
@@ -400,6 +400,23 @@ async function preuvesServeur() {
 }
 
 // [C] Le client qui rate sa reservation.
+// Ce que la salle d essai envoie (scripts/salle-essai-client.js) : la meme demande, avec son en-tete.
+const ENTETE_ESSAI = { 'x-pinlane-essai': 'salle-essai' };
+async function reservationDEssai(handler, jour) {
+  require('../lib/garde-annonces').reprendreLesAnnonces();
+  TELEGRAM.length = 0;
+  const r = await appeler(handler, 'POST', '/api/public-reservations', corpsDemande(jour, { startTime: '16:00' }), ENTETE_ESSAI);
+  const ligne = BD.journal.filter((j) => j.action === 'createReservation').pop();
+  const contexte = ligne ? (typeof ligne.context === 'string' ? JSON.parse(ligne.context) : (ligne.context || {})) : {};
+  return { statut: r.statut, annoncee: TELEGRAM.some((t) => /nouvelle réservation/.test(t)), annonce: contexte.annonce };
+}
+async function demandeDEssai(handler, demande) {
+  TELEGRAM.length = 0;
+  const r = await appeler(handler, 'POST', '/api/custom-request', demande, ENTETE_ESSAI);
+  const ligne = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
+  const contexte = ligne ? (typeof ligne.context === 'string' ? JSON.parse(ligne.context) : (ligne.context || {})) : {};
+  return { statut: r.statut, annoncee: TELEGRAM.some((t) => /nouvelle demande de groupe/.test(t)), annonce: contexte.annonce };
+}
 function corpsDemande(jour, c = {}) {
   return { name: 'Jean Essai', phone: '0471234567', email: 'jean.essai@example.be', date: jour, startTime: '11:00', pax: 4, channel: 'public', type: 'visite', label: 'Votre visite', price: 50, quotedPrice: 50, centerId: 'gembloux', program: [{ activityId: 'golf_oclock', participants: 4 }], ...c };
 }
@@ -462,7 +479,7 @@ async function preuvesClient(jour) {
   TELEGRAM.length = 0;
   const reussie = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
   ok(reussie.statut === 201, '[C] temoin : une reservation en ligne qui aboutit', reussie);
-  const annonce = TELEGRAM.find((t) => /^Nouvelle réservation, Gembloux, en ligne/.test(t));
+  const annonce = TELEGRAM.find((t) => /^Gembloux : nouvelle réservation en ligne, /.test(t));
   ok(Boolean(annonce) && annonce.includes('Réservation n° 900') && annonce.includes('4 personnes'), '[C] elle s annonce a Ansar, avec son dossier', TELEGRAM);
   ok(!PERSONNEL.test(annonce || 'Jean Essai'), '[C] l annonce ne cite ni nom, ni telephone, ni e-mail', annonce);
   const contexte = (j) => (typeof j.context === 'string' ? JSON.parse(j.context) : (j.context || {}));
@@ -474,15 +491,20 @@ async function preuvesClient(jour) {
   const ligneRatee = BD.journal.filter((j) => j.action === 'createReservation').pop();
   ok(sansTelegram.statut === 201 && ligneRatee && contexte(ligneRatee).annonce === 'non', '[C] Telegram en panne : la reservation passe, et le journal dit que l annonce reste a faire', { statut: sansTelegram.statut, annonce: ligneRatee && contexte(ligneRatee).annonce });
   require('../lib/garde-annonces').reprendreLesAnnonces();
+  // SES ESSAIS NE LUI REVIENNENT PAS (2026-11-13) : la salle d essai le dit par son en-tete.
+  const essai = await reservationDEssai(reservations, jour);
+  ok(essai.statut === 201 && !essai.annoncee && essai.annonce === 'essai', '[C] une reservation de la salle d essai passe, sans annonce, et le journal le dit', essai);
 
   TELEGRAM.length = 0;
   const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
   const lead = await appeler(meta, 'POST', '/api/custom-request', demande);
-  const annonceDemande = TELEGRAM.find((t) => /^Nouvelle demande de groupe, Gembloux/.test(t));
+  const annonceDemande = TELEGRAM.find((t) => /^Gembloux : nouvelle demande de groupe\./.test(t));
   ok(lead.statut === 201 && Boolean(annonceDemande) && annonceDemande.includes('Anniversaire, 35 personnes') && annonceDemande.includes('À traiter dans la console') && !annonceDemande.includes('n° 77'), '[C] une demande de groupe s annonce aussi, sans numero de demande', { statut: lead.statut, TELEGRAM });
   ok(!PERSONNEL.test(annonceDemande || 'Jean Essai'), '[C] sans le contact', annonceDemande);
   const ligneDemande = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
   ok(ligneDemande && contexte(ligneDemande).annonce === 'ok', '[C] et son sort s ecrit au journal', ligneDemande && contexte(ligneDemande));
+  const demandeEssai = await demandeDEssai(meta, demande);
+  ok(demandeEssai.statut === 201 && !demandeEssai.annoncee && demandeEssai.annonce === 'essai', '[C] une demande de la salle d essai s enregistre, sans annonce', demandeEssai);
   TELEGRAM.length = 0;
   panneDemande = true;
   const perdue = await appeler(meta, 'POST', '/api/custom-request', demande);
@@ -977,15 +999,30 @@ async function contrePreuves(browser, jour) {
     await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', program: [{ activityId: 'golf_oclock' }], startTime: '11:00' }));
     return BD.journal.some((j) => j.action === 'reservation.refusee');
   });
-  await rouge('une reservation en ligne ne s annonce plus', [{ fichier: FICHE_PUB, de: '      annoncerReservation(reservation),', vers: "      Promise.resolve('ok')," }], async () => {
+  await rouge('une reservation en ligne ne s annonce plus', [{ fichier: FICHE_PUB, de: "      require('../lib/essai-fondateur').essaiDuFondateur(req).then((essai) => annoncerReservation(reservation, { essai })),", vers: "      Promise.resolve('ok')," }], async () => {
     remettre();
     require('../lib/garde-alertes').oublierLesAlertes();
     require('../lib/garde-annonces').reprendreLesAnnonces();
     TELEGRAM.length = 0;
     await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour));
-    return TELEGRAM.some((t) => /^Nouvelle réservation/.test(t));
+    return TELEGRAM.some((t) => /^Gembloux : nouvelle réservation/.test(t));
+  });
+  await rouge('une reservation de la salle d essai s annonce', [{ fichier: FICHE_PUB, de: "      require('../lib/essai-fondateur').essaiDuFondateur(req).then((essai) => annoncerReservation(reservation, { essai })),", vers: '      annoncerReservation(reservation),' }], async () => {
+    remettre();
+    require('../lib/garde-alertes').oublierLesAlertes();
+    const r = await reservationDEssai(charger(FICHE_PUB), jour);
+    return r.statut === 201 && !r.annoncee && r.annonce === 'essai';
   });
   charger(FICHE_PUB);
+  await rouge('une demande de la salle d essai s annonce', [{ fichier: 'api/public-booking-meta.js', de: "  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId }, { essai: await require('../lib/essai-fondateur').essaiDuFondateur(req) });", vers: "  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId });" }], async () => {
+    remettre();
+    require('../lib/garde-alertes').oublierLesAlertes();
+    require('../lib/garde-annonces').reprendreLesAnnonces();
+    const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
+    const r = await demandeDEssai(charger('api/public-booking-meta.js'), demande);
+    return r.statut === 201 && !r.annoncee && r.annonce === 'essai';
+  });
+  charger('api/public-booking-meta.js');
 
   // Cote navigateur : le code d avant, servi en memoire, un scenario par piece.
   servies = [{ fichier: 'assets/fungalaxy-booking.js', de: "if (!fichier || fichier.indexOf(window.location.origin) !== 0) return;", vers: '' }];

@@ -378,6 +378,55 @@ async function preuvesPresentation() {
   for (const m of presentations) lisible(m.text, 'presentation', `[P] la presentation du sujet ${m.message_thread_id}`);
 }
 
+// ---------------------------------------------------------------------------
+// [A] Les annonces et le releve des Modifications, par leur vrai code.
+// ---------------------------------------------------------------------------
+const RESA = { id: 1234, centerId: 'gembloux', channel: 'public', date: '2026-11-14', startTime: '15:00', pax: 12, price: 240, status: 'pending', validationStatus: 'confirmed', type: 'visite', program: { items: [{ name: 'Bowling' }, { name: 'Laser Game' }] } };
+function annoncesFabriquees() {
+  const an = charger('lib/garde-annonces.js');
+  return [
+    ['[A] une reservation en ligne', an.texteReservation(RESA)],
+    ['[A] une reservation au comptoir a valider', an.texteReservation({ ...RESA, channel: 'staff', validationStatus: 'staff_review' }, { par: 'Seb' })],
+    ['[A] une reservation deja annulee, annoncee en retard', an.texteReservation({ ...RESA, status: 'cancelled' }, { retard: true })],
+    ['[A] une formule sans heure', an.texteReservation({ ...RESA, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', startTime: '' })],
+    ['[A] une demande de groupe', an.texteDemande({ id: 56, centerId: 'libramont', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre 2026, après-midi.' })],
+    ['[A] une demande sans date ni nombre, annoncee en retard', an.texteDemande({ id: 57, centerId: 'gembloux' }, { retard: true })],
+  ];
+}
+function releveFabrique() {
+  const l = (id, action, extra = {}) => ({ id, center_id: 'gembloux', occurred_at: new Date(`2026-11-14T13:${String(id).padStart(2, '0')}:00Z`), actor_kind: 'staff', actor_label: 'Seb', action, entity_type: 'reservation', entity_id: String(800 + id), champs: {}, cles: [], dossier: { date: '2026-11-14', startTime: '16:00' }, ...extra });
+  return charger('lib/garde-journal.js').messageModifications([
+    l(3, 'updateReservation', { champs: { startTime: { before: '15:00', after: '16:00' } }, cles: ['startTime'] }),
+    l(4, 'annulerReservation'),
+    l(5, 'saveEmailTemplate', { entity_type: 'email_template', entity_id: 'confirmation' }),
+    l(6, 'actionInconnueDemain', { entity_type: 'ops_action', entity_id: '' }),
+    l(7, 'saveCenterConfig', { center_id: 'libramont', entity_type: 'center', entity_id: 'libramont', actor_label: 'Marie' }),
+    l(8, 'setReservationStatus', { champs: { status: { before: 'pending', after: 'arrived' } }, cles: ['status'] }),
+  ]);
+}
+async function preuvesAnnonces() {
+  for (const [nom, texte] of annoncesFabriquees()) lisible(texte, 'annonce', nom);
+  const releve = releveFabrique();
+  lisible(releve, 'releve', '[A] le releve des Modifications');
+  ok(/modèle de mail enregistré/.test(releve) && /réservation n° 804 \(samedi 14\/11 16:00\) annulée/.test(releve) && /14:06 Seb : autre action dans la console/.test(releve), '[A] chaque action a sa phrase, une action inconnue se dit en mots simples', releve);
+}
+async function contrePreuvesAnnonces() {
+  const rouge = async (nom, edits, rejouer) => {
+    mutations = edits;
+    purger();
+    let tient;
+    try { tient = await rejouer(); } catch (error) { tient = false; }
+    mutations = [];
+    purger();
+    ok(tient === false, `[X] ${nom} : rougit`);
+  };
+  const annoncesLisibles = async () => annoncesFabriquees().every(([, texte]) => fautesDe(texte, 'annonce').length === 0);
+  await rouge('une annonce sans sa ligne « Rien à faire »', [{ fichier: 'lib/garde-annonces.js', de: '    action,\n', vers: '' }], annoncesLisibles);
+  await rouge('une annonce d avant, sans le centre en tete', [{ fichier: 'lib/garde-annonces.js', de: "    `${nomDuCentre(d.centerId)} : nouvelle demande de groupe${retard ? ' (annoncée en retard)' : ''}.`,\n", vers: "    `Nouvelle demande de groupe, ${nomDuCentre(d.centerId)}${retard ? ' (annoncée en retard)' : ''}`,\n" }], annoncesLisibles);
+  await rouge('une action inconnue qui part sous son nom de code', [{ fichier: 'lib/garde-journal.js', de: "  return { ligne: 'autre action dans la console' };", vers: '  return { ligne: `action « ${String(l.action).slice(0, 60)} » (la garde ne la connaît pas encore)` };' }], async () => fautesDe(releveFabrique(), 'releve').length === 0);
+  await rouge('un releve sans sa ligne « Rien à faire »', [{ fichier: 'lib/garde-journal.js', de: "  corps.push('Rien à faire : c’est le relevé de ce que l’équipe a changé.');\n", vers: '' }], async () => fautesDe(releveFabrique(), 'releve').length === 0);
+}
+
 (async () => {
   await new Promise((resolve, reject) => { serveur.once('error', reject); serveur.listen(PORT, '127.0.0.1', resolve); });
   brancher();
@@ -388,7 +437,9 @@ async function preuvesPresentation() {
     await preuvesGarde();
     await preuvesPresentation();
     await preuvesInstant();
+    await preuvesAnnonces();
     await contrePreuves();
+    await contrePreuvesAnnonces();
   } finally {
     serveur.close();
   }

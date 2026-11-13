@@ -132,7 +132,8 @@ async function handleErreurFormulaire(req, res, body) {
     memberId: `public:${centre}`,
     userAgent: req.headers['user-agent'],
   });
-  if (inscrit && !inscrit.dropped) {
+  // L erreur d un essai d Ansar (sa session, la salle d essai) s enregistre, sans alerte.
+  if (inscrit && !inscrit.dropped && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {
     // UNE ALERTE PAR PLANTAGE DISTINCT (2026-11-06, Ansar : « chaque plantage ») : le meme
     // plantage repete ne sonne qu une fois par heure, un autre plantage sonne aussi. Le
     // message ne recopie rien de ce que le navigateur envoie : l etape est filtree a des
@@ -219,7 +220,8 @@ async function handleMiroir(req, res, body) {
     const raisons = raisonsDuMiroir(body.raison);
     const reussie = body.ok === true && !raisons.length;
     console.info('[miroir]', centre, estDemande ? `demande ${numero}` : numero, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
-    if (!reussie) {
+    // La copie ratee d un essai d Ansar (sa session, la salle d essai) ne lui revient pas.
+    if (!reussie && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {
       const { alerter } = require('../lib/garde-alertes');
       const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');
       // A regarder, sans sonnerie (2026-11-13) : la reservation est dans Pinlane, rien n est perdu.
@@ -467,7 +469,7 @@ async function handleCustomRequest(req, res, body) {
   }
 
   // L ANNONCE A ANSAR, son sort ecrit dans le journal (lib/garde-annonces.js).
-  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId });
+  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId }, { essai: await require('../lib/essai-fondateur').essaiDuFondateur(req) });
 
   // LE REGISTRE (2026-10-05) : la demande sur mesure est journalisee en
   // entier (contact, organisation, date voulue, message, demande structuree),

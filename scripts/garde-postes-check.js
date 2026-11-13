@@ -213,18 +213,20 @@ async function preuvesCanal() {
 // ---------------------------------------------------------------------------
 // [R] Les annonces.
 // ---------------------------------------------------------------------------
+const SESSION_ANSAR = { member: { id: 'gembloux:platform-owner' }, permissions: ['planning.view'] };
+const SESSION_SEB = { member: { id: 'gembloux:seb' }, permissions: ['planning.view'] };
 const RESA = { id: 1234, centerId: 'gembloux', channel: 'public', date: '2026-11-14', startTime: '15:00', pax: 12, price: 240, status: 'pending', validationStatus: 'confirmed', type: 'visite', program: { items: [{ name: 'Bowling' }, { name: 'Laser Game' }] }, name: 'Jean Dupont', phone: '0471000000', email: 'jean@example.be' };
 async function preuvesAnnonces() {
   const an = charger('lib/garde-annonces.js');
   const t = an.texteReservation(RESA);
-  ok(/^Nouvelle réservation, Gembloux, en ligne\n/.test(t) && t.includes('samedi 14/11 à 15:00, 12 personnes') && t.includes('Bowling, Laser Game') && t.includes('240,00 €') && t.includes('Réservation n° 1234'), '[R] une reservation en ligne : le centre, le jour, l heure, le nombre, ce qui est reserve, le prix, le dossier', t);
+  ok(t === 'Gembloux : nouvelle réservation en ligne, samedi 14/11 à 15:00.\n12 personnes, Bowling, Laser Game, 240,00 €.\nRien à faire : elle est dans le planning.\nRéservation n° 1234', '[R] une reservation en ligne : le centre, le jour, l heure, le nombre, ce qui est reserve, le prix, le dossier', t);
   ok(!PERSONNEL.test(t), '[R] ni nom, ni telephone, ni e-mail', t);
   const comptoir = an.texteReservation({ ...RESA, channel: 'staff', validationStatus: 'staff_review' }, { par: 'Seb' });
-  ok(/au comptoir \(Seb\)/.test(comptoir) && /À valider par l’équipe/.test(comptoir), '[R] au comptoir : qui l a faite, et si elle attend la validation', comptoir);
+  ok(/^Gembloux : nouvelle réservation au comptoir par Seb, /.test(comptoir) && /\nRien à faire : l’équipe doit la valider dans la console\.\n/.test(comptoir), '[R] au comptoir : qui l a faite, et si elle attend la validation', comptoir);
   const formule = an.texteReservation({ ...RESA, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', program: { items: [{ name: 'Bowling' }] } });
   ok(formule.includes('FORMULE 4') && !formule.includes('Bowling'), '[R] une formule se dit par son nom', formule);
   const d = an.texteDemande({ id: 56, centerId: 'libramont', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre 2026, après-midi', contactName: 'Jean Dupont', email: 'jean@example.be' });
-  ok(d === 'Nouvelle demande de groupe, Libramont\nAnniversaire, 35 personnes\nsamedi 21 novembre 2026, après-midi\nÀ traiter dans la console', '[R] une demande de groupe : le centre, l occasion, le nombre, le moment, sans le contact ni numero de demande (2026-11-06)', d);
+  ok(d === 'Libramont : nouvelle demande de groupe.\nAnniversaire, 35 personnes, samedi 21 novembre 2026, après-midi.\nRien à faire : l’équipe y répond depuis Demandes sur mesure.\nÀ traiter dans la console', '[R] une demande de groupe : le centre, l occasion, le nombre, le moment, sans le contact ni numero de demande (2026-11-06)', d);
 
   avecGroupe();
   an.reprendreLesAnnonces();
@@ -234,6 +236,13 @@ async function preuvesAnnonces() {
   TG.length = 0;
   ok(await an.annoncerReservation({ ...RESA, email: 'x@demo.fungalaxy.test' }) === 'essai' && TG.length === 0, '[R] une reservation de demonstration ne s annonce pas', TG);
   ok(await an.annoncerReservation({ ...RESA, channel: 'sim-client' }) === 'essai' && TG.length === 0, '[R] une simulation non plus', TG);
+  // SES ESSAIS NE LUI REVIENNENT PAS (2026-11-13) : la salle d essai, ou sa session au comptoir.
+  ok(await an.annoncerReservation(RESA, { essai: true }) === 'essai' && TG.length === 0, '[R] une reservation d essai d Ansar (salle d essai, sa session sur le formulaire) ne s annonce pas', TG);
+  ok(await an.annoncerReservation({ ...RESA, channel: 'staff' }, { par: 'Ansar', session: SESSION_ANSAR }) === 'essai' && TG.length === 0, '[R] une reservation faite par Ansar au comptoir ne lui revient pas', TG);
+  ok(await an.annoncerDemande({ id: 56, centerId: 'libramont', pax: 35 }, { essai: true }) === 'essai' && TG.length === 0, '[R] sa demande de groupe d essai non plus', TG);
+  const parSeb = await an.annoncerReservation({ ...RESA, channel: 'staff' }, { par: 'Seb', session: SESSION_SEB });
+  ok(parSeb === 'ok' && TG.length === 1, '[R] temoin : celle de l equipe, elle, s annonce', { parSeb, TG });
+  TG.length = 0;
   tgMode = 'coupe';
   const s1 = await an.annoncerReservation(RESA);
   tgMode = 'ok';
@@ -256,17 +265,22 @@ function journalDuBanc() {
     ligneJournal(104, 'setReservationStatus', { champs: { status: { before: 'pending', after: 'cancelled' } }, cles: ['status'] }),
     ligneJournal(105, 'setReservationStatus', { champs: { status: { before: 'pending', after: 'arrived' } }, cles: ['status'] }),
     ligneJournal(106, 'updateReservation', { champs: { price: { before: 240, after: 200 } }, cles: ['price', 'name'] }),
-    ligneJournal(107, 'saveCenterConfig', { center_id: 'libramont', entity_type: 'center', entity_id: 'libramont', actor_label: 'Ansar' }),
-    ligneJournal(108, 'regenerateRoleCode', { entity_type: 'staff_role', entity_id: 'direction', actor_label: 'Ansar' }),
+    ligneJournal(107, 'saveCenterConfig', { center_id: 'libramont', entity_type: 'center', entity_id: 'libramont', actor_label: 'Marie' }),
+    ligneJournal(108, 'regenerateRoleCode', { entity_type: 'staff_role', entity_id: 'direction', actor_label: 'Marie' }),
     ligneJournal(109, 'login', { entity_type: 'staff_session' }),
     ligneJournal(110, 'actionInconnueDemain', { entity_type: 'ops_action', entity_id: '' }),
     ligneJournal(111, 'createCustomRequest', { actor_kind: 'public', entity_type: 'custom_request', entity_id: '56', annonce: '' }),
+    // Les gestes d Ansar lui-meme (2026-11-13) : son membre platform-owner, ou la cle de secours.
+    ligneJournal(112, 'updateReservation', { actor_label: 'Ansar', actor_member_id: 'gembloux:platform-owner', champs: { startTime: { before: '15:00', after: '17:00' } }, cles: ['startTime'] }),
+    ligneJournal(113, 'createReservation', { actor_label: 'Ansar', actor_member_id: 'libramont:platform-owner-emergency', annonce: '' }),
   ];
 }
 function routesDuJournal(lignes) {
   route(/select coalesce\(max\(id\), 0\)::bigint as dernier from audit_log/, () => [{ dernier: 100 }]);
-  route(/from audit_log a where/, (s, p) => lignes.filter((l) => l.id > Number(p[0])));
-  const dossiers = { 901: { channel: 'public' }, 902: { channel: 'staff' } };
+  // Le faux journal applique le filtre que la requete porte : sans lui, les gestes d Ansar reviennent.
+  const sansAnsar = (s, l) => !/not like '%:platform-owner%'/.test(s) || !/:platform-owner/.test(l.actor_member_id || '');
+  route(/from audit_log a where/, (s, p) => lignes.filter((l) => l.id > Number(p[0]) && sansAnsar(s, l)));
+  const dossiers = { 901: { channel: 'public' }, 902: { channel: 'staff' }, 913: { channel: 'staff' } };
   route(/^select \* from reservations where id = \$1/, (s, p) => (dossiers[Number(p[0])] ? [{ id: Number(p[0]), center_id: 'gembloux', channel: dossiers[Number(p[0])].channel, date: '2026-11-20', start_time: '18:00', pax: 6, price: 120, status: 'pending', validation_status: 'confirmed', type: 'bowling', label: 'Bowling Classique', name: 'Jean Dupont', email: 'jean@example.be', phone: '0471' }] : []));
   route(/from custom_requests where id = \$1/, () => [{ id: 56, center_id: 'gembloux', pax: 35, occasion: 'entreprise', requested_date: 'vendredi 27 novembre, soir' }]);
 }
@@ -283,18 +297,21 @@ async function preuvesJournal() {
   const r = await j.relireLeJournal(pool, 100);
   const resa = TG.filter((m) => m.message_thread_id === 3);
   const modifs = TG.filter((m) => m.message_thread_id === 4);
-  ok(resa.length === 2 && /^Nouvelle réservation, Gembloux, en ligne \(annoncée en retard\)/.test(resa[0].text) && /Réservation n° 901/.test(resa[0].text) && /^Nouvelle demande de groupe, Gembloux \(annoncée en retard\)/.test(resa[1].text), '[J] une annonce qui n est pas partie part au quart d heure suivant, marquee en retard', resa.map((m) => m.text));
+  ok(resa.length === 2 && /^Gembloux : nouvelle réservation en ligne, vendredi 20\/11 à 18:00 \(annoncée en retard\)\.\n/.test(resa[0].text) && /Réservation n° 901/.test(resa[0].text) && /^Gembloux : nouvelle demande de groupe \(annoncée en retard\)\.\n/.test(resa[1].text), '[J] une annonce qui n est pas partie part au quart d heure suivant, marquee en retard', resa.map((m) => m.text));
   ok(!resa.some((m) => /Réservation n° 902/.test(m.text)), '[J] une annonce deja partie ne se redit pas', resa.map((m) => m.text));
   ok(!PERSONNEL.test(TG.map((m) => m.text).join(' ')), '[J] aucune donnee personnelle, meme en rattrapage', TG.map((m) => m.text));
   const texte = (modifs[0] && modifs[0].text) || '';
   ok(modifs.length === 1 && modifs[0].disable_notification === true, '[J] les modifications du quart d heure : un seul message, sans sonnerie', modifs);
-  ok(/^Modifications, 14:03 à 14:10\nGembloux\n/.test(texte) && texte.includes('\nLibramont\n'), '[J] range par centre, avec la periode', texte);
+  ok(/^Modifications de 14:03 à 14:10\nGembloux\n/.test(texte) && texte.includes('\nLibramont\n'), '[J] range par centre, avec la periode', texte);
   ok(texte.includes('14:03 Seb : réservation n° 903 (samedi 14/11 16:00) déplacée de 15:00 à 16:00'), '[J] une reservation deplacee : quand, qui, d ou vers ou', texte);
   ok(texte.includes('réservation n° 904 (samedi 14/11 16:00) annulée'), '[J] une reservation annulee', texte);
   ok(texte.includes('prix de 240,00 € à 200,00 €, changement : coordonnées'), '[J] un prix change, et des coordonnees changees sans les citer', texte);
-  ok(texte.includes('14:07 Ansar : réglages du centre enregistrés') && texte.includes('code d’accès régénéré (direction)'), '[J] les reglages et les acces', texte);
-  ok(texte.includes('action « actionInconnueDemain » (la garde ne la connaît pas encore)'), '[J] une action inconnue fait une ligne a son nom : rien ne disparait en silence', texte);
-  ok(/Aussi : 1 arrivée notée\.$/.test(texte) && !/login/.test(texte), '[J] l ordinaire se compte en bas, une connexion ne se dit pas', texte);
+  ok(texte.includes('14:07 Marie : réglages du centre enregistrés') && texte.includes('code d’accès régénéré (direction)'), '[J] les reglages et les acces', texte);
+  ok(texte.includes('14:10 Seb : autre action dans la console') && !/actionInconnueDemain/.test(texte), '[J] une action inconnue fait une ligne en mots simples, sans son nom de code : rien ne disparait en silence', texte);
+  ok(/Aussi : 1 arrivée notée\.\nRien à faire : c’est le relevé de ce que l’équipe a changé\.$/.test(texte) && !/login/.test(texte), '[J] l ordinaire se compte en bas, une connexion ne se dit pas', texte);
+  const id = (entity_type, entity_id) => j.classer({ action: entity_type === 'staff_role' ? 'regenerateRoleCode' : 'saveEmailTemplate', entity_type, entity_id, champs: {}, cles: [] }).ligne;
+  ok(id('email_template', '3f2a9c1e-77aa-4b1e-9d0f-5a6b7c8d9e0f') === 'modèle de mail enregistré' && id('email_template', 'tpl_rappel_12') === 'modèle de mail enregistré' && id('email_template', 'rappelVeille') === 'modèle de mail enregistré' && id('staff_role', 'gembloux:seb') === 'code d’accès régénéré' && id('staff_role', 'direction') === 'code d’accès régénéré (direction)', '[J] le nom de ce qui a change ne part que s il se lit comme un mot, jamais un identifiant interne', [id('email_template', '3f2a9c1e-77aa-4b1e-9d0f-5a6b7c8d9e0f'), id('email_template', 'tpl_rappel_12'), id('staff_role', 'gembloux:seb'), id('staff_role', 'direction')]);
+  ok(!/Ansar|n° 912|17:00/.test(texte) && !resa.some((m) => /n° 913/.test(m.text)), '[J] les gestes d Ansar lui-meme (platform-owner, cle de secours) ne lui reviennent pas', { texte, resa: resa.map((m) => m.text) });
   ok(r.curseur === 111 && r.annonces === 2, '[J] le curseur avance quand tout est parti', r);
 
   TG.length = 0;
@@ -885,7 +902,21 @@ async function contrePreuves() {
     TG.length = 0;
     return (await charger('lib/garde-annonces.js').annoncerReservation({ ...RESA, email: 'x@demo.fungalaxy.test' })) === 'essai' && TG.length === 0;
   });
-  await rouge('une annonce qui cite le client', [{ fichier: 'lib/garde-annonces.js', de: '  lignes.push(`Réservation n° ${r.id}`);', vers: '  lignes.push(`Réservation n° ${r.id} ${r.name}`);' }], async () => !PERSONNEL.test(charger('lib/garde-annonces.js').texteReservation(RESA)));
+  await rouge('une annonce qui cite le client', [{ fichier: 'lib/garde-annonces.js', de: '    `Réservation n° ${r.id}`,\n', vers: '    `Réservation n° ${r.id} ${r.name}`,\n' }], async () => !PERSONNEL.test(charger('lib/garde-annonces.js').texteReservation(RESA)));
+  const essaisTaisent = async () => {
+    const an = charger('lib/garde-annonces.js');
+    avecGroupe();
+    an.reprendreLesAnnonces();
+    TG.length = 0;
+    const sorts = [await an.annoncerReservation(RESA, { essai: true }), await an.annoncerReservation({ ...RESA, channel: 'staff' }, { par: 'Ansar', session: SESSION_ANSAR }), await an.annoncerDemande({ id: 56, centerId: 'libramont', pax: 35 }, { essai: true })];
+    const tient = sorts.every((s) => s === 'essai') && TG.length === 0;
+    an.reprendreLesAnnonces();
+    sansGroupe();
+    return tient;
+  };
+  await rouge('une reservation de la salle d essai s annonce', [{ fichier: 'lib/garde-annonces.js', de: "    if (essai || require('./essai-fondateur').estLeFondateur(session)) return 'essai';", vers: "    if (require('./essai-fondateur').estLeFondateur(session)) return 'essai';" }], essaisTaisent);
+  await rouge('une reservation d Ansar au comptoir s annonce', [{ fichier: 'lib/garde-annonces.js', de: "    if (essai || require('./essai-fondateur').estLeFondateur(session)) return 'essai';", vers: "    if (essai) return 'essai';" }], essaisTaisent);
+  await rouge('sa demande d essai s annonce', [{ fichier: 'lib/garde-annonces.js', de: "    if (essai) return 'essai';\n", vers: '' }], essaisTaisent);
   const journalRejoue = async () => {
     remettre();
     routesDuJournal(journalDuBanc());
@@ -905,9 +936,18 @@ async function contrePreuves() {
     tgMode = 'ok';
     return r.curseur === 100;
   });
-  await rouge('une action inconnue disparait en silence', [{ fichier: 'lib/garde-journal.js', de: '  return { ligne: `action « ${String(l.action).slice(0, 60)} » (la garde ne la connaît pas encore)` };', vers: '  return { rien: true };' }], async () => {
+  await rouge('une action inconnue disparait en silence', [{ fichier: 'lib/garde-journal.js', de: "  return { ligne: 'autre action dans la console' };", vers: '  return { rien: true };' }], async () => {
     await journalRejoue();
-    return TG.some((m) => /actionInconnueDemain/.test(m.text));
+    return TG.some((m) => /14:10 Seb : autre action dans la console/.test(m.text));
+  });
+  await rouge('un identifiant interne part dans les Modifications', [{ fichier: 'lib/garde-journal.js', de: "    const quoi = l.entity_id && /^[a-zà-ÿ][a-zà-ÿ -]{1,38}$/.test(String(l.entity_id)) && ", vers: "    const quoi = l.entity_id && !/^\\d+$/.test(String(l.entity_id)) && " }], async () => charger('lib/garde-journal.js').classer({ action: 'saveEmailTemplate', entity_type: 'email_template', entity_id: 'tpl_rappel_12', champs: {}, cles: [] }).ligne === 'modèle de mail enregistré');
+  await rouge('une action inconnue part sous son nom de code', [{ fichier: 'lib/garde-journal.js', de: "  return { ligne: 'autre action dans la console' };", vers: '  return { ligne: `action « ${String(l.action).slice(0, 60)} » (la garde ne la connaît pas encore)` };' }], async () => {
+    await journalRejoue();
+    return !TG.some((m) => /actionInconnueDemain/.test(m.text));
+  });
+  await rouge('ses propres gestes lui reviennent', [{ fichier: 'lib/garde-journal.js', de: ", \"coalesce(a.actor_member_id, '') not like '%:platform-owner%'\"];", vers: '];' }], async () => {
+    await journalRejoue();
+    return !TG.some((m) => /Ansar|n° 912|n° 913/.test(m.text));
   });
   await rouge('une panne du serveur ne sonne plus', [{ fichier: 'lib/garde-serveur.js', de: '    return await alerter(\n', vers: '    return await (async () => ({}))(\n' }], async () => {
     remettre();

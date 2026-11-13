@@ -147,7 +147,8 @@ async function main() {
         try {
           const amont = await fetch(cible, {
             method: req.method,
-            headers: { 'content-type': req.headers['content-type'] || 'application/json', accept: 'application/json' },
+            // Ce qui part d ici est un essai d Ansar : ni annonce ni alerte (lib/essai-fondateur.js).
+            headers: { 'content-type': req.headers['content-type'] || 'application/json', accept: 'application/json', 'x-pinlane-essai': 'salle-essai' },
             body: /^(GET|HEAD)$/.test(req.method) ? undefined : Buffer.concat(morceaux),
           });
           const texte = await amont.text();

@@ -114,6 +114,7 @@ const ilYA = (heures) => new Date(FOND - heures * 3_600_000).toISOString();
 // Joue une suite de passages espaces de 5 minutes et rend ce qui est parti.
 async function jouer(sonde, { kv = fauxKv(), passages, envoyer, depart = SAMEDI }) {
   const messages = [];
+  const calmes = [];
   let instant = depart;
   const resultats = [];
   for (const panne of passages) {
@@ -123,11 +124,11 @@ async function jouer(sonde, { kv = fauxKv(), passages, envoyer, depart = SAMEDI 
       fetcher: fauxSite(panne),
       maintenant: instant,
       attendre: async () => {},
-      envoyer: envoyer || (async (texte) => { messages.push(texte); }),
+      envoyer: envoyer || (async (texte, options = {}) => { messages.push(texte); calmes.push(Boolean(options.calme)); }),
     }));
     instant += 5 * 60_000;
   }
-  return { messages, kv, resultats };
+  return { messages, calmes, kv, resultats };
 }
 
 const fois = (n, valeur) => Array.from({ length: n }, () => valeur);
@@ -147,10 +148,12 @@ async function preuves(sonde) {
   const panne = await jouer(sonde, { passages: [...fois(10, toutCasse), ...fois(3, sain)] });
   resultat.panneMessages = panne.messages.length;
   ok(panne.messages.length === 2, '[B] 10 passages casses, 3 verts : deux messages et pas plus', `${panne.messages.length}`);
-  ok(/^PANNE Pinlane/.test(panne.messages[0] || ''), '[B] le premier dit la panne');
-  ok(/page de réservation \(HTTP 503\)/.test(panne.messages[0] || ''), '[B] et ce qui est casse', panne.messages[0]);
-  ok(/^RETOUR Pinlane/.test(panne.messages[1] || ''), '[B] le second dit le retour');
-  ok(/Panne de 1 h 00/.test(panne.messages[1] || ''), '[B] avec la duree', panne.messages[1]);
+  ok(/^Pinlane : le site ne marche plus depuis \d{2}:\d{2}, vérifié à \d{2}:\d{2}\.\n/.test(panne.messages[0] || ''), '[B] le premier dit la panne', panne.messages[0]);
+  ok(/Ce qui casse : tout le parcours \(ne répond pas\)\./.test(panne.messages[0] || '') && /Les clients ne peuvent plus réserver en ligne\. L’équipe n’a plus la console\./.test(panne.messages[0] || ''), '[B] et ce qui est casse, en mots simples, et qui est touche', panne.messages[0]);
+  ok(panne.calmes[0] === false && panne.calmes[1] === true, '[B] la panne sonne, le retour arrive sans bruit', panne.calmes);
+  ok(lisible(panne.messages[0], 'alerte') && lisible(panne.messages[1], 'regle'), '[B] les deux passent le gabarit des alertes de l application', [T.controlerTexte(panne.messages[0], { genre: 'alerte' }), T.controlerTexte(panne.messages[1], { genre: 'regle' })]);
+  ok(/^Réglé : le site ne marchait plus pendant [^,]+, depuis \d{2}:\d{2}\.$/.test(panne.messages[1] || ''), '[B] le second dit le retour', panne.messages[1]);
+  ok(/pendant 1 h 00/.test(panne.messages[1] || ''), '[B] avec la duree', panne.messages[1]);
   const envoisAuTroisieme = await jouer(sonde, { passages: fois(3, toutCasse) });
   ok(envoisAuTroisieme.messages.length === 1, '[B] l alerte part au 3e passage');
   const deuxPassages = await jouer(sonde, { passages: fois(2, toutCasse) });
@@ -177,7 +180,7 @@ async function preuves(sonde) {
   const limite = await jouer(sonde, { passages: fois(6, (url) => (url.includes('/menu/') ? reponse('{}', 429, 'application/json') : null)) });
   ok(limite.messages.length === 0, '[D] une limite de debit n est pas une panne');
   const siteSeulCoupe = await jouer(sonde, { passages: fois(3, (url) => (url.includes('google.com') || url.includes('api.github.com') ? null : coupure())) });
-  ok(siteSeulCoupe.messages.length === 1 && /délai dépassé/.test(siteSeulCoupe.messages[0]), '[D] controles vivants et site coupe : c est une panne');
+  ok(siteSeulCoupe.messages.length === 1 && /\(ne répond pas\)/.test(siteSeulCoupe.messages[0]), '[D] controles vivants et site coupe : c est une panne');
 
   // [E]
   const clignote = await jouer(sonde, { passages: [...fois(3, toutCasse), sain, toutCasse, sain, sain, toutCasse, ...fois(3, sain)] });
@@ -215,8 +218,10 @@ async function preuves(sonde) {
   // [G]
   const facture = await jouer(sonde, { passages: fois(3, (url) => (url.includes('google.com') || url.includes('api.github.com') ? null
     : reponse('paused', 402, 'text/html', { 'x-vercel-error': 'DEPLOYMENT_DISABLED' }))) });
-  ok(/compte Vercel suspendu/.test(facture.messages[0] || ''), '[G] le 402 du 19/08 se nomme', facture.messages[0]);
-  ok(/settings\/billing/.test(facture.messages[0] || ''), '[G] et donne le lien de facturation');
+  ok(/l’hébergeur a suspendu le compte/.test(facture.messages[0] || '') && /\nCe que tu fais : règle la facture de l’hébergeur/.test(facture.messages[0] || ''), '[G] le 402 du 19/08 se nomme, et dit quoi faire', facture.messages[0]);
+  const lienFacture = sonde.entitesDeLaSonde(facture.messages[0] || '')[0];
+  ok(lienFacture && /settings\/billing/.test(lienFacture.url) && (facture.messages[0] || '').substr(lienFacture.offset, lienFacture.length) === 'Ouvrir la facture de l’hébergeur' && !/https?:\/\//.test(facture.messages[0] || ''), '[G] et donne le lien de facturation, qui s ouvre d un toucher', lienFacture);
+  ok(lisible(facture.messages[0], 'alerte'), '[G] il passe le gabarit', T.controlerTexte(facture.messages[0], { genre: 'alerte' }));
 
   // [H]
   const kvCanal = fauxKv();
@@ -271,10 +276,11 @@ async function preuves(sonde) {
   const kvBilan = fauxKv();
   const bilans = [];
   await sonde.bilan({ kv: kvBilan, fetcher: fauxSite(), maintenant: SAMEDI, attendre: async () => {}, envoyer: async (t) => { bilans.push(t); } });
-  ok(bilans.length === 1 && /Sonde Pinlane en vie/.test(bilans[0]) && /Aucune panne/.test(bilans[0]), '[J] le bilan part sans panne', bilans[0]);
+  ok(bilans.length === 1 && /^Pinlane : la surveillance extérieure du site tourne\./.test(bilans[0]) && /Aucune panne/.test(bilans[0]), '[J] le bilan part sans panne', bilans[0]);
   await jouer(sonde, { kv: kvBilan, passages: [...fois(3, toutCasse), ...fois(3, sain)] });
   await sonde.bilan({ kv: kvBilan, fetcher: fauxSite(toutCasse), maintenant: SAMEDI, attendre: async () => {}, envoyer: async (t) => { bilans.push(t); } });
-  ok(/Dernière panne/.test(bilans[1] || '') && /non vert/.test(bilans[1] || ''), '[J] il dit la derniere panne et un parcours casse', bilans[1]);
+  ok(/Dernière panne/.test(bilans[1] || '') && /ne répond pas comme prévu/.test(bilans[1] || ''), '[J] il dit la derniere panne et un parcours casse', bilans[1]);
+  ok(lisible(bilans[0], 'bilan') && lisible(bilans[1], 'bilan'), '[J] le bilan passe le gabarit', [T.controlerTexte(bilans[0], { genre: 'bilan' }), T.controlerTexte(bilans[1], { genre: 'bilan' })]);
   ok(/Dernière sauvegarde : 04\/11 à /.test(bilans[0] || ''), '[J] il dit la derniere sauvegarde', bilans[0]);
   ok(/Sauvegarde : pas de réponse/.test(bilans[1] || ''), '[J] et qu il n a pas pu la lire', bilans[1]);
 
@@ -286,11 +292,11 @@ async function preuves(sonde) {
     kv: kvSimulation,
     passages: fois(3, (url) => { adresses.push(url); return null; }),
   });
-  ok(simule.messages.length === 1 && simule.messages[0].startsWith('[simulation] PANNE'), '[K] la simulation alerte, et le dit', simule.messages[0]);
+  ok(simule.messages.length === 1 && simule.messages[0].startsWith('[simulation] Pinlane : le site ne marche plus'), '[K] la simulation alerte, et le dit', simule.messages[0]);
   ok(adresses.filter((u) => !/google|github/.test(u)).every((u) => u.includes('/sonde-simulation')), '[K] elle ne vise qu un chemin mort');
   kvSimulation.valeurs.delete('simulation');
   const finie = await jouer(sonde, { kv: kvSimulation, passages: fois(3, sain) });
-  ok(finie.messages.length === 1 && finie.messages[0].startsWith('[simulation] RETOUR'), '[K] le retour aussi', finie.messages[0]);
+  ok(finie.messages.length === 1 && finie.messages[0].startsWith('[simulation] Réglé : le site ne marchait plus'), '[K] le retour aussi', finie.messages[0]);
   const kvReseau = fauxKv();
   kvReseau.valeurs.set('simulation', 'reseau');
   const simuleReseau = await jouer(sonde, { kv: kvReseau, passages: fois(6, (url) => (url.includes('.invalid') ? coupure() : null)) });
@@ -309,11 +315,13 @@ async function preuves(sonde) {
   ok(await cassePour((url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, ecriture: false }) : null), 'base', 'la base refuse d’écrire'), '[M] la base lit mais n ecrit plus : c est une panne');
   const gardeDe = (date) => (url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, derniereSauvegarde: ilYA(1), derniereGarde: date }) : null);
   const arretee = await jouer(sonde, { passages: fois(9, gardeDe(ilYA(2))), depart: FOND });
-  ok(arretee.messages.length === 1 && /^GARDE Pinlane arrêtée/.test(arretee.messages[0]), '[M] la garde arretee depuis 2 h : un seul message sur 9 passages', arretee.messages.join(' | '));
+  ok(arretee.messages.length === 1 && /^Pinlane : la surveillance du quart d’heure ne tourne plus\./.test(arretee.messages[0]), '[M] la garde arretee depuis 2 h : un seul message sur 9 passages', arretee.messages.join(' | '));
+  ok(arretee.calmes[0] === false && lisible(arretee.messages[0], 'alerte'), '[M] elle sonne, au gabarit', [arretee.calmes, T.controlerTexte(arretee.messages[0] || '', { genre: 'alerte' })]);
   const sansPanne = JSON.parse(arretee.kv.valeurs.get('etat'));
   ok(sansPanne.statut === 'ok' && sansPanne.echecs === 0, '[M] ce n est pas une panne du site : ni statut, ni compteur');
   const relancee = await jouer(sonde, { kv: arretee.kv, passages: fois(6, gardeDe(ilYA(0.1))), depart: FOND });
-  ok(relancee.messages.length === 1 && /^GARDE Pinlane repartie/.test(relancee.messages[0]), '[M] elle repart : un message', relancee.messages.join(' | '));
+  ok(relancee.messages.length === 1 && /^Réglé : la surveillance du quart d’heure ne tournait plus, depuis \d{2}:\d{2}\.$/.test(relancee.messages[0]), '[M] elle repart : un message', relancee.messages.join(' | '));
+  ok(relancee.calmes[0] === true, '[M] et le retour arrive sans bruit', relancee.calmes);
   const jamais = await jouer(sonde, { passages: fois(3, gardeDe(null)), depart: FOND });
   ok(jamais.messages.length === 1 && /aucune date lisible/.test(jamais.messages[0]), '[M] le site repond sans date de garde : ca s entend', jamais.messages.join(' | '));
   const absente = await jouer(sonde, { passages: fois(3, santeDe(ilYA(1))), depart: FOND });
@@ -323,17 +331,19 @@ async function preuves(sonde) {
   const enRetard = santeDe(ilYA(32));
   const retard = await jouer(sonde, { passages: fois(12, enRetard) });
   ok(retard.messages.length === 1, '[L] plus de 26 h : un seul message sur 12 passages', `${retard.messages.length}`);
-  ok(/^SAUVEGARDE Pinlane en retard/.test(retard.messages[0] || '') && /il y a 32 h 00/.test(retard.messages[0] || ''), '[L] il dit depuis quand', retard.messages[0]);
+  ok(/^Pinlane : la sauvegarde de la nuit n’est pas partie\./.test(retard.messages[0] || '') && /il y a 32 h 00/.test(retard.messages[0] || ''), '[L] il dit depuis quand', retard.messages[0]);
+  ok(retard.calmes[0] === true && lisible(retard.messages[0], 'alerte'), '[L] sans sonnerie, au gabarit : le site marche', [retard.calmes, T.controlerTexte(retard.messages[0] || '', { genre: 'alerte' })]);
   const etatRetard = JSON.parse(retard.kv.valeurs.get('etat'));
   ok(etatRetard.statut === 'ok' && etatRetard.echecs === 0, '[L] ce n est pas une panne : ni statut, ni compteur');
   const journalRetard = [];
   await sonde.passage({ kv: retard.kv, fetcher: fauxSite(enRetard, journalRetard), maintenant: Date.parse('2026-11-04T12:06:00Z'), attendre: async () => {}, envoyer: async () => {} });
   ok(aFond(journalRetard) === 0, '[L] en retard, Neon dort toujours : minute 6 sans route de fond', `${aFond(journalRetard)}`);
   const repartie = await jouer(sonde, { kv: retard.kv, passages: fois(6, sain) });
-  ok(repartie.messages.length === 1 && /^SAUVEGARDE Pinlane repartie/.test(repartie.messages[0]), '[L] elle repart : un message', repartie.messages[0]);
+  ok(repartie.messages.length === 1 && /^Réglé : la sauvegarde de la nuit n’était pas partie, depuis \d{2}:\d{2}\.$/.test(repartie.messages[0]), '[L] elle repart : un message', repartie.messages[0]);
 
   const melees = await jouer(sonde, { passages: [...fois(4, enRetard), ...fois(3, toutCasse), ...fois(3, enRetard)] });
-  ok(melees.messages.map((m) => m.split(' ')[0]).join(',') === 'SAUVEGARDE,PANNE,RETOUR', '[L] une vraie panne alerte quand meme, sans second message de sauvegarde', melees.messages.map((m) => m.split('\n')[0]).join(' | '));
+  const genreDe = (m) => (/sauvegarde/.test(m.split('\n')[0]) ? 'SAUVEGARDE' : /^Réglé : le site/.test(m) ? 'RETOUR' : /^Pinlane : le site/.test(m) ? 'PANNE' : '?');
+  ok(melees.messages.map(genreDe).join(',') === 'SAUVEGARDE,PANNE,RETOUR', '[L] une vraie panne alerte quand meme, sans second message de sauvegarde', melees.messages.map((m) => m.split('\n')[0]).join(' | '));
 
   const alerteA = async (fetcher) => {
     const recus = [];
@@ -363,11 +373,11 @@ async function preuves(sonde) {
   kvSauvegarde.valeurs.set('simulation', 'sauvegarde');
   const adressesSauvegarde = [];
   const simuleeSauvegarde = await jouer(sonde, { kv: kvSauvegarde, passages: fois(6, (url) => { adressesSauvegarde.push(url); return null; }) });
-  ok(simuleeSauvegarde.messages.length === 1 && simuleeSauvegarde.messages[0].startsWith('[simulation] SAUVEGARDE Pinlane en retard'), '[L] la simulation alerte, et le dit', simuleeSauvegarde.messages[0]);
+  ok(simuleeSauvegarde.messages.length === 1 && simuleeSauvegarde.messages[0].startsWith('[simulation] Pinlane : la sauvegarde de la nuit n’est pas partie'), '[L] la simulation alerte, et le dit', simuleeSauvegarde.messages[0]);
   ok(adressesSauvegarde.every((u) => !u.includes('/sonde-simulation')), '[L] le site reste sonde pour de vrai');
   kvSauvegarde.valeurs.delete('simulation');
   const finSimulee = await jouer(sonde, { kv: kvSauvegarde, passages: fois(6, sain) });
-  ok(finSimulee.messages.length === 1 && finSimulee.messages[0].startsWith('[simulation] SAUVEGARDE Pinlane repartie'), '[L] le retour aussi', finSimulee.messages[0]);
+  ok(finSimulee.messages.length === 1 && finSimulee.messages[0].startsWith('[simulation] Réglé : la sauvegarde de la nuit n’était pas partie'), '[L] le retour aussi', finSimulee.messages[0]);
 
   return resultat;
 }
@@ -413,7 +423,16 @@ async function contrePreuves() {
   await toujoursFond.passage({ kv: fauxKv(), fetcher: fauxSite(() => null, journal), maintenant: SAMEDI, attendre: async () => {}, envoyer: async () => {} });
   ok(journal.some((e) => e.url.includes('/api/')), '[contre-épreuve] fond a chaque passage : Neon ne dort plus, [I] rougit');
 
-  const alertePerdue = await chargerMutant('restent.push(texte);', '');
+  const retourQuiSonne = await chargerMutant("  return calme(`${etat.simulation ? '[simulation] ' : ''}Réglé : le site ne marchait plus", "  return (`${etat.simulation ? '[simulation] ' : ''}Réglé : le site ne marchait plus");
+  const sonnerie = await jouer(retourQuiSonne, { passages: [...fois(10, toutCasse), ...fois(3, sain)] });
+  ok(sonnerie.calmes[1] === false, '[contre-épreuve] un retour qui sonne, [B] rougit', sonnerie.calmes);
+  const panneDAvant = await chargerMutant("Pinlane : le site ne marche plus depuis ${heure(etat.depuis)}, vérifié à ${heure(maintenant)}.\\n`", "PANNE Pinlane\\nDepuis ${heure(etat.depuis)}.\\n`");
+  const avant = await jouer(panneDAvant, { passages: fois(10, toutCasse) });
+  ok(!lisible(avant.messages[0], 'alerte'), '[contre-épreuve] la panne dite comme avant, [B] rougit', avant.messages[0]);
+  const detailBrut = await chargerMutant("function detailLisible(detail) {\n  const d = String(detail || '');", "function detailLisible(detail) {\n  return String(detail || '');\n  const d = String(detail || '');");
+  const brut = await jouer(detailBrut, { passages: fois(10, toutCasse) });
+  ok(/HTTP 503/.test(brut.messages[0] || ''), '[contre-épreuve] le code d erreur recopie, [B] rougit', brut.messages[0]);
+  const alertePerdue = await chargerMutant('restent.push(du);', '');
   let essais = 0;
   const recus = [];
   await jouer(alertePerdue, {
@@ -447,6 +466,12 @@ async function contrePreuves() {
   const journal2 = [];
   await horsDuFond.passage({ kv: fauxKv(), fetcher: fauxSite(() => null, journal2), maintenant: SAMEDI, attendre: async () => {}, envoyer: async () => {} });
   ok(journal2.some((e) => e.url.includes('/api/')), '[contre-épreuve] lue a chaque passage : Neon ne dort plus, [L] rougit');
+}
+
+// Le gabarit des alertes de l application (lib/alertes-texte.js) : la sonde le recopie, ce gate le controle.
+const T = require('../lib/alertes-texte');
+function lisible(texte, genre) {
+  return T.controlerTexte(String(texte || ''), { genre }).length === 0;
 }
 
 (async () => {

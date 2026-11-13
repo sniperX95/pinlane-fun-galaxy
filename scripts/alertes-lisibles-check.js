@@ -178,6 +178,7 @@ const AVANT = [
   ['une action inconnue d avant', 'Modifications, 14:03 à 14:10\nGembloux\n14:03 Seb : action « saveEmailTemplate » (la garde ne la connaît pas encore)'],
   ['l explication d avant', 'Le chef de garde :\nUn mail de Gembloux n’est pas parti.'],
   ['une erreur technique recopiee', 'Gembloux : la console ne répond plus.\nTypeError: Cannot read properties of undefined (reading \'id\') at app-main.js:10\nCe que tu fais : recharge la page.'],
+  ['un droit en code', 'Libramont : Flavy, 5 gestes refusés faute de droit (planning.drag), en 15 minutes.\nSoit un bouton de la console lui montre un geste que son rôle n’a pas.\nCe que tu fais : demande-lui.'],
   ['un message sans ligne d action', 'Gembloux : 2 mails n’ont pas pu partir.\nLes clients n’ont peut-être pas leur confirmation.'],
   ['un message trop long', `Gembloux : le formulaire ne s’ouvre plus.\n${'Les clients ne peuvent plus réserver. '.repeat(20)}\nCe que tu fais : vérifie.`],
 ];
@@ -427,6 +428,81 @@ async function contrePreuvesAnnonces() {
   await rouge('un releve sans sa ligne « Rien à faire »', [{ fichier: 'lib/garde-journal.js', de: "  corps.push('Rien à faire : c’est le relevé de ce que l’équipe a changé.');\n", vers: '' }], async () => fautesDe(releveFabrique(), 'releve').length === 0);
 }
 
+// ---------------------------------------------------------------------------
+// [Z] La garde de securite : ses constats, ses alertes a l instant, sa presentation, son bilan.
+// ---------------------------------------------------------------------------
+function constatsDeSecurite() {
+  const g = charger('lib/garde-securite.js');
+  const M = g.MOTIFS;
+  let id = 0;
+  const l = (x) => ({ id: (id += 1), center_id: 'libramont', occurred_at: '2026-11-14T13:00:00Z', actor_kind: 'staff', actor_label: '', actor_member_id: '', action: 'accessDenied', outcome: 'denied', denied_reason: '', empreinte: '', droit: '', centre_demande: '', ...x });
+  const lignes = [
+    l({ actor_label: 'Flavy', actor_member_id: 'libramont:flavy', denied_reason: M.autreClient }),
+    ...Array.from({ length: 6 }, () => l({ action: 'login', denied_reason: M.codeFaux, empreinte: 'a1' })),
+    l({ action: 'login', outcome: 'success', actor_label: 'Marius', empreinte: 'a1' }),
+    ...Array.from({ length: 5 }, () => l({ actor_label: 'Flavy', actor_member_id: 'libramont:flavy', denied_reason: M.droit, droit: 'planning.drag' })),
+    ...Array.from({ length: 3 }, () => l({ actor_label: 'Flavy', actor_member_id: 'libramont:flavy', denied_reason: M.autreCentre, centre_demande: 'gembloux' })),
+    l({ actor_label: 'Seb', actor_member_id: 'libramont:seb', denied_reason: M.droit, droit: 'security.codes' }),
+  ];
+  return g.messageSecurite(g.constatsSecurite(lignes, { codesFauxRecents: { a1: 6 } }));
+}
+async function alertesDeSecurite() {
+  const g = charger('lib/garde-securite.js');
+  const a = charger('lib/garde-alertes.js');
+  const un = async (nom, appel) => {
+    a.oublierLesAlertes();
+    TG.length = 0;
+    await appel();
+    return { nom, m: TG[0] || { text: '' } };
+  };
+  return [
+    await un('[Z] un mail qui donne des ordres a l IA', () => g.signalerMailSuspect({ centerId: 'libramont', securite: { consigneCachee: true } })),
+    await un('[Z] un mail qui cite un autre client', () => g.signalerMailSuspect({ centerId: 'gembloux', securite: { consigneCachee: true, numeroAutreClient: true } })),
+    await un('[Z] une session de secours ouverte', () => g.signalerSessionDeSecours()),
+    await un('[Z] un mail signe mais refuse', () => g.signalerWebhookRefuse({ signeParLeFournisseur: true })),
+    await un('[Z] un faux mail refuse', () => g.signalerWebhookRefuse({ signeParLeFournisseur: false })),
+  ];
+}
+function bilansDeSecurite() {
+  const g = charger('lib/garde-securite.js');
+  const M = g.MOTIFS;
+  const semaine = { debut: '2026-11-02', fin: '2026-11-08' };
+  const taches = [{ task_name: 'sauvegarde', status: 'ok', n: 6, dernier: '2026-11-08T02:00:00Z' }, { task_name: 'garde', status: 'ok', n: 640 }, { task_name: 'garde', status: 'failed', n: 4 }];
+  const agitee = { connexions: [{ center_id: 'libramont', role: 'direction', n: 12 }, { center_id: 'gembloux', role: 'accueil', n: 3 }], codesFaux: [{ center_id: 'libramont', empreinte: 'a1', n: 9 }], refus: [{ denied_reason: M.droit, n: 4 }, { denied_reason: M.autreClient, n: 1 }, { denied_reason: M.sansSession, n: 12 }], acces: [{ action: 'createMember', n: 2 }], lecturesDeCode: [{ qui: 'Marie', n: 2 }], mails: { recus: 40, consignes: 1, numeros: 0 }, taches };
+  const calme = { ...agitee, codesFaux: [], refus: [{ denied_reason: M.droit, n: 1 }], mails: { recus: 40, consignes: 0, numeros: 0 }, taches: [{ ...taches[0], n: 7 }, { task_name: 'garde', status: 'ok', n: 670 }] };
+  return [['[Z] le bilan securite d une semaine agitee', g.texteBilanSecurite(agitee, semaine).texte], ['[Z] le bilan securite d une semaine calme', g.texteBilanSecurite(calme, semaine).texte]];
+}
+async function preuvesSecurite() {
+  const messages = constatsDeSecurite();
+  ok(messages.length === 2 && messages[0].urgent && !messages[1].urgent, '[Z] la garde de securite : un message qui sonne (autre client), un sans sonnerie', messages.map((m) => m.texte.slice(0, 60)));
+  for (const m of messages) lisible(m.texte, 'alerte', `[Z] les constats de securite ${m.urgent ? 'qui sonnent' : 'sans sonnerie'}`);
+  ok(messages.every((m) => m.liens.length > 0 && m.liens.every((x) => /#\/staff\/users$/.test(x.url))), '[Z] chaque constat ouvre Equipe & acces', messages.map((m) => m.liens));
+  for (const { nom, m } of await alertesDeSecurite()) lisible(m.text, 'alerte', nom);
+  lisible(charger('lib/garde-securite.js').MISE_EN_SERVICE, 'presentation', '[Z] la mise en service de la garde de securite');
+  const bilans = bilansDeSecurite();
+  for (const [nom, texte] of bilans) lisible(texte, 'bilan', nom);
+  ok(/\nÀ regarder : [^\n]+\nCe que tu fais : /.test(bilans[0][1]) && /^Bilan sécurité[^\n]*\nRien à faire : rien d’anormal cette semaine\./.test(bilans[1][1]), '[Z] le bilan dit d abord ce qu il y a a regarder, sinon qu il n y a rien a faire', bilans.map(([, t]) => t.split('\n').slice(0, 3)));
+}
+async function contrePreuvesSecurite() {
+  const rouge = async (nom, edits, rejouer) => {
+    mutations = edits;
+    purger();
+    let tient;
+    try { tient = await rejouer(); } catch (error) { tient = false; }
+    mutations = [];
+    purger();
+    ok(tient === false, `[X] ${nom} : rougit`);
+  };
+  await rouge('les constats de securite d avant', [{ fichier: 'lib/garde-securite.js', de: '    const m = T.assembler(blocs);\n', vers: "    const m = { texte: `${urgent ? 'URGENT' : 'À regarder,'} Pinlane, sécurité\\n${liste.map((c) => c.texte.split('\\n')[0]).join('\\n')}`, liens: [] };\n" }], async () => constatsDeSecurite().every((m) => fautesDe(m.texte, 'alerte').length === 0));
+  await rouge('un droit qui part sous son nom de code', [{ fichier: 'lib/garde-securite.js', de: "  return mots.length ? mots.slice(0, 3).join(', ') : 'un geste réservé à un autre rôle';", vers: "  return String(ligne.droit || ligne.entity_id || '').split('|').filter(Boolean).slice(0, 3).join(', ');" }], async () => constatsDeSecurite().every((m) => fautesDe(m.texte, 'alerte').length === 0));
+  await rouge('un mail piege dit avec l en-tete d avant', [{ fichier: 'lib/garde-securite.js', de: "  return alerter(cle, m.texte, { fenetreMs: 30 * 60_000,", vers: "  return alerter(cle, `À regarder, Pinlane, sécurité\\n${m.texte}`, { fenetreMs: 30 * 60_000," }], async () => (await alertesDeSecurite()).every(({ m }) => fautesDe(m.text, 'alerte').length === 0));
+  await rouge('le bilan securite d avant', [{ fichier: 'lib/garde-securite.js', de: "  else lignes.splice(1, 0, 'Rien à faire : rien d’anormal cette semaine.');", vers: "  else lignes.splice(1, 0, 'Verdict : rien d’anormal.');" }], async () => bilansDeSecurite().every(([, t]) => fautesDe(t, 'bilan').length === 0));
+  await rouge('une session de secours qui ne sonne plus', [{ fichier: 'lib/garde-securite.js', de: "sujet: 'pannes', urgent: true });", vers: "sujet: 'pannes', urgent: false });" }], async () => {
+    const z = (await alertesDeSecurite()).find((x) => /session de secours/.test(x.nom));
+    return Boolean(z && z.m.text) && !z.m.disable_notification;
+  });
+}
+
 (async () => {
   await new Promise((resolve, reject) => { serveur.once('error', reject); serveur.listen(PORT, '127.0.0.1', resolve); });
   brancher();
@@ -438,8 +514,10 @@ async function contrePreuvesAnnonces() {
     await preuvesPresentation();
     await preuvesInstant();
     await preuvesAnnonces();
+    await preuvesSecurite();
     await contrePreuves();
     await contrePreuvesAnnonces();
+    await contrePreuvesSecurite();
   } finally {
     serveur.close();
   }

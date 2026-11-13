@@ -638,7 +638,7 @@ async function preuvesGarde() {
   // presentation part une fois, dans Bilans, et pas deux.
   BD.etatGarde = { ...BD.etatGarde, curseurRefus: null };
   const pS = await passe();
-  ok(pS.messages.length === 1 && pS.messages[0].message_thread_id === 5 && /^Mise en service de la garde de sécurité Pinlane\./.test(pS.messages[0].text), '[G] garde de securite ajoutee a un groupe deja en service : sa presentation part dans Bilans', pS.messages.map((m) => [m.message_thread_id, m.text.slice(0, 50)]));
+  ok(pS.messages.length === 1 && pS.messages[0].message_thread_id === 5 && /^Pinlane : la garde de sécurité est en service\./.test(pS.messages[0].text), '[G] garde de securite ajoutee a un groupe deja en service : sa presentation part dans Bilans', pS.messages.map((m) => [m.message_thread_id, m.text.slice(0, 50)]));
   ok(pS.r.curseurRefus !== null && pS.r.curseurRefus !== undefined, '[G] et la garde retient son curseur', pS.r.curseurRefus);
   const pS2 = await passe();
   ok(pS2.messages.length === 0, '[G] et pas deux fois', pS2.messages);

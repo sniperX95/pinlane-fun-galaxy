@@ -17,10 +17,14 @@
 //       le journal de la plateforme (vrai api/ops.js)
 //   [M] les reponses du centre : la marque de requireStaffPermission, appliquee par sendJson, sur une
 //       vraie route (api/staff-customer-notes.js) ; les vieux noms ecrits par le fondateur partent
-//   [C] les contre-preuves : chaque filtre retire en memoire (le disque n est jamais ecrit) fait rougir
-//       sa section
+//   [J] les journaux au fondateur seul : l assistant (le vrai aiguilleur des outils : journal_du_centre,
+//       equipe_et_activite, et ce que le modele lit d une note) et la vraie console (l onglet Journal
+//       d Equipe & acces), dans un navigateur, un seul a la fois
+//   [C] les contre-preuves : chaque filtre retire en memoire (le disque n est jamais ecrit, l ecran recoit
+//       son fichier mute par le serveur du banc) fait rougir sa section
 //
-// Rien ne part : ni base, ni reseau, ni mail. Lancement : node scripts/fondateur-invisible-check.js
+// Rien ne part : ni base, ni reseau, ni mail.
+// Lancement : node scripts/fondateur-invisible-check.js [--sans-ecran] [--sans-contre-preuves] [--detail]
 for (const nom of Object.keys(process.env)) if (/^(PG|DATABASE|POSTGRES|RESEND|TWILIO|OPENROUTER|ANTHROPIC|OPENAI|BREVO|TELEGRAM)/i.test(nom)) delete process.env[nom];
 process.env.NODE_ENV = 'test';
 delete process.env.VERCEL;
@@ -202,6 +206,22 @@ async function requete(texte, params = []) {
     return lignes([{ id: ligne.id, occurred_at: ligne.occurred_at || ligne.created_at }]);
   }
 
+  // L assistant : l equipe et ce que chacun a fait (equipe_et_activite).
+  if (/^select m\.id, m\.center_id, m\.name, m\.role_id, m\.status, m\.last_seen, r\.name as role_name from staff_members m left join staff_roles r/i.test(sql)) {
+    return lignes(db.staff_members.filter((m) => m.center_id === params[0]).map((m) => ({ id: m.id, center_id: m.center_id, name: m.name, role_id: m.role_id, status: m.status, last_seen: m.last_seen || null, role_name: (roleDe(m) || {}).name || m.role_id })));
+  }
+  if (/^select actor_member_id, action, count\(\*\)::int as n from audit_log where center_id = \$1 and occurred_at >= \$2::date and occurred_at < \(\$3::date \+ 1\) and actor_kind = 'staff' and outcome = 'success' group by actor_member_id, action;?$/i.test(sql)) {
+    const fin = Date.parse(`${params[2]}T00:00:00.000Z`) + 86400000;
+    const comptes = new Map();
+    db.audit_log.filter((l) => l.center_id === params[0] && l.actor_kind === 'staff' && l.outcome === 'success' && Date.parse(l.occurred_at) >= Date.parse(`${params[1]}T00:00:00.000Z`) && Date.parse(l.occurred_at) < fin)
+      .forEach((l) => { const cle = `${l.actor_member_id}|${l.action}`; comptes.set(cle, (comptes.get(cle) || 0) + 1); });
+    return lignes([...comptes].map(([cle, n]) => ({ actor_member_id: cle.split('|')[0], action: cle.split('|')[1], n })));
+  }
+  if (/^select \* from ops_events/i.test(sql)) return vide();
+  if (/^select client_key, body, updated_by, updated_at from client_notes where center_id = \$1 and updated_at >= \$2::date/i.test(sql)) {
+    return lignes(db.client_notes.filter((n) => n.center_id === params[0]).map((n) => ({ client_key: n.client_key, body: n.body, updated_by: n.updated_by, updated_at: n.updated_at })));
+  }
+
   // Le journal d audit et les dossiers.
   if (/^select .* from audit_log where /i.test(sql)) return lireJournal(sql, params);
   if (/^select \* from reservations where id = \$1 limit 1;?$/i.test(sql)) {
@@ -291,21 +311,54 @@ function poserLesMutations(mutations) {
   }
 }
 
+// Les vraies routes. Le banc les appelle avec l en-tete x-banc ; la console du navigateur ne passe par la
+// vraie route que pour se connecter (staff-auth), le reste lui est servi par une doublure, comme
+// scripts/equipe-acces-check.js.
 const ROUTES = { '/api/staff-auth': 'staff-auth.js', '/api/staff-reservations': 'staff-reservations.js', '/api/staff-customer-notes': 'staff-customer-notes.js', '/api/ops': 'ops.js' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+let MUTATION_ECRAN = null;
+const fiche = (c) => ({
+  id: c.id, name: c.name, status: 'active', timezone: 'Europe/Brussels', clientId: 'fungalaxy',
+  resources: { bowling: { laneCount: 8, normalCapacityPerLane: 6 }, laser: { weaponCount: 30, parallelLaunches: 1 } },
+  activityAvailability: { bowling: true, laser_game: true },
+  defaultSchedule: { regular: Object.fromEntries(['0', '1', '2', '3', '4', '5', '6'].map((j) => [j, { open: '10:00', close: '22:00' }])), holiday: {} },
+});
+function doublure(u, res) {
+  const J = (p) => { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(p)); };
+  const action = u.searchParams.get('action');
+  if (u.pathname === '/api/ops' && (action === 'menuCenters' || action === 'centerConfig')) return J({ ok: true, owner: true, centers: db.centers.map(fiche), activities: [{ id: 'bowling', label: 'Bowling' }, { id: 'laser_game', label: 'Laser Game' }] });
+  if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], durationOptions: [], center: fiche(db.centers[0]) });
+  return J({ ok: true, reservations: [], laneStatuses: {}, communications: [], blocks: [], events: [], clients: [], suggestions: [], samples: [], centers: [], revision: 'banc' });
+}
 const serveur = http.createServer(async (req, res) => {
-  const route = ROUTES[new URL(req.url, BASE).pathname];
-  if (!route) { res.statusCode = 404; res.end('{}'); return; }
-  try {
-    await require(API(route))(req, res);
-  } catch (error) {
-    if (!res.writableEnded) { res.statusCode = 599; res.end(JSON.stringify({ ok: false, message: String(error && error.message) })); }
+  const u = new URL(req.url, BASE);
+  const route = ROUTES[u.pathname];
+  if (route && (req.headers['x-banc'] === 'reel' || u.pathname === '/api/staff-auth')) {
+    try {
+      await require(API(route))(req, res);
+    } catch (error) {
+      if (!res.writableEnded) { res.statusCode = 599; res.end(JSON.stringify({ ok: false, message: String(error && error.message) })); }
+    }
+    return;
   }
+  if (u.pathname.startsWith('/api/')) { doublure(u, res); return; }
+  const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname.replace(/^\/+/, ''));
+  const f = path.join(ROOT, rel);
+  if (!f.startsWith(ROOT) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); res.end('absent'); return; }
+  let corps = fs.readFileSync(f);
+  if (MUTATION_ECRAN && rel === MUTATION_ECRAN.fichier) {
+    const texte = lf(corps.toString('utf8'));
+    if (!texte.includes(MUTATION_ECRAN.de)) { res.writeHead(500); res.end('ancre absente'); return; }
+    corps = Buffer.from(texte.split(MUTATION_ECRAN.de).join(MUTATION_ECRAN.vers), 'utf8');
+  }
+  res.writeHead(200, { 'Content-Type': TYPES[path.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+  res.end(corps);
 });
 
 async function appeler(chemin, { methode = 'GET', jeton = '', corps } = {}) {
   const reponse = await fetch(`${BASE}${chemin}`, {
     method: methode,
-    headers: { 'content-type': 'application/json', ...(jeton ? { 'x-staff-session': jeton } : {}) },
+    headers: { 'content-type': 'application/json', 'x-banc': 'reel', ...(jeton ? { 'x-staff-session': jeton } : {}) },
     body: corps === undefined ? undefined : JSON.stringify(corps),
   });
   const texte = await reponse.text();
@@ -458,6 +511,107 @@ async function reponses() {
 }
 
 // ---------------------------------------------------------------------------
+// [J] LES JOURNAUX SONT AU FONDATEUR SEUL : l assistant (le vrai aiguilleur des outils, lib/assistant-
+// outils.js) et la vraie console (onglet Journal d Equipe & acces).
+// ---------------------------------------------------------------------------
+async function journauxAssistant() {
+  section = 'J';
+  remplirBase();
+  const { normalizeClientKey } = require(LIB('ops-communications.js'));
+  db.client_notes.push(
+    { center_id: 'libramont', client_key: normalizeClientKey({ phone: '0470123456' }), body: 'Prefere la piste 3.', updated_at: '2026-11-12T10:00:00.000Z', updated_by: NOM_ACTUEL },
+    { center_id: 'libramont', client_key: normalizeClientKey({ phone: '0470999888' }), body: 'Vient chaque mardi.', updated_at: '2026-11-11T10:00:00.000Z', updated_by: 'Marie Dumont' },
+  );
+  const s = await sessionsDuBanc();
+  const outils = require(LIB('assistant-outils.js'));
+  const staffAuth = require(LIB('staff-auth.js'));
+  const muet = { statusCode: 200, setHeader() {}, getHeader() {}, end() {}, write() {} };
+  const contexte = async (jeton) => {
+    const req = { method: 'GET', url: '/api/assistant', headers: { 'x-staff-session': jeton } };
+    const session = await staffAuth.requireStaffPermission(req, muet, outils.PERMISSIONS_PAGE, { centerId: 'libramont' });
+    return { session, ctx: outils.creerContexte({ req, session, centres: [{ id: 'libramont', name: 'Fun Galaxy Libramont' }], aujourdhui: '2026-11-13' }) };
+  };
+  const marie = await contexte(s.marie.jeton);
+  const fondateur = await contexte(s.fondateur.jeton);
+  const jouer = async (qui, outil, entree = {}) => {
+    const r = await outils.executer(qui.ctx, outil, { centre: 'libramont', debut: '2026-11-01', fin: '2026-11-13', ...entree });
+    return { ...r, lignes: (r.source && r.source.lignes) || [], modele: (() => { try { return JSON.parse(r.contenu); } catch (e) { return {}; } })() };
+  };
+  const proposes = (qui) => outils.definitions(qui.session, qui.ctx).map((d) => d.name);
+  ok(marie.session && !proposes(marie).includes('journal_du_centre') && proposes(marie).includes('equipe_et_activite'), '[J] assistant, Direction : le journal du centre ne lui est pas propose', proposes(marie).join());
+  ok(!outils.sourcesDuCompte(marie.session).some((x) => x.nom === 'Journal') && outils.sourcesDuCompte(marie.session).some((x) => x.nom === 'Bilans'), '[J] assistant, Direction : aucune source « Journal » (les bilans ont la leur)', outils.sourcesDuCompte(marie.session));
+  ok(proposes(fondateur).includes('journal_du_centre') && outils.sourcesDuCompte(fondateur.session).some((x) => x.nom === 'Journal'), '[J] assistant, fondateur : le journal lui est propose', proposes(fondateur).join());
+  const jDirection = await jouer(marie, 'journal_du_centre');
+  ok(jDirection.erreur === true && /n'a pas le droit/.test(jDirection.contenu), '[J] journal_du_centre, Direction : refuse, meme demande en direct', jDirection.contenu);
+  const jFondateur = await jouer(fondateur, 'journal_du_centre');
+  ok(!jFondateur.erreur && jFondateur.lignes.length === 3 && jFondateur.lignes.some((l) => l.qui === NOM_ACTUEL) && jFondateur.lignes.some((l) => l.qui === 'Marie Dumont'), '[J] journal_du_centre, fondateur : toutes les lignes, les siennes comprises', jFondateur.contenu.slice(0, 400));
+  const eDirection = await jouer(marie, 'equipe_et_activite');
+  const nomsE = eDirection.lignes.map((l) => l.nom);
+  const marieE = eDirection.lignes.find((l) => l.nom === 'Marie Dumont') || {};
+  ok(!eDirection.erreur && nomsE.length === 2 && nomsE.includes('Luc Martin') && marieE.actions === 1, '[J] equipe_et_activite, Direction : l equipe sans le fondateur, les gestes de Marie comptes', eDirection.contenu.slice(0, 400));
+  ok(!traceDuFondateur(eDirection.contenu), '[J] equipe_et_activite, Direction : ni son nom, ni ses gestes', eDirection.contenu.slice(0, 400));
+  const eFondateur = await jouer(fondateur, 'equipe_et_activite');
+  ok(!eFondateur.erreur && eFondateur.lignes.some((l) => l.nom === NOM_ACTUEL), '[J] equipe_et_activite, fondateur : il s y voit', eFondateur.contenu.slice(0, 300));
+  const nDirection = await jouer(marie, 'notes_equipe');
+  const auteursD = nDirection.lignes.map((l) => l.auteur);
+  ok(!nDirection.erreur && auteursD.includes('Marie Dumont') && auteursD.includes('') && !auteursD.includes(NOM_ACTUEL), '[J] notes_equipe, Direction : la note du fondateur sans son nom, celle de Marie avec le sien', auteursD);
+  ok(!traceDuFondateur(nDirection.contenu) && nDirection.contenu.includes('Marie Dumont'), '[J] notes_equipe, Direction : ce que lit le modele (tableau compact) n a pas son nom', nDirection.contenu.slice(0, 400));
+  const nFondateur = await jouer(fondateur, 'notes_equipe');
+  ok(nFondateur.lignes.some((l) => l.auteur === NOM_ACTUEL), '[J] notes_equipe, fondateur : son nom reste', nFondateur.lignes.map((l) => l.auteur));
+}
+
+// La vraie console, un navigateur a la fois (la RAM du poste est comptee).
+const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+let navigateur = null;
+async function ouvrirLaConsole(code) {
+  const ctx = await navigateur.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-BE' });
+  const page = await ctx.newPage();
+  page.setDefaultTimeout(25000);
+  await page.goto(`${BASE}/?v=fondateur-${Date.now()}`, { waitUntil: 'load', timeout: 45000 });
+  await page.waitForFunction(() => typeof window.setView === 'function');
+  await page.locator('.entry-login').first().click();
+  await page.locator('#authOverlay').waitFor({ state: 'visible' });
+  await page.locator('#loginPass').fill(code);
+  await page.locator('#authOverlay button[type="submit"]').click();
+  await page.waitForFunction(() => typeof window.renderStaffMenu === 'function' && Boolean(state.staffAuthSession) && document.getElementById('authOverlay').classList.contains('hidden'), null, { timeout: 30000 });
+  await page.evaluate(() => window.openStaffMenuPage('users'));
+  await page.waitForFunction(() => Boolean(document.querySelector('[data-equipe-page]')), null, { timeout: 20000 });
+  return { ctx, page };
+}
+async function journalConsole() {
+  section = 'J';
+  remplirBase();
+  await sessionsDuBanc();
+  const lire = (page) => page.evaluate(() => ({
+    onglets: [...document.querySelectorAll('[data-equipe-page] [role="tab"]')].map((b) => b.id),
+    journal: Boolean(document.querySelector('[data-equipe-page] .eq-journal')),
+    texte: (document.querySelector('[data-equipe-page]') || {}).textContent || '',
+  }));
+  const direction = await ouvrirLaConsole(CODES.marie);
+  try {
+    const vu = await lire(direction.page);
+    ok(vu.onglets.includes('eqOnglet-personnes') && vu.onglets.includes('eqOnglet-roles') && !vu.onglets.includes('eqOnglet-journal'), '[J] console, Direction : Equipe & acces sans onglet Journal', vu.onglets);
+    await direction.page.evaluate(() => { state.equipeOnglet = 'journal'; renderStaffUtilityPage(); });
+    const force = await lire(direction.page);
+    ok(!force.journal && !force.onglets.includes('eqOnglet-journal'), '[J] console, Direction : un vieil onglet « journal » retenu retombe sur Personnes', force.onglets);
+    ok(!traceDuFondateur(force.texte), '[J] console, Direction : aucune trace du fondateur sur la page', force.texte.slice(0, 200));
+  } finally {
+    await direction.ctx.close();
+  }
+  const lui = await ouvrirLaConsole(CODES.fondateur);
+  try {
+    const vu = await lire(lui.page);
+    ok(vu.onglets.includes('eqOnglet-journal'), '[J] console, fondateur : l onglet Journal est la', vu.onglets);
+    await lui.page.locator('#eqOnglet-journal').click();
+    await lui.page.waitForFunction(() => Boolean(document.querySelector('[data-equipe-page] .eq-journal')), null, { timeout: 10000 });
+    const journal = await lire(lui.page);
+    ok(/Marie Dumont connecté/.test(journal.texte), '[J] console, fondateur : il y lit les connexions de l equipe', journal.texte.slice(0, 300));
+  } finally {
+    await lui.ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // [C] LES CONTRE-PREUVES.
 // ---------------------------------------------------------------------------
 const CONTRE_PREUVES = [
@@ -478,17 +632,32 @@ const CONTRE_PREUVES = [
     de: 'const sansFondateur = res.__nomsDuFondateur ?', vers: 'const sansFondateur = false ?' },
   { nom: 'le nom actuel du fondateur jamais lu', section: 'M', jouer: reponses, fichier: LIB('fondateur-invisible.js'),
     de: "lus = (result && Array.isArray(result.rows) ? result.rows : []).map((row) => row && row.name).filter(Boolean);", vers: 'lus = [];' },
+  { nom: 'le journal du centre rendu a la Direction', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
+    de: "droits: ['platform.admin'],\n      ce: 'le journal du centre',", vers: "droits: ['direction.view', 'dashboard.view'],\n      ce: 'le journal du centre'," },
+  { nom: 'le fondateur compte dans l equipe du centre', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
+    de: 'const lesMembres = estFondateur(session) ? membres.rows : membres.rows.filter((m) => !estMembreFondateur(m.id));', vers: 'const lesMembres = membres.rows;' },
+  { nom: 'les outils lus sans le filtre du fondateur', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils.js'),
+    de: "const sortie = await require('./fondateur-invisible').pourLaSession(ctx.session, await outil.lire(ctx, donnees, ouverte, suivi));", vers: 'const sortie = await outil.lire(ctx, donnees, ouverte, suivi);' },
+  { nom: 'le tableau compact du modele garde son nom', section: 'J', jouer: journauxAssistant, fichier: LIB('fondateur-invisible.js'),
+    de: "ligne.map((v, i) => (CLE_D_AUTEUR.test(copie.colonnes[i] || '') && estTraceDuFondateur(v, ensemble) ? '' : v))", vers: 'ligne' },
+  { nom: 'l onglet Journal rendu a la Direction', section: 'J', jouer: journalConsole, ecran: { fichier: 'assets/app-main.js',
+    de: "return equipeEstProprietaire() ? ['personnes', 'roles', 'journal'] : ['personnes', 'roles'];", vers: "return ['personnes', 'roles', 'journal'];" } },
 ];
 
 async function contrePreuves() {
   for (const cp of CONTRE_PREUVES) {
-    const mutations = cp.fichiers || [{ fichier: cp.fichier, de: cp.de, vers: cp.vers }];
+    if (cp.ecran && !navigateur) continue;
+    const mutations = cp.ecran ? [] : (cp.fichiers || [{ fichier: cp.fichier, de: cp.de, vers: cp.vers }]);
     let rouge = false;
     let erreur = '';
     MUET = true;
     rougesMuets = [];
     const avant = SECTIONS[cp.section] ? SECTIONS[cp.section].ko : 0;
     try {
+      if (cp.ecran) {
+        if (!lf(fs.readFileSync(path.join(ROOT, cp.ecran.fichier), 'utf8')).includes(cp.ecran.de)) throw new Error(`contre-preuve sans ancre dans ${cp.ecran.fichier}`);
+        MUTATION_ECRAN = cp.ecran;
+      }
       poserLesMutations(mutations);
       await cp.jouer();
       rouge = (SECTIONS[cp.section] ? SECTIONS[cp.section].ko : 0) > avant;
@@ -497,6 +666,7 @@ async function contrePreuves() {
       rouge = !/sans ancre/.test(erreur);
     } finally {
       MUET = false;
+      MUTATION_ECRAN = null;
       purgerLeProjet();
     }
     section = 'C';
@@ -513,11 +683,18 @@ async function contrePreuves() {
     await equipe();
     await journalDAudit();
     await reponses();
+    await journauxAssistant();
+    if (!process.argv.includes('--sans-ecran')) {
+      const { chromium } = require(require.resolve('playwright-core', { paths: [ROOT] }));
+      navigateur = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
+      await journalConsole();
+    }
     if (!process.argv.includes('--sans-contre-preuves')) await contrePreuves();
   } catch (error) {
     echecs += 1;
     console.log(`FAIL  le banc s est arrete : ${error && error.stack ? error.stack.split('\n').slice(0, 4).join(' | ') : error}`);
   } finally {
+    if (navigateur) await navigateur.close().catch(() => {});
     serveur.close();
   }
   section = 'Z';

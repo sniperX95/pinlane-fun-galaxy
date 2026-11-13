@@ -389,7 +389,7 @@
     return morceaux.join(', ');
   }
 
-  const TEINTE_SOURCE = { reservations: 1, planning: 2, clients: 4, catalogue: 3, mails: 5, communications: 5, campagnes: 4, notes: 3, demandes: 2, equipe: 1, journal: 3, meteo: 5, site: 2, concurrents: 4, savoir: 1, calcul: 6 };
+  const TEINTE_SOURCE = { reservations: 1, planning: 2, clients: 4, catalogue: 3, mails: 5, communications: 5, campagnes: 4, notes: 3, demandes: 2, equipe: 1, journal: 3, bilans: 3, meteo: 5, site: 2, concurrents: 4, savoir: 1, calcul: 6 };
   const teinte = (cle) => TEINTE_SOURCE[cle] || 6;
   const scenes = new WeakMap();
   const JOUR_MS = 86400000;

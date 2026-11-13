@@ -9693,8 +9693,16 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 @media (prefers-reduced-motion: reduce) { .qb-modal.rv.rs .rs-ajout:active { transform: none; } }
 /* LES PARTIES DU LASER sous la premiere : une rangee par partie, son nom a gauche. */
 .qb-modal.rv.rs .rs-parties { display: flex; flex-direction: column; gap: 14px; padding-top: 2px; }
-.qb-modal.rv.rs .rs-partie { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; }
+.qb-modal.rv.rs .rs-partie { display: grid; grid-template-columns: 138px minmax(0, 1fr); align-items: center; gap: 8px; }
 .qb-modal.rv.rs .rs-partie-l { font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); }
+/* Les joueurs de la partie, sous son nom : un petit compteur, la colonne s elargit d autant. */
+.qb-modal.rv.rs .rs-partie-l { display: grid; gap: 6px; justify-items: start; }
+.qb-modal.rv.rs .rs-partie-j { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.qb-modal.rv.rs .rs-partie-j .rs-pas { gap: 0; padding: 2px; border-radius: 9px; background: var(--rs-touche); }
+.qb-modal.rv.rs .rs-partie-j .rs-pas button { width: 26px; min-height: 28px; border-radius: 7px; background: transparent; font-size: 16px; }
+.qb-modal.rv.rs .rs-partie-j .rs-pas button:disabled { box-shadow: none; }
+.qb-modal.rv.rs .rs-partie-j .rs-pas b { min-width: 24px; align-self: center; text-align: center; font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-partie-j small { font-size: 12px; color: var(--muted); }
 
 /* LES HEURES */
 .qb-modal.rv.rs .rs-h { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 52px; padding: 0 2px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); text-align: center; }

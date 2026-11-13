@@ -79,6 +79,7 @@ const MUTATIONS = [
   { nom: 'estimation-pleine', cible: 'F3', fichier: APP, de: '      const parPartie = Array.isArray(item.joueursParPartie) && item.joueursParPartie.length === parties ? item.joueursParPartie.map((n) => Math.min(effectif, Math.max(1, Math.trunc(Number(n) || 1)))) : null;', vers: '      const parPartie = null;' },
   { nom: 'ligne-sans-suite', cible: 'F6', fichier: APP, de: "    if (id === 'laser_game') rsPartiesSuiventLaLigne(getQuickVisitOptions('laser_game'), voulu);\n", vers: '' },
   { nom: 'dossier-perd', cible: 'D', fichier: APP, de: '...(parPartieEditee ? { joueursParPartie: parPartieEditee } : {}), ', vers: '' },
+  { nom: 'bloc-sans-joueurs', cible: 'F7', fichier: APP, de: '<span class="rs-partie-l">Partie ${k + 1}${joueurs}</span>', vers: '<span class="rs-partie-l">Partie ${k + 1}</span>' },
   { nom: 'touche-pleine', cible: 'F3', fichier: APP, de: '      if (liste.length > 1 && liste.some((n) => n !== item.participants)) item.joueursParPartie = liste;\n', vers: '' },
   // Le serveur qui ne voit pas changer les joueurs d une partie : il gardait le prix d avant.
   { nom: 'serveur-aveugle', cible: 'D', fichier: 'api/staff-reservations.js', de: '    if (Array.isArray(item.joueursParPartie)) choice.joueursParPartie = item.joueursParPartie.map(Number);\n', vers: '' },
@@ -299,6 +300,23 @@ async function scenarioFenetre(browser, lettres) {
       const modale = page.locator('.qb-modal.rv.rs').first();
       await modale.screenshot({ path: path.join(process.env.PARTIES_PHOTOS, 'fenetre-par-partie.png') }).catch(() => {});
     }
+    if (lettres.includes('F7')) {
+      // La page des activites : chaque rangee « Partie 2 », « Partie 3 » porte ses joueurs.
+      await geste(page, '#rsRetour');
+      const bloc = () => page.evaluate(() => Array.from(document.querySelectorAll('.rs-partie-j .rs-pas')).map((p) => Number(p.querySelector('b').textContent)));
+      const b0 = await bloc();
+      if (process.env.PARTIES_PHOTOS && !mutation) await page.locator('.qb-modal.rv.rs').first().screenshot({ path: path.join(process.env.PARTIES_PHOTOS, 'fenetre-bloc-laser.png') }).catch(() => {});
+      let b1 = null;
+      if (JSON.stringify(b0) === '[10,8]') {
+        await geste(page, '[data-partie-bloc="3"][aria-label$="un de moins"]');
+        b1 = { bloc: await bloc(), envoi: await page.evaluate(() => ligneProgrammeQuick('laser_game').joueursParPartie || null) };
+        await geste(page, '[data-partie-bloc="3"][aria-label$="un de plus"]');
+      }
+      ok(JSON.stringify(b0) === '[10,8]' && b1 && JSON.stringify(b1.bloc) === '[10,7]' && JSON.stringify(b1.envoi) === '[12,10,7]', '[F7] sur la page des activites, « Partie 2 » et « Partie 3 » portent leurs joueurs (10, 8) et un toucher les change', { b0, b1 });
+      await page.locator('#rsL-a-laser_game').click();
+      await page.waitForSelector('[data-parties="3"]');
+      await pret(page);
+    }
     const prix = await page.evaluate(() => {
       const plan = rvPlanCourant();
       const ligne = { ...ligneProgrammeQuick('laser_game'), games: rvPartiesLaser() };
@@ -413,7 +431,7 @@ async function jouer(browser, lettres) {
   const http = await FX.servir({ port: PORT, transformer });
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
-    const toutes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'D'];
+    const toutes = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'F1', 'F2', 'F7', 'F3', 'F4', 'F5', 'F6', 'D'];
     await jouer(browser, toutes);
     const total = reussis + echecs.length;
     if (echecs.length) {

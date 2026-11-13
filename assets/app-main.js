@@ -37489,6 +37489,10 @@ function rsPartiesHtml() {
   const pas = rvPasLaser() / 60;
   const horloge = rvHeuresHorloge('laser_game');
   const coche = `<i class="rs-coche" aria-hidden="true">${RV_I.ok}</i>`;
+  // Les joueurs de la partie, sous son nom (2026-11-13, Ansar : « la 2 et 3eme partie on sait
+  // pas choisir le nombre de joueur ») : la rangee de la partie est la ou on les cherche.
+  const joueursParPartie = rsJoueursDesParties();
+  const bornesJoueurs = activityParticipantsBounds('laser_game', quickBookState.pax);
   const rangees = departs.slice(1).map((choisie, i) => {
     const k = i + 1;
     const suite = timeToNum(departs[k - 1]) + pas;
@@ -37504,7 +37508,9 @@ function rsPartiesHtml() {
       // (data-heure-p : la rangee de la premiere partie garde seule data-heure)
       return `<button type="button" class="rs-h${on ? ' is-on' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}" data-partie="${k}" data-heure-p="${heure}" aria-pressed="${on}" aria-label="${escapeHtml(`Partie ${k + 1} à ${heure}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}`)}" onclick="rsHeurePartieBloc(${k}, '${heure}')">${coche}${rsDedansHeure(x, heure, mot)}</button>`;
     }).join('');
-    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-l">Partie ${k + 1}</span><div class="rs-s-l">${cles}</div></div>`;
+    const n = joueursParPartie[k] || bornesJoueurs.max;
+    const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornesJoueurs.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`)}<small>joueurs</small></span>`;
+    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-l">Partie ${k + 1}${joueurs}</span><div class="rs-s-l">${cles}</div></div>`;
   });
   return `<div class="rs-parties">${rangees.join('')}</div>`;
 }

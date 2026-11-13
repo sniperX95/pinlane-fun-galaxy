@@ -164,11 +164,11 @@ function quartDHeureAgite() {
   charger();
   {
     await signalerPlantage('192.0.2.10', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
-    ok(TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'pannes' && !TELEGRAM[0].sonne && /^À regarder/.test(TELEGRAM[0].texte), '[K] un seul visiteur : le message part dans Pannes, sans sonnerie', TELEGRAM);
+    ok(TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'pannes' && !TELEGRAM[0].sonne && /^Libramont : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[0].texte), '[K] un seul visiteur : le message part dans Pannes, sans sonnerie', TELEGRAM);
     await signalerPlantage('192.0.2.10', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
     ok(TELEGRAM.length === 1, '[K] le meme visiteur qui le renvoie ne fait pas un deuxieme message', TELEGRAM.length);
     await signalerPlantage('192.0.2.11', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
-    ok(TELEGRAM.length === 2 && TELEGRAM[1].sonne && /^URGENT/.test(TELEGRAM[1].texte) && /2 clients différents/.test(TELEGRAM[1].texte), '[K] un deuxieme visiteur voit le meme plantage : ca sonne', TELEGRAM);
+    ok(TELEGRAM.length === 2 && TELEGRAM[1].sonne && /^Libramont : le formulaire en ligne a eu la même erreur chez 2 clients différents/.test(TELEGRAM[1].texte), '[K] un deuxieme visiteur voit le meme plantage : ca sonne', TELEGRAM);
     ok(TELEGRAM.every((m) => !/192\.0\.2|x is not a function|fungalaxy-booking\.js:10/.test(m.texte)), '[K] rien de ce que le navigateur envoie n est recopie, ni son adresse');
   }
   charger();

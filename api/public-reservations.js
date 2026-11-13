@@ -236,7 +236,7 @@ async function traiterBlocage(req, res) {
       console.error('[public-holds] échec', error && (error.stack || raw || error));
       await Promise.all([
         tracerEssai('blocage.panne', { corps: corpsRecu, statut: 503, raison: 'panne au moment de retenir les horaires' }),
-        alerter(`panne-blocage:${centreDeLEssai(corpsRecu)}`, `À regarder, Pinlane\nLes horaires ne se retiennent plus à ${centreDeLEssai(corpsRecu)}. Le client continue sans blocage, la confirmation revérifie.`, { fenetreMs: 15 * 60_000 }),
+        (({ texte, urgent, liens }) => alerter(`panne-blocage:${centreDeLEssai(corpsRecu)}`, texte, { fenetreMs: 15 * 60_000, urgent, liens }))(require('../lib/alertes-messages').horairesNonRetenus(centreDeLEssai(corpsRecu))),
       ]);
       sendError(res, 503, 'Vos horaires n’ont pas pu être retenus pour le moment.', { code: 'hold_unavailable' });
       return;
@@ -446,9 +446,10 @@ module.exports = async (req, res) => {
       const transmise = await transmettreEnPanne(demande, { erreur: raw });
       const centrePanne = centreDeLEssai(corpsRecu, request);
       const essai = resumeEssai(corpsRecu, request);
+      const messagePanne = require('../lib/alertes-messages').reservationEchouee({ centre: centrePanne, essai, transmise });
       await Promise.all([
         tracerEssai('reservation.panne', { corps: corpsRecu, request, statut: 503, raison: transmise ? 'transmise à la boîte de secours' : 'non transmise, le client doit réessayer' }),
-        alerter(`panne:${centrePanne}:${transmise ? 'transmise' : 'perdue'}`, `URGENT Pinlane\nUne réservation a échoué à ${centrePanne} pour une panne.\n${essai.date} à ${essai.heure}, ${essai.joueurs} personnes.\n${transmise ? 'La demande est partie à la boîte de secours : le centre doit la saisir.' : 'La demande n’a pas pu partir : le client doit réessayer.'}`, { fenetreMs: 5 * 60_000 }),
+        alerter(`panne:${centrePanne}:${transmise ? 'transmise' : 'perdue'}`, messagePanne.texte, { fenetreMs: 5 * 60_000, urgent: messagePanne.urgent, liens: messagePanne.liens }),
       ]);
       if (transmise) {
         sendError(res, 503, 'Le site de réservation a un souci technique, mais votre demande a bien été transmise au centre : l’équipe vous recontacte pour la confirmer. Inutile de la renvoyer.', { code: 'transmise_au_centre' });

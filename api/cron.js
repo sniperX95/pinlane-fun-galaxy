@@ -92,7 +92,8 @@ module.exports = async (req, res) => {
         sendJson(res, result.ok === false ? 503 : 200, result);
       } catch (error) {
         const { alerter } = require('../lib/garde-alertes');
-        await alerter('garde:panne', 'URGENT Pinlane\nLa garde n’arrive plus à lire la base de données.', { fenetreMs: 30 * 60_000 });
+        const m = require('../lib/alertes-messages').gardeBloquee();
+        await alerter('garde:panne', m.texte, { fenetreMs: 30 * 60_000, urgent: m.urgent, liens: m.liens });
         throw error;
       }
       return;

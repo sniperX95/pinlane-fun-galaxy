@@ -12,6 +12,8 @@
 //   [R] la rafale ;
 //   [P] la garde du quart d heure : chaque constat, les messages qu elle envoie, « Réglé », la mise
 //       en service des sujets ;
+//   [S] les alertes a l instant : panne interne, mails, taches, garde bloquee, formulaire, copie
+//       dans l ancien formulaire, demande de groupe, reservation ratee, console ;
 //   [X] les contre-preuves.
 // Lancement : node scripts/alertes-lisibles-check.js   (port : PINLANE_ALERTES_PORT, 5307 par defaut)
 'use strict';
@@ -229,6 +231,12 @@ async function contrePreuves() {
   await rouge('un « Réglé » d avant', [{ fichier: 'lib/tour-controle.js', de: "  if (regles.length) messages.push({ texte: regles.map((p) => T.regle(p, instant)).join('\\n'),", vers: "  if (regles.length) messages.push({ texte: `Réglé, Pinlane\\n${regles.join('\\n')}`," }], garde);
   await rouge('un constat sans sa ligne « ce que tu fais »', [{ fichier: 'lib/tour-controle.js', de: "const blocDuConstat = (p, env) => T.bloc({ quoi: p.quoi || p.titre, effet: p.effet || '', action: p.action || T.faire('regarde dans la Tour de contrôle.'),", vers: "const blocDuConstat = (p, env) => T.bloc({ quoi: p.quoi || p.titre, effet: p.effet || '', action: '', " }], garde);
   await rouge('une presentation d avant', [{ fichier: 'lib/tour-controle.js', de: "      const r = await envoyerTelegram(lignes.join('\\n'), { env, fetcher, sujet });", vers: "      const r = await envoyerTelegram(`Pinlane : ce fil reçoit la garde.\\nMise en service de la garde Pinlane.\\n${lignes[1]} La sonde passe toutes les 5 minutes.`, { env, fetcher, sujet });" }], async () => (await presentationsDesSujets()).every((m) => fautesDe(m.text, 'presentation').length === 0));
+  const instant = async () => (await alertesALInstant()).every((s) => s.messages.length === 1 && fautesDe(s.messages[0].text, 'alerte').length === 0);
+  await rouge('une panne interne qui recopie le message technique, a l instant', [{ fichier: 'lib/alertes-messages.js', de: "    effet: `${T.causeLisible(message)} ${quiEstTouche(surface)}`,", vers: "    effet: `${message} ${quiEstTouche(surface)}`," }], instant);
+  await rouge('le signalement d une panne qui garde son texte d avant', [{ fichier: 'lib/garde-serveur.js', de: '      m.texte,\n', vers: "      `URGENT Pinlane\\nPanne du serveur, ${nom}.\\n${message}\\nLe détail est dans la Tour de contrôle.`,\n" }], instant);
+  await rouge('la console qui garde son texte d avant', [{ fichier: 'api/ops.js', de: '        await alerter(`console:${centre}:${empreinte}`, m.texte,', vers: '        await alerter(`console:${centre}:${empreinte}`, `URGENT Pinlane\\nLa console de ${centre} a planté (plantage ${empreinte}).`,' }], instant);
+  await rouge('une tache ratee qui garde son texte d avant', [{ fichier: 'lib/cron-tasks.js', de: '    await alerter(`tache:${taskName}:echec`, m.texte,', vers: '    await alerter(`tache:${taskName}:echec`, `URGENT Pinlane\\n${taskName} ne tourne plus : ${raison}`,' }], instant);
+  await rouge('un mail revenu qui sonne encore', [{ fichier: 'lib/alertes-messages.js', de: "action: T.faire(`demande à l’équipe de ${centre} d’appeler ce client, le numéro est dans le dossier.`) }), false);", vers: "action: T.faire(`demande à l’équipe de ${centre} d’appeler ce client, le numéro est dans le dossier.`) }), true);" }], async () => (await alertesALInstant()).every((s) => Boolean(!(s.messages[0] || {}).disable_notification) === s.sonne));
   await rouge('un lien qui ne s ouvre qu une fois', [{ fichier: 'lib/garde-alertes.js', de: "    for (let i = t.indexOf(lien.texte); i >= 0; i = t.indexOf(lien.texte, i + lien.texte.length)) trouves.push(", vers: "    for (let i = t.indexOf(lien.texte); i >= 0; i = -1) trouves.push(" }], async () => {
     const t = charger('lib/alertes-texte.js');
     const b = t.bloc({ quoi: 'Gembloux : essai', action: t.faire('rien'), lien: t.lienVers('tour') });
@@ -280,6 +288,72 @@ async function preuvesGarde() {
   const ancien = tour.deciderGarde({ 'erreur:serveur:abcdef': 'Le serveur a planté (api/ops)', 'mail:echec:gembloux:2': '2 mails ne sont pas partis à Gembloux' }, [], { env: process.env }).messages[0] || { texte: '' };
   lisible(ancien.texte, 'regle', '[P] un probleme retenu avant ce gabarit se dit regle sans son vieux jargon');
 }
+// ---------------------------------------------------------------------------
+// [S] Les alertes a l instant, par les vrais points d entree quand ils se jouent sans base, sinon
+// par lib/alertes-messages.js, ou les routes prennent leur texte (tour-controle-check joue ces routes).
+// ---------------------------------------------------------------------------
+const { Readable } = require('stream');
+async function appeler(handler, methode, url, corps, entetes = {}) {
+  const req = Readable.from(corps === undefined ? [] : [Buffer.from(JSON.stringify(corps))]);
+  Object.assign(req, { method: methode, url, headers: { host: 'localhost', 'content-type': 'application/json', 'user-agent': 'banc', ...entetes }, socket: { remoteAddress: '10.0.0.9' } });
+  const res = { statusCode: 200, entetes: {}, corps: '', headersSent: false, setHeader(k, v) { this.entetes[k.toLowerCase()] = v; }, getHeader(k) { return this.entetes[k.toLowerCase()]; }, writeHead(s) { this.statusCode = s; return this; }, write(b) { this.corps += String(b || ''); }, end(b) { this.corps += String(b || ''); this.headersSent = true; } };
+  await handler(req, res);
+  return { statut: res.statusCode, corps: res.corps };
+}
+const SESSION = { member: { id: 'gembloux:staff-bar', name: 'Seb' }, centerId: 'gembloux', authorizedCenterId: 'gembloux', permissions: ['*'], role: { id: 'direction' } };
+function monterOps() {
+  const staffAuth = require(path.join(ROOT, 'lib/staff-auth'));
+  staffAuth.requireStaffPermission = async () => SESSION;
+  staffAuth.getStaffSessionFromRequest = async () => SESSION;
+  return charger('api/ops.js');
+}
+const attendre = (ms = 80) => new Promise((r) => setTimeout(r, ms));
+// Chaque alerte a l instant, avec ce qu elle doit faire : sonner ou non.
+async function alertesALInstant() {
+  ROUTES.length = 0;
+  const a = charger('lib/garde-alertes.js');
+  const M = charger('lib/alertes-messages.js');
+  const sorties = [];
+  const prendre = async (nom, sonne, jouer) => {
+    a.oublierLesAlertes();
+    TG.length = 0;
+    await jouer();
+    await attendre();
+    sorties.push({ nom, sonne, messages: TG.slice() });
+  };
+  await prendre('panne interne, par le vrai signalement', true, () => charger('lib/garde-serveur.js').signalerPanneServeur('api/staff-reservations', Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:5432 pour jean@example.be'), { code: 'ECONNREFUSED' }), { centerId: 'gembloux' }));
+  await prendre('panne pendant une tache, par le vrai signalement', true, () => charger('lib/garde-serveur.js').signalerPanneServeur('api/cron:sauvegarde', new Error('relation "x" does not exist')));
+  route(/from communications c left join \(select id, date, start_time from reservations where /, () => [{ id: 55, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1234, date: '2026-11-14', start_time: '15:00:00' }]);
+  for (const type of ['bounced', 'complained', 'failed']) await prendre(`mail ${type}, par le vrai signal du fournisseur`, false, () => charger('lib/garde-mails.js').alerterEvenementMail({ ok: true, deduped: false, communicationId: 55, type }));
+  await prendre('tache ratee, par la vraie tache', false, () => charger('lib/cron-tasks.js').recordWorkerTask('secours', async () => ({ ok: false, message: 'Resend a refusé 2 feuilles' })));
+  await prendre('agents marketing rates, par la vraie tache', false, () => charger('lib/cron-tasks.js').recordWorkerTask('agent-orchestrator', async () => ({ ok: false, message: 'quota' })));
+  ROUTES.unshift({ motif: /from ops_worker_runs where task_name = 'garde'/, rendre: () => { throw new Error('connect ECONNREFUSED'); } });
+  process.env.CRON_SECRET = 'banc';
+  await prendre('garde bloquee, par le vrai cron', true, () => appeler(charger('api/cron.js'), 'GET', '/api/cron?action=garde', undefined, { authorization: 'Bearer banc' }).catch(() => null));
+  delete process.env.CRON_SECRET;
+  ROUTES.length = 0;
+  await prendre('console plantee, par la vraie console', false, () => appeler(monterOps(), 'POST', '/api/ops?action=logClientError', { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)' }));
+  const envoyer = (m) => a.envoyerTelegram(m.texte, { silencieux: !m.urgent, liens: m.liens });
+  await prendre('horaires non retenus', false, () => envoyer(M.horairesNonRetenus('gembloux')));
+  await prendre('reservation ratee, transmise', true, () => envoyer(M.reservationEchouee({ centre: 'libramont', essai: { date: '2026-11-14', heure: '15:00', joueurs: 4 }, transmise: true })));
+  await prendre('reservation ratee, perdue', true, () => envoyer(M.reservationEchouee({ centre: 'gembloux', essai: { date: '2026-11-14', heure: '15:00', joueurs: 4 }, transmise: false })));
+  await prendre('formulaire, un client', false, () => envoyer(M.formulairePlante({ centre: 'gembloux', etape: 'recap', visiteurs: 1 })));
+  await prendre('formulaire, deux clients', true, () => envoyer(M.formulairePlante({ centre: 'gembloux', etape: 'recap', visiteurs: 2 })));
+  await prendre('copie dans l ancien formulaire', false, () => envoyer(M.copieAncienFormulaire({ centre: 'gembloux', numero: 903, envoyees: 1, lignes: 2, pourquoi: 'un champ de leur formulaire a changé de nom' })));
+  await prendre('demande de groupe non enregistree', true, () => envoyer(M.demandeNonEnregistree({ centre: 'gembloux', participants: 35 })));
+  a.oublierLesAlertes();
+  return sorties;
+}
+async function preuvesInstant() {
+  const sorties = await alertesALInstant();
+  for (const s of sorties) {
+    const m = s.messages[0] || { text: '' };
+    ok(s.messages.length === 1, `[S] ${s.nom} : un message`, s.messages.map((x) => x.text));
+    lisible(m.text, 'alerte', `[S] ${s.nom}`);
+    ok(Boolean(!m.disable_notification) === s.sonne, `[S] ${s.nom} : ${s.sonne ? 'sonne' : 'arrive sans sonnerie'}`, m.disable_notification);
+  }
+}
+
 async function presentationsDesSujets() {
   routesDeLaGarde();
   process.env.TELEGRAM_GROUPE = '-1001234567890';
@@ -308,6 +382,7 @@ async function preuvesPresentation() {
     await preuvesRafale();
     await preuvesGarde();
     await preuvesPresentation();
+    await preuvesInstant();
     await contrePreuves();
   } finally {
     serveur.close();

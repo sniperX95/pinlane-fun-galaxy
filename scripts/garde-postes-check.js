@@ -317,7 +317,7 @@ async function preuvesServeur() {
   const panne = Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:5432 pour jean@example.be'), { code: 'ECONNREFUSED' });
   await sv.signalerPanneServeur('api/staff-reservations', panne, { centerId: 'gembloux' });
   ok(BD.erreurs.length === 1 && BD.erreurs[0].member_id === 'serveur:api/staff-reservations' && BD.erreurs[0].center_id === 'gembloux' && !/jean@/.test(BD.erreurs[0].message), '[S] la panne entre dans la table des plantages, sous sa route, expurgee', BD.erreurs);
-  ok(TG.length === 1 && /^URGENT Pinlane\nPanne du serveur, api\/staff-reservations \(gembloux\)\./.test(TG[0].text) && /ECONNREFUSED/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[S] elle sonne, avec la route et la cause, sans adresse', TG);
+  ok(TG.length === 1 && /^Gembloux : une panne s’est produite en enregistrant une réservation au comptoir\.\nLes données de Pinlane n’ont pas répondu à temps\./.test(TG[0].text) && !/ECONNREFUSED|api\//.test(TG[0].text) && !TG[0].disable_notification && !PERSONNEL.test(TG[0].text), '[S] elle sonne, avec le geste qui a rate et sa cause en clair, sans le message technique ni adresse', TG);
   await sv.signalerPanneServeur('api/staff-reservations', panne, { centerId: 'gembloux' });
   ok(TG.length === 1, '[S] la meme panne dans l heure : pas un second message', TG.length);
 
@@ -326,7 +326,7 @@ async function preuvesServeur() {
   const casse = createHandler({ enregistrerEvenement: async () => { throw new Error('relation "email_events" does not exist'); } });
   const r = await appeler(casse, 'POST', '/api/inbound-email', { type: 'email.bounced', data: { email_id: 're_banc' } }, { 'x-inbound-secret': 'secret-du-banc' });
   await attendre();
-  ok(r.statut === 503 && TG.some((m) => /Panne du serveur, api\/inbound-email/.test(m.text)), '[S] par le vrai webhook : un evenement qui ne s ecrit pas rend 503 au fournisseur, et sonne', { r, TG });
+  ok(r.statut === 503 && TG.some((m) => /^Pinlane : une panne s’est produite à l’arrivée des mails des clients\./.test(m.text)), '[S] par le vrai webhook : un evenement qui ne s ecrit pas rend 503 au fournisseur, et sonne', { r, TG });
 }
 
 async function preuvesMails() {
@@ -337,15 +337,15 @@ async function preuvesMails() {
   const evenement = (resultat) => createHandler({ enregistrerEvenement: async () => resultat });
   TG.length = 0;
   const r = await appeler(evenement({ ok: true, deduped: false, communicationId: 55, type: 'bounced' }), 'POST', '/api/inbound-email', { type: 'email.bounced', data: { email_id: 're_x', to: ['jean@example.be'] } }, { 'x-inbound-secret': 'secret-du-banc' });
-  ok(r.statut === 200 && TG.length === 1 && TG[0].text === 'URGENT Pinlane\nUn mail n’est pas arrivé chez un client de Gembloux : sa boîte l’a refusé (la confirmation).\nRéservation n° 1234 (samedi 14/11 à 15:00).\nÀ appeler : le numéro est dans le dossier.', '[M] un mail refuse par la boite du client sonne : quel mail, quel dossier, quoi faire', { r, TG });
+  ok(r.statut === 200 && TG.length === 1 && TG[0].text === 'Gembloux : un mail n’est pas arrivé chez un client, sa boîte l’a refusé.\nC’était la confirmation de la réservation n° 1234 (samedi 14/11 à 15:00). L’adresse est sans doute fausse : le client ne l’a pas.\nCe que tu fais : demande à l’équipe de Gembloux d’appeler ce client, le numéro est dans le dossier.', '[M] un mail refuse par la boite du client se dit : quel mail, quel dossier, quoi faire', { r, TG });
   ok(!PERSONNEL.test(TG.map((m) => m.text).join(' ')), '[M] sans l adresse du client', TG);
-  ok(!TG[0].disable_notification, '[M] il sonne : un client n a pas sa confirmation', TG);
+  ok(TG[0].disable_notification === true, '[M] sans sonnerie : une adresse a corriger par l equipe, pas une panne de Pinlane (les mails qui ne partent plus du tout, la garde les fait sonner)', TG);
   TG.length = 0;
   await appeler(evenement({ ok: true, deduped: true, communicationId: 55, type: 'bounced' }), 'POST', '/api/inbound-email', { type: 'email.bounced', data: {} }, { 'x-inbound-secret': 'secret-du-banc' });
   await appeler(evenement({ ok: true, deduped: false, communicationId: 56, type: 'delivered' }), 'POST', '/api/inbound-email', { type: 'email.delivered', data: {} }, { 'x-inbound-secret': 'secret-du-banc' });
   ok(TG.length === 0, '[M] une relivraison du fournisseur ou un mail bien remis : rien', TG);
   await appeler(evenement({ ok: true, deduped: false, communicationId: 57, type: 'complained' }), 'POST', '/api/inbound-email', { type: 'email.complained', data: {} }, { 'x-inbound-secret': 'secret-du-banc' });
-  ok(TG.length === 1 && /a classé la confirmation en indésirable/.test(TG[0].text) && TG[0].disable_notification === true, '[M] un mail classe indesirable : dit, sans sonnerie', TG);
+  ok(TG.length === 1 && /^Gembloux : un client a classé un mail en indésirable\./.test(TG[0].text) && TG[0].disable_notification === true, '[M] un mail classe indesirable : dit, sans sonnerie', TG);
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +366,7 @@ async function preuvesConsole() {
   const plantage = { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)' };
   const r = await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
   ok(r.statut === 200 && BD.erreurs.length === 1, '[C] la console qui plante : l erreur entre en base', { r, erreurs: BD.erreurs });
-  ok(TG.length === 1 && /^URGENT Pinlane\nLa console de Gembloux a planté chez Seb, page planning \(plantage \w{6}\)/.test(TG[0].text) && !/Cannot read/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[C] et sonne, sans rien recopier de ce que le navigateur envoie', TG);
+  ok(TG.length === 1 && /^Gembloux : la console a eu une erreur chez Seb, page Planning\./.test(TG[0].text) && TG[0].disable_notification === true && !/Cannot read/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[C] et le dit sans sonnerie, sans rien recopier de ce que le navigateur envoie', TG);
   await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
   ok(TG.length === 1, '[C] le meme plantage dans l heure : pas un second message', TG.length);
   await appeler(ops, 'POST', '/api/ops?action=logClientError', { ...plantage, message: 'autre chose', stack: 'Error: autre chose\n    at x (app-main.js:99:1)' });
@@ -379,16 +379,16 @@ async function preuvesTaches() {
   const ct = charger('lib/cron-tasks.js');
   TG.length = 0;
   await ct.recordWorkerTask('secours', async () => ({ ok: false, message: 'Resend a refusé 2 feuilles' }));
-  ok(TG.length === 1 && TG[0].text === 'URGENT Pinlane\nLe planning de secours a échoué : Resend a refusé 2 feuilles' && !TG[0].disable_notification, '[A] une tache qui rend un echec sonne tout de suite, avec sa cause', TG);
+  ok(TG.length === 1 && /^Pinlane : le planning de secours a raté son passage\./.test(TG[0].text) && !/Resend/.test(TG[0].text) && TG[0].disable_notification === true, '[A] une tache qui rend un echec se dit tout de suite, sans sonnerie : c est son retard qui sonne', TG);
   let leve = false;
   try {
     await ct.recordWorkerTask('dispatch-communications', async () => { throw new Error('Base occupée'); });
   } catch (error) {
     leve = true;
   }
-  ok(leve && TG.length === 2 && TG[1].text === 'URGENT Pinlane\nL’envoi des mails en attente a échoué : Base occupée', '[A] une tache qui plante sonne aussi, et l erreur continue sa route', TG.map((m) => m.text));
+  ok(leve && TG.length === 2 && /^Pinlane : l’envoi des mails en attente a raté son passage\./.test(TG[1].text), '[A] une tache qui plante se dit aussi, et l erreur continue sa route', TG.map((m) => m.text));
   await ct.recordWorkerTask('agent-orchestrator', async () => ({ ok: false, message: 'quota' }));
-  ok(TG.length === 3 && TG[2].text === 'À regarder, Pinlane\nLes agents marketing ont échoué : quota' && TG[2].disable_notification === true, '[A] les agents marketing : a regarder, sans sonnerie (aucun client touche)', TG.map((m) => m.text));
+  ok(TG.length === 3 && /^Pinlane : les agents marketing ont raté leur passage\./.test(TG[2].text) && /\nRien à faire : aucun client n’est touché\./.test(TG[2].text) && TG[2].disable_notification === true, '[A] les agents marketing : a regarder, sans sonnerie (aucun client touche)', TG.map((m) => m.text));
   await ct.recordWorkerTask('garde', async () => ({ ok: false, message: 'x' }));
   await ct.recordWorkerTask('secours', async () => ({ ok: true }));
   ok(TG.length === 3, '[A] la garde a son propre cri, et une tache saine ne dit rien', TG.length);
@@ -820,7 +820,7 @@ async function contrePreuves() {
     await charger('lib/cron-tasks.js').recordWorkerTask('secours', async () => ({ ok: false, message: 'x' }));
     return TG.length === 1;
   });
-  await rouge('un mail revenu ne sonne plus', [{ fichier: 'lib/garde-mails.js', de: "const SONNENT = new Set(['bounced', 'complained', 'failed']);", vers: 'const SONNENT = new Set([]);' }], async () => {
+  await rouge('un mail revenu ne se dit plus', [{ fichier: 'lib/garde-mails.js', de: "const SONNENT = new Set(['bounced', 'complained', 'failed']);", vers: 'const SONNENT = new Set([]);' }], async () => {
     remettre();
     route(/from communications c left join \(select id, date, start_time from reservations where /, () => [{ id: 58, center_id: 'gembloux', template_id: 'confirmation', reservation_id: 1, date: '2026-11-14', start_time: '15:00' }]);
     TG.length = 0;

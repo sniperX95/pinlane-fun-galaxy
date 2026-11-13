@@ -146,13 +146,13 @@ async function handleErreurFormulaire(req, res, body) {
     const { alerter } = require('../lib/garde-alertes');
     const etape = String(body.scene || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
     const empreinte = String(inscrit.stackHash || '').slice(0, 6);
-    const { nomDuCentre } = require('../lib/garde-annonces');
     const visiteurs = visiteursDuPlantage(`${centre}:${empreinte}`, cleDeLAdresse(getClientIp(req)));
     const urgent = visiteurs >= 2;
+    const m = require('../lib/alertes-messages').formulairePlante({ centre, etape, visiteurs, urgent });
     await alerter(
       `formulaire:${centre}:${empreinte}:${urgent ? 'plusieurs' : 'un'}`,
-      `${urgent ? 'URGENT Pinlane' : 'À regarder, Pinlane'}\nLe formulaire de ${nomDuCentre(centre)} a planté chez ${urgent ? `${visiteurs} clients différents` : 'un client'}${etape ? `, étape ${etape}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`,
-      { fenetreMs: 60 * 60_000, silencieux: !urgent, origine: 'public' },
+      m.texte,
+      { fenetreMs: 60 * 60_000, urgent: m.urgent, liens: m.liens, origine: 'public' },
     );
   }
   sendJson(res, 202, { ok: true });
@@ -216,13 +216,13 @@ async function handleMiroir(req, res, body) {
     console.info('[miroir]', centre, estDemande ? `demande ${numero}` : numero, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
     if (!reussie) {
       const { alerter } = require('../lib/garde-alertes');
-      const { nomDuCentre } = require('../lib/garde-annonces');
       const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');
-      const combien = lignes ? ` (${envoyees} entrée${envoyees > 1 ? 's' : ''} recopiée${envoyees > 1 ? 's' : ''} sur ${lignes})` : '';
+      // A regarder, sans sonnerie (2026-11-13) : la reservation est dans Pinlane, rien n est perdu.
+      const m = require('../lib/alertes-messages').copieAncienFormulaire({ centre, numero, demande: estDemande, envoyees, lignes, pourquoi });
       await alerter(
         `miroir:${centre}:${estDemande ? 'd' : ''}${numero}`,
-        `À regarder, Pinlane\n${estDemande ? 'La demande de groupe' : 'La réservation'} n°${numero} de ${nomDuCentre(centre)} est bien dans Pinlane, mais sa copie dans l’ancien formulaire du site n’est pas passée entière${combien} : ${pourquoi}. L’équipe ne la trouvera pas, ou pas complète, dans les mails de ce formulaire.`,
-        { fenetreMs: 60 * 60_000, origine: 'public' },
+        m.texte,
+        { fenetreMs: 60 * 60_000, urgent: m.urgent, liens: m.liens, origine: 'public' },
       );
     }
   } catch (error) {
@@ -455,7 +455,8 @@ async function handleCustomRequest(req, res, body) {
     // qu il ne le fera pas. Sans nom ni contact : le centre, le nombre.
     console.error('[custom-request] échec', error && (error.stack || error.message || error));
     const { alerter } = require('../lib/garde-alertes');
-    await alerter(`demande-panne:${centerId}`, `URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à ${require('../lib/garde-annonces').nomDuCentre(centerId)}${demande ? ` (${demande.participants} personnes)` : ''}. Le client a lu « réessayez dans un instant ».`, { fenetreMs: 5 * 60_000 });
+    const m = require('../lib/alertes-messages').demandeNonEnregistree({ centre: centerId, participants: demande ? demande.participants : 0 });
+    await alerter(`demande-panne:${centerId}`, m.texte, { fenetreMs: 5 * 60_000, urgent: m.urgent, liens: m.liens });
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
     return;
   }

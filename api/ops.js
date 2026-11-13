@@ -2309,7 +2309,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         const page = String(body.page || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
         const qui = String((options.session && options.session.member && options.session.member.name) || '').replace(/\s+/g, ' ').trim().slice(0, 40);
         const centre = scopedCenterId || 'libramont';
-        await alerter(`console:${centre}:${empreinte}`, `URGENT Pinlane\nLa console de ${require('../lib/garde-annonces').nomDuCentre(centre)} a planté${qui ? ` chez ${qui}` : ''}${page ? `, page ${page}` : ''} (plantage ${empreinte || 'sans empreinte'}). Le détail est dans la Tour de contrôle.`, { fenetreMs: 60 * 60_000 });
+        const m = require('../lib/alertes-messages').consolePlantee({ centre, qui, page });
+        await alerter(`console:${centre}:${empreinte}`, m.texte, { fenetreMs: 60 * 60_000, urgent: m.urgent, liens: m.liens });
       }
     } catch (error) {
       console.error('[client-errors] enregistrement impossible :', error.message);

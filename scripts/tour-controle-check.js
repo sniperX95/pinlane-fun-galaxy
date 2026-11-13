@@ -413,7 +413,7 @@ async function preuvesClient(jour) {
   const panne = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
   panneBase = false;
   ok(panne.statut === 503, '[C] la base tombe a la confirmation : le client a un message', panne);
-  ok(TELEGRAM.length === 1 && /^URGENT Pinlane/.test(TELEGRAM[0]) && /gembloux/.test(TELEGRAM[0]) && TELEGRAM[0].includes(jour), '[C] Ansar le sait tout de suite, avec le centre et le jour', TELEGRAM);
+  ok(TELEGRAM.length === 1 && /^Gembloux : une réservation en ligne a échoué à cause d’une panne\./.test(TELEGRAM[0]) && TELEGRAM[0].toLowerCase().includes(require('../lib/garde-annonces').jourLisible(jour)), '[C] Ansar le sait tout de suite, avec le centre et le jour', TELEGRAM);
   ok(/n’a pas pu partir/.test(TELEGRAM[0] || ''), '[C] Gembloux sans adresse : le message dit que la demande n est pas partie', TELEGRAM);
   ok(!PERSONNEL.test(TELEGRAM.join(' ')), '[C] ni nom, ni telephone, ni e-mail sur Telegram', TELEGRAM);
   const trace = BD.journal.find((j) => j.action === 'reservation.panne');
@@ -431,7 +431,7 @@ async function preuvesClient(jour) {
   const transmise = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', price: 30, quotedPrice: 30, program: [{ activityId: 'fun_run', minutes: 15, participants: 4 }] }));
   panneBase = false;
   ok(transmise.statut === 503 && RESEND.length === 1, '[C] Libramont a une boite de secours : la demande y part', { transmise, resend: RESEND.length });
-  ok(TELEGRAM.some((t) => /boîte de secours/.test(t) && /libramont/.test(t)), '[C] et le message le dit', TELEGRAM);
+  ok(TELEGRAM.some((t) => /boîte de secours/.test(t) && /^Libramont : /.test(t)), '[C] et le message le dit', TELEGRAM);
 
   const refus = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', program: [{ activityId: 'golf_oclock' }] }));
   ok(refus.statut >= 400 && refus.statut < 500, '[C] temoin : le Golf o Clock refuse a Libramont', refus);
@@ -452,7 +452,7 @@ async function preuvesClient(jour) {
   panneBase = true;
   const blocage = await appeler(reservations, 'POST', '/api/public-reservations?action=hold', corpsDemande(jour, { name: '', phone: '', email: '' }));
   panneBase = false;
-  ok(blocage.statut === 503 && TELEGRAM.some((t) => /ne se retiennent plus/.test(t)), '[C] les horaires qui ne se retiennent plus : un message', { blocage, TELEGRAM });
+  ok(blocage.statut === 503 && TELEGRAM.some((t) => /^Gembloux : le formulaire en ligne n’arrive plus à garder les horaires de côté/.test(t)), '[C] les horaires qui ne se retiennent plus : un message', { blocage, TELEGRAM });
 
   // LES ANNONCES (2026-11-06) : par le vrai formulaire, une reservation qui aboutit part dans
   // Reservations, sans donnee personnelle, et son sort s ecrit au journal.
@@ -486,7 +486,7 @@ async function preuvesClient(jour) {
   panneDemande = true;
   const perdue = await appeler(meta, 'POST', '/api/custom-request', demande);
   panneDemande = false;
-  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à Gembloux/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
+  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^Gembloux : une demande de groupe n’a pas pu s’enregistrer/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
 
   const tour = tourReel();
   const { essais } = await tour.lireProblemes(database.getPool());
@@ -563,7 +563,7 @@ async function preuvesReserver(browser) {
   await p.addScriptTag({ url: `${BASE}/assets/banc-reserver.js` }).catch(() => {});
   await p.waitForTimeout(600);
   ok(signaux.length === 1 && signaux[0].centerId === 'gembloux' && signaux[0].scene === 'reserver', '[F] /reserver : un plantage chez un client part au serveur, avec son centre', signaux);
-  ok(TELEGRAM.some((t) => /formulaire de Gembloux a planté chez un client, étape reserver/.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.some((t) => /^Gembloux : le formulaire en ligne a eu une erreur chez un client, dans le formulaire\./.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
   await p.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 })); });
   await p.evaluate(() => { window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') })); });
   await p.waitForTimeout(300);
@@ -593,17 +593,18 @@ async function preuvesFormulaire(browser) {
   ok(!/jean\.essai/.test(BD.erreurs.map((e) => e.message).join(' ')), '[F] une adresse glissee dans le message est expurgee avant d entrer en base', BD.erreurs);
   const groupeErreur = BD.erreurs.find((e) => e.member_id === 'public:gembloux');
   ok(Boolean(groupeErreur), '[F] il entre en base, compte du formulaire de Gembloux', BD.erreurs);
-  ok(TELEGRAM.length === 1 && /formulaire de Gembloux a planté/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.length === 1 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
   const { problemes } = await require('../lib/tour-controle').lireProblemes(database.getPool());
   ok(problemes.some((x) => x.cle.startsWith('erreur:client:')), '[F] la Tour le range parmi les urgents', problemes.map((x) => x.cle));
 
   await p.route('**/assets/banc-plantage-2.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('encore un');" }));
   await p.addScriptTag({ url: `${BASE}/assets/banc-plantage-2.js` }).catch(() => {});
   await p.waitForTimeout(400);
-  ok(TELEGRAM.length === 2 && /formulaire de Gembloux a planté/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
-  ok(TELEGRAM[0].match(/plantage (\w+)/) && TELEGRAM[1].match(/plantage (\w+)/) && TELEGRAM[0].match(/plantage (\w+)/)[1] !== TELEGRAM[1].match(/plantage (\w+)/)[1], '[F] les deux plantages se distinguent par leur empreinte', TELEGRAM);
+  ok(TELEGRAM.length === 2 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
+  const empreintesPubliques = [...new Set(BD.erreurs.filter((e) => e.member_id === 'public:gembloux').map((e) => e.stack_hash))];
+  ok(empreintesPubliques.length === 2 && !/\b[0-9a-f]{6,}\b/.test(TELEGRAM.join(' ')), '[F] les deux plantages se distinguent en base par leur empreinte, que le message ne cite plus', { empreintesPubliques, TELEGRAM });
   const { alerter: alerterBanc } = require('../lib/garde-alertes');
-  const empreinte = TELEGRAM[0].match(/plantage (\w+)/)[1];
+  const empreinte = String(empreintesPubliques[0] || '').slice(0, 6);
   // La cle dit aussi si un ou plusieurs visiteurs l ont vu (passe securite du 2026-11-08) :
   // le meme plantage vu par le meme visiteur porte la meme cle.
   const repete = await alerterBanc(`formulaire:gembloux:${empreinte}:un`, 'le meme plantage, repete');

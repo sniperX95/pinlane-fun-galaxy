@@ -14,7 +14,8 @@
 //   [A] La ligne du site demande la copie : le cadre recoit miroir=1, l ancien formulaire est masque, jamais retire.
 //   [B] Une reservation de deux activites fait deux entrees, chacune a son heure et son nombre de joueurs, avec les
 //       memes nom, telephone, e-mail, jour et centre ; les champs caches de leur formulaire (anti-spam compris)
-//       partent tels que la page les porte, et la liste que leur logique cache (formule) ne part pas.
+//       partent tels que la page les porte, avec ce que leur script ajoute a chaque envoi (le jeton de leur
+//       anti-robot, le temps passe sur la page), et la liste que leur logique cache (formule) ne part pas.
 //   [C] Le formulaire de la page n est pas touche : ses champs restent vides, rien ne s y ajoute.
 //   [D] Une formule fait une entree « Une formule » avec la bonne option.
 //   [E] Une activite que leur liste ne connait pas ne devient jamais leur premiere option (« Arcades ») : la liste
@@ -26,7 +27,11 @@
 //   [H] Seul le cadre pose par embed.js est ecoute : ni la page elle-meme, ni un autre cadre de la meme origine.
 //   [I] Sans data-miroir, rien ne part.
 //   [J] Les donnees ne quittent pas le site : un formulaire qui enverrait ailleurs n est pas utilise.
-//   [K] Gembloux (formulaire 1, son propre champ du centre) recoit Gembloux et ses propres valeurs.
+//   [K] Gembloux (formulaire 1, son propre champ du centre) recoit Gembloux et ses propres valeurs, et son pot de
+//       miel garde les entrees : sans le jeton de la page, Gravity Forms confirme mais jette l entree, sans mail
+//       (la reservation 1866 du 13/11 s y est perdue).
+//   [P] Une page qui ne donne plus le jeton : avec un pot de miel rien ne part et la copie se dit ratee
+//       (jeton-absent) ; sans pot de miel, l entree part.
 //   [L] Le bouton de retour rend l ancien formulaire sans residu : plus de cadre, plus de masque, rien d envoye.
 //   [M] De bout en bout, avec le vrai formulaire Pinlane : une reservation prise dans le cadre part dans leur
 //       formulaire avec ce que le client a tape, et Pinlane apprend que la copie est passee, sans rien de personnel.
@@ -57,6 +62,8 @@ const CONTRE = process.argv.includes('--contre-preuves');
 const SEUL = (process.argv.find((a) => a.startsWith('--seul=')) || '').slice('--seul='.length);
 const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
 const LF = String.fromCharCode(10);
+// Le jeton de leur anti-robot, que WordPress ecrit dans la page (gform_theme_config) : celui du gate, pas le leur.
+const JETON = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 
 let echecs = 0;
 let muet = false;
@@ -86,7 +93,7 @@ const AILLEURS_VUS = [];
 const BALISES = [];
 function remettre(scenario = {}) {
   Object.keys(S).forEach((k) => delete S[k]);
-  Object.assign(S, { gform: 4, centre: 'libramont', design: 'fungalaxy', miroir: '#gform_4', reponse: 'ok', actif: true, vraiCadre: false, intrus: false, actionAilleurs: false }, scenario);
+  Object.assign(S, { gform: 4, centre: 'libramont', design: 'fungalaxy', miroir: '#gform_4', reponse: 'ok', actif: true, vraiCadre: false, intrus: false, actionAilleurs: false, config: true }, scenario);
   POSTS.length = 0;
   AILLEURS_VUS.length = 0;
   BALISES.length = 0;
@@ -99,6 +106,11 @@ function caches(n) {
   const lire = (nom) => ((new RegExp(`name='${nom}' value='([^']*)'`).exec(f) || [])[1] || '').split('&amp;').join('&');
   return { state: lire(`state_${n}`), ajax: lire('gform_ajax') };
 }
+// Le champ piege de leur anti-robot (pot de miel), quand le formulaire en a un : input_41 dans la copie de Gembloux.
+function potDeMiel(n) {
+  const numero = (/<div id="field_\d+_(\d+)" class="gfield gfield--type-honeypot/.exec(formulaire(n)) || [])[1];
+  return numero ? `input_${numero}` : '';
+}
 function ligneDuSite() {
   return `<script src="${PINLANE}/embed.js" data-center="${S.centre}"${S.design ? ` data-design="${S.design}"` : ''} data-target="#booking .container" data-fallback="#booking .heading, #booking .booking__container" data-track="datalayer"${S.miroir ? ` data-miroir="${S.miroir}"` : ''}></script>`;
 }
@@ -109,7 +121,8 @@ function pageSite() {
   const champHtml = `<div id="field_${n}_99" class="gfield gfield--type-html gfield_html gfield_html_formatted gfield_no_follows_desc field_sublabel_below gfield--no-description field_description_below gfield_visibility_visible">${ligneDuSite()}</div>`;
   const avecLigne = form.replace(/(<div id='gform_fields_\d+'[^>]*>)/, (debut) => debut + champHtml);
   if (avecLigne === form) throw new Error('champ HTML non pose : la liste des champs du formulaire a change');
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fun Galaxy</title></head><body>
+  const config = S.config ? `<script>var gform_theme_config = {"common":{"form":{"honeypot":{"version_hash":"${JETON}"},"ajax":{"ajaxurl":"${SITE}/wp-admin/admin-ajax.php"}}}};</script>` : '';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fun Galaxy</title>${config}</head><body>
 <header style="height:64px"></header>
 <section class="booking section" id="booking"><div class="container">
 <div class="heading"><h2 class="heading__title title--bordered">Réservez en moins d'une minute</h2></div>
@@ -160,6 +173,14 @@ function lireMultipart(type, corps) {
 const valeurs = (post, nom) => (post && post.champs ? post.champs.filter((c) => c[0] === nom).map((c) => c[1]) : []);
 const valeur = (post, nom) => valeurs(post, nom)[0];
 const present = (post, nom) => valeurs(post, nom).length > 0;
+// Le temps passe sur la page, ecrit comme leur script l ecrit : {"pages":{"1":[millisecondes]}}.
+function tempsSurLaPage(post) {
+  let t = null;
+  try { t = JSON.parse(valeur(post, 'gform_submission_speeds')); } catch (error) { return null; }
+  const pages = t && t.pages;
+  const ms = pages && Object.keys(pages).join() === '1' && Array.isArray(pages['1']) && pages['1'].length === 1 ? pages['1'][0] : null;
+  return Number.isInteger(ms) && ms >= 0 && ms < 3600000 ? ms : null;
+}
 
 // Le faux cadre Pinlane : il envoie a la page ce qu on lui dit d envoyer et garde ce qu elle lui repond.
 const FAUX_CADRE = `<!doctype html><html><head><meta charset="utf-8"></head><body><p>Cadre Pinlane</p><script>
@@ -176,7 +197,12 @@ async function brancher(ctx) {
     try { url = new URL(req.url()); } catch (error) { return route.abort(); }
     if (url.origin === SITE || url.origin === AUTRE_SITE) {
       if (req.method() === 'POST') {
-        POSTS.push({ url: req.url(), origine: url.origin, type: req.headers()['content-type'] || '', champs: lireMultipart(req.headers()['content-type'], req.postDataBuffer() || Buffer.alloc(0)) });
+        const champs = lireMultipart(req.headers()['content-type'], req.postDataBuffer() || Buffer.alloc(0));
+        // Leur pot de miel : sans le jeton de la page, ou le piege rempli, Gravity Forms repond sa confirmation mais
+        // jette l entree, sans mail. gardee dit si l entree existerait chez eux.
+        const pot = potDeMiel(S.gform);
+        const gardee = !pot || (Array.isArray(champs) && champs.some((c) => c[0] === 'version_hash' && c[1] === JETON) && !champs.some((c) => c[0] === pot && c[1] !== ''));
+        POSTS.push({ url: req.url(), origine: url.origin, type: req.headers()['content-type'] || '', champs, gardee });
         const r = reponseGravity(S.gform);
         return route.fulfill({ status: r.status, contentType: 'text/html; charset=UTF-8', body: r.body });
       }
@@ -283,6 +309,7 @@ async function proprietesSite(browser) {
   ok(POSTS.every((p) => valeur(p, 'is_submit_4') === '1' && valeur(p, 'gform_submit') === '4' && valeur(p, 'state_4') === fixture4.state && valeur(p, 'gform_ajax') === fixture4.ajax
     && valeur(p, 'gform_target_page_number_4') === '0' && valeur(p, 'gform_source_page_number_4') === '1'), '[B] leurs champs caches partent tels que la page les porte (envoi, etat, ajax, page)');
   ok(POSTS.every((p) => present(p, 'ak_hp_textarea') && valeur(p, 'ak_hp_textarea') === '' && /^\d{13}$/.test(valeur(p, 'ak_js') || '')), '[B] et leur anti-spam aussi : le pot de miel vide, l heure d arrivee sur la page', POSTS.map((p) => valeur(p, 'ak_js')).join(' '));
+  ok(POSTS.every((p) => valeurs(p, 'version_hash').join() === JETON && tempsSurLaPage(p) !== null), '[B] et ce que leur script ajoute a chaque envoi : le jeton de leur anti-robot, le temps passe sur la page', POSTS.map((p) => `${valeurs(p, 'version_hash').join('+')} ${valeur(p, 'gform_submission_speeds')}`).join(' | '));
   ok(Boolean(fait) && fait.duParent && fait.origine === SITE && fait.d.ok === true && fait.d.envoyees === 2 && fait.d.lignes === 2 && fait.d.raison === '', '[B] le cadre apprend que les deux entrees sont passees', JSON.stringify(fait));
 
   section('[C] le formulaire de la page n est pas touche');
@@ -374,6 +401,22 @@ async function proprietesSite(browser) {
     '[K] deux entrees au centre Gembloux (son champ 40), avec les champs caches du formulaire 1', POSTS.map((p) => `${valeur(p, 'input_40')}/${valeur(p, 'gform_submit')}`).join(' '));
   ok(valeur(g1, 'input_34') === 'bowling-gembloux' && valeur(g2, 'input_34') === 'billard-gembloux', '[K] avec les valeurs de leur liste de Gembloux (bowling-gembloux, billard-gembloux)', `${valeur(g1, 'input_34')} ${valeur(g2, 'input_34')}`);
   ok(Boolean(faitK) && faitK.d.ok === true && faitK.d.envoyees === 2, '[K] et passees', JSON.stringify(faitK && faitK.d));
+  ok(POSTS.length === 2 && Boolean(potDeMiel(1)) && POSTS.every((p) => p.gardee && valeur(p, potDeMiel(1)) === ''),
+    '[K] leur pot de miel garde les deux entrees : le jeton de la page est la, le piege reste vide', POSTS.map((p) => `${p.gardee} ${valeurs(p, 'version_hash').join('+')}`).join(' '));
+  await h.ctx.close();
+
+  section('[P] la page ne donne plus le jeton');
+  remettre({ gform: 1, centre: 'gembloux', miroir: '#gform_1', config: false });
+  h = await ouvrir(browser, { chemin: '/activites/bowling-gembloux/' });
+  const sansJetonGembloux = await copier(h, { type: 'pinlane:miroir', id: '4751', lignes: [ligne('activite', { centre: 'Fun Galaxy Gembloux', centreId: 'gembloux', activite: 'Bowling', activiteId: 'bowling', heure: '20:00', participants: 5 })] });
+  ok(POSTS.length === 0 && Boolean(sansJetonGembloux) && sansJetonGembloux.d.ok === false && sansJetonGembloux.d.raison === 'jeton-absent',
+    '[P] avec un pot de miel (Gembloux), rien ne part et la copie se dit ratee (jeton-absent), au lieu d une confirmation qui mentirait', `${POSTS.length} envois ${JSON.stringify(sansJetonGembloux && sansJetonGembloux.d)}`);
+  await h.ctx.close();
+  remettre({ config: false });
+  h = await ouvrir(browser);
+  const sansJetonLibramont = await copier(h, { type: 'pinlane:miroir', id: '4752', lignes: [ligne('activite', { activite: 'Bowling', activiteId: 'bowling', heure: '14:00', participants: 8 })] });
+  ok(POSTS.length === 1 && POSTS[0].gardee && !present(POSTS[0], 'version_hash') && Boolean(sansJetonLibramont) && sansJetonLibramont.d.ok === true,
+    '[P] sans pot de miel (Libramont), le jeton n est pas exige : l entree part', `${POSTS.length} envois ${JSON.stringify(sansJetonLibramont && sansJetonLibramont.d)}`);
   await h.ctx.close();
 
   section('[L] le bouton de retour : l ancien formulaire, sans residu');
@@ -535,6 +578,9 @@ async function proprietesServeur() {
     await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4999, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
     await appeler({ kind: 'miroir', centerId: 'centre-inconnu', reservationId: 4301, ok: false, raison: 'reseau', lignes: 1, envoyees: 0 });
     ok(alertes.length === 1, '[O] une reservation inconnue ou un centre inconnu ne sonnent pas', `${alertes.length} alertes`);
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'jeton-absent', lignes: 3, envoyees: 0 });
+    const texteJeton = (alertes[1] || {}).texte || '';
+    ok(alertes.length === 2 && /code anti-robot/.test(texteJeton) && /0 entrée recopiée sur 3/.test(texteJeton), '[O] une page qui ne donne plus le jeton se dit en mots simples', texteJeton);
   } finally {
     console.info = infos;
     Object.assign(database, { getPool: avant.getPool });
@@ -556,12 +602,17 @@ const MUTATIONS = [
   { nom: 'sans-demande', partie: 'site', fichier: 'embed.js', de: 'if (!miroirDemande || !/^\\d{1,12}$/.test(id) || recopiees[id]) return;', vers: 'if (!/^\\d{1,12}$/.test(id) || recopiees[id]) return;' },
   { nom: 'masque-laisse', partie: 'site', fichier: 'embed.js', de: 'if (masque && masque.parentNode) masque.parentNode.removeChild(masque);', vers: '' },
   { nom: 'formulaire-touche', partie: 'site', fichier: 'embed.js', de: 'var donnees = new FormData(form);', vers: "var donnees = new FormData(form); if (champs.nom) form.querySelector('[name=\"' + champs.nom + '\"]').value = ligne.nom;" },
+  { nom: 'sans-jeton', partie: 'site', fichier: 'embed.js', de: "if (jeton && !donnees.has('version_hash')) donnees.append('version_hash', jeton);", vers: '' },
+  { nom: 'sans-temps', partie: 'site', fichier: 'embed.js', de: "donnees.append('gform_submission_speeds', JSON.stringify({ pages: vitesses }));", vers: '' },
+  { nom: 'jeton-absent-envoye', partie: 'site', fichier: 'embed.js', de: "if (!jeton && form.querySelector('.gfield--type-honeypot, .gform_validation_container')) {", vers: 'if (false) {' },
+  { nom: 'jeton-toujours-exige', partie: 'site', fichier: 'embed.js', de: "if (!jeton && form.querySelector('.gfield--type-honeypot, .gform_validation_container')) {", vers: 'if (!jeton) {' },
   { nom: 'autre-site-servi', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }); return; }", vers: '' },
   { nom: 'jamais-appelee', partie: 'cadre', fichier: 'assets/fungalaxy-booking.js', de: 'if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes });', vers: '' },
   { nom: 'resultat-perdu', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (d.type !== 'pinlane:miroir-fait' || !attendu || String(d.id) !== attendu.id) return;", vers: 'return;' },
   { nom: 'reservation-non-verifiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }', vers: '' },
   { nom: 'raison-recopiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');", vers: "const pourquoi = String(body.raison || '');" },
   { nom: 'succes-qui-sonne', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!reussie) {', vers: 'if (true) {' },
+  { nom: 'jeton-sans-mots', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "  'jeton-absent': ", vers: "  'jeton-perdu': " },
 ];
 
 async function jouer(browser, parties) {

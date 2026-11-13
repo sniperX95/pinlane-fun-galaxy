@@ -176,6 +176,7 @@ const RAISONS_MIROIR = {
   'autre-site': 'le formulaire tourne sur un autre site que celui de la fiche du centre',
   http: 'leur site a répondu une erreur',
   'rien-a-copier': 'la réservation n’avait rien à recopier',
+  'jeton-absent': 'leur formulaire demande un code anti-robot que la page ne donne plus, donc rien n’est parti',
 };
 // Une raison est un mot de la liste, eventuellement suivi d un code HTTP (http-500) ou de numeros de champs
 // (refuse:17,38) : tout autre morceau est ignore, meme s il commence comme une raison (« http://... »).

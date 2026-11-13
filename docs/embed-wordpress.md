@@ -185,6 +185,12 @@ Ce que fait la copie, et ce qu'elle ne fait pas :
   champs cachés du formulaire (anti-spam compris) : pour Gravity Forms, c'est un
   envoi ordinaire. Les champs visibles de l'ancien formulaire ne sont jamais
   remplis : rien ne reste dans la page.
+- Elle ajoute ce que leur propre script ajoute à chaque envoi : le **jeton
+  anti-robot** de la page (`gform_theme_config`) et le temps passé sur la page.
+  Sans ce jeton, un formulaire qui a son « pot de miel » (le formulaire 1 de
+  Gembloux) affiche sa confirmation mais jette l'entrée, sans aucun mail : c'est
+  ce qui est arrivé à la première réservation d'essai, le 13/11. Si la page ne
+  donne plus le jeton, rien ne part et la copie sonne (`jeton-absent`).
 - Une copie ratée (formulaire refusé, site en panne, champ renommé, activité
   absente de leur liste) **sonne sur Telegram** avec le numéro de la
   réservation : elle est dans Pinlane, il faut prévenir l'équipe.

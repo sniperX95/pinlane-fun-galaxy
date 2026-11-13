@@ -451,9 +451,27 @@
     return { recu: false, raison: 'reponse-inconnue' };
   }
 
+  // Le jeton que la page donne au script de leur formulaire (gform_theme_config, ecrit par WordPress dans la page).
+  function jetonDuSite() {
+    var config = window.gform_theme_config;
+    var jeton = config && config.common && config.common.form && config.common.form.honeypot && config.common.form.honeypot.version_hash;
+    return typeof jeton === 'string' && /^[A-Za-z0-9]{1,128}$/.test(jeton) ? jeton : '';
+  }
+  function maintenant() { return window.performance && typeof window.performance.now === 'function' ? window.performance.now() : Date.now(); }
+
   function poser(donnees, nom, valeur) { if (nom) donnees.set(nom, valeur == null ? '' : String(valeur)); }
-  function envoyerUneLigne(form, cible, champs, ligne) {
+  function envoyerUneLigne(form, cible, champs, ligne, jeton) {
     var donnees = new FormData(form);
+    // Ce que leur page ajoute elle-meme quand un visiteur valide (le script de Gravity Forms) : le jeton de leur
+    // anti-robot et le temps passe sur la page. Sans le jeton, un formulaire qui a son pot de miel (Gembloux) affiche
+    // sa confirmation mais jette l entree, sans aucun mail : la reservation 1866 du 13/11 s y est perdue.
+    if (jeton && !donnees.has('version_hash')) donnees.append('version_hash', jeton);
+    if (!donnees.has('gform_submission_speeds')) {
+      var source = form.querySelector('input[name^="gform_source_page_number_"]');
+      var vitesses = {};
+      vitesses[(source && parseInt(source.value, 10)) || 1] = [Math.max(0, Math.round(maintenant() - debutSurLaPage))];
+      donnees.append('gform_submission_speeds', JSON.stringify({ pages: vitesses }));
+    }
     var formule = ligne.type === 'formule';
     poser(donnees, champs.nom, ligne.nom);
     if (champs.centre) poser(donnees, champs.centre.name, optionDe(champs.centre, ligne.centre, ligne.centreId, true));
@@ -485,6 +503,8 @@
 
   function texteBorne(valeur, max) { return String(valeur == null ? '' : valeur).slice(0, max); }
   var recopiees = {};
+  // L arrivee sur la page : leur script mesure le temps passe depuis la sienne, au meme moment.
+  var debutSurLaPage = maintenant();
   function repondreAuCadre(id, resultat) {
     if (!frame.contentWindow) return;
     try {
@@ -526,12 +546,16 @@
     var champs = champsDuFormulaire(form);
     var manque = ['nom', 'email', 'telephone', 'participants', 'quoi'].filter(function (k) { return !champs[k]; });
     if (manque.length) { repondreAuCadre(id, { ok: false, raison: 'champ-introuvable:' + manque.join(','), lignes: lignes.length }); return; }
+    // Leur pot de miel jette en silence une entree sans jeton, derriere une confirmation : sans le jeton de la page,
+    // rien ne part et la copie se dit ratee.
+    var jeton = jetonDuSite();
+    if (!jeton && form.querySelector('.gfield--type-honeypot, .gform_validation_container')) { repondreAuCadre(id, { ok: false, raison: 'jeton-absent', lignes: lignes.length }); return; }
     // Une entree apres l autre : jamais deux envois du meme visiteur dans la meme seconde.
     var envoyees = 0;
     var raisons = [];
     var suite = Promise.resolve();
     lignes.forEach(function (ligne) {
-      suite = suite.then(function () { return envoyerUneLigne(form, cible, champs, ligne); }).then(function (r) {
+      suite = suite.then(function () { return envoyerUneLigne(form, cible, champs, ligne, jeton); }).then(function (r) {
         if (r.recu) envoyees += 1;
         if (r.raison) raisons.push(r.raison);
       });

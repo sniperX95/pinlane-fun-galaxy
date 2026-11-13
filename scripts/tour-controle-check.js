@@ -555,6 +555,32 @@ async function preuvesReserver(browser) {
   await ctx.close();
 }
 
+// [F] Un catalogue que le navigateur ne peut pas aller chercher (reseau du telephone coupe, page
+// fermee en route) n est pas un plantage du formulaire : le client lit qu il doit recharger, et
+// rien ne part (alerte du 2026-11-13 a Libramont : « Le catalogue ne s’est pas chargé : reseau »,
+// rangee parmi les urgents de la Tour pour un client sans reseau).
+const REPLI_CATALOGUE = 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.';
+const estCatalogue = (u) => u.pathname === '/api/public-booking-meta' && /centerId=/.test(u.search);
+const catalogueCoupe = (route) => (route.request().method() === 'GET' ? route.abort('failed') : route.continue());
+async function preuvesSansReseau(browser) {
+  remettre();
+  require('../lib/garde-alertes').oublierLesAlertes();
+  TELEGRAM.length = 0;
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const p = await ctx.newPage();
+  const signaux = [];
+  await p.route('**/banc-rien', (route) => route.continue());
+  p.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/api/public-booking-meta')) { const c = r.postData() || ''; if (c.includes('erreur-formulaire')) signaux.push(JSON.parse(c)); } });
+  await p.route(estCatalogue, catalogueCoupe);
+  await p.goto(`${BASE}/fungalaxy/gembloux`, { waitUntil: 'networkidle', timeout: 45000 });
+  const pret = await p.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).then(() => true, () => false);
+  await p.waitForTimeout(500);
+  const alerte = await p.evaluate(() => { const a = document.querySelector('#fgAlert'); return a && !a.hidden ? a.textContent.replace(/\s+/g, ' ').trim() : ''; });
+  ok(pret && alerte === REPLI_CATALOGUE, '[F] sans reseau, le formulaire dit au client de recharger', { pret, alerte });
+  ok(signaux.length === 0 && BD.erreurs.length === 0 && TELEGRAM.length === 0, '[F] un catalogue coupe par le reseau n est pas un plantage : rien ne part, rien en base, aucun message', { signaux, erreurs: BD.erreurs.length, TELEGRAM });
+  await ctx.close();
+}
+
 async function preuvesFormulaire(browser) {
   remettre();
   require('../lib/garde-alertes').oublierLesAlertes();
@@ -954,6 +980,21 @@ async function contrePreuves(browser, jour) {
   servies = [];
   ok(vus.length === 1, '[X] le bruit d une extension passerait : rougit', vus.length);
 
+  // Le code d avant l alerte du 2026-11-13 : un reseau coupe au chargement du catalogue partait comme un plantage.
+  servies = [{ fichier: 'assets/fungalaxy-booking.js', de: "if (!bruitDeLecture(err)) signaler({ message: 'Le catalogue ne s’est pas chargé : '", vers: "if (!(err && err.lisible)) signaler({ message: 'Le catalogue ne s’est pas chargé : '" }];
+  const c0 = await browser.newContext();
+  const p0 = await c0.newPage();
+  const vus0 = [];
+  await p0.route('**/banc-rien', (route) => route.continue());
+  p0.on('request', (r) => { if ((r.postData() || '').includes('erreur-formulaire')) vus0.push(r.postData()); });
+  await p0.route(estCatalogue, catalogueCoupe);
+  await p0.goto(`${BASE}/fungalaxy/gembloux`, { waitUntil: 'networkidle', timeout: 45000 });
+  await p0.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).catch(() => {});
+  await p0.waitForTimeout(500);
+  await c0.close();
+  servies = [];
+  ok(vus0.length === 1 && /reseau/.test(vus0[0]), '[X] un reseau coupe signale comme un plantage : rougit', vus0);
+
   servies = [{ fichier: 'assets/app-main.js', de: '    signalerErreurPublique(payload, message);\n', vers: '' }];
   const c2 = await browser.newContext();
   const p2 = await c2.newPage();
@@ -1018,6 +1059,7 @@ async function contrePreuves(browser, jour) {
   try {
     await preuvesFormulaire(browser);
     await preuvesReserver(browser);
+    await preuvesSansReseau(browser);
     await preuvesConsole(browser);
     await contrePreuves(browser, jour.date);
   } finally {

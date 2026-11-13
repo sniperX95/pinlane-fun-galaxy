@@ -246,19 +246,33 @@ function fluxDemande(lead, consigne, { mode = 'ok', maintenant = Date.now(), qui
   };
 }
 
-// Un flux enregistre (le vrai serveur, Projects/pinlane/assets/sur-mesure-2026-11-13/flux/) : ses blocs tels
-// quels ; sa demande de fin est ramenee a la demande ouverte du banc.
-function fluxEnregistre(fichier, lead) {
+// Un flux enregistre (le vrai serveur, Projects/pinlane/assets/sur-mesure-2026-11-13/flux/, copie dans
+// fixtures/demandes-v5/) : le .json du banc du vrai modele ({ demande:{ demande }, evenements:[{ type,
+// donnees }] }) ou un flux .sse brut. Ses blocs passent tels quels.
+function lireEnregistrement(fichier) {
   const brut = fs.readFileSync(fichier, 'utf8').replace(/\r\n/g, '\n');
+  if (/^\s*\{/.test(brut)) {
+    const j = JSON.parse(brut);
+    const evenements = (Array.isArray(j.evenements) ? j.evenements : []).filter((e) => e && e.type).map((e) => [String(e.type), e.donnees || {}]);
+    return { evenements, demande: j.demande && j.demande.demande ? j.demande.demande : null };
+  }
   const evenements = brut.split('\n\n').map((bloc) => {
     const type = (/^event: (.+)$/m.exec(bloc) || [])[1];
     const data = (/^data: (.+)$/m.exec(bloc) || [])[1];
     if (!type || !data) return null;
     try { return [type.trim(), JSON.parse(data)]; } catch (e) { return null; }
   }).filter(Boolean);
+  return { evenements, demande: null };
+}
+// La demande de fin du vrai serveur revient a la page telle quelle quand c est la demande enregistree ;
+// sinon sa preparation est ramenee a la demande ouverte du banc.
+function fluxEnregistre(fichier, lead) {
+  const { evenements } = lireEnregistrement(fichier);
   const fin = evenements.find(([t]) => t === 'fin');
-  const p = fin && fin[1].demande && fin[1].demande.suivi ? fin[1].demande.suivi.pinlane : null;
-  return { evenements: evenements.filter(([t]) => t !== 'fin'), fin: fin ? { ...fin[1], demande: undefined } : { texte: '' }, preparation: p || null, consigne: '', texte: fin ? fin[1].texte : '', lead };
+  const demandeFin = fin && fin[1].demande && typeof fin[1].demande === 'object' ? fin[1].demande : null;
+  const p = demandeFin && demandeFin.suivi ? demandeFin.suivi.pinlane : null;
+  const memeDemande = Boolean(demandeFin && lead && String(demandeFin.id) === String(lead.id));
+  return { evenements: evenements.filter(([t]) => t !== 'fin'), fin: fin ? { ...fin[1], demande: undefined } : { texte: '' }, preparation: memeDemande ? null : (p || null), demandeFin: memeDemande ? demandeFin : null, consigne: '', texte: fin ? fin[1].texte : '', lead };
 }
 
 // == LE SERVEUR ==
@@ -410,6 +424,15 @@ function creerBanc({ port = 0, root = ROOT, mutation = () => null, now = Date.no
       l.suivi.historique = [...l.suivi.historique, e];
       l.suivi.consignes = [...(l.suivi.consignes || []), { le: e.le, par: e.par, texte: plan.consigne, resultat: plan.texte }];
     }
+    // La demande enregistree : le banc garde ce que le vrai serveur a rendu, et le rend tel quel.
+    if (plan.demandeFin) {
+      const vraie = copie(plan.demandeFin);
+      Object.keys(l).forEach((k) => { if (!(k in vraie)) vraie[k] = l[k]; });
+      Object.assign(l, vraie);
+      ecrire('fin', { ...plan.fin, demande: copie(l) });
+      res.end();
+      return;
+    }
     ecrire('fin', { ...plan.fin, verite: null, identites: {}, modele: 'Sonnet', demande: plan.preparation || plan.consigne ? sortie(l) : null, preparationEnregistree: Boolean(plan.preparation) });
     res.end();
   }
@@ -474,6 +497,16 @@ function creerBanc({ port = 0, root = ROOT, mutation = () => null, now = Date.no
     },
     // Le flux arrete par `arret` repart.
     relacher() { const r = etat.attente; etat.attente = null; if (r) r(); },
+    // Rejouer un enregistrement du vrai serveur : sa demande entre en tete de la file (recue il y a une
+    // heure, a traiter), et Pinlane rend le flux enregistre. Rend l id de la demande.
+    rejouer(fichier) {
+      const { demande } = lireEnregistrement(fichier);
+      etat.assistant.flux = fichier;
+      if (!demande) return null;
+      const l = { centerId: 'libramont', source: 'client', status: 'new', company: '', createdAt: iso(Date.now() - H), updatedAt: iso(Date.now() - H), ...copie(demande), suivi: { etape: 'a-traiter', priseEnCharge: null, reponses: 0, derniereReponse: null, messageClient: null, reservationId: null, notes: [], historique: [], consignes: [], pinlane: null } };
+      etat.leads = [l, ...etat.leads.filter((x) => String(x.id) !== String(l.id))];
+      return l.id;
+    },
     fermer() {
       if (etat.attente) this.relacher();
       const ferme = new Promise((resolve) => serveur.close(() => resolve()));
@@ -483,12 +516,12 @@ function creerBanc({ port = 0, root = ROOT, mutation = () => null, now = Date.no
   };
 }
 
-module.exports = { creerBanc, datesDuBanc, fluxDemande, carteReservation, carteMail };
+module.exports = { creerBanc, datesDuBanc, fluxDemande, carteReservation, carteMail, lireEnregistrement };
 
 if (require.main === module) {
   const arg = (nom) => (process.argv.find((a) => a.startsWith(`--${nom}=`)) || '').split('=').slice(1).join('=');
   const banc = creerBanc({ port: Number(arg('port') || 4433) });
-  if (arg('flux')) banc.etat.assistant.flux = path.resolve(arg('flux'));
+  if (arg('flux')) banc.rejouer(path.resolve(arg('flux')));
   banc.etat.assistant.pas = 260;
   banc.ecouter().then((url) => console.log(`banc des demandes sur ${url}/ (console, puis Demandes sur mesure)`));
 }

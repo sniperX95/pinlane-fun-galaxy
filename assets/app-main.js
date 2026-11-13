@@ -19824,6 +19824,17 @@ const bdgEuro = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '
 const bdgListe = (mots) => (mots.length > 1 ? `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}` : mots[0] || '');
 // Un apostrophe droit venu du serveur se lit comme les autres textes de la page.
 const bdgPhrase = (t) => String(t || '').replace(/'/g, '’').trim();
+// La premiere consigne que le serveur pose lui-meme quand l equipe n a rien dit (POST /api/assistant,
+// messages vide) : elle n est pas de l equipe, la page ne la lui attribue pas.
+const BDG_CONSIGNE_DU_SERVEUR = 'Prépare la réponse à cette demande.';
+const bdgConsigneEquipe = (t) => { const c = String(t || '').trim(); return c && c !== BDG_CONSIGNE_DU_SERVEUR ? c : ''; };
+// Le resultat d une consigne, que le serveur range coupe a 300 signes : des phrases entieres seulement.
+function bdgPhrasesEntieres(t) {
+  const p = bdgPhrase(bdgSansRenvois(t));
+  if (!p || /[.!?»)]$/.test(p)) return p;
+  const fin = Math.max(p.lastIndexOf('. '), p.lastIndexOf('! '), p.lastIndexOf('? '));
+  return fin > 0 ? p.slice(0, fin + 1) : `${p}…`;
+}
 
 // Quand, en quelques mots : « Dim. 6 déc. », ou ce qui en tient lieu.
 function bdgQuandCourt(item) {
@@ -20165,7 +20176,9 @@ function bdgSuivi(item) {
       if (e.type === 'statut') return { le: e.le, titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
       return null;
     }),
-    ...consignes.map(c => ({ le: c.le, titre: `${c.par || 'L’équipe'} a demandé à Pinlane « ${c.texte} »`, texte: bdgPhrase(c.resultat) })),
+    ...consignes.map(c => (bdgConsigneEquipe(c.texte)
+      ? { le: c.le, titre: `${c.par || 'L’équipe'} a demandé à Pinlane « ${bdgPhrase(c.texte)} »`, texte: bdgPhrasesEntieres(c.resultat) }
+      : { le: c.le, titre: `Pinlane a préparé la réponse${c.par ? ` quand ${c.par} a ouvert la demande` : ''}`, texte: bdgPhrasesEntieres(c.resultat) })),
     ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
   ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
   const note = staffRequestNotes[key] || {};
@@ -20453,7 +20466,7 @@ function bdgPinTravaille(item, v) {
   // Une autre consigne reste possible : elle remplace celle en cours.
   const corps = `${bdgPinTete(dit, { role: 'status' })}
     ${etapes ? `<ol class="bdg-lu" aria-label="Ce que Pinlane lit">${etapes}</ol>` : ''}
-    ${texte ? `<p class="bdg-pin-texte">${escapeHtml(bdgSansRenvois(texte))}</p>` : ''}
+    ${texte ? `<p class="bdg-pin-texte">${escapeHtml(bdgPhrase(bdgSansRenvois(texte)))}</p>` : ''}
     ${cartes}
     ${crDemande(item) || v.consigne ? bdgConsigne(item, []) : ''}`;
   const pied = `<button type="button" class="bdg-p" disabled>Envoyer la proposition</button>`;
@@ -20466,9 +20479,9 @@ function bdgEtape(e, neuve) {
   if (e.note) return `<li class="bdg-lu-l is-note${neuve ? ' is-neuve' : ''}"><span class="bdg-lu-m" aria-hidden="true"></span><span class="bdg-lu-p">${escapeHtml(e.libelle)}</span></li>`;
   const fini = e.etat === 'fini' || e.etat === 'echec';
   const brut = String(e.phrase || e.libelle || 'Je lis vos données');
-  const phrase = fini && typeof A.phraseFinie === 'function' ? A.phraseFinie(brut) : brut;
+  const phrase = bdgPhrase(fini && typeof A.phraseFinie === 'function' ? A.phraseFinie(brut) : brut);
   const trouve = /^À valider/.test(String(e.trouve || '')) ? 'Prêt, à relire ci-dessous' : String(e.trouve || '');
-  const resultat = e.etat === 'echec' ? 'Lecture impossible' : (trouve || (typeof A.mesureDe === 'function' ? A.mesureDe(e) : ''));
+  const resultat = e.etat === 'echec' ? 'Pas abouti' : bdgPhrase(trouve || (typeof A.mesureDe === 'function' ? A.mesureDe(e) : ''));
   const etat = e.etat === 'echec' ? 'echec' : (fini ? 'fini' : 'cours');
   return `<li class="bdg-lu-l is-${etat}${neuve ? ' is-neuve' : ''}"><span class="bdg-lu-m" aria-hidden="true">${etat === 'fini' ? BDG_COCHE : ''}</span><span class="bdg-lu-p">${escapeHtml(phrase)}</span>${resultat ? `<span class="bdg-lu-r">${escapeHtml(resultat)}</span>` : ''}</li>`;
 }
@@ -20484,7 +20497,7 @@ function bdgPinPrete(item, prep, v) {
   const apres = v && v.fini && v.derniere && !v.erreur ? v : null;
   const avant = apres ? apres.avant : null;
   const quand = prep.le ? staffRequestMoment(prep.le) : '';
-  const parQui = prep.consigne && prep.par ? `, sur la consigne de ${prep.par}` : '';
+  const parQui = bdgConsigneEquipe(prep.consigne) && prep.par ? `, sur la consigne de ${prep.par}` : '';
   const mot = bdgSansRenvois(prep.texte);
   // Apres une consigne, ce qu elle a donne se lit juste dessous : la ligne grise ne le redit pas.
   const dit = apres
@@ -20520,7 +20533,7 @@ function bdgPinPrete(item, prep, v) {
 function bdgResultatConsigne(item, v) {
   const consignes = item.suivi && Array.isArray(item.suivi.consignes) ? item.suivi.consignes : [];
   const derniere = consignes[consignes.length - 1];
-  if (derniere && derniere.texte === v.derniere && derniere.resultat) return bdgPhrase(derniere.resultat);
+  if (derniere && derniere.texte === v.derniere && derniere.resultat) return bdgPhrasesEntieres(derniere.resultat);
   if (v.vide) return bdgPhrase(bdgSansRenvois(v.texteFin));
   return 'Pinlane a refait la réservation et le mail. Ce qui change est marqué.';
 }

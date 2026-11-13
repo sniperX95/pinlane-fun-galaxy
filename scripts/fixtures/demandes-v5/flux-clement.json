@@ -1,0 +1,1797 @@
+{
+ "origine": "Projects/pinlane/assets/sur-mesure-2026-11-13/flux/clement.json (banc-vrai-modele.cjs, vrai modele, 2026-11-13)",
+ "demande": {
+  "nom": "clement",
+  "id": 52,
+  "consigne": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+  "demande": {
+   "id": 52,
+   "contactName": "Clément Lambert",
+   "company": "Asbl Les Castors",
+   "email": "clement@castors.be",
+   "phone": "0470 12 34 56",
+   "requestedDate": "2026-11-21",
+   "pax": 24,
+   "occasion": "entreprise",
+   "message": "Bonjour, nous organisons une sortie d’équipe pour 24 personnes. Un bowling puis un laser, et quelque chose à grignoter. Merci de nous faire une proposition.",
+   "payload": {
+    "demande": {
+     "version": 1,
+     "groupType": "entreprise",
+     "groupTypeLabel": "Entreprise, team building",
+     "organisation": "Asbl Les Castors",
+     "participants": 24,
+     "companions": 2,
+     "ages": [
+      "adultes"
+     ],
+     "flexible": false,
+     "date": "2026-11-21",
+     "alternativeDate": "",
+     "period": "",
+     "moment": "apres-midi",
+     "momentLabel": "Après-midi",
+     "formulas": [],
+     "activities": [
+      {
+       "id": "bowling",
+       "name": "Bowling",
+       "participants": 24,
+       "duration": 1
+      },
+      {
+       "id": "laser_game",
+       "name": "Laser Game",
+       "participants": 24,
+       "games": 1
+      }
+     ],
+     "advice": false,
+     "budgetPerPerson": 25,
+     "contactRole": "Trésorier",
+     "invoice": false,
+     "vatNumber": ""
+    }
+   }
+  },
+  "conversation": []
+ },
+ "statut": 200,
+ "evenements": [
+  {
+   "type": "debut",
+   "donnees": {
+    "modele": "Sonnet 5.5",
+    "centres": [
+     {
+      "id": "libramont",
+      "name": "Fun Galaxy Libramont"
+     }
+    ],
+    "sources": [
+     {
+      "cle": "reservations",
+      "nom": "Réservations"
+     },
+     {
+      "cle": "planning",
+      "nom": "Planning"
+     },
+     {
+      "cle": "clients",
+      "nom": "Clients"
+     },
+     {
+      "cle": "catalogue",
+      "nom": "Catalogue"
+     },
+     {
+      "cle": "mails",
+      "nom": "Mails"
+     },
+     {
+      "cle": "communications",
+      "nom": "Communications"
+     },
+     {
+      "cle": "campagnes",
+      "nom": "Campagnes"
+     },
+     {
+      "cle": "notes",
+      "nom": "Notes"
+     },
+     {
+      "cle": "demandes",
+      "nom": "Demandes"
+     },
+     {
+      "cle": "equipe",
+      "nom": "Équipe"
+     },
+     {
+      "cle": "journal",
+      "nom": "Journal"
+     },
+     {
+      "cle": "meteo",
+      "nom": "Météo"
+     },
+     {
+      "cle": "site",
+      "nom": "Site"
+     },
+     {
+      "cle": "concurrents",
+      "nom": "Concurrents"
+     },
+     {
+      "cle": "savoir",
+      "nom": "Savoir"
+     }
+    ]
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01NFZPrPiSb3ZRptQ2k3bz3M",
+    "etat": "cours",
+    "cleSource": "planning",
+    "nomSource": "Planning",
+    "phrase": "Je cherche l'heure d'après-midi la plus calme pour les 24",
+    "libelle": "Je cherche l'heure d'après-midi la plus calme pour les 24",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "source",
+   "donnees": {
+    "id": "S1",
+    "outil": "heures_qui_tiennent",
+    "titre": "Heures possibles le 2026-11-21",
+    "detail": "Fun Galaxy Libramont, ouvert 10h - Minuit. Programme essayé : bowling 1 h pour 24, laser_game 1 parties pour 24, 24 joueurs.",
+    "colonnes": [
+     {
+      "cle": "heure",
+      "nom": "Départ",
+      "type": "texte"
+     },
+     {
+      "cle": "tient",
+      "nom": "Tout tient",
+      "type": "texte"
+     },
+     {
+      "cle": "fin",
+      "nom": "Fin",
+      "type": "texte"
+     },
+     {
+      "cle": "laser_partage",
+      "nom": "Laser partagé",
+      "type": "texte"
+     },
+     {
+      "cle": "groupes_presents",
+      "nom": "Groupes déjà là",
+      "type": "entier"
+     },
+     {
+      "cle": "joueurs_presents",
+      "nom": "Joueurs déjà là",
+      "type": "entier"
+     },
+     {
+      "cle": "raison",
+      "nom": "Pourquoi pas",
+      "type": "texte"
+     }
+    ],
+    "lignes": [
+     {
+      "heure": "10:00",
+      "tient": "oui",
+      "fin": "11:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "10:30",
+      "tient": "oui",
+      "fin": "12:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "11:00",
+      "tient": "oui",
+      "fin": "12:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "11:30",
+      "tient": "oui",
+      "fin": "13:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "12:00",
+      "tient": "oui",
+      "fin": "13:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "12:30",
+      "tient": "oui",
+      "fin": "14:25",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 16,
+      "raison": ""
+     },
+     {
+      "heure": "13:00",
+      "tient": "oui",
+      "fin": "14:55",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 16,
+      "raison": ""
+     },
+     {
+      "heure": "13:30",
+      "tient": "oui",
+      "fin": "15:25",
+      "laser_partage": "non",
+      "groupes_presents": 2,
+      "joueurs_presents": 24,
+      "raison": ""
+     },
+     {
+      "heure": "14:00",
+      "tient": "oui",
+      "fin": "15:55",
+      "laser_partage": "non",
+      "groupes_presents": 2,
+      "joueurs_presents": 24,
+      "raison": ""
+     },
+     {
+      "heure": "14:30",
+      "tient": "non",
+      "fin": "",
+      "laser_partage": "non",
+      "groupes_presents": 2,
+      "joueurs_presents": 24,
+      "raison": "Pas assez de pistes libres à 14:30 : il en faut 4."
+     },
+     {
+      "heure": "15:00",
+      "tient": "oui",
+      "fin": "16:55",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 8,
+      "raison": ""
+     },
+     {
+      "heure": "15:30",
+      "tient": "oui",
+      "fin": "17:25",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 8,
+      "raison": ""
+     },
+     {
+      "heure": "16:00",
+      "tient": "oui",
+      "fin": "17:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "16:30",
+      "tient": "oui",
+      "fin": "18:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "17:00",
+      "tient": "oui",
+      "fin": "18:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "17:30",
+      "tient": "oui",
+      "fin": "19:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "18:00",
+      "tient": "oui",
+      "fin": "19:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "18:30",
+      "tient": "oui",
+      "fin": "20:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "19:00",
+      "tient": "oui",
+      "fin": "20:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "19:30",
+      "tient": "oui",
+      "fin": "21:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "20:00",
+      "tient": "oui",
+      "fin": "21:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "20:30",
+      "tient": "oui",
+      "fin": "22:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "21:00",
+      "tient": "oui",
+      "fin": "22:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "21:30",
+      "tient": "oui",
+      "fin": "23:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "22:00",
+      "tient": "oui",
+      "fin": "23:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "22:30",
+      "tient": "non",
+      "fin": "",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+     },
+     {
+      "heure": "23:00",
+      "tient": "oui",
+      "fin": "24:00",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "23:30",
+      "tient": "non",
+      "fin": "",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+     }
+    ],
+    "sections": [
+     {
+      "titre": "Lignes",
+      "colonnes": [
+       {
+        "cle": "heure",
+        "nom": "Heure",
+        "type": "texte"
+       },
+       {
+        "cle": "tient",
+        "nom": "Tient",
+        "type": "texte"
+       },
+       {
+        "cle": "fin",
+        "nom": "Fin",
+        "type": "texte"
+       },
+       {
+        "cle": "laser_partage",
+        "nom": "Laser partage",
+        "type": "texte"
+       },
+       {
+        "cle": "groupes_presents",
+        "nom": "Groupes presents",
+        "type": "dec"
+       },
+       {
+        "cle": "joueurs_presents",
+        "nom": "Joueurs presents",
+        "type": "dec"
+       },
+       {
+        "cle": "raison",
+        "nom": "Raison",
+        "type": "texte"
+       }
+      ],
+      "lignes": [
+       {
+        "heure": "10:00",
+        "tient": "oui",
+        "fin": "11:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "10:30",
+        "tient": "oui",
+        "fin": "12:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "11:00",
+        "tient": "oui",
+        "fin": "12:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "11:30",
+        "tient": "oui",
+        "fin": "13:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "12:00",
+        "tient": "oui",
+        "fin": "13:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "12:30",
+        "tient": "oui",
+        "fin": "14:25",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 16,
+        "raison": ""
+       },
+       {
+        "heure": "13:00",
+        "tient": "oui",
+        "fin": "14:55",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 16,
+        "raison": ""
+       },
+       {
+        "heure": "13:30",
+        "tient": "oui",
+        "fin": "15:25",
+        "laser_partage": "non",
+        "groupes_presents": 2,
+        "joueurs_presents": 24,
+        "raison": ""
+       },
+       {
+        "heure": "14:00",
+        "tient": "oui",
+        "fin": "15:55",
+        "laser_partage": "non",
+        "groupes_presents": 2,
+        "joueurs_presents": 24,
+        "raison": ""
+       },
+       {
+        "heure": "14:30",
+        "tient": "non",
+        "fin": "",
+        "laser_partage": "non",
+        "groupes_presents": 2,
+        "joueurs_presents": 24,
+        "raison": "Pas assez de pistes libres à 14:30 : il en faut 4."
+       },
+       {
+        "heure": "15:00",
+        "tient": "oui",
+        "fin": "16:55",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 8,
+        "raison": ""
+       },
+       {
+        "heure": "15:30",
+        "tient": "oui",
+        "fin": "17:25",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 8,
+        "raison": ""
+       },
+       {
+        "heure": "16:00",
+        "tient": "oui",
+        "fin": "17:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "16:30",
+        "tient": "oui",
+        "fin": "18:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "17:00",
+        "tient": "oui",
+        "fin": "18:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "17:30",
+        "tient": "oui",
+        "fin": "19:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "18:00",
+        "tient": "oui",
+        "fin": "19:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "18:30",
+        "tient": "oui",
+        "fin": "20:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "19:00",
+        "tient": "oui",
+        "fin": "20:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "19:30",
+        "tient": "oui",
+        "fin": "21:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "20:00",
+        "tient": "oui",
+        "fin": "21:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "20:30",
+        "tient": "oui",
+        "fin": "22:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "21:00",
+        "tient": "oui",
+        "fin": "22:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "21:30",
+        "tient": "oui",
+        "fin": "23:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "22:00",
+        "tient": "oui",
+        "fin": "23:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "22:30",
+        "tient": "non",
+        "fin": "",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+       },
+       {
+        "heure": "23:00",
+        "tient": "oui",
+        "fin": "24:00",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "23:30",
+        "tient": "non",
+        "fin": "",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+       }
+      ]
+     },
+     {
+      "titre": "Programme",
+      "colonnes": [
+       {
+        "cle": "activityId",
+        "nom": "Activity id",
+        "type": "texte"
+       },
+       {
+        "cle": "participants",
+        "nom": "Participants",
+        "type": "dec"
+       },
+       {
+        "cle": "duration",
+        "nom": "Duration",
+        "type": "dec"
+       },
+       {
+        "cle": "games",
+        "nom": "Games",
+        "type": "dec"
+       }
+      ],
+      "lignes": [
+       {
+        "activityId": "bowling",
+        "participants": 24,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 24,
+        "games": 1
+       }
+      ]
+     },
+     {
+      "titre": "Général",
+      "colonnes": [
+       {
+        "cle": "ligne",
+        "nom": "",
+        "type": "texte"
+       },
+       {
+        "cle": "valeur",
+        "nom": "Valeur",
+        "type": "dec"
+       }
+      ],
+      "lignes": [
+       {
+        "ligne": "Centre",
+        "valeur": "libramont"
+       },
+       {
+        "ligne": "Date",
+        "valeur": "2026-11-21"
+       },
+       {
+        "ligne": "Horaire",
+        "valeur": "10h - Minuit"
+       },
+       {
+        "ligne": "Joueurs",
+        "valeur": 24
+       },
+       {
+        "ligne": "Heures possibles",
+        "valeur": 25
+       },
+       {
+        "ligne": "La plus calme",
+        "valeur": "10:00"
+       }
+      ]
+     }
+    ],
+    "ouvrables": false,
+    "lien": {
+     "page": "planning"
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01NFZPrPiSb3ZRptQ2k3bz3M",
+    "etat": "fini",
+    "source": "S1",
+    "trouve": "25 heures possibles sur 28",
+    "lues": 0,
+    "duree": 76,
+    "lecture": {
+     "outil": "heures_qui_tiennent",
+     "entree": {
+      "date": "2026-11-21",
+      "joueurs": 24,
+      "activites": [
+       {
+        "activite": "bowling",
+        "duree_heures": 1,
+        "participants": 24
+       },
+       {
+        "activite": "laser_game",
+        "parties": 1,
+        "groupes": [
+         10,
+         14
+        ]
+       }
+      ]
+     },
+     "empreinte": "5b51dbe2a2f5"
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01Cyr7xatipiwi82CgtvjUXv",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "Je prépare bowling puis laser en deux groupes, avec apéro",
+    "libelle": "Je prépare bowling puis laser en deux groupes, avec apéro",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "proposition",
+   "donnees": {
+    "type": "geste",
+    "geste": "reservation_demande",
+    "centre": "libramont",
+    "demande": 52,
+    "texte": "Réservation du samedi 21 novembre à 16:00 pour 24 joueurs, Bowling (1 h, 24 joueurs, pistes 1, 2, 3, 4), Laser Game (1 partie, 24 joueurs en 2 groupes (10 puis 14)), avec Assiette apéro × 3, pour 720 € (30 € par personne pour 24 joueurs, convenu par l'équipe).",
+    "resume": {
+     "quand": "samedi 21 novembre",
+     "date": "2026-11-21",
+     "heure": "16:00",
+     "joueurs": 24,
+     "disponible": true,
+     "debut": "16:00",
+     "fin": "17:55",
+     "lignes": [
+      {
+       "activite": "bowling",
+       "nom": "Bowling",
+       "debut": "16:00",
+       "fin": "17:00",
+       "detail": "1 h, 24 joueurs, pistes 1, 2, 3, 4"
+      },
+      {
+       "activite": "laser_game",
+       "nom": "Laser Game",
+       "debut": "17:00",
+       "fin": "17:55",
+       "detail": "1 partie, 24 joueurs en 2 groupes (10 puis 14)"
+      }
+     ],
+     "supplements": [
+      {
+       "nom": "Assiette apéro",
+       "qte": 3
+      }
+     ],
+     "prix": 720,
+     "prixNegocie": true,
+     "prixRaison": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+     "prixHabituel": 453,
+     "refus": "",
+     "conflits": [],
+     "nom": "Clément Lambert",
+     "telephone": "0470 12 34 56",
+     "email": "clement@castors.be",
+     "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+    },
+    "action": {
+     "action": "customRequestBook",
+     "id": 52,
+     "reservation": {
+      "date": "2026-11-21",
+      "startTime": "16:00",
+      "pax": 24,
+      "programme": [
+       {
+        "activityId": "bowling",
+        "participants": 24,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 24,
+        "games": 1,
+        "groupes": [
+         10,
+         14
+        ]
+       }
+      ],
+      "supplements": [
+       {
+        "article": "assiette-apero",
+        "quantite": 3
+       }
+      ],
+      "prix": 720,
+      "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+      "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+     }
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01Cyr7xatipiwi82CgtvjUXv",
+    "etat": "fini",
+    "source": "",
+    "trouve": "À valider sous la réponse",
+    "lues": 0,
+    "duree": 7
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_014aqiz4iW4zd74eGnXf8rrT",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "J'écris la proposition pour Les Castors avec le budget situé",
+    "libelle": "J'écris la proposition pour Les Castors avec le budget situé",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_014aqiz4iW4zd74eGnXf8rrT",
+    "etat": "echec",
+    "source": "",
+    "trouve": "",
+    "lues": 0,
+    "duree": 2
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01HahbQupVmvL5SBTAkZznng",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "Je réécris le mail sans chiffre absent des faits",
+    "libelle": "Je réécris le mail sans chiffre absent des faits",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "proposition",
+   "donnees": {
+    "type": "geste",
+    "geste": "mail_demande",
+    "centre": "libramont",
+    "demande": 52,
+    "source": "ia",
+    "texte": "Envoyer la proposition à Clément Lambert <clement@castors.be>.",
+    "resume": {
+     "a": "Clément Lambert <clement@castors.be>",
+     "objet": "Votre sortie d’équipe du samedi 21 novembre",
+     "corps": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+     "points": [
+      "Le prix de 30 € par personne dépasse le budget de 25 € du client.",
+      "Confirmer que trois assiettes apéro suffisent pour 24 joueurs.",
+      "Le prix convenu de 720 € remplace le prix habituel de 453 €.",
+      "2 accompagnateurs ne sont pas comptés dans le prix, à préciser au client si le centre leur facture quelque chose."
+     ]
+    },
+    "action": {
+     "action": "sendDirectEmail",
+     "customRequestId": 52,
+     "to": "clement@castors.be",
+     "name": "Clément Lambert",
+     "subject": "Votre sortie d’équipe du samedi 21 novembre",
+     "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+     "category": "direct",
+     "templateRef": "demande-sur-mesure",
+     "draftSource": "ia",
+     "draftOriginal": {
+      "subject": "Votre sortie d’équipe du samedi 21 novembre",
+      "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+     },
+     "proposition": {
+      "date": "2026-11-21",
+      "startTime": "16:00",
+      "pax": 24,
+      "programme": [
+       {
+        "activityId": "bowling",
+        "participants": 24,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 24,
+        "games": 1,
+        "groupes": [
+         10,
+         14
+        ]
+       }
+      ],
+      "supplements": [
+       {
+        "article": "assiette-apero",
+        "quantite": 3
+       }
+      ],
+      "prix": 720,
+      "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+      "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+     }
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01HahbQupVmvL5SBTAkZznng",
+    "etat": "fini",
+    "source": "",
+    "trouve": "À valider sous la réponse",
+    "lues": 0,
+    "duree": 4
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "J'ai préparé la"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " réservation du"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " samedi 21 novemb"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "re, avec le bowling"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " puis le laser en deux"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " groupes ("
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "10 et 14)"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " et trois assiettes ap"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "éro."
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " Le"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " prix est cel"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ui de vot"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "re consigne, et"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " le mail q"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ui le propose est"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " prêt. J"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "'ai choisi 16"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " h, l"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "'heure d"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "'après-midi la plus"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " calme, sans aut"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "re groupe au centre."
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " Le bud"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "get du"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " client est"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " un"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " peu pl"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "us bas que "
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ce prix, et"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " le mail le dit s"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ans r"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ien accorder. Trois"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " assiettes apéro p"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "our 24 joueurs"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " res"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "teront pe"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ut-être cour"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "tes, à vous"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " de"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " voir."
+   }
+  },
+  {
+   "type": "fin",
+   "donnees": {
+    "texte": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après-midi la plus calme, sans autre groupe au centre. Le budget du client est un peu plus bas que ce prix, et le mail le dit sans rien accorder. Trois assiettes apéro pour 24 joueurs resteront peut-être courtes, à vous de voir.",
+    "faitsCites": [],
+    "preuves": [
+     {
+      "d": 408,
+      "f": 410,
+      "t": "24",
+      "e": "lu",
+      "s": "S1",
+      "l": "Lignes, 13:30, Joueurs presents",
+      "z": [
+       0,
+       7,
+       "joueurs_presents"
+      ],
+      "a": [
+       {
+        "l": "Lignes, 14:00, Joueurs presents",
+        "z": [
+         0,
+         8,
+         "joueurs_presents"
+        ]
+       },
+       {
+        "l": "Lignes, 14:30, Joueurs presents",
+        "z": [
+         0,
+         9,
+         "joueurs_presents"
+        ]
+       },
+       {
+        "l": "Programme, bowling, Participants",
+        "z": [
+         1,
+         0,
+         "participants"
+        ]
+       },
+       {
+        "l": "Programme, laser_game, Participants",
+        "z": [
+         1,
+         1,
+         "participants"
+        ]
+       },
+       {
+        "l": "Général, Joueurs",
+        "z": [
+         2,
+         3,
+         "valeur"
+        ]
+       }
+      ]
+     }
+    ],
+    "verite": {
+     "sourcesCitees": [],
+     "sourcesInconnues": [],
+     "chiffres": 1,
+     "chiffresSansSource": []
+    },
+    "identites": {},
+    "modele": "claude-sonnet-5-5",
+    "demande": {
+     "id": 52,
+     "centerId": "libramont",
+     "contactName": "Clément Lambert",
+     "company": "Asbl Les Castors",
+     "email": "clement@castors.be",
+     "phone": "0470 12 34 56",
+     "requestedDate": "2026-11-21",
+     "pax": 24,
+     "occasion": "entreprise",
+     "message": "Bonjour, nous organisons une sortie d’équipe pour 24 personnes. Un bowling puis un laser, et quelque chose à grignoter. Merci de nous faire une proposition.",
+     "source": "client",
+     "status": "new",
+     "payload": {
+      "demande": {
+       "version": 1,
+       "groupType": "entreprise",
+       "groupTypeLabel": "Entreprise, team building",
+       "organisation": "Asbl Les Castors",
+       "participants": 24,
+       "companions": 2,
+       "ages": [
+        "adultes"
+       ],
+       "flexible": false,
+       "date": "2026-11-21",
+       "alternativeDate": "",
+       "period": "",
+       "moment": "apres-midi",
+       "momentLabel": "Après-midi",
+       "formulas": [],
+       "activities": [
+        {
+         "id": "bowling",
+         "name": "Bowling",
+         "participants": 24,
+         "duration": 1
+        },
+        {
+         "id": "laser_game",
+         "name": "Laser Game",
+         "participants": 24,
+         "games": 1
+        }
+       ],
+       "advice": false,
+       "budgetPerPerson": 25,
+       "contactRole": "Trésorier",
+       "invoice": false,
+       "vatNumber": ""
+      },
+      "suivi": {
+       "pinlane": {
+        "le": "2026-11-13T13:18:25.691Z",
+        "par": "Seb",
+        "consigne": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+        "texte": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après-midi la plus calme, sans autre groupe au centre. Le budget du client est un peu plus bas que ce prix, et le mail le dit sans rien accorder. Trois assiettes apéro pour 24 joueurs resteront peut-être courtes, à vous de voir.",
+        "reservation": {
+         "resume": {
+          "quand": "samedi 21 novembre",
+          "date": "2026-11-21",
+          "heure": "16:00",
+          "joueurs": 24,
+          "disponible": true,
+          "debut": "16:00",
+          "fin": "17:55",
+          "lignes": [
+           {
+            "activite": "bowling",
+            "nom": "Bowling",
+            "debut": "16:00",
+            "fin": "17:00",
+            "detail": "1 h, 24 joueurs, pistes 1, 2, 3, 4"
+           },
+           {
+            "activite": "laser_game",
+            "nom": "Laser Game",
+            "debut": "17:00",
+            "fin": "17:55",
+            "detail": "1 partie, 24 joueurs en 2 groupes (10 puis 14)"
+           }
+          ],
+          "supplements": [
+           {
+            "nom": "Assiette apéro",
+            "qte": 3
+           }
+          ],
+          "prix": 720,
+          "prixNegocie": true,
+          "prixRaison": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+          "prixHabituel": 453,
+          "refus": "",
+          "conflits": [],
+          "nom": "Clément Lambert",
+          "telephone": "0470 12 34 56",
+          "email": "clement@castors.be",
+          "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+         },
+         "action": {
+          "action": "customRequestBook",
+          "id": 52,
+          "reservation": {
+           "date": "2026-11-21",
+           "startTime": "16:00",
+           "pax": 24,
+           "programme": [
+            {
+             "activityId": "bowling",
+             "participants": 24,
+             "duration": 1
+            },
+            {
+             "activityId": "laser_game",
+             "participants": 24,
+             "games": 1,
+             "groupes": [
+              10,
+              14
+             ]
+            }
+           ],
+           "supplements": [
+            {
+             "article": "assiette-apero",
+             "quantite": 3
+            }
+           ],
+           "prix": 720,
+           "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+           "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+          }
+         }
+        },
+        "mail": {
+         "resume": {
+          "a": "Clément Lambert <clement@castors.be>",
+          "objet": "Votre sortie d’équipe du samedi 21 novembre",
+          "corps": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+          "points": [
+           "Le prix de 30 € par personne dépasse le budget de 25 € du client.",
+           "Confirmer que trois assiettes apéro suffisent pour 24 joueurs.",
+           "Le prix convenu de 720 € remplace le prix habituel de 453 €.",
+           "2 accompagnateurs ne sont pas comptés dans le prix, à préciser au client si le centre leur facture quelque chose."
+          ]
+         },
+         "action": {
+          "action": "sendDirectEmail",
+          "customRequestId": 52,
+          "to": "clement@castors.be",
+          "name": "Clément Lambert",
+          "subject": "Votre sortie d’équipe du samedi 21 novembre",
+          "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+          "category": "direct",
+          "templateRef": "demande-sur-mesure",
+          "draftSource": "ia",
+          "draftOriginal": {
+           "subject": "Votre sortie d’équipe du samedi 21 novembre",
+           "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+          },
+          "proposition": {
+           "date": "2026-11-21",
+           "startTime": "16:00",
+           "pax": 24,
+           "programme": [
+            {
+             "activityId": "bowling",
+             "participants": 24,
+             "duration": 1
+            },
+            {
+             "activityId": "laser_game",
+             "participants": 24,
+             "games": 1,
+             "groupes": [
+              10,
+              14
+             ]
+            }
+           ],
+           "supplements": [
+            {
+             "article": "assiette-apero",
+             "quantite": 3
+            }
+           ],
+           "prix": 720,
+           "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+           "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+          }
+         },
+         "source": "ia"
+        },
+        "geste": null,
+        "suggestions": [
+         "Plutôt samedi 21 novembre 14 h",
+         "Ajouter 3 assiettes apéro",
+         "Ajouter des softs pour tous"
+        ]
+       },
+       "historique": [
+        {
+         "type": "pinlane",
+         "le": "2026-11-13T13:18:25.691Z",
+         "par": "Seb",
+         "consigne": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+         "resultat": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après"
+        }
+       ]
+      }
+     },
+     "createdAt": "2026-11-12T08:00:00.000Z",
+     "updatedAt": "2026-11-13T13:18:25.692Z",
+     "echeance": {
+      "date": "2026-11-13",
+      "heure": "09:00",
+      "instant": "2026-11-13T08:00:00.000Z"
+     },
+     "suivi": {
+      "etape": "a-traiter",
+      "priseEnCharge": null,
+      "reponses": 0,
+      "derniereReponse": null,
+      "proposition": null,
+      "messageClient": null,
+      "reservationId": null,
+      "notes": [],
+      "historique": [
+       {
+        "type": "pinlane",
+        "le": "2026-11-13T13:18:25.691Z",
+        "par": "Seb",
+        "consigne": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+        "resultat": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après"
+       }
+      ],
+      "pinlane": {
+       "le": "2026-11-13T13:18:25.691Z",
+       "par": "Seb",
+       "consigne": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+       "texte": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après-midi la plus calme, sans autre groupe au centre. Le budget du client est un peu plus bas que ce prix, et le mail le dit sans rien accorder. Trois assiettes apéro pour 24 joueurs resteront peut-être courtes, à vous de voir.",
+       "reservation": {
+        "resume": {
+         "quand": "samedi 21 novembre",
+         "date": "2026-11-21",
+         "heure": "16:00",
+         "joueurs": 24,
+         "disponible": true,
+         "debut": "16:00",
+         "fin": "17:55",
+         "lignes": [
+          {
+           "activite": "bowling",
+           "nom": "Bowling",
+           "debut": "16:00",
+           "fin": "17:00",
+           "detail": "1 h, 24 joueurs, pistes 1, 2, 3, 4"
+          },
+          {
+           "activite": "laser_game",
+           "nom": "Laser Game",
+           "debut": "17:00",
+           "fin": "17:55",
+           "detail": "1 partie, 24 joueurs en 2 groupes (10 puis 14)"
+          }
+         ],
+         "supplements": [
+          {
+           "nom": "Assiette apéro",
+           "qte": 3
+          }
+         ],
+         "prix": 720,
+         "prixNegocie": true,
+         "prixRaison": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+         "prixHabituel": 453,
+         "refus": "",
+         "conflits": [],
+         "nom": "Clément Lambert",
+         "telephone": "0470 12 34 56",
+         "email": "clement@castors.be",
+         "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+        },
+        "action": {
+         "action": "customRequestBook",
+         "id": 52,
+         "reservation": {
+          "date": "2026-11-21",
+          "startTime": "16:00",
+          "pax": 24,
+          "programme": [
+           {
+            "activityId": "bowling",
+            "participants": 24,
+            "duration": 1
+           },
+           {
+            "activityId": "laser_game",
+            "participants": 24,
+            "games": 1,
+            "groupes": [
+             10,
+             14
+            ]
+           }
+          ],
+          "supplements": [
+           {
+            "article": "assiette-apero",
+            "quantite": 3
+           }
+          ],
+          "prix": 720,
+          "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+          "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+         }
+        }
+       },
+       "mail": {
+        "resume": {
+         "a": "Clément Lambert <clement@castors.be>",
+         "objet": "Votre sortie d’équipe du samedi 21 novembre",
+         "corps": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+         "points": [
+          "Le prix de 30 € par personne dépasse le budget de 25 € du client.",
+          "Confirmer que trois assiettes apéro suffisent pour 24 joueurs.",
+          "Le prix convenu de 720 € remplace le prix habituel de 453 €.",
+          "2 accompagnateurs ne sont pas comptés dans le prix, à préciser au client si le centre leur facture quelque chose."
+         ]
+        },
+        "action": {
+         "action": "sendDirectEmail",
+         "customRequestId": 52,
+         "to": "clement@castors.be",
+         "name": "Clément Lambert",
+         "subject": "Votre sortie d’équipe du samedi 21 novembre",
+         "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+         "category": "direct",
+         "templateRef": "demande-sur-mesure",
+         "draftSource": "ia",
+         "draftOriginal": {
+          "subject": "Votre sortie d’équipe du samedi 21 novembre",
+          "body": "Bonjour Clément,\n\nMerci pour votre demande concernant la sortie d’équipe de l’Asbl Les Castors.\n\nVoici la proposition de l’équipe pour le samedi 21 novembre 2026, avec une arrivée à 16 h. Les 24 joueurs commencent par une heure de bowling, de 16 h à 17 h. Le laser game suit à 17 h, en une partie jouée en deux groupes, l’un de 10 joueurs et l’autre de 14. La fin est prévue vers 17 h 55. Pour le grignotage, trois assiettes apéro sont ajoutées. Les deux accompagnateurs qui ne jouent pas ne sont pas comptés.\n\nLe prix pour le groupe est de 720 €, soit 30 € par joueur. Votre budget indicatif était de 25 € par personne, soit 600 €, et cette proposition se situe donc un peu au-dessus.\n\nL’horaire est retenu dès votre accord, il suffit de répondre à ce message. Si vous préférez un autre horaire ou une autre composition, l’équipe adapte la proposition.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+         },
+         "proposition": {
+          "date": "2026-11-21",
+          "startTime": "16:00",
+          "pax": 24,
+          "programme": [
+           {
+            "activityId": "bowling",
+            "participants": 24,
+            "duration": 1
+           },
+           {
+            "activityId": "laser_game",
+            "participants": 24,
+            "games": 1,
+            "groupes": [
+             10,
+             14
+            ]
+           }
+          ],
+          "supplements": [
+           {
+            "article": "assiette-apero",
+            "quantite": 3
+           }
+          ],
+          "prix": 720,
+          "raisonPrix": "30 € par personne pour 24 joueurs, convenu par l'équipe",
+          "note": "Team building Asbl Les Castors, 24 joueurs et 2 accompagnateurs qui ne jouent pas."
+         }
+        },
+        "source": "ia"
+       },
+       "geste": null,
+       "suggestions": [
+        "Plutôt samedi 21 novembre 14 h",
+        "Ajouter 3 assiettes apéro",
+        "Ajouter des softs pour tous"
+       ],
+       "perimee": false
+      },
+      "consignes": [
+       {
+        "le": "2026-11-13T13:18:25.691Z",
+        "par": "Seb",
+        "texte": "Le laser en deux groupes de 10 et 14, ajoute 3 assiettes apéro, et tout ça pour 30 € par personne.",
+        "resultat": "J'ai préparé la réservation du samedi 21 novembre, avec le bowling puis le laser en deux groupes (10 et 14) et trois assiettes apéro. Le prix est celui de votre consigne, et le mail qui le propose est prêt. J'ai choisi 16 h, l'heure d'après"
+       }
+      ]
+     }
+    },
+    "preparationEnregistree": true
+   }
+  }
+ ]
+}

@@ -792,6 +792,82 @@ function statutsInvalides(source) {
   return [...source.matchAll(/setStaffCustomRequestStatus\(\s*[^,()]+,\s*(['"])([^'"]*)\1/g)].map((m) => m[2]).filter((s) => !valides.has(s));
 }
 
+// [M] LE VRAI FLUX : la reponse du vrai serveur (vrai modele, enregistree le 13/11 par banc-vrai-modele.cjs,
+// copiee dans scripts/fixtures/demandes-v5/) se lit telle quelle : ses etapes, la reservation, le mail, ses
+// idees, le suivi ; et la reservation du serveur part avec le mail.
+const VRAI_FLUX = p.join(__dirname, 'fixtures', 'demandes-v5', 'flux-simple.json');
+async function vraiFlux(browser) {
+  const r = { erreurs: [] };
+  const enregistre = JSON.parse(fs.readFileSync(VRAI_FLUX, 'utf8'));
+  const flux = enregistre.evenements.filter((e) => e.type !== 'fin');
+  const echec = flux.findIndex((e) => e.type === 'etape' && e.donnees && e.donnees.etat === 'echec');
+  r.carteServeur = (flux.find((e) => e.type === 'proposition' && e.donnees.geste === 'reservation_demande') || {}).donnees || null;
+  r.mailServeur = (flux.find((e) => e.type === 'proposition' && e.donnees.geste === 'mail_demande') || {}).donnees || null;
+  let id = null;
+  const o = await ouvrir(browser, { menu: false, avant: (banc) => { id = banc.rejouer(VRAI_FLUX); banc.etat.assistant.pas = 5; banc.etat.assistant.arret = echec + 1; } });
+  const { page, banc } = o;
+  r.erreurs = o.erreurs;
+  try {
+    r.id = id;
+    await page.click(ligne(id));
+    // Arrete juste apres l etape refusee : la colonne la dit, avec les autres.
+    await page.waitForFunction(() => document.querySelectorAll('.bdg-pin .bdg-lu-l.is-echec').length > 0, null, { timeout: 10000 });
+    r.etapes = await page.evaluate(() => [...document.querySelectorAll('.bdg-pin .bdg-lu-l')].map((l) => ({ etat: l.className, p: (l.querySelector('.bdg-lu-p') || {}).textContent || '', r: (l.querySelector('.bdg-lu-r') || {}).textContent || '' })));
+    banc.etat.assistant.arret = null;
+    banc.relacher();
+    await prete(page);
+    await page.waitForTimeout(300);
+    r.appel = banc.etat.assistantAppels[0] || null;
+    r.appels = banc.etat.assistantAppels.length;
+    r.pin = await pinTexte(page);
+    r.dit = await texte(page, '.bdg-pin-dit');
+    r.heure = await page.evaluate(() => ((document.querySelector('.bdg-pin .bdg-resa-v .bdg-anton') || {}).textContent || '').trim());
+    r.idees = await page.evaluate(() => [...document.querySelectorAll('.bdg-pin .bdg-idee')].map((b) => b.textContent.trim()));
+    r.mail = await page.evaluate(() => ({ objet: (document.querySelector('.bdg-pin .bdg-mailc-o') || {}).textContent || '', corps: (document.querySelector('.bdg-pin .bdg-mailc-c') || {}).textContent || '' }));
+    r.suivi = await texte(page, '.bdg-suivi');
+    r.pied = await page.evaluate(() => [...document.querySelectorAll('.bdg-pin-pied button')].map((b) => ({ t: b.textContent.trim(), p: b.classList.contains('bdg-p') })));
+    if (r.captures !== false) await page.screenshot({ path: p.join(SHOTS, 'vrai-flux.png') });
+    await page.click('.bdg-pin-pied button:has-text("Envoyer la proposition")');
+    await page.waitForFunction(() => /Le client n’a pas encore répondu/.test((document.querySelector('.bdg-pin') || {}).innerText || ''), null, { timeout: 8000 });
+    r.envoi = banc.etat.envois[0] || null;
+  } catch (erreur) {
+    r.panne = String(erreur.message || erreur).split(/\r?\n/)[0];
+  } finally {
+    await o.fermer();
+  }
+  return r;
+}
+function verifierVraiFlux(r) {
+  section('M. LE VRAI FLUX DU SERVEUR');
+  ok(!r.panne, 'le flux enregistre du vrai serveur se joue jusqu au bout', r.panne || '');
+  const c = r.carteServeur && r.carteServeur.resume;
+  const m = r.mailServeur && r.mailServeur.resume;
+  ok(Boolean(c && m), 'MONTAGE le flux enregistre porte la reservation et le mail du serveur');
+  if (!c || !m || r.panne) return;
+  ok(r.appels === 1 && r.appel && Number(r.appel.demandeId) === Number(r.id) && Array.isArray(r.appel.messages) && r.appel.messages.length === 0, 'la page demande la preparation de cette demande, sans consigne', JSON.stringify(r.appel && { demandeId: r.appel.demandeId, messages: r.appel.messages }));
+  const echec = r.etapes.find((e) => /is-echec/.test(e.etat));
+  ok(Boolean(echec) && echec.r === 'Pas abouti' && !r.etapes.some((e) => /Lecture impossible/.test(e.r)), 'une etape refusee par le serveur se dit « Pas abouti », jamais « Lecture impossible »', JSON.stringify(r.etapes).slice(0, 300));
+  ok(r.etapes.length >= 3 && r.etapes.every((e) => !/'/.test(e.p)), 'les phrases du modele prennent leurs apostrophes typographiques', JSON.stringify(r.etapes.map((e) => e.p)));
+  ok(r.heure === c.heure && r.pin.includes(`${c.prix} €`) && c.lignes.every((l) => r.pin.includes(l.nom) && r.pin.includes(l.debut) && r.pin.includes(l.fin)), 'la reservation se lit comme le serveur l a faite : heure, activites et leurs heures, prix', `${r.heure} ; ${r.pin.slice(0, 260)}`);
+  ok(r.mail.objet === m.objet && r.mail.corps === m.corps, 'le mail se lit mot pour mot comme Pinlane l a ecrit', JSON.stringify(r.mail).slice(0, 200));
+  const idees = (r.carteServeur && enregistreSuggestions(r)) || [];
+  ok(idees.length === 3 && idees.every((x) => r.idees.includes(x.replace(/'/g, '’'))), 'les trois idees du serveur deviennent les trois boutons de la consigne', JSON.stringify({ serveur: idees, page: r.idees }));
+  ok(!/consigne de/.test(r.dit) && /Pinlane a préparé la réservation et le mail/.test(r.dit), 'la preparation a l ouverture n est pas dite « sur la consigne » de l equipe', r.dit);
+  ok(/Pinlane a préparé la réponse/.test(r.suivi) && !/a demandé à Pinlane « Prépare la réponse/.test(r.suivi) && !/grou\.|grou$/.test(r.suivi), 'le suivi dit que Pinlane a prepare la reponse, en phrases entieres, sans preter la consigne du serveur a l equipe', r.suivi.slice(0, 400));
+  ok(r.pied.length === 2 && r.pied[1].t === 'Envoyer la proposition' && r.pied[1].p && r.pied[0].t === 'Réserver sans attendre' && !r.pied[0].p, 'un seul bouton plein : envoyer la proposition', JSON.stringify(r.pied));
+  const e = r.envoi || {};
+  const a = r.mailServeur.action || {};
+  ok(e.subject === m.objet && e.body === m.corps && e.draftSource === 'ia' && Number(e.customRequestId) === Number(r.id) && JSON.stringify(e.proposition) === JSON.stringify(a.proposition), 'le mail part tel quel, avec la reservation du serveur comme proposition', JSON.stringify({ s: e.subject, p: e.proposition }).slice(0, 240));
+  ok(r.erreurs.length === 0, 'MONTAGE zero erreur', r.erreurs.join(' | '));
+}
+// Les idees que le vrai serveur a rangees avec sa preparation (suivi.pinlane.suggestions de la fin).
+function enregistreSuggestions() {
+  const enregistre = JSON.parse(fs.readFileSync(VRAI_FLUX, 'utf8'));
+  const fin = enregistre.evenements.find((e) => e.type === 'fin');
+  const p = fin && fin.donnees.demande && fin.donnees.demande.suivi && fin.donnees.demande.suivi.pinlane;
+  return p && Array.isArray(p.suggestions) ? p.suggestions : [];
+}
+
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const browser = await chromium.launch({ executablePath: EDGE, headless: true });
@@ -807,6 +883,7 @@ async function main() {
     verifierPetitsEcrans(await petitsEcrans(browser));
     verifierHorloge(await horloge(browser));
     verifierAlerte(await alerte(browser));
+    verifierVraiFlux(await vraiFlux(browser));
 
     section('J. UN STATUT QUE LA BASE ACCEPTE');
     const brut = fs.readFileSync(APP, 'utf8');
@@ -820,6 +897,7 @@ async function main() {
     const montable = (de, fichier) => ok((fichier ? lireLf(fichier) : source).split(de).length === 2, `contre-epreuve montable : « ${de.trim().slice(0, 70)} »`);
     const CSS = 'assets/pinlane-staff.css';
     const essais = [
+      { de: "const bdgConsigneEquipe = (t) => { const c = String(t || '').trim(); return c && c !== BDG_CONSIGNE_DU_SERVEUR ? c : ''; };", vers: "const bdgConsigneEquipe = (t) => String(t || '').trim();", label: 'sans la consigne du serveur reconnue, le suivi la preterait a l equipe', run: vraiFlux, rouge: (r) => Boolean(r.panne) || /a demandé à Pinlane « Prépare la réponse/.test(r.suivi || '') },
       { de: '  if (avant.coupure) avant.coupure.abort();\n', vers: '', aussi: { de: '  const v = bdgVivant[key];\n  if (!v || v.rang !== rang) return;\n  switch (type) {', vers: '  const v = bdgVivant[key];\n  if (!v) return;\n  switch (type) {' }, label: 'sans la coupure ni le rang, la reponse lente de la premiere consigne remplacerait la seconde', run: deuxConsignes, rouge: (r) => Boolean(r.final) && r.final.heure === '15:00' },
       { de: '  return !p || p.perimee === true;\n}', vers: '  return true;\n}', label: 'sans la preparation enregistree, Pinlane repartirait a chaque ouverture', rouge: (r) => r.relance802 > 0 },
       { de: "  if (bdgDoitPreparer(item)) bdgLancer(item.id, '');\n", vers: '', label: 'sans le lancement a l ouverture, Pinlane ne preparerait rien', rouge: (r) => Boolean(r.panne) || !(r.appelsOuverture && r.appelsOuverture.length) },

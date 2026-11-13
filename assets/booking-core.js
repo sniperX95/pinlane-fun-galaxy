@@ -1042,7 +1042,9 @@ function openQuickBookForLaserSession(sessionStart, remainingPlaces = getLaserAr
     type: 'laser',
     duration: 0.5,
     totalDuration: 0.5,
+    // 4 au plus les places qui restent : un nombre pour le calcul, la fenetre demande le vrai.
     pax,
+    paxIndicatif: true,
     allowPastStart: true,
     pastStartDate: state.currentDate,
     pastStartTime: startTime,

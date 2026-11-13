@@ -2829,14 +2829,18 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // LA RESERVATION EN UN CLIC d une demande (lib/demande-bureau-centre.js, reserverLaDemande) : une
   // simulation d abord, la creation seulement quand l equipe confirme (confirme: true). La demande se
   // relit dans le centre de la session, la session porte les droits de la fenetre Reserver.
+  // `reservation` (2026-11-13, v5) : la reservation preparee par Pinlane, telle que sa carte ou la
+  // proposition partie au client la porte ; tout s y refait sur le catalogue du centre (reserverLaPreparation).
   if (action === 'customRequestBook') {
     requireConcreteCenter();
     const { getCustomRequest } = require('../lib/database');
     const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
     if (!item) throw createHttpError('Demande introuvable.', 404, true);
-    const { reserverLaDemande, enrichirDemandes } = require('../lib/demande-bureau-centre');
+    const { reserverLaDemande, reserverLaPreparation, enrichirDemandes } = require('../lib/demande-bureau-centre');
     const confirme = body.confirme === true;
-    const r = await require('../lib/booking-config').pourLEquipe(() => reserverLaDemande(item, undefined, { proposition: body.proposition, session: options.session, simuler: !confirme }));
+    const r = await require('../lib/booking-config').pourLEquipe(() => (body.reservation && typeof body.reservation === 'object'
+      ? reserverLaPreparation(item, undefined, { reservation: body.reservation, session: options.session, simuler: !confirme })
+      : reserverLaDemande(item, undefined, { proposition: body.proposition, session: options.session, simuler: !confirme })));
     const demande = r.demande ? (await enrichirDemandes([r.demande]).catch(() => [r.demande]))[0] : null;
     sendJson(res, 200, { ok: true, id: item.id, ...r, demande });
     return;

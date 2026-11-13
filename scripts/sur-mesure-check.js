@@ -1045,6 +1045,13 @@ async function console_(browser) {
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'centerConfig') return J(CONFIG);
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, centerId: 'libramont', customRequests: [DEMANDE] });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {}, blocks: [] });
+      // Pinlane (POST /api/assistant, mode demande) ne trouve aucune heure : il le dit, sans carte.
+      if (u.pathname === '/api/assistant' && methode === 'POST') {
+        window.__PINLANE__ = [...(window.__PINLANE__ || []), JSON.parse(init.body || '{}')];
+        const rien = 'Aucune heure à proposer le samedi 21 novembre en soirée pour 31 joueurs, le planning est complet. Dites-moi une autre date ou un autre moment.';
+        const blocs = [['debut', { modele: 'Sonnet', centres: [{ id: 'libramont', nom: 'Fun Galaxy Libramont' }], sources: [] }], ['texte', { delta: rien }], ['fin', { texte: rien, demande: null, preparationEnregistree: false }]];
+        return new Response(blocs.map(([t, d]) => `event: ${t}\ndata: ${JSON.stringify(d)}\n\n`).join(''), { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
+      }
       return natif(input, init);
     };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(session));
@@ -1060,8 +1067,15 @@ async function console_(browser) {
     // en surimpression est retiree le 2026-09-29 : deux rendus, et une reponse
     // envoyee depuis la fiche ne se rangeait pas dans le suivi).
     await page.evaluate(() => openStaffCustomRequest(77));
-    await page.waitForSelector('.sm-fiche[data-request-id="77"]', { timeout: 8000 });
-    const fiche = await page.evaluate(() => document.querySelector('.sm-fiche[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
+    await page.waitForSelector('.bdg-lecture[data-request-id="77"]', { timeout: 8000 });
+    // Pinlane part a l ouverture ; la demande se lit quand il a rendu sa reponse.
+    await page.waitForFunction(() => (window.__PINLANE__ || []).length > 0 && !document.querySelector('.bdg-pin .bdg-lu-l.is-cours') && /Aucune heure à proposer/.test((document.querySelector('.bdg-pin-dit') || {}).textContent || ''), null, { timeout: 10000 }).catch(() => {});
+    const fiche = await page.evaluate(() => document.querySelector('.bdg-lecture[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
+    const pinlane = await page.evaluate(() => ({
+      appels: (window.__PINLANE__ || []).map((b) => ({ demandeId: b.demandeId, messages: (b.messages || []).length })),
+      consigne: Boolean(document.querySelector('.bdg-pin #bdgC-77')),
+      carte: Boolean(document.querySelector('.bdg-pin .bdg-resa, .bdg-pin .bdg-mailc')),
+    }));
     // Etablissement : le seuil se lit et se regle.
     await page.evaluate(() => { state.staffMenuPage = 'establishment'; state.establishmentTab = 'offres'; state.establishmentEditing = false; save(); setView('staff'); });
     await page.waitForSelector('[data-estab-page] .eb-m', { state: 'visible', timeout: 20000 });
@@ -1080,7 +1094,7 @@ async function console_(browser) {
       const b = window.__ENVOIS__.find((x) => x.action === 'saveCenterConfig');
       return { a: a ? a.config.customRequest : null, b: b ? b.config.customRequest : null };
     });
-    return { carte, fiche, champ, envoye, erreurs };
+    return { carte, fiche, pinlane, champ, envoye, erreurs };
   } finally { await ctx.close(); }
 }
 function verifierConsole(r) {
@@ -1092,8 +1106,11 @@ function verifierConsole(r) {
     && /Bowling/.test(r.fiche) && /Laser Game/.test(r.fiche) && /FORMULE 4/.test(r.fiche) && /demandent (aussi )?conseil/.test(r.fiche)
     && /22 € par personne/.test(r.fiche) && /Facture au nom de École communale du gate/.test(r.fiche) && /BE 0123\.456\.789/.test(r.fiche) && /Institutrice/.test(r.fiche) && /Pique-nique/.test(r.fiche),
   'le dossier dit tout : groupe, ages, moment, envies, budget, facture, fonction, le mot du client', r.fiche.slice(0, 260));
-  // Sans heure possible, Pinlane le dit (« rien à proposer ») et la page ne demande pas d en toucher une.
-  ok(/Aucune heure à proposer|rien à proposer/.test(r.fiche) && !/Touchez une heure/.test(r.fiche), 'sans heure possible, la page ne dit pas d en toucher une', r.fiche.slice(0, 700));
+  // Sans heure possible, Pinlane le dit (« rien à proposer ») et la page ne demande pas d en toucher une :
+  // aucune carte, la consigne attend ce qu il faut proposer a la place (v5, 2026-11-13).
+  const p = r.pinlane || {};
+  ok(Array.isArray(p.appels) && p.appels.length === 1 && Number(p.appels[0].demandeId) === 77 && p.appels[0].messages === 0, 'la demande ouverte, Pinlane la prepare une fois (demandeId 77, sans consigne)', JSON.stringify(p.appels));
+  ok(/Aucune heure à proposer|rien à proposer/.test(r.fiche) && !/Touchez une heure/.test(r.fiche) && p.consigne && !p.carte, 'sans heure possible, Pinlane le dit, aucune carte, et la page ne dit pas d en toucher une', r.fiche.slice(0, 700));
   ok(r.champ === '31', 'Etablissement montre le seuil du centre (31)', r.champ);
   ok(r.envoye && r.envoye.a && r.envoye.a.fromPax === 25 && r.envoye.b && r.envoye.b.fromPax === null, 'le seuil se regle (25), et se retire (vide = jamais)', JSON.stringify(r.envoye));
   if (r.envoye && r.envoye.b) {

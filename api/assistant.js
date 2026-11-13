@@ -380,8 +380,11 @@ module.exports = async (req, res) => {
       resultat = await repondre({ modele, messages: messagesDuTour, ctx, centreOuvert, montants, clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: enDemande ? [] : dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
       // LA PREPARATION S ENREGISTRE SUR LA DEMANDE (suivi, evenement « pinlane ») : toute l equipe la voit, sur
-      // tous les postes, et la page remplace son cache par la demande que `fin` porte.
-      const enregistree = enDemande && !resultat.refus ? await enregistrerLaPreparation(ctx.demande, resultat, session, emettre) : null;
+      // tous les postes, et la page remplace son cache par la demande que `fin` porte. Un tour dont la page a
+      // coupe la connexion (une consigne plus recente l a remplace) ne s enregistre pas : il ne doit jamais
+      // passer par-dessus la preparation de la consigne qui l a remplace (garde defensive, la coupure arrete
+      // deja le modele en cours de route).
+      const enregistree = enDemande && !resultat.refus && !coupure.signal.aborted ? await enregistrerLaPreparation(ctx.demande, resultat, session, emettre) : null;
       emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele, ...(resultat.corrige ? { corrige: resultat.corrige } : {}), ...(enDemande ? { demande: enregistree, preparationEnregistree: Boolean(enregistree) } : {}) });
     } finally {
       clearInterval(pouls);

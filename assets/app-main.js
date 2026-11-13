@@ -20568,6 +20568,9 @@ function bdgCarteResa(item, carte, avantCarte, { titre = 'La réservation', veri
   const ecart = budget && prix != null && joueurs ? Math.round(((prix / joueurs) - budget) * 100) / 100 : null;
   const situe = ecart == null || montantsMasques() ? '' : (ecart > 0.009 ? `${staffRequestEuro(ecart)} de plus par personne que leur budget.` : 'Dans leur budget.');
   const lignes = Array.isArray(r.lignes) ? r.lignes : [];
+  // UNE FORMULE SE NOMME (13/11) : ses parties suivent, mais le gerant lit d abord quelle formule part.
+  const formule = r.formule && r.formule.nom ? String(r.formule.nom) : '';
+  const avantFormule = ra && ra.formule && ra.formule.nom ? String(ra.formule.nom) : '';
   const avantLignes = ra && Array.isArray(ra.lignes) ? ra.lignes.map(l => `${l.nom}|${l.debut}|${l.fin}|${l.detail}`) : null;
   const lignesHtml = lignes.map((l, i) => {
     const neuve = avantLignes && !avantLignes.includes(`${l.nom}|${l.debut}|${l.fin}|${l.detail}`);
@@ -20597,6 +20600,7 @@ function bdgCarteResa(item, carte, avantCarte, { titre = 'La réservation', veri
       ${prix != null ? `<p class="bdg-resa-g is-prix"><span class="bdg-resa-e">${r.prixNegocie ? 'Prix convenu' : 'Prix'}</span><span class="bdg-resa-v">${vieux(bdgEuro(prix), avantPrix)}<b class="bdg-anton">${escapeHtml(bdgEuro(prix))}</b>${parJoueur && joueurs > 1 ? `<span class="bdg-resa-s">soit ${escapeHtml(parJoueur)} par joueur</span>` : ''}</span></p>` : ''}
     </div>
     ${situe ? `<p class="bdg-resa-budget${ecart > 0.009 ? ' is-plus' : ''}">${escapeHtml(situe)}</p>` : ''}
+    ${formule || avantFormule ? `<p class="bdg-resa-formule">${avantFormule && avantFormule !== formule ? `<s class="bdg-avant">${escapeHtml(avantFormule)}</s> ` : ''}${escapeHtml(formule || 'Activités à la carte')}</p>` : ''}
     ${lignesHtml ? `<ul class="bdg-resa-l">${lignesHtml}</ul>` : ''}
     ${supplements || avantSupplements ? `<p class="bdg-resa-sup">${avantSupplements && avantSupplements !== supplements ? `<s class="bdg-avant">${escapeHtml(avantSupplements)}</s> ` : ''}${escapeHtml(supplements || 'Sans supplément.')}</p>` : ''}
     ${details.length ? `<dl class="bdg-resa-d">${details.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd>${val}</dd></div>`).join('')}</dl>` : ''}

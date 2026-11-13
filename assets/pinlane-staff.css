@@ -21136,6 +21136,8 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .bdg-avant { font-size: 13.5px; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .bdg-resa-budget { margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--success, #0f7b3c); }
 .bdg-resa-budget.is-plus { color: var(--warning); }
+.bdg-resa-formule { margin-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); }
+.bdg-resa-formule + .bdg-resa-l { margin-top: 8px; }
 .bdg-resa-l { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .bdg-resa-ligne { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 10px; align-items: baseline; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; }
 .bdg-resa-ligne.is-neuve { background: color-mix(in srgb, var(--accent) 10%, transparent); }

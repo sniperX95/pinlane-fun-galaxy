@@ -687,7 +687,7 @@ async function proprietesServeur() {
     ok(reussie.statusCode === 202 && alertes.length === 0 && requetes.some((p) => p[0] === 'libramont' && Number(p[1]) === 4301), '[O] une copie reussie d une vraie reservation : lue, 202, aucune alerte', `${reussie.statusCode} ${alertes.length}`);
     const ratee = await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'refuse:17;<b>pirate</b> http://x.test', lignes: 2, envoyees: 1 });
     const texte = (alertes[0] || {}).texte || '';
-    ok(ratee.statusCode === 202 && alertes.length === 1 && /n°4301/.test(texte) && /a refusé l’envoi/.test(texte) && /1 entrée recopiée sur 2/.test(texte), '[O] une copie ratee sonne : le numero, ce qui s est passe en mots simples, combien d entrees', texte);
+    ok(ratee.statusCode === 202 && alertes.length === 1 && /réservation n°\s4301/.test(texte) && /a refusé l’envoi/.test(texte) && /1 entrée recopiée sur 2/.test(texte) && (alertes[0].options || {}).urgent === true, '[O] une copie ratee sonne : le numero, ce qui s est passe en mots simples, combien d entrees', `${texte} urgent=${(alertes[0] || {}).options && alertes[0].options.urgent}`);
     ok(!/pirate|<b>|http:\/\/x|r\u00e9pondu une erreur/.test(texte) && !/[\u2013\u2014]/.test(texte), '[O] sans rien recopier de ce que le navigateur a ecrit (une adresse glissee ne se lit pas comme une raison), sans tiret long', texte);
     await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4999, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
     await appeler({ kind: 'miroir', centerId: 'centre-inconnu', reservationId: 4301, ok: false, raison: 'reseau', lignes: 1, envoyees: 0 });
@@ -699,7 +699,7 @@ async function proprietesServeur() {
     ok(alertes.length === 2, '[O] une demande de groupe se relit dans SA table : un numero de reservation donne pour une demande ne sonne pas', `${alertes.length} alertes`);
     await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 77, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
     const alerteDemande = alertes[2] || {};
-    ok(alertes.length === 3 && /La demande de groupe n°77 de /.test(alerteDemande.texte || '') && alerteDemande.cle === 'miroir:libramont:d77', '[O] une demande de groupe ratee sonne sous son nom et son numero', `${alerteDemande.cle} ${alerteDemande.texte}`);
+    ok(alertes.length === 3 && /la demande de groupe n°\s77 /.test(alerteDemande.texte || '') && alerteDemande.cle === 'miroir:libramont:d77' && (alerteDemande.options || {}).urgent === true, '[O] une demande de groupe ratee sonne sous son nom et son numero', `${alerteDemande.cle} ${alerteDemande.texte}`);
   } finally {
     console.info = infos;
     Object.assign(database, { getPool: avant.getPool });
@@ -733,7 +733,7 @@ const MUTATIONS = [
   { nom: 'resultat-perdu', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (d.type !== 'pinlane:miroir-fait' || !attendu || String(d.id) !== attendu.id) return;", vers: 'return;' },
   { nom: 'reservation-non-verifiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }', vers: '' },
   { nom: 'raison-recopiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');", vers: "const pourquoi = String(body.raison || '');" },
-  { nom: 'succes-qui-sonne', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!reussie) {', vers: 'if (true) {' },
+  { nom: 'succes-qui-sonne', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "if (!reussie && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {", vers: 'if (true) {' },
   { nom: 'jeton-sans-mots', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "  'jeton-absent': ", vers: "  'jeton-perdu': " },
   { nom: 'groupe-ignore-du-serveur', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'const estDemande = Number.isSafeInteger(demandeId) && demandeId > 0;', vers: 'const estDemande = false;' },
   { nom: 'groupe-jamais-recopie', partie: 'cadre', fichier: 'assets/fungalaxy-sur-mesure.js', de: 'if (I.miroir && reponse && reponse.id != null) I.miroir(', vers: 'if (false) I.miroir(' },

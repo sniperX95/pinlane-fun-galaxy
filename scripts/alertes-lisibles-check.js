@@ -345,7 +345,7 @@ async function alertesALInstant() {
   await prendre('reservation ratee, perdue', true, () => envoyer(M.reservationEchouee({ centre: 'gembloux', essai: { date: '2026-11-14', heure: '15:00', joueurs: 4 }, transmise: false })));
   await prendre('formulaire, un client', false, () => envoyer(M.formulairePlante({ centre: 'gembloux', etape: 'recap', visiteurs: 1 })));
   await prendre('formulaire, deux clients', true, () => envoyer(M.formulairePlante({ centre: 'gembloux', etape: 'recap', visiteurs: 2 })));
-  await prendre('copie dans l ancien formulaire', false, () => envoyer(M.copieAncienFormulaire({ centre: 'gembloux', numero: 903, envoyees: 1, lignes: 2, pourquoi: 'un champ de leur formulaire a changé de nom' })));
+  await prendre('copie dans l ancien formulaire', true, () => envoyer(M.copieAncienFormulaire({ centre: 'gembloux', numero: 903, envoyees: 1, lignes: 2, pourquoi: 'un champ de leur formulaire a changé de nom' })));
   await prendre('demande de groupe non enregistree', true, () => envoyer(M.demandeNonEnregistree({ centre: 'gembloux', participants: 35 })));
   a.oublierLesAlertes();
   return sorties;

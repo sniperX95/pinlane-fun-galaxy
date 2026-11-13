@@ -224,7 +224,8 @@ async function handleMiroir(req, res, body) {
     if (!reussie && !(await require('../lib/essai-fondateur').essaiDuFondateur(req))) {
       const { alerter } = require('../lib/garde-alertes');
       const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');
-      // A regarder, sans sonnerie (2026-11-13) : la reservation est dans Pinlane, rien n est perdu.
+      // Sonne (2026-11-13) : la reservation est dans Pinlane, mais pendant l essai l equipe la cherche
+      // dans les mails de l ancien formulaire (lib/alertes-messages.js, copieAncienFormulaire).
       const m = require('../lib/alertes-messages').copieAncienFormulaire({ centre, numero, demande: estDemande, envoyees, lignes, pourquoi });
       await alerter(
         `miroir:${centre}:${estDemande ? 'd' : ''}${numero}`,

@@ -785,13 +785,17 @@ const ANCRE = {
   // =========================================================================
   console.log('\n[R] la session de secours du proprietaire');
   // =========================================================================
+  // Sonner se lit au corps envoye a Telegram (disable_notification), plus a un mot en tete du
+  // texte : depuis le 2026-11-13 les alertes n ecrivent plus « URGENT » (lib/alertes-texte.js).
   let telegram = [];
+  let telegramMuet = [];
   const fetchOriginal = globalThis.fetch;
   const avecTelegram = async (geste) => {
     process.env.TELEGRAM_JETON = 'gate';
     process.env.TELEGRAM_CHAT = '1';
     telegram = [];
-    globalThis.fetch = async (url, init) => { telegram.push(String(JSON.parse(String((init && init.body) || '{}')).text || '')); return { ok: true, status: 200, json: async () => ({ ok: true }) }; };
+    telegramMuet = [];
+    globalThis.fetch = async (url, init) => { const corps = JSON.parse(String((init && init.body) || '{}')); telegram.push(String(corps.text || '')); telegramMuet.push(corps.disable_notification === true); return { ok: true, status: 200, json: async () => ({ ok: true }) }; };
     try { return await geste(); } finally { delete process.env.TELEGRAM_JETON; delete process.env.TELEGRAM_CHAT; globalThis.fetch = fetchOriginal; }
   };
   const connexionEnPanne = async (code, ip) => {
@@ -812,7 +816,8 @@ const ANCRE = {
     ok(bloque.statusCode === 429 && secoursDit().length === 0, '[R] bloque, meme le bon code du proprietaire est refuse', { statut: bloque.statusCode, telegram });
     const secours = await connexionEnPanne(process.env.PLATFORM_OWNER_CODE, '198.51.100.41');
     ok(secours.statusCode === 200 && /platform-owner-emergency/.test(secours.body), '[R] contraste : un autre appareil ouvre la session de secours avec le bon code', { statut: secours.statusCode, corps: secours.body.slice(0, 160) });
-    ok(secoursDit().length === 1 && /^URGENT/.test(secoursDit()[0]), '[R] la session de secours ouverte sonne sur Telegram', telegram);
+    const secoursSonne = () => telegram.map((m, i) => (/session de secours/.test(m) ? !telegramMuet[i] : null)).filter((x) => x !== null);
+    ok(secoursDit().length === 1 && secoursSonne()[0] === true, '[R] la session de secours ouverte sonne sur Telegram', { telegram, muet: telegramMuet });
     panneBase = true;
     let horsLigne;
     try { horsLigne = await appeler(F.staffState, { url: `/api/staff-state?centerId=libramont&date=${JOUR}`, token: 'fgs_faux_jeton' }); } finally { panneBase = false; }

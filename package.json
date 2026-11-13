@@ -226,6 +226,7 @@
     "test:formules-arrivee-form": "node scripts/formules-arrivee-form-check.js && node scripts/formules-arrivee-form-check.js --mutate --tranche=1/2 && node scripts/formules-arrivee-form-check.js --mutate --tranche=2/2",
     "test:sur-mesure": "node scripts/sur-mesure-check.js",
     "test:demande-bureau": "node scripts/demande-bureau-check.js",
+    "test:demande-pinlane": "node scripts/demande-pinlane-check.js && node scripts/demande-pinlane-check.js --contre-preuves",
     "test:demandes-console": "node scripts/demandes-console-check.js",
     "test:ouverture-exceptionnelle": "node scripts/ouverture-exceptionnelle-check.js",
     "test:fungalaxy-plus": "node scripts/fungalaxy-plus-check.js",

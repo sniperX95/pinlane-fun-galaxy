@@ -10622,7 +10622,7 @@ function renderVisitRecapItem(item) {
     detail = `${option?.label || `${Number(item.duration) || 1}h`} · ${lanes} piste${lanes > 1 ? 's' : ''}`;
   } else if (activityId === 'laser_game') {
     const games = Math.max(1, Number(item.games) || 1);
-    detail = `${games} partie${games > 1 ? 's' : ''}${item.extraLaser ? ` + ${item.extraLaser.games - games} pour ${item.extraLaser.participants} joueurs` : ''}`;
+    detail = `${games} partie${games > 1 ? 's' : ''}${item.extraLaser ? ` + ${item.extraLaser.games - games} pour ${item.extraLaser.participants} joueurs` : ''}${Array.isArray(item.joueursParPartie) ? ` · ${joueursDesPartiesEnMots(item.joueursParPartie)}` : ''}`;
   } else if (item.priceType === 'grid_bowling' || item.units != null || item.hours != null) {
     // Tables de billard, pistes de duckpin : leur nombre, la duree, les tours.
     // La MEME phrase que la fiche du staff (detailLigneProgramme).
@@ -28895,7 +28895,7 @@ function detailLigneProgrammeSansEffectif(item, reservation = null) {
   const priceType = item.priceType || (catalogue && catalogue.priceType) || '';
   if (item.activityId === 'laser_game' || priceType === 'grid_laser') {
     const parties = Math.max(1, Number(item.games) || 1);
-    return `${parties > 1 ? `${parties} parties` : '1 partie'}${item.extraLaser ? ` + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs` : ''}`;
+    return `${parties > 1 ? `${parties} parties` : '1 partie'}${item.extraLaser ? ` + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs` : ''}${Array.isArray(item.joueursParPartie) ? ` · ${joueursDesPartiesEnMots(item.joueursParPartie)}` : ''}`;
   }
   if (item.activityId === 'bowling') return formatDurationLabel(Number(item.duration) || 1);
   // Le duckpin : ses pistes, et ses tours au-dela de celles du centre.
@@ -30446,7 +30446,7 @@ function buildEditProgramFromReservation(r) {
     items.forEach((item) => {
       const id = String(item.activityId || '');
       if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; if (Number(item.participants) > 0) etat.bowling.participants = Number(item.participants); return; }
-      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); if (Number(item.participants) > 0) etat.laser_game.participants = Number(item.participants); if (item.extraLaser) etat.laser_game.extraLaser = { ...item.extraLaser }; return; }
+      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); if (Number(item.participants) > 0) etat.laser_game.participants = Number(item.participants); if (item.extraLaser) etat.laser_game.extraLaser = { ...item.extraLaser }; if (Array.isArray(item.joueursParPartie)) etat.laser_game.joueursParPartie = item.joueursParPartie.slice(); return; }
       if (!id) return;
       etat.others[id] = true;
       const reglages = {};
@@ -30523,6 +30523,22 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       // Le laser est un FORFAIT par personne selon le nombre de parties
       // (10 / 18 / 25 EUR), pas un prix unitaire multiplie.
       const parties = Math.max(1, Number(item.games) || 1);
+      // LES JOUEURS DE CHAQUE PARTIE : chacun paie les parties qu il joue, le meme calcul que le
+      // serveur (lib/visit-program.js prixDesParties).
+      const parPartie = Array.isArray(item.joueursParPartie) && item.joueursParPartie.length === parties ? item.joueursParPartie.map((n) => Math.min(effectif, Math.max(1, Math.trunc(Number(n) || 1)))) : null;
+      if (parPartie) {
+        const rangees = parPartie.slice().sort((a, b) => b - a);
+        let somme = 0;
+        rangees.forEach((n, i) => {
+          const exactement = n - (rangees[i + 1] || 0);
+          if (exactement > 0) somme += (Number(getLaserOption((i + 1) * 0.5)?.price) || 0) * exactement;
+        });
+        const montant = Math.round(somme * 100) / 100;
+        total += montant;
+        chiffrees += 1;
+        lignes.push({ nom: `Laser ${parties} parties`, detail: joueursDesPartiesEnMots(parPartie), montant });
+        return;
+      }
       const option = getLaserOption(parties * 0.5);
       const unitaire = Number(option?.price) || 0;
       const supplement = item.extraLaser && Number(item.extraLaser.baseGames) === parties && Number(item.extraLaser.participants) <= effectif ? Number(item.extraLaser.price) || 0 : 0;
@@ -30706,7 +30722,10 @@ function getEditProgramItems() {
     }
     items.push(item);
   }
-  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: participantsLigneProgramme(e.programmeEdite.laser_game, pax), ...(e.programmeEdite.laser_game.extraLaser ? { extraLaser: { ...e.programmeEdite.laser_game.extraLaser } } : {}) });
+  // (les joueurs de chaque partie repartent avec la ligne : sans eux, enregistrer une autre
+  // modification reposait tous les joueurs a chaque partie, et le prix remontait)
+  const parPartieEditee = e.programmeEdite.laser_game?.on && Array.isArray(e.programmeEdite.laser_game.joueursParPartie) ? joueursDesPartiesDuDossier(e.programmeEdite.laser_game, pax) : null;
+  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: parPartieEditee ? Math.max(...parPartieEditee) : participantsLigneProgramme(e.programmeEdite.laser_game, pax), ...(parPartieEditee ? { joueursParPartie: parPartieEditee } : {}), ...(e.programmeEdite.laser_game.extraLaser ? { extraLaser: { ...e.programmeEdite.laser_game.extraLaser } } : {}) });
   Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => {
     if (!actif) return;
     // Les reglages du dossier, pas les defauts : sans eux le prix repart a
@@ -30746,6 +30765,7 @@ function setEditLaserGames(nombre) {
   programme.laser_game.on = true;
   if (programme.laser_game.extraLaser && Number(nombre) !== Number(programme.laser_game.games)) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : ce nouveau choix concerne tous les joueurs du laser.'); }
   programme.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(nombre) || 1)));
+  if (Array.isArray(programme.laser_game.joueursParPartie)) rsPartiesAuNombre(programme.laser_game, programme.laser_game.games, state.editState.pax);
   if (state.selectedRes?.type === 'laser') state.editState.duration = programme.laser_game.games * 0.5;
   renderPos();
 }
@@ -31089,6 +31109,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div></div>`;
       const extra = programme.laser_game.extraLaser;
       if (extra) options += `<small class="fm-act-note">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
+      if (Number(programme.laser_game.games) > 1) options += renderDossierJoueursDesParties(programme.laser_game, state.editState.pax);
     }
     const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
     // Readonly presentation retains stored units/day metadata that is not edited here.
@@ -32849,6 +32870,12 @@ function getQuickVisitHours(id) {
 // par diverger, et c est le comptoir qui paie la difference.
 function ligneProgrammeQuick(activityId) {
   const ligne = { activityId, pax: Number(quickBookState.pax) || 1, participants: getQuickVisitParticipants(activityId) };
+  // Les joueurs de chaque partie partent avec la ligne du laser, quand la fenetre en a pose.
+  const parPartieStockee = activityId === 'laser_game' && quickBookState.visit && quickBookState.visit.options && quickBookState.visit.options.laser_game ? quickBookState.visit.options.laser_game.joueursParPartie : null;
+  if (Array.isArray(parPartieStockee) && parPartieStockee.length) {
+    const parPartie = rsJoueursDesParties();
+    if (parPartie.length > 1 && parPartie.some((n) => n !== ligne.participants)) ligne.joueursParPartie = parPartie;
+  }
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
   if (activityId === 'bowling') {
     const capacity = getQuickBookLaneNeed();
@@ -32912,8 +32939,49 @@ function setEditActivityParticipants(id, nombre) {
   if (participants !== participantsLigneProgramme(options, e.pax) && options.upsell) { delete options.upsell; toast('Offre retirée du devis : le nouvel effectif est tarifé au catalogue.'); }
   if (options.extraLaser && participants < Number(options.extraLaser.participants)) { delete options.extraLaser; toast('La partie supplémentaire est retirée : son effectif dépassait le nouveau nombre de joueurs du laser.'); }
   if (id === 'arcade_time' && participants !== participantsLigneProgramme(options,e.pax)) { delete options.arcadeOffer; if (options.arcadeMode === 'time') options.cards=participants; }
+  if (id === 'laser_game' && Array.isArray(options.joueursParPartie)) rsPartiesSuiventLaLigne(options, participants);
   options.participants = participants;
   renderPos();
+}
+
+// LES JOUEURS DE CHAQUE PARTIE, dans le dossier (meme regle que la fenetre Reserver, rsJoueursDesParties).
+// Toute la liste, une valeur par partie ; joueursDesPartiesDuDossier ne garde que ce qui part au serveur.
+function joueursDesPartiesAffiches(options, pax) {
+  const parties = Math.max(1, Number(options && options.games) || 1);
+  const joueurs = participantsLigneProgramme(options, pax);
+  const liste = options && Array.isArray(options.joueursParPartie) ? options.joueursParPartie : [];
+  return Array.from({ length: parties }, (_, k) => {
+    const n = Math.trunc(Number(liste[Math.min(k, liste.length - 1)]) || 0);
+    return n >= 1 ? Math.min(joueurs, n) : joueurs;
+  });
+}
+
+function joueursDesPartiesDuDossier(options, pax) {
+  const liste = joueursDesPartiesAffiches(options, pax);
+  const plus = Math.max(...liste);
+  return liste.length > 1 && liste.some((n) => n !== plus) ? liste : null;
+}
+
+function setEditJoueursPartie(k, n) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite || !e.programmeEdite.laser_game) return;
+  const lg = e.programmeEdite.laser_game;
+  const liste = joueursDesPartiesAffiches(lg, e.pax);
+  if (!(k >= 0 && k < liste.length)) return;
+  liste[k] = n;
+  if (lg.extraLaser) { delete lg.extraLaser; toast('La partie supplémentaire est retirée : chaque partie a maintenant ses joueurs.'); }
+  rsPoserJoueursDesParties(lg, liste, e.pax);
+  renderPos();
+}
+
+function renderDossierJoueursDesParties(options, pax) {
+  const liste = joueursDesPartiesAffiches(options, pax);
+  if (liste.length < 2) return '';
+  const bornes = activityParticipantsBounds('laser_game', pax);
+  const moins = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+  const plus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>';
+  const pas = liste.map((n, k) => `<span class="dossier-partie-joueurs" data-partie-joueurs="${k + 1}"><span class="dossier-partie-mot">Partie ${k + 1}</span><span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Partie ${k + 1} : retirer un joueur" ${n <= bornes.min ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n - 1})">${moins}</button><span class="qb-step-valeur staff-stepper-value">${n}</span><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="Partie ${k + 1} : ajouter un joueur" ${n >= bornes.max ? 'disabled' : ''} onclick="setEditJoueursPartie(${k},${n + 1})">${plus}</button></span></span>`).join('');
+  return `<div class="dossier-activity-setting dossier-joueurs-parties"><span class="lbl">Joueurs par partie</span><div class="dossier-options" role="group" aria-label="Joueurs de chaque partie">${pas}</div></div>`;
 }
 
 function setQuickVisitBowlingDuration(value) {
@@ -35297,6 +35365,7 @@ function rvLaserParties(delta) {
   const maxCatalogue = Math.max(0, ...rvOptionsLaserCentre().map((o) => o.games));
   if (maxCatalogue && n > maxCatalogue && rvPartiesLaser() <= maxCatalogue && !s.moreOpen) s.ouverte = 'laser_game';
   if (Array.isArray(s.partiesEcarts)) s.partiesEcarts = s.partiesEcarts.slice(0, n);
+  rsPartiesAuNombre(((s.visit || {}).options || {}).laser_game, n, s.pax);
   if (s.type === 'laser') { s.duration = n / 2; syncQuickBookDuration(); renderQuickBook(); return; }
   if (s.type === 'formule' && s.adaptee && s.visit) { s.visit.laser_game = { ...(s.visit.laser_game || {}), on: true, games: n }; syncQuickBookDuration(); renderQuickBook(); return; }
   setQuickVisitLaserGames(n);
@@ -36221,8 +36290,18 @@ function rsMontantTouche(id, quantite) {
   const item = { activityId: id, pax: joueurs, participants: joueurs };
   if (id === 'bowling' && rsPris('bowling') && Number(s.pistesNombre) > 0) return rvPrixPiste(Number(quantite) || 1) * Number(s.pistesNombre);
   if (id === 'bowling') item.duration = Number(quantite) || 1;
-  else if (id === 'laser_game') item.games = Number(quantite) || 1;
-  else if (id === 'arcade_time') Object.assign(item, defaultArcadeOptions(activite), { cards: joueurs });
+  else if (id === 'laser_game') {
+    item.games = Number(quantite) || 1;
+    // Des joueurs differents a chaque partie : la touche dit le prix que son toucher donnera, la
+    // liste suivant son nombre de parties comme au toucher (rsPartiesAuNombre).
+    const actuelle = rsJoueursDesParties();
+    if (actuelle.length > 1 && actuelle.some((n) => n !== Math.max(...actuelle))) {
+      const liste = actuelle.slice(0, item.games);
+      while (liste.length < item.games) liste.push(liste[liste.length - 1]);
+      item.participants = Math.max(...liste);
+      if (liste.length > 1 && liste.some((n) => n !== item.participants)) item.joueursParPartie = liste;
+    }
+  } else if (id === 'arcade_time') Object.assign(item, defaultArcadeOptions(activite), { cards: joueurs });
   else if (activite && activite.priceType === 'grid_bowling') item.duration = 1;
   try {
     const ligne = estimerPrixProgramme([item], joueurs, s.date, s.startTime).lignes[0];
@@ -36453,6 +36532,7 @@ function rsJoueursBloc(id, n) {
     s.error = '';
     s.forcer = false;
     if (rsAuTicket(id) && !rsPeutChanger()) return;
+    if (id === 'laser_game') rsPartiesSuiventLaLigne(getQuickVisitOptions('laser_game'), voulu);
     const groupe = Math.max(1, Number(s.pax) || 1);
     if (voulu > groupe) {
       rsGarderLesJoueursDesAutres(id, groupe);
@@ -36488,6 +36568,84 @@ function rsPoserJoueursDeclares(id) {
   if (!((s.type === 'bowling' && id === 'bowling') || (s.type === 'laser' && id === 'laser_game'))) return;
   const declare = Number((((s.visit || {}).options || {})[id] || {}).participants) || 0;
   if (declare >= 1 && declare < Math.max(1, Number(s.pax) || 1)) setQuickVisitParticipants(id, declare);
+}
+
+// LES JOUEURS DE CHAQUE PARTIE DU LASER (2026-11-13, Ansar : « la premiere on a le nombre de joueur
+// mais la 2 et 3eme partie on sait pas choisir le nombre de joueur »). Les memes joueurs, certains en
+// font moins, et chacun paie les parties qu il joue (lib/visit-program.js prixDesParties). La liste
+// vit avec les reglages du laser ; absente, tous les joueurs du laser jouent chaque partie.
+// Une partie ajoutee reprend les joueurs de la derniere.
+function rsJoueursDesParties() {
+  const parties = rvPartiesLaser();
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const options = (((quickBookState && quickBookState.visit) || {}).options || {}).laser_game || {};
+  // (une formule prise telle quelle joue le catalogue : tout le monde a chaque partie)
+  const liste = Array.isArray(options.joueursParPartie) && rvModifiable() ? options.joueursParPartie : [];
+  return Array.from({ length: parties }, (_, k) => {
+    const n = Math.trunc(Number(liste[Math.min(k, liste.length - 1)]) || 0);
+    return n >= 1 ? Math.min(joueurs, n) : joueurs;
+  });
+}
+
+// Pose une liste : la ligne compte la partie la plus remplie, une liste toute egale s efface.
+function rsPoserJoueursDesParties(options, liste, pax) {
+  const bornes = activityParticipantsBounds('laser_game', pax);
+  const propre = liste.map((n) => Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(n)) || bornes.min)));
+  const plus = Math.max(...propre);
+  options.participants = plus;
+  if (propre.length < 2 || propre.every((n) => n === plus)) delete options.joueursParPartie;
+  else options.joueursParPartie = propre;
+}
+
+// Le nombre de parties change : la liste suit (la derniere partie se recopie, les parties retirees partent).
+function rsPartiesAuNombre(options, n, pax) {
+  if (!options || !Array.isArray(options.joueursParPartie) || !options.joueursParPartie.length) return;
+  const liste = options.joueursParPartie.slice(0, n);
+  while (liste.length < n) liste.push(liste[liste.length - 1]);
+  rsPoserJoueursDesParties(options, liste, pax);
+}
+
+// Les joueurs de la ligne changent : les parties qui avaient tout le monde le gardent, les autres
+// restent en dessous.
+function rsPartiesSuiventLaLigne(options, voulu) {
+  if (!options || !Array.isArray(options.joueursParPartie) || !options.joueursParPartie.length) return;
+  const avant = Math.max(...options.joueursParPartie.map(Number));
+  options.joueursParPartie = options.joueursParPartie.map((n) => (Number(n) === avant ? voulu : Math.min(Number(n), voulu)));
+  if (options.joueursParPartie.every((n) => n === voulu)) delete options.joueursParPartie;
+}
+
+// « 12, 10 puis 8 joueurs », la phrase du serveur (lib/visit-program.js joueursDesPartiesEnMots).
+function joueursDesPartiesEnMots(liste) {
+  const n = (Array.isArray(liste) ? liste : []).map((x) => Math.trunc(Number(x) || 0));
+  if (!n.length) return '';
+  const tete = n.slice(0, -1).join(', ');
+  return `${tete ? `${tete} puis ` : ''}${n[n.length - 1]} joueur${n[n.length - 1] > 1 ? 's' : ''}`;
+}
+
+function rsJoueursPartie(k, n) {
+  const s = quickBookState;
+  if (!s || !rsEtat()) return;
+  rsGeste(() => {
+    s.error = '';
+    s.forcer = false;
+    if (rsAuTicket('laser_game') && !rsPeutChanger()) return;
+    // Chaque partie et ses joueurs ne partent qu avec un programme : un laser seul ou une formule
+    // telle quelle passent en visite, comme pour l espacement des parties.
+    if (s.type === 'formule' && !s.adaptee) rvAdapterFormule(true);
+    rsLaserEnVisite();
+    const liste = rsJoueursDesParties();
+    liste[k] = n;
+    rsPoserJoueursDesParties(getQuickVisitOptions('laser_game'), liste, s.pax);
+    syncQuickBookDuration();
+    renderQuickBook();
+  });
+}
+
+function rsRangJoueursDesParties() {
+  const liste = rsJoueursDesParties();
+  const bornes = activityParticipantsBounds('laser_game', quickBookState.pax);
+  const cles = liste.map((n, k) => rsCompteurHtml(`Partie ${k + 1}`, n, n > bornes.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornes.max ? `rsJoueursPartie(${k},${n + 1})` : '', `data-partie-joueurs="${k + 1}"`, `Joueurs de la partie ${k + 1}`));
+  return rsRang('Par partie', cles.join(''), Math.min(liste.length, 3));
 }
 
 function rsFixerPistes(n) {
@@ -38107,6 +38265,7 @@ function rsLigneLaserHtml(ligne) {
   const hors = rvHorsCatalogueLaserHtml(departs.length);
   if (hors) rangs.push(hors);
   rangs.push(rsRangJoueurs('laser_game'));
+  if (parties > 1) rangs.push(rsRangJoueursDesParties());
   return rangs;
 }
 
@@ -38539,7 +38698,9 @@ function rsPlusDuTicket(id, ligne) {
   const morceaux = [];
   const groupe = Math.max(1, Number(s.pax) || 1);
   const joueurs = getQuickVisitParticipants(id);
-  if (joueurs < groupe) morceaux.push(`${rvPluriel(joueurs, 'joueur')} sur ${groupe}`);
+  const parPartie = id === 'laser_game' ? rsJoueursDesParties() : [];
+  if (parPartie.length > 1 && parPartie.some((n) => n !== joueurs)) morceaux.push(joueursDesPartiesEnMots(parPartie));
+  else if (joueurs < groupe) morceaux.push(`${rvPluriel(joueurs, 'joueur')} sur ${groupe}`);
   if (rvActivites().includes(id) && RV_ANCRABLES.includes(id) && ligne && ligne.heure) {
     const place = rsPlaceDeLHeure(id, ligne.heure);
     if (place && !place.manque) morceaux.push(`il restera ${rvPluriel(place.libre, place.unite)}`);

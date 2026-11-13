@@ -182,6 +182,7 @@
     "test:emails-threads-ui",
     "test:apparence-ouverture-directe",
     "test:fenetre-reserver-defauts",
+    "test:joueurs-par-partie",
     "test:role-refresh",
     "test:new-res-notif",
     "test:classification",

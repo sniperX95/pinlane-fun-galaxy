@@ -178,6 +178,9 @@ function operationalProgram(program, pax) {
     const choice = { activityId, participants: Number(item.participants ?? pax) };
     if (item.upsell) choice.upsell = { offerId: String(item.upsell.offerId || ''), participants: Number(item.upsell.participants) };
     if (item.extraLaser) choice.extraLaser = { offerId: String(item.extraLaser.offerId || ''), participants: Number(item.extraLaser.participants), games: Number(item.extraLaser.games) };
+    // Les joueurs de chaque partie se vendent (lib/visit-program.js prixDesParties) : sans eux ici,
+    // la partie 3 passee de 8 a 7 dans le dossier gardait le prix et le plan d avant.
+    if (Array.isArray(item.joueursParPartie)) choice.joueursParPartie = item.joueursParPartie.map(Number);
     if (activityId === 'arcade_time' && item.arcadeOfferId) {
       choice.arcadeMode = String(item.arcadeMode || '');
       choice.arcadeOfferId = String(item.arcadeOfferId);

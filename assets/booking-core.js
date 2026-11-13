@@ -1486,6 +1486,9 @@ function getReservationLaserPlayersForGame(reservation, countIndex = 1) {
   const items = Array.isArray(program) ? program : program?.items || [];
   const laser = items.find(item => item?.activityId === 'laser_game');
   const base = getReservationActivityPlayers(reservation, 'laser_game');
+  // Les joueurs de chaque partie (lib/visit-program.js joueursDesParties).
+  const parPartie = Array.isArray(laser?.joueursParPartie) ? Math.trunc(Number(laser.joueursParPartie[Number(countIndex) - 1])) : 0;
+  if (parPartie >= 1) return Math.min(base, parPartie);
   if (laser?.extraLaser && Number(countIndex) > Number(laser.games || 1)) {
     return Math.min(base, Math.max(1, Math.trunc(Number(laser.extraLaser.participants) || base)));
   }

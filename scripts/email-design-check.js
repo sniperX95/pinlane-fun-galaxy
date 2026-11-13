@@ -175,7 +175,7 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   // =====================================================================
   const presets = m.comms.EMAIL_DESIGN_PRESETS.map((x) => x.id);
   // 2026-11-12 : les cinq d avant, puis la galerie de lib/email-gabarits.js.
-  ok(presets.join(',') === 'simple,classique,epure,carte,contraste,billet,affiche,score,lettre,photo,grand-format,vitrine', '[B] montage : les cinq gabarits d avant puis les sept de la galerie, Mail simple en tete', presets.join(','));
+  ok(presets.join(',') === 'simple,classique,epure,carte,contraste,natif,maison,arcade,billet,affiche,score,lettre,photo,grand-format,vitrine', '[B] montage : les cinq gabarits d avant puis les dix de la galerie (les trois styles complets en tete), Mail simple en tete', presets.join(','));
   const rendus = {};
   for (const preset of presets) {
     // 2026-11-11 (lot 2) : Fun Galaxy est a sa couleur par defaut ; les formes
@@ -340,7 +340,7 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   const indulgent = await m.comms.resolveEmailDesign('libramont', deps);
   ok(indulgent.preset === 'simple' && indulgent.signature.logoUrl === defautsLibramont.signature.logoUrl, '[I] un design en base devenu invalide retombe sur les defauts (aucun envoi bloque)');
   const paquet = await m.comms.getEmailDesignBundle('libramont', deps);
-  ok(paquet.presets.length === 12 && paquet.presets.every((p) => p.famille) && Array.isArray(paquet.familles) && paquet.familles.map((f) => f.id).join(',') === 'principale,centre,campagne,avant'
+  ok(paquet.presets.length === 15 && paquet.presets.every((p) => p.famille) && Array.isArray(paquet.familles) && paquet.familles.map((f) => f.id).join(',') === 'styles,principale,centre,campagne,avant'
     && paquet.logos.length === 2 && paquet.center.id === 'libramont' && paquet.defaults.signature.phone === LIBRAMONT.publicInfo.phone && paquet.stored && paquet.stored.preset === 'neon',
     '[I] le paquet de la page Apparence : gabarits et leurs familles, logos declares, centre, defauts, brut enregistre');
   const paquetNu = await m.comms.getEmailDesignBundle('centre-qui-n-existe-pas', deps);
@@ -470,8 +470,8 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     {
       nom: 'la cloture textuelle est signee deux fois',
       fichier: 'lib/ops-communications.js',
-      de: '  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurSignature, corps });',
-      vers: "  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, largeur: largeurSignature, corps: '' });",
+      de: '  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, style: styleDuGabarit, logoDejaVu, largeur: largeurSignature, corps });',
+      vers: "  const signatureHtml = renderSignatureHtml({ design: gabarit, center, person: signature.person || null, accent: couleur, budget, style: styleDuGabarit, logoDejaVu, largeur: largeurSignature, corps: '' });",
       rejouer: async (mm) => { const captes = []; await mm.comms.runBirthdayJ30Sweep('libramont', { query: requete, enqueue: async (row) => { captes.push(row); return { id: 1 }; } }, { today: iso(0) }); return captes[0].body; },
       rouge: (html) => equipe(html) !== 1,
     },

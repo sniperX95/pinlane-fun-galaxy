@@ -110,7 +110,7 @@ const deps = { query: requete };
 // ---------------------------------------------------------------------------
 // Mutations compilees en memoire (aucun fichier touche).
 // ---------------------------------------------------------------------------
-const MUTABLES = ['lib/email-gabarits.js', 'lib/email-design.js', 'lib/ops-communications.js'];
+const MUTABLES = ['lib/email-styles.js', 'lib/email-gabarits.js', 'lib/email-design.js', 'lib/ops-communications.js'];
 let mutations = [];
 const compileOrigine = Module.prototype._compile;
 Module.prototype._compile = function compileMute(contenu, nom) {
@@ -696,7 +696,7 @@ async function controles(m) {
     design: { ...m.design.getEmailDesignDefaults(center), preset }, signature: { enabled: signer, person: null, portee: 'sequences' }, activite,
   });
   const horsBudget = ids.filter((id) => { const h = automatique(id); return liens(h) > 2 || images(h) > 1; });
-  ok(ids.length === 12 && horsBudget.length === 0, '[M] les douze gabarits, dans un mail automatique : deux liens et une image au plus', horsBudget.join(', ') || `${ids.length} gabarits`);
+  ok(ids.length === 15 && horsBudget.length === 0, '[M] les quinze gabarits, dans un mail automatique : deux liens et une image au plus', horsBudget.join(', ') || `${ids.length} gabarits`);
   ok(automatique('grand-format') === automatique('photo') && automatique('vitrine') === automatique('billet'),
     '[M] un grand format de campagne ne part jamais sur un mail automatique : il prend son repli de la boite principale');
   const campagne = m.comms.emailShell({
@@ -734,7 +734,7 @@ async function controles(m) {
   ok(srcs(formuleLibramont).length === 1 && srcs(formuleLibramont)[0].includes('/assets/mail/activites/') && /Funement/.test(formuleLibramont),
     '[M] Photo de l activite : la photo en tete est la seule image, la signature passe en texte', srcs(formuleLibramont).join(' '));
   const traits = neufs.filter((id) => /border(?:-top|-bottom|-left|-right)?:\s*1px/i.test(automatique(id, { signer: false })));
-  ok(traits.length === 0, '[M] aucun trait fin dans les sept gabarits de la galerie', traits.join(', '));
+  ok(traits.length === 0, '[M] aucun trait fin dans les dix gabarits de la galerie', traits.join(', '));
   const avantLeTexte = ['billet', 'affiche', 'score', 'photo'].filter((id) => { const h = automatique(id, { signer: false }); return h.indexOf('20 juin') > -1 && h.indexOf('20 juin') < h.indexOf('Bonjour Marie'); });
   ok(avantLeTexte.length === 4, '[M] billet, score et photo ouvrent sur le rendez-vous, avant le texte', avantLeTexte.join(','));
   const h1 = (html) => ((String(html).match(/<h1[^>]*>([^<]*)<\/h1>/) || [])[1] || '').trim();
@@ -744,7 +744,7 @@ async function controles(m) {
     '[M] un titre qui redit la date du billet cede sa place au sourcil, un autre titre reste', `${titreDuBillet} / ${autreTitre}`);
   const galerie = await m.comms.buildDesignGallery({ centerId: 'libramont' }, deps);
   ok(galerie.vignettes.map((v) => v.id).join(',') === ids.join(',') && galerie.vignettes.every((v) => v.html.startsWith('<!doctype html>') && v.sample === (['grand-format', 'vitrine'].includes(v.id) ? 'campagne' : 'confirmation')),
-    '[M] la galerie d Apparence rend les douze gabarits, les grands formats sur la campagne d exemple', galerie.vignettes.map((v) => `${v.id}:${v.sample}`).join(' '));
+    '[M] la galerie d Apparence rend les quinze gabarits, les grands formats sur la campagne d exemple', galerie.vignettes.map((v) => `${v.id}:${v.sample}`).join(' '));
   const fiches = [[LIBRAMONT, 'libramont-'], [GEMBLOUX, 'gembloux-']].map(([c, prefixe]) => ({ prefixe, liste: (c.branding && c.branding.emailPhotosActivites) || [] }));
   const photosMal = fiches.flatMap(({ prefixe, liste }) => liste.filter((p) => {
     const f = path.join(ROOT, String(p.url || ''));
@@ -753,6 +753,35 @@ async function controles(m) {
   }).map((p) => p.url));
   ok(fiches.every((f) => f.liste.length >= 5) && photosMal.length === 0,
     '[M] les photos d activite : des JPG du centre, sur notre domaine, decrits, de moins de 110 Ko', photosMal.join(', ') || fiches.map((f) => `${f.prefixe}${f.liste.length}`).join(' '));
+
+  // =====================================================================
+  console.log('\n[S] les styles complets : les polices du telephone, le logo une fois, la lettre');
+  // =====================================================================
+  // Ansar, 13/11 : « les signatures, le copywriting, la police, les couleurs [...]
+  // sont vraiment nuls ». Montserrat et Anton ne se chargent dans aucune
+  // messagerie : Gmail montrait de l Arial et de l Impact.
+  const STYLES_COMPLETS = ['natif', 'maison', 'arcade'];
+  const sansCommentaires = (html) => String(html).replace(/<!--[\s\S]*?-->/g, '');
+  const avecPersonne = (preset, { personnel = true, signer = true } = {}) => m.comms.emailShell({
+    title: personnel ? 'Re: Votre demande pour samedi' : 'Votre devis pour samedi', body: 'Bonjour Marie,\n\nOui, il reste de la place samedi à 15 h.', preheader: '', center: LIBRAMONT, personnel,
+    design: { ...m.design.getEmailDesignDefaults(LIBRAMONT), preset }, signature: { enabled: signer, person: { name: 'Camille Dev', role: 'Accueil' }, portee: 'manual' },
+  });
+  const policesDAffiche = ids.filter((id) => /Montserrat|Anton|Impact/.test(sansCommentaires(automatique(id)) + sansCommentaires(avecPersonne(id))));
+  ok(policesDAffiche.length === 0, '[S] aucun mail ne demande Montserrat, Anton ni Impact : les polices du telephone partout', policesDAffiche.join(', '));
+  const logoDuCentre = String(LIBRAMONT.branding.emailLogoSansFond || '');
+  const foisLeLogo = (html) => String(html).split(logoDuCentre).length - 1;
+  const campagneSignee = (preset) => m.comms.emailShell({
+    title: 'Une soirée bowling entre amis ?', body: 'Bonjour Marie,\n\nUne piste vous attend.', center: LIBRAMONT, activite: 'bowling',
+    action: { href: 'https://www.mngfunglxy.com/', label: 'Réserver une piste' },
+    unsubscribeLine: { text: 'Vous recevez ce mail.', url: 'https://app.pinlane.be/api/u?k=x', label: 'Ne plus recevoir ces mails' },
+    design: { ...m.design.getEmailDesignDefaults(LIBRAMONT), preset }, signature: { enabled: true, person: null, portee: 'campaigns' },
+  });
+  const logos = STYLES_COMPLETS.map((id) => [id, foisLeLogo(automatique(id)), foisLeLogo(avecPersonne(id)), foisLeLogo(avecPersonne(id, { personnel: false })), foisLeLogo(campagneSignee(id))]);
+  ok(Boolean(logoDuCentre) && logos.every(([id, auto, lettre, manuel, campagne]) => auto === (id === 'arcade' ? 0 : 1) && lettre === 1 && manuel === 1 && campagne === 1),
+    '[S] le vrai logo une seule fois : dans la signature, ou au-dessus de la photo d une campagne, jamais les deux', logos.map((l) => l.join(':')).join(' '));
+  const avant = (html, a, b) => { const h = sansCommentaires(html); const corps = h.slice(h.indexOf('<body')); return corps.indexOf(a) > -1 && corps.indexOf(a) < corps.indexOf(b); };
+  const lettres = STYLES_COMPLETS.filter((id) => avant(avecPersonne(id), 'Bonjour Marie', 'Fun Galaxy Libramont') && avant(avecPersonne(id, { signer: false }), 'Fun Galaxy Libramont', 'Bonjour Marie'));
+  ok(lettres.length === 3, '[S] la lettre signee s ouvre sur le texte, sans en-tete ; sans signature, le nom du centre l ouvre', lettres.join(','));
 
   // =====================================================================
   console.log('\n[N] ce que Gmail et Outlook lisent, sur les vrais mails automatiques');
@@ -927,9 +956,9 @@ async function controles(m) {
       fichier: 'lib/email-gabarits.js',
       de: 'function photoDeLActivite(center, activite, origine) {\n  const liste = center && center.branding && Array.isArray(center.branding.emailPhotosActivites) ? center.branding.emailPhotosActivites : [];',
       vers: "function photoDeLActivite(center, activite, origine) {\n  const liste = require('./ops-knowledge').getCenter('libramont').branding.emailPhotosActivites;" },
-    { nom: 'la photo hors budget', cible: '[M] les douze gabarits, dans un mail automatique : deux liens et une image au plus',
+    { nom: 'la photo hors budget', cible: '[M] les quinze gabarits, dans un mail automatique : deux liens et une image au plus',
       fichier: 'lib/ops-communications.js', de: 'images: Math.max(0, 1 - compter(/<img\\s/gi))', vers: 'images: 1' },
-    { nom: 'un trait fin sous le billet', cible: '[M] aucun trait fin dans les sept gabarits de la galerie',
+    { nom: 'un trait fin sous le billet', cible: '[M] aucun trait fin dans les dix gabarits de la galerie',
       fichier: 'lib/email-gabarits.js', de: 'style="background:${fonce};border-radius:0 0 16px 16px;padding:14px 24px 16px;">', vers: 'style="background:${fonce};border-radius:0 0 16px 16px;border-top:1px solid #ffffff;padding:14px 24px 16px;">' },
     { nom: 'le recapitulatif sous le texte', cible: '[M] billet, score et photo ouvrent sur le rendez-vous, avant le texte',
       fichier: 'lib/email-gabarits.js',
@@ -954,6 +983,13 @@ async function controles(m) {
       fichier: 'lib/ops-communications.js',
       de: ["      'L’équipe de {{centre}} vous attend.',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF),
       vers: ["      'Bien à vous,',", "      '{{centre}}',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF) },
+    // Les styles complets (2026-11-13).
+    { nom: 'Montserrat revient', cible: '[S] aucun mail ne demande Montserrat, Anton ni Impact : les polices du telephone partout',
+      fichier: 'lib/ops-communications.js', de: '  font: emailStyles.SYSTEME,', vers: `  font: "'Montserrat','Helvetica Neue',Arial,sans-serif",` },
+    { nom: 'le logo deux fois', cible: '[S] le vrai logo une seule fois : dans la signature, ou au-dessus de la photo d une campagne, jamais les deux',
+      fichier: 'lib/ops-communications.js', de: '    if (logoDuStyle && !logoDejaVu && imagesRestantes > 0) {', vers: '    if (logoDuStyle && imagesRestantes > 0) {' },
+    { nom: 'la lettre sous un en-tete', cible: '[S] la lettre signee s ouvre sur le texte, sans en-tete ; sans signature, le nom du centre l ouvre',
+      fichier: 'lib/email-styles.js', de: '  const logoEnSignature = Boolean(o.marqueSignature) && !o.logo && !o.photo;', vers: '  const logoEnSignature = false;' },
   ];
   const survivantes = [];
   for (const c of CAS) {

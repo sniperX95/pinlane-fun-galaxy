@@ -136,12 +136,10 @@ const SIGNATURE_CATALOGUE = (CATALOGUE_CENTRE.branding && CATALOGUE_CENTRE.brand
 function photosSignature() {
   return emailDesignReel.photosDisponibles(CATALOGUE_CENTRE).map((p) => ({ ...p, url: logoAbsolu(new URL(p.url).pathname) }));
 }
-const DESIGN_PRESETS = [
-  { id: 'classique', label: 'Classique', description: 'Carte blanche à filet fin sur fond gris, nom du centre en tête. Le gabarit historique.' },
-  { id: 'epure', label: 'Épuré', description: 'Pas de carte : fond blanc, grandes marges, un filet fin sous le titre.' },
-  { id: 'carte', label: 'Carte', description: 'La carte classique avec une barre de couleur en haut.' },
-  { id: 'contraste', label: 'Contraste', description: 'Bandeau d\'en-tête sombre avec le nom ou le logo blanc du centre.' },
-];
+// Les vrais gabarits et leurs familles (2026-11-13) : les styles complets, la galerie
+// et ceux d avant, comme la page Apparence les recoit en production.
+const DESIGN_PRESETS = emailDesignReel.EMAIL_DESIGN_PRESETS.map((p) => ({ ...p }));
+const DESIGN_FAMILLES = emailDesignReel.EMAIL_DESIGN_FAMILLES.map((f) => ({ ...f }));
 function designParDefaut() {
   return {
     preset: 'classique',
@@ -652,7 +650,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
         return { html: String(p.htmlBody || ''), piecesJointes: clone(p.piecesJointes || []), raison: '' };
       }
       case 'emailSent': return listerEnvoyes({ origine: params.get('origine') || 'tous', statut: params.get('statut') || 'tous', q: params.get('q') || '', limit: Number(params.get('limit') || 100) });
-      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }], photos: photosSignature(), formules: emailDesignReel.FORMULES_DE_FIN.slice(), couleurs: emailDesignReel.couleursDuCentre(CATALOGUE_CENTRE) };
+      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), familles: clone(DESIGN_FAMILLES), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }], photos: photosSignature(), formules: emailDesignReel.FORMULES_DE_FIN.slice(), couleurs: emailDesignReel.couleursDuCentre(CATALOGUE_CENTRE) };
       default: return { ok: true };
     }
   }
@@ -727,6 +725,12 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
         const s = body.sequence || {};
         const subject = remplirVariables(s.subject || 'Aperçu de la séquence', CLIENT_EXEMPLE);
         return { subject, html: rendreMail({ design: designEffectif(), subject, body: remplirVariables(s.body || '', CLIENT_EXEMPLE), signature: designEffectif().signatureScope.sequences, portee: 'sequences', retrait: true }) };
+      }
+      // Les vignettes de la galerie, rendues par le vrai emailShell (2026-11-13).
+      case 'emailDesignGallery': {
+        const design = body.design ? fusionnerDesign(body.design) : designEffectif();
+        const subject = remplirVariables(AUTOMATION_DEFAULTS.confirmation.subject, CLIENT_EXEMPLE);
+        return { vignettes: DESIGN_PRESETS.map((p) => ({ id: p.id, sample: 'confirmation', html: rendreMail({ design: { ...design, preset: p.id }, subject, body: remplirVariables(AUTOMATION_DEFAULTS.confirmation.body, CLIENT_EXEMPLE), signature: design.signatureScope.sequences, portee: 'sequences' }) })) };
       }
       case 'emailDesignPreview': {
         const design = body.design ? validerDesign(body.design) : designEffectif();

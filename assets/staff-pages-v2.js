@@ -8284,6 +8284,9 @@
   const PV2_DISPOSITIONS = { affiche: 'Affiche', arene: 'Arène', enseigne: 'Enseigne', carte: 'Carte', bandeau: 'Bandeau', ligne: 'Une ligne' };
   // Les formes qui portent la ligne d activites du centre (signature.accroche).
   const PV2_AVEC_ACCROCHE = ['affiche', 'arene', 'enseigne'];
+  // Un STYLE COMPLET (Natif, Maison, Arcade, 2026-11-13) signe a sa facon : la forme
+  // choisie ne compte plus, sa ligne d activites, si.
+  const pv2EstStyleComplet = (presetId) => (pv2DesignGabarits().find((p) => p.id === presetId) || {}).famille === 'styles';
 
   function pv2DesignFormHtml(d, mayEdit) {
     const dis = mayEdit ? '' : ' disabled';
@@ -8342,7 +8345,9 @@
         </div>`
         : '<p class="pv2-design-hint">Aucune bannière déclarée pour ce centre. L’affiche prend sa photo, sinon elle s’en passe.</p>';
     }
-    const blocAccroche = PV2_AVEC_ACCROCHE.includes(s.layout) ? `<div class="em-design-ligne">
+    const styleComplet = pv2EstStyleComplet(d.preset);
+    if (styleComplet) blocPhoto = '';
+    const blocAccroche = PV2_AVEC_ACCROCHE.includes(s.layout) || styleComplet ? `<div class="em-design-ligne">
         <label class="pv2-composer-field"><span>Vos activités en une ligne <small class="mk-auto-edit-hint">vide = pas de ligne d’activités</small></span><input type="text" value="${esc(s.accroche || '')}" maxlength="90" placeholder="Bowling · Laser game · Minigolf · Arcades" data-pl-focus="emails.design.signature.accroche" oninput="pv2DesignField('signature.accroche', this.value)"${dis}></label>
       </div>` : '';
     const blocFormule = `<div class="em-design-ligne">
@@ -8394,7 +8399,9 @@
       </div>
       ${s.enabled ? `<div class="em-design-ligne">
         <p class="em-design-question" id="emDispositionTitre">Sa forme</p>
-        <div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>
+        ${styleComplet
+          ? '<p class="pv2-design-hint">Ce style signe vos mails à sa façon : la formule, qui écrit, vos activités et vos coordonnées, avec le vrai logo du centre quand le haut du mail ne le montre pas déjà.</p>'
+          : `<div class="em-dispositions" role="radiogroup" aria-labelledby="emDispositionTitre">${dispositions}</div>`}
       </div>
       ${blocPhoto}${blocAccroche}${blocFormule}${blocContacts}
       ${emOptionsHtml('apparence-signature', 'nom d’équipe, coordonnées, réseaux', `<div class="pv2-design-fields">
@@ -8503,7 +8510,7 @@
     const s = d.signature;
     const photo = (s.layout === 'carte' || s.layout === 'affiche') && s.photo && s.photo.enabled ? ((pv2Design.photos || []).find((p) => p.url === s.photo.url) || {}).label || 'une photo du centre' : '';
     const signature = s.enabled
-      ? [PV2_DISPOSITIONS[s.layout] || 'Carte', photo ? `avec ${photo}` : '', s.closing, PV2_AVEC_ACCROCHE.includes(s.layout) ? s.accroche : '', s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
+      ? [pv2EstStyleComplet(d.preset) ? 'Celle du style' : (PV2_DISPOSITIONS[s.layout] || 'Carte'), photo && !pv2EstStyleComplet(d.preset) ? `avec ${photo}` : '', s.closing, PV2_AVEC_ACCROCHE.includes(s.layout) || pv2EstStyleComplet(d.preset) ? s.accroche : '', s.teamLabel, s.role, s.phone, s.email, s.website, s.address, ...Object.values(s.socials || {})].filter(Boolean).join(' · ')
       : 'Non';
     const ligne = (label, valeur) => `<div class="pv2-design-scope-row"><strong>${esc(label)}</strong><small>${esc(valeur)}</small></div>`;
     return `<div class="pv2-design-form">

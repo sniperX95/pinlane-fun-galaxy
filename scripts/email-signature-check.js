@@ -981,8 +981,8 @@ async function controles(m) {
       fichier: 'lib/email-gabarits.js', de: "(Number(valeur(r.joueurs)) > 1 ? 'participants' : 'participant')", vers: "(Number(valeur(r.joueurs)) > 1 ? 'participants, entrée gratuite' : 'participant')" },
     { nom: 'la confirmation de depart finit par Bien a vous', cible: '[O] chaque texte de depart, enregistre tel quel, garde la fin du mail du logiciel (« Funement vôtre, » puis l equipe)',
       fichier: 'lib/ops-communications.js',
-      de: ["      'L’équipe de {{centre}} vous attend.',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF),
-      vers: ["      'Bien à vous,',", "      '{{centre}}',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF) },
+      de: ["      'Le montant se règle sur place le jour même, aucun paiement n’est demandé à l’avance.',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF),
+      vers: ["      'Le montant se règle sur place le jour même, aucun paiement n’est demandé à l’avance.',", "      'Bien à vous,',", "      '{{centre}}',", "    ].join('\\n'),", "    variables: ['prenom', 'nom', 'date', 'heure', 'formule', 'pax', 'centre', 'prix', 'numero'],"].join(LF) },
     // Les styles complets (2026-11-13).
     { nom: 'Montserrat revient', cible: '[S] aucun mail ne demande Montserrat, Anton ni Impact : les polices du telephone partout',
       fichier: 'lib/ops-communications.js', de: '  font: emailStyles.SYSTEME,', vers: `  font: "'Montserrat','Helvetica Neue',Arial,sans-serif",` },

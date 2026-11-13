@@ -534,8 +534,8 @@ function main() {
       `"Rien à payer d'avance : le montant se règle sur place le jour même.",\n      "Il ne vous reste plus qu'à venir.",`,
     ],
     [
-      '`Votre réservation est confirmée chez ${center.name}, à votre nom.`,',
-      "`C'est officiel : votre réservation est confirmée chez ${center.name}, à votre nom.`,",
+      '`Votre réservation est confirmée, à votre nom.`,',
+      "`C'est officiel : votre réservation est confirmée, à votre nom.`,",
     ],
   ];
   try {

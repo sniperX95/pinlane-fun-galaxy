@@ -126,6 +126,11 @@ const serveur = http.createServer((req, res) => {
     res.end('{"ok":true}');
   });
 });
+// La page de la console, dont le serveur lit la version (lib/version-console.js) : servie ici, le
+// gate ne sort jamais sur Internet.
+const PAGE_SERVIE = '<!doctype html><title>Pinlane</title><script defer src="/assets/a.js?v=20261113a"></script>';
+const fetchReel = global.fetch;
+global.fetch = async (url, options) => (String(url).startsWith('https://app.pinlane.be/?plv=') ? new Response(PAGE_SERVIE, { status: 200, headers: { 'content-type': 'text/html' } }) : fetchReel(url, options));
 const brancher = () => {
   process.env.TELEGRAM_API = `http://127.0.0.1:${PORT}`;
   process.env.TELEGRAM_JETON = 'banc';
@@ -332,7 +337,7 @@ async function alertesALInstant() {
   await prendre('garde bloquee, par le vrai cron', true, () => appeler(charger('api/cron.js'), 'GET', '/api/cron?action=garde', undefined, { authorization: 'Bearer banc' }).catch(() => null));
   delete process.env.CRON_SECRET;
   ROUTES.length = 0;
-  await prendre('console plantee, par la vraie console', false, () => appeler(monterOps(), 'POST', '/api/ops?action=logClientError', { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)' }));
+  await prendre('console plantee, par la vraie console', false, () => appeler(monterOps(), 'POST', '/api/ops?action=logClientError', { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)', version: charger('lib/version-console.js').versionDeLaPage(PAGE_SERVIE) }, { host: 'app.pinlane.be' }));
   const envoyer = (m) => a.envoyerTelegram(m.texte, { silencieux: !m.urgent, liens: m.liens });
   await prendre('horaires non retenus', false, () => envoyer(M.horairesNonRetenus('gembloux')));
   await prendre('reservation ratee, transmise', true, () => envoyer(M.reservationEchouee({ centre: 'libramont', essai: { date: '2026-11-14', heure: '15:00', joueurs: 4 }, transmise: true })));

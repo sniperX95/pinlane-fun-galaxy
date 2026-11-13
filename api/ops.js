@@ -2303,7 +2303,20 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       // LA CONSOLE QUI PLANTE SE SAIT (2026-11-06, Ansar : « chaque plantage »). Comme le
       // formulaire : un message par plantage distinct et par heure, la page filtree a des
       // lettres, rien de recopie du navigateur.
-      if (out && !out.dropped) {
+      // CE QUI NE SE DIT PLUS (2026-11-13, Ansar : des alertes « 5-10 après » chaque mise en ligne).
+      // L erreur reste enregistree pour les Incidents ; le message, lui, ne part pas pour :
+      // - le bruit du navigateur, que la console d avant laissait passer (extension, reseau coupe,
+      //   requete annulee) : les memes filtres que le formulaire public ;
+      // - une console sur une version plus ancienne que celle en ligne (lib/version-console.js) ;
+      // - un plantage deja vu en base : seule sa premiere apparition, ou son retour apres un
+      //   acquittement, se dit (out.rang, lib/client-errors.js). Une instance qui redemarre ne le
+      //   redit donc plus.
+      const { bruitDuNavigateur } = require('../lib/client-errors');
+      const { consoleAncienne, versionServie } = require('../lib/version-console');
+      const aDire = out && !out.dropped && !bruitDuNavigateur({ source: body.source, message: body.message }, { hote: req.headers.host })
+        && !consoleAncienne(body.version, await versionServie())
+        && Number(out.rang) === 1;
+      if (aDire) {
         const { alerter } = require('../lib/garde-alertes');
         const empreinte = String(out.stackHash || '').slice(0, 6);
         const page = String(body.page || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);

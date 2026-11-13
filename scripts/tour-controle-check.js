@@ -9,6 +9,7 @@
 //   [F] le vrai formulaire remonte ses plantages, et pas ceux d une extension ni d un reseau coupe ;
 //   [U] la vraie console : les deux centres, les filtres, la recherche, le dossier, le rafraichissement qui ne casse
 //       rien, et le menu qui ne s ouvre qu au proprietaire ;
+//   [V] la console signale ses erreurs avec sa version, et sans le bruit du navigateur (2026-11-13) ;
 //   [X] les contre-preuves : le code d avant, compile ou servi en memoire. Le disque n est jamais ecrit.
 //
 // Le refus cote serveur (403 pour une Direction) vit dans scripts/founder-cockpit-check.js, avec les autres actions.
@@ -822,6 +823,36 @@ async function jouerConsole(browser) {
     await ctx.close();
   }
 }
+// [V] Les erreurs de la console : sa version part avec, et le bruit du navigateur reste dehors.
+async function signauxDeLaConsole(browser) {
+  const { ctx, page } = await ouvrirConsole(browser);
+  try {
+    await page.waitForFunction(() => typeof reportClientError === 'function' && typeof getStaffSessionToken === 'function' && Boolean(getStaffSessionToken()));
+    const attendue = require('../lib/version-console').versionDeLaPage(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+    const version = await page.evaluate(() => window.__plVersionConsole);
+    const signaux = await page.evaluate(async () => {
+      const vus = [];
+      const avant = window.fetch;
+      window.fetch = (input, init) => { const corps = String((init && init.body) || ''); if (corps.includes('logClientError')) vus.push(JSON.parse(corps)); return avant(input, init); };
+      window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 }));
+      window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') }));
+      window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: Object.assign(new Error('annule'), { name: 'AbortError' }) }));
+      window.dispatchEvent(new ErrorEvent('error', { message: 'vraie erreur de la console', filename: `${location.origin}/assets/app-main.js`, lineno: 3 }));
+      await new Promise((r) => setTimeout(r, 400));
+      window.fetch = avant;
+      return vus;
+    });
+    return { version, attendue, signaux };
+  } finally {
+    await ctx.close();
+  }
+}
+async function preuvesSignauxDeLaConsole(browser) {
+  const r = await signauxDeLaConsole(browser);
+  ok(r.version && r.version === r.attendue, '[V] la console calcule la meme version que le serveur sur la page servie', { version: r.version, attendue: r.attendue });
+  ok(r.signaux.length === 1 && /vraie erreur/.test(r.signaux[0].message) && r.signaux[0].version === r.attendue, '[V] seule la vraie erreur part, avec sa version ; extension, reseau coupe et requete annulee restent dehors', r.signaux);
+}
+
 async function preuvesConsole(browser) {
   const r = await jouerConsole(browser);
   ok(r.erreurs.length === 0, '[U] aucune erreur dans la page', r.erreurs);
@@ -989,6 +1020,16 @@ async function contrePreuves(browser, jour) {
   servies = [];
   ok(vus2.length === 0, '[X] /reserver sans sa branche publique : plus rien ne part, rougit', vus2.length);
 
+  servies = [{ fichier: 'assets/app-main.js', de: "  if (bruitDuNavigateur(payload, message)) return;\n  if (document.getElementById('plUpdateBar')) return;\n", vers: '' }];
+  const sansFiltre = await signauxDeLaConsole(browser);
+  servies = [];
+  // (une erreur a la fois : la premiere partie occupe le rapporteur, les suivantes du meme instant attendent)
+  ok(sansFiltre.signaux.some((s) => /bruit d une extension/.test(s.message)), '[X] la console sans les filtres du formulaire laisse partir le bruit : rougit', sansFiltre.signaux);
+  servies = [{ fichier: 'assets/app-main.js', de: '        version: VERSION_DE_LA_CONSOLE,\n', vers: '' }];
+  const sansVersion = await signauxDeLaConsole(browser);
+  servies = [];
+  ok(sansVersion.signaux.length === 1 && !sansVersion.signaux[0].version, '[X] la console qui n envoie plus sa version : rougit', sansVersion.signaux);
+
   servies = [{ fichier: 'assets/tour-controle.js', de: "['centre', 'canal', 'statut', 'visite'].forEach((cle) => { if (f[cle]) p.set(cle, f[cle]); });", vers: '' }];
   const { ctx, page } = await ouvrirConsole(browser);
   await allerALaTour(page);
@@ -1040,6 +1081,7 @@ async function contrePreuves(browser, jour) {
     await preuvesFormulaire(browser);
     await preuvesReserver(browser);
     await preuvesConsole(browser);
+    await preuvesSignauxDeLaConsole(browser);
     await contrePreuves(browser, jour.date);
   } finally {
     await browser.close();

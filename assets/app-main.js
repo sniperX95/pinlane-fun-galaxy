@@ -2679,12 +2679,40 @@ const CLIENT_ERROR_REPORT = { seen: new Set(), sent: 0, max: 10, busy: false };
 // formulaire Fun Galaxy (assets/fungalaxy-booking.js) : meme route, memes filtres (script
 // d une extension, reseau coupe, requete annulee), cinq signaux par page au plus, et rien
 // de ce que le client a saisi.
-function signalerErreurPublique(payload, message) {
+// LE BRUIT DU NAVIGATEUR, ECARTE SUR LES DEUX CHEMINS (2026-11-13 pour la console, Ansar : des
+// alertes « 5-10 après » chaque mise en ligne) : le script d une extension (fichier hors de cette
+// origine), la boucle de ResizeObserver, un reseau coupe, une requete annulee. Rien de tout ca ne
+// dit quelque chose de Pinlane.
+function bruitDuNavigateur(payload, message) {
   const rejet = payload.source === 'unhandledrejection';
   const fichier = String(payload.source || '');
-  if (!rejet && (!fichier || fichier.indexOf(window.location.origin) !== 0)) return;
-  if (/ResizeObserver loop/.test(message)) return;
-  if (rejet && (payload.nom === 'AbortError' || /Failed to fetch|NetworkError|Load failed|réseau/i.test(message))) return;
+  if (!rejet && (!fichier || fichier.indexOf(window.location.origin) !== 0)) return true;
+  if (/ResizeObserver loop/.test(message)) return true;
+  if (rejet && (payload.nom === 'AbortError' || /Failed to fetch|NetworkError|Load failed|réseau/i.test(message))) return true;
+  return false;
+}
+// LA VERSION DE CETTE CONSOLE (2026-11-13) : l empreinte des ?v= des fichiers /assets/ de la page,
+// prise au chargement, avant tout module injecte (lib/version-console.js fait le meme calcul sur
+// la page servie). Elle part avec chaque erreur : une console restee ouverte sur l ancien code ne
+// fait plus d alerte, son erreur reste dans les Incidents.
+const VERSION_DE_LA_CONSOLE = (() => {
+  try {
+    const numeros = Array.from(document.querySelectorAll('script[src]'), (s) => s.getAttribute('src') || '')
+      .filter((s) => /^\/assets\//.test(s))
+      .map((s) => (s.match(/[?&]v=([0-9A-Za-z._-]+)/) || [])[1])
+      .filter(Boolean);
+    if (!numeros.length) return '';
+    let h = 5381;
+    for (const c of numeros.join(',')) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0;
+    return h.toString(36);
+  } catch (error) {
+    return '';
+  }
+})();
+window.__plVersionConsole = VERSION_DE_LA_CONSOLE;
+function signalerErreurPublique(payload, message) {
+  const fichier = String(payload.source || '');
+  if (bruitDuNavigateur(payload, message)) return;
   if (CLIENT_ERROR_REPORT.sent >= 5) return;
   CLIENT_ERROR_REPORT.sent += 1;
   try {
@@ -2710,6 +2738,10 @@ function reportClientError(payload) {
     signalerErreurPublique(payload, message);
     return;
   }
+  // Les memes filtres que le chemin public (2026-11-13). Et une console qui sait deja qu une
+  // version plus recente est en ligne (le bandeau « mise à jour ») ne signale plus rien.
+  if (bruitDuNavigateur(payload, message)) return;
+  if (document.getElementById('plUpdateBar')) return;
   const key = `${message}|${payload.source || ''}|${payload.lineno || 0}`;
   if (CLIENT_ERROR_REPORT.seen.has(key)) return;
   CLIENT_ERROR_REPORT.seen.add(key);
@@ -2726,6 +2758,7 @@ function reportClientError(payload) {
         lineno: Number(payload.lineno) || 0,
         colno: Number(payload.colno) || 0,
         stack: String(payload.stack || '').slice(0, 2000),
+        version: VERSION_DE_LA_CONSOLE,
       }),
     }).catch(() => {}).finally(() => { CLIENT_ERROR_REPORT.busy = false; });
   } catch (error) {

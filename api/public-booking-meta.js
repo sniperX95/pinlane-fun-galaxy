@@ -148,6 +148,11 @@ async function handleErreurFormulaire(req, res, body) {
     const empreinte = String(inscrit.stackHash || '').slice(0, 6);
     const visiteurs = visiteursDuPlantage(`${centre}:${empreinte}`, cleDeLAdresse(getClientIp(req)));
     const urgent = visiteurs >= 2;
+    // DEJA VU EN BASE (2026-11-13) : la premiere apparition se dit sans sonnerie ; un deuxieme visiteur
+    // fait sonner tant que le plantage est jeune (cinq lignes au plus en base). Un plantage ancien qui
+    // revient apres une mise en ligne ne re-sonne pas : la memoire des visiteurs s y est effacee.
+    const rang = Number(inscrit.rang) || 1;
+    if (urgent ? rang > 5 : rang > 1) { sendJson(res, 202, { ok: true }); return; }
     const m = require('../lib/alertes-messages').formulairePlante({ centre, etape, visiteurs, urgent });
     await alerter(
       `formulaire:${centre}:${empreinte}:${urgent ? 'plusieurs' : 'un'}`,

@@ -130,8 +130,11 @@ global.fetch = async (url, options = {}) => {
     return new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'réponse du banc' }], usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200 });
   }
   if (u.includes('api.resend.com')) return new Response('{"id":"banc"}', { status: 200 });
+  // La page servie par la console, dont le serveur lit la version (lib/version-console.js).
+  if (u.startsWith('https://app.pinlane.be/?plv=')) return new Response(PAGE_SERVIE, { status: 200, headers: { 'content-type': 'text/html' } });
   throw new Error(`reseau interdit au banc : ${u}`);
 };
+const PAGE_SERVIE = '<!doctype html><title>Pinlane</title><script defer src="/assets/a.js?v=20261113a"></script><script defer src="/assets/b.js?v=20261113b"></script>';
 const avecGroupe = () => { process.env.TELEGRAM_GROUPE = GROUPE; process.env.TELEGRAM_SUJETS = 'pannes:2,reservations:3,modifications:4,bilans:5'; };
 const sansGroupe = () => { delete process.env.TELEGRAM_GROUPE; delete process.env.TELEGRAM_SUJETS; };
 const attendre = (ms = 60) => new Promise((r) => setTimeout(r, ms));
@@ -360,22 +363,71 @@ function monterOps() {
   staffAuth.getStaffSessionFromRequest = async () => SESSION;
   return charger('api/ops.js');
 }
+const DE_LA_CONSOLE = { host: 'app.pinlane.be' };
+const PLANTAGE_CONSOLE = () => ({ action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)', version: require(path.join(ROOT, 'lib/version-console.js')).versionDeLaPage(PAGE_SERVIE) });
 async function preuvesConsole() {
   remettre();
   charger('lib/garde-alertes.js').oublierLesAlertes();
+  charger('lib/version-console.js').oublierLaVersion();
   const ops = monterOps();
   TG.length = 0;
-  const plantage = { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'Cannot read properties of undefined (jean@example.be)', source: 'https://app.pinlane.be/assets/app-main.js', lineno: 10, colno: 4, stack: 'TypeError: Cannot read properties of undefined\n    at renderStaff (app-main.js:10:4)' };
-  const r = await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
+  const plantage = PLANTAGE_CONSOLE();
+  ok(plantage.version && plantage.version === charger('lib/version-console.js').versionDeLaPage(PAGE_SERVIE), '[C] temoin : la console du banc est sur la version servie', plantage.version);
+  const r = await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage, DE_LA_CONSOLE);
   ok(r.statut === 200 && BD.erreurs.length === 1, '[C] la console qui plante : l erreur entre en base', { r, erreurs: BD.erreurs });
   ok(TG.length === 1 && /^Gembloux : la console a eu une erreur chez Seb, page Planning\./.test(TG[0].text) && TG[0].disable_notification === true && !/Cannot read/.test(TG[0].text) && !PERSONNEL.test(TG[0].text), '[C] et le dit sans sonnerie, sans rien recopier de ce que le navigateur envoie', TG);
-  await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage);
+  await appeler(ops, 'POST', '/api/ops?action=logClientError', plantage, DE_LA_CONSOLE);
   ok(TG.length === 1, '[C] le meme plantage dans l heure : pas un second message', TG.length);
-  await appeler(ops, 'POST', '/api/ops?action=logClientError', { ...plantage, message: 'autre chose', stack: 'Error: autre chose\n    at x (app-main.js:99:1)' });
+  await appeler(ops, 'POST', '/api/ops?action=logClientError', { ...plantage, message: 'autre chose', stack: 'Error: autre chose\n    at x (app-main.js:99:1)' }, DE_LA_CONSOLE);
   ok(TG.length === 2, '[C] un autre plantage : un second message', TG.length);
+  const bruits = await bruitsDeConsole();
+  ok(bruits.ancienne.enBase && bruits.ancienne.messages === 0, '[C] une console restee ouverte sur une version plus ancienne : enregistree, sans message', bruits.ancienne);
+  ok(bruits.sansVersion.enBase && bruits.sansVersion.messages === 0, '[C] une console du code d avant (sans version) : enregistree, sans message', bruits.sansVersion);
+  ok(bruits.extension.messages === 0 && bruits.reseau.messages === 0 && bruits.annulee.messages === 0, '[C] une extension, un reseau coupe, une requete annulee : aucun message', bruits);
+  ok(bruits.dejaVu.messages === 0 && bruits.apresRedemarrage.messages === 0, '[C] un plantage deja vu en base ne se redit pas, meme apres un redemarrage de l instance', bruits);
+}
+// Chaque bruit de la console, joue par le vrai api/ops : ce qui entre en base, ce qui part sur Telegram.
+async function bruitsDeConsole() {
+  const ops = monterOps();
+  const a = charger('lib/garde-alertes.js');
+  const jouer = async (nom, corps, { rang = 1 } = {}) => {
+    remettre();
+    a.oublierLesAlertes();
+    route(/as rang, count\(distinct member_id\)/, () => [{ rang, personnes: 1, siens: rang }]);
+    TG.length = 0;
+    await appeler(ops, 'POST', '/api/ops?action=logClientError', { ...PLANTAGE_CONSOLE(), message: `plantage ${nom}`, stack: `Error: ${nom}\n    at ${nom} (app-main.js:1:1)`, ...corps }, DE_LA_CONSOLE);
+    return { enBase: BD.erreurs.length === 1, messages: TG.length };
+  };
+  const out = {
+    ancienne: await jouer('ancienne', { version: 'autre' }),
+    sansVersion: await jouer('sans-version', { version: undefined }),
+    extension: await jouer('extension', { source: 'chrome-extension://abc/x.js' }),
+    reseau: await jouer('reseau', { source: 'unhandledrejection', message: 'TypeError: Failed to fetch' }),
+    annulee: await jouer('annulee', { source: 'unhandledrejection', message: 'AbortError: The user aborted a request.' }),
+    dejaVu: await jouer('deja-vu', {}, { rang: 2 }),
+  };
+  a.oublierLesAlertes();
+  out.apresRedemarrage = await jouer('deja-vu', {}, { rang: 3 });
+  out.neuf = await jouer('neuf', {});
+  return out;
+}
+
+// Une panne du serveur deja vue en base ne re-sonne pas apres un redemarrage de l instance.
+async function panneServeurRedemarree() {
+  remettre();
+  const a = charger('lib/garde-alertes.js');
+  a.oublierLesAlertes();
+  TG.length = 0;
+  const sv = charger('lib/garde-serveur.js');
+  await sv.signalerPanneServeur('api/staff-state', new Error('connect ECONNREFUSED 10.0.0.1:5432'), { centerId: 'gembloux' });
+  a.oublierLesAlertes();
+  route(/as rang, count\(distinct member_id\)/, () => [{ rang: 2, personnes: 1, siens: 2 }]);
+  await sv.signalerPanneServeur('api/staff-state', new Error('connect ECONNREFUSED 10.0.0.1:5432'), { centerId: 'gembloux' });
+  return TG.length;
 }
 
 async function preuvesTaches() {
+  ok(await panneServeurRedemarree() === 1, '[S] une panne du serveur deja vue en base ne re-sonne pas apres un redemarrage de l instance');
   remettre();
   charger('lib/garde-alertes.js').oublierLesAlertes();
   const ct = charger('lib/cron-tasks.js');
@@ -866,9 +918,13 @@ async function contrePreuves() {
   await rouge('la console qui plante ne previent plus', [{ fichier: 'api/ops.js', de: '        await alerter(`console:${centre}:${empreinte}`,', vers: '        await (async () => ({}))(`console:${centre}:${empreinte}`,' }], async () => {
     remettre();
     TG.length = 0;
-    await appeler(monterOps(), 'POST', '/api/ops?action=logClientError', { action: 'logClientError', centerId: 'gembloux', page: 'planning', message: 'boum', stack: 'Error: boum\n    at y (app-main.js:1:1)' });
+    await appeler(monterOps(), 'POST', '/api/ops?action=logClientError', { ...PLANTAGE_CONSOLE(), message: 'boum', stack: 'Error: boum\n    at y (app-main.js:1:1)' }, DE_LA_CONSOLE);
     return TG.length === 1;
   });
+  await rouge('une console restee sur l ancienne version fait une alerte', [{ fichier: 'api/ops.js', de: '        && !consoleAncienne(body.version, await versionServie())\n', vers: '' }], async () => { const b = await bruitsDeConsole(); return b.ancienne.messages === 0 && b.sansVersion.messages === 0; });
+  await rouge('le bruit du navigateur fait une alerte depuis la console', [{ fichier: 'api/ops.js', de: "!bruitDuNavigateur({ source: body.source, message: body.message }, { hote: req.headers.host })", vers: 'true' }], async () => { const b = await bruitsDeConsole(); return b.extension.messages === 0 && b.reseau.messages === 0 && b.annulee.messages === 0; });
+  await rouge('un plantage de console deja vu re-sonne apres un redemarrage', [{ fichier: 'api/ops.js', de: '        && Number(out.rang) === 1;', vers: ';' }], async () => { const b = await bruitsDeConsole(); return b.dejaVu.messages === 0 && b.apresRedemarrage.messages === 0 && b.neuf.messages === 1; });
+  await rouge('une panne du serveur deja vue re-sonne apres un redemarrage', [{ fichier: 'lib/garde-serveur.js', de: "    if (inscrit && ((inscrit.dropped && inscrit.raison === 'limite') || (!inscrit.dropped && Number(inscrit.rang) > 1))) return { ok: true, deja: true };\n", vers: '' }], async () => await panneServeurRedemarree() === 1);
   await rouge('une tache en echec se tait', [{ fichier: 'lib/cron-tasks.js', de: "    if (degraded) await alerterTache(taskName, result.message || 'traitement partiellement ou totalement échoué');\n", vers: '' }], async () => {
     remettre();
     TG.length = 0;

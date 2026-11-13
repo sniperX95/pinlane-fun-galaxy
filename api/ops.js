@@ -2316,10 +2316,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       // - une console sur une version plus ancienne que celle en ligne (lib/version-console.js) ;
       // - un plantage deja vu en base : seule sa premiere apparition, ou son retour apres un
       //   acquittement, se dit (out.rang, lib/client-errors.js). Une instance qui redemarre ne le
-      //   redit donc plus.
+      //   redit donc plus ;
+      // - une erreur d Ansar lui-meme (sa session, lib/essai-fondateur.js) : il l a vue. Ses lignes ne
+      //   comptent pas dans le rang, le meme plantage chez quelqu un de l equipe se dit donc encore.
       const { bruitDuNavigateur } = require('../lib/client-errors');
       const { consoleAncienne, versionServie } = require('../lib/version-console');
       const aDire = out && !out.dropped && !bruitDuNavigateur({ source: body.source, message: body.message }, { hote: req.headers.host })
+        && !require('../lib/essai-fondateur').estLeFondateur(options.session)
         && !consoleAncienne(body.version, await versionServie())
         && Number(out.rang) === 1;
       if (aDire) {

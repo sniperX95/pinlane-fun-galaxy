@@ -402,6 +402,30 @@ async function preuvesConsole() {
   ok(bruits.sansVersion.enBase && bruits.sansVersion.messages === 0, '[C] une console du code d avant (sans version) : enregistree, sans message', bruits.sansVersion);
   ok(bruits.extension.messages === 0 && bruits.reseau.messages === 0 && bruits.annulee.messages === 0, '[C] une extension, un reseau coupe, une requete annulee : aucun message', bruits);
   ok(bruits.dejaVu.messages === 0 && bruits.apresRedemarrage.messages === 0, '[C] un plantage deja vu en base ne se redit pas, meme apres un redemarrage de l instance', bruits);
+  // Ansar lui-meme (2026-11-13) : son erreur entre en base sans message, et ses lignes ne comptent pas
+  // dans le rang : le meme plantage chez Seb ensuite reste une premiere fois, et se dit.
+  const as = await ansarPuisSeb();
+  ok(as.ansar.enBase && as.ansar.messages === 0, '[C] une erreur de console d Ansar lui-meme : enregistree, sans message', as);
+  ok(as.sebMessages === 1 && /not like '%:platform-owner%'/.test(as.sqlRang), '[C] le meme plantage chez Seb ensuite : un message, les lignes d Ansar ne comptent pas dans son rang', { seb: as.sebMessages, sql: as.sqlRang.slice(0, 260) });
+}
+// Ansar lui-meme, puis Seb sur le meme plantage, par le vrai api/ops. api/ops.js lit la session au
+// chargement (il deconstruit lib/staff-auth) : chaque session se pose, puis le module se recharge.
+async function ansarPuisSeb() {
+  remettre();
+  let sqlRang = '';
+  route(/as rang, count\(distinct member_id\)/, (s) => { sqlRang = s; return [{ rang: 1, personnes: 1, siens: 1 }]; });
+  const ANSAR = { ...SESSION, member: { id: 'gembloux:platform-owner', name: 'Proprietaire plateforme' }, permissions: ['*', 'platform.admin'] };
+  const staffAuth = require(path.join(ROOT, 'lib/staff-auth'));
+  purger();
+  staffAuth.requireStaffPermission = async () => ANSAR;
+  staffAuth.getStaffSessionFromRequest = async () => ANSAR;
+  const plantage = { ...PLANTAGE_CONSOLE(), message: 'plantage ansar', stack: 'Error: ansar\n    at ansar (app-main.js:2:2)' };
+  TG.length = 0;
+  await appeler(charger('api/ops.js'), 'POST', '/api/ops?action=logClientError', plantage, DE_LA_CONSOLE);
+  const ansar = { enBase: BD.erreurs.length === 1, messages: TG.length };
+  purger();
+  await appeler(monterOps(), 'POST', '/api/ops?action=logClientError', plantage, DE_LA_CONSOLE);
+  return { ansar, sebMessages: TG.length - ansar.messages, sqlRang };
 }
 // Chaque bruit de la console, joue par le vrai api/ops : ce qui entre en base, ce qui part sur Telegram.
 async function bruitsDeConsole() {
@@ -1011,6 +1035,8 @@ async function contrePreuves() {
   });
   await rouge('les centres gardes restent ecrits en dur', [{ fichier: 'lib/tour-controle.js', de: '      garde: gardeEnBase(l),', vers: '      garde: CENTRES_GARDES.includes(l.id),' }], async () => (await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:mails-sans-reponse:namur'));
   await rouge('les annulations d Ansar lui-meme comptent', [{ fichier: 'lib/garde-veilles.js', de: " and coalesce(actor_member_id, '') not like '%:platform-owner%'", vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => /Ansar/.test(p.cle)));
+  await rouge('une erreur de console d Ansar lui-meme part en alerte', [{ fichier: 'api/ops.js', de: "&& !require('../lib/essai-fondateur').estLeFondateur(options.session)", vers: '&& true' }], async () => (await ansarPuisSeb()).ansar.messages === 0);
+  await rouge('les lignes d Ansar comptent dans le rang d un plantage de l equipe', [{ fichier: 'lib/client-errors.js', de: " and member_id not like '%:platform-owner%'\";", vers: '";' }], async () => /not like '%:platform-owner%'/.test((await ansarPuisSeb()).sqlRang));
   await rouge('une reservation en ligne recente ne compte plus', [{ fichier: 'lib/garde-veilles.js', de: '    if (t > maintenant - PLAGE_MS && t <= maintenant) c.recentes += 1;\n', vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:en-ligne-arretee:libramont'));
   await rouge('le plafond IA atteint ne se redit pas', [{ fichier: 'lib/garde-veilles.js', de: '      n: plein ? 4 : 1,', vers: '      n: 1,' }], async () => {
     const { tour, veilles } = await veillesDuBanc();

@@ -124,6 +124,13 @@ async function verifier(editions = []) {
           fondu: neufs.some((x) => x.getAnimations().some((an) => an.animationName === 'astMot')),
           entree: [...z.querySelectorAll('.ast-bloc-neuf')].some((x) => x.getAnimations().some((an) => an.animationName === 'astBloc')),
           h: z.getBoundingClientRect().height,
+          // La hauteur que le texte ecrit occupe vraiment (ce que la zone vise).
+          vise: (() => {
+            const dernier = z.lastElementChild;
+            if (!dernier) return 0;
+            const marge = parseFloat(getComputedStyle(dernier).marginBottom) || 0;
+            return Math.max(0, dernier.getBoundingClientRect().bottom + marge - z.getBoundingClientRect().top);
+          })(),
         });
       }
       if (!window.__stop) requestAnimationFrame(tick);
@@ -158,12 +165,22 @@ async function verifier(editions = []) {
     ok(traits.length === 3 && traits.every((x) => x.nom === 'astTrait') && traits.every((x, i) => i === 0 || x.delai > traits[i - 1].delai),
       '[D] a la fin, chaque chiffre prouve recoit son trait, dans l ordre de lecture', JSON.stringify(traits));
     // [G] (2026-11-13, Ansar : « le texte apparait en bas, c est pas fluide, ca cree des petits
-    // sauts ») : d une image a l autre, la reponse ne grandit jamais d une ligne entiere d un coup.
+    // sauts ») : quand une ligne s ajoute, la reponse n y saute pas d un coup, elle y glisse sur
+    // plusieurs images. Mesure qui ne depend pas de la vitesse de la machine : la part du chemin
+    // restant faite en UNE image. D un coup, c est 100 % ; en glissant, au plus 51 % (le pas d une
+    // image est plafonne a 50 ms). En pixels, une machine lente faisait 12,4 px par image sur
+    // GitHub contre 5 ici, sans saut pour autant.
     const hauteurs = ecriture.map((e) => e.h);
-    const sauts = hauteurs.slice(1).map((h, i) => h - hauteurs[i]);
-    const plusGrandSaut = Math.max(0, ...sauts);
-    ok(hauteurs.length > 10 && hauteurs[hauteurs.length - 1] - hauteurs[0] > 60 && plusGrandSaut <= 12,
-      '[G] la reponse grandit en glissant, sans saut de ligne', JSON.stringify({ plusGrandSaut: Math.round(plusGrandSaut * 10) / 10, depart: Math.round(hauteurs[0] || 0), arrivee: Math.round(hauteurs[hauteurs.length - 1] || 0), images: hauteurs.length }));
+    const parts = ecriture.slice(1).map((e, i) => {
+      const ecart = e.vise - ecriture[i].h;
+      return ecart >= 6 ? (e.h - ecriture[i].h) / ecart : null;
+    }).filter((x) => x !== null);
+    const plusGrandePart = Math.max(0, ...parts);
+    const plusGrandSaut = Math.max(0, ...hauteurs.slice(1).map((h, i) => h - hauteurs[i]));
+    const mesureG = { plusGrandePart: Math.round(plusGrandePart * 100) / 100, lignesAjoutees: parts.length, plusGrandSaut: Math.round(plusGrandSaut * 10) / 10, depart: Math.round(hauteurs[0] || 0), arrivee: Math.round(hauteurs[hauteurs.length - 1] || 0), images: hauteurs.length };
+    if (!editions.length) console.log(`      mesure [G] ${JSON.stringify(mesureG)}`);
+    ok(hauteurs.length > 10 && hauteurs[hauteurs.length - 1] - hauteurs[0] > 60 && parts.length >= 3 && plusGrandePart <= 0.65,
+      '[G] la reponse grandit en glissant, sans saut de ligne', JSON.stringify(mesureG));
     const rendue = await page.evaluate(() => { const z = [...document.querySelectorAll('.ast-r')].pop().querySelector('[data-ast-texte]'); return { h: z.style.height, o: z.style.overflow }; });
     ok(rendue.h === '' && rendue.o === '', '[G] a la fin, la reponse rend sa hauteur a son contenu', JSON.stringify(rendue));
     ok(!erreurs.length, '[A-D] aucune erreur JavaScript', erreurs.join(' | '));

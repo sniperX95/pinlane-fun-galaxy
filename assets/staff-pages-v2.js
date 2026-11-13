@@ -7435,22 +7435,22 @@
   function pv2CadreMailRecuHtml(cle, srcdoc, titre) {
     PV2_MAILS_RECUS_DOCS[cle] = srcdoc;
     const hauteur = Number(PV2_HAUTEURS_MAIL[cle]) || 0;
-    return `<div class="pv2-mail-papier"><iframe class="pv2-mail-recu-cadre" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${esc(titre)}" data-pv2-mail-recu="${esc(cle)}"${hauteur ? ` style="height:${hauteur}px"` : ''}></iframe></div>`;
+    return `<div class="pv2-mail-papier"><iframe class="pv2-mail-recu-cadre" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${esc(titre)}" data-pv2-cadre-mail="${esc(cle)}"${hauteur ? ` style="height:${hauteur}px"` : ''}></iframe></div>`;
   }
   function pv2AjusterCadreMail(frame) {
     try {
       const d = frame.contentDocument;
       if (!d || !d.body) return;
       const hauteur = Math.max(32, Math.ceil(Math.max(d.body.getBoundingClientRect().height, d.documentElement.offsetHeight)));
-      PV2_HAUTEURS_MAIL[frame.getAttribute('data-pv2-mail-recu')] = hauteur;
+      PV2_HAUTEURS_MAIL[frame.getAttribute('data-pv2-cadre-mail')] = hauteur;
       frame.style.height = `${hauteur}px`;
     } catch (error) {
       // Cadre illisible : il garde sa hauteur.
     }
   }
   function pv2RemplirMailsRecus(root) {
-    root.querySelectorAll('iframe[data-pv2-mail-recu]').forEach((frame) => {
-      const doc = PV2_MAILS_RECUS_DOCS[frame.getAttribute('data-pv2-mail-recu')];
+    root.querySelectorAll('iframe[data-pv2-cadre-mail]').forEach((frame) => {
+      const doc = PV2_MAILS_RECUS_DOCS[frame.getAttribute('data-pv2-cadre-mail')];
       if (!doc || frame.__pv2Doc === doc) return;
       frame.__pv2Doc = doc;
       frame.addEventListener('load', () => pv2AjusterCadreMail(frame));
@@ -7460,7 +7460,7 @@
   let pv2AjustementMails = 0;
   window.addEventListener('resize', () => {
     cancelAnimationFrame(pv2AjustementMails);
-    pv2AjustementMails = requestAnimationFrame(() => document.querySelectorAll('#staffEmailsPage iframe[data-pv2-mail-recu]').forEach(pv2AjusterCadreMail));
+    pv2AjustementMails = requestAnimationFrame(() => document.querySelectorAll('#staffEmailsPage iframe[data-pv2-cadre-mail]').forEach(pv2AjusterCadreMail));
   });
 
   // Les pieces jointes, comme dans Gmail : la vignette d une image, le type et

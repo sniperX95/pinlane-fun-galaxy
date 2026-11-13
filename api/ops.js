@@ -747,7 +747,7 @@ async function handleGet(req, res, options = {}) {
     if (!sessionHasPermission(options.session, 'payments.view')) throw createHttpError('Le fichier complet contient les montants : votre rôle ne les voit pas.', 403, true);
     const { exporterTout } = require('../lib/export-complet');
     const maintenant = new Date();
-    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant, sansEquipe: !sessionHasPermission(options.session, 'users.manage') });
+    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant, sansEquipe: !sessionHasPermission(options.session, 'users.manage'), sansFondateur: res.__nomsDuFondateur || null });
     await noterExport(options.session, scoped, 'exportComplet', { tables: doc.tables, lignes: doc.lignes });
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -794,6 +794,7 @@ async function handleGet(req, res, options = {}) {
       kind: action === 'classeurJour' ? 'excel' : 'feuille',
       vierge: url.searchParams.get('vierge') === '1',
       sansMontants: Boolean(res.__sansMontants),
+      sansFondateur: res.__nomsDuFondateur || null,
     });
     res.statusCode = 200;
     res.setHeader('Content-Type', doc.type);

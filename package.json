@@ -70,6 +70,7 @@
     "test:emails-page": "node scripts/emails-page-check.js",
     "test:emails-automation": "node scripts/emails-automation-check.js",
     "test:emails-threads-ui": "node scripts/emails-threads-ui-check.js",
+    "test:apparence-ouverture-directe": "node scripts/apparence-ouverture-directe-check.js && node scripts/apparence-ouverture-directe-check.js --contre-preuves",
     "test:unroutable-email": "node scripts/unroutable-email-check.js",
     "test:dispatch-immediate": "node scripts/dispatch-immediate-check.js",
     "test:inbound-webhook": "node scripts/inbound-webhook-check.js",

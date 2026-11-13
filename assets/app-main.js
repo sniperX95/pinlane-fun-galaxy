@@ -40436,13 +40436,20 @@ bootstrapApp();
 // (staff-pages-v2, founder-*) se parsent encore, et la page active est alors
 // sautee par les gardes du dispatcher. Quand TOUT est charge, on re-rend UNE
 // fois la vue active : la page se remplit sans que personne ne recharge.
-window.addEventListener('load', () => {
+// JAMAIS DANS LE MEME INSTANT (2026-11-13) : le chargement de la page se termine
+// aussi quand un rendu retire un cadre qui chargeait encore. Apparence ouverte par
+// son adresse remplace sa page pendant que ses vignettes de mails chargent : le
+// navigateur declenche alors « load » DANS ce remplacement, et ce filet y
+// imbriquait un second rendu de la meme page, qui cassait le premier (« Failed to
+// set the innerHTML property », en rouge sous le titre). Le filet part au tour
+// suivant, une fois le remplacement fini.
+window.addEventListener('load', () => setTimeout(() => {
   try {
     // Les modules staff sont desormais injectes : load seul ne prouve plus
     // leur disponibilite. Le meme point d'entree garde attente et retry.
     if (staffConsolesReady && (state.view === 'staff' || state.view === 'admin')) setView(state.view);
   } catch (error) { /* un filet ne casse jamais le demarrage */ }
-});
+}, 0));
 
 // LE DETECTEUR DE MISE A JOUR (2026-08-07). La console est une app d'une
 // seule page : un onglet laisse ouvert ne recharge JAMAIS ses fichiers, et

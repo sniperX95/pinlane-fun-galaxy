@@ -1536,6 +1536,14 @@
       .then(function (r) { return r.text().then(function (texte) { finir(); return { statut: r.status, ok: r.ok, texte: texte }; }); })
       .catch(function () { finir(); var e = new Error(parDelai ? 'delai' : 'reseau'); e.delai = parDelai; e.annule = !parDelai && controle.signal.aborted; throw e; });
   }
+  // UNE LECTURE QUI ECHOUE N EST PAS TOUJOURS UN PLANTAGE (2026-11-13). Le navigateur
+  // refuse un fetch quand le reseau du telephone est coupe ou que la page se ferme en
+  // route : lire() le rend sous le nom « reseau », et le capteur le remontait comme un
+  // plantage du formulaire (la Tour a sonne URGENT a Libramont pour un client sans
+  // reseau). Meme filtre que unhandledrejection : la panne dite par le serveur
+  // (lisible), la lecture annulee par la page (annule) et le reseau coupe se taisent.
+  // Le delai (12 s sans reponse) reste signale : il dit quelque chose du serveur.
+  function bruitDeLecture(err) { return Boolean(err && (err.lisible || err.annule || err.message === 'reseau')); }
   // L APOSTROPHE DES NOMS, comme sur le site du centre (« Golf o’Clock ») : le catalogue l ecrit droite.
   function nomTypo(k, v) { return k === 'name' && typeof v === 'string' && v.indexOf("'") >= 0 ? v.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2') : v; }
   function lu(rep) { try { return JSON.parse(rep.texte, nomTypo); } catch (e) { return null; } }
@@ -3227,7 +3235,7 @@
         // Plus de plan : plus rien a garder, le toucher retenu tombe avec lui.
         goContact.disabled = true;
         lacherContact();
-        if (!(err && err.lisible)) signaler({ message: 'Les horaires ne se sont pas chargés : ' + String((err && err.message) || err || ''), source: 'plan', stack: err && err.stack });
+        if (!bruitDeLecture(err)) signaler({ message: 'Les horaires ne se sont pas chargés : ' + String((err && err.message) || err || ''), source: 'plan', stack: err && err.stack });
         var msgErr = err && err.lisible ? err.message : 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
         hourZone.innerHTML = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgErr) + '</b><span class="fg-suggest"><button type="button" class="fg-suggest__btn" data-retry>Réessayer</button></span></div>';
         state.dispo = null;
@@ -8065,7 +8073,7 @@
         // ouvert, demonstration) le montre au lieu d ouvrir la demande.
         if (DEPART_SUR_MESURE) { if (alerte.hidden) departSurMesure(); else body.classList.remove('fg-depart-sm'); }
       })
-      .catch(function (err) { if (!(err && err.lisible)) signaler({ message: 'Le catalogue ne s’est pas chargé : ' + String((err && err.message) || err || ''), source: 'catalogue', stack: err && err.stack }); panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
+      .catch(function (err) { if (!bruitDeLecture(err)) signaler({ message: 'Le catalogue ne s’est pas chargé : ' + String((err && err.message) || err || ''), source: 'catalogue', stack: err && err.stack }); panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

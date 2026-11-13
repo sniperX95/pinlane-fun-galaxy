@@ -191,7 +191,10 @@ function raisonsDuMiroir(texte) {
 async function handleMiroir(req, res, body) {
   if (enforceRateLimit(req, res, { scope: 'miroir', limit: 30, windowMs: 600_000 })) return;
   const centre = String(body.centerId || '').trim().toLowerCase();
-  const reservationId = Number(body.reservationId);
+  // Une reservation (reservationId) ou une demande de groupe (demandeId) : chacune se relit dans sa propre table.
+  const demandeId = Number(body.demandeId);
+  const estDemande = Number.isSafeInteger(demandeId) && demandeId > 0;
+  const numero = estDemande ? demandeId : Number(body.reservationId);
   const borne = (v, max) => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= max ? n : 0; };
   try {
     getCenter(centre);
@@ -200,23 +203,25 @@ async function handleMiroir(req, res, body) {
     return;
   }
   const pool = getPool();
-  if (!pool || !Number.isSafeInteger(reservationId) || reservationId < 1) { sendJson(res, 202, { ok: true }); return; }
+  if (!pool || !Number.isSafeInteger(numero) || numero < 1) { sendJson(res, 202, { ok: true }); return; }
   try {
-    const r = await pool.query(`select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} limit 1`, [centre, reservationId]);
+    const r = await pool.query(estDemande
+      ? "select id from custom_requests where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' limit 1"
+      : `select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} limit 1`, [centre, numero]);
     if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }
     const lignes = borne(body.lignes, 8);
     const envoyees = borne(body.envoyees, 8);
     const raisons = raisonsDuMiroir(body.raison);
     const reussie = body.ok === true && !raisons.length;
-    console.info('[miroir]', centre, reservationId, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
+    console.info('[miroir]', centre, estDemande ? `demande ${numero}` : numero, reussie ? 'recopiee' : 'ratee', `${envoyees}/${lignes}`, raisons.join(',') || '-');
     if (!reussie) {
       const { alerter } = require('../lib/garde-alertes');
       const { nomDuCentre } = require('../lib/garde-annonces');
       const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');
       const combien = lignes ? ` (${envoyees} entrée${envoyees > 1 ? 's' : ''} recopiée${envoyees > 1 ? 's' : ''} sur ${lignes})` : '';
       await alerter(
-        `miroir:${centre}:${reservationId}`,
-        `À regarder, Pinlane\nLa réservation n°${reservationId} de ${nomDuCentre(centre)} est bien dans Pinlane, mais sa copie dans l’ancien formulaire du site n’est pas passée entière${combien} : ${pourquoi}. L’équipe ne la trouvera pas, ou pas complète, dans les mails de ce formulaire.`,
+        `miroir:${centre}:${estDemande ? 'd' : ''}${numero}`,
+        `À regarder, Pinlane\n${estDemande ? 'La demande de groupe' : 'La réservation'} n°${numero} de ${nomDuCentre(centre)} est bien dans Pinlane, mais sa copie dans l’ancien formulaire du site n’est pas passée entière${combien} : ${pourquoi}. L’équipe ne la trouvera pas, ou pas complète, dans les mails de ce formulaire.`,
         { fenetreMs: 60 * 60_000, origine: 'public' },
       );
     }

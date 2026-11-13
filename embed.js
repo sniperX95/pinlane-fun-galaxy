@@ -472,19 +472,25 @@
       vitesses[(source && parseInt(source.value, 10)) || 1] = [Math.max(0, Math.round(maintenant() - debutSurLaPage))];
       donnees.append('gform_submission_speeds', JSON.stringify({ pages: vitesses }));
     }
-    var formule = ligne.type === 'formule';
+    // Une demande de groupe prend sa premiere envie, activite sinon formule, ou aucune : tout ce qu elle dit est deja
+    // ecrit dans le champ du jour (« Demande de groupe · ... »).
+    var demande = ligne.type === 'demande';
+    var formule = ligne.type === 'formule' || (demande && !ligne.activiteId && Boolean(ligne.formuleId));
+    var aucune = demande && !ligne.activiteId && !ligne.formuleId;
     poser(donnees, champs.nom, ligne.nom);
     if (champs.centre) poser(donnees, champs.centre.name, optionDe(champs.centre, ligne.centre, ligne.centreId, true));
-    poser(donnees, champs.quoi.nom, formule ? champs.quoi.formule : champs.quoi.activite);
+    if (aucune) donnees.delete(champs.quoi.nom);
+    else poser(donnees, champs.quoi.nom, formule ? champs.quoi.formule : champs.quoi.activite);
     // La liste que la logique du formulaire cache ne part pas : sa valeur par defaut (sa premiere option) se lirait
-    // dans l entree.
-    var visee = formule ? champs.formule : champs.activite;
+    // dans l entree. Sans envie choisie, aucune des deux ne part.
+    var visee = aucune ? null : formule ? champs.formule : champs.activite;
     var cachee = formule ? champs.activite : champs.formule;
     if (cachee) donnees.delete(cachee.name);
+    if (aucune && champs.activite) donnees.delete(champs.activite.name);
     var valeur = visee ? optionDe(visee, formule ? ligne.formule : ligne.activite, formule ? ligne.formuleId : ligne.activiteId) : '';
     if (visee) poser(donnees, visee.name, valeur);
     // Ce que leur liste ne connait pas se lit quand meme, a cote du jour (le seul champ libre).
-    poser(donnees, champs.jour, ligne.jour + (valeur ? '' : ' · ' + (formule ? ligne.formule : ligne.activite)));
+    poser(donnees, champs.jour, ligne.jour + (valeur || demande ? '' : ' · ' + (formule ? ligne.formule : ligne.activite)));
     if (champs.heure) {
       var hm = /^(\d{1,2}):(\d{2})$/.exec(ligne.heure);
       donnees.delete(champs.heure);
@@ -494,7 +500,7 @@
     poser(donnees, champs.participants, ligne.participants);
     poser(donnees, champs.telephone, ligne.telephone);
     poser(donnees, champs.email, ligne.email);
-    var note = valeur ? '' : (formule ? 'formule-inconnue' : 'activite-inconnue');
+    var note = valeur || demande ? '' : (formule ? 'formule-inconnue' : 'activite-inconnue');
     // keepalive : le client qui ferme l onglet sur l ecran de confirmation n emporte pas l envoi avec lui.
     return fetch(cible, { method: 'POST', body: donnees, credentials: 'same-origin', keepalive: true })
       .then(function (reponse) { return reponse.text().then(function (html) { return lireReponse(reponse, html, note); }); })
@@ -516,18 +522,19 @@
   }
   function recopier(data) {
     var id = String(data.id || '');
-    if (!miroirDemande || !/^\d{1,12}$/.test(id) || recopiees[id]) return;
+    // « 1866 » une reservation, « d77 » une demande de groupe.
+    if (!miroirDemande || !/^d?\d{1,12}$/.test(id) || recopiees[id]) return;
     recopiees[id] = true;
     var lignes = (Array.isArray(data.lignes) ? data.lignes : []).slice(0, 8).map(function (l) {
       l = l && typeof l === 'object' ? l : {};
       var personnes = Math.trunc(Number(l.participants) || 0);
       return {
-        type: l.type === 'formule' ? 'formule' : 'activite',
+        type: l.type === 'formule' || l.type === 'demande' ? l.type : 'activite',
         nom: texteBorne(l.nom, 120), telephone: texteBorne(l.telephone, 40), email: texteBorne(l.email, 160),
         centre: texteBorne(l.centre, 80), centreId: texteBorne(l.centreId, 40),
         activite: texteBorne(l.activite, 80), activiteId: texteBorne(l.activiteId, 60),
         formule: texteBorne(l.formule, 80), formuleId: texteBorne(l.formuleId, 40),
-        jour: texteBorne(l.jour, 40), heure: texteBorne(l.heure, 5),
+        jour: texteBorne(l.jour, 300), heure: texteBorne(l.heure, 5),
         participants: personnes > 0 && personnes < 1000 ? String(personnes) : '',
       };
     });

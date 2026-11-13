@@ -7776,7 +7776,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261106surmesure1';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261113groupe';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106surmesure1';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -7809,14 +7809,16 @@
   // LA COPIE DANS L ANCIEN FORMULAIRE DU SITE (2026-11-13) vit dans assets/fungalaxy-miroir.js, chargee des
   // l ouverture mais seulement quand embed.js la demande (miroir=1) : le parcours de tous les autres n en paie rien.
   // Un module qui ne vient pas se signale (Tour de controle) : la copie ratee se sait au lieu de se perdre.
-  function chargerMiroir() { return chargerFichier('miroir', 'script', { src: '/assets/fungalaxy-miroir.js?v=20261113miroir', async: true }); }
+  function chargerMiroir() { return chargerFichier('miroir', 'script', { src: '/assets/fungalaxy-miroir.js?v=20261113groupe', async: true }); }
   var miroirModule = null;
-  function recopierDansLAncienFormulaire(r, quand) {
+  // quoi : ce qui n a pas pu partir si le module ne vient pas (« réservation 1866 », « demande de groupe 77 »).
+  function miroir(quoi, appel) {
     chargerMiroir().then(function () {
       miroirModule = miroirModule || window.FGMiroir(interne());
-      miroirModule.recopier(r, quand);
-    }).catch(function () { signaler({ message: 'Copie dans l’ancien formulaire non chargée, réservation ' + r.id, source: 'miroir' }); });
+      appel(miroirModule);
+    }).catch(function () { signaler({ message: 'Copie dans l’ancien formulaire non chargée, ' + quoi, source: 'miroir' }); });
   }
+  function recopierDansLAncienFormulaire(r, quand) { miroir('réservation ' + r.id, function (m) { m.recopier(r, quand); }); }
   if (MIROIR) chargerMiroir().catch(function () {});
 
   // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un
@@ -7898,6 +7900,7 @@
       rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
       scene: function () { return sceneCourante; },
       formuleChoisie: formuleChoisie, joueursDe: joueursDe, nomActivite: nomActivite, partiesDuPlan: partiesDuPlan, parentOrigin: parentOrigin,
+      miroir: MIROIR ? miroir : null,
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });
     return I;

@@ -1178,6 +1178,28 @@
         requestId: reponse && reponse.id != null ? reponse.id : null, center: CENTER, type: sm.type || '',
         pax: Number(sm.participants) || 0, date: sm.flexible ? '' : (sm.date || ''), status: 'received',
       } });
+      // Pendant l essai sur le site du centre, la demande part aussi par son ancien formulaire (fungalaxy-miroir.js).
+      if (I.miroir && reponse && reponse.id != null) I.miroir('demande de groupe ' + reponse.id, function (m) { m.recopierDemande(reponse.id, ligneDuMiroirSm()); });
+    }
+    // La demande dans leur ancien formulaire, en une entree : la premiere envie dans leur liste, le reste lisible dans
+    // le seul champ libre (le jour), qui commence par « Demande de groupe » : l equipe ne la prend pas pour une
+    // reservation. L heure reste vide, le groupe ne l a pas choisie.
+    function ligneDuMiroirSm() {
+      var c = sm.contact || {}, def = SM_TYPES[sm.type] || { label: 'Groupe' };
+      var n = Number(sm.participants) || 0, accompagnants = Number(sm.accompagnants) || 0;
+      var premiere = sm.activites.length ? activite(sm.activites[0]) : null;
+      var formule = !premiere && sm.formules.length ? formulesSm().filter(function (f) { return f.id === sm.formules[0]; })[0] : null;
+      var envies = sm.activites.map(function (id) { var a = activite(id); return a ? a.name : ''; }).filter(Boolean).concat(nomsDe(sm.formules, formulesSm()));
+      return {
+        type: 'demande', nom: ((c.prenom || '') + ' ' + (c.nom || '')).trim(), telephone: c.telephone || '', email: c.email || '',
+        centre: (I.meta && I.meta.center && I.meta.center.name) || '', centreId: CENTER,
+        activite: premiere ? premiere.name : '', activiteId: premiere ? premiere.id : '',
+        formule: formule ? formule.name : '', formuleId: formule ? formule.id : '',
+        jour: ['Demande de groupe', libelleQuandSm(), def.label + (sm.organisation ? ' (' + sm.organisation + ')' : ''),
+          n + ' joueur' + (n > 1 ? 's' : '') + (accompagnants ? ' + ' + accompagnants + ' accompagnateur' + (accompagnants > 1 ? 's' : '') : ''),
+          'envies : ' + (envies.length ? envies.join(', ') : 'à conseiller')].join(' · '),
+        heure: '', participants: n,
+      };
     }
 
     // L OUVERTURE : le groupe et le jour du premier ecran passent a la demande

@@ -191,9 +191,16 @@ Ce que fait la copie, et ce qu'elle ne fait pas :
   Gembloux) affiche sa confirmation mais jette l'entrée, sans aucun mail : c'est
   ce qui est arrivé à la première réservation d'essai, le 13/11. Si la page ne
   donne plus le jeton, rien ne part et la copie sonne (`jeton-absent`).
+- **Une demande de groupe** y entre aussi, en une entrée : sa première envie
+  dans leur liste (ou aucune), l'effectif du groupe, et le champ du jour qui
+  commence par « Demande de groupe » et dit le reste (« Demande de groupe ·
+  Dimanche 15 novembre, soirée · École, jeunesse (École X) · 25 joueurs + 2
+  accompagnateurs · envies : Bowling »). L'heure reste vide : le groupe ne l'a
+  pas choisie, l'équipe la propose en répondant.
 - Une copie ratée (formulaire refusé, site en panne, champ renommé, activité
   absente de leur liste) **sonne sur Telegram** avec le numéro de la
-  réservation : elle est dans Pinlane, il faut prévenir l'équipe.
+  réservation ou de la demande : elle est dans Pinlane, il faut prévenir
+  l'équipe.
 - **Le client peut recevoir deux mails** si le formulaire Gravity Forms envoie
   lui-même un accusé de réception : à vérifier à la première réservation d'essai.
 

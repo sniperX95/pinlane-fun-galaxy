@@ -4,7 +4,8 @@
  * Ansar : « faut que ça fasse une resa en meme temps de exactement comme ils ont deja actuellement ... pour voir si
  * tout coincide ». Pendant l essai, la page du centre envoie chaque reservation aussi par son ancien formulaire,
  * masque (embed.js, data-miroir). A la confirmation, le cadre lui passe ce que le visiteur y aurait tape : une ligne
- * par activite, a son heure, ou la formule. Ce fichier ne part que quand embed.js demande la copie (miroir=1) :
+ * par activite, a son heure, ou la formule. Une demande de groupe y entre aussi, en une ligne « Demande de groupe »
+ * (Ansar, le 13/11 : « et pour les groupes on fait quoi »). Ce fichier ne part que quand embed.js demande la copie (miroir=1) :
  * fungalaxy-booking.js le charge alors des l ouverture, le parcours de tous les autres n en paie rien.
  *
  * CE SONT DES DONNEES PERSONNELLES : elles ne partent que vers le site du centre lui-meme (identity.siteUrl, avec ou
@@ -12,7 +13,7 @@
  * sans rien de personnel (kind « miroir ») : une copie ratee sonne au lieu de se perdre.
  *
  * `window.FGMiroir(I)` : I porte l etat et les outils du formulaire (interne() dans fungalaxy-booking.js). La
- * fabrique ecoute la reponse de la page et rend { recopier(reservation, quand) }.
+ * fabrique ecoute la reponse de la page et rend { recopier(reservation, quand), recopierDemande(numero, ligne) }.
  */
 (function () {
   'use strict';
@@ -67,8 +68,11 @@
     }
     function signaler(resultat) {
       try {
+        // « d77 » : la demande de groupe n°77 (ses numeros ne sont pas ceux des reservations).
+        var demande = /^d\d+$/.test(String(resultat.id));
         var corps = JSON.stringify({
-          kind: 'miroir', centerId: I.CENTER, reservationId: Number(resultat.id) || 0, ok: resultat.ok === true,
+          kind: 'miroir', centerId: I.CENTER, reservationId: demande ? 0 : Number(resultat.id) || 0,
+          demandeId: demande ? Number(String(resultat.id).slice(1)) : 0, ok: resultat.ok === true,
           raison: String(resultat.raison || '').slice(0, 200), lignes: Number(resultat.lignes) || 0, envoyees: Number(resultat.envoyees) || 0,
         });
         if (navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))) return;
@@ -86,12 +90,12 @@
       signaler(d);
     });
 
-    function recopier(r, quand) {
-      var id = /^\d{1,12}$/.test(String(r.id || '')) ? String(r.id) : '';
+    // faireLignes ne se lit qu une fois la page reconnue : ce sont des donnees personnelles.
+    function envoyer(id, faireLignes) {
       if (!id || !parentOrigin) return;
       // Une page qui n est pas le site de la fiche ne recoit rien ; que la copie n ait pas eu lieu se sait quand meme.
       if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }); return; }
-      var lignes = lignesDuMiroir(r, quand);
+      var lignes = faireLignes();
       if (!lignes.length) { signaler({ id: id, ok: false, raison: 'rien-a-copier' }); return; }
       if (attendu) clearTimeout(attendu.minuteur);
       attendu = { id: id, minuteur: setTimeout(function () {
@@ -101,7 +105,16 @@
       }, 60000) };
       I.poster({ type: 'pinlane:miroir', id: id, lignes: lignes });
     }
+    function recopier(r, quand) {
+      var id = /^\d{1,12}$/.test(String(r.id || '')) ? String(r.id) : '';
+      envoyer(id, function () { return lignesDuMiroir(r, quand); });
+    }
+    // Une demande de groupe : une seule entree, que le module de la demande compose (ligneDuMiroirSm).
+    function recopierDemande(numero, ligne) {
+      var n = /^\d{1,12}$/.test(String(numero == null ? '' : numero)) ? String(numero) : '';
+      envoyer(n ? 'd' + n : '', function () { return ligne ? [ligne] : []; });
+    }
 
-    return { recopier: recopier };
+    return { recopier: recopier, recopierDemande: recopierDemande };
   };
 }());

@@ -32,6 +32,11 @@
 //       (la reservation 1866 du 13/11 s y est perdue).
 //   [P] Une page qui ne donne plus le jeton : avec un pot de miel rien ne part et la copie se dit ratee
 //       (jeton-absent) ; sans pot de miel, l entree part.
+//   [Q] Une demande de groupe (Ansar, le 13/11 : « et pour les groupes on fait quoi ») fait UNE entree, sous son
+//       propre numero (d901) : sa premiere envie dans leur liste, ou aucune (jamais leur premiere option), le jour qui
+//       commence par « Demande de groupe » et dit le reste, l heure vide.
+//   [R] De bout en bout, une vraie demande de groupe dans le vrai formulaire Pinlane part dans leur formulaire, et
+//       Pinlane apprend que la copie de CETTE demande est passee, sans rien de personnel.
 //   [L] Le bouton de retour rend l ancien formulaire sans residu : plus de cadre, plus de masque, rien d envoye.
 //   [M] De bout en bout, avec le vrai formulaire Pinlane : une reservation prise dans le cadre part dans leur
 //       formulaire avec ce que le client a tape, et Pinlane apprend que la copie est passee, sans rien de personnel.
@@ -43,6 +48,11 @@
 //
 // Usage : node scripts/embed-miroir-check.js [--contre-preuves] [--seul=<mutation>]
 'use strict';
+// [R] passe une demande de groupe par le vrai gestionnaire : lance avec les cles chargees (le profil PowerShell les
+// charge), il ecrirait son journal en base et annoncerait la demande sur Telegram. Les cles sont retirees avant
+// tout chargement.
+['DATABASE_URL', 'POSTGRES_URL', 'RESEND_API_KEY', 'TELEGRAM_JETON', 'TELEGRAM_CHAT', 'TELEGRAM_GROUPE'].forEach((cle) => { delete process.env[cle]; });
+process.env.PINLANE_CALENDAR_SYNC = 'off';
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');
@@ -93,7 +103,7 @@ const AILLEURS_VUS = [];
 const BALISES = [];
 function remettre(scenario = {}) {
   Object.keys(S).forEach((k) => delete S[k]);
-  Object.assign(S, { gform: 4, centre: 'libramont', design: 'fungalaxy', miroir: '#gform_4', reponse: 'ok', actif: true, vraiCadre: false, intrus: false, actionAilleurs: false, config: true }, scenario);
+  Object.assign(S, { gform: 4, centre: 'libramont', design: 'fungalaxy', miroir: '#gform_4', reponse: 'ok', actif: true, vraiCadre: false, intrus: false, actionAilleurs: false, config: true, depart: '' }, scenario);
   POSTS.length = 0;
   AILLEURS_VUS.length = 0;
   BALISES.length = 0;
@@ -112,7 +122,7 @@ function potDeMiel(n) {
   return numero ? `input_${numero}` : '';
 }
 function ligneDuSite() {
-  return `<script src="${PINLANE}/embed.js" data-center="${S.centre}"${S.design ? ` data-design="${S.design}"` : ''} data-target="#booking .container" data-fallback="#booking .heading, #booking .booking__container" data-track="datalayer"${S.miroir ? ` data-miroir="${S.miroir}"` : ''}></script>`;
+  return `<script src="${PINLANE}/embed.js" data-center="${S.centre}"${S.design ? ` data-design="${S.design}"` : ''}${S.depart ? ` data-start="${S.depart}"` : ''} data-target="#booking .container" data-fallback="#booking .heading, #booking .booking__container" data-track="datalayer"${S.miroir ? ` data-miroir="${S.miroir}"` : ''}></script>`;
 }
 function pageSite() {
   const n = S.gform;
@@ -227,7 +237,7 @@ async function brancher(ctx) {
       if (/^\/fungalaxy\//.test(url.pathname) || url.pathname === '/reserver' || url.pathname === '/intrus') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: FAUX_CADRE });
       return route.abort();
     }
-    if (url.pathname === '/assets/fungalaxy-booking.js' || url.pathname === '/assets/fungalaxy-miroir.js') {
+    if (['/assets/fungalaxy-booking.js', '/assets/fungalaxy-miroir.js', '/assets/fungalaxy-sur-mesure.js'].includes(url.pathname)) {
       return route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: source(url.pathname.slice(1)) });
     }
     const rep = await route.fetch({ url: LOCAL + url.pathname + url.search });
@@ -353,7 +363,13 @@ async function proprietesSite(browser) {
   section('[H] seul le cadre pose par embed.js est ecoute');
   remettre({ intrus: true });
   h = await ouvrir(browser);
-  const intrus = h.page.frames().find((fr) => /\/intrus$/.test(fr.url()));
+  // ouvrir attend le cadre d embed.js, pas l autre : il peut ne pas etre encore charge (suite GitHub du 13/11, 5 h).
+  let intrus = null;
+  for (let k = 0; k < 100 && !intrus; k += 1) {
+    intrus = h.page.frames().find((fr) => /\/intrus$/.test(fr.url())) || null;
+    if (!intrus) await dormir(100);
+  }
+  if (!intrus) throw new Error('le cadre intrus ne s est pas charge');
   await intrus.waitForFunction(() => typeof window.__envoyer === 'function', null, { timeout: 10000 });
   await intrus.evaluate((m) => window.__envoyer(m), { type: 'pinlane:miroir', id: '4401', lignes: [ligne('activite', { activite: 'Bowling', activiteId: 'bowling', heure: '14:00', participants: 8 })] });
   await h.page.evaluate((m) => window.postMessage(m, '*'), { type: 'pinlane:miroir', id: '4402', lignes: [ligne('activite', { activite: 'Bowling', activiteId: 'bowling', heure: '14:00', participants: 8 })] });
@@ -417,6 +433,26 @@ async function proprietesSite(browser) {
   const sansJetonLibramont = await copier(h, { type: 'pinlane:miroir', id: '4752', lignes: [ligne('activite', { activite: 'Bowling', activiteId: 'bowling', heure: '14:00', participants: 8 })] });
   ok(POSTS.length === 1 && POSTS[0].gardee && !present(POSTS[0], 'version_hash') && Boolean(sansJetonLibramont) && sansJetonLibramont.d.ok === true,
     '[P] sans pot de miel (Libramont), le jeton n est pas exige : l entree part', `${POSTS.length} envois ${JSON.stringify(sansJetonLibramont && sansJetonLibramont.d)}`);
+  await h.ctx.close();
+
+  section('[Q] une demande de groupe');
+  remettre();
+  h = await ouvrir(browser);
+  const resume = 'Demande de groupe · samedi 21 novembre 2026, soirée · École, jeunesse (École du gate) · 25 joueurs + 2 accompagnateurs · envies : Bowling, Laser Game';
+  const faitQ = await copier(h, { type: 'pinlane:miroir', id: 'd901', lignes: [ligne('demande', { jour: resume, activite: 'Bowling', activiteId: 'bowling', heure: '', participants: 25 })] });
+  const q1 = POSTS[0];
+  ok(POSTS.length === 1 && valeur(q1, 'input_37') === 'Une activité' && valeur(q1, 'input_34') === 'bowling' && !present(q1, 'input_30') && valeur(q1, 'input_38') === '25'
+    && valeur(q1, 'input_5') === CLIENT.nom && valeur(q1, 'input_17') === CLIENT.telephone && valeur(q1, 'input_18') === CLIENT.email && valeur(q1, 'input_39') === 'Libramont',
+  '[Q] une entree « Une activité » sur sa premiere envie (Bowling), 25 joueurs, le contact du groupe, Libramont', q1 ? `${valeur(q1, 'input_37')} ${valeur(q1, 'input_34')} ${valeur(q1, 'input_38')}` : 'aucun envoi');
+  ok(Boolean(q1) && valeur(q1, 'input_36') === resume && valeurs(q1, 'input_26[]').join('|') === '|', '[Q] le jour dit « Demande de groupe » et tout le reste, l heure reste vide', q1 && `${valeur(q1, 'input_36')} / ${valeurs(q1, 'input_26[]').join('|')}`);
+  ok(Boolean(faitQ) && faitQ.d.id === 'd901' && faitQ.d.ok === true && faitQ.d.envoyees === 1, '[Q] et passee, sous son propre numero (d901)', JSON.stringify(faitQ && faitQ.d));
+  POSTS.length = 0;
+  const resume2 = 'Demande de groupe · À fixer : en décembre · Anniversaire · 40 joueurs · envies : à conseiller';
+  const faitQ2 = await copier(h, { type: 'pinlane:miroir', id: 'd902', lignes: [ligne('demande', { jour: resume2, heure: '', participants: 40 })] });
+  const q2 = POSTS[0];
+  ok(POSTS.length === 1 && !present(q2, 'input_37') && !present(q2, 'input_34') && !present(q2, 'input_30') && valeur(q2, 'input_36') === resume2 && valeur(q2, 'input_38') === '40',
+    '[Q] sans envie choisie : ni « Une activité », ni leur premiere option (Arcades), le jour dit tout', q2 ? q2.champs.filter((c) => /^input_(3[0-9])$/.test(c[0])).map((c) => c.join('=')).join(' ') : 'aucun envoi');
+  ok(Boolean(faitQ2) && faitQ2.d.ok === true && faitQ2.d.raison === '', '[Q] et passee, sans se dire incomplete', JSON.stringify(faitQ2 && faitQ2.d));
   await h.ctx.close();
 
   section('[L] le bouton de retour : l ancien formulaire, sans residu');
@@ -499,6 +535,59 @@ async function reserverUnBowling(h) {
   await f.click('#confirmBtn');
   return attendre(h.page, () => (window.__messages || []).some((m) => m.type === 'pinlane:booking'), 15000);
 }
+// Une demande de groupe remplie par de vrais gestes (le parcours du gate embed-demande-signal-check), puis envoyee.
+// Le jour vise : ouvert tot et tard, au plus tot apres-demain (la regle des 24 heures, jugee par le serveur sur
+// l heure reelle, ne mord jamais).
+const plusJours = (jour, n) => { const [a, m, j] = jour.split('-').map(Number); return new Date(Date.UTC(a, m - 1, j + n)).toISOString().slice(0, 10); };
+const SCENE_ACTIVE = (id) => document.querySelector(`.fg-scene[data-scene="${id}"].is-active`) !== null;
+async function demanderUnGroupe(h) {
+  const f = h.cadre;
+  const aujourdHui = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const ouverts = mock.metaPayload('', 90).center.calendar.filter((j) => j.open && j.date > plusJours(aujourdHui, 1));
+  const cible = ouverts.find((j) => j.schedule.open <= 10 && j.schedule.close >= 21) || ouverts[0];
+  await f.waitForSelector('body.is-ready', { timeout: 30000 });
+  if (!await attendre(f, SCENE_ACTIVE, 10000, 'sm-groupe')) throw new Error('la demande ne s ouvre pas');
+  await dormir(700);
+  await f.click('.fg-occasion[data-type="ecole"]');
+  await f.fill('#smOrg', 'École du gate');
+  await f.click('.fg-sm-chip[data-age="7-12"]');
+  await f.click('#smCompPlus');
+  await f.click('#smCompPlus');
+  const pax = Number(await f.inputValue('#smPax'));
+  await f.click('#smGoDate');
+  await attendre(f, SCENE_ACTIVE, 8000, 'sm-date');
+  await dormir(700);
+  await f.click('#smDateBtn');
+  await f.waitForSelector('#dayPop:not([hidden])', { timeout: 5000 });
+  for (let k = 0; k < 4 && !(await f.$(`.fg-cal__day[data-date="${cible.date}"]`)); k += 1) { await f.click('#calNext'); await dormir(250); }
+  await attendre(f, (d) => { const b = document.querySelector(`.fg-cal__day[data-date="${d}"]`); return b && !b.classList.contains('is-loading'); }, 8000, cible.date);
+  await f.click(`.fg-cal__day[data-date="${cible.date}"]`);
+  await dormir(300);
+  await f.click('.fg-sm-moment[data-moment="soiree"]');
+  await f.click('#smGoEnvies');
+  await attendre(f, SCENE_ACTIVE, 8000, 'sm-envies');
+  await dormir(700);
+  await f.click('#smGridAct .fg-card[data-sm="bowling"]');
+  await f.click('#smGoContact');
+  await attendre(f, SCENE_ACTIVE, 8000, 'sm-contact');
+  await dormir(700);
+  await f.fill('#smPrenom', 'Camille');
+  await f.fill('#smNom', 'Groupe');
+  await f.fill('#smRole', 'Institutrice');
+  await f.fill('#smEmail', 'groupe@example.com');
+  await f.fill('#smTel', '0471123456');
+  await f.fill('#smMessage', 'Pique-nique a prevoir.');
+  await f.check('#smConsent', { force: true });
+  await f.click('#smGoRecap');
+  if (!await attendre(f, SCENE_ACTIVE, 8000, 'sm-recap')) throw new Error('recapitulatif de la demande non atteint');
+  await dormir(700);
+  const attente = h.page.waitForResponse((rep) => rep.url().includes('/api/custom-request') && rep.request().method() === 'POST', { timeout: 15000 });
+  await f.click('#smSend');
+  const rep = await attente;
+  const json = await rep.json().catch(() => ({}));
+  const fin = await attendre(f, SCENE_ACTIVE, 10000, 'fin');
+  return { pax, statut: rep.status(), id: json && json.id, fin };
+}
 async function proprietesBoutEnBout(browser) {
   section('[M] de bout en bout, le vrai formulaire Pinlane');
   remettre({ vraiCadre: true });
@@ -536,6 +625,26 @@ async function proprietesBoutEnBout(browser) {
   ok(!messagesN.some((m) => m.type === 'pinlane:miroir') && POSTS.length === 0, '[N] la page d un autre site ne recoit rien de personnel, rien ne part', messagesN.map((m) => m.type).join(','));
   ok(BALISES.length === 1 && BALISES[0].corps.ok === false && BALISES[0].corps.raison === 'autre-site', '[N] et Pinlane sait que la copie n a pas eu lieu (autre-site)', JSON.stringify(BALISES[0] && BALISES[0].corps));
   await h.ctx.close();
+
+  section('[R] de bout en bout, une demande de groupe');
+  remettre({ vraiCadre: true, depart: 'sur-mesure' });
+  h = await ouvrir(browser);
+  const groupe = await demanderUnGroupe(h);
+  ok(groupe.statut === 201 && /^\d+$/.test(String(groupe.id)) && groupe.fin, '[R] la demande est enregistree et l ecran de fin s affiche', JSON.stringify(groupe));
+  for (let k = 0; k < 100 && !(POSTS.length && BALISES.length); k += 1) await dormir(100);
+  const g = POSTS[0];
+  const jourR = g ? valeur(g, 'input_36') : '';
+  ok(POSTS.length === 1 && valeur(g, 'input_5') === 'Camille Groupe' && valeur(g, 'input_18') === 'groupe@example.com' && valeur(g, 'input_17') === '0471123456'
+    && valeur(g, 'input_39') === 'Libramont' && valeur(g, 'input_37') === 'Une activité' && valeur(g, 'input_34') === 'bowling' && valeur(g, 'input_38') === String(groupe.pax),
+  '[R] une entree part dans leur formulaire : le contact tape, Libramont, Bowling (sa premiere envie), l effectif du groupe', g ? `${valeur(g, 'input_5')} ${valeur(g, 'input_34')} ${valeur(g, 'input_38')} (attendu ${groupe.pax})` : `${POSTS.length} envois`);
+  ok(/^Demande de groupe · .+, soirée · École, jeunesse \(École du gate\) · \d+ joueurs \+ 2 accompagnateurs · envies : Bowling$/.test(jourR) && valeurs(g, 'input_26[]').join('|') === '|',
+    '[R] le jour dit « Demande de groupe », le moment, le groupe, l effectif et les envies ; l heure reste vide', jourR);
+  const baliseR = BALISES[0];
+  ok(BALISES.length === 1 && baliseR.corps.ok === true && baliseR.corps.demandeId === Number(groupe.id) && baliseR.corps.reservationId === 0 && baliseR.corps.envoyees === 1,
+    '[R] Pinlane apprend que la copie de CETTE demande est passee (son numero de demande, pas de reservation)', JSON.stringify(baliseR && baliseR.corps));
+  ok(Boolean(baliseR) && ['Camille', 'groupe@example.com', '0471123456', 'École du gate', 'Pique-nique'].every((x) => baliseR.brut.indexOf(x) < 0), '[R] et ce signal ne porte rien de personnel');
+  ok(h.erreurs.length === 0, '[R] aucune erreur JavaScript sur la page du site', h.erreurs.slice(0, 2).join(' | '));
+  await h.ctx.close();
 }
 
 // ===========================================================================
@@ -549,7 +658,12 @@ async function proprietesServeur() {
   const avant = { getPool: database.getPool, enforceRateLimit: rateLimit.enforceRateLimit, alerter: gardeAlertes.alerter };
   const requetes = [];
   const alertes = [];
-  database.getPool = () => ({ query: async (sql, params) => { requetes.push(params); return { rowCount: params[0] === 'libramont' && Number(params[1]) === 4301 ? 1 : 0, rows: [] }; } });
+  // La reservation 4301 et la demande de groupe 77 existent, chacune dans sa table.
+  database.getPool = () => ({ query: async (sql, params) => {
+    requetes.push(params);
+    const existe = params[0] === 'libramont' && ((/from reservations/.test(sql) && Number(params[1]) === 4301) || (/from custom_requests/.test(sql) && Number(params[1]) === 77));
+    return { rowCount: existe ? 1 : 0, rows: [] };
+  } });
   rateLimit.enforceRateLimit = () => false;
   gardeAlertes.alerter = async (cle, texte, options) => { alertes.push({ cle, texte, options }); return { ok: true }; };
   const fichier = path.join(ROOT, 'api/public-booking-meta.js');
@@ -581,6 +695,11 @@ async function proprietesServeur() {
     await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'jeton-absent', lignes: 3, envoyees: 0 });
     const texteJeton = (alertes[1] || {}).texte || '';
     ok(alertes.length === 2 && /code anti-robot/.test(texteJeton) && /0 entrée recopiée sur 3/.test(texteJeton), '[O] une page qui ne donne plus le jeton se dit en mots simples', texteJeton);
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 4301, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
+    ok(alertes.length === 2, '[O] une demande de groupe se relit dans SA table : un numero de reservation donne pour une demande ne sonne pas', `${alertes.length} alertes`);
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 77, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
+    const alerteDemande = alertes[2] || {};
+    ok(alertes.length === 3 && /La demande de groupe n°77 de /.test(alerteDemande.texte || '') && alerteDemande.cle === 'miroir:libramont:d77', '[O] une demande de groupe ratee sonne sous son nom et son numero', `${alerteDemande.cle} ${alerteDemande.texte}`);
   } finally {
     console.info = infos;
     Object.assign(database, { getPool: avant.getPool });
@@ -599,7 +718,10 @@ const MUTATIONS = [
   { nom: 'premiere-option', partie: 'site', fichier: 'embed.js', de: "|| (seuleSiUnique && options.length === 1 ? options[0].value : '');", vers: "|| (options.length ? options[0].value : '');" },
   { nom: 'confirmation-naive', partie: 'site', fichier: 'embed.js', de: "if (/id=['\"]gform_confirmation_(?:wrapper|message)_\\d+['\"]/.test(html) || ", vers: 'if (/gform_confirmation_/.test(html) || ' },
   { nom: 'envoi-ailleurs', partie: 'site', fichier: 'embed.js', de: 'if (adresse && adresse.origin === window.location.origin) cible = adresse.href;', vers: 'if (adresse) cible = adresse.href;' },
-  { nom: 'sans-demande', partie: 'site', fichier: 'embed.js', de: 'if (!miroirDemande || !/^\\d{1,12}$/.test(id) || recopiees[id]) return;', vers: 'if (!/^\\d{1,12}$/.test(id) || recopiees[id]) return;' },
+  { nom: 'sans-demande', partie: 'site', fichier: 'embed.js', de: 'if (!miroirDemande || !/^d?\\d{1,12}$/.test(id) || recopiees[id]) return;', vers: 'if (!/^d?\\d{1,12}$/.test(id) || recopiees[id]) return;' },
+  { nom: 'groupe-numero-refuse', partie: 'site', fichier: 'embed.js', de: 'if (!miroirDemande || !/^d?\\d{1,12}$/.test(id) || recopiees[id]) return;', vers: 'if (!miroirDemande || !/^\\d{1,12}$/.test(id) || recopiees[id]) return;' },
+  { nom: 'groupe-sans-type', partie: 'site', fichier: 'embed.js', de: "type: l.type === 'formule' || l.type === 'demande' ? l.type : 'activite',", vers: "type: l.type === 'formule' ? 'formule' : 'activite'," },
+  { nom: 'groupe-liste-laissee', partie: 'site', fichier: 'embed.js', de: 'if (aucune && champs.activite) donnees.delete(champs.activite.name);', vers: '' },
   { nom: 'masque-laisse', partie: 'site', fichier: 'embed.js', de: 'if (masque && masque.parentNode) masque.parentNode.removeChild(masque);', vers: '' },
   { nom: 'formulaire-touche', partie: 'site', fichier: 'embed.js', de: 'var donnees = new FormData(form);', vers: "var donnees = new FormData(form); if (champs.nom) form.querySelector('[name=\"' + champs.nom + '\"]').value = ligne.nom;" },
   { nom: 'sans-jeton', partie: 'site', fichier: 'embed.js', de: "if (jeton && !donnees.has('version_hash')) donnees.append('version_hash', jeton);", vers: '' },
@@ -613,6 +735,9 @@ const MUTATIONS = [
   { nom: 'raison-recopiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');", vers: "const pourquoi = String(body.raison || '');" },
   { nom: 'succes-qui-sonne', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!reussie) {', vers: 'if (true) {' },
   { nom: 'jeton-sans-mots', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "  'jeton-absent': ", vers: "  'jeton-perdu': " },
+  { nom: 'groupe-ignore-du-serveur', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'const estDemande = Number.isSafeInteger(demandeId) && demandeId > 0;', vers: 'const estDemande = false;' },
+  { nom: 'groupe-jamais-recopie', partie: 'cadre', fichier: 'assets/fungalaxy-sur-mesure.js', de: 'if (I.miroir && reponse && reponse.id != null) I.miroir(', vers: 'if (false) I.miroir(' },
+  { nom: 'groupe-signale-comme-reservation', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: 'var demande = /^d\\d+$/.test(String(resultat.id));', vers: 'var demande = false;' },
 ];
 
 async function jouer(browser, parties) {

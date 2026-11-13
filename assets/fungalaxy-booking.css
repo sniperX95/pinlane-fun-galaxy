@@ -3021,14 +3021,18 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* La photo d un ecran a deux colonnes : un bloc net, a ses proportions. Etiree sur toute la
    hauteur de l ecran, elle grossissait deux fois et devenait floue. */
 @media (min-width: 901px) {
-  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { top: 8px; bottom: auto; right: max(var(--fg-gutter), calc(50% - 640px)); left: auto; width: calc(min(100%, 1280px) * 0.46); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
+  /* EMBARQUE SUR LE SITE DU CENTRE (2026-11-13, Ansar sur fungalaxy.be : « trop serre, il prend pas l espace qu il lui
+     faut ») : la page du site encadre deja le formulaire. Sa marge interieure tombe a 24 px et la photo a 36 % du cadre :
+     dans les 1 100 px de leur section, la colonne du formulaire passe de 470 a 640 px. La page seule ne change pas. */
+  .fg.is-embed { --fg-gutter: 24px; --fg-part-photo: 0.36; }
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { top: 8px; bottom: auto; right: max(var(--fg-gutter), calc(50% - 640px)); left: auto; width: calc(min(100%, 1280px) * var(--fg-part-photo, 0.46)); aspect-ratio: 3 / 2; border-radius: var(--fg-r-plat); }
   .fg-scene--split.fg-scene--art-left .fg-art { right: auto; left: max(var(--fg-gutter), calc(50% - 640px)); }
   .fg-scene--split .fg-art::before, .fg-scene--split.fg-scene--art-left .fg-art::before, .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after { display: none; }
   /* Les coordonnees : le rappel de la visite prend la colonne, la photo laisse la place. */
   .fg-scene[data-scene="contact"] .fg-art { display: none; }
-  .fg-recall { margin-top: 8px; margin-right: max(var(--fg-gutter), calc(50% - 640px)); width: calc(min(100%, 1280px) * 0.46); }
-  .fg-scene--split .fg-scene__body { padding-right: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * 0.46 + 16px); }
-  .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * 0.46 + 16px); padding-right: max(var(--fg-gutter), calc(50% - 640px)); }
+  .fg-recall { margin-top: 8px; margin-right: max(var(--fg-gutter), calc(50% - 640px)); width: calc(min(100%, 1280px) * var(--fg-part-photo, 0.46)); }
+  .fg-scene--split .fg-scene__body { padding-right: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * var(--fg-part-photo, 0.46) + 16px); }
+  .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: calc(max(var(--fg-gutter), 50% - 640px) + min(100%, 1280px) * var(--fg-part-photo, 0.46) + 16px); padding-right: max(var(--fg-gutter), calc(50% - 640px)); }
 }
 /* Le meme voile que l ecran des heures, derriere les rangees. */
 .fg-scene[data-scene="activites"].fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.86) 0%, rgba(5, 5, 5, 0.94) 100%); }

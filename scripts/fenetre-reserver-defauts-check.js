@@ -193,10 +193,13 @@ async function scenarioChevauchement(browser, lettres) {
     await page.locator('#rsAjout-laser_game').click();
     await lues(page, 'laser_game');
     await touche(page, 'laser_game', '17:00');
-    // Le bowling ajoute, puis pris « juste après » le laser.
+    // Le bowling ajoute « juste après » le laser. « Ajouter » l y pose deja quand l heure tient
+    // (rsAjouterBloc, 2026-11-13) ; toucher alors son heure le retirerait : on ne la touche que
+    // s il est ailleurs.
     await page.locator('#rsAjout-bowling').click();
     await lues(page, 'bowling');
-    await touche(page, 'bowling', '17:30');
+    await page.waitForTimeout(300);
+    if (((await lignes(page)).bowling || {}).heure !== '17:30') await touche(page, 'bowling', '17:30');
     const l1 = await lignes(page);
     const monte = l1.laser_game && l1.laser_game.heure === '17:00' && l1.laser_game.index === 0 && l1.bowling && l1.bowling.heure === '17:30' && l1.bowling.foulee === true;
     ok(monte, '[F1] montage : le laser a 17:00, le bowling juste apres (17:30, a la suite)', l1);

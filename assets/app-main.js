@@ -34487,11 +34487,18 @@ function rvRefusDuPlan() {
   const ids = rvActivites();
   const conflits = Array.isArray(plan.conflits) ? plan.conflits.filter((c) => c && c.message) : [];
   const nomme = conflits.find((c) => c.type === 'arene' || c.type === 'pistes');
-  const candidate = nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : ids.length === 1 ? ids[0] : '';
+  const raison = plan.refus || plan.avertissement || (conflits[0] && conflits[0].message) || 'Le planning ne trouve pas de place pour ce plan.';
+  // LE REFUS A SON ACTIVITE (2026-11-13). « Pas assez de pistes libres à 21:30 » n etait a personne
+  // (son conflit n a pas le type « pistes ») : il s affichait au-dessus du total, poussait le nom
+  // sous le bord, et se redisait sous chaque heure du laser (« bowling, manque 1 piste »). Le type du
+  // conflit, sinon la phrase, le rend a son activite, comme le serveur le fait pour une heure
+  // (lib/reserver-simulation.js motCourtDuRefus).
+  const parType = conflits.find((c) => c.type === 'bowling_conflict' || c.type === 'laser_conflict');
+  const parPhrase = /^bowling|pistes?\b/i.test(raison) ? 'bowling' : /^laser|arène/i.test(raison) ? 'laser_game' : '';
+  const candidate = nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : parType ? (parType.type === 'bowling_conflict' ? 'bowling' : 'laser_game') : parPhrase || (ids.length === 1 ? ids[0] : '');
   const activite = ids.includes(candidate) ? candidate : '';
   const ligne = activite ? rvHeuresDesLignes(ids)[activite] : null;
   const heure = (nomme && nomme.heure) || (ligne && ligne.heure) || s.startTime || '';
-  const raison = plan.refus || plan.avertissement || (conflits[0] && conflits[0].message) || 'Le planning ne trouve pas de place pour ce plan.';
   const nom = activite ? rvNomCourt(activite) : '';
   return {
     activite,
@@ -34794,15 +34801,21 @@ function rvPiedHtml() {
   const joueurs = Math.max(1, Number(s.pax) || 1);
   const sansPrix = !attente && !Number(total) && !complet;
   const montant = attente ? '' : sansPrix ? 'sur place' : rsEuros(total);
-  const suite = attente ? '' : !complet && !sansPrix ? 'le reste sur place' : !lot && Number(total) > 0 ? `${formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100)} par joueur` : '';
-  const forcer = refuse && !lot && rsNiveau('forcer') === 'oui' ? `<button type="button" class="rs-lien" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rsForcer()">${s.forcer ? 'Revenir à l’heure proche' : 'Créer quand même, à placer'}</button>` : '';
+  const suite = attente ? '' : !complet && !sansPrix ? 'le reste sur place' : !lot && Number(total) > 0 ? `${formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100)} par joueur${rsPrixInegal() ? ' en moyenne' : ''}` : '';
+  // Pris quand meme : le lien dit l heure qu il reprend (« Prendre 22:00 à la place »), et la
+  // prend d un toucher. « Revenir à l’heure proche » ne disait pas laquelle, puis il fallait
+  // encore toucher « Prendre 22:00 ».
+  const reprise = refuse && !lot && s.forcer ? rsHeureProche() : '';
+  const motForcer = !s.forcer ? 'Créer quand même, à placer' : reprise ? `Prendre ${reprise} à la place` : 'Ne pas créer quand même';
+  const forcer = refuse && !lot && rsNiveau('forcer') === 'oui' ? `<button type="button" class="rs-lien${s.forcer ? ' is-fort' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}"${reprise ? ` data-reprise="${reprise}"` : ''} onclick="rsForcer()">${escapeHtml(motForcer)}</button>` : '';
+  const entree = !(s.submitting || bloque || attente) && !(refuse && s.forcer && !lot);
   const jour = rsJourMot(s.date);
   const resume = `${b.faits.combien ? rvPluriel(joueurs, 'joueur') : 'Joueurs à choisir'}, ${jour.charAt(0).toLowerCase()}${jour.slice(1)}`;
   const ditRefus = refuse && !s.forcer && !lot ? rsPhrase((rvRefusDuPlan() || {}).court || '') : '';
   return `<button type="button" class="rs-resume" id="rsResume" aria-expanded="${Boolean(b.ticket)}" aria-label="${escapeHtml(`${b.ticket ? 'Réduire' : 'Ouvrir'} le ticket, ${ditRefus || resume}, ${montant}`)}" onclick="rsBasculerTicket()"><span${ditRefus ? ' class="is-ko"' : ''}>${escapeHtml(ditRefus || resume)}</span><b>${escapeHtml(montant || 'Ticket')}</b></button>
     <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
     <div class="rs-tk-pay">${payer}</div>
-    <button type="button" class="rs-tk-creer${bloque || attente ? ' is-bloque' : ''}" id="rvCreer" data-pret="${pret ? '1' : '0'}"${proche ? ` data-proche="${proche}"` : ''}${occupe} onclick="rsCreer()">${escapeHtml(libelle)}${s.submitting || bloque || attente ? '' : '<kbd>Entrée</kbd>'}</button>
+    <button type="button" class="rs-tk-creer${bloque || attente ? ' is-bloque' : ''}" id="rvCreer" data-pret="${pret ? '1' : '0'}"${proche ? ` data-proche="${proche}"` : ''}${occupe} onclick="rsCreer()">${escapeHtml(libelle)}${entree ? '<kbd>Entrée</kbd>' : ''}</button>
     <div class="rs-tk-liens">${forcer}<button type="button" class="rs-lien" id="rvEncore" onclick="rsAutreResa()">+ Une autre réservation</button></div>`;
 }
 
@@ -34813,6 +34826,19 @@ function rvPiedHtml() {
 // paiement se fait sur place : paye veut dire arrive), un seul dossier, un plan
 // qui tient, un prix connu (la regle de la feuille : « Prix à voir » ne s encaisse
 // pas). Ils sont au-dessus de « Créer » : s ils s en vont, « Créer » ne bouge pas.
+// TOUS LES JOUEURS NE PAIENT PAS PAREIL (2026-11-13) : 12, 10 puis 8 au laser, le bloc disait « 25 €
+// par joueur » et le total « 21,33 € par joueur ». Personne ne paie 21,33 € : c est le total
+// partage. Le pied le dit « en moyenne » quand des joueurs font moins de parties, ou quand une
+// activite ne prend qu une partie du groupe.
+function rsPrixInegal() {
+  const s = quickBookState;
+  if (!s || (rvFormule() && !s.adaptee)) return false;
+  const groupe = Math.max(1, Number(s.pax) || 1);
+  const ids = rvActivites();
+  if (ids.includes('laser_game') && new Set(rsJoueursDesParties()).size > 1) return true;
+  return ids.some((id) => { const n = Number(getQuickVisitParticipants(id)) || 0; return n > 0 && n < groupe; });
+}
+
 function rvPeutEncaisserEnCreant() {
   const s = quickBookState;
   if (!s || s.date !== todayStr() || rvResas.length > 1 || s.forcer || rvTicketVide()) return false;
@@ -34895,7 +34921,7 @@ function rvHeureReglee(id, partie) {
 // a cette heure, avec toutes les regles de l ecran : la foulee suit, une ligne
 // detachee garde son heure, les pauses restent. La copie d etat ne touche
 // jamais la vraie.
-function rvVariante(id, partie, heure) {
+function rvDansLaVariante(id, partie, heure, faire) {
   const garde = quickBookState;
   const copie = JSON.parse(JSON.stringify(garde));
   try {
@@ -34911,6 +34937,16 @@ function rvVariante(id, partie, heure) {
     } else {
       copie.heures = { ...(copie.heures || {}), [id]: heure };
     }
+    return faire();
+  } catch (error) {
+    return null;
+  } finally {
+    quickBookState = garde;
+  }
+}
+
+function rvVariante(id, partie, heure) {
+  return rvDansLaVariante(id, partie, heure, () => {
     const corps = rvCorpsDeSimulation();
     if (!corps) return null;
     const variante = { heure, startTime: corps.startTime };
@@ -34918,11 +34954,19 @@ function rvVariante(id, partie, heure) {
     if (Array.isArray(corps.lanes)) variante.lanes = corps.lanes;
     if (corps.laneCount != null) variante.laneCount = corps.laneCount;
     return variante;
-  } catch (error) {
-    return null;
-  } finally {
-    quickBookState = garde;
-  }
+  });
+}
+
+// UNE HEURE QUE LA FENETRE NE SAIT PAS ENVOYER SE DIT AUSSI (2026-11-13). Le laser de 3 parties a
+// 22:00 suivi du bowling finirait apres minuit : la fenetre ne construit pas le dossier, rien ne
+// part au serveur, et la touche restait grise sans un mot, pour toujours. Elle dit pourquoi, avec
+// le meme verdict qu un refus du serveur : « trop tard » quand la visite depasse la fermeture.
+function rvRefusDeLaVariante(id, partie, heure) {
+  const erreur = rvDansLaVariante(id, partie, heure, () => rvConstruire({ simulation: true }).erreur || '') || '';
+  const tard = /hors horaires/i.test(erreur);
+  const passee = /déjà passé/i.test(erreur);
+  const raison = tard ? `À ${heure}, la visite finirait après la fermeture.` : erreur || `Pas de plan possible à ${heure}.`;
+  return { heure, statut: 'ko', raison, court: tard ? 'trop tard' : passee ? 'passée' : 'impossible', activite: '', local: true };
 }
 
 let rvCandidatsSeq = 0;
@@ -34933,7 +34977,14 @@ async function rvChargerCandidats(id, partie) {
   if (!base) return;
   const cle = rvCleDe(base);
   if (s.candidats && s.candidats.base === cle && s.candidats.id === id && s.candidats.partie === partie && s.candidats.etat !== 'erreur') return;
-  const variantes = rvHeuresHorloge(id).map((h) => rvVariante(id, partie, h)).filter(Boolean).slice(0, 48);
+  const toutes = [];
+  const locaux = [];
+  rvHeuresHorloge(id).forEach((h) => {
+    const variante = rvVariante(id, partie, h);
+    if (variante) toutes.push(variante);
+    else locaux.push([h, rvRefusDeLaVariante(id, partie, h)]);
+  });
+  const variantes = toutes.slice(0, 48);
   const seq = ++rvCandidatsSeq;
   s.candidats = { base: cle, id, partie, etat: 'calcul', resultats: new Map() };
   rvRepeindre();
@@ -34942,7 +34993,7 @@ async function rvChargerCandidats(id, partie) {
     if (!quickBookState || seq !== rvCandidatsSeq) return;
     const liste = payload && Array.isArray(payload.candidats) ? payload.candidats : null;
     quickBookState.candidats = liste
-      ? { base: cle, id, partie, etat: 'ok', resultats: new Map(liste.map((r) => [r.heure, r])) }
+      ? { base: cle, id, partie, etat: 'ok', resultats: new Map([...locaux, ...liste.map((r) => [r.heure, r])]) }
       : { base: cle, id, partie, etat: 'local', resultats: new Map() };
   } catch (error) {
     if (!quickBookState || seq !== rvCandidatsSeq) return;
@@ -34987,10 +35038,12 @@ function rvEtatHeure(id, heure) {
 // meme ecart), lus sur la journee de ce poste.
 function rvDispoLaserA(heure) {
   const s = quickBookState;
-  const joueurs = getQuickVisitParticipants('laser_game');
+  const parPartie = rsJoueursDesParties();
   const capacite = getAvailabilityLaserCapacity() || 30;
   const base = Math.round(timeToNum(heure) * 60);
-  return rvEcartsLaser().map((m) => {
+  return rvEcartsLaser().map((m, k) => {
+    // (chaque partie avec ses joueurs, comme rsPlaceLaser)
+    const joueurs = Number(parPartie[k]) || getQuickVisitParticipants('laser_game');
     const depart = numToTime((base + m) / 60);
     const a = getLaserAvailability(s.date, depart, 0.5, joueurs);
     const vague = a.waveCount > 1 ? Math.ceil(joueurs / a.waveCount) : joueurs;
@@ -35129,7 +35182,7 @@ function rvCoquilleHtml() {
     <aside class="rs-tk" aria-label="Le ticket de la réservation">
       <div class="rs-tk-t"><h3 id="qbTitle">Réservation</h3><span class="rs-centre">${escapeHtml(typeof window.staffCenterShortName === 'function' ? window.staffCenterShortName() : '')}</span><button type="button" class="rs-replier" id="rsReplier" onclick="rsBasculerTicket()">Réduire</button><button type="button" class="rs-x" id="rvFermer" aria-label="Fermer la réservation" onclick="closeQuickBook()">×</button></div>
       <div class="rv-zone-contenu" id="rvResasZone"></div>
-      <div class="rs-tk-c">
+      <div class="rs-tk-c" onscroll="rsOmbreDuTicket()">
         <div class="rs-tk-lignes" id="rsLignes"></div>
         <div class="rs-tk-client" id="rsClient"></div>
       </div>
@@ -35159,6 +35212,15 @@ function rvPoser(id, html) {
   return true;
 }
 
+// Le ticket qui a une suite sous son bord s estompe en bas (CSS .rs-tk-c.a-suite) ; lu jusqu au
+// bout, il redevient net.
+function rsOmbreDuTicket() {
+  const zone = document.querySelector('.qb-modal.rv .rs-tk-c');
+  if (!zone) return;
+  const suite = zone.scrollHeight - zone.clientHeight - zone.scrollTop > 2;
+  if (zone.classList.contains('a-suite') !== suite) zone.classList.toggle('a-suite', suite);
+}
+
 // Le champ rend la main : ce qui a attendu se repeint.
 function rvApresSaisie() {
   if (!quickBookState || !rvZonesEnAttente.size) return;
@@ -35174,7 +35236,17 @@ function rvToucheEntree(event) {
   if (!cible || typeof cible.matches !== 'function' || !cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')) return;
   event.preventDefault();
   if (cible.id === 'qbPhone') rsTelFini(cible);
-  rsCreer();
+  if (rsEntreeCree()) rsCreer();
+}
+
+// ENTREE NE CREE QUE CE QUI TIENT (2026-11-13). Le bowling pris quand meme a 21:30, ou il
+// manque une piste : le numero tape puis Entree, le reflexe du comptoir, creait le dossier « à
+// placer » sans un regard sur le rouge. Une heure prise quand meme se cree au toucher de son
+// bouton, jamais d une frappe ; le bouton ne montre plus « Entrée ».
+function rsEntreeCree() {
+  const s = quickBookState;
+  const plan = rvPlanCourant();
+  return !(s && s.forcer && plan && !plan.disponible && rvResas.length <= 1);
 }
 
 // Toutes les zones sauf celles qu on nomme (la saisie des joueurs pendant la
@@ -35228,6 +35300,8 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPlacerHorloge();
   rsChercherLaProche();
   rsArmerCompteurs();
+  // (apres la peinture : lire la hauteur maintenant forcerait la mise en page de la fenetre)
+  requestAnimationFrame(rsOmbreDuTicket);
   if (actif && !actif.isConnected) {
     const suivant = (actifId && document.getElementById(actifId))
       || memeHeure()
@@ -36114,6 +36188,9 @@ const rsAFaire = new Set();
 let rsTravail = false;
 let rsGabarit = null;
 const rsVerifs = new Map();
+// Les verdicts du serveur sur les heures des parties 2, 3... : une copie par ticket (sa cle de
+// simulation), chaque heure rangee a sa partie (« k|heure »). rsVerifierLesParties.
+const rsVerifsParties = new Map();
 let rsVerifTimer = null;
 let rsVerifSeq = 0;
 let rsFormuleMemo = { cle: '', liste: [] };
@@ -36818,11 +36895,15 @@ function rsBlocReplie(id) {
 // « Ajouter » pose l activite a la premiere heure de sa rangee qui tient : celle que le serveur
 // ne refuse pas (il lit aussi le bloc replie, rsBlocsAffiches), sinon celle que ce poste croit
 // libre ; « juste après » quand elle tient. « Choisir » garde l heure proposee (rvProposerHeure).
+// LA RANGEE DE CE TICKET (2026-11-13, Ansar : « tout bien retravailler dans les details »). Le
+// bowling ajoute apres un laser de 20:00 partait a 15:00 (demain : a 10:00, l ouverture) : la
+// liste lue etait la derniere du jour, celle du bowling propose seul, qui commence a l heure en
+// cours. La liste d un ajout commence « juste après » ce qui precede (rsSeancesFraiches).
 function rsAjouterBloc(id) {
   const s = quickBookState;
   if (!s || !rsEtat()) return;
   const remplace = id !== 'bowling' && rvBowlingProposeIntact();
-  const { liste, suite } = remplace ? { liste: [], suite: '' } : rsListeBloc(id);
+  const { liste, suite } = remplace ? { liste: [], suite: '' } : rsListeBloc(id, { frais: true });
   const bonne = liste.find((x) => (x.verdict ? x.verdict.statut !== 'ko' : x.tient !== false));
   rsGeste(() => {
     s.error = '';
@@ -37087,14 +37168,23 @@ function rsArmesComptees(date, c, capacite) {
   return { pris, retenu: Math.min(capacite - pris, compter(getBlocagesEnLigne(date))) };
 }
 
+// Chaque partie avec SES joueurs (2026-11-13) : 12, 10 puis 8, la partie 3 de 21:30 en prend 8.
+// Le compte prenait le groupe entier a chaque partie et disait « manque 2 » la ou le serveur
+// placait le groupe : 20:30 et 21:00 restaient sans un mot.
 function rsPlaceLaser(heure) {
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const parPartie = rsJoueursDesParties();
+  const base = Math.round(timeToNum(heure) * 60);
+  return rsPlaceDesDeparts(rvEcartsLaser().map((minutes, k) => [numToTime((base + minutes) / 60), Number(parPartie[k]) || joueurs]));
+}
+
+// Les armes au depart le plus serre d une liste de departs [heure, joueurs].
+function rsPlaceDesDeparts(departs) {
   const s = quickBookState;
   const capacite = getAvailabilityLaserCapacity() || 30;
-  const joueurs = getQuickVisitParticipants('laser_game');
-  const base = Math.round(timeToNum(heure) * 60);
   let pire = null;
-  rvEcartsLaser().forEach((minutes) => {
-    getLaserCandidateWindows(numToTime((base + minutes) / 60), 0.5, joueurs)
+  departs.forEach(([depart, joueurs]) => {
+    getLaserCandidateWindows(depart, 0.5, joueurs)
       .filter((c) => Number(c.countIndex || 1) === 1)
       .forEach((c) => {
         const { pris, retenu } = rsArmesComptees(s.date, c, capacite);
@@ -37106,6 +37196,56 @@ function rsPlaceLaser(heure) {
       });
   });
   return pire;
+}
+
+// CE QUI RESTE SOUS LES HEURES DES PARTIES 2, 3... (2026-11-13). Leurs rangees ne disaient que
+// « à la suite » : ni ce qui reste, ni pourquoi une heure coince. Toucher une heure de la partie k
+// la deplace, elle et celles d apres, du meme ecart (rvChoisirHeure) : elles se comptent toutes,
+// chacune avec ses joueurs, la plus serree decide.
+function rsPlaceDeLaPartie(k, heure) {
+  const departs = rvDepartsLaser((rvHeuresDesLignes().laser_game || {}).heure);
+  if (!departs[k]) return null;
+  const delta = Math.round((timeToNum(heure) - timeToNum(departs[k])) * 60);
+  const parPartie = rsJoueursDesParties();
+  const joueurs = getQuickVisitParticipants('laser_game');
+  return rsPlaceDesDeparts(departs.slice(k).map((depart, i) => [numToTime((Math.round(timeToNum(depart) * 60) + delta) / 60), Number(parPartie[k + i]) || joueurs]));
+}
+
+// UNE HEURE DE PARTIE PENDANT UNE AUTRE ACTIVITE DU GROUPE (2026-11-13) : la partie 2 posee a 22:00
+// tombait sur le bowling de 22:00 et sa touche disait « groupe occupé ». La partie et celles d apres
+// glissent du meme ecart ; la premiere qui croise une activite du ticket le dit, comme sur la
+// rangee de la premiere partie (rsPendant) : « décale le bowling » s il suivra, sinon « pendant le
+// bowling ».
+function rsPendantDeLaPartie(k, heure, plages = rsPlagesDuTicket()) {
+  if (!plages || !plages.lignes.laser_game) return null;
+  const departs = rvDepartsLaser(plages.lignes.laser_game.heure);
+  if (!departs[k]) return null;
+  const delta = timeToNum(heure) - timeToNum(departs[k]);
+  const duree = 0.5 * rvVaguesLaser();
+  const rang = plages.ids.indexOf('laser_game');
+  for (let j = k; j < departs.length; j += 1) {
+    const debut = timeToNum(departs[j]) + delta;
+    const fin = debut + duree;
+    for (const autre of plages.ids) {
+      const l = plages.lignes[autre];
+      if (autre === 'laser_game' || !RV_ANCRABLES.includes(autre) || !l || !l.heure) continue;
+      const debutAutre = timeToNum(l.heure);
+      const finAutre = debutAutre + plages.minutes[autre] / 60;
+      if (debut < finAutre - 1e-9 && debutAutre < fin - 1e-9) {
+        return { activite: autre, debut: l.heure, fin: numToTime(finAutre), suit: Boolean(l.foulee) && plages.ids.indexOf(autre) > rang };
+      }
+    }
+  }
+  return null;
+}
+
+// Les heures de la rangee d une partie : « à la suite » de la precedente, puis les demi-heures
+// d apres, et l heure prise toujours (rsPartiesHtml, rsVerifierLesParties).
+function rsHeuresDeLaPartie(k, departs, horloge = rvHeuresHorloge('laser_game')) {
+  const suite = timeToNum(departs[k - 1]) + rvPasLaser() / 60;
+  const heures = horloge.filter((h) => timeToNum(h) >= suite - 1e-9).slice(0, RS_SEANCES);
+  if (departs[k] && !heures.includes(departs[k])) heures.push(departs[k]);
+  return { suite, heures: heures.sort((a, b) => timeToNum(a) - timeToNum(b)) };
 }
 
 // CE QUI RESTERA POUR UNE FORMULE : le serveur dit ce que son plan prend a cette heure
@@ -37211,6 +37351,13 @@ function rsSeancesBrutes(id) {
   return rsRetenir(id, cle);
 }
 
+// La liste de CE ticket, jamais celle d un autre moment du meme jour : un geste qui pose une
+// heure la lit (rsAjouterBloc). La liste recente sert a peindre sans attendre, pas a choisir.
+function rsSeancesFraiches(id) {
+  const cle = rsCleBloc(id);
+  return rsSeancesMemo.get(cle) || rsRetenir(id, cle);
+}
+
 function rsRetenir(id, cle) {
   if (rsSeancesMemo.size > 60) rsSeancesMemo.clear();
   const valeur = rsCalculerSeances(id);
@@ -37240,8 +37387,8 @@ function rsTravailler() {
 // La liste d un bloc et le verdict du serveur sur chaque heure (`verdict` : sa phrase,
 // son mot court). Rien ne sort de la liste. Les objets sont ceux du calcul : le mot d une
 // heure vue s y garde (rsMotsVus).
-function rsListeBloc(id) {
-  const brut = rsSeancesBrutes(id);
+function rsListeBloc(id, { frais = false } = {}) {
+  const brut = frais ? rsSeancesFraiches(id) : rsSeancesBrutes(id);
   const v = rsVerifs.get(rsCleBloc(id));
   const lue = Boolean(v && v.etat === 'ok');
   brut.liste.forEach((x) => { x.verdict = rsVerdictDuBloc(id, x.heure); });
@@ -37263,6 +37410,8 @@ function rsVerdictDuBloc(id, heure) {
 function rsCoince(x, id) {
   const v = x && x.verdict;
   if (!v || v.statut !== 'ko') return null;
+  // (un refus de la fenetre elle-meme, « trop tard », est celui de CETTE heure : il se dit toujours)
+  if (v.local) return v;
   const refus = rvRefusDuPlan();
   const deja = refus && refus.activite && refus.activite !== id ? refus.activite : '';
   if (!deja) return v;
@@ -37340,6 +37489,34 @@ function rsMotPendant(autre) {
   return `pendant le ${autre === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(autre))}`;
 }
 
+// UN REFUS DE LA FENETRE A UNE HEURE OU LE GROUPE EST DEJA PRIS (2026-11-13) : le laser a 23:00, le
+// bowling fixe a 22:30. La fenetre compte la fin de la visite depuis l heure du laser et dit « trop
+// tard » ; la vraie raison est le bowling, la touche dit « pendant le bowling ». Une activite qui
+// suivra (« décale le bowling ») ne l emporte pas : c est elle qui finirait trop tard.
+function rsRefusOuChevauchement(coince, pendant) {
+  return coince && coince.local && pendant && !pendant.suit ? null : coince;
+}
+
+// « GROUPE OCCUPÉ » SANS RIEN QUI CHEVAUCHE A L ECRAN (2026-11-13). Le moteur cite le chevauchement
+// qu il a trouve en replacant l activite « à la suite » : le laser essaye a 15:30, le bowling d
+// apres ne trouve plus sa place et retombe sur lui. La touche disait « groupe occupé » alors qu il
+// manquait 1 arme a 15:30. Elle dit le manque de CETTE heure (le compte du poste), sinon que l
+// activite d apres ne suit plus. Un vrai chevauchement garde son mot (rsPendant).
+function rsVraiMotDuChevauchement(id, coince, pendant, x) {
+  if (!coince || coince.court !== 'groupe occupé' || pendant || !x) return null;
+  const place = x.place;
+  if (place && place.manque > 0) {
+    const manque = rvPluriel(place.manque, place.unite);
+    return { mot: `manque ${manque}`, phrase: `Il manque ${manque} à ${x.heure}.` };
+  }
+  const ids = rvActivites();
+  const lignes = rvHeuresDesLignes(ids);
+  const apres = ids.slice(ids.indexOf(id) + 1).find((a) => lignes[a] && lignes[a].foulee);
+  if (!apres) return null;
+  const nom = apres === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(apres));
+  return { mot: `pas de ${nom} après`, phrase: `Avec un départ à ${x.heure}, le ${nom} ne trouve plus de place juste après.` };
+}
+
 function rsMotDecale(autre) {
   return `décale le ${autre === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(autre))}`;
 }
@@ -37351,8 +37528,10 @@ function rsMotDecale(autre) {
 // « décale le bowling » s il suivra, « pendant le bowling » s il est fixe.
 function rsMotDeLHeure(id, x, plages) {
   if (x.passee) return 'passée';
-  const coince = rsCoince(x, id);
   const pendant = rsPendant(id, x.heure, plages);
+  const coince = rsRefusOuChevauchement(rsCoince(x, id), pendant);
+  const vrai = rsVraiMotDuChevauchement(id, coince, pendant, x);
+  if (vrai) return vrai.mot;
   if (coince) return rsMotCoince(id, coince, pendant);
   if (pendant) return pendant.suit ? rsMotDecale(pendant.activite) : rsMotPendant(pendant.activite);
   return x.verdict || x.tient !== false ? x.mot || '' : '';
@@ -37361,10 +37540,12 @@ function rsMotDeLHeure(id, x, plages) {
 // Les attributs d une heure qui coince : son nom dit la phrase du serveur, le survol aussi.
 // Une heure pendant une activite qui suivra dit ce que le toucher fera de cette activite.
 function rsDitLHeure(dite, x, mot, id, plages) {
-  const coince = rsCoince(x, id);
+  const coince = rsRefusOuChevauchement(rsCoince(x, id), !x.passee ? rsPendant(id, x.heure, plages) : null);
   const pendant = !coince && !x.passee ? rsPendant(id, x.heure, plages) : null;
   const nom = pendant ? (pendant.activite === 'laser_game' ? 'le laser' : `le ${rvMinuscule(rsNomCourt(pendant.activite))}`) : '';
   const phrase = pendant ? `Pendant ${nom} de ${pendant.debut} à ${pendant.fin}. ${pendant.suit ? `${nom.charAt(0).toUpperCase()}${nom.slice(1)} passera après, à la suite.` : 'Le groupe ne peut pas être aux deux.'}` : '';
+  const vrai = coince && !x.passee ? rsVraiMotDuChevauchement(id, coince, rsPendant(id, x.heure, plages), x) : null;
+  if (vrai) return ` title="${escapeHtml(vrai.phrase)}" aria-label="${escapeHtml(`${dite}, ne tient pas, ${vrai.phrase}`)}"`;
   const aria = coince ? `${dite}, ne tient pas, ${rsPhrase(coince.raison)}`
     : x.passee ? `${dite}, passée`
       : pendant ? `${dite}, ${phrase}`
@@ -37472,16 +37653,26 @@ async function rsVerifier() {
     const cle = rsCleBloc(id);
     const brut = rsSeancesMemo.get(cle);
     if (!brut || rsVerifs.has(cle)) continue;
+    // (une heure sans dossier possible ne part pas : elle garde le refus de la fenetre, rvRefusDeLaVariante)
     const demande = rsDansLaCopie(id, () => {
       const corps = rvCorpsDeSimulation();
-      return corps ? { corps, variantes: rvHeuresHorloge(id).slice(0, 48).map((heure) => rvVariante(id, 0, heure)).filter(Boolean) } : null;
+      if (!corps) return null;
+      const variantes = [];
+      const sansDossier = [];
+      rvHeuresHorloge(id).slice(0, 48).forEach((heure) => {
+        const variante = rvVariante(id, 0, heure);
+        if (variante) variantes.push(variante);
+        else sansDossier.push(rvRefusDeLaVariante(id, 0, heure));
+      });
+      return { corps, variantes, sansDossier };
     });
-    if (!demande || !demande.variantes.length) { rsVerifs.set(cle, { etat: 'ok', resultats: new Map() }); continue; }
+    const locaux = (demande ? demande.sansDossier : []).map((r) => [r.heure, r]);
+    if (!demande || !demande.variantes.length) { rsVerifs.set(cle, { etat: 'ok', resultats: new Map(locaux) }); continue; }
     rsVerifs.set(cle, { etat: 'calcul' });
     try {
       const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes }) });
       const lus = payload && Array.isArray(payload.candidats) ? payload.candidats : [];
-      rsVerifs.set(cle, { etat: 'ok', resultats: new Map(lus.map((r) => [r.heure, r])) });
+      rsVerifs.set(cle, { etat: 'ok', resultats: new Map([...locaux, ...lus.map((r) => [r.heure, r])]) });
     } catch (error) {
       rsVerifs.delete(cle);
       return;
@@ -37490,6 +37681,53 @@ async function rsVerifier() {
     if (!quickBookState || seq !== rsVerifSeq) return;
     rvRepeindre();
   }
+  if (quickBookState && seq === rsVerifSeq && rsEtat().q === 'activites') await rsVerifierLesParties(seq);
+}
+
+// LES PARTIES 2, 3... SE JUGENT COMME LES AUTRES HEURES (2026-11-13). Un envoi pour toutes les
+// heures de leurs rangees ; le serveur rend dans l ordre recu (lib/reserver-simulation.js,
+// simulerCandidats) et chaque reponse se range a sa partie. Une heure sans dossier possible garde
+// le refus de la fenetre (rvRefusDeLaVariante), comme sur la rangee de la premiere partie.
+async function rsVerifierLesParties(seq) {
+  const s = quickBookState;
+  if (!s || !rsAuTicket('laser_game') || !rvModifiable()) return;
+  const departs = rvDepartsLaser((rvHeuresDesLignes().laser_game || {}).heure);
+  const cle = s.cleCourante;
+  if (departs.length < 2 || !cle || rsVerifsParties.has(cle)) return;
+  const corps = rvCorpsDeSimulation();
+  if (!corps) return;
+  const horloge = rvHeuresHorloge('laser_game');
+  const essais = [];
+  const resultats = new Map();
+  for (let k = 1; k < departs.length; k += 1) {
+    rsHeuresDeLaPartie(k, departs, horloge).heures.forEach((heure) => {
+      const variante = rvVariante('laser_game', k, heure);
+      if (variante) essais.push({ k, heure, variante });
+      else resultats.set(`${k}|${heure}`, rvRefusDeLaVariante('laser_game', k, heure));
+    });
+  }
+  const envoyes = essais.slice(0, 48);
+  rsVerifsParties.set(cle, { etat: 'calcul', resultats });
+  if (envoyes.length) {
+    try {
+      const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true, candidats: envoyes.map((e) => e.variante) }) });
+      const lus = payload && Array.isArray(payload.candidats) ? payload.candidats : [];
+      envoyes.forEach((e, i) => { if (lus[i] && lus[i].heure === e.heure) resultats.set(`${e.k}|${e.heure}`, lus[i]); });
+    } catch (error) {
+      rsVerifsParties.delete(cle);
+      return;
+    }
+  }
+  rsVerifsParties.set(cle, { etat: 'ok', resultats });
+  if (rsVerifsParties.size > 30) rsVerifsParties.delete(rsVerifsParties.keys().next().value);
+  if (!quickBookState || seq !== rsVerifSeq) return;
+  rvRepeindre();
+}
+
+function rsVerdictDePartie(k, heure) {
+  const s = quickBookState;
+  const v = s && s.cleCourante ? rsVerifsParties.get(s.cleCourante) : null;
+  return v && v.etat === 'ok' ? v.resultats.get(`${k}|${heure}`) || null : null;
 }
 
 // ── LES PORTES ───────────────────────────────────────────────────────────────
@@ -37535,8 +37773,11 @@ function rsPartiesHtml() {
   if (!rsAuTicket('laser_game') || !rvModifiable()) return '';
   const departs = rvDepartsLaser((rvHeuresDesLignes().laser_game || {}).heure);
   if (departs.length < 2) return '';
-  const pas = rvPasLaser() / 60;
   const horloge = rvHeuresHorloge('laser_game');
+  const plages = rsPlagesDuTicket();
+  // (relues : le serveur a juge les heures des parties pour ce ticket, rsVerifierLesParties)
+  const lu = quickBookState.cleCourante ? rsVerifsParties.get(quickBookState.cleCourante) : null;
+  const lues = Boolean(lu && lu.etat === 'ok');
   const coche = `<i class="rs-coche" aria-hidden="true">${RV_I.ok}</i>`;
   // Les joueurs de la partie, sous son nom (2026-11-13, Ansar : « la 2 et 3eme partie on sait
   // pas choisir le nombre de joueur ») : la rangee de la partie est la ou on les cherche.
@@ -37544,22 +37785,28 @@ function rsPartiesHtml() {
   const bornesJoueurs = activityParticipantsBounds('laser_game', quickBookState.pax);
   const rangees = departs.slice(1).map((choisie, i) => {
     const k = i + 1;
-    const suite = timeToNum(departs[k - 1]) + pas;
-    const heures = horloge.filter((h) => timeToNum(h) >= suite - 1e-9).slice(0, RS_SEANCES);
-    if (!heures.includes(choisie)) heures.push(choisie);
-    const cles = heures.sort((a, b) => timeToNum(a) - timeToNum(b)).map((heure) => {
+    const { suite, heures } = rsHeuresDeLaPartie(k, departs, horloge);
+    const cles = heures.map((heure) => {
       const on = heure === choisie;
-      const x = { heure, tient: rsEtatHeure('laser_game', heure, k).etat !== 'ko', verdict: rsVerdictDesCandidats('laser_game', k, heure) };
+      // (le verdict du serveur sur cette partie : celui de « Autres » ou celui de la rangee,
+      // rsVerifierLesParties ; ce qui reste, compte par ce poste comme sous les autres heures)
+      const x = { heure, tient: rsEtatHeure('laser_game', heure, k).etat !== 'ko', verdict: rsVerdictDesCandidats('laser_game', k, heure) || rsVerdictDePartie(k, heure) };
       if (Math.abs(timeToNum(heure) - suite) < 1e-9) x.tag = 'à la suite';
-      const coince = Boolean(rsCoince(x, 'laser_game'));
-      const gris = !on && !x.verdict && x.tient === false;
-      const mot = coince ? rsMotCoince('laser_game', rsCoince(x, 'laser_game')) : '';
+      const pendant = on ? null : rsPendantDeLaPartie(k, heure, plages);
+      const refus = rsRefusOuChevauchement(rsCoince(x, 'laser_game'), pendant);
+      const coince = Boolean(refus);
+      const gris = !on && !x.verdict && x.tient === false && !pendant;
+      x.place = coince || gris ? null : rsPlaceDeLaPartie(k, heure);
+      const motPendant = pendant ? (pendant.suit ? rsMotDecale(pendant.activite) : rsMotPendant(pendant.activite)) : '';
+      const mot = coince ? rsMotCoince('laser_game', refus, pendant) : motPendant || rsResteDit(x.place).replace(/ armes?$/, '');
+      const ton = coince && !on ? ' is-coince' : pendant ? (pendant.suit ? ' is-pendant' : ' is-coince') : '';
+      const titre = refus ? rsPhrase(refus.raison) : pendant ? `Pendant le ${pendant.activite === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(pendant.activite))} de ${pendant.debut} à ${pendant.fin}.` : '';
       // (data-heure-p : la rangee de la premiere partie garde seule data-heure)
-      return `<button type="button" class="rs-h${on ? ' is-on' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}" data-partie="${k}" data-heure-p="${heure}" aria-pressed="${on}" aria-label="${escapeHtml(`Partie ${k + 1} à ${heure}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}`)}" onclick="rsHeurePartieBloc(${k}, '${heure}')">${coche}${rsDedansHeure(x, heure, mot)}</button>`;
+      return `<button type="button" class="rs-h${on ? ' is-on' : ''}${ton}${gris ? ' is-efface' : ''}" data-partie="${k}" data-heure-p="${heure}" aria-pressed="${on}"${titre ? ` title="${escapeHtml(titre)}"` : ''} aria-label="${escapeHtml(`Partie ${k + 1} à ${heure}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}`)}" onclick="rsHeurePartieBloc(${k}, '${heure}')">${coche}${rsDedansHeure(x, heure, mot)}</button>`;
     }).join('');
     const n = joueursParPartie[k] || bornesJoueurs.max;
     const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornesJoueurs.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`)}<small>joueurs</small></span>`;
-    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span><div class="rs-s-l">${cles}</div></div>`;
+    return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span><div class="rs-s-l" data-verifie="${lues ? '1' : '0'}">${cles}</div></div>`;
   });
   return `<div class="rs-parties">${rangees.join('')}</div>`;
 }
@@ -38649,7 +38896,7 @@ function rsTotalHtml() {
   const droite = custom != null ? '<button type="button" class="rs-discret" id="rsPrixCatalogue" onclick="rsPrixCatalogue()">Prix catalogue</button>' : '';
   return `${rsRetourHtml(droite)}
     <section class="rs-seance is-page is-total" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Total</h2><small>${escapeHtml(`${formatMoneyCentimes(parPersonne)} par joueur`)}</small></div><b class="rs-total-g">${escapeHtml(rsEuros(total))}</b></div>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Total</h2><small>${escapeHtml(`${formatMoneyCentimes(parPersonne)} par joueur${rsPrixInegal() ? ' en moyenne' : ''}`)}</small></div><b class="rs-total-g">${escapeHtml(rsEuros(total))}</b></div>
       ${rsRecuHtml()}
       ${prix}
     </section>`;
@@ -38718,7 +38965,7 @@ function rsLignesActivites() {
     const prixF = montant > 0 && combien ? rsEuros(montant) : '';
     const verdictF = !ko && !s.adaptee ? rsVerdictDesCandidats(ids[0], 0, s.startTime) : null;
     const resteF = verdictF && verdictF.statut !== 'ko' ? rsResteDuPlan(verdictF.prend) : [];
-    const apresF = resteF.length ? `il restera ${resteF.join(', ')}` : '';
+    const apresF = rsIlRestera(resteF);
     lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
     if (!s.adaptee) return lignes.join('');
   }
@@ -38758,9 +39005,21 @@ function rsPlusDuTicket(id, ligne) {
   else if (joueurs < groupe) morceaux.push(`${rvPluriel(joueurs, 'joueur')} sur ${groupe}`);
   if (rvActivites().includes(id) && RV_ANCRABLES.includes(id) && ligne && ligne.heure) {
     const place = rsPlaceDeLHeure(id, ligne.heure);
-    if (place && !place.manque) morceaux.push(`il restera ${rvPluriel(place.libre, place.unite)}`);
+    if (place && !place.manque) morceaux.push(rsIlRestera([rvPluriel(place.libre, place.unite)]));
   }
   return morceaux.join(', ');
+}
+
+// CE QUI RESTERA, EN FRANCAIS (2026-11-13) : « il restera 0 arme » se lisait mal. Un reste a zero se
+// dit « il ne restera aucune arme » ; a cote d un autre, « il restera 10 armes, plus aucune piste ».
+// Les mots arrivent comptes (« 0 piste », « 10 armes ») ; pistes et armes sont feminines.
+function rsIlRestera(mots) {
+  const liste = (mots || []).filter(Boolean);
+  if (!liste.length) return '';
+  const vides = liste.filter((m) => /^0 /.test(m)).map((m) => m.slice(2));
+  const autres = liste.filter((m) => !/^0 /.test(m));
+  if (!autres.length) return vides.length > 1 ? `il ne restera ni ${vides.join(' ni ')}` : `il ne restera aucune ${vides[0]}`;
+  return `il restera ${autres.join(', ')}${vides.length ? `, plus aucune ${vides.join(' ni ')}` : ''}`;
 }
 
 // Le nom accessible d une ligne dit ce qu elle montre (l heure, les pistes, le prix) :
@@ -38844,7 +39103,10 @@ function rsBasculerTicket() {
 }
 
 function rsForcer() {
+  const s = quickBookState;
+  const reprise = s && s.forcer ? rsHeureProche() : '';
   rsGeste(() => { rvBasculerForcer(); }, { focus: false });
+  if (reprise) rsPrendreProche();
 }
 
 function rsAutreResa() {
@@ -39734,7 +39996,7 @@ function rsTouche(event) {
     // pas : la touche Entree elle-meme le fait passer a vrai.)
     if (champ || (touche && rsAuClavier)) return;
     event.preventDefault();
-    rsCreer();
+    if (rsEntreeCree()) rsCreer();
     return;
   }
   if (champ) return;

@@ -9726,7 +9726,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-h.is-ko, .qb-modal.rv.rs .rs-h.is-ko.is-on { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
 .qb-modal.rv.rs .rs-h.is-ko small { color: var(--danger); }
 .qb-modal.rv.rs .rs-h-autres { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 14px; font-weight: 550; color: var(--muted); }
-.qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: 62px; }
+/* LES HEURES D UNE FORMULE (2026-11-13) : deux restes par touche (« reste 0 piste », « reste 10
+   armes »). A 64 px, chacun passait sur deux lignes et sortait de sa touche de 62 px. Les touches
+   s elargissent pour qu un reste tienne sur une ligne, et grandissent avec ce qu elles disent. */
+.qb-modal.rv.rs .rs-s-l.is-formule { --rs-h-min: 100px; }
+.qb-modal.rv.rs .rs-s-l.is-formule .rs-h { height: auto; min-height: 62px; padding: 6px 4px; }
+/* LE MOT D UNE HEURE SUR DEUX LIGNES AU PLUS (2026-11-13) : la touche d heure de la page d une
+   activite ne gardait que 48 px de texte, « manque 10 armes » s y cassait en « manque / 10 /
+   armes ». Ses marges laterales passent a 4 px : 56 px, « 10 armes » tient. */
+.qb-modal.rv.rs .rs-choix.is-heures .rs-p { padding-left: 4px; padding-right: 4px; }
 .qb-modal.rv.rs .rs-h.is-efface { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--muted); }
 .qb-modal.rv.rs .rs-h.is-efface b { font-weight: 400; }
 /* UNE HEURE QUI COINCE reste a sa place et dit pourquoi : la touche s efface comme une
@@ -9831,6 +9839,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-resume, .qb-modal.rv.rs .rs-replier { display: none; }
 .qb-modal.rv.rs .rs-x { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; font-size: 20px; line-height: 1; color: var(--muted); }
 .qb-modal.rv.rs .rs-tk-c { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0 12px; overflow-y: auto; overscroll-behavior: contain; }
+/* CE QUI CONTINUE SOUS LE BORD SE VOIT (2026-11-13) : l alerte du pied coupait le nom net, « Nom »
+   et 2 px de champ, comme une page cassee. Quand le ticket a une suite, son bas s estompe : on lit
+   qu il defile (rsOmbreDuTicket pose la classe). */
+.qb-modal.rv.rs .rs-tk-c.a-suite { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
 .qb-modal.rv.rs .rs-tk-lignes { display: flex; flex-direction: column; }
 .qb-modal.rv.rs .rs-tk-l { margin: 0; padding: 0 10px; font-size: 14px; font-weight: 550; line-height: 1.3; color: var(--text); }
 .qb-modal.rv.rs .rs-tk-sep { flex: none; height: 1px; margin: 12px 10px; background: var(--rs-ligne); }
@@ -9862,6 +9874,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-lbl em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--faint); }
 .qb-modal.rv.rs .rs-tk-champ input, .qb-modal.rv.rs .rs-tk-champ input:focus, .qb-modal.rv.rs .rs-tk-champ textarea { width: 100%; height: 44px; min-height: 0; padding: 0 12px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); box-shadow: none; outline: none; font-family: inherit; font-size: 15px; color: var(--text); }
 .qb-modal.rv.rs .rs-tk-champ textarea { display: block; height: auto; min-height: 64px; padding: 10px 12px; line-height: 1.4; resize: none; }
+/* LA NOTE SUR UNE LIGNE, QUI GRANDIT QUAND ON ECRIT (2026-11-13) : 64 px de note vide poussaient le
+   nom sous l alerte, coupe a 3 px. Elle prend la hauteur d un champ et suit son texte. */
+@supports (field-sizing: content) {
+  .qb-modal.rv.rs .rs-tk-champ textarea { field-sizing: content; min-height: 44px; max-height: 140px; }
+}
 .qb-modal.rv.rs .rs-tk-champ input:focus, .qb-modal.rv.rs .rs-tk-champ textarea:focus { border-color: var(--console-focus); box-shadow: inset 0 0 0 .5px var(--console-focus); }
 .qb-modal.rv.rs .rs-tk-champ input::placeholder, .qb-modal.rv.rs .rs-tk-champ textarea::placeholder { color: var(--faint); opacity: 1; }
 .qb-modal.rv.rs .rs-tk-champ.is-tel input { font-variant-numeric: tabular-nums; }

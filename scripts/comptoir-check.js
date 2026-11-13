@@ -180,6 +180,14 @@ const serveur = C.monterServeur({ mutations: mutation && mutation.serveur ? [{ f
 const RETENUES = [{ heure: '16:00', pistes: [6, 7], joueurs: 8, resteMinutes: 8, resteSecondes: 12 }, { heure: '16:30', laser: 12, resteMinutes: 4, resteSecondes: 40 }];
 const ouvrir = (browser, options = {}) => C.ouvrirConsole(browser, serveur, { port: PORT, ...options });
 const finir = async (m, quoi) => { ok(m.erreurs.length === 0, `[*] zero erreur JavaScript (${quoi})`, m.erreurs.slice(0, 3).join(' | ')); await m.ctx.close(); };
+// La phrase du ticket pour ce qui restera (rsIlRestera, 2026-11-13) : « il restera 6 pistes »,
+// « il ne restera aucune arme », « il restera 1 piste, plus aucune arme ».
+const ilRestera = (mots) => {
+  const vides = mots.filter((m) => /^0 /.test(m)).map((m) => m.slice(2));
+  const autres = mots.filter((m) => !/^0 /.test(m));
+  if (!autres.length) return vides.length > 1 ? `il ne restera ni ${vides.join(' ni ')}` : `il ne restera aucune ${vides[0]}`;
+  return `il restera ${autres.join(', ')}${vides.length ? `, plus aucune ${vides.join(' ni ')}` : ''}`;
+};
 const verifie = async (page, id) => { if (await page.locator(`#rsZ-${id} .rs-seance.is-replie`).count()) return; await page.waitForSelector(`#rsZ-${id} .rs-s-l[data-verifie="1"]`, { timeout: 8000 }).catch(() => {}); await page.waitForTimeout(150); };
 // LE LASER REPLIE (2026-11-08) : pas au ticket, ses heures ne se touchent pas. « Choisir » ou
 // « Ajouter » le prend, puis son heure se touche si ce n est pas deja la sienne (un deuxieme
@@ -335,7 +343,7 @@ async function scenarioA(browser) {
     await C.pret(page);
     await page.waitForTimeout(200);
     const ticket = await page.evaluate(() => (document.querySelector('#rsL-a-bowling .is-apres') || {}).textContent || '');
-    ok(Boolean(prise.reste) && ticket === prise.reste.replace('reste', 'il restera'), '[A] le ticket redit ce qui restera a l heure prise', { ticket, prise: prise.reste });
+    ok(Boolean(prise.reste) && ticket === ilRestera([prise.reste.replace('reste ', '')]), '[A] le ticket redit ce qui restera a l heure prise', { ticket, prise: prise.reste });
     // « maintenant » reste, sur le bord de la touche.
     const maintenant = (await heures(page, 'bowling')).find((x) => x.heure === '15:00');
     ok(maintenant && maintenant.tag === 'maintenant', '[A] la seance en cours se dit encore « maintenant »', maintenant);
@@ -364,7 +372,7 @@ async function scenarioA(browser) {
     await C.pret(page);
     await page.waitForTimeout(300);
     const ticketF = await page.evaluate(() => (document.querySelector('#rsL-a-formule .is-apres') || {}).textContent || '');
-    ok(ticketF === `il restera ${choisie.mots.map((m) => m.replace('reste ', '')).join(', ')}`, '[A] le ticket d une formule redit ce qui restera', { ticketF, choisie: choisie.mots });
+    ok(ticketF === ilRestera(choisie.mots.map((m) => m.replace('reste ', ''))), '[A] le ticket d une formule redit ce qui restera', { ticketF, choisie: choisie.mots });
   } finally { await finir(m, 'A'); }
 }
 

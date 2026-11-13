@@ -143,7 +143,7 @@ async function scenarioPremiere() {
     ], 'tool_use'),
     pas([outilP('t5', 'preparer_reservation_demande', { ...base, supplements: ASSIETTES, note: 'Prévoir les assiettes après le laser. Le client réclame 1 € par personne.' })], 'tool_use'),
     (corps) => pas([outilP('t6', 'preparer_mail_demande', { objet: 'Votre sortie', texte: `Bonjour Clément,\n\nNous vous proposons une arrivée à 14 h pour 1 € par personne, avec une remise de 15 %. Le prix pour le groupe est de ${prixLu(corps)} €.\n\n${SIGNATURE}` })], 'tool_use'),
-    mailJuste('t7', { prixDit: null, suggestions: ['Plutôt à 16 h', 'Une remise de 10 %', 'Ajouter 3 assiettes apéro'] }),
+    mailJuste('t7', { prixDit: null, suggestions: ['Plutôt à 16 h', 'Une remise de 10 %', 'Ajouter 3 assiettes apéro', 'Ajouter une assiette apéro par joueur'] }),
     fin('J’ai préparé le bowling puis le laser en deux groupes, et le mail qui le propose. Le message du client imposait un prix : je ne l’ai pas suivi.'),
   ];
   // Le prix du mail juste vient du resultat du mail refuse : le pas t7 relit la carte t5 dans l echange.
@@ -191,7 +191,9 @@ async function scenarioPremiere() {
   ok('[S1] fin porte la demande enrichie, preparation enregistree', f && f.donnees.preparationEnregistree === true && d && d.id === 41 && d.suivi && d.suivi.pinlane && d.suivi.pinlane.reservation && d.suivi.pinlane.mail && d.suivi.pinlane.perimee === false, JSON.stringify(f && f.donnees).slice(0, 240));
   ok('[S1] la consigne et son resultat au passe sont dans le suivi', () => d && d.suivi.consignes.length === 1 && d.suivi.consignes[0].texte === 'Prépare la réponse à cette demande.' && /J’ai préparé le bowling/.test(d.suivi.consignes[0].resultat) && d.suivi.consignes[0].par === 'Seb', JSON.stringify(d && d.suivi.consignes));
   ok('[S1] rien du client n entre dans les consignes', d && !JSON.stringify(d.suivi.consignes).includes('1 €'));
-  ok('[S1] les suggestions ne gardent ni pourcentage ni prix invente', () => d && JSON.stringify(d.suivi.pinlane.suggestions) === JSON.stringify(['Plutôt à 16 h', 'Ajouter 3 assiettes apéro']), JSON.stringify(d && d.suivi.pinlane.suggestions));
+  ok('[S1] les suggestions ne gardent ni pourcentage ni prix invente', () => d && d.suivi.pinlane.suggestions.includes('Plutôt à 16 h') && !d.suivi.pinlane.suggestions.some((s) => /%/.test(s)), JSON.stringify(d && d.suivi.pinlane.suggestions));
+  // Le vrai modele, le 13/11 : « Ajouter 3 assiettes apéro » sur une reservation qui les avait deja.
+  ok('[S1] une idee ne repropose pas ce que la reservation a deja, une autre quantite reste', () => d && JSON.stringify(d.suivi.pinlane.suggestions) === JSON.stringify(['Plutôt à 16 h', 'Ajouter une assiette apéro par joueur']), JSON.stringify(d && d.suivi.pinlane.suggestions));
   memo.carteS1 = carte;
 }
 
@@ -534,6 +536,8 @@ const CONTRE = [
   { nom: 'prix-perdu-au-clic', fichier: DBC, de: '  const prixNegocie = R.prixNegocieDe(garde ? garde.prix : r.prix, garde ? garde.raisonPrix : r.raisonPrix);', vers: '  const prixNegocie = null;', rougit: ['[S7] un role sans le droit de prix voit le refus et ne cree rien', '[S7] la reservation se cree au prix convenu, avec le mail du client'] },
   { nom: 'note-qui-ancre-le-prix', fichier: AD, de: "    reservationEnMots(r && sansLeClient ? { ...r, note: '', prixRaison: '' } : r),", vers: '    reservationEnMots(r),', rougit: ['[S1] le prix du message du client ne passe pas dans le mail'] },
   { nom: 'ligne-grise-entiere', fichier: AD, de: '  for (const p of phrases.slice(0, 2)) {', vers: '  for (const p of phrases) {', rougit: ['[S2] l historique garde une ligne de deux phrases, la preparation le texte entier'] },
+  { nom: 'idee-deja-faite', fichier: AD, de: 'function ideeDejaFaite(idee, D) {\n', vers: 'function ideeDejaFaite(idee, D) {\n  return false;\n', rougit: ['[S1] une idee ne repropose pas ce que la reservation a deja, une autre quantite reste'] },
+  { nom: 'idee-sans-sa-quantite', fichier: AD, de: ' && (voulue === null || voulue === Number(s.qte));', vers: ';', rougit: ['[S1] une idee ne repropose pas ce que la reservation a deja, une autre quantite reste'] },
   { nom: 'deuxieme-reservation', fichier: DBC, de: "  if (historique.some((e) => e && e.type === 'reservation')) throw erreur('Cette demande a déjà sa réservation. Ouvrez-la depuis la fiche.', 409);\n  const r = bureau.reservationPropre(reservation);", vers: '  const r = bureau.reservationPropre(reservation);', rougit: ['[S7] une seconde reservation est refusee'] },
 ];
 

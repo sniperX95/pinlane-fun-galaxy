@@ -185,14 +185,21 @@ async function jouer(mutation) {
     ok(Boolean(l.question), `[D] la question tient a travers un repeint de la page (obtenu ${Boolean(l.question)})`);
 
     // [G] la question posee a Libramont ne vaut pas pour Gembloux.
-    await page.evaluate(() => { state.adminCenterId = 'gembloux'; save(); renderStaffUtilityPage(); });
-    await page.waitForSelector('[data-estab-page][data-eb-center="gembloux"]', { state: 'attached' });
-    await page.evaluate(() => ebOuvrir('formulaire'));
+    // Le banc change de centre a la main (la session du faux serveur reste a Libramont) : une relecture de la
+    // session en route peut remettre l autre centre (vu une fois sur GitHub le 13/11, 15 s d attente pour rien).
+    // Le centre se repose donc jusqu a ce que la page le montre.
+    const allerA = async (id) => {
+      await page.waitForFunction((c) => {
+        if (document.querySelector(`[data-estab-page][data-eb-center="${c}"]`)) return true;
+        state.adminCenterId = c; save(); renderStaffUtilityPage();
+        return Boolean(document.querySelector(`[data-estab-page][data-eb-center="${c}"]`));
+      }, id, { polling: 250, timeout: 15000 });
+      await page.evaluate(() => ebOuvrir('formulaire'));
+    };
+    await allerA('gembloux');
     l = await lire();
     ok(!l.question, `[G] une question posee a Libramont ne s affiche pas a Gembloux (obtenu ${Boolean(l.question)})`);
-    await page.evaluate(() => { state.adminCenterId = 'libramont'; save(); renderStaffUtilityPage(); });
-    await page.waitForSelector('[data-estab-page][data-eb-center="libramont"]', { state: 'attached' });
-    await page.evaluate(() => ebOuvrir('formulaire'));
+    await allerA('libramont');
 
     // [E] confirmer, deux fois tres vite : un seul envoi, le bouton attend, puis l etat relu.
     await page.locator('[data-embed-confirmer]').waitFor({ state: 'visible' });

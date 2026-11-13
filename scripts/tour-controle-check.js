@@ -79,6 +79,22 @@ function verifierColonnes(sql) {
 const ilYA = (minutes) => new Date(Date.now() - minutes * 60000);
 const JOUR = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date());
 const DEMAIN = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date(Date.now() + 86400000));
+// Les passages de [G] se jouent le premier samedi a deux jours d ici au moins, a des heures fixes en temps
+// universel : chaque tache du banc, posee par rapport a maintenant, y est en retard a tous les passages, comme le
+// jour ou le gate a ete ecrit (samedi 14/11). Ecrites en dur, ces dates faisaient rougir le bilan du matin des le
+// 13/11 a 16 h 30 : le menage du matin repassait sous ses 26 h entre deux passages et la garde disait « Réglé ».
+// Un samedi, comme le 14/11 : un lundi ajouterait les bilans de la semaine.
+const jourBelge = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(d);
+const SAMEDI_DE_GARDE = (() => {
+  for (let n = 2; n < 10; n += 1) {
+    const d = new Date(Date.now() + n * 86400000);
+    if (new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', weekday: 'short' }).format(d) === 'Sat') return d;
+  }
+  throw new Error('aucun samedi dans les dix jours');
+})();
+const JOUR_GARDE = jourBelge(SAMEDI_DE_GARDE);
+const LENDEMAIN_GARDE = jourBelge(new Date(SAMEDI_DE_GARDE.getTime() + 86400000));
+const aLaGarde = (jour, heure) => new Date(`${jour}T${heure}:00Z`);
 const BD = {};
 function remettre() {
   BD.centres = [
@@ -337,7 +353,7 @@ async function preuvesServeur() {
   remettre();
   const passe = async (options = {}) => {
     TELEGRAM.length = 0;
-    const r = await tour.lancerGarde({ pool, instant: options.instant || new Date('2026-11-14T12:00:00Z'), ...options });
+    const r = await tour.lancerGarde({ pool, instant: options.instant || aLaGarde(JOUR_GARDE, '12:00'), ...options });
     BD.runs.unshift({ task_name: 'garde', status: 'ok', started_at: new Date(), finished_at: new Date(), result: r });
     return { r, messages: TELEGRAM.slice() };
   };
@@ -361,14 +377,14 @@ async function preuvesServeur() {
   ok(p5.messages.length === 0 && p5.r.envois.includes(false), '[G] Telegram coupe : rien ne part, et rien n est retenu comme dit', p5.r);
   const p6 = await passe();
   ok(p6.messages.length === 1 && /adresse de secours/.test(p6.messages[0]), '[G] au passage suivant, le message part enfin', p6.messages);
-  // Le bilan du matin (2026-11-06, il etait a 22 h) : 08:30 a Bruxelles, une fois, et rien l apres-midi.
-  const matin = new Date('2026-11-14T07:30:00Z');
+  // Le bilan du matin (2026-11-06, il etait a 22 h) : 08:30 a Bruxelles (09:30 l ete), une fois, et rien l apres-midi.
+  const matin = aLaGarde(JOUR_GARDE, '07:30');
   const p7 = await passe({ instant: matin, llm: async () => null });
   ok(p7.messages.length === 1 && /^Bilan Pinlane du/.test(p7.messages[0]) && /LIBRAMONT/.test(p7.messages[0]) && /GEMBLOUX/.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
   ok(!PERSONNEL.test(p7.messages.join(' ')), '[G] le bilan ne cite personne', p7.messages);
-  const p8 = await passe({ instant: new Date('2026-11-14T07:45:00Z'), llm: async () => null });
+  const p8 = await passe({ instant: aLaGarde(JOUR_GARDE, '07:45'), llm: async () => null });
   ok(p8.messages.length === 0, '[G] un seul bilan par matin', p8.messages);
-  const p9 = await passe({ instant: new Date('2026-11-15T13:00:00Z'), llm: async () => null });
+  const p9 = await passe({ instant: aLaGarde(LENDEMAIN_GARDE, '13:00'), llm: async () => null });
   ok(p9.messages.length === 0, '[G] la garde arretee tout le matin : pas de bilan de la veille l apres-midi', p9.messages);
 
   // La sonde demande : la base ecrit-elle ?
@@ -890,7 +906,7 @@ async function contrePreuves(browser, jour) {
   await rouge('un message non parti est retenu comme dit', [{ fichier: FICHIER, de: 'if (!r.ok) garde = precedent.dits;', vers: '' }], async () => {
     remettre();
     telegramCoupe = true;
-    const r = await tourReel().lancerGarde({ pool: database.getPool(), instant: new Date('2026-11-14T12:00:00Z') });
+    const r = await tourReel().lancerGarde({ pool: database.getPool(), instant: aLaGarde(JOUR_GARDE, '12:00') });
     telegramCoupe = false;
     return Object.keys(r.dits).length === 0;
   });
